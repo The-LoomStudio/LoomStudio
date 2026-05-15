@@ -1,0 +1,18 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./apps/studio-server" },
+    { "path": "./apps/studio-client" },
+    { "path": "./packages/shared" },
+    { "path": "./packages/diagnostics" },
+    { "path": "./packages/transport" },
+    { "path": "./packages/document-store" },
+    { "path": "./packages/extension-host" },
+    { "path": "./packages/extension-sdk" },
+    { "path": "./packages/client-bridge" },
+    { "path": "./packages/trace-audit" },
+    { "path": "./packages/loom-runner" },
+    { "path": "./packages/kernel" },
+    { "path": "./extensions/example-echo" }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "name": "loom-studio",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "dev:server": "tsx apps/studio-server/src/main.ts",
+    "dev:client": "vite --config apps/studio-client/vite.config.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "latest",
+    "clsx": "latest",
+    "eslint": "latest",
+    "prettier": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "tsx": "latest",
+    "typescript": "latest",
+    "typescript-eslint": "latest",
+    "vite": "latest",
+    "vitest": "latest",
+    "ws": "latest",
+    "zod": "latest",
+    "semver": "latest"
+  }
+}

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+.vite/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.loomstudio-dev/
+.DS_Store

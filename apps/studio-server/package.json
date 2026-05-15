@@ -1,0 +1,1 @@
+{"name":"@loom-studio/studio-server","version":"0.0.0","private":true,"type":"module","scripts":{"build":"tsc -b","test":"vitest run --passWithNoTests","lint":"eslint .","dev":"tsx src/main.ts"},"dependencies":{"@loom-studio/kernel":"workspace:*"}}
