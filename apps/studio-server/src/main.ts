@@ -3,6 +3,8 @@ import { createInMemoryDocumentStore } from '@loom-studio/document-store'
 import type { ExtensionHost } from '@loom-studio/extension-host'
 import { createKernel } from '@loom-studio/kernel'
 import type { LoomRunner } from '@loom-studio/loom-runner'
+import { createId } from '@loom-studio/shared'
+import { createInMemoryTraceAuditStore } from '@loom-studio/trace-audit'
 import { createErrorResponse, createSuccessResponse, parseRpcRequest } from '@loom-studio/transport'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 
@@ -16,6 +18,7 @@ export type StudioServer = {
 export function createStudioServer(): StudioServer {
   const diagnostics = createInMemoryDiagnosticsRegistry()
   const documents = createInMemoryDocumentStore()
+  const traceAudit = createInMemoryTraceAuditStore()
   const extensionHost: ExtensionHost = {
     list: () => [],
     diagnostics: () => [],
@@ -29,6 +32,7 @@ export function createStudioServer(): StudioServer {
   const kernel = createKernel({
     documents,
     diagnostics,
+    traceAudit,
     extensionHost,
     loomRunner,
   })
@@ -79,8 +83,14 @@ async function handleRpcRequest(request: IncomingMessage, response: ServerRespon
   try {
     const body = await readRequestBody(request)
     const rpcRequest = parseRpcRequest(JSON.parse(body))
-    const result = await kernel.callRpc(rpcRequest.method, rpcRequest.params)
-    writeJson(response, 200, createSuccessResponse(rpcRequest.id, result))
+    const context = {
+      clientId: 'http-local',
+      correlationId: rpcRequest.meta?.correlationId ?? createId('corr'),
+      callId: createId('call'),
+      parentCallId: rpcRequest.meta?.parentCallId,
+    }
+    const result = await kernel.callRpc(rpcRequest.method, rpcRequest.params, context)
+    writeJson(response, 200, createSuccessResponse(rpcRequest.id, result, context))
   } catch (error) {
     writeJson(response, 200, createErrorResponse(null, error, 'rpc.invalid_request'))
   }

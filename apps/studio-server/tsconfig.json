@@ -11,6 +11,8 @@
     { "path": "../../packages/extension-host" },
     { "path": "../../packages/kernel" },
     { "path": "../../packages/loom-runner" },
+    { "path": "../../packages/shared" },
+    { "path": "../../packages/trace-audit" },
     { "path": "../../packages/transport" }
   ],
   "include": ["src/**/*.ts"]

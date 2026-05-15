@@ -1,7 +1,7 @@
 import type { JsonValue } from '@loom-studio/shared'
 import { createId, nowIso } from '@loom-studio/shared'
 
-export type DiagnosticSeverity = 'error' | 'warning' | 'info' | 'hint'
+export type DiagnosticSeverity = 'error' | 'warning' | 'info'
 
 export type Diagnostic = {
   id: string

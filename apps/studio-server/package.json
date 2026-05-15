@@ -15,6 +15,8 @@
     "@loom-studio/extension-host": "workspace:*",
     "@loom-studio/kernel": "workspace:*",
     "@loom-studio/loom-runner": "workspace:*",
+    "@loom-studio/shared": "workspace:*",
+    "@loom-studio/trace-audit": "workspace:*",
     "@loom-studio/transport": "workspace:*"
   }
 }

@@ -53,6 +53,9 @@ export type WriteDocumentInput = {
   expectedVersion?: number | 'new'
   reason?: string
   actor?: ActorRef
+  correlationId?: string
+  callId?: string
+  parentCallId?: string
 }
 
 export type DeleteDocumentInput = {
@@ -60,6 +63,9 @@ export type DeleteDocumentInput = {
   expectedVersion?: number
   reason?: string
   actor?: ActorRef
+  correlationId?: string
+  callId?: string
+  parentCallId?: string
 }
 
 export type ListDocumentsInput = {
@@ -79,6 +85,9 @@ export type WriteDocumentResult = {
   changesetId: string
   documents: DocumentRecord[]
   operations: ChangesetOperation[]
+  correlationId?: string
+  callId?: string
+  parentCallId?: string
 }
 
 export type DocumentStore = {
@@ -171,6 +180,9 @@ export function createInMemoryDocumentStore(): DocumentStore {
       return {
         changesetId: createId('chg'),
         documents: [cloneDocument(document)],
+        correlationId: input.correlationId,
+        callId: input.callId,
+        parentCallId: input.parentCallId,
         operations: [
           {
             kind: existing ? 'update' : 'create',
@@ -216,6 +228,9 @@ export function createInMemoryDocumentStore(): DocumentStore {
       return {
         changesetId: createId('chg'),
         documents: [cloneDocument(document)],
+        correlationId: input.correlationId,
+        callId: input.callId,
+        parentCallId: input.parentCallId,
         operations: [
           {
             kind: 'delete',

@@ -104,6 +104,12 @@ importers:
       '@loom-studio/loom-runner':
         specifier: workspace:*
         version: link:../../packages/loom-runner
+      '@loom-studio/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      '@loom-studio/trace-audit':
+        specifier: workspace:*
+        version: link:../../packages/trace-audit
       '@loom-studio/transport':
         specifier: workspace:*
         version: link:../../packages/transport

@@ -8,6 +8,13 @@ export type RpcRequest = {
   id: RpcId
   method: string
   params?: JsonValue
+  meta?: RpcRequestMeta
+}
+
+export type RpcRequestMeta = {
+  correlationId?: string
+  parentCallId?: string
+  source?: string
 }
 
 export type RpcResponse = {
@@ -15,6 +22,13 @@ export type RpcResponse = {
   id: RpcId
   result?: JsonValue
   error?: SerializedError
+  meta?: RpcResponseMeta
+}
+
+export type RpcResponseMeta = {
+  clientId: string
+  correlationId: string
+  callId: string
 }
 
 export type EventMeta = {
@@ -41,19 +55,21 @@ export type ServerEventMessage = {
   }
 }
 
-export function createSuccessResponse(id: RpcId, result: JsonValue): RpcResponse {
+export function createSuccessResponse(id: RpcId, result: JsonValue, meta?: RpcResponseMeta): RpcResponse {
   return {
     jsonrpc: '2.0',
     id,
     result,
+    meta,
   }
 }
 
-export function createErrorResponse(id: RpcId, error: unknown, code = 'rpc.handler_failed'): RpcResponse {
+export function createErrorResponse(id: RpcId, error: unknown, code = 'rpc.handler_failed', meta?: RpcResponseMeta): RpcResponse {
   return {
     jsonrpc: '2.0',
     id,
     error: error instanceof Error ? serializeError(error, code) : normalizeSerializedError(error, code),
+    meta,
   }
 }
 

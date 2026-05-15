@@ -1,20 +1,24 @@
 import type { DiagnosticsRegistry } from '@loom-studio/diagnostics'
 import type {
+  ActorRef,
+  DocumentSourceRef,
   DeleteDocumentInput,
-  DocumentRecord,
   DocumentStore,
   ListDocumentsInput,
+  WriteDocumentResult,
   WriteDocumentInput,
 } from '@loom-studio/document-store'
 import type { ExtensionHost } from '@loom-studio/extension-host'
 import type { LoomRunner } from '@loom-studio/loom-runner'
 import type { JsonValue } from '@loom-studio/shared'
 import { createId, nowIso } from '@loom-studio/shared'
+import type { TraceAuditStore } from '@loom-studio/trace-audit'
 import type { StudioEvent } from '@loom-studio/transport'
 
 export type KernelRpcContext = {
   correlationId?: string
   callId?: string
+  parentCallId?: string
   clientId?: string
 }
 
@@ -26,8 +30,16 @@ export type RegistrationHandle = {
 
 export type EventHandler = (event: StudioEvent) => void
 
+export type EventEmitOptions = {
+  source?: string
+  clientId?: string
+  correlationId?: string
+  callId?: string
+  parentCallId?: string
+}
+
 export type EventBus = {
-  emit(name: string, payload: JsonValue, source?: string): StudioEvent
+  emit(name: string, payload: JsonValue, options?: EventEmitOptions): StudioEvent
   subscribe(patterns: string[], handler: EventHandler): RegistrationHandle & { subscriptionId: string }
   unsubscribe(subscriptionId: string): boolean
   eventNames(): string[]
@@ -39,7 +51,12 @@ export type Kernel = {
   registerKernelRpc(method: string, handler: KernelRpcHandler): RegistrationHandle
   callRpc<T = JsonValue>(method: string, params?: JsonValue, context?: KernelRpcContext): Promise<T>
   getPublicSurface(): KernelPublicSurface
+  getDocumentStore(): DocumentStore
+  getExtensionHost(): ExtensionHost
+  getDiagnostics(): DiagnosticsRegistry
   getEventBus(): EventBus
+  getTraceAudit(): TraceAuditStore
+  getLoomRunner(): LoomRunner
 }
 
 export type KernelPublicSurface = {
@@ -54,6 +71,7 @@ export type KernelPublicSurface = {
 export type CreateKernelOptions = {
   documents: DocumentStore
   diagnostics: DiagnosticsRegistry
+  traceAudit: TraceAuditStore
   extensionHost: ExtensionHost
   loomRunner: LoomRunner
   studioVersion?: string
@@ -69,7 +87,7 @@ export function createEventBus(): EventBus {
   const knownEvents = new Set<string>(['docs.changed', 'diagnostics.updated', 'extensions.changed', 'system.ready', 'system.stopping'])
 
   return {
-    emit: (name, payload, source = 'kernel') => {
+    emit: (name, payload, emitOptions = {}) => {
       knownEvents.add(name)
       const event: StudioEvent = {
         name,
@@ -77,7 +95,11 @@ export function createEventBus(): EventBus {
         meta: {
           eventId: createId('evt'),
           emittedAt: nowIso(),
-          source,
+          source: emitOptions.source ?? 'kernel',
+          clientId: emitOptions.clientId,
+          correlationId: emitOptions.correlationId,
+          callId: emitOptions.callId,
+          parentCallId: emitOptions.parentCallId,
         },
       }
 
@@ -148,14 +170,21 @@ export function createKernel(options: CreateKernelOptions): Kernel {
         throw new Error(`RPC method not found: ${method}`)
       }
 
-      return (await handler(params, context)) as JsonValue as never
+      const rpcContext = normalizeContext(context)
+
+      return (await handler(params, rpcContext)) as JsonValue as never
     },
     getPublicSurface: () => ({
       namespaces: [...kernelNamespaces],
       methods: [...handlers.keys()].sort().map(name => ({ name, owner: 'kernel' })),
       version: kernelVersion,
     }),
+    getDocumentStore: () => options.documents,
+    getExtensionHost: () => options.extensionHost,
+    getDiagnostics: () => options.diagnostics,
     getEventBus: () => eventBus,
+    getTraceAudit: () => options.traceAudit,
+    getLoomRunner: () => options.loomRunner,
   }
 
   return kernel
@@ -263,17 +292,17 @@ function registerStageOneHandlers(
     return result as unknown as JsonValue
   })
 
-  register('docs.write', async params => {
+  register('docs.write', async (params, context) => {
     if (!isRecord(params)) throw new Error('docs.write params must be an object')
-    const result = await options.documents.write(params as WriteDocumentInput)
-    eventBus.emit('docs.changed', summarizeDocuments(result.documents))
+    const result = await options.documents.write(toWriteDocumentInput(params, context))
+    eventBus.emit('docs.changed', summarizeDocumentChange(result), context)
     return result as unknown as JsonValue
   })
 
-  register('docs.delete', async params => {
+  register('docs.delete', async (params, context) => {
     if (!isRecord(params)) throw new Error('docs.delete params must be an object')
-    const result = await options.documents.delete(params as DeleteDocumentInput)
-    eventBus.emit('docs.changed', summarizeDocuments(result.documents))
+    const result = await options.documents.delete(toDeleteDocumentInput(params, context))
+    eventBus.emit('docs.changed', summarizeDocumentChange(result), context)
     return result as unknown as JsonValue
   })
 
@@ -292,8 +321,16 @@ function registerStageOneHandlers(
 
   register('diagnostics.list', params => {
     const diagnostics = options.diagnostics.list(isRecord(params) ? params : undefined)
-    return { diagnostics } as unknown as JsonValue
+    return { items: diagnostics } as unknown as JsonValue
   })
+}
+
+function normalizeContext(context: KernelRpcContext): Required<Pick<KernelRpcContext, 'correlationId' | 'callId'>> & KernelRpcContext {
+  return {
+    ...context,
+    correlationId: context.correlationId ?? createId('corr'),
+    callId: context.callId ?? createId('call'),
+  }
 }
 
 function assertKernelNamespace(method: string): void {
@@ -332,13 +369,57 @@ function readStringArray(params: JsonValue | undefined, key: string): string[] {
   return params[key]
 }
 
-function summarizeDocuments(documents: DocumentRecord[]): JsonValue {
+function toWriteDocumentInput(params: Record<string, JsonValue>, context: KernelRpcContext): WriteDocumentInput {
   return {
-    documents: documents.map(document => ({
+    id: typeof params.id === 'string' ? params.id : undefined,
+    type: readString(params, 'type'),
+    content: params.content ?? null,
+    meta: readSafeDocumentMeta(params),
+    expectedVersion: readExpectedVersion(params),
+    reason: typeof params.reason === 'string' ? params.reason : undefined,
+    actor: actorFromContext(context),
+    correlationId: context.correlationId,
+    callId: context.callId,
+    parentCallId: context.parentCallId,
+  }
+}
+
+function toDeleteDocumentInput(params: Record<string, JsonValue>, context: KernelRpcContext): DeleteDocumentInput {
+  return {
+    id: readString(params, 'id'),
+    expectedVersion: typeof params.expectedVersion === 'number' ? params.expectedVersion : undefined,
+    reason: typeof params.reason === 'string' ? params.reason : undefined,
+    actor: actorFromContext(context),
+    correlationId: context.correlationId,
+    callId: context.callId,
+    parentCallId: context.parentCallId,
+  }
+}
+
+function actorFromContext(context: KernelRpcContext): ActorRef {
+  return context.clientId ? { kind: 'client', id: context.clientId } : { kind: 'kernel', id: 'kernel' }
+}
+
+function readSafeDocumentMeta(params: Record<string, JsonValue>): WriteDocumentInput['meta'] {
+  if (!isRecord(params.meta)) return undefined
+  if (!isRecord(params.meta.source) || typeof params.meta.source.kind !== 'string') return undefined
+  return { source: params.meta.source as DocumentSourceRef }
+}
+
+function readExpectedVersion(params: Record<string, JsonValue>): WriteDocumentInput['expectedVersion'] {
+  if (params.expectedVersion === 'new' || typeof params.expectedVersion === 'number') return params.expectedVersion
+  return undefined
+}
+
+function summarizeDocumentChange(result: WriteDocumentResult): JsonValue {
+  return {
+    changesetId: result.changesetId,
+    operations: result.operations as unknown as JsonValue,
+    documents: result.documents.map(document => ({
       id: document.id,
       type: document.type,
       version: document.version,
-      tombstone: Boolean(document.meta.tombstone),
+      tombstoned: Boolean(document.meta.tombstone),
     })),
   }
 }
