@@ -1,1 +1,17 @@
-{"extends":"../../tsconfig.base.json","compilerOptions":{"rootDir":"src","outDir":"dist","tsBuildInfoFile":"dist/tsconfig.tsbuildinfo"},"references":[{"path":"../../packages/kernel"}],"include":["src/**/*.ts"]}
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
+  },
+  "references": [
+    { "path": "../../packages/diagnostics" },
+    { "path": "../../packages/document-store" },
+    { "path": "../../packages/extension-host" },
+    { "path": "../../packages/kernel" },
+    { "path": "../../packages/loom-runner" },
+    { "path": "../../packages/transport" }
+  ],
+  "include": ["src/**/*.ts"]
+}

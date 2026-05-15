@@ -20,3 +20,24 @@ export type IdGenerator = {
 export function nowIso(clock: Clock = { now: () => new Date() }): string {
   return clock.now().toISOString()
 }
+
+let fallbackIdCounter = 0
+
+export function createId(prefix = 'id'): string {
+  fallbackIdCounter += 1
+  return `${prefix}-${fallbackIdCounter}`
+}
+
+export function serializeError(error: unknown, code = 'internal.error'): SerializedError {
+  if (error instanceof Error) {
+    return {
+      code,
+      message: error.message,
+    }
+  }
+
+  return {
+    code,
+    message: String(error),
+  }
+}

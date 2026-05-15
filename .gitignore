@@ -3,6 +3,9 @@ dist/
 coverage/
 .vite/
 *.tsbuildinfo
+*.d.ts
+*.d.ts.map
+*.js.map
 .env
 .env.*
 !.env.example
