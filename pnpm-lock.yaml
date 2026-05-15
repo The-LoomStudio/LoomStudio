@@ -143,8 +143,27 @@ importers:
       '@loom-studio/diagnostics':
         specifier: workspace:*
         version: link:../diagnostics
+      '@loom-studio/document-store':
+        specifier: workspace:*
+        version: link:../document-store
+      '@loom-studio/extension-sdk':
+        specifier: workspace:*
+        version: link:../extension-sdk
+      '@loom-studio/shared':
+        specifier: workspace:*
+        version: link:../shared
 
-  packages/extension-sdk: {}
+  packages/extension-sdk:
+    dependencies:
+      '@loom-studio/diagnostics':
+        specifier: workspace:*
+        version: link:../diagnostics
+      '@loom-studio/document-store':
+        specifier: workspace:*
+        version: link:../document-store
+      '@loom-studio/shared':
+        specifier: workspace:*
+        version: link:../shared
 
   packages/kernel:
     dependencies:

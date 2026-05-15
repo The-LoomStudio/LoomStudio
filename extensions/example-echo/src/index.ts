@@ -1,5 +1,20 @@
 import { defineServerExtension } from '@loom-studio/extension-sdk'
 
-export default defineServerExtension({
-  activate: () => {},
-})
+export const activate = defineServerExtension({
+  activate: ctx => {
+    ctx.rpc.register('example.echo.echo', params => {
+      return {
+        extensionId: ctx.extension.id,
+        echo: params ?? null,
+      }
+    })
+
+    ctx.lifecycle.onDispose(() => {
+      ctx.diagnostics.report({
+        severity: 'info',
+        code: 'example.echo.disposed',
+        message: 'Example Echo disposed',
+      })
+    })
+  },
+}).activate

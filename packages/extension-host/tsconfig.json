@@ -1,1 +1,1 @@
-{"extends":"../../tsconfig.base.json","compilerOptions":{"rootDir":"src","outDir":"dist","tsBuildInfoFile":"dist/tsconfig.tsbuildinfo"},"references":[{"path":"../diagnostics"}],"include":["src/**/*.ts"]}
+{"extends":"../../tsconfig.base.json","compilerOptions":{"rootDir":"src","outDir":"dist","tsBuildInfoFile":"dist/tsconfig.tsbuildinfo"},"references":[{"path":"../diagnostics"},{"path":"../document-store"},{"path":"../extension-sdk"},{"path":"../shared"}],"include":["src/**/*.ts"]}

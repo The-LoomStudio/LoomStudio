@@ -1,12 +1,13 @@
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
 import { createInMemoryDocumentStore } from '@loom-studio/document-store'
-import type { ExtensionHost } from '@loom-studio/extension-host'
+import { createExtensionHost } from '@loom-studio/extension-host'
 import { createKernel } from '@loom-studio/kernel'
 import { createLoomRunner } from '@loom-studio/loom-runner'
 import { createId } from '@loom-studio/shared'
 import { createInMemoryTraceAuditStore } from '@loom-studio/trace-audit'
 import { createErrorResponse, createSuccessResponse, parseRpcRequest } from '@loom-studio/transport'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import { resolve } from 'node:path'
 
 const defaultPort = 4173
 
@@ -19,11 +20,19 @@ export function createStudioServer(): StudioServer {
   const diagnostics = createInMemoryDiagnosticsRegistry()
   const documents = createInMemoryDocumentStore()
   const traceAudit = createInMemoryTraceAuditStore()
-  const extensionHost: ExtensionHost = {
-    list: () => [],
-    diagnostics: () => [],
-  }
   const loomRunner = createLoomRunner({ traceAudit })
+  const extensionHost = createExtensionHost({
+    documents,
+    diagnostics,
+    callRpc: (method, params, context) => kernel.callRpc(method, params, context),
+    registerRpc: (name, ownerExtensionId, handler) => {
+      const handle = kernel.registerExtensionRpc(name, ownerExtensionId, handler)
+      return { name, ownerExtensionId, handler, dispose: handle.dispose }
+    },
+    emitEvent: (name, payload, ownerExtensionId) => {
+      kernel.getEventBus().emit(name, payload, { source: `extension:${ownerExtensionId}` })
+    },
+  })
   const kernel = createKernel({
     documents,
     diagnostics,
@@ -48,6 +57,8 @@ export function createStudioServer(): StudioServer {
   return {
     listen: async (port = defaultPort) => {
       await kernel.start()
+      await extensionHost.discover(resolve('extensions/example-echo'))
+      await extensionHost.activateAll()
       await new Promise<void>(resolve => {
         server.listen(port, resolve)
       })

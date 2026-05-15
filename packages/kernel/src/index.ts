@@ -8,7 +8,7 @@ import type {
   WriteDocumentResult,
   WriteDocumentInput,
 } from '@loom-studio/document-store'
-import type { ExtensionHost } from '@loom-studio/extension-host'
+import type { ExtensionHost, ExtensionRpcHandler } from '@loom-studio/extension-host'
 import type { LoomRunInput, LoomRunner } from '@loom-studio/loom-runner'
 import type { JsonValue } from '@loom-studio/shared'
 import { createId, nowIso } from '@loom-studio/shared'
@@ -49,6 +49,7 @@ export type Kernel = {
   start(): Promise<void>
   stop(): Promise<void>
   registerKernelRpc(method: string, handler: KernelRpcHandler): RegistrationHandle
+  registerExtensionRpc(method: string, ownerExtensionId: string, handler: ExtensionRpcHandler): RegistrationHandle
   callRpc<T = JsonValue>(method: string, params?: JsonValue, context?: KernelRpcContext): Promise<T>
   getPublicSurface(): KernelPublicSurface
   getDocumentStore(): DocumentStore
@@ -156,6 +157,23 @@ export function createKernel(options: CreateKernelOptions): Kernel {
       }
 
       handlers.set(method, handler)
+
+      return {
+        dispose: () => {
+          handlers.delete(method)
+        },
+      }
+    },
+    registerExtensionRpc: (method, ownerExtensionId, handler) => {
+      if (isKernelNamespace(method)) {
+        throw new Error(`Extension cannot register Kernel namespace RPC: ${method}`)
+      }
+
+      if (handlers.has(method)) {
+        throw new Error(`RPC already registered: ${method}`)
+      }
+
+      handlers.set(method, (params, context) => handler(params, { ...context, extensionId: ownerExtensionId }))
 
       return {
         dispose: () => {
@@ -346,11 +364,13 @@ function normalizeContext(context: KernelRpcContext): Required<Pick<KernelRpcCon
 }
 
 function assertKernelNamespace(method: string): void {
-  const namespace = method.split('.')[0]
-
-  if (!kernelNamespaces.includes(namespace)) {
+  if (!isKernelNamespace(method)) {
     throw new Error(`Not a Kernel namespace: ${method}`)
   }
+}
+
+function isKernelNamespace(method: string): boolean {
+  return kernelNamespaces.includes(method.split('.')[0] ?? '')
 }
 
 function matchesEventPattern(pattern: string, name: string): boolean {
