@@ -178,6 +178,12 @@ importers:
       '@loom-studio/shared':
         specifier: workspace:*
         version: link:../shared
+      '@loom-studio/trace-audit':
+        specifier: workspace:*
+        version: link:../trace-audit
+      '@loom/core':
+        specifier: file:../../../LoomProject/packages/core
+        version: file:../LoomProject/packages/core
 
   packages/shared: {}
 
@@ -421,6 +427,9 @@ packages:
 
   '@jridgewell/sourcemap-codec@1.5.5':
     resolution: {integrity: sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og==}
+
+  '@loom/core@file:../LoomProject/packages/core':
+    resolution: {directory: ../LoomProject/packages/core, type: directory}
 
   '@napi-rs/wasm-runtime@1.1.4':
     resolution: {integrity: sha512-3NQNNgA1YSlJb/kMH1ildASP9HW7/7kYnRI2szWJaofaS1hWmbGI4H+d3+22aGzXXN9IJ+n+GiFVcGipJP18ow==}
@@ -1357,6 +1366,8 @@ snapshots:
   '@humanwhocodes/retry@0.4.3': {}
 
   '@jridgewell/sourcemap-codec@1.5.5': {}
+
+  '@loom/core@file:../LoomProject/packages/core': {}
 
   '@napi-rs/wasm-runtime@1.1.4(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)':
     dependencies:

@@ -9,7 +9,7 @@ import type {
   WriteDocumentInput,
 } from '@loom-studio/document-store'
 import type { ExtensionHost } from '@loom-studio/extension-host'
-import type { LoomRunner } from '@loom-studio/loom-runner'
+import type { LoomRunInput, LoomRunner } from '@loom-studio/loom-runner'
 import type { JsonValue } from '@loom-studio/shared'
 import { createId, nowIso } from '@loom-studio/shared'
 import type { TraceAuditStore } from '@loom-studio/trace-audit'
@@ -230,7 +230,7 @@ function registerStageOneHandlers(
       capabilities: {
         documents: true,
         extensions: true,
-        loomRun: false,
+        loomRun: true,
         traceAudit: true,
       },
     } as JsonValue
@@ -323,6 +323,18 @@ function registerStageOneHandlers(
     const diagnostics = options.diagnostics.list(isRecord(params) ? params : undefined)
     return { items: diagnostics } as unknown as JsonValue
   })
+
+  register('loom.run', async params => {
+    if (!isRecord(params)) throw new Error('loom.run params must be an object')
+    rejectForbiddenLoomRunFields(params)
+
+    const result = await options.loomRunner.run(toLoomRunInput(params))
+    for (const diagnostic of result.diagnostics ?? []) {
+      options.diagnostics.add(diagnostic)
+    }
+
+    return result as unknown as JsonValue
+  })
 }
 
 function normalizeContext(context: KernelRpcContext): Required<Pick<KernelRpcContext, 'correlationId' | 'callId'>> & KernelRpcContext {
@@ -409,6 +421,33 @@ function readSafeDocumentMeta(params: Record<string, JsonValue>): WriteDocumentI
 function readExpectedVersion(params: Record<string, JsonValue>): WriteDocumentInput['expectedVersion'] {
   if (params.expectedVersion === 'new' || typeof params.expectedVersion === 'number') return params.expectedVersion
   return undefined
+}
+
+function rejectForbiddenLoomRunFields(params: Record<string, JsonValue>): void {
+  const forbidden = ['messages', 'model', 'temperature', 'tools', 'toolChoice', 'chatId', 'sessionId', 'provider']
+  const found = forbidden.filter(field => field in params)
+  if (found.length > 0) {
+    throw new Error(`Forbidden loom.run fields: ${found.join(', ')}`)
+  }
+}
+
+function toLoomRunInput(params: Record<string, JsonValue>): LoomRunInput {
+  if (!Array.isArray(params.fragments)) throw new Error('loom.run fragments must be an array')
+  if (!Array.isArray(params.passes)) throw new Error('loom.run passes must be an array')
+  return {
+    fragments: params.fragments,
+    passes: params.passes,
+    options: params.options,
+    trace: readTraceOptions(params.trace),
+  }
+}
+
+function readTraceOptions(value: JsonValue | undefined): LoomRunInput['trace'] {
+  if (!isRecord(value)) return undefined
+  return {
+    enabled: typeof value.enabled === 'boolean' ? value.enabled : undefined,
+    strictPersist: typeof value.strictPersist === 'boolean' ? value.strictPersist : undefined,
+  }
 }
 
 function summarizeDocumentChange(result: WriteDocumentResult): JsonValue {

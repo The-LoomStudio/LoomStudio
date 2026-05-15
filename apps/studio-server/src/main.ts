@@ -2,7 +2,7 @@ import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
 import { createInMemoryDocumentStore } from '@loom-studio/document-store'
 import type { ExtensionHost } from '@loom-studio/extension-host'
 import { createKernel } from '@loom-studio/kernel'
-import type { LoomRunner } from '@loom-studio/loom-runner'
+import { createLoomRunner } from '@loom-studio/loom-runner'
 import { createId } from '@loom-studio/shared'
 import { createInMemoryTraceAuditStore } from '@loom-studio/trace-audit'
 import { createErrorResponse, createSuccessResponse, parseRpcRequest } from '@loom-studio/transport'
@@ -23,12 +23,7 @@ export function createStudioServer(): StudioServer {
     list: () => [],
     diagnostics: () => [],
   }
-  const loomRunner: LoomRunner = {
-    run: async input => ({
-      fragments: input.fragments,
-      diagnostics: [],
-    }),
-  }
+  const loomRunner = createLoomRunner({ traceAudit })
   const kernel = createKernel({
     documents,
     diagnostics,

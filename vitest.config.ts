@@ -13,6 +13,7 @@ export default defineConfig({
       '@loom-studio/shared': new URL('./packages/shared/src/index.ts', import.meta.url).pathname,
       '@loom-studio/trace-audit': new URL('./packages/trace-audit/src/index.ts', import.meta.url).pathname,
       '@loom-studio/transport': new URL('./packages/transport/src/index.ts', import.meta.url).pathname,
+      '@loom/core': new URL('../LoomProject/packages/core/src/index.ts', import.meta.url).pathname,
     },
   },
   test: {

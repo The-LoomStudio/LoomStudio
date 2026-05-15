@@ -48,7 +48,7 @@ describe('stage 1 kernel rpc', () => {
     const result = await kernel.callRpc<{ capabilities: { documents: boolean; loomRun: boolean } }>('system.getInfo', {})
 
     expect(result.capabilities.documents).toBe(true)
-    expect(result.capabilities.loomRun).toBe(false)
+    expect(result.capabilities.loomRun).toBe(true)
     expect(JSON.stringify(result)).not.toContain('chat')
     expect(JSON.stringify(result)).not.toContain('provider')
   })
