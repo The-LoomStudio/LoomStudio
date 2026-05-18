@@ -1,1 +1,1 @@
-{"extends":"../../tsconfig.base.json","compilerOptions":{"rootDir":"src","outDir":"dist","tsBuildInfoFile":"dist/tsconfig.tsbuildinfo"},"references":[{"path":"../../packages/client-bridge"}],"include":["src/**/*.ts","src/**/*.tsx"]}
+{"extends":"../../tsconfig.base.json","compilerOptions":{"rootDir":"src","outDir":"dist","tsBuildInfoFile":"dist/tsconfig.tsbuildinfo"},"references":[{"path":"../../packages/client-bridge"}],"include":["src/**/*.ts","src/**/*.tsx","src/**/*.d.ts"]}

@@ -5,7 +5,7 @@ import { createKernel } from '@loom-studio/kernel'
 import { createLoomRunner } from '@loom-studio/loom-runner'
 import { createId } from '@loom-studio/shared'
 import { createInMemoryTraceAuditStore } from '@loom-studio/trace-audit'
-import { createErrorResponse, createSuccessResponse, parseRpcRequest } from '@loom-studio/transport'
+import { createErrorResponse, createSuccessResponse, parseRpcRequest, type StudioEvent } from '@loom-studio/transport'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { resolve } from 'node:path'
 
@@ -31,6 +31,9 @@ export function createStudioServer(): StudioServer {
     },
     emitEvent: (name, payload, ownerExtensionId) => {
       kernel.getEventBus().emit(name, payload, { source: `extension:${ownerExtensionId}` })
+    },
+    emitDocumentChange: (result, ownerExtensionId) => {
+      kernel.getEventBus().emit('docs.changed', summarizeDocumentChange(result), { source: `extension:${ownerExtensionId}` })
     },
   })
   const kernel = createKernel({
@@ -117,6 +120,19 @@ function readRequestBody(request: IncomingMessage): Promise<string> {
 function writeJson(response: ServerResponse, status: number, value: unknown): void {
   response.writeHead(status, { 'content-type': 'application/json' })
   response.end(JSON.stringify(value))
+}
+
+function summarizeDocumentChange(result: { changesetId: string; operations: unknown; documents: Array<{ id: string; type: string; version: number; meta: { tombstone?: unknown } }> }): StudioEvent['payload'] {
+  return {
+    changesetId: result.changesetId,
+    operations: result.operations as StudioEvent['payload'],
+    documents: result.documents.map(document => ({
+      id: document.id,
+      type: document.type,
+      version: document.version,
+      tombstoned: Boolean(document.meta.tombstone),
+    })),
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

@@ -43,6 +43,7 @@ export type ExtensionHostOptions = {
   callRpc(method: string, params?: JsonValue, context?: ExtensionRpcContext): Promise<JsonValue>
   registerRpc(name: string, ownerExtensionId: string, handler: ExtensionRpcHandler): ExtensionRpcRegistration
   emitEvent(name: string, payload: JsonValue, ownerExtensionId: string): void
+  emitDocumentChange?(result: WriteDocumentResult, ownerExtensionId: string): void
 }
 
 export type ExtensionHost = {
@@ -82,34 +83,12 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
       return toSummary(record)
     },
 
-    activate: async extensionId => {
-      const record = records.get(extensionId)
-      if (!record?.manifest) throw new Error(`Extension not found: ${extensionId}`)
-      record.state = 'activating'
-
-      try {
-        const module = await loadServerModule(record)
-        record.state = 'loaded'
-        await module.activate(createContext(record, options))
-        record.state = hasContributionMismatch(record) ? 'degraded' : 'active'
-      } catch (error) {
-        record.state = 'disabled'
-        reportDiagnostic(options.diagnostics, extensionId, {
-          severity: 'error',
-          code: 'extension.activation_failed',
-          message: error instanceof Error ? error.message : String(error),
-          source: 'extension-host',
-        })
-        await disposeRecord(record)
-      }
-
-      return toSummary(record)
-    },
+    activate: extensionId => activateRecord(extensionId, records, options),
 
     activateAll: async () => {
       const summaries: ExtensionSummary[] = []
-      for (const id of records.keys()) {
-        summaries.push(await thisActivate(id, records, options))
+      for (const id of [...records.keys()].sort()) {
+        summaries.push(await activateRecord(id, records, options))
       }
       return summaries
     },
@@ -126,7 +105,7 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
   }
 }
 
-async function thisActivate(extensionId: string, records: Map<string, ExtensionRecord>, options: ExtensionHostOptions): Promise<ExtensionSummary> {
+async function activateRecord(extensionId: string, records: Map<string, ExtensionRecord>, options: ExtensionHostOptions): Promise<ExtensionSummary> {
   const record = records.get(extensionId)
   if (!record?.manifest) throw new Error(`Extension not found: ${extensionId}`)
   record.state = 'activating'
@@ -135,7 +114,7 @@ async function thisActivate(extensionId: string, records: Map<string, ExtensionR
     const module = await loadServerModule(record)
     record.state = 'loaded'
     await module.activate(createContext(record, options))
-    record.state = hasContributionMismatch(record) ? 'degraded' : 'active'
+    record.state = hasContributionMismatch(record, options) ? 'degraded' : 'active'
   } catch (error) {
     record.state = 'disabled'
     reportDiagnostic(options.diagnostics, extensionId, {
@@ -216,8 +195,8 @@ function createContext(record: ExtensionRecord, options: ExtensionHostOptions): 
     documents: {
       get: id => options.documents.get(id) as never,
       list: async (query?: ListDocumentsInput) => (await options.documents.list(query)).items,
-      write: (input: Omit<WriteDocumentInput, 'actor' | 'correlationId' | 'callId' | 'parentCallId'>): Promise<WriteDocumentResult> => {
-        return options.documents.write({
+      write: async (input: Omit<WriteDocumentInput, 'actor' | 'correlationId' | 'callId' | 'parentCallId'>): Promise<WriteDocumentResult> => {
+        const result = await options.documents.write({
           ...input,
           meta: {
             ...input.meta,
@@ -225,13 +204,19 @@ function createContext(record: ExtensionRecord, options: ExtensionHostOptions): 
           },
           actor: extensionActor,
         })
+        options.emitDocumentChange?.(result, manifest.id)
+        return result
       },
-      delete: (id, deleteOptions) => options.documents.delete({
-        id,
-        expectedVersion: deleteOptions?.expectedVersion,
-        reason: deleteOptions?.reason,
-        actor: extensionActor,
-      }),
+      delete: async (id, deleteOptions) => {
+        const result = await options.documents.delete({
+          id,
+          expectedVersion: deleteOptions?.expectedVersion,
+          reason: deleteOptions?.reason,
+          actor: extensionActor,
+        })
+        options.emitDocumentChange?.(result, manifest.id)
+        return result
+      },
     },
     diagnostics: {
       report: input => {
@@ -247,9 +232,27 @@ function createContext(record: ExtensionRecord, options: ExtensionHostOptions): 
   }
 }
 
-function hasContributionMismatch(record: ExtensionRecord): boolean {
+function hasContributionMismatch(record: ExtensionRecord, options: ExtensionHostOptions): boolean {
   const declared = new Set(record.manifest?.contributes?.rpc?.map(rpc => rpc.name) ?? [])
-  return record.registrations.some(registration => !declared.has(registration.name))
+  const registered = new Set(record.registrations.map(registration => registration.name))
+  let mismatched = false
+
+  for (const registration of record.registrations) {
+    if (!declared.has(registration.name)) mismatched = true
+  }
+
+  for (const name of declared) {
+    if (registered.has(name)) continue
+    mismatched = true
+    reportDiagnostic(options.diagnostics, record.manifest!.id, {
+      severity: 'warning',
+      code: 'extension.rpc_declared_but_not_registered',
+      message: `RPC ${name} is declared in manifest contributes.rpc but was not registered during activation`,
+      source: 'extension-host',
+    })
+  }
+
+  return mismatched
 }
 
 async function disposeRecord(record: ExtensionRecord): Promise<void> {

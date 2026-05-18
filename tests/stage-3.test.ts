@@ -26,6 +26,9 @@ function createHarness() {
     emitEvent: (name, payload, ownerExtensionId) => {
       kernel.getEventBus().emit(name, payload, { source: `extension:${ownerExtensionId}` })
     },
+    emitDocumentChange: (result, ownerExtensionId) => {
+      kernel.getEventBus().emit('docs.changed', summarizeDocumentChange(result), { source: `extension:${ownerExtensionId}` })
+    },
   })
 
   kernel = createKernel({
@@ -56,6 +59,17 @@ describe('stage 3 extension host', () => {
     expect(summary.state).toBe('active')
     expect(result).toEqual({ extensionId: 'example.echo', echo: { message: 'hello' } })
     expect(extensionHost.list()[0]?.state).toBe('active')
+  })
+
+  it('reports extension rpc ownership through system.introspect', async () => {
+    const { kernel, extensionHost } = createHarness()
+    await kernel.start()
+    await extensionHost.discover(join(process.cwd(), 'extensions/example-echo'))
+    await extensionHost.activate('example.echo')
+
+    const result = await kernel.callRpc<{ methods: Array<{ name: string; owner: string }> }>('system.introspect')
+
+    expect(result.methods).toContainEqual({ name: 'example.echo.echo', owner: 'extension:example.echo' })
   })
 
   it('rejects extension registration into Kernel namespace', async () => {
@@ -112,6 +126,44 @@ describe('stage 3 extension host', () => {
     expect(document?.meta.createdBy).toEqual({ kind: 'extension', id: 'example.documents' })
   })
 
+  it('emits docs.changed for extension-owned document writes', async () => {
+    const { kernel, extensionHost } = createHarness()
+    const events: JsonValue[] = []
+    await kernel.start()
+    kernel.getEventBus().subscribe(['docs.changed'], event => events.push(event as unknown as JsonValue))
+    const dir = createExtensionFixture('document-event-extension', {
+      manifest: manifest('example.documentEvents', [{ name: 'example.documentEvents.ping' }]),
+      source: `export async function activate(ctx) { await ctx.documents.write({ id: 'example.documentEvents:1', type: 'example.documentEvents.note', content: { ok: true }, expectedVersion: 'new' }); ctx.rpc.register('example.documentEvents.ping', () => ({ ok: true })) }`,
+    })
+
+    await extensionHost.discover(dir)
+    await extensionHost.activate('example.documentEvents')
+
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({
+      name: 'docs.changed',
+      payload: {
+        documents: [{ id: 'example.documentEvents:1', type: 'example.documentEvents.note', version: 1, tombstoned: false }],
+      },
+      meta: { source: 'extension:example.documentEvents' },
+    })
+  })
+
+  it('cleans partial rpc registrations after activation failure', async () => {
+    const { kernel, extensionHost } = createHarness()
+    await kernel.start()
+    const dir = createExtensionFixture('partial-failure-extension', {
+      manifest: manifest('example.partialFailure', [{ name: 'example.partialFailure.echo' }]),
+      source: `export function activate(ctx) { ctx.rpc.register('example.partialFailure.echo', () => ({ ok: true })); throw new Error('boom') }`,
+    })
+
+    await extensionHost.discover(dir)
+    const summary = await extensionHost.activate('example.partialFailure')
+
+    expect(summary.state).toBe('disabled')
+    await expect(kernel.callRpc('example.partialFailure.echo', {})).rejects.toThrow('method not found')
+  })
+
   it('dispose cleans extension rpc registrations', async () => {
     const { kernel, extensionHost } = createHarness()
     await kernel.start()
@@ -141,5 +193,18 @@ function manifest(id: string, rpc: Array<{ name: string }>) {
     engines: { studio: '^0.1.0' },
     server: { entry: './dist/index.js' },
     contributes: { rpc },
+  }
+}
+
+function summarizeDocumentChange(result: { changesetId: string; operations: unknown; documents: Array<{ id: string; type: string; version: number; meta: { tombstone?: unknown } }> }): JsonValue {
+  return {
+    changesetId: result.changesetId,
+    operations: result.operations as JsonValue,
+    documents: result.documents.map(document => ({
+      id: document.id,
+      type: document.type,
+      version: document.version,
+      tombstoned: Boolean(document.meta.tombstone),
+    })),
   }
 }

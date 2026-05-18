@@ -64,7 +64,7 @@ export type KernelPublicSurface = {
   namespaces: string[]
   methods: Array<{
     name: string
-    owner: 'kernel'
+    owner: 'kernel' | `extension:${string}`
   }>
   version: string
 }
@@ -82,6 +82,11 @@ export type CreateKernelOptions = {
 }
 
 const kernelNamespaces = ['system', 'events', 'docs', 'extensions', 'diagnostics', 'loom', 'trace', 'audit']
+
+type RpcRegistryEntry = {
+  handler: KernelRpcHandler
+  owner: 'kernel' | `extension:${string}`
+}
 
 export function createEventBus(): EventBus {
   const subscriptions = new Map<string, { patterns: string[]; handler: EventHandler }>()
@@ -129,7 +134,7 @@ export function createEventBus(): EventBus {
 }
 
 export function createKernel(options: CreateKernelOptions): Kernel {
-  const handlers = new Map<string, KernelRpcHandler>()
+  const handlers = new Map<string, RpcRegistryEntry>()
   const eventBus = createEventBus()
   const studioVersion = options.studioVersion ?? '0.0.0'
   const kernelVersion = options.kernelVersion ?? '0.0.0'
@@ -156,7 +161,7 @@ export function createKernel(options: CreateKernelOptions): Kernel {
         throw new Error(`Kernel RPC already registered: ${method}`)
       }
 
-      handlers.set(method, handler)
+      handlers.set(method, { handler, owner: 'kernel' })
 
       return {
         dispose: () => {
@@ -173,7 +178,10 @@ export function createKernel(options: CreateKernelOptions): Kernel {
         throw new Error(`RPC already registered: ${method}`)
       }
 
-      handlers.set(method, (params, context) => handler(params, { ...context, extensionId: ownerExtensionId }))
+      handlers.set(method, {
+        handler: (params, context) => handler(params, { ...context, extensionId: ownerExtensionId }),
+        owner: `extension:${ownerExtensionId}`,
+      })
 
       return {
         dispose: () => {
@@ -182,19 +190,19 @@ export function createKernel(options: CreateKernelOptions): Kernel {
       }
     },
     callRpc: async (method, params, context = {}) => {
-      const handler = handlers.get(method)
+      const entry = handlers.get(method)
 
-      if (!handler) {
+      if (!entry) {
         throw new Error(`RPC method not found: ${method}`)
       }
 
       const rpcContext = normalizeContext(context)
 
-      return (await handler(params, rpcContext)) as JsonValue as never
+      return (await entry.handler(params, rpcContext)) as JsonValue as never
     },
     getPublicSurface: () => ({
       namespaces: [...kernelNamespaces],
-      methods: [...handlers.keys()].sort().map(name => ({ name, owner: 'kernel' })),
+      methods: [...handlers.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([name, entry]) => ({ name, owner: entry.owner })),
       version: kernelVersion,
     }),
     getDocumentStore: () => options.documents,
@@ -204,6 +212,8 @@ export function createKernel(options: CreateKernelOptions): Kernel {
     getTraceAudit: () => options.traceAudit,
     getLoomRunner: () => options.loomRunner,
   }
+
+  eventBus.subscribe(['diagnostics.updated'], () => {})
 
   return kernel
 }
@@ -342,13 +352,24 @@ function registerStageOneHandlers(
     return { items: diagnostics } as unknown as JsonValue
   })
 
-  register('loom.run', async params => {
+  register('trace.list', () => {
+    return { items: options.traceAudit.listTraces() } as unknown as JsonValue
+  })
+
+  register('audit.list', () => {
+    return { items: options.traceAudit.listAudit() } as unknown as JsonValue
+  })
+
+  register('loom.run', async (params, context) => {
     if (!isRecord(params)) throw new Error('loom.run params must be an object')
     rejectForbiddenLoomRunFields(params)
 
     const result = await options.loomRunner.run(toLoomRunInput(params))
     for (const diagnostic of result.diagnostics ?? []) {
       options.diagnostics.add(diagnostic)
+    }
+    if ((result.diagnostics?.length ?? 0) > 0) {
+      eventBus.emit('diagnostics.updated', { count: result.diagnostics?.length ?? 0 }, context)
     }
 
     return result as unknown as JsonValue
