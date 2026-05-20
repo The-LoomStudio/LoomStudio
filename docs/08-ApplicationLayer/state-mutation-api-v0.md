@@ -11,13 +11,13 @@
 
 Setting Layer 需要容纳可变状态，但这不等于要在 CS-0 阶段定义完整数据库或 SQL 系统。
 
-需要讨论的是：Official Concept Stack 是否提供一个简单、可回滚、可被插件和 AI 使用的状态修改能力。
+需要讨论的是：Studio Application 是否提供一个简单、可回滚、可被 AI 和授权插件使用的状态修改能力。
 
 当前方向：
 
 ```text
 Mutable state belongs to the same setting foundation,
-but mutation execution/API may be provided by an official state extension.
+but mutation execution/API may be provided by a first-party AIRP state/mutation package.
 ```
 
 ### 11.2 开放问题
@@ -25,7 +25,7 @@ but mutation execution/API may be provided by an official state extension.
 - Setting Layer 中的 KV 如何寻址？通过 path、id、树状目录，还是其他方式？
 - KV 是否绑定 Card、Session、Opening、某个 setting subtree？
 - AI 如何提出状态更新？
-- 插件如何修改状态？
+- 授权插件如何通过受控 API 修改状态？
 - 是否需要 command DSL / SQL-like 语法，还是先用更简单的 patch API？
 - State Patch 是否作为 Document 存储？
 - Runtime 自动生成的状态是否需要用户确认？
@@ -39,7 +39,7 @@ State is setting data, not prompt text.
 State -> selected setting projection -> fragments -> prompt.
 ```
 
-Possible future document types:
+可能的 future document types，namespace 待重新评估：
 
 ```text
 official.concept.memory.entry

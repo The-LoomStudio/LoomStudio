@@ -6,6 +6,8 @@
 **Audience**: Loom 引擎维护者、Studio 设计者、未来的 Extension 作者、独立前端作者。
 **Companion documents**: `loom-whitepaper.md`, `loom-scope.md`, `loom-architecture-answers.md`（ADR-001）。
 
+> **2026-05-20 方向修正**：本文早期版本大量使用 `Concept Stack Extension` 表达默认上层体验。该方向已经被后续讨论修正：默认完整 AIRP 体验应作为 Studio 第一方内建 `Studio AIRP Layer` / package layer，而不是 ordinary extension；但它仍不进入 Kernel。本文中关于 Kernel 不理解 chat / message / character / worldbook 的约束仍有效，关于 `Concept Stack` 可安装、可卸载、多个并存的表述应视为历史设计草案，后续需按 Studio AIRP Layer 重写。
+
 ---
 
 ## 0. Intent
@@ -28,7 +30,7 @@ Studio 不是一个 App。Studio 是一个 **Node.js 应用 + 一组协议**，�
    Extension 注册到 Kernel 的所有东西（document types、passes、commands、rpc、events、schemas）在运行时可枚举。生态作者写的不只是代码，还是**自描述**的代码。
 
 4. **Pipeline 是 per-invocation 的，不是 per-session 的**  
-   多个 Concept Stack 天然共存。客户端在不同栈之间切换零成本。Kernel 不知道"会话"是什么——会话是概念栈的事。
+   Kernel 不知道"会话"是什么。Session / Chat / Card 属于 Studio AIRP Layer 或其他上层体验层；Kernel 只运行调用方提交的 pipeline。
 
 5. **Runtime 是 Extension Pattern，不是 Kernel Service**  
    Chat Runtime、Agent Runtime、Provider Gateway、Tool Loop、MCP Bridge 都不是 Kernel 内置层。Kernel 只提供 Document / Event / RPC / Capability / Loom Runner / Introspection 这些正交能力，让 Extension 自己把它们组合成运行图。
@@ -36,8 +38,8 @@ Studio 不是一个 App。Studio 是一个 **Node.js 应用 + 一组协议**，�
 ### Studio 不做的事（先于做的事说）
 
 - Studio 不内置任何 LLM provider
-- Studio 不内置 chat / message / character / worldbook 概念（哪怕 99% 用户都需要——这些由 Concept Stack Extension 提供，例如 `loom-studio-st`）
-- Studio 不强制单一 Concept Stack；同一 workspace 可装多个并按需启用
+- Kernel 不内置 chat / message / character / worldbook 概念；Studio 默认 AIRP 体验由 Studio AIRP Layer 提供，但不进入 Kernel
+- Studio 不把 Studio AIRP Layer 做成 ordinary extension；第三方完全不同的体验后续应通过隔离进程 / 数据根 / namespace 等方式讨论
 - Studio 不提供云端同步、用户系统、多租户、SaaS 形态
 - Studio 不维护中央插件市场
 - Studio 不做插件自动更新
@@ -400,7 +402,7 @@ Kernel = 6 个服务的总和。每个服务都遵循 *The Kernel Does Less*。
 
 ### 6.1 Document Store
 
-见 §5。Kernel 只懂 Document，不懂 chat / message / character。默认 SQLite 后端，接口可换。Kernel 自身的 trace / audit / settings 也走它（Self-Hosting，§5.6）。
+见 §5。Kernel 只懂 Document，不懂 chat / message / character。默认 SQLite 后端，接口可换。Kernel 自身的 trace / audit / platform configuration documents 也走它（Self-Hosting，§5.6）。这里避免使用 `settings` 作为主要术语，以免和 AIRP `Setting Layer` 混淆。
 
 ### 6.2 Extension Host
 
@@ -1333,8 +1335,8 @@ Studio 同时服务多种深度差异巨大的玩家。三圈结构是这一承�
 
 平台架构最有用的部分是它列出的"不做"。这些条目越多，平台属性越强。
 
-- **不发布 official chat / character / worldbook schemas**——这些由 Concept Stack Extension 提供（如 `loom-studio-st`），不是平台层的事
-- **不强制单一 Concept Stack**——同一 workspace 可装多个并按需启用，按 Tenet IV，每次 invoke 各自独立
+- **Kernel 不发布 official chat / character / worldbook schemas**——默认 AIRP 领域模型由 Studio AIRP Layer 提供，但不进入 Kernel
+- **不把第三方完整上层体验强行并入 Studio AIRP Layer**——完全不同的体验后续应通过隔离进程 / 数据根 / namespace 等方式讨论
 - 不内置任何 LLM provider
 - 不抹平 LLM provider 差异（无 AI Gateway）
 - 不内置 Chat Runtime / Agent Runtime / Workflow Runtime
@@ -1353,9 +1355,9 @@ Studio 同时服务多种深度差异巨大的玩家。三圈结构是这一承�
 - 不做插件级别的"读写另一个插件的 doc"——一切跨 Extension 通信走 RPC / Event
 - 不做"全局当前会话"或"激活栈"概念（Tenet IV）
 
-### 关于"概念栈"的软约定（非承诺）
+### 关于上层体验协议的软约定（非承诺）
 
-Studio 不定义业务概念，但**鼓励**Concept Stack Extension（如 `loom-studio-st`、未来可能的 `loom-studio-modern-chat`）将自己的事件命名空间与 Document schema 公开发布，供其他 Extension 适配。生态会自然形成"事实标准"——这与 Linux 社区对窗口管理协议形成 EWMH 的方式一致：内核不管，社区形成共识。
+Kernel 不定义业务概念。Studio 默认 AIRP 体验由 Studio AIRP Layer 提供；第三方完整上层体验如果需要独立语义，应公开自己的事件命名空间与 Document schema，供其他 Extension 适配。生态会自然形成"事实标准"——这与 Linux 社区对窗口管理协议形成 EWMH 的方式一致：内核不管，社区形成共识。
 
 ### 关于 Provider / Runtime RPC 的软约定（非承诺）
 

@@ -9,7 +9,7 @@
 
 ### 16.1 问题
 
-Official Concept Stack 必须让 prompt construction 可解释。
+Studio Application 必须让 prompt construction 可解释。
 
 用户应该能够回答：
 
@@ -32,11 +32,11 @@ Official Concept Stack 必须让 prompt construction 可解释。
 
 ### 16.3 候选方向
 
-Concept Stack fragments 应包含 source metadata：
+AIRP composition fragments 应包含 source metadata：
 
 ```ts
 type ConceptFragmentMeta = {
-  conceptKind: string
+  airpKind: string
   sourceDocumentId: string
   sourceField?: string
   slot?: string
@@ -48,4 +48,4 @@ type ConceptFragmentMeta = {
 }
 ```
 
-这些 metadata 属于 Concept Stack conventions，不属于 Loom Core schema。
+这些 metadata 属于 Application conventions，不属于 Loom Core schema。

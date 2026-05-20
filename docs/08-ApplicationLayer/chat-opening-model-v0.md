@@ -44,7 +44,7 @@ Opening 的内部是否直接复用未来的 `ChatEntry` / `TimelineEntry` 结�
 
 `messages[]` 不是 Chat 本体。它只是某些 Provider API 的请求 payload。
 
-Official Concept Stack 需要继续区分 Chat、Opening 与最终 compiled message payload。
+Studio Application 需要继续区分 Chat、Opening 与最终 compiled message payload。
 
 当前已定原则：
 
@@ -52,7 +52,7 @@ Official Concept Stack 需要继续区分 Chat、Opening 与最终 compiled mess
 Opening is not a special first Chat element.
 ```
 
-Official Concept Stack 仍需要自己的 Chat / Session model，用于表达：
+Studio Application 仍需要自己的 Chat / Session model，用于表达：
 
 - session；
 - timeline；

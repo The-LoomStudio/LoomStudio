@@ -9,9 +9,9 @@
 
 ### 15.1 问题
 
-现有用户可能已经拥有 ST / CityTalent / 角色扮演生态格式的数据。兼容性议题暂时延后，并且不能反向定义内部模型。
+现有用户可能已经拥有 ST / CityTalent / 角色扮演生态格式的数据。兼容性议题暂时延后，并且不能反向定义 Studio Application 的内部模型。
 
-本 ADR 当前关注下一代 AIRP / Official Concept Stack 概念，而不是 ST import。
+本文当前关注下一代 AIRP / Studio Application 概念，而不是 ST import。
 
 ### 15.2 开放问题
 
@@ -31,5 +31,5 @@
 不要把 ST import 作为设计驱动力。
 不要承诺 byte-compatible output。
 不要让 ST data shape 成为内部 canonical model。
-后续讨论 import 时，应把 source data 转换成 official concept documents。
+后续讨论 import 时，应把 source data 转换成 Studio AIRP documents。
 ```

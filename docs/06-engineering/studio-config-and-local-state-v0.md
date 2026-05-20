@@ -197,6 +197,8 @@ format config
 - dev extension links；
 - local server port preference。
 
+用户可见 UI 术语应优先使用 `Preferences`，表示「应用设置 / 用户偏好」。避免把应用设置称为 `Settings`，以免和 AIRP `Setting Layer` 混淆。
+
 MVP dev mode 可暂放：
 
 ```text
@@ -217,7 +219,9 @@ MVP 应优先进入 Document Store，而不是散落在本地 JSON 文件。
 - Project config 应参与 revision/checkpoint/restore；
 - 应可导入导出；
 - 应产生 changeset；
-- 应可被 Extension / Concept Stack introspect。
+- 应可被 Extension / Studio AIRP Layer introspect。
+
+Config / Settings / Preferences / AIRP Setting Layer 的系统边界尚未在本文完整处理，应后续单独形成 ADR。
 
 ---
 

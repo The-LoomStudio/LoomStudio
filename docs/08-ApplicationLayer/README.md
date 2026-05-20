@@ -1,14 +1,24 @@
-# Official Concept Stack 文档区
+# Studio Application 文档区
 
 > **Status**: Planning / Open Design  
-> **Purpose**: 收纳 Official Concept Stack 的长期设计材料，避免所有讨论都堆进单个 ADR。  
+> **Purpose**: 收纳 Studio Application 的长期设计材料，避免所有讨论都堆进单个 ADR。  
 > **Related ADR**: [`../adr/ADR-005-official-concept-stack-open-design.md`](../adr/ADR-005-official-concept-stack-open-design.md)
 
 ---
 
 ## 1. 定位
 
-本目录用于承载 Official Concept Stack 的分层设计文档。
+本目录用于承载 Studio Application 的分层设计文档。
+
+目录名 `08-concept-stack/` 是历史名称。根据 2026-05-20 的讨论，`Concept Stack` 不再作为主要正式术语使用。后续正式方向改为：
+
+```text
+Studio Application
+```
+
+该 Layer 是 Studio 第一方内建 product/package layer，不进入 Kernel，也不作为 ordinary extension。它提供默认完整 AIRP 体验，包括 Card 管理、Session / Chat、Opening、Setting Layer、Composition、Trace explainability 和第一方 AIRP UI。
+
+Provider adapters、Importers、Exporters、Tools、模型特定 payload adapters 和外部服务集成仍适合 extension 化。
 
 ADR-005 仍是当前主讨论入口，但它不应无限增长。随着各议题稳定，应逐步拆出本目录下的专题文档。
 
@@ -21,6 +31,21 @@ ADR-005:
 08-concept-stack/:
   承载逐步稳定下来的专题规格、设计笔记和大议题草案。
 ```
+
+### 1.1 术语约定
+
+```text
+Setting Layer:
+  AIRP 作品设定层。
+
+Preferences:
+  应用设置 / 用户偏好。
+
+Settings:
+  不作为主要 UI 术语使用，避免和 Setting Layer 混淆。
+```
+
+Config / Settings / Preferences / Setting Layer 的层级、边界和持久化规则尚未系统处理。该议题应后续单独形成 ADR。
 
 ---
 
@@ -37,7 +62,7 @@ ADR-005:
 7. 不建立 `Actor` / `Participant` / `Speaker` / `CharacterProfile` 等过早硬编码类层级。
 8. `Setting Layer` 是设定与可变状态的统一地基。
 9. `Book` 概念弱化为 collection / folder / namespace，不作为核心语义。
-10. `Preset` 属于 Concept Stack，但 backend canonical 倾向 `Composition Skeleton`。
+10. `Preset` 属于 Application composition layer，但 backend canonical 倾向 `Composition Skeleton`。
 11. `Author's Note` / 临时注入提示不作为独立 canonical concept。
 12. ST / CityTalent / 旧角色卡导入兼容延后，不作为当前设计驱动力。
 
@@ -49,7 +74,7 @@ ADR-005:
 
 | 文件 | 状态 | 目的 |
 |---|---|---|
-| [`concept-stack-overview-v0.md`](concept-stack-overview-v0.md) | Migrated / Open Design | Official Concept Stack 总览、原则、边界 |
+| [`concept-stack-overview-v0.md`](concept-stack-overview-v0.md) | Migrated / Open Design | Studio Application 总览、原则、边界 |
 | `concept-stack-glossary-v0.md` | Planned | Card、Opening、Setting、Skeleton 等术语表 |
 | [`discussion-order-v0.md`](discussion-order-v0.md) | Migrated / Open Design | 讨论顺序、未定事项、实施前置条件 |
 
@@ -87,13 +112,13 @@ ADR-005:
 
 | 文件 | 状态 | 目的 |
 |---|---|---|
-| [`runtime-boundary-v0.md`](runtime-boundary-v0.md) | Migrated / Open Design | Concept Stack 与 Chat Runtime / Provider / Security 边界 |
+| [`runtime-boundary-v0.md`](runtime-boundary-v0.md) | Migrated / Open Design | Studio Application 与 Runtime / Provider / Security 边界 |
 
 ### 3.7 Frontend Projection
 
 | 文件 | 状态 | 目的 |
 |---|---|---|
-| [`frontend-projection-v0.md`](frontend-projection-v0.md) | Migrated / Open Design | 前端投影、编辑器、预览与 RPC 表面候选 |
+| [`frontend-projection-v0.md`](frontend-projection-v0.md) | Migrated / Open Design | Studio AIRP UI 集成、编辑器、预览与 RPC 表面候选 |
 
 ### 3.8 Deferred / 兼容层
 
@@ -109,7 +134,7 @@ ADR-005:
 当前建议顺序：
 
 ```text
-1. CS-0 / Card 与顶层边界
+1. Studio Application / Card 与顶层边界
 2. Unified Setting Layer
 3. Chat / Opening
 4. Composition Skeleton

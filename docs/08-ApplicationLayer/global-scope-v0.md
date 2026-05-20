@@ -9,7 +9,7 @@
 
 ### 10.1 问题
 
-全局设定是 Official Concept Stack 的关键问题之一，不能被简化成某张 Card 内的字段。
+全局设定是 Studio Application 的关键问题之一，不能被简化成某张 Card 内的字段。
 
 例如：
 

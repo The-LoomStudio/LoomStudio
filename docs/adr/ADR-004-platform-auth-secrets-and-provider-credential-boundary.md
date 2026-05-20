@@ -2,7 +2,7 @@
 
 > **Status**: Proposed  
 > **Date**: 2026-05-16  
-> **Decision scope**: Post-MVP security foundation before official Provider / Runtime extensions
+> **Decision scope**: Post-MVP security foundation before Studio AIRP Layer and production Provider extensions
 
 ---
 
@@ -31,7 +31,7 @@ The MVP intentionally did not implement:
 - extension signature verification;
 - complex security sandboxing.
 
-As Loom Studio moves toward official Concept Stack, Provider, and Chat Runtime extensions, credential handling becomes unavoidable.
+As Loom Studio moves toward Studio AIRP Layer, AIRP Runtime packages, and Provider extensions, credential handling becomes unavoidable.
 
 There are two separate but related security needs:
 
@@ -520,21 +520,24 @@ Stage: official-provider-openai-compatible
   - audit provider invocation
 ```
 
-Official Concept Stack and Chat Runtime remain separate layers:
+Studio AIRP Layer, AIRP Runtime, and Provider extensions remain separate layers:
 
 ```text
-Concept Stack:
+Studio AIRP Layer:
   Documents -> Fragments -> compiled prompt payload
 
-Chat Runtime:
+AIRP Runtime package:
   append user message -> compose -> loom.run -> provider.invoke -> append assistant message
+
+Provider Adapter Extension:
+  compiled payload -> provider-specific request body -> provider API
 ```
 
 This preserves the core Studio boundary:
 
 ```text
 Kernel provides platform capability.
-Extensions provide domain behavior.
+Studio AIRP Layer provides first-party AIRP domain behavior without entering Kernel.
 Security owns secrets.
 Provider extensions use secrets without owning their storage.
 ```

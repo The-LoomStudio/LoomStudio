@@ -166,7 +166,7 @@ contributes: 用于声明实际贡献能力。
       { "name": "official.provider.openai.invoke" }
     ],
     "panels": [
-      { "id": "official.provider.openai.settingsPanel", "title": "OpenAI Settings" }
+      { "id": "official.provider.openai.profilePanel", "title": "OpenAI Provider Profile" }
     ]
   }
 }
@@ -613,7 +613,7 @@ Panel 是 Client Extension 贡献的 UI 面板。
 用途：
 
 - DevTool panel；
-- provider settings；
+- provider profile panels；
 - trace timeline；
 - workspace diagnostics；
 - custom document editor；
@@ -621,7 +621,9 @@ Panel 是 Client Extension 贡献的 UI 面板。
 
 Studio Web UI 不应写死所有界面。Panel contribution 让插件可以扩展 UI，同时仍通过 Client Host Bridge 和 Transport 通信。
 
-### 6.6 `contributes.conceptStacks`
+### 6.6 `contributes.conceptStacks`（历史草案，待重写）
+
+> **2026-05-20 方向修正**：`Concept Stack` 不再作为主要正式概念；默认完整 AIRP 体验将收束为 Studio 第一方内建 `Studio AIRP Layer` / package layer，而不是 ordinary extension contribution。因此本节为历史草案，后续应删除或重写为第三方上层体验 / workspace adapter / importer 的贡献模型。
 
 示例：
 
@@ -638,7 +640,7 @@ Studio Web UI 不应写死所有界面。Panel contribution 让插件可以扩�
 }
 ```
 
-Concept Stack 定义一套项目语义和编译规则。
+历史草案中的 Concept Stack 定义一套项目语义和编译规则。
 
 它可以定义：
 
@@ -657,7 +659,7 @@ Concept Stack 定义一套项目语义和编译规则。
 Studio 必须知道该 concept stack 是否已安装，以及由哪个 extension 提供。
 ```
 
-这不意味着 Kernel 理解 concept stack 业务语义。
+这不意味着 Kernel 理解 concept stack 业务语义。新方向下，默认 AIRP 能力不应依赖该 ordinary extension contribution。
 
 ### 6.7 `contributes.workspaceAdapters`
 
@@ -678,7 +680,7 @@ Studio 必须知道该 concept stack 是否已安装，以及由哪个 extension
 }
 ```
 
-Workspace Adapter 负责某个 Concept Stack 的 Dev Workspace 映射。
+Workspace Adapter 负责某个上层体验或数据格式的 Dev Workspace 映射。旧文档中 “Concept Stack” 表述待后续重写。
 
 它知道如何：
 
@@ -691,8 +693,8 @@ Workspace Adapter 负责某个 Concept Stack 的 Dev Workspace 映射。
 
 为什么需要单独声明：
 
-- 不是所有 Concept Stack 都有 Dev Workspace；
-- 一个 Concept Stack 可能有多个 workspace layout；
+- 不是所有上层体验都有 Dev Workspace；
+- 一个上层体验可能有多个 workspace layout；
 - Workspace Sync 是 DevTool / Authoring 能力，不是 Kernel 领域能力；
 - Studio 需要知道当前项目可用哪些 adapter。
 
@@ -706,7 +708,7 @@ Workspace Adapter 负责某个 Concept Stack 的 Dev Workspace 映射。
 
 它可以服务子级生态，例如：
 
-- 某个 Concept Stack 的额外索引；
+- 某个上层体验的额外索引；
 - 某个 Marketplace 的展示字段；
 - 某个社区 mod manager 的分类；
 - 某个游戏式 modpack 的 load priority；
@@ -797,7 +799,7 @@ official-provider-openai/
   loom.extension.json
   server/dist/index.js
   client/dist/index.js
-  schemas/settings.schema.json
+  schemas/provider-profile.schema.json
 ```
 
 ### 8.2 Manifest
@@ -842,9 +844,9 @@ official-provider-openai/
 
     "documentTypes": [
       {
-        "type": "official.provider.openai.settings",
-        "displayName": "OpenAI Provider Settings",
-        "schema": "./schemas/settings.schema.json"
+        "type": "official.provider.openai.profile",
+        "displayName": "OpenAI Provider Profile",
+        "schema": "./schemas/provider-profile.schema.json"
       }
     ],
 
@@ -858,9 +860,9 @@ official-provider-openai/
 
     "panels": [
       {
-        "id": "official.provider.openai.settingsPanel",
-        "title": "OpenAI Settings",
-        "entry": "settingsPanel"
+        "id": "official.provider.openai.profilePanel",
+        "title": "OpenAI Provider Profile",
+        "entry": "profilePanel"
       }
     ]
   },
@@ -879,8 +881,8 @@ official-provider-openai/
       },
       {
         "id": "documents.readwrite",
-        "scope": ["official.provider.openai.settings"],
-        "reason": "Store provider settings such as base URL and default model."
+        "scope": ["official.provider.openai.profile"],
+        "reason": "Store provider profile data such as base URL and default model."
       }
     ]
   },
@@ -903,15 +905,15 @@ official-provider-openai/
 ```ts
 export default defineServerExtension((ctx) => {
   ctx.registerDocumentType({
-    type: "official.provider.openai.settings",
-    schemaPath: "./schemas/settings.schema.json"
+    type: "official.provider.openai.profile",
+    schemaPath: "./schemas/provider-profile.schema.json"
   })
 
   ctx.registerRpc("official.provider.openai.listModels", async () => {
-    const settings = await ctx.documents.getByType("official.provider.openai.settings")
+    const profile = await ctx.documents.getByType("official.provider.openai.profile")
     const apiKey = await ctx.secrets.get("official.provider.openai.apiKey")
 
-    const res = await ctx.fetch(`${settings.baseUrl}/models`, {
+    const res = await ctx.fetch(`${profile.baseUrl}/models`, {
       headers: { Authorization: `Bearer ${apiKey}` }
     })
 
@@ -939,7 +941,7 @@ export default defineServerExtension((ctx) => {
 
 ```ts
 export default defineClientExtension((ctx) => {
-  ctx.registerPanel("official.provider.openai.settingsPanel", {
+  ctx.registerPanel("official.provider.openai.profilePanel", {
     render(container) {
       container.innerHTML = `<button id="refresh">Refresh Models</button>`
 
@@ -961,7 +963,7 @@ export default defineClientExtension((ctx) => {
 4. 启动 server extension。
 5. server 注册 document type 和 rpc。
 6. Plugin Host 对比 manifest contributes。
-7. 用户打开 OpenAI Settings panel。
+7. 用户打开 OpenAI Provider Profile panel。
 8. Studio 加载 client extension sandbox。
 9. client 注册 panel。
 10. 用户点击 Refresh Models。

@@ -9,7 +9,7 @@
 
 ### 12.1 问题
 
-Concept Stack 的核心不是数据 schema 本身，而是：
+Studio Application composition layer 的核心不是数据 schema 本身，而是：
 
 ```text
 Documents -> Source Adapter -> Fragment[] -> Loom Pipeline -> Compiled Payload
@@ -19,14 +19,14 @@ Documents -> Source Adapter -> Fragment[] -> Loom Pipeline -> Compiled Payload
 
 ### 12.2 开放问题
 
-- Source Adapter 是否在 Extension RPC 内执行，而不是 Loom Pass？
+- Source Adapter 是否在 AIRP server package 内执行，而不是 Loom Pass？
 - Fragment meta 的官方词汇是什么？
 - 如何记录 sourceDocumentId？
 - 激活结果写入 Fragment meta 还是 diagnostics？
 - inactive entries 是否保留到 trace？
 - ordering 是一个 Pass 还是多个 Pass？
 - budget trimming 是否进入 M0？
-- emit 输出是否是 Fragment 还是 Extension-side payload？
+- emit 输出是否是 Fragment 还是 AIRP-side payload？
 - 是否允许多个 emit target？
 
 ### 12.3 候选 M0 Pipeline
@@ -69,7 +69,7 @@ Documents:
   - 若干 setting entries
 
 RPC:
-  - official.concept.compose.preview
+  - official.concept.compose.preview  # 旧候选 namespace，待重新评估
 
 Behavior:
   - 加载 documents
@@ -97,3 +97,23 @@ M0 成功标准应以 explainability 衡量，而不是以功能数量衡量：
 为什么 setting entries 被选中，
 以及为什么最终顺序是稳定的。
 ```
+
+---
+
+## Provider Payload Adapter 边界
+
+Provider adapter 不编译 AIRP documents。
+
+Studio Application composition layer 负责：
+
+```text
+AIRP documents -> fragments -> compiled payload
+```
+
+Provider adapter 负责：
+
+```text
+compiled payload -> provider-specific request body
+```
+
+Provider adapter 可以做 role / content parts 转换、provider capability validation、request body 映射、usage / error normalization，但不应理解 Card、Setting Layer、Opening 或 Session 语义。

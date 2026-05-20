@@ -1,4 +1,4 @@
-# Concept Stack 讨论顺序 v0
+# Studio Application 讨论顺序 v0
 
 > **状态**：从 ADR-005 迁移 / 开放设计  
 > **来源**：[`../adr/ADR-005-official-concept-stack-open-design.md`](../adr/ADR-005-official-concept-stack-open-design.md)
@@ -13,7 +13,7 @@
 
 | 顺序 | 议题 | 必要产物 |
 |---|---|---|
-| 1 | CS-0 Concept Stack 定位 | Card / 边界 / 已收束原则 |
+| 1 | CS-0 Studio Application 定位 | Card / 边界 / 已收束原则 |
 | 2 | CS-3 Unified Setting Layer | Setting entry / 嵌套树 / KV / scope 候选方案 |
 | 3 | CS-1 Chat / Opening model | Session / ChatEntry / Opening 候选方案 |
 | 4 | CS-2 Composition Skeleton model | Skeleton / slot / cluster / ordering 候选方案 |
@@ -32,7 +32,7 @@
 |---|---|---|
 | 8 | CS-4 Global Scope | global user setting / global setting library 的边界 |
 | 9 | CS-5 State / Mutation API | state patch / AI update / rollback 边界 |
-| 10 | CS-8 Frontend Projection | RPC / document access 策略 |
+| 10 | CS-8 Studio AIRP UI Integration | RPC / document access / 内建 UI 策略 |
 | 11 | CS-9 Compatibility | import 策略 |
 
 ---
@@ -42,7 +42,7 @@
 以下事项明确保持未决：
 
 - official document type 的命名；
-- namespace 应该是 `official.concept.*`、`official.st.*`，还是其他名称；
+- namespace 应该是 `airp.*`、`studio.airp.*`、`official.airp.*`，还是其他名称；历史候选 `official.concept.*` 已待重新评估；
 - Card 的准确 schema；
 - Opening 的准确 schema；
 - Chat Session 的准确 schema；
@@ -67,7 +67,7 @@
 
 实现前，项目至少应接受或修订：
 
-1. Concept Stack 高层边界；
+1. Studio Application 高层边界；
 2. Card model M0；
 3. Unified Setting Layer M0；
 4. Chat / Opening model M0；

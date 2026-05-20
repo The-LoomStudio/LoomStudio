@@ -7,9 +7,9 @@
 
 ## 来自 CS-0 的 Skeleton 方向
 
-#### 6.1.10 Preset 属于 Concept Stack，但 canonical 名称倾向 Composition Skeleton
+#### 6.1.10 Preset 属于 Application composition layer，但 canonical 名称倾向 Composition Skeleton
 
-预设层属于 Official Concept Stack。
+预设层属于 Studio Application 的 composition layer。
 
 SillyTavern 调研表明，Preset / Prompt Manager 本质上是：
 
@@ -56,7 +56,7 @@ Preset 不能只是“一组字符串按 UI 顺序拼接”。
 
 当前方向：`Preset` 可以作为 UI / 用户术语保留，但 backend canonical model 更倾向 `Composition Skeleton`。
 
-Official Concept Stack 需要一个新的 Skeleton / slot / cluster model，用于表达：
+Studio Application 需要一个新的 Skeleton / slot / cluster model，用于表达：
 
 - slot / cluster；
 - 二级 / 三级排序；

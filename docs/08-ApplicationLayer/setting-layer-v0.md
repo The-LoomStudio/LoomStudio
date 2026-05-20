@@ -1,6 +1,6 @@
 # Unified Setting Layer v0
 
-> **状态**：从 ADR-005 迁移 / 开放设计  
+> **状态**：从 ADR-005 迁移 / 开放设计
 > **来源**：[`../adr/ADR-005-official-concept-stack-open-design.md`](../adr/ADR-005-official-concept-stack-open-design.md)
 
 ---
@@ -9,7 +9,7 @@
 
 #### 6.1.8 统一设定层是核心方向
 
-Official Concept Stack 不应把：
+Studio Application 不应把：
 
 ```text
 静态知识
@@ -19,7 +19,7 @@ Official Concept Stack 不应把：
 场景事实
 长期记忆
 ```
-
+这些本质都为"上下文"的东西
 拆成彼此孤立的系统。
 
 这样会导致：
@@ -76,7 +76,7 @@ Setting entry
 
 ### 9.1 问题
 
-“世界书”这个词来自既有生态，但 Official Concept Stack 不应只建立一个静态 Knowledge model。
+“世界书”这个词来自既有生态，但 Studio Application 不应只建立一个静态 Knowledge model。
 
 当前问题是：设定、知识、状态、变量、场景事实如果被拆成多个孤岛，会导致重复和滞后。
 
@@ -121,7 +121,26 @@ Setting Layer 需要表达：
 - 是否支持 semantic search？
 - 激活和注入是否应该拆成两个 Pass？
 - inactive entries 是否进入 trace？
-- KV 修改 API / 命令 / SQL-like 语法是否属于 official state extension，而不是 Setting Layer schema 本身？
+- KV 修改 API / 命令 / SQL-like 语法是否属于 first-party AIRP state/mutation package，而不是 Setting Layer schema 本身？
+
+### 9.2.1 术语边界
+
+`Setting Layer` 指 AIRP 作品设定层，不是 Studio 应用设置。
+
+术语约定：
+
+```text
+Setting Layer:
+  AIRP 作品设定层。
+
+Preferences:
+  应用设置 / 用户偏好。
+
+Settings:
+  不作为主要 UI 术语使用，避免和 Setting Layer 混淆。
+```
+
+Config / Settings / Preferences / Setting Layer 的系统边界尚未在本文处理，应后续单独形成 ADR。
 
 ### 9.3 已废弃草案
 
