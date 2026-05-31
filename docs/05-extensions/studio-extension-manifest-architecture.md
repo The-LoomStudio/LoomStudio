@@ -621,47 +621,7 @@ Panel 是 Client Extension 贡献的 UI 面板。
 
 Studio Web UI 不应写死所有界面。Panel contribution 让插件可以扩展 UI，同时仍通过 Client Host Bridge 和 Transport 通信。
 
-### 6.6 `contributes.conceptStacks`（历史草案，待重写）
-
-> **2026-05-20 方向修正**：`Concept Stack` 不再作为主要正式概念；默认完整 AIRP 体验将收束为 Studio 第一方内建 `Studio AIRP Layer` / package layer，而不是 ordinary extension contribution。因此本节为历史草案，后续应删除或重写为第三方上层体验 / workspace adapter / importer 的贡献模型。
-
-示例：
-
-```json
-{
-  "contributes": {
-    "conceptStacks": [
-      {
-        "id": "official.sillytavern",
-        "displayName": "SillyTavern Compatible Stack"
-      }
-    ]
-  }
-}
-```
-
-历史草案中的 Concept Stack 定义一套项目语义和编译规则。
-
-它可以定义：
-
-- 项目里有哪些 document type；
-- 哪些 authoring content 可以编译成 Fragment；
-- prompt / worldbook / character / preset 的概念模型；
-- 如何生成 runtime artifact；
-- 需要哪些 Loom passes；
-- 如何导入导出；
-- 推荐搭配哪些 runtime。
-
-为什么需要声明：
-
-```text
-项目可能声明 conceptStack = official.sillytavern。
-Studio 必须知道该 concept stack 是否已安装，以及由哪个 extension 提供。
-```
-
-这不意味着 Kernel 理解 concept stack 业务语义。新方向下，默认 AIRP 能力不应依赖该 ordinary extension contribution。
-
-### 6.7 `contributes.workspaceAdapters`
+### 6.6 `contributes.workspaceAdapters`
 
 示例：
 
@@ -671,7 +631,7 @@ Studio 必须知道该 concept stack 是否已安装，以及由哪个 extension
     "workspaceAdapters": [
       {
         "id": "official.sillytavern.workspace",
-        "forConceptStack": "official.sillytavern",
+        "forDomainLayer": "official.sillytavern",
         "displayName": "SillyTavern Dev Workspace",
         "features": ["export", "import", "watch", "validate", "build", "package"]
       }
@@ -680,7 +640,7 @@ Studio 必须知道该 concept stack 是否已安装，以及由哪个 extension
 }
 ```
 
-Workspace Adapter 负责某个上层体验或数据格式的 Dev Workspace 映射。旧文档中 “Concept Stack” 表述待后续重写。
+Workspace Adapter 负责某个上层体验或数据格式的 Dev Workspace 映射。
 
 它知道如何：
 
@@ -975,16 +935,16 @@ export default defineClientExtension((ctx) => {
 
 ---
 
-## 9. 假想例子：SillyTavern Concept + Workspace Adapter
+## 9. 假想例子：SillyTavern Workspace Importer / Adapter
 
 ```json
 {
   "manifestVersion": 1,
-  "id": "official.concept.sillytavern",
+  "id": "official.adapter.sillytavern",
   "version": "0.1.0",
-  "displayName": "SillyTavern Concept Stack",
+  "displayName": "SillyTavern Workspace Adapter",
   "description": "Provides SillyTavern-compatible authoring, workspace sync, and packaging.",
-  "roles": ["concept-stack", "workspace-adapter"],
+  "roles": ["workspace-adapter"],
 
   "engines": {
     "studio": "^0.1.0"
@@ -1000,17 +960,10 @@ export default defineClientExtension((ctx) => {
   },
 
   "contributes": {
-    "conceptStacks": [
-      {
-        "id": "official.sillytavern",
-        "displayName": "SillyTavern Compatible Stack"
-      }
-    ],
-
     "workspaceAdapters": [
       {
         "id": "official.sillytavern.workspace",
-        "forConceptStack": "official.sillytavern",
+        "forDomainLayer": "official.sillytavern",
         "displayName": "SillyTavern Dev Workspace",
         "features": ["export", "import", "watch", "validate", "build", "package"]
       }
@@ -1298,16 +1251,15 @@ Run loom ext sync-manifest to update manifest.
 ```text
 1. Manifest 必须保持最小必填，避免阻碍开发。
 2. Server / Client 是硬工程边界。
-3. Runtime / Provider / Tool / Concept Stack / Workspace Adapter 是 roles/contributions，不是硬插件类型。
+3. Runtime / Provider / Tool / Workspace Adapter 是 roles/contributions，不是硬插件类型。
 4. Server public capability 通过 RPC 等 runtime registration 实际提供。
-5. Manifest contributes 是静态声明和追踪入口。
+5. Manifest contributes 是静态声明 and 追踪入口。
 6. Client Extension 不使用任意 window.xx 作为 Studio-facing API。
 7. Client Extension 使用 Client Host Bridge / sandbox activation。
 8. engines.studio 必填，server.engines.node 可选。
 9. contributes 不写空数组，只声明实际贡献。
 10. documentTypes 用于 typed Document ownership / schema / introspection。
-11. conceptStacks 用于声明项目语义提供者。
-12. workspaceAdapters 用于声明 Dev Workspace 映射提供者。
+11. workspaceAdapters 用于声明 Dev Workspace 映射提供者。
 13. meta 开放但必须 namespaced。
 14. meta 不能承载加载、权限、依赖、冲突等核心语义。
 15. Dev Mode 可允许动态注册超前于 manifest，并提供 sync-manifest 工具。

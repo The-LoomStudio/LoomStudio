@@ -1,6 +1,6 @@
 # Studio Application 总览 v0
 
-> **状态**：从 ADR-005 迁移 / 开放设计  
+> **状态**：从 ADR-005 迁移 / 开放设计
 > **来源**：[`../adr/ADR-005-official-concept-stack-open-design.md`](../adr/ADR-005-official-concept-stack-open-design.md)
 
 ---
@@ -51,7 +51,7 @@ Client Bridge
 
 但 MVP 只证明了平台骨架，不提供真实上层产品语义。
 
-接下来如果要支撑真实 AIRP / LLM 游玩体验，Studio 需要内建一套第一方 Application。该 Layer 需要定义：
+接下来如果要支撑真实 AIRP / LLM 游玩体验实现完整的应用层，Studio 需要内建一套第一方 Application。该 Layer 需要定义：
 
 - Chat 结构；
 - Card 作为可分发、可游玩、可开发的顶层内容单元；
@@ -61,8 +61,9 @@ Client Bridge
 - Document 到 Fragment 的 source adapter；
 - Fragment 组合、排序、激活、裁剪、输出规则；
 - 与 Runtime、Provider adapters、Secret Store、Studio AIRP UI 的边界。
+换句话说,这一层就是最后一层,完成了这一层,理应当就是和 SillyTavern一样可以支持完整的游玩
 
-现有生态如 SillyTavern、CityTalent、角色卡系统和世界书系统提供了大量现实经验，但它们也携带历史包袱：
+现有生态如 SillyTavern、角色卡系统和世界书系统提供了大量现实经验，但它们也携带历史包袱：
 
 - `messages[]` 被误当成 Chat 本体；
 - Preset / Prompt Manager 与 UI 结构强绑定；
@@ -72,6 +73,7 @@ Client Bridge
 - Chat history、memory、summary、state patch 边界不清；
 - 前端编辑模型和后端 prompt 编译模型耦合；
 - 很多行为难以 trace 和解释。
+- 等等
 
 Studio Application 的目标不是“优化 SillyTavern 已有概念”，而是定义 Loom Studio 自己的第一套 AIRP 领域协议和默认完整游玩体验。
 

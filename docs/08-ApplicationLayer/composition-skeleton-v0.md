@@ -50,6 +50,10 @@ Author's Note
 
 ## CS-2：Composition Skeleton / Preset 模型
 
+> 2026-05-21 讨论补充：Prompt Builder 相关的后续讨论已集中到 [`prompt/`](prompt/README.md)。本文件保留原始迁移内容和开放问题；关于 Loom Core 对接、预设骨架、slot / marker、provider 兼容性和 Setting Layer prompt source 的更新讨论，优先查看 prompt 子目录。
+>
+> 2026-05-30 讨论补充：Preset / Skeleton 不再只按扁平 slot 理解，新增 `Preset Zone Tree`、`Injection Group`、Source Tree 与 Projection Anchor 分离、Slot 前 / 中 / 后注入、source-scoped dynamic slots 与 slot / entry 两级排序等方向。详见 [`prompt/composition-skeleton-and-preset-v0.md`](prompt/composition-skeleton-and-preset-v0.md)。
+
 ### 8.1 问题
 
 Preset 不能只是“一组字符串按 UI 顺序拼接”。

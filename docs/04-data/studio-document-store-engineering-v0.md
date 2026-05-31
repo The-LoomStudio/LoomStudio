@@ -152,7 +152,8 @@ type Checkpoint = {
 - 每次 write/delete/restore 都创建新 revision；
 - 历史 revision 与 changeset append-only；
 - checkpoint 记录 document version map，不是数据库 snapshot dump；
-- checkpoint restore 必须 restore-as-new-version。
+- checkpoint restore 必须 restore-as-new-version；
+- **大 Checkpoint 机制约束**：核心存储推荐仅在**用户单次输入/交互开启（即任务层级）**时创建 Checkpoint。Agent 内部一系列的原子级操作（如多次高频 ToolCall、子 Agent 调度等）不生成单独的 checkpoint，避免频繁持久化导致 revision 和 checkpoint 链条膨胀。原子级的小回滚可作为插件扩展支持，不属于核心底座规格。
 
 ---
 
@@ -286,7 +287,7 @@ type DocumentTransaction = {
 
 ## 8. Restore-as-New-Version
 
-回滚原则：
+回滚原则与粒度约束：
 
 ```text
 Kernel-managed Documents are rollbackable.
@@ -295,6 +296,8 @@ External side effects are audit-only.
 Trace and Audit are facts, never rolled back.
 Business rollback semantics are extension-defined.
 ```
+
+- **任务级大 Checkpoint 回滚**：为了兼顾性能与使用体验，回滚是以“用户输入/新一轮交互开始时的大 Checkpoint”为基准。回滚时，中间所有的原子化状态变动（如 ToolCall 产生的 hp 扣减、临时草稿等）全部同步恢复，无需也禁止在中间每一个微小步骤都创建 checkpoint。
 
 Document restore 流程：
 

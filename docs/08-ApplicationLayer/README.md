@@ -16,7 +16,7 @@
 Studio Application
 ```
 
-该 Layer 是 Studio 第一方内建 product/package layer，不进入 Kernel，也不作为 ordinary extension。它提供默认完整 AIRP 体验，包括 Card 管理、Session / Chat、Opening、Setting Layer、Composition、Trace explainability 和第一方 AIRP UI。
+该 Layer 是 Studio 第一方内建 product/package layer，不进入 Kernel，也不作为 ordinary extension。它提供默认完整 AIRP 体验，包括 Card 管理、Session / Chat、Opening、Setting Layer、Agent、Composition、Trace explainability 和第一方 AIRP UI。
 
 Provider adapters、Importers、Exporters、Tools、模型特定 payload adapters 和外部服务集成仍适合 extension 化。
 
@@ -37,6 +37,15 @@ ADR-005:
 ```text
 Setting Layer:
   AIRP 作品设定层。
+
+Agent:
+  执行任务的工作主体，不等于 Character。
+
+Narrative Timeline:
+  被接受的作品产出时间线。
+
+Runtime Transcript:
+  Agent 工作过程记录。
 
 Preferences:
   应用设置 / 用户偏好。
@@ -65,6 +74,26 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 10. `Preset` 属于 Application composition layer，但 backend canonical 倾向 `Composition Skeleton`。
 11. `Author's Note` / 临时注入提示不作为独立 canonical concept。
 12. ST / CityTalent / 旧角色卡导入兼容延后，不作为当前设计驱动力。
+13. AIRP Runtime 应区分 agent 工作对话与剧情产出；剧情文本不应由普通 assistant message 自动写入 canonical timeline，而应通过受控 commit / tool 写入。
+14. `Agent` 不是 `Character`。Agent 是工作主体，Character 是作品设定或叙事对象。
+15. Runtime loop 是独立专题，不塞进 Prompt Builder。Step 是状态推进记录，不预设 ReAct 分类。
+16. Observation / Stop / Reflection 不是 Prompt Builder 基础概念。ToolCall / ToolResult 是 Runtime Transcript / message 层的一等条目。
+17. Memory / Summary 是 Agent 的写操作 + 截断，不是独立基础设施层。
+18. Retrieval / Search 是 Tool / Capability 的子能力。
+19. Regex 应归入 Transform Rule System，在受控阶段执行，不能随处运行。
+20. 默认 AIRP Runtime 可以采用 ephemeral transcript projection：完整 Agent 工作对话归档但不默认进入下一轮 prompt。
+21. Agent 基座仍保存完整 Run Transcript / ToolCall / ToolResult / Trace / Changeset；ephemeral 只是默认 Runtime Profile，不污染平台性。
+22. Agent 主动读取结果先进入 Fresh Read Tail，被消费一轮后沉淀到 Dynamic Context Mount，并按作者设定排序。
+23. 程序性触发和主动读取共享动态挂载面，但生命周期不同；关键词失效不能卸载主动读取 item。
+24. State Store 不承载"慢变量"；低频人设、性格、年龄、长期关系等仍属于 Setting Store。
+25. Preset / Composition Skeleton 采用 Zone Tree + Injection Group：Source Tree 负责存储和分类，Injection Group 只是 Prompt Build 的挂载锚点。
+26. 注入位置组不是文件夹；同一个世界书 / preset source 可以按不同 injection group 产生多个 source-scoped slots，并分别排序。
+27. 动态 slots 不写死在全局 preset 中；Prompt Build 根据当前 source set materialize slots，并用 Projection Order Profile 的稳定 rankKey 承载 UI 拖拽排序。
+28. UI 应区分资源视图和 Prompt 视图：资源树管理内容，Prompt 视图预览最终投影顺序。
+29. Session 是默认运行时隔离边界；Card 是内容包边界，不是运行实例边界。
+30. Prompt Builder 不扫描整个 workspace；Runtime 每轮构造当前 Source Set。
+31. Provider Adapter / Gateway 层需要独立 contract；它只消费 compiled prompt payload，不理解 AIRP documents。
+32. 完整玩家回合应由 Runtime Turn Flow 串联 input、compose、provider、tool、commit、state、trace 和 UI events。
 
 ---
 
@@ -74,9 +103,11 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 
 | 文件 | 状态 | 目的 |
 |---|---|---|
-| [`concept-stack-overview-v0.md`](concept-stack-overview-v0.md) | Migrated / Open Design | Studio Application 总览、原则、边界 |
+| [`0-overview-v0.md`](0-overview-v0.md) | Migrated / Open Design | Studio Application 总览、原则、边界 |
 | `concept-stack-glossary-v0.md` | Planned | Card、Opening、Setting、Skeleton 等术语表 |
 | [`discussion-order-v0.md`](discussion-order-v0.md) | Migrated / Open Design | 讨论顺序、未定事项、实施前置条件 |
+| [`discussion-plan-v0.md`](discussion-plan-v0.md) | Open Design | 决策驱动讨论计划、依赖图、近期讨论安排 |
+| [`document-map-v0.md`](document-map-v0.md) | Open Design / Navigation | Application Layer 文档分区地图 |
 
 ### 3.2 Card 与内容单元
 
@@ -90,15 +121,25 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 | 文件 | 状态 | 目的 |
 |---|---|---|
 | [`setting-layer-v0.md`](setting-layer-v0.md) | Migrated / Open Design | 统一设定层、嵌套结构、索引、投影规则 |
+| [`state-store-v0.md`](state-store-v0.md) | Open Design | 高频变量、Schema、响应式状态与 Setting Store 边界 |
 | [`global-scope-v0.md`](global-scope-v0.md) | Migrated / Open Design | 全局 user 设定、全局设定库、跨 Card scope |
 | [`state-mutation-api-v0.md`](state-mutation-api-v0.md) | Migrated / Open Design | KV、AI 更新、插件修改、回滚边界 |
+| [`memory-summary-v0.md`](memory-summary-v0.md) | Open Design | Memory / Summary 作为 Agent 写操作 + 截断 |
+| [`summarization-v0.md`](summarization-v0.md) | Open Design | 总结功能、可替换插件协议、Setting Layer 更新耦合 |
+
+### 3.3.1 Scope / Isolation
+
+| 文件 | 状态 | 目的 |
+|---|---|---|
+| [`isolation-scope-boundary-v0.md`](isolation-scope-boundary-v0.md) | Open Design | 对话隔离、角色卡隔离、source set、rollback boundary |
 
 ### 3.4 Chat 与 Opening
 
 | 文件 | 状态 | 目的 |
 |---|---|---|
 | [`chat-opening-model-v0.md`](chat-opening-model-v0.md) | Migrated / Open Design | Chat / Opening / compiled message 的语义边界 |
-| `session-model-v0.md` | Planned | Session、timeline、branch、运行实例边界 |
+| [`session-timeline-data-model-v0.md`](session-timeline-data-model-v0.md) | Open Design | Session、Narrative Timeline、Runtime Transcript、Chat 数据形式 |
+| `session-model-v0.md` | Superseded by session-timeline-data-model-v0 | Session、timeline、branch、运行实例边界 |
 
 ### 3.5 Composition Skeleton
 
@@ -108,46 +149,94 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 | [`composition-pipeline-v0.md`](composition-pipeline-v0.md) | Migrated / Open Design | Documents -> Fragments -> loom.run -> compiled payload |
 | [`trace-explainability-v0.md`](trace-explainability-v0.md) | Migrated / Open Design | 来源、激活、排序、裁剪的解释模型 |
 
-### 3.6 Runtime / Provider 边界
+### 3.6 Prompt Builder
+
+| 文件 | 状态 | 目的 |
+|---|---|---|
+| [`prompt/README.md`](prompt/README.md) | Open Design / Discussion Capture | Prompt Builder 领域入口 |
+| [`prompt/loom-core-integration-v0.md`](prompt/loom-core-integration-v0.md) | Open Design | Prompt Builder 与 Loom Core 的对接边界 |
+| [`prompt/composition-skeleton-and-preset-v0.md`](prompt/composition-skeleton-and-preset-v0.md) | Open Design | 预设层、骨架填充、slot / marker、provider 兼容性 |
+| [`prompt/setting-layer-prompt-source-v0.md`](prompt/setting-layer-prompt-source-v0.md) | Open Design | Setting Layer 作为 prompt-facing source 的边界 |
+| [`prompt/content-component-and-binding-v0.md`](prompt/content-component-and-binding-v0.md) | Open Design | 内容层组件化、binding、宏与变量注入 |
+
+### 3.7 Agent
+
+| 文件 | 状态 | 目的 |
+|---|---|---|
+| [`agent/README.md`](agent/README.md) | Open Design / Discussion Capture | Agent 领域入口 |
+| [`agent/agent-model-v0.md`](agent/agent-model-v0.md) | Open Design | Agent 定义、与 Character / Runtime / Card 关系 |
+| [`agent/runtime-policy-v0.md`](agent/runtime-policy-v0.md) | Open Design | Run 控制、loop、retry、stop、discard、commit policy |
+| [`agent/tool-capability-v0.md`](agent/tool-capability-v0.md) | Open Design | Tool 定义、ToolCall / ToolResult、commit_output、provider 映射 |
+| [`agent/retrieval-search-v0.md`](agent/retrieval-search-v0.md) | Open Design | Agent 主动搜索，Tool / Capability 的子能力 |
+| [`agent/permission-consent-v0.md`](agent/permission-consent-v0.md) | Open Design | Agent 权限、确认策略、安全边界 |
+
+### 3.8 Runtime / Provider 边界
 
 | 文件 | 状态 | 目的 |
 |---|---|---|
 | [`runtime-boundary-v0.md`](runtime-boundary-v0.md) | Migrated / Open Design | Studio Application 与 Runtime / Provider / Security 边界 |
+| [`airp-runtime-model-v0.md`](airp-runtime-model-v0.md) | Open Design / Discussion Capture | AIRP Runtime、Runtime Transcript、Narrative Timeline、ToolCall / ToolResult 与 commit 边界 |
+| [`runtime-turn-flow-v0.md`](runtime-turn-flow-v0.md) | Open Design | 玩家输入到回复落盘的完整 loop |
+| [`provider-adapter-contract-v0.md`](provider-adapter-contract-v0.md) | Open Design | Provider Adapter / Gateway contract、invoke / stream、capability、usage / error |
 
-### 3.7 Frontend Projection
+### 3.9 Transform Rule
+
+| 文件 | 状态 | 目的 |
+|---|---|---|
+| [`transform-rule-system-v0.md`](transform-rule-system-v0.md) | Open Design | Regex / Transform 规则系统、阶段、权限、trace / rollback |
+
+### 3.10 Extension Contribution
+
+| 文件 | 状态 | 目的 |
+|---|---|---|
+| [`extension/README.md`](extension/README.md) | Open Design / Discussion Capture | Extension Contribution 领域入口 |
+| [`extension/airp-extension-contribution-v0.md`](extension/airp-extension-contribution-v0.md) | Open Design | Extension 如何贡献 AIRP 领域能力 |
+
+### 3.11 交互层
+
+| 文件 | 状态 | 目的 |
+|---|---|---|
+| [`user-input-intent-v0.md`](user-input-intent-v0.md) | Open Design | 用户输入分类、指令与剧情内容区分 |
+
+### 3.12 Frontend Projection
 
 | 文件 | 状态 | 目的 |
 |---|---|---|
 | [`frontend-projection-v0.md`](frontend-projection-v0.md) | Migrated / Open Design | Studio AIRP UI 集成、编辑器、预览与 RPC 表面候选 |
 
-### 3.8 Deferred / 兼容层
+### 3.13 Deferred / 兼容层
 
 | 文件 | 状态 | 目的 |
 |---|---|---|
 | [`compatibility-import-v0.md`](compatibility-import-v0.md) | Migrated / Deferred | ST / CityTalent / 旧角色卡导入兼容 |
-| `transform-script-extension-v0.md` | Deferred | Regex、Card Script、扩展绑定、transform rules |
+| `transform-script-extension-v0.md` | Deferred -> Superseded by [`transform-rule-system-v0.md`](transform-rule-system-v0.md) | Regex、Card Script、扩展绑定、transform rules |
 
 ---
 
-## 4. 建议讨论顺序
+## 4. 讨论计划
 
-当前建议顺序：
+详见 [`discussion-plan-v0.md`](discussion-plan-v0.md)。
+
+当前建议的主线顺序：
 
 ```text
-1. Studio Application / Card 与顶层边界
-2. Unified Setting Layer
-3. Chat / Opening
-4. Composition Skeleton
-5. Composition Pipeline
-6. Runtime Boundary
-7. Trace / Explainability
-8. Global Scope
-9. State / Mutation API
-10. Frontend Projection
-11. Compatibility / Import
+0. Document Map / Scope Map（文档分区与隔离地图）
+1. Session / Timeline Data（数据层具体形态）
+2. Agent Model（Agent 不是 Character）
+3. Runtime Transcript / Narrative Timeline（工作对话 vs 剧情产出）
+4. Tool / Capability / Commit（工具调用与剧情写入）
+5. Provider Adapter Contract（模型网关层）
+6. Runtime Turn Flow（玩家输入到回复落盘）
+7. Setting Layer + Retrieval（内容底座与 Agent 主动搜索）
+8. Prompt Builder + Skeleton + Setting Projection（上下文编译）
+9. Transform Rule / Regex（受控内容变换）
+10. Memory / Summary / State Mutation（Agent 写操作与状态更新）
+11. Trace / Explainability（可解释性）
+12. User Input Intent（交互层）
+13. Extension Contribution（扩展协议）
 ```
 
-其中第 2 步 `Unified Setting Layer` 是当前最关键的大议题。
+每轮只收束会阻塞下一轮的最小结论，不追求一次性把该模块讲完。
 
 ---
 
@@ -162,3 +251,20 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
    - 未定问题；
    - 非目标；
    - 与 Kernel / Runtime / Provider / Security 的边界。
+
+---
+
+## 6. 讨论方法
+
+Application Layer 设计遵循方法论文档中的流程：
+
+```text
+领域发现 -> 场景模拟 -> ADR / Spec 收口 -> 最小实现验证
+```
+
+尤其需要避免一开始就把所有数据结构建模完整。每个模型应优先通过真实场景反推，例如预设作者、简单卡作者、复杂卡作者、插件作者、Provider Adapter 作者和 Importer 作者分别会如何使用 Studio。
+
+详见：
+
+- [`../02-methodology/README.md`](../02-methodology/README.md)
+- [`../02-methodology/scenario-driven-design-v0.md`](../02-methodology/scenario-driven-design-v0.md)

@@ -6,7 +6,7 @@
 **Audience**: Loom 引擎维护者、Studio 设计者、未来的 Extension 作者、独立前端作者。
 **Companion documents**: `loom-whitepaper.md`, `loom-scope.md`, `loom-architecture-answers.md`（ADR-001）。
 
-> **2026-05-20 方向修正**：本文早期版本大量使用 `Concept Stack Extension` 表达默认上层体验。该方向已经被后续讨论修正：默认完整 AIRP 体验应作为 Studio 第一方内建 `Studio AIRP Layer` / package layer，而不是 ordinary extension；但它仍不进入 Kernel。本文中关于 Kernel 不理解 chat / message / character / worldbook 的约束仍有效，关于 `Concept Stack` 可安装、可卸载、多个并存的表述应视为历史设计草案，后续需按 Studio AIRP Layer 重写。
+> **架构最新规范（2026-05-30）**：默认完整 AIRP 体验已收束为 Studio 第一方内建 `Studio AIRP Layer` / package layer，而不是 ordinary extension；但它仍不进入 Kernel。本文中关于 Kernel 不理解 chat / message / character / worldbook 的约束仍有效，所有旧的 `Concept Stack` 概念已废弃。
 
 ---
 
@@ -103,20 +103,20 @@ Kernel 暴露统一的 `system.introspect` RPC（见 §6.6）。任何客户端�
 Kernel 的 Loom Runner 是**纯函数化、可重入、无状态**的：每次 `kernel.loom.run` 调用都是独立的，自带它需要的全部上下文（passes / fragments / invoker / options）。Kernel 不知道：
 
 - "当前会话"是什么
-- "当前激活的概念栈"是什么
+- "当前激活的领域模型"是什么
 - 上一次 invoke 跟这一次 invoke 之间是什么关系
 - "用户"、"角色"、"对话历史"是什么
 
-这些都是**调用方**（某个 Concept Stack、独立前端、Card Script、其他 Extension）在自己那一边维护的状态。它们在调 `loom.run` 时把所需的一切打包传入，运行结束即散。
+这些都是**调用方**（第一方的 Studio AIRP Layer、独立前端、Card Script、其他 Extension）在自己那一边维护的状态。它们在调 `loom.run` 时把所需的一切打包传入，运行结束即散。
 
 这条信条带来的直接结果：
 
-- **多个 Concept Stack 天然共存于同一 Studio 进程**——`loom-studio-st` 与某新栈可以同时被装，互不冲突
-- **客户端在不同栈之间切换零成本**——无须重启、无须显式"切换"操作；切换 = 调不同栈的 RPC
+- **第一方的 Studio AIRP Layer 与其他第三方体验天然共存**——它们可以互不感知，并行运转，且都可以调用同一个 Kernel。
+- **客户端切换会话零成本**——无须重启、无须显式"切换"操作；切换 = 调不同领域层的 RPC
 - **Kernel 内部没有"全局编排器"或"主导栈"的隐式单例**
-- **invoke 自然并发可重入**——不同栈、不同会话的 invoke 同时跑，互不感知
+- **invoke 自然并发可重入**——不同会话的 invoke 同时跑，互不感知
 
-这条信条与 Tenet I 互文：Kernel 做得少，少到连"是谁在用我"都不知道。"会话"是 Concept Stack 的概念，不是平台的概念。
+这条信条与 Tenet I 互文：Kernel 做得少，少到连"是谁在用我"都不知道。"会话"是应用层的概念，不是平台的概念。
 
 ### Tenet V — Runtimes Are Extensions
 
@@ -151,7 +151,7 @@ Studio Kernel 是**能力底座**，不是运行时框架。它不提供内置 C
 | **Extension** | 用户/开发者安装的扩展物。可包含 Server Part、Client Part 之一或两者 |
 | **Server Part** | Extension 的服务端部分，运行在 Kernel 内 |
 | **Client Part** | Extension 的客户端部分，运行在 UI 宿主内；Kernel 不感知其形态 |
-| **Concept Stack** | 一种特殊的 Extension，定义一组 Document type、Pass、RPC，让用户能在某种"概念哲学"（如 ST 风格、纯依赖图风格、LARP 风格）下工作。Studio 不内置任何 Concept Stack |
+| **Studio AIRP Layer** | Studio 第一方内建的 product/package layer（领域层），定义默认完整的 AIRP 体验（Card、Session、Setting Layer 等），它不进入 Kernel，仅作为应用层底座存在 |
 | **Invocation** | 一次完整的 `loom.run` 调用，从初始 Fragment 到最终 Fragment 的过程，自带 invocation id |
 | **Trace** | 一次 invocation 的完整、不可变、自包含快照，存为 `system.trace` Document |
 | **Official Web UI** | 官方维护的"玩 + 开发一体"客户端，享受与第三方客户端完全相同的接口 |
@@ -607,7 +607,7 @@ com.author.memory/
 
 #### Pass 是命名注册物
 
-顶层 `contributes.passes` 注册的 Pass 进入 Kernel 的全局 Pass Registry，**任何 Extension 都可按名引用**。这是跨 Extension 编排（特别是 Concept Stack 编排别人提供的 Pass）的基础——也是 Tenet III 在 Pipeline 层的兑现。
+顶层 `contributes.passes` 注册的 Pass 进入 Kernel 的全局 Pass Registry，**任何 Extension 都可按名引用**。这是跨 Extension 编排（特别是第一方 AIRP 体验层编排别人提供的 Pass）的基础——也是 Tenet III 在 Pipeline 层的兑现。
 
 ### 7.3 Server Part
 
@@ -623,7 +623,6 @@ com.author.memory/
 #### 隔离模型
 
 Server Part 默认运行在主线程（inproc）。Extension 可在 manifest 里声明 `isolation: "worker"`，进入独立 `worker_threads`。
-
 |  | inproc | worker |
 |---|---|---|
 | 序列化开销 | 无 | structured clone 每次跨边界 |
@@ -659,6 +658,16 @@ Server Part 默认运行在主线程（inproc）。Extension 可在 manifest 里
 
 **Studio 不定义 Client Part 的 API 形状、不定义挂载方式、不规定 UI 框架**。这是 Tenet II（Transport API is the Contract）的延伸——UI 不在契约里，所以 UI 不被约束。
 
+#### 9.7 第一方内建层对 ST（SillyTavern）的兼容
+
+`Studio AIRP Layer` 承担着承接 SillyTavern 庞大生态与用户习惯的历史重任。
+
+它通过内建支持：
+1. **角色卡（Character Card）的导入与兼容**：将 V2 格式的角色卡数据、世界书导入为 Setting Store 中的树状 Entity-Component 结构。
+2. **场景组装逻辑的对齐**：通过 compose 对齐 ST 复杂的深度、顺序和插值语法，让老用户能获得一致的文本张力，且无痛迁移。
+
+文档不承诺 ST 原始数据结构是 Studio 后端的 canonical schema——在 Studio 中，它们已被升级并打包为更优雅的 ECS 设定层与变量模型。I 不被约束。
+
 #### Extension 拓扑
 
 | 类型 | server | client | 例子 |
@@ -666,11 +675,11 @@ Server Part 默认运行在主线程（inproc）。Extension 可在 manifest 里
 | 纯能力 Extension | ✓ | — | tokenizer、provider、向量算法、纯 Pass 库 |
 | 纯 UI Extension | — | ✓ | 主题包、新视图（用现有 RPC 组合） |
 | 双形态 Extension | ✓ | ✓ | 记忆、文生图、世界书管理器 |
-| **Concept Stack** | ✓ | (常带) | `loom-studio-st`、未来的新对话栈、LARP 栈 |
+| **Studio AIRP Layer** | ✓ | ✓ | 第一方内建领域体验层 |
 
 **纯 Server Part 与纯 Client Part 都是一等公民**。后端大佬只发后端，前端大佬只发前端，组合由用户在 workspace 里完成。
 
-**Concept Stack 是一种特殊的双形态 Extension**——它的 Server Part 比一般 Extension 多承担一件事：注册一组 `compose(input) → Pass[]` 与 `invoke(input) → Stream<Result>` RPC，把"概念哲学 + Source + Pass 编排"打包成可被任何客户端调用的能力。详见 §9。
+**Studio AIRP Layer 是一种特殊的双形态第一方内建层**——它的 Server Part 比一般 Extension 多承担一件事：注册一组 `compose(input) → Pass[]` 与 `invoke(input) → Stream<Result>` RPC，把"概念哲学 + Source + Pass 编排"打包成可被任何客户端调用的能力。详见 §9。
 
 ### 7.5 Default Presentation: Dock Convention
 
@@ -769,7 +778,7 @@ loom-studio install file:./my-local-extension
 
 #### Uninstall Semantics
 
-卸载 Extension 涉及两件事：源码与 Scratch Space 的物理清理（这部分由用户决定保留或删除），以及**它注册的 Document type 残留下的 user-facing 数据**——例如卸载某 Concept Stack 后，那个栈的 chat session、character card 仍然在 Document Store 里。
+卸载 Extension 涉及两件事：源码与 Scratch Space 的物理清理（这部分由用户决定保留或删除），以及**它注册的 Document type 残留下的 user-facing 数据**——例如卸载某 Extension 后，那个插件的 chat session、character card 仍然在 Document Store 里。
 
 Studio 采取**orphan + 用户决策**模型：
 
@@ -805,7 +814,7 @@ Studio 采取**orphan + 用户决策**模型：
 
 ## 9. Loom Engine ↔ Studio: The Composition Boundary
 
-这一节说明 Studio 与 Loom 引擎在运行时如何衔接，以及 Concept Stack 在生态中的具体形态。
+这一节说明 Studio 与 Loom 引擎在运行时如何衔接，以及第一方 AIRP 体验层在生态中的具体定位。
 
 ### 9.1 Composition Diagram
 
@@ -839,9 +848,9 @@ Studio 采取**orphan + 用户决策**模型：
     │  │ Server + Client            │      │
     │  └────────────────────────────┘      │
     │  ┌────────────────────────────┐      │
-    │  │ Concept Stack              │      │
+    │  │ Studio AIRP Layer          │      │
     │  │ (compose + invoke RPC +    │      │
-    │  │  Pass + DocType + Schema) │      │
+    │  │  Pass + DocType + Schema)  │      │
     │  └────────────────────────────┘      │
     └──────────────────────────────────────┘
                           │  Transport API
@@ -867,7 +876,7 @@ Studio 采取**orphan + 用户决策**模型：
                                    │ RPC
                                    │
 ┌──────────────┐     RPC/Event ┌────┴─────────────┐
-│ Tool / MCP   │ ◄───────────► │ Runtime / Stack  │
+│ Tool / MCP   │ ◄───────────► │ AIRP Layer /     │
 │ Extension    │               │ Extension        │
 └──────▲───────┘               └──────▲───────────┘
        │ docs/events                  │ loom.run
@@ -912,32 +921,21 @@ loom-studio-memory/
 
 这三条规则不只是工程审美——它们是 Trace 自包含与可回放的物质基础（§10）。
 
-### 9.4 Concept Stack 是什么（精确定义）
+### 9.4 Studio AIRP Layer 的第一方内建定位
 
-> **Concept Stack** 是一种特殊的 Extension，它把"一种概念哲学"打包成可被任何客户端调用的能力。
+> **Studio AIRP Layer** 是 Studio 官方第一方的内建体验层（Domain Layer）。
 
-一个 Concept Stack 通常包含：
+它不需要像普通 Extension 那样进行动态发现与 SAT 依赖求解，而是直接内置在后端进程与客户端中，负责提供开箱即用的 AIRP 级交互体验。
 
-- 一组 Document Type 与 Schema（如 `st.chat.session`、`st.character.card`、`st.world.entry`）
-- 一组 Pass（如 `StHistoryWindow`、`StWorldInfoInjection`）
-- 两个核心 RPC：
-  - `compose(input) → Pass[]`：给"我想自己看 pipeline 长什么样再决定怎么跑"的高级用户
-  - `invoke(input) → Stream<Result>`：给"我就想直接跑出来"的普通调用
-- 通常还附带 Client Part（默认 UI 形态，如 ST 风格的会话 UI）
+它主要包含：
+- 一组核心 Document Type 与 Schema（如 `airp.session`、`airp.card`、`airp.setting`）
+- 一组核心 Pass（如 `AirpHistoryWindow`、`AirpSettingProjectionPass`）
+- 两个核心 RPC 接口：
+  - `airp.compose(input) → Pass[]`：用来编译和组织提示词 Pipeline 的 Passes 序列
+  - `airp.invoke(input) → Stream<Result>`：用来触发单轮完整的 AI 交互逻辑（包含 compose、提示词编译、模型调用与状态更新）
 
-**关键性质**：
-
-- Concept Stack 的 RPC 是**纯函数式**的——没有"开始一个 session"和"结束一个 session"这种生命周期 RPC。每次调用自带全部上下文。
-- Concept Stack **不是 Kernel 的注册概念**——它在 Kernel 眼里就是一个普通 Extension，"Concept Stack" 只是它的设计模式名字。
-- 一个 workspace 可装多个 Concept Stack，**同时可用**，由调用方在每次调用时选用。
-
-Concept Stack 可以同时承担 Runtime Extension 的角色，但二者不是同义词：
-
-- 一个 ST 风格 Concept Stack 可能只提供 `compose`，让外部 Runtime 调用 provider
-- 一个 Chat Runtime 可能不定义新的 Document schema，只把现有 Stack / Provider / Tool 串起来
-- 一个 Agent Runtime 可能每一步都调用不同 Stack 的 `compose`，并把 tool observation 重新转成 Fragment
-
-因此，"Concept Stack" 描述的是**概念哲学与文档 / Pass 词汇**；"Runtime Extension" 描述的是**运行循环与状态推进**。Kernel 都不内置。
+**物理与逻辑隔离**：
+虽然 AIRP Layer 承载了丰富的聊天和设定业务逻辑，但它**完全不进入 Kernel**。它通过标准的 Document Store API、Event Bus 和 RPC 通道使用 Kernel 的无状态底层原语，保证 Kernel 对业务始终保持绝对“克制”与“无感知”。
 
 ### 9.5 Per-Invocation Orchestration
 
@@ -953,8 +951,8 @@ Tenet IV 的工程兑现就在这里。
   · Server Part 实例         (各自维护自己的状态)
 
 per-invocation 临时计算：
-  · 客户端选哪个 Concept Stack 的 RPC 调用
-  · Stack 的 compose 决定 Pass[] 数组
+  · 客户端调用第一方的 airp.invoke RPC
+  · airp.compose 编译决定 Pass[] 数组
   · kernel.loom.run(passes, fragments, invoker, options) 跑一次
   · 写一条 system.trace
   · 结束
@@ -981,56 +979,54 @@ Kernel 只看到一组独立的 Loom invocation 和 RPC / Event / Document 操�
 
 #### 三个场景
 
-**场景 1：ST 用户和西幻独立前端同时连一个 Studio**
+**场景 1：默认 Web UI 和独立西幻前端同时连一个 Studio**
 
-- ST 用户的 Web UI 调 `loom-studio-st.invoke(sessionId, userInput)` RPC
-- 西幻独立前端调它自己的栈，比如 `mystack.invoke(sessionId, userInput)` RPC
-- 两个 RPC 完全独立，各自内部组装 Fragment → 排序 Pass → 调 `kernel.loom.run`
+- 默认 Web UI 调用内建的 `airp.invoke(sessionId, userInput)` RPC 享受完整的 AIRP 交互
+- 独立西幻前端可以实现自己的领域层，调它自己的领域 RPC，比如 `mystack.invoke(sessionId, userInput)`
+- 两者完全独立，各自内部组装 Fragment → 排序 Pass → 调用底层的 `kernel.loom.run`
 - Kernel 同时跑两个 invoke，互不知情
 
-**场景 2：同一个用户在同一个 Web UI 里来回切换两个会话，分属不同栈**
+**场景 2：客户端切换会话零成本**
 
-- 会话 A 是 ST 风格的（`type: "st.chat.session"`）
-- 会话 B 是某新栈的（`type: "novelstack.session"`）
-- 用户点 A → Web UI 调 `loom-studio-st.invoke(...)`
-- 用户点 B → Web UI 调 `novelstack.invoke(...)`
-- **零成本切换**——什么都不需要重启，什么都不需要释放
+- 会话 A 是 AIRP 聊天（`type: "airp.session"`）
+- 会话 B 是第三方卡牌游戏玩法（`type: "cardgame.session"`）
+- 用户在 UI 点 A → 调用 `airp.invoke(...)`
+- 用户在 UI 点 B → 调用 `cardgame.invoke(...)`
+- **零成本切换**——什么都不需要重启，切换只是调用了不同的领域层 RPC，底层 Kernel 保持完全无状态和并发安全
 
-实现上 Web UI 只需要根据 Document `type` 字段决定调哪个 RPC。这是 Web UI 的逻辑，不是 Kernel 的逻辑。
-
-**场景 3：跨栈调用同一个 Server Part**
+**场景 3：跨领域复用同一个 Server Part**
 
 记忆插件 `loom-studio-memory` 提供 `MemoryRecallPass`。
 
-- ST 栈在它的 compose 里把 `MemoryRecallPass` 加进 Pass 数组
-- 新栈在它的 compose 里也把 `MemoryRecallPass` 加进去
-- 两个栈在不同 invoke 里都用了同一个 Pass
+- 第一方 AIRP 层在它的 compose 编译里把 `MemoryRecallPass` 加进 Pass 数组
+- 第三方的游戏卡牌玩法也可以在它的 compose 里把 `MemoryRecallPass` 加进去
+- 两个领域层在不同 invoke 里都安全地复用了同一个 Pass
 - `MemoryRecallPass` 是纯函数（拿 Fragment 数组返回 Fragment 数组），它访问向量索引是通过调用同 Server Part 的内部 API（不是 RPC，因为 Pass 不调 RPC——见 §9.3）
-- `memory` 的内部状态（向量索引）是**全局共享的**，不属于任何栈，按 sessionId / 业务 key 分隔即可
+- `memory` 的内部状态（向量索引）是**全局共享的**，不属于任何特定领域，按 sessionId / 业务 key 分隔即可
 
 ### 9.6 Stack Interop
 
-平台不直接支持 Stack 之间的拼接，但**允许调用方自己拼**。
+平台不直接支持领域层之间的拼接，但**允许调用方自己拼**。
 
 具体路径：
 
 - 高级玩家写一个**自己的小 Extension**（或 Card Script，或独立前端）
-- 在 invoke 时调 `loom-studio-st.compose(...)` 拿到 ST 的 Pass[]
+- 在 invoke 时调 `airp.compose(...)` 拿到默认的 Pass[]
 - 在中间插入 `newstack.SomeLorebookPass`（从 Pass Registry 里直接拿）
 - 再调 `kernel.loom.run(myComposedPasses, fragments, invoker)`
 
 这是 Tenet IV 的真正用法——**编排哲学外移**意味着任何人都可以自己当编排器，包括"魔改两个现成栈拼一个新的"。这是平台性的最具体兑现。
 
-### 9.7 ST 兼容栈：Concept Stack #1
+### 9.7 第一方内建层对 ST 的兼容与呈现
 
-`loom-studio-st`（原 `packages/st`）在 Studio 生态里的真实定位是：
+`loom-studio-st` 在第一方内建层中的设计定位是：
 
-> **Concept Stack #1**——它定义了 `st.chat.session` / `st.character.card` / `st.world.entry` 等 Document type，定义了 ST 风格的 Source（怎么把这些 Document 变成 Fragment），定义了 ST 风格的 compose（按 position/depth/order 排序）。它对 ST 用户是"兼容层"，对生态来说是"第一个完整概念栈"。
+> **第一方内建层的 ST 兼容逻辑**：它定义了 `st.chat.session` / `st.character.card` / `st.world.entry` 等 Document type，定义了 ST 风格的 Source（怎么把这些 Document 变成 Fragment），以及 ST 风格的 compose（按 position/depth/order 排序）。它对 ST 用户是"无痛兼容层"。
 
 它有两个角色：
 
-1. **诱饵作用**：让现役 SillyTavern 用户与扩展作者无痛迁移过来
-2. **示范作用**：给未来想做新 Concept Stack 的人一份完整、可读、可学习的参考实现
+1. **诱饵作用**：让现役 SillyTavern 用户与扩展作者无痛迁移过来。
+2. **示范作用**：作为官方第一方内置的最佳实践，为第三方领域开发同学提供完整、可读、可学习的参考。
 
 文档不承诺 ST 兼容栈的完整 API 或 schema 形态——这是它自己的事。Studio 平台层只承诺"它可以作为一个 Extension 存在并工作"。
 
@@ -1098,7 +1094,7 @@ provider RPC payload（可能是 messages[]，也可能是 raw provider request�
 具体模型 API
 ```
 
-这条边界避免 Provider Extension 直接理解任意 Stack 的 Fragment meta，也避免 Concept Stack 直接绑定具体 provider SDK。需要共享时，官方 Extension 可以提供推荐 RPC convention；需要突破时，Extension 可以通过自己的 RPC schema 暴露能力。
+这条边界避免 Provider Extension 直接理解任意领域层的 Fragment meta，也避免领域体验层直接绑定具体 provider SDK。需要共享时，官方 Extension 可以提供推荐 RPC convention；需要突破时，Extension 可以通过自己的 RPC schema 暴露能力。
 
 ### 9.10 Runtime Graph Examples
 
@@ -1108,7 +1104,7 @@ Studio 文档不应把运行时画成单向金字塔。下面是几种运行图�
 
 ```
 UserMessage Document
-  → ST Concept Stack / Chat Runtime
+  → 第一方 ST 兼容层 / Chat Runtime
   → Fragment[]
   → kernel.loom.run
   → Provider Extension RPC
@@ -1380,7 +1376,7 @@ Studio 不定义内置模型调用协议，但**鼓励**官方 Provider Extensio
 9. **`system.introspect` 的粒度与权限**：是否所有客户端都能看到完整能力图，还是按 capability 过滤？信任 token 是否分级？
 10. **Extension Scratch Space 的配额**：是否需要 per-extension 磁盘配额？目前倾向不做（信任本地用户），但需求需观察。
 11. **`engines.loom` 跨大版本时 Extension 的迁移路径**：Studio 是否提供 codemod / 兼容垫片？还是要求 Extension 作者自行升级？
-12. **Concept Stack 共存时的 UI 分流**：当一个 workspace 同时装了多个 Concept Stack，官方 Web UI 怎么呈现"我现在在哪个栈"？这是 Web UI 设计问题，不是平台问题，但需要在 Web UI 文档里有答案。
+12. **多端体验共存时的 UI 分流**：当一个 workspace 同时使用了第一方 AIRP 体验和第三方玩法，官方 Web UI 怎么呈现切换与分流？这是 Web UI 设计问题，不是平台问题，但需要在 Web UI 文档里有答案。
 13. **Server Part 状态命名空间的最佳实践**：要不要在文档里给 Server Part 作者一份"如何按 sessionId / callerRef 分隔状态"的指南？倾向不写硬约定（让 §10.6 的事后可观测性引导自然形成最佳实践），但需要观察。
 14. **官方 Provider RPC convention 的边界**：官方是否发布一份推荐 `invoke` payload（例如 chat messages + tools + sampling options），以及它是独立文档还是随官方 Provider Extension 文档发布？倾向后者，避免把它误读为 Kernel contract。
 15. **RPC / Audit 调用链关联字段**：Runtime Extension 会形成 `loom.run → provider RPC → tool RPC → loom.run` 的链路。Kernel audit 是否需要 `parentCallId` / `correlationId` 这种通用字段来串联，不限定业务语义但支撑 DevTool 展示？倾向需要。
@@ -1399,7 +1395,7 @@ Studio 不定义内置模型调用协议，但**鼓励**官方 Provider Extensio
 | Loom Runner 调用 | `Pipeline.run` |
 | Trace | `Pass` 执行的 IR snapshot 序列 |
 | Transport `loom.*` namespace | 包装后的 `@loom/core` 入口 |
-| Concept Stack 的 `compose` RPC | （引擎不感知；编排哲学外移由 Studio 这边承担） |
+| 第一方内建层的 `compose` RPC | （引擎不感知；编排哲学外移由 Studio 这边承担） |
 | Runtime Extension | （无对应；引擎只提供可重复调用的 pipeline 编译步骤） |
 | Provider / Tool RPC | （无对应；引擎不感知模型 API、tool call 或 MCP） |
 
@@ -1410,7 +1406,7 @@ Studio 不定义内置模型调用协议，但**鼓励**官方 Provider Extensio
 | Workspace | 用户的整个 ST 数据目录 |
 | Document (`character.card` type，由 `loom-studio-st` 注册) | 角色卡 |
 | Document (`worldbook.entry` type，由 `loom-studio-st` 注册) | 世界书条目 |
-| Concept Stack (`loom-studio-st`) | （无直接对应；ST 的 prompt 组装哲学被打包成栈） |
+| 第一方 ST 兼容层 (`loom-studio-st`) | （无直接对应；ST 的 prompt 组装哲学被打包为第一方层） |
 | Extension (Server + Client) | 全局扩展 |
 | Card Script | 角色绑定 JS 脚本 |
 | 官方 Web UI | ST 的 web 界面 |

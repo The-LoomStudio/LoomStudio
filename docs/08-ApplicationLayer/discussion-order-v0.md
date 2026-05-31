@@ -18,22 +18,23 @@
 | 3 | CS-1 Chat / Opening model | Session / ChatEntry / Opening 候选方案 |
 | 4 | CS-2 Composition Skeleton model | Skeleton / slot / cluster / ordering 候选方案 |
 
-### 第二轮：组合流程与 runtime 边界
+### 第二轮：Runtime 与组合流程
 
 | 顺序 | 议题 | 必要产物 |
 |---|---|---|
-| 5 | CS-6 Composition Pipeline | Documents -> Fragments -> Payload 流程 |
-| 6 | CS-7 Runtime Boundary | compose / sendMessage / provider.invoke 的边界 |
-| 7 | CS-10 Trace Explainability | source、activation、ordering 的解释模型 |
+| 5 | AIRP Runtime Model | Runtime Transcript / Narrative Timeline / ToolCall / ToolResult / commit 边界 |
+| 6 | CS-6 Composition Pipeline | Documents -> Fragments -> Payload 流程 |
+| 7 | CS-7 Runtime Boundary | compose / runtime loop / provider.invoke 的边界 |
+| 8 | CS-10 Trace Explainability | source、activation、ordering、run / step / commit 的解释模型 |
 
 ### 第三轮：增长层
 
 | 顺序 | 议题 | 必要产物 |
 |---|---|---|
-| 8 | CS-4 Global Scope | global user setting / global setting library 的边界 |
-| 9 | CS-5 State / Mutation API | state patch / AI update / rollback 边界 |
-| 10 | CS-8 Studio AIRP UI Integration | RPC / document access / 内建 UI 策略 |
-| 11 | CS-9 Compatibility | import 策略 |
+| 9 | CS-4 Global Scope | global user setting / global setting library 的边界 |
+| 10 | CS-5 State / Mutation API | state patch / AI update / rollback 边界 |
+| 11 | CS-8 Studio AIRP UI Integration | RPC / document access / 内建 UI 策略 |
+| 12 | CS-9 Compatibility | import 策略 |
 
 ---
 
@@ -47,6 +48,9 @@
 - Opening 的准确 schema；
 - Chat Session 的准确 schema；
 - ChatEntry / TimelineEntry / compiled Message 的命名；
+- Runtime Transcript / Narrative Timeline 的命名与边界；
+- ToolCall / ToolResult 是否作为 runtime transcript 一等条目或独立 Document；
+- 剧情文本 commit 是 tool、Runtime API，还是两者都允许；
 - timeline / branch / swipe 是否进入 M0；
 - Setting Layer 的准确 schema；
 - Composition Skeleton 的准确 schema；
@@ -73,4 +77,5 @@
 4. Chat / Opening model M0；
 5. Composition Skeleton model M0；
 6. Composition pipeline M0；
-7. Runtime boundary。
+7. AIRP Runtime model；
+8. Runtime boundary。
