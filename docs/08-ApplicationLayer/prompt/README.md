@@ -41,6 +41,7 @@ Loom Core:
 本目录收纳：
 
 - Loom Core 对接边界；
+- Prompt Builder 的 Structure / Source / Capability 设计哲学；
 - Prompt Builder pipeline；
 - Composition Skeleton / Preset；
 - slot / marker / order / fill policy；
@@ -179,6 +180,31 @@ Prompt Composition Component Model:
 
 它们可以都采用 ECS-like 思想，但不应合并成同一套 component vocabulary。
 
+### 4.6 Structure 负责接，Source 负责产出，Capability 负责编排
+
+Prompt Builder 的长期边界应收束为：
+
+```text
+Composition Skeleton:
+  提供 Zone Tree、Injection Group、挂载点、约束和输出形状。
+
+Source:
+  Card、Setting Layer、Memory、Plugin、Runtime、Preset Asset 等各自产出内容。
+
+Capability:
+  Projection、Activation、Resolution、Lifecycle、Render 等横向能力。
+```
+
+因此：
+
+- Preset / Skeleton 不应知道具体内容来源；
+- Source 不应依赖具体 message 位置；
+- Injection Group 是 Source 和 Zone 之间的语义挂载协议；
+- 排序只负责顺序，不负责互斥、覆盖和选择；
+- Semantic Slot 与 Resolution Layer 需要作为后续设计独立展开。
+
+详见 [`prompt-builder-philosophy-v0.md`](prompt-builder-philosophy-v0.md)。
+
 Setting Layer 的组件化仍是开放议题。当前只收束一点：
 
 ```text
@@ -186,7 +212,100 @@ Setting Layer 的组件化仍是开放议题。当前只收束一点：
 宏更适合作为 binding 引用语法，而不是 canonical source。
 ```
 
-### 4.6 默认 AIRP Prompt Projection 不等于 Agent 基座
+### 4.7 Activation 是通用控制阶段，不是 Agent 专属开关
+
+2026-06-20 讨论收束：
+
+此前围绕 Agent mode / step 的讨论，本质上不是 Agent 专属问题，而是 prompt composition 中的通用 Activation 问题：
+
+```text
+facts / signals 变化
+  -> prompt-facing 原子在本次 build 中 active 或 inactive
+```
+
+因此应区分：
+
+```text
+enabled:
+  作者配置层状态。
+  表示某个 entry / slot / zone 是否默认可用。
+  可以持久化。
+
+active:
+  本次 PromptBuild 的求值结果。
+  表示某个 entry / slot / zone 是否参与当前 composition。
+  不写回源配置，只进入 trace / diagnostics。
+```
+
+Prompt Builder 不应在每轮 build 中直接修改 Preset / Setting Layer 的 `enabled` 配置。Activation Engine 只产生本次 build 的虚拟控制结果。
+
+Activation 的触发源应保持通用，不认识 Agent model：
+
+```text
+keyword hit:
+  当前输入 / 上下文命中关键词。
+
+vector match:
+  检索结果达到阈值。
+
+runtime fact:
+  agent.mode、runtime.hasFreshRead、pendingCommit 等运行事实。
+
+state fact:
+  好感度、HP、当前位置、回合数等状态事实。
+
+manual / pin:
+  用户手动激活、固定或临时覆盖。
+
+plugin signal:
+  插件贡献的领域状态或事件。
+```
+
+这些都统一作为 Activation Signal / Fact 输入 Activation Engine。Agent mode 只是 fact 来源之一，不是 Prompt Builder 的特殊控制概念。
+
+候选管线：
+
+```text
+Source Set
+  -> collect facts / activation signals
+  -> evaluate activation conditions
+  -> active projection set
+  -> projection / slot / zone materialization
+  -> ordering
+  -> resolution
+  -> transform / binding / render
+  -> compiled payload
+```
+
+这意味着：
+
+- 关键词触发、向量触发、变量条件、Agent mode 条件应共享同一套 Activation 解释模型；
+- entry / slot / zone / injection group 可以声明 activation condition；
+- Activation 只决定是否参与 composition，不推进 runtime、不调用 tool、不写状态；
+- trace 必须解释每个 active / inactive 结果的 fact、signal、rule 和覆盖来源。
+
+平台化原则：
+
+```text
+Snapshot first:
+  每次 PromptBuild 先冻结 facts / signals。
+
+Evaluate, do not mutate:
+  Activation 只产出 active set，不修改 enabled 或源配置。
+
+Activation before Resolution:
+  先决定谁参与，再处理互斥、覆盖、merge 和排序。
+
+Trace everything:
+  active / inactive 都必须可解释。
+
+Low-code UI, declarative model:
+  用户通过配置面板编辑条件，底层保存声明式 rule。
+```
+
+该模型借鉴 Feature Flag、Rule Engine、Reactive / Dataflow 和 PLC scan cycle 的成熟经验，但只采用适合 PromptBuild 的轻量子集。
+
+### 4.8 默认 AIRP Prompt Projection 不等于 Agent 基座
 
 Prompt Builder 消费 Runtime 提供的投影，而不是直接读取所有 Agent 工作历史。
 
@@ -203,7 +322,7 @@ Prompt Projection:
 
 这是默认 AIRP 体验的 projection policy，不是 Prompt Builder 或 Agent 基座的硬编码假设。
 
-### 4.7 Dynamic Context Mount 与 Fresh Read Tail
+### 4.9 Dynamic Context Mount 与 Fresh Read Tail
 
 Prompt Builder 需要支持由 Runtime 提供的动态上下文挂载。
 
@@ -241,7 +360,7 @@ Settled Dynamic Mount:
 
 Prompt Builder 不决定 read item 的生命周期。Runtime Policy 决定 TTL、pin、budget、stale 和卸载；Prompt Builder 只按投影输入和 Skeleton 规则编译。
 
-### 4.8 Zone Tree 与 Injection Group
+### 4.10 Zone Tree 与 Injection Group
 
 Preset / Composition Skeleton 不应只是一维 slot 列表。
 
@@ -263,7 +382,7 @@ Injection Group:
 
 详见 [`composition-skeleton-and-preset-v0.md`](composition-skeleton-and-preset-v0.md)。
 
-### 4.9 资源视图与 Prompt 视图
+### 4.11 资源视图与 Prompt 视图
 
 UI 上应区分：
 

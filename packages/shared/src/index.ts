@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 export type JsonPrimitive = null | boolean | number | string
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
 export type JsonObject = { [key: string]: JsonValue }
@@ -21,11 +23,8 @@ export function nowIso(clock: Clock = { now: () => new Date() }): string {
   return clock.now().toISOString()
 }
 
-let fallbackIdCounter = 0
-
 export function createId(prefix = 'id'): string {
-  fallbackIdCounter += 1
-  return `${prefix}-${fallbackIdCounter}`
+  return `${prefix}-${randomUUID()}`
 }
 
 export function serializeError(error: unknown, code = 'internal.error'): SerializedError {

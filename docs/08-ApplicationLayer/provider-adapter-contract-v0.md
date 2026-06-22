@@ -405,3 +405,59 @@ Usage:
 - parallel tool calls；
 - cross-provider fallback。
 
+---
+
+## 14. Discussion Capture: OpenAI-style Default / Provider Extension Mapping (2026-05-31)
+
+### 14.1 默认作者心智采用 OpenAI-style
+
+为了降低用户、预设作者和 UI 的心智负担，Studio Application 可以默认采用 OpenAI-style messages 心智来组织第一版 compiled payload。
+
+这意味着：
+
+```text
+Prompt Builder / Preset UI:
+  可以把 system / user / assistant / tool-like message 作为默认解释模型。
+
+Provider Adapter:
+  再把这个 messages-like payload 映射到具体 provider。
+```
+
+但这只是 Application / UX 默认，不是 Kernel contract。
+
+### 14.2 Provider Extension 承担格式差异
+
+不同渠道商有自己的 request shape、role 语义、参数和新增能力。
+
+Provider Extension 负责：
+
+- request body mapping；
+- provider-specific options；
+- model capability declaration；
+- new parameter exposure；
+- response normalization；
+- usage / error normalization；
+- provider-native tool-call mapping。
+
+例子：
+
+```text
+某 provider 新增 reasoning 参数:
+  Provider Extension 更新 profile/options schema。
+  Provider Extension 声明 capability。
+  Runtime / UI 可以发现并配置。
+  Prompt Builder 不需要理解该 provider 的私有字段。
+```
+
+### 14.3 官方默认 Provider Family
+
+官方默认渠道可以优先覆盖：
+
+```text
+OpenAI-compatible
+Anthropic-compatible
+Gemini-compatible
+```
+
+这些 adapter 作为官方 Provider Extension / package 提供，而不是 Kernel 内置能力。
+

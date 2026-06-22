@@ -170,5 +170,8 @@ Loom Studio 也需要规格驱动，因为平台边界一旦实现就会成为�
 ## 5. 相关文档
 
 - [`scenario-driven-design-v0.md`](scenario-driven-design-v0.md)
+- [`architecture-governance-v0.md`](architecture-governance-v0.md)
+- [`client-architecture-governance-v0.md`](client-architecture-governance-v0.md)
+- [`test-governance-v0.md`](test-governance-v0.md)
 - [`../08-ApplicationLayer/README.md`](../08-ApplicationLayer/README.md)
 - [`../reference/sillytavern-architecture-reference.md`](../reference/sillytavern-architecture-reference.md)

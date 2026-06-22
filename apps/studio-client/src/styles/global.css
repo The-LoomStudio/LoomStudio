@@ -1,0 +1,149 @@
+:root {
+  color: var(--airp-color-text);
+  background: var(--airp-color-bg);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  --airp-color-bg: #ece9e1;
+  --airp-color-surface: #f7f5ef;
+  --airp-color-panel: #fbfaf6;
+  --airp-color-panel-muted: #e2ded4;
+  --airp-color-border: #d1ccc0;
+  --airp-color-border-strong: #a8a298;
+  --airp-color-text: #1f1e1a;
+  --airp-color-muted: #706d65;
+  --airp-color-faint: #9b968b;
+  --airp-color-accent: #2f6f73;
+  --airp-color-accent-strong: #1f5558;
+  --airp-color-accent-soft: #e6eeee;
+  --airp-color-user: transparent;
+  --airp-color-assistant: transparent;
+  --airp-color-danger-bg: #fff0f0;
+  --airp-color-danger-text: #9f2d35;
+  --airp-color-warning: #a66613;
+
+  --airp-chat-width: 720px;
+  --airp-canvas-width: 860px;
+  --airp-rail-width: 44px;
+  --airp-resource-width: 296px;
+  --airp-overlay-width: 360px;
+  --airp-input-height: 128px;
+  --airp-radius-panel: 4px;
+  --airp-radius-message: 0;
+  --airp-shadow-panel: none;
+  --airp-font-narrative: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background: var(--airp-color-bg);
+}
+
+* {
+  scrollbar-color: color-mix(in srgb, var(--airp-color-border-strong) 58%, var(--airp-color-bg)) var(--airp-color-bg);
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--airp-color-bg);
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 3px solid var(--airp-color-bg);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--airp-color-border-strong) 58%, var(--airp-color-bg));
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--airp-color-border-strong) 76%, var(--airp-color-bg));
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  min-height: 32px;
+  border: 1px solid var(--airp-color-border);
+  border-radius: 4px;
+  padding: 7px 10px;
+  color: var(--airp-color-text);
+  background: transparent;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--airp-color-accent);
+  color: var(--airp-color-accent-strong);
+}
+
+button:focus-visible,
+textarea:focus,
+select:focus,
+input:focus {
+  outline: none;
+  border-color: var(--airp-color-accent);
+  box-shadow: 0 0 0 2px rgb(38 117 141 / 18%);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
+}
+
+textarea,
+select,
+input {
+  width: 100%;
+  border: 1px solid var(--airp-color-border);
+  border-radius: 4px;
+  color: var(--airp-color-text);
+  background: transparent;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 18px;
+  line-height: 1.25;
+  font-weight: 680;
+}
+
+h2 {
+  font-size: 12px;
+  line-height: 1.3;
+  font-weight: 720;
+  text-transform: uppercase;
+  color: #40515e;
+}
+
+h3 {
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 680;
+  color: var(--airp-color-text);
+}

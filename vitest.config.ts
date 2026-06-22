@@ -1,12 +1,36 @@
 import { defineConfig } from 'vitest/config'
 
+const testScope = process.env.LOOM_TEST_SCOPE
+const defaultTestInclude = [
+  'packages/**/*.test.ts',
+  'apps/**/*.test.ts',
+  'extensions/**/*.test.ts',
+  'tests/unit/**/*.test.ts',
+  'tests/contract/**/*.test.ts',
+  'tests/integration/**/*.test.ts',
+  'tests/regression/**/*.test.ts',
+]
+const defaultTestExclude = [
+  '**/node_modules/**',
+  '**/dist/**',
+  'tests/archive/**/*.test.ts',
+  'tests/probes/**/*.test.ts',
+]
+const scopedTestInclude =
+  testScope === 'archive'
+    ? ['tests/archive/**/*.test.ts']
+    : testScope === 'probes'
+      ? ['tests/probes/**/*.test.ts']
+      : defaultTestInclude
+
 export default defineConfig({
   resolve: {
     alias: {
       '@loom-studio/client-bridge': new URL('./packages/client-bridge/src/index.ts', import.meta.url).pathname,
       '@loom-studio/diagnostics': new URL('./packages/diagnostics/src/index.ts', import.meta.url).pathname,
       '@loom-studio/document-store': new URL('./packages/document-store/src/index.ts', import.meta.url).pathname,
-      '@loom-studio/extension-host': new URL('./packages/extension-host/src/index.ts', import.meta.url).pathname,
+      '@loom-studio/application-runtime': new URL('./packages/application-runtime/src/index.ts', import.meta.url).pathname,
+      '@loom-studio/extension-host': new URL('./packages/extension-sdk/extension-host/src/index.ts', import.meta.url).pathname,
       '@loom-studio/extension-sdk': new URL('./packages/extension-sdk/src/index.ts', import.meta.url).pathname,
       '@loom-studio/kernel': new URL('./packages/kernel/src/index.ts', import.meta.url).pathname,
       '@loom-studio/loom-runner': new URL('./packages/loom-runner/src/index.ts', import.meta.url).pathname,
@@ -17,7 +41,8 @@ export default defineConfig({
     },
   },
   test: {
-    include: ['packages/**/*.test.ts', 'apps/**/*.test.ts', 'extensions/**/*.test.ts', 'tests/**/*.test.ts'],
+    include: scopedTestInclude,
+    exclude: testScope ? ['**/node_modules/**', '**/dist/**'] : defaultTestExclude,
     passWithNoTests: true,
   },
 })

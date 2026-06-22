@@ -20,6 +20,8 @@ Studio Application
 
 Provider adapters、Importers、Exporters、Tools、模型特定 payload adapters 和外部服务集成仍适合 extension 化。
 
+其中 AI Gateway / Provider Extension 已从单纯 Application Provider 边界上升为平台级共享能力，详见 [`../09-PlatformLayer/ai-gateway-and-provider-extension-v0.md`](../09-PlatformLayer/ai-gateway-and-provider-extension-v0.md)。
+
 ADR-005 仍是当前主讨论入口，但它不应无限增长。随着各议题稳定，应逐步拆出本目录下的专题文档。
 
 当前原则：
@@ -114,6 +116,7 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 | 文件 | 状态 | 目的 |
 |---|---|---|
 | [`card-model-v0.md`](card-model-v0.md) | Migrated / Open Design | Card 作为顶层内容单元的模型 |
+| [`asset-import-export-boundary-v0.md`](asset-import-export-boundary-v0.md) | Open Design / Implementation Planning | Card、Setting Layer、Workspace Artifact、导入导出与运行时 SQL 文档边界 |
 | `card-packaging-v0.md` | Planned | Card 分发、资源引用、readme / metadata 边界 |
 
 ### 3.3 设定层与状态
@@ -178,6 +181,8 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 | [`airp-runtime-model-v0.md`](airp-runtime-model-v0.md) | Open Design / Discussion Capture | AIRP Runtime、Runtime Transcript、Narrative Timeline、ToolCall / ToolResult 与 commit 边界 |
 | [`runtime-turn-flow-v0.md`](runtime-turn-flow-v0.md) | Open Design | 玩家输入到回复落盘的完整 loop |
 | [`provider-adapter-contract-v0.md`](provider-adapter-contract-v0.md) | Open Design | Provider Adapter / Gateway contract、invoke / stream、capability、usage / error |
+| [`../09-PlatformLayer/ai-gateway-and-provider-extension-v0.md`](../09-PlatformLayer/ai-gateway-and-provider-extension-v0.md) | Open Design | 平台级 AI Gateway、Provider Extension、Model Profile、统一配置面板 |
+| [`m0-backend-slice-v0.md`](m0-backend-slice-v0.md) | M0 Implementation Slice | 不接 UI / 真实模型前提下的 Application Runtime 后端闭环 |
 
 ### 3.9 Transform Rule
 
@@ -204,7 +209,23 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 |---|---|---|
 | [`frontend-projection-v0.md`](frontend-projection-v0.md) | Migrated / Open Design | Studio AIRP UI 集成、编辑器、预览与 RPC 表面候选 |
 
-### 3.13 Deferred / 兼容层
+### 3.13 UI Foundations
+
+| 文件 | 状态 | 目的 |
+|---|---|---|
+| [`ui/README.md`](ui/README.md) | Open Design / Discussion Capture | Studio Application UI 分类入口，归档布局、滚动、状态、I18N、无障碍等基础问题 |
+| [`ui/ui-foundation-v0.md`](ui/ui-foundation-v0.md) | Open Design | UI 基础原则、桌面优先、信息密度、设计 token、文案与状态原则 |
+| [`ui/visual-language-v0.md`](ui/visual-language-v0.md) | Open Design / Design Direction | 平面编辑式工作台：留白、字重、细线、低装饰的正式 UI 视觉语言 |
+| [`ui/default-airp-layout-v0.md`](ui/default-airp-layout-v0.md) | Open Design | 默认 AIRP 布局骨架：稳定阅读主轴、悬浮工具层、输入舱 |
+| [`ui/ui-preflight-decisions-v0.md`](ui/ui-preflight-decisions-v0.md) | Open Design / Initial Decisions | UI 动工前的 I18N、滚动、焦点、渲染安全和插件 slot 基础决策 |
+| [`ui/css-architecture-and-customization-v0.md`](ui/css-architecture-and-customization-v0.md) | Open Design | CSS Modules、Design Tokens、Custom CSS、插件样式边界 |
+| [`ui/agent-panel-rendering-v0.md`](ui/agent-panel-rendering-v0.md) | Open Design | Agent 面板内文本、Artifact、ToolCall 和交互卡片的渲染边界 |
+| [`ui/custom-renderer-poc-plan-v0.md`](ui/custom-renderer-poc-plan-v0.md) | PoC Plan | 多标签页 Custom Renderer 的隔离、状态同步、轻量 SDK、CSS/A11Y/I18N smoke |
+| [`ui/layout-and-scroll-containers-v0.md`](ui/layout-and-scroll-containers-v0.md) | Open Design | Application 布局、滚动所有权、虚拟列表、滚动恢复 |
+| [`ui/interaction-states-v0.md`](ui/interaction-states-v0.md) | Open Design | empty / loading / error / pending / dirty / optimistic / degraded 等状态 |
+| [`ui/i18n-and-accessibility-v0.md`](ui/i18n-and-accessibility-v0.md) | Open Design | I18N、键盘导航、焦点管理、ARIA、可缩放文本、对比度 |
+
+### 3.14 Deferred / 兼容层
 
 | 文件 | 状态 | 目的 |
 |---|---|---|

@@ -104,16 +104,33 @@ Setting Layer 至少涉及两个步骤：
 
 ```text
 Activation:
-  哪些 setting entries 在当前 session / chat / runtime input 下被选中。
+  哪些 setting entries 在当前 facts / signals 下 active。
 
 Projection:
-  被选中的 entries 如何变成 prompt-facing fragments，
+  active entries 如何变成 prompt-facing fragments，
   并填入 Composition Skeleton 的 slots。
 ```
 
+这里的 Activation 是 Prompt Builder 的通用控制阶段，不是 Setting Layer 私有机制。
+
+Setting Layer 可以提供：
+
+```text
+content:
+  setting entries / folders / subjects。
+
+facts:
+  好感度、地点、阵营、状态变量等可被条件引用的事实。
+
+signals:
+  keyword hit、vector match、manual pin、plugin signal 等激活信号。
+```
+
+Prompt Builder 统一执行 Activation Evaluation，并产出 active / inactive / reason。Setting Layer 的 `enabled` 只表示作者配置层是否允许该 entry 被使用；`active` 是某次 PromptBuild 的求值结果，不应写回源配置。
+
 开放问题：
 
-- activation 结果写入 fragment meta，还是单独写 activation report；
+- activation 结果写入 fragment meta，还是单独写 Activation Report；
 - inactive entries 是否默认进入 trace；
 - projection rule 是 Setting Layer 的能力，还是 Prompt Builder 的能力；
 - slot hint 是 author 明确声明，还是 composer 自动推断；

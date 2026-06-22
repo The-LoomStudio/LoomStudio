@@ -1,0 +1,204 @@
+.agentRuntimeManager {
+  background: var(--airp-color-panel);
+  border: 1px solid var(--airp-color-border);
+  border-radius: 6px;
+  margin: 16px 28px 0;
+}
+
+.agentHeader {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 14px;
+  user-select: none;
+}
+
+.agentHeaderInfo {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.agentTitle {
+  color: var(--airp-color-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.agentActiveBadge {
+  background: color-mix(in srgb, var(--airp-color-accent) 15%, transparent);
+  border-radius: 4px;
+  color: var(--airp-color-accent);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+}
+
+.agentEmptyBadge {
+  background: color-mix(in srgb, var(--airp-color-border) 40%, transparent);
+  border-radius: 4px;
+  color: var(--airp-color-muted);
+  font-size: 11px;
+  padding: 2px 6px;
+}
+
+.agentAddButton {
+  align-items: center;
+  background: var(--airp-color-surface);
+  border: 1px solid var(--airp-color-border);
+  border-radius: 4px;
+  color: var(--airp-color-text);
+  cursor: pointer;
+  display: flex;
+  font-size: 11px;
+  font-weight: 600;
+  gap: 4px;
+  padding: 4px 8px;
+}
+
+.agentAddButton:hover {
+  background: var(--airp-color-border);
+}
+
+.agentBody {
+  background: var(--airp-color-bg);
+  border-bottom-left-radius: 6px;
+  border-bottom-right-radius: 6px;
+  border-top: 1px solid var(--airp-color-border);
+  padding: 12px 14px;
+}
+
+.agentCreateForm {
+  background: var(--airp-color-surface);
+  border: 1px dashed var(--airp-color-border);
+  border-radius: 4px;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 12px;
+}
+
+.agentCreateForm input,
+.agentCreateForm select {
+  background: var(--airp-color-bg);
+  border: 1px solid var(--airp-color-border);
+  border-radius: 4px;
+  color: var(--airp-color-text);
+  flex: 1;
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.agentFormActions {
+  display: flex;
+  gap: 6px;
+}
+
+.agentBtnPrimary,
+.agentBtnCancel,
+.agentBtnDanger {
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 10px;
+}
+
+.agentBtnPrimary {
+  background: var(--airp-color-text);
+  border: none;
+  color: var(--airp-color-bg);
+}
+
+.agentBtnPrimary:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.agentBtnCancel {
+  background: transparent;
+  border: 1px solid var(--airp-color-border);
+  color: var(--airp-color-muted);
+}
+
+.agentBtnCancel:hover {
+  background: var(--airp-color-surface);
+}
+
+.agentBtnDanger {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--airp-color-muted);
+}
+
+.agentBtnDanger:hover {
+  background: color-mix(in srgb, #e74c3c 8%, transparent);
+  border-color: #e74c3c;
+  color: #e74c3c;
+}
+
+.agentList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.agentItem {
+  align-items: center;
+  background: var(--airp-color-surface);
+  border: 1px solid var(--airp-color-border);
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  transition: all 0.15s ease;
+}
+
+.agentItem:hover,
+.agentItemActive {
+  border-color: var(--airp-color-accent);
+}
+
+.agentItemActive {
+  background: color-mix(in srgb, var(--airp-color-accent) 8%, var(--airp-color-surface));
+}
+
+.agentItemInfo {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.agentItemInfo strong {
+  color: var(--airp-color-text);
+  font-size: 13px;
+}
+
+.agentItemInfo span {
+  color: var(--airp-color-muted);
+  font-size: 11px;
+}
+
+.agentItemActions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.agentItemActions select {
+  background: var(--airp-color-bg);
+  border: 1px solid var(--airp-color-border);
+  border-radius: 4px;
+  color: var(--airp-color-text);
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+.agentEmptyList {
+  color: var(--airp-color-muted);
+  font-size: 12px;
+  margin: 0;
+}

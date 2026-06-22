@@ -1,0 +1,164 @@
+{
+  "schemaVersion": 1,
+  "artifactId": "loom-city-v0",
+  "displayName": "Loom City",
+  "description": "Canonical Prompt Builder demo workspace. Artifact is only a seed and distribution boundary; imported SQL workspace documents are the editable runtime state.",
+  "card": {
+    "name": "雨线车站",
+    "userName": "旅人",
+    "description": "Loom City 中一座只在雨夜显现的车站。它用于测试 Prompt Builder 的导入、编辑、排序、预览和导出闭环。",
+    "preset": {
+      "system": "你是 Loom City 的叙事代理。保持都市奇幻、轻微悬疑和第二人称叙事。"
+    },
+    "opening": {
+      "entries": [
+        {
+          "role": "assistant",
+          "content": "雨线车站的月台灯逐盏亮起，广播里传来一段被雨声切碎的报站。"
+        }
+      ]
+    },
+    "settingLayer": {
+      "entries": [
+        {
+          "id": "rainline-station",
+          "path": "city.zone.rainline-station",
+          "title": "雨线车站",
+          "content": "雨线车站只在整点暴雨中显现，候车厅的钟永远慢三分钟。",
+          "enabled": true,
+          "activation": { "kind": "always" },
+          "tags": ["city", "station"]
+        },
+        {
+          "id": "archive-keeper",
+          "path": "city.npc.archive-keeper",
+          "title": "档案管理员",
+          "content": "档案管理员记得每一张被撕毁的车票，也记得它们原本要去往哪里。",
+          "enabled": true,
+          "activation": { "kind": "keyword", "keywords": ["档案", "车票", "管理员"] },
+          "tags": ["city", "npc"]
+        }
+      ]
+    }
+  },
+  "contextAssets": [
+    {
+      "id": "preset-default-airp",
+      "label": "Default AIRP Preset",
+      "meta": "Composition Skeleton",
+      "category": "preset",
+      "kind": "module",
+      "body": "Preset 负责结构、挂载点和默认排序；内容由 Source 通过 Capability 注入。",
+      "children": [
+        {
+          "id": "projection-order-profile-main",
+          "label": "Main Projection Order",
+          "meta": "Projection Order Profile",
+          "category": "preset",
+          "kind": "order",
+          "body": "主排序覆盖层。编辑它只改变 SQL workspace 中的排序 profile，不会回写原始 artifact。",
+          "orderList": [
+            "preset-style-directive",
+            "sl-rainline-station",
+            "sl-archive-keeper",
+            "vs-narrative-history",
+            "vs-current-input"
+          ],
+          "slotRanks": [
+            {
+              "injectionGroupKey": "preset.system",
+              "anchor": "inside",
+              "slotKey": "preset:preset-default-airp@preset.system",
+              "rankKey": "0000"
+            },
+            {
+              "injectionGroupKey": "setting.stable",
+              "anchor": "inside",
+              "slotKey": "setting-layer:city-layers-main@setting.stable",
+              "rankKey": "0001"
+            },
+            {
+              "injectionGroupKey": "chat.history",
+              "anchor": "inside",
+              "slotKey": "narrative-chat:session-main@chat.history",
+              "rankKey": "0002"
+            },
+            {
+              "injectionGroupKey": "chat.inside",
+              "anchor": "inside",
+              "slotKey": "runtime:runtime.current-turn@chat.inside",
+              "rankKey": "0003"
+            }
+          ]
+        },
+        {
+          "id": "preset-style-directive",
+          "label": "叙事风格",
+          "meta": "preset.system",
+          "category": "preset",
+          "kind": "entry",
+          "body": "使用清晰、克制、带有雨夜城市感的描写。不要提前解释全部谜底。",
+          "enabled": true,
+          "capabilities": {
+            "projection": {
+              "injectionGroupKey": "preset.system",
+              "slotKey": "preset:preset-default-airp@preset.system",
+              "entryOrderHint": 10,
+              "slotOrderHint": 100
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "setting-city-layers",
+      "label": "Loom City Layers",
+      "meta": "Setting Layer",
+      "category": "setting",
+      "kind": "module",
+      "body": "Setting Layer 作为整体 slot 注入，单个条目只参与 slot 内部排序。",
+      "children": [
+        {
+          "id": "sl-rainline-station",
+          "label": "雨线车站",
+          "meta": "setting.stable",
+          "category": "setting",
+          "kind": "entry",
+          "body": "雨线车站只在整点暴雨中显现，候车厅的钟永远慢三分钟。",
+          "enabled": true,
+          "capabilities": {
+            "activation": { "kind": "always" },
+            "projection": {
+              "injectionGroupKey": "setting.stable",
+              "slotKey": "setting-layer:city-layers-main@setting.stable",
+              "entryOrderHint": 10,
+              "slotOrderHint": 200
+            }
+          }
+        },
+        {
+          "id": "sl-archive-keeper",
+          "label": "档案管理员",
+          "meta": "setting.stable",
+          "category": "setting",
+          "kind": "entry",
+          "body": "档案管理员记得每一张被撕毁的车票，也记得它们原本要去往哪里。",
+          "enabled": true,
+          "capabilities": {
+            "activation": { "kind": "keyword", "keywords": ["档案", "车票", "管理员"] },
+            "projection": {
+              "injectionGroupKey": "setting.stable",
+              "slotKey": "setting-layer:city-layers-main@setting.stable",
+              "entryOrderHint": 20,
+              "slotOrderHint": 200
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "kind": "demo-workspace",
+    "createdFor": "prompt-builder-closed-loop"
+  }
+}

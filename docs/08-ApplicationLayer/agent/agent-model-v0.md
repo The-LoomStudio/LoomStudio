@@ -182,6 +182,31 @@ Agent 运行中需要上下文:
 
 Agent 可以影响 Prompt Builder 的输入选择，但不拥有编译逻辑。
 
+2026-06-20 补充：
+
+Agent 的 mode / phase / step 不应成为 Prompt Builder 的专属控制概念。它们应作为 Runtime facts 输入通用 Activation Engine：
+
+```text
+agent.mode = write
+agent.mode = finalize
+agent.phase = patch_state
+runtime.hasFreshRead = true
+```
+
+Prompt-facing entry / slot / zone 可以声明自己在这些 facts 下 active，但同一套 Activation 机制也应服务 Setting Layer 变量、关键词触发、向量触发、插件 signal 和用户 pin。
+
+因此：
+
+```text
+Agent Runtime:
+  推进 run / loop / tool / commit。
+  产生或更新 runtime facts。
+
+Prompt Builder:
+  根据 facts / signals 统一求值 active / inactive。
+  不推进 Agent step，也不把 active 结果写回 Preset / Setting 配置。
+```
+
 ---
 
 ## 9. 多 Agent 协作

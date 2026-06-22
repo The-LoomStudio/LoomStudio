@@ -6,9 +6,10 @@
     "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
   "references": [
+    { "path": "../../packages/application-runtime" },
     { "path": "../../packages/diagnostics" },
     { "path": "../../packages/document-store" },
-    { "path": "../../packages/extension-host" },
+    { "path": "../../packages/extension-sdk/extension-host" },
     { "path": "../../packages/kernel" },
     { "path": "../../packages/loom-runner" },
     { "path": "../../packages/shared" },

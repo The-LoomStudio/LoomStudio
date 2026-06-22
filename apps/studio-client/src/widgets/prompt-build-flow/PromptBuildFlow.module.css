@@ -1,0 +1,35 @@
+.flow {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.flowStep {
+  border: 1px solid var(--airp-color-border);
+  border-radius: 6px;
+  padding: 10px;
+  background: #ffffff;
+}
+
+.flowStep dl {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+
+.flowStep div {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 8px;
+  font-size: 12px;
+}
+
+.flowStep dt {
+  color: var(--airp-color-muted);
+}
+
+.flowStep dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}

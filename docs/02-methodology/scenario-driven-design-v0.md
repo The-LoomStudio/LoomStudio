@@ -265,6 +265,218 @@ Goal:
 兼容层可以保存历史语义，但不能让历史字段决定 Studio canonical model。
 ```
 
+### 3.8 插件作者：注册文生图能力与子 Agent
+
+Actor:
+
+```text
+文生图插件作者
+子 Agent 作者
+作者 UI 开发者
+复杂卡作者 / 玩家
+```
+
+Scenario:
+
+```text
+一个 NovelAI / Diffusion 类文生图插件希望作为独立 Extension 接入 Studio。
+
+它不想并入主 AIRP Agent，也不想重新实现 API Profile、密钥保存、模型配置和网络收发。
+它希望注册自己的 AI capability、自己的子 Agent、自己的 tag builder / preset，
+然后复用 Studio 的 AI Gateway、ModelProfile 列表、Session 上下文和 Extension Runtime。
+```
+
+Goal:
+
+```text
+插件作者提供一个可复用的生图能力：
+
+1. 在自己的面板中选择平台已有的模型配置；
+2. 根据当前 narrative timeline、active setting layer 和玩家输入生成 tag 串；
+3. 调用注册在平台 AI Gateway 上的文生图 provider；
+4. 返回图片 artifact、tag 结果或正文候选；
+5. 允许其他作者界面复用这个能力，例如生成证件照、背景图、角色立绘或场景插图。
+```
+
+Input:
+
+```text
+Extension Manifest:
+  - extensionId
+  - capability contribution
+  - subAgent contribution
+  - provider extension contribution
+
+Capability:
+  - id: plugin.novelai.image.generation
+  - displayName
+  - input schema
+  - output schema
+  - permission requirement
+
+Provider Extension:
+  - providerExtensionId
+  - provider config schema
+  - model profile config schema
+  - payload adapter
+  - response parser
+
+Plugin Agent Profile:
+  - selected modelProfileId
+  - plugin preset / tag builder config
+  - context projection request
+  - trigger policy
+
+Runtime Context:
+  - current sessionId
+  - current branchId
+  - narrative timeline projection
+  - active setting layer projection
+  - current player input / selected entry
+```
+
+Expected Flow:
+
+```text
+1. 插件注册 AI capability：plugin.novelai.image.generation。
+2. 插件注册 Provider Extension，用来描述 NovelAI / Diffusion provider 的配置 schema、payload adapter 和 response parser。
+3. Studio 在统一 Provider / Model 配置面板中渲染该 Provider Extension 声明的字段。
+4. 用户创建 ProviderAccount 和 ModelProfile。
+5. 插件 UI 调用平台接口：
+   listModelProfiles({ capability: "plugin.novelai.image.generation" })
+6. 插件 UI 不再要求用户重新填写 API key、baseUrl 或 provider profile。
+7. 用户把某个 modelProfileId 绑定到插件自己的 Agent Profile。
+8. 子 Agent 运行时向 Studio 请求受控 Runtime Context Projection。
+9. 子 Agent 使用自己的 preset / tag builder 生成生图输入。
+10. 子 Agent 调用 AI Gateway：
+    invoke({ capability, modelProfileId, input, trace })
+11. AI Gateway 读取 ModelProfile -> ProviderAccount -> ProviderExtension。
+12. Provider Extension 只负责 input -> provider payload 和 provider response -> normalized output。
+13. AI Gateway 负责 secret、网络请求、流式/非流式收发、错误归一和日志脱敏。
+14. 插件拿到 normalized output 后生成 ArtifactCandidate 或 CommitCandidate。
+15. Studio 通过受控提交路径把图片、tag 串或正文候选展示给用户确认。
+```
+
+Studio Support:
+
+```text
+Studio 应提供：
+
+- 开放的 AICapabilityId 注册，而不是封闭 capability enum；
+- 可按 capability 查询的 ModelProfile 列表；
+- 统一 ProviderAccount / ModelProfile / secretRef 存储；
+- 由 Provider Extension schema 驱动的统一配置面板；
+- AI Gateway 的统一 invoke、网络收发、日志、错误、权限和密钥边界；
+- Runtime Context Projection，允许插件拿到必要上下文，而不是扫描全部文档；
+- SubAgent / Extension Agent 注册点；
+- ArtifactCandidate / CommitCandidate 这种受控输出路径；
+- Trace，解释上下文来源、tag builder 输出、gateway 调用和 artifact 写入。
+```
+
+Studio Friction:
+
+```text
+以下情况说明设计制造了错误阻力：
+
+- 平台把 capability 写死成 chat.completion / image.generation / embedding 等封闭枚举；
+- 插件必须自己保存 API key、baseUrl 和 provider profile；
+- 插件必须自己实现 SSE / HTTP / retry / secret redaction；
+- 插件必须理解 Card / Setting Layer / NarrativeEntry 的内部表结构；
+- 插件可以绕过 Gateway 直接请求外部模型，导致权限和日志不可控；
+- 插件可以直接修改 narrative timeline 或 asset store；
+- 主 Agent、子 Agent、插件 UI 各自维护一套模型配置；
+- Provider Extension 被迫理解 AIRP Card / Session / Prompt Builder。
+```
+
+Required Concepts:
+
+```text
+AICapabilityId:
+  开放字符串，由 Extension 注册，不是平台封闭枚举。
+
+ProviderAccount:
+  保存 provider 账号、baseUrl、secretRef 和 provider-level 配置。
+
+ModelProfile:
+  一个可调用模型单元，绑定 provider account、provider extension、capability 和 model-level 配置。
+
+Provider Extension:
+  声明配置 schema、payload adapter、response parser 和 capability 支持。
+
+Extension Profile / SubAgent Profile:
+  插件自己的运行配置，引用 modelProfileId，但不复制 provider secret。
+
+Runtime Context Projection:
+  平台按权限投影当前 session / branch / timeline / setting layer。
+
+AI Gateway Invoke:
+  平台统一执行模型调用，Extension 只做格式转换。
+
+ArtifactCandidate / CommitCandidate:
+  插件输出先成为候选，再由用户、规则或 Agent commit path 接受。
+```
+
+Unnecessary Concepts:
+
+```text
+当前不应要求平台提前建好所有能力类型，例如：
+
+- chat.completion
+- image.generation
+- image.edit
+- text.embedding
+- speech_to_text
+- text_to_speech
+
+这些可以作为示例 capability，但不应成为 M0 的封闭列表。
+
+当前也不应要求：
+
+- 平台理解 NovelAI 的所有参数；
+- 平台替所有图像、音频、embedding provider 设计统一参数模型；
+- 插件作者理解主 AIRP Prompt Builder 的全部内部结构；
+- 插件维护自己的 provider credential store；
+- 插件直接写 narrative timeline；
+- 子 Agent 必须并入主 Agent 的 prompt 或 transcript。
+```
+
+Trace / Diagnostics:
+
+```text
+出问题时 Studio 应能解释：
+
+1. 当前调用使用了哪个 capability；
+2. capability 由哪个 Extension 注册；
+3. 选中了哪个 ModelProfile；
+4. ModelProfile 绑定了哪个 ProviderAccount 和 ProviderExtension；
+5. 子 Agent 请求了哪些 context projection；
+6. narrative timeline / setting layer 中哪些内容进入了 tag builder；
+7. tag builder 输出了什么中间结果；
+8. Gateway 最终发送了什么脱敏后的 provider payload；
+9. provider 返回了什么 normalized output；
+10. 图片或 tag 串为什么成为 ArtifactCandidate / CommitCandidate；
+11. 候选结果是否被接受、拒绝或回滚。
+```
+
+Design Implication:
+
+```text
+这个场景说明 AI Gateway 是平台生态能力，而不是主 Application Runtime 的私有工具。
+
+Capability 应该是 Extension 注册的开放标识。
+平台只提供注册、查询、配置渲染、权限、密钥、网络、日志和调用边界。
+具体 capability 的 input schema、参数含义、payload adapter 和 response parser 由 Extension 提供。
+
+ModelProfile 应该是最小可调用单元。
+预设不应该绑定 provider；插件也不应该复制 provider 配置。
+插件自己的 Agent Profile 只引用 modelProfileId，并保存自己的 preset / tag builder / trigger policy。
+
+Runtime Context Projection 应成为 Extension / SubAgent 读取上下文的标准入口。
+插件不应该直接扫描 Session 数据表，也不应该直接修改 Narrative Timeline。
+
+这个场景应长期作为 Extension 生态、Provider Gateway、SubAgent Runtime、Artifact 数据层和权限系统的回归模拟用例。
+```
+
 ---
 
 ## 4. 场景评估问题

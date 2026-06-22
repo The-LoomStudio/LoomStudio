@@ -79,6 +79,43 @@ Runtime:
   Rule 执行进入 Trace。
 ```
 
+### 2.5 AI Capability / SubAgent 贡献
+
+Extension 可以贡献独立 AI 能力或子 Agent，但不应绕过平台 AI Gateway 和 Runtime Context Projection。
+
+典型例子：
+
+```text
+NovelAI 生图插件:
+  - 注册 image generation capability；
+  - 在自己的 UI 中查询平台 ModelProfile 列表；
+  - 保存用户选择的 modelProfileId；
+  - 使用自己的 preset / tag builder；
+  - 请求当前 Session / Branch 的受控上下文投影；
+  - 调用 AI Gateway；
+  - 将输出作为 ArtifactCandidate / CommitCandidate 进入受控路径。
+```
+
+Extension 不需要也不应该：
+
+```text
+重新保存 provider API key；
+重新实现 provider profile；
+直接读取所有 Narrative Timeline / Setting Layer；
+绕过 AI Gateway 直接请求外部模型；
+绕过 commit path 把结果写入正文或资产库。
+```
+
+这类能力可以被插件自己的 UI 使用，也可以注册为其他作者界面可调用的能力，例如：
+
+```text
+generate portrait
+generate background
+generate scene illustration
+```
+
+平台负责能力注册、权限、上下文投影、Gateway 调用和结果写入边界；插件负责自己的领域逻辑、prompt/tag builder 和 provider-specific adapter。
+
 ---
 
 ## 3. 命名空间与冲突

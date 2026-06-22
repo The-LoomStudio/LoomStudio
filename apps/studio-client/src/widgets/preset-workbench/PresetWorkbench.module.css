@@ -1,0 +1,141 @@
+.shell {
+  background: var(--airp-color-bg);
+  display: grid;
+  grid-template-columns: calc(var(--airp-rail-width) + 292px) minmax(360px, 1fr);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+
+.assetPane {
+  background: var(--airp-color-bg);
+  border-right: 1px solid var(--airp-color-border);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  margin-left: var(--airp-rail-width);
+  min-height: 0;
+  min-width: 0;
+}
+
+.paneHeader {
+  border-bottom: 1px solid var(--airp-color-border);
+  padding: 20px 16px 0;
+}
+
+.paneHeaderTop {
+  margin-bottom: 14px;
+}
+
+.paneHeaderTop p,
+.detailHeader p {
+  color: var(--airp-color-faint);
+  font-size: 10px;
+  font-style: italic;
+  margin: 0 0 7px;
+}
+
+.paneHeaderTop h2 {
+  color: var(--airp-color-text);
+  font-size: 15px;
+  font-weight: 660;
+  margin: 0;
+}
+
+.categoryTabs {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.categoryTabs::-webkit-scrollbar {
+  display: none;
+}
+
+.categoryTab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--airp-color-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 540;
+  padding: 0 0 10px;
+  white-space: nowrap;
+}
+
+.categoryTab:hover,
+.categoryTabActive {
+  color: var(--airp-color-text);
+}
+
+.categoryTabActive {
+  border-bottom-color: var(--airp-color-accent);
+}
+
+.detailPane {
+  background: var(--airp-color-bg);
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.detailColumn {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: calc(100% - 88px);
+  margin-left: 28px;
+  min-width: 0;
+  padding: 18px 0;
+  width: min(760px, calc(100% - 56px));
+}
+
+.detailHeader {
+  border-bottom: 1px solid var(--airp-color-border);
+  min-width: 0;
+  padding-bottom: 16px;
+}
+
+.detailHeader h1 {
+  color: var(--airp-color-text);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.18;
+}
+
+.detailHeader span {
+  color: var(--airp-color-muted);
+  display: block;
+  font-size: 12px;
+  margin-top: 8px;
+  overflow-wrap: anywhere;
+}
+
+.emptyState {
+  color: var(--airp-color-muted);
+  font-size: 13px;
+  padding-top: 24px;
+}
+
+@media (max-width: 1180px) {
+  .shell {
+    grid-template-columns: calc(var(--airp-rail-width) + 260px) minmax(320px, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .assetPane {
+    display: none;
+  }
+
+  .detailColumn {
+    margin-left: 16px;
+    width: calc(100% - 32px);
+  }
+}

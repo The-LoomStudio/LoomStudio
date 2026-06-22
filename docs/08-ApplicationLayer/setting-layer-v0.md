@@ -220,6 +220,18 @@ type ActivationRule =
 
 上面的 `KnowledgeEntry` 草案仅作为旧讨论产物保留。如果把它解释为静态知识，它就过于狭窄；在 Setting Layer 讨论清楚前，它不应驱动实现。
 
+同时需要修正旧草案中的术语边界：
+
+```text
+enabled:
+  作者配置层状态，表示 entry 是否允许参与 prompt-facing composition。
+
+active:
+  某次 PromptBuild 的 Activation Evaluation 结果，表示 entry 是否实际进入本次 composition。
+```
+
+Setting Layer 不应在每轮触发时直接修改 `enabled`。关键词、变量条件、向量命中、manual pin、runtime fact 等都应作为通用 Activation signal / fact 进入 Prompt Builder 的 Activation 阶段，由该阶段产出 active / inactive / reason。
+
 M0 候选限制可能仍然是：
 
 ```text

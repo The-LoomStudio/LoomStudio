@@ -1,0 +1,87 @@
+.composer {
+  align-self: end;
+  display: grid;
+  gap: 11px;
+  margin: 0;
+  min-height: 0;
+  padding: 14px 28px 12px;
+  border: 1px solid var(--airp-color-border);
+  border-bottom: 0;
+  border-radius: 20px 20px 0 0;
+  background: var(--airp-color-panel);
+}
+
+.composerMeta {
+  width: min(var(--airp-chat-width), 100%);
+  justify-self: center;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 18px;
+  color: var(--airp-color-faint);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.composerBody {
+  width: min(var(--airp-chat-width), 100%);
+  justify-self: center;
+  display: grid;
+  gap: 7px;
+}
+
+.inputSurface {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 14px;
+  border: 1px solid color-mix(in srgb, var(--airp-color-border) 74%, transparent);
+  border-radius: 14px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--airp-color-panel) 94%, #ffffff);
+}
+
+.composer textarea {
+  min-height: 50px;
+  max-height: 150px;
+  resize: vertical;
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 8px;
+  line-height: 1.6;
+  background: transparent;
+}
+
+.composer small {
+  color: var(--airp-color-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.composerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.composerActions button {
+  min-height: 42px;
+  padding-inline: 16px;
+}
+
+.composer button[type="submit"] {
+  color: #ffffff;
+  border-color: var(--airp-color-accent);
+  background: var(--airp-color-accent);
+}
+
+.composer button[type="button"] {
+  background: transparent;
+}
+
+@media (max-width: 820px) {
+  .composer {
+    grid-template-columns: 1fr;
+  }
+}

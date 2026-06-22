@@ -1,0 +1,142 @@
+import type { ClientBridge, ClientJsonValue } from '@loom-studio/client-bridge'
+import type {
+  AgentTranscript,
+  CreateAgentRuntimeProfileResult,
+  CreateCardResult,
+  CreateModelProfileResult,
+  CreateProviderAccountResult,
+  CreateSessionResult,
+  DeleteAgentRuntimeProfileResult,
+  DeleteModelProfileResult,
+  DeleteProviderAccountResult,
+  ForkBranchResult,
+  ExportWorkspaceArtifactResult,
+  GetPromptWorkspaceResult,
+  ImportWorkspaceArtifactResult,
+  ListAgentRuntimeProfilesResult,
+  ListCardsResult,
+  ListModelProfilesResult,
+  ListProviderAccountsResult,
+  PromptPreview,
+  RunDetails,
+  SessionDetails,
+  SubmitTurnResult,
+  Timeline,
+  UpdatePromptWorkspaceResult,
+  UpdateAgentRuntimeProfileResult,
+  UpdateModelProfileResult,
+  UpdateProviderAccountResult,
+} from '../../entities/index.js'
+
+type JsonObject = { [key: string]: ClientJsonValue }
+
+export type StudioApi = {
+  cards: {
+    list(): Promise<ListCardsResult>
+    create(input: JsonObject): Promise<CreateCardResult>
+  }
+  providerAccounts: {
+    list(): Promise<ListProviderAccountsResult>
+    create(input: JsonObject): Promise<CreateProviderAccountResult>
+    update(input: JsonObject): Promise<UpdateProviderAccountResult>
+    delete(providerAccountId: string): Promise<DeleteProviderAccountResult>
+  }
+  modelProfiles: {
+    list(): Promise<ListModelProfilesResult>
+    create(input: JsonObject): Promise<CreateModelProfileResult>
+    update(input: JsonObject): Promise<UpdateModelProfileResult>
+    delete(modelProfileId: string): Promise<DeleteModelProfileResult>
+    ping(modelProfileId: string): Promise<string>
+  }
+  agentRuntimeProfiles: {
+    list(): Promise<ListAgentRuntimeProfilesResult>
+    create(input: JsonObject): Promise<CreateAgentRuntimeProfileResult>
+    update(input: JsonObject): Promise<UpdateAgentRuntimeProfileResult>
+    delete(agentRuntimeProfileId: string): Promise<DeleteAgentRuntimeProfileResult>
+  }
+  sessions: {
+    createFromCard(input: JsonObject): Promise<CreateSessionResult>
+    get(sessionId: string): Promise<SessionDetails>
+    fork(input: { sessionId: string; fromEntryId: string; title: string }): Promise<ForkBranchResult>
+  }
+  timeline: {
+    get(input: JsonObject): Promise<Timeline>
+  }
+  agentTranscript: {
+    get(input: JsonObject): Promise<AgentTranscript>
+  }
+  runs: {
+    get(runId: string): Promise<RunDetails>
+  }
+  prompt: {
+    preview(input: JsonObject): Promise<PromptPreview>
+  }
+  promptWorkspaces: {
+    import(input: JsonObject): Promise<ImportWorkspaceArtifactResult>
+    get(workspaceId: string): Promise<GetPromptWorkspaceResult>
+    updateAsset(input: JsonObject): Promise<UpdatePromptWorkspaceResult>
+    updateProjectionOrderProfile(input: JsonObject): Promise<UpdatePromptWorkspaceResult>
+    export(workspaceId: string): Promise<ExportWorkspaceArtifactResult>
+  }
+  turns: {
+    submit(input: JsonObject): Promise<SubmitTurnResult>
+  }
+}
+
+export function createStudioApi(bridge: ClientBridge): StudioApi {
+  return {
+    cards: {
+      list: () => bridge.call<ListCardsResult>('application.listCards', {}),
+      create: input => bridge.call<CreateCardResult>('application.createCard', input),
+    },
+    providerAccounts: {
+      list: () => bridge.call<ListProviderAccountsResult>('application.listProviderAccounts', {}),
+      create: input => bridge.call<CreateProviderAccountResult>('application.createProviderAccount', input),
+      update: input => bridge.call<UpdateProviderAccountResult>('application.updateProviderAccount', input),
+      delete: providerAccountId => bridge.call<DeleteProviderAccountResult>('application.deleteProviderAccount', { providerAccountId }),
+    },
+    modelProfiles: {
+      list: () => bridge.call<ListModelProfilesResult>('application.listModelProfiles', {}),
+      create: input => bridge.call<CreateModelProfileResult>('application.createModelProfile', input),
+      update: input => bridge.call<UpdateModelProfileResult>('application.updateModelProfile', input),
+      delete: modelProfileId => bridge.call<DeleteModelProfileResult>('application.deleteModelProfile', { modelProfileId }),
+      ping: async modelProfileId => {
+        const result = await bridge.call<{ text: string }>('application.pingModelProfile', { modelProfileId })
+        return result.text
+      },
+    },
+    agentRuntimeProfiles: {
+      list: () => bridge.call<ListAgentRuntimeProfilesResult>('application.listAgentRuntimeProfiles', {}),
+      create: input => bridge.call<CreateAgentRuntimeProfileResult>('application.createAgentRuntimeProfile', input),
+      update: input => bridge.call<UpdateAgentRuntimeProfileResult>('application.updateAgentRuntimeProfile', input),
+      delete: agentRuntimeProfileId => bridge.call<DeleteAgentRuntimeProfileResult>('application.deleteAgentRuntimeProfile', { agentRuntimeProfileId }),
+    },
+    sessions: {
+      createFromCard: input => bridge.call<CreateSessionResult>('application.createSessionFromCard', input),
+      get: sessionId => bridge.call<SessionDetails>('application.getSession', { sessionId }),
+      fork: input => bridge.call<ForkBranchResult>('application.forkBranch', input),
+    },
+    timeline: {
+      get: input => bridge.call<Timeline>('application.getTimeline', input),
+    },
+    agentTranscript: {
+      get: input => bridge.call<AgentTranscript>('application.getAgentTranscript', input),
+    },
+    runs: {
+      get: runId => bridge.call<RunDetails>('application.getRun', { runId }),
+    },
+    prompt: {
+      preview: input => bridge.call<PromptPreview>('application.previewPrompt', input),
+    },
+    promptWorkspaces: {
+      import: input => bridge.call<ImportWorkspaceArtifactResult>('application.importWorkspaceArtifact', input),
+      get: workspaceId => bridge.call<GetPromptWorkspaceResult>('application.getPromptWorkspace', { workspaceId }),
+      updateAsset: input => bridge.call<UpdatePromptWorkspaceResult>('application.updatePromptAsset', input),
+      updateProjectionOrderProfile: input => bridge.call<UpdatePromptWorkspaceResult>('application.updateProjectionOrderProfile', input),
+      export: workspaceId => bridge.call<ExportWorkspaceArtifactResult>('application.exportWorkspaceArtifact', { workspaceId }),
+    },
+    turns: {
+      submit: input => bridge.call<SubmitTurnResult>('application.submitTurn', input),
+    },
+  }
+}

@@ -1,0 +1,162 @@
+import { createApplicationRuntime } from '@loom-studio/application-runtime'
+import { createInMemoryDocumentStore } from '@loom-studio/document-store'
+import { describe, expect, it } from 'vitest'
+
+describe('application runtime prompt preview integration', () => {
+  it('previews the same prompt builder messages that submitTurn stores in the run', async () => {
+    const runtime = createApplicationRuntime({
+      documents: createInMemoryDocumentStore(),
+    })
+    const card = await runtime.createCard({
+      name: 'Prompt Card',
+      description: '用于测试 Prompt Builder 闭环。',
+      opening: {
+        entries: [
+          { role: 'assistant', content: '开场正文。' },
+        ],
+      },
+      settingLayer: {
+        entries: [
+          {
+            title: 'Always On',
+            content: '总是注入的设定。',
+            activation: { kind: 'always' },
+          },
+          {
+            title: 'Rain Keyword',
+            content: '只有提到雨才注入。',
+            activation: { kind: 'keyword', keywords: ['雨'] },
+          },
+          {
+            title: 'Manual Only',
+            content: '手动设定暂不自动注入。',
+            activation: { kind: 'manual' },
+          },
+        ],
+      },
+    })
+    const { session, branch } = await runtime.createSessionFromCard({ cardId: card.card.id })
+    const preview = await runtime.previewPrompt({
+      sessionId: session.id,
+      branchId: branch.id,
+      input: '我听见雨落在窗外。',
+    })
+    const turn = await runtime.submitTurn({
+      sessionId: session.id,
+      branchId: branch.id,
+      input: '我听见雨落在窗外。',
+    })
+    const run = await runtime.getRun({ runId: turn.run.id })
+    const storedPrompt = run.runtimeEntries.find(entry => entry.kind === 'prompt')?.content as { messages?: unknown }
+
+    expect(preview.messages).toEqual([
+      expect.objectContaining({
+        role: 'system',
+        content: expect.stringContaining('Prompt Card'),
+      }),
+      { role: 'assistant', content: '开场正文。' },
+      { role: 'user', content: '我听见雨落在窗外。' },
+    ])
+    expect(preview.messages).toEqual(preview.projection.messages)
+    expect(preview.messages[0]?.content).toContain('Card description: 用于测试 Prompt Builder 闭环。')
+    expect(preview.messages[0]?.content).toContain('Always On: 总是注入的设定。')
+    expect(preview.messages[0]?.content).toContain('Rain Keyword: 只有提到雨才注入。')
+    expect(preview.messages[0]?.content).not.toContain('Manual Only')
+    expect(storedPrompt.messages).toEqual(preview.messages)
+  })
+
+  it('applies projection order profile ranks to preview projection slots', async () => {
+    const runtime = createApplicationRuntime({
+      documents: createInMemoryDocumentStore(),
+    })
+    const card = await runtime.createCard({
+      name: 'Projection Profile Card',
+      preset: {
+        system: '系统提示。',
+      },
+      settingLayer: {
+        entries: [
+          {
+            title: 'Stable Setting',
+            content: '稳定设定。',
+            activation: { kind: 'always' },
+          },
+        ],
+      },
+    })
+    const { session, branch } = await runtime.createSessionFromCard({ cardId: card.card.id })
+    const preview = await runtime.previewPrompt({
+      sessionId: session.id,
+      branchId: branch.id,
+      input: '我检查排序。',
+      projectionOrderProfile: {
+        id: 'profile.test',
+        scope: 'session',
+        slotRanks: [
+          {
+            injectionGroupKey: 'setting.stable',
+            slotKey: 'setting-layer:m0-card-setting-layer@setting.stable',
+            rankKey: '0000',
+          },
+          {
+            injectionGroupKey: 'preset.system',
+            slotKey: 'preset:m0-card-preset@preset.system',
+            rankKey: '0001',
+          },
+        ],
+      },
+    })
+    const stablePrefix = preview.projection.zones.find(zone => zone.zoneKey === 'stable-prefix' && zone.anchor === 'inside')
+
+    expect(stablePrefix?.slots.map(slot => slot.slotKey)).toEqual([
+      'setting-layer:m0-card-setting-layer@setting.stable',
+      'preset:m0-card-preset@preset.system',
+    ])
+    expect(stablePrefix?.slots.map(slot => slot.orderSource)).toEqual(['rank', 'rank'])
+    expect(preview.messages[0]?.content.indexOf('稳定设定。')).toBeLessThan(preview.messages[0]?.content.indexOf('系统提示。'))
+  })
+
+  it('expands simple card {{User}} macros in preset, setting layer, and opening chat', async () => {
+    const runtime = createApplicationRuntime({
+      documents: createInMemoryDocumentStore(),
+    })
+    const card = await runtime.createCard({
+      name: 'Macro Card',
+      userName: '旅人',
+      description: '{{User}}进入雾港。',
+      preset: {
+        system: '玩家名是 {{User}}。保持第二人称叙事。',
+      },
+      opening: {
+        entries: [
+          { role: 'assistant', content: '{{User}}推开旅馆的门。' },
+        ],
+      },
+      settingLayer: {
+        entries: [
+          {
+            title: '{{User}}当前场景',
+            content: '{{User}}站在潮湿的柜台前。',
+            activation: { kind: 'always' },
+          },
+        ],
+      },
+    })
+    const { session, branch } = await runtime.createSessionFromCard({ cardId: card.card.id })
+    const timeline = await runtime.getTimeline({ sessionId: session.id, branchId: branch.id })
+    const preview = await runtime.previewPrompt({
+      sessionId: session.id,
+      branchId: branch.id,
+      input: '我按下柜台铃。',
+    })
+
+    expect(session.cardSnapshot).toMatchObject({
+      userName: '旅人',
+      preset: { system: '玩家名是 {{User}}。保持第二人称叙事。' },
+    })
+    expect(timeline.entries.map(entry => entry.content)).toEqual(['旅人推开旅馆的门。'])
+    expect(preview.messages[0]?.content).toContain('玩家名是 旅人。保持第二人称叙事。')
+    expect(preview.messages[0]?.content).toContain('Card description: 旅人进入雾港。')
+    expect(preview.messages[0]?.content).toContain('旅人当前场景: 旅人站在潮湿的柜台前。')
+  })
+})

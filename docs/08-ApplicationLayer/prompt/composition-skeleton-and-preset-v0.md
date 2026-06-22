@@ -295,6 +295,37 @@ Setting Layer 的树可以用于分类和级联触发；Preset Zone Tree 不负�
 
 因此，下方的 `LowerContext` 也可以有常驻内容。上方的 `StablePrefix` 也可以有条件内容，只是作者需要理解它会影响缓存和注意力。
 
+### 7.3.1 Zone / Slot 也参与 Activation
+
+Activation 不只发生在 Setting Entry 或 fragment 上。Preset Zone、Slot、Injection Group 也可以作为 controllable target，在本次 PromptBuild 中被求值为 active / inactive。
+
+```text
+enabled:
+  Zone / Slot 的作者配置状态。
+  表示该结构默认允许参与。
+
+active:
+  本次 build 中该 Zone / Slot 是否实际参与。
+  由 Activation Engine 根据 facts / signals 求值产生。
+```
+
+示例：
+
+```text
+agent.mode == micro_play
+  -> active short_interaction zone
+  -> inactive final_prose zone
+
+agent.mode == finalize
+  -> inactive short_interaction zone
+  -> active final_prose zone
+
+state.combat.active == true
+  -> active combat_rules slot
+```
+
+这不应写回 Skeleton 配置。Prompt Preview / Trace 需要展示 Zone / Slot 为什么 active 或 inactive。
+
 ---
 
 ### 7.4 Zone Node 候选数据结构
@@ -629,7 +660,7 @@ breakout:
 | 📘写作指南 | `/创作/指南` | `style.guide` | 写作规则，不是世界设定 |
 | 📘错误避免 | `/创作/错误避免` | `safety.anti_pattern` | 存储在创作分类，投影到反模式锚点 |
 | ✅禁词表 | `/创作/禁词` | `safety.anti_pattern` | 与错误避免同组注入 |
-| 🖋️轻小说 | `/文风/轻小说` | `style.pack` | 风格包，可开关 fragment |
+| 🖋️轻小说 | `/文风/轻小说` | `style.pack` | 风格包，可由 Activation 控制 active / inactive |
 | ⚙️NSFW强化 | `/模式/NSFW` | `mode.modifier` | 模式修饰，不应混入角色设定 |
 | 🧊抗机器人 | `/反模式/反AI腔` | `safety.anti_pattern` | 反模式约束 |
 | World Info (before) | Setting source tree | `setting.stable` 或作者指定 group | 旧名称只是导入 hint |

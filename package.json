@@ -7,6 +7,8 @@
   "scripts": {
     "build": "tsc -b",
     "test": "vitest run",
+    "test:archive": "LOOM_TEST_SCOPE=archive vitest run",
+    "test:probes": "LOOM_TEST_SCOPE=probes vitest run",
     "lint": "eslint .",
     "format": "prettier --write .",
     "dev:server": "tsx apps/studio-server/src/main.ts",

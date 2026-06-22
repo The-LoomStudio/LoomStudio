@@ -17,6 +17,7 @@ docs/
 ├── 06-engineering/   仓库工程、依赖选型、package API、local state、MVP 施工
 ├── 07-client/        Client / UI 相关文档
 ├── 08-ApplicationLayer/ Studio Application / AIRP 领域层开放设计
+├── 09-PlatformLayer/ AI Gateway、Provider Extension、平台级共享能力
 └── adr/              已接受或待接受的架构决策记录
 ```
 
@@ -79,6 +80,7 @@ docs/
 
 - [`08-ApplicationLayer/README.md`](08-ApplicationLayer/README.md)
 - [`08-ApplicationLayer/document-map-v0.md`](08-ApplicationLayer/document-map-v0.md)
+- [`08-ApplicationLayer/asset-import-export-boundary-v0.md`](08-ApplicationLayer/asset-import-export-boundary-v0.md)
 - [`08-ApplicationLayer/isolation-scope-boundary-v0.md`](08-ApplicationLayer/isolation-scope-boundary-v0.md)
 - [`08-ApplicationLayer/session-timeline-data-model-v0.md`](08-ApplicationLayer/session-timeline-data-model-v0.md)
 - [`08-ApplicationLayer/runtime-turn-flow-v0.md`](08-ApplicationLayer/runtime-turn-flow-v0.md)
@@ -86,6 +88,13 @@ docs/
 - [`08-ApplicationLayer/prompt/README.md`](08-ApplicationLayer/prompt/README.md)
 - [`08-ApplicationLayer/composition-skeleton-v0.md`](08-ApplicationLayer/composition-skeleton-v0.md)
 - [`08-ApplicationLayer/composition-pipeline-v0.md`](08-ApplicationLayer/composition-pipeline-v0.md)
+
+---
+
+## 09 Platform Layer
+
+- [`09-PlatformLayer/README.md`](09-PlatformLayer/README.md)
+- [`09-PlatformLayer/ai-gateway-and-provider-extension-v0.md`](09-PlatformLayer/ai-gateway-and-provider-extension-v0.md)
 
 ---
 

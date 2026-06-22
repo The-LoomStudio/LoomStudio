@@ -122,6 +122,8 @@ type CompositionFragmentMeta = {
   activation?: {
     active: boolean
     reason?: string
+    signals?: string[]
+    facts?: Record<string, unknown>
   }
 }
 ```
@@ -133,6 +135,8 @@ type CompositionFragmentMeta = {
 ```
 
 `@loom/core` 不应读取或解释这些字段。
+
+`active` 表示本次 PromptBuild 的 Activation Evaluation 结果，不等同于 Source 上持久化的 `enabled` 配置。
 
 ---
 

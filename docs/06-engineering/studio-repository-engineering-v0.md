@@ -519,6 +519,68 @@ GenericHandlerFactory
 CommonUtils
 ```
 
+### 9.4 Open Issue: 源码文件命名形态对齐
+
+> **状态**：Open Issue / 需在大规模改名前单独确认
+> **触发**：2026-06-22 Client / Application Layer 审计发现，当前源码文件命名与本文 `9.1`、`9.2` 的 kebab-case 规则不完全一致。
+
+当前规则已经明确：
+
+```text
+文件夹：kebab-case
+文件名：kebab-case
+React 组件内部标识：PascalCase
+普通变量、函数、hook：camelCase
+```
+
+但实际代码中存在以下偏差：
+
+```text
+apps/studio-client/src/app/App.tsx
+apps/studio-client/src/app/App.module.css
+apps/studio-client/src/app/useStudioState.ts
+apps/studio-client/src/pages/studio/StudioPage.tsx
+apps/studio-client/src/shared/ui/file-tree/FileTree.tsx
+apps/studio-client/src/widgets/context-workbench/ContextWorkbench.tsx
+apps/studio-client/src/widgets/preset-workbench/PresetWorkbench.tsx
+apps/studio-client/src/widgets/preset-workbench/AgentRuntimeManager.tsx
+apps/studio-client/src/widgets/rendering-lab/RenderingLab.tsx
+```
+
+这类 PascalCase 文件名来自 React 生态常见习惯，但和仓库级规则冲突。后续如果重命名，应优先采用：
+
+```text
+App.tsx -> app.tsx
+App.module.css -> app.module.css
+useStudioState.ts -> use-studio-state.ts
+StudioPage.tsx -> studio-page.tsx
+FileTree.tsx -> file-tree.tsx
+ContextWorkbench.tsx -> context-workbench.tsx
+PresetWorkbench.tsx -> preset-workbench.tsx
+AgentRuntimeManager.tsx -> agent-runtime-manager.tsx
+RenderingLab.tsx -> rendering-lab.tsx
+```
+
+命名形态边界暂定如下：
+
+| 位置 | 规则 | 说明 |
+|---|---|---|
+| 源码目录 | kebab-case | 包括 feature、widget、shared ui 子目录 |
+| 源码文件 | kebab-case | 包括 `.ts`、`.tsx`、`.module.css` |
+| React 组件 / 类型 / class | PascalCase | 只限代码标识，不用于文件名 |
+| hook / 函数 / 变量 | camelCase | 例如 `useStudioState`、`createStudioApi` |
+| wire literal / 外部协议字段 | 保留协议原样 | 例如 OpenAI `max_tokens`、`finish_reason`、RPC error code |
+| 文档版本号目录 / ADR / README | 保持既有约定 | 例如 `08-ApplicationLayer`、`ADR-005-*`、`README.md`，不纳入源码命名迁移 |
+
+改名前置条件：
+
+1. 先确认是否接受“源码文件名一律 kebab-case，组件标识仍 PascalCase”。
+2. 如果接受，应单独提交纯 rename，不混入架构重构。
+3. rename 后必须跑 TypeScript / Vitest，重点检查大小写敏感文件系统上的 import。
+4. 在 Client FSD 拆分前完成或同步完成，避免同一文件被多轮迁移。
+
+在该议题关闭前，禁止继续新增 PascalCase 源码文件名；新增组件文件应直接使用 kebab-case。
+
 ---
 
 ## 10. Public Entry 与 Internal 规则

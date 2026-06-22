@@ -477,3 +477,142 @@ M0 can defer:
 9. Summary trigger 是否在每次 accepted commit 后评估？
 10. User confirmation 挂起时，Run status 是 `suspended` 还是 commit candidate status pending？
 
+---
+
+## 11. Discussion Capture: M0 Turn Decisions (2026-05-31)
+
+### 11.1 Provider 默认心智
+
+为了降低预设作者和普通用户的心智负担，默认 Prompt / Preset / Chat projection 可以采用 OpenAI-style messages 心智作为第一版友好模型。
+
+但需要保持边界：
+
+```text
+Application / Prompt Builder:
+  可以输出 messages-like compiled payload。
+
+Provider Adapter:
+  负责把 messages-like payload 转成具体渠道商格式。
+```
+
+也就是说，OpenAI-style 可以是默认作者体验，但不能变成 Kernel contract，也不能阻止 Anthropic / Gemini / 其他 provider family 使用自己的 request shape。
+
+当某个渠道商新增特殊能力，例如 reasoning 参数、cache-control、thinking budget 或 provider-specific safety 参数，应由对应 Provider Extension 暴露 capability、options 和 mapping。
+
+### 11.2 默认 Provider 渠道
+
+默认官方实现可以优先覆盖主流 provider family：
+
+```text
+OpenAI-compatible
+Anthropic-compatible
+Gemini-compatible
+```
+
+这些是官方默认渠道 / adapter family，不是 Kernel 内置 provider。
+
+第三方 Provider Extension 可以继续贡献自己的 profile schema、model capability、invoke / stream mapping 和 provider-specific options。
+
+### 11.3 玩家 RP 输入直接 accepted 到 NarrativeEntry
+
+在 RP 模式下，玩家输入可以直接成为 accepted NarrativeEntry。
+
+同时，Runtime 应把该输入复制 / 投影为 Runtime Transcript 中的 user input，让 Agent 能在工作对话中理解刚发生的剧情。
+
+概念流程：
+
+```text
+player RP input
+  -> NarrativeEntry(user input, accepted)
+  -> RuntimeEntry(user_input, derived from NarrativeEntry)
+  -> Prompt Builder projection
+  -> provider call
+```
+
+这一步不是简单重复存储，而是预留了玩家输入加工管道：
+
+```text
+Narrative input
+  -> input transform / intent handling / formatting
+  -> Runtime Transcript projection
+```
+
+后续可以在这里处理：
+
+- 玩家输入改写；
+- 指令 / 剧情混合输入拆分；
+- 敏感内容过滤；
+- 角色对白格式化；
+- 转述 / 半转述；
+- UI mode hint。
+
+### 11.4 Agent 输出必须走 commit path
+
+`commit path` 的意思不是“每次都必须弹用户确认”。
+
+它表示 Agent 输出不能直接写入 Narrative Timeline，而要经过受控写入路径：
+
+```text
+provider output
+  -> RuntimeEntry(provider_result)
+  -> CommitCandidate
+  -> validation / policy / optional consent
+  -> accepted write
+  -> NarrativeEntry(agent output)
+  -> branch head / changeset update
+```
+
+M0 可以 auto-accept CommitCandidate，但仍然应走这条路径。
+
+这样做的原因：
+
+- 失败 run 不污染剧情正文；
+- Agent 草稿和最终正文可区分；
+- 后续可以加入格式校验、用户确认、插件拦截、state patch 事务；
+- NarrativeEntry 能追溯到 run / provider / prompt trace；
+- reroll / branch / rollback 有统一 changeset 边界。
+
+### 11.5 每次用户输入都创建 checkpoint
+
+每次用户输入都应创建 checkpoint / branch state point。
+
+这里的“用户输入”不只包括一轮对话开头的玩家发言，也包括后续让 Agent 修改、重写、继续、调整的指令。
+
+候选规则：
+
+```text
+user input starts or resumes meaningful runtime work
+  -> create checkpoint at current branch head
+```
+
+这样：
+
+- “继续写”可以回滚；
+- “改得更温柔一点”可以回滚；
+- “不要这样，重写上一段”可以回滚；
+- 中途多次指导 Agent 不会把 state / draft / transcript 搅成不可恢复状态。
+
+### 11.6 M0 暂缓 Tool / Summary / Dynamic Mount
+
+M0 可以暂缓：
+
+```text
+provider-native tool-call
+summary trigger
+dynamic context mount
+fresh read tail
+multi-agent orchestration
+```
+
+M0 优先目标是让基础数据模型和 turn flow 跑起来：
+
+```text
+Session
+Narrative tree
+Runtime transcript
+Provider stub
+Commit path
+Branch state point
+Trace / diagnostics
+```
+
