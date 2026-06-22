@@ -3,6 +3,7 @@ import {
   deleteContextAssetNode,
   duplicateContextAssetNode,
 } from '../../../apps/studio-client/src/features/context-assets/model/tree-ops.js'
+import { normalizeContextAssets } from '../../../apps/studio-client/src/features/context-assets/model/context-asset-normalization.js'
 import { DemoData } from '../../../apps/studio-client/src/app/demo-data.js'
 import type { ContextAssetNode } from '../../../apps/studio-client/src/entities/index.js'
 import { describe, expect, it } from 'vitest'
@@ -79,9 +80,11 @@ describe('studio client context asset helpers', () => {
 
   it('keeps demo prompt-facing entries on capability-shaped data', () => {
     const entries = flattenNodes(DemoData.contextAssets).filter(node => node.kind === 'entry' && node.capabilities?.projection)
+    const normalizedEntries = flattenNodes(normalizeContextAssets(DemoData.contextAssets)).filter(node => node.kind === 'entry' && node.capabilities?.projection)
 
     expect(entries.length).toBeGreaterThan(0)
     expect(entries.every(node => node.projection === undefined)).toBe(true)
+    expect(normalizedEntries.every(node => node.projection !== undefined)).toBe(true)
     expect(entries.map(node => node.capabilities?.projection?.injectionGroupKey)).toContain('setting.stable')
     expect(entries.map(node => node.capabilities?.projection?.injectionGroupKey)).toContain('preset.system')
   })

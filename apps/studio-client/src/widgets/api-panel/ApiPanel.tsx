@@ -4,7 +4,8 @@ import type { Locale, Translator } from '../../shared/i18n/index.js'
 import { localeLabels, supportedLocales } from '../../shared/i18n/index.js'
 import type { ModelProfile, ProviderAccount } from '../../entities/index.js'
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
-import yaml from 'yaml'
+import { ModelProfileList } from './model-profile-list.js'
+import { ProviderAccountList } from './provider-account-list.js'
 import styles from './ApiPanel.module.css'
 
 type GatewayForm = {
@@ -36,15 +37,9 @@ export type ApiPanelProps = {
 
 export function ApiPanel(props: ApiPanelProps) {
   const [expandedSection, setExpandedSection] = useState<'provider' | 'model' | null>(null)
-  const [editingModelId, setEditingModelId] = useState<string | null>(null)
-  const [modelConfigForm, setModelConfigForm] = useState<{ additionalParameters: string; excludeParameters: string; customHeaders: string }>({ additionalParameters: '', excludeParameters: '', customHeaders: '' })
 
   function toggleSection(section: 'provider' | 'model') {
     setExpandedSection(current => current === section ? null : section)
-  }
-
-  function findProviderAccount(id: string) {
-    return props.providerAccounts.find(a => a.id === id)
   }
 
   return (
@@ -142,32 +137,12 @@ export function ApiPanel(props: ApiPanelProps) {
           <span className={styles.badge}>{props.providerAccounts.length}</span>
         </div>
         {expandedSection === 'provider' && (
-          <div className={styles.entityList}>
-            {props.providerAccounts.length === 0 ? (
-              <p className={styles.entityEmpty}>{props.t('gateway.noProviderAccounts')}</p>
-            ) : (
-              props.providerAccounts.map(account => (
-                <div key={account.id} className={styles.entityItem}>
-                  <div className={styles.entityInfo}>
-                    <span className={styles.entityName}>{account.displayName}</span>
-                    <span className={styles.entityMeta}>{account.providerExtensionId}</span>
-                    {account.config.baseUrl ? (
-                      <span className={styles.entityMeta}>{String(account.config.baseUrl)}</span>
-                    ) : null}
-                  </div>
-                  <div className={styles.entityActions}>
-                    <button
-                      className={styles.entityActionDanger}
-                      onClick={() => props.onDeleteProviderAccount(account.id)}
-                      disabled={props.busy}
-                    >
-                      {props.t('gateway.delete')}
-                    </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+          <ProviderAccountList
+            accounts={props.providerAccounts}
+            busy={props.busy}
+            onDelete={props.onDeleteProviderAccount}
+            t={props.t}
+          />
         )}
       </section>
 
@@ -178,130 +153,15 @@ export function ApiPanel(props: ApiPanelProps) {
           <span className={styles.badge}>{props.modelProfiles.length}</span>
         </div>
         {expandedSection === 'model' && (
-          <div className={styles.entityList}>
-            {props.modelProfiles.length === 0 ? (
-              <p className={styles.entityEmpty}>{props.t('gateway.noModelProfiles')}</p>
-            ) : (
-              props.modelProfiles.map(profile => {
-                const account = findProviderAccount(profile.providerAccountId)
-                return (
-                  <div key={profile.id} className={styles.entityItem}>
-                    <div className={styles.entityInfo}>
-                      <span className={styles.entityName}>{profile.displayName}</span>
-                      <span className={styles.entityMeta}>{profile.providerModelId}</span>
-                      {account ? (
-                        <span className={styles.entityMeta}>@ {account.displayName}</span>
-                      ) : null}
-                    </div>
-                    {editingModelId === profile.id ? (
-                      <div className={styles.modelEditor}>
-                        <div className={styles.gatewayForm}>
-                          <label>
-                            {props.t('gateway.model.additionalParameters')}
-                            <textarea
-                              className={styles.yamlTextarea}
-                              value={modelConfigForm.additionalParameters}
-                              onChange={e => setModelConfigForm({ ...modelConfigForm, additionalParameters: e.target.value })}
-                              placeholder={props.t('gateway.model.additionalParametersPlaceholder')}
-                            />
-                          </label>
-                          <label>
-                            {props.t('gateway.model.excludeParameters')}
-                            <textarea
-                              className={styles.yamlTextarea}
-                              value={modelConfigForm.excludeParameters}
-                              onChange={e => setModelConfigForm({ ...modelConfigForm, excludeParameters: e.target.value })}
-                              placeholder={props.t('gateway.model.excludeParametersPlaceholder')}
-                            />
-                          </label>
-                          <label>
-                            {props.t('gateway.model.customHeaders')}
-                            <textarea
-                              className={styles.yamlTextarea}
-                              value={modelConfigForm.customHeaders}
-                              onChange={e => setModelConfigForm({ ...modelConfigForm, customHeaders: e.target.value })}
-                              placeholder={props.t('gateway.model.customHeadersPlaceholder')}
-                            />
-                          </label>
-                          <div className={styles.gatewayGrid}>
-                            <button
-                              onClick={() => {
-                                try {
-                                  const config = { ...profile.config }
-                                  if (modelConfigForm.additionalParameters) config.additionalParameters = yaml.parse(modelConfigForm.additionalParameters)
-                                  else delete config.additionalParameters
-                                  
-                                  if (modelConfigForm.excludeParameters) config.excludeParameters = yaml.parse(modelConfigForm.excludeParameters)
-                                  else delete config.excludeParameters
-                                  
-                                  if (modelConfigForm.customHeaders) config.customHeaders = yaml.parse(modelConfigForm.customHeaders)
-                                  else delete config.customHeaders
-
-                                  props.onUpdateModelProfile(profile.id, { config: config as Record<string, ClientJsonValue> })
-                                  setEditingModelId(null)
-                                } catch {
-                                  alert(props.t('gateway.model.yamlError'))
-                                }
-                              }}
-                            >
-                              {props.t('gateway.save')}
-                            </button>
-                            <button
-                              style={{ background: 'transparent', border: '1px solid var(--airp-color-border)', color: 'var(--airp-color-muted)' }}
-                              onClick={() => setEditingModelId(null)}
-                            >
-                              {props.t('gateway.cancel')}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className={styles.entityActions}>
-                        <button
-                          className={styles.entityActionDanger}
-                          style={{ borderColor: 'var(--airp-color-accent)', color: 'var(--airp-color-accent)' }}
-                          onClick={async () => {
-                            try {
-                              const result = await props.onPingModelProfile(profile.id)
-                              alert(props.t('gateway.model.testSuccess') + '\n\n' + result)
-                            } catch (error) {
-                              const message = error instanceof Error ? error.message : String(error)
-                              alert(props.t('gateway.model.testFailed') + '\n\n' + message)
-                            }
-                          }}
-                          disabled={props.busy}
-                        >
-                          {props.t('gateway.model.test')}
-                        </button>
-                        <button
-                          className={styles.entityActionDanger}
-                          style={{ borderColor: 'var(--airp-color-border)', color: 'var(--airp-color-text)' }}
-                          onClick={() => {
-                            setEditingModelId(profile.id)
-                            setModelConfigForm({
-                              additionalParameters: profile.config.additionalParameters ? yaml.stringify(profile.config.additionalParameters) : '',
-                              excludeParameters: profile.config.excludeParameters ? yaml.stringify(profile.config.excludeParameters) : '',
-                              customHeaders: profile.config.customHeaders ? yaml.stringify(profile.config.customHeaders) : '',
-                            })
-                          }}
-                          disabled={props.busy}
-                        >
-                          {props.t('gateway.edit')}
-                        </button>
-                        <button
-                          className={styles.entityActionDanger}
-                          onClick={() => props.onDeleteModelProfile(profile.id)}
-                          disabled={props.busy}
-                        >
-                          {props.t('gateway.delete')}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )
-              })
-            )}
-          </div>
+          <ModelProfileList
+            busy={props.busy}
+            modelProfiles={props.modelProfiles}
+            onDelete={props.onDeleteModelProfile}
+            onPing={props.onPingModelProfile}
+            onUpdate={props.onUpdateModelProfile}
+            providerAccounts={props.providerAccounts}
+            t={props.t}
+          />
         )}
       </section>
     </aside>

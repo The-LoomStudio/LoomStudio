@@ -1,4 +1,5 @@
 import type { ContextAssetNode, ProjectionSlotRank } from '../../../entities/index.js'
+import { isSettingLayerSlot, readSlotDisplayName } from './projection-slot.js'
 
 export type ProjectionOrderEntry = {
   anchor: 'before' | 'inside' | 'after'
@@ -170,14 +171,6 @@ export function moveBefore(ids: string[], draggedId: string, targetId: string): 
   return [...current.slice(0, targetIndex), draggedId, ...current.slice(targetIndex)]
 }
 
-export function readSlotKey(node: ContextAssetNode): string | undefined {
-  return node.projection?.slotKey ?? (node.projection ? `${node.projection.group}@${node.projection.zone}` : undefined)
-}
-
-export function readSlotEntrySummary(entries: ProjectionOrderEntry[]): string {
-  return `${entries.length} entries`
-}
-
 export function flattenContextNodes(nodes: ContextAssetNode[]): ContextAssetNode[] {
   return nodes.flatMap(node => [node, ...flattenContextNodes(node.children ?? [])])
 }
@@ -192,88 +185,6 @@ export function findContextNode(nodes: ContextAssetNode[], id: string | undefine
   }
 
   return undefined
-}
-
-export function transformForProjectionView(
-  moduleNode: ContextAssetNode,
-  orderedEntries: ProjectionOrderEntry[],
-  options: { groupSettingLayerSlots?: boolean } = {},
-): ContextAssetNode {
-  const orderByNodeId = new Map(orderedEntries.map((entry, index) => [entry.node.id, index]))
-  const entries = flattenContextNodes(moduleNode.children ?? [])
-    .filter(node => node.kind === 'entry' && node.projection)
-    .sort((left, right) => (
-      (orderByNodeId.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (orderByNodeId.get(right.id) ?? Number.MAX_SAFE_INTEGER)
-      || (left.projection?.entryOrder ?? 500) - (right.projection?.entryOrder ?? 500)
-      || left.id.localeCompare(right.id)
-    ))
-
-  const standardZones = ['StablePrefix', 'NarrativeContext', 'LowerContext', 'CurrentTurn', 'FreshTail']
-  const customZones = new Set<string>()
-
-  for (const entry of entries) {
-    const zone = entry.projection?.zone
-    if (zone && !standardZones.includes(zone)) customZones.add(zone)
-  }
-
-  const children = [...standardZones, ...Array.from(customZones)].flatMap(zone => {
-    const zoneEntries = entries.filter(entry => entry.projection?.zone === zone)
-    if (zoneEntries.length === 0) return []
-    return [{
-      id: `${moduleNode.id}-zone-${zone}`,
-      label: zone,
-      kind: 'folder',
-      isSection: true,
-      children: options.groupSettingLayerSlots
-        ? buildProjectionViewChildren(moduleNode.id, zoneEntries)
-        : zoneEntries.map(entry => ({ ...entry, meta: entry.meta || 'zone projection' })),
-    } satisfies ContextAssetNode]
-  })
-
-  return {
-    ...moduleNode,
-    children,
-  }
-}
-
-function buildProjectionViewChildren(moduleId: string, entries: ContextAssetNode[]): ContextAssetNode[] {
-  const children: ContextAssetNode[] = []
-  const seenSlots = new Set<string>()
-
-  for (const entry of entries) {
-    const slotKey = readSlotKey(entry)
-    if (!slotKey || !isSettingLayerSlot(slotKey)) {
-      children.push({ ...entry, meta: entry.meta || 'zone projection' })
-      continue
-    }
-    if (seenSlots.has(slotKey)) continue
-    seenSlots.add(slotKey)
-    children.push({
-      id: `${moduleId}-slot-${slotKey}`,
-      label: readSlotDisplayName(slotKey),
-      kind: 'folder',
-      isSection: true,
-      children: entries
-        .filter(item => readSlotKey(item) === slotKey)
-        .map(item => ({ ...item, meta: item.meta || 'zone projection' })),
-    })
-  }
-
-  return children
-}
-
-function isSettingLayerSlot(slotKey: string): boolean {
-  return slotKey.startsWith('setting-layer:')
-}
-
-function readSlotDisplayName(slotKey: string): string {
-  const sourceId = slotKey.slice(slotKey.indexOf(':') + 1, slotKey.lastIndexOf('@'))
-  if (sourceId === 'city-layers-main') return 'from Loom City'
-  return `from ${sourceId.replace(/-main$/, '').split('-').map(capitalize).join(' ')}`
-}
-
-function capitalize(value: string): string {
-  return value ? `${value[0]?.toUpperCase()}${value.slice(1)}` : value
 }
 
 function makeRankKey(index: number): string {

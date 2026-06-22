@@ -5,9 +5,11 @@ import {
   addContextAssetNode,
   deleteContextAssetNode,
   duplicateContextAssetNode,
-  normalizeContextAssets,
-  readDemoProjectionOrderProfile,
+  moveContextAssetNode,
+  updateContextAssetNode,
 } from './tree-ops.js'
+import { normalizeContextAssets } from './context-asset-normalization.js'
+import { readDemoProjectionOrderProfile } from './projection-order-profile.js'
 
 type UseContextAssetsInput = {
   initialNodes: ContextAssetNode[]
@@ -22,6 +24,14 @@ export function useContextAssets(input: UseContextAssetsInput) {
     const mutation = addContextAssetNode(nodes, parentId)
     setNodes(mutation.nodes)
     if (mutation.selectedId) setSelectedId(mutation.selectedId)
+  }
+
+  function updateContextAsset(id: string, partial: Partial<ContextAssetNode>) {
+    setNodes(current => updateContextAssetNode(current, id, partial))
+  }
+
+  function moveContextAsset(draggedId: string, targetId: string, position: 'before' | 'inside' | 'after') {
+    setNodes(current => moveContextAssetNode(current, draggedId, targetId, position))
   }
 
   function duplicateContextAsset(id: string) {
@@ -45,6 +55,8 @@ export function useContextAssets(input: UseContextAssetsInput) {
     setNodes,
     selectedId,
     setSelectedId,
+    updateContextAsset,
+    moveContextAsset,
     addContextAsset,
     duplicateContextAsset,
     deleteContextAsset,

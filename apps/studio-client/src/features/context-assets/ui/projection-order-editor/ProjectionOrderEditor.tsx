@@ -3,10 +3,9 @@ import { useMemo, useState } from 'react'
 import type { Translator } from '../../../../shared/i18n/index.js'
 import {
   buildProjectionRows,
-  readSlotEntrySummary,
-  readSlotKey,
   type ProjectionOrderEntry,
 } from '../../model/projection-order.js'
+import { readSlotEntrySummary, readSlotKey } from '../../model/projection-slot.js'
 import styles from './ProjectionOrderEditor.module.css'
 
 type ProjectionOrderEditorProps = {

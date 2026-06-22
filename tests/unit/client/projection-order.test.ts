@@ -2,8 +2,13 @@ import type { ContextAssetNode } from '../../../apps/studio-client/src/entities/
 import {
   buildProjectionOrder,
   buildProjectionRows,
-  transformForProjectionView,
 } from '../../../apps/studio-client/src/features/context-assets/model/projection-order.js'
+import { transformForProjectionView } from '../../../apps/studio-client/src/features/context-assets/model/projection-view.js'
+import {
+  buildProjectionWorkbenchModel,
+  readContextProjectionMoveUpdate,
+  readPresetProjectionMoveUpdates,
+} from '../../../apps/studio-client/src/features/context-assets/model/projection-workbench.js'
 import { describe, expect, it } from 'vitest'
 
 describe('studio client projection order selectors', () => {
@@ -32,6 +37,34 @@ describe('studio client projection order selectors', () => {
       'projection-module-slot-setting-layer:city-layers-main@setting.stable',
     ])
   })
+
+  it('returns a patch for same-slot context projection moves', () => {
+    const nodes = projectionNodes()
+    const entries = buildProjectionOrder(nodes)
+    const update = readContextProjectionMoveUpdate(nodes, entries, 'setting-entry-b', 'setting-entry-a', 'before')
+
+    expect(update?.id).toBe('setting-entry-b')
+    expect(update?.partial.projection?.entryOrder).toBe(0)
+  })
+
+  it('returns zone and order patches for preset projection moves', () => {
+    const nodes = projectionNodesWithOrder()
+    const model = buildProjectionWorkbenchModel(nodes)
+    const updates = readPresetProjectionMoveUpdates({
+      draggedId: 'preset-entry',
+      nodes,
+      orderedProjectionEntries: model.orderedProjectionEntries,
+      orderNode: model.orderNode,
+      position: 'inside',
+      projectionEntries: model.projectionEntries,
+      projectionOrderIds: model.projectionOrderIds,
+      targetId: 'projection-module-zone-FreshTail',
+    })
+
+    expect(updates.map(update => update.id)).toEqual(['preset-entry', 'projection-order'])
+    expect(updates[0]?.partial.projection?.zone).toBe('FreshTail')
+    expect(updates[1]?.partial.orderList).toEqual(['setting-entry-a', 'setting-entry-b', 'preset-entry'])
+  })
 })
 
 function projectionNodes(): ContextAssetNode[] {
@@ -48,6 +81,22 @@ function projectionNodes(): ContextAssetNode[] {
       ],
     },
   ]
+}
+
+function projectionNodesWithOrder(): ContextAssetNode[] {
+  const [module] = projectionNodes()
+  return [{
+    ...module!,
+    children: [
+      {
+        id: 'projection-order',
+        label: 'Projection Order',
+        kind: 'order',
+        orderList: ['preset-entry', 'setting-entry-a', 'setting-entry-b'],
+      },
+      ...(module?.children ?? []),
+    ],
+  }]
 }
 
 function entry(id: string, label: string, group: string, slotKey: string, entryOrder: number, slotOrder: number): ContextAssetNode {

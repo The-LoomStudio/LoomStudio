@@ -613,6 +613,32 @@ ApiPanel
 
 拆分后组件只负责 UI，model 放到 feature。
 
+### 9.1 Open Issue：Widget 内 model / view-model 边界继续收敛
+
+> **状态**：Open Issue / Client 审计后续项
+> **触发**：2026-06-22 Client / Application Layer 审计与首轮 facade 拆分后，`useStudioState` 已降到 200 行以下，但部分 widget 仍承载 view-model 和排序交互逻辑。
+
+当前具体信号：
+
+```text
+apps/studio-client/src/widgets/api-panel/ApiPanel.tsx              309 行
+apps/studio-client/src/widgets/context-workbench/ContextWorkbench.tsx 248 行
+apps/studio-client/src/widgets/preset-workbench/PresetWorkbench.tsx   289 行
+```
+
+边界问题：
+
+- `ContextWorkbench` / `PresetWorkbench` 仍在组件内组合 projection order selector、拖拽排序判断和 detail node 选择；
+- `ApiPanel` 同时承载 provider account / model profile / gateway profile 三类 UI；
+- `App.tsx` 已不直接操作 context tree mutation，但 widget 内仍有较重的 view-model 拼装；
+- 这些问题应在源码文件大改名前继续小步拆分，避免 rename/import 风暴与行为重构混在一起。
+
+建议顺序：
+
+1. 先把 `ContextWorkbench` / `PresetWorkbench` 中可复用的 projection view-model 抽到 `features/context-assets/model`；
+2. 再按 UI 子块拆 `ApiPanel`，优先拆 provider account list 与 model profile list；
+3. 最后处理旧 PascalCase 文件名与 import，对齐仓库 kebab-case 规则。
+
 ---
 
 ## 10. Review Checklist

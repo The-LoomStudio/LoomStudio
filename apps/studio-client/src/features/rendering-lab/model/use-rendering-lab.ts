@@ -13,6 +13,10 @@ export function useRenderingLab(input: UseRenderingLabInput) {
   const [rawHtmlAllowed, setRawHtmlAllowed] = useState(false)
   const messages = useRenderingLabMessages()
 
+  function selectRenderingChoice(choice: string) {
+    messages.setRenderingEvents(current => [`${new Date().toLocaleTimeString()} choice: ${choice}`, ...current].slice(0, 5))
+  }
+
   return {
     renderingMode,
     setRenderingMode,
@@ -20,6 +24,7 @@ export function useRenderingLab(input: UseRenderingLabInput) {
     setRawHtmlAllowed,
     renderingEvents: messages.renderingEvents,
     setRenderingEvents: messages.setRenderingEvents,
+    selectRenderingChoice,
     renderingSample: buildRenderingLabSample(renderingMode, input.t),
   }
 }

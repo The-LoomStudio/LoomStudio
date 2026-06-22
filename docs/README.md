@@ -1,127 +1,41 @@
-# Loom Studio Docs
+# Loom Studio 文档体系
 
-> **Status**: Living index（2026-05-14）
-> **Purpose**: 给 Studio 文档分类导航，避免架构、数据层、插件、工程实施与客户端文档混在同一层级。
+为了保证文档不仅对于人类开发者清晰易读，也对 AI 辅助开发极其友好，Loom Studio 采用 **"Stable & Workbench (正式发布与草稿台)" 双轨制** 文档架构。
 
----
+我们废弃了早期的数字编号分类法，现在整个文档库只有这四个顶层目录：
 
-## 目录分类
+## 1. 📘 Guide: 开发者行为规范
+**入口: [`guide/README.md`](guide/README.md)**
 
-```text
-docs/
-├── 00-overview/      总体架构与顶层说明
-├── 02-methodology/   讨论方法、场景驱动设计、规格收口方式
-├── 03-kernel/        Kernel、Transport、RPC public surface
-├── 04-data/          Data Layer、Document Store、Trace / Audit
-├── 05-extensions/    Extension Manifest、Lifecycle、Registration
-├── 06-engineering/   仓库工程、依赖选型、package API、local state、MVP 施工
-├── 07-client/        Client / UI 相关文档
-├── 08-ApplicationLayer/ Studio Application / AIRP 领域层开放设计
-├── 09-PlatformLayer/ AI Gateway、Provider Extension、平台级共享能力
-└── adr/              已接受或待接受的架构决策记录
-```
+这里是新加入的开发者（或 AI）的第一站。它告诉你在这里"应该怎么干活"。
+- [`guide/getting-started.md`](guide/getting-started.md) — 如何启动项目、跑通第一遍
+- [`guide/project-structure.md`](guide/project-structure.md) — 核心：**项目全量文件地图**（AI探索必备）
+- [`guide/code-style.md`](guide/code-style.md) — 编码规范、命名规则
+- [`guide/testing.md`](guide/testing.md) — 测试分类与准则
+- [`guide/code-review.md`](guide/code-review.md) — PR 与审查边界
+- [`guide/ui-design.md`](guide/ui-design.md) — UI 开发准则与 CSS 架构
 
----
+## 2. 📖 Reference: 快速参考字典
+**入口: [`reference/README.md`](reference/README.md)**
 
-## 00 Overview
+不需要通读，直接按需搜索的速查手册。开发中最常被查阅的参考内容。
+- [`reference/rpc-methods.md`](reference/rpc-methods.md) — 全量 RPC 调用速查表
+- [`reference/document-types.md`](reference/document-types.md) — 全量 Document schema 速查表
+- [`reference/core-types.md`](reference/core-types.md) — TypeScript 核心类型与概念速查
+- [`reference/dependency-graph.md`](reference/dependency-graph.md) — 工作区 Package 依赖关系图
 
-- [`00-overview/loom-studio-architecture.md`](00-overview/loom-studio-architecture.md)
+## 3. 📐 Architecture: 正式架构说明书
+**入口: [`architecture/README.md`](architecture/README.md)**
 
----
+只有经过完全实现、代码完全跑通且设计非常稳定的模块，才配记录在这里。这里的描述**必须与当前主干代码严丝合缝**。
+*(注：项目早期该目录可能较空，架构描述多存放在 Workbench 中)*
 
-## 02 Methodology
+## 4. 🔧 Workbench: 演进工作台
+**入口: [`workbench/README.md`](workbench/README.md)**
 
-- [`02-methodology/README.md`](02-methodology/README.md)
-- [`02-methodology/scenario-driven-design-v0.md`](02-methodology/scenario-driven-design-v0.md)
-
----
-
-## 03 Kernel / Protocol
-
-- [`03-kernel/studio-kernel-public-surface-v0.md`](03-kernel/studio-kernel-public-surface-v0.md)
-- [`03-kernel/studio-rpc-methods-v0.md`](03-kernel/studio-rpc-methods-v0.md)
-- [`03-kernel/studio-transport-protocol-v0.md`](03-kernel/studio-transport-protocol-v0.md)
+这里是项目的"白板"。它允许混乱、允许未定稿。
+所有处于讨论期的设计稿、遗留的白皮书巨型文档、ADR 记录、已知问题列表均存放在此。
+**在这些文档定稿之前，请不要将它们作为当前代码开发的绝对真理。**
 
 ---
-
-## 04 Data
-
-- [`04-data/studio-data-layer-architecture.md`](04-data/studio-data-layer-architecture.md)
-- [`04-data/studio-document-store-engineering-v0.md`](04-data/studio-document-store-engineering-v0.md)
-- [`04-data/studio-trace-audit-correlation-v0.md`](04-data/studio-trace-audit-correlation-v0.md)
-
----
-
-## 05 Extensions
-
-- [`05-extensions/studio-extension-manifest-architecture.md`](05-extensions/studio-extension-manifest-architecture.md)
-- [`05-extensions/studio-extension-lifecycle-v0.md`](05-extensions/studio-extension-lifecycle-v0.md)
-
----
-
-## 06 Engineering
-
-- [`06-engineering/studio-mvp-development-plan.md`](06-engineering/studio-mvp-development-plan.md)
-- [`06-engineering/loom-studio-mvp-engineering.md`](06-engineering/loom-studio-mvp-engineering.md)
-- [`06-engineering/studio-repository-engineering-v0.md`](06-engineering/studio-repository-engineering-v0.md)
-- [`06-engineering/studio-dependency-and-runtime-choices-v0.md`](06-engineering/studio-dependency-and-runtime-choices-v0.md)
-- [`06-engineering/studio-initial-package-api-v0.md`](06-engineering/studio-initial-package-api-v0.md)
-- [`06-engineering/studio-config-and-local-state-v0.md`](06-engineering/studio-config-and-local-state-v0.md)
-
----
-
-## 07 Client
-
-- [`07-client/loom-studio-ui.md`](07-client/loom-studio-ui.md)
-
----
-
-## 08 Application Layer
-
-- [`08-ApplicationLayer/README.md`](08-ApplicationLayer/README.md)
-- [`08-ApplicationLayer/document-map-v0.md`](08-ApplicationLayer/document-map-v0.md)
-- [`08-ApplicationLayer/asset-import-export-boundary-v0.md`](08-ApplicationLayer/asset-import-export-boundary-v0.md)
-- [`08-ApplicationLayer/isolation-scope-boundary-v0.md`](08-ApplicationLayer/isolation-scope-boundary-v0.md)
-- [`08-ApplicationLayer/session-timeline-data-model-v0.md`](08-ApplicationLayer/session-timeline-data-model-v0.md)
-- [`08-ApplicationLayer/runtime-turn-flow-v0.md`](08-ApplicationLayer/runtime-turn-flow-v0.md)
-- [`08-ApplicationLayer/provider-adapter-contract-v0.md`](08-ApplicationLayer/provider-adapter-contract-v0.md)
-- [`08-ApplicationLayer/prompt/README.md`](08-ApplicationLayer/prompt/README.md)
-- [`08-ApplicationLayer/composition-skeleton-v0.md`](08-ApplicationLayer/composition-skeleton-v0.md)
-- [`08-ApplicationLayer/composition-pipeline-v0.md`](08-ApplicationLayer/composition-pipeline-v0.md)
-
----
-
-## 09 Platform Layer
-
-- [`09-PlatformLayer/README.md`](09-PlatformLayer/README.md)
-- [`09-PlatformLayer/ai-gateway-and-provider-extension-v0.md`](09-PlatformLayer/ai-gateway-and-provider-extension-v0.md)
-
----
-
-## ADR
-
-- [`adr/ADR-001-data-layer-workspace-sync.md`](adr/ADR-001-data-layer-workspace-sync.md)
-- [`adr/ADR-002-extension-manifest-and-registration-model.md`](adr/ADR-002-extension-manifest-and-registration-model.md)
-
----
-
-## 阅读建议
-
-正式动工前建议按顺序阅读：
-
-1. Overview：理解 Studio 总边界；
-2. Methodology：理解讨论方法、场景驱动设计和规格收口方式；
-3. ADR：理解已接受决策；
-4. Kernel / Protocol：锁定 Kernel public surface 与 RPC；
-5. Data：锁定 Document Store / rollback / trace-audit；
-6. Extensions：锁定 Manifest / activation / registration；
-7. Engineering：锁定 MVP 阶段门控计划、仓库骨架、依赖、package API 与 local state；
-8. Application Layer：理解 Studio Application / AIRP 领域层开放设计。
-
-如果只准备做 PR-1 仓库初始化，优先阅读：
-
-- [`06-engineering/studio-mvp-development-plan.md`](06-engineering/studio-mvp-development-plan.md)
-- [`06-engineering/studio-repository-engineering-v0.md`](06-engineering/studio-repository-engineering-v0.md)
-- [`06-engineering/studio-dependency-and-runtime-choices-v0.md`](06-engineering/studio-dependency-and-runtime-choices-v0.md)
-- [`06-engineering/studio-initial-package-api-v0.md`](06-engineering/studio-initial-package-api-v0.md)
-- [`06-engineering/studio-config-and-local-state-v0.md`](06-engineering/studio-config-and-local-state-v0.md)
+> 如果你要开始进行开发，请优先阅读 [`guide/project-structure.md`](guide/project-structure.md) 建立全局视野。

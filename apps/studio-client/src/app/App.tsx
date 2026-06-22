@@ -1,4 +1,3 @@
-import { moveContextAssetNode, updateContextAssetNode } from '../features/context-assets/model/tree-ops.js'
 import { useStudioState } from './useStudioState.js'
 import { StudioPage } from '../pages/studio/StudioPage.js'
 import { PresetWorkbench } from '../widgets/preset-workbench/PresetWorkbench.js'
@@ -7,15 +6,24 @@ import { InputDashboard } from '../widgets/input-dashboard/InputDashboard.js'
 import { NarrativeCanvas } from '../widgets/narrative-canvas/NarrativeCanvas.js'
 import { ResourcePanel } from '../widgets/resource-panel/ResourcePanel.js'
 import { ApiPanel } from '../widgets/api-panel/ApiPanel.js'
-import { RenderingLab } from '../widgets/rendering-lab/RenderingLab.js'
-import { PromptBuildFlow } from '../widgets/prompt-build-flow/PromptBuildFlow.js'
-import { JsonBlock } from '../shared/ui/json-block/JsonBlock.js'
+import { InspectorPanel } from '../widgets/inspector-panel/inspector-panel.js'
 import { DemoData } from './demo-data.js'
 import styles from './App.module.css'
 import '../styles/global.css'
 
 export function App() {
   const state = useStudioState()
+  const contextAssetEditorProps = {
+    nodes: state.contextAssets,
+    onChangeNode: state.updateContextAsset,
+    onMoveNode: state.moveContextAsset,
+    onAddNode: state.addContextAsset,
+    onDuplicateNode: state.duplicateContextAsset,
+    onDeleteNode: state.deleteContextAsset,
+    onSelectNode: state.setSelectedContextNodeId,
+    selectedId: state.selectedContextNodeId,
+    t: state.t,
+  }
 
   return (
     <StudioPage
@@ -23,19 +31,7 @@ export function App() {
       customCss={state.customCss}
       editorPanel={(
         <ContextWorkbench
-          nodes={state.contextAssets}
-          onChangeNode={(id, partial) => {
-            state.setContextAssets(current => updateContextAssetNode(current, id, partial))
-          }}
-          onMoveNode={(draggedId, targetId, position) => {
-            state.setContextAssets(current => moveContextAssetNode(current, draggedId, targetId, position))
-          }}
-          onAddNode={state.addContextAsset}
-          onDuplicateNode={state.duplicateContextAsset}
-          onDeleteNode={state.deleteContextAsset}
-          onSelectNode={state.setSelectedContextNodeId}
-          selectedId={state.selectedContextNodeId}
-          t={state.t}
+          {...contextAssetEditorProps}
         />
       )}
       error={state.error}
@@ -62,19 +58,7 @@ export function App() {
       )}
       presetPanel={(
         <PresetWorkbench
-          nodes={state.contextAssets}
-          onChangeNode={(id, partial) => {
-            state.setContextAssets(current => updateContextAssetNode(current, id, partial))
-          }}
-          onMoveNode={(draggedId, targetId, position) => {
-            state.setContextAssets(current => moveContextAssetNode(current, draggedId, targetId, position))
-          }}
-          onAddNode={state.addContextAsset}
-          onDuplicateNode={state.duplicateContextAsset}
-          onDeleteNode={state.deleteContextAsset}
-          onSelectNode={state.setSelectedContextNodeId}
-          selectedId={state.selectedContextNodeId}
-          t={state.t}
+          {...contextAssetEditorProps}
           agentRuntimeProfiles={state.agentRuntimeProfiles}
           modelProfiles={state.modelProfiles}
           selectedAgentRuntimeProfileId={state.selectedAgentRuntimeProfileId}
@@ -153,43 +137,24 @@ export function App() {
         </div>
       )}
       inspector={(
-        <aside className={styles.inspector} data-airp-component="overlay-utility-layer">
-          <section className={styles.section} data-airp-component="rendering-lab">
-            <RenderingLab
-              events={state.renderingEvents}
-              mode={state.renderingMode}
-              onAllowRawHtml={() => state.setRawHtmlAllowed(true)}
-              onCreateRendererSession={state.createRendererSession}
-              onOpenRenderer={state.openRendererWindow}
-              onSelectChoice={choice => state.setRenderingEvents(current => [`${new Date().toLocaleTimeString()} choice: ${choice}`, ...current].slice(0, 5))}
-              onSelectMode={mode => state.setRenderingMode(mode)}
-              rawHtmlAllowed={state.rawHtmlAllowed}
-              rendererSessionId={state.rendererSessionId}
-              sample={state.renderingSample}
-              t={state.t}
-            />
-          </section>
-          <section className={styles.section}>
-            <h2>{state.t('inspector.cardSnapshot')}</h2>
-            <JsonBlock value={state.session?.cardSnapshot ?? state.selectedCard ?? null} />
-          </section>
-          <section className={styles.section}>
-            <h2>{state.t('inspector.run')}</h2>
-            <JsonBlock value={state.runDetails ?? null} />
-          </section>
-          <section className={styles.section}>
-            <h2>{state.t('inspector.agentTranscript')}</h2>
-            <JsonBlock value={state.agentTranscript} />
-          </section>
-          <section className={styles.section}>
-            <h2>{state.t('inspector.promptBuildFlow')}</h2>
-            <PromptBuildFlow steps={state.promptBuildSteps} />
-          </section>
-          <section className={styles.section}>
-            <h2>{state.t('inspector.prompt')}</h2>
-            <JsonBlock value={state.promptMessages ?? null} />
-          </section>
-        </aside>
+        <InspectorPanel
+          agentTranscript={state.agentTranscript}
+          cardSnapshot={state.session?.cardSnapshot ?? state.selectedCard ?? null}
+          events={state.renderingEvents}
+          mode={state.renderingMode}
+          onAllowRawHtml={() => state.setRawHtmlAllowed(true)}
+          onCreateRendererSession={state.createRendererSession}
+          onOpenRenderer={state.openRendererWindow}
+          onSelectChoice={state.selectRenderingChoice}
+          onSelectMode={state.setRenderingMode}
+          promptBuildSteps={state.promptBuildSteps}
+          promptMessages={state.promptMessages ?? null}
+          rawHtmlAllowed={state.rawHtmlAllowed}
+          rendererSessionId={state.rendererSessionId}
+          runDetails={state.runDetails ?? null}
+          sample={state.renderingSample}
+          t={state.t}
+        />
       )}
     />
   )

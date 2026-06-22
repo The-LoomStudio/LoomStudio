@@ -2,17 +2,15 @@ import { AlignLeft, Code2, Copy, FileText, Folder, GripVertical, Package, Plus, 
 import { useMemo, useState } from 'react'
 import { FileTree } from '../../shared/ui/file-tree/FileTree.js'
 import {
-  buildProjectionOrder,
-  buildSlotRanksFromOrder,
   findContextNode,
-  flattenContextNodes,
-  moveBefore,
-  orderProjectionEntries,
-  readProjectionOrderIds,
-  readReorderedEntryOrder,
-  readSlotKey,
-  transformForProjectionView,
 } from '../../features/context-assets/model/projection-order.js'
+import { transformForProjectionView } from '../../features/context-assets/model/projection-view.js'
+import {
+  buildProjectionWorkbenchModel,
+  findRootContextModule,
+  readContextProjectionMoveUpdate,
+  readProjectionOrderReorderUpdates,
+} from '../../features/context-assets/model/projection-workbench.js'
 import { ContextAssetDetail } from '../../features/context-assets/ui/context-asset-detail/ContextAssetDetail.js'
 import { ProjectionOrderEditor } from '../../features/context-assets/ui/projection-order-editor/ProjectionOrderEditor.js'
 import type { ContextAssetNode } from '../../entities/index.js'
@@ -35,11 +33,8 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   const [activeCategory, setActiveCategory] = useState<'preset' | 'setting' | 'logic' | 'runtime' | 'history'>('setting')
   const [viewModes, setViewModes] = useState<Record<string, 'asset' | 'projection'>>({})
   const selectedNode = findContextNode(props.nodes, props.selectedId)
-  
-  const projectionEntries = useMemo(() => buildProjectionOrder(props.nodes), [props.nodes])
-  const orderNode = useMemo(() => flattenContextNodes(props.nodes).find(n => n.kind === 'order'), [props.nodes])
-  const projectionOrderIds = useMemo(() => readProjectionOrderIds(projectionEntries, orderNode), [projectionEntries, orderNode])
-  const orderedProjectionEntries = useMemo(() => orderProjectionEntries(projectionEntries, orderNode), [projectionEntries, orderNode])
+  const projectionModel = useMemo(() => buildProjectionWorkbenchModel(props.nodes), [props.nodes])
+  const { projectionEntries, orderNode, projectionOrderIds, orderedProjectionEntries } = projectionModel
 
   const displayNodes = useMemo(() => {
     return props.nodes
@@ -59,13 +54,6 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
     { value: 'runtime', label: 'Runtime' },
     { value: 'history', label: 'History' },
   ]
-
-  function findRootModuleForNode(nodes: ContextAssetNode[], id: string): ContextAssetNode | undefined {
-    for (const module of nodes) {
-      if (findContextNode([module], id)) return module
-    }
-    return undefined
-  }
 
   return (
     <section className={styles.shell} data-airp-component="context-workbench">
@@ -91,21 +79,12 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
           ariaLabel={props.t('context.assetsLabel')}
           nodes={displayNodes}
           onMoveNode={(draggedId, targetId, position) => {
-             const rootModule = findRootModuleForNode(props.nodes, draggedId)
+             const rootModule = findRootContextModule(props.nodes, draggedId)
              const isProjectionView = rootModule && viewModes[rootModule.id] === 'projection'
 
              if (isProjectionView) {
-               const draggedNode = findContextNode(props.nodes, draggedId)
-               const targetNode = findContextNode(props.nodes, targetId)
-               if (!draggedNode?.projection || !targetNode?.projection) return
-               if (readSlotKey(draggedNode) !== readSlotKey(targetNode)) return
-
-               props.onChangeNode(draggedId, {
-                 projection: {
-                   ...draggedNode.projection,
-                   entryOrder: readReorderedEntryOrder(projectionEntries, draggedNode.id, targetNode.id, position),
-                 },
-               })
+               const update = readContextProjectionMoveUpdate(props.nodes, projectionEntries, draggedId, targetId, position)
+               if (update) props.onChangeNode(update.id, update.partial)
                return
              }
 
@@ -139,25 +118,14 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
               <ProjectionOrderEditor
                 entries={orderedProjectionEntries}
                 onReorder={(draggedId, targetId) => {
-                  const draggedEntry = orderedProjectionEntries.find(entry => entry.node.id === draggedId)
-                  const targetEntry = orderedProjectionEntries.find(entry => entry.node.id === targetId)
-                  if (draggedEntry && targetEntry && draggedEntry.slotKey === targetEntry.slotKey) {
-                    props.onChangeNode(draggedId, {
-                      projection: {
-                        ...draggedEntry.node.projection!,
-                        entryOrder: readReorderedEntryOrder(orderedProjectionEntries, draggedId, targetId, 'before'),
-                      },
-                    })
-                    return
-                  }
-
-                  const newOrder = moveBefore(projectionOrderIds, draggedId, targetId)
-                  if (orderNode) {
-                    props.onChangeNode(orderNode.id, {
-                      orderList: newOrder,
-                      slotRanks: buildSlotRanksFromOrder(projectionEntries, newOrder),
-                    })
-                  }
+                  readProjectionOrderReorderUpdates({
+                    draggedId,
+                    orderedProjectionEntries,
+                    orderNode,
+                    projectionEntries,
+                    projectionOrderIds,
+                    targetId,
+                  }).forEach(update => props.onChangeNode(update.id, update.partial))
                 }}
                 selectedId={props.selectedId}
                 t={props.t}

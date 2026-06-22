@@ -1,6 +1,7 @@
 import type { FormEvent } from 'react'
 import type { Translator } from '../../shared/i18n/index.js'
 import type { RendererPocState } from '../../entities/index.js'
+import { RendererResourceSection } from './renderer-resource-section.js'
 import styles from './ResourcePanel.module.css'
 
 type CardView = {
@@ -137,44 +138,22 @@ export function ResourcePanel(props: ResourcePanelProps) {
         </form>
       </section>
 
-      <section className={`${styles.section} ${styles.resourceSection} ${styles.resourceDev}`} data-airp-component="custom-renderer-host-panel">
-        <div className={styles.sectionHead}>
-          <h2>{props.t('renderer.title')}</h2>
-          <small aria-live="polite">{props.rendererSessionId ? props.t('renderer.connected') : props.t('renderer.noSession')}</small>
-        </div>
-        <div className={styles.rendererPocControls}>
-          <button type="button" onClick={props.onCreateRendererSession} disabled={props.busy}>{props.t('renderer.createSession')}</button>
-          <button type="button" onClick={props.onOpenRendererWindow} disabled={!props.rendererSessionId}>{props.t('renderer.openRenderer')}</button>
-          <button type="button" onClick={props.onIncrementRendererLove} disabled={!props.rendererSessionId || !props.rendererState || props.busy}>{props.t('renderer.lovePlusOne')}</button>
-          <button type="button" onClick={props.onAppendRendererMessage} disabled={!props.rendererSessionId || props.busy}>{props.t('renderer.append')}</button>
-          <button type="button" onClick={props.onRevokeRendererSession} disabled={!props.rendererSessionId || props.busy}>{props.t('renderer.revoke')}</button>
-        </div>
-        <dl className={styles.meta}>
-          <dt>{props.t('renderer.session')}</dt>
-          <dd>{props.rendererSessionId ?? props.t('session.none')}</dd>
-          <dt>{props.t('renderer.love')}</dt>
-          <dd>{props.rendererState?.loveLevel ?? '-'}</dd>
-          <dt>{props.t('renderer.messages')}</dt>
-          <dd>{props.rendererState?.messages.length ?? 0}</dd>
-        </dl>
-        <div className={styles.customCssEditor}>
-          <div className={styles.customCssHead}>
-            <span>{props.t('renderer.customCss')}</span>
-            <span className={styles.customCssActions}>
-              <button type="button" onClick={props.onLoadTestCss}>{props.t('renderer.loadTestCss')}</button>
-              <button type="button" onClick={props.onResetCss}>{props.t('renderer.resetCss')}</button>
-            </span>
-          </div>
-          <textarea
-            value={props.customCss}
-            onChange={event => props.onChangeCustomCss(event.target.value)}
-            spellCheck={false}
-          />
-        </div>
-        <div className={styles.eventLog} aria-label={props.t('renderer.eventLogLabel')}>
-          {props.rendererEvents.map(item => <div key={item}>{item}</div>)}
-        </div>
-      </section>
+      <RendererResourceSection
+        busy={props.busy}
+        customCss={props.customCss}
+        events={props.rendererEvents}
+        onAppendMessage={props.onAppendRendererMessage}
+        onChangeCustomCss={props.onChangeCustomCss}
+        onCreateSession={props.onCreateRendererSession}
+        onIncrementLove={props.onIncrementRendererLove}
+        onLoadTestCss={props.onLoadTestCss}
+        onOpenWindow={props.onOpenRendererWindow}
+        onResetCss={props.onResetCss}
+        onRevokeSession={props.onRevokeRendererSession}
+        sessionId={props.rendererSessionId}
+        state={props.rendererState}
+        t={props.t}
+      />
     </aside>
   )
 }

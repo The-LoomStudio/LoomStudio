@@ -3,17 +3,15 @@ import { useMemo, useState } from 'react'
 import { FileTree } from '../../shared/ui/file-tree/FileTree.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import {
-  buildProjectionOrder,
-  buildSlotRanksFromOrder,
   findContextNode,
-  flattenContextNodes,
-  moveBefore,
-  orderProjectionEntries,
-  readProjectionOrderIds,
-  readReorderedEntryOrder,
-  readSlotKey,
-  transformForProjectionView,
 } from '../../features/context-assets/model/projection-order.js'
+import { transformForProjectionView } from '../../features/context-assets/model/projection-view.js'
+import {
+  buildProjectionWorkbenchModel,
+  findRootContextModule,
+  readPresetProjectionMoveUpdates,
+  readProjectionOrderReorderUpdates,
+} from '../../features/context-assets/model/projection-workbench.js'
 import { ContextAssetDetail } from '../../features/context-assets/ui/context-asset-detail/ContextAssetDetail.js'
 import { ProjectionOrderEditor } from '../../features/context-assets/ui/projection-order-editor/ProjectionOrderEditor.js'
 import type { AgentRuntimeProfile, ContextAssetNode, ModelProfile } from '../../entities/index.js'
@@ -42,11 +40,8 @@ type PresetWorkbenchProps = {
 export function PresetWorkbench(props: PresetWorkbenchProps) {
   const [activePresetPanel, setActivePresetPanel] = useState<'assets' | 'order'>('assets')
   const selectedNode = findContextNode(props.nodes, props.selectedId)
-  
-  const projectionEntries = useMemo(() => buildProjectionOrder(props.nodes), [props.nodes])
-  const orderNode = useMemo(() => flattenContextNodes(props.nodes).find(n => n.kind === 'order'), [props.nodes])
-  const projectionOrderIds = useMemo(() => readProjectionOrderIds(projectionEntries, orderNode), [projectionEntries, orderNode])
-  const orderedProjectionEntries = useMemo(() => orderProjectionEntries(projectionEntries, orderNode), [projectionEntries, orderNode])
+  const projectionModel = useMemo(() => buildProjectionWorkbenchModel(props.nodes), [props.nodes])
+  const { projectionEntries, orderNode, projectionOrderIds, orderedProjectionEntries } = projectionModel
   const detailNode = activePresetPanel === 'order' ? orderNode : selectedNode
 
   const displayNodes = useMemo(() => {
@@ -60,33 +55,15 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
       })
   }, [props.nodes, orderedProjectionEntries])
 
-  function findRootModuleForNode(nodes: ContextAssetNode[], id: string): ContextAssetNode | undefined {
-    for (const module of nodes) {
-      if (findContextNode([module], id)) return module
-    }
-    return undefined
-  }
-
   function handleProjectionReorder(draggedId: string, targetId: string) {
-    const draggedEntry = orderedProjectionEntries.find(entry => entry.node.id === draggedId)
-    const targetEntry = orderedProjectionEntries.find(entry => entry.node.id === targetId)
-    if (draggedEntry && targetEntry && draggedEntry.slotKey === targetEntry.slotKey) {
-      props.onChangeNode(draggedId, {
-        projection: {
-          ...draggedEntry.node.projection!,
-          entryOrder: readReorderedEntryOrder(orderedProjectionEntries, draggedId, targetId, 'before'),
-        },
-      })
-      return
-    }
-
-    const newOrder = moveBefore(projectionOrderIds, draggedId, targetId)
-    if (orderNode) {
-      props.onChangeNode(orderNode.id, {
-        orderList: newOrder,
-        slotRanks: buildSlotRanksFromOrder(projectionEntries, newOrder),
-      })
-    }
+    readProjectionOrderReorderUpdates({
+      draggedId,
+      orderedProjectionEntries,
+      orderNode,
+      projectionEntries,
+      projectionOrderIds,
+      targetId,
+    }).forEach(update => props.onChangeNode(update.id, update.partial))
   }
 
   return (
@@ -116,57 +93,20 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           ariaLabel={props.t('context.assetsLabel')}
           nodes={displayNodes}
           onMoveNode={(draggedId, targetId, position) => {
-             const rootModule = findRootModuleForNode(props.nodes, draggedId)
+             const rootModule = findRootContextModule(props.nodes, draggedId)
              const isProjectionView = rootModule?.category === 'preset'
 
              if (isProjectionView) {
-               const draggedNode = findContextNode(props.nodes, draggedId)
-               if (!draggedNode?.projection) return
-
-               const targetNode = findContextNode(props.nodes, targetId)
-               if (targetNode?.projection && readSlotKey(draggedNode) === readSlotKey(targetNode)) {
-                 props.onChangeNode(draggedId, {
-                   projection: {
-                     ...draggedNode.projection,
-                     entryOrder: readReorderedEntryOrder(orderedProjectionEntries, draggedNode.id, targetNode.id, position),
-                   },
-                 })
-                 return
-               }
-
-               let newZone = draggedNode.projection.zone
-               const currentOrder = readProjectionOrderIds(projectionEntries, orderNode)
-               const newOrder = currentOrder.filter(id => id !== draggedId)
-
-               if (targetId.includes('-zone-')) {
-                 const zoneMatch = targetId.match(/-zone-(.+)$/)
-                 if (zoneMatch) newZone = zoneMatch[1]
-                 newOrder.push(draggedId)
-               } else {
-                 if (targetNode?.projection) {
-                   newZone = targetNode.projection.zone
-                 }
-                 const targetIndex = newOrder.indexOf(targetId)
-                 if (targetIndex >= 0) {
-                   if (position === 'after') {
-                     newOrder.splice(targetIndex + 1, 0, draggedId)
-                   } else {
-                     newOrder.splice(targetIndex, 0, draggedId)
-                   }
-                 } else {
-                   newOrder.push(draggedId)
-                 }
-               }
-
-               if (newZone !== draggedNode.projection.zone) {
-                 props.onChangeNode(draggedId, { projection: { ...draggedNode.projection, zone: newZone } })
-               }
-               if (orderNode) {
-                 props.onChangeNode(orderNode.id, {
-                   orderList: newOrder,
-                   slotRanks: buildSlotRanksFromOrder(projectionEntries, newOrder),
-                 })
-               }
+               readPresetProjectionMoveUpdates({
+                 draggedId,
+                 nodes: props.nodes,
+                 orderedProjectionEntries,
+                 orderNode,
+                 position,
+                 projectionEntries,
+                 projectionOrderIds,
+                 targetId,
+               }).forEach(update => props.onChangeNode(update.id, update.partial))
                return
              }
 

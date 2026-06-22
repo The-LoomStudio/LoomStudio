@@ -130,10 +130,13 @@ export function useStudioState() {
     setRawHtmlAllowed: renderingLab.setRawHtmlAllowed,
     renderingEvents: renderingLab.renderingEvents,
     setRenderingEvents: renderingLab.setRenderingEvents,
+    selectRenderingChoice: renderingLab.selectRenderingChoice,
     renderingSample: renderingLab.renderingSample,
     // context assets
     contextAssets: contextAssetState.nodes, setContextAssets: contextAssetState.setNodes,
     selectedContextNodeId: contextAssetState.selectedId, setSelectedContextNodeId: contextAssetState.setSelectedId,
+    updateContextAsset: contextAssetState.updateContextAsset,
+    moveContextAsset: contextAssetState.moveContextAsset,
     addContextAsset: contextAssetState.addContextAsset,
     duplicateContextAsset: contextAssetState.duplicateContextAsset,
     deleteContextAsset: contextAssetState.deleteContextAsset,
