@@ -5,6 +5,50 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 describe('application runtime workspace artifact integration', () => {
+  it('applies module and folder activation cascades to preset and setting contributions', async () => {
+    const runtime = createApplicationRuntime({
+      documents: createInMemoryDocumentStore(),
+    })
+    const imported = await runtime.importWorkspaceArtifact({ artifact: cascadingActivationArtifact() })
+    const created = await runtime.createSessionFromCard({ cardId: imported.card.id })
+    const inactive = await runtime.previewPrompt({
+      sessionId: created.session.id,
+      branchId: created.branch.id,
+      input: '先短推演。',
+      workspaceId: imported.workspace.id,
+    })
+    const presetOnly = await runtime.previewPrompt({
+      sessionId: created.session.id,
+      branchId: created.branch.id,
+      input: '进入润色。',
+      workspaceId: imported.workspace.id,
+      activationFacts: { 'agent.mode': 'finalize' },
+    })
+    const allActive = await runtime.previewPrompt({
+      sessionId: created.session.id,
+      branchId: created.branch.id,
+      input: '进入战斗润色。',
+      workspaceId: imported.workspace.id,
+      activationFacts: { 'agent.mode': 'finalize', tags: ['scene:combat'] },
+    })
+
+    expect(inactive.messages[0]?.content).not.toContain('Preset finalize directive.')
+    expect(inactive.messages[0]?.content).not.toContain('Combat setting directive.')
+    expect(presetOnly.messages[0]?.content).toContain('Preset finalize directive.')
+    expect(presetOnly.messages[0]?.content).not.toContain('Combat setting directive.')
+    expect(allActive.messages[0]?.content).toContain('Preset finalize directive.')
+    expect(allActive.messages[0]?.content).toContain('Combat setting directive.')
+    expect(allActive.messages[0]?.content).not.toContain('Manual preset directive.')
+    expect(allActive.projection.editorProjection.sourceRows.find(row => row.sourcePath.includes('Combat Setting'))).toMatchObject({
+      active: true,
+      activationReason: 'activation: all matched',
+    })
+    expect(allActive.projection.editorProjection.sourceRows.find(row => row.sourcePath.includes('Manual Preset Entry'))).toMatchObject({
+      active: false,
+      activationReason: 'activation: all blocked (activation: manual)',
+    })
+  })
+
   it('imports a workspace artifact into SQL, edits runtime state, exports it, and re-imports as an isolated workspace', async () => {
     const artifact = await readLoomCityArtifact()
     const runtime = createApplicationRuntime({
@@ -117,6 +161,89 @@ describe('application runtime workspace artifact integration', () => {
     expect(findArtifactNode(reimportedWorkspace.workspace, 'preset-style-directive')?.body).toContain('地下铁回声')
   })
 })
+
+function cascadingActivationArtifact(): PromptWorkspaceArtifact {
+  return {
+    schemaVersion: 1,
+    artifactId: 'activation-cascade-test',
+    displayName: 'Activation Cascade Test',
+    card: {
+      name: 'Activation Card',
+    },
+    contextAssets: [
+      {
+        id: 'preset-module',
+        label: 'Preset Module',
+        category: 'preset',
+        kind: 'module',
+        capabilities: {
+          activation: { kind: 'condition', conditions: [{ fact: 'agent.mode', equals: 'finalize' }] },
+        },
+        children: [
+          {
+            id: 'preset-entry',
+            label: 'Preset Entry',
+            kind: 'entry',
+            body: 'Preset finalize directive.',
+            capabilities: {
+              projection: {
+                injectionGroupKey: 'preset.system',
+                slotKey: 'preset:test@preset.system',
+                entryOrderHint: 10,
+              },
+            },
+          },
+          {
+            id: 'manual-preset-entry',
+            label: 'Manual Preset Entry',
+            kind: 'entry',
+            body: 'Manual preset directive.',
+            capabilities: {
+              activation: { kind: 'manual' },
+              projection: {
+                injectionGroupKey: 'preset.system',
+                slotKey: 'preset:test@preset.system',
+                entryOrderHint: 20,
+              },
+            },
+          },
+        ],
+      },
+      {
+        id: 'setting-module',
+        label: 'Setting Module',
+        category: 'setting',
+        kind: 'module',
+        children: [
+          {
+            id: 'setting-folder',
+            label: 'Combat Folder',
+            kind: 'folder',
+            capabilities: {
+              activation: { kind: 'condition', conditions: [{ fact: 'tags', includes: 'scene:combat' }] },
+            },
+            children: [
+              {
+                id: 'setting-entry',
+                label: 'Combat Setting',
+                kind: 'entry',
+                body: 'Combat setting directive.',
+                capabilities: {
+                  activation: { kind: 'condition', conditions: [{ fact: 'agent.mode', equals: 'finalize' }] },
+                  projection: {
+                    injectionGroupKey: 'setting.stable',
+                    slotKey: 'setting-layer:test@setting.stable',
+                    entryOrderHint: 10,
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }
+}
 
 async function readLoomCityArtifact(): Promise<PromptWorkspaceArtifact> {
   const text = await readFile(join(process.cwd(), 'packages/application-runtime/fixtures/workspaces/loom-city-v0.json'), 'utf8')

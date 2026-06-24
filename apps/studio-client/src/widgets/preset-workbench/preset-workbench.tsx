@@ -156,6 +156,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
               />
             ) : (
               <ContextAssetDetail
+                activationEditable
                 node={detailNode}
                 onChangeNode={partial => props.onChangeNode(detailNode.id, partial)}
                 t={props.t}

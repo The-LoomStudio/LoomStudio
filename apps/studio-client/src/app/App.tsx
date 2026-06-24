@@ -119,10 +119,12 @@ export function App() {
             timeline={state.timeline}
           />
           <InputDashboard
+            activationControl={state.activationControl}
             canPreviewPrompt={state.canPreviewPrompt}
             canSend={state.canSend}
             composerHint={state.composerHint}
             input={state.input}
+            onChangeActivationMode={state.setActivationMode}
             onChangeInput={value => {
               state.setInput(value)
             }}
@@ -130,8 +132,10 @@ export function App() {
               void state.previewPrompt()
             }}
             onSubmit={state.submitTurn}
+            onToggleActivationTag={state.toggleActivationTag}
             previewLabel={state.t('composer.preview')}
             sendLabel={state.t('composer.send')}
+            t={state.t}
             textareaDisabled={!state.session || !state.branch || state.busy}
           />
         </div>

@@ -20,10 +20,17 @@ export type PromptActivation =
   | { kind: 'manual' }
   | { kind: 'keyword'; keywords: string[]; caseSensitive?: boolean }
   | { kind: 'condition'; conditions: ActivationCondition[] }
+  | { kind: 'all'; activations: PromptActivation[] }
 
 export type ActivationEvaluation = {
   active: boolean
   reason: string
+}
+
+export function combineActivationGates(activations: PromptActivation[]): PromptActivation | undefined {
+  if (activations.length === 0) return undefined
+  if (activations.length === 1) return activations[0]
+  return { kind: 'all', activations }
 }
 
 export function evaluatePromptActivation(input: {
@@ -35,6 +42,17 @@ export function evaluatePromptActivation(input: {
 
   if (activation.kind === 'always') return { active: true, reason: 'activation: always' }
   if (activation.kind === 'manual') return { active: false, reason: 'activation: manual' }
+  if (activation.kind === 'all') {
+    const evaluations = activation.activations.map(item => evaluatePromptActivation({
+      activation: item,
+      currentInput: input.currentInput,
+      facts: input.facts,
+    }))
+    const inactive = evaluations.find(evaluation => !evaluation.active)
+    return inactive
+      ? { active: false, reason: `activation: all blocked (${inactive.reason})` }
+      : { active: true, reason: 'activation: all matched' }
+  }
   if (activation.kind === 'keyword') {
     const text = activation.caseSensitive ? input.currentInput ?? '' : (input.currentInput ?? '').toLocaleLowerCase()
     const hit = activation.keywords.some(keyword => text.includes(activation.caseSensitive ? keyword : keyword.toLocaleLowerCase()))
@@ -77,6 +95,10 @@ export function isPromptActivation(value: JsonValue | undefined): value is Promp
     return Array.isArray(value.keywords)
       && value.keywords.every(keyword => typeof keyword === 'string')
       && (value.caseSensitive === undefined || typeof value.caseSensitive === 'boolean')
+  }
+  if (value.kind === 'all') {
+    return Array.isArray(value.activations)
+      && value.activations.every(isPromptActivation)
   }
   return value.kind === 'condition'
     && Array.isArray(value.conditions)

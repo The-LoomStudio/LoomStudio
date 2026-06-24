@@ -27,6 +27,7 @@ export {
   materializeSlotKey,
 } from './prompt-builder.js'
 export {
+  combineActivationGates,
   evaluateCondition,
   evaluatePromptActivation,
   isActivationCondition,

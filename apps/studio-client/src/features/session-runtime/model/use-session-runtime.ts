@@ -13,6 +13,7 @@ import type {
 type JsonObject = { [key: string]: ClientJsonValue }
 
 type UseSessionRuntimeInput = {
+  activationFacts?: JsonObject
   api: StudioApi
   initialInput: string
   selectedCardId?: string
@@ -63,6 +64,7 @@ export function useSessionRuntime(input: UseSessionRuntimeInput) {
         agentRuntimeProfileId: input.selectedAgentRuntimeProfileId,
         input: composerInput,
         projectionOrderProfile: input.readProjectionOrderProfile(session),
+        activationFacts: input.activationFacts,
       }))
       setBranch(result.branch)
       setComposerInput('')
@@ -83,6 +85,7 @@ export function useSessionRuntime(input: UseSessionRuntimeInput) {
         branchId: branch.id,
         input: composerInput,
         projectionOrderProfile: input.readProjectionOrderProfile(session),
+        activationFacts: input.activationFacts,
       }))
       setPromptPreview(result)
     })

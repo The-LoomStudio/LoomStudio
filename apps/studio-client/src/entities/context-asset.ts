@@ -56,7 +56,7 @@ export type ProjectionSlotRank = {
 }
 
 export type PromptCompositionCapabilities = {
-  activation?: { kind: string; keywords?: string[] }
+  activation?: PromptActivationCapability
   lifecycle?: { lifecycle: string }
   projection?: {
     anchor?: 'before' | 'inside' | 'after'
@@ -69,4 +69,11 @@ export type PromptCompositionCapabilities = {
     sourceKind?: 'actual' | 'virtual'
     zone: string
   }
+}
+
+export type PromptActivationCapability = {
+  activations?: PromptActivationCapability[]
+  conditions?: Array<{ fact: string; equals?: string | number | boolean; includes?: string }>
+  kind: string
+  keywords?: string[]
 }

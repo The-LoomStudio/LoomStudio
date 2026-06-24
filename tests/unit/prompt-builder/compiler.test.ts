@@ -1,5 +1,6 @@
 import {
   compilePromptDataModel,
+  combineActivationGates,
   defaultCompositionSkeleton,
   emptyProjectionOrderProfile,
   materializePromptFragments,
@@ -20,6 +21,30 @@ const sourceNodes: SourceNode[] = [
 ]
 
 describe('prompt builder compiler', () => {
+  it('combines container activation gates as pass-through vetoes', () => {
+    const activation = combineActivationGates([
+      { kind: 'always' },
+      { kind: 'manual' },
+    ])
+    const compiled = compilePromptDataModel({
+      skeleton: defaultCompositionSkeleton,
+      sourceNodes,
+      fragments: [
+        fragment('setting.manual-child', 'settingLayer', 'worldbook-main', 'node.setting.inn', '不会被父级 always 强制打开。', {
+          injectionGroupKey: 'setting.stable',
+          activation,
+        }),
+      ],
+      orderProfile: emptyProjectionOrderProfile,
+    })
+
+    expect(compiled.messages[0]?.content).toBeUndefined()
+    expect(compiled.editorProjection.sourceRows[0]).toMatchObject({
+      active: false,
+      activationReason: 'activation: all blocked (activation: manual)',
+    })
+  })
+
   it('keeps source-tree drag scoped to fragment order inside the same dynamic slot', () => {
     const compiled = compilePromptDataModel({
       skeleton: defaultCompositionSkeleton,

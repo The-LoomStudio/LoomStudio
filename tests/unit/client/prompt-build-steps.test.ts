@@ -32,4 +32,38 @@ describe('prompt build steps model', () => {
     expect(activationStep?.rows.find(row => row.label === 'Setting Layer')?.value).toBe('2 active / 1 inactive')
     expect(activationStep?.rows.find(row => row.label === 'Active Entries')?.value).toBe('always, rain')
   })
+
+  it('summarizes runtime facts and inactive activation reasons from projection rows', () => {
+    const steps = buildPromptBuildSteps({
+      input: 'finalize',
+      timeline: [],
+      activationFacts: {
+        'agent.mode': 'finalize',
+        tags: ['scene:combat'],
+      },
+      projection: {
+        zones: [],
+        messages: [],
+        editorProjection: {
+          sourceRows: [
+            {
+              active: false,
+              activationReason: 'activation: conditions not matched',
+              fragmentId: 'setting.draft',
+              sourceNodeId: 'node.setting.draft',
+              sourcePath: '/Setting/Draft',
+              injectionGroupKey: 'setting.stable',
+              slotKey: 'setting-layer:test@setting.stable',
+            },
+          ],
+          promptRows: [],
+        },
+      },
+    }, createTranslator('en-US'))
+
+    const activationStep = steps.find(step => step.title === '2. Activation Pass')
+
+    expect(activationStep?.rows.find(row => row.label === 'Runtime Facts')?.value).toBe('agent.mode = finalize, tags = scene:combat')
+    expect(activationStep?.rows.find(row => row.label === 'Inactive Reasons')?.value).toBe('/Setting/Draft: activation: conditions not matched')
+  })
 })

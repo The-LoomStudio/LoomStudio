@@ -454,6 +454,32 @@ export const DemoData = {
                     lifecycle: { lifecycle: 'keyword' },
                   },
                 },
+                {
+                  id: 'sl-final-prose-polish',
+                  label: '正文润色规则',
+                  meta: 'runtime / agent.mode',
+                  kind: 'entry',
+                  enabled: true,
+                  body: '当前处于正文润色阶段。输出应整合短推演结果，形成连贯、完整、可直接进入正文时间线的叙述段落。',
+                  capabilities: {
+                    activation: {
+                      kind: 'condition',
+                      conditions: [{ fact: 'agent.mode', equals: 'finalize' }],
+                    },
+                    projection: {
+                      anchor: 'inside',
+                      entryOrderHint: 50,
+                      zone: 'StablePrefix',
+                      injectionGroupKey: 'setting.stable',
+                      order: 'entry: 50',
+                      reason: 'Activated when runtime fact agent.mode = finalize',
+                      slotKey: 'setting-layer:city-layers-main@setting.stable',
+                      slotOrderHint: 200,
+                      sourceKind: 'actual',
+                    },
+                    lifecycle: { lifecycle: 'conditional' },
+                  },
+                },
               ]
             }
           ]

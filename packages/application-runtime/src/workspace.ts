@@ -18,7 +18,7 @@ import type {
   ProjectionOrderProfile,
   SourceNode,
 } from './prompt-builder.js'
-import type { PromptActivation } from './prompt-activation.js'
+import { combineActivationGates, type PromptActivation } from './prompt-activation.js'
 
 export type PromptWorkspaceArtifact = {
   schemaVersion: 1
@@ -299,6 +299,7 @@ export async function readWorkspacePromptInputs(input: {
   const contributions: PromptContribution[] = []
 
   collectPromptInputs({
+    parentActivationGates: [],
     contributions,
     macroContext: input.macroContext,
     nodes: workspace.content.contextAssets,
@@ -379,12 +380,16 @@ function collectPromptInputs(input: {
   inheritedSourceId: string | undefined
   macroContext: { user: string }
   nodes: PromptWorkspaceNode[]
+  parentActivationGates: PromptActivation[]
   parentId: string | null
   sourceNodes: SourceNode[]
 }): void {
   for (const [index, node] of input.nodes.entries()) {
     const category = node.category ?? input.inheritedCategory
     const sourceId = node.kind === 'module' ? node.id : input.inheritedSourceId ?? node.id
+    const activationGates = node.capabilities?.activation
+      ? [...input.parentActivationGates, node.capabilities.activation]
+      : input.parentActivationGates
     input.sourceNodes.push({
       id: node.id,
       sourceId,
@@ -396,6 +401,7 @@ function collectPromptInputs(input: {
     if (node.body && node.enabled !== false && node.capabilities?.projection && category) {
       const kind = readSourceKind(category)
       if (kind) {
+        const effectiveActivation = combineActivationGates(activationGates)
         input.contributions.push({
           id: `workspace.${node.id}`,
           sourceRef: {
@@ -406,7 +412,7 @@ function collectPromptInputs(input: {
           content: renderMacros(node.body, input.macroContext),
           capabilities: {
             content: { kind: 'text' },
-            ...(node.capabilities.activation ? { activation: node.capabilities.activation } : {}),
+            ...(effectiveActivation ? { activation: effectiveActivation } : {}),
             lifecycle: { lifecycle: 'always' },
             projection: {
               injectionGroupKey: node.capabilities.projection.injectionGroupKey,
@@ -422,6 +428,7 @@ function collectPromptInputs(input: {
     if (node.children) {
       collectPromptInputs({
         ...input,
+        parentActivationGates: activationGates,
         nodes: node.children,
         parentId: node.id,
         inheritedCategory: category,

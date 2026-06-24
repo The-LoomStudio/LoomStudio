@@ -6,6 +6,7 @@ import { createStudioApi } from '../shared/api/studio-api.js'
 import { useBusyAction } from '../shared/hooks/use-busy-action.js'
 import { useCards } from '../features/cards/model/use-cards.js'
 import { useContextAssets } from '../features/context-assets/model/use-context-assets.js'
+import { createActivationFacts, toggleActivationTag, type ActivationControlState, type ActivationTag } from '../features/prompt-build/model/activation-control.js'
 import { buildPromptBuildSteps } from '../features/prompt-build/model/build-prompt-build-steps.js'
 import { useRenderingLab } from '../features/rendering-lab/model/use-rendering-lab.js'
 import { useRendererSession } from '../features/renderer-poc/model/use-renderer-session.js'
@@ -24,6 +25,10 @@ export function useStudioState() {
   const t = useMemo(() => createTranslator(locale), [locale])
   const [endpoint, setEndpoint] = useState(DemoData.endpoint)
   const [customCss, setCustomCss] = useState(DemoData.customCss)
+  const [activationControl, setActivationControl] = useState<ActivationControlState>({
+    mode: 'draft',
+    tags: [],
+  })
   const busyAction = useBusyAction()
   const bridge = useMemo(() => createClientBridge({ endpoint, source: 'studio-client' }), [endpoint])
   const api = useMemo(() => createStudioApi(bridge), [bridge])
@@ -46,7 +51,9 @@ export function useStudioState() {
     runAction: busyAction.runAction,
     t,
   })
+  const activationFacts = useMemo(() => createActivationFacts(activationControl), [activationControl])
   const sessionRuntime = useSessionRuntime({
+    activationFacts,
     api,
     initialInput: '我看向柜台后的铃铛。',
     selectedCardId: cardsState.selectedCardId,
@@ -83,7 +90,15 @@ export function useStudioState() {
     input: sessionRuntime.input,
     messages: promptMessages,
     projection: promptProjection,
+    activationFacts,
   }, t)
+
+  function toggleRuntimeTag(tag: ActivationTag) {
+    setActivationControl(current => ({
+      ...current,
+      tags: toggleActivationTag(current.tags, tag),
+    }))
+  }
 
   return {
     // i18n
@@ -107,6 +122,10 @@ export function useStudioState() {
     runDetails: sessionRuntime.runDetails,
     // prompt
     promptPreview: sessionRuntime.promptPreview, promptMessages, promptProjection, promptBuildSteps,
+    activationControl,
+    activationFacts,
+    setActivationMode: (mode: ActivationControlState['mode']) => setActivationControl(current => ({ ...current, mode })),
+    toggleActivationTag: toggleRuntimeTag,
     // gateway
     gatewayForm: providerSettings.gatewayForm,
     setGatewayForm: providerSettings.setGatewayForm,

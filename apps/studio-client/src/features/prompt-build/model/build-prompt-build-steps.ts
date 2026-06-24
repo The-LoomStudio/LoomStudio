@@ -16,6 +16,7 @@ export function buildPromptBuildSteps(input: {
   input: string
   messages?: ProviderMessage[]
   projection?: PromptProjection
+  activationFacts?: JsonObject
 }, t: Translator): PromptBuildStep[] {
   const settingEntries = readSettingEntries(input.session?.cardSnapshot)
   const activeSettings = input.projection
@@ -42,7 +43,9 @@ export function buildPromptBuildSteps(input: {
       title: t('prompt.step.activationPass'),
       rows: [
         { label: t('prompt.label.settingLayer'), value: t('prompt.value.activeInactive', { active: activeSettings.length, inactive: inactiveSettings }) },
+        { label: t('prompt.label.runtimeFacts'), value: readActivationFacts(input.activationFacts, t) },
         { label: t('prompt.label.activeEntries'), value: readActiveEntryLabels(activeSettings, t) },
+        { label: t('prompt.label.inactiveReasons'), value: readInactiveReasons(input.projection, t) },
         { label: t('prompt.label.macroPass'), value: t('prompt.value.macroExpanded') },
       ],
     },
@@ -84,6 +87,24 @@ function readActiveEntryLabels(entries: Array<JsonObject | PromptProjection['edi
   })
 
   return labels.join(', ') || t('prompt.value.activeEntryListEmpty')
+}
+
+function readInactiveReasons(projection: PromptProjection | undefined, t: Translator): string {
+  const rows = projection?.editorProjection.sourceRows
+    .filter(row => !row.active)
+    .map(row => `${row.sourcePath}: ${row.activationReason ?? t('prompt.value.noActivationReason')}`) ?? []
+
+  return rows.join(', ') || t('prompt.value.none')
+}
+
+function readActivationFacts(facts: JsonObject | undefined, t: Translator): string {
+  if (!facts) return t('prompt.value.none')
+  const mode = typeof facts['agent.mode'] === 'string' ? facts['agent.mode'] : t('prompt.value.none')
+  const tags = Array.isArray(facts.tags) ? facts.tags.filter(tag => typeof tag === 'string') : []
+
+  return tags.length > 0
+    ? t('prompt.value.runtimeFactsWithTags', { mode, tags: tags.join(', ') })
+    : t('prompt.value.runtimeFacts', { mode })
 }
 
 function readSettingEntries(snapshot: JsonObject | undefined): JsonObject[] {

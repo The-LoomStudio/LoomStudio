@@ -1,8 +1,17 @@
 import type { ContextAssetNode } from '../../../../entities/index.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
+import {
+  buildActivationUpdate,
+  readActivationDraft,
+  updateActivationDraft,
+  type ActivationConditionPreset,
+  type ActivationConditionValue,
+  type ActivationEditorMode,
+} from '../../model/activation-editor.js'
 import styles from './context-asset-detail.module.css'
 
 type ContextAssetDetailProps = {
+  activationEditable?: boolean
   node: ContextAssetNode
   onChangeNode: (partial: Partial<ContextAssetNode>) => void
   t: Translator
@@ -13,10 +22,17 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
   const isEntry = props.node.kind === 'entry'
   const body = props.node.body ?? ''
   const readOnly = isReadOnlyDetailNode(props.node)
+  const activationDraft = readActivationDraft(props.node)
+  const canShowActivation = Boolean(props.activationEditable && (props.node.kind === 'module' || props.node.kind === 'folder' || props.node.kind === 'entry'))
 
   function updateProjection(partial: Partial<NonNullable<ContextAssetNode['projection']>>) {
     if (!props.node.projection) return
     props.onChangeNode({ projection: { ...props.node.projection, ...partial } })
+  }
+
+  function updateActivation(partial: Partial<ReturnType<typeof readActivationDraft>>) {
+    const draft = updateActivationDraft(activationDraft, partial)
+    props.onChangeNode(buildActivationUpdate({ draft, node: props.node }))
   }
 
   return (
@@ -54,6 +70,95 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
               <dd>{row.value}</dd>
             </div>
           ))}
+        </section>
+      ) : null}
+
+      {canShowActivation ? (
+        <section className={styles.configGrid} aria-label={props.t('context.activation.label')}>
+          <div>
+            <dt>{props.t('context.activation.mode')}</dt>
+            <dd>
+              <select
+                className={styles.inlineInput}
+                disabled={readOnly}
+                value={activationDraft.mode}
+                onChange={event => updateActivation({ mode: event.target.value as ActivationEditorMode })}
+              >
+                <option value="always">{props.t('context.activation.always')}</option>
+                <option value="manual">{props.t('context.activation.manual')}</option>
+                <option value="keyword">{props.t('context.activation.keyword')}</option>
+                <option value="condition">{props.t('context.activation.condition')}</option>
+                {activationDraft.mode === 'custom' ? <option value="custom">{props.t('context.activation.custom')}</option> : null}
+              </select>
+            </dd>
+          </div>
+          {activationDraft.mode === 'keyword' ? (
+            <div>
+              <dt>{props.t('context.activation.keywords')}</dt>
+              <dd>
+                <input
+                  className={styles.inlineInput}
+                  disabled={readOnly}
+                  value={activationDraft.keywords}
+                  onChange={event => updateActivation({ keywords: event.target.value })}
+                  placeholder={props.t('context.activation.keywordsPlaceholder')}
+                />
+              </dd>
+            </div>
+          ) : null}
+          {activationDraft.mode === 'condition' ? (
+            <>
+              <div>
+                <dt>{props.t('context.activation.fact')}</dt>
+                <dd>
+                  <select
+                    className={styles.inlineInput}
+                    disabled={readOnly}
+                    value={activationDraft.conditionPreset}
+                    onChange={event => {
+                      const conditionPreset = event.target.value as ActivationConditionPreset
+                      updateActivation({
+                        conditionPreset,
+                        conditionValue: conditionPreset === 'agent.mode' ? 'draft' : 'scene:combat',
+                      })
+                    }}
+                  >
+                    <option value="agent.mode">agent.mode</option>
+                    <option value="tags">tags</option>
+                  </select>
+                </dd>
+              </div>
+              <div>
+                <dt>{activationDraft.conditionPreset === 'agent.mode' ? props.t('context.activation.equals') : props.t('context.activation.includes')}</dt>
+                <dd>
+                  <select
+                    className={styles.inlineInput}
+                    disabled={readOnly}
+                    value={activationDraft.conditionValue}
+                    onChange={event => updateActivation({ conditionValue: event.target.value as ActivationConditionValue })}
+                  >
+                    {activationDraft.conditionPreset === 'agent.mode' ? (
+                      <>
+                        <option value="draft">draft</option>
+                        <option value="finalize">finalize</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="scene:combat">scene:combat</option>
+                        <option value="style:cinematic">style:cinematic</option>
+                      </>
+                    )}
+                  </select>
+                </dd>
+              </div>
+            </>
+          ) : null}
+          {activationDraft.mode === 'custom' ? (
+            <div>
+              <dt>{props.t('context.activation.custom')}</dt>
+              <dd>{props.t('context.activation.customHint')}</dd>
+            </div>
+          ) : null}
         </section>
       ) : null}
 

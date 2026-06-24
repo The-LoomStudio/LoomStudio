@@ -132,6 +132,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
               />
             ) : (
               <ContextAssetDetail
+                activationEditable={activeCategory === 'setting'}
                 node={selectedNode}
                 onChangeNode={partial => props.onChangeNode(selectedNode.id, partial)}
                 t={props.t}
