@@ -41,6 +41,11 @@ export type GetPromptWorkspaceResult = {
   workspace: PromptWorkspace
 }
 
+export type ListPromptWorkspacesResult = {
+  workspaces: PromptWorkspace[]
+  nextCursor?: string
+}
+
 export type UpdatePromptWorkspaceResult = {
   workspace: PromptWorkspace
 }

@@ -34,3 +34,11 @@ export type ListCardsResult = {
   cards: Card[]
   nextCursor?: string
 }
+
+export type UpdateCardResult = {
+  card: Card
+}
+
+export type DeleteCardResult = {
+  deleted: true
+}

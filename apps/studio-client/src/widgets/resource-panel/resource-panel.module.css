@@ -82,6 +82,32 @@
   line-height: 1.45;
 }
 
+.fieldLabel {
+  display: grid;
+  gap: 5px;
+  color: var(--loom-text-muted);
+  font-size: 12px;
+}
+
+.fieldLabel input,
+.fieldLabel textarea {
+  width: 100%;
+  border: 1px solid var(--loom-border);
+  border-radius: 4px;
+  padding: 7px 8px;
+  background: var(--loom-panel);
+  color: var(--loom-text);
+}
+
+.cardForm .compactTextarea {
+  min-height: 72px;
+  border: 1px solid var(--loom-border);
+  border-radius: 4px;
+  padding: 7px 8px;
+  font-family: inherit;
+  font-size: 12px;
+}
+
 .customCssEditor {
   display: grid;
   gap: 6px;

@@ -159,4 +159,62 @@ describe('application runtime prompt preview integration', () => {
     expect(preview.messages[0]?.content).toContain('Card description: 旅人进入雾港。')
     expect(preview.messages[0]?.content).toContain('旅人当前场景: 旅人站在潮湿的柜台前。')
   })
+
+  it('previews and stores the OpenAI-compatible provider payload for a selected model profile', async () => {
+    const documents = createInMemoryDocumentStore()
+    const runtime = createApplicationRuntime({
+      documents,
+      gateway: {
+        invokeChat: async () => ({
+          provider: 'fake',
+          model: 'fake-payload-test',
+          text: 'Payload trace response.',
+        }),
+      },
+    })
+    const providerAccount = await runtime.createProviderAccount({
+      providerExtensionId: 'official.openai-compatible',
+      displayName: 'OpenAI Compatible',
+      config: { baseUrl: 'https://gateway.test/v1' },
+      secretRefs: { apiKey: 'plain:test-key' },
+    })
+    const modelProfile = await runtime.createModelProfile({
+      providerAccountId: providerAccount.providerAccount.id,
+      displayName: 'Preview Model',
+      providerModelId: 'preview-model',
+      config: { temperature: 0.4, max_tokens: 128 },
+    })
+    const agentRuntimeProfile = await runtime.createAgentRuntimeProfile({
+      name: 'Preview Agent',
+      modelProfileId: modelProfile.modelProfile.id,
+    })
+    const { session, branch } = await runtime.createSession({
+      cardSourceVersionId: 'card-version-1',
+      cardSnapshot: { name: 'Payload Preview Card' },
+      agentRuntimeProfileId: agentRuntimeProfile.agentRuntimeProfile.id,
+    })
+    const preview = await runtime.previewPrompt({
+      sessionId: session.id,
+      branchId: branch.id,
+      input: '生成 payload。',
+    })
+    const turn = await runtime.submitTurn({
+      sessionId: session.id,
+      branchId: branch.id,
+      input: '生成 payload。',
+    })
+    const run = await runtime.getRun({ runId: turn.run.id })
+    const storedPrompt = run.runtimeEntries.find(entry => entry.kind === 'prompt')?.content as {
+      providerPayloadPreview?: unknown
+    }
+
+    expect(preview.providerPayloadPreview).toMatchObject({
+      model: 'preview-model',
+      temperature: 0.4,
+      max_tokens: 128,
+      stream: false,
+      messages: preview.messages,
+    })
+    expect(storedPrompt.providerPayloadPreview).toEqual(preview.providerPayloadPreview)
+  })
 })

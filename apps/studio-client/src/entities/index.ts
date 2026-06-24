@@ -1,5 +1,5 @@
 export type { JsonObject } from './common.js'
-export type { Card, CreateCardResult, ListCardsResult } from './card.js'
+export type { Card, CreateCardResult, DeleteCardResult, ListCardsResult, UpdateCardResult } from './card.js'
 export type { ContextAssetNode, ProjectionSlotRank, PromptCompositionCapabilities } from './context-asset.js'
 export type { Session, Branch, SessionDetails, CreateSessionResult, ForkBranchResult } from './session.js'
 export type { NarrativeEntry, Timeline } from './narrative.js'
@@ -10,6 +10,7 @@ export type {
   ExportWorkspaceArtifactResult,
   GetPromptWorkspaceResult,
   ImportWorkspaceArtifactResult,
+  ListPromptWorkspacesResult,
   PromptWorkspace,
   PromptWorkspaceArtifact,
   UpdatePromptWorkspaceResult,

@@ -1,10 +1,14 @@
 export { applicationDocumentTypes } from './document-types.js'
 export { createApplicationRuntime } from './runtime.js'
 export {
+  createPromptAsset,
+  deletePromptAsset,
   exportWorkspaceArtifact,
   getPromptWorkspace,
   importWorkspaceArtifact,
   isPromptWorkspaceArtifact,
+  listPromptWorkspaces,
+  movePromptAsset,
   normalizeWorkspaceArtifact,
   readWorkspaceCardSnapshot,
   readWorkspaceOrderProfile,
@@ -18,6 +22,9 @@ export {
   createFakeProvider,
   createOpenAICompatibleGateway,
 } from './gateway.js'
+export {
+  buildOpenAIChatPayload,
+} from './provider-payload.js'
 export {
   compilePromptDataModel,
   applyCompositionSkeletonPatch,
@@ -63,6 +70,10 @@ export type {
   ActivationFacts,
   PromptActivation,
 } from './prompt-activation.js'
+export type {
+  OpenAIChatMessage,
+  OpenAIChatPayload,
+} from './provider-payload.js'
 export type * from './types.js'
 export type {
   PromptWorkspaceBindingEndpoint,

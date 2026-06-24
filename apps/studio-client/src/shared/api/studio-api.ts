@@ -3,6 +3,7 @@ import type {
   AgentTranscript,
   CreateAgentRuntimeProfileResult,
   CreateCardResult,
+  DeleteCardResult,
   CreateModelProfileResult,
   CreateProviderAccountResult,
   CreateSessionResult,
@@ -17,12 +18,14 @@ import type {
   ListCardsResult,
   ListModelProfilesResult,
   ListProviderAccountsResult,
+  ListPromptWorkspacesResult,
   PromptPreview,
   RunDetails,
   SessionDetails,
   SubmitTurnResult,
   Timeline,
   UpdatePromptWorkspaceResult,
+  UpdateCardResult,
   UpdateAgentRuntimeProfileResult,
   UpdateModelProfileResult,
   UpdateProviderAccountResult,
@@ -34,6 +37,8 @@ export type StudioApi = {
   cards: {
     list(): Promise<ListCardsResult>
     create(input: JsonObject): Promise<CreateCardResult>
+    update(input: JsonObject): Promise<UpdateCardResult>
+    delete(cardId: string): Promise<DeleteCardResult>
   }
   providerAccounts: {
     list(): Promise<ListProviderAccountsResult>
@@ -74,7 +79,11 @@ export type StudioApi = {
   promptWorkspaces: {
     import(input: JsonObject): Promise<ImportWorkspaceArtifactResult>
     get(workspaceId: string): Promise<GetPromptWorkspaceResult>
+    list(input?: JsonObject): Promise<ListPromptWorkspacesResult>
     updateAsset(input: JsonObject): Promise<UpdatePromptWorkspaceResult>
+    createAsset(input: JsonObject): Promise<UpdatePromptWorkspaceResult>
+    moveAsset(input: JsonObject): Promise<UpdatePromptWorkspaceResult>
+    deleteAsset(input: JsonObject): Promise<UpdatePromptWorkspaceResult>
     updateProjectionOrderProfile(input: JsonObject): Promise<UpdatePromptWorkspaceResult>
     export(workspaceId: string): Promise<ExportWorkspaceArtifactResult>
   }
@@ -88,6 +97,8 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
     cards: {
       list: () => bridge.call<ListCardsResult>('application.listCards', {}),
       create: input => bridge.call<CreateCardResult>('application.createCard', input),
+      update: input => bridge.call<UpdateCardResult>('application.updateCard', input),
+      delete: cardId => bridge.call<DeleteCardResult>('application.deleteCard', { cardId }),
     },
     providerAccounts: {
       list: () => bridge.call<ListProviderAccountsResult>('application.listProviderAccounts', {}),
@@ -131,7 +142,11 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
     promptWorkspaces: {
       import: input => bridge.call<ImportWorkspaceArtifactResult>('application.importWorkspaceArtifact', input),
       get: workspaceId => bridge.call<GetPromptWorkspaceResult>('application.getPromptWorkspace', { workspaceId }),
+      list: input => bridge.call<ListPromptWorkspacesResult>('application.listPromptWorkspaces', input ?? {}),
+      createAsset: input => bridge.call<UpdatePromptWorkspaceResult>('application.createPromptAsset', input),
       updateAsset: input => bridge.call<UpdatePromptWorkspaceResult>('application.updatePromptAsset', input),
+      moveAsset: input => bridge.call<UpdatePromptWorkspaceResult>('application.movePromptAsset', input),
+      deleteAsset: input => bridge.call<UpdatePromptWorkspaceResult>('application.deletePromptAsset', input),
       updateProjectionOrderProfile: input => bridge.call<UpdatePromptWorkspaceResult>('application.updateProjectionOrderProfile', input),
       export: workspaceId => bridge.call<ExportWorkspaceArtifactResult>('application.exportWorkspaceArtifact', { workspaceId }),
     },

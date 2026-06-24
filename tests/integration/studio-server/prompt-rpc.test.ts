@@ -115,4 +115,65 @@ describe('studio server prompt rpc integration', () => {
       })
     })
   })
+
+  it('returns an OpenAI-compatible provider payload preview through /rpc when a model profile is selected', async () => {
+    await withStudioServer(async port => {
+      const providerAccount = await callRpc<{
+        providerAccount: { id: string }
+      }>(port, 'application.createProviderAccount', {
+        providerExtensionId: 'official.openai-compatible',
+        displayName: 'RPC OpenAI Compatible',
+        config: { baseUrl: 'https://gateway.test/v1' },
+        secretRefs: { apiKey: 'plain:test-key' },
+      })
+      const modelProfile = await callRpc<{
+        modelProfile: { id: string }
+      }>(port, 'application.createModelProfile', {
+        providerAccountId: providerAccount.providerAccount.id,
+        displayName: 'RPC Preview Model',
+        providerModelId: 'rpc-preview-model',
+        config: { temperature: 0.3, max_tokens: 64 },
+      })
+      const agentRuntimeProfile = await callRpc<{
+        agentRuntimeProfile: { id: string }
+      }>(port, 'application.createAgentRuntimeProfile', {
+        name: 'RPC Preview Agent',
+        modelProfileId: modelProfile.modelProfile.id,
+      })
+      const card = await callRpc<{
+        card: { id: string }
+      }>(port, 'application.createCard', {
+        name: 'RPC Payload Card',
+      })
+      const created = await callRpc<{
+        session: { id: string }
+        branch: { id: string }
+      }>(port, 'application.createSessionFromCard', {
+        cardId: card.card.id,
+      })
+      const preview = await callRpc<{
+        messages: Array<{ role: string; content: string }>
+        providerPayloadPreview: {
+          model: string
+          messages: Array<{ role: string; content: string }>
+          stream: boolean
+          temperature: number
+          max_tokens: number
+        }
+      }>(port, 'application.previewPrompt', {
+        sessionId: created.session.id,
+        branchId: created.branch.id,
+        agentRuntimeProfileId: agentRuntimeProfile.agentRuntimeProfile.id,
+        input: 'RPC payload preview。',
+      })
+
+      expect(preview.providerPayloadPreview).toMatchObject({
+        model: 'rpc-preview-model',
+        messages: preview.messages,
+        stream: false,
+        temperature: 0.3,
+        max_tokens: 64,
+      })
+    })
+  })
 })

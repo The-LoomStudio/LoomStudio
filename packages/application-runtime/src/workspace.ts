@@ -1,4 +1,4 @@
-import type { DocumentStore } from '@loom-studio/document-store'
+import type { DocumentRecord, DocumentStore } from '@loom-studio/document-store'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import { createId, nowIso } from '@loom-studio/shared'
 import { cardToSnapshot, normalizeOpening, normalizeOptionalString, normalizePreset, normalizeSettingLayer, renderMacros } from './card.js'
@@ -107,6 +107,14 @@ export type WorkspacePromptCompositionCapabilities = Omit<PromptCompositionCapab
     injectionGroupKey: string
     slotKey?: string
     slotOrderHint?: number
+    sourceKind?: 'actual' | 'virtual'
+  }
+}
+
+type PromptContributionWorkspaceNode = PromptWorkspaceNode & {
+  body: string
+  capabilities: WorkspacePromptCompositionCapabilities & {
+    projection: NonNullable<WorkspacePromptCompositionCapabilities['projection']>
   }
 }
 
@@ -184,12 +192,56 @@ export async function getPromptWorkspace(input: {
   return toVersioned(workspace)
 }
 
+export async function listPromptWorkspaces(input: {
+  cardId?: string
+  cursor?: string
+  documents: DocumentStore
+  limit?: number
+}): Promise<{
+  workspaces: Array<PromptWorkspaceContent & { id: string; version: number }>
+  nextCursor?: string
+}> {
+  const result = await input.documents.list({
+    type: applicationDocumentTypes.promptWorkspace,
+    cursor: input.cursor,
+    limit: input.limit,
+  })
+  const workspaces = (result.items as Array<DocumentRecord<PromptWorkspaceContent>>)
+    .map(toVersioned)
+    .filter(workspace => !input.cardId || workspace.cardId === input.cardId)
+
+  return {
+    workspaces,
+    nextCursor: result.nextCursor,
+  }
+}
+
+export async function createPromptAsset(input: {
+  asset: PromptWorkspaceNode
+  documents: DocumentStore
+  now?: string
+  position: 'before' | 'inside' | 'after'
+  targetAssetId: string
+  workspaceId: string
+}): Promise<PromptWorkspaceContent & { id: string; version: number }> {
+  const workspace = await readDocument<PromptWorkspaceContent>(input.documents, input.workspaceId, applicationDocumentTypes.promptWorkspace)
+  if (findNode(workspace.content.contextAssets, node => node.id === input.asset.id)) {
+    throw new Error(`Prompt asset already exists: ${input.asset.id}`)
+  }
+  const result = insertPromptAssetNode(workspace.content.contextAssets, input.targetAssetId, input.position, input.asset)
+  if (!result.found) throw new Error(`Prompt asset target not found: ${input.targetAssetId}`)
+
+  return await writePromptWorkspace(input.documents, workspace, result.nodes, input.now)
+}
+
 export async function updatePromptAsset(input: {
   assetId: string
   body?: string
+  capabilities?: WorkspacePromptCompositionCapabilities
   documents: DocumentStore
   enabled?: boolean
   label?: string
+  meta?: string
   now?: string
   workspaceId: string
 }): Promise<PromptWorkspaceContent & { id: string; version: number }> {
@@ -197,7 +249,9 @@ export async function updatePromptAsset(input: {
   const result = updateNode(workspace.content.contextAssets, input.assetId, node => ({
     ...node,
     ...(input.body !== undefined ? { body: input.body } : {}),
+    ...(input.capabilities !== undefined ? { capabilities: input.capabilities } : {}),
     ...(input.label !== undefined ? { label: input.label } : {}),
+    ...(input.meta !== undefined ? { meta: input.meta } : {}),
     ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
   }))
   if (!result.found) throw new Error(`Prompt asset not found: ${input.assetId}`)
@@ -214,6 +268,47 @@ export async function updatePromptAsset(input: {
   })
 
   return toVersioned(updated)
+}
+
+export async function movePromptAsset(input: {
+  assetId: string
+  documents: DocumentStore
+  now?: string
+  position: 'before' | 'inside' | 'after'
+  targetAssetId: string
+  workspaceId: string
+}): Promise<PromptWorkspaceContent & { id: string; version: number }> {
+  if (input.assetId === input.targetAssetId) throw new Error('Cannot move prompt asset onto itself')
+  const workspace = await readDocument<PromptWorkspaceContent>(input.documents, input.workspaceId, applicationDocumentTypes.promptWorkspace)
+  const asset = findNode(workspace.content.contextAssets, node => node.id === input.assetId)
+  if (!asset) throw new Error(`Prompt asset not found: ${input.assetId}`)
+  if (asset.kind === 'module' || asset.kind === 'order') throw new Error(`Prompt asset cannot be moved: ${input.assetId}`)
+  if (findNode(asset.children ?? [], node => node.id === input.targetAssetId)) {
+    throw new Error('Cannot move prompt asset inside its own subtree')
+  }
+
+  const removed = removePromptAssetNode(workspace.content.contextAssets, input.assetId)
+  const inserted = insertPromptAssetNode(removed.nodes, input.targetAssetId, input.position, asset)
+  if (!inserted.found) throw new Error(`Prompt asset target not found: ${input.targetAssetId}`)
+
+  return await writePromptWorkspace(input.documents, workspace, inserted.nodes, input.now)
+}
+
+export async function deletePromptAsset(input: {
+  assetId: string
+  documents: DocumentStore
+  now?: string
+  workspaceId: string
+}): Promise<PromptWorkspaceContent & { id: string; version: number }> {
+  const workspace = await readDocument<PromptWorkspaceContent>(input.documents, input.workspaceId, applicationDocumentTypes.promptWorkspace)
+  const asset = findNode(workspace.content.contextAssets, node => node.id === input.assetId)
+  if (!asset) throw new Error(`Prompt asset not found: ${input.assetId}`)
+  if (asset.kind === 'module' || asset.kind === 'order') throw new Error(`Prompt asset cannot be deleted: ${input.assetId}`)
+
+  const removed = removePromptAssetNode(workspace.content.contextAssets, input.assetId)
+  const pruned = pruneProjectionOrderRefs(removed.nodes, removed.removedIds, removed.removedSlotKeys)
+
+  return await writePromptWorkspace(input.documents, workspace, pruned, input.now)
 }
 
 export async function updateProjectionOrderProfile(input: {
@@ -398,7 +493,7 @@ function collectPromptInputs(input: {
       orderIndex: index + 1,
     })
 
-    if (node.body && node.enabled !== false && node.capabilities?.projection && category) {
+    if (category && isPromptContributionNode(node, category)) {
       const kind = readSourceKind(category)
       if (kind) {
         const effectiveActivation = combineActivationGates(activationGates)
@@ -438,6 +533,15 @@ function collectPromptInputs(input: {
   }
 }
 
+function isPromptContributionNode(node: PromptWorkspaceNode, category: PromptWorkspaceNode['category']): node is PromptContributionWorkspaceNode {
+  return node.kind === 'entry'
+    && node.enabled !== false
+    && typeof node.body === 'string'
+    && Boolean(node.capabilities?.projection)
+    && node.capabilities?.projection?.sourceKind !== 'virtual'
+    && (node.capabilities?.projection?.injectionGroupKey !== 'chat.history' || category === 'history')
+}
+
 function readSourceKind(category: PromptWorkspaceNode['category']): PromptContribution['sourceRef']['kind'] | undefined {
   if (category === 'preset') return 'preset'
   if (category === 'setting') return 'settingLayer'
@@ -465,6 +569,102 @@ function updateNode(
   })
 
   return { found, nodes: nextNodes }
+}
+
+async function writePromptWorkspace(
+  documents: DocumentStore,
+  workspace: DocumentRecord<PromptWorkspaceContent>,
+  contextAssets: PromptWorkspaceNode[],
+  now?: string,
+): Promise<PromptWorkspaceContent & { id: string; version: number }> {
+  const updated = await writeDocument<PromptWorkspaceContent>(documents, {
+    id: workspace.id,
+    type: applicationDocumentTypes.promptWorkspace,
+    content: {
+      ...workspace.content,
+      contextAssets,
+      updatedAt: now ?? nowIso(),
+    },
+    expectedVersion: workspace.version,
+  })
+
+  return toVersioned(updated)
+}
+
+function insertPromptAssetNode(
+  nodes: PromptWorkspaceNode[],
+  targetId: string,
+  position: 'before' | 'inside' | 'after',
+  asset: PromptWorkspaceNode,
+): { found: boolean; nodes: PromptWorkspaceNode[] } {
+  let found = false
+  const nextNodes = nodes.flatMap(node => {
+    if (node.id === targetId) {
+      found = true
+      if (position === 'before') return [asset, node]
+      if (position === 'after') return [node, asset]
+      if (node.kind !== 'module' && node.kind !== 'folder') {
+        throw new Error(`Prompt asset cannot contain children: ${targetId}`)
+      }
+      return [{ ...node, children: [...(node.children ?? []), asset] }]
+    }
+    if (!node.children) return [node]
+    const childResult = insertPromptAssetNode(node.children, targetId, position, asset)
+    if (!childResult.found) return [node]
+    found = true
+    return [{ ...node, children: childResult.nodes }]
+  })
+
+  return { found, nodes: nextNodes }
+}
+
+function removePromptAssetNode(nodes: PromptWorkspaceNode[], id: string): {
+  nodes: PromptWorkspaceNode[]
+  removedIds: Set<string>
+  removedSlotKeys: Set<string>
+} {
+  const removedIds = new Set<string>()
+  const removedSlotKeys = new Set<string>()
+
+  function removeInner(currentNodes: PromptWorkspaceNode[]): PromptWorkspaceNode[] {
+    return currentNodes.flatMap(node => {
+      if (node.id === id) {
+        collectRemovedRefs(node, removedIds, removedSlotKeys)
+        return []
+      }
+      if (!node.children) return [node]
+      return [{ ...node, children: removeInner(node.children) }]
+    })
+  }
+
+  return {
+    nodes: removeInner(nodes),
+    removedIds,
+    removedSlotKeys,
+  }
+}
+
+function collectRemovedRefs(node: PromptWorkspaceNode, removedIds: Set<string>, removedSlotKeys: Set<string>): void {
+  removedIds.add(node.id)
+  if (node.capabilities?.projection?.slotKey) {
+    removedSlotKeys.add(node.capabilities.projection.slotKey)
+  }
+  for (const child of node.children ?? []) {
+    collectRemovedRefs(child, removedIds, removedSlotKeys)
+  }
+}
+
+function pruneProjectionOrderRefs(nodes: PromptWorkspaceNode[], removedIds: Set<string>, removedSlotKeys: Set<string>): PromptWorkspaceNode[] {
+  const liveSlotKeys = new Set(findNodes(nodes, node => Boolean(node.capabilities?.projection?.slotKey))
+    .map(node => node.capabilities?.projection?.slotKey)
+    .filter((slotKey): slotKey is string => Boolean(slotKey)))
+
+  return nodes.map(node => ({
+    ...node,
+    ...(node.orderList ? { orderList: node.orderList.filter(id => !removedIds.has(id)) } : {}),
+    ...(node.slotRanks ? { slotRanks: node.slotRanks.filter(rank => !removedSlotKeys.has(rank.slotKey) || liveSlotKeys.has(rank.slotKey)) } : {}),
+    ...(node.children ? { children: pruneProjectionOrderRefs(node.children, removedIds, removedSlotKeys) } : {}),
+  }))
 }
 
 function findNode(nodes: PromptWorkspaceNode[], predicate: (node: PromptWorkspaceNode) => boolean): PromptWorkspaceNode | undefined {

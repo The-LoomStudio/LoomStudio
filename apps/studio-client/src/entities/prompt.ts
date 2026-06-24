@@ -1,4 +1,5 @@
 import type { Branch, Session } from './session.js'
+import type { ClientJsonValue } from '@loom-studio/client-bridge'
 
 export type ProviderMessage = {
   role: 'system' | 'user' | 'assistant'
@@ -55,5 +56,6 @@ export type PromptPreview = {
   session: Session
   branch: Branch
   messages: ProviderMessage[]
+  providerPayloadPreview?: ClientJsonValue
   projection?: PromptProjection
 }

@@ -4,6 +4,8 @@ import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import type { AgentRuntimeProfile, ModelProfile, ProviderAccount } from '../../../entities/index.js'
 
+const selectedAgentRuntimeProfileStorageKey = 'loom.studio.selectedAgentRuntimeProfileId'
+
 export type GatewayForm = {
   baseUrl: string
   apiKey: string
@@ -21,7 +23,7 @@ type UseProviderSettingsInput = {
 
 export function useProviderSettings(input: UseProviderSettingsInput) {
   const [gatewayForm, setGatewayForm] = useState(input.initialGatewayForm)
-  const [selectedAgentRuntimeProfileId, setSelectedAgentRuntimeProfileId] = useState<string>()
+  const [selectedAgentRuntimeProfileId, setSelectedAgentRuntimeProfileId] = useState<string | undefined>(() => readStoredAgentRuntimeProfileId())
   const [gatewayProfileSummary, setGatewayProfileSummary] = useState<string>()
   const [providerAccounts, setProviderAccounts] = useState<ProviderAccount[]>([])
   const [modelProfiles, setModelProfiles] = useState<ModelProfile[]>([])
@@ -40,6 +42,15 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
   async function refreshAgentRuntimeProfiles() {
     const result = await input.api.agentRuntimeProfiles.list()
     setAgentRuntimeProfiles(result.agentRuntimeProfiles)
+    setSelectedAgentRuntimeProfileId(current => {
+      const selectedId = chooseAgentRuntimeProfileId({
+        currentId: current,
+        profiles: result.agentRuntimeProfiles,
+        storedId: readStoredAgentRuntimeProfileId(),
+      })
+      writeStoredAgentRuntimeProfileId(selectedId)
+      return selectedId
+    })
   }
 
   async function refreshProviderSettings() {
@@ -74,7 +85,7 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
         modelProfileId: modelProfile.modelProfile.id,
       }))
 
-      setSelectedAgentRuntimeProfileId(agentRuntimeProfile.agentRuntimeProfile.id)
+      selectAgentRuntimeProfile(agentRuntimeProfile.agentRuntimeProfile.id)
       setGatewayProfileSummary(`${modelProfile.modelProfile.providerModelId} / ${shortId(agentRuntimeProfile.agentRuntimeProfile.id)}`)
       await refreshProviderSettings()
     })
@@ -117,7 +128,7 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
     await input.runAction(async () => {
       const result = await input.api.agentRuntimeProfiles.create(jsonObject(profileInput))
       await refreshAgentRuntimeProfiles()
-      setSelectedAgentRuntimeProfileId(result.agentRuntimeProfile.id)
+      selectAgentRuntimeProfile(result.agentRuntimeProfile.id)
     })
   }
 
@@ -139,7 +150,7 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
     gatewayForm,
     setGatewayForm,
     selectedAgentRuntimeProfileId,
-    setSelectedAgentRuntimeProfileId,
+    setSelectedAgentRuntimeProfileId: selectAgentRuntimeProfile,
     gatewayProfileSummary,
     providerAccounts,
     modelProfiles,
@@ -158,6 +169,21 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
     updateAgentRuntimeProfile,
     deleteAgentRuntimeProfile,
   }
+
+  function selectAgentRuntimeProfile(id: string | undefined) {
+    setSelectedAgentRuntimeProfileId(id)
+    writeStoredAgentRuntimeProfileId(id)
+  }
+}
+
+export function chooseAgentRuntimeProfileId(input: {
+  currentId?: string
+  profiles: AgentRuntimeProfile[]
+  storedId?: string
+}): string | undefined {
+  if (input.currentId && input.profiles.some(profile => profile.id === input.currentId)) return input.currentId
+  if (input.storedId && input.profiles.some(profile => profile.id === input.storedId)) return input.storedId
+  return input.profiles[0]?.id
 }
 
 export function readGatewayModelConfig(form: Pick<GatewayForm, 'temperature' | 'maxTokens'>, t: Translator): Record<string, ClientJsonValue> {
@@ -183,4 +209,25 @@ function jsonObject(value: Record<string, ClientJsonValue | undefined>): Record<
 
 function shortId(id: string): string {
   return id.slice(0, 13)
+}
+
+function readStoredAgentRuntimeProfileId(): string | undefined {
+  try {
+    const storage = globalThis.localStorage
+    const value = storage?.getItem(selectedAgentRuntimeProfileStorageKey)
+    return value && value.trim().length > 0 ? value : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function writeStoredAgentRuntimeProfileId(id: string | undefined): void {
+  try {
+    const storage = globalThis.localStorage
+    if (!storage) return
+    if (id) storage.setItem(selectedAgentRuntimeProfileStorageKey, id)
+    else storage.removeItem(selectedAgentRuntimeProfileStorageKey)
+  } catch {
+    // Browser storage can be unavailable in private contexts.
+  }
 }

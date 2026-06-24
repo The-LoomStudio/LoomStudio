@@ -1,7 +1,7 @@
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 import { readModelConfig, readModelConfigForm } from '../../../apps/studio-client/src/features/provider-settings/model/model-profile-config.js'
-import { readGatewayModelConfig } from '../../../apps/studio-client/src/features/provider-settings/model/use-provider-settings.js'
-import type { ModelProfile } from '../../../apps/studio-client/src/entities/index.js'
+import { chooseAgentRuntimeProfileId, readGatewayModelConfig } from '../../../apps/studio-client/src/features/provider-settings/model/use-provider-settings.js'
+import type { AgentRuntimeProfile, ModelProfile } from '../../../apps/studio-client/src/entities/index.js'
 import { describe, expect, it } from 'vitest'
 
 describe('provider settings model', () => {
@@ -51,6 +51,32 @@ describe('provider settings model', () => {
       customHeaders: { 'x-trace': 'on' },
     })
   })
+
+  it('keeps or restores selected agent runtime profile after refresh', () => {
+    const profiles = [
+      agentProfile('agent-a'),
+      agentProfile('agent-b'),
+    ]
+
+    expect(chooseAgentRuntimeProfileId({
+      currentId: 'agent-b',
+      profiles,
+      storedId: 'agent-a',
+    })).toBe('agent-b')
+    expect(chooseAgentRuntimeProfileId({
+      currentId: 'deleted-agent',
+      profiles,
+      storedId: 'agent-a',
+    })).toBe('agent-a')
+    expect(chooseAgentRuntimeProfileId({
+      profiles,
+    })).toBe('agent-a')
+    expect(chooseAgentRuntimeProfileId({
+      currentId: 'deleted-agent',
+      profiles: [],
+      storedId: 'agent-a',
+    })).toBeUndefined()
+  })
 })
 
 function modelProfile(config: ModelProfile['config']): ModelProfile {
@@ -62,6 +88,18 @@ function modelProfile(config: ModelProfile['config']): ModelProfile {
     displayName: 'Model',
     providerModelId: 'gpt-test',
     config,
+    createdAt: '2026-06-22T00:00:00.000Z',
+    updatedAt: '2026-06-22T00:00:00.000Z',
+  }
+}
+
+function agentProfile(id: string): AgentRuntimeProfile {
+  return {
+    id,
+    version: 1,
+    name: id,
+    purpose: 'narrative',
+    modelProfileId: 'model-profile',
     createdAt: '2026-06-22T00:00:00.000Z',
     updatedAt: '2026-06-22T00:00:00.000Z',
   }

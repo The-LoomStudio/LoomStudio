@@ -1,9 +1,10 @@
 import type { DocumentStore } from '@loom-studio/document-store'
-import type { JsonObject, JsonValue } from '@loom-studio/shared'
+import type { JsonValue } from '@loom-studio/shared'
 import { createId } from '@loom-studio/shared'
 import { applicationDocumentTypes } from './document-types.js'
 import { readDocument } from './document-store.js'
 import { isObject } from './json.js'
+import { buildOpenAIChatPayload } from './provider-payload.js'
 import type {
   AiGateway,
   ApplicationProvider,
@@ -91,11 +92,9 @@ export function createOpenAICompatibleGateway(options: OpenAICompatibleGatewayOp
       assertChatModelProfile(options.providerAccount, options.modelProfile)
 
       const apiKey = resolveSecret(options.providerAccount.secretRefs?.apiKey)
-      const payload = stripUndefined({
-        ...options.modelProfile.config,
-        model: options.modelProfile.providerModelId,
+      const payload = buildOpenAIChatPayload({
         messages: input.request.messages,
-        stream: false,
+        modelProfile: options.modelProfile,
       })
       const response = await transport(`${baseUrl}/chat/completions`, {
         method: 'POST',
@@ -183,10 +182,6 @@ function resolveSecret(ref: string | undefined): string {
     throw new Error('secret: refs are not implemented in AI Gateway M0')
   }
   throw new Error(`Unsupported secret ref: ${ref}`)
-}
-
-function stripUndefined(input: JsonObject): JsonObject {
-  return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined)) as JsonObject
 }
 
 function readProviderErrorMessage(body: JsonValue, status: number): string {

@@ -48,6 +48,25 @@ describe('studio server card and session rpc integration', () => {
         opening: { entries: [{ role: 'assistant', content: '第一束光落进房间。' }] },
         settingLayer: { entries: [expect.objectContaining({ title: 'Loom City', content: 'Loom City 是测试场景。' })] },
       })
+
+      const updated = await callRpc<{
+        card: { id: string; name: string; userName?: string; description?: string }
+      }>(port, 'application.updateCard', {
+        cardId: created.card.id,
+        name: 'RPC 改名卡',
+        userName: '',
+        description: 'RPC 改名后的卡。',
+      })
+      await callRpc(port, 'application.deleteCard', {
+        cardId: created.card.id,
+      })
+      const afterDelete = await callRpc<{
+        cards: Array<{ id: string }>
+      }>(port, 'application.listCards', {})
+
+      expect(updated.card).toMatchObject({ id: created.card.id, name: 'RPC 改名卡', description: 'RPC 改名后的卡。' })
+      expect(updated.card.userName).toBeUndefined()
+      expect(afterDelete.cards.map(card => card.id)).not.toContain(created.card.id)
     })
   })
 

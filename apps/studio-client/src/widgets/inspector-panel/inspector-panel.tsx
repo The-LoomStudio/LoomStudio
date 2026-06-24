@@ -18,6 +18,7 @@ type InspectorPanelProps = {
   onSelectMode: (mode: RenderingLabMode) => void
   promptBuildSteps: PromptBuildStep[]
   promptMessages: unknown
+  providerPayloadPreview: unknown
   rawHtmlAllowed: boolean
   rendererSessionId?: string
   runDetails: unknown
@@ -62,6 +63,10 @@ export function InspectorPanel(props: InspectorPanelProps) {
       <section className={styles.section}>
         <h2>{props.t('inspector.prompt')}</h2>
         <JsonBlock value={props.promptMessages} />
+      </section>
+      <section className={styles.section}>
+        <h2>Provider Payload</h2>
+        <JsonBlock value={props.providerPayloadPreview} />
       </section>
     </aside>
   )

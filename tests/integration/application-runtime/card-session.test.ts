@@ -101,4 +101,40 @@ describe('application runtime card and session integration', () => {
     })
     expect(timeline.entries.map(entry => entry.content)).toEqual(['旧开场白。'])
   })
+
+  it('updates and deletes card sources without mutating existing session snapshots', async () => {
+    const runtime = createApplicationRuntime({
+      documents: createInMemoryDocumentStore(),
+    })
+    const created = await runtime.createCard({
+      name: '旧卡名',
+      userName: '旧玩家',
+      description: '旧简介。',
+    })
+    const session = await runtime.createSessionFromCard({ cardId: created.card.id })
+    const updated = await runtime.updateCard({
+      cardId: created.card.id,
+      name: '新卡名',
+      userName: '',
+      description: '新简介。',
+    })
+    const listedBeforeDelete = await runtime.listCards()
+    await runtime.deleteCard({ cardId: created.card.id })
+    const listedAfterDelete = await runtime.listCards()
+    const frozen = await runtime.getSession({ sessionId: session.session.id })
+
+    expect(updated.card).toMatchObject({
+      id: created.card.id,
+      name: '新卡名',
+      description: '新简介。',
+    })
+    expect(updated.card.userName).toBeUndefined()
+    expect(listedBeforeDelete.cards).toContainEqual(expect.objectContaining({ id: created.card.id, name: '新卡名' }))
+    expect(listedAfterDelete.cards.map(card => card.id)).not.toContain(created.card.id)
+    expect(frozen.session.cardSnapshot).toMatchObject({
+      name: '旧卡名',
+      userName: '旧玩家',
+      description: '旧简介。',
+    })
+  })
 })

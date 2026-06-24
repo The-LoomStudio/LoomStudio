@@ -1,6 +1,7 @@
 import type { DocumentStore } from '@loom-studio/document-store'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import type { ActivationFacts, PromptActivation } from './prompt-activation.js'
+import type { OpenAIChatPayload } from './provider-payload.js'
 import type { CompiledPrompt, ProjectionOrderProfile } from './prompt-builder.js'
 import type { PromptWorkspaceArtifact, PromptWorkspaceContent } from './workspace.js'
 
@@ -8,6 +9,8 @@ export type ApplicationRuntime = {
   createCard(input: CreateCardInput): Promise<CreateCardResult>
   getCard(input: GetCardInput): Promise<GetCardResult>
   listCards(input?: ListCardsInput): Promise<ListCardsResult>
+  updateCard(input: UpdateCardInput): Promise<UpdateCardResult>
+  deleteCard(input: DeleteCardInput): Promise<DeleteCardResult>
   createProviderAccount(input: CreateProviderAccountInput): Promise<CreateProviderAccountResult>
   getProviderAccount(input: GetProviderAccountInput): Promise<GetProviderAccountResult>
   listProviderAccounts(input?: ListProviderAccountsInput): Promise<ListProviderAccountsResult>
@@ -28,7 +31,11 @@ export type ApplicationRuntime = {
   createSessionFromCard(input: CreateSessionFromCardInput): Promise<CreateSessionResult>
   importWorkspaceArtifact(input: ImportWorkspaceArtifactInput): Promise<ImportWorkspaceArtifactResult>
   getPromptWorkspace(input: GetPromptWorkspaceInput): Promise<GetPromptWorkspaceResult>
+  listPromptWorkspaces(input?: ListPromptWorkspacesInput): Promise<ListPromptWorkspacesResult>
+  createPromptAsset(input: CreatePromptAssetInput): Promise<UpdatePromptAssetResult>
   updatePromptAsset(input: UpdatePromptAssetInput): Promise<UpdatePromptAssetResult>
+  movePromptAsset(input: MovePromptAssetInput): Promise<UpdatePromptAssetResult>
+  deletePromptAsset(input: DeletePromptAssetInput): Promise<UpdatePromptAssetResult>
   updateProjectionOrderProfile(input: UpdateProjectionOrderProfileInput): Promise<UpdateProjectionOrderProfileResult>
   exportWorkspaceArtifact(input: ExportWorkspaceArtifactInput): Promise<ExportWorkspaceArtifactResult>
   previewPrompt(input: PreviewPromptInput): Promise<PreviewPromptResult>
@@ -155,6 +162,28 @@ export type ListCardsInput = {
 export type ListCardsResult = {
   cards: Array<CardSourceContent & { id: string; version: number }>
   nextCursor?: string
+}
+
+export type UpdateCardInput = {
+  cardId: string
+  name?: string
+  userName?: string
+  description?: string
+  preset?: CardPresetInput
+  opening?: OpeningChatInput | string
+  settingLayer?: SettingLayerInput
+}
+
+export type UpdateCardResult = {
+  card: CardSourceContent & { id: string; version: number }
+}
+
+export type DeleteCardInput = {
+  cardId: string
+}
+
+export type DeleteCardResult = {
+  deleted: true
 }
 
 export type CreateProviderAccountInput = {
@@ -321,6 +350,7 @@ export type CreateSessionInput = {
   cardSnapshot?: JsonObject
   agentRuntimeProfileId?: string
   title?: string
+  workspaceId?: string
 }
 
 export type CreateSessionResult = {
@@ -332,6 +362,7 @@ export type CreateSessionFromCardInput = {
   cardId: string
   agentRuntimeProfileId?: string
   title?: string
+  workspaceId?: string
 }
 
 export type ImportWorkspaceArtifactInput = {
@@ -352,16 +383,48 @@ export type GetPromptWorkspaceResult = {
   workspace: PromptWorkspaceContent & { id: string; version: number }
 }
 
+export type ListPromptWorkspacesInput = {
+  cardId?: string
+  limit?: number
+  cursor?: string
+}
+
+export type ListPromptWorkspacesResult = {
+  workspaces: Array<PromptWorkspaceContent & { id: string; version: number }>
+  nextCursor?: string
+}
+
+export type CreatePromptAssetInput = {
+  workspaceId: string
+  targetAssetId: string
+  position: 'before' | 'inside' | 'after'
+  asset: PromptWorkspaceContent['contextAssets'][number]
+}
+
 export type UpdatePromptAssetInput = {
   workspaceId: string
   assetId: string
   body?: string
+  capabilities?: PromptWorkspaceContent['contextAssets'][number]['capabilities']
   label?: string
+  meta?: string
   enabled?: boolean
 }
 
 export type UpdatePromptAssetResult = {
   workspace: PromptWorkspaceContent & { id: string; version: number }
+}
+
+export type MovePromptAssetInput = {
+  workspaceId: string
+  assetId: string
+  targetAssetId: string
+  position: 'before' | 'inside' | 'after'
+}
+
+export type DeletePromptAssetInput = {
+  workspaceId: string
+  assetId: string
 }
 
 export type UpdateProjectionOrderProfileInput = {
@@ -386,6 +449,7 @@ export type ExportWorkspaceArtifactResult = {
 export type PreviewPromptInput = {
   sessionId: string
   branchId?: string
+  agentRuntimeProfileId?: string
   input: string
   workspaceId?: string
   projectionOrderProfile?: ProjectionOrderProfile
@@ -396,6 +460,7 @@ export type PreviewPromptResult = {
   session: SessionContent & { id: string; version: number }
   branch: NarrativeBranchContent & { id: string; version: number }
   messages: ProviderMessage[]
+  providerPayloadPreview?: OpenAIChatPayload
   projection: CompiledPrompt
 }
 
@@ -477,6 +542,7 @@ export type SessionContent = {
   cardSourceVersionId: string
   cardSnapshot: JsonObject
   agentRuntimeProfileId?: string
+  workspaceId?: string
   title?: string
   activeBranchId: string
   createdAt: string

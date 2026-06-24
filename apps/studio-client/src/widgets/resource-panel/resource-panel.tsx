@@ -8,6 +8,8 @@ type CardView = {
   id: string
   version: number
   name: string
+  userName?: string
+  description?: string
 }
 
 type SessionView = {
@@ -29,15 +31,18 @@ type ResourcePanelProps = {
   branch?: BranchView
   branches: BranchView[]
   busy: boolean
+  cardDraft: { name: string; userName: string; description: string }
   cardJson: string
   cards: CardView[]
   customCss: string
   onAppendRendererMessage: () => void
+  onChangeCardDraft: (draft: { name: string; userName: string; description: string }) => void
   onChangeCardJson: (value: string) => void
   onChangeCustomCss: (value: string) => void
   onCreateCard: (event: FormEvent) => void
   onCreateRendererSession: () => void
   onCreateSessionFromCard: () => void
+  onDeleteCard: () => void
   onIncrementRendererLove: () => void
   onLoadTestCss: () => void
   onOpenRendererWindow: () => void
@@ -46,6 +51,7 @@ type ResourcePanelProps = {
   onRevokeRendererSession: () => void
   onSelectCard: (cardId: string) => void
   onSwitchBranch: (branch: BranchView) => void
+  onUpdateCard: (event: FormEvent) => void
   rendererEvents: string[]
   rendererSessionId?: string
   rendererState?: RendererPocState
@@ -86,6 +92,41 @@ export function ResourcePanel(props: ResourcePanelProps) {
             </button>
           ))}
         </div>
+      </section>
+
+      <section className={`${styles.section} ${styles.resourceSection}`}>
+        <div className={styles.sectionHead}>
+          <h2>Card Detail</h2>
+          <button type="button" onClick={props.onDeleteCard} disabled={props.busy || !props.selectedCardId}>Delete</button>
+        </div>
+        <form className={styles.cardForm} onSubmit={props.onUpdateCard}>
+          <label className={styles.fieldLabel}>
+            <span>Name</span>
+            <input
+              value={props.cardDraft.name}
+              disabled={props.busy || !props.selectedCardId}
+              onChange={event => props.onChangeCardDraft({ ...props.cardDraft, name: event.target.value })}
+            />
+          </label>
+          <label className={styles.fieldLabel}>
+            <span>User</span>
+            <input
+              value={props.cardDraft.userName}
+              disabled={props.busy || !props.selectedCardId}
+              onChange={event => props.onChangeCardDraft({ ...props.cardDraft, userName: event.target.value })}
+            />
+          </label>
+          <label className={styles.fieldLabel}>
+            <span>Description</span>
+            <textarea
+              className={styles.compactTextarea}
+              value={props.cardDraft.description}
+              disabled={props.busy || !props.selectedCardId}
+              onChange={event => props.onChangeCardDraft({ ...props.cardDraft, description: event.target.value })}
+            />
+          </label>
+          <button type="submit" disabled={props.busy || !props.selectedCardId || props.cardDraft.name.trim().length === 0}>Save Card</button>
+        </form>
       </section>
 
       <section className={`${styles.section} ${styles.resourceSection}`}>

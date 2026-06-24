@@ -74,14 +74,17 @@ export function App() {
           branches={state.branches}
           busy={state.busy}
           cardJson={state.cardJson}
+          cardDraft={state.cardDraft}
           cards={state.cards}
           customCss={state.customCss}
           onAppendRendererMessage={state.appendRendererMessage}
           onChangeCardJson={state.setCardJson}
+          onChangeCardDraft={state.setCardDraft}
           onChangeCustomCss={state.setCustomCss}
           onCreateCard={state.createCard}
           onCreateRendererSession={state.createRendererSession}
           onCreateSessionFromCard={state.createSessionFromCard}
+          onDeleteCard={state.deleteCard}
           onIncrementRendererLove={state.incrementRendererLove}
           onLoadTestCss={() => state.setCustomCss(DemoData.testCustomCss)}
           onOpenRendererWindow={state.openRendererWindow}
@@ -92,6 +95,7 @@ export function App() {
           onRevokeRendererSession={state.revokeRendererSession}
           onSelectCard={state.setSelectedCardId}
           onSwitchBranch={state.switchBranch}
+          onUpdateCard={state.updateCard}
           rendererEvents={state.rendererEvents}
           rendererSessionId={state.rendererSessionId}
           rendererState={state.rendererState}
@@ -153,6 +157,7 @@ export function App() {
           onSelectMode={state.setRenderingMode}
           promptBuildSteps={state.promptBuildSteps}
           promptMessages={state.promptMessages ?? null}
+          providerPayloadPreview={state.providerPayloadPreview ?? null}
           rawHtmlAllowed={state.rawHtmlAllowed}
           rendererSessionId={state.rendererSessionId}
           runDetails={state.runDetails ?? null}

@@ -22,12 +22,17 @@ import {
 import { applicationDocumentTypes } from './document-types.js'
 import { listDocuments, readDocument, toVersioned, writeDocument } from './document-store.js'
 import { createDocumentBackedAiGateway, providerToGateway } from './gateway.js'
+import { buildOpenAIChatPayload, type OpenAIChatPayload } from './provider-payload.js'
 import { composePromptBuildForInput } from './prompt.js'
 import { assertSameSession, findBranchContainingEntry, readBranchPath, readSessionBranch } from './timeline.js'
 import {
+  createPromptAsset,
+  deletePromptAsset,
   exportWorkspaceArtifact,
   getPromptWorkspace,
   importWorkspaceArtifact,
+  listPromptWorkspaces,
+  movePromptAsset,
   updateProjectionOrderProfile,
   updatePromptAsset,
 } from './workspace.js'
@@ -43,6 +48,7 @@ import type {
   NarrativeBranchContent,
   NarrativeEntryContent,
   ProviderAccountContent,
+  ProviderMessage,
   RunContent,
   RuntimeEntryContent,
   SessionContent,
@@ -98,6 +104,37 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         cards: result.items.map(card => toCardSource(card as never)),
         nextCursor: result.nextCursor,
       }
+    },
+
+    updateCard: async input => {
+      const existing = await readDocument<CardSourceContent>(options.documents, input.cardId, applicationDocumentTypes.cardSource)
+      if (input.name !== undefined && input.name.trim().length === 0) {
+        throw new Error('updateCard name cannot be empty')
+      }
+      const timestamp = now()
+      const updated = await writeDocument<CardSourceContent>(options.documents, {
+        id: existing.id,
+        type: applicationDocumentTypes.cardSource,
+        content: normalizeCardContent({
+          ...existing.content,
+          ...(input.name !== undefined ? { name: input.name } : {}),
+          ...(input.userName !== undefined ? { userName: normalizeOptionalString(input.userName) } : {}),
+          ...(input.description !== undefined ? { description: input.description } : {}),
+          ...(input.preset !== undefined ? { preset: normalizePreset(input.preset) } : {}),
+          ...(input.opening !== undefined ? { opening: normalizeOpening(input.opening) } : {}),
+          ...(input.settingLayer !== undefined ? { settingLayer: normalizeSettingLayer(input.settingLayer, undefined) } : {}),
+          updatedAt: timestamp,
+        }),
+        expectedVersion: existing.version,
+      })
+
+      return { card: toCardSource(updated) }
+    },
+
+    deleteCard: async input => {
+      await readDocument<CardSourceContent>(options.documents, input.cardId, applicationDocumentTypes.cardSource)
+      await options.documents.delete({ id: input.cardId })
+      return { deleted: true as const }
     },
 
     createProviderAccount: async input => {
@@ -336,6 +373,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         cardSnapshot: input.cardSnapshot ?? {},
         agentRuntimeProfileId: input.agentRuntimeProfileId,
         title: input.title,
+        workspaceId: input.workspaceId,
       })
     },
 
@@ -355,6 +393,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         cardSnapshot: cardToSnapshot(card),
         agentRuntimeProfileId: input.agentRuntimeProfileId,
         title: input.title ?? cardContent.name,
+        workspaceId: input.workspaceId,
       })
     },
 
@@ -376,14 +415,62 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       }
     },
 
+    listPromptWorkspaces: async input => {
+      return await listPromptWorkspaces({
+        documents: options.documents,
+        cardId: input?.cardId,
+        cursor: input?.cursor,
+        limit: input?.limit,
+      })
+    },
+
+    createPromptAsset: async input => {
+      return {
+        workspace: await createPromptAsset({
+          asset: input.asset,
+          documents: options.documents,
+          now: now(),
+          position: input.position,
+          targetAssetId: input.targetAssetId,
+          workspaceId: input.workspaceId,
+        }),
+      }
+    },
+
     updatePromptAsset: async input => {
       return {
         workspace: await updatePromptAsset({
           assetId: input.assetId,
           body: input.body,
+          capabilities: input.capabilities,
           documents: options.documents,
           enabled: input.enabled,
           label: input.label,
+          meta: input.meta,
+          now: now(),
+          workspaceId: input.workspaceId,
+        }),
+      }
+    },
+
+    movePromptAsset: async input => {
+      return {
+        workspace: await movePromptAsset({
+          assetId: input.assetId,
+          documents: options.documents,
+          now: now(),
+          position: input.position,
+          targetAssetId: input.targetAssetId,
+          workspaceId: input.workspaceId,
+        }),
+      }
+    },
+
+    deletePromptAsset: async input => {
+      return {
+        workspace: await deletePromptAsset({
+          assetId: input.assetId,
+          documents: options.documents,
           now: now(),
           workspaceId: input.workspaceId,
         }),
@@ -418,6 +505,10 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       }
 
       const { session, branch } = await readSessionBranch(options.documents, input.sessionId, input.branchId)
+      const agentBinding = await readAgentBinding({
+        documents: options.documents,
+        agentRuntimeProfileId: input.agentRuntimeProfileId ?? session.content.agentRuntimeProfileId,
+      })
 
       const promptBuild = await composePromptBuildForInput(
         options.documents,
@@ -425,7 +516,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         branch,
         input.input,
         input.projectionOrderProfile,
-        input.workspaceId,
+        input.workspaceId ?? session.content.workspaceId,
         input.activationFacts,
       )
 
@@ -433,6 +524,11 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         session: toVersioned(session),
         branch: toVersioned(branch),
         messages: promptBuild.messages,
+        providerPayloadPreview: await buildProviderPayloadPreview({
+          documents: options.documents,
+          messages: promptBuild.messages,
+          modelProfile: agentBinding.modelProfile,
+        }),
         projection: promptBuild.projection,
       }
     },
@@ -461,10 +557,15 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         branch,
         input.input,
         input.projectionOrderProfile,
-        input.workspaceId,
+        input.workspaceId ?? session.content.workspaceId,
         input.activationFacts,
       )
       const prompt = promptBuild.messages
+      const providerPayloadPreview = await buildProviderPayloadPreview({
+        documents: options.documents,
+        messages: prompt,
+        modelProfile: agentBinding.modelProfile,
+      })
       const providerResult = await gateway.invokeChat({
         request: {
           messages: prompt,
@@ -547,6 +648,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
             kind: 'prompt',
             content: {
               messages: prompt,
+              ...(providerPayloadPreview ? { providerPayloadPreview: providerPayloadPreview as unknown as JsonValue } : {}),
               projection: promptBuild.projection as unknown as JsonValue,
             },
             createdAt: now(),
@@ -763,6 +865,7 @@ async function createSessionDocuments(input: {
   cardSnapshot: JsonObject
   agentRuntimeProfileId?: string
   title?: string
+  workspaceId?: string
 }): Promise<CreateSessionResult> {
   const branchId = createId('branch')
   const openingEntries = readOpeningEntries(input.cardSnapshot)
@@ -775,6 +878,7 @@ async function createSessionDocuments(input: {
         cardSourceVersionId: input.cardSourceVersionId,
         cardSnapshot: input.cardSnapshot,
         agentRuntimeProfileId: input.agentRuntimeProfileId,
+        workspaceId: input.workspaceId,
         title: input.title,
         activeBranchId: branchId,
         createdAt: input.timestamp,
@@ -841,4 +945,34 @@ function redactProviderAccount<T extends { secretRefs: Record<string, string> }>
     }
   }
   return { ...account, secretRefs: redacted }
+}
+
+async function buildProviderPayloadPreview(input: {
+  documents: DocumentStore
+  messages: ProviderMessage[]
+  modelProfile?: DocumentRecord<ModelProfileContent>
+}): Promise<OpenAIChatPayload | undefined> {
+  if (!input.modelProfile) return undefined
+
+  const providerAccount = await readDocument<ProviderAccountContent>(
+    input.documents,
+    input.modelProfile.content.providerAccountId,
+    applicationDocumentTypes.providerAccount,
+  )
+  const providerExtensionId = providerAccount.content.providerExtensionId
+  if (providerExtensionId !== 'official.openai-compatible' && providerExtensionId !== 'openai-compatible') {
+    return undefined
+  }
+
+  return buildOpenAIChatPayload({
+    messages: input.messages,
+    modelProfile: {
+      id: input.modelProfile.id,
+      providerAccountId: input.modelProfile.content.providerAccountId,
+      capability: input.modelProfile.content.capability,
+      displayName: input.modelProfile.content.displayName,
+      providerModelId: input.modelProfile.content.providerModelId,
+      config: input.modelProfile.content.config,
+    },
+  })
 }

@@ -349,22 +349,9 @@ export const DemoData = {
         {
           id: 'preset-chathistory',
           label: '聊天记录',
-          meta: 'zone / NarrativeContext',
-          kind: 'entry',
+          meta: 'placeholder / NarrativeContext',
+          kind: 'virtual',
           body: '这是聊天记录占位符。Runtime 会将这里的文本替换为上下文。',
-          capabilities: {
-            projection: {
-              anchor: 'inside',
-              entryOrderHint: 10,
-              zone: 'NarrativeContext',
-              injectionGroupKey: 'chat.history',
-              order: 'fixed: 500',
-              slotKey: 'narrative-chat:session-main@chat.history',
-              slotOrderHint: 500,
-              sourceKind: 'actual',
-            },
-            lifecycle: { lifecycle: 'always' },
-          },
         },
         {
           id: 'preset-memory-echo',
@@ -647,7 +634,7 @@ export const DemoData = {
           id: 'vs-user-macro',
           label: '{{User}} 宏',
           meta: 'virtual / macro',
-          kind: 'entry',
+          kind: 'virtual',
           body: '在 composition 阶段，所有 {{User}} 会被替换为当前 Session 的 userName（来自 Card snapshot）。',
           capabilities: {
             projection: {
@@ -668,7 +655,8 @@ export const DemoData = {
           id: 'vs-narrative-history',
           label: 'Narrative History',
           meta: 'virtual / timeline',
-          kind: 'entry',
+          category: 'history',
+          kind: 'virtual',
           body: '当前 Branch 的已接受 NarrativeEntry 序列。runtime 在 composition 阶段将它们按顺序注入 NarrativeContext zone。',
           capabilities: {
             projection: {
@@ -689,7 +677,7 @@ export const DemoData = {
           id: 'vs-current-input',
           label: 'Current User Input',
           meta: 'virtual / input',
-          kind: 'entry',
+          kind: 'virtual',
           body: '当前回合玩家的输入文本。runtime 在 composition 阶段将它追加到 NarrativeContext zone 的末尾。',
           capabilities: {
             projection: {

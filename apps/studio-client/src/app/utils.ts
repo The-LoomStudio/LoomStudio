@@ -45,6 +45,12 @@ export function readStoredPromptProjection(runDetails: RunDetails | undefined): 
   return isPromptProjection(promptEntry.content.projection) ? promptEntry.content.projection : undefined
 }
 
+export function readStoredProviderPayloadPreview(runDetails: RunDetails | undefined): ClientJsonValue | undefined {
+  const promptEntry = runDetails?.runtimeEntries.find(entry => entry.kind === 'prompt')
+  if (!isObject(promptEntry?.content)) return undefined
+  return promptEntry.content.providerPayloadPreview
+}
+
 function isPromptProjection(value: ClientJsonValue | undefined): value is PromptProjection {
   return isObject(value)
     && Array.isArray(value.zones)

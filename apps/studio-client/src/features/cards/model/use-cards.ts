@@ -1,5 +1,5 @@
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import type { Card, JsonObject } from '../../../entities/index.js'
@@ -15,11 +15,28 @@ export function useCards(input: UseCardsInput) {
   const [cards, setCards] = useState<Card[]>([])
   const [selectedCardId, setSelectedCardId] = useState<string>()
   const [cardJson, setCardJson] = useState(input.initialCardJson)
+  const selectedCard = cards.find(card => card.id === selectedCardId)
+  const [cardDraft, setCardDraft] = useState({
+    name: '',
+    userName: '',
+    description: '',
+  })
+
+  useEffect(() => {
+    setCardDraft({
+      name: selectedCard?.name ?? '',
+      userName: selectedCard?.userName ?? '',
+      description: selectedCard?.description ?? '',
+    })
+  }, [selectedCard?.id, selectedCard?.name, selectedCard?.userName, selectedCard?.description])
 
   async function refreshCards() {
     const result = await input.api.cards.list()
     setCards(result.cards)
-    setSelectedCardId(current => current ?? result.cards.find(card => card.name === readCardName(input.initialCardJson))?.id ?? result.cards[0]?.id)
+    setSelectedCardId(current => {
+      if (current && result.cards.some(card => card.id === current)) return current
+      return result.cards.find(card => card.name === readCardName(input.initialCardJson))?.id ?? result.cards[0]?.id
+    })
   }
 
   async function createCard(event: FormEvent) {
@@ -31,15 +48,46 @@ export function useCards(input: UseCardsInput) {
     })
   }
 
+  async function updateCard(event: FormEvent) {
+    event.preventDefault()
+    if (!selectedCardId) return
+
+    await input.runAction(async () => {
+      const result = await input.api.cards.update(jsonObject({
+        cardId: selectedCardId,
+        name: cardDraft.name,
+        userName: cardDraft.userName,
+        description: cardDraft.description,
+      }))
+      await refreshCards()
+      setSelectedCardId(result.card.id)
+    })
+  }
+
+  async function deleteCard() {
+    if (!selectedCardId) return
+
+    await input.runAction(async () => {
+      await input.api.cards.delete(selectedCardId)
+      const result = await input.api.cards.list()
+      setCards(result.cards)
+      setSelectedCardId(result.cards[0]?.id)
+    })
+  }
+
   return {
     cards,
     selectedCardId,
     setSelectedCardId,
     cardJson,
     setCardJson,
-    selectedCard: cards.find(card => card.id === selectedCardId),
+    cardDraft,
+    setCardDraft,
+    selectedCard,
     refreshCards,
     createCard,
+    updateCard,
+    deleteCard,
   }
 }
 

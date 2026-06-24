@@ -49,6 +49,25 @@ describe('application runtime workspace artifact integration', () => {
     })
   })
 
+  it('ignores prompt-facing placeholders and virtual source descriptions during workspace prompt collection', async () => {
+    const runtime = createApplicationRuntime({
+      documents: createInMemoryDocumentStore(),
+    })
+    const imported = await runtime.importWorkspaceArtifact({ artifact: placeholderArtifact() })
+    const created = await runtime.createSessionFromCard({
+      cardId: imported.card.id,
+      workspaceId: imported.workspace.id,
+    })
+    const preview = await runtime.previewPrompt({
+      sessionId: created.session.id,
+      input: '继续。',
+    })
+
+    expect(preview.messages[0]?.content).toContain('Valid preset directive.')
+    expect(preview.messages[0]?.content).not.toContain('Invalid chat history placeholder.')
+    expect(preview.messages[0]?.content).not.toContain('Virtual macro description.')
+  })
+
   it('imports a workspace artifact into SQL, edits runtime state, exports it, and re-imports as an isolated workspace', async () => {
     const artifact = await readLoomCityArtifact()
     const runtime = createApplicationRuntime({
@@ -56,9 +75,16 @@ describe('application runtime workspace artifact integration', () => {
     })
     const firstImport = await runtime.importWorkspaceArtifact({ artifact })
     const secondImport = await runtime.importWorkspaceArtifact({ artifact })
+    const allWorkspaces = await runtime.listPromptWorkspaces()
+    const firstCardWorkspaces = await runtime.listPromptWorkspaces({ cardId: firstImport.card.id })
 
     expect(firstImport.workspace.id).not.toBe(secondImport.workspace.id)
     expect(firstImport.card.id).not.toBe(secondImport.card.id)
+    expect(allWorkspaces.workspaces.map(workspace => workspace.id)).toEqual(expect.arrayContaining([
+      firstImport.workspace.id,
+      secondImport.workspace.id,
+    ]))
+    expect(firstCardWorkspaces.workspaces.map(workspace => workspace.id)).toEqual([firstImport.workspace.id])
     expect(firstImport.workspace.sourceArtifactRef).toEqual(expect.objectContaining({
       artifactId: 'loom-city-v0',
       displayName: 'Loom City',
@@ -88,14 +114,17 @@ describe('application runtime workspace artifact integration', () => {
       }),
     ]))
 
-    const created = await runtime.createSessionFromCard({ cardId: firstImport.card.id })
+    const created = await runtime.createSessionFromCard({
+      cardId: firstImport.card.id,
+      workspaceId: firstImport.workspace.id,
+    })
     const preview = await runtime.previewPrompt({
       sessionId: created.session.id,
       branchId: created.branch.id,
       input: '我把车票递给档案管理员。',
-      workspaceId: firstImport.workspace.id,
     })
 
+    expect(created.session.workspaceId).toBe(firstImport.workspace.id)
     expect(preview.messages[0]?.content).toContain('使用清晰、克制、带有雨夜城市感的描写')
     expect(preview.messages[0]?.content).toContain('雨线车站只在整点暴雨中显现')
     expect(preview.messages[0]?.content).toContain('档案管理员记得每一张被撕毁的车票')
@@ -112,7 +141,6 @@ describe('application runtime workspace artifact integration', () => {
       sessionId: created.session.id,
       branchId: created.branch.id,
       input: '我把车票递给档案管理员。',
-      workspaceId: firstImport.workspace.id,
     })
 
     expect(editedPreview.messages[0]?.content).toContain('地下铁回声')
@@ -122,7 +150,6 @@ describe('application runtime workspace artifact integration', () => {
       sessionId: created.session.id,
       branchId: created.branch.id,
       input: '我把车票递给档案管理员。',
-      workspaceId: firstImport.workspace.id,
     })
     const run = await runtime.getRun({ runId: turn.run.id })
     const storedPrompt = run.runtimeEntries.find(entry => entry.kind === 'prompt')?.content as {
@@ -131,12 +158,31 @@ describe('application runtime workspace artifact integration', () => {
 
     expect(storedPrompt.messages?.[0]?.content).toContain('地下铁回声')
 
+    await runtime.updatePromptAsset({
+      workspaceId: firstImport.workspace.id,
+      assetId: 'preset-style-directive',
+      capabilities: {
+        activation: { kind: 'manual' },
+        lifecycle: { lifecycle: 'conditional' },
+        projection: {
+          injectionGroupKey: 'preset.system',
+          slotKey: 'preset:default-airp-preset@preset.system',
+          entryOrderHint: 11,
+        },
+      },
+    })
+
     const exported = await runtime.exportWorkspaceArtifact({
       workspaceId: firstImport.workspace.id,
     })
     const styleNode = findArtifactNode(exported.artifact, 'preset-style-directive')
 
     expect(styleNode?.body).toBe('使用冷静、精确、带一点地下铁回声的叙事风格。')
+    expect(styleNode?.capabilities?.activation).toEqual({ kind: 'manual' })
+    expect(styleNode?.capabilities?.projection).toMatchObject({
+      injectionGroupKey: 'preset.system',
+      entryOrderHint: 11,
+    })
     expect(exported.artifact.metadata).toMatchObject({
       sourceArtifactRef: {
         artifactId: 'loom-city-v0',
@@ -159,6 +205,62 @@ describe('application runtime workspace artifact integration', () => {
 
     expect(findArtifactNode(secondWorkspace.workspace, 'preset-style-directive')?.body).toContain('不要提前解释全部谜底')
     expect(findArtifactNode(reimportedWorkspace.workspace, 'preset-style-directive')?.body).toContain('地下铁回声')
+  })
+
+  it('creates, moves, and deletes prompt assets while keeping projection order references consistent', async () => {
+    const artifact = await readLoomCityArtifact()
+    const runtime = createApplicationRuntime({
+      documents: createInMemoryDocumentStore(),
+    })
+    const imported = await runtime.importWorkspaceArtifact({ artifact })
+    const created = await runtime.createPromptAsset({
+      workspaceId: imported.workspace.id,
+      targetAssetId: 'preset-default-airp',
+      position: 'inside',
+      asset: {
+        id: 'preset-extra-directive',
+        label: '额外叙事规则',
+        kind: 'entry',
+        body: '新增的资源树叙事规则。',
+        capabilities: {
+          lifecycle: { lifecycle: 'always' },
+          projection: {
+            injectionGroupKey: 'preset.system',
+            slotKey: 'preset:preset-default-airp@preset.system',
+            entryOrderHint: 13,
+          },
+        },
+      },
+    })
+    const moved = await runtime.movePromptAsset({
+      workspaceId: imported.workspace.id,
+      assetId: 'preset-extra-directive',
+      targetAssetId: 'projection-order-profile-main',
+      position: 'after',
+    })
+    const afterDelete = await runtime.deletePromptAsset({
+      workspaceId: imported.workspace.id,
+      assetId: 'preset-style-directive',
+    })
+    const createdSession = await runtime.createSessionFromCard({
+      cardId: imported.card.id,
+      workspaceId: imported.workspace.id,
+    })
+    const preview = await runtime.previewPrompt({
+      sessionId: createdSession.session.id,
+      input: '测试新增资源。',
+    })
+    const orderNode = findArtifactNode(afterDelete.workspace, 'projection-order-profile-main')
+
+    expect(findArtifactNode(created.workspace, 'preset-extra-directive')?.body).toBe('新增的资源树叙事规则。')
+    expect(findArtifactNode(moved.workspace, 'preset-default-airp')?.children?.map(node => node.id).slice(0, 2)).toEqual([
+      'projection-order-profile-main',
+      'preset-extra-directive',
+    ])
+    expect(preview.messages[0]?.content).toContain('新增的资源树叙事规则。')
+    expect(preview.messages[0]?.content).not.toContain('使用清晰、克制、带有雨夜城市感的描写')
+    expect(orderNode?.orderList).not.toContain('preset-style-directive')
+    expect(orderNode?.slotRanks?.map(rank => rank.slotKey)).toContain('preset:preset-default-airp@preset.system')
   })
 })
 
@@ -238,6 +340,73 @@ function cascadingActivationArtifact(): PromptWorkspaceArtifact {
                 },
               },
             ],
+          },
+        ],
+      },
+    ],
+  }
+}
+
+function placeholderArtifact(): PromptWorkspaceArtifact {
+  return {
+    schemaVersion: 1,
+    artifactId: 'placeholder-test',
+    displayName: 'Placeholder Test',
+    card: {
+      name: 'Placeholder Card',
+    },
+    contextAssets: [
+      {
+        id: 'preset-module',
+        label: 'Preset Module',
+        category: 'preset',
+        kind: 'module',
+        children: [
+          {
+            id: 'valid-preset',
+            label: 'Valid Preset',
+            kind: 'entry',
+            body: 'Valid preset directive.',
+            capabilities: {
+              projection: {
+                injectionGroupKey: 'preset.system',
+                slotKey: 'preset:test@preset.system',
+              },
+            },
+          },
+          {
+            id: 'invalid-history-placeholder',
+            label: 'Invalid History Placeholder',
+            kind: 'entry',
+            body: 'Invalid chat history placeholder.',
+            capabilities: {
+              projection: {
+                injectionGroupKey: 'chat.history',
+                slotKey: 'narrative-chat:test@chat.history',
+                sourceKind: 'actual',
+              },
+            },
+          },
+        ],
+      },
+      {
+        id: 'runtime-module',
+        label: 'Runtime Module',
+        category: 'runtime',
+        kind: 'module',
+        children: [
+          {
+            id: 'virtual-macro',
+            label: 'Virtual Macro',
+            kind: 'entry',
+            body: 'Virtual macro description.',
+            capabilities: {
+              projection: {
+                injectionGroupKey: 'runtime.macro',
+                slotKey: 'runtime.macro',
+                sourceKind: 'virtual',
+              },
+            },
           },
         ],
       },

@@ -1,4 +1,12 @@
-import type { ApplicationRuntime, OpeningChatInput, ProjectionOrderProfile, SettingActivation, SettingLayerInput } from '@loom-studio/application-runtime'
+import type {
+  ApplicationRuntime,
+  OpeningChatInput,
+  PromptWorkspaceNode,
+  ProjectionOrderProfile,
+  SettingActivation,
+  SettingLayerInput,
+  WorkspacePromptCompositionCapabilities,
+} from '@loom-studio/application-runtime'
 import { isPromptActivation, isPromptWorkspaceArtifact } from '@loom-studio/application-runtime'
 import type { JsonValue } from '@loom-studio/shared'
 import { createNamespaceRpcCapabilities, type RpcCapability } from './rpc-capability.js'
@@ -16,6 +24,8 @@ const applicationRpcMethods = [
   'application.createCard',
   'application.getCard',
   'application.listCards',
+  'application.updateCard',
+  'application.deleteCard',
   'application.createProviderAccount',
   'application.getProviderAccount',
   'application.listProviderAccounts',
@@ -36,7 +46,11 @@ const applicationRpcMethods = [
   'application.createSessionFromCard',
   'application.importWorkspaceArtifact',
   'application.getPromptWorkspace',
+  'application.listPromptWorkspaces',
+  'application.createPromptAsset',
   'application.updatePromptAsset',
+  'application.movePromptAsset',
+  'application.deletePromptAsset',
   'application.updateProjectionOrderProfile',
   'application.exportWorkspaceArtifact',
   'application.previewPrompt',
@@ -79,6 +93,22 @@ export async function callApplicationRpc(runtime: ApplicationRuntime, method: st
       return await runtime.listCards({
         cursor: readOptionalString(params, 'cursor'),
         limit: readOptionalNumber(params, 'limit'),
+      }) as unknown as JsonValue
+
+    case 'application.updateCard':
+      return await runtime.updateCard({
+        cardId: readString(params, 'cardId'),
+        name: readOptionalString(params, 'name'),
+        userName: readOptionalString(params, 'userName'),
+        description: readOptionalString(params, 'description'),
+        preset: readOptionalPreset(params, 'preset'),
+        opening: readOptionalOpening(params, 'opening'),
+        settingLayer: readOptionalSettingLayer(params, 'settingLayer'),
+      }) as unknown as JsonValue
+
+    case 'application.deleteCard':
+      return await runtime.deleteCard({
+        cardId: readString(params, 'cardId'),
       }) as unknown as JsonValue
 
     case 'application.createProviderAccount':
@@ -191,6 +221,7 @@ export async function callApplicationRpc(runtime: ApplicationRuntime, method: st
         cardSnapshot: readOptionalObject(params, 'cardSnapshot'),
         agentRuntimeProfileId: readOptionalString(params, 'agentRuntimeProfileId'),
         title: readOptionalString(params, 'title'),
+        workspaceId: readOptionalString(params, 'workspaceId'),
       }) as unknown as JsonValue
 
     case 'application.createSessionFromCard':
@@ -198,6 +229,7 @@ export async function callApplicationRpc(runtime: ApplicationRuntime, method: st
         cardId: readString(params, 'cardId'),
         agentRuntimeProfileId: readOptionalString(params, 'agentRuntimeProfileId'),
         title: readOptionalString(params, 'title'),
+        workspaceId: readOptionalString(params, 'workspaceId'),
       }) as unknown as JsonValue
 
     case 'application.importWorkspaceArtifact':
@@ -211,13 +243,44 @@ export async function callApplicationRpc(runtime: ApplicationRuntime, method: st
         workspaceId: readString(params, 'workspaceId'),
       }) as unknown as JsonValue
 
+    case 'application.listPromptWorkspaces':
+      return await runtime.listPromptWorkspaces({
+        cardId: readOptionalString(params, 'cardId'),
+        cursor: readOptionalString(params, 'cursor'),
+        limit: readOptionalNumber(params, 'limit'),
+      }) as unknown as JsonValue
+
+    case 'application.createPromptAsset':
+      return await runtime.createPromptAsset({
+        workspaceId: readString(params, 'workspaceId'),
+        targetAssetId: readString(params, 'targetAssetId'),
+        position: readAssetPosition(params, 'position'),
+        asset: readPromptWorkspaceNode(params, 'asset'),
+      }) as unknown as JsonValue
+
     case 'application.updatePromptAsset':
       return await runtime.updatePromptAsset({
         workspaceId: readString(params, 'workspaceId'),
         assetId: readString(params, 'assetId'),
         body: readOptionalString(params, 'body'),
+        capabilities: readOptionalPromptCapabilities(params, 'capabilities'),
         label: readOptionalString(params, 'label'),
+        meta: readOptionalString(params, 'meta'),
         enabled: readOptionalBoolean(params, 'enabled'),
+      }) as unknown as JsonValue
+
+    case 'application.movePromptAsset':
+      return await runtime.movePromptAsset({
+        workspaceId: readString(params, 'workspaceId'),
+        assetId: readString(params, 'assetId'),
+        targetAssetId: readString(params, 'targetAssetId'),
+        position: readAssetPosition(params, 'position'),
+      }) as unknown as JsonValue
+
+    case 'application.deletePromptAsset':
+      return await runtime.deletePromptAsset({
+        workspaceId: readString(params, 'workspaceId'),
+        assetId: readString(params, 'assetId'),
       }) as unknown as JsonValue
 
     case 'application.updateProjectionOrderProfile':
@@ -237,6 +300,7 @@ export async function callApplicationRpc(runtime: ApplicationRuntime, method: st
       return await runtime.previewPrompt({
         sessionId: readString(params, 'sessionId'),
         branchId: readOptionalString(params, 'branchId'),
+        agentRuntimeProfileId: readOptionalString(params, 'agentRuntimeProfileId'),
         input: readString(params, 'input'),
         workspaceId: readOptionalString(params, 'workspaceId'),
         projectionOrderProfile: readOptionalProjectionOrderProfile(params, 'projectionOrderProfile'),
@@ -374,6 +438,114 @@ function readActivation(value: JsonValue | undefined): SettingActivation | undef
   if (value === undefined) return undefined
   if (isPromptActivation(value)) return value
   throw new Error('Expected setting activation')
+}
+
+function readOptionalPromptCapabilities(params: JsonValue | undefined, key: string): WorkspacePromptCompositionCapabilities | undefined {
+  if (!isRecord(params) || params[key] === undefined) return undefined
+  return readPromptCapabilitiesValue(params[key], key)
+}
+
+function readPromptCapabilitiesValue(value: JsonValue | undefined, key: string): WorkspacePromptCompositionCapabilities | undefined {
+  if (value === undefined) return undefined
+  if (!isRecord(value)) throw new Error(`Expected prompt capabilities param: ${key}`)
+  const activation = value.activation
+  if (activation !== undefined && !isPromptActivation(activation)) {
+    throw new Error(`Expected prompt activation capability: ${key}.activation`)
+  }
+  const lifecycle = value.lifecycle
+  if (lifecycle !== undefined && (!isRecord(lifecycle) || typeof lifecycle.lifecycle !== 'string')) {
+    throw new Error(`Expected prompt lifecycle capability: ${key}.lifecycle`)
+  }
+  const projection = value.projection
+  if (projection !== undefined) {
+    if (!isRecord(projection)) throw new Error(`Expected prompt projection capability: ${key}.projection`)
+    if (typeof projection.injectionGroupKey !== 'string') throw new Error(`Expected prompt projection injectionGroupKey: ${key}.projection.injectionGroupKey`)
+    if (projection.slotKey !== undefined && typeof projection.slotKey !== 'string') throw new Error(`Expected prompt projection slotKey: ${key}.projection.slotKey`)
+    if (projection.entryOrderHint !== undefined && typeof projection.entryOrderHint !== 'number') throw new Error(`Expected prompt projection entryOrderHint: ${key}.projection.entryOrderHint`)
+    if (projection.slotOrderHint !== undefined && typeof projection.slotOrderHint !== 'number') throw new Error(`Expected prompt projection slotOrderHint: ${key}.projection.slotOrderHint`)
+    if (projection.sourceKind !== undefined && projection.sourceKind !== 'actual' && projection.sourceKind !== 'virtual') throw new Error(`Expected prompt projection sourceKind: ${key}.projection.sourceKind`)
+  }
+
+  return value as unknown as WorkspacePromptCompositionCapabilities
+}
+
+function readPromptWorkspaceNode(params: JsonValue | undefined, key: string): PromptWorkspaceNode {
+  if (!isRecord(params) || params[key] === undefined) throw new Error(`Expected prompt asset node param: ${key}`)
+  return readPromptWorkspaceNodeValue(params[key], key)
+}
+
+function readPromptWorkspaceNodeValue(value: JsonValue | undefined, key: string): PromptWorkspaceNode {
+  if (!isRecord(value)) throw new Error(`Expected prompt asset node: ${key}`)
+  if (typeof value.id !== 'string' || value.id.trim().length === 0) throw new Error(`Expected prompt asset id: ${key}.id`)
+  if (typeof value.label !== 'string') throw new Error(`Expected prompt asset label: ${key}.label`)
+
+  return {
+    id: value.id,
+    label: value.label,
+    kind: readPromptAssetKind(value.kind, `${key}.kind`),
+    category: readPromptAssetCategory(value.category, `${key}.category`),
+    body: typeof value.body === 'string' ? value.body : undefined,
+    meta: typeof value.meta === 'string' ? value.meta : undefined,
+    enabled: typeof value.enabled === 'boolean' ? value.enabled : undefined,
+    configRows: readConfigRows(value.configRows, `${key}.configRows`),
+    orderList: readStringArray(value.orderList, `${key}.orderList`),
+    slotRanks: readSlotRanks(value.slotRanks, `${key}.slotRanks`),
+    skeletonPatch: readProjectionSkeletonPatch(value.skeletonPatch, `${key}.skeletonPatch`),
+    capabilities: readPromptCapabilitiesValue(value.capabilities, `${key}.capabilities`),
+    children: Array.isArray(value.children)
+      ? value.children.map((child, index) => readPromptWorkspaceNodeValue(child, `${key}.children[${index}]`))
+      : undefined,
+  }
+}
+
+function readAssetPosition(params: JsonValue | undefined, key: string): 'before' | 'inside' | 'after' {
+  const value = readString(params, key)
+  if (value === 'before' || value === 'inside' || value === 'after') return value
+  throw new Error(`Expected prompt asset position: ${key}`)
+}
+
+function readPromptAssetKind(value: JsonValue | undefined, key: string): PromptWorkspaceNode['kind'] {
+  if (value === 'module' || value === 'folder' || value === 'entry' || value === 'script' || value === 'virtual' || value === 'order') return value
+  throw new Error(`Expected prompt asset kind: ${key}`)
+}
+
+function readPromptAssetCategory(value: JsonValue | undefined, key: string): PromptWorkspaceNode['category'] | undefined {
+  if (value === undefined) return undefined
+  if (value === 'preset' || value === 'setting' || value === 'logic' || value === 'runtime' || value === 'history') return value
+  throw new Error(`Expected prompt asset category: ${key}`)
+}
+
+function readConfigRows(value: JsonValue | undefined, key: string): Array<{ label: string; value: string }> | undefined {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value)) throw new Error(`Expected config rows: ${key}`)
+  return value.map((item, index) => {
+    if (!isRecord(item) || typeof item.label !== 'string' || typeof item.value !== 'string') {
+      throw new Error(`Expected config row: ${key}[${index}]`)
+    }
+    return { label: item.label, value: item.value }
+  })
+}
+
+function readStringArray(value: JsonValue | undefined, key: string): string[] | undefined {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value) || !value.every(item => typeof item === 'string')) throw new Error(`Expected string array: ${key}`)
+  return value
+}
+
+function readSlotRanks(value: JsonValue | undefined, key: string): ProjectionOrderProfile['slotRanks'] | undefined {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value)) throw new Error(`Expected slot ranks: ${key}`)
+  return value.map((item, index) => {
+    if (!isRecord(item) || typeof item.injectionGroupKey !== 'string' || typeof item.slotKey !== 'string' || typeof item.rankKey !== 'string') {
+      throw new Error(`Expected slot rank: ${key}[${index}]`)
+    }
+    return {
+      injectionGroupKey: item.injectionGroupKey,
+      anchor: readProjectionAnchor(item.anchor, `${key}[${index}].anchor`),
+      slotKey: item.slotKey,
+      rankKey: item.rankKey,
+    }
+  })
 }
 
 function readOptionalModelCapability(params: JsonValue | undefined, key: string): 'chat.completion' | undefined {

@@ -5,6 +5,7 @@ export type Session = {
   version: number
   title?: string
   agentRuntimeProfileId?: string
+  workspaceId?: string
   activeBranchId: string
   cardSourceVersionId: string
   cardSnapshot: JsonObject

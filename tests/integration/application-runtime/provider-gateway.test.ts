@@ -27,7 +27,15 @@ describe('application runtime provider and agent integration', () => {
         capability: 'chat.completion',
         displayName: 'RP Model',
         providerModelId: 'test-model',
-        config: { temperature: 0.7, max_tokens: 256 },
+        config: {
+          temperature: 0.7,
+          max_tokens: 256,
+          stream: true,
+          additionalParameters: {
+            top_p: 0.9,
+            unsupported_param: 'ignored',
+          },
+        },
       },
       fetch: (async (url, init) => {
         requests.push({
@@ -75,8 +83,10 @@ describe('application runtime provider and agent integration', () => {
       model: 'test-model',
       temperature: 0.7,
       max_tokens: 256,
+      top_p: 0.9,
       stream: false,
     })
+    expect(requests[0]?.body).not.toHaveProperty('unsupported_param')
     expect(turn.entries.assistant.content).toBe('真实模型回复。')
     expect(turn.run).toMatchObject({
       provider: 'openai-compatible',
