@@ -14,7 +14,7 @@ describe('client renderer event helpers', () => {
 
     expect(formatRenderingLabMessageEvent({ source: 'other' }, time)).toBeUndefined()
     expect(formatRenderingLabMessageEvent({
-      source: 'airp-rendering-lab',
+      source: 'loom-rendering-lab',
       type: 'agent-iframe',
       value: 'approve',
     }, time)).toContain('agent-iframe: approve')

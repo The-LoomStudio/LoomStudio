@@ -23,7 +23,7 @@ export function useRenderingLabMessages() {
 }
 
 export function formatRenderingLabMessageEvent(data: unknown, time: Date): string | undefined {
-  if (!isObject(data) || data.source !== 'airp-rendering-lab') return undefined
+  if (!isObject(data) || data.source !== 'loom-rendering-lab') return undefined
   const type = typeof data.type === 'string' ? data.type : 'unknown'
   const value = typeof data.value === 'string' ? data.value : '-'
   return `${time.toLocaleTimeString()} ${type}: ${value}`

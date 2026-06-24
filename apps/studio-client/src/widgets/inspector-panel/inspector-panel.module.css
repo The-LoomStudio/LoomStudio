@@ -4,10 +4,10 @@
   min-height: 0;
   overflow: auto;
   border-left: 0;
-  background: var(--airp-color-bg);
+  background: var(--loom-bg);
 }
 
 .section {
   padding: 12px;
-  border-bottom: 1px solid var(--airp-color-border);
+  border-bottom: 1px solid var(--loom-border);
 }

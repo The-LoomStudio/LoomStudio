@@ -17,38 +17,38 @@ export const DemoData = {
 
   /** 测试用 Custom CSS */
   testCustomCss: `:root {
-  --airp-color-bg: #eff2ee;
-  --airp-color-surface: #fafbf8;
-  --airp-color-panel: #fafbf8;
-  --airp-color-panel-muted: #e3e8e2;
-  --airp-color-border: #aeb8aa;
-  --airp-color-text: #1e231d;
-  --airp-color-muted: #697168;
-  --airp-color-accent: #486f66;
-  --airp-color-user: #eef4f1;
-  --airp-color-assistant: #ffffff;
-  --airp-chat-width: 780px;
-  --airp-radius-message: 0;
+  --loom-bg: #eff2ee;
+  --loom-surface: #fafbf8;
+  --loom-panel: #fafbf8;
+  --loom-panel-muted: #e3e8e2;
+  --loom-border: #aeb8aa;
+  --loom-text: #1e231d;
+  --loom-text-muted: #697168;
+  --loom-accent: #486f66;
+  --loom-role-user: #eef4f1;
+  --loom-role-assistant: #ffffff;
+  --loom-chat-width: 780px;
+  --loom-radius-message: 0;
 }
 
-[data-airp-component="base-chat-canvas"] {
+[data-loom-component="base-chat-canvas"] {
   background:
     linear-gradient(#e5e9e2 1px, transparent 1px),
     #fafbf8;
   background-size: 100% 30px;
 }
 
-[data-airp-component="chat-message"] {
+[data-loom-component="chat-message"] {
   border-color: #aeb8aa;
 }
 
-[data-airp-component="chat-message"][data-airp-role="assistant"]
-  [data-airp-slot="message-body"] {
+[data-loom-component="chat-message"][data-loom-role="assistant"]
+  [data-loom-slot="message-body"] {
   color: #1e231d;
   font-size: 17px;
 }
 
-[data-airp-component="input-dashboard"] {
+[data-loom-component="input-dashboard"] {
   border-top-color: #aeb8aa;
   background: #fafbf8;
 }`,

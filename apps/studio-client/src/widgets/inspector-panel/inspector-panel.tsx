@@ -1,9 +1,9 @@
 import type { Translator } from '../../shared/i18n/index.js'
-import { JsonBlock } from '../../shared/ui/json-block/JsonBlock.js'
+import { JsonBlock } from '../../shared/ui/json-block/json-block.js'
 import type { PromptBuildStep } from '../../features/prompt-build/model/build-prompt-build-steps.js'
 import type { RenderingLabMode, RenderingLabSample } from '../../features/rendering-lab/model/rendering-lab-sample.js'
-import { PromptBuildFlow } from '../prompt-build-flow/PromptBuildFlow.js'
-import { RenderingLab } from '../rendering-lab/RenderingLab.js'
+import { PromptBuildFlow } from '../prompt-build-flow/prompt-build-flow.js'
+import { RenderingLab } from '../rendering-lab/rendering-lab.js'
 import styles from './inspector-panel.module.css'
 
 type InspectorPanelProps = {
@@ -27,8 +27,8 @@ type InspectorPanelProps = {
 
 export function InspectorPanel(props: InspectorPanelProps) {
   return (
-    <aside className={styles.inspector} data-airp-component="overlay-utility-layer">
-      <section className={styles.section} data-airp-component="rendering-lab">
+    <aside className={styles.inspector} data-loom-component="overlay-utility-layer">
+      <section className={styles.section} data-loom-component="rendering-lab">
         <RenderingLab
           events={props.events}
           mode={props.mode}

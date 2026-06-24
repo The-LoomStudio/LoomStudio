@@ -1,36 +1,52 @@
 :root {
-  color: var(--airp-color-text);
-  background: var(--airp-color-bg);
+  color: var(--loom-text);
+  background: var(--loom-bg);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 
-  --airp-color-bg: #ece9e1;
-  --airp-color-surface: #f7f5ef;
-  --airp-color-panel: #fbfaf6;
-  --airp-color-panel-muted: #e2ded4;
-  --airp-color-border: #d1ccc0;
-  --airp-color-border-strong: #a8a298;
-  --airp-color-text: #1f1e1a;
-  --airp-color-muted: #706d65;
-  --airp-color-faint: #9b968b;
-  --airp-color-accent: #2f6f73;
-  --airp-color-accent-strong: #1f5558;
-  --airp-color-accent-soft: #e6eeee;
-  --airp-color-user: transparent;
-  --airp-color-assistant: transparent;
-  --airp-color-danger-bg: #fff0f0;
-  --airp-color-danger-text: #9f2d35;
-  --airp-color-warning: #a66613;
+  /* ── 背景与表面 ── */
+  --loom-bg: #ece9e1;
+  --loom-surface: #f7f5ef;
+  --loom-panel: #fbfaf6;
+  --loom-panel-muted: #e2ded4;
 
-  --airp-chat-width: 720px;
-  --airp-canvas-width: 860px;
-  --airp-rail-width: 44px;
-  --airp-resource-width: 296px;
-  --airp-overlay-width: 360px;
-  --airp-input-height: 128px;
-  --airp-radius-panel: 4px;
-  --airp-radius-message: 0;
-  --airp-shadow-panel: none;
-  --airp-font-narrative: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  /* ── 边框 ── */
+  --loom-border: #d1ccc0;
+  --loom-border-strong: #a8a298;
+
+  /* ── 文本 ── */
+  --loom-text: #1f1e1a;
+  --loom-text-muted: #706d65;
+  --loom-text-subtle: #9b968b;
+
+  /* ── 强调色（成对） ── */
+  --loom-accent: #2f6f73;
+  --loom-accent-strong: #1f5558;
+  --loom-accent-soft: #e6eeee;
+  --loom-accent-foreground: #ffffff;
+
+  /* ── 角色色 ── */
+  --loom-role-user: transparent;
+  --loom-role-assistant: transparent;
+
+  /* ── 状态色（成对） ── */
+  --loom-danger: #9f2d35;
+  --loom-danger-foreground: #ffffff;
+  --loom-danger-bg: #fff0f0;
+  --loom-warning: #a66613;
+  --loom-warning-foreground: #ffffff;
+  --loom-warning-bg: #fef6e8;
+
+  /* ── 布局尺寸 ── */
+  --loom-chat-width: 720px;
+  --loom-canvas-width: 860px;
+  --loom-rail-width: 44px;
+  --loom-resource-width: 296px;
+  --loom-overlay-width: 360px;
+  --loom-input-height: 128px;
+  --loom-radius-panel: 4px;
+  --loom-radius-message: 0;
+  --loom-shadow-panel: none;
+  --loom-font-narrative: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
 }
 
 * {
@@ -47,11 +63,11 @@ body,
 body {
   margin: 0;
   overflow: hidden;
-  background: var(--airp-color-bg);
+  background: var(--loom-bg);
 }
 
 * {
-  scrollbar-color: color-mix(in srgb, var(--airp-color-border-strong) 58%, var(--airp-color-bg)) var(--airp-color-bg);
+  scrollbar-color: color-mix(in srgb, var(--loom-border-strong) 58%, var(--loom-bg)) var(--loom-bg);
   scrollbar-width: thin;
 }
 
@@ -61,17 +77,17 @@ body {
 }
 
 *::-webkit-scrollbar-track {
-  background: var(--airp-color-bg);
+  background: var(--loom-bg);
 }
 
 *::-webkit-scrollbar-thumb {
-  border: 3px solid var(--airp-color-bg);
+  border: 3px solid var(--loom-bg);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--airp-color-border-strong) 58%, var(--airp-color-bg));
+  background: color-mix(in srgb, var(--loom-border-strong) 58%, var(--loom-bg));
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--airp-color-border-strong) 76%, var(--airp-color-bg));
+  background: color-mix(in srgb, var(--loom-border-strong) 76%, var(--loom-bg));
 }
 
 button,
@@ -83,17 +99,17 @@ textarea {
 
 button {
   min-height: 32px;
-  border: 1px solid var(--airp-color-border);
+  border: 1px solid var(--loom-border);
   border-radius: 4px;
   padding: 7px 10px;
-  color: var(--airp-color-text);
+  color: var(--loom-text);
   background: transparent;
   cursor: pointer;
 }
 
 button:hover:not(:disabled) {
-  border-color: var(--airp-color-accent);
-  color: var(--airp-color-accent-strong);
+  border-color: var(--loom-accent);
+  color: var(--loom-accent-strong);
 }
 
 button:focus-visible,
@@ -101,7 +117,7 @@ textarea:focus,
 select:focus,
 input:focus {
   outline: none;
-  border-color: var(--airp-color-accent);
+  border-color: var(--loom-accent);
   box-shadow: 0 0 0 2px rgb(38 117 141 / 18%);
 }
 
@@ -114,9 +130,9 @@ textarea,
 select,
 input {
   width: 100%;
-  border: 1px solid var(--airp-color-border);
+  border: 1px solid var(--loom-border);
   border-radius: 4px;
-  color: var(--airp-color-text);
+  color: var(--loom-text);
   background: transparent;
 }
 
@@ -145,5 +161,5 @@ h3 {
   font-size: 12px;
   line-height: 1.35;
   font-weight: 680;
-  color: var(--airp-color-text);
+  color: var(--loom-text);
 }

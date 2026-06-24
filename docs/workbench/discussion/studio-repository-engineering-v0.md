@@ -4,6 +4,7 @@
 > **Purpose**: 只锁定 Loom Studio 第一版仓库形态、目录规则、package 边界、前后端组织、FSD 适用范围、命名规则与 Loom Core 依赖边界。
 > **Audience**: Studio Kernel / Client / Extension Host / DevTool 实现者，未来 Extension SDK 维护者。
 > **Related**:
+>
 > - [`loom-studio-mvp-engineering.md`](loom-studio-mvp-engineering.md)
 > - [`../03-kernel/studio-transport-protocol-v0.md`](../03-kernel/studio-transport-protocol-v0.md)
 > - [`../05-extensions/studio-extension-lifecycle-v0.md`](../05-extensions/studio-extension-lifecycle-v0.md)
@@ -48,21 +49,21 @@ docs/studio-dependency-and-runtime-choices-v0.md
 
 ## 1. 总体骨架决策
 
-| 问题 | 决策 |
-|---|---|
-| 仓库形态 | workspace monorepo |
-| 顶层分类 | `apps/`、`packages/`、`extensions/`、`docs/`、`scripts/`、`tests/` |
-| 前端位置 | `apps/studio-client` |
-| 后端位置 | `apps/studio-server` |
-| 平台能力 | `packages/*` |
-| 官方/示例插件 | `extensions/*` |
-| Client 架构 | Client 内部使用 FSD |
-| 全仓库 FSD | 不使用 |
-| 文件夹命名 | kebab-case |
-| 文件命名 | kebab-case |
-| package public entry | `src/index.ts` |
-| package 间 import | 只能通过 public entry |
-| Loom Core 依赖 | 只允许 `packages/loom-runner` 依赖 Core |
+| 问题                 | 决策                                                               |
+| -------------------- | ------------------------------------------------------------------ |
+| 仓库形态             | workspace monorepo                                                 |
+| 顶层分类             | `apps/`、`packages/`、`extensions/`、`docs/`、`scripts/`、`tests/` |
+| 前端位置             | `apps/studio-client`                                               |
+| 后端位置             | `apps/studio-server`                                               |
+| 平台能力             | `packages/*`                                                       |
+| 官方/示例插件        | `extensions/*`                                                     |
+| Client 架构          | Client 内部使用 FSD                                                |
+| 全仓库 FSD           | 不使用                                                             |
+| 文件夹命名           | kebab-case                                                         |
+| 文件命名             | kebab-case                                                         |
+| package public entry | `src/index.ts`                                                     |
+| package 间 import    | 只能通过 public entry                                              |
+| Loom Core 依赖       | 只允许 `packages/loom-runner` 依赖 Core                            |
 
 ---
 
@@ -123,14 +124,14 @@ LoomStudio/
 
 ## 3. 顶层目录分类规则
 
-| Directory | Rule |
-|---|---|
-| `apps/` | 可运行应用，例如 server、client、未来 desktop / cli |
-| `packages/` | 平台库，不直接作为产品入口运行 |
-| `extensions/` | 官方或示例 Extension |
-| `docs/` | 架构文档、ADR、工程规格 |
-| `scripts/` | 仓库维护脚本，不放业务逻辑 |
-| `tests/` | 跨包 integration tests；单包测试放包内 |
+| Directory     | Rule                                                |
+| ------------- | --------------------------------------------------- |
+| `apps/`       | 可运行应用，例如 server、client、未来 desktop / cli |
+| `packages/`   | 平台库，不直接作为产品入口运行                      |
+| `extensions/` | 官方或示例 Extension                                |
+| `docs/`       | 架构文档、ADR、工程规格                             |
+| `scripts/`    | 仓库维护脚本，不放业务逻辑                          |
+| `tests/`      | 跨包 integration tests；单包测试放包内              |
 
 ### 3.1 数据层不使用业务根目录
 
@@ -161,13 +162,13 @@ Trace / Audit / Diagnostics
 
 因此数据层在仓库里的位置是：
 
-| Concern | Repository place | Runtime / local-state place |
-|---|---|---|
-| Document Store interface / memory backend | `packages/document-store/` | `.loomstudio-dev/projects/<project-id>/` |
-| Trace / Audit store abstraction | `packages/trace-audit/` | `.loomstudio-dev/projects/<project-id>/traces`, `.loomstudio-dev/projects/<project-id>/audit` |
-| Kernel-owned system documents | `packages/kernel/` handlers + `packages/document-store/` types | Document Store 中的 `system.*` document types |
-| Extension-owned documents | Extension 通过 `contributes.documentTypes` 声明 | Document Store 中的 extension-owned document types |
-| Extension scratch / cache / index | Extension 自己的代码 | `.loomstudio-dev/extensions/` 或未来 workspace `extensions/scratch/` |
+| Concern                                   | Repository place                                               | Runtime / local-state place                                                                   |
+| ----------------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Document Store interface / memory backend | `packages/document-store/`                                     | `.loomstudio-dev/projects/<project-id>/`                                                      |
+| Trace / Audit store abstraction           | `packages/trace-audit/`                                        | `.loomstudio-dev/projects/<project-id>/traces`, `.loomstudio-dev/projects/<project-id>/audit` |
+| Kernel-owned system documents             | `packages/kernel/` handlers + `packages/document-store/` types | Document Store 中的 `system.*` document types                                                 |
+| Extension-owned documents                 | Extension 通过 `contributes.documentTypes` 声明                | Document Store 中的 extension-owned document types                                            |
+| Extension scratch / cache / index         | Extension 自己的代码                                           | `.loomstudio-dev/extensions/` 或未来 workspace `extensions/scratch/`                          |
 
 `user` 不作为仓库根目录。若未来需要用户 profile / actor / account 语义，应表现为 Document type，例如 `system.user-profile` 或某个 Extension 声明的 `example.account.profile`，而不是顶层文件夹。
 
@@ -311,14 +312,14 @@ src/
 
 推荐含义：
 
-| Layer | 用途 |
-|---|---|
-| `app/` | app bootstrap、providers、routing、layout shell |
-| `pages/` | 页面级组合，例如 workspace、extensions、diagnostics |
-| `widgets/` | 复合 UI 区块，例如 document explorer、diagnostics panel |
+| Layer       | 用途                                                              |
+| ----------- | ----------------------------------------------------------------- |
+| `app/`      | app bootstrap、providers、routing、layout shell                   |
+| `pages/`    | 页面级组合，例如 workspace、extensions、diagnostics               |
+| `widgets/`  | 复合 UI 区块，例如 document explorer、diagnostics panel           |
 | `features/` | 用户动作，例如 write document、enable extension、subscribe events |
 | `entities/` | 领域实体视图与 model，例如 document、extension、diagnostic、trace |
-| `shared/` | client-only UI primitives、lib、utility |
+| `shared/`   | client-only UI primitives、lib、utility                           |
 
 规则：
 
@@ -519,9 +520,9 @@ GenericHandlerFactory
 CommonUtils
 ```
 
-### 9.4 Open Issue: 源码文件命名形态对齐
+### 9.4 Resolved Issue: 源码文件命名形态对齐
 
-> **状态**：Open Issue / 需在大规模改名前单独确认
+> **状态**：Resolved / 2026-06-23 已执行 Client 源码文件命名迁移
 > **触发**：2026-06-22 Client / Application Layer 审计发现，当前源码文件命名与本文 `9.1`、`9.2` 的 kebab-case 规则不完全一致。
 
 当前规则已经明确：
@@ -533,7 +534,7 @@ React 组件内部标识：PascalCase
 普通变量、函数、hook：camelCase
 ```
 
-但实际代码中存在以下偏差：
+历史偏差如下，已在 2026-06-23 迁移为 kebab-case：
 
 ```text
 apps/studio-client/src/app/App.tsx
@@ -547,7 +548,7 @@ apps/studio-client/src/widgets/preset-workbench/AgentRuntimeManager.tsx
 apps/studio-client/src/widgets/rendering-lab/RenderingLab.tsx
 ```
 
-这类 PascalCase 文件名来自 React 生态常见习惯，但和仓库级规则冲突。后续如果重命名，应优先采用：
+这类 PascalCase 文件名来自 React 生态常见习惯，但和仓库级规则冲突。已采用：
 
 ```text
 App.tsx -> app.tsx
@@ -563,23 +564,26 @@ RenderingLab.tsx -> rendering-lab.tsx
 
 命名形态边界暂定如下：
 
-| 位置 | 规则 | 说明 |
-|---|---|---|
-| 源码目录 | kebab-case | 包括 feature、widget、shared ui 子目录 |
-| 源码文件 | kebab-case | 包括 `.ts`、`.tsx`、`.module.css` |
-| React 组件 / 类型 / class | PascalCase | 只限代码标识，不用于文件名 |
-| hook / 函数 / 变量 | camelCase | 例如 `useStudioState`、`createStudioApi` |
-| wire literal / 外部协议字段 | 保留协议原样 | 例如 OpenAI `max_tokens`、`finish_reason`、RPC error code |
+| 位置                          | 规则         | 说明                                                                     |
+| ----------------------------- | ------------ | ------------------------------------------------------------------------ |
+| 源码目录                      | kebab-case   | 包括 feature、widget、shared ui 子目录                                   |
+| 源码文件                      | kebab-case   | 包括 `.ts`、`.tsx`、`.module.css`                                        |
+| React 组件 / 类型 / class     | PascalCase   | 只限代码标识，不用于文件名                                               |
+| hook / 函数 / 变量            | camelCase    | 例如 `useStudioState`、`createStudioApi`                                 |
+| wire literal / 外部协议字段   | 保留协议原样 | 例如 OpenAI `max_tokens`、`finish_reason`、RPC error code                |
 | 文档版本号目录 / ADR / README | 保持既有约定 | 例如 `08-ApplicationLayer`、`ADR-005-*`、`README.md`，不纳入源码命名迁移 |
 
-改名前置条件：
+执行记录：
 
-1. 先确认是否接受“源码文件名一律 kebab-case，组件标识仍 PascalCase”。
-2. 如果接受，应单独提交纯 rename，不混入架构重构。
-3. rename 后必须跑 TypeScript / Vitest，重点检查大小写敏感文件系统上的 import。
-4. 在 Client FSD 拆分前完成或同步完成，避免同一文件被多轮迁移。
+1. 使用 `scripts/rename-studio-client-files.ts` 维护显式 rename manifest；
+2. 使用 Node `--experimental-strip-types` 执行脚本，避免新增 `ts-morph` 依赖；
+3. 脚本支持 dry-run / `--write`，并处理 macOS 大小写不敏感文件系统上的 case-only rename；
+4. rename 后已运行 TypeScript build 与 Client unit tests。
+5. 额外运行 `pnpm --filter @loom-studio/studio-client build`，确认 Vite 与 CSS Modules import 可正常解析。
 
-在该议题关闭前，禁止继续新增 PascalCase 源码文件名；新增组件文件应直接使用 kebab-case。
+后续规则：禁止继续新增 PascalCase 源码文件名；新增组件文件应直接使用 kebab-case。
+
+当前施工入口见 `docs/guide/code-style.md` 与 `docs/guide/project-structure.md`；本文只保留命名迁移的决策记录。
 
 ---
 

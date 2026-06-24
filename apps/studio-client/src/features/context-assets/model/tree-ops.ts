@@ -1,4 +1,5 @@
 import type { ContextAssetNode } from '../../../entities/index.js'
+import { createDefaultProjection } from './context-asset-default-projection.js'
 import { normalizeContextAssets } from './context-asset-normalization.js'
 import { findContextAssetNode, findContextAssetNodeInfo, flattenContextAssetNodes } from './context-asset-tree.js'
 
@@ -181,49 +182,6 @@ function cloneContextAssetNode(node: ContextAssetNode, makeId: () => string, isR
     projection,
     children: node.children?.map(child => cloneContextAssetNode(child, makeId, false)),
   }
-}
-
-function createDefaultProjection(category: ContextAssetNode['category'], siblings: ContextAssetNode[]): NonNullable<ContextAssetNode['projection']> {
-  const inherited = flattenContextAssetNodes(siblings).find(node => node.projection?.sourceKind !== 'virtual')?.projection
-  if (inherited) {
-    const slotKey = inherited.slotKey ?? `${inherited.group}@${inherited.zone}`
-    const entryOrder = readNextEntryOrder(siblings, slotKey)
-
-    return {
-      ...inherited,
-      entryOrder,
-      order: `entry: ${entryOrder}`,
-      reason: 'Demo entry: manually added',
-      sourceKind: 'actual',
-    }
-  }
-
-  const preset = category === 'preset'
-  const group = preset ? 'preset.system' : 'setting.stable'
-  const slotKey = preset ? 'preset:default-airp-preset@preset.system' : 'setting-layer:city-layers-main@setting.stable'
-  const entryOrder = readNextEntryOrder(siblings, slotKey)
-
-  return {
-    anchor: 'inside',
-    entryOrder,
-    zone: 'StablePrefix',
-    group,
-    lifecycle: 'always',
-    order: `entry: ${entryOrder}`,
-    reason: 'Demo entry: manually added',
-    slotKey,
-    slotOrder: preset ? 100 : 200,
-    sourceKind: 'actual',
-  }
-}
-
-function readNextEntryOrder(siblings: ContextAssetNode[], slotKey: string): number {
-  const orders = flattenContextAssetNodes(siblings)
-    .filter(node => node.projection?.slotKey === slotKey)
-    .map(node => node.projection?.entryOrder)
-    .filter((order): order is number => typeof order === 'number')
-
-  return orders.length ? Math.max(...orders) + 10 : 10
 }
 
 function normalizeProjectionOrderNodes(nodes: ContextAssetNode[]): ContextAssetNode[] {

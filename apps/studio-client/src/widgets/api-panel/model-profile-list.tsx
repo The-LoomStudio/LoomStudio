@@ -3,7 +3,7 @@ import { useState } from 'react'
 import type { ModelProfile, ProviderAccount } from '../../entities/index.js'
 import { readModelConfig, readModelConfigForm, type ModelConfigForm } from '../../features/provider-settings/model/model-profile-config.js'
 import type { Translator } from '../../shared/i18n/index.js'
-import styles from './ApiPanel.module.css'
+import styles from './api-panel.module.css'
 
 type ModelProfileListProps = {
   busy: boolean
@@ -62,7 +62,7 @@ export function ModelProfileList(props: ModelProfileListProps) {
                 <div className={styles.entityActions}>
                   <button
                     className={styles.entityActionDanger}
-                    style={{ borderColor: 'var(--airp-color-accent)', color: 'var(--airp-color-accent)' }}
+                    style={{ borderColor: 'var(--loom-accent)', color: 'var(--loom-accent)' }}
                     type="button"
                     onClick={async () => {
                       try {
@@ -79,7 +79,7 @@ export function ModelProfileList(props: ModelProfileListProps) {
                   </button>
                   <button
                     className={styles.entityActionDanger}
-                    style={{ borderColor: 'var(--airp-color-border)', color: 'var(--airp-color-text)' }}
+                    style={{ borderColor: 'var(--loom-border)', color: 'var(--loom-text)' }}
                     type="button"
                     onClick={() => {
                       setEditingModelId(profile.id)
@@ -147,7 +147,7 @@ function ModelConfigEditor(props: {
         <div className={styles.gatewayGrid}>
           <button type="button" onClick={props.onSave}>{props.t('gateway.save')}</button>
           <button
-            style={{ background: 'transparent', border: '1px solid var(--airp-color-border)', color: 'var(--airp-color-muted)' }}
+            style={{ background: 'transparent', border: '1px solid var(--loom-border)', color: 'var(--loom-text-muted)' }}
             type="button"
             onClick={props.onCancel}
           >

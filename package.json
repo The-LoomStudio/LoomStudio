@@ -11,8 +11,9 @@
     "test:probes": "LOOM_TEST_SCOPE=probes vitest run",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "dev:server": "tsx apps/studio-server/src/main.ts",
-    "dev:client": "vite --config apps/studio-client/vite.config.ts"
+    "dev:server": "tsx watch apps/studio-server/src/main.ts",
+    "dev:client": "vite --config apps/studio-client/vite.config.ts",
+    "playground": "pnpm --filter @loom-studio/playground start"
   },
   "devDependencies": {
     "@eslint/js": "latest",

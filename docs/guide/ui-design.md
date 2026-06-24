@@ -19,6 +19,24 @@ Loom Studio Client 是一个高信息密度的专业桌面级 Web 应用。
 ## 3. 组件划分
 
 在 `apps/studio-client/src/` 中，组件被划分为三个层级：
+
 1. **`shared/ui/`**: 绝对纯粹的无状态组件（如自定义的按钮、文件树树形控件）。它们不认识系统的任何业务模型。
 2. **`features/` & `entities/` 下的局部 UI**: 与特定领域模型紧密绑定的展示逻辑。
-3. **`widgets/`**: 大型的、智能的业务板块。它们会主动读取系统状态（调用 hooks）并连接多个 feature 或 entity 组件。例如 `ContextWorkbench` 或 `InputDashboard`。
+3. **`widgets/`**: 页面级业务板块，负责组合 feature/entity UI、承载局部交互和布局。它们不应拥有 RPC 流程、跨领域状态或复杂领域算法；这些应放入 `features/*/model` 或 app facade。例如 `context-workbench` 导出 `ContextWorkbench`，文件名保持 kebab-case，组件标识保持 PascalCase。
+
+### Widget 边界
+
+widget 可以做：
+
+- 布局、分栏、tab、折叠、选中态等局部 UI 状态。
+- 把 app facade 或 feature hook 提供的数据传给子组件。
+- 轻量格式化和事件转发。
+
+widget 不应做：
+
+- 直接发 RPC 或引用 transport bridge。
+- 持有跨领域 server state。
+- 实现 tree mutation、projection 排序、provider config 映射等领域算法。
+- 为了减少 props 临时创建一个“万能面板状态”。
+
+如果 widget 里出现可单独测试的非渲染逻辑，优先把它移动到对应 `features/*/model`，并补一个最小单元测试。

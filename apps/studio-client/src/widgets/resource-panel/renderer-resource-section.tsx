@@ -1,6 +1,6 @@
 import type { RendererPocState } from '../../entities/index.js'
 import type { Translator } from '../../shared/i18n/index.js'
-import styles from './ResourcePanel.module.css'
+import styles from './resource-panel.module.css'
 
 type RendererResourceSectionProps = {
   busy: boolean
@@ -21,7 +21,7 @@ type RendererResourceSectionProps = {
 
 export function RendererResourceSection(props: RendererResourceSectionProps) {
   return (
-    <section className={`${styles.section} ${styles.resourceSection} ${styles.resourceDev}`} data-airp-component="custom-renderer-host-panel">
+    <section className={`${styles.section} ${styles.resourceSection} ${styles.resourceDev}`} data-loom-component="custom-renderer-host-panel">
       <div className={styles.sectionHead}>
         <h2>{props.t('renderer.title')}</h2>
         <small aria-live="polite">{props.sessionId ? props.t('renderer.connected') : props.t('renderer.noSession')}</small>

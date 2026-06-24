@@ -1,5 +1,5 @@
-import { enUS } from './en-US.js'
-import { zhCN } from './zh-CN.js'
+import { enUS } from './en-us.js'
+import { zhCN } from './zh-cn.js'
 
 type MessageKey = keyof typeof zhCN
 type Messages = Record<MessageKey, string>

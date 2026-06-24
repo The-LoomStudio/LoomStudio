@@ -1,0 +1,204 @@
+.agentRuntimeManager {
+  background: var(--loom-panel);
+  border: 1px solid var(--loom-border);
+  border-radius: 6px;
+  margin: 16px 28px 0;
+}
+
+.agentHeader {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 14px;
+  user-select: none;
+}
+
+.agentHeaderInfo {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.agentTitle {
+  color: var(--loom-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.agentActiveBadge {
+  background: color-mix(in srgb, var(--loom-accent) 15%, transparent);
+  border-radius: 4px;
+  color: var(--loom-accent);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+}
+
+.agentEmptyBadge {
+  background: color-mix(in srgb, var(--loom-border) 40%, transparent);
+  border-radius: 4px;
+  color: var(--loom-text-muted);
+  font-size: 11px;
+  padding: 2px 6px;
+}
+
+.agentAddButton {
+  align-items: center;
+  background: var(--loom-surface);
+  border: 1px solid var(--loom-border);
+  border-radius: 4px;
+  color: var(--loom-text);
+  cursor: pointer;
+  display: flex;
+  font-size: 11px;
+  font-weight: 600;
+  gap: 4px;
+  padding: 4px 8px;
+}
+
+.agentAddButton:hover {
+  background: var(--loom-border);
+}
+
+.agentBody {
+  background: var(--loom-bg);
+  border-bottom-left-radius: 6px;
+  border-bottom-right-radius: 6px;
+  border-top: 1px solid var(--loom-border);
+  padding: 12px 14px;
+}
+
+.agentCreateForm {
+  background: var(--loom-surface);
+  border: 1px dashed var(--loom-border);
+  border-radius: 4px;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 12px;
+}
+
+.agentCreateForm input,
+.agentCreateForm select {
+  background: var(--loom-bg);
+  border: 1px solid var(--loom-border);
+  border-radius: 4px;
+  color: var(--loom-text);
+  flex: 1;
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.agentFormActions {
+  display: flex;
+  gap: 6px;
+}
+
+.agentBtnPrimary,
+.agentBtnCancel,
+.agentBtnDanger {
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 10px;
+}
+
+.agentBtnPrimary {
+  background: var(--loom-text);
+  border: none;
+  color: var(--loom-bg);
+}
+
+.agentBtnPrimary:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.agentBtnCancel {
+  background: transparent;
+  border: 1px solid var(--loom-border);
+  color: var(--loom-text-muted);
+}
+
+.agentBtnCancel:hover {
+  background: var(--loom-surface);
+}
+
+.agentBtnDanger {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--loom-text-muted);
+}
+
+.agentBtnDanger:hover {
+  background: color-mix(in srgb, #e74c3c 8%, transparent);
+  border-color: #e74c3c;
+  color: #e74c3c;
+}
+
+.agentList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.agentItem {
+  align-items: center;
+  background: var(--loom-surface);
+  border: 1px solid var(--loom-border);
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  transition: all 0.15s ease;
+}
+
+.agentItem:hover,
+.agentItemActive {
+  border-color: var(--loom-accent);
+}
+
+.agentItemActive {
+  background: color-mix(in srgb, var(--loom-accent) 8%, var(--loom-surface));
+}
+
+.agentItemInfo {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.agentItemInfo strong {
+  color: var(--loom-text);
+  font-size: 13px;
+}
+
+.agentItemInfo span {
+  color: var(--loom-text-muted);
+  font-size: 11px;
+}
+
+.agentItemActions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.agentItemActions select {
+  background: var(--loom-bg);
+  border: 1px solid var(--loom-border);
+  border-radius: 4px;
+  color: var(--loom-text);
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+.agentEmptyList {
+  color: var(--loom-text-muted);
+  font-size: 12px;
+  margin: 0;
+}

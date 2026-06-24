@@ -1,4 +1,4 @@
-import { zhCN } from './zh-CN.js'
+import { zhCN } from './zh-cn.js'
 
 export const enUS = {
   'app.title': 'Loom Studio',

@@ -14,6 +14,7 @@
     { "path": "./packages/trace-audit" },
     { "path": "./packages/loom-runner" },
     { "path": "./packages/kernel" },
-    { "path": "./extensions/example-echo" }
+    { "path": "./extensions/example-echo" },
+    { "path": "./apps/playground" }
   ]
 }

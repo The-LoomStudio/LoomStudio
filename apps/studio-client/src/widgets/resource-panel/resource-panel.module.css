@@ -1,0 +1,246 @@
+.resourcePane {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  border-right: 0;
+  background: var(--loom-bg);
+}
+
+.section {
+  padding: 12px;
+  border-bottom: 1px solid var(--loom-border);
+}
+
+.resourceSummary {
+  padding: 18px 14px 16px;
+  border-bottom: 1px solid var(--loom-border);
+}
+
+.resourceKicker {
+  margin-bottom: 8px;
+  color: var(--loom-text-subtle);
+  font-size: 10px;
+  font-style: italic;
+}
+
+.resourceSummary h2 {
+  color: var(--loom-text);
+  font-size: 16px;
+  font-weight: 650;
+  text-transform: none;
+}
+
+.resourceSummary p:last-child {
+  margin-top: 6px;
+  color: var(--loom-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.resourceSection {
+  padding: 13px 14px;
+}
+
+.resourceDev {
+  color: color-mix(in srgb, var(--loom-text) 72%, var(--loom-text-muted));
+}
+
+.resourceDev h2 {
+  color: var(--loom-text-muted);
+}
+
+.sectionHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sectionHead small {
+  color: var(--loom-text-muted);
+  font-size: 12px;
+}
+
+.cardForm {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.cardForm textarea {
+  min-height: 160px;
+  resize: vertical;
+  border: 0;
+  border-top: 1px solid var(--loom-border);
+  border-bottom: 1px solid var(--loom-border);
+  border-radius: 0;
+  padding: 10px 0;
+  background: transparent;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.customCssEditor {
+  display: grid;
+  gap: 6px;
+  color: var(--loom-text-muted);
+  font-size: 12px;
+}
+
+.inlineFields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.list,
+.branchList {
+  display: grid;
+  gap: 0;
+  margin-top: 10px;
+}
+
+.listItem,
+.branchItem {
+  width: 100%;
+  text-align: left;
+}
+
+.listItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--loom-border) 58%, transparent);
+  border-radius: 0;
+  padding-inline: 0;
+}
+
+.branchItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: start;
+  gap: 3px;
+  min-height: 42px;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--loom-border) 58%, transparent);
+  border-radius: 0;
+  padding-inline: 0;
+}
+
+.listItem span,
+.branchItem span,
+.branchItem small {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listItem small,
+.branchItem small {
+  color: var(--loom-text-muted);
+  font-size: 11px;
+}
+
+.selected {
+  color: var(--loom-accent-strong);
+  background: transparent;
+  opacity: 1;
+}
+
+.selected span {
+  font-weight: 650;
+}
+
+.emptyCompact {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px;
+  color: var(--loom-text-muted);
+  background: transparent;
+  font-size: 12px;
+}
+
+.meta {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  gap: 8px;
+  margin: 12px 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--loom-border) 58%, transparent);
+  padding-top: 10px;
+  font-size: 12px;
+}
+
+.meta dt {
+  color: var(--loom-text-muted);
+}
+
+.meta dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.rendererPocControls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.customCssEditor {
+  margin-top: 12px;
+}
+
+.customCssHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.customCssActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.customCssActions button {
+  min-height: 28px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.customCssEditor textarea {
+  min-height: 180px;
+  resize: vertical;
+  padding: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.eventLog {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  border: 1px solid var(--loom-border);
+  border-radius: 6px;
+  padding: 8px;
+  color: var(--loom-text-muted);
+  background: #ffffff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+}
+
+@media (max-width: 820px) {
+  .resourcePane {
+    max-height: none;
+  }
+}

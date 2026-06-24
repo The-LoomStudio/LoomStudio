@@ -1,0 +1,178 @@
+.workbench {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  background: var(--loom-bg);
+}
+
+.statusRegion {
+  min-height: 0;
+}
+
+.status {
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--loom-border);
+  color: #23404e;
+  background: #dff1f6;
+}
+
+.statusError {
+  color: var(--loom-danger);
+  background: var(--loom-danger-bg);
+}
+
+.studioStage {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.stageBase {
+  position: absolute;
+  inset: 0;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  justify-items: center;
+}
+
+.studioRail {
+  position: absolute;
+  z-index: 30;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: var(--loom-rail-width);
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding-top: 18px;
+  border-right: 1px solid color-mix(in srgb, var(--loom-border) 70%, transparent);
+  background: color-mix(in srgb, var(--loom-bg) 88%, transparent);
+}
+
+.railTab {
+  width: 100%;
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-right: 1px solid transparent;
+  border-radius: 0;
+  padding: 0;
+  color: var(--loom-text-subtle);
+  background: transparent;
+}
+
+.railTab:hover:not(:disabled),
+.railTabActive {
+  border-color: var(--loom-accent);
+  color: var(--loom-accent-strong);
+  background: color-mix(in srgb, var(--loom-bg) 70%, transparent);
+}
+
+.railTab svg {
+  display: block;
+}
+
+.railLabel {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.stagePanel {
+  position: absolute;
+  z-index: 20;
+  top: 0;
+  bottom: 0;
+  width: min(var(--loom-overlay-width), calc(100vw - 96px));
+  overflow: hidden;
+  border: 0;
+  border-inline: 1px solid var(--loom-border);
+  background: color-mix(in srgb, var(--loom-bg) 90%, #ffffff);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.stagePanelActive {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+.stagePanelLeft {
+  left: var(--loom-rail-width);
+  width: min(348px, calc(100vw - 96px));
+  transform: translateX(-12px);
+}
+
+.stagePanelRight {
+  right: 0;
+  transform: translateX(12px);
+}
+
+.stageWorkspace {
+  position: absolute;
+  z-index: 18;
+  inset: 0;
+  overflow: hidden;
+  background: var(--loom-bg);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+}
+
+.stageWorkspaceActive {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (max-width: 1180px) {
+  .stagePanelRight {
+    right: 0;
+    width: min(380px, calc(100vw - 96px));
+  }
+}
+
+@media (max-width: 820px) {
+  .workbench {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .studioRail {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 38px;
+    padding-top: 12px;
+  }
+
+  .railTab {
+    width: 100%;
+    min-height: 38px;
+  }
+
+  .stagePanel,
+  .stagePanelLeft,
+  .stagePanelRight {
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 38px;
+    width: auto;
+  }
+
+  .stageWorkspace {
+    left: 0;
+  }
+}

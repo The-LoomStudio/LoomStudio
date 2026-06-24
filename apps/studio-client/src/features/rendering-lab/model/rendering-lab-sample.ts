@@ -164,8 +164,8 @@ function buildAgentIframeSource(t: Translator): string {
     <main style="padding:14px;">
       <strong>${escapeHtml(t('renderingLab.agentIframeTitle'))}</strong>
       <p>${escapeHtml(t('renderingLab.agentIframeBody'))}</p>
-      <button onclick="parent.postMessage({source:'airp-rendering-lab',type:'agent-iframe',value:'approve'},'*')">${escapeHtml(t('renderingLab.agentIframeApprove'))}</button>
-      <button onclick="parent.postMessage({source:'airp-rendering-lab',type:'agent-iframe',value:'reject'},'*')">${escapeHtml(t('renderingLab.agentIframeReject'))}</button>
+      <button onclick="parent.postMessage({source:'loom-rendering-lab',type:'agent-iframe',value:'approve'},'*')">${escapeHtml(t('renderingLab.agentIframeApprove'))}</button>
+      <button onclick="parent.postMessage({source:'loom-rendering-lab',type:'agent-iframe',value:'reject'},'*')">${escapeHtml(t('renderingLab.agentIframeReject'))}</button>
     </main>
   </body>
 </html>`

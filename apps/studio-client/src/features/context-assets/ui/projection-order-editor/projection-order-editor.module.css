@@ -1,0 +1,132 @@
+.orderEditor {
+  min-height: 0;
+  overflow: auto;
+  padding: 0 0 18px;
+}
+
+.orderSummary {
+  align-items: baseline;
+  background: var(--loom-bg);
+  border-bottom: 1px solid var(--loom-border);
+  color: var(--loom-text-subtle);
+  display: flex;
+  font-size: 10px;
+  font-style: italic;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 10px 14px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.orderSummary strong {
+  color: var(--loom-text-muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 560;
+}
+
+.zone {
+  border-bottom: 1px solid var(--loom-border);
+  padding: 12px 14px;
+}
+
+.zone h3 {
+  color: var(--loom-text);
+  font-size: 12px;
+  font-weight: 680;
+  margin-bottom: 8px;
+}
+
+.zone p {
+  color: var(--loom-text-subtle);
+  font-size: 11px;
+  font-style: italic;
+}
+
+.projectionItem {
+  border-left: 1px solid var(--loom-border);
+  cursor: grab;
+  display: grid;
+  gap: 3px;
+  padding: 7px 0 7px 10px;
+}
+
+.projectionItem:active {
+  cursor: grabbing;
+}
+
+.projectionItemActive {
+  border-color: var(--loom-accent);
+}
+
+.projectionItemHead {
+  align-items: baseline;
+  display: grid;
+  gap: 7px;
+  grid-template-columns: 16px 22px minmax(0, 1fr) auto;
+  min-width: 0;
+}
+
+.projectionItemHead > span {
+  color: var(--loom-text-subtle);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+}
+
+.projectionItemHead em {
+  border-left: 1px solid var(--loom-border);
+  color: var(--loom-text-subtle);
+  font-size: 10px;
+  font-style: italic;
+  padding-left: 6px;
+}
+
+.projectionItemHead em[data-loom-source-kind='virtual'] {
+  color: var(--loom-accent-strong);
+}
+
+.projectionItem strong,
+.projectionItem span,
+.projectionItem small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.projectionItem strong {
+  color: var(--loom-text);
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.projectionItem span {
+  color: var(--loom-text-muted);
+  font-size: 11px;
+}
+
+.projectionItem small {
+  color: var(--loom-text-subtle);
+  font-size: 10px;
+  font-style: italic;
+}
+
+.projectionChildren {
+  color: var(--loom-text-muted);
+  display: grid;
+  font-size: 11px;
+  gap: 2px;
+  list-style: none;
+  margin: 4px 0 0 26px;
+  padding: 0;
+}
+
+.projectionChildren li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.projectionChildren li::before {
+  color: var(--loom-text-subtle);
+  content: "- ";
+}
