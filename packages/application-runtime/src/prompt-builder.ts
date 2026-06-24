@@ -1,12 +1,9 @@
+import { evaluatePromptActivation, type ActivationFacts, type PromptActivation } from './prompt-activation.js'
+
 export type PromptAnchor = 'before' | 'inside' | 'after'
 export type PromptProviderRole = 'system' | 'assistant' | 'user'
 export type PromptSourceKind = 'preset' | 'settingLayer' | 'narrativeChat' | 'runtime'
 export type PromptLifecycle = 'always' | 'conditional' | 'fresh'
-
-export type PromptActivation =
-  | { kind: 'always' }
-  | { kind: 'manual' }
-  | { kind: 'keyword'; keywords: string[] }
 
 export type PromptContentCapability = {
   kind: 'text'
@@ -153,6 +150,7 @@ export type CompiledSlot = {
 export type EditorProjection = {
   sourceRows: Array<{
     active: boolean
+    activationReason: string
     fragmentId: string
     sourceNodeId: string
     sourcePath: string
@@ -241,6 +239,7 @@ export function compilePromptDataModel(input: {
   orderProfile: ProjectionOrderProfile
   skeletonPatch?: CompositionSkeletonPatch
   currentInput?: string
+  activationFacts?: ActivationFacts
 }): CompiledPrompt {
   const skeleton = applyCompositionSkeletonPatch(input.skeleton, input.skeletonPatch ?? input.orderProfile.skeletonPatch)
   const fragments = [
@@ -250,10 +249,18 @@ export function compilePromptDataModel(input: {
   const groupsByKey = new Map(skeleton.injectionGroups.map(group => [group.key, group]))
   const zonesByKey = new Map(skeleton.zones.map(item => [item.key, item]))
   const sourceNodesById = new Map(input.sourceNodes.map(node => [node.id, node]))
+  const activationByFragmentId = new Map(fragments.map(fragment => [
+    fragment.id,
+    evaluatePromptActivation({
+      activation: fragment.projection.activation,
+      currentInput: input.currentInput,
+      facts: input.activationFacts,
+    }),
+  ]))
   const activeFragmentIds = new Set(
-    fragments
-      .filter(fragment => fragmentMatchesActivation(fragment, input.currentInput ?? ''))
-      .map(fragment => fragment.id),
+    [...activationByFragmentId.entries()]
+      .filter(([, evaluation]) => evaluation.active)
+      .map(([fragmentId]) => fragmentId),
   )
   const compiledZones = new Map<string, CompiledZone>()
 
@@ -314,6 +321,7 @@ export function compilePromptDataModel(input: {
     editorProjection: {
       sourceRows: fragments.map(fragment => ({
         active: activeFragmentIds.has(fragment.id),
+        activationReason: activationByFragmentId.get(fragment.id)?.reason ?? 'activation: unknown',
         fragmentId: fragment.id,
         sourceNodeId: fragment.source.sourceNodeId,
         sourcePath: readSourcePath(sourceNodesById, fragment.source.sourceNodeId),
@@ -390,13 +398,6 @@ export function materializeSlotKey(fragment: PromptFragment): string {
   if (fragment.projection.joinSlotKey) return fragment.projection.joinSlotKey
   const sourceSlotKey = fragment.projection.sourceSlotKey ?? fragment.source.sourceId
   return `${kindToSlotPrefix(fragment.source.kind)}:${sourceSlotKey}@${fragment.projection.injectionGroupKey}`
-}
-
-function fragmentMatchesActivation(fragment: PromptFragment, input: string): boolean {
-  const activation = fragment.projection.activation ?? { kind: 'always' }
-  if (activation.kind === 'always') return true
-  if (activation.kind === 'manual') return false
-  return activation.keywords.some(keyword => input.includes(keyword))
 }
 
 function readSourcePath(sourceNodesById: Map<string, SourceNode>, nodeId: string): string {

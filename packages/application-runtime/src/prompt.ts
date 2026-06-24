@@ -7,11 +7,11 @@ import {
   defaultCompositionSkeleton,
   emptyProjectionOrderProfile,
   type CompiledPrompt,
-  type PromptActivation,
   type PromptContribution,
   type ProjectionOrderProfile,
   type SourceNode,
 } from './prompt-builder.js'
+import type { ActivationFacts, PromptActivation } from './prompt-activation.js'
 import { readBranchPath } from './timeline.js'
 import type { NarrativeBranchContent, ProviderMessage, SessionContent, SettingEntryContent } from './types.js'
 import { readWorkspacePromptInputs } from './workspace.js'
@@ -60,6 +60,7 @@ export async function composePromptBuildForInput(
   userInput: string,
   orderProfile: ProjectionOrderProfile = emptyProjectionOrderProfile,
   workspaceId?: string,
+  activationFacts?: ActivationFacts,
 ): Promise<{ messages: ProviderMessage[]; projection: CompiledPrompt }> {
   const entries = await readBranchPath(documents, session.id, branch.content.headEntryId)
   const snapshot = session.content.cardSnapshot
@@ -79,6 +80,7 @@ export async function composePromptBuildForInput(
     contributions,
     orderProfile: orderProfile === emptyProjectionOrderProfile && workspaceInputs ? workspaceInputs.orderProfile : orderProfile,
     currentInput: userInput,
+    activationFacts,
   })
 
   return {
@@ -311,6 +313,5 @@ function runtimeContribution(input: {
 }
 
 function toPromptActivation(activation: SettingEntryContent['activation']): PromptActivation {
-  if (activation.kind === 'keyword') return { kind: 'keyword', keywords: activation.keywords }
   return activation
 }

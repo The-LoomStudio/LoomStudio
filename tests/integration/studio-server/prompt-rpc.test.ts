@@ -57,4 +57,62 @@ describe('studio server prompt rpc integration', () => {
       expect(storedPrompt).toEqual(preview.messages)
     })
   })
+
+  it('passes activation facts from prompt preview rpc into the backend prompt builder', async () => {
+    await withStudioServer(async port => {
+      const card = await callRpc<{
+        card: { id: string }
+      }>(port, 'application.createCard', {
+        name: 'RPC Activation Card',
+        settingLayer: {
+          entries: [
+            {
+              title: 'Finalize Mode',
+              content: '最终润色规则启用。',
+              activation: {
+                kind: 'condition',
+                conditions: [{ fact: 'agent.mode', equals: 'finalize' }],
+              },
+            },
+          ],
+        },
+      })
+      const created = await callRpc<{
+        session: { id: string }
+        branch: { id: string }
+      }>(port, 'application.createSessionFromCard', {
+        cardId: card.card.id,
+      })
+      const inactivePreview = await callRpc<{
+        messages: Array<{ role: string; content: string }>
+      }>(port, 'application.previewPrompt', {
+        sessionId: created.session.id,
+        branchId: created.branch.id,
+        input: '先进行短对话。',
+      })
+      const activePreview = await callRpc<{
+        messages: Array<{ role: string; content: string }>
+        projection: {
+          editorProjection: {
+            sourceRows: Array<{ active: boolean; activationReason: string; sourcePath: string }>
+          }
+        }
+      }>(port, 'application.previewPrompt', {
+        sessionId: created.session.id,
+        branchId: created.branch.id,
+        input: '准备最终输出。',
+        activationFacts: {
+          'agent.mode': 'finalize',
+        },
+      })
+      const activationRow = activePreview.projection.editorProjection.sourceRows.find(row => row.sourcePath.includes('Finalize Mode'))
+
+      expect(inactivePreview.messages[0]?.content).not.toContain('最终润色规则启用。')
+      expect(activePreview.messages[0]?.content).toContain('最终润色规则启用。')
+      expect(activationRow).toMatchObject({
+        active: true,
+        activationReason: 'activation: conditions matched',
+      })
+    })
+  })
 })

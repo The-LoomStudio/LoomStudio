@@ -11,6 +11,7 @@ export type PromptProjection = {
   editorProjection: {
     sourceRows: Array<{
       active: boolean
+      activationReason?: string
       fragmentId: string
       sourceNodeId: string
       sourcePath: string

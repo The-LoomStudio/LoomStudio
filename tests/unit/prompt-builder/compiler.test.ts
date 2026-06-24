@@ -177,6 +177,67 @@ describe('prompt builder compiler', () => {
     ])
   })
 
+  it('evaluates condition activation from prompt build facts', () => {
+    const compiled = compilePromptDataModel({
+      skeleton: defaultCompositionSkeleton,
+      sourceNodes,
+      fragments: [
+        fragment('setting.final', 'settingLayer', 'worldbook-main', 'node.setting.inn', '进入最终润色模式。', {
+          injectionGroupKey: 'setting.stable',
+          activation: {
+            kind: 'condition',
+            conditions: [{ fact: 'agent.mode', equals: 'finalize' }],
+          },
+        }),
+        fragment('setting.draft', 'settingLayer', 'worldbook-main', 'node.setting.fog', '进入短对话推演模式。', {
+          injectionGroupKey: 'setting.stable',
+          activation: {
+            kind: 'condition',
+            conditions: [{ fact: 'agent.mode', equals: 'draft' }],
+          },
+        }),
+      ],
+      orderProfile: emptyProjectionOrderProfile,
+      activationFacts: {
+        'agent.mode': 'finalize',
+      },
+    })
+    const sourceRows = new Map(compiled.editorProjection.sourceRows.map(row => [row.fragmentId, row]))
+
+    expect(compiled.messages[0]?.content).toContain('进入最终润色模式。')
+    expect(compiled.messages[0]?.content).not.toContain('进入短对话推演模式。')
+    expect(sourceRows.get('setting.final')).toMatchObject({
+      active: true,
+      activationReason: 'activation: conditions matched',
+    })
+    expect(sourceRows.get('setting.draft')).toMatchObject({
+      active: false,
+      activationReason: 'activation: conditions not matched',
+    })
+  })
+
+  it('lets tag facts participate in activation conditions', () => {
+    const compiled = compilePromptDataModel({
+      skeleton: defaultCompositionSkeleton,
+      sourceNodes,
+      fragments: [
+        fragment('setting.combat', 'settingLayer', 'worldbook-main', 'node.setting.inn', '战斗规则启用。', {
+          injectionGroupKey: 'setting.stable',
+          activation: {
+            kind: 'condition',
+            conditions: [{ fact: 'tags', includes: 'scene:combat' }],
+          },
+        }),
+      ],
+      orderProfile: emptyProjectionOrderProfile,
+      activationFacts: {
+        tags: ['scene:combat'],
+      },
+    })
+
+    expect(compiled.messages[0]?.content).toContain('战斗规则启用。')
+  })
+
   it('compiles preset and setting layer contributions through the same capability path', () => {
     const compiled = compilePromptDataModel({
       skeleton: defaultCompositionSkeleton,

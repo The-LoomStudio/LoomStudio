@@ -419,7 +419,15 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
 
       const { session, branch } = await readSessionBranch(options.documents, input.sessionId, input.branchId)
 
-      const promptBuild = await composePromptBuildForInput(options.documents, session, branch, input.input, input.projectionOrderProfile, input.workspaceId)
+      const promptBuild = await composePromptBuildForInput(
+        options.documents,
+        session,
+        branch,
+        input.input,
+        input.projectionOrderProfile,
+        input.workspaceId,
+        input.activationFacts,
+      )
 
       return {
         session: toVersioned(session),
@@ -447,7 +455,15 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       const assistantEntryId = createId('entry')
       const commitCandidateId = createId('commit')
       const stateSnapshotId = createId('snapshot')
-      const promptBuild = await composePromptBuildForInput(options.documents, session, branch, input.input, input.projectionOrderProfile, input.workspaceId)
+      const promptBuild = await composePromptBuildForInput(
+        options.documents,
+        session,
+        branch,
+        input.input,
+        input.projectionOrderProfile,
+        input.workspaceId,
+        input.activationFacts,
+      )
       const prompt = promptBuild.messages
       const providerResult = await gateway.invokeChat({
         request: {

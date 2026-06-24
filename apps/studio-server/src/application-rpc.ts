@@ -1,5 +1,5 @@
 import type { ApplicationRuntime, OpeningChatInput, ProjectionOrderProfile, SettingActivation, SettingLayerInput } from '@loom-studio/application-runtime'
-import { isPromptWorkspaceArtifact } from '@loom-studio/application-runtime'
+import { isPromptActivation, isPromptWorkspaceArtifact } from '@loom-studio/application-runtime'
 import type { JsonValue } from '@loom-studio/shared'
 import { createNamespaceRpcCapabilities, type RpcCapability } from './rpc-capability.js'
 import {
@@ -240,6 +240,7 @@ export async function callApplicationRpc(runtime: ApplicationRuntime, method: st
         input: readString(params, 'input'),
         workspaceId: readOptionalString(params, 'workspaceId'),
         projectionOrderProfile: readOptionalProjectionOrderProfile(params, 'projectionOrderProfile'),
+        activationFacts: readOptionalObject(params, 'activationFacts'),
       }) as unknown as JsonValue
 
     case 'application.submitTurn':
@@ -251,6 +252,7 @@ export async function callApplicationRpc(runtime: ApplicationRuntime, method: st
         intent: readOptionalTurnIntent(params, 'intent'),
         workspaceId: readOptionalString(params, 'workspaceId'),
         projectionOrderProfile: readOptionalProjectionOrderProfile(params, 'projectionOrderProfile'),
+        activationFacts: readOptionalObject(params, 'activationFacts'),
       }) as unknown as JsonValue
 
     case 'application.getSession':
@@ -369,11 +371,8 @@ function readOptionalSettingLayer(params: JsonValue | undefined, key: string): S
 }
 
 function readActivation(value: JsonValue | undefined): SettingActivation | undefined {
-  if (!isRecord(value) || typeof value.kind !== 'string') return undefined
-  if (value.kind === 'always' || value.kind === 'manual') return { kind: value.kind }
-  if (value.kind === 'keyword' && Array.isArray(value.keywords) && value.keywords.every(keyword => typeof keyword === 'string')) {
-    return { kind: 'keyword', keywords: value.keywords }
-  }
+  if (value === undefined) return undefined
+  if (isPromptActivation(value)) return value
   throw new Error('Expected setting activation')
 }
 

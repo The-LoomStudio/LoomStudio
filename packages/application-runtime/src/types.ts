@@ -1,5 +1,6 @@
 import type { DocumentStore } from '@loom-studio/document-store'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
+import type { ActivationFacts, PromptActivation } from './prompt-activation.js'
 import type { CompiledPrompt, ProjectionOrderProfile } from './prompt-builder.js'
 import type { PromptWorkspaceArtifact, PromptWorkspaceContent } from './workspace.js'
 
@@ -388,6 +389,7 @@ export type PreviewPromptInput = {
   input: string
   workspaceId?: string
   projectionOrderProfile?: ProjectionOrderProfile
+  activationFacts?: ActivationFacts
 }
 
 export type PreviewPromptResult = {
@@ -405,6 +407,7 @@ export type SubmitTurnInput = {
   intent?: 'rp' | 'rewrite' | 'continue' | 'modify'
   workspaceId?: string
   projectionOrderProfile?: ProjectionOrderProfile
+  activationFacts?: ActivationFacts
 }
 
 export type SubmitTurnResult = {
@@ -660,7 +663,4 @@ export type SettingEntryContent = {
   tags: string[]
 }
 
-export type SettingActivation =
-  | { kind: 'always' }
-  | { kind: 'manual' }
-  | { kind: 'keyword'; keywords: string[] }
+export type SettingActivation = PromptActivation

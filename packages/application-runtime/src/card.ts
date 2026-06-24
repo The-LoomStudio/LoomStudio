@@ -2,6 +2,7 @@ import type { DocumentRecord } from '@loom-studio/document-store'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import { createId, nowIso } from '@loom-studio/shared'
 import { isObject } from './json.js'
+import { isPromptActivation } from './prompt-activation.js'
 import type {
   CardPresetContent,
   CardPresetInput,
@@ -150,9 +151,7 @@ export function isSettingEntry(value: JsonValue): value is SettingEntryContent {
 }
 
 export function isActivation(value: JsonValue | undefined): value is SettingActivation {
-  if (value === undefined || !isObject(value) || typeof value.kind !== 'string') return false
-  if (value.kind === 'always' || value.kind === 'manual') return true
-  return value.kind === 'keyword' && Array.isArray(value.keywords) && value.keywords.every(keyword => typeof keyword === 'string')
+  return isPromptActivation(value)
 }
 
 export function getMacroContext(snapshot: JsonObject): { user: string } {
@@ -166,4 +165,3 @@ export function getMacroContext(snapshot: JsonObject): { user: string } {
 export function renderMacros(input: string, context: { user: string }): string {
   return input.replace(/\{\{\s*User\s*\}\}/g, context.user)
 }
-

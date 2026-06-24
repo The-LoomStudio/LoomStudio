@@ -13,12 +13,12 @@ import type {
 } from './types.js'
 import type {
   CompositionSkeletonPatch,
-  PromptActivation,
   PromptCompositionCapabilities,
   PromptContribution,
   ProjectionOrderProfile,
   SourceNode,
 } from './prompt-builder.js'
+import type { PromptActivation } from './prompt-activation.js'
 
 export type PromptWorkspaceArtifact = {
   schemaVersion: 1

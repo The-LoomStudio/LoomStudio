@@ -26,6 +26,12 @@ export {
   materializePromptFragments,
   materializeSlotKey,
 } from './prompt-builder.js'
+export {
+  evaluateCondition,
+  evaluatePromptActivation,
+  isActivationCondition,
+  isPromptActivation,
+} from './prompt-activation.js'
 export type {
   CompiledPrompt,
   CompiledSlot,
@@ -35,7 +41,6 @@ export type {
   EditorProjection,
   InjectionGroup,
   ProjectionOrderProfile,
-  PromptActivation,
   PromptAnchor,
   PromptCompositionCapabilities,
   PromptContentCapability,
@@ -51,6 +56,12 @@ export type {
   SourceNode,
   ZoneNode,
 } from './prompt-builder.js'
+export type {
+  ActivationCondition,
+  ActivationEvaluation,
+  ActivationFacts,
+  PromptActivation,
+} from './prompt-activation.js'
 export type * from './types.js'
 export type {
   PromptWorkspaceBindingEndpoint,
