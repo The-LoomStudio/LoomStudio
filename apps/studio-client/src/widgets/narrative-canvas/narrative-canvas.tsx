@@ -1,6 +1,6 @@
 import { GitBranch } from 'lucide-react'
 import type { Translator } from '../../shared/i18n/index.js'
-import styles from './narrative-canvas.module.css'
+import styles from './narrative-canvas.module.scss'
 
 type BranchView = {
   id: string

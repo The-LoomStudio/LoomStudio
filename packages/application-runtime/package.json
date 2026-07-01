@@ -13,6 +13,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@loom/core": "file:../../../LoomProject/packages/core",
     "@loom-studio/document-store": "workspace:*",
     "@loom-studio/shared": "workspace:*"
   }

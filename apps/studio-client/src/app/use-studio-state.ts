@@ -18,6 +18,7 @@ import type { PromptWorkspace, PromptWorkspaceArtifact } from '../entities/index
 import {
   readComposerHint,
   readEmptyTimelineText,
+  readStoredPromptBuildTrace,
   readStoredProviderPayloadPreview,
   readStoredPrompt,
   readStoredPromptProjection,
@@ -143,6 +144,7 @@ export function useStudioState() {
   const storedPromptProjection = readStoredPromptProjection(sessionRuntime.runDetails)
   const promptMessages = sessionRuntime.promptPreview?.messages ?? storedPrompt
   const promptProjection = sessionRuntime.promptPreview?.projection ?? storedPromptProjection
+  const promptBuildTrace = sessionRuntime.promptPreview?.promptBuildTrace ?? readStoredPromptBuildTrace(sessionRuntime.runDetails)
   const providerPayloadPreview = sessionRuntime.promptPreview?.providerPayloadPreview ?? readStoredProviderPayloadPreview(sessionRuntime.runDetails)
   const promptBuildSteps = buildPromptBuildSteps({
     session: sessionRuntime.session,
@@ -152,6 +154,7 @@ export function useStudioState() {
     messages: promptMessages,
     projection: promptProjection,
     activationFacts,
+    promptBuildTrace,
   }, t)
 
   function toggleRuntimeTag(tag: ActivationTag) {
@@ -185,6 +188,7 @@ export function useStudioState() {
     runDetails: sessionRuntime.runDetails,
     // prompt
     promptPreview: sessionRuntime.promptPreview, promptMessages, promptProjection, promptBuildSteps,
+    promptBuildTrace,
     providerPayloadPreview,
     activePromptWorkspaceId,
     activationControl,

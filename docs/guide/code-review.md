@@ -23,7 +23,7 @@
 
 前端改动必须额外检查这些点：
 
-1. **命名是否统一**：源码目录、`.ts`、`.tsx`、`.module.css` 一律 `kebab-case`；React 组件和类型才使用 `PascalCase`。
+1. **命名是否统一**：源码目录、`.ts`、`.tsx`、`.module.scss` 一律 `kebab-case`；React 组件和类型才使用 `PascalCase`。
 2. **widget 是否越界**：`widgets/` 只做页面级组合、布局和局部交互，不直接发 RPC，不持有跨领域 server state，不实现复杂领域算法。
 3. **feature 是否承载业务逻辑**：RPC 编排、状态 hook、tree/projection/provider/session 等领域逻辑应在 `features/*/model`。
 4. **shared 是否保持纯净**：`shared/` 不 import `features`、`widgets`、`pages`、`app`。

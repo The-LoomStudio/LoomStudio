@@ -6,7 +6,7 @@ import {
   type ProjectionOrderEntry,
 } from '../../model/projection-order.js'
 import { readSlotEntrySummary, readSlotKey } from '../../model/projection-slot.js'
-import styles from './projection-order-editor.module.css'
+import styles from './projection-order-editor.module.scss'
 
 type ProjectionOrderEditorProps = {
   entries: ProjectionOrderEntry[]

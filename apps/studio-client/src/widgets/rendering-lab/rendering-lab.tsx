@@ -1,6 +1,6 @@
 import type { Translator } from '../../shared/i18n/index.js'
 import type { DisplayPart, RenderingLabMode, RenderingLabSample } from '../../features/rendering-lab/model/rendering-lab-sample.js'
-import styles from './rendering-lab.module.css'
+import styles from './rendering-lab.module.scss'
 
 export function RenderingLab(props: {
   events: string[]

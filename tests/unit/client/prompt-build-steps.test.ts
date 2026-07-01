@@ -66,4 +66,23 @@ describe('prompt build steps model', () => {
     expect(activationStep?.rows.find(row => row.label === 'Runtime Facts')?.value).toBe('agent.mode = finalize, tags = scene:combat')
     expect(activationStep?.rows.find(row => row.label === 'Inactive Reasons')?.value).toBe('/Setting/Draft: activation: conditions not matched')
   })
+
+  it('surfaces real core trace status and pass order in the final payload step', () => {
+    const steps = buildPromptBuildSteps({
+      input: 'hello',
+      timeline: [],
+      promptBuildTrace: {
+        status: 'ok',
+        executions: [
+          { passName: 'prompt.source.prepared' },
+          { passName: 'prompt.compile' },
+        ],
+      },
+    }, createTranslator('en-US'))
+
+    const finalStep = steps.find(step => step.title === '4. Final Payload')
+
+    expect(finalStep?.rows.find(row => row.label === 'Core status')?.value).toBe('ok')
+    expect(finalStep?.rows.find(row => row.label === 'Core passes')?.value).toBe('prompt.source.prepared -> prompt.compile')
+  })
 })

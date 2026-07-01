@@ -11,7 +11,7 @@
   - **服务端状态与数据流**（如向后端查询的列表页、长期运行的轮询等）：按需引入 `@tanstack/react-query`。
 - **CSS 方案**：
   - **核心约束**：我们**不使用** Tailwind CSS 或 Styled-components，也不使用 Ant Design、MUI 这类重型全局组件库。
-  - **官方选型**：纯正的 `CSS Modules` 配合 `CSS Custom Properties` (CSS 变量)。这为了将来允许用户或 Extension 能够非常方便地进行样式覆盖与主题定制。
+  - **官方选型**：`SCSS Modules` 配合 `CSS Custom Properties` (CSS 变量)。我们引入 `sass` 预处理器以改善嵌套开发体验并支持 Mixins，但**必须强调核心 Token 必须由原生 CSS 变量接管**。这为了将来允许用户或 Extension 能够非常方便地在运行时进行样式覆盖与主题定制。
 - **无障碍与复杂组件**：遇到实在需要复杂无障碍交互（如浮动菜单、无障碍对话框）时，按需引入无样式的 `Radix UI` Primitives。
 
 ## 2. 后端与传输层 (Server & Transport)

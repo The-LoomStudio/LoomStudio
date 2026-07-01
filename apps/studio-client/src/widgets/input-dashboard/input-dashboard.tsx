@@ -1,7 +1,7 @@
 import type { CSSProperties, FormEvent } from 'react'
 import { activationModeOptions, activationTagOptions, type ActivationControlState, type ActivationMode, type ActivationTag } from '../../features/prompt-build/model/activation-control.js'
 import type { Translator } from '../../shared/i18n/index.js'
-import styles from './input-dashboard.module.css'
+import styles from './input-dashboard.module.scss'
 
 type InputDashboardProps = {
   activationControl: ActivationControlState

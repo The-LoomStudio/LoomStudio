@@ -16,7 +16,7 @@ import { ContextAssetDetail } from '../../features/context-assets/ui/context-ass
 import { ProjectionOrderEditor } from '../../features/context-assets/ui/projection-order-editor/projection-order-editor.js'
 import type { AgentRuntimeProfile, ContextAssetNode, ModelProfile } from '../../entities/index.js'
 import { AgentRuntimeManager } from './agent-runtime-manager.js'
-import styles from './preset-workbench.module.css'
+import styles from './preset-workbench.module.scss'
 
 type PresetWorkbenchProps = {
   nodes: ContextAssetNode[]

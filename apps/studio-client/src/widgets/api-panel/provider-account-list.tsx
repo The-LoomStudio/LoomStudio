@@ -1,6 +1,6 @@
 import type { ProviderAccount } from '../../entities/index.js'
 import type { Translator } from '../../shared/i18n/index.js'
-import styles from './api-panel.module.css'
+import styles from './api-panel.module.scss'
 
 type ProviderAccountListProps = {
   accounts: ProviderAccount[]

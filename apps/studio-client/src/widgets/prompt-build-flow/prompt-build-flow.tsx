@@ -1,5 +1,5 @@
 import type { PromptBuildStep } from '../../features/prompt-build/model/build-prompt-build-steps.js'
-import styles from './prompt-build-flow.module.css'
+import styles from './prompt-build-flow.module.scss'
 
 export function PromptBuildFlow(props: { steps: PromptBuildStep[] }) {
   return (

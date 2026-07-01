@@ -3,7 +3,7 @@ import { useState } from 'react'
 import type { ModelProfile, ProviderAccount } from '../../entities/index.js'
 import { readModelConfig, readModelConfigForm, type ModelConfigForm } from '../../features/provider-settings/model/model-profile-config.js'
 import type { Translator } from '../../shared/i18n/index.js'
-import styles from './api-panel.module.css'
+import styles from './api-panel.module.scss'
 
 type ModelProfileListProps = {
   busy: boolean

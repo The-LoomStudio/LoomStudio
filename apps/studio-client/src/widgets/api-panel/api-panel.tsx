@@ -6,7 +6,7 @@ import type { ModelProfile, ProviderAccount } from '../../entities/index.js'
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import { ModelProfileList } from './model-profile-list.js'
 import { ProviderAccountList } from './provider-account-list.js'
-import styles from './api-panel.module.css'
+import styles from './api-panel.module.scss'
 
 type GatewayForm = {
   baseUrl: string

@@ -56,6 +56,7 @@ export type PromptPreview = {
   session: Session
   branch: Branch
   messages: ProviderMessage[]
+  promptBuildTrace?: ClientJsonValue
   providerPayloadPreview?: ClientJsonValue
   projection?: PromptProjection
 }

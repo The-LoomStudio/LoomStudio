@@ -460,6 +460,7 @@ export type PreviewPromptResult = {
   session: SessionContent & { id: string; version: number }
   branch: NarrativeBranchContent & { id: string; version: number }
   messages: ProviderMessage[]
+  promptBuildTrace?: JsonValue
   providerPayloadPreview?: OpenAIChatPayload
   projection: CompiledPrompt
 }

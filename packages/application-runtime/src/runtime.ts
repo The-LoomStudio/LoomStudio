@@ -524,6 +524,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         session: toVersioned(session),
         branch: toVersioned(branch),
         messages: promptBuild.messages,
+        promptBuildTrace: promptBuild.trace as unknown as JsonValue,
         providerPayloadPreview: await buildProviderPayloadPreview({
           documents: options.documents,
           messages: promptBuild.messages,
@@ -648,6 +649,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
             kind: 'prompt',
             content: {
               messages: prompt,
+              promptBuildTrace: promptBuild.trace as unknown as JsonValue,
               ...(providerPayloadPreview ? { providerPayloadPreview: providerPayloadPreview as unknown as JsonValue } : {}),
               projection: promptBuild.projection as unknown as JsonValue,
             },

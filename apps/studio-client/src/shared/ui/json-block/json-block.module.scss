@@ -11,4 +11,5 @@
   font-size: 12px;
   line-height: 1.45;
   white-space: pre-wrap;
+  @include custom-scrollbar;
 }

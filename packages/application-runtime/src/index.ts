@@ -26,14 +26,6 @@ export {
   buildOpenAIChatPayload,
 } from './provider-payload.js'
 export {
-  compilePromptDataModel,
-  applyCompositionSkeletonPatch,
-  defaultCompositionSkeleton,
-  emptyProjectionOrderProfile,
-  materializePromptFragments,
-  materializeSlotKey,
-} from './prompt-builder.js'
-export {
   combineActivationGates,
   evaluateCondition,
   evaluatePromptActivation,

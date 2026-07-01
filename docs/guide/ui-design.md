@@ -10,11 +10,17 @@ Loom Studio Client 是一个高信息密度的专业桌面级 Web 应用。
 
 ## 2. CSS 架构
 
-我们没有使用 Tailwind 或大型 UI 组件库。我们使用 **原生 CSS Modules + CSS Custom Properties**。
+我们没有使用 Tailwind 或大型 UI 组件库。我们使用 **SCSS Modules + CSS Custom Properties** 配合。
 
-- **全局变量**: 所有颜色、间距、排版相关的 token 定义在全局作用域的 `:root` 下。
-- **CSS Modules**: 所有的组件内部样式，必须使用 `.module.css` 以防止全局污染。
-- **BEM 命名**: 虽然有 Modules 隔离，但类名依然建议采用简化版的 BEM (`.block-name__element--modifier`) 以增加可读性。
+### 核心约束（SCSS 使用铁律）
+为了防止预处理器被滥用，维护高密度桌面 UI 样式的纯洁性，必须严格遵守以下规范：
+
+1. **动态归 CSS，静态归 SCSS**：
+   - 必须使用 **全局 CSS 变量 (`var(--loom-*)`)** 掌控所有颜色、间距、排版相关的 token，定义在 `:root` 下。以允许未来实现亮色模式或其他皮肤。
+   - **SCSS 变量 (`$*`) 严禁用来定义颜色或主题**，只能用于**编译期辅助**（如媒体查询断点、Z-Index 层级）。
+2. **嵌套深度不可超过 3 层**：过度嵌套会引发高优先级（Specificity）灾难。
+3. **节制使用 Mixin**：不提供类似 `margin-top-10` 等无语义宏。`@mixin` 只用来封装纯粹的样式宏（如单行文本截断 `@include text-ellipsis`）。
+4. **BEM 命名与 Module 隔离**：组件内部样式必须使用 `.module.scss` 防止全局污染。利用 SCSS 的 `&` 拼接父类名表达层级关系（如 `&__element--modifier`），保持简化版 BEM 的高可读性。
 
 ## 3. 组件划分
 

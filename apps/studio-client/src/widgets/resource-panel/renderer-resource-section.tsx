@@ -1,6 +1,6 @@
 import type { RendererPocState } from '../../entities/index.js'
 import type { Translator } from '../../shared/i18n/index.js'
-import styles from './resource-panel.module.css'
+import styles from './resource-panel.module.scss'
 
 type RendererResourceSectionProps = {
   busy: boolean

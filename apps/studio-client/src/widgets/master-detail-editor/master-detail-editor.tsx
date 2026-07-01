@@ -1,4 +1,4 @@
-import styles from './master-detail-editor.module.css'
+import styles from './master-detail-editor.module.scss'
 
 export type MasterDetailItem = {
   id: string

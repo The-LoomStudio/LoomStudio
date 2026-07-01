@@ -4,9 +4,19 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   root: new URL('.', import.meta.url).pathname,
   plugins: [react()],
+  resolve: {
+    alias: {
+      '@': new URL('./src', import.meta.url).pathname,
+    },
+  },
   css: {
     modules: {
       generateScopedName: 'airp__[name]__[local]',
+    },
+    preprocessorOptions: {
+      scss: {
+        additionalData: `@use "@/styles/abstracts" as *;`,
+      },
     },
   },
   build: {

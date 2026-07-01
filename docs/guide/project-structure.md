@@ -15,7 +15,7 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
 前端采用严格的按业务职能分层，而非简单按 UI 组件分类。
 
 - `app/`
-  - 顶层 App 组装、状态 facade (`use-studio-state.ts`) 以及样式入口 (`app.module.css`)。这是组装所有功能块的心脏。
+  - 顶层 App 组装、状态 facade (`use-studio-state.ts`) 以及样式入口 (`app.module.scss`)。这是组装所有功能块的心脏。
 - `entities/`
   - 承载所有的**业务数据类型与实体抽象** (`card.ts`, `session.ts`, `narrative.ts`, `prompt.ts`, `workspace.ts` 等)。
   - 这里定义了前端视角的数据结构。
@@ -54,7 +54,7 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
 - widget 内出现 `bridge.call(...)`、跨 feature refresh choreography、树递归修改、provider config normalization。
 - React 组件文件为了复用类型而向 `widgets/` 内部互相 deep import。
 - 单个 hook 同时处理 RPC、form state、derived data、event subscription。
-- 新组件文件使用 `PascalCase.tsx` 或 CSS Module 使用 `PascalCase.module.css`。
+- 新组件文件使用 `PascalCase.tsx` 或 CSS Module 使用 `PascalCase.module.scss`。
 
 ### Client 任务路由表
 

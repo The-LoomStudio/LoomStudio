@@ -1,6 +1,5 @@
 import {
   compilePromptDataModel,
-  combineActivationGates,
   defaultCompositionSkeleton,
   emptyProjectionOrderProfile,
   materializePromptFragments,
@@ -8,7 +7,8 @@ import {
   type PromptFragment,
   type PromptSourceKind,
   type SourceNode,
-} from '@loom-studio/application-runtime'
+} from '../../../packages/application-runtime/src/prompt-builder.js'
+import { combineActivationGates } from '../../../packages/application-runtime/src/prompt-activation.js'
 import { describe, expect, it } from 'vitest'
 
 const sourceNodes: SourceNode[] = [

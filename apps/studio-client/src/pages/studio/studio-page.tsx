@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { FlaskConical, Users, PencilLine, Plug, BotMessageSquare } from 'lucide-react'
 import type { Translator } from '../../shared/i18n/index.js'
-import styles from './studio-page.module.css'
+import styles from './studio-page.module.scss'
 
 type StudioPageProps = {
   busy: boolean

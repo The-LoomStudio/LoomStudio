@@ -8,7 +8,7 @@ import {
   type ActivationConditionValue,
   type ActivationEditorMode,
 } from '../../model/activation-editor.js'
-import styles from './context-asset-detail.module.css'
+import styles from './context-asset-detail.module.scss'
 
 type ContextAssetDetailProps = {
   activationEditable?: boolean

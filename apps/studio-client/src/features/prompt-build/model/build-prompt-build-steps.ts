@@ -17,6 +17,7 @@ export function buildPromptBuildSteps(input: {
   messages?: ProviderMessage[]
   projection?: PromptProjection
   activationFacts?: JsonObject
+  promptBuildTrace?: unknown
 }, t: Translator): PromptBuildStep[] {
   const settingEntries = readSettingEntries(input.session?.cardSnapshot)
   const activeSettings = input.projection
@@ -64,6 +65,8 @@ export function buildPromptBuildSteps(input: {
       rows: [
         { label: t('prompt.label.providerShape'), value: t('prompt.value.providerShape') },
         { label: t('prompt.label.messages'), value: input.messages ? input.messages.map(message => message.role).join(' -> ') : t('prompt.value.clickPreviewOrSend') },
+        { label: 'Core status', value: readCoreTraceStatus(input.promptBuildTrace, t) },
+        { label: 'Core passes', value: readCoreTracePasses(input.promptBuildTrace, t) },
         { label: 'Trace rows', value: input.projection ? String(input.projection.editorProjection.promptRows.length) : t('prompt.value.notPreviewed') },
       ],
     },
@@ -136,6 +139,19 @@ function readPresetSummary(snapshot: JsonObject | undefined, t: Translator): str
   const preset = snapshot?.preset
   if (!isObject(preset) || typeof preset.system !== 'string' || preset.system.trim().length === 0) return t('prompt.value.none')
   return t('prompt.value.system')
+}
+
+function readCoreTraceStatus(trace: unknown, t: Translator): string {
+  if (!isObject(trace)) return t('prompt.value.notPreviewed')
+  return typeof trace.status === 'string' ? trace.status : t('prompt.value.notPreviewed')
+}
+
+function readCoreTracePasses(trace: unknown, t: Translator): string {
+  if (!isObject(trace) || !Array.isArray(trace.executions)) return t('prompt.value.notPreviewed')
+  const passNames = trace.executions
+    .map(execution => isObject(execution) && typeof execution.passName === 'string' ? execution.passName : undefined)
+    .filter((passName): passName is string => Boolean(passName))
+  return passNames.join(' -> ') || t('prompt.value.notPreviewed')
 }
 
 function isObject(value: unknown): value is JsonObject {

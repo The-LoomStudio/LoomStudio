@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import { useState } from 'react'
 import { DndContext, DragOverlay, useDraggable, useDroppable, defaultDropAnimationSideEffects, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core'
 import { findNodeById, readDropPosition } from './file-tree-model.js'
-import styles from './file-tree.module.css'
+import styles from './file-tree.module.scss'
 
 export type FileTreeNode = {
   children?: FileTreeNode[]

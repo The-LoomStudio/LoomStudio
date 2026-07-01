@@ -2,7 +2,7 @@ import { Package, Plus } from 'lucide-react'
 import { useState } from 'react'
 import type { AgentRuntimeProfile, ModelProfile } from '../../entities/index.js'
 import type { Translator } from '../../shared/i18n/index.js'
-import styles from './agent-runtime-manager.module.css'
+import styles from './agent-runtime-manager.module.scss'
 
 type AgentRuntimeManagerProps = {
   profiles: AgentRuntimeProfile[]

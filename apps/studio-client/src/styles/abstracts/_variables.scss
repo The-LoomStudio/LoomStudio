@@ -1,0 +1,5 @@
+// 供 SCSS 内部使用的编译期变量
+// 严禁在此定义主题颜色，主题色必须使用 CSS Variables (var(--loom-*))
+
+// 媒体查询断点
+$breakpoint-mobile: 820px;

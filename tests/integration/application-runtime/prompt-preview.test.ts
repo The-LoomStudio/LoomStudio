@@ -205,9 +205,27 @@ describe('application runtime prompt preview integration', () => {
     })
     const run = await runtime.getRun({ runId: turn.run.id })
     const storedPrompt = run.runtimeEntries.find(entry => entry.kind === 'prompt')?.content as {
+      promptBuildTrace?: {
+        executions?: Array<{ passName?: string }>
+        status?: string
+      }
       providerPayloadPreview?: unknown
     }
 
+    expect(preview.promptBuildTrace).toMatchObject({
+      status: 'ok',
+      executions: [
+        expect.objectContaining({ passName: 'prompt.source.prepared' }),
+        expect.objectContaining({ passName: 'prompt.compile' }),
+      ],
+    })
+    expect(storedPrompt.promptBuildTrace).toMatchObject({
+      status: 'ok',
+      executions: [
+        expect.objectContaining({ passName: 'prompt.source.prepared' }),
+        expect.objectContaining({ passName: 'prompt.compile' }),
+      ],
+    })
     expect(preview.providerPayloadPreview).toMatchObject({
       model: 'preview-model',
       temperature: 0.4,

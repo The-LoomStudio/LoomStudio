@@ -11,8 +11,8 @@ Loom Studio 使用 `eslint` 和 `prettier` 强制执行绝大多数风格。
   - `submitTurn()`, `isActive`, `handleMessage`
 - **Files**:
   - 所有源码文件采用 `kebab-case`，包括 React 组件文件与 CSS Modules。
-  - ✅ `file-tree.tsx`, `input-dashboard.tsx`, `app.module.css`
-  - ❌ `FileTree.tsx`, `InputDashboard.tsx`, `App.module.css`
+  - ✅ `file-tree.tsx`, `input-dashboard.tsx`, `app.module.scss`
+  - ❌ `FileTree.tsx`, `InputDashboard.tsx`, `App.module.scss`
   - React 组件内部标识仍采用 `PascalCase`，例如 `export function FileTree() {}`。
 - **Wire / Schema Fields**:
   - 外部协议、第三方 API、数据库字段、JSON schema 字段保留原始命名。
@@ -25,7 +25,7 @@ Loom Studio 使用 `eslint` 和 `prettier` 强制执行绝大多数风格。
 | ------------------------- | ----------------------- | ---------------------------------------------- |
 | 源码目录                  | `kebab-case`            | `context-assets/`, `studio-client/`            |
 | 源码文件                  | `kebab-case`            | `use-studio-state.ts`, `context-workbench.tsx` |
-| CSS Modules 文件          | `kebab-case.module.css` | `file-tree.module.css`                         |
+| SCSS Modules 文件          | `kebab-case.module.scss` | `file-tree.module.scss`                         |
 | React 组件 / 类型 / class | `PascalCase`            | `ContextWorkbench`, `CreateCardInput`          |
 | hook / 函数 / 变量        | `camelCase`             | `useStudioState`, `createStudioApi`            |
 | 外部协议字段              | 保留协议原样            | `max_tokens`, `finish_reason`                  |
@@ -51,4 +51,4 @@ Loom Studio 使用 `eslint` 和 `prettier` 强制执行绝大多数风格。
 1. 第三方 Node / Npm 包 (如 `react`, `lodash`)
 2. 绝对路径的 Monorepo 包 (如 `@loom-studio/shared`)
 3. 相对路径导入的本包其他模块 (如 `./utils`, `../types`)
-4. 样式文件 (如 `./style.module.css`)
+4. 样式文件 (如 `./style.module.scss`)

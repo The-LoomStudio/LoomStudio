@@ -8,7 +8,7 @@ import { ResourcePanel } from '../widgets/resource-panel/resource-panel.js'
 import { ApiPanel } from '../widgets/api-panel/api-panel.js'
 import { InspectorPanel } from '../widgets/inspector-panel/inspector-panel.js'
 import { DemoData } from './demo-data.js'
-import styles from './app.module.css'
+import styles from './app.module.scss'
 import '../styles/global.css'
 
 export function App() {
@@ -156,6 +156,7 @@ export function App() {
           onSelectChoice={state.selectRenderingChoice}
           onSelectMode={state.setRenderingMode}
           promptBuildSteps={state.promptBuildSteps}
+          promptBuildTrace={state.promptBuildTrace ?? null}
           promptMessages={state.promptMessages ?? null}
           providerPayloadPreview={state.providerPayloadPreview ?? null}
           rawHtmlAllowed={state.rawHtmlAllowed}

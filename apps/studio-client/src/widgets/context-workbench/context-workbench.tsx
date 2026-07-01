@@ -15,7 +15,7 @@ import { ContextAssetDetail } from '../../features/context-assets/ui/context-ass
 import { ProjectionOrderEditor } from '../../features/context-assets/ui/projection-order-editor/projection-order-editor.js'
 import type { ContextAssetNode } from '../../entities/index.js'
 import type { Translator } from '../../shared/i18n/index.js'
-import styles from './context-workbench.module.css'
+import styles from './context-workbench.module.scss'
 
 type ContextWorkbenchProps = {
   nodes: ContextAssetNode[]
