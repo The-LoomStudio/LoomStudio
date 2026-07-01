@@ -75,6 +75,8 @@ export const zhCN = {
   'gateway.title': 'API 配置',
   'gateway.fake': '模拟',
   'gateway.baseUrl': 'Base URL',
+  'gateway.chatEndpointPreview': '当前 Chat Profile 将请求：{{endpoint}}',
+  'gateway.baseUrlEndpointWarning': '看起来像完整 endpoint。当前 Chat Profile 会自动追加 /chat/completions，建议填写 API Root。',
   'gateway.apiKey': 'API Key',
   'gateway.apiKeyPlaceholder': 'sk-... 或 env:OPENAI_API_KEY',
   'gateway.model': '模型',

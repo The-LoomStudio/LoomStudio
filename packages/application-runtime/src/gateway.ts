@@ -166,7 +166,9 @@ function assertChatModelProfile(providerAccount: ProviderAccountConfig, modelPro
 }
 
 function normalizeBaseUrl(input: string): string {
-  return input.replace(/\/+$/, '')
+  const trimmed = input.trim().replace(/\/+$/, '')
+  if (trimmed === 'https://api.openai.com') return 'https://api.openai.com/v1'
+  return trimmed
 }
 
 function resolveSecret(ref: string | undefined): string {

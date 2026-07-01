@@ -77,6 +77,8 @@ export const enUS = {
   'gateway.title': 'API Config',
   'gateway.fake': 'Fake',
   'gateway.baseUrl': 'Base URL',
+  'gateway.chatEndpointPreview': 'Current Chat Profile will request: {{endpoint}}',
+  'gateway.baseUrlEndpointWarning': 'This looks like a full endpoint. The current Chat Profile appends /chat/completions; use the API root instead.',
   'gateway.apiKey': 'API Key',
   'gateway.apiKeyPlaceholder': 'sk-... or env:OPENAI_API_KEY',
   'gateway.model': 'Model',

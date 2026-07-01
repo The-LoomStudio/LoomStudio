@@ -1,6 +1,5 @@
 import type { DocumentRecord, DocumentStore } from '@loom-studio/document-store'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
-import { createId, nowIso } from '@loom-studio/shared'
 import {
   assertModelProfileExists,
   assertNonEmpty,
@@ -19,9 +18,9 @@ import {
   readOpeningEntries,
   toCardSource,
 } from './card.js'
+import { createApplicationRuntimeContext, type ApplicationRuntimeContext } from './application-context.js'
 import { applicationDocumentTypes } from './document-types.js'
 import { listDocuments, readDocument, toVersioned, writeDocument } from './document-store.js'
-import { createDocumentBackedAiGateway, providerToGateway } from './gateway.js'
 import { buildOpenAIChatPayload, type OpenAIChatPayload } from './provider-payload.js'
 import { composePromptBuildForInput } from './prompt.js'
 import { assertSameSession, findBranchContainingEntry, readBranchPath, readSessionBranch } from './timeline.js'
@@ -55,8 +54,7 @@ import type {
 } from './types.js'
 
 export function createApplicationRuntime(options: ApplicationRuntimeOptions): ApplicationRuntime {
-  const gateway = options.gateway ?? (options.provider ? providerToGateway(options.provider) : createDocumentBackedAiGateway({ documents: options.documents }))
-  const now = () => nowIso(options.clock)
+  const ctx = createApplicationRuntimeContext(options)
 
   return {
     createCard: async input => {
@@ -64,9 +62,9 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         throw new Error('createCard name cannot be empty')
       }
 
-      const timestamp = now()
-      const card = await writeDocument<CardSourceContent>(options.documents, {
-        id: createId('card'),
+      const timestamp = ctx.now()
+      const card = await writeDocument<CardSourceContent>(ctx.documents, {
+        id: ctx.createId('card'),
         type: applicationDocumentTypes.cardSource,
         content: {
           name: input.name,
@@ -87,14 +85,14 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     },
 
     getCard: async input => {
-      const card = await readDocument<CardSourceContent>(options.documents, input.cardId, applicationDocumentTypes.cardSource)
+      const card = await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
       return {
         card: toCardSource(card),
       }
     },
 
     listCards: async input => {
-      const result = await options.documents.list({
+      const result = await ctx.documents.list({
         type: applicationDocumentTypes.cardSource,
         cursor: input?.cursor,
         limit: input?.limit,
@@ -107,12 +105,12 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     },
 
     updateCard: async input => {
-      const existing = await readDocument<CardSourceContent>(options.documents, input.cardId, applicationDocumentTypes.cardSource)
+      const existing = await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
       if (input.name !== undefined && input.name.trim().length === 0) {
         throw new Error('updateCard name cannot be empty')
       }
-      const timestamp = now()
-      const updated = await writeDocument<CardSourceContent>(options.documents, {
+      const timestamp = ctx.now()
+      const updated = await writeDocument<CardSourceContent>(ctx.documents, {
         id: existing.id,
         type: applicationDocumentTypes.cardSource,
         content: normalizeCardContent({
@@ -132,8 +130,8 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     },
 
     deleteCard: async input => {
-      await readDocument<CardSourceContent>(options.documents, input.cardId, applicationDocumentTypes.cardSource)
-      await options.documents.delete({ id: input.cardId })
+      await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
+      await ctx.documents.delete({ id: input.cardId })
       return { deleted: true as const }
     },
 
@@ -141,9 +139,9 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       assertNonEmpty(input.providerExtensionId, 'providerExtensionId')
       assertNonEmpty(input.displayName, 'displayName')
 
-      const timestamp = now()
-      const providerAccount = await writeDocument<ProviderAccountContent>(options.documents, {
-        id: createId('provider-account'),
+      const timestamp = ctx.now()
+      const providerAccount = await writeDocument<ProviderAccountContent>(ctx.documents, {
+        id: ctx.createId('provider-account'),
         type: applicationDocumentTypes.providerAccount,
         content: {
           providerExtensionId: input.providerExtensionId,
@@ -160,12 +158,12 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     },
 
     getProviderAccount: async input => {
-      const providerAccount = await readDocument<ProviderAccountContent>(options.documents, input.providerAccountId, applicationDocumentTypes.providerAccount)
+      const providerAccount = await readDocument<ProviderAccountContent>(ctx.documents, input.providerAccountId, applicationDocumentTypes.providerAccount)
       return { providerAccount: redactProviderAccount(toVersioned(providerAccount)) }
     },
 
     listProviderAccounts: async input => {
-      const result = await options.documents.list({
+      const result = await ctx.documents.list({
         type: applicationDocumentTypes.providerAccount,
         cursor: input?.cursor,
         limit: input?.limit,
@@ -181,11 +179,11 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       assertNonEmpty(input.providerAccountId, 'providerAccountId')
       assertNonEmpty(input.displayName, 'displayName')
       assertNonEmpty(input.providerModelId, 'providerModelId')
-      await assertProviderAccountExists(options.documents, input.providerAccountId)
+      await assertProviderAccountExists(ctx.documents, input.providerAccountId)
 
-      const timestamp = now()
-      const modelProfile = await writeDocument<ModelProfileContent>(options.documents, {
-        id: createId('model-profile'),
+      const timestamp = ctx.now()
+      const modelProfile = await writeDocument<ModelProfileContent>(ctx.documents, {
+        id: ctx.createId('model-profile'),
         type: applicationDocumentTypes.modelProfile,
         content: {
           providerAccountId: input.providerAccountId,
@@ -203,12 +201,12 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     },
 
     getModelProfile: async input => {
-      const modelProfile = await readDocument<ModelProfileContent>(options.documents, input.modelProfileId, applicationDocumentTypes.modelProfile)
+      const modelProfile = await readDocument<ModelProfileContent>(ctx.documents, input.modelProfileId, applicationDocumentTypes.modelProfile)
       return { modelProfile: toVersioned(modelProfile) }
     },
 
     listModelProfiles: async input => {
-      const result = await options.documents.list({
+      const result = await ctx.documents.list({
         type: applicationDocumentTypes.modelProfile,
         cursor: input?.cursor,
         limit: input?.limit,
@@ -226,12 +224,12 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     createAgentRuntimeProfile: async input => {
       assertNonEmpty(input.name, 'name')
       if (input.modelProfileId) {
-        await assertModelProfileExists(options.documents, input.modelProfileId)
+        await assertModelProfileExists(ctx.documents, input.modelProfileId)
       }
 
-      const timestamp = now()
-      const agentRuntimeProfile = await writeDocument<AgentRuntimeProfileContent>(options.documents, {
-        id: createId('agent-runtime-profile'),
+      const timestamp = ctx.now()
+      const agentRuntimeProfile = await writeDocument<AgentRuntimeProfileContent>(ctx.documents, {
+        id: ctx.createId('agent-runtime-profile'),
         type: applicationDocumentTypes.agentRuntimeProfile,
         content: {
           name: input.name,
@@ -248,12 +246,12 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     },
 
     getAgentRuntimeProfile: async input => {
-      const agentRuntimeProfile = await readDocument<AgentRuntimeProfileContent>(options.documents, input.agentRuntimeProfileId, applicationDocumentTypes.agentRuntimeProfile)
+      const agentRuntimeProfile = await readDocument<AgentRuntimeProfileContent>(ctx.documents, input.agentRuntimeProfileId, applicationDocumentTypes.agentRuntimeProfile)
       return { agentRuntimeProfile: toVersioned(agentRuntimeProfile) }
     },
 
     listAgentRuntimeProfiles: async input => {
-      const result = await options.documents.list({
+      const result = await ctx.documents.list({
         type: applicationDocumentTypes.agentRuntimeProfile,
         cursor: input?.cursor,
         limit: input?.limit,
@@ -266,9 +264,9 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     },
 
     updateProviderAccount: async input => {
-      const existing = await readDocument<ProviderAccountContent>(options.documents, input.providerAccountId, applicationDocumentTypes.providerAccount)
-      const timestamp = now()
-      const updated = await writeDocument<ProviderAccountContent>(options.documents, {
+      const existing = await readDocument<ProviderAccountContent>(ctx.documents, input.providerAccountId, applicationDocumentTypes.providerAccount)
+      const timestamp = ctx.now()
+      const updated = await writeDocument<ProviderAccountContent>(ctx.documents, {
         id: existing.id,
         type: applicationDocumentTypes.providerAccount,
         content: {
@@ -284,15 +282,15 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     },
 
     deleteProviderAccount: async input => {
-      await readDocument<ProviderAccountContent>(options.documents, input.providerAccountId, applicationDocumentTypes.providerAccount)
-      await options.documents.delete({ id: input.providerAccountId })
+      await readDocument<ProviderAccountContent>(ctx.documents, input.providerAccountId, applicationDocumentTypes.providerAccount)
+      await ctx.documents.delete({ id: input.providerAccountId })
       return { deleted: true as const }
     },
 
     updateModelProfile: async input => {
-      const existing = await readDocument<ModelProfileContent>(options.documents, input.modelProfileId, applicationDocumentTypes.modelProfile)
-      const timestamp = now()
-      const updated = await writeDocument<ModelProfileContent>(options.documents, {
+      const existing = await readDocument<ModelProfileContent>(ctx.documents, input.modelProfileId, applicationDocumentTypes.modelProfile)
+      const timestamp = ctx.now()
+      const updated = await writeDocument<ModelProfileContent>(ctx.documents, {
         id: existing.id,
         type: applicationDocumentTypes.modelProfile,
         content: {
@@ -308,20 +306,20 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     },
 
     deleteModelProfile: async input => {
-      await readDocument<ModelProfileContent>(options.documents, input.modelProfileId, applicationDocumentTypes.modelProfile)
-      await options.documents.delete({ id: input.modelProfileId })
+      await readDocument<ModelProfileContent>(ctx.documents, input.modelProfileId, applicationDocumentTypes.modelProfile)
+      await ctx.documents.delete({ id: input.modelProfileId })
       return { deleted: true as const }
     },
 
     pingModelProfile: async input => {
-      const result = await gateway.invokeChat({
+      const result = await ctx.gateway.invokeChat({
         request: {
           messages: [{ role: 'user', content: input.text ?? 'hi' }],
         },
         modelProfileId: input.modelProfileId,
-        runId: createId('run'),
-        sessionId: createId('session'),
-        branchId: createId('branch'),
+        runId: ctx.createId('run'),
+        sessionId: ctx.createId('session'),
+        branchId: ctx.createId('branch'),
       })
 
       return {
@@ -333,12 +331,12 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     },
 
     updateAgentRuntimeProfile: async input => {
-      const existing = await readDocument<AgentRuntimeProfileContent>(options.documents, input.agentRuntimeProfileId, applicationDocumentTypes.agentRuntimeProfile)
+      const existing = await readDocument<AgentRuntimeProfileContent>(ctx.documents, input.agentRuntimeProfileId, applicationDocumentTypes.agentRuntimeProfile)
       if (input.modelProfileId) {
-        await assertModelProfileExists(options.documents, input.modelProfileId)
+        await assertModelProfileExists(ctx.documents, input.modelProfileId)
       }
-      const timestamp = now()
-      const updated = await writeDocument<AgentRuntimeProfileContent>(options.documents, {
+      const timestamp = ctx.now()
+      const updated = await writeDocument<AgentRuntimeProfileContent>(ctx.documents, {
         id: existing.id,
         type: applicationDocumentTypes.agentRuntimeProfile,
         content: {
@@ -355,20 +353,21 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     },
 
     deleteAgentRuntimeProfile: async input => {
-      await readDocument<AgentRuntimeProfileContent>(options.documents, input.agentRuntimeProfileId, applicationDocumentTypes.agentRuntimeProfile)
-      await options.documents.delete({ id: input.agentRuntimeProfileId })
+      await readDocument<AgentRuntimeProfileContent>(ctx.documents, input.agentRuntimeProfileId, applicationDocumentTypes.agentRuntimeProfile)
+      await ctx.documents.delete({ id: input.agentRuntimeProfileId })
       return { deleted: true as const }
     },
 
     createSession: async input => {
       await readAgentBinding({
-        documents: options.documents,
+        documents: ctx.documents,
         agentRuntimeProfileId: input.agentRuntimeProfileId,
       })
 
       return await createSessionDocuments({
-        documents: options.documents,
-        timestamp: now(),
+        createId: ctx.createId,
+        documents: ctx.documents,
+        timestamp: ctx.now(),
         cardSourceVersionId: input.cardSourceVersionId,
         cardSnapshot: input.cardSnapshot ?? {},
         agentRuntimeProfileId: input.agentRuntimeProfileId,
@@ -379,16 +378,17 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
 
     createSessionFromCard: async input => {
       await readAgentBinding({
-        documents: options.documents,
+        documents: ctx.documents,
         agentRuntimeProfileId: input.agentRuntimeProfileId,
       })
 
-      const card = await readDocument<CardSourceContent>(options.documents, input.cardId, applicationDocumentTypes.cardSource)
+      const card = await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
       const cardContent = normalizeCardContent(card.content)
 
       return await createSessionDocuments({
-        documents: options.documents,
-        timestamp: now(),
+        createId: ctx.createId,
+        documents: ctx.documents,
+        timestamp: ctx.now(),
         cardSourceVersionId: `${card.id}@${card.version}`,
         cardSnapshot: cardToSnapshot(card),
         agentRuntimeProfileId: input.agentRuntimeProfileId,
@@ -400,8 +400,8 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     importWorkspaceArtifact: async input => {
       return await importWorkspaceArtifact({
         artifact: input.artifact,
-        documents: options.documents,
-        now: now(),
+        documents: ctx.documents,
+        now: ctx.now(),
         workspaceId: input.workspaceId,
       })
     },
@@ -409,7 +409,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     getPromptWorkspace: async input => {
       return {
         workspace: await getPromptWorkspace({
-          documents: options.documents,
+          documents: ctx.documents,
           workspaceId: input.workspaceId,
         }),
       }
@@ -417,7 +417,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
 
     listPromptWorkspaces: async input => {
       return await listPromptWorkspaces({
-        documents: options.documents,
+        documents: ctx.documents,
         cardId: input?.cardId,
         cursor: input?.cursor,
         limit: input?.limit,
@@ -428,8 +428,8 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       return {
         workspace: await createPromptAsset({
           asset: input.asset,
-          documents: options.documents,
-          now: now(),
+          documents: ctx.documents,
+          now: ctx.now(),
           position: input.position,
           targetAssetId: input.targetAssetId,
           workspaceId: input.workspaceId,
@@ -443,11 +443,11 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
           assetId: input.assetId,
           body: input.body,
           capabilities: input.capabilities,
-          documents: options.documents,
+          documents: ctx.documents,
           enabled: input.enabled,
           label: input.label,
           meta: input.meta,
-          now: now(),
+          now: ctx.now(),
           workspaceId: input.workspaceId,
         }),
       }
@@ -457,8 +457,8 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       return {
         workspace: await movePromptAsset({
           assetId: input.assetId,
-          documents: options.documents,
-          now: now(),
+          documents: ctx.documents,
+          now: ctx.now(),
           position: input.position,
           targetAssetId: input.targetAssetId,
           workspaceId: input.workspaceId,
@@ -470,8 +470,8 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       return {
         workspace: await deletePromptAsset({
           assetId: input.assetId,
-          documents: options.documents,
-          now: now(),
+          documents: ctx.documents,
+          now: ctx.now(),
           workspaceId: input.workspaceId,
         }),
       }
@@ -480,8 +480,8 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     updateProjectionOrderProfile: async input => {
       return {
         workspace: await updateProjectionOrderProfile({
-          documents: options.documents,
-          now: now(),
+          documents: ctx.documents,
+          now: ctx.now(),
           orderList: input.orderList,
           orderNodeId: input.orderNodeId,
           projectionOrderProfile: input.projectionOrderProfile,
@@ -493,7 +493,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     exportWorkspaceArtifact: async input => {
       return {
         artifact: await exportWorkspaceArtifact({
-          documents: options.documents,
+          documents: ctx.documents,
           workspaceId: input.workspaceId,
         }),
       }
@@ -504,14 +504,14 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         throw new Error('previewPrompt input cannot be empty')
       }
 
-      const { session, branch } = await readSessionBranch(options.documents, input.sessionId, input.branchId)
+      const { session, branch } = await readSessionBranch(ctx.documents, input.sessionId, input.branchId)
       const agentBinding = await readAgentBinding({
-        documents: options.documents,
+        documents: ctx.documents,
         agentRuntimeProfileId: input.agentRuntimeProfileId ?? session.content.agentRuntimeProfileId,
       })
 
       const promptBuild = await composePromptBuildForInput(
-        options.documents,
+        ctx.documents,
         session,
         branch,
         input.input,
@@ -526,7 +526,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         messages: promptBuild.messages,
         promptBuildTrace: promptBuild.trace as unknown as JsonValue,
         providerPayloadPreview: await buildProviderPayloadPreview({
-          documents: options.documents,
+          documents: ctx.documents,
           messages: promptBuild.messages,
           modelProfile: agentBinding.modelProfile,
         }),
@@ -539,21 +539,21 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         throw new Error('submitTurn input cannot be empty')
       }
 
-      const { session, branch } = await readSessionBranch(options.documents, input.sessionId, input.branchId)
+      const { session, branch } = await readSessionBranch(ctx.documents, input.sessionId, input.branchId)
       const agentRuntimeProfileId = input.agentRuntimeProfileId ?? session.content.agentRuntimeProfileId
       const agentBinding = await readAgentBinding({
-        documents: options.documents,
+        documents: ctx.documents,
         agentRuntimeProfileId,
       })
 
-      const timestamp = now()
-      const runId = createId('run')
-      const userEntryId = createId('entry')
-      const assistantEntryId = createId('entry')
-      const commitCandidateId = createId('commit')
-      const stateSnapshotId = createId('snapshot')
+      const timestamp = ctx.now()
+      const runId = ctx.createId('run')
+      const userEntryId = ctx.createId('entry')
+      const assistantEntryId = ctx.createId('entry')
+      const commitCandidateId = ctx.createId('commit')
+      const stateSnapshotId = ctx.createId('snapshot')
       const promptBuild = await composePromptBuildForInput(
-        options.documents,
+        ctx.documents,
         session,
         branch,
         input.input,
@@ -563,11 +563,11 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       )
       const prompt = promptBuild.messages
       const providerPayloadPreview = await buildProviderPayloadPreview({
-        documents: options.documents,
+        documents: ctx.documents,
         messages: prompt,
         modelProfile: agentBinding.modelProfile,
       })
-      const providerResult = await gateway.invokeChat({
+      const providerResult = await ctx.gateway.invokeChat({
         request: {
           messages: prompt,
           metadata: {
@@ -585,7 +585,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         branchId: branch.id,
       })
 
-      return await options.documents.transact(async tx => {
+      return await ctx.documents.transact(async tx => {
         const run = await writeDocument<RunContent>(tx, {
           id: runId,
           type: applicationDocumentTypes.run,
@@ -626,7 +626,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
           parentNarrativeEntryId: branch.content.headEntryId,
         })
         await writeDocument<RuntimeEntryContent>(tx, {
-          id: createId('rtentry'),
+          id: ctx.createId('rtentry'),
           type: applicationDocumentTypes.runtimeEntry,
           content: {
             sessionId: session.id,
@@ -640,7 +640,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
           expectedVersion: 'new',
         })
         await writeDocument<RuntimeEntryContent>(tx, {
-          id: createId('rtentry'),
+          id: ctx.createId('rtentry'),
           type: applicationDocumentTypes.runtimeEntry,
           content: {
             sessionId: session.id,
@@ -653,12 +653,12 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
               ...(providerPayloadPreview ? { providerPayloadPreview: providerPayloadPreview as unknown as JsonValue } : {}),
               projection: promptBuild.projection as unknown as JsonValue,
             },
-            createdAt: now(),
+            createdAt: ctx.now(),
           },
           expectedVersion: 'new',
         })
         const providerResultEntry = await writeDocument<RuntimeEntryContent>(tx, {
-          id: createId('rtentry'),
+          id: ctx.createId('rtentry'),
           type: applicationDocumentTypes.runtimeEntry,
           content: {
             sessionId: session.id,
@@ -666,7 +666,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
             runId: run.id,
             kind: 'provider_result',
             content: providerResult as unknown as JsonValue,
-            createdAt: now(),
+            createdAt: ctx.now(),
           },
           expectedVersion: 'new',
         })
@@ -680,8 +680,8 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
             providerResultEntryId: providerResultEntry.id,
             content: providerResult.text,
             status: 'auto_accepted',
-            createdAt: now(),
-            updatedAt: now(),
+            createdAt: ctx.now(),
+            updatedAt: ctx.now(),
           },
           expectedVersion: 'new',
         })
@@ -696,13 +696,13 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
             role: 'assistant',
             content: providerResult.text,
             status: 'accepted',
-            createdAt: now(),
+            createdAt: ctx.now(),
           },
           expectedVersion: 'new',
         })
         await writeAgentTranscriptEntry({
           documents: tx,
-          timestamp: now(),
+          timestamp: ctx.now(),
           narrativeEntry: assistantEntry,
           parentTranscriptEntryId: userTranscriptEntry.id,
         })
@@ -712,7 +712,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
           content: {
             ...commitCandidate.content,
             acceptedEntryId: assistantEntry.id,
-            updatedAt: now(),
+            updatedAt: ctx.now(),
           },
           expectedVersion: commitCandidate.version,
         })
@@ -726,7 +726,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
             fromEntryId: branch.content.headEntryId,
             headEntryId: assistantEntry.id,
             patch: {},
-            createdAt: now(),
+            createdAt: ctx.now(),
           },
           expectedVersion: 'new',
         })
@@ -736,7 +736,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
           content: {
             ...branch.content,
             headEntryId: assistantEntry.id,
-            updatedAt: now(),
+            updatedAt: ctx.now(),
           },
           expectedVersion: branch.version,
         })
@@ -751,7 +751,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
             acceptedEntryId: assistantEntry.id,
             commitCandidateId: acceptedCommitCandidate.id,
             stateSnapshotId: stateSnapshot.id,
-            updatedAt: now(),
+            updatedAt: ctx.now(),
           },
           expectedVersion: run.version,
         })
@@ -770,8 +770,8 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     },
 
     getSession: async input => {
-      const session = await readDocument<SessionContent>(options.documents, input.sessionId, applicationDocumentTypes.session)
-      const branches = await listDocuments<NarrativeBranchContent>(options.documents, applicationDocumentTypes.narrativeBranch)
+      const session = await readDocument<SessionContent>(ctx.documents, input.sessionId, applicationDocumentTypes.session)
+      const branches = await listDocuments<NarrativeBranchContent>(ctx.documents, applicationDocumentTypes.narrativeBranch)
 
       return {
         session: toVersioned(session),
@@ -780,28 +780,28 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     },
 
     getTimeline: async input => {
-      const session = await readDocument<SessionContent>(options.documents, input.sessionId, applicationDocumentTypes.session)
-      const branch = await readDocument<NarrativeBranchContent>(options.documents, input.branchId ?? session.content.activeBranchId, applicationDocumentTypes.narrativeBranch)
+      const session = await readDocument<SessionContent>(ctx.documents, input.sessionId, applicationDocumentTypes.session)
+      const branch = await readDocument<NarrativeBranchContent>(ctx.documents, input.branchId ?? session.content.activeBranchId, applicationDocumentTypes.narrativeBranch)
       assertSameSession(session.id, branch.content.sessionId)
 
       return {
         session: toVersioned(session),
         branch: toVersioned(branch),
-        entries: await readBranchPath(options.documents, session.id, branch.content.headEntryId),
+        entries: await readBranchPath(ctx.documents, session.id, branch.content.headEntryId),
       }
     },
 
     getAgentTranscript: async input => {
-      const session = await readDocument<SessionContent>(options.documents, input.sessionId, applicationDocumentTypes.session)
-      const branch = await readDocument<NarrativeBranchContent>(options.documents, input.branchId ?? session.content.activeBranchId, applicationDocumentTypes.narrativeBranch)
+      const session = await readDocument<SessionContent>(ctx.documents, input.sessionId, applicationDocumentTypes.session)
+      const branch = await readDocument<NarrativeBranchContent>(ctx.documents, input.branchId ?? session.content.activeBranchId, applicationDocumentTypes.narrativeBranch)
       assertSameSession(session.id, branch.content.sessionId)
-      const narrativeEntries = await readBranchPath(options.documents, session.id, branch.content.headEntryId)
+      const narrativeEntries = await readBranchPath(ctx.documents, session.id, branch.content.headEntryId)
 
       return {
         session: toVersioned(session),
         branch: toVersioned(branch),
         entries: await readAgentTranscriptForNarrativePath({
-          documents: options.documents,
+          documents: ctx.documents,
           sessionId: session.id,
           narrativeEntries,
         }),
@@ -809,9 +809,9 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     },
 
     getRun: async input => {
-      const run = await readDocument<RunContent>(options.documents, input.runId, applicationDocumentTypes.run)
-      const runtimeEntries = await listDocuments<RuntimeEntryContent>(options.documents, applicationDocumentTypes.runtimeEntry)
-      const commitCandidates = await listDocuments<CommitCandidateContent>(options.documents, applicationDocumentTypes.commitCandidate)
+      const run = await readDocument<RunContent>(ctx.documents, input.runId, applicationDocumentTypes.run)
+      const runtimeEntries = await listDocuments<RuntimeEntryContent>(ctx.documents, applicationDocumentTypes.runtimeEntry)
+      const commitCandidates = await listDocuments<CommitCandidateContent>(ctx.documents, applicationDocumentTypes.commitCandidate)
 
       return {
         run: toVersioned(run),
@@ -821,13 +821,13 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     },
 
     forkBranch: async input => {
-      const session = await readDocument<SessionContent>(options.documents, input.sessionId, applicationDocumentTypes.session)
-      const parentBranch = input.fromEntryId ? await findBranchContainingEntry(options.documents, session.id, input.fromEntryId) : undefined
-      const timestamp = now()
+      const session = await readDocument<SessionContent>(ctx.documents, input.sessionId, applicationDocumentTypes.session)
+      const parentBranch = input.fromEntryId ? await findBranchContainingEntry(ctx.documents, session.id, input.fromEntryId) : undefined
+      const timestamp = ctx.now()
 
-      return await options.documents.transact(async tx => {
+      return await ctx.documents.transact(async tx => {
         const branch = await writeDocument<NarrativeBranchContent>(tx, {
-          id: createId('branch'),
+          id: ctx.createId('branch'),
           type: applicationDocumentTypes.narrativeBranch,
           content: {
             sessionId: session.id,
@@ -861,6 +861,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
 }
 
 async function createSessionDocuments(input: {
+  createId: ApplicationRuntimeContext['createId']
   documents: DocumentStore
   timestamp: string
   cardSourceVersionId: string
@@ -869,12 +870,12 @@ async function createSessionDocuments(input: {
   title?: string
   workspaceId?: string
 }): Promise<CreateSessionResult> {
-  const branchId = createId('branch')
+  const branchId = input.createId('branch')
   const openingEntries = readOpeningEntries(input.cardSnapshot)
 
   return await input.documents.transact(async tx => {
     const session = await writeDocument<SessionContent>(tx, {
-      id: createId('session'),
+      id: input.createId('session'),
       type: applicationDocumentTypes.session,
       content: {
         cardSourceVersionId: input.cardSourceVersionId,
@@ -893,7 +894,7 @@ async function createSessionDocuments(input: {
 
     for (const entry of openingEntries) {
       const narrativeEntry = await writeDocument<NarrativeEntryContent>(tx, {
-        id: createId('entry'),
+        id: input.createId('entry'),
         type: applicationDocumentTypes.narrativeEntry,
         content: {
           sessionId: session.id,

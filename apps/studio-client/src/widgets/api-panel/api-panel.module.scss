@@ -114,6 +114,18 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--loom-accent) 20%, transparent);
 }
 
+.gatewayHint,
+.gatewayWarning {
+  color: var(--loom-text-muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.gatewayWarning {
+  color: var(--loom-danger, #a33a3a);
+}
+
 .yamlTextarea {
   min-height: 80px;
   resize: vertical;

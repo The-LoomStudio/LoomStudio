@@ -4,6 +4,7 @@ import type { Locale, Translator } from '../../shared/i18n/index.js'
 import { localeLabels, supportedLocales } from '../../shared/i18n/index.js'
 import type { ModelProfile, ProviderAccount } from '../../entities/index.js'
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
+import { isLikelyProviderEndpoint, normalizeOpenAICompatibleBaseUrl, readChatCompletionsEndpoint } from '../../features/provider-settings/model/provider-base-url.js'
 import { ModelProfileList } from './model-profile-list.js'
 import { ProviderAccountList } from './provider-account-list.js'
 import styles from './api-panel.module.scss'
@@ -37,6 +38,8 @@ export type ApiPanelProps = {
 
 export function ApiPanel(props: ApiPanelProps) {
   const [expandedSection, setExpandedSection] = useState<'provider' | 'model' | null>(null)
+  const chatEndpoint = readChatCompletionsEndpoint(props.gatewayForm.baseUrl)
+  const endpointWarning = isLikelyProviderEndpoint(props.gatewayForm.baseUrl)
 
   function toggleSection(section: 'provider' | 'model') {
     setExpandedSection(current => current === section ? null : section)
@@ -75,7 +78,16 @@ export function ApiPanel(props: ApiPanelProps) {
               required
               value={props.gatewayForm.baseUrl}
               onChange={e => props.onChangeGatewayForm({ ...props.gatewayForm, baseUrl: e.target.value })}
+              onBlur={() => props.onChangeGatewayForm({
+                ...props.gatewayForm,
+                baseUrl: normalizeOpenAICompatibleBaseUrl(props.gatewayForm.baseUrl),
+              })}
             />
+            {chatEndpoint ? (
+              <small className={endpointWarning ? styles.gatewayWarning : styles.gatewayHint}>
+                {endpointWarning ? props.t('gateway.baseUrlEndpointWarning') : props.t('gateway.chatEndpointPreview', { endpoint: chatEndpoint })}
+              </small>
+            ) : null}
           </label>
           <label>
             {props.t('gateway.apiKey')}

@@ -94,6 +94,47 @@ describe('application runtime provider and agent integration', () => {
     })
   })
 
+  it('adds /v1 for the official OpenAI API root before appending chat completions', async () => {
+    const requests: string[] = []
+    const gateway = createOpenAICompatibleGateway({
+      providerAccount: {
+        id: 'account-openai',
+        providerExtensionId: 'official.openai-compatible',
+        displayName: 'OpenAI',
+        config: { baseUrl: ' https://api.openai.com/ ' },
+        secretRefs: { apiKey: 'plain:test-key' },
+      },
+      modelProfile: {
+        id: 'model-openai',
+        providerAccountId: 'account-openai',
+        capability: 'chat.completion',
+        displayName: 'OpenAI Model',
+        providerModelId: 'gpt-test',
+        config: {},
+      },
+      fetch: (async (url) => {
+        requests.push(String(url))
+        return new Response(JSON.stringify({
+          id: 'call-openai-root',
+          model: 'gpt-test',
+          choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'ok' } }],
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }) as typeof fetch,
+    })
+
+    await gateway.invokeChat({
+      request: { messages: [{ role: 'user', content: 'ping' }] },
+      runId: 'run-openai-root',
+      sessionId: 'session-openai-root',
+      branchId: 'branch-openai-root',
+    })
+
+    expect(requests).toEqual(['https://api.openai.com/v1/chat/completions'])
+  })
+
   it('binds an agent runtime profile to a session and mirrors narrative entries into agent transcript', async () => {
     const gatewayCalls: Array<{ modelProfileId?: string }> = []
     const runtime = createApplicationRuntime({

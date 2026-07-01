@@ -3,6 +3,7 @@ import { useState, type FormEvent } from 'react'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import type { AgentRuntimeProfile, ModelProfile, ProviderAccount } from '../../../entities/index.js'
+import { normalizeOpenAICompatibleBaseUrl } from './provider-base-url.js'
 
 const selectedAgentRuntimeProfileStorageKey = 'loom.studio.selectedAgentRuntimeProfileId'
 
@@ -61,13 +62,15 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
 
   async function createGatewayProfile(event: FormEvent) {
     event.preventDefault()
+    const normalizedBaseUrl = normalizeOpenAICompatibleBaseUrl(gatewayForm.baseUrl)
+    setGatewayForm(current => ({ ...current, baseUrl: normalizedBaseUrl }))
 
     await input.runAction(async () => {
       const providerAccount = await input.api.providerAccounts.create(jsonObject({
         providerExtensionId: 'official.openai-compatible',
         displayName: `OpenAI Compatible / ${gatewayForm.model}`,
         config: jsonObject({
-          baseUrl: gatewayForm.baseUrl,
+          baseUrl: normalizedBaseUrl,
         }),
         secretRefs: jsonObject({
           apiKey: gatewayForm.apiKey.startsWith('env:') ? gatewayForm.apiKey : `plain:${gatewayForm.apiKey}`,

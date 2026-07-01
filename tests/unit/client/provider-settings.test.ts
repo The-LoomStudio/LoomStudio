@@ -1,5 +1,6 @@
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 import { readModelConfig, readModelConfigForm } from '../../../apps/studio-client/src/features/provider-settings/model/model-profile-config.js'
+import { isLikelyProviderEndpoint, normalizeOpenAICompatibleBaseUrl, readChatCompletionsEndpoint } from '../../../apps/studio-client/src/features/provider-settings/model/provider-base-url.js'
 import { chooseAgentRuntimeProfileId, readGatewayModelConfig } from '../../../apps/studio-client/src/features/provider-settings/model/use-provider-settings.js'
 import type { AgentRuntimeProfile, ModelProfile } from '../../../apps/studio-client/src/entities/index.js'
 import { describe, expect, it } from 'vitest'
@@ -22,6 +23,14 @@ describe('provider settings model', () => {
       temperature: 'warm',
       maxTokens: '',
     }, createTranslator('en-US'))).toThrow('Expected number')
+  })
+
+  it('normalizes OpenAI base URL without rewriting full endpoints', () => {
+    expect(normalizeOpenAICompatibleBaseUrl(' https://api.openai.com/ ')).toBe('https://api.openai.com/v1')
+    expect(normalizeOpenAICompatibleBaseUrl('https://api.openai.com/v1/')).toBe('https://api.openai.com/v1')
+    expect(normalizeOpenAICompatibleBaseUrl('https://api.openai.com/v1/chat/completions')).toBe('https://api.openai.com/v1/chat/completions')
+    expect(readChatCompletionsEndpoint('https://api.openai.com')).toBe('https://api.openai.com/v1/chat/completions')
+    expect(isLikelyProviderEndpoint('https://api.openai.com/v1/chat/completions')).toBe(true)
   })
 
   it('maps model config to yaml form fields', () => {
