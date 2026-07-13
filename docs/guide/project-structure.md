@@ -118,10 +118,12 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
 
 - 📦 `packages/core/` (`@loom/core`)
   - 同步、确定、可重放的 Fragment / Pass / Pipeline / Trace 执行层。它与 Studio 同仓开发，但保持独立 package 和 public API 边界。
+  - 正式架构说明：[`architecture/application/prompt-build/loom-core/`](../architecture/application/prompt-build/loom-core/)。
 - 📦 `packages/application-runtime/` (AIRP Layer)
   - Studio 的**业务心脏**。包含 Session, Card, Agent, PromptBuilder, Document Types 定义，以及对接模型的 Gateway。前后端都在共享此包定义的 Schema。
 - 📦 `packages/kernel/`
   - Studio 的底层发动机，管理内部的六个核心服务（RPC注册, 事件总线等）。**禁止包含任何 AI/业务（Provider/Agent）逻辑。**
+  - 正式架构说明：[`architecture/kernel/README.md`](../architecture/kernel/README.md)。
 - 📦 `packages/document-store/`
   - 承载所有的状态与数据持久化逻辑（目前后端使用 SQLite 适配器实现）。
 - 📦 `packages/transport/`

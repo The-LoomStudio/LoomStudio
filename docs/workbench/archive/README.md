@@ -169,9 +169,15 @@ Loom Studio 也需要规格驱动，因为平台边界一旦实现就会成为�
 
 ## 5. 相关文档
 
-- [`scenario-driven-design-v0.md`](scenario-driven-design-v0.md)
-- [`architecture-governance-v0.md`](architecture-governance-v0.md)
-- [`client-architecture-governance-v0.md`](client-architecture-governance-v0.md)
-- [`test-governance-v0.md`](test-governance-v0.md)
-- [`../08-ApplicationLayer/README.md`](../08-ApplicationLayer/README.md)
+- [`../discussion/scenario-driven-design-v0.md`](../discussion/scenario-driven-design-v0.md)
+- [`../issues/architecture-governance-v0.md`](../issues/architecture-governance-v0.md)
+- [`../issues/client-architecture-governance-v0.md`](../issues/client-architecture-governance-v0.md)
+- [`../issues/test-governance-v0.md`](../issues/test-governance-v0.md)
+- [`../discussion/application/README.md`](../discussion/application/README.md)
 - [`../reference/sillytavern-architecture-reference.md`](../reference/sillytavern-architecture-reference.md)
+
+---
+
+## 6. 历史来源归档
+
+- [`loom-project/ARCHIVE.md`](loom-project/ARCHIVE.md) — LoomProject 原始设计文档、Core PoC、Accepted ADR 与 Engineering Blueprint 的无损归档。正式架构以 [`../../architecture/`](../../architecture/) 和当前代码为准。
