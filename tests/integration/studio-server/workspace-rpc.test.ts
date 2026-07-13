@@ -5,6 +5,133 @@ import { describe, expect, it } from 'vitest'
 import { callRpc, withStudioServer } from './helpers.js'
 
 describe('studio server workspace artifact rpc integration', () => {
+  it('undoes and redoes asset edits and commits a reorder as one changeset', async () => {
+    const artifact = await readLoomCityArtifact()
+
+    await withStudioServer(async port => {
+      const imported = await callRpc<{
+        workspace: { id: string }
+      }>(port, 'application.importWorkspaceArtifact', { artifact })
+      const duplicated = await callRpc<{
+        mutation: { changesetId: string }
+      }>(port, 'application.createPromptAsset', {
+        workspaceId: imported.workspace.id,
+        targetAssetId: 'preset-style-directive',
+        position: 'after',
+        asset: {
+          id: 'preset-style-directive-copy',
+          label: '叙事风格 Copy',
+          kind: 'entry',
+          body: '复制后的叙事风格。',
+          capabilities: {
+            projection: {
+              injectionGroupKey: 'preset.system',
+              slotKey: 'preset:preset-default-airp@preset.system',
+              entryOrderHint: 11,
+            },
+          },
+        },
+      })
+      const undoDuplicate = await callRpc<{ changesetId: string }>(port, 'docs.revertChangeset', {
+        changesetId: duplicated.mutation.changesetId,
+      })
+      const afterUndoDuplicate = await callRpc<{
+        workspace: PromptWorkspaceArtifact & { id: string }
+      }>(port, 'application.getPromptWorkspace', { workspaceId: imported.workspace.id })
+      await callRpc(port, 'docs.revertChangeset', { changesetId: undoDuplicate.changesetId })
+      const afterRedoDuplicate = await callRpc<{
+        workspace: PromptWorkspaceArtifact & { id: string }
+      }>(port, 'application.getPromptWorkspace', { workspaceId: imported.workspace.id })
+
+      const updated = await callRpc<{
+        mutation: { changesetId: string }
+      }>(port, 'application.updatePromptAsset', {
+        workspaceId: imported.workspace.id,
+        assetId: 'preset-style-directive-copy',
+        body: '修改后的复制条目。',
+      })
+      await callRpc(port, 'docs.revertChangeset', { changesetId: updated.mutation.changesetId })
+      const afterUndoUpdate = await callRpc<{
+        workspace: PromptWorkspaceArtifact & { id: string }
+      }>(port, 'application.getPromptWorkspace', { workspaceId: imported.workspace.id })
+
+      const moved = await callRpc<{
+        mutation: { changesetId: string }
+      }>(port, 'application.movePromptAsset', {
+        workspaceId: imported.workspace.id,
+        assetId: 'preset-style-directive-copy',
+        targetAssetId: 'projection-order-profile-main',
+        position: 'after',
+      })
+      await callRpc(port, 'docs.revertChangeset', { changesetId: moved.mutation.changesetId })
+      const afterUndoMove = await callRpc<{
+        workspace: PromptWorkspaceArtifact & { id: string }
+      }>(port, 'application.getPromptWorkspace', { workspaceId: imported.workspace.id })
+
+      const deleted = await callRpc<{
+        mutation: { changesetId: string }
+      }>(port, 'application.deletePromptAsset', {
+        workspaceId: imported.workspace.id,
+        assetId: 'preset-style-directive-copy',
+      })
+      const afterDelete = await callRpc<{
+        workspace: PromptWorkspaceArtifact & { id: string }
+      }>(port, 'application.getPromptWorkspace', { workspaceId: imported.workspace.id })
+      await callRpc(port, 'docs.revertChangeset', { changesetId: deleted.mutation.changesetId })
+      const afterUndoDelete = await callRpc<{
+        workspace: PromptWorkspaceArtifact & { id: string }
+      }>(port, 'application.getPromptWorkspace', { workspaceId: imported.workspace.id })
+
+      const reordered = await callRpc<{
+        mutation: { changesetId: string }
+      }>(port, 'application.updatePromptAssets', {
+        workspaceId: imported.workspace.id,
+        updates: [
+          { assetId: 'preset-style-directive', label: '重排后的叙事风格' },
+          {
+            assetId: 'projection-order-profile-main',
+            orderList: [
+              'sl-rainline-station',
+              'preset-style-directive',
+              'sl-archive-keeper',
+              'vs-narrative-history',
+              'vs-current-input',
+            ],
+          },
+        ],
+      })
+      const changeset = await callRpc<{
+        changeset: {
+          createdBy: { kind: string; id: string }
+          operations: Array<{ documentId: string }>
+          reason?: string
+        }
+      }>(port, 'docs.getChangeset', { changesetId: reordered.mutation.changesetId })
+      await callRpc(port, 'docs.revertChangeset', { changesetId: reordered.mutation.changesetId })
+      const afterUndoReorder = await callRpc<{
+        workspace: PromptWorkspaceArtifact & { id: string }
+      }>(port, 'application.getPromptWorkspace', { workspaceId: imported.workspace.id })
+
+      expect(findArtifactNode(afterUndoDuplicate.workspace, 'preset-style-directive-copy')).toBeUndefined()
+      expect(findArtifactNode(afterRedoDuplicate.workspace, 'preset-style-directive-copy')).toBeDefined()
+      expect(findArtifactNode(afterUndoUpdate.workspace, 'preset-style-directive-copy')?.body).toBe('复制后的叙事风格。')
+      expect(findArtifactNode(afterUndoMove.workspace, 'preset-default-airp')?.children?.map(node => node.id)).toContain('preset-style-directive-copy')
+      expect(findArtifactNode(afterDelete.workspace, 'preset-style-directive-copy')).toBeUndefined()
+      expect(findArtifactNode(afterUndoDelete.workspace, 'preset-style-directive-copy')).toBeDefined()
+      expect(changeset.changeset.operations).toEqual([{
+        documentId: imported.workspace.id,
+        kind: 'update',
+        type: 'airp.promptWorkspace',
+        fromVersion: expect.any(Number),
+        toVersion: expect.any(Number),
+      }])
+      expect(changeset.changeset.createdBy).toEqual({ kind: 'client', id: 'http-local' })
+      expect(changeset.changeset.reason).toBe('application.updatePromptAssets')
+      expect(findArtifactNode(afterUndoReorder.workspace, 'preset-style-directive')?.label).toBe('叙事风格')
+      expect(findArtifactNode(afterUndoReorder.workspace, 'projection-order-profile-main')?.orderList?.[0]).toBe('preset-style-directive')
+    })
+  })
+
   it('imports, previews, updates, and exports a workspace artifact through /rpc', async () => {
     const artifact = await readLoomCityArtifact()
 

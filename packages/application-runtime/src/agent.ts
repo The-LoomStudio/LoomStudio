@@ -1,4 +1,4 @@
-import type { DocumentRecord, DocumentStore } from '@loom-studio/document-store'
+import type { DocumentRecord, DocumentStore, DocumentTransaction } from '@loom-studio/document-store'
 import { createId } from '@loom-studio/shared'
 import { applicationDocumentTypes } from './document-types.js'
 import { listDocuments, readDocument, toVersioned, writeDocument } from './document-store.js'
@@ -45,7 +45,7 @@ export async function readAgentBinding(input: {
 }
 
 export async function writeAgentTranscriptEntry(input: {
-  documents: DocumentStore
+  documents: DocumentTransaction
   timestamp: string
   narrativeEntry: DocumentRecord<NarrativeEntryContent>
   parentNarrativeEntryId?: string
@@ -103,7 +103,7 @@ export async function assertModelProfileExists(documents: DocumentStore, modelPr
 }
 
 async function findAgentTranscriptByNarrativeEntry(
-  documents: DocumentStore,
+  documents: DocumentTransaction,
   sessionId: string,
   narrativeEntryId: string,
 ): Promise<DocumentRecord<AgentTranscriptEntryContent> | undefined> {

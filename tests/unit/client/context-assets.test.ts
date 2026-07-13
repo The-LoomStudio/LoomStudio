@@ -3,6 +3,7 @@ import {
   deleteContextAssetNode,
   duplicateContextAssetNode,
 } from '../../../apps/studio-client/src/features/context-assets/model/tree-ops.js'
+import { commitContextAssetMutation } from '../../../apps/studio-client/src/features/context-assets/model/use-context-assets.js'
 import { normalizeContextAssets } from '../../../apps/studio-client/src/features/context-assets/model/context-asset-normalization.js'
 import { DemoData } from '../../../apps/studio-client/src/app/demo-data.js'
 import type { ContextAssetNode } from '../../../apps/studio-client/src/entities/index.js'
@@ -87,6 +88,21 @@ describe('studio client context asset helpers', () => {
     expect(normalizedEntries.every(node => node.projection !== undefined)).toBe(true)
     expect(entries.map(node => node.capabilities?.projection?.injectionGroupKey)).toContain('setting.stable')
     expect(entries.map(node => node.capabilities?.projection?.injectionGroupKey)).toContain('preset.system')
+  })
+
+  it('does not apply or record a failed workspace mutation', async () => {
+    const applied: string[] = []
+    const recorded: string[] = []
+
+    await expect(commitContextAssetMutation({
+      mutate: async () => { throw new Error('rpc failed') },
+      applyWorkspace: workspace => applied.push(workspace.id),
+      recordEdit: entry => recorded.push(entry.changesetId),
+      entry: { label: 'Reorder Entries', anchor: { documentId: 'workspace-1' } },
+    })).rejects.toThrow('rpc failed')
+
+    expect(applied).toEqual([])
+    expect(recorded).toEqual([])
   })
 })
 

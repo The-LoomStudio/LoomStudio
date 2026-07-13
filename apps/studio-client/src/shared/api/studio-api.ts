@@ -19,6 +19,7 @@ import type {
   ListModelProfilesResult,
   ListProviderAccountsResult,
   ListPromptWorkspacesResult,
+  MutationReceipt,
   PromptPreview,
   RunDetails,
   SessionDetails,
@@ -34,6 +35,9 @@ import type {
 type JsonObject = { [key: string]: ClientJsonValue }
 
 export type StudioApi = {
+  history: {
+    revert(changesetId: string): Promise<MutationReceipt>
+  }
   cards: {
     list(): Promise<ListCardsResult>
     create(input: JsonObject): Promise<CreateCardResult>
@@ -81,6 +85,7 @@ export type StudioApi = {
     get(workspaceId: string): Promise<GetPromptWorkspaceResult>
     list(input?: JsonObject): Promise<ListPromptWorkspacesResult>
     updateAsset(input: JsonObject): Promise<UpdatePromptWorkspaceResult>
+    updateAssets(input: JsonObject): Promise<UpdatePromptWorkspaceResult>
     createAsset(input: JsonObject): Promise<UpdatePromptWorkspaceResult>
     moveAsset(input: JsonObject): Promise<UpdatePromptWorkspaceResult>
     deleteAsset(input: JsonObject): Promise<UpdatePromptWorkspaceResult>
@@ -94,6 +99,12 @@ export type StudioApi = {
 
 export function createStudioApi(bridge: ClientBridge): StudioApi {
   return {
+    history: {
+      revert: async changesetId => {
+        const result = await bridge.call<{ changesetId: string }>('docs.revertChangeset', { changesetId })
+        return { changesetId: result.changesetId }
+      },
+    },
     cards: {
       list: () => bridge.call<ListCardsResult>('application.listCards', {}),
       create: input => bridge.call<CreateCardResult>('application.createCard', input),
@@ -145,6 +156,7 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       list: input => bridge.call<ListPromptWorkspacesResult>('application.listPromptWorkspaces', input ?? {}),
       createAsset: input => bridge.call<UpdatePromptWorkspaceResult>('application.createPromptAsset', input),
       updateAsset: input => bridge.call<UpdatePromptWorkspaceResult>('application.updatePromptAsset', input),
+      updateAssets: input => bridge.call<UpdatePromptWorkspaceResult>('application.updatePromptAssets', input),
       moveAsset: input => bridge.call<UpdatePromptWorkspaceResult>('application.movePromptAsset', input),
       deleteAsset: input => bridge.call<UpdatePromptWorkspaceResult>('application.deletePromptAsset', input),
       updateProjectionOrderProfile: input => bridge.call<UpdatePromptWorkspaceResult>('application.updateProjectionOrderProfile', input),

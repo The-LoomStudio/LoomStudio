@@ -1,8 +1,10 @@
 import type {
   ApplicationRuntime,
   OpeningChatInput,
+  PromptAssetPatch,
   PromptWorkspaceNode,
   ProjectionOrderProfile,
+  RuntimeRequestContext,
   SettingActivation,
   SettingLayerInput,
   WorkspacePromptCompositionCapabilities,
@@ -49,6 +51,7 @@ const applicationRpcMethods = [
   'application.listPromptWorkspaces',
   'application.createPromptAsset',
   'application.updatePromptAsset',
+  'application.updatePromptAssets',
   'application.movePromptAsset',
   'application.deletePromptAsset',
   'application.updateProjectionOrderProfile',
@@ -71,7 +74,12 @@ export function listApplicationRpcCapabilities(): RpcCapability[] {
   })
 }
 
-export async function callApplicationRpc(runtime: ApplicationRuntime, method: string, params: JsonValue | undefined): Promise<JsonValue> {
+export async function callApplicationRpc(
+  runtime: ApplicationRuntime,
+  method: string,
+  params: JsonValue | undefined,
+  context?: RuntimeRequestContext,
+): Promise<JsonValue> {
   switch (method) {
     case 'application.createCard':
       return await runtime.createCard({
@@ -82,7 +90,7 @@ export async function callApplicationRpc(runtime: ApplicationRuntime, method: st
         opening: readOptionalOpening(params, 'opening'),
         setting: readOptionalObject(params, 'setting'),
         settingLayer: readOptionalSettingLayer(params, 'settingLayer'),
-      }) as unknown as JsonValue
+      }, context) as unknown as JsonValue
 
     case 'application.getCard':
       return await runtime.getCard({
@@ -104,12 +112,12 @@ export async function callApplicationRpc(runtime: ApplicationRuntime, method: st
         preset: readOptionalPreset(params, 'preset'),
         opening: readOptionalOpening(params, 'opening'),
         settingLayer: readOptionalSettingLayer(params, 'settingLayer'),
-      }) as unknown as JsonValue
+      }, context) as unknown as JsonValue
 
     case 'application.deleteCard':
       return await runtime.deleteCard({
         cardId: readString(params, 'cardId'),
-      }) as unknown as JsonValue
+      }, context) as unknown as JsonValue
 
     case 'application.createProviderAccount':
       return await runtime.createProviderAccount({
@@ -256,7 +264,7 @@ export async function callApplicationRpc(runtime: ApplicationRuntime, method: st
         targetAssetId: readString(params, 'targetAssetId'),
         position: readAssetPosition(params, 'position'),
         asset: readPromptWorkspaceNode(params, 'asset'),
-      }) as unknown as JsonValue
+      }, context) as unknown as JsonValue
 
     case 'application.updatePromptAsset':
       return await runtime.updatePromptAsset({
@@ -267,7 +275,13 @@ export async function callApplicationRpc(runtime: ApplicationRuntime, method: st
         label: readOptionalString(params, 'label'),
         meta: readOptionalString(params, 'meta'),
         enabled: readOptionalBoolean(params, 'enabled'),
-      }) as unknown as JsonValue
+      }, context) as unknown as JsonValue
+
+    case 'application.updatePromptAssets':
+      return await runtime.updatePromptAssets({
+        workspaceId: readString(params, 'workspaceId'),
+        updates: readPromptAssetPatches(params, 'updates'),
+      }, context) as unknown as JsonValue
 
     case 'application.movePromptAsset':
       return await runtime.movePromptAsset({
@@ -275,13 +289,13 @@ export async function callApplicationRpc(runtime: ApplicationRuntime, method: st
         assetId: readString(params, 'assetId'),
         targetAssetId: readString(params, 'targetAssetId'),
         position: readAssetPosition(params, 'position'),
-      }) as unknown as JsonValue
+      }, context) as unknown as JsonValue
 
     case 'application.deletePromptAsset':
       return await runtime.deletePromptAsset({
         workspaceId: readString(params, 'workspaceId'),
         assetId: readString(params, 'assetId'),
-      }) as unknown as JsonValue
+      }, context) as unknown as JsonValue
 
     case 'application.updateProjectionOrderProfile':
       return await runtime.updateProjectionOrderProfile({
@@ -289,7 +303,7 @@ export async function callApplicationRpc(runtime: ApplicationRuntime, method: st
         orderNodeId: readString(params, 'orderNodeId'),
         orderList: readOptionalStringArray(params, 'orderList'),
         projectionOrderProfile: readProjectionOrderProfile(params, 'projectionOrderProfile'),
-      }) as unknown as JsonValue
+      }, context) as unknown as JsonValue
 
     case 'application.exportWorkspaceArtifact':
       return await runtime.exportWorkspaceArtifact({
@@ -472,6 +486,25 @@ function readPromptCapabilitiesValue(value: JsonValue | undefined, key: string):
 function readPromptWorkspaceNode(params: JsonValue | undefined, key: string): PromptWorkspaceNode {
   if (!isRecord(params) || params[key] === undefined) throw new Error(`Expected prompt asset node param: ${key}`)
   return readPromptWorkspaceNodeValue(params[key], key)
+}
+
+function readPromptAssetPatches(params: JsonValue | undefined, key: string): PromptAssetPatch[] {
+  if (!isRecord(params) || !Array.isArray(params[key])) throw new Error(`Expected prompt asset patches param: ${key}`)
+  return params[key].map((value, index) => {
+    if (!isRecord(value)) throw new Error(`Expected prompt asset patch: ${key}[${index}]`)
+
+    return {
+      assetId: readString(value, 'assetId'),
+      body: readOptionalString(value, 'body'),
+      capabilities: readOptionalPromptCapabilities(value, 'capabilities'),
+      enabled: readOptionalBoolean(value, 'enabled'),
+      label: readOptionalString(value, 'label'),
+      meta: readOptionalString(value, 'meta'),
+      orderList: readStringArray(value.orderList, `${key}[${index}].orderList`),
+      skeletonPatch: readProjectionSkeletonPatch(value.skeletonPatch, `${key}[${index}].skeletonPatch`),
+      slotRanks: readSlotRanks(value.slotRanks, `${key}[${index}].slotRanks`),
+    }
+  })
 }
 
 function readPromptWorkspaceNodeValue(value: JsonValue | undefined, key: string): PromptWorkspaceNode {

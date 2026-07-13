@@ -7,6 +7,7 @@ import {
 import { transformForProjectionView } from '../../features/context-assets/model/projection-view.js'
 import {
   buildProjectionWorkbenchModel,
+  type ContextAssetUpdate,
   findRootContextModule,
   readContextProjectionMoveUpdate,
   readProjectionOrderReorderUpdates,
@@ -20,6 +21,8 @@ import styles from './context-workbench.module.scss'
 type ContextWorkbenchProps = {
   nodes: ContextAssetNode[]
   onChangeNode: (id: string, partial: Partial<ContextAssetNode>) => void
+  onCommitNode: (id: string, partial: Partial<ContextAssetNode>) => void
+  onChangeNodes: (updates: ContextAssetUpdate[]) => void
   onMoveNode: (draggedId: string, targetId: string, position: 'before' | 'inside' | 'after') => void
   onAddNode: (parentId: string) => void
   onDuplicateNode: (id: string) => void
@@ -84,7 +87,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
 
              if (isProjectionView) {
                const update = readContextProjectionMoveUpdate(props.nodes, projectionEntries, draggedId, targetId, position)
-               if (update) props.onChangeNode(update.id, update.partial)
+               if (update) props.onChangeNodes([update])
                return
              }
 
@@ -118,14 +121,14 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
               <ProjectionOrderEditor
                 entries={orderedProjectionEntries}
                 onReorder={(draggedId, targetId) => {
-                  readProjectionOrderReorderUpdates({
+                  props.onChangeNodes(readProjectionOrderReorderUpdates({
                     draggedId,
                     orderedProjectionEntries,
                     orderNode,
                     projectionEntries,
                     projectionOrderIds,
                     targetId,
-                  }).forEach(update => props.onChangeNode(update.id, update.partial))
+                  }))
                 }}
                 selectedId={props.selectedId}
                 t={props.t}
@@ -135,6 +138,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
                 activationEditable={activeCategory === 'setting'}
                 node={selectedNode}
                 onChangeNode={partial => props.onChangeNode(selectedNode.id, partial)}
+                onCommitNode={partial => props.onCommitNode(selectedNode.id, partial)}
                 t={props.t}
               />
             )

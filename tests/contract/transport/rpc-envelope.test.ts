@@ -16,4 +16,14 @@ describe('transport rpc envelope contract', () => {
     expect(response.error?.message).toBe('bad')
     expect(response.meta?.callId).toBe('call-1')
   })
+
+  it('preserves an explicit domain error code', () => {
+    const error = Object.assign(new Error('version conflict'), { code: 'document.conflict' })
+    const response = createErrorResponse('1', error, 'rpc.handler_failed')
+
+    expect(response.error).toEqual({
+      code: 'document.conflict',
+      message: 'version conflict',
+    })
+  })
 })

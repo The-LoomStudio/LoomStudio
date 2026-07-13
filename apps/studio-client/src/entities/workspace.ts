@@ -1,4 +1,5 @@
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
+import type { MutationReceipt } from './common.js'
 import type { Card } from './card.js'
 import type { ContextAssetNode } from './context-asset.js'
 
@@ -48,6 +49,7 @@ export type ListPromptWorkspacesResult = {
 
 export type UpdatePromptWorkspaceResult = {
   workspace: PromptWorkspace
+  mutation: MutationReceipt
 }
 
 export type ExportWorkspaceArtifactResult = {

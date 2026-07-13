@@ -125,6 +125,42 @@ describe('document, trace, and diagnostics integration', () => {
     expect(current.document).toMatchObject({ version: 1, content: { stable: true } })
   })
 
+  it('queries and reverts changesets through the client bridge', async () => {
+    const { kernel } = createHarness()
+    const events: StudioEvent[] = []
+    await kernel.start()
+    kernel.getEventBus().subscribe(['docs.*'], event => events.push(event))
+    const bridge = createBridge(kernel)
+    await bridge.connect()
+    const created = await bridge.call<{ changesetId: string }>('docs.write', {
+      id: 'doc-scenario:undo',
+      type: 'example.documentScenario.note',
+      content: { value: 'created' },
+      expectedVersion: 'new',
+    })
+    const read = await bridge.call<{
+      changeset: { id: string; operations: Array<{ kind: string; documentId: string }> }
+    }>('docs.getChangeset', { changesetId: created.changesetId })
+
+    const reverted = await bridge.call<{ changesetId: string }>('docs.revertChangeset', {
+      changesetId: created.changesetId,
+      reason: 'integration undo',
+    })
+    const afterUndo = await bridge.call<{ document: unknown | null }>('docs.get', { id: 'doc-scenario:undo' })
+
+    expect(read.changeset).toMatchObject({
+      id: created.changesetId,
+      operations: [{ kind: 'create', documentId: 'doc-scenario:undo' }],
+    })
+    expect(reverted.changesetId).not.toBe(created.changesetId)
+    expect(afterUndo.document).toBeNull()
+    expect(events.map(event => event.name)).toEqual([
+      'docs.changed',
+      'docs.changed',
+      'docs.rollback.completed',
+    ])
+  })
+
   it('filters documents by ownerExtensionId', async () => {
     const { kernel, documents } = createHarness()
     await kernel.start()

@@ -1,4 +1,4 @@
-import type { DocumentRecord, DocumentStore } from '@loom-studio/document-store'
+import type { DocumentRecord, DocumentStore, DocumentTransaction } from '@loom-studio/document-store'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import { createId, nowIso } from '@loom-studio/shared'
 import { cardToSnapshot, normalizeOpening, normalizeOptionalString, normalizePreset, normalizeSettingLayer, renderMacros } from './card.js'
@@ -218,7 +218,7 @@ export async function listPromptWorkspaces(input: {
 
 export async function createPromptAsset(input: {
   asset: PromptWorkspaceNode
-  documents: DocumentStore
+  documents: DocumentTransaction
   now?: string
   position: 'before' | 'inside' | 'after'
   targetAssetId: string
@@ -238,30 +238,81 @@ export async function updatePromptAsset(input: {
   assetId: string
   body?: string
   capabilities?: WorkspacePromptCompositionCapabilities
-  documents: DocumentStore
+  documents: DocumentTransaction
   enabled?: boolean
   label?: string
   meta?: string
   now?: string
   workspaceId: string
 }): Promise<PromptWorkspaceContent & { id: string; version: number }> {
+  return await updatePromptAssets({
+    documents: input.documents,
+    now: input.now,
+    workspaceId: input.workspaceId,
+    updates: [{
+      assetId: input.assetId,
+      body: input.body,
+      capabilities: input.capabilities,
+      enabled: input.enabled,
+      label: input.label,
+      meta: input.meta,
+    }],
+  })
+}
+
+export async function updatePromptAssets(input: {
+  documents: DocumentTransaction
+  now?: string
+  updates: Array<{
+    assetId: string
+    body?: string
+    capabilities?: WorkspacePromptCompositionCapabilities
+    enabled?: boolean
+    label?: string
+    meta?: string
+    orderList?: string[]
+    skeletonPatch?: CompositionSkeletonPatch
+    slotRanks?: ProjectionOrderProfile['slotRanks']
+  }>
+  workspaceId: string
+}): Promise<PromptWorkspaceContent & { id: string; version: number }> {
+  if (input.updates.length === 0) throw new Error('Prompt asset updates cannot be empty')
+  if (new Set(input.updates.map(update => update.assetId)).size !== input.updates.length) {
+    throw new Error('Prompt asset updates cannot contain duplicate asset ids')
+  }
+
   const workspace = await readDocument<PromptWorkspaceContent>(input.documents, input.workspaceId, applicationDocumentTypes.promptWorkspace)
-  const result = updateNode(workspace.content.contextAssets, input.assetId, node => ({
-    ...node,
-    ...(input.body !== undefined ? { body: input.body } : {}),
-    ...(input.capabilities !== undefined ? { capabilities: input.capabilities } : {}),
-    ...(input.label !== undefined ? { label: input.label } : {}),
-    ...(input.meta !== undefined ? { meta: input.meta } : {}),
-    ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
-  }))
-  if (!result.found) throw new Error(`Prompt asset not found: ${input.assetId}`)
+  let contextAssets = workspace.content.contextAssets
+
+  for (const update of input.updates) {
+    const result = updateNode(contextAssets, update.assetId, node => {
+      const updatesOrderProfile = update.orderList !== undefined || update.skeletonPatch !== undefined || update.slotRanks !== undefined
+      if (updatesOrderProfile && node.kind !== 'order') {
+        throw new Error(`Prompt node is not an order profile: ${update.assetId}`)
+      }
+
+      return {
+        ...node,
+        ...(update.body !== undefined ? { body: update.body } : {}),
+        ...(update.capabilities !== undefined ? { capabilities: update.capabilities } : {}),
+        ...(update.label !== undefined ? { label: update.label } : {}),
+        ...(update.meta !== undefined ? { meta: update.meta } : {}),
+        ...(update.enabled !== undefined ? { enabled: update.enabled } : {}),
+        ...(update.orderList !== undefined ? { orderList: update.orderList } : {}),
+        ...(update.skeletonPatch !== undefined ? { skeletonPatch: update.skeletonPatch } : {}),
+        ...(update.slotRanks !== undefined ? { slotRanks: update.slotRanks } : {}),
+      }
+    })
+    if (!result.found) throw new Error(`Prompt asset not found: ${update.assetId}`)
+    contextAssets = result.nodes
+  }
 
   const updated = await writeDocument<PromptWorkspaceContent>(input.documents, {
     id: workspace.id,
     type: applicationDocumentTypes.promptWorkspace,
     content: {
       ...workspace.content,
-      contextAssets: result.nodes,
+      contextAssets,
       updatedAt: input.now ?? nowIso(),
     },
     expectedVersion: workspace.version,
@@ -272,7 +323,7 @@ export async function updatePromptAsset(input: {
 
 export async function movePromptAsset(input: {
   assetId: string
-  documents: DocumentStore
+  documents: DocumentTransaction
   now?: string
   position: 'before' | 'inside' | 'after'
   targetAssetId: string
@@ -296,7 +347,7 @@ export async function movePromptAsset(input: {
 
 export async function deletePromptAsset(input: {
   assetId: string
-  documents: DocumentStore
+  documents: DocumentTransaction
   now?: string
   workspaceId: string
 }): Promise<PromptWorkspaceContent & { id: string; version: number }> {
@@ -312,38 +363,24 @@ export async function deletePromptAsset(input: {
 }
 
 export async function updateProjectionOrderProfile(input: {
-  documents: DocumentStore
+  documents: DocumentTransaction
   now?: string
   orderList?: string[]
   orderNodeId: string
   projectionOrderProfile: ProjectionOrderProfile
   workspaceId: string
 }): Promise<PromptWorkspaceContent & { id: string; version: number }> {
-  const workspace = await readDocument<PromptWorkspaceContent>(input.documents, input.workspaceId, applicationDocumentTypes.promptWorkspace)
-  const result = updateNode(workspace.content.contextAssets, input.orderNodeId, node => {
-    if (node.kind !== 'order') throw new Error(`Prompt node is not an order profile: ${input.orderNodeId}`)
-
-    return {
-      ...node,
-      ...(input.orderList ? { orderList: input.orderList } : {}),
+  return await updatePromptAssets({
+    documents: input.documents,
+    now: input.now,
+    workspaceId: input.workspaceId,
+    updates: [{
+      assetId: input.orderNodeId,
+      orderList: input.orderList,
       skeletonPatch: input.projectionOrderProfile.skeletonPatch,
       slotRanks: input.projectionOrderProfile.slotRanks,
-    }
+    }],
   })
-  if (!result.found) throw new Error(`Projection order profile not found: ${input.orderNodeId}`)
-
-  const updated = await writeDocument<PromptWorkspaceContent>(input.documents, {
-    id: workspace.id,
-    type: applicationDocumentTypes.promptWorkspace,
-    content: {
-      ...workspace.content,
-      contextAssets: result.nodes,
-      updatedAt: input.now ?? nowIso(),
-    },
-    expectedVersion: workspace.version,
-  })
-
-  return toVersioned(updated)
 }
 
 export async function exportWorkspaceArtifact(input: {
@@ -572,7 +609,7 @@ function updateNode(
 }
 
 async function writePromptWorkspace(
-  documents: DocumentStore,
+  documents: DocumentTransaction,
   workspace: DocumentRecord<PromptWorkspaceContent>,
   contextAssets: PromptWorkspaceNode[],
   now?: string,

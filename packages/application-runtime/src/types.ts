@@ -6,11 +6,11 @@ import type { CompiledPrompt, ProjectionOrderProfile } from './prompt-builder.js
 import type { PromptWorkspaceArtifact, PromptWorkspaceContent } from './workspace.js'
 
 export type ApplicationRuntime = {
-  createCard(input: CreateCardInput): Promise<CreateCardResult>
+  createCard(input: CreateCardInput, context?: RuntimeRequestContext): Promise<CreateCardResult>
   getCard(input: GetCardInput): Promise<GetCardResult>
   listCards(input?: ListCardsInput): Promise<ListCardsResult>
-  updateCard(input: UpdateCardInput): Promise<UpdateCardResult>
-  deleteCard(input: DeleteCardInput): Promise<DeleteCardResult>
+  updateCard(input: UpdateCardInput, context?: RuntimeRequestContext): Promise<UpdateCardResult>
+  deleteCard(input: DeleteCardInput, context?: RuntimeRequestContext): Promise<DeleteCardResult>
   createProviderAccount(input: CreateProviderAccountInput): Promise<CreateProviderAccountResult>
   getProviderAccount(input: GetProviderAccountInput): Promise<GetProviderAccountResult>
   listProviderAccounts(input?: ListProviderAccountsInput): Promise<ListProviderAccountsResult>
@@ -32,11 +32,12 @@ export type ApplicationRuntime = {
   importWorkspaceArtifact(input: ImportWorkspaceArtifactInput): Promise<ImportWorkspaceArtifactResult>
   getPromptWorkspace(input: GetPromptWorkspaceInput): Promise<GetPromptWorkspaceResult>
   listPromptWorkspaces(input?: ListPromptWorkspacesInput): Promise<ListPromptWorkspacesResult>
-  createPromptAsset(input: CreatePromptAssetInput): Promise<UpdatePromptAssetResult>
-  updatePromptAsset(input: UpdatePromptAssetInput): Promise<UpdatePromptAssetResult>
-  movePromptAsset(input: MovePromptAssetInput): Promise<UpdatePromptAssetResult>
-  deletePromptAsset(input: DeletePromptAssetInput): Promise<UpdatePromptAssetResult>
-  updateProjectionOrderProfile(input: UpdateProjectionOrderProfileInput): Promise<UpdateProjectionOrderProfileResult>
+  createPromptAsset(input: CreatePromptAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptAssetResult>
+  updatePromptAsset(input: UpdatePromptAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptAssetResult>
+  updatePromptAssets(input: UpdatePromptAssetsInput, context?: RuntimeRequestContext): Promise<UpdatePromptAssetResult>
+  movePromptAsset(input: MovePromptAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptAssetResult>
+  deletePromptAsset(input: DeletePromptAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptAssetResult>
+  updateProjectionOrderProfile(input: UpdateProjectionOrderProfileInput, context?: RuntimeRequestContext): Promise<UpdateProjectionOrderProfileResult>
   exportWorkspaceArtifact(input: ExportWorkspaceArtifactInput): Promise<ExportWorkspaceArtifactResult>
   previewPrompt(input: PreviewPromptInput): Promise<PreviewPromptResult>
   submitTurn(input: SubmitTurnInput): Promise<SubmitTurnResult>
@@ -45,6 +46,17 @@ export type ApplicationRuntime = {
   getAgentTranscript(input: GetAgentTranscriptInput): Promise<GetAgentTranscriptResult>
   getRun(input: GetRunInput): Promise<GetRunResult>
   forkBranch(input: ForkBranchInput): Promise<ForkBranchResult>
+}
+
+export type RuntimeRequestContext = {
+  clientId?: string
+  correlationId?: string
+  callId?: string
+  parentCallId?: string
+}
+
+export type MutationReceipt = {
+  changesetId: string
 }
 
 export type ApplicationRuntimeOptions = {
@@ -144,6 +156,7 @@ export type CreateCardInput = {
 
 export type CreateCardResult = {
   card: CardSourceContent & { id: string; version: number }
+  mutation: MutationReceipt
 }
 
 export type GetCardInput = {
@@ -176,6 +189,7 @@ export type UpdateCardInput = {
 
 export type UpdateCardResult = {
   card: CardSourceContent & { id: string; version: number }
+  mutation: MutationReceipt
 }
 
 export type DeleteCardInput = {
@@ -184,6 +198,7 @@ export type DeleteCardInput = {
 
 export type DeleteCardResult = {
   deleted: true
+  mutation: MutationReceipt
 }
 
 export type CreateProviderAccountInput = {
@@ -413,6 +428,18 @@ export type UpdatePromptAssetInput = {
 
 export type UpdatePromptAssetResult = {
   workspace: PromptWorkspaceContent & { id: string; version: number }
+  mutation: MutationReceipt
+}
+
+export type PromptAssetPatch = Omit<UpdatePromptAssetInput, 'workspaceId'> & {
+  orderList?: string[]
+  skeletonPatch?: PromptWorkspaceContent['contextAssets'][number]['skeletonPatch']
+  slotRanks?: PromptWorkspaceContent['contextAssets'][number]['slotRanks']
+}
+
+export type UpdatePromptAssetsInput = {
+  workspaceId: string
+  updates: PromptAssetPatch[]
 }
 
 export type MovePromptAssetInput = {

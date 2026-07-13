@@ -1,15 +1,15 @@
-import type { DocumentRecord, DocumentStore } from '@loom-studio/document-store'
+import type { DocumentRecord, DocumentTransaction } from '@loom-studio/document-store'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import { isObject } from './json.js'
 
-export async function readDocument<T extends JsonValue>(documents: DocumentStore, id: string, type: string): Promise<DocumentRecord<T>> {
+export async function readDocument<T extends JsonValue>(documents: DocumentTransaction, id: string, type: string): Promise<DocumentRecord<T>> {
   const document = await documents.get(id)
   if (!document) throw new Error(`Document not found: ${id}`)
   if (document.type !== type) throw new Error(`Unexpected document type for ${id}: ${document.type}`)
   return document as DocumentRecord<T>
 }
 
-export async function listDocuments<T extends JsonValue>(documents: DocumentStore, type: string): Promise<Array<DocumentRecord<T>>> {
+export async function listDocuments<T extends JsonValue>(documents: DocumentTransaction, type: string): Promise<Array<DocumentRecord<T>>> {
   const items: DocumentRecord[] = []
   let cursor: string | undefined
 
@@ -23,7 +23,7 @@ export async function listDocuments<T extends JsonValue>(documents: DocumentStor
 }
 
 export async function writeDocument<T extends JsonValue>(
-  documents: DocumentStore,
+  documents: DocumentTransaction,
   input: {
     id: string
     type: string
@@ -55,4 +55,3 @@ export function toVersioned<T extends JsonValue>(document: DocumentRecord<T>): T
     version: document.version,
   } as T & { id: string; version: number }
 }
-

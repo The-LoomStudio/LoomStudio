@@ -7,19 +7,23 @@ describe('studio client typed api', () => {
   it('maps application calls through the typed studio api surface', async () => {
     const calls: Array<{ method: string; params?: ClientJsonValue }> = []
     const api = createStudioApi(fakeBridge(calls, {
+      'docs.revertChangeset': { changesetId: 'change-undo' },
       'application.listCards': { cards: [] },
       'application.updateCard': { card: { id: 'card-1' } },
       'application.deleteCard': { deleted: true },
       'application.pingModelProfile': { text: 'pong' },
     }))
 
+    const reverted = await api.history.revert('change-1')
     await api.cards.list()
     await api.cards.update({ cardId: 'card-1', name: 'Renamed' })
     await api.cards.delete('card-1')
     const text = await api.modelProfiles.ping('model-1')
 
     expect(text).toBe('pong')
+    expect(reverted).toEqual({ changesetId: 'change-undo' })
     expect(calls).toEqual([
+      { method: 'docs.revertChangeset', params: { changesetId: 'change-1' } },
       { method: 'application.listCards', params: {} },
       { method: 'application.updateCard', params: { cardId: 'card-1', name: 'Renamed' } },
       { method: 'application.deleteCard', params: { cardId: 'card-1' } },
@@ -35,6 +39,7 @@ describe('studio client typed api', () => {
       'application.listPromptWorkspaces': { workspaces: [{ id: 'workspace-1' }] },
       'application.createPromptAsset': { workspace: { id: 'workspace-1' } },
       'application.updatePromptAsset': { workspace: { id: 'workspace-1' } },
+      'application.updatePromptAssets': { workspace: { id: 'workspace-1' } },
       'application.movePromptAsset': { workspace: { id: 'workspace-1' } },
       'application.deletePromptAsset': { workspace: { id: 'workspace-1' } },
       'application.updateProjectionOrderProfile': { workspace: { id: 'workspace-1' } },
@@ -46,6 +51,7 @@ describe('studio client typed api', () => {
     await api.promptWorkspaces.list({ cardId: 'card-1' })
     await api.promptWorkspaces.createAsset({ workspaceId: 'workspace-1', targetAssetId: 'root', position: 'inside', asset: { id: 'asset-1', label: 'A', kind: 'entry' } })
     await api.promptWorkspaces.updateAsset({ workspaceId: 'workspace-1', assetId: 'asset-1', body: 'updated' })
+    await api.promptWorkspaces.updateAssets({ workspaceId: 'workspace-1', updates: [{ assetId: 'asset-1', body: 'updated again' }] })
     await api.promptWorkspaces.moveAsset({ workspaceId: 'workspace-1', assetId: 'asset-1', targetAssetId: 'root', position: 'after' })
     await api.promptWorkspaces.deleteAsset({ workspaceId: 'workspace-1', assetId: 'asset-1' })
     await api.promptWorkspaces.updateProjectionOrderProfile({
@@ -61,6 +67,7 @@ describe('studio client typed api', () => {
       { method: 'application.listPromptWorkspaces', params: { cardId: 'card-1' } },
       { method: 'application.createPromptAsset', params: { workspaceId: 'workspace-1', targetAssetId: 'root', position: 'inside', asset: { id: 'asset-1', label: 'A', kind: 'entry' } } },
       { method: 'application.updatePromptAsset', params: { workspaceId: 'workspace-1', assetId: 'asset-1', body: 'updated' } },
+      { method: 'application.updatePromptAssets', params: { workspaceId: 'workspace-1', updates: [{ assetId: 'asset-1', body: 'updated again' }] } },
       { method: 'application.movePromptAsset', params: { workspaceId: 'workspace-1', assetId: 'asset-1', targetAssetId: 'root', position: 'after' } },
       { method: 'application.deletePromptAsset', params: { workspaceId: 'workspace-1', assetId: 'asset-1' } },
       {

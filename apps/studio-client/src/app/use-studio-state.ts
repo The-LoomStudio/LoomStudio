@@ -5,8 +5,10 @@ import { createRendererApi } from '../shared/api/renderer-api.js'
 import { createStudioApi } from '../shared/api/studio-api.js'
 import { useBusyAction } from '../shared/hooks/use-busy-action.js'
 import { useCards } from '../features/cards/model/use-cards.js'
+import { useEditHistory } from '../features/edit-history/model/use-edit-history.js'
 import { useContextAssets } from '../features/context-assets/model/use-context-assets.js'
 import { normalizeContextAssets } from '../features/context-assets/model/context-asset-normalization.js'
+import { findContextAssetNode } from '../features/context-assets/model/context-asset-tree.js'
 import { createActivationFacts, toggleActivationTag, type ActivationControlState, type ActivationTag } from '../features/prompt-build/model/activation-control.js'
 import { buildPromptBuildSteps } from '../features/prompt-build/model/build-prompt-build-steps.js'
 import { useRenderingLab } from '../features/rendering-lab/model/use-rendering-lab.js'
@@ -36,6 +38,7 @@ export function useStudioState() {
   const busyAction = useBusyAction()
   const bridge = useMemo(() => createClientBridge({ endpoint, source: 'studio-client' }), [endpoint])
   const api = useMemo(() => createStudioApi(bridge), [bridge])
+  const editHistory = useEditHistory({ revertChangeset: api.history.revert })
   const rendererApi = useMemo(() => createRendererApi(bridge), [bridge])
   const [activePromptWorkspaceId, setActivePromptWorkspaceId] = useState<string>()
   const [promptWorkspaces, setPromptWorkspaces] = useState<PromptWorkspace[]>([])
@@ -43,6 +46,7 @@ export function useStudioState() {
   const cardsState = useCards({
     api,
     initialCardJson: DemoData.cardJson,
+    recordEdit: editHistory.record,
     runAction: busyAction.runAction,
     t,
   })
@@ -52,6 +56,12 @@ export function useStudioState() {
     api,
     initialNodes: DemoData.contextAssets,
     initialSelectedId: 'projection-order-profile-main',
+    onWorkspaceChange: workspace => {
+      setPromptWorkspaces(current => current.map(item => item.id === workspace.id ? workspace : item))
+    },
+    recordEdit: editHistory.record,
+    runAction: busyAction.runAction,
+    t,
     workspaceId: activePromptWorkspaceId,
   })
   const providerSettings = useProviderSettings({
@@ -79,6 +89,7 @@ export function useStudioState() {
   }
 
   useEffect(() => {
+    editHistory.clear()
     void busyAction.runAction(async () => {
       setPromptWorkspacesLoaded(false)
       const listed = await api.promptWorkspaces.list()
@@ -164,6 +175,43 @@ export function useStudioState() {
     }))
   }
 
+  async function undoEdit() {
+    await busyAction.runAction(async () => {
+      const entry = await editHistory.undo()
+      if (!entry) return
+      await refreshHistoryAnchor(entry)
+    })
+  }
+
+  async function redoEdit() {
+    await busyAction.runAction(async () => {
+      const entry = await editHistory.redo()
+      if (!entry) return
+      await refreshHistoryAnchor(entry)
+    })
+  }
+
+  async function refreshHistoryAnchor(entry: { anchor?: { documentId: string; subjectId?: string } }) {
+    if (!entry.anchor) return
+    const isWorkspace = entry.anchor.documentId === activePromptWorkspaceId
+      || promptWorkspaces.some(workspace => workspace.id === entry.anchor?.documentId)
+    if (isWorkspace) {
+      const result = await api.promptWorkspaces.get(entry.anchor.documentId)
+      setPromptWorkspaces(current => current.map(workspace => workspace.id === result.workspace.id ? result.workspace : workspace))
+      applyPromptWorkspaceSelection(result.workspace)
+      const subjectId = entry.anchor.subjectId
+      contextAssetState.setSelectedId(subjectId && findContextAssetNode(result.workspace.contextAssets, subjectId)
+        ? subjectId
+        : readDefaultContextAssetId(result.workspace))
+      return
+    }
+
+    const cards = await cardsState.refreshCards()
+    if (cards.some(card => card.id === entry.anchor?.documentId)) {
+      cardsState.setSelectedCardId(entry.anchor.documentId)
+    }
+  }
+
   return {
     // i18n
     locale, setLocale, t,
@@ -205,6 +253,8 @@ export function useStudioState() {
     input: sessionRuntime.input, setInput: sessionRuntime.setInput,
     // state
     busy: busyAction.busy, error: busyAction.error,
+    canUndoEdit: editHistory.canUndo,
+    canRedoEdit: editHistory.canRedo,
     // renderer
     rendererSessionId: renderer.rendererSessionId,
     rendererState: renderer.rendererState,
@@ -223,7 +273,9 @@ export function useStudioState() {
     // context assets
     contextAssets: contextAssetState.nodes, setContextAssets: contextAssetState.setNodes,
     selectedContextNodeId: contextAssetState.selectedId, setSelectedContextNodeId: contextAssetState.setSelectedId,
+    previewContextAsset: contextAssetState.previewContextAsset,
     updateContextAsset: contextAssetState.updateContextAsset,
+    updateContextAssets: contextAssetState.updateContextAssets,
     moveContextAsset: contextAssetState.moveContextAsset,
     addContextAsset: contextAssetState.addContextAsset,
     duplicateContextAsset: contextAssetState.duplicateContextAsset,
@@ -232,6 +284,8 @@ export function useStudioState() {
     canSend, canPreviewPrompt, composerHint, emptyTimelineText,
     // actions
     runAction: busyAction.runAction,
+    undoEdit,
+    redoEdit,
     createCard: cardsState.createCard,
     updateCard: cardsState.updateCard,
     deleteCard: cardsState.deleteCard,

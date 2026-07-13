@@ -1,15 +1,19 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { FlaskConical, Users, PencilLine, Plug, BotMessageSquare } from 'lucide-react'
 import type { Translator } from '../../shared/i18n/index.js'
 import styles from './studio-page.module.scss'
 
 type StudioPageProps = {
   busy: boolean
+  canRedo: boolean
+  canUndo: boolean
   canvas: ReactNode
   customCss: string
   editorPanel: ReactNode
   error?: string
   inspector: ReactNode
+  onRedo(): void
+  onUndo(): void
   apiPanel: ReactNode
   presetPanel: ReactNode
   resourcePanel: ReactNode
@@ -20,6 +24,28 @@ type ActivePanel = 'api' | 'preset' | 'resources' | 'editor' | 'inspector' | nul
 
 export function StudioPage(props: StudioPageProps) {
   const [activePanel, setActivePanel] = useState<ActivePanel>('resources')
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (props.busy || isEditableTarget(event.target)) return
+      if (!event.metaKey && !event.ctrlKey) return
+
+      const key = event.key.toLowerCase()
+      if (key === 'z' && event.shiftKey && props.canRedo) {
+        event.preventDefault()
+        props.onRedo()
+      } else if (key === 'z' && props.canUndo) {
+        event.preventDefault()
+        props.onUndo()
+      } else if (key === 'y' && props.canRedo) {
+        event.preventDefault()
+        props.onRedo()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [props.busy, props.canRedo, props.canUndo, props.onRedo, props.onUndo])
 
   function togglePanel(panel: Exclude<ActivePanel, null>) {
     setActivePanel(current => current === panel ? null : panel)
@@ -159,4 +185,9 @@ export function StudioPage(props: StudioPageProps) {
       </section>
     </main>
   )
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  return target.isContentEditable || Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
 }

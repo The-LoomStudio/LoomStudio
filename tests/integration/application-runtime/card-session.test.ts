@@ -103,13 +103,18 @@ describe('application runtime card and session integration', () => {
   })
 
   it('updates and deletes card sources without mutating existing session snapshots', async () => {
+    const documents = createInMemoryDocumentStore()
     const runtime = createApplicationRuntime({
-      documents: createInMemoryDocumentStore(),
+      documents,
     })
     const created = await runtime.createCard({
       name: '旧卡名',
       userName: '旧玩家',
       description: '旧简介。',
+    }, {
+      clientId: 'card-client',
+      correlationId: 'corr-create-card',
+      callId: 'call-create-card',
     })
     const session = await runtime.createSessionFromCard({ cardId: created.card.id })
     const updated = await runtime.updateCard({
@@ -117,11 +122,24 @@ describe('application runtime card and session integration', () => {
       name: '新卡名',
       userName: '',
       description: '新简介。',
+    }, {
+      clientId: 'card-client',
+      correlationId: 'corr-update-card',
+      callId: 'call-update-card',
+      parentCallId: 'call-create-card',
     })
     const listedBeforeDelete = await runtime.listCards()
-    await runtime.deleteCard({ cardId: created.card.id })
+    const deleted = await runtime.deleteCard({ cardId: created.card.id }, {
+      clientId: 'card-client',
+      correlationId: 'corr-delete-card',
+      callId: 'call-delete-card',
+      parentCallId: 'call-update-card',
+    })
     const listedAfterDelete = await runtime.listCards()
     const frozen = await runtime.getSession({ sessionId: session.session.id })
+    const createChangeset = await documents.getChangeset(created.mutation.changesetId)
+    const updateChangeset = await documents.getChangeset(updated.mutation.changesetId)
+    const deleteChangeset = await documents.getChangeset(deleted.mutation.changesetId)
 
     expect(updated.card).toMatchObject({
       id: created.card.id,
@@ -129,6 +147,23 @@ describe('application runtime card and session integration', () => {
       description: '新简介。',
     })
     expect(updated.card.userName).toBeUndefined()
+    expect(createChangeset).toMatchObject({
+      createdBy: { kind: 'client', id: 'card-client' },
+      reason: 'application.createCard',
+      correlationId: 'corr-create-card',
+    })
+    expect(updateChangeset).toMatchObject({
+      createdBy: { kind: 'client', id: 'card-client' },
+      reason: 'application.updateCard',
+      correlationId: 'corr-update-card',
+      parentCallId: 'call-create-card',
+    })
+    expect(deleteChangeset).toMatchObject({
+      createdBy: { kind: 'client', id: 'card-client' },
+      reason: 'application.deleteCard',
+      correlationId: 'corr-delete-card',
+      parentCallId: 'call-update-card',
+    })
     expect(listedBeforeDelete.cards).toContainEqual(expect.objectContaining({ id: created.card.id, name: '新卡名' }))
     expect(listedAfterDelete.cards.map(card => card.id)).not.toContain(created.card.id)
     expect(frozen.session.cardSnapshot).toMatchObject({

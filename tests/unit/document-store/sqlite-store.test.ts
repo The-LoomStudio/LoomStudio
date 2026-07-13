@@ -28,6 +28,7 @@ describe('sqlite document store', () => {
       const second = createSqliteDocumentStore({ filename })
       const current = await second.get('doc-1')
       const revision = await second.get('doc-1', { version: 1 })
+      const changeset = await second.getChangeset(updated.changesetId)
       const listed = await second.list({ type: 'example.note' })
       second.close()
 
@@ -35,6 +36,7 @@ describe('sqlite document store', () => {
       expect(updated.operations[0]).toMatchObject({ kind: 'update', fromVersion: 1, toVersion: 2 })
       expect(current).toMatchObject({ id: 'doc-1', version: 2, content: { text: 'v2' } })
       expect(revision).toMatchObject({ id: 'doc-1', version: 1, content: { text: 'v1' } })
+      expect(changeset).toMatchObject({ id: updated.changesetId, operations: updated.operations })
       expect(listed.items).toHaveLength(1)
     } finally {
       await rm(dir, { recursive: true, force: true })
@@ -81,7 +83,7 @@ describe('sqlite document store', () => {
     try {
       const store = createSqliteDocumentStore({ filename })
 
-      await expect(store.transact(async tx => {
+      await expect(store.transact({ actor: { kind: 'system', id: 'test' } }, async tx => {
         await tx.write({
           id: 'rolled-back',
           type: 'example.note',

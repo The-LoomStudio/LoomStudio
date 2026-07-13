@@ -60,7 +60,11 @@ describe('kernel rpc contract', () => {
 
     expect(result.methods.some(method => method.name === 'system.introspect')).toBe(true)
     expect(result.methods.some(method => method.name === 'docs.write')).toBe(true)
+    expect(result.methods.some(method => method.name === 'docs.getChangeset')).toBe(true)
+    expect(result.methods.some(method => method.name === 'docs.revertChangeset')).toBe(true)
     expect(result.events).toContain('docs.changed')
+    expect(result.events).toContain('docs.rollback.completed')
+    expect(result.events).toContain('docs.rollback.failed')
   })
 
   it('rejects non-kernel namespace registration', () => {
@@ -130,6 +134,97 @@ describe('kernel rpc contract', () => {
     expect(events[1]?.payload.documents[0]?.tombstoned).toBe(true)
     expect(events[1]?.meta.correlationId).toBe('corr-3')
     expect(events[1]?.meta.callId).toBe('call-3')
+  })
+
+  it('reads and reverts changesets with client call metadata', async () => {
+    const { kernel } = createTestKernel()
+    const events: Array<{
+      name: string
+      payload: { targetChangesetId?: string; changesetId?: string }
+      meta: { correlationId?: string; callId?: string }
+    }> = []
+    await kernel.start()
+    const created = await kernel.callRpc<{ changesetId: string }>('docs.write', {
+      id: 'example.doc:undo',
+      type: 'example.doc',
+      content: { ok: true },
+      expectedVersion: 'new',
+    }, { clientId: 'client-create', correlationId: 'corr-create', callId: 'call-create' })
+    const read = await kernel.callRpc<{
+      changeset: { id: string; createdBy: { kind: string; id: string }; correlationId?: string }
+    }>('docs.getChangeset', { changesetId: created.changesetId })
+    kernel.getEventBus().subscribe(['docs.*'], event => events.push(event as never))
+
+    const reverted = await kernel.callRpc<{ changesetId: string }>('docs.revertChangeset', {
+      changesetId: created.changesetId,
+      reason: 'undo create',
+    }, {
+      clientId: 'client-undo',
+      correlationId: 'corr-undo',
+      callId: 'call-undo',
+      parentCallId: 'call-create',
+    })
+    const revertChangeset = await kernel.getDocumentStore().getChangeset(reverted.changesetId)
+
+    expect(read.changeset).toMatchObject({
+      id: created.changesetId,
+      createdBy: { kind: 'client', id: 'client-create' },
+      correlationId: 'corr-create',
+    })
+    expect(await kernel.getDocumentStore().get('example.doc:undo')).toBeNull()
+    expect(revertChangeset).toMatchObject({
+      id: reverted.changesetId,
+      createdBy: { kind: 'client', id: 'client-undo' },
+      reason: 'undo create',
+      correlationId: 'corr-undo',
+      callId: 'call-undo',
+      parentCallId: 'call-create',
+    })
+    expect(events.map(event => event.name)).toEqual(['docs.changed', 'docs.rollback.completed'])
+    expect(events[1]).toMatchObject({
+      payload: {
+        targetChangesetId: created.changesetId,
+        changesetId: reverted.changesetId,
+      },
+      meta: { correlationId: 'corr-undo', callId: 'call-undo' },
+    })
+  })
+
+  it('emits only rollback.failed when revert conflicts', async () => {
+    const { kernel } = createTestKernel()
+    const events: Array<{ name: string; payload: { error?: { code?: string } } }> = []
+    await kernel.start()
+    const created = await kernel.callRpc<{ changesetId: string }>('docs.write', {
+      id: 'example.doc:conflicting-undo',
+      type: 'example.doc',
+      content: { value: 1 },
+      expectedVersion: 'new',
+    })
+    await kernel.callRpc('docs.write', {
+      id: 'example.doc:conflicting-undo',
+      type: 'example.doc',
+      content: { value: 2 },
+      expectedVersion: 1,
+    })
+    kernel.getEventBus().subscribe(['docs.*'], event => events.push(event as never))
+
+    let failure: unknown
+    try {
+      await kernel.callRpc('docs.revertChangeset', { changesetId: created.changesetId })
+    } catch (error) {
+      failure = error
+    }
+
+    expect(failure).toMatchObject({ code: 'document.conflict' })
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({
+      name: 'docs.rollback.failed',
+      payload: { error: { code: 'document.conflict' } },
+    })
+    expect(await kernel.getDocumentStore().get('example.doc:conflicting-undo')).toMatchObject({
+      version: 2,
+      content: { value: 2 },
+    })
   })
 
   it('serves diagnostics.list as a paged rpc result', async () => {

@@ -13,6 +13,7 @@ export {
   readWorkspaceCardSnapshot,
   readWorkspaceOrderProfile,
   readWorkspacePromptInputs,
+  updatePromptAssets,
   updateProjectionOrderProfile,
   updatePromptAsset,
 } from './workspace.js'

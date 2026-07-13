@@ -1,4 +1,4 @@
-export type { JsonObject } from './common.js'
+export type { JsonObject, MutationReceipt } from './common.js'
 export type { Card, CreateCardResult, DeleteCardResult, ListCardsResult, UpdateCardResult } from './card.js'
 export type { ContextAssetNode, ProjectionSlotRank, PromptCompositionCapabilities } from './context-asset.js'
 export type { Session, Branch, SessionDetails, CreateSessionResult, ForkBranchResult } from './session.js'

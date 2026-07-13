@@ -5,13 +5,14 @@ import type {
   DeleteDocumentInput,
   DocumentStore,
   ListDocumentsInput,
+  RevertChangesetInput,
   WriteDocumentResult,
   WriteDocumentInput,
 } from '@loom-studio/document-store'
 import type { ExtensionHost, ExtensionRpcHandler } from '@loom-studio/extension-host'
 import type { LoomRunInput, LoomRunner } from '@loom-studio/loom-runner'
 import type { JsonValue } from '@loom-studio/shared'
-import { createId, nowIso } from '@loom-studio/shared'
+import { createId, nowIso, serializeError } from '@loom-studio/shared'
 import type { TraceAuditStore } from '@loom-studio/trace-audit'
 import type { StudioEvent } from '@loom-studio/transport'
 
@@ -90,7 +91,15 @@ type RpcRegistryEntry = {
 
 export function createEventBus(): EventBus {
   const subscriptions = new Map<string, { patterns: string[]; handler: EventHandler }>()
-  const knownEvents = new Set<string>(['docs.changed', 'diagnostics.updated', 'extensions.changed', 'system.ready', 'system.stopping'])
+  const knownEvents = new Set<string>([
+    'docs.changed',
+    'docs.rollback.completed',
+    'docs.rollback.failed',
+    'diagnostics.updated',
+    'extensions.changed',
+    'system.ready',
+    'system.stopping',
+  ])
 
   return {
     emit: (name, payload, emitOptions = {}) => {
@@ -320,6 +329,11 @@ function registerStageOneHandlers(
     return result as unknown as JsonValue
   })
 
+  register('docs.getChangeset', async params => {
+    const changeset = await options.documents.getChangeset(readString(params, 'changesetId'))
+    return { changeset } as unknown as JsonValue
+  })
+
   register('docs.write', async (params, context) => {
     if (!isRecord(params)) throw new Error('docs.write params must be an object')
     const result = await options.documents.write(toWriteDocumentInput(params, context))
@@ -332,6 +346,24 @@ function registerStageOneHandlers(
     const result = await options.documents.delete(toDeleteDocumentInput(params, context))
     eventBus.emit('docs.changed', summarizeDocumentChange(result), context)
     return result as unknown as JsonValue
+  })
+
+  register('docs.revertChangeset', async (params, context) => {
+    if (!isRecord(params)) throw new Error('docs.revertChangeset params must be an object')
+    const targetChangesetId = readString(params, 'changesetId')
+
+    try {
+      const result = await options.documents.revertChangeset(toRevertChangesetInput(params, context))
+      eventBus.emit('docs.changed', summarizeDocumentChange(result), context)
+      eventBus.emit('docs.rollback.completed', summarizeDocumentRollback(targetChangesetId, result), context)
+      return result as unknown as JsonValue
+    } catch (error) {
+      eventBus.emit('docs.rollback.failed', {
+        targetChangesetId,
+        error: serializeError(error, 'document.revert_failed'),
+      }, context)
+      throw error
+    }
   })
 
   register('extensions.list', () => {
@@ -449,6 +481,17 @@ function toDeleteDocumentInput(params: Record<string, JsonValue>, context: Kerne
   }
 }
 
+function toRevertChangesetInput(params: Record<string, JsonValue>, context: KernelRpcContext): RevertChangesetInput {
+  return {
+    changesetId: readString(params, 'changesetId'),
+    reason: typeof params.reason === 'string' ? params.reason : undefined,
+    actor: actorFromContext(context),
+    correlationId: context.correlationId,
+    callId: context.callId,
+    parentCallId: context.parentCallId,
+  }
+}
+
 function actorFromContext(context: KernelRpcContext): ActorRef {
   return context.clientId ? { kind: 'client', id: context.clientId } : { kind: 'kernel', id: 'kernel' }
 }
@@ -501,5 +544,12 @@ function summarizeDocumentChange(result: WriteDocumentResult): JsonValue {
       version: document.version,
       tombstoned: Boolean(document.meta.tombstone),
     })),
+  }
+}
+
+function summarizeDocumentRollback(targetChangesetId: string, result: WriteDocumentResult): JsonValue {
+  return {
+    targetChangesetId,
+    ...summarizeDocumentChange(result) as Record<string, JsonValue>,
   }
 }

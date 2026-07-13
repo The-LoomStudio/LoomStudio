@@ -55,6 +55,53 @@ describe('studio rpc router', () => {
       callId: 'call-test',
     })
   })
+
+  it('passes rpc call context into application mutations', async () => {
+    let receivedContext: unknown
+    const applicationRuntime = {
+      createCard: async (_input: unknown, requestContext?: unknown) => {
+        receivedContext = requestContext
+        return {
+          card: { id: 'card-1', version: 1, name: 'Card' },
+          mutation: { changesetId: 'chg-1' },
+        }
+      },
+    } as unknown as ApplicationRuntime
+    const router = createStudioRpcRouter({
+      applicationRuntime,
+      kernel: createKernelCaller(),
+      rendererPoc: createRendererPocService(),
+    })
+
+    await router.call('application.createCard', { name: 'Card' }, context)
+
+    expect(receivedContext).toEqual(context)
+  })
+
+  it('passes rpc call context into prompt workspace mutations', async () => {
+    let receivedContext: unknown
+    const applicationRuntime = {
+      updatePromptAssets: async (_input: unknown, requestContext?: unknown) => {
+        receivedContext = requestContext
+        return {
+          workspace: { id: 'workspace-1', version: 2, contextAssets: [] },
+          mutation: { changesetId: 'chg-workspace-1' },
+        }
+      },
+    } as unknown as ApplicationRuntime
+    const router = createStudioRpcRouter({
+      applicationRuntime,
+      kernel: createKernelCaller(),
+      rendererPoc: createRendererPocService(),
+    })
+
+    await router.call('application.updatePromptAssets', {
+      workspaceId: 'workspace-1',
+      updates: [{ assetId: 'asset-1', label: 'Renamed' }],
+    }, context)
+
+    expect(receivedContext).toEqual(context)
+  })
 })
 
 function createKernelCaller(): {

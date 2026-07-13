@@ -21,6 +21,7 @@ import {
 import { createApplicationRuntimeContext, type ApplicationRuntimeContext } from './application-context.js'
 import { applicationDocumentTypes } from './document-types.js'
 import { listDocuments, readDocument, toVersioned, writeDocument } from './document-store.js'
+import { executeDocumentMutation } from './mutation.js'
 import { buildOpenAIChatPayload, type OpenAIChatPayload } from './provider-payload.js'
 import { composePromptBuildForInput } from './prompt.js'
 import { assertSameSession, findBranchContainingEntry, readBranchPath, readSessionBranch } from './timeline.js'
@@ -32,6 +33,7 @@ import {
   importWorkspaceArtifact,
   listPromptWorkspaces,
   movePromptAsset,
+  updatePromptAssets,
   updateProjectionOrderProfile,
   updatePromptAsset,
 } from './workspace.js'
@@ -53,34 +55,41 @@ import type {
   SessionContent,
 } from './types.js'
 
+const applicationActor = { kind: 'kernel', id: 'application-runtime' } as const
+
 export function createApplicationRuntime(options: ApplicationRuntimeOptions): ApplicationRuntime {
   const ctx = createApplicationRuntimeContext(options)
 
   return {
-    createCard: async input => {
+    createCard: async (input, requestContext) => {
       if (input.name.trim().length === 0) {
         throw new Error('createCard name cannot be empty')
       }
 
-      const timestamp = ctx.now()
-      const card = await writeDocument<CardSourceContent>(ctx.documents, {
-        id: ctx.createId('card'),
-        type: applicationDocumentTypes.cardSource,
-        content: {
-          name: input.name,
-          userName: normalizeOptionalString(input.userName),
-          description: input.description,
-          preset: normalizePreset(input.preset),
-          opening: normalizeOpening(input.opening),
-          settingLayer: normalizeSettingLayer(input.settingLayer, input.setting),
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        },
-        expectedVersion: 'new',
+      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.createCard', async documents => {
+        const timestamp = ctx.now()
+        const card = await writeDocument<CardSourceContent>(documents, {
+          id: ctx.createId('card'),
+          type: applicationDocumentTypes.cardSource,
+          content: {
+            name: input.name,
+            userName: normalizeOptionalString(input.userName),
+            description: input.description,
+            preset: normalizePreset(input.preset),
+            opening: normalizeOpening(input.opening),
+            settingLayer: normalizeSettingLayer(input.settingLayer, input.setting),
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          },
+          expectedVersion: 'new',
+        })
+
+        return toCardSource(card)
       })
 
       return {
-        card: toCardSource(card),
+        card: mutation.value,
+        mutation: mutation.mutation,
       }
     },
 
@@ -104,35 +113,42 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       }
     },
 
-    updateCard: async input => {
-      const existing = await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
+    updateCard: async (input, requestContext) => {
       if (input.name !== undefined && input.name.trim().length === 0) {
         throw new Error('updateCard name cannot be empty')
       }
-      const timestamp = ctx.now()
-      const updated = await writeDocument<CardSourceContent>(ctx.documents, {
-        id: existing.id,
-        type: applicationDocumentTypes.cardSource,
-        content: normalizeCardContent({
-          ...existing.content,
-          ...(input.name !== undefined ? { name: input.name } : {}),
-          ...(input.userName !== undefined ? { userName: normalizeOptionalString(input.userName) } : {}),
-          ...(input.description !== undefined ? { description: input.description } : {}),
-          ...(input.preset !== undefined ? { preset: normalizePreset(input.preset) } : {}),
-          ...(input.opening !== undefined ? { opening: normalizeOpening(input.opening) } : {}),
-          ...(input.settingLayer !== undefined ? { settingLayer: normalizeSettingLayer(input.settingLayer, undefined) } : {}),
-          updatedAt: timestamp,
-        }),
-        expectedVersion: existing.version,
+      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.updateCard', async documents => {
+        const existing = await readDocument<CardSourceContent>(documents, input.cardId, applicationDocumentTypes.cardSource)
+        const updated = await writeDocument<CardSourceContent>(documents, {
+          id: existing.id,
+          type: applicationDocumentTypes.cardSource,
+          content: normalizeCardContent({
+            ...existing.content,
+            ...(input.name !== undefined ? { name: input.name } : {}),
+            ...(input.userName !== undefined ? { userName: normalizeOptionalString(input.userName) } : {}),
+            ...(input.description !== undefined ? { description: input.description } : {}),
+            ...(input.preset !== undefined ? { preset: normalizePreset(input.preset) } : {}),
+            ...(input.opening !== undefined ? { opening: normalizeOpening(input.opening) } : {}),
+            ...(input.settingLayer !== undefined ? { settingLayer: normalizeSettingLayer(input.settingLayer, undefined) } : {}),
+            updatedAt: ctx.now(),
+          }),
+          expectedVersion: existing.version,
+        })
+
+        return toCardSource(updated)
       })
 
-      return { card: toCardSource(updated) }
+      return { card: mutation.value, mutation: mutation.mutation }
     },
 
-    deleteCard: async input => {
-      await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
-      await ctx.documents.delete({ id: input.cardId })
-      return { deleted: true as const }
+    deleteCard: async (input, requestContext) => {
+      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.deleteCard', async documents => {
+        const card = await readDocument<CardSourceContent>(documents, input.cardId, applicationDocumentTypes.cardSource)
+        await documents.delete({ id: card.id, expectedVersion: card.version })
+        return true as const
+      })
+
+      return { deleted: mutation.value, mutation: mutation.mutation }
     },
 
     createProviderAccount: async input => {
@@ -424,69 +440,104 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       })
     },
 
-    createPromptAsset: async input => {
-      return {
-        workspace: await createPromptAsset({
+    createPromptAsset: async (input, requestContext) => {
+      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.createPromptAsset', async documents => {
+        return await createPromptAsset({
           asset: input.asset,
-          documents: ctx.documents,
+          documents,
           now: ctx.now(),
           position: input.position,
           targetAssetId: input.targetAssetId,
           workspaceId: input.workspaceId,
-        }),
+        })
+      })
+      return {
+        workspace: mutation.value,
+        mutation: mutation.mutation,
       }
     },
 
-    updatePromptAsset: async input => {
-      return {
-        workspace: await updatePromptAsset({
+    updatePromptAsset: async (input, requestContext) => {
+      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.updatePromptAsset', async documents => {
+        return await updatePromptAsset({
           assetId: input.assetId,
           body: input.body,
           capabilities: input.capabilities,
-          documents: ctx.documents,
+          documents,
           enabled: input.enabled,
           label: input.label,
           meta: input.meta,
           now: ctx.now(),
           workspaceId: input.workspaceId,
-        }),
+        })
+      })
+      return {
+        workspace: mutation.value,
+        mutation: mutation.mutation,
       }
     },
 
-    movePromptAsset: async input => {
+    updatePromptAssets: async (input, requestContext) => {
+      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.updatePromptAssets', async documents => {
+        return await updatePromptAssets({
+          documents,
+          now: ctx.now(),
+          updates: input.updates,
+          workspaceId: input.workspaceId,
+        })
+      })
       return {
-        workspace: await movePromptAsset({
+        workspace: mutation.value,
+        mutation: mutation.mutation,
+      }
+    },
+
+    movePromptAsset: async (input, requestContext) => {
+      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.movePromptAsset', async documents => {
+        return await movePromptAsset({
           assetId: input.assetId,
-          documents: ctx.documents,
+          documents,
           now: ctx.now(),
           position: input.position,
           targetAssetId: input.targetAssetId,
           workspaceId: input.workspaceId,
-        }),
+        })
+      })
+      return {
+        workspace: mutation.value,
+        mutation: mutation.mutation,
       }
     },
 
-    deletePromptAsset: async input => {
-      return {
-        workspace: await deletePromptAsset({
+    deletePromptAsset: async (input, requestContext) => {
+      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.deletePromptAsset', async documents => {
+        return await deletePromptAsset({
           assetId: input.assetId,
-          documents: ctx.documents,
+          documents,
           now: ctx.now(),
           workspaceId: input.workspaceId,
-        }),
+        })
+      })
+      return {
+        workspace: mutation.value,
+        mutation: mutation.mutation,
       }
     },
 
-    updateProjectionOrderProfile: async input => {
-      return {
-        workspace: await updateProjectionOrderProfile({
-          documents: ctx.documents,
+    updateProjectionOrderProfile: async (input, requestContext) => {
+      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.updateProjectionOrderProfile', async documents => {
+        return await updateProjectionOrderProfile({
+          documents,
           now: ctx.now(),
           orderList: input.orderList,
           orderNodeId: input.orderNodeId,
           projectionOrderProfile: input.projectionOrderProfile,
           workspaceId: input.workspaceId,
-        }),
+        })
+      })
+      return {
+        workspace: mutation.value,
+        mutation: mutation.mutation,
       }
     },
 
@@ -585,7 +636,10 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         branchId: branch.id,
       })
 
-      return await ctx.documents.transact(async tx => {
+      const transaction = await ctx.documents.transact({
+        actor: applicationActor,
+        reason: 'application.submitTurn',
+      }, async tx => {
         const run = await writeDocument<RunContent>(tx, {
           id: runId,
           type: applicationDocumentTypes.run,
@@ -767,6 +821,8 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
           stateSnapshot: toVersioned(stateSnapshot),
         }
       })
+
+      return transaction.value
     },
 
     getSession: async input => {
@@ -825,7 +881,10 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       const parentBranch = input.fromEntryId ? await findBranchContainingEntry(ctx.documents, session.id, input.fromEntryId) : undefined
       const timestamp = ctx.now()
 
-      return await ctx.documents.transact(async tx => {
+      const transaction = await ctx.documents.transact({
+        actor: applicationActor,
+        reason: 'application.forkBranch',
+      }, async tx => {
         const branch = await writeDocument<NarrativeBranchContent>(tx, {
           id: ctx.createId('branch'),
           type: applicationDocumentTypes.narrativeBranch,
@@ -856,6 +915,8 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
           session: toVersioned(updatedSession),
         }
       })
+
+      return transaction.value
     },
   }
 }
@@ -873,7 +934,10 @@ async function createSessionDocuments(input: {
   const branchId = input.createId('branch')
   const openingEntries = readOpeningEntries(input.cardSnapshot)
 
-  return await input.documents.transact(async tx => {
+  const transaction = await input.documents.transact({
+    actor: applicationActor,
+    reason: 'application.createSession',
+  }, async tx => {
     const session = await writeDocument<SessionContent>(tx, {
       id: input.createId('session'),
       type: applicationDocumentTypes.session,
@@ -936,6 +1000,8 @@ async function createSessionDocuments(input: {
       branch: toVersioned(branch),
     }
   })
+
+  return transaction.value
 }
 
 function redactProviderAccount<T extends { secretRefs: Record<string, string> }>(account: T): T {

@@ -30,7 +30,7 @@ export function createId(prefix = 'id'): string {
 export function serializeError(error: unknown, code = 'internal.error'): SerializedError {
   if (error instanceof Error) {
     return {
-      code,
+      code: 'code' in error && typeof error.code === 'string' ? error.code : code,
       message: error.message,
     }
   }

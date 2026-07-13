@@ -62,20 +62,27 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
       await kernel.start()
       await extensionHost.discover(resolve('extensions/example-echo'))
       await extensionHost.activateAll()
-      await new Promise<void>(resolve => {
-        server.listen(port, resolve)
+      await new Promise<void>((resolve, reject) => {
+        const handleError = (error: Error) => reject(error)
+        server.once('error', handleError)
+        server.listen(port, () => {
+          server.off('error', handleError)
+          resolve()
+        })
       })
       const address = server.address()
       const actualPort = typeof address === 'object' && address ? address.port : port
       return { port: actualPort }
     },
     close: async () => {
-      await new Promise<void>((resolve, reject) => {
-        server.close(error => {
-          if (error) reject(error)
-          else resolve()
+      if (server.listening) {
+        await new Promise<void>((resolve, reject) => {
+          server.close(error => {
+            if (error) reject(error)
+            else resolve()
+          })
         })
-      })
+      }
       await kernel.stop()
       rendererPoc.close()
       if (ownsDocumentStore && isClosableDocumentStore(documents)) {
@@ -88,8 +95,13 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
 export async function main(): Promise<void> {
   const server = createStudioServer()
   const port = Number(process.env.PORT ?? defaultPort)
-  const result = await server.listen(port)
-  console.log(`Loom Studio server listening on ${result.port}`)
+  try {
+    const result = await server.listen(port)
+    console.log(`Loom Studio server listening on ${result.port}`)
+  } catch (error) {
+    await server.close()
+    throw error
+  }
 }
 
 function summarizeDocumentChange(result: { changesetId: string; operations: unknown; documents: Array<{ id: string; type: string; version: number; meta: { tombstone?: unknown } }> }): StudioEvent['payload'] {
@@ -110,5 +122,16 @@ function isClosableDocumentStore(store: DocumentStore): store is SqliteDocumentS
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  void main()
+  void main().catch(error => {
+    if (isAddressInUseError(error)) {
+      console.error(`Loom Studio server port ${error.port ?? defaultPort} is already in use. Stop the existing server or set PORT to another port.`)
+    } else {
+      console.error(error)
+    }
+    process.exitCode = 1
+  })
+}
+
+function isAddressInUseError(error: unknown): error is NodeJS.ErrnoException & { port?: number } {
+  return error instanceof Error && 'code' in error && error.code === 'EADDRINUSE'
 }

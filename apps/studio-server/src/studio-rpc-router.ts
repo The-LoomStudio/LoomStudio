@@ -54,7 +54,7 @@ export function createStudioRpcRouter(services: {
     {
       namespace: 'application',
       capabilities: listApplicationRpcCapabilities(),
-      call: (method, params) => callApplicationRpc(services.applicationRuntime, method, params),
+      call: (method, params, context) => callApplicationRpc(services.applicationRuntime, method, params, context),
     },
     {
       namespace: 'renderer',

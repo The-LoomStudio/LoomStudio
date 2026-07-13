@@ -7,6 +7,11 @@ import type { Card, JsonObject } from '../../../entities/index.js'
 type UseCardsInput = {
   api: StudioApi
   initialCardJson: string
+  recordEdit(entry: {
+    label: string
+    changesetId: string
+    anchor?: { documentId: string; subjectId?: string }
+  }): void
   runAction: (action: () => Promise<void>) => Promise<void>
   t: Translator
 }
@@ -37,12 +42,18 @@ export function useCards(input: UseCardsInput) {
       if (current && result.cards.some(card => card.id === current)) return current
       return result.cards.find(card => card.name === readCardName(input.initialCardJson))?.id ?? result.cards[0]?.id
     })
+    return result.cards
   }
 
   async function createCard(event: FormEvent) {
     event.preventDefault()
     await input.runAction(async () => {
       const result = await input.api.cards.create(readCardCreateInput(cardJson, input.t))
+      input.recordEdit({
+        label: input.t('history.card.create'),
+        changesetId: result.mutation.changesetId,
+        anchor: { documentId: result.card.id },
+      })
       await refreshCards()
       setSelectedCardId(result.card.id)
     })
@@ -59,6 +70,11 @@ export function useCards(input: UseCardsInput) {
         userName: cardDraft.userName,
         description: cardDraft.description,
       }))
+      input.recordEdit({
+        label: input.t('history.card.update'),
+        changesetId: result.mutation.changesetId,
+        anchor: { documentId: result.card.id },
+      })
       await refreshCards()
       setSelectedCardId(result.card.id)
     })
@@ -68,10 +84,15 @@ export function useCards(input: UseCardsInput) {
     if (!selectedCardId) return
 
     await input.runAction(async () => {
-      await input.api.cards.delete(selectedCardId)
-      const result = await input.api.cards.list()
-      setCards(result.cards)
-      setSelectedCardId(result.cards[0]?.id)
+      const deleted = await input.api.cards.delete(selectedCardId)
+      input.recordEdit({
+        label: input.t('history.card.delete'),
+        changesetId: deleted.mutation.changesetId,
+        anchor: { documentId: selectedCardId },
+      })
+      const listed = await input.api.cards.list()
+      setCards(listed.cards)
+      setSelectedCardId(listed.cards[0]?.id)
     })
   }
 

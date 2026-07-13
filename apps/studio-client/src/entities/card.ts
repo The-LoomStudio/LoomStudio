@@ -1,4 +1,4 @@
-import type { JsonObject } from './common.js'
+import type { JsonObject, MutationReceipt } from './common.js'
 
 export type Card = {
   id: string
@@ -28,6 +28,7 @@ export type Card = {
 
 export type CreateCardResult = {
   card: Card
+  mutation: MutationReceipt
 }
 
 export type ListCardsResult = {
@@ -37,8 +38,10 @@ export type ListCardsResult = {
 
 export type UpdateCardResult = {
   card: Card
+  mutation: MutationReceipt
 }
 
 export type DeleteCardResult = {
   deleted: true
+  mutation: MutationReceipt
 }

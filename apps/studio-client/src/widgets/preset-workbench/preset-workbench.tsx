@@ -8,6 +8,7 @@ import {
 import { transformForProjectionView } from '../../features/context-assets/model/projection-view.js'
 import {
   buildProjectionWorkbenchModel,
+  type ContextAssetUpdate,
   findRootContextModule,
   readPresetProjectionMoveUpdates,
   readProjectionOrderReorderUpdates,
@@ -21,6 +22,8 @@ import styles from './preset-workbench.module.scss'
 type PresetWorkbenchProps = {
   nodes: ContextAssetNode[]
   onChangeNode: (id: string, partial: Partial<ContextAssetNode>) => void
+  onCommitNode: (id: string, partial: Partial<ContextAssetNode>) => void
+  onChangeNodes: (updates: ContextAssetUpdate[]) => void
   onMoveNode: (draggedId: string, targetId: string, position: 'before' | 'inside' | 'after') => void
   onAddNode: (parentId: string) => void
   onDuplicateNode: (id: string) => void
@@ -56,14 +59,14 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   }, [props.nodes, orderedProjectionEntries])
 
   function handleProjectionReorder(draggedId: string, targetId: string) {
-    readProjectionOrderReorderUpdates({
+    props.onChangeNodes(readProjectionOrderReorderUpdates({
       draggedId,
       orderedProjectionEntries,
       orderNode,
       projectionEntries,
       projectionOrderIds,
       targetId,
-    }).forEach(update => props.onChangeNode(update.id, update.partial))
+    }))
   }
 
   return (
@@ -97,7 +100,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
              const isProjectionView = rootModule?.category === 'preset'
 
              if (isProjectionView) {
-               readPresetProjectionMoveUpdates({
+               props.onChangeNodes(readPresetProjectionMoveUpdates({
                  draggedId,
                  nodes: props.nodes,
                  orderedProjectionEntries,
@@ -106,7 +109,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
                  projectionEntries,
                  projectionOrderIds,
                  targetId,
-               }).forEach(update => props.onChangeNode(update.id, update.partial))
+               }))
                return
              }
 
@@ -159,6 +162,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
                 activationEditable
                 node={detailNode}
                 onChangeNode={partial => props.onChangeNode(detailNode.id, partial)}
+                onCommitNode={partial => props.onCommitNode(detailNode.id, partial)}
                 t={props.t}
               />
             )

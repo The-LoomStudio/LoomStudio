@@ -14,6 +14,7 @@ type ContextAssetDetailProps = {
   activationEditable?: boolean
   node: ContextAssetNode
   onChangeNode: (partial: Partial<ContextAssetNode>) => void
+  onCommitNode: (partial: Partial<ContextAssetNode>) => void
   t: Translator
 }
 
@@ -25,14 +26,18 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
   const activationDraft = readActivationDraft(props.node)
   const canShowActivation = Boolean(props.activationEditable && (props.node.kind === 'module' || props.node.kind === 'folder' || props.node.kind === 'entry'))
 
-  function updateProjection(partial: Partial<NonNullable<ContextAssetNode['projection']>>) {
+  function updateProjection(partial: Partial<NonNullable<ContextAssetNode['projection']>>, commit = false) {
     if (!props.node.projection) return
-    props.onChangeNode({ projection: { ...props.node.projection, ...partial } })
+    const update = { projection: { ...props.node.projection, ...partial } }
+    props.onChangeNode(update)
+    if (commit) props.onCommitNode(update)
   }
 
-  function updateActivation(partial: Partial<ReturnType<typeof readActivationDraft>>) {
+  function updateActivation(partial: Partial<ReturnType<typeof readActivationDraft>>, commit = false) {
     const draft = updateActivationDraft(activationDraft, partial)
-    props.onChangeNode(buildActivationUpdate({ draft, node: props.node }))
+    const update = buildActivationUpdate({ draft, node: props.node })
+    props.onChangeNode(update)
+    if (commit) props.onCommitNode(update)
   }
 
   return (
@@ -46,6 +51,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
               disabled={readOnly}
               value={props.node.label}
               onChange={event => props.onChangeNode({ label: event.target.value })}
+              onBlur={event => props.onCommitNode({ label: event.target.value })}
             />
           </dd>
         </div>
@@ -57,6 +63,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
               disabled={readOnly}
               value={props.node.meta ?? ''}
               onChange={event => props.onChangeNode({ meta: event.target.value })}
+              onBlur={event => props.onCommitNode({ meta: event.target.value })}
             />
           </dd>
         </div>
@@ -82,7 +89,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
                 className={styles.inlineInput}
                 disabled={readOnly}
                 value={activationDraft.mode}
-                onChange={event => updateActivation({ mode: event.target.value as ActivationEditorMode })}
+                onChange={event => updateActivation({ mode: event.target.value as ActivationEditorMode }, true)}
               >
                 <option value="always">{props.t('context.activation.always')}</option>
                 <option value="manual">{props.t('context.activation.manual')}</option>
@@ -101,6 +108,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
                   disabled={readOnly}
                   value={activationDraft.keywords}
                   onChange={event => updateActivation({ keywords: event.target.value })}
+                  onBlur={event => updateActivation({ keywords: event.target.value }, true)}
                   placeholder={props.t('context.activation.keywordsPlaceholder')}
                 />
               </dd>
@@ -120,7 +128,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
                       updateActivation({
                         conditionPreset,
                         conditionValue: conditionPreset === 'agent.mode' ? 'draft' : 'scene:combat',
-                      })
+                      }, true)
                     }}
                   >
                     <option value="agent.mode">agent.mode</option>
@@ -135,7 +143,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
                     className={styles.inlineInput}
                     disabled={readOnly}
                     value={activationDraft.conditionValue}
-                    onChange={event => updateActivation({ conditionValue: event.target.value as ActivationConditionValue })}
+                    onChange={event => updateActivation({ conditionValue: event.target.value as ActivationConditionValue }, true)}
                   >
                     {activationDraft.conditionPreset === 'agent.mode' ? (
                       <>
@@ -172,7 +180,11 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
                   type="checkbox"
                   disabled={readOnly}
                   checked={props.node.enabled !== false}
-                  onChange={event => props.onChangeNode({ enabled: event.target.checked })}
+                  onChange={event => {
+                    const update = { enabled: event.target.checked }
+                    props.onChangeNode(update)
+                    props.onCommitNode(update)
+                  }}
                 />
                 {props.node.enabled !== false ? 'Active' : 'Inactive'}
               </label>
@@ -187,6 +199,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
                 disabled={readOnly}
                 value={props.node.projection?.zone ?? ''}
                 onChange={event => updateProjection({ zone: event.target.value })}
+                onBlur={event => updateProjection({ zone: event.target.value }, true)}
                 placeholder="Enter or select a zone..."
               />
               <datalist id="builtin-zones">
@@ -207,6 +220,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
                 type="number"
                 value={props.node.projection?.entryOrder ?? 0}
                 onChange={event => updateProjection({ entryOrder: parseInt(event.target.value, 10) || 0 })}
+                onBlur={event => updateProjection({ entryOrder: parseInt(event.target.value, 10) || 0 }, true)}
               />
             </dd>
           </div>
@@ -218,6 +232,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
                 disabled={readOnly}
                 value={props.node.projection?.group ?? ''}
                 onChange={event => updateProjection({ group: event.target.value })}
+                onBlur={event => updateProjection({ group: event.target.value }, true)}
               />
             </dd>
           </div>
@@ -229,6 +244,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
                 disabled={readOnly}
                 value={props.node.projection?.slotKey ?? ''}
                 onChange={event => updateProjection({ slotKey: event.target.value })}
+                onBlur={event => updateProjection({ slotKey: event.target.value }, true)}
               />
             </dd>
           </div>
@@ -239,7 +255,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
                 className={styles.inlineInput}
                 disabled={readOnly}
                 value={props.node.projection?.lifecycle ?? 'always'}
-                onChange={event => updateProjection({ lifecycle: event.target.value })}
+                onChange={event => updateProjection({ lifecycle: event.target.value }, true)}
               >
                 <option value="always">always</option>
                 <option value="keyword">keyword</option>
@@ -255,7 +271,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
                 className={styles.inlineInput}
                 disabled={readOnly}
                 value={props.node.projection?.anchor ?? 'inside'}
-                onChange={event => updateProjection({ anchor: event.target.value as 'before' | 'inside' | 'after' })}
+                onChange={event => updateProjection({ anchor: event.target.value as 'before' | 'inside' | 'after' }, true)}
               >
                 <option value="before">before</option>
                 <option value="inside">inside</option>
@@ -273,6 +289,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
           disabled={readOnly}
           value={body}
           onChange={event => props.onChangeNode({ body: event.target.value })}
+          onBlur={event => props.onCommitNode({ body: event.target.value })}
           spellCheck={false}
         />
       </label>

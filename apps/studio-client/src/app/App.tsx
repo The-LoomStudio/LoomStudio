@@ -15,7 +15,9 @@ export function App() {
   const state = useStudioState()
   const contextAssetEditorProps = {
     nodes: state.contextAssets,
-    onChangeNode: state.updateContextAsset,
+    onChangeNode: state.previewContextAsset,
+    onCommitNode: state.updateContextAsset,
+    onChangeNodes: state.updateContextAssets,
     onMoveNode: state.moveContextAsset,
     onAddNode: state.addContextAsset,
     onDuplicateNode: state.duplicateContextAsset,
@@ -28,6 +30,8 @@ export function App() {
   return (
     <StudioPage
       busy={state.busy}
+      canRedo={state.canRedoEdit}
+      canUndo={state.canUndoEdit}
       customCss={state.customCss}
       editorPanel={(
         <ContextWorkbench
@@ -35,6 +39,12 @@ export function App() {
         />
       )}
       error={state.error}
+      onRedo={() => {
+        void state.redoEdit()
+      }}
+      onUndo={() => {
+        void state.undoEdit()
+      }}
       t={state.t}
       apiPanel={(
         <ApiPanel
@@ -89,7 +99,9 @@ export function App() {
           onLoadTestCss={() => state.setCustomCss(DemoData.testCustomCss)}
           onOpenRendererWindow={state.openRendererWindow}
           onRefreshCards={() => {
-            void state.runAction(state.refreshCards)
+            void state.runAction(async () => {
+              await state.refreshCards()
+            })
           }}
           onResetCss={() => state.setCustomCss(DemoData.customCss)}
           onRevokeRendererSession={state.revokeRendererSession}
