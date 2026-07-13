@@ -1,0 +1,27 @@
+{
+  "name": "@loom/core",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./schemas/trace.schema.json": "./dist/schemas/trace.schema.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "ajv": "^8.20.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && mkdir -p dist/schemas && cp src/schemas/trace.schema.json dist/schemas/trace.schema.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --root ../.. packages/core/test"
+  }
+}

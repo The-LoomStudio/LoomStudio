@@ -10,7 +10,6 @@ flowchart TD
     classDef app fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
     classDef pkg fill:#f3e5f5,stroke:#4a148c,stroke-width:2px;
     classDef ext fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px;
-    classDef external fill:#f5f5f5,stroke:#424242,stroke-width:1px,stroke-dasharray: 5 5;
 
     %% Apps
     subgraph Apps["Applications (apps/)"]
@@ -26,6 +25,7 @@ flowchart TD
 
     %% Packages
     subgraph Packages["Core Packages (packages/)"]
+        LoomCore("core\n@loom/core"):::pkg
         ClientBridge("client-bridge"):::pkg
         ApplicationRuntime("application-runtime"):::pkg
         Kernel("kernel"):::pkg
@@ -38,9 +38,6 @@ flowchart TD
         TraceAudit("trace-audit"):::pkg
         Diagnostics("diagnostics"):::pkg
     end
-
-    %% External
-    LoomCore("@loom/core"):::external
 
     %% Edges (Dependencies)
     Client --> ClientBridge
@@ -55,6 +52,7 @@ flowchart TD
 
     ApplicationRuntime --> DocumentStore
     ApplicationRuntime --> Shared
+    ApplicationRuntime --> LoomCore
 
     Kernel --> ExtensionHost
     Kernel --> DocumentStore
@@ -79,6 +77,6 @@ flowchart TD
 
 ## 核心约束规则
 
-1. **唯一向外突破口**: 只有 `packages/loom-runner` 被允许导入 `@loom/core`。其他任何 Studio 内的模块若要使用 Core 的能力，必须通过 Runner。
+1. **受控 Core 依赖**：只有 `packages/loom-runner` 与 `packages/application-runtime` 被允许导入 `@loom/core` public API。前者负责平台 adapter，后者负责第一方 PromptBuild pipeline；其余模块不得直接依赖 Core。
 2. **应用逻辑闭环**: `packages/kernel` 是一个纯粹的执行引擎，不允许导入 `packages/application-runtime`。所有的应用逻辑（如 Session, PromptBuilder 等）均在 Runtime 和 Server 层组装。
 3. **共享基础**: `packages/shared` 和 `packages/transport` 位于最底层，不允许依赖除了外部库之外的任何工作区内的包。

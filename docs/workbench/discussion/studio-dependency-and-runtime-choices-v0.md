@@ -733,42 +733,38 @@ kysely
 
 ## 13. Loom Core Dependency
 
-唯一允许依赖 Loom Core 的 Studio package：
+`@loom/core` 当前作为 LoomStudio 内的 workspace package 存放在：
+
+```text
+packages/core
+```
+
+允许依赖 Core public API 的 Studio package：
 
 ```text
 packages/loom-runner
+packages/application-runtime
 ```
 
-短期：
+依赖统一写为：
 
 ```json
 {
   "dependencies": {
-    "@loom/core": "file:../LoomProject/packages/core"
-  }
-}
-```
-
-实际路径以 Loom Core package 的真实位置为准。
-
-中期：
-
-```json
-{
-  "dependencies": {
-    "@loom/core": "^0.1.0"
+    "@loom/core": "workspace:*"
   }
 }
 ```
 
 规则：
 
-- Studio 不复制 Core 源码；
+- Core 与 Studio 同仓开发，但保持独立 package、版本与 public exports；
 - Studio 不 import Core internal path；
 - Kernel 不直接依赖 Core；
 - Client 不依赖 Core；
 - Extension 不直接依赖 Core，除非未来作为普通第三方依赖另行讨论；
-- Core 类型通过 `loom-runner` adapter 收敛。
+- Kernel/RPC 的 Core 调用通过 `loom-runner` adapter 收敛；
+- Application Runtime 只在第一方 PromptBuild pipeline 内直接使用 Core public API。
 
 ---
 

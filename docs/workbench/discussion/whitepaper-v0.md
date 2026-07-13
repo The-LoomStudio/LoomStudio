@@ -8,6 +8,8 @@
 
 > **架构最新规范（2026-05-30）**：默认完整 AIRP 体验已收束为 Studio 第一方内建 `Studio AIRP Layer` / package layer，而不是 ordinary extension；但它仍不进入 Kernel。本文中关于 Kernel 不理解 chat / message / character / worldbook 的约束仍有效，所有旧的 `Concept Stack` 概念已废弃。
 
+> **仓库边界更新（2026-07-13）**：`@loom/core` 已迁入 LoomStudio 的 `packages/core` 作为独立 workspace package。物理同仓不改变 Engine 与 Studio 的逻辑分层、public API 或未来独立发布能力；本文中“必须位于独立 Git 仓库”的旧约束已被本次迁移取代。
+
 ---
 
 ## 0. Intent
@@ -140,7 +142,7 @@ Studio Kernel 是**能力底座**，不是运行时框架。它不提供内置 C
 
 | 词 | 定义 |
 |---|---|
-| **Loom Engine** | 提示词组装引擎，发布为 npm 包（`@loom/core` 等），与 Studio 解耦 |
+| **Loom Engine** | 提示词组装引擎，以独立 package（`@loom/core`）存在；当前与 Studio 同仓开发，但保持逻辑与发布边界 |
 | **Loom Studio** | 平台/工作台，独立 Node.js 应用，本文档主体对象 |
 | **Kernel** | Studio 内部最小运行时，由六个服务构成 |
 | **Workspace** | 一个 Studio 进程对应的资料目录，含全部内容库与已装 Extension |
@@ -163,19 +165,16 @@ Studio Kernel 是**能力底座**，不是运行时框架。它不提供内置 C
 
 ---
 
-## 3. Repository Boundary
+## 3. Package Boundary
 
-Studio 与 Loom 引擎是两个独立的物理仓库与发布物。
+Studio 与 Loom 引擎当前位于同一个物理仓库，但仍是不同 package 与发布边界。
 
 ```
-loom-engine/                            ← 当前 monorepo
-  packages/core                         ← @loom/core，npm
-  packages/stdlib                       ← @loom/stdlib，npm
-  packages/devtool
-  packages/st-compat-lib (optional)     ← 纯逻辑库，不依赖 Studio
-
-loom-studio/                            ← 独立仓库
+loom-studio/
   apps/                                 ← Studio 主程序
+  packages/core                         ← @loom/core，可独立构建/发布
+  packages/loom-runner                  ← Kernel/RPC adapter
+  packages/application-runtime          ← 第一方领域 runtime
   packages/extension-sdk                ← Extension 作者用的 SDK
   packages/client-bridge                ← Client Host Bridge / sandbox activation
   extensions/official-*                 ← 官方 Extension，包括官方 Web UI
@@ -183,10 +182,10 @@ loom-studio/                            ← 独立仓库
 
 **两条铁律**：
 
-1. `loom-engine` 仓库永远不出现 Studio 的概念。Studio 引用 `@loom/core`，反向不存在。
+1. `packages/core` 永远不 import 或理解 Studio 的概念。Studio package 可以引用 `@loom/core` public API，反向不存在。
 2. Studio 的 Extension SDK 是 Studio 生态的产物，不是 Loom 引擎的一部分。`@loom/core` 永远只承诺"提示词组装"。
 
-这条边界让 Loom 引擎能服务 Studio 之外的世界（别人用 `@loom/core` 写 CLI、服务端管线、其他应用），同时 Studio 也可以在不修改引擎的前提下野蛮生长。
+这条 package 边界仍允许 Loom 引擎服务 Studio 之外的世界（别人用 `@loom/core` 写 CLI、服务端管线、其他应用），同时消除早期开发阶段的跨仓 file dependency。
 
 ### Engine ABI Lifecycle
 
@@ -214,14 +213,14 @@ loom-studio/                            ← 独立仓库
 ├─────────────────────────────────────────────────┤
 │  L1  Engine Layer                               │
 │  Fragment · Pass · Pipeline · Resolve           │
-│  来自 npm: @loom/core                            │
+│  workspace package: @loom/core                   │
 └─────────────────────────────────────────────────┘
 ```
 
 **单向依赖规则**：
 
 - 上层可以引用下层；下层永不知道上层
-- L3 / L4 只能通过 L2 暴露的接口访问 L1，**禁止跨层直接 import `@loom/core`**
+- Client、Extension 与第三方领域层只能通过 L2 暴露的接口访问 L1；第一方 `application-runtime` 的 PromptBuild pipeline 可使用 Core public API
 
 为什么禁止跨层直连？因为 Kernel 必须是 trace、capability、调度的**唯一入口**。任何 Extension 偷偷起一个 Pipeline，DevTools 就丢失上下文，平台属性瞬间崩塌。
 

@@ -415,9 +415,9 @@ Client UI 和未来 Client Extension 都通过它访问 Host 能力。
 
 ### 7.9 `packages/loom-runner`
 
-定位：Studio 到 Loom Core 的唯一 adapter。
+定位：Kernel / RPC 到 Loom Core 的受控 adapter。
 
-它是唯一允许依赖 Loom Core 的 Studio package。
+它与第一方 PromptBuild 所在的 `packages/application-runtime` 是当前唯二允许依赖 Loom Core public API 的 Studio package。
 
 ### 7.10 `packages/kernel`
 
@@ -671,12 +671,13 @@ any package -> another package /src/internal
 
 ## 12. Loom Core 边界
 
-Studio 不复制 Loom Core 源码，也不 import Loom Core internal path。
+Loom Core 源码位于同一 monorepo 的 `packages/core`，但仍是独立的 `@loom/core` package。Studio package 不 import Core internal path。
 
-唯一允许依赖 Core 的位置：
+允许依赖 Core public API 的位置：
 
 ```text
 packages/loom-runner
+packages/application-runtime
 ```
 
 禁止：
@@ -696,12 +697,16 @@ extensions/* -> Loom Core
 apps/studio-server
   -> packages/kernel
     -> packages/loom-runner
-      -> Loom Core public package
+      -> packages/core public package
+
+apps/studio-server
+  -> packages/application-runtime
+    -> packages/core public package
 ```
 
-这样 Core 的 Fragment / Pass / Trace 概念不会泄漏到 Studio 数据层、Extension Host 或 Client UI。
+`loom-runner` 是 Kernel/RPC adapter；`application-runtime` 的直接依赖只服务第一方 PromptBuild pipeline。Core 的 Fragment / Pass / Trace 概念仍不得泄漏到 Studio 数据层、Extension Host、Client UI 或 Extension API。
 
-具体使用 `file:` dependency、workspace dependency、git dependency 还是 semver package，不在本文决定，放入依赖选型文档。
+仓库内统一使用 `workspace:*`；未来发布策略不影响当前源码边界。
 
 ---
 

@@ -5,7 +5,7 @@
   "type": "module",
   "packageManager": "pnpm@9.15.0",
   "scripts": {
-    "build": "tsc -b",
+    "build": "pnpm --filter @loom/core build && tsc -b",
     "test": "vitest run",
     "test:archive": "LOOM_TEST_SCOPE=archive vitest run",
     "test:probes": "LOOM_TEST_SCOPE=probes vitest run",

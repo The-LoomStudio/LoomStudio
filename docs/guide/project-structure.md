@@ -6,7 +6,7 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
 
 > **核心原则：内层不依赖外层。**
 > `packages/` 内层包 **绝对不可** import `apps/` 或外部特定实现。
-> 依赖方向始终是单向箭头： `apps/` -> `packages/` -> `@loom/core` (通过 runner)。
+> 依赖方向始终是单向箭头：`apps/` -> `packages/` -> `packages/core`。Core 仍通过 `@loom/core` public API 消费。
 
 ---
 
@@ -116,6 +116,8 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
 
 这些包大多是独立于运行环境的（Node / Browser 均可或有明确边界）。
 
+- 📦 `packages/core/` (`@loom/core`)
+  - 同步、确定、可重放的 Fragment / Pass / Pipeline / Trace 执行层。它与 Studio 同仓开发，但保持独立 package 和 public API 边界。
 - 📦 `packages/application-runtime/` (AIRP Layer)
   - Studio 的**业务心脏**。包含 Session, Card, Agent, PromptBuilder, Document Types 定义，以及对接模型的 Gateway。前后端都在共享此包定义的 Schema。
 - 📦 `packages/kernel/`
@@ -127,13 +129,15 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
 - 📦 `packages/client-bridge/`
   - 供前端使用的 Bridge SDK，连接到后端的 Transport 以进行远程调用。
 - 📦 `packages/loom-runner/`
-  - 唯一允许 import `@loom/core` 的包。负责包装 Core Runtime 供 Studio 调用。
+  - 面向 Kernel/RPC 的 Core adapter，负责 JSON 输入校验、默认 PassFactory 和 Trace Audit。
 - 📦 `packages/extension-sdk/`
   - 提供给第三方开发者的插件开发 SDK。其内包含了 `extension-host` (管理插件加载生命周期的宿主)。
 - 📦 `packages/shared/`
   - 通用的工具函数、通用的类型定义 (`JsonValue`, `createId`, 时间处理等)。
 - 📦 `packages/diagnostics/` & `packages/trace-audit/`
   - 提供系统级错误收集与运行时审计支持。
+
+当前只有 `packages/loom-runner` 和 `packages/application-runtime` 可以直接依赖 `@loom/core`。前者提供平台 adapter，后者只在第一方 PromptBuild pipeline 内使用 Core public API。Kernel、Document Store、Extension Host、Client 与 Extension 不得直接依赖 Core。
 
 ## 🧩 插件库: `extensions/`
 

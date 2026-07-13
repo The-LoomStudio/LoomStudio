@@ -55,7 +55,7 @@ Loom Studio 使用 TypeScript 构建。以下是最关键的接口定义概念�
 
 ## 4. Loom Core 概念 (来自 `@loom/core`)
 
-> Studio 会通过 `loom-runner` 与 Core 交互，以下概念来自 Core 包。
+> `@loom/core` 位于 `packages/core`。Kernel/RPC 通过 `loom-runner` 与 Core 交互；第一方 Application Runtime 的 PromptBuild pipeline 也会直接使用 Core public API。
 
 ### `Fragment`
 不可变的文本块。一切提示词最终都会被扁平化或组合成 Fragment 数组。
