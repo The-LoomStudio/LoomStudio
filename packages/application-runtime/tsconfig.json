@@ -7,6 +7,7 @@
   },
   "references": [
     { "path": "../document-store" },
+    { "path": "../logging" },
     { "path": "../shared" }
   ],
   "include": ["src/**/*.ts"]

@@ -1,6 +1,8 @@
-# Loom Studio 宏观开发路线图 (Macro Roadmap)
+# Loom Studio 宏观开发路线图（2026-06，已归档）
 
-> **状态**：草案 v0.1 (2026-06-24)  
+> **状态**：Archived / Superseded  
+> **归档日期**：2026-07-23  
+> **归档原因**：实际开发已经跨越原五阶段顺序；本文只保留为 2026-06 阶段判断，不再作为当前路线图。  
 > **目的**：梳理 Loom Studio 从 MVP 基础底座走向生产力工具的宏观演进计划，告别“无头苍蝇”式的开发，让后续的迭代具有强烈的阶段感与方向感。
 
 ---
@@ -83,8 +85,8 @@ graph TD
      - 允许插件在 UI 中注册自定义面板（如增加一个渲染特效的 Tab，或一个专门用来测试正则的 Sandbox）。
      - 使用 Iframe / Web Components 或安全的 JS 动态载入，与核心 UI 隔离。
   2. **更完善的 Extension SDK**：
-     - 暴露 `ctx.workspace` API，让插件能读取当前项目结构。
-     - 实现 `ctx.rpc` 的双向通信：核心向插件发通知，插件调核心 RPC。
+     - 通过 `ctx.scope` 暴露当前挂载点的轻量 workspace / card / session 快照，避免插件为了宿主已知字段重复请求。
+     - 实现 `ctx.rpc` 的双向通信；完整数据读取与写入走 typed RPC。
   3. **自省机制 (Introspection Dashboard)**：
      - 在 Client 中提供一个“自省工作台”（`preset-workbench`），可视化当前所有已激活插件、他们声明的 Capabilities 以及注册的 API 拓扑图。
 * **完成标志 (Definition of Done)**：

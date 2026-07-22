@@ -15,6 +15,7 @@
   "dependencies": {
     "@loom/core": "workspace:*",
     "@loom-studio/document-store": "workspace:*",
+    "@loom-studio/logging": "workspace:*",
     "@loom-studio/shared": "workspace:*"
   }
 }

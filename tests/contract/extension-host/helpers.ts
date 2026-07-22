@@ -2,13 +2,14 @@ import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
 import { createInMemoryDocumentStore } from '@loom-studio/document-store'
 import { createExtensionHost } from '@loom-studio/extension-host'
 import { createKernel, type Kernel } from '@loom-studio/kernel'
+import type { Logger } from '@loom-studio/logging'
 import { createLoomRunner } from '@loom-studio/loom-runner'
 import type { JsonValue } from '@loom-studio/shared'
 import { createInMemoryTraceAuditStore } from '@loom-studio/trace-audit'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-export function createExtensionHostHarness() {
+export function createExtensionHostHarness(options: { logger?: Logger } = {}) {
   const diagnostics = createInMemoryDiagnosticsRegistry()
   const documents = createInMemoryDocumentStore()
   const traceAudit = createInMemoryTraceAuditStore()
@@ -17,6 +18,7 @@ export function createExtensionHostHarness() {
   const extensionHost = createExtensionHost({
     documents,
     diagnostics,
+    logger: options.logger,
     callRpc: (method, params, context) => kernel.callRpc(method, params, context),
     registerRpc: (name, ownerExtensionId, handler) => {
       const handle = kernel.registerExtensionRpc(name, ownerExtensionId, handler)

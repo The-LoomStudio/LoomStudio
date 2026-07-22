@@ -22,7 +22,9 @@ import { createApplicationRuntimeContext, type ApplicationRuntimeContext } from 
 import { applicationDocumentTypes } from './document-types.js'
 import { listDocuments, readDocument, toVersioned, writeDocument } from './document-store.js'
 import { executeDocumentMutation } from './mutation.js'
+import type { ActivationFacts } from './prompt-activation.js'
 import { buildOpenAIChatPayload, type OpenAIChatPayload } from './provider-payload.js'
+import type { ProjectionOrderProfile } from './prompt-builder.js'
 import { composePromptBuildForInput } from './prompt.js'
 import { assertSameSession, findBranchContainingEntry, readBranchPath, readSessionBranch } from './timeline.js'
 import {
@@ -222,18 +224,21 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     },
 
     listModelProfiles: async input => {
-      const result = await ctx.documents.list({
-        type: applicationDocumentTypes.modelProfile,
-        cursor: input?.cursor,
-        limit: input?.limit,
-      })
-      const modelProfiles = (result.items as Array<DocumentRecord<ModelProfileContent>>)
+      const offset = input?.cursor ? Number(input.cursor) : 0
+      const limit = input?.limit ?? 100
+      if (!Number.isInteger(offset) || offset < 0) throw new Error('listModelProfiles cursor must be a non-negative integer')
+      if (!Number.isInteger(limit) || limit < 1) throw new Error('listModelProfiles limit must be a positive integer')
+
+      // ponytail: Document Store 暂不支持按内容字段查询；数据量增长后应将 providerAccountId 提升为可索引过滤条件。
+      const matchingProfiles = (await listDocuments<ModelProfileContent>(ctx.documents, applicationDocumentTypes.modelProfile))
         .map(toVersioned)
         .filter(modelProfile => !input?.providerAccountId || modelProfile.providerAccountId === input.providerAccountId)
+      const modelProfiles = matchingProfiles.slice(offset, offset + limit)
+      const nextOffset = offset + limit
 
       return {
         modelProfiles,
-        nextCursor: result.nextCursor,
+        nextCursor: nextOffset < matchingProfiles.length ? String(nextOffset) : undefined,
       }
     },
 
@@ -327,7 +332,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       return { deleted: true as const }
     },
 
-    pingModelProfile: async input => {
+    pingModelProfile: async (input, requestContext) => {
       const result = await ctx.gateway.invokeChat({
         request: {
           messages: [{ role: 'user', content: input.text ?? 'hi' }],
@@ -336,6 +341,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         runId: ctx.createId('run'),
         sessionId: ctx.createId('session'),
         branchId: ctx.createId('branch'),
+        ...(requestContext ? { context: requestContext } : {}),
       })
 
       return {
@@ -550,7 +556,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       }
     },
 
-    previewPrompt: async input => {
+    previewPrompt: async (input, requestContext) => {
       if (input.input.trim().length === 0) {
         throw new Error('previewPrompt input cannot be empty')
       }
@@ -561,15 +567,15 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         agentRuntimeProfileId: input.agentRuntimeProfileId ?? session.content.agentRuntimeProfileId,
       })
 
-      const promptBuild = await composePromptBuildForInput(
-        ctx.documents,
+      const promptBuild = await executePromptBuild(ctx, {
+        mode: 'preview',
         session,
         branch,
-        input.input,
-        input.projectionOrderProfile,
-        input.workspaceId ?? session.content.workspaceId,
-        input.activationFacts,
-      )
+        userInput: input.input,
+        orderProfile: input.projectionOrderProfile,
+        workspaceId: input.workspaceId ?? session.content.workspaceId,
+        activationFacts: input.activationFacts,
+      }, requestContext)
 
       return {
         session: toVersioned(session),
@@ -585,7 +591,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       }
     },
 
-    submitTurn: async input => {
+    submitTurn: async (input, requestContext) => {
       if (input.input.trim().length === 0) {
         throw new Error('submitTurn input cannot be empty')
       }
@@ -603,15 +609,16 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       const assistantEntryId = ctx.createId('entry')
       const commitCandidateId = ctx.createId('commit')
       const stateSnapshotId = ctx.createId('snapshot')
-      const promptBuild = await composePromptBuildForInput(
-        ctx.documents,
+      const promptBuild = await executePromptBuild(ctx, {
+        mode: 'runtime',
         session,
         branch,
-        input.input,
-        input.projectionOrderProfile,
-        input.workspaceId ?? session.content.workspaceId,
-        input.activationFacts,
-      )
+        userInput: input.input,
+        orderProfile: input.projectionOrderProfile,
+        workspaceId: input.workspaceId ?? session.content.workspaceId,
+        activationFacts: input.activationFacts,
+        runId,
+      }, requestContext)
       const prompt = promptBuild.messages
       const providerPayloadPreview = await buildProviderPayloadPreview({
         documents: ctx.documents,
@@ -634,11 +641,15 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         runId,
         sessionId: session.id,
         branchId: branch.id,
+        ...(requestContext ? { context: requestContext } : {}),
       })
 
       const transaction = await ctx.documents.transact({
         actor: applicationActor,
         reason: 'application.submitTurn',
+        correlationId: requestContext?.correlationId,
+        callId: requestContext?.callId,
+        parentCallId: requestContext?.parentCallId,
       }, async tx => {
         const run = await writeDocument<RunContent>(tx, {
           id: runId,
@@ -919,6 +930,86 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       return transaction.value
     },
   }
+}
+
+async function executePromptBuild(
+  ctx: ApplicationRuntimeContext,
+  input: {
+    mode: 'preview' | 'runtime'
+    session: DocumentRecord<SessionContent>
+    branch: DocumentRecord<NarrativeBranchContent>
+    userInput: string
+    orderProfile?: ProjectionOrderProfile
+    workspaceId?: string
+    activationFacts?: ActivationFacts
+    runId?: string
+  },
+  requestContext?: {
+    correlationId?: string
+    callId?: string
+    parentCallId?: string
+  },
+) {
+  const buildId = ctx.createId('build')
+  const startedAt = performance.now()
+  const references = {
+    buildId,
+    mode: input.mode,
+    sessionId: input.session.id,
+    branchId: input.branch.id,
+    ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
+    ...(input.runId ? { runId: input.runId } : {}),
+  }
+  const logContext = {
+    ...(requestContext?.correlationId ? { correlationId: requestContext.correlationId } : {}),
+    ...(requestContext?.callId ? { callId: requestContext.callId } : {}),
+    ...(requestContext?.parentCallId ? { parentCallId: requestContext.parentCallId } : {}),
+  }
+
+  ctx.logger?.info(`${input.mode} prompt build started`, {
+    event: 'prompt.build.started',
+    data: references,
+    ...logContext,
+  })
+
+  try {
+    const result = await composePromptBuildForInput(
+      ctx.documents,
+      input.session,
+      input.branch,
+      input.userInput,
+      input.orderProfile,
+      input.workspaceId,
+      input.activationFacts,
+    )
+    const durationMs = readDurationMs(startedAt)
+    ctx.logger?.info(`${input.mode} prompt build completed · ${result.messages.length} messages · ${durationMs} ms`, {
+      event: 'prompt.build.completed',
+      data: {
+        ...references,
+        messageCount: result.messages.length,
+        durationMs,
+      },
+      ...logContext,
+    })
+    return result
+  } catch (error) {
+    const durationMs = readDurationMs(startedAt)
+    ctx.logger?.error(`${input.mode} prompt build failed after ${durationMs} ms`, {
+      event: 'prompt.build.failed',
+      data: {
+        ...references,
+        durationMs,
+        failureType: error instanceof Error ? error.name : 'UnknownError',
+      },
+      ...logContext,
+    })
+    throw error
+  }
+}
+
+function readDurationMs(startedAt: number): number {
+  return Math.round((performance.now() - startedAt) * 100) / 100
 }
 
 async function createSessionDocuments(input: {

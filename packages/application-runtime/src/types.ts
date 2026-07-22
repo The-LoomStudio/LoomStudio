@@ -1,4 +1,5 @@
 import type { DocumentStore } from '@loom-studio/document-store'
+import type { Logger } from '@loom-studio/logging'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import type { ActivationFacts, PromptActivation } from './prompt-activation.js'
 import type { OpenAIChatPayload } from './provider-payload.js'
@@ -21,7 +22,7 @@ export type ApplicationRuntime = {
   listModelProfiles(input?: ListModelProfilesInput): Promise<ListModelProfilesResult>
   updateModelProfile(input: UpdateModelProfileInput): Promise<UpdateModelProfileResult>
   deleteModelProfile(input: DeleteModelProfileInput): Promise<DeleteModelProfileResult>
-  pingModelProfile(input: PingModelProfileInput): Promise<PingModelProfileResult>
+  pingModelProfile(input: PingModelProfileInput, context?: RuntimeRequestContext): Promise<PingModelProfileResult>
   createAgentRuntimeProfile(input: CreateAgentRuntimeProfileInput): Promise<CreateAgentRuntimeProfileResult>
   getAgentRuntimeProfile(input: GetAgentRuntimeProfileInput): Promise<GetAgentRuntimeProfileResult>
   listAgentRuntimeProfiles(input?: ListAgentRuntimeProfilesInput): Promise<ListAgentRuntimeProfilesResult>
@@ -39,8 +40,8 @@ export type ApplicationRuntime = {
   deletePromptAsset(input: DeletePromptAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptAssetResult>
   updateProjectionOrderProfile(input: UpdateProjectionOrderProfileInput, context?: RuntimeRequestContext): Promise<UpdateProjectionOrderProfileResult>
   exportWorkspaceArtifact(input: ExportWorkspaceArtifactInput): Promise<ExportWorkspaceArtifactResult>
-  previewPrompt(input: PreviewPromptInput): Promise<PreviewPromptResult>
-  submitTurn(input: SubmitTurnInput): Promise<SubmitTurnResult>
+  previewPrompt(input: PreviewPromptInput, context?: RuntimeRequestContext): Promise<PreviewPromptResult>
+  submitTurn(input: SubmitTurnInput, context?: RuntimeRequestContext): Promise<SubmitTurnResult>
   getSession(input: GetSessionInput): Promise<GetSessionResult>
   getTimeline(input: GetTimelineInput): Promise<GetTimelineResult>
   getAgentTranscript(input: GetAgentTranscriptInput): Promise<GetAgentTranscriptResult>
@@ -61,6 +62,7 @@ export type MutationReceipt = {
 
 export type ApplicationRuntimeOptions = {
   documents: DocumentStore
+  logger?: Logger
   gateway?: AiGateway
   provider?: ApplicationProvider
   clock?: { now(): Date }
@@ -99,6 +101,7 @@ export type GatewayInvokeChatInput = {
   runId: string
   sessionId: string
   branchId: string
+  context?: RuntimeRequestContext
 }
 
 export type CanonicalChatRequest = {

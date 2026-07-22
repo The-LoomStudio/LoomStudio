@@ -33,6 +33,8 @@ export default defineConfig({
       '@loom-studio/extension-host': new URL('./packages/extension-sdk/extension-host/src/index.ts', import.meta.url).pathname,
       '@loom-studio/extension-sdk': new URL('./packages/extension-sdk/src/index.ts', import.meta.url).pathname,
       '@loom-studio/kernel': new URL('./packages/kernel/src/index.ts', import.meta.url).pathname,
+      '@loom-studio/logging/node': new URL('./packages/logging/src/node.ts', import.meta.url).pathname,
+      '@loom-studio/logging': new URL('./packages/logging/src/index.ts', import.meta.url).pathname,
       '@loom-studio/loom-runner': new URL('./packages/loom-runner/src/index.ts', import.meta.url).pathname,
       '@loom-studio/shared': new URL('./packages/shared/src/index.ts', import.meta.url).pathname,
       '@loom-studio/trace-audit': new URL('./packages/trace-audit/src/index.ts', import.meta.url).pathname,

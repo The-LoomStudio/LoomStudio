@@ -2,7 +2,7 @@ import type { Diagnostic, DiagnosticInput, DiagnosticsRegistry } from '@loom-stu
 import type { ActorRef, DocumentStore, ListDocumentsInput, WriteDocumentInput, WriteDocumentResult } from '@loom-studio/document-store'
 import type { ExtensionActivationContext, ExtensionManifest, ExtensionRpcHandler, ServerExtensionModule } from '@loom-studio/extension-sdk'
 export type { ExtensionRpcHandler } from '@loom-studio/extension-sdk'
-import type { JsonValue } from '@loom-studio/shared'
+import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -37,9 +37,15 @@ export type ExtensionRpcRegistration = {
   dispose(): void
 }
 
+export type ExtensionHostLogger = {
+  info(message: string, fields?: { event?: string; data?: JsonObject }): void
+  error(message: string, fields?: { event?: string; data?: JsonObject }): void
+}
+
 export type ExtensionHostOptions = {
   documents: DocumentStore
   diagnostics: DiagnosticsRegistry
+  logger?: ExtensionHostLogger
   callRpc(method: string, params?: JsonValue, context?: ExtensionRpcContext): Promise<JsonValue>
   registerRpc(name: string, ownerExtensionId: string, handler: ExtensionRpcHandler): ExtensionRpcRegistration
   emitEvent(name: string, payload: JsonValue, ownerExtensionId: string): void
@@ -80,6 +86,15 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
         disposeCallbacks: [],
       }
       records.set(manifest.id, record)
+      options.logger?.info(`${manifest.id} discovered · v${manifest.version}`, {
+        event: 'extension.discovered',
+        data: {
+          extensionId: manifest.id,
+          version: manifest.version,
+          state: record.state,
+          contributions: contributionCounts(manifest),
+        },
+      })
       return toSummary(record)
     },
 
@@ -98,6 +113,10 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
       if (!record) return
       await disposeRecord(record)
       record.state = 'disabled'
+      options.logger?.info(`${extensionId} disposed`, {
+        event: 'extension.disposed',
+        data: { extensionId, state: record.state },
+      })
     },
 
     list: () => [...records.values()].map(toSummary),
@@ -108,13 +127,29 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 async function activateRecord(extensionId: string, records: Map<string, ExtensionRecord>, options: ExtensionHostOptions): Promise<ExtensionSummary> {
   const record = records.get(extensionId)
   if (!record?.manifest) throw new Error(`Extension not found: ${extensionId}`)
+  const startedAt = performance.now()
   record.state = 'activating'
+  options.logger?.info(`${extensionId} activation started`, {
+    event: 'extension.activation.started',
+    data: { extensionId, version: record.manifest.version, state: record.state },
+  })
 
   try {
     const module = await loadServerModule(record)
     record.state = 'loaded'
     await module.activate(createContext(record, options))
     record.state = hasContributionMismatch(record, options) ? 'degraded' : 'active'
+    const durationMs = elapsedMs(startedAt)
+    options.logger?.info(`${extensionId} activated · ${record.state} · ${durationMs} ms`, {
+      event: 'extension.activation.completed',
+      data: {
+        extensionId,
+        version: record.manifest.version,
+        state: record.state,
+        durationMs,
+        contributions: contributionCounts(record.manifest),
+      },
+    })
   } catch (error) {
     record.state = 'disabled'
     reportDiagnostic(options.diagnostics, extensionId, {
@@ -124,9 +159,39 @@ async function activateRecord(extensionId: string, records: Map<string, Extensio
       source: 'extension-host',
     })
     await disposeRecord(record)
+    const durationMs = elapsedMs(startedAt)
+    options.logger?.error(`${extensionId} activation failed after ${durationMs} ms`, {
+      event: 'extension.activation.failed',
+      data: {
+        extensionId,
+        version: record.manifest.version,
+        state: record.state,
+        durationMs,
+        failureType: error instanceof Error ? error.name : typeof error,
+        ...errorCode(error),
+      },
+    })
   }
 
   return toSummary(record)
+}
+
+function contributionCounts(manifest: ExtensionManifest): { rpc: number; documentTypes: number; events: number } {
+  return {
+    rpc: manifest.contributes?.rpc?.length ?? 0,
+    documentTypes: manifest.contributes?.documentTypes?.length ?? 0,
+    events: manifest.contributes?.events?.length ?? 0,
+  }
+}
+
+function elapsedMs(startedAt: number): number {
+  return Number((performance.now() - startedAt).toFixed(2))
+}
+
+function errorCode(error: unknown): { errorCode?: string } {
+  return error instanceof Error && 'code' in error && typeof error.code === 'string'
+    ? { errorCode: error.code }
+    : {}
 }
 
 export function parseExtensionManifest(value: unknown): ExtensionManifest {

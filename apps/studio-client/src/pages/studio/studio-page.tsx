@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { FlaskConical, Users, PencilLine, Plug, BotMessageSquare } from 'lucide-react'
+import { FlaskConical, Users, PencilLine, Plug, BotMessageSquare, ScrollText } from 'lucide-react'
 import type { Translator } from '../../shared/i18n/index.js'
 import styles from './studio-page.module.scss'
 
@@ -12,6 +12,7 @@ type StudioPageProps = {
   editorPanel: ReactNode
   error?: string
   inspector: ReactNode
+  logsPanel: ReactNode
   onRedo(): void
   onUndo(): void
   apiPanel: ReactNode
@@ -20,7 +21,7 @@ type StudioPageProps = {
   t: Translator
 }
 
-type ActivePanel = 'api' | 'preset' | 'resources' | 'editor' | 'inspector' | null
+type ActivePanel = 'api' | 'preset' | 'resources' | 'editor' | 'inspector' | 'logs' | null
 
 export function StudioPage(props: StudioPageProps) {
   const [activePanel, setActivePanel] = useState<ActivePanel>('resources')
@@ -125,6 +126,18 @@ export function StudioPage(props: StudioPageProps) {
             <FlaskConical aria-hidden="true" absoluteStrokeWidth size={18} strokeWidth={1.5} />
             <span className={styles.railLabel}>{props.t('rail.inspector')}</span>
           </button>
+          <button
+            aria-label={props.t('rail.logs')}
+            aria-controls="studio-logs-panel"
+            aria-expanded={activePanel === 'logs'}
+            className={activePanel === 'logs' ? `${styles.railTab} ${styles.railTabActive}` : styles.railTab}
+            title={props.t('rail.logs')}
+            type="button"
+            onClick={() => togglePanel('logs')}
+          >
+            <ScrollText aria-hidden="true" absoluteStrokeWidth size={18} strokeWidth={1.5} />
+            <span className={styles.railLabel}>{props.t('rail.logs')}</span>
+          </button>
         </nav>
 
         <div
@@ -181,6 +194,16 @@ export function StudioPage(props: StudioPageProps) {
           data-loom-component="overlay-inspector-layer"
         >
           {props.inspector}
+        </div>
+
+        <div
+          className={activePanel === 'logs' ? `${styles.stageWorkspace} ${styles.stageWorkspaceActive}` : styles.stageWorkspace}
+          id="studio-logs-panel"
+          aria-hidden={activePanel !== 'logs'}
+          hidden={activePanel !== 'logs'}
+          data-loom-component="overlay-logs-layer"
+        >
+          {props.logsPanel}
         </div>
       </section>
     </main>

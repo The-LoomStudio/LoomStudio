@@ -130,6 +130,9 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
   - 定义了系统内所有 RPC 消息、事件通知的格式 (Message Envelope)。
 - 📦 `packages/client-bridge/`
   - 供前端使用的 Bridge SDK，连接到后端的 Transport 以进行远程调用。
+- 📦 `packages/logging/`
+  - Server/Client 共用的结构化运行日志底座，提供 Root/Child Logger、Memory/Console Sink 与查询类型；Node JSONL 持久化通过 `@loom-studio/logging/node` 子入口提供。
+  - 正式架构说明：[`architecture/platform/logging.md`](../architecture/platform/logging.md)。
 - 📦 `packages/loom-runner/`
   - 面向 Kernel/RPC 的 Core adapter，负责 JSON 输入校验、默认 PassFactory 和 Trace Audit。
 - 📦 `packages/extension-sdk/`

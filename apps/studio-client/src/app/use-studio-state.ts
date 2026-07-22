@@ -1,8 +1,9 @@
 import { createClientBridge, type ClientJsonValue } from '@loom-studio/client-bridge'
+import type { Logger } from '@loom-studio/logging'
 import { useEffect, useMemo, useState } from 'react'
 import { createTranslator, type Locale } from '../shared/i18n/index.js'
 import { createRendererApi } from '../shared/api/renderer-api.js'
-import { createStudioApi } from '../shared/api/studio-api.js'
+import { createStudioApi, withClientBridgeLogging } from '../shared/api/studio-api.js'
 import { useBusyAction } from '../shared/hooks/use-busy-action.js'
 import { useCards } from '../features/cards/model/use-cards.js'
 import { useEditHistory } from '../features/edit-history/model/use-edit-history.js'
@@ -26,7 +27,7 @@ import {
   readStoredPromptProjection,
 } from './utils.js'
 
-export function useStudioState() {
+export function useStudioState(transportLogger: Logger) {
   const [locale, setLocale] = useState<Locale>('zh-CN')
   const t = useMemo(() => createTranslator(locale), [locale])
   const [endpoint, setEndpoint] = useState(DemoData.endpoint)
@@ -37,9 +38,10 @@ export function useStudioState() {
   })
   const busyAction = useBusyAction()
   const bridge = useMemo(() => createClientBridge({ endpoint, source: 'studio-client' }), [endpoint])
-  const api = useMemo(() => createStudioApi(bridge), [bridge])
+  const observedBridge = useMemo(() => withClientBridgeLogging(bridge, transportLogger), [bridge, transportLogger])
+  const api = useMemo(() => createStudioApi(observedBridge), [observedBridge])
   const editHistory = useEditHistory({ revertChangeset: api.history.revert })
-  const rendererApi = useMemo(() => createRendererApi(bridge), [bridge])
+  const rendererApi = useMemo(() => createRendererApi(observedBridge), [observedBridge])
   const [activePromptWorkspaceId, setActivePromptWorkspaceId] = useState<string>()
   const [promptWorkspaces, setPromptWorkspaces] = useState<PromptWorkspace[]>([])
   const [promptWorkspacesLoaded, setPromptWorkspacesLoaded] = useState(false)
@@ -111,7 +113,7 @@ export function useStudioState() {
       await cardsState.refreshCards()
       await providerSettings.refreshProviderSettings()
     })
-  }, [bridge])
+  }, [observedBridge])
 
   const selectedCardWorkspaceId = useMemo(() => {
     if (!cardsState.selectedCardId) return undefined
@@ -132,9 +134,7 @@ export function useStudioState() {
         workspace.id === result.workspace.id ? result.workspace : workspace
       )))
       applyPromptWorkspaceSelection(result.workspace)
-    }).catch(error => {
-      console.error('Failed to load prompt workspace', error)
-    })
+    }).catch(() => undefined)
 
     return () => {
       cancelled = true
@@ -217,6 +217,7 @@ export function useStudioState() {
     locale, setLocale, t,
     // bridge
     endpoint, setEndpoint,
+    logsApi: api.logs,
     // cards
     cards: cardsState.cards,
     selectedCardId: cardsState.selectedCardId,

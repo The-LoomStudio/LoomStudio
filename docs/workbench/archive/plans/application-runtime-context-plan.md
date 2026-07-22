@@ -1,6 +1,8 @@
-# Application Runtime Context 架构评估与计划
+# Application Runtime Context 架构评估与计划（已归档）
 
-> **状态**：Draft / Evaluation
+> **状态**：Archived / Core Direction Implemented
+> **归档日期**：2026-07-23
+> **归档原因**：基础设施 Context 与请求级 correlation 已落地；稳定边界已提炼到 [`../../../architecture/application/README.md`](../../../architecture/application/README.md)，Extension Host Context 由 [`../../discussion/extensions/studio-extension-host-capabilities-v0.md`](../../discussion/extensions/studio-extension-host-capabilities-v0.md) 继续讨论。
 > **目的**：评估是否在 Application Runtime 引入 `ctx` 风格的运行上下文，以减少横切型传参，同时避免把业务输入藏进隐式全局对象。
 > **适用范围**：`packages/application-runtime`、`apps/studio-server` 的 RPC 调用上下文、未来 Extension / Plugin Context。
 
@@ -324,13 +326,19 @@ createApplicationRuntime({ ..., requestContextProvider })
 
 不要直接把 `ApplicationRuntimeContext` 暴露给插件。
 
-插件应拿到受限 context：
+插件应拿到独立的 Host Context。它不是资源 API 封装层，而是插件运行环境：
 
 ```ts
 type PluginContext = {
   rpc: PluginRpcClient
-  documents: ScopedDocumentApi
-  diagnostics: DiagnosticSink
+  scope: PluginScopeSnapshot
+  app: PluginHostSnapshot
+  plugin: PluginIdentity
+  permissions: PluginPermissions
+  diagnostics?: DiagnosticSink
+  logger?: Logger
+  ui?: PluginUiBridge
+  commands?: PluginCommandRegistry
 }
 ```
 
@@ -338,6 +346,9 @@ type PluginContext = {
 
 - 插件不能拿到底层 `DocumentStore`。
 - 插件不能直接调用 `gateway`。
+- 插件读写 Card / Preset / Setting Layer / Session 等数据默认走 typed RPC。
+- `scope` 只放宿主挂载插件时已经拥有的轻量快照，例如 `workspaceId`、`cardId`、`sessionId`、卡片名称或当前宿主版本。
+- `scope` 不是权威数据源，不承诺实时同步；持久化修改必须回到 RPC。
 - 插件权限、沙箱、审计需要单独边界。
 
 ---
@@ -383,11 +394,11 @@ PromptBuild / Provider 调用如果从 ctx 隐式读取事实，会让 trace 失
 2. 在 `runtime.ts` 内部使用 ctx
    - 只替换 `documents/gateway/now/createId`
    - public API 不变
-3. 迁移 `agent.ts` 和 `timeline.ts`
-   - 这两个模块传参简单，收益明确
-4. 迁移 `workspace.ts`
-   - 逐步替换 `{ documents, now }`
-5. 迁移 `prompt.ts` / `prompt-build-pipeline.ts`
+3. 视需要迁移 `agent.ts` 和 `timeline.ts`
+   - 只有当横切能力继续增加时再迁移，不为了统一而统一
+4. 谨慎评估 `workspace.ts`
+   - 当前 `{ documents, now, ... }` 仍然直白；除非 trace / request context 进入这些操作，否则不强制替换
+5. 视需要迁移 `prompt.ts` / `prompt-build-pipeline.ts`
    - ctx 只提供 `documents`
    - request 保留 PromptBuild 显式输入
 6. 等 trace/audit 需求明确后再接 RPC request context

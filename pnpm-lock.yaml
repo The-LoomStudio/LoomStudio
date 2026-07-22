@@ -107,6 +107,9 @@ importers:
       '@loom-studio/client-bridge':
         specifier: workspace:*
         version: link:../../packages/client-bridge
+      '@loom-studio/logging':
+        specifier: workspace:*
+        version: link:../../packages/logging
       '@vitejs/plugin-react':
         specifier: latest
         version: 6.0.3(vite@8.1.1(@types/node@26.0.1)(esbuild@0.28.0)(sass@1.101.0)(tsx@4.22.4)(yaml@2.9.0))
@@ -153,6 +156,9 @@ importers:
       '@loom-studio/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
+      '@loom-studio/logging':
+        specifier: workspace:*
+        version: link:../../packages/logging
       '@loom-studio/loom-runner':
         specifier: workspace:*
         version: link:../../packages/loom-runner
@@ -177,6 +183,9 @@ importers:
       '@loom-studio/document-store':
         specifier: workspace:*
         version: link:../document-store
+      '@loom-studio/logging':
+        specifier: workspace:*
+        version: link:../logging
       '@loom-studio/shared':
         specifier: workspace:*
         version: link:../shared
@@ -258,6 +267,12 @@ importers:
       '@loom-studio/transport':
         specifier: workspace:*
         version: link:../transport
+
+  packages/logging:
+    dependencies:
+      '@loom-studio/shared':
+        specifier: workspace:*
+        version: link:../shared
 
   packages/loom-runner:
     dependencies:

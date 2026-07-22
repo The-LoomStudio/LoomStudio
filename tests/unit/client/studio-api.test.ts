@@ -1,9 +1,60 @@
 import type { ClientBridge, ClientJsonValue } from '@loom-studio/client-bridge'
+import { createMemoryLogSink, createRootLogger } from '@loom-studio/logging'
 import { describe, expect, it } from 'vitest'
 import { createRendererApi } from '../../../apps/studio-client/src/shared/api/renderer-api.js'
-import { createStudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
+import { createStudioApi, withClientBridgeLogging } from '../../../apps/studio-client/src/shared/api/studio-api.js'
 
 describe('studio client typed api', () => {
+  it('logs failed rpc calls without params or error messages', async () => {
+    const logs = createMemoryLogSink({ capacity: 10 })
+    const root = createRootLogger({ service: 'studio-client', instanceId: 'client-test', sinks: [logs] })
+    const privateError = Object.assign(new Error('private server failure text'), { code: 'RPC_FAILED' })
+    const bridge = withClientBridgeLogging(failingBridge(privateError), root.child('transport.rpc'))
+
+    await expect(bridge.call('application.updateCard', {
+      name: 'Private character name',
+      body: 'Private character content',
+    })).rejects.toBe(privateError)
+
+    const records = logs.list()
+    expect(records).toHaveLength(1)
+    expect(records[0]?.message).toMatch(/^application\.updateCard failed after \d+(?:\.\d+)? ms$/)
+    expect(records[0]?.data).toMatchObject({
+      method: 'application.updateCard',
+      failureType: 'Error',
+      errorCode: 'RPC_FAILED',
+    })
+    expect(JSON.stringify(records)).not.toContain('Private character')
+    expect(JSON.stringify(records)).not.toContain('private server failure text')
+  })
+
+  it('maps log queries through the typed studio api surface', async () => {
+    const calls: Array<{ method: string; params?: ClientJsonValue }> = []
+    const api = createStudioApi(fakeBridge(calls, {
+      'logs.list': {
+        items: [],
+        cursor: 'memory:test:0',
+        hasMore: false,
+      },
+    }))
+
+    const page = await api.logs.list({
+      limit: 50,
+      levels: ['warn', 'error'],
+      namespacePrefix: 'transport.rpc',
+    })
+
+    expect(page.cursor).toBe('memory:test:0')
+    expect(calls).toEqual([{
+      method: 'logs.list',
+      params: {
+        limit: 50,
+        levels: ['warn', 'error'],
+        namespacePrefix: 'transport.rpc',
+      },
+    }])
+  })
+
   it('maps application calls through the typed studio api surface', async () => {
     const calls: Array<{ method: string; params?: ClientJsonValue }> = []
     const api = createStudioApi(fakeBridge(calls, {
@@ -120,6 +171,17 @@ function fakeBridge(
       }
     },
     request: async () => ({ jsonrpc: '2.0', id: null, result: null, meta: {} }),
+    getConnectionState: () => 'connected',
+  }
+}
+
+function failingBridge(error: Error): ClientBridge {
+  return {
+    connect: async () => {},
+    disconnect: async () => {},
+    call: async () => { throw error },
+    callWithMeta: async () => { throw error },
+    request: async () => { throw error },
     getConnectionState: () => 'connected',
   }
 }

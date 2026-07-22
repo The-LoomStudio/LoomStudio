@@ -1,6 +1,8 @@
-# Loom Core Monorepo 迁移计划
+# Loom Core Monorepo 迁移计划（已归档）
 
-> **状态**：Complete
+> **状态**：Archived / Complete
+> **归档日期**：2026-07-23
+> **归档原因**：迁移已经完成，当前架构由 [`../../../architecture/application/prompt-build/loom-core/`](../../../architecture/application/prompt-build/loom-core/) 维护。
 > **日期**：2026-07-13
 > **源仓库**：`/Users/macbookair/Desktop/LoomProject`
 > **源 commit**：`25b0c5b8d26517a1dfff7fa0fb06a8e003131861`

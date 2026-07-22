@@ -188,7 +188,7 @@ export async function callApplicationRpc(
     case 'application.pingModelProfile':
       return await runtime.pingModelProfile({
         modelProfileId: readString(params, 'modelProfileId'),
-      }) as unknown as JsonValue
+      }, context) as unknown as JsonValue
 
     case 'application.createAgentRuntimeProfile':
       return await runtime.createAgentRuntimeProfile({
@@ -319,7 +319,7 @@ export async function callApplicationRpc(
         workspaceId: readOptionalString(params, 'workspaceId'),
         projectionOrderProfile: readOptionalProjectionOrderProfile(params, 'projectionOrderProfile'),
         activationFacts: readOptionalObject(params, 'activationFacts'),
-      }) as unknown as JsonValue
+      }, context) as unknown as JsonValue
 
     case 'application.submitTurn':
       return await runtime.submitTurn({
@@ -331,7 +331,7 @@ export async function callApplicationRpc(
         workspaceId: readOptionalString(params, 'workspaceId'),
         projectionOrderProfile: readOptionalProjectionOrderProfile(params, 'projectionOrderProfile'),
         activationFacts: readOptionalObject(params, 'activationFacts'),
-      }) as unknown as JsonValue
+      }, context) as unknown as JsonValue
 
     case 'application.getSession':
       return await runtime.getSession({

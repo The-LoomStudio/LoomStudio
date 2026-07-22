@@ -7,6 +7,48 @@ describe('application runtime provider and agent integration', () => {
     vi.unstubAllGlobals()
   })
 
+  it('filters model profiles before applying pagination', async () => {
+    const runtime = createApplicationRuntime({ documents: createInMemoryDocumentStore() })
+    const accountA = await runtime.createProviderAccount({
+      providerExtensionId: 'fake',
+      displayName: 'Account A',
+    })
+    const accountB = await runtime.createProviderAccount({
+      providerExtensionId: 'fake',
+      displayName: 'Account B',
+    })
+
+    for (const [index, providerAccountId] of [
+      accountA.providerAccount.id,
+      accountA.providerAccount.id,
+      accountB.providerAccount.id,
+      accountB.providerAccount.id,
+    ].entries()) {
+      await runtime.createModelProfile({
+        providerAccountId,
+        displayName: `Model ${index}`,
+        providerModelId: `model-${index}`,
+      })
+    }
+
+    const firstPage = await runtime.listModelProfiles({
+      providerAccountId: accountB.providerAccount.id,
+      limit: 1,
+    })
+    const secondPage = await runtime.listModelProfiles({
+      providerAccountId: accountB.providerAccount.id,
+      limit: 1,
+      cursor: firstPage.nextCursor,
+    })
+
+    expect(firstPage.modelProfiles).toHaveLength(1)
+    expect(firstPage.modelProfiles[0]?.providerAccountId).toBe(accountB.providerAccount.id)
+    expect(firstPage.nextCursor).toBe('1')
+    expect(secondPage.modelProfiles).toHaveLength(1)
+    expect(secondPage.modelProfiles[0]?.providerAccountId).toBe(accountB.providerAccount.id)
+    expect(secondPage.nextCursor).toBeUndefined()
+  })
+
   it('invokes an OpenAI-compatible gateway with model profile config and normalized chat result', async () => {
     const requests: Array<{
       url: string

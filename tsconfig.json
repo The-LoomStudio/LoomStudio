@@ -4,6 +4,7 @@
     { "path": "./apps/studio-server" },
     { "path": "./apps/studio-client" },
     { "path": "./packages/shared" },
+    { "path": "./packages/logging" },
     { "path": "./packages/diagnostics" },
     { "path": "./packages/transport" },
     { "path": "./packages/document-store" },

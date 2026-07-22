@@ -253,6 +253,8 @@ export default defineClientExtension({
 
 Client Extension 访问 Studio 能力必须经过 Client Host Bridge / sandbox activation context。Bridge 只暴露受控 Host API，例如 command invocation、panel state、RPC call、event subscription、diagnostics display 等。
 
+Bridge 不重新封装资源 CRUD。Card、Preset、Setting Layer、Session 等完整数据读取与持久化写入优先复用 typed RPC；activation context 只承载插件生命周期、宿主轻量快照、权限、UI 扩展点、diagnostics 与 scoped RPC。
+
 ### 9. `meta` 开放但必须 namespaced
 
 Manifest 可以提供开放 `meta` 字段，服务子级生态、市场、迁移工具或外部兼容层。

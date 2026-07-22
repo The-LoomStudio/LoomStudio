@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': new URL('./src', import.meta.url).pathname,
+      '@loom-studio/logging': new URL('../../packages/logging/src/index.ts', import.meta.url).pathname,
     },
   },
   css: {

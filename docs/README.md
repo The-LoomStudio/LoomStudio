@@ -41,7 +41,7 @@ Reference 当前仍位于 Workbench，尚未整体晋升为正式文档；如与
 - [`architecture/application/`](architecture/application/) — 第一方 AIRP Application；
 - [`architecture/ui/`](architecture/ui/) — Studio Shell 与领域无关 UI 原语。
 
-当前已经晋升的专题包括 [Studio Kernel](architecture/kernel/README.md) 与 [PromptBuild 中的 Loom Core 执行底座](architecture/application/prompt-build/loom-core/README.md)。其他设计仍以 Workbench 和当前代码为准。
+当前已经晋升的专题包括 [Studio Kernel](architecture/kernel/README.md)、[运行日志架构](architecture/platform/logging.md) 与 [PromptBuild 中的 Loom Core 执行底座](architecture/application/prompt-build/loom-core/README.md)。其他设计仍以 Workbench 和当前代码为准。
 
 ## 4. 🔧 Workbench: 演进工作台
 **入口: [`workbench/README.md`](workbench/README.md)**

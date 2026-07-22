@@ -3,7 +3,7 @@
 > **Status**: Draft v0.1（第一批工程约束，2026-05-13）  
 > **Purpose**: 定义 Server Extension MVP 生命周期、`activate(ctx)` 入口、Host API 最小形状、runtime registration 规则、状态机与 diagnostics 边界。  
 > **Audience**: Extension Host 实现者、Extension SDK 作者、Server Extension 作者、Plugin Manager / DevTool 作者。  
-> **Related**: [`../adr/ADR-002-extension-manifest-and-registration-model.md`](../adr/ADR-002-extension-manifest-and-registration-model.md), [`../03-kernel/studio-transport-protocol-v0.md`](../03-kernel/studio-transport-protocol-v0.md)
+> **Related**: [`../../adr/ADR-002-extension-manifest-and-registration-model.md`](../../adr/ADR-002-extension-manifest-and-registration-model.md), [`studio-extension-host-capabilities-v0.md`](studio-extension-host-capabilities-v0.md), [`../kernel/studio-transport-protocol-v0.md`](../kernel/studio-transport-protocol-v0.md)
 
 ---
 
@@ -93,6 +93,8 @@ Extension 公开能力只能在 `activate(ctx)` 内通过 `ctx` 注册。
 ---
 
 ## 3. ServerExtensionContext MVP Shape
+
+> **Current implementation note (2026-07-23)**: 当前 `ExtensionActivationContext` 已实现 extension、rpc、events、documents、diagnostics 与 lifecycle；Extension 作者可用的 `logger` 尚未进入 SDK Context。下述 Logger 与自动 correlation 仍是候选 contract，后续由 [`studio-extension-host-capabilities-v0.md`](studio-extension-host-capabilities-v0.md) 继续收敛。
 
 ```ts
 type ServerExtensionContext = {

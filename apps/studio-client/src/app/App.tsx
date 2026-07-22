@@ -1,3 +1,4 @@
+import type { Logger, MemoryLogSink } from '@loom-studio/logging'
 import { useStudioState } from './use-studio-state.js'
 import { StudioPage } from '../pages/studio/studio-page.js'
 import { PresetWorkbench } from '../widgets/preset-workbench/preset-workbench.js'
@@ -7,12 +8,13 @@ import { NarrativeCanvas } from '../widgets/narrative-canvas/narrative-canvas.js
 import { ResourcePanel } from '../widgets/resource-panel/resource-panel.js'
 import { ApiPanel } from '../widgets/api-panel/api-panel.js'
 import { InspectorPanel } from '../widgets/inspector-panel/inspector-panel.js'
+import { LogViewer } from '../widgets/log-viewer/log-viewer.js'
 import { DemoData } from './demo-data.js'
 import styles from './app.module.scss'
 import '../styles/global.css'
 
-export function App() {
-  const state = useStudioState()
+export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger }) {
+  const state = useStudioState(props.transportLogger)
   const contextAssetEditorProps = {
     nodes: state.contextAssets,
     onChangeNode: state.previewContextAsset,
@@ -175,6 +177,13 @@ export function App() {
           rendererSessionId={state.rendererSessionId}
           runDetails={state.runDetails ?? null}
           sample={state.renderingSample}
+          t={state.t}
+        />
+      )}
+      logsPanel={(
+        <LogViewer
+          api={state.logsApi}
+          clientLogs={props.clientLogs}
           t={state.t}
         />
       )}
