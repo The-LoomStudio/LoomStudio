@@ -1,9 +1,9 @@
 import type { AiGateway } from '@loom-studio/application-runtime'
 import { createMemoryLogSink, createRootLogger } from '@loom-studio/logging'
 import { describe, expect, it } from 'vitest'
-import { withAiGatewayLogging } from '../../../apps/studio-server/src/provider-logging.js'
+import { withAiGatewayLogging } from '../../../apps/studio-server/src/ai-gateway-logging.js'
 
-describe('Provider logging', () => {
+describe('AI gateway logging', () => {
   it('logs failures without request, response, or error content', async () => {
     const memory = createMemoryLogSink({ capacity: 5 })
     const root = createRootLogger({

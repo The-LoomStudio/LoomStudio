@@ -7,7 +7,7 @@ export function withAiGatewayLogging(gateway: AiGateway, logger: Logger): AiGate
     invokeChat: async input => {
       const invocationId = createId('invoke')
       const startedAt = performance.now()
-      const references = readReferences(input, invocationId)
+      const references = buildInvocationReferences(input, invocationId)
       const logContext = {
         ...(input.context?.correlationId ? { correlationId: input.context.correlationId } : {}),
         ...(input.context?.callId ? { callId: input.context.callId } : {}),
@@ -57,7 +57,7 @@ export function withAiGatewayLogging(gateway: AiGateway, logger: Logger): AiGate
   }
 }
 
-function readReferences(input: GatewayInvokeChatInput, invocationId: string) {
+function buildInvocationReferences(input: GatewayInvokeChatInput, invocationId: string) {
   return {
     invocationId,
     runId: input.runId,

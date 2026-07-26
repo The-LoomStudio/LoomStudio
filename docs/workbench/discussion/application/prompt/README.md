@@ -408,6 +408,7 @@ Prompt 视图:
 - [`composition-skeleton-and-preset-v0.md`](composition-skeleton-and-preset-v0.md)
 - [`setting-layer-prompt-source-v0.md`](setting-layer-prompt-source-v0.md)
 - [`content-component-and-binding-v0.md`](content-component-and-binding-v0.md)
+- [`multi-party-contribution-walkthrough-v0.md`](multi-party-contribution-walkthrough-v0.md) — 多方作者走查模拟、空白账本、官方词汇表与"区 / 块 / 条"结构收束（2026-07-26）
 
 ---
 

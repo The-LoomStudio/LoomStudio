@@ -1,13 +1,13 @@
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 import { readModelConfig, readModelConfigForm } from '../../../apps/studio-client/src/features/provider-settings/model/model-profile-config.js'
 import { isLikelyProviderEndpoint, normalizeOpenAICompatibleBaseUrl, readChatCompletionsEndpoint } from '../../../apps/studio-client/src/features/provider-settings/model/provider-base-url.js'
-import { chooseAgentRuntimeProfileId, readGatewayModelConfig } from '../../../apps/studio-client/src/features/provider-settings/model/use-provider-settings.js'
+import { buildGatewayModelConfig, chooseAgentRuntimeProfileId } from '../../../apps/studio-client/src/features/provider-settings/model/use-provider-settings.js'
 import type { AgentRuntimeProfile, ModelProfile } from '../../../apps/studio-client/src/entities/index.js'
 import { describe, expect, it } from 'vitest'
 
 describe('provider settings model', () => {
   it('maps camelCase form fields to provider wire config', () => {
-    const config = readGatewayModelConfig({
+    const config = buildGatewayModelConfig({
       temperature: '0.7',
       maxTokens: '256',
     }, createTranslator('en-US'))
@@ -19,7 +19,7 @@ describe('provider settings model', () => {
   })
 
   it('rejects invalid numeric model config', () => {
-    expect(() => readGatewayModelConfig({
+    expect(() => buildGatewayModelConfig({
       temperature: 'warm',
       maxTokens: '',
     }, createTranslator('en-US'))).toThrow('Expected number')

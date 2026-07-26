@@ -14,6 +14,8 @@ Loom Studio 使用 `eslint` 和 `prettier` 强制执行绝大多数风格。
   - ✅ `file-tree.tsx`, `input-dashboard.tsx`, `app.module.scss`
   - ❌ `FileTree.tsx`, `InputDashboard.tsx`, `App.module.scss`
   - React 组件内部标识仍采用 `PascalCase`，例如 `export function FileTree() {}`。
+  - 工具链约定的文件名不受此规则限制，例如 Sass partial `_variables.scss` 和声明文件 `vite-env.d.ts`。
+  - TypeScript 配置生成的 `.js`、`.js.map`、`.d.ts`、`.d.ts.map` 不提交，源配置只保留 `.ts`。
 - **Wire / Schema Fields**:
   - 外部协议、第三方 API、数据库字段、JSON schema 字段保留原始命名。
   - 例如 OpenAI 的 `max_tokens`、`finish_reason` 不为了统一风格强行改成 camelCase。

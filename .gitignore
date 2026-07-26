@@ -6,6 +6,7 @@ coverage/
 *.d.ts
 *.d.ts.map
 *.js.map
+apps/studio-client/vite.config.js
 .env
 .env.*
 !.env.example

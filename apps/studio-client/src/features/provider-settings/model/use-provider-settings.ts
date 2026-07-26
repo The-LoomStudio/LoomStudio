@@ -80,7 +80,7 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
         providerAccountId: providerAccount.providerAccount.id,
         displayName: gatewayForm.model,
         providerModelId: gatewayForm.model,
-        config: readGatewayModelConfig(gatewayForm, input.t),
+        config: buildGatewayModelConfig(gatewayForm, input.t),
       }))
       const agentRuntimeProfile = await input.api.agentRuntimeProfiles.create(jsonObject({
         name: `Narrative / ${gatewayForm.model}`,
@@ -189,7 +189,7 @@ export function chooseAgentRuntimeProfileId(input: {
   return input.profiles[0]?.id
 }
 
-export function readGatewayModelConfig(form: Pick<GatewayForm, 'temperature' | 'maxTokens'>, t: Translator): Record<string, ClientJsonValue> {
+export function buildGatewayModelConfig(form: Pick<GatewayForm, 'temperature' | 'maxTokens'>, t: Translator): Record<string, ClientJsonValue> {
   return jsonObject({
     temperature: readOptionalFormNumber(form.temperature, t) as ClientJsonValue | undefined,
     max_tokens: readOptionalFormNumber(form.maxTokens, t) as ClientJsonValue | undefined,

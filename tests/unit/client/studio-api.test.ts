@@ -2,7 +2,8 @@ import type { ClientBridge, ClientJsonValue } from '@loom-studio/client-bridge'
 import { createMemoryLogSink, createRootLogger } from '@loom-studio/logging'
 import { describe, expect, it } from 'vitest'
 import { createRendererApi } from '../../../apps/studio-client/src/shared/api/renderer-api.js'
-import { createStudioApi, withClientBridgeLogging } from '../../../apps/studio-client/src/shared/api/studio-api.js'
+import { withClientBridgeLogging } from '../../../apps/studio-client/src/shared/api/client-bridge-logging.js'
+import { createStudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
 
 describe('studio client typed api', () => {
   it('logs failed rpc calls without params or error messages', async () => {
