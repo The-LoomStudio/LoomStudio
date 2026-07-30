@@ -50,18 +50,16 @@ describe('application runtime prompt preview integration', () => {
     const storedPrompt = run.runtimeEntries.find(entry => entry.kind === 'prompt')?.content as { messages?: unknown }
 
     expect(preview.messages).toEqual([
-      expect.objectContaining({
-        role: 'system',
-        content: expect.stringContaining('Prompt Card'),
-      }),
+      expect.objectContaining({ role: 'system', content: expect.stringContaining('Prompt Card') }),
+      expect.objectContaining({ role: 'system', content: expect.stringContaining('Always On: 总是注入的设定。') }),
       { role: 'assistant', content: '开场正文。' },
       { role: 'user', content: '我听见雨落在窗外。' },
     ])
     expect(preview.messages).toEqual(preview.projection.messages)
     expect(preview.messages[0]?.content).toContain('Card description: 用于测试 Prompt Builder 闭环。')
-    expect(preview.messages[0]?.content).toContain('Always On: 总是注入的设定。')
-    expect(preview.messages[0]?.content).toContain('Rain Keyword: 只有提到雨才注入。')
-    expect(preview.messages[0]?.content).not.toContain('Manual Only')
+    expect(preview.messages[1]?.content).toContain('Always On: 总是注入的设定。')
+    expect(preview.messages[1]?.content).toContain('Rain Keyword: 只有提到雨才注入。')
+    expect(preview.messages.map(message => message.content).join('\n')).not.toContain('Manual Only')
     expect(storedPrompt.messages).toEqual(preview.messages)
   })
 
@@ -94,26 +92,34 @@ describe('application runtime prompt preview integration', () => {
         scope: 'session',
         slotRanks: [
           {
-            injectionGroupKey: 'setting.stable',
+            zoneId: 'setting.stable',
             slotKey: 'setting-layer:m0-card-setting-layer@setting.stable',
             rankKey: '0000',
           },
           {
-            injectionGroupKey: 'preset.system',
+            zoneId: 'preset.system',
             slotKey: 'preset:m0-card-preset@preset.system',
             rankKey: '0001',
           },
         ],
       },
     })
-    const stablePrefix = preview.projection.zones.find(zone => zone.zoneKey === 'stable-prefix' && zone.anchor === 'inside')
+    const presetSystem = preview.projection.zones.find(zone => zone.zoneId === 'preset.system')
+    const stableSetting = preview.projection.zones.find(zone => zone.zoneId === 'setting.stable')
 
-    expect(stablePrefix?.slots.map(slot => slot.slotKey)).toEqual([
-      'setting-layer:m0-card-setting-layer@setting.stable',
+    expect(presetSystem?.slots.map(slot => slot.slotKey)).toEqual([
       'preset:m0-card-preset@preset.system',
     ])
-    expect(stablePrefix?.slots.map(slot => slot.orderSource)).toEqual(['rank', 'rank'])
-    expect(preview.messages[0]?.content.indexOf('稳定设定。')).toBeLessThan(preview.messages[0]?.content.indexOf('系统提示。'))
+    expect(stableSetting?.slots.map(slot => slot.slotKey)).toEqual([
+      'setting-layer:m0-card-setting-layer@setting.stable',
+    ])
+    expect(presetSystem?.slots.map(slot => slot.orderSource)).toEqual(['rank'])
+    expect(stableSetting?.slots.map(slot => slot.orderSource)).toEqual(['rank'])
+    expect(preview.messages.map(message => message.content)).toEqual([
+      expect.stringContaining('系统提示。'),
+      'Stable Setting: 稳定设定。',
+      '我检查排序。',
+    ])
   })
 
   it('expands simple card {{User}} macros in preset, setting layer, and opening chat', async () => {
@@ -157,7 +163,7 @@ describe('application runtime prompt preview integration', () => {
     expect(timeline.entries.map(entry => entry.content)).toEqual(['旅人推开旅馆的门。'])
     expect(preview.messages[0]?.content).toContain('玩家名是 旅人。保持第二人称叙事。')
     expect(preview.messages[0]?.content).toContain('Card description: 旅人进入雾港。')
-    expect(preview.messages[0]?.content).toContain('旅人当前场景: 旅人站在潮湿的柜台前。')
+    expect(preview.messages[1]?.content).toContain('旅人当前场景: 旅人站在潮湿的柜台前。')
   })
 
   it('previews and stores the OpenAI-compatible provider payload for a selected model profile', async () => {

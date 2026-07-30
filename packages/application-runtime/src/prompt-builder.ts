@@ -1,6 +1,5 @@
 import { evaluatePromptActivation, type ActivationFacts, type PromptActivation } from './prompt-activation.js'
 
-export type PromptAnchor = 'before' | 'inside' | 'after'
 export type PromptProviderRole = 'system' | 'assistant' | 'user'
 export type PromptSourceKind = 'preset' | 'settingLayer' | 'narrativeChat' | 'runtime'
 export type PromptLifecycle = 'always' | 'conditional' | 'fresh'
@@ -10,7 +9,7 @@ export type PromptContentCapability = {
 }
 
 export type PromptProjectionCapability = {
-  injectionGroupKey: string
+  zoneId: string
   sourceSlotKey?: string
   joinSlotKey?: string
   slotOrderHint?: number
@@ -46,36 +45,25 @@ export type CompositionSkeleton = {
   id: string
   rootZoneId: string
   zones: ZoneNode[]
-  injectionGroups: InjectionGroup[]
   fallbackZoneId: string
 }
 
 export type CompositionSkeletonPatch = {
   zones?: ZoneNode[]
-  injectionGroups?: InjectionGroup[]
   fallbackZoneId?: string
 }
 
 export type ZoneNode = {
   id: string
   parentId: string | null
-  key: string
   displayName: string
   band: 'stable-prefix' | 'narrative' | 'lower-context' | 'current-turn' | 'fresh-tail'
   orderIndex: number
-  anchors: PromptAnchor[]
+  accepts?: PromptSourceKind[]
   renderHint: {
     providerRoleHint: PromptProviderRole
     wrapper: 'section' | 'message'
   }
-}
-
-export type InjectionGroup = {
-  key: string
-  displayName: string
-  targetZoneKey: string
-  anchor: PromptAnchor
-  accepts: PromptSourceKind[]
 }
 
 export type SourceNode = {
@@ -95,7 +83,7 @@ export type PromptFragment = {
   }
   content: string
   projection: {
-    injectionGroupKey: string
+    zoneId: string
     lifecycle: PromptLifecycle
     sourceSlotKey?: string
     joinSlotKey?: string
@@ -121,8 +109,7 @@ export type ProjectionOrderProfile = {
   scope: 'global' | 'session'
   skeletonPatch?: CompositionSkeletonPatch
   slotRanks: Array<{
-    injectionGroupKey: string
-    anchor?: PromptAnchor
+    zoneId: string
     slotKey: string
     rankKey: string
   }>
@@ -135,9 +122,8 @@ export type CompiledPrompt = {
 }
 
 export type CompiledZone = {
-  zoneKey: string
+  zoneId: string
   displayName: string
-  anchor: PromptAnchor
   slots: CompiledSlot[]
 }
 
@@ -154,12 +140,11 @@ export type EditorProjection = {
     fragmentId: string
     sourceNodeId: string
     sourcePath: string
-    injectionGroupKey: string
+    zoneId: string
     slotKey: string
   }>
   promptRows: Array<{
-    zoneKey: string
-    anchor: PromptAnchor
+    zoneId: string
     slotKey: string
     fragmentIds: string[]
     orderSource: CompiledSlot['orderSource']
@@ -169,23 +154,16 @@ export type EditorProjection = {
 export const defaultCompositionSkeleton: CompositionSkeleton = {
   id: 'skeleton.airp-default',
   rootZoneId: 'zone.root',
-  fallbackZoneId: 'zone.lower-context',
+  fallbackZoneId: 'setting.lower',
   zones: [
-    zone('zone.stable-prefix', 'zone.root', 'stable-prefix', 'Stable Prefix', 'stable-prefix', 10, 'system'),
-    zone('zone.narrative-context', 'zone.root', 'narrative-context', 'Narrative Context', 'narrative', 20, 'assistant'),
-    zone('zone.lower-context', 'zone.root', 'lower-context', 'Lower Context', 'lower-context', 30, 'system'),
-    zone('zone.current-turn', 'zone.root', 'current-turn', 'Current Turn', 'current-turn', 40, 'user'),
-    zone('zone.fresh-tail', 'zone.root', 'fresh-tail', 'Fresh Tail', 'fresh-tail', 50, 'system'),
-  ],
-  injectionGroups: [
-    group('preset.system', 'Preset System', 'stable-prefix', 'inside', ['preset', 'runtime']),
-    group('setting.stable', 'Stable Setting', 'stable-prefix', 'inside', ['settingLayer']),
-    group('setting.lower', 'Lower Context Setting', 'lower-context', 'inside', ['settingLayer']),
-    group('chat.history', 'Narrative History', 'narrative-context', 'inside', ['narrativeChat']),
-    group('chat.before', 'Before Current Chat', 'current-turn', 'before', ['settingLayer', 'preset', 'runtime']),
-    group('chat.inside', 'Current Chat', 'current-turn', 'inside', ['narrativeChat', 'runtime']),
-    group('chat.after', 'After Current Chat', 'current-turn', 'after', ['settingLayer', 'preset', 'runtime']),
-    group('fresh.tail', 'Fresh Tail', 'fresh-tail', 'inside', ['preset', 'settingLayer', 'runtime']),
+    zone('preset.system', 'Preset System', 'stable-prefix', 10, 'system', ['preset', 'runtime']),
+    zone('setting.stable', 'Stable Setting', 'stable-prefix', 20, 'system', ['settingLayer']),
+    zone('chat.history', 'Narrative History', 'narrative', 30, 'assistant', ['narrativeChat']),
+    zone('setting.lower', 'Lower Context Setting', 'lower-context', 40, 'system', ['settingLayer']),
+    zone('chat.before', 'Before Current Chat', 'current-turn', 50, 'user', ['settingLayer', 'preset', 'runtime']),
+    zone('chat.inside', 'Current Chat', 'current-turn', 60, 'user', ['narrativeChat', 'runtime']),
+    zone('chat.after', 'After Current Chat', 'current-turn', 70, 'user', ['settingLayer', 'preset', 'runtime']),
+    zone('fresh.tail', 'Fresh Tail', 'fresh-tail', 80, 'system', ['preset', 'settingLayer', 'runtime']),
   ],
 }
 
@@ -203,8 +181,7 @@ export function applyCompositionSkeletonPatch(
 
   return {
     ...skeleton,
-    zones: mergeByKey(skeleton.zones, patch.zones ?? [], zone => zone.key),
-    injectionGroups: mergeByKey(skeleton.injectionGroups, patch.injectionGroups ?? [], group => group.key),
+    zones: mergeByKey(skeleton.zones, patch.zones ?? [], zone => zone.id),
     fallbackZoneId: patch.fallbackZoneId ?? skeleton.fallbackZoneId,
   }
 }
@@ -219,7 +196,7 @@ export function materializePromptFragments(contributions: PromptContribution[]):
       source: contribution.sourceRef,
       content: contribution.content,
       projection: {
-        injectionGroupKey: projection.injectionGroupKey,
+        zoneId: projection.zoneId,
         lifecycle: contribution.capabilities.lifecycle?.lifecycle ?? 'always',
         ...(projection.sourceSlotKey ? { sourceSlotKey: projection.sourceSlotKey } : {}),
         ...(projection.joinSlotKey ? { joinSlotKey: projection.joinSlotKey } : {}),
@@ -246,8 +223,7 @@ export function compilePromptDataModel(input: {
     ...(input.fragments ?? []),
     ...materializePromptFragments(input.contributions ?? []),
   ]
-  const groupsByKey = new Map(skeleton.injectionGroups.map(group => [group.key, group]))
-  const zonesByKey = new Map(skeleton.zones.map(item => [item.key, item]))
+  const zonesById = new Map(skeleton.zones.map(item => [item.id, item]))
   const sourceNodesById = new Map(input.sourceNodes.map(node => [node.id, node]))
   const activationByFragmentId = new Map(fragments.map(fragment => [
     fragment.id,
@@ -267,20 +243,15 @@ export function compilePromptDataModel(input: {
   for (const fragment of fragments) {
     if (!activeFragmentIds.has(fragment.id)) continue
 
-    const group = groupsByKey.get(fragment.projection.injectionGroupKey)
-    if (!group) throw new Error(`Unknown injection group: ${fragment.projection.injectionGroupKey}`)
-    if (!group.accepts.includes(fragment.source.kind)) {
-      throw new Error(`Injection group ${group.key} does not accept ${fragment.source.kind}`)
+    const zoneNode = zonesById.get(fragment.projection.zoneId)
+    if (!zoneNode) throw new Error(`Unknown zone: ${fragment.projection.zoneId}`)
+    if (zoneNode.accepts && !zoneNode.accepts.includes(fragment.source.kind)) {
+      throw new Error(`Zone ${zoneNode.id} does not accept ${fragment.source.kind}`)
     }
 
-    const zoneNode = zonesByKey.get(group.targetZoneKey)
-    if (!zoneNode) throw new Error(`Unknown zone: ${group.targetZoneKey}`)
-
-    const compiledZoneKey = `${zoneNode.key}:${group.anchor}`
-    const compiledZone = compiledZones.get(compiledZoneKey) ?? {
-      zoneKey: zoneNode.key,
+    const compiledZone = compiledZones.get(zoneNode.id) ?? {
+      zoneId: zoneNode.id,
       displayName: zoneNode.displayName,
-      anchor: group.anchor,
       slots: [],
     }
     const slotKey = materializeSlotKey(fragment)
@@ -292,23 +263,22 @@ export function compilePromptDataModel(input: {
 
     slot.fragments.push(fragment)
     if (!compiledZone.slots.includes(slot)) compiledZone.slots.push(slot)
-    compiledZones.set(compiledZoneKey, compiledZone)
+    compiledZones.set(zoneNode.id, compiledZone)
   }
 
   const sortedZones = [...compiledZones.values()]
     .map(compiledZone => sortCompiledZone(compiledZone, input.orderProfile, sourceNodesById))
     .sort((left, right) => {
-      const leftZone = zonesByKey.get(left.zoneKey)
-      const rightZone = zonesByKey.get(right.zoneKey)
+      const leftZone = zonesById.get(left.zoneId)
+      const rightZone = zonesById.get(right.zoneId)
       return (leftZone?.orderIndex ?? 0) - (rightZone?.orderIndex ?? 0)
-        || anchorOrder(left.anchor) - anchorOrder(right.anchor)
     })
 
   return {
     zones: sortedZones,
     messages: sortedZones.map(compiledZone => {
-      const renderZone = zonesByKey.get(compiledZone.zoneKey)
-      if (!renderZone) throw new Error(`Unknown compiled zone: ${compiledZone.zoneKey}`)
+      const renderZone = zonesById.get(compiledZone.zoneId)
+      if (!renderZone) throw new Error(`Unknown compiled zone: ${compiledZone.zoneId}`)
 
       return {
         role: renderZone.renderHint.providerRoleHint,
@@ -325,12 +295,11 @@ export function compilePromptDataModel(input: {
         fragmentId: fragment.id,
         sourceNodeId: fragment.source.sourceNodeId,
         sourcePath: readSourcePath(sourceNodesById, fragment.source.sourceNodeId),
-        injectionGroupKey: fragment.projection.injectionGroupKey,
+        zoneId: fragment.projection.zoneId,
         slotKey: materializeSlotKey(fragment),
       })),
       promptRows: sortedZones.flatMap(compiledZone => compiledZone.slots.map(slot => ({
-        zoneKey: compiledZone.zoneKey,
-        anchor: compiledZone.anchor,
+        zoneId: compiledZone.zoneId,
         slotKey: slot.slotKey,
         fragmentIds: slot.fragments.map(fragment => fragment.id),
         orderSource: slot.orderSource,
@@ -389,15 +358,14 @@ function compareFragmentOrder(sourceNodesById: Map<string, SourceNode>, left: Pr
 function readSlotRank(profile: ProjectionOrderProfile, zone: CompiledZone, slot: CompiledSlot): string | undefined {
   return profile.slotRanks.find(rank => (
     rank.slotKey === slot.slotKey
-    && (!rank.anchor || rank.anchor === zone.anchor)
-    && slot.fragments.some(fragment => fragment.projection.injectionGroupKey === rank.injectionGroupKey)
+    && rank.zoneId === zone.zoneId
   ))?.rankKey
 }
 
 export function materializeSlotKey(fragment: PromptFragment): string {
   if (fragment.projection.joinSlotKey) return fragment.projection.joinSlotKey
   const sourceSlotKey = fragment.projection.sourceSlotKey ?? fragment.source.sourceId
-  return `${kindToSlotPrefix(fragment.source.kind)}:${sourceSlotKey}@${fragment.projection.injectionGroupKey}`
+  return `${kindToSlotPrefix(fragment.source.kind)}:${sourceSlotKey}@${fragment.projection.zoneId}`
 }
 
 function readSourcePath(sourceNodesById: Map<string, SourceNode>, nodeId: string): string {
@@ -431,30 +399,24 @@ function readSourceOrderPath(sourceNodesById: Map<string, SourceNode>, nodeId: s
 
 function zone(
   id: string,
-  parentId: string,
-  key: ZoneNode['key'],
   displayName: string,
   band: ZoneNode['band'],
   orderIndex: number,
   providerRoleHint: PromptProviderRole,
+  accepts: PromptSourceKind[],
 ): ZoneNode {
   return {
     id,
-    parentId,
-    key,
+    parentId: 'zone.root',
     displayName,
     band,
     orderIndex,
-    anchors: ['before', 'inside', 'after'],
+    accepts,
     renderHint: {
       providerRoleHint,
       wrapper: 'section',
     },
   }
-}
-
-function group(key: string, displayName: string, targetZoneKey: string, anchor: PromptAnchor, accepts: PromptSourceKind[]): InjectionGroup {
-  return { key, displayName, targetZoneKey, anchor, accepts }
 }
 
 function mergeByKey<T>(baseItems: T[], patchItems: T[], readKey: (item: T) => string): T[] {
@@ -466,12 +428,6 @@ function mergeByKey<T>(baseItems: T[], patchItems: T[], readKey: (item: T) => st
   }
 
   return [...itemsByKey.values()]
-}
-
-function anchorOrder(anchor: PromptAnchor): number {
-  if (anchor === 'before') return 0
-  if (anchor === 'inside') return 1
-  return 2
 }
 
 function comparePath(left: number[], right: number[]): number {

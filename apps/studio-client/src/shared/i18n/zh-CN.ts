@@ -45,7 +45,7 @@ export const zhCN = {
   'context.orderProfileLabel': 'Projection Order Profile',
   'context.orderCount': '{{count}} 个挂载项',
   'context.projectionMeta': '{{lifecycle}} / {{order}}',
-  'context.sortMeta': '{{anchor}} / slot {{slot}} / entry {{entry}}',
+  'context.sortMeta': '槽位 {{slot}} / 条目 {{entry}}',
   'context.reasonDefault': '按默认 projection policy 挂载。',
   'context.sourceActual': '实际',
   'context.sourceVirtual': '虚拟',

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
-import type { ContextAssetNode, PromptWorkspace, Session, UpdatePromptWorkspaceResult } from '../../../entities/index.js'
+import type { ContextAssetNode, PromptResource, Session, UpdatePromptResourceResult } from '../../../entities/index.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import {
@@ -13,21 +13,21 @@ import {
 import { normalizeContextAssets } from './context-asset-normalization.js'
 import { findContextAssetNode } from './context-asset-tree.js'
 import { readDemoProjectionOrderProfile } from './projection-order-profile.js'
-import type { ContextAssetUpdate } from './projection-workbench.js'
+import { findRootContextModule, type ContextAssetUpdate } from './projection-workbench.js'
 
 type UseContextAssetsInput = {
   api?: StudioApi
   initialNodes: ContextAssetNode[]
   initialSelectedId: string
-  onWorkspaceChange?(workspace: PromptWorkspace): void
+  onResourceChange?(resource: PromptResource): void
   recordEdit(entry: {
     label: string
     changesetId: string
     anchor?: { documentId: string; subjectId?: string }
   }): void
   runAction(action: () => Promise<void>): Promise<void>
+  resources: PromptResource[]
   t: Translator
-  workspaceId?: string
 }
 
 export function useContextAssets(input: UseContextAssetsInput) {
@@ -49,9 +49,16 @@ export function useContextAssets(input: UseContextAssetsInput) {
     applyDraftNodes(normalized)
   }
 
-  function applyWorkspace(workspace: PromptWorkspace) {
-    setNodes(workspace.contextAssets)
-    input.onWorkspaceChange?.(workspace)
+  function applyResource(resource: PromptResource) {
+    setNodes(persistedNodesRef.current.map(node => node.id === resource.rootNode.id ? resource.rootNode : node))
+    input.onResourceChange?.(resource)
+  }
+
+  function readResourceId(assetId: string): string {
+    const root = findRootContextModule(persistedNodesRef.current, assetId)
+    const resourceId = input.resources.find(resource => resource.rootNode.id === root?.id)?.id
+    if (!resourceId) throw new Error(`Prompt resource not found for asset: ${assetId}`)
+    return resourceId
   }
 
   function enqueueMutation(action: () => Promise<void>): Promise<void> {
@@ -65,7 +72,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
   }
 
   function updateContextAsset(id: string, partial: Partial<ContextAssetNode>): Promise<void> {
-    if (!input.api || !input.workspaceId) {
+    if (!input.api || input.resources.length === 0) {
       persistedNodesRef.current = nodesRef.current
       return Promise.resolve()
     }
@@ -75,18 +82,19 @@ export function useContextAssets(input: UseContextAssetsInput) {
       const previousNode = findContextAssetNode(persistedNodesRef.current, id)
       const nextNode = findContextAssetNode(next, id)
       if (!previousNode || !nextNode || samePromptAssetPatch(previousNode, nextNode)) return
+      const resourceId = readResourceId(id)
 
       try {
         await commitContextAssetMutation({
-          mutate: () => input.api!.promptWorkspaces.updateAsset(jsonObject({
-            workspaceId: input.workspaceId,
+          mutate: () => input.api!.promptResources.updateAsset(jsonObject({
+            resourceId,
             ...readPromptAssetPatch(nextNode),
           })),
-          applyWorkspace,
+          applyResource,
           recordEdit: input.recordEdit,
           entry: {
             label: input.t('history.context.update'),
-            anchor: { documentId: input.workspaceId!, subjectId: id },
+            anchor: { documentId: resourceId, subjectId: id },
           },
         })
       } catch (error) {
@@ -98,7 +106,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
 
   function updateContextAssets(updates: ContextAssetUpdate[]): Promise<void> {
     if (updates.length === 0) return Promise.resolve()
-    if (!input.api || !input.workspaceId) {
+    if (!input.api || input.resources.length === 0) {
       const next = updates.reduce((current, update) => updateContextAssetNode(current, update.id, update.partial), nodesRef.current)
       setNodes(next)
       return Promise.resolve()
@@ -112,18 +120,21 @@ export function useContextAssets(input: UseContextAssetsInput) {
         return previousNode && nextNode && !samePromptAssetPatch(previousNode, nextNode) ? [nextNode] : []
       })
       if (changedNodes.length === 0) return
+      const resourceIds = new Set(changedNodes.map(node => readResourceId(node.id)))
+      if (resourceIds.size !== 1) throw new Error('Cross-resource prompt asset updates are not supported')
+      const resourceId = [...resourceIds][0]!
 
       try {
         await commitContextAssetMutation({
-          mutate: () => input.api!.promptWorkspaces.updateAssets(jsonObject({
-            workspaceId: input.workspaceId,
+          mutate: () => input.api!.promptResources.updateAssets(jsonObject({
+            resourceId,
             updates: changedNodes.map(node => readPromptAssetPatch(node)) as ClientJsonValue,
           })),
-          applyWorkspace,
+          applyResource,
           recordEdit: input.recordEdit,
           entry: {
             label: input.t('history.context.reorder'),
-            anchor: { documentId: input.workspaceId!, subjectId: updates[0]?.id },
+            anchor: { documentId: resourceId, subjectId: updates[0]?.id },
           },
         })
       } catch (error) {
@@ -134,7 +145,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
   }
 
   function addContextAsset(parentId: string): Promise<void> {
-    if (!input.api || !input.workspaceId) {
+    if (!input.api || input.resources.length === 0) {
       const mutation = addContextAssetNode(nodesRef.current, parentId)
       setNodes(mutation.nodes)
       if (mutation.selectedId) setSelectedId(mutation.selectedId)
@@ -145,24 +156,25 @@ export function useContextAssets(input: UseContextAssetsInput) {
       const mutation = addContextAssetNode(persistedNodesRef.current, parentId)
       const asset = findContextAssetNode(mutation.nodes, mutation.selectedId)
       if (!asset || !mutation.selectedId) return
-      const result = await input.api!.promptWorkspaces.createAsset(jsonObject({
-        workspaceId: input.workspaceId,
+      const resourceId = readResourceId(parentId)
+      const result = await input.api!.promptResources.createAsset(jsonObject({
+        resourceId,
         targetAssetId: parentId,
         position: 'inside',
         asset: asset as unknown as ClientJsonValue,
       }))
-      applyWorkspace(result.workspace)
+      applyResource(result.resource)
       setSelectedId(mutation.selectedId)
       input.recordEdit({
         label: input.t('history.context.create'),
         changesetId: result.mutation.changesetId,
-        anchor: { documentId: input.workspaceId!, subjectId: mutation.selectedId },
+        anchor: { documentId: resourceId, subjectId: mutation.selectedId },
       })
     })
   }
 
   function moveContextAsset(draggedId: string, targetId: string, position: 'before' | 'inside' | 'after'): Promise<void> {
-    if (!input.api || !input.workspaceId) {
+    if (!input.api || input.resources.length === 0) {
       setNodes(moveContextAssetNode(nodesRef.current, draggedId, targetId, position))
       return Promise.resolve()
     }
@@ -170,23 +182,25 @@ export function useContextAssets(input: UseContextAssetsInput) {
     return enqueueMutation(async () => {
       const next = moveContextAssetNode(persistedNodesRef.current, draggedId, targetId, position)
       if (next === persistedNodesRef.current) return
-      const result = await input.api!.promptWorkspaces.moveAsset(jsonObject({
-        workspaceId: input.workspaceId,
+      const resourceId = readResourceId(draggedId)
+      if (readResourceId(targetId) !== resourceId) throw new Error('Cross-resource prompt asset move is not supported')
+      const result = await input.api!.promptResources.moveAsset(jsonObject({
+        resourceId,
         assetId: draggedId,
         targetAssetId: targetId,
         position,
       }))
-      applyWorkspace(result.workspace)
+      applyResource(result.resource)
       input.recordEdit({
         label: input.t('history.context.move'),
         changesetId: result.mutation.changesetId,
-        anchor: { documentId: input.workspaceId!, subjectId: draggedId },
+        anchor: { documentId: resourceId, subjectId: draggedId },
       })
     })
   }
 
   function duplicateContextAsset(id: string): Promise<void> {
-    if (!input.api || !input.workspaceId) {
+    if (!input.api || input.resources.length === 0) {
       const mutation = duplicateContextAssetNode(nodesRef.current, id)
       setNodes(mutation.nodes)
       if (mutation.selectedId) setSelectedId(mutation.selectedId)
@@ -197,24 +211,25 @@ export function useContextAssets(input: UseContextAssetsInput) {
       const mutation = duplicateContextAssetNode(persistedNodesRef.current, id)
       const asset = findContextAssetNode(mutation.nodes, mutation.selectedId)
       if (!asset || !mutation.selectedId) return
-      const result = await input.api!.promptWorkspaces.createAsset(jsonObject({
-        workspaceId: input.workspaceId,
+      const resourceId = readResourceId(id)
+      const result = await input.api!.promptResources.createAsset(jsonObject({
+        resourceId,
         targetAssetId: id,
         position: 'after',
         asset: asset as unknown as ClientJsonValue,
       }))
-      applyWorkspace(result.workspace)
+      applyResource(result.resource)
       setSelectedId(mutation.selectedId)
       input.recordEdit({
         label: input.t('history.context.duplicate'),
         changesetId: result.mutation.changesetId,
-        anchor: { documentId: input.workspaceId!, subjectId: mutation.selectedId },
+        anchor: { documentId: resourceId, subjectId: mutation.selectedId },
       })
     })
   }
 
   function deleteContextAsset(id: string): Promise<void> {
-    if (!input.api || !input.workspaceId) {
+    if (!input.api || input.resources.length === 0) {
       const mutation = deleteContextAssetNode(nodesRef.current, id, selectedId)
       setNodes(mutation.nodes)
       if (mutation.selectedId) setSelectedId(mutation.selectedId)
@@ -224,16 +239,17 @@ export function useContextAssets(input: UseContextAssetsInput) {
     return enqueueMutation(async () => {
       const mutation = deleteContextAssetNode(persistedNodesRef.current, id, selectedId)
       if (mutation.nodes === persistedNodesRef.current) return
-      const result = await input.api!.promptWorkspaces.deleteAsset(jsonObject({
-        workspaceId: input.workspaceId,
+      const resourceId = readResourceId(id)
+      const result = await input.api!.promptResources.deleteAsset(jsonObject({
+        resourceId,
         assetId: id,
       }))
-      applyWorkspace(result.workspace)
+      applyResource(result.resource)
       if (mutation.selectedId) setSelectedId(mutation.selectedId)
       input.recordEdit({
         label: input.t('history.context.delete'),
         changesetId: result.mutation.changesetId,
-        anchor: { documentId: input.workspaceId!, subjectId: id },
+        anchor: { documentId: resourceId, subjectId: id },
       })
     })
   }
@@ -259,20 +275,20 @@ export function useContextAssets(input: UseContextAssetsInput) {
 }
 
 export async function commitContextAssetMutation(input: {
-  applyWorkspace(workspace: PromptWorkspace): void
+  applyResource(resource: PromptResource): void
   entry: {
     label: string
     anchor?: { documentId: string; subjectId?: string }
   }
-  mutate(): Promise<UpdatePromptWorkspaceResult>
+  mutate(): Promise<UpdatePromptResourceResult>
   recordEdit(entry: {
     label: string
     changesetId: string
     anchor?: { documentId: string; subjectId?: string }
   }): void
-}): Promise<UpdatePromptWorkspaceResult> {
+}): Promise<UpdatePromptResourceResult> {
   const result = await input.mutate()
-  input.applyWorkspace(result.workspace)
+  input.applyResource(result.resource)
   input.recordEdit({ ...input.entry, changesetId: result.mutation.changesetId })
   return result
 }

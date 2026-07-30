@@ -7,7 +7,7 @@ import {
   assertExpectedVersion,
   cloneDocument,
   createPendingChangeset,
-  finalizeChangeset,
+  finalizeCommitFact,
   recordPendingChange,
   restoredDocument,
   transactionInputFromWrite,
@@ -245,10 +245,10 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
 
       try {
         const value = await fn(pending, createTransaction(pending))
-        const changeset = finalizeChangeset(pending)
-        insertChangeset(database, changeset)
+        const commit = finalizeCommitFact(pending)
+        insertChangeset(database, commit.changeset)
         database.exec('COMMIT')
-        return { value, changeset }
+        return { value, changeset: commit.changeset, commit }
       } catch (error) {
         database.exec('ROLLBACK')
         throw error
@@ -261,12 +261,12 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
 
     write: async input => {
       const result = await runTransaction(transactionInputFromWrite(input), async pending => applyWrite(input, pending))
-      return { ...result.value, operations: result.changeset.operations }
+      return { ...result.value, operations: result.changeset.operations, commit: result.commit }
     },
 
     delete: async input => {
       const result = await runTransaction(transactionInputFromWrite(input), async pending => applyDelete(input, pending))
-      return { ...result.value, operations: result.changeset.operations }
+      return { ...result.value, operations: result.changeset.operations, commit: result.commit }
     },
 
     transact: (input, fn) => runTransaction(input, async (_pending, tx) => fn(tx)),
@@ -306,7 +306,7 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
           : applyDelete({ id: item.operation.documentId, expectedVersion: item.operation.toVersion }, pending).documents[0]!)
       })
 
-      return writeResultFromChangeset(result.changeset, result.value)
+      return { ...writeResultFromChangeset(result.changeset, result.value), commit: result.commit }
     },
 
     close: () => {

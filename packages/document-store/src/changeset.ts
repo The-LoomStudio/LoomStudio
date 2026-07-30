@@ -6,6 +6,7 @@ import type {
   Changeset,
   ChangesetOperation,
   DeleteDocumentInput,
+  DocumentCommitFact,
   DocumentRecord,
   DocumentTransactionInput,
   WriteDocumentInput,
@@ -92,6 +93,20 @@ export function finalizeChangeset(pending: PendingChangeset): Changeset {
     callId: pending.callId,
     parentCallId: pending.parentCallId,
     operations,
+  }
+}
+
+export function finalizeCommitFact(pending: PendingChangeset): DocumentCommitFact {
+  const changeset = finalizeChangeset(pending)
+
+  return {
+    changeset,
+    documents: [...pending.changes.values()].map(change => ({
+      id: change.documentId,
+      type: change.type,
+      version: change.toVersion,
+      tombstoned: change.finalTombstoned,
+    })),
   }
 }
 

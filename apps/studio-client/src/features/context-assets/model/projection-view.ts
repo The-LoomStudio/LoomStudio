@@ -16,16 +16,16 @@ export function transformForProjectionView(
       || left.id.localeCompare(right.id)
     ))
 
-  const standardZones = ['StablePrefix', 'NarrativeContext', 'LowerContext', 'CurrentTurn', 'FreshTail']
+  const standardZones = ['preset.system', 'setting.stable', 'chat.history', 'setting.lower', 'chat.before', 'chat.inside', 'chat.after', 'fresh.tail']
   const customZones = new Set<string>()
 
   for (const entry of entries) {
-    const zone = entry.projection?.zone
+    const zone = entry.projection?.zoneId
     if (zone && !standardZones.includes(zone)) customZones.add(zone)
   }
 
   const children = [...standardZones, ...Array.from(customZones)].flatMap(zone => {
-    const zoneEntries = entries.filter(entry => entry.projection?.zone === zone)
+    const zoneEntries = entries.filter(entry => entry.projection?.zoneId === zone)
     if (zoneEntries.length === 0) return []
     return [{
       id: `${moduleNode.id}-zone-${zone}`,

@@ -21,10 +21,10 @@ export function buildPromptBuildSteps(input: {
 }, t: Translator): PromptBuildStep[] {
   const settingEntries = readSettingEntries(input.session?.cardSnapshot)
   const activeSettings = input.projection
-    ? input.projection.editorProjection.sourceRows.filter(row => row.active && row.injectionGroupKey.startsWith('setting.'))
+    ? input.projection.editorProjection.sourceRows.filter(row => row.active && row.zoneId.startsWith('setting.'))
     : settingEntries.filter(entry => settingEntryMatches(entry, input.input))
   const inactiveSettings = input.projection
-    ? input.projection.editorProjection.sourceRows.filter(row => !row.active && row.injectionGroupKey.startsWith('setting.')).length
+    ? input.projection.editorProjection.sourceRows.filter(row => !row.active && row.zoneId.startsWith('setting.')).length
     : settingEntries.length - activeSettings.length
   const projectionSteps = input.projection ? buildProjectionSteps(input.projection) : []
 
@@ -75,7 +75,7 @@ export function buildPromptBuildSteps(input: {
 
 function buildProjectionSteps(projection: PromptProjection): PromptBuildStep[] {
   return projection.zones.map(zone => ({
-    title: `Zone: ${zone.displayName} / ${zone.anchor}`,
+    title: `Zone: ${zone.displayName}`,
     rows: zone.slots.map(slot => ({
       label: slot.orderSource,
       value: `${slot.slotKey} -> ${slot.fragments.map(fragment => fragment.id).join(' -> ')}`,

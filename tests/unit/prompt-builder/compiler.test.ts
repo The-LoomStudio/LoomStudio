@@ -31,7 +31,7 @@ describe('prompt builder compiler', () => {
       sourceNodes,
       fragments: [
         fragment('setting.manual-child', 'settingLayer', 'worldbook-main', 'node.setting.inn', '不会被父级 always 强制打开。', {
-          injectionGroupKey: 'setting.stable',
+          zoneId: 'setting.stable',
           activation,
         }),
       ],
@@ -51,23 +51,23 @@ describe('prompt builder compiler', () => {
       sourceNodes,
       fragments: [
         fragment('setting.fog', 'settingLayer', 'worldbook-main', 'node.setting.fog', '雾港是一座潮湿安静的海港。', {
-          injectionGroupKey: 'setting.stable',
+          zoneId: 'setting.stable',
           joinSlotKey: 'setting-layer:worldbook-main@setting.stable',
           entryOrderHint: 20,
         }),
         fragment('setting.inn', 'settingLayer', 'worldbook-main', 'node.setting.inn', '旧旅馆的柜台铃会吸引店主注意。', {
-          injectionGroupKey: 'setting.stable',
+          zoneId: 'setting.stable',
           joinSlotKey: 'setting-layer:worldbook-main@setting.stable',
           entryOrderHint: 10,
         }),
         fragment('plugin.rain', 'settingLayer', 'weather-plugin', 'node.plugin.rain', '雨势正在增强。', {
-          injectionGroupKey: 'setting.stable',
+          zoneId: 'setting.stable',
           slotOrderHint: 5,
         }),
       ],
       orderProfile: emptyProjectionOrderProfile,
     })
-    const stable = compiled.zones.find(zone => zone.zoneKey === 'stable-prefix')
+    const stable = compiled.zones.find(zone => zone.zoneId === 'setting.stable')
 
     expect(stable?.slots.map(slot => slot.slotKey)).toEqual([
       'setting-layer:weather-plugin@setting.stable',
@@ -85,10 +85,10 @@ describe('prompt builder compiler', () => {
       sourceNodes,
       fragments: [
         fragment('setting.fog', 'settingLayer', 'worldbook-main', 'node.setting.fog', '雾港是一座潮湿安静的海港。', {
-          injectionGroupKey: 'setting.stable',
+          zoneId: 'setting.stable',
         }),
         fragment('plugin.rain', 'settingLayer', 'weather-plugin', 'node.plugin.rain', '雨势正在增强。', {
-          injectionGroupKey: 'setting.stable',
+          zoneId: 'setting.stable',
           slotOrderHint: 5,
         }),
       ],
@@ -97,19 +97,19 @@ describe('prompt builder compiler', () => {
         scope: 'session',
         slotRanks: [
           {
-            injectionGroupKey: 'setting.stable',
+            zoneId: 'setting.stable',
             slotKey: 'setting-layer:worldbook-main@setting.stable',
             rankKey: 'a',
           },
           {
-            injectionGroupKey: 'setting.stable',
+            zoneId: 'setting.stable',
             slotKey: 'setting-layer:weather-plugin@setting.stable',
             rankKey: 'b',
           },
         ],
       },
     })
-    const stable = compiled.zones.find(zone => zone.zoneKey === 'stable-prefix')
+    const stable = compiled.zones.find(zone => zone.zoneId === 'setting.stable')
 
     expect(stable?.slots.map(slot => slot.slotKey)).toEqual([
       'setting-layer:worldbook-main@setting.stable',
@@ -122,39 +122,29 @@ describe('prompt builder compiler', () => {
     ])
   })
 
-  it('lets a preset register an additional zone and injection group', () => {
+  it('lets a preset register an additional zone', () => {
     const compiled = compilePromptDataModel({
       skeleton: defaultCompositionSkeleton,
       sourceNodes,
       contributions: [
         contribution('preset.memory', 'preset', 'default-airp-preset', 'node.plugin.root', '把旧线索压缩成记忆回声。', {
-          injectionGroupKey: 'preset.memory-echo',
+          zoneId: 'preset.memory-echo',
           joinSlotKey: 'preset:default-airp-preset@preset.memory-echo',
         }),
       ],
       skeletonPatch: {
         zones: [
           {
-            id: 'zone.memory-echo',
+            id: 'preset.memory-echo',
             parentId: 'zone.root',
-            key: 'memory-echo',
             displayName: 'Memory Echo',
             band: 'stable-prefix',
             orderIndex: 15,
-            anchors: ['before', 'inside', 'after'],
+            accepts: ['preset'],
             renderHint: {
               providerRoleHint: 'system',
               wrapper: 'section',
             },
-          },
-        ],
-        injectionGroups: [
-          {
-            key: 'preset.memory-echo',
-            displayName: 'Preset Memory Echo',
-            targetZoneKey: 'memory-echo',
-            anchor: 'inside',
-            accepts: ['preset'],
           },
         ],
       },
@@ -165,7 +155,7 @@ describe('prompt builder compiler', () => {
       },
     })
 
-    expect(compiled.zones.map(zone => zone.zoneKey)).toEqual(['memory-echo'])
+    expect(compiled.zones.map(zone => zone.zoneId)).toEqual(['preset.memory-echo'])
     expect(compiled.zones[0]?.displayName).toBe('Memory Echo')
     expect(compiled.messages).toEqual([
       { role: 'system', content: '把旧线索压缩成记忆回声。' },
@@ -175,7 +165,7 @@ describe('prompt builder compiler', () => {
   it('materializes projection and activation capabilities into prompt fragments', () => {
     const fragments = materializePromptFragments([
       contribution('setting.inn', 'settingLayer', 'worldbook-main', 'node.setting.inn', '旧旅馆的柜台铃会吸引店主注意。', {
-        injectionGroupKey: 'setting.stable',
+        zoneId: 'setting.stable',
         joinSlotKey: 'setting-layer:worldbook-main@setting.stable',
         entryOrderHint: 10,
         activation: { kind: 'keyword', keywords: ['旅馆'] },
@@ -192,7 +182,7 @@ describe('prompt builder compiler', () => {
         },
         content: '旧旅馆的柜台铃会吸引店主注意。',
         projection: {
-          injectionGroupKey: 'setting.stable',
+          zoneId: 'setting.stable',
           lifecycle: 'always',
           joinSlotKey: 'setting-layer:worldbook-main@setting.stable',
           entryOrderHint: 10,
@@ -208,14 +198,14 @@ describe('prompt builder compiler', () => {
       sourceNodes,
       fragments: [
         fragment('setting.final', 'settingLayer', 'worldbook-main', 'node.setting.inn', '进入最终润色模式。', {
-          injectionGroupKey: 'setting.stable',
+          zoneId: 'setting.stable',
           activation: {
             kind: 'condition',
             conditions: [{ fact: 'agent.mode', equals: 'finalize' }],
           },
         }),
         fragment('setting.draft', 'settingLayer', 'worldbook-main', 'node.setting.fog', '进入短对话推演模式。', {
-          injectionGroupKey: 'setting.stable',
+          zoneId: 'setting.stable',
           activation: {
             kind: 'condition',
             conditions: [{ fact: 'agent.mode', equals: 'draft' }],
@@ -247,7 +237,7 @@ describe('prompt builder compiler', () => {
       sourceNodes,
       fragments: [
         fragment('setting.combat', 'settingLayer', 'worldbook-main', 'node.setting.inn', '战斗规则启用。', {
-          injectionGroupKey: 'setting.stable',
+          zoneId: 'setting.stable',
           activation: {
             kind: 'condition',
             conditions: [{ fact: 'tags', includes: 'scene:combat' }],
@@ -269,12 +259,12 @@ describe('prompt builder compiler', () => {
       sourceNodes,
       contributions: [
         contribution('preset.style', 'preset', 'default-airp-preset', 'node.plugin.root', '保持冷静克制的叙述。', {
-          injectionGroupKey: 'preset.system',
+          zoneId: 'preset.system',
           slotOrderHint: 10,
           entryOrderHint: 10,
         }),
         contribution('setting.inn', 'settingLayer', 'worldbook-main', 'node.setting.inn', '旧旅馆的柜台铃会吸引店主注意。', {
-          injectionGroupKey: 'setting.stable',
+          zoneId: 'setting.stable',
           joinSlotKey: 'setting-layer:worldbook-main@setting.stable',
           slotOrderHint: 20,
           entryOrderHint: 10,
@@ -283,15 +273,21 @@ describe('prompt builder compiler', () => {
       orderProfile: emptyProjectionOrderProfile,
     })
 
-    expect(compiled.zones.map(zone => zone.zoneKey)).toEqual(['stable-prefix'])
+    expect(compiled.zones.map(zone => zone.zoneId)).toEqual(['preset.system', 'setting.stable'])
     expect(compiled.zones[0]?.slots.map(slot => slot.slotKey)).toEqual([
       'preset:default-airp-preset@preset.system',
+    ])
+    expect(compiled.zones[1]?.slots.map(slot => slot.slotKey)).toEqual([
       'setting-layer:worldbook-main@setting.stable',
     ])
     expect(compiled.messages).toEqual([
       {
         role: 'system',
-        content: '保持冷静克制的叙述。\n\n旧旅馆的柜台铃会吸引店主注意。',
+        content: '保持冷静克制的叙述。',
+      },
+      {
+        role: 'system',
+        content: '旧旅馆的柜台铃会吸引店主注意。',
       },
     ])
   })
@@ -318,7 +314,7 @@ function fragment(
     },
     content,
     projection: {
-      injectionGroupKey: 'setting.stable',
+      zoneId: 'setting.stable',
       lifecycle: 'always',
       ...projection,
     },
@@ -350,7 +346,7 @@ function contribution(
       ...(activation ? { activation } : {}),
       lifecycle: { lifecycle: 'always' },
       projection: {
-        injectionGroupKey: 'setting.stable',
+        zoneId: 'setting.stable',
         ...projectionCapability,
       },
     },

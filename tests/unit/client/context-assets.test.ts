@@ -18,13 +18,13 @@ describe('studio client context asset helpers', () => {
     expect(result.selectedId).toBe('new-entry')
     expect(folder?.children?.map(node => node.id)).toEqual(['setting-entry', 'new-entry'])
     expect(added?.projection).toMatchObject({
-      group: 'setting.stable',
+      zoneId: 'setting.stable',
       slotKey: 'setting-layer:city-layers-main@setting.stable',
       entryOrder: 20,
       sourceKind: 'actual',
     })
     expect(added?.capabilities?.projection).toMatchObject({
-      injectionGroupKey: 'setting.stable',
+      zoneId: 'setting.stable',
       slotKey: 'setting-layer:city-layers-main@setting.stable',
       entryOrderHint: 20,
       sourceKind: 'actual',
@@ -86,17 +86,17 @@ describe('studio client context asset helpers', () => {
     expect(entries.length).toBeGreaterThan(0)
     expect(entries.every(node => node.projection === undefined)).toBe(true)
     expect(normalizedEntries.every(node => node.projection !== undefined)).toBe(true)
-    expect(entries.map(node => node.capabilities?.projection?.injectionGroupKey)).toContain('setting.stable')
-    expect(entries.map(node => node.capabilities?.projection?.injectionGroupKey)).toContain('preset.system')
+    expect(entries.map(node => node.capabilities?.projection?.zoneId)).toContain('setting.stable')
+    expect(entries.map(node => node.capabilities?.projection?.zoneId)).toContain('preset.system')
   })
 
-  it('does not apply or record a failed workspace mutation', async () => {
+  it('does not apply or record a failed resource mutation', async () => {
     const applied: string[] = []
     const recorded: string[] = []
 
     await expect(commitContextAssetMutation({
       mutate: async () => { throw new Error('rpc failed') },
-      applyWorkspace: workspace => applied.push(workspace.id),
+      applyResource: resource => applied.push(resource.id),
       recordEdit: entry => recorded.push(entry.changesetId),
       entry: { label: 'Reorder Entries', anchor: { documentId: 'workspace-1' } },
     })).rejects.toThrow('rpc failed')
@@ -120,8 +120,8 @@ function baseNodes(): ContextAssetNode[] {
           kind: 'order',
           orderList: ['preset-entry', 'setting-entry'],
           slotRanks: [
-            { injectionGroupKey: 'preset.system', slotKey: 'preset:default-airp-preset@preset.system', rankKey: '0000' },
-            { injectionGroupKey: 'setting.stable', slotKey: 'setting-layer:city-layers-main@setting.stable', rankKey: '0001' },
+            { zoneId: 'preset.system', slotKey: 'preset:default-airp-preset@preset.system', rankKey: '0000' },
+            { zoneId: 'setting.stable', slotKey: 'setting-layer:city-layers-main@setting.stable', rankKey: '0001' },
           ],
         },
         {
@@ -135,12 +135,11 @@ function baseNodes(): ContextAssetNode[] {
               kind: 'entry',
               body: '轻快一些。',
               projection: {
-                group: 'preset.system',
                 lifecycle: 'always',
                 order: 'entry: 10',
                 slotKey: 'preset:default-airp-preset@preset.system',
                 sourceKind: 'actual',
-                zone: 'StablePrefix',
+                zoneId: 'preset.system',
                 entryOrder: 10,
               },
             },
@@ -165,12 +164,11 @@ function baseNodes(): ContextAssetNode[] {
               kind: 'entry',
               body: '雾港是一座潮湿安静的海港。',
               projection: {
-                group: 'setting.stable',
                 lifecycle: 'always',
                 order: 'entry: 10',
                 slotKey: 'setting-layer:city-layers-main@setting.stable',
                 sourceKind: 'actual',
-                zone: 'StablePrefix',
+                zoneId: 'setting.stable',
                 entryOrder: 10,
               },
             },

@@ -16,12 +16,11 @@ export type PromptProjection = {
       fragmentId: string
       sourceNodeId: string
       sourcePath: string
-      injectionGroupKey: string
+      zoneId: string
       slotKey: string
     }>
     promptRows: Array<{
-      zoneKey: string
-      anchor: 'before' | 'inside' | 'after'
+      zoneId: string
       slotKey: string
       fragmentIds: string[]
       orderSource: 'rank' | 'slotOrderHint' | 'sourceTreeFallback'
@@ -30,9 +29,8 @@ export type PromptProjection = {
 }
 
 export type PromptProjectionZone = {
-  zoneKey: string
+  zoneId: string
   displayName: string
-  anchor: 'before' | 'inside' | 'after'
   slots: Array<{
     slotKey: string
     orderSource: 'rank' | 'slotOrderHint' | 'sourceTreeFallback'
@@ -45,7 +43,7 @@ export type PromptProjectionZone = {
         sourceNodeId: string
       }
       projection: {
-        injectionGroupKey: string
+        zoneId: string
         lifecycle: string
       }
     }>

@@ -12,7 +12,8 @@ Loom Studio 使用统一的 Document Store 进行数据持久化。所有被存�
 ### `airp.session`
 - **说明**: 顶层的会话容器。
 - **关联类型**: `SessionContent`
-- **关键字段**: `cardSourceVersionId`, `activeBranchId`, `agentRuntimeProfileId`
+- **关键字段**: `cardSourceVersionId`, `promptResourceIds`, `activeBranchId`, `agentRuntimeProfileId`
+- **备注**: 新 Session 只从 Card 复制有序 Prompt Resource IDs，不复制 Resource 内容；PromptBuild 直接读取这些 Resource IDs。
 
 ### `airp.narrative_branch`
 - **说明**: 会话的分支（由于允许随时分叉/修改，所有进度存储在 branch 树上）。
@@ -52,19 +53,28 @@ Loom Studio 使用统一的 Document Store 进行数据持久化。所有被存�
 
 ## 3. 智能体与卡片资产 (Agent & Assets)
 
-### `airp.card_source`
+### `airp.cardSource`
 - **说明**: 基础角色卡资产。
 - **关联类型**: `CardSourceContent`
-- **关键字段**: `name`, `preset`, `opening`, `settingLayer`
+- **关键字段**: `name`, `opening`, `promptResourceIds`, `importBundleId`, `createdAt`, `updatedAt`
+- **备注**: Bundle import 路径中 Card 直接保存有序 `promptResourceIds` 与独立 `importBundleId`。`createCard` 的 M0 simple-card 路径仍保留 `preset` / `settingLayer`。
 
 ### `airp.agent_runtime_profile`
 - **说明**: 一组运行时配置参数集合，将角色卡应用于特定会话时使用的引擎参数。
 - **关联类型**: `AgentRuntimeProfileContent`
 - **关键字段**: `name`, `purpose`, `presetId`, `modelProfileId`
 
-### `airp.prompt_workspace`
-- **说明**: 用户或平台编写 Prompt Template 以及挂载外部引用的工作台内容。
-- **关联类型**: `PromptWorkspaceContent`
+### `airp.promptResource`
+- **说明**: 一个平铺、独立编辑的顶层 Prompt 资源根节点，例如 Preset、Setting Layer、Runtime 视图或 History 视图。
+- **关联类型**: `PromptResourceContent`
+- **关键字段**: `resourceKind`, `rootNode`, `sourceArtifactRef`
+- **备注**: 资源读取和增删改移动均以 `resourceId` 为入口；Resource 是平铺、可独立引用的 Document。
+
+### `airp.importBundle`
+- **说明**: 保存一次 Card Bundle 导入的来源 Artifact、来源引用、资源推荐关系和导入 Document 清单。
+- **关联类型**: `ImportBundleContent`
+- **关键字段**: `cardId`, `documentIds`, `sourceArtifact`, `sourceArtifactRef`, `bindings`, `importedAt`
+- **备注**: Card export 通过 `Card.importBundleId` 回读来源与兼容数据。
 
 ## 4. 平台与提供商 (Platform Provider)
 

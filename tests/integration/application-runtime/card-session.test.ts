@@ -55,6 +55,7 @@ describe('application runtime card and session integration', () => {
     expect(listed.cards.map(card => card.id)).toContain(created.card.id)
     expect(session.session).toMatchObject({
       cardSourceVersionId: `${created.card.id}@${created.card.version}`,
+      promptResourceIds: [],
       title: '雾港旅馆',
     })
     expect(session.session.cardSnapshot).toMatchObject({
@@ -66,8 +67,8 @@ describe('application runtime card and session integration', () => {
       settingLayer: { entries: [expect.objectContaining({ title: '雾港', content: '雾港潮湿而安静。' })] },
     })
     expect(capturedPrompts[0]?.[0]?.content).toContain('Card description: 一张用于测试的 AIRP 假卡。')
-    expect(capturedPrompts[0]?.[0]?.content).toContain('雾港潮湿而安静。')
-    expect(capturedPrompts[0]?.[1]).toMatchObject({ role: 'assistant', content: '雨夜，玩家推开旅馆的门。' })
+    expect(capturedPrompts[0]?.[1]?.content).toContain('雾港潮湿而安静。')
+    expect(capturedPrompts[0]?.[2]).toMatchObject({ role: 'assistant', content: '雨夜，玩家推开旅馆的门。' })
   })
 
   it('normalizes legacy stored cards when reading and opening sessions', async () => {

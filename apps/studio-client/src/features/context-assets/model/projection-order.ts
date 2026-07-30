@@ -2,14 +2,13 @@ import type { ContextAssetNode, ProjectionSlotRank } from '../../../entities/ind
 import { isSettingLayerSlot, readSlotDisplayName } from './projection-slot.js'
 
 export type ProjectionOrderEntry = {
-  anchor: 'before' | 'inside' | 'after'
   entryOrder: number
   node: ContextAssetNode
   position: number
   slotKey: string
   slotOrder: number
   sourceKind: 'actual' | 'virtual'
-  zone: string
+  zoneId: string
   zoneOrder: number
 }
 
@@ -19,30 +18,26 @@ export type ProjectionOrderRow = {
   label: string
   primary: ProjectionOrderEntry
   type: 'entry' | 'slot'
-  zone: string
+  zoneId: string
 }
 
 export function buildProjectionOrder(nodes: ContextAssetNode[]): ProjectionOrderEntry[] {
   return flattenContextNodes(nodes)
     .filter((node): node is ContextAssetNode & { projection: NonNullable<ContextAssetNode['projection']> } => Boolean(node.projection))
     .map(node => {
-      const anchor = node.projection.anchor ?? 'inside'
-
       return {
-        anchor,
         entryOrder: node.projection.entryOrder ?? 500,
         node,
         position: 0,
-        slotKey: node.projection.slotKey ?? `${node.projection.group}@${node.projection.zone}`,
+        slotKey: node.projection.slotKey ?? `${node.id}@${node.projection.zoneId}`,
         slotOrder: node.projection.slotOrder ?? 500,
         sourceKind: node.projection.sourceKind ?? 'actual',
-        zone: node.projection.zone,
-        zoneOrder: readZoneOrder(node.projection.zone),
+        zoneId: node.projection.zoneId,
+        zoneOrder: readZoneOrder(node.projection.zoneId),
       }
     })
     .sort((left, right) => (
       left.zoneOrder - right.zoneOrder
-      || readAnchorOrder(left.anchor) - readAnchorOrder(right.anchor)
       || left.slotOrder - right.slotOrder
       || left.entryOrder - right.entryOrder
       || left.slotKey.localeCompare(right.slotKey)
@@ -58,7 +53,6 @@ export function orderProjectionEntries(entries: ProjectionOrderEntry[], orderNod
       .sort((left, right) => (
         (slotRank.get(left.slotKey) ?? 'zzzz').localeCompare(slotRank.get(right.slotKey) ?? 'zzzz')
         || left.zoneOrder - right.zoneOrder
-        || readAnchorOrder(left.anchor) - readAnchorOrder(right.anchor)
         || left.slotOrder - right.slotOrder
         || left.entryOrder - right.entryOrder
         || left.node.id.localeCompare(right.node.id)
@@ -103,7 +97,7 @@ export function buildProjectionRows(entries: ProjectionOrderEntry[]): Projection
         label: entry.node.label,
         primary: entry,
         type: 'entry',
-        zone: entry.zone,
+        zoneId: entry.zoneId,
       })
     }
   }
@@ -118,7 +112,7 @@ export function buildProjectionRows(entries: ProjectionOrderEntry[]): Projection
       label: readSlotDisplayName(primary.slotKey),
       primary,
       type: 'slot',
-      zone: primary.zone,
+      zoneId: primary.zoneId,
     })
   }
 
@@ -135,8 +129,7 @@ export function buildSlotRanksFromOrder(entries: ProjectionOrderEntry[], ordered
     if (!entry || seen.has(entry.slotKey)) continue
     seen.add(entry.slotKey)
     ranks.push({
-      injectionGroupKey: entry.node.projection?.group ?? entry.slotKey,
-      anchor: entry.anchor,
+      zoneId: entry.zoneId,
       slotKey: entry.slotKey,
       rankKey: makeRankKey(ranks.length),
     })
@@ -192,17 +185,13 @@ function makeRankKey(index: number): string {
 }
 
 function readZoneOrder(zone: string): number {
-  if (zone === 'StablePrefix') return 100
-  if (zone === 'MemoryEcho') return 150
-  if (zone === 'NarrativeContext') return 200
-  if (zone === 'LowerContext') return 300
-  if (zone === 'CurrentTurn') return 400
-  if (zone === 'FreshTail') return 500
+  if (zone === 'preset.system') return 100
+  if (zone === 'setting.stable') return 200
+  if (zone === 'chat.history') return 300
+  if (zone === 'setting.lower') return 400
+  if (zone === 'chat.before') return 500
+  if (zone === 'chat.inside') return 600
+  if (zone === 'chat.after') return 700
+  if (zone === 'fresh.tail') return 800
   return 900
-}
-
-function readAnchorOrder(anchor: 'before' | 'inside' | 'after'): number {
-  if (anchor === 'before') return 100
-  if (anchor === 'inside') return 200
-  return 300
 }

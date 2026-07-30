@@ -51,9 +51,9 @@ describe('studio server prompt rpc integration', () => {
       })
       const storedPrompt = run.runtimeEntries.find(entry => entry.kind === 'prompt')?.content.messages
 
-      expect(preview.messages.map(message => message.role)).toEqual(['system', 'assistant', 'user'])
+      expect(preview.messages.map(message => message.role)).toEqual(['system', 'system', 'assistant', 'user'])
       expect(preview.messages[0]?.content).toContain('RPC Prompt Card')
-      expect(preview.messages[0]?.content).toContain('RPC 设定注入。')
+      expect(preview.messages[1]?.content).toContain('RPC 设定注入。')
       expect(storedPrompt).toEqual(preview.messages)
     })
   })
@@ -107,8 +107,8 @@ describe('studio server prompt rpc integration', () => {
       })
       const activationRow = activePreview.projection.editorProjection.sourceRows.find(row => row.sourcePath.includes('Finalize Mode'))
 
-      expect(inactivePreview.messages[0]?.content).not.toContain('最终润色规则启用。')
-      expect(activePreview.messages[0]?.content).toContain('最终润色规则启用。')
+      expect(inactivePreview.messages.map(message => message.content).join('\n')).not.toContain('最终润色规则启用。')
+      expect(activePreview.messages[1]?.content).toContain('最终润色规则启用。')
       expect(activationRow).toMatchObject({
         active: true,
         activationReason: 'activation: conditions matched',

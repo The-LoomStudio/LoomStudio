@@ -12,21 +12,22 @@ import type {
   DeleteModelProfileResult,
   DeleteProviderAccountResult,
   ForkBranchResult,
-  ExportWorkspaceArtifactResult,
-  GetPromptWorkspaceResult,
-  ImportWorkspaceArtifactResult,
+  ExportCardBundleResult,
+  GetImportBundleResult,
+  GetPromptResourceResult,
+  ImportCardBundleResult,
   ListAgentRuntimeProfilesResult,
   ListCardsResult,
   ListModelProfilesResult,
   ListProviderAccountsResult,
-  ListPromptWorkspacesResult,
+  ListCardPromptResourcesResult,
   MutationReceipt,
   PromptPreview,
   RunDetails,
   SessionDetails,
   SubmitTurnResult,
   Timeline,
-  UpdatePromptWorkspaceResult,
+  UpdatePromptResourceResult,
   UpdateCardResult,
   UpdateAgentRuntimeProfileResult,
   UpdateModelProfileResult,
@@ -53,11 +54,15 @@ export type StudioApi = {
   history: {
     revert(changesetId: string): Promise<MutationReceipt>
   }
+  importBundles: {
+    get(importBundleId: string): Promise<GetImportBundleResult>
+  }
   cards: {
     list(): Promise<ListCardsResult>
     create(input: JsonObject): Promise<CreateCardResult>
     update(input: JsonObject): Promise<UpdateCardResult>
     delete(cardId: string): Promise<DeleteCardResult>
+    export(cardId: string): Promise<ExportCardBundleResult>
   }
   providerAccounts: {
     list(): Promise<ListProviderAccountsResult>
@@ -95,17 +100,17 @@ export type StudioApi = {
   prompt: {
     preview(input: JsonObject): Promise<PromptPreview>
   }
-  promptWorkspaces: {
-    import(input: JsonObject): Promise<ImportWorkspaceArtifactResult>
-    get(workspaceId: string): Promise<GetPromptWorkspaceResult>
-    list(input?: JsonObject): Promise<ListPromptWorkspacesResult>
-    updateAsset(input: JsonObject): Promise<UpdatePromptWorkspaceResult>
-    updateAssets(input: JsonObject): Promise<UpdatePromptWorkspaceResult>
-    createAsset(input: JsonObject): Promise<UpdatePromptWorkspaceResult>
-    moveAsset(input: JsonObject): Promise<UpdatePromptWorkspaceResult>
-    deleteAsset(input: JsonObject): Promise<UpdatePromptWorkspaceResult>
-    updateProjectionOrderProfile(input: JsonObject): Promise<UpdatePromptWorkspaceResult>
-    export(workspaceId: string): Promise<ExportWorkspaceArtifactResult>
+  promptResources: {
+    get(resourceId: string): Promise<GetPromptResourceResult>
+    listForCard(cardId: string): Promise<ListCardPromptResourcesResult>
+    updateAsset(input: JsonObject): Promise<UpdatePromptResourceResult>
+    updateAssets(input: JsonObject): Promise<UpdatePromptResourceResult>
+    createAsset(input: JsonObject): Promise<UpdatePromptResourceResult>
+    moveAsset(input: JsonObject): Promise<UpdatePromptResourceResult>
+    deleteAsset(input: JsonObject): Promise<UpdatePromptResourceResult>
+  }
+  cardBundles: {
+    import(input: JsonObject): Promise<ImportCardBundleResult>
   }
   turns: {
     submit(input: JsonObject): Promise<SubmitTurnResult>
@@ -123,11 +128,15 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
         return { changesetId: result.changesetId }
       },
     },
+    importBundles: {
+      get: importBundleId => bridge.call<GetImportBundleResult>('application.getImportBundle', { importBundleId }),
+    },
     cards: {
       list: () => bridge.call<ListCardsResult>('application.listCards', {}),
       create: input => bridge.call<CreateCardResult>('application.createCard', input),
       update: input => bridge.call<UpdateCardResult>('application.updateCard', input),
       delete: cardId => bridge.call<DeleteCardResult>('application.deleteCard', { cardId }),
+      export: cardId => bridge.call<ExportCardBundleResult>('application.exportCardArtifact', { cardId }),
     },
     providerAccounts: {
       list: () => bridge.call<ListProviderAccountsResult>('application.listProviderAccounts', {}),
@@ -168,17 +177,17 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
     prompt: {
       preview: input => bridge.call<PromptPreview>('application.previewPrompt', input),
     },
-    promptWorkspaces: {
-      import: input => bridge.call<ImportWorkspaceArtifactResult>('application.importWorkspaceArtifact', input),
-      get: workspaceId => bridge.call<GetPromptWorkspaceResult>('application.getPromptWorkspace', { workspaceId }),
-      list: input => bridge.call<ListPromptWorkspacesResult>('application.listPromptWorkspaces', input ?? {}),
-      createAsset: input => bridge.call<UpdatePromptWorkspaceResult>('application.createPromptAsset', input),
-      updateAsset: input => bridge.call<UpdatePromptWorkspaceResult>('application.updatePromptAsset', input),
-      updateAssets: input => bridge.call<UpdatePromptWorkspaceResult>('application.updatePromptAssets', input),
-      moveAsset: input => bridge.call<UpdatePromptWorkspaceResult>('application.movePromptAsset', input),
-      deleteAsset: input => bridge.call<UpdatePromptWorkspaceResult>('application.deletePromptAsset', input),
-      updateProjectionOrderProfile: input => bridge.call<UpdatePromptWorkspaceResult>('application.updateProjectionOrderProfile', input),
-      export: workspaceId => bridge.call<ExportWorkspaceArtifactResult>('application.exportWorkspaceArtifact', { workspaceId }),
+    promptResources: {
+      get: resourceId => bridge.call<GetPromptResourceResult>('application.getPromptResource', { resourceId }),
+      listForCard: cardId => bridge.call<ListCardPromptResourcesResult>('application.listCardPromptResources', { cardId }),
+      createAsset: input => bridge.call<UpdatePromptResourceResult>('application.createPromptResourceAsset', input),
+      updateAsset: input => bridge.call<UpdatePromptResourceResult>('application.updatePromptResourceAsset', input),
+      updateAssets: input => bridge.call<UpdatePromptResourceResult>('application.updatePromptResourceAssets', input),
+      moveAsset: input => bridge.call<UpdatePromptResourceResult>('application.movePromptResourceAsset', input),
+      deleteAsset: input => bridge.call<UpdatePromptResourceResult>('application.deletePromptResourceAsset', input),
+    },
+    cardBundles: {
+      import: input => bridge.call<ImportCardBundleResult>('application.importCardBundle', input),
     },
     turns: {
       submit: input => bridge.call<SubmitTurnResult>('application.submitTurn', input),

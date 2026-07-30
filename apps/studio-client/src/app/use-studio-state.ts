@@ -18,7 +18,7 @@ import { useRendererSession } from '../features/renderer-poc/model/use-renderer-
 import { useProviderSettings } from '../features/provider-settings/model/use-provider-settings.js'
 import { useSessionRuntime } from '../features/session-runtime/model/use-session-runtime.js'
 import { DemoData } from './demo-data.js'
-import type { PromptWorkspace, PromptWorkspaceArtifact } from '../entities/index.js'
+import type { PromptResource, CardBundleArtifact } from '../entities/index.js'
 import {
   readComposerHint,
   readEmptyTimelineText,
@@ -43,9 +43,7 @@ export function useStudioState(transportLogger: Logger) {
   const api = useMemo(() => createStudioApi(observedBridge), [observedBridge])
   const editHistory = useEditHistory({ revertChangeset: api.history.revert })
   const rendererApi = useMemo(() => createRendererApi(observedBridge), [observedBridge])
-  const [activePromptWorkspaceId, setActivePromptWorkspaceId] = useState<string>()
-  const [promptWorkspaces, setPromptWorkspaces] = useState<PromptWorkspace[]>([])
-  const [promptWorkspacesLoaded, setPromptWorkspacesLoaded] = useState(false)
+  const [promptResources, setPromptResources] = useState<PromptResource[]>([])
   const cardsState = useCards({
     api,
     initialCardJson: DemoData.cardJson,
@@ -59,13 +57,13 @@ export function useStudioState(transportLogger: Logger) {
     api,
     initialNodes: DemoData.contextAssets,
     initialSelectedId: 'projection-order-profile-main',
-    onWorkspaceChange: workspace => {
-      setPromptWorkspaces(current => current.map(item => item.id === workspace.id ? workspace : item))
+    onResourceChange: resource => {
+      setPromptResources(current => current.map(item => item.id === resource.id ? resource : item))
     },
     recordEdit: editHistory.record,
     runAction: busyAction.runAction,
+    resources: promptResources,
     t,
-    workspaceId: activePromptWorkspaceId,
   })
   const providerSettings = useProviderSettings({
     api,
@@ -79,68 +77,52 @@ export function useStudioState(transportLogger: Logger) {
     api,
     initialInput: '我看向柜台后的铃铛。',
     selectedCardId: cardsState.selectedCardId,
-    selectedWorkspaceId: activePromptWorkspaceId,
     selectedAgentRuntimeProfileId: providerSettings.selectedAgentRuntimeProfileId,
     runAction: busyAction.runAction,
     readProjectionOrderProfile: contextAssetState.readProjectionOrderProfile,
   })
 
-  function applyPromptWorkspaceSelection(workspace: PromptWorkspace | undefined) {
-    setActivePromptWorkspaceId(workspace?.id)
-    contextAssetState.setNodes(workspace ? normalizeContextAssets(workspace.contextAssets) : [])
-    contextAssetState.setSelectedId(readDefaultContextAssetId(workspace))
+  function applyPromptResourceSelection(resources: PromptResource[]) {
+    setPromptResources(resources)
+    contextAssetState.setNodes(normalizeContextAssets(resources.map(resource => resource.rootNode)))
+    contextAssetState.setSelectedId(readDefaultContextAssetId(resources))
   }
 
   useEffect(() => {
     editHistory.clear()
     void busyAction.runAction(async () => {
-      setPromptWorkspacesLoaded(false)
-      const listed = await api.promptWorkspaces.list()
-      let workspaces = listed.workspaces
-      let selectedCardId = workspaces[0]?.cardId
+      let cards = await cardsState.refreshCards()
+      let selectedCardId = cards[0]?.id
 
-      if (workspaces.length === 0) {
-        const imported = await api.promptWorkspaces.import({
-          artifact: createDemoPromptWorkspaceArtifact() as unknown as ClientJsonValue,
+      if (cards.length === 0) {
+        const imported = await api.cardBundles.import({
+          artifact: createDemoCardBundleArtifact() as unknown as ClientJsonValue,
         })
-        workspaces = [imported.workspace]
         selectedCardId = imported.card.id
+        await cardsState.refreshCards()
       }
 
-      setPromptWorkspaces(workspaces)
       if (selectedCardId) cardsState.setSelectedCardId(selectedCardId)
-      setPromptWorkspacesLoaded(true)
-      applyPromptWorkspaceSelection(workspaces.find(workspace => workspace.cardId === selectedCardId))
-      await cardsState.refreshCards()
       await providerSettings.refreshProviderSettings()
     })
   }, [observedBridge])
 
-  const selectedCardWorkspaceId = useMemo(() => {
-    if (!cardsState.selectedCardId) return undefined
-    return promptWorkspaces.find(workspace => workspace.cardId === cardsState.selectedCardId)?.id
-  }, [cardsState.selectedCardId, promptWorkspaces])
-
   useEffect(() => {
-    if (!promptWorkspacesLoaded) return
-    if (!selectedCardWorkspaceId) {
-      applyPromptWorkspaceSelection(undefined)
+    if (!cardsState.selectedCardId) {
+      applyPromptResourceSelection([])
       return
     }
 
     let cancelled = false
-    void api.promptWorkspaces.get(selectedCardWorkspaceId).then(result => {
+    void api.promptResources.listForCard(cardsState.selectedCardId).then(result => {
       if (cancelled) return
-      setPromptWorkspaces(current => current.map(workspace => (
-        workspace.id === result.workspace.id ? result.workspace : workspace
-      )))
-      applyPromptWorkspaceSelection(result.workspace)
+      applyPromptResourceSelection(result.resources)
     }).catch(() => undefined)
 
     return () => {
       cancelled = true
     }
-  }, [api, promptWorkspacesLoaded, selectedCardWorkspaceId])
+  }, [api, cardsState.selectedCardId])
 
   // 派生计算
   const canSend = Boolean(sessionRuntime.session && sessionRuntime.branch) && !busyAction.busy && sessionRuntime.input.trim().length > 0
@@ -194,16 +176,15 @@ export function useStudioState(transportLogger: Logger) {
 
   async function refreshHistoryAnchor(entry: { anchor?: { documentId: string; subjectId?: string } }) {
     if (!entry.anchor) return
-    const isWorkspace = entry.anchor.documentId === activePromptWorkspaceId
-      || promptWorkspaces.some(workspace => workspace.id === entry.anchor?.documentId)
-    if (isWorkspace) {
-      const result = await api.promptWorkspaces.get(entry.anchor.documentId)
-      setPromptWorkspaces(current => current.map(workspace => workspace.id === result.workspace.id ? result.workspace : workspace))
-      applyPromptWorkspaceSelection(result.workspace)
+    if (promptResources.some(resource => resource.id === entry.anchor?.documentId)) {
+      const result = await api.promptResources.get(entry.anchor.documentId)
+      const resources = promptResources.map(resource => resource.id === result.resource.id ? result.resource : resource)
+      applyPromptResourceSelection(resources)
       const subjectId = entry.anchor.subjectId
-      contextAssetState.setSelectedId(subjectId && findContextAssetNode(result.workspace.contextAssets, subjectId)
+      const contextAssets = resources.map(resource => resource.rootNode)
+      contextAssetState.setSelectedId(subjectId && findContextAssetNode(contextAssets, subjectId)
         ? subjectId
-        : readDefaultContextAssetId(result.workspace))
+        : readDefaultContextAssetId(resources))
       return
     }
 
@@ -240,7 +221,6 @@ export function useStudioState(transportLogger: Logger) {
     promptPreview: sessionRuntime.promptPreview, promptMessages, promptProjection, promptBuildSteps,
     promptBuildTrace,
     providerPayloadPreview,
-    activePromptWorkspaceId,
     activationControl,
     activationFacts,
     setActivationMode: (mode: ActivationControlState['mode']) => setActivationControl(current => ({ ...current, mode })),
@@ -322,19 +302,19 @@ export function useStudioState(transportLogger: Logger) {
   }
 }
 
-function createDemoPromptWorkspaceArtifact(): PromptWorkspaceArtifact {
-  const card = JSON.parse(DemoData.cardJson) as PromptWorkspaceArtifact['card']
+function createDemoCardBundleArtifact(): CardBundleArtifact {
+  const card = JSON.parse(DemoData.cardJson) as CardBundleArtifact['card']
 
   return {
     schemaVersion: 1,
-    artifactId: 'studio-demo-live-workspace',
-    displayName: 'Studio Demo Live Workspace',
-    description: 'Live workspace imported from the built-in Studio demo data.',
+    artifactId: 'studio-demo-card-bundle',
+    displayName: 'Studio Demo Card Bundle',
+    description: 'Card bundle imported from the built-in Studio demo data.',
     card,
     contextAssets: DemoData.contextAssets,
   }
 }
 
-function readDefaultContextAssetId(workspace: PromptWorkspace | undefined): string {
-  return workspace?.contextAssets[0]?.id ?? ''
+function readDefaultContextAssetId(resources: PromptResource[]): string {
+  return resources[0]?.rootNode.id ?? ''
 }

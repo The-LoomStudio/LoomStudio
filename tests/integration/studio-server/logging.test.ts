@@ -151,13 +151,6 @@ describe('Studio Server logging', () => {
         branchId: created.branch.id,
         input: 'Private runtime prompt',
       })
-      await expect(callRpc(port, 'application.previewPrompt', {
-        sessionId: created.session.id,
-        branchId: created.branch.id,
-        workspaceId: 'missing-workspace',
-        input: 'Another private prompt',
-      })).rejects.toThrow('Document not found')
-
       const page = await callRpc<{
         items: Array<{
           event?: string
@@ -178,24 +171,18 @@ describe('Studio Server logging', () => {
         'prompt.build.completed',
         'prompt.build.started',
         'prompt.build.completed',
-        'prompt.build.started',
-        'prompt.build.failed',
       ])
       expect(page.items[0]?.message).toBe('preview prompt build started')
       expect(page.items[1]?.message).toMatch(/^preview prompt build completed · 2 messages · \d+(?:\.\d+)? ms$/)
       expect(page.items[2]?.message).toBe('runtime prompt build started')
       expect(page.items[3]?.message).toMatch(/^runtime prompt build completed · 2 messages · \d+(?:\.\d+)? ms$/)
-      expect(page.items[4]?.message).toBe('preview prompt build started')
-      expect(page.items[5]?.message).toMatch(/^preview prompt build failed after \d+(?:\.\d+)? ms$/)
       expect(page.items[1]?.data).toMatchObject({ mode: 'preview', messageCount: 2 })
       expect(page.items[0]?.data?.buildId).toBe(page.items[1]?.data?.buildId)
       expect(page.items[0]?.correlationId).toBe(page.items[1]?.correlationId)
       expect(page.items[3]?.data).toMatchObject({ mode: 'runtime', messageCount: 2 })
       expect(page.items[3]?.data?.runId).toMatch(/^run-/)
       expect(page.items[2]?.data?.buildId).toBe(page.items[3]?.data?.buildId)
-      expect(page.items[4]?.data?.buildId).toBe(page.items[5]?.data?.buildId)
       expect(JSON.stringify(page.items)).not.toContain('Private')
-      expect(JSON.stringify(page.items)).not.toContain('Another')
 
       const providerPage = await callRpc<{
         items: Array<{

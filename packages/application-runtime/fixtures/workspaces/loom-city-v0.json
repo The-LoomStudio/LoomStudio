@@ -66,26 +66,22 @@
           ],
           "slotRanks": [
             {
-              "injectionGroupKey": "preset.system",
-              "anchor": "inside",
+              "zoneId": "preset.system",
               "slotKey": "preset:preset-default-airp@preset.system",
               "rankKey": "0000"
             },
             {
-              "injectionGroupKey": "setting.stable",
-              "anchor": "inside",
+              "zoneId": "setting.stable",
               "slotKey": "setting-layer:city-layers-main@setting.stable",
               "rankKey": "0001"
             },
             {
-              "injectionGroupKey": "chat.history",
-              "anchor": "inside",
+              "zoneId": "chat.history",
               "slotKey": "narrative-chat:session-main@chat.history",
               "rankKey": "0002"
             },
             {
-              "injectionGroupKey": "chat.inside",
-              "anchor": "inside",
+              "zoneId": "chat.inside",
               "slotKey": "runtime:runtime.current-turn@chat.inside",
               "rankKey": "0003"
             }
@@ -101,7 +97,7 @@
           "enabled": true,
           "capabilities": {
             "projection": {
-              "injectionGroupKey": "preset.system",
+              "zoneId": "preset.system",
               "slotKey": "preset:preset-default-airp@preset.system",
               "entryOrderHint": 10,
               "slotOrderHint": 100
@@ -129,7 +125,7 @@
           "capabilities": {
             "activation": { "kind": "always" },
             "projection": {
-              "injectionGroupKey": "setting.stable",
+              "zoneId": "setting.stable",
               "slotKey": "setting-layer:city-layers-main@setting.stable",
               "entryOrderHint": 10,
               "slotOrderHint": 200
@@ -147,7 +143,7 @@
           "capabilities": {
             "activation": { "kind": "keyword", "keywords": ["档案", "车票", "管理员"] },
             "projection": {
-              "injectionGroupKey": "setting.stable",
+              "zoneId": "setting.stable",
               "slotKey": "setting-layer:city-layers-main@setting.stable",
               "entryOrderHint": 20,
               "slotOrderHint": 200

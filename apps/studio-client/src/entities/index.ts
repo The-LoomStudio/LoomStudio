@@ -7,13 +7,15 @@ export type { AgentTranscriptEntry, AgentTranscript } from './agent.js'
 export type { Run, RunDetails, RuntimeEntry, CommitCandidate, SubmitTurnResult } from './run.js'
 export type { PromptProjection, PromptProjectionZone, ProviderMessage, PromptPreview } from './prompt.js'
 export type {
-  ExportWorkspaceArtifactResult,
-  GetPromptWorkspaceResult,
-  ImportWorkspaceArtifactResult,
-  ListPromptWorkspacesResult,
-  PromptWorkspace,
-  PromptWorkspaceArtifact,
-  UpdatePromptWorkspaceResult,
+  ExportCardBundleResult,
+  GetImportBundleResult,
+  GetPromptResourceResult,
+  ImportCardBundleResult,
+  ImportBundle,
+  ListCardPromptResourcesResult,
+  PromptResource,
+  CardBundleArtifact,
+  UpdatePromptResourceResult,
 } from './workspace.js'
 export type {
   ProviderAccount,

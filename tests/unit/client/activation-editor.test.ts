@@ -80,11 +80,10 @@ function node(id: string, category: ContextAssetNode['category'], kind: ContextA
     kind,
     label: id,
     projection: {
-      group: category === 'preset' ? 'preset.system' : 'setting.stable',
       lifecycle: 'always',
       order: 'entry: 10',
       slotKey: category === 'preset' ? 'preset:test@preset.system' : 'setting-layer:test@setting.stable',
-      zone: 'StablePrefix',
+      zoneId: category === 'preset' ? 'preset.system' : 'setting.stable',
     },
   }
 }

@@ -191,23 +191,26 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
             </dd>
           </div>
           <div>
-            <dt>Injection Zone</dt>
+            <dt>Zone ID</dt>
             <dd>
               <input
                 className={styles.inlineInput}
                 list="builtin-zones"
                 disabled={readOnly}
-                value={props.node.projection?.zone ?? ''}
-                onChange={event => updateProjection({ zone: event.target.value })}
-                onBlur={event => updateProjection({ zone: event.target.value }, true)}
+                value={props.node.projection?.zoneId ?? ''}
+                onChange={event => updateProjection({ zoneId: event.target.value })}
+                onBlur={event => updateProjection({ zoneId: event.target.value }, true)}
                 placeholder="Enter or select a zone..."
               />
               <datalist id="builtin-zones">
-                <option value="StablePrefix" />
-                <option value="NarrativeContext" />
-                <option value="LowerContext" />
-                <option value="CurrentTurn" />
-                <option value="FreshTail" />
+                <option value="preset.system" />
+                <option value="setting.stable" />
+                <option value="chat.history" />
+                <option value="setting.lower" />
+                <option value="chat.before" />
+                <option value="chat.inside" />
+                <option value="chat.after" />
+                <option value="fresh.tail" />
               </datalist>
             </dd>
           </div>
@@ -221,18 +224,6 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
                 value={props.node.projection?.entryOrder ?? 0}
                 onChange={event => updateProjection({ entryOrder: parseInt(event.target.value, 10) || 0 })}
                 onBlur={event => updateProjection({ entryOrder: parseInt(event.target.value, 10) || 0 }, true)}
-              />
-            </dd>
-          </div>
-          <div>
-            <dt>Injection Group</dt>
-            <dd>
-              <input
-                className={styles.inlineInput}
-                disabled={readOnly}
-                value={props.node.projection?.group ?? ''}
-                onChange={event => updateProjection({ group: event.target.value })}
-                onBlur={event => updateProjection({ group: event.target.value }, true)}
               />
             </dd>
           </div>
@@ -264,21 +255,6 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
               </select>
             </dd>
           </div>
-          <div>
-            <dt>Anchor</dt>
-            <dd>
-              <select
-                className={styles.inlineInput}
-                disabled={readOnly}
-                value={props.node.projection?.anchor ?? 'inside'}
-                onChange={event => updateProjection({ anchor: event.target.value as 'before' | 'inside' | 'after' }, true)}
-              >
-                <option value="before">before</option>
-                <option value="inside">inside</option>
-                <option value="after">after</option>
-              </select>
-            </dd>
-          </div>
         </section>
       ) : null}
 
@@ -296,8 +272,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
 
       {props.node.projection ? (
         <footer className={styles.detailFooter}>
-          <span>{props.node.projection.zone}</span>
-          <span>{props.node.projection.group}</span>
+          <span>{props.node.projection.zoneId}</span>
         </footer>
       ) : null}
     </div>

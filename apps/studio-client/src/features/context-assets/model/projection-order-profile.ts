@@ -11,8 +11,7 @@ export function readDemoProjectionOrderProfile(nodes: ContextAssetNode[], sessio
     scope: 'session',
     ...(orderNode.skeletonPatch ? { skeletonPatch: orderNode.skeletonPatch as unknown as ClientJsonValue } : {}),
     slotRanks: orderNode.slotRanks.map(rank => ({
-      injectionGroupKey: rank.injectionGroupKey,
-      ...(rank.anchor ? { anchor: rank.anchor } : {}),
+      zoneId: rank.zoneId,
       slotKey: toM0SlotKey(rank.slotKey, session),
       rankKey: rank.rankKey,
     })),
@@ -20,12 +19,12 @@ export function readDemoProjectionOrderProfile(nodes: ContextAssetNode[], sessio
 }
 
 function toM0SlotKey(slotKey: string, session: Session | undefined): string {
-  const injectionGroupKey = slotKey.includes('@') ? slotKey.slice(slotKey.lastIndexOf('@') + 1) : ''
-  if (slotKey.startsWith('preset:')) return `preset:m0-card-preset@${injectionGroupKey}`
-  if (slotKey.startsWith('setting-layer:')) return `setting-layer:m0-card-setting-layer@${injectionGroupKey}`
+  const zoneId = slotKey.includes('@') ? slotKey.slice(slotKey.lastIndexOf('@') + 1) : ''
+  if (slotKey.startsWith('preset:')) return `preset:m0-card-preset@${zoneId}`
+  if (slotKey.startsWith('setting-layer:')) return `setting-layer:m0-card-setting-layer@${zoneId}`
   if (slotKey.startsWith('narrative-chat:')) {
     const cardId = typeof session?.cardSnapshot.id === 'string' ? session.cardSnapshot.id : 'unknown'
-    return `narrative-chat:session:${cardId}@${injectionGroupKey}`
+    return `narrative-chat:session:${cardId}@${zoneId}`
   }
   return slotKey
 }

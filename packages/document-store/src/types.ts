@@ -65,6 +65,18 @@ export type Changeset = {
   operations: ChangesetOperation[]
 }
 
+export type DocumentChangeSummary = {
+  id: string
+  type: string
+  version: number
+  tombstoned: boolean
+}
+
+export type DocumentCommitFact = {
+  changeset: Changeset
+  documents: DocumentChangeSummary[]
+}
+
 export type WriteDocumentInput = {
   id?: string
   type: string
@@ -110,6 +122,10 @@ export type WriteDocumentResult = {
   parentCallId?: string
 }
 
+export type DocumentCommitResult = WriteDocumentResult & {
+  commit: DocumentCommitFact
+}
+
 export type DocumentTransactionInput = {
   actor: ActorRef
   reason?: string
@@ -121,6 +137,7 @@ export type DocumentTransactionInput = {
 export type DocumentTransactionResult<T> = {
   value: T
   changeset: Changeset
+  commit: DocumentCommitFact
 }
 
 export type RevertChangesetInput = DocumentTransactionInput & {
@@ -134,10 +151,12 @@ export type DocumentTransaction = {
   delete(input: DeleteDocumentInput): Promise<WriteDocumentResult>
 }
 
-export type DocumentStore = DocumentTransaction & {
+export type DocumentStore = Omit<DocumentTransaction, 'write' | 'delete'> & {
+  write(input: WriteDocumentInput): Promise<DocumentCommitResult>
+  delete(input: DeleteDocumentInput): Promise<DocumentCommitResult>
   transact<T>(input: DocumentTransactionInput, fn: (tx: DocumentTransaction) => Promise<T>): Promise<DocumentTransactionResult<T>>
   getChangeset(id: string): Promise<Changeset | null>
-  revertChangeset(input: RevertChangesetInput): Promise<WriteDocumentResult>
+  revertChangeset(input: RevertChangesetInput): Promise<DocumentCommitResult>
 }
 
 export type SqliteDocumentStore = DocumentStore & {

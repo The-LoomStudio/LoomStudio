@@ -15,7 +15,7 @@ import {
 import type { ActivationFacts, PromptActivation } from './prompt-activation.js'
 import { readBranchPath } from './timeline.js'
 import type { NarrativeBranchContent, ProviderMessage, SessionContent, SettingEntryContent } from './types.js'
-import { readWorkspacePromptInputs } from './workspace.js'
+import { readPromptResourceInputs } from './workspace.js'
 
 type PromptBuildMeta = {
   kind: 'promptBuild.input' | 'promptBuild.output'
@@ -29,7 +29,6 @@ type PromptBuildMeta = {
   sourceNodeCount?: number
   sourceRowCount?: number
   userInput?: string
-  workspaceId?: string
   zoneCount?: number
 }
 
@@ -40,7 +39,6 @@ type PreparedPromptBuildInput = {
   orderProfile: ProjectionOrderProfile
   sourceNodes: SourceNode[]
   userInput: string
-  workspaceId?: string
 }
 
 export type PromptBuildPipelineResult = {
@@ -56,7 +54,6 @@ export async function runPromptBuildPipeline(input: {
   orderProfile?: ProjectionOrderProfile
   session: DocumentRecord<SessionContent>
   userInput: string
-  workspaceId?: string
 }): Promise<PromptBuildPipelineResult> {
   const prepared = await preparePromptBuildInput(input)
   let compiled: { messages: ProviderMessage[]; projection: CompiledPrompt } | undefined
@@ -147,7 +144,6 @@ function compactPromptBuildMeta(meta: PromptBuildMeta): JsonValue {
       promptRowSlotRankCount: meta.promptRowSlotRankCount ?? 0,
       sourceNodeCount: meta.sourceNodeCount ?? 0,
       ...(meta.userInput ? { userInput: meta.userInput } : {}),
-      ...(meta.workspaceId ? { workspaceId: meta.workspaceId } : {}),
     } satisfies JsonObject
   }
 
@@ -167,23 +163,27 @@ async function preparePromptBuildInput(input: {
   orderProfile?: ProjectionOrderProfile
   session: DocumentRecord<SessionContent>
   userInput: string
-  workspaceId?: string
 }): Promise<PreparedPromptBuildInput> {
   const entries = await readBranchPath(input.documents, input.session.id, input.branch.content.headEntryId)
   const snapshot = input.session.content.cardSnapshot
   const macroContext = getMacroContext(snapshot)
-  const workspaceInputs = input.workspaceId
-    ? await readWorkspacePromptInputs({ documents: input.documents, workspaceId: input.workspaceId, macroContext })
+  const resourceInputs = input.session.content.promptResourceIds?.length
+    ? await readPromptResourceInputs({
+        documents: input.documents,
+        resourceIds: input.session.content.promptResourceIds,
+        macroContext,
+      })
     : undefined
-  const sourceNodes = workspaceInputs
-    ? [...workspaceInputs.sourceNodes, ...buildRuntimeSourceNodes(snapshot, entries)]
+  const promptInputs = resourceInputs
+  const sourceNodes = promptInputs
+    ? [...promptInputs.sourceNodes, ...buildRuntimeSourceNodes(snapshot, entries)]
     : buildM0SourceNodes(snapshot, entries)
-  const contributions = workspaceInputs
-    ? [...workspaceInputs.contributions, ...buildNarrativeRuntimeContributions(snapshot, entries, input.userInput)]
+  const contributions = promptInputs
+    ? [...promptInputs.contributions, ...buildNarrativeRuntimeContributions(snapshot, entries, input.userInput)]
     : buildM0PromptContributions(snapshot, entries, input.userInput, macroContext)
   const orderProfile = input.orderProfile && input.orderProfile !== emptyProjectionOrderProfile
     ? input.orderProfile
-    : workspaceInputs ? workspaceInputs.orderProfile : emptyProjectionOrderProfile
+    : promptInputs ? promptInputs.orderProfile : emptyProjectionOrderProfile
 
   return {
     activationFacts: input.activationFacts,
@@ -191,7 +191,6 @@ async function preparePromptBuildInput(input: {
     orderProfile,
     sourceNodes,
     userInput: input.userInput,
-    workspaceId: input.workspaceId,
   }
 }
 
@@ -205,7 +204,6 @@ function toPromptBuildInputMeta(input: PreparedPromptBuildInput): PromptBuildMet
     promptRowSlotRankCount: input.orderProfile.slotRanks.length,
     sourceNodeCount: input.sourceNodes.length,
     userInput: input.userInput,
-    ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
   }
 }
 
@@ -286,21 +284,21 @@ function buildNarrativeRuntimeContributions(
 ): PromptContribution[] {
   return [
     ...entries.map((entry, index): PromptContribution => runtimeContribution({
-      id: `workspace.chat.${entry.id}`,
+      id: `session.chat.${entry.id}`,
       sourceNodeId: `node.chat.${entry.id}`,
       sourceId: `session:${snapshot.id ?? 'unknown'}`,
       kind: 'narrativeChat',
       content: entry.content,
-      injectionGroupKey: 'chat.history',
+      zoneId: 'chat.history',
       entryOrderHint: index + 1,
     })),
     runtimeContribution({
-      id: 'workspace.runtime.current-input',
+      id: 'runtime.current-input',
       sourceNodeId: 'node.runtime.current-input',
       sourceId: 'runtime.current-turn',
       kind: 'runtime',
       content: userInput,
-      injectionGroupKey: 'chat.inside',
+      zoneId: 'chat.inside',
       entryOrderHint: 1,
     }),
   ]
@@ -353,7 +351,7 @@ function buildM0PromptContributions(
       sourceId: 'm0-card-preset',
       kind: 'preset',
       content: renderMacros(presetSystem, macroContext),
-      injectionGroupKey: 'preset.system',
+      zoneId: 'preset.system',
       entryOrderHint: 10,
     }))
   }
@@ -364,7 +362,7 @@ function buildM0PromptContributions(
     sourceId: 'm0-card-preset',
     kind: 'preset',
     content: `You are the AIRP agent for ${cardName}. Continue the accepted narrative.`,
-    injectionGroupKey: 'preset.system',
+    zoneId: 'preset.system',
     entryOrderHint: 20,
   }))
 
@@ -375,7 +373,7 @@ function buildM0PromptContributions(
       sourceId: 'm0-card-preset',
       kind: 'preset',
       content: `Card description: ${renderMacros(description, macroContext)}`,
-      injectionGroupKey: 'preset.system',
+      zoneId: 'preset.system',
       entryOrderHint: 30,
     }))
   }
@@ -387,7 +385,7 @@ function buildM0PromptContributions(
       sourceId: 'm0-card-setting-layer',
       kind: 'settingLayer',
       content: `${renderMacros(entry.title ?? entry.path ?? entry.id, macroContext)}: ${renderMacros(entry.content, macroContext)}`,
-      injectionGroupKey: 'setting.stable',
+      zoneId: 'setting.stable',
       activation: entry.enabled ? toPromptActivation(entry.activation) : { kind: 'manual' },
       entryOrderHint: index + 1,
       joinSlotKey: 'setting-layer:m0-card-setting-layer@setting.stable',
@@ -401,7 +399,7 @@ function buildM0PromptContributions(
       sourceId: `session:${snapshot.id ?? 'unknown'}`,
       kind: 'narrativeChat',
       content: entry.content,
-      injectionGroupKey: 'chat.history',
+      zoneId: 'chat.history',
       entryOrderHint: index + 1,
     }))
   }
@@ -412,7 +410,7 @@ function buildM0PromptContributions(
     sourceId: 'runtime.current-turn',
     kind: 'runtime',
     content: userInput,
-    injectionGroupKey: 'chat.inside',
+    zoneId: 'chat.inside',
     entryOrderHint: 1,
   }))
 
@@ -424,7 +422,7 @@ function runtimeContribution(input: {
   content: string
   entryOrderHint?: number
   id: string
-  injectionGroupKey: string
+  zoneId: string
   joinSlotKey?: string
   kind: PromptContribution['sourceRef']['kind']
   sourceId: string
@@ -443,7 +441,7 @@ function runtimeContribution(input: {
       ...(input.activation ? { activation: input.activation } : {}),
       lifecycle: { lifecycle: 'always' },
       projection: {
-        injectionGroupKey: input.injectionGroupKey,
+        zoneId: input.zoneId,
         ...(input.joinSlotKey ? { joinSlotKey: input.joinSlotKey } : {}),
         ...(input.entryOrderHint !== undefined ? { entryOrderHint: input.entryOrderHint } : {}),
       },

@@ -69,6 +69,14 @@ describe.each(stores)('$name document store contract', ({ create }) => {
           toVersion: 1,
         },
       ])
+      expect(result.commit).toEqual({
+        changeset: result.changeset,
+        documents: [
+          { id: 'doc-a', type: 'example.note', version: 2, tombstoned: false },
+          { id: 'doc-b', type: 'example.note', version: 1, tombstoned: false },
+        ],
+      })
+      expect(JSON.stringify(result.commit)).not.toContain('a2')
       expect(persisted).toEqual(result.changeset)
       expect(await store.get('doc-a')).toMatchObject({ version: 2, content: { text: 'a2' } })
       expect(await store.get('doc-a', { version: 1 })).toMatchObject({ content: { text: 'a1' } })
@@ -213,20 +221,29 @@ describe.each(stores)('$name document store contract', ({ create }) => {
         id: 'deleted-doc',
         expectedVersion: 1,
       })
+      expect(deleted.commit.documents).toEqual([
+        { id: 'deleted-doc', type: 'example.note', version: 2, tombstoned: true },
+      ])
       const undone = await store.revertChangeset({
         changesetId: deleted.changesetId,
         actor,
       })
 
       expect(await store.get('deleted-doc')).toMatchObject({ version: 3, content: { ok: true } })
+      expect(undone.commit.documents).toEqual([
+        { id: 'deleted-doc', type: 'example.note', version: 3, tombstoned: false },
+      ])
 
-      await store.revertChangeset({
+      const redone = await store.revertChangeset({
         changesetId: undone.changesetId,
         actor,
       })
 
       expect(await store.get('deleted-doc')).toBeNull()
       expect(await store.get('deleted-doc', { includeTombstone: true })).toMatchObject({ version: 4 })
+      expect(redone.commit.documents).toEqual([
+        { id: 'deleted-doc', type: 'example.note', version: 4, tombstoned: true },
+      ])
     })
   })
 

@@ -11,5 +11,6 @@ export const applicationDocumentTypes = {
   modelProfile: 'airp.modelProfile',
   agentRuntimeProfile: 'airp.agentRuntimeProfile',
   agentTranscriptEntry: 'airp.agentTranscriptEntry',
-  promptWorkspace: 'airp.promptWorkspace',
+  promptResource: 'airp.promptResource',
+  importBundle: 'airp.importBundle',
 } as const

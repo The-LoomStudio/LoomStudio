@@ -3,8 +3,14 @@ import type { Logger } from '@loom-studio/logging'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import type { ActivationFacts, PromptActivation } from './prompt-activation.js'
 import type { OpenAIChatPayload } from './provider-payload.js'
-import type { CompiledPrompt, ProjectionOrderProfile } from './prompt-builder.js'
-import type { PromptWorkspaceArtifact, PromptWorkspaceContent } from './workspace.js'
+import type { CompiledPrompt, CompositionSkeletonPatch, ProjectionOrderProfile } from './prompt-builder.js'
+import type {
+  CardBundleArtifact,
+  ImportBundleContent,
+  PromptResourceCompositionCapabilities,
+  PromptResourceContent,
+  PromptResourceNode,
+} from './workspace.js'
 
 export type ApplicationRuntime = {
   createCard(input: CreateCardInput, context?: RuntimeRequestContext): Promise<CreateCardResult>
@@ -30,16 +36,16 @@ export type ApplicationRuntime = {
   deleteAgentRuntimeProfile(input: DeleteAgentRuntimeProfileInput): Promise<DeleteAgentRuntimeProfileResult>
   createSession(input: CreateSessionInput): Promise<CreateSessionResult>
   createSessionFromCard(input: CreateSessionFromCardInput): Promise<CreateSessionResult>
-  importWorkspaceArtifact(input: ImportWorkspaceArtifactInput): Promise<ImportWorkspaceArtifactResult>
-  getPromptWorkspace(input: GetPromptWorkspaceInput): Promise<GetPromptWorkspaceResult>
-  listPromptWorkspaces(input?: ListPromptWorkspacesInput): Promise<ListPromptWorkspacesResult>
-  createPromptAsset(input: CreatePromptAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptAssetResult>
-  updatePromptAsset(input: UpdatePromptAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptAssetResult>
-  updatePromptAssets(input: UpdatePromptAssetsInput, context?: RuntimeRequestContext): Promise<UpdatePromptAssetResult>
-  movePromptAsset(input: MovePromptAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptAssetResult>
-  deletePromptAsset(input: DeletePromptAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptAssetResult>
-  updateProjectionOrderProfile(input: UpdateProjectionOrderProfileInput, context?: RuntimeRequestContext): Promise<UpdateProjectionOrderProfileResult>
-  exportWorkspaceArtifact(input: ExportWorkspaceArtifactInput): Promise<ExportWorkspaceArtifactResult>
+  importCardBundle(input: ImportCardBundleInput): Promise<ImportCardBundleResult>
+  getImportBundle(input: GetImportBundleInput): Promise<GetImportBundleResult>
+  getPromptResource(input: GetPromptResourceInput): Promise<GetPromptResourceResult>
+  listCardPromptResources(input: ListCardPromptResourcesInput): Promise<ListCardPromptResourcesResult>
+  createPromptResourceAsset(input: CreatePromptResourceAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
+  updatePromptResourceAsset(input: UpdatePromptResourceAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
+  updatePromptResourceAssets(input: UpdatePromptResourceAssetsInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
+  movePromptResourceAsset(input: MovePromptResourceAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
+  deletePromptResourceAsset(input: DeletePromptResourceAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
+  exportCardArtifact(input: ExportCardArtifactInput): Promise<ExportCardBundleResult>
   previewPrompt(input: PreviewPromptInput, context?: RuntimeRequestContext): Promise<PreviewPromptResult>
   submitTurn(input: SubmitTurnInput, context?: RuntimeRequestContext): Promise<SubmitTurnResult>
   getSession(input: GetSessionInput): Promise<GetSessionResult>
@@ -368,7 +374,6 @@ export type CreateSessionInput = {
   cardSnapshot?: JsonObject
   agentRuntimeProfileId?: string
   title?: string
-  workspaceId?: string
 }
 
 export type CreateSessionResult = {
@@ -380,100 +385,98 @@ export type CreateSessionFromCardInput = {
   cardId: string
   agentRuntimeProfileId?: string
   title?: string
-  workspaceId?: string
 }
 
-export type ImportWorkspaceArtifactInput = {
-  artifact: PromptWorkspaceArtifact
-  workspaceId?: string
+export type ImportCardBundleInput = {
+  artifact: CardBundleArtifact
 }
 
-export type ImportWorkspaceArtifactResult = {
-  workspace: PromptWorkspaceContent & { id: string; version: number }
+export type ImportCardBundleResult = {
   card: CardSourceContent & { id: string; version: number }
+  importBundle: ImportBundleContent & { id: string; version: number }
 }
 
-export type GetPromptWorkspaceInput = {
-  workspaceId: string
+export type GetImportBundleInput = {
+  importBundleId: string
 }
 
-export type GetPromptWorkspaceResult = {
-  workspace: PromptWorkspaceContent & { id: string; version: number }
+export type GetImportBundleResult = {
+  importBundle: ImportBundleContent & { id: string; version: number }
 }
 
-export type ListPromptWorkspacesInput = {
-  cardId?: string
-  limit?: number
-  cursor?: string
+export type GetPromptResourceInput = {
+  resourceId: string
 }
 
-export type ListPromptWorkspacesResult = {
-  workspaces: Array<PromptWorkspaceContent & { id: string; version: number }>
-  nextCursor?: string
+export type GetPromptResourceResult = {
+  resource: PromptResourceContent & { id: string; version: number }
 }
 
-export type CreatePromptAssetInput = {
-  workspaceId: string
+export type ListCardPromptResourcesInput = {
+  cardId: string
+}
+
+export type ListCardPromptResourcesResult = {
+  resources: Array<PromptResourceContent & { id: string; version: number }>
+}
+
+export type CreatePromptResourceAssetInput = {
+  resourceId: string
   targetAssetId: string
   position: 'before' | 'inside' | 'after'
-  asset: PromptWorkspaceContent['contextAssets'][number]
+  asset: PromptResourceNode
 }
 
-export type UpdatePromptAssetInput = {
-  workspaceId: string
+export type UpdatePromptResourceAssetInput = {
+  resourceId: string
   assetId: string
   body?: string
-  capabilities?: PromptWorkspaceContent['contextAssets'][number]['capabilities']
+  capabilities?: PromptResourceCompositionCapabilities
   label?: string
   meta?: string
   enabled?: boolean
 }
 
-export type UpdatePromptAssetResult = {
-  workspace: PromptWorkspaceContent & { id: string; version: number }
-  mutation: MutationReceipt
-}
-
-export type PromptAssetPatch = Omit<UpdatePromptAssetInput, 'workspaceId'> & {
-  orderList?: string[]
-  skeletonPatch?: PromptWorkspaceContent['contextAssets'][number]['skeletonPatch']
-  slotRanks?: PromptWorkspaceContent['contextAssets'][number]['slotRanks']
-}
-
-export type UpdatePromptAssetsInput = {
-  workspaceId: string
+export type UpdatePromptResourceAssetsInput = {
+  resourceId: string
   updates: PromptAssetPatch[]
 }
 
-export type MovePromptAssetInput = {
-  workspaceId: string
+export type MovePromptResourceAssetInput = {
+  resourceId: string
   assetId: string
   targetAssetId: string
   position: 'before' | 'inside' | 'after'
 }
 
-export type DeletePromptAssetInput = {
-  workspaceId: string
+export type DeletePromptResourceAssetInput = {
+  resourceId: string
   assetId: string
 }
 
-export type UpdateProjectionOrderProfileInput = {
-  workspaceId: string
-  orderNodeId: string
+export type UpdatePromptResourceResult = {
+  resource: PromptResourceContent & { id: string; version: number }
+  mutation: MutationReceipt
+}
+
+export type PromptAssetPatch = {
+  assetId: string
+  body?: string
+  capabilities?: PromptResourceCompositionCapabilities
+  label?: string
+  meta?: string
+  enabled?: boolean
   orderList?: string[]
-  projectionOrderProfile: ProjectionOrderProfile
+  skeletonPatch?: CompositionSkeletonPatch
+  slotRanks?: ProjectionOrderProfile['slotRanks']
 }
 
-export type UpdateProjectionOrderProfileResult = {
-  workspace: PromptWorkspaceContent & { id: string; version: number }
+export type ExportCardArtifactInput = {
+  cardId: string
 }
 
-export type ExportWorkspaceArtifactInput = {
-  workspaceId: string
-}
-
-export type ExportWorkspaceArtifactResult = {
-  artifact: PromptWorkspaceArtifact
+export type ExportCardBundleResult = {
+  artifact: CardBundleArtifact
 }
 
 export type PreviewPromptInput = {
@@ -481,7 +484,6 @@ export type PreviewPromptInput = {
   branchId?: string
   agentRuntimeProfileId?: string
   input: string
-  workspaceId?: string
   projectionOrderProfile?: ProjectionOrderProfile
   activationFacts?: ActivationFacts
 }
@@ -501,7 +503,6 @@ export type SubmitTurnInput = {
   agentRuntimeProfileId?: string
   input: string
   intent?: 'rp' | 'rewrite' | 'continue' | 'modify'
-  workspaceId?: string
   projectionOrderProfile?: ProjectionOrderProfile
   activationFacts?: ActivationFacts
 }
@@ -573,7 +574,7 @@ export type SessionContent = {
   cardSourceVersionId: string
   cardSnapshot: JsonObject
   agentRuntimeProfileId?: string
-  workspaceId?: string
+  promptResourceIds?: string[]
   title?: string
   activeBranchId: string
   createdAt: string
@@ -699,6 +700,8 @@ export type CardSourceContent = {
   name: string
   userName?: string
   description?: string
+  importBundleId?: string
+  promptResourceIds?: string[]
   preset: CardPresetContent
   opening: OpeningChatContent
   settingLayer: SettingLayerContent

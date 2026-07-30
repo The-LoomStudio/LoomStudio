@@ -3,7 +3,7 @@ import type { MutationReceipt } from './common.js'
 import type { Card } from './card.js'
 import type { ContextAssetNode } from './context-asset.js'
 
-export type PromptWorkspaceArtifact = {
+export type CardBundleArtifact = {
   schemaVersion: 1
   artifactId: string
   displayName: string
@@ -20,38 +20,49 @@ export type PromptWorkspaceArtifact = {
   metadata?: Record<string, ClientJsonValue>
 }
 
-export type PromptWorkspace = {
-  artifactId: string
-  cardId: string
-  contextAssets: ContextAssetNode[]
-  createdAt: string
-  description?: string
-  displayName: string
+export type PromptResource = {
   id: string
-  sourceArtifact: PromptWorkspaceArtifact
-  updatedAt: string
   version: number
+  resourceKind: 'preset' | 'setting' | 'logic' | 'runtime' | 'history' | 'prompt'
+  rootNode: ContextAssetNode
+  sourceArtifactRef?: ClientJsonValue
+  createdAt: string
+  updatedAt: string
 }
 
-export type ImportWorkspaceArtifactResult = {
-  workspace: PromptWorkspace
-  card: Card
+export type ImportBundle = {
+  id: string
+  version: number
+  cardId: string
+  documentIds: string[]
+  sourceArtifact: CardBundleArtifact
+  sourceArtifactRef: ClientJsonValue
+  bindings: ClientJsonValue[]
+  importedAt: string
 }
 
-export type GetPromptWorkspaceResult = {
-  workspace: PromptWorkspace
+export type GetImportBundleResult = {
+  importBundle: ImportBundle
 }
 
-export type ListPromptWorkspacesResult = {
-  workspaces: PromptWorkspace[]
-  nextCursor?: string
+export type GetPromptResourceResult = {
+  resource: PromptResource
 }
 
-export type UpdatePromptWorkspaceResult = {
-  workspace: PromptWorkspace
+export type ListCardPromptResourcesResult = {
+  resources: PromptResource[]
+}
+
+export type UpdatePromptResourceResult = {
+  resource: PromptResource
   mutation: MutationReceipt
 }
 
-export type ExportWorkspaceArtifactResult = {
-  artifact: PromptWorkspaceArtifact
+export type ImportCardBundleResult = {
+  card: Card
+  importBundle: ImportBundle
+}
+
+export type ExportCardBundleResult = {
+  artifact: CardBundleArtifact
 }

@@ -47,7 +47,7 @@ export const enUS = {
   'context.orderProfileLabel': 'Projection Order Profile',
   'context.orderCount': '{{count}} mounts',
   'context.projectionMeta': '{{lifecycle}} / {{order}}',
-  'context.sortMeta': '{{anchor}} / slot {{slot}} / entry {{entry}}',
+  'context.sortMeta': 'slot {{slot}} / entry {{entry}}',
   'context.reasonDefault': 'Mounted by default projection policy.',
   'context.sourceActual': 'actual',
   'context.sourceVirtual': 'virtual',

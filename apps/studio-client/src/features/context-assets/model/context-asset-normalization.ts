@@ -22,10 +22,8 @@ function readProjectionFromCapabilities(capabilities: ContextAssetNode['capabili
   if (!projection) return undefined
 
   return {
-    anchor: readProjectionAnchor(projection.anchor),
     entryOrder: projection.entryOrderHint,
-    zone: projection.zone,
-    group: projection.injectionGroupKey,
+    zoneId: projection.zoneId,
     lifecycle: capabilities.lifecycle?.lifecycle ?? 'always',
     order: projection.order ?? (typeof projection.entryOrderHint === 'number' ? `entry: ${projection.entryOrderHint}` : 'entry: 500'),
     reason: projection.reason,
@@ -44,10 +42,8 @@ function writeProjectionCapability(
     lifecycle: { lifecycle: projection.lifecycle },
     projection: {
       ...capabilities?.projection,
-      anchor: readProjectionAnchor(projection.anchor),
       entryOrderHint: projection.entryOrder,
-      zone: projection.zone,
-      injectionGroupKey: projection.group,
+      zoneId: projection.zoneId,
       order: projection.order,
       reason: projection.reason,
       slotKey: projection.slotKey,
@@ -55,9 +51,4 @@ function writeProjectionCapability(
       sourceKind: projection.sourceKind,
     },
   }
-}
-
-function readProjectionAnchor(anchor: unknown): 'before' | 'inside' | 'after' | undefined {
-  if (anchor === 'before' || anchor === 'inside' || anchor === 'after') return anchor
-  return undefined
 }

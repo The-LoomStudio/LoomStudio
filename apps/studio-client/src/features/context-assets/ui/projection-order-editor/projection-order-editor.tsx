@@ -15,7 +15,7 @@ type ProjectionOrderEditorProps = {
   t: Translator
 }
 
-const zones = ['StablePrefix', 'NarrativeContext', 'LowerContext', 'CurrentTurn', 'FreshTail']
+const zones = ['preset.system', 'setting.stable', 'chat.history', 'setting.lower', 'chat.before', 'chat.inside', 'chat.after', 'fresh.tail']
 
 export function ProjectionOrderEditor(props: ProjectionOrderEditorProps) {
   const [draggingId, setDraggingId] = useState<string>()
@@ -28,7 +28,7 @@ export function ProjectionOrderEditor(props: ProjectionOrderEditorProps) {
         <strong>{props.t('context.orderCount', { count: rows.length })}</strong>
       </div>
       {zones.map(zone => {
-        const zoneRows = rows.filter(row => row.zone === zone)
+        const zoneRows = rows.filter(row => row.zoneId === zone)
 
         return (
           <section className={styles.zone} key={zone}>
@@ -53,13 +53,12 @@ export function ProjectionOrderEditor(props: ProjectionOrderEditorProps) {
                     {row.primary.sourceKind === 'virtual' ? props.t('context.sourceVirtual') : props.t('context.sourceActual')}
                   </em>
                 </div>
-                <span>{row.primary.node.projection?.group}</span>
+                <span>{row.primary.zoneId}</span>
                 <small>{props.t('context.projectionMeta', {
                   lifecycle: row.primary.node.projection?.lifecycle ?? '-',
                   order: row.type === 'slot' ? readSlotEntrySummary(row.entries) : row.primary.node.projection?.order ?? '-',
                 })}</small>
                 <small>{props.t('context.sortMeta', {
-                  anchor: row.primary.anchor,
                   entry: row.primary.entryOrder,
                   slot: row.primary.slotOrder,
                 })}</small>

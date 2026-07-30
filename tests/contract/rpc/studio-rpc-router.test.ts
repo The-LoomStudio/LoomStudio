@@ -78,14 +78,14 @@ describe('studio rpc router', () => {
     expect(receivedContext).toEqual(context)
   })
 
-  it('passes rpc call context into prompt workspace mutations', async () => {
+  it('passes rpc call context into prompt resource mutations', async () => {
     let receivedContext: unknown
     const applicationRuntime = {
-      updatePromptAssets: async (_input: unknown, requestContext?: unknown) => {
+      updatePromptResourceAssets: async (_input: unknown, requestContext?: unknown) => {
         receivedContext = requestContext
         return {
-          workspace: { id: 'workspace-1', version: 2, contextAssets: [] },
-          mutation: { changesetId: 'chg-workspace-1' },
+          resource: { id: 'resource-1', version: 2, rootNode: {} },
+          mutation: { changesetId: 'chg-resource-1' },
         }
       },
     } as unknown as ApplicationRuntime
@@ -95,8 +95,8 @@ describe('studio rpc router', () => {
       rendererPoc: createRendererPocService(),
     })
 
-    await router.call('application.updatePromptAssets', {
-      workspaceId: 'workspace-1',
+    await router.call('application.updatePromptResourceAssets', {
+      resourceId: 'resource-1',
       updates: [{ assetId: 'asset-1', label: 'Renamed' }],
     }, context)
 

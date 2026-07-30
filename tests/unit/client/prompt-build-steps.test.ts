@@ -52,7 +52,7 @@ describe('prompt build steps model', () => {
               fragmentId: 'setting.draft',
               sourceNodeId: 'node.setting.draft',
               sourcePath: '/Setting/Draft',
-              injectionGroupKey: 'setting.stable',
+              zoneId: 'setting.stable',
               slotKey: 'setting-layer:test@setting.stable',
             },
           ],

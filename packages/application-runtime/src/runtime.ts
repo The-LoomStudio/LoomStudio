@@ -28,16 +28,16 @@ import type { ProjectionOrderProfile } from './prompt-builder.js'
 import { composePromptBuildForInput } from './prompt.js'
 import { assertSameSession, findBranchContainingEntry, readBranchPath, readSessionBranch } from './timeline.js'
 import {
-  createPromptAsset,
-  deletePromptAsset,
-  exportWorkspaceArtifact,
-  getPromptWorkspace,
-  importWorkspaceArtifact,
-  listPromptWorkspaces,
-  movePromptAsset,
-  updatePromptAssets,
-  updateProjectionOrderProfile,
-  updatePromptAsset,
+  createPromptResourceAsset,
+  deletePromptResourceAsset,
+  exportCardArtifact,
+  getImportBundle,
+  getPromptResource,
+  importCardBundle,
+  listCardPromptResources,
+  movePromptResourceAsset,
+  updatePromptResourceAsset,
+  updatePromptResourceAssets,
 } from './workspace.js'
 import type {
   AgentRuntimeProfileContent,
@@ -77,6 +77,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
             name: input.name,
             userName: normalizeOptionalString(input.userName),
             description: input.description,
+            promptResourceIds: [],
             preset: normalizePreset(input.preset),
             opening: normalizeOpening(input.opening),
             settingLayer: normalizeSettingLayer(input.settingLayer, input.setting),
@@ -393,8 +394,8 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         cardSourceVersionId: input.cardSourceVersionId,
         cardSnapshot: input.cardSnapshot ?? {},
         agentRuntimeProfileId: input.agentRuntimeProfileId,
+        promptResourceIds: [],
         title: input.title,
-        workspaceId: input.workspaceId,
       })
     },
 
@@ -406,7 +407,6 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
 
       const card = await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
       const cardContent = normalizeCardContent(card.content)
-
       return await createSessionDocuments({
         createId: ctx.createId,
         documents: ctx.documents,
@@ -414,58 +414,63 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         cardSourceVersionId: `${card.id}@${card.version}`,
         cardSnapshot: cardToSnapshot(card),
         agentRuntimeProfileId: input.agentRuntimeProfileId,
+        promptResourceIds: cardContent.promptResourceIds ?? [],
         title: input.title ?? cardContent.name,
-        workspaceId: input.workspaceId,
       })
     },
 
-    importWorkspaceArtifact: async input => {
-      return await importWorkspaceArtifact({
+    importCardBundle: async input => {
+      return await importCardBundle({
         artifact: input.artifact,
         documents: ctx.documents,
         now: ctx.now(),
-        workspaceId: input.workspaceId,
       })
     },
 
-    getPromptWorkspace: async input => {
+    getImportBundle: async input => {
       return {
-        workspace: await getPromptWorkspace({
+        importBundle: await getImportBundle({
           documents: ctx.documents,
-          workspaceId: input.workspaceId,
+          importBundleId: input.importBundleId,
         }),
       }
     },
 
-    listPromptWorkspaces: async input => {
-      return await listPromptWorkspaces({
-        documents: ctx.documents,
-        cardId: input?.cardId,
-        cursor: input?.cursor,
-        limit: input?.limit,
-      })
+    getPromptResource: async input => {
+      return {
+        resource: await getPromptResource({
+          documents: ctx.documents,
+          resourceId: input.resourceId,
+        }),
+      }
     },
 
-    createPromptAsset: async (input, requestContext) => {
-      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.createPromptAsset', async documents => {
-        return await createPromptAsset({
+    listCardPromptResources: async input => {
+      return {
+        resources: await listCardPromptResources({
+          cardId: input.cardId,
+          documents: ctx.documents,
+        }),
+      }
+    },
+
+    createPromptResourceAsset: async (input, requestContext) => {
+      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.createPromptResourceAsset', async documents => {
+        return await createPromptResourceAsset({
           asset: input.asset,
           documents,
           now: ctx.now(),
           position: input.position,
+          resourceId: input.resourceId,
           targetAssetId: input.targetAssetId,
-          workspaceId: input.workspaceId,
         })
       })
-      return {
-        workspace: mutation.value,
-        mutation: mutation.mutation,
-      }
+      return { resource: mutation.value, mutation: mutation.mutation }
     },
 
-    updatePromptAsset: async (input, requestContext) => {
-      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.updatePromptAsset', async documents => {
-        return await updatePromptAsset({
+    updatePromptResourceAsset: async (input, requestContext) => {
+      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.updatePromptResourceAsset', async documents => {
+        return await updatePromptResourceAsset({
           assetId: input.assetId,
           body: input.body,
           capabilities: input.capabilities,
@@ -474,84 +479,55 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
           label: input.label,
           meta: input.meta,
           now: ctx.now(),
-          workspaceId: input.workspaceId,
+          resourceId: input.resourceId,
         })
       })
-      return {
-        workspace: mutation.value,
-        mutation: mutation.mutation,
-      }
+      return { resource: mutation.value, mutation: mutation.mutation }
     },
 
-    updatePromptAssets: async (input, requestContext) => {
-      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.updatePromptAssets', async documents => {
-        return await updatePromptAssets({
+    updatePromptResourceAssets: async (input, requestContext) => {
+      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.updatePromptResourceAssets', async documents => {
+        return await updatePromptResourceAssets({
           documents,
           now: ctx.now(),
+          resourceId: input.resourceId,
           updates: input.updates,
-          workspaceId: input.workspaceId,
         })
       })
-      return {
-        workspace: mutation.value,
-        mutation: mutation.mutation,
-      }
+      return { resource: mutation.value, mutation: mutation.mutation }
     },
 
-    movePromptAsset: async (input, requestContext) => {
-      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.movePromptAsset', async documents => {
-        return await movePromptAsset({
+    movePromptResourceAsset: async (input, requestContext) => {
+      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.movePromptResourceAsset', async documents => {
+        return await movePromptResourceAsset({
           assetId: input.assetId,
           documents,
           now: ctx.now(),
           position: input.position,
+          resourceId: input.resourceId,
           targetAssetId: input.targetAssetId,
-          workspaceId: input.workspaceId,
         })
       })
-      return {
-        workspace: mutation.value,
-        mutation: mutation.mutation,
-      }
+      return { resource: mutation.value, mutation: mutation.mutation }
     },
 
-    deletePromptAsset: async (input, requestContext) => {
-      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.deletePromptAsset', async documents => {
-        return await deletePromptAsset({
+    deletePromptResourceAsset: async (input, requestContext) => {
+      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.deletePromptResourceAsset', async documents => {
+        return await deletePromptResourceAsset({
           assetId: input.assetId,
           documents,
           now: ctx.now(),
-          workspaceId: input.workspaceId,
+          resourceId: input.resourceId,
         })
       })
-      return {
-        workspace: mutation.value,
-        mutation: mutation.mutation,
-      }
+      return { resource: mutation.value, mutation: mutation.mutation }
     },
 
-    updateProjectionOrderProfile: async (input, requestContext) => {
-      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.updateProjectionOrderProfile', async documents => {
-        return await updateProjectionOrderProfile({
-          documents,
-          now: ctx.now(),
-          orderList: input.orderList,
-          orderNodeId: input.orderNodeId,
-          projectionOrderProfile: input.projectionOrderProfile,
-          workspaceId: input.workspaceId,
-        })
-      })
+    exportCardArtifact: async input => {
       return {
-        workspace: mutation.value,
-        mutation: mutation.mutation,
-      }
-    },
-
-    exportWorkspaceArtifact: async input => {
-      return {
-        artifact: await exportWorkspaceArtifact({
+        artifact: await exportCardArtifact({
+          cardId: input.cardId,
           documents: ctx.documents,
-          workspaceId: input.workspaceId,
         }),
       }
     },
@@ -573,7 +549,6 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         branch,
         userInput: input.input,
         orderProfile: input.projectionOrderProfile,
-        workspaceId: input.workspaceId ?? session.content.workspaceId,
         activationFacts: input.activationFacts,
       }, requestContext)
 
@@ -615,7 +590,6 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         branch,
         userInput: input.input,
         orderProfile: input.projectionOrderProfile,
-        workspaceId: input.workspaceId ?? session.content.workspaceId,
         activationFacts: input.activationFacts,
         runId,
       }, requestContext)
@@ -940,7 +914,6 @@ async function executePromptBuild(
     branch: DocumentRecord<NarrativeBranchContent>
     userInput: string
     orderProfile?: ProjectionOrderProfile
-    workspaceId?: string
     activationFacts?: ActivationFacts
     runId?: string
   },
@@ -957,7 +930,6 @@ async function executePromptBuild(
     mode: input.mode,
     sessionId: input.session.id,
     branchId: input.branch.id,
-    ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
     ...(input.runId ? { runId: input.runId } : {}),
   }
   const logContext = {
@@ -979,7 +951,6 @@ async function executePromptBuild(
       input.branch,
       input.userInput,
       input.orderProfile,
-      input.workspaceId,
       input.activationFacts,
     )
     const durationMs = readDurationMs(startedAt)
@@ -1019,8 +990,8 @@ async function createSessionDocuments(input: {
   cardSourceVersionId: string
   cardSnapshot: JsonObject
   agentRuntimeProfileId?: string
+  promptResourceIds: string[]
   title?: string
-  workspaceId?: string
 }): Promise<CreateSessionResult> {
   const branchId = input.createId('branch')
   const openingEntries = readOpeningEntries(input.cardSnapshot)
@@ -1036,7 +1007,7 @@ async function createSessionDocuments(input: {
         cardSourceVersionId: input.cardSourceVersionId,
         cardSnapshot: input.cardSnapshot,
         agentRuntimeProfileId: input.agentRuntimeProfileId,
-        workspaceId: input.workspaceId,
+        promptResourceIds: input.promptResourceIds,
         title: input.title,
         activeBranchId: branchId,
         createdAt: input.timestamp,

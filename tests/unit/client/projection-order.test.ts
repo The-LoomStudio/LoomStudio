@@ -27,12 +27,12 @@ describe('studio client projection order selectors', () => {
     const presetView = transformForProjectionView(module!, orderedEntries)
     const contextView = transformForProjectionView(module!, orderedEntries, { groupSettingLayerSlots: true })
 
-    expect(presetView.children?.[0]?.children?.map(node => node.id)).toEqual([
+    expect(presetView.children?.flatMap(zone => zone.children?.map(node => node.id) ?? [])).toEqual([
       'preset-entry',
       'setting-entry-a',
       'setting-entry-b',
     ])
-    expect(contextView.children?.[0]?.children?.map(node => node.id)).toEqual([
+    expect(contextView.children?.flatMap(zone => zone.children?.map(node => node.id) ?? [])).toEqual([
       'preset-entry',
       'projection-module-slot-setting-layer:city-layers-main@setting.stable',
     ])
@@ -58,11 +58,11 @@ describe('studio client projection order selectors', () => {
       position: 'inside',
       projectionEntries: model.projectionEntries,
       projectionOrderIds: model.projectionOrderIds,
-      targetId: 'projection-module-zone-FreshTail',
+      targetId: 'projection-module-zone-fresh.tail',
     })
 
     expect(updates.map(update => update.id)).toEqual(['preset-entry', 'projection-order'])
-    expect(updates[0]?.partial.projection?.zone).toBe('FreshTail')
+    expect(updates[0]?.partial.projection?.zoneId).toBe('fresh.tail')
     expect(updates[1]?.partial.orderList).toEqual(['setting-entry-a', 'setting-entry-b', 'preset-entry'])
   })
 })
@@ -99,22 +99,20 @@ function projectionNodesWithOrder(): ContextAssetNode[] {
   }]
 }
 
-function entry(id: string, label: string, group: string, slotKey: string, entryOrder: number, slotOrder: number): ContextAssetNode {
+function entry(id: string, label: string, zoneId: string, slotKey: string, entryOrder: number, slotOrder: number): ContextAssetNode {
   return {
     id,
     label,
     kind: 'entry',
     body: label,
     projection: {
-      anchor: 'inside',
       entryOrder,
-      group,
       lifecycle: 'always',
       order: `entry: ${entryOrder}`,
       slotKey,
       slotOrder,
       sourceKind: 'actual',
-      zone: 'StablePrefix',
+      zoneId,
     },
   }
 }

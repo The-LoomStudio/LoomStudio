@@ -8,6 +8,8 @@
 > - [`prompt/prompt-builder-philosophy-v0.md`](prompt/prompt-builder-philosophy-v0.md)
 > - [`../04-data/studio-data-layer-architecture.md`](../04-data/studio-data-layer-architecture.md)
 > - [`../06-engineering/studio-config-and-local-state-v0.md`](../06-engineering/studio-config-and-local-state-v0.md)
+>
+> **2026-07-29 更新**：本文中的 “Artifact seeds the workspace” 属于早期术语。下一阶段目标是 Artifact 创建 Card Manifest、平铺 Resources 与 Import Bundle；PromptWorkspace 不再进入 Session、PromptBuild 或 Export 权威链。实施计划见 [`../../plans/card-resource-manifest-migration-plan.md`](../../plans/card-resource-manifest-migration-plan.md)。
 
 ---
 
@@ -289,4 +291,3 @@ LoomStudio/
 - Prompt Builder 扫描 artifact 文件夹；
 - 在 Core 中加入 Card / Setting Layer / Bundle 语义；
 - 一开始实现完整 `.loompack` 压缩包格式。
-

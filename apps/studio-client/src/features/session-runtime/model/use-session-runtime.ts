@@ -17,7 +17,6 @@ type UseSessionRuntimeInput = {
   api: StudioApi
   initialInput: string
   selectedCardId?: string
-  selectedWorkspaceId?: string
   selectedAgentRuntimeProfileId?: string
   runAction: (action: () => Promise<void>) => Promise<void>
   readProjectionOrderProfile(session: Session | undefined): ClientJsonValue | undefined
@@ -40,7 +39,6 @@ export function useSessionRuntime(input: UseSessionRuntimeInput) {
       const result = await input.api.sessions.createFromCard(jsonObject({
         cardId: input.selectedCardId,
         agentRuntimeProfileId: input.selectedAgentRuntimeProfileId,
-        workspaceId: input.selectedWorkspaceId,
       }))
       setSession(result.session)
       setBranch(result.branch)
@@ -65,7 +63,6 @@ export function useSessionRuntime(input: UseSessionRuntimeInput) {
         branchId: branch?.id,
         agentRuntimeProfileId: input.selectedAgentRuntimeProfileId,
         input: composerInput,
-        workspaceId: input.selectedWorkspaceId ?? session.workspaceId,
         projectionOrderProfile: input.readProjectionOrderProfile(session),
         activationFacts: input.activationFacts,
       }))
@@ -88,7 +85,6 @@ export function useSessionRuntime(input: UseSessionRuntimeInput) {
         branchId: branch.id,
         agentRuntimeProfileId: input.selectedAgentRuntimeProfileId,
         input: composerInput,
-        workspaceId: input.selectedWorkspaceId ?? session.workspaceId,
         projectionOrderProfile: input.readProjectionOrderProfile(session),
         activationFacts: input.activationFacts,
       }))

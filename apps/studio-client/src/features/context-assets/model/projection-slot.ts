@@ -2,7 +2,7 @@ import type { ContextAssetNode } from '../../../entities/index.js'
 import type { ProjectionOrderEntry } from './projection-order.js'
 
 export function readSlotKey(node: ContextAssetNode): string | undefined {
-  return node.projection?.slotKey ?? (node.projection ? `${node.projection.group}@${node.projection.zone}` : undefined)
+  return node.projection?.slotKey ?? (node.projection ? `${node.id}@${node.projection.zoneId}` : undefined)
 }
 
 export function isSettingLayerSlot(slotKey: string): boolean {

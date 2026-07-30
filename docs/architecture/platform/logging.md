@@ -161,7 +161,7 @@ event + data
 示例：
 
 ```text
-application.getPromptWorkspace completed in 1.37 ms
+application.getPromptResource completed in 1.37 ms
 runtime prompt build completed · 7 messages · 11.08 ms
 example.echo activated · active · 3.42 ms
 ```

@@ -10,7 +10,6 @@ export async function composePromptBuildForInput(
   branch: DocumentRecord<NarrativeBranchContent>,
   userInput: string,
   orderProfile: ProjectionOrderProfile = emptyProjectionOrderProfile,
-  workspaceId?: string,
   activationFacts?: ActivationFacts,
 ): Promise<PromptBuildPipelineResult> {
   return await runPromptBuildPipeline({
@@ -20,6 +19,5 @@ export async function composePromptBuildForInput(
     orderProfile,
     session,
     userInput,
-    workspaceId,
   })
 }

@@ -4,7 +4,7 @@ import {
   cloneChangeset,
   cloneDocument,
   createPendingChangeset,
-  finalizeChangeset,
+  finalizeCommitFact,
   recordPendingChange,
   restoredDocument,
   writeResult,
@@ -175,17 +175,17 @@ export function createInMemoryDocumentStore(): DocumentStore {
     write: async input => {
       const pending = createPendingChangeset(input)
       const result = applyWrite(input, pending)
-      const changeset = finalizeChangeset(pending)
-      changesets.set(changeset.id, cloneChangeset(changeset))
-      return { ...result, operations: changeset.operations }
+      const commit = finalizeCommitFact(pending)
+      changesets.set(commit.changeset.id, cloneChangeset(commit.changeset))
+      return { ...result, operations: commit.changeset.operations, commit }
     },
 
     delete: async input => {
       const pending = createPendingChangeset(input)
       const result = applyDelete(input, pending)
-      const changeset = finalizeChangeset(pending)
-      changesets.set(changeset.id, cloneChangeset(changeset))
-      return { ...result, operations: changeset.operations }
+      const commit = finalizeCommitFact(pending)
+      changesets.set(commit.changeset.id, cloneChangeset(commit.changeset))
+      return { ...result, operations: commit.changeset.operations, commit }
     },
 
     transact: async (input, fn) => {
@@ -194,9 +194,9 @@ export function createInMemoryDocumentStore(): DocumentStore {
 
       try {
         const value = await fn(createTransaction(pending))
-        const changeset = finalizeChangeset(pending)
-        changesets.set(changeset.id, cloneChangeset(changeset))
-        return { value, changeset }
+        const commit = finalizeCommitFact(pending)
+        changesets.set(commit.changeset.id, cloneChangeset(commit.changeset))
+        return { value, changeset: commit.changeset, commit }
       } catch (error) {
         restoreState(current, revisions, changesets, snapshot)
         throw error
@@ -233,9 +233,9 @@ export function createInMemoryDocumentStore(): DocumentStore {
         const documents = restoreTargets.map(item => item.revision
           ? applyRestore(item.revision, pending)
           : applyDelete({ id: item.operation.documentId, expectedVersion: item.operation.toVersion }, pending).documents[0]!)
-        const changeset = finalizeChangeset(pending)
-        changesets.set(changeset.id, cloneChangeset(changeset))
-        return writeResult(pending, documents, changeset.operations)
+        const commit = finalizeCommitFact(pending)
+        changesets.set(commit.changeset.id, cloneChangeset(commit.changeset))
+        return { ...writeResult(pending, documents, commit.changeset.operations), commit }
       } catch (error) {
         restoreState(current, revisions, changesets, snapshot)
         throw error

@@ -130,7 +130,7 @@ export const DemoData = {
 
   /**
    * Composition Skeleton 预览用 demo 资产树。
-   * 结构对齐 composition-skeleton-v0.md 中的 Zone / InjectionGroup / ProjectionOrder 概念。
+   * 结构对齐 composition-skeleton-v0.md 中的 Zone / ProjectionOrder 概念。
    */
   contextAssets: [
     {
@@ -157,26 +157,16 @@ export const DemoData = {
           skeletonPatch: {
             zones: [
               {
-                id: 'zone.memory-echo',
+                id: 'preset.memory-echo',
                 parentId: 'zone.root',
-                key: 'memory-echo',
                 displayName: 'Memory Echo',
                 band: 'stable-prefix',
                 orderIndex: 15,
-                anchors: ['before', 'inside', 'after'],
+                accepts: ['preset', 'runtime'],
                 renderHint: {
                   providerRoleHint: 'system',
                   wrapper: 'section',
                 },
-              },
-            ],
-            injectionGroups: [
-              {
-                key: 'preset.memory-echo',
-                displayName: 'Preset Memory Echo',
-                targetZoneKey: 'memory-echo',
-                anchor: 'inside',
-                accepts: ['preset', 'runtime'],
               },
             ],
           },
@@ -200,14 +190,14 @@ export const DemoData = {
             'vs-current-input'
           ],
           slotRanks: [
-            { injectionGroupKey: 'preset.system', anchor: 'inside', slotKey: 'preset:default-airp-preset@preset.system', rankKey: '0000' },
-            { injectionGroupKey: 'preset.memory-echo', anchor: 'inside', slotKey: 'preset:default-airp-preset@preset.memory-echo', rankKey: '0001' },
-            { injectionGroupKey: 'setting.stable', anchor: 'inside', slotKey: 'setting-layer:city-layers-main@setting.stable', rankKey: '0002' },
-            { injectionGroupKey: 'chat.history', anchor: 'inside', slotKey: 'narrative-chat:session-main@chat.history', rankKey: '0003' },
-            { injectionGroupKey: 'setting.lower', anchor: 'inside', slotKey: 'setting-layer:city-layers-main@setting.lower', rankKey: '0004' },
-            { injectionGroupKey: 'chat.after', anchor: 'after', slotKey: 'preset:default-airp-preset@chat.after', rankKey: '0005' },
-            { injectionGroupKey: 'chat.inside', anchor: 'inside', slotKey: 'runtime:runtime.current-turn@chat.inside', rankKey: '0006' },
-            { injectionGroupKey: 'fresh.tail', anchor: 'inside', slotKey: 'setting-layer:city-layers-main@fresh.tail', rankKey: '0007' },
+            { zoneId: 'preset.system', slotKey: 'preset:default-airp-preset@preset.system', rankKey: '0000' },
+            { zoneId: 'preset.memory-echo', slotKey: 'preset:default-airp-preset@preset.memory-echo', rankKey: '0001' },
+            { zoneId: 'setting.stable', slotKey: 'setting-layer:city-layers-main@setting.stable', rankKey: '0002' },
+            { zoneId: 'chat.history', slotKey: 'narrative-chat:session-main@chat.history', rankKey: '0003' },
+            { zoneId: 'setting.lower', slotKey: 'setting-layer:city-layers-main@setting.lower', rankKey: '0004' },
+            { zoneId: 'chat.after', slotKey: 'preset:default-airp-preset@chat.after', rankKey: '0005' },
+            { zoneId: 'chat.inside', slotKey: 'runtime:runtime.current-turn@chat.inside', rankKey: '0006' },
+            { zoneId: 'fresh.tail', slotKey: 'setting-layer:city-layers-main@fresh.tail', rankKey: '0007' },
           ],
         },
         {
@@ -224,10 +214,8 @@ export const DemoData = {
               body: '采用日系轻小说的描写方式，注重人物内心独白、夸张的情绪反应和轻快的节奏。',
               capabilities: {
                 projection: {
-                  anchor: 'inside',
                   entryOrderHint: 10,
-                  zone: 'StablePrefix',
-                  injectionGroupKey: 'preset.system',
+                  zoneId: 'preset.system',
                   order: 'fixed: 100',
                   slotKey: 'preset:default-airp-preset@preset.system',
                   slotOrderHint: 100,
@@ -244,10 +232,8 @@ export const DemoData = {
               body: '采用古典史诗奇幻的文风，用词华丽、厚重，注重对环境细节、历史沧桑感和魔法神秘感的刻画。',
               capabilities: {
                 projection: {
-                  anchor: 'inside',
                   entryOrderHint: 20,
-                  zone: 'StablePrefix',
-                  injectionGroupKey: 'preset.system',
+                  zoneId: 'preset.system',
                   order: 'fixed: 110',
                   slotKey: 'preset:default-airp-preset@preset.system',
                   slotOrderHint: 100,
@@ -272,10 +258,8 @@ export const DemoData = {
               body: '角色之间倾向于进行多轮深入的交谈，增加互动频率。',
               capabilities: {
                 projection: {
-                  anchor: 'inside',
                   entryOrderHint: 30,
-                  zone: 'StablePrefix',
-                  injectionGroupKey: 'preset.system',
+                  zoneId: 'preset.system',
                   order: 'fixed: 120',
                   slotKey: 'preset:default-airp-preset@preset.system',
                   slotOrderHint: 100,
@@ -292,10 +276,8 @@ export const DemoData = {
               body: '对话必须简短有力，符合动作场面或紧张氛围下的语速。',
               capabilities: {
                 projection: {
-                  anchor: 'inside',
                   entryOrderHint: 40,
-                  zone: 'StablePrefix',
-                  injectionGroupKey: 'preset.system',
+                  zoneId: 'preset.system',
                   order: 'fixed: 130',
                   slotKey: 'preset:default-airp-preset@preset.system',
                   slotOrderHint: 100,
@@ -312,10 +294,8 @@ export const DemoData = {
               body: '永远不要替 {{User}} 说话。NPC 的对话要符合其身份特征，并且一定要带有神态描写。',
               capabilities: {
                 projection: {
-                  anchor: 'after',
                   entryOrderHint: 10,
-                  zone: 'CurrentTurn',
-                  injectionGroupKey: 'chat.after',
+                  zoneId: 'chat.after',
                   order: 'fixed: 900',
                   slotKey: 'preset:default-airp-preset@chat.after',
                   slotOrderHint: 900,
@@ -332,10 +312,8 @@ export const DemoData = {
               body: '如果当前场景发生在中世纪，将现代口语转换为中古口语。',
               capabilities: {
                 projection: {
-                  anchor: 'after',
                   entryOrderHint: 20,
-                  zone: 'CurrentTurn',
-                  injectionGroupKey: 'chat.after',
+                  zoneId: 'chat.after',
                   order: 'fixed: 910',
                   slotKey: 'preset:default-airp-preset@chat.after',
                   slotOrderHint: 900,
@@ -361,10 +339,8 @@ export const DemoData = {
           body: '如果当前剧情提到曾经出现过的城市传闻，将其压缩成一段“记忆回声”，提醒 Agent 不要把旧线索当成新发现。',
           capabilities: {
             projection: {
-              anchor: 'inside',
               entryOrderHint: 10,
-              zone: 'MemoryEcho',
-              injectionGroupKey: 'preset.memory-echo',
+              zoneId: 'preset.memory-echo',
               order: 'fixed: 150',
               slotKey: 'preset:default-airp-preset@preset.memory-echo',
               slotOrderHint: 150,
@@ -406,10 +382,8 @@ export const DemoData = {
                   body: '雨线车站是 Loom City 的旧环线入口。\n夜间广播经常延迟，站台尽头有通往地下维护层的锁门。\n\n{{User}}当前刚走出车站，仍能听见轨道深处的回声。',
                   capabilities: {
                     projection: {
-                      anchor: 'inside',
                       entryOrderHint: 10,
-                      zone: 'StablePrefix',
-                      injectionGroupKey: 'setting.stable',
+                      zoneId: 'setting.stable',
                       order: 'entry: 10',
                       reason: 'Setting layer entry: always active',
                       slotKey: 'setting-layer:city-layers-main@setting.stable',
@@ -428,10 +402,8 @@ export const DemoData = {
                   body: '镜市位于高架桥下，摊位用破碎镜片反射招牌灯。\n传闻有人在这里买卖被删除的身份记录，也有人专门回收没有归属的车票。',
                   capabilities: {
                     projection: {
-                      anchor: 'inside',
                       entryOrderHint: 30,
-                      zone: 'StablePrefix',
-                      injectionGroupKey: 'setting.stable',
+                      zoneId: 'setting.stable',
                       order: 'entry: 30',
                       reason: 'Setting layer entry: keyword activated [镜市, 市场, 身份记录]',
                       slotKey: 'setting-layer:city-layers-main@setting.stable',
@@ -454,10 +426,8 @@ export const DemoData = {
                       conditions: [{ fact: 'agent.mode', equals: 'finalize' }],
                     },
                     projection: {
-                      anchor: 'inside',
                       entryOrderHint: 50,
-                      zone: 'StablePrefix',
-                      injectionGroupKey: 'setting.stable',
+                      zoneId: 'setting.stable',
                       order: 'entry: 50',
                       reason: 'Activated when runtime fact agent.mode = finalize',
                       slotKey: 'setting-layer:city-layers-main@setting.stable',
@@ -490,10 +460,8 @@ export const DemoData = {
                   body: '档案管理员总是穿着灰色雨衣，说话谨慎。\n他知道钟楼与地下维护层之间的旧协议，但只有在 {{User}} 表现出足够线索时才会透露。',
                   capabilities: {
                     projection: {
-                      anchor: 'inside',
                       entryOrderHint: 20,
-                      zone: 'StablePrefix',
-                      injectionGroupKey: 'setting.stable',
+                      zoneId: 'setting.stable',
                       order: 'entry: 20',
                       reason: 'Setting layer entry: always active',
                       slotKey: 'setting-layer:city-layers-main@setting.stable',
@@ -512,10 +480,8 @@ export const DemoData = {
                   body: '环线稽查员负责检查旧车票。她不相信任何口头解释，只相信印章、编号和轨道摄像记录。',
                   capabilities: {
                     projection: {
-                      anchor: 'inside',
                       entryOrderHint: 20,
-                      zone: 'LowerContext',
-                      injectionGroupKey: 'setting.lower',
+                      zoneId: 'setting.lower',
                       order: 'entry: 20',
                       reason: 'Setting layer entry: manually pinned by editor',
                       slotKey: 'setting-layer:city-layers-main@setting.lower',
@@ -548,10 +514,8 @@ export const DemoData = {
                   body: '三天前，钟楼下发生过短暂骚动。官方称是电力故障，但目击者听见了从地下传来的同步敲击声。',
                   capabilities: {
                     projection: {
-                      anchor: 'inside',
                       entryOrderHint: 40,
-                      zone: 'StablePrefix',
-                      injectionGroupKey: 'setting.stable',
+                      zoneId: 'setting.stable',
                       order: 'entry: 40',
                       reason: 'Setting layer entry: keyword activated [钟楼, 骚动, 敲击声]',
                       slotKey: 'setting-layer:city-layers-main@setting.stable',
@@ -570,10 +534,8 @@ export const DemoData = {
                   body: '地下维护层会周期性发出短促信号。老工程师说，那不是列车调度码，而是某种要求回应的敲门声。',
                   capabilities: {
                     projection: {
-                      anchor: 'inside',
                       entryOrderHint: 40,
-                      zone: 'LowerContext',
-                      injectionGroupKey: 'setting.lower',
+                      zoneId: 'setting.lower',
                       order: 'entry: 40',
                       reason: 'Setting layer entry: keyword activated [地下, 信号, 维护层]',
                       slotKey: 'setting-layer:city-layers-main@setting.lower',
@@ -601,10 +563,8 @@ export const DemoData = {
               body: '一张没有日期的黄铜车票，边缘刻着“第十三站台”。\n它适合作为当前回合尾部的新鲜提示，而不是长期稳定设定。',
               capabilities: {
                 projection: {
-                  anchor: 'inside',
                   entryOrderHint: 10,
-                  zone: 'FreshTail',
-                  injectionGroupKey: 'fresh.tail',
+                  zoneId: 'fresh.tail',
                   order: 'entry: 10',
                   reason: 'Setting layer entry: manually activated as a fresh tail hint',
                   slotKey: 'setting-layer:city-layers-main@fresh.tail',
@@ -638,10 +598,8 @@ export const DemoData = {
           body: '在 composition 阶段，所有 {{User}} 会被替换为当前 Session 的 userName（来自 Card snapshot）。',
           capabilities: {
             projection: {
-              anchor: 'meta',
               entryOrderHint: 0,
-              zone: 'n/a',
-              injectionGroupKey: 'runtime.macro',
+              zoneId: 'runtime.macro',
               order: 'n/a',
               reason: 'Macro expansion runs during composition, not zone projection',
               slotKey: 'runtime.macro',
@@ -660,10 +618,8 @@ export const DemoData = {
           body: '当前 Branch 的已接受 NarrativeEntry 序列。runtime 在 composition 阶段将它们按顺序注入 NarrativeContext zone。',
           capabilities: {
             projection: {
-              anchor: 'inside',
               entryOrderHint: 0,
-              zone: 'NarrativeContext',
-              injectionGroupKey: 'chat.history',
+              zoneId: 'chat.history',
               order: 'timeline order',
               reason: 'Accepted narrative entries injected by runtime',
               slotKey: 'narrative-chat:session-main@chat.history',
@@ -681,10 +637,8 @@ export const DemoData = {
           body: '当前回合玩家的输入文本。runtime 在 composition 阶段将它追加到 NarrativeContext zone 的末尾。',
           capabilities: {
             projection: {
-              anchor: 'inside',
               entryOrderHint: 999,
-              zone: 'CurrentTurn',
-              injectionGroupKey: 'chat.inside',
+              zoneId: 'chat.inside',
               order: 'last',
               reason: 'Current user input appended at composition time',
               slotKey: 'runtime:runtime.current-turn@chat.inside',

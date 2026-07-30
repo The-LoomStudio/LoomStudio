@@ -7,7 +7,7 @@ export function createDefaultProjection(
 ): NonNullable<ContextAssetNode['projection']> {
   const inherited = flattenContextAssetNodes(siblings).find(node => node.projection?.sourceKind !== 'virtual')?.projection
   if (inherited) {
-    const slotKey = inherited.slotKey ?? `${inherited.group}@${inherited.zone}`
+    const slotKey = inherited.slotKey ?? `${inherited.zoneId}@${inherited.zoneId}`
     const entryOrder = readNextEntryOrder(siblings, slotKey)
 
     return {
@@ -20,15 +20,13 @@ export function createDefaultProjection(
   }
 
   const preset = category === 'preset'
-  const group = preset ? 'preset.system' : 'setting.stable'
+  const zoneId = preset ? 'preset.system' : 'setting.stable'
   const slotKey = preset ? 'preset:default-airp-preset@preset.system' : 'setting-layer:city-layers-main@setting.stable'
   const entryOrder = readNextEntryOrder(siblings, slotKey)
 
   return {
-    anchor: 'inside',
     entryOrder,
-    zone: 'StablePrefix',
-    group,
+    zoneId,
     lifecycle: 'always',
     order: `entry: ${entryOrder}`,
     reason: 'Demo entry: manually added',

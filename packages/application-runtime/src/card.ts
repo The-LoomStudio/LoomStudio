@@ -50,6 +50,8 @@ export function normalizeCardContent(content: CardSourceContent): CardSourceCont
     name: typeof legacyContent.name === 'string' && legacyContent.name.trim().length > 0 ? legacyContent.name : 'Untitled Card',
     userName: normalizeOptionalString(legacyContent.userName),
     description: typeof legacyContent.description === 'string' ? legacyContent.description : undefined,
+    importBundleId: normalizeOptionalString(legacyContent.importBundleId),
+    promptResourceIds: normalizeOptionalIdList(legacyContent.promptResourceIds),
     preset: normalizePreset(legacyContent.preset),
     opening: normalizeOpening(legacyContent.opening),
     settingLayer: normalizeSettingLayer(legacyContent.settingLayer, legacyContent.setting),
@@ -60,6 +62,11 @@ export function normalizeCardContent(content: CardSourceContent): CardSourceCont
 
 export function normalizeOptionalString(input: unknown): string | undefined {
   return typeof input === 'string' && input.trim().length > 0 ? input : undefined
+}
+
+function normalizeOptionalIdList(input: unknown): string[] | undefined {
+  if (!Array.isArray(input)) return undefined
+  return input.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
 }
 
 export function normalizePreset(input: CardPresetInput | undefined): CardPresetContent {

@@ -47,6 +47,9 @@ Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本列表收�
 
 ### Card & Agent Runtime Profile
 - **`application.createCard`** / **`getCard`** / **`listCards`**
+- **`application.importCardBundle`**: 导入自包含 Card Bundle，在同一事务中创建 Card、平铺 Prompt Resources 与 Import Bundle。
+- **`application.exportCardArtifact`**: 从 Card 的有序 Prompt Resource IDs 导出当前自包含 Artifact。
+- **`application.getImportBundle`**: 按 Card 保存的 `importBundleId` 查询独立导入来源与兼容数据。
 - **`application.createAgentRuntimeProfile`** / **`getAgentRuntimeProfile`** / **`listAgentRuntimeProfiles`** / **`updateAgentRuntimeProfile`** / **`deleteAgentRuntimeProfile`**
 
 ### Session & Timeline
@@ -57,12 +60,12 @@ Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本列表收�
 - **`application.getAgentTranscript`**: 获取智能体的真实日志 (包含系统级思考、底层交互)。
 - **`application.forkBranch`**: 从时间线的特定位置分叉。
 
-### Prompt & Workspace
-- **`application.getPromptWorkspace`**
-- **`application.updatePromptAsset`**
-- **`application.updateProjectionOrderProfile`**
-- **`application.importWorkspaceArtifact`**
-- **`application.exportWorkspaceArtifact`**
+### Prompt Resource
+- **`application.getPromptResource`**: 按 `resourceId` 读取一个 Prompt Resource。
+- **`application.listCardPromptResources`**: 按 Card Manifest 中的顺序读取全部 Prompt Resources。
+- **`application.createPromptResourceAsset`** / **`updatePromptResourceAsset`** / **`updatePromptResourceAssets`** / **`movePromptResourceAsset`** / **`deletePromptResourceAsset`**: 只修改指定 Resource Document；跨 Resource move / batch update 当前明确拒绝。
+
+### Prompt
 - **`application.previewPrompt`**: 在不提交真实对话的情况下，预览编译后发给模型的 Prompt。
 
 ### Core Turn Flow

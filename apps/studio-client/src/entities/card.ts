@@ -6,6 +6,8 @@ export type Card = {
   name: string
   userName?: string
   description?: string
+  importBundleId?: string
+  promptResourceIds?: string[]
   preset?: {
     system?: string
   }
