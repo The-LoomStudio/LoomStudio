@@ -1,46 +1,19 @@
 .apiPane {
   width: 100%;
-  height: 100%;
-  min-height: 0;
-  overflow: auto;
+  min-height: 100%;
+  overflow: visible;
   border-right: 0;
   background: var(--loom-bg);
 }
 
-.resourceSummary {
-  padding: 18px 14px 16px;
-  border-bottom: 1px solid var(--loom-border);
-}
-
-.resourceKicker {
-  margin-bottom: 8px;
-  color: var(--loom-text-subtle);
-  font-size: 10px;
-  font-style: italic;
-}
-
-.resourceSummary h2 {
-  color: var(--loom-text);
-  font-size: 16px;
-  font-weight: 650;
-  text-transform: none;
-  margin: 0;
-}
-
-.resourceSummary p {
-  margin-top: 6px;
-  color: var(--loom-text-muted);
-  font-size: 12px;
-  line-height: 1.45;
-  margin-bottom: 0;
+.hostSection {
+  padding-block: 12px;
 }
 
 .hostControls {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding-top: 16px;
-  border-top: 1px solid color-mix(in srgb, var(--loom-border) 50%, transparent);
+  gap: 8px;
 }
 
 .hostControls label {
@@ -54,7 +27,8 @@
 
 .hostControls select,
 .hostControls input {
-  width: 140px;
+  width: 132px;
+  min-height: 30px;
   padding: 4px 8px;
   font-size: 12px;
   border: 1px solid var(--loom-border);
@@ -64,20 +38,19 @@
 }
 
 .section {
-  padding: 18px 14px;
-  border-bottom: 1px solid var(--loom-border);
+  padding: 14px 16px;
 }
 
 .sectionHead {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .sectionHead h2 {
   color: var(--loom-text);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 650;
   margin: 0;
 }
@@ -85,25 +58,26 @@
 .gatewayForm {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .gatewayForm label {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  font-size: 13px;
+  gap: 5px;
+  font-size: 12px;
   color: var(--loom-text);
   font-weight: 500;
 }
 
 .gatewayForm input {
-  padding: 8px 12px;
+  min-height: 32px;
+  padding: 6px 9px;
   border: 1px solid var(--loom-border);
   border-radius: 6px;
   background: var(--loom-surface);
   color: var(--loom-text);
-  font-size: 14px;
+  font-size: 12px;
   transition: all 0.2s ease;
 }
 
@@ -149,17 +123,18 @@
 .gatewayGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 10px;
 }
 
 .gatewayForm button {
-  margin-top: 8px;
-  padding: 10px 16px;
+  margin-top: 4px;
+  min-height: 32px;
+  padding: 6px 12px;
   background: var(--loom-text);
   color: var(--loom-surface);
   border: none;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.2s ease;

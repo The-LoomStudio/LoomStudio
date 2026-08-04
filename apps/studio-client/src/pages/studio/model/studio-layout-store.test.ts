@@ -1,0 +1,201 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  createDefaultStudioLayout,
+  sanitizeStudioLayout,
+  useStudioLayoutStore,
+} from './studio-layout-store.js'
+
+describe('studio layout store', () => {
+  const storedValues = new Map<string, string>()
+
+  beforeEach(() => {
+    storedValues.clear()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storedValues.get(key) ?? null,
+      removeItem: (key: string) => storedValues.delete(key),
+      setItem: (key: string, value: string) => storedValues.set(key, value),
+    })
+    useStudioLayoutStore.setState(createDefaultStudioLayout())
+  })
+
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('restores the last workspace after the Sidebar is closed', () => {
+    useStudioLayoutStore.getState().togglePanel('preset')
+    useStudioLayoutStore.getState().toggleDock()
+
+    expect(useStudioLayoutStore.getState()).toMatchObject({
+      activePanel: null,
+      dockOpen: false,
+      lastActivePanel: 'preset',
+    })
+
+    useStudioLayoutStore.getState().toggleDock()
+
+    expect(useStudioLayoutStore.getState()).toMatchObject({
+      activePanel: 'preset',
+      dockOpen: true,
+      lastActivePanel: 'preset',
+    })
+  })
+
+  it('keeps window and explorer layouts isolated by page', () => {
+    const store = useStudioLayoutStore.getState()
+    store.setPanelWindowSize('preset', { width: 920, height: 700 })
+    store.setPanelWindowSize('resources', { width: 1080, height: 760 })
+    store.togglePanelWindowMode('preset')
+    store.setAssetExplorerWidth('preset', 260)
+    store.setAssetExplorerWidth('resources', 340)
+    store.setAssetViewMode('preset', 'card-a', 'editor')
+    store.setAssetViewMode('resources', 'card-a', 'split')
+    store.setAssetViewMode('preset', 'card-b', 'explorer')
+    store.setAssetSelectedId('preset', 'card-a', 'preset-entry-a')
+    store.setAssetExpandedIds('preset', 'card-a', ['preset-root', 'preset-folder'])
+
+    expect(useStudioLayoutStore.getState()).toMatchObject({
+      assetLayouts: {
+        preset: {
+          explorerWidth: 260,
+          views: {
+            'card-a': {
+              expandedIds: ['preset-root', 'preset-folder'],
+              selectedId: 'preset-entry-a',
+              viewMode: 'editor',
+            },
+            'card-b': { viewMode: 'explorer' },
+          },
+        },
+        resources: { explorerWidth: 340, views: { 'card-a': { viewMode: 'split' } } },
+      },
+      panelWindowSizes: {
+        preset: { width: 920, height: 700 },
+        resources: { width: 1080, height: 760 },
+      },
+      panelWindowModes: { preset: 'immersive' },
+    })
+  })
+
+  it('keeps the metadata drawer state global across asset pages', () => {
+    useStudioLayoutStore.getState().setAssetMetadataOpen(true)
+    useStudioLayoutStore.getState().togglePanel('preset')
+    useStudioLayoutStore.getState().togglePanel('editor')
+
+    expect(useStudioLayoutStore.getState().assetMetadataOpen).toBe(true)
+  })
+
+  it('rehydrates the persisted layout after a reload', async () => {
+    useStudioLayoutStore.getState().togglePanel('resources')
+    useStudioLayoutStore.getState().setAssetMetadataOpen(true)
+    useStudioLayoutStore.getState().setAssetExplorerWidth('resources', 360)
+    useStudioLayoutStore.getState().setAssetSelectedId('resources', 'card-a', 'resource-entry-a')
+    useStudioLayoutStore.getState().setAssetExpandedIds('resources', 'card-a', ['resource-root', 'resource-folder'])
+    useStudioLayoutStore.getState().setAssetViewMode('resources', 'card-a', 'split')
+    useStudioLayoutStore.getState().togglePanelWindowMode('resources')
+    const persisted = storedValues.get('loom-studio-layout')
+    expect(persisted).toBeDefined()
+
+    useStudioLayoutStore.setState(createDefaultStudioLayout())
+    storedValues.set('loom-studio-layout', persisted!)
+    await useStudioLayoutStore.persist.rehydrate()
+
+    expect(useStudioLayoutStore.getState()).toMatchObject({
+      activePanel: 'resources',
+      assetMetadataOpen: true,
+      assetLayouts: {
+        resources: {
+          explorerWidth: 360,
+          views: {
+            'card-a': {
+              expandedIds: ['resource-root', 'resource-folder'],
+              selectedId: 'resource-entry-a',
+              viewMode: 'split',
+            },
+          },
+        },
+      },
+      dockOpen: true,
+      lastActivePanel: 'resources',
+      panelWindowModes: { resources: 'immersive' },
+    })
+  })
+})
+
+describe('sanitizeStudioLayout', () => {
+  it('keeps valid preferences and rejects malformed persisted values', () => {
+    expect(sanitizeStudioLayout({
+      activePanel: 'preset',
+      assetMetadataOpen: true,
+      assetLayouts: {
+        preset: { explorerOpen: false, explorerWidth: 280 },
+        resources: { explorerOpen: 'yes', explorerWidth: -10 },
+      },
+      contextCategory: 'history',
+      dockOpen: false,
+      lastActivePanel: 'unknown',
+      panelWindowSizes: {
+        preset: { width: 900, height: 680 },
+        resources: { width: Number.NaN, height: 600 },
+      },
+      panelWindowModes: {
+        preset: 'immersive',
+        resources: 'oversized',
+      },
+      presetPanel: 'order',
+    })).toEqual({
+      activePanel: 'preset',
+      assetMetadataOpen: true,
+      assetLayouts: {
+        preset: { explorerWidth: 280, views: {} },
+        resources: { explorerWidth: 300, views: {} },
+      },
+      contextCategory: 'history',
+      dockOpen: true,
+      lastActivePanel: 'preset',
+      panelWindowModes: { preset: 'immersive' },
+      panelWindowSizes: {
+        preset: { width: 900, height: 680 },
+      },
+      presetPanel: 'order',
+    })
+  })
+
+  it('keeps valid asset view state scoped by workspace', () => {
+    expect(sanitizeStudioLayout({
+      assetLayouts: {
+        preset: {
+          explorerWidth: 240,
+          views: {
+            'card-a': {
+              expandedIds: ['root', 'folder', 'root', 42],
+              selectedId: 'entry-a',
+              viewMode: 'split',
+            },
+          },
+        },
+        resources: {
+          explorerWidth: 320,
+          views: {
+            'card-b': { selectedId: '', viewMode: 'editor' },
+            broken: { viewMode: 'unknown' },
+          },
+        },
+      },
+    }).assetLayouts).toEqual({
+      preset: {
+        explorerWidth: 240,
+        views: {
+          'card-a': {
+            expandedIds: ['root', 'folder'],
+            selectedId: 'entry-a',
+            viewMode: 'split',
+          },
+        },
+      },
+      resources: { explorerWidth: 320, views: { 'card-b': { viewMode: 'editor' } } },
+    })
+  })
+
+  it('falls back to defaults when persisted data is not an object', () => {
+    expect(sanitizeStudioLayout('broken')).toEqual(createDefaultStudioLayout())
+  })
+})

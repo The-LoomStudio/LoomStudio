@@ -7,14 +7,12 @@
 .orderSummary {
   align-items: baseline;
   background: var(--loom-bg);
-  border-bottom: 1px solid var(--loom-border);
   color: var(--loom-text-subtle);
   display: flex;
   font-size: 10px;
-  font-style: italic;
   gap: 12px;
   justify-content: space-between;
-  padding: 10px 14px;
+  padding: 8px 0;
   position: sticky;
   top: 0;
   z-index: 1;
@@ -28,8 +26,7 @@
 }
 
 .zone {
-  border-bottom: 1px solid var(--loom-border);
-  padding: 12px 14px;
+  padding: 10px 0;
 }
 
 .zone h3 {
@@ -42,15 +39,15 @@
 .zone p {
   color: var(--loom-text-subtle);
   font-size: 11px;
-  font-style: italic;
 }
 
 .projectionItem {
-  border-left: 1px solid var(--loom-border);
+  border: 0;
+  border-radius: 7px;
   cursor: grab;
   display: grid;
   gap: 3px;
-  padding: 7px 0 7px 10px;
+  padding: 6px 8px 6px 0;
 }
 
 .projectionItem:active {
@@ -58,7 +55,11 @@
 }
 
 .projectionItemActive {
-  border-color: var(--loom-accent);
+  background: color-mix(in srgb, var(--loom-panel) 54%, transparent);
+}
+
+.projectionItem:hover {
+  background: color-mix(in srgb, var(--loom-panel) 40%, transparent);
 }
 
 .projectionItemHead {
@@ -76,11 +77,9 @@
 }
 
 .projectionItemHead em {
-  border-left: 1px solid var(--loom-border);
   color: var(--loom-text-subtle);
   font-size: 10px;
-  font-style: italic;
-  padding-left: 6px;
+  padding-left: 0;
 }
 
 .projectionItemHead em[data-loom-source-kind='virtual'] {
@@ -108,7 +107,6 @@
 .projectionItem small {
   color: var(--loom-text-subtle);
   font-size: 10px;
-  font-style: italic;
 }
 
 .projectionChildren {

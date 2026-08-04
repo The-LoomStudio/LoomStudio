@@ -9,12 +9,14 @@ import { ResourcePanel } from '../widgets/resource-panel/resource-panel.js'
 import { ApiPanel } from '../widgets/api-panel/api-panel.js'
 import { InspectorPanel } from '../widgets/inspector-panel/inspector-panel.js'
 import { LogViewer } from '../widgets/log-viewer/log-viewer.js'
+import { ContextMenuProvider } from '../shared/ui/context-menu/context-menu.js'
 import { DemoData } from './demo-data.js'
 import styles from './app.module.scss'
 import '../styles/global.css'
 
 export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger }) {
   const state = useStudioState(props.transportLogger)
+  const assetWorkspaceId = state.selectedCardId ?? 'default'
   const contextAssetEditorProps = {
     nodes: state.contextAssets,
     onChangeNode: state.previewContextAsset,
@@ -25,12 +27,13 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
     onDuplicateNode: state.duplicateContextAsset,
     onDeleteNode: state.deleteContextAsset,
     onSelectNode: state.setSelectedContextNodeId,
-    selectedId: state.selectedContextNodeId,
     t: state.t,
+    workspaceId: assetWorkspaceId,
   }
 
-  return (
+  const studio = (
     <StudioPage
+      assetWorkspaceId={assetWorkspaceId}
       busy={state.busy}
       canRedo={state.canRedoEdit}
       canUndo={state.canUndoEdit}
@@ -137,12 +140,10 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
             timeline={state.timeline}
           />
           <InputDashboard
-            activationControl={state.activationControl}
             canPreviewPrompt={state.canPreviewPrompt}
             canSend={state.canSend}
             composerHint={state.composerHint}
             input={state.input}
-            onChangeActivationMode={state.setActivationMode}
             onChangeInput={value => {
               state.setInput(value)
             }}
@@ -150,10 +151,8 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
               void state.previewPrompt()
             }}
             onSubmit={state.submitTurn}
-            onToggleActivationTag={state.toggleActivationTag}
             previewLabel={state.t('composer.preview')}
             sendLabel={state.t('composer.send')}
-            t={state.t}
             textareaDisabled={!state.session || !state.branch || state.busy}
           />
         </div>
@@ -189,4 +188,6 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
       )}
     />
   )
+
+  return <ContextMenuProvider label={state.t('menu.label')}>{studio}</ContextMenuProvider>
 }

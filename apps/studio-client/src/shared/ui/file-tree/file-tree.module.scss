@@ -1,21 +1,27 @@
 .tree {
   min-height: 0;
   overflow: auto;
-  padding: 8px 0 18px;
+  padding: 6px 0 14px;
 }
 
 .row {
-  --loom-tree-indent: calc((var(--loom-tree-level) - 1) * 14px);
+  --loom-tree-base-x: 34px;
+  --loom-tree-guide-x: calc(var(--loom-tree-base-x) - 0.5px);
+  --loom-tree-indent-step: 16px;
+  --loom-tree-indent: calc((var(--loom-tree-level) - 1) * var(--loom-tree-indent-step));
+  --loom-tree-icon-size: 14px;
+  --loom-tree-icon-stroke: 1.25;
 
   position: relative;
-  width: 100%;
-  min-height: 34px;
+  width: calc(100% - 12px);
+  min-height: 30px;
   display: flex;
   align-items: center;
   gap: 2px;
   border: 0;
-  border-radius: 0;
-  padding: 3px 8px 3px calc(10px + var(--loom-tree-indent));
+  border-radius: 8px;
+  margin-inline: 6px;
+  padding: 2px 8px 2px 10px;
   color: var(--loom-text-muted);
   background: transparent;
   text-align: left;
@@ -40,7 +46,7 @@
 .sectionDivider {
   flex: 1;
   height: 1px;
-  background: color-mix(in srgb, var(--loom-border) 40%, transparent);
+  background: var(--loom-border);
 }
 
 .sectionLabel {
@@ -51,22 +57,19 @@
   text-transform: uppercase;
 }
 
-.row::before {
-  content: "";
+.guideColumns {
   position: absolute;
+  z-index: 0;
   top: 0;
   bottom: 0;
-  left: 34px;
-  width: var(--loom-tree-indent);
-  background-image: repeating-linear-gradient(
-    to right,
-    color-mix(in srgb, var(--loom-border) 40%, transparent) 0,
-    color-mix(in srgb, var(--loom-border) 40%, transparent) 1px,
-    transparent 1px,
-    transparent 14px
-  );
+  left: var(--loom-tree-guide-x);
+  display: flex;
   pointer-events: none;
-  z-index: 0;
+}
+
+.guideColumn {
+  width: var(--loom-tree-indent-step);
+  border-left: 1px solid var(--loom-border);
 }
 
 .dragHandle {
@@ -82,6 +85,15 @@
   touch-action: none; /* Required for dnd-kit touch sensors */
 }
 
+.dragHandle svg,
+.disclosure svg,
+.icon svg,
+.actions svg {
+  width: var(--loom-tree-icon-size);
+  height: var(--loom-tree-icon-size);
+  stroke-width: var(--loom-tree-icon-stroke);
+}
+
 .dragHandle:active {
   cursor: grabbing;
 }
@@ -91,9 +103,9 @@
   z-index: 1;
   flex: 1;
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
+  grid-template-columns: 16px minmax(0, 1fr);
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   min-width: 0;
   cursor: pointer;
 }
@@ -102,10 +114,6 @@
 .selected {
   color: var(--loom-text);
   background: color-mix(in srgb, var(--loom-panel) 54%, transparent);
-}
-
-.selected {
-  box-shadow: inset 2px 0 0 var(--loom-accent);
 }
 
 .dragging {
@@ -124,11 +132,13 @@
   cursor: grabbing !important;
 }
 
-.disclosure {
+.row > .disclosure {
   position: relative;
   z-index: 1;
   width: 16px;
+  min-width: 16px;
   height: 16px;
+  min-height: 16px;
   display: grid;
   place-items: center;
   color: var(--loom-text-subtle);
@@ -136,10 +146,23 @@
   border: none;
   padding: 0;
   cursor: pointer;
+  margin-left: var(--loom-tree-indent);
+  margin-right: 4px;
 }
 
-.disclosure:hover {
+.row > .disclosure:hover {
   color: var(--loom-text);
+}
+
+.branchContinuation {
+  position: absolute;
+  z-index: 0;
+  top: calc(50% + 4px);
+  bottom: -2px;
+  left: calc(var(--loom-tree-guide-x) + var(--loom-tree-indent));
+  width: 1px;
+  background: var(--loom-border);
+  pointer-events: none;
 }
 
 .icon {
@@ -173,29 +196,74 @@
   font-weight: 500;
 }
 
-.actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  opacity: 0;
-  color: var(--loom-text-subtle);
+.flatTree .sectionRow {
+  justify-content: flex-start;
+  gap: 0;
+  padding-left: 10px;
 }
 
-.row:hover .actions {
+.flatTree .sectionDivider {
+  display: none;
+}
+
+.flatTree .sectionLabel {
+  text-align: left;
+}
+
+.flatTree .row {
+  --loom-tree-indent: 0px;
+}
+
+.flatTree .row > .disclosure:empty {
+  display: none;
+  margin: 0;
+}
+
+.actions {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  min-height: 22px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  padding: 0;
+  opacity: 0;
+  color: var(--loom-text-subtle);
+  background: transparent;
+}
+
+.row:hover .actions,
+.row:focus-within .actions,
+.actions:focus-visible {
   opacity: 1;
 }
 
-.actions > span {
+.actions:hover:not(:disabled),
+.actions:focus-visible {
+  border-color: transparent;
+  color: var(--loom-text);
+  background: var(--loom-panel-muted);
+  box-shadow: none;
+}
+
+.trailing {
+  position: relative;
+  z-index: 1;
+  width: 14px;
+  min-width: 14px;
+  height: 22px;
   display: grid;
   place-items: center;
-  cursor: pointer;
-  padding: 2px;
-  border-radius: 4px;
+  flex: 0 0 auto;
+}
 
-  &:hover {
-    color: var(--loom-text);
-    background: var(--loom-panel-muted);
-  }
+.muted .icon,
+.muted .label,
+.muted .meta {
+  color: var(--loom-text-subtle);
+  opacity: 0.56;
 }
 
 @media (hover: hover) and (pointer: fine) {

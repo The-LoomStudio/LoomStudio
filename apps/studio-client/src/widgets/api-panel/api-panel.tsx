@@ -47,10 +47,7 @@ export function ApiPanel(props: ApiPanelProps) {
 
   return (
     <aside className={styles.apiPane} data-loom-component="api-panel">
-      <section className={styles.resourceSummary}>
-        <p className={styles.resourceKicker}>System settings</p>
-        <h2>{props.t('rail.api')}</h2>
-        
+      <section className={`${styles.section} ${styles.hostSection}`}>
         <div className={styles.hostControls}>
           <label>
             {props.t('app.localeLabel')}
@@ -66,6 +63,7 @@ export function ApiPanel(props: ApiPanelProps) {
           </label>
         </div>
       </section>
+      <span className="loom-divider" aria-hidden="true" />
 
       <section className={styles.section}>
         <div className={styles.sectionHead}>
@@ -141,6 +139,7 @@ export function ApiPanel(props: ApiPanelProps) {
           </div>
         ) : null}
       </section>
+      <span className="loom-divider" aria-hidden="true" />
 
       {/* Provider Accounts */}
       <section className={styles.section}>
@@ -157,6 +156,7 @@ export function ApiPanel(props: ApiPanelProps) {
           />
         )}
       </section>
+      <span className="loom-divider" aria-hidden="true" />
 
       {/* Model Profiles */}
       <section className={styles.section}>

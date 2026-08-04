@@ -14,7 +14,7 @@
   display: grid;
   align-content: start;
   justify-items: center;
-  gap: 22px;
+  gap: 18px;
   padding: 34px 0 46px;
   scroll-padding-block: 36px;
   background: var(--loom-panel);
@@ -30,83 +30,48 @@
 }
 
 .message {
-  width: 100%;
-  border: 1px solid color-mix(in srgb, var(--loom-border) 80%, transparent);
-  border-radius: 18px;
-  padding: 24px 30px 28px;
-  background: var(--loom-bg);
-  box-shadow: 0 18px 44px rgb(17 17 27 / 22%);
+  position: relative;
+  width: min(var(--loom-chat-width), 100%);
+  border: 0;
+  border-radius: 0;
+  padding: 20px 0 24px;
+  background: transparent;
+  box-shadow: none;
 }
 
 .user {
-  border-color: color-mix(in srgb, var(--loom-accent) 28%, var(--loom-border));
-  background: color-mix(in srgb, var(--loom-bg) 86%, var(--loom-accent-soft));
+  width: min(72%, 620px);
+  justify-self: end;
+  border-radius: 16px;
+  padding: 12px 16px;
+  background: var(--loom-window);
 }
 
 .assistant {
-  border-color: color-mix(in srgb, var(--loom-border) 80%, transparent);
+  background: transparent;
 }
 
 .messageChrome {
-  display: grid;
-  justify-items: center;
-  gap: 12px;
-  margin-bottom: 24px;
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  margin: 0;
 }
 
-.avatar {
-  width: 56px;
-  height: 56px;
-  display: grid;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, var(--loom-accent) 42%, var(--loom-border));
-  border-radius: 999px;
-  color: var(--loom-accent-strong);
-  background:
-    radial-gradient(circle at 34% 26%, color-mix(in srgb, var(--loom-accent) 24%, transparent), transparent 32%),
-    color-mix(in srgb, var(--loom-accent-soft) 70%, var(--loom-panel));
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--loom-accent) 10%, transparent);
-  font-size: 18px;
-  font-weight: 680;
-}
-
-.turnLabel {
-  color: var(--loom-text-subtle);
-  font-size: 13px;
-  font-weight: 720;
+.avatar,
+.turnLabel,
+.messageIdentity {
+  display: none;
 }
 
 .messageMeta {
-  width: 100%;
+  width: auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  border-bottom: 1px solid var(--loom-border);
-  padding-bottom: 14px;
-}
-
-.messageIdentity {
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
-
-.messageIdentity strong {
-  color: var(--loom-text);
-  font-size: 15px;
-  font-weight: 720;
-}
-
-.messageIdentity span {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--loom-text-subtle);
-  font-size: 12px;
-  font-style: italic;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  gap: 0;
+  border: 0;
+  padding: 0;
 }
 
 .iconButton {
@@ -120,9 +85,11 @@
   padding: 0;
   color: var(--loom-text-subtle);
   background: transparent;
-  opacity: 0.64;
+  opacity: 0;
 }
 
+.message:hover .iconButton,
+.message:focus-within .iconButton,
 .iconButton:hover:not(:disabled),
 .iconButton:focus-visible {
   color: var(--loom-accent-strong);
@@ -132,15 +99,16 @@
 .message p {
   color: var(--loom-text);
   font-family: var(--loom-font-narrative);
-  font-size: 16px;
-  line-height: 1.82;
+  font-size: 14px;
+  line-height: 1.72;
   white-space: pre-wrap;
 }
 
 .user p {
   font-family: inherit;
+  padding-right: 20px;
   font-size: 14px;
-  line-height: 1.68;
+  line-height: 1.58;
 }
 
 @media (max-width: 820px) {
@@ -153,8 +121,12 @@
   }
 
   .message {
-    border-radius: 14px;
-    padding: 20px 18px 22px;
+    padding: 18px 16px 20px;
+  }
+
+  .user {
+    width: min(88%, 620px);
+    padding: 11px 14px;
   }
 
   .messageMeta,

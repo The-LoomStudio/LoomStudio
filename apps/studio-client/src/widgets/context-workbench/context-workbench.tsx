@@ -1,6 +1,11 @@
-import { AlignLeft, Code2, Copy, FileText, Folder, GripVertical, Package, Plus, Trash2 } from 'lucide-react'
+import { AlignLeft, Code2, Copy, FileText, Folder, FolderOpen, GripVertical, Package, Plus, SlidersHorizontal, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore, type ContextCategory } from '../../pages/studio/model/studio-layout-store.js'
 import { FileTree } from '../../shared/ui/file-tree/file-tree.js'
+import { AssetWorkbenchLayout } from '../../shared/ui/asset-workbench-layout/asset-workbench-layout.js'
+import type { ContextMenuItem } from '../../shared/ui/context-menu/context-menu.js'
+import { Toggle } from '../../shared/ui/toggle/toggle.js'
+import { StatusIndicator } from '../../shared/ui/status-indicator/status-indicator.js'
 import {
   findContextNode,
 } from '../../features/context-assets/model/projection-order.js'
@@ -24,18 +29,27 @@ type ContextWorkbenchProps = {
   onCommitNode: (id: string, partial: Partial<ContextAssetNode>) => void
   onChangeNodes: (updates: ContextAssetUpdate[]) => void
   onMoveNode: (draggedId: string, targetId: string, position: 'before' | 'inside' | 'after') => void
-  onAddNode: (parentId: string) => void
-  onDuplicateNode: (id: string) => void
-  onDeleteNode: (id: string) => void
+  onAddNode: (parentId: string) => Promise<string | undefined>
+  onDuplicateNode: (id: string) => Promise<string | undefined>
+  onDeleteNode: (id: string, selectedId?: string) => Promise<string | undefined>
   onSelectNode: (id: string) => void
-  selectedId?: string
   t: Translator
+  workspaceId: string
 }
 
 export function ContextWorkbench(props: ContextWorkbenchProps) {
-  const [activeCategory, setActiveCategory] = useState<'preset' | 'setting' | 'logic' | 'runtime' | 'history'>('setting')
+  const activeCategory = useStudioLayoutStore(state => state.contextCategory)
+  const metadataOpen = useStudioLayoutStore(state => state.assetMetadataOpen)
+  const explorerLayout = useStudioLayoutStore(state => state.assetLayouts.resources)
+  const explorerView = explorerLayout.views[props.workspaceId] ?? DEFAULT_ASSET_VIEW_STATE
+  const setExpandedIds = useStudioLayoutStore(state => state.setAssetExpandedIds)
+  const setExplorerWidth = useStudioLayoutStore(state => state.setAssetExplorerWidth)
+  const setSelectedId = useStudioLayoutStore(state => state.setAssetSelectedId)
+  const setAssetViewMode = useStudioLayoutStore(state => state.setAssetViewMode)
+  const setActiveCategory = useStudioLayoutStore(state => state.setContextCategory)
+  const setMetadataOpen = useStudioLayoutStore(state => state.setAssetMetadataOpen)
   const [viewModes, setViewModes] = useState<Record<string, 'asset' | 'projection'>>({})
-  const selectedNode = findContextNode(props.nodes, props.selectedId)
+  const selectedNode = findContextNode(props.nodes, explorerView.selectedId)
   const projectionModel = useMemo(() => buildProjectionWorkbenchModel(props.nodes), [props.nodes])
   const { projectionEntries, orderNode, projectionOrderIds, orderedProjectionEntries } = projectionModel
 
@@ -51,7 +65,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
       })
   }, [props.nodes, viewModes, activeCategory, orderedProjectionEntries])
 
-  const TABS: Array<{ value: 'setting' | 'logic' | 'runtime' | 'history', label: string }> = [
+  const TABS: Array<{ value: ContextCategory, label: string }> = [
     { value: 'setting', label: 'Setting' },
     { value: 'logic', label: 'Logic' },
     { value: 'runtime', label: 'Runtime' },
@@ -59,28 +73,61 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   ]
 
   return (
-    <section className={styles.shell} data-loom-component="context-workbench">
-      <aside className={styles.assetPane} data-loom-component="context-asset-explorer">
-        <header className={styles.paneHeader}>
-          <div className={styles.paneHeaderTop}>
-            <p>{props.t('context.assetsLabel')}</p>
-            <h2>{props.t('context.title')}</h2>
-          </div>
-          <nav className={styles.categoryTabs}>
-            {TABS.map(tab => (
-              <button
-                key={tab.value}
-                className={`${styles.categoryTab} ${activeCategory === tab.value ? styles.categoryTabActive : ''}`}
-                onClick={() => setActiveCategory(tab.value)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        </header>
+    <AssetWorkbenchLayout
+      explorerWidth={explorerLayout.explorerWidth}
+      onExplorerWidthChange={width => setExplorerWidth('resources', width)}
+      resizeLabel={props.t('context.resizeExplorer')}
+      viewMode={explorerView.viewMode}
+      toolbar={(
+        <nav className="loom-page-tabs">
+          {TABS.map(tab => (
+            <button
+              key={tab.value}
+              className={`loom-page-tab ${activeCategory === tab.value ? 'loom-page-tab-active' : ''}`}
+              type="button"
+              onClick={() => setActiveCategory(tab.value)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+      )}
+      explorer={(
         <FileTree
+          key={props.workspaceId}
           ariaLabel={props.t('context.assetsLabel')}
+          expandedIds={explorerView.expandedIds}
+          getActions={node => readTreeActions(
+            node as ContextAssetNode,
+            viewModes[node.id],
+            () => setViewModes(current => ({ ...current, [node.id]: current[node.id] === 'projection' ? 'asset' : 'projection' })),
+            async parentId => {
+              const selectedId = await props.onAddNode(parentId)
+              if (!selectedId) return
+              setSelectedId('resources', props.workspaceId, selectedId)
+              setAssetViewMode('resources', props.workspaceId, 'split')
+            },
+            async id => {
+              const selectedId = await props.onDuplicateNode(id)
+              if (!selectedId) return
+              setSelectedId('resources', props.workspaceId, selectedId)
+              setAssetViewMode('resources', props.workspaceId, 'split')
+            },
+            async id => {
+              const selectedId = await props.onDeleteNode(id, explorerView.selectedId)
+              setSelectedId('resources', props.workspaceId, selectedId)
+              if (!selectedId) setAssetViewMode('resources', props.workspaceId, 'explorer')
+            },
+            (id, enabled) => {
+              props.onChangeNode(id, { enabled })
+              props.onCommitNode(id, { enabled })
+            },
+            props.t,
+          )}
+          isMuted={node => (node as ContextAssetNode).kind === 'entry' && (node as ContextAssetNode).enabled === false}
+          moreActionsLabel={props.t('context.actionMore')}
           nodes={displayNodes}
+          onExpandedIdsChange={expandedIds => setExpandedIds('resources', props.workspaceId, expandedIds)}
           onMoveNode={(draggedId, targetId, position) => {
              const rootModule = findRootContextModule(props.nodes, draggedId)
              const isProjectionView = rootModule && viewModes[rootModule.id] === 'projection'
@@ -93,114 +140,144 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
 
              props.onMoveNode(draggedId, targetId, position)
           }}
-          onSelect={node => props.onSelectNode(node.id)}
-          renderActions={node => renderTreeActions(
-            node as ContextAssetNode,
-            viewModes[node.id],
-            () => setViewModes(current => ({ ...current, [node.id]: current[node.id] === 'projection' ? 'asset' : 'projection' })),
-            props.onAddNode,
-            props.onDuplicateNode,
-            props.onDeleteNode,
-            props.t
-          )}
+          onSelect={node => {
+            setSelectedId('resources', props.workspaceId, node.id)
+            if (explorerView.viewMode === 'explorer') setAssetViewMode('resources', props.workspaceId, 'split')
+            props.onSelectNode(node.id)
+          }}
           renderIcon={(node, expanded) => renderTreeIcon(node as ContextAssetNode, expanded)}
-          selectedId={props.selectedId}
+          renderTrailing={node => renderLifecycleIndicator(node as ContextAssetNode, props.t)}
+          selectedId={explorerView.selectedId}
         />
-      </aside>
-
-      <section className={styles.detailPane} data-loom-component="context-detail-editor">
-        <div className={styles.detailColumn}>
-          <header className={styles.detailHeader}>
-            <p>{readKindLabel(selectedNode, props.t)}</p>
-            <h1>{selectedNode?.label ?? props.t('context.emptyTitle')}</h1>
-            <span>{selectedNode?.meta ?? props.t('context.emptyBody')}</span>
-          </header>
-
-          {selectedNode ? (
-            selectedNode.kind === 'order' ? (
-              <ProjectionOrderEditor
-                entries={orderedProjectionEntries}
-                onReorder={(draggedId, targetId) => {
-                  props.onChangeNodes(readProjectionOrderReorderUpdates({
-                    draggedId,
-                    orderedProjectionEntries,
-                    orderNode,
-                    projectionEntries,
-                    projectionOrderIds,
-                    targetId,
-                  }))
+      )}
+    >
+      <div className={styles.detailColumn} data-loom-component="context-detail-editor">
+        <header className={`${styles.detailHeader} ${selectedNode?.kind === 'entry' && selectedNode.enabled === false ? styles.detailHeaderMuted : ''}`}>
+          <p>{readKindLabel(selectedNode, props.t)}</p>
+          <div className={styles.detailTitleRow}>
+            {canToggleEnabled(selectedNode) ? (
+              <Toggle
+                checked={selectedNode.enabled !== false}
+                label={props.t(selectedNode.enabled === false ? 'context.actionEnable' : 'context.actionDisable')}
+                onChange={enabled => {
+                  props.onChangeNode(selectedNode.id, { enabled })
+                  props.onCommitNode(selectedNode.id, { enabled })
                 }}
-                selectedId={props.selectedId}
-                t={props.t}
               />
-            ) : (
-              <ContextAssetDetail
-                activationEditable={activeCategory === 'setting'}
-                node={selectedNode}
-                onChangeNode={partial => props.onChangeNode(selectedNode.id, partial)}
-                onCommitNode={partial => props.onCommitNode(selectedNode.id, partial)}
-                t={props.t}
-              />
-            )
+            ) : null}
+            <h1>{selectedNode?.label ?? props.t('context.emptyTitle')}</h1>
+            {selectedNode && selectedNode.kind !== 'order' ? (
+              <button
+                aria-expanded={metadataOpen}
+                aria-label={props.t(metadataOpen ? 'context.hideMetadata' : 'context.showMetadata')}
+                className={`${styles.metadataToggle} ${metadataOpen ? styles.metadataToggleActive : ''}`}
+                title={props.t(metadataOpen ? 'context.hideMetadata' : 'context.showMetadata')}
+                type="button"
+                onClick={() => setMetadataOpen(!metadataOpen)}
+                onMouseDown={event => event.preventDefault()}
+              >
+                <SlidersHorizontal aria-hidden="true" />
+              </button>
+            ) : null}
+          </div>
+          <span>{selectedNode?.meta ?? props.t('context.emptyBody')}</span>
+        </header>
+        <span className={`loom-divider ${styles.detailDivider}`} aria-hidden="true" />
+
+        {selectedNode ? (
+          selectedNode.kind === 'order' ? (
+            <ProjectionOrderEditor
+              entries={orderedProjectionEntries}
+              onReorder={(draggedId, targetId) => {
+                props.onChangeNodes(readProjectionOrderReorderUpdates({
+                  draggedId,
+                  orderedProjectionEntries,
+                  orderNode,
+                  projectionEntries,
+                  projectionOrderIds,
+                  targetId,
+                }))
+              }}
+                  selectedId={explorerView.selectedId}
+              t={props.t}
+            />
           ) : (
-            <div className={styles.emptyState}>{props.t('context.emptyBody')}</div>
-          )}
-        </div>
-      </section>
-    </section>
+            <ContextAssetDetail
+              activationEditable={activeCategory === 'setting'}
+              metadataOpen={metadataOpen}
+              node={selectedNode}
+              onChangeNode={partial => props.onChangeNode(selectedNode.id, partial)}
+              onCommitNode={partial => props.onCommitNode(selectedNode.id, partial)}
+              onMetadataOpenChange={setMetadataOpen}
+              t={props.t}
+            />
+          )
+        ) : (
+          <div className={styles.emptyState}>{props.t('context.emptyBody')}</div>
+        )}
+      </div>
+    </AssetWorkbenchLayout>
   )
 }
 
 function renderTreeIcon(node: ContextAssetNode, expanded: boolean) {
-  if (node.kind === 'module') return <Package absoluteStrokeWidth size={15} strokeWidth={1.5} />
-  if (node.kind === 'folder') return <Folder absoluteStrokeWidth size={15} strokeWidth={1.5} fill={expanded ? 'currentColor' : 'none'} />
-  if (node.kind === 'script') return <Code2 absoluteStrokeWidth size={15} strokeWidth={1.5} />
-  if (node.kind === 'virtual') return <FileText absoluteStrokeWidth size={15} strokeWidth={1.5} />
-  if (node.kind === 'order') return <GripVertical absoluteStrokeWidth size={15} strokeWidth={1.5} />
-  return <FileText absoluteStrokeWidth size={15} strokeWidth={1.5} />
+  if (node.kind === 'module') return <Package />
+  if (node.kind === 'folder') return expanded ? <FolderOpen /> : <Folder />
+  if (node.kind === 'script') return <Code2 />
+  if (node.kind === 'virtual') return <FileText />
+  if (node.kind === 'order') return <GripVertical />
+  return <FileText />
 }
 
-function renderTreeActions(
+function renderLifecycleIndicator(node: ContextAssetNode, t: Translator) {
+  if (node.enabled === false || node.projection?.lifecycle !== 'always') return null
+  return <StatusIndicator label={t('context.lifecycleAlwaysIndicator')} tone="info" />
+}
+
+function readTreeActions(
   node: ContextAssetNode,
   viewMode: 'asset' | 'projection' | undefined,
   onToggleViewMode: () => void,
   onAddNode: (parentId: string) => void,
   onDuplicateNode: (id: string) => void,
   onDeleteNode: (id: string) => void,
+  onToggleEnabled: (id: string, enabled: boolean) => void,
   t: Translator,
-) {
+): ContextMenuItem[] {
   const canAdd = (node.kind === 'module' || node.kind === 'folder') && !isReadOnlyTreeNode(node)
   const canDuplicate = node.kind !== 'module' && node.kind !== 'order' && !isReadOnlyTreeNode(node)
   const canDelete = canDuplicate
   const isSettingLayer = node.category === 'setting' && node.kind === 'module'
+  const items: ContextMenuItem[] = []
 
-  return (
-    <>
-      {isSettingLayer ? (
-        <span
-          title={viewMode === 'projection' ? 'Switch to Asset View' : 'Switch to Projection View'}
-          onClick={(e) => { e.stopPropagation(); onToggleViewMode(); }}
-        >
-          {viewMode === 'projection' ? <Folder aria-hidden="true" size={13} strokeWidth={1.5} /> : <AlignLeft aria-hidden="true" size={13} strokeWidth={1.5} />}
-        </span>
-      ) : null}
-      {canAdd ? (
-        <span title={t('context.actionAdd')} onClick={() => onAddNode(node.id)}>
-          <Plus aria-hidden="true" size={13} strokeWidth={1.5} />
-        </span>
-      ) : null}
-      {canDuplicate ? (
-        <span title={t('context.actionDuplicate')} onClick={() => onDuplicateNode(node.id)}>
-          <Copy aria-hidden="true" size={13} strokeWidth={1.5} />
-        </span>
-      ) : null}
-      {canDelete ? (
-        <span title={t('context.actionDelete')} onClick={() => onDeleteNode(node.id)}>
-          <Trash2 aria-hidden="true" size={13} strokeWidth={1.5} />
-        </span>
-      ) : null}
-    </>
-  )
+  if (canToggleEnabled(node)) {
+    items.push({
+      checked: node.enabled !== false,
+      id: 'enabled',
+      label: t('context.actionEnable'),
+      onSelect: () => onToggleEnabled(node.id, node.enabled === false),
+    })
+    if (isSettingLayer || canAdd || canDuplicate) items.push({ id: 'state-separator', type: 'separator' })
+  }
+  if (isSettingLayer) {
+    items.push({
+      icon: viewMode === 'projection' ? <Folder aria-hidden="true" /> : <AlignLeft aria-hidden="true" />,
+      id: 'view-mode',
+      label: t(viewMode === 'projection' ? 'context.actionAssetView' : 'context.actionProjectionView'),
+      onSelect: onToggleViewMode,
+    })
+  }
+  if (canAdd) items.push({ icon: <Plus aria-hidden="true" />, id: 'add', label: t('context.actionAdd'), onSelect: () => onAddNode(node.id) })
+  if (canDuplicate) items.push({ icon: <Copy aria-hidden="true" />, id: 'duplicate', label: t('context.actionDuplicate'), onSelect: () => onDuplicateNode(node.id) })
+  if (canDelete) {
+    if (items.length > 0) items.push({ id: 'delete-separator', type: 'separator' })
+    items.push({ icon: <Trash2 aria-hidden="true" />, id: 'delete', label: t('context.actionDelete'), onSelect: () => onDeleteNode(node.id), tone: 'danger' })
+  }
+  return items
+}
+
+function canToggleEnabled(node: ContextAssetNode | undefined): node is ContextAssetNode {
+  return node?.kind === 'entry' && !isReadOnlyTreeNode(node)
 }
 
 function isReadOnlyTreeNode(node: ContextAssetNode): boolean {

@@ -1,17 +1,19 @@
 .canvasStack {
-  width: min(var(--loom-canvas-width), calc(100vw - 104px));
+  --loom-panel: var(--loom-bg);
+  --loom-surface: var(--loom-bg);
+
+  width: min(var(--loom-canvas-width), calc(100vw - 32px));
   height: 100%;
   min-width: 0;
   min-height: 0;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
   overflow: hidden;
-  background: var(--loom-panel);
+  background: var(--loom-bg);
 }
 
 @media (max-width: 820px) {
   .canvasStack {
-    width: min(100%, calc(100vw - 38px));
-    justify-self: end;
+    width: 100%;
   }
 }

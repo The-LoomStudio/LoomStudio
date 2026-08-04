@@ -1,0 +1,12 @@
+.indicator {
+  width: 6px;
+  min-width: 6px;
+  height: 6px;
+  min-height: 6px;
+  display: block;
+  border-radius: 50%;
+}
+
+.indicator[data-tone='info'] {
+  background: var(--loom-info);
+}

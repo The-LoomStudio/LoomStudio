@@ -144,15 +144,16 @@ export function useContextAssets(input: UseContextAssetsInput) {
     })
   }
 
-  function addContextAsset(parentId: string): Promise<void> {
+  async function addContextAsset(parentId: string): Promise<string | undefined> {
     if (!input.api || input.resources.length === 0) {
       const mutation = addContextAssetNode(nodesRef.current, parentId)
       setNodes(mutation.nodes)
       if (mutation.selectedId) setSelectedId(mutation.selectedId)
-      return Promise.resolve()
+      return mutation.selectedId
     }
 
-    return enqueueMutation(async () => {
+    let nextSelectedId: string | undefined
+    await enqueueMutation(async () => {
       const mutation = addContextAssetNode(persistedNodesRef.current, parentId)
       const asset = findContextAssetNode(mutation.nodes, mutation.selectedId)
       if (!asset || !mutation.selectedId) return
@@ -165,12 +166,14 @@ export function useContextAssets(input: UseContextAssetsInput) {
       }))
       applyResource(result.resource)
       setSelectedId(mutation.selectedId)
+      nextSelectedId = mutation.selectedId
       input.recordEdit({
         label: input.t('history.context.create'),
         changesetId: result.mutation.changesetId,
         anchor: { documentId: resourceId, subjectId: mutation.selectedId },
       })
     })
+    return nextSelectedId
   }
 
   function moveContextAsset(draggedId: string, targetId: string, position: 'before' | 'inside' | 'after'): Promise<void> {
@@ -199,15 +202,16 @@ export function useContextAssets(input: UseContextAssetsInput) {
     })
   }
 
-  function duplicateContextAsset(id: string): Promise<void> {
+  async function duplicateContextAsset(id: string): Promise<string | undefined> {
     if (!input.api || input.resources.length === 0) {
       const mutation = duplicateContextAssetNode(nodesRef.current, id)
       setNodes(mutation.nodes)
       if (mutation.selectedId) setSelectedId(mutation.selectedId)
-      return Promise.resolve()
+      return mutation.selectedId
     }
 
-    return enqueueMutation(async () => {
+    let nextSelectedId: string | undefined
+    await enqueueMutation(async () => {
       const mutation = duplicateContextAssetNode(persistedNodesRef.current, id)
       const asset = findContextAssetNode(mutation.nodes, mutation.selectedId)
       if (!asset || !mutation.selectedId) return
@@ -220,24 +224,27 @@ export function useContextAssets(input: UseContextAssetsInput) {
       }))
       applyResource(result.resource)
       setSelectedId(mutation.selectedId)
+      nextSelectedId = mutation.selectedId
       input.recordEdit({
         label: input.t('history.context.duplicate'),
         changesetId: result.mutation.changesetId,
         anchor: { documentId: resourceId, subjectId: mutation.selectedId },
       })
     })
+    return nextSelectedId
   }
 
-  function deleteContextAsset(id: string): Promise<void> {
+  async function deleteContextAsset(id: string, currentSelectedId = selectedId): Promise<string | undefined> {
     if (!input.api || input.resources.length === 0) {
-      const mutation = deleteContextAssetNode(nodesRef.current, id, selectedId)
+      const mutation = deleteContextAssetNode(nodesRef.current, id, currentSelectedId)
       setNodes(mutation.nodes)
       if (mutation.selectedId) setSelectedId(mutation.selectedId)
-      return Promise.resolve()
+      return mutation.selectedId
     }
 
-    return enqueueMutation(async () => {
-      const mutation = deleteContextAssetNode(persistedNodesRef.current, id, selectedId)
+    let nextSelectedId: string | undefined
+    await enqueueMutation(async () => {
+      const mutation = deleteContextAssetNode(persistedNodesRef.current, id, currentSelectedId)
       if (mutation.nodes === persistedNodesRef.current) return
       const resourceId = readResourceId(id)
       const result = await input.api!.promptResources.deleteAsset(jsonObject({
@@ -246,12 +253,14 @@ export function useContextAssets(input: UseContextAssetsInput) {
       }))
       applyResource(result.resource)
       if (mutation.selectedId) setSelectedId(mutation.selectedId)
+      nextSelectedId = mutation.selectedId
       input.recordEdit({
         label: input.t('history.context.delete'),
         changesetId: result.mutation.changesetId,
         anchor: { documentId: resourceId, subjectId: id },
       })
     })
+    return nextSelectedId
   }
 
   function readProjectionOrderProfile(session: Session | undefined): ClientJsonValue | undefined {

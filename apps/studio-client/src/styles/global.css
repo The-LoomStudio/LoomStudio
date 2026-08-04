@@ -2,19 +2,30 @@
   color: var(--loom-text);
   background: var(--loom-bg);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 14px;
 
   /* ── 背景与表面 ── */
   --loom-bg: #1e1e2e;
   --loom-surface: #181825;
   --loom-panel: #313244;
   --loom-panel-muted: #45475a;
+  --loom-window: #313244;
+  --loom-window-surface: #3b3d50;
+  --loom-window-raised: #45475a;
+  --loom-divider-color: color-mix(in srgb, var(--loom-border) 58%, transparent);
+  --loom-divider-inset: 13px;
+  --loom-divider-space: 5px;
+  --loom-page-header-height: 36px;
+  --loom-page-header-padding: 13px;
+  --loom-page-header-icon-size: 14px;
+  --loom-page-header-icon-stroke: 1.25;
 
   /* ── 边框 ── */
   --loom-border: #45475a;
   --loom-border-strong: #585b70;
 
   /* ── 文本 ── */
-  --loom-text: #cdd6f4;
+  --loom-text: #ccd6f5;
   --loom-text-muted: #a6adc8;
   --loom-text-subtle: #7f849c;
 
@@ -53,6 +64,74 @@
 
 * {
   box-sizing: border-box;
+}
+
+.loom-divider {
+  display: block;
+  height: calc(var(--loom-divider-space) * 2 + 1px);
+  margin-inline: var(--loom-divider-inset);
+  background: linear-gradient(var(--loom-divider-color), var(--loom-divider-color)) center / 100% 1px no-repeat;
+  pointer-events: none;
+}
+
+.loom-page-header {
+  min-width: 0;
+  height: var(--loom-page-header-height);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 6px;
+  padding-inline: var(--loom-page-header-padding);
+  color: var(--loom-text-muted);
+}
+
+.loom-page-header svg {
+  width: var(--loom-page-header-icon-size);
+  height: var(--loom-page-header-icon-size);
+  flex: 0 0 auto;
+  stroke-width: var(--loom-page-header-icon-stroke);
+}
+
+.loom-page-header-title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loom-page-tabs {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.loom-page-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.loom-page-tab {
+  min-height: 26px;
+  border: 0;
+  padding: 0;
+  color: var(--loom-text-muted);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 540;
+  white-space: nowrap;
+}
+
+.loom-page-tab:hover,
+.loom-page-tab-active {
+  color: var(--loom-text);
+}
+
+.loom-page-tab-active {
+  font-weight: 620;
 }
 
 html,
@@ -99,6 +178,10 @@ textarea {
   font: inherit;
 }
 
+em {
+  font-style: normal;
+}
+
 button {
   min-height: 32px;
   border: 1px solid var(--loom-border);
@@ -136,6 +219,36 @@ input {
   border-radius: 4px;
   color: var(--loom-text);
   background: transparent;
+}
+
+input[type="checkbox"] {
+  appearance: none;
+  width: 14px;
+  min-width: 14px;
+  height: 14px;
+  min-height: 14px;
+  margin: 0;
+  border: 1px solid var(--loom-border-strong);
+  border-radius: 3px;
+  padding: 0;
+  background: transparent center / 10px 10px no-repeat;
+  cursor: pointer;
+}
+
+input[type="checkbox"]:checked {
+  border-color: var(--loom-accent);
+  background-color: var(--loom-accent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.2 6.2 4.8 8.7 9.9 3.3' fill='none' stroke='%2311111b' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+input[type="checkbox"]:focus-visible {
+  border-color: var(--loom-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--loom-accent) 22%, transparent);
+}
+
+input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 h1,

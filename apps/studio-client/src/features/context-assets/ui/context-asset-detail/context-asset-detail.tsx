@@ -1,5 +1,8 @@
+import { useRef } from 'react'
+import { Braces, Equal, Info, KeyRound, ListFilter, ListOrdered, MapPin, RefreshCw, Settings2, Tag, Zap } from 'lucide-react'
 import type { ContextAssetNode } from '../../../../entities/index.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
+import { LongTextEditor } from '../../../../shared/ui/long-text-editor/long-text-editor.js'
 import {
   buildActivationUpdate,
   readActivationDraft,
@@ -12,13 +15,16 @@ import styles from './context-asset-detail.module.scss'
 
 type ContextAssetDetailProps = {
   activationEditable?: boolean
+  metadataOpen: boolean
   node: ContextAssetNode
   onChangeNode: (partial: Partial<ContextAssetNode>) => void
   onCommitNode: (partial: Partial<ContextAssetNode>) => void
+  onMetadataOpenChange(open: boolean): void
   t: Translator
 }
 
 export function ContextAssetDetail(props: ContextAssetDetailProps) {
+  const editorRef = useRef<HTMLTextAreaElement>(null)
   const isTextLike = props.node.kind === 'entry' || props.node.kind === 'script'
   const isEntry = props.node.kind === 'entry'
   const body = props.node.body ?? ''
@@ -41,10 +47,26 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
   }
 
   return (
-    <div className={styles.detailBody}>
-      <section className={styles.configGrid} aria-label={props.t('context.configLabel')}>
+    <div
+      className={`${styles.detailBody} ${isEntry && props.node.enabled === false ? styles.detailBodyMuted : ''}`}
+      onKeyDownCapture={event => {
+        if (event.key !== 'Escape' || !props.metadataOpen) return
+        event.preventDefault()
+        event.stopPropagation()
+        props.onMetadataOpenChange(false)
+        queueMicrotask(() => editorRef.current?.focus())
+      }}
+    >
+      <div
+        aria-hidden={!props.metadataOpen}
+        className={`${styles.metadataPanel} ${props.metadataOpen ? styles.metadataPanelOpen : ''}`}
+        data-state={props.metadataOpen ? 'open' : 'closed'}
+      >
+        <span className={styles.metadataHandle} aria-hidden="true" />
+        <div className={styles.metadataScroller}>
+          <section className={styles.configGrid} aria-label={props.t('context.configLabel')}>
         <div>
-          <dt>Label</dt>
+            <dt><Tag aria-hidden="true" />Label</dt>
           <dd>
             <input
               className={styles.inlineInput}
@@ -56,7 +78,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
           </dd>
         </div>
         <div>
-          <dt>Meta</dt>
+            <dt><Info aria-hidden="true" />Meta</dt>
           <dd>
             <input
               className={styles.inlineInput}
@@ -67,23 +89,23 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
             />
           </dd>
         </div>
-      </section>
+          </section>
 
-      {props.node.configRows?.length ? (
-        <section className={styles.configGrid} aria-label={props.t('context.configLabel')}>
+          {props.node.configRows?.length ? (
+            <section className={styles.configGrid} aria-label={props.t('context.configLabel')}>
           {props.node.configRows.map(row => (
             <div key={`${props.node.id}:${row.label}`}>
-              <dt>{row.label}</dt>
+              <dt><Settings2 aria-hidden="true" />{row.label}</dt>
               <dd>{row.value}</dd>
             </div>
           ))}
-        </section>
-      ) : null}
+            </section>
+          ) : null}
 
-      {canShowActivation ? (
-        <section className={styles.configGrid} aria-label={props.t('context.activation.label')}>
+          {canShowActivation ? (
+            <section className={styles.configGrid} aria-label={props.t('context.activation.label')}>
           <div>
-            <dt>{props.t('context.activation.mode')}</dt>
+            <dt><Zap aria-hidden="true" />{props.t('context.activation.mode')}</dt>
             <dd>
               <select
                 className={styles.inlineInput}
@@ -101,7 +123,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
           </div>
           {activationDraft.mode === 'keyword' ? (
             <div>
-              <dt>{props.t('context.activation.keywords')}</dt>
+              <dt><KeyRound aria-hidden="true" />{props.t('context.activation.keywords')}</dt>
               <dd>
                 <input
                   className={styles.inlineInput}
@@ -117,7 +139,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
           {activationDraft.mode === 'condition' ? (
             <>
               <div>
-                <dt>{props.t('context.activation.fact')}</dt>
+                <dt><Braces aria-hidden="true" />{props.t('context.activation.fact')}</dt>
                 <dd>
                   <select
                     className={styles.inlineInput}
@@ -137,7 +159,10 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
                 </dd>
               </div>
               <div>
-                <dt>{activationDraft.conditionPreset === 'agent.mode' ? props.t('context.activation.equals') : props.t('context.activation.includes')}</dt>
+                <dt>
+                  {activationDraft.conditionPreset === 'agent.mode' ? <Equal aria-hidden="true" /> : <ListFilter aria-hidden="true" />}
+                  {activationDraft.conditionPreset === 'agent.mode' ? props.t('context.activation.equals') : props.t('context.activation.includes')}
+                </dt>
                 <dd>
                   <select
                     className={styles.inlineInput}
@@ -163,35 +188,17 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
           ) : null}
           {activationDraft.mode === 'custom' ? (
             <div>
-              <dt>{props.t('context.activation.custom')}</dt>
+              <dt><Settings2 aria-hidden="true" />{props.t('context.activation.custom')}</dt>
               <dd>{props.t('context.activation.customHint')}</dd>
             </div>
           ) : null}
-        </section>
-      ) : null}
+            </section>
+          ) : null}
 
-      {isEntry ? (
-        <section className={styles.configGrid} aria-label={props.t('context.configLabel')}>
+          {isEntry ? (
+            <section className={styles.configGrid} aria-label={props.t('context.configLabel')}>
           <div>
-            <dt>Enabled</dt>
-            <dd>
-              <label className={styles.checkboxLabel}>
-                <input
-                  type="checkbox"
-                  disabled={readOnly}
-                  checked={props.node.enabled !== false}
-                  onChange={event => {
-                    const update = { enabled: event.target.checked }
-                    props.onChangeNode(update)
-                    props.onCommitNode(update)
-                  }}
-                />
-                {props.node.enabled !== false ? 'Active' : 'Inactive'}
-              </label>
-            </dd>
-          </div>
-          <div>
-            <dt>Zone ID</dt>
+            <dt><MapPin aria-hidden="true" />Zone ID</dt>
             <dd>
               <input
                 className={styles.inlineInput}
@@ -215,7 +222,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
             </dd>
           </div>
           <div>
-            <dt>Order Hint</dt>
+            <dt><ListOrdered aria-hidden="true" />Order Hint</dt>
             <dd>
               <input
                 className={styles.inlineInput}
@@ -228,7 +235,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
             </dd>
           </div>
           <div>
-            <dt>Slot Key</dt>
+            <dt><KeyRound aria-hidden="true" />Slot Key</dt>
             <dd>
               <input
                 className={styles.inlineInput}
@@ -240,7 +247,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
             </dd>
           </div>
           <div>
-            <dt>Lifecycle</dt>
+            <dt><RefreshCw aria-hidden="true" />Lifecycle</dt>
             <dd>
               <select
                 className={styles.inlineInput}
@@ -255,26 +262,30 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
               </select>
             </dd>
           </div>
-        </section>
-      ) : null}
+            </section>
+          ) : null}
+        </div>
+      </div>
 
-      <label className={styles.editorBlock}>
-        <span>{isTextLike ? props.t('context.contentLabel') : props.t('context.notesLabel')}</span>
-        <textarea
-          className={styles.editorTextarea}
+      <div className={styles.editorScroller}>
+        <LongTextEditor
+          key={props.node.id}
+          ref={editorRef}
+          clearLabel={props.t('editor.longText.clear')}
+          clearedLabel={props.t('editor.longText.cleared')}
+          copiedLabel={props.t('editor.longText.copied')}
+          copyFailedLabel={props.t('editor.longText.copyFailed')}
+          copyLabel={props.t('editor.longText.copy')}
           disabled={readOnly}
-          value={body}
-          onChange={event => props.onChangeNode({ body: event.target.value })}
-          onBlur={event => props.onCommitNode({ body: event.target.value })}
+          label={isTextLike ? props.t('context.contentLabel') : props.t('context.notesLabel')}
+          placeholder={isTextLike ? props.t('context.contentPlaceholder') : props.t('context.notesPlaceholder')}
           spellCheck={false}
+          undoLabel={props.t('editor.longText.undoClear')}
+          value={body}
+          onChange={value => props.onChangeNode({ body: value })}
+          onCommit={value => props.onCommitNode({ body: value })}
         />
-      </label>
-
-      {props.node.projection ? (
-        <footer className={styles.detailFooter}>
-          <span>{props.node.projection.zoneId}</span>
-        </footer>
-      ) : null}
+      </div>
     </div>
   )
 }

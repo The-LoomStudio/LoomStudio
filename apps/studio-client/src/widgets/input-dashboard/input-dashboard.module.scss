@@ -1,143 +1,99 @@
 .composer {
   align-self: end;
-  display: grid;
-  gap: 11px;
-  margin: 0;
+  width: min(var(--loom-chat-width), calc(100% - 32px));
+  justify-self: center;
+  margin: 0 16px 16px;
   min-height: 0;
-  padding: 14px 28px 12px;
-  border: 1px solid var(--loom-border);
-  border-bottom: 0;
-  border-radius: 20px 20px 0 0;
-  background: var(--loom-panel);
-}
-
-.composerMeta {
-  width: min(var(--loom-chat-width), 100%);
-  justify-self: center;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 8px 18px;
-  color: var(--loom-text-subtle);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-}
-
-.activationBar {
-  width: min(var(--loom-chat-width), 100%);
-  justify-self: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-
-.segmented,
-.tagGroup {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-}
-
-.segmentButton,
-.tagButton {
-  min-height: 30px;
-  border-radius: 6px;
-  padding: 5px 9px;
-  font-size: 12px;
-  line-height: 1.2;
-  background: color-mix(in srgb, var(--loom-panel) 88%, var(--loom-surface));
-}
-
-.segmentButtonActive {
-  color: var(--loom-accent-strong);
-  border-color: color-mix(in srgb, var(--loom-accent) 48%, var(--loom-border));
-  background: color-mix(in srgb, var(--loom-accent-soft) 64%, var(--loom-panel));
-}
-
-.tagButton {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-}
-
-.tagButtonActive {
-  border-color: color-mix(in srgb, var(--activation-color) 54%, var(--loom-border));
-  background: color-mix(in srgb, var(--activation-color) 16%, var(--loom-panel));
-}
-
-.tagDot {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 auto;
-  border-radius: 999px;
-  background: var(--activation-color);
+  padding: 0;
+  background: transparent;
 }
 
 .composerBody {
-  width: min(var(--loom-chat-width), 100%);
-  justify-self: center;
   display: grid;
-  gap: 7px;
+  gap: 6px;
 }
 
 .inputSurface {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 14px;
+  grid-template-rows: minmax(56px, auto) auto;
+  gap: 8px;
   border: 1px solid color-mix(in srgb, var(--loom-border) 74%, transparent);
-  border-radius: 14px;
-  padding: 10px;
-  background: color-mix(in srgb, var(--loom-panel) 88%, var(--loom-surface));
+  border-radius: 18px;
+  padding: 12px 12px 10px;
+  background: var(--loom-window);
+  box-shadow: none;
 }
 
 .composer textarea {
-  min-height: 50px;
-  max-height: 150px;
-  resize: vertical;
+  min-height: 56px;
+  max-height: 180px;
+  resize: none;
   border: 0;
-  border-radius: 8px;
-  padding: 7px 8px;
-  line-height: 1.6;
+  border-radius: 0;
+  padding: 2px 4px;
+  color: var(--loom-text);
+  font-size: 14px;
+  line-height: 1.55;
   background: transparent;
 }
 
 .composer small {
   color: var(--loom-text-muted);
-  font-size: 12px;
+  padding-inline: 8px;
+  font-size: 11px;
   overflow-wrap: anywhere;
+}
+
+.composerFooter {
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .composerActions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .composerActions button {
-  min-height: 42px;
-  padding-inline: 16px;
+  min-height: 30px;
 }
 
-.composer button[type="submit"] {
+.composer .sendButton {
+  width: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  padding: 0;
   color: var(--loom-accent-foreground);
   border-color: var(--loom-accent);
-  background: var(--loom-accent);
+  background: var(--loom-text);
 }
 
-.composer button[type="button"] {
+.composer .previewButton {
+  border: 0;
+  padding-inline: 7px;
+  color: var(--loom-text-muted);
   background: transparent;
 }
 
 @media (max-width: 820px) {
   .composer {
-    grid-template-columns: 1fr;
+    width: calc(100% - 24px);
+    margin: 0 12px 76px;
   }
 
-  .inputSurface {
-    grid-template-columns: 1fr;
+  .composerFooter {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .composerActions {
+    justify-content: flex-end;
   }
 }

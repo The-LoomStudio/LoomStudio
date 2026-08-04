@@ -81,13 +81,21 @@
 
 .agentCreateForm input,
 .agentCreateForm select {
-  background: var(--loom-bg);
-  border: 1px solid var(--loom-border);
-  border-radius: 4px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--loom-divider-color);
+  border-radius: 0;
   color: var(--loom-text);
   flex: 1;
   font-size: 12px;
-  padding: 6px 8px;
+  padding: 4px 0 5px;
+}
+
+.agentCreateForm input:focus,
+.agentCreateForm select:focus,
+.agentItemActions select:focus {
+  border-color: var(--loom-accent);
+  box-shadow: none;
 }
 
 .agentFormActions {
@@ -189,12 +197,13 @@
 }
 
 .agentItemActions select {
-  background: var(--loom-bg);
-  border: 1px solid var(--loom-border);
-  border-radius: 4px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--loom-divider-color);
+  border-radius: 0;
   color: var(--loom-text);
   font-size: 11px;
-  padding: 4px 8px;
+  padding: 3px 0 4px;
 }
 
 .agentEmptyList {
