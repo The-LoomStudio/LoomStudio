@@ -63,6 +63,7 @@ describe('studio client typed api', () => {
       'application.getImportBundle': { importBundle: { id: 'import-bundle-1' } },
       'application.listCards': { cards: [] },
       'application.updateCard': { card: { id: 'card-1' } },
+      'application.updateCardPromptResources': { card: { id: 'card-1' } },
       'application.deleteCard': { deleted: true },
       'application.exportCardArtifact': { artifact: { artifactId: 'card-1' } },
       'application.pingModelProfile': { text: 'pong' },
@@ -72,6 +73,7 @@ describe('studio client typed api', () => {
     await api.importBundles.get('import-bundle-1')
     await api.cards.list()
     await api.cards.update({ cardId: 'card-1', name: 'Renamed' })
+    await api.cards.updatePromptResources({ cardId: 'card-1', promptResourceIds: ['resource-1'] })
     await api.cards.delete('card-1')
     await api.cards.export('card-1')
     const text = await api.modelProfiles.ping('model-1')
@@ -83,6 +85,7 @@ describe('studio client typed api', () => {
       { method: 'application.getImportBundle', params: { importBundleId: 'import-bundle-1' } },
       { method: 'application.listCards', params: {} },
       { method: 'application.updateCard', params: { cardId: 'card-1', name: 'Renamed' } },
+      { method: 'application.updateCardPromptResources', params: { cardId: 'card-1', promptResourceIds: ['resource-1'] } },
       { method: 'application.deleteCard', params: { cardId: 'card-1' } },
       { method: 'application.exportCardArtifact', params: { cardId: 'card-1' } },
       { method: 'application.pingModelProfile', params: { modelProfileId: 'model-1' } },

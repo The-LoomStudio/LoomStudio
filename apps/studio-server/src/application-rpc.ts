@@ -50,6 +50,7 @@ const applicationRpcMethods = [
   'application.getImportBundle',
   'application.getPromptResource',
   'application.listCardPromptResources',
+  'application.updateCardPromptResources',
   'application.createPromptResourceAsset',
   'application.updatePromptResourceAsset',
   'application.updatePromptResourceAssets',
@@ -241,7 +242,7 @@ export async function callApplicationRpc(
     case 'application.importCardBundle':
       return await runtime.importCardBundle({
         artifact: readCardBundleArtifact(params, 'artifact'),
-      }) as unknown as JsonValue
+      }, context) as unknown as JsonValue
 
     case 'application.getImportBundle':
       return await runtime.getImportBundle({
@@ -257,6 +258,12 @@ export async function callApplicationRpc(
       return await runtime.listCardPromptResources({
         cardId: readString(params, 'cardId'),
       }) as unknown as JsonValue
+
+    case 'application.updateCardPromptResources':
+      return await runtime.updateCardPromptResources({
+        cardId: readString(params, 'cardId'),
+        promptResourceIds: readRequiredStringArray(params, 'promptResourceIds'),
+      }, context) as unknown as JsonValue
 
     case 'application.createPromptResourceAsset':
       return await runtime.createPromptResourceAsset({
@@ -393,6 +400,12 @@ function readOptionalStringArray(params: JsonValue | undefined, key: string): st
   if (!Array.isArray(value) || !value.every(item => typeof item === 'string')) {
     throw new Error(`Expected optional string array param: ${key}`)
   }
+  return value
+}
+
+function readRequiredStringArray(params: JsonValue | undefined, key: string): string[] {
+  const value = readOptionalStringArray(params, key)
+  if (!value) throw new Error(`Expected string array param: ${key}`)
   return value
 }
 
@@ -587,12 +600,6 @@ function readOptionalTurnIntent(params: JsonValue | undefined, key: string): 'rp
 function readOptionalProjectionOrderProfile(params: JsonValue | undefined, key: string): ProjectionOrderProfile | undefined {
   const value = readOptionalObject(params, key)
   if (value === undefined) return undefined
-  return readProjectionOrderProfileValue(value, key)
-}
-
-function readProjectionOrderProfile(params: JsonValue | undefined, key: string): ProjectionOrderProfile {
-  const value = readOptionalObject(params, key)
-  if (value === undefined) throw new Error(`Expected projection order profile param: ${key}`)
   return readProjectionOrderProfileValue(value, key)
 }
 

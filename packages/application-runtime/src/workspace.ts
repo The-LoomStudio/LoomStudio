@@ -1,7 +1,7 @@
 import type { DocumentRecord, DocumentStore, DocumentTransaction } from '@loom-studio/document-store'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import { createId, nowIso } from '@loom-studio/shared'
-import { normalizeOpening, normalizeOptionalString, renderMacros } from './card.js'
+import { normalizeCardContent, normalizeOpening, normalizeOptionalString, normalizePreset, normalizeSettingLayer, renderMacros } from './card.js'
 import { applicationDocumentTypes } from './document-types.js'
 import { readDocument, toVersioned, writeDocument } from './document-store.js'
 import { isObject } from './json.js'
@@ -9,6 +9,7 @@ import type {
   CardPresetInput,
   CardSourceContent,
   OpeningChatInput,
+  RuntimeRequestContext,
   SettingLayerInput,
 } from './types.js'
 import type {
@@ -18,7 +19,7 @@ import type {
   ProjectionOrderProfile,
   SourceNode,
 } from './prompt-builder.js'
-import { combineActivationGates, type PromptActivation } from './prompt-activation.js'
+import { combineActivationGates, isPromptActivation, type PromptActivation } from './prompt-activation.js'
 
 const applicationActor = { kind: 'kernel', id: 'application-runtime' } as const
 
@@ -127,6 +128,7 @@ type PromptContributionResourceNode = PromptResourceNode & {
 
 export async function importCardBundle(input: {
   artifact: CardBundleArtifact
+  context?: RuntimeRequestContext
   documents: DocumentStore
   now?: string
 }): Promise<{
@@ -138,8 +140,13 @@ export async function importCardBundle(input: {
   const sourceArtifactRef = createSourceArtifactRef(artifact, timestamp)
 
   const transaction = await input.documents.transact({
-    actor: applicationActor,
+    actor: input.context?.clientId
+      ? { kind: 'client', id: input.context.clientId }
+      : applicationActor,
     reason: 'application.importCardBundle',
+    correlationId: input.context?.correlationId,
+    callId: input.context?.callId,
+    parentCallId: input.context?.parentCallId,
   }, async tx => {
     const cardId = createId('card')
     const importBundleId = createId('import-bundle')
@@ -158,9 +165,9 @@ export async function importCardBundle(input: {
         description: artifact.card.description,
         importBundleId,
         promptResourceIds: resources.map(resource => resource.id),
-        preset: {},
+        preset: normalizePreset(artifact.card.preset),
         opening: normalizeOpening(artifact.card.opening),
-        settingLayer: { entries: [] },
+        settingLayer: normalizeSettingLayer(artifact.card.settingLayer, undefined),
         createdAt: timestamp,
         updatedAt: timestamp,
       },
@@ -222,6 +229,27 @@ export async function listCardPromptResources(input: {
   const card = await readDocument<CardSourceContent>(input.documents, input.cardId, applicationDocumentTypes.cardSource)
   const resourceIds = card.content.promptResourceIds ?? []
   return (await readPromptResourceDocumentsByIds(input.documents, resourceIds)).map(toVersioned)
+}
+
+export async function updateCardPromptResources(input: {
+  cardId: string
+  documents: DocumentTransaction
+  now?: string
+  promptResourceIds: string[]
+}): Promise<CardSourceContent & { id: string; version: number }> {
+  const card = await readDocument<CardSourceContent>(input.documents, input.cardId, applicationDocumentTypes.cardSource)
+  await readPromptResourceDocumentsByIds(input.documents, input.promptResourceIds)
+  const updated = await writeDocument<CardSourceContent>(input.documents, {
+    id: card.id,
+    type: applicationDocumentTypes.cardSource,
+    content: normalizeCardContent({
+      ...card.content,
+      promptResourceIds: [...input.promptResourceIds],
+      updatedAt: input.now ?? nowIso(),
+    }),
+    expectedVersion: card.version,
+  })
+  return toVersioned(updated)
 }
 
 export async function createPromptResourceAsset(input: {
@@ -481,9 +509,7 @@ export function readPromptResourceOrderProfile(nodes: PromptResourceNode[]): Pro
 }
 
 export function normalizeCardBundleArtifact(artifact: CardBundleArtifact): CardBundleArtifact {
-  if (artifact.schemaVersion !== 1) throw new Error(`Unsupported card bundle schemaVersion: ${artifact.schemaVersion}`)
-  if (!artifact.artifactId || !artifact.displayName) throw new Error('Card bundle requires artifactId and displayName')
-  if (!artifact.card?.name) throw new Error('Card bundle requires card.name')
+  assertCardBundleArtifact(artifact)
 
   return {
     schemaVersion: 1,
@@ -698,6 +724,7 @@ async function writePromptResourceRoot(
   rootNode: PromptResourceNode,
   now?: string,
 ): Promise<PromptResourceContent & { id: string; version: number }> {
+  assertUniquePromptResourceNodeIds(rootNode)
   const updated = await writeDocument<PromptResourceContent>(documents, {
     id: resource.id,
     type: applicationDocumentTypes.promptResource,
@@ -826,10 +853,200 @@ function findNodes(nodes: PromptResourceNode[], predicate: (node: PromptResource
 }
 
 export function isCardBundleArtifact(value: JsonValue | undefined): value is CardBundleArtifact {
-  return isObject(value)
-    && value.schemaVersion === 1
-    && typeof value.artifactId === 'string'
-    && typeof value.displayName === 'string'
-    && isObject(value.card)
-    && Array.isArray(value.contextAssets)
+  try {
+    assertCardBundleArtifact(value)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function assertCardBundleArtifact(value: unknown): asserts value is CardBundleArtifact {
+  if (!isObject(value)) throw new Error('Card bundle must be an object')
+  if (value.schemaVersion !== 1) throw new Error(`Unsupported card bundle schemaVersion: ${String(value.schemaVersion)}`)
+  assertNonEmptyString(value.artifactId, 'Card bundle artifactId')
+  assertNonEmptyString(value.displayName, 'Card bundle displayName')
+  if (value.description !== undefined && typeof value.description !== 'string') throw new Error('Card bundle description must be a string')
+  assertCardBundleCard(value.card)
+  if (!Array.isArray(value.contextAssets)) throw new Error('Card bundle contextAssets must be an array')
+  for (const [index, node] of value.contextAssets.entries()) {
+    assertPromptResourceNode(node, `contextAssets[${index}]`)
+    assertUniquePromptResourceNodeIds(node)
+  }
+  if (value.metadata !== undefined && !isObject(value.metadata)) throw new Error('Card bundle metadata must be an object')
+}
+
+function assertCardBundleCard(value: unknown): asserts value is CardBundleArtifact['card'] {
+  if (!isObject(value)) throw new Error('Card bundle card must be an object')
+  assertNonEmptyString(value.name, 'Card bundle card.name')
+  assertOptionalString(value.userName, 'Card bundle card.userName')
+  assertOptionalString(value.description, 'Card bundle card.description')
+
+  if (value.preset !== undefined) {
+    if (!isObject(value.preset)) throw new Error('Card bundle card.preset must be an object')
+    assertOptionalString(value.preset.system, 'Card bundle card.preset.system')
+  }
+
+  if (value.opening !== undefined && typeof value.opening !== 'string') {
+    if (!isObject(value.opening)) throw new Error('Card bundle card.opening must be a string or object')
+    if (value.opening.entries !== undefined && !Array.isArray(value.opening.entries)) {
+      throw new Error('Card bundle card.opening.entries must be an array')
+    }
+    for (const [index, entry] of (value.opening.entries ?? []).entries()) {
+      if (!isObject(entry) || typeof entry.content !== 'string') {
+        throw new Error(`Card bundle opening entry must contain string content: ${index}`)
+      }
+      if (entry.role !== undefined && entry.role !== 'user' && entry.role !== 'assistant') {
+        throw new Error(`Card bundle opening entry role is invalid: ${index}`)
+      }
+    }
+  }
+
+  if (value.settingLayer !== undefined) {
+    if (!isObject(value.settingLayer)) throw new Error('Card bundle card.settingLayer must be an object')
+    if (value.settingLayer.entries !== undefined && !Array.isArray(value.settingLayer.entries)) {
+      throw new Error('Card bundle card.settingLayer.entries must be an array')
+    }
+    for (const [index, entry] of (value.settingLayer.entries ?? []).entries()) {
+      if (!isObject(entry) || typeof entry.content !== 'string') {
+        throw new Error(`Card bundle setting entry must contain string content: ${index}`)
+      }
+      assertOptionalString(entry.id, `Card bundle setting entry id: ${index}`)
+      assertOptionalString(entry.path, `Card bundle setting entry path: ${index}`)
+      assertOptionalString(entry.title, `Card bundle setting entry title: ${index}`)
+      if (entry.enabled !== undefined && typeof entry.enabled !== 'boolean') {
+        throw new Error(`Card bundle setting entry enabled must be boolean: ${index}`)
+      }
+      if (entry.activation !== undefined && !isPromptActivation(entry.activation)) {
+        throw new Error(`Card bundle setting entry activation is invalid: ${index}`)
+      }
+      if (entry.tags !== undefined && (!Array.isArray(entry.tags) || !entry.tags.every(tag => typeof tag === 'string'))) {
+        throw new Error(`Card bundle setting entry tags must be strings: ${index}`)
+      }
+    }
+  }
+}
+
+function assertPromptResourceNode(value: unknown, path: string): asserts value is PromptResourceNode {
+  if (!isObject(value)) throw new Error(`Prompt resource node must be an object: ${path}`)
+  assertNonEmptyString(value.id, `Prompt resource node id: ${path}`)
+  if (typeof value.label !== 'string') throw new Error(`Prompt resource node label must be a string: ${path}`)
+  if (!isPromptResourceNodeKind(value.kind)) throw new Error(`Prompt resource node kind is invalid: ${path}`)
+  if (value.category !== undefined && !isPromptResourceNodeCategory(value.category)) {
+    throw new Error(`Prompt resource node category is invalid: ${path}`)
+  }
+  assertOptionalString(value.body, `Prompt resource node body: ${path}`)
+  assertOptionalString(value.meta, `Prompt resource node meta: ${path}`)
+  if (value.enabled !== undefined && typeof value.enabled !== 'boolean') throw new Error(`Prompt resource node enabled must be boolean: ${path}`)
+  if (value.isSection !== undefined && typeof value.isSection !== 'boolean') throw new Error(`Prompt resource node isSection must be boolean: ${path}`)
+
+  if (value.configRows !== undefined) {
+    if (!Array.isArray(value.configRows) || !value.configRows.every(row => isObject(row) && typeof row.label === 'string' && typeof row.value === 'string')) {
+      throw new Error(`Prompt resource node configRows are invalid: ${path}`)
+    }
+  }
+  assertOptionalStringArray(value.orderList, `Prompt resource node orderList: ${path}`)
+  assertSlotRanks(value.slotRanks, path)
+  assertSkeletonPatch(value.skeletonPatch, path)
+  assertPromptResourceCapabilities(value.capabilities, path)
+
+  if (value.children !== undefined) {
+    if (!Array.isArray(value.children)) throw new Error(`Prompt resource node children must be an array: ${path}`)
+    value.children.forEach((child, index) => assertPromptResourceNode(child, `${path}.children[${index}]`))
+  }
+}
+
+function assertUniquePromptResourceNodeIds(rootNode: PromptResourceNode): void {
+  const ids = new Set<string>()
+  const visit = (node: PromptResourceNode): void => {
+    if (ids.has(node.id)) throw new Error(`Duplicate prompt resource node id: ${node.id}`)
+    ids.add(node.id)
+    node.children?.forEach(visit)
+  }
+  visit(rootNode)
+}
+
+function assertPromptResourceCapabilities(value: JsonValue | undefined, path: string): void {
+  if (value === undefined) return
+  if (!isObject(value)) throw new Error(`Prompt resource capabilities must be an object: ${path}`)
+  if (value.activation !== undefined && !isPromptActivation(value.activation)) throw new Error(`Prompt resource activation is invalid: ${path}`)
+  if (value.content !== undefined && (!isObject(value.content) || value.content.kind !== 'text')) throw new Error(`Prompt resource content capability is invalid: ${path}`)
+  if (value.lifecycle !== undefined && (!isObject(value.lifecycle) || typeof value.lifecycle.lifecycle !== 'string')) throw new Error(`Prompt resource lifecycle is invalid: ${path}`)
+  if (value.projection !== undefined) {
+    if (!isObject(value.projection) || typeof value.projection.zoneId !== 'string') throw new Error(`Prompt resource projection is invalid: ${path}`)
+    assertOptionalString(value.projection.slotKey, `Prompt resource projection slotKey: ${path}`)
+    assertOptionalNumber(value.projection.entryOrderHint, `Prompt resource projection entryOrderHint: ${path}`)
+    assertOptionalNumber(value.projection.slotOrderHint, `Prompt resource projection slotOrderHint: ${path}`)
+    if (value.projection.sourceKind !== undefined && value.projection.sourceKind !== 'actual' && value.projection.sourceKind !== 'virtual') {
+      throw new Error(`Prompt resource projection sourceKind is invalid: ${path}`)
+    }
+  }
+  if (value.resolution !== undefined) {
+    if (!isObject(value.resolution) || typeof value.resolution.semanticSlotKey !== 'string') throw new Error(`Prompt resource resolution is invalid: ${path}`)
+    if (!['append', 'merge', 'replace', 'single'].includes(String(value.resolution.policy))) throw new Error(`Prompt resource resolution policy is invalid: ${path}`)
+    assertOptionalNumber(value.resolution.priorityHint, `Prompt resource resolution priorityHint: ${path}`)
+  }
+  if (value.render !== undefined) {
+    if (!isObject(value.render)) throw new Error(`Prompt resource render capability is invalid: ${path}`)
+    if (value.render.wrapper !== undefined && !['section', 'message', 'inline'].includes(String(value.render.wrapper))) throw new Error(`Prompt resource render wrapper is invalid: ${path}`)
+    if (value.render.roleHint !== undefined && !['system', 'assistant', 'user'].includes(String(value.render.roleHint))) throw new Error(`Prompt resource render roleHint is invalid: ${path}`)
+    assertOptionalString(value.render.label, `Prompt resource render label: ${path}`)
+  }
+}
+
+function assertSlotRanks(value: JsonValue | undefined, path: string): void {
+  if (value === undefined) return
+  if (!Array.isArray(value) || !value.every(rank => isObject(rank) && typeof rank.zoneId === 'string' && typeof rank.slotKey === 'string' && typeof rank.rankKey === 'string')) {
+    throw new Error(`Prompt resource slotRanks are invalid: ${path}`)
+  }
+}
+
+function assertSkeletonPatch(value: JsonValue | undefined, path: string): void {
+  if (value === undefined) return
+  if (!isObject(value)) throw new Error(`Prompt resource skeletonPatch must be an object: ${path}`)
+  assertOptionalString(value.fallbackZoneId, `Prompt resource fallbackZoneId: ${path}`)
+  if (value.zones === undefined) return
+  if (!Array.isArray(value.zones)) throw new Error(`Prompt resource skeleton zones must be an array: ${path}`)
+  for (const zone of value.zones) {
+    if (!isObject(zone)
+      || typeof zone.id !== 'string'
+      || (zone.parentId !== null && typeof zone.parentId !== 'string')
+      || typeof zone.displayName !== 'string'
+      || !['stable-prefix', 'narrative', 'lower-context', 'current-turn', 'fresh-tail'].includes(String(zone.band))
+      || typeof zone.orderIndex !== 'number'
+      || !isObject(zone.renderHint)
+      || !['system', 'assistant', 'user'].includes(String(zone.renderHint.providerRoleHint))
+      || !['section', 'message'].includes(String(zone.renderHint.wrapper))) {
+      throw new Error(`Prompt resource skeleton zone is invalid: ${path}`)
+    }
+    if (zone.accepts !== undefined && (!Array.isArray(zone.accepts) || !zone.accepts.every(kind => ['preset', 'settingLayer', 'narrativeChat', 'runtime'].includes(String(kind))))) {
+      throw new Error(`Prompt resource skeleton zone accepts are invalid: ${path}`)
+    }
+  }
+}
+
+function assertNonEmptyString(value: unknown, label: string): asserts value is string {
+  if (typeof value !== 'string' || value.trim().length === 0) throw new Error(`${label} must be a non-empty string`)
+}
+
+function assertOptionalString(value: unknown, label: string): void {
+  if (value !== undefined && typeof value !== 'string') throw new Error(`${label} must be a string`)
+}
+
+function assertOptionalNumber(value: unknown, label: string): void {
+  if (value !== undefined && typeof value !== 'number') throw new Error(`${label} must be a number`)
+}
+
+function assertOptionalStringArray(value: unknown, label: string): void {
+  if (value !== undefined && (!Array.isArray(value) || !value.every(item => typeof item === 'string'))) {
+    throw new Error(`${label} must be a string array`)
+  }
+}
+
+function isPromptResourceNodeKind(value: unknown): value is PromptResourceNode['kind'] {
+  return value === 'module' || value === 'folder' || value === 'entry' || value === 'script' || value === 'virtual' || value === 'order'
+}
+
+function isPromptResourceNodeCategory(value: unknown): value is NonNullable<PromptResourceNode['category']> {
+  return value === 'preset' || value === 'setting' || value === 'logic' || value === 'runtime' || value === 'history'
 }

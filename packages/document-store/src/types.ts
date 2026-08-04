@@ -77,6 +77,12 @@ export type DocumentCommitFact = {
   documents: DocumentChangeSummary[]
 }
 
+export type DocumentCommitObserver = (commit: DocumentCommitFact) => void
+
+export type DocumentCommitSubscription = {
+  dispose(): void
+}
+
 export type WriteDocumentInput = {
   id?: string
   type: string
@@ -157,6 +163,7 @@ export type DocumentStore = Omit<DocumentTransaction, 'write' | 'delete'> & {
   transact<T>(input: DocumentTransactionInput, fn: (tx: DocumentTransaction) => Promise<T>): Promise<DocumentTransactionResult<T>>
   getChangeset(id: string): Promise<Changeset | null>
   revertChangeset(input: RevertChangesetInput): Promise<DocumentCommitResult>
+  subscribeCommits(observer: DocumentCommitObserver): DocumentCommitSubscription
 }
 
 export type SqliteDocumentStore = DocumentStore & {

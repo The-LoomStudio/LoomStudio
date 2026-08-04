@@ -1,12 +1,13 @@
 import type { DiagnosticsRegistry } from '@loom-studio/diagnostics'
 import type {
   ActorRef,
+  DocumentCommitFact,
+  DocumentCommitSubscription,
   DocumentSourceRef,
   DeleteDocumentInput,
   DocumentStore,
   ListDocumentsInput,
   RevertChangesetInput,
-  WriteDocumentResult,
   WriteDocumentInput,
 } from '@loom-studio/document-store'
 import type { ExtensionHost, ExtensionRpcHandler } from '@loom-studio/extension-host'
@@ -120,7 +121,11 @@ export function createEventBus(): EventBus {
 
       for (const subscription of subscriptions.values()) {
         if (subscription.patterns.some(pattern => matchesEventPattern(pattern, name))) {
-          subscription.handler(event)
+          try {
+            subscription.handler(event)
+          } catch {
+            // ponytail: MVP EventBus isolates consumers but has no reporter yet; route failures to Diagnostics in the event-system phase.
+          }
         }
       }
 
@@ -150,17 +155,23 @@ export function createKernel(options: CreateKernelOptions): Kernel {
   const protocolVersion = options.protocolVersion ?? '0.1.0'
   const environment = options.environment ?? 'development'
   let active = false
+  let documentCommitSubscription: DocumentCommitSubscription | undefined
 
   const kernel: Kernel = {
     start: async () => {
       if (active) return
       registerStageOneHandlers(kernel, options, eventBus, { studioVersion, kernelVersion, protocolVersion, environment })
+      documentCommitSubscription = options.documents.subscribeCommits(commit => {
+        eventBus.emit('docs.changed', summarizeDocumentCommit(commit), documentCommitEventOptions(commit))
+      })
       active = true
       eventBus.emit('system.ready', {})
     },
     stop: async () => {
       if (!active) return
       eventBus.emit('system.stopping', {})
+      documentCommitSubscription?.dispose()
+      documentCommitSubscription = undefined
       active = false
     },
     registerKernelRpc: (method, handler) => {
@@ -336,16 +347,12 @@ function registerStageOneHandlers(
 
   register('docs.write', async (params, context) => {
     if (!isRecord(params)) throw new Error('docs.write params must be an object')
-    const result = await options.documents.write(toWriteDocumentInput(params, context))
-    eventBus.emit('docs.changed', summarizeDocumentChange(result), context)
-    return result as unknown as JsonValue
+    return await options.documents.write(toWriteDocumentInput(params, context)) as unknown as JsonValue
   })
 
   register('docs.delete', async (params, context) => {
     if (!isRecord(params)) throw new Error('docs.delete params must be an object')
-    const result = await options.documents.delete(toDeleteDocumentInput(params, context))
-    eventBus.emit('docs.changed', summarizeDocumentChange(result), context)
-    return result as unknown as JsonValue
+    return await options.documents.delete(toDeleteDocumentInput(params, context)) as unknown as JsonValue
   })
 
   register('docs.revertChangeset', async (params, context) => {
@@ -354,7 +361,6 @@ function registerStageOneHandlers(
 
     try {
       const result = await options.documents.revertChangeset(toRevertChangesetInput(params, context))
-      eventBus.emit('docs.changed', summarizeDocumentChange(result), context)
       eventBus.emit('docs.rollback.completed', summarizeDocumentRollback(targetChangesetId, result), context)
       return result as unknown as JsonValue
     } catch (error) {
@@ -534,22 +540,28 @@ function readTraceOptions(value: JsonValue | undefined): LoomRunInput['trace'] {
   }
 }
 
-function summarizeDocumentChange(result: WriteDocumentResult): JsonValue {
+function summarizeDocumentCommit(commit: DocumentCommitFact): JsonValue {
   return {
-    changesetId: result.changesetId,
-    operations: result.operations as unknown as JsonValue,
-    documents: result.documents.map(document => ({
-      id: document.id,
-      type: document.type,
-      version: document.version,
-      tombstoned: Boolean(document.meta.tombstone),
-    })),
+    changesetId: commit.changeset.id,
+    operations: commit.changeset.operations as unknown as JsonValue,
+    documents: commit.documents as unknown as JsonValue,
   }
 }
 
-function summarizeDocumentRollback(targetChangesetId: string, result: WriteDocumentResult): JsonValue {
+function documentCommitEventOptions(commit: DocumentCommitFact): EventEmitOptions {
+  const actor = commit.changeset.createdBy
+  return {
+    source: actor.kind === 'extension' ? `extension:${actor.id}` : 'kernel',
+    clientId: actor.kind === 'client' ? actor.id : undefined,
+    correlationId: commit.changeset.correlationId,
+    callId: commit.changeset.callId,
+    parentCallId: commit.changeset.parentCallId,
+  }
+}
+
+function summarizeDocumentRollback(targetChangesetId: string, result: { commit: DocumentCommitFact }): JsonValue {
   return {
     targetChangesetId,
-    ...summarizeDocumentChange(result) as Record<string, JsonValue>,
+    ...summarizeDocumentCommit(result.commit) as Record<string, JsonValue>,
   }
 }

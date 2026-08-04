@@ -112,6 +112,25 @@ describe('kernel rpc contract', () => {
     expect(document?.meta.ownerExtensionId).toBeUndefined()
   })
 
+  it('continues broadcasting when one event subscriber throws', async () => {
+    const { kernel } = createTestKernel()
+    const events: string[] = []
+    await kernel.start()
+    kernel.getEventBus().subscribe(['docs.changed'], () => {
+      throw new Error('broken subscriber')
+    })
+    kernel.getEventBus().subscribe(['docs.changed'], event => events.push(event.name))
+
+    await expect(kernel.callRpc('docs.write', {
+      id: 'example.doc:isolated-subscriber',
+      type: 'example.doc',
+      content: { ok: true },
+      expectedVersion: 'new',
+    })).resolves.toMatchObject({ changesetId: expect.any(String) })
+
+    expect(events).toEqual(['docs.changed'])
+  })
+
   it('emits docs.changed with call metadata after document deletes through kernel rpc', async () => {
     const { kernel } = createTestKernel()
     const events: Array<{ payload: { documents: Array<{ tombstoned: boolean }> }; meta: { correlationId?: string; callId?: string } }> = []

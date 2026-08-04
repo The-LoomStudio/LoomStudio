@@ -36,10 +36,11 @@ export type ApplicationRuntime = {
   deleteAgentRuntimeProfile(input: DeleteAgentRuntimeProfileInput): Promise<DeleteAgentRuntimeProfileResult>
   createSession(input: CreateSessionInput): Promise<CreateSessionResult>
   createSessionFromCard(input: CreateSessionFromCardInput): Promise<CreateSessionResult>
-  importCardBundle(input: ImportCardBundleInput): Promise<ImportCardBundleResult>
+  importCardBundle(input: ImportCardBundleInput, context?: RuntimeRequestContext): Promise<ImportCardBundleResult>
   getImportBundle(input: GetImportBundleInput): Promise<GetImportBundleResult>
   getPromptResource(input: GetPromptResourceInput): Promise<GetPromptResourceResult>
   listCardPromptResources(input: ListCardPromptResourcesInput): Promise<ListCardPromptResourcesResult>
+  updateCardPromptResources(input: UpdateCardPromptResourcesInput, context?: RuntimeRequestContext): Promise<UpdateCardPromptResourcesResult>
   createPromptResourceAsset(input: CreatePromptResourceAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
   updatePromptResourceAsset(input: UpdatePromptResourceAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
   updatePromptResourceAssets(input: UpdatePromptResourceAssetsInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
@@ -418,6 +419,16 @@ export type ListCardPromptResourcesInput = {
 
 export type ListCardPromptResourcesResult = {
   resources: Array<PromptResourceContent & { id: string; version: number }>
+}
+
+export type UpdateCardPromptResourcesInput = {
+  cardId: string
+  promptResourceIds: string[]
+}
+
+export type UpdateCardPromptResourcesResult = {
+  card: CardSourceContent & { id: string; version: number }
+  mutation: MutationReceipt
 }
 
 export type CreatePromptResourceAssetInput = {

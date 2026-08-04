@@ -49,7 +49,6 @@ export type ExtensionHostOptions = {
   callRpc(method: string, params?: JsonValue, context?: ExtensionRpcContext): Promise<JsonValue>
   registerRpc(name: string, ownerExtensionId: string, handler: ExtensionRpcHandler): ExtensionRpcRegistration
   emitEvent(name: string, payload: JsonValue, ownerExtensionId: string): void
-  emitDocumentChange?(result: WriteDocumentResult, ownerExtensionId: string): void
 }
 
 export type ExtensionHost = {
@@ -269,7 +268,6 @@ function createContext(record: ExtensionRecord, options: ExtensionHostOptions): 
           },
           actor: extensionActor,
         })
-        options.emitDocumentChange?.(result, manifest.id)
         return result
       },
       delete: async (id, deleteOptions) => {
@@ -279,7 +277,6 @@ function createContext(record: ExtensionRecord, options: ExtensionHostOptions): 
           reason: deleteOptions?.reason,
           actor: extensionActor,
         })
-        options.emitDocumentChange?.(result, manifest.id)
         return result
       },
     },

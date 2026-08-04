@@ -20,6 +20,8 @@ const stores = [
 describe.each(stores)('$name document store contract', ({ create }) => {
   it('groups all transaction writes into one persisted changeset', async () => {
     await withStore(create(), async store => {
+      const commits: unknown[] = []
+      store.subscribeCommits(commit => commits.push(commit))
       const result = await store.transact({
         actor,
         reason: 'create pair',
@@ -77,6 +79,7 @@ describe.each(stores)('$name document store contract', ({ create }) => {
         ],
       })
       expect(JSON.stringify(result.commit)).not.toContain('a2')
+      expect(commits).toEqual([result.commit])
       expect(persisted).toEqual(result.changeset)
       expect(await store.get('doc-a')).toMatchObject({ version: 2, content: { text: 'a2' } })
       expect(await store.get('doc-a', { version: 1 })).toMatchObject({ content: { text: 'a1' } })
@@ -86,6 +89,8 @@ describe.each(stores)('$name document store contract', ({ create }) => {
   it('removes documents, revisions, and changesets when a transaction fails', async () => {
     await withStore(create(), async store => {
       let changesetId = ''
+      const commits: unknown[] = []
+      store.subscribeCommits(commit => commits.push(commit))
 
       await expect(store.transact({ actor }, async tx => {
         const write = await tx.write({
@@ -101,6 +106,23 @@ describe.each(stores)('$name document store contract', ({ create }) => {
       expect(await store.get('rolled-back')).toBeNull()
       expect(await store.get('rolled-back', { version: 1 })).toBeNull()
       expect(await store.getChangeset(changesetId)).toBeNull()
+      expect(commits).toEqual([])
+    })
+  })
+
+  it('does not report a committed write as failed when a commit observer throws', async () => {
+    await withStore(create(), async store => {
+      store.subscribeCommits(() => {
+        throw new Error('observer failed')
+      })
+
+      await expect(store.write({
+        id: 'observer-failure',
+        type: 'example.note',
+        content: { persisted: true },
+        expectedVersion: 'new',
+      })).resolves.toMatchObject({ changesetId: expect.any(String) })
+      expect(await store.get('observer-failure')).toMatchObject({ content: { persisted: true } })
     })
   })
 

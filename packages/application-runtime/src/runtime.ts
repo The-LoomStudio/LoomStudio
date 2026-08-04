@@ -38,6 +38,7 @@ import {
   movePromptResourceAsset,
   updatePromptResourceAsset,
   updatePromptResourceAssets,
+  updateCardPromptResources,
 } from './workspace.js'
 import type {
   AgentRuntimeProfileContent,
@@ -419,9 +420,10 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       })
     },
 
-    importCardBundle: async input => {
+    importCardBundle: async (input, requestContext) => {
       return await importCardBundle({
         artifact: input.artifact,
+        context: requestContext,
         documents: ctx.documents,
         now: ctx.now(),
       })
@@ -452,6 +454,18 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
           documents: ctx.documents,
         }),
       }
+    },
+
+    updateCardPromptResources: async (input, requestContext) => {
+      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.updateCardPromptResources', async documents => {
+        return await updateCardPromptResources({
+          cardId: input.cardId,
+          documents,
+          now: ctx.now(),
+          promptResourceIds: input.promptResourceIds,
+        })
+      })
+      return { card: mutation.value, mutation: mutation.mutation }
     },
 
     createPromptResourceAsset: async (input, requestContext) => {

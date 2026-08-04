@@ -1,5 +1,6 @@
 import { createClientBridge, type ClientBridge } from '@loom-studio/client-bridge'
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
+import { createApplicationRuntime } from '@loom-studio/application-runtime'
 import { createInMemoryDocumentStore } from '@loom-studio/document-store'
 import { createExtensionHost } from '@loom-studio/extension-host'
 import { createKernel, type Kernel } from '@loom-studio/kernel'
@@ -25,9 +26,6 @@ function createHarness() {
     },
     emitEvent: (name, payload, ownerExtensionId) => {
       kernel.getEventBus().emit(name, payload, { source: `extension:${ownerExtensionId}` })
-    },
-    emitDocumentChange: (result, ownerExtensionId) => {
-      kernel.getEventBus().emit('docs.changed', summarizeDocumentChange(result), { source: `extension:${ownerExtensionId}` })
     },
   })
 
@@ -99,6 +97,38 @@ describe('document, trace, and diagnostics integration', () => {
     expect(afterDelete.document).toBeNull()
     expect(tombstone.document).toMatchObject({ version: 3, meta: { tombstone: { reason: 'scenario tombstone' } } })
     expect(events.map(event => event.name)).toEqual(['docs.changed', 'docs.changed', 'docs.changed'])
+  })
+
+  it('emits one docs.changed event for an application transaction', async () => {
+    const { kernel, documents } = createHarness()
+    const events: StudioEvent[] = []
+    const runtime = createApplicationRuntime({ documents })
+    await kernel.start()
+    kernel.getEventBus().subscribe(['docs.changed'], event => events.push(event))
+
+    const created = await runtime.createCard({
+      name: 'Commit event card',
+      description: 'Application transaction event coverage.',
+    }, {
+      clientId: 'application-client',
+      correlationId: 'corr-application',
+      callId: 'call-application',
+    })
+
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({
+      name: 'docs.changed',
+      payload: {
+        changesetId: created.mutation.changesetId,
+        documents: [{ type: 'airp.cardSource', version: 1, tombstoned: false }],
+      },
+      meta: {
+        source: 'kernel',
+        clientId: 'application-client',
+        correlationId: 'corr-application',
+        callId: 'call-application',
+      },
+    })
   })
 
   it('rejects stale document writes and preserves the current document', async () => {
@@ -234,17 +264,4 @@ function jsonResponse(response: RpcResponse): Response {
     status: 200,
     headers: { 'content-type': 'application/json' },
   })
-}
-
-function summarizeDocumentChange(result: { changesetId: string; operations: unknown; documents: Array<{ id: string; type: string; version: number; meta: { tombstone?: unknown } }> }): StudioEvent['payload'] {
-  return {
-    changesetId: result.changesetId,
-    operations: result.operations as StudioEvent['payload'],
-    documents: result.documents.map(document => ({
-      id: document.id,
-      type: document.type,
-      version: document.version,
-      tombstoned: Boolean(document.meta.tombstone),
-    })),
-  }
 }

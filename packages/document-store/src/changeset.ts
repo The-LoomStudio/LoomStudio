@@ -7,6 +7,8 @@ import type {
   ChangesetOperation,
   DeleteDocumentInput,
   DocumentCommitFact,
+  DocumentCommitObserver,
+  DocumentCommitSubscription,
   DocumentRecord,
   DocumentTransactionInput,
   WriteDocumentInput,
@@ -107,6 +109,29 @@ export function finalizeCommitFact(pending: PendingChangeset): DocumentCommitFac
       version: change.toVersion,
       tombstoned: change.finalTombstoned,
     })),
+  }
+}
+
+export function createCommitNotifier(): {
+  notify(commit: DocumentCommitFact): void
+  subscribe(observer: DocumentCommitObserver): DocumentCommitSubscription
+} {
+  const observers = new Set<DocumentCommitObserver>()
+
+  return {
+    notify: commit => {
+      for (const observer of observers) {
+        try {
+          observer(structuredClone(commit) as DocumentCommitFact)
+        } catch {
+          // ponytail: Post-commit observer failures cannot roll back persisted data; route them to Diagnostics when observers gain a reporter.
+        }
+      }
+    },
+    subscribe: observer => {
+      observers.add(observer)
+      return { dispose: () => observers.delete(observer) }
+    },
   }
 }
 

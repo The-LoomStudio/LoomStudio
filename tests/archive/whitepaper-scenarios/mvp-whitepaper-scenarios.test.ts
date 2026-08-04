@@ -30,9 +30,6 @@ function createHarness() {
     emitEvent: (name, payload, ownerExtensionId) => {
       kernel.getEventBus().emit(name, payload, { source: `extension:${ownerExtensionId}` })
     },
-    emitDocumentChange: (result, ownerExtensionId) => {
-      kernel.getEventBus().emit('docs.changed', summarizeDocumentChange(result), { source: `extension:${ownerExtensionId}` })
-    },
   })
 
   kernel = createKernel({
@@ -206,17 +203,4 @@ function jsonResponse(response: RpcResponse): Response {
     status: 200,
     headers: { 'content-type': 'application/json' },
   })
-}
-
-function summarizeDocumentChange(result: { changesetId: string; operations: unknown; documents: Array<{ id: string; type: string; version: number; meta: { tombstone?: unknown } }> }): StudioEvent['payload'] {
-  return {
-    changesetId: result.changesetId,
-    operations: result.operations as StudioEvent['payload'],
-    documents: result.documents.map(document => ({
-      id: document.id,
-      type: document.type,
-      version: document.version,
-      tombstoned: Boolean(document.meta.tombstone),
-    })),
-  }
 }

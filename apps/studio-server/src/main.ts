@@ -8,7 +8,6 @@ import { createJsonlFileSink } from '@loom-studio/logging/node'
 import { createLoomRunner } from '@loom-studio/loom-runner'
 import { createId } from '@loom-studio/shared'
 import { createInMemoryTraceAuditStore } from '@loom-studio/trace-audit'
-import type { StudioEvent } from '@loom-studio/transport'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { withAiGatewayLogging } from './ai-gateway-logging.js'
@@ -63,9 +62,6 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     },
     emitEvent: (name, payload, ownerExtensionId) => {
       kernel.getEventBus().emit(name, payload, { source: `extension:${ownerExtensionId}` })
-    },
-    emitDocumentChange: (result, ownerExtensionId) => {
-      kernel.getEventBus().emit('docs.changed', summarizeDocumentChange(result), { source: `extension:${ownerExtensionId}` })
     },
   })
   const kernel = createKernel({
@@ -201,19 +197,6 @@ function shouldWriteServerConsoleLog(record: LogRecord): boolean {
     || record.level === 'error'
     || record.namespace === 'system'
     || record.namespace === 'runtime.provider'
-}
-
-function summarizeDocumentChange(result: { changesetId: string; operations: unknown; documents: Array<{ id: string; type: string; version: number; meta: { tombstone?: unknown } }> }): StudioEvent['payload'] {
-  return {
-    changesetId: result.changesetId,
-    operations: result.operations as StudioEvent['payload'],
-    documents: result.documents.map(document => ({
-      id: document.id,
-      type: document.type,
-      version: document.version,
-      tombstoned: Boolean(document.meta.tombstone),
-    })),
-  }
 }
 
 function isClosableDocumentStore(store: DocumentStore): store is SqliteDocumentStore {

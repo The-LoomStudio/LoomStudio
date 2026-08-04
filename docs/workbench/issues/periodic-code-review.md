@@ -1,10 +1,10 @@
 # 周期性代码审查
 
 > **状态**：Active Review Ledger
-> **最后审查时间**：2026-07-27 13:34
-> **审查基线**：383f3a15ff3a81e3698e873c408ecebe8c4c26e8
+> **最后审查时间**：2026-08-03 11:34
+> **审查基线**：f6253b8fc78fbe26578dfe010b549a0d4e323d39
 > **当前分支**：main
-> **审查目标**：Studio 日志查询与展示链路
+> **审查目标**：Document Store 写入、Commit Fact 与 Kernel 事件传播链路
 
 ## 最近覆盖记录
 
@@ -12,6 +12,7 @@
 
 | 日期 | Commit | 审查目标 | 选择原因 | 结果 |
 | --- | --- | --- | --- | --- |
+| 2026-08-03 | `f6253b8` | Document Store 写入、Commit Fact 与 Kernel 事件传播链路 | 最近提交及当前工作区对事务、SQLite migration、Commit observer、Application/Extension 写入传播进行了实质修改，链路涉及持久化原子性与公共事件边界 | 未发现新的可报告问题；既有 Logging P1 保持不变 |
 | 2026-07-27 | `383f3a1` | Studio 日志查询与展示链路 | 最近两次提交新增并整理了结构化日志、`logs.list` 与 Logs Workspace，且链路涉及敏感信息与故障可见性 | 新增 1 个 P1：超过 500 条后 Viewer 无法访问最新 Server 日志 |
 
 ## 当前开放发现
@@ -47,8 +48,8 @@
 
 ## 本次验证
 
-- 阅读范围：`docs/guide/` 六份入口与规则文档；`docs/architecture/platform/logging.md`；`docs/workbench/issues/` 全部当前 Issue；`docs/workbench/plans/log-plan/README.md`；Logs Workspace、typed Studio API、Studio RPC Router、`logs.list`、Memory/JSONL Sink、Server/Client Composition Root 及相关测试。
-- 执行命令：`git branch --show-current`；`git rev-parse HEAD`；`git status --short`；`git log --since='14 days ago' --stat`；`git blame`；`pnpm exec vitest run tests/unit/logging/core.test.ts tests/unit/studio-server/logs-rpc.test.ts tests/unit/client/studio-api.test.ts tests/integration/studio-server/logging.test.ts`；`pnpm --filter @loom-studio/studio-client build`。
-- 通过检查：日志核心、Logs RPC 与 typed Client API 共 18 个单元测试通过；Studio Client TypeScript 与 Vite 构建通过；隐私日志集成测试源码确认覆盖 Document、Prompt 与 Provider 内容不进入日志。
-- 未验证部分：3 个 Studio Server 日志集成测试未实际运行到断言；未进行浏览器手工交互验收。
-- 环境限制：测试进程在当前沙箱监听 `127.0.0.1` 时返回 `listen EPERM: operation not permitted`，属于端口绑定限制，不作为代码回归。
+- 阅读范围：`docs/guide/` 六份入口与规则文档；`docs/architecture/data/README.md`；`docs/architecture/kernel/README.md`；`docs/workbench/issues/` 全部当前 Issue；`docs/workbench/plans/document-store-kernel-data-foundation-plan.md`；Document Store 类型、Changeset/Commit Fact、In-memory/SQLite backend、Kernel EventBus 与订阅生命周期、Studio Server 组装、Application Runtime/Extension Host 写入调用方及相关测试。
+- 执行命令：`git branch --show-current`；`git rev-parse HEAD`；`git status --short`；`git log --since='14 days ago'`；`git diff`；`rg` 调用链搜索；`pnpm exec vitest run tests/unit/document-store/document-store-contract.test.ts tests/unit/document-store/sqlite-store.test.ts tests/contract/kernel/kernel-rpc.test.ts tests/contract/extension-host/document-ownership.test.ts tests/integration/platform/document-trace-diagnostics.test.ts tests/unit/application-runtime/workspace-artifact-boundary.test.ts tests/integration/application-runtime/workspace-artifact.test.ts`；`pnpm lint`。
+- 通过检查：7 个相关测试文件、57 个测试全部通过；确认失败 transaction 不产生 Commit Fact，SQLite 事务回滚与 FIFO 串行有效，Application/Extension/Kernel 写入统一在提交后广播一次 `docs.changed`，订阅者异常不会把已提交写入误报为失败，调用身份与 correlation/call metadata 能沿 RPC 写入 Changeset 和事件。
+- 未验证部分：未运行全量 build 与全量测试；未进行真实多进程或崩溃恢复测试；未复查既有 Logs Viewer P1 的 UI 行为。
+- 环境限制：无端口或沙箱限制。全量 Lint 未通过，现有工作区在 `apps/studio-client/src/app/use-studio-state.ts:94` 有 `prefer-const`，在 `apps/studio-server/src/application-rpc.ts:606` 有未使用函数；本次只读审查未修改这些用户工作区内容，且两项不构成本链路的新发现。

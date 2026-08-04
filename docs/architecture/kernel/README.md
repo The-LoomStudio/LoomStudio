@@ -110,7 +110,9 @@ Extension handler 获得的 context 由 Kernel 注入真实 `extensionId`，不�
 
 ## 6. Document 变更与回滚
 
-Kernel 将 `docs.write`、`docs.delete` 和 `docs.revertChangeset` 转交 Document Store。它负责补充可信调用元数据并发布结果事件，不实现 Revision 或冲突算法。
+Kernel 将 `docs.write`、`docs.delete` 和 `docs.revertChangeset` 转交 Document Store。它负责补充可信调用元数据，不实现 Revision 或冲突算法。
+
+Kernel 启动后订阅共享 Document Store 的通用 Commit Fact，并统一发布 `docs.changed`。因此 Kernel RPC、Application Runtime 与 Extension Host 通过同一 Store 成功提交时都会进入同一事件链，不再由各调用方手动拼装重复事件。
 
 ```text
 docs.write / docs.delete
@@ -141,7 +143,10 @@ Kernel 从 `clientId` 推导 Document actor，并忽略请求中伪造的 actor 
 - 传播 source、client 和调用链 metadata；
 - 支持精确事件名与 `namespace.*` 匹配；
 - 订阅返回可 `dispose()` 的 handle；
+- 单个订阅者失败不会阻断其他订阅者；
 - `eventNames()` 返回运行期间已知的事件集合。
+
+当前 MVP 根据 Document Commit actor 生成归一化的 `source` / `clientId`；完整 actor 仍以 Changeset 为权威来源，Event metadata 的正式 actor 契约留待事件系统阶段统一设计。
 
 Event Bus 描述平台事实，不是 Application Command Bus。具体网络事件投递由 Transport 或 Server adapter 负责。
 

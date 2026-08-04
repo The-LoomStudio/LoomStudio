@@ -4,7 +4,6 @@ import { createExtensionHost } from '@loom-studio/extension-host'
 import { createKernel, type Kernel } from '@loom-studio/kernel'
 import type { Logger } from '@loom-studio/logging'
 import { createLoomRunner } from '@loom-studio/loom-runner'
-import type { JsonValue } from '@loom-studio/shared'
 import { createInMemoryTraceAuditStore } from '@loom-studio/trace-audit'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -26,9 +25,6 @@ export function createExtensionHostHarness(options: { logger?: Logger } = {}) {
     },
     emitEvent: (name, payload, ownerExtensionId) => {
       kernel.getEventBus().emit(name, payload, { source: `extension:${ownerExtensionId}` })
-    },
-    emitDocumentChange: (result, ownerExtensionId) => {
-      kernel.getEventBus().emit('docs.changed', summarizeDocumentChange(result), { source: `extension:${ownerExtensionId}` })
     },
   })
 
@@ -61,18 +57,5 @@ export function manifest(id: string, rpc: Array<{ name: string }>) {
     engines: { studio: '^0.1.0' },
     server: { entry: './dist/index.js' },
     contributes: { rpc },
-  }
-}
-
-function summarizeDocumentChange(result: { changesetId: string; operations: unknown; documents: Array<{ id: string; type: string; version: number; meta: { tombstone?: unknown } }> }): JsonValue {
-  return {
-    changesetId: result.changesetId,
-    operations: result.operations as JsonValue,
-    documents: result.documents.map(document => ({
-      id: document.id,
-      type: document.type,
-      version: document.version,
-      tombstoned: Boolean(document.meta.tombstone),
-    })),
   }
 }

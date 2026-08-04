@@ -48,6 +48,7 @@ Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本列表收�
 ### Card & Agent Runtime Profile
 - **`application.createCard`** / **`getCard`** / **`listCards`**
 - **`application.importCardBundle`**: 导入自包含 Card Bundle，在同一事务中创建 Card、平铺 Prompt Resources 与 Import Bundle。
+- **`application.updateCardPromptResources`**: 以有序 `promptResourceIds` 更新 Card Manifest；拒绝重复、缺失或非 Prompt Resource 引用。
 - **`application.exportCardArtifact`**: 从 Card 的有序 Prompt Resource IDs 导出当前自包含 Artifact。
 - **`application.getImportBundle`**: 按 Card 保存的 `importBundleId` 查询独立导入来源与兼容数据。
 - **`application.createAgentRuntimeProfile`** / **`getAgentRuntimeProfile`** / **`listAgentRuntimeProfiles`** / **`updateAgentRuntimeProfile`** / **`deleteAgentRuntimeProfile`**

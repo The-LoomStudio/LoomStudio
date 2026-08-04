@@ -1,6 +1,6 @@
 # Document Store / Kernel 数据基础实施计划
 
-> **状态**：Proposed / Awaiting Implementation
+> **状态**：In Progress / Phase 4 Complete — Pause and Measure
 > **日期**：2026-07-30
 > **范围**：统一 Document Store 提交事实、Kernel 事件传播、SQLite Schema 演进、Card Resource 引用完整性和 Extension 数据权限边界。
 > **实施约束**：本文属于 Workbench 工程计划；只有经过代码与测试证明的稳定事实才能写入 `docs/architecture`。
@@ -210,7 +210,7 @@ Document Store 不负责：
 Kernel 负责：
 
 - 将已提交的通用 Commit Fact 转换为 `docs.changed`；
-- 传播 actor、clientId、correlationId、callId 和 parentCallId；
+- 根据 Commit actor 生成当前 MVP 的 source / clientId，并传播 correlationId、callId 和 parentCallId；完整 actor 以 Changeset 为权威来源；
 - 保持事件为提交后事实，不把 EventBus 变成 Command Bus；
 - 对远程 `docs.*` 补充可信调用身份。
 
@@ -294,7 +294,7 @@ type DocumentCommitFact = {
 
 ### Phase 1：统一 Document Commit Fact
 
-状态：待实施。
+状态：已完成（2026-07-30）。
 
 目标：建立所有写入路径共用的提交事实。
 
@@ -315,9 +315,25 @@ type DocumentCommitFact = {
 - delete / restore / redo summary 正确；
 - Commit Fact 不包含 Document content。
 
+实施结果：
+
+- 新增 `DocumentChangeSummary`、`DocumentCommitFact` 和兼容的 `DocumentCommitResult`；
+- 顶层 `write/delete/revertChangeset` 返回已提交的 `commit`，事务内部 `tx.write/delete` 不伪造未提交事实；
+- `DocumentTransactionResult` 保留原有 `changeset`，同时提供统一 `commit`；
+- 最终摘要直接从 Pending Changeset 的聚合状态生成，不在提交后重新读取 `content_json`；
+- In-memory / SQLite 共用同一生成函数和契约；
+- backend parity tests 已覆盖多 Document、同 Document 多次写入、rollback、delete / restore / redo 和内容隔离。
+
+验证记录：
+
+- TypeScript：`pnpm exec tsc -b --pretty false` 通过；
+- 聚焦测试：2 files / 17 tests 通过；
+- 全量测试：56 files / 231 tests 通过；
+- 沙箱内全量测试曾因 `listen EPERM` 失败，允许本地端口后全部通过。
+
 ### Phase 2：统一 Kernel `docs.changed`
 
-状态：待实施。
+状态：已完成（2026-07-30）。
 
 目标：所有写入者只通过 Commit Fact 发布一次平台事实事件。
 
@@ -331,6 +347,24 @@ type DocumentCommitFact = {
 6. 保持 `docs.rollback.completed/failed` 的领域无关语义；
 7. Document 日志与事件共享同一提交事实，但保持 Log 与 Event 类型分离。
 
+实施结果：
+
+- Document Store 提供领域无关的 `subscribeCommits`，只在持久化成功后通知一次；
+- Kernel 启动时订阅 Commit Fact，并统一生成 `docs.changed` payload 与 trace metadata；
+- Application Runtime 通过共享 Store transaction 自动进入同一事件链；
+- Extension 写入依据 Changeset actor 自动获得 `extension:<id>` source，不再由 Host 手动补发；
+- 删除 Kernel `docs.write/delete/revertChangeset` 和 Extension Host 的重复 `docs.changed` 拼装逻辑；
+- `docs.rollback.completed/failed` 保留独立语义，成功回滚仍先产生一次 `docs.changed`；
+- post-commit observer 异常与已提交写入隔离，避免数据已落盘但调用方收到写入失败。
+
+验证记录：
+
+- TypeScript：`pnpm exec tsc -b --pretty false` 通过；
+- 聚焦测试：6 files / 41 tests 通过；
+- 全量测试：56 files / 234 tests 通过；
+- Studio Server 集成测试在允许本地端口的环境中通过；
+- `git diff --check` 通过。
+
 验证：
 
 - Application、Kernel、Extension 三条写入路径各发布一次事件；
@@ -341,7 +375,7 @@ type DocumentCommitFact = {
 
 ### Phase 3：Application 数据正确性
 
-状态：待实施。
+状态：已完成（2026-07-30）。
 
 目标：补齐 Card Resource Manifest 和 Bundle 信任边界。
 
@@ -365,11 +399,31 @@ application.updateCardPromptResources({
 })
 ```
 
+实施结果：
+
+- Bundle 导入使用统一 Card normalizer 保存 `preset`、`opening` 与 `settingLayer`，导出和重新导入不再丢失这些字段；
+- `importCardBundle` 接收 `RuntimeRequestContext`，Changeset 继承可信 client actor、correlationId、callId 与 parentCallId；
+- `isCardBundleArtifact` 从浅层检查升级为递归 Card / Prompt Resource Node / Capability 校验；
+- 每个 Prompt Resource 内 Node ID 必须唯一，导入和后续 Resource root 写入共用同一规则；
+- 新增 `application.updateCardPromptResources`，只接受完整有序 `promptResourceIds`；
+- Manifest 更新拒绝重复 ID、缺失 Document 与错误 Document Type；
+- 已创建 Session 保留创建时 Resource IDs，新 Session 使用更新后的 Card Manifest；
+- 删除 Card 不级联删除 Resource，两张 Card 可以继续共享同一 Prompt Resource；
+- Client typed API 与 RPC reference 已同步新增方法。
+
+验证记录：
+
+- TypeScript：`pnpm exec tsc -b --pretty false` 通过；
+- 聚焦测试：9 files / 40 tests 通过；
+- 全量测试：56 files / 239 tests 通过；
+- Studio Server 集成测试在允许本地端口的环境中通过；
+- `git diff --check` 通过。
+
 本阶段不增加通用 Binding Graph。
 
 ### Phase 4：SQLite Schema Migration 基线
 
-状态：待实施。
+状态：已完成（2026-07-30）。
 
 目标：结束仅依靠 `CREATE TABLE IF NOT EXISTS` 的 Schema 演进方式。
 
@@ -390,6 +444,36 @@ application.updateCardPromptResources({
 - migration 中途失败不留下半更新 Schema；
 - 高版本数据库不会被低版本程序静默打开；
 - WAL、foreign key 和索引设置保持有效。
+
+实施结果：
+
+- 使用 SQLite 原生 `PRAGMA user_version`，当前程序支持 schema version 1；
+- 原有三张表与四个索引原样固化为 migration 1；
+- migration runner 只按连续版本顺序执行，每个版本使用独立 `BEGIN IMMEDIATE` transaction；
+- migration 成功后在同一事务中更新 `user_version`，失败时完整 rollback；
+- version 0 的现有数据库可升级并保留 Documents、Revisions 与 Changesets；
+- SQLite 单连接的公开读写使用最小 FIFO 串行化，transaction 内部操作不重复入队；
+- version 0 在推进版本前校验三张核心表的必需列，不完整 Schema 会回滚并拒绝打开；
+- 数据库版本高于当前程序时，在修改 WAL 等持久设置前拒绝打开；
+- 初始化或 migration 失败时主动关闭 SQLite handle；
+- 未引入 ORM、migration package 或新的运行时依赖。
+
+验证记录：
+
+- TypeScript：`pnpm exec tsc -b --pretty false` 通过；
+- 聚焦测试：2 files / 23 tests 通过；
+- 全量测试：56 files / 243 tests 通过；
+- fresh create、version 0→1、失败 rollback、高版本拒绝、reopen persistence 与 WAL mode 均已覆盖；
+- Studio Server 集成测试在允许本地端口的环境中通过；
+- `git diff --check` 通过。
+
+审计收口（2026-08-03）：
+
+- SQLite 公开读写按单连接 FIFO 串行执行，避免嵌套事务与未提交读取；
+- migration 在推进 `user_version` 前校验核心表必需列；
+- MVP EventBus 隔离单个订阅者异常，坏消费者不再截断后续广播；
+- 当前 Event metadata 只保留归一化 `source` / `clientId`，完整 actor 继续以 Changeset 为权威来源；
+- 聚焦测试 5 files / 46 tests、全量测试 56 files / 246 tests、TypeScript 与 `git diff --check` 均通过。
 
 ### Phase 5：Extension Document 权限门
 

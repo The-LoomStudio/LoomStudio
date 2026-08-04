@@ -15,6 +15,7 @@ export {
   readPromptResourceOrderProfile,
   updatePromptResourceAsset,
   updatePromptResourceAssets,
+  updateCardPromptResources,
 } from './workspace.js'
 export {
   createDocumentBackedAiGateway,

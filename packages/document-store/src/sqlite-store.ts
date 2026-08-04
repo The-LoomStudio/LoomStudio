@@ -6,6 +6,7 @@ import { DatabaseSync } from 'node:sqlite'
 import {
   assertExpectedVersion,
   cloneDocument,
+  createCommitNotifier,
   createPendingChangeset,
   finalizeCommitFact,
   recordPendingChange,
@@ -32,57 +33,83 @@ import type {
 } from './types.js'
 import { DocumentStoreError as StoreError } from './types.js'
 
+const currentSqliteSchemaVersion = 1
+
+const requiredSqliteColumns = {
+  documents: ['id', 'type', 'version', 'content_json', 'meta_json', 'owner_extension_id', 'tombstoned', 'updated_at'],
+  document_revisions: ['document_id', 'version', 'type', 'content_json', 'meta_json', 'changeset_id', 'created_at', 'created_by_json'],
+  changesets: ['id', 'created_at', 'created_by_json', 'reason', 'correlation_id', 'call_id', 'parent_call_id', 'operations_json'],
+} as const
+
+const sqliteMigrations: Array<{ version: number; migrate(database: DatabaseSync): void }> = [
+  {
+    version: 1,
+    migrate: database => database.exec(`
+      CREATE TABLE IF NOT EXISTS documents (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        content_json TEXT NOT NULL,
+        meta_json TEXT NOT NULL,
+        owner_extension_id TEXT,
+        tombstoned INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS document_revisions (
+        document_id TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        content_json TEXT NOT NULL,
+        meta_json TEXT NOT NULL,
+        changeset_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        created_by_json TEXT NOT NULL,
+        PRIMARY KEY (document_id, version)
+      );
+
+      CREATE TABLE IF NOT EXISTS changesets (
+        id TEXT PRIMARY KEY,
+        created_at TEXT NOT NULL,
+        created_by_json TEXT NOT NULL,
+        reason TEXT,
+        correlation_id TEXT,
+        call_id TEXT,
+        parent_call_id TEXT,
+        operations_json TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(type);
+      CREATE INDEX IF NOT EXISTS idx_documents_owner ON documents(owner_extension_id);
+      CREATE INDEX IF NOT EXISTS idx_documents_tombstoned ON documents(tombstoned);
+      CREATE INDEX IF NOT EXISTS idx_revisions_document ON document_revisions(document_id, version);
+    `),
+  },
+]
+
 export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): SqliteDocumentStore {
   if (options.filename !== ':memory:') {
     mkdirSync(dirname(options.filename), { recursive: true })
   }
 
   const database = new DatabaseSync(options.filename)
-  database.exec(`
-    PRAGMA journal_mode = WAL;
-    PRAGMA foreign_keys = ON;
+  try {
+    initializeSqliteDatabase(database)
+  } catch (error) {
+    database.close()
+    throw error
+  }
+  const commitNotifier = createCommitNotifier()
+  let operationQueue = Promise.resolve()
 
-    CREATE TABLE IF NOT EXISTS documents (
-      id TEXT PRIMARY KEY,
-      type TEXT NOT NULL,
-      version INTEGER NOT NULL,
-      content_json TEXT NOT NULL,
-      meta_json TEXT NOT NULL,
-      owner_extension_id TEXT,
-      tombstoned INTEGER NOT NULL DEFAULT 0,
-      updated_at TEXT NOT NULL
-    );
+  function serialize<T>(operation: () => Promise<T> | T): Promise<T> {
+    // ponytail: One FIFO protects the single SQLite connection; transaction callbacks must use the provided tx instead of re-entering public store methods.
+    const result = operationQueue.then(operation, operation)
+    operationQueue = result.then(() => undefined, () => undefined)
+    return result
+  }
 
-    CREATE TABLE IF NOT EXISTS document_revisions (
-      document_id TEXT NOT NULL,
-      version INTEGER NOT NULL,
-      type TEXT NOT NULL,
-      content_json TEXT NOT NULL,
-      meta_json TEXT NOT NULL,
-      changeset_id TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      created_by_json TEXT NOT NULL,
-      PRIMARY KEY (document_id, version)
-    );
-
-    CREATE TABLE IF NOT EXISTS changesets (
-      id TEXT PRIMARY KEY,
-      created_at TEXT NOT NULL,
-      created_by_json TEXT NOT NULL,
-      reason TEXT,
-      correlation_id TEXT,
-      call_id TEXT,
-      parent_call_id TEXT,
-      operations_json TEXT NOT NULL
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(type);
-    CREATE INDEX IF NOT EXISTS idx_documents_owner ON documents(owner_extension_id);
-    CREATE INDEX IF NOT EXISTS idx_documents_tombstoned ON documents(tombstoned);
-    CREATE INDEX IF NOT EXISTS idx_revisions_document ON document_revisions(document_id, version);
-  `)
-
-  const read: Pick<DocumentTransaction, 'get' | 'list'> = {
+  const transactionRead: Pick<DocumentTransaction, 'get' | 'list'> = {
     get: async (id, options) => {
       const row = options?.version
         ? database.prepare('SELECT document_id AS id, type, version, content_json, meta_json FROM document_revisions WHERE document_id = ? AND version = ?').get(id, options.version)
@@ -229,7 +256,7 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
 
   function createTransaction(pending: PendingChangeset): DocumentTransaction {
     return {
-      ...read,
+      ...transactionRead,
       write: async input => applyWrite(input, pending),
       delete: async input => applyDelete(input, pending),
     }
@@ -239,7 +266,7 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
     input: DocumentTransactionInput,
     fn: (pending: PendingChangeset, tx: DocumentTransaction) => Promise<T>,
   ): Promise<DocumentTransactionResult<T>> {
-    return (async () => {
+    return serialize(async () => {
       const pending = createPendingChangeset(input)
       database.exec('BEGIN IMMEDIATE')
 
@@ -248,16 +275,18 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
         const commit = finalizeCommitFact(pending)
         insertChangeset(database, commit.changeset)
         database.exec('COMMIT')
+        commitNotifier.notify(commit)
         return { value, changeset: commit.changeset, commit }
       } catch (error) {
         database.exec('ROLLBACK')
         throw error
       }
-    })()
+    })
   }
 
   const store: SqliteDocumentStore = {
-    ...read,
+    get: (id, options) => serialize(() => transactionRead.get(id, options)),
+    list: input => serialize(() => transactionRead.list(input)),
 
     write: async input => {
       const result = await runTransaction(transactionInputFromWrite(input), async pending => applyWrite(input, pending))
@@ -271,12 +300,12 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
 
     transact: (input, fn) => runTransaction(input, async (_pending, tx) => fn(tx)),
 
-    getChangeset: async id => {
+    getChangeset: id => serialize(() => {
       const row = database
         .prepare('SELECT id, created_at, created_by_json, reason, correlation_id, call_id, parent_call_id, operations_json FROM changesets WHERE id = ?')
         .get(id)
       return row ? rowToChangeset(row) : null
-    },
+    }),
 
     revertChangeset: async input => {
       const result = await runTransaction(input, async pending => {
@@ -312,9 +341,59 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
     close: () => {
       database.close()
     },
+
+    subscribeCommits: observer => commitNotifier.subscribe(observer),
   }
 
   return store
+}
+
+function initializeSqliteDatabase(database: DatabaseSync): void {
+  const version = readSqliteUserVersion(database)
+  if (version > currentSqliteSchemaVersion) {
+    throw new StoreError(
+      'document.sqlite_schema_newer',
+      `SQLite schema version ${version} is newer than supported version ${currentSqliteSchemaVersion}`,
+    )
+  }
+
+  database.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;')
+  let migratedVersion = version
+
+  for (const migration of sqliteMigrations) {
+    if (migration.version <= migratedVersion) continue
+    if (migration.version !== migratedVersion + 1) {
+      throw new StoreError('document.sqlite_migration_gap', `Missing SQLite migration after version ${migratedVersion}`)
+    }
+
+    database.exec('BEGIN IMMEDIATE')
+    try {
+      migration.migrate(database)
+      assertSqliteSchema(database)
+      database.exec(`PRAGMA user_version = ${migration.version}`)
+      database.exec('COMMIT')
+      migratedVersion = migration.version
+    } catch (error) {
+      database.exec('ROLLBACK')
+      throw error
+    }
+  }
+}
+
+function assertSqliteSchema(database: DatabaseSync): void {
+  for (const [table, requiredColumns] of Object.entries(requiredSqliteColumns)) {
+    const rows = database.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name?: string }>
+    const columns = new Set(rows.map(row => row.name))
+    const missing = requiredColumns.filter(column => !columns.has(column))
+    if (missing.length > 0) {
+      throw new StoreError('document.sqlite_schema_invalid', `SQLite table ${table} is missing required columns: ${missing.join(', ')}`)
+    }
+  }
+}
+
+function readSqliteUserVersion(database: DatabaseSync): number {
+  const row = database.prepare('PRAGMA user_version').get() as { user_version?: number } | undefined
+  return row?.user_version ?? 0
 }
 
 function insertChangeset(database: DatabaseSync, changeset: Changeset): void {

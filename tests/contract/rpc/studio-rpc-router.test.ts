@@ -102,6 +102,41 @@ describe('studio rpc router', () => {
 
     expect(receivedContext).toEqual(context)
   })
+
+  it('passes rpc call context into bundle import and card manifest mutations', async () => {
+    const received: unknown[] = []
+    const applicationRuntime = {
+      importCardBundle: async (_input: unknown, requestContext?: unknown) => {
+        received.push(requestContext)
+        return { card: { id: 'card-1' }, importBundle: { id: 'bundle-1' } }
+      },
+      updateCardPromptResources: async (_input: unknown, requestContext?: unknown) => {
+        received.push(requestContext)
+        return { card: { id: 'card-1' }, mutation: { changesetId: 'chg-1' } }
+      },
+    } as unknown as ApplicationRuntime
+    const router = createStudioRpcRouter({
+      applicationRuntime,
+      kernel: createKernelCaller(),
+      rendererPoc: createRendererPocService(),
+    })
+
+    await router.call('application.importCardBundle', {
+      artifact: {
+        schemaVersion: 1,
+        artifactId: 'artifact-1',
+        displayName: 'Artifact',
+        card: { name: 'Card' },
+        contextAssets: [],
+      },
+    }, context)
+    await router.call('application.updateCardPromptResources', {
+      cardId: 'card-1',
+      promptResourceIds: ['resource-1'],
+    }, context)
+
+    expect(received).toEqual([context, context])
+  })
 })
 
 function createKernelCaller(): {

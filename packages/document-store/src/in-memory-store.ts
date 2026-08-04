@@ -3,6 +3,7 @@ import {
   assertExpectedVersion,
   cloneChangeset,
   cloneDocument,
+  createCommitNotifier,
   createPendingChangeset,
   finalizeCommitFact,
   recordPendingChange,
@@ -26,6 +27,7 @@ export function createInMemoryDocumentStore(): DocumentStore {
   const current = new Map<string, DocumentRecord>()
   const revisions = new Map<string, DocumentRecord[]>()
   const changesets = new Map<string, Changeset>()
+  const commitNotifier = createCommitNotifier()
 
   const read: Pick<DocumentTransaction, 'get' | 'list'> = {
     get: async (id, options) => {
@@ -177,6 +179,7 @@ export function createInMemoryDocumentStore(): DocumentStore {
       const result = applyWrite(input, pending)
       const commit = finalizeCommitFact(pending)
       changesets.set(commit.changeset.id, cloneChangeset(commit.changeset))
+      commitNotifier.notify(commit)
       return { ...result, operations: commit.changeset.operations, commit }
     },
 
@@ -185,6 +188,7 @@ export function createInMemoryDocumentStore(): DocumentStore {
       const result = applyDelete(input, pending)
       const commit = finalizeCommitFact(pending)
       changesets.set(commit.changeset.id, cloneChangeset(commit.changeset))
+      commitNotifier.notify(commit)
       return { ...result, operations: commit.changeset.operations, commit }
     },
 
@@ -196,6 +200,7 @@ export function createInMemoryDocumentStore(): DocumentStore {
         const value = await fn(createTransaction(pending))
         const commit = finalizeCommitFact(pending)
         changesets.set(commit.changeset.id, cloneChangeset(commit.changeset))
+        commitNotifier.notify(commit)
         return { value, changeset: commit.changeset, commit }
       } catch (error) {
         restoreState(current, revisions, changesets, snapshot)
@@ -235,12 +240,15 @@ export function createInMemoryDocumentStore(): DocumentStore {
           : applyDelete({ id: item.operation.documentId, expectedVersion: item.operation.toVersion }, pending).documents[0]!)
         const commit = finalizeCommitFact(pending)
         changesets.set(commit.changeset.id, cloneChangeset(commit.changeset))
+        commitNotifier.notify(commit)
         return { ...writeResult(pending, documents, commit.changeset.operations), commit }
       } catch (error) {
         restoreState(current, revisions, changesets, snapshot)
         throw error
       }
     },
+
+    subscribeCommits: observer => commitNotifier.subscribe(observer),
   }
 
   return store

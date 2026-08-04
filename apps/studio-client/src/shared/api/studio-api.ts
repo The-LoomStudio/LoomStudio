@@ -61,6 +61,7 @@ export type StudioApi = {
     list(): Promise<ListCardsResult>
     create(input: JsonObject): Promise<CreateCardResult>
     update(input: JsonObject): Promise<UpdateCardResult>
+    updatePromptResources(input: JsonObject): Promise<UpdateCardResult>
     delete(cardId: string): Promise<DeleteCardResult>
     export(cardId: string): Promise<ExportCardBundleResult>
   }
@@ -135,6 +136,7 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       list: () => bridge.call<ListCardsResult>('application.listCards', {}),
       create: input => bridge.call<CreateCardResult>('application.createCard', input),
       update: input => bridge.call<UpdateCardResult>('application.updateCard', input),
+      updatePromptResources: input => bridge.call<UpdateCardResult>('application.updateCardPromptResources', input),
       delete: cardId => bridge.call<DeleteCardResult>('application.deleteCard', { cardId }),
       export: cardId => bridge.call<ExportCardBundleResult>('application.exportCardArtifact', { cardId }),
     },
