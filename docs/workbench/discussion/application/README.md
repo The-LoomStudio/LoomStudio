@@ -2,7 +2,7 @@
 
 > **Status**: Planning / Open Design  
 > **Purpose**: 收纳 Studio Application 的长期设计材料，避免所有讨论都堆进单个 ADR。  
-> **Related ADR**: [`../adr/ADR-005-official-concept-stack-open-design.md`](../adr/ADR-005-official-concept-stack-open-design.md)
+> **Related ADR**: [`../../adr/ADR-005-official-concept-stack-open-design.md`](../../adr/ADR-005-official-concept-stack-open-design.md)
 
 ---
 
@@ -20,7 +20,7 @@ Studio Application
 
 Provider adapters、Importers、Exporters、Tools、模型特定 payload adapters 和外部服务集成仍适合 extension 化。
 
-其中 AI Gateway / Provider Extension 已从单纯 Application Provider 边界上升为平台级共享能力，详见 [`../09-PlatformLayer/ai-gateway-and-provider-extension-v0.md`](../09-PlatformLayer/ai-gateway-and-provider-extension-v0.md)。
+其中 AI Gateway / Provider Extension 已从单纯 Application Provider 边界上升为平台级共享能力，详见 [`../platform/ai-gateway-and-provider-extension-v0.md`](../platform/ai-gateway-and-provider-extension-v0.md)。
 
 ADR-005 仍是当前主讨论入口，但它不应无限增长。随着各议题稳定，应逐步拆出本目录下的专题文档。
 
@@ -181,7 +181,7 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 | [`airp-runtime-model-v0.md`](airp-runtime-model-v0.md) | Open Design / Discussion Capture | AIRP Runtime、Runtime Transcript、Narrative Timeline、ToolCall / ToolResult 与 commit 边界 |
 | [`runtime-turn-flow-v0.md`](runtime-turn-flow-v0.md) | Open Design | 玩家输入到回复落盘的完整 loop |
 | [`provider-adapter-contract-v0.md`](provider-adapter-contract-v0.md) | Open Design | Provider Adapter / Gateway contract、invoke / stream、capability、usage / error |
-| [`../09-PlatformLayer/ai-gateway-and-provider-extension-v0.md`](../09-PlatformLayer/ai-gateway-and-provider-extension-v0.md) | Open Design | 平台级 AI Gateway、Provider Extension、Model Profile、统一配置面板 |
+| [`../platform/ai-gateway-and-provider-extension-v0.md`](../platform/ai-gateway-and-provider-extension-v0.md) | Open Design | 平台级 AI Gateway、Provider Extension、Model Profile、统一配置面板 |
 | [`m0-backend-slice-v0.md`](m0-backend-slice-v0.md) | M0 Implementation Slice | 不接 UI / 真实模型前提下的 Application Runtime 后端闭环 |
 
 ### 3.9 Transform Rule
@@ -215,7 +215,7 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 |---|---|---|
 | [`ui/README.md`](ui/README.md) | Open Design / Discussion Capture | Studio Application UI 分类入口，归档布局、滚动、状态、I18N、无障碍等基础问题 |
 | [`ui/ui-foundation-v0.md`](ui/ui-foundation-v0.md) | Open Design | UI 基础原则、桌面优先、信息密度、设计 token、文案与状态原则 |
-| [`ui/visual-language-v0.md`](ui/visual-language-v0.md) | Open Design / Design Direction | 平面编辑式工作台：留白、字重、细线、低装饰的正式 UI 视觉语言 |
+| [`../../../architecture/ui/visual-language.md`](../../../architecture/ui/visual-language.md) | Promoted Architecture | 已落地的平面编辑式工作台视觉语言 |
 | [`ui/default-airp-layout-v0.md`](ui/default-airp-layout-v0.md) | Open Design | 默认 AIRP 布局骨架：稳定阅读主轴、悬浮工具层、输入舱 |
 | [`ui/ui-preflight-decisions-v0.md`](ui/ui-preflight-decisions-v0.md) | Open Design / Initial Decisions | UI 动工前的 I18N、滚动、焦点、渲染安全和插件 slot 基础决策 |
 | [`ui/css-architecture-and-customization-v0.md`](ui/css-architecture-and-customization-v0.md) | Open Design | CSS Modules、Design Tokens、Custom CSS、插件样式边界 |
@@ -287,5 +287,5 @@ Application Layer 设计遵循方法论文档中的流程：
 
 详见：
 
-- [`../02-methodology/README.md`](../02-methodology/README.md)
-- [`../02-methodology/scenario-driven-design-v0.md`](../02-methodology/scenario-driven-design-v0.md)
+- [`../../archive/README.md`](../../archive/README.md)
+- [`../scenario-driven-design-v0.md`](../scenario-driven-design-v0.md)

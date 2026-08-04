@@ -270,7 +270,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
         </div>
       </div>
 
-      <div className={styles.editorScroller}>
+      <div className={`${styles.editorScroller} ${props.metadataOpen ? styles.editorScrollerMetadataOpen : ''}`}>
         <LongTextEditor
           key={props.node.id}
           ref={editorRef}

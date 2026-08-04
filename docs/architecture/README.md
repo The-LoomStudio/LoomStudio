@@ -36,6 +36,7 @@ Architecture
 
 - [`kernel/README.md`](kernel/README.md) — Studio Kernel 当前架构；
 - [`platform/logging.md`](platform/logging.md) — Server/Client 统一结构化运行日志、Sink、JSONL、查询与 Viewer 边界；
-- [`application/prompt-build/loom-core/`](application/prompt-build/loom-core/) — PromptBuild 使用的 Loom Core 执行底座、Trace 协议与 Studio 集成边界。
+- [`application/prompt-build/loom-core/`](application/prompt-build/loom-core/) — PromptBuild 使用的 Loom Core 执行底座、Trace 协议与 Studio 集成边界；
+- [`ui/`](ui/) — 当前 Workspace Shell、视觉语言、CSS / Theme、I18N 与基础无障碍约定。
 
 没有列在这里的专题仍应先从 [`../workbench/`](../workbench/) 查阅，并以当前代码为最终依据。

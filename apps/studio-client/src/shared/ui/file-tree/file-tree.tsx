@@ -27,6 +27,7 @@ type FileTreeProps = {
   onExpandedIdsChange?: (expandedIds: string[]) => void
   onSelect: (node: FileTreeNode) => void
   renderIcon?: (node: FileTreeNode, expanded: boolean) => ReactNode
+  renderMetaLeading?: (node: FileTreeNode) => ReactNode
   renderTrailing?: (node: FileTreeNode) => ReactNode
   selectedId?: string
   variant?: 'tree' | 'flat'
@@ -86,6 +87,7 @@ export function FileTree(props: FileTreeProps) {
             onSelect={props.onSelect}
             onToggleExpand={toggleExpand}
             renderIcon={props.renderIcon}
+            renderMetaLeading={props.renderMetaLeading}
             renderTrailing={props.renderTrailing}
             selectedId={props.selectedId}
             variant={props.variant}
@@ -115,6 +117,7 @@ function FileTreeRow(props: {
   onSelect: (node: FileTreeNode) => void
   onToggleExpand: (id: string) => void
   renderIcon?: (node: FileTreeNode, expanded: boolean) => ReactNode
+  renderMetaLeading?: (node: FileTreeNode) => ReactNode
   renderTrailing?: (node: FileTreeNode) => ReactNode
   selectedId?: string
   variant?: 'tree' | 'flat'
@@ -123,6 +126,7 @@ function FileTreeRow(props: {
   const expanded = props.node.isSection || (hasChildren && props.expandedIds.has(props.node.id))
   const selected = props.node.id === props.selectedId
   const actions = props.getActions?.(props.node) ?? []
+  const metaLeading = props.renderMetaLeading?.(props.node)
   const trailing = props.renderTrailing?.(props.node)
   const contextMenu = useContextMenuTrigger(actions)
 
@@ -215,7 +219,12 @@ function FileTreeRow(props: {
             </span>
             <span className={styles.labelBlock}>
               <span className={styles.label}>{props.node.label}</span>
-              {props.node.meta ? <span className={styles.meta}>{props.node.meta}</span> : null}
+              {props.node.meta || metaLeading ? (
+                <span className={styles.metaRow}>
+                  {metaLeading ? <span className={styles.metaLeading}>{metaLeading}</span> : null}
+                  {props.node.meta ? <span className={styles.meta}>{props.node.meta}</span> : null}
+                </span>
+              ) : null}
             </span>
           </div>
 
@@ -249,6 +258,7 @@ function FileTreeRow(props: {
           onSelect={props.onSelect}
           onToggleExpand={props.onToggleExpand}
           renderIcon={props.renderIcon}
+          renderMetaLeading={props.renderMetaLeading}
           renderTrailing={props.renderTrailing}
           selectedId={props.selectedId}
           variant={props.variant}

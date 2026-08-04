@@ -1,10 +1,12 @@
 # Loom Studio UI — Shell 形态草稿
 
-> **2026-08-04 方向更新**：本文记录的固定 Activity Bar / Side Panel / Canvas 几何不再是唯一候选。新的已接受方向是 [`widget-workspace-and-motion-v0.md`](widget-workspace-and-motion-v0.md) 所记录的 Sidebar / Dock / Window 统一形态与双层横向窗口工作区。新文档仍是 Open Design，不代表当前实现 contract。
+> **状态**：Archived / Superseded Shell Draft
+> **归档日期**：2026-08-05
+> **归档原因**：当前实现事实已进入 [`../../../architecture/ui/`](../../../architecture/ui/)，尚未实现的一维横向窗口与 Motion 设计由 [`../../discussion/ui/widget-workspace-and-motion-v0.md`](../../discussion/ui/widget-workspace-and-motion-v0.md) 继续承接。
 
-> **本文档定位**：勾勒 Studio Shell 在用户面前的"骨架形状"——哪些是 Shell 提供的容器与原语、哪些由 Studio AIRP UI 或 extension 填充。本文档**不**讨论 Studio Kernel 的服务边界（见 [`loom-studio-architecture.md`](./loom-studio-architecture.md)），也**不**讨论 DevTool 的 UX（见 [`loom-devtools.md`](./loom-devtools.md)）。
+> **本文档定位**：勾勒 Studio Shell 在用户面前的“骨架形状”——哪些是 Shell 提供的容器与原语、哪些由 Studio AIRP UI 或 extension 填充。本文档不讨论 Studio Kernel 的服务边界，也不讨论 [DevTool UX](../loom-project/docs/02-architecture/loom-devtools.md)。
 >
-> **状态**：早期草稿（v0.1 之前）。本文记录立场与方向，不锁定具体 API。
+> 本文是 v0.1 之前的历史草稿，不再锁定当前 API 或施工方向。
 >
 > 作者：shiyue / 白
 > 日期：2026-04-29
@@ -182,7 +184,7 @@ Shell 装好但还没有 AIRP 内容或项目时，应该不是空白。建议�
 这相当于"Shell 自身的开发者面板"，让：
 - 不进入 AIRP 主体验的开发者也能用 Studio 调 Loom Pipeline
 - "我只是想试试 Loom"的人有零门槛入口
-- DevTool 的 Layer 3 形态自然嵌进这里（见 [`loom-devtool-layered.md`](./loom-devtool-layered.md)）
+- DevTool 的 Layer 3 形态自然嵌进这里（历史背景见 [`loom-devtool-layered.md`](../loom-project/docs/02-architecture/loom-devtool-layered.md)）
 
 ---
 
@@ -221,12 +223,7 @@ Studio Shell 是**桌面优先**的形态。Shell 设计**不为移动端让步*
 
 ## 12. 与其他文档的关系
 
-```
-loom-studio-architecture.md    —  Kernel 内部（6 services、Tenet）
-loom-studio-ui.md              —  Shell 外观（本文档）
-loom-devtools.md               —  DevTool UX 哲学（投影虚拟树）
-loom-devtool-layered.md        —  DevTool 分发模型（L1/L2/L3）
-```
+当前 Shell 事实以 [`../../../architecture/ui/`](../../../architecture/ui/) 为准；历史 Core 与 DevTool 文档保留在 [`../loom-project/`](../loom-project/) 中。
 
 本文档**不**回答的问题：
 - Studio AIRP UI / Extension Contribution API 的具体 shape（待 v0.1 设计）

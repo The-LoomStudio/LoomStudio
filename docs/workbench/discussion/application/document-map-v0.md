@@ -116,10 +116,10 @@ UI / Extension:
 | 文件 | 作用 |
 |---|---|
 | [`provider-adapter-contract-v0.md`](provider-adapter-contract-v0.md) | Provider Adapter / Gateway contract |
-| [`../09-PlatformLayer/ai-gateway-and-provider-extension-v0.md`](../09-PlatformLayer/ai-gateway-and-provider-extension-v0.md) | 平台级 AI Gateway、Provider Extension、Model Profile、统一配置面板 |
+| [`../platform/ai-gateway-and-provider-extension-v0.md`](../platform/ai-gateway-and-provider-extension-v0.md) | 平台级 AI Gateway、Provider Extension、Model Profile、统一配置面板 |
 | [`runtime-boundary-v0.md`](runtime-boundary-v0.md) | Runtime 与 Provider 的职责边界 |
 | [`prompt/composition-skeleton-and-preset-v0.md`](prompt/composition-skeleton-and-preset-v0.md) | provider capability diagnostics |
-| [`../adr/ADR-004-platform-auth-secrets-and-provider-credential-boundary.md`](../adr/ADR-004-platform-auth-secrets-and-provider-credential-boundary.md) | Secret / credential boundary |
+| [`../../adr/ADR-004-platform-auth-secrets-and-provider-credential-boundary.md`](../../adr/ADR-004-platform-auth-secrets-and-provider-credential-boundary.md) | Secret / credential boundary |
 
 ### 2.7 Mutation / Summary / Transform
 
@@ -137,7 +137,7 @@ UI / Extension:
 | [`trace-explainability-v0.md`](trace-explainability-v0.md) | composition / runtime / commit 可解释性 |
 | [`frontend-projection-v0.md`](frontend-projection-v0.md) | AIRP UI 集成 |
 | [`ui/README.md`](ui/README.md) | UI Foundations 入口 |
-| [`ui/visual-language-v0.md`](ui/visual-language-v0.md) | 正式 UI 视觉语言 |
+| [`../../../architecture/ui/visual-language.md`](../../../architecture/ui/visual-language.md) | 已晋升的正式 UI 视觉语言 |
 | [`ui/ui-preflight-decisions-v0.md`](ui/ui-preflight-decisions-v0.md) | UI 动工前基础决策 |
 | [`ui/agent-panel-rendering-v0.md`](ui/agent-panel-rendering-v0.md) | Agent 面板渲染 surface 与交互边界 |
 | [`user-input-intent-v0.md`](user-input-intent-v0.md) | 用户输入路由 |

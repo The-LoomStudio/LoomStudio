@@ -1,7 +1,9 @@
 # Visual Language v0
 
-> **状态**: Open Design / Design Direction
+> **状态**: Archived / Superseded by Architecture
 > **主题**: Studio Application 默认 AIRP UI 的视觉语言：平面编辑式工作台。
+> **归档日期**: 2026-08-05
+> **归档原因**: 已实现的视觉约定已整理至 [`../../../architecture/ui/visual-language.md`](../../../architecture/ui/visual-language.md) 与 [`../../../architecture/ui/css-and-theming.md`](../../../architecture/ui/css-and-theming.md)。本文仅保留早期推导，不再承载开放决策。
 
 ---
 
@@ -80,7 +82,6 @@ AIRP Studio 是长期创作工具，不是营销页面、游戏首页或仪表�
 ```text
 字体
 字重
-斜体
 字号
 行高
 留白

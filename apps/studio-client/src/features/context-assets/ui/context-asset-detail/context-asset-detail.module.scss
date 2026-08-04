@@ -13,6 +13,10 @@
   padding: 14px 0 clamp(180px, 34vh, 420px);
 }
 
+.editorScrollerMetadataOpen {
+  padding-bottom: 300px;
+}
+
 .metadataPanel {
   position: absolute;
   z-index: 3;
@@ -26,7 +30,7 @@
   border: 0;
   border-radius: 10px;
   color: var(--loom-text);
-  background: var(--loom-surface);
+  background: var(--loom-surface-deep);
   box-shadow: none;
   opacity: 0;
   pointer-events: none;

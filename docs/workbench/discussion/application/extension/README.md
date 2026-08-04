@@ -154,4 +154,4 @@ Application:
 - [`../agent/tool-capability-v0.md`](../agent/tool-capability-v0.md) — Tool / Capability
 - [`../agent/permission-consent-v0.md`](../agent/permission-consent-v0.md) — Permission / Consent
 - [`../prompt/README.md`](../prompt/README.md) — Prompt Builder 领域
-- [`../../05-extensions/studio-extension-manifest-architecture.md`](../../05-extensions/studio-extension-manifest-architecture.md) — 平台层 Extension 架构
+- [`../../extensions/studio-extension-manifest-architecture.md`](../../extensions/studio-extension-manifest-architecture.md) — 平台层 Extension 架构

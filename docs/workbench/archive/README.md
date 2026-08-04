@@ -182,3 +182,4 @@ Loom Studio 也需要规格驱动，因为平台边界一旦实现就会成为�
 
 - [`loom-project/ARCHIVE.md`](loom-project/ARCHIVE.md) — LoomProject 原始设计文档、Core PoC、Accepted ADR 与 Engineering Blueprint 的无损归档。正式架构以 [`../../architecture/`](../../architecture/) 和当前代码为准。
 - [`plans/README.md`](plans/README.md) — 已完成或已被后续方向取代的实施计划。
+- [`ui/README.md`](ui/README.md) — 已被正式 UI Architecture 或后续 Workspace 方向取代的早期 UI 草稿。

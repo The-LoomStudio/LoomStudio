@@ -148,7 +148,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
             props.onSelectNode(node.id)
           }}
           renderIcon={(node, expanded) => renderTreeIcon(node as ContextAssetNode, expanded)}
-          renderTrailing={node => renderLifecycleIndicator(node as ContextAssetNode, props.t)}
+          renderMetaLeading={node => renderLifecycleIndicator(node as ContextAssetNode, props.t)}
           selectedId={explorerView.selectedId}
         />
       )}
