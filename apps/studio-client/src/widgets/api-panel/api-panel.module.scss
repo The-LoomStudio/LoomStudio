@@ -123,7 +123,7 @@
 }
 
 .gatewayWarning {
-  color: var(--loom-danger, #a33a3a);
+  color: var(--loom-danger);
 }
 
 .yamlTextarea {
@@ -283,9 +283,9 @@
 }
 
 .entityActionDanger:hover:not(:disabled) {
-  border-color: #e74c3c;
-  color: #e74c3c;
-  background: color-mix(in srgb, #e74c3c 8%, transparent);
+  border-color: var(--loom-danger);
+  color: var(--loom-danger);
+  background: color-mix(in srgb, var(--loom-danger) 12%, transparent);
 }
 
 .entityActionDanger:disabled {

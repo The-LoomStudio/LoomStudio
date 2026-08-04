@@ -5,7 +5,7 @@
   display: grid;
   grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
-  background: var(--loom-bg);
+  background: var(--loom-panel);
 }
 
 .timeline {
@@ -17,7 +17,7 @@
   gap: 22px;
   padding: 34px 0 46px;
   scroll-padding-block: 36px;
-  background: var(--loom-bg);
+  background: var(--loom-panel);
 }
 
 .empty {
@@ -34,13 +34,13 @@
   border: 1px solid color-mix(in srgb, var(--loom-border) 80%, transparent);
   border-radius: 18px;
   padding: 24px 30px 28px;
-  background: var(--loom-panel);
-  box-shadow: 0 18px 44px rgb(31 30 26 / 4%);
+  background: var(--loom-bg);
+  box-shadow: 0 18px 44px rgb(17 17 27 / 22%);
 }
 
 .user {
   border-color: color-mix(in srgb, var(--loom-accent) 28%, var(--loom-border));
-  background: color-mix(in srgb, var(--loom-panel) 86%, var(--loom-accent-soft));
+  background: color-mix(in srgb, var(--loom-bg) 86%, var(--loom-accent-soft));
 }
 
 .assistant {
@@ -63,7 +63,7 @@
   border-radius: 999px;
   color: var(--loom-accent-strong);
   background:
-    radial-gradient(circle at 34% 26%, rgb(255 255 255 / 82%), transparent 32%),
+    radial-gradient(circle at 34% 26%, color-mix(in srgb, var(--loom-accent) 24%, transparent), transparent 32%),
     color-mix(in srgb, var(--loom-accent-soft) 70%, var(--loom-panel));
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--loom-accent) 10%, transparent);
   font-size: 18px;

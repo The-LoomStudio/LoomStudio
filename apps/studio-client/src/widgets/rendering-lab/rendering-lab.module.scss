@@ -37,7 +37,7 @@
   border: 1px solid var(--loom-border);
   border-radius: 6px;
   padding: 10px;
-  background: #ffffff;
+  background: var(--loom-surface);
 }
 
 .renderingLabPane pre {
@@ -86,7 +86,7 @@
   border-radius: 6px;
   padding: 8px;
   color: var(--loom-text-muted);
-  background: #ffffff;
+  background: var(--loom-surface);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
 }
@@ -101,7 +101,7 @@
   border: 1px solid color-mix(in srgb, var(--loom-accent) 46%, var(--loom-border));
   border-radius: var(--loom-radius-message);
   padding: 10px;
-  background: color-mix(in srgb, var(--loom-accent) 12%, #ffffff);
+  background: color-mix(in srgb, var(--loom-accent) 14%, var(--loom-surface));
 }
 
 .inlineArtifact figcaption {
@@ -119,11 +119,11 @@
 .renderWarning {
   display: grid;
   gap: 8px;
-  border: 1px solid #e7a747;
+  border: 1px solid var(--loom-warning);
   border-radius: 6px;
   padding: 10px;
-  color: #442808;
-  background: #fff7df;
+  color: var(--loom-warning);
+  background: var(--loom-warning-bg);
 }
 
 .renderWarning p {
@@ -140,16 +140,16 @@
   height: 150px;
   border: 1px solid var(--loom-border);
   border-radius: 6px;
-  background: #ffffff;
+  background: var(--loom-surface);
 }
 
 .agentChoiceCard {
   display: grid;
   gap: 10px;
-  border: 1px solid #b7c4f6;
+  border: 1px solid color-mix(in srgb, var(--loom-info) 58%, var(--loom-border));
   border-radius: 6px;
   padding: 10px;
-  background: #f3f5ff;
+  background: var(--loom-info-bg);
 }
 
 .agentChoiceCard div {

@@ -4,37 +4,39 @@
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 
   /* ── 背景与表面 ── */
-  --loom-bg: #ece9e1;
-  --loom-surface: #f7f5ef;
-  --loom-panel: #fbfaf6;
-  --loom-panel-muted: #e2ded4;
+  --loom-bg: #1e1e2e;
+  --loom-surface: #181825;
+  --loom-panel: #313244;
+  --loom-panel-muted: #45475a;
 
   /* ── 边框 ── */
-  --loom-border: #d1ccc0;
-  --loom-border-strong: #a8a298;
+  --loom-border: #45475a;
+  --loom-border-strong: #585b70;
 
   /* ── 文本 ── */
-  --loom-text: #1f1e1a;
-  --loom-text-muted: #706d65;
-  --loom-text-subtle: #9b968b;
+  --loom-text: #cdd6f4;
+  --loom-text-muted: #a6adc8;
+  --loom-text-subtle: #7f849c;
 
   /* ── 强调色（成对） ── */
-  --loom-accent: #2f6f73;
-  --loom-accent-strong: #1f5558;
-  --loom-accent-soft: #e6eeee;
-  --loom-accent-foreground: #ffffff;
+  --loom-accent: #cba6f7;
+  --loom-accent-strong: #d0b3f8;
+  --loom-accent-soft: #3b324a;
+  --loom-accent-foreground: #11111b;
 
   /* ── 角色色 ── */
   --loom-role-user: transparent;
   --loom-role-assistant: transparent;
 
   /* ── 状态色（成对） ── */
-  --loom-danger: #9f2d35;
-  --loom-danger-foreground: #ffffff;
-  --loom-danger-bg: #fff0f0;
-  --loom-warning: #a66613;
-  --loom-warning-foreground: #ffffff;
-  --loom-warning-bg: #fef6e8;
+  --loom-danger: #f38ba8;
+  --loom-danger-foreground: #11111b;
+  --loom-danger-bg: #3f2835;
+  --loom-warning: #fab387;
+  --loom-warning-foreground: #11111b;
+  --loom-warning-bg: #403128;
+  --loom-info: #89b4fa;
+  --loom-info-bg: #29344d;
 
   /* ── 布局尺寸 ── */
   --loom-chat-width: 720px;
@@ -118,7 +120,7 @@ select:focus,
 input:focus {
   outline: none;
   border-color: var(--loom-accent);
-  box-shadow: 0 0 0 2px rgb(38 117 141 / 18%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--loom-accent) 28%, transparent);
 }
 
 button:disabled {
@@ -154,7 +156,7 @@ h2 {
   line-height: 1.3;
   font-weight: 720;
   text-transform: uppercase;
-  color: #40515e;
+  color: var(--loom-text-muted);
 }
 
 h3 {

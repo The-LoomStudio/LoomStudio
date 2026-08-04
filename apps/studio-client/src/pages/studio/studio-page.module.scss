@@ -15,8 +15,8 @@
 .status {
   padding: 8px 16px;
   border-bottom: 1px solid var(--loom-border);
-  color: #23404e;
-  background: #dff1f6;
+  color: var(--loom-info);
+  background: var(--loom-info-bg);
 }
 
 .statusError {
@@ -51,28 +51,39 @@
   align-content: start;
   gap: 8px;
   padding-top: 18px;
-  border-right: 1px solid color-mix(in srgb, var(--loom-border) 70%, transparent);
-  background: color-mix(in srgb, var(--loom-bg) 88%, transparent);
+  border: 0;
+  background: var(--loom-bg);
 }
 
 .railTab {
+  position: relative;
   width: 100%;
   min-height: 44px;
   display: grid;
   place-items: center;
   border: 0;
-  border-right: 1px solid transparent;
   border-radius: 0;
   padding: 0;
   color: var(--loom-text-subtle);
   background: transparent;
 }
 
-.railTab:hover:not(:disabled),
-.railTabActive {
-  border-color: var(--loom-accent);
+.railTab:hover:not(:disabled) {
   color: var(--loom-accent-strong);
-  background: color-mix(in srgb, var(--loom-bg) 70%, transparent);
+  background: color-mix(in srgb, var(--loom-accent) 8%, transparent);
+}
+
+.railTabActive {
+  color: var(--loom-accent-strong);
+  background: transparent;
+}
+
+.railTab:focus-visible {
+  box-shadow: none;
+}
+
+.railTab:focus-visible svg {
+  filter: drop-shadow(0 0 4px var(--loom-accent));
 }
 
 .railTab svg {
@@ -97,8 +108,7 @@
   width: min(var(--loom-overlay-width), calc(100vw - 96px));
   overflow: hidden;
   border: 0;
-  border-inline: 1px solid var(--loom-border);
-  background: color-mix(in srgb, var(--loom-bg) 90%, #ffffff);
+  background: color-mix(in srgb, var(--loom-surface) 88%, var(--loom-panel));
   opacity: 0;
   pointer-events: none;
   transition: opacity 140ms ease, transform 140ms ease;
@@ -107,18 +117,23 @@
 .stagePanelActive {
   opacity: 1;
   pointer-events: auto;
-  transform: translateX(0);
 }
 
 .stagePanelLeft {
   left: var(--loom-rail-width);
   width: min(348px, calc(100vw - 96px));
+  background: var(--loom-bg);
   transform: translateX(-12px);
 }
 
 .stagePanelRight {
   right: 0;
+  border-left: 1px solid var(--loom-border);
   transform: translateX(12px);
+}
+
+.stagePanelActive {
+  transform: translateX(0);
 }
 
 .stageWorkspace {

@@ -133,9 +133,9 @@
 }
 
 .agentBtnDanger:hover {
-  background: color-mix(in srgb, #e74c3c 8%, transparent);
-  border-color: #e74c3c;
-  color: #e74c3c;
+  background: color-mix(in srgb, var(--loom-danger) 12%, transparent);
+  border-color: var(--loom-danger);
+  color: var(--loom-danger);
 }
 
 .agentList {
