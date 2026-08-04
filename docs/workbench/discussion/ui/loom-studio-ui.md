@@ -1,5 +1,7 @@
 # Loom Studio UI — Shell 形态草稿
 
+> **2026-08-04 方向更新**：本文记录的固定 Activity Bar / Side Panel / Canvas 几何不再是唯一候选。新的已接受方向是 [`widget-workspace-and-motion-v0.md`](widget-workspace-and-motion-v0.md) 所记录的 Sidebar / Dock / Window 统一形态与双层横向窗口工作区。新文档仍是 Open Design，不代表当前实现 contract。
+
 > **本文档定位**：勾勒 Studio Shell 在用户面前的"骨架形状"——哪些是 Shell 提供的容器与原语、哪些由 Studio AIRP UI 或 extension 填充。本文档**不**讨论 Studio Kernel 的服务边界（见 [`loom-studio-architecture.md`](./loom-studio-architecture.md)），也**不**讨论 DevTool 的 UX（见 [`loom-devtools.md`](./loom-devtools.md)）。
 >
 > **状态**：早期草稿（v0.1 之前）。本文记录立场与方向，不锁定具体 API。
