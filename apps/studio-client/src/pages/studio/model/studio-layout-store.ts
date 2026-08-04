@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware'
 import type { WindowSize } from '../window-resize.js'
+import type { LongTextEditorMode } from '../../../shared/ui/long-text-editor/long-text-editor-model.js'
 
 export const STUDIO_PANEL_IDS = ['api', 'preset', 'resources', 'editor', 'inspector', 'logs'] as const
 
@@ -32,6 +33,7 @@ type StudioLayoutData = {
   panelWindowModes: Partial<Record<StudioPanelId, PanelWindowMode>>
   panelWindowSizes: Partial<Record<StudioPanelId, WindowSize>>
   presetPanel: PresetPanel
+  textEditorMode: LongTextEditorMode
 }
 
 type StudioLayoutStore = StudioLayoutData & {
@@ -44,6 +46,7 @@ type StudioLayoutStore = StudioLayoutData & {
   setContextCategory(category: ContextCategory): void
   setPanelWindowSize(panel: StudioPanelId, size: WindowSize): void
   setPresetPanel(panel: PresetPanel): void
+  setTextEditorMode(mode: LongTextEditorMode): void
   toggleDock(): void
   togglePanel(panel: StudioPanelId): void
   togglePanelWindowMode(panel: StudioPanelId): void
@@ -51,7 +54,7 @@ type StudioLayoutStore = StudioLayoutData & {
 }
 
 const STORAGE_KEY = 'loom-studio-layout'
-const STORAGE_VERSION = 5
+const STORAGE_VERSION = 6
 const DEFAULT_EXPLORER_WIDTH = 300
 export const DEFAULT_ASSET_VIEW_STATE: AssetViewState = { viewMode: 'explorer' }
 const safeStorage: StateStorage = {
@@ -92,6 +95,7 @@ export function createDefaultStudioLayout(): StudioLayoutData {
     panelWindowModes: {},
     panelWindowSizes: {},
     presetPanel: 'assets',
+    textEditorMode: 'source',
   }
 }
 
@@ -115,6 +119,7 @@ export function sanitizeStudioLayout(value: unknown): StudioLayoutData {
     panelWindowModes: readPanelWindowModes(value.panelWindowModes),
     panelWindowSizes: readPanelWindowSizes(value.panelWindowSizes),
     presetPanel: value.presetPanel === 'order' ? 'order' : defaults.presetPanel,
+    textEditorMode: value.textEditorMode === 'preview' ? 'preview' : defaults.textEditorMode,
   }
 }
 
@@ -180,6 +185,7 @@ export const useStudioLayoutStore = create<StudioLayoutStore>()(
         panelWindowSizes: { ...state.panelWindowSizes, [panel]: size },
       })),
       setPresetPanel: presetPanel => set({ presetPanel }),
+      setTextEditorMode: textEditorMode => set({ textEditorMode }),
       toggleDock: () => set(state => state.dockOpen || state.activePanel !== null
         ? { activePanel: null, dockOpen: false }
         : { activePanel: state.lastActivePanel, dockOpen: true }),
@@ -212,6 +218,7 @@ export const useStudioLayoutStore = create<StudioLayoutStore>()(
         panelWindowModes: state.panelWindowModes,
         panelWindowSizes: state.panelWindowSizes,
         presetPanel: state.presetPanel,
+        textEditorMode: state.textEditorMode,
       }),
     },
   ),

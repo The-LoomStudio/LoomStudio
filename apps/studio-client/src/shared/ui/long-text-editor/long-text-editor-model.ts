@@ -1,3 +1,5 @@
+export type LongTextEditorMode = 'source' | 'preview'
+
 export type LongTextEditorState = {
   copyStatus: 'idle' | 'copied' | 'failed'
   undoValue?: string

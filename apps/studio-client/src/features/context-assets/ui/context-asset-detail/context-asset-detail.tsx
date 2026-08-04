@@ -2,7 +2,8 @@ import { useRef } from 'react'
 import { Braces, Equal, Info, KeyRound, ListFilter, ListOrdered, MapPin, RefreshCw, Settings2, Tag, Zap } from 'lucide-react'
 import type { ContextAssetNode } from '../../../../entities/index.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
-import { LongTextEditor } from '../../../../shared/ui/long-text-editor/long-text-editor.js'
+import { LongTextEditor, type LongTextEditorHandle } from '../../../../shared/ui/long-text-editor/long-text-editor.js'
+import type { LongTextEditorMode } from '../../../../shared/ui/long-text-editor/long-text-editor-model.js'
 import {
   buildActivationUpdate,
   readActivationDraft,
@@ -15,16 +16,18 @@ import styles from './context-asset-detail.module.scss'
 
 type ContextAssetDetailProps = {
   activationEditable?: boolean
+  editorMode: LongTextEditorMode
   metadataOpen: boolean
   node: ContextAssetNode
   onChangeNode: (partial: Partial<ContextAssetNode>) => void
   onCommitNode: (partial: Partial<ContextAssetNode>) => void
+  onEditorModeChange(mode: LongTextEditorMode): void
   onMetadataOpenChange(open: boolean): void
   t: Translator
 }
 
 export function ContextAssetDetail(props: ContextAssetDetailProps) {
-  const editorRef = useRef<HTMLTextAreaElement>(null)
+  const editorRef = useRef<LongTextEditorHandle>(null)
   const isTextLike = props.node.kind === 'entry' || props.node.kind === 'script'
   const isEntry = props.node.kind === 'entry'
   const body = props.node.body ?? ''
@@ -278,12 +281,19 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
           copyLabel={props.t('editor.longText.copy')}
           disabled={readOnly}
           label={isTextLike ? props.t('context.contentLabel') : props.t('context.notesLabel')}
+          mode={props.editorMode}
+          previewEmptyLabel={props.t('editor.longText.previewEmpty')}
+          previewModeLabel={props.t('editor.longText.previewMode')}
+          restoreInitialLabel={props.t('editor.longText.restoreInitial')}
           placeholder={isTextLike ? props.t('context.contentPlaceholder') : props.t('context.notesPlaceholder')}
           spellCheck={false}
+          sourceModeLabel={props.t('editor.longText.sourceMode')}
+          undoEditLabel={props.t('editor.longText.undoEdit')}
           undoLabel={props.t('editor.longText.undoClear')}
           value={body}
           onChange={value => props.onChangeNode({ body: value })}
           onCommit={value => props.onCommitNode({ body: value })}
+          onModeChange={props.onEditorModeChange}
         />
       </div>
     </div>

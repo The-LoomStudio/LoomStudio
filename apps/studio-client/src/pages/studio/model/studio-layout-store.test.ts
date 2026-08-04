@@ -77,10 +77,12 @@ describe('studio layout store', () => {
 
   it('keeps the metadata drawer state global across asset pages', () => {
     useStudioLayoutStore.getState().setAssetMetadataOpen(true)
+    useStudioLayoutStore.getState().setTextEditorMode('preview')
     useStudioLayoutStore.getState().togglePanel('preset')
     useStudioLayoutStore.getState().togglePanel('editor')
 
     expect(useStudioLayoutStore.getState().assetMetadataOpen).toBe(true)
+    expect(useStudioLayoutStore.getState().textEditorMode).toBe('preview')
   })
 
   it('rehydrates the persisted layout after a reload', async () => {
@@ -141,6 +143,7 @@ describe('sanitizeStudioLayout', () => {
         resources: 'oversized',
       },
       presetPanel: 'order',
+      textEditorMode: 'preview',
     })).toEqual({
       activePanel: 'preset',
       assetMetadataOpen: true,
@@ -156,6 +159,7 @@ describe('sanitizeStudioLayout', () => {
         preset: { width: 900, height: 680 },
       },
       presetPanel: 'order',
+      textEditorMode: 'preview',
     })
   })
 

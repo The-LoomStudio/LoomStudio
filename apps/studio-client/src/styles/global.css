@@ -48,6 +48,31 @@
   --loom-warning-bg: #403128;
   --loom-info: #89b4fa;
   --loom-info-bg: #29344d;
+  --loom-success: #a6e3a1;
+  --loom-success-bg: #2b3a32;
+  --loom-selection-bg: color-mix(in srgb, var(--loom-info) 30%, transparent);
+
+  /* ── 编辑器语法色 ── */
+  --loom-syntax-comment: #6c7086;
+  --loom-syntax-heading: #cba6f7;
+  --loom-syntax-emphasis: #f5c2e7;
+  --loom-syntax-strong: #f9e2af;
+  --loom-syntax-quote: #94e2d5;
+  --loom-syntax-link: #89dceb;
+  --loom-syntax-keyword: #cba6f7;
+  --loom-syntax-constant: #fab387;
+  --loom-syntax-string: #a6e3a1;
+  --loom-syntax-number: #fab387;
+  --loom-syntax-variable: #cdd6f4;
+  --loom-syntax-function: #89b4fa;
+  --loom-syntax-type: #f9e2af;
+  --loom-syntax-property: #b4befe;
+  --loom-syntax-tag: #f38ba8;
+  --loom-syntax-attribute: #f9e2af;
+  --loom-syntax-operator: #89dceb;
+  --loom-syntax-punctuation: #9399b2;
+  --loom-syntax-meta: #f5c2e7;
+  --loom-syntax-invalid: #f38ba8;
 
   /* ── 布局尺寸 ── */
   --loom-chat-width: 720px;

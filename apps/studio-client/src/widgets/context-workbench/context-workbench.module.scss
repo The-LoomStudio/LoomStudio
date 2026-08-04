@@ -10,7 +10,7 @@
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto calc(var(--loom-divider-space) * 2 + 1px) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   padding: 14px 18px 18px;
 }
 
@@ -80,11 +80,6 @@
 .detailHeaderMuted span,
 .detailHeaderMuted p {
   color: var(--loom-text-subtle);
-}
-
-.detailDivider {
-  width: 64px;
-  margin-inline: 0;
 }
 
 .emptyState {

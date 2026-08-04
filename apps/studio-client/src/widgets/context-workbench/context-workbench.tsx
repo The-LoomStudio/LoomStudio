@@ -40,6 +40,7 @@ type ContextWorkbenchProps = {
 export function ContextWorkbench(props: ContextWorkbenchProps) {
   const activeCategory = useStudioLayoutStore(state => state.contextCategory)
   const metadataOpen = useStudioLayoutStore(state => state.assetMetadataOpen)
+  const textEditorMode = useStudioLayoutStore(state => state.textEditorMode)
   const explorerLayout = useStudioLayoutStore(state => state.assetLayouts.resources)
   const explorerView = explorerLayout.views[props.workspaceId] ?? DEFAULT_ASSET_VIEW_STATE
   const setExpandedIds = useStudioLayoutStore(state => state.setAssetExpandedIds)
@@ -48,6 +49,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   const setAssetViewMode = useStudioLayoutStore(state => state.setAssetViewMode)
   const setActiveCategory = useStudioLayoutStore(state => state.setContextCategory)
   const setMetadataOpen = useStudioLayoutStore(state => state.setAssetMetadataOpen)
+  const setTextEditorMode = useStudioLayoutStore(state => state.setTextEditorMode)
   const [viewModes, setViewModes] = useState<Record<string, 'asset' | 'projection'>>({})
   const selectedNode = findContextNode(props.nodes, explorerView.selectedId)
   const projectionModel = useMemo(() => buildProjectionWorkbenchModel(props.nodes), [props.nodes])
@@ -182,8 +184,6 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
           </div>
           <span>{selectedNode?.meta ?? props.t('context.emptyBody')}</span>
         </header>
-        <span className={`loom-divider ${styles.detailDivider}`} aria-hidden="true" />
-
         {selectedNode ? (
           selectedNode.kind === 'order' ? (
             <ProjectionOrderEditor
@@ -205,10 +205,12 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
             <ContextAssetDetail
               activationEditable={activeCategory === 'setting'}
               metadataOpen={metadataOpen}
+              editorMode={textEditorMode}
               node={selectedNode}
               onChangeNode={partial => props.onChangeNode(selectedNode.id, partial)}
               onCommitNode={partial => props.onCommitNode(selectedNode.id, partial)}
               onMetadataOpenChange={setMetadataOpen}
+              onEditorModeChange={setTextEditorMode}
               t={props.t}
             />
           )
