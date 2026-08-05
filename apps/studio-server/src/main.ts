@@ -13,7 +13,6 @@ import { join, resolve } from 'node:path'
 import { withAiGatewayLogging } from './ai-gateway-logging.js'
 import { withDocumentStoreLogging } from './document-store-logging.js'
 import { createStudioHttpServer } from './http-server.js'
-import { createRendererPocService } from './renderer-poc.js'
 import { createStudioRpcRouter } from './studio-rpc-router.js'
 
 const defaultPort = 4173
@@ -50,7 +49,6 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     gateway: options.providerLogger ? withAiGatewayLogging(gateway, options.providerLogger) : gateway,
     logger: options.promptBuildLogger,
   })
-  const rendererPoc = createRendererPocService()
   const extensionHost = createExtensionHost({
     documents,
     diagnostics,
@@ -71,8 +69,8 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     extensionHost,
     loomRunner,
   })
-  const rpcRouter = createStudioRpcRouter({ applicationRuntime, kernel, logs: options.logs, rendererPoc })
-  const server = createStudioHttpServer({ logger: options.rpcLogger, rendererPoc, rpcRouter })
+  const rpcRouter = createStudioRpcRouter({ applicationRuntime, kernel, logs: options.logs })
+  const server = createStudioHttpServer({ logger: options.rpcLogger, rpcRouter })
 
   return {
     listen: async (port = defaultPort) => {
@@ -119,7 +117,6 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
         })
       }
       await kernel.stop()
-      rendererPoc.close()
       if (ownsDocumentStore && isClosableDocumentStore(rawDocuments)) {
         rawDocuments.close()
       }

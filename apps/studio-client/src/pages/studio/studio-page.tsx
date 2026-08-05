@@ -1,12 +1,18 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent, type ReactNode } from 'react'
-import { BotMessageSquare, Columns2, FilePenLine, FlaskConical, ListTree, Maximize2, Menu, Minimize2, PanelLeftClose, PanelLeftOpen, PencilLine, Plug, ScrollText, Users, type LucideIcon } from 'lucide-react'
+import { Blocks, Columns2, FilePenLine, Folders, ListOrdered, ListTree, Maximize2, Menu, Minimize2, PanelLeftClose, PanelLeftOpen, Plug, Settings, SquareTerminal, Users, Wrench, type LucideIcon } from 'lucide-react'
 import type { Translator } from '../../shared/i18n/index.js'
+import { useCharacterGalleryStore } from '../../widgets/resource-panel/character-gallery-store.js'
 import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore, type AssetLayoutId, type AssetViewMode, type StudioPanelId } from './model/studio-layout-store.js'
 import { resizeWindow, type WindowResizeAxis, type WindowSize } from './window-resize.js'
 import styles from './studio-page.module.scss'
 
+declare const __LOOM_STUDIO_VERSION__: string
+
+const STUDIO_VERSION = typeof __LOOM_STUDIO_VERSION__ === 'string' ? __LOOM_STUDIO_VERSION__ : 'dev'
+
 type StudioPageProps = {
   assetWorkspaceId: string
+  apiConfigured?: boolean
   busy: boolean
   canRedo: boolean
   canUndo: boolean
@@ -21,6 +27,7 @@ type StudioPageProps = {
   apiPanel: ReactNode
   presetPanel: ReactNode
   resourcePanel: ReactNode
+  settingsPanel: ReactNode
   t: Translator
 }
 
@@ -58,6 +65,10 @@ export function StudioPage(props: StudioPageProps) {
   const togglePanel = useStudioLayoutStore(state => state.togglePanel)
   const togglePanelWindowMode = useStudioLayoutStore(state => state.togglePanelWindowMode)
   const toggleWorkspace = useStudioLayoutStore(state => state.toggleWorkspace)
+  const characterActiveGroupId = useCharacterGalleryStore(state => state.activeGroupId)
+  const characterGroups = useCharacterGalleryStore(state => state.groups)
+  const characterGroupsOpen = useCharacterGalleryStore(state => state.groupsOpen)
+  const setCharacterGroupsOpen = useCharacterGalleryStore(state => state.setGroupsOpen)
   const isImmersive = activePanel !== null && panelWindowModes[activePanel] === 'immersive'
   const [windowResizePreview, setWindowResizePreview] = useState<WindowResizePreview>()
   const [windowResizing, setWindowResizing] = useState(false)
@@ -181,6 +192,9 @@ export function StudioPage(props: StudioPageProps) {
   }
 
   const activePanelHeader = activePanel === null ? null : readPanelHeader(activePanel, props.t)
+  const characterHeaderLabel = characterActiveGroupId === 'ungrouped'
+    ? props.t('cards.ungrouped')
+    : characterGroups.find(group => group.id === characterActiveGroupId)?.name ?? props.t('rail.resources')
   const activeAssetLayoutId = readAssetLayoutId(activePanel)
   const activeAssetViewMode = activeAssetLayoutId === null
     ? null
@@ -250,11 +264,16 @@ export function StudioPage(props: StudioPageProps) {
             <span className={`loom-divider ${styles.dockHeaderDivider}`} aria-hidden="true" />
             <nav className={styles.studioRail} aria-label={props.t('rail.label')} data-loom-component="utility-rail">
               <button
-                aria-label={props.t('rail.api')}
+                aria-label={props.t(props.apiConfigured === false ? 'rail.apiIncomplete' : 'rail.api')}
                 aria-controls="studio-api-panel"
                 aria-expanded={activePanel === 'api'}
-                className={activePanel === 'api' ? `${styles.railTab} ${styles.railTabActive}` : styles.railTab}
-                title={props.t('rail.api')}
+                className={[
+                  styles.railTab,
+                  activePanel === 'api' ? styles.railTabActive : '',
+                  props.apiConfigured === false ? styles.railTabIncomplete : '',
+                ].filter(Boolean).join(' ')}
+                data-status={props.apiConfigured === undefined ? 'unknown' : props.apiConfigured ? 'configured' : 'incomplete'}
+                title={props.t(props.apiConfigured === false ? 'rail.apiIncomplete' : 'rail.api')}
                 type="button"
                 onClick={() => togglePanel('api')}
               >
@@ -283,7 +302,7 @@ export function StudioPage(props: StudioPageProps) {
                 type="button"
                 onClick={() => togglePanel('preset')}
               >
-                <BotMessageSquare aria-hidden="true" />
+                <ListOrdered aria-hidden="true" />
                 <span className={styles.railLabel}>{props.t('rail.preset')}</span>
               </button>
               <button
@@ -295,7 +314,7 @@ export function StudioPage(props: StudioPageProps) {
                 type="button"
                 onClick={() => togglePanel('editor')}
               >
-                <PencilLine aria-hidden="true" />
+                <Folders aria-hidden="true" />
                 <span className={styles.railLabel}>{props.t('rail.editor')}</span>
               </button>
               <span className={`loom-divider ${styles.railDivider}`} aria-hidden="true" />
@@ -308,7 +327,7 @@ export function StudioPage(props: StudioPageProps) {
                 type="button"
                 onClick={() => togglePanel('inspector')}
               >
-                <FlaskConical aria-hidden="true" />
+                <Wrench aria-hidden="true" />
                 <span className={styles.railLabel}>{props.t('rail.inspector')}</span>
               </button>
               <button
@@ -320,9 +339,44 @@ export function StudioPage(props: StudioPageProps) {
                 type="button"
                 onClick={() => togglePanel('logs')}
               >
-                <ScrollText aria-hidden="true" />
+                <SquareTerminal aria-hidden="true" />
                 <span className={styles.railLabel}>{props.t('rail.logs')}</span>
               </button>
+              <button
+                aria-label={props.t('rail.extensions')}
+                className={styles.railTab}
+                disabled
+                title={props.t('rail.extensions')}
+                type="button"
+              >
+                <Blocks aria-hidden="true" />
+                <span className={styles.railLabel}>{props.t('rail.extensions')}</span>
+              </button>
+              <button
+                aria-label={props.t('rail.settings')}
+                aria-controls="studio-settings-panel"
+                aria-expanded={activePanel === 'settings'}
+                className={activePanel === 'settings' ? `${styles.railTab} ${styles.railTabActive}` : styles.railTab}
+                title={props.t('rail.settings')}
+                type="button"
+                onClick={() => togglePanel('settings')}
+              >
+                <Settings aria-hidden="true" />
+                <span className={styles.railLabel}>{props.t('rail.settings')}</span>
+              </button>
+              <footer className={styles.railFooter}>
+                <a
+                  aria-label="LoomStudio GitHub"
+                  className={styles.githubLink}
+                  href="https://github.com/The-LoomStudio/LoomStudio.git"
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  <GitHubMark />
+                  <span>GitHub</span>
+                </a>
+                <span className={styles.version}>v{STUDIO_VERSION}</span>
+              </footer>
             </nav>
           </div>
 
@@ -331,8 +385,12 @@ export function StudioPage(props: StudioPageProps) {
           <div className={styles.dockPanelHost}>
             {activePanelHeader && ActivePanelIcon ? (
               <header className={`loom-page-header ${styles.workspaceHeader}`} data-loom-component="page-header">
-                <ActivePanelIcon aria-hidden="true" />
-                <span className="loom-page-header-title">{activePanelHeader.label}</span>
+                {activePanel === 'resources' ? (
+                  <button aria-expanded={characterGroupsOpen} aria-label={props.t('cards.groups')} className={styles.resourceGroupTitle} type="button" onClick={() => setCharacterGroupsOpen(true)}>
+                    <ActivePanelIcon aria-hidden="true" />
+                    <span className="loom-page-header-title">{characterHeaderLabel}</span>
+                  </button>
+                ) : <><ActivePanelIcon aria-hidden="true" /><span className="loom-page-header-title">{activePanelHeader.label}</span></>}
                 {activeAssetLayoutId && activeAssetViewMode ? (
                   <div
                     aria-label={props.t('context.viewModeLabel')}
@@ -432,6 +490,16 @@ export function StudioPage(props: StudioPageProps) {
               >
                 {props.logsPanel}
               </div>
+
+              <div
+                className={styles.stagePanel}
+                id="studio-settings-panel"
+                aria-hidden={activePanel !== 'settings'}
+                hidden={activePanel !== 'settings'}
+                data-loom-component="overlay-settings-layer"
+              >
+                {props.settingsPanel}
+              </div>
             </div>
           </div>
 
@@ -509,9 +577,18 @@ function readPanelHeader(panel: StudioPanelId, t: Translator): { Icon: LucideIco
   switch (panel) {
     case 'api': return { Icon: Plug, label: t('rail.api') }
     case 'resources': return { Icon: Users, label: t('rail.resources') }
-    case 'preset': return { Icon: BotMessageSquare, label: t('rail.preset') }
-    case 'editor': return { Icon: PencilLine, label: t('rail.editor') }
-    case 'inspector': return { Icon: FlaskConical, label: t('rail.inspector') }
-    case 'logs': return { Icon: ScrollText, label: t('rail.logs') }
+    case 'preset': return { Icon: ListOrdered, label: t('rail.preset') }
+    case 'editor': return { Icon: Folders, label: t('rail.editor') }
+    case 'inspector': return { Icon: Wrench, label: t('rail.inspector') }
+    case 'logs': return { Icon: SquareTerminal, label: t('rail.logs') }
+    case 'settings': return { Icon: Settings, label: t('rail.settings') }
   }
+}
+
+function GitHubMark() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16">
+      <path d="M8 0C3.58 0 0 3.64 0 8c0 3.54 2.29 6.53 5.47 7.59.4.08.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.38-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.59 1.23.83.72 1.23 1.87.88 2.33.67.07-.53.28-.88.51-1.08-1.78-.21-3.64-.91-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.22 2.2.82A7.65 7.65 0 0 1 8 3.87c.68 0 1.36.09 2 .27 1.53-1.05 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.05-1.87 3.74-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.47.55.38A8.01 8.01 0 0 0 16 8c0-4.36-3.58-8-8-8Z" />
+    </svg>
+  )
 }

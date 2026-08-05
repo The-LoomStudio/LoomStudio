@@ -31,5 +31,5 @@ Architecture / Application / UI:
 这些设计继续保留在：
 
 - [`../../workbench/discussion/ui/widget-workspace-and-motion-v0.md`](../../workbench/discussion/ui/widget-workspace-and-motion-v0.md)
-- [`../../workbench/discussion/ui/prompt-resource-diff-mode-v0.md`](../../workbench/discussion/ui/prompt-resource-diff-mode-v0.md)
+- [`../../workbench/plans/ui/prompt-resource-diff-mode-v0.md`](../../workbench/plans/ui/prompt-resource-diff-mode-v0.md)
 - [`../../workbench/discussion/application/ui/`](../../workbench/discussion/application/ui/)

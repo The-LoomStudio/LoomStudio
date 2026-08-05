@@ -1,7 +1,6 @@
 import type { ClientBridge, ClientJsonValue } from '@loom-studio/client-bridge'
 import { createMemoryLogSink, createRootLogger } from '@loom-studio/logging'
 import { describe, expect, it } from 'vitest'
-import { createRendererApi } from '../../../apps/studio-client/src/shared/api/renderer-api.js'
 import { withClientBridgeLogging } from '../../../apps/studio-client/src/shared/api/client-bridge-logging.js'
 import { createStudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
 
@@ -136,23 +135,6 @@ describe('studio client typed api', () => {
     ])
   })
 
-  it('maps renderer calls through the typed renderer api surface', async () => {
-    const calls: Array<{ method: string; params?: ClientJsonValue }> = []
-    const api = createRendererApi(fakeBridge(calls, {
-      'renderer.state.set': { state: { loveLevel: 2, messages: [] } },
-      'renderer.messages.list': { messages: [] },
-    }))
-
-    const state = await api.state.set({ sessionId: 'renderer-1', key: 'loveLevel', value: 2 })
-    const messages = await api.messages.list('renderer-1')
-
-    expect(state.loveLevel).toBe(2)
-    expect(messages).toEqual([])
-    expect(calls).toEqual([
-      { method: 'renderer.state.set', params: { sessionId: 'renderer-1', key: 'loveLevel', value: 2 } },
-      { method: 'renderer.messages.list', params: { sessionId: 'renderer-1' } },
-    ])
-  })
 })
 
 function fakeBridge(

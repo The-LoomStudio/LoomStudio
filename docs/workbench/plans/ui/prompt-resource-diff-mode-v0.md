@@ -1,9 +1,9 @@
 # Prompt Resource Diff Mode v0
 
-> **状态**：Accepted Direction / Deferred Design
+> **状态**：Planned / Blocked by Revision and Tokenizer Contracts
 > **日期**：2026-08-05
 > **主题**：为提示词资源编辑器定义按需 Diff 模式、Token 变化指标、文件树变更入口及前后端协作边界。
-> **文档边界**：本文记录已经接受的产品方向和实施前提，不是当前实现说明，不锁定最终 RPC、Revision schema、Tokenizer 或 React API。
+> **计划边界**：本文记录已经接受的实施方向、依赖和分阶段交付顺序。Revision、Tokenizer 与前后端合同未确定前，不开始代码实现。
 
 ---
 
@@ -246,4 +246,3 @@ Diff Mode:
 8. 多资源变更总览属于当前资源窗口、独立 Window，还是 Base Desktop？
 
 这些问题未形成合同前，不开始实现完整 Diff Mode。
-

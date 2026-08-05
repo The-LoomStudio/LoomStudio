@@ -1,180 +1,92 @@
 import type { FormEvent } from 'react'
-import { useState } from 'react'
-import type { Locale, Translator } from '../../shared/i18n/index.js'
-import { localeLabels, supportedLocales } from '../../shared/i18n/index.js'
+import { ChevronRight } from 'lucide-react'
 import type { ModelProfile, ProviderAccount } from '../../entities/index.js'
-import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import { isLikelyProviderEndpoint, normalizeOpenAICompatibleBaseUrl, readChatCompletionsEndpoint } from '../../features/provider-settings/model/provider-base-url.js'
-import { ModelProfileList } from './model-profile-list.js'
+import type { Translator } from '../../shared/i18n/index.js'
 import { ProviderAccountList } from './provider-account-list.js'
 import styles from './api-panel.module.scss'
 
 type GatewayForm = {
-  baseUrl: string
   apiKey: string
-  model: string
-  temperature: string
-  maxTokens: string
+  baseUrl: string
+  displayName: string
 }
 
 export type ApiPanelProps = {
   busy: boolean
-  endpoint: string
   gatewayForm: GatewayForm
-  gatewayProfileSummary?: string
-  locale: Locale
-  onChangeEndpoint: (endpoint: string) => void
-  onChangeGatewayForm: (value: GatewayForm) => void
-  onChangeLocale: (locale: Locale) => void
-  onCreateGatewayProfile: (event: FormEvent) => void
-  t: Translator
-  providerAccounts: ProviderAccount[]
   modelProfiles: ModelProfile[]
-  onDeleteProviderAccount: (id: string) => void
-  onUpdateModelProfile: (id: string, updates: { displayName?: string; providerModelId?: string; config?: Record<string, ClientJsonValue> }) => void
-  onDeleteModelProfile: (id: string) => void
-  onPingModelProfile: (id: string) => Promise<string>
+  onChangeGatewayForm(value: GatewayForm): void
+  onCreateModelProfile(providerAccountId: string, providerModelId: string): void
+  onCreateProviderAccount(event: FormEvent): void
+  onDeleteModelProfile(id: string): void
+  onDeleteProviderAccount(id: string): void
+  providerAccounts: ProviderAccount[]
+  t: Translator
 }
 
 export function ApiPanel(props: ApiPanelProps) {
-  const [expandedSection, setExpandedSection] = useState<'provider' | 'model' | null>(null)
   const chatEndpoint = readChatCompletionsEndpoint(props.gatewayForm.baseUrl)
   const endpointWarning = isLikelyProviderEndpoint(props.gatewayForm.baseUrl)
 
-  function toggleSection(section: 'provider' | 'model') {
-    setExpandedSection(current => current === section ? null : section)
-  }
-
   return (
     <aside className={styles.apiPane} data-loom-component="api-panel">
-      <section className={`${styles.section} ${styles.hostSection}`}>
-        <div className={styles.hostControls}>
-          <label>
-            {props.t('app.localeLabel')}
-            <select value={props.locale} onChange={event => props.onChangeLocale(event.target.value as Locale)}>
-              {supportedLocales.map(item => (
-                <option key={item} value={item}>{localeLabels[item]}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            {props.t('app.rpcLabel')}
-            <input value={props.endpoint} onChange={event => props.onChangeEndpoint(event.target.value)} />
-          </label>
-        </div>
-      </section>
-      <span className="loom-divider" aria-hidden="true" />
-
-      <section className={styles.section}>
-        <div className={styles.sectionHead}>
+      <section className={styles.accountsSection}>
+        <header className={styles.sectionHeader}>
           <h2>{props.t('gateway.title')}</h2>
-        </div>
-        <form className={styles.gatewayForm} onSubmit={props.onCreateGatewayProfile}>
-          <label>
-            {props.t('gateway.baseUrl')}
-            <input
-              required
-              value={props.gatewayForm.baseUrl}
-              onChange={e => props.onChangeGatewayForm({ ...props.gatewayForm, baseUrl: e.target.value })}
-              onBlur={() => props.onChangeGatewayForm({
-                ...props.gatewayForm,
-                baseUrl: normalizeOpenAICompatibleBaseUrl(props.gatewayForm.baseUrl),
-              })}
-            />
-            {chatEndpoint ? (
-              <small className={endpointWarning ? styles.gatewayWarning : styles.gatewayHint}>
-                {endpointWarning ? props.t('gateway.baseUrlEndpointWarning') : props.t('gateway.chatEndpointPreview', { endpoint: chatEndpoint })}
-              </small>
-            ) : null}
-          </label>
-          <label>
-            {props.t('gateway.apiKey')}
-            <input
-              placeholder={props.t('gateway.apiKeyPlaceholder')}
-              value={props.gatewayForm.apiKey}
-              onChange={e => props.onChangeGatewayForm({ ...props.gatewayForm, apiKey: e.target.value })}
-            />
-          </label>
-          <label>
-            {props.t('gateway.model')}
-            <input
-              required
-              value={props.gatewayForm.model}
-              onChange={e => props.onChangeGatewayForm({ ...props.gatewayForm, model: e.target.value })}
-            />
-          </label>
-          <div className={styles.gatewayGrid}>
+          <span>{props.providerAccounts.length}</span>
+        </header>
+        <details className={styles.createCard}>
+          <summary><ChevronRight aria-hidden="true" />{props.t('gateway.addProvider')}</summary>
+          <form className={styles.providerForm} onSubmit={props.onCreateProviderAccount}>
             <label>
-              {props.t('gateway.temperature')}
+              <span>{props.t('gateway.providerName')}</span>
               <input
                 required
-                type="number"
-                step="0.1"
-                min="0"
-                max="2"
-                value={props.gatewayForm.temperature}
-                onChange={e => props.onChangeGatewayForm({ ...props.gatewayForm, temperature: e.target.value })}
+                placeholder={props.t('gateway.providerNamePlaceholder')}
+                value={props.gatewayForm.displayName}
+                onChange={event => props.onChangeGatewayForm({ ...props.gatewayForm, displayName: event.target.value })}
               />
             </label>
             <label>
-              {props.t('gateway.maxTokens')}
+              <span>{props.t('gateway.baseUrl')}</span>
               <input
                 required
-                type="number"
-                step="1"
-                min="1"
-                value={props.gatewayForm.maxTokens}
-                onChange={e => props.onChangeGatewayForm({ ...props.gatewayForm, maxTokens: e.target.value })}
+                value={props.gatewayForm.baseUrl}
+                onChange={event => props.onChangeGatewayForm({ ...props.gatewayForm, baseUrl: event.target.value })}
+                onBlur={() => props.onChangeGatewayForm({
+                  ...props.gatewayForm,
+                  baseUrl: normalizeOpenAICompatibleBaseUrl(props.gatewayForm.baseUrl),
+                })}
+              />
+              {chatEndpoint ? (
+                <small className={endpointWarning ? styles.warning : styles.hint}>
+                  {endpointWarning
+                    ? props.t('gateway.baseUrlEndpointWarning')
+                    : props.t('gateway.chatEndpointPreview', { endpoint: chatEndpoint })}
+                </small>
+              ) : null}
+            </label>
+            <label>
+              <span>{props.t('gateway.apiKey')}</span>
+              <input
+                placeholder={props.t('gateway.apiKeyPlaceholder')}
+                value={props.gatewayForm.apiKey}
+                onChange={event => props.onChangeGatewayForm({ ...props.gatewayForm, apiKey: event.target.value })}
               />
             </label>
-          </div>
-          <button type="submit" disabled={props.busy}>
-            {props.t('gateway.createAgentProfile')}
-          </button>
-        </form>
-
-        {props.gatewayProfileSummary ? (
-          <div className={styles.gatewayProfile}>
-            <p>{props.gatewayProfileSummary}</p>
-          </div>
-        ) : null}
-      </section>
-      <span className="loom-divider" aria-hidden="true" />
-
-      {/* Provider Accounts */}
-      <section className={styles.section}>
-        <div className={styles.sectionHead} onClick={() => toggleSection('provider')} style={{ cursor: 'pointer' }}>
-          <h2>{props.t('gateway.providerAccounts')}</h2>
-          <span className={styles.badge}>{props.providerAccounts.length}</span>
-        </div>
-        {expandedSection === 'provider' && (
-          <ProviderAccountList
-            accounts={props.providerAccounts}
-            busy={props.busy}
-            onDelete={props.onDeleteProviderAccount}
-            t={props.t}
-          />
-        )}
-      </section>
-      <span className="loom-divider" aria-hidden="true" />
-
-      {/* Model Profiles */}
-      <section className={styles.section}>
-        <div className={styles.sectionHead} onClick={() => toggleSection('model')} style={{ cursor: 'pointer' }}>
-          <h2>{props.t('gateway.modelProfiles')}</h2>
-          <span className={styles.badge}>{props.modelProfiles.length}</span>
-        </div>
-        {expandedSection === 'model' && (
-          <ModelProfileList
-            busy={props.busy}
-            modelProfiles={props.modelProfiles}
-            onDelete={props.onDeleteModelProfile}
-            onPing={props.onPingModelProfile}
-            onUpdate={props.onUpdateModelProfile}
-            providerAccounts={props.providerAccounts}
-            t={props.t}
-          />
-        )}
+            <button disabled={props.busy} type="submit">{props.t('gateway.createProvider')}</button>
+          </form>
+        </details>
+        <ProviderAccountList
+          accounts={props.providerAccounts}
+          busy={props.busy}
+          modelProfiles={props.modelProfiles}
+          onCreateModel={props.onCreateModelProfile}
+          onDelete={props.onDeleteProviderAccount}
+          onDeleteModel={props.onDeleteModelProfile}
+          t={props.t}
+        />
       </section>
     </aside>
   )

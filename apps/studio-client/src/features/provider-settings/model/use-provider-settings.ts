@@ -1,38 +1,35 @@
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import { useState, type FormEvent } from 'react'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
-import type { Translator } from '../../../shared/i18n/index.js'
 import type { AgentRuntimeProfile, ModelProfile, ProviderAccount } from '../../../entities/index.js'
 import { normalizeOpenAICompatibleBaseUrl } from './provider-base-url.js'
 
 const selectedAgentRuntimeProfileStorageKey = 'loom.studio.selectedAgentRuntimeProfileId'
 
 export type GatewayForm = {
+  displayName: string
   baseUrl: string
   apiKey: string
-  model: string
-  temperature: string
-  maxTokens: string
 }
 
 type UseProviderSettingsInput = {
   api: StudioApi
   initialGatewayForm: GatewayForm
   runAction: (action: () => Promise<void>) => Promise<void>
-  t: Translator
 }
 
 export function useProviderSettings(input: UseProviderSettingsInput) {
   const [gatewayForm, setGatewayForm] = useState(input.initialGatewayForm)
   const [selectedAgentRuntimeProfileId, setSelectedAgentRuntimeProfileId] = useState<string | undefined>(() => readStoredAgentRuntimeProfileId())
-  const [gatewayProfileSummary, setGatewayProfileSummary] = useState<string>()
   const [providerAccounts, setProviderAccounts] = useState<ProviderAccount[]>([])
+  const [providerAccountsLoaded, setProviderAccountsLoaded] = useState(false)
   const [modelProfiles, setModelProfiles] = useState<ModelProfile[]>([])
   const [agentRuntimeProfiles, setAgentRuntimeProfiles] = useState<AgentRuntimeProfile[]>([])
 
   async function refreshProviderAccounts() {
     const result = await input.api.providerAccounts.list()
     setProviderAccounts(result.providerAccounts)
+    setProviderAccountsLoaded(true)
   }
 
   async function refreshModelProfiles() {
@@ -60,15 +57,15 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
     await refreshAgentRuntimeProfiles()
   }
 
-  async function createGatewayProfile(event: FormEvent) {
+  async function createProviderAccount(event: FormEvent) {
     event.preventDefault()
     const normalizedBaseUrl = normalizeOpenAICompatibleBaseUrl(gatewayForm.baseUrl)
     setGatewayForm(current => ({ ...current, baseUrl: normalizedBaseUrl }))
 
     await input.runAction(async () => {
-      const providerAccount = await input.api.providerAccounts.create(jsonObject({
+      await input.api.providerAccounts.create(jsonObject({
         providerExtensionId: 'official.openai-compatible',
-        displayName: `OpenAI Compatible / ${gatewayForm.model}`,
+        displayName: gatewayForm.displayName.trim(),
         config: jsonObject({
           baseUrl: normalizedBaseUrl,
         }),
@@ -76,21 +73,21 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
           apiKey: gatewayForm.apiKey.startsWith('env:') ? gatewayForm.apiKey : `plain:${gatewayForm.apiKey}`,
         }),
       }))
-      const modelProfile = await input.api.modelProfiles.create(jsonObject({
-        providerAccountId: providerAccount.providerAccount.id,
-        displayName: gatewayForm.model,
-        providerModelId: gatewayForm.model,
-        config: buildGatewayModelConfig(gatewayForm, input.t),
-      }))
-      const agentRuntimeProfile = await input.api.agentRuntimeProfiles.create(jsonObject({
-        name: `Narrative / ${gatewayForm.model}`,
-        purpose: 'narrative',
-        modelProfileId: modelProfile.modelProfile.id,
-      }))
-
-      selectAgentRuntimeProfile(agentRuntimeProfile.agentRuntimeProfile.id)
-      setGatewayProfileSummary(`${modelProfile.modelProfile.providerModelId} / ${shortId(agentRuntimeProfile.agentRuntimeProfile.id)}`)
       await refreshProviderSettings()
+    })
+  }
+
+  async function createModelProfile(providerAccountId: string, providerModelId: string) {
+    const model = providerModelId.trim()
+    if (!model) return
+    await input.runAction(async () => {
+      await input.api.modelProfiles.create(jsonObject({
+        providerAccountId,
+        displayName: model,
+        providerModelId: model,
+        config: {},
+      }))
+      await refreshModelProfiles()
     })
   }
 
@@ -154,15 +151,16 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
     setGatewayForm,
     selectedAgentRuntimeProfileId,
     setSelectedAgentRuntimeProfileId: selectAgentRuntimeProfile,
-    gatewayProfileSummary,
     providerAccounts,
+    providerAccountsLoaded,
     modelProfiles,
     agentRuntimeProfiles,
     refreshProviderSettings,
     refreshProviderAccounts,
     refreshModelProfiles,
     refreshAgentRuntimeProfiles,
-    createGatewayProfile,
+    createProviderAccount,
+    createModelProfile,
     updateProviderAccount,
     deleteProviderAccount,
     updateModelProfile,
@@ -189,29 +187,8 @@ export function chooseAgentRuntimeProfileId(input: {
   return input.profiles[0]?.id
 }
 
-export function buildGatewayModelConfig(form: Pick<GatewayForm, 'temperature' | 'maxTokens'>, t: Translator): Record<string, ClientJsonValue> {
-  return jsonObject({
-    temperature: readOptionalFormNumber(form.temperature, t) as ClientJsonValue | undefined,
-    max_tokens: readOptionalFormNumber(form.maxTokens, t) as ClientJsonValue | undefined,
-  })
-}
-
-function readOptionalFormNumber(value: string, t: Translator): number | undefined {
-  const trimmed = value.trim()
-  if (trimmed.length === 0) return undefined
-  const parsed = Number(trimmed)
-  if (!Number.isFinite(parsed)) {
-    throw new Error(t('error.expectedNumber', { value }))
-  }
-  return parsed
-}
-
 function jsonObject(value: Record<string, ClientJsonValue | undefined>): Record<string, ClientJsonValue> {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as Record<string, ClientJsonValue>
-}
-
-function shortId(id: string): string {
-  return id.slice(0, 13)
 }
 
 function readStoredAgentRuntimeProfileId(): string | undefined {

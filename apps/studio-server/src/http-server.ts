@@ -2,22 +2,15 @@ import type { Logger } from '@loom-studio/logging'
 import { createId } from '@loom-studio/shared'
 import { createErrorResponse, createSuccessResponse, parseRpcRequest } from '@loom-studio/transport'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
-import type { RendererPocService } from './renderer-poc.js'
 import type { StudioRpcRouter } from './studio-rpc-router.js'
 
 export function createStudioHttpServer(options: {
   logger?: Logger
-  rendererPoc: RendererPocService
   rpcRouter: StudioRpcRouter
 }): Server {
   return createServer(async (request, response) => {
     if (request.method === 'GET' && request.url === '/health') {
       writeJson(response, 200, { ok: true })
-      return
-    }
-
-    if (request.method === 'GET' && request.url?.startsWith('/renderer/events')) {
-      options.rendererPoc.handleEventsRequest(request, response)
       return
     }
 

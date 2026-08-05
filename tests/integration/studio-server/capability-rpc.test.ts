@@ -14,12 +14,6 @@ describe('studio server capability rpc integration', () => {
         owner: 'application',
         stability: 'experimental',
       }))
-      expect(listed.capabilities).toContainEqual(expect.objectContaining({
-        name: 'renderer.createSession',
-        namespace: 'renderer',
-        owner: 'studio-server',
-        stability: 'experimental',
-      }))
     })
   })
 })

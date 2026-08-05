@@ -3,7 +3,6 @@ import type { LogReader } from '@loom-studio/logging'
 import type { JsonValue } from '@loom-studio/shared'
 import { callApplicationRpc, listApplicationRpcCapabilities } from './application-rpc.js'
 import { callLogsRpc, listLogsRpcCapabilities } from './logs-rpc.js'
-import { listRendererPocRpcCapabilities, type RendererPocService } from './renderer-poc.js'
 import type { RpcCapability } from './rpc-capability.js'
 
 type RpcCallContext = {
@@ -32,7 +31,6 @@ export function createStudioRpcRouter(services: {
   applicationRuntime: ApplicationRuntime
   kernel: KernelRpcCaller
   logs?: LogReader
-  rendererPoc: RendererPocService
 }): StudioRpcRouter {
   const routes: StudioRpcRoute[] = []
   const listCapabilities = (): RpcCapability[] => routes.flatMap(route => route.capabilities)
@@ -58,11 +56,6 @@ export function createStudioRpcRouter(services: {
       namespace: 'application',
       capabilities: listApplicationRpcCapabilities(),
       call: (method, params, context) => callApplicationRpc(services.applicationRuntime, method, params, context),
-    },
-    {
-      namespace: 'renderer',
-      capabilities: listRendererPocRpcCapabilities(),
-      call: (method, params) => services.rendererPoc.call(method, params),
     },
   )
 

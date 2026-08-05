@@ -3,269 +3,793 @@
   height: 100%;
   min-height: 0;
   overflow: auto;
-  border-right: 0;
+  border-radius: var(--loom-radius-panel);
+  color: var(--loom-text);
   background: var(--loom-bg);
 }
 
-.section {
-  padding: 12px;
-  border-bottom: 1px solid var(--loom-border);
+.galleryEntering {
+  animation: gallery-enter 180ms ease-out both;
 }
 
-.resourceSummary {
-  padding: 14px 12px 12px;
-  border-bottom: 1px solid var(--loom-border);
+.profileEntering {
+  animation: profile-enter 180ms ease-out both;
 }
 
-.resourceKicker {
-  margin-bottom: 8px;
-  color: var(--loom-text-subtle);
-  font-size: 10px;
+.profileLeaving {
+  pointer-events: none;
+  animation: profile-leave 180ms ease-in both;
 }
 
-.resourceSummary h2 {
-  color: var(--loom-text);
-  font-size: 14px;
-  font-weight: 650;
-  text-transform: none;
+@keyframes gallery-enter {
+  from { opacity: 0; transform: translateX(-1.5%); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
-.resourceSummary p:last-child {
-  margin-top: 6px;
-  color: var(--loom-text-muted);
-  font-size: 12px;
-  line-height: 1.45;
+@keyframes profile-enter {
+  from { opacity: 0; transform: translateX(1.5%); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
-.resourceSection {
-  padding: 11px 12px;
+@keyframes profile-leave {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(1.5%); }
 }
 
-.resourceDev {
-  color: color-mix(in srgb, var(--loom-text) 72%, var(--loom-text-muted));
-}
-
-.resourceDev h2 {
-  color: var(--loom-text-muted);
-}
-
-.sectionHead {
+.galleryToolbar,
+.profileToolbar,
+.profileIdentity,
+.editorActions,
+.resourceOverview,
+.sessions > header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+}
+
+.galleryToolbar,
+.profileToolbar {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  justify-content: space-between;
+  min-height: 42px;
+  padding: 7px 16px;
+  background: var(--loom-bg);
+}
+
+.profileToolbar > span {
+  color: var(--loom-text-muted);
+  font-size: 11px;
+}
+
+.galleryModes,
+.galleryActions,
+.profileToolbar > div,
+.editorActions,
+.selectionToolbar,
+.selectionToolbar > div {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.toolbarButton,
+.toolbarButtonActive,
+.galleryActions > button,
+.profileIdentity > button,
+.editorActions > button,
+.sessionCard button,
+.selectionToolbar > div > button {
+  border: 0;
+  color: var(--loom-text-muted);
+  background: transparent;
+}
+
+.toolbarButton,
+.toolbarButtonActive {
+  width: var(--loom-page-header-control-size);
+  min-width: var(--loom-page-header-control-size);
+  height: var(--loom-page-header-control-size);
+  min-height: var(--loom-page-header-control-size);
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+}
+
+.toolbarButton svg,
+.toolbarButtonActive svg,
+.galleryActions svg,
+.selectionToolbar svg {
+  width: var(--loom-page-header-icon-size);
+  height: var(--loom-page-header-icon-size);
+  stroke-width: var(--loom-page-header-icon-stroke);
+}
+
+.toolbarButton:hover:not(:disabled),
+.galleryActions > button:hover:not(:disabled),
+.sessionCard button:hover:not(:disabled) {
+  color: var(--loom-accent-strong);
+}
+
+.toolbarButtonActive {
+  color: var(--loom-accent-strong);
+}
+
+.galleryActions > button:last-child,
+.profileIdentity > button,
+.editorActions > button:first-child {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 7px;
+  color: var(--loom-accent-strong);
+  font-size: 11px;
+}
+
+.selectionToolbar {
+  width: 100%;
   justify-content: space-between;
   gap: 12px;
 }
 
-.sectionHead small {
+.selectionToolbar > span {
   color: var(--loom-text-muted);
-  font-size: 12px;
+  font-size: 11px;
 }
 
-.cardForm {
-  display: grid;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.cardForm textarea {
-  min-height: 160px;
-  resize: vertical;
-  border: 0;
-  border-top: 1px solid var(--loom-border);
-  border-bottom: 1px solid var(--loom-border);
-  border-radius: 0;
-  padding: 10px 0;
-  background: transparent;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.fieldLabel {
-  display: grid;
+.selectionToolbar > div > button {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
   gap: 5px;
+  padding: 4px 3px;
   color: var(--loom-text-muted);
-  font-size: 12px;
+  font-size: 11px;
 }
 
-.fieldLabel input,
-.fieldLabel textarea {
-  width: 100%;
-  border: 1px solid var(--loom-border);
-  border-radius: 4px;
-  padding: 7px 8px;
-  background: var(--loom-panel);
+.selectionToolbar > div > button:hover:not(:disabled) {
+  color: var(--loom-accent-strong);
+}
+
+.gallerySearch {
+  width: clamp(5.5rem, 18vw, 10rem);
+  min-height: 26px;
+  border: 0;
+  border-bottom: 1px solid var(--loom-divider-color);
+  border-radius: 0;
+  padding: 3px 2px;
   color: var(--loom-text);
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
 }
 
-.cardForm .compactTextarea {
-  min-height: 72px;
-  border: 1px solid var(--loom-border);
-  border-radius: 4px;
-  padding: 7px 8px;
-  font-family: inherit;
-  font-size: 12px;
+.gallerySearch:focus {
+  border-color: var(--loom-accent);
+  box-shadow: none;
 }
 
-.customCssEditor {
+.grid {
   display: grid;
-  gap: 6px;
-  color: var(--loom-text-muted);
-  font-size: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
+  gap: 10px;
+  padding: 0 16px 20px;
 }
 
-.inlineFields {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.list,
-.branchList {
-  display: grid;
-  gap: 0;
-  margin-top: 10px;
-}
-
-.listItem,
-.branchItem {
-  width: 100%;
+.gridCard,
+.listCard {
+  position: relative;
+  color: var(--loom-text);
   text-align: left;
 }
 
-.listItem {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  min-height: 34px;
+.cardOpen {
+  width: 100%;
   border: 0;
-  border-top: 1px solid color-mix(in srgb, var(--loom-border) 58%, transparent);
-  border-radius: 0;
-  padding-inline: 0;
+  border-radius: 8px;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  text-align: inherit;
+  cursor: grab;
 }
 
-.branchItem {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  justify-items: start;
-  gap: 3px;
-  min-height: 42px;
-  border: 0;
-  border-top: 1px solid color-mix(in srgb, var(--loom-border) 58%, transparent);
-  border-radius: 0;
-  padding-inline: 0;
+.cardOpen:active {
+  cursor: grabbing;
 }
 
-.listItem span,
-.branchItem span,
-.branchItem small {
-  max-width: 100%;
+.gridCard > .cardOpen img {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  display: block;
+  object-fit: cover;
+  filter: saturate(.82);
+  transition: filter 120ms ease;
+}
+
+.gridCard > .cardOpen > span {
+  display: grid;
+  gap: 2px;
+  padding: 7px 2px 3px;
+}
+
+.gridCard:has(.selectionToggle) > .cardOpen > span {
+  padding-right: 24px;
+}
+
+.gridCard strong,
+.listCard strong {
   overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.listItem small,
-.branchItem small {
+.gridCard small,
+.listCard small {
+  color: var(--loom-text-subtle);
+  font-size: 10px;
+}
+
+.gridCard:hover img {
+  filter: saturate(1);
+}
+
+.cardSelected img {
+  filter: saturate(1);
+}
+
+.cardSelected strong {
+  color: var(--loom-accent-strong);
+}
+
+.selectionToggle {
+  position: absolute;
+  z-index: 1;
+  right: 2px;
+  bottom: 17px;
+}
+
+.list {
+  display: grid;
+  gap: 4px;
+  padding: 0 16px 20px;
+}
+
+.listCard {
+  min-height: 52px;
+}
+
+.listCard > .cardOpen {
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 6px;
+}
+
+.listCard > .cardOpen img {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.listCard > .cardOpen > span {
+  display: grid;
+  gap: 3px;
+}
+
+.listCard:hover {
+  color: var(--loom-accent-strong);
+}
+
+.listCard .selectionToggle {
+  top: 50%;
+  right: 6px;
+  bottom: auto;
+  transform: translateY(-50%);
+}
+
+.listCard:has(.selectionToggle) > .cardOpen > span {
+  padding-right: 24px;
+}
+
+.empty {
+  margin: 32px 16px;
+  color: var(--loom-text-subtle);
+  font-size: 12px;
+}
+
+.gallerySentinel {
+  grid-column: 1 / -1;
+  min-height: 22px;
+  display: grid;
+  place-items: end center;
+  padding: 5px 0 2px;
+  color: var(--loom-text-subtle);
+  font-size: 10px;
+}
+
+.sheetBackdrop {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: flex;
+  align-items: end;
+  justify-content: center;
+  padding: 12px;
+  pointer-events: none;
+  background: transparent;
+}
+
+.groupSheet,
+.deleteDialog {
+  width: min(32rem, calc(100vw - 24px));
+  max-height: min(60vh, 32rem);
+  display: grid;
+  gap: 10px;
+  overflow: auto;
+  border: 0;
+  border-radius: 10px;
+  padding: 12px;
+  color: var(--loom-text);
+  background: var(--loom-window-raised);
+  animation: sheet-enter 160ms ease-out both;
+  pointer-events: auto;
+}
+
+.groupSheet > header,
+.groupRowWrap,
+.groupRow,
+.groupAssign,
+.groupForm,
+.deleteDialog > div {
+  display: flex;
+  align-items: center;
+}
+
+.groupSheet > header {
+  justify-content: space-between;
   color: var(--loom-text-muted);
   font-size: 11px;
 }
 
-.selected {
-  color: var(--loom-accent-strong);
+.groupList {
+  display: grid;
+  gap: 4px;
+}
+
+.groupRowWrap {
+  gap: 2px;
+}
+
+.groupRow,
+.groupRowActive {
+  min-height: 30px;
+  flex: 1;
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 8px;
+  color: var(--loom-text-muted);
   background: transparent;
+  text-align: left;
+}
+
+.groupRow:hover,
+.groupRowActive {
+  color: var(--loom-text);
+  background: color-mix(in srgb, var(--loom-panel) 68%, transparent);
+}
+
+.groupRowActive {
+  color: var(--loom-accent-strong);
+}
+
+.groupAssign {
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 7px 0;
+  color: var(--loom-text-subtle);
+  font-size: 10px;
+}
+
+.groupAssign > span {
+  width: 100%;
+}
+
+.groupAssign button,
+.groupForm > button,
+.deleteDialog button {
+  min-height: 27px;
+  border: 0;
+  border-radius: 5px;
+  padding: 4px 7px;
+  color: var(--loom-text-muted);
+  background: color-mix(in srgb, var(--loom-panel) 66%, transparent);
+  font-size: 11px;
+}
+
+.groupAssign button:hover,
+.groupForm > button:hover:not(:disabled),
+.deleteDialog button:hover:not(:disabled) {
+  color: var(--loom-text);
+}
+
+.groupForm {
+  gap: 5px;
+}
+
+.groupForm input {
+  min-width: 0;
+  flex: 1;
+  min-height: 28px;
+  border: 0;
+  border-bottom: 1px solid var(--loom-divider-color);
+  border-radius: 0;
+  padding: 3px 2px;
+  color: var(--loom-text);
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+}
+
+.groupForm input:focus {
+  border-color: var(--loom-accent);
+  box-shadow: none;
+}
+
+.deleteDialog {
+  width: min(23rem, calc(100vw - 24px));
+  padding: 14px;
+}
+
+.deleteDialog h2,
+.deleteDialog p {
+  margin: 0;
+}
+
+.deleteDialog h2 {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.deleteDialog p {
+  color: var(--loom-text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.deleteDialog > div {
+  justify-content: end;
+  gap: 5px;
+}
+
+@keyframes sheet-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.profileHero {
+  height: clamp(9rem, 28vh, 15rem);
+  position: relative;
+  margin-bottom: 41px;
+  background-position: center 38%;
+  background-size: cover;
+}
+
+.profileHeroShade {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--loom-bg) 12%, transparent), var(--loom-bg));
+}
+
+.mediaInput {
+  display: none;
+}
+
+.heroMediaTarget {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  border: 0;
+  padding: 0;
+  color: var(--loom-text);
+  background: transparent;
+  cursor: pointer;
+}
+
+.profileAvatar {
+  width: 88px;
+  height: 88px;
+  position: absolute;
+  z-index: 2;
+  bottom: -44px;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 3px solid var(--loom-bg);
+  border-radius: 50%;
+  padding: 0;
+  overflow: hidden;
+  background: var(--loom-bg);
+  cursor: pointer;
+}
+
+.profileAvatar img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.mediaLabel {
+  position: absolute;
+  color: var(--loom-text-muted);
+  font-size: 10px;
+  opacity: 0;
+  transition: color 120ms ease, opacity 120ms ease;
+}
+
+.heroMediaTarget .mediaLabel {
+  top: 9px;
+  right: 12px;
+}
+
+.profileAvatar .mediaLabel {
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--loom-text);
+  background: color-mix(in srgb, var(--loom-bg) 60%, transparent);
+  text-align: center;
+}
+
+.heroMediaTarget:hover .mediaLabel,
+.heroMediaTarget:focus-visible .mediaLabel,
+.profileAvatar:hover .mediaLabel,
+.profileAvatar:focus-visible .mediaLabel {
   opacity: 1;
 }
 
-.selected span {
+.heroMediaTarget:hover,
+.profileAvatar:hover {
+  color: var(--loom-accent-strong);
+}
+
+.heroMediaTarget:focus-visible,
+.profileAvatar:focus-visible,
+.mediaDropTarget {
+  outline: 1px dashed var(--loom-accent);
+  outline-offset: -4px;
+}
+
+.profileIdentity {
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 16px 18px;
+}
+
+.profileIdentity h2 {
+  margin: 0;
+  font-size: 16px;
   font-weight: 650;
 }
 
-.emptyCompact {
-  width: 100%;
-  margin-top: 10px;
-  padding: 10px;
+.profileIdentity p {
+  margin: 4px 0 0;
   color: var(--loom-text-muted);
-  background: transparent;
-  font-size: 12px;
-}
-
-.meta {
-  display: grid;
-  grid-template-columns: 74px minmax(0, 1fr);
-  gap: 8px;
-  margin: 12px 0 0;
-  border-top: 1px solid color-mix(in srgb, var(--loom-border) 58%, transparent);
-  padding-top: 10px;
-  font-size: 12px;
-}
-
-.meta dt {
-  color: var(--loom-text-muted);
-}
-
-.meta dd {
-  min-width: 0;
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.rendererPocControls {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.customCssEditor {
-  margin-top: 12px;
-}
-
-.customCssHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.customCssActions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
-}
-
-.customCssActions button {
-  min-height: 28px;
-  padding: 4px 8px;
-  font-size: 12px;
-}
-
-.customCssEditor textarea {
-  min-height: 180px;
-  resize: vertical;
-  padding: 10px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.eventLog {
-  display: grid;
-  gap: 4px;
-  margin-top: 12px;
-  border: 1px solid var(--loom-border);
-  border-radius: 6px;
-  padding: 8px;
-  color: var(--loom-text-muted);
-  background: var(--loom-surface);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
 }
 
-@media (max-width: 820px) {
-  .resourcePane {
-    max-height: none;
-  }
+.mediaNotice {
+  margin: -9px 16px 12px;
+  color: var(--loom-warning);
+  font-size: 11px;
+}
+
+.profileContent,
+.profileEditor,
+.sessions {
+  display: grid;
+  gap: 14px;
+  margin: 0 16px;
+  padding: 14px 0;
+}
+
+.profileContent,
+.profileEditor {
+  border-top: 1px solid var(--loom-divider-color);
+}
+
+.profileContent h3,
+.sessions h3,
+.profileEditor label > span {
+  margin: 0;
+  color: var(--loom-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.profileContent p {
+  margin: 7px 0 0;
+  color: var(--loom-text);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.resourceOverview {
+  justify-content: space-between;
+  padding-top: 3px;
+}
+
+.resourceOverview span,
+.currentSession,
+.sessionList small,
+.sessionList > p {
+  color: var(--loom-text-subtle);
+  font-size: 11px;
+}
+
+.profileEditor label {
+  display: grid;
+  gap: 5px;
+}
+
+.profileEditor input,
+.profileEditor textarea {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--loom-divider-color);
+  border-radius: 0;
+  padding: 6px 2px;
+  color: var(--loom-text);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+}
+
+.profileEditor textarea {
+  min-height: 7rem;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.profileEditor input:focus,
+.profileEditor textarea:focus {
+  border-color: var(--loom-accent);
+  box-shadow: none;
+}
+
+.deleteButton {
+  color: var(--loom-danger) !important;
+}
+
+.sessions {
+  border-top: 1px solid var(--loom-divider-color);
+}
+
+.sessions > header {
+  justify-content: space-between;
+}
+
+.currentSession {
+  margin: -5px 0 0;
+}
+
+.sessionList {
+  display: grid;
+  gap: 7px;
+}
+
+.sessionCard {
+  overflow: hidden;
+  border: 0;
+  border-radius: 8px;
+  background: var(--loom-surface);
+}
+
+.sessionCard summary {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.sessionCard summary::-webkit-details-marker {
+  display: none;
+}
+
+.sessionCard summary > svg {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  color: var(--loom-text-muted);
+  stroke-width: 1.25;
+  transition: transform 120ms ease;
+}
+
+.sessionCard[open] summary > svg {
+  transform: rotate(90deg);
+}
+
+.sessionCard summary > span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.sessionCard summary strong {
+  color: var(--loom-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sessionCard summary small {
+  color: var(--loom-text-subtle);
+  font-size: 10px;
+}
+
+.sessionCardBody {
+  display: grid;
+  gap: 10px;
+  padding: 1px 10px 10px 29px;
+}
+
+.sessionCardBody dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.sessionCardBody dl > div {
+  display: grid;
+  gap: 2px;
+}
+
+.sessionCardBody dt,
+.sessionCardBody dd {
+  margin: 0;
+  font-size: 10px;
+}
+
+.sessionCardBody dt {
+  color: var(--loom-text-subtle);
+}
+
+.sessionCardBody dd {
+  color: var(--loom-text-muted);
+  line-height: 1.45;
+}
+
+.sessionCardBody > button {
+  justify-self: start;
+  padding: 2px 0;
+  color: var(--loom-accent-strong);
+  font-size: 11px;
+  text-align: left;
+}
+
+.sessionCardBody > button:disabled {
+  color: var(--loom-text-subtle);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gridCard img,
+  .mediaLabel,
+  .sessionCard summary > svg { transition: none; }
+
+  .galleryEntering,
+  .profileEntering,
+  .profileLeaving,
+  .groupSheet,
+  .deleteDialog { animation: none; }
 }

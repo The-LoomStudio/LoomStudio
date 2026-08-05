@@ -3,7 +3,6 @@ import type { Logger } from '@loom-studio/logging'
 import { useEffect, useMemo, useState } from 'react'
 import { withClientBridgeLogging } from '../shared/api/client-bridge-logging.js'
 import { createTranslator, type Locale } from '../shared/i18n/index.js'
-import { createRendererApi } from '../shared/api/renderer-api.js'
 import { createStudioApi } from '../shared/api/studio-api.js'
 import { useBusyAction } from '../shared/hooks/use-busy-action.js'
 import { useCards } from '../features/cards/model/use-cards.js'
@@ -13,8 +12,6 @@ import { normalizeContextAssets } from '../features/context-assets/model/context
 import { findContextAssetNode } from '../features/context-assets/model/context-asset-tree.js'
 import { createActivationFacts, toggleActivationTag, type ActivationControlState, type ActivationTag } from '../features/prompt-build/model/activation-control.js'
 import { buildPromptBuildSteps } from '../features/prompt-build/model/build-prompt-build-steps.js'
-import { useRenderingLab } from '../features/rendering-lab/model/use-rendering-lab.js'
-import { useRendererSession } from '../features/renderer-poc/model/use-renderer-session.js'
 import { useProviderSettings } from '../features/provider-settings/model/use-provider-settings.js'
 import { useSessionRuntime } from '../features/session-runtime/model/use-session-runtime.js'
 import { DemoData } from './demo-data.js'
@@ -42,17 +39,14 @@ export function useStudioState(transportLogger: Logger) {
   const observedBridge = useMemo(() => withClientBridgeLogging(bridge, transportLogger), [bridge, transportLogger])
   const api = useMemo(() => createStudioApi(observedBridge), [observedBridge])
   const editHistory = useEditHistory({ revertChangeset: api.history.revert })
-  const rendererApi = useMemo(() => createRendererApi(observedBridge), [observedBridge])
   const [promptResources, setPromptResources] = useState<PromptResource[]>([])
   const cardsState = useCards({
     api,
-    initialCardJson: DemoData.cardJson,
+    initialCardName: DemoData.cardName,
     recordEdit: editHistory.record,
     runAction: busyAction.runAction,
     t,
   })
-  const renderer = useRendererSession({ rendererApi, runAction: busyAction.runAction, t })
-  const renderingLab = useRenderingLab({ initialMode: 'inline-artifact', t })
   const contextAssetState = useContextAssets({
     api,
     initialNodes: DemoData.contextAssets,
@@ -69,7 +63,6 @@ export function useStudioState(transportLogger: Logger) {
     api,
     initialGatewayForm: DemoData.gatewayForm,
     runAction: busyAction.runAction,
-    t,
   })
   const activationFacts = useMemo(() => createActivationFacts(activationControl), [activationControl])
   const sessionRuntime = useSessionRuntime({
@@ -91,7 +84,7 @@ export function useStudioState(transportLogger: Logger) {
   useEffect(() => {
     editHistory.clear()
     void busyAction.runAction(async () => {
-      let cards = await cardsState.refreshCards()
+      const cards = await cardsState.refreshCards()
       let selectedCardId = cards[0]?.id
 
       if (cards.length === 0) {
@@ -204,8 +197,6 @@ export function useStudioState(transportLogger: Logger) {
     cards: cardsState.cards,
     selectedCardId: cardsState.selectedCardId,
     setSelectedCardId: cardsState.setSelectedCardId,
-    cardJson: cardsState.cardJson,
-    setCardJson: cardsState.setCardJson,
     cardDraft: cardsState.cardDraft,
     setCardDraft: cardsState.setCardDraft,
     selectedCard: cardsState.selectedCard,
@@ -230,28 +221,14 @@ export function useStudioState(transportLogger: Logger) {
     setGatewayForm: providerSettings.setGatewayForm,
     selectedAgentRuntimeProfileId: providerSettings.selectedAgentRuntimeProfileId,
     setSelectedAgentRuntimeProfileId: providerSettings.setSelectedAgentRuntimeProfileId,
-    gatewayProfileSummary: providerSettings.gatewayProfileSummary,
     // input
     input: sessionRuntime.input, setInput: sessionRuntime.setInput,
     // state
     busy: busyAction.busy, error: busyAction.error,
     canUndoEdit: editHistory.canUndo,
     canRedoEdit: editHistory.canRedo,
-    // renderer
-    rendererSessionId: renderer.rendererSessionId,
-    rendererState: renderer.rendererState,
-    rendererEvents: renderer.rendererEvents,
     // custom css
     customCss, setCustomCss,
-    // rendering lab
-    renderingMode: renderingLab.renderingMode,
-    setRenderingMode: renderingLab.setRenderingMode,
-    rawHtmlAllowed: renderingLab.rawHtmlAllowed,
-    setRawHtmlAllowed: renderingLab.setRawHtmlAllowed,
-    renderingEvents: renderingLab.renderingEvents,
-    setRenderingEvents: renderingLab.setRenderingEvents,
-    selectRenderingChoice: renderingLab.selectRenderingChoice,
-    renderingSample: renderingLab.renderingSample,
     // context assets
     contextAssets: contextAssetState.nodes, setContextAssets: contextAssetState.setNodes,
     selectedContextNodeId: contextAssetState.selectedId, setSelectedContextNodeId: contextAssetState.setSelectedId,
@@ -271,7 +248,9 @@ export function useStudioState(transportLogger: Logger) {
     createCard: cardsState.createCard,
     updateCard: cardsState.updateCard,
     deleteCard: cardsState.deleteCard,
-    createGatewayProfile: providerSettings.createGatewayProfile,
+    deleteCards: cardsState.deleteCards,
+    createProviderAccount: providerSettings.createProviderAccount,
+    createModelProfile: providerSettings.createModelProfile,
     createSessionFromCard: sessionRuntime.createSessionFromCard,
     submitTurn: sessionRuntime.submitTurn,
     previewPrompt: sessionRuntime.previewPrompt,
@@ -279,13 +258,9 @@ export function useStudioState(transportLogger: Logger) {
     switchBranch: sessionRuntime.switchBranch,
     switchBranchById: sessionRuntime.switchBranchById,
     refreshCards: cardsState.refreshCards,
-    createRendererSession: renderer.createRendererSession,
-    revokeRendererSession: renderer.revokeRendererSession,
-    incrementRendererLove: renderer.incrementRendererLove,
-    appendRendererMessage: renderer.appendRendererMessage,
-    openRendererWindow: renderer.openRendererWindow,
     // provider management
     providerAccounts: providerSettings.providerAccounts,
+    providerAccountsLoaded: providerSettings.providerAccountsLoaded,
     modelProfiles: providerSettings.modelProfiles,
     agentRuntimeProfiles: providerSettings.agentRuntimeProfiles,
     refreshProviderAccounts: providerSettings.refreshProviderAccounts,

@@ -1,281 +1,339 @@
 .apiPane {
   width: 100%;
   min-height: 100%;
-  overflow: visible;
-  border-right: 0;
+  padding-bottom: 32px;
+  color: var(--loom-text);
   background: var(--loom-bg);
 }
 
-.hostSection {
-  padding-block: 12px;
-}
-
-.hostControls {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.hostControls label {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 12px;
-  color: var(--loom-text);
-  font-weight: 500;
-}
-
-.hostControls select,
-.hostControls input {
-  width: 132px;
-  min-height: 30px;
-  padding: 4px 8px;
-  font-size: 12px;
-  border: 1px solid var(--loom-border);
-  border-radius: 4px;
-  background: var(--loom-surface);
-  color: var(--loom-text);
-}
-
-.section {
+.accountsSection {
   padding: 14px 16px;
 }
 
-.sectionHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
-.sectionHead h2 {
-  color: var(--loom-text);
-  font-size: 12px;
-  font-weight: 650;
-  margin: 0;
-}
-
-.gatewayForm {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.gatewayForm label {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  font-size: 12px;
-  color: var(--loom-text);
-  font-weight: 500;
-}
-
-.gatewayForm input {
-  min-height: 32px;
-  padding: 6px 9px;
-  border: 1px solid var(--loom-border);
-  border-radius: 6px;
-  background: var(--loom-surface);
-  color: var(--loom-text);
-  font-size: 12px;
-  transition: all 0.2s ease;
-}
-
-.gatewayForm input:focus,
-.yamlTextarea:focus {
-  outline: none;
-  border-color: var(--loom-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--loom-accent) 20%, transparent);
-}
-
-.gatewayHint,
-.gatewayWarning {
-  color: var(--loom-text-muted);
-  font-size: 11px;
-  font-weight: 400;
-  line-height: 1.4;
-}
-
-.gatewayWarning {
-  color: var(--loom-danger);
-}
-
-.yamlTextarea {
-  min-height: 80px;
-  resize: vertical;
-  padding: 8px 12px;
-  border: 1px solid var(--loom-border);
-  border-radius: 6px;
-  background: var(--loom-surface);
-  color: var(--loom-text);
-  font-size: 13px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  transition: all 0.2s ease;
-}
-
-.modelEditor {
-  width: 100%;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px dashed var(--loom-border);
-}
-
-.gatewayGrid {
+.providerForm label {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 5px;
+  color: var(--loom-text-muted);
+  font-size: 11px;
 }
 
-.gatewayForm button {
-  margin-top: 4px;
-  min-height: 32px;
-  padding: 6px 12px;
-  background: var(--loom-text);
-  color: var(--loom-surface);
-  border: none;
-  border-radius: 6px;
+.providerForm input,
+.modelPicker input {
+  width: 100%;
+  min-height: 30px;
+  border: 0;
+  border-bottom: 1px solid var(--loom-divider-color);
+  border-radius: 0;
+  padding: 4px 2px;
+  color: var(--loom-text);
+  background: transparent;
+  font-size: 12px;
+}
+
+.providerForm input:focus,
+.modelPicker input:focus {
+  border-color: var(--loom-accent);
+  box-shadow: none;
+}
+
+.sectionHeader,
+.accountField,
+.keyRow,
+.modelRow,
+.availableModel {
+  display: flex;
+  align-items: center;
+}
+
+.sectionHeader {
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.sectionHeader h2,
+.accountBody h4 {
+  margin: 0;
   font-size: 12px;
   font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s ease;
 }
 
-.gatewayForm button:hover:not(:disabled) {
-  background: var(--loom-accent);
-}
-
-.gatewayForm button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.gatewayProfile {
-  margin-top: 16px;
-  padding: 12px;
-  background: var(--loom-surface);
-  border: 1px solid var(--loom-border);
-  border-radius: 6px;
-}
-
-.gatewayProfile p {
-  font-size: 13px;
-  color: var(--loom-text);
-  margin: 0;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
+.sectionHeader > span {
+  color: var(--loom-text-subtle);
   font-size: 11px;
-  font-weight: 600;
-  color: var(--loom-text-muted);
-  background: color-mix(in srgb, var(--loom-border) 60%, transparent);
+}
+
+.createCard,
+.accountCard {
+  border: 0;
   border-radius: 10px;
-}
-
-.entityList {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.entityEmpty {
-  font-size: 13px;
-  color: var(--loom-text-muted);
-  margin: 0;
-  padding: 8px 0;
-}
-
-.entityItem {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
   background: var(--loom-surface);
-  border: 1px solid var(--loom-border);
-  border-radius: 6px;
-  transition: border-color 0.15s ease;
 }
 
-.entityItem:hover {
-  border-color: var(--loom-accent);
+.createCard {
+  margin-bottom: 8px;
 }
 
-.entityItemActive {
-  border-color: var(--loom-accent);
-  background: color-mix(in srgb, var(--loom-accent) 8%, var(--loom-surface));
-}
-
-.entityInfo {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1;
-}
-
-.entityName {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--loom-text);
+.createCard > summary,
+.accountCard > summary {
+  min-height: 38px;
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 7px 12px;
+  color: var(--loom-text);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  list-style: none;
 }
 
-.entityMeta {
-  font-size: 11px;
-  color: var(--loom-text-muted);
+.createCard > summary::-webkit-details-marker,
+.accountCard > summary::-webkit-details-marker {
+  display: none;
+}
+
+.createCard > summary > svg:first-child,
+.accountCard > summary > svg:first-child {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  stroke-width: 1.25;
+  transition: transform 120ms ease;
+}
+
+.createCard[open] > summary > svg:first-child,
+.accountCard[open] > summary > svg:first-child {
+  transform: rotate(90deg);
+}
+
+.accountCard > summary > span {
+  min-width: 0;
+  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.entityActions {
-  display: flex;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.entityActionDanger {
-  padding: 4px 10px;
-  font-size: 11px;
-  font-weight: 500;
-  border: 1px solid color-mix(in srgb, var(--loom-border) 80%, transparent);
-  border-radius: 4px;
-  background: transparent;
-  color: var(--loom-text-muted);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.entityActionDanger:hover:not(:disabled) {
-  border-color: var(--loom-danger);
-  color: var(--loom-danger);
-  background: color-mix(in srgb, var(--loom-danger) 12%, transparent);
-}
-
-.entityActionDanger:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.activeBadge {
-  display: inline-block;
-  padding: 1px 6px;
+.accountCard > summary > small {
+  color: var(--loom-text-subtle);
   font-size: 10px;
-  font-weight: 600;
-  color: var(--loom-accent);
-  background: color-mix(in srgb, var(--loom-accent) 15%, transparent);
-  border-radius: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
+  font-weight: 400;
+}
+
+.brandIcon,
+.brandIconFallback {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  object-fit: contain;
+}
+
+.brandIconFallback {
+  color: var(--loom-text-muted);
+  stroke-width: 1.25;
+}
+
+.providerForm,
+.accountBody {
+  display: grid;
+  gap: 13px;
+  padding: 4px 12px 14px 26px;
+}
+
+.providerForm > button {
+  justify-self: start;
+  min-height: 28px;
+  border: 0;
+  padding-inline: 0;
+  color: var(--loom-accent-strong);
+  background: transparent;
+  font-size: 12px;
+}
+
+.hint,
+.warning {
+  color: var(--loom-text-subtle);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.warning {
+  color: var(--loom-danger);
+}
+
+.accountList {
+  display: grid;
+  gap: 7px;
+}
+
+.extensionId {
+  color: var(--loom-text-subtle);
+  font-size: 10px;
+}
+
+.accountField {
+  min-width: 0;
+  gap: 10px;
+  color: var(--loom-text-muted);
+  font-size: 11px;
+}
+
+.accountField code {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--loom-text);
+  font-family: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.keys,
+.models,
+.enabledModels {
+  display: grid;
+  gap: 7px;
+}
+
+.keys h4,
+.models h4 {
+  color: var(--loom-text-muted);
+}
+
+.keys > p,
+.empty,
+.mockNotice {
+  margin: 0;
+  color: var(--loom-text-subtle);
+  font-size: 11px;
+}
+
+.keyRow {
+  min-height: 26px;
+  gap: 10px;
+  color: var(--loom-text-muted);
+  font-size: 11px;
+}
+
+.keyRow code {
+  color: var(--loom-text);
+  font-family: inherit;
+}
+
+.keyRow small {
+  margin-left: auto;
+  color: var(--loom-success);
+  font-size: 10px;
+}
+
+.modelPicker {
+  position: relative;
+}
+
+.modelPicker > form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 4px;
+}
+
+.modelPicker > form button,
+.iconButton,
+.iconButtonDanger {
+  min-width: 26px;
+  min-height: 26px;
+  border: 0;
+  padding: 0;
+  color: var(--loom-text-muted);
+  background: transparent;
+}
+
+.modelPicker > form button:hover:not(:disabled),
+.iconButton:hover:not(:disabled) {
+  color: var(--loom-accent-strong);
+}
+
+.iconButtonDanger:hover:not(:disabled) {
+  color: var(--loom-danger);
+}
+
+.modelPicker > form button svg,
+.iconButton svg,
+.iconButtonDanger svg,
+.deleteProvider svg {
+  width: 13px;
+  height: 13px;
+  stroke-width: 1.25;
+}
+
+.modelMenu {
+  display: none;
+  margin-top: 5px;
+  padding: 6px 0;
+  border-radius: 8px;
+  background: var(--loom-surface-deep);
+}
+
+.modelPicker:focus-within .modelMenu {
+  display: grid;
+}
+
+.modelRow,
+.availableModel {
+  min-height: 30px;
+  gap: 8px;
+  padding: 2px 8px;
+  color: var(--loom-text);
+  font-size: 11px;
+}
+
+.availableModel {
+  color: var(--loom-text-muted);
+}
+
+.modelRow > span,
+.availableModel > span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modelRow:hover,
+.availableModel:hover {
+  color: var(--loom-accent-strong);
+}
+
+.mockNotice {
+  padding: 7px 9px 3px;
+}
+
+.enabledToggle:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.deleteProvider {
+  justify-self: start;
+  min-height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  padding: 0;
+  color: var(--loom-text-subtle);
+  background: transparent;
+  font-size: 11px;
+}
+
+.deleteProvider:hover:not(:disabled) {
+  color: var(--loom-danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .createCard > summary > svg:first-child,
+  .accountCard > summary > svg:first-child {
+    transition: none;
+  }
 }

@@ -9,57 +9,18 @@ import type { ContextAssetNode } from '../entities/index.js'
  * - contextAssets 用于 Composition Skeleton 预览 (对齐 docs/08-ApplicationLayer/composition-skeleton-v0.md)
  */
 export const DemoData = {
+  cardName: 'Loom City Layers',
   /** RPC 端点 */
   endpoint: '/rpc',
 
   /** 默认 Custom CSS（空） */
   customCss: '',
 
-  /** 测试用 Custom CSS */
-  testCustomCss: `:root {
-  --loom-bg: #eff2ee;
-  --loom-surface: #fafbf8;
-  --loom-panel: #fafbf8;
-  --loom-panel-muted: #e3e8e2;
-  --loom-border: #aeb8aa;
-  --loom-text: #1e231d;
-  --loom-text-muted: #697168;
-  --loom-accent: #486f66;
-  --loom-role-user: #eef4f1;
-  --loom-role-assistant: #ffffff;
-  --loom-chat-width: 780px;
-  --loom-radius-message: 0;
-}
-
-[data-loom-component="base-chat-canvas"] {
-  background:
-    linear-gradient(#e5e9e2 1px, transparent 1px),
-    #fafbf8;
-  background-size: 100% 30px;
-}
-
-[data-loom-component="chat-message"] {
-  border-color: #aeb8aa;
-}
-
-[data-loom-component="chat-message"][data-loom-role="assistant"]
-  [data-loom-slot="message-body"] {
-  color: #1e231d;
-  font-size: 17px;
-}
-
-[data-loom-component="input-dashboard"] {
-  border-top-color: #aeb8aa;
-  background: #fafbf8;
-}`,
-
   /** Gateway 配置表单默认值（对齐 OpenAI Compatible provider） */
   gatewayForm: {
+    displayName: 'OpenAI Compatible',
     baseUrl: 'https://api.openai.com/v1',
     apiKey: '',
-    model: 'gpt-4o-mini',
-    temperature: '0.8',
-    maxTokens: '1200',
   },
 
   /**

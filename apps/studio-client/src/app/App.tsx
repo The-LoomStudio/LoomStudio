@@ -9,8 +9,9 @@ import { ResourcePanel } from '../widgets/resource-panel/resource-panel.js'
 import { ApiPanel } from '../widgets/api-panel/api-panel.js'
 import { InspectorPanel } from '../widgets/inspector-panel/inspector-panel.js'
 import { LogViewer } from '../widgets/log-viewer/log-viewer.js'
+import { SettingsPanel } from '../widgets/settings-panel/settings-panel.js'
 import { ContextMenuProvider } from '../shared/ui/context-menu/context-menu.js'
-import { DemoData } from './demo-data.js'
+import { hasCompleteProviderAccount } from '../features/provider-settings/model/provider-account-status.js'
 import styles from './app.module.scss'
 import '../styles/global.css'
 
@@ -34,6 +35,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
   const studio = (
     <StudioPage
       assetWorkspaceId={assetWorkspaceId}
+      apiConfigured={state.providerAccountsLoaded ? hasCompleteProviderAccount(state.providerAccounts) : undefined}
       busy={state.busy}
       canRedo={state.canRedoEdit}
       canUndo={state.canUndoEdit}
@@ -54,29 +56,23 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
       apiPanel={(
         <ApiPanel
           busy={state.busy}
-          endpoint={state.endpoint}
           gatewayForm={state.gatewayForm}
-          gatewayProfileSummary={state.gatewayProfileSummary}
-          locale={state.locale}
-          onChangeEndpoint={state.setEndpoint}
           onChangeGatewayForm={state.setGatewayForm}
-          onChangeLocale={state.setLocale}
-          onCreateGatewayProfile={state.createGatewayProfile}
+          onCreateProviderAccount={state.createProviderAccount}
+          onCreateModelProfile={state.createModelProfile}
           t={state.t}
           providerAccounts={state.providerAccounts}
           modelProfiles={state.modelProfiles}
           onDeleteProviderAccount={state.deleteProviderAccount}
           onDeleteModelProfile={state.deleteModelProfile}
-          onUpdateModelProfile={state.updateModelProfile}
-          onPingModelProfile={state.pingModelProfile}
         />
       )}
+      settingsPanel={<SettingsPanel customCss={state.customCss} locale={state.locale} onChangeCustomCss={state.setCustomCss} onChangeLocale={state.setLocale} t={state.t} />}
       presetPanel={(
         <PresetWorkbench
           {...contextAssetEditorProps}
           agentRuntimeProfiles={state.agentRuntimeProfiles}
           modelProfiles={state.modelProfiles}
-          selectedAgentRuntimeProfileId={state.selectedAgentRuntimeProfileId}
           onSelectAgentRuntimeProfile={id => state.setSelectedAgentRuntimeProfileId(id)}
           onCreateAgentRuntimeProfile={state.createAgentRuntimeProfile}
           onUpdateAgentRuntimeProfile={state.updateAgentRuntimeProfile}
@@ -88,35 +84,15 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
           branch={state.branch}
           branches={state.branches}
           busy={state.busy}
-          cardJson={state.cardJson}
           cardDraft={state.cardDraft}
           cards={state.cards}
-          customCss={state.customCss}
-          onAppendRendererMessage={state.appendRendererMessage}
-          onChangeCardJson={state.setCardJson}
           onChangeCardDraft={state.setCardDraft}
-          onChangeCustomCss={state.setCustomCss}
           onCreateCard={state.createCard}
-          onCreateRendererSession={state.createRendererSession}
           onCreateSessionFromCard={state.createSessionFromCard}
-          onDeleteCard={state.deleteCard}
-          onIncrementRendererLove={state.incrementRendererLove}
-          onLoadTestCss={() => state.setCustomCss(DemoData.testCustomCss)}
-          onOpenRendererWindow={state.openRendererWindow}
-          onRefreshCards={() => {
-            void state.runAction(async () => {
-              await state.refreshCards()
-            })
-          }}
-          onResetCss={() => state.setCustomCss(DemoData.customCss)}
-          onRevokeRendererSession={state.revokeRendererSession}
+          onDeleteCards={state.deleteCards}
           onSelectCard={state.setSelectedCardId}
           onSwitchBranch={state.switchBranch}
           onUpdateCard={state.updateCard}
-          rendererEvents={state.rendererEvents}
-          rendererSessionId={state.rendererSessionId}
-          rendererState={state.rendererState}
-          selectedAgentRuntimeProfileId={state.selectedAgentRuntimeProfileId}
           selectedCard={state.selectedCard}
           selectedCardId={state.selectedCardId}
           session={state.session}
@@ -161,21 +137,11 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         <InspectorPanel
           agentTranscript={state.agentTranscript}
           cardSnapshot={state.session?.cardSnapshot ?? state.selectedCard ?? null}
-          events={state.renderingEvents}
-          mode={state.renderingMode}
-          onAllowRawHtml={() => state.setRawHtmlAllowed(true)}
-          onCreateRendererSession={state.createRendererSession}
-          onOpenRenderer={state.openRendererWindow}
-          onSelectChoice={state.selectRenderingChoice}
-          onSelectMode={state.setRenderingMode}
           promptBuildSteps={state.promptBuildSteps}
           promptBuildTrace={state.promptBuildTrace ?? null}
           promptMessages={state.promptMessages ?? null}
           providerPayloadPreview={state.providerPayloadPreview ?? null}
-          rawHtmlAllowed={state.rawHtmlAllowed}
-          rendererSessionId={state.rendererSessionId}
           runDetails={state.runDetails ?? null}
-          sample={state.renderingSample}
           t={state.t}
         />
       )}

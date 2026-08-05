@@ -3,7 +3,7 @@ import { createJSONStorage, persist, type StateStorage } from 'zustand/middlewar
 import type { WindowSize } from '../window-resize.js'
 import type { LongTextEditorMode } from '../../../shared/ui/long-text-editor/long-text-editor-model.js'
 
-export const STUDIO_PANEL_IDS = ['api', 'preset', 'resources', 'editor', 'inspector', 'logs'] as const
+export const STUDIO_PANEL_IDS = ['api', 'preset', 'resources', 'editor', 'inspector', 'logs', 'settings'] as const
 
 export type StudioPanelId = (typeof STUDIO_PANEL_IDS)[number]
 export type AssetLayoutId = Extract<StudioPanelId, 'preset' | 'resources'>

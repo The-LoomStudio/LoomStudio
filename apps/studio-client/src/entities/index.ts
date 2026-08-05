@@ -34,4 +34,3 @@ export type {
   UpdateAgentRuntimeProfileResult,
   DeleteAgentRuntimeProfileResult,
 } from './provider.js'
-export type { RendererPocEvent, RendererPocMessage, RendererPocSessionResult, RendererPocState } from './renderer.js'

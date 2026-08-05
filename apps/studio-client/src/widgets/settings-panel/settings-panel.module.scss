@@ -1,0 +1,67 @@
+.settingsPanel {
+  min-height: 100%;
+  padding: 14px 16px 32px;
+  color: var(--loom-text);
+  background: var(--loom-bg);
+}
+
+.settingsPanel h2 {
+  margin: 0 0 10px;
+  color: var(--loom-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.settingRow {
+  min-height: 36px;
+  display: grid;
+  grid-template-columns: minmax(5rem, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  color: var(--loom-text-muted);
+  font-size: 11px;
+}
+
+.settingRow select {
+  width: 100%;
+  min-height: 30px;
+  border: 0;
+  border-bottom: 1px solid var(--loom-divider-color);
+  border-radius: 0;
+  padding: 4px 2px;
+  color: var(--loom-text);
+  background: transparent;
+  font-size: 12px;
+}
+
+.settingRow select:focus {
+  border-color: var(--loom-accent);
+  box-shadow: none;
+}
+
+.customCss {
+  display: grid;
+  gap: 7px;
+  margin-top: 24px;
+  color: var(--loom-text-muted);
+  font-size: 11px;
+}
+
+.customCss textarea {
+  min-height: 12rem;
+  resize: vertical;
+  border: 0;
+  border-bottom: 1px solid var(--loom-divider-color);
+  border-radius: 0;
+  padding: 8px 2px;
+  color: var(--loom-text);
+  background: transparent;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.customCss textarea:focus {
+  border-color: var(--loom-accent);
+  box-shadow: none;
+}

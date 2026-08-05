@@ -47,6 +47,7 @@
   --loom-dock-toggle-rail-width: 48px;
   --loom-dock-icon-size: 14px;
   --loom-dock-icon-stroke: 1.25;
+  --loom-dock-content-inset: 5px;
   --loom-dock-item-height: calc(var(--loom-dock-icon-size) + 16px);
   --loom-dock-item-gap: calc(var(--loom-dock-icon-size) * 0.1);
   --loom-dock-header-top-space: 6px;
@@ -138,6 +139,7 @@
 
 .dockHeaderDivider {
   min-width: 0;
+  margin-inline: calc(var(--loom-divider-inset) + var(--loom-dock-content-inset));
 }
 
 .floatingDockOpen {
@@ -230,12 +232,51 @@
 
 .studioRail {
   min-width: 48px;
-  display: grid;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
   gap: var(--loom-dock-item-gap);
-  padding: 6px 5px;
+  padding: 6px var(--loom-dock-content-inset);
   border: 0;
   background: transparent;
+}
+
+.railFooter {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  padding: 10px 10px 4px;
+  color: var(--loom-text-subtle);
+  font-size: 10px;
+}
+
+.githubLink {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.githubLink:hover,
+.githubLink:focus-visible {
+  color: var(--loom-text);
+}
+
+.githubLink svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  fill: currentColor;
+  stroke: none;
+}
+
+.version {
+  flex: 0 0 auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 .railTab {
@@ -272,6 +313,13 @@
   color: var(--loom-accent-strong);
 }
 
+.railTabIncomplete,
+.railTabIncomplete:hover:not(:disabled),
+.railTabIncomplete:focus-visible,
+.railTabIncomplete:focus-visible svg {
+  color: var(--loom-danger);
+}
+
 .railTab svg {
   width: var(--loom-dock-icon-size);
   height: var(--loom-dock-icon-size);
@@ -302,7 +350,7 @@
 .floatingDock:not(.floatingDockActive):hover .studioRail,
 .floatingDock:not(.floatingDockActive):focus-within .studioRail,
 .floatingDockOpen .studioRail {
-  padding: 2px 5px 6px;
+  padding: 2px var(--loom-dock-content-inset) 6px;
 }
 
 .floatingDock:not(.floatingDockActive):hover .railTab,
@@ -314,7 +362,7 @@
 
 .floatingDockActive .studioRail {
   min-width: var(--loom-dock-expanded-width);
-  padding: 2px 5px 6px;
+  padding: 2px var(--loom-dock-content-inset) 6px;
 }
 
 .floatingDockActive .railTab {
@@ -379,6 +427,35 @@
   color: var(--loom-text-muted);
 }
 
+.resourceGroupTitle {
+  min-width: 0;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  color: var(--loom-text-muted);
+  background: transparent;
+  text-align: left;
+}
+
+.resourceGroupTitle:hover:not(:disabled),
+.resourceGroupTitle:focus-visible {
+  color: var(--loom-accent-strong);
+  box-shadow: none;
+}
+
+.resourceGroupTitle svg {
+  width: var(--loom-page-header-icon-size);
+  height: var(--loom-page-header-icon-size);
+  flex: 0 0 auto;
+  color: currentColor;
+  stroke-width: var(--loom-page-header-icon-stroke);
+}
+
 .viewModeControl {
   display: flex;
   align-items: center;
@@ -389,10 +466,10 @@
 .viewModeButton,
 .viewModeButtonActive,
 .windowModeButton {
-  width: 26px;
-  min-width: 26px;
-  height: 26px;
-  min-height: 26px;
+  width: var(--loom-page-header-control-size);
+  min-width: var(--loom-page-header-control-size);
+  height: var(--loom-page-header-control-size);
+  min-height: var(--loom-page-header-control-size);
   display: grid;
   place-items: center;
   border: 0;

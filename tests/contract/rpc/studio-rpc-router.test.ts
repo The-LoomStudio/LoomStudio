@@ -1,7 +1,6 @@
 import type { ApplicationRuntime } from '@loom-studio/application-runtime'
 import type { JsonValue } from '@loom-studio/shared'
 import { describe, expect, it } from 'vitest'
-import type { RendererPocService } from '../../../apps/studio-server/src/renderer-poc.js'
 import { createStudioRpcRouter } from '../../../apps/studio-server/src/studio-rpc-router.js'
 
 const context = {
@@ -15,7 +14,6 @@ describe('studio rpc router', () => {
     const router = createStudioRpcRouter({
       applicationRuntime: {} as ApplicationRuntime,
       kernel: createKernelCaller(),
-      rendererPoc: createRendererPocService(),
     })
 
     const listed = await router.call('studio.rpc.listCapabilities', {}, context) as {
@@ -34,19 +32,12 @@ describe('studio rpc router', () => {
       owner: 'application',
       stability: 'experimental',
     }))
-    expect(listed.capabilities).toContainEqual(expect.objectContaining({
-      name: 'renderer.createSession',
-      namespace: 'renderer',
-      owner: 'studio-server',
-      stability: 'experimental',
-    }))
   })
 
   it('falls back to kernel rpc for unknown studio-server namespaces', async () => {
     const router = createStudioRpcRouter({
       applicationRuntime: {} as ApplicationRuntime,
       kernel: createKernelCaller(),
-      rendererPoc: createRendererPocService(),
     })
 
     await expect(router.call('extension.echo', { text: 'hello' }, context)).resolves.toEqual({
@@ -70,7 +61,6 @@ describe('studio rpc router', () => {
     const router = createStudioRpcRouter({
       applicationRuntime,
       kernel: createKernelCaller(),
-      rendererPoc: createRendererPocService(),
     })
 
     await router.call('application.createCard', { name: 'Card' }, context)
@@ -92,7 +82,6 @@ describe('studio rpc router', () => {
     const router = createStudioRpcRouter({
       applicationRuntime,
       kernel: createKernelCaller(),
-      rendererPoc: createRendererPocService(),
     })
 
     await router.call('application.updatePromptResourceAssets', {
@@ -118,7 +107,6 @@ describe('studio rpc router', () => {
     const router = createStudioRpcRouter({
       applicationRuntime,
       kernel: createKernelCaller(),
-      rendererPoc: createRendererPocService(),
     })
 
     await router.call('application.importCardBundle', {
@@ -148,15 +136,5 @@ function createKernelCaller(): {
       params: params ?? null,
       callId: callContext.callId,
     }),
-  }
-}
-
-function createRendererPocService(): RendererPocService {
-  return {
-    call: method => {
-      throw new Error(`Unexpected renderer call: ${method}`)
-    },
-    handleEventsRequest: () => undefined,
-    close: () => undefined,
   }
 }
