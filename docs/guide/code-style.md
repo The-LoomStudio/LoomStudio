@@ -6,13 +6,13 @@ Loom Studio 使用 `eslint` 和 `prettier` 强制执行绝大多数风格。
 ## 1. 命名规范
 
 - **Types, Interfaces, Classes, React Components**: 采用 `PascalCase`
-  - `DocumentRecord`, `StudioServer`, `InputDashboard`
+  - `DocumentRecord`, `StudioServer`, `ChatComposer`
 - **Functions, Variables, Methods**: 采用 `camelCase`
   - `submitTurn()`, `isActive`, `handleMessage`
 - **Files**:
   - 所有源码文件采用 `kebab-case`，包括 React 组件文件与 CSS Modules。
-  - ✅ `file-tree.tsx`, `input-dashboard.tsx`, `app.module.scss`
-  - ❌ `FileTree.tsx`, `InputDashboard.tsx`, `App.module.scss`
+  - ✅ `file-tree.tsx`, `chat-composer.tsx`, `app.module.scss`
+  - ❌ `FileTree.tsx`, `ChatComposer.tsx`, `App.module.scss`
   - React 组件内部标识仍采用 `PascalCase`，例如 `export function FileTree() {}`。
   - 工具链约定的文件名不受此规则限制，例如 Sass partial `_variables.scss` 和声明文件 `vite-env.d.ts`。
   - TypeScript 配置生成的 `.js`、`.js.map`、`.d.ts`、`.d.ts.map` 不提交，源配置只保留 `.ts`。

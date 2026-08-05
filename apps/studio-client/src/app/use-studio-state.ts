@@ -61,7 +61,7 @@ export function useStudioState(transportLogger: Logger) {
   })
   const providerSettings = useProviderSettings({
     api,
-    initialGatewayForm: DemoData.gatewayForm,
+    initialProviderAccountDraft: DemoData.providerAccountDraft,
     runAction: busyAction.runAction,
   })
   const activationFacts = useMemo(() => createActivationFacts(activationControl), [activationControl])
@@ -217,8 +217,8 @@ export function useStudioState(transportLogger: Logger) {
     setActivationMode: (mode: ActivationControlState['mode']) => setActivationControl(current => ({ ...current, mode })),
     toggleActivationTag: toggleRuntimeTag,
     // gateway
-    gatewayForm: providerSettings.gatewayForm,
-    setGatewayForm: providerSettings.setGatewayForm,
+    providerAccountDraft: providerSettings.providerAccountDraft,
+    setProviderAccountDraft: providerSettings.setProviderAccountDraft,
     selectedAgentRuntimeProfileId: providerSettings.selectedAgentRuntimeProfileId,
     setSelectedAgentRuntimeProfileId: providerSettings.setSelectedAgentRuntimeProfileId,
     // input

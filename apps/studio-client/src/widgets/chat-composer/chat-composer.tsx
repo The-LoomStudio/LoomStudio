@@ -1,8 +1,8 @@
 import type { FormEvent } from 'react'
 import { ArrowUp } from 'lucide-react'
-import styles from './input-dashboard.module.scss'
+import styles from './chat-composer.module.scss'
 
-type InputDashboardProps = {
+type ChatComposerProps = {
   canPreviewPrompt: boolean
   canSend: boolean
   composerHint: string
@@ -15,9 +15,9 @@ type InputDashboardProps = {
   textareaDisabled: boolean
 }
 
-export function InputDashboard(props: InputDashboardProps) {
+export function ChatComposer(props: ChatComposerProps) {
   return (
-    <form className={styles.composer} data-loom-component="input-dashboard" onSubmit={props.onSubmit}>
+    <form className={styles.composer} data-loom-component="chat-composer" onSubmit={props.onSubmit}>
       <div className={styles.composerBody}>
         <div className={styles.inputSurface}>
           <textarea

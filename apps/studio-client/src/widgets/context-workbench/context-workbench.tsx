@@ -1,10 +1,9 @@
-import { AlignLeft, Code2, Copy, FileText, Folder, FolderOpen, GripVertical, Package, Plus, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { AlignLeft, Code2, Copy, FileText, Folder, FolderOpen, GripVertical, Package, Plus, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore, type ContextCategory } from '../../pages/studio/model/studio-layout-store.js'
 import { FileTree } from '../../shared/ui/file-tree/file-tree.js'
 import { AssetWorkbenchLayout } from '../../shared/ui/asset-workbench-layout/asset-workbench-layout.js'
 import type { ContextMenuItem } from '../../shared/ui/context-menu/context-menu.js'
-import { Toggle } from '../../shared/ui/toggle/toggle.js'
 import { StatusIndicator } from '../../shared/ui/status-indicator/status-indicator.js'
 import {
   findContextNode,
@@ -18,6 +17,7 @@ import {
   readProjectionOrderReorderUpdates,
 } from '../../features/context-assets/model/projection-workbench.js'
 import { ContextAssetDetail } from '../../features/context-assets/ui/context-asset-detail/context-asset-detail.js'
+import { ContextAssetDetailHeader } from '../../features/context-assets/ui/context-asset-detail-header/context-asset-detail-header.js'
 import { ProjectionOrderEditor } from '../../features/context-assets/ui/projection-order-editor/projection-order-editor.js'
 import type { ContextAssetNode } from '../../entities/index.js'
 import type { Translator } from '../../shared/i18n/index.js'
@@ -67,11 +67,11 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
       })
   }, [props.nodes, viewModes, activeCategory, orderedProjectionEntries])
 
-  const TABS: Array<{ value: ContextCategory, label: string }> = [
-    { value: 'setting', label: 'Setting' },
-    { value: 'logic', label: 'Logic' },
-    { value: 'runtime', label: 'Runtime' },
-    { value: 'history', label: 'History' },
+  const tabs: Array<{ value: ContextCategory, label: string }> = [
+    { value: 'setting', label: props.t('context.category.setting') },
+    { value: 'logic', label: props.t('context.category.logic') },
+    { value: 'runtime', label: props.t('context.category.runtime') },
+    { value: 'history', label: props.t('context.category.history') },
   ]
 
   return (
@@ -82,7 +82,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
       viewMode={explorerView.viewMode}
       toolbar={(
         <nav className="loom-page-tabs">
-          {TABS.map(tab => (
+          {tabs.map(tab => (
             <button
               key={tab.value}
               className={`loom-page-tab ${activeCategory === tab.value ? 'loom-page-tab-active' : ''}`}
@@ -154,36 +154,11 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
       )}
     >
       <div className={styles.detailColumn} data-loom-component="context-detail-editor">
-        <header className={`${styles.detailHeader} ${selectedNode?.kind === 'entry' && selectedNode.enabled === false ? styles.detailHeaderMuted : ''}`}>
-          <p>{readKindLabel(selectedNode, props.t)}</p>
-          <div className={styles.detailTitleRow}>
-            {canToggleEnabled(selectedNode) ? (
-              <Toggle
-                checked={selectedNode.enabled !== false}
-                label={props.t(selectedNode.enabled === false ? 'context.actionEnable' : 'context.actionDisable')}
-                onChange={enabled => {
-                  props.onChangeNode(selectedNode.id, { enabled })
-                  props.onCommitNode(selectedNode.id, { enabled })
-                }}
-              />
-            ) : null}
-            <h1>{selectedNode?.label ?? props.t('context.emptyTitle')}</h1>
-            {selectedNode && selectedNode.kind !== 'order' ? (
-              <button
-                aria-expanded={metadataOpen}
-                aria-label={props.t(metadataOpen ? 'context.hideMetadata' : 'context.showMetadata')}
-                className={`${styles.metadataToggle} ${metadataOpen ? styles.metadataToggleActive : ''}`}
-                title={props.t(metadataOpen ? 'context.hideMetadata' : 'context.showMetadata')}
-                type="button"
-                onClick={() => setMetadataOpen(!metadataOpen)}
-                onMouseDown={event => event.preventDefault()}
-              >
-                <SlidersHorizontal aria-hidden="true" />
-              </button>
-            ) : null}
-          </div>
-          <span>{selectedNode?.meta ?? props.t('context.emptyBody')}</span>
-        </header>
+        <ContextAssetDetailHeader metadataOpen={metadataOpen} node={selectedNode} toggleEnabled={canToggleEnabled(selectedNode)} t={props.t} onEnabledChange={enabled => {
+          if (!selectedNode) return
+          props.onChangeNode(selectedNode.id, { enabled })
+          props.onCommitNode(selectedNode.id, { enabled })
+        }} onMetadataOpenChange={setMetadataOpen} />
         {selectedNode ? (
           selectedNode.kind === 'order' ? (
             <ProjectionOrderEditor
@@ -287,14 +262,4 @@ function isReadOnlyTreeNode(node: ContextAssetNode): boolean {
     || node.category === 'history'
     || node.projection?.sourceKind === 'virtual'
     || node.id.startsWith('history-')
-}
-
-function readKindLabel(node: ContextAssetNode | undefined, t: Translator): string {
-  if (!node) return t('context.detailLabel')
-  if (node.kind === 'module') return t('context.kind.module')
-  if (node.kind === 'folder') return t('context.kind.folder')
-  if (node.kind === 'script') return t('context.kind.script')
-  if (node.kind === 'virtual') return t('context.kind.virtual')
-  if (node.kind === 'order') return t('context.kind.order')
-  return t('context.kind.entry')
 }

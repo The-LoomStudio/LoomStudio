@@ -43,7 +43,7 @@ type NarrativeCanvasProps = {
 
 export function NarrativeCanvas(props: NarrativeCanvasProps) {
   return (
-    <section className={styles.timelinePane} data-loom-component="default-loom-layout">
+    <section className={styles.timelinePane} data-loom-component="narrative-canvas">
       <div className={styles.timeline} data-loom-component="base-chat-canvas">
         {props.timeline.length === 0 ? (
           <div className={styles.empty}>{props.emptyTimelineText}</div>

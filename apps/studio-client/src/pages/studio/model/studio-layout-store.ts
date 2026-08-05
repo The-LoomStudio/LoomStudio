@@ -3,10 +3,10 @@ import { createJSONStorage, persist, type StateStorage } from 'zustand/middlewar
 import type { WindowSize } from '../window-resize.js'
 import type { LongTextEditorMode } from '../../../shared/ui/long-text-editor/long-text-editor-model.js'
 
-export const STUDIO_PANEL_IDS = ['api', 'preset', 'resources', 'editor', 'inspector', 'logs', 'settings'] as const
+export const STUDIO_PANEL_IDS = ['model', 'character', 'preset', 'resource', 'inspector', 'logs', 'settings'] as const
 
 export type StudioPanelId = (typeof STUDIO_PANEL_IDS)[number]
-export type AssetLayoutId = Extract<StudioPanelId, 'preset' | 'resources'>
+export type AssetLayoutId = 'preset' | 'resources'
 export type AssetViewMode = 'explorer' | 'split' | 'editor'
 export type ContextCategory = 'setting' | 'logic' | 'runtime' | 'history'
 export type PanelWindowMode = 'reference' | 'immersive'
@@ -54,7 +54,7 @@ type StudioLayoutStore = StudioLayoutData & {
 }
 
 const STORAGE_KEY = 'loom-studio-layout'
-const STORAGE_VERSION = 6
+const STORAGE_VERSION = 8
 const DEFAULT_EXPLORER_WIDTH = 300
 export const DEFAULT_ASSET_VIEW_STATE: AssetViewState = { viewMode: 'explorer' }
 const safeStorage: StateStorage = {
@@ -199,7 +199,7 @@ export const useStudioLayoutStore = create<StudioLayoutStore>()(
         },
       })),
       toggleWorkspace: () => set(state => state.activePanel === null
-        ? { activePanel: 'resources', dockOpen: true, lastActivePanel: 'resources' }
+        ? { activePanel: 'character', dockOpen: true, lastActivePanel: 'character' }
         : { activePanel: null, dockOpen: true }),
     }),
     {
@@ -252,7 +252,7 @@ function readAssetViews(value: unknown): Record<string, AssetViewState> {
 function readPanelWindowSizes(value: unknown): Partial<Record<StudioPanelId, WindowSize>> {
   if (!isRecord(value)) return {}
   return Object.fromEntries(STUDIO_PANEL_IDS.flatMap(panel => {
-    const size = value[panel]
+    const size = value[panel] ?? value[legacyPanelId(panel)]
     return isRecord(size) && isFinitePositiveNumber(size.width) && isFinitePositiveNumber(size.height)
       ? [[panel, { width: size.width, height: size.height }]]
       : []
@@ -262,15 +262,25 @@ function readPanelWindowSizes(value: unknown): Partial<Record<StudioPanelId, Win
 function readPanelWindowModes(value: unknown): Partial<Record<StudioPanelId, PanelWindowMode>> {
   if (!isRecord(value)) return {}
   return Object.fromEntries(STUDIO_PANEL_IDS.flatMap(panel => {
-    const mode = value[panel]
+    const mode = value[panel] ?? value[legacyPanelId(panel)]
     return mode === 'reference' || mode === 'immersive' ? [[panel, mode]] : []
   }))
 }
 
 function readPanelId(value: unknown): StudioPanelId | null {
+  if (value === 'api') return 'model'
+  if (value === 'resources') return 'character'
+  if (value === 'editor') return 'resource'
   return typeof value === 'string' && STUDIO_PANEL_IDS.includes(value as StudioPanelId)
     ? value as StudioPanelId
     : null
+}
+
+function legacyPanelId(panel: StudioPanelId): string {
+  if (panel === 'model') return 'api'
+  if (panel === 'character') return 'resources'
+  if (panel === 'resource') return 'editor'
+  return panel
 }
 
 function isContextCategory(value: unknown): value is ContextCategory {

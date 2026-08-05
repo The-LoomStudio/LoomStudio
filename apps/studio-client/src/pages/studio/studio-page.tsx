@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import { Blocks, Columns2, FilePenLine, Folders, ListOrdered, ListTree, Maximize2, Menu, Minimize2, PanelLeftClose, PanelLeftOpen, Plug, Settings, SquareTerminal, Users, Wrench, type LucideIcon } from 'lucide-react'
 import type { Translator } from '../../shared/i18n/index.js'
-import { useCharacterGalleryStore } from '../../widgets/resource-panel/character-gallery-store.js'
-import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore, type AssetLayoutId, type AssetViewMode, type StudioPanelId } from './model/studio-layout-store.js'
+import { DEFAULT_ASSET_VIEW_STATE, STUDIO_PANEL_IDS, useStudioLayoutStore, type AssetLayoutId, type AssetViewMode, type StudioPanelId } from './model/studio-layout-store.js'
 import { resizeWindow, type WindowResizeAxis, type WindowSize } from './window-resize.js'
 import styles from './studio-page.module.scss'
 
@@ -12,24 +11,34 @@ const STUDIO_VERSION = typeof __LOOM_STUDIO_VERSION__ === 'string' ? __LOOM_STUD
 
 type StudioPageProps = {
   assetWorkspaceId: string
-  apiConfigured?: boolean
+  modelConfigured?: boolean
   busy: boolean
   canRedo: boolean
   canUndo: boolean
   canvas: ReactNode
   customCss: string
-  editorPanel: ReactNode
   error?: string
-  inspector: ReactNode
-  logsPanel: ReactNode
   onRedo(): void
   onUndo(): void
-  apiPanel: ReactNode
-  presetPanel: ReactNode
-  resourcePanel: ReactNode
-  settingsPanel: ReactNode
+  panelHeaders?: Partial<Record<StudioPanelId, ReactNode>>
+  panels: Record<StudioPanelId, (active: boolean) => ReactNode>
   t: Translator
 }
+
+type PanelDefinition = {
+  Icon: LucideIcon
+  labelKey: 'rail.model' | 'rail.character' | 'rail.preset' | 'rail.resource' | 'rail.inspector' | 'rail.logs' | 'rail.settings'
+}
+
+const PANEL_DEFINITIONS = {
+  model: { Icon: Plug, labelKey: 'rail.model' },
+  character: { Icon: Users, labelKey: 'rail.character' },
+  preset: { Icon: ListOrdered, labelKey: 'rail.preset' },
+  resource: { Icon: Folders, labelKey: 'rail.resource' },
+  inspector: { Icon: Wrench, labelKey: 'rail.inspector' },
+  logs: { Icon: SquareTerminal, labelKey: 'rail.logs' },
+  settings: { Icon: Settings, labelKey: 'rail.settings' },
+} satisfies Record<StudioPanelId, PanelDefinition>
 
 type WindowResizeSession = {
   axis: WindowResizeAxis
@@ -65,10 +74,6 @@ export function StudioPage(props: StudioPageProps) {
   const togglePanel = useStudioLayoutStore(state => state.togglePanel)
   const togglePanelWindowMode = useStudioLayoutStore(state => state.togglePanelWindowMode)
   const toggleWorkspace = useStudioLayoutStore(state => state.toggleWorkspace)
-  const characterActiveGroupId = useCharacterGalleryStore(state => state.activeGroupId)
-  const characterGroups = useCharacterGalleryStore(state => state.groups)
-  const characterGroupsOpen = useCharacterGalleryStore(state => state.groupsOpen)
-  const setCharacterGroupsOpen = useCharacterGalleryStore(state => state.setGroupsOpen)
   const isImmersive = activePanel !== null && panelWindowModes[activePanel] === 'immersive'
   const [windowResizePreview, setWindowResizePreview] = useState<WindowResizePreview>()
   const [windowResizing, setWindowResizing] = useState(false)
@@ -76,7 +81,7 @@ export function StudioPage(props: StudioPageProps) {
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.defaultPrevented) return
-      if (event.key === 'Escape' && assetMetadataOpen && (activePanel === 'editor' || activePanel === 'preset')) {
+      if (event.key === 'Escape' && assetMetadataOpen && (activePanel === 'resource' || activePanel === 'preset')) {
         event.preventDefault()
         setAssetMetadataOpen(false)
         return
@@ -191,10 +196,8 @@ export function StudioPage(props: StudioPageProps) {
     event.preventDefault()
   }
 
-  const activePanelHeader = activePanel === null ? null : readPanelHeader(activePanel, props.t)
-  const characterHeaderLabel = characterActiveGroupId === 'ungrouped'
-    ? props.t('cards.ungrouped')
-    : characterGroups.find(group => group.id === characterActiveGroupId)?.name ?? props.t('rail.resources')
+  const activePanelDefinition = activePanel === null ? null : PANEL_DEFINITIONS[activePanel]
+  const activePanelCustomHeader = activePanel === null ? null : props.panelHeaders?.[activePanel]
   const activeAssetLayoutId = readAssetLayoutId(activePanel)
   const activeAssetViewMode = activeAssetLayoutId === null
     ? null
@@ -203,13 +206,13 @@ export function StudioPage(props: StudioPageProps) {
     styles.floatingDock,
     dockOpen ? styles.floatingDockOpen : '',
     activePanel !== null ? styles.floatingDockActive : '',
-    activePanel === 'resources' || (activeAssetViewMode !== null && activeAssetViewMode !== 'explorer')
+    activePanel === 'character' || (activeAssetViewMode !== null && activeAssetViewMode !== 'explorer')
       ? styles.floatingDockWorkspace
       : '',
     isImmersive ? styles.floatingDockImmersive : '',
     windowResizing ? styles.floatingDockResizing : '',
   ].filter(Boolean).join(' ')
-  const ActivePanelIcon = activePanelHeader?.Icon
+  const ActivePanelIcon = activePanelDefinition?.Icon
   const activePanelWindowSize = activePanel === null
     ? undefined
     : windowResizePreview?.panel === activePanel
@@ -220,7 +223,7 @@ export function StudioPage(props: StudioPageProps) {
     : undefined
 
   return (
-    <main className={styles.workbench} data-loom-component="studio-host-poc">
+    <main className={styles.workbench} data-loom-component="studio-workspace-shell">
       <style>{props.customCss}</style>
       <div className={styles.statusRegion} aria-live="polite">
         {props.error ? <div className={`${styles.status} ${styles.statusError}`}>{props.error}</div> : null}
@@ -252,9 +255,11 @@ export function StudioPage(props: StudioPageProps) {
             <header className={`loom-page-header ${styles.dockHeader}`} data-loom-component="page-header">
               <span className={`loom-page-header-title ${styles.dockTitle}`}>{props.t('rail.label')}</span>
               <button
-                aria-label={props.t('rail.resources')}
+                aria-controls={activePanel === null ? 'studio-character-panel' : `studio-${activePanel}-panel`}
+                aria-expanded={activePanel !== null}
+                aria-label={props.t(activePanel === null ? 'rail.openCharacter' : 'rail.closeWorkspace')}
                 className={styles.dockWorkspaceToggle}
-                title={props.t('rail.resources')}
+                title={props.t(activePanel === null ? 'rail.openCharacter' : 'rail.closeWorkspace')}
                 type="button"
                 onClick={toggleWorkspace}
               >
@@ -264,34 +269,34 @@ export function StudioPage(props: StudioPageProps) {
             <span className={`loom-divider ${styles.dockHeaderDivider}`} aria-hidden="true" />
             <nav className={styles.studioRail} aria-label={props.t('rail.label')} data-loom-component="utility-rail">
               <button
-                aria-label={props.t(props.apiConfigured === false ? 'rail.apiIncomplete' : 'rail.api')}
-                aria-controls="studio-api-panel"
-                aria-expanded={activePanel === 'api'}
+                aria-label={props.t(props.modelConfigured === false ? 'rail.modelIncomplete' : 'rail.model')}
+                aria-controls="studio-model-panel"
+                aria-expanded={activePanel === 'model'}
                 className={[
                   styles.railTab,
-                  activePanel === 'api' ? styles.railTabActive : '',
-                  props.apiConfigured === false ? styles.railTabIncomplete : '',
+                  activePanel === 'model' ? styles.railTabActive : '',
+                  props.modelConfigured === false ? styles.railTabIncomplete : '',
                 ].filter(Boolean).join(' ')}
-                data-status={props.apiConfigured === undefined ? 'unknown' : props.apiConfigured ? 'configured' : 'incomplete'}
-                title={props.t(props.apiConfigured === false ? 'rail.apiIncomplete' : 'rail.api')}
+                data-status={props.modelConfigured === undefined ? 'unknown' : props.modelConfigured ? 'configured' : 'incomplete'}
+                title={props.t(props.modelConfigured === false ? 'rail.modelIncomplete' : 'rail.model')}
                 type="button"
-                onClick={() => togglePanel('api')}
+                onClick={() => togglePanel('model')}
               >
                 <Plug aria-hidden="true" />
-                <span className={styles.railLabel}>{props.t('rail.api')}</span>
+                <span className={styles.railLabel}>{props.t('rail.model')}</span>
               </button>
               <span className={`loom-divider ${styles.railDivider}`} aria-hidden="true" />
               <button
-                aria-label={props.t('rail.resources')}
-                aria-controls="studio-resource-panel"
-                aria-expanded={activePanel === 'resources'}
-                className={activePanel === 'resources' ? `${styles.railTab} ${styles.railTabActive}` : styles.railTab}
-                title={props.t('rail.resources')}
+                aria-label={props.t('rail.character')}
+                aria-controls="studio-character-panel"
+                aria-expanded={activePanel === 'character'}
+                className={activePanel === 'character' ? `${styles.railTab} ${styles.railTabActive}` : styles.railTab}
+                title={props.t('rail.character')}
                 type="button"
-                onClick={() => togglePanel('resources')}
+                onClick={() => togglePanel('character')}
               >
                 <Users aria-hidden="true" />
-                <span className={styles.railLabel}>{props.t('rail.resources')}</span>
+                <span className={styles.railLabel}>{props.t('rail.character')}</span>
               </button>
               <button
                 aria-label={props.t('rail.preset')}
@@ -306,16 +311,16 @@ export function StudioPage(props: StudioPageProps) {
                 <span className={styles.railLabel}>{props.t('rail.preset')}</span>
               </button>
               <button
-                aria-label={props.t('rail.editor')}
-                aria-controls="studio-editor-panel"
-                aria-expanded={activePanel === 'editor'}
-                className={activePanel === 'editor' ? `${styles.railTab} ${styles.railTabActive}` : styles.railTab}
-                title={props.t('rail.editor')}
+                aria-label={props.t('rail.resource')}
+                aria-controls="studio-resource-panel"
+                aria-expanded={activePanel === 'resource'}
+                className={activePanel === 'resource' ? `${styles.railTab} ${styles.railTabActive}` : styles.railTab}
+                title={props.t('rail.resource')}
                 type="button"
-                onClick={() => togglePanel('editor')}
+                onClick={() => togglePanel('resource')}
               >
                 <Folders aria-hidden="true" />
-                <span className={styles.railLabel}>{props.t('rail.editor')}</span>
+                <span className={styles.railLabel}>{props.t('rail.resource')}</span>
               </button>
               <span className={`loom-divider ${styles.railDivider}`} aria-hidden="true" />
               <button
@@ -383,14 +388,9 @@ export function StudioPage(props: StudioPageProps) {
           <span className={styles.dockDivider} aria-hidden="true" />
 
           <div className={styles.dockPanelHost}>
-            {activePanelHeader && ActivePanelIcon ? (
+            {activePanelDefinition && ActivePanelIcon ? (
               <header className={`loom-page-header ${styles.workspaceHeader}`} data-loom-component="page-header">
-                {activePanel === 'resources' ? (
-                  <button aria-expanded={characterGroupsOpen} aria-label={props.t('cards.groups')} className={styles.resourceGroupTitle} type="button" onClick={() => setCharacterGroupsOpen(true)}>
-                    <ActivePanelIcon aria-hidden="true" />
-                    <span className="loom-page-header-title">{characterHeaderLabel}</span>
-                  </button>
-                ) : <><ActivePanelIcon aria-hidden="true" /><span className="loom-page-header-title">{activePanelHeader.label}</span></>}
+                {activePanelCustomHeader ?? <><ActivePanelIcon aria-hidden="true" /><span className="loom-page-header-title">{props.t(activePanelDefinition.labelKey)}</span></>}
                 {activeAssetLayoutId && activeAssetViewMode ? (
                   <div
                     aria-label={props.t('context.viewModeLabel')}
@@ -431,75 +431,21 @@ export function StudioPage(props: StudioPageProps) {
             <span className={`loom-divider ${styles.workspaceHeaderDivider}`} aria-hidden="true" />
 
             <div className={styles.workspaceBody}>
-              <div
-                className={styles.stagePanel}
-                id="studio-api-panel"
-                aria-hidden={activePanel !== 'api'}
-                hidden={activePanel !== 'api'}
-                data-loom-component="overlay-api-layer"
-              >
-                {props.apiPanel}
-              </div>
-
-              <div
-                className={styles.stagePanel}
-                id="studio-resource-panel"
-                aria-hidden={activePanel !== 'resources'}
-                hidden={activePanel !== 'resources'}
-                data-loom-component="overlay-resource-layer"
-              >
-                {props.resourcePanel}
-              </div>
-
-              <div
-                className={styles.stagePanel}
-                id="studio-preset-panel"
-                aria-hidden={activePanel !== 'preset'}
-                hidden={activePanel !== 'preset'}
-                data-loom-component="overlay-preset-layer"
-              >
-                {props.presetPanel}
-              </div>
-
-              <div
-                className={styles.stagePanel}
-                id="studio-editor-panel"
-                aria-hidden={activePanel !== 'editor'}
-                hidden={activePanel !== 'editor'}
-                data-loom-component="overlay-editor-layer"
-              >
-                {props.editorPanel}
-              </div>
-
-              <div
-                className={styles.stagePanel}
-                id="studio-inspector-panel"
-                aria-hidden={activePanel !== 'inspector'}
-                hidden={activePanel !== 'inspector'}
-                data-loom-component="overlay-inspector-layer"
-              >
-                {props.inspector}
-              </div>
-
-              <div
-                className={styles.stagePanel}
-                id="studio-logs-panel"
-                aria-hidden={activePanel !== 'logs'}
-                hidden={activePanel !== 'logs'}
-                data-loom-component="overlay-logs-layer"
-              >
-                {props.logsPanel}
-              </div>
-
-              <div
-                className={styles.stagePanel}
-                id="studio-settings-panel"
-                aria-hidden={activePanel !== 'settings'}
-                hidden={activePanel !== 'settings'}
-                data-loom-component="overlay-settings-layer"
-              >
-                {props.settingsPanel}
-              </div>
+              {STUDIO_PANEL_IDS.map(panel => {
+                const active = activePanel === panel
+                return (
+                  <div
+                    key={panel}
+                    className={styles.stagePanel}
+                    id={`studio-${panel}-panel`}
+                    aria-hidden={!active}
+                    hidden={!active}
+                    data-loom-component={`overlay-${panel}-layer`}
+                  >
+                    {props.panels[panel](active)}
+                  </div>
+                )
+              })}
             </div>
           </div>
 
@@ -564,25 +510,13 @@ const VIEW_MODES: Array<{
 
 function readAssetLayoutId(panel: StudioPanelId | null): AssetLayoutId | null {
   if (panel === 'preset') return 'preset'
-  if (panel === 'editor') return 'resources'
+  if (panel === 'resource') return 'resources'
   return null
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
   return target.isContentEditable || Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
-}
-
-function readPanelHeader(panel: StudioPanelId, t: Translator): { Icon: LucideIcon; label: string } {
-  switch (panel) {
-    case 'api': return { Icon: Plug, label: t('rail.api') }
-    case 'resources': return { Icon: Users, label: t('rail.resources') }
-    case 'preset': return { Icon: ListOrdered, label: t('rail.preset') }
-    case 'editor': return { Icon: Folders, label: t('rail.editor') }
-    case 'inspector': return { Icon: Wrench, label: t('rail.inspector') }
-    case 'logs': return { Icon: SquareTerminal, label: t('rail.logs') }
-    case 'settings': return { Icon: Settings, label: t('rail.settings') }
-  }
 }
 
 function GitHubMark() {

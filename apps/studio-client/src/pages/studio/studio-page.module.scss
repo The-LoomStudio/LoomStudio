@@ -131,6 +131,12 @@
   color: var(--loom-accent-strong);
 }
 
+.dockToggle:focus-visible,
+.dockWorkspaceToggle:focus-visible {
+  outline: 1px solid var(--loom-accent);
+  outline-offset: -2px;
+}
+
 .dockWorkspaceToggle svg {
   width: var(--loom-dock-icon-size);
   height: var(--loom-dock-icon-size);
@@ -306,6 +312,8 @@
 }
 
 .railTab:focus-visible {
+  outline: 1px solid var(--loom-accent);
+  outline-offset: -2px;
   box-shadow: none;
 }
 
@@ -427,35 +435,6 @@
   color: var(--loom-text-muted);
 }
 
-.resourceGroupTitle {
-  min-width: 0;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border: 0;
-  border-radius: 0;
-  padding: 0;
-  color: var(--loom-text-muted);
-  background: transparent;
-  text-align: left;
-}
-
-.resourceGroupTitle:hover:not(:disabled),
-.resourceGroupTitle:focus-visible {
-  color: var(--loom-accent-strong);
-  box-shadow: none;
-}
-
-.resourceGroupTitle svg {
-  width: var(--loom-page-header-icon-size);
-  height: var(--loom-page-header-icon-size);
-  flex: 0 0 auto;
-  color: currentColor;
-  stroke-width: var(--loom-page-header-icon-stroke);
-}
-
 .viewModeControl {
   display: flex;
   align-items: center;
@@ -490,6 +469,8 @@
 .viewModeButtonActive:focus-visible,
 .windowModeButton:focus-visible {
   color: var(--loom-accent-strong);
+  outline: 1px solid var(--loom-accent);
+  outline-offset: -2px;
   box-shadow: none;
 }
 

@@ -32,27 +32,29 @@ export function AgentRuntimeManager(props: AgentRuntimeManagerProps) {
 
   return (
     <div className={styles.agentRuntimeManager}>
-      <header className={styles.agentHeader} onClick={() => setIsExpanded(!isExpanded)}>
-        <div className={styles.agentHeaderInfo}>
-          <Package size={16} />
-          <span className={styles.agentTitle}>{props.t('preset.agentProfile')}</span>
-          {activeProfile ? (
-            <span className={styles.agentActiveBadge}>
-              {activeProfile.name} {activeModel ? `(${activeModel.displayName})` : ''}
-            </span>
-          ) : (
-            <span className={styles.agentEmptyBadge}>{props.t('preset.agentProfile.unselected')}</span>
-          )}
-        </div>
+      <header className={styles.agentHeader}>
+        <button className={styles.agentHeaderToggle} type="button" aria-expanded={isExpanded} onClick={() => setIsExpanded(value => !value)}>
+          <span className={styles.agentHeaderInfo}>
+            <Package aria-hidden="true" size={16} />
+            <span className={styles.agentTitle}>{props.t('preset.agentProfile')}</span>
+            {activeProfile ? (
+              <span className={styles.agentActiveBadge}>
+                {activeProfile.name} {activeModel ? `(${activeModel.displayName})` : ''}
+              </span>
+            ) : (
+              <span className={styles.agentEmptyBadge}>{props.t('preset.agentProfile.unselected')}</span>
+            )}
+          </span>
+        </button>
         <button
           className={styles.agentAddButton}
-          onClick={event => {
-            event.stopPropagation()
+          type="button"
+          onClick={() => {
             setIsCreating(true)
             setIsExpanded(true)
           }}
         >
-          <Plus size={14} /> {props.t('preset.agentProfile.new')}
+          <Plus aria-hidden="true" size={14} /> {props.t('preset.agentProfile.new')}
         </button>
       </header>
 
@@ -75,6 +77,7 @@ export function AgentRuntimeManager(props: AgentRuntimeManagerProps) {
                 <button
                   className={styles.agentBtnPrimary}
                   disabled={!newName || !newModelId}
+                  type="button"
                   onClick={() => {
                     props.onCreate({ name: newName, purpose: 'General', modelProfileId: newModelId })
                     resetCreateForm()
@@ -82,7 +85,7 @@ export function AgentRuntimeManager(props: AgentRuntimeManagerProps) {
                 >
                   {props.t('preset.agentProfile.save')}
                 </button>
-                <button className={styles.agentBtnCancel} onClick={resetCreateForm}>
+                <button className={styles.agentBtnCancel} type="button" onClick={resetCreateForm}>
                   {props.t('preset.agentProfile.cancel')}
                 </button>
               </div>
@@ -99,10 +102,10 @@ export function AgentRuntimeManager(props: AgentRuntimeManagerProps) {
 
               return (
                 <div key={profile.id} className={`${styles.agentItem} ${isActive ? styles.agentItemActive : ''}`}>
-                  <div className={styles.agentItemInfo} onClick={() => props.onSelect(profile.id)}>
+                  <button className={styles.agentItemInfo} type="button" aria-pressed={isActive} onClick={() => props.onSelect(profile.id)}>
                     <strong>{profile.name}</strong>
                     <span>{model ? model.displayName : props.t('preset.agentProfile.noModel')}</span>
-                  </div>
+                  </button>
                   <div className={styles.agentItemActions}>
                     <select
                       value={profile.modelProfileId ?? ''}
@@ -113,7 +116,7 @@ export function AgentRuntimeManager(props: AgentRuntimeManagerProps) {
                         <option key={item.id} value={item.id}>{item.displayName}</option>
                       ))}
                     </select>
-                    <button className={styles.agentBtnDanger} onClick={() => props.onDelete(profile.id)}>
+                    <button className={styles.agentBtnDanger} type="button" onClick={() => props.onDelete(profile.id)}>
                       {props.t('preset.agentProfile.delete')}
                     </button>
                   </div>

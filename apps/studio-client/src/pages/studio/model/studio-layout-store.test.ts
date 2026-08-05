@@ -42,7 +42,7 @@ describe('studio layout store', () => {
   it('keeps window and explorer layouts isolated by page', () => {
     const store = useStudioLayoutStore.getState()
     store.setPanelWindowSize('preset', { width: 920, height: 700 })
-    store.setPanelWindowSize('resources', { width: 1080, height: 760 })
+    store.setPanelWindowSize('character', { width: 1080, height: 760 })
     store.togglePanelWindowMode('preset')
     store.setAssetExplorerWidth('preset', 260)
     store.setAssetExplorerWidth('resources', 340)
@@ -69,7 +69,7 @@ describe('studio layout store', () => {
       },
       panelWindowSizes: {
         preset: { width: 920, height: 700 },
-        resources: { width: 1080, height: 760 },
+        character: { width: 1080, height: 760 },
       },
       panelWindowModes: { preset: 'immersive' },
     })
@@ -79,20 +79,20 @@ describe('studio layout store', () => {
     useStudioLayoutStore.getState().setAssetMetadataOpen(true)
     useStudioLayoutStore.getState().setTextEditorMode('preview')
     useStudioLayoutStore.getState().togglePanel('preset')
-    useStudioLayoutStore.getState().togglePanel('editor')
+    useStudioLayoutStore.getState().togglePanel('resource')
 
     expect(useStudioLayoutStore.getState().assetMetadataOpen).toBe(true)
     expect(useStudioLayoutStore.getState().textEditorMode).toBe('preview')
   })
 
   it('rehydrates the persisted layout after a reload', async () => {
-    useStudioLayoutStore.getState().togglePanel('resources')
+    useStudioLayoutStore.getState().togglePanel('character')
     useStudioLayoutStore.getState().setAssetMetadataOpen(true)
     useStudioLayoutStore.getState().setAssetExplorerWidth('resources', 360)
     useStudioLayoutStore.getState().setAssetSelectedId('resources', 'card-a', 'resource-entry-a')
     useStudioLayoutStore.getState().setAssetExpandedIds('resources', 'card-a', ['resource-root', 'resource-folder'])
     useStudioLayoutStore.getState().setAssetViewMode('resources', 'card-a', 'split')
-    useStudioLayoutStore.getState().togglePanelWindowMode('resources')
+    useStudioLayoutStore.getState().togglePanelWindowMode('character')
     const persisted = storedValues.get('loom-studio-layout')
     expect(persisted).toBeDefined()
 
@@ -101,7 +101,7 @@ describe('studio layout store', () => {
     await useStudioLayoutStore.persist.rehydrate()
 
     expect(useStudioLayoutStore.getState()).toMatchObject({
-      activePanel: 'resources',
+      activePanel: 'character',
       assetMetadataOpen: true,
       assetLayouts: {
         resources: {
@@ -116,8 +116,32 @@ describe('studio layout store', () => {
         },
       },
       dockOpen: true,
-      lastActivePanel: 'resources',
-      panelWindowModes: { resources: 'immersive' },
+      lastActivePanel: 'character',
+      panelWindowModes: { character: 'immersive' },
+    })
+  })
+
+  it('migrates legacy model, character and resource panel ids without changing asset layouts', () => {
+    expect(sanitizeStudioLayout({
+      activePanel: 'api',
+      assetLayouts: { resources: { explorerWidth: 340, views: {} } },
+      lastActivePanel: 'editor',
+      panelWindowModes: { api: 'reference', resources: 'immersive', editor: 'reference' },
+      panelWindowSizes: {
+        api: { width: 720, height: 600 },
+        resources: { width: 1080, height: 760 },
+        editor: { width: 900, height: 640 },
+      },
+    })).toMatchObject({
+      activePanel: 'model',
+      assetLayouts: { resources: { explorerWidth: 340, views: {} } },
+      lastActivePanel: 'resource',
+      panelWindowModes: { model: 'reference', character: 'immersive', resource: 'reference' },
+      panelWindowSizes: {
+        model: { width: 720, height: 600 },
+        character: { width: 1080, height: 760 },
+        resource: { width: 900, height: 640 },
+      },
     })
   })
 })

@@ -10,7 +10,7 @@ import openai from '@lobehub/icons-static-svg/icons/openai.svg'
 import openrouter from '@lobehub/icons-static-svg/icons/openrouter-color.svg'
 import qwen from '@lobehub/icons-static-svg/icons/qwen-color.svg'
 import type { ModelBrand } from '../../features/provider-settings/model/model-brand.js'
-import styles from './api-panel.module.scss'
+import styles from './model-panel.module.scss'
 
 const icons: Record<ModelBrand, string> = { anthropic, deepseek, gemini, grok, meta, mistral, ollama, openai, openrouter, qwen }
 

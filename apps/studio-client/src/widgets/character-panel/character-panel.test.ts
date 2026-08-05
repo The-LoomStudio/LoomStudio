@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createMockCards } from './resource-panel.js'
+import { createMockCards } from './character-panel.js'
 
 describe('createMockCards', () => {
   it('creates a stable visual-development gallery without duplicate ids', () => {

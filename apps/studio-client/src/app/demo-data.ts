@@ -5,7 +5,7 @@ import type { ContextAssetNode } from '../entities/index.js'
  *
  * 数据格式对齐后端 RPC 和文档中的定义：
  * - cardJson 对齐 `application.createCard` RPC 输入格式
- * - gatewayForm 对齐 `application.createProviderAccount` / `createModelProfile` RPC 输入
+ * - providerAccountDraft 对齐 `application.createProviderAccount` / `createModelProfile` RPC 输入
  * - contextAssets 用于 Composition Skeleton 预览 (对齐 docs/08-ApplicationLayer/composition-skeleton-v0.md)
  */
 export const DemoData = {
@@ -17,7 +17,7 @@ export const DemoData = {
   customCss: '',
 
   /** Gateway 配置表单默认值（对齐 OpenAI Compatible provider） */
-  gatewayForm: {
+  providerAccountDraft: {
     displayName: 'OpenAI Compatible',
     baseUrl: 'https://api.openai.com/v1',
     apiKey: '',

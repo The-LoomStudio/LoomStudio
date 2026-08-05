@@ -11,6 +11,7 @@ type LevelFilter = LogLevel | 'all'
 type UnreadLogs = { count: number; level?: LogLevel }
 
 export function LogViewer(props: {
+  active: boolean
   api: StudioApi['logs']
   clientLogs: MemoryLogSink
   t: Translator
@@ -68,10 +69,12 @@ export function LogViewer(props: {
   }, [listLogs])
 
   useEffect(() => {
+    if (!props.active) return
     void refresh()
-  }, [refresh])
+  }, [props.active, refresh])
 
   useEffect(() => {
+    if (!props.active) return
     let disposed = false
     let polling = false
 
@@ -112,7 +115,7 @@ export function LogViewer(props: {
       window.clearInterval(interval)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [listLogs])
+  }, [listLogs, props.active])
 
   const visibleRecords = useMemo(() => records.filter(record => {
     if (level !== 'all' && record.level !== level) return false
@@ -121,12 +124,13 @@ export function LogViewer(props: {
   const stream = useMemo(() => buildLogStream(visibleRecords), [visibleRecords])
 
   useLayoutEffect(() => {
+    if (!props.active) return
     const container = recordsRef.current
     if (!container || (!initialScrollPendingRef.current && !followingLatestRef.current)) return
     latestRef.current?.scrollIntoView({ block: 'end' })
     initialScrollPendingRef.current = false
     setUnread({ count: 0 })
-  }, [stream])
+  }, [props.active, stream])
 
   const handleRecordsScroll = () => {
     const container = recordsRef.current

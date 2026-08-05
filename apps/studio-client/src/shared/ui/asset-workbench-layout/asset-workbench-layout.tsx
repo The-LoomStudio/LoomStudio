@@ -74,12 +74,12 @@ export function AssetWorkbenchLayout(props: AssetWorkbenchLayoutProps) {
       ref={shellRef}
       className={`${styles.shell} ${readViewModeClassName(props.viewMode)} ${resizing ? styles.shellResizing : ''}`}
       style={{ '--loom-explorer-width': `${explorerWidth}px` } as CSSProperties}
-      data-loom-component="context-workbench"
+      data-loom-component="asset-workbench"
     >
       <aside
         aria-hidden={props.viewMode === 'editor'}
         className={styles.explorerPane}
-        data-loom-component="context-asset-explorer"
+        data-loom-component="asset-explorer"
       >
         <header className={styles.explorerToolbar}>
           <div className={styles.toolbarContent}>{props.toolbar}</div>

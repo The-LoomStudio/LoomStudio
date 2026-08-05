@@ -28,10 +28,9 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
 - `widgets/`
   - **复杂或独立的业务块组件**，负责页面级 UI 组合和局部交互。跨领域状态与 RPC 流程应放在 `features/` 或 app facade 中，不要塞回 widget。
   - `narrative-canvas/`: 聊天会话与时间线画板。
-  - `master-detail-editor/`: 左右分栏的主详细视图编辑器基座。
-  - `input-dashboard/`: 聊天底部输入区。
+  - `chat-composer/`: 聊天底部输入区。
   - `preset-workbench/`, `context-workbench/`: 相关工作台。
-  - `api-panel/`, `inspector-panel/`, `resource-panel/`: 其他工具面板。
+  - `model-panel/`, `character-panel/`, `inspector-panel/`: 其他工具面板。
 - `shared/`
   - 全局复用的 UI 组件 (`ui/` 下的无状态组件如 `json-block`, `file-tree`)、工具函数和 `i18n`。
 - `pages/`
@@ -62,15 +61,13 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
 
 | 任务                                    | 先看                                                        | 常见改动位置                                                                                           | 对应测试                                                                                      |
 | --------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| 修改角色卡列表、创建卡、选中卡          | `features/cards/model/use-cards.ts`                         | `entities/card.ts`, `widgets/resource-panel/`                                                          | `tests/unit/client/cards.test.ts`                                                             |
-| 修改会话、分支、发送消息流程            | `features/session-runtime/model/use-session-runtime.ts`     | `entities/session.ts`, `widgets/narrative-canvas/`, `widgets/input-dashboard/`                         | `tests/unit/client/session-runtime.test.ts`                                                   |
+| 修改角色卡列表、创建卡、选中卡          | `features/cards/model/use-cards.ts`                         | `entities/card.ts`, `widgets/character-panel/`                                                         | `tests/unit/client/cards.test.ts`                                                             |
+| 修改会话、分支、发送消息流程            | `features/session-runtime/model/use-session-runtime.ts`     | `entities/session.ts`, `widgets/narrative-canvas/`, `widgets/chat-composer/`                           | `tests/unit/client/session-runtime.test.ts`                                                   |
 | 修改 Context Assets 树操作              | `features/context-assets/model/tree-ops.ts`                 | `context-asset-tree.ts`, `context-asset-normalization.ts`, `widgets/context-workbench/`                | `tests/unit/client/context-assets.test.ts`                                                    |
 | 修改 projection order / projection view | `features/context-assets/model/projection-order.ts`         | `projection-view.ts`, `projection-workbench.ts`, `features/context-assets/ui/projection-order-editor/` | `tests/unit/client/projection-order.test.ts`                                                  |
 | 修改 Prompt Build 展示步骤              | `features/prompt-build/model/build-prompt-build-steps.ts`   | `widgets/prompt-build-flow/`, `widgets/inspector-panel/`                                               | `tests/unit/client/prompt-build-steps.test.ts`                                                |
-| 修改 Provider / Model Profile 设置      | `features/provider-settings/model/use-provider-settings.ts` | `model-profile-config.ts`, `widgets/api-panel/`                                                        | `tests/unit/client/provider-settings.test.ts`                                                 |
+| 修改 Provider / Model Profile 设置      | `features/provider-settings/model/use-provider-settings.ts` | `widgets/model-panel/`                                                                                 | `tests/unit/client/provider-settings.test.ts`                                                 |
 | 修改 typed Studio API client            | `shared/api/studio-api.ts`                                  | `apps/studio-server/src/application-rpc.ts`, consuming feature hooks                                   | `tests/unit/client/studio-api.test.ts`                                                        |
-| 修改 renderer PoC session               | `features/renderer-poc/model/use-renderer-session.ts`       | `shared/api/renderer-api.ts`, `widgets/resource-panel/`                                                | `tests/unit/client/renderer-events.test.ts`                                                   |
-| 修改 Rendering Lab sample / postMessage | `features/rendering-lab/model/`                             | `widgets/rendering-lab/`, `widgets/inspector-panel/`                                                   | `tests/unit/client/rendering-lab-sample.test.ts`, `tests/unit/client/renderer-events.test.ts` |
 | 修改通用文件树交互                      | `shared/ui/file-tree/file-tree-model.ts`                    | `shared/ui/file-tree/file-tree.tsx`                                                                    | `tests/unit/client/file-tree.test.ts`                                                         |
 | 修改页面整体排布                        | `pages/studio/studio-page.tsx`                              | `app/app.tsx`, `widgets/*`                                                                             | 先跑相关 feature test，再跑 client build                                                      |
 | 新增用户可见文案                        | `shared/i18n/en-us.ts`, `shared/i18n/zh-cn.ts`              | 使用方组件或 feature                                                                                   | 相关 feature test / client build                                                              |

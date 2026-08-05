@@ -1,10 +1,9 @@
-import { Code2, Copy, FileText, Folder, FolderOpen, GripVertical, Package, Plus, SlidersHorizontal, Trash2 } from 'lucide-react'
+import { Code2, Copy, FileText, Folder, FolderOpen, GripVertical, Package, Plus, Trash2 } from 'lucide-react'
 import { useMemo } from 'react'
 import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore } from '../../pages/studio/model/studio-layout-store.js'
 import { FileTree } from '../../shared/ui/file-tree/file-tree.js'
 import { AssetWorkbenchLayout } from '../../shared/ui/asset-workbench-layout/asset-workbench-layout.js'
 import type { ContextMenuItem } from '../../shared/ui/context-menu/context-menu.js'
-import { Toggle } from '../../shared/ui/toggle/toggle.js'
 import { StatusIndicator } from '../../shared/ui/status-indicator/status-indicator.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import {
@@ -19,6 +18,7 @@ import {
   readProjectionOrderReorderUpdates,
 } from '../../features/context-assets/model/projection-workbench.js'
 import { ContextAssetDetail } from '../../features/context-assets/ui/context-asset-detail/context-asset-detail.js'
+import { ContextAssetDetailHeader } from '../../features/context-assets/ui/context-asset-detail-header/context-asset-detail-header.js'
 import { ProjectionOrderEditor } from '../../features/context-assets/ui/projection-order-editor/projection-order-editor.js'
 import type { AgentRuntimeProfile, ContextAssetNode, ModelProfile } from '../../entities/index.js'
 import { AgentRuntimeManager } from './agent-runtime-manager.js'
@@ -176,47 +176,23 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
         />
       )}
     >
-      <AgentRuntimeManager
-        profiles={props.agentRuntimeProfiles}
-        models={props.modelProfiles}
-        selectedId={props.selectedAgentRuntimeProfileId}
-        onSelect={props.onSelectAgentRuntimeProfile}
-        onCreate={props.onCreateAgentRuntimeProfile}
-        onUpdate={props.onUpdateAgentRuntimeProfile}
-        onDelete={props.onDeleteAgentRuntimeProfile}
-        t={props.t}
-      />
-      <div className={styles.detailColumn} data-loom-component="context-detail-editor">
-        <header className={`${styles.detailHeader} ${detailNode?.kind === 'entry' && detailNode.enabled === false ? styles.detailHeaderMuted : ''}`}>
-          <p>{readKindLabel(detailNode, props.t)}</p>
-          <div className={styles.detailTitleRow}>
-            {canToggleEnabled(detailNode) ? (
-              <Toggle
-                checked={detailNode.enabled !== false}
-                label={props.t(detailNode.enabled === false ? 'context.actionEnable' : 'context.actionDisable')}
-                onChange={enabled => {
-                  props.onChangeNode(detailNode.id, { enabled })
-                  props.onCommitNode(detailNode.id, { enabled })
-                }}
-              />
-            ) : null}
-            <h1>{detailNode?.label ?? props.t('context.emptyTitle')}</h1>
-            {detailNode && detailNode.kind !== 'order' ? (
-              <button
-                aria-expanded={metadataOpen}
-                aria-label={props.t(metadataOpen ? 'context.hideMetadata' : 'context.showMetadata')}
-                className={`${styles.metadataToggle} ${metadataOpen ? styles.metadataToggleActive : ''}`}
-                title={props.t(metadataOpen ? 'context.hideMetadata' : 'context.showMetadata')}
-                type="button"
-                onClick={() => setMetadataOpen(!metadataOpen)}
-                onMouseDown={event => event.preventDefault()}
-              >
-                <SlidersHorizontal aria-hidden="true" />
-              </button>
-            ) : null}
-          </div>
-          <span>{detailNode?.meta ?? props.t('context.emptyBody')}</span>
-        </header>
+      <div className={styles.detailStack}>
+        <AgentRuntimeManager
+          profiles={props.agentRuntimeProfiles}
+          models={props.modelProfiles}
+          selectedId={props.selectedAgentRuntimeProfileId}
+          onSelect={props.onSelectAgentRuntimeProfile}
+          onCreate={props.onCreateAgentRuntimeProfile}
+          onUpdate={props.onUpdateAgentRuntimeProfile}
+          onDelete={props.onDeleteAgentRuntimeProfile}
+          t={props.t}
+        />
+        <div className={styles.detailColumn} data-loom-component="context-detail-editor">
+          <ContextAssetDetailHeader metadataOpen={metadataOpen} node={detailNode} toggleEnabled={canToggleEnabled(detailNode)} t={props.t} onEnabledChange={enabled => {
+            if (!detailNode) return
+            props.onChangeNode(detailNode.id, { enabled })
+            props.onCommitNode(detailNode.id, { enabled })
+          }} onMetadataOpenChange={setMetadataOpen} />
         {detailNode ? (
           detailNode.kind === 'order' ? (
             <ProjectionOrderEditor
@@ -241,6 +217,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
         ) : (
           <div className={styles.emptyState}>{props.t('context.emptyBody')}</div>
         )}
+        </div>
       </div>
     </AssetWorkbenchLayout>
   )
@@ -300,14 +277,4 @@ function isReadOnlyTreeNode(node: ContextAssetNode): boolean {
     || node.category === 'history'
     || node.projection?.sourceKind === 'virtual'
     || node.id.startsWith('history-')
-}
-
-function readKindLabel(node: ContextAssetNode | undefined, t: Translator): string {
-  if (!node) return t('context.detailLabel')
-  if (node.kind === 'module') return t('context.kind.module')
-  if (node.kind === 'folder') return t('context.kind.folder')
-  if (node.kind === 'script') return t('context.kind.script')
-  if (node.kind === 'virtual') return t('context.kind.virtual')
-  if (node.kind === 'order') return t('context.kind.order')
-  return t('context.kind.entry')
 }

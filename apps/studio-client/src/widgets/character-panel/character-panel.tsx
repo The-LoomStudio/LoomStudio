@@ -1,11 +1,11 @@
-import { ArrowLeft, Circle, ChevronRight, Download, Folder, Grid2X2, List, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
+import { ArrowLeft, Circle, ChevronRight, Download, Folder, Grid2X2, List, Pencil, Plus, Trash2, Upload, Users, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent } from 'react'
 import type { ContextMenuItem } from '../../shared/ui/context-menu/context-menu.js'
 import { useContextMenuTrigger } from '../../shared/ui/context-menu/use-context-menu-trigger.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import { Toggle } from '../../shared/ui/toggle/toggle.js'
 import { useCharacterGalleryStore, type CharacterGroupFilter } from './character-gallery-store.js'
-import styles from './resource-panel.module.scss'
+import styles from './character-panel.module.scss'
 
 type CardView = {
   id: string
@@ -22,7 +22,8 @@ type GalleryMode = 'grid' | 'list'
 type MediaTarget = 'avatar' | 'background'
 type CharacterMedia = Partial<Record<MediaTarget, string>>
 
-type ResourcePanelProps = {
+type CharacterPanelProps = {
+  active: boolean
   branch?: BranchView
   branches: BranchView[]
   busy: boolean
@@ -41,6 +42,23 @@ type ResourcePanelProps = {
   t: Translator
 }
 
+export function CharacterPanelHeader(props: { t: Translator }) {
+  const activeGroupId = useCharacterGalleryStore(state => state.activeGroupId)
+  const groups = useCharacterGalleryStore(state => state.groups)
+  const groupsOpen = useCharacterGalleryStore(state => state.groupsOpen)
+  const setGroupsOpen = useCharacterGalleryStore(state => state.setGroupsOpen)
+  const label = activeGroupId === 'ungrouped'
+    ? props.t('character.ungrouped')
+    : groups.find(group => group.id === activeGroupId)?.name ?? props.t('rail.character')
+
+  return (
+    <button aria-expanded={groupsOpen} aria-label={props.t('character.groups')} className={styles.headerTitle} type="button" onClick={() => setGroupsOpen(true)}>
+      <Users aria-hidden="true" />
+      <span className="loom-page-header-title">{label}</span>
+    </button>
+  )
+}
+
 const MOCK_CARD_IMAGES = [
   'https://nekos.best/api/v2/neko/3dc0d45e-61b7-43b9-8452-9fada674b909.png',
   'https://nekos.best/api/v2/neko/71c172c2-f32e-461a-8bfb-18905ed12bb6.png',
@@ -53,7 +71,7 @@ const GALLERY_PAGE_SIZE = 30
 const MAX_MEDIA_BYTES = 10 * 1024 * 1024
 const PAGE_TRANSITION_MS = 180
 const MOCK_CARD_NAMES = ['白夜澪', '雾岛澄', '星见遥', '镜川栞', '月读纱夜', '雨宫凛', '七濑澪', '神代绫']
-const SESSION_MESSAGE_KEYS = ['cards.sessionMockMessage1', 'cards.sessionMockMessage2', 'cards.sessionMockMessage3'] as const
+const SESSION_MESSAGE_KEYS = ['character.sessionMockMessage1', 'character.sessionMockMessage2', 'character.sessionMockMessage3'] as const
 
 export function createMockCards(count = 100): CardView[] {
   return Array.from({ length: count }, (_, index) => ({
@@ -67,7 +85,7 @@ export function createMockCards(count = 100): CardView[] {
 
 const MOCK_GALLERY_CARDS = createMockCards()
 
-export function ResourcePanel(props: ResourcePanelProps) {
+export function CharacterPanel(props: CharacterPanelProps) {
   const organization = useCharacterGalleryStore()
   const [editing, setEditing] = useState(false)
   const [galleryMode, setGalleryMode] = useState<GalleryMode>('grid')
@@ -84,7 +102,7 @@ export function ResourcePanel(props: ResourcePanelProps) {
   const [groupDraft, setGroupDraft] = useState('')
   const [editingGroupId, setEditingGroupId] = useState<string>()
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>()
-  const resourcePaneRef = useRef<HTMLElement>(null)
+  const characterPanelRef = useRef<HTMLElement>(null)
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const backgroundInputRef = useRef<HTMLInputElement>(null)
   const mediaObjectUrlsRef = useRef(new Set<string>())
@@ -117,8 +135,8 @@ export function ResourcePanel(props: ResourcePanelProps) {
 
   useEffect(() => {
     const sentinel = gallerySentinelRef.current
-    const root = resourcePaneRef.current
-    if (page !== 'gallery' || !sentinel || !root || visibleCount >= filteredCards.length) return
+    const root = characterPanelRef.current
+    if (!props.active || page !== 'gallery' || !sentinel || !root || visibleCount >= filteredCards.length) return
 
     const observer = new IntersectionObserver(entries => {
       if (entries.some(entry => entry.isIntersecting)) {
@@ -127,7 +145,7 @@ export function ResourcePanel(props: ResourcePanelProps) {
     }, { root, rootMargin: '240px 0px' })
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [filteredCards.length, page, visibleCount])
+  }, [filteredCards.length, page, props.active, visibleCount])
 
   useEffect(() => {
     if (page === 'profile' && !selected) setPage('gallery')
@@ -158,11 +176,11 @@ export function ResourcePanel(props: ResourcePanelProps) {
 
   function replaceMedia(card: CardView, target: MediaTarget, file: File) {
     if (!file.type.startsWith('image/')) {
-      setMediaNotice(props.t('cards.mediaInvalid'))
+      setMediaNotice(props.t('character.mediaInvalid'))
       return
     }
     if (file.size > MAX_MEDIA_BYTES) {
-      setMediaNotice(props.t('cards.mediaTooLarge'))
+      setMediaNotice(props.t('character.mediaTooLarge'))
       return
     }
 
@@ -278,15 +296,15 @@ export function ResourcePanel(props: ResourcePanelProps) {
 
   if (page === 'profile' && selected) {
     return (
-      <aside className={`${styles.resourcePane} ${profileLeaving ? styles.profileLeaving : styles.profileEntering}`} data-loom-component="character-profile">
+      <aside className={`${styles.characterPanel} ${profileLeaving ? styles.profileLeaving : styles.profileEntering}`} data-loom-component="character-profile">
         <input ref={backgroundInputRef} accept="image/*" className={styles.mediaInput} type="file" onChange={event => selectMedia(selected, 'background', event)} />
         <input ref={avatarInputRef} accept="image/*" className={styles.mediaInput} type="file" onChange={event => selectMedia(selected, 'avatar', event)} />
-        <section className={styles.profileHero} style={{ backgroundImage: `url(${mediaUrl(selected, 'background', mediaByCardId)})` }}>
+        <section className={styles.profileHero} style={{ backgroundImage: props.active ? `url(${mediaUrl(selected, 'background', mediaByCardId)})` : 'none' }}>
           <div className={styles.profileHeroShade} />
           <button
-            aria-label={props.t('cards.changeBackground')}
+            aria-label={props.t('character.changeBackground')}
             className={`${styles.heroMediaTarget} ${dragTarget === 'background' ? styles.mediaDropTarget : ''}`}
-            title={props.t('cards.mediaHint')}
+            title={props.t('character.mediaHint')}
             type="button"
             onClick={() => openMediaPicker('background')}
             onDragEnter={() => setDragTarget('background')}
@@ -295,12 +313,12 @@ export function ResourcePanel(props: ResourcePanelProps) {
             onDrop={event => readDroppedFile(selected, 'background', event)}
             onPaste={event => readPastedFile(selected, 'background', event)}
           >
-            <span className={styles.mediaLabel}>{props.t('cards.changeBackground')}</span>
+            <span className={styles.mediaLabel}>{props.t('character.changeBackground')}</span>
           </button>
           <button
-            aria-label={props.t('cards.changeAvatar')}
+            aria-label={props.t('character.changeAvatar')}
             className={`${styles.profileAvatar} ${dragTarget === 'avatar' ? styles.mediaDropTarget : ''}`}
-            title={props.t('cards.mediaHint')}
+            title={props.t('character.mediaHint')}
             type="button"
             onClick={event => {
               event.stopPropagation()
@@ -327,43 +345,43 @@ export function ResourcePanel(props: ResourcePanelProps) {
               readPastedFile(selected, 'avatar', event)
             }}
           >
-            <img alt="" src={mediaUrl(selected, 'avatar', mediaByCardId)} />
-            <span className={styles.mediaLabel}>{props.t('cards.changeAvatar')}</span>
+            <img alt="" src={props.active ? mediaUrl(selected, 'avatar', mediaByCardId) : undefined} />
+            <span className={styles.mediaLabel}>{props.t('character.changeAvatar')}</span>
           </button>
         </section>
 
         <header className={styles.profileToolbar}>
-          <button aria-label={props.t('cards.back')} className={styles.toolbarButton} title={props.t('cards.back')} type="button" onClick={closeProfile}><ArrowLeft aria-hidden="true" /></button>
-          <span>{props.t('cards.title')}</span>
-          <div>{!isTransientCard ? <button aria-label={props.t('cards.edit')} className={editing ? styles.toolbarButtonActive : styles.toolbarButton} title={props.t('cards.edit')} type="button" onClick={() => setEditing(value => !value)}><Pencil aria-hidden="true" /></button> : null}</div>
+          <button aria-label={props.t('character.back')} className={styles.toolbarButton} title={props.t('character.back')} type="button" onClick={closeProfile}><ArrowLeft aria-hidden="true" /></button>
+          <span>{props.t('character.title')}</span>
+          <div>{!isTransientCard ? <button aria-label={props.t('character.edit')} className={editing ? styles.toolbarButtonActive : styles.toolbarButton} title={props.t('character.edit')} type="button" onClick={() => setEditing(value => !value)}><Pencil aria-hidden="true" /></button> : null}</div>
         </header>
 
         <section className={styles.profileIdentity}>
-          <div><h2>{selected.name}</h2><p>{selected.userName || props.t('cards.authorUnknown')}</p></div>
-          {!isTransientCard ? <button disabled={props.busy} type="button" onClick={() => void props.onCreateSessionFromCard()}>{props.t('cards.startSession')}</button> : null}
+          <div><h2>{selected.name}</h2><p>{selected.userName || props.t('character.authorUnknown')}</p></div>
+          {!isTransientCard ? <button disabled={props.busy} type="button" onClick={() => void props.onCreateSessionFromCard()}>{props.t('character.startSession')}</button> : null}
         </section>
         {mediaNotice ? <p aria-live="polite" className={styles.mediaNotice}>{mediaNotice}</p> : null}
 
         {editing ? (
           <form className={styles.profileEditor} onSubmit={event => void props.onUpdateCard(event).then(() => setEditing(false))}>
-            <label><span>{props.t('cards.name')}</span><input disabled={props.busy} value={props.cardDraft.name} onChange={event => props.onChangeCardDraft({ ...props.cardDraft, name: event.target.value })} /></label>
-            <label><span>{props.t('cards.author')}</span><input disabled={props.busy} value={props.cardDraft.userName} onChange={event => props.onChangeCardDraft({ ...props.cardDraft, userName: event.target.value })} /></label>
-            <label><span>{props.t('cards.description')}</span><textarea disabled={props.busy} value={props.cardDraft.description} onChange={event => props.onChangeCardDraft({ ...props.cardDraft, description: event.target.value })} /></label>
+            <label><span>{props.t('character.name')}</span><input disabled={props.busy} value={props.cardDraft.name} onChange={event => props.onChangeCardDraft({ ...props.cardDraft, name: event.target.value })} /></label>
+            <label><span>{props.t('character.author')}</span><input disabled={props.busy} value={props.cardDraft.userName} onChange={event => props.onChangeCardDraft({ ...props.cardDraft, userName: event.target.value })} /></label>
+            <label><span>{props.t('character.description')}</span><textarea disabled={props.busy} value={props.cardDraft.description} onChange={event => props.onChangeCardDraft({ ...props.cardDraft, description: event.target.value })} /></label>
             <div className={styles.editorActions}>
-              <button disabled={props.busy || !props.cardDraft.name.trim()} type="submit">{props.t('cards.save')}</button>
-              <button className={styles.deleteButton} disabled={props.busy} type="button" onClick={() => setPendingDeleteIds([selected.id])}>{props.t('cards.delete')}</button>
+              <button disabled={props.busy || !props.cardDraft.name.trim()} type="submit">{props.t('character.save')}</button>
+              <button className={styles.deleteButton} disabled={props.busy} type="button" onClick={() => setPendingDeleteIds([selected.id])}>{props.t('character.delete')}</button>
             </div>
           </form>
         ) : (
           <section className={styles.profileContent}>
-            <div><h3>{props.t('cards.description')}</h3><p>{selected.description || props.t('cards.descriptionEmpty')}</p></div>
-            <div className={styles.resourceOverview}><h3>{props.t('cards.resources')}</h3><span>{props.t('cards.resourcesCount', { count: selected.settingLayer?.entries.length ?? 0 })}</span></div>
+            <div><h3>{props.t('character.description')}</h3><p>{selected.description || props.t('character.descriptionEmpty')}</p></div>
+            <div className={styles.resourceOverview}><h3>{props.t('character.resources')}</h3><span>{props.t('character.resourcesCount', { count: selected.settingLayer?.entries.length ?? 0 })}</span></div>
           </section>
         )}
 
         <section className={styles.sessions}>
-          <header><h3>{props.t('cards.sessions')}</h3></header>
-          {props.session ? <p className={styles.currentSession}>{props.t('cards.currentSession', { id: shortId(props.session.id) })}</p> : null}
+          <header><h3>{props.t('character.sessions')}</h3></header>
+          {props.session ? <p className={styles.currentSession}>{props.t('character.currentSession', { id: shortId(props.session.id) })}</p> : null}
           <div className={styles.sessionList}>
             {props.branches.length === 0 ? <p>{props.t('branch.noBranches')}</p> : props.branches.map(branch => <SessionCard key={branch.id} branch={branch} busy={props.busy} current={branch.id === props.branch?.id} onSwitch={() => props.onSwitchBranch(branch)} t={props.t} />)}
           </div>
@@ -375,39 +393,40 @@ export function ResourcePanel(props: ResourcePanelProps) {
   }
 
   return (
-    <aside ref={resourcePaneRef} className={`${styles.resourcePane} ${styles.galleryEntering}`} data-loom-component="character-gallery">
+    <aside ref={characterPanelRef} className={`${styles.characterPanel} ${styles.galleryEntering}`} data-loom-component="character-gallery">
       <header className={styles.galleryToolbar}>
         {selectionMode ? (
           <div className={styles.selectionToolbar}>
-            <span>{props.t('cards.selectionCount', { count: selectedCardIds.size })}</span>
+            <span>{props.t('character.selectionCount', { count: selectedCardIds.size })}</span>
             <div>
-              <button disabled={selectedCardIds.size === 0} type="button" onClick={() => openGroupsForCards()}><Folder aria-hidden="true" />{props.t('cards.moveToGroup')}</button>
-              <button className={styles.deleteButton} disabled={![...selectedCardIds].some(cardId => !isMockCardId(cardId)) || props.busy} type="button" onClick={() => setPendingDeleteIds([...selectedCardIds].filter(cardId => !isMockCardId(cardId)))}><Trash2 aria-hidden="true" />{props.t('cards.delete')}</button>
-              <button aria-label={props.t('cards.exitSelection')} className={styles.toolbarButton} title={props.t('cards.exitSelection')} type="button" onClick={exitSelection}><X aria-hidden="true" /></button>
+              <button disabled={selectedCardIds.size === 0} type="button" onClick={() => openGroupsForCards()}><Folder aria-hidden="true" />{props.t('character.moveToGroup')}</button>
+              <button className={styles.deleteButton} disabled={![...selectedCardIds].some(cardId => !isMockCardId(cardId)) || props.busy} type="button" onClick={() => setPendingDeleteIds([...selectedCardIds].filter(cardId => !isMockCardId(cardId)))}><Trash2 aria-hidden="true" />{props.t('character.delete')}</button>
+              <button aria-label={props.t('character.exitSelection')} className={styles.toolbarButton} title={props.t('character.exitSelection')} type="button" onClick={exitSelection}><X aria-hidden="true" /></button>
             </div>
           </div>
         ) : (
           <>
-            <div className={styles.galleryModes} role="group" aria-label={props.t('cards.gallery')}>
-              <button aria-label={props.t('cards.grid')} aria-pressed={galleryMode === 'grid'} className={galleryMode === 'grid' ? styles.toolbarButtonActive : styles.toolbarButton} title={props.t('cards.grid')} type="button" onClick={() => setGalleryMode('grid')}><Grid2X2 aria-hidden="true" /></button>
-              <button aria-label={props.t('cards.list')} aria-pressed={galleryMode === 'list'} className={galleryMode === 'list' ? styles.toolbarButtonActive : styles.toolbarButton} title={props.t('cards.list')} type="button" onClick={() => setGalleryMode('list')}><List aria-hidden="true" /></button>
+            <div className={styles.galleryModes} role="group" aria-label={props.t('character.gallery')}>
+              <button aria-label={props.t('character.grid')} aria-pressed={galleryMode === 'grid'} className={galleryMode === 'grid' ? styles.toolbarButtonActive : styles.toolbarButton} title={props.t('character.grid')} type="button" onClick={() => setGalleryMode('grid')}><Grid2X2 aria-hidden="true" /></button>
+              <button aria-label={props.t('character.list')} aria-pressed={galleryMode === 'list'} className={galleryMode === 'list' ? styles.toolbarButtonActive : styles.toolbarButton} title={props.t('character.list')} type="button" onClick={() => setGalleryMode('list')}><List aria-hidden="true" /></button>
             </div>
             <div className={styles.galleryActions}>
-              <input aria-label={props.t('cards.searchPlaceholder')} className={styles.gallerySearch} placeholder={props.t('cards.searchPlaceholder')} type="search" value={query} onChange={event => setQuery(event.target.value)} />
-              <button aria-label={props.t('cards.import')} className={styles.toolbarButton} disabled title={props.t('cards.importPending')} type="button"><Upload aria-hidden="true" /></button>
-              <button aria-label={props.t('cards.export')} className={styles.toolbarButton} disabled title={props.t('cards.exportPending')} type="button"><Download aria-hidden="true" /></button>
-              <button disabled={props.busy} type="button" onClick={() => void props.onCreateCard()}><Plus aria-hidden="true" />{props.t('cards.create')}</button>
+              <input aria-label={props.t('character.searchPlaceholder')} className={styles.gallerySearch} placeholder={props.t('character.searchPlaceholder')} type="search" value={query} onChange={event => setQuery(event.target.value)} />
+              <button aria-label={props.t('character.import')} className={styles.toolbarButton} disabled title={props.t('character.importPending')} type="button"><Upload aria-hidden="true" /></button>
+              <button aria-label={props.t('character.export')} className={styles.toolbarButton} disabled title={props.t('character.exportPending')} type="button"><Download aria-hidden="true" /></button>
+              <button disabled={props.busy} type="button" onClick={() => void props.onCreateCard()}><Plus aria-hidden="true" />{props.t('character.create')}</button>
             </div>
           </>
         )}
       </header>
 
-      {filteredCards.length === 0 ? <p className={styles.empty}>{props.t('cards.empty')}</p> : (
+      {filteredCards.length === 0 ? <p className={styles.empty}>{props.t('character.empty')}</p> : (
         <div className={galleryMode === 'grid' ? styles.grid : styles.list}>
           {visibleCards.map(card => (
             <CharacterCard
               card={card}
               key={card.id}
+              loadMedia={props.active}
               mediaUrl={mediaUrl(card, 'avatar', mediaByCardId)}
               mode={galleryMode}
               selected={selectedCardIds.has(card.id)}
@@ -421,7 +440,7 @@ export function ResourcePanel(props: ResourcePanelProps) {
               onToggleSelection={() => toggleCardSelection(card.id)}
             />
           ))}
-          <div ref={gallerySentinelRef} className={styles.gallerySentinel}>{props.t('cards.galleryCount', { shown: visibleCards.length, total: filteredCards.length })}</div>
+          <div ref={gallerySentinelRef} className={styles.gallerySentinel}>{props.t('character.galleryCount', { shown: visibleCards.length, total: filteredCards.length })}</div>
         </div>
       )}
 
@@ -457,6 +476,7 @@ export function ResourcePanel(props: ResourcePanelProps) {
 
 function CharacterCard(props: {
   card: CardView
+  loadMedia: boolean
   mediaUrl: string
   mode: GalleryMode
   selected: boolean
@@ -470,9 +490,9 @@ function CharacterCard(props: {
   onToggleSelection(): void
 }) {
   const menuItems: ContextMenuItem[] = [
-    { checked: props.selected, icon: <Circle aria-hidden="true" />, id: 'select', label: props.selected ? props.t('cards.deselect') : props.t('cards.select'), onSelect: props.selected ? props.onToggleSelection : props.onSelect },
-    { icon: <Folder aria-hidden="true" />, id: 'move-group', label: props.t('cards.moveToGroup'), onSelect: props.onOpenGroups },
-    ...(isMockCard(props.card) ? [] : [{ id: 'separator', type: 'separator' as const }, { icon: <Trash2 aria-hidden="true" />, id: 'delete', label: props.t('cards.delete'), onSelect: props.onDelete, tone: 'danger' as const }]),
+    { checked: props.selected, icon: <Circle aria-hidden="true" />, id: 'select', label: props.selected ? props.t('character.deselect') : props.t('character.select'), onSelect: props.selected ? props.onToggleSelection : props.onSelect },
+    { icon: <Folder aria-hidden="true" />, id: 'move-group', label: props.t('character.moveToGroup'), onSelect: props.onOpenGroups },
+    ...(isMockCard(props.card) ? [] : [{ id: 'separator', type: 'separator' as const }, { icon: <Trash2 aria-hidden="true" />, id: 'delete', label: props.t('character.delete'), onSelect: props.onDelete, tone: 'danger' as const }]),
   ]
   const contextMenu = useContextMenuTrigger(menuItems)
   const className = [props.mode === 'grid' ? styles.gridCard : styles.listCard, props.selected ? styles.cardSelected : ''].filter(Boolean).join(' ')
@@ -487,10 +507,10 @@ function CharacterCard(props: {
         onClick={() => props.selectionMode ? props.onToggleSelection() : props.onOpenProfile()}
         onDragStart={props.onDragStart}
       >
-        <img alt="" src={props.mediaUrl} />
-        <span><strong>{props.card.name}</strong><small>{props.card.userName || props.t('cards.authorUnknown')}</small></span>
+        <img alt="" src={props.loadMedia ? props.mediaUrl : undefined} />
+        <span><strong>{props.card.name}</strong><small>{props.card.userName || props.t('character.authorUnknown')}</small></span>
       </button>
-      {props.selectionMode ? <Toggle checked={props.selected} className={styles.selectionToggle} label={props.selected ? props.t('cards.deselect') : props.t('cards.select')} onChange={props.onToggleSelection} /> : null}
+      {props.selectionMode ? <Toggle checked={props.selected} className={styles.selectionToggle} label={props.selected ? props.t('character.deselect') : props.t('character.select')} onChange={props.onToggleSelection} /> : null}
     </div>
   )
 }
@@ -518,32 +538,32 @@ function GroupSheet(props: {
 
   return (
     <div className={styles.sheetBackdrop} role="presentation">
-      <section aria-label={props.t('cards.groups')} aria-modal="true" className={styles.groupSheet} role="dialog" onKeyDown={event => { if (event.key === 'Escape') props.onClose() }} onMouseDown={event => event.stopPropagation()}>
+      <section aria-label={props.t('character.groups')} aria-modal="true" className={styles.groupSheet} role="dialog" onKeyDown={event => { if (event.key === 'Escape') props.onClose() }} onMouseDown={event => event.stopPropagation()}>
         <header>
-          <span>{props.t('cards.groups')}</span>
-          <button aria-label={props.t('cards.closeGroups')} autoFocus className={styles.toolbarButton} title={props.t('cards.closeGroups')} type="button" onClick={props.onClose}><X aria-hidden="true" /></button>
+          <span>{props.t('character.groups')}</span>
+          <button aria-label={props.t('character.closeGroups')} autoFocus className={styles.toolbarButton} title={props.t('character.closeGroups')} type="button" onClick={props.onClose}><X aria-hidden="true" /></button>
         </header>
         <div className={styles.groupList}>
           <button className={props.activeGroupId === undefined ? styles.groupRowActive : styles.groupRow} type="button" onClick={() => selectGroup(undefined)} onDragOver={event => event.preventDefault()} onDrop={event => props.onDrop(undefined, event)}>
-            <span>{props.t('cards.allGroups')}</span>
+            <span>{props.t('character.allGroups')}</span>
           </button>
           <button className={props.activeGroupId === 'ungrouped' ? styles.groupRowActive : styles.groupRow} type="button" onClick={() => selectGroup('ungrouped')} onDragOver={event => event.preventDefault()} onDrop={event => props.onDrop(undefined, event)}>
-            <span>{props.t('cards.ungrouped')}</span>
+            <span>{props.t('character.ungrouped')}</span>
           </button>
           {props.groups.map(group => (
             <div className={styles.groupRowWrap} key={group.id}>
               <button className={props.activeGroupId === group.id ? styles.groupRowActive : styles.groupRow} type="button" onClick={() => selectGroup(group.id)} onDragOver={event => event.preventDefault()} onDrop={event => props.onDrop(group.id, event)}>
                 <span>{group.name}</span>
               </button>
-              <button aria-label={props.t('cards.renameGroup')} className={styles.toolbarButton} title={props.t('cards.renameGroup')} type="button" onClick={() => props.onEditGroup(group)}><Pencil aria-hidden="true" /></button>
-              <button aria-label={props.t('cards.deleteGroup')} className={`${styles.toolbarButton} ${styles.deleteButton}`} title={props.t('cards.deleteGroup')} type="button" onClick={() => props.onDeleteGroup(group.id)}><Trash2 aria-hidden="true" /></button>
+              <button aria-label={props.t('character.renameGroup')} className={styles.toolbarButton} title={props.t('character.renameGroup')} type="button" onClick={() => props.onEditGroup(group)}><Pencil aria-hidden="true" /></button>
+              <button aria-label={props.t('character.deleteGroup')} className={`${styles.toolbarButton} ${styles.deleteButton}`} title={props.t('character.deleteGroup')} type="button" onClick={() => props.onDeleteGroup(group.id)}><Trash2 aria-hidden="true" /></button>
             </div>
           ))}
         </div>
-        {props.selectedCount > 0 ? <div className={styles.groupAssign}><span>{props.t('cards.selectionCount', { count: props.selectedCount })}</span><button type="button" onClick={() => props.onAssign()}>{props.t('cards.ungrouped')}</button>{props.groups.map(group => <button key={group.id} type="button" onClick={() => props.onAssign(group.id)}>{group.name}</button>)}</div> : null}
+        {props.selectedCount > 0 ? <div className={styles.groupAssign}><span>{props.t('character.selectionCount', { count: props.selectedCount })}</span><button type="button" onClick={() => props.onAssign()}>{props.t('character.ungrouped')}</button>{props.groups.map(group => <button key={group.id} type="button" onClick={() => props.onAssign(group.id)}>{group.name}</button>)}</div> : null}
         <form className={styles.groupForm} onSubmit={props.onSave}>
-          <input aria-label={props.editingGroupId ? props.t('cards.renameGroup') : props.t('cards.newGroup')} maxLength={40} placeholder={props.t('cards.groupNamePlaceholder')} value={props.groupDraft} onChange={event => props.onGroupDraftChange(event.target.value)} />
-          <button disabled={!props.groupDraft.trim()} type="submit">{props.editingGroupId ? props.t('cards.save') : props.t('cards.newGroup')}</button>
+          <input aria-label={props.editingGroupId ? props.t('character.renameGroup') : props.t('character.newGroup')} maxLength={40} placeholder={props.t('character.groupNamePlaceholder')} value={props.groupDraft} onChange={event => props.onGroupDraftChange(event.target.value)} />
+          <button disabled={!props.groupDraft.trim()} type="submit">{props.editingGroupId ? props.t('character.save') : props.t('character.newGroup')}</button>
         </form>
       </section>
     </div>
@@ -554,9 +574,9 @@ function DeleteConfirmation(props: { busy: boolean; count: number; onCancel(): v
   return (
     <div className={styles.sheetBackdrop} role="presentation" onMouseDown={props.onCancel}>
       <section aria-describedby="character-delete-description" aria-labelledby="character-delete-title" aria-modal="true" className={styles.deleteDialog} role="alertdialog" onKeyDown={event => { if (event.key === 'Escape') props.onCancel() }} onMouseDown={event => event.stopPropagation()}>
-        <h2 id="character-delete-title">{props.t('cards.deleteConfirmTitle')}</h2>
-        <p id="character-delete-description">{props.t('cards.deleteConfirmBody', { count: props.count })}</p>
-        <div><button autoFocus type="button" onClick={props.onCancel}>{props.t('cards.cancel')}</button><button className={styles.deleteButton} disabled={props.busy || props.count === 0} type="button" onClick={props.onConfirm}>{props.t('cards.confirmDelete')}</button></div>
+        <h2 id="character-delete-title">{props.t('character.deleteConfirmTitle')}</h2>
+        <p id="character-delete-description">{props.t('character.deleteConfirmBody', { count: props.count })}</p>
+        <div><button autoFocus type="button" onClick={props.onCancel}>{props.t('character.cancel')}</button><button className={styles.deleteButton} disabled={props.busy || props.count === 0} type="button" onClick={props.onConfirm}>{props.t('character.confirmDelete')}</button></div>
       </section>
     </div>
   )
@@ -596,8 +616,8 @@ function SessionCard(props: { branch: BranchView; busy: boolean; current: boolea
     <details className={styles.sessionCard} open={props.current}>
       <summary><ChevronRight aria-hidden="true" /><span><strong>{props.branch.title ?? props.t('branch.default')}</strong><small>{detail.lastActive}</small></span></summary>
       <div className={styles.sessionCardBody}>
-        <dl><div><dt>{props.t('cards.sessionCreated')}</dt><dd>{detail.createdAt}</dd></div><div><dt>{props.t('cards.sessionLatestMessage')}</dt><dd>{detail.lastMessage}</dd></div></dl>
-        <button disabled={props.busy || props.current} type="button" onClick={props.onSwitch}>{props.current ? props.t('cards.currentSession', { id: shortId(props.branch.id) }) : props.t('cards.openSession')}</button>
+        <dl><div><dt>{props.t('character.sessionCreated')}</dt><dd>{detail.createdAt}</dd></div><div><dt>{props.t('character.sessionLatestMessage')}</dt><dd>{detail.lastMessage}</dd></div></dl>
+        <button disabled={props.busy || props.current} type="button" onClick={props.onSwitch}>{props.current ? props.t('character.currentSession', { id: shortId(props.branch.id) }) : props.t('character.openSession')}</button>
       </div>
     </details>
   )
@@ -605,7 +625,7 @@ function SessionCard(props: { branch: BranchView; busy: boolean; current: boolea
 
 function sessionDetail(branch: BranchView, t: Translator) {
   const seed = Array.from(branch.id).reduce((total, character) => total + character.charCodeAt(0), 0)
-  const relativeTimes = [t('cards.sessionAgoMinutes', { count: (seed % 45) + 1 }), t('cards.sessionAgoHours', { count: (seed % 12) + 1 }), t('cards.sessionYesterday')]
+  const relativeTimes = [t('character.sessionAgoMinutes', { count: (seed % 45) + 1 }), t('character.sessionAgoHours', { count: (seed % 12) + 1 }), t('character.sessionYesterday')]
   return {
     lastActive: relativeTimes[seed % relativeTimes.length]!,
     createdAt: `2026-08-${String((seed % 28) + 1).padStart(2, '0')}`,

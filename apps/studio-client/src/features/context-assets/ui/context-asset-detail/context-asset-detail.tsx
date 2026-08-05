@@ -274,22 +274,22 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
         <LongTextEditor
           key={props.node.id}
           ref={editorRef}
-          clearLabel={props.t('editor.longText.clear')}
-          clearedLabel={props.t('editor.longText.cleared')}
-          copiedLabel={props.t('editor.longText.copied')}
-          copyFailedLabel={props.t('editor.longText.copyFailed')}
-          copyLabel={props.t('editor.longText.copy')}
+          clearLabel={props.t('longTextEditor.clear')}
+          clearedLabel={props.t('longTextEditor.cleared')}
+          copiedLabel={props.t('longTextEditor.copied')}
+          copyFailedLabel={props.t('longTextEditor.copyFailed')}
+          copyLabel={props.t('longTextEditor.copy')}
           disabled={readOnly}
           label={isTextLike ? props.t('context.contentLabel') : props.t('context.notesLabel')}
           mode={props.editorMode}
-          previewEmptyLabel={props.t('editor.longText.previewEmpty')}
-          previewModeLabel={props.t('editor.longText.previewMode')}
-          restoreInitialLabel={props.t('editor.longText.restoreInitial')}
+          previewEmptyLabel={props.t('longTextEditor.previewEmpty')}
+          previewModeLabel={props.t('longTextEditor.previewMode')}
+          restoreInitialLabel={props.t('longTextEditor.restoreInitial')}
           placeholder={isTextLike ? props.t('context.contentPlaceholder') : props.t('context.notesPlaceholder')}
           spellCheck={false}
-          sourceModeLabel={props.t('editor.longText.sourceMode')}
-          undoEditLabel={props.t('editor.longText.undoEdit')}
-          undoLabel={props.t('editor.longText.undoClear')}
+          sourceModeLabel={props.t('longTextEditor.sourceMode')}
+          undoEditLabel={props.t('longTextEditor.undoEdit')}
+          undoLabel={props.t('longTextEditor.undoClear')}
           value={body}
           onChange={value => props.onChangeNode({ body: value })}
           onCommit={value => props.onCommitNode({ body: value })}

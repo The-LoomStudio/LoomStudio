@@ -127,5 +127,5 @@ function jsonObject(value: Record<string, ClientJsonValue | undefined>): JsonObj
 }
 
 export function createBlankCardInput(t: Translator): JsonObject {
-  return jsonObject({ name: t('cards.new') })
+  return jsonObject({ name: t('character.new') })
 }

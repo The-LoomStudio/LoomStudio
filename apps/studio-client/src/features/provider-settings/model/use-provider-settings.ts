@@ -6,7 +6,7 @@ import { normalizeOpenAICompatibleBaseUrl } from './provider-base-url.js'
 
 const selectedAgentRuntimeProfileStorageKey = 'loom.studio.selectedAgentRuntimeProfileId'
 
-export type GatewayForm = {
+export type ProviderAccountDraft = {
   displayName: string
   baseUrl: string
   apiKey: string
@@ -14,12 +14,12 @@ export type GatewayForm = {
 
 type UseProviderSettingsInput = {
   api: StudioApi
-  initialGatewayForm: GatewayForm
+  initialProviderAccountDraft: ProviderAccountDraft
   runAction: (action: () => Promise<void>) => Promise<void>
 }
 
 export function useProviderSettings(input: UseProviderSettingsInput) {
-  const [gatewayForm, setGatewayForm] = useState(input.initialGatewayForm)
+  const [providerAccountDraft, setProviderAccountDraft] = useState(input.initialProviderAccountDraft)
   const [selectedAgentRuntimeProfileId, setSelectedAgentRuntimeProfileId] = useState<string | undefined>(() => readStoredAgentRuntimeProfileId())
   const [providerAccounts, setProviderAccounts] = useState<ProviderAccount[]>([])
   const [providerAccountsLoaded, setProviderAccountsLoaded] = useState(false)
@@ -59,18 +59,18 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
 
   async function createProviderAccount(event: FormEvent) {
     event.preventDefault()
-    const normalizedBaseUrl = normalizeOpenAICompatibleBaseUrl(gatewayForm.baseUrl)
-    setGatewayForm(current => ({ ...current, baseUrl: normalizedBaseUrl }))
+    const normalizedBaseUrl = normalizeOpenAICompatibleBaseUrl(providerAccountDraft.baseUrl)
+    setProviderAccountDraft(current => ({ ...current, baseUrl: normalizedBaseUrl }))
 
     await input.runAction(async () => {
       await input.api.providerAccounts.create(jsonObject({
         providerExtensionId: 'official.openai-compatible',
-        displayName: gatewayForm.displayName.trim(),
+        displayName: providerAccountDraft.displayName.trim(),
         config: jsonObject({
           baseUrl: normalizedBaseUrl,
         }),
         secretRefs: jsonObject({
-          apiKey: gatewayForm.apiKey.startsWith('env:') ? gatewayForm.apiKey : `plain:${gatewayForm.apiKey}`,
+          apiKey: providerAccountDraft.apiKey.startsWith('env:') ? providerAccountDraft.apiKey : `plain:${providerAccountDraft.apiKey}`,
         }),
       }))
       await refreshProviderSettings()
@@ -147,8 +147,8 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
   }
 
   return {
-    gatewayForm,
-    setGatewayForm,
+    providerAccountDraft,
+    setProviderAccountDraft,
     selectedAgentRuntimeProfileId,
     setSelectedAgentRuntimeProfileId: selectAgentRuntimeProfile,
     providerAccounts,
