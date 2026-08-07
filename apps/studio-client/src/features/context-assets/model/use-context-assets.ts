@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import type { ContextAssetNode, PromptResource, Session, UpdatePromptResourceResult } from '../../../entities/index.js'
+import { toClientJsonObject } from '../../../shared/api/client-json-object.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import {
@@ -18,7 +19,6 @@ import { findRootContextModule, type ContextAssetUpdate } from './projection-wor
 type UseContextAssetsInput = {
   api?: StudioApi
   initialNodes: ContextAssetNode[]
-  initialSelectedId: string
   onResourceChange?(resource: PromptResource): void
   recordEdit(entry: {
     label: string
@@ -33,7 +33,6 @@ type UseContextAssetsInput = {
 export function useContextAssets(input: UseContextAssetsInput) {
   const initialNodes = normalizeContextAssets(input.initialNodes)
   const [nodes, setNodeState] = useState<ContextAssetNode[]>(initialNodes)
-  const [selectedId, setSelectedId] = useState(input.initialSelectedId)
   const nodesRef = useRef(initialNodes)
   const persistedNodesRef = useRef(initialNodes)
   const mutationQueueRef = useRef<Promise<void>>(Promise.resolve())
@@ -86,7 +85,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
 
       try {
         await commitContextAssetMutation({
-          mutate: () => input.api!.promptResources.updateAsset(jsonObject({
+          mutate: () => input.api!.promptResources.updateAsset(toClientJsonObject({
             resourceId,
             ...readPromptAssetPatch(nextNode),
           })),
@@ -126,7 +125,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
 
       try {
         await commitContextAssetMutation({
-          mutate: () => input.api!.promptResources.updateAssets(jsonObject({
+          mutate: () => input.api!.promptResources.updateAssets(toClientJsonObject({
             resourceId,
             updates: changedNodes.map(node => readPromptAssetPatch(node)) as ClientJsonValue,
           })),
@@ -148,7 +147,6 @@ export function useContextAssets(input: UseContextAssetsInput) {
     if (!input.api || input.resources.length === 0) {
       const mutation = addContextAssetNode(nodesRef.current, parentId)
       setNodes(mutation.nodes)
-      if (mutation.selectedId) setSelectedId(mutation.selectedId)
       return mutation.selectedId
     }
 
@@ -158,14 +156,13 @@ export function useContextAssets(input: UseContextAssetsInput) {
       const asset = findContextAssetNode(mutation.nodes, mutation.selectedId)
       if (!asset || !mutation.selectedId) return
       const resourceId = readResourceId(parentId)
-      const result = await input.api!.promptResources.createAsset(jsonObject({
+      const result = await input.api!.promptResources.createAsset(toClientJsonObject({
         resourceId,
         targetAssetId: parentId,
         position: 'inside',
         asset: asset as unknown as ClientJsonValue,
       }))
       applyResource(result.resource)
-      setSelectedId(mutation.selectedId)
       nextSelectedId = mutation.selectedId
       input.recordEdit({
         label: input.t('history.context.create'),
@@ -187,7 +184,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
       if (next === persistedNodesRef.current) return
       const resourceId = readResourceId(draggedId)
       if (readResourceId(targetId) !== resourceId) throw new Error('Cross-resource prompt asset move is not supported')
-      const result = await input.api!.promptResources.moveAsset(jsonObject({
+      const result = await input.api!.promptResources.moveAsset(toClientJsonObject({
         resourceId,
         assetId: draggedId,
         targetAssetId: targetId,
@@ -206,7 +203,6 @@ export function useContextAssets(input: UseContextAssetsInput) {
     if (!input.api || input.resources.length === 0) {
       const mutation = duplicateContextAssetNode(nodesRef.current, id)
       setNodes(mutation.nodes)
-      if (mutation.selectedId) setSelectedId(mutation.selectedId)
       return mutation.selectedId
     }
 
@@ -216,14 +212,13 @@ export function useContextAssets(input: UseContextAssetsInput) {
       const asset = findContextAssetNode(mutation.nodes, mutation.selectedId)
       if (!asset || !mutation.selectedId) return
       const resourceId = readResourceId(id)
-      const result = await input.api!.promptResources.createAsset(jsonObject({
+      const result = await input.api!.promptResources.createAsset(toClientJsonObject({
         resourceId,
         targetAssetId: id,
         position: 'after',
         asset: asset as unknown as ClientJsonValue,
       }))
       applyResource(result.resource)
-      setSelectedId(mutation.selectedId)
       nextSelectedId = mutation.selectedId
       input.recordEdit({
         label: input.t('history.context.duplicate'),
@@ -234,11 +229,10 @@ export function useContextAssets(input: UseContextAssetsInput) {
     return nextSelectedId
   }
 
-  async function deleteContextAsset(id: string, currentSelectedId = selectedId): Promise<string | undefined> {
+  async function deleteContextAsset(id: string, currentSelectedId?: string): Promise<string | undefined> {
     if (!input.api || input.resources.length === 0) {
       const mutation = deleteContextAssetNode(nodesRef.current, id, currentSelectedId)
       setNodes(mutation.nodes)
-      if (mutation.selectedId) setSelectedId(mutation.selectedId)
       return mutation.selectedId
     }
 
@@ -247,12 +241,11 @@ export function useContextAssets(input: UseContextAssetsInput) {
       const mutation = deleteContextAssetNode(persistedNodesRef.current, id, currentSelectedId)
       if (mutation.nodes === persistedNodesRef.current) return
       const resourceId = readResourceId(id)
-      const result = await input.api!.promptResources.deleteAsset(jsonObject({
+      const result = await input.api!.promptResources.deleteAsset(toClientJsonObject({
         resourceId,
         assetId: id,
       }))
       applyResource(result.resource)
-      if (mutation.selectedId) setSelectedId(mutation.selectedId)
       nextSelectedId = mutation.selectedId
       input.recordEdit({
         label: input.t('history.context.delete'),
@@ -270,8 +263,6 @@ export function useContextAssets(input: UseContextAssetsInput) {
   return {
     nodes,
     setNodes,
-    selectedId,
-    setSelectedId,
     previewContextAsset,
     updateContextAsset,
     updateContextAssets,
@@ -303,7 +294,7 @@ export async function commitContextAssetMutation(input: {
 }
 
 function readPromptAssetPatch(node: ContextAssetNode): { [key: string]: ClientJsonValue } {
-  return jsonObject({
+  return toClientJsonObject({
     assetId: node.id,
     body: node.body,
     capabilities: node.capabilities as ClientJsonValue | undefined,
@@ -318,8 +309,4 @@ function readPromptAssetPatch(node: ContextAssetNode): { [key: string]: ClientJs
 
 function samePromptAssetPatch(left: ContextAssetNode, right: ContextAssetNode): boolean {
   return JSON.stringify(readPromptAssetPatch(left)) === JSON.stringify(readPromptAssetPatch(right))
-}
-
-function jsonObject(value: Record<string, ClientJsonValue | undefined>): { [key: string]: ClientJsonValue } {
-  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as { [key: string]: ClientJsonValue }
 }

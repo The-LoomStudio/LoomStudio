@@ -1,5 +1,6 @@
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import { useState, type FormEvent } from 'react'
+import { toClientJsonObject } from '../../../shared/api/client-json-object.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { AgentRuntimeProfile, ModelProfile, ProviderAccount } from '../../../entities/index.js'
 import { normalizeOpenAICompatibleBaseUrl } from './provider-base-url.js'
@@ -63,13 +64,13 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
     setProviderAccountDraft(current => ({ ...current, baseUrl: normalizedBaseUrl }))
 
     await input.runAction(async () => {
-      await input.api.providerAccounts.create(jsonObject({
+      await input.api.providerAccounts.create(toClientJsonObject({
         providerExtensionId: 'official.openai-compatible',
         displayName: providerAccountDraft.displayName.trim(),
-        config: jsonObject({
+        config: toClientJsonObject({
           baseUrl: normalizedBaseUrl,
         }),
-        secretRefs: jsonObject({
+        secretRefs: toClientJsonObject({
           apiKey: providerAccountDraft.apiKey.startsWith('env:') ? providerAccountDraft.apiKey : `plain:${providerAccountDraft.apiKey}`,
         }),
       }))
@@ -81,7 +82,7 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
     const model = providerModelId.trim()
     if (!model) return
     await input.runAction(async () => {
-      await input.api.modelProfiles.create(jsonObject({
+      await input.api.modelProfiles.create(toClientJsonObject({
         providerAccountId,
         displayName: model,
         providerModelId: model,
@@ -93,7 +94,7 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
 
   async function updateProviderAccount(providerAccountId: string, updates: { displayName?: string; config?: Record<string, ClientJsonValue>; secretRefs?: Record<string, string> }) {
     await input.runAction(async () => {
-      await input.api.providerAccounts.update(jsonObject({ providerAccountId, ...updates }))
+      await input.api.providerAccounts.update(toClientJsonObject({ providerAccountId, ...updates }))
       await refreshProviderAccounts()
     })
   }
@@ -108,7 +109,7 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
 
   async function updateModelProfile(modelProfileId: string, updates: { displayName?: string; providerModelId?: string; config?: Record<string, ClientJsonValue> }) {
     await input.runAction(async () => {
-      await input.api.modelProfiles.update(jsonObject({ modelProfileId, ...updates }))
+      await input.api.modelProfiles.update(toClientJsonObject({ modelProfileId, ...updates }))
       await refreshModelProfiles()
     })
   }
@@ -126,7 +127,7 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
 
   async function createAgentRuntimeProfile(profileInput: { name: string; purpose: string; presetId?: string; modelProfileId?: string }) {
     await input.runAction(async () => {
-      const result = await input.api.agentRuntimeProfiles.create(jsonObject(profileInput))
+      const result = await input.api.agentRuntimeProfiles.create(toClientJsonObject(profileInput))
       await refreshAgentRuntimeProfiles()
       selectAgentRuntimeProfile(result.agentRuntimeProfile.id)
     })
@@ -134,7 +135,7 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
 
   async function updateAgentRuntimeProfile(agentRuntimeProfileId: string, updates: { name?: string; purpose?: string; modelProfileId?: string }) {
     await input.runAction(async () => {
-      await input.api.agentRuntimeProfiles.update(jsonObject({ agentRuntimeProfileId, ...updates }))
+      await input.api.agentRuntimeProfiles.update(toClientJsonObject({ agentRuntimeProfileId, ...updates }))
       await refreshAgentRuntimeProfiles()
     })
   }
@@ -185,10 +186,6 @@ export function chooseAgentRuntimeProfileId(input: {
   if (input.currentId && input.profiles.some(profile => profile.id === input.currentId)) return input.currentId
   if (input.storedId && input.profiles.some(profile => profile.id === input.storedId)) return input.storedId
   return input.profiles[0]?.id
-}
-
-function jsonObject(value: Record<string, ClientJsonValue | undefined>): Record<string, ClientJsonValue> {
-  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as Record<string, ClientJsonValue>
 }
 
 function readStoredAgentRuntimeProfileId(): string | undefined {

@@ -15,7 +15,7 @@ import { buildPromptBuildSteps } from '../features/prompt-build/model/build-prom
 import { useProviderSettings } from '../features/provider-settings/model/use-provider-settings.js'
 import { useSessionRuntime } from '../features/session-runtime/model/use-session-runtime.js'
 import { DemoData } from './demo-data.js'
-import type { PromptResource, CardBundleArtifact } from '../entities/index.js'
+import type { CardBundleArtifact, ContextAssetNode, PromptResource } from '../entities/index.js'
 import {
   readComposerHint,
   readEmptyTimelineText,
@@ -24,6 +24,11 @@ import {
   readStoredPrompt,
   readStoredPromptProjection,
 } from './utils.js'
+
+export type HistoryAssetTarget = {
+  assetId: string
+  layoutId: 'preset' | 'resources'
+}
 
 export function useStudioState(transportLogger: Logger) {
   const [locale, setLocale] = useState<Locale>('zh-CN')
@@ -50,7 +55,6 @@ export function useStudioState(transportLogger: Logger) {
   const contextAssetState = useContextAssets({
     api,
     initialNodes: DemoData.contextAssets,
-    initialSelectedId: 'projection-order-profile-main',
     onResourceChange: resource => {
       setPromptResources(current => current.map(item => item.id === resource.id ? resource : item))
     },
@@ -80,7 +84,6 @@ export function useStudioState(transportLogger: Logger) {
   function applyPromptResourceSelection(resources: PromptResource[]) {
     setPromptResources(resources)
     contextAssetState.setNodes(normalizeContextAssets(resources.map(resource => resource.rootNode)))
-    contextAssetState.setSelectedId(readDefaultContextAssetId(resources))
   }
 
   useEffect(() => {
@@ -150,22 +153,22 @@ export function useStudioState(transportLogger: Logger) {
   }
 
   async function undoEdit() {
-    await operations.run('mutation', async () => {
+    return operations.run('mutation', async () => {
       const entry = await editHistory.undo()
       if (!entry) return
-      await refreshHistoryAnchor(entry)
+      return refreshHistoryAnchor(entry)
     })
   }
 
   async function redoEdit() {
-    await operations.run('mutation', async () => {
+    return operations.run('mutation', async () => {
       const entry = await editHistory.redo()
       if (!entry) return
-      await refreshHistoryAnchor(entry)
+      return refreshHistoryAnchor(entry)
     })
   }
 
-  async function refreshHistoryAnchor(entry: { anchor?: { documentId: string; subjectId?: string } }) {
+  async function refreshHistoryAnchor(entry: { anchor?: { documentId: string; subjectId?: string } }): Promise<HistoryAssetTarget | undefined> {
     if (!entry.anchor) return
     if (promptResources.some(resource => resource.id === entry.anchor?.documentId)) {
       const result = await api.promptResources.get(entry.anchor.documentId)
@@ -173,10 +176,7 @@ export function useStudioState(transportLogger: Logger) {
       applyPromptResourceSelection(resources)
       const subjectId = entry.anchor.subjectId
       const contextAssets = resources.map(resource => resource.rootNode)
-      contextAssetState.setSelectedId(subjectId && findContextAssetNode(contextAssets, subjectId)
-        ? subjectId
-        : readDefaultContextAssetId(resources))
-      return
+      return readHistoryAssetTarget(contextAssets, subjectId, readDefaultContextAssetId(resources))
     }
 
     const cards = await cardsState.refreshCards()
@@ -291,4 +291,16 @@ function createDemoCardBundleArtifact(): CardBundleArtifact {
 
 function readDefaultContextAssetId(resources: PromptResource[]): string {
   return resources[0]?.rootNode.id ?? ''
+}
+
+export function readHistoryAssetTarget(
+  nodes: ContextAssetNode[],
+  subjectId?: string,
+  fallbackId = '',
+): HistoryAssetTarget | undefined {
+  const asset = findContextAssetNode(nodes, subjectId ?? '') ?? findContextAssetNode(nodes, fallbackId)
+  return asset ? {
+    assetId: asset.id,
+    layoutId: asset.category === 'preset' ? 'preset' : 'resources',
+  } : undefined
 }

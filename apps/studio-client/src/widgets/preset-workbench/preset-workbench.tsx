@@ -1,10 +1,7 @@
-import { Code2, Copy, FileText, Folder, FolderOpen, GripVertical, Package, Plus, Trash2 } from 'lucide-react'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore } from '../../pages/studio/model/studio-layout-store.js'
 import { FileTree } from '../../shared/ui/file-tree/file-tree.js'
 import { AssetWorkbenchLayout } from '../../shared/ui/asset-workbench-layout/asset-workbench-layout.js'
-import type { ContextMenuItem } from '../../shared/ui/context-menu/context-menu.js'
-import { StatusIndicator } from '../../shared/ui/status-indicator/status-indicator.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import {
   findContextNode,
@@ -20,10 +17,17 @@ import {
 import { ContextAssetDetail } from '../../features/context-assets/ui/context-asset-detail/context-asset-detail.js'
 import { ContextAssetDetailHeader } from '../../features/context-assets/ui/context-asset-detail-header/context-asset-detail-header.js'
 import { ContextAssetSearch } from '../../features/context-assets/ui/context-asset-search/context-asset-search.js'
+import {
+  canToggleContextAssetEnabled,
+  readContextAssetTreeActions,
+  renderContextAssetLifecycleIndicator,
+  renderContextAssetTreeIcon,
+} from '../../features/context-assets/ui/context-asset-tree.js'
 import { ProjectionOrderEditor } from '../../features/context-assets/ui/projection-order-editor/projection-order-editor.js'
 import type { AgentRuntimeProfile, ContextAssetNode, ModelProfile } from '../../entities/index.js'
 import { AgentRuntimeManager } from './agent-runtime-manager.js'
 import styles from './preset-workbench.module.scss'
+import contextStyles from '../../features/context-assets/ui/context-asset-workbench.module.scss'
 
 type PresetWorkbenchProps = {
   nodes: ContextAssetNode[]
@@ -31,12 +35,11 @@ type PresetWorkbenchProps = {
   onCommitNode: (id: string, partial: Partial<ContextAssetNode>) => void
   onChangeNodes: (updates: ContextAssetUpdate[]) => void
   onMoveNode: (draggedId: string, targetId: string, position: 'before' | 'inside' | 'after') => void
-  onSearchQueryChange: (query: string) => void
   onAddNode: (parentId: string) => Promise<string | undefined>
   onDuplicateNode: (id: string) => Promise<string | undefined>
   onDeleteNode: (id: string, selectedId?: string) => Promise<string | undefined>
   routeAssetId?: string
-  searchQuery: string
+  initialSearchQuery?: string
   t: Translator
   workspaceId: string
   agentRuntimeProfiles: AgentRuntimeProfile[]
@@ -66,11 +69,16 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const projectionModel = useMemo(() => buildProjectionWorkbenchModel(props.nodes), [props.nodes])
   const { projectionEntries, orderNode, projectionOrderIds, orderedProjectionEntries } = projectionModel
   const detailNode = activePresetPanel === 'order' ? orderNode : selectedNode
+  const [searchQuery, setSearchQuery] = useState(props.initialSearchQuery ?? '')
 
   useEffect(() => {
     if (!props.routeAssetId) return
     openAssetDetail('preset', props.workspaceId, props.routeAssetId)
   }, [openAssetDetail, props.routeAssetId, props.workspaceId])
+
+  useEffect(() => {
+    setSearchQuery(props.initialSearchQuery ?? '')
+  }, [props.initialSearchQuery])
 
   const displayNodes = useMemo(() => {
     return props.nodes
@@ -127,37 +135,38 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
         <ContextAssetSearch
           key={props.workspaceId}
           nodes={displayNodes}
-          query={props.searchQuery}
+          query={searchQuery}
           t={props.t}
-          onQueryChange={props.onSearchQueryChange}
+          onQueryChange={setSearchQuery}
           onSelect={handleSelectNode}
         >
           <FileTree
             key={props.workspaceId}
             ariaLabel={props.t('context.assetsLabel')}
             expandedIds={explorerView.expandedIds}
-            getActions={node => readTreeActions(
-              node as ContextAssetNode,
-              async parentId => {
+            getDisclosureLabel={(node, expanded) => props.t(expanded ? 'context.tree.collapse' : 'context.tree.expand', { label: node.label })}
+            getDragLabel={node => props.t('context.tree.drag', { label: node.label })}
+            getActions={node => readContextAssetTreeActions(node as ContextAssetNode, {
+              onAdd: async parentId => {
                 const selectedId = await props.onAddNode(parentId)
                 if (!selectedId) return
                 openAssetDetail('preset', props.workspaceId, selectedId)
               },
-              async id => {
+              onDuplicate: async id => {
                 const selectedId = await props.onDuplicateNode(id)
                 if (!selectedId) return
                 openAssetDetail('preset', props.workspaceId, selectedId)
               },
-              async id => {
+              onDelete: async id => {
                 const nextSelectedId = await props.onDeleteNode(id, selectedId)
                 setSelectedId('preset', props.workspaceId, nextSelectedId)
               },
-              (id, enabled) => {
+              onToggleEnabled: (id, enabled) => {
                 props.onChangeNode(id, { enabled })
                 props.onCommitNode(id, { enabled })
               },
-              props.t,
-            )}
+              t: props.t,
+            })}
             isMuted={node => (node as ContextAssetNode).kind === 'entry' && (node as ContextAssetNode).enabled === false}
             moreActionsLabel={props.t('context.actionMore')}
             nodes={displayNodes}
@@ -183,8 +192,8 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
                props.onMoveNode(draggedId, targetId, position)
             }}
             onSelect={node => handleSelectNode(node as ContextAssetNode)}
-            renderIcon={(node, expanded) => renderTreeIcon(node as ContextAssetNode, expanded)}
-            renderMetaLeading={node => renderLifecycleIndicator(node as ContextAssetNode, props.t)}
+            renderIcon={(node, expanded) => renderContextAssetTreeIcon(node as ContextAssetNode, expanded)}
+            renderMetaLeading={node => renderContextAssetLifecycleIndicator(node as ContextAssetNode, props.t)}
             selectedId={selectedId}
             variant="flat"
           />
@@ -202,8 +211,8 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           onDelete={props.onDeleteAgentRuntimeProfile}
           t={props.t}
         />
-        <div className={styles.detailColumn} data-loom-component="context-detail-editor">
-          <ContextAssetDetailHeader metadataOpen={metadataOpen} node={detailNode} toggleEnabled={canToggleEnabled(detailNode)} t={props.t} onEnabledChange={enabled => {
+        <div className={contextStyles.detailColumn} data-loom-component="context-detail-editor">
+          <ContextAssetDetailHeader metadataOpen={metadataOpen} node={detailNode} toggleEnabled={canToggleContextAssetEnabled(detailNode)} t={props.t} onEnabledChange={enabled => {
             if (!detailNode) return
             props.onChangeNode(detailNode.id, { enabled })
             props.onCommitNode(detailNode.id, { enabled })
@@ -230,66 +239,10 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
             />
           )
         ) : (
-          <div className={styles.emptyState}>{props.t('context.emptyBody')}</div>
+          <div className={contextStyles.emptyState}>{props.t('context.emptyBody')}</div>
         )}
         </div>
       </div>
     </AssetWorkbenchLayout>
   )
-}
-
-function renderTreeIcon(node: ContextAssetNode, expanded: boolean) {
-  if (node.kind === 'module') return <Package />
-  if (node.kind === 'folder') return expanded ? <FolderOpen /> : <Folder />
-  if (node.kind === 'script') return <Code2 />
-  if (node.kind === 'virtual') return <FileText />
-  if (node.kind === 'order') return <GripVertical />
-  return <FileText />
-}
-
-function renderLifecycleIndicator(node: ContextAssetNode, t: Translator) {
-  if (node.enabled === false || node.projection?.lifecycle !== 'always') return null
-  return <StatusIndicator label={t('context.lifecycleAlwaysIndicator')} tone="info" />
-}
-
-function readTreeActions(
-  node: ContextAssetNode,
-  onAddNode: (parentId: string) => void,
-  onDuplicateNode: (id: string) => void,
-  onDeleteNode: (id: string) => void,
-  onToggleEnabled: (id: string, enabled: boolean) => void,
-  t: Translator,
-): ContextMenuItem[] {
-  const canAdd = (node.kind === 'module' || node.kind === 'folder') && !isReadOnlyTreeNode(node)
-  const canDuplicate = node.kind !== 'module' && node.kind !== 'order' && !isReadOnlyTreeNode(node)
-  const canDelete = canDuplicate
-  const items: ContextMenuItem[] = []
-
-  if (canToggleEnabled(node)) {
-    items.push({
-      checked: node.enabled !== false,
-      id: 'enabled',
-      label: t('context.actionEnable'),
-      onSelect: () => onToggleEnabled(node.id, node.enabled === false),
-    })
-    if (canAdd || canDuplicate) items.push({ id: 'state-separator', type: 'separator' })
-  }
-  if (canAdd) items.push({ icon: <Plus aria-hidden="true" />, id: 'add', label: t('context.actionAdd'), onSelect: () => onAddNode(node.id) })
-  if (canDuplicate) items.push({ icon: <Copy aria-hidden="true" />, id: 'duplicate', label: t('context.actionDuplicate'), onSelect: () => onDuplicateNode(node.id) })
-  if (canDelete) {
-    if (items.length > 0) items.push({ id: 'delete-separator', type: 'separator' })
-    items.push({ icon: <Trash2 aria-hidden="true" />, id: 'delete', label: t('context.actionDelete'), onSelect: () => onDeleteNode(node.id), tone: 'danger' })
-  }
-  return items
-}
-
-function canToggleEnabled(node: ContextAssetNode | undefined): node is ContextAssetNode {
-  return node?.kind === 'entry' && !isReadOnlyTreeNode(node)
-}
-
-function isReadOnlyTreeNode(node: ContextAssetNode): boolean {
-  return node.category === 'runtime'
-    || node.category === 'history'
-    || node.projection?.sourceKind === 'virtual'
-    || node.id.startsWith('history-')
 }

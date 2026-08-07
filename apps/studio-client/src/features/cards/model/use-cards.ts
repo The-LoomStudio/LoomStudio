@@ -1,5 +1,5 @@
-import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import { useEffect, useState, type FormEvent } from 'react'
+import { toClientJsonObject } from '../../../shared/api/client-json-object.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import type { Card, JsonObject } from '../../../entities/index.js'
@@ -62,7 +62,7 @@ export function useCards(input: UseCardsInput) {
     if (!selectedCardId) return
 
     await input.runAction(async () => {
-      const result = await input.api.cards.update(jsonObject({
+      const result = await input.api.cards.update(toClientJsonObject({
         cardId: selectedCardId,
         name: cardDraft.name,
         userName: cardDraft.userName,
@@ -122,10 +122,6 @@ export function useCards(input: UseCardsInput) {
   }
 }
 
-function jsonObject(value: Record<string, ClientJsonValue | undefined>): JsonObject {
-  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as JsonObject
-}
-
 export function createBlankCardInput(t: Translator): JsonObject {
-  return jsonObject({ name: t('character.new') })
+  return toClientJsonObject({ name: t('character.new') })
 }

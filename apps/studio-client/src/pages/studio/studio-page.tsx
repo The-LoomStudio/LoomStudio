@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import { Blocks, Columns2, FilePenLine, Folders, ListOrdered, ListTree, Maximize2, Menu, Minimize2, PanelLeftClose, PanelLeftOpen, Plug, Settings, SquareTerminal, Users, Wrench, type LucideIcon } from 'lucide-react'
 import type { Translator } from '../../shared/i18n/index.js'
-import { DEFAULT_ASSET_VIEW_STATE, STUDIO_PANEL_IDS, useStudioLayoutStore, type AssetLayoutId, type AssetViewMode, type StudioPanelId } from './model/studio-layout-store.js'
+import { DEFAULT_ASSET_VIEW_STATE, STUDIO_PANEL_IDS, useStudioLayoutStore, useStudioPanelStore, type AssetLayoutId, type AssetViewMode, type StudioPanelId } from './model/studio-layout-store.js'
 import { resizeWindow, type WindowResizeAxis, type WindowSize } from './window-resize.js'
 import styles from './studio-page.module.scss'
 
@@ -10,7 +10,6 @@ declare const __LOOM_STUDIO_VERSION__: string
 const STUDIO_VERSION = typeof __LOOM_STUDIO_VERSION__ === 'string' ? __LOOM_STUDIO_VERSION__ : 'dev'
 
 type StudioPageProps = {
-  activePanel: StudioPanelId | null
   assetWorkspaceId: string
   modelConfigured?: boolean
   busy: boolean
@@ -19,9 +18,6 @@ type StudioPageProps = {
   canvas: ReactNode
   customCss: string
   onRedo(): void
-  onClosePanel(): void
-  onTogglePanel(panel: StudioPanelId): void
-  onToggleWorkspace(): void
   onUndo(): void
   panelHeaders?: Partial<Record<StudioPanelId, ReactNode>>
   panels: Record<StudioPanelId, (active: boolean) => ReactNode>
@@ -87,7 +83,7 @@ export function StudioPage(props: StudioPageProps) {
   const stageRef = useRef<HTMLElement>(null)
   const dockRef = useRef<HTMLElement>(null)
   const windowResizeRef = useRef<WindowResizeSession | undefined>(undefined)
-  const activePanel = props.activePanel
+  const activePanel = useStudioPanelStore(state => state.activePanel)
   const activeAssetLayoutId = readAssetLayoutId(activePanel)
   const assetMetadataOpen = useStudioLayoutStore(state => state.assetMetadataOpen)
   const activeAssetViewModePreference = useStudioLayoutStore(state => activeAssetLayoutId === null
@@ -96,6 +92,7 @@ export function StudioPage(props: StudioPageProps) {
   const activeAssetHasSelection = useStudioLayoutStore(state => activeAssetLayoutId !== null
     && Boolean(state.assetLayouts[activeAssetLayoutId].views[props.assetWorkspaceId]?.selectedId))
   const closeDock = useStudioLayoutStore(state => state.closeDock)
+  const closePanel = useStudioPanelStore(state => state.closePanel)
   const dockOpen = useStudioLayoutStore(state => state.dockOpen)
   const panelWindowModes = useStudioLayoutStore(state => state.panelWindowModes)
   const panelWindowSizes = useStudioLayoutStore(state => state.panelWindowSizes)
@@ -103,6 +100,7 @@ export function StudioPage(props: StudioPageProps) {
   const setAssetMetadataOpen = useStudioLayoutStore(state => state.setAssetMetadataOpen)
   const setAssetViewMode = useStudioLayoutStore(state => state.setAssetViewMode)
   const toggleDock = useStudioLayoutStore(state => state.toggleDock)
+  const togglePanel = useStudioPanelStore(state => state.togglePanel)
   const togglePanelWindowMode = useStudioLayoutStore(state => state.togglePanelWindowMode)
   const isImmersive = activePanel !== null && panelWindowModes[activePanel] === 'immersive'
   const [windowResizePreview, setWindowResizePreview] = useState<WindowResizePreview>()
@@ -123,7 +121,7 @@ export function StudioPage(props: StudioPageProps) {
       }
       if (event.key === 'Escape' && (activePanel !== null || dockOpen)) {
         event.preventDefault()
-        if (activePanel !== null) props.onClosePanel()
+        if (activePanel !== null) closePanel()
         else closeDock()
         return
       }
@@ -145,7 +143,7 @@ export function StudioPage(props: StudioPageProps) {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [activePanel, assetMetadataOpen, closeDock, dockOpen, isImmersive, props.busy, props.canRedo, props.canUndo, props.onClosePanel, props.onRedo, props.onUndo, setAssetMetadataOpen, togglePanelWindowMode])
+  }, [activePanel, assetMetadataOpen, closeDock, closePanel, dockOpen, isImmersive, props.busy, props.canRedo, props.canUndo, props.onRedo, props.onUndo, setAssetMetadataOpen, togglePanelWindowMode])
 
   function beginWindowResize(axis: WindowResizeAxis, event: PointerEvent<HTMLButtonElement>) {
     if (!activePanel || !stageRef.current || !dockRef.current) return
@@ -272,7 +270,7 @@ export function StudioPage(props: StudioPageProps) {
             className={styles.dockToggle}
             title={props.t('rail.label')}
             type="button"
-            onClick={() => activePanel === null ? toggleDock() : props.onClosePanel()}
+            onClick={() => activePanel === null ? toggleDock() : closePanel()}
           >
             <Menu aria-hidden="true" />
           </button>
@@ -286,7 +284,7 @@ export function StudioPage(props: StudioPageProps) {
                 className={styles.dockWorkspaceToggle}
                 title={props.t(activePanel === null ? 'rail.openCharacter' : 'rail.closeWorkspace')}
                 type="button"
-                onClick={props.onToggleWorkspace}
+                onClick={() => activePanel === null ? togglePanel('character') : closePanel()}
               >
                 {activePanel === null ? <PanelLeftOpen aria-hidden="true" /> : <PanelLeftClose aria-hidden="true" />}
               </button>
@@ -305,7 +303,7 @@ export function StudioPage(props: StudioPageProps) {
                 data-status={props.modelConfigured === undefined ? 'unknown' : props.modelConfigured ? 'configured' : 'incomplete'}
                 title={props.t(props.modelConfigured === false ? 'rail.modelIncomplete' : 'rail.model')}
                 type="button"
-                onClick={() => props.onTogglePanel('model')}
+                onClick={() => togglePanel('model')}
               >
                 <Plug aria-hidden="true" />
                 <span className={styles.railLabel}>{props.t('rail.model')}</span>
@@ -318,7 +316,7 @@ export function StudioPage(props: StudioPageProps) {
                 className={activePanel === 'character' ? `${styles.railTab} ${styles.railTabActive}` : styles.railTab}
                 title={props.t('rail.character')}
                 type="button"
-                onClick={() => props.onTogglePanel('character')}
+                onClick={() => togglePanel('character')}
               >
                 <Users aria-hidden="true" />
                 <span className={styles.railLabel}>{props.t('rail.character')}</span>
@@ -330,7 +328,7 @@ export function StudioPage(props: StudioPageProps) {
                 className={activePanel === 'preset' ? `${styles.railTab} ${styles.railTabActive}` : styles.railTab}
                 title={props.t('rail.preset')}
                 type="button"
-                onClick={() => props.onTogglePanel('preset')}
+                onClick={() => togglePanel('preset')}
               >
                 <ListOrdered aria-hidden="true" />
                 <span className={styles.railLabel}>{props.t('rail.preset')}</span>
@@ -342,7 +340,7 @@ export function StudioPage(props: StudioPageProps) {
                 className={activePanel === 'resource' ? `${styles.railTab} ${styles.railTabActive}` : styles.railTab}
                 title={props.t('rail.resource')}
                 type="button"
-                onClick={() => props.onTogglePanel('resource')}
+                onClick={() => togglePanel('resource')}
               >
                 <Folders aria-hidden="true" />
                 <span className={styles.railLabel}>{props.t('rail.resource')}</span>
@@ -355,7 +353,7 @@ export function StudioPage(props: StudioPageProps) {
                 className={activePanel === 'inspector' ? `${styles.railTab} ${styles.railTabActive}` : styles.railTab}
                 title={props.t('rail.inspector')}
                 type="button"
-                onClick={() => props.onTogglePanel('inspector')}
+                onClick={() => togglePanel('inspector')}
               >
                 <Wrench aria-hidden="true" />
                 <span className={styles.railLabel}>{props.t('rail.inspector')}</span>
@@ -367,7 +365,7 @@ export function StudioPage(props: StudioPageProps) {
                 className={activePanel === 'logs' ? `${styles.railTab} ${styles.railTabActive}` : styles.railTab}
                 title={props.t('rail.logs')}
                 type="button"
-                onClick={() => props.onTogglePanel('logs')}
+                onClick={() => togglePanel('logs')}
               >
                 <SquareTerminal aria-hidden="true" />
                 <span className={styles.railLabel}>{props.t('rail.logs')}</span>
@@ -389,7 +387,7 @@ export function StudioPage(props: StudioPageProps) {
                 className={activePanel === 'settings' ? `${styles.railTab} ${styles.railTabActive}` : styles.railTab}
                 title={props.t('rail.settings')}
                 type="button"
-                onClick={() => props.onTogglePanel('settings')}
+                onClick={() => togglePanel('settings')}
               >
                 <Settings aria-hidden="true" />
                 <span className={styles.railLabel}>{props.t('rail.settings')}</span>

@@ -34,8 +34,6 @@ type CharacterPanelProps = {
   onCreateCard(): Promise<void>
   onCreateSessionFromCard(): Promise<void>
   onDeleteCards(cardIds: string[]): Promise<void>
-  onCloseProfile(): void
-  onOpenProfile(cardId: string): void
   onSelectCard(cardId: string): void
   onSwitchBranch(branch: BranchView): void
   onUpdateCard(event: FormEvent): Promise<void>
@@ -94,6 +92,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
   const [editing, setEditing] = useState(false)
   const [galleryMode, setGalleryMode] = useState<GalleryMode>('grid')
   const [profileLeaving, setProfileLeaving] = useState(false)
+  const [profileCardId, setProfileCardId] = useState(props.routeCardId)
   const [mediaByCardId, setMediaByCardId] = useState<Record<string, CharacterMedia>>({})
   const [query, setQuery] = useState('')
   const [visibleCount, setVisibleCount] = useState(GALLERY_PAGE_SIZE)
@@ -111,10 +110,10 @@ export function CharacterPanel(props: CharacterPanelProps) {
   const gallerySentinelRef = useRef<HTMLDivElement>(null)
   const pageTransitionTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const galleryCards = useMemo(() => [...props.cards, ...MOCK_GALLERY_CARDS], [props.cards])
-  const selected = props.routeCardId
-    ? galleryCards.find(card => card.id === props.routeCardId) ?? (props.selectedCard?.id === props.routeCardId ? props.selectedCard : undefined)
+  const selected = profileCardId
+    ? galleryCards.find(card => card.id === profileCardId) ?? (props.selectedCard?.id === profileCardId ? props.selectedCard : undefined)
     : undefined
-  const page = props.routeCardId ? 'profile' : 'gallery'
+  const page = profileCardId ? 'profile' : 'gallery'
   const isTransientCard = selected ? isMockCard(selected) : false
   const groupedCards = useMemo(() => filterCardsByGroup(galleryCards, organization.assignments, organization.activeGroupId), [galleryCards, organization.activeGroupId, organization.assignments])
   const filteredCards = useMemo(() => {
@@ -123,6 +122,14 @@ export function CharacterPanel(props: CharacterPanelProps) {
     return groupedCards.filter(card => [card.name, card.userName, card.description].some(value => value?.toLocaleLowerCase().includes(normalizedQuery)))
   }, [groupedCards, query])
   const visibleCards = filteredCards.slice(0, visibleCount)
+
+  useEffect(() => {
+    setProfileCardId(props.routeCardId)
+  }, [props.routeCardId])
+
+  useEffect(() => {
+    if (page === 'gallery') setProfileLeaving(false)
+  }, [page])
 
   useEffect(() => {
     setVisibleCount(GALLERY_PAGE_SIZE)
@@ -159,15 +166,14 @@ export function CharacterPanel(props: CharacterPanelProps) {
     }
     if (!isMockCard(card)) props.onSelectCard(card.id)
     setEditing(false)
-    props.onOpenProfile(card.id)
+    setProfileCardId(card.id)
   }
 
   function closeProfile() {
     if (profileLeaving) return
     setProfileLeaving(true)
     pageTransitionTimerRef.current = setTimeout(() => {
-      setProfileLeaving(false)
-      props.onCloseProfile()
+      setProfileCardId(undefined)
     }, pageTransitionDelay())
   }
 

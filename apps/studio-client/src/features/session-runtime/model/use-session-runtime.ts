@@ -1,5 +1,6 @@
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import { useRef, useState, type FormEvent } from 'react'
+import { toClientJsonObject } from '../../../shared/api/client-json-object.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { LatestOperationContext } from '../../../shared/hooks/use-async-operations.js'
 import type {
@@ -55,7 +56,7 @@ export function useSessionRuntime(input: UseSessionRuntimeInput) {
 
     let activated: { branchId: string; sessionId: string } | undefined
     await input.runAction(async () => {
-      const result = await input.api.sessions.createFromCard(jsonObject({
+      const result = await input.api.sessions.createFromCard(toClientJsonObject({
         cardId: input.selectedCardId,
         agentRuntimeProfileId: input.selectedAgentRuntimeProfileId,
       }))
@@ -80,7 +81,7 @@ export function useSessionRuntime(input: UseSessionRuntimeInput) {
     if (!session || composerInput.trim().length === 0) return
 
     await input.runAction(async () => {
-      const result = await input.api.turns.submit(jsonObject({
+      const result = await input.api.turns.submit(toClientJsonObject({
         sessionId: session.id,
         branchId: branch?.id,
         agentRuntimeProfileId: input.selectedAgentRuntimeProfileId,
@@ -104,7 +105,7 @@ export function useSessionRuntime(input: UseSessionRuntimeInput) {
     if (!session || !branch || composerInput.trim().length === 0) return
 
     await input.runAction(async () => {
-      const result = await input.api.prompt.preview(jsonObject({
+      const result = await input.api.prompt.preview(toClientJsonObject({
         sessionId: session.id,
         branchId: branch.id,
         agentRuntimeProfileId: input.selectedAgentRuntimeProfileId,
@@ -172,8 +173,8 @@ export function useSessionRuntime(input: UseSessionRuntimeInput) {
       if (!nextBranch) throw new Error(`Session ${sessionId} has no active branch`)
 
       const [nextTimeline, nextTranscript] = await Promise.all([
-        input.api.timeline.get(jsonObject({ sessionId, branchId: nextBranch.id })),
-        input.api.agentTranscript.get(jsonObject({ sessionId, branchId: nextBranch.id })),
+        input.api.timeline.get(toClientJsonObject({ sessionId, branchId: nextBranch.id })),
+        input.api.agentTranscript.get(toClientJsonObject({ sessionId, branchId: nextBranch.id })),
       ])
       if (!context.isCurrent()) return
 
@@ -191,7 +192,7 @@ export function useSessionRuntime(input: UseSessionRuntimeInput) {
   }
 
   async function refreshTimeline(sessionId: string, branchId?: string) {
-    const result = await input.api.timeline.get(jsonObject({
+    const result = await input.api.timeline.get(toClientJsonObject({
       sessionId,
       branchId,
     }))
@@ -206,7 +207,7 @@ export function useSessionRuntime(input: UseSessionRuntimeInput) {
   }
 
   async function refreshAgentTranscript(sessionId: string, branchId?: string) {
-    const result = await input.api.agentTranscript.get(jsonObject({
+    const result = await input.api.agentTranscript.get(toClientJsonObject({
       sessionId,
       branchId,
     }))
@@ -255,8 +256,4 @@ export function resolveSessionBranch(branches: Branch[], activeBranchId: string,
 export function readComposerDraftKey(session: Session | undefined, branch: Branch | undefined, selectedCardId?: string): string {
   if (session) return `${session.id}:${branch?.id ?? 'unbound'}`
   return `card:${selectedCardId ?? 'unbound'}`
-}
-
-function jsonObject(value: Record<string, ClientJsonValue | undefined>): JsonObject {
-  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as JsonObject
 }

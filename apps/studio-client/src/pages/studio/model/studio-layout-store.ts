@@ -50,6 +50,13 @@ type StudioLayoutStore = StudioLayoutData & {
   togglePanelWindowMode(panel: StudioPanelId): void
 }
 
+type StudioPanelStore = {
+  activePanel: StudioPanelId | null
+  closePanel(): void
+  setActivePanel(panel: StudioPanelId | null): void
+  togglePanel(panel: StudioPanelId): void
+}
+
 const STORAGE_KEY = 'loom-studio-layout'
 const STORAGE_VERSION = 8
 const DEFAULT_EXPLORER_WIDTH = 300
@@ -112,6 +119,13 @@ export function sanitizeStudioLayout(value: unknown): StudioLayoutData {
     textEditorMode: value.textEditorMode === 'preview' ? 'preview' : defaults.textEditorMode,
   }
 }
+
+export const useStudioPanelStore = create<StudioPanelStore>(set => ({
+  activePanel: null,
+  closePanel: () => set({ activePanel: null }),
+  setActivePanel: activePanel => set({ activePanel }),
+  togglePanel: panel => set(state => ({ activePanel: state.activePanel === panel ? null : panel })),
+}))
 
 export const useStudioLayoutStore = create<StudioLayoutStore>()(
   persist(

@@ -34,4 +34,14 @@ describe('async operation state', () => {
     expect(state.resources.pendingCount).toBe(0)
     expect(state.resources.error?.message).toBe('latest')
   })
+
+  it('clears a scoped error when the latest operation succeeds', () => {
+    let state = createAsyncOperationState()
+    state = reduceAsyncOperationState(state, { scope: 'cards', type: 'start' })
+    state = reduceAsyncOperationState(state, { scope: 'cards', sequence: 1, type: 'finish', recordError: true, error: 'failed' })
+    state = reduceAsyncOperationState(state, { scope: 'cards', type: 'start' })
+    state = reduceAsyncOperationState(state, { scope: 'cards', sequence: 2, type: 'finish', recordError: true })
+
+    expect(state.cards.error).toBeUndefined()
+  })
 })

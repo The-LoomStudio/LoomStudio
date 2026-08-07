@@ -6,25 +6,3 @@
   overflow: hidden;
   width: 100%;
 }
-
-.detailColumn {
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  padding: 14px 18px 18px;
-}
-
-.emptyState {
-  color: var(--loom-text-muted);
-  font-size: 13px;
-  padding-top: 24px;
-}
-
-@media (max-width: 720px) {
-  .detailColumn {
-    padding-inline: 14px;
-  }
-}

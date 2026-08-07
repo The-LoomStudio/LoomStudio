@@ -4,6 +4,7 @@ import {
   readConversationPreview,
   readConversationTickWidth,
   readConversationTrackOffset,
+  readConversationWindow,
   readConversationWheelStep,
 } from './conversation-navigator-model.js'
 
@@ -25,6 +26,12 @@ describe('conversation navigator model', () => {
     expect(readConversationWheelStep(12)).toBe(0)
     expect(readConversationWheelStep(36)).toBe(1)
     expect(readConversationWheelStep(-180)).toBe(-5)
+  })
+
+  it('limits long conversations to a centered window with overscan', () => {
+    expect(readConversationWindow(1_000, 500, 100)).toEqual({ start: 442, end: 558 })
+    expect(readConversationWindow(1_000, 0, 100)).toEqual({ start: 0, end: 108 })
+    expect(readConversationWindow(1_000, 999, 100)).toEqual({ start: 892, end: 1_000 })
   })
 
   it('reduces markdown to a compact preview', () => {

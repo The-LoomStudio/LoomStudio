@@ -3,6 +3,7 @@ import {
   readConversationPreview,
   readConversationTickWidth,
   readConversationTrackOffset,
+  readConversationWindow,
   readConversationWheelStep,
   type ConversationMarker,
 } from './conversation-navigator-model.js'
@@ -37,6 +38,8 @@ export function ConversationNavigator(props: ConversationNavigatorProps) {
   const markerByEntryId = new Map(props.markers?.map(marker => [marker.entryId, marker.kind]))
   const visibleSlotCount = Math.min(visibleCapacity, Math.max(12, props.items.length))
   const trackOffset = readConversationTrackOffset(visibleSlotCount, trackCenterIndex, tickStep)
+  const visibleWindow = readConversationWindow(props.items.length, trackCenterIndex, visibleSlotCount)
+  const visibleItems = props.items.slice(visibleWindow.start, visibleWindow.end)
 
   useLayoutEffect(() => {
     const navigatorElement = navigatorRef.current
@@ -115,9 +118,10 @@ export function ConversationNavigator(props: ConversationNavigatorProps) {
         <div className={styles.ticksViewport}>
           <div
             className={styles.ticks}
-            style={{ transform: `translateY(${trackOffset}px)` }}
+            style={{ transform: `translateY(${trackOffset + visibleWindow.start * tickStep}px)` }}
           >
-          {props.items.map((item, index) => {
+          {visibleItems.map((item, localIndex) => {
+            const index = visibleWindow.start + localIndex
             const distance = hoveredIndex === undefined ? Number.POSITIVE_INFINITY : Math.abs(index - hoveredIndex)
             const marker = markerByEntryId.get(item.id)
             return (

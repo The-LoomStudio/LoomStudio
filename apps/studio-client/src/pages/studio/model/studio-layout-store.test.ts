@@ -3,6 +3,7 @@ import {
   createDefaultStudioLayout,
   sanitizeStudioLayout,
   useStudioLayoutStore,
+  useStudioPanelStore,
 } from './studio-layout-store.js'
 
 describe('studio layout store', () => {
@@ -16,6 +17,7 @@ describe('studio layout store', () => {
       setItem: vi.fn((key: string, value: string) => storedValues.set(key, value)),
     })
     useStudioLayoutStore.setState(createDefaultStudioLayout())
+    useStudioPanelStore.setState({ activePanel: null })
   })
 
   afterEach(() => vi.unstubAllGlobals())
@@ -28,6 +30,21 @@ describe('studio layout store', () => {
     useStudioLayoutStore.getState().toggleDock()
 
     expect(useStudioLayoutStore.getState().dockOpen).toBe(false)
+  })
+
+  it('switches workspace panels without changing persisted layout data', () => {
+    const writesBefore = vi.mocked(localStorage.setItem).mock.calls.length
+    const store = useStudioPanelStore.getState()
+
+    store.togglePanel('character')
+    expect(useStudioPanelStore.getState().activePanel).toBe('character')
+
+    store.togglePanel('resource')
+    expect(useStudioPanelStore.getState().activePanel).toBe('resource')
+
+    store.closePanel()
+    expect(useStudioPanelStore.getState().activePanel).toBeNull()
+    expect(vi.mocked(localStorage.setItem).mock.calls.length).toBe(writesBefore)
   })
 
   it('keeps window and explorer layouts isolated by page', () => {

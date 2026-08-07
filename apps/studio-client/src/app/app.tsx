@@ -14,7 +14,7 @@ import { ContextMenuProvider } from '../shared/ui/context-menu/context-menu.js'
 import { NotificationToaster } from '../shared/ui/notification-toaster/notification-toaster.js'
 import { toast } from 'sonner'
 import { hasCompleteProviderAccount } from '../features/provider-settings/model/provider-account-status.js'
-import type { StudioPanelId } from '../pages/studio/model/studio-layout-store.js'
+import { useStudioLayoutStore, type StudioPanelId } from '../pages/studio/model/studio-layout-store.js'
 import { useStudioNavigation } from '../pages/studio/model/use-studio-navigation.js'
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import styles from './app.module.scss'
@@ -24,11 +24,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
   const state = useStudioState(props.transportLogger)
   const [composerHeight, setComposerHeight] = useState(0)
   const sessionRouteRequestRef = useRef(0)
-  const navigation = useStudioNavigation({
-    branchId: state.branch?.id,
-    selectedCardId: state.selectedCardId,
-    sessionId: state.session?.id,
-  })
+  const navigation = useStudioNavigation()
   const assetWorkspaceId = navigation.route.panel === 'preset' || navigation.route.panel === 'resource'
     ? navigation.route.cardId ?? state.selectedCardId ?? 'default'
     : state.selectedCardId ?? 'default'
@@ -37,6 +33,11 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
   const providerBusy = bootstrapBusy || state.operationPending['provider-settings'].pendingCount > 0
   const sessionBusy = state.operationPending.session.pendingCount > 0
   const mutationBusy = state.operationPending.mutation.pendingCount > 0
+
+  function focusHistoryAsset(target: Awaited<ReturnType<typeof state.undoEdit>>) {
+    if (!target) return
+    useStudioLayoutStore.getState().openAssetDetail(target.layoutId, assetWorkspaceId, target.assetId)
+  }
 
   useEffect(() => {
     if (!state.operationError) return
@@ -49,9 +50,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
     if (navigation.route.panel !== 'preset' && navigation.route.panel !== 'resource') return
     if (navigation.route.cardId) {
       if (navigation.route.cardId !== state.selectedCardId) state.setSelectedCardId(navigation.route.cardId)
-      return
     }
-    if (state.selectedCardId) navigation.canonicalizePanelCard(state.selectedCardId)
   }, [navigation.route.cardId, navigation.route.panel, state.selectedCardId])
 
   useEffect(() => {
@@ -117,8 +116,6 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         }}
         onDeleteCards={state.deleteCards}
         onSelectCard={state.setSelectedCardId}
-        onCloseProfile={navigation.closeDetail}
-        onOpenProfile={navigation.openCharacter}
         onSwitchBranch={branch => {
           void state.switchBranch(branch).then(() => {
             if (state.session) navigation.openChat(state.session.id, branch.id)
@@ -138,16 +135,14 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         onSelectAgentRuntimeProfile={id => state.setSelectedAgentRuntimeProfileId(id)}
         onUpdateAgentRuntimeProfile={state.updateAgentRuntimeProfile}
         routeAssetId={navigation.route.panel === 'preset' ? navigation.route.assetId : undefined}
-        searchQuery={navigation.route.panel === 'preset' ? navigation.searchQuery : ''}
-        onSearchQueryChange={navigation.setSearchQuery}
+        initialSearchQuery={navigation.route.panel === 'preset' ? navigation.searchQuery : ''}
       />
     ),
     resource: () => (
       <ContextWorkbench
         {...contextAssetEditorProps}
         routeAssetId={navigation.route.panel === 'resource' ? navigation.route.assetId : undefined}
-        searchQuery={navigation.route.panel === 'resource' ? navigation.searchQuery : ''}
-        onSearchQueryChange={navigation.setSearchQuery}
+        initialSearchQuery={navigation.route.panel === 'resource' ? navigation.searchQuery : ''}
       />
     ),
     inspector: () => (
@@ -168,7 +163,6 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
 
   const studio = (
     <StudioPage
-      activePanel={navigation.activePanel}
       assetWorkspaceId={assetWorkspaceId}
       modelConfigured={state.providerAccountsLoaded ? hasCompleteProviderAccount(state.providerAccounts) : undefined}
       busy={mutationBusy}
@@ -176,13 +170,10 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
       canUndo={state.canUndoEdit}
       customCss={state.customCss}
       onRedo={() => {
-        void state.redoEdit()
+        void state.redoEdit().then(focusHistoryAsset)
       }}
-      onClosePanel={navigation.closePanel}
-      onTogglePanel={navigation.openPanel}
-      onToggleWorkspace={() => navigation.activePanel === null ? navigation.openPanel('character') : navigation.closePanel()}
       onUndo={() => {
-        void state.undoEdit()
+        void state.undoEdit().then(focusHistoryAsset)
       }}
       t={state.t}
       panelHeaders={{ character: <CharacterPanelHeader t={state.t} /> }}

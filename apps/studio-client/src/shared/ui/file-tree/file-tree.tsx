@@ -18,6 +18,8 @@ export type FileTreeNode = {
 type FileTreeProps = {
   ariaLabel: string
   defaultExpandedIds?: string[]
+  getDisclosureLabel: (node: FileTreeNode, expanded: boolean) => string
+  getDragLabel: (node: FileTreeNode) => string
   expandedIds?: string[]
   getActions?: (node: FileTreeNode) => ContextMenuItem[]
   isMuted?: (node: FileTreeNode) => boolean
@@ -78,6 +80,9 @@ export function FileTree(props: FileTreeProps) {
         {props.nodes.map(node => (
           <FileTreeRow
             expandedIds={expandedIds}
+            canDrag={Boolean(props.onMoveNode)}
+            getDisclosureLabel={props.getDisclosureLabel}
+            getDragLabel={props.getDragLabel}
             getActions={props.getActions}
             isMuted={props.isMuted}
             key={node.id}
@@ -109,6 +114,9 @@ export function FileTree(props: FileTreeProps) {
 
 function FileTreeRow(props: {
   expandedIds: Set<string>
+  canDrag: boolean
+  getDisclosureLabel: (node: FileTreeNode, expanded: boolean) => string
+  getDragLabel: (node: FileTreeNode) => string
   getActions?: (node: FileTreeNode) => ContextMenuItem[]
   isMuted?: (node: FileTreeNode) => boolean
   level: number
@@ -133,7 +141,7 @@ function FileTreeRow(props: {
   const { attributes, listeners, setNodeRef: setDraggableRef, isDragging } = useDraggable({
     id: props.node.id,
     data: props.node,
-    disabled: props.node.isSection,
+    disabled: props.node.isSection || !props.canDrag,
   })
 
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({
@@ -153,7 +161,7 @@ function FileTreeRow(props: {
         <div
           ref={setDroppableRef}
           className={styles.sectionRow}
-          role="treeitem"
+          role="presentation"
         >
           <div className={styles.sectionDivider} />
           <span className={styles.sectionLabel}>{props.node.label}</span>
@@ -164,6 +172,8 @@ function FileTreeRow(props: {
           ref={setDroppableRef}
           className={rowClass}
           style={{ '--loom-tree-level': props.level } as CSSProperties}
+          aria-expanded={hasChildren ? expanded : undefined}
+          aria-level={props.level}
           role="treeitem"
         >
           {props.variant !== 'flat' && props.level > 1 ? (
@@ -176,28 +186,33 @@ function FileTreeRow(props: {
               ))}
             </span>
           ) : null}
-          <div
-            ref={setDraggableRef}
-            className={styles.dragHandle}
-            {...attributes}
-            {...listeners}
-            aria-hidden="true"
-          >
-            <GripVertical />
-          </div>
+          {props.canDrag ? (
+            <button
+              ref={setDraggableRef}
+              className={styles.dragHandle}
+              type="button"
+              {...attributes}
+              {...listeners}
+              aria-label={props.getDragLabel(props.node)}
+            >
+              <GripVertical aria-hidden="true" />
+            </button>
+          ) : null}
 
-          <button
-            className={styles.disclosure}
-            aria-hidden="true"
-            onClick={(e) => {
-              e.stopPropagation()
-              props.onToggleExpand(props.node.id)
-            }}
-          >
-            {hasChildren ? (
-              expanded ? <ChevronDown /> : <ChevronRight />
-            ) : null}
-          </button>
+          {hasChildren ? (
+            <button
+              aria-label={props.getDisclosureLabel(props.node, expanded)}
+              aria-expanded={expanded}
+              className={styles.disclosure}
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                props.onToggleExpand(props.node.id)
+              }}
+            >
+              {expanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
+            </button>
+          ) : <span className={styles.disclosure} aria-hidden="true" />}
           {props.variant !== 'flat' && expanded && hasChildren ? <span className={styles.branchContinuation} aria-hidden="true" /> : null}
 
           <div
@@ -249,6 +264,9 @@ function FileTreeRow(props: {
       {expanded ? props.node.children?.map(child => (
         <FileTreeRow
           expandedIds={props.expandedIds}
+          canDrag={props.canDrag}
+          getDisclosureLabel={props.getDisclosureLabel}
+          getDragLabel={props.getDragLabel}
           getActions={props.getActions}
           isMuted={props.isMuted}
           key={child.id}

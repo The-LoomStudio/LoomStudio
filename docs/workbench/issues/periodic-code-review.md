@@ -12,7 +12,7 @@
 
 | 日期 | Commit | 审查目标 | 选择原因 | 结果 |
 | --- | --- | --- | --- | --- |
-| 2026-08-03 | `f6253b8` | Document Store 写入、Commit Fact 与 Kernel 事件传播链路 | 最近提交及当前工作区对事务、SQLite migration、Commit observer、Application/Extension 写入传播进行了实质修改，链路涉及持久化原子性与公共事件边界 | 未发现新的可报告问题；既有 Logging P1 保持不变 |
+| 2026-08-03 | `f6253b8` | Document Store 写入、Commit Fact 与 Kernel 事件传播链路 | 最近提交及当前工作区对事务、SQLite migration、Commit observer、Application/Extension 写入传播进行了实质修改，链路涉及持久化原子性与公共事件边界 | 未发现新的可报告问题；既有 Logging P1 当时保持不变，已于 2026-08-07 复核关闭 |
 | 2026-07-27 | `383f3a1` | Studio 日志查询与展示链路 | 最近两次提交新增并整理了结构化日志、`logs.list` 与 Logs Workspace，且链路涉及敏感信息与故障可见性 | 新增 1 个 P1：超过 500 条后 Viewer 无法访问最新 Server 日志 |
 
 ## 当前开放发现
@@ -23,9 +23,13 @@
 
 ### P1
 
-#### Server 日志超过 500 条后 Viewer 刷新仍停留在最旧批次
+无。
 
-- **状态**：Open
+## 已关闭历史发现
+
+### P1：Server 日志超过 500 条后 Viewer 刷新仍停留在最旧批次
+
+- **状态**：Closed（2026-08-07）
 - **首次发现**：2026-07-27
 - **最后验证**：2026-07-27
 - **位置**：`apps/studio-client/src/widgets/log-viewer/log-viewer.tsx:24`
@@ -36,7 +40,7 @@
 - **现有防护检查**：Memory Sink 的 cursor、`hasMore` 与 gap 语义工作正常；typed API 支持传 cursor；Server 将 limit 限制在 1–500。问题位于 Client 消费端：没有保存返回 cursor、没有请求后续页，也没有倒序或 tail 查询；`hasMore` 文案只暴露缺口，不能访问剩余数据。未发现相关组件测试或其他当前 Issue 记录此问题。
 - **验证证据**：`packages/logging/src/memory-sink.ts:82-116` 明确按 oldest → newest 扫描；`apps/studio-client/src/widgets/log-viewer/log-viewer.tsx:36-39` 每次无 cursor 请求 500 条；同文件 `:116` 只有提示，无继续加载入口。现有分页单测证明首批达到 limit 时返回 cursor 与 `hasMore: true`，但 Viewer 未消费 cursor。
 - **最小处理建议**：保持现有 API，不新增抽象；Viewer 在一次刷新中沿 cursor 继续读取到 `hasMore === false`，仅保留最终需要展示的最近一批记录，或增加一个明确的“加载后续记录”动作。若 Viewer 的产品语义是“查看当前故障”，优先采用读取到尾部并展示最新记录的最小实现。
-- **关闭条件**：构造超过 500 条 Server 日志后，用户通过 Viewer 可以到达并看到最后一条记录；重复刷新能反映新追加记录；对应 Client 测试覆盖多页和刷新到最新尾部。
+- **关闭证据**：`apps/studio-client/src/widgets/log-viewer/log-viewer-model.ts` 已通过 cursor 连续读取分页；`apps/studio-client/src/widgets/log-viewer/log-viewer.test.ts` 覆盖多页读取与最新尾部。该历史条目保留原始发现链路，避免后续审查重复报告。
 
 ### P2
 
