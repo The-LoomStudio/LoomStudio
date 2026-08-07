@@ -1,6 +1,6 @@
 # Navigation and Routing
 
-Loom Studio 使用 URL 表达可恢复、可分享且适合浏览器前进后退的导航状态。Router 是导航事实来源；Zustand 继续保存本机 UI 偏好，两者不得维护同一份事实。
+Loom Studio 使用 URL 表达可恢复、可分享且适合浏览器前进后退的页面导航。Router 负责页面身份和显式深链接；Zustand 保存工作台内部选择与本机 UI 偏好，两者不得持续双向同步同一份事实。
 
 ## 状态归属
 
@@ -10,7 +10,8 @@ Path 保存页面与实体身份：
 
 - 当前工作区 Panel；
 - Character Gallery 与 Character Profile；
-- Card、Session、Branch 与 Asset 标识；
+- Card、Session 与 Branch 标识；
+- 仅在显式深链接中出现的 Asset 标识；
 - Logs、Debug、Models 与 Settings 页面。
 
 ### Query Parameters
@@ -31,7 +32,7 @@ History State 保存无需分享、但应由返回关闭的临时导航层级，
 
 ### Zustand
 
-Zustand 保存 Panel 与目录宽高、文件树展开状态、编辑器偏好和其他本机布局选择。输入草稿、API Key、长正文和秘密信息不得写入 URL。
+Zustand 保存 Panel 与目录宽高、文件树展开状态、当前 Asset、编辑器偏好和其他本机布局选择。普通目录点击只更新这份本地选择，不执行 Router navigation。输入草稿、API Key、长正文和秘密信息不得写入 URL。
 
 ## 路由表
 
@@ -60,8 +61,8 @@ Zustand 保存 Panel 与目录宽高、文件树展开状态、编辑器偏好�
 ## History 规则
 
 - 从 Chat 打开 Panel：Push；
-- 从目录进入第一个 Detail：Push；
-- 已在 Detail 中切换其他资产：Replace；
+- 普通 Asset 选择：不写 History；
+- 从外部链接、日志或 Agent 定位 Asset：使用显式深链接；
 - Gallery 进入 Character Profile：Push；
 - 搜索首次产生查询：Push；
 - 修改现有查询、筛选或 Tab：Replace；
@@ -78,12 +79,12 @@ URL 同时是用户与 Agent 共用的资源引用格式。Agent 报告修改结
 /studio/chat/<sessionId>/branch/<branchId>#entry-<entryId>
 ```
 
-复制链接不要求先改变当前 URL。收到带 Entry Hash 的地址后，聊天容器在对应 Timeline 加载完成时执行一次定位；此后滚动仍由容器自身管理。
+复制 Asset 链接不要求先改变当前 URL。收到带 Asset ID 的地址后，工作台用它初始化本地选择；后续普通点击不继续改写 URL。收到带 Entry Hash 的地址后，聊天容器在对应 Timeline 加载完成时执行一次定位；此后滚动仍由容器自身管理。
 
 Session 路径中的 Branch 不存在时规范化到该 Session 的 active branch；Session 本身不存在或无法加载时回退到 `/studio/chat`，并通过既有错误状态保留失败原因。
 
-明确 URL 始终优先于持久化布局。应用不得通过 URL 与 Zustand 双向同步同一导航字段。
+显式 URL 在首次定位时优先于持久化选择，但它不是工作台内部选择的持续受控值。应用不得在每次本地选择后把 Asset ID 反向写回 URL。
 
 ## 托管要求
 
-Studio 使用 Browser Router。开发服务器和正式桌面宿主必须将未知 `/studio/*` 路径回退到客户端 `index.html`，再由前端 Router 完成匹配。未知应用路由规范化到 `/studio/chat`。
+Studio 使用 Browser Router。开发服务器和正式桌面宿主必须将未知 `/studio/*` 路径回退到客户端 `index.html`，再由前端 Router 完成匹配。未匹配的应用路由保留原 URL 并显示统一 404 状态页，由用户明确返回聊天。

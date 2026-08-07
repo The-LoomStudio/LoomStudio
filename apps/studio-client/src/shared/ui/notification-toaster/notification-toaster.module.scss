@@ -1,0 +1,103 @@
+.toast {
+  width: min(356px, calc(100vw - 32px));
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 12px;
+  color: var(--loom-text);
+  background: var(--loom-window-raised);
+  box-shadow: 0 14px 36px rgb(0 0 0 / 32%);
+  font-size: var(--loom-font-size-body);
+  line-height: 1.5;
+}
+
+.content {
+  order: 2;
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 2px;
+}
+
+.title {
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.description {
+  color: var(--loom-text-muted);
+}
+
+.icon {
+  order: 1;
+  width: 16px;
+  height: 20px;
+  flex: 0 0 16px;
+  display: grid;
+  place-items: center;
+  color: var(--loom-text-muted);
+}
+
+.icon svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.6;
+}
+
+.error .icon {
+  color: var(--loom-danger);
+}
+
+.warning .icon {
+  color: var(--loom-warning);
+}
+
+.info .icon {
+  color: var(--loom-info);
+}
+
+.success .icon {
+  color: var(--loom-success);
+}
+
+.closeButton,
+.actionButton,
+.cancelButton {
+  order: 3;
+  min-height: 24px;
+  border: 0;
+  padding: 0 6px;
+  color: var(--loom-text-muted);
+  background: transparent;
+  font-size: 12px;
+}
+
+.closeButton {
+  order: 4;
+  width: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.closeButton:hover:not(:disabled),
+.actionButton:hover:not(:disabled),
+.cancelButton:hover:not(:disabled) {
+  border-color: transparent;
+  color: var(--loom-text);
+  background: transparent;
+}
+
+.closeButton:focus-visible,
+.actionButton:focus-visible,
+.cancelButton:focus-visible {
+  outline: 1px solid var(--loom-accent);
+  outline-offset: 1px;
+  border-color: transparent;
+  box-shadow: none;
+}

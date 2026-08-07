@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { withClientBridgeLogging } from '../shared/api/client-bridge-logging.js'
 import { createTranslator, type Locale } from '../shared/i18n/index.js'
 import { createStudioApi } from '../shared/api/studio-api.js'
-import { useBusyAction } from '../shared/hooks/use-busy-action.js'
+import { useAsyncOperations } from '../shared/hooks/use-async-operations.js'
 import { useCards } from '../features/cards/model/use-cards.js'
 import { useEditHistory } from '../features/edit-history/model/use-edit-history.js'
 import { useContextAssets } from '../features/context-assets/model/use-context-assets.js'
@@ -34,7 +34,7 @@ export function useStudioState(transportLogger: Logger) {
     mode: 'draft',
     tags: [],
   })
-  const busyAction = useBusyAction()
+  const operations = useAsyncOperations()
   const bridge = useMemo(() => createClientBridge({ endpoint, source: 'studio-client' }), [endpoint])
   const observedBridge = useMemo(() => withClientBridgeLogging(bridge, transportLogger), [bridge, transportLogger])
   const api = useMemo(() => createStudioApi(observedBridge), [observedBridge])
@@ -44,7 +44,7 @@ export function useStudioState(transportLogger: Logger) {
     api,
     initialCardName: DemoData.cardName,
     recordEdit: editHistory.record,
-    runAction: busyAction.runAction,
+    runAction: action => operations.run('cards', action).then(() => undefined),
     t,
   })
   const contextAssetState = useContextAssets({
@@ -55,14 +55,14 @@ export function useStudioState(transportLogger: Logger) {
       setPromptResources(current => current.map(item => item.id === resource.id ? resource : item))
     },
     recordEdit: editHistory.record,
-    runAction: busyAction.runAction,
+    runAction: action => operations.run('mutation', action).then(() => undefined),
     resources: promptResources,
     t,
   })
   const providerSettings = useProviderSettings({
     api,
     initialProviderAccountDraft: DemoData.providerAccountDraft,
-    runAction: busyAction.runAction,
+    runAction: action => operations.run('provider-settings', action).then(() => undefined),
   })
   const activationFacts = useMemo(() => createActivationFacts(activationControl), [activationControl])
   const sessionRuntime = useSessionRuntime({
@@ -72,7 +72,8 @@ export function useStudioState(transportLogger: Logger) {
     initialTimeline: DemoData.timeline,
     selectedCardId: cardsState.selectedCardId,
     selectedAgentRuntimeProfileId: providerSettings.selectedAgentRuntimeProfileId,
-    runAction: busyAction.runAction,
+    runAction: action => operations.run('session', action).then(() => undefined),
+    runLatestAction: action => operations.runLatest('session', action).then(() => undefined),
     readProjectionOrderProfile: contextAssetState.readProjectionOrderProfile,
   })
 
@@ -84,11 +85,11 @@ export function useStudioState(transportLogger: Logger) {
 
   useEffect(() => {
     editHistory.clear()
-    void busyAction.runAction(async () => {
+    void operations.run('bootstrap', async () => {
       const cards = await cardsState.refreshCards()
       let selectedCardId = cards[0]?.id
 
-      if (cards.length === 0) {
+      if (cards.length === 0 && import.meta.env.DEV) {
         const imported = await api.cardBundles.import({
           artifact: createDemoCardBundleArtifact() as unknown as ClientJsonValue,
         })
@@ -107,24 +108,20 @@ export function useStudioState(transportLogger: Logger) {
       return
     }
 
-    let cancelled = false
-    void api.promptResources.listForCard(cardsState.selectedCardId).then(result => {
-      if (cancelled) return
-      applyPromptResourceSelection(result.resources)
-    }).catch(() => undefined)
-
-    return () => {
-      cancelled = true
-    }
+    void operations.runLatest('resources', async context => {
+      const result = await api.promptResources.listForCard(cardsState.selectedCardId!)
+      if (context.isCurrent()) applyPromptResourceSelection(result.resources)
+    })
   }, [api, cardsState.selectedCardId])
 
   // 派生计算
-  const canSend = Boolean(sessionRuntime.session && sessionRuntime.branch) && !busyAction.busy && sessionRuntime.input.trim().length > 0
-  const canPreviewPrompt = Boolean(sessionRuntime.session && sessionRuntime.branch) && !busyAction.busy && sessionRuntime.input.trim().length > 0
+  const sessionBusy = operations.isPending('session')
+  const canSend = Boolean(sessionRuntime.session && sessionRuntime.branch) && !sessionBusy && sessionRuntime.input.trim().length > 0
+  const canPreviewPrompt = Boolean(sessionRuntime.session && sessionRuntime.branch) && !sessionBusy && sessionRuntime.input.trim().length > 0
   const composerHint = readComposerHint({
     session: sessionRuntime.session,
     branch: sessionRuntime.branch,
-    busy: busyAction.busy,
+    busy: sessionBusy,
     input: sessionRuntime.input,
   }, t)
   const emptyTimelineText = readEmptyTimelineText({ session: sessionRuntime.session, branch: sessionRuntime.branch }, t)
@@ -153,7 +150,7 @@ export function useStudioState(transportLogger: Logger) {
   }
 
   async function undoEdit() {
-    await busyAction.runAction(async () => {
+    await operations.run('mutation', async () => {
       const entry = await editHistory.undo()
       if (!entry) return
       await refreshHistoryAnchor(entry)
@@ -161,7 +158,7 @@ export function useStudioState(transportLogger: Logger) {
   }
 
   async function redoEdit() {
-    await busyAction.runAction(async () => {
+    await operations.run('mutation', async () => {
       const entry = await editHistory.redo()
       if (!entry) return
       await refreshHistoryAnchor(entry)
@@ -226,14 +223,14 @@ export function useStudioState(transportLogger: Logger) {
     // input
     input: sessionRuntime.input, setInput: sessionRuntime.setInput,
     // state
-    busy: busyAction.busy, error: busyAction.error,
+    operationPending: operations.pending,
+    operationError: operations.error,
     canUndoEdit: editHistory.canUndo,
     canRedoEdit: editHistory.canRedo,
     // custom css
     customCss, setCustomCss,
     // context assets
     contextAssets: contextAssetState.nodes, setContextAssets: contextAssetState.setNodes,
-    selectedContextNodeId: contextAssetState.selectedId, setSelectedContextNodeId: contextAssetState.setSelectedId,
     previewContextAsset: contextAssetState.previewContextAsset,
     updateContextAsset: contextAssetState.updateContextAsset,
     updateContextAssets: contextAssetState.updateContextAssets,
@@ -244,7 +241,6 @@ export function useStudioState(transportLogger: Logger) {
     // derived
     canSend, canPreviewPrompt, composerHint, emptyTimelineText,
     // actions
-    runAction: busyAction.runAction,
     undoEdit,
     redoEdit,
     createCard: cardsState.createCard,

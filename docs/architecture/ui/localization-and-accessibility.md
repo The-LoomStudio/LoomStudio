@@ -49,6 +49,7 @@ Source:
 - 文件树使用 `tree` / `treeitem` 语义；
 - 状态和复制反馈使用克制的 `aria-live="polite"`；
 - resize handle 提供可理解的 accessible name。
+- 模态确认使用原生 `<dialog>`，标题与描述通过 `aria-labelledby` / `aria-describedby` 关联，关闭后恢复触发点焦点。
 
 ARIA 不替代键盘行为。自定义 Tree、Menu、Toggle 和 Resize 组件必须同时实现对应的焦点、激活和关闭逻辑。
 
@@ -84,4 +85,3 @@ ARIA 不替代键盘行为。自定义 Tree、Menu、Toggle 和 Resize 组件必
 - 插件不可访问时 Host 提供的退出路径。
 
 未完成设计继续保留在 [`../../workbench/discussion/application/ui/i18n-and-accessibility-v0.md`](../../workbench/discussion/application/ui/i18n-and-accessibility-v0.md)。
-

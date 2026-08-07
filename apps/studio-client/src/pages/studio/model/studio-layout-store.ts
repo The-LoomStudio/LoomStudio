@@ -36,6 +36,7 @@ type StudioLayoutData = {
 
 type StudioLayoutStore = StudioLayoutData & {
   closeDock(): void
+  openAssetDetail(layoutId: AssetLayoutId, workspaceId: string, selectedId: string): void
   setAssetMetadataOpen(open: boolean): void
   setAssetExpandedIds(layoutId: AssetLayoutId, workspaceId: string, expandedIds: string[]): void
   setAssetExplorerWidth(layoutId: AssetLayoutId, width: number): void
@@ -117,6 +118,25 @@ export const useStudioLayoutStore = create<StudioLayoutStore>()(
     (set) => ({
       ...createDefaultStudioLayout(),
       closeDock: () => set({ dockOpen: false }),
+      openAssetDetail: (layoutId, workspaceId, selectedId) => set(state => {
+        const current = state.assetLayouts[layoutId].views[workspaceId] ?? DEFAULT_ASSET_VIEW_STATE
+        return {
+          assetLayouts: {
+            ...state.assetLayouts,
+            [layoutId]: {
+              ...state.assetLayouts[layoutId],
+              views: {
+                ...state.assetLayouts[layoutId].views,
+                [workspaceId]: {
+                  ...current,
+                  selectedId,
+                  viewMode: current.viewMode === 'explorer' ? 'split' : current.viewMode,
+                },
+              },
+            },
+          },
+        }
+      }),
       setAssetMetadataOpen: assetMetadataOpen => set({ assetMetadataOpen }),
       setAssetExpandedIds: (layoutId, workspaceId, expandedIds) => set(state => ({
         assetLayouts: {

@@ -359,8 +359,7 @@
   background: transparent;
 }
 
-.groupSheet,
-.deleteDialog {
+.groupSheet {
   width: min(32rem, calc(100vw - 24px));
   max-height: min(60vh, 32rem);
   display: grid;
@@ -379,8 +378,7 @@
 .groupRowWrap,
 .groupRow,
 .groupAssign,
-.groupForm,
-.deleteDialog > div {
+.groupForm {
   display: flex;
   align-items: center;
 }
@@ -435,8 +433,7 @@
 }
 
 .groupAssign button,
-.groupForm > button,
-.deleteDialog button {
+.groupForm > button {
   min-height: 27px;
   border: 0;
   border-radius: 5px;
@@ -447,8 +444,7 @@
 }
 
 .groupAssign button:hover,
-.groupForm > button:hover:not(:disabled),
-.deleteDialog button:hover:not(:disabled) {
+.groupForm > button:hover:not(:disabled) {
   color: var(--loom-text);
 }
 
@@ -473,32 +469,6 @@
 .groupForm input:focus {
   border-color: var(--loom-accent);
   box-shadow: none;
-}
-
-.deleteDialog {
-  width: min(23rem, calc(100vw - 24px));
-  padding: 14px;
-}
-
-.deleteDialog h2,
-.deleteDialog p {
-  margin: 0;
-}
-
-.deleteDialog h2 {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.deleteDialog p {
-  color: var(--loom-text-muted);
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-.deleteDialog > div {
-  justify-content: end;
-  gap: 5px;
 }
 
 @keyframes sheet-enter {
@@ -823,6 +793,5 @@
   .galleryEntering,
   .profileEntering,
   .profileLeaving,
-  .groupSheet,
-  .deleteDialog { animation: none; }
+  .groupSheet { animation: none; }
 }

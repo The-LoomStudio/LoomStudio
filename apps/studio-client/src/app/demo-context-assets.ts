@@ -1,6 +1,6 @@
 import type { ContextAssetNode } from '../entities/index.js'
 
-export const demoContextAssets = [
+export const demoContextAssets = import.meta.env.DEV ? [
     {
       id: 'preset-default-airp',
       label: 'Default AIRP Preset',
@@ -561,7 +561,7 @@ export const demoContextAssets = [
       ]
     },
     createMockSearchAssetModule(),
-] as ContextAssetNode[]
+] as ContextAssetNode[] : []
 
 export function createMockSearchAssetModule(count = 800): ContextAssetNode {
   const districts = ['雨线站', '镜市', '钟楼区', '黄铜街', '旧环线', '档案庭', '地下层', '雾港']

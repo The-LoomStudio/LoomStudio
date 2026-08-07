@@ -61,7 +61,34 @@ Raised / Deep Surface:
 
 当前实现已有局部 reduced-motion 覆盖，但这不是对所有组件已经完成审计的声明。新增动画必须同时提供 reduced-motion 行为。
 
-## 6. 开放性
+## 6. Dialog 与破坏性操作
+
+Studio 的通用 Dialog 基于浏览器原生 `<dialog>`，用于阻断当前流程的确认、警告和短表单。原生 Top Layer、焦点约束、Escape 与背景 inert 是组件合同的一部分，不再由各 Feature 重复模拟。
+
+Dialog 不等于删除按钮的默认包装。是否确认由可恢复性和影响范围决定：
+
+- 可以由 Undo 完整恢复的资源条目、正文和局部编辑直接执行；
+- 删除整个角色卡、资源包、Session、Provider Account 或其他大范围持久化对象需要 Dialog；
+- 特别危险且不可恢复的工作区级清空未来可以增加名称输入确认，但当前不提前实现；
+- Bottom Sheet、Popover、Context Menu 和 Toast 不迁入 Dialog。
+
+当前通用 Dialog 支持受控开关、标题与描述语义、可选 backdrop 关闭、不可中断状态和焦点恢复。Feature 只提供领域文案与操作按钮，不复制 backdrop、动画和布局 CSS。
+
+## 7. 通知反馈
+
+Studio 使用 Sonner 渲染右下角 Toast。通知层位于 Workspace 之外，并根据 Composer 的实际高度上移，不能遮挡当前输入区域。
+
+当前只把全局异步错误接入 Toast。错误事件携带 `scope` 和单调递增的 `sequence`，因此连续发生的相同错误仍能被识别，旧读取响应也不会制造过期通知。
+
+边界约定：
+
+- Sonner 只是 Client Toast renderer，不是 Notification 领域协议或日志 Sink；
+- 字段校验、编辑器反馈和当前操作附近的状态继续原位显示；
+- Error Boundary 继续使用完整恢复页面；
+- 普通 Log、pending 状态和高频成功操作不自动产生 Toast；
+- Toast 不承载唯一恢复入口、长文本或完整诊断信息。
+
+## 8. 开放性
 
 默认 UI 应是可删除、可覆盖的基础样式，而不是主题作者必须先拆除的装饰层。视觉效果不应依赖难以发现的伪元素堆叠，也不应通过高 specificity 或 `!important` 锁死。
 

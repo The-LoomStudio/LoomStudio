@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createMockSearchAssetModule } from './demo-context-assets.js'
-import { createMockTimeline } from './demo-data.js'
+import { createMockTimeline } from './demo-timeline.js'
 
 describe('demo timeline', () => {
   it('creates a continuous 100-floor Markdown conversation', () => {

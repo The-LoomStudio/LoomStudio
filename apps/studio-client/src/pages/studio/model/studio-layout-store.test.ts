@@ -13,7 +13,7 @@ describe('studio layout store', () => {
     vi.stubGlobal('localStorage', {
       getItem: (key: string) => storedValues.get(key) ?? null,
       removeItem: (key: string) => storedValues.delete(key),
-      setItem: (key: string, value: string) => storedValues.set(key, value),
+      setItem: vi.fn((key: string, value: string) => storedValues.set(key, value)),
     })
     useStudioLayoutStore.setState(createDefaultStudioLayout())
   })
@@ -71,6 +71,19 @@ describe('studio layout store', () => {
     useStudioLayoutStore.getState().setTextEditorMode('preview')
     expect(useStudioLayoutStore.getState().assetMetadataOpen).toBe(true)
     expect(useStudioLayoutStore.getState().textEditorMode).toBe('preview')
+  })
+
+  it('opens an asset detail with one persisted layout update', () => {
+    const setItem = vi.mocked(localStorage.setItem)
+    const writesBefore = setItem.mock.calls.length
+
+    useStudioLayoutStore.getState().openAssetDetail('resources', 'card-a', 'entry-a')
+
+    expect(useStudioLayoutStore.getState().assetLayouts.resources.views['card-a']).toEqual({
+      selectedId: 'entry-a',
+      viewMode: 'split',
+    })
+    expect(setItem.mock.calls.length - writesBefore).toBe(1)
   })
 
   it('rehydrates the persisted layout after a reload', async () => {

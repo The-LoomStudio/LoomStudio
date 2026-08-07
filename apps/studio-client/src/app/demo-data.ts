@@ -1,10 +1,8 @@
 import { demoContextAssets } from './demo-context-assets.js'
 import { createMockTimeline } from './demo-timeline.js'
 
-export { createMockTimeline } from './demo-timeline.js'
-
 export const DemoData = {
-  cardName: 'Loom City Layers',
+  cardName: import.meta.env.DEV ? 'Loom City Layers' : '',
   /** RPC 端点 */
   endpoint: '/rpc',
 
@@ -14,7 +12,7 @@ export const DemoData = {
   /**
    * ponytail: 仅用于长会话消息容器的开发验收；真实会话加载后由 timeline RPC 覆盖。
    */
-  timeline: createMockTimeline(),
+  timeline: import.meta.env.DEV ? createMockTimeline() : [],
 
   /** Gateway 配置表单默认值（对齐 OpenAI Compatible provider） */
   providerAccountDraft: {
@@ -28,7 +26,7 @@ export const DemoData = {
    * 结构对齐 Card 类型（docs/08-ApplicationLayer/card-and-opening-v0.md）：
    * - name / userName / description / preset / opening / settingLayer
    */
-  cardJson: JSON.stringify({
+  cardJson: import.meta.env.DEV ? JSON.stringify({
     name: 'Loom City Layers',
     userName: '调查员',
     description: '一张用于测试 Prompt Builder 的 AIRP 假卡。玩家进入雨夜中的 Loom City，Setting Layer 会按地点、角色、事件和物件分层注入。',
@@ -87,11 +85,11 @@ export const DemoData = {
         },
       ],
     },
-  }, null, 2),
+  }, null, 2) : '',
 
   /**
    * Composition Skeleton 预览用 demo 资产树。
    * 结构对齐 composition-skeleton-v0.md 中的 Zone / ProjectionOrder 概念。
    */
-  contextAssets: demoContextAssets,
+  contextAssets: import.meta.env.DEV ? demoContextAssets : [],
 }

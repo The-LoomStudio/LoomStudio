@@ -1,7 +1,9 @@
 import { createConsoleLogSink, createMemoryLogSink, createRootLogger } from '@loom-studio/logging'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { App } from './app/app.js'
+import { AppErrorBoundary } from './app/app-error-boundary.js'
+import { NotFoundPage } from './app/not-found-page.js'
 
 const root = document.getElementById('root')
 const clientLogs = createMemoryLogSink({ capacity: 1_000 })
@@ -39,20 +41,26 @@ systemLogger.info('Studio client started', { event: 'client.started' })
 if (root) {
   const studio = <App clientLogs={clientLogs} transportLogger={rootLogger.child('transport.rpc')} />
   createRoot(root).render(
-    <BrowserRouter>
-      <Routes>
-        <Route path="/studio/chat/:sessionId?/branch/:branchId" element={studio} />
-        <Route path="/studio/chat/:sessionId?" element={studio} />
-        <Route path="/studio/characters/:cardId?" element={studio} />
-        <Route path="/studio/resources/:cardId?/:assetId?" element={studio} />
-        <Route path="/studio/presets/:cardId?/:assetId?" element={studio} />
-        <Route path="/studio/models" element={studio} />
-        <Route path="/studio/debug" element={studio} />
-        <Route path="/studio/logs" element={studio} />
-        <Route path="/studio/settings" element={studio} />
-        <Route path="*" element={<Navigate replace to="/studio/chat" />} />
-      </Routes>
-    </BrowserRouter>,
+    <AppErrorBoundary onError={(error, info) => systemLogger.error('React render failed', {
+      event: 'client.react.render_failed',
+      error,
+      data: { componentStack: info.componentStack ?? null },
+    })}>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/studio/chat/:sessionId?/branch/:branchId" element={studio} />
+          <Route path="/studio/chat/:sessionId?" element={studio} />
+          <Route path="/studio/characters/:cardId?" element={studio} />
+          <Route path="/studio/resources/:cardId?/:assetId?" element={studio} />
+          <Route path="/studio/presets/:cardId?/:assetId?" element={studio} />
+          <Route path="/studio/models" element={studio} />
+          <Route path="/studio/debug" element={studio} />
+          <Route path="/studio/logs" element={studio} />
+          <Route path="/studio/settings" element={studio} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </BrowserRouter>
+    </AppErrorBoundary>,
   )
 } else {
   systemLogger.error('Studio client root element missing', {

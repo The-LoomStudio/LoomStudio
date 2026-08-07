@@ -1,0 +1,103 @@
+.page {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  color: var(--loom-text);
+  background: var(--loom-bg);
+}
+
+.panel {
+  width: min(100%, 520px);
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.eyebrow,
+.panel h1,
+.description {
+  margin: 0;
+}
+
+.eyebrow {
+  color: var(--loom-text-subtle);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.prominentEyebrow {
+  margin: 0 0 12px;
+  color: var(--loom-accent-strong);
+  font-size: clamp(72px, 14vw, 112px);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  line-height: 0.9;
+  letter-spacing: 0;
+}
+
+.panel h1 {
+  margin-top: 7px;
+  font-size: 21px;
+  line-height: 1.35;
+}
+
+.description {
+  max-width: 100%;
+  margin-top: 12px;
+  color: var(--loom-text-muted);
+  line-height: 1.65;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 24px;
+  justify-content: center;
+}
+
+.actions a,
+.actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 12px;
+  color: var(--loom-text);
+  text-decoration: none;
+  background: var(--loom-panel);
+}
+
+.actions a:first-child,
+.actions button:first-child {
+  color: var(--loom-bg);
+  background: var(--loom-accent-strong);
+}
+
+.panel details {
+  width: 100%;
+  margin-top: 22px;
+  color: var(--loom-text-subtle);
+  font-size: 12px;
+  text-align: left;
+}
+
+.panel pre {
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 560px) {
+  .page {
+    padding: 16px;
+  }
+}

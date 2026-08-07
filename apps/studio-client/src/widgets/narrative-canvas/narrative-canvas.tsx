@@ -62,7 +62,7 @@ export function NarrativeCanvas(props: NarrativeCanvasProps) {
     role: props.t(entry.role === 'user' ? 'timeline.role.user' : 'timeline.role.assistant'),
   })), [props.t, props.timeline])
   const navigatorMarkers = useMemo(
-    () => createMockConversationMarkers(props.timeline.map(entry => entry.id)),
+    () => import.meta.env.DEV ? createMockConversationMarkers(props.timeline.map(entry => entry.id)) : [],
     [props.timeline],
   )
 

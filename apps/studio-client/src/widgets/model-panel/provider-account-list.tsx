@@ -52,7 +52,7 @@ function ProviderAccountItem(props: {
   const [fetchVersion, setFetchVersion] = useState(0)
   const [copied, setCopied] = useState(false)
   const baseUrl = typeof props.account.config.baseUrl === 'string' ? props.account.config.baseUrl : ''
-  const catalog = mergeModelCatalog(props.models.map(profile => profile.providerModelId), mockModelCatalog, query)
+  const catalog = mergeModelCatalog(props.models.map(profile => profile.providerModelId), import.meta.env.DEV ? mockModelCatalog : [], query)
   const providerBrand = resolveProviderBrand(props.account.displayName, baseUrl, props.account.providerExtensionId)
 
   function addModel(event: FormEvent) {
@@ -146,7 +146,7 @@ function ProviderAccountItem(props: {
                   <span>{item.id}</span>
                 </div>
               ))}
-              <p className={styles.mockNotice}>{props.t('provider.modelMock')}</p>
+              {import.meta.env.DEV ? <p className={styles.mockNotice}>{props.t('provider.modelMock')}</p> : null}
             </div>
           </div>
         </section>

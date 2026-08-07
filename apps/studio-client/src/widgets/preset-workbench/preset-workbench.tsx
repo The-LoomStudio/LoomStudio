@@ -1,5 +1,5 @@
 import { Code2, Copy, FileText, Folder, FolderOpen, GripVertical, Package, Plus, Trash2 } from 'lucide-react'
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore } from '../../pages/studio/model/studio-layout-store.js'
 import { FileTree } from '../../shared/ui/file-tree/file-tree.js'
 import { AssetWorkbenchLayout } from '../../shared/ui/asset-workbench-layout/asset-workbench-layout.js'
@@ -31,12 +31,10 @@ type PresetWorkbenchProps = {
   onCommitNode: (id: string, partial: Partial<ContextAssetNode>) => void
   onChangeNodes: (updates: ContextAssetUpdate[]) => void
   onMoveNode: (draggedId: string, targetId: string, position: 'before' | 'inside' | 'after') => void
-  onNavigateAsset: (assetId?: string) => void
   onSearchQueryChange: (query: string) => void
   onAddNode: (parentId: string) => Promise<string | undefined>
   onDuplicateNode: (id: string) => Promise<string | undefined>
   onDeleteNode: (id: string, selectedId?: string) => Promise<string | undefined>
-  onSelectNode: (id: string) => void
   routeAssetId?: string
   searchQuery: string
   t: Translator
@@ -58,18 +56,21 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const explorerView = explorerLayout.views[props.workspaceId] ?? DEFAULT_ASSET_VIEW_STATE
   const setExpandedIds = useStudioLayoutStore(state => state.setAssetExpandedIds)
   const setExplorerWidth = useStudioLayoutStore(state => state.setAssetExplorerWidth)
+  const openAssetDetail = useStudioLayoutStore(state => state.openAssetDetail)
   const setSelectedId = useStudioLayoutStore(state => state.setAssetSelectedId)
-  const setAssetViewMode = useStudioLayoutStore(state => state.setAssetViewMode)
   const setActivePresetPanel = useStudioLayoutStore(state => state.setPresetPanel)
   const setMetadataOpen = useStudioLayoutStore(state => state.setAssetMetadataOpen)
   const setTextEditorMode = useStudioLayoutStore(state => state.setTextEditorMode)
-  const selectedNode = findContextNode(props.nodes, props.routeAssetId)
-  const viewMode = props.routeAssetId
-    ? explorerView.viewMode === 'explorer' ? 'split' : explorerView.viewMode
-    : 'explorer'
+  const selectedId = explorerView.selectedId
+  const selectedNode = findContextNode(props.nodes, selectedId)
   const projectionModel = useMemo(() => buildProjectionWorkbenchModel(props.nodes), [props.nodes])
   const { projectionEntries, orderNode, projectionOrderIds, orderedProjectionEntries } = projectionModel
   const detailNode = activePresetPanel === 'order' ? orderNode : selectedNode
+
+  useEffect(() => {
+    if (!props.routeAssetId) return
+    openAssetDetail('preset', props.workspaceId, props.routeAssetId)
+  }, [openAssetDetail, props.routeAssetId, props.workspaceId])
 
   const displayNodes = useMemo(() => {
     return props.nodes
@@ -94,11 +95,8 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   }
 
   function handleSelectNode(node: ContextAssetNode) {
-    setSelectedId('preset', props.workspaceId, node.id)
-    if (explorerView.viewMode === 'explorer') setAssetViewMode('preset', props.workspaceId, 'split')
+    openAssetDetail('preset', props.workspaceId, node.id)
     setActivePresetPanel('assets')
-    props.onSelectNode(node.id)
-    props.onNavigateAsset(node.id)
   }
 
   return (
@@ -106,7 +104,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
       explorerWidth={explorerLayout.explorerWidth}
       onExplorerWidthChange={width => setExplorerWidth('preset', width)}
       resizeLabel={props.t('context.resizeExplorer')}
-      viewMode={viewMode}
+      viewMode={explorerView.viewMode}
       toolbar={(
         <nav className="loom-page-tabs">
           <button
@@ -143,19 +141,16 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
               async parentId => {
                 const selectedId = await props.onAddNode(parentId)
                 if (!selectedId) return
-                setSelectedId('preset', props.workspaceId, selectedId)
-                setAssetViewMode('preset', props.workspaceId, 'split')
+                openAssetDetail('preset', props.workspaceId, selectedId)
               },
               async id => {
                 const selectedId = await props.onDuplicateNode(id)
                 if (!selectedId) return
-                setSelectedId('preset', props.workspaceId, selectedId)
-                setAssetViewMode('preset', props.workspaceId, 'split')
+                openAssetDetail('preset', props.workspaceId, selectedId)
               },
               async id => {
-                const selectedId = await props.onDeleteNode(id, props.routeAssetId)
-                setSelectedId('preset', props.workspaceId, selectedId)
-                props.onNavigateAsset(selectedId)
+                const nextSelectedId = await props.onDeleteNode(id, selectedId)
+                setSelectedId('preset', props.workspaceId, nextSelectedId)
               },
               (id, enabled) => {
                 props.onChangeNode(id, { enabled })
@@ -190,7 +185,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
             onSelect={node => handleSelectNode(node as ContextAssetNode)}
             renderIcon={(node, expanded) => renderTreeIcon(node as ContextAssetNode, expanded)}
             renderMetaLeading={node => renderLifecycleIndicator(node as ContextAssetNode, props.t)}
-            selectedId={props.routeAssetId}
+            selectedId={selectedId}
             variant="flat"
           />
         </ContextAssetSearch>
@@ -218,7 +213,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
             <ProjectionOrderEditor
               entries={orderedProjectionEntries}
               onReorder={handleProjectionReorder}
-              selectedId={props.routeAssetId}
+              selectedId={selectedId}
               t={props.t}
             />
           ) : (

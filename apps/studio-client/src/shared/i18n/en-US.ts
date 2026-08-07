@@ -1,10 +1,19 @@
 import { zhCN } from './zh-cn.js'
 
 export const enUS = {
+  'appError.eyebrow': 'A small mishap',
+  'appError.title': 'The interface seems to have stumbled',
+  'appError.description': 'No worries, the error was recorded. Try again or head back to chat for now.',
+  'appError.reload': 'Try again',
+  'appError.returnChat': 'Back to chat',
+  'appError.details': 'Error details',
+  'notFound.title': 'You have wandered into an empty wilderness',
+  'notFound.description': 'There is no road and no page to open here. Maybe head back to chat?',
+  'notFound.returnChat': 'Back to chat',
   'app.title': 'Loom Studio',
   'app.subtitle': 'AIRP UI Workbench',
   'app.localeLabel': 'Language',
-  'status.working': 'Working...',
+  'notification.label': 'Notifications',
   'menu.label': 'Actions menu',
   'rail.label': 'Workbench',
   'rail.openCharacter': 'Open character panel',

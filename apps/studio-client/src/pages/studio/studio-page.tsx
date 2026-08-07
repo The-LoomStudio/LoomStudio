@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent, type ReactNode } from 'react'
+import { memo, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import { Blocks, Columns2, FilePenLine, Folders, ListOrdered, ListTree, Maximize2, Menu, Minimize2, PanelLeftClose, PanelLeftOpen, Plug, Settings, SquareTerminal, Users, Wrench, type LucideIcon } from 'lucide-react'
 import type { Translator } from '../../shared/i18n/index.js'
 import { DEFAULT_ASSET_VIEW_STATE, STUDIO_PANEL_IDS, useStudioLayoutStore, type AssetLayoutId, type AssetViewMode, type StudioPanelId } from './model/studio-layout-store.js'
@@ -11,7 +11,6 @@ const STUDIO_VERSION = typeof __LOOM_STUDIO_VERSION__ === 'string' ? __LOOM_STUD
 
 type StudioPageProps = {
   activePanel: StudioPanelId | null
-  activeAssetId?: string
   assetWorkspaceId: string
   modelConfigured?: boolean
   busy: boolean
@@ -19,10 +18,8 @@ type StudioPageProps = {
   canUndo: boolean
   canvas: ReactNode
   customCss: string
-  error?: string
   onRedo(): void
   onClosePanel(): void
-  onAssetRouteChange(layoutId: AssetLayoutId, assetId?: string): void
   onTogglePanel(panel: StudioPanelId): void
   onToggleWorkspace(): void
   onUndo(): void
@@ -62,13 +59,42 @@ type WindowResizePreview = {
   size: WindowSize
 }
 
+const StudioPanelStage = memo(function StudioPanelStage(props: {
+  active: boolean
+  panel: StudioPanelId
+  render(active: boolean): ReactNode
+}) {
+  const [visited, setVisited] = useState(props.active)
+
+  useEffect(() => {
+    if (props.active) setVisited(true)
+  }, [props.active])
+
+  return (
+    <div
+      className={styles.stagePanel}
+      id={`studio-${props.panel}-panel`}
+      aria-hidden={!props.active}
+      hidden={!props.active}
+      data-loom-component={`overlay-${props.panel}-layer`}
+    >
+      {visited || props.active ? props.render(props.active) : null}
+    </div>
+  )
+}, (previous, next) => previous.panel === next.panel && !previous.active && !next.active)
+
 export function StudioPage(props: StudioPageProps) {
   const stageRef = useRef<HTMLElement>(null)
   const dockRef = useRef<HTMLElement>(null)
   const windowResizeRef = useRef<WindowResizeSession | undefined>(undefined)
   const activePanel = props.activePanel
+  const activeAssetLayoutId = readAssetLayoutId(activePanel)
   const assetMetadataOpen = useStudioLayoutStore(state => state.assetMetadataOpen)
-  const assetLayouts = useStudioLayoutStore(state => state.assetLayouts)
+  const activeAssetViewModePreference = useStudioLayoutStore(state => activeAssetLayoutId === null
+    ? null
+    : (state.assetLayouts[activeAssetLayoutId].views[props.assetWorkspaceId] ?? DEFAULT_ASSET_VIEW_STATE).viewMode)
+  const activeAssetHasSelection = useStudioLayoutStore(state => activeAssetLayoutId !== null
+    && Boolean(state.assetLayouts[activeAssetLayoutId].views[props.assetWorkspaceId]?.selectedId))
   const closeDock = useStudioLayoutStore(state => state.closeDock)
   const dockOpen = useStudioLayoutStore(state => state.dockOpen)
   const panelWindowModes = useStudioLayoutStore(state => state.panelWindowModes)
@@ -203,15 +229,9 @@ export function StudioPage(props: StudioPageProps) {
 
   const activePanelDefinition = activePanel === null ? null : PANEL_DEFINITIONS[activePanel]
   const activePanelCustomHeader = activePanel === null ? null : props.panelHeaders?.[activePanel]
-  const activeAssetLayoutId = readAssetLayoutId(activePanel)
-  const activeAssetView = activeAssetLayoutId === null
+  const activeAssetViewMode = activeAssetViewModePreference === null
     ? null
-    : assetLayouts[activeAssetLayoutId].views[props.assetWorkspaceId] ?? DEFAULT_ASSET_VIEW_STATE
-  const activeAssetViewMode = activeAssetView === null
-    ? null
-    : props.activeAssetId
-      ? activeAssetView.viewMode === 'explorer' ? 'split' : activeAssetView.viewMode
-      : 'explorer'
+    : activeAssetHasSelection ? activeAssetViewModePreference : 'explorer'
   const dockClassName = [
     styles.floatingDock,
     dockOpen ? styles.floatingDockOpen : '',
@@ -235,11 +255,6 @@ export function StudioPage(props: StudioPageProps) {
   return (
     <main className={styles.workbench} data-loom-component="studio-workspace-shell">
       <style>{props.customCss}</style>
-      <div className={styles.statusRegion} aria-live="polite">
-        {props.error ? <div className={`${styles.status} ${styles.statusError}`}>{props.error}</div> : null}
-        {props.busy ? <div className={styles.status}>{props.t('status.working')}</div> : null}
-      </div>
-
       <section ref={stageRef} className={styles.studioStage} data-loom-component="application-layer-stage">
         <div className={styles.stageBase} data-loom-component="base-chat-canvas-layer">
           {props.canvas}
@@ -416,12 +431,11 @@ export function StudioPage(props: StudioPageProps) {
                         aria-label={props.t(titleKey)}
                         aria-pressed={activeAssetViewMode === mode}
                         className={activeAssetViewMode === mode ? styles.viewModeButtonActive : styles.viewModeButton}
+                        disabled={mode !== 'explorer' && !activeAssetHasSelection}
                         title={props.t(titleKey)}
                         type="button"
                         onClick={() => {
                           setAssetViewMode(activeAssetLayoutId, props.assetWorkspaceId, mode)
-                          if (mode === 'explorer') props.onAssetRouteChange(activeAssetLayoutId)
-                          else if (!props.activeAssetId && activeAssetView?.selectedId) props.onAssetRouteChange(activeAssetLayoutId, activeAssetView.selectedId)
                         }}
                       >
                         <Icon aria-hidden="true" />
@@ -448,19 +462,7 @@ export function StudioPage(props: StudioPageProps) {
 
             <div className={styles.workspaceBody}>
               {STUDIO_PANEL_IDS.map(panel => {
-                const active = activePanel === panel
-                return (
-                  <div
-                    key={panel}
-                    className={styles.stagePanel}
-                    id={`studio-${panel}-panel`}
-                    aria-hidden={!active}
-                    hidden={!active}
-                    data-loom-component={`overlay-${panel}-layer`}
-                  >
-                    {props.panels[panel](active)}
-                  </div>
-                )
+                return <StudioPanelStage key={panel} active={activePanel === panel} panel={panel} render={props.panels[panel]} />
               })}
             </div>
           </div>

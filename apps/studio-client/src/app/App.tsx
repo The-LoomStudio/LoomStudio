@@ -11,6 +11,8 @@ import { InspectorPanel } from '../widgets/inspector-panel/inspector-panel.js'
 import { LogViewer } from '../widgets/log-viewer/log-viewer.js'
 import { SettingsPanel } from '../widgets/settings-panel/settings-panel.js'
 import { ContextMenuProvider } from '../shared/ui/context-menu/context-menu.js'
+import { NotificationToaster } from '../shared/ui/notification-toaster/notification-toaster.js'
+import { toast } from 'sonner'
 import { hasCompleteProviderAccount } from '../features/provider-settings/model/provider-account-status.js'
 import type { StudioPanelId } from '../pages/studio/model/studio-layout-store.js'
 import { useStudioNavigation } from '../pages/studio/model/use-studio-navigation.js'
@@ -30,6 +32,18 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
   const assetWorkspaceId = navigation.route.panel === 'preset' || navigation.route.panel === 'resource'
     ? navigation.route.cardId ?? state.selectedCardId ?? 'default'
     : state.selectedCardId ?? 'default'
+  const bootstrapBusy = state.operationPending.bootstrap.pendingCount > 0
+  const cardsBusy = bootstrapBusy || state.operationPending.cards.pendingCount > 0
+  const providerBusy = bootstrapBusy || state.operationPending['provider-settings'].pendingCount > 0
+  const sessionBusy = state.operationPending.session.pendingCount > 0
+  const mutationBusy = state.operationPending.mutation.pendingCount > 0
+
+  useEffect(() => {
+    if (!state.operationError) return
+    toast.error(state.operationError.message, {
+      id: `operation-error-${state.operationError.sequence}`,
+    })
+  }, [state.operationError])
 
   useEffect(() => {
     if (navigation.route.panel !== 'preset' && navigation.route.panel !== 'resource') return
@@ -42,14 +56,8 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
 
   useEffect(() => {
     const cardId = navigation.route.panel === 'character' ? navigation.route.cardId : undefined
-    if (cardId && !cardId.startsWith('__gallery-mock-') && cardId !== state.selectedCardId) state.setSelectedCardId(cardId)
+    if (cardId && !(import.meta.env.DEV && cardId.startsWith('__gallery-mock-')) && cardId !== state.selectedCardId) state.setSelectedCardId(cardId)
   }, [navigation.route.cardId, navigation.route.panel, state.selectedCardId, state.setSelectedCardId])
-
-  useEffect(() => {
-    if ((navigation.route.panel === 'preset' || navigation.route.panel === 'resource') && navigation.route.assetId) {
-      state.setSelectedContextNodeId(navigation.route.assetId)
-    }
-  }, [navigation.route.assetId, navigation.route.panel, state.setSelectedContextNodeId])
 
   useEffect(() => {
     if (navigation.route.panel !== null || !navigation.route.sessionId) return
@@ -71,14 +79,13 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
     onAddNode: state.addContextAsset,
     onDuplicateNode: state.duplicateContextAsset,
     onDeleteNode: state.deleteContextAsset,
-    onSelectNode: state.setSelectedContextNodeId,
     t: state.t,
     workspaceId: assetWorkspaceId,
   }
   const panels: Record<StudioPanelId, (active: boolean) => ReactNode> = {
     model: () => (
       <ModelPanel
-        busy={state.busy}
+        busy={providerBusy}
         providerAccountDraft={state.providerAccountDraft}
         modelProfiles={state.modelProfiles}
         providerAccounts={state.providerAccounts}
@@ -95,7 +102,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         active={active}
         branch={state.branch}
         branches={state.branches}
-        busy={state.busy}
+        busy={cardsBusy || sessionBusy}
         cardDraft={state.cardDraft}
         cards={state.cards}
         selectedCard={state.selectedCard}
@@ -132,7 +139,6 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         onUpdateAgentRuntimeProfile={state.updateAgentRuntimeProfile}
         routeAssetId={navigation.route.panel === 'preset' ? navigation.route.assetId : undefined}
         searchQuery={navigation.route.panel === 'preset' ? navigation.searchQuery : ''}
-        onNavigateAsset={assetId => navigation.openAsset('preset', assetWorkspaceId, assetId)}
         onSearchQueryChange={navigation.setSearchQuery}
       />
     ),
@@ -141,7 +147,6 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         {...contextAssetEditorProps}
         routeAssetId={navigation.route.panel === 'resource' ? navigation.route.assetId : undefined}
         searchQuery={navigation.route.panel === 'resource' ? navigation.searchQuery : ''}
-        onNavigateAsset={assetId => navigation.openAsset('resource', assetWorkspaceId, assetId)}
         onSearchQueryChange={navigation.setSearchQuery}
       />
     ),
@@ -164,19 +169,16 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
   const studio = (
     <StudioPage
       activePanel={navigation.activePanel}
-      activeAssetId={navigation.route.assetId}
       assetWorkspaceId={assetWorkspaceId}
       modelConfigured={state.providerAccountsLoaded ? hasCompleteProviderAccount(state.providerAccounts) : undefined}
-      busy={state.busy}
+      busy={mutationBusy}
       canRedo={state.canRedoEdit}
       canUndo={state.canUndoEdit}
       customCss={state.customCss}
-      error={state.error}
       onRedo={() => {
         void state.redoEdit()
       }}
       onClosePanel={navigation.closePanel}
-      onAssetRouteChange={(layoutId, assetId) => navigation.openAsset(layoutId === 'preset' ? 'preset' : 'resource', assetWorkspaceId, assetId)}
       onTogglePanel={navigation.openPanel}
       onToggleWorkspace={() => navigation.activePanel === null ? navigation.openPanel('character') : navigation.closePanel()}
       onUndo={() => {
@@ -192,7 +194,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         >
           <NarrativeCanvas
             anchorEntryId={navigation.entryAnchorId}
-            busy={state.busy}
+            busy={sessionBusy}
             composerHeight={composerHeight}
             emptyTimelineText={state.emptyTimelineText}
             onEditEntry={state.editTimelineEntry}
@@ -222,12 +224,17 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
             previewLabel={state.t('composer.preview')}
             retryLabel={state.t('composer.retry')}
             sendLabel={state.t('composer.send')}
-            textareaDisabled={state.busy}
+            textareaDisabled={sessionBusy}
           />
         </div>
       )}
     />
   )
 
-  return <ContextMenuProvider label={state.t('menu.label')}>{studio}</ContextMenuProvider>
+  return (
+    <ContextMenuProvider label={state.t('menu.label')}>
+      {studio}
+      <NotificationToaster bottomOffset={composerHeight + 16} label={state.t('notification.label')} />
+    </ContextMenuProvider>
+  )
 }

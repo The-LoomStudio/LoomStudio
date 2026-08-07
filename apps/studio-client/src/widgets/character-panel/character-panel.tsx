@@ -4,6 +4,7 @@ import type { ContextMenuItem } from '../../shared/ui/context-menu/context-menu.
 import { useContextMenuTrigger } from '../../shared/ui/context-menu/use-context-menu-trigger.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import { Toggle } from '../../shared/ui/toggle/toggle.js'
+import { Dialog } from '../../shared/ui/dialog/dialog.js'
 import { useCharacterGalleryStore, type CharacterGroupFilter } from './character-gallery-store.js'
 import styles from './character-panel.module.scss'
 
@@ -86,7 +87,7 @@ export function createMockCards(count = 100): CardView[] {
   }))
 }
 
-const MOCK_GALLERY_CARDS = createMockCards()
+const MOCK_GALLERY_CARDS = import.meta.env.DEV ? createMockCards() : []
 
 export function CharacterPanel(props: CharacterPanelProps) {
   const organization = useCharacterGalleryStore()
@@ -114,7 +115,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
     ? galleryCards.find(card => card.id === props.routeCardId) ?? (props.selectedCard?.id === props.routeCardId ? props.selectedCard : undefined)
     : undefined
   const page = props.routeCardId ? 'profile' : 'gallery'
-  const isTransientCard = selected?.id.startsWith('__gallery-mock-') ?? false
+  const isTransientCard = selected ? isMockCard(selected) : false
   const groupedCards = useMemo(() => filterCardsByGroup(galleryCards, organization.assignments, organization.activeGroupId), [galleryCards, organization.activeGroupId, organization.assignments])
   const filteredCards = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase()
@@ -295,7 +296,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
       <aside className={`${styles.characterPanel} ${profileLeaving ? styles.profileLeaving : styles.profileEntering}`} data-loom-component="character-profile">
         <input ref={backgroundInputRef} accept="image/*" className={styles.mediaInput} type="file" onChange={event => selectMedia(selected, 'background', event)} />
         <input ref={avatarInputRef} accept="image/*" className={styles.mediaInput} type="file" onChange={event => selectMedia(selected, 'avatar', event)} />
-        <section className={styles.profileHero} style={{ backgroundImage: props.active ? `url(${mediaUrl(selected, 'background', mediaByCardId)})` : 'none' }}>
+        <section className={styles.profileHero} style={{ backgroundImage: props.active && mediaUrl(selected, 'background', mediaByCardId) ? `url(${mediaUrl(selected, 'background', mediaByCardId)})` : 'none' }}>
           <div className={styles.profileHeroShade} />
           <button
             aria-label={props.t('character.changeBackground')}
@@ -383,7 +384,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
           </div>
         </section>
         {organization.groupsOpen ? <GroupSheet activeGroupId={organization.activeGroupId} editingGroupId={editingGroupId} groupDraft={groupDraft} groups={organization.groups} selectedCount={selectedCardIds.size} t={props.t} onAssign={assignCardsToGroup} onClose={() => { organization.setGroupsOpen(false); setEditingGroupId(undefined); setGroupDraft('') }} onDeleteGroup={organization.deleteGroup} onDrop={handleGroupDrop} onEditGroup={group => { setEditingGroupId(group.id); setGroupDraft(group.name) }} onGroupDraftChange={setGroupDraft} onSave={saveGroup} onSelectFilter={organization.setActiveGroup} /> : null}
-        {pendingDeleteIds ? <DeleteConfirmation count={pendingDeleteIds.length} busy={props.busy} onCancel={() => setPendingDeleteIds(undefined)} onConfirm={() => void confirmDelete()} t={props.t} /> : null}
+        <DeleteConfirmation open={Boolean(pendingDeleteIds)} count={pendingDeleteIds?.length ?? 0} busy={props.busy} onCancel={() => setPendingDeleteIds(undefined)} onConfirm={() => void confirmDelete()} t={props.t} />
       </aside>
     )
   }
@@ -465,7 +466,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
           onSelectFilter={organization.setActiveGroup}
         />
       ) : null}
-      {pendingDeleteIds ? <DeleteConfirmation count={pendingDeleteIds.filter(cardId => !isMockCardId(cardId)).length} busy={props.busy} onCancel={() => setPendingDeleteIds(undefined)} onConfirm={() => void confirmDelete()} t={props.t} /> : null}
+      <DeleteConfirmation open={Boolean(pendingDeleteIds)} count={pendingDeleteIds?.filter(cardId => !isMockCardId(cardId)).length ?? 0} busy={props.busy} onCancel={() => setPendingDeleteIds(undefined)} onConfirm={() => void confirmDelete()} t={props.t} />
     </aside>
   )
 }
@@ -473,7 +474,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
 function CharacterCard(props: {
   card: CardView
   loadMedia: boolean
-  mediaUrl: string
+  mediaUrl?: string
   mode: GalleryMode
   selected: boolean
   selectionMode: boolean
@@ -566,15 +567,23 @@ function GroupSheet(props: {
   )
 }
 
-function DeleteConfirmation(props: { busy: boolean; count: number; onCancel(): void; onConfirm(): void; t: Translator }) {
+function DeleteConfirmation(props: { busy: boolean; count: number; onCancel(): void; onConfirm(): void; open: boolean; t: Translator }) {
   return (
-    <div className={styles.sheetBackdrop} role="presentation" onMouseDown={props.onCancel}>
-      <section aria-describedby="character-delete-description" aria-labelledby="character-delete-title" aria-modal="true" className={styles.deleteDialog} role="alertdialog" onKeyDown={event => { if (event.key === 'Escape') props.onCancel() }} onMouseDown={event => event.stopPropagation()}>
-        <h2 id="character-delete-title">{props.t('character.deleteConfirmTitle')}</h2>
-        <p id="character-delete-description">{props.t('character.deleteConfirmBody', { count: props.count })}</p>
-        <div><button autoFocus type="button" onClick={props.onCancel}>{props.t('character.cancel')}</button><button className={styles.deleteButton} disabled={props.busy || props.count === 0} type="button" onClick={props.onConfirm}>{props.t('character.confirmDelete')}</button></div>
-      </section>
-    </div>
+    <Dialog
+      actions={(
+        <>
+          <button disabled={props.busy} type="button" onClick={props.onCancel}>{props.t('character.cancel')}</button>
+          <button className={styles.deleteButton} disabled={props.busy || props.count === 0} type="button" onClick={props.onConfirm}>{props.t('character.confirmDelete')}</button>
+        </>
+      )}
+      closeOnBackdrop
+      description={props.t('character.deleteConfirmBody', { count: props.count })}
+      dismissible={!props.busy}
+      open={props.open}
+      role="alertdialog"
+      title={props.t('character.deleteConfirmTitle')}
+      onClose={props.onCancel}
+    />
   )
 }
 
@@ -589,7 +598,7 @@ function isMockCard(card: CardView): boolean {
 }
 
 function isMockCardId(cardId: string): boolean {
-  return cardId.startsWith('__gallery-mock-')
+  return import.meta.env.DEV && cardId.startsWith('__gallery-mock-')
 }
 
 function pageTransitionDelay(): number {
@@ -602,8 +611,8 @@ function cardImage(card: CardView): string {
   return MOCK_CARD_IMAGES[value]!
 }
 
-function mediaUrl(card: CardView, target: MediaTarget, mediaByCardId: Record<string, CharacterMedia>): string {
-  return mediaByCardId[card.id]?.[target] ?? cardImage(card)
+function mediaUrl(card: CardView, target: MediaTarget, mediaByCardId: Record<string, CharacterMedia>): string | undefined {
+  return mediaByCardId[card.id]?.[target] ?? (import.meta.env.DEV ? cardImage(card) : undefined)
 }
 
 function SessionCard(props: { branch: BranchView; busy: boolean; current: boolean; onSwitch(): void; t: Translator }) {

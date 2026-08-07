@@ -1,6 +1,7 @@
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import { useRef, useState, type FormEvent } from 'react'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
+import type { LatestOperationContext } from '../../../shared/hooks/use-async-operations.js'
 import type {
   AgentTranscriptEntry,
   Branch,
@@ -20,6 +21,7 @@ type UseSessionRuntimeInput = {
   selectedCardId?: string
   selectedAgentRuntimeProfileId?: string
   runAction: (action: () => Promise<void>) => Promise<void>
+  runLatestAction: (action: (context: LatestOperationContext) => Promise<void>) => Promise<void>
   readProjectionOrderProfile(session: Session | undefined): ClientJsonValue | undefined
 }
 
@@ -164,17 +166,25 @@ export function useSessionRuntime(input: UseSessionRuntimeInput) {
 
   async function activateSession(sessionId: string, branchId?: string) {
     let activatedBranchId: string | undefined
-    await input.runAction(async () => {
+    await input.runLatestAction(async context => {
       const details = await input.api.sessions.get(sessionId)
       const nextBranch = resolveSessionBranch(details.branches, details.session.activeBranchId, branchId)
       if (!nextBranch) throw new Error(`Session ${sessionId} has no active branch`)
-      setSession(details.session)
+
+      const [nextTimeline, nextTranscript] = await Promise.all([
+        input.api.timeline.get(jsonObject({ sessionId, branchId: nextBranch.id })),
+        input.api.agentTranscript.get(jsonObject({ sessionId, branchId: nextBranch.id })),
+      ])
+      if (!context.isCurrent()) return
+
+      setSession(nextTimeline.session)
+      setBranch(nextTimeline.branch)
       setBranches(details.branches)
+      setTimeline(nextTimeline.entries)
+      setAgentTranscript(nextTranscript.entries)
       setRunDetails(undefined)
       setPromptPreview(undefined)
-      await refreshTimeline(sessionId, nextBranch.id)
       activateComposerDraft(details.session, nextBranch)
-      await refreshAgentTranscript(sessionId, nextBranch.id)
       activatedBranchId = nextBranch.id
     })
     return activatedBranchId
