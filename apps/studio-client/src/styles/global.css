@@ -2,7 +2,7 @@
   color: var(--loom-text);
   background: var(--loom-bg);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 14px;
+  font-size: var(--loom-font-size-body);
 
   /* ── 背景与表面 ── */
   --loom-bg: #1e1e2e;
@@ -30,12 +30,14 @@
   --loom-text: #ccd6f5;
   --loom-text-muted: #a6adc8;
   --loom-text-subtle: #7f849c;
+  --loom-font-size-body: 13px;
 
   /* ── 强调色（成对） ── */
   --loom-accent: #cba6f7;
   --loom-accent-strong: #d0b3f8;
   --loom-accent-soft: #3b324a;
   --loom-accent-foreground: #11111b;
+  --loom-dialogue: var(--loom-accent-strong);
 
   /* ── 角色色 ── */
   --loom-role-user: transparent;
@@ -81,11 +83,10 @@
   --loom-canvas-width: 860px;
   --loom-rail-width: 44px;
   --loom-overlay-width: 360px;
-  --loom-input-height: 128px;
+  --loom-input-height: 112px;
   --loom-radius-panel: 4px;
   --loom-radius-message: 0;
   --loom-shadow-panel: none;
-  --loom-font-narrative: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
 }
 
 * {

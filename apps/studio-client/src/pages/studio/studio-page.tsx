@@ -10,6 +10,8 @@ declare const __LOOM_STUDIO_VERSION__: string
 const STUDIO_VERSION = typeof __LOOM_STUDIO_VERSION__ === 'string' ? __LOOM_STUDIO_VERSION__ : 'dev'
 
 type StudioPageProps = {
+  activePanel: StudioPanelId | null
+  activeAssetId?: string
   assetWorkspaceId: string
   modelConfigured?: boolean
   busy: boolean
@@ -19,6 +21,10 @@ type StudioPageProps = {
   customCss: string
   error?: string
   onRedo(): void
+  onClosePanel(): void
+  onAssetRouteChange(layoutId: AssetLayoutId, assetId?: string): void
+  onTogglePanel(panel: StudioPanelId): void
+  onToggleWorkspace(): void
   onUndo(): void
   panelHeaders?: Partial<Record<StudioPanelId, ReactNode>>
   panels: Record<StudioPanelId, (active: boolean) => ReactNode>
@@ -60,7 +66,7 @@ export function StudioPage(props: StudioPageProps) {
   const stageRef = useRef<HTMLElement>(null)
   const dockRef = useRef<HTMLElement>(null)
   const windowResizeRef = useRef<WindowResizeSession | undefined>(undefined)
-  const activePanel = useStudioLayoutStore(state => state.activePanel)
+  const activePanel = props.activePanel
   const assetMetadataOpen = useStudioLayoutStore(state => state.assetMetadataOpen)
   const assetLayouts = useStudioLayoutStore(state => state.assetLayouts)
   const closeDock = useStudioLayoutStore(state => state.closeDock)
@@ -71,9 +77,7 @@ export function StudioPage(props: StudioPageProps) {
   const setAssetMetadataOpen = useStudioLayoutStore(state => state.setAssetMetadataOpen)
   const setAssetViewMode = useStudioLayoutStore(state => state.setAssetViewMode)
   const toggleDock = useStudioLayoutStore(state => state.toggleDock)
-  const togglePanel = useStudioLayoutStore(state => state.togglePanel)
   const togglePanelWindowMode = useStudioLayoutStore(state => state.togglePanelWindowMode)
-  const toggleWorkspace = useStudioLayoutStore(state => state.toggleWorkspace)
   const isImmersive = activePanel !== null && panelWindowModes[activePanel] === 'immersive'
   const [windowResizePreview, setWindowResizePreview] = useState<WindowResizePreview>()
   const [windowResizing, setWindowResizing] = useState(false)
@@ -93,7 +97,8 @@ export function StudioPage(props: StudioPageProps) {
       }
       if (event.key === 'Escape' && (activePanel !== null || dockOpen)) {
         event.preventDefault()
-        closeDock()
+        if (activePanel !== null) props.onClosePanel()
+        else closeDock()
         return
       }
       if (props.busy || isEditableTarget(event.target)) return
@@ -114,7 +119,7 @@ export function StudioPage(props: StudioPageProps) {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [activePanel, assetMetadataOpen, closeDock, dockOpen, isImmersive, props.busy, props.canRedo, props.canUndo, props.onRedo, props.onUndo, setAssetMetadataOpen, togglePanelWindowMode])
+  }, [activePanel, assetMetadataOpen, closeDock, dockOpen, isImmersive, props.busy, props.canRedo, props.canUndo, props.onClosePanel, props.onRedo, props.onUndo, setAssetMetadataOpen, togglePanelWindowMode])
 
   function beginWindowResize(axis: WindowResizeAxis, event: PointerEvent<HTMLButtonElement>) {
     if (!activePanel || !stageRef.current || !dockRef.current) return
@@ -199,9 +204,14 @@ export function StudioPage(props: StudioPageProps) {
   const activePanelDefinition = activePanel === null ? null : PANEL_DEFINITIONS[activePanel]
   const activePanelCustomHeader = activePanel === null ? null : props.panelHeaders?.[activePanel]
   const activeAssetLayoutId = readAssetLayoutId(activePanel)
-  const activeAssetViewMode = activeAssetLayoutId === null
+  const activeAssetView = activeAssetLayoutId === null
     ? null
-    : (assetLayouts[activeAssetLayoutId].views[props.assetWorkspaceId] ?? DEFAULT_ASSET_VIEW_STATE).viewMode
+    : assetLayouts[activeAssetLayoutId].views[props.assetWorkspaceId] ?? DEFAULT_ASSET_VIEW_STATE
+  const activeAssetViewMode = activeAssetView === null
+    ? null
+    : props.activeAssetId
+      ? activeAssetView.viewMode === 'explorer' ? 'split' : activeAssetView.viewMode
+      : 'explorer'
   const dockClassName = [
     styles.floatingDock,
     dockOpen ? styles.floatingDockOpen : '',
@@ -247,7 +257,7 @@ export function StudioPage(props: StudioPageProps) {
             className={styles.dockToggle}
             title={props.t('rail.label')}
             type="button"
-            onClick={toggleDock}
+            onClick={() => activePanel === null ? toggleDock() : props.onClosePanel()}
           >
             <Menu aria-hidden="true" />
           </button>
@@ -261,7 +271,7 @@ export function StudioPage(props: StudioPageProps) {
                 className={styles.dockWorkspaceToggle}
                 title={props.t(activePanel === null ? 'rail.openCharacter' : 'rail.closeWorkspace')}
                 type="button"
-                onClick={toggleWorkspace}
+                onClick={props.onToggleWorkspace}
               >
                 {activePanel === null ? <PanelLeftOpen aria-hidden="true" /> : <PanelLeftClose aria-hidden="true" />}
               </button>
@@ -280,7 +290,7 @@ export function StudioPage(props: StudioPageProps) {
                 data-status={props.modelConfigured === undefined ? 'unknown' : props.modelConfigured ? 'configured' : 'incomplete'}
                 title={props.t(props.modelConfigured === false ? 'rail.modelIncomplete' : 'rail.model')}
                 type="button"
-                onClick={() => togglePanel('model')}
+                onClick={() => props.onTogglePanel('model')}
               >
                 <Plug aria-hidden="true" />
                 <span className={styles.railLabel}>{props.t('rail.model')}</span>
@@ -293,7 +303,7 @@ export function StudioPage(props: StudioPageProps) {
                 className={activePanel === 'character' ? `${styles.railTab} ${styles.railTabActive}` : styles.railTab}
                 title={props.t('rail.character')}
                 type="button"
-                onClick={() => togglePanel('character')}
+                onClick={() => props.onTogglePanel('character')}
               >
                 <Users aria-hidden="true" />
                 <span className={styles.railLabel}>{props.t('rail.character')}</span>
@@ -305,7 +315,7 @@ export function StudioPage(props: StudioPageProps) {
                 className={activePanel === 'preset' ? `${styles.railTab} ${styles.railTabActive}` : styles.railTab}
                 title={props.t('rail.preset')}
                 type="button"
-                onClick={() => togglePanel('preset')}
+                onClick={() => props.onTogglePanel('preset')}
               >
                 <ListOrdered aria-hidden="true" />
                 <span className={styles.railLabel}>{props.t('rail.preset')}</span>
@@ -317,7 +327,7 @@ export function StudioPage(props: StudioPageProps) {
                 className={activePanel === 'resource' ? `${styles.railTab} ${styles.railTabActive}` : styles.railTab}
                 title={props.t('rail.resource')}
                 type="button"
-                onClick={() => togglePanel('resource')}
+                onClick={() => props.onTogglePanel('resource')}
               >
                 <Folders aria-hidden="true" />
                 <span className={styles.railLabel}>{props.t('rail.resource')}</span>
@@ -330,7 +340,7 @@ export function StudioPage(props: StudioPageProps) {
                 className={activePanel === 'inspector' ? `${styles.railTab} ${styles.railTabActive}` : styles.railTab}
                 title={props.t('rail.inspector')}
                 type="button"
-                onClick={() => togglePanel('inspector')}
+                onClick={() => props.onTogglePanel('inspector')}
               >
                 <Wrench aria-hidden="true" />
                 <span className={styles.railLabel}>{props.t('rail.inspector')}</span>
@@ -342,7 +352,7 @@ export function StudioPage(props: StudioPageProps) {
                 className={activePanel === 'logs' ? `${styles.railTab} ${styles.railTabActive}` : styles.railTab}
                 title={props.t('rail.logs')}
                 type="button"
-                onClick={() => togglePanel('logs')}
+                onClick={() => props.onTogglePanel('logs')}
               >
                 <SquareTerminal aria-hidden="true" />
                 <span className={styles.railLabel}>{props.t('rail.logs')}</span>
@@ -364,24 +374,26 @@ export function StudioPage(props: StudioPageProps) {
                 className={activePanel === 'settings' ? `${styles.railTab} ${styles.railTabActive}` : styles.railTab}
                 title={props.t('rail.settings')}
                 type="button"
-                onClick={() => togglePanel('settings')}
+                onClick={() => props.onTogglePanel('settings')}
               >
                 <Settings aria-hidden="true" />
                 <span className={styles.railLabel}>{props.t('rail.settings')}</span>
               </button>
-              <footer className={styles.railFooter}>
-                <a
-                  aria-label="LoomStudio GitHub"
-                  className={styles.githubLink}
-                  href="https://github.com/The-LoomStudio/LoomStudio.git"
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  <GitHubMark />
-                  <span>GitHub</span>
-                </a>
-                <span className={styles.version}>v{STUDIO_VERSION}</span>
-              </footer>
+              {activePanel !== null ? (
+                <footer className={styles.railFooter}>
+                  <a
+                    aria-label="LoomStudio GitHub"
+                    className={styles.githubLink}
+                    href="https://github.com/The-LoomStudio/LoomStudio.git"
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    <GitHubMark />
+                    <span>GitHub</span>
+                  </a>
+                  <span className={styles.version}>v{STUDIO_VERSION}</span>
+                </footer>
+              ) : null}
             </nav>
           </div>
 
@@ -406,7 +418,11 @@ export function StudioPage(props: StudioPageProps) {
                         className={activeAssetViewMode === mode ? styles.viewModeButtonActive : styles.viewModeButton}
                         title={props.t(titleKey)}
                         type="button"
-                        onClick={() => setAssetViewMode(activeAssetLayoutId, props.assetWorkspaceId, mode)}
+                        onClick={() => {
+                          setAssetViewMode(activeAssetLayoutId, props.assetWorkspaceId, mode)
+                          if (mode === 'explorer') props.onAssetRouteChange(activeAssetLayoutId)
+                          else if (!props.activeAssetId && activeAssetView?.selectedId) props.onAssetRouteChange(activeAssetLayoutId, activeAssetView.selectedId)
+                        }}
                       >
                         <Icon aria-hidden="true" />
                       </button>

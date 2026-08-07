@@ -17,7 +17,7 @@ type CardView = {
 }
 
 type SessionView = { id: string; agentRuntimeProfileId?: string }
-type BranchView = { id: string; title?: string; headEntryId?: string }
+type BranchView = { id: string; version: number; title?: string; headEntryId?: string }
 type GalleryMode = 'grid' | 'list'
 type MediaTarget = 'avatar' | 'background'
 type CharacterMedia = Partial<Record<MediaTarget, string>>
@@ -33,11 +33,14 @@ type CharacterPanelProps = {
   onCreateCard(): Promise<void>
   onCreateSessionFromCard(): Promise<void>
   onDeleteCards(cardIds: string[]): Promise<void>
+  onCloseProfile(): void
+  onOpenProfile(cardId: string): void
   onSelectCard(cardId: string): void
   onSwitchBranch(branch: BranchView): void
   onUpdateCard(event: FormEvent): Promise<void>
   selectedCard?: CardView
   selectedCardId?: string
+  routeCardId?: string
   session?: SessionView
   t: Translator
 }
@@ -89,9 +92,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
   const organization = useCharacterGalleryStore()
   const [editing, setEditing] = useState(false)
   const [galleryMode, setGalleryMode] = useState<GalleryMode>('grid')
-  const [page, setPage] = useState<'gallery' | 'profile'>('gallery')
   const [profileLeaving, setProfileLeaving] = useState(false)
-  const [transientCard, setTransientCard] = useState<CardView>()
   const [mediaByCardId, setMediaByCardId] = useState<Record<string, CharacterMedia>>({})
   const [query, setQuery] = useState('')
   const [visibleCount, setVisibleCount] = useState(GALLERY_PAGE_SIZE)
@@ -108,9 +109,12 @@ export function CharacterPanel(props: CharacterPanelProps) {
   const mediaObjectUrlsRef = useRef(new Set<string>())
   const gallerySentinelRef = useRef<HTMLDivElement>(null)
   const pageTransitionTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const selected = transientCard ?? props.selectedCard
-  const isTransientCard = selected?.id.startsWith('__gallery-mock-') ?? false
   const galleryCards = useMemo(() => [...props.cards, ...MOCK_GALLERY_CARDS], [props.cards])
+  const selected = props.routeCardId
+    ? galleryCards.find(card => card.id === props.routeCardId) ?? (props.selectedCard?.id === props.routeCardId ? props.selectedCard : undefined)
+    : undefined
+  const page = props.routeCardId ? 'profile' : 'gallery'
+  const isTransientCard = selected?.id.startsWith('__gallery-mock-') ?? false
   const groupedCards = useMemo(() => filterCardsByGroup(galleryCards, organization.assignments, organization.activeGroupId), [galleryCards, organization.activeGroupId, organization.assignments])
   const filteredCards = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase()
@@ -147,30 +151,22 @@ export function CharacterPanel(props: CharacterPanelProps) {
     return () => observer.disconnect()
   }, [filteredCards.length, page, props.active, visibleCount])
 
-  useEffect(() => {
-    if (page === 'profile' && !selected) setPage('gallery')
-  }, [page, selected])
-
   function openProfile(card: CardView) {
     if (selectionMode) {
       toggleCardSelection(card.id)
       return
     }
-    if (isMockCard(card)) setTransientCard(card)
-    else {
-      setTransientCard(undefined)
-      props.onSelectCard(card.id)
-    }
+    if (!isMockCard(card)) props.onSelectCard(card.id)
     setEditing(false)
-    setPage('profile')
+    props.onOpenProfile(card.id)
   }
 
   function closeProfile() {
     if (profileLeaving) return
     setProfileLeaving(true)
     pageTransitionTimerRef.current = setTimeout(() => {
-      setPage('gallery')
       setProfileLeaving(false)
+      props.onCloseProfile()
     }, pageTransitionDelay())
   }
 

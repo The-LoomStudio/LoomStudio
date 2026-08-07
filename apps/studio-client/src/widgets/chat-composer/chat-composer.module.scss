@@ -1,8 +1,8 @@
 .composer {
   align-self: end;
-  width: min(var(--loom-chat-width), calc(100% - 32px));
+  width: min(var(--loom-chat-width), 100%);
   justify-self: center;
-  margin: 0 16px 16px;
+  margin: 0 0 8px;
   min-height: 0;
   padding: 0;
   background: transparent;
@@ -15,18 +15,19 @@
 
 .inputSurface {
   display: grid;
-  grid-template-rows: minmax(56px, auto) auto;
-  gap: 8px;
+  grid-template-rows: minmax(44px, auto) auto;
+  gap: 6px;
   border: 1px solid color-mix(in srgb, var(--loom-border) 74%, transparent);
   border-radius: 18px;
-  padding: 12px 12px 10px;
+  padding: 10px;
   background: var(--loom-window);
   box-shadow: none;
 }
 
 .composer textarea {
-  min-height: 56px;
-  max-height: 180px;
+  field-sizing: content;
+  min-height: 44px;
+  max-height: 200px;
   resize: none;
   border: 0;
   border-radius: 0;
@@ -37,21 +38,20 @@
   background: transparent;
 }
 
-.composer small {
-  color: var(--loom-text-muted);
-  padding-inline: 8px;
-  font-size: 11px;
-  overflow-wrap: anywhere;
+.composer textarea:is(:hover, :focus) {
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .composerFooter {
   min-width: 0;
   display: flex;
   align-items: flex-end;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 10px;
 }
 
+.quickActions,
 .composerActions {
   display: flex;
   align-items: center;
@@ -63,9 +63,9 @@
 }
 
 .composer .sendButton {
-  width: 34px;
-  min-width: 34px;
-  min-height: 34px;
+  width: 30px;
+  min-width: 30px;
+  min-height: 30px;
   display: grid;
   place-items: center;
   border-radius: 999px;
@@ -73,6 +73,18 @@
   color: var(--loom-accent-foreground);
   border-color: var(--loom-accent);
   background: var(--loom-text);
+}
+
+.composer .utilityButton {
+  width: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  padding: 0;
+  color: var(--loom-text-muted);
+  background: transparent;
 }
 
 .composer .previewButton {

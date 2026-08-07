@@ -36,11 +36,15 @@ export type CodeMirrorEditorHandle = {
 }
 
 type CodeMirrorEditorProps = {
+  autoFocus?: boolean
   disabled?: boolean
   labelledBy: string
+  onCancel?(): void
   onChange(value: string): void
   onCommit(value: string): void
+  onSubmit?(value: string): void
   placeholder?: string
+  showLineNumbers?: boolean
   spellCheck?: boolean
   value: string
 }
@@ -80,19 +84,33 @@ const codeLanguages = [
 const loomEditorTheme = EditorView.theme({
   '&': {
     height: '100%',
-    minHeight: '180px',
+    minHeight: 'var(--loom-long-text-editor-content-min-height, 180px)',
     color: 'var(--loom-text)',
     backgroundColor: 'transparent',
-    fontSize: '14px',
+    fontSize: 'var(--loom-font-size-body)',
   },
   '&.cm-focused': { outline: 'none' },
   '.cm-scroller': {
-    minHeight: '180px',
+    minHeight: 'var(--loom-long-text-editor-content-min-height, 180px)',
     overflow: 'auto',
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-    lineHeight: '1.72',
+    scrollbarColor: 'color-mix(in srgb, var(--loom-text-subtle) 34%, var(--loom-surface)) var(--loom-surface)',
+    scrollbarWidth: 'thin',
+    fontFamily: 'var(--loom-long-text-editor-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace)',
+    lineHeight: 'var(--loom-long-text-editor-line-height, 1.72)',
   },
-  '.cm-content': { padding: '4px 0 20px' },
+  '.cm-scroller::-webkit-scrollbar': { width: '8px', height: '8px' },
+  '.cm-scroller::-webkit-scrollbar-track': { backgroundColor: 'var(--loom-surface)' },
+  '.cm-scroller::-webkit-scrollbar-thumb': {
+    border: '2px solid var(--loom-surface)',
+    borderRadius: '999px',
+    backgroundColor: 'color-mix(in srgb, var(--loom-text-subtle) 34%, var(--loom-surface))',
+  },
+  '.cm-content': {
+    padding: '4px 0 20px',
+    fontFamily: 'var(--loom-long-text-editor-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace)',
+    fontSize: 'var(--loom-font-size-body)',
+    lineHeight: 'var(--loom-long-text-editor-line-height, 1.72)',
+  },
   '.cm-line': { padding: '0 4px' },
   '.cm-gutters': {
     border: '0',
@@ -102,7 +120,7 @@ const loomEditorTheme = EditorView.theme({
   '.cm-lineNumbers .cm-gutterElement': {
     minWidth: '34px',
     padding: '0 8px 0 4px',
-    fontSize: '14px',
+    fontSize: 'var(--loom-font-size-body)',
     textAlign: 'left',
   },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--loom-accent-strong)' },
@@ -253,12 +271,22 @@ function buildSelectionBoundaryMarkers(state: EditorState) {
 export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEditorProps>(function CodeMirrorEditor(props, ref) {
   const hostRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView>(null)
-  const callbacksRef = useRef({ onChange: props.onChange, onCommit: props.onCommit })
+  const callbacksRef = useRef({
+    onCancel: props.onCancel,
+    onChange: props.onChange,
+    onCommit: props.onCommit,
+    onSubmit: props.onSubmit,
+  })
   const initialValueRef = useRef(props.value)
   const readOnlyCompartmentRef = useRef(new Compartment())
   const placeholderCompartmentRef = useRef(new Compartment())
   const attributesCompartmentRef = useRef(new Compartment())
-  callbacksRef.current = { onChange: props.onChange, onCommit: props.onCommit }
+  callbacksRef.current = {
+    onCancel: props.onCancel,
+    onChange: props.onChange,
+    onCommit: props.onCommit,
+    onSubmit: props.onSubmit,
+  }
 
   useImperativeHandle(ref, () => ({
     focus: () => viewRef.current?.focus(),
@@ -274,8 +302,26 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
         doc: initialValueRef.current,
         extensions: [
           history(),
-          keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
-          lineNumbers(),
+          keymap.of([
+            {
+              key: 'Mod-Enter',
+              run: currentView => {
+                callbacksRef.current.onSubmit?.(currentView.state.doc.toString())
+                return Boolean(callbacksRef.current.onSubmit)
+              },
+            },
+            {
+              key: 'Escape',
+              run: () => {
+                callbacksRef.current.onCancel?.()
+                return Boolean(callbacksRef.current.onCancel)
+              },
+            },
+            ...defaultKeymap,
+            ...historyKeymap,
+            ...searchKeymap,
+          ]),
+          ...(props.showLineNumbers === false ? [] : [lineNumbers()]),
           highlightSpecialChars(),
           highlightActiveLine(),
           drawSelection(),
@@ -307,6 +353,7 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
     })
 
     viewRef.current = view
+    if (props.autoFocus) view.focus()
     return () => {
       view.destroy()
       viewRef.current = null

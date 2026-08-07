@@ -24,12 +24,10 @@ type AssetLayout = {
 }
 
 type StudioLayoutData = {
-  activePanel: StudioPanelId | null
   assetMetadataOpen: boolean
   assetLayouts: Record<AssetLayoutId, AssetLayout>
   contextCategory: ContextCategory
   dockOpen: boolean
-  lastActivePanel: StudioPanelId | null
   panelWindowModes: Partial<Record<StudioPanelId, PanelWindowMode>>
   panelWindowSizes: Partial<Record<StudioPanelId, WindowSize>>
   presetPanel: PresetPanel
@@ -48,9 +46,7 @@ type StudioLayoutStore = StudioLayoutData & {
   setPresetPanel(panel: PresetPanel): void
   setTextEditorMode(mode: LongTextEditorMode): void
   toggleDock(): void
-  togglePanel(panel: StudioPanelId): void
   togglePanelWindowMode(panel: StudioPanelId): void
-  toggleWorkspace(): void
 }
 
 const STORAGE_KEY = 'loom-studio-layout'
@@ -83,7 +79,6 @@ const safeStorage: StateStorage = {
 
 export function createDefaultStudioLayout(): StudioLayoutData {
   return {
-    activePanel: null,
     assetMetadataOpen: false,
     assetLayouts: {
       preset: { explorerWidth: DEFAULT_EXPLORER_WIDTH, views: {} },
@@ -91,7 +86,6 @@ export function createDefaultStudioLayout(): StudioLayoutData {
     },
     contextCategory: 'setting',
     dockOpen: false,
-    lastActivePanel: null,
     panelWindowModes: {},
     panelWindowSizes: {},
     presetPanel: 'assets',
@@ -103,19 +97,14 @@ export function sanitizeStudioLayout(value: unknown): StudioLayoutData {
   const defaults = createDefaultStudioLayout()
   if (!isRecord(value)) return defaults
 
-  const activePanel = readPanelId(value.activePanel)
-  const lastActivePanel = readPanelId(value.lastActivePanel) ?? activePanel
-
   return {
-    activePanel,
     assetMetadataOpen: value.assetMetadataOpen === true,
     assetLayouts: {
       preset: readAssetLayout(value.assetLayouts, 'preset', defaults.assetLayouts.preset),
       resources: readAssetLayout(value.assetLayouts, 'resources', defaults.assetLayouts.resources),
     },
     contextCategory: isContextCategory(value.contextCategory) ? value.contextCategory : defaults.contextCategory,
-    dockOpen: activePanel !== null || value.dockOpen === true,
-    lastActivePanel,
+    dockOpen: value.dockOpen === true || readPanelId(value.activePanel) !== null,
     panelWindowModes: readPanelWindowModes(value.panelWindowModes),
     panelWindowSizes: readPanelWindowSizes(value.panelWindowSizes),
     presetPanel: value.presetPanel === 'order' ? 'order' : defaults.presetPanel,
@@ -127,7 +116,7 @@ export const useStudioLayoutStore = create<StudioLayoutStore>()(
   persist(
     (set) => ({
       ...createDefaultStudioLayout(),
-      closeDock: () => set({ activePanel: null, dockOpen: false }),
+      closeDock: () => set({ dockOpen: false }),
       setAssetMetadataOpen: assetMetadataOpen => set({ assetMetadataOpen }),
       setAssetExpandedIds: (layoutId, workspaceId, expandedIds) => set(state => ({
         assetLayouts: {
@@ -186,21 +175,13 @@ export const useStudioLayoutStore = create<StudioLayoutStore>()(
       })),
       setPresetPanel: presetPanel => set({ presetPanel }),
       setTextEditorMode: textEditorMode => set({ textEditorMode }),
-      toggleDock: () => set(state => state.dockOpen || state.activePanel !== null
-        ? { activePanel: null, dockOpen: false }
-        : { activePanel: state.lastActivePanel, dockOpen: true }),
-      togglePanel: panel => set(state => state.activePanel === panel
-        ? { activePanel: null, dockOpen: true, lastActivePanel: panel }
-        : { activePanel: panel, dockOpen: true, lastActivePanel: panel }),
+      toggleDock: () => set(state => ({ dockOpen: !state.dockOpen })),
       togglePanelWindowMode: panel => set(state => ({
         panelWindowModes: {
           ...state.panelWindowModes,
           [panel]: state.panelWindowModes[panel] === 'immersive' ? 'reference' : 'immersive',
         },
       })),
-      toggleWorkspace: () => set(state => state.activePanel === null
-        ? { activePanel: 'character', dockOpen: true, lastActivePanel: 'character' }
-        : { activePanel: null, dockOpen: true }),
     }),
     {
       name: STORAGE_KEY,
@@ -209,12 +190,10 @@ export const useStudioLayoutStore = create<StudioLayoutStore>()(
       migrate: persisted => sanitizeStudioLayout(persisted),
       merge: (persisted, current) => ({ ...current, ...sanitizeStudioLayout(persisted) }),
       partialize: state => ({
-        activePanel: state.activePanel,
         assetMetadataOpen: state.assetMetadataOpen,
         assetLayouts: state.assetLayouts,
         contextCategory: state.contextCategory,
         dockOpen: state.dockOpen,
-        lastActivePanel: state.lastActivePanel,
         panelWindowModes: state.panelWindowModes,
         panelWindowSizes: state.panelWindowSizes,
         presetPanel: state.presetPanel,

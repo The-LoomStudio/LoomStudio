@@ -19,6 +19,7 @@ import {
 } from '../../features/context-assets/model/projection-workbench.js'
 import { ContextAssetDetail } from '../../features/context-assets/ui/context-asset-detail/context-asset-detail.js'
 import { ContextAssetDetailHeader } from '../../features/context-assets/ui/context-asset-detail-header/context-asset-detail-header.js'
+import { ContextAssetSearch } from '../../features/context-assets/ui/context-asset-search/context-asset-search.js'
 import { ProjectionOrderEditor } from '../../features/context-assets/ui/projection-order-editor/projection-order-editor.js'
 import type { AgentRuntimeProfile, ContextAssetNode, ModelProfile } from '../../entities/index.js'
 import { AgentRuntimeManager } from './agent-runtime-manager.js'
@@ -30,10 +31,14 @@ type PresetWorkbenchProps = {
   onCommitNode: (id: string, partial: Partial<ContextAssetNode>) => void
   onChangeNodes: (updates: ContextAssetUpdate[]) => void
   onMoveNode: (draggedId: string, targetId: string, position: 'before' | 'inside' | 'after') => void
+  onNavigateAsset: (assetId?: string) => void
+  onSearchQueryChange: (query: string) => void
   onAddNode: (parentId: string) => Promise<string | undefined>
   onDuplicateNode: (id: string) => Promise<string | undefined>
   onDeleteNode: (id: string, selectedId?: string) => Promise<string | undefined>
   onSelectNode: (id: string) => void
+  routeAssetId?: string
+  searchQuery: string
   t: Translator
   workspaceId: string
   agentRuntimeProfiles: AgentRuntimeProfile[]
@@ -58,7 +63,10 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const setActivePresetPanel = useStudioLayoutStore(state => state.setPresetPanel)
   const setMetadataOpen = useStudioLayoutStore(state => state.setAssetMetadataOpen)
   const setTextEditorMode = useStudioLayoutStore(state => state.setTextEditorMode)
-  const selectedNode = findContextNode(props.nodes, explorerView.selectedId)
+  const selectedNode = findContextNode(props.nodes, props.routeAssetId)
+  const viewMode = props.routeAssetId
+    ? explorerView.viewMode === 'explorer' ? 'split' : explorerView.viewMode
+    : 'explorer'
   const projectionModel = useMemo(() => buildProjectionWorkbenchModel(props.nodes), [props.nodes])
   const { projectionEntries, orderNode, projectionOrderIds, orderedProjectionEntries } = projectionModel
   const detailNode = activePresetPanel === 'order' ? orderNode : selectedNode
@@ -85,12 +93,20 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
     }))
   }
 
+  function handleSelectNode(node: ContextAssetNode) {
+    setSelectedId('preset', props.workspaceId, node.id)
+    if (explorerView.viewMode === 'explorer') setAssetViewMode('preset', props.workspaceId, 'split')
+    setActivePresetPanel('assets')
+    props.onSelectNode(node.id)
+    props.onNavigateAsset(node.id)
+  }
+
   return (
     <AssetWorkbenchLayout
       explorerWidth={explorerLayout.explorerWidth}
       onExplorerWidthChange={width => setExplorerWidth('preset', width)}
       resizeLabel={props.t('context.resizeExplorer')}
-      viewMode={explorerView.viewMode}
+      viewMode={viewMode}
       toolbar={(
         <nav className="loom-page-tabs">
           <button
@@ -110,70 +126,74 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
         </nav>
       )}
       explorer={(
-        <FileTree
+        <ContextAssetSearch
           key={props.workspaceId}
-          ariaLabel={props.t('context.assetsLabel')}
-          expandedIds={explorerView.expandedIds}
-          getActions={node => readTreeActions(
-            node as ContextAssetNode,
-            async parentId => {
-              const selectedId = await props.onAddNode(parentId)
-              if (!selectedId) return
-              setSelectedId('preset', props.workspaceId, selectedId)
-              setAssetViewMode('preset', props.workspaceId, 'split')
-            },
-            async id => {
-              const selectedId = await props.onDuplicateNode(id)
-              if (!selectedId) return
-              setSelectedId('preset', props.workspaceId, selectedId)
-              setAssetViewMode('preset', props.workspaceId, 'split')
-            },
-            async id => {
-              const selectedId = await props.onDeleteNode(id, explorerView.selectedId)
-              setSelectedId('preset', props.workspaceId, selectedId)
-              if (!selectedId) setAssetViewMode('preset', props.workspaceId, 'explorer')
-            },
-            (id, enabled) => {
-              props.onChangeNode(id, { enabled })
-              props.onCommitNode(id, { enabled })
-            },
-            props.t,
-          )}
-          isMuted={node => (node as ContextAssetNode).kind === 'entry' && (node as ContextAssetNode).enabled === false}
-          moreActionsLabel={props.t('context.actionMore')}
           nodes={displayNodes}
-          onExpandedIdsChange={expandedIds => setExpandedIds('preset', props.workspaceId, expandedIds)}
-          onMoveNode={(draggedId, targetId, position) => {
-             const rootModule = findRootContextModule(props.nodes, draggedId)
-             const isProjectionView = rootModule?.category === 'preset'
+          query={props.searchQuery}
+          t={props.t}
+          onQueryChange={props.onSearchQueryChange}
+          onSelect={handleSelectNode}
+        >
+          <FileTree
+            key={props.workspaceId}
+            ariaLabel={props.t('context.assetsLabel')}
+            expandedIds={explorerView.expandedIds}
+            getActions={node => readTreeActions(
+              node as ContextAssetNode,
+              async parentId => {
+                const selectedId = await props.onAddNode(parentId)
+                if (!selectedId) return
+                setSelectedId('preset', props.workspaceId, selectedId)
+                setAssetViewMode('preset', props.workspaceId, 'split')
+              },
+              async id => {
+                const selectedId = await props.onDuplicateNode(id)
+                if (!selectedId) return
+                setSelectedId('preset', props.workspaceId, selectedId)
+                setAssetViewMode('preset', props.workspaceId, 'split')
+              },
+              async id => {
+                const selectedId = await props.onDeleteNode(id, props.routeAssetId)
+                setSelectedId('preset', props.workspaceId, selectedId)
+                props.onNavigateAsset(selectedId)
+              },
+              (id, enabled) => {
+                props.onChangeNode(id, { enabled })
+                props.onCommitNode(id, { enabled })
+              },
+              props.t,
+            )}
+            isMuted={node => (node as ContextAssetNode).kind === 'entry' && (node as ContextAssetNode).enabled === false}
+            moreActionsLabel={props.t('context.actionMore')}
+            nodes={displayNodes}
+            onExpandedIdsChange={expandedIds => setExpandedIds('preset', props.workspaceId, expandedIds)}
+            onMoveNode={(draggedId, targetId, position) => {
+               const rootModule = findRootContextModule(props.nodes, draggedId)
+               const isProjectionView = rootModule?.category === 'preset'
 
-             if (isProjectionView) {
-               props.onChangeNodes(readPresetProjectionMoveUpdates({
-                 draggedId,
-                 nodes: props.nodes,
-                 orderedProjectionEntries,
-                 orderNode,
-                 position,
-                 projectionEntries,
-                 projectionOrderIds,
-                 targetId,
-               }))
-               return
-             }
+               if (isProjectionView) {
+                 props.onChangeNodes(readPresetProjectionMoveUpdates({
+                   draggedId,
+                   nodes: props.nodes,
+                   orderedProjectionEntries,
+                   orderNode,
+                   position,
+                   projectionEntries,
+                   projectionOrderIds,
+                   targetId,
+                 }))
+                 return
+               }
 
-             props.onMoveNode(draggedId, targetId, position)
-          }}
-          onSelect={node => {
-            setSelectedId('preset', props.workspaceId, node.id)
-            if (explorerView.viewMode === 'explorer') setAssetViewMode('preset', props.workspaceId, 'split')
-            setActivePresetPanel('assets')
-            props.onSelectNode(node.id)
-          }}
-          renderIcon={(node, expanded) => renderTreeIcon(node as ContextAssetNode, expanded)}
-          renderMetaLeading={node => renderLifecycleIndicator(node as ContextAssetNode, props.t)}
-          selectedId={explorerView.selectedId}
-          variant="flat"
-        />
+               props.onMoveNode(draggedId, targetId, position)
+            }}
+            onSelect={node => handleSelectNode(node as ContextAssetNode)}
+            renderIcon={(node, expanded) => renderTreeIcon(node as ContextAssetNode, expanded)}
+            renderMetaLeading={node => renderLifecycleIndicator(node as ContextAssetNode, props.t)}
+            selectedId={props.routeAssetId}
+            variant="flat"
+          />
+        </ContextAssetSearch>
       )}
     >
       <div className={styles.detailStack}>
@@ -198,7 +218,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
             <ProjectionOrderEditor
               entries={orderedProjectionEntries}
               onReorder={handleProjectionReorder}
-              selectedId={explorerView.selectedId}
+              selectedId={props.routeAssetId}
               t={props.t}
             />
           ) : (

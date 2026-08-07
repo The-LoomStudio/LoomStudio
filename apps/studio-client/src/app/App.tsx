@@ -13,13 +13,55 @@ import { SettingsPanel } from '../widgets/settings-panel/settings-panel.js'
 import { ContextMenuProvider } from '../shared/ui/context-menu/context-menu.js'
 import { hasCompleteProviderAccount } from '../features/provider-settings/model/provider-account-status.js'
 import type { StudioPanelId } from '../pages/studio/model/studio-layout-store.js'
-import type { ReactNode } from 'react'
+import { useStudioNavigation } from '../pages/studio/model/use-studio-navigation.js'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import styles from './app.module.scss'
 import '../styles/global.css'
 
 export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger }) {
   const state = useStudioState(props.transportLogger)
-  const assetWorkspaceId = state.selectedCardId ?? 'default'
+  const [composerHeight, setComposerHeight] = useState(0)
+  const sessionRouteRequestRef = useRef(0)
+  const navigation = useStudioNavigation({
+    branchId: state.branch?.id,
+    selectedCardId: state.selectedCardId,
+    sessionId: state.session?.id,
+  })
+  const assetWorkspaceId = navigation.route.panel === 'preset' || navigation.route.panel === 'resource'
+    ? navigation.route.cardId ?? state.selectedCardId ?? 'default'
+    : state.selectedCardId ?? 'default'
+
+  useEffect(() => {
+    if (navigation.route.panel !== 'preset' && navigation.route.panel !== 'resource') return
+    if (navigation.route.cardId) {
+      if (navigation.route.cardId !== state.selectedCardId) state.setSelectedCardId(navigation.route.cardId)
+      return
+    }
+    if (state.selectedCardId) navigation.canonicalizePanelCard(state.selectedCardId)
+  }, [navigation.route.cardId, navigation.route.panel, state.selectedCardId])
+
+  useEffect(() => {
+    const cardId = navigation.route.panel === 'character' ? navigation.route.cardId : undefined
+    if (cardId && !cardId.startsWith('__gallery-mock-') && cardId !== state.selectedCardId) state.setSelectedCardId(cardId)
+  }, [navigation.route.cardId, navigation.route.panel, state.selectedCardId, state.setSelectedCardId])
+
+  useEffect(() => {
+    if ((navigation.route.panel === 'preset' || navigation.route.panel === 'resource') && navigation.route.assetId) {
+      state.setSelectedContextNodeId(navigation.route.assetId)
+    }
+  }, [navigation.route.assetId, navigation.route.panel, state.setSelectedContextNodeId])
+
+  useEffect(() => {
+    if (navigation.route.panel !== null || !navigation.route.sessionId) return
+    if (navigation.route.sessionId === state.session?.id && (!navigation.route.branchId || navigation.route.branchId === state.branch?.id)) return
+
+    const requestId = ++sessionRouteRequestRef.current
+    void state.activateSession(navigation.route.sessionId, navigation.route.branchId).then(branchId => {
+      if (requestId !== sessionRouteRequestRef.current) return
+      if (!branchId) navigation.openChat(undefined, undefined, true)
+      else if (branchId !== navigation.route.branchId) navigation.openChat(navigation.route.sessionId, branchId, true)
+    })
+  }, [navigation.route.branchId, navigation.route.panel, navigation.route.sessionId, state.branch?.id, state.session?.id])
   const contextAssetEditorProps = {
     nodes: state.contextAssets,
     onChangeNode: state.previewContextAsset,
@@ -62,11 +104,21 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         t={state.t}
         onChangeCardDraft={state.setCardDraft}
         onCreateCard={state.createCard}
-        onCreateSessionFromCard={state.createSessionFromCard}
+        onCreateSessionFromCard={async () => {
+          const activated = await state.createSessionFromCard()
+          if (activated) navigation.openChat(activated.sessionId, activated.branchId)
+        }}
         onDeleteCards={state.deleteCards}
         onSelectCard={state.setSelectedCardId}
-        onSwitchBranch={state.switchBranch}
+        onCloseProfile={navigation.closeDetail}
+        onOpenProfile={navigation.openCharacter}
+        onSwitchBranch={branch => {
+          void state.switchBranch(branch).then(() => {
+            if (state.session) navigation.openChat(state.session.id, branch.id)
+          })
+        }}
         onUpdateCard={state.updateCard}
+        routeCardId={navigation.route.panel === 'character' ? navigation.route.cardId : undefined}
       />
     ),
     preset: () => (
@@ -78,9 +130,21 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         onDeleteAgentRuntimeProfile={state.deleteAgentRuntimeProfile}
         onSelectAgentRuntimeProfile={id => state.setSelectedAgentRuntimeProfileId(id)}
         onUpdateAgentRuntimeProfile={state.updateAgentRuntimeProfile}
+        routeAssetId={navigation.route.panel === 'preset' ? navigation.route.assetId : undefined}
+        searchQuery={navigation.route.panel === 'preset' ? navigation.searchQuery : ''}
+        onNavigateAsset={assetId => navigation.openAsset('preset', assetWorkspaceId, assetId)}
+        onSearchQueryChange={navigation.setSearchQuery}
       />
     ),
-    resource: () => <ContextWorkbench {...contextAssetEditorProps} />,
+    resource: () => (
+      <ContextWorkbench
+        {...contextAssetEditorProps}
+        routeAssetId={navigation.route.panel === 'resource' ? navigation.route.assetId : undefined}
+        searchQuery={navigation.route.panel === 'resource' ? navigation.searchQuery : ''}
+        onNavigateAsset={assetId => navigation.openAsset('resource', assetWorkspaceId, assetId)}
+        onSearchQueryChange={navigation.setSearchQuery}
+      />
+    ),
     inspector: () => (
       <InspectorPanel
         agentTranscript={state.agentTranscript}
@@ -99,6 +163,8 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
 
   const studio = (
     <StudioPage
+      activePanel={navigation.activePanel}
+      activeAssetId={navigation.route.assetId}
       assetWorkspaceId={assetWorkspaceId}
       modelConfigured={state.providerAccountsLoaded ? hasCompleteProviderAccount(state.providerAccounts) : undefined}
       busy={state.busy}
@@ -109,6 +175,10 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
       onRedo={() => {
         void state.redoEdit()
       }}
+      onClosePanel={navigation.closePanel}
+      onAssetRouteChange={(layoutId, assetId) => navigation.openAsset(layoutId === 'preset' ? 'preset' : 'resource', assetWorkspaceId, assetId)}
+      onTogglePanel={navigation.openPanel}
+      onToggleWorkspace={() => navigation.activePanel === null ? navigation.openPanel('character') : navigation.closePanel()}
       onUndo={() => {
         void state.undoEdit()
       }}
@@ -116,25 +186,29 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
       panelHeaders={{ character: <CharacterPanelHeader t={state.t} /> }}
       panels={panels}
       canvas={(
-        <div className={styles.canvasStack}>
+        <div
+          className={styles.canvasStack}
+          style={{ '--loom-composer-height': composerHeight ? `${composerHeight}px` : undefined } as CSSProperties}
+        >
           <NarrativeCanvas
-            branch={state.branch}
-            branches={state.branches}
+            anchorEntryId={navigation.entryAnchorId}
             busy={state.busy}
+            composerHeight={composerHeight}
             emptyTimelineText={state.emptyTimelineText}
-            onForkEntry={state.forkFromEntry}
-            onSwitchBranchById={branchId => {
-              void state.switchBranchById(branchId)
+            onEditEntry={state.editTimelineEntry}
+            getEntryLink={navigation.getEntryLink}
+            onEntryAnchorChange={navigation.setEntryAnchor}
+            onForkEntry={entry => {
+              void state.forkFromEntry(entry).then(activated => {
+                if (activated) navigation.openChat(activated.sessionId, activated.branchId)
+              })
             }}
-            selectedCard={state.selectedCard}
-            session={state.session}
             t={state.t}
             timeline={state.timeline}
           />
           <ChatComposer
             canPreviewPrompt={state.canPreviewPrompt}
             canSend={state.canSend}
-            composerHint={state.composerHint}
             input={state.input}
             onChangeInput={value => {
               state.setInput(value)
@@ -142,10 +216,13 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
             onPreviewPrompt={() => {
               void state.previewPrompt()
             }}
+            onHeightChange={setComposerHeight}
             onSubmit={state.submitTurn}
+            moreLabel={state.t('composer.more')}
             previewLabel={state.t('composer.preview')}
+            retryLabel={state.t('composer.retry')}
             sendLabel={state.t('composer.send')}
-            textareaDisabled={!state.session || !state.branch || state.busy}
+            textareaDisabled={state.busy}
           />
         </div>
       )}

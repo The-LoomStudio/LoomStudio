@@ -69,6 +69,7 @@ export function useStudioState(transportLogger: Logger) {
     activationFacts,
     api,
     initialInput: '我看向柜台后的铃铛。',
+    initialTimeline: DemoData.timeline,
     selectedCardId: cardsState.selectedCardId,
     selectedAgentRuntimeProfileId: providerSettings.selectedAgentRuntimeProfileId,
     runAction: busyAction.runAction,
@@ -204,6 +205,7 @@ export function useStudioState(transportLogger: Logger) {
     session: sessionRuntime.session, branch: sessionRuntime.branch, branches: sessionRuntime.branches,
     // timeline
     timeline: sessionRuntime.timeline,
+    editTimelineEntry: sessionRuntime.editTimelineEntry,
     // agent
     agentTranscript: sessionRuntime.agentTranscript,
     // run
@@ -252,6 +254,7 @@ export function useStudioState(transportLogger: Logger) {
     createProviderAccount: providerSettings.createProviderAccount,
     createModelProfile: providerSettings.createModelProfile,
     createSessionFromCard: sessionRuntime.createSessionFromCard,
+    activateSession: sessionRuntime.activateSession,
     submitTurn: sessionRuntime.submitTurn,
     previewPrompt: sessionRuntime.previewPrompt,
     forkFromEntry: sessionRuntime.forkFromEntry,

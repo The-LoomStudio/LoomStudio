@@ -1,5 +1,7 @@
+import { isValidElement } from 'react'
 import { describe, expect, it } from 'vitest'
-import { prepareLoomMarkdown, readLoomToken } from './markdown-preview-model.js'
+import { highlightCode } from './markdown-content.js'
+import { prepareLoomMarkdown, readLoomToken } from './markdown-content-model.js'
 
 describe('Loom Markdown preview tokens', () => {
   it('turns macros and resource paths into semantic links', () => {
@@ -17,5 +19,10 @@ describe('Loom Markdown preview tokens', () => {
 
   it('rejects malformed encoded tokens', () => {
     expect(readLoomToken('loom-asset:%E0%A4%A', 'loom-asset:')).toBeUndefined()
+  })
+
+  it('highlights supported fenced-code languages and leaves unknown languages plain', () => {
+    expect(highlightCode('const answer = 42', 'js').some(isValidElement)).toBe(true)
+    expect(highlightCode('plain text', 'unknown')).toEqual(['plain text'])
   })
 })

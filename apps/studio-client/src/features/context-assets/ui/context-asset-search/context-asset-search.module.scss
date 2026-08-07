@@ -1,0 +1,162 @@
+.explorerSearch {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.searchField {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 5px;
+  margin: 7px 8px 5px;
+  padding: 0 4px 3px;
+  border-bottom: 1px solid var(--loom-border);
+  color: var(--loom-text-subtle);
+}
+
+.searchField:focus-within {
+  border-color: var(--loom-text-muted);
+  color: var(--loom-text-muted);
+}
+
+.searchField > svg {
+  width: 14px;
+  height: 14px;
+}
+
+.searchField input {
+  min-width: 0;
+  height: 25px;
+  border: 0;
+  padding: 0;
+  color: var(--loom-text);
+  background: transparent;
+  font-size: 12px;
+  box-shadow: none;
+}
+
+.searchField input:focus {
+  border: 0;
+  box-shadow: none;
+}
+
+.searchField button {
+  width: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  padding: 0;
+  color: var(--loom-text-subtle);
+  background: transparent;
+}
+
+.searchField button:hover:not(:disabled) {
+  color: var(--loom-text);
+}
+
+.searchField button svg {
+  width: 13px;
+  height: 13px;
+}
+
+.searchBody,
+.results {
+  min-width: 0;
+  min-height: 0;
+}
+
+.searchBody {
+  overflow: hidden;
+}
+
+.results {
+  height: 100%;
+  overflow-y: auto;
+  padding: 2px 6px 10px;
+}
+
+.result {
+  width: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  gap: 7px;
+  border: 0;
+  border-radius: 0;
+  padding: 7px 6px;
+  text-align: left;
+  background: transparent;
+}
+
+.result:hover:not(:disabled),
+.result:focus-visible {
+  color: var(--loom-text);
+  background: transparent;
+  box-shadow: none;
+}
+
+.result:hover:not(:disabled) .resultIcon,
+.result:hover:not(:disabled) .resultText strong,
+.result:focus-visible .resultIcon,
+.result:focus-visible .resultText strong {
+  color: var(--loom-accent-strong);
+}
+
+.resultIcon {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  color: var(--loom-text-subtle);
+}
+
+.resultIcon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.resultText {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.resultText strong,
+.resultText small,
+.resultText span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resultText strong {
+  color: var(--loom-text);
+  font-size: 12px;
+  font-weight: 560;
+}
+
+.resultText small,
+.resultText span {
+  color: var(--loom-text-subtle);
+  font-size: 10px;
+}
+
+.resultText mark {
+  color: var(--loom-accent-strong);
+  background: transparent;
+}
+
+.empty {
+  padding: 20px 12px;
+  color: var(--loom-text-subtle);
+  font-size: 12px;
+  text-align: center;
+}

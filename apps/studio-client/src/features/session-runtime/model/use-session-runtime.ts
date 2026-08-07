@@ -1,5 +1,5 @@
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type {
   AgentTranscriptEntry,
@@ -16,6 +16,7 @@ type UseSessionRuntimeInput = {
   activationFacts?: JsonObject
   api: StudioApi
   initialInput: string
+  initialTimeline?: NarrativeEntry[]
   selectedCardId?: string
   selectedAgentRuntimeProfileId?: string
   runAction: (action: () => Promise<void>) => Promise<void>
@@ -26,15 +27,31 @@ export function useSessionRuntime(input: UseSessionRuntimeInput) {
   const [session, setSession] = useState<Session>()
   const [branch, setBranch] = useState<Branch>()
   const [branches, setBranches] = useState<Branch[]>([])
-  const [timeline, setTimeline] = useState<NarrativeEntry[]>([])
+  const [timeline, setTimeline] = useState<NarrativeEntry[]>(() => input.initialTimeline ?? [])
   const [agentTranscript, setAgentTranscript] = useState<AgentTranscriptEntry[]>([])
   const [runDetails, setRunDetails] = useState<RunDetails>()
   const [promptPreview, setPromptPreview] = useState<PromptPreview>()
   const [composerInput, setComposerInput] = useState(input.initialInput)
+  const composerDraftsRef = useRef(new Map([
+    [readComposerDraftKey(undefined, undefined, input.selectedCardId), input.initialInput],
+  ]))
+
+  function setComposerDraft(value: string) {
+    composerDraftsRef.current.set(readComposerDraftKey(session, branch, input.selectedCardId), value)
+    setComposerInput(value)
+  }
+
+  function activateComposerDraft(nextSession: Session | undefined, nextBranch: Branch | undefined, fallback = '') {
+    const key = readComposerDraftKey(nextSession, nextBranch, input.selectedCardId)
+    const value = composerDraftsRef.current.get(key) ?? fallback
+    composerDraftsRef.current.set(key, value)
+    setComposerInput(value)
+  }
 
   async function createSessionFromCard() {
     if (!input.selectedCardId) return
 
+    let activated: { branchId: string; sessionId: string } | undefined
     await input.runAction(async () => {
       const result = await input.api.sessions.createFromCard(jsonObject({
         cardId: input.selectedCardId,
@@ -48,9 +65,12 @@ export function useSessionRuntime(input: UseSessionRuntimeInput) {
       setRunDetails(undefined)
       setPromptPreview(undefined)
       await refreshTimeline(result.session.id, result.branch.id)
+      activateComposerDraft(result.session, result.branch, composerInput)
       await refreshAgentTranscript(result.session.id, result.branch.id)
       await refreshSession(result.session.id)
+      activated = { branchId: result.branch.id, sessionId: result.session.id }
     })
+    return activated
   }
 
   async function submitTurn(event: FormEvent) {
@@ -67,6 +87,8 @@ export function useSessionRuntime(input: UseSessionRuntimeInput) {
         activationFacts: input.activationFacts,
       }))
       setBranch(result.branch)
+      composerDraftsRef.current.delete(readComposerDraftKey(session, branch, input.selectedCardId))
+      composerDraftsRef.current.delete(readComposerDraftKey(session, result.branch, input.selectedCardId))
       setComposerInput('')
       setPromptPreview(undefined)
       await refreshTimeline(session.id, result.branch.id)
@@ -95,6 +117,7 @@ export function useSessionRuntime(input: UseSessionRuntimeInput) {
   async function forkFromEntry(entry: NarrativeEntry) {
     if (!session) return
 
+    let activated: { branchId: string; sessionId: string } | undefined
     await input.runAction(async () => {
       const result = await input.api.sessions.fork({
         sessionId: session.id,
@@ -106,9 +129,12 @@ export function useSessionRuntime(input: UseSessionRuntimeInput) {
       setRunDetails(undefined)
       setPromptPreview(undefined)
       await refreshTimeline(result.session.id, result.branch.id)
+      activateComposerDraft(result.session, result.branch)
       await refreshAgentTranscript(result.session.id, result.branch.id)
       await refreshSession(result.session.id)
+      activated = { branchId: result.branch.id, sessionId: result.session.id }
     })
+    return activated
   }
 
   async function switchBranch(nextBranch: Branch) {
@@ -118,6 +144,7 @@ export function useSessionRuntime(input: UseSessionRuntimeInput) {
       setRunDetails(undefined)
       setPromptPreview(undefined)
       await refreshTimeline(session.id, nextBranch.id)
+      activateComposerDraft(session, nextBranch)
       await refreshAgentTranscript(session.id, nextBranch.id)
       await refreshSession(session.id)
     })
@@ -135,6 +162,24 @@ export function useSessionRuntime(input: UseSessionRuntimeInput) {
     setBranches(result.branches)
   }
 
+  async function activateSession(sessionId: string, branchId?: string) {
+    let activatedBranchId: string | undefined
+    await input.runAction(async () => {
+      const details = await input.api.sessions.get(sessionId)
+      const nextBranch = resolveSessionBranch(details.branches, details.session.activeBranchId, branchId)
+      if (!nextBranch) throw new Error(`Session ${sessionId} has no active branch`)
+      setSession(details.session)
+      setBranches(details.branches)
+      setRunDetails(undefined)
+      setPromptPreview(undefined)
+      await refreshTimeline(sessionId, nextBranch.id)
+      activateComposerDraft(details.session, nextBranch)
+      await refreshAgentTranscript(sessionId, nextBranch.id)
+      activatedBranchId = nextBranch.id
+    })
+    return activatedBranchId
+  }
+
   async function refreshTimeline(sessionId: string, branchId?: string) {
     const result = await input.api.timeline.get(jsonObject({
       sessionId,
@@ -143,6 +188,11 @@ export function useSessionRuntime(input: UseSessionRuntimeInput) {
     setSession(result.session)
     setBranch(result.branch)
     setTimeline(result.entries)
+  }
+
+  function editTimelineEntry(entryId: string, content: string) {
+    // ponytail: 后端尚未提供 NarrativeEntry update RPC；当前只支持会话内编辑，RPC 落地后在此提交并刷新 timeline。
+    setTimeline(current => current.map(entry => entry.id === entryId ? { ...entry, content } : entry))
   }
 
   async function refreshAgentTranscript(sessionId: string, branchId?: string) {
@@ -167,8 +217,9 @@ export function useSessionRuntime(input: UseSessionRuntimeInput) {
     runDetails,
     promptPreview,
     input: composerInput,
-    setInput: setComposerInput,
+    setInput: setComposerDraft,
     createSessionFromCard,
+    activateSession,
     submitTurn,
     previewPrompt,
     forkFromEntry,
@@ -176,6 +227,7 @@ export function useSessionRuntime(input: UseSessionRuntimeInput) {
     switchBranchById,
     refreshSession,
     refreshTimeline,
+    editTimelineEntry,
     refreshAgentTranscript,
     refreshRun,
   }
@@ -183,6 +235,16 @@ export function useSessionRuntime(input: UseSessionRuntimeInput) {
 
 export function readBranchById(branches: Branch[], branchId: string): Branch | undefined {
   return branches.find(branch => branch.id === branchId)
+}
+
+export function resolveSessionBranch(branches: Branch[], activeBranchId: string, requestedBranchId?: string): Branch | undefined {
+  return (requestedBranchId ? readBranchById(branches, requestedBranchId) : undefined)
+    ?? readBranchById(branches, activeBranchId)
+}
+
+export function readComposerDraftKey(session: Session | undefined, branch: Branch | undefined, selectedCardId?: string): string {
+  if (session) return `${session.id}:${branch?.id ?? 'unbound'}`
+  return `card:${selectedCardId ?? 'unbound'}`
 }
 
 function jsonObject(value: Record<string, ClientJsonValue | undefined>): JsonObject {

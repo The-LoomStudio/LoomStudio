@@ -1,6 +1,6 @@
 .editor {
   position: relative;
-  min-height: 180px;
+  min-height: var(--loom-long-text-editor-min-height, 180px);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   border-radius: 8px;
@@ -19,6 +19,40 @@
 
 .editor[data-disabled='true'] .editorHost {
   opacity: 0.62;
+}
+
+.editor[data-compact='true'] {
+  height: var(--loom-long-text-editor-min-height, 180px);
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  padding: 10px 12px;
+  background: var(--loom-window);
+}
+
+.editor[data-compact='true'] .toolbar {
+  display: flex;
+}
+
+.editor[data-compact='true'] .label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  padding: 0;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.editor[data-compact='true'] .editorHost {
+  height: 100%;
+  grid-row: 2;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.editor[data-compact='true'] .editorHost > :global(.cm-editor) {
+  height: 100%;
+  min-height: 0;
 }
 
 .toolbar {
@@ -97,20 +131,20 @@
 
 .editorHost {
   min-width: 0;
-  min-height: 180px;
+  min-height: var(--loom-long-text-editor-content-min-height, 180px);
 }
 
 .editorHost > :global(.cm-editor) {
-  min-height: 180px;
+  min-height: var(--loom-long-text-editor-content-min-height, 180px);
 }
 
 .preview {
   min-height: 180px;
   padding: 8px 4px 28px;
   color: var(--loom-text);
-  font-family: var(--loom-font-narrative);
-  font-size: 14px;
-  line-height: 1.72;
+  font-family: inherit;
+  font-size: var(--loom-font-size-body);
+  line-height: 1.64;
   overflow-wrap: anywhere;
 }
 
@@ -145,13 +179,20 @@
   font-size: 15px;
 }
 
-.preview p,
 .preview ul,
 .preview ol,
 .preview blockquote,
 .preview pre,
 .preview table {
   margin: 0.65em 0;
+}
+
+.preview p {
+  margin: 0.44em 0;
+}
+
+.preview p:has(> [data-loom-token='dialogue']:only-child) {
+  margin-block: 1.15em;
 }
 
 .preview ul,
@@ -208,23 +249,6 @@
 .preview em {
   color: var(--loom-text-muted);
   font-style: normal;
-}
-
-.semanticToken {
-  display: inline;
-  border-radius: 4px;
-  padding: 1px 4px;
-  background: var(--loom-panel);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.9em;
-}
-
-.macroToken {
-  color: var(--loom-accent-strong);
-}
-
-.assetToken {
-  color: var(--loom-info);
 }
 
 .previewEmpty {

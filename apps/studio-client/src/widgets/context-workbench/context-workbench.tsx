@@ -18,6 +18,7 @@ import {
 } from '../../features/context-assets/model/projection-workbench.js'
 import { ContextAssetDetail } from '../../features/context-assets/ui/context-asset-detail/context-asset-detail.js'
 import { ContextAssetDetailHeader } from '../../features/context-assets/ui/context-asset-detail-header/context-asset-detail-header.js'
+import { ContextAssetSearch } from '../../features/context-assets/ui/context-asset-search/context-asset-search.js'
 import { ProjectionOrderEditor } from '../../features/context-assets/ui/projection-order-editor/projection-order-editor.js'
 import type { ContextAssetNode } from '../../entities/index.js'
 import type { Translator } from '../../shared/i18n/index.js'
@@ -29,10 +30,14 @@ type ContextWorkbenchProps = {
   onCommitNode: (id: string, partial: Partial<ContextAssetNode>) => void
   onChangeNodes: (updates: ContextAssetUpdate[]) => void
   onMoveNode: (draggedId: string, targetId: string, position: 'before' | 'inside' | 'after') => void
+  onNavigateAsset: (assetId?: string) => void
+  onSearchQueryChange: (query: string) => void
   onAddNode: (parentId: string) => Promise<string | undefined>
   onDuplicateNode: (id: string) => Promise<string | undefined>
   onDeleteNode: (id: string, selectedId?: string) => Promise<string | undefined>
   onSelectNode: (id: string) => void
+  routeAssetId?: string
+  searchQuery: string
   t: Translator
   workspaceId: string
 }
@@ -51,7 +56,10 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   const setMetadataOpen = useStudioLayoutStore(state => state.setAssetMetadataOpen)
   const setTextEditorMode = useStudioLayoutStore(state => state.setTextEditorMode)
   const [viewModes, setViewModes] = useState<Record<string, 'asset' | 'projection'>>({})
-  const selectedNode = findContextNode(props.nodes, explorerView.selectedId)
+  const selectedNode = findContextNode(props.nodes, props.routeAssetId)
+  const viewMode = props.routeAssetId
+    ? explorerView.viewMode === 'explorer' ? 'split' : explorerView.viewMode
+    : 'explorer'
   const projectionModel = useMemo(() => buildProjectionWorkbenchModel(props.nodes), [props.nodes])
   const { projectionEntries, orderNode, projectionOrderIds, orderedProjectionEntries } = projectionModel
 
@@ -74,12 +82,19 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
     { value: 'history', label: props.t('context.category.history') },
   ]
 
+  function handleSelectNode(node: ContextAssetNode) {
+    setSelectedId('resources', props.workspaceId, node.id)
+    if (explorerView.viewMode === 'explorer') setAssetViewMode('resources', props.workspaceId, 'split')
+    props.onSelectNode(node.id)
+    props.onNavigateAsset(node.id)
+  }
+
   return (
     <AssetWorkbenchLayout
       explorerWidth={explorerLayout.explorerWidth}
       onExplorerWidthChange={width => setExplorerWidth('resources', width)}
       resizeLabel={props.t('context.resizeExplorer')}
-      viewMode={explorerView.viewMode}
+      viewMode={viewMode}
       toolbar={(
         <nav className="loom-page-tabs">
           {tabs.map(tab => (
@@ -95,62 +110,67 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
         </nav>
       )}
       explorer={(
-        <FileTree
+        <ContextAssetSearch
           key={props.workspaceId}
-          ariaLabel={props.t('context.assetsLabel')}
-          expandedIds={explorerView.expandedIds}
-          getActions={node => readTreeActions(
-            node as ContextAssetNode,
-            viewModes[node.id],
-            () => setViewModes(current => ({ ...current, [node.id]: current[node.id] === 'projection' ? 'asset' : 'projection' })),
-            async parentId => {
-              const selectedId = await props.onAddNode(parentId)
-              if (!selectedId) return
-              setSelectedId('resources', props.workspaceId, selectedId)
-              setAssetViewMode('resources', props.workspaceId, 'split')
-            },
-            async id => {
-              const selectedId = await props.onDuplicateNode(id)
-              if (!selectedId) return
-              setSelectedId('resources', props.workspaceId, selectedId)
-              setAssetViewMode('resources', props.workspaceId, 'split')
-            },
-            async id => {
-              const selectedId = await props.onDeleteNode(id, explorerView.selectedId)
-              setSelectedId('resources', props.workspaceId, selectedId)
-              if (!selectedId) setAssetViewMode('resources', props.workspaceId, 'explorer')
-            },
-            (id, enabled) => {
-              props.onChangeNode(id, { enabled })
-              props.onCommitNode(id, { enabled })
-            },
-            props.t,
-          )}
-          isMuted={node => (node as ContextAssetNode).kind === 'entry' && (node as ContextAssetNode).enabled === false}
-          moreActionsLabel={props.t('context.actionMore')}
           nodes={displayNodes}
-          onExpandedIdsChange={expandedIds => setExpandedIds('resources', props.workspaceId, expandedIds)}
-          onMoveNode={(draggedId, targetId, position) => {
-             const rootModule = findRootContextModule(props.nodes, draggedId)
-             const isProjectionView = rootModule && viewModes[rootModule.id] === 'projection'
+          query={props.searchQuery}
+          t={props.t}
+          onQueryChange={props.onSearchQueryChange}
+          onSelect={handleSelectNode}
+        >
+          <FileTree
+            key={props.workspaceId}
+            ariaLabel={props.t('context.assetsLabel')}
+            expandedIds={explorerView.expandedIds}
+            getActions={node => readTreeActions(
+              node as ContextAssetNode,
+              viewModes[node.id],
+              () => setViewModes(current => ({ ...current, [node.id]: current[node.id] === 'projection' ? 'asset' : 'projection' })),
+              async parentId => {
+                const selectedId = await props.onAddNode(parentId)
+                if (!selectedId) return
+                setSelectedId('resources', props.workspaceId, selectedId)
+                setAssetViewMode('resources', props.workspaceId, 'split')
+              },
+              async id => {
+                const selectedId = await props.onDuplicateNode(id)
+                if (!selectedId) return
+                setSelectedId('resources', props.workspaceId, selectedId)
+                setAssetViewMode('resources', props.workspaceId, 'split')
+              },
+              async id => {
+                const selectedId = await props.onDeleteNode(id, props.routeAssetId)
+                setSelectedId('resources', props.workspaceId, selectedId)
+                props.onNavigateAsset(selectedId)
+              },
+              (id, enabled) => {
+                props.onChangeNode(id, { enabled })
+                props.onCommitNode(id, { enabled })
+              },
+              props.t,
+            )}
+            isMuted={node => (node as ContextAssetNode).kind === 'entry' && (node as ContextAssetNode).enabled === false}
+            moreActionsLabel={props.t('context.actionMore')}
+            nodes={displayNodes}
+            onExpandedIdsChange={expandedIds => setExpandedIds('resources', props.workspaceId, expandedIds)}
+            onMoveNode={(draggedId, targetId, position) => {
+               const rootModule = findRootContextModule(props.nodes, draggedId)
+               const isProjectionView = rootModule && viewModes[rootModule.id] === 'projection'
 
-             if (isProjectionView) {
-               const update = readContextProjectionMoveUpdate(props.nodes, projectionEntries, draggedId, targetId, position)
-               if (update) props.onChangeNodes([update])
-               return
-             }
+               if (isProjectionView) {
+                 const update = readContextProjectionMoveUpdate(props.nodes, projectionEntries, draggedId, targetId, position)
+                 if (update) props.onChangeNodes([update])
+                 return
+               }
 
-             props.onMoveNode(draggedId, targetId, position)
-          }}
-          onSelect={node => {
-            setSelectedId('resources', props.workspaceId, node.id)
-            if (explorerView.viewMode === 'explorer') setAssetViewMode('resources', props.workspaceId, 'split')
-            props.onSelectNode(node.id)
-          }}
-          renderIcon={(node, expanded) => renderTreeIcon(node as ContextAssetNode, expanded)}
-          renderMetaLeading={node => renderLifecycleIndicator(node as ContextAssetNode, props.t)}
-          selectedId={explorerView.selectedId}
-        />
+               props.onMoveNode(draggedId, targetId, position)
+            }}
+            onSelect={node => handleSelectNode(node as ContextAssetNode)}
+            renderIcon={(node, expanded) => renderTreeIcon(node as ContextAssetNode, expanded)}
+            renderMetaLeading={node => renderLifecycleIndicator(node as ContextAssetNode, props.t)}
+            selectedId={props.routeAssetId}
+          />
+        </ContextAssetSearch>
       )}
     >
       <div className={styles.detailColumn} data-loom-component="context-detail-editor">
@@ -173,7 +193,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
                   targetId,
                 }))
               }}
-                  selectedId={explorerView.selectedId}
+                  selectedId={props.routeAssetId}
               t={props.t}
             />
           ) : (

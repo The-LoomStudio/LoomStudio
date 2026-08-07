@@ -279,7 +279,9 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
           copiedLabel={props.t('longTextEditor.copied')}
           copyFailedLabel={props.t('longTextEditor.copyFailed')}
           copyLabel={props.t('longTextEditor.copy')}
+          disableCodeWrapLabel={props.t('markdown.code.disableWrap')}
           disabled={readOnly}
+          enableCodeWrapLabel={props.t('markdown.code.enableWrap')}
           label={isTextLike ? props.t('context.contentLabel') : props.t('context.notesLabel')}
           mode={props.editorMode}
           previewEmptyLabel={props.t('longTextEditor.previewEmpty')}

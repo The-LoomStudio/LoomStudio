@@ -29,7 +29,7 @@ function escapeMarkdownLabel(value: string): string {
   return value.replace(/[\\[\]]/g, character => `\\${character}`)
 }
 
-export function readLoomToken(value: string, prefix: 'loom-asset:' | 'loom-macro:'): string | undefined {
+export function readLoomToken(value: string, prefix: 'loom-asset:' | 'loom-dialogue:' | 'loom-macro:'): string | undefined {
   if (!value.startsWith(prefix)) return undefined
   try {
     return decodeURIComponent(value.slice(prefix.length))

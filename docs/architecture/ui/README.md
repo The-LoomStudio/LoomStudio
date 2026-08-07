@@ -13,6 +13,7 @@ Architecture / Application / UI:
 ## 当前文档
 
 - [`workspace-shell.md`](workspace-shell.md)：Base Canvas、浮动 Dock / Workspace、窗口模式和布局状态。
+- [`navigation-and-routing.md`](navigation-and-routing.md)：URL、History、Router 与 Zustand 的状态边界。
 - [`visual-language.md`](visual-language.md)：默认暗色视觉语言、层级、排版与交互反馈。
 - [`css-and-theming.md`](css-and-theming.md)：SCSS Modules、`--loom-*` token、自定义 CSS 公共边界。
 - [`localization-and-accessibility.md`](localization-and-accessibility.md)：当前 I18N 实现与基础无障碍 contract。

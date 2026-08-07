@@ -1,15 +1,54 @@
 .canvasStack {
   --loom-panel: var(--loom-bg);
   --loom-surface: var(--loom-bg);
+  --loom-composer-height: var(--loom-input-height);
+  --loom-composer-safe-gap: 24px;
+  --loom-composer-clearance: calc(var(--loom-composer-height) + var(--loom-composer-safe-gap));
 
+  position: relative;
   width: min(var(--loom-canvas-width), calc(100vw - 32px));
   height: 100%;
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  overflow: hidden;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: visible;
+  isolation: isolate;
   background: var(--loom-bg);
+}
+
+.canvasStack::after {
+  content: '';
+  position: absolute;
+  z-index: 5;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: var(--loom-composer-clearance);
+  background: linear-gradient(to bottom, transparent 0%, var(--loom-bg) 58%);
+  pointer-events: none;
+}
+
+.canvasStack::before {
+  content: '';
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 28px;
+  background: linear-gradient(to bottom, var(--loom-bg), transparent);
+  pointer-events: none;
+}
+
+.canvasStack > :global([data-loom-component='narrative-canvas']),
+.canvasStack > :global([data-loom-component='chat-composer']) {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.canvasStack > :global([data-loom-component='chat-composer']) {
+  z-index: 10;
 }
 
 @media (max-width: 820px) {

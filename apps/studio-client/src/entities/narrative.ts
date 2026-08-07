@@ -5,6 +5,7 @@ export type NarrativeEntry = {
   version: number
   role: 'user' | 'assistant'
   content: string
+  createdAt: string
   branchId: string
   parentEntryId?: string
   runId?: string

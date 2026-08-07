@@ -20,23 +20,14 @@ describe('studio layout store', () => {
 
   afterEach(() => vi.unstubAllGlobals())
 
-  it('restores the last workspace after the Sidebar is closed', () => {
-    useStudioLayoutStore.getState().togglePanel('preset')
+  it('keeps the Sidebar visibility independent from routed panels', () => {
     useStudioLayoutStore.getState().toggleDock()
 
-    expect(useStudioLayoutStore.getState()).toMatchObject({
-      activePanel: null,
-      dockOpen: false,
-      lastActivePanel: 'preset',
-    })
+    expect(useStudioLayoutStore.getState().dockOpen).toBe(true)
 
     useStudioLayoutStore.getState().toggleDock()
 
-    expect(useStudioLayoutStore.getState()).toMatchObject({
-      activePanel: 'preset',
-      dockOpen: true,
-      lastActivePanel: 'preset',
-    })
+    expect(useStudioLayoutStore.getState().dockOpen).toBe(false)
   })
 
   it('keeps window and explorer layouts isolated by page', () => {
@@ -78,15 +69,12 @@ describe('studio layout store', () => {
   it('keeps the metadata drawer state global across asset pages', () => {
     useStudioLayoutStore.getState().setAssetMetadataOpen(true)
     useStudioLayoutStore.getState().setTextEditorMode('preview')
-    useStudioLayoutStore.getState().togglePanel('preset')
-    useStudioLayoutStore.getState().togglePanel('resource')
-
     expect(useStudioLayoutStore.getState().assetMetadataOpen).toBe(true)
     expect(useStudioLayoutStore.getState().textEditorMode).toBe('preview')
   })
 
   it('rehydrates the persisted layout after a reload', async () => {
-    useStudioLayoutStore.getState().togglePanel('character')
+    useStudioLayoutStore.getState().toggleDock()
     useStudioLayoutStore.getState().setAssetMetadataOpen(true)
     useStudioLayoutStore.getState().setAssetExplorerWidth('resources', 360)
     useStudioLayoutStore.getState().setAssetSelectedId('resources', 'card-a', 'resource-entry-a')
@@ -101,7 +89,6 @@ describe('studio layout store', () => {
     await useStudioLayoutStore.persist.rehydrate()
 
     expect(useStudioLayoutStore.getState()).toMatchObject({
-      activePanel: 'character',
       assetMetadataOpen: true,
       assetLayouts: {
         resources: {
@@ -116,7 +103,6 @@ describe('studio layout store', () => {
         },
       },
       dockOpen: true,
-      lastActivePanel: 'character',
       panelWindowModes: { character: 'immersive' },
     })
   })
@@ -133,9 +119,7 @@ describe('studio layout store', () => {
         editor: { width: 900, height: 640 },
       },
     })).toMatchObject({
-      activePanel: 'model',
       assetLayouts: { resources: { explorerWidth: 340, views: {} } },
-      lastActivePanel: 'resource',
       panelWindowModes: { model: 'reference', character: 'immersive', resource: 'reference' },
       panelWindowSizes: {
         model: { width: 720, height: 600 },
@@ -149,7 +133,6 @@ describe('studio layout store', () => {
 describe('sanitizeStudioLayout', () => {
   it('keeps valid preferences and rejects malformed persisted values', () => {
     expect(sanitizeStudioLayout({
-      activePanel: 'preset',
       assetMetadataOpen: true,
       assetLayouts: {
         preset: { explorerOpen: false, explorerWidth: 280 },
@@ -169,15 +152,13 @@ describe('sanitizeStudioLayout', () => {
       presetPanel: 'order',
       textEditorMode: 'preview',
     })).toEqual({
-      activePanel: 'preset',
       assetMetadataOpen: true,
       assetLayouts: {
         preset: { explorerWidth: 280, views: {} },
         resources: { explorerWidth: 300, views: {} },
       },
       contextCategory: 'history',
-      dockOpen: true,
-      lastActivePanel: 'preset',
+      dockOpen: false,
       panelWindowModes: { preset: 'immersive' },
       panelWindowSizes: {
         preset: { width: 900, height: 680 },
