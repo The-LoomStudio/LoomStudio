@@ -16,7 +16,7 @@
 Studio Application
 ```
 
-该 Layer 是 Studio 第一方内建 product/package layer，不进入 Kernel，也不作为 ordinary extension。它提供默认完整 AIRP 体验，包括 Card 管理、Session / Chat、Opening、Setting Layer、Agent、Composition、Trace explainability 和第一方 AIRP UI。
+该 Layer 是 Studio 第一方内建 product/package layer，不进入 Kernel，也不作为 ordinary extension。它提供默认完整 AIRP 体验，包括 Card 管理、Narrative Timeline、Agent Session、Opening、Setting Layer、Agent、Composition、Trace explainability 和第一方 AIRP UI。
 
 Provider adapters、Importers、Exporters、Tools、模型特定 payload adapters 和外部服务集成仍适合 extension 化。
 
@@ -43,11 +43,17 @@ Setting Layer:
 Agent:
   执行任务的工作主体，不等于 Character。
 
-Narrative Timeline:
-  被接受的作品产出时间线。
+Agent Preset:
+  作者可创作和分发的 Agent 定义。
 
-Runtime Transcript:
-  Agent 工作过程记录。
+Agent Session:
+  一次编辑体验的中心，保存 Agent 工作树、Run 和 Step。
+
+Narrative Timeline:
+  一次游玩体验的中心，保存剧情世界线和被接受的正文。
+
+Changeset:
+  已应用到 Narrative、变量或资产的结构化修改历史。
 
 Preferences:
   应用设置 / 用户偏好。
@@ -83,8 +89,8 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 17. Memory / Summary 是 Agent 的写操作 + 截断，不是独立基础设施层。
 18. Retrieval / Search 是 Tool / Capability 的子能力。
 19. Regex 应归入 Transform Rule System，在受控阶段执行，不能随处运行。
-20. 默认 AIRP Runtime 可以采用 ephemeral transcript projection：完整 Agent 工作对话归档但不默认进入下一轮 prompt。
-21. Agent 基座仍保存完整 Run Transcript / ToolCall / ToolResult / Trace / Changeset；ephemeral 只是默认 Runtime Profile，不污染平台性。
+20. Agent Session Tree 与 Narrative Timeline Tree 是两棵独立树：前者服务编辑过程，后者服务剧情世界线；二者不镜像、不共根、不自动同步回退。
+21. Agent 基座保存 Run / Step / ToolCall / ToolResult / Trace；Agent Preset / Runtime Policy 决定历史工作记录如何投影。
 22. Agent 主动读取结果先进入 Fresh Read Tail，被消费一轮后沉淀到 Dynamic Context Mount，并按作者设定排序。
 23. 程序性触发和主动读取共享动态挂载面，但生命周期不同；关键词失效不能卸载主动读取 item。
 24. State Store 不承载"慢变量"；低频人设、性格、年龄、长期关系等仍属于 Setting Store。
@@ -92,10 +98,14 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 26. 注入位置组不是文件夹；同一个世界书 / preset source 可以按不同 injection group 产生多个 source-scoped slots，并分别排序。
 27. 动态 slots 不写死在全局 preset 中；Prompt Build 根据当前 source set materialize slots，并用 Projection Order Profile 的稳定 rankKey 承载 UI 拖拽排序。
 28. UI 应区分资源视图和 Prompt 视图：资源树管理内容，Prompt 视图预览最终投影顺序。
-29. Session 是默认运行时隔离边界；Card 是内容包边界，不是运行实例边界。
+29. 隔离跟随所有者：Narrative Timeline 拥有剧情世界线，Agent Session 拥有编辑工作树，Card 是内容包边界。
 30. Prompt Builder 不扫描整个 workspace；Runtime 每轮构造当前 Source Set。
 31. Provider Adapter / Gateway 层需要独立 contract；它只消费 compiled prompt payload，不理解 AIRP documents。
 32. 完整玩家回合应由 Runtime Turn Flow 串联 input、compose、provider、tool、commit、state、trace 和 UI events。
+33. 用户输入首先进入 Agent Session，不默认作为与正文平级的 Narrative 节点。
+34. Step.kind 可以作为 Agent Session Tree 的持久化判别和 Runtime 状态推进信息，但不应固化某个小说工作流的全部阶段。
+35. 成功持久化修改形成 Changeset；Changeset 服务 diff、undo / redo、审计和 Agent 对修改历史的观察。
+36. Agent Preset 是作者可分发单位；本地 Model / Provider / Permission Binding 不写入可移植 Preset。
 
 ---
 
@@ -134,14 +144,14 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 
 | 文件 | 状态 | 目的 |
 |---|---|---|
-| [`isolation-scope-boundary-v0.md`](isolation-scope-boundary-v0.md) | Open Design | 对话隔离、角色卡隔离、source set、rollback boundary |
+| [`isolation-scope-boundary-v0.md`](isolation-scope-boundary-v0.md) | Open Design | Narrative、Agent Session、Source、Binding 与 Changeset 隔离边界 |
 
-### 3.4 Chat 与 Opening
+### 3.4 Narrative Timeline 与 Opening
 
 | 文件 | 状态 | 目的 |
 |---|---|---|
 | [`chat-opening-model-v0.md`](chat-opening-model-v0.md) | Migrated / Open Design | Chat / Opening / compiled message 的语义边界 |
-| [`session-timeline-data-model-v0.md`](session-timeline-data-model-v0.md) | Open Design | Session、Narrative Timeline、Runtime Transcript、Chat 数据形式 |
+| [`session-timeline-data-model-v0.md`](session-timeline-data-model-v0.md) | Open Design | Narrative Timeline、Agent Session Tree、Step 与 Changeset 数据边界 |
 | `session-model-v0.md` | Superseded by session-timeline-data-model-v0 | Session、timeline、branch、运行实例边界 |
 
 ### 3.5 Composition Skeleton
@@ -167,7 +177,8 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 | 文件 | 状态 | 目的 |
 |---|---|---|
 | [`agent/README.md`](agent/README.md) | Open Design / Discussion Capture | Agent 领域入口 |
-| [`agent/agent-model-v0.md`](agent/agent-model-v0.md) | Open Design | Agent 定义、与 Character / Runtime / Card 关系 |
+| [`agent/agent-model-v0.md`](agent/agent-model-v0.md) | Open Design | Agent Preset、Agent Session、Run、Step、Changeset 与 Narrative Binding |
+| [`agent/agent-runtime-loop-v0.md`](agent/agent-runtime-loop-v0.md) | Open Design | Agent Session Tree、Step.kind、Run 生命周期与 Changeset |
 | [`agent/runtime-policy-v0.md`](agent/runtime-policy-v0.md) | Open Design | Run 控制、loop、retry、stop、discard、commit policy |
 | [`agent/tool-capability-v0.md`](agent/tool-capability-v0.md) | Open Design | Tool 定义、ToolCall / ToolResult、commit_output、provider 映射 |
 | [`agent/retrieval-search-v0.md`](agent/retrieval-search-v0.md) | Open Design | Agent 主动搜索，Tool / Capability 的子能力 |
@@ -242,10 +253,10 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 
 ```text
 0. Document Map / Scope Map（文档分区与隔离地图）
-1. Session / Timeline Data（数据层具体形态）
-2. Agent Model（Agent 不是 Character）
-3. Runtime Transcript / Narrative Timeline（工作对话 vs 剧情产出）
-4. Tool / Capability / Commit（工具调用与剧情写入）
+1. Narrative Timeline / Agent Session Data（两棵树和 binding）
+2. Agent Model（Preset、Session、Run、Step）
+3. Changeset（修改历史、undo / redo、版本与 diff）
+4. Tool / Capability / Commit（工具调用与受控修改）
 5. Provider Adapter Contract（模型网关层）
 6. Runtime Turn Flow（玩家输入到回复落盘）
 7. Setting Layer + Retrieval（内容底座与 Agent 主动搜索）

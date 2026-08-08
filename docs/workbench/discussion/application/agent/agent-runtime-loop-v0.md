@@ -1,366 +1,250 @@
 # Agent Runtime Loop v0
 
-> **状态**：Open Design  
-> **主题**：Agent 运行循环的基础架构。Step 作为唯一原子、Commit→Review→Write 流水线、事件约定、存储策略。  
-> **相关**：[`agent-model-v0.md`](agent-model-v0.md)、[`runtime-policy-v0.md`](runtime-policy-v0.md)、[`tool-capability-v0.md`](tool-capability-v0.md)、[`../../airp-runtime-model-v0.md`](../airp-runtime-model-v0.md)
+> **状态**：Open Design
+> **主题**：Agent Run 的最小运行生命周期和平台原语。
+> **相关**：[`agent-model-v0.md`](agent-model-v0.md)、[`runtime-policy-v0.md`](runtime-policy-v0.md)、[`tool-capability-v0.md`](tool-capability-v0.md)
 
 ---
 
-## 1. 核心数据结构
+## 1. 设计边界
 
-### 1.1 Run
+Runtime Loop 负责推进 Agent Run，但不规定 Agent 必须采用哪一种工作流。
 
-一次完整的 Agent 执行生命周期。
+平台只提供足够完成下列行为的原语：
 
-```text
-Run:
-  id:        string
-  status:    'executing' | 'suspended' | 'completed' | 'failed' | 'discarded'
-  createdAt: string
-  updatedAt: string
-```
-*注：Run 的执行轨迹由带有相同 `runId` 的 Chat Message 序列隐式构成。*
+- 调用 Provider；
+- 记录输入和输出；
+- 调用 Tool 并接收结果；
+- 等待用户或外部事件；
+- 恢复或中止运行；
+- 提交受控 Mutation；
+- 正常完成、失败或丢弃。
 
-### 1.2 Message & StepMeta
-
-Runtime 的每一次推进都会在 Chat 数组中追加/更新一条 Message。
-Message 承载了内容，而 `step` 字段承载了**Loop 控制流**的状态。
-
-```text
-Message (Runtime Transcript 元素):
-  role:       'system' | 'user' | 'assistant' | 'tool'
-  content:    string | null
-  tool_calls: [...] (可选)
-  name:       string (可选，tool name)
-  step:       StepMeta (运行时管控元数据)
-
-StepMeta (Loop 控制器对象):
-  id:         string
-  runId:      string      ← 标识这条消息属于哪一次 Run
-  kind:       string      ← 异化控制流的开关（命名约定）
-  status:     'pending' | 'completed' | 'failed'
-```
-
-Step 不再是独立的执行单元或数组，而是附加在 Chat Message 上的控制器元数据。Loop 的运转完全依赖读取最新 Message 的 `step.status` 和 `step.kind`。
+写作、审查、角色扮演、检索和多 Agent 编排都是这些原语之上的 Agent Preset / Runtime Policy，不是 Runtime Loop 的硬编码阶段。
 
 ---
 
-## 2. `kind` 约定（Convention）
+## 2. Agent Run
 
-平台定义一组 well-known kind，并为其提供内建行为。扩展可以定义自己的 kind，平台不认识的 kind 按黑盒走 Trace，不阻断、不报错。
-
-### 2.1 控制流 kind 约定
-
-`kind` 是直接对接 Loop 控制器的开关。Loop 基本上是自动化执行的（只要不停止、不超时、不报错，没遇到结束标记，就一直执行）。
+候选最小生命周期：
 
 ```text
-'tool_call'
-  行为: 当前 Message 包含 tool_calls，Loop 自动解析并路由到 Tool handler 执行，
-        执行完毕后追加 'tool_result' Message，Loop 继续。
-
-'tool_result'
-  行为: Tool 执行完毕的结果，Loop 将其追加并再次请求 Provider，Loop 继续。
-
-'suspend' (例如调用了 ask_user)
-  行为: 挂起 Run (status 变更为 suspended)，Loop 停止并等待外部输入；
-        收到输入后追加 'user_input' Message，恢复 Run。
-
-'commit' (例如调用了 commit_narrative)
-  行为: 触发 Commit→Review→Write 流水线。
-
-'exit' (正常结束 / 纯文本回复)
-  行为: 正常退出当前 Run。
-
-'user_insert'
-  行为: 用户中途手动插入消息，可由插件/预设定义如何处理（如打断当前 Run 或纳入上下文）。
+created
+  -> running
+  -> suspended
+  -> running
+  -> completed | failed | aborted | discarded
 ```
 
-### 2.2 扩展自定义 kind（示例）
+说明：
 
-```text
-'ext.dice.roll'
-  插件自定义的控制流，Loop 不认识，默认行为可以是当做 'tool_result' 继续请求，
-  或由插件注册对应的 Interceptor 拦截处理。
-```
+- `suspended` 表示等待用户、权限确认或外部结果，之后可以恢复；
+- `aborted` 表示运行被主动终止；
+- `discarded` 表示运行记录可以保留，但候选产出不被接受；
+- `completed` 不等于一定写入 Narrative；不产出持久 Mutation 的 Run 也可以完成。
 
-平台不认识这些 kind，只做：创建 Step → 进 Trace → 广播事件。
+状态名称仍是候选，本文不固定数据库枚举。
 
 ---
 
-## 3. Commit → Review → Write 流水线
+## 3. Step 与 Agent Session Tree
 
-流水线**不是每个 Step 都走**。只有产生 Mutation（修改持久数据）的 Step 才触发。
+Step 是 Agent 工作推进和恢复状态的节点。Agent Session 通过 Step 的 parent/head 关系形成工作树，一次 Run 通常沿其中一条路径推进。
 
-### 3.1 什么触发流水线
-
-```text
-触发条件: Step 的 kind 属于"mutation kind"集合。
-
-平台 well-known mutation kind:
-  commit.narrative    → 写入叙事
-  commit.state        → 写入动态变量
-  commit.setting      → 写入设定层（通常限于总结阶段）
-```
-
-普通的 `provider.call` / `tool.execute` 只在 Trace 中流转，不触发流水线。
-
-### 3.2 三个阶段
+候选最小结构：
 
 ```text
-Commit（暂存候选）
-  Agent 调用写入 Tool → 产生 Candidate
-  Candidate 进入 Trace，不触碰持久数据
-  广播: agent.candidate.created
-
-Review（审查）
-  Permission 检查
-  拦截器链式调用（插件可在此修改或拒绝）
-  如需用户确认 → Run 挂起（status: suspended）
-  广播: agent.candidate.review
-
-Write（正式写入）
-  Review 通过后，调用 docs.write 落盘
-  广播: agent.candidate.written
-  Kernel 自动广播 docs.changed
+Step:
+  id
+  agentSessionId
+  runId
+  parentStepId?
+  kind
+  status
+  payload or entryRef
+  createdAt
 ```
 
-### 3.3 Loop 控制器逻辑
-
-Loop 的核心判定：
+`Step.kind` 可以同时承担持久化判别和 Runtime 状态机输入。平台应只定义推进循环真正需要理解的少量 well-known kinds，例如：
 
 ```text
-1. 看最后一条 Message 的 step.status：
-   'failed'    → 报错中断
-   'pending'   → 挂起等待（如等用户回复、等插件确认）
-   'completed' → 往下看 kind
-
-2. 看 step.kind：
-   'tool_call'   → 自动执行工具，继续 Loop
-   'tool_result' → 请求 LLM，继续 Loop
-   'suspend'     → 挂起 Loop
-   'commit'      → 走流水线
-   'exit'        → 退出 Loop
-   未知 kind      → 交给插件处理或默认继续
-
-只要不遇到挂起、退出、失败，Loop 就会自动循环执行。
+provider_output
+tool_call
+tool_result
+user_input
+suspend
+mutation
+exit
 ```
+
+Extension 可以在有所有者和命名空间的注册面上贡献额外 kind。未知 kind 如何恢复或继续，必须由注册它的 Runtime Driver 提供，不能默认当成成功结果吞掉。
+
+本文不要求 Step 必须内嵌在 Chat Message。Message、ToolCall、ToolResult 等内容可以由 Step 引用，避免用一个对象同时承载全部数据和控制语义。
+
+要避免的是把 `plan -> write -> review -> patch_state` 之类某个 Agent Preset 的阶段固化为平台唯一状态机，而不是删除 Step 状态机本身。
+
+### 3.1 Run Transcript Entry
+
+Runtime Transcript 记录 Step 所表达的用户输入、Agent 输出、工具结果、状态变化、Changeset 和错误等工作事实。
+
+Provider `messages[]` 是每次调用时编译出的 transport payload，不是 Runtime Transcript 的 canonical schema。
 
 ---
 
-## 4. 与 Kernel 基建的映射
+## 4. 推进循环
 
-Agent Runtime 是应用层组件，消费 Kernel 已有能力，不修改 Kernel。
-
-```text
-Agent Runtime 需要的      Kernel 已有的
-──────────────────────    ──────────────────────
-事件广播                  EventBus (emit / subscribe / pattern)
-数据持久化                DocumentStore (write / get / version / changeset)
-追溯与审计                TraceAuditStore (appendTrace / appendAudit)
-Prompt 编译执行           LoomRunner (fragments / passes)
-扩展注册                  Extension Host (rpc.register / events.emit)
-通信协议                  JSON-RPC 2.0 (Transport)
-```
-
-Agent Runtime 启动时注册 `agent.*` RPC namespace：
+最小循环如下：
 
 ```text
-agent.startRun         启动 Run
-agent.resume           从 suspended 恢复
-agent.abort            中断 Run
-agent.getRunStatus     查询 Run 状态
+start or resume Run
+  -> build permitted context projection
+  -> compile provider payload
+  -> call provider
+  -> record provider result
+  -> if tool calls: execute permitted tools and continue
+  -> if waiting: suspend
+  -> if mutation requested: create and apply controlled candidate
+  -> if policy continues: next provider call
+  -> otherwise complete, fail, abort or discard
 ```
+
+是否自动继续、最大调用次数、用户能否中途插入指导、一次 Run 是否可以多次提交，都由 Runtime Policy 决定。
+
+Runtime 必须设置基础安全上限，例如取消信号、调用次数或资源预算，但具体默认值不在本文确定。
 
 ---
 
-## 5. 工具注册策略
+## 5. ToolCall / ToolResult
 
-避免工具列表爆炸。通过高内聚的路由型工具将细分意图压缩到参数中。
+ToolCall 和 ToolResult 是 Runtime Transcript 的一等事实。
 
-主 Agent 的核心 Tool 集控制在 5 个以内：
+Runtime 负责：
 
-```text
-1. commit_narrative         主线输出（触发流水线）
-2. search_setting           读设定（scope 参数区分查人/查世界/查记忆）
-3. patch_state              写动态变量（JSON Patch 格式）
-4. dispatch_sub_agent       委派子任务
-5. invoke_extension         调用插件能力（action 参数路由）
-```
+- 根据 Tool 名称解析能力；
+- 校验参数和调用权限；
+- 执行或委派调用；
+- 记录结构化结果或错误；
+- 决定是否继续 Provider 调用。
 
-插件注册自定义 Tool 通过 `tools.*` RPC namespace，Agent Runtime 扫描自动发现。
+Tool 数量不设置人为上限。Agent Preset 应只声明实际需要的能力，Runtime 不应通过“通用路由工具”隐藏权限和所有权边界。
 
----
-
-## 6. Step 存储策略
-
-### 6.1 收束方向：Step 是 Chat 消息的属性
-
-Agent 的工作对话（Runtime Transcript）直接由 Chat 数组构成，每次操作（中间思考、Tool 调用、Tool 结果）都是独立的 Chat 元素，Step 只是它们的一个元数据对象（`step` 字段）。
-
-```text
-chat[i] = {
-  role:       'assistant' | 'tool' | 'user' | 'system',
-  content:    string | null,
-  tool_calls: [...],
-  step: {
-    id:     string,
-    runId:  string,
-    kind:   string,
-    status: 'pending' | 'completed' | 'failed'
-  }
-}
-```
-
-### 6.2 为什么这样存
-
-```text
-1. 一对一映射，逻辑清晰
-   一个操作（比如一次 provider 生成，或一次 tool 结果返回）就是一条 Message。
-   没有“一条消息内含多个步骤”的层级嵌套问题。
-
-2. 天然兼容 Provider API
-   大多数 LLM API（如 OpenAI）要求传入的 context 就是扁平的 Message 数组。
-   将操作铺平为 Message，在构造 Prompt 时几乎不需要额外转换。
-
-3. 控制流显式可见
-   通过 step.runId 区分历史 Run 和当前 Run。
-   停止生成（Abort）只需将最后一条 Message 的 step.status 标为 'failed'。
-```
-
-### 6.3 工作对话 vs 剧情正文
-
-```text
-Runtime Chat（Agent 工作对话 / Runtime Transcript）:
-  包含所有的系统提示、用户交互、大模型思考、工具调用（如 search_setting、骰子）。
-  这些信息帮助 Agent 完成任务，但不对最终读者暴露。
-
-Narrative Timeline（剧情正文）:
-  只有通过 commit 流水线的最终产出才会写入 Timeline。
-  两者完全独立，互不干扰。
-```
-
-### 6.4 与 TraceAuditStore 的关系
-
-TraceAuditStore 变为**可选的补充存储**，不再是 Step 的主存储。
-
-```text
-主存储:  chat 数组（Runtime Transcript） → 随会话持久化
-补充:    traceAudit.appendTrace  → 用于跨 Run 的审计查询、分析统计
-                                  可配置是否启用
-```
+Extension Tool 通过正式 Capability / Extension 注册面贡献，Runtime 不扫描任意 RPC 并自动暴露给 Agent。
 
 ---
 
-## 7. ReAct 模式
+## 6. 受控 Mutation 与 Changeset
 
-ReAct 不是平台内建的状态机，而是通过 System Prompt 约定驱动的行为模式。
+Agent 不能因为 Provider 返回了文本或工具参数就直接修改持久化数据。
 
 ```text
-平台提供的是:
-  provider.call 返回 ToolCall → 自动创建 tool.execute Step → 自动回到 provider.call
-  这个自然循环就是 ReAct 的 Action → Observation → Thought 循环。
-
-预设作者控制的是:
-  System Prompt 中的思维框架声明。
-  例如："在调用工具前，先在文本中输出你的思考。"
-  平台不强制，也不检查是否真的思考了。
+Agent requests mutation
+  -> validate input
+  -> check capability and permission
+  -> create candidate when review is needed
+  -> apply through owning domain API / Document transaction
+  -> record success or failure
+  -> emit fact only after commit
 ```
 
----
+不同领域可以有不同提交路径：
 
-## 8. 非目标
+- Narrative 写入；
+- State patch；
+- Setting 修改；
+- 资源或 Extension 专属数据修改。
 
-本文件不定义：
+平台不强制所有 Mutation 经过同一个固定的写作审查流程。校验、权限、候选、确认和写入仍然是通用阶段，但是否需要用户 Review、由谁 Review，应由对应领域与 Runtime Policy 决定。
 
-- 完整 chat / session 数据模型（属于数据层设计）；
-- 具体 Provider Adapter 实现；
-- 具体 Tool handler 实现；
-- UI 如何渲染 Step；
-- 子 Agent 的完整调度协议。
-
----
-
-## 9. 开放问题
-
-1. Step 的 `kind` 注册是否需要 manifest 声明，还是纯运行时约定？
-2. 流水线的 Review 阶段，拦截器的执行顺序如何确定？
-3. Run 的 Step[] 归档到 Trace 时，是否需要裁剪（去掉中间的大段 LLM 输出）？
-4. chat[] 的数据模型与 Step[] 的关联方式（方案 A/B/C 或其他）？
-5. streaming provider response 在 Step 中如何表示？是一个 Step 内的事件流，还是一个 pending → completed 的状态变化？
-6. Run 挂起后的超时策略？挂起多久自动 discard？
-7. 多个 Run 是否可以并发（同一个 Session 内）？
-
----
-
-## 10. Discussion Capture: Run Transcript Archive 与 Prompt Projection 分离 (2026-05-30)
-
-### 10.1 核心判断
-
-Step / Message 的主存储仍应完整记录 Agent 工作过程，但 Prompt Builder 不必默认消费完整历史工作对话。
+成功应用的 Mutation 应产生或加入 `Changeset`。Changeset 保存受影响对象、前后版本和可展示 diff，并关联触发它的 Agent Step 或用户操作。
 
 ```text
-Run Transcript Archive:
-  保存完整 Runtime Transcript。
-  包含 provider response、tool call、tool result、候选输出、失败、挂起和用户侧栏指导。
+Step / User Action
+  -> Mutation Candidate
+  -> validated write
+  -> Changeset
+      - affected documents
+      - before / after versions
+      - semantic diff when available
+      - source step / run / user action
+```
+
+Changeset 是通用 Ctrl+Z、redo、分支、审计和 Agent 观察修改历史的基础。Agent 可以通过受控 Context Source 查看近期 Changeset，理解变量、剧情或资产如何演进，而不必依赖完整旧 Transcript。
+
+一次 Run 可以产生多个 Changeset。一次需要共同撤销的用户操作也可以把多个写入组织到同一 Changeset，但跨领域原子性仍以实际 Document Store 事务覆盖范围为准。
+
+---
+
+## 7. Suspend / Resume / Abort
+
+Run 挂起时至少需要保存：
+
+- Run 身份和当前状态；
+- 已发生的 Transcript facts；
+- 恢复所需的最小 continuation data；
+- 等待原因和可接受的恢复输入；
+- 当前权限与目标引用。
+
+恢复前必须重新确认目标对象和权限仍然有效。Narrative Timeline、Setting 或其他外部状态可能在挂起期间已经变化，Runtime 不能假设旧 Context Projection 仍然有效。
+
+Abort 必须停止后续 Provider、Tool 和 Mutation 调用。已经成功提交的外部副作用不会因为 Run 被中止而自动回滚。
+
+---
+
+## 8. Transcript Archive 与 Prompt Projection
+
+持久化工作记录和把工作记录放回模型上下文是两件事。
+
+```text
+Transcript Archive:
+  记录 Run 实际发生了什么。
 
 Prompt Projection:
-  由 Runtime Profile / Policy 决定哪些 transcript 内容进入下一轮 prompt。
+  选择当前 Provider 调用允许看到什么。
 ```
 
-这允许默认 AIRP Runtime 使用短生命周期工作区，同时不破坏需要完整工作历史的 Agent / Extension。
+Agent Preset / Runtime Policy 可以选择 persistent、ephemeral 或 hybrid 策略。Runtime Loop 不写死“一轮一压缩”，也不假定历史 Transcript 必须持续进入上下文。
 
-### 10.2 默认 AIRP Runtime Profile
+---
 
-默认剧情推进形态可以是：
+## 9. 与 Kernel 的边界
 
-```text
-main narrative input
-  -> start new Run
-  -> current Run owns fresh transcript, fresh read tail, draft output
-  -> commit / discard / revise
-  -> archive transcript
-  -> emit Run Memo + Run Changeset
-  -> next Run does not include full previous transcript by default
-```
+Agent Runtime 位于 Application 层，消费 Kernel 和基础包提供的通用能力。
 
-Agent 工作侧栏输入不自动开新 Run，而是继续当前 Run。
+Kernel 不认识：
 
-```text
-side panel input
-  -> append user guidance to current Run transcript
-  -> keep fresh read / draft / tool state
-  -> continue review or rewrite
-```
+- Agent Preset；
+- Agent Session；
+- Narrative Timeline；
+- ToolCall 的业务语义；
+- Mutation Candidate 的领域规则。
 
-### 10.3 Run Changeset
+领域事实只能在对应数据真正提交后发出。`docs.changed` 只表示 Document Store 已变化，不能替代 `run.completed` 或领域专用事件。
 
-一次 Run 可能产生多个持久化影响：
+---
 
-```text
-- narrative commit
-- state patches
-- settled / pinned context mount items
-- pending setting patches
-- run memo
-- trace / audit refs
-```
+## 10. 非目标
 
-这些影响应被同一个 `RunChangeset` 关联，便于 rollback、branch、discard 和解释。
+本文不定义：
 
-### 10.4 Runtime Profile 不写死
+- 固定 ReAct 状态机；
+- 封闭且不可扩展的 Step taxonomy；
+- 固定的小说生成或审查流水线；
+- 主 Agent 工具数量；
+- Transcript 与 Narrative 的镜像树；
+- 通用 Command Bus；
+- 没有事务保证的跨领域原子回滚承诺；
+- Provider Adapter 的具体 payload。
 
-Ephemeral transcript projection 不是 Agent 基座唯一模式。
+---
 
-```text
-ephemeral:
-  归档历史 Run transcript，只投影 Run Memo / mounts / canonical sources。
+## 11. 开放问题
 
-persistent:
-  历史工作对话持续进入 prompt。
-  适合 code-agent-like / 长任务规划类 Extension。
-
-hybrid:
-  当前任务内保留完整 transcript，任务结束后 summarize/archive。
-```
-
-Runtime Loop 提供完整记录与状态推进原语；是否投影历史工作对话，由 Runtime Profile 决定。
+1. Run 的最小持久化字段和状态名称是什么？
+2. Suspend continuation 应持久化到什么粒度？
+3. 同一个 Agent Session 是否允许多个并发 Run？
+4. 用户输入是恢复当前 Run、创建新 Run，还是作为旁路指导，由哪一层决定？
+5. Step.kind 的注册、版本和恢复契约是什么？
+6. Transcript 中哪些 Provider 原始内容需要保存，哪些只保留引用或摘要？
+7. Runtime Driver 对 Extension 开放哪些推进钩子，如何避免绕过权限与领域 API？
+8. Changeset 的分组、Ctrl+Z 顺序和失效条件如何定义？
+9. 一次 Run 多次提交时，UI 如何表达已提交和仍可丢弃的部分？

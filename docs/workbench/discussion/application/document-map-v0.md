@@ -61,7 +61,7 @@ UI / Extension:
 |---|---|
 | [`card-model-v0.md`](card-model-v0.md) | Card 作为顶层内容单元 |
 | [`chat-opening-model-v0.md`](chat-opening-model-v0.md) | Chat / Opening / compiled message 的语义边界 |
-| [`session-timeline-data-model-v0.md`](session-timeline-data-model-v0.md) | Session、Narrative Timeline、Runtime Transcript 的数据层草案 |
+| [`session-timeline-data-model-v0.md`](session-timeline-data-model-v0.md) | Narrative Timeline、Agent Session Tree、Step 与 Changeset 数据边界 |
 | [`setting-layer-v0.md`](setting-layer-v0.md) | Setting Store / 设定层 |
 | [`state-store-v0.md`](state-store-v0.md) | State Store / 高频变量层 |
 | [`global-scope-v0.md`](global-scope-v0.md) | Global / Workspace / Card / Session scope |
@@ -72,7 +72,7 @@ UI / Extension:
 
 | 文件 | 作用 |
 |---|---|
-| [`isolation-scope-boundary-v0.md`](isolation-scope-boundary-v0.md) | 对话隔离、角色卡隔离、source set、rollback boundary |
+| [`isolation-scope-boundary-v0.md`](isolation-scope-boundary-v0.md) | Narrative、Agent Session、Source、Binding 与 Changeset 隔离边界 |
 | [`global-scope-v0.md`](global-scope-v0.md) | 全局设定与跨 Card / Session 共享 |
 | [`state-store-v0.md`](state-store-v0.md) | State scope 与变量隔离 |
 | [`frontend-projection-v0.md`](frontend-projection-v0.md) | 第三方替代体验与 namespace / 数据根隔离问题 |

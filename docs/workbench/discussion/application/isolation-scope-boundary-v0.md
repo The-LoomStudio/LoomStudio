@@ -1,506 +1,215 @@
-# Isolation / Scope Boundary v0
+# Isolation Scope Boundary v0
 
 > **状态**：Open Design
-> **主题**：对话隔离、角色卡隔离、source set、scope layering、rollback boundary。
-> **相关**：[`global-scope-v0.md`](global-scope-v0.md)、[`session-timeline-data-model-v0.md`](session-timeline-data-model-v0.md)、[`card-model-v0.md`](card-model-v0.md)、[`setting-layer-v0.md`](setting-layer-v0.md)、[`state-store-v0.md`](state-store-v0.md)
+> **主题**：Narrative Timeline、Agent Session、Run、Card Source 与本地 Binding 的隔离边界。
+> **迁移说明**：旧稿将 Session 同时作为剧情实例和对话隔离边界；本文拆开这两个所有权。
 
 ---
 
-## 1. 背景
+## 1. 核心原则
 
-Studio Application 需要同时支持：
-
-- 多个 Card；
-- 多个 Session；
-- 全局 user / lore / preference；
-- Session 内运行时状态；
-- 卡片私有设定和共享设定；
-- 插件贡献内容；
-- 导入旧生态角色卡和世界书；
-- reroll / branch / rollback。
-
-如果没有明确隔离模型，后续会出现典型问题：
+隔离边界应跟随数据所有者，而不是让一个 `Session` 容纳所有运行时状态。
 
 ```text
-一个 Session 的 state patch 泄漏到另一个 Session。
-一张 Card 的世界设定污染另一张 Card。
-全局用户设定被角色卡 silently override。
-Prompt Builder 不知道本轮到底应该加载哪些 source。
-Reroll 时剧情回滚了，但 HP / 好感度没有回滚。
-插件写入内容没有明确 owner 和 scope。
-```
+Narrative Timeline owns:
+  story tree / active narrative head / story-world checkpoints
 
-本文件先定义隔离问题的讨论框架，不接受最终 schema。
+Agent Session owns:
+  agent work tree / active agent head / runs / steps / transcript policy
 
----
+Card / Asset Source owns:
+  distributable author content
 
-## 2. 核心判断
+Local Binding owns:
+  provider / model / permissions / local overrides
 
-### 2.1 Scope 不是文件夹
-
-Scope 是数据可见性、生命周期和回滚边界，不等于 Source Tree 中的目录。
-
-```text
-Source Tree:
-  作者如何组织内容。
-
-Scope:
-  内容在哪些上下文可见、可写、可回滚。
-```
-
-### 2.2 Session 是默认隔离边界
-
-默认 AIRP 体验中，Session 应是运行时状态和剧情推进的主要隔离边界。
-
-```text
-Session owns:
-  - Narrative Timeline
-  - Runtime Transcript refs
-  - selected card set
-  - session-local State Store values
-  - active source set
-  - projection order profile overrides
-  - run changesets
-```
-
-这意味着：
-
-```text
-同一张 Card 开两个 Session:
-  默认不共享剧情进度、HP、好感度、当前场景、Runtime Transcript。
-
-除非显式引用 Global / Workspace scope:
-  才共享全局用户设定、全局设定库、用户偏好。
-```
-
-### 2.3 Card 是内容包边界，不是运行实例边界
-
-Card 是可分发、可游玩、可开发的顶层内容单元，但它不是一次对话运行实例。
-
-```text
-Card may own:
-  - card metadata / readme
-  - opening candidates
-  - setting entries
-  - default state schema
-  - default composition / runtime profile hints
-  - assets
-
-Session owns:
-  - actual play timeline
-  - mutable state instance
-  - runtime transcript
-  - selected provider / model binding overrides
-```
-
-同一 Card 的两个 Session 可以从相同初始设定派生，但后续 state 和 timeline 默认隔离。
-
-### 2.4 Global Scope 需要显式选择性引用
-
-Global Scope 不应被所有 Session 自动无条件注入。
-
-```text
-Global Scope contains:
-  - global user profile
-  - global writing preferences
-  - global lore libraries
-  - workspace-level reusable settings
-  - provider / runtime defaults
-
-Session selects:
-  - 哪些 global sources 进入当前 source set
-  - 是否允许 global user profile 投影
-  - 是否允许 global lore 参与 activation
-```
-
-Composition Skeleton 需要声明它是否接收 global sources，以及接收到哪里。
-
----
-
-## 3. Scope Layer 候选
-
-候选分层：
-
-```text
-Workspace Scope:
-  整个 workspace 可见。用于全局库、Provider profiles、用户偏好引用。
-
-Global Application Scope:
-  Studio AIRP Layer 的全局内容。用于 global user setting、global lore。
-
-Card Scope:
-  某张 Card 自带内容。用于 opening、setting entries、assets、默认 state schema。
-
-Session Scope:
-  一次游玩 / 对话实例。用于 timeline、state instance、runtime profile override。
-
-Run Scope:
-  一次 Agent run。用于 fresh read tail、draft、tool state、temporary context mount。
-
-Step Scope:
-  单次 provider/tool/commit 推进。用于 provider response、ToolResult、candidate mutation。
-```
-
-这些 scope 可以层层引用，但不能默认互相写入。
-
-```text
-下层 run / step 可以读上层 selected source。
-下层 run / step 写入必须走受控 mutation / commit 路径。
+Changeset records:
+  applied changes across owned documents
 ```
 
 ---
 
-## 4. Source Set
+## 2. Narrative Timeline 隔离
 
-Prompt Builder 不应该扫描整个 workspace。
-
-Runtime 在每次 compose 前应构造当前 `source set`：
-
-```text
-Source Set:
-  当前 compose 可见、可投影、可激活的数据来源集合。
-```
-
-候选来源：
-
-- selected Card sources；
-- selected Opening；
-- Session Narrative Timeline projection；
-- Session State Store snapshot；
-- selected Setting Layer trees；
-- selected Global Scope sources；
-- Runtime Transcript projection；
-- Dynamic Context Mount；
-- Fresh Read Tail；
-- Extension contributions；
-- Run Memo。
-
-Source Set 应记录进入 trace：
-
-```text
-为什么这个 source 可见？
-来自哪个 scope？
-由谁选择？
-是否被用户禁用？
-是否因为 permission / visibility 被过滤？
-```
-
----
-
-## 5. 角色卡隔离
-
-“角色卡隔离”不应只理解为文件隔离。
-
-需要区分：
-
-```text
-Packaging isolation:
-  Card 分发包内的资源和默认设定。
-
-Runtime isolation:
-  Card 被实例化到某个 Session 后产生的 state / timeline。
-
-Prompt projection isolation:
-  Card sources 在 Prompt Builder 中形成 source-scoped dynamic slots。
-
-Permission isolation:
-  Card script / plugin contribution 只能访问被授权 scope。
-```
-
-默认原则：
-
-```text
-Card package content is reusable.
-Card runtime state is session-local.
-Card projection contribution is source-scoped.
-Card scripts / plugin content require explicit permissions.
-```
-
-开放问题：
-
-- 一张 Card 是否可以声明依赖另一张 Card；
-- 多 Card 同 Session 时，Card source set 如何合并；
-- Card 默认 state schema 如何实例化到 Session；
-- Card 内置脚本是否能写 Session State；
-- Card export 是否包含某个 Session 的状态快照。
-
----
-
-## 6. 对话隔离
-
-对话隔离主要指 Session 隔离。
-
-```text
-Session A:
-  timeline A
-  state A
-  runtime transcripts A
-  projection overrides A
-
-Session B:
-  timeline B
-  state B
-  runtime transcripts B
-  projection overrides B
-```
+每条 Narrative Timeline 是独立的剧情世界线容器。
 
 默认不共享：
 
-- Narrative Timeline；
-- Runtime Transcript；
-- Session State Store；
-- Run Memo；
-- Fresh Read Tail；
-- Dynamic Context Mount；
-- pending setting patches；
-- reroll / branch state。
+- Narrative nodes 和 branch heads；
+- 与世界线绑定的动态状态版本；
+- checkpoint / save 标记；
+- 仅对该世界线有效的 overlay。
 
-可以共享但必须显式引用：
-
-- Global user setting；
-- Global lore library；
-- Provider profile；
-- Composition Skeleton；
-- Runtime profile；
-- reusable Setting Library。
+同一 Card 可以初始化多条 Narrative Timeline，但后续演进默认隔离。共享 Card Source 不意味着共享运行时状态。
 
 ---
 
-## 7. Rollback Boundary
+## 3. Agent Session 隔离
 
-一次玩家输入建议创建任务级 checkpoint。
+每个 Agent Session 有独立的：
 
-```text
-Before user turn:
-  create session checkpoint
+- Agent Preset 选择；
+- 本地 Binding 引用；
+- Session Tree、branch 和 head；
+- Run / Step；
+- Transcript archive 与 projection policy；
+- suspended continuation；
+- 临时候选和工作状态。
 
-During run:
-  provider calls / tool calls / candidates / temporary state changes
-
-Commit:
-  narrative + state snapshot + mount changes + run memo
-
-Reroll / rollback:
-  restore to checkpoint
-```
-
-需要分清：
-
-```text
-可回滚:
-  - Session documents
-  - Narrative Timeline entries
-  - Session State Store snapshot
-  - Dynamic Context Mount
-  - Run Memo
-  - PendingSettingPatch
-
-不可物理回滚，只能审计:
-  - external provider call
-  - external tool side effect
-  - network request
-```
-
-这与 Document Store 的 rollback 机制和 Trace / Audit 机制联动。
+两个 Agent Session 可以连接同一 Narrative Timeline，但不能直接读写彼此的内部 Step 或候选。若需要协作，应通过显式 Agent 调用、共享 Context Source 或受控结果引用。
 
 ---
 
-## 8. 与 Kernel / Provider / Extension 的边界
-
-Kernel 不理解 scope 语义。
+## 4. Binding 不是所有权
 
 ```text
-Kernel:
-  Document type / owner / version / changeset / audit。
-
-Studio Application:
-  Workspace / Global / Card / Session / Run / Step scope。
-
-Provider Adapter:
-  不理解 Card / Session 隔离，只消费 Runtime 给它的 provider request。
-
-Extension:
-  通过 manifest / runtime registration 声明能力。
-  通过 Application permission 访问被授权 scope。
+Agent Session
+  -> binds Narrative Timeline
+  -> binds allowed Assets / Context Sources
+  -> uses Local Binding
 ```
+
+Binding 只表达当前工作目标和可访问范围：
+
+- 不把 Narrative 节点复制进 Agent Session；
+- 不把 Agent Step 嵌入 Narrative Timeline；
+- 不让 Narrative 回退自动改变 Agent head；
+- 不让 Agent 分支自动改变 Narrative head；
+- 不让 Agent Session 获得目标对象的无限读取权限。
+
+切换 binding 后，旧 Context Projection 立即失效。Runtime 必须基于新目标、版本和权限重新构造上下文。
 
 ---
 
-## 9. M0 候选
+## 5. Card Source 与运行时演进
 
-M0 可以先支持：
+Card、Agent Preset、Setting Asset 等可分发 Source 不应被运行时默认直接污染。
 
 ```text
-Workspace Scope:
-  provider profiles, global preferences refs
+Source:
+  作者发布和复用的内容。
 
-Global Scope:
-  global user profile, global setting library
+Runtime-owned document / overlay:
+  某条 Narrative Timeline 或编辑任务中的演进状态。
+```
 
-Card Scope:
-  card setting entries, opening, assets refs
+Agent 修改 Source 必须使用明确的编辑能力和 Changeset，而不能因为它正在使用该 Card 就自动获得写权限。
 
-Session Scope:
-  narrative timeline tree, selected card ids, active branch head
+运行时演进是否能够 promote 回 Source，应是显式用户操作，并保留 diff、版本校验和冲突处理。
 
-Branch Head:
-  branch-local state snapshot / changeset head, transcript head, dynamic mounts
+---
+
+## 6. Run 与 Step Scope
+
+Run 是 Agent Session 内的执行边界，Step 是树中的推进节点。
+
+```text
+Agent Session Scope:
+  多个 Run 和整棵工作树。
 
 Run Scope:
-  runtime transcript, fresh read tail, run memo
+  本次执行的预算、取消信号、临时候选和 continuation。
+
+Step Scope:
+  单次输入、输出、工具动作、等待或提交事实。
 ```
 
-暂缓：
-
-- 多 Card 同 Session 的复杂合并；
-- Card script 权限；
-- 跨 Session 长期状态同步；
-- 共享世界状态自动传播；
-- 多用户 workspace；
-- 第三方完整替代体验的数据根隔离。
+Run 结束后，临时 provider payload、stream buffer 和未提交 candidate 可以释放；持久 Step、Changeset 引用和必要 Trace 按策略归档。
 
 ---
 
-## 10. Discussion Capture: Session Runtime Instance / Branch Isolation (2026-05-31)
+## 7. Context Scope
 
-### 10.1 核心收束
+Agent 能看到的内容由 Context Projection 决定，不等于所有绑定对象的全集。
 
-Session 是运行实例，也是一个对话单元。
+至少应区分：
 
-但在 Agent RP 中，一个 Session 内部至少存在两条内容流：
+- current Agent Session path；
+- current Run working set；
+- selected Narrative branch projection；
+- active Setting / State sources；
+- recent or selected Changesets；
+- explicit user pin；
+- Extension-granted Context Sources。
 
-```text
-Narrative Timeline:
-  剧情正文，玩家可见，是作品产出。
+未激活、不可搜索或无权限的世界书条目不能因为处在同一 Card、Timeline 或 Workspace 中就被 Agent 读取。
 
-Runtime Transcript:
-  Agent 工作对话，记录模型调用、工具调用、草稿、提交候选、失败和确认过程。
-```
+---
 
-这两条流不应混成同一个 `chat[]`，但它们属于同一个 Session runtime instance。
+## 8. Changeset 与隔离
 
-### 10.2 同一 Card 多 Session 绝对隔离
-
-同一张 Card 开两个 Session，默认绝对不共享运行时状态：
-
-```text
-不共享:
-  - Narrative Timeline
-  - Runtime Transcript
-  - State Store instance
-  - Dynamic Context Mount
-  - Run Memo
-  - PendingSettingPatch
-  - Agent 工作过程
-```
-
-共享的只是 Card 的源内容和可显式引用的 Global / Workspace sources。
-
-### 10.3 Card Source 与 Session Instance 分离
-
-Card 是内容包 / 模板，不是运行时状态容器。
-
-Session 创建时，应基于 Card source 的某个版本快照初始化：
+Changeset 可以跨多个 owned documents 描述一次逻辑修改，但不能取消各领域的所有权。
 
 ```text
-Card Source Version
-  -> instantiate Session
-  -> create session-local overlays / state / timeline
+Changeset coordinates history.
+Owning domain validates and writes data.
+Document transaction determines atomicity.
 ```
 
-Agent 在 Session 内对世界书 / Setting / State 的动态演进，默认写入 Session-local overlay 或 branch-local changeset，不直接修改 Card source。
+Undo Changeset 时必须重新检查：
 
-如果用户确实想从根本上修改 Card 内容，应走显式路径：
+- 当前版本是否仍以该 Changeset 为可撤销祖先；
+- 后续 Changeset 是否依赖它；
+- 是否包含不可逆外部副作用；
+- 是否会跨越当前 Narrative 或 Agent Session binding；
+- 用户是否拥有所有目标的写权限。
 
-```text
-Edit Card Source:
-  直接修改 Card 模板本身。
+---
 
-Promote Session Changes:
-  用户选择把某些 session-local 变更提升回 Card source。
-```
+## 9. 分支隔离
 
-默认不自动把 Session 演进污染原 Card。
+### Narrative Branch
 
-### 10.4 Branch Head 是更小的运行隔离点
+隔离剧情世界线和与其绑定的世界状态。它不拥有 Agent Transcript head。
 
-因为 AIRP 应用中分支、reroll、改写会非常频繁，Session 内还需要 branch-level 隔离。
+### Agent Session Branch
 
-候选判断：
+隔离编辑尝试和执行状态。它不拥有 Narrative head，也不自动撤销已应用 Changeset。
 
-```text
-Session:
-  最大运行实例边界。
+### Changeset History
 
-Branch Head:
-  当前剧情树状态的最小运行隔离点。
-```
+记录真实持久化演进，可被两种树引用，但自身不等于其中任何一棵树。
 
-Branch Head 应关联：
+三者必须通过显式引用关联，禁止依靠相同 branch name 或数组位置做隐式对齐。
 
-- 当前 Narrative branch head；
-- 当前 State Store snapshot / changeset head；
-- 当前 Dynamic Context Mount；
-- 当前 PendingSettingPatch；
-- 与该 branch 对应的 Runtime Transcript head。
+---
 
-### 10.5 Agent Transcript Tree 默认同步 Narrative Tree
+## 10. Kernel 与 Provider 边界
 
-Agent Transcript 基本没有独立分支需求。
+Kernel 只提供 Document、RPC、Event、Trace 等通用能力，不认识 Narrative Timeline 或 Agent Session 的领域语义。
 
-默认方向：
+Provider Adapter 只消费编译后的 payload，也不拥有 Session、权限或 Context Projection。
 
-```text
-Runtime Transcript Tree mirrors Narrative Timeline Tree.
-```
+Application Runtime 负责：
 
-也就是说，Agent 工作树默认 1:1 复刻剧情正文树的 branch topology。
+- 解析 binding；
+- 执行 Context Projection；
+- 推进 Run / Step；
+- 调用领域写入 API；
+- 关联 Changeset；
+- 在提交成功后发出领域事实。
 
-原因：
+---
 
-- 玩家频繁操作的是剧情分支；
-- Agent 工作记录主要用于解释对应剧情产出；
-- 默认 Runtime 采用总结式 / ephemeral projection，不需要把历史工作对话作为独立长期上下文；
-- 维护两套可独立分叉的复杂树会显著增加实现和 UI 负担。
+## 11. 当前实现与迁移边界
 
-后续若出现 code-agent-like 长任务，可以允许某些 Runtime Profile 使用独立 transcript graph，但这不是默认 AIRP M0。
+当前代码仍将旧 Session 作为多领域聚合点。本文只记录目标所有权，不授权立即重命名 Schema 或迁移存量数据。
 
-### 10.6 Branch State 是否适合 Git-like 模型
+迁移前需要先确认：
 
-可以借鉴 Git，但不应完整复刻 Git。
+- Narrative Timeline 是否完全取代旧游玩 Session；
+- 哪些状态真正属于世界线；
+- Agent Session Tree 的最小持久化模型；
+- Changeset 与现有 Document version / transaction 的映射；
+- RPC 和 Client 当前依赖的旧 Session 语义。
 
-适合借鉴：
+---
 
-```text
-commit / changeset:
-  一次 accepted turn 或 accepted mutation 的不可变记录。
+## 12. 开放问题
 
-branch head:
-  指向当前 narrative + state + mount + transcript 的最新 accepted changeset。
-
-parent refs:
-  支持 reroll / branch / restore。
-
-diff / patch:
-  state patch、timeline append、setting overlay patch 可追踪。
-```
-
-不宜照搬：
-
-```text
-merge semantics:
-  AIRP 分支合并不应作为 M0 基础能力。
-
-text conflict resolution:
-  剧情和状态的冲突不是普通文本冲突。
-
-distributed sync:
-  当前不是 Git 远程协作模型。
-```
-
-因此更准确的候选是：
-
-```text
-Git-like immutable changeset graph,
-not Git-compatible storage or merge model.
-```
+1. Workspace 是否需要拥有跨 Timeline 的共享慢变量？
+2. Narrative Timeline 初始化时如何引用 Card Source 版本？
+3. Agent Session 同时绑定多个目标时如何表达 active target？
+4. 多 Agent Session 并发修改同一目标时使用乐观版本还是串行队列？
+5. Changeset undo 如何处理已经被后续 Narrative checkpoint 引用的状态？
+6. Agent Session 删除后，Changeset 的 source provenance 保留到什么程度？

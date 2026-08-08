@@ -12,7 +12,8 @@ Extension 可以贡献内容和能力，但不能绕过 Application Layer 的受
 ```text
 Extension 贡献的是:
   内容（Setting entries、Memory entries）
-  能力（Tool、Source Adapter、Pass）
+  Agent Preset
+  能力（Tool、Context Source、Source Adapter、Runtime Driver、Pass）
   规则（Transform Rule、Activation Rule）
   UI（Panel、Editor、Command）
 
@@ -116,6 +117,52 @@ generate scene illustration
 
 平台负责能力注册、权限、上下文投影、Gateway 调用和结果写入边界；插件负责自己的领域逻辑、prompt/tag builder 和 provider-specific adapter。
 
+### 2.6 Agent Preset 贡献
+
+Extension 可以用文件贡献一个或多个 Agent Preset。候选约定：
+
+```text
+manifest declares:
+  contributes.agentPresets:
+    - id: tattoo-designer
+      source: ./agents/tattoo-designer.agent.json
+```
+
+`*.agent.json` 是候选分发文件名，正式字段和版本尚未确定。
+
+Extension 贡献的 Preset 与用户创建的 Preset 使用同一种 Agent Preset 模型。它可以引用该 Extension 同时贡献的 Tool、Context Source 或 Runtime Driver，但不能借此绕过正常注册和权限边界。
+
+Preset 文件不保存：
+
+- API Key；
+- 本地 `modelProfileId`；
+- 已授予权限；
+- 当前 Narrative Timeline 或 Agent Session 实例；
+- Extension 私有安装路径。
+
+依赖处理：
+
+```text
+Preset references Extension contribution
+  -> dependency available and enabled: resolve normally
+  -> dependency missing or disabled: keep unresolved
+  -> show missing dependency to user
+```
+
+平台不能因为打开或导入 Preset 就自动安装 Extension、激活代码或授予权限。
+
+### 2.7 Runtime Driver 贡献
+
+Extension 可以贡献特化的 Step.kind 与推进逻辑，用于实现特定 Agent 工作方式。
+
+Runtime Driver 必须：
+
+- 使用有 owner 的命名空间注册；
+- 声明能够恢复和处理的 Step kinds；
+- 通过正式 Tool / Mutation API 读写数据；
+- 服从 Run 预算、取消和权限；
+- 缺失时让相关 Step / Agent Preset 保持 unresolved，而不是猜测执行。
+
 ---
 
 ## 3. 命名空间与冲突
@@ -130,6 +177,7 @@ Extension ID:
   同一 slot 多个 Extension 贡献内容的合并策略。
   同一 Tool name 的冲突检测。
   同一 Source Adapter kind 的注册冲突。
+  同一 Agent Preset ID / Step kind / Runtime Driver 的注册冲突。
 ```
 
 开放问题：
@@ -178,6 +226,8 @@ Application Layer Extension Contribution:
 5. 多个 Extension 贡献同一 slot 内容时的合并策略？
 6. Extension 贡献的 UI 面板如何与 Studio AIRP UI 集成？
 7. Extension 贡献的 Memory entries 是否对 Agent 可见？
+8. `contributes.agentPresets` 的正式 manifest schema 和版本规则是什么？
+9. Runtime Driver 的恢复兼容性和卸载边界如何验证？
 
 ---
 

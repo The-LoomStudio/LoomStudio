@@ -114,9 +114,9 @@ Transform Rule
   先确定哪些数据互相隔离，哪些数据可以共享。
 
 必须回答:
-  - Session 是否是默认运行时隔离边界
+  - Narrative Timeline 与 Agent Session 分别拥有什么
   - Card 是内容包边界还是运行实例边界
-  - Global / Workspace / Card / Session / Run / Step scope 如何分工
+  - Global / Workspace / Card / Narrative / Agent Session / Run / Step scope 如何分工
   - Prompt Builder 每轮看到的 Source Set 由谁构造
   - Reroll / rollback 以什么为边界
 
@@ -124,22 +124,23 @@ Transform Rule
   document-map-v0.md, isolation-scope-boundary-v0.md, global-scope-v0.md
 
 结束标准:
-  能明确同一张 Card 的两个 Session 默认不共享 timeline / state / transcript。
+  能明确 Narrative Timeline 与 Agent Session Tree 不共根、不镜像、不自动同步回退。
   能明确 Prompt Builder 不扫描整个 workspace，只消费 Runtime 给出的 Source Set。
 ```
 
-### 第 0.5 场：Session / Timeline Data Model
+### 第 0.5 场：Narrative Timeline / Agent Session Data Model
 
 ```text
 目标:
-  把 Chat / Session / Timeline / Runtime Transcript 的数据层关系先铺平。
+  把 Narrative Timeline、Agent Session Tree、Step、Changeset 和 Provider payload 的关系先铺平。
 
 必须回答:
-  - Session 持久化哪些引用
   - Narrative Timeline 保存什么
-  - Runtime Transcript 保存什么
+  - Agent Session Tree 保存什么
+  - Step、Run 和 Transcript 如何关联
+  - Changeset 如何记录真实修改
   - Provider messages-like payload 和 canonical timeline 的关系
-  - Opening 如何初始化 Session / Timeline
+  - Opening 如何初始化 Narrative Timeline
 
 涉及文档:
   session-timeline-data-model-v0.md, chat-opening-model-v0.md, airp-runtime-model-v0.md
@@ -147,6 +148,7 @@ Transform Rule
 结束标准:
   能明确 messages[] 不是 Chat 本体。
   能明确 Provider response 只有通过 commit 才能写入 Narrative Timeline。
+  能明确 Narrative 与 Agent Session 是两棵独立树。
 ```
 
 ### 第 1 场：Agent Model

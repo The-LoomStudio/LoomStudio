@@ -3,6 +3,8 @@
 > Status: M0 Implementation Slice  
 > Scope: 不接 UI、不接真实模型、不接 tool-call，先验证 Application Runtime 的后端闭环。
 
+> **目标设计提示**：本文件记录当前已实现的 M0 事实。后续开放设计已经转向“以 Narrative Timeline 为游玩中心、以 Agent Session Tree 为编辑中心，并通过 binding 和 Changeset 关联”。因此，下文旧 `Session`、玩家输入写入 Narrative、镜像 `AgentTranscriptEntry` 和 `AgentRuntimeProfile` 不应直接视为最终 Schema。参见 [`session-timeline-data-model-v0.md`](session-timeline-data-model-v0.md) 与 [`agent/agent-model-v0.md`](agent/agent-model-v0.md)。
+
 ## 1. 目标
 
 M0 的目标不是完成 AIRP Runtime，而是先证明下面这条链能跑通：

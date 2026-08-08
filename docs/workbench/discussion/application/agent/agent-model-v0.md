@@ -1,404 +1,319 @@
 # Agent Model v0
 
-> **状态**：Open Design  
-> **主题**：Agent 定义、与 Character / Runtime / Card / Setting Layer 的关系。
+> **状态**：Open Design
+> **主题**：Agent、Agent Preset、Agent Session、Agent Run 与 Narrative Timeline 的候选边界。
+> **事实边界**：本文描述目标方向，不代表当前 M0 Schema 已经实现。
 
 ---
 
 ## 1. 核心判断
 
-Agent 是执行任务的工作主体，不是 Character，不是 Persona，不是 Narrator，不是 Speaker。
-
-```text
-Agent:
-  在 Studio Application 中执行工作的主体。
-  拥有运行策略、工具能力、检索能力和权限约束。
-
-Character / Persona / Narrator:
-  作品设定中的角色、身份、叙事视角。
-  它们是 Setting Layer 的内容，不是执行主体。
-```
-
-混淆 Agent 和 Character 是旧生态最常见的模型错误。
-
----
-
-## 2. Agent 不是什么
+Agent 是能够在一次有边界的运行中，多次接收用户指导、调用工具、观察结果并继续工作的执行主体。
 
 ```text
 Agent ≠ Character
-  Character 是作品内容，Agent 是工作主体。
-  一个 Agent 可以扮演某个 Character。
-  一个 Character 不一定有对应 Agent。
-
-Agent ≠ Runtime
-  Runtime 是推进运行的机制。
-  Agent 是被运行的工作主体。
-  Runtime 执行 Agent 的 loop / step。
-
 Agent ≠ Provider
-  Provider 是外部模型服务。
-  Agent 使用 Provider 完成生成任务。
+Agent ≠ Runtime
+Agent ≠ Narrative
+Agent ≠ 单次模型调用
+```
 
-Agent ≠ Tool
-  Tool 是 Agent 可调用的能力。
-  Agent 决定是否调用 Tool，Tool 不驱动 Agent。
+Character、Persona、Narrator 和 Speaker 属于作品设定或表现形式。Agent 可以扮演它们，但它们不是 Agent 本身。
 
-Agent ≠ Chat Speaker
-  Chat Speaker 是 provider-facing message 中的角色标记。
-  Agent 的工作消息进入 Runtime Transcript，不是直接进入 chat messages。
+平台基座不预设 Agent 一定用于写小说。短对话、长文写作、互动扮演、检索、审校、图像工作流和 Extension 专用助手都应建立在同一组运行原语上。
+
+---
+
+## 2. 中心对象
+
+### 2.1 Agent Preset
+
+`Agent Preset` 是作者可创作、保存和分发的 Agent 定义单元。
+
+它描述：
+
+- 助手的工作方式和人格；
+- 可用模式及其提示内容；
+- 可调用的 Tool / Capability；
+- Context Projection 规则；
+- 输出合约和提交策略；
+- Run 的继续、挂起、结束和丢弃策略；
+- 所依赖的 Extension contribution。
+
+它不应保存本机环境绑定：
+
+- 本地 `modelProfileId`；
+- API Key；
+- 当前用户授予的权限；
+- 本地安装路径；
+- 某条 Narrative Timeline 的实例引用。
+
+候选分发文件名：
+
+```text
+*.agent.json
+```
+
+这只是开放设计中的文件约定，尚未成为已实现 Manifest Schema。
+
+### 2.2 Agent Session
+
+`Agent Session` 是某个 Agent Preset 的持续运行实例和工作关系。
+
+候选职责：
+
+- 关联选中的 Agent Preset；
+- 使用本地 Model / Provider / Permission Binding；
+- 保存 Agent 工作过程的树和当前 head；
+- 保存多个 Agent Run、Step 与分支的归属关系；
+- 决定历史 Transcript 的保留和投影范围；
+- 可选地绑定某条 Narrative Timeline 或其他工作目标。
+
+Agent Session 与 Narrative Timeline 不应结构性嵌套。绑定应是可替换的引用，因此同一个 Agent Session 可以在策略允许时解绑或切换目标。
+
+Agent Session 自己可以是一棵工作树。用户回到先前的指导、重新尝试某个工具路径或从旧 Step 继续时，可以创建新的 Agent Session 分支。它表达的是“如何编辑和工作”，不是剧情世界线。
+
+`Agent Session` 是否是最终正式名称、是否必须长期持久化，仍是开放问题。
+
+### 2.3 Agent Run
+
+`Agent Run` 是 Agent Session 中一次有边界的执行。
+
+一次 Run 可以包含：
+
+- 多次用户输入；
+- 多次 Provider 调用；
+- ToolCall / ToolResult；
+- 等待用户确认；
+- 读取设定或外部资源；
+- 生成和修改候选结果；
+- 提交、结束、失败、中止或丢弃。
+
+Run 不是“一次用户输入”或“一次模型调用”的同义词。由谁开始 Run、何时结束 Run，属于 Preset / Runtime Policy 和产品交互共同决定的行为。
+
+### 2.4 Step 与 Agent Session Tree
+
+`Step` 是 Agent 工作推进和状态保存的节点。它可以表示 Provider 输出、ToolCall、ToolResult、等待用户、提交结果或其他 Runtime 能识别的动作。
+
+候选关系：
+
+```text
+Agent Session
+  -> Session Branch
+  -> Step parent/head relation
+  -> one or more Agent Runs
+```
+
+`Step.kind` 可以作为持久化类型判别和 Runtime 状态机的驱动信息。平台可以定义少量 well-known kinds，Extension 也可以在受控命名空间下贡献类型。
+
+需要避免的不是 `Step.kind` 本身，而是把一套特定写作流程的全部阶段硬编码成平台唯一状态机。Step 的确切字段、Message 与 Step 是一对一还是引用关系，仍是开放问题。
+
+### 2.5 Run Transcript
+
+Run Transcript 保存 Agent Run 的工作记录，例如：
+
+- user guidance；
+- assistant working message；
+- ToolCall / ToolResult；
+- suspend / resume；
+- candidate 和 commit result；
+- error、retry 和 discard reason；
+- Trace / Audit 引用。
+
+Transcript 是工作记录，不是剧情正文，也不是 Provider `messages[]` 的原样持久化副本。
+
+一个 Run 内通常沿 Agent Session Tree 的一条路径推进。Agent Session 可以分支，但平台基座不要求它与 Narrative Timeline 镜像、共根或同步切换 head。
+
+---
+
+## 3. 与 Narrative Timeline 的关系
+
+Narrative Timeline 是剧情世界线的权威树。Agent 是读取、讨论和受控修改作品的执行主体。
+
+```text
+User
+  -> Agent Session
+  -> Agent Run
+  -> Run Transcript / Tool Calls / Candidate
+  -> controlled commit
+  -> Narrative Timeline
+```
+
+基本规则：
+
+1. 用户输入首先属于 Agent 交互，不默认成为 Narrative 节点。
+2. Provider 的普通 assistant response 不自动写入 Narrative。
+3. 只有受控提交的作品文本才进入 Narrative Timeline。
+4. Narrative 节点可以很短；文本长度不决定它是否属于 Narrative。
+5. 不产出剧情的 Agent 可以完全不绑定 Narrative Timeline。
+6. Narrative 分支不要求 Agent Session 同步回退或切换到对应分支。
+7. Agent Session 分支也不自动创建 Narrative 分支。
+
+Agent 在 Narrative 回退后继续工作时，应重新观察当前权威状态。是否向它注入“发生了回退”的系统事实、是否开启新 Run，由 Runtime Policy 决定，而不是通过回退整段 Agent 会话来维持一致性。
+
+因此，两棵树的中心不同：
+
+```text
+一次游玩体验:
+  以 Narrative Timeline 为中心。
+
+一次编辑体验:
+  以 Agent Session 为中心。
+
+Agent Session:
+  通过显式 binding 连接 Narrative Timeline。
 ```
 
 ---
 
-## 3. Agent 可以是什么
+## 4. Changeset 与演进历史
 
-Agent 可以承担多种工作角色：
+`Changeset` 是一次已应用改变的结构化差异记录。它不是只服务 Narrative，也不等于 Agent Session Step。
+
+它可以描述：
+
+- Narrative 节点的新增、替换或删除；
+- State / Variable 更新；
+- Setting、Prompt Asset 或其他 Document 修改；
+- Extension 所有数据的受控变化。
+
+候选关系：
 
 ```text
-写作者:
-  生成剧情文本，通过 commit 写入 Narrative Timeline。
-
-旁白 / 导演:
-  推进叙事，不直接作为角色发言。
-
-裁判 / 规则执行者:
-  校验、判断、应用规则。
-
-检索者:
-  搜索 Setting Layer / Memory / Narrative，提供上下文。
-
-状态维护者:
-  根据输出更新 Setting Layer 中的状态。
-
-编辑 / 审校:
-  修改已有产出，校验格式，补全内容。
-
-子任务执行者:
-  被父 Agent 委派执行局部任务。
+Agent Step / User Action
+  -> one or more mutation requests
+  -> applied Changeset
+  -> affected documents and before/after versions
 ```
 
-这些不是硬编码分类，而是 Agent 可能承担的工作角色。基础模型不预设这些分类。
+Changeset 的价值包括：
+
+- 为通用 Ctrl+Z / redo 提供操作单位；
+- 展示类似 diff 的资产和剧情演进；
+- 让 Agent 在压缩或上下文缺失后观察近期发生了什么；
+- 把一次工作过程与其真实副作用关联起来；
+- 为分支、审计和错误恢复提供证据。
+
+一个 Agent Run 可以产生零个、一个或多个 Changeset。一个 Changeset 也可以由用户直接编辑产生，不要求一定来自 Agent。
+
+需要单独确认的是原子性：Changeset 可以统一描述跨领域改变，但只有底层事务实际覆盖的部分才能承诺原子提交和原子回滚。没有事务保证时，不能因为它们共享 Changeset ID 就宣称不会部分失败。
 
 ---
 
-## 4. Agent 和 Card 的关系
+## 5. Context Projection
+
+Agent 的上下文不是 Transcript 的简单累加。
+
+Runtime 在每次 Provider 调用前，根据当前 Agent Preset、Agent Session、Run 状态和目标对象构造受控投影：
 
 ```text
-Card:
-  顶层内容单元，包含设定、开场、骨架等。
-
-Agent:
-  不一定绑定某张 Card。
-  可以被 Card / Preset / Session / Runtime 选择或配置。
+Agent Preset
+Local Binding
+Current Run Transcript
+Selected Narrative projection
+Allowed Setting / State sources
+Active dynamic context
+Explicit memory or summary
+  -> Prompt Builder
+  -> Compiled Provider Payload
 ```
 
-开放问题：
+Context Projection 必须执行可见性和权限规则。未激活的世界书条目、受限设定和不可搜索资源不能因为 Agent 曾经读取过相邻内容而泄漏进后续上下文。
 
-- Agent 是否作为 Card 内的一个配置段；
-- Agent 是否作为独立 Document；
-- 一个 Session 是否可以有多个 Agent；
-- Agent 是否由 Preset / Skeleton 选择；
-- Agent 是否可跨 Card 复用。
+历史 Transcript 可以采用不同策略：
+
+- `persistent`：持续投影历史工作对话；
+- `ephemeral`：归档历史，但下一次 Run 默认不投影；
+- `hybrid`：当前任务保留完整记录，任务结束后摘要或裁剪。
+
+这些是可选策略，不是 Agent 基座的固定模式。
 
 ---
 
-## 5. Agent 和 Runtime 的关系
+## 6. 本地 Binding
+
+可分发的 Agent Preset 与本地运行环境必须分离。
 
 ```text
-Runtime:
-  推进 Agent 工作过程的运行机制。
+Portable Agent Preset:
+  behavior / prompt / mode / tools / context policy / output policy
 
-Agent:
-  定义"做什么"和"可用什么"。
-  Runtime 定义"怎么推进"。
+Local Binding:
+  provider / model / permission grants / local overrides
 ```
 
-Agent 不等于 Runtime，但二者紧密协作：
+当前 M0 的 `AgentRuntimeProfile` 更接近本地 Binding 占位。它不应直接被解释为最终的可分发 Agent Preset。
 
-```text
-Agent 提供:
-  - 可用工具集
-  - 运行策略配置
-  - 权限边界
-  - 输出合约
-
-Runtime 执行:
-  - loop / step 推进
-  - provider 调用
-  - tool 调度
-  - commit 决策
-  - 丢弃 / 重试
-```
+本地 Binding 的最终名称和持久化归属尚未确定。
 
 ---
 
-## 6. Agent 和 Setting Layer 的关系
+## 7. 作者和 Extension 的职责
 
-Agent 可以读取 Setting Layer，但不直接随意修改。
+### Agent Preset 作者
 
-```text
-Agent 读取:
-  Setting Layer 提供内容投影和查询能力。
+作者主要编写：
 
-Agent 写入:
-  通过 State Mutation API 的受控路径。
-  写入产生 StatePatchCandidate，经 policy 确认后应用。
-```
+- Agent 的身份与工作目标；
+- 模式及其提示内容；
+- Tool 选择；
+- Context Projection 规则；
+- 输出和提交规则；
+- Run 的停止、等待和失败处理。
 
-Memory / Summary 也是一种 Agent 写操作，伴随着截断以前的内容。见 [`../memory-summary-v0.md`](../memory-summary-v0.md)。
+作者不需要编写 Runtime 引擎，也不应直接操作 Provider transport。
 
----
+### Card / 内容作者
 
-## 7. Agent 和 Narrative Timeline 的关系
+内容作者提供角色、设定、开场、世界书和可变状态，并可以推荐某个 Agent Preset。内容包不应复制 Agent Runtime 的执行定义。
 
-Agent 不直接将 assistant message 写入 Narrative Timeline。
+### Extension 作者
 
-```text
-Agent 产出路径:
+Extension 可以贡献：
 
-  Agent work
-    -> provider response
-    -> runtime 判断是否 commit
-    -> commit tool / commit API
-    -> Narrative Timeline append / patch
-```
+- Agent Preset；
+- Tool / Capability；
+- Context Source；
+- Runtime Driver 或策略扩展点。
 
-Agent 的普通 assistant message 只是 Runtime Transcript 中的工作记录。
+Preset 对 Extension 的依赖只声明引用。依赖缺失时保持 unresolved，不自动安装、不自动激活、更不能自动授予权限。
 
 ---
 
-## 8. Agent 和 Prompt Builder 的关系
+## 8. 多 Agent
 
-Agent 不直接编译 prompt。
+平台不预设“主 Agent / 子 Agent”的固定等级。
 
-```text
-Agent 运行中需要上下文:
-  -> Runtime 调用 Prompt Builder
-  -> Prompt Builder 编译当前 step 需要的上下文投影
-  -> 返回 compiled payload
-  -> Runtime 提交给 Provider
-```
+一个 Agent Preset 可以通过受控能力调用另一个 Agent Preset，但二者仍是平等的可运行定义。调用方是否等待结果、共享哪些上下文、是否允许递归以及如何提交结果，应由编排策略和权限边界决定。
 
-Agent 可以影响 Prompt Builder 的输入选择，但不拥有编译逻辑。
-
-2026-06-20 补充：
-
-Agent 的 mode / phase / step 不应成为 Prompt Builder 的专属控制概念。它们应作为 Runtime facts 输入通用 Activation Engine：
-
-```text
-agent.mode = write
-agent.mode = finalize
-agent.phase = patch_state
-runtime.hasFreshRead = true
-```
-
-Prompt-facing entry / slot / zone 可以声明自己在这些 facts 下 active，但同一套 Activation 机制也应服务 Setting Layer 变量、关键词触发、向量触发、插件 signal 和用户 pin。
-
-因此：
-
-```text
-Agent Runtime:
-  推进 run / loop / tool / commit。
-  产生或更新 runtime facts。
-
-Prompt Builder:
-  根据 facts / signals 统一求值 active / inactive。
-  不推进 Agent step，也不把 active 结果写回 Preset / Setting 配置。
-```
+当前不定义完整 multi-agent 协议。
 
 ---
 
-## 9. 多 Agent 协作
+## 9. 非目标
 
-当前不设计完整 multi-agent framework。
+本文不定义：
 
-只收束原则：
-
-```text
-多个 Agent 可以在同一 Session 中工作。
-父 Agent 可以委派子 Agent 执行局部任务。
-子 Agent 的失败 run 可以被丢弃，不影响父 Agent。
-子 Agent 的产出仍通过 commit 路径提交。
-```
-
-开放问题：
-
-- Agent 之间如何通信；
-- 子 Agent 的 transcript 是否独立；
-- 子 Agent 是否共享工具集和权限；
-- 多 Agent 的 commit 冲突如何处理。
+- 最终数据库字段；
+- Narrative 节点的章节或场景层级；
+- 固定的小说生成流程；
+- 强制的一轮一压缩；
+- Agent Session Tree 与 Narrative Timeline 的强制镜像；
+- 每个 ToolCall 都自动产生持久化 Changeset；
+- Provider 专用 `messages[]` 格式；
+- Multi-agent 通信协议。
 
 ---
 
-## 10. 非目标
+## 10. 开放问题
 
-本文件不定义：
-
-- Agent 的完整 schema；
-- Agent 的硬编码角色分类；
-- Multi-agent 编排协议；
-- Agent 生命周期管理；
-- Agent 如何映射到 provider system prompt；
-- Agent 与 Kernel 的关系（Kernel 不认识 Agent）。
-
----
-
-## 11. Discussion Capture: 主 Agent 定位与多方贡献 (2026-05-27)
-
-### 11.1 主 Agent = 写作者 + 编排者
-
-主 Agent 的默认模式是写作。写作不拆成独立子 Agent。
-
-```text
-理由:
-  1. 写作是最频繁的操作，拆子 Agent = 每回合至少 2 次 LLM 调用
-  2. 简单回合（用户输入 → 写剧情）占绝大多数
-  3. 主 Agent 已有完整上下文，无需再传递给子 Agent
-
-主 Agent 职责:
-  - 写作（默认模式）
-  - 更新动态变量（通过 patch_state Tool）
-  - 调度子 Agent（需要时）
-  - 更新 Setting Layer 稳定设定区（仅在总结阶段）
-
-主 Agent 模式（候选）:
-  - write: 默认，生成剧情 + commit_narrative
-  - plan: 规划叙事走向
-  - chat: 简单对话，不需要子 Agent
-```
-
-### 11.2 子 Agent 只在必要时调用
-
-子 Agent 不是常态操作，而是特殊需求时的委派。
-
-```text
-子 Agent 候选:
-  - Summarizer: 总结阶段的摘要 + Setting Layer 更新（可被插件替换）
-  - RuleJudge: 战斗结算、技能校验等规则判定
-  - [插件贡献的自定义子 Agent]
-```
-
-### 11.3 多方贡献模型
-
-Agent 的提示词由三方协作贡献，权能边界清晰。
-
-```text
-预设作者（主要支配者）:
-  定义 Agent 的行为骨架:
-  - System Prompt 基底
-  - Step 声明与执行顺序
-  - 可用 Tool 集配置
-  - 黑板读写规则
-  - Commit 策略
-
-角色卡作者:
-  不等于预设作者。
-  贡献 Step 的填充内容:
-  - 规则文本（战斗公式等）
-  - 风格指南（角色口吻等）
-  - 绑定预设引用（推荐使用哪个预设）
-  角色卡作者不决定 Step 数量、执行顺序、子 Agent 类型。
-
-插件作者:
-  贡献工具与规则:
-  - 自定义 Tools
-  - 自定义子 Agent Step 类型
-  - Transform Rules
-  - Source Adapters
-```
-
-核心区分：预设作者写"骨架"，角色卡作者填"血肉"，插件作者装"外挂"。
-
----
-
-## 12. 开放问题
-
-1. Agent 是否作为独立 Document Type？
-2. Agent 配置应该保存在 Card、Preset、Session 还是独立位置？
-3. Agent 的身份（扮演谁）是静态配置还是运行时动态切换？
-4. Agent 是否需要记忆自己的历史 run？
-5. Agent 是否可以动态获得或失去 Tool 权限？
-6. Agent 和 Provider 的关系：Agent 是否知道 provider 的存在？
-7. Agent 的最小 M0 需要哪些能力？
-8. 预设作者定义的 Step 配置 schema 应该多复杂？
-9. 角色卡的 Step 内容贡献如何与预设骨架的版本兼容？
-10. 多个插件同时向同一个 Step 注入内容时的合并顺序？
-
----
-
-## 13. Discussion Capture: 默认 AIRP Agent 投影策略与平台边界 (2026-05-30)
-
-### 13.1 核心收束
-
-默认 AIRP 运行形态可以采用"每轮临时 Agent 工作区"：
-
-```text
-用户在主剧情窗口输入
-  -> 开启一个新的 Agent Run
-  -> Agent 在当前 Run 内读工具、调度子 Agent、生成候选、提交正文
-  -> Run 结束后归档完整工作对话
-  -> 下一轮 Prompt 默认不投影完整历史 Agent Transcript
-  -> 连续性由 Narrative / Setting / Dynamic Mount / Run Memo 承担
-```
-
-但这只是 **默认 AIRP Runtime 的 Prompt Projection Policy**，不是 Agent 基座的强制运行方式。
-
-```text
-Agent foundation:
-  保存完整 Run Transcript、ToolCall / ToolResult、Trace、Changeset。
-
-Default AIRP Runtime:
-  默认不把历史 Agent Transcript 投影进下一轮 prompt。
-
-Prompt Projection Policy:
-  决定当前 runtime profile 是否投影历史工作对话、投影多少、如何裁剪。
-```
-
-### 13.2 不污染平台性
-
-不能为了默认 AIRP 体验，在 Agent 基座中开后门或写死短生命周期模式。
-
-```text
-允许:
-  Default AIRP runtime 使用 ephemeral transcript projection。
-  Preset / Runtime Profile 选择 persistent / hybrid projection。
-  Extension 声明自己需要 currentRun / recentRuns / fullSession transcript access。
-
-不允许:
-  Agent 基座假定所有 Agent 都是一次性工作区。
-  Tool / Prompt Builder 假定历史 Agent 对话一定不存在。
-  Extension 绕过 Permission 读取完整 transcript。
-```
-
-### 13.3 Agent 工作历史的定位变化
-
-默认 AIRP 体验中：
-
-```text
-Agent Transcript:
-  Runtime execution log。
-  用于 trace、debug、replay、review。
-  不默认作为下一轮 prompt 的历史上下文。
-
-Run Memo / Director Memo:
-  当前 Run 结束时写出的轻量交接。
-  可包含未完成计划、伏笔、已读资料 sourceRefs、下一轮建议。
-  作为 Prompt Builder 的显式 source，而不是把完整工作 chat 滚入上下文。
-```
-
-### 13.4 运行入口区分
-
-用户交互需要区分两类入口：
-
-```text
-主剧情窗口输入:
-  开启新的 Agent Run。
-  用于推进剧情或生成正文。
-
-Agent 工作侧栏输入:
-  继续当前 Run / 修改当前候选 / 要求重写。
-  不视为新的剧情轮次。
-```
-
-这保证默认运行可以保持短生命周期，同时用户仍能在当前工作区内连续指导 Agent。
+1. 当前“剧情游玩实例”的 `Session` 是否应改名为 `NarrativeTimeline` 或其他领域对象？
+2. `Agent Session` 是否是合适名称，还是应使用避免与旧 Session 冲突的名称？
+3. Agent Session 是否必须持久化，还是可以由多个 Run 和 Binding 动态重建？
+4. Agent Session Tree 的节点究竟是 Step、Message，还是二者分离？
+5. Run Transcript 的最小持久化粒度是什么？
+6. Agent Session 切换 Narrative Timeline 时，哪些 Run 状态可以继续保留？
+7. Narrative 回退后，Runtime 应向 Agent 注入怎样的状态变化事实？
+8. Changeset 的 undo/redo、分支和跨领域事务边界如何定义？
+9. `*.agent.json` 的正式 Schema、版本与命名空间规则是什么？
+10. Runtime Driver 需要开放到什么程度，才能支持 Extension 而不暴露底层存储能力？
