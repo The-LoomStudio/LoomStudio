@@ -1,5 +1,5 @@
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
-import { createInMemoryDocumentStore } from '@loom-studio/document-store'
+import { createDocumentDataCommitSource, createInMemoryDocumentStore } from '@loom-studio/document-store'
 import { createExtensionHost } from '@loom-studio/extension-host'
 import { createKernel, type Kernel } from '@loom-studio/kernel'
 import type { Logger } from '@loom-studio/logging'
@@ -30,6 +30,7 @@ export function createExtensionHostHarness(options: { logger?: Logger } = {}) {
 
   kernel = createKernel({
     documents,
+    dataCommits: createDocumentDataCommitSource(documents),
     diagnostics,
     traceAudit,
     extensionHost,

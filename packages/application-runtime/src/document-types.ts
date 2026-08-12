@@ -1,16 +1,9 @@
 export const applicationDocumentTypes = {
   cardSource: 'airp.cardSource',
-  session: 'airp.session',
-  narrativeBranch: 'airp.narrativeBranch',
-  narrativeEntry: 'airp.narrativeEntry',
-  runtimeEntry: 'airp.runtimeEntry',
-  run: 'airp.run',
-  commitCandidate: 'airp.commitCandidate',
-  branchStateSnapshot: 'airp.branchStateSnapshot',
   providerAccount: 'airp.providerAccount',
   modelProfile: 'airp.modelProfile',
-  agentRuntimeProfile: 'airp.agentRuntimeProfile',
-  agentTranscriptEntry: 'airp.agentTranscriptEntry',
+  agentPreset: 'airp.agentPreset',
+  agentLocalBinding: 'airp.agentLocalBinding',
   promptResource: 'airp.promptResource',
   importBundle: 'airp.importBundle',
 } as const

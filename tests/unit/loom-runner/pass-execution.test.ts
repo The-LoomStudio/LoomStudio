@@ -1,5 +1,5 @@
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
-import { createInMemoryDocumentStore } from '@loom-studio/document-store'
+import { createDocumentDataCommitSource, createInMemoryDocumentStore } from '@loom-studio/document-store'
 import type { ExtensionHost } from '@loom-studio/extension-host'
 import { createKernel } from '@loom-studio/kernel'
 import { createLoomRunner } from '@loom-studio/loom-runner'
@@ -16,6 +16,7 @@ function createTestKernel(traceAudit: TraceAuditStore = createInMemoryTraceAudit
   const loomRunner = createLoomRunner({ traceAudit })
   const kernel = createKernel({
     documents,
+    dataCommits: createDocumentDataCommitSource(documents),
     diagnostics,
     traceAudit,
     extensionHost,

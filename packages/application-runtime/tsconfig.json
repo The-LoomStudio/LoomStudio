@@ -6,8 +6,11 @@
     "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
   "references": [
+    { "path": "../agent-store" },
+    { "path": "../data-engine" },
     { "path": "../document-store" },
     { "path": "../logging" },
+    { "path": "../narrative-store" },
     { "path": "../shared" }
   ],
   "include": ["src/**/*.ts"]

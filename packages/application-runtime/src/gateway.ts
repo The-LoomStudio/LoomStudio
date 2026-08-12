@@ -1,5 +1,6 @@
 import type { DocumentStore } from '@loom-studio/document-store'
 import type { JsonValue } from '@loom-studio/shared'
+import type { AssistantChatMessage, ChatToolCall } from '@loom-studio/shared'
 import { createId } from '@loom-studio/shared'
 import { applicationDocumentTypes } from './document-types.js'
 import { readDocument } from './document-store.js'
@@ -23,6 +24,7 @@ export function createFakeAiGateway(): AiGateway {
       return {
         provider: 'fake',
         model: 'fake-echo-m0',
+        message: { role: 'assistant', content: `Agent draft: ${lastUser?.content ?? ''}` },
         text: `Agent draft: ${lastUser?.content ?? ''}`,
         providerCallId: createId('provider-call'),
         raw: {
@@ -124,9 +126,11 @@ export function providerToGateway(provider: ApplicationProvider): AiGateway {
         sessionId: input.sessionId,
         branchId: input.branchId,
       })
+      const message = result.message ?? { role: 'assistant' as const, content: result.content }
 
       return {
-        text: result.content,
+        message,
+        text: message.content ?? '',
         provider: result.provider,
         model: result.model,
         raw: result.raw,
@@ -146,6 +150,7 @@ function gatewayToProvider(gateway: AiGateway): ApplicationProvider {
       })
 
       return {
+        message: result.message,
         content: result.text,
         provider: result.provider,
         model: result.model,
@@ -202,11 +207,8 @@ function parseOpenAICompatibleChatResult(body: JsonValue, fallbackModel: string)
   const choices = Array.isArray(body.choices) ? body.choices : []
   const firstChoice = choices.find(isObject)
   const message = isObject(firstChoice?.message) ? firstChoice.message : undefined
-  const text = typeof message?.content === 'string' ? message.content : undefined
-
-  if (!text) {
-    throw new Error('Provider response did not include choices[0].message.content')
-  }
+  const assistantMessage = parseAssistantMessage(message)
+  const text = assistantMessage.content ?? ''
 
   const usage = isObject(body.usage)
     ? {
@@ -217,6 +219,7 @@ function parseOpenAICompatibleChatResult(body: JsonValue, fallbackModel: string)
   const finishReason = typeof firstChoice?.finish_reason === 'string' ? normalizeFinishReason(firstChoice.finish_reason) : undefined
 
   return {
+    message: assistantMessage,
     text,
     provider: 'openai-compatible',
     model: typeof body.model === 'string' ? body.model : fallbackModel,
@@ -225,6 +228,41 @@ function parseOpenAICompatibleChatResult(body: JsonValue, fallbackModel: string)
     providerCallId: typeof body.id === 'string' ? body.id : createId('provider-call'),
     raw: body,
   }
+}
+
+function parseAssistantMessage(message: Record<string, JsonValue> | undefined): AssistantChatMessage {
+  if (!message || message.role !== 'assistant') {
+    throw new Error('Provider response did not include choices[0].message')
+  }
+  const content = typeof message.content === 'string' && message.content.length > 0 ? message.content : undefined
+  const toolCalls = message.tool_calls === undefined ? undefined : parseToolCalls(message.tool_calls)
+  if (!content && (!toolCalls || toolCalls.length === 0)) {
+    throw new Error('Provider assistant response did not include content or tool_calls')
+  }
+  return {
+    role: 'assistant',
+    ...(content ? { content } : {}),
+    ...(toolCalls?.length ? { tool_calls: toolCalls } : {}),
+  }
+}
+
+function parseToolCalls(value: JsonValue): ChatToolCall[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error('Provider assistant tool_calls must be a non-empty array')
+  }
+  return value.map((item, index) => {
+    if (!isObject(item) || item.type !== 'function' || typeof item.id !== 'string' || !isObject(item.function)) {
+      throw new Error(`Provider assistant tool call is invalid: tool_calls[${index}]`)
+    }
+    if (typeof item.function.name !== 'string' || typeof item.function.arguments !== 'string') {
+      throw new Error(`Provider assistant tool function is invalid: tool_calls[${index}].function`)
+    }
+    return {
+      id: item.id,
+      type: 'function',
+      function: { name: item.function.name, arguments: item.function.arguments },
+    }
+  })
 }
 
 function normalizeFinishReason(input: string): GatewayChatResult['finishReason'] {

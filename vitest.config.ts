@@ -26,8 +26,10 @@ const scopedTestInclude =
 export default defineConfig({
   resolve: {
     alias: {
+      '@loom-studio/agent-store': new URL('./packages/agent-store/src/index.ts', import.meta.url).pathname,
       '@loom-studio/client-bridge': new URL('./packages/client-bridge/src/index.ts', import.meta.url).pathname,
       '@loom-studio/diagnostics': new URL('./packages/diagnostics/src/index.ts', import.meta.url).pathname,
+      '@loom-studio/data-engine': new URL('./packages/data-engine/src/index.ts', import.meta.url).pathname,
       '@loom-studio/document-store': new URL('./packages/document-store/src/index.ts', import.meta.url).pathname,
       '@loom-studio/application-runtime': new URL('./packages/application-runtime/src/index.ts', import.meta.url).pathname,
       '@loom-studio/extension-host': new URL('./packages/extension-sdk/extension-host/src/index.ts', import.meta.url).pathname,
@@ -35,6 +37,7 @@ export default defineConfig({
       '@loom-studio/kernel': new URL('./packages/kernel/src/index.ts', import.meta.url).pathname,
       '@loom-studio/logging/node': new URL('./packages/logging/src/node.ts', import.meta.url).pathname,
       '@loom-studio/logging': new URL('./packages/logging/src/index.ts', import.meta.url).pathname,
+      '@loom-studio/narrative-store': new URL('./packages/narrative-store/src/index.ts', import.meta.url).pathname,
       '@loom-studio/loom-runner': new URL('./packages/loom-runner/src/index.ts', import.meta.url).pathname,
       '@loom-studio/shared': new URL('./packages/shared/src/index.ts', import.meta.url).pathname,
       '@loom-studio/trace-audit': new URL('./packages/trace-audit/src/index.ts', import.meta.url).pathname,

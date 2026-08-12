@@ -4,6 +4,7 @@
 > **主题**：Narrative Timeline、Agent Session、Agent Run、Step 与 Changeset 的数据边界。
 > **迁移说明**：旧稿使用 `Session` 同时表示游玩实例和 Agent 工作会话，现已不再作为默认前提。
 > **事实边界**：本文描述目标方向；当前 M0 Document Types 仍保留旧 Session 与镜像 Transcript 实现。
+> **正文 Schema**：Narrative Node 的 raw source、Semantic Part 与派生 Projection 已在 [`narrative-timeline-content-schema-v0.md`](narrative-timeline-content-schema-v0.md) 固化；本文不再另行定义正文格式。
 
 ---
 
@@ -46,20 +47,23 @@ Narrative Timeline 是剧情世界线的权威树，不是会话记录。
 
 ### 2.1 Narrative 节点保持极简
 
-当前候选只需要表达一个正文节点及树关系：
+Narrative Node 使用正文节点树，不使用 Chat Message role：
 
 ```text
 NarrativeNode:
   id
   timelineId
   parentNodeId?
-  raw
+  body:
+    format: loom-markdown.v1
+    raw
+  sourceAgentMessageId?
+  sourceRunId?
   sourceChangesetId?
-  sourceAgentStepId?
   createdAt
 ```
 
-字段名仍是候选。当前不引入 `Chapter`、`Scene`、`Floor` 等额外 canonical 层级。未来如需持久化渲染结果，应作为正文节点的附属数据，而不是先建立小说体裁专用嵌套。
+字段名仍可在代码实施前按项目命名风格调整。当前不引入 `Chapter`、`Scene`、`Floor` 等额外 canonical 层级。Semantic Part 编译结果进入独立的可重建 Projection Cache，不与 `body.raw` 共同成为第二份正文真相。
 
 ### 2.2 文本长度不决定归属
 

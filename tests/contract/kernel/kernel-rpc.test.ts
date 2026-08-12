@@ -1,5 +1,5 @@
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
-import { createInMemoryDocumentStore } from '@loom-studio/document-store'
+import { createDocumentDataCommitSource, createInMemoryDocumentStore } from '@loom-studio/document-store'
 import type { ExtensionHost } from '@loom-studio/extension-host'
 import { createKernel } from '@loom-studio/kernel'
 import type { LoomRunner } from '@loom-studio/loom-runner'
@@ -19,6 +19,7 @@ function createTestKernel() {
   }
   const kernel = createKernel({
     documents,
+    dataCommits: createDocumentDataCommitSource(documents),
     diagnostics,
     traceAudit,
     extensionHost,
@@ -62,6 +63,7 @@ describe('kernel rpc contract', () => {
     expect(result.methods.some(method => method.name === 'docs.write')).toBe(true)
     expect(result.methods.some(method => method.name === 'docs.getChangeset')).toBe(true)
     expect(result.methods.some(method => method.name === 'docs.revertChangeset')).toBe(true)
+    expect(result.events).toContain('data.changed')
     expect(result.events).toContain('docs.changed')
     expect(result.events).toContain('docs.rollback.completed')
     expect(result.events).toContain('docs.rollback.failed')
@@ -110,6 +112,34 @@ describe('kernel rpc contract', () => {
     expect(events[0]?.payload.documents[0]?.tombstoned).toBe(false)
     expect(document?.meta.createdBy).toEqual({ kind: 'client', id: 'client-1' })
     expect(document?.meta.ownerExtensionId).toBeUndefined()
+  })
+
+  it('projects one data.changed and one docs.changed from the same document commit', async () => {
+    const { kernel } = createTestKernel()
+    const events: Array<{ name: string; payload: { changesetId: string; operations: Array<Record<string, unknown>> } }> = []
+    await kernel.start()
+    kernel.getEventBus().subscribe(['data.changed', 'docs.changed'], event => events.push(event as never))
+
+    await kernel.callRpc('docs.write', {
+      id: 'example.doc:data-commit',
+      type: 'example.doc',
+      content: { privateText: 'must not enter commit facts' },
+      expectedVersion: 'new',
+    }, { correlationId: 'corr-data', callId: 'call-data' })
+
+    expect(events.map(event => event.name)).toEqual(['data.changed', 'docs.changed'])
+    expect(events[0]?.payload).toMatchObject({
+      changesetId: expect.any(String),
+      operations: [{
+        store: 'documents',
+        kind: 'create',
+        entityId: 'example.doc:data-commit',
+        entityType: 'example.doc',
+        toVersion: 1,
+      }],
+    })
+    expect(events[1]?.payload.changesetId).toBe(events[0]?.payload.changesetId)
+    expect(JSON.stringify(events)).not.toContain('must not enter commit facts')
   })
 
   it('continues broadcasting when one event subscriber throws', async () => {

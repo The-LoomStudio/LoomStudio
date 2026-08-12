@@ -152,6 +152,7 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 |---|---|---|
 | [`chat-opening-model-v0.md`](chat-opening-model-v0.md) | Migrated / Open Design | Chat / Opening / compiled message 的语义边界 |
 | [`session-timeline-data-model-v0.md`](session-timeline-data-model-v0.md) | Open Design | Narrative Timeline、Agent Session Tree、Step 与 Changeset 数据边界 |
+| [`narrative-timeline-content-schema-v0.md`](narrative-timeline-content-schema-v0.md) | Approved Direction / Implementation Pending | Narrative Node、Loom Markdown source、Semantic Part 与派生 Projection |
 | `session-model-v0.md` | Superseded by session-timeline-data-model-v0 | Session、timeline、branch、运行实例边界 |
 
 ### 3.5 Composition Skeleton

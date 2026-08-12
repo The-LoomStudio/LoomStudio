@@ -1,5 +1,7 @@
+import { createAgentStore } from '@loom-studio/agent-store'
 import { createApplicationRuntime, createOpenAICompatibleGateway } from '@loom-studio/application-runtime'
-import { createInMemoryDocumentStore } from '@loom-studio/document-store'
+import { createSqliteDataEngine } from '@loom-studio/data-engine'
+import { createInMemoryDocumentStore, createSqliteDocumentStore } from '@loom-studio/document-store'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 describe('application runtime provider and agent integration', () => {
@@ -105,16 +107,23 @@ describe('application runtime provider and agent integration', () => {
         })
       }) as typeof fetch,
     })
+    let nextId = 0
+    const engine = createSqliteDataEngine({
+      filename: ':memory:',
+      createId: prefix => `${prefix}-gateway-${++nextId}`,
+      now: () => '2026-08-12T00:00:00.000Z',
+    })
+    const documents = createSqliteDocumentStore({ engine })
     const runtime = createApplicationRuntime({
-      documents: createInMemoryDocumentStore(),
+      agents: createAgentStore({ engine }),
+      dataEngine: engine,
+      documents,
       gateway,
     })
-    const { session } = await runtime.createSession({
-      cardSourceVersionId: 'card-version-1',
-      cardSnapshot: { name: 'Gateway Card' },
-    })
-    const turn = await runtime.submitTurn({
-      sessionId: session.id,
+    const preset = await runtime.createAgentPreset({ name: 'Gateway Agent', instructions: 'Reply.' })
+    const session = await runtime.createAgentSession({ agentPresetId: preset.agentPreset.id })
+    const turn = await runtime.invokeAgentTurn({
+      agentSessionId: session.session.id,
       input: '测试真实 provider gateway。',
     })
 
@@ -129,11 +138,12 @@ describe('application runtime provider and agent integration', () => {
       stream: false,
     })
     expect(requests[0]?.body).not.toHaveProperty('unsupported_param')
-    expect(turn.entries.assistant.content).toBe('真实模型回复。')
-    expect(turn.run).toMatchObject({
+    expect(turn.messages.assistant.message.content).toBe('真实模型回复。')
+    expect(turn.provider).toMatchObject({
       provider: 'openai-compatible',
       model: 'test-model',
     })
+    engine.close()
   })
 
   it('adds /v1 for the official OpenAI API root before appending chat completions', async () => {
@@ -177,74 +187,60 @@ describe('application runtime provider and agent integration', () => {
     expect(requests).toEqual(['https://api.openai.com/v1/chat/completions'])
   })
 
-  it('binds an agent runtime profile to a session and mirrors narrative entries into agent transcript', async () => {
-    const gatewayCalls: Array<{ modelProfileId?: string }> = []
-    const runtime = createApplicationRuntime({
-      documents: createInMemoryDocumentStore(),
-      gateway: {
-        invokeChat: async input => {
-          gatewayCalls.push({ modelProfileId: input.modelProfileId })
-          return {
-            provider: 'fake',
-            model: 'fake-agent-model',
-            text: 'Agent says hello.',
-          }
-        },
+  it('preserves assistant tool calls in the canonical gateway result', async () => {
+    const gateway = createOpenAICompatibleGateway({
+      providerAccount: {
+        id: 'account-tools',
+        providerExtensionId: 'official.openai-compatible',
+        displayName: 'OpenAI Compatible',
+        secretRefs: { apiKey: 'plain:test-key' },
       },
-    })
-    const providerAccount = await runtime.createProviderAccount({
-      providerExtensionId: 'official.fake',
-      displayName: 'Fake Provider',
-      config: { baseUrl: 'fake://local' },
-      secretRefs: { apiKey: 'plain:test' },
-    })
-    const modelProfile = await runtime.createModelProfile({
-      providerAccountId: providerAccount.providerAccount.id,
-      displayName: 'Fake RP Model',
-      providerModelId: 'fake-rp',
-      config: { temperature: 0.7 },
-    })
-    const agentRuntimeProfile = await runtime.createAgentRuntimeProfile({
-      name: 'Narrative Agent',
-      purpose: 'narrative',
-      modelProfileId: modelProfile.modelProfile.id,
-    })
-    const card = await runtime.createCard({
-      name: 'Agent Card',
-      opening: {
-        entries: [
-          { role: 'assistant', content: '开场。' },
-        ],
+      modelProfile: {
+        id: 'model-tools',
+        providerAccountId: 'account-tools',
+        capability: 'chat.completion',
+        displayName: 'Tool Model',
+        providerModelId: 'tool-model',
+        config: {},
       },
-    })
-    const { session, branch } = await runtime.createSessionFromCard({
-      cardId: card.card.id,
-      agentRuntimeProfileId: agentRuntimeProfile.agentRuntimeProfile.id,
-    })
-    const turn = await runtime.submitTurn({
-      sessionId: session.id,
-      branchId: branch.id,
-      input: '玩家输入。',
-    })
-    const transcript = await runtime.getAgentTranscript({
-      sessionId: session.id,
-      branchId: turn.branch.id,
+      fetch: (async () => new Response(JSON.stringify({
+        id: 'call-tools',
+        model: 'tool-model',
+        choices: [{
+          finish_reason: 'tool_calls',
+          message: {
+            role: 'assistant',
+            content: null,
+            tool_calls: [{
+              id: 'tool-call-1',
+              type: 'function',
+              function: { name: 'lookup', arguments: '{"id":"x"}' },
+            }],
+          },
+        }],
+      }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch,
     })
 
-    expect(session.agentRuntimeProfileId).toBe(agentRuntimeProfile.agentRuntimeProfile.id)
-    expect(gatewayCalls).toEqual([{ modelProfileId: modelProfile.modelProfile.id }])
-    expect(turn.run).toMatchObject({
-      agentRuntimeProfileId: agentRuntimeProfile.agentRuntimeProfile.id,
-      modelProfileId: modelProfile.modelProfile.id,
+    const result = await gateway.invokeChat({
+      request: {
+        messages: [
+          { role: 'developer', content: 'Use tools.' },
+          { role: 'user', content: 'Find x.' },
+        ],
+      },
+      runId: 'run-tools',
+      sessionId: 'session-tools',
+      branchId: 'branch-tools',
     })
-    expect(transcript.entries.map(entry => ({ role: entry.role, content: entry.content }))).toEqual([
-      { role: 'assistant', content: '开场。' },
-      { role: 'user', content: '玩家输入。' },
-      { role: 'assistant', content: 'Agent says hello.' },
-    ])
-    expect(transcript.entries[1]?.parentTranscriptEntryId).toBe(transcript.entries[0]?.id)
-    expect(transcript.entries[2]?.parentTranscriptEntryId).toBe(transcript.entries[1]?.id)
-    expect(transcript.entries.map(entry => entry.source)).toEqual(['narrative', 'narrative', 'narrative'])
+
+    expect(result).toMatchObject({
+      text: '',
+      finishReason: 'tool_call',
+      message: {
+        role: 'assistant',
+        tool_calls: [{ id: 'tool-call-1', function: { name: 'lookup', arguments: '{"id":"x"}' } }],
+      },
+    })
   })
 
   it('auto-loads OpenAI-compatible gateway config from model profile documents', async () => {
@@ -274,9 +270,14 @@ describe('application runtime provider and agent integration', () => {
       })
     }) satisfies typeof fetch)
 
-    const runtime = createApplicationRuntime({
-      documents: createInMemoryDocumentStore(),
+    let nextId = 0
+    const engine = createSqliteDataEngine({
+      filename: ':memory:',
+      createId: prefix => `${prefix}-document-gateway-${++nextId}`,
+      now: () => '2026-08-12T00:00:00.000Z',
     })
+    const documents = createSqliteDocumentStore({ engine })
+    const runtime = createApplicationRuntime({ agents: createAgentStore({ engine }), dataEngine: engine, documents })
     const providerAccount = await runtime.createProviderAccount({
       providerExtensionId: 'official.openai-compatible',
       displayName: 'OpenAI Compatible',
@@ -289,17 +290,15 @@ describe('application runtime provider and agent integration', () => {
       providerModelId: 'doc-model',
       config: { temperature: 0.2 },
     })
-    const agentRuntimeProfile = await runtime.createAgentRuntimeProfile({
-      name: 'Document-backed Agent',
+    const preset = await runtime.createAgentPreset({ name: 'Document-backed Agent', instructions: 'Reply.' })
+    const binding = await runtime.createAgentLocalBinding({
+      name: 'Document-backed model',
       modelProfileId: modelProfile.modelProfile.id,
     })
-    const { session } = await runtime.createSession({
-      cardSourceVersionId: 'card-version-1',
-      cardSnapshot: { name: 'Document Gateway Card' },
-      agentRuntimeProfileId: agentRuntimeProfile.agentRuntimeProfile.id,
-    })
-    const turn = await runtime.submitTurn({
-      sessionId: session.id,
+    const session = await runtime.createAgentSession({ agentPresetId: preset.agentPreset.id })
+    const turn = await runtime.invokeAgentTurn({
+      agentSessionId: session.session.id,
+      localBindingId: binding.localBinding.id,
       input: '走默认 document-backed gateway。',
     })
 
@@ -312,11 +311,11 @@ describe('application runtime provider and agent integration', () => {
         stream: false,
       },
     })
-    expect(turn.entries.assistant.content).toBe('Document-backed response.')
-    expect(turn.run).toMatchObject({
+    expect(turn.messages.assistant.message.content).toBe('Document-backed response.')
+    expect(turn.provider).toMatchObject({
       provider: 'openai-compatible',
       model: 'doc-model',
-      modelProfileId: modelProfile.modelProfile.id,
     })
+    engine.close()
   })
 })

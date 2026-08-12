@@ -1,14 +1,17 @@
+import {
+  createSqliteDataEngine,
+  type DataCommitFact,
+  type DataCommitOperation,
+  type SqliteDataEngine,
+} from '@loom-studio/data-engine'
 import type { JsonValue } from '@loom-studio/shared'
 import { createId, nowIso } from '@loom-studio/shared'
-import { mkdirSync } from 'node:fs'
-import { dirname } from 'node:path'
-import { DatabaseSync } from 'node:sqlite'
+import type { DatabaseSync } from 'node:sqlite'
 import {
   assertExpectedVersion,
   cloneDocument,
-  createCommitNotifier,
   createPendingChangeset,
-  finalizeCommitFact,
+  finalizeChangeset,
   recordPendingChange,
   restoredDocument,
   transactionInputFromWrite,
@@ -22,6 +25,7 @@ import type {
   ChangesetOperation,
   DeleteDocumentInput,
   DocumentMeta,
+  DocumentCommitFact,
   DocumentRecord,
   DocumentTransaction,
   DocumentTransactionInput,
@@ -33,18 +37,15 @@ import type {
 } from './types.js'
 import { DocumentStoreError as StoreError } from './types.js'
 
-const currentSqliteSchemaVersion = 1
-
 const requiredSqliteColumns = {
   documents: ['id', 'type', 'version', 'content_json', 'meta_json', 'owner_extension_id', 'tombstoned', 'updated_at'],
   document_revisions: ['document_id', 'version', 'type', 'content_json', 'meta_json', 'changeset_id', 'created_at', 'created_by_json'],
-  changesets: ['id', 'created_at', 'created_by_json', 'reason', 'correlation_id', 'call_id', 'parent_call_id', 'operations_json'],
 } as const
 
-const sqliteMigrations: Array<{ version: number; migrate(database: DatabaseSync): void }> = [
+const documentMigrations = [
   {
     version: 1,
-    migrate: database => database.exec(`
+    migrate: (database: DatabaseSync) => database.exec(`
       CREATE TABLE IF NOT EXISTS documents (
         id TEXT PRIMARY KEY,
         type TEXT NOT NULL,
@@ -68,17 +69,6 @@ const sqliteMigrations: Array<{ version: number; migrate(database: DatabaseSync)
         PRIMARY KEY (document_id, version)
       );
 
-      CREATE TABLE IF NOT EXISTS changesets (
-        id TEXT PRIMARY KEY,
-        created_at TEXT NOT NULL,
-        created_by_json TEXT NOT NULL,
-        reason TEXT,
-        correlation_id TEXT,
-        call_id TEXT,
-        parent_call_id TEXT,
-        operations_json TEXT NOT NULL
-      );
-
       CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(type);
       CREATE INDEX IF NOT EXISTS idx_documents_owner ON documents(owner_extension_id);
       CREATE INDEX IF NOT EXISTS idx_documents_tombstoned ON documents(tombstoned);
@@ -88,26 +78,17 @@ const sqliteMigrations: Array<{ version: number; migrate(database: DatabaseSync)
 ]
 
 export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): SqliteDocumentStore {
-  if (options.filename !== ':memory:') {
-    mkdirSync(dirname(options.filename), { recursive: true })
-  }
-
-  const database = new DatabaseSync(options.filename)
+  const ownsEngine = options.filename !== undefined
+  const engine = ownsEngine
+    ? createSqliteDataEngine({ filename: options.filename, createId, now: nowIso })
+    : options.engine
   try {
-    initializeSqliteDatabase(database)
+    initializeDocumentSchema(engine)
   } catch (error) {
-    database.close()
+    if (ownsEngine) engine.close()
     throw error
   }
-  const commitNotifier = createCommitNotifier()
-  let operationQueue = Promise.resolve()
-
-  function serialize<T>(operation: () => Promise<T> | T): Promise<T> {
-    // ponytail: One FIFO protects the single SQLite connection; transaction callbacks must use the provided tx instead of re-entering public store methods.
-    const result = operationQueue.then(operation, operation)
-    operationQueue = result.then(() => undefined, () => undefined)
-    return result
-  }
+  const database = engine.database
 
   const transactionRead: Pick<DocumentTransaction, 'get' | 'list'> = {
     get: async (id, options) => {
@@ -266,27 +247,25 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
     input: DocumentTransactionInput,
     fn: (pending: PendingChangeset, tx: DocumentTransaction) => Promise<T>,
   ): Promise<DocumentTransactionResult<T>> {
-    return serialize(async () => {
-      const pending = createPendingChangeset(input)
-      database.exec('BEGIN IMMEDIATE')
-
-      try {
-        const value = await fn(pending, createTransaction(pending))
-        const commit = finalizeCommitFact(pending)
-        insertChangeset(database, commit.changeset)
-        database.exec('COMMIT')
-        commitNotifier.notify(commit)
-        return { value, changeset: commit.changeset, commit }
-      } catch (error) {
-        database.exec('ROLLBACK')
-        throw error
-      }
-    })
+    return engine.transact(input, async dataTx => {
+      const pending = createPendingChangeset(input, {
+        id: dataTx.changesetId,
+        createdAt: dataTx.createdAt,
+      })
+      const value = await fn(pending, createTransaction(pending))
+      const changeset = finalizeChangeset(pending)
+      dataTx.recordOperations(changeset.operations.map(documentOperationToDataOperation))
+      return { value, changeset }
+    }).then(result => ({
+      value: result.value.value,
+      changeset: result.value.changeset,
+      commit: documentCommitFromDataCommit(result.commit),
+    }))
   }
 
   const store: SqliteDocumentStore = {
-    get: (id, options) => serialize(() => transactionRead.get(id, options)),
-    list: input => serialize(() => transactionRead.list(input)),
+    get: (id, options) => engine.read(() => transactionRead.get(id, options)),
+    list: input => engine.read(() => transactionRead.list(input)),
 
     write: async input => {
       const result = await runTransaction(transactionInputFromWrite(input), async pending => applyWrite(input, pending))
@@ -300,7 +279,7 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
 
     transact: (input, fn) => runTransaction(input, async (_pending, tx) => fn(tx)),
 
-    getChangeset: id => serialize(() => {
+    getChangeset: id => engine.read(() => {
       const row = database
         .prepare('SELECT id, created_at, created_by_json, reason, correlation_id, call_id, parent_call_id, operations_json FROM changesets WHERE id = ?')
         .get(id)
@@ -313,6 +292,7 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
           .prepare('SELECT id, created_at, created_by_json, reason, correlation_id, call_id, parent_call_id, operations_json FROM changesets WHERE id = ?')
           .get(input.changesetId)
         if (!row) throw new StoreError('document.changeset_not_found', `Changeset not found: ${input.changesetId}`)
+        assertDocumentOnlyChangeset(row)
         const target = rowToChangeset(row)
         const restoreTargets = target.operations.map(operation => {
           const existing = getCurrent(database, operation.documentId)
@@ -339,45 +319,29 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
     },
 
     close: () => {
-      database.close()
+      if (ownsEngine) engine.close()
     },
 
-    subscribeCommits: observer => commitNotifier.subscribe(observer),
+    subscribeCommits: observer => engine.subscribeCommits(commit => {
+      const documentOperations = commit.operations.filter(operation => operation.store === 'documents')
+      if (documentOperations.length > 0) observer(documentCommitFromDataCommit(commit))
+    }),
   }
 
   return store
 }
 
-function initializeSqliteDatabase(database: DatabaseSync): void {
-  const version = readSqliteUserVersion(database)
-  if (version > currentSqliteSchemaVersion) {
-    throw new StoreError(
-      'document.sqlite_schema_newer',
-      `SQLite schema version ${version} is newer than supported version ${currentSqliteSchemaVersion}`,
-    )
-  }
-
-  database.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;')
-  let migratedVersion = version
-
-  for (const migration of sqliteMigrations) {
-    if (migration.version <= migratedVersion) continue
-    if (migration.version !== migratedVersion + 1) {
-      throw new StoreError('document.sqlite_migration_gap', `Missing SQLite migration after version ${migratedVersion}`)
-    }
-
-    database.exec('BEGIN IMMEDIATE')
-    try {
-      migration.migrate(database)
-      assertSqliteSchema(database)
-      database.exec(`PRAGMA user_version = ${migration.version}`)
-      database.exec('COMMIT')
-      migratedVersion = migration.version
-    } catch (error) {
-      database.exec('ROLLBACK')
-      throw error
-    }
-  }
+function initializeDocumentSchema(engine: SqliteDataEngine): void {
+  engine.migrate({
+    namespace: 'platform.documents',
+    migrations: documentMigrations.map(migration => ({
+      ...migration,
+      migrate: database => {
+        migration.migrate(database)
+        assertSqliteSchema(database)
+      },
+    })),
+  })
 }
 
 function assertSqliteSchema(database: DatabaseSync): void {
@@ -389,26 +353,6 @@ function assertSqliteSchema(database: DatabaseSync): void {
       throw new StoreError('document.sqlite_schema_invalid', `SQLite table ${table} is missing required columns: ${missing.join(', ')}`)
     }
   }
-}
-
-function readSqliteUserVersion(database: DatabaseSync): number {
-  const row = database.prepare('PRAGMA user_version').get() as { user_version?: number } | undefined
-  return row?.user_version ?? 0
-}
-
-function insertChangeset(database: DatabaseSync, changeset: Changeset): void {
-  database
-    .prepare('INSERT INTO changesets (id, created_at, created_by_json, reason, correlation_id, call_id, parent_call_id, operations_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(
-      changeset.id,
-      changeset.createdAt,
-      JSON.stringify(changeset.createdBy),
-      changeset.reason ?? null,
-      changeset.correlationId ?? null,
-      changeset.callId ?? null,
-      changeset.parentCallId ?? null,
-      JSON.stringify(changeset.operations),
-    )
 }
 
 function writeDocumentRevision(database: DatabaseSync, document: DocumentRecord, changesetId: string): void {
@@ -480,6 +424,7 @@ function rowToChangeset(row: unknown): Changeset {
     operations_json: string
   }
 
+  const storedOperations = JSON.parse(value.operations_json) as Array<ChangesetOperation | DataCommitOperation>
   return {
     id: value.id,
     createdAt: value.created_at,
@@ -488,6 +433,74 @@ function rowToChangeset(row: unknown): Changeset {
     correlationId: value.correlation_id ?? undefined,
     callId: value.call_id ?? undefined,
     parentCallId: value.parent_call_id ?? undefined,
-    operations: JSON.parse(value.operations_json) as ChangesetOperation[],
+    operations: storedOperations
+      .filter(operation => !('store' in operation) || operation.store === 'documents')
+      .map(operation => 'store' in operation
+        ? {
+            kind: operation.kind,
+            documentId: operation.entityId,
+            type: operation.entityType,
+            fromVersion: operation.fromVersion,
+            toVersion: requireDocumentVersion(operation),
+          }
+        : operation),
+  }
+}
+
+function documentOperationToDataOperation(operation: ChangesetOperation): DataCommitOperation {
+  return {
+    store: 'documents',
+    kind: operation.kind,
+    entityId: operation.documentId,
+    entityType: operation.type,
+    fromVersion: operation.fromVersion,
+    toVersion: operation.toVersion,
+  }
+}
+
+function documentCommitFromDataCommit(commit: DataCommitFact): DocumentCommitFact {
+  const operations = commit.operations
+    .filter(operation => operation.store === 'documents')
+    .map(operation => ({
+      kind: operation.kind,
+      documentId: operation.entityId,
+      type: operation.entityType,
+      fromVersion: operation.fromVersion,
+      toVersion: requireDocumentVersion(operation),
+    }))
+
+  return {
+    ...commit,
+    changeset: {
+      id: commit.changesetId,
+      createdAt: commit.createdAt,
+      createdBy: commit.actor,
+      reason: commit.reason,
+      correlationId: commit.correlationId,
+      callId: commit.callId,
+      parentCallId: commit.parentCallId,
+      operations,
+    },
+    documents: operations.map(operation => ({
+      id: operation.documentId,
+      type: operation.type,
+      version: operation.toVersion,
+      tombstoned: operation.kind === 'delete',
+    })),
+  }
+}
+
+function requireDocumentVersion(operation: DataCommitOperation): number {
+  if (typeof operation.toVersion !== 'number') {
+    throw new StoreError('document.commit_invalid', `Document commit is missing toVersion: ${operation.entityId}`)
+  }
+  return operation.toVersion
+}
+
+function assertDocumentOnlyChangeset(row: unknown): void {
+  const value = row as { operations_json: string }
+  const operations = JSON.parse(value.operations_json) as Array<ChangesetOperation | DataCommitOperation>
+  if (operations.some(operation => 'store' in operation && operation.store !== 'documents')) {
+    throw new StoreError('document.changeset_not_revertible', 'Changeset contains non-document operations')
   }
 }

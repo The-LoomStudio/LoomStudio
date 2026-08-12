@@ -1,12 +1,9 @@
 import type { DocumentRecord, DocumentStore } from '@loom-studio/document-store'
-import type { JsonObject, JsonValue } from '@loom-studio/shared'
+import type { AgentMessage } from '@loom-studio/agent-store'
 import {
   assertModelProfileExists,
   assertNonEmpty,
   assertProviderAccountExists,
-  readAgentBinding,
-  readAgentTranscriptForNarrativePath,
-  writeAgentTranscriptEntry,
 } from './agent.js'
 import {
   cardToSnapshot,
@@ -24,9 +21,7 @@ import { listDocuments, readDocument, toVersioned, writeDocument } from './docum
 import { executeDocumentMutation } from './mutation.js'
 import type { ActivationFacts } from './prompt-activation.js'
 import { buildOpenAIChatPayload, type OpenAIChatPayload } from './provider-payload.js'
-import type { ProjectionOrderProfile } from './prompt-builder.js'
-import { composePromptBuildForInput } from './prompt.js'
-import { assertSameSession, findBranchContainingEntry, readBranchPath, readSessionBranch } from './timeline.js'
+import { composeAgentTurnPrompt } from './agent-turn.js'
 import {
   createPromptResourceAsset,
   deletePromptResourceAsset,
@@ -36,32 +31,51 @@ import {
   importCardBundle,
   listCardPromptResources,
   movePromptResourceAsset,
+  readPromptResourceInputs,
   updatePromptResourceAsset,
   updatePromptResourceAssets,
   updateCardPromptResources,
 } from './workspace.js'
 import type {
-  AgentRuntimeProfileContent,
+  AgentLocalBindingContent,
+  AgentPresetContent,
   ApplicationRuntime,
   ApplicationRuntimeOptions,
-  BranchStateSnapshotContent,
   CardSourceContent,
-  CommitCandidateContent,
-  CreateSessionResult,
   ModelProfileContent,
-  NarrativeBranchContent,
-  NarrativeEntryContent,
   ProviderAccountContent,
   ProviderMessage,
-  RunContent,
-  RuntimeEntryContent,
-  SessionContent,
+  RuntimeRequestContext,
 } from './types.js'
 
 const applicationActor = { kind: 'kernel', id: 'application-runtime' } as const
 
 export function createApplicationRuntime(options: ApplicationRuntimeOptions): ApplicationRuntime {
   const ctx = createApplicationRuntimeContext(options)
+
+  function requireNarratives() {
+    if (!ctx.narratives) throw new Error('Narrative Store is not configured')
+    return ctx.narratives
+  }
+
+  function requireAgents() {
+    if (!ctx.agents) throw new Error('Agent Store is not configured')
+    return ctx.agents
+  }
+
+  function narrativeWriteContext(requestContext: RuntimeRequestContext | undefined, reason: string) {
+    return {
+      actor: requestContext?.clientId
+        ? { kind: 'client' as const, id: requestContext.clientId }
+        : applicationActor,
+      reason,
+      correlationId: requestContext?.correlationId,
+      callId: requestContext?.callId,
+      parentCallId: requestContext?.parentCallId,
+    }
+  }
+
+  const agentWriteContext = narrativeWriteContext
 
   return {
     createCard: async (input, requestContext) => {
@@ -244,20 +258,82 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       }
     },
 
-    createAgentRuntimeProfile: async input => {
+    createAgentPreset: async input => {
+      assertNonEmpty(input.name, 'name')
+      assertNonEmpty(input.instructions, 'instructions')
+      const promptResourceIds = [...new Set(input.promptResourceIds ?? [])]
+      if (promptResourceIds.length) {
+        await readPromptResourceInputs({ documents: ctx.documents, resourceIds: promptResourceIds, macroContext: { user: 'User' } })
+      }
+      const timestamp = ctx.now()
+      const agentPreset = await writeDocument<AgentPresetContent>(ctx.documents, {
+        id: ctx.createId('agent-preset'),
+        type: applicationDocumentTypes.agentPreset,
+        content: {
+          name: input.name,
+          instructions: input.instructions,
+          promptResourceIds,
+          historyPolicy: input.historyPolicy ?? 'persistent',
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+        expectedVersion: 'new',
+      })
+      return { agentPreset: toVersioned(agentPreset) }
+    },
+
+    getAgentPreset: async input => ({
+      agentPreset: toVersioned(await readDocument<AgentPresetContent>(ctx.documents, input.agentPresetId, applicationDocumentTypes.agentPreset)),
+    }),
+
+    listAgentPresets: async input => {
+      const result = await ctx.documents.list({ type: applicationDocumentTypes.agentPreset, cursor: input?.cursor, limit: input?.limit })
+      return { agentPresets: result.items.map(item => toVersioned(item as never)), nextCursor: result.nextCursor }
+    },
+
+    updateAgentPreset: async input => {
+      const existing = await readDocument<AgentPresetContent>(ctx.documents, input.agentPresetId, applicationDocumentTypes.agentPreset)
+      if (input.name !== undefined) assertNonEmpty(input.name, 'name')
+      if (input.instructions !== undefined) assertNonEmpty(input.instructions, 'instructions')
+      const promptResourceIds = input.promptResourceIds ? [...new Set(input.promptResourceIds)] : undefined
+      if (promptResourceIds?.length) {
+        await readPromptResourceInputs({ documents: ctx.documents, resourceIds: promptResourceIds, macroContext: { user: 'User' } })
+      }
+      const agentPreset = await writeDocument<AgentPresetContent>(ctx.documents, {
+        id: existing.id,
+        type: applicationDocumentTypes.agentPreset,
+        content: {
+          ...existing.content,
+          ...(input.name !== undefined ? { name: input.name } : {}),
+          ...(input.instructions !== undefined ? { instructions: input.instructions } : {}),
+          ...(promptResourceIds ? { promptResourceIds } : {}),
+          ...(input.historyPolicy !== undefined ? { historyPolicy: input.historyPolicy } : {}),
+          updatedAt: ctx.now(),
+        },
+        expectedVersion: existing.version,
+      })
+      return { agentPreset: toVersioned(agentPreset) }
+    },
+
+    deleteAgentPreset: async input => {
+      await readDocument<AgentPresetContent>(ctx.documents, input.agentPresetId, applicationDocumentTypes.agentPreset)
+      await ctx.documents.delete({ id: input.agentPresetId })
+      return { deleted: true as const }
+    },
+
+    createAgentLocalBinding: async input => {
       assertNonEmpty(input.name, 'name')
       if (input.modelProfileId) {
         await assertModelProfileExists(ctx.documents, input.modelProfileId)
       }
 
       const timestamp = ctx.now()
-      const agentRuntimeProfile = await writeDocument<AgentRuntimeProfileContent>(ctx.documents, {
-        id: ctx.createId('agent-runtime-profile'),
-        type: applicationDocumentTypes.agentRuntimeProfile,
+      const localBinding = await writeDocument<AgentLocalBindingContent>(ctx.documents, {
+        id: ctx.createId('agent-local-binding'),
+        type: applicationDocumentTypes.agentLocalBinding,
         content: {
           name: input.name,
           purpose: input.purpose ?? 'narrative',
-          presetId: input.presetId,
           modelProfileId: input.modelProfileId,
           createdAt: timestamp,
           updatedAt: timestamp,
@@ -265,23 +341,23 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         expectedVersion: 'new',
       })
 
-      return { agentRuntimeProfile: toVersioned(agentRuntimeProfile) }
+      return { localBinding: toVersioned(localBinding) }
     },
 
-    getAgentRuntimeProfile: async input => {
-      const agentRuntimeProfile = await readDocument<AgentRuntimeProfileContent>(ctx.documents, input.agentRuntimeProfileId, applicationDocumentTypes.agentRuntimeProfile)
-      return { agentRuntimeProfile: toVersioned(agentRuntimeProfile) }
+    getAgentLocalBinding: async input => {
+      const localBinding = await readDocument<AgentLocalBindingContent>(ctx.documents, input.localBindingId, applicationDocumentTypes.agentLocalBinding)
+      return { localBinding: toVersioned(localBinding) }
     },
 
-    listAgentRuntimeProfiles: async input => {
+    listAgentLocalBindings: async input => {
       const result = await ctx.documents.list({
-        type: applicationDocumentTypes.agentRuntimeProfile,
+        type: applicationDocumentTypes.agentLocalBinding,
         cursor: input?.cursor,
         limit: input?.limit,
       })
 
       return {
-        agentRuntimeProfiles: result.items.map(agentRuntimeProfile => toVersioned(agentRuntimeProfile as never)),
+        localBindings: result.items.map(localBinding => toVersioned(localBinding as never)),
         nextCursor: result.nextCursor,
       }
     },
@@ -354,70 +430,212 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       }
     },
 
-    updateAgentRuntimeProfile: async input => {
-      const existing = await readDocument<AgentRuntimeProfileContent>(ctx.documents, input.agentRuntimeProfileId, applicationDocumentTypes.agentRuntimeProfile)
+    updateAgentLocalBinding: async input => {
+      const existing = await readDocument<AgentLocalBindingContent>(ctx.documents, input.localBindingId, applicationDocumentTypes.agentLocalBinding)
       if (input.modelProfileId) {
         await assertModelProfileExists(ctx.documents, input.modelProfileId)
       }
       const timestamp = ctx.now()
-      const updated = await writeDocument<AgentRuntimeProfileContent>(ctx.documents, {
+      const updated = await writeDocument<AgentLocalBindingContent>(ctx.documents, {
         id: existing.id,
-        type: applicationDocumentTypes.agentRuntimeProfile,
+        type: applicationDocumentTypes.agentLocalBinding,
         content: {
           ...existing.content,
           ...(input.name !== undefined ? { name: input.name } : {}),
           ...(input.purpose !== undefined ? { purpose: input.purpose } : {}),
-          ...(input.presetId !== undefined ? { presetId: input.presetId } : {}),
           ...(input.modelProfileId !== undefined ? { modelProfileId: input.modelProfileId } : {}),
           updatedAt: timestamp,
         },
         expectedVersion: existing.version,
       })
-      return { agentRuntimeProfile: toVersioned(updated) }
+      return { localBinding: toVersioned(updated) }
     },
 
-    deleteAgentRuntimeProfile: async input => {
-      await readDocument<AgentRuntimeProfileContent>(ctx.documents, input.agentRuntimeProfileId, applicationDocumentTypes.agentRuntimeProfile)
-      await ctx.documents.delete({ id: input.agentRuntimeProfileId })
+    deleteAgentLocalBinding: async input => {
+      await readDocument<AgentLocalBindingContent>(ctx.documents, input.localBindingId, applicationDocumentTypes.agentLocalBinding)
+      await ctx.documents.delete({ id: input.localBindingId })
       return { deleted: true as const }
     },
 
-    createSession: async input => {
-      await readAgentBinding({
-        documents: ctx.documents,
-        agentRuntimeProfileId: input.agentRuntimeProfileId,
-      })
-
-      return await createSessionDocuments({
-        createId: ctx.createId,
-        documents: ctx.documents,
-        timestamp: ctx.now(),
-        cardSourceVersionId: input.cardSourceVersionId,
-        cardSnapshot: input.cardSnapshot ?? {},
-        agentRuntimeProfileId: input.agentRuntimeProfileId,
-        promptResourceIds: [],
+    createAgentSession: async (input, requestContext) => {
+      await readDocument<AgentPresetContent>(ctx.documents, input.agentPresetId, applicationDocumentTypes.agentPreset)
+      const result = await requireAgents().createSession({
+        ...agentWriteContext(requestContext, 'application.createAgentSession'),
+        agentPresetId: input.agentPresetId,
         title: input.title,
       })
+      return { session: result.session, mutation: { changesetId: result.commit.changesetId } }
     },
 
-    createSessionFromCard: async input => {
-      await readAgentBinding({
-        documents: ctx.documents,
-        agentRuntimeProfileId: input.agentRuntimeProfileId,
-      })
+    getAgentSession: async input => {
+      const session = await requireAgents().getSession(input.agentSessionId)
+      if (!session) throw new Error(`Agent session not found: ${input.agentSessionId}`)
+      return { session }
+    },
 
+    getAgentMessagePage: input => requireAgents().getMessagePage(input),
+
+    appendAgentMessages: async (input, requestContext) => {
+      const result = await requireAgents().appendMessages({
+        ...agentWriteContext(requestContext, 'application.appendAgentMessages'),
+        ...input,
+      })
+      return {
+        session: result.session,
+        messages: result.messages,
+        mutation: { changesetId: result.commit.changesetId },
+      }
+    },
+
+    deleteAgentSession: async (input, requestContext) => {
+      const result = await requireAgents().deleteSession({
+        ...agentWriteContext(requestContext, 'application.deleteAgentSession'),
+        ...input,
+      })
+      return { deleted: true as const, mutation: { changesetId: result.commit.changesetId } }
+    },
+
+    previewAgentTurn: async (input, requestContext) => {
+      const prepared = await prepareAgentTurn(ctx, input, 'preview', requestContext)
+      return {
+        runId: prepared.runId,
+        messages: prepared.prompt.messages,
+        projection: prepared.prompt.projection,
+        providerPayloadPreview: await buildProviderPayloadPreview({
+          documents: ctx.documents,
+          messages: prepared.prompt.messages,
+          modelProfile: prepared.localBinding?.content.modelProfileId
+            ? await readDocument<ModelProfileContent>(ctx.documents, prepared.localBinding.content.modelProfileId, applicationDocumentTypes.modelProfile)
+            : undefined,
+        }),
+      }
+    },
+
+    invokeAgentTurn: async (input, requestContext) => {
+      if (!ctx.dataEngine) throw new Error('Data Engine is not configured')
+      const agents = requireAgents()
+      const prepared = await prepareAgentTurn(ctx, input, 'runtime', requestContext)
+      const { localBinding, narrativePage, narratives, prompt, runId, session } = prepared
+      const providerResult = await ctx.gateway.invokeChat({
+        request: {
+          messages: prompt.messages,
+          metadata: {
+            purpose: input.narrativeTarget?.commit ? 'narrative' : 'agent',
+            agentSessionId: session.id,
+            runId,
+            ...(narrativePage ? {
+              timelineId: narrativePage.timeline.id,
+              branchId: narrativePage.branch.id,
+            } : {}),
+          },
+        },
+        modelProfileId: localBinding?.content.modelProfileId,
+        runId,
+        sessionId: session.id,
+        branchId: narrativePage?.branch.id ?? 'agent-only',
+        ...(requestContext ? { context: requestContext } : {}),
+      })
+      if (input.narrativeTarget?.commit && !providerResult.message.content) {
+        throw new Error('Narrative commit requires assistant text content')
+      }
+
+      const userMessageId = ctx.createId('agent-message')
+      const assistantMessageId = ctx.createId('agent-message')
+      const writeContext = agentWriteContext(requestContext, 'application.invokeAgentTurn')
+      const transaction = await ctx.dataEngine.transact(writeContext, async dataTx => {
+        const appended = agents.transaction(dataTx).appendMessages({
+          agentSessionId: session.id,
+          expectedMessageCount: session.messageCount,
+          messages: [
+            { id: userMessageId, runId, message: { role: 'user', content: input.input } },
+            { id: assistantMessageId, runId, message: providerResult.message },
+          ],
+        })
+        const narrative = narrativePage && input.narrativeTarget?.commit
+          ? narratives!.transaction(dataTx).appendNode({
+              timelineId: narrativePage.timeline.id,
+              branchId: narrativePage.branch.id,
+              expectedHeadNodeId: narrativePage.branch.headNodeId ?? null,
+              body: { format: 'loom-markdown.v1', raw: providerResult.message.content! },
+              source: {
+                agentSessionId: session.id,
+                agentMessageId: assistantMessageId,
+                runId,
+              },
+            })
+          : undefined
+        return { appended, narrative }
+      })
+      const [user, assistant] = transaction.value.appended.messages as [AgentMessage, AgentMessage]
+
+      return {
+        runId,
+        agentSession: transaction.value.appended.session,
+        messages: { user, assistant },
+        ...(transaction.value.narrative ? { narrative: transaction.value.narrative } : {}),
+        provider: {
+          provider: providerResult.provider,
+          model: providerResult.model,
+          ...(providerResult.finishReason ? { finishReason: providerResult.finishReason } : {}),
+          ...(providerResult.usage ? { usage: providerResult.usage } : {}),
+          ...(providerResult.providerCallId ? { providerCallId: providerResult.providerCallId } : {}),
+        },
+        projection: prompt.projection,
+        mutation: { changesetId: transaction.commit.changesetId },
+      }
+    },
+
+    createNarrativeTimelineFromCard: async (input, requestContext) => {
       const card = await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
       const cardContent = normalizeCardContent(card.content)
-      return await createSessionDocuments({
-        createId: ctx.createId,
-        documents: ctx.documents,
-        timestamp: ctx.now(),
-        cardSourceVersionId: `${card.id}@${card.version}`,
-        cardSnapshot: cardToSnapshot(card),
-        agentRuntimeProfileId: input.agentRuntimeProfileId,
-        promptResourceIds: cardContent.promptResourceIds ?? [],
+      const openingEntries = readOpeningEntries(cardToSnapshot(card))
+      const created = await requireNarratives().createTimeline({
+        ...narrativeWriteContext(requestContext, 'application.createNarrativeTimelineFromCard'),
         title: input.title ?? cardContent.name,
+        createdFrom: { cardId: card.id, cardVersion: card.version },
+        promptResourceIds: cardContent.promptResourceIds ?? [],
+        openingNodes: openingEntries.map(entry => ({
+          body: { format: 'loom-markdown.v1' as const, raw: entry.content },
+        })),
       })
+      return {
+        timeline: created.timeline,
+        branch: created.branch,
+        nodes: created.nodes,
+        mutation: { changesetId: created.commit.changesetId },
+      }
+    },
+
+    getNarrativeTimeline: async input => {
+      const timeline = await requireNarratives().getTimeline(input.timelineId)
+      if (!timeline) throw new Error(`Narrative timeline not found: ${input.timelineId}`)
+      return { timeline }
+    },
+
+    getNarrativePage: input => requireNarratives().getPage(input),
+
+    forkNarrativeBranch: async (input, requestContext) => {
+      const result = await requireNarratives().forkBranch({
+        ...narrativeWriteContext(requestContext, 'application.forkNarrativeBranch'),
+        ...input,
+      })
+      return { branch: result.branch, mutation: { changesetId: result.commit.changesetId } }
+    },
+
+    switchNarrativeBranch: async (input, requestContext) => {
+      const result = await requireNarratives().switchBranch({
+        ...narrativeWriteContext(requestContext, 'application.switchNarrativeBranch'),
+        ...input,
+      })
+      return { timeline: result.timeline, mutation: { changesetId: result.commit.changesetId } }
+    },
+
+    deleteNarrativeTimeline: async (input, requestContext) => {
+      const result = await requireNarratives().deleteTimeline({
+        ...narrativeWriteContext(requestContext, 'application.deleteNarrativeTimeline'),
+        ...input,
+      })
+      return { deleted: true as const, mutation: { changesetId: result.commit.changesetId } }
     },
 
     importCardBundle: async (input, requestContext) => {
@@ -546,441 +764,84 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       }
     },
 
-    previewPrompt: async (input, requestContext) => {
-      if (input.input.trim().length === 0) {
-        throw new Error('previewPrompt input cannot be empty')
-      }
-
-      const { session, branch } = await readSessionBranch(ctx.documents, input.sessionId, input.branchId)
-      const agentBinding = await readAgentBinding({
-        documents: ctx.documents,
-        agentRuntimeProfileId: input.agentRuntimeProfileId ?? session.content.agentRuntimeProfileId,
-      })
-
-      const promptBuild = await executePromptBuild(ctx, {
-        mode: 'preview',
-        session,
-        branch,
-        userInput: input.input,
-        orderProfile: input.projectionOrderProfile,
-        activationFacts: input.activationFacts,
-      }, requestContext)
-
-      return {
-        session: toVersioned(session),
-        branch: toVersioned(branch),
-        messages: promptBuild.messages,
-        promptBuildTrace: promptBuild.trace as unknown as JsonValue,
-        providerPayloadPreview: await buildProviderPayloadPreview({
-          documents: ctx.documents,
-          messages: promptBuild.messages,
-          modelProfile: agentBinding.modelProfile,
-        }),
-        projection: promptBuild.projection,
-      }
-    },
-
-    submitTurn: async (input, requestContext) => {
-      if (input.input.trim().length === 0) {
-        throw new Error('submitTurn input cannot be empty')
-      }
-
-      const { session, branch } = await readSessionBranch(ctx.documents, input.sessionId, input.branchId)
-      const agentRuntimeProfileId = input.agentRuntimeProfileId ?? session.content.agentRuntimeProfileId
-      const agentBinding = await readAgentBinding({
-        documents: ctx.documents,
-        agentRuntimeProfileId,
-      })
-
-      const timestamp = ctx.now()
-      const runId = ctx.createId('run')
-      const userEntryId = ctx.createId('entry')
-      const assistantEntryId = ctx.createId('entry')
-      const commitCandidateId = ctx.createId('commit')
-      const stateSnapshotId = ctx.createId('snapshot')
-      const promptBuild = await executePromptBuild(ctx, {
-        mode: 'runtime',
-        session,
-        branch,
-        userInput: input.input,
-        orderProfile: input.projectionOrderProfile,
-        activationFacts: input.activationFacts,
-        runId,
-      }, requestContext)
-      const prompt = promptBuild.messages
-      const providerPayloadPreview = await buildProviderPayloadPreview({
-        documents: ctx.documents,
-        messages: prompt,
-        modelProfile: agentBinding.modelProfile,
-      })
-      const providerResult = await ctx.gateway.invokeChat({
-        request: {
-          messages: prompt,
-          metadata: {
-            purpose: 'narrative',
-            sessionId: session.id,
-            branchId: branch.id,
-            runId,
-            ...(agentBinding.agentRuntimeProfile ? { agentRuntimeProfileId: agentBinding.agentRuntimeProfile.id } : {}),
-            ...(agentBinding.modelProfile ? { modelProfileId: agentBinding.modelProfile.id } : {}),
-          },
-        },
-        modelProfileId: agentBinding.modelProfile?.id,
-        runId,
-        sessionId: session.id,
-        branchId: branch.id,
-        ...(requestContext ? { context: requestContext } : {}),
-      })
-
-      const transaction = await ctx.documents.transact({
-        actor: applicationActor,
-        reason: 'application.submitTurn',
-        correlationId: requestContext?.correlationId,
-        callId: requestContext?.callId,
-        parentCallId: requestContext?.parentCallId,
-      }, async tx => {
-        const run = await writeDocument<RunContent>(tx, {
-          id: runId,
-          type: applicationDocumentTypes.run,
-          content: {
-            sessionId: session.id,
-            branchId: branch.id,
-            agentRuntimeProfileId: agentBinding.agentRuntimeProfile?.id,
-            modelProfileId: agentBinding.modelProfile?.id,
-            status: 'running',
-            checkpointEntryId: branch.content.headEntryId,
-            input: input.input,
-            intent: input.intent ?? 'rp',
-            createdAt: timestamp,
-            updatedAt: timestamp,
-          },
-          expectedVersion: 'new',
-        })
-        const userEntry = await writeDocument<NarrativeEntryContent>(tx, {
-          id: userEntryId,
-          type: applicationDocumentTypes.narrativeEntry,
-          content: {
-            sessionId: session.id,
-            branchId: branch.id,
-            parentEntryId: branch.content.headEntryId,
-            runId: run.id,
-            role: 'user',
-            content: input.input,
-            status: 'accepted',
-            intent: input.intent ?? 'rp',
-            createdAt: timestamp,
-          },
-          expectedVersion: 'new',
-        })
-        const userTranscriptEntry = await writeAgentTranscriptEntry({
-          documents: tx,
-          timestamp,
-          narrativeEntry: userEntry,
-          parentNarrativeEntryId: branch.content.headEntryId,
-        })
-        await writeDocument<RuntimeEntryContent>(tx, {
-          id: ctx.createId('rtentry'),
-          type: applicationDocumentTypes.runtimeEntry,
-          content: {
-            sessionId: session.id,
-            branchId: branch.id,
-            runId: run.id,
-            narrativeEntryId: userEntry.id,
-            kind: 'user_input',
-            content: { text: input.input, intent: input.intent ?? 'rp' },
-            createdAt: timestamp,
-          },
-          expectedVersion: 'new',
-        })
-        await writeDocument<RuntimeEntryContent>(tx, {
-          id: ctx.createId('rtentry'),
-          type: applicationDocumentTypes.runtimeEntry,
-          content: {
-            sessionId: session.id,
-            branchId: branch.id,
-            runId: run.id,
-            kind: 'prompt',
-            content: {
-              messages: prompt,
-              promptBuildTrace: promptBuild.trace as unknown as JsonValue,
-              ...(providerPayloadPreview ? { providerPayloadPreview: providerPayloadPreview as unknown as JsonValue } : {}),
-              projection: promptBuild.projection as unknown as JsonValue,
-            },
-            createdAt: ctx.now(),
-          },
-          expectedVersion: 'new',
-        })
-        const providerResultEntry = await writeDocument<RuntimeEntryContent>(tx, {
-          id: ctx.createId('rtentry'),
-          type: applicationDocumentTypes.runtimeEntry,
-          content: {
-            sessionId: session.id,
-            branchId: branch.id,
-            runId: run.id,
-            kind: 'provider_result',
-            content: providerResult as unknown as JsonValue,
-            createdAt: ctx.now(),
-          },
-          expectedVersion: 'new',
-        })
-        const commitCandidate = await writeDocument<CommitCandidateContent>(tx, {
-          id: commitCandidateId,
-          type: applicationDocumentTypes.commitCandidate,
-          content: {
-            sessionId: session.id,
-            branchId: branch.id,
-            runId: run.id,
-            providerResultEntryId: providerResultEntry.id,
-            content: providerResult.text,
-            status: 'auto_accepted',
-            createdAt: ctx.now(),
-            updatedAt: ctx.now(),
-          },
-          expectedVersion: 'new',
-        })
-        const assistantEntry = await writeDocument<NarrativeEntryContent>(tx, {
-          id: assistantEntryId,
-          type: applicationDocumentTypes.narrativeEntry,
-          content: {
-            sessionId: session.id,
-            branchId: branch.id,
-            parentEntryId: userEntry.id,
-            runId: run.id,
-            role: 'assistant',
-            content: providerResult.text,
-            status: 'accepted',
-            createdAt: ctx.now(),
-          },
-          expectedVersion: 'new',
-        })
-        await writeAgentTranscriptEntry({
-          documents: tx,
-          timestamp: ctx.now(),
-          narrativeEntry: assistantEntry,
-          parentTranscriptEntryId: userTranscriptEntry.id,
-        })
-        const acceptedCommitCandidate = await writeDocument<CommitCandidateContent>(tx, {
-          id: commitCandidate.id,
-          type: applicationDocumentTypes.commitCandidate,
-          content: {
-            ...commitCandidate.content,
-            acceptedEntryId: assistantEntry.id,
-            updatedAt: ctx.now(),
-          },
-          expectedVersion: commitCandidate.version,
-        })
-        const stateSnapshot = await writeDocument<BranchStateSnapshotContent>(tx, {
-          id: stateSnapshotId,
-          type: applicationDocumentTypes.branchStateSnapshot,
-          content: {
-            sessionId: session.id,
-            branchId: branch.id,
-            runId: run.id,
-            fromEntryId: branch.content.headEntryId,
-            headEntryId: assistantEntry.id,
-            patch: {},
-            createdAt: ctx.now(),
-          },
-          expectedVersion: 'new',
-        })
-        const updatedBranch = await writeDocument<NarrativeBranchContent>(tx, {
-          id: branch.id,
-          type: applicationDocumentTypes.narrativeBranch,
-          content: {
-            ...branch.content,
-            headEntryId: assistantEntry.id,
-            updatedAt: ctx.now(),
-          },
-          expectedVersion: branch.version,
-        })
-        const completedRun = await writeDocument<RunContent>(tx, {
-          id: run.id,
-          type: applicationDocumentTypes.run,
-          content: {
-            ...run.content,
-            status: 'completed',
-            provider: providerResult.provider,
-            model: providerResult.model,
-            acceptedEntryId: assistantEntry.id,
-            commitCandidateId: acceptedCommitCandidate.id,
-            stateSnapshotId: stateSnapshot.id,
-            updatedAt: ctx.now(),
-          },
-          expectedVersion: run.version,
-        })
-
-        return {
-          run: toVersioned(completedRun),
-          branch: toVersioned(updatedBranch),
-          entries: {
-            user: toVersioned(userEntry),
-            assistant: toVersioned(assistantEntry),
-          },
-          commitCandidate: toVersioned(acceptedCommitCandidate),
-          stateSnapshot: toVersioned(stateSnapshot),
-        }
-      })
-
-      return transaction.value
-    },
-
-    getSession: async input => {
-      const session = await readDocument<SessionContent>(ctx.documents, input.sessionId, applicationDocumentTypes.session)
-      const branches = await listDocuments<NarrativeBranchContent>(ctx.documents, applicationDocumentTypes.narrativeBranch)
-
-      return {
-        session: toVersioned(session),
-        branches: branches.filter(branch => branch.content.sessionId === session.id).map(toVersioned),
-      }
-    },
-
-    getTimeline: async input => {
-      const session = await readDocument<SessionContent>(ctx.documents, input.sessionId, applicationDocumentTypes.session)
-      const branch = await readDocument<NarrativeBranchContent>(ctx.documents, input.branchId ?? session.content.activeBranchId, applicationDocumentTypes.narrativeBranch)
-      assertSameSession(session.id, branch.content.sessionId)
-
-      return {
-        session: toVersioned(session),
-        branch: toVersioned(branch),
-        entries: await readBranchPath(ctx.documents, session.id, branch.content.headEntryId),
-      }
-    },
-
-    getAgentTranscript: async input => {
-      const session = await readDocument<SessionContent>(ctx.documents, input.sessionId, applicationDocumentTypes.session)
-      const branch = await readDocument<NarrativeBranchContent>(ctx.documents, input.branchId ?? session.content.activeBranchId, applicationDocumentTypes.narrativeBranch)
-      assertSameSession(session.id, branch.content.sessionId)
-      const narrativeEntries = await readBranchPath(ctx.documents, session.id, branch.content.headEntryId)
-
-      return {
-        session: toVersioned(session),
-        branch: toVersioned(branch),
-        entries: await readAgentTranscriptForNarrativePath({
-          documents: ctx.documents,
-          sessionId: session.id,
-          narrativeEntries,
-        }),
-      }
-    },
-
-    getRun: async input => {
-      const run = await readDocument<RunContent>(ctx.documents, input.runId, applicationDocumentTypes.run)
-      const runtimeEntries = await listDocuments<RuntimeEntryContent>(ctx.documents, applicationDocumentTypes.runtimeEntry)
-      const commitCandidates = await listDocuments<CommitCandidateContent>(ctx.documents, applicationDocumentTypes.commitCandidate)
-
-      return {
-        run: toVersioned(run),
-        runtimeEntries: runtimeEntries.filter(entry => entry.content.runId === run.id).map(toVersioned),
-        commitCandidates: commitCandidates.filter(candidate => candidate.content.runId === run.id).map(toVersioned),
-      }
-    },
-
-    forkBranch: async input => {
-      const session = await readDocument<SessionContent>(ctx.documents, input.sessionId, applicationDocumentTypes.session)
-      const parentBranch = input.fromEntryId ? await findBranchContainingEntry(ctx.documents, session.id, input.fromEntryId) : undefined
-      const timestamp = ctx.now()
-
-      const transaction = await ctx.documents.transact({
-        actor: applicationActor,
-        reason: 'application.forkBranch',
-      }, async tx => {
-        const branch = await writeDocument<NarrativeBranchContent>(tx, {
-          id: ctx.createId('branch'),
-          type: applicationDocumentTypes.narrativeBranch,
-          content: {
-            sessionId: session.id,
-            title: input.title,
-            parentBranchId: parentBranch?.id,
-            forkedFromEntryId: input.fromEntryId ?? undefined,
-            headEntryId: input.fromEntryId ?? undefined,
-            createdAt: timestamp,
-            updatedAt: timestamp,
-          },
-          expectedVersion: 'new',
-        })
-        const updatedSession = await writeDocument<SessionContent>(tx, {
-          id: session.id,
-          type: applicationDocumentTypes.session,
-          content: {
-            ...session.content,
-            activeBranchId: branch.id,
-            updatedAt: timestamp,
-          },
-          expectedVersion: session.version,
-        })
-
-        return {
-          branch: toVersioned(branch),
-          session: toVersioned(updatedSession),
-        }
-      })
-
-      return transaction.value
-    },
   }
 }
 
-async function executePromptBuild(
+async function prepareAgentTurn(
   ctx: ApplicationRuntimeContext,
   input: {
-    mode: 'preview' | 'runtime'
-    session: DocumentRecord<SessionContent>
-    branch: DocumentRecord<NarrativeBranchContent>
-    userInput: string
-    orderProfile?: ProjectionOrderProfile
+    agentSessionId: string
+    localBindingId?: string
+    input: string
     activationFacts?: ActivationFacts
-    runId?: string
+    narrativeTarget?: { timelineId: string; branchId?: string; commit: boolean }
   },
-  requestContext?: {
-    correlationId?: string
-    callId?: string
-    parentCallId?: string
-  },
+  mode: 'preview' | 'runtime',
+  requestContext?: RuntimeRequestContext,
 ) {
+  if (input.input.trim().length === 0) throw new Error('Agent turn input cannot be empty')
+  if (!ctx.agents) throw new Error('Agent Store is not configured')
+  const session = await ctx.agents.getSession(input.agentSessionId)
+  if (!session) throw new Error(`Agent session not found: ${input.agentSessionId}`)
+  const narratives = input.narrativeTarget ? ctx.narratives : undefined
+  if (input.narrativeTarget && !narratives) throw new Error('Narrative Store is not configured')
+  // ponytail: M0 projects only the latest 100 records; add an explicit context-window policy before larger histories need summarization.
+  const narrativePage = input.narrativeTarget
+    ? await narratives!.getPage({
+        timelineId: input.narrativeTarget.timelineId,
+        branchId: input.narrativeTarget.branchId,
+        limit: 100,
+      })
+    : undefined
+  const agentPage = await ctx.agents.getMessagePage({ agentSessionId: session.id, limit: 100 })
+  const agentPreset = await readDocument<AgentPresetContent>(ctx.documents, session.agentPresetId, applicationDocumentTypes.agentPreset)
+  const localBinding = input.localBindingId
+    ? await readDocument<AgentLocalBindingContent>(ctx.documents, input.localBindingId, applicationDocumentTypes.agentLocalBinding)
+    : undefined
+  const runId = ctx.createId('run')
   const buildId = ctx.createId('build')
   const startedAt = performance.now()
   const references = {
     buildId,
-    mode: input.mode,
-    sessionId: input.session.id,
-    branchId: input.branch.id,
-    ...(input.runId ? { runId: input.runId } : {}),
+    mode,
+    agentSessionId: session.id,
+    runId,
+    ...(narrativePage ? {
+      timelineId: narrativePage.timeline.id,
+      branchId: narrativePage.branch.id,
+    } : {}),
   }
   const logContext = {
     ...(requestContext?.correlationId ? { correlationId: requestContext.correlationId } : {}),
     ...(requestContext?.callId ? { callId: requestContext.callId } : {}),
     ...(requestContext?.parentCallId ? { parentCallId: requestContext.parentCallId } : {}),
   }
-
-  ctx.logger?.info(`${input.mode} prompt build started`, {
+  ctx.logger?.info(`${mode} prompt build started`, {
     event: 'prompt.build.started',
     data: references,
     ...logContext,
   })
-
+  let prompt
   try {
-    const result = await composePromptBuildForInput(
-      ctx.documents,
-      input.session,
-      input.branch,
-      input.userInput,
-      input.orderProfile,
-      input.activationFacts,
-    )
+    prompt = await composeAgentTurnPrompt({
+      activationFacts: input.activationFacts,
+      agentMessages: agentPreset.content.historyPolicy === 'persistent'
+        ? agentPage.messages.map(message => message.message)
+        : [],
+      agentPreset: agentPreset.content,
+      documents: ctx.documents,
+      narrative: narrativePage ? { nodes: narrativePage.nodes, timeline: narrativePage.timeline } : undefined,
+      userInput: input.input,
+    })
     const durationMs = readDurationMs(startedAt)
-    ctx.logger?.info(`${input.mode} prompt build completed · ${result.messages.length} messages · ${durationMs} ms`, {
+    ctx.logger?.info(`${mode} prompt build completed · ${prompt.messages.length} messages · ${durationMs} ms`, {
       event: 'prompt.build.completed',
-      data: {
-        ...references,
-        messageCount: result.messages.length,
-        durationMs,
-      },
+      data: { ...references, messageCount: prompt.messages.length, durationMs },
       ...logContext,
     })
-    return result
   } catch (error) {
     const durationMs = readDurationMs(startedAt)
-    ctx.logger?.error(`${input.mode} prompt build failed after ${durationMs} ms`, {
+    ctx.logger?.error(`${mode} prompt build failed after ${durationMs} ms`, {
       event: 'prompt.build.failed',
       data: {
         ...references,
@@ -991,103 +852,25 @@ async function executePromptBuild(
     })
     throw error
   }
+  return {
+    localBinding,
+    narrativePage,
+    narratives,
+    prompt,
+    runId,
+    session,
+  }
 }
 
 function readDurationMs(startedAt: number): number {
   return Math.round((performance.now() - startedAt) * 100) / 100
 }
 
-async function createSessionDocuments(input: {
-  createId: ApplicationRuntimeContext['createId']
-  documents: DocumentStore
-  timestamp: string
-  cardSourceVersionId: string
-  cardSnapshot: JsonObject
-  agentRuntimeProfileId?: string
-  promptResourceIds: string[]
-  title?: string
-}): Promise<CreateSessionResult> {
-  const branchId = input.createId('branch')
-  const openingEntries = readOpeningEntries(input.cardSnapshot)
-
-  const transaction = await input.documents.transact({
-    actor: applicationActor,
-    reason: 'application.createSession',
-  }, async tx => {
-    const session = await writeDocument<SessionContent>(tx, {
-      id: input.createId('session'),
-      type: applicationDocumentTypes.session,
-      content: {
-        cardSourceVersionId: input.cardSourceVersionId,
-        cardSnapshot: input.cardSnapshot,
-        agentRuntimeProfileId: input.agentRuntimeProfileId,
-        promptResourceIds: input.promptResourceIds,
-        title: input.title,
-        activeBranchId: branchId,
-        createdAt: input.timestamp,
-        updatedAt: input.timestamp,
-      },
-      expectedVersion: 'new',
-    })
-    let headEntryId: string | undefined
-    let headTranscriptEntryId: string | undefined
-
-    for (const entry of openingEntries) {
-      const narrativeEntry = await writeDocument<NarrativeEntryContent>(tx, {
-        id: input.createId('entry'),
-        type: applicationDocumentTypes.narrativeEntry,
-        content: {
-          sessionId: session.id,
-          branchId,
-          parentEntryId: headEntryId,
-          role: entry.role,
-          content: entry.content,
-          status: 'accepted',
-          intent: 'rp',
-          createdAt: input.timestamp,
-        },
-        expectedVersion: 'new',
-      })
-      const transcriptEntry = await writeAgentTranscriptEntry({
-        documents: tx,
-        timestamp: input.timestamp,
-        narrativeEntry,
-        parentTranscriptEntryId: headTranscriptEntryId,
-      })
-      headEntryId = narrativeEntry.id
-      headTranscriptEntryId = transcriptEntry.id
-    }
-
-    const branch = await writeDocument<NarrativeBranchContent>(tx, {
-      id: branchId,
-      type: applicationDocumentTypes.narrativeBranch,
-      content: {
-        sessionId: session.id,
-        title: input.title ?? 'Main',
-        headEntryId,
-        createdAt: input.timestamp,
-        updatedAt: input.timestamp,
-      },
-      expectedVersion: 'new',
-    })
-
-    return {
-      session: toVersioned(session),
-      branch: toVersioned(branch),
-    }
-  })
-
-  return transaction.value
-}
-
 function redactProviderAccount<T extends { secretRefs: Record<string, string> }>(account: T): T {
   const redacted: Record<string, string> = {}
   for (const [key, value] of Object.entries(account.secretRefs)) {
-    if (value.startsWith('env:')) {
-      redacted[key] = value
-    } else {
-      redacted[key] = value.startsWith('plain:') ? 'plain:***' : '***'
-    }
+    if (value.startsWith('env:')) redacted[key] = value
+    else redacted[key] = value.startsWith('plain:') ? 'plain:***' : '***'
   }
   return { ...account, secretRefs: redacted }
 }
@@ -1098,17 +881,13 @@ async function buildProviderPayloadPreview(input: {
   modelProfile?: DocumentRecord<ModelProfileContent>
 }): Promise<OpenAIChatPayload | undefined> {
   if (!input.modelProfile) return undefined
-
   const providerAccount = await readDocument<ProviderAccountContent>(
     input.documents,
     input.modelProfile.content.providerAccountId,
     applicationDocumentTypes.providerAccount,
   )
   const providerExtensionId = providerAccount.content.providerExtensionId
-  if (providerExtensionId !== 'official.openai-compatible' && providerExtensionId !== 'openai-compatible') {
-    return undefined
-  }
-
+  if (providerExtensionId !== 'official.openai-compatible' && providerExtensionId !== 'openai-compatible') return undefined
   return buildOpenAIChatPayload({
     messages: input.messages,
     modelProfile: {

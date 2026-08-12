@@ -1,4 +1,5 @@
 import type { JsonValue } from '@loom-studio/shared'
+import { createDataCommitNotifier } from '@loom-studio/data-engine'
 import { createId, nowIso } from '@loom-studio/shared'
 import { DocumentStoreError } from './types.js'
 import type {
@@ -39,10 +40,10 @@ export function createPendingChangeset(input: {
   correlationId?: string
   callId?: string
   parentCallId?: string
-}): PendingChangeset {
+}, assigned?: { id: string; createdAt: string }): PendingChangeset {
   return {
-    id: createId('chg'),
-    createdAt: nowIso(),
+    id: assigned?.id ?? createId('chg'),
+    createdAt: assigned?.createdAt ?? nowIso(),
     createdBy: input.actor ?? kernelActor,
     reason: input.reason,
     correlationId: input.correlationId,
@@ -102,6 +103,22 @@ export function finalizeCommitFact(pending: PendingChangeset): DocumentCommitFac
   const changeset = finalizeChangeset(pending)
 
   return {
+    changesetId: changeset.id,
+    createdAt: changeset.createdAt,
+    committedAt: nowIso(),
+    actor: changeset.createdBy,
+    reason: changeset.reason,
+    correlationId: changeset.correlationId,
+    callId: changeset.callId,
+    parentCallId: changeset.parentCallId,
+    operations: changeset.operations.map(operation => ({
+      store: 'documents',
+      kind: operation.kind,
+      entityId: operation.documentId,
+      entityType: operation.type,
+      fromVersion: operation.fromVersion,
+      toVersion: operation.toVersion,
+    })),
     changeset,
     documents: [...pending.changes.values()].map(change => ({
       id: change.documentId,
@@ -116,23 +133,7 @@ export function createCommitNotifier(): {
   notify(commit: DocumentCommitFact): void
   subscribe(observer: DocumentCommitObserver): DocumentCommitSubscription
 } {
-  const observers = new Set<DocumentCommitObserver>()
-
-  return {
-    notify: commit => {
-      for (const observer of observers) {
-        try {
-          observer(structuredClone(commit) as DocumentCommitFact)
-        } catch {
-          // ponytail: Post-commit observer failures cannot roll back persisted data; route them to Diagnostics when observers gain a reporter.
-        }
-      }
-    },
-    subscribe: observer => {
-      observers.add(observer)
-      return { dispose: () => observers.delete(observer) }
-    },
-  }
+  return createDataCommitNotifier<DocumentCommitFact>()
 }
 
 export function transactionInputFromWrite(input: WriteDocumentInput | DeleteDocumentInput): DocumentTransactionInput {

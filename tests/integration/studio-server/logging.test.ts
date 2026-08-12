@@ -136,20 +136,26 @@ describe('Studio Server logging', () => {
         name: 'Private Prompt Card',
         description: 'Private Prompt Description',
       })
-      const created = await callRpc<{
-        session: { id: string }
-        branch: { id: string }
-      }>(port, 'application.createSessionFromCard', { cardId: card.card.id })
-
-      await callRpc(port, 'application.previewPrompt', {
-        sessionId: created.session.id,
-        branchId: created.branch.id,
-        input: 'Private user prompt',
+      const timeline = await callRpc<{
+        timeline: { id: string }
+      }>(port, 'application.createNarrativeTimelineFromCard', { cardId: card.card.id })
+      const preset = await callRpc<{ agentPreset: { id: string } }>(port, 'application.createAgentPreset', {
+        name: 'Private Agent',
+        instructions: 'Private agent instructions',
       })
-      const turn = await callRpc<{ run: { id: string } }>(port, 'application.submitTurn', {
-        sessionId: created.session.id,
-        branchId: created.branch.id,
+      const created = await callRpc<{ session: { id: string } }>(port, 'application.createAgentSession', {
+        agentPresetId: preset.agentPreset.id,
+      })
+
+      await callRpc(port, 'application.previewAgentTurn', {
+        agentSessionId: created.session.id,
+        input: 'Private user prompt',
+        narrativeTarget: { timelineId: timeline.timeline.id, commit: false },
+      })
+      const turn = await callRpc<{ runId: string }>(port, 'application.invokeAgentTurn', {
+        agentSessionId: created.session.id,
         input: 'Private runtime prompt',
+        narrativeTarget: { timelineId: timeline.timeline.id, commit: true },
       })
       const page = await callRpc<{
         items: Array<{
@@ -196,25 +202,16 @@ describe('Studio Server logging', () => {
           }
         }>
       }>(port, 'logs.list', { limit: 10, namespacePrefix: 'runtime.provider' })
-      const documentPage = await callRpc<{
-        items: Array<{
-          correlationId?: string
-          data?: { reason?: string }
-        }>
-      }>(port, 'logs.list', { limit: 10, namespacePrefix: 'document.store' })
-      const submitChangeset = documentPage.items.find(record => record.data?.reason === 'application.submitTurn')
-
       expect(providerPage.items.map(record => record.event)).toEqual([
         'provider.invoke.started',
         'provider.invoke.completed',
       ])
       expect(providerPage.items[1]?.data).toMatchObject({
-        runId: turn.run.id,
+        runId: turn.runId,
         provider: 'fake',
         model: 'fake-echo-m0',
         messageCount: 2,
       })
-      expect(submitChangeset?.correlationId).toBe(providerPage.items[0]?.correlationId)
       expect(JSON.stringify(providerPage.items)).not.toContain('Private')
     } finally {
       await server.close()

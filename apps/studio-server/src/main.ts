@@ -1,12 +1,15 @@
 import { createApplicationRuntime, createDocumentBackedAiGateway } from '@loom-studio/application-runtime'
+import { createAgentStore } from '@loom-studio/agent-store'
+import { createSqliteDataEngine, type SqliteDataEngine } from '@loom-studio/data-engine'
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
-import { createSqliteDocumentStore, type DocumentStore, type SqliteDocumentStore } from '@loom-studio/document-store'
+import { createDocumentDataCommitSource, createSqliteDocumentStore, type DocumentStore } from '@loom-studio/document-store'
 import { createExtensionHost } from '@loom-studio/extension-host'
 import { createKernel } from '@loom-studio/kernel'
 import { createConsoleLogSink, createMemoryLogSink, createRootLogger, type Logger, type LogReader, type LogRecord } from '@loom-studio/logging'
 import { createJsonlFileSink } from '@loom-studio/logging/node'
+import { createNarrativeStore } from '@loom-studio/narrative-store'
 import { createLoomRunner } from '@loom-studio/loom-runner'
-import { createId } from '@loom-studio/shared'
+import { createId, nowIso } from '@loom-studio/shared'
 import { createInMemoryTraceAuditStore } from '@loom-studio/trace-audit'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -38,14 +41,37 @@ export type CreateStudioServerOptions = {
 export function createStudioServer(options: CreateStudioServerOptions = {}): StudioServer {
   const logger = options.logger
   const diagnostics = createInMemoryDiagnosticsRegistry()
-  const rawDocuments = options.documents ?? createSqliteDocumentStore({ filename: options.sqlitePath ?? defaultSqlitePath })
+  let dataEngine: SqliteDataEngine | undefined
+  let rawDocuments: DocumentStore
+  if (options.documents) {
+    rawDocuments = options.documents
+  } else {
+    dataEngine = createSqliteDataEngine({ filename: options.sqlitePath ?? defaultSqlitePath, createId, now: nowIso })
+    try {
+      rawDocuments = createSqliteDocumentStore({ engine: dataEngine })
+    } catch (error) {
+      dataEngine.close()
+      throw error
+    }
+  }
   const documents = options.documentLogger ? withDocumentStoreLogging(rawDocuments, options.documentLogger) : rawDocuments
-  const ownsDocumentStore = !options.documents
   const traceAudit = createInMemoryTraceAuditStore()
   const loomRunner = createLoomRunner({ traceAudit })
   const gateway = createDocumentBackedAiGateway({ documents })
+  let agents
+  let narratives
+  try {
+    agents = dataEngine ? createAgentStore({ engine: dataEngine, createId, now: nowIso }) : undefined
+    narratives = dataEngine ? createNarrativeStore({ engine: dataEngine, createId, now: nowIso }) : undefined
+  } catch (error) {
+    dataEngine?.close()
+    throw error
+  }
   const applicationRuntime = createApplicationRuntime({
+    agents,
+    dataEngine,
     documents,
+    narratives,
     gateway: options.providerLogger ? withAiGatewayLogging(gateway, options.providerLogger) : gateway,
     logger: options.promptBuildLogger,
   })
@@ -64,6 +90,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
   })
   const kernel = createKernel({
     documents,
+    dataCommits: dataEngine ?? createDocumentDataCommitSource(documents),
     diagnostics,
     traceAudit,
     extensionHost,
@@ -116,9 +143,10 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
           })
         })
       }
-      await kernel.stop()
-      if (ownsDocumentStore && isClosableDocumentStore(rawDocuments)) {
-        rawDocuments.close()
+      try {
+        await kernel.stop()
+      } finally {
+        dataEngine?.close()
       }
       logger?.info('Studio server stopped', { event: 'server.stopped' })
     },
@@ -194,10 +222,6 @@ function shouldWriteServerConsoleLog(record: LogRecord): boolean {
     || record.level === 'error'
     || record.namespace === 'system'
     || record.namespace === 'runtime.provider'
-}
-
-function isClosableDocumentStore(store: DocumentStore): store is SqliteDocumentStore {
-  return 'close' in store && typeof store.close === 'function'
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

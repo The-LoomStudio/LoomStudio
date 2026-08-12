@@ -192,9 +192,15 @@ importers:
 
   apps/studio-server:
     dependencies:
+      '@loom-studio/agent-store':
+        specifier: workspace:*
+        version: link:../../packages/agent-store
       '@loom-studio/application-runtime':
         specifier: workspace:*
         version: link:../../packages/application-runtime
+      '@loom-studio/data-engine':
+        specifier: workspace:*
+        version: link:../../packages/data-engine
       '@loom-studio/diagnostics':
         specifier: workspace:*
         version: link:../../packages/diagnostics
@@ -213,6 +219,9 @@ importers:
       '@loom-studio/loom-runner':
         specifier: workspace:*
         version: link:../../packages/loom-runner
+      '@loom-studio/narrative-store':
+        specifier: workspace:*
+        version: link:../../packages/narrative-store
       '@loom-studio/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -229,14 +238,32 @@ importers:
         specifier: workspace:*
         version: link:../../packages/extension-sdk
 
+  packages/agent-store:
+    dependencies:
+      '@loom-studio/data-engine':
+        specifier: workspace:*
+        version: link:../data-engine
+      '@loom-studio/shared':
+        specifier: workspace:*
+        version: link:../shared
+
   packages/application-runtime:
     dependencies:
+      '@loom-studio/agent-store':
+        specifier: workspace:*
+        version: link:../agent-store
+      '@loom-studio/data-engine':
+        specifier: workspace:*
+        version: link:../data-engine
       '@loom-studio/document-store':
         specifier: workspace:*
         version: link:../document-store
       '@loom-studio/logging':
         specifier: workspace:*
         version: link:../logging
+      '@loom-studio/narrative-store':
+        specifier: workspace:*
+        version: link:../narrative-store
       '@loom-studio/shared':
         specifier: workspace:*
         version: link:../shared
@@ -256,6 +283,8 @@ importers:
         specifier: ^8.20.0
         version: 8.20.0
 
+  packages/data-engine: {}
+
   packages/diagnostics:
     dependencies:
       '@loom-studio/shared':
@@ -264,6 +293,9 @@ importers:
 
   packages/document-store:
     dependencies:
+      '@loom-studio/data-engine':
+        specifier: workspace:*
+        version: link:../data-engine
       '@loom-studio/shared':
         specifier: workspace:*
         version: link:../shared
@@ -297,6 +329,9 @@ importers:
 
   packages/kernel:
     dependencies:
+      '@loom-studio/data-engine':
+        specifier: workspace:*
+        version: link:../data-engine
       '@loom-studio/diagnostics':
         specifier: workspace:*
         version: link:../diagnostics
@@ -339,6 +374,15 @@ importers:
       '@loom/core':
         specifier: workspace:*
         version: link:../core
+
+  packages/narrative-store:
+    dependencies:
+      '@loom-studio/data-engine':
+        specifier: workspace:*
+        version: link:../data-engine
+      '@loom-studio/shared':
+        specifier: workspace:*
+        version: link:../shared
 
   packages/shared: {}
 

@@ -1,6 +1,20 @@
+import type {
+  AgentMessage,
+  AgentMessagePage,
+  AgentSession,
+  AgentStore,
+} from '@loom-studio/agent-store'
 import type { DocumentStore } from '@loom-studio/document-store'
+import type { SqliteDataEngine } from '@loom-studio/data-engine'
 import type { Logger } from '@loom-studio/logging'
-import type { JsonObject, JsonValue } from '@loom-studio/shared'
+import type {
+  NarrativeBranch,
+  NarrativeNode,
+  NarrativePage,
+  NarrativeStore,
+  NarrativeTimeline,
+} from '@loom-studio/narrative-store'
+import type { AssistantChatMessage, ChatMessage, JsonObject, JsonValue } from '@loom-studio/shared'
 import type { ActivationFacts, PromptActivation } from './prompt-activation.js'
 import type { OpenAIChatPayload } from './provider-payload.js'
 import type { CompiledPrompt, CompositionSkeletonPatch, ProjectionOrderProfile } from './prompt-builder.js'
@@ -29,13 +43,29 @@ export type ApplicationRuntime = {
   updateModelProfile(input: UpdateModelProfileInput): Promise<UpdateModelProfileResult>
   deleteModelProfile(input: DeleteModelProfileInput): Promise<DeleteModelProfileResult>
   pingModelProfile(input: PingModelProfileInput, context?: RuntimeRequestContext): Promise<PingModelProfileResult>
-  createAgentRuntimeProfile(input: CreateAgentRuntimeProfileInput): Promise<CreateAgentRuntimeProfileResult>
-  getAgentRuntimeProfile(input: GetAgentRuntimeProfileInput): Promise<GetAgentRuntimeProfileResult>
-  listAgentRuntimeProfiles(input?: ListAgentRuntimeProfilesInput): Promise<ListAgentRuntimeProfilesResult>
-  updateAgentRuntimeProfile(input: UpdateAgentRuntimeProfileInput): Promise<UpdateAgentRuntimeProfileResult>
-  deleteAgentRuntimeProfile(input: DeleteAgentRuntimeProfileInput): Promise<DeleteAgentRuntimeProfileResult>
-  createSession(input: CreateSessionInput): Promise<CreateSessionResult>
-  createSessionFromCard(input: CreateSessionFromCardInput): Promise<CreateSessionResult>
+  createAgentPreset(input: CreateAgentPresetInput): Promise<CreateAgentPresetResult>
+  getAgentPreset(input: GetAgentPresetInput): Promise<GetAgentPresetResult>
+  listAgentPresets(input?: ListAgentPresetsInput): Promise<ListAgentPresetsResult>
+  updateAgentPreset(input: UpdateAgentPresetInput): Promise<UpdateAgentPresetResult>
+  deleteAgentPreset(input: DeleteAgentPresetInput): Promise<DeleteAgentPresetResult>
+  createAgentLocalBinding(input: CreateAgentLocalBindingInput): Promise<CreateAgentLocalBindingResult>
+  getAgentLocalBinding(input: GetAgentLocalBindingInput): Promise<GetAgentLocalBindingResult>
+  listAgentLocalBindings(input?: ListAgentLocalBindingsInput): Promise<ListAgentLocalBindingsResult>
+  updateAgentLocalBinding(input: UpdateAgentLocalBindingInput): Promise<UpdateAgentLocalBindingResult>
+  deleteAgentLocalBinding(input: DeleteAgentLocalBindingInput): Promise<DeleteAgentLocalBindingResult>
+  createAgentSession(input: CreateAgentSessionInput, context?: RuntimeRequestContext): Promise<CreateAgentSessionResult>
+  getAgentSession(input: GetAgentSessionInput): Promise<GetAgentSessionResult>
+  getAgentMessagePage(input: GetAgentMessagePageInput): Promise<AgentMessagePage>
+  appendAgentMessages(input: AppendAgentMessagesInput, context?: RuntimeRequestContext): Promise<AppendAgentMessagesResult>
+  deleteAgentSession(input: DeleteAgentSessionInput, context?: RuntimeRequestContext): Promise<DeleteAgentSessionResult>
+  invokeAgentTurn(input: InvokeAgentTurnInput, context?: RuntimeRequestContext): Promise<InvokeAgentTurnResult>
+  previewAgentTurn(input: PreviewAgentTurnInput, context?: RuntimeRequestContext): Promise<PreviewAgentTurnResult>
+  createNarrativeTimelineFromCard(input: CreateNarrativeTimelineFromCardInput, context?: RuntimeRequestContext): Promise<CreateNarrativeTimelineFromCardResult>
+  getNarrativeTimeline(input: GetNarrativeTimelineInput): Promise<GetNarrativeTimelineResult>
+  getNarrativePage(input: GetNarrativePageInput): Promise<NarrativePage>
+  forkNarrativeBranch(input: ForkNarrativeBranchInput, context?: RuntimeRequestContext): Promise<ForkNarrativeBranchResult>
+  switchNarrativeBranch(input: SwitchNarrativeBranchInput, context?: RuntimeRequestContext): Promise<SwitchNarrativeBranchResult>
+  deleteNarrativeTimeline(input: DeleteNarrativeTimelineInput, context?: RuntimeRequestContext): Promise<DeleteNarrativeTimelineResult>
   importCardBundle(input: ImportCardBundleInput, context?: RuntimeRequestContext): Promise<ImportCardBundleResult>
   getImportBundle(input: GetImportBundleInput): Promise<GetImportBundleResult>
   getPromptResource(input: GetPromptResourceInput): Promise<GetPromptResourceResult>
@@ -47,13 +77,6 @@ export type ApplicationRuntime = {
   movePromptResourceAsset(input: MovePromptResourceAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
   deletePromptResourceAsset(input: DeletePromptResourceAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
   exportCardArtifact(input: ExportCardArtifactInput): Promise<ExportCardBundleResult>
-  previewPrompt(input: PreviewPromptInput, context?: RuntimeRequestContext): Promise<PreviewPromptResult>
-  submitTurn(input: SubmitTurnInput, context?: RuntimeRequestContext): Promise<SubmitTurnResult>
-  getSession(input: GetSessionInput): Promise<GetSessionResult>
-  getTimeline(input: GetTimelineInput): Promise<GetTimelineResult>
-  getAgentTranscript(input: GetAgentTranscriptInput): Promise<GetAgentTranscriptResult>
-  getRun(input: GetRunInput): Promise<GetRunResult>
-  forkBranch(input: ForkBranchInput): Promise<ForkBranchResult>
 }
 
 export type RuntimeRequestContext = {
@@ -67,8 +90,163 @@ export type MutationReceipt = {
   changesetId: string
 }
 
+export type CreateNarrativeTimelineFromCardInput = {
+  cardId: string
+  title?: string
+}
+
+export type CreateNarrativeTimelineFromCardResult = {
+  timeline: NarrativeTimeline
+  branch: NarrativeBranch
+  nodes: NarrativeNode[]
+  mutation: MutationReceipt
+}
+
+export type GetNarrativeTimelineInput = {
+  timelineId: string
+}
+
+export type GetNarrativeTimelineResult = {
+  timeline: NarrativeTimeline
+}
+
+export type GetNarrativePageInput = {
+  timelineId: string
+  branchId?: string
+  cursor?: string
+  limit?: number
+}
+
+export type ForkNarrativeBranchInput = {
+  timelineId: string
+  fromBranchId: string
+  fromNodeId: string
+  title?: string
+}
+
+export type ForkNarrativeBranchResult = {
+  branch: NarrativeBranch
+  mutation: MutationReceipt
+}
+
+export type SwitchNarrativeBranchInput = {
+  timelineId: string
+  branchId: string
+  expectedActiveBranchId?: string
+}
+
+export type SwitchNarrativeBranchResult = {
+  timeline: NarrativeTimeline
+  mutation: MutationReceipt
+}
+
+export type DeleteNarrativeTimelineInput = {
+  timelineId: string
+}
+
+export type DeleteNarrativeTimelineResult = {
+  deleted: true
+  mutation: MutationReceipt
+}
+
+export type CreateAgentSessionInput = {
+  agentPresetId: string
+  title?: string
+}
+
+export type CreateAgentSessionResult = {
+  session: AgentSession
+  mutation: MutationReceipt
+}
+
+export type GetAgentSessionInput = {
+  agentSessionId: string
+}
+
+export type GetAgentSessionResult = {
+  session: AgentSession
+}
+
+export type GetAgentMessagePageInput = {
+  agentSessionId: string
+  cursor?: string
+  limit?: number
+}
+
+export type AppendAgentMessagesInput = {
+  agentSessionId: string
+  expectedMessageCount: number
+  messages: Array<{
+    id?: string
+    runId?: string
+    message: ChatMessage
+  }>
+}
+
+export type AppendAgentMessagesResult = {
+  session: AgentSession
+  messages: AgentMessage[]
+  mutation: MutationReceipt
+}
+
+export type DeleteAgentSessionInput = {
+  agentSessionId: string
+}
+
+export type DeleteAgentSessionResult = {
+  deleted: true
+  mutation: MutationReceipt
+}
+
+export type InvokeAgentTurnInput = {
+  agentSessionId: string
+  localBindingId?: string
+  input: string
+  activationFacts?: ActivationFacts
+  narrativeTarget?: {
+    timelineId: string
+    branchId?: string
+    commit: boolean
+  }
+}
+
+export type PreviewAgentTurnInput = InvokeAgentTurnInput
+
+export type PreviewAgentTurnResult = {
+  runId: string
+  messages: ChatMessage[]
+  projection: CompiledPrompt
+  providerPayloadPreview?: OpenAIChatPayload
+}
+
+export type InvokeAgentTurnResult = {
+  runId: string
+  agentSession: AgentSession
+  messages: {
+    user: AgentMessage
+    assistant: AgentMessage
+  }
+  narrative?: {
+    timeline: NarrativeTimeline
+    branch: NarrativeBranch
+    node: NarrativeNode
+  }
+  provider: {
+    provider: string
+    model: string
+    finishReason?: GatewayChatResult['finishReason']
+    usage?: GatewayChatResult['usage']
+    providerCallId?: string
+  }
+  projection: CompiledPrompt
+  mutation: MutationReceipt
+}
+
 export type ApplicationRuntimeOptions = {
+  agents?: AgentStore
+  dataEngine?: SqliteDataEngine
   documents: DocumentStore
+  narratives?: NarrativeStore
   logger?: Logger
   gateway?: AiGateway
   provider?: ApplicationProvider
@@ -83,10 +261,7 @@ export type ApplicationProvider = {
   invoke(input: ProviderInvokeInput): Promise<ProviderInvokeResult>
 }
 
-export type ProviderMessage = {
-  role: 'system' | 'user' | 'assistant'
-  content: string
-}
+export type ProviderMessage = ChatMessage
 
 export type ProviderInvokeInput = {
   messages: ProviderMessage[]
@@ -96,6 +271,7 @@ export type ProviderInvokeInput = {
 }
 
 export type ProviderInvokeResult = {
+  message?: AssistantChatMessage
   content: string
   model: string
   provider: string
@@ -117,6 +293,7 @@ export type CanonicalChatRequest = {
 }
 
 export type GatewayChatResult = {
+  message: AssistantChatMessage
   text: string
   model: string
   provider: string
@@ -321,72 +498,61 @@ export type PingModelProfileResult = {
   raw?: JsonValue
 }
 
-export type CreateAgentRuntimeProfileInput = {
+export type AgentHistoryPolicy = 'persistent' | 'ephemeral'
+
+export type CreateAgentPresetInput = {
   name: string
-  purpose?: AgentRuntimePurpose
-  presetId?: string
-  modelProfileId?: string
+  instructions: string
+  promptResourceIds?: string[]
+  historyPolicy?: AgentHistoryPolicy
 }
 
-export type CreateAgentRuntimeProfileResult = {
-  agentRuntimeProfile: AgentRuntimeProfileContent & { id: string; version: number }
+export type CreateAgentPresetResult = {
+  agentPreset: AgentPresetContent & { id: string; version: number }
 }
 
-export type GetAgentRuntimeProfileInput = {
-  agentRuntimeProfileId: string
-}
-
-export type GetAgentRuntimeProfileResult = {
-  agentRuntimeProfile: AgentRuntimeProfileContent & { id: string; version: number }
-}
-
-export type ListAgentRuntimeProfilesInput = {
-  limit?: number
-  cursor?: string
-}
-
-export type ListAgentRuntimeProfilesResult = {
-  agentRuntimeProfiles: Array<AgentRuntimeProfileContent & { id: string; version: number }>
+export type GetAgentPresetInput = { agentPresetId: string }
+export type GetAgentPresetResult = { agentPreset: AgentPresetContent & { id: string; version: number } }
+export type ListAgentPresetsInput = { limit?: number; cursor?: string }
+export type ListAgentPresetsResult = {
+  agentPresets: Array<AgentPresetContent & { id: string; version: number }>
   nextCursor?: string
 }
-
-export type UpdateAgentRuntimeProfileInput = {
-  agentRuntimeProfileId: string
+export type UpdateAgentPresetInput = {
+  agentPresetId: string
   name?: string
+  instructions?: string
+  promptResourceIds?: string[]
+  historyPolicy?: AgentHistoryPolicy
+}
+export type UpdateAgentPresetResult = CreateAgentPresetResult
+export type DeleteAgentPresetInput = { agentPresetId: string }
+export type DeleteAgentPresetResult = { deleted: true }
+
+export type CreateAgentLocalBindingInput = {
+  name: string
   purpose?: AgentRuntimePurpose
-  presetId?: string
   modelProfileId?: string
 }
-
-export type UpdateAgentRuntimeProfileResult = {
-  agentRuntimeProfile: AgentRuntimeProfileContent & { id: string; version: number }
+export type CreateAgentLocalBindingResult = {
+  localBinding: AgentLocalBindingContent & { id: string; version: number }
 }
-
-export type DeleteAgentRuntimeProfileInput = {
-  agentRuntimeProfileId: string
+export type GetAgentLocalBindingInput = { localBindingId: string }
+export type GetAgentLocalBindingResult = CreateAgentLocalBindingResult
+export type ListAgentLocalBindingsInput = { limit?: number; cursor?: string }
+export type ListAgentLocalBindingsResult = {
+  localBindings: Array<AgentLocalBindingContent & { id: string; version: number }>
+  nextCursor?: string
 }
-
-export type DeleteAgentRuntimeProfileResult = {
-  deleted: true
+export type UpdateAgentLocalBindingInput = {
+  localBindingId: string
+  name?: string
+  purpose?: AgentRuntimePurpose
+  modelProfileId?: string
 }
-
-export type CreateSessionInput = {
-  cardSourceVersionId: string
-  cardSnapshot?: JsonObject
-  agentRuntimeProfileId?: string
-  title?: string
-}
-
-export type CreateSessionResult = {
-  session: SessionContent & { id: string; version: number }
-  branch: NarrativeBranchContent & { id: string; version: number }
-}
-
-export type CreateSessionFromCardInput = {
-  cardId: string
-  agentRuntimeProfileId?: string
-  title?: string
-}
+export type UpdateAgentLocalBindingResult = CreateAgentLocalBindingResult
+export type DeleteAgentLocalBindingInput = { localBindingId: string }
+export type DeleteAgentLocalBindingResult = { deleted: true }
 
 export type ImportCardBundleInput = {
   artifact: CardBundleArtifact
@@ -490,180 +656,6 @@ export type ExportCardBundleResult = {
   artifact: CardBundleArtifact
 }
 
-export type PreviewPromptInput = {
-  sessionId: string
-  branchId?: string
-  agentRuntimeProfileId?: string
-  input: string
-  projectionOrderProfile?: ProjectionOrderProfile
-  activationFacts?: ActivationFacts
-}
-
-export type PreviewPromptResult = {
-  session: SessionContent & { id: string; version: number }
-  branch: NarrativeBranchContent & { id: string; version: number }
-  messages: ProviderMessage[]
-  promptBuildTrace?: JsonValue
-  providerPayloadPreview?: OpenAIChatPayload
-  projection: CompiledPrompt
-}
-
-export type SubmitTurnInput = {
-  sessionId: string
-  branchId?: string
-  agentRuntimeProfileId?: string
-  input: string
-  intent?: 'rp' | 'rewrite' | 'continue' | 'modify'
-  projectionOrderProfile?: ProjectionOrderProfile
-  activationFacts?: ActivationFacts
-}
-
-export type SubmitTurnResult = {
-  run: RunContent & { id: string; version: number }
-  branch: NarrativeBranchContent & { id: string; version: number }
-  entries: {
-    user: NarrativeEntryContent & { id: string; version: number }
-    assistant: NarrativeEntryContent & { id: string; version: number }
-  }
-  commitCandidate: CommitCandidateContent & { id: string; version: number }
-  stateSnapshot: BranchStateSnapshotContent & { id: string; version: number }
-}
-
-export type GetSessionInput = {
-  sessionId: string
-}
-
-export type GetSessionResult = {
-  session: SessionContent & { id: string; version: number }
-  branches: Array<NarrativeBranchContent & { id: string; version: number }>
-}
-
-export type GetTimelineInput = {
-  sessionId: string
-  branchId?: string
-}
-
-export type GetTimelineResult = {
-  session: SessionContent & { id: string; version: number }
-  branch: NarrativeBranchContent & { id: string; version: number }
-  entries: Array<NarrativeEntryContent & { id: string; version: number }>
-}
-
-export type GetAgentTranscriptInput = {
-  sessionId: string
-  branchId?: string
-}
-
-export type GetAgentTranscriptResult = {
-  session: SessionContent & { id: string; version: number }
-  branch: NarrativeBranchContent & { id: string; version: number }
-  entries: Array<AgentTranscriptEntryContent & { id: string; version: number }>
-}
-
-export type GetRunInput = {
-  runId: string
-}
-
-export type GetRunResult = {
-  run: RunContent & { id: string; version: number }
-  runtimeEntries: Array<RuntimeEntryContent & { id: string; version: number }>
-  commitCandidates: Array<CommitCandidateContent & { id: string; version: number }>
-}
-
-export type ForkBranchInput = {
-  sessionId: string
-  fromEntryId: string | null
-  title?: string
-}
-
-export type ForkBranchResult = {
-  branch: NarrativeBranchContent & { id: string; version: number }
-  session: SessionContent & { id: string; version: number }
-}
-
-export type SessionContent = {
-  cardSourceVersionId: string
-  cardSnapshot: JsonObject
-  agentRuntimeProfileId?: string
-  promptResourceIds?: string[]
-  title?: string
-  activeBranchId: string
-  createdAt: string
-  updatedAt: string
-}
-
-export type NarrativeBranchContent = {
-  sessionId: string
-  title?: string
-  parentBranchId?: string
-  forkedFromEntryId?: string
-  headEntryId?: string
-  createdAt: string
-  updatedAt: string
-}
-
-export type NarrativeEntryContent = {
-  sessionId: string
-  branchId: string
-  parentEntryId?: string
-  runId?: string
-  role: 'user' | 'assistant'
-  content: string
-  status: 'accepted'
-  intent?: 'rp' | 'rewrite' | 'continue' | 'modify'
-  createdAt: string
-}
-
-export type RuntimeEntryContent = {
-  sessionId: string
-  branchId: string
-  runId: string
-  narrativeEntryId?: string
-  kind: 'user_input' | 'prompt' | 'provider_result'
-  content: JsonValue
-  createdAt: string
-}
-
-export type RunContent = {
-  sessionId: string
-  branchId: string
-  agentRuntimeProfileId?: string
-  modelProfileId?: string
-  status: 'running' | 'completed'
-  checkpointEntryId?: string
-  input: string
-  intent: 'rp' | 'rewrite' | 'continue' | 'modify'
-  provider?: string
-  model?: string
-  acceptedEntryId?: string
-  commitCandidateId?: string
-  stateSnapshotId?: string
-  createdAt: string
-  updatedAt: string
-}
-
-export type CommitCandidateContent = {
-  sessionId: string
-  branchId: string
-  runId: string
-  providerResultEntryId: string
-  content: string
-  status: 'auto_accepted'
-  acceptedEntryId?: string
-  createdAt: string
-  updatedAt: string
-}
-
-export type BranchStateSnapshotContent = {
-  sessionId: string
-  branchId: string
-  runId: string
-  fromEntryId?: string
-  headEntryId: string
-  patch: JsonObject
-  createdAt: string
-}
-
 export type ProviderAccountContent = {
   providerExtensionId: string
   displayName: string
@@ -685,26 +677,21 @@ export type ModelProfileContent = {
 
 export type AgentRuntimePurpose = 'narrative' | 'agent-work' | 'summary' | 'test' | string
 
-export type AgentRuntimeProfileContent = {
+export type AgentPresetContent = {
   name: string
-  purpose: AgentRuntimePurpose
-  presetId?: string
-  modelProfileId?: string
+  instructions: string
+  promptResourceIds: string[]
+  historyPolicy: AgentHistoryPolicy
   createdAt: string
   updatedAt: string
 }
 
-export type AgentTranscriptEntryContent = {
-  sessionId: string
-  branchId: string
-  runId?: string
-  narrativeEntryId: string
-  parentTranscriptEntryId?: string
-  role: 'user' | 'assistant'
-  content: string
-  status: 'mirrored'
-  source: 'narrative'
+export type AgentLocalBindingContent = {
+  name: string
+  purpose: AgentRuntimePurpose
+  modelProfileId?: string
   createdAt: string
+  updatedAt: string
 }
 
 export type CardSourceContent = {

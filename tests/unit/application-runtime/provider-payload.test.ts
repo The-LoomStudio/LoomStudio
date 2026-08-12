@@ -6,7 +6,17 @@ describe('OpenAI-compatible provider payload builder', () => {
     const payload = buildOpenAIChatPayload({
       messages: [
         { role: 'system', content: 'System rules.' },
+        { role: 'developer', content: 'Developer rules.' },
         { role: 'user', content: 'Hello.' },
+        {
+          role: 'assistant',
+          tool_calls: [{
+            id: 'call-1',
+            type: 'function',
+            function: { name: 'lookup', arguments: '{"id":"x"}' },
+          }],
+        },
+        { role: 'tool', tool_call_id: 'call-1', content: 'Found.' },
       ],
       modelProfile: {
         id: 'model-1',
@@ -32,7 +42,17 @@ describe('OpenAI-compatible provider payload builder', () => {
       model: 'gpt-test',
       messages: [
         { role: 'system', content: 'System rules.' },
+        { role: 'developer', content: 'Developer rules.' },
         { role: 'user', content: 'Hello.' },
+        {
+          role: 'assistant',
+          tool_calls: [{
+            id: 'call-1',
+            type: 'function',
+            function: { name: 'lookup', arguments: '{"id":"x"}' },
+          }],
+        },
+        { role: 'tool', tool_call_id: 'call-1', content: 'Found.' },
       ],
       max_tokens: 256,
       top_p: 0.9,
@@ -50,6 +70,16 @@ describe('OpenAI-compatible provider payload builder', () => {
       messages: [{ role: 'user', content: 'Hello.' }],
       modelProfile: modelProfile({ temperature: 'hot' }),
     })).toThrow('temperature')
+
+    expect(() => buildOpenAIChatPayload({
+      messages: [{ role: 'assistant' }],
+      modelProfile: modelProfile({}),
+    })).toThrow('assistant message cannot be empty')
+
+    expect(() => buildOpenAIChatPayload({
+      messages: [{ role: 'tool', tool_call_id: '', content: 'result' }],
+      modelProfile: modelProfile({}),
+    })).toThrow('tool_call_id cannot be empty')
   })
 })
 

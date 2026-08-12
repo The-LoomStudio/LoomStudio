@@ -1,3 +1,10 @@
+import type {
+  DataActorRef,
+  DataCommitFact,
+  DataCommitObserver,
+  DataCommitSubscription,
+  SqliteDataEngine,
+} from '@loom-studio/data-engine'
 import type { JsonValue } from '@loom-studio/shared'
 
 export class DocumentStoreError extends Error {
@@ -10,10 +17,7 @@ export class DocumentStoreError extends Error {
   }
 }
 
-export type ActorRef = {
-  kind: 'kernel' | 'client' | 'extension' | 'workspace-adapter' | 'system'
-  id: string
-}
+export type ActorRef = DataActorRef
 
 export type DocumentSourceRef = {
   kind: 'workspace-file' | 'import-package' | 'generated' | 'manual' | string
@@ -72,16 +76,14 @@ export type DocumentChangeSummary = {
   tombstoned: boolean
 }
 
-export type DocumentCommitFact = {
+export type DocumentCommitFact = DataCommitFact & {
   changeset: Changeset
   documents: DocumentChangeSummary[]
 }
 
-export type DocumentCommitObserver = (commit: DocumentCommitFact) => void
+export type DocumentCommitObserver = DataCommitObserver<DocumentCommitFact>
 
-export type DocumentCommitSubscription = {
-  dispose(): void
-}
+export type DocumentCommitSubscription = DataCommitSubscription
 
 export type WriteDocumentInput = {
   id?: string
@@ -170,6 +172,6 @@ export type SqliteDocumentStore = DocumentStore & {
   close(): void
 }
 
-export type SqliteDocumentStoreOptions = {
-  filename: string
-}
+export type SqliteDocumentStoreOptions =
+  | { filename: string; engine?: never }
+  | { engine: SqliteDataEngine; filename?: never }

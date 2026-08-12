@@ -32,6 +32,31 @@ describe('studio rpc router', () => {
       owner: 'application',
       stability: 'experimental',
     }))
+    expect(listed.capabilities).toContainEqual(expect.objectContaining({
+      name: 'application.createNarrativeTimelineFromCard',
+      namespace: 'application',
+      owner: 'application',
+      stability: 'experimental',
+    }))
+    expect(listed.capabilities).toContainEqual(expect.objectContaining({
+      name: 'application.createAgentSession',
+      namespace: 'application',
+      owner: 'application',
+      stability: 'experimental',
+    }))
+    expect(listed.capabilities).toContainEqual(expect.objectContaining({
+      name: 'application.invokeAgentTurn',
+      namespace: 'application',
+      owner: 'application',
+      stability: 'experimental',
+    }))
+    expect(listed.capabilities).toContainEqual(expect.objectContaining({
+      name: 'application.previewAgentTurn',
+      namespace: 'application',
+      owner: 'application',
+      stability: 'experimental',
+    }))
+    expect(listed.capabilities.map(capability => capability.name)).not.toContain('application.appendAgentMessages')
   })
 
   it('falls back to kernel rpc for unknown studio-server namespaces', async () => {
@@ -68,6 +93,45 @@ describe('studio rpc router', () => {
     expect(receivedContext).toEqual(context)
   })
 
+  it('parses the optional Narrative target for Agent turns', async () => {
+    let receivedInput: unknown
+    let receivedContext: unknown
+    const applicationRuntime = {
+      invokeAgentTurn: async (input: unknown, requestContext?: unknown) => {
+        receivedInput = input
+        receivedContext = requestContext
+        return { runId: 'run-1', mutation: { changesetId: 'chg-1' } }
+      },
+    } as unknown as ApplicationRuntime
+    const router = createStudioRpcRouter({
+      applicationRuntime,
+      kernel: createKernelCaller(),
+    })
+
+    await router.call('application.invokeAgentTurn', {
+      agentSessionId: 'agent-session-1',
+      localBindingId: 'local-binding-1',
+      input: 'Continue.',
+      narrativeTarget: {
+        timelineId: 'timeline-1',
+        branchId: 'branch-1',
+        commit: true,
+      },
+    }, context)
+
+    expect(receivedInput).toEqual({
+      agentSessionId: 'agent-session-1',
+      localBindingId: 'local-binding-1',
+      input: 'Continue.',
+      narrativeTarget: {
+        timelineId: 'timeline-1',
+        branchId: 'branch-1',
+        commit: true,
+      },
+    })
+    expect(receivedContext).toEqual(context)
+  })
+
   it('passes rpc call context into prompt resource mutations', async () => {
     let receivedContext: unknown
     const applicationRuntime = {
@@ -88,6 +152,41 @@ describe('studio rpc router', () => {
       resourceId: 'resource-1',
       updates: [{ assetId: 'asset-1', label: 'Renamed' }],
     }, context)
+
+    expect(receivedContext).toEqual(context)
+  })
+
+  it('passes rpc call context into narrative mutations', async () => {
+    let receivedContext: unknown
+    const applicationRuntime = {
+      createNarrativeTimelineFromCard: async (_input: unknown, requestContext?: unknown) => {
+        receivedContext = requestContext
+        return {
+          timeline: { id: 'timeline-1' },
+          branch: { id: 'branch-1' },
+          nodes: [],
+          mutation: { changesetId: 'chg-1' },
+        }
+      },
+    } as unknown as ApplicationRuntime
+    const router = createStudioRpcRouter({ applicationRuntime, kernel: createKernelCaller() })
+
+    await router.call('application.createNarrativeTimelineFromCard', { cardId: 'card-1' }, context)
+
+    expect(receivedContext).toEqual(context)
+  })
+
+  it('passes rpc call context into Agent Session mutations', async () => {
+    let receivedContext: unknown
+    const applicationRuntime = {
+      createAgentSession: async (_input: unknown, requestContext?: unknown) => {
+        receivedContext = requestContext
+        return { session: { id: 'agent-session-1' }, mutation: { changesetId: 'chg-agent-1' } }
+      },
+    } as unknown as ApplicationRuntime
+    const router = createStudioRpcRouter({ applicationRuntime, kernel: createKernelCaller() })
+
+    await router.call('application.createAgentSession', { agentPresetId: 'preset-1' }, context)
 
     expect(receivedContext).toEqual(context)
   })

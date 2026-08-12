@@ -1,3 +1,4 @@
+import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
@@ -14,13 +15,18 @@ describe('sqlite document store', () => {
       const store = createSqliteDocumentStore({ filename })
       store.close()
       const database = new DatabaseSync(filename)
-      const version = database.prepare('PRAGMA user_version').get() as { user_version: number }
+      const migrations = database.prepare('SELECT namespace, version FROM schema_migrations ORDER BY namespace').all()
       const journal = database.prepare('PRAGMA journal_mode').get() as { journal_mode: string }
       const objects = database.prepare("SELECT type, name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name").all()
+      const changesetColumns = database.prepare('PRAGMA table_info(changesets)').all() as Array<{ name: string }>
       database.close()
 
-      expect(version.user_version).toBe(1)
+      expect(migrations).toEqual([
+        { namespace: 'platform.data-engine', version: 1 },
+        { namespace: 'platform.documents', version: 1 },
+      ])
       expect(journal.journal_mode).toBe('wal')
+      expect(changesetColumns.map(column => column.name)).toContain('committed_at')
       expect(objects).toEqual([
         { type: 'index', name: 'idx_documents_owner' },
         { type: 'index', name: 'idx_documents_tombstoned' },
@@ -29,6 +35,7 @@ describe('sqlite document store', () => {
         { type: 'table', name: 'changesets' },
         { type: 'table', name: 'document_revisions' },
         { type: 'table', name: 'documents' },
+        { type: 'table', name: 'schema_migrations' },
       ])
     } finally {
       await rm(dir, { recursive: true, force: true })
@@ -49,17 +56,17 @@ describe('sqlite document store', () => {
       })
       first.close()
       const legacy = new DatabaseSync(filename)
-      legacy.exec('PRAGMA user_version = 0')
+      legacy.prepare('DELETE FROM schema_migrations WHERE namespace = ?').run('platform.documents')
       legacy.close()
 
       const migrated = createSqliteDocumentStore({ filename })
       expect(await migrated.get('legacy-doc')).toMatchObject({ content: { preserved: true } })
       migrated.close()
       const inspected = new DatabaseSync(filename)
-      const version = inspected.prepare('PRAGMA user_version').get() as { user_version: number }
+      const version = inspected.prepare('SELECT version FROM schema_migrations WHERE namespace = ?').get('platform.documents') as { version: number }
       inspected.close()
 
-      expect(version.user_version).toBe(1)
+      expect(version.version).toBe(1)
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
@@ -71,19 +78,23 @@ describe('sqlite document store', () => {
 
     try {
       const incompatible = new DatabaseSync(filename)
-      incompatible.exec('CREATE TABLE documents (id TEXT PRIMARY KEY); PRAGMA user_version = 0;')
+      incompatible.exec('CREATE TABLE documents (id TEXT PRIMARY KEY);')
       incompatible.close()
 
       expect(() => createSqliteDocumentStore({ filename })).toThrow()
 
       const inspected = new DatabaseSync(filename)
-      const version = inspected.prepare('PRAGMA user_version').get() as { user_version: number }
+      const migrations = inspected.prepare('SELECT namespace, version FROM schema_migrations ORDER BY namespace').all()
       const tables = inspected.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all()
       const indexes = inspected.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_%' ORDER BY name").all()
       inspected.close()
 
-      expect(version.user_version).toBe(0)
-      expect(tables).toEqual([{ name: 'documents' }])
+      expect(migrations).toEqual([{ namespace: 'platform.data-engine', version: 1 }])
+      expect(tables).toEqual([
+        { name: 'changesets' },
+        { name: 'documents' },
+        { name: 'schema_migrations' },
+      ])
       expect(indexes).toEqual([])
     } finally {
       await rm(dir, { recursive: true, force: true })
@@ -119,33 +130,37 @@ describe('sqlite document store', () => {
         .toThrow('SQLite table document_revisions is missing required columns: created_by_json')
 
       const inspected = new DatabaseSync(filename)
-      const version = inspected.prepare('PRAGMA user_version').get() as { user_version: number }
+      const migrations = inspected.prepare('SELECT namespace, version FROM schema_migrations ORDER BY namespace').all()
       inspected.close()
 
-      expect(version.user_version).toBe(0)
+      expect(migrations).toEqual([{ namespace: 'platform.data-engine', version: 1 }])
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
   })
 
-  it('rejects databases created by a newer schema version without changing journal mode', async () => {
+  it('rejects databases created by a newer document schema version', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'loom-docstore-'))
     const filename = join(dir, 'store.sqlite')
 
     try {
       const newer = new DatabaseSync(filename)
-      newer.exec('PRAGMA user_version = 2')
+      newer.exec(`
+        CREATE TABLE schema_migrations (namespace TEXT PRIMARY KEY, version INTEGER NOT NULL);
+        INSERT INTO schema_migrations (namespace, version) VALUES ('platform.documents', 2);
+      `)
       newer.close()
 
-      expect(() => createSqliteDocumentStore({ filename })).toThrow('SQLite schema version 2 is newer than supported version 1')
+      expect(() => createSqliteDocumentStore({ filename }))
+        .toThrow('SQLite schema platform.documents@2 is newer than supported version 1')
 
       const inspected = new DatabaseSync(filename)
-      const version = inspected.prepare('PRAGMA user_version').get() as { user_version: number }
+      const version = inspected.prepare('SELECT version FROM schema_migrations WHERE namespace = ?').get('platform.documents') as { version: number }
       const journal = inspected.prepare('PRAGMA journal_mode').get() as { journal_mode: string }
       inspected.close()
 
-      expect(version.user_version).toBe(2)
-      expect(journal.journal_mode).toBe('delete')
+      expect(version.version).toBe(2)
+      expect(journal.journal_mode).toBe('wal')
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
@@ -187,6 +202,58 @@ describe('sqlite document store', () => {
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
+  })
+
+  it('uses the shared data engine changeset id and leaves an external engine open', async () => {
+    let nextId = 0
+    const engine = createSqliteDataEngine({
+      filename: ':memory:',
+      createId: prefix => `${prefix}-${++nextId}`,
+      now: () => '2026-08-12T00:00:00.000Z',
+    })
+    const store = createSqliteDocumentStore({ engine })
+    const engineCommits: string[] = []
+    const documentCommits: string[] = []
+    engine.subscribeCommits(commit => engineCommits.push(commit.changesetId))
+    store.subscribeCommits(commit => documentCommits.push(commit.changesetId))
+
+    const written = await store.write({
+      id: 'shared-doc',
+      type: 'example.note',
+      content: { ok: true },
+      expectedVersion: 'new',
+    })
+
+    expect(written.changesetId).toBe(written.commit.changesetId)
+    expect(engineCommits).toEqual([written.changesetId])
+    expect(documentCommits).toEqual([written.changesetId])
+
+    const mixed = await engine.transact({ actor: { kind: 'system', id: 'test' } }, async tx => {
+      tx.recordOperations([
+        {
+          store: 'documents',
+          kind: 'update',
+          entityId: 'shared-doc',
+          entityType: 'example.note',
+          fromVersion: 1,
+          toVersion: 1,
+        },
+        {
+          store: 'agent',
+          kind: 'create',
+          entityId: 'message-1',
+          entityType: 'agent.message',
+        },
+      ])
+    })
+    await expect(store.revertChangeset({
+      changesetId: mixed.commit.changesetId,
+      actor: { kind: 'system', id: 'test' },
+    })).rejects.toMatchObject({ code: 'document.changeset_not_revertible' })
+
+    store.close()
+    await expect(engine.read(database => database.prepare('SELECT 1 AS ok').get())).resolves.toEqual({ ok: 1 })
+    engine.close()
   })
 
   it('serializes concurrent public operations around an open transaction', async () => {

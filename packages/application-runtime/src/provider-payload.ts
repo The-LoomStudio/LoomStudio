@@ -1,11 +1,9 @@
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
+import type { ChatMessage } from '@loom-studio/shared'
 import { isObject } from './json.js'
 import type { ModelProfileConfig, ProviderMessage } from './types.js'
 
-export type OpenAIChatMessage = {
-  role: 'system' | 'user' | 'assistant'
-  content: string
-}
+export type OpenAIChatMessage = ChatMessage
 
 export type OpenAIChatPayload = JsonObject & {
   model: string
@@ -39,16 +37,41 @@ export function buildOpenAIChatPayload(input: {
 }
 
 function normalizeMessage(message: ProviderMessage, index: number): OpenAIChatMessage {
-  if (message.role !== 'system' && message.role !== 'user' && message.role !== 'assistant') {
+  if (message.role === 'system' || message.role === 'developer' || message.role === 'user') {
+    assertContent(message.content, index)
+    return { role: message.role, content: message.content }
+  }
+  if (message.role === 'tool') {
+    assertContent(message.content, index)
+    if (message.tool_call_id.trim().length === 0) {
+      throw new Error(`OpenAI chat payload tool_call_id cannot be empty: messages[${index}].tool_call_id`)
+    }
+    return { role: 'tool', tool_call_id: message.tool_call_id, content: message.content }
+  }
+  if (message.role !== 'assistant') {
     throw new Error(`OpenAI chat payload message role is not supported: messages[${index}].role`)
   }
-  if (typeof message.content !== 'string' || message.content.length === 0) {
-    throw new Error(`OpenAI chat payload message content cannot be empty: messages[${index}].content`)
-  }
 
+  const content = typeof message.content === 'string' && message.content.length > 0 ? message.content : undefined
+  const toolCalls = message.tool_calls?.map((call, callIndex) => {
+    if (call.type !== 'function' || call.id.trim().length === 0 || call.function.name.trim().length === 0 || typeof call.function.arguments !== 'string') {
+      throw new Error(`OpenAI chat payload tool call is invalid: messages[${index}].tool_calls[${callIndex}]`)
+    }
+    return structuredClone(call)
+  })
+  if (!content && (!toolCalls || toolCalls.length === 0)) {
+    throw new Error(`OpenAI chat payload assistant message cannot be empty: messages[${index}]`)
+  }
   return {
-    role: message.role,
-    content: message.content,
+    role: 'assistant',
+    ...(content ? { content } : {}),
+    ...(toolCalls?.length ? { tool_calls: toolCalls } : {}),
+  }
+}
+
+function assertContent(content: string, index: number): void {
+  if (typeof content !== 'string' || content.length === 0) {
+    throw new Error(`OpenAI chat payload message content cannot be empty: messages[${index}].content`)
   }
 }
 

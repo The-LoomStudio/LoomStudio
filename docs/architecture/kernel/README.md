@@ -12,6 +12,7 @@ Studio Kernel 是 Loom Studio 的业务无感知协调层。它组装平台服�
 Kernel 当前负责：
 
 - 组装 Document Store、Extension Host、Diagnostics、Trace Audit 和 Loom Runner；
+- 订阅领域无关的 Data Commit Source，并投影平台数据事件；
 - 注册、发现和调用 Kernel RPC 与 Extension RPC；
 - 保留 Kernel RPC 命名空间；
 - 生成缺失的 `correlationId` 与 `callId`；
@@ -36,6 +37,7 @@ Kernel 明确不负责：
 Studio Server
   -> Kernel
        -> Document Store
+       -> Data Commit Source
        -> Extension Host
        -> Diagnostics Registry
        -> Trace Audit Store
@@ -112,16 +114,20 @@ Extension handler 获得的 context 由 Kernel 注入真实 `extensionId`，不�
 
 Kernel 将 `docs.write`、`docs.delete` 和 `docs.revertChangeset` 转交 Document Store。它负责补充可信调用元数据，不实现 Revision 或冲突算法。
 
-Kernel 启动后订阅共享 Document Store 的通用 Commit Fact，并统一发布 `docs.changed`。因此 Kernel RPC、Application Runtime 与 Extension Host 通过同一 Store 成功提交时都会进入同一事件链，不再由各调用方手动拼装重复事件。
+Kernel 启动后订阅注入的领域无关 Data Commit Source。当前 Studio Server 直接注入共享 SQLite Data Engine；测试或外部组合仍可用 `createDocumentDataCommitSource()` 适配普通 Document Store。未来其他权威 Store 复用同一 Engine 提交入口，而不是让 Kernel 依赖 Narrative 或 Agent 业务接口。
+
+每次成功提交统一发布一次 `data.changed`。如果 Commit Fact 中包含 `store: documents` operation，Kernel 再投影一次兼容的 `docs.changed`：
 
 ```text
 docs.write / docs.delete
   -> Document Store commit
   -> new Changeset
+  -> data.changed
   -> docs.changed
 
 docs.revertChangeset
   -> Document Store 生成反向 Changeset
+  -> data.changed
   -> docs.changed
   -> docs.rollback.completed
 
@@ -145,6 +151,8 @@ Kernel 从 `clientId` 推导 Document actor，并忽略请求中伪造的 actor 
 - 订阅返回可 `dispose()` 的 handle；
 - 单个订阅者失败不会阻断其他订阅者；
 - `eventNames()` 返回运行期间已知的事件集合。
+
+`data.changed` payload 只携带 Changeset ID 与领域无关 operation summaries，不携带 Document content、Prompt、Message 或其他正文。`docs.changed` 保持原有 Document operation / summary 兼容形状。
 
 当前 MVP 根据 Document Commit actor 生成归一化的 `source` / `clientId`；完整 actor 仍以 Changeset 为权威来源，Event metadata 的正式 actor 契约留待事件系统阶段统一设计。
 

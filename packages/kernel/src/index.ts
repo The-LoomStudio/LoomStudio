@@ -1,8 +1,12 @@
 import type { DiagnosticsRegistry } from '@loom-studio/diagnostics'
 import type {
+  DataCommitFact,
+  DataCommitOperation,
+  DataCommitSource,
+  DataCommitSubscription,
+} from '@loom-studio/data-engine'
+import type {
   ActorRef,
-  DocumentCommitFact,
-  DocumentCommitSubscription,
   DocumentSourceRef,
   DeleteDocumentInput,
   DocumentStore,
@@ -73,6 +77,7 @@ export type KernelPublicSurface = {
 
 export type CreateKernelOptions = {
   documents: DocumentStore
+  dataCommits: DataCommitSource
   diagnostics: DiagnosticsRegistry
   traceAudit: TraceAuditStore
   extensionHost: ExtensionHost
@@ -93,6 +98,7 @@ type RpcRegistryEntry = {
 export function createEventBus(): EventBus {
   const subscriptions = new Map<string, { patterns: string[]; handler: EventHandler }>()
   const knownEvents = new Set<string>([
+    'data.changed',
     'docs.changed',
     'docs.rollback.completed',
     'docs.rollback.failed',
@@ -155,14 +161,19 @@ export function createKernel(options: CreateKernelOptions): Kernel {
   const protocolVersion = options.protocolVersion ?? '0.1.0'
   const environment = options.environment ?? 'development'
   let active = false
-  let documentCommitSubscription: DocumentCommitSubscription | undefined
+  let dataCommitSubscription: DataCommitSubscription | undefined
 
   const kernel: Kernel = {
     start: async () => {
       if (active) return
       registerStageOneHandlers(kernel, options, eventBus, { studioVersion, kernelVersion, protocolVersion, environment })
-      documentCommitSubscription = options.documents.subscribeCommits(commit => {
-        eventBus.emit('docs.changed', summarizeDocumentCommit(commit), documentCommitEventOptions(commit))
+      dataCommitSubscription = options.dataCommits.subscribeCommits(commit => {
+        const eventOptions = dataCommitEventOptions(commit)
+        eventBus.emit('data.changed', summarizeDataCommit(commit), eventOptions)
+        const documentOperations = readDocumentOperations(commit)
+        if (documentOperations.length > 0) {
+          eventBus.emit('docs.changed', summarizeDocumentCommit(commit, documentOperations), eventOptions)
+        }
       })
       active = true
       eventBus.emit('system.ready', {})
@@ -170,8 +181,8 @@ export function createKernel(options: CreateKernelOptions): Kernel {
     stop: async () => {
       if (!active) return
       eventBus.emit('system.stopping', {})
-      documentCommitSubscription?.dispose()
-      documentCommitSubscription = undefined
+      dataCommitSubscription?.dispose()
+      dataCommitSubscription = undefined
       active = false
     },
     registerKernelRpc: (method, handler) => {
@@ -540,26 +551,48 @@ function readTraceOptions(value: JsonValue | undefined): LoomRunInput['trace'] {
   }
 }
 
-function summarizeDocumentCommit(commit: DocumentCommitFact): JsonValue {
+function summarizeDataCommit(commit: DataCommitFact): JsonValue {
   return {
-    changesetId: commit.changeset.id,
-    operations: commit.changeset.operations as unknown as JsonValue,
-    documents: commit.documents as unknown as JsonValue,
+    changesetId: commit.changesetId,
+    operations: commit.operations as unknown as JsonValue,
   }
 }
 
-function documentCommitEventOptions(commit: DocumentCommitFact): EventEmitOptions {
-  const actor = commit.changeset.createdBy
+function summarizeDocumentCommit(commit: DataCommitFact, operations = readDocumentOperations(commit)): JsonValue {
+  return {
+    changesetId: commit.changesetId,
+    operations: operations.map(operation => ({
+      kind: operation.kind,
+      documentId: operation.entityId,
+      type: operation.entityType,
+      fromVersion: operation.fromVersion,
+      toVersion: operation.toVersion,
+    })) as unknown as JsonValue,
+    documents: operations.map(operation => ({
+      id: operation.entityId,
+      type: operation.entityType,
+      version: operation.toVersion,
+      tombstoned: operation.kind === 'delete',
+    })) as unknown as JsonValue,
+  }
+}
+
+function dataCommitEventOptions(commit: DataCommitFact): EventEmitOptions {
+  const actor = commit.actor
   return {
     source: actor.kind === 'extension' ? `extension:${actor.id}` : 'kernel',
     clientId: actor.kind === 'client' ? actor.id : undefined,
-    correlationId: commit.changeset.correlationId,
-    callId: commit.changeset.callId,
-    parentCallId: commit.changeset.parentCallId,
+    correlationId: commit.correlationId,
+    callId: commit.callId,
+    parentCallId: commit.parentCallId,
   }
 }
 
-function summarizeDocumentRollback(targetChangesetId: string, result: { commit: DocumentCommitFact }): JsonValue {
+function readDocumentOperations(commit: DataCommitFact): DataCommitOperation[] {
+  return commit.operations.filter(operation => operation.store === 'documents')
+}
+
+function summarizeDocumentRollback(targetChangesetId: string, result: { commit: DataCommitFact }): JsonValue {
   return {
     targetChangesetId,
     ...summarizeDocumentCommit(result.commit) as Record<string, JsonValue>,

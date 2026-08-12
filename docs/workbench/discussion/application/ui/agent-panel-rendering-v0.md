@@ -35,13 +35,13 @@ Agent 面板:
 
 ## 2. 当前结论
 
-底层可以统一：
+底层可以共享 Semantic Part registry 和投影接口，但 Markdown 只处理普通正文：
 
 ```text
-raw text / runtime event / tool result
-  -> display pipeline
-  -> display parts
-  -> surface renderer
+Narrative raw source
+  -> Semantic Block Parser
+  -> TextSegment -> built-in Markdown renderer
+  -> SemanticPart -> registered surface renderer
 ```
 
 但表层需要按 `surface` 区分策略：
@@ -71,16 +71,19 @@ custom-renderer:
 
 ## 3. Source of Truth
 
-渲染分块不应成为持久化正文。
+最终渲染分块不应成为持久化正文。Narrative Semantic Projection 可以作为可重建派生数据持久化，但不是第二份 canonical 正文；完整正文 Schema 见 [`../narrative-timeline-content-schema-v0.md`](../narrative-timeline-content-schema-v0.md)。
 
 默认关系：
 
 ```text
-message.rawText:
+message.rawText / NarrativeNode.body.raw:
   唯一可信的消息原文。
 
 prompt transform:
   发送给模型前动态执行，产出 Chat History / Prompt Skeleton 中的文本投影。
+
+semantic compile:
+  只把已注册标签交给对应 Semantic Compiler，编译为通用 Semantic Part。
 
 display transform:
   显示时动态执行，产出 displayParts / renderParts。
@@ -88,6 +91,8 @@ display transform:
 displayParts:
   当前渲染器消费的临时结构。可做内存缓存，但不作为 canonical data。
 ```
+
+Markdown AST 不进入 Semantic Part，也不作为通用 DisplayPart。内置 Markdown Renderer 只消费 TextSegment；Semantic Renderer 只消费已经解析和校验的 Semantic Part，不得再次解析原始标签或其 YAML-like body。
 
 这样可以保留 ST 式正则系统的灵活性，同时避免持久化风险：
 

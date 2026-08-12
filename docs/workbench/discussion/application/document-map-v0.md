@@ -62,6 +62,7 @@ UI / Extension:
 | [`card-model-v0.md`](card-model-v0.md) | Card 作为顶层内容单元 |
 | [`chat-opening-model-v0.md`](chat-opening-model-v0.md) | Chat / Opening / compiled message 的语义边界 |
 | [`session-timeline-data-model-v0.md`](session-timeline-data-model-v0.md) | Narrative Timeline、Agent Session Tree、Step 与 Changeset 数据边界 |
+| [`narrative-timeline-content-schema-v0.md`](narrative-timeline-content-schema-v0.md) | Narrative Node、Loom Markdown、Semantic Part 与派生 Projection |
 | [`setting-layer-v0.md`](setting-layer-v0.md) | Setting Store / 设定层 |
 | [`state-store-v0.md`](state-store-v0.md) | State Store / 高频变量层 |
 | [`global-scope-v0.md`](global-scope-v0.md) | Global / Workspace / Card / Session scope |

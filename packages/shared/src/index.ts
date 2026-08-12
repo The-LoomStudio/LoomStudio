@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
+export type { AssistantChatMessage, ChatMessage, ChatToolCall } from './chat.js'
+
 export type JsonPrimitive = null | boolean | number | string
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }
 export type JsonObject = { [key: string]: JsonValue }

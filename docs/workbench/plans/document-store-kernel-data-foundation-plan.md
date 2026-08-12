@@ -1,9 +1,10 @@
 # Document Store / Kernel 数据基础实施计划
 
-> **状态**：In Progress / Phase 4 Complete — Pause and Measure
+> **状态**：Implemented Baseline / Future Storage Boundary Superseded
 > **日期**：2026-07-30
 > **范围**：统一 Document Store 提交事实、Kernel 事件传播、SQLite Schema 演进、Card Resource 引用完整性和 Extension 数据权限边界。
 > **实施约束**：本文属于 Workbench 工程计划；只有经过代码与测试证明的稳定事实才能写入 `docs/architecture`。
+> **2026-08-12 边界修订**：本文 Phase 1–4 仍记录当前已实现的 Document Store / Kernel 基线；“所有业务事实都进入 Document Store”的后续方向已由 [`sqlite-data-engine-domain-stores-kernel-plan.md`](sqlite-data-engine-domain-stores-kernel-plan.md) 取代。Document 后续只表示需要版本与 Revision 的可编辑聚合；Narrative / Agent 等高数量 append-only 数据改用共享 SQLite Data Engine 上的专用 Domain Store。
 
 ---
 

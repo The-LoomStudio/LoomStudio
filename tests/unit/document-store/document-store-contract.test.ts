@@ -72,13 +72,40 @@ describe.each(stores)('$name document store contract', ({ create }) => {
         },
       ])
       expect(result.commit).toEqual({
+        changesetId: result.changeset.id,
+        createdAt: result.changeset.createdAt,
+        committedAt: expect.any(String),
+        actor,
+        reason: 'create pair',
+        correlationId: 'corr-1',
+        callId: undefined,
+        parentCallId: undefined,
+        operations: [
+          {
+            store: 'documents',
+            kind: 'create',
+            entityId: 'doc-a',
+            entityType: 'example.note',
+            fromVersion: undefined,
+            toVersion: 2,
+          },
+          {
+            store: 'documents',
+            kind: 'create',
+            entityId: 'doc-b',
+            entityType: 'example.note',
+            fromVersion: undefined,
+            toVersion: 1,
+          },
+        ],
         changeset: result.changeset,
         documents: [
           { id: 'doc-a', type: 'example.note', version: 2, tombstoned: false },
           { id: 'doc-b', type: 'example.note', version: 1, tombstoned: false },
         ],
       })
-      expect(JSON.stringify(result.commit)).not.toContain('a2')
+      expect(result.commit.documents[0]).not.toHaveProperty('content')
+      expect(result.commit.operations[0]).not.toHaveProperty('content')
       expect(commits).toEqual([result.commit])
       expect(persisted).toEqual(result.changeset)
       expect(await store.get('doc-a')).toMatchObject({ version: 2, content: { text: 'a2' } })

@@ -6,12 +6,15 @@
     "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
   "references": [
+    { "path": "../../packages/agent-store" },
     { "path": "../../packages/application-runtime" },
+    { "path": "../../packages/data-engine" },
     { "path": "../../packages/diagnostics" },
     { "path": "../../packages/document-store" },
     { "path": "../../packages/extension-sdk/extension-host" },
     { "path": "../../packages/kernel" },
     { "path": "../../packages/logging" },
+    { "path": "../../packages/narrative-store" },
     { "path": "../../packages/loom-runner" },
     { "path": "../../packages/shared" },
     { "path": "../../packages/trace-audit" },

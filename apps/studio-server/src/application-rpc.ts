@@ -14,7 +14,6 @@ import type { JsonValue } from '@loom-studio/shared'
 import { createNamespaceRpcCapabilities, type RpcCapability } from './rpc-capability.js'
 import {
   isRecord,
-  readNullableString,
   readOptionalNumber,
   readOptionalObject,
   readOptionalString,
@@ -39,13 +38,28 @@ const applicationRpcMethods = [
   'application.updateModelProfile',
   'application.deleteModelProfile',
   'application.pingModelProfile',
-  'application.createAgentRuntimeProfile',
-  'application.getAgentRuntimeProfile',
-  'application.listAgentRuntimeProfiles',
-  'application.updateAgentRuntimeProfile',
-  'application.deleteAgentRuntimeProfile',
-  'application.createSession',
-  'application.createSessionFromCard',
+  'application.createAgentPreset',
+  'application.getAgentPreset',
+  'application.listAgentPresets',
+  'application.updateAgentPreset',
+  'application.deleteAgentPreset',
+  'application.createAgentLocalBinding',
+  'application.getAgentLocalBinding',
+  'application.listAgentLocalBindings',
+  'application.updateAgentLocalBinding',
+  'application.deleteAgentLocalBinding',
+  'application.createAgentSession',
+  'application.getAgentSession',
+  'application.getAgentMessagePage',
+  'application.deleteAgentSession',
+  'application.invokeAgentTurn',
+  'application.previewAgentTurn',
+  'application.createNarrativeTimelineFromCard',
+  'application.getNarrativeTimeline',
+  'application.getNarrativePage',
+  'application.forkNarrativeBranch',
+  'application.switchNarrativeBranch',
+  'application.deleteNarrativeTimeline',
   'application.importCardBundle',
   'application.getImportBundle',
   'application.getPromptResource',
@@ -57,13 +71,6 @@ const applicationRpcMethods = [
   'application.movePromptResourceAsset',
   'application.deletePromptResourceAsset',
   'application.exportCardArtifact',
-  'application.previewPrompt',
-  'application.submitTurn',
-  'application.getSession',
-  'application.getTimeline',
-  'application.getAgentTranscript',
-  'application.getRun',
-  'application.forkBranch',
 ] as const
 
 export function listApplicationRpcCapabilities(): RpcCapability[] {
@@ -191,53 +198,138 @@ export async function callApplicationRpc(
         modelProfileId: readString(params, 'modelProfileId'),
       }, context) as unknown as JsonValue
 
-    case 'application.createAgentRuntimeProfile':
-      return await runtime.createAgentRuntimeProfile({
+    case 'application.createAgentPreset':
+      return await runtime.createAgentPreset({
         name: readString(params, 'name'),
-        purpose: readOptionalString(params, 'purpose'),
-        presetId: readOptionalString(params, 'presetId'),
-        modelProfileId: readOptionalString(params, 'modelProfileId'),
+        instructions: readString(params, 'instructions'),
+        promptResourceIds: readOptionalStringArray(params, 'promptResourceIds'),
+        historyPolicy: readOptionalAgentHistoryPolicy(params),
       }) as unknown as JsonValue
 
-    case 'application.getAgentRuntimeProfile':
-      return await runtime.getAgentRuntimeProfile({
-        agentRuntimeProfileId: readString(params, 'agentRuntimeProfileId'),
-      }) as unknown as JsonValue
+    case 'application.getAgentPreset':
+      return await runtime.getAgentPreset({ agentPresetId: readString(params, 'agentPresetId') }) as unknown as JsonValue
 
-    case 'application.listAgentRuntimeProfiles':
-      return await runtime.listAgentRuntimeProfiles({
+    case 'application.listAgentPresets':
+      return await runtime.listAgentPresets({
         cursor: readOptionalString(params, 'cursor'),
         limit: readOptionalNumber(params, 'limit'),
       }) as unknown as JsonValue
 
-    case 'application.updateAgentRuntimeProfile':
-      return await runtime.updateAgentRuntimeProfile({
-        agentRuntimeProfileId: readString(params, 'agentRuntimeProfileId'),
+    case 'application.updateAgentPreset':
+      return await runtime.updateAgentPreset({
+        agentPresetId: readString(params, 'agentPresetId'),
         name: readOptionalString(params, 'name'),
+        instructions: readOptionalString(params, 'instructions'),
+        promptResourceIds: readOptionalStringArray(params, 'promptResourceIds'),
+        historyPolicy: readOptionalAgentHistoryPolicy(params),
+      }) as unknown as JsonValue
+
+    case 'application.deleteAgentPreset':
+      return await runtime.deleteAgentPreset({ agentPresetId: readString(params, 'agentPresetId') }) as unknown as JsonValue
+
+    case 'application.createAgentLocalBinding':
+      return await runtime.createAgentLocalBinding({
+        name: readString(params, 'name'),
         purpose: readOptionalString(params, 'purpose'),
-        presetId: readOptionalString(params, 'presetId'),
         modelProfileId: readOptionalString(params, 'modelProfileId'),
       }) as unknown as JsonValue
 
-    case 'application.deleteAgentRuntimeProfile':
-      return await runtime.deleteAgentRuntimeProfile({
-        agentRuntimeProfileId: readString(params, 'agentRuntimeProfileId'),
+    case 'application.getAgentLocalBinding':
+      return await runtime.getAgentLocalBinding({ localBindingId: readString(params, 'localBindingId') }) as unknown as JsonValue
+
+    case 'application.listAgentLocalBindings':
+      return await runtime.listAgentLocalBindings({ cursor: readOptionalString(params, 'cursor'), limit: readOptionalNumber(params, 'limit') }) as unknown as JsonValue
+
+    case 'application.updateAgentLocalBinding':
+      return await runtime.updateAgentLocalBinding({
+        localBindingId: readString(params, 'localBindingId'),
+        name: readOptionalString(params, 'name'),
+        purpose: readOptionalString(params, 'purpose'),
+        modelProfileId: readOptionalString(params, 'modelProfileId'),
       }) as unknown as JsonValue
 
-    case 'application.createSession':
-      return await runtime.createSession({
-        cardSourceVersionId: readString(params, 'cardSourceVersionId'),
-        cardSnapshot: readOptionalObject(params, 'cardSnapshot'),
-        agentRuntimeProfileId: readOptionalString(params, 'agentRuntimeProfileId'),
+    case 'application.deleteAgentLocalBinding':
+      return await runtime.deleteAgentLocalBinding({ localBindingId: readString(params, 'localBindingId') }) as unknown as JsonValue
+
+    case 'application.createAgentSession':
+      return await runtime.createAgentSession({
+        agentPresetId: readString(params, 'agentPresetId'),
         title: readOptionalString(params, 'title'),
+      }, context) as unknown as JsonValue
+
+    case 'application.getAgentSession':
+      return await runtime.getAgentSession({
+        agentSessionId: readString(params, 'agentSessionId'),
       }) as unknown as JsonValue
 
-    case 'application.createSessionFromCard':
-      return await runtime.createSessionFromCard({
+    case 'application.getAgentMessagePage':
+      return await runtime.getAgentMessagePage({
+        agentSessionId: readString(params, 'agentSessionId'),
+        cursor: readOptionalString(params, 'cursor'),
+        limit: readOptionalNumber(params, 'limit'),
+      }) as unknown as JsonValue
+
+    case 'application.deleteAgentSession':
+      return await runtime.deleteAgentSession({
+        agentSessionId: readString(params, 'agentSessionId'),
+      }, context) as unknown as JsonValue
+
+    case 'application.invokeAgentTurn':
+      return await runtime.invokeAgentTurn({
+        agentSessionId: readString(params, 'agentSessionId'),
+        localBindingId: readOptionalString(params, 'localBindingId'),
+        input: readString(params, 'input'),
+        activationFacts: readOptionalObject(params, 'activationFacts'),
+        narrativeTarget: readOptionalNarrativeTarget(params),
+      }, context) as unknown as JsonValue
+
+    case 'application.previewAgentTurn':
+      return await runtime.previewAgentTurn({
+        agentSessionId: readString(params, 'agentSessionId'),
+        localBindingId: readOptionalString(params, 'localBindingId'),
+        input: readString(params, 'input'),
+        activationFacts: readOptionalObject(params, 'activationFacts'),
+        narrativeTarget: readOptionalNarrativeTarget(params),
+      }, context) as unknown as JsonValue
+
+    case 'application.createNarrativeTimelineFromCard':
+      return await runtime.createNarrativeTimelineFromCard({
         cardId: readString(params, 'cardId'),
-        agentRuntimeProfileId: readOptionalString(params, 'agentRuntimeProfileId'),
         title: readOptionalString(params, 'title'),
+      }, context) as unknown as JsonValue
+
+    case 'application.getNarrativeTimeline':
+      return await runtime.getNarrativeTimeline({
+        timelineId: readString(params, 'timelineId'),
       }) as unknown as JsonValue
+
+    case 'application.getNarrativePage':
+      return await runtime.getNarrativePage({
+        timelineId: readString(params, 'timelineId'),
+        branchId: readOptionalString(params, 'branchId'),
+        cursor: readOptionalString(params, 'cursor'),
+        limit: readOptionalNumber(params, 'limit'),
+      }) as unknown as JsonValue
+
+    case 'application.forkNarrativeBranch':
+      return await runtime.forkNarrativeBranch({
+        timelineId: readString(params, 'timelineId'),
+        fromBranchId: readString(params, 'fromBranchId'),
+        fromNodeId: readString(params, 'fromNodeId'),
+        title: readOptionalString(params, 'title'),
+      }, context) as unknown as JsonValue
+
+    case 'application.switchNarrativeBranch':
+      return await runtime.switchNarrativeBranch({
+        timelineId: readString(params, 'timelineId'),
+        branchId: readString(params, 'branchId'),
+        expectedActiveBranchId: readOptionalString(params, 'expectedActiveBranchId'),
+      }, context) as unknown as JsonValue
+
+    case 'application.deleteNarrativeTimeline':
+      return await runtime.deleteNarrativeTimeline({
+        timelineId: readString(params, 'timelineId'),
+      }, context) as unknown as JsonValue
 
     case 'application.importCardBundle':
       return await runtime.importCardBundle({
@@ -307,56 +399,6 @@ export async function callApplicationRpc(
     case 'application.exportCardArtifact':
       return await runtime.exportCardArtifact({
         cardId: readString(params, 'cardId'),
-      }) as unknown as JsonValue
-
-    case 'application.previewPrompt':
-      return await runtime.previewPrompt({
-        sessionId: readString(params, 'sessionId'),
-        branchId: readOptionalString(params, 'branchId'),
-        agentRuntimeProfileId: readOptionalString(params, 'agentRuntimeProfileId'),
-        input: readString(params, 'input'),
-        projectionOrderProfile: readOptionalProjectionOrderProfile(params, 'projectionOrderProfile'),
-        activationFacts: readOptionalObject(params, 'activationFacts'),
-      }, context) as unknown as JsonValue
-
-    case 'application.submitTurn':
-      return await runtime.submitTurn({
-        sessionId: readString(params, 'sessionId'),
-        branchId: readOptionalString(params, 'branchId'),
-        agentRuntimeProfileId: readOptionalString(params, 'agentRuntimeProfileId'),
-        input: readString(params, 'input'),
-        intent: readOptionalTurnIntent(params, 'intent'),
-        projectionOrderProfile: readOptionalProjectionOrderProfile(params, 'projectionOrderProfile'),
-        activationFacts: readOptionalObject(params, 'activationFacts'),
-      }, context) as unknown as JsonValue
-
-    case 'application.getSession':
-      return await runtime.getSession({
-        sessionId: readString(params, 'sessionId'),
-      }) as unknown as JsonValue
-
-    case 'application.getTimeline':
-      return await runtime.getTimeline({
-        sessionId: readString(params, 'sessionId'),
-        branchId: readOptionalString(params, 'branchId'),
-      }) as unknown as JsonValue
-
-    case 'application.getAgentTranscript':
-      return await runtime.getAgentTranscript({
-        sessionId: readString(params, 'sessionId'),
-        branchId: readOptionalString(params, 'branchId'),
-      }) as unknown as JsonValue
-
-    case 'application.getRun':
-      return await runtime.getRun({
-        runId: readString(params, 'runId'),
-      }) as unknown as JsonValue
-
-    case 'application.forkBranch':
-      return await runtime.forkBranch({
-        sessionId: readString(params, 'sessionId'),
-        fromEntryId: readNullableString(params, 'fromEntryId'),
-        title: readOptionalString(params, 'title'),
       }) as unknown as JsonValue
 
     default:
@@ -590,41 +632,29 @@ function readOptionalModelCapability(params: JsonValue | undefined, key: string)
   throw new Error(`Expected model capability param: ${key}`)
 }
 
-function readOptionalTurnIntent(params: JsonValue | undefined, key: string): 'rp' | 'rewrite' | 'continue' | 'modify' | undefined {
-  const value = readOptionalString(params, key)
+function readOptionalNarrativeTarget(params: JsonValue | undefined): {
+  timelineId: string
+  branchId?: string
+  commit: boolean
+} | undefined {
+  const value = readOptionalObject(params, 'narrativeTarget')
   if (value === undefined) return undefined
-  if (value === 'rp' || value === 'rewrite' || value === 'continue' || value === 'modify') return value
-  throw new Error(`Expected turn intent param: ${key}`)
-}
-
-function readOptionalProjectionOrderProfile(params: JsonValue | undefined, key: string): ProjectionOrderProfile | undefined {
-  const value = readOptionalObject(params, key)
-  if (value === undefined) return undefined
-  return readProjectionOrderProfileValue(value, key)
-}
-
-function readProjectionOrderProfileValue(value: JsonValue, key: string): ProjectionOrderProfile {
-  if (!isRecord(value)) throw new Error(`Expected projection order profile object: ${key}`)
-  if (typeof value.id !== 'string') throw new Error(`Expected projection order profile id: ${key}.id`)
-  if (value.scope !== 'global' && value.scope !== 'session') throw new Error(`Expected projection order profile scope: ${key}.scope`)
-  if (!Array.isArray(value.slotRanks)) throw new Error(`Expected projection order profile slotRanks: ${key}.slotRanks`)
-
-  return {
-    id: value.id,
-    scope: value.scope,
-    skeletonPatch: readProjectionSkeletonPatch(value.skeletonPatch, `${key}.skeletonPatch`),
-    slotRanks: value.slotRanks.map((item, index) => {
-      if (!isRecord(item)) throw new Error(`Expected projection slot rank object: ${key}.slotRanks[${index}]`)
-      if (typeof item.zoneId !== 'string') throw new Error(`Expected projection slot rank zoneId: ${key}.slotRanks[${index}]`)
-      if (typeof item.slotKey !== 'string') throw new Error(`Expected projection slot rank slotKey: ${key}.slotRanks[${index}]`)
-      if (typeof item.rankKey !== 'string') throw new Error(`Expected projection slot rank rankKey: ${key}.slotRanks[${index}]`)
-      return {
-        zoneId: item.zoneId,
-        slotKey: item.slotKey,
-        rankKey: item.rankKey,
-      }
-    }),
+  if (typeof value.timelineId !== 'string') throw new Error('Expected string param: narrativeTarget.timelineId')
+  if (value.branchId !== undefined && typeof value.branchId !== 'string') {
+    throw new Error('Expected optional string param: narrativeTarget.branchId')
   }
+  if (typeof value.commit !== 'boolean') throw new Error('Expected boolean param: narrativeTarget.commit')
+  return {
+    timelineId: value.timelineId,
+    ...(typeof value.branchId === 'string' ? { branchId: value.branchId } : {}),
+    commit: value.commit,
+  }
+}
+
+function readOptionalAgentHistoryPolicy(params: JsonValue | undefined): 'persistent' | 'ephemeral' | undefined {
+  const value = readOptionalString(params, 'historyPolicy')
+  if (value === undefined || value === 'persistent' || value === 'ephemeral') return value
+  throw new Error('Expected Agent history policy param: historyPolicy')
 }
 
 function readProjectionSkeletonPatch(value: JsonValue | undefined, key: string): ProjectionOrderProfile['skeletonPatch'] {

@@ -4,6 +4,7 @@
 > **Purpose**: 明确 Loom Studio 数据层必须解决的问题、必须提供的能力，以及不应承诺的边界。
 > **Audience**: Studio Kernel 实现者、Extension 作者、Runtime Extension 作者、DevTool 作者。
 > **Principle**: 本文只定义“我们需要解决的问题”和“平台需要提供的能力”。具体 schema / SQLite 表结构 / API 细节可在后续工程文档中继续收敛。
+> **2026-08-12 边界说明**：本文是早期问题域讨论，其中“Kernel-managed state 全部进入 Document Store”“Document 是最小持久化单位”的表述不再是目标架构。当前提案见 [`../../plans/sqlite-data-engine-domain-stores-kernel-plan.md`](../../plans/sqlite-data-engine-domain-stores-kernel-plan.md)：统一的是 SQLite transaction、Commit Journal 与 Kernel commit event；需要 Revision 的可编辑聚合使用 Document Store，高数量 append-only 业务记录使用 Application-owned Domain Store。
 
 ---
 

@@ -3,6 +3,7 @@
 > **Status**: Draft v0.1（第一批工程约束，2026-05-13）
 > **Purpose**: 定义 Studio MVP Document Store 的最小工程接口与语义边界。
 > **Audience**: Studio Kernel、Data Layer、Extension Host、Concept Stack / Workspace Adapter 实现者。
+> **2026-08-12 演进说明**：本文继续描述 Document Store 本身的 Revision / Changeset 语义，但 Document Store 不再被视为所有活跃业务数据的唯一物理模型。共享 SQLite Data Engine、Application Domain Store 与 Kernel Data Commit Fact 的目标边界见 [`../../plans/sqlite-data-engine-domain-stores-kernel-plan.md`](../../plans/sqlite-data-engine-domain-stores-kernel-plan.md)。
 > **Related**: [`studio-data-layer-architecture.md`](studio-data-layer-architecture.md), [`../adr/ADR-001-data-layer-workspace-sync.md`](../adr/ADR-001-data-layer-workspace-sync.md)
 
 ---

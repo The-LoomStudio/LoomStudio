@@ -3,6 +3,7 @@
 > **Status**: Draft v0.1（第一批实现约束，2026-05-14）
 > **Purpose**: 锁定 Studio Kernel 第一版 public surface，防止 Kernel 在实现中滑向 Chat / Provider / Tool / Runtime 业务框架。
 > **Audience**: Kernel、Transport、Extension Host、Client Bridge、Loom Runner 实现者。
+> **2026-08-12 演进说明**：本文仍适用于当前 Document-only Kernel public surface。未来数据层重构不会把 NarrativeStore / AgentStore 暴露给 Kernel；Kernel 将从直接订阅 `DocumentCommitFact` 改为订阅领域无关的 `DataCommitFact`，具体施工见 [`../../plans/sqlite-data-engine-domain-stores-kernel-plan.md`](../../plans/sqlite-data-engine-domain-stores-kernel-plan.md)。
 > **Related**:
 > - [`../00-overview/loom-studio-architecture.md`](../00-overview/loom-studio-architecture.md)
 > - [`studio-rpc-methods-v0.md`](studio-rpc-methods-v0.md)
