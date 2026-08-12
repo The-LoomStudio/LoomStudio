@@ -116,6 +116,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
       toolbar={(
         <nav className="loom-page-tabs">
           <button
+            aria-current={activePresetPanel === 'assets' ? 'page' : undefined}
             className={`loom-page-tab ${activePresetPanel === 'assets' ? 'loom-page-tab-active' : ''}`}
             type="button"
             onClick={() => setActivePresetPanel('assets')}
@@ -123,6 +124,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
             {props.t('preset.panel.assets')}
           </button>
           <button
+            aria-current={activePresetPanel === 'order' ? 'page' : undefined}
             className={`loom-page-tab ${activePresetPanel === 'order' ? 'loom-page-tab-active' : ''}`}
             type="button"
             onClick={() => setActivePresetPanel('order')}

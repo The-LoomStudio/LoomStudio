@@ -63,11 +63,16 @@ export function AgentRuntimeManager(props: AgentRuntimeManagerProps) {
           {isCreating ? (
             <div className={styles.agentCreateForm}>
               <input
+                aria-label={props.t('preset.agentProfile.nameLabel')}
                 placeholder={props.t('preset.agentProfile.namePlaceholder')}
                 value={newName}
                 onChange={event => setNewName(event.target.value)}
               />
-              <select value={newModelId} onChange={event => setNewModelId(event.target.value)}>
+              <select
+                aria-label={props.t('preset.agentProfile.newModelLabel')}
+                value={newModelId}
+                onChange={event => setNewModelId(event.target.value)}
+              >
                 <option value="">{props.t('preset.agentProfile.selectModel')}</option>
                 {props.models.map(model => (
                   <option key={model.id} value={model.id}>{model.displayName}</option>
@@ -108,6 +113,7 @@ export function AgentRuntimeManager(props: AgentRuntimeManagerProps) {
                   </button>
                   <div className={styles.agentItemActions}>
                     <select
+                      aria-label={props.t('preset.agentProfile.profileModelLabel', { name: profile.name })}
                       value={profile.modelProfileId ?? ''}
                       onChange={event => props.onUpdate(profile.id, { modelProfileId: event.target.value })}
                     >

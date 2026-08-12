@@ -1,6 +1,7 @@
 import type { LogPage, LogRecord } from '@loom-studio/logging'
 import { describe, expect, it, vi } from 'vitest'
-import { buildLogStream, highestLogLevel, matchesLogSearch, moreSevereLogLevel, readLogPages } from './log-viewer-model.js'
+import { createLatestRequestGuard, mergePolledLogRecords, readLogPages, runLatestRequest } from '../../features/log-viewer/model/log-feed-model.js'
+import { buildLogStream, highestLogLevel, matchesLogSearch, moreSevereLogLevel } from './log-viewer-model.js'
 
 const records: LogRecord[] = [
   {
@@ -87,4 +88,50 @@ describe('log viewer model', () => {
     expect(highestLogLevel([records[2]!, records[1]!])).toBe('error')
     expect(moreSevereLogLevel('warn', 'info')).toBe('warn')
   })
+
+  it('merges incremental records within the client buffer and replaces records after a reset gap', () => {
+    expect(mergePolledLogRecords([records[0]!], [records[1]!])).toEqual([records[0], records[1]])
+    expect(mergePolledLogRecords([records[0]!], [records[1]!], { reason: 'reset' })).toEqual([records[1]])
+  })
+
+  it('only commits and finishes the latest refresh when requests resolve out of order', async () => {
+    const guard = createLatestRequestGuard()
+    const first = deferred<string>()
+    const second = deferred<string>()
+    const committed: string[] = []
+    const finished: string[] = []
+
+    const firstRun = runLatestRequest({
+      guard,
+      request: () => first.promise,
+      onStart: () => undefined,
+      onSuccess: value => committed.push(value),
+      onError: () => undefined,
+      onFinish: () => finished.push('first'),
+    })
+    const secondRun = runLatestRequest({
+      guard,
+      request: () => second.promise,
+      onStart: () => undefined,
+      onSuccess: value => committed.push(value),
+      onError: () => undefined,
+      onFinish: () => finished.push('second'),
+    })
+
+    first.resolve('server')
+    await firstRun
+    expect(committed).toEqual([])
+    expect(finished).toEqual([])
+
+    second.resolve('client')
+    await secondRun
+    expect(committed).toEqual(['client'])
+    expect(finished).toEqual(['second'])
+  })
 })
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>(resolvePromise => { resolve = resolvePromise })
+  return { promise, resolve }
+}

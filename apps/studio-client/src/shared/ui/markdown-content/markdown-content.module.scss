@@ -20,6 +20,56 @@
 .content :global(.tok-invalid),
 .content :global(.tok-deleted) { color: var(--loom-syntax-invalid); }
 
+.content > :first-child { margin-top: 0; }
+.content > :last-child { margin-bottom: 0; }
+
+.content ul,
+.content ol,
+.content blockquote,
+.content pre,
+.content table { margin: 0.65em 0; }
+
+.content p { margin: 0.44em 0; }
+
+.content p:has(> [data-loom-token='dialogue']:only-child) { margin-block: 1.15em; }
+
+.content ul,
+.content ol { padding-left: 1.5em; }
+
+.content a {
+  color: var(--loom-info);
+  text-decoration-color: color-mix(in srgb, var(--loom-info) 54%, transparent);
+  text-underline-offset: 3px;
+}
+
+.content code {
+  border-radius: 4px;
+  padding: 1px 4px;
+  color: var(--loom-text);
+  background: var(--loom-markdown-inline-code-bg, var(--loom-bg));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--loom-markdown-inline-code-size, 0.92em);
+}
+
+.content pre code {
+  padding: 0;
+  background: transparent;
+}
+
+.content table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.content th,
+.content td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--loom-divider-color);
+  text-align: left;
+}
+
+.content em { color: var(--loom-text-muted); }
+
 .semanticToken {
   border-radius: 4px;
   padding: 1px 4px;

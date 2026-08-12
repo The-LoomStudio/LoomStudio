@@ -135,6 +135,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         onSelectAgentRuntimeProfile={id => state.setSelectedAgentRuntimeProfileId(id)}
         onUpdateAgentRuntimeProfile={state.updateAgentRuntimeProfile}
         routeAssetId={navigation.route.panel === 'preset' ? navigation.route.assetId : undefined}
+        selectedAgentRuntimeProfileId={state.selectedAgentRuntimeProfileId}
         initialSearchQuery={navigation.route.panel === 'preset' ? navigation.searchQuery : ''}
       />
     ),

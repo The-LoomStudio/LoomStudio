@@ -105,6 +105,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
           {tabs.map(tab => (
             <button
               key={tab.value}
+              aria-current={activeCategory === tab.value ? 'page' : undefined}
               className={`loom-page-tab ${activeCategory === tab.value ? 'loom-page-tab-active' : ''}`}
               type="button"
               onClick={() => setActiveCategory(tab.value)}

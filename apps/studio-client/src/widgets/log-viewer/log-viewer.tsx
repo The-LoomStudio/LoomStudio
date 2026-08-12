@@ -1,12 +1,12 @@
-import type { LogGap, LogLevel, LogRecord, MemoryLogSink } from '@loom-studio/logging'
+import type { LogLevel, LogRecord, MemoryLogSink } from '@loom-studio/logging'
 import { ArrowDown, ChevronRight, Download, Layers3, RefreshCw, Search } from 'lucide-react'
 import { Fragment, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useLogFeed, type LogSource } from '../../features/log-viewer/model/use-log-feed.js'
 import type { StudioApi } from '../../shared/api/studio-api.js'
 import type { Translator } from '../../shared/i18n/index.js'
-import { buildLogStream, highestLogLevel, matchesLogSearch, moreSevereLogLevel, readLogPages } from './log-viewer-model.js'
+import { buildLogStream, highestLogLevel, matchesLogSearch, moreSevereLogLevel } from './log-viewer-model.js'
 import styles from './log-viewer.module.scss'
 
-type LogSource = 'server' | 'client'
 type LevelFilter = LogLevel | 'all'
 type UnreadLogs = { count: number; level?: LogLevel }
 
@@ -19,103 +19,46 @@ export function LogViewer(props: {
   const [source, setSource] = useState<LogSource>('server')
   const [level, setLevel] = useState<LevelFilter>('all')
   const [query, setQuery] = useState('')
-  const [records, setRecords] = useState<LogRecord[]>([])
-  const [gap, setGap] = useState<LogGap>()
-  const [truncated, setTruncated] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string>()
   const [followingLatest, setFollowingLatest] = useState(true)
   const [unread, setUnread] = useState<UnreadLogs>({ count: 0 })
   const recordsRef = useRef<HTMLDivElement>(null)
   const latestRef = useRef<HTMLDivElement>(null)
-  const cursorRef = useRef<string | undefined>(undefined)
   const followingLatestRef = useRef(true)
   const initialScrollPendingRef = useRef(true)
 
-  const listLogs = useCallback<StudioApi['logs']['list']>(input => {
-    if (source === 'server') return props.api.list(input)
-    return Promise.resolve(props.clientLogs.query({
-      cursor: input?.cursor,
-      limit: input?.limit ?? 500,
-      levels: input?.levels,
-      namespacePrefix: input?.namespacePrefix,
-      service: input?.service,
-      instanceId: input?.instanceId,
-      since: input?.since,
-      until: input?.until,
-    }))
-  }, [props.api, props.clientLogs, source])
-
-  const refresh = useCallback(async () => {
-    setLoading(true)
-    setError(undefined)
-    cursorRef.current = undefined
+  const resetFollowingLatest = useCallback(() => {
     followingLatestRef.current = true
     initialScrollPendingRef.current = true
     setFollowingLatest(true)
     setUnread({ count: 0 })
+  }, [])
 
-    try {
-      const result = await readLogPages(listLogs)
-      cursorRef.current = result.cursor
-      setRecords(result.items)
-      setGap(result.gap)
-      setTruncated(result.truncated)
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught))
-    } finally {
-      setLoading(false)
-    }
-  }, [listLogs])
+  const handleUnreadRecords = useCallback((items: LogRecord[]) => {
+    const nextLevel = highestLogLevel(items)
+    setUnread(current => ({
+      count: current.count + items.length,
+      level: moreSevereLogLevel(current.level, nextLevel),
+    }))
+  }, [])
 
-  useEffect(() => {
-    if (!props.active) return
+  const { records, gap, truncated, loading, error, refresh } = useLogFeed({
+    active: props.active,
+    source,
+    api: props.api,
+    clientLogs: props.clientLogs,
+    followingLatestRef,
+    onUnreadRecords: handleUnreadRecords,
+  })
+
+  const handleRefresh = () => {
+    resetFollowingLatest()
     void refresh()
-  }, [props.active, refresh])
+  }
 
   useEffect(() => {
     if (!props.active) return
-    let disposed = false
-    let polling = false
-
-    const poll = async () => {
-      if (disposed || polling || document.visibilityState === 'hidden' || !cursorRef.current) return
-      polling = true
-      try {
-        const result = await readLogPages(listLogs, cursorRef.current)
-        if (disposed) return
-        cursorRef.current = result.cursor
-        setGap(result.gap)
-        setTruncated(result.truncated)
-
-        if (result.items.length > 0) {
-          if (result.gap?.reason === 'reset') setRecords(result.items)
-          else setRecords(current => [...current, ...result.items].slice(-5_000))
-
-          if (!followingLatestRef.current) {
-            const nextLevel = highestLogLevel(result.items)
-            setUnread(current => ({
-              count: current.count + result.items.length,
-              level: moreSevereLogLevel(current.level, nextLevel),
-            }))
-          }
-        }
-      } catch (caught) {
-        if (!disposed) setError(caught instanceof Error ? caught.message : String(caught))
-      } finally {
-        polling = false
-      }
-    }
-
-    const interval = window.setInterval(() => void poll(), 2_000)
-    const handleVisibilityChange = () => void poll()
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    return () => {
-      disposed = true
-      window.clearInterval(interval)
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
-  }, [listLogs, props.active])
+    resetFollowingLatest()
+  }, [props.active, resetFollowingLatest, source])
 
   const visibleRecords = useMemo(() => records.filter(record => {
     if (level !== 'all' && record.level !== level) return false
@@ -145,6 +88,7 @@ export function LogViewer(props: {
     followingLatestRef.current = true
     setFollowingLatest(true)
     setUnread({ count: 0 })
+    latestRef.current?.scrollIntoView({ block: 'end' })
   }
 
   const downloadVisibleLogs = () => {
@@ -200,7 +144,7 @@ export function LogViewer(props: {
 
         <span className={styles.count}>{props.t('logs.count', { count: visibleRecords.length })}</span>
         <div className={styles.actions}>
-          <button aria-label={props.t('logs.refresh')} disabled={loading} title={props.t('logs.refresh')} type="button" onClick={() => void refresh()}>
+          <button aria-label={props.t('logs.refresh')} disabled={loading} title={props.t('logs.refresh')} type="button" onClick={handleRefresh}>
             <RefreshCw aria-hidden="true" />
           </button>
           <button aria-label={props.t('logs.download')} disabled={visibleRecords.length === 0} title={props.t('logs.download')} type="button" onClick={downloadVisibleLogs}>
@@ -238,13 +182,13 @@ export function LogViewer(props: {
                   </div>
                 </details>
               ))}
-          <div aria-hidden="true" className={styles.latestAnchor} id="loom-log-latest" ref={latestRef} />
+          <div aria-hidden="true" className={styles.latestAnchor} ref={latestRef} />
         </div>
         {!followingLatest ? (
-          <a aria-live="polite" className={`${styles.latestIndicator} ${unread.level ? styles[`latest${capitalize(unread.level)}`] : ''}`} href="#loom-log-latest" onClick={scrollToLatest}>
+          <button aria-live="polite" className={`${styles.latestIndicator} ${unread.level ? styles[`latest${capitalize(unread.level)}`] : ''}`} type="button" onClick={scrollToLatest}>
             <ArrowDown aria-hidden="true" />
             <span>{unread.count > 0 ? props.t('logs.newRecords', { count: unread.count }) : props.t('logs.returnLatest')}</span>
-          </a>
+          </button>
         ) : null}
       </div>
     </section>

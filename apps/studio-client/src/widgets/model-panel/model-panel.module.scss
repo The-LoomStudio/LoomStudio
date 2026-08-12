@@ -152,9 +152,12 @@
 
 .hint,
 .warning {
-  color: var(--loom-text-subtle);
   font-size: 10px;
   font-weight: 400;
+}
+
+.hint {
+  color: var(--loom-text-subtle);
 }
 
 .warning {

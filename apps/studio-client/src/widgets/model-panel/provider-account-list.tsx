@@ -1,5 +1,5 @@
 import { ChevronRight, Copy, Plus, Trash2 } from 'lucide-react'
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import type { ModelProfile, ProviderAccount } from '../../entities/index.js'
 import { mergeModelCatalog, mockModelCatalog } from '../../features/provider-settings/model/model-catalog.js'
 import { resolveModelBrand, resolveProviderBrand } from '../../features/provider-settings/model/model-brand.js'
@@ -51,9 +51,20 @@ function ProviderAccountItem(props: {
   const [query, setQuery] = useState('')
   const [fetchVersion, setFetchVersion] = useState(0)
   const [copied, setCopied] = useState(false)
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const copyRequestRef = useRef(0)
+  const mountedRef = useRef(true)
   const baseUrl = typeof props.account.config.baseUrl === 'string' ? props.account.config.baseUrl : ''
   const catalog = mergeModelCatalog(props.models.map(profile => profile.providerModelId), import.meta.env.DEV ? mockModelCatalog : [], query)
   const providerBrand = resolveProviderBrand(props.account.displayName, baseUrl, props.account.providerExtensionId)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+    }
+  }, [])
 
   function addModel(event: FormEvent) {
     event.preventDefault()
@@ -69,10 +80,16 @@ function ProviderAccountItem(props: {
 
   async function copyBaseUrl() {
     if (!baseUrl) return
+    const requestId = ++copyRequestRef.current
     try {
       await navigator.clipboard.writeText(baseUrl)
+      if (!mountedRef.current || requestId !== copyRequestRef.current) return
       setCopied(true)
-      window.setTimeout(() => setCopied(false), 1200)
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+      copyTimerRef.current = setTimeout(() => {
+        copyTimerRef.current = undefined
+        setCopied(false)
+      }, 1200)
     } catch {
       // Clipboard availability depends on the browser permission and secure context.
     }

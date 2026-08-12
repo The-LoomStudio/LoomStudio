@@ -1,4 +1,4 @@
-export type ConversationMarkerKind = 'fork' | 'memory' | 'checkpoint' | 'compression'
+type ConversationMarkerKind = 'fork' | 'memory' | 'checkpoint' | 'compression'
 
 export type ConversationMarker = {
   entryId: string

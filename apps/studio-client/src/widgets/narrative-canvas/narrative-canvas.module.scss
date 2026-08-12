@@ -115,10 +115,6 @@
   }
 }
 
-.assistant {
-  background: transparent;
-}
-
 .messageFooter {
   display: flex;
   align-items: center;
@@ -190,6 +186,9 @@
 }
 
 .messageBody {
+  --loom-markdown-inline-code-bg: var(--loom-window);
+  --loom-markdown-inline-code-size: 0.9em;
+
   min-width: 0;
   max-width: 100%;
   color: var(--loom-text);
@@ -203,30 +202,6 @@
   text-align: justify;
   text-align-last: left;
   text-justify: inter-character;
-}
-
-.messageBody > :first-child {
-  margin-top: 0;
-}
-
-.messageBody > :last-child {
-  margin-bottom: 0;
-}
-
-.messageBody ul,
-.messageBody ol,
-.messageBody blockquote,
-.messageBody pre,
-.messageBody table {
-  margin: 0.65em 0;
-}
-
-.messageBody p {
-  margin: 0.44em 0;
-}
-
-.messageBody p:has(> [data-loom-token='dialogue']:only-child) {
-  margin-block: 1.15em;
 }
 
 .messageBody h1,
@@ -245,31 +220,11 @@
 .messageBody h3,
 .messageBody h4 { font-size: 1.05em; }
 
-.messageBody ul,
-.messageBody ol {
-  padding-left: 1.5em;
-}
-
 .messageBody blockquote {
   border-radius: 5px;
   padding: 6px 10px;
   color: var(--loom-text-muted);
   background: color-mix(in srgb, var(--loom-window) 44%, transparent);
-}
-
-.messageBody a {
-  color: var(--loom-info);
-  text-decoration-color: color-mix(in srgb, var(--loom-info) 54%, transparent);
-  text-underline-offset: 3px;
-}
-
-.messageBody code {
-  border-radius: 4px;
-  padding: 1px 4px;
-  color: var(--loom-text);
-  background: var(--loom-window);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.9em;
 }
 
 .messageBody pre {
@@ -280,42 +235,13 @@
   background: var(--loom-window);
 }
 
-.messageBody pre code {
-  padding: 0;
-  background: transparent;
-}
-
 .messageBody table {
   display: block;
-  width: 100%;
   max-width: 100%;
   overflow-x: auto;
-  border-collapse: collapse;
-}
-
-.messageBody th,
-.messageBody td {
-  border-bottom: 1px solid var(--loom-divider-color);
-  padding: 5px 8px;
-  text-align: left;
-}
-
-.messageBody em {
-  color: var(--loom-text-muted);
-  font-style: normal;
-}
-
-.user .messageBody {
-  font-family: inherit;
-  font-size: var(--loom-font-size-body);
-  line-height: 1.64;
 }
 
 @media (max-width: 820px) {
-  .timelinePane {
-    min-height: 0;
-  }
-
   .timeline {
     padding-inline: 0;
   }

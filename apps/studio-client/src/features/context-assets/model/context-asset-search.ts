@@ -11,7 +11,7 @@ export type ContextAssetSearchRecord = {
   searchableText: string
 }
 
-export type ContextAssetSearchResult = ContextAssetSearchRecord & {
+type ContextAssetSearchResult = ContextAssetSearchRecord & {
   excerpt?: string
   rank: number
 }

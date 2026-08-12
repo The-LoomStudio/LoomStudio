@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware'
 
-export type CharacterGroup = {
+type CharacterGroup = {
   id: string
   name: string
   order: number

@@ -356,7 +356,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
         <header className={styles.profileToolbar}>
           <button aria-label={props.t('character.back')} className={styles.toolbarButton} title={props.t('character.back')} type="button" onClick={closeProfile}><ArrowLeft aria-hidden="true" /></button>
           <span>{props.t('character.title')}</span>
-          <div>{!isTransientCard ? <button aria-label={props.t('character.edit')} className={editing ? styles.toolbarButtonActive : styles.toolbarButton} title={props.t('character.edit')} type="button" onClick={() => setEditing(value => !value)}><Pencil aria-hidden="true" /></button> : null}</div>
+          <div>{!isTransientCard ? <button aria-label={props.t('character.edit')} aria-pressed={editing} className={editing ? styles.toolbarButtonActive : styles.toolbarButton} title={props.t('character.edit')} type="button" onClick={() => setEditing(value => !value)}><Pencil aria-hidden="true" /></button> : null}</div>
         </header>
 
         <section className={styles.profileIdentity}>

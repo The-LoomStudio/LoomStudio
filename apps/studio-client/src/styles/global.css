@@ -205,10 +205,6 @@ textarea {
   font: inherit;
 }
 
-em {
-  font-style: normal;
-}
-
 button {
   min-height: 32px;
   border: 1px solid var(--loom-border);

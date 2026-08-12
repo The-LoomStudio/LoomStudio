@@ -139,6 +139,9 @@
 }
 
 .preview {
+  --loom-markdown-inline-code-bg: var(--loom-bg);
+  --loom-markdown-inline-code-size: 0.92em;
+
   min-height: 180px;
   padding: 8px 4px 28px;
   color: var(--loom-text);
@@ -146,14 +149,6 @@
   font-size: var(--loom-font-size-body);
   line-height: 1.64;
   overflow-wrap: anywhere;
-}
-
-.preview > :first-child {
-  margin-top: 0;
-}
-
-.preview > :last-child {
-  margin-bottom: 0;
 }
 
 .preview h1,
@@ -179,27 +174,6 @@
   font-size: 15px;
 }
 
-.preview ul,
-.preview ol,
-.preview blockquote,
-.preview pre,
-.preview table {
-  margin: 0.65em 0;
-}
-
-.preview p {
-  margin: 0.44em 0;
-}
-
-.preview p:has(> [data-loom-token='dialogue']:only-child) {
-  margin-block: 1.15em;
-}
-
-.preview ul,
-.preview ol {
-  padding-left: 1.5em;
-}
-
 .preview blockquote {
   padding: 6px 10px;
   border-radius: 5px;
@@ -207,48 +181,11 @@
   background: color-mix(in srgb, var(--loom-panel) 42%, transparent);
 }
 
-.preview a {
-  color: var(--loom-info);
-  text-decoration-color: color-mix(in srgb, var(--loom-info) 54%, transparent);
-  text-underline-offset: 3px;
-}
-
-.preview code {
-  border-radius: 4px;
-  padding: 1px 4px;
-  color: var(--loom-text);
-  background: var(--loom-bg);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.92em;
-}
-
 .preview pre {
   overflow: auto;
   border-radius: 6px;
   padding: 10px 12px;
   background: var(--loom-bg);
-}
-
-.preview pre code {
-  padding: 0;
-  background: transparent;
-}
-
-.preview table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.preview th,
-.preview td {
-  padding: 5px 8px;
-  border-bottom: 1px solid var(--loom-divider-color);
-  text-align: left;
-}
-
-.preview em {
-  color: var(--loom-text-muted);
-  font-style: normal;
 }
 
 .previewEmpty {

@@ -15,14 +15,14 @@ export type AsyncOperationError = {
   sequence: number
 }
 
-export type AsyncOperationStatus = {
+type AsyncOperationStatus = {
   error?: AsyncOperationError
   pendingCount: number
 }
 
 export type AsyncOperationState = Record<AsyncOperationScope, AsyncOperationStatus>
 
-export type AsyncOperationEvent =
+type AsyncOperationEvent =
   | { scope: AsyncOperationScope; type: 'start' }
   | { error?: string; recordError: boolean; scope: AsyncOperationScope; sequence: number; type: 'finish' }
 

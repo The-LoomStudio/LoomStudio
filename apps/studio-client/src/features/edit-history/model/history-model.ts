@@ -1,4 +1,4 @@
-export type EditOperationAnchor = {
+type EditOperationAnchor = {
   documentId: string
   subjectId?: string
 }

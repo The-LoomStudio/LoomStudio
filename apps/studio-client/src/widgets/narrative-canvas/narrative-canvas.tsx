@@ -219,16 +219,11 @@ export function NarrativeCanvas(props: NarrativeCanvasProps) {
                       copiedLabel={props.t('longTextEditor.copied')}
                       copyFailedLabel={props.t('longTextEditor.copyFailed')}
                       copyLabel={props.t('longTextEditor.copy')}
-                      disableCodeWrapLabel={props.t('markdown.code.disableWrap')}
                       label={props.t('timeline.editLocal')}
-                      enableCodeWrapLabel={props.t('markdown.code.enableWrap')}
                       minHeight={editorMinHeight || undefined}
                       mode="source"
-                      previewEmptyLabel={props.t('longTextEditor.previewEmpty')}
-                      previewModeLabel={props.t('longTextEditor.previewMode')}
                       restoreInitialLabel={props.t('longTextEditor.restoreInitial')}
                       showLineNumbers={false}
-                      sourceModeLabel={props.t('longTextEditor.sourceMode')}
                       sourceOnly
                       spellCheck={false}
                       undoEditLabel={props.t('longTextEditor.undoEdit')}
