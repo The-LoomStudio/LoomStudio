@@ -4,6 +4,7 @@
 > **Purpose**: 锁定 Studio Kernel 第一版 public surface，防止 Kernel 在实现中滑向 Chat / Provider / Tool / Runtime 业务框架。
 > **Audience**: Kernel、Transport、Extension Host、Client Bridge、Loom Runner 实现者。
 > **2026-08-12 演进说明**：本文仍适用于当前 Document-only Kernel public surface。未来数据层重构不会把 NarrativeStore / AgentStore 暴露给 Kernel；Kernel 将从直接订阅 `DocumentCommitFact` 改为订阅领域无关的 `DataCommitFact`，具体施工见 [`../../plans/sqlite-data-engine-domain-stores-kernel-plan.md`](../../plans/sqlite-data-engine-domain-stores-kernel-plan.md)。
+> **2026-08-13 事件系统说明**：Kernel EventBus 继续保持进程内事实广播，现已实现 Event Definition Registry、owner/visibility/capability/payload 边界与 subscriber failure reporting，详见 [`../../plans/event-system-extension-scope-plan.md`](../../plans/event-system-extension-scope-plan.md)。原先只创建空 Handler 的 `events.subscribe` / `events.unsubscribe` RPC 已删除；跨端订阅仍等待独立 Event Transport。
 > **Related**:
 > - [`../00-overview/loom-studio-architecture.md`](../00-overview/loom-studio-architecture.md)
 > - [`studio-rpc-methods-v0.md`](studio-rpc-methods-v0.md)
@@ -412,3 +413,5 @@ Kernel 不直接依赖 Loom Core。Core 只通过 `LoomRunner` adapter 进入。
 ## 11. Document History
 
 - 2026-05-14: Draft v0.1. 新增 Kernel public surface 约束，明确允许/禁止的 Kernel API 与 namespace。
+- 2026-08-13: 补充 Event Definition Registry 与真实 Event Transport 的演进边界，明确当前 `events.subscribe` RPC 不是有效跨端订阅。
+- 2026-08-13: 完成进程内 Event Definition Registry 与发布/订阅边界，删除伪跨端 `events.subscribe` / `events.unsubscribe` RPC。

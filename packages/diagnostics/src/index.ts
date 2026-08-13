@@ -10,6 +10,7 @@ export type Diagnostic = {
   message: string
   source: string
   extensionId?: string
+  instanceId?: string
   documentId?: string
   correlationId?: string
   callId?: string
@@ -26,6 +27,7 @@ export type DiagnosticFilter = {
   severity?: DiagnosticSeverity
   source?: string
   extensionId?: string
+  instanceId?: string
 }
 
 export type DiagnosticsRegistry = {
@@ -43,6 +45,7 @@ export function createInMemoryDiagnosticsRegistry(): DiagnosticsRegistry {
         if (filter?.severity && diagnostic.severity !== filter.severity) return false
         if (filter?.source && diagnostic.source !== filter.source) return false
         if (filter?.extensionId && diagnostic.extensionId !== filter.extensionId) return false
+        if (filter?.instanceId && diagnostic.instanceId !== filter.instanceId) return false
         return true
       })
     },

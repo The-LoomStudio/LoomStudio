@@ -19,6 +19,7 @@
     { "path": "./packages/loom-runner" },
     { "path": "./packages/kernel" },
     { "path": "./extensions/example-echo" },
+    { "path": "./extensions/weather-station" },
     { "path": "./apps/playground" }
   ]
 }

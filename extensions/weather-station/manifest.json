@@ -1,0 +1,43 @@
+{
+  "manifestVersion": 1,
+  "id": "example.weatherStation",
+  "version": "0.0.0",
+  "displayName": "Weather Station Test Extension",
+  "engines": {
+    "studio": "^0.1.0"
+  },
+  "server": {
+    "entry": "./dist/index.js"
+  },
+  "capabilities": {
+    "events.subscribe": [
+      "documents",
+      "extension:example.weatherStation"
+    ]
+  },
+  "contributes": {
+    "rpc": [
+      { "name": "example.weatherStation.status" },
+      { "name": "example.weatherStation.update" },
+      { "name": "example.weatherStation.failSubscriber" },
+      { "name": "example.weatherStation.publishNote" }
+    ],
+    "events": [
+      {
+        "name": "example.weatherStation.updated",
+        "version": 1,
+        "visibility": "public"
+      },
+      {
+        "name": "example.weatherStation.privateSnapshot",
+        "version": 1,
+        "visibility": "protected"
+      },
+      {
+        "name": "example.weatherStation.note",
+        "version": 1,
+        "visibility": "public"
+      }
+    ]
+  }
+}

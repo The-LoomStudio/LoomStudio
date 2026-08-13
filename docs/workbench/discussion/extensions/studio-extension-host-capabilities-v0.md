@@ -12,7 +12,10 @@
 > - [`../../adr/ADR-002-extension-manifest-and-registration-model.md`](../../adr/ADR-002-extension-manifest-and-registration-model.md)
 > - [`../../adr/ADR-004-platform-auth-secrets-and-provider-credential-boundary.md`](../../adr/ADR-004-platform-auth-secrets-and-provider-credential-boundary.md)
 > - [`../../plans/extension-developer-experience.md`](../../plans/extension-developer-experience.md)
+> - [`../../plans/event-system-extension-scope-plan.md`](../../plans/event-system-extension-scope-plan.md)
 > - [`../../../architecture/platform/logging.md`](../../../architecture/platform/logging.md)
+
+> **2026-08-13 决策更新**：Host 继续作为 identity/permission gate。Server Extension 每次激活现已生成新的 `instanceId` 和统一 `ExtensionScope`；`ctx` 仍只是 `activate(ctx)` 的参数名。Server Event Host 已接入 Definition Registry、`public/protected/internal` visibility 与 capability category。正式的 Base/Server/Client 类型拆分、Client Host 和持久 grant Store 仍未实现，具体边界见上方计划。
 
 ---
 
@@ -542,3 +545,5 @@ Server Extension Host 当前已经在部分路径中注入：
 ## 13. Document History
 
 - 2026-07-23: Draft v0.1。收录 Host capability、Server/Client 边界、公开 API、Virtual Module、Client Runtime、Extension Logger、构建与权限讨论。
+- 2026-08-13: 锁定 instance-scoped Host/Scope、Event Definition、三档 visibility 与 capability grant 判定链，并链接对应实施计划。
+- 2026-08-13: 完成 Server Host 的 instance-scoped lifecycle、事件定义/发布/订阅与 Manifest capability snapshot；Client Host 与持久权限继续后置。

@@ -238,6 +238,12 @@ importers:
         specifier: workspace:*
         version: link:../../packages/extension-sdk
 
+  extensions/weather-station:
+    dependencies:
+      '@loom-studio/extension-sdk':
+        specifier: workspace:*
+        version: link:../../packages/extension-sdk
+
   packages/agent-store:
     dependencies:
       '@loom-studio/data-engine':
@@ -311,6 +317,9 @@ importers:
       '@loom-studio/shared':
         specifier: workspace:*
         version: link:../shared
+      '@loom-studio/transport':
+        specifier: workspace:*
+        version: link:../transport
 
   packages/extension-sdk/extension-host:
     dependencies:
@@ -326,6 +335,9 @@ importers:
       '@loom-studio/shared':
         specifier: workspace:*
         version: link:../../shared
+      '@loom-studio/transport':
+        specifier: workspace:*
+        version: link:../../transport
 
   packages/kernel:
     dependencies:
@@ -341,6 +353,9 @@ importers:
       '@loom-studio/extension-host':
         specifier: workspace:*
         version: link:../extension-sdk/extension-host
+      '@loom-studio/extension-sdk':
+        specifier: workspace:*
+        version: link:../extension-sdk
       '@loom-studio/loom-runner':
         specifier: workspace:*
         version: link:../loom-runner

@@ -1,0 +1,13 @@
+{
+  "name": "@loom-studio/weather-station-test-extension",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b",
+    "verify": "tsx ../../scripts/verify-server-extension.ts"
+  },
+  "dependencies": {
+    "@loom-studio/extension-sdk": "workspace:*"
+  }
+}

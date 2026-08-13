@@ -9,6 +9,8 @@
     "test": "vitest run",
     "test:archive": "LOOM_TEST_SCOPE=archive vitest run",
     "test:probes": "LOOM_TEST_SCOPE=probes vitest run",
+    "verify:server-extension": "pnpm --filter @loom-studio/weather-station-test-extension build && tsx scripts/verify-server-extension.ts",
+    "verify:server-extension-manager": "pnpm --filter @loom-studio/example-echo build && tsx scripts/verify-server-extension-manager.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
     "dev:server": "tsx watch apps/studio-server/src/main.ts",

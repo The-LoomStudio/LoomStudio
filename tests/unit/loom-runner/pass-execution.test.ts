@@ -10,6 +10,12 @@ function createTestKernel(traceAudit: TraceAuditStore = createInMemoryTraceAudit
   const diagnostics = createInMemoryDiagnosticsRegistry()
   const documents = createInMemoryDocumentStore()
   const extensionHost: ExtensionHost = {
+    discover: async () => { throw new Error('not implemented') },
+    activate: async () => { throw new Error('not implemented') },
+    activateAll: async () => [],
+    reload: async () => { throw new Error('not implemented') },
+    dispose: async () => {},
+    disposeAll: async () => {},
     list: () => [],
     diagnostics: () => [],
   }

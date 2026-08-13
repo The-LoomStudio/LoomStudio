@@ -15,6 +15,14 @@ import type {
   WriteDocumentInput,
 } from '@loom-studio/document-store'
 import type { ExtensionHost, ExtensionRpcHandler } from '@loom-studio/extension-host'
+import type {
+  EventCapabilityCategory,
+  EventDefinition,
+  EventDefinitionRegistrationOwner,
+  EventPublishIdentity,
+  EventSubscriberIdentity,
+  RegisteredEventDefinition,
+} from '@loom-studio/extension-sdk'
 import type { LoomRunInput, LoomRunner } from '@loom-studio/loom-runner'
 import type { JsonValue } from '@loom-studio/shared'
 import { createId, nowIso, serializeError } from '@loom-studio/shared'
@@ -34,9 +42,10 @@ export type RegistrationHandle = {
   dispose(): void
 }
 
-export type EventHandler = (event: StudioEvent) => void
+export type EventHandler = (event: StudioEvent) => void | Promise<void>
 
 export type EventEmitOptions = {
+  publisher?: EventPublishIdentity
   source?: string
   clientId?: string
   correlationId?: string
@@ -44,10 +53,16 @@ export type EventEmitOptions = {
   parentCallId?: string
 }
 
+export type EventSubscribeOptions = {
+  subscriber?: EventSubscriberIdentity
+}
+
 export type EventBus = {
+  registerDefinition(definition: EventDefinition, registeredBy?: EventDefinitionRegistrationOwner): RegistrationHandle
   emit(name: string, payload: JsonValue, options?: EventEmitOptions): StudioEvent
-  subscribe(patterns: string[], handler: EventHandler): RegistrationHandle & { subscriptionId: string }
+  subscribe(patterns: string[], handler: EventHandler, options?: EventSubscribeOptions): RegistrationHandle & { subscriptionId: string }
   unsubscribe(subscriptionId: string): boolean
+  definitions(): RegisteredEventDefinition[]
   eventNames(): string[]
 }
 
@@ -55,7 +70,7 @@ export type Kernel = {
   start(): Promise<void>
   stop(): Promise<void>
   registerKernelRpc(method: string, handler: KernelRpcHandler): RegistrationHandle
-  registerExtensionRpc(method: string, ownerExtensionId: string, handler: ExtensionRpcHandler): RegistrationHandle
+  registerExtensionRpc(method: string, ownerExtensionId: string, handler: ExtensionRpcHandler, instanceId?: string): RegistrationHandle
   callRpc<T = JsonValue>(method: string, params?: JsonValue, context?: KernelRpcContext): Promise<T>
   getPublicSurface(): KernelPublicSurface
   getDocumentStore(): DocumentStore
@@ -75,12 +90,20 @@ export type KernelPublicSurface = {
   version: string
 }
 
+export type ExtensionManagementService = {
+  list(): JsonValue[]
+  enable(extensionId: string, grantedEventCapabilities?: EventCapabilityCategory[]): Promise<JsonValue>
+  disable(extensionId: string): Promise<JsonValue>
+  reload(extensionId: string): Promise<JsonValue>
+}
+
 export type CreateKernelOptions = {
   documents: DocumentStore
   dataCommits: DataCommitSource
   diagnostics: DiagnosticsRegistry
   traceAudit: TraceAuditStore
   extensionHost: ExtensionHost
+  extensionManager?: ExtensionManagementService
   loomRunner: LoomRunner
   studioVersion?: string
   kernelVersion?: string
@@ -95,27 +118,46 @@ type RpcRegistryEntry = {
   owner: 'kernel' | `extension:${string}`
 }
 
-export function createEventBus(): EventBus {
-  const subscriptions = new Map<string, { patterns: string[]; handler: EventHandler }>()
-  const knownEvents = new Set<string>([
-    'data.changed',
-    'docs.changed',
-    'docs.rollback.completed',
-    'docs.rollback.failed',
-    'diagnostics.updated',
-    'extensions.changed',
-    'system.ready',
-    'system.stopping',
-  ])
+export type CreateEventBusOptions = {
+  onSubscriberError?: (input: { event: StudioEvent; subscriptionId: string; error: unknown }) => void
+}
+
+export function createEventBus(options: CreateEventBusOptions = {}): EventBus {
+  const definitions = new Map<string, RegisteredEventDefinition>()
+  const subscriptions = new Map<string, {
+    patterns: string[]
+    handler: EventHandler
+    subscriber: EventSubscriberIdentity
+  }>()
 
   return {
+    registerDefinition: (definition, registeredBy = { kind: 'platform' }) => {
+      validateEventDefinition(definition, registeredBy)
+      if (definitions.has(definition.name)) {
+        throw new Error(`Event definition already registered: ${definition.name}`)
+      }
+      const registered = { definition, registeredBy } satisfies RegisteredEventDefinition
+      definitions.set(definition.name, registered)
+
+      return {
+        dispose: () => {
+          if (definitions.get(definition.name) === registered) definitions.delete(definition.name)
+        },
+      }
+    },
     emit: (name, payload, emitOptions = {}) => {
-      knownEvents.add(name)
+      const registered = definitions.get(name)
+      if (!registered) throw new Error(`Event definition not registered: ${name}`)
+      assertCanPublish(registered, emitOptions.publisher ?? { kind: 'kernel' })
+      const parsedPayload = registered.definition.parse?.(payload) ?? payload
+      assertJsonValue(parsedPayload, `Event payload must be JSON-compatible: ${name}`)
+      assertPayloadSize(registered.definition, parsedPayload)
       const event: StudioEvent = {
         name,
-        payload,
+        payload: parsedPayload,
         meta: {
           eventId: createId('evt'),
+          definitionVersion: registered.definition.version,
           emittedAt: nowIso(),
           source: emitOptions.source ?? 'kernel',
           clientId: emitOptions.clientId,
@@ -126,20 +168,34 @@ export function createEventBus(): EventBus {
       }
 
       for (const subscription of subscriptions.values()) {
-        if (subscription.patterns.some(pattern => matchesEventPattern(pattern, name))) {
-          try {
-            subscription.handler(event)
-          } catch {
-            // ponytail: MVP EventBus isolates consumers but has no reporter yet; route failures to Diagnostics in the event-system phase.
+        if (!subscription.patterns.some(pattern => matchesEventPattern(pattern, name))) continue
+        if (!canSubscribe(registered.definition, subscription.subscriber)) continue
+        try {
+          const result = subscription.handler(event)
+          if (isPromiseLike(result)) {
+            void result.catch(error => options.onSubscriberError?.({
+              event,
+              subscriptionId: findSubscriptionId(subscriptions, subscription),
+              error,
+            }))
           }
+        } catch (error) {
+          options.onSubscriberError?.({
+            event,
+            subscriptionId: findSubscriptionId(subscriptions, subscription),
+            error,
+          })
         }
       }
 
       return event
     },
-    subscribe: (patterns, handler) => {
+    subscribe: (patterns, handler, subscribeOptions = {}) => {
+      if (patterns.length === 0) throw new Error('Event subscription requires at least one pattern')
+      const subscriber = subscribeOptions.subscriber ?? { kind: 'platform' }
+      assertCanSubscribePatterns(patterns, definitions, subscriber)
       const subscriptionId = createId('sub')
-      subscriptions.set(subscriptionId, { patterns, handler })
+      subscriptions.set(subscriptionId, { patterns: [...patterns], handler, subscriber })
 
       return {
         subscriptionId,
@@ -149,13 +205,30 @@ export function createEventBus(): EventBus {
       }
     },
     unsubscribe: subscriptionId => subscriptions.delete(subscriptionId),
-    eventNames: () => [...knownEvents].sort(),
+    definitions: () => [...definitions.values()].sort((left, right) => left.definition.name.localeCompare(right.definition.name)),
+    eventNames: () => [...definitions.keys()].sort(),
   }
 }
 
 export function createKernel(options: CreateKernelOptions): Kernel {
   const handlers = new Map<string, RpcRegistryEntry>()
-  const eventBus = createEventBus()
+  const eventBus = createEventBus({
+    onSubscriberError: ({ event, subscriptionId, error }) => {
+      options.diagnostics.add({
+        severity: 'error',
+        code: 'event.subscriber_failed',
+        message: `Event subscriber failed: ${event.name}`,
+        source: 'event-hub',
+        details: {
+          eventName: event.name,
+          eventId: event.meta.eventId,
+          subscriptionId,
+          error: serializeError(error, 'event.subscriber_failed'),
+        },
+      })
+    },
+  })
+  registerBuiltinEventDefinitions(eventBus)
   const studioVersion = options.studioVersion ?? '0.0.0'
   const kernelVersion = options.kernelVersion ?? '0.0.0'
   const protocolVersion = options.protocolVersion ?? '0.1.0'
@@ -176,14 +249,18 @@ export function createKernel(options: CreateKernelOptions): Kernel {
         }
       })
       active = true
-      eventBus.emit('system.ready', {})
+      eventBus.emit('system.ready', {}, { publisher: { kind: 'kernel' } })
     },
     stop: async () => {
       if (!active) return
-      eventBus.emit('system.stopping', {})
+      eventBus.emit('system.stopping', {}, { publisher: { kind: 'kernel' } })
       dataCommitSubscription?.dispose()
       dataCommitSubscription = undefined
-      active = false
+      try {
+        await options.extensionHost.disposeAll()
+      } finally {
+        active = false
+      }
     },
     registerKernelRpc: (method, handler) => {
       assertKernelNamespace(method)
@@ -200,7 +277,7 @@ export function createKernel(options: CreateKernelOptions): Kernel {
         },
       }
     },
-    registerExtensionRpc: (method, ownerExtensionId, handler) => {
+    registerExtensionRpc: (method, ownerExtensionId, handler, instanceId = `legacy:${ownerExtensionId}`) => {
       if (isKernelNamespace(method)) {
         throw new Error(`Extension cannot register Kernel namespace RPC: ${method}`)
       }
@@ -209,14 +286,15 @@ export function createKernel(options: CreateKernelOptions): Kernel {
         throw new Error(`RPC already registered: ${method}`)
       }
 
-      handlers.set(method, {
-        handler: (params, context) => handler(params, { ...context, extensionId: ownerExtensionId }),
+      const entry: RpcRegistryEntry = {
+        handler: (params, context) => handler(params, { ...context, extensionId: ownerExtensionId, instanceId }),
         owner: `extension:${ownerExtensionId}`,
-      })
+      }
+      handlers.set(method, entry)
 
       return {
         dispose: () => {
-          handlers.delete(method)
+          if (handlers.get(method) === entry) handlers.delete(method)
         },
       }
     },
@@ -243,8 +321,6 @@ export function createKernel(options: CreateKernelOptions): Kernel {
     getTraceAudit: () => options.traceAudit,
     getLoomRunner: () => options.loomRunner,
   }
-
-  eventBus.subscribe(['diagnostics.updated'], () => {})
 
   return kernel
 }
@@ -308,31 +384,12 @@ function registerStageOneHandlers(
       methods: kernel.getPublicSurface().methods,
       events: eventBus.eventNames(),
       documentTypes: [],
-      extensions: options.extensionHost.list().map(extension => ({
+      extensions: options.extensionManager?.list() ?? options.extensionHost.list().map(extension => ({
         id: extension.id,
         version: extension.version,
         active: extension.state === 'active',
       })),
       diagnostics: includeDiagnostics ? options.diagnostics.list() : undefined,
-    } as JsonValue
-  })
-
-  register('events.subscribe', params => {
-    const patterns = readStringArray(params, 'patterns')
-    const subscription = eventBus.subscribe(patterns, () => {})
-
-    return {
-      subscriptionId: subscription.subscriptionId,
-      patterns,
-    } as JsonValue
-  })
-
-  register('events.unsubscribe', params => {
-    const subscriptionId = readString(params, 'subscriptionId')
-
-    return {
-      subscriptionId,
-      removed: eventBus.unsubscribe(subscriptionId),
     } as JsonValue
   })
 
@@ -385,8 +442,33 @@ function registerStageOneHandlers(
 
   register('extensions.list', () => {
     return {
-      items: options.extensionHost.list(),
+      items: options.extensionManager?.list() ?? options.extensionHost.list(),
     } as unknown as JsonValue
+  })
+
+  register('extensions.enable', async (params, context) => {
+    const manager = requireExtensionManager(options)
+    const extensionId = readString(params, 'extensionId')
+    const grants = readEventCapabilityGrants(params)
+    const extension = await manager.enable(extensionId, grants)
+    eventBus.emit('extensions.changed', { extensionId, action: 'enabled' }, context)
+    return { extension }
+  })
+
+  register('extensions.disable', async (params, context) => {
+    const manager = requireExtensionManager(options)
+    const extensionId = readString(params, 'extensionId')
+    const extension = await manager.disable(extensionId)
+    eventBus.emit('extensions.changed', { extensionId, action: 'disabled' }, context)
+    return { extension }
+  })
+
+  register('extensions.reload', async (params, context) => {
+    const manager = requireExtensionManager(options)
+    const extensionId = readString(params, 'extensionId')
+    const extension = await manager.reload(extensionId)
+    eventBus.emit('extensions.changed', { extensionId, action: 'reloaded' }, context)
+    return { extension }
   })
 
   register('extensions.getDiagnostics', params => {
@@ -425,6 +507,22 @@ function registerStageOneHandlers(
   })
 }
 
+function requireExtensionManager(options: CreateKernelOptions): ExtensionManagementService {
+  if (!options.extensionManager) throw new Error('Extension management is not configured')
+  return options.extensionManager
+}
+
+function readEventCapabilityGrants(params: JsonValue | undefined): EventCapabilityCategory[] | undefined {
+  if (!isRecord(params) || params.grants === undefined) return undefined
+  if (!isRecord(params.grants)) throw new Error('extensions.enable grants must be an object')
+  const subscriptions = params.grants['events.subscribe']
+  if (subscriptions === undefined) return undefined
+  if (!Array.isArray(subscriptions) || !subscriptions.every(value => typeof value === 'string')) {
+    throw new Error('extensions.enable grants.events.subscribe must be a string array')
+  }
+  return subscriptions as EventCapabilityCategory[]
+}
+
 function normalizeContext(context: KernelRpcContext): Required<Pick<KernelRpcContext, 'correlationId' | 'callId'>> & KernelRpcContext {
   return {
     ...context,
@@ -443,6 +541,145 @@ function isKernelNamespace(method: string): boolean {
   return kernelNamespaces.includes(method.split('.')[0] ?? '')
 }
 
+function registerBuiltinEventDefinitions(eventBus: EventBus): void {
+  const definitions: EventDefinition[] = [
+    platformEvent('data.changed', 'Low-level platform data commit completed', 'protected', 'platform-data'),
+    platformEvent('docs.changed', 'Document Store commit completed', 'protected', 'documents'),
+    platformEvent('docs.rollback.completed', 'Document changeset rollback completed', 'protected', 'documents'),
+    platformEvent('docs.rollback.failed', 'Document changeset rollback failed', 'protected', 'documents'),
+    platformEvent('diagnostics.updated', 'Diagnostics registry changed', 'protected', 'diagnostics'),
+    platformEvent('extensions.changed', 'Extension runtime state changed', 'public'),
+    platformEvent('system.ready', 'Kernel completed startup', 'public'),
+    platformEvent('system.stopping', 'Kernel shutdown started', 'public'),
+  ]
+
+  for (const definition of definitions) eventBus.registerDefinition(definition)
+}
+
+function platformEvent(
+  name: string,
+  summary: string,
+  visibility: EventDefinition['visibility'],
+  capability?: EventDefinition['capability'],
+): EventDefinition {
+  return {
+    name,
+    owner: { kind: 'kernel' },
+    version: 1,
+    visibility,
+    capability,
+    summary,
+    stability: 'experimental',
+    maxPayloadBytes: 64 * 1024,
+  }
+}
+
+function validateEventDefinition(definition: EventDefinition, registeredBy: EventDefinitionRegistrationOwner): void {
+  if (!/^[a-z][a-z0-9]*(?:[.-][A-Za-z0-9]+)+$/.test(definition.name)) {
+    throw new Error(`Invalid event name: ${definition.name}`)
+  }
+  if (!Number.isInteger(definition.version) || definition.version < 1) {
+    throw new Error(`Event definition version must be a positive integer: ${definition.name}`)
+  }
+  if (!definition.summary.trim()) throw new Error(`Event definition summary is required: ${definition.name}`)
+  if (definition.maxPayloadBytes !== undefined && (!Number.isInteger(definition.maxPayloadBytes) || definition.maxPayloadBytes < 1)) {
+    throw new Error(`Event maxPayloadBytes must be a positive integer: ${definition.name}`)
+  }
+  if (definition.visibility === 'protected' && !definition.capability) {
+    throw new Error(`Protected event requires a capability: ${definition.name}`)
+  }
+  if (definition.visibility !== 'protected' && definition.capability) {
+    throw new Error(`Only protected events may declare a capability: ${definition.name}`)
+  }
+
+  if (registeredBy.kind !== 'extension') return
+  if (definition.owner.kind !== 'extension' || definition.owner.extensionId !== registeredBy.extensionId) {
+    throw new Error(`Extension event owner mismatch: ${definition.name}`)
+  }
+  if (!definition.name.startsWith(`${registeredBy.extensionId}.`)) {
+    throw new Error(`Extension event must use its own namespace: ${definition.name}`)
+  }
+  if (definition.visibility === 'internal') {
+    throw new Error(`Extension cannot register internal event: ${definition.name}`)
+  }
+  if (definition.visibility === 'protected' && definition.capability !== `extension:${registeredBy.extensionId}`) {
+    throw new Error(`Extension protected event must use its extension capability: ${definition.name}`)
+  }
+}
+
+function assertCanPublish(registered: RegisteredEventDefinition, publisher: EventPublishIdentity): void {
+  const owner = registered.definition.owner
+  if (owner.kind === 'extension') {
+    if (publisher.kind === 'extension' && publisher.extensionId === owner.extensionId) return
+    throw new Error(`Event publisher does not own definition: ${registered.definition.name}`)
+  }
+  if (publisher.kind !== owner.kind) {
+    throw new Error(`Event publisher does not own definition: ${registered.definition.name}`)
+  }
+}
+
+function assertCanSubscribePatterns(
+  patterns: string[],
+  definitions: Map<string, RegisteredEventDefinition>,
+  subscriber: EventSubscriberIdentity,
+): void {
+  if (subscriber.kind === 'platform') return
+  for (const registered of definitions.values()) {
+    if (!patterns.some(pattern => matchesEventPattern(pattern, registered.definition.name))) continue
+    if (!canSubscribe(registered.definition, subscriber)) {
+      throw new Error(`Extension is not allowed to subscribe to event: ${registered.definition.name}`)
+    }
+  }
+}
+
+function canSubscribe(definition: EventDefinition, subscriber: EventSubscriberIdentity): boolean {
+  if (subscriber.kind === 'platform') return true
+  if (definition.visibility === 'internal') return false
+  if (definition.visibility === 'public') return true
+  return Boolean(definition.capability && subscriber.capabilities.includes(definition.capability))
+}
+
+function assertPayloadSize(definition: EventDefinition, payload: JsonValue): void {
+  if (!definition.maxPayloadBytes) return
+  const size = Buffer.byteLength(JSON.stringify(payload), 'utf8')
+  if (size > definition.maxPayloadBytes) {
+    throw new Error(`Event payload exceeds ${definition.maxPayloadBytes} bytes: ${definition.name}`)
+  }
+}
+
+function assertJsonValue(value: unknown, message: string): asserts value is JsonValue {
+  if (!isJsonValue(value, new Set())) throw new Error(message)
+}
+
+function isJsonValue(value: unknown, ancestors: Set<object>): value is JsonValue {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true
+  if (typeof value === 'number') return Number.isFinite(value)
+  if (typeof value !== 'object') return false
+  if (ancestors.has(value)) return false
+
+  ancestors.add(value)
+  const valid = Array.isArray(value)
+    ? value.every(item => isJsonValue(item, ancestors))
+    : (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null)
+      && Object.values(value).every(item => isJsonValue(item, ancestors))
+  ancestors.delete(value)
+  return valid
+}
+
+function isPromiseLike(value: unknown): value is Promise<void> {
+  return value !== null && typeof value === 'object' && 'then' in value && typeof value.then === 'function'
+}
+
+function findSubscriptionId(
+  subscriptions: Map<string, { patterns: string[]; handler: EventHandler; subscriber: EventSubscriberIdentity }>,
+  target: { patterns: string[]; handler: EventHandler; subscriber: EventSubscriberIdentity },
+): string {
+  for (const [subscriptionId, subscription] of subscriptions) {
+    if (subscription === target) return subscriptionId
+  }
+  return 'unknown'
+}
+
 function matchesEventPattern(pattern: string, name: string): boolean {
   if (pattern.endsWith('.*')) {
     return name.startsWith(pattern.slice(0, -1))
@@ -458,14 +695,6 @@ function isRecord(value: unknown): value is Record<string, JsonValue> {
 function readString(params: JsonValue | undefined, key: string): string {
   if (!isRecord(params) || typeof params[key] !== 'string') {
     throw new Error(`Expected string param: ${key}`)
-  }
-
-  return params[key]
-}
-
-function readStringArray(params: JsonValue | undefined, key: string): string[] {
-  if (!isRecord(params) || !Array.isArray(params[key]) || !params[key].every(value => typeof value === 'string')) {
-    throw new Error(`Expected string array param: ${key}`)
   }
 
   return params[key]
@@ -554,7 +783,7 @@ function readTraceOptions(value: JsonValue | undefined): LoomRunInput['trace'] {
 function summarizeDataCommit(commit: DataCommitFact): JsonValue {
   return {
     changesetId: commit.changesetId,
-    operations: commit.operations as unknown as JsonValue,
+    operations: commit.operations.map(summarizeDataOperation),
   }
 }
 
@@ -565,15 +794,26 @@ function summarizeDocumentCommit(commit: DataCommitFact, operations = readDocume
       kind: operation.kind,
       documentId: operation.entityId,
       type: operation.entityType,
-      fromVersion: operation.fromVersion,
-      toVersion: operation.toVersion,
-    })) as unknown as JsonValue,
+      ...(operation.fromVersion !== undefined ? { fromVersion: operation.fromVersion } : {}),
+      ...(operation.toVersion !== undefined ? { toVersion: operation.toVersion } : {}),
+    })),
     documents: operations.map(operation => ({
       id: operation.entityId,
       type: operation.entityType,
-      version: operation.toVersion,
+      ...(operation.toVersion !== undefined ? { version: operation.toVersion } : {}),
       tombstoned: operation.kind === 'delete',
-    })) as unknown as JsonValue,
+    })),
+  }
+}
+
+function summarizeDataOperation(operation: DataCommitOperation): JsonValue {
+  return {
+    store: operation.store,
+    kind: operation.kind,
+    entityId: operation.entityId,
+    entityType: operation.entityType,
+    ...(operation.fromVersion !== undefined ? { fromVersion: operation.fromVersion } : {}),
+    ...(operation.toVersion !== undefined ? { toVersion: operation.toVersion } : {}),
   }
 }
 

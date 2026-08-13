@@ -23,8 +23,11 @@ Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本列表收�
 - **`docs.delete`**: 删除文档。
 
 ### Extensions
-- **`extensions.list`**: 列出当前 Extension Host 加载的所有插件状态。
-- **`extensions.getDiagnostics`**: 获取指定插件的加载或运行错误。
+- **`extensions.list`**: 列出 Server Extension Manager 发现的来源、期望启用状态与当前 Host runtime 状态。
+- **`extensions.enable`**: 持久化启用选择与事件 capability grant，并激活或按需重载 Server Extension。
+- **`extensions.disable`**: 持久化禁用选择并释放当前 Server Extension instance。
+- **`extensions.reload`**: 在不改变启用选择的情况下重新加载已启用 Server Extension。
+- **`extensions.getDiagnostics`**: 查询 Extension 发现、激活、运行与清理 Diagnostics。
 
 ### Observability
 - **`diagnostics.list`**: 获取系统范围内的所有诊断信息 (Diagnostics)。

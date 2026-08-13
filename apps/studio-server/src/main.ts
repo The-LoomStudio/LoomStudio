@@ -17,6 +17,8 @@ import { withAiGatewayLogging } from './ai-gateway-logging.js'
 import { withDocumentStoreLogging } from './document-store-logging.js'
 import { createStudioHttpServer } from './http-server.js'
 import { createStudioRpcRouter } from './studio-rpc-router.js'
+import { createServerExtensionManager } from './extensions/extension-manager.js'
+import { createExtensionStateStore } from './extensions/extension-state-store.js'
 
 const defaultPort = 4173
 const defaultSqlitePath = '.loomstudio-dev/document-store.sqlite'
@@ -36,6 +38,8 @@ export type CreateStudioServerOptions = {
   promptBuildLogger?: Logger
   providerLogger?: Logger
   extensionLogger?: Logger
+  extensionRootDirectory?: string
+  extensionStateDirectory?: string
 }
 
 export function createStudioServer(options: CreateStudioServerOptions = {}): StudioServer {
@@ -79,14 +83,32 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     documents,
     diagnostics,
     logger: options.extensionLogger,
+    mode: 'development',
+    grantEventCapabilities: manifest => extensionManager.getGrantedEventCapabilities(manifest.id),
     callRpc: (method, params, context) => kernel.callRpc(method, params, context),
-    registerRpc: (name, ownerExtensionId, handler) => {
-      const handle = kernel.registerExtensionRpc(name, ownerExtensionId, handler)
-      return { name, ownerExtensionId, handler, dispose: handle.dispose }
+    registerRpc: (name, ownerExtensionId, handler, ownerInstanceId) => {
+      const handle = kernel.registerExtensionRpc(name, ownerExtensionId, handler, ownerInstanceId)
+      return { name, ownerExtensionId, ownerInstanceId, handler, dispose: handle.dispose }
     },
-    emitEvent: (name, payload, ownerExtensionId) => {
-      kernel.getEventBus().emit(name, payload, { source: `extension:${ownerExtensionId}` })
-    },
+    registerEventDefinition: (definition, registeredBy) => kernel.getEventBus().registerDefinition(definition, registeredBy),
+    emitEvent: (name, payload, publisher) => kernel.getEventBus().emit(name, payload, {
+      publisher,
+      source: publisher.kind === 'extension' ? `extension:${publisher.extensionId}` : publisher.kind,
+    }),
+    subscribeEvents: (patterns, handler, subscriber) => kernel.getEventBus().subscribe(patterns, handler, { subscriber }),
+  })
+  const extensionRootDirectory = resolve(options.extensionRootDirectory ?? 'extensions')
+  const extensionStateDirectory = resolve(options.extensionStateDirectory ?? '.loomstudio-dev/extensions')
+  const extensionManager = createServerExtensionManager({
+    host: extensionHost,
+    diagnostics,
+    stateStore: createExtensionStateStore({
+      filename: join(extensionStateDirectory, 'state.json'),
+      now: nowIso,
+    }),
+    repositoryDirectory: extensionRootDirectory,
+    installedDirectory: join(extensionStateDirectory, 'installed'),
+    devLinksFile: join(extensionStateDirectory, 'dev-links.json'),
   })
   const kernel = createKernel({
     documents,
@@ -94,6 +116,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     diagnostics,
     traceAudit,
     extensionHost,
+    extensionManager,
     loomRunner,
   })
   const rpcRouter = createStudioRpcRouter({ applicationRuntime, kernel, logs: options.logs })
@@ -107,8 +130,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
       })
       try {
         await kernel.start()
-        await extensionHost.discover(resolve('extensions/example-echo'))
-        await extensionHost.activateAll()
+        await extensionManager.initialize()
         await new Promise<void>((resolve, reject) => {
           const handleError = (error: Error) => reject(error)
           server.once('error', handleError)

@@ -4,6 +4,7 @@
 > **Purpose**: 定义 Server Extension MVP 生命周期、`activate(ctx)` 入口、Host API 最小形状、runtime registration 规则、状态机与 diagnostics 边界。  
 > **Audience**: Extension Host 实现者、Extension SDK 作者、Server Extension 作者、Plugin Manager / DevTool 作者。  
 > **Related**: [`../../adr/ADR-002-extension-manifest-and-registration-model.md`](../../adr/ADR-002-extension-manifest-and-registration-model.md), [`studio-extension-host-capabilities-v0.md`](studio-extension-host-capabilities-v0.md), [`../kernel/studio-transport-protocol-v0.md`](../kernel/studio-transport-protocol-v0.md)
+> **2026-08-13 决策更新**：[`../../plans/event-system-extension-scope-plan.md`](../../plans/event-system-extension-scope-plan.md) 的 Phase 1–4 已实施。稳定 `extensionId` 与每次激活的 `instanceId` 已分开；当前 Server Host 的 RPC、事件定义/订阅与 dispose callback 已统一归入 instance-scoped `ExtensionScope`，并实现 reload 与 Kernel stop 清理。Timer/UI mount 仍是未来 Client/扩展能力，不应误写为当前已接入资源。
 
 ---
 
@@ -464,3 +465,5 @@ Host registry fact：
 ## 12. Document History
 
 - 2026-05-13: Draft v0.1. 定义 Server Extension lifecycle、activate(ctx)、Host API、registration owner tracking、diagnostics 与 failure semantics。
+- 2026-08-13: 锁定 `extensionId` / `instanceId` 分离、统一 `ExtensionScope` 与可重复 dispose/reload 的后续施工方向，详见 Event System / Extension Scope 计划。
+- 2026-08-13: 完成 Server Extension Instance/Scope、activation failure cleanup、dispose/reload 与 Kernel stop 生命周期闭环。
