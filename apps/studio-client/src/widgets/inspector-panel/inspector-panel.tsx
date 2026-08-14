@@ -17,7 +17,7 @@ type InspectorPanelProps = {
 
 export function InspectorPanel(props: InspectorPanelProps) {
   return (
-    <aside className={styles.inspector} data-loom-component="overlay-utility-layer">
+    <aside className={styles.inspector} data-loom-component="overlay-utility-layer" data-loom-object="inspector-panel">
       <section className={styles.section}>
         <h2>{props.t('inspector.cardSnapshot')}</h2>
         <JsonBlock value={props.cardSnapshot} />

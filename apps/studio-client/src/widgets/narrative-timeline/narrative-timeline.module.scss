@@ -5,7 +5,7 @@
   display: grid;
   grid-template-rows: minmax(0, 1fr);
   overflow: visible;
-  background: var(--loom-panel);
+  background: var(--loom-color-background);
 }
 
 .timeline {
@@ -20,20 +20,25 @@
   gap: 18px;
   padding: 34px 0 var(--loom-composer-clearance, 200px);
   scroll-padding: 36px 0 var(--loom-composer-clearance, 200px);
-  background: var(--loom-panel);
+  background: var(--loom-color-background);
+  transition:
+    padding-bottom var(--loom-motion-duration-standard) var(--loom-motion-easing-standard),
+    scroll-padding-bottom var(--loom-motion-duration-standard) var(--loom-motion-easing-standard);
 }
 
 .empty {
   width: min(var(--loom-chat-width), 100%);
-  border-top: 1px solid var(--loom-border);
-  border-bottom: 1px solid var(--loom-border);
+  border-top: 1px solid var(--loom-color-border);
+  border-bottom: 1px solid var(--loom-color-border);
   padding: 24px 0;
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
   background: transparent;
 }
 
 .renderingMessages {
-  min-height: 1px;
+  width: min(var(--loom-chat-width), 100%);
+  min-height: 96px;
+  padding: 20px 0;
 }
 
 .message {
@@ -54,7 +59,7 @@
 
 .messageSurface {
   --loom-long-text-editor-font-family: inherit;
-  --loom-long-text-editor-line-height: 1.64;
+  --loom-long-text-editor-line-height: var(--loom-line-height-reading);
 
   width: 100%;
   min-width: 0;
@@ -67,9 +72,9 @@
 
   width: min(72%, 620px);
   margin-left: auto;
-  border-radius: 16px;
+  border-radius: var(--loom-radius-message);
   padding: 12px 16px;
-  background: var(--loom-window);
+  background: var(--loom-color-surface);
 }
 
 .assistant[data-loom-state='editing'] .messageSurface > :global([data-loom-component='long-text-editor']) {
@@ -83,7 +88,7 @@
 
 .message[data-loom-motion='to-edit'] .messageSurface > :global([data-loom-component='long-text-editor']) {
   transform-origin: top center;
-  animation: message-editor-enter 170ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: message-editor-enter 170ms var(--loom-motion-easing-standard) both;
 }
 
 .message[data-loom-motion='to-read'] .messageBody {
@@ -121,7 +126,7 @@
   gap: 3px;
   min-height: 24px;
   margin-top: 7px;
-  color: var(--loom-text-subtle);
+  color: var(--loom-color-text-subtle);
 }
 
 .messageActions {
@@ -130,7 +135,7 @@
   gap: 3px;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 120ms ease;
+  transition: opacity var(--loom-motion-duration-fast) ease;
 }
 
 .user .messageFooter {
@@ -154,8 +159,8 @@
 
 .messageTimestamp {
   margin-right: 3px;
-  font-size: 10px;
-  line-height: 1;
+  font-size: var(--loom-font-size-1);
+  line-height: var(--loom-line-height-compact);
   white-space: nowrap;
 }
 
@@ -167,78 +172,26 @@
   display: grid;
   place-items: center;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--loom-radius-control);
   padding: 0;
-  color: var(--loom-text-subtle);
+  color: var(--loom-color-text-subtle);
   background: transparent;
 }
 
 .messageAction:hover:not(:disabled),
 .messageAction:focus-visible {
-  color: var(--loom-accent-strong);
+  color: var(--loom-color-accent-strong);
   outline: 0;
 }
 
 .messageAction svg {
-  width: 13px;
-  height: 13px;
+  width: var(--loom-icon-size-3);
+  height: var(--loom-icon-size-3);
   stroke-width: 1.25;
 }
 
 .messageBody {
-  --loom-markdown-inline-code-bg: var(--loom-window);
-  --loom-markdown-inline-code-size: 0.9em;
-
   min-width: 0;
-  max-width: 100%;
-  color: var(--loom-text);
-  font-family: inherit;
-  font-size: var(--loom-font-size-body);
-  line-height: 1.64;
-  overflow-wrap: anywhere;
-}
-
-.assistant .messageBody p {
-  text-align: justify;
-  text-align-last: left;
-  text-justify: inter-character;
-}
-
-.messageBody h1,
-.messageBody h2,
-.messageBody h3,
-.messageBody h4 {
-  margin: 1.2em 0 0.5em;
-  color: var(--loom-text);
-  font: inherit;
-  font-weight: 650;
-  line-height: 1.35;
-}
-
-.messageBody h1 { font-size: 1.3em; }
-.messageBody h2 { font-size: 1.18em; }
-.messageBody h3,
-.messageBody h4 { font-size: 1.05em; }
-
-.messageBody blockquote {
-  border-radius: 5px;
-  padding: 6px 10px;
-  color: var(--loom-text-muted);
-  background: color-mix(in srgb, var(--loom-window) 44%, transparent);
-}
-
-.messageBody pre {
-  max-width: 100%;
-  overflow: auto;
-  border-radius: 7px;
-  padding: 11px 13px;
-  background: var(--loom-window);
-}
-
-.messageBody table {
-  display: block;
-  max-width: 100%;
-  overflow-x: auto;
 }
 
 @media (max-width: 820px) {
@@ -270,6 +223,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .timeline {
+    transition: none;
+  }
+
   .message[data-loom-motion='to-edit'] .messageSurface > :global([data-loom-component='long-text-editor']),
   .message[data-loom-motion='to-read'] .messageBody {
     animation: none;

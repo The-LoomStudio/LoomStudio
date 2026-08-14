@@ -6,10 +6,10 @@
 
 .orderSummary {
   align-items: baseline;
-  background: var(--loom-bg);
-  color: var(--loom-text-subtle);
+  background: var(--loom-color-background);
+  color: var(--loom-color-text-subtle);
   display: flex;
-  font-size: 10px;
+  font-size: var(--loom-font-size-1);
   gap: 12px;
   justify-content: space-between;
   padding: 8px 0;
@@ -19,10 +19,10 @@
 }
 
 .orderSummary strong {
-  color: var(--loom-text-muted);
-  font-size: 11px;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
   font-style: normal;
-  font-weight: 560;
+  font-weight: var(--loom-font-weight-4);
 }
 
 .zone {
@@ -30,20 +30,20 @@
 }
 
 .zone h3 {
-  color: var(--loom-text);
-  font-size: 12px;
-  font-weight: 680;
+  color: var(--loom-color-text);
+  font-size: var(--loom-font-size-3);
+  font-weight: var(--loom-font-weight-8);
   margin-bottom: 8px;
 }
 
 .zone p {
-  color: var(--loom-text-subtle);
-  font-size: 11px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-2);
 }
 
 .projectionItem {
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--loom-radius-card);
   cursor: grab;
   display: grid;
   gap: 3px;
@@ -55,11 +55,11 @@
 }
 
 .projectionItemActive {
-  background: color-mix(in srgb, var(--loom-panel) 54%, transparent);
+  background: color-mix(in srgb, var(--loom-color-surface) 54%, transparent);
 }
 
 .projectionItem:hover {
-  background: color-mix(in srgb, var(--loom-panel) 40%, transparent);
+  background: color-mix(in srgb, var(--loom-color-surface) 40%, transparent);
 }
 
 .projectionItemHead {
@@ -71,19 +71,19 @@
 }
 
 .projectionItemHead > span {
-  color: var(--loom-text-subtle);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 10px;
+  color: var(--loom-color-text-subtle);
+  font-family: var(--loom-font-family-mono);
+  font-size: var(--loom-font-size-1);
 }
 
 .projectionItemHead em {
-  color: var(--loom-text-subtle);
-  font-size: 10px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
   padding-left: 0;
 }
 
 .projectionItemHead em[data-loom-source-kind='virtual'] {
-  color: var(--loom-accent-strong);
+  color: var(--loom-color-accent-strong);
 }
 
 .projectionItem strong,
@@ -94,25 +94,25 @@
 }
 
 .projectionItem strong {
-  color: var(--loom-text);
-  font-size: 12px;
-  font-weight: 620;
+  color: var(--loom-color-text);
+  font-size: var(--loom-font-size-3);
+  font-weight: var(--loom-font-weight-6);
 }
 
 .projectionItem span {
-  color: var(--loom-text-muted);
-  font-size: 11px;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
 }
 
 .projectionItem small {
-  color: var(--loom-text-subtle);
-  font-size: 10px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
 }
 
 .projectionChildren {
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
   display: grid;
-  font-size: 11px;
+  font-size: var(--loom-font-size-2);
   gap: 2px;
   list-style: none;
   margin: 4px 0 0 26px;
@@ -125,6 +125,6 @@
 }
 
 .projectionChildren li::before {
-  color: var(--loom-text-subtle);
+  color: var(--loom-color-text-subtle);
   content: "- ";
 }

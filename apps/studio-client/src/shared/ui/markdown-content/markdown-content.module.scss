@@ -1,24 +1,24 @@
-.content :global(.tok-keyword) { color: var(--loom-syntax-keyword); }
+.content :global(.tok-keyword) { color: var(--loom-color-syntax-keyword); }
 .content :global(.tok-atom),
 .content :global(.tok-bool),
-.content :global(.tok-null) { color: var(--loom-syntax-constant); }
+.content :global(.tok-null) { color: var(--loom-color-syntax-constant); }
 .content :global(.tok-string),
 .content :global(.tok-regexp),
-.content :global(.tok-inserted) { color: var(--loom-syntax-string); }
-.content :global(.tok-number) { color: var(--loom-syntax-number); }
-.content :global(.tok-function) { color: var(--loom-syntax-function); }
+.content :global(.tok-inserted) { color: var(--loom-color-syntax-string); }
+.content :global(.tok-number) { color: var(--loom-color-syntax-number); }
+.content :global(.tok-function) { color: var(--loom-color-syntax-function); }
 .content :global(.tok-typeName),
-.content :global(.tok-className) { color: var(--loom-syntax-type); }
-.content :global(.tok-variableName) { color: var(--loom-syntax-variable); }
-.content :global(.tok-propertyName) { color: var(--loom-syntax-property); }
-.content :global(.tok-tagName) { color: var(--loom-syntax-tag); }
-.content :global(.tok-attributeName) { color: var(--loom-syntax-attribute); }
-.content :global(.tok-operator) { color: var(--loom-syntax-operator); }
-.content :global(.tok-punctuation) { color: var(--loom-syntax-punctuation); }
-.content :global(.tok-meta) { color: var(--loom-syntax-meta); }
-.content :global(.tok-comment) { color: var(--loom-syntax-comment); }
+.content :global(.tok-className) { color: var(--loom-color-syntax-type); }
+.content :global(.tok-variableName) { color: var(--loom-color-syntax-variable); }
+.content :global(.tok-propertyName) { color: var(--loom-color-syntax-property); }
+.content :global(.tok-tagName) { color: var(--loom-color-syntax-tag); }
+.content :global(.tok-attributeName) { color: var(--loom-color-syntax-attribute); }
+.content :global(.tok-operator) { color: var(--loom-color-syntax-operator); }
+.content :global(.tok-punctuation) { color: var(--loom-color-syntax-punctuation); }
+.content :global(.tok-meta) { color: var(--loom-color-syntax-meta); }
+.content :global(.tok-comment) { color: var(--loom-color-syntax-comment); }
 .content :global(.tok-invalid),
-.content :global(.tok-deleted) { color: var(--loom-syntax-invalid); }
+.content :global(.tok-deleted) { color: var(--loom-color-syntax-invalid); }
 
 .content > :first-child { margin-top: 0; }
 .content > :last-child { margin-bottom: 0; }
@@ -37,17 +37,17 @@
 .content ol { padding-left: 1.5em; }
 
 .content a {
-  color: var(--loom-info);
-  text-decoration-color: color-mix(in srgb, var(--loom-info) 54%, transparent);
+  color: var(--loom-color-info);
+  text-decoration-color: color-mix(in srgb, var(--loom-color-info) 54%, transparent);
   text-underline-offset: 3px;
 }
 
 .content code {
-  border-radius: 4px;
+  border-radius: var(--loom-radius-surface);
   padding: 1px 4px;
-  color: var(--loom-text);
-  background: var(--loom-markdown-inline-code-bg, var(--loom-bg));
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--loom-color-text);
+  background: var(--loom-markdown-inline-code-bg, var(--loom-color-background));
+  font-family: var(--loom-font-family-mono);
   font-size: var(--loom-markdown-inline-code-size, 0.92em);
 }
 
@@ -64,23 +64,23 @@
 .content th,
 .content td {
   padding: 5px 8px;
-  border-bottom: 1px solid var(--loom-divider-color);
+  border-bottom: 1px solid var(--loom-color-divider);
   text-align: left;
 }
 
-.content em { color: var(--loom-text-muted); }
+.content em { color: var(--loom-color-text-muted); }
 
 .semanticToken {
-  border-radius: 4px;
+  border-radius: var(--loom-radius-surface);
   padding: 1px 4px;
-  background: var(--loom-panel);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  background: var(--loom-color-surface);
+  font-family: var(--loom-font-family-mono);
   font-size: 0.9em;
 }
 
-.macroToken { color: var(--loom-accent-strong); }
-.assetToken { color: var(--loom-info); }
-.dialogueToken { color: var(--loom-dialogue); }
+.macroToken { color: var(--loom-color-accent-strong); }
+.assetToken { color: var(--loom-color-info); }
+.dialogueToken { color: var(--loom-color-dialogue); }
 
 .codeBlock {
   position: relative;
@@ -88,10 +88,12 @@
   max-width: 100%;
 }
 
-.codeBlock pre {
+.content .codeBlock pre {
   max-width: 100%;
   overflow: auto;
-  padding-top: 34px;
+  border: var(--loom-markdown-code-block-border, 0);
+  padding: 34px 13px 11px;
+  background: var(--loom-markdown-code-block-bg, var(--loom-color-surface-subtle));
   white-space: pre;
 }
 
@@ -112,6 +114,18 @@
   gap: 2px;
 }
 
+.codeLanguage {
+  position: absolute;
+  z-index: 2;
+  top: 6px;
+  left: 13px;
+  color: var(--loom-color-text-subtle);
+  font-family: var(--loom-font-family-mono);
+  font-size: var(--loom-font-size-1);
+  line-height: 24px;
+  text-transform: lowercase;
+}
+
 .codeAction {
   width: 24px;
   min-width: 24px;
@@ -120,20 +134,20 @@
   display: grid;
   place-items: center;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--loom-radius-control);
   padding: 0;
-  color: var(--loom-text-subtle);
+  color: var(--loom-color-text-subtle);
   background: transparent;
 }
 
 .codeAction:hover,
 .codeAction:focus-visible {
-  color: var(--loom-accent-strong);
+  color: var(--loom-color-accent-strong);
   outline: 0;
 }
 
 .codeAction svg {
-  width: 13px;
-  height: 13px;
+  width: var(--loom-icon-size-3);
+  height: var(--loom-icon-size-3);
   stroke-width: 1.25;
 }

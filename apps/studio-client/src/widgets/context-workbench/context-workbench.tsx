@@ -126,8 +126,8 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
         >
           <FileTree
             key={props.workspaceId}
-            ariaLabel={props.t('context.assetsLabel')}
-            expandedIds={explorerView.expandedIds}
+            ariaLabel={props.t('context.explorerLabel')}
+            expandedIds={explorerView.expandedIds ?? displayNodes.map(node => node.id)}
             getDisclosureLabel={(node, expanded) => props.t(expanded ? 'context.tree.collapse' : 'context.tree.expand', { label: node.label })}
             getDragLabel={node => props.t('context.tree.drag', { label: node.label })}
             getActions={node => readContextAssetTreeActions(node as ContextAssetNode, {

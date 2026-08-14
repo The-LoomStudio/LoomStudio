@@ -11,15 +11,20 @@ Studio 默认 UI 是面向长时间阅读、对话和提示词创作的平面编
 当前主要表面语义为：
 
 ```text
-Base Canvas:
-  应用和默认聊天背景，使用 --loom-bg。
+Background:
+  应用和默认聊天背景，使用 --loom-color-background。
 
-Window:
-  浮动工作面板，使用 --loom-window，并在内部重映射表面 token。
+Surface:
+  Window、Panel、用户消息等主要内容表面，使用 --loom-color-surface。
 
-Raised / Deep Surface:
-  元信息、编辑器或需要与父面板区分的局部区域。
+Subtle / Inset / Emphasis Surface:
+  编辑器、代码块、元信息或需要与父表面区分的局部区域。
+
+Raised Surface:
+  Dialog、Popover、Context Menu 和 Toast 等 Top Layer 内容。
 ```
+
+颜色 Token 只表达视觉层级，不按 Window、Panel、Dialog 等 UI 对象命名。对象名称继续用于布局、尺寸和圆角等几何 Token。
 
 聊天流默认直接铺在 Base Canvas 上，不额外制造聊天容器边框。用户消息可以使用浅色气泡，Assistant 正文保持接近文档流。
 
@@ -46,6 +51,8 @@ Raised / Deep Surface:
 - 元信息弱于正文，但仍满足可读对比度；
 - 长文本编辑器优先保证正文宽度、行高和底部可滚动留白；
 - 行号与正文使用相同字号和行高，当前光标范围的首尾行号可被强调。
+
+当前排版基础由共享字体族、八级字号、保持既有值的字重等级和常用行高 Token 提供。默认正文使用操作系统 UI 字体，不加载产品自有字体；等宽内容使用系统等宽字体栈。Markdown 与错误页等内容型宿主可以保留相对标题或 Display 比例，不要求机械映射到普通 UI 字号等级。
 
 固定像素可用于细线、图标和最小点击目标等局部标定；窗口宽度优先使用视口相对约束和上下限，避免只适配开发机屏幕。
 

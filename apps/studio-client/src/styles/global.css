@@ -1,92 +1,169 @@
 :root {
-  color: var(--loom-text);
-  background: var(--loom-bg);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--loom-color-text);
+  background: var(--loom-color-background);
+  font-family: var(--loom-font-family-sans);
   font-size: var(--loom-font-size-body);
 
-  /* ── 背景与表面 ── */
-  --loom-bg: #1e1e2e;
-  --loom-surface: #181825;
-  --loom-surface-deep: #373849;
-  --loom-panel: #313244;
-  --loom-panel-muted: #45475a;
-  --loom-window: #313244;
-  --loom-window-surface: #3b3d50;
-  --loom-window-raised: #45475a;
-  --loom-divider-color: color-mix(in srgb, var(--loom-border) 58%, transparent);
+  --loom-ui-scale: 1;
+
+  /* ── 颜色：背景与表面 ──
+   * 默认视觉层级索引仅用于设计沟通，不属于变量名，也不规定亮色主题中的明暗方向：
+   * S0 recessed  -- surface-inset：编辑器、深层 Markdown Block 等内嵌区域
+   * S1 canvas    -- background：工作区根背景
+   * S2 base      -- surface：Window、Composer 等基础实体表面
+   * S3 emphasis  -- surface-emphasis：比基础表面略强的局部区分
+   * S3 subtle    -- surface-subtle：同层级的柔和区分面
+   * S4 raised    -- surface-muted / surface-raised：最高分离度的浮起或选中表面
+   */
+  --loom-color-background: var(--loom-bg, #1e1e2e);
+  --loom-color-surface-inset: var(--loom-surface, #181825);
+  --loom-color-surface-emphasis: var(--loom-surface-deep, #373849);
+  --loom-color-surface: var(--loom-window, var(--loom-panel, #313244));
+  --loom-color-surface-subtle: var(--loom-window-surface, #3b3d50);
+  --loom-color-surface-muted: var(--loom-panel-muted, #45475a);
+  --loom-color-surface-raised: var(--loom-window-raised, var(--loom-panel-muted, #45475a));
   --loom-divider-inset: 13px;
   --loom-divider-space: 5px;
-  --loom-page-header-height: 36px;
-  --loom-page-header-padding: 13px;
-  --loom-page-header-icon-size: 14px;
-  --loom-page-header-control-size: 26px;
+  --loom-page-header-height: calc(36px * var(--loom-ui-scale));
+  --loom-page-header-padding: calc(13px * var(--loom-ui-scale));
+  --loom-page-header-icon-size: calc(14px * var(--loom-ui-scale));
+  --loom-page-header-control-size: calc(26px * var(--loom-ui-scale));
   --loom-page-header-icon-stroke: 1.25;
 
-  /* ── 边框 ── */
-  --loom-border: #45475a;
-  --loom-border-strong: #585b70;
+  /* ── 图标：客观尺寸等级 ── */
+  --loom-icon-size-1: calc(10px * var(--loom-ui-scale));
+  --loom-icon-size-2: calc(12px * var(--loom-ui-scale));
+  --loom-icon-size-3: calc(13px * var(--loom-ui-scale));
+  --loom-icon-size-4: calc(14px * var(--loom-ui-scale));
+  --loom-icon-size-5: calc(16px * var(--loom-ui-scale));
+  --loom-icon-size-6: calc(20px * var(--loom-ui-scale));
 
-  /* ── 文本 ── */
-  --loom-text: #ccd6f5;
-  --loom-text-muted: #a6adc8;
-  --loom-text-subtle: #7f849c;
-  --loom-font-size-body: 13px;
+  /* ── 颜色：边界（B0 divider < B1 border < B2 border-strong） ── */
+  --loom-color-border: var(--loom-border, #45475a);
+  --loom-color-border-strong: var(--loom-border-strong, #585b70);
+  --loom-color-divider: var(--loom-divider-color, color-mix(in srgb, var(--loom-color-border) 58%, transparent));
 
-  /* ── 强调色（成对） ── */
-  --loom-accent: #cba6f7;
-  --loom-accent-strong: #d0b3f8;
-  --loom-accent-soft: #3b324a;
-  --loom-accent-foreground: #11111b;
-  --loom-dialogue: var(--loom-accent-strong);
+  /* ── 颜色：文本（T1 text > T2 text-muted > T3 text-subtle） ── */
+  --loom-color-text: var(--loom-text, #ccd6f5);
+  --loom-color-text-muted: var(--loom-text-muted, #a6adc8);
+  --loom-color-text-subtle: var(--loom-text-subtle, #7f849c);
 
-  /* ── 角色色 ── */
-  --loom-role-user: transparent;
-  --loom-role-assistant: transparent;
+  /* ── 颜色：强调 ── */
+  --loom-color-accent: var(--loom-accent, #cba6f7);
+  --loom-color-accent-strong: var(--loom-accent-strong, #d0b3f8);
+  --loom-color-accent-soft: var(--loom-accent-soft, #3b324a);
+  --loom-color-accent-foreground: var(--loom-accent-foreground, #11111b);
+  --loom-color-dialogue: var(--loom-dialogue, var(--loom-color-accent-strong));
 
-  /* ── 状态色（成对） ── */
-  --loom-danger: #f38ba8;
-  --loom-danger-foreground: #11111b;
-  --loom-danger-bg: #3f2835;
-  --loom-warning: #fab387;
-  --loom-warning-foreground: #11111b;
-  --loom-warning-bg: #403128;
-  --loom-info: #89b4fa;
-  --loom-info-bg: #29344d;
-  --loom-success: #a6e3a1;
-  --loom-success-bg: #2b3a32;
-  --loom-selection-bg: color-mix(in srgb, var(--loom-info) 30%, transparent);
+  /* ── 颜色：角色 ── */
+  --loom-color-role-user: var(--loom-role-user, transparent);
+  --loom-color-role-assistant: var(--loom-role-assistant, transparent);
 
-  /* ── 编辑器语法色 ── */
-  --loom-syntax-comment: #6c7086;
-  --loom-syntax-heading: #cba6f7;
-  --loom-syntax-emphasis: #f5c2e7;
-  --loom-syntax-strong: #f9e2af;
-  --loom-syntax-quote: #94e2d5;
-  --loom-syntax-link: #89dceb;
-  --loom-syntax-keyword: #cba6f7;
-  --loom-syntax-constant: #fab387;
-  --loom-syntax-string: #a6e3a1;
-  --loom-syntax-number: #fab387;
-  --loom-syntax-variable: #cdd6f4;
-  --loom-syntax-function: #89b4fa;
-  --loom-syntax-type: #f9e2af;
-  --loom-syntax-property: #b4befe;
-  --loom-syntax-tag: #f38ba8;
-  --loom-syntax-attribute: #f9e2af;
-  --loom-syntax-operator: #89dceb;
-  --loom-syntax-punctuation: #9399b2;
-  --loom-syntax-meta: #f5c2e7;
-  --loom-syntax-invalid: #f38ba8;
+  /* ── 颜色：状态 ── */
+  --loom-color-danger: var(--loom-danger, #f38ba8);
+  --loom-color-danger-foreground: var(--loom-danger-foreground, #11111b);
+  --loom-color-danger-background: var(--loom-danger-bg, #3f2835);
+  --loom-color-warning: var(--loom-warning, #fab387);
+  --loom-color-warning-foreground: var(--loom-warning-foreground, #11111b);
+  --loom-color-warning-background: var(--loom-warning-bg, #403128);
+  --loom-color-info: var(--loom-info, #89b4fa);
+  --loom-color-info-background: var(--loom-info-bg, #29344d);
+  --loom-color-success: var(--loom-success, #a6e3a1);
+  --loom-color-success-background: var(--loom-success-bg, #2b3a32);
+  --loom-color-selection-background: var(--loom-selection-bg, color-mix(in srgb, var(--loom-color-info) 30%, transparent));
+
+  /* ── 颜色：编辑器语法 ── */
+  --loom-color-syntax-comment: var(--loom-syntax-comment, #6c7086);
+  --loom-color-syntax-heading: var(--loom-syntax-heading, #cba6f7);
+  --loom-color-syntax-emphasis: var(--loom-syntax-emphasis, #f5c2e7);
+  --loom-color-syntax-strong: var(--loom-syntax-strong, #f9e2af);
+  --loom-color-syntax-quote: var(--loom-syntax-quote, #94e2d5);
+  --loom-color-syntax-link: var(--loom-syntax-link, #89dceb);
+  --loom-color-syntax-keyword: var(--loom-syntax-keyword, #cba6f7);
+  --loom-color-syntax-constant: var(--loom-syntax-constant, #fab387);
+  --loom-color-syntax-string: var(--loom-syntax-string, #a6e3a1);
+  --loom-color-syntax-number: var(--loom-syntax-number, #fab387);
+  --loom-color-syntax-variable: var(--loom-syntax-variable, #cdd6f4);
+  --loom-color-syntax-function: var(--loom-syntax-function, #89b4fa);
+  --loom-color-syntax-type: var(--loom-syntax-type, #f9e2af);
+  --loom-color-syntax-property: var(--loom-syntax-property, #b4befe);
+  --loom-color-syntax-tag: var(--loom-syntax-tag, #f38ba8);
+  --loom-color-syntax-attribute: var(--loom-syntax-attribute, #f9e2af);
+  --loom-color-syntax-operator: var(--loom-syntax-operator, #89dceb);
+  --loom-color-syntax-punctuation: var(--loom-syntax-punctuation, #9399b2);
+  --loom-color-syntax-meta: var(--loom-syntax-meta, #f5c2e7);
+  --loom-color-syntax-invalid: var(--loom-syntax-invalid, #f38ba8);
+
+  /* ── 排版：字体族 ── */
+  --loom-font-family-sans: system-ui, sans-serif;
+  --loom-font-family-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* ── 排版：字号等级（1 最小，8 最大） ── */
+  --loom-font-size-1: calc(10px * var(--loom-ui-scale));
+  --loom-font-size-2: calc(11px * var(--loom-ui-scale));
+  --loom-font-size-3: calc(12px * var(--loom-ui-scale));
+  --loom-font-size-4: calc(13px * var(--loom-ui-scale));
+  --loom-font-size-5: calc(14px * var(--loom-ui-scale));
+  --loom-font-size-6: calc(16px * var(--loom-ui-scale));
+  --loom-font-size-7: calc(18px * var(--loom-ui-scale));
+  --loom-font-size-8: calc(20px * var(--loom-ui-scale));
+  --loom-font-size-body: var(--loom-font-size-4);
+
+  /* ── 排版：字重等级（保持当前视觉值，暂不归并） ── */
+  --loom-font-weight-1: 400;
+  --loom-font-weight-2: 500;
+  --loom-font-weight-3: 540;
+  --loom-font-weight-4: 560;
+  --loom-font-weight-5: 600;
+  --loom-font-weight-6: 620;
+  --loom-font-weight-7: 650;
+  --loom-font-weight-8: 680;
+  --loom-font-weight-9: 720;
+
+  /* ── 排版：常用行高（特殊内容比例继续由宿主保留） ── */
+  --loom-line-height-compact: 1;
+  --loom-line-height-title: 1.25;
+  --loom-line-height-tight: 1.3;
+  --loom-line-height-heading: 1.35;
+  --loom-line-height-code: 1.45;
+  --loom-line-height-ui: 1.5;
+  --loom-line-height-body: 1.55;
+  --loom-line-height-reading: 1.64;
+  --loom-line-height-relaxed: 1.65;
+
+  /* ── 动效：共享时长与缓动 ── */
+  --loom-motion-duration-fast: 120ms;
+  --loom-motion-duration-standard: 180ms;
+  --loom-motion-duration-loading: 1.4s;
+  --loom-motion-easing-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
 
   /* ── 布局尺寸 ── */
-  --loom-chat-width: 720px;
+  --loom-chat-width: 680px;
   --loom-canvas-width: 860px;
-  --loom-rail-width: 44px;
+  /* Old Custom CSS overrides flow into the new collapsed-width contract. */
+  --loom-rail-width: 42px;
+  --loom-rail-collapsed-width: var(--loom-rail-width);
+  --loom-rail-expanded-width: 160px;
+  --loom-window-gap: 8px;
+  --loom-window-min-width: 240px;
+  --loom-window-min-height: 360px;
   --loom-overlay-width: 360px;
-  --loom-input-height: 112px;
-  --loom-radius-panel: 4px;
-  --loom-radius-message: 0;
-  --loom-shadow-panel: none;
+  --loom-input-height: 80px;
+
+  /* ── 圆角 ── */
+  --loom-radius-sm: 4px;
+  --loom-radius-md: 8px;
+  --loom-radius-lg: 12px;
+  --loom-radius-xl: 18px;
+  --loom-radius-full: 999px;
+  --loom-radius-control: var(--loom-radius-sm);
+  --loom-radius-surface: var(--loom-radius-sm);
+  --loom-radius-card: var(--loom-radius-md);
+  --loom-radius-panel: var(--loom-radius-md);
+  --loom-radius-popover: var(--loom-radius-md);
+  --loom-radius-dialog: var(--loom-radius-lg);
+  --loom-radius-window: var(--loom-radius-xl);
+  --loom-radius-message: 16px;
 }
 
 * {
@@ -97,7 +174,7 @@
   display: block;
   height: calc(var(--loom-divider-space) * 2 + 1px);
   margin-inline: var(--loom-divider-inset);
-  background: linear-gradient(var(--loom-divider-color), var(--loom-divider-color)) center / 100% 1px no-repeat;
+  background: linear-gradient(var(--loom-color-divider), var(--loom-color-divider)) center / 100% 1px no-repeat;
   pointer-events: none;
 }
 
@@ -109,7 +186,7 @@
   gap: 12px;
   padding-top: 6px;
   padding-inline: var(--loom-page-header-padding);
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
 }
 
 .loom-page-header svg {
@@ -123,7 +200,7 @@
   min-width: 0;
   flex: 1;
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--loom-font-size-3);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -145,20 +222,20 @@
   min-height: 26px;
   border: 0;
   padding: 0;
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
   background: transparent;
-  font-size: 12px;
-  font-weight: 540;
+  font-size: var(--loom-font-size-3);
+  font-weight: var(--loom-font-weight-3);
   white-space: nowrap;
 }
 
 .loom-page-tab:hover,
 .loom-page-tab-active {
-  color: var(--loom-text);
+  color: var(--loom-color-text);
 }
 
 .loom-page-tab-active {
-  font-weight: 620;
+  font-weight: var(--loom-font-weight-6);
 }
 
 html,
@@ -171,11 +248,11 @@ body,
 body {
   margin: 0;
   overflow: hidden;
-  background: var(--loom-bg);
+  background: var(--loom-color-background);
 }
 
 * {
-  scrollbar-color: color-mix(in srgb, var(--loom-border-strong) 58%, var(--loom-bg)) var(--loom-bg);
+  scrollbar-color: color-mix(in srgb, var(--loom-color-border-strong) 58%, transparent) transparent;
   scrollbar-width: thin;
 }
 
@@ -185,17 +262,19 @@ body {
 }
 
 *::-webkit-scrollbar-track {
-  background: var(--loom-bg);
+  background: transparent;
 }
 
 *::-webkit-scrollbar-thumb {
-  border: 3px solid var(--loom-bg);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--loom-border-strong) 58%, var(--loom-bg));
+  border: 3px solid transparent;
+  border-radius: var(--loom-radius-full);
+  background: color-mix(in srgb, var(--loom-color-border-strong) 58%, transparent);
+  background-clip: padding-box;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--loom-border-strong) 76%, var(--loom-bg));
+  background: color-mix(in srgb, var(--loom-color-border-strong) 76%, transparent);
+  background-clip: padding-box;
 }
 
 button,
@@ -207,17 +286,17 @@ textarea {
 
 button {
   min-height: 32px;
-  border: 1px solid var(--loom-border);
-  border-radius: 4px;
+  border: 1px solid var(--loom-color-border);
+  border-radius: var(--loom-radius-control);
   padding: 7px 10px;
-  color: var(--loom-text);
+  color: var(--loom-color-text);
   background: transparent;
   cursor: pointer;
 }
 
 button:hover:not(:disabled) {
-  border-color: var(--loom-accent);
-  color: var(--loom-accent-strong);
+  border-color: var(--loom-color-accent);
+  color: var(--loom-color-accent-strong);
 }
 
 button:focus-visible,
@@ -225,8 +304,8 @@ textarea:focus,
 select:focus,
 input:focus {
   outline: none;
-  border-color: var(--loom-accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--loom-accent) 28%, transparent);
+  border-color: var(--loom-color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--loom-color-accent) 28%, transparent);
 }
 
 button:disabled {
@@ -238,9 +317,9 @@ textarea,
 select,
 input {
   width: 100%;
-  border: 1px solid var(--loom-border);
-  border-radius: 4px;
-  color: var(--loom-text);
+  border: 1px solid var(--loom-color-border);
+  border-radius: var(--loom-radius-control);
+  color: var(--loom-color-text);
   background: transparent;
 }
 
@@ -251,22 +330,22 @@ input[type="checkbox"] {
   height: 14px;
   min-height: 14px;
   margin: 0;
-  border: 1px solid var(--loom-border-strong);
-  border-radius: 3px;
+  border: 1px solid var(--loom-color-border-strong);
+  border-radius: var(--loom-radius-control);
   padding: 0;
   background: transparent center / 10px 10px no-repeat;
   cursor: pointer;
 }
 
 input[type="checkbox"]:checked {
-  border-color: var(--loom-accent);
-  background-color: var(--loom-accent);
+  border-color: var(--loom-color-accent);
+  background-color: var(--loom-color-accent);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.2 6.2 4.8 8.7 9.9 3.3' fill='none' stroke='%2311111b' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 input[type="checkbox"]:focus-visible {
-  border-color: var(--loom-accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--loom-accent) 22%, transparent);
+  border-color: var(--loom-color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--loom-color-accent) 22%, transparent);
 }
 
 input[type="checkbox"]:disabled {
@@ -282,22 +361,22 @@ p {
 }
 
 h1 {
-  font-size: 18px;
-  line-height: 1.25;
-  font-weight: 680;
+  font-size: var(--loom-font-size-7);
+  line-height: var(--loom-line-height-title);
+  font-weight: var(--loom-font-weight-8);
 }
 
 h2 {
-  font-size: 12px;
-  line-height: 1.3;
-  font-weight: 720;
+  font-size: var(--loom-font-size-3);
+  line-height: var(--loom-line-height-tight);
+  font-weight: var(--loom-font-weight-9);
   text-transform: uppercase;
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
 }
 
 h3 {
-  font-size: 12px;
-  line-height: 1.35;
-  font-weight: 680;
-  color: var(--loom-text);
+  font-size: var(--loom-font-size-3);
+  line-height: var(--loom-line-height-heading);
+  font-weight: var(--loom-font-weight-8);
+  color: var(--loom-color-text);
 }

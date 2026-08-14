@@ -4,8 +4,8 @@
 }
 
 .header p {
-  color: var(--loom-text-subtle);
-  font-size: 10px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
   margin: 0 0 6px;
 }
 
@@ -17,11 +17,11 @@
 }
 
 .header h1 {
-  color: var(--loom-text);
+  color: var(--loom-color-text);
   flex: 1;
-  font-size: 18px;
-  font-weight: 650;
-  line-height: 1.25;
+  font-size: var(--loom-font-size-7);
+  font-weight: var(--loom-font-weight-7);
+  line-height: var(--loom-line-height-title);
   margin: 0;
   min-width: 0;
 }
@@ -29,8 +29,8 @@
 .metadataToggle {
   background: transparent;
   border: 0;
-  border-radius: 5px;
-  color: var(--loom-text-muted);
+  border-radius: var(--loom-radius-control);
+  color: var(--loom-color-text-muted);
   display: grid;
   height: 26px;
   min-height: 26px;
@@ -44,24 +44,24 @@
 .metadataToggle:focus-visible,
 .metadataToggleActive {
   background: transparent;
-  color: var(--loom-accent-strong);
+  color: var(--loom-color-accent-strong);
 }
 
 .metadataToggle:focus-visible {
-  outline: 1px solid var(--loom-accent);
+  outline: 1px solid var(--loom-color-accent);
   outline-offset: -2px;
 }
 
 .metadataToggle svg {
-  height: 14px;
+  height: var(--loom-icon-size-4);
   stroke-width: 1.25;
-  width: 14px;
+  width: var(--loom-icon-size-4);
 }
 
 .header > span {
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
   display: block;
-  font-size: 11px;
+  font-size: var(--loom-font-size-2);
   margin-top: 5px;
   overflow-wrap: anywhere;
 }
@@ -69,5 +69,5 @@
 .muted h1,
 .muted > span,
 .muted p {
-  color: var(--loom-text-subtle);
+  color: var(--loom-color-text-subtle);
 }

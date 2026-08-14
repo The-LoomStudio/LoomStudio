@@ -13,6 +13,7 @@ Architecture / Application / UI:
 ## 当前文档
 
 - [`workspace-shell.md`](workspace-shell.md)：Base Canvas、浮动 Dock / Workspace、窗口模式和布局状态。
+- [`window-layout.md`](window-layout.md)：Window 内的 Column Layout、Column Splitter 与 Overlay 空间合同。
 - [`navigation-and-routing.md`](navigation-and-routing.md)：URL、History、Router 与 Zustand 的状态边界。
 - [`visual-language.md`](visual-language.md)：默认暗色视觉语言、层级、排版与交互反馈。
 - [`css-and-theming.md`](css-and-theming.md)：SCSS Modules、`--loom-*` token、自定义 CSS 公共边界。
@@ -20,7 +21,7 @@ Architecture / Application / UI:
 
 ## 边界
 
-本目录只描述当前实现事实。下列方向尚未成为 Architecture contract：
+本目录默认描述当前实现事实；标记为“已确认合同、实现待迁移”的文档用于约束正在进入实现阶段的架构决定，不能当作已完成证明。下列方向尚未成为 Architecture contract：
 
 - 一维横向多窗口与插件窗口贡献；
 - 完整 Motion Contract；

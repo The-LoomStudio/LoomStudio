@@ -1,4 +1,4 @@
-import { isValidElement } from 'react'
+import { isValidElement, type ReactNode } from 'react'
 import { describe, expect, it } from 'vitest'
 import { highlightCode } from './markdown-content.js'
 import { prepareLoomMarkdown, readLoomToken } from './markdown-content-model.js'
@@ -25,4 +25,37 @@ describe('Loom Markdown preview tokens', () => {
     expect(highlightCode('const answer = 42', 'js').some(isValidElement)).toBe(true)
     expect(highlightCode('plain text', 'unknown')).toEqual(['plain text'])
   })
+
+  it('classifies YAML keys and scalar values like equivalent JSON data', () => {
+    const highlighted = highlightCode('scene:\n  floor: 11\n  weather: rain\n  enabled: true\n  empty: null', 'yaml')
+
+    expect(readHighlightedTokens(highlighted)).toMatchObject({
+      scene: 'tok-propertyName tok-definition',
+      floor: 'tok-propertyName tok-definition',
+      '11': 'tok-number',
+      weather: 'tok-propertyName tok-definition',
+      rain: 'tok-string',
+      enabled: 'tok-propertyName tok-definition',
+      true: 'tok-constant',
+      empty: 'tok-propertyName tok-definition',
+      null: 'tok-constant',
+    })
+  })
+
+  it('distinguishes JSON property names from string values', () => {
+    const highlighted = highlightCode('{"name": "loom-studio", "private": true}', 'json')
+
+    expect(readHighlightedTokens(highlighted)).toMatchObject({
+      '"name"': 'tok-propertyName',
+      '"loom-studio"': 'tok-string',
+      '"private"': 'tok-propertyName',
+    })
+  })
 })
+
+function readHighlightedTokens(parts: ReactNode[]) {
+  return Object.fromEntries(parts.flatMap(part => {
+    if (!isValidElement<{ className?: string; children?: ReactNode }>(part)) return []
+    return [[String(part.props.children), part.props.className]]
+  }))
+}

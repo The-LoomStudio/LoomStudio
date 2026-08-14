@@ -9,12 +9,12 @@
 }
 
 .emptyState {
-  color: var(--loom-text-muted);
-  font-size: 13px;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-4);
   padding-top: 24px;
 }
 
-@media (max-width: 720px) {
+@container studio-panel (max-width: 720px) {
   .detailColumn {
     padding-inline: 14px;
   }

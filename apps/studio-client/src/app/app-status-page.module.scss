@@ -6,8 +6,8 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  color: var(--loom-text);
-  background: var(--loom-bg);
+  color: var(--loom-color-text);
+  background: var(--loom-color-background);
 }
 
 .panel {
@@ -26,16 +26,16 @@
 }
 
 .eyebrow {
-  color: var(--loom-text-subtle);
-  font-size: 12px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-3);
   letter-spacing: 0.04em;
 }
 
 .prominentEyebrow {
   margin: 0 0 12px;
-  color: var(--loom-accent-strong);
+  color: var(--loom-color-accent-strong);
   font-size: clamp(72px, 14vw, 112px);
-  font-weight: 650;
+  font-weight: var(--loom-font-weight-7);
   font-variant-numeric: tabular-nums;
   line-height: 0.9;
   letter-spacing: 0;
@@ -44,14 +44,14 @@
 .panel h1 {
   margin-top: 7px;
   font-size: 21px;
-  line-height: 1.35;
+  line-height: var(--loom-line-height-heading);
 }
 
 .description {
   max-width: 100%;
   margin-top: 12px;
-  color: var(--loom-text-muted);
-  line-height: 1.65;
+  color: var(--loom-color-text-muted);
+  line-height: var(--loom-line-height-relaxed);
 }
 
 .actions {
@@ -70,23 +70,23 @@
   min-height: 34px;
   padding: 0 14px;
   border: 0;
-  border-radius: 12px;
-  color: var(--loom-text);
+  border-radius: var(--loom-radius-control);
+  color: var(--loom-color-text);
   text-decoration: none;
-  background: var(--loom-panel);
+  background: var(--loom-color-surface);
 }
 
 .actions a:first-child,
 .actions button:first-child {
-  color: var(--loom-bg);
-  background: var(--loom-accent-strong);
+  color: var(--loom-color-background);
+  background: var(--loom-color-accent-strong);
 }
 
 .panel details {
   width: 100%;
   margin-top: 22px;
-  color: var(--loom-text-subtle);
-  font-size: 12px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-3);
   text-align: left;
 }
 

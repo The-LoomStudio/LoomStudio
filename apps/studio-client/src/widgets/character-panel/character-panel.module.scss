@@ -1,11 +1,19 @@
 .characterPanel {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--loom-radius-panel);
+  color: var(--loom-color-text);
+  background: var(--loom-color-surface);
+}
+
+.characterScroller {
   width: 100%;
   height: 100%;
   min-height: 0;
   overflow: auto;
-  border-radius: var(--loom-radius-panel);
-  color: var(--loom-text);
-  background: var(--loom-bg);
 }
 
 .headerTitle {
@@ -16,19 +24,19 @@
   align-items: center;
   gap: 12px;
   border: 0;
-  border-radius: 3px;
+  border-radius: var(--loom-radius-control);
   padding: 0;
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
   background: transparent;
   text-align: left;
 }
 
 .headerTitle:hover:not(:disabled) {
-  color: var(--loom-accent-strong);
+  color: var(--loom-color-accent-strong);
 }
 
 .headerTitle:focus-visible {
-  outline: 1px solid var(--loom-accent);
+  outline: 1px solid var(--loom-color-accent);
   outline-offset: 2px;
   box-shadow: none;
 }
@@ -42,16 +50,16 @@
 }
 
 .galleryEntering {
-  animation: gallery-enter 180ms ease-out both;
+  animation: gallery-enter var(--loom-motion-duration-standard) ease-out both;
 }
 
 .profileEntering {
-  animation: profile-enter 180ms ease-out both;
+  animation: profile-enter var(--loom-motion-duration-standard) ease-out both;
 }
 
 .profileLeaving {
   pointer-events: none;
-  animation: profile-leave 180ms ease-in both;
+  animation: profile-leave var(--loom-motion-duration-standard) ease-in both;
 }
 
 @keyframes gallery-enter {
@@ -87,12 +95,12 @@
   justify-content: space-between;
   min-height: 42px;
   padding: 7px 16px;
-  background: var(--loom-bg);
+  background: var(--loom-color-surface);
 }
 
 .profileToolbar > span {
-  color: var(--loom-text-muted);
-  font-size: 11px;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
 }
 
 .galleryModes,
@@ -114,7 +122,7 @@
 .sessionCard button,
 .selectionToolbar > div > button {
   border: 0;
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
   background: transparent;
 }
 
@@ -141,11 +149,11 @@
 .toolbarButton:hover:not(:disabled),
 .galleryActions > button:hover:not(:disabled),
 .sessionCard button:hover:not(:disabled) {
-  color: var(--loom-accent-strong);
+  color: var(--loom-color-accent-strong);
 }
 
 .toolbarButtonActive {
-  color: var(--loom-accent-strong);
+  color: var(--loom-color-accent-strong);
 }
 
 .galleryActions > button:last-child,
@@ -156,8 +164,8 @@
   align-items: center;
   gap: 5px;
   padding: 4px 7px;
-  color: var(--loom-accent-strong);
-  font-size: 11px;
+  color: var(--loom-color-accent-strong);
+  font-size: var(--loom-font-size-2);
 }
 
 .selectionToolbar {
@@ -167,8 +175,8 @@
 }
 
 .selectionToolbar > span {
-  color: var(--loom-text-muted);
-  font-size: 11px;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
 }
 
 .selectionToolbar > div > button {
@@ -177,29 +185,29 @@
   align-items: center;
   gap: 5px;
   padding: 4px 3px;
-  color: var(--loom-text-muted);
-  font-size: 11px;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
 }
 
 .selectionToolbar > div > button:hover:not(:disabled) {
-  color: var(--loom-accent-strong);
+  color: var(--loom-color-accent-strong);
 }
 
 .gallerySearch {
   width: clamp(5.5rem, 18vw, 10rem);
   min-height: 26px;
   border: 0;
-  border-bottom: 1px solid var(--loom-divider-color);
+  border-bottom: 1px solid var(--loom-color-divider);
   border-radius: 0;
   padding: 3px 2px;
-  color: var(--loom-text);
+  color: var(--loom-color-text);
   background: transparent;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--loom-font-size-2);
 }
 
 .gallerySearch:focus {
-  border-color: var(--loom-accent);
+  border-color: var(--loom-color-accent);
   box-shadow: none;
 }
 
@@ -213,23 +221,19 @@
 .gridCard,
 .listCard {
   position: relative;
-  color: var(--loom-text);
+  color: var(--loom-color-text);
   text-align: left;
 }
 
 .cardOpen {
   width: 100%;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--loom-radius-card);
   padding: 0;
   color: inherit;
   background: transparent;
   text-align: inherit;
-  cursor: grab;
-}
-
-.cardOpen:active {
-  cursor: grabbing;
+  cursor: pointer;
 }
 
 .gridCard > .cardOpen img {
@@ -238,7 +242,7 @@
   display: block;
   object-fit: cover;
   filter: saturate(.82);
-  transition: filter 120ms ease;
+  transition: filter var(--loom-motion-duration-fast) ease;
 }
 
 .gridCard > .cardOpen > span {
@@ -254,16 +258,16 @@
 .gridCard strong,
 .listCard strong {
   overflow: hidden;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--loom-font-size-3);
+  font-weight: var(--loom-font-weight-5);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .gridCard small,
 .listCard small {
-  color: var(--loom-text-subtle);
-  font-size: 10px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
 }
 
 .gridCard:hover img {
@@ -275,7 +279,7 @@
 }
 
 .cardSelected strong {
-  color: var(--loom-accent-strong);
+  color: var(--loom-color-accent-strong);
 }
 
 .selectionToggle {
@@ -307,7 +311,7 @@
 .listCard > .cardOpen img {
   width: 40px;
   height: 40px;
-  border-radius: 6px;
+  border-radius: var(--loom-radius-card);
   object-fit: cover;
 }
 
@@ -317,7 +321,7 @@
 }
 
 .listCard:hover {
-  color: var(--loom-accent-strong);
+  color: var(--loom-color-accent-strong);
 }
 
 .listCard .selectionToggle {
@@ -333,8 +337,8 @@
 
 .empty {
   margin: 32px 16px;
-  color: var(--loom-text-subtle);
-  font-size: 12px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-3);
 }
 
 .gallerySentinel {
@@ -343,38 +347,36 @@
   display: grid;
   place-items: end center;
   padding: 5px 0 2px;
-  color: var(--loom-text-subtle);
-  font-size: 10px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
 }
 
-.sheetBackdrop {
-  position: fixed;
+.dialogBackdrop {
+  position: absolute;
   z-index: 50;
   inset: 0;
-  display: flex;
-  align-items: end;
-  justify-content: center;
-  padding: 12px;
-  pointer-events: none;
-  background: transparent;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(11 11 18 / 44%);
 }
 
-.groupSheet {
-  width: min(32rem, calc(100vw - 24px));
-  max-height: min(60vh, 32rem);
+.groupDialog {
+  width: min(32rem, calc(100% - 24px));
+  max-height: min(76%, 32rem);
   display: grid;
   gap: 10px;
   overflow: auto;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--loom-radius-dialog);
   padding: 12px;
-  color: var(--loom-text);
-  background: var(--loom-window-raised);
+  color: var(--loom-color-text);
+  background: var(--loom-color-surface-raised);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 34%);
   animation: sheet-enter 160ms ease-out both;
-  pointer-events: auto;
 }
 
-.groupSheet > header,
+.groupDialog > header,
 .groupRowWrap,
 .groupRow,
 .groupAssign,
@@ -383,10 +385,10 @@
   align-items: center;
 }
 
-.groupSheet > header {
+.groupDialog > header {
   justify-content: space-between;
-  color: var(--loom-text-muted);
-  font-size: 11px;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
 }
 
 .groupList {
@@ -403,29 +405,29 @@
   min-height: 30px;
   flex: 1;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--loom-radius-control);
   padding: 5px 8px;
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
   background: transparent;
   text-align: left;
 }
 
 .groupRow:hover,
 .groupRowActive {
-  color: var(--loom-text);
-  background: color-mix(in srgb, var(--loom-panel) 68%, transparent);
+  color: var(--loom-color-text);
+  background: color-mix(in srgb, var(--loom-color-surface) 68%, transparent);
 }
 
 .groupRowActive {
-  color: var(--loom-accent-strong);
+  color: var(--loom-color-accent-strong);
 }
 
 .groupAssign {
   flex-wrap: wrap;
   gap: 5px;
   padding: 7px 0;
-  color: var(--loom-text-subtle);
-  font-size: 10px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
 }
 
 .groupAssign > span {
@@ -436,16 +438,16 @@
 .groupForm > button {
   min-height: 27px;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--loom-radius-control);
   padding: 4px 7px;
-  color: var(--loom-text-muted);
-  background: color-mix(in srgb, var(--loom-panel) 66%, transparent);
-  font-size: 11px;
+  color: var(--loom-color-text-muted);
+  background: color-mix(in srgb, var(--loom-color-surface) 66%, transparent);
+  font-size: var(--loom-font-size-2);
 }
 
 .groupAssign button:hover,
 .groupForm > button:hover:not(:disabled) {
-  color: var(--loom-text);
+  color: var(--loom-color-text);
 }
 
 .groupForm {
@@ -457,17 +459,17 @@
   flex: 1;
   min-height: 28px;
   border: 0;
-  border-bottom: 1px solid var(--loom-divider-color);
+  border-bottom: 1px solid var(--loom-color-divider);
   border-radius: 0;
   padding: 3px 2px;
-  color: var(--loom-text);
+  color: var(--loom-color-text);
   background: transparent;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--loom-font-size-2);
 }
 
 .groupForm input:focus {
-  border-color: var(--loom-accent);
+  border-color: var(--loom-color-accent);
   box-shadow: none;
 }
 
@@ -488,7 +490,7 @@
   position: absolute;
   inset: 0;
   z-index: 0;
-  background: linear-gradient(to bottom, color-mix(in srgb, var(--loom-bg) 12%, transparent), var(--loom-bg));
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--loom-color-background) 12%, transparent), var(--loom-color-background));
 }
 
 .mediaInput {
@@ -502,7 +504,7 @@
   width: 100%;
   border: 0;
   padding: 0;
-  color: var(--loom-text);
+  color: var(--loom-color-text);
   background: transparent;
   cursor: pointer;
 }
@@ -515,11 +517,11 @@
   bottom: -44px;
   left: 50%;
   transform: translateX(-50%);
-  border: 3px solid var(--loom-bg);
+  border: 3px solid var(--loom-color-background);
   border-radius: 50%;
   padding: 0;
   overflow: hidden;
-  background: var(--loom-bg);
+  background: var(--loom-color-background);
   cursor: pointer;
 }
 
@@ -532,10 +534,10 @@
 
 .mediaLabel {
   position: absolute;
-  color: var(--loom-text-muted);
-  font-size: 10px;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-1);
   opacity: 0;
-  transition: color 120ms ease, opacity 120ms ease;
+  transition: color var(--loom-motion-duration-fast) ease, opacity var(--loom-motion-duration-fast) ease;
 }
 
 .heroMediaTarget .mediaLabel {
@@ -547,8 +549,8 @@
   inset: 0;
   display: grid;
   place-items: center;
-  color: var(--loom-text);
-  background: color-mix(in srgb, var(--loom-bg) 60%, transparent);
+  color: var(--loom-color-text);
+  background: color-mix(in srgb, var(--loom-color-background) 60%, transparent);
   text-align: center;
 }
 
@@ -561,13 +563,13 @@
 
 .heroMediaTarget:hover,
 .profileAvatar:hover {
-  color: var(--loom-accent-strong);
+  color: var(--loom-color-accent-strong);
 }
 
 .heroMediaTarget:focus-visible,
 .profileAvatar:focus-visible,
 .mediaDropTarget {
-  outline: 1px dashed var(--loom-accent);
+  outline: 1px dashed var(--loom-color-accent);
   outline-offset: -4px;
 }
 
@@ -579,20 +581,20 @@
 
 .profileIdentity h2 {
   margin: 0;
-  font-size: 16px;
-  font-weight: 650;
+  font-size: var(--loom-font-size-6);
+  font-weight: var(--loom-font-weight-7);
 }
 
 .profileIdentity p {
   margin: 4px 0 0;
-  color: var(--loom-text-muted);
-  font-size: 11px;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
 }
 
 .mediaNotice {
   margin: -9px 16px 12px;
-  color: var(--loom-warning);
-  font-size: 11px;
+  color: var(--loom-color-warning);
+  font-size: var(--loom-font-size-2);
 }
 
 .profileContent,
@@ -606,22 +608,22 @@
 
 .profileContent,
 .profileEditor {
-  border-top: 1px solid var(--loom-divider-color);
+  border-top: 1px solid var(--loom-color-divider);
 }
 
 .profileContent h3,
 .sessions h3,
 .profileEditor label > span {
   margin: 0;
-  color: var(--loom-text-muted);
-  font-size: 11px;
-  font-weight: 600;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
+  font-weight: var(--loom-font-weight-5);
 }
 
 .profileContent p {
   margin: 7px 0 0;
-  color: var(--loom-text);
-  font-size: 12px;
+  color: var(--loom-color-text);
+  font-size: var(--loom-font-size-3);
   line-height: 1.6;
   white-space: pre-wrap;
 }
@@ -635,8 +637,8 @@
 .currentSession,
 .sessionList small,
 .sessionList > p {
-  color: var(--loom-text-subtle);
-  font-size: 11px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-2);
 }
 
 .profileEditor label {
@@ -648,33 +650,33 @@
 .profileEditor textarea {
   width: 100%;
   border: 0;
-  border-bottom: 1px solid var(--loom-divider-color);
+  border-bottom: 1px solid var(--loom-color-divider);
   border-radius: 0;
   padding: 6px 2px;
-  color: var(--loom-text);
+  color: var(--loom-color-text);
   background: transparent;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--loom-font-size-3);
 }
 
 .profileEditor textarea {
   min-height: 7rem;
   resize: vertical;
-  line-height: 1.55;
+  line-height: var(--loom-line-height-body);
 }
 
 .profileEditor input:focus,
 .profileEditor textarea:focus {
-  border-color: var(--loom-accent);
+  border-color: var(--loom-color-accent);
   box-shadow: none;
 }
 
 .deleteButton {
-  color: var(--loom-danger) !important;
+  color: var(--loom-color-danger) !important;
 }
 
 .sessions {
-  border-top: 1px solid var(--loom-divider-color);
+  border-top: 1px solid var(--loom-color-divider);
 }
 
 .sessions > header {
@@ -693,8 +695,8 @@
 .sessionCard {
   overflow: hidden;
   border: 0;
-  border-radius: 8px;
-  background: var(--loom-surface);
+  border-radius: var(--loom-radius-card);
+  background: var(--loom-color-surface-inset);
 }
 
 .sessionCard summary {
@@ -712,12 +714,12 @@
 }
 
 .sessionCard summary > svg {
-  width: 12px;
-  height: 12px;
+  width: var(--loom-icon-size-2);
+  height: var(--loom-icon-size-2);
   flex: 0 0 auto;
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
   stroke-width: 1.25;
-  transition: transform 120ms ease;
+  transition: transform var(--loom-motion-duration-fast) ease;
 }
 
 .sessionCard[open] summary > svg {
@@ -731,14 +733,14 @@
 }
 
 .sessionCard summary strong {
-  color: var(--loom-text);
-  font-size: 12px;
-  font-weight: 600;
+  color: var(--loom-color-text);
+  font-size: var(--loom-font-size-3);
+  font-weight: var(--loom-font-weight-5);
 }
 
 .sessionCard summary small {
-  color: var(--loom-text-subtle);
-  font-size: 10px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
 }
 
 .sessionCardBody {
@@ -761,28 +763,28 @@
 .sessionCardBody dt,
 .sessionCardBody dd {
   margin: 0;
-  font-size: 10px;
+  font-size: var(--loom-font-size-1);
 }
 
 .sessionCardBody dt {
-  color: var(--loom-text-subtle);
+  color: var(--loom-color-text-subtle);
 }
 
 .sessionCardBody dd {
-  color: var(--loom-text-muted);
-  line-height: 1.45;
+  color: var(--loom-color-text-muted);
+  line-height: var(--loom-line-height-code);
 }
 
 .sessionCardBody > button {
   justify-self: start;
   padding: 2px 0;
-  color: var(--loom-accent-strong);
-  font-size: 11px;
+  color: var(--loom-color-accent-strong);
+  font-size: var(--loom-font-size-2);
   text-align: left;
 }
 
 .sessionCardBody > button:disabled {
-  color: var(--loom-text-subtle);
+  color: var(--loom-color-text-subtle);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -793,5 +795,80 @@
   .galleryEntering,
   .profileEntering,
   .profileLeaving,
-  .groupSheet { animation: none; }
+  .groupDialog { animation: none; }
+}
+
+@container studio-panel (max-width: 360px) {
+  .galleryToolbar,
+  .profileToolbar {
+    padding-inline: 10px;
+  }
+
+  .galleryToolbar {
+    gap: 6px;
+  }
+
+  .galleryActions {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .gallerySearch {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .galleryActions > button:last-child {
+    width: var(--loom-page-header-control-size);
+    min-width: var(--loom-page-header-control-size);
+    padding: 0;
+    font-size: 0;
+  }
+
+  .galleryActions > button:last-child svg {
+    width: var(--loom-page-header-icon-size);
+    height: var(--loom-page-header-icon-size);
+  }
+
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    padding-inline: 10px;
+  }
+
+  .list {
+    padding-inline: 10px;
+  }
+
+  .profileHero {
+    height: 8rem;
+    margin-bottom: 33px;
+  }
+
+  .profileAvatar {
+    width: 68px;
+    height: 68px;
+    bottom: -34px;
+  }
+
+  .profileIdentity {
+    align-items: flex-start;
+    gap: 8px;
+    padding-inline: 10px;
+  }
+
+  .profileIdentity > button {
+    padding-inline: 4px;
+    white-space: nowrap;
+  }
+
+  .profileContent,
+  .profileEditor,
+  .sessions {
+    margin-inline: 10px;
+  }
+
+  .mediaNotice {
+    margin-inline: 10px;
+  }
 }

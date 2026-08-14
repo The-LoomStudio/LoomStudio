@@ -1,15 +1,15 @@
 .settingsPanel {
   min-height: 100%;
   padding: 14px 16px 32px;
-  color: var(--loom-text);
-  background: var(--loom-bg);
+  color: var(--loom-color-text);
+  background: var(--loom-color-surface);
 }
 
 .settingsPanel h2 {
   margin: 0 0 10px;
-  color: var(--loom-text-muted);
-  font-size: 12px;
-  font-weight: 600;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-3);
+  font-weight: var(--loom-font-weight-5);
 }
 
 .settingRow {
@@ -18,50 +18,95 @@
   grid-template-columns: minmax(5rem, auto) minmax(0, 1fr);
   align-items: center;
   gap: 12px;
-  color: var(--loom-text-muted);
-  font-size: 11px;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
 }
 
 .settingRow select {
   width: 100%;
   min-height: 30px;
   border: 0;
-  border-bottom: 1px solid var(--loom-divider-color);
+  border-bottom: 1px solid var(--loom-color-divider);
   border-radius: 0;
   padding: 4px 2px;
-  color: var(--loom-text);
+  color: var(--loom-color-text);
   background: transparent;
-  font-size: 12px;
+  font-size: var(--loom-font-size-3);
 }
 
 .settingRow select:focus {
-  border-color: var(--loom-accent);
+  border-color: var(--loom-color-accent);
   box-shadow: none;
+}
+
+.scaleRow {
+  display: grid;
+  grid-template-columns: minmax(5rem, auto) minmax(0, 1fr) 3rem;
+  align-items: center;
+  gap: 12px;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
+}
+
+.scaleRow input {
+  min-height: 24px;
+  padding: 0;
+}
+
+.scaleRow output {
+  color: var(--loom-color-text);
+  font-size: var(--loom-font-size-3);
+  text-align: right;
 }
 
 .customCss {
   display: grid;
   gap: 7px;
   margin-top: 24px;
-  color: var(--loom-text-muted);
-  font-size: 11px;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
 }
 
 .customCss textarea {
   min-height: 12rem;
   resize: vertical;
   border: 0;
-  border-bottom: 1px solid var(--loom-divider-color);
+  border-bottom: 1px solid var(--loom-color-divider);
   border-radius: 0;
   padding: 8px 2px;
-  color: var(--loom-text);
+  color: var(--loom-color-text);
   background: transparent;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.55;
+  font-family: var(--loom-font-family-mono);
+  font-size: var(--loom-font-size-3);
+  line-height: var(--loom-line-height-body);
 }
 
 .customCss textarea:focus {
-  border-color: var(--loom-accent);
+  border-color: var(--loom-color-accent);
   box-shadow: none;
+}
+
+@container studio-panel (max-width: 360px) {
+  .settingsPanel {
+    padding-inline: 10px;
+  }
+
+  .settingRow,
+  .scaleRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .settingRow select {
+    grid-column: 1 / -1;
+  }
+
+  .scaleRow input {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .scaleRow output {
+    grid-column: 2;
+    grid-row: 1;
+  }
 }

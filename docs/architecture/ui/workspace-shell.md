@@ -63,12 +63,15 @@ immersive:
 
 这些是快捷布局动作，不是永久限制。在 `explorer` 中选择条目仍会进入 `split`，中线拖拽仍可调整目录宽度。
 
+Window 内部使用 Column Layout 表达水平并列区域。Rail、Explorer、Detail 或其他内容只作为 Column 内容参与宽度分配；Header、Bottom 和覆盖式 Sidebar 属于 Window Overlay，不进入 Column Track。Reference Window 根据 Narrative 与 Composer 的实时锚点选择并行或遮挡正文的默认 Placement。正式合同见 [`window-layout.md`](window-layout.md)。
+
 ## 5. 布局状态
 
 当前布局状态使用 Zustand 管理，并通过 `localStorage` 持久化。已保存的状态包括：
 
 - Dock 是否打开；
 - 每个面板的窗口尺寸与 `reference` / `immersive` 模式；
+- 工作窗口功能导航 Column 的宽度；
 - 资源工作台的目录宽度；
 - 每个工作区的展开目录、当前条目和视图模式；
 - 元信息面板是否打开；

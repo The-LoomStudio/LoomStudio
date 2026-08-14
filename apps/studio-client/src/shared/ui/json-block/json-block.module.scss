@@ -2,14 +2,14 @@
   max-height: 330px;
   overflow: auto;
   margin: 10px 0 0;
-  border: 1px solid var(--loom-border);
-  border-radius: 6px;
+  border: 1px solid var(--loom-color-border);
+  border-radius: var(--loom-radius-surface);
   padding: 10px;
-  color: var(--loom-text);
-  background: var(--loom-surface);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.45;
+  color: var(--loom-color-text);
+  background: var(--loom-color-surface-inset);
+  font-family: var(--loom-font-family-mono);
+  font-size: var(--loom-font-size-3);
+  line-height: var(--loom-line-height-code);
   white-space: pre-wrap;
 }
 

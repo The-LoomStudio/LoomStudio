@@ -45,6 +45,8 @@ apps/studio-client + docs/architecture/ui:
 | [`layout-and-scroll-containers-v0.md`](layout-and-scroll-containers-v0.md) | Open Design | Shell 内的 Application 布局、滚动所有权、虚拟列表、滚动恢复 |
 | [`interaction-states-v0.md`](interaction-states-v0.md) | Open Design | empty / loading / error / pending / dirty / optimistic / degraded 等状态 |
 | [`i18n-and-accessibility-v0.md`](i18n-and-accessibility-v0.md) | Partially Promoted / Open Design | 当前 typed I18N 与基础 ARIA 已晋升；继续讨论插件 locale 和完整焦点模型 |
+| [`frontend-interface-language-v0.md`](frontend-interface-language-v0.md) | Open Design / Naming Baseline | Window、Panel、Pane、Surface、Entry、Message 等界面对象及其中文、代码、文件、状态与动作命名 |
+| [`frontend-naming-audit-v0.md`](frontend-naming-audit-v0.md) | Migration Complete / Deferred Items Recorded | 当前组件、文件、状态、动作、CSS Hook、Token 与 I18N 命名迁移结果及架构延期项 |
 
 ---
 

@@ -4,10 +4,10 @@
   margin: auto;
   overflow: hidden;
   border: 0;
-  border-radius: 12px;
+  border-radius: var(--loom-radius-dialog);
   padding: 0;
-  color: var(--loom-text);
-  background: var(--loom-window-raised);
+  color: var(--loom-color-text);
+  background: var(--loom-color-surface-raised);
   box-shadow: 0 18px 48px rgb(0 0 0 / 38%);
 }
 
@@ -17,7 +17,7 @@
 }
 
 .dialog[open] {
-  animation: dialog-enter 160ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: dialog-enter 160ms var(--loom-motion-easing-standard) both;
 }
 
 .frame {
@@ -38,14 +38,14 @@
 }
 
 .header h2 {
-  font-size: 14px;
-  font-weight: 620;
+  font-size: var(--loom-font-size-5);
+  font-weight: var(--loom-font-weight-6);
 }
 
 .header p {
-  color: var(--loom-text-muted);
-  font-size: 12px;
-  line-height: 1.55;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-3);
+  line-height: var(--loom-line-height-body);
 }
 
 .body {
@@ -65,14 +65,14 @@
   min-height: 28px;
   border: 0;
   padding: 4px 8px;
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
   background: transparent;
-  font-size: 12px;
+  font-size: var(--loom-font-size-3);
 }
 
 .actions > button:hover:not(:disabled) {
   border-color: transparent;
-  color: var(--loom-text);
+  color: var(--loom-color-text);
   background: transparent;
 }
 

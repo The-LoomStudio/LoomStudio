@@ -30,7 +30,7 @@ export function ModelPanel(props: ModelPanelProps) {
   const endpointWarning = isLikelyProviderEndpoint(props.providerAccountDraft.baseUrl)
 
   return (
-    <aside className={styles.modelPane} data-loom-component="model-panel">
+    <aside className={styles.modelPanel} data-loom-component="model-panel">
       <section className={styles.accountsSection}>
         <header className={styles.sectionHeader}>
           <h2>{props.t('provider.title')}</h2>

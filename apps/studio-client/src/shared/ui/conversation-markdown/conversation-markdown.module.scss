@@ -1,0 +1,67 @@
+.content {
+  --loom-markdown-inline-code-bg: var(--loom-color-surface-subtle);
+  --loom-markdown-inline-code-size: 0.9em;
+
+  min-width: 0;
+  max-width: 100%;
+  color: var(--loom-color-text);
+  font-family: inherit;
+  font-size: var(--loom-font-size-body);
+  line-height: var(--loom-line-height-reading);
+  overflow-wrap: anywhere;
+}
+
+.assistant p {
+  text-align: justify;
+  text-align-last: left;
+  text-justify: inter-character;
+}
+
+.user {
+  text-align: left;
+}
+
+.content h1,
+.content h2,
+.content h3,
+.content h4 {
+  margin: 1.2em 0 0.5em;
+  color: var(--loom-color-text);
+  font: inherit;
+  font-weight: var(--loom-font-weight-7);
+  line-height: var(--loom-line-height-heading);
+}
+
+.content h1 { font-size: 1.3em; }
+.content h2 { font-size: 1.18em; }
+.content h3,
+.content h4 { font-size: 1.05em; }
+
+.content blockquote {
+  border-radius: var(--loom-radius-message);
+  padding: 6px 10px;
+  color: var(--loom-color-text-muted);
+  background: var(
+    --loom-conversation-blockquote-bg,
+    color-mix(in srgb, var(--loom-color-surface-subtle) 44%, transparent)
+  );
+}
+
+.content pre {
+  max-width: 100%;
+  overflow: auto;
+  border-radius: var(--loom-radius-message);
+  background: var(--loom-conversation-code-block-bg, var(--loom-color-surface-subtle));
+}
+
+.user blockquote,
+.user pre {
+  border: var(--loom-conversation-user-block-border, 1px solid var(--loom-color-divider));
+  background: var(--loom-conversation-user-block-bg, transparent);
+}
+
+.content table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}

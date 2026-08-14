@@ -9,7 +9,7 @@
   height: 100%;
   min-height: 0;
   overflow: auto;
-  border-radius: 8px 8px 0 0;
+  border-radius: var(--loom-radius-panel) var(--loom-radius-panel) 0 0;
   padding: 14px 0 clamp(180px, 34vh, 420px);
 }
 
@@ -28,17 +28,17 @@
   grid-template-rows: 12px minmax(0, 1fr);
   overflow: hidden;
   border: 0;
-  border-radius: 10px;
-  color: var(--loom-text);
-  background: var(--loom-surface-deep);
+  border-radius: var(--loom-radius-card);
+  color: var(--loom-color-text);
+  background: var(--loom-color-surface-emphasis);
   box-shadow: none;
   opacity: 0;
   pointer-events: none;
   transform: translate(-50%, calc(100% + 24px));
   visibility: hidden;
   transition:
-    opacity 120ms ease,
-    transform 150ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity var(--loom-motion-duration-fast) ease,
+    transform 150ms var(--loom-motion-easing-standard),
     visibility 0s linear 150ms;
 }
 
@@ -63,7 +63,7 @@
   width: 48px;
   height: 12px;
   justify-self: center;
-  background: linear-gradient(var(--loom-divider-color), var(--loom-divider-color)) center / 100% 1px no-repeat;
+  background: linear-gradient(var(--loom-color-divider), var(--loom-color-divider)) center / 100% 1px no-repeat;
 }
 
 .configGrid {
@@ -84,20 +84,20 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  color: var(--loom-text-subtle);
-  font-size: 10px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
 }
 
 .configGrid dt svg {
-  width: 11px;
-  height: 11px;
+  width: calc(11px * var(--loom-ui-scale));
+  height: calc(11px * var(--loom-ui-scale));
   flex: 0 0 auto;
   stroke-width: 1.3;
 }
 
 .configGrid dd {
-  color: var(--loom-text);
-  font-size: 12px;
+  color: var(--loom-color-text);
+  font-size: var(--loom-font-size-3);
   margin: 0;
   min-width: 0;
   overflow-wrap: anywhere;
@@ -106,7 +106,7 @@
 .inlineInput {
   background: transparent;
   border: 0;
-  border-bottom: 1px solid var(--loom-divider-color);
+  border-bottom: 1px solid var(--loom-color-divider);
   border-radius: 0;
   color: inherit;
   font: inherit;
@@ -118,27 +118,27 @@
 }
 
 .inlineInput:focus {
-  border-color: var(--loom-accent);
+  border-color: var(--loom-color-accent);
   box-shadow: none;
 }
 
 .inlineInput:disabled {
   border-color: transparent;
-  color: var(--loom-text-subtle);
+  color: var(--loom-color-text-subtle);
   cursor: not-allowed;
 }
 
 .detailBodyMuted .configGrid dt,
 .detailBodyMuted .configGrid dd,
 .detailBodyMuted .inlineInput {
-  color: var(--loom-text-subtle);
+  color: var(--loom-color-text-subtle);
 }
 
 .detailBodyMuted .inlineInput {
-  border-color: color-mix(in srgb, var(--loom-divider-color) 58%, transparent);
+  border-color: color-mix(in srgb, var(--loom-color-divider) 58%, transparent);
 }
 
-@media (max-width: 760px) {
+@container studio-panel (max-width: 760px) {
   .metadataPanel {
     bottom: 8px;
     width: calc(100% - 16px);

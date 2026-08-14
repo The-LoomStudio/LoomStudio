@@ -6,6 +6,7 @@ import {
   reduceLongTextEditorState,
   type LongTextEditorMode,
 } from './long-text-editor-model.js'
+import { SkeletonText } from '../skeleton/skeleton.js'
 import styles from './long-text-editor.module.scss'
 
 const CodeMirrorEditor = lazy(async () => {
@@ -218,7 +219,11 @@ export const LongTextEditor = forwardRef<LongTextEditorHandle, LongTextEditorPro
         </div>
       </header>
       {props.mode === 'source' ? (
-        <Suspense fallback={<div aria-busy="true" className={styles.editorHost} data-loom-component="code-editor-loading" />}>
+        <Suspense fallback={(
+          <div aria-busy="true" className={styles.editorHost} data-loom-component="code-editor-loading">
+            <SkeletonText className={styles.editorSkeleton} lines={8} />
+          </div>
+        )}>
           <CodeMirrorEditor
             ref={codeEditorRef}
             autoFocus={props.autoFocus}
@@ -238,7 +243,11 @@ export const LongTextEditor = forwardRef<LongTextEditorHandle, LongTextEditorPro
           />
         </Suspense>
       ) : !props.sourceOnly ? (
-        <Suspense fallback={<div aria-busy="true" className={styles.preview} data-loom-component="markdown-preview-loading" />}>
+        <Suspense fallback={(
+          <div aria-busy="true" className={styles.preview} data-loom-component="markdown-preview-loading">
+            <SkeletonText className={styles.previewSkeleton} lines={5} />
+          </div>
+        )}>
           <MarkdownPreview
             codeBlockLabels={{
               copied: props.copiedLabel,

@@ -52,7 +52,7 @@ type PresetWorkbenchProps = {
 }
 
 export function PresetWorkbench(props: PresetWorkbenchProps) {
-  const activePresetPanel = useStudioLayoutStore(state => state.presetPanel)
+  const activePresetView = useStudioLayoutStore(state => state.presetView)
   const metadataOpen = useStudioLayoutStore(state => state.assetMetadataOpen)
   const textEditorMode = useStudioLayoutStore(state => state.textEditorMode)
   const explorerLayout = useStudioLayoutStore(state => state.assetLayouts.preset)
@@ -61,14 +61,14 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const setExplorerWidth = useStudioLayoutStore(state => state.setAssetExplorerWidth)
   const openAssetDetail = useStudioLayoutStore(state => state.openAssetDetail)
   const setSelectedId = useStudioLayoutStore(state => state.setAssetSelectedId)
-  const setActivePresetPanel = useStudioLayoutStore(state => state.setPresetPanel)
+  const setActivePresetView = useStudioLayoutStore(state => state.setPresetView)
   const setMetadataOpen = useStudioLayoutStore(state => state.setAssetMetadataOpen)
   const setTextEditorMode = useStudioLayoutStore(state => state.setTextEditorMode)
   const selectedId = explorerView.selectedId
   const selectedNode = findContextNode(props.nodes, selectedId)
   const projectionModel = useMemo(() => buildProjectionWorkbenchModel(props.nodes), [props.nodes])
   const { projectionEntries, orderNode, projectionOrderIds, orderedProjectionEntries } = projectionModel
-  const detailNode = activePresetPanel === 'order' ? orderNode : selectedNode
+  const detailNode = activePresetView === 'order' ? orderNode : selectedNode
   const [searchQuery, setSearchQuery] = useState(props.initialSearchQuery ?? '')
 
   useEffect(() => {
@@ -104,7 +104,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
 
   function handleSelectNode(node: ContextAssetNode) {
     openAssetDetail('preset', props.workspaceId, node.id)
-    setActivePresetPanel('assets')
+    setActivePresetView('assets')
   }
 
   return (
@@ -116,18 +116,18 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
       toolbar={(
         <nav className="loom-page-tabs">
           <button
-            aria-current={activePresetPanel === 'assets' ? 'page' : undefined}
-            className={`loom-page-tab ${activePresetPanel === 'assets' ? 'loom-page-tab-active' : ''}`}
+            aria-current={activePresetView === 'assets' ? 'page' : undefined}
+            className={`loom-page-tab ${activePresetView === 'assets' ? 'loom-page-tab-active' : ''}`}
             type="button"
-            onClick={() => setActivePresetPanel('assets')}
+            onClick={() => setActivePresetView('assets')}
           >
             {props.t('preset.panel.assets')}
           </button>
           <button
-            aria-current={activePresetPanel === 'order' ? 'page' : undefined}
-            className={`loom-page-tab ${activePresetPanel === 'order' ? 'loom-page-tab-active' : ''}`}
+            aria-current={activePresetView === 'order' ? 'page' : undefined}
+            className={`loom-page-tab ${activePresetView === 'order' ? 'loom-page-tab-active' : ''}`}
             type="button"
-            onClick={() => setActivePresetPanel('order')}
+            onClick={() => setActivePresetView('order')}
           >
             {props.t('preset.panel.mainOrder')}
           </button>
@@ -144,8 +144,8 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
         >
           <FileTree
             key={props.workspaceId}
-            ariaLabel={props.t('context.assetsLabel')}
-            expandedIds={explorerView.expandedIds}
+            ariaLabel={props.t('context.explorerLabel')}
+            expandedIds={explorerView.expandedIds ?? displayNodes.map(node => node.id)}
             getDisclosureLabel={(node, expanded) => props.t(expanded ? 'context.tree.collapse' : 'context.tree.expand', { label: node.label })}
             getDragLabel={node => props.t('context.tree.drag', { label: node.label })}
             getActions={node => readContextAssetTreeActions(node as ContextAssetNode, {

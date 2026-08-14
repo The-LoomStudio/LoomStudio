@@ -1,30 +1,30 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type WheelEvent } from 'react'
 import {
-  readConversationPreview,
-  readConversationTickWidth,
-  readConversationTrackOffset,
-  readConversationWindow,
-  readConversationWheelStep,
-  type ConversationMarker,
-} from './conversation-navigator-model.js'
-import styles from './conversation-navigator.module.scss'
+  readNarrativeTimelinePreview,
+  readNarrativeTimelineTickWidth,
+  readNarrativeTimelineTrackOffset,
+  readNarrativeTimelineWindow,
+  readNarrativeTimelineWheelStep,
+  type NarrativeTimelineMarker,
+} from './narrative-timeline-navigator-model.js'
+import styles from './narrative-timeline-navigator.module.scss'
 
-export type ConversationNavigatorItem = {
+export type NarrativeTimelineNavigatorItem = {
   id: string
   meta: string
   preview: string
   role: string
 }
 
-type ConversationNavigatorProps = {
+type NarrativeTimelineNavigatorProps = {
   activeId?: string
-  items: ConversationNavigatorItem[]
+  items: NarrativeTimelineNavigatorItem[]
   label: string
-  markers?: ConversationMarker[]
+  markers?: NarrativeTimelineMarker[]
   onNavigate(id: string): void
 }
 
-export function ConversationNavigator(props: ConversationNavigatorProps) {
+export function NarrativeTimelineNavigator(props: NarrativeTimelineNavigatorProps) {
   const [hoveredIndex, setHoveredIndex] = useState<number>()
   const [browsingIndex, setBrowsingIndex] = useState<number>()
   const [visibleCapacity, setVisibleCapacity] = useState(60)
@@ -37,8 +37,8 @@ export function ConversationNavigator(props: ConversationNavigatorProps) {
   const previewItem = props.items[previewIndex]
   const markerByEntryId = new Map(props.markers?.map(marker => [marker.entryId, marker.kind]))
   const visibleSlotCount = Math.min(visibleCapacity, Math.max(12, props.items.length))
-  const trackOffset = readConversationTrackOffset(visibleSlotCount, trackCenterIndex, tickStep)
-  const visibleWindow = readConversationWindow(props.items.length, trackCenterIndex, visibleSlotCount)
+  const trackOffset = readNarrativeTimelineTrackOffset(visibleSlotCount, trackCenterIndex, tickStep)
+  const visibleWindow = readNarrativeTimelineWindow(props.items.length, trackCenterIndex, visibleSlotCount)
   const visibleItems = props.items.slice(visibleWindow.start, visibleWindow.end)
 
   useLayoutEffect(() => {
@@ -49,7 +49,7 @@ export function ConversationNavigator(props: ConversationNavigatorProps) {
       const currentElement = navigatorRef.current
       if (!currentElement) return
       const styles = getComputedStyle(currentElement)
-      const nextTickStep = Number.parseFloat(styles.getPropertyValue('--conversation-tick-step')) || 11
+      const nextTickStep = Number.parseFloat(styles.getPropertyValue('--narrative-timeline-tick-step')) || 11
       const nextCapacity = Math.min(100, Math.max(12, Math.floor(currentElement.clientHeight * 0.78 / nextTickStep)))
       setTickStep(nextTickStep)
       setVisibleCapacity(nextCapacity)
@@ -70,7 +70,7 @@ export function ConversationNavigator(props: ConversationNavigatorProps) {
   function browseTimeline(event: WheelEvent<HTMLElement>) {
     event.preventDefault()
     wheelDeltaRef.current += event.deltaY
-    const step = readConversationWheelStep(wheelDeltaRef.current)
+    const step = readNarrativeTimelineWheelStep(wheelDeltaRef.current)
     if (step === 0) return
     wheelDeltaRef.current = 0
     const nextIndex = Math.min(props.items.length - 1, Math.max(0, (browsingIndex ?? activeIndex) + step))
@@ -132,7 +132,7 @@ export function ConversationNavigator(props: ConversationNavigatorProps) {
                 data-active={item.id === props.activeId ? 'true' : 'false'}
                 data-marker={marker}
                 key={item.id}
-                style={{ '--conversation-tick-scale': readConversationTickWidth(distance) / 6 } as CSSProperties}
+                style={{ '--narrative-timeline-tick-scale': readNarrativeTimelineTickWidth(distance) / 6 } as CSSProperties}
                 tabIndex={item.id === props.activeId ? 0 : -1}
                 type="button"
                 onClick={() => props.onNavigate(item.id)}
@@ -148,7 +148,7 @@ export function ConversationNavigator(props: ConversationNavigatorProps) {
           <aside className={styles.preview} style={{ top: previewPosition }}>
             <strong>{previewItem.meta}</strong>
             <span>{previewItem.role}</span>
-            <p>{readConversationPreview(previewItem.preview)}</p>
+            <p>{readNarrativeTimelinePreview(previewItem.preview)}</p>
           </aside>
         ) : null}
       </div>

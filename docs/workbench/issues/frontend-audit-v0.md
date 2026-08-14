@@ -180,7 +180,7 @@ main
 
 ### 15. Character Profile 离场 Timer 会清掉后来打开的 Profile
 
-- **状态**：Open / Confirmed
+- **状态**：Implemented in Batch 6 / Automated verification passed
 - **位置**：`apps/studio-client/src/widgets/character-panel/character-panel.tsx:126-140,162-178`
 - **完整链路**：关闭 Profile A 启动 180ms Timer → 动画结束前打开 Profile B，或路由同步到 B → `openProfile` 和 Route Effect 均不取消旧 Timer → 旧 Timer 到时仍执行 `setProfileCardId(undefined)` → UI 意外返回 Gallery。
 - **边界说明**：Timer 在组件卸载时会清理，但在组件存活期间的新导航不会取消。
@@ -189,7 +189,7 @@ main
 
 ### 22. `CharacterPanel` 是职责型上帝组件
 
-- **状态**：Open / Confirmed
+- **状态**：Partially implemented in Batch 6 / Lifecycle boundaries extracted
 - **位置**：`apps/studio-client/src/widgets/character-panel/character-panel.tsx:90-479`
 - **规模证据**：组件主体同时持有约 14 个 State、6 个 Ref 与 5 个 Effect；649 行文件本身不是立项原因，只是风险入口。
 - **职责证据**：同一组件编排四组生命周期不同的纯 UI 状态：
@@ -204,18 +204,18 @@ main
 
 ### 23. `GroupSheet` 的 Modal 语义与实际交互行为矛盾
 
-- **状态**：Open / Confirmed；Decision resolved: Non-modal Drop Palette
+- **状态**：Implemented in Batch 6 / Automated verification passed；Panel-local modal picker
 - **位置**：`widgets/character-panel/character-panel.tsx:521-575`、`character-panel.module.scss:350-374`
 - **证据**：组件声明 `role="dialog"` 与 `aria-modal="true"`，但 Backdrop 使用 `pointer-events: none`，只有 Sheet 自身恢复 Pointer Events；背景 Gallery/Profile 仍可点击。它也没有 Focus Trap、背景 Inert 和关闭后 Focus Restore，只提供 Auto Focus 与局部 Escape。
 - **实际影响**：辅助技术被告知这是阻断式 Modal，但鼠标和键盘合同并不满足 Modal；焦点可以落到背景交互元素。
-- **已确认合同**：采用 Non-modal Drop Palette。保留拖卡和背景交互能力，移除错误的 `aria-modal` 与 Modal Role；不复用阻断式 Shared Dialog。
+- **最终合同更正**：取消 Card 拖拽分组，Group Sheet 回到 Character Panel 内的居中阻断式 Picker。移动分组只使用“多选 → 点击移动到分组”；面板底层不再需要为 Drop Target 保持交互。
 - **第五轮键盘证据**：普通 `<section role="dialog">` 只有关闭按钮 `autoFocus`，没有 Focus Trap、背景 Inert 和关闭后 Focus Restore；Tab 可离开 Sheet，焦点离开后局部 `onKeyDown` 也不再接收 Escape。现有 Shared `Dialog` 已通过 Native `<dialog>.showModal()` 提供这些合同。
-- **关闭条件**：组件以非模态 Palette 的语义暴露；背景和拖拽仍可操作，焦点进入、Escape 关闭和关闭后恢复具有明确合同，不再宣称阻断背景。
+- **关闭条件**：Sheet 只在 Character Panel 活跃时存在，居中覆盖并阻断该面板；Tab 不离开 Sheet，Escape/背景/关闭按钮可关闭并恢复焦点；分组移动不再依赖 Drag/Drop。
 
 ### 24. `StudioPage` 是职责型 Shell 上帝组件
 
-- **状态**：Open / Confirmed
-- **位置**：`apps/studio-client/src/pages/studio/studio-page.tsx:58-510`
+- **状态**：Implemented in Batch 7 / Automated verification passed
+- **位置**：`apps/studio-client/src/pages/studio/studio-page.tsx`、`studio-rail.tsx`、`studio-panel-host.tsx`、`use-studio-shortcuts.ts`、`use-studio-window-resize.ts`
 - **规模证据**：544 行不是单独立项依据。实际问题是四组独立变化的职责集中在同一 Page：
   - 全局 Escape、Undo、Redo 快捷键生命周期；
   - Dock、Rail、Panel Host 与 Header 结构；
@@ -225,16 +225,18 @@ main
 - **最小拆分边界**：保留 `StudioPage` 作为 Shell 组合器；提取本地 `StudioRail`、`StudioPanelHost` 与 `useStudioWindowResize` 或 `StudioWindowFrame`。不建立跨项目通用 Dock Framework。
 - **排除范围**：Asset View Mode 与 Resource Selection 暂不作为拆分依据。
 - **关闭条件**：Page 主要负责顶层组合；快捷键、Rail 结构和 Resize 生命周期各有清晰所有者。
+- **实施结果**：`StudioPage` 保留 Store 组合、Dock 外壳与宽度模式判定，缩减为约 180 行；Rail 结构、Panel Header/Stage 延迟挂载、全局快捷键和 Pointer/Keyboard Resize 分别迁到同目录局部组件或 Hook。没有建立通用 Dock Framework，也没有改变 Asset Selection、Panel Store 或持久化合同。
 
 ### 25. Page 级 SCSS 穿透并隐式控制所有 Panel Widget 的排版
 
-- **状态**：Open / Confirmed P3 CSS ownership；merge with item 24
+- **状态**：Implemented in Batch 7 / Automated verification passed
 - **位置**：`apps/studio-client/src/pages/studio/studio-page.module.scss:479-496`
 - **证据**：`.dockPanelHost button/input/select/textarea` 统一改写 Font Size，`.dockPanelHost h1/h2/h3` 改写标题排版。CSS Modules 只隔离 Class Name，不会阻止这些后代元素选择器命中 Character、Logs、Settings 等所有 Widget。
 - **实际影响**：Shell 隐式拥有子组件内部控件和标题样式；新 Widget 放入 Dock 会自动改变外观，同一 Widget 离开 Dock 又会产生不同排版。
 - **第六轮校准**：当前没有同一 Widget 在 Dock 外复用的生产链，统一密度也可能是宿主意图；因此本条不再作为独立高优先级行为问题，只在 Studio Shell 拆分时收口所有权。
 - **最小整改方向**：Shell 只提供明确的容器 Token 或共享排版 Class；具体控件与标题由 Shared UI 基线或 Widget 自己拥有。不引入新的 CSS Framework。
 - **关闭条件**：`studio-page.module.scss` 不再使用广泛元素后代选择器覆盖任意 Panel 内容。
+- **实施结果**：删除 `.dockPanelHost button/input/select/textarea` 与 `h1/h2/h3` 的裸元素穿透；Shell 只保留容器级 `font-size: 13px` 和现有颜色/Surface Token。Widget 内部控件与标题字号不再由 Studio Shell 隐式覆盖。
 
 ### 32. 全局 `em` Reset 让 Markdown 强调失去可见语义
 
@@ -266,7 +268,7 @@ main
 
 ### 39. `FileTree` 声明 ARIA Tree，却没有实现 Tree 的焦点、选择与键盘合同
 
-- **状态**：Open / Confirmed；Decision resolved: complete ARIA Tree
+- **状态**：Implemented in Batch 5 / Automated verification passed；complete ARIA Tree
 - **位置**：`apps/studio-client/src/shared/ui/file-tree/file-tree.tsx:72-101,151-260`
 - **结构证据**：根节点使用 `role="tree"`，外层 Row 使用不可聚焦的 `role="treeitem"` 与 `aria-level/aria-expanded`；真正承担选择的却是内部 `div role="button" tabIndex={0}`，同一 Row 还包含 Drag、Disclosure 与 More Actions 等多个独立 Tab Stop。
 - **缺失合同**：可见 Selected 只进入 CSS Class，没有 `aria-selected`；所有节点进入普通 Tab 顺序，没有 Roving Tabindex，也未实现 Tree 所需的 Arrow Up/Down、Left/Right、Home/End 导航与展开收起。
@@ -332,7 +334,7 @@ pingModelProfile
 
 ### 4. 两组纯 Model 与消费者文件形成类型级循环
 
-- **状态**：Partially confirmed；FileTree current / Projection deferred
+- **状态**：Partially implemented in Batch 5；FileTree passed / Projection deferred
 - **循环 A**：`projection-order.ts` → `projection-slot.ts` → `projection-order.ts`
 - **循环 B**：`file-tree.tsx` → `file-tree-model.ts` → `file-tree.tsx`
 - **证据 A**：`projection-order.ts:2` 运行时 import Slot Helper；`projection-slot.ts:2` 为 `readSlotEntrySummary()` 反向 import `ProjectionOrderEntry` 类型。
@@ -417,7 +419,7 @@ CharacterGroup
 
 ### 19. Character Media 在 Card 删除后保留孤儿 Blob URL 与状态
 
-- **状态**：Open / Confirmed
+- **状态**：Implemented in Batch 6 / Automated verification passed
 - **位置**：`widgets/character-panel/character-panel.tsx:138-146,180-200,276-286`
 - **完整链路**：上传本地图片 → 创建 Blob URL 并写入 `mediaObjectUrlsRef/mediaByCardId` → 删除 Card → 集合变化 Effect 只清理 Selected IDs → 对应 Media State 和 Blob URL 保留到整个 Panel 卸载。
 - **实际影响**：反复“上传预览→删除 Card”会持续占用 Blob 内存并积累孤儿 State。替换同一媒体和组件卸载时的清理逻辑是正确的，本条只针对 Card 被移除。
@@ -442,24 +444,26 @@ CharacterGroup
 
 ### 26. Rail 已有配置表，但七组 Tab 仍手写重复实现
 
-- **状态**：Open / Confirmed
-- **位置**：`apps/studio-client/src/pages/studio/studio-page.tsx:32-40,294-394`
+- **状态**：Implemented in Batch 7 / Automated verification passed
+- **位置**：`apps/studio-client/src/pages/studio/studio-rail.tsx`
 - **证据**：`PANEL_DEFINITIONS` 已声明 Icon 与 Label Mapping，但 Model、Character、Preset、Resource、Inspector、Logs、Settings 仍分别手写相同的 `aria-controls`、`aria-expanded`、Active Class、Title、Icon、Label 与 `togglePanel`。
 - **真实差异**：Model 的 Incomplete 状态和 Rail 分隔线属于真实差异，不需要为了映射而消失。
 - **最小整改方向**：增加仅服务本文件的 `StudioRailTab`，特殊状态以少量 Props 传入；分组与 Divider 继续由 Rail 显式组织。不要创建全局 Navigation 配置系统。
 - **关闭条件**：单个 Panel Tab 的结构、ARIA 与 Active 判定只有一份实现。
+- **实施结果**：新增 Rail 私有 `RailTab`，统一 `aria-controls`、`aria-expanded`、Active Class、Title、Icon 与 Toggle；Model 的 Incomplete Status 通过局部 Props 表达，Divider 和未开放的 Extensions 仍显式组织。
 
 ### 27. Window Resize 的 DOM Bounds 计算和 Handle 事件结构重复
 
-- **状态**：Open / Confirmed
-- **位置**：`apps/studio-client/src/pages/studio/studio-page.tsx:148-225,468-510`
+- **状态**：Implemented in Batch 7 / Automated verification passed
+- **位置**：`apps/studio-client/src/pages/studio/use-studio-window-resize.ts`、`window-resize.ts`、`studio-page.tsx`
 - **证据**：Pointer 与 Keyboard Resize 分别读取 Stage/Dock Bounds、Available Height 与 CSS Max Height；Horizontal、Vertical、Both 三个 Handle 又重复相同的 Pointer Down/Move/Up/Cancel/Lost Capture 绑定。
 - **最小整改方向**：提取本文件私有的 `readWindowResizeBounds(stage,dock)`，并用局部 `WindowResizeHandle` 或三项映射复用事件绑定。保留现有 `resizeWindow()` 纯函数和持久化合同。
 - **关闭条件**：Bounds 计算和 Handle 事件绑定各只维护一份，不增加通用 Resize Framework。
+- **实施结果**：DOM 测量集中到 `useStudioWindowResize`，纯 Bounds 算法收口为 `readWindowResizeBounds()` 并增加覆盖 CSS Max Height 的测试；三方向 Handle 复用一个局部 `WindowResizeHandle`，Pointer Capture、Preview 与持久化仍保持原合同。
 
 ### 28. `GroupSheet` 在 Gallery 与 Profile 两个分支重复完整装配
 
-- **状态**：Open / Confirmed
+- **状态**：Implemented in Batch 6 / Automated verification passed
 - **位置**：`apps/studio-client/src/widgets/character-panel/character-panel.tsx:392,450-474`
 - **证据**：同一 `GroupSheet` 的 Open、Draft、Editing、Close、Delete、Rename、Select Handler 在两个互斥页面分支分别装配；一处已压成单行，另一处展开，出现维护形态漂移。
 - **最小整改方向**：在拆分 Gallery/Profile 后，由 Character Panel Coordinator 只渲染一次共享 Overlay；短期也可以只提一个局部 JSX 变量。不要创建 Props Factory。
@@ -477,7 +481,7 @@ CharacterGroup
 
 ### 30. `FileTree` 公共 Props 保留两组没有生产消费者的能力
 
-- **状态**：Open / Confirmed
+- **状态**：Implemented in Batch 5 / Automated verification passed
 - **位置**：`apps/studio-client/src/shared/ui/file-tree/file-tree.tsx:20,33,39-50`
 - **相关 Props**：`defaultExpandedIds`、`renderTrailing`
 - **证据**：两个生产调用方都使用受控的 `expandedIds/onExpandedIdsChange`；非受控展开分支没有生产消费者。`renderTrailing` 也只有定义、递归透传和渲染位置，没有调用方传入。
@@ -504,7 +508,7 @@ CharacterGroup
 
 ### 36. `FileTree` 用两个无必要的 `!important` 固化普通状态覆盖
 
-- **状态**：Open / Confirmed
+- **状态**：Implemented in Batch 5 / Automated verification passed
 - **位置**：`apps/studio-client/src/shared/ui/file-tree/file-tree.module.scss:116-135`
 - **证据**：`.dragOver` 位于 `.row:hover, .selected` 之后且当前同为单 Class Specificity，Background 自然能够覆盖；`.draggingOverlay` 之后也没有 Inline Cursor 或更高优先级声明与 `cursor: grabbing` 竞争。
 - **边界说明**：DND 运行时只通过 Inline Custom Property 传入树深度，没有为这两个属性写 Inline Style；因此不能用第三方库样式作为保留理由。
@@ -530,9 +534,9 @@ CharacterGroup
 
 ## 待决策候选：当前不进入确定整改项
 
-### A. 九个 `--loom-*` Token 当前无内部消费
+### A. 全局 CSS Token 契约与圆角/布局尺寸所有权尚未系统化
 
-- **状态**：Open / Contract decision
+- **状态**：Investigation queued / No token changes authorized
 - **位置**：`apps/studio-client/src/styles/global.css:38,43-44,48,51,84-85,88-89`
 - **候选 Token**：
 
@@ -550,16 +554,19 @@ CharacterGroup
 
 - **事实**：当前仓库没有任何 `var()` 消费，文档搜索也未发现明确使用说明。
 - **暂不删除原因**：Settings 允许把用户 Custom CSS 直接注入页面，`--loom-*` 可能已经被视为外部主题覆盖契约。静态未消费不能证明外部无消费者。
-- **决策条件**：CSS/Theming 轮次核对正式公共 Token 边界后，再决定删除、补消费或标记为兼容保留。
+- **2026-08-13 全仓初扫**：Client 当前共找到 94 个唯一 `--loom-*` 定义、89 个唯一 `var(--loom-*)` 消费；全局 `:root` Token 中仍只有上述 9 个完全没有消费。项目同时存在三层变量：全局主题/共享 Primitive Token、宿主覆写 Token（例如 Studio Dock 重映射 Surface）、组件私有计算变量（例如 FileTree Indent、Asset Track Width）。这三层不能机械合并。
+- **圆角事实**：当前共有 78 处 `border-radius` 声明。`0` 主要表达扁平边界和行式控件，`50%/999px` 表达圆形与 Pill，`18px` 表达 Composer/Dock 外壳；它们不是同一语义。全局 `--loom-radius-panel: 4px` 目前仅由 Character Panel 外壳和 Log Viewer 局部消费，另有大量 `3/4/5/6/8/10/12/18px` 硬编码，说明现有 Token 只覆盖旧式小 Panel，而不是完整 Radius Scale。
+- **布局事实**：全局 `--loom-rail-width: 44px`、`--loom-overlay-width: 360px` 未消费；Studio Shell 已使用局部 `--loom-dock-toggle-rail-width: 48px`、`--loom-dock-expanded-width: 160px` 与持久化 Window Size。全局尺寸与当前布局实现已经漂移，但尚不能在未定义 Custom CSS 兼容边界时直接删除。
+- **调查计划**：先建立 Token 分类和消费矩阵，再按“主题语义 Token / Shared Primitive Token / 组件私有布局变量 / 纯硬编码”分类圆角、阴影、间距和布局尺寸。对重复数值必须证明语义相同且需要联动调整，才升级为共享变量；不为了数字相同制造全局 Token。最终单独提出保留、接线、重命名或删除清单，经确认后再实施。
 
 ### B. Provider Settings Bootstrap 是否需要严格的全量一致快照
 
-- **状态**：Open / Design decision
+- **状态**：Deferred / Provider backend not ready
 - **位置**：`features/provider-settings/model/use-provider-settings.ts:30-59`、`app/use-studio-state.ts:89-105`
 - **事实**：Provider Accounts、Model Profiles、Agent Runtime Profiles 是三份独立前端状态，但 `refreshProviderSettings()` 串行读取；任一较早请求失败会阻止后续列表加载，并把三段网络延迟相加。
 - **可能影响**：一个列表暂时不可用时，其他可用设置也不会加载；第一项成功、后续失败时还会形成部分加载状态。
 - **暂不判缺陷原因**：如果产品要求三份列表必须来自严格一致的快照，串行全有或全无可能是有意选择，但当前文档与代码没有表达这一合同。
-- **决策条件**：确认是否存在严格一致性要求。若没有，三份读取应并行或独立表达 Loaded/Error，不需要引入 Query 框架。
+- **范围更正**：当前 Provider、Model 与 Agent Profile 的前端关系建模方向保留：Provider 提供模型服务，Agent Profile 是主要消费者之一，图像模型等其他能力也可直接消费 Provider/Model 而不经过 Agent/Preset。账户密钥、Base URL 与最终配置由后端保管；后端合同尚未稳定前，不调整当前 Bootstrap 加载语义，也不把前端临时串行读取扩展成长期架构。
 
 ### C. Workbench 对整个 Asset Layout 分支的订阅可能过宽
 
@@ -571,19 +578,19 @@ CharacterGroup
 
 ### D. Character 批量选择是否应跨 Group Filter 保留
 
-- **状态**：Open / Product decision
+- **状态**：Implemented after Batch 7 / Static verification passed；manual interaction pending
 - **位置**：`widgets/character-panel/character-panel.tsx:101-102,134-146,255-258`
 - **事实**：切换 Group 只重置分页，不清空 `selectedCardIds`；Toolbar 可能继续计入并操作当前不可见的已选 Card。
 - **两种合理合同**：跨 Group 批处理需要保留隐藏选择；如果选择只应作用于当前视图，则隐藏选择会造成误删除或误分组风险。
-- **决策条件**：明确选择作用域。确定后补充可见 Selection Count 或在 Filter 切换时清理，不依据猜测修改。
+- **已确认合同**：角色位置编辑/选择模式在 Character Panel 内全局保持；具体选中项只属于当前 Group Filter。切换分组时清空 `selectedCardIds`，但不退出 `selectionMode`，用户仍处于角色位置编辑状态，可在新分组继续选择。
 
 ### E. Dock 内组件仍按 Viewport 断点判断，可能晚于真实容器宽度降级
 
-- **状态**：Needs browser evidence
+- **状态**：Deferred / Mobile and narrow layout not ready
 - **位置**：`pages/studio/studio-page.module.scss:19-47,567-589`、`shared/ui/asset-workbench-layout/asset-workbench-layout.module.scss:136-164`、`features/context-assets/ui/context-asset-detail/context-asset-detail.module.scss:155-181`
 - **结构事实**：浮动 Dock Active 时左侧 Rail 固定占用约 `160px`，Panel 内容显著窄于 Viewport；Asset Workbench 与 Detail 却分别只在 Viewport `720px`、`760px` 以下切换窄布局。Viewport 为 `721～820px` 时，宿主内容可能已不足约 `560～650px`，组件仍保持桌面 Split/Metadata 布局。
 - **不能直接确认原因**：CSS Grid 的 `minmax(0, ...)` 可能只造成紧凑显示，也可能产生实际不可用的控件拥挤；缺少运行态尺寸和命中证据，不能仅凭断点不同立项。
-- **验证条件**：在 `721～820px` Viewport 下打开 Dock 内 Asset Explorer/Split/Editor，记录各 Pane `getBoundingClientRect()`、横向 Overflow 与控件可操作性。确认影响后再决定使用 Container Query 或宿主尺寸状态。
+- **延期原因**：Studio 移动端与窄屏整体布局尚未搭建完成，当前不对局部断点做提前优化。待 Shell 与移动端布局合同稳定后，再统一验证 Container Query 或宿主尺寸状态，不在现阶段叠加临时断点。
 
 ### F. `stagePanel` 与多个 Widget 同时声明 Scroll Owner
 
@@ -595,11 +602,11 @@ CharacterGroup
 
 ### G. Studio Shell 的 Escape 是否应优先关闭 Panel，当前合同自相矛盾
 
-- **状态**：Open / Product decision
+- **状态**：Implemented after Batch 7 / Static verification passed；manual interaction pending
 - **位置**：`pages/studio/studio-page.tsx:109-140`、`features/context-assets/ui/context-asset-detail/context-asset-detail.tsx:48-62`、`shared/ui/long-text-editor/code-mirror-editor.tsx:305-319`
 - **结构事实**：全局 Handler 在 `isEditableTarget(event.target)` 之前依次处理 Metadata、Immersive 与 Panel Escape；因此 Settings Textarea、Provider Input、Log Search/Select、Character Form 等普通编辑控件内按 Escape 会直接关闭 Shell 层。Context Metadata 与 CodeMirror 又分别通过 `preventDefault/stopPropagation` 消费 Escape，表现并不统一。
 - **冲突证据**：同一 Handler 对 Undo/Redo 明确在 Editable Target 时退出，但 Escape 被刻意或意外放在保护之前，代码无法表达统一优先级。
-- **决策条件**：明确采用“编辑控件先消费 Escape，第二层才关闭 Shell”，还是“任何 Escape 都按 Metadata → Immersive → Panel 关闭”。确定后统一实现并覆盖普通 Input、Textarea、Select 和 CodeMirror。
+- **已确认合同**：保留 Metadata → Immersive → Panel/Dock 的层级关闭顺序，但只在焦点不处于普通 `input/textarea/select/contenteditable` 时执行。编辑控件聚焦时 Shell 不消费 Escape；组件已通过 `preventDefault()` 消费的 Escape 继续优先于全局 Handler。
 
 ### H. Conversation Navigator 改变 Active Item 后没有主动移动焦点
 
@@ -702,7 +709,7 @@ CharacterGroup
 - 重复 JSX、重复事件绑定、公共 Props 与类型擦除的反向引用核验；
 - 对超过 300～400 行文件逐项判断其职责是否具有不同变化原因，而不是用行数直接定性。
 
-本轮仍未安装依赖，也未执行 Build、Lint、测试或浏览器视觉验收。第六轮已确认 GroupSheet 采用 Non-modal Drop Palette；Character Selection 是否跨 Group 保留仍属于独立产品决策。其余 `Confirmed` 项均有静态可达的纯前端证据。
+本轮仍未安装依赖，也未执行 Build、Lint、测试或浏览器视觉验收。当时第六轮曾确认 GroupSheet 采用 Non-modal Drop Palette；实施期在取消拖拽分组后，已更正为 Panel-local Modal Picker。Character Selection 是否跨 Group 保留仍属于独立产品决策。其余 `Confirmed` 项均有静态可达的纯前端证据。
 
 ## 第四轮排除项
 
@@ -771,11 +778,13 @@ Context Menu 在 Tab 时关闭并把焦点恢复到 Trigger，而不是继续到
 | 集合 | 数量 | 条目 | 当前处理方式 |
 | --- | ---: | --- | --- |
 | 可直接进入整改批次 | 29 | 1、4B、5、6、7、12、14、15、19、20、22～33、35～41（排除 34） | 三项实施决策已完成，按共同根因合并实施 |
-| 已完成实施前置决策 | 3 | 23、33、39 | Non-modal Group Palette、共享 Markdown 基线、完整 ARIA Tree |
+| 已完成实施前置决策 | 3 | 23、33、39 | Panel-local Group Picker、共享 Markdown 基线、完整 ARIA Tree |
 | 当前范围延期 | 12 | 2、3、4A、8～11、13、16～18、候选 C | Session、Card Resources、Projection 或 Asset Workspace 形态稳定后复核 |
 | 反向验证后否定 | 2 | 21、34 | 保留审计更正记录，不进入整改 |
-| 独立产品/合同决策 | 4 | 候选 A、B、D、G | 不与确定整改混合 |
-| 需要浏览器或读屏证据 | 5 | 候选 E、F、H、I、J | 取得客观证据后再决定是否升级 |
+| 独立产品/合同决策 | 1 | 候选 A | CSS Token 专项调查后再形成整改提案 |
+| 需要浏览器或读屏证据 | 4 | 候选 F、H、I、J | 取得客观证据后再决定是否升级 |
+| 已完成补充决策 | 2 | 候选 D、G | 切组清空具体选择但保持编辑状态；编辑控件内 Escape 不关闭 Shell |
+| 新增延期 | 2 | 候选 B、E | Provider 后端合同、移动端/窄屏布局稳定后复核 |
 
 关键校准：
 
@@ -788,8 +797,8 @@ Context Menu 在 Tab 时关闭并把焦点恢复到 Trigger，而不是继续到
 
 ### 已确认的三个实施决定
 
-1. **GroupSheet 采用 Non-modal Drop Palette（条目 23）**  
-   保留拖卡和背景交互，移除错误的 Modal Role/`aria-modal`，建立非模态焦点进入、Escape 关闭和 Return Focus 合同，不接入阻断式 Shared Dialog。
+1. **GroupSheet 采用 Panel-local Modal Picker（条目 23）**
+   取消拖拽分组和全局可移动窗口；Sheet 在 Character Panel 内居中覆盖，使用多选后点击目标分组。关闭角色面板时 Sheet 同步关闭，并保留 Tab Trap、Escape 与 Return Focus。
 
 2. **FileTree 实现完整 ARIA Tree（条目 39）**  
    Treeitem 统一承担焦点和选中状态，补齐 Roving Tabindex、方向键、Home/End、父子导航、展开收起与 Enter/Space；不再考虑降级为普通 List。
@@ -797,7 +806,7 @@ Context Menu 在 Tab 时关闭并把焦点恢复到 Trigger，而不是继续到
 3. **Markdown 采用共享基线与宿主差异（条目 33）**  
    共享首尾 Margin、Paragraph/List、Link、Em、Table 和基础 Inline Code；Heading Scale、Surface、Blockquote、Preview Padding 与 Assistant Justify 保留为 Narrative/Preview 的上下文差异。
 
-候选 A、B、D、G 仍是独立决策，但不会阻塞当前七个批次；未触及对应行为时保持现状。
+候选 D、G 已在批次 7 后完成；候选 B、E 分别随 Provider 后端与移动端布局延期。候选 A 进入 CSS Token 专项调查，不在调查前删改或强行接线 Token。
 
 ## 统一整改计划
 
@@ -857,33 +866,56 @@ Context Menu 在 Tab 时关闭并把焦点恢复到 Trigger，而不是继续到
 
 ### 批次 5：FileTree 公共合同一次完成
 
+- **实施状态**：Completed / Automated verification passed
 - **条目**：4B、30、36、39。
 - **目标**：消除 Model 对组件文件的反向 Type Import；删除无消费者 Props；移除无必要 `!important`；完成已确认的完整 ARIA Tree 合同。
 - **非目标**：不泛型化所有 Tree，不重写 DND/Context Menu，不恢复无消费者扩展点。
 - **风险**：高。完整 Tree 会同时改变 DOM Role、Tab 顺序和方向键行为。
 - **最小验证**：单向 Import 与 Typecheck；为 Visible Order、Arrow/Home/End/Left/Right、Expand/Select 提取最小纯 Model 测试。浏览器检查 `role`、Active Element、`aria-selected` 与 DND Computed Style；拖放手感由人工验收。
+- **实际改动**：把 `FileTreeNode` 移入 `file-tree-model.ts`，组件只从 Model 导入并 Re-export Type，消除 `Model → TSX` 反向依赖；Projection 类型循环继续按原范围 Deferred。删除 `defaultExpandedIds`、`renderTrailing`、Local Expansion State 和对应 CSS，把 `expandedIds/onExpandedIdsChange` 收紧为真实调用点使用的受控合同；Context/Preset 在没有持久化展开状态时显式保留原先顶层默认展开行为。Treeitem 自身承担焦点、`aria-selected`、`aria-expanded/level/labelledby`、Context Menu 与 Enter/Space 选择；Roving Tabindex 使 Tab 只进入 Tree 一次，Arrow Up/Down、Home/End、Left/Right 覆盖可见顺序、展开/收起和父子导航。Disclosure、Drag Handle 与 More Actions 保留点击/触控行为但退出普通 Tab 顺序，Shift+F10/ContextMenu 仍可从 Treeitem 打开菜单。两个 `!important` 直接移除。
+- **已完成验证**：目标 FileTree 与两个调用点 ESLint 通过；注入现有缺失的 `vite/client` 类型后 Client Typecheck 通过；新增 FileTree Keyboard Model 1 个 Test File / 3 个 Test，覆盖 Section 排除、Visible Order、Arrow/Home/End、Expand/Collapse 和 Parent/Child Navigation；Studio Client 26 个 Test File / 78 个 Test 全部通过；Vite/Sass Production Build 成功，转换 495 个 Module；反向搜索确认无 `defaultExpandedIds`、`renderTrailing`、FileTree `!important` 和 `file-tree-model → file-tree.tsx` Import；`git diff --check` 通过。Build 仅有既有的 500 kB Chunk Warning。
+- **人工验收标准**：Tab 从树外只进入一个当前 Treeitem；Arrow Up/Down 按可见顺序移动，Home/End 到首尾，Right 展开或进入首子项，Left 收起或回父项，Enter/Space 选择；读屏能获取节点名称、Level、Expanded 和 Selected；Shift+F10 打开当前节点菜单并在关闭后恢复焦点；Disclosure、More Actions 和拖放仍可用，Drag Over/Overlay 样式和手感未变。
 
 ### 批次 6：Character UI 按真实生命周期拆分
 
+- **实施状态**：Completed with item 22 partial / Automated verification passed
 - **条目**：15、19、22、23、28；条目 41 的 Edit State 随所属组件处理。
-- **目标**：让 Gallery、Profile、Media 与 Shared Overlay 各自拥有生命周期；一次解决离场 Timer、Blob URL 清理和 GroupSheet 重复装配，并把 GroupSheet 收口为 Non-modal Drop Palette。
+- **目标**：让 Gallery、Profile、Media 与 Shared Overlay 各自拥有生命周期；一次解决离场 Timer、Blob URL 清理和 GroupSheet 重复装配，并把 GroupSheet 收口为 Character Panel 内的点击式分组 Picker。
 - **非目标**：不改 Session/Branch/Card Resource Schema，不建立 Controller/Service/Factory，不重新设计 Gallery 视觉。
 - **风险**：高。
-- **最小验证**：扩展 Character 定向测试，Fake Timer 覆盖 A 离场后打开 B；Mock `createObjectURL/revokeObjectURL` 覆盖替换、删除和 Unmount；保留 Gallery Store 测试。完成 TSX/SCSS 迁移后运行一次 Client Build。浏览器客观验证切换、粘贴/拖放和最终 GroupSheet 合同；动画与手感由人工验收。
+- **最小验证**：扩展 Character 定向测试，覆盖 A 离场后打开 B、Media 替换/删除/卸载；保留 Gallery Store 测试。浏览器客观验证详情页选择、多选点击分组、Sheet 焦点合同和角色面板联动；动画与手感由人工验收。
+- **实际改动**：提取 `useCharacterProfileNavigation` 与纯 Navigation Model，所有进入新 Profile/路由同步都会取消旧离场 Timer，Transition ID 又阻止过期回调清除新 Profile。提取 `useCharacterMedia` 与纯 Media Model，统一管理 Object URL 创建、替换、Card 移除和 Unmount 回收。Group Sheet 和 Delete Confirmation 收口为 Coordinator 中唯一装配位置。最终取消 Card 拖拽与 Drop Target，Card 恢复 Pointer 语义；Sheet 回到 Character Panel 内居中覆盖，提供 Backdrop、Tab Trap、Escape、Autofocus 与 Return Focus，角色面板不活跃时自动关闭。选择模式下点击 Card 仍进入详情；详情页可将当前 Card 加入选择，但不提供移除选择，取消统一回 Gallery 操作。
+- **条目 22 边界说明**：Navigation、Media 和 Shared Overlay 已拥有独立生命周期，但 Gallery 查询/分页/Observer 与 Profile 表单/媒体 JSX 仍在 Coordinator 文件中。尝试直接迁出会产生二十余个状态与 Callback Props，只会将上帝组件替换为上帝 Props。本批不为物理拆文件引入 Controller/Factory，因此条目 22 如实保持部分完成，待 Gallery/Profile 能以更小共享合同分离时再继续。
+- **已完成验证**：Character 目标文件 ESLint 通过；注入现有缺失的 `vite/client` 类型后 Client Typecheck 通过；Character 定向 2 个 Test File / 5 个 Test 通过；Studio Client 26 个 Test File / 81 个 Test 全部通过；Vite/Sass Production Build 成功，转换 499 个 Module；反向搜索确认无 Group Drag/Drop、Portal、浮窗位置模型或 Grab Cursor；`git diff --check` 通过。Build 仅有既有的 500 kB Chunk Warning。
+- **滚动容器实施更正**：截图证据证明将定位层直接放在无限滚动容器上，遮罩只覆盖初始布局高度，溢出内容仍会显示。最终将 `CharacterPanel` 改为 `overflow: hidden` 的定位外壳，Gallery/Profile 放入独立 `characterScroller`，Group Sheet Backdrop 作为 Scroller 兄弟节点覆盖整个外壳。IntersectionObserver Root 同步迁到新 Scroller，保留无限加载。
+- **人工验收标准**：不论 Gallery 已滚动多深，多选后打开 Sheet 都应完整覆盖 Character Panel，底部卡片不再透出，滚轮不再移动背景列表；Sheet 在面板中心且不随内容滚动。Tab 在 Sheet 内循环，Escape/背景/关闭按钮恢复原焦点；关闭 Character Panel 时 Sheet 同步消失。选择模式下点击 Card 进入详情，详情可加入选择但无移除按钮；返回 Gallery 后可继续多选、取消和点击分组。
 
 ### 批次 7：Studio Shell、Rail 与 Resize 收口
 
+- **实施状态**：Completed / Automated verification passed
 - **条目**：24、25、26、27。条目 17 保持延期，不在本批重组 Asset Workspace Store。
 - **目标**：保留 `StudioPage` 作为组合器，提取局部 Rail、Panel Host 与 Window Resize 生命周期；在同批移除 Shell 对未知 Widget 的裸元素样式穿透。
 - **非目标**：不改 Asset Selection、Session、Card、Schema；不建立通用 Dock Framework；不改变 URL→Panel 单向初始化；不删除现有 `window-resize.ts` 纯算法；不顺带实现候选 E、F、G。
 - **风险**：高。
 - **最小验证**：现有 `window-resize.test.ts`、相关 Layout Store 测试与 Client Typecheck；完成 TSX/SCSS 文件迁移后运行一次 Client Build。浏览器客观验证 Rail ARIA、Panel Hidden/Lazy Mount、三方向 Pointer/Keyboard Resize、持久化恢复和 Widget Computed Font；Dock 密度与窄屏观感由人工验收。
+- **实际改动**：提取 `StudioRail`、`StudioPanelHost`、`useStudioShortcuts` 与 `useStudioWindowResize`。`StudioPage` 只保留 Shell/Store 组合、Dock 外壳和 Workspace 宽度模式判定。Rail Tab 结构和三组 Resize Handle 事件各只剩一份实现；Pointer 与 Keyboard 共用 DOM 测量路径。删除 Shell 对任意 Panel 后代 Button/Input/Heading 的字号覆盖，没有迁成另一组广泛 Selector。
+- **已完成验证**：目标文件 ESLint 通过；注入现有缺失的 `vite/client` 类型后 Client Typecheck 通过；Resize/Layout Store 定向 2 个 Test File / 13 个 Test 通过；Studio Client 26 个 Test File / 82 个 Test 全部通过；Vite/Sass Production Build 成功，转换 502 个 Module；`git diff --check` 通过。Build 仅有既有的 500 kB Chunk Warning。
+- **人工验收标准**：Rail 每个可用 Tab 的 Label、Active 状态、`aria-controls` 与 `aria-expanded` 应保持一致，Model 未配置状态仍显示危险色；Panel 首次打开才挂载，切换后保留已访问 Panel 状态但 Hidden Panel 不可见。宽、高、右下角三种 Handle 均可 Pointer 拖动，聚焦后方向键按 16px 调整，刷新后各 Panel 尺寸恢复；沉浸模式不显示 Handle。重点确认 Character、Logs、Settings 与 Asset Panel 的控件/标题字号和 Dock 密度没有不可接受变化，窄屏观感由人工验收。
+
+### 批次 8：前端界面语言与命名迁移
+
+- **实施状态**：Completed / Automated verification passed
+- **目标**：把已确认的 Window、Panel、Pane、Surface、Dialog、Narrative Timeline、Selection 与 View 语言落实到 Client 代码、I18N、公共 CSS Hook 和 Token，同时保留 Custom CSS 兼容。
+- **非目标**：不拆当前 Dock/Window 复合 DOM，不建立 Window Instance Store，不改后端、Schema、RPC、Session/Card Resources 或 Agent Provider 合同。
+- **实际改动**：完成 FileTree、Character、Model、Panel Host、Asset Workbench、Preset View 与 Narrative Timeline 对象链改名；单一消费者的 Conversation Navigator 收归 Narrative Timeline；Radius 使用 primitive + semantic Token，Rail 宽度、Window Gap 和最小尺寸成为 Custom CSS 可覆盖合同，Resize 测量读取 Computed Style；新增 `data-loom-object`，旧 `data-loom-component` 精确 Hook 保留兼容；I18N 对齐功能导航、关闭当前面板、资产目录与仅编辑器视图。
+- **兼容边界**：Studio Layout Storage 8→9，Sanitizer 继续读取旧 `presetPanel`；`studio-workspace-shell`、`narrative-canvas`、`overlay-utility-layer` 与 `overlay-${panel}-layer` 继续留在原 DOM；`--loom-rail-width` 保留为 collapsed width 别名，`--loom-overlay-width` 等待 Window Architecture。
+- **延期项**：Dock/Window DOM 分离、Window Instance State、Agent Runtime Manager 最终命名、Context/Resource/Worldbook 领域语言、多窗口 Track/Tile/Stack。
+- **人工验收标准**：自定义 Radius、Rail Width、Window Gap/Min Size 后，浮动工作区视觉与 Resize 下限同步变化；旧 Custom CSS 精确选择器仍命中；刷新后 Preset View 与各 Panel Window Size 恢复；Narrative、Character Group Dialog 和各 Panel 视觉层级无不可接受变化。
 
 ## 证据门槛与统一验收
 
-候选 E、F、H、I、J 不进入上述批次，先分别完成：
+候选 F、H、I、J 不进入上述批次，先分别完成：
 
-- E：在 `721～820px` 读取 Dock/Panes Bounds、`scrollWidth/clientWidth`；
 - F：逐 Panel 读取全部可滚动祖先、`scrollHeight/clientHeight` 与 Sticky 行为；
 - H：每次方向键后对比 `document.activeElement`、`aria-current`，覆盖长列表节点卸载；
 - I：使用可控 Clipboard Stub 交叉完成 A/B Promise；
@@ -898,4 +930,4 @@ Context Menu 在 Tab 时关闭并把焦点恢复到 Trigger，而不是继续到
 
 ## 下一步
 
-三个实施前置决策和批次 1 已完成。下一步进入批次 2：Agent Runtime、Provider 与 Active State 接线；Character 与 Studio Shell 两个高风险批次仍放在 Shared Contract 和局部行为稳定之后。
+七个既定整改批次均已完成。下一步先进行 CSS Token/Radius/Layout Ownership 专项调查，只形成证据矩阵和整改提案，不直接统一变量；同时保留候选 F、H、I 的客观浏览器诊断。Provider、Session、Card Resources、Projection、Asset Workspace 与移动端布局继续按范围延期。

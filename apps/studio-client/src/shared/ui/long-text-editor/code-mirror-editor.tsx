@@ -3,10 +3,10 @@ import { javascript } from '@codemirror/lang-javascript'
 import { markdown } from '@codemirror/lang-markdown'
 import { xml } from '@codemirror/lang-xml'
 import { yaml } from '@codemirror/lang-yaml'
-import { HighlightStyle, LanguageDescription, syntaxHighlighting } from '@codemirror/language'
+import { HighlightStyle, LanguageDescription, syntaxHighlighting, syntaxTree } from '@codemirror/language'
 import { Chunk } from '@codemirror/merge'
 import { search, searchKeymap } from '@codemirror/search'
-import { Annotation, Compartment, EditorState, RangeSet, StateField, Text, Transaction } from '@codemirror/state'
+import { Annotation, Compartment, EditorState, RangeSet, RangeSetBuilder, StateField, Text, Transaction } from '@codemirror/state'
 import {
   Decoration,
   type DecorationSet,
@@ -22,6 +22,7 @@ import {
 } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef } from 'react'
+import { readYamlScalarTokenClass } from '../yaml-scalar-highlight.js'
 import {
   buildChangedChunks,
   CHANGE_TRACKING_DIFF_CONFIG,
@@ -52,26 +53,26 @@ type CodeMirrorEditorProps = {
 const externalValueUpdate = Annotation.define<boolean>()
 
 const loomHighlightStyle = HighlightStyle.define([
-  { tag: tags.heading, color: 'var(--loom-syntax-heading)', fontWeight: '650' },
-  { tag: tags.strong, color: 'var(--loom-syntax-strong)', fontWeight: '650' },
-  { tag: tags.emphasis, color: 'var(--loom-syntax-emphasis)' },
-  { tag: tags.quote, color: 'var(--loom-syntax-quote)' },
-  { tag: [tags.link, tags.url], color: 'var(--loom-syntax-link)', textDecoration: 'none' },
-  { tag: tags.keyword, color: 'var(--loom-syntax-keyword)' },
-  { tag: [tags.atom, tags.bool, tags.null], color: 'var(--loom-syntax-constant)' },
-  { tag: [tags.string, tags.attributeValue, tags.regexp, tags.monospace, tags.inserted], color: 'var(--loom-syntax-string)' },
-  { tag: tags.number, color: 'var(--loom-syntax-number)' },
-  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: 'var(--loom-syntax-function)' },
-  { tag: [tags.typeName, tags.className], color: 'var(--loom-syntax-type)' },
-  { tag: tags.variableName, color: 'var(--loom-syntax-variable)' },
-  { tag: tags.propertyName, color: 'var(--loom-syntax-property)' },
-  { tag: tags.tagName, color: 'var(--loom-syntax-tag)' },
-  { tag: tags.attributeName, color: 'var(--loom-syntax-attribute)' },
-  { tag: tags.operator, color: 'var(--loom-syntax-operator)' },
-  { tag: tags.punctuation, color: 'var(--loom-syntax-punctuation)' },
-  { tag: tags.meta, color: 'var(--loom-syntax-meta)' },
-  { tag: tags.comment, color: 'var(--loom-syntax-comment)' },
-  { tag: [tags.invalid, tags.deleted], color: 'var(--loom-syntax-invalid)' },
+  { tag: tags.heading, color: 'var(--loom-color-syntax-heading)', fontWeight: 'var(--loom-font-weight-7)' },
+  { tag: tags.strong, color: 'var(--loom-color-syntax-strong)', fontWeight: 'var(--loom-font-weight-7)' },
+  { tag: tags.emphasis, color: 'var(--loom-color-syntax-emphasis)' },
+  { tag: tags.quote, color: 'var(--loom-color-syntax-quote)' },
+  { tag: [tags.link, tags.url], color: 'var(--loom-color-syntax-link)', textDecoration: 'none' },
+  { tag: tags.keyword, color: 'var(--loom-color-syntax-keyword)' },
+  { tag: [tags.atom, tags.bool, tags.null], color: 'var(--loom-color-syntax-constant)' },
+  { tag: [tags.string, tags.attributeValue, tags.regexp, tags.monospace, tags.inserted], color: 'var(--loom-color-syntax-string)' },
+  { tag: tags.number, color: 'var(--loom-color-syntax-number)' },
+  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: 'var(--loom-color-syntax-function)' },
+  { tag: [tags.typeName, tags.className], color: 'var(--loom-color-syntax-type)' },
+  { tag: tags.variableName, color: 'var(--loom-color-syntax-variable)' },
+  { tag: tags.propertyName, color: 'var(--loom-color-syntax-property)' },
+  { tag: tags.tagName, color: 'var(--loom-color-syntax-tag)' },
+  { tag: tags.attributeName, color: 'var(--loom-color-syntax-attribute)' },
+  { tag: tags.operator, color: 'var(--loom-color-syntax-operator)' },
+  { tag: tags.punctuation, color: 'var(--loom-color-syntax-punctuation)' },
+  { tag: tags.meta, color: 'var(--loom-color-syntax-meta)' },
+  { tag: tags.comment, color: 'var(--loom-color-syntax-comment)' },
+  { tag: [tags.invalid, tags.deleted], color: 'var(--loom-color-syntax-invalid)' },
 ])
 
 const codeLanguages = [
@@ -85,7 +86,7 @@ const loomEditorTheme = EditorView.theme({
   '&': {
     height: '100%',
     minHeight: 'var(--loom-long-text-editor-content-min-height, 180px)',
-    color: 'var(--loom-text)',
+    color: 'var(--loom-color-text)',
     backgroundColor: 'transparent',
     fontSize: 'var(--loom-font-size-body)',
   },
@@ -93,28 +94,28 @@ const loomEditorTheme = EditorView.theme({
   '.cm-scroller': {
     minHeight: 'var(--loom-long-text-editor-content-min-height, 180px)',
     overflow: 'auto',
-    scrollbarColor: 'color-mix(in srgb, var(--loom-text-subtle) 34%, var(--loom-surface)) var(--loom-surface)',
+    scrollbarColor: 'color-mix(in srgb, var(--loom-color-text-subtle) 34%, var(--loom-color-surface-subtle)) var(--loom-color-surface-subtle)',
     scrollbarWidth: 'thin',
-    fontFamily: 'var(--loom-long-text-editor-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace)',
+    fontFamily: 'var(--loom-long-text-editor-font-family, var(--loom-font-family-mono))',
     lineHeight: 'var(--loom-long-text-editor-line-height, 1.72)',
   },
   '.cm-scroller::-webkit-scrollbar': { width: '8px', height: '8px' },
-  '.cm-scroller::-webkit-scrollbar-track': { backgroundColor: 'var(--loom-surface)' },
+  '.cm-scroller::-webkit-scrollbar-track': { backgroundColor: 'var(--loom-color-surface-subtle)' },
   '.cm-scroller::-webkit-scrollbar-thumb': {
-    border: '2px solid var(--loom-surface)',
+    border: '2px solid var(--loom-color-surface-subtle)',
     borderRadius: '999px',
-    backgroundColor: 'color-mix(in srgb, var(--loom-text-subtle) 34%, var(--loom-surface))',
+    backgroundColor: 'color-mix(in srgb, var(--loom-color-text-subtle) 34%, var(--loom-color-surface-subtle))',
   },
   '.cm-content': {
     padding: '4px 0 20px',
-    fontFamily: 'var(--loom-long-text-editor-font-family, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace)',
+    fontFamily: 'var(--loom-long-text-editor-font-family, var(--loom-font-family-mono))',
     fontSize: 'var(--loom-font-size-body)',
     lineHeight: 'var(--loom-long-text-editor-line-height, 1.72)',
   },
   '.cm-line': { padding: '0 4px' },
   '.cm-gutters': {
     border: '0',
-    color: 'var(--loom-text-subtle)',
+    color: 'var(--loom-color-text-subtle)',
     backgroundColor: 'transparent',
   },
   '.cm-lineNumbers .cm-gutterElement': {
@@ -123,66 +124,69 @@ const loomEditorTheme = EditorView.theme({
     fontSize: 'var(--loom-font-size-body)',
     textAlign: 'left',
   },
-  '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--loom-accent-strong)' },
+  '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--loom-color-accent-strong)' },
   '& > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, &.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground': {
-    backgroundColor: 'var(--loom-selection-bg)',
+    backgroundColor: 'var(--loom-color-selection-background)',
   },
-  '.cm-placeholder': { color: 'var(--loom-text-subtle)', opacity: '0.48' },
+  '.cm-placeholder': { color: 'var(--loom-color-text-subtle)', opacity: '0.48' },
+  '.cm-loom-yaml-string': { color: 'var(--loom-color-syntax-string)' },
+  '.cm-loom-yaml-number': { color: 'var(--loom-color-syntax-number)' },
+  '.cm-loom-yaml-constant': { color: 'var(--loom-color-syntax-constant)' },
   '.cm-panels': {
     border: '0',
-    color: 'var(--loom-text-muted)',
-    backgroundColor: 'var(--loom-surface)',
+    color: 'var(--loom-color-text-muted)',
+    backgroundColor: 'var(--loom-color-surface-subtle)',
   },
   '.cm-search': { display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 0' },
-  '.cm-search label': { display: 'flex', alignItems: 'center', gap: '3px', fontSize: '10px' },
+  '.cm-search label': { display: 'flex', alignItems: 'center', gap: '3px', fontSize: 'var(--loom-font-size-1)' },
   '.cm-search input': {
     minHeight: '24px',
     border: '0',
-    borderBottom: '1px solid var(--loom-divider-color)',
+    borderBottom: '1px solid var(--loom-color-divider)',
     borderRadius: '0',
     padding: '2px 0',
-    color: 'var(--loom-text)',
+    color: 'var(--loom-color-text)',
     backgroundColor: 'transparent',
   },
-  '.cm-search input:focus': { borderBottomColor: 'var(--loom-accent)', boxShadow: 'none' },
+  '.cm-search input:focus': { borderBottomColor: 'var(--loom-color-accent)', boxShadow: 'none' },
   '.cm-search button': {
     minHeight: '24px',
     border: '0',
     padding: '2px 5px',
-    color: 'var(--loom-text-subtle)',
+    color: 'var(--loom-color-text-subtle)',
     backgroundImage: 'none',
     backgroundColor: 'transparent',
-    fontSize: '10px',
+    fontSize: 'var(--loom-font-size-1)',
   },
-  '.cm-search button:hover': { color: 'var(--loom-text)' },
+  '.cm-search button:hover': { color: 'var(--loom-color-text)' },
   '.cm-search button[name=close]': { position: 'static', marginLeft: 'auto' },
   '.cm-loom-line-added': {
     borderRadius: '0 4px 4px 0',
-    backgroundColor: 'color-mix(in srgb, var(--loom-success-bg) 62%, transparent)',
+    backgroundColor: 'color-mix(in srgb, var(--loom-color-success-background) 62%, transparent)',
   },
   '.cm-loom-line-modified': {
     borderRadius: '0 4px 4px 0',
-    backgroundColor: 'color-mix(in srgb, var(--loom-success-bg) 62%, transparent)',
+    backgroundColor: 'color-mix(in srgb, var(--loom-color-success-background) 62%, transparent)',
   },
   '.cm-loom-line-deleted': {
     borderRadius: '0 4px 4px 0',
-    backgroundColor: 'color-mix(in srgb, var(--loom-danger-bg) 52%, transparent)',
+    backgroundColor: 'color-mix(in srgb, var(--loom-color-danger-background) 52%, transparent)',
   },
   '.cm-loom-gutter-added': {
     borderRadius: '4px 0 0 4px',
-    backgroundColor: 'color-mix(in srgb, var(--loom-success-bg) 62%, transparent)',
+    backgroundColor: 'color-mix(in srgb, var(--loom-color-success-background) 62%, transparent)',
   },
   '.cm-loom-gutter-modified': {
     borderRadius: '4px 0 0 4px',
-    backgroundColor: 'color-mix(in srgb, var(--loom-success-bg) 62%, transparent)',
+    backgroundColor: 'color-mix(in srgb, var(--loom-color-success-background) 62%, transparent)',
   },
   '.cm-loom-gutter-deleted': {
     borderRadius: '4px 0 0 4px',
-    backgroundColor: 'color-mix(in srgb, var(--loom-danger-bg) 52%, transparent)',
+    backgroundColor: 'color-mix(in srgb, var(--loom-color-danger-background) 52%, transparent)',
   },
   '.cm-loom-gutter-active': {
-    color: 'var(--loom-info)',
-    fontWeight: '650',
+    color: 'var(--loom-color-info)',
+    fontWeight: 'var(--loom-font-weight-7)',
   },
   '.cm-loom-gutter-active.cm-loom-gutter-added, .cm-loom-gutter-active.cm-loom-gutter-modified, .cm-loom-gutter-active.cm-loom-gutter-deleted': {
     backgroundColor: 'transparent',
@@ -192,6 +196,27 @@ const loomEditorTheme = EditorView.theme({
     backgroundColor: 'transparent',
   },
 }, { dark: true })
+
+const yamlScalarHighlighting = EditorView.decorations.of(view => {
+  const builder = new RangeSetBuilder<Decoration>()
+  const tree = syntaxTree(view.state)
+
+  for (const range of view.visibleRanges) {
+    let position = range.from
+    while (position < range.to) {
+      const node = tree.resolveInner(position, 1)
+      if (node.name === 'Literal' && node.parent?.name !== 'Key') {
+        const value = view.state.sliceDoc(node.from, node.to)
+        builder.add(node.from, node.to, Decoration.mark({ class: `cm-loom-yaml-${readYamlScalarTokenClass(value)}` }))
+        position = node.to
+      } else {
+        position += 1
+      }
+    }
+  }
+
+  return builder.finish()
+})
 
 class ChangeGutterMarker extends GutterMarker {
   override readonly elementClass: string
@@ -328,6 +353,7 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
           search(),
           markdown({ codeLanguages }),
           syntaxHighlighting(loomHighlightStyle),
+          yamlScalarHighlighting,
           EditorView.lineWrapping,
           loomEditorTheme,
           changeTracking(Text.of(initialValueRef.current.split('\n'))),

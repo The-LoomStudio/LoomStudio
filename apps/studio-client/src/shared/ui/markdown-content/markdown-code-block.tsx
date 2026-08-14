@@ -43,6 +43,7 @@ export function MarkdownCodeBlock(props: {
 
   return (
     <div className={styles.codeBlock} data-wrap={wrapped ? 'true' : 'false'}>
+      {props.language ? <span className={styles.codeLanguage}>{props.language}</span> : null}
       <div className={styles.codeActions}>
         <button
           aria-label={wrapped ? props.labels.disableWrap : props.labels.enableWrap}
