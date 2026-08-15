@@ -8,13 +8,13 @@ export type Card = {
   description?: string
   importBundleId?: string
   promptResourceIds?: string[]
+  media?: CardMedia
   preset?: {
     system?: string
   }
   opening: {
     entries: Array<{ role: 'user' | 'assistant'; content: string }>
   }
-  setting?: JsonObject
   settingLayer: {
     entries: Array<{
       id?: string
@@ -26,7 +26,18 @@ export type Card = {
       tags?: string[]
     }>
   }
+  createdAt: string
+  updatedAt: string
 }
+
+export type CardMedia = {
+  avatarAssetId?: string
+  coverAssetId?: string
+}
+
+export type CardSummary = Pick<Card,
+  'id' | 'version' | 'name' | 'userName' | 'description' | 'media' | 'createdAt' | 'updatedAt'
+>
 
 export type CreateCardResult = {
   card: Card
@@ -34,8 +45,12 @@ export type CreateCardResult = {
 }
 
 export type ListCardsResult = {
-  cards: Card[]
+  cards: CardSummary[]
   nextCursor?: string
+}
+
+export type GetCardResult = {
+  card: Card
 }
 
 export type UpdateCardResult = {

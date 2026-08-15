@@ -20,7 +20,7 @@ function createTestContext() {
 describe('agent store', () => {
   it('creates a session and appends a linear batch with server-assigned sequence', async () => {
     const { engine, store, actor } = createTestContext()
-    const created = await store.createSession({ actor, agentPresetId: 'preset-guide', title: 'Guide' })
+    const created = await store.createSession({ actor, agentProfileId: 'profile-guide', title: 'Guide' })
     const appended = await store.appendMessages({
       actor,
       agentSessionId: created.session.id,
@@ -50,7 +50,7 @@ describe('agent store', () => {
 
   it('validates tool call/result pairing across batches', async () => {
     const { engine, store, actor } = createTestContext()
-    const { session } = await store.createSession({ actor, agentPresetId: 'preset-tools' })
+    const { session } = await store.createSession({ actor, agentProfileId: 'profile-tools' })
     const call = await store.appendMessages({
       actor,
       agentSessionId: session.id,
@@ -95,7 +95,7 @@ describe('agent store', () => {
 
   it('rejects stale appends and fully rolls back failed surrounding transactions', async () => {
     const { engine, store, actor } = createTestContext()
-    const { session } = await store.createSession({ actor, agentPresetId: 'preset-1' })
+    const { session } = await store.createSession({ actor, agentProfileId: 'profile-1' })
     await store.appendMessages({
       actor,
       agentSessionId: session.id,
@@ -128,7 +128,7 @@ describe('agent store', () => {
 
   it('pages by parent cursor and tombstones the session without deleting message rows', async () => {
     const { engine, store, actor } = createTestContext()
-    const { session } = await store.createSession({ actor, agentPresetId: 'preset-1' })
+    const { session } = await store.createSession({ actor, agentProfileId: 'profile-1' })
     await store.appendMessages({
       actor,
       agentSessionId: session.id,
@@ -162,7 +162,7 @@ describe('agent store', () => {
       const firstStore = createAgentStore({ engine: firstEngine, createId, now })
       const { session } = await firstStore.createSession({
         actor: { kind: 'system', id: 'test' },
-        agentPresetId: 'preset-persist',
+        agentProfileId: 'profile-persist',
       })
       await firstStore.appendMessages({
         actor: { kind: 'system', id: 'test' },
@@ -182,7 +182,7 @@ describe('agent store', () => {
       const database = new DatabaseSync(filename)
       const migration = database.prepare('SELECT version FROM schema_migrations WHERE namespace = ?').get('application.agent')
       database.close()
-      expect(migration).toEqual({ version: 1 })
+      expect(migration).toEqual({ version: 2 })
     } finally {
       await rm(directory, { recursive: true, force: true })
     }

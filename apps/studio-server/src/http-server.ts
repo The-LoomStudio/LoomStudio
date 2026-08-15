@@ -3,10 +3,19 @@ import { createId, type JsonValue } from '@loom-studio/shared'
 import type { StudioEvent } from '@loom-studio/transport'
 import { createErrorResponse, createSuccessResponse, parseRpcRequest } from '@loom-studio/transport'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import type { ApplicationSession, ApplicationSessionAuth } from './application-session-auth.js'
 import type { StudioRpcRouter } from './studio-rpc-router.js'
 
 export function createStudioHttpServer(options: {
+  auth: ApplicationSessionAuth
   assets?: AssetStore
+  cardPng?: {
+    export(cardId: string): Promise<Uint8Array>
+    import(source: Uint8Array, session: ApplicationSession): Promise<unknown>
+    exportBundle(cardId: string): Promise<Uint8Array>
+    importBundle(source: Uint8Array, session: ApplicationSession): Promise<unknown>
+    exportPolyglot(cardId: string): Promise<Uint8Array>
+  }
   extensionIcons?: {
     read(packageId: string, version: string): Promise<{ bytes: Uint8Array; mediaType: string } | undefined>
   }
@@ -22,6 +31,48 @@ export function createStudioHttpServer(options: {
       return
     }
 
+    if (request.method === 'POST' && request.url === '/auth/session') {
+      if (!options.auth.bootstrap(request, response)) {
+        writeJson(response, 403, { error: { code: 'auth.origin_forbidden', message: 'Request origin is not allowed' } })
+      }
+      return
+    }
+
+    const session = options.auth.authenticate(request)
+    if (!session) {
+      writeJson(response, 401, { error: { code: 'auth.unauthorized', message: 'Application session required' } })
+      return
+    }
+
+    const cardPngExportId = readCardPngExportId(request.url)
+    if (request.method === 'GET' && cardPngExportId && options.cardPng) {
+      await handleCardPngExport(response, options.cardPng, cardPngExportId)
+      return
+    }
+
+    const cardBundleExportId = readCardBundleExportId(request.url)
+    if (request.method === 'GET' && cardBundleExportId && options.cardPng) {
+      await handleCardFileExport(response, () => options.cardPng!.exportBundle(cardBundleExportId), 'application/vnd.loom.card+zip', 'loom-card.loomcard')
+      return
+    }
+
+    const cardPolyglotExportId = readCardPolyglotExportId(request.url)
+    if (request.method === 'GET' && cardPolyglotExportId && options.cardPng) {
+      await handleCardFileExport(response, () => options.cardPng!.exportPolyglot(cardPolyglotExportId), 'image/png', 'loom-card.polyglot.png')
+      return
+    }
+
+    if (request.method === 'POST' && request.url === '/cards/import/png' && options.cardPng) {
+      await handleCardPngImport(request, response, options.cardPng, session)
+      return
+    }
+
+
+    if (request.method === 'POST' && request.url === '/cards/import/loomcard' && options.cardPng) {
+      await handleCardFileImport(request, response, source => options.cardPng!.importBundle(source, session))
+      return
+    }
+
     if (request.method === 'GET' && request.url === '/extensions/events' && options.extensionEvents) {
       handleExtensionEventStream(request, response, options.extensionEvents)
       return
@@ -34,7 +85,7 @@ export function createStudioHttpServer(options: {
     }
 
     if (options.assets && request.method === 'POST' && request.url === '/assets') {
-      await handleAssetUpload(request, response, options.assets)
+      await handleAssetUpload(request, response, options.assets, session)
       return
     }
 
@@ -49,7 +100,98 @@ export function createStudioHttpServer(options: {
       return
     }
 
-    await handleRpcRequest(request, response, options.rpcRouter, options.logger)
+    await handleRpcRequest(request, response, options.rpcRouter, session, options.logger)
+  })
+}
+
+async function handleCardFileExport(
+  response: ServerResponse,
+  read: () => Promise<Uint8Array>,
+  contentType: string,
+  fileName: string,
+): Promise<void> {
+  try {
+    const bytes = await read()
+    response.writeHead(200, {
+      'content-type': contentType,
+      'content-length': bytes.byteLength,
+      'content-disposition': `attachment; filename="${fileName}"`,
+      'x-content-type-options': 'nosniff',
+    })
+    response.end(bytes)
+  } catch (error) {
+    writeCardPngError(response, error)
+  }
+}
+
+async function handleCardFileImport(
+  request: IncomingMessage,
+  response: ServerResponse,
+  importFile: (source: Uint8Array) => Promise<unknown>,
+): Promise<void> {
+  try {
+    const source = await readBinaryRequestBody(request, 128 * 1024 * 1024)
+    writeJson(response, 201, await importFile(source))
+  } catch (error) {
+    writeCardPngError(response, error)
+  }
+}
+
+async function handleCardPngExport(
+  response: ServerResponse,
+  cards: NonNullable<Parameters<typeof createStudioHttpServer>[0]['cardPng']>,
+  cardId: string,
+): Promise<void> {
+  try {
+    const bytes = await cards.export(cardId)
+    response.writeHead(200, {
+      'content-type': 'image/png',
+      'content-length': bytes.byteLength,
+      'content-disposition': 'attachment; filename="loom-card.png"',
+      'x-content-type-options': 'nosniff',
+    })
+    response.end(bytes)
+  } catch (error) {
+    writeCardPngError(response, error)
+  }
+}
+
+async function handleCardPngImport(
+  request: IncomingMessage,
+  response: ServerResponse,
+  cards: NonNullable<Parameters<typeof createStudioHttpServer>[0]['cardPng']>,
+  session: ApplicationSession,
+): Promise<void> {
+  try {
+    const source = await readBinaryRequestBody(request, 32 * 1024 * 1024)
+    writeJson(response, 201, await cards.import(source, session))
+  } catch (error) {
+    writeCardPngError(response, error)
+  }
+}
+
+function readCardPngExportId(requestUrl: string | undefined): string | undefined {
+  if (!requestUrl) return undefined
+  const match = /^\/cards\/([A-Za-z0-9._-]+)\/export\.png$/.exec(requestUrl)
+  return match?.[1]
+}
+
+function readCardBundleExportId(requestUrl: string | undefined): string | undefined {
+  if (!requestUrl) return undefined
+  return /^\/cards\/([A-Za-z0-9._-]+)\/export\.loomcard$/.exec(requestUrl)?.[1]
+}
+
+function readCardPolyglotExportId(requestUrl: string | undefined): string | undefined {
+  if (!requestUrl) return undefined
+  return /^\/cards\/([A-Za-z0-9._-]+)\/export\.polyglot\.png$/.exec(requestUrl)?.[1]
+}
+
+function writeCardPngError(response: ServerResponse, error: unknown): void {
+  writeJson(response, 400, {
+    error: {
+      code: 'card.png_invalid',
+      message: error instanceof Error ? error.message : String(error),
+    },
   })
 }
 
@@ -125,6 +267,7 @@ async function handleAssetUpload(
   request: IncomingMessage,
   response: ServerResponse,
   assets: AssetStore,
+  session: ApplicationSession,
 ): Promise<void> {
   try {
     const kind = readRequiredHeader(request, 'x-loom-asset-kind')
@@ -141,7 +284,7 @@ async function handleAssetUpload(
       label: readOptionalHeader(request, 'x-loom-asset-label'),
       mediaType,
       maxBytes,
-      actor: { kind: 'client', id: 'http-local' },
+      actor: { kind: 'client', id: session.clientId },
       reason: 'assets.http.upload',
     })
     writeJson(response, 201, {
@@ -238,6 +381,7 @@ async function handleRpcRequest(
   request: IncomingMessage,
   response: ServerResponse,
   rpcRouter: StudioRpcRouter,
+  session: ApplicationSession,
   logger?: Logger,
 ): Promise<void> {
   const startedAt = performance.now()
@@ -256,7 +400,7 @@ async function handleRpcRequest(
     rpcId = rpcRequest.id
     method = rpcRequest.method
     context = {
-      clientId: 'http-local',
+      clientId: session.clientId,
       correlationId: rpcRequest.meta?.correlationId ?? createId('corr'),
       callId: createId('call'),
       parentCallId: rpcRequest.meta?.parentCallId,
@@ -316,6 +460,25 @@ function readRequestBody(request: IncomingMessage): Promise<string> {
       body += chunk
     })
     request.on('end', () => resolve(body))
+    request.on('error', reject)
+  })
+}
+
+function readBinaryRequestBody(request: IncomingMessage, maxBytes: number): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    let size = 0
+    request.on('data', chunk => {
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+      size += bytes.byteLength
+      if (size > maxBytes) {
+        reject(new Error(`Card PNG exceeds ${maxBytes} bytes`))
+        request.destroy()
+        return
+      }
+      chunks.push(bytes)
+    })
+    request.on('end', () => resolve(Buffer.concat(chunks)))
     request.on('error', reject)
   })
 }

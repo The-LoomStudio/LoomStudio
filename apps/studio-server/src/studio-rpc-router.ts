@@ -3,7 +3,9 @@ import type { LogReader } from '@loom-studio/logging'
 import type { JsonValue } from '@loom-studio/shared'
 import { callApplicationRpc, listApplicationRpcCapabilities } from './application-rpc.js'
 import { callLogsRpc, listLogsRpcCapabilities } from './logs-rpc.js'
+import type { NetworkSettingsStore } from './network-settings.js'
 import type { RpcCapability } from './rpc-capability.js'
+import { callSettingsRpc, listSettingsRpcCapabilities } from './settings-rpc.js'
 
 type RpcCallContext = {
   clientId: string
@@ -31,6 +33,7 @@ export function createStudioRpcRouter(services: {
   applicationRuntime: ApplicationRuntime
   kernel: KernelRpcCaller
   logs?: LogReader
+  networkSettings?: NetworkSettingsStore
 }): StudioRpcRouter {
   const routes: StudioRpcRoute[] = []
   const listCapabilities = (): RpcCapability[] => routes.flatMap(route => route.capabilities)
@@ -58,6 +61,14 @@ export function createStudioRpcRouter(services: {
       call: (method, params, context) => callApplicationRpc(services.applicationRuntime, method, params, context),
     },
   )
+
+  if (services.networkSettings) {
+    routes.push({
+      namespace: 'settings',
+      capabilities: listSettingsRpcCapabilities(),
+      call: (method, params) => callSettingsRpc(services.networkSettings!, method, params),
+    })
+  }
 
   if (services.logs) {
     routes.push({

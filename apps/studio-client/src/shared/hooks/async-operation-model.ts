@@ -3,6 +3,9 @@ export const ASYNC_OPERATION_SCOPES = [
   'cards',
   'resources',
   'provider-settings',
+  'agent-profiles',
+  'agent-chat',
+  'settings',
   'session',
   'mutation',
 ] as const

@@ -6,6 +6,90 @@
   z-index: 10;
 }
 
+.profilePicker {
+  position: relative;
+}
+
+.profilePicker > summary {
+  max-width: 170px;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  padding: 0 7px;
+  color: var(--loom-color-text-muted);
+  cursor: pointer;
+  list-style: none;
+}
+
+.profilePicker > summary::-webkit-details-marker {
+  display: none;
+}
+
+.profilePicker > summary span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profilePicker > summary svg {
+  width: var(--loom-icon-size-2);
+  height: var(--loom-icon-size-2);
+  flex: 0 0 auto;
+}
+
+.profileMenu {
+  width: min(300px, 70vw);
+  max-height: 280px;
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 8;
+  display: grid;
+  gap: 3px;
+  overflow-y: auto;
+  border: 1px solid var(--loom-color-border);
+  border-radius: var(--loom-radius-card);
+  padding: 6px;
+  color: var(--loom-color-text);
+  background: var(--loom-color-surface);
+  box-shadow: 0 12px 32px color-mix(in srgb, black 28%, transparent);
+}
+
+.profileMenu button,
+.profileCurrent {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  border: 0;
+  border-radius: var(--loom-radius-control);
+  padding: 7px 8px;
+  color: var(--loom-color-text);
+  text-align: left;
+  background: transparent;
+}
+
+.profileMenu button[aria-pressed='true'] {
+  background: var(--loom-color-surface-subtle);
+}
+
+.profileMenu span,
+.profileMenu p {
+  margin: 0;
+  overflow: hidden;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profileCurrent {
+  border-bottom: 1px solid var(--loom-color-divider);
+  border-radius: 0;
+  margin-bottom: 3px;
+}
+
 .session {
   --loom-agent-message-surface: color-mix(
     in srgb,
@@ -25,7 +109,7 @@
   border-bottom: 1px solid var(--loom-color-divider);
 }
 
-.branchBar {
+.sessionBar {
   min-width: 0;
   display: flex;
   align-items: center;
@@ -35,53 +119,21 @@
   border-bottom: 1px solid var(--loom-color-divider);
 }
 
+.sessionBar code,
+.sessionBar > span:last-child {
+  overflow: hidden;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sessionLabel {
   color: var(--loom-color-text-subtle);
   font-size: var(--loom-font-size-1);
   line-height: var(--loom-line-height-compact);
   text-transform: uppercase;
   white-space: nowrap;
-}
-
-.branchList {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 3px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.branchList::-webkit-scrollbar {
-  display: none;
-}
-
-.branchList > svg {
-  width: var(--loom-icon-size-3);
-  height: var(--loom-icon-size-3);
-  flex: 0 0 auto;
-  color: var(--loom-color-text-subtle);
-  stroke-width: 1.25;
-}
-
-.branchButton {
-  min-height: 24px;
-  flex: 0 0 auto;
-  border: 0;
-  border-radius: var(--loom-radius-control);
-  padding: 2px 7px;
-  color: var(--loom-color-text-subtle);
-  background: transparent;
-  font-size: var(--loom-font-size-1);
-}
-
-.branchButton:hover,
-.branchButton:focus-visible,
-.branchButton[aria-pressed='true'] {
-  color: var(--loom-color-accent-strong);
-  background: var(--loom-color-surface-subtle);
-  outline: 0;
 }
 
 .conversation {
@@ -93,6 +145,12 @@
   gap: 14px;
   padding: 16px 6px 22px;
   scrollbar-width: thin;
+}
+
+.empty {
+  margin: auto;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-2);
 }
 
 .loading {
@@ -164,98 +222,10 @@
   pointer-events: auto;
 }
 
-.toolCall {
-  width: calc(100% - 12px);
-  margin-inline: 6px;
-  border: 1px solid var(--loom-color-divider);
-  border-radius: var(--loom-radius-surface);
-  padding: 10px 12px;
-  color: var(--loom-color-text-muted);
-  background: transparent;
-}
-
-.toolHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.toolIdentity,
-.toolStatus {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.toolIdentity {
-  min-width: 0;
-  color: var(--loom-color-text);
-  font-family: var(--loom-font-family-mono);
-  font-size: var(--loom-font-size-2);
-}
-
-.toolStatus {
-  flex: 0 0 auto;
-  color: var(--loom-color-success);
-  font-size: var(--loom-font-size-1);
-}
-
-.toolIdentity svg,
-.toolStatus svg {
-  width: var(--loom-icon-size-3);
-  height: var(--loom-icon-size-3);
-  stroke-width: 1.25;
-}
-
-.toolSummary,
-.toolResult {
-  margin: 7px 0 0;
-  font-size: var(--loom-font-size-2);
-  line-height: var(--loom-line-height-ui);
-}
-
-.toolResult {
-  color: var(--loom-color-text-subtle);
-}
-
-.toolDetails {
-  margin-top: 8px;
-}
-
-.toolDetails summary {
-  width: fit-content;
-  cursor: pointer;
-  color: var(--loom-color-text-subtle);
-  font-size: var(--loom-font-size-1);
-}
-
-.toolDetails[open] summary {
-  margin-bottom: 6px;
-}
-
-.toolPayload {
-  --loom-markdown-code-block-border: 1px solid var(--loom-color-divider);
-  --loom-markdown-code-block-bg: transparent;
-
-  font-size: var(--loom-font-size-2);
-}
-
 @media (max-width: 820px) {
   .layer {
     width: calc(100% - 24px);
     margin: 0 12px 68px;
-  }
-
-  .branchBar {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .branchList {
-    width: 100%;
-    justify-content: flex-start;
   }
 
   .user .messageSurface,

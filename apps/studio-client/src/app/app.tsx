@@ -7,6 +7,7 @@ import { AgentComposer } from '../widgets/agent-composer/agent-composer.js'
 import { NarrativeTimeline } from '../widgets/narrative-timeline/narrative-timeline.js'
 import { CharacterPanel, CharacterPanelHeader } from '../widgets/character-panel/character-panel.js'
 import { ModelPanel } from '../widgets/model-panel/model-panel.js'
+import { AgentPanel } from '../widgets/agent-panel/agent-panel.js'
 import { InspectorPanel } from '../widgets/inspector-panel/inspector-panel.js'
 import { LogViewer } from '../widgets/log-viewer/log-viewer.js'
 import { SettingsPanel } from '../widgets/settings-panel/settings-panel.js'
@@ -24,18 +25,20 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
   const state = useStudioState(props.transportLogger)
   const [composerHeight, setComposerHeight] = useState(0)
   const [agentExpanded, setAgentExpanded] = useState(false)
-  const sessionRouteRequestRef = useRef(0)
+  const timelineRouteRequestRef = useRef(0)
   const navigation = useStudioNavigation()
-  const workspaceOpen = useStudioPanelStore(current => current.activePanel !== null)
   const uiScale = useStudioLayoutStore(current => current.uiScale)
   const setUiScale = useStudioLayoutStore(current => current.setUiScale)
+  const workspaceOpen = useStudioPanelStore(current => current.activePanel !== null)
   const assetWorkspaceId = navigation.route.panel === 'preset' || navigation.route.panel === 'resource'
     ? navigation.route.cardId ?? state.selectedCardId ?? 'default'
     : state.selectedCardId ?? 'default'
   const bootstrapBusy = state.operationPending.bootstrap.pendingCount > 0
   const cardsBusy = bootstrapBusy || state.operationPending.cards.pendingCount > 0
   const providerBusy = bootstrapBusy || state.operationPending['provider-settings'].pendingCount > 0
-  const narrativeCharacterName = readNarrativeCharacterName(state.session?.cardSnapshot, state.selectedCard?.name)
+  const agentProfileBusy = bootstrapBusy || state.operationPending['agent-profiles'].pendingCount > 0
+  const agentChatBusy = state.operationPending['agent-chat'].pendingCount > 0
+  const narrativeCharacterName = state.selectedCard?.name
   const sessionBusy = state.operationPending.session.pendingCount > 0
   const mutationBusy = state.operationPending.mutation.pendingCount > 0
 
@@ -60,22 +63,23 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
 
   useEffect(() => {
     const cardId = navigation.route.panel === 'character' ? navigation.route.cardId : undefined
-    if (cardId && !(import.meta.env.DEV && cardId.startsWith('__gallery-mock-')) && cardId !== state.selectedCardId) state.setSelectedCardId(cardId)
+    if (cardId && cardId !== state.selectedCardId) state.setSelectedCardId(cardId)
   }, [navigation.route.cardId, navigation.route.panel, state.selectedCardId, state.setSelectedCardId])
 
   useEffect(() => {
-    if (navigation.route.panel !== null || !navigation.route.sessionId) return
-    if (navigation.route.sessionId === state.session?.id && (!navigation.route.branchId || navigation.route.branchId === state.branch?.id)) return
+    if (navigation.route.panel !== null || !navigation.route.timelineId) return
+    if (navigation.route.timelineId === state.narrativeTimeline?.id && (!navigation.route.branchId || navigation.route.branchId === state.branch?.id)) return
 
-    const requestId = ++sessionRouteRequestRef.current
-    void state.activateSession(navigation.route.sessionId, navigation.route.branchId).then(branchId => {
-      if (requestId !== sessionRouteRequestRef.current) return
-      if (!branchId) navigation.openChat(undefined, undefined, true)
-      else if (branchId !== navigation.route.branchId) navigation.openChat(navigation.route.sessionId, branchId, true)
+    const requestId = ++timelineRouteRequestRef.current
+    void state.activateTimeline(navigation.route.timelineId, navigation.route.branchId).then(branchId => {
+      if (requestId !== timelineRouteRequestRef.current) return
+      if (!branchId) navigation.openNarrative(undefined, undefined, true)
+      else if (branchId !== navigation.route.branchId) navigation.openNarrative(navigation.route.timelineId, branchId, true)
     })
-  }, [navigation.route.branchId, navigation.route.panel, navigation.route.sessionId, state.branch?.id, state.session?.id])
+  }, [navigation.route.branchId, navigation.route.panel, navigation.route.timelineId, state.branch?.id, state.narrativeTimeline?.id])
   const contextAssetEditorProps = {
     nodes: state.contextAssets,
+    resources: state.promptResources,
     onChangeNode: state.previewContextAsset,
     onCommitNode: state.updateContextAsset,
     onChangeNodes: state.updateContextAssets,
@@ -83,6 +87,11 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
     onAddNode: state.addContextAsset,
     onDuplicateNode: state.duplicateContextAsset,
     onDeleteNode: state.deleteContextAsset,
+    onCreateResource: state.createPromptResource,
+    onDuplicateResource: state.duplicatePromptResource,
+    onDeleteResource: state.deletePromptResource,
+    onImportResource: state.importPromptResource,
+    onExportResource: state.exportPromptResource,
     t: state.t,
     workspaceId: assetWorkspaceId,
   }
@@ -99,33 +108,52 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         onCreateProviderAccount={state.createProviderAccount}
         onDeleteModelProfile={state.deleteModelProfile}
         onDeleteProviderAccount={state.deleteProviderAccount}
+        onListProviderModels={state.listProviderModels}
+        onUpdateProviderConnection={state.updateProviderConnection}
+      />
+    ),
+    agent: () => (
+      <AgentPanel
+        presets={state.presets}
+        agentProfiles={state.agentProfiles}
+        busy={agentProfileBusy}
+        modelProfiles={state.modelProfiles}
+        providerAccounts={state.providerAccounts}
+        selectedAgentProfileId={state.selectedAgentProfileId}
+        t={state.t}
+        onCreate={state.createAgentProfile}
+        onDelete={state.deleteAgentProfile}
+        onSelect={state.selectAgentProfile}
+        onUpdate={state.updateAgentProfile}
       />
     ),
     character: active => (
       <CharacterPanel
         active={active}
-        branch={state.branch}
-        branches={state.branches}
         busy={cardsBusy || sessionBusy}
         cardDraft={state.cardDraft}
         cards={state.cards}
-        selectedCard={state.selectedCard}
+        selectedCard={state.selectedCardDetails ?? state.selectedCard}
         selectedCardId={state.selectedCardId}
-        session={state.session}
+        timeline={state.narrativeTimeline}
+        timelines={state.cardTimelines}
         t={state.t}
         onChangeCardDraft={state.setCardDraft}
         onCreateCard={state.createCard}
-        onCreateSessionFromCard={async () => {
-          const activated = await state.createSessionFromCard()
-          if (activated) navigation.openChat(activated.sessionId, activated.branchId)
+        onCreateTimelineFromCard={async () => {
+          const activated = await state.createTimelineFromCard()
+          if (activated) navigation.openNarrative(activated.timelineId, activated.branchId)
         }}
         onDeleteCards={state.deleteCards}
+        onExportCard={state.exportCard}
+        onImportCards={state.importCards}
         onSelectCard={state.setSelectedCardId}
-        onSwitchBranch={branch => {
-          void state.switchBranch(branch).then(() => {
-            if (state.session) navigation.openChat(state.session.id, branch.id)
+        onOpenTimeline={timeline => {
+          void state.activateTimeline(timeline.id).then(branchId => {
+            if (branchId) navigation.openNarrative(timeline.id, branchId)
           })
         }}
+        onUpdateCardMedia={state.updateCardMedia}
         onUpdateCard={state.updateCard}
         routeCardId={navigation.route.panel === 'character' ? navigation.route.cardId : undefined}
       />
@@ -133,14 +161,9 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
     preset: () => (
       <PresetWorkbench
         {...contextAssetEditorProps}
-        agentRuntimeProfiles={state.agentRuntimeProfiles}
-        modelProfiles={state.modelProfiles}
-        onCreateAgentRuntimeProfile={state.createAgentRuntimeProfile}
-        onDeleteAgentRuntimeProfile={state.deleteAgentRuntimeProfile}
-        onSelectAgentRuntimeProfile={id => state.setSelectedAgentRuntimeProfileId(id)}
-        onUpdateAgentRuntimeProfile={state.updateAgentRuntimeProfile}
+        buildContextResources={state.cardPromptResources}
+        onUpdatePresetSettings={state.updatePresetSettings}
         routeAssetId={navigation.route.panel === 'preset' ? navigation.route.assetId : undefined}
-        selectedAgentRuntimeProfileId={state.selectedAgentRuntimeProfileId}
         initialSearchQuery={navigation.route.panel === 'preset' ? navigation.searchQuery : ''}
       />
     ),
@@ -153,18 +176,31 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
     ),
     inspector: () => (
       <InspectorPanel
-        agentTranscript={state.agentTranscript}
-        cardSnapshot={state.session?.cardSnapshot ?? state.selectedCard ?? null}
+        agentTranscript={state.agentMessages}
+        cardSnapshot={state.selectedCardDetails ?? null}
         promptBuildSteps={state.promptBuildSteps}
         promptBuildTrace={state.promptBuildTrace ?? null}
         promptMessages={state.promptMessages ?? null}
         providerPayloadPreview={state.providerPayloadPreview ?? null}
-        runDetails={state.runDetails ?? null}
+        runDetails={state.lastRun ?? null}
         t={state.t}
       />
     ),
     logs: active => <LogViewer active={active} api={state.logsApi} clientLogs={props.clientLogs} t={state.t} />,
-    settings: () => <SettingsPanel customCss={state.customCss} locale={state.locale} uiScale={uiScale} t={state.t} onChangeCustomCss={state.setCustomCss} onChangeLocale={state.setLocale} onChangeUiScale={setUiScale} />,
+    settings: () => (
+      <SettingsPanel
+        busy={state.operationPending.settings.pendingCount > 0}
+        customCss={state.customCss}
+        locale={state.locale}
+        networkSettings={state.networkSettings}
+        uiScale={uiScale}
+        t={state.t}
+        onChangeCustomCss={state.setCustomCss}
+        onChangeLocale={state.setLocale}
+        onChangeUiScale={setUiScale}
+        onUpdateNetworkSettings={state.updateNetworkSettings}
+      />
+    ),
   }
 
   const studio = (
@@ -195,21 +231,23 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
           } as CSSProperties}
         >
           <NarrativeTimeline
-            anchorEntryId={navigation.entryAnchorId}
+            anchorNodeId={navigation.nodeAnchorId}
             busy={sessionBusy}
             composerExpanded={agentExpanded}
             composerHeight={composerHeight}
             emptyTimelineText={state.emptyTimelineText}
-            onEditEntry={state.editTimelineEntry}
-            getEntryLink={navigation.getEntryLink}
-            onEntryAnchorChange={navigation.setEntryAnchor}
-            onForkEntry={entry => {
-              void state.forkFromEntry(entry).then(activated => {
-                if (activated) navigation.openChat(activated.sessionId, activated.branchId)
+            getNodeLink={navigation.getNodeLink}
+            hasOlder={state.hasOlderNarrativeNodes}
+            onEditNode={state.editNarrativeNode}
+            onLoadOlder={() => void state.loadOlderNodes()}
+            onNodeAnchorChange={navigation.setNodeAnchor}
+            onForkNode={node => {
+              void state.forkFromNode(node).then(activated => {
+                if (activated) navigation.openNarrative(activated.timelineId, activated.branchId)
               })
             }}
             t={state.t}
-            timeline={state.timeline}
+            timeline={state.narrativeNodes}
           />
           {narrativeCharacterName ? (
             <div className={styles.narrativeIdentity} data-loom-component="narrative-character-identity">
@@ -220,20 +258,31 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
             </div>
           ) : null}
           <AgentComposer
+            agentBusy={agentChatBusy}
+            agentInput={state.agentChatInput}
+            agentMessages={state.agentChatMessages}
+            agentProfiles={state.agentProfiles}
+            agentSession={state.agentChatSession}
             canPreviewPrompt={state.canPreviewPrompt}
+            canSendAgent={state.canSendAgent}
             canSendNarrative={state.canSend}
             narrativeInput={state.input}
             narrativeTextareaDisabled={sessionBusy}
-            workspaceOpen={workspaceOpen}
+            providerAccounts={state.providerAccounts}
+            selectedAgentProfileId={state.selectedAgentProfileId}
             t={state.t}
+            workspaceOpen={workspaceOpen}
+            onChangeAgentInput={state.setAgentChatInput}
             onChangeNarrativeInput={value => {
               state.setInput(value)
             }}
-            onExpandedChange={setAgentExpanded}
             onHeightChange={setComposerHeight}
+            onExpandedChange={setAgentExpanded}
             onPreviewPrompt={() => {
               void state.previewPrompt()
             }}
+            onSelectAgentProfile={state.selectAgentProfile}
+            onSubmitAgent={state.submitAgentTurn}
             onSubmitNarrative={state.submitTurn}
           />
         </div>
@@ -247,12 +296,4 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
       <NotificationToaster bottomOffset={composerHeight + 16} label={state.t('notification.label')} />
     </ContextMenuProvider>
   )
-}
-
-function readNarrativeCharacterName(cardSnapshot: unknown, fallback?: string): string | undefined {
-  if (cardSnapshot && typeof cardSnapshot === 'object' && 'name' in cardSnapshot) {
-    const name = Reflect.get(cardSnapshot, 'name')
-    if (typeof name === 'string' && name.trim()) return name.trim()
-  }
-  return fallback?.trim() || undefined
 }

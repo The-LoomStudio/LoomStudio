@@ -87,6 +87,25 @@ describe('application narrative timeline lifecycle', () => {
     engine.close()
   })
 
+  it('detaches a deleted Prompt Resource from Cards, Presets, and Narrative Timelines', async () => {
+    const { engine, runtime } = createTestRuntime()
+    const resource = await runtime.createPromptResource({ resourceKind: 'setting', name: 'Temporary Setting' })
+    const card = await runtime.createCard({ name: 'Story' })
+    await runtime.updateCardPromptResources({ cardId: card.card.id, promptResourceIds: [resource.resource.id] })
+    const preset = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Test Agent' })
+    await runtime.updatePresetSettings({ presetId: preset.resource.id, linkedSettingIds: [resource.resource.id] })
+    const timeline = await runtime.createNarrativeTimelineFromCard({ cardId: card.card.id })
+
+    const deleted = await runtime.deletePromptResource({ resourceId: resource.resource.id })
+
+    expect(deleted.detachedReferences).toEqual({ cards: 1, presets: 1, timelines: 1 })
+    await expect(runtime.getPromptResource({ resourceId: resource.resource.id })).rejects.toThrow('Document not found')
+    await expect(runtime.getCard({ cardId: card.card.id })).resolves.toMatchObject({ card: { promptResourceIds: [] } })
+    await expect(runtime.getPromptResource({ resourceId: preset.resource.id })).resolves.toMatchObject({ resource: { linkedSettingIds: [] } })
+    await expect(runtime.getNarrativeTimeline({ timelineId: timeline.timeline.id })).resolves.toMatchObject({ timeline: { promptResourceIds: [] } })
+    engine.close()
+  })
+
   it('keeps existing document-only runtimes valid and reports the missing capability only on new calls', async () => {
     const { createInMemoryDocumentStore } = await import('@loom-studio/document-store')
     const runtime = createApplicationRuntime({ documents: createInMemoryDocumentStore() })

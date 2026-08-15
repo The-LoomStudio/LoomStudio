@@ -43,14 +43,3 @@ export function readNarrativeTimelinePreview(content: string, maxLength = 180): 
 
   return plainText.length <= maxLength ? plainText : `${plainText.slice(0, maxLength).trimEnd()}…`
 }
-
-export function createMockNarrativeTimelineMarkers(entryIds: string[]): NarrativeTimelineMarker[] {
-  if (!entryIds.some(id => id.startsWith('__timeline-mock-'))) return []
-
-  return [
-    { entryId: entryIds[17], kind: 'checkpoint' },
-    { entryId: entryIds[39], kind: 'memory' },
-    { entryId: entryIds[63], kind: 'compression' },
-    { entryId: entryIds[79], kind: 'fork' },
-  ].filter((marker): marker is NarrativeTimelineMarker => Boolean(marker.entryId))
-}

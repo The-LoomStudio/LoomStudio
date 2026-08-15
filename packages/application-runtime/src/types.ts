@@ -15,44 +15,41 @@ import type {
   NarrativeTimeline,
 } from '@loom-studio/narrative-store'
 import type { AssistantChatMessage, ChatMessage, JsonObject, JsonValue } from '@loom-studio/shared'
+import type { SecretRef, SecretStore } from '@loom-studio/secret-store'
 import type { ActivationFacts, PromptActivation } from './prompt-activation.js'
 import type { OpenAIChatPayload } from './provider-payload.js'
+import type { PromptBuildTrace } from './prompt-build-pipeline.js'
 import type { CompiledPrompt, CompositionSkeletonPatch, ProjectionOrderProfile } from './prompt-builder.js'
 import type {
   CardBundleArtifact,
   ImportBundleContent,
+  PromptResourceArtifact,
   PromptResourceCompositionCapabilities,
   PromptResourceContent,
+  PromptResourceKind,
   PromptResourceNode,
 } from './workspace.js'
 
 export type ApplicationRuntime = {
+  initialize(): Promise<void>
   createCard(input: CreateCardInput, context?: RuntimeRequestContext): Promise<CreateCardResult>
   getCard(input: GetCardInput): Promise<GetCardResult>
   listCards(input?: ListCardsInput): Promise<ListCardsResult>
   updateCard(input: UpdateCardInput, context?: RuntimeRequestContext): Promise<UpdateCardResult>
   deleteCard(input: DeleteCardInput, context?: RuntimeRequestContext): Promise<DeleteCardResult>
-  createProviderAccount(input: CreateProviderAccountInput): Promise<CreateProviderAccountResult>
-  getProviderAccount(input: GetProviderAccountInput): Promise<GetProviderAccountResult>
-  listProviderAccounts(input?: ListProviderAccountsInput): Promise<ListProviderAccountsResult>
-  updateProviderAccount(input: UpdateProviderAccountInput): Promise<UpdateProviderAccountResult>
-  deleteProviderAccount(input: DeleteProviderAccountInput): Promise<DeleteProviderAccountResult>
-  createModelProfile(input: CreateModelProfileInput): Promise<CreateModelProfileResult>
-  getModelProfile(input: GetModelProfileInput): Promise<GetModelProfileResult>
-  listModelProfiles(input?: ListModelProfilesInput): Promise<ListModelProfilesResult>
-  updateModelProfile(input: UpdateModelProfileInput): Promise<UpdateModelProfileResult>
-  deleteModelProfile(input: DeleteModelProfileInput): Promise<DeleteModelProfileResult>
-  pingModelProfile(input: PingModelProfileInput, context?: RuntimeRequestContext): Promise<PingModelProfileResult>
-  createAgentPreset(input: CreateAgentPresetInput): Promise<CreateAgentPresetResult>
-  getAgentPreset(input: GetAgentPresetInput): Promise<GetAgentPresetResult>
-  listAgentPresets(input?: ListAgentPresetsInput): Promise<ListAgentPresetsResult>
-  updateAgentPreset(input: UpdateAgentPresetInput): Promise<UpdateAgentPresetResult>
-  deleteAgentPreset(input: DeleteAgentPresetInput): Promise<DeleteAgentPresetResult>
-  createAgentLocalBinding(input: CreateAgentLocalBindingInput): Promise<CreateAgentLocalBindingResult>
-  getAgentLocalBinding(input: GetAgentLocalBindingInput): Promise<GetAgentLocalBindingResult>
-  listAgentLocalBindings(input?: ListAgentLocalBindingsInput): Promise<ListAgentLocalBindingsResult>
-  updateAgentLocalBinding(input: UpdateAgentLocalBindingInput): Promise<UpdateAgentLocalBindingResult>
-  deleteAgentLocalBinding(input: DeleteAgentLocalBindingInput): Promise<DeleteAgentLocalBindingResult>
+  createProviderProfile(input: CreateProviderProfileInput, context?: RuntimeRequestContext): Promise<CreateProviderProfileResult>
+  getProviderProfile(input: GetProviderProfileInput): Promise<GetProviderProfileResult>
+  listProviderProfiles(input?: ListProviderProfilesInput): Promise<ListProviderProfilesResult>
+  updateProviderProfile(input: UpdateProviderProfileInput): Promise<UpdateProviderProfileResult>
+  replaceProviderCredential(input: ReplaceProviderCredentialInput, context?: RuntimeRequestContext): Promise<ReplaceProviderCredentialResult>
+  deleteProviderProfile(input: DeleteProviderProfileInput, context?: RuntimeRequestContext): Promise<DeleteProviderProfileResult>
+  listProviderModels(input: ListProviderModelsInput, context?: RuntimeRequestContext): Promise<ListProviderModelsResult>
+  pingProviderModel(input: PingProviderModelInput, context?: RuntimeRequestContext): Promise<PingProviderModelResult>
+  createAgentProfile(input: CreateAgentProfileInput): Promise<CreateAgentProfileResult>
+  getAgentProfile(input: GetAgentProfileInput): Promise<GetAgentProfileResult>
+  listAgentProfiles(input?: ListAgentProfilesInput): Promise<ListAgentProfilesResult>
+  updateAgentProfile(input: UpdateAgentProfileInput): Promise<UpdateAgentProfileResult>
+  deleteAgentProfile(input: DeleteAgentProfileInput): Promise<DeleteAgentProfileResult>
   createAgentSession(input: CreateAgentSessionInput, context?: RuntimeRequestContext): Promise<CreateAgentSessionResult>
   getAgentSession(input: GetAgentSessionInput): Promise<GetAgentSessionResult>
   getAgentMessagePage(input: GetAgentMessagePageInput): Promise<AgentMessagePage>
@@ -62,6 +59,7 @@ export type ApplicationRuntime = {
   previewAgentTurn(input: PreviewAgentTurnInput, context?: RuntimeRequestContext): Promise<PreviewAgentTurnResult>
   createNarrativeTimelineFromCard(input: CreateNarrativeTimelineFromCardInput, context?: RuntimeRequestContext): Promise<CreateNarrativeTimelineFromCardResult>
   getNarrativeTimeline(input: GetNarrativeTimelineInput): Promise<GetNarrativeTimelineResult>
+  listNarrativeTimelines(input?: ListNarrativeTimelinesInput): Promise<ListNarrativeTimelinesResult>
   getNarrativePage(input: GetNarrativePageInput): Promise<NarrativePage>
   forkNarrativeBranch(input: ForkNarrativeBranchInput, context?: RuntimeRequestContext): Promise<ForkNarrativeBranchResult>
   switchNarrativeBranch(input: SwitchNarrativeBranchInput, context?: RuntimeRequestContext): Promise<SwitchNarrativeBranchResult>
@@ -69,8 +67,15 @@ export type ApplicationRuntime = {
   importCardBundle(input: ImportCardBundleInput, context?: RuntimeRequestContext): Promise<ImportCardBundleResult>
   getImportBundle(input: GetImportBundleInput): Promise<GetImportBundleResult>
   getPromptResource(input: GetPromptResourceInput): Promise<GetPromptResourceResult>
+  listPromptResources(input?: ListPromptResourcesInput): Promise<ListPromptResourcesResult>
+  createPromptResource(input: CreatePromptResourceInput, context?: RuntimeRequestContext): Promise<CreatePromptResourceResult>
+  duplicatePromptResource(input: DuplicatePromptResourceInput, context?: RuntimeRequestContext): Promise<CreatePromptResourceResult>
+  deletePromptResource(input: DeletePromptResourceInput, context?: RuntimeRequestContext): Promise<DeletePromptResourceResult>
+  importPromptResource(input: ImportPromptResourceInput, context?: RuntimeRequestContext): Promise<CreatePromptResourceResult>
+  exportPromptResource(input: ExportPromptResourceInput): Promise<ExportPromptResourceResult>
   listCardPromptResources(input: ListCardPromptResourcesInput): Promise<ListCardPromptResourcesResult>
   updateCardPromptResources(input: UpdateCardPromptResourcesInput, context?: RuntimeRequestContext): Promise<UpdateCardPromptResourcesResult>
+  updatePresetSettings(input: UpdatePresetSettingsInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
   createPromptResourceAsset(input: CreatePromptResourceAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
   updatePromptResourceAsset(input: UpdatePromptResourceAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
   updatePromptResourceAssets(input: UpdatePromptResourceAssetsInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
@@ -108,6 +113,18 @@ export type GetNarrativeTimelineInput = {
 
 export type GetNarrativeTimelineResult = {
   timeline: NarrativeTimeline
+  branches: NarrativeBranch[]
+}
+
+export type ListNarrativeTimelinesInput = {
+  createdFromCardId?: string
+  cursor?: string
+  limit?: number
+}
+
+export type ListNarrativeTimelinesResult = {
+  timelines: NarrativeTimeline[]
+  nextCursor?: string
 }
 
 export type GetNarrativePageInput = {
@@ -150,7 +167,7 @@ export type DeleteNarrativeTimelineResult = {
 }
 
 export type CreateAgentSessionInput = {
-  agentPresetId: string
+  agentProfileId: string
   title?: string
 }
 
@@ -200,7 +217,6 @@ export type DeleteAgentSessionResult = {
 
 export type InvokeAgentTurnInput = {
   agentSessionId: string
-  localBindingId?: string
   input: string
   activationFacts?: ActivationFacts
   narrativeTarget?: {
@@ -216,6 +232,7 @@ export type PreviewAgentTurnResult = {
   runId: string
   messages: ChatMessage[]
   projection: CompiledPrompt
+  promptBuildTrace: PromptBuildTrace
   providerPayloadPreview?: OpenAIChatPayload
 }
 
@@ -239,6 +256,7 @@ export type InvokeAgentTurnResult = {
     providerCallId?: string
   }
   projection: CompiledPrompt
+  promptBuildTrace: PromptBuildTrace
   mutation: MutationReceipt
 }
 
@@ -253,6 +271,7 @@ export type ApplicationRuntimeOptions = {
   clock?: { now(): Date }
   sourceArtifacts?: SourceArtifactStorage
   mediaAssets?: MediaAssetLookup
+  secrets?: SecretStore
 }
 
 export type MediaAssetLookup = {
@@ -283,6 +302,16 @@ export type SourceArtifactStorage = {
 
 export type AiGateway = {
   invokeChat(input: GatewayInvokeChatInput): Promise<GatewayChatResult>
+  listModels?(input: GatewayListModelsInput): Promise<GatewayListModelsResult>
+}
+
+export type GatewayListModelsInput = {
+  providerProfileId: string
+  context?: RuntimeRequestContext
+}
+
+export type GatewayListModelsResult = {
+  modelIds: string[]
 }
 
 export type ApplicationProvider = {
@@ -306,8 +335,13 @@ export type ProviderInvokeResult = {
   raw?: JsonValue
 }
 
+export type ProviderModelSelection = {
+  providerProfileId: string
+  modelId: string
+}
+
 export type GatewayInvokeChatInput = {
-  modelProfileId?: string
+  model?: ProviderModelSelection
   request: CanonicalChatRequest
   runId: string
   sessionId: string
@@ -334,28 +368,20 @@ export type GatewayChatResult = {
   raw?: JsonValue
 }
 
-export type ProviderAccountConfig = {
+export type ProviderProfileConfig = {
   id: string
   providerExtensionId: string
   displayName: string
   config?: {
     baseUrl?: string
   } & JsonObject
-  secretRefs?: Record<string, string>
-}
-
-export type ModelProfileConfig = {
-  id: string
-  providerAccountId: string
-  capability: 'chat.completion'
-  displayName: string
-  providerModelId: string
-  config?: JsonObject
+  enabledModelIds: string[]
 }
 
 export type OpenAICompatibleGatewayOptions = {
-  providerAccount: ProviderAccountConfig
-  modelProfile: ModelProfileConfig
+  providerProfile: ProviderProfileConfig
+  modelId: string
+  apiKey: string
   fetch?: typeof fetch
 }
 
@@ -389,8 +415,19 @@ export type ListCardsInput = {
 }
 
 export type ListCardsResult = {
-  cards: Array<CardSourceContent & { id: string; version: number }>
+  cards: CardSummary[]
   nextCursor?: string
+}
+
+export type CardSummary = {
+  id: string
+  version: number
+  name: string
+  userName?: string
+  description?: string
+  media?: CardMediaRefs
+  createdAt: string
+  updatedAt: string
 }
 
 export type UpdateCardInput = {
@@ -418,110 +455,95 @@ export type DeleteCardResult = {
   mutation: MutationReceipt
 }
 
-export type CreateProviderAccountInput = {
+export type ProviderCredentialStatus = {
+  configured: boolean
+  updatedAt?: string
+}
+
+export type ProviderProfileView = {
+  id: string
+  version: number
+  providerExtensionId: string
+  displayName: string
+  config: JsonObject
+  enabledModelIds: string[]
+  credential: ProviderCredentialStatus
+  createdAt: string
+  updatedAt: string
+}
+
+export type CreateProviderProfileInput = {
   providerExtensionId: string
   displayName: string
   config?: JsonObject
-  secretRefs?: Record<string, string>
+  enabledModelIds?: string[]
+  credential?: Record<string, string>
 }
 
-export type CreateProviderAccountResult = {
-  providerAccount: ProviderAccountContent & { id: string; version: number }
+export type CreateProviderProfileResult = {
+  providerProfile: ProviderProfileView
 }
 
-export type GetProviderAccountInput = {
-  providerAccountId: string
+export type GetProviderProfileInput = {
+  providerProfileId: string
 }
 
-export type GetProviderAccountResult = {
-  providerAccount: ProviderAccountContent & { id: string; version: number }
+export type GetProviderProfileResult = {
+  providerProfile: ProviderProfileView
 }
 
-export type ListProviderAccountsInput = {
+export type ListProviderProfilesInput = {
   limit?: number
   cursor?: string
 }
 
-export type ListProviderAccountsResult = {
-  providerAccounts: Array<ProviderAccountContent & { id: string; version: number }>
+export type ListProviderProfilesResult = {
+  providerProfiles: ProviderProfileView[]
   nextCursor?: string
 }
 
-export type UpdateProviderAccountInput = {
-  providerAccountId: string
+export type UpdateProviderProfileInput = {
+  providerProfileId: string
   displayName?: string
   config?: JsonObject
-  secretRefs?: Record<string, string>
+  enabledModelIds?: string[]
 }
 
-export type UpdateProviderAccountResult = {
-  providerAccount: ProviderAccountContent & { id: string; version: number }
+export type UpdateProviderProfileResult = {
+  providerProfile: ProviderProfileView
 }
 
-export type DeleteProviderAccountInput = {
-  providerAccountId: string
+export type ReplaceProviderCredentialInput = {
+  providerProfileId: string
+  credential: Record<string, string>
 }
 
-export type DeleteProviderAccountResult = {
+export type ReplaceProviderCredentialResult = {
+  credential: ProviderCredentialStatus
+}
+
+export type DeleteProviderProfileInput = {
+  providerProfileId: string
+}
+
+export type DeleteProviderProfileResult = {
   deleted: true
+  credentialCleanupPending: boolean
 }
 
-export type CreateModelProfileInput = {
-  providerAccountId: string
-  capability?: 'chat.completion'
-  displayName: string
-  providerModelId: string
-  config?: JsonObject
+export type ListProviderModelsInput = {
+  providerProfileId: string
 }
 
-export type CreateModelProfileResult = {
-  modelProfile: ModelProfileContent & { id: string; version: number }
+export type ListProviderModelsResult = {
+  modelIds: string[]
 }
 
-export type GetModelProfileInput = {
-  modelProfileId: string
-}
-
-export type GetModelProfileResult = {
-  modelProfile: ModelProfileContent & { id: string; version: number }
-}
-
-export type ListModelProfilesInput = {
-  providerAccountId?: string
-  limit?: number
-  cursor?: string
-}
-
-export type ListModelProfilesResult = {
-  modelProfiles: Array<ModelProfileContent & { id: string; version: number }>
-  nextCursor?: string
-}
-
-export type UpdateModelProfileInput = {
-  modelProfileId: string
-  displayName?: string
-  providerModelId?: string
-  config?: JsonObject
-}
-
-export type UpdateModelProfileResult = {
-  modelProfile: ModelProfileContent & { id: string; version: number }
-}
-
-export type DeleteModelProfileInput = {
-  modelProfileId: string
-}
-
-export type DeleteModelProfileResult = {
-  deleted: true
-}
-
-export type PingModelProfileInput = {
-  modelProfileId: string
+export type PingProviderModelInput = ProviderModelSelection & {
   text?: string
 }
 
-export type PingModelProfileResult = {
+export type PingProviderModelResult = {
   text: string
   provider: string
   model: string
@@ -530,59 +552,30 @@ export type PingModelProfileResult = {
 
 export type AgentHistoryPolicy = 'persistent' | 'ephemeral'
 
-export type CreateAgentPresetInput = {
+export type CreateAgentProfileInput = {
   name: string
-  instructions: string
-  promptResourceIds?: string[]
-  historyPolicy?: AgentHistoryPolicy
+  presetId: string
+  model: ProviderModelSelection
 }
-
-export type CreateAgentPresetResult = {
-  agentPreset: AgentPresetContent & { id: string; version: number }
+export type CreateAgentProfileResult = {
+  agentProfile: AgentProfileContent & { id: string; version: number }
 }
-
-export type GetAgentPresetInput = { agentPresetId: string }
-export type GetAgentPresetResult = { agentPreset: AgentPresetContent & { id: string; version: number } }
-export type ListAgentPresetsInput = { limit?: number; cursor?: string }
-export type ListAgentPresetsResult = {
-  agentPresets: Array<AgentPresetContent & { id: string; version: number }>
+export type GetAgentProfileInput = { agentProfileId: string }
+export type GetAgentProfileResult = CreateAgentProfileResult
+export type ListAgentProfilesInput = { limit?: number; cursor?: string }
+export type ListAgentProfilesResult = {
+  agentProfiles: Array<AgentProfileContent & { id: string; version: number }>
   nextCursor?: string
 }
-export type UpdateAgentPresetInput = {
-  agentPresetId: string
+export type UpdateAgentProfileInput = {
+  agentProfileId: string
   name?: string
-  instructions?: string
-  promptResourceIds?: string[]
-  historyPolicy?: AgentHistoryPolicy
+  presetId?: string
+  model?: ProviderModelSelection
 }
-export type UpdateAgentPresetResult = CreateAgentPresetResult
-export type DeleteAgentPresetInput = { agentPresetId: string }
-export type DeleteAgentPresetResult = { deleted: true }
-
-export type CreateAgentLocalBindingInput = {
-  name: string
-  purpose?: AgentRuntimePurpose
-  modelProfileId?: string
-}
-export type CreateAgentLocalBindingResult = {
-  localBinding: AgentLocalBindingContent & { id: string; version: number }
-}
-export type GetAgentLocalBindingInput = { localBindingId: string }
-export type GetAgentLocalBindingResult = CreateAgentLocalBindingResult
-export type ListAgentLocalBindingsInput = { limit?: number; cursor?: string }
-export type ListAgentLocalBindingsResult = {
-  localBindings: Array<AgentLocalBindingContent & { id: string; version: number }>
-  nextCursor?: string
-}
-export type UpdateAgentLocalBindingInput = {
-  localBindingId: string
-  name?: string
-  purpose?: AgentRuntimePurpose
-  modelProfileId?: string
-}
-export type UpdateAgentLocalBindingResult = CreateAgentLocalBindingResult
-export type DeleteAgentLocalBindingInput = { localBindingId: string }
-export type DeleteAgentLocalBindingResult = { deleted: true }
+export type UpdateAgentProfileResult = CreateAgentProfileResult
+export type DeleteAgentProfileInput = { agentProfileId: string }
+export type DeleteAgentProfileResult = { deleted: true }
 
 export type ImportCardBundleInput =
   | {
@@ -618,6 +611,55 @@ export type GetPromptResourceResult = {
   resource: PromptResourceContent & { id: string; version: number }
 }
 
+export type ListPromptResourcesInput = {
+  resourceKind?: PromptResourceKind
+}
+
+export type ListPromptResourcesResult = {
+  resources: Array<PromptResourceContent & { id: string; version: number }>
+}
+
+export type CreatePromptResourceInput = {
+  resourceKind: PromptResourceKind
+  name: string
+}
+
+export type CreatePromptResourceResult = {
+  resource: PromptResourceContent & { id: string; version: number }
+  mutation: MutationReceipt
+}
+
+export type DuplicatePromptResourceInput = {
+  resourceId: string
+  name?: string
+}
+
+export type DeletePromptResourceInput = {
+  resourceId: string
+}
+
+export type DeletePromptResourceResult = {
+  deleted: true
+  detachedReferences: {
+    presets: number
+    cards: number
+    timelines: number
+  }
+  mutation: MutationReceipt
+}
+
+export type ImportPromptResourceInput = {
+  artifact: PromptResourceArtifact
+}
+
+export type ExportPromptResourceInput = {
+  resourceId: string
+}
+
+export type ExportPromptResourceResult = {
+  artifact: PromptResourceArtifact
+}
+
 export type ListCardPromptResourcesInput = {
   cardId: string
 }
@@ -634,6 +676,11 @@ export type UpdateCardPromptResourcesInput = {
 export type UpdateCardPromptResourcesResult = {
   card: CardSourceContent & { id: string; version: number }
   mutation: MutationReceipt
+}
+
+export type UpdatePresetSettingsInput = {
+  presetId: string
+  linkedSettingIds: string[]
 }
 
 export type CreatePromptResourceAssetInput = {
@@ -695,40 +742,20 @@ export type ExportCardBundleResult = {
   artifact: CardBundleArtifact
 }
 
-export type ProviderAccountContent = {
+export type ProviderProfileContent = {
   providerExtensionId: string
   displayName: string
   config: JsonObject
-  secretRefs: Record<string, string>
+  secretRef?: SecretRef
+  enabledModelIds: string[]
   createdAt: string
   updatedAt: string
 }
 
-export type ModelProfileContent = {
-  providerAccountId: string
-  capability: 'chat.completion'
-  displayName: string
-  providerModelId: string
-  config: JsonObject
-  createdAt: string
-  updatedAt: string
-}
-
-export type AgentRuntimePurpose = 'narrative' | 'agent-work' | 'summary' | 'test' | string
-
-export type AgentPresetContent = {
+export type AgentProfileContent = {
   name: string
-  instructions: string
-  promptResourceIds: string[]
-  historyPolicy: AgentHistoryPolicy
-  createdAt: string
-  updatedAt: string
-}
-
-export type AgentLocalBindingContent = {
-  name: string
-  purpose: AgentRuntimePurpose
-  modelProfileId?: string
+  presetId: string
+  model: ProviderModelSelection
   createdAt: string
   updatedAt: string
 }

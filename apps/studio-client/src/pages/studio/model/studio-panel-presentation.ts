@@ -1,10 +1,11 @@
-import { Folders, ListOrdered, Plug, Settings, SquareTerminal, Users, Wrench, type LucideIcon } from 'lucide-react'
+import { Bot, Folders, ListOrdered, Plug, Settings, SquareTerminal, Users, Wrench, type LucideIcon } from 'lucide-react'
 import type { StudioPanelId } from './studio-layout-store.js'
 
-export type StudioPanelLabelKey = 'rail.model' | 'rail.character' | 'rail.preset' | 'rail.resource' | 'rail.inspector' | 'rail.logs' | 'rail.settings'
+export type StudioPanelLabelKey = 'rail.model' | 'rail.agent' | 'rail.character' | 'rail.preset' | 'rail.resource' | 'rail.inspector' | 'rail.logs' | 'rail.settings'
 
 export const STUDIO_PANEL_PRESENTATION = {
   model: { Icon: Plug, labelKey: 'rail.model' },
+  agent: { Icon: Bot, labelKey: 'rail.agent' },
   character: { Icon: Users, labelKey: 'rail.character' },
   preset: { Icon: ListOrdered, labelKey: 'rail.preset' },
   resource: { Icon: Folders, labelKey: 'rail.resource' },

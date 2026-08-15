@@ -42,9 +42,9 @@ Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本列表收�
 这些是由 Airp (Application Runtime) 提供的特定领域能力，定义在 `apps/studio-server/src/application-rpc.ts` 中。
 
 ### Provider & Model
-- **`application.createProviderAccount`** / **`getProviderAccount`** / **`listProviderAccounts`** / **`updateProviderAccount`** / **`deleteProviderAccount`**
-- **`application.createModelProfile`** / **`getModelProfile`** / **`listModelProfiles`** / **`updateModelProfile`** / **`deleteModelProfile`**
-- **`application.pingModelProfile`**: 测试特定模型端点的联通性。
+- **`application.createProviderProfile`** / **`getProviderProfile`** / **`listProviderProfiles`** / **`updateProviderProfile`** / **`deleteProviderProfile`**
+- **`application.replaceProviderCredential`**: 整体替换 Provider 的受控凭据；响应不返回明文或 `secretRef`。
+- **`application.pingProviderModel`**: 使用 `providerProfileId + modelId` 测试已启用模型。
 
 ### Card 与导入导出
 - **`application.createCard`** / **`getCard`** / **`listCards`** / **`updateCard`** / **`deleteCard`**
@@ -52,10 +52,11 @@ Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本列表收�
 - **`application.updateCardPromptResources`**: 以有序 `promptResourceIds` 更新 Card Manifest；拒绝重复、缺失或非 Prompt Resource 引用。
 - **`application.exportCardArtifact`**: 从 Card 的有序 Prompt Resource IDs 导出当前自包含 Artifact。
 - **`application.getImportBundle`**: 按 Card 保存的 `importBundleId` 查询独立导入来源与兼容数据。
+- **Card file HTTP data plane**: `GET /cards/:cardId/export.png` 输出压缩 `iTXt/loom`；`GET /cards/:cardId/export.polyglot.png` 输出头像 PNG + 完整 ZIP；`GET /cards/:cardId/export.loomcard` 输出稳定 ZIP。`POST /cards/import/png` 自动识别普通 PNG 或 Polyglot，`POST /cards/import/loomcard` 导入完整包；所有格式最终复用 `application.importCardBundle`。
 
 ### Agent 配置与 Session
-- **`application.createAgentPreset`** / **`getAgentPreset`** / **`listAgentPresets`** / **`updateAgentPreset`** / **`deleteAgentPreset`**
-- **`application.createAgentLocalBinding`** / **`getAgentLocalBinding`** / **`listAgentLocalBindings`** / **`updateAgentLocalBinding`** / **`deleteAgentLocalBinding`**
+- Preset 生命周期统一使用 Prompt Resource RPC，不再提供第二套 AgentPreset RPC。
+- **`application.createAgentProfile`** / **`getAgentProfile`** / **`listAgentProfiles`** / **`updateAgentProfile`** / **`deleteAgentProfile`**
 - **`application.createAgentSession`** / **`getAgentSession`** / **`getAgentMessagePage`** / **`deleteAgentSession`**
 - **`application.previewAgentTurn`**: 构造本轮 Prompt 与 Provider payload，但不持久化 Agent Message 或 Narrative Node。
 - **`application.invokeAgentTurn`**: 调用 Provider 并提交 Agent Message；可选在同一 Changeset 中提交 Narrative Node。
@@ -66,6 +67,11 @@ Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本列表收�
 - **`application.forkNarrativeBranch`** / **`switchNarrativeBranch`** / **`deleteNarrativeTimeline`**
 
 ### Prompt Resource
+- **`application.listPromptResources`**: 按可选 `resourceKind` 列出全局平铺 Prompt Resource Library。
+- **`application.createPromptResource`** / **`duplicatePromptResource`**: 创建空资源或复制现有资源；复制会重建全部内部节点 ID。
+- **`application.updatePresetSettings`**: 用完整有序 `linkedSettingIds` 替换 Preset 的 Setting 绑定；目标必须是 Preset，引用目标必须全部是 Setting。
+- **`application.deletePromptResource`**: 删除非官方资源，并从引用它的 Card、Preset 与 Narrative Timeline 中解除绑定；仍被 Agent Profile 使用的 Preset 需要先处理 Profile，官方内置资源保持只读。
+- **`application.importPromptResource`** / **`exportPromptResource`**: 导入、导出独立 `loom.promptResource` Artifact。
 - **`application.getPromptResource`**: 按 `resourceId` 读取一个 Prompt Resource。
 - **`application.listCardPromptResources`**: 按 Card Manifest 中的顺序读取全部 Prompt Resources。
 - **`application.createPromptResourceAsset`** / **`updatePromptResourceAsset`** / **`updatePromptResourceAssets`** / **`movePromptResourceAsset`** / **`deletePromptResourceAsset`**: 只修改指定 Resource Document；跨 Resource move / batch update 当前明确拒绝。

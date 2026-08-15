@@ -1,4 +1,4 @@
-import { ArrowLeft, Circle, ChevronRight, Download, Folder, Grid2X2, List, Pencil, Plus, Trash2, Upload, Users, X } from 'lucide-react'
+import { ArrowLeft, Circle, ChevronRight, CloudDownload, Combine, Download, FileArchive, Folder, Grid2X2, ImageDown, List, Pencil, Plus, Trash2, Upload, Users, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent } from 'react'
 import type { ContextMenuItem } from '../../shared/ui/context-menu/context-menu.js'
 import { useContextMenuTrigger } from '../../shared/ui/context-menu/use-context-menu-trigger.js'
@@ -6,8 +6,6 @@ import type { Translator } from '../../shared/i18n/index.js'
 import { Toggle } from '../../shared/ui/toggle/toggle.js'
 import { Dialog } from '../../shared/ui/dialog/dialog.js'
 import { useCharacterGalleryStore, type CharacterGroupFilter } from './character-gallery-store.js'
-import type { CharacterMedia, CharacterMediaTarget as MediaTarget } from './character-panel-model.js'
-import { useCharacterMedia } from './use-character-media.js'
 import { useCharacterProfileNavigation } from './use-character-profile-navigation.js'
 import styles from './character-panel.module.scss'
 
@@ -17,31 +15,34 @@ type CharacterCardSummary = {
   name: string
   userName?: string
   description?: string
+  media?: { avatarAssetId?: string; coverAssetId?: string }
   settingLayer?: { entries: unknown[] }
 }
 
-type SessionView = { id: string; agentRuntimeProfileId?: string }
-type BranchView = { id: string; version: number; title?: string; headEntryId?: string }
+type NarrativeTimelineView = { id: string; title?: string; createdAt: string; updatedAt: string }
 type GalleryMode = 'grid' | 'list'
+type MediaTarget = 'avatar' | 'background'
 
 type CharacterPanelProps = {
   active: boolean
-  branch?: BranchView
-  branches: BranchView[]
   busy: boolean
   cardDraft: { name: string; userName: string; description: string }
   cards: CharacterCardSummary[]
   onChangeCardDraft(draft: { name: string; userName: string; description: string }): void
   onCreateCard(): Promise<void>
-  onCreateSessionFromCard(): Promise<void>
+  onCreateTimelineFromCard(): Promise<void>
+  onExportCard(card: CharacterCardSummary, format: 'png' | 'polyglot' | 'loomcard'): Promise<void>
+  onImportCards(files: File[]): Promise<void>
   onDeleteCards(cardIds: string[]): Promise<void>
   onSelectCard(cardId: string): void
-  onSwitchBranch(branch: BranchView): void
+  onOpenTimeline(timeline: NarrativeTimelineView): void
+  onUpdateCardMedia(cardId: string, target: MediaTarget, file: File): Promise<void>
   onUpdateCard(event: FormEvent): Promise<void>
   selectedCard?: CharacterCardSummary
   selectedCardId?: string
   routeCardId?: string
-  session?: SessionView
+  timeline?: NarrativeTimelineView
+  timelines: NarrativeTimelineView[]
   t: Translator
 }
 
@@ -62,31 +63,10 @@ export function CharacterPanelHeader(props: { t: Translator }) {
   )
 }
 
-const MOCK_CARD_IMAGES = [
-  'https://nekos.best/api/v2/neko/3dc0d45e-61b7-43b9-8452-9fada674b909.png',
-  'https://nekos.best/api/v2/neko/71c172c2-f32e-461a-8bfb-18905ed12bb6.png',
-  'https://nekos.best/api/v2/neko/a92bf34a-2674-48b3-a8ab-fb2a8dc7e6b8.png',
-  'https://nekos.best/api/v2/neko/18c903b4-4828-4237-a061-8579fb471837.png',
-]
-// ponytail: 角色媒体 Schema 尚未落地；临时二次元 CDN 仅验证 Gallery、头像和背景布局，正式媒体资源合同接入时删除。
-
 const GALLERY_PAGE_SIZE = 30
 const MAX_MEDIA_BYTES = 10 * 1024 * 1024
+const MAX_REMOTE_CARD_BYTES = 128 * 1024 * 1024
 const PAGE_TRANSITION_MS = 180
-const MOCK_CARD_NAMES = ['白夜澪', '雾岛澄', '星见遥', '镜川栞', '月读纱夜', '雨宫凛', '七濑澪', '神代绫']
-const SESSION_MESSAGE_KEYS = ['character.sessionMockMessage1', 'character.sessionMockMessage2', 'character.sessionMockMessage3'] as const
-
-export function createMockCards(count = 100): CharacterCardSummary[] {
-  return Array.from({ length: count }, (_, index) => ({
-    id: `__gallery-mock-${index + 1}`,
-    version: 0,
-    name: `${MOCK_CARD_NAMES[index % MOCK_CARD_NAMES.length]!} ${String(index + 1).padStart(2, '0')}`,
-    userName: index % 3 === 0 ? 'Loom Studio' : 'Aster Archive',
-    description: '用于角色墙密度、搜索与渐进加载的前端视觉数据。',
-  }))
-}
-
-const MOCK_GALLERY_CARDS = import.meta.env.DEV ? createMockCards() : []
 
 export function CharacterPanel(props: CharacterPanelProps) {
   const organization = useCharacterGalleryStore()
@@ -101,19 +81,22 @@ export function CharacterPanel(props: CharacterPanelProps) {
   const [groupDraft, setGroupDraft] = useState('')
   const [editingGroupId, setEditingGroupId] = useState<string>()
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>()
+  const [exportCard, setExportCard] = useState<CharacterCardSummary>()
+  const [remoteImportOpen, setRemoteImportOpen] = useState(false)
+  const [remoteImportUrl, setRemoteImportUrl] = useState('')
+  const [remoteImportError, setRemoteImportError] = useState('')
+  const [remoteImportBusy, setRemoteImportBusy] = useState(false)
   const characterPanelRef = useRef<HTMLDivElement>(null)
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const backgroundInputRef = useRef<HTMLInputElement>(null)
+  const cardImportInputRef = useRef<HTMLInputElement>(null)
   const gallerySentinelRef = useRef<HTMLDivElement>(null)
-  const galleryCards = useMemo(() => [...props.cards, ...MOCK_GALLERY_CARDS], [props.cards])
-  const galleryCardIds = useMemo(() => galleryCards.map(card => card.id), [galleryCards])
-  const { mediaByCardId, replace: replaceStoredMedia } = useCharacterMedia(galleryCardIds)
+  const galleryCards = props.cards
   const { closeProfile, openProfile: setOpenProfile, profileCardId, profileLeaving } = useCharacterProfileNavigation(props.routeCardId, pageTransitionDelay)
   const selected = profileCardId
-    ? galleryCards.find(card => card.id === profileCardId) ?? (props.selectedCard?.id === profileCardId ? props.selectedCard : undefined)
+    ? (props.selectedCard?.id === profileCardId ? props.selectedCard : undefined) ?? galleryCards.find(card => card.id === profileCardId)
     : undefined
   const characterView = profileCardId ? 'profile' : 'gallery'
-  const isTransientCard = selected ? isMockCard(selected) : false
   const groupedCards = useMemo(() => filterCardsByGroup(galleryCards, organization.assignments, organization.activeGroupId), [galleryCards, organization.activeGroupId, organization.assignments])
   const filteredCards = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase()
@@ -149,7 +132,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
   }, [characterView, filteredCards.length, props.active, visibleCount])
 
   function openProfile(card: CharacterCardSummary) {
-    if (!isMockCard(card)) props.onSelectCard(card.id)
+    props.onSelectCard(card.id)
     setProfileEditing(false)
     setOpenProfile(card.id)
   }
@@ -163,7 +146,9 @@ export function CharacterPanel(props: CharacterPanelProps) {
       setMediaNotice(props.t('character.mediaTooLarge'))
       return
     }
-    replaceStoredMedia(card.id, target, file)
+    void props.onUpdateCardMedia(card.id, target, file).catch(error => {
+      setMediaNotice(error instanceof Error ? error.message : String(error))
+    })
     setMediaNotice('')
   }
 
@@ -225,7 +210,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
   }
 
   async function confirmDelete() {
-    const cardIds = pendingDeleteIds?.filter(cardId => !isMockCardId(cardId)) ?? []
+    const cardIds = pendingDeleteIds ?? []
     if (cardIds.length === 0) {
       setPendingDeleteIds(undefined)
       return
@@ -281,7 +266,42 @@ export function CharacterPanel(props: CharacterPanelProps) {
           onSelectFilter={selectGroupFilter}
         />
       ) : null}
-      <DeleteConfirmation open={Boolean(pendingDeleteIds)} count={pendingDeleteIds?.filter(cardId => !isMockCardId(cardId)).length ?? 0} busy={props.busy} onCancel={() => setPendingDeleteIds(undefined)} onConfirm={() => void confirmDelete()} t={props.t} />
+      <Dialog
+        className={styles.exportDialog}
+        closeOnBackdrop
+        description={props.t('character.exportDialogDescription')}
+        open={Boolean(exportCard)}
+        title={props.t('character.exportDialogTitle')}
+        onClose={() => setExportCard(undefined)}
+      >
+        <div className={styles.exportOptions}>
+          <ExportOption description={props.t('character.exportPngDescription')} icon={<ImageDown aria-hidden="true" />} label={props.t('character.exportPng')} onClick={() => exportCard && exportSelectedCard(exportCard, 'png')} />
+          <ExportOption description={props.t('character.exportPolyglotDescription')} icon={<Combine aria-hidden="true" />} label={props.t('character.exportPolyglot')} onClick={() => exportCard && exportSelectedCard(exportCard, 'polyglot')} />
+          <ExportOption description={props.t('character.exportLoomCardDescription')} icon={<FileArchive aria-hidden="true" />} label={props.t('character.exportLoomCard')} onClick={() => exportCard && exportSelectedCard(exportCard, 'loomcard')} />
+        </div>
+      </Dialog>
+      <Dialog
+        actions={(
+          <>
+            <button disabled={remoteImportBusy} type="button" onClick={closeRemoteImport}>{props.t('character.cancel')}</button>
+            <button disabled={remoteImportBusy || !remoteImportUrl.trim()} form="remote-card-import-form" type="submit">{props.t('character.importRemoteAction')}</button>
+          </>
+        )}
+        className={styles.exportDialog}
+        closeOnBackdrop
+        description={props.t('character.importRemoteDescription')}
+        dismissible={!remoteImportBusy}
+        open={remoteImportOpen}
+        title={props.t('character.importRemote')}
+        onClose={closeRemoteImport}
+      >
+        <form className={styles.remoteImportForm} id="remote-card-import-form" onSubmit={event => void importRemoteCard(event)}>
+          <label><span>{props.t('character.importRemoteUrl')}</span><input autoFocus disabled={remoteImportBusy} inputMode="url" placeholder="https://cdn.example.com/card.png" type="url" value={remoteImportUrl} onChange={event => { setRemoteImportUrl(event.target.value); setRemoteImportError('') }} /></label>
+          <p>{props.t('character.importRemoteWarning')}</p>
+          {remoteImportError ? <p aria-live="polite" className={styles.remoteImportError}>{remoteImportError}</p> : null}
+        </form>
+      </Dialog>
+      <DeleteConfirmation open={Boolean(pendingDeleteIds)} count={pendingDeleteIds?.length ?? 0} busy={props.busy} onCancel={() => setPendingDeleteIds(undefined)} onConfirm={() => void confirmDelete()} t={props.t} />
     </>
   )
 
@@ -291,7 +311,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
         <div className={styles.characterScroller}>
           <input ref={backgroundInputRef} accept="image/*" className={styles.mediaInput} type="file" onChange={event => selectMedia(selected, 'background', event)} />
           <input ref={avatarInputRef} accept="image/*" className={styles.mediaInput} type="file" onChange={event => selectMedia(selected, 'avatar', event)} />
-          <section className={styles.profileHero} style={{ backgroundImage: props.active && mediaUrl(selected, 'background', mediaByCardId) ? `url(${mediaUrl(selected, 'background', mediaByCardId)})` : 'none' }}>
+          <section className={styles.profileHero} style={{ backgroundImage: props.active && mediaUrl(selected, 'background') ? `url(${mediaUrl(selected, 'background')})` : 'none' }}>
           <div className={styles.profileHeroShade} />
           <button
             aria-label={props.t('character.changeBackground')}
@@ -337,7 +357,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
               readPastedFile(selected, 'avatar', event)
             }}
           >
-            <img alt="" src={props.active ? mediaUrl(selected, 'avatar', mediaByCardId) : undefined} />
+            <img alt="" src={props.active ? mediaUrl(selected, 'avatar') : undefined} />
             <span className={styles.mediaLabel}>{props.t('character.changeAvatar')}</span>
           </button>
           </section>
@@ -347,13 +367,15 @@ export function CharacterPanel(props: CharacterPanelProps) {
           <span>{props.t('character.title')}</span>
           <div>
             {selectionMode && !selectedCardIds.has(selected.id) ? <button aria-label={props.t('character.select')} className={styles.toolbarButton} title={props.t('character.select')} type="button" onClick={() => enterSelectionMode(selected.id)}><Circle aria-hidden="true" /></button> : null}
-            {!isTransientCard ? <button aria-label={props.t('character.edit')} aria-pressed={profileEditing} className={profileEditing ? styles.toolbarButtonActive : styles.toolbarButton} title={props.t('character.edit')} type="button" onClick={() => setProfileEditing(value => !value)}><Pencil aria-hidden="true" /></button> : null}
+            <button aria-label={props.t('character.edit')} aria-pressed={profileEditing} className={profileEditing ? styles.toolbarButtonActive : styles.toolbarButton} title={props.t('character.edit')} type="button" onClick={() => setProfileEditing(value => !value)}><Pencil aria-hidden="true" /></button>
+            <button aria-label={props.t('character.export')} className={styles.toolbarButton} disabled={props.busy} title={props.t('character.export')} type="button" onClick={() => setExportCard(selected)}><Download aria-hidden="true" /></button>
+            <button aria-label={props.t('character.delete')} className={`${styles.toolbarButton} ${styles.deleteButton}`} disabled={props.busy} title={props.t('character.delete')} type="button" onClick={() => setPendingDeleteIds([selected.id])}><Trash2 aria-hidden="true" /></button>
           </div>
           </header>
 
           <section className={styles.profileIdentity}>
           <div><h2>{selected.name}</h2><p>{selected.userName || props.t('character.authorUnknown')}</p></div>
-          {!isTransientCard ? <button disabled={props.busy} type="button" onClick={() => void props.onCreateSessionFromCard()}>{props.t('character.startSession')}</button> : null}
+          <button disabled={props.busy} type="button" onClick={() => void props.onCreateTimelineFromCard()}>{props.t('character.startSession')}</button>
           </section>
           {mediaNotice ? <p aria-live="polite" className={styles.mediaNotice}>{mediaNotice}</p> : null}
 
@@ -364,7 +386,6 @@ export function CharacterPanel(props: CharacterPanelProps) {
             <label><span>{props.t('character.description')}</span><textarea disabled={props.busy} value={props.cardDraft.description} onChange={event => props.onChangeCardDraft({ ...props.cardDraft, description: event.target.value })} /></label>
             <div className={styles.editorActions}>
               <button disabled={props.busy || !props.cardDraft.name.trim()} type="submit">{props.t('character.save')}</button>
-              <button className={styles.deleteButton} disabled={props.busy} type="button" onClick={() => setPendingDeleteIds([selected.id])}>{props.t('character.delete')}</button>
             </div>
           </form>
         ) : (
@@ -376,9 +397,9 @@ export function CharacterPanel(props: CharacterPanelProps) {
 
           <section className={styles.sessions}>
           <header><h3>{props.t('character.sessions')}</h3></header>
-          {props.session ? <p className={styles.currentSession}>{props.t('character.currentSession', { id: shortId(props.session.id) })}</p> : null}
+          {props.timeline ? <p className={styles.currentSession}>{props.t('character.currentSession', { id: shortId(props.timeline.id) })}</p> : null}
           <div className={styles.sessionList}>
-            {props.branches.length === 0 ? <p>{props.t('branch.noBranches')}</p> : props.branches.map(branch => <SessionBranchCard key={branch.id} branch={branch} busy={props.busy} current={branch.id === props.branch?.id} onSwitch={() => props.onSwitchBranch(branch)} t={props.t} />)}
+            {props.timelines.length === 0 ? <p>{props.t('branch.noBranches')}</p> : props.timelines.map(timeline => <TimelineCard key={timeline.id} timeline={timeline} busy={props.busy} current={timeline.id === props.timeline?.id} onOpen={() => props.onOpenTimeline(timeline)} t={props.t} />)}
           </div>
           </section>
         </div>
@@ -390,28 +411,42 @@ export function CharacterPanel(props: CharacterPanelProps) {
   return (
     <aside className={`${styles.characterPanel} ${styles.galleryEntering}`} data-loom-component="character-gallery">
       <div ref={characterPanelRef} className={styles.characterScroller}>
+        <input
+          ref={cardImportInputRef}
+          accept="image/png,.png,.loomcard,application/vnd.loom.card+zip"
+          className={styles.mediaInput}
+          multiple
+          type="file"
+          onChange={event => {
+            const files = Array.from(event.target.files ?? [])
+            event.target.value = ''
+            if (files.length > 0) void props.onImportCards(files)
+          }}
+        />
         <header className={styles.galleryToolbar}>
         {selectionMode ? (
           <div className={styles.selectionToolbar}>
             <span>{props.t('character.selectionCount', { count: selectedCardIds.size })}</span>
             <div>
               <button disabled={selectedCardIds.size === 0} type="button" onClick={() => openGroupPicker()}><Folder aria-hidden="true" />{props.t('character.moveToGroup')}</button>
-              <button className={styles.deleteButton} disabled={![...selectedCardIds].some(cardId => !isMockCardId(cardId)) || props.busy} type="button" onClick={() => setPendingDeleteIds([...selectedCardIds].filter(cardId => !isMockCardId(cardId)))}><Trash2 aria-hidden="true" />{props.t('character.delete')}</button>
+              <button className={styles.deleteButton} disabled={selectedCardIds.size === 0 || props.busy} type="button" onClick={() => setPendingDeleteIds([...selectedCardIds])}><Trash2 aria-hidden="true" />{props.t('character.delete')}</button>
               <button aria-label={props.t('character.exitSelection')} className={styles.toolbarButton} title={props.t('character.exitSelection')} type="button" onClick={exitSelectionMode}><X aria-hidden="true" /></button>
             </div>
           </div>
         ) : (
           <>
-            <div className={styles.galleryModes} role="group" aria-label={props.t('character.gallery')}>
-              <button aria-label={props.t('character.grid')} aria-pressed={galleryMode === 'grid'} className={galleryMode === 'grid' ? styles.toolbarButtonActive : styles.toolbarButton} title={props.t('character.grid')} type="button" onClick={() => setGalleryMode('grid')}><Grid2X2 aria-hidden="true" /></button>
-              <button aria-label={props.t('character.list')} aria-pressed={galleryMode === 'list'} className={galleryMode === 'list' ? styles.toolbarButtonActive : styles.toolbarButton} title={props.t('character.list')} type="button" onClick={() => setGalleryMode('list')}><List aria-hidden="true" /></button>
+            <div className={styles.galleryToolbarMain}>
+              <div className={styles.galleryModes} role="group" aria-label={props.t('character.gallery')}>
+                <button aria-label={props.t('character.grid')} aria-pressed={galleryMode === 'grid'} className={galleryMode === 'grid' ? styles.toolbarButtonActive : styles.toolbarButton} title={props.t('character.grid')} type="button" onClick={() => setGalleryMode('grid')}><Grid2X2 aria-hidden="true" /></button>
+                <button aria-label={props.t('character.list')} aria-pressed={galleryMode === 'list'} className={galleryMode === 'list' ? styles.toolbarButtonActive : styles.toolbarButton} title={props.t('character.list')} type="button" onClick={() => setGalleryMode('list')}><List aria-hidden="true" /></button>
+              </div>
+              <div className={styles.galleryActions}>
+                <button aria-label={props.t('character.import')} className={styles.toolbarButton} disabled={props.busy} title={props.t('character.import')} type="button" onClick={() => cardImportInputRef.current?.click()}><Upload aria-hidden="true" /></button>
+                <button aria-label={props.t('character.importRemote')} className={styles.toolbarButton} disabled={props.busy} title={props.t('character.importRemote')} type="button" onClick={() => setRemoteImportOpen(true)}><CloudDownload aria-hidden="true" /></button>
+                <button disabled={props.busy} type="button" onClick={() => void props.onCreateCard()}><Plus aria-hidden="true" />{props.t('character.create')}</button>
+              </div>
             </div>
-            <div className={styles.galleryActions}>
-              <input aria-label={props.t('character.searchPlaceholder')} className={styles.gallerySearch} placeholder={props.t('character.searchPlaceholder')} type="search" value={query} onChange={event => setQuery(event.target.value)} />
-              <button aria-label={props.t('character.import')} className={styles.toolbarButton} disabled title={props.t('character.importPending')} type="button"><Upload aria-hidden="true" /></button>
-              <button aria-label={props.t('character.export')} className={styles.toolbarButton} disabled title={props.t('character.exportPending')} type="button"><Download aria-hidden="true" /></button>
-              <button disabled={props.busy} type="button" onClick={() => void props.onCreateCard()}><Plus aria-hidden="true" />{props.t('character.create')}</button>
-            </div>
+            <input aria-label={props.t('character.searchPlaceholder')} className={styles.gallerySearch} placeholder={props.t('character.searchPlaceholder')} type="search" value={query} onChange={event => setQuery(event.target.value)} />
           </>
         )}
         </header>
@@ -423,7 +458,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
               card={card}
               key={card.id}
               loadMedia={props.active}
-              mediaUrl={mediaUrl(card, 'avatar', mediaByCardId)}
+              mediaUrl={mediaUrl(card, 'avatar')}
               mode={galleryMode}
               selected={selectedCardIds.has(card.id)}
               selectionMode={selectionMode}
@@ -442,6 +477,51 @@ export function CharacterPanel(props: CharacterPanelProps) {
 
       {overlays}
     </aside>
+  )
+
+  function exportSelectedCard(card: CharacterCardSummary, format: 'png' | 'polyglot' | 'loomcard') {
+    setExportCard(undefined)
+    void props.onExportCard(card, format)
+  }
+
+  function closeRemoteImport() {
+    if (remoteImportBusy) return
+    setRemoteImportOpen(false)
+    setRemoteImportUrl('')
+    setRemoteImportError('')
+  }
+
+  async function importRemoteCard(event: FormEvent) {
+    event.preventDefault()
+    setRemoteImportError('')
+    setRemoteImportBusy(true)
+    try {
+      const url = new URL(remoteImportUrl.trim())
+      if (url.protocol !== 'https:') throw new Error(props.t('character.importRemoteHttpsOnly'))
+      const response = await fetch(url, { credentials: 'omit', referrerPolicy: 'no-referrer' })
+      if (!response.ok) throw new Error(props.t('character.importRemoteDownloadFailed', { status: response.status }))
+      const declaredSize = Number(response.headers.get('content-length'))
+      if (Number.isFinite(declaredSize) && declaredSize > MAX_REMOTE_CARD_BYTES) throw new Error(props.t('character.importRemoteTooLarge'))
+      const blob = await response.blob()
+      if (blob.size > MAX_REMOTE_CARD_BYTES) throw new Error(props.t('character.importRemoteTooLarge'))
+      const fileName = remoteCardFileName(url, blob.type)
+      await props.onImportCards([new File([blob], fileName, { type: blob.type })])
+      setRemoteImportOpen(false)
+      setRemoteImportUrl('')
+    } catch (error) {
+      setRemoteImportError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setRemoteImportBusy(false)
+    }
+  }
+}
+
+function ExportOption(props: { description: string; icon: React.ReactNode; label: string; onClick(): void }) {
+  return (
+    <button className={styles.exportOption} type="button" onClick={props.onClick}>
+      <span className={styles.exportOptionIcon}>{props.icon}</span>
+      <span><strong>{props.label}</strong><small>{props.description}</small></span>
+    </button>
   )
 }
 
@@ -462,7 +542,8 @@ function CharacterCard(props: {
   const menuItems: ContextMenuItem[] = [
     { checked: props.selected, icon: <Circle aria-hidden="true" />, id: 'select', label: props.selected ? props.t('character.deselect') : props.t('character.select'), onSelect: props.selected ? props.onToggleSelection : props.onSelect },
     { icon: <Folder aria-hidden="true" />, id: 'move-group', label: props.t('character.moveToGroup'), onSelect: props.onOpenGroups },
-    ...(isMockCard(props.card) ? [] : [{ id: 'separator', type: 'separator' as const }, { icon: <Trash2 aria-hidden="true" />, id: 'delete', label: props.t('character.delete'), onSelect: props.onDelete, tone: 'danger' as const }]),
+    { id: 'separator', type: 'separator' as const },
+    { icon: <Trash2 aria-hidden="true" />, id: 'delete', label: props.t('character.delete'), onSelect: props.onDelete, tone: 'danger' as const },
   ]
   const contextMenu = useContextMenuTrigger(menuItems)
   const className = [props.mode === 'grid' ? styles.gridCard : styles.listCard, props.selected ? styles.cardSelected : ''].filter(Boolean).join(' ')
@@ -597,51 +678,38 @@ function filterCardsByGroup(cards: CharacterCardSummary[], assignments: Record<s
   return cards.filter(card => assignments[card.id] === activeGroupId)
 }
 
-function isMockCard(card: CharacterCardSummary): boolean {
-  return isMockCardId(card.id)
-}
-
-function isMockCardId(cardId: string): boolean {
-  return import.meta.env.DEV && cardId.startsWith('__gallery-mock-')
-}
-
 function pageTransitionDelay(): number {
   return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : PAGE_TRANSITION_MS
 }
 
-function cardImage(card: CharacterCardSummary): string {
-  let value = 0
-  for (const character of card.id) value = (value + character.charCodeAt(0)) % MOCK_CARD_IMAGES.length
-  return MOCK_CARD_IMAGES[value]!
+function mediaUrl(card: CharacterCardSummary, target: MediaTarget): string | undefined {
+  const assetId = target === 'avatar' ? card.media?.avatarAssetId : card.media?.coverAssetId
+  return assetId ? `/assets/${encodeURIComponent(assetId)}` : undefined
 }
 
-function mediaUrl(card: CharacterCardSummary, target: MediaTarget, mediaByCardId: Record<string, CharacterMedia>): string | undefined {
-  return mediaByCardId[card.id]?.[target] ?? (import.meta.env.DEV ? cardImage(card) : undefined)
-}
-
-function SessionBranchCard(props: { branch: BranchView; busy: boolean; current: boolean; onSwitch(): void; t: Translator }) {
-  const detail = sessionDetail(props.branch, props.t)
+function TimelineCard(props: { timeline: NarrativeTimelineView; busy: boolean; current: boolean; onOpen(): void; t: Translator }) {
   return (
     <details className={styles.sessionCard} open={props.current}>
-      <summary><ChevronRight aria-hidden="true" /><span><strong>{props.branch.title ?? props.t('branch.default')}</strong><small>{detail.lastActive}</small></span></summary>
+      <summary><ChevronRight aria-hidden="true" /><span><strong>{props.timeline.title ?? props.t('branch.default')}</strong><small>{formatTimelineDate(props.timeline.updatedAt)}</small></span></summary>
       <div className={styles.sessionCardBody}>
-        <dl><div><dt>{props.t('character.sessionCreated')}</dt><dd>{detail.createdAt}</dd></div><div><dt>{props.t('character.sessionLatestMessage')}</dt><dd>{detail.lastMessage}</dd></div></dl>
-        <button disabled={props.busy || props.current} type="button" onClick={props.onSwitch}>{props.current ? props.t('character.currentSession', { id: shortId(props.branch.id) }) : props.t('character.openSession')}</button>
+        <dl><div><dt>{props.t('character.sessionCreated')}</dt><dd>{formatTimelineDate(props.timeline.createdAt)}</dd></div><div><dt>{props.t('character.sessionLatestMessage')}</dt><dd>{formatTimelineDate(props.timeline.updatedAt)}</dd></div></dl>
+        <button disabled={props.busy || props.current} type="button" onClick={props.onOpen}>{props.current ? props.t('character.currentSession', { id: shortId(props.timeline.id) }) : props.t('character.openSession')}</button>
       </div>
     </details>
   )
 }
 
-function sessionDetail(branch: BranchView, t: Translator) {
-  const seed = Array.from(branch.id).reduce((total, character) => total + character.charCodeAt(0), 0)
-  const relativeTimes = [t('character.sessionAgoMinutes', { count: (seed % 45) + 1 }), t('character.sessionAgoHours', { count: (seed % 12) + 1 }), t('character.sessionYesterday')]
-  return {
-    lastActive: relativeTimes[seed % relativeTimes.length]!,
-    createdAt: `2026-08-${String((seed % 28) + 1).padStart(2, '0')}`,
-    lastMessage: t(SESSION_MESSAGE_KEYS[seed % SESSION_MESSAGE_KEYS.length]!),
-  }
+function formatTimelineDate(value: string): string {
+  const date = new Date(value)
+  return Number.isNaN(date.valueOf()) ? value : date.toLocaleString()
 }
 
 function shortId(id: string): string {
   return id.slice(0, 13)
+}
+
+function remoteCardFileName(url: URL, contentType: string): string {
+  const candidate = url.pathname.split('/').pop() || ''
+  if (candidate.toLowerCase().endsWith('.loomcard') || candidate.toLowerCase().endsWith('.png')) return candidate
+  return contentType === 'application/vnd.loom.card+zip' ? 'remote-card.loomcard' : 'remote-card.png'
 }

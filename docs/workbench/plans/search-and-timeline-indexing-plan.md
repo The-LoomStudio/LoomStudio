@@ -2,7 +2,7 @@
 
 > **状态**：Asset Search Implemented in Frontend / Timeline Search Planned
 > **日期**：2026-08-07
-> **边界**：记录资产搜索与长会话搜索的分层决策。当前阶段不修改 Application Runtime、Document Store、Schema 或 RPC。
+> **边界**：记录资产搜索与长会话搜索的分层决策。本文的旧 `Session` / `NarrativeEntry Document` API 示例已经被 Narrative Store 数据层取代；后续 Timeline Search 必须基于新的 Timeline / Branch / Node 分页合同重新收束，不能照抄旧示例实施。
 
 ## 1. 决策摘要
 

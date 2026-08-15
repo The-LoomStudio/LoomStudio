@@ -1,5 +1,8 @@
 # 待处理架构重构任务 (P1-P3)
 
+> **状态**：Active Backlog / Event Catalog Foundation Partially Implemented
+> **边界**：本页只记录尚未进入具体计划的治理任务。事件 Definition Registry 与 Extension 事件权限边界已经落地；通用外发目录、能力发现面和 Application Runtime 模块化仍待后续决策。
+
 本文件记录了在 Loom Studio 开发过程中需要逐步落地的三项重要架构治理“杂活”任务，后续可以根据优先级安排实施。
 
 ---
@@ -38,10 +41,10 @@
 ## 3. [P2] 建立规范的 Event Catalog (事件目录)
 
 ### 目标与背景
-目前缺少对事件（events）的统一元数据审计，有些地方可能在混用 event 和 command，且基础事件（如 `docs.changed`）容易被当做具体的领域事件（如 `session.completed`）滥用。
+Kernel 已具备 Event Definition Registry、owner / visibility / capability / payload 等基础元数据，但跨端外发目录和领域事件审计仍未完成。基础事件（如 `docs.changed`）仍不能被当做具体领域事件滥用。
 
 ### 改造内容
-- [ ] 为所有 public events 定义元数据规范（如 `owner`、`type`、`delivery`、`version`）。
-- [ ] 建设统一的 Event Catalog。
+- [x] 为 Kernel / Extension public events 建立首版定义元数据与注册边界。
+- [ ] 将现有定义面扩展为可供通用 Transport 和 DevTools 消费的 Event Catalog。
 - [ ] 明确划清 `docs.changed`、`diagnostics.updated` 与各领域层专属事件的边界。
 - [ ] 保证 WebSocket 和 SSE 等投递机制能够基于 Event Catalog 的元数据安全、受控地向外发布。

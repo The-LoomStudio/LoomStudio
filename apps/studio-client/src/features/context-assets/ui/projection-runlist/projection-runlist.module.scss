@@ -71,6 +71,31 @@
   white-space: nowrap;
 }
 
+.zoneLabel {
+  align-items: flex-start;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.zoneLabel small {
+  color: var(--loom-color-text-subtle);
+  font-family: var(--loom-font-family-mono);
+  font-size: var(--loom-font-size-1);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.selectedZone .zoneHeader {
+  color: var(--loom-color-accent);
+}
+
 .position,
 .positionSpacer {
   flex: 0 0 24px;

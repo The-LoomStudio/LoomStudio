@@ -12,7 +12,7 @@ Loom Studio 使用统一的 Document Store 进行数据持久化。所有被存�
 ### `airp.session`
 - **说明**: 顶层的会话容器。
 - **关联类型**: `SessionContent`
-- **关键字段**: `cardSourceVersionId`, `promptResourceIds`, `activeBranchId`, `agentRuntimeProfileId`
+- **关键字段**: `cardSourceVersionId`, `promptResourceIds`, `activeBranchId`, `agentProfileId`
 - **备注**: 新 Session 只从 Card 复制有序 Prompt Resource IDs，不复制 Resource 内容；PromptBuild 直接读取这些 Resource IDs。
 
 ### `airp.narrative_branch`
@@ -59,16 +59,16 @@ Loom Studio 使用统一的 Document Store 进行数据持久化。所有被存�
 - **关键字段**: `name`, `opening`, `promptResourceIds`, `importBundleId`, `createdAt`, `updatedAt`
 - **备注**: Bundle import 路径中 Card 直接保存有序 `promptResourceIds` 与独立 `importBundleId`。`createCard` 的 M0 simple-card 路径仍保留 `preset` / `settingLayer`。
 
-### `airp.agent_runtime_profile`
-- **说明**: 一组运行时配置参数集合，将角色卡应用于特定会话时使用的引擎参数。
-- **关联类型**: `AgentRuntimeProfileContent`
-- **关键字段**: `name`, `purpose`, `presetId`, `modelProfileId`
+### `airp.agentProfile`
+- **说明**: 将一个 Preset Prompt Resource 与一个已启用的 Provider Model 组合成可运行配置；Agent Session 只引用该 Profile。
+- **关联类型**: `AgentProfileContent`
+- **关键字段**: `name`, `presetId`, `model.providerProfileId`, `model.modelId`
 
 ### `airp.promptResource`
 - **说明**: 一个平铺、独立编辑的顶层 Prompt 资源根节点，例如 Preset、Setting Layer、Runtime 视图或 History 视图。
 - **关联类型**: `PromptResourceContent`
-- **关键字段**: `resourceKind`, `rootNode`, `sourceArtifactRef`
-- **备注**: 资源读取和增删改移动均以 `resourceId` 为入口；Resource 是平铺、可独立引用的 Document。
+- **关键字段**: `resourceKind`, `rootNode`, `linkedSettingIds`, `historyPolicy`, `sourceArtifactRef`, `origin`
+- **备注**: `resourceKind=preset` 时，该 Document 是 Agent 的完整 PromptBuild Module，并可通过 `linkedSettingIds` 显式引用平铺 Setting。Agent Profile 的 `presetId` 直接指向它。`origin.kind=builtin` 的官方资源只读；删除 Setting 时会解除 Card、Preset 与 Narrative Timeline 引用。
 
 ### `airp.importBundle`
 - **说明**: 保存一次 Card Bundle 导入的来源 Artifact、来源引用、资源推荐关系和导入 Document 清单。
@@ -78,12 +78,8 @@ Loom Studio 使用统一的 Document Store 进行数据持久化。所有被存�
 
 ## 4. 平台与提供商 (Platform Provider)
 
-### `airp.provider_account`
-- **说明**: 用户配置的外部 API 提供商账号（如 OpenAI / Claude API key 存放信息引用）。
-- **关联类型**: `ProviderAccountContent`
-- **关键字段**: `providerExtensionId`, `config`, `secretRefs`
-
-### `airp.model_profile`
-- **说明**: 基于 provider account 衍生的特定模型配置（如 gpt-4-turbo 具体参数）。
-- **关联类型**: `ModelProfileContent`
-- **关键字段**: `providerAccountId`, `capability`, `providerModelId`
+### `airp.providerProfile`
+- **说明**: 用户配置的 Provider、连接配置和已启用模型清单。模型选择是 `{ providerProfileId, modelId }` 值对象，不再拥有独立 Model Profile Document。
+- **关联类型**: `ProviderProfileContent`
+- **关键字段**: `providerExtensionId`, `config`, `enabledModelIds`, `secretRef`
+- **备注**: `secretRef` 只在后端 Document 内部使用；Client DTO 仅返回 `credential.configured` 与更新时间，Secret 明文保存在系统凭证库。

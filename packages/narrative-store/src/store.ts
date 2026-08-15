@@ -40,7 +40,10 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
 
   engine.migrate({
     namespace: migrationNamespace,
-    migrations: [{ version: 1, migrate: migrateVersionOne }],
+    migrations: [
+      { version: 1, migrate: migrateVersionOne },
+      { version: 2, migrate: migrateVersionTwo },
+    ],
   })
 
   function transaction(tx: SqliteDataTransaction): NarrativeTransaction {
@@ -196,6 +199,22 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
         tx.recordOperations([operation('delete', timeline.id, 'narrative.timeline')])
         return requireTimeline(database, timeline.id, true)
       },
+
+      updatePromptResources: input => {
+        const timeline = requireActiveTimeline(database, input.timelineId)
+        const promptResourceIds = [...new Set(input.promptResourceIds)]
+        validateStringIds(promptResourceIds, 'promptResourceIds')
+        if (input.expectedPromptResourceIds && !sameStringArray(timeline.promptResourceIds, input.expectedPromptResourceIds)) {
+          throw new NarrativeStoreError('narrative.prompt_resources_conflict', `Narrative prompt resources changed: ${timeline.id}`)
+        }
+        database.prepare(`
+          UPDATE narrative_timelines
+          SET prompt_resource_ids_json = ?, updated_at = ?
+          WHERE id = ?
+        `).run(JSON.stringify(promptResourceIds), now(), timeline.id)
+        tx.recordOperations([operation('update', timeline.id, 'narrative.timeline')])
+        return requireTimeline(database, timeline.id)
+      },
     }
   }
 
@@ -205,7 +224,9 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
 
   return {
     getTimeline: id => engine.read(database => readTimeline(database, id)),
+    listTimelines: input => engine.read(database => readTimelines(database, input)),
     getBranch: id => engine.read(database => readBranch(database, id)),
+    listBranches: timelineId => engine.read(database => readBranches(database, timelineId)),
     getNode: id => engine.read(database => readNode(database, id)),
     getPage: input => engine.read(database => readPage(database, input)),
     createTimeline: async input => {
@@ -228,8 +249,16 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
       const result = await write(input, tx => tx.deleteTimeline(input))
       return { timeline: result.value, commit: result.commit }
     },
+    updatePromptResources: async input => {
+      const result = await write(input, tx => tx.updatePromptResources(input))
+      return { timeline: result.value, commit: result.commit }
+    },
     transaction,
   }
+}
+
+function sameStringArray(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index])
 }
 
 function migrateVersionOne(database: DatabaseSync): void {
@@ -277,6 +306,13 @@ function migrateVersionOne(database: DatabaseSync): void {
     CREATE INDEX idx_narrative_branches_timeline ON narrative_branches(timeline_id);
     CREATE INDEX idx_narrative_nodes_timeline_parent ON narrative_nodes(timeline_id, parent_node_id);
     CREATE INDEX idx_narrative_nodes_timeline_created ON narrative_nodes(timeline_id, created_at);
+  `)
+}
+
+function migrateVersionTwo(database: DatabaseSync): void {
+  database.exec(`
+    CREATE INDEX idx_narrative_timelines_card_updated
+    ON narrative_timelines(created_from_card_id, updated_at DESC, id DESC);
   `)
 }
 
@@ -362,6 +398,60 @@ function readTimeline(database: DatabaseSync, id: string, includeDeleted = false
   const timeline = timelineFromRow(row)
   if (timeline.deletedAt && !includeDeleted) return null
   return timeline
+}
+
+function readTimelines(
+  database: DatabaseSync,
+  input: { createdFromCardId?: string; cursor?: string; limit?: number } = {},
+): { timelines: NarrativeTimeline[]; nextCursor?: string } {
+  const limit = input.limit ?? defaultPageLimit
+  if (!Number.isInteger(limit) || limit < 1 || limit > maximumPageLimit) {
+    throw new NarrativeStoreError('narrative.timeline_list_limit_invalid', `Narrative timeline list limit must be between 1 and ${maximumPageLimit}`)
+  }
+  validateOptionalId(input.createdFromCardId, 'createdFromCardId')
+  validateOptionalId(input.cursor, 'cursor')
+
+  const cursor = input.cursor ? readTimeline(database, input.cursor) : undefined
+  if (input.cursor && !cursor) {
+    throw new NarrativeStoreError('narrative.timeline_cursor_not_found', `Narrative timeline cursor not found: ${input.cursor}`)
+  }
+  if (cursor && input.createdFromCardId && cursor.createdFrom?.cardId !== input.createdFromCardId) {
+    throw new NarrativeStoreError('narrative.timeline_cursor_filter_mismatch', 'Narrative timeline cursor does not match the source card filter')
+  }
+  const conditions = ['tombstoned = 0']
+  const params: Array<string | number> = []
+  if (input.createdFromCardId) {
+    conditions.push('created_from_card_id = ?')
+    params.push(input.createdFromCardId)
+  }
+  if (cursor) {
+    conditions.push('(updated_at < ? OR (updated_at = ? AND id < ?))')
+    params.push(cursor.updatedAt, cursor.updatedAt, cursor.id)
+  }
+  const rows = database.prepare(`
+    SELECT id, title, created_from_card_id, created_from_card_version, prompt_resource_ids_json,
+           active_branch_id, created_at, updated_at, tombstoned, deleted_at
+    FROM narrative_timelines
+    WHERE ${conditions.join(' AND ')}
+    ORDER BY updated_at DESC, id DESC
+    LIMIT ?
+  `).all(...params, limit + 1)
+  const timelines = rows.slice(0, limit).map(timelineFromRow)
+  return {
+    timelines,
+    nextCursor: rows.length > limit ? timelines.at(-1)?.id : undefined,
+  }
+}
+
+function readBranches(database: DatabaseSync, timelineId: string): NarrativeBranch[] {
+  validateId(timelineId, 'timelineId')
+  requireActiveTimeline(database, timelineId)
+  return database.prepare(`
+    SELECT id, timeline_id, title, head_node_id, parent_branch_id, forked_from_node_id, created_at, updated_at
+    FROM narrative_branches
+    WHERE timeline_id = ?
+    ORDER BY created_at ASC, id ASC
+  `).all(timelineId).map(branchFromRow)
 }
 
 function requireTimeline(database: DatabaseSync, id: string, includeDeleted = false): NarrativeTimeline {
@@ -501,6 +591,16 @@ function validateOptionalText(value: string | undefined, field: string): void {
   if (value !== undefined && (typeof value !== 'string' || value.trim().length === 0)) {
     throw new NarrativeStoreError('narrative.input_invalid', `${field} must be a non-empty string`)
   }
+}
+
+function validateId(value: string, field: string): void {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new NarrativeStoreError('narrative.input_invalid', `${field} must be a non-empty string ID`)
+  }
+}
+
+function validateOptionalId(value: string | undefined, field: string): void {
+  if (value !== undefined) validateId(value, field)
 }
 
 function operation(kind: DataCommitOperation['kind'], entityId: string, entityType: string): DataCommitOperation {

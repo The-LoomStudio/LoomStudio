@@ -1,7 +1,9 @@
 import type { DocumentStore } from '@loom-studio/document-store'
+import type { SecretStore } from '@loom-studio/secret-store'
 import type { JsonValue } from '@loom-studio/shared'
 import type { AssistantChatMessage, ChatToolCall } from '@loom-studio/shared'
 import { createId } from '@loom-studio/shared'
+import { fetch as undiciFetch, ProxyAgent } from 'undici'
 import { applicationDocumentTypes } from './document-types.js'
 import { readDocument } from './document-store.js'
 import { isObject } from './json.js'
@@ -10,11 +12,8 @@ import type {
   AiGateway,
   ApplicationProvider,
   GatewayChatResult,
-  ModelProfileConfig,
-  ModelProfileContent,
   OpenAICompatibleGatewayOptions,
-  ProviderAccountConfig,
-  ProviderAccountContent,
+  ProviderProfileContent,
 } from './types.js'
 
 export function createFakeAiGateway(): AiGateway {
@@ -42,38 +41,88 @@ export function createFakeProvider(): ApplicationProvider {
 
 export function createDocumentBackedAiGateway(options: {
   documents: DocumentStore
+  secrets?: SecretStore
   fallback?: AiGateway
+  resolveProxyUrl?: () => string | undefined
 }): AiGateway {
   const fallback = options.fallback ?? createFakeAiGateway()
+  const proxyTransports = new Map<string, typeof fetch>()
+
+  function resolveTransport(providerProfile: ProviderProfileContent): typeof fetch {
+    const proxyUrl = options.resolveProxyUrl?.()
+    if (!proxyUrl) return fetch
+    const existing = proxyTransports.get(proxyUrl)
+    if (existing) return existing
+    const dispatcher = new ProxyAgent(proxyUrl)
+    const transport = (async (input, init) => {
+      return await undiciFetch(input as never, { ...init, dispatcher } as never) as unknown as Response
+    }) as typeof fetch
+    proxyTransports.set(proxyUrl, transport)
+    return transport
+  }
 
   return {
+    listModels: async input => {
+      const providerProfile = await readDocument<ProviderProfileContent>(options.documents, input.providerProfileId, applicationDocumentTypes.providerProfile)
+      const providerExtensionId = providerProfile.content.providerExtensionId
+
+      if (providerExtensionId === 'official.fake' || providerExtensionId === 'fake') {
+        return { modelIds: [...providerProfile.content.enabledModelIds] }
+      }
+      if (providerExtensionId !== 'official.openai-compatible' && providerExtensionId !== 'openai-compatible') {
+        throw new Error(`Provider does not support model discovery: ${providerExtensionId}`)
+      }
+      if (!options.secrets || !providerProfile.content.secretRef) throw new Error('Provider credential is not configured')
+
+      return await options.secrets.withSecret(providerProfile.content.secretRef, {
+        caller: 'application.ai-gateway',
+        owner: { type: 'provider-profile', id: providerProfile.id },
+        purpose: 'provider.credentials',
+      }, async secret => {
+        const apiKey = secret.values.apiKey
+        if (!apiKey) throw new Error('Provider credential is missing apiKey')
+        return {
+          modelIds: await listOpenAICompatibleModels({
+            baseUrl: providerProfile.content.config.baseUrl,
+            apiKey,
+            fetch: resolveTransport(providerProfile.content),
+          }),
+        }
+      })
+    },
     invokeChat: async input => {
-      if (!input.modelProfileId) {
+      if (!input.model) {
         return await fallback.invokeChat(input)
       }
 
-      const modelProfile = await readDocument<ModelProfileContent>(options.documents, input.modelProfileId, applicationDocumentTypes.modelProfile)
-      const providerAccount = await readDocument<ProviderAccountContent>(options.documents, modelProfile.content.providerAccountId, applicationDocumentTypes.providerAccount)
-      const providerExtensionId = providerAccount.content.providerExtensionId
+      const providerProfile = await readDocument<ProviderProfileContent>(options.documents, input.model.providerProfileId, applicationDocumentTypes.providerProfile)
+      if (!providerProfile.content.enabledModelIds.includes(input.model.modelId)) {
+        throw new Error(`Provider model is not enabled: ${input.model.modelId}`)
+      }
+      const providerExtensionId = providerProfile.content.providerExtensionId
 
       if (providerExtensionId === 'official.openai-compatible' || providerExtensionId === 'openai-compatible') {
-        return await createOpenAICompatibleGateway({
-          providerAccount: {
-            id: providerAccount.id,
-            providerExtensionId: providerAccount.content.providerExtensionId,
-            displayName: providerAccount.content.displayName,
-            config: providerAccount.content.config,
-            secretRefs: providerAccount.content.secretRefs,
-          },
-          modelProfile: {
-            id: modelProfile.id,
-            providerAccountId: modelProfile.content.providerAccountId,
-            capability: modelProfile.content.capability,
-            displayName: modelProfile.content.displayName,
-            providerModelId: modelProfile.content.providerModelId,
-            config: modelProfile.content.config,
-          },
-        }).invokeChat(input)
+        if (!options.secrets || !providerProfile.content.secretRef) throw new Error('Provider credential is not configured')
+        return await options.secrets.withSecret(providerProfile.content.secretRef, {
+          caller: 'application.ai-gateway',
+          owner: { type: 'provider-profile', id: providerProfile.id },
+          purpose: 'provider.credentials',
+        }, async secret => {
+          const apiKey = secret.values.apiKey
+          if (!apiKey) throw new Error('Provider credential is missing apiKey')
+          return await createOpenAICompatibleGateway({
+            providerProfile: {
+              id: providerProfile.id,
+              providerExtensionId: providerProfile.content.providerExtensionId,
+              displayName: providerProfile.content.displayName,
+              config: providerProfile.content.config,
+              enabledModelIds: providerProfile.content.enabledModelIds,
+            },
+            modelId: input.model!.modelId,
+            apiKey,
+            fetch: resolveTransport(providerProfile.content),
+          }).invokeChat(input)
+        })
       }
 
       if (providerExtensionId === 'official.fake' || providerExtensionId === 'fake') {
@@ -85,24 +134,49 @@ export function createDocumentBackedAiGateway(options: {
   }
 }
 
+export async function listOpenAICompatibleModels(options: {
+  baseUrl?: JsonValue
+  apiKey: string
+  fetch?: typeof fetch
+}): Promise<string[]> {
+  const transport = options.fetch ?? fetch
+  const baseUrl = normalizeBaseUrl(typeof options.baseUrl === 'string' ? options.baseUrl : 'https://api.openai.com/v1')
+  const response = await requestProvider(transport, `${baseUrl}/models`, {
+    headers: { authorization: `Bearer ${options.apiKey}` },
+  })
+  const responseBody = await response.json() as JsonValue
+
+  if (!response.ok) throw new Error(readProviderErrorMessage(responseBody, response.status))
+  if (!isObject(responseBody) || !Array.isArray(responseBody.data)) {
+    throw new Error('Provider model list response is invalid')
+  }
+
+  return [...new Set(responseBody.data.flatMap(item => {
+    if (!isObject(item) || typeof item.id !== 'string') return []
+    const id = item.id.trim()
+    return id ? [id] : []
+  }))]
+}
+
 export function createOpenAICompatibleGateway(options: OpenAICompatibleGatewayOptions): AiGateway {
   const transport = options.fetch ?? fetch
-  const baseUrl = normalizeBaseUrl(options.providerAccount.config?.baseUrl ?? 'https://api.openai.com/v1')
+  const baseUrl = normalizeBaseUrl(options.providerProfile.config?.baseUrl ?? 'https://api.openai.com/v1')
 
   return {
     invokeChat: async input => {
-      assertChatModelProfile(options.providerAccount, options.modelProfile)
+      if (!options.providerProfile.enabledModelIds.includes(options.modelId)) {
+        throw new Error(`Provider model is not enabled: ${options.modelId}`)
+      }
 
-      const apiKey = resolveSecret(options.providerAccount.secretRefs?.apiKey)
       const payload = buildOpenAIChatPayload({
         messages: input.request.messages,
-        modelProfile: options.modelProfile,
+        modelId: options.modelId,
       })
-      const response = await transport(`${baseUrl}/chat/completions`, {
+      const response = await requestProvider(transport, `${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          authorization: `Bearer ${apiKey}`,
+          authorization: `Bearer ${options.apiKey}`,
         },
         body: JSON.stringify(payload),
       })
@@ -112,9 +186,44 @@ export function createOpenAICompatibleGateway(options: OpenAICompatibleGatewayOp
         throw new Error(readProviderErrorMessage(responseBody, response.status))
       }
 
-      return parseOpenAICompatibleChatResult(responseBody, options.modelProfile.providerModelId)
+      return parseOpenAICompatibleChatResult(responseBody, options.modelId)
     },
   }
+}
+
+async function requestProvider(transport: typeof fetch, url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await transport(url, init)
+  } catch (error) {
+    throw normalizeProviderNetworkError(error)
+  }
+}
+
+function normalizeProviderNetworkError(error: unknown): Error {
+  const causeCode = readCauseCode(error)
+  const normalized = causeCode === 'UND_ERR_CONNECT_TIMEOUT' || causeCode === 'ETIMEDOUT'
+    ? new Error('Provider network connection timed out')
+    : causeCode === 'ENOTFOUND' || causeCode === 'EAI_AGAIN'
+      ? new Error('Provider host could not be resolved')
+      : causeCode?.startsWith('CERT_') || causeCode === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE'
+        ? new Error('Provider TLS validation failed')
+        : new Error('Provider network request failed')
+  normalized.name = causeCode === 'UND_ERR_CONNECT_TIMEOUT' || causeCode === 'ETIMEDOUT'
+    ? 'ProviderConnectTimeoutError'
+    : causeCode === 'ENOTFOUND' || causeCode === 'EAI_AGAIN'
+      ? 'ProviderDnsError'
+      : causeCode?.startsWith('CERT_') || causeCode === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE'
+        ? 'ProviderTlsError'
+        : 'ProviderNetworkError'
+  return normalized
+}
+
+function readCauseCode(error: unknown): string | undefined {
+  if (!error || typeof error !== 'object' || !('cause' in error)) return undefined
+  const cause = Reflect.get(error, 'cause')
+  if (!cause || typeof cause !== 'object' || !('code' in cause)) return undefined
+  const code = Reflect.get(cause, 'code')
+  return typeof code === 'string' ? code : undefined
 }
 
 export function providerToGateway(provider: ApplicationProvider): AiGateway {
@@ -160,35 +269,10 @@ function gatewayToProvider(gateway: AiGateway): ApplicationProvider {
   }
 }
 
-function assertChatModelProfile(providerAccount: ProviderAccountConfig, modelProfile: ModelProfileConfig): void {
-  if (modelProfile.providerAccountId !== providerAccount.id) {
-    throw new Error(`ModelProfile ${modelProfile.id} does not belong to ProviderAccount ${providerAccount.id}`)
-  }
-
-  if (modelProfile.capability !== 'chat.completion') {
-    throw new Error(`Unsupported model capability: ${modelProfile.capability}`)
-  }
-}
-
 function normalizeBaseUrl(input: string): string {
   const trimmed = input.trim().replace(/\/+$/, '')
   if (trimmed === 'https://api.openai.com') return 'https://api.openai.com/v1'
   return trimmed
-}
-
-function resolveSecret(ref: string | undefined): string {
-  if (!ref) throw new Error('Provider account is missing apiKey secret ref')
-  if (ref.startsWith('plain:')) return ref.slice('plain:'.length)
-  if (ref.startsWith('env:')) {
-    const envName = ref.slice('env:'.length)
-    const value = process.env[envName]
-    if (!value) throw new Error(`Provider apiKey env var is not set: ${envName}`)
-    return value
-  }
-  if (ref.startsWith('secret:')) {
-    throw new Error('secret: refs are not implemented in AI Gateway M0')
-  }
-  throw new Error(`Unsupported secret ref: ${ref}`)
 }
 
 function readProviderErrorMessage(body: JsonValue, status: number): string {

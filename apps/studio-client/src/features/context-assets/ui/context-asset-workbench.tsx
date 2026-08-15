@@ -3,7 +3,7 @@ import type { ContextAssetNode } from '../../../entities/index.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import { FileTree } from '../../../shared/ui/file-tree/file-tree.js'
 import type { LongTextEditorMode } from '../../../shared/ui/long-text-editor/long-text-editor-model.js'
-import { flattenContextNodes, type ProjectionOrderEntry } from '../model/projection-order.js'
+import { flattenContextNodes, type ProjectionOrderEntry, type ProjectionZoneDefinition } from '../model/projection-order.js'
 import { ContextAssetDetail } from './context-asset-detail/context-asset-detail.js'
 import { ContextAssetDetailHeader } from './context-asset-detail-header/context-asset-detail-header.js'
 import { ContextAssetSearch } from './context-asset-search/context-asset-search.js'
@@ -26,7 +26,9 @@ export function ContextAssetExplorer(props: {
   projectionEntries?: ProjectionOrderEntry[]
   projectionModuleIds?: string[]
   selectedId?: string
+  selectedZoneId?: string
   t: Translator
+  zoneDefinitions?: ProjectionZoneDefinition[]
   variant?: 'tree' | 'flat'
   view?: (node: ContextAssetNode) => ProjectionView
   workspaceId: string
@@ -111,11 +113,14 @@ export function ContextAssetProjectionExplorer(props: {
   nodes: ContextAssetNode[]
   query: string
   selectedId?: string
+  selectedZoneId?: string
   t: Translator
+  zoneDefinitions?: ProjectionZoneDefinition[]
   onQueryChange(query: string): void
   onReorder(draggedId: string, targetId: string): void
   onReorderZone(draggedZoneId: string, targetZoneId: string): void
   onSelectId(id: string): void
+  onSelectZone?(zoneId: string): void
 }) {
   return (
     <ContextAssetSearch
@@ -130,8 +135,11 @@ export function ContextAssetProjectionExplorer(props: {
         onReorder={props.onReorder}
         onReorderZone={props.onReorderZone}
         onSelect={props.onSelectId}
+        onSelectZone={props.onSelectZone}
         selectedId={props.selectedId}
+        selectedZoneId={props.selectedZoneId}
         t={props.t}
+        zoneDefinitions={props.zoneDefinitions}
       />
     </ContextAssetSearch>
   )

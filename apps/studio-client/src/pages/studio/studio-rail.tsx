@@ -33,6 +33,7 @@ export function StudioRail(props: StudioRailProps) {
   return (
     <nav className={styles.studioRail} aria-label={props.t('rail.label')} data-loom-component="utility-rail">
       <RailTab activePanel={props.activePanel} label={modelLabel} panel="model" status={modelStatus} t={props.t} togglePanel={props.togglePanel} />
+      <RailTab activePanel={props.activePanel} panel="agent" t={props.t} togglePanel={props.togglePanel} />
       <span className={`loom-divider ${styles.railDivider}`} aria-hidden="true" />
       <RailTab activePanel={props.activePanel} panel="character" t={props.t} togglePanel={props.togglePanel} />
       <RailTab activePanel={props.activePanel} panel="preset" t={props.t} togglePanel={props.togglePanel} />

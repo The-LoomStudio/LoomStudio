@@ -303,7 +303,8 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
 }
 
 function isReadOnlyDetailNode(node: ContextAssetNode): boolean {
-  return node.category === 'runtime'
+  return node.readOnly === true
+    || node.category === 'runtime'
     || node.category === 'history'
     || node.projection?.sourceKind === 'virtual'
     || node.id.startsWith('history-')

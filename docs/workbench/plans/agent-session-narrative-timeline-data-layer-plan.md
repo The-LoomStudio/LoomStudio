@@ -1,6 +1,6 @@
 # Agent Session / Narrative Timeline 数据层实施计划
 
-> **状态**：Backend Complete / Client Migration Pending
+> **状态**：Backend Complete / Client Agent-only Runtime Complete
 > **日期**：2026-08-12
 > **范围**：重建 AIRP 的会话数据层，将旧 `Session` 拆分为 Narrative Timeline 与 Agent Session，并迁移 Document、Application Runtime、RPC 和 Client 的权威数据链。
 > **事实边界**：后端 Store、Application Runtime、Provider 调用和 Server RPC 已完成单轨切换；旧 Session / Transcript / Run 后端链已删除。Studio Client 迁移明确留给独立前端分支。
@@ -99,7 +99,7 @@ read Card
 ```text
 cardSourceVersionId
 cardSnapshot
-agentRuntimeProfileId?
+agentProfileId?
 promptResourceIds?
 title?
 activeBranchId
@@ -317,7 +317,7 @@ Agent Session 逻辑上拥有 Message 历史，物理上不把全部 Message 内
 
 ```ts
 type AgentSessionContent = {
-  agentPresetId: string
+  agentProfileId: string
   title?: string
   headMessageId?: string
   messageCount: number
@@ -328,10 +328,9 @@ type AgentSessionContent = {
 
 规则：
 
-- `agentPresetId` 表达 Agent 身份，不保存本机 Provider、Model、Secret 或 Timeline；
-- 正式实施 Agent Session 前必须先确认最小 Agent Preset identity；
-- 不允许用旧 `AgentRuntimeProfile` 冒充最终 Agent Preset；
-- Model / Provider / Permission 属于 Local Binding 或 invocation input；
+- `agentProfileId` 表达本次会话使用的运行配置，不保存 Timeline；
+- Agent Profile 通过 `presetId` 与 `{ providerProfileId, modelId }` 解析提示词和模型，Secret 仍只由 Provider Profile 的受控引用持有；
+- invocation input 不再接受第二套 Local Binding 或裸模型覆盖；
 - `headMessageId` 只指向本 Session 的最后一条 Message；
 - Agent Session 首版是线性历史，不建立 Agent Session Branch；
 - 删除 Agent Session 不删除 Narrative Node；Narrative provenance 可以变成不可解析的可选引用。
@@ -638,7 +637,7 @@ type SubmitTurnResult = {
 
 1. 将 `session-timeline-data-model-v0.md` 中持久化 Agent Step Tree 的描述改为 Agent Session + Agent Message；
 2. 更新 `agent-model-v0.md`、`agent-runtime-loop-v0.md`、`airp-runtime-model-v0.md` 和 Application README 中的旧 Step Document 摘要；
-3. 明确最小 Agent Preset identity 以及 `AgentSession.agentPresetId` 的来源；
+3. 明确 Agent Profile identity 以及 `AgentSession.agentProfileId` 的来源；
 4. 明确 Card Opening 从 role-based entry 到 Narrative body template 的目标形态；
 5. 明确首版继续采用 `Card.promptResourceIds -> Timeline.promptResourceIds`，不在本阶段扩展 Card Manifest relation graph；
 6. 将本计划与 `agent-session-chat-message-foundation-plan.md` 的阶段关系写清楚，避免两份计划重复定义相反 Schema；
@@ -734,7 +733,7 @@ type SubmitTurnResult = {
 
 1. 修改 `submitTurn` 输入为 `agentSessionId + optional timeline target`；
 2. 用户输入通过 Agent Store 写入 `agent_messages`；
-3. PromptBuild 从 Agent Session、Timeline、Resource 和 Local Binding 重新构造 payload；
+3. PromptBuild 从 Agent Session、Timeline、Resource 和 Agent Profile 重新构造 payload；
 4. Provider assistant message 通过 Agent Store 写入 Agent Session；
 5. 默认 AIRP Runtime 在需要时显式调用 Narrative append；
 6. Narrative Node 通过 Narrative Store 提交，source 关联 Agent Message、runId 和 Changeset；
@@ -747,7 +746,7 @@ type SubmitTurnResult = {
 最终后端边界：
 
 - `invokeAgentTurn` 使用 Agent Session 历史、可选 Narrative 最近窗口及 Timeline Prompt Resource 链构造 canonical request；
-- Agent Session 必须引用真实 `airp.agentPreset`；本机模型通过可选 `airp.agentLocalBinding` 解析；
+- Agent Session 必须引用真实 `airp.agentProfile`；Profile 直接绑定 `PromptResource(resourceKind=preset)` 与已启用的 Provider Model；
 - Provider 成功后，本轮 user / assistant Message 才会持久化；Provider 失败不留下半轮 Message；
 - `narrativeTarget.commit = true` 时，Agent Message 与 Narrative Node 使用同一个 Data Engine transaction 和 Changeset；
 - `narrativeTarget.commit = false` 或未提供 target 时，只记录 Agent 对话；
@@ -756,7 +755,7 @@ type SubmitTurnResult = {
 
 ### Phase 6：RPC 与 Client 迁移
 
-状态：**Server RPC Complete / Client Pending**。
+状态：**Agent-only Runtime Complete**。Client 已切换到 Narrative Timeline / Branch / Node 与 Agent Profile；Agent Composer 已移除本地 Mock，能够按需创建独立 Agent Session，并通过真实 Provider 完成线性多轮对话。Session 列表、刷新后恢复、流式、取消、工具与 Narrative commit UI 仍属后续工作。
 
 目标：Client 不再依赖旧 Session 与镜像 Transcript。
 
@@ -772,11 +771,11 @@ type SubmitTurnResult = {
 8. PromptBuild Inspector 改用新 invocation / trace 引用；
 9. 完成客户端路由、空状态和删除流程迁移。
 
-验证检查点：浏览器刷新后能够恢复当前 Timeline Branch 与 Agent Session；Timeline 与 Agent 面板不再展示同一份镜像数组。
+当前验证边界：Agent Composer 与 Narrative Composer 使用独立 runtime 和异步 scope；Agent-only 调用不传 Narrative target，成功结果直接应用返回的 user / assistant Message，Provider 失败不留下半轮历史。刷新后恢复 Agent Session 尚未实现，因此原“浏览器刷新后恢复”检查点继续延期。
 
 ### Phase 7：删除旧 M0 数据链
 
-状态：**Backend Complete / Client Pending**。
+状态：**Backend Complete / Client Agent-only Runtime Complete**。
 
 目标：完成单轨切换。
 
@@ -909,7 +908,7 @@ tests/integration/studio-server/persistence-rpc.test.ts
 优先测试：
 
 ```text
-apps/studio-client/src/features/session-runtime/model/use-session-runtime.test.ts
+apps/studio-client/src/features/narrative-runtime/model/use-narrative-runtime.test.ts
 apps/studio-client/src/app/use-studio-state.test.ts
 apps/studio-client/src/widgets/narrative-canvas/narrative-canvas.test.ts
 apps/studio-client/src/shared/ui/conversation-navigator/conversation-navigator-model.test.ts

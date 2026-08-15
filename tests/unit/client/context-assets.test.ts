@@ -4,9 +4,9 @@ import {
   duplicateContextAssetNode,
 } from '../../../apps/studio-client/src/features/context-assets/model/tree-ops.js'
 import { commitContextAssetMutation } from '../../../apps/studio-client/src/features/context-assets/model/use-context-assets.js'
-import { normalizeContextAssets } from '../../../apps/studio-client/src/features/context-assets/model/context-asset-normalization.js'
-import { DemoData } from '../../../apps/studio-client/src/app/demo-data.js'
-import type { ContextAssetNode } from '../../../apps/studio-client/src/entities/index.js'
+import { buildProjectionOrder } from '../../../apps/studio-client/src/features/context-assets/model/projection-order.js'
+import { readPromptResourceWorkbenchRoot } from '../../../apps/studio-client/src/features/context-assets/model/prompt-resource-view.js'
+import type { ContextAssetNode, PromptResource } from '../../../apps/studio-client/src/entities/index.js'
 import { describe, expect, it } from 'vitest'
 
 describe('studio client context asset helpers', () => {
@@ -79,17 +79,6 @@ describe('studio client context asset helpers', () => {
     expect(findNode(result.nodes, 'history-turn')).toBeDefined()
   })
 
-  it('keeps demo prompt-facing entries on capability-shaped data', () => {
-    const entries = flattenNodes(DemoData.contextAssets).filter(node => node.kind === 'entry' && node.capabilities?.projection)
-    const normalizedEntries = flattenNodes(normalizeContextAssets(DemoData.contextAssets)).filter(node => node.kind === 'entry' && node.capabilities?.projection)
-
-    expect(entries.length).toBeGreaterThan(0)
-    expect(entries.every(node => node.projection === undefined)).toBe(true)
-    expect(normalizedEntries.every(node => node.projection !== undefined)).toBe(true)
-    expect(entries.map(node => node.capabilities?.projection?.zoneId)).toContain('setting.stable')
-    expect(entries.map(node => node.capabilities?.projection?.zoneId)).toContain('preset.system')
-  })
-
   it('does not apply or record a failed resource mutation', async () => {
     const applied: string[] = []
     const recorded: string[] = []
@@ -103,6 +92,47 @@ describe('studio client context asset helpers', () => {
 
     expect(applied).toEqual([])
     expect(recorded).toEqual([])
+  })
+
+  it('projects backend capability fields into the Prompt Resource workbench view', () => {
+    const resource: PromptResource = {
+      id: 'prompt-resource.official.test',
+      version: 1,
+      resourceKind: 'preset',
+      origin: { kind: 'builtin', key: 'test' },
+      createdAt: '2026-08-15T00:00:00.000Z',
+      updatedAt: '2026-08-15T00:00:00.000Z',
+      rootNode: {
+        id: 'preset-root',
+        label: 'Assistant',
+        category: 'preset',
+        kind: 'module',
+        children: [{
+          id: 'assistant-entry',
+          label: 'Assistant behavior',
+          kind: 'entry',
+          body: 'Answer clearly.',
+          capabilities: {
+            lifecycle: { lifecycle: 'always' },
+            projection: {
+              zoneId: 'preset.system',
+              slotKey: 'preset:preset-root@preset.system',
+              entryOrderHint: 10,
+            },
+          },
+        }],
+      },
+    }
+
+    const root = readPromptResourceWorkbenchRoot(resource)
+    const entries = buildProjectionOrder([root])
+
+    expect(entries).toHaveLength(1)
+    expect(entries[0]).toMatchObject({
+      zoneId: 'preset.system',
+      slotKey: 'preset:preset-root@preset.system',
+      node: { id: 'assistant-entry', readOnly: true },
+    })
   })
 })
 
@@ -187,10 +217,6 @@ function findNode(nodes: ContextAssetNode[], id: string): ContextAssetNode | und
   }
 
   return undefined
-}
-
-function flattenNodes(nodes: ContextAssetNode[]): ContextAssetNode[] {
-  return nodes.flatMap(node => [node, ...flattenNodes(node.children ?? [])])
 }
 
 function idSequence(...ids: string[]): () => string {

@@ -1,14 +1,21 @@
 export { applicationDocumentTypes } from './document-types.js'
 export { createApplicationRuntime } from './runtime.js'
 export {
+  createPromptResource,
   createPromptResourceAsset,
+  deletePromptResource,
   deletePromptResourceAsset,
+  duplicatePromptResource,
   exportCardArtifact,
+  exportPromptResourceArtifact,
   getImportBundle,
   getPromptResource,
   importCardBundle,
+  importPromptResourceArtifact,
+  isPromptResourceArtifact,
   isCardBundleArtifact,
   listCardPromptResources,
+  listPromptResources,
   movePromptResourceAsset,
   normalizeCardBundleArtifact,
   readPromptResourceInputs,
@@ -55,6 +62,7 @@ export type {
   SourceNode,
   ZoneNode,
 } from './prompt-builder.js'
+export type { PromptBuildTrace } from './prompt-build-pipeline.js'
 export type {
   ActivationCondition,
   ActivationEvaluation,
@@ -73,6 +81,8 @@ export type {
   CardBundleImportManifest,
   PromptResourceNode,
   PromptResourceContent,
+  PromptResourceArtifact,
+  PromptResourceKind,
   CardBundleSourceArtifactRef,
   CardBundleSourceBinding,
   PromptResourceCompositionCapabilities,

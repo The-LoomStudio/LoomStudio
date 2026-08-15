@@ -36,36 +36,53 @@ window.addEventListener('unhandledrejection', event => {
   })
 })
 
-systemLogger.info('Studio client started', { event: 'client.started' })
-
-if (root) {
-  const studio = <App clientLogs={clientLogs} transportLogger={rootLogger.child('transport.rpc')} />
-  createRoot(root).render(
-    <AppErrorBoundary onError={(error, info) => systemLogger.error('React render failed', {
-      event: 'client.react.render_failed',
-      error,
-      data: { componentStack: info.componentStack ?? null },
-    })}>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/studio/chat/:sessionId?/branch/:branchId" element={studio} />
-          <Route path="/studio/chat/:sessionId?" element={studio} />
-          <Route path="/studio/characters/:cardId?" element={studio} />
-          <Route path="/studio/resources/:cardId?/:assetId?" element={studio} />
-          <Route path="/studio/presets/:cardId?/:assetId?" element={studio} />
-          <Route path="/studio/models" element={studio} />
-          <Route path="/studio/debug" element={studio} />
-          <Route path="/studio/logs" element={studio} />
-          <Route path="/studio/settings" element={studio} />
-          <Route path="*" element={<NotFoundPage />} />
-        </Routes>
-      </BrowserRouter>
-    </AppErrorBoundary>,
-  )
-} else {
+if (!root) {
   systemLogger.error('Studio client root element missing', {
     event: 'client.root.missing',
   })
+} else {
+  void startStudioClient(root)
+}
+
+async function startStudioClient(rootElement: HTMLElement): Promise<void> {
+  try {
+    const response = await fetch('/auth/session', {
+      method: 'POST',
+      credentials: 'same-origin',
+    })
+    if (!response.ok) throw new Error(`Application session bootstrap failed (${response.status})`)
+
+    systemLogger.info('Studio client started', { event: 'client.started' })
+    const studio = <App clientLogs={clientLogs} transportLogger={rootLogger.child('transport.rpc')} />
+    createRoot(rootElement).render(
+      <AppErrorBoundary onError={(error, info) => systemLogger.error('React render failed', {
+        event: 'client.react.render_failed',
+        error,
+        data: { componentStack: info.componentStack ?? null },
+      })}>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/studio/chat/:sessionId?/branch/:branchId" element={studio} />
+            <Route path="/studio/chat/:sessionId?" element={studio} />
+            <Route path="/studio/characters/:cardId?" element={studio} />
+            <Route path="/studio/resources/:cardId?/:assetId?" element={studio} />
+            <Route path="/studio/presets/:cardId?/:assetId?" element={studio} />
+            <Route path="/studio/models" element={studio} />
+            <Route path="/studio/debug" element={studio} />
+            <Route path="/studio/logs" element={studio} />
+            <Route path="/studio/settings" element={studio} />
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </BrowserRouter>
+      </AppErrorBoundary>,
+    )
+  } catch (error) {
+    systemLogger.error('Studio client failed to start', {
+      event: 'client.start.failed',
+      error,
+    })
+    rootElement.textContent = 'Studio client failed to start.'
+  }
 }
 
 window.addEventListener('pagehide', () => {

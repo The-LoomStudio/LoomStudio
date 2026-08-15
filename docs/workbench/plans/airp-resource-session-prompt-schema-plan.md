@@ -1,6 +1,6 @@
 # AIRP 资源、Session 与 Prompt Schema 演进计划
 
-> **状态**：Draft / Discussion
+> **状态**：Historical / Superseded
 > **目的**：统一记录 Card/Resource、Session/Branch 与 PromptBuild Zone 三组已经互相牵制的数据模型调整，并给出渐进实施与验证顺序。
 > **当前阶段**：只收束目标模型和迁移边界；本文不是已实现 Architecture，也不批准立即进行大规模代码重写。
 > **2026-07-29 替代说明**：本文中的 Zone Schema 历史与已完成阶段继续保留；Card、PromptWorkspace、Session Resource 关系及后续工程实施已由 [`card-resource-manifest-migration-plan.md`](card-resource-manifest-migration-plan.md) 替代。后续不得再从本文恢复 eager fork、Resource Mount 或 Workspace 运行主链。

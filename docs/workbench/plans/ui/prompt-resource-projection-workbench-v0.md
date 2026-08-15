@@ -1,9 +1,9 @@
 # Prompt Resource Projection Workbench v0
 
-> **状态**：Planned / Frontend First / Backend Follow-up Required
+> **状态**：Frontend Foundation Complete / Backend Contract Pending
 > **日期**：2026-08-15
 > **主题**：收束 Prompt Resource 的 Source Tree、资源内投影、Preset 主排序、批量编辑与 Folder/Zone 有效启用合同。
-> **计划边界**：本文记录已经接受的交互方向及前后端依赖。当前前端阶段不修改 PromptBuild、Document Schema 或 RPC；后端合同完成前，不把前端推导状态描述为权威运行结果。
+> **计划边界**：Resource Tree、Projection Runlist、Preset 排序与批量编辑的前端基础已经落地。下一阶段只收束 PromptBuild、Document Schema 与 RPC 的后端合同；后端完成前，不把前端推导状态描述为权威运行结果。
 
 相关文档：
 

@@ -110,7 +110,6 @@ describe('studio rpc router', () => {
 
     await router.call('application.invokeAgentTurn', {
       agentSessionId: 'agent-session-1',
-      localBindingId: 'local-binding-1',
       input: 'Continue.',
       narrativeTarget: {
         timelineId: 'timeline-1',
@@ -121,7 +120,6 @@ describe('studio rpc router', () => {
 
     expect(receivedInput).toEqual({
       agentSessionId: 'agent-session-1',
-      localBindingId: 'local-binding-1',
       input: 'Continue.',
       narrativeTarget: {
         timelineId: 'timeline-1',
@@ -186,12 +184,12 @@ describe('studio rpc router', () => {
     } as unknown as ApplicationRuntime
     const router = createStudioRpcRouter({ applicationRuntime, kernel: createKernelCaller() })
 
-    await router.call('application.createAgentSession', { agentPresetId: 'preset-1' }, context)
+    await router.call('application.createAgentSession', { agentProfileId: 'profile-1' }, context)
 
     expect(receivedContext).toEqual(context)
   })
 
-  it('passes rpc call context into bundle import and card manifest mutations', async () => {
+  it('passes rpc call context into bundle and prompt resource mutations', async () => {
     const received: unknown[] = []
     const applicationRuntime = {
       importCardBundle: async (_input: unknown, requestContext?: unknown) => {
@@ -201,6 +199,10 @@ describe('studio rpc router', () => {
       updateCardPromptResources: async (_input: unknown, requestContext?: unknown) => {
         received.push(requestContext)
         return { card: { id: 'card-1' }, mutation: { changesetId: 'chg-1' } }
+      },
+      updatePresetSettings: async (_input: unknown, requestContext?: unknown) => {
+        received.push(requestContext)
+        return { resource: { id: 'preset-1' }, mutation: { changesetId: 'chg-2' } }
       },
     } as unknown as ApplicationRuntime
     const router = createStudioRpcRouter({
@@ -221,8 +223,12 @@ describe('studio rpc router', () => {
       cardId: 'card-1',
       promptResourceIds: ['resource-1'],
     }, context)
+    await router.call('application.updatePresetSettings', {
+      presetId: 'preset-1',
+      linkedSettingIds: ['setting-1'],
+    }, context)
 
-    expect(received).toEqual([context, context])
+    expect(received).toEqual([context, context, context])
   })
 })
 

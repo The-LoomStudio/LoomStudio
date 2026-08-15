@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { toClientJsonObject } from '../../../shared/api/client-json-object.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
-import type { Card, JsonObject } from '../../../entities/index.js'
+import type { Card, CardMedia, CardSummary, JsonObject } from '../../../entities/index.js'
 
 type UseCardsInput = {
   api: StudioApi
@@ -17,9 +17,10 @@ type UseCardsInput = {
 }
 
 export function useCards(input: UseCardsInput) {
-  const [cards, setCards] = useState<Card[]>([])
+  const [cards, setCards] = useState<CardSummary[]>([])
   const [selectedCardId, setSelectedCardId] = useState<string>()
   const selectedCard = cards.find(card => card.id === selectedCardId)
+  const [selectedCardDetails, setSelectedCardDetails] = useState<Card>()
   const [cardDraft, setCardDraft] = useState({
     name: '',
     userName: '',
@@ -34,14 +35,34 @@ export function useCards(input: UseCardsInput) {
     })
   }, [selectedCard?.id, selectedCard?.name, selectedCard?.userName, selectedCard?.description])
 
-  async function refreshCards() {
-    const result = await input.api.cards.list()
-    setCards(result.cards)
-    setSelectedCardId(current => {
-      if (current && result.cards.some(card => card.id === current)) return current
-      return result.cards.find(card => card.name === input.initialCardName)?.id ?? result.cards[0]?.id
+  useEffect(() => {
+    if (!selectedCardId) {
+      setSelectedCardDetails(undefined)
+      return
+    }
+    let current = true
+    void input.api.cards.get(selectedCardId).then(result => {
+      if (current) setSelectedCardDetails(result.card)
+    }).catch(() => {
+      if (current) setSelectedCardDetails(undefined)
     })
-    return result.cards
+    return () => { current = false }
+  }, [input.api, selectedCardId])
+
+  async function refreshCards() {
+    const cards: CardSummary[] = []
+    let cursor: string | undefined
+    do {
+      const result = await input.api.cards.list({ cursor, limit: 100 })
+      cards.push(...result.cards)
+      cursor = result.nextCursor
+    } while (cursor)
+    setCards(cards)
+    setSelectedCardId(current => {
+      if (current && cards.some(card => card.id === current)) return current
+      return cards.find(card => card.name === input.initialCardName)?.id ?? cards[0]?.id
+    })
+    return cards
   }
 
   async function createCard() {
@@ -73,6 +94,7 @@ export function useCards(input: UseCardsInput) {
         changesetId: result.mutation.changesetId,
         anchor: { documentId: result.card.id },
       })
+      setSelectedCardDetails(result.card)
       await refreshCards()
       setSelectedCardId(result.card.id)
     })
@@ -107,6 +129,87 @@ export function useCards(input: UseCardsInput) {
     })
   }
 
+  async function updateCardMedia(cardId: string, target: 'avatar' | 'background', file: File) {
+    await input.runAction(async () => {
+      const upload = await fetch('/assets', {
+        method: 'POST',
+        headers: {
+          'content-type': file.type || 'application/octet-stream',
+          'x-loom-asset-kind': 'image',
+        },
+        body: file,
+      })
+      const responseText = await upload.text()
+      const result = readAssetUploadResponse(responseText)
+      const assetId = result.asset?.id
+      if (!upload.ok || typeof assetId !== 'string') {
+        throw new Error(typeof result.error?.message === 'string'
+          ? result.error.message
+          : `Media upload failed (${upload.status})`)
+      }
+      const current = await input.api.cards.get(cardId)
+      const media: CardMedia = {
+        ...current.card.media,
+        ...(target === 'avatar' ? { avatarAssetId: assetId } : { coverAssetId: assetId }),
+      }
+      const updated = await input.api.cards.update(toClientJsonObject({ cardId, media }))
+      input.recordEdit({
+        label: input.t('history.card.update'),
+        changesetId: updated.mutation.changesetId,
+        anchor: { documentId: cardId },
+      })
+      setSelectedCardDetails(updated.card)
+      await refreshCards()
+      setSelectedCardId(cardId)
+    })
+  }
+
+  async function importCards(files: File[]) {
+    if (files.length === 0) return
+    await input.runAction(async () => {
+      let importedCardId: string | undefined
+      const failures: string[] = []
+      for (const file of files) {
+        try {
+          const loomCard = file.name.toLowerCase().endsWith('.loomcard')
+          const response = await fetch(loomCard ? '/cards/import/loomcard' : '/cards/import/png', {
+            method: 'POST',
+            headers: { 'content-type': loomCard ? 'application/vnd.loom.card+zip' : 'image/png' },
+            body: file,
+          })
+          const result = readJsonResponse(await response.text()) as { card?: { id?: unknown }; error?: { message?: unknown } }
+          if (!response.ok || typeof result.card?.id !== 'string') {
+            throw new Error(typeof result.error?.message === 'string' ? result.error.message : `Card import failed (${response.status})`)
+          }
+          importedCardId = result.card.id
+        } catch (error) {
+          failures.push(`${file.name}: ${error instanceof Error ? error.message : String(error)}`)
+        }
+      }
+      await refreshCards()
+      if (importedCardId) setSelectedCardId(importedCardId)
+      if (failures.length > 0) throw new Error(failures.join('\n'))
+    })
+  }
+
+  async function exportCard(card: CardSummary, format: 'png' | 'polyglot' | 'loomcard') {
+    await input.runAction(async () => {
+      const suffix = format === 'png' ? 'export.png' : format === 'polyglot' ? 'export.polyglot.png' : 'export.loomcard'
+      const response = await fetch(`/cards/${encodeURIComponent(card.id)}/${suffix}`)
+      if (!response.ok) {
+        const result = readJsonResponse(await response.text()) as { error?: { message?: unknown } }
+        throw new Error(typeof result.error?.message === 'string' ? result.error.message : `Card export failed (${response.status})`)
+      }
+      const url = URL.createObjectURL(await response.blob())
+      const anchor = document.createElement('a')
+      anchor.href = url
+      const extension = format === 'loomcard' ? '.loomcard' : format === 'polyglot' ? '.polyglot.png' : '.png'
+      anchor.download = `${sanitizeFileName(card.name) || 'loom-card'}${extension}`
+      anchor.click()
+      URL.revokeObjectURL(url)
+    })
+  }
+
   return {
     cards,
     selectedCardId,
@@ -114,12 +217,29 @@ export function useCards(input: UseCardsInput) {
     cardDraft,
     setCardDraft,
     selectedCard,
+    selectedCardDetails,
     refreshCards,
     createCard,
     updateCard,
     deleteCard,
     deleteCards,
+    updateCardMedia,
+    importCards,
+    exportCard,
   }
+}
+
+function readAssetUploadResponse(value: string): { asset?: { id?: unknown }; error?: { message?: unknown } } {
+  return readJsonResponse(value) as { asset?: { id?: unknown }; error?: { message?: unknown } }
+}
+
+function readJsonResponse(value: string): unknown {
+  if (!value) return {}
+  try { return JSON.parse(value) } catch { return {} }
+}
+
+function sanitizeFileName(value: string): string {
+  return value.trim().replace(/[\\/:*?"<>|]/g, '-')
 }
 
 export function createBlankCardInput(t: Translator): JsonObject {

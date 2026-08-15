@@ -1,10 +1,148 @@
-import { applicationDocumentTypes, createApplicationRuntime, type CardBundleArtifact } from '@loom-studio/application-runtime'
+import { applicationDocumentTypes, createApplicationRuntime, readPromptResourceInputs, type CardBundleArtifact } from '@loom-studio/application-runtime'
 import { createInMemoryDocumentStore } from '@loom-studio/document-store'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 describe('application runtime card bundle integration', () => {
+  it('initializes the official assistant Prompt resources and keeps the built-ins read-only', async () => {
+    const runtime = createApplicationRuntime({ documents: createInMemoryDocumentStore() })
+
+    await runtime.initialize()
+    const listed = await runtime.listPromptResources()
+    const preset = listed.resources.find(resource => resource.origin?.key === 'loom-assistant-preset')
+    const setting = listed.resources.find(resource => resource.origin?.key === 'loom-knowledge-setting')
+
+    expect(preset).toMatchObject({
+      resourceKind: 'preset',
+      rootNode: { label: 'Loom Studio 问答助手' },
+      linkedSettingIds: [setting!.id],
+      historyPolicy: 'persistent',
+    })
+    expect(setting).toMatchObject({ resourceKind: 'setting', rootNode: { label: 'Loom Studio 基础知识' } })
+    await expect(runtime.updatePromptResourceAsset({
+      resourceId: preset!.id,
+      assetId: preset!.rootNode.id,
+      label: 'Changed',
+    })).rejects.toThrow('read-only')
+  })
+
+  it('migrates the legacy official Agent Preset reference without clearing other documents', async () => {
+    const documents = createInMemoryDocumentStore()
+    await documents.write({
+      id: 'agent-preset.official.loom-assistant',
+      type: 'airp.agentPreset',
+      content: {
+        name: 'Legacy Assistant',
+        instructions: 'Legacy.',
+        promptResourceIds: [],
+        historyPolicy: 'persistent',
+        createdAt: '2026-08-15T00:00:00.000Z',
+        updatedAt: '2026-08-15T00:00:00.000Z',
+      },
+    })
+    await documents.write({
+      id: 'agent-profile-legacy',
+      type: applicationDocumentTypes.agentProfile,
+      content: {
+        name: 'Legacy Profile',
+        presetId: 'agent-preset.official.loom-assistant',
+        model: { providerProfileId: 'provider-existing', modelId: 'model-existing' },
+        createdAt: '2026-08-15T00:00:00.000Z',
+        updatedAt: '2026-08-15T00:00:00.000Z',
+      },
+    })
+    const runtime = createApplicationRuntime({ documents })
+
+    await runtime.initialize()
+
+    await expect(runtime.getAgentProfile({ agentProfileId: 'agent-profile-legacy' })).resolves.toMatchObject({
+      agentProfile: { presetId: 'prompt-resource.official.loom-assistant' },
+    })
+    await expect(documents.get('agent-preset.official.loom-assistant')).resolves.toBeNull()
+  })
+
+  it('creates, duplicates, exports, and imports independent Prompt resources', async () => {
+    const runtime = createApplicationRuntime({ documents: createInMemoryDocumentStore() })
+    const created = await runtime.createPromptResource({ resourceKind: 'setting', name: 'Guide Knowledge' })
+    const entry = await runtime.createPromptResourceAsset({
+      resourceId: created.resource.id,
+      targetAssetId: created.resource.rootNode.id,
+      position: 'inside',
+      asset: { id: 'imported-entry', label: 'Guide', kind: 'entry', body: 'Helpful knowledge.' },
+    })
+    const createdEntry = entry.resource.rootNode.children?.[0]
+
+    expect(createdEntry?.capabilities?.projection).toMatchObject({
+      zoneId: 'setting.stable',
+      entryOrderHint: 10,
+    })
+
+    const duplicated = await runtime.duplicatePromptResource({ resourceId: created.resource.id })
+    expect(duplicated.resource.rootNode.id).not.toBe(created.resource.rootNode.id)
+    expect(duplicated.resource.rootNode.children?.[0]?.id).not.toBe('imported-entry')
+
+    const exported = await runtime.exportPromptResource({ resourceId: duplicated.resource.id })
+    const imported = await runtime.importPromptResource({ artifact: exported.artifact })
+    expect(imported.resource.rootNode.id).not.toBe(duplicated.resource.rootNode.id)
+    expect(imported.resource.rootNode.label).toBe('Guide Knowledge Copy')
+  })
+
+  it('binds only Setting resources to a Preset through an explicit relation', async () => {
+    const runtime = createApplicationRuntime({ documents: createInMemoryDocumentStore() })
+    const preset = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Guide Preset' })
+    const setting = await runtime.createPromptResource({ resourceKind: 'setting', name: 'Guide Knowledge' })
+
+    const updated = await runtime.updatePresetSettings({
+      presetId: preset.resource.id,
+      linkedSettingIds: [setting.resource.id],
+    })
+
+    expect(updated.resource.linkedSettingIds).toEqual([setting.resource.id])
+    await expect(runtime.updatePresetSettings({
+      presetId: preset.resource.id,
+      linkedSettingIds: [preset.resource.id],
+    })).rejects.toThrow('can only link Setting resources')
+  })
+
+  it('applies Folder effective enabled and preserves Entry lifecycle', async () => {
+    const documents = createInMemoryDocumentStore()
+    const runtime = createApplicationRuntime({ documents })
+    const created = await runtime.createPromptResource({ resourceKind: 'setting', name: 'Conditional Knowledge' })
+    const withFolder = await runtime.createPromptResourceAsset({
+      resourceId: created.resource.id,
+      targetAssetId: created.resource.rootNode.id,
+      position: 'inside',
+      asset: { id: 'folder-1', label: 'Disabled Folder', kind: 'folder', enabled: false },
+    })
+    await runtime.createPromptResourceAsset({
+      resourceId: created.resource.id,
+      targetAssetId: withFolder.resource.rootNode.children![0]!.id,
+      position: 'inside',
+      asset: {
+        id: 'entry-1',
+        label: 'Fresh Entry',
+        kind: 'entry',
+        body: 'Only when the folder is enabled.',
+        capabilities: { lifecycle: { lifecycle: 'fresh' } },
+      },
+    })
+
+    await expect(readPromptResourceInputs({
+      documents,
+      resourceIds: [created.resource.id],
+      macroContext: { user: 'User' },
+    })).resolves.toMatchObject({ contributions: [] })
+
+    await runtime.updatePromptResourceAsset({ resourceId: created.resource.id, assetId: 'folder-1', enabled: true })
+    const enabled = await readPromptResourceInputs({
+      documents,
+      resourceIds: [created.resource.id],
+      macroContext: { user: 'User' },
+    })
+    expect(enabled.contributions[0]?.capabilities.lifecycle).toEqual({ lifecycle: 'fresh' })
+  })
+
   it('preserves exact raw JSON through the Source Artifact capability', async () => {
     const raw = await readFile(join(process.cwd(), 'packages/application-runtime/fixtures/workspaces/loom-city-v0.json'), 'utf8')
     let preserved: Uint8Array | undefined

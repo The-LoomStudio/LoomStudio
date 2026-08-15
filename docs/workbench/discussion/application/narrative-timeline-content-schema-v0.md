@@ -1,9 +1,9 @@
 # Narrative Timeline Content Schema v0
 
-> **状态**：Approved Direction / Implementation Pending
+> **状态**：Core Node Implemented / Semantic Projection Pending
 > **日期**：2026-08-11
 > **主题**：Narrative Timeline 的正文节点、Loom Markdown source、Semantic Part、派生 Projection 与多目标投影边界。
-> **事实边界**：本文描述目标 Schema。当前 M0 仍使用旧 `Session`、`NarrativeEntryContent.role` 与纯字符串 `content`。
+> **事实边界**：Narrative Timeline / Branch / Node 与 `loom-markdown.v1` raw source 已实现；Semantic Part、派生 Projection 与作者自定义 Renderer 仍是目标设计。
 
 ---
 

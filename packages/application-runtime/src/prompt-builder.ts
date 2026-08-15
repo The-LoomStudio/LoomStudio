@@ -424,7 +424,7 @@ function mergeByKey<T>(baseItems: T[], patchItems: T[], readKey: (item: T) => st
 
   for (const item of patchItems) {
     const key = readKey(item)
-    if (!itemsByKey.has(key)) itemsByKey.set(key, item)
+    itemsByKey.set(key, item)
   }
 
   return [...itemsByKey.values()]

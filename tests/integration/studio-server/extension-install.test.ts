@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createStudioServer } from '../../../apps/studio-server/src/main.js'
 import { resolveLoomStudioLocalPaths } from '../../../apps/studio-server/src/local-paths.js'
-import { callRpc } from './helpers.js'
+import { authenticatedFetch, callRpc } from './helpers.js'
 
 const temporaryDirectories: string[] = []
 
@@ -21,7 +21,7 @@ describe('Studio Server Extension Package install lifecycle', () => {
 
     const first = createStudioServer({ localPaths, extensionRootDirectory: join(root, 'empty-repository') })
     const firstAddress = await first.listen(0)
-    const eventResponse = await fetch(`http://127.0.0.1:${firstAddress.port}/extensions/events`)
+    const eventResponse = await authenticatedFetch(firstAddress.port, '/extensions/events')
     expect(eventResponse.status).toBe(200)
     expect(eventResponse.headers.get('content-type')).toBe('text/event-stream; charset=utf-8')
     const eventReader = eventResponse.body!.getReader()
@@ -58,7 +58,7 @@ describe('Studio Server Extension Package install lifecycle', () => {
     expect(installedPackage).toMatchObject(installed.package)
     expect(installedPackage).not.toHaveProperty('sources')
 
-    const icon = await fetch(`http://127.0.0.1:${firstAddress.port}/extensions/example.installed/1.0.0/icon`)
+    const icon = await authenticatedFetch(firstAddress.port, '/extensions/example.installed/1.0.0/icon')
     expect(icon.status).toBe(200)
     expect(icon.headers.get('content-type')).toBe('image/png')
     expect(icon.headers.get('cache-control')).toContain('immutable')
@@ -86,7 +86,7 @@ describe('Studio Server Extension Package install lifecycle', () => {
       version: '1.0.0',
     })
     await expect(callRpc(secondAddress.port, 'example.installed.status', {})).rejects.toThrow('method not found')
-    const asset = await fetch(`http://127.0.0.1:${secondAddress.port}/assets/${created.assetId}`)
+    const asset = await authenticatedFetch(secondAddress.port, `/assets/${created.assetId}`)
     expect(asset.status).toBe(200)
     expect([...new Uint8Array(await asset.arrayBuffer())]).toEqual([4, 5, 6])
     await expect(callRpc(secondAddress.port, 'docs.get', { id: 'example.installed:data' })).resolves.toMatchObject({

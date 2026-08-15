@@ -4,7 +4,7 @@ import type { ChatMessage } from '@loom-studio/shared'
 
 export type AgentSession = {
   id: string
-  agentPresetId: string
+  agentProfileId: string
   title?: string
   headMessageId?: string
   messageCount: number
@@ -33,7 +33,7 @@ export type AgentWriteContext = {
 
 export type CreateAgentSessionInput = AgentWriteContext & {
   id?: string
-  agentPresetId: string
+  agentProfileId: string
   title?: string
 }
 
@@ -67,6 +67,7 @@ export type AgentStore = {
   getSession(id: string): Promise<AgentSession | null>
   getMessage(id: string): Promise<AgentMessage | null>
   getMessagePage(input: { agentSessionId: string; cursor?: string; limit?: number }): Promise<AgentMessagePage>
+  hasSessionForProfile(agentProfileId: string): Promise<boolean>
   createSession(input: CreateAgentSessionInput): Promise<{ session: AgentSession; commit: DataCommitFact }>
   appendMessages(input: AppendAgentMessagesInput): Promise<{ session: AgentSession; messages: AgentMessage[]; commit: DataCommitFact }>
   deleteSession(input: DeleteAgentSessionInput): Promise<{ session: AgentSession; commit: DataCommitFact }>

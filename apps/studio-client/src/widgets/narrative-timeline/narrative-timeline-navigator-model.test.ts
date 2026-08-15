@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  createMockNarrativeTimelineMarkers,
   readNarrativeTimelinePreview,
   readNarrativeTimelineTickWidth,
   readNarrativeTimelineTrackOffset,
@@ -38,8 +37,4 @@ describe('narrative timeline navigator model', () => {
     expect(readNarrativeTimelinePreview('### Title\n\n```json\n{"ok":true}\n```')).toBe('Title {"ok":true}')
   })
 
-  it('only creates semantic demo markers for the timeline mock', () => {
-    expect(createMockNarrativeTimelineMarkers(['entry-1'])).toEqual([])
-    expect(createMockNarrativeTimelineMarkers(Array.from({ length: 80 }, (_, index) => `__timeline-mock-${index + 1}`))).toHaveLength(4)
-  })
 })

@@ -10,13 +10,27 @@ import { createKernel } from '@loom-studio/kernel'
 import { createConsoleLogSink, createMemoryLogSink, createRootLogger, type Logger, type LogReader, type LogRecord } from '@loom-studio/logging'
 import { createJsonlFileSink } from '@loom-studio/logging/node'
 import { createNarrativeStore } from '@loom-studio/narrative-store'
+import { createKeyringSecretBackend, createSecretStore, type SecretBackend } from '@loom-studio/secret-store'
 import { createLoomRunner } from '@loom-studio/loom-runner'
 import { createId, nowIso } from '@loom-studio/shared'
 import { createInMemoryTraceAuditStore } from '@loom-studio/trace-audit'
 import { join, resolve } from 'node:path'
 import { withAiGatewayLogging } from './ai-gateway-logging.js'
+import { createNetworkSettingsStore } from './network-settings.js'
+import { resolveSystemProxyUrl } from './system-proxy.js'
+import { createApplicationSessionAuth } from './application-session-auth.js'
 import { withDocumentStoreLogging } from './document-store-logging.js'
 import { createStudioHttpServer } from './http-server.js'
+import {
+  createPolyglotCardPng,
+  decodeCardPng,
+  defaultCardPng,
+  encodeCardPng,
+  isPng,
+  readPngImageBytes,
+  readPolyglotArchive,
+} from './card-png.js'
+import { decodeCardBundleZip, encodeCardBundleZip, type CardBundleMedia } from './card-bundle-zip.js'
 import { createStudioRpcRouter } from './studio-rpc-router.js'
 import { createServerExtensionManager } from './extensions/extension-manager.js'
 import { createExtensionStateStore } from './extensions/extension-state-store.js'
@@ -42,6 +56,8 @@ export type CreateStudioServerOptions = {
   extensionLogger?: Logger
   extensionRootDirectory?: string
   extensionStateDirectory?: string
+  secretBackend?: SecretBackend
+  applicationSessionOrigins?: string[]
 }
 
 export function createStudioServer(options: CreateStudioServerOptions = {}): StudioServer {
@@ -62,9 +78,24 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     }
   }
   const documents = options.documentLogger ? withDocumentStoreLogging(rawDocuments, options.documentLogger) : rawDocuments
+  const networkSettings = createNetworkSettingsStore({
+    filename: join(localPaths.configRoot, 'network.json'),
+    resolveSystemProxyUrl,
+  })
+  const secrets = dataEngine ? createSecretStore({
+    engine: dataEngine,
+    backend: options.secretBackend ?? createKeyringSecretBackend(),
+    createId,
+    now: nowIso,
+    authorizeUse: (_metadata, context) => context.caller === 'application.ai-gateway',
+  }) : undefined
   const traceAudit = createInMemoryTraceAuditStore()
   const loomRunner = createLoomRunner({ traceAudit })
-  const gateway = createDocumentBackedAiGateway({ documents })
+  const gateway = createDocumentBackedAiGateway({
+    documents,
+    secrets,
+    resolveProxyUrl: networkSettings.resolveProxyUrl,
+  })
   let agents
   let narratives
   let assets: AssetStore | undefined
@@ -107,6 +138,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
       }
       : undefined,
     mediaAssets: assets ? { get: assetId => assets.getMediaAsset(assetId) } : undefined,
+    secrets,
     gateway: options.providerLogger ? withAiGatewayLogging(gateway, options.providerLogger) : gateway,
     logger: options.promptBuildLogger,
   })
@@ -197,9 +229,74 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     extensionManager,
     loomRunner,
   })
-  const rpcRouter = createStudioRpcRouter({ applicationRuntime, kernel, logs: options.logs })
+  const rpcRouter = createStudioRpcRouter({ applicationRuntime, kernel, logs: options.logs, networkSettings })
+  const readCardExport = async (cardId: string) => {
+    const { artifact } = await applicationRuntime.exportCardArtifact({ cardId })
+    const readMedia = async (assetId: string | undefined): Promise<CardBundleMedia | undefined> => {
+      if (!assetId) return undefined
+      const media = await assets?.getMediaAsset(assetId)
+      if (!media) return undefined
+      return {
+        bytes: await assets!.readMediaAsset(assetId, { maxBytes: 64 * 1024 * 1024 }),
+        mediaType: media.mediaType ?? 'application/octet-stream',
+      }
+    }
+    return {
+      artifact,
+      avatar: await readMedia(artifact.card.media?.avatarAssetId) ?? { bytes: defaultCardPng, mediaType: 'image/png' },
+      background: await readMedia(artifact.card.media?.coverAssetId),
+    }
+  }
+  const importCardArchive = async (input: Awaited<ReturnType<typeof decodeCardBundleZip>>, clientId: string) => {
+    const createMedia = async (media: CardBundleMedia, kind: string) => (await assets!.createMediaAsset({
+      source: media.bytes,
+      kind,
+      mediaType: media.mediaType,
+      maxBytes: 64 * 1024 * 1024,
+      actor: { kind: 'client', id: clientId },
+      reason: 'application.importLoomCard.media',
+    })).asset.id
+    const avatarAssetId = await createMedia(input.avatar, 'card.avatar')
+    const coverAssetId = input.background ? await createMedia(input.background, 'card.background') : undefined
+    input.artifact.card.media = { avatarAssetId, ...(coverAssetId ? { coverAssetId } : {}) }
+    return await applicationRuntime.importCardBundle({ artifact: input.artifact }, { clientId })
+  }
   const server = createStudioHttpServer({
+    auth: createApplicationSessionAuth({
+      allowedOrigins: options.applicationSessionOrigins ?? ['http://127.0.0.1:5173'],
+    }),
     assets,
+    cardPng: assets ? {
+      export: async cardId => {
+        const { artifact, avatar } = await readCardExport(cardId)
+        // ponytail: M0 不引入图片转码依赖；非 PNG 头像暂用内置 PNG，接入图像管线后再统一转码。
+        return encodeCardPng(avatar.mediaType === 'image/png' && isPng(avatar.bytes) ? avatar.bytes : defaultCardPng, artifact)
+      },
+      import: async (source, session) => {
+        const archive = readPolyglotArchive(source)
+        if (archive) return await importCardArchive(await decodeCardBundleZip(archive), session.clientId)
+        const artifact = decodeCardPng(source)
+        const media = await assets.createMediaAsset({
+          source: readPngImageBytes(source),
+          kind: 'card.avatar',
+          mediaType: 'image/png',
+          maxBytes: 32 * 1024 * 1024,
+          actor: { kind: 'client', id: session.clientId },
+          reason: 'application.importCardPng.media',
+        })
+        artifact.card.media = {
+          avatarAssetId: media.asset.id,
+        }
+        return await applicationRuntime.importCardBundle({ artifact }, { clientId: session.clientId })
+      },
+      exportBundle: async cardId => encodeCardBundleZip(await readCardExport(cardId)),
+      importBundle: async (source, session) => await importCardArchive(await decodeCardBundleZip(source), session.clientId),
+      exportPolyglot: async cardId => {
+        const bundle = await readCardExport(cardId)
+        const image = bundle.avatar.mediaType === 'image/png' && isPng(bundle.avatar.bytes) ? bundle.avatar.bytes : defaultCardPng
+        return createPolyglotCardPng(image, encodeCardBundleZip(bundle))
+      },
+    } : undefined,
     extensionIcons: {
       read: (packageId, version) => extensionManager.readPackageIcon(packageId, version),
     },
@@ -217,6 +314,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
         data: { requestedPort: port },
       })
       try {
+        await applicationRuntime.initialize()
         await kernel.start()
         await extensionManager.initialize()
         await new Promise<void>((resolve, reject) => {

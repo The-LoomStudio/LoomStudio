@@ -15,6 +15,7 @@ export type ApplicationRuntimeContext = {
   narratives?: NarrativeStore
   sourceArtifacts?: SourceArtifactStorage
   mediaAssets?: MediaAssetLookup
+  secrets: ApplicationRuntimeOptions['secrets']
   gateway: AiGateway
   now(): string
   createId(prefix: string): string
@@ -29,7 +30,11 @@ export function createApplicationRuntimeContext(options: ApplicationRuntimeOptio
     narratives: options.narratives,
     sourceArtifacts: options.sourceArtifacts,
     mediaAssets: options.mediaAssets,
-    gateway: options.gateway ?? (options.provider ? providerToGateway(options.provider) : createDocumentBackedAiGateway({ documents: options.documents })),
+    secrets: options.secrets,
+    gateway: options.gateway ?? (options.provider ? providerToGateway(options.provider) : createDocumentBackedAiGateway({
+      documents: options.documents,
+      secrets: options.secrets,
+    })),
     now: () => nowIso(options.clock),
     createId: prefix => createSharedId(prefix),
   }

@@ -4,6 +4,7 @@ import { createId } from '@loom-studio/shared'
 
 export function withAiGatewayLogging(gateway: AiGateway, logger: Logger): AiGateway {
   return {
+    ...(gateway.listModels ? { listModels: input => gateway.listModels!(input) } : {}),
     invokeChat: async input => {
       const invocationId = createId('invoke')
       const startedAt = performance.now()
@@ -63,7 +64,10 @@ function buildInvocationReferences(input: GatewayInvokeChatInput, invocationId: 
     runId: input.runId,
     sessionId: input.sessionId,
     branchId: input.branchId,
-    ...(input.modelProfileId ? { modelProfileId: input.modelProfileId } : {}),
+    ...(input.model ? {
+      providerProfileId: input.model.providerProfileId,
+      modelId: input.model.modelId,
+    } : {}),
     messageCount: input.request.messages.length,
   }
 }

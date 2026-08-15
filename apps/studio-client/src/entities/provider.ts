@@ -6,7 +6,11 @@ export type ProviderAccount = {
   providerExtensionId: string
   displayName: string
   config: JsonObject
-  secretRefs: Record<string, string>
+  enabledModelIds: string[]
+  credential: {
+    configured: boolean
+    updatedAt?: string
+  }
   createdAt: string
   updatedAt: string
 }
@@ -15,21 +19,21 @@ export type ModelProfile = {
   id: string
   version: number
   providerAccountId: string
-  capability: string
   displayName: string
   providerModelId: string
-  config: JsonObject
-  createdAt: string
-  updatedAt: string
 }
 
-export type AgentRuntimeProfile = {
+export type ProviderModelSelection = {
+  providerProfileId: string
+  modelId: string
+}
+
+export type AgentProfile = {
   id: string
   version: number
   name: string
-  purpose: string
-  presetId?: string
-  modelProfileId?: string
+  presetId: string
+  model: ProviderModelSelection
   createdAt: string
   updatedAt: string
 }
@@ -51,36 +55,19 @@ export type DeleteProviderAccountResult = {
   deleted: true
 }
 
-export type CreateModelProfileResult = {
-  modelProfile: ModelProfile
+export type CreateAgentProfileResult = {
+  agentProfile: AgentProfile
 }
 
-export type ListModelProfilesResult = {
-  modelProfiles: ModelProfile[]
+export type ListAgentProfilesResult = {
+  agentProfiles: AgentProfile[]
   nextCursor?: string
 }
 
-export type UpdateModelProfileResult = {
-  modelProfile: ModelProfile
+export type UpdateAgentProfileResult = {
+  agentProfile: AgentProfile
 }
 
-export type DeleteModelProfileResult = {
-  deleted: true
-}
-
-export type CreateAgentRuntimeProfileResult = {
-  agentRuntimeProfile: AgentRuntimeProfile
-}
-
-export type ListAgentRuntimeProfilesResult = {
-  agentRuntimeProfiles: AgentRuntimeProfile[]
-  nextCursor?: string
-}
-
-export type UpdateAgentRuntimeProfileResult = {
-  agentRuntimeProfile: AgentRuntimeProfile
-}
-
-export type DeleteAgentRuntimeProfileResult = {
+export type DeleteAgentProfileResult = {
   deleted: true
 }

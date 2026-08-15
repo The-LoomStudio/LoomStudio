@@ -1,18 +1,12 @@
-import { Check, Copy, GitBranch, Wrench } from 'lucide-react'
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { Check, ChevronDown, Copy } from 'lucide-react'
+import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from 'react'
+import type { AgentMessage as AgentMessageEntity, AgentProfile, AgentSession, ProviderAccount } from '../../entities/index.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import { tryWriteClipboardText } from '../../shared/browser/clipboard.js'
 import type { MarkdownCodeBlockLabels } from '../../shared/ui/markdown-content/markdown-code-block.js'
 import { SkeletonText } from '../../shared/ui/skeleton/skeleton.js'
 import { ConversationMessageAction, ConversationMessageChrome } from '../../shared/ui/conversation-message-chrome/conversation-message-chrome.js'
 import { ChatComposer } from '../chat-composer/chat-composer.js'
-import {
-  appendMockAgentTurn,
-  forkMockAgentBranch,
-  INITIAL_AGENT_BRANCHES,
-  type MockAgentMessage,
-  type MockAgentToolCall,
-} from './agent-composer-model.js'
 import styles from './agent-composer.module.scss'
 
 const ConversationMarkdown = lazy(async () => {
@@ -22,31 +16,35 @@ const ConversationMarkdown = lazy(async () => {
 
 type AgentComposerProps = {
   canPreviewPrompt: boolean
+  canSendAgent: boolean
   canSendNarrative: boolean
+  agentBusy: boolean
+  agentInput: string
+  agentMessages: AgentMessageEntity[]
+  agentSession?: AgentSession
   narrativeInput: string
   narrativeTextareaDisabled: boolean
+  agentProfiles: AgentProfile[]
+  providerAccounts: ProviderAccount[]
+  selectedAgentProfileId?: string
   workspaceOpen: boolean
   t: Translator
+  onChangeAgentInput(value: string): void
   onChangeNarrativeInput(value: string): void
   onExpandedChange(expanded: boolean): void
   onHeightChange(height: number): void
   onPreviewPrompt(): void
+  onSelectAgentProfile(id: string): void
+  onSubmitAgent(event: FormEvent): void
   onSubmitNarrative(event: FormEvent): void
 }
 
 export function AgentComposer(props: AgentComposerProps) {
-  const [agentDraft, setAgentDraft] = useState('')
   const [agentOpen, setAgentOpen] = useState(false)
   const [agentRaised, setAgentRaised] = useState(false)
-  const [branches, setBranches] = useState(INITIAL_AGENT_BRANCHES)
-  const [activeBranchId, setActiveBranchId] = useState(INITIAL_AGENT_BRANCHES[0]?.id ?? 'main')
   const [copyState, setCopyState] = useState<{ id: string; copied: boolean }>()
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const conversationRef = useRef<HTMLDivElement>(null)
-  const activeBranch = useMemo(
-    () => branches.find(branch => branch.id === activeBranchId) ?? branches[0],
-    [activeBranchId, branches],
-  )
 
   useEffect(() => {
     if (!props.workspaceOpen) setAgentRaised(false)
@@ -60,7 +58,7 @@ export function AgentComposer(props: AgentComposerProps) {
     if (!agentOpen) return
     const conversation = conversationRef.current
     if (conversation) conversation.scrollTop = conversation.scrollHeight
-  }, [activeBranch?.items.length, activeBranchId, agentOpen])
+  }, [agentOpen, props.agentBusy, props.agentMessages.length])
 
   function toggleAgent() {
     if (agentOpen) setAgentRaised(false)
@@ -69,30 +67,8 @@ export function AgentComposer(props: AgentComposerProps) {
     props.onExpandedChange(nextOpen)
   }
 
-  function submitAgent(event: FormEvent) {
-    event.preventDefault()
-    const content = agentDraft.trim()
-    if (!content || !activeBranch) return
-    setBranches(current => appendMockAgentTurn(current, activeBranch.id, content, String(Date.now())))
-    setAgentDraft('')
-  }
-
-  function forkMessage(message: MockAgentMessage) {
-    if (!activeBranch) return
-    const branchNumber = branches.length
-    const branchId = `branch-${Date.now()}`
-    setBranches(current => forkMockAgentBranch(
-      current,
-      activeBranch.id,
-      message.id,
-      branchId,
-      props.t('agent.branchNumber', { number: branchNumber }),
-    ))
-    setActiveBranchId(branchId)
-  }
-
-  async function copyMessage(message: MockAgentMessage) {
-    setCopyState({ id: message.id, copied: await tryWriteClipboardText(message.content) })
+  async function copyMessage(message: AgentMessageEntity, content: string) {
+    setCopyState({ id: message.id, copied: await tryWriteClipboardText(content) })
     if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
     copyTimerRef.current = setTimeout(() => setCopyState(undefined), 1600)
   }
@@ -106,74 +82,68 @@ export function AgentComposer(props: AgentComposerProps) {
   }
 
   return (
-    <div
-      className={styles.layer}
-      data-agent-raised={agentRaised ? 'true' : 'false'}
-      data-loom-object="agent-composer-layer"
-    >
+    <div className={styles.layer} data-agent-raised={agentRaised ? 'true' : 'false'} data-loom-object="agent-composer-layer">
       <ChatComposer
         canPreviewPrompt={!agentOpen && props.canPreviewPrompt}
-        canSend={agentOpen ? Boolean(agentDraft.trim()) : props.canSendNarrative}
+        canSend={agentOpen ? props.canSendAgent : props.canSendNarrative}
         expanded={agentOpen}
         expansion={(
           <div className={styles.session}>
-            <nav aria-label={props.t('agent.branchLabel')} className={styles.branchBar}>
+            <header className={styles.sessionBar}>
               <span className={styles.sessionLabel}>{props.t('agent.session')}</span>
-              <div className={styles.branchList}>
-                <GitBranch aria-hidden="true" />
-                {branches.map(branch => (
-                  <button
-                    aria-pressed={branch.id === activeBranch?.id}
-                    className={styles.branchButton}
-                    key={branch.id}
-                    type="button"
-                    onClick={() => setActiveBranchId(branch.id)}
-                  >
-                    {branch.label}
-                  </button>
-                ))}
-              </div>
-            </nav>
+              {props.agentSession ? <code>{props.agentSession.id.slice(0, 18)}</code> : <span>{props.t('agent.sessionPending')}</span>}
+            </header>
             <div className={styles.conversation} ref={conversationRef}>
-              <Suspense fallback={(
-                <div aria-busy="true" className={styles.loading}>
-                  <SkeletonText lines={5} />
-                </div>
-              )}>
-                {activeBranch?.items.map((item, index) => item.type === 'message' ? (
-                  <AgentMessage
-                    codeBlockLabels={codeBlockLabels}
-                    copyState={copyState?.id === item.id ? copyState.copied : undefined}
-                    index={index}
-                    key={item.id}
-                    message={item}
-                    t={props.t}
-                    onCopy={() => void copyMessage(item)}
-                    onFork={() => forkMessage(item)}
-                  />
-                ) : (
-                  <AgentToolCall codeBlockLabels={codeBlockLabels} item={item} key={item.id} t={props.t} />
-                ))}
+              <Suspense fallback={<div aria-busy="true" className={styles.loading}><SkeletonText lines={5} /></div>}>
+                {props.agentMessages.length === 0 && !props.agentBusy ? <p className={styles.empty}>{props.t('agent.sessionEmpty')}</p> : null}
+                {props.agentMessages.map((message, index) => {
+                  const display = readAgentMessageDisplay(message)
+                  if (!display) return null
+                  return (
+                    <AgentMessage
+                      codeBlockLabels={codeBlockLabels}
+                      content={display.content}
+                      copyState={copyState?.id === message.id ? copyState.copied : undefined}
+                      index={index}
+                      key={message.id}
+                      message={message}
+                      role={display.role}
+                      t={props.t}
+                      onCopy={() => void copyMessage(message, display.content)}
+                    />
+                  )
+                })}
+                {props.agentBusy ? <div aria-busy="true" className={styles.loading}><SkeletonText lines={2} /></div> : null}
               </Suspense>
             </div>
           </div>
         )}
-        input={agentOpen ? agentDraft : props.narrativeInput}
+        input={agentOpen ? props.agentInput : props.narrativeInput}
         moreLabel={props.t('composer.more')}
         placeholder={agentOpen ? props.t('agent.composerPlaceholder') : undefined}
         previewLabel={props.t('composer.preview')}
         retryLabel={props.t('composer.retry')}
         sendLabel={props.t(agentOpen ? 'agent.send' : 'composer.send')}
+        sendLeadingAction={agentOpen ? (
+          <AgentProfilePicker
+            profiles={props.agentProfiles}
+            providers={props.providerAccounts}
+            selectedId={props.selectedAgentProfileId}
+            t={props.t}
+            disabled={props.agentBusy}
+            onSelect={props.onSelectAgentProfile}
+          />
+        ) : undefined}
         targetActionLabel={agentOpen && props.workspaceOpen ? props.t(agentRaised ? 'agent.lower' : 'agent.raise') : undefined}
         targetActive={agentRaised}
         targetLabel={agentOpen ? props.t('agent.title') : undefined}
-        textareaDisabled={agentOpen ? false : props.narrativeTextareaDisabled}
+        textareaDisabled={agentOpen ? props.agentBusy || !props.selectedAgentProfileId : props.narrativeTextareaDisabled}
         textareaLabel={props.t(agentOpen ? 'agent.composerLabel' : 'composer.inputLabel')}
         toggleExpandedLabel={props.t(agentOpen ? 'agent.hide' : 'agent.open')}
-        onChangeInput={agentOpen ? setAgentDraft : props.onChangeNarrativeInput}
-        onPreviewPrompt={props.onPreviewPrompt}
+        onChangeInput={agentOpen ? props.onChangeAgentInput : props.onChangeNarrativeInput}
         onHeightChange={agentOpen ? undefined : props.onHeightChange}
-        onSubmit={agentOpen ? submitAgent : props.onSubmitNarrative}
+        onPreviewPrompt={props.onPreviewPrompt}
+        onSubmit={agentOpen ? props.onSubmitAgent : props.onSubmitNarrative}
         onTargetAction={agentOpen && props.workspaceOpen ? () => setAgentRaised(raised => !raised) : undefined}
         onToggleExpanded={toggleAgent}
       />
@@ -181,71 +151,61 @@ export function AgentComposer(props: AgentComposerProps) {
   )
 }
 
-function AgentMessage(props: {
-  codeBlockLabels: MarkdownCodeBlockLabels
-  copyState?: boolean
-  index: number
-  message: MockAgentMessage
+function AgentProfilePicker(props: {
+  disabled: boolean
+  profiles: AgentProfile[]
+  providers: ProviderAccount[]
+  selectedId?: string
   t: Translator
-  onCopy(): void
-  onFork(): void
+  onSelect(id: string): void
 }) {
+  const detailsRef = useRef<HTMLDetailsElement>(null)
+  const selected = props.profiles.find(profile => profile.id === props.selectedId)
+  const selectedProvider = selected && props.providers.find(provider => provider.id === selected.model.providerProfileId)
+
   return (
-    <article className={`${styles.message} ${styles[props.message.role]}`}>
-      <div className={styles.messageSurface}>
-        <ConversationMarkdown
-          className={styles.messageBody}
-          codeBlockLabels={props.codeBlockLabels}
-          role={props.message.role}
-          value={props.message.content}
-        />
+    <details className={styles.profilePicker} ref={detailsRef}>
+      <summary aria-disabled={props.disabled} title={props.t('agent.profile.choose')} onClick={event => {
+        if (props.disabled) event.preventDefault()
+      }}>
+        <span>{selected?.name ?? props.t('agent.profile.unselected')}</span>
+        <ChevronDown aria-hidden="true" />
+      </summary>
+      <div className={styles.profileMenu}>
+        {selected ? (
+          <div className={styles.profileCurrent}>
+            <strong>{selectedProvider?.displayName ?? selected.model.providerProfileId}</strong>
+            <span>{selected.model.modelId}</span>
+          </div>
+        ) : null}
+        {props.profiles.length === 0 ? <p>{props.t('agent.profile.configureFirst')}</p> : props.profiles.map(profile => {
+          const provider = props.providers.find(item => item.id === profile.model.providerProfileId)
+          return (
+            <button aria-pressed={profile.id === props.selectedId} disabled={props.disabled} key={profile.id} type="button" onClick={() => {
+              props.onSelect(profile.id)
+              if (detailsRef.current) detailsRef.current.open = false
+            }}>
+              <strong>{profile.name}</strong>
+              <span>{provider?.displayName ?? profile.model.providerProfileId} · {profile.model.modelId}</span>
+            </button>
+          )
+        })}
       </div>
-      <ConversationMessageChrome
-        createdAt={props.message.createdAt}
-        index={props.index}
-        actions={(
-          <>
-          <ConversationMessageAction
-            label={props.t(props.copyState === undefined
-              ? 'timeline.copy'
-              : props.copyState ? 'timeline.copied' : 'timeline.copyFailed')}
-            onClick={props.onCopy}
-          >
-            {props.copyState ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-          </ConversationMessageAction>
-          <ConversationMessageAction label={props.t('agent.fork')} onClick={props.onFork}>
-            <GitBranch aria-hidden="true" />
-          </ConversationMessageAction>
-          </>
-        )}
-      />
+    </details>
+  )
+}
+
+function AgentMessage(props: { codeBlockLabels: MarkdownCodeBlockLabels; content: string; copyState?: boolean; index: number; message: AgentMessageEntity; role: 'user' | 'assistant'; t: Translator; onCopy(): void }) {
+  return (
+    <article className={`${styles.message} ${styles[props.role]}`}>
+      <div className={styles.messageSurface}><ConversationMarkdown className={styles.messageBody} codeBlockLabels={props.codeBlockLabels} role={props.role} value={props.content} /></div>
+      <ConversationMessageChrome createdAt={props.message.createdAt} index={props.index} actions={<ConversationMessageAction label={props.t(props.copyState === undefined ? 'timeline.copy' : props.copyState ? 'timeline.copied' : 'timeline.copyFailed')} onClick={props.onCopy}>{props.copyState ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}</ConversationMessageAction>} />
     </article>
   )
 }
 
-function AgentToolCall(props: {
-  codeBlockLabels: MarkdownCodeBlockLabels
-  item: MockAgentToolCall
-  t: Translator
-}) {
-  const argumentsMarkdown = `\`\`\`json\n${JSON.stringify(props.item.arguments, null, 2)}\n\`\`\``
-  return (
-    <article className={styles.toolCall} data-tool-status={props.item.status}>
-      <header className={styles.toolHeader}>
-        <span className={styles.toolIdentity}><Wrench aria-hidden="true" />{props.item.name}</span>
-        <span className={styles.toolStatus}><Check aria-hidden="true" />{props.t('agent.toolCompleted')}</span>
-      </header>
-      <p className={styles.toolSummary}>{props.item.summary}</p>
-      <details className={styles.toolDetails}>
-        <summary>{props.t('agent.toolArguments')}</summary>
-        <ConversationMarkdown
-          className={styles.toolPayload}
-          codeBlockLabels={props.codeBlockLabels}
-          role="assistant"
-          value={argumentsMarkdown}
-        />
-      </details>
-      <p className={styles.toolResult}>{props.item.result}</p>
-    </article>
-  )
+function readAgentMessageDisplay(message: AgentMessageEntity): { role: 'user' | 'assistant'; content: string } | undefined {
+  if (message.message.role === 'user') return { role: 'user', content: message.message.content }
+  if (message.message.role === 'assistant' && message.message.content) return { role: 'assistant', content: message.message.content }
+  return undefined
 }

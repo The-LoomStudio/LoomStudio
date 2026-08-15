@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronRight, Diamond, GripVertical } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { Translator } from '../../../../shared/i18n/index.js'
-import { buildProjectionZones, type ProjectionOrderEntry, type ProjectionOrderRow } from '../../model/projection-order.js'
+import { buildProjectionZones, type ProjectionOrderEntry, type ProjectionOrderRow, type ProjectionZoneDefinition } from '../../model/projection-order.js'
 import { readSlotEntrySummary } from '../../model/projection-slot.js'
 import styles from './projection-runlist.module.scss'
 
@@ -13,12 +13,15 @@ type ProjectionRunlistProps = {
   onReorderZone?: (draggedZoneId: string, targetZoneId: string) => void
   onSelect?: (id: string) => void
   selectedId?: string
+  selectedZoneId?: string
   showSummary?: boolean
   t: Translator
+  zoneDefinitions?: ProjectionZoneDefinition[]
+  onSelectZone?: (zoneId: string) => void
 }
 
 export function ProjectionRunlist(props: ProjectionRunlistProps) {
-  const zones = useMemo(() => buildProjectionZones(props.entries), [props.entries])
+  const zones = useMemo(() => buildProjectionZones(props.entries, props.zoneDefinitions), [props.entries, props.zoneDefinitions])
   const [collapsedIds, setCollapsedIds] = useState(() => new Set<string>())
   const [dragging, setDragging] = useState<DragTarget>()
 
@@ -51,7 +54,7 @@ export function ProjectionRunlist(props: ProjectionRunlistProps) {
           const collapsed = collapsedIds.has(zone.id)
           return (
             <section
-              className={styles.zone}
+              className={`${styles.zone} ${props.selectedZoneId === zone.id ? styles.selectedZone : ''}`}
               draggable={Boolean(props.onReorderZone)}
               key={zone.id}
               role="listitem"
@@ -74,7 +77,12 @@ export function ProjectionRunlist(props: ProjectionRunlistProps) {
                   {collapsed ? <ChevronRight aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
                 </button>
                 <Diamond className={styles.zoneIcon} aria-hidden="true" />
-                <strong>{zone.id}</strong>
+                {props.onSelectZone ? (
+                  <button className={styles.zoneLabel} type="button" onClick={() => props.onSelectZone?.(zone.id)}>
+                    <strong>{zone.displayName}</strong>
+                    <small>{zone.id}</small>
+                  </button>
+                ) : <strong>{zone.displayName}</strong>}
                 <span className={styles.zoneCount}>{zone.rows.length}</span>
                 <span className={styles.zoneDivider} aria-hidden="true" />
               </div>

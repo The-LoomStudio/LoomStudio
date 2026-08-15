@@ -1,0 +1,19 @@
+{
+  "name": "@loom-studio/secret-store",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run --passWithNoTests",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@loom-studio/data-engine": "workspace:*",
+    "@napi-rs/keyring": "1.3.0"
+  }
+}

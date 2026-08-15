@@ -5,6 +5,25 @@ import { withClientBridgeLogging } from '../../../apps/studio-client/src/shared/
 import { createStudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
 
 describe('studio client typed api', () => {
+  it('maps global network settings through the typed studio api surface', async () => {
+    const calls: Array<{ method: string; params?: ClientJsonValue }> = []
+    const api = createStudioApi(fakeBridge(calls, {
+      'settings.network.get': { proxyMode: 'system', systemProxyDetected: true },
+      'settings.network.update': { proxyMode: 'manual', proxyUrl: 'http://127.0.0.1:7890', systemProxyDetected: true },
+    }))
+
+    await expect(api.settings.getNetwork()).resolves.toEqual({ proxyMode: 'system', systemProxyDetected: true })
+    await expect(api.settings.updateNetwork({ proxyMode: 'manual', proxyUrl: 'http://127.0.0.1:7890' })).resolves.toEqual({
+      proxyMode: 'manual',
+      proxyUrl: 'http://127.0.0.1:7890',
+      systemProxyDetected: true,
+    })
+    expect(calls).toEqual([
+      { method: 'settings.network.get', params: {} },
+      { method: 'settings.network.update', params: { proxyMode: 'manual', proxyUrl: 'http://127.0.0.1:7890' } },
+    ])
+  })
+
   it('logs failed rpc calls without params or error messages', async () => {
     const logs = createMemoryLogSink({ capacity: 10 })
     const root = createRootLogger({ service: 'studio-client', instanceId: 'client-test', sinks: [logs] })
@@ -65,7 +84,8 @@ describe('studio client typed api', () => {
       'application.updateCardPromptResources': { card: { id: 'card-1' } },
       'application.deleteCard': { deleted: true },
       'application.exportCardArtifact': { artifact: { artifactId: 'card-1' } },
-      'application.pingModelProfile': { text: 'pong' },
+      'application.listProviderModels': { modelIds: ['model-1', 'model-2'] },
+      'application.pingProviderModel': { text: 'pong' },
     }))
 
     const reverted = await api.history.revert('change-1')
@@ -75,8 +95,10 @@ describe('studio client typed api', () => {
     await api.cards.updatePromptResources({ cardId: 'card-1', promptResourceIds: ['resource-1'] })
     await api.cards.delete('card-1')
     await api.cards.export('card-1')
-    const text = await api.modelProfiles.ping('model-1')
+    const models = await api.providerModels.list('provider-1')
+    const text = await api.providerModels.ping('provider-1', 'model-1')
 
+    expect(models).toEqual(['model-1', 'model-2'])
     expect(text).toBe('pong')
     expect(reverted).toEqual({ changesetId: 'change-undo' })
     expect(calls).toEqual([
@@ -87,7 +109,8 @@ describe('studio client typed api', () => {
       { method: 'application.updateCardPromptResources', params: { cardId: 'card-1', promptResourceIds: ['resource-1'] } },
       { method: 'application.deleteCard', params: { cardId: 'card-1' } },
       { method: 'application.exportCardArtifact', params: { cardId: 'card-1' } },
-      { method: 'application.pingModelProfile', params: { modelProfileId: 'model-1' } },
+      { method: 'application.listProviderModels', params: { providerProfileId: 'provider-1' } },
+      { method: 'application.pingProviderModel', params: { providerProfileId: 'provider-1', modelId: 'model-1' } },
     ])
   })
 
@@ -104,32 +127,89 @@ describe('studio client typed api', () => {
     ])
   })
 
+  it('maps narrative and agent calls through the typed studio api surface', async () => {
+    const calls: Array<{ method: string; params?: ClientJsonValue }> = []
+    const api = createStudioApi(fakeBridge(calls, {}))
+
+    await api.cards.get('card-1')
+    await api.narratives.list({ createdFromCardId: 'card-1', limit: 25 })
+    await api.narratives.get('timeline-1')
+    await api.narratives.getPage({ timelineId: 'timeline-1', branchId: 'branch-1' })
+    await api.narratives.createFromCard({ cardId: 'card-1' })
+    await api.narratives.fork({ timelineId: 'timeline-1', fromBranchId: 'branch-1', fromNodeId: 'node-1' })
+    await api.narratives.switch({ timelineId: 'timeline-1', branchId: 'branch-2' })
+    await api.agentProfiles.list()
+    await api.agentSessions.create({ agentProfileId: 'profile-1' })
+    await api.agentSessions.invoke({ agentSessionId: 'agent-session-1', input: 'continue' })
+    await api.agentSessions.preview({ agentSessionId: 'agent-session-1', input: 'preview' })
+
+    expect(calls).toEqual([
+      { method: 'application.getCard', params: { cardId: 'card-1' } },
+      { method: 'application.listNarrativeTimelines', params: { createdFromCardId: 'card-1', limit: 25 } },
+      { method: 'application.getNarrativeTimeline', params: { timelineId: 'timeline-1' } },
+      { method: 'application.getNarrativePage', params: { timelineId: 'timeline-1', branchId: 'branch-1' } },
+      { method: 'application.createNarrativeTimelineFromCard', params: { cardId: 'card-1' } },
+      { method: 'application.forkNarrativeBranch', params: { timelineId: 'timeline-1', fromBranchId: 'branch-1', fromNodeId: 'node-1' } },
+      { method: 'application.switchNarrativeBranch', params: { timelineId: 'timeline-1', branchId: 'branch-2' } },
+      { method: 'application.listAgentProfiles', params: {} },
+      { method: 'application.createAgentSession', params: { agentProfileId: 'profile-1' } },
+      { method: 'application.invokeAgentTurn', params: { agentSessionId: 'agent-session-1', input: 'continue' } },
+      { method: 'application.previewAgentTurn', params: { agentSessionId: 'agent-session-1', input: 'preview' } },
+    ])
+  })
+
   it('maps prompt resource calls through the typed studio api surface', async () => {
     const calls: Array<{ method: string; params?: ClientJsonValue }> = []
     const api = createStudioApi(fakeBridge(calls, {
       'application.getPromptResource': { resource: { id: 'resource-1' } },
+      'application.listPromptResources': { resources: [{ id: 'resource-1' }] },
+      'application.createPromptResource': { resource: { id: 'resource-2' } },
+      'application.duplicatePromptResource': { resource: { id: 'resource-3' } },
+      'application.deletePromptResource': { deleted: true },
+      'application.importPromptResource': { resource: { id: 'resource-4' } },
+      'application.exportPromptResource': { artifact: { format: 'loom.promptResource', schemaVersion: 1 } },
       'application.listCardPromptResources': { resources: [{ id: 'resource-1' }] },
       'application.createPromptResourceAsset': { resource: { id: 'resource-1' } },
       'application.updatePromptResourceAsset': { resource: { id: 'resource-1' } },
       'application.updatePromptResourceAssets': { resource: { id: 'resource-1' } },
       'application.movePromptResourceAsset': { resource: { id: 'resource-1' } },
       'application.deletePromptResourceAsset': { resource: { id: 'resource-1' } },
+      'application.updatePresetSettings': { resource: { id: 'resource-1' } },
     }))
 
     await api.promptResources.get('resource-1')
+    await api.promptResources.list('preset')
+    await api.promptResources.create({ resourceKind: 'preset', name: 'Preset' })
+    await api.promptResources.duplicate({ resourceId: 'resource-1' })
+    await api.promptResources.delete('resource-1')
+    await api.promptResources.import({
+      format: 'loom.promptResource',
+      schemaVersion: 1,
+      resourceKind: 'preset',
+      rootNode: { id: 'root', label: 'Preset', kind: 'module' },
+    })
+    await api.promptResources.export('resource-1')
     await api.promptResources.listForCard('card-1')
     await api.promptResources.createAsset({ resourceId: 'resource-1', targetAssetId: 'root', position: 'inside', asset: { id: 'asset-1' } })
     await api.promptResources.updateAsset({ resourceId: 'resource-1', assetId: 'asset-1', body: 'updated' })
     await api.promptResources.updateAssets({ resourceId: 'resource-1', updates: [{ assetId: 'asset-1', label: 'Renamed' }] })
+    await api.promptResources.updatePresetSettings({ presetId: 'resource-1', linkedSettingIds: ['setting-1'] })
     await api.promptResources.moveAsset({ resourceId: 'resource-1', assetId: 'asset-1', targetAssetId: 'root', position: 'after' })
     await api.promptResources.deleteAsset({ resourceId: 'resource-1', assetId: 'asset-1' })
 
     expect(calls).toEqual([
       { method: 'application.getPromptResource', params: { resourceId: 'resource-1' } },
+      { method: 'application.listPromptResources', params: { resourceKind: 'preset' } },
+      { method: 'application.createPromptResource', params: { resourceKind: 'preset', name: 'Preset' } },
+      { method: 'application.duplicatePromptResource', params: { resourceId: 'resource-1' } },
+      { method: 'application.deletePromptResource', params: { resourceId: 'resource-1' } },
+      { method: 'application.importPromptResource', params: { artifact: { format: 'loom.promptResource', schemaVersion: 1, resourceKind: 'preset', rootNode: { id: 'root', label: 'Preset', kind: 'module' } } } },
+      { method: 'application.exportPromptResource', params: { resourceId: 'resource-1' } },
       { method: 'application.listCardPromptResources', params: { cardId: 'card-1' } },
       { method: 'application.createPromptResourceAsset', params: { resourceId: 'resource-1', targetAssetId: 'root', position: 'inside', asset: { id: 'asset-1' } } },
       { method: 'application.updatePromptResourceAsset', params: { resourceId: 'resource-1', assetId: 'asset-1', body: 'updated' } },
       { method: 'application.updatePromptResourceAssets', params: { resourceId: 'resource-1', updates: [{ assetId: 'asset-1', label: 'Renamed' }] } },
+      { method: 'application.updatePresetSettings', params: { presetId: 'resource-1', linkedSettingIds: ['setting-1'] } },
       { method: 'application.movePromptResourceAsset', params: { resourceId: 'resource-1', assetId: 'asset-1', targetAssetId: 'root', position: 'after' } },
       { method: 'application.deletePromptResourceAsset', params: { resourceId: 'resource-1', assetId: 'asset-1' } },
     ])

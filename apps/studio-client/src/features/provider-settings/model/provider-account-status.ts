@@ -8,7 +8,6 @@ export function hasCompleteProviderAccount(accounts: ProviderAccount[]): boolean
 
     return typeof account.config.baseUrl === 'string'
       && account.config.baseUrl.trim().length > 0
-      && typeof account.secretRefs.apiKey === 'string'
-      && account.secretRefs.apiKey.trim().length > 0
+      && account.credential.configured
   })
 }

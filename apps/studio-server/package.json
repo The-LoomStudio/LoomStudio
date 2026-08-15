@@ -11,8 +11,8 @@
   },
   "dependencies": {
     "@loom-studio/agent-store": "workspace:*",
-    "@loom-studio/asset-store": "workspace:*",
     "@loom-studio/application-runtime": "workspace:*",
+    "@loom-studio/asset-store": "workspace:*",
     "@loom-studio/blob-store": "workspace:*",
     "@loom-studio/data-engine": "workspace:*",
     "@loom-studio/diagnostics": "workspace:*",
@@ -20,10 +20,12 @@
     "@loom-studio/extension-host": "workspace:*",
     "@loom-studio/kernel": "workspace:*",
     "@loom-studio/logging": "workspace:*",
-    "@loom-studio/narrative-store": "workspace:*",
     "@loom-studio/loom-runner": "workspace:*",
+    "@loom-studio/narrative-store": "workspace:*",
+    "@loom-studio/secret-store": "workspace:*",
     "@loom-studio/shared": "workspace:*",
     "@loom-studio/trace-audit": "workspace:*",
-    "@loom-studio/transport": "workspace:*"
+    "@loom-studio/transport": "workspace:*",
+    "fflate": "0.8.3"
   }
 }

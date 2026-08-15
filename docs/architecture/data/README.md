@@ -75,11 +75,11 @@ Studio Server 已在组合根创建 Narrative Store，并注入 Application Runt
 
 创建 Timeline 时读取 Card 当前版本，将有序 Prompt Resource ID 与经现有宏规则处理后的 Opening materialize 为 roleless Narrative Nodes。Card 后续修改不会静默更新既有 Timeline 的来源版本、标题或资源链接。
 
-后端旧 `Session / NarrativeEntry / submitTurn` 路径已经删除，不再公开旧 Session、Transcript、Run RPC，也不保留双轨或兼容读取。Studio Client 尚未迁移，当前前端分支与最终后端 RPC 合同暂时失配。
+后端旧 `Session / NarrativeEntry / submitTurn` 路径已经删除，不再公开旧 Session、Transcript、Run RPC，也不保留双轨或兼容读取。Studio Client 已切换到 Narrative Timeline、Agent Profile 与按需 Agent Session 合同。
 
-Agent Store 也已接入共享 Engine，使用 `application.agent@1` migration namespace：
+Agent Store 也已接入共享 Engine，使用 `application.agent@2` migration namespace：
 
-- `agent_sessions`：Agent Preset identity、标题、message head/count 与 tombstone；
+- `agent_sessions`：Agent Profile identity、标题、message head/count 与 tombstone；
 - `agent_messages`：不可变 Chat Completions-compatible Message、parent、sequence 与可选 runId；
 - `agent_tool_calls`：ToolCall 与 ToolResult 的轻量配对索引，不保存参数或结果正文。
 
@@ -92,14 +92,16 @@ Studio Server 已注入 Agent Store。当前公开生命周期 RPC 包括：
 - `application.getAgentMessagePage`；
 - `application.deleteAgentSession`。
 
-`appendAgentMessages` 当前只作为 Application Runtime 内部能力，不公开给普通 Client，避免绕过 Agent Runtime 伪造 assistant/tool 历史。`agentPresetId` 已绑定正式 Agent Preset Document，不再接受不存在的 identity，也不再依赖旧 `AgentRuntimeProfile`。
+`appendAgentMessages` 当前只作为 Application Runtime 内部能力，不公开给普通 Client，避免绕过 Agent Runtime 伪造 assistant/tool 历史。`agentProfileId` 必须绑定真实 Agent Profile Document；Profile 再确定 Preset Prompt Resource 与 Provider Model，调用时不接受第二套临时绑定。
 
-Agent Preset 与本地模型绑定继续保存为短小、可版本化的 Document：
+Preset 与运行配置继续保存为短小、可版本化的 Document：
 
-- `airp.agentPreset`：可分发的 instructions、Prompt Resource links 与 history policy；
-- `airp.agentLocalBinding`：本机 purpose 与可选 Model Profile link。
+- `airp.promptResource(resourceKind=preset)`：Agent 的 PromptBuild Module，保存 Prompt 节点、Skeleton / Order、`linkedSettingIds` 与 history policy；
+- `airp.agentProfile`：本机 Profile 名称、直接指向 Preset Prompt Resource 的 `presetId` 与 `{ providerProfileId, modelId }`。
 
-`createAgentSession` 必须引用真实 Agent Preset。`previewAgentTurn` 与 `invokeAgentTurn` 共用同一 Prompt 构建入口；后者从 Agent Session、可选 Narrative Timeline、Preset 与 Local Binding 构造 canonical Chat Message，并在 Provider 成功后持久化本轮 Message。Provider 失败不会留下半轮。
+旧 `airp.agentPreset` 权威类型与对应 RPC 已删除。官方初始化会把旧官方 Profile 引用迁移到 `prompt-resource.official.loom-assistant`，并删除旧官方 AgentPreset Document；不会清空 Provider、Secret 或其他 Document。
+
+`createAgentSession` 必须引用真实 Agent Profile。`previewAgentTurn` 与 `invokeAgentTurn` 共用同一 Prompt 构建入口；后者从 Agent Session、Profile 选择的唯一 Preset、Preset 关联 Setting、可选 Narrative Timeline Setting 及 Provider Model 构造 canonical Chat Message，并在 Provider 成功后持久化本轮 Message。Provider 失败不会留下半轮。Settings 工作台的当前选中项只是编辑状态，不参与运行时绑定。
 
 当 `narrativeTarget.commit = true` 时，两条 Agent Message 与一条 Narrative Node 在同一 Data Engine transaction / Changeset 中提交；未指定目标或 `commit = false` 时只写 Agent Session。Narrative provenance 可以记录 Agent Session、Agent Message、runId 与 changesetId，但 Timeline 和 Agent Session 仍然互不拥有。
 

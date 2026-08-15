@@ -3,7 +3,8 @@ import type { Logger } from '@loom-studio/logging'
 import { useEffect, useMemo, useState } from 'react'
 import { withClientBridgeLogging } from '../shared/api/client-bridge-logging.js'
 import { createTranslator, type Locale } from '../shared/i18n/index.js'
-import { createStudioApi } from '../shared/api/studio-api.js'
+import { createStudioApi, type NetworkSettings } from '../shared/api/studio-api.js'
+import { toClientJsonObject } from '../shared/api/client-json-object.js'
 import { useAsyncOperations } from '../shared/hooks/use-async-operations.js'
 import { useCards } from '../features/cards/model/use-cards.js'
 import { useEditHistory } from '../features/edit-history/model/use-edit-history.js'
@@ -13,17 +14,11 @@ import { findContextAssetNode } from '../features/context-assets/model/context-a
 import { createActivationFacts, toggleActivationTag, type ActivationControlState, type ActivationTag } from '../features/prompt-build/model/activation-control.js'
 import { buildPromptBuildSteps } from '../features/prompt-build/model/build-prompt-build-steps.js'
 import { useProviderSettings } from '../features/provider-settings/model/use-provider-settings.js'
-import { useSessionRuntime } from '../features/session-runtime/model/use-session-runtime.js'
-import { DemoData } from './demo-data.js'
-import type { CardBundleArtifact, ContextAssetNode, PromptResource } from '../entities/index.js'
-import {
-  readComposerHint,
-  readEmptyTimelineText,
-  readStoredPromptBuildTrace,
-  readStoredProviderPayloadPreview,
-  readStoredPrompt,
-  readStoredPromptProjection,
-} from './utils.js'
+import { useAgentProfiles } from '../features/agent-profiles/model/use-agent-profiles.js'
+import { useAgentChatRuntime } from '../features/agent-runtime/model/use-agent-chat-runtime.js'
+import { useNarrativeRuntime } from '../features/narrative-runtime/model/use-narrative-runtime.js'
+import type { ContextAssetNode, PromptResource, PromptResourceArtifact } from '../entities/index.js'
+import { readComposerHint, readEmptyTimelineText } from './utils.js'
 
 export type HistoryAssetTarget = {
   assetId: string
@@ -33,8 +28,12 @@ export type HistoryAssetTarget = {
 export function useStudioState(transportLogger: Logger) {
   const [locale, setLocale] = useState<Locale>('zh-CN')
   const t = useMemo(() => createTranslator(locale), [locale])
-  const [endpoint, setEndpoint] = useState(DemoData.endpoint)
-  const [customCss, setCustomCss] = useState(DemoData.customCss)
+  const [endpoint, setEndpoint] = useState('/rpc')
+  const [customCss, setCustomCss] = useState('')
+  const [networkSettings, setNetworkSettings] = useState<NetworkSettings>({
+    proxyMode: 'system',
+    systemProxyDetected: false,
+  })
   const [activationControl, setActivationControl] = useState<ActivationControlState>({
     mode: 'draft',
     tags: [],
@@ -45,18 +44,20 @@ export function useStudioState(transportLogger: Logger) {
   const api = useMemo(() => createStudioApi(observedBridge), [observedBridge])
   const editHistory = useEditHistory({ revertChangeset: api.history.revert })
   const [promptResources, setPromptResources] = useState<PromptResource[]>([])
+  const [cardPromptResources, setCardPromptResources] = useState<PromptResource[]>([])
   const cardsState = useCards({
     api,
-    initialCardName: DemoData.cardName,
+    initialCardName: '',
     recordEdit: editHistory.record,
     runAction: action => operations.run('cards', action).then(() => undefined),
     t,
   })
   const contextAssetState = useContextAssets({
     api,
-    initialNodes: DemoData.contextAssets,
+    initialNodes: [],
     onResourceChange: resource => {
       setPromptResources(current => current.map(item => item.id === resource.id ? resource : item))
+      setCardPromptResources(current => current.map(item => item.id === resource.id ? resource : item))
     },
     recordEdit: editHistory.record,
     runAction: action => operations.run('mutation', action).then(() => undefined),
@@ -65,25 +66,46 @@ export function useStudioState(transportLogger: Logger) {
   })
   const providerSettings = useProviderSettings({
     api,
-    initialProviderAccountDraft: DemoData.providerAccountDraft,
+    initialProviderAccountDraft: {
+      displayName: 'OpenAI Compatible',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: '',
+    },
     runAction: action => operations.run('provider-settings', action).then(() => undefined),
   })
+  const agentProfiles = useAgentProfiles({
+    api,
+    runAction: action => operations.run('agent-profiles', action).then(() => undefined),
+  })
+  const selectedAgentProfile = agentProfiles.agentProfiles.find(profile => profile.id === agentProfiles.selectedAgentProfileId)
+  const agentChat = useAgentChatRuntime({
+    api,
+    selectedAgentProfileId: selectedAgentProfile?.id,
+    selectedAgentProfileName: selectedAgentProfile?.name,
+    runAction: action => operations.run('agent-chat', action).then(() => undefined),
+  })
   const activationFacts = useMemo(() => createActivationFacts(activationControl), [activationControl])
-  const sessionRuntime = useSessionRuntime({
+  const narrativeRuntime = useNarrativeRuntime({
     activationFacts,
     api,
     initialInput: '我看向柜台后的铃铛。',
-    initialTimeline: DemoData.timeline,
+    initialNodes: [],
+    selectedCard: cardsState.selectedCardDetails,
     selectedCardId: cardsState.selectedCardId,
-    selectedAgentRuntimeProfileId: providerSettings.selectedAgentRuntimeProfileId,
+    selectedAgentProfileId: agentProfiles.selectedAgentProfileId,
     runAction: action => operations.run('session', action).then(() => undefined),
     runLatestAction: action => operations.runLatest('session', action).then(() => undefined),
-    readProjectionOrderProfile: contextAssetState.readProjectionOrderProfile,
   })
 
-  function applyPromptResourceSelection(resources: PromptResource[]) {
+  function applyPromptResourceLibrary(resources: PromptResource[]) {
     setPromptResources(resources)
     contextAssetState.setNodes(normalizeContextAssets(resources.map(resource => resource.rootNode)))
+  }
+
+  async function refreshPromptResourceLibrary(): Promise<PromptResource[]> {
+    const resources = (await api.promptResources.list()).resources
+    applyPromptResourceLibrary(resources)
+    return resources
   }
 
   useEffect(() => {
@@ -92,53 +114,57 @@ export function useStudioState(transportLogger: Logger) {
       const cards = await cardsState.refreshCards()
       let selectedCardId = cards[0]?.id
 
-      if (cards.length === 0 && import.meta.env.DEV) {
-        const imported = await api.cardBundles.import({
-          artifact: createDemoCardBundleArtifact() as unknown as ClientJsonValue,
-        })
-        selectedCardId = imported.card.id
-        await cardsState.refreshCards()
-      }
-
       if (selectedCardId) cardsState.setSelectedCardId(selectedCardId)
+      await refreshPromptResourceLibrary()
       await providerSettings.refreshProviderSettings()
+      await agentProfiles.refreshAgentProfiles()
+      setNetworkSettings(await api.settings.getNetwork())
     })
   }, [observedBridge])
 
   useEffect(() => {
     if (!cardsState.selectedCardId) {
-      applyPromptResourceSelection([])
+      setCardPromptResources([])
       return
     }
 
     void operations.runLatest('resources', async context => {
       const result = await api.promptResources.listForCard(cardsState.selectedCardId!)
-      if (context.isCurrent()) applyPromptResourceSelection(result.resources)
+      if (context.isCurrent()) setCardPromptResources(result.resources)
     })
+  }, [api, cardsState.selectedCardId])
+
+  useEffect(() => {
+    if (!cardsState.selectedCardId) return
+    void narrativeRuntime.refreshCardTimelines(cardsState.selectedCardId)
   }, [api, cardsState.selectedCardId])
 
   // 派生计算
   const sessionBusy = operations.isPending('session')
-  const canSend = Boolean(sessionRuntime.session && sessionRuntime.branch) && !sessionBusy && sessionRuntime.input.trim().length > 0
-  const canPreviewPrompt = Boolean(sessionRuntime.session && sessionRuntime.branch) && !sessionBusy && sessionRuntime.input.trim().length > 0
+  const canSend = Boolean(narrativeRuntime.timeline && narrativeRuntime.branch && agentProfiles.selectedAgentProfileId)
+    && !sessionBusy
+    && narrativeRuntime.input.trim().length > 0
+  const canPreviewPrompt = canSend
+  const canSendAgent = Boolean(selectedAgentProfile)
+    && agentChat.input.trim().length > 0
+    && !operations.isPending('agent-chat')
   const composerHint = readComposerHint({
-    session: sessionRuntime.session,
-    branch: sessionRuntime.branch,
+    timeline: narrativeRuntime.timeline,
+    branch: narrativeRuntime.branch,
     busy: sessionBusy,
-    input: sessionRuntime.input,
+    input: narrativeRuntime.input,
   }, t)
-  const emptyTimelineText = readEmptyTimelineText({ session: sessionRuntime.session, branch: sessionRuntime.branch }, t)
-  const storedPrompt = readStoredPrompt(sessionRuntime.runDetails)
-  const storedPromptProjection = readStoredPromptProjection(sessionRuntime.runDetails)
-  const promptMessages = sessionRuntime.promptPreview?.messages ?? storedPrompt
-  const promptProjection = sessionRuntime.promptPreview?.projection ?? storedPromptProjection
-  const promptBuildTrace = sessionRuntime.promptPreview?.promptBuildTrace ?? readStoredPromptBuildTrace(sessionRuntime.runDetails)
-  const providerPayloadPreview = sessionRuntime.promptPreview?.providerPayloadPreview ?? readStoredProviderPayloadPreview(sessionRuntime.runDetails)
+  const emptyTimelineText = readEmptyTimelineText({ timeline: narrativeRuntime.timeline, branch: narrativeRuntime.branch }, t)
+  const promptMessages = narrativeRuntime.promptPreview?.messages
+  const promptProjection = narrativeRuntime.promptPreview?.projection ?? narrativeRuntime.lastRun?.projection
+  const promptBuildTrace = undefined
+  const providerPayloadPreview = narrativeRuntime.promptPreview?.providerPayloadPreview
   const promptBuildSteps = buildPromptBuildSteps({
-    session: sessionRuntime.session,
-    branch: sessionRuntime.branch,
-    timeline: sessionRuntime.timeline,
-    input: sessionRuntime.input,
+    card: cardsState.selectedCardDetails,
+    timeline: narrativeRuntime.timeline,
+    branch: narrativeRuntime.branch,
+    nodes: narrativeRuntime.nodes,
+    input: narrativeRuntime.input,
     messages: promptMessages,
     projection: promptProjection,
     activationFacts,
@@ -168,12 +194,110 @@ export function useStudioState(transportLogger: Logger) {
     })
   }
 
+  async function updateNetworkSettings(next: { proxyMode: NetworkSettings['proxyMode']; proxyUrl?: string }) {
+    const updated = await operations.run('settings', () => api.settings.updateNetwork(next))
+    if (updated) setNetworkSettings(updated)
+  }
+
+  async function createPromptResource(resourceKind: PromptResource['resourceKind']): Promise<string | undefined> {
+    let resourceId: string | undefined
+    await operations.run('mutation', async () => {
+      const result = await api.promptResources.create({
+        resourceKind,
+        name: resourceKind === 'preset' ? 'New Preset' : resourceKind === 'setting' ? 'New Setting Layer' : 'New Prompt Resource',
+      })
+      editHistory.record({
+        label: t('history.context.create'),
+        changesetId: result.mutation.changesetId,
+        anchor: { documentId: result.resource.id, subjectId: result.resource.rootNode.id },
+      })
+      resourceId = result.resource.id
+      await refreshPromptResourceLibrary()
+    })
+    return resourceId
+  }
+
+  async function duplicatePromptResource(resourceId: string): Promise<string | undefined> {
+    let duplicatedId: string | undefined
+    await operations.run('mutation', async () => {
+      const result = await api.promptResources.duplicate({ resourceId })
+      editHistory.record({
+        label: t('history.context.duplicate'),
+        changesetId: result.mutation.changesetId,
+        anchor: { documentId: result.resource.id, subjectId: result.resource.rootNode.id },
+      })
+      duplicatedId = result.resource.id
+      await refreshPromptResourceLibrary()
+    })
+    return duplicatedId
+  }
+
+  async function deletePromptResource(resourceId: string): Promise<void> {
+    await operations.run('mutation', async () => {
+      await api.promptResources.delete(resourceId)
+      setCardPromptResources(current => current.filter(resource => resource.id !== resourceId))
+      await refreshPromptResourceLibrary()
+      await Promise.all([
+        cardsState.refreshCards(),
+        agentProfiles.refreshAgentProfiles(),
+        cardsState.selectedCardId ? narrativeRuntime.refreshCardTimelines(cardsState.selectedCardId) : Promise.resolve(),
+      ])
+    })
+  }
+
+  async function updatePresetSettings(presetId: string, linkedSettingIds: string[]): Promise<void> {
+    await operations.run('mutation', async () => {
+      const result = await api.promptResources.updatePresetSettings(toClientJsonObject({ presetId, linkedSettingIds }))
+      editHistory.record({
+        label: t('history.context.update'),
+        changesetId: result.mutation.changesetId,
+        anchor: { documentId: result.resource.id, subjectId: result.resource.rootNode.id },
+      })
+      setPromptResources(current => current.map(resource => resource.id === result.resource.id ? result.resource : resource))
+      await agentProfiles.refreshAgentProfiles()
+    })
+  }
+
+  async function importPromptResource(file: File): Promise<string | undefined> {
+    let resourceId: string | undefined
+    await operations.run('mutation', async () => {
+      let artifact: PromptResourceArtifact
+      try {
+        artifact = JSON.parse(await file.text()) as PromptResourceArtifact
+      } catch {
+        throw new Error('Prompt Resource import must be valid JSON')
+      }
+      const result = await api.promptResources.import(artifact)
+      resourceId = result.resource.id
+      editHistory.record({
+        label: t('history.context.create'),
+        changesetId: result.mutation.changesetId,
+        anchor: { documentId: result.resource.id, subjectId: result.resource.rootNode.id },
+      })
+      await refreshPromptResourceLibrary()
+    })
+    return resourceId
+  }
+
+  async function exportPromptResource(resourceId: string): Promise<void> {
+    const resource = promptResources.find(item => item.id === resourceId)
+    if (!resource) return
+    const result = await api.promptResources.export(resourceId)
+    const blob = new Blob([JSON.stringify(result.artifact, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `${sanitizePromptResourceFileName(resource.rootNode.label)}.loomresource.json`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+
   async function refreshHistoryAnchor(entry: { anchor?: { documentId: string; subjectId?: string } }): Promise<HistoryAssetTarget | undefined> {
     if (!entry.anchor) return
     if (promptResources.some(resource => resource.id === entry.anchor?.documentId)) {
       const result = await api.promptResources.get(entry.anchor.documentId)
       const resources = promptResources.map(resource => resource.id === result.resource.id ? result.resource : resource)
-      applyPromptResourceSelection(resources)
+      applyPromptResourceLibrary(resources)
       const subjectId = entry.anchor.subjectId
       const contextAssets = resources.map(resource => resource.rootNode)
       return readHistoryAssetTarget(contextAssets, subjectId, readDefaultContextAssetId(resources))
@@ -188,6 +312,8 @@ export function useStudioState(transportLogger: Logger) {
   return {
     // i18n
     locale, setLocale, t,
+    networkSettings,
+    updateNetworkSettings,
     // bridge
     endpoint, setEndpoint,
     logsApi: api.logs,
@@ -198,17 +324,29 @@ export function useStudioState(transportLogger: Logger) {
     cardDraft: cardsState.cardDraft,
     setCardDraft: cardsState.setCardDraft,
     selectedCard: cardsState.selectedCard,
-    // session
-    session: sessionRuntime.session, branch: sessionRuntime.branch, branches: sessionRuntime.branches,
-    // timeline
-    timeline: sessionRuntime.timeline,
-    editTimelineEntry: sessionRuntime.editTimelineEntry,
+    selectedCardDetails: cardsState.selectedCardDetails,
+    updateCardMedia: cardsState.updateCardMedia,
+    importCards: cardsState.importCards,
+    exportCard: cardsState.exportCard,
+    // narrative
+    narrativeTimeline: narrativeRuntime.timeline,
+    branch: narrativeRuntime.branch,
+    branches: narrativeRuntime.branches,
+    cardTimelines: narrativeRuntime.cardTimelines,
+    narrativeNodes: narrativeRuntime.nodes,
+    editNarrativeNode: narrativeRuntime.editNarrativeNode,
+    hasOlderNarrativeNodes: Boolean(narrativeRuntime.olderCursor),
     // agent
-    agentTranscript: sessionRuntime.agentTranscript,
+    agentMessages: narrativeRuntime.agentMessages,
+    agentChatSession: agentChat.session,
+    agentChatMessages: agentChat.messages,
+    agentChatInput: agentChat.input,
+    setAgentChatInput: agentChat.setInput,
+    submitAgentTurn: agentChat.submitTurn,
     // run
-    runDetails: sessionRuntime.runDetails,
+    lastRun: narrativeRuntime.lastRun,
     // prompt
-    promptPreview: sessionRuntime.promptPreview, promptMessages, promptProjection, promptBuildSteps,
+    promptPreview: narrativeRuntime.promptPreview, promptMessages, promptProjection, promptBuildSteps,
     promptBuildTrace,
     providerPayloadPreview,
     activationControl,
@@ -218,10 +356,10 @@ export function useStudioState(transportLogger: Logger) {
     // gateway
     providerAccountDraft: providerSettings.providerAccountDraft,
     setProviderAccountDraft: providerSettings.setProviderAccountDraft,
-    selectedAgentRuntimeProfileId: providerSettings.selectedAgentRuntimeProfileId,
-    setSelectedAgentRuntimeProfileId: providerSettings.setSelectedAgentRuntimeProfileId,
+    selectedAgentProfileId: agentProfiles.selectedAgentProfileId,
+    selectAgentProfile: agentProfiles.selectAgentProfile,
     // input
-    input: sessionRuntime.input, setInput: sessionRuntime.setInput,
+    input: narrativeRuntime.input, setInput: narrativeRuntime.setInput,
     // state
     operationPending: operations.pending,
     operationError: operations.error,
@@ -230,6 +368,8 @@ export function useStudioState(transportLogger: Logger) {
     // custom css
     customCss, setCustomCss,
     // context assets
+    promptResources,
+    cardPromptResources,
     contextAssets: contextAssetState.nodes, setContextAssets: contextAssetState.setNodes,
     previewContextAsset: contextAssetState.previewContextAsset,
     updateContextAsset: contextAssetState.updateContextAsset,
@@ -238,8 +378,14 @@ export function useStudioState(transportLogger: Logger) {
     addContextAsset: contextAssetState.addContextAsset,
     duplicateContextAsset: contextAssetState.duplicateContextAsset,
     deleteContextAsset: contextAssetState.deleteContextAsset,
+    createPromptResource,
+    duplicatePromptResource,
+    deletePromptResource,
+    importPromptResource,
+    exportPromptResource,
+    updatePresetSettings,
     // derived
-    canSend, canPreviewPrompt, composerHint, emptyTimelineText,
+    canSend, canSendAgent, canPreviewPrompt, composerHint, emptyTimelineText,
     // actions
     undoEdit,
     redoEdit,
@@ -249,44 +395,37 @@ export function useStudioState(transportLogger: Logger) {
     deleteCards: cardsState.deleteCards,
     createProviderAccount: providerSettings.createProviderAccount,
     createModelProfile: providerSettings.createModelProfile,
-    createSessionFromCard: sessionRuntime.createSessionFromCard,
-    activateSession: sessionRuntime.activateSession,
-    submitTurn: sessionRuntime.submitTurn,
-    previewPrompt: sessionRuntime.previewPrompt,
-    forkFromEntry: sessionRuntime.forkFromEntry,
-    switchBranch: sessionRuntime.switchBranch,
-    switchBranchById: sessionRuntime.switchBranchById,
+    createTimelineFromCard: narrativeRuntime.createTimelineFromCard,
+    activateTimeline: narrativeRuntime.activateTimeline,
+    submitTurn: narrativeRuntime.submitTurn,
+    previewPrompt: narrativeRuntime.previewPrompt,
+    forkFromNode: narrativeRuntime.forkFromNode,
+    switchBranch: narrativeRuntime.switchBranch,
+    loadOlderNodes: narrativeRuntime.loadOlderNodes,
     refreshCards: cardsState.refreshCards,
     // provider management
     providerAccounts: providerSettings.providerAccounts,
     providerAccountsLoaded: providerSettings.providerAccountsLoaded,
     modelProfiles: providerSettings.modelProfiles,
-    agentRuntimeProfiles: providerSettings.agentRuntimeProfiles,
+    agentProfiles: agentProfiles.agentProfiles,
+    presets: agentProfiles.presets,
     refreshProviderAccounts: providerSettings.refreshProviderAccounts,
     refreshModelProfiles: providerSettings.refreshModelProfiles,
-    refreshAgentRuntimeProfiles: providerSettings.refreshAgentRuntimeProfiles,
     updateProviderAccount: providerSettings.updateProviderAccount,
+    updateProviderConnection: providerSettings.updateProviderConnection,
     deleteProviderAccount: providerSettings.deleteProviderAccount,
     updateModelProfile: providerSettings.updateModelProfile,
     deleteModelProfile: providerSettings.deleteModelProfile,
+    listProviderModels: providerSettings.listProviderModels,
     pingModelProfile: providerSettings.pingModelProfile,
-    createAgentRuntimeProfile: providerSettings.createAgentRuntimeProfile,
-    updateAgentRuntimeProfile: providerSettings.updateAgentRuntimeProfile,
-    deleteAgentRuntimeProfile: providerSettings.deleteAgentRuntimeProfile,
+    createAgentProfile: agentProfiles.createAgentProfile,
+    updateAgentProfile: agentProfiles.updateAgentProfile,
+    deleteAgentProfile: agentProfiles.deleteAgentProfile,
   }
 }
 
-function createDemoCardBundleArtifact(): CardBundleArtifact {
-  const card = JSON.parse(DemoData.cardJson) as CardBundleArtifact['card']
-
-  return {
-    schemaVersion: 1,
-    artifactId: 'studio-demo-card-bundle',
-    displayName: 'Studio Demo Card Bundle',
-    description: 'Card bundle imported from the built-in Studio demo data.',
-    card,
-    contextAssets: DemoData.contextAssets,
-  }
+function sanitizePromptResourceFileName(value: string): string {
+  return value.trim().replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ') || 'prompt-resource'
 }
 
 function readDefaultContextAssetId(resources: PromptResource[]): string {

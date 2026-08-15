@@ -30,7 +30,7 @@ Context 是 Application Runtime 的基础设施工具箱，不是业务状态容
 ```text
 sessionId / branchId / workspaceId
 userInput / activationFacts / projectionOrderProfile
-modelProfileId
+providerProfileId / modelId
 ```
 
 请求边界使用独立 `RuntimeRequestContext` 传播 `clientId`、`correlationId`、`callId` 和 `parentCallId`。Document mutation、PromptBuild 和 Provider 路径可以使用这些字段建立调用关联，但不得从 Context 隐式读取业务事实。

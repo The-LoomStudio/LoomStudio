@@ -116,10 +116,21 @@ export type DeleteNarrativeTimelineInput = NarrativeWriteContext & {
   timelineId: string
 }
 
+export type UpdateNarrativePromptResourcesInput = NarrativeWriteContext & {
+  timelineId: string
+  promptResourceIds: string[]
+  expectedPromptResourceIds?: string[]
+}
+
 export type NarrativePage = {
   timeline: NarrativeTimeline
   branch: NarrativeBranch
   nodes: NarrativeNode[]
+  nextCursor?: string
+}
+
+export type NarrativeTimelinePage = {
+  timelines: NarrativeTimeline[]
   nextCursor?: string
 }
 
@@ -129,6 +140,7 @@ export type NarrativeTransaction = {
   forkBranch(input: Omit<ForkNarrativeBranchInput, keyof NarrativeWriteContext>): NarrativeBranch
   switchBranch(input: Omit<SwitchNarrativeBranchInput, keyof NarrativeWriteContext>): NarrativeTimeline
   deleteTimeline(input: Omit<DeleteNarrativeTimelineInput, keyof NarrativeWriteContext>): NarrativeTimeline
+  updatePromptResources(input: Omit<UpdateNarrativePromptResourcesInput, keyof NarrativeWriteContext>): NarrativeTimeline
 }
 
 export type CreateNarrativeTimelineResultWithoutCommit = Omit<CreateNarrativeTimelineResult, 'commit'>
@@ -136,7 +148,9 @@ export type AppendNarrativeNodeResultWithoutCommit = Omit<AppendNarrativeNodeRes
 
 export type NarrativeStore = {
   getTimeline(id: string): Promise<NarrativeTimeline | null>
+  listTimelines(input?: { createdFromCardId?: string; cursor?: string; limit?: number }): Promise<NarrativeTimelinePage>
   getBranch(id: string): Promise<NarrativeBranch | null>
+  listBranches(timelineId: string): Promise<NarrativeBranch[]>
   getNode(id: string): Promise<NarrativeNode | null>
   getPage(input: { timelineId: string; branchId?: string; cursor?: string; limit?: number }): Promise<NarrativePage>
   createTimeline(input: CreateNarrativeTimelineInput): Promise<CreateNarrativeTimelineResult>
@@ -144,5 +158,6 @@ export type NarrativeStore = {
   forkBranch(input: ForkNarrativeBranchInput): Promise<{ branch: NarrativeBranch; commit: DataCommitFact }>
   switchBranch(input: SwitchNarrativeBranchInput): Promise<{ timeline: NarrativeTimeline; commit: DataCommitFact }>
   deleteTimeline(input: DeleteNarrativeTimelineInput): Promise<{ timeline: NarrativeTimeline; commit: DataCommitFact }>
+  updatePromptResources(input: UpdateNarrativePromptResourcesInput): Promise<{ timeline: NarrativeTimeline; commit: DataCommitFact }>
   transaction(tx: SqliteDataTransaction): NarrativeTransaction
 }

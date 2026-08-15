@@ -1,36 +1,40 @@
 import type { ClientBridge, ClientJsonValue } from '@loom-studio/client-bridge'
 import type { LogLevel, LogPage } from '@loom-studio/logging'
 import type {
-  AgentTranscript,
-  CreateAgentRuntimeProfileResult,
+  AgentMessagePage,
+  CreateAgentProfileResult,
+  CreateAgentSessionResult,
   CreateCardResult,
+  CreateNarrativeTimelineResult,
+  CreatePromptResourceResult,
   DeleteCardResult,
-  CreateModelProfileResult,
   CreateProviderAccountResult,
-  CreateSessionResult,
-  DeleteAgentRuntimeProfileResult,
-  DeleteModelProfileResult,
+  DeleteAgentProfileResult,
   DeleteProviderAccountResult,
-  ForkBranchResult,
+  DeletePromptResourceResult,
+  ForkNarrativeBranchResult,
   ExportCardBundleResult,
+  ExportPromptResourceResult,
+  GetCardResult,
   GetImportBundleResult,
+  GetNarrativeTimelineResult,
   GetPromptResourceResult,
   ImportCardBundleResult,
-  ListAgentRuntimeProfilesResult,
+  InvokeAgentTurnResult,
+  ListAgentProfilesResult,
   ListCardsResult,
-  ListModelProfilesResult,
   ListProviderAccountsResult,
   ListCardPromptResourcesResult,
+  ListPromptResourcesResult,
+  ListNarrativeTimelinesResult,
   MutationReceipt,
-  PromptPreview,
-  RunDetails,
-  SessionDetails,
-  SubmitTurnResult,
-  Timeline,
+  NarrativePage,
+  PreviewAgentTurnResult,
+  PromptResourceArtifact,
+  SwitchNarrativeBranchResult,
   UpdatePromptResourceResult,
   UpdateCardResult,
-  UpdateAgentRuntimeProfileResult,
-  UpdateModelProfileResult,
+  UpdateAgentProfileResult,
   UpdateProviderAccountResult,
 } from '../../entities/index.js'
 
@@ -47,7 +51,19 @@ export type LogsListInput = {
   until?: string
 }
 
+export type NetworkProxyMode = 'system' | 'direct' | 'manual'
+
+export type NetworkSettings = {
+  proxyMode: NetworkProxyMode
+  proxyUrl?: string
+  systemProxyDetected: boolean
+}
+
 export type StudioApi = {
+  settings: {
+    getNetwork(): Promise<NetworkSettings>
+    updateNetwork(input: { proxyMode: NetworkProxyMode; proxyUrl?: string }): Promise<NetworkSettings>
+  }
   logs: {
     list(input?: LogsListInput): Promise<LogPage>
   }
@@ -58,54 +74,58 @@ export type StudioApi = {
     get(importBundleId: string): Promise<GetImportBundleResult>
   }
   cards: {
-    list(): Promise<ListCardsResult>
+    get(cardId: string): Promise<GetCardResult>
+    list(input?: { cursor?: string; limit?: number }): Promise<ListCardsResult>
     create(input: JsonObject): Promise<CreateCardResult>
     update(input: JsonObject): Promise<UpdateCardResult>
     updatePromptResources(input: JsonObject): Promise<UpdateCardResult>
     delete(cardId: string): Promise<DeleteCardResult>
     export(cardId: string): Promise<ExportCardBundleResult>
   }
+  agentSessions: {
+    create(input: JsonObject): Promise<CreateAgentSessionResult>
+    get(agentSessionId: string): Promise<{ session: import('../../entities/index.js').AgentSession }>
+    getMessages(input: { agentSessionId: string; cursor?: string; limit?: number }): Promise<AgentMessagePage>
+    invoke(input: JsonObject): Promise<InvokeAgentTurnResult>
+    preview(input: JsonObject): Promise<PreviewAgentTurnResult>
+  }
   providerAccounts: {
     list(): Promise<ListProviderAccountsResult>
     create(input: JsonObject): Promise<CreateProviderAccountResult>
     update(input: JsonObject): Promise<UpdateProviderAccountResult>
+    replaceCredential(providerProfileId: string, credential: Record<string, string>): Promise<{ credential: { configured: boolean; updatedAt?: string } }>
     delete(providerAccountId: string): Promise<DeleteProviderAccountResult>
   }
-  modelProfiles: {
-    list(): Promise<ListModelProfilesResult>
-    create(input: JsonObject): Promise<CreateModelProfileResult>
-    update(input: JsonObject): Promise<UpdateModelProfileResult>
-    delete(modelProfileId: string): Promise<DeleteModelProfileResult>
-    ping(modelProfileId: string): Promise<string>
+  providerModels: {
+    list(providerProfileId: string): Promise<string[]>
+    ping(providerProfileId: string, modelId: string): Promise<string>
   }
-  agentRuntimeProfiles: {
-    list(): Promise<ListAgentRuntimeProfilesResult>
-    create(input: JsonObject): Promise<CreateAgentRuntimeProfileResult>
-    update(input: JsonObject): Promise<UpdateAgentRuntimeProfileResult>
-    delete(agentRuntimeProfileId: string): Promise<DeleteAgentRuntimeProfileResult>
+  agentProfiles: {
+    list(): Promise<ListAgentProfilesResult>
+    create(input: JsonObject): Promise<CreateAgentProfileResult>
+    update(input: JsonObject): Promise<UpdateAgentProfileResult>
+    delete(agentProfileId: string): Promise<DeleteAgentProfileResult>
   }
-  sessions: {
-    createFromCard(input: JsonObject): Promise<CreateSessionResult>
-    get(sessionId: string): Promise<SessionDetails>
-    fork(input: { sessionId: string; fromEntryId: string; title: string }): Promise<ForkBranchResult>
-  }
-  timeline: {
-    get(input: JsonObject): Promise<Timeline>
-  }
-  agentTranscript: {
-    get(input: JsonObject): Promise<AgentTranscript>
-  }
-  runs: {
-    get(runId: string): Promise<RunDetails>
-  }
-  prompt: {
-    preview(input: JsonObject): Promise<PromptPreview>
+  narratives: {
+    createFromCard(input: JsonObject): Promise<CreateNarrativeTimelineResult>
+    get(timelineId: string): Promise<GetNarrativeTimelineResult>
+    list(input?: { createdFromCardId?: string; cursor?: string; limit?: number }): Promise<ListNarrativeTimelinesResult>
+    getPage(input: { timelineId: string; branchId?: string; cursor?: string; limit?: number }): Promise<NarrativePage>
+    fork(input: { timelineId: string; fromBranchId: string; fromNodeId: string; title?: string }): Promise<ForkNarrativeBranchResult>
+    switch(input: { timelineId: string; branchId: string; expectedActiveBranchId?: string }): Promise<SwitchNarrativeBranchResult>
   }
   promptResources: {
     get(resourceId: string): Promise<GetPromptResourceResult>
+    list(resourceKind?: 'preset' | 'setting'): Promise<ListPromptResourcesResult>
+    create(input: JsonObject): Promise<CreatePromptResourceResult>
+    duplicate(input: JsonObject): Promise<CreatePromptResourceResult>
+    delete(resourceId: string): Promise<DeletePromptResourceResult>
+    import(artifact: PromptResourceArtifact): Promise<CreatePromptResourceResult>
+    export(resourceId: string): Promise<ExportPromptResourceResult>
     listForCard(cardId: string): Promise<ListCardPromptResourcesResult>
     updateAsset(input: JsonObject): Promise<UpdatePromptResourceResult>
     updateAssets(input: JsonObject): Promise<UpdatePromptResourceResult>
+    updatePresetSettings(input: JsonObject): Promise<UpdatePromptResourceResult>
     createAsset(input: JsonObject): Promise<UpdatePromptResourceResult>
     moveAsset(input: JsonObject): Promise<UpdatePromptResourceResult>
     deleteAsset(input: JsonObject): Promise<UpdatePromptResourceResult>
@@ -113,13 +133,14 @@ export type StudioApi = {
   cardBundles: {
     import(input: JsonObject): Promise<ImportCardBundleResult>
   }
-  turns: {
-    submit(input: JsonObject): Promise<SubmitTurnResult>
-  }
 }
 
 export function createStudioApi(bridge: ClientBridge): StudioApi {
   return {
+    settings: {
+      getNetwork: () => bridge.call<NetworkSettings>('settings.network.get', {}),
+      updateNetwork: input => bridge.call<NetworkSettings>('settings.network.update', input),
+    },
     logs: {
       list: input => bridge.call<LogPage>('logs.list', (input ?? {}) as unknown as ClientJsonValue),
     },
@@ -133,66 +154,85 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       get: importBundleId => bridge.call<GetImportBundleResult>('application.getImportBundle', { importBundleId }),
     },
     cards: {
-      list: () => bridge.call<ListCardsResult>('application.listCards', {}),
+      get: cardId => bridge.call<GetCardResult>('application.getCard', { cardId }),
+      list: input => bridge.call<ListCardsResult>('application.listCards', input ?? {}),
       create: input => bridge.call<CreateCardResult>('application.createCard', input),
       update: input => bridge.call<UpdateCardResult>('application.updateCard', input),
       updatePromptResources: input => bridge.call<UpdateCardResult>('application.updateCardPromptResources', input),
       delete: cardId => bridge.call<DeleteCardResult>('application.deleteCard', { cardId }),
       export: cardId => bridge.call<ExportCardBundleResult>('application.exportCardArtifact', { cardId }),
     },
-    providerAccounts: {
-      list: () => bridge.call<ListProviderAccountsResult>('application.listProviderAccounts', {}),
-      create: input => bridge.call<CreateProviderAccountResult>('application.createProviderAccount', input),
-      update: input => bridge.call<UpdateProviderAccountResult>('application.updateProviderAccount', input),
-      delete: providerAccountId => bridge.call<DeleteProviderAccountResult>('application.deleteProviderAccount', { providerAccountId }),
+    agentSessions: {
+      create: input => bridge.call<CreateAgentSessionResult>('application.createAgentSession', input),
+      get: agentSessionId => bridge.call('application.getAgentSession', { agentSessionId }),
+      getMessages: input => bridge.call<AgentMessagePage>('application.getAgentMessagePage', input),
+      invoke: input => bridge.call<InvokeAgentTurnResult>('application.invokeAgentTurn', input),
+      preview: input => bridge.call<PreviewAgentTurnResult>('application.previewAgentTurn', input),
     },
-    modelProfiles: {
-      list: () => bridge.call<ListModelProfilesResult>('application.listModelProfiles', {}),
-      create: input => bridge.call<CreateModelProfileResult>('application.createModelProfile', input),
-      update: input => bridge.call<UpdateModelProfileResult>('application.updateModelProfile', input),
-      delete: modelProfileId => bridge.call<DeleteModelProfileResult>('application.deleteModelProfile', { modelProfileId }),
-      ping: async modelProfileId => {
-        const result = await bridge.call<{ text: string }>('application.pingModelProfile', { modelProfileId })
+    providerAccounts: {
+      list: async () => {
+        const result = await bridge.call<{ providerProfiles: ListProviderAccountsResult['providerAccounts']; nextCursor?: string }>('application.listProviderProfiles', {})
+        return { providerAccounts: result.providerProfiles, nextCursor: result.nextCursor }
+      },
+      create: async input => {
+        const result = await bridge.call<{ providerProfile: CreateProviderAccountResult['providerAccount'] }>('application.createProviderProfile', input)
+        return { providerAccount: result.providerProfile }
+      },
+      update: async input => {
+        const result = await bridge.call<{ providerProfile: UpdateProviderAccountResult['providerAccount'] }>('application.updateProviderProfile', input)
+        return { providerAccount: result.providerProfile }
+      },
+      replaceCredential: (providerProfileId, credential) => bridge.call('application.replaceProviderCredential', {
+        providerProfileId,
+        credential,
+      }),
+      delete: async providerAccountId => {
+        const result = await bridge.call<{ deleted: true }>('application.deleteProviderProfile', { providerProfileId: providerAccountId })
+        return result
+      },
+    },
+    providerModels: {
+      list: async providerProfileId => {
+        const result = await bridge.call<{ modelIds: string[] }>('application.listProviderModels', { providerProfileId })
+        return result.modelIds
+      },
+      ping: async (providerProfileId, modelId) => {
+        const result = await bridge.call<{ text: string }>('application.pingProviderModel', { providerProfileId, modelId })
         return result.text
       },
     },
-    agentRuntimeProfiles: {
-      list: () => bridge.call<ListAgentRuntimeProfilesResult>('application.listAgentRuntimeProfiles', {}),
-      create: input => bridge.call<CreateAgentRuntimeProfileResult>('application.createAgentRuntimeProfile', input),
-      update: input => bridge.call<UpdateAgentRuntimeProfileResult>('application.updateAgentRuntimeProfile', input),
-      delete: agentRuntimeProfileId => bridge.call<DeleteAgentRuntimeProfileResult>('application.deleteAgentRuntimeProfile', { agentRuntimeProfileId }),
+    agentProfiles: {
+      list: () => bridge.call<ListAgentProfilesResult>('application.listAgentProfiles', {}),
+      create: input => bridge.call<CreateAgentProfileResult>('application.createAgentProfile', input),
+      update: input => bridge.call<UpdateAgentProfileResult>('application.updateAgentProfile', input),
+      delete: agentProfileId => bridge.call<DeleteAgentProfileResult>('application.deleteAgentProfile', { agentProfileId }),
     },
-    sessions: {
-      createFromCard: input => bridge.call<CreateSessionResult>('application.createSessionFromCard', input),
-      get: sessionId => bridge.call<SessionDetails>('application.getSession', { sessionId }),
-      fork: input => bridge.call<ForkBranchResult>('application.forkBranch', input),
-    },
-    timeline: {
-      get: input => bridge.call<Timeline>('application.getTimeline', input),
-    },
-    agentTranscript: {
-      get: input => bridge.call<AgentTranscript>('application.getAgentTranscript', input),
-    },
-    runs: {
-      get: runId => bridge.call<RunDetails>('application.getRun', { runId }),
-    },
-    prompt: {
-      preview: input => bridge.call<PromptPreview>('application.previewPrompt', input),
+    narratives: {
+      createFromCard: input => bridge.call<CreateNarrativeTimelineResult>('application.createNarrativeTimelineFromCard', input),
+      get: timelineId => bridge.call<GetNarrativeTimelineResult>('application.getNarrativeTimeline', { timelineId }),
+      list: input => bridge.call<ListNarrativeTimelinesResult>('application.listNarrativeTimelines', input ?? {}),
+      getPage: input => bridge.call<NarrativePage>('application.getNarrativePage', input),
+      fork: input => bridge.call<ForkNarrativeBranchResult>('application.forkNarrativeBranch', input),
+      switch: input => bridge.call<SwitchNarrativeBranchResult>('application.switchNarrativeBranch', input),
     },
     promptResources: {
       get: resourceId => bridge.call<GetPromptResourceResult>('application.getPromptResource', { resourceId }),
+      list: resourceKind => bridge.call<ListPromptResourcesResult>('application.listPromptResources', resourceKind ? { resourceKind } : {}),
+      create: input => bridge.call<CreatePromptResourceResult>('application.createPromptResource', input),
+      duplicate: input => bridge.call<CreatePromptResourceResult>('application.duplicatePromptResource', input),
+      delete: resourceId => bridge.call<DeletePromptResourceResult>('application.deletePromptResource', { resourceId }),
+      import: artifact => bridge.call<CreatePromptResourceResult>('application.importPromptResource', { artifact: artifact as unknown as ClientJsonValue }),
+      export: resourceId => bridge.call<ExportPromptResourceResult>('application.exportPromptResource', { resourceId }),
       listForCard: cardId => bridge.call<ListCardPromptResourcesResult>('application.listCardPromptResources', { cardId }),
       createAsset: input => bridge.call<UpdatePromptResourceResult>('application.createPromptResourceAsset', input),
       updateAsset: input => bridge.call<UpdatePromptResourceResult>('application.updatePromptResourceAsset', input),
       updateAssets: input => bridge.call<UpdatePromptResourceResult>('application.updatePromptResourceAssets', input),
+      updatePresetSettings: input => bridge.call<UpdatePromptResourceResult>('application.updatePresetSettings', input),
       moveAsset: input => bridge.call<UpdatePromptResourceResult>('application.movePromptResourceAsset', input),
       deleteAsset: input => bridge.call<UpdatePromptResourceResult>('application.deletePromptResourceAsset', input),
     },
     cardBundles: {
       import: input => bridge.call<ImportCardBundleResult>('application.importCardBundle', input),
-    },
-    turns: {
-      submit: input => bridge.call<SubmitTurnResult>('application.submitTurn', input),
     },
   }
 }

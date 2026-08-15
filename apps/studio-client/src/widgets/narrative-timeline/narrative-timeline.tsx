@@ -1,12 +1,13 @@
 import { Check, Copy, GitBranch, Link, Pencil, Trash2, X } from 'lucide-react'
 import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Translator } from '../../shared/i18n/index.js'
+import type { NarrativeNode } from '../../entities/index.js'
 import { tryWriteClipboardText } from '../../shared/browser/clipboard.js'
 import {
   NarrativeTimelineNavigator,
   type NarrativeTimelineNavigatorItem,
 } from './narrative-timeline-navigator.js'
-import { createMockNarrativeTimelineMarkers } from './narrative-timeline-navigator-model.js'
+import type { NarrativeTimelineMarker } from './narrative-timeline-navigator-model.js'
 import { LongTextEditor } from '../../shared/ui/long-text-editor/long-text-editor.js'
 import { SkeletonText } from '../../shared/ui/skeleton/skeleton.js'
 import { ConversationMessageAction, ConversationMessageChrome, formatConversationTimestamp } from '../../shared/ui/conversation-message-chrome/conversation-message-chrome.js'
@@ -19,29 +20,22 @@ const ConversationMarkdown = lazy(async () => {
 
 const MESSAGE_EDITOR_MIN_HEIGHT = 132
 
-type NarrativeEntryView = {
-  id: string
-  version: number
-  role: 'user' | 'assistant'
-  content: string
-  createdAt: string
-  branchId: string
-  parentEntryId?: string
-  runId?: string
-}
+type NarrativeNodeView = NarrativeNode
 
 type NarrativeTimelineProps = {
-  anchorEntryId?: string
+  anchorNodeId?: string
   busy: boolean
   composerExpanded: boolean
   composerHeight: number
   emptyTimelineText: string
-  getEntryLink: (entryId: string) => string
-  onEditEntry: (entryId: string, content: string) => void
-  onEntryAnchorChange: (entryId: string) => void
-  onForkEntry: (entry: NarrativeEntryView) => void
+  getNodeLink: (nodeId: string) => string
+  hasOlder: boolean
+  onEditNode: (nodeId: string, content: string) => void
+  onForkNode: (node: NarrativeNodeView) => void
+  onLoadOlder(): void
+  onNodeAnchorChange: (nodeId: string) => void
   t: Translator
-  timeline: NarrativeEntryView[]
+  timeline: NarrativeNodeView[]
 }
 
 export function NarrativeTimeline(props: NarrativeTimelineProps) {
@@ -61,16 +55,13 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
   const followsComposerRef = useRef(true)
   const messageSurfaceRefs = useRef(new Map<string, HTMLDivElement>())
   const timelineRef = useRef<HTMLDivElement>(null)
-  const navigatorItems = useMemo<NarrativeTimelineNavigatorItem[]>(() => props.timeline.map((entry, index) => ({
-    id: entry.id,
-    meta: `#${index + 1} · ${formatConversationTimestamp(entry.createdAt)}`,
-    preview: entry.content,
-    role: props.t(entry.role === 'user' ? 'timeline.role.user' : 'timeline.role.assistant'),
+  const navigatorItems = useMemo<NarrativeTimelineNavigatorItem[]>(() => props.timeline.map((node, index) => ({
+    id: node.id,
+    meta: `#${index + 1} · ${formatConversationTimestamp(node.createdAt)}`,
+    preview: node.body.raw,
+    role: props.t('timeline.role.assistant'),
   })), [props.t, props.timeline])
-  const navigatorMarkers = useMemo(
-    () => import.meta.env.DEV ? createMockNarrativeTimelineMarkers(props.timeline.map(entry => entry.id)) : [],
-    [props.timeline],
-  )
+  const navigatorMarkers: NarrativeTimelineMarker[] = []
 
   useEffect(() => () => {
     if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
@@ -120,24 +111,24 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
   }, [props.composerExpanded])
 
   useLayoutEffect(() => {
-    if (!props.anchorEntryId) {
+    if (!props.anchorNodeId) {
       handledAnchorRef.current = undefined
       return
     }
-    if (handledAnchorRef.current === props.anchorEntryId || !props.timeline.some(entry => entry.id === props.anchorEntryId)) return
-    handledAnchorRef.current = props.anchorEntryId
-    setActiveEntryId(props.anchorEntryId)
-    messageSurfaceRefs.current.get(props.anchorEntryId)?.scrollIntoView({ block: 'center' })
-  }, [props.anchorEntryId, props.timeline])
+    if (handledAnchorRef.current === props.anchorNodeId || !props.timeline.some(node => node.id === props.anchorNodeId)) return
+    handledAnchorRef.current = props.anchorNodeId
+    setActiveEntryId(props.anchorNodeId)
+    messageSurfaceRefs.current.get(props.anchorNodeId)?.scrollIntoView({ block: 'center' })
+  }, [props.anchorNodeId, props.timeline])
 
-  function beginEdit(entry: NarrativeEntryView) {
+  function beginEdit(node: NarrativeNodeView) {
     const messageBody = messageSurfaceRefs.current
-      .get(entry.id)
+      .get(node.id)
       ?.querySelector<HTMLElement>('[data-loom-component="markdown-content"]')
     setEditorMinHeight(Math.max(MESSAGE_EDITOR_MIN_HEIGHT, messageBody?.getBoundingClientRect().height ?? 0))
-    setMessageMotion({ id: entry.id, direction: 'to-edit' })
-    setEditingId(entry.id)
-    setDraft(entry.content)
+    setMessageMotion({ id: node.id, direction: 'to-edit' })
+    setEditingId(node.id)
+    setDraft(node.body.raw)
   }
 
   function cancelEdit() {
@@ -153,20 +144,20 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
   function saveValue(rawValue: string) {
     const value = rawValue.trim()
     if (!editingId || !value) return
-    props.onEditEntry(editingId, value)
+    props.onEditNode(editingId, value)
     cancelEdit()
   }
 
-  async function copyEntry(entry: NarrativeEntryView) {
-    const copied = await tryWriteClipboardText(entry.content)
-    setCopyState({ id: entry.id, status: copied ? 'copied' : 'failed' })
+  async function copyEntry(node: NarrativeNodeView) {
+    const copied = await tryWriteClipboardText(node.body.raw)
+    setCopyState({ id: node.id, status: copied ? 'copied' : 'failed' })
     if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
     copyTimerRef.current = setTimeout(() => setCopyState(undefined), 1600)
   }
 
-  async function copyEntryLink(entry: NarrativeEntryView) {
-    const copied = await tryWriteClipboardText(props.getEntryLink(entry.id))
-    setLinkCopyState({ id: entry.id, status: copied ? 'copied' : 'failed' })
+  async function copyEntryLink(node: NarrativeNodeView) {
+    const copied = await tryWriteClipboardText(props.getNodeLink(node.id))
+    setLinkCopyState({ id: node.id, status: copied ? 'copied' : 'failed' })
     if (linkCopyTimerRef.current) clearTimeout(linkCopyTimerRef.current)
     linkCopyTimerRef.current = setTimeout(() => setLinkCopyState(undefined), 1600)
   }
@@ -202,7 +193,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
 
   function navigateToEntry(entryId: string) {
     setActiveEntryId(entryId)
-    props.onEntryAnchorChange(entryId)
+    props.onNodeAnchorChange(entryId)
     messageSurfaceRefs.current.get(entryId)?.scrollIntoView({
       behavior: globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
       block: 'center',
@@ -229,14 +220,15 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
               <SkeletonText lines={6} />
             </div>
           )}>
+            {props.hasOlder ? <button disabled={props.busy} type="button" onClick={props.onLoadOlder}>{props.t('timeline.loadOlder')}</button> : null}
             {props.timeline.map((entry, index) => (
               <article
-                className={`${styles.message} ${entry.role === 'user' ? styles.user : styles.assistant}`}
+                className={`${styles.message} ${styles.assistant}`}
                 data-loom-component="chat-message"
-                data-loom-role={entry.role}
+                data-loom-role="narrative"
                 data-loom-motion={messageMotion?.id === entry.id ? messageMotion.direction : undefined}
                 data-loom-state={editingId === entry.id ? 'editing' : 'settled'}
-                id={`entry-${encodeURIComponent(entry.id)}`}
+                id={`node-${encodeURIComponent(entry.id)}`}
                 key={entry.id}
               >
                 <div
@@ -281,8 +273,8 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                         disableWrap: props.t('markdown.code.disableWrap'),
                         enableWrap: props.t('markdown.code.enableWrap'),
                       }}
-                      role={entry.role}
-                      value={entry.content}
+                      role="assistant"
+                      value={entry.body.raw}
                     />
                   )}
                 </div>
@@ -313,7 +305,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                         {linkCopyState?.id === entry.id && linkCopyState.status === 'copied' ? <Check aria-hidden="true" /> : <Link aria-hidden="true" />}
                       </ConversationMessageAction>
                       <ConversationMessageAction label={props.t('timeline.editLocal')} onClick={() => beginEdit(entry)}><Pencil aria-hidden="true" /></ConversationMessageAction>
-                      <ConversationMessageAction disabled={props.busy} label={props.t('timeline.fork')} onClick={() => props.onForkEntry(entry)}><GitBranch aria-hidden="true" /></ConversationMessageAction>
+                      <ConversationMessageAction disabled={props.busy} label={props.t('timeline.fork')} onClick={() => props.onForkNode(entry)}><GitBranch aria-hidden="true" /></ConversationMessageAction>
                       <ConversationMessageAction disabled label={props.t('timeline.deleteUnavailable')}><Trash2 aria-hidden="true" /></ConversationMessageAction>
                     </>
                   )}

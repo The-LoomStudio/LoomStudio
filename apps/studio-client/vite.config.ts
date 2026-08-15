@@ -3,6 +3,7 @@ import { defineConfig } from 'vite'
 import { readFileSync } from 'node:fs'
 
 const packageVersion = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version as string
+const studioServerUrl = process.env.STUDIO_SERVER_URL ?? 'http://127.0.0.1:4173'
 
 export default defineConfig({
   root: new URL('.', import.meta.url).pathname,
@@ -30,7 +31,10 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 5173,
     proxy: {
-      '/rpc': process.env.STUDIO_SERVER_URL ?? 'http://127.0.0.1:4173',
+      '/auth': studioServerUrl,
+      '/assets': studioServerUrl,
+      '/cards': studioServerUrl,
+      '/rpc': studioServerUrl,
     },
   },
 })

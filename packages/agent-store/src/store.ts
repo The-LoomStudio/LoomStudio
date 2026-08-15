@@ -31,18 +31,24 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
   const { engine } = options
   const nextId = options.createId ?? createId
   const now = options.now ?? nowIso
-  engine.migrate({ namespace: migrationNamespace, migrations: [{ version: 1, migrate: migrateVersionOne }] })
+  engine.migrate({
+    namespace: migrationNamespace,
+    migrations: [
+      { version: 1, migrate: migrateVersionOne },
+      { version: 2, migrate: migrateVersionTwo },
+    ],
+  })
 
   function transaction(tx: SqliteDataTransaction): AgentTransaction {
     const { database } = tx
     return {
       createSession: input => {
-        validateId(input.agentPresetId, 'agentPresetId')
+        validateId(input.agentProfileId, 'agentProfileId')
         validateOptionalText(input.title, 'title')
         const timestamp = now()
         const session: AgentSession = {
           id: input.id ?? nextId('agent-session'),
-          agentPresetId: input.agentPresetId,
+          agentProfileId: input.agentProfileId,
           title: input.title,
           messageCount: 0,
           createdAt: timestamp,
@@ -50,10 +56,10 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
         }
         database.prepare(`
           INSERT INTO agent_sessions (
-            id, agent_preset_id, title, head_message_id, message_count,
+            id, agent_profile_id, title, head_message_id, message_count,
             created_at, updated_at, tombstoned
           ) VALUES (?, ?, ?, NULL, 0, ?, ?, 0)
-        `).run(session.id, session.agentPresetId, session.title ?? null, timestamp, timestamp)
+        `).run(session.id, session.agentProfileId, session.title ?? null, timestamp, timestamp)
         tx.recordOperations([operation('create', session.id, 'agent.session')])
         return session
       },
@@ -126,6 +132,10 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
     getSession: id => engine.read(database => readSession(database, id)),
     getMessage: id => engine.read(database => readMessage(database, id)),
     getMessagePage: input => engine.read(database => readMessagePage(database, input)),
+    hasSessionForProfile: agentProfileId => engine.read(database => {
+      validateId(agentProfileId, 'agentProfileId')
+      return Boolean(database.prepare('SELECT 1 FROM agent_sessions WHERE agent_profile_id = ? AND tombstoned = 0 LIMIT 1').get(agentProfileId))
+    }),
     createSession: async input => {
       const result = await write(input, tx => tx.createSession(input))
       return { session: result.value, commit: result.commit }
@@ -182,6 +192,15 @@ function migrateVersionOne(database: DatabaseSync): void {
   `)
 }
 
+function migrateVersionTwo(database: DatabaseSync): void {
+  database.exec(`
+    DELETE FROM agent_tool_calls;
+    DELETE FROM agent_messages;
+    DELETE FROM agent_sessions;
+    ALTER TABLE agent_sessions RENAME COLUMN agent_preset_id TO agent_profile_id;
+  `)
+}
+
 function insertMessage(database: DatabaseSync, message: AgentMessage): void {
   database.prepare(`
     INSERT INTO agent_messages (
@@ -230,7 +249,7 @@ function readMessagePage(
 
 function readSession(database: DatabaseSync, id: string, includeDeleted = false): AgentSession | null {
   const row = database.prepare(`
-    SELECT id, agent_preset_id, title, head_message_id, message_count, created_at, updated_at, deleted_at
+    SELECT id, agent_profile_id, title, head_message_id, message_count, created_at, updated_at, deleted_at
     FROM agent_sessions WHERE id = ?
   `).get(id)
   if (!row) return null
@@ -269,7 +288,7 @@ function sessionFromRow(row: unknown): AgentSession {
   const value = row as Record<string, unknown>
   return {
     id: String(value.id),
-    agentPresetId: String(value.agent_preset_id),
+    agentProfileId: String(value.agent_profile_id),
     title: optionalString(value.title),
     headMessageId: optionalString(value.head_message_id),
     messageCount: Number(value.message_count),

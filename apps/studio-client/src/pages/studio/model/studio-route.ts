@@ -6,11 +6,12 @@ type StudioRoute = {
   branchId?: string
   cardId?: string
   panel: StudioPanelId | null
-  sessionId?: string
+  timelineId?: string
 }
 
 const PANEL_PATHS: Record<StudioPanelId, string> = {
   model: 'models',
+  agent: 'agents',
   character: 'characters',
   preset: 'presets',
   resource: 'resources',
@@ -20,11 +21,11 @@ const PANEL_PATHS: Record<StudioPanelId, string> = {
 }
 
 export function readStudioRoute(pathname: string): StudioRoute {
-  const chatBranch = matchPath('/studio/chat/:sessionId/branch/:branchId', pathname)
-  if (chatBranch) return { panel: null, sessionId: chatBranch.params.sessionId, branchId: chatBranch.params.branchId }
+  const chatBranch = matchPath('/studio/chat/:timelineId/branch/:branchId', pathname)
+  if (chatBranch) return { panel: null, timelineId: chatBranch.params.timelineId, branchId: chatBranch.params.branchId }
 
-  const chat = matchPath('/studio/chat/:sessionId?', pathname)
-  if (chat) return { panel: null, sessionId: chat.params.sessionId }
+  const chat = matchPath('/studio/chat/:timelineId?', pathname)
+  if (chat) return { panel: null, timelineId: chat.params.timelineId }
 
   const character = matchPath('/studio/characters/:cardId?', pathname)
   if (character) return { panel: 'character', cardId: character.params.cardId }
@@ -35,27 +36,27 @@ export function readStudioRoute(pathname: string): StudioRoute {
   const preset = matchPath('/studio/presets/:cardId?/:assetId?', pathname)
   if (preset) return { panel: 'preset', cardId: preset.params.cardId, assetId: preset.params.assetId }
 
-  for (const panel of ['model', 'inspector', 'logs', 'settings'] as const) {
+  for (const panel of ['model', 'agent', 'inspector', 'logs', 'settings'] as const) {
     if (matchPath(`/studio/${PANEL_PATHS[panel]}`, pathname)) return { panel }
   }
 
   return { panel: null }
 }
 
-export function buildStudioChatPath(sessionId?: string, branchId?: string): string {
-  if (!sessionId) return '/studio/chat'
-  if (!branchId) return `/studio/chat/${encodeURIComponent(sessionId)}`
-  return `/studio/chat/${encodeURIComponent(sessionId)}/branch/${encodeURIComponent(branchId)}`
+export function buildStudioChatPath(timelineId?: string, branchId?: string): string {
+  if (!timelineId) return '/studio/chat'
+  if (!branchId) return `/studio/chat/${encodeURIComponent(timelineId)}`
+  return `/studio/chat/${encodeURIComponent(timelineId)}/branch/${encodeURIComponent(branchId)}`
 }
 
-export function buildStudioEntryHash(entryId: string): string {
-  return `#entry-${encodeURIComponent(entryId)}`
+export function buildStudioNodeHash(nodeId: string): string {
+  return `#node-${encodeURIComponent(nodeId)}`
 }
 
-export function readStudioEntryAnchor(hash: string): string | undefined {
-  if (!hash.startsWith('#entry-')) return undefined
+export function readStudioNodeAnchor(hash: string): string | undefined {
+  if (!hash.startsWith('#node-')) return undefined
   try {
-    return decodeURIComponent(hash.slice('#entry-'.length)) || undefined
+    return decodeURIComponent(hash.slice('#node-'.length)) || undefined
   } catch {
     return undefined
   }

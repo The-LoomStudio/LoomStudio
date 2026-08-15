@@ -45,7 +45,7 @@ Documents / Runtime Sources
 
 数据库、文件、网络与宏展开发生在 Core 外。Core 不提供 `runWithSources()`，也不把 Card、Setting Layer 或 Session 输入变成命名参数。
 
-当前 `runPromptBuildPipeline()` 会在调用 Core 前异步完成：
+当前 `composeAgentTurnPrompt()` 会在调用 Core 前异步完成：
 
 - Narrative branch 读取；
 - Workspace prompt asset 读取；
@@ -54,26 +54,30 @@ Documents / Runtime Sources
 
 ## 4. 当前 PromptBuild Pipeline
 
-当前实现注册两个 Pass：
+后端当前切片已经注册三个第一方 Pass：
 
 ```text
-prompt.source.prepared
-  -> 添加输入摘要 Fragment
+prompt.materialize
+  -> Source Fragment 转为 Composition Fragment
+  -> 计算 Activation，并保留 active / inactive 原因
 
-prompt.compile
-  -> 调用 compilePromptDataModel()
-  -> 生成 CompiledPrompt / ProviderMessage
-  -> 添加输出摘要 Fragment
+prompt.order
+  -> 按 Zone、Projection Order、Slot Hint 与 Source Tree 排序
+
+prompt.emit
+  -> 从 active Composition Fragment 生成 Message Fragment
+  -> Application 适配器构造 CompiledPrompt / ProviderMessage
 ```
 
-运行配置：
+运行配置由 Application Runtime 通过 `PassRegistry` 和 JSON-compatible `PassConfig` 提供：
 
 ```ts
 run({
-  fragments: [],
+  fragments: sourceFragments,
   passes: [
-    { name: 'prompt.source.prepared' },
-    { name: 'prompt.compile' },
+    { name: 'prompt.materialize', params: materializeParams },
+    { name: 'prompt.order', params: orderParams },
+    { name: 'prompt.emit', params: emitParams },
   ],
   registry,
   trace: { mode: 'on' },
@@ -82,42 +86,25 @@ run({
 
 ### 4.1 当前粒度限制
 
-完整的 Activation、排序、Zone/Slot materialization、Skeleton fill 和 ProviderMessage 生成目前都在 `prompt.compile` 内一次完成。
+当前仍将 Source Preparation 保留在 Core 外，将 Activation、Composition、排序和 Emit 收束在三个第一方 Pass 中。`normalize`、`filter`、`slot fill` 等更细粒度拆分暂不提前引入，避免 Trace 和 Owner 归因膨胀。
 
-因此当前 Trace 能证明：
-
-- PromptBuild 输入已经准备；
-- PromptBuild 编译成功或失败；
-- 输入/输出摘要 Fragment 如何产生；
-
-但它还不能通过独立 Core Pass 展示每个领域阶段的 Mutation。
-
-历史 `loom-st` 文档提出过将 Activation、Filter、Order、Fill、Emit 拆成原子 Pass，以便 DevTool 观察每一步。该方向与当前 PromptBuild 的 Structure / Source / Capability 设计兼容，但尚未在现行 pipeline 落地，不能作为当前 Architecture 描述。
+当前实现已经能够通过独立 Core Pass 展示 materialize / order / emit 的 Mutation；400～500 条目真实性能门槛、Client Inspector 消费和旧编译器删除仍属于迁移计划的后续阶段。
 
 ## 5. 编译结果的输出方式
 
-`prompt.compile` 当前通过闭包 callback 把：
+`prompt.emit` 生成 provider-neutral Message Fragment。Application Runtime 从 Core final Fragment 读取 Message Fragment、Composition Fragment 和稳定 Source 引用，构造 `CompiledPrompt` 与 Provider Message。
 
-```text
-CompiledPrompt
-ProviderMessage[]
-```
-
-带出 Core run，同时在 Fragment 流中只添加一个输出摘要 Fragment。
-
-这意味着 CompiledPrompt 不是 Core Fragment 的正式最终格式。Core Trace 记录编译步骤，结构化 payload 由 PromptBuild 自己返回。
-
-该设计保持 Provider payload 不进入 Core，但也意味着仅凭 Core Fragment replay 不能重建完整 `CompiledPrompt` 对象。
+Core 不接收或输出 Provider request body，也不通过 closure callback 带出结构化编译结果。Replay 可以重建 final Fragment；`CompiledPrompt` 是 Application 对 final Fragment 的确定性解释，而不是 Core 的领域类型。
 
 ## 6. PromptBuild Trace 压缩
 
-Application Runtime 不直接把原始 Core Trace 全量返回给 UI，而是生成 compact trace：
+Application Runtime 不直接把原始 Core Trace 全量返回给 UI，而是生成 `core-compact-1` trace：
 
-- 保留 version、mode、status、error；
-- 保留 PassConfig、Diagnostic、Pass 顺序与耗时；
-- 保留 Mutation 形态；
-- Fragment content 改为 length + 最多 240 字符 preview；
-- Meta 收窄为 PromptBuild 需要的统计字段。
+- 保留 status、Pass 顺序、耗时和 Mutation 操作摘要；
+- 保留 Diagnostic code、severity 与关联 Fragment ID；
+- 保留 Build / Run / Agent Session / Timeline 关联 ID；
+- 不携带完整 Fragment content、Pass 参数、Secret 或 Provider headers；
+- Raw Trace 只在 Application Runtime 内部使用，Client 消费 compact Trace。
 
 这是 Application 层的隐私与载荷策略，不改变 Core Trace contract。
 

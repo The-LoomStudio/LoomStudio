@@ -1,0 +1,128 @@
+.panel {
+  min-width: 0;
+  min-height: 100%;
+  overflow-x: hidden;
+  padding-bottom: 32px;
+  color: var(--loom-color-text);
+  background: var(--loom-color-surface);
+}
+
+.section {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-inline: 12px;
+}
+
+.sectionHeader h2,
+.sectionHeader p {
+  margin: 0;
+}
+
+.sectionHeader h2 {
+  font-size: var(--loom-font-size-3);
+  font-weight: var(--loom-font-weight-5);
+}
+
+.sectionHeader p,
+.empty {
+  margin-top: 4px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-2);
+}
+
+.addButton,
+.deleteButton,
+.formActions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  color: var(--loom-color-text-muted);
+  background: transparent;
+}
+
+.addButton svg,
+.deleteButton svg {
+  width: var(--loom-icon-size-3);
+  height: var(--loom-icon-size-3);
+}
+
+.createForm,
+.profile,
+.profileActive {
+  display: grid;
+  gap: 12px;
+  border-radius: var(--loom-radius-card);
+  padding: 12px;
+  background: var(--loom-color-surface-subtle);
+}
+
+.createForm label,
+.profileFields label {
+  display: grid;
+  gap: 4px;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
+}
+
+.createForm input,
+.createForm select,
+.profileFields input,
+.profileFields select {
+  min-width: 0;
+  width: 100%;
+}
+
+.formActions {
+  display: flex;
+  gap: 12px;
+}
+
+.formActions button:first-child {
+  color: var(--loom-color-accent-strong);
+}
+
+.profileList {
+  display: grid;
+  gap: 8px;
+}
+
+.profileActive {
+  box-shadow: inset 2px 0 0 var(--loom-color-accent-strong);
+}
+
+.profileIdentity {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  border: 0;
+  padding: 0;
+  color: var(--loom-color-text);
+  text-align: left;
+  background: transparent;
+}
+
+.profileIdentity span {
+  overflow: hidden;
+  color: var(--loom-color-text-subtle);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profileFields {
+  display: grid;
+  gap: 10px;
+}
+
+.deleteButton {
+  justify-self: start;
+  color: var(--loom-color-danger);
+}

@@ -12,7 +12,7 @@ let contextAssetIdSequence = 0
 
 function createContextAssetId(): string {
   contextAssetIdSequence += 1
-  return `demo-node-${Date.now().toString(36)}-${contextAssetIdSequence}`
+  return `context-node-${Date.now().toString(36)}-${contextAssetIdSequence}`
 }
 
 export function updateContextAssetNode(nodes: ContextAssetNode[], id: string, partial: Partial<ContextAssetNode>): ContextAssetNode[] {
@@ -134,7 +134,8 @@ function canDeleteNode(node: ContextAssetNode, inheritedCategory?: ContextAssetN
 
 function isReadOnlyContextNode(node: ContextAssetNode, inheritedCategory?: ContextAssetNode['category']): boolean {
   const category = node.category ?? inheritedCategory
-  return category === 'runtime'
+  return node.readOnly === true
+    || category === 'runtime'
     || category === 'history'
     || node.projection?.sourceKind === 'virtual'
 }

@@ -2,62 +2,65 @@ import { describe, expect, it } from 'vitest'
 import { callRpc, withStudioServer } from './helpers.js'
 
 describe('studio server Agent Turn RPC', () => {
-  it('manages Agent Presets and Local Bindings through RPC', async () => {
+  it('manages Agent Profiles with Preset Prompt Resources through RPC', async () => {
     await withStudioServer(async port => {
-      const account = await callRpc<{ providerAccount: { id: string } }>(port, 'application.createProviderAccount', {
-        providerExtensionId: 'official.openai-compatible',
+      const profile = await callRpc<{ providerProfile: { id: string } }>(port, 'application.createProviderProfile', {
+        providerExtensionId: 'official.fake',
         displayName: 'Local Provider',
         config: { baseUrl: 'https://example.test/v1' },
-        secretRefs: { apiKey: 'plain:test' },
+        enabledModelIds: ['test-model'],
       })
-      const model = await callRpc<{ modelProfile: { id: string } }>(port, 'application.createModelProfile', {
-        providerAccountId: account.providerAccount.id,
-        displayName: 'Local Model',
-        providerModelId: 'test-model',
+      expect(JSON.stringify(profile)).not.toContain('secret:')
+      const preset = await createPreset(port, 'Guide', 'Guide the user.')
+      const setting = await callRpc<{ resource: { id: string } }>(port, 'application.createPromptResource', {
+        resourceKind: 'setting',
+        name: 'Guide Knowledge',
       })
-      const preset = await callRpc<{ agentPreset: { id: string; historyPolicy: string } }>(port, 'application.createAgentPreset', {
-        name: 'Guide',
-        instructions: 'Guide the user.',
-        historyPolicy: 'ephemeral',
+      const updatedPreset = await callRpc<{ resource: { linkedSettingIds: string[] } }>(port, 'application.updatePresetSettings', {
+        presetId: preset.id,
+        linkedSettingIds: [setting.resource.id],
       })
-      const binding = await callRpc<{ localBinding: { id: string; modelProfileId: string } }>(port, 'application.createAgentLocalBinding', {
+      const agentProfile = await callRpc<{ agentProfile: { id: string } }>(port, 'application.createAgentProfile', {
         name: 'Local Guide',
-        purpose: 'agent-work',
-        modelProfileId: model.modelProfile.id,
+        presetId: preset.id,
+        model: { providerProfileId: profile.providerProfile.id, modelId: 'test-model' },
       })
 
-      const updatedPreset = await callRpc<{ agentPreset: { name: string; historyPolicy: string } }>(port, 'application.updateAgentPreset', {
-        agentPresetId: preset.agentPreset.id,
-        name: 'Updated Guide',
-        historyPolicy: 'persistent',
+      const updatedProfile = await callRpc<{ agentProfile: { name: string } }>(port, 'application.updateAgentProfile', {
+        agentProfileId: agentProfile.agentProfile.id,
+        name: 'Updated Local Guide',
       })
-      const updatedBinding = await callRpc<{ localBinding: { purpose: string } }>(port, 'application.updateAgentLocalBinding', {
-        localBindingId: binding.localBinding.id,
-        purpose: 'test',
-      })
-      const presets = await callRpc<{ agentPresets: Array<{ id: string }> }>(port, 'application.listAgentPresets', {})
-      const bindings = await callRpc<{ localBindings: Array<{ id: string }> }>(port, 'application.listAgentLocalBindings', {})
+      const presets = await callRpc<{ resources: Array<{ id: string }> }>(port, 'application.listPromptResources', { resourceKind: 'preset' })
+      const profiles = await callRpc<{ agentProfiles: Array<{ id: string }> }>(port, 'application.listAgentProfiles', {})
 
-      expect(updatedPreset.agentPreset).toMatchObject({ name: 'Updated Guide', historyPolicy: 'persistent' })
-      expect(updatedBinding.localBinding.purpose).toBe('test')
-      expect(presets.agentPresets.map(item => item.id)).toContain(preset.agentPreset.id)
-      expect(bindings.localBindings.map(item => item.id)).toContain(binding.localBinding.id)
+      expect(updatedPreset.resource.linkedSettingIds).toEqual([setting.resource.id])
+      expect(updatedProfile.agentProfile.name).toBe('Updated Local Guide')
+      expect(presets.resources.map(item => item.id)).toContain(preset.id)
+      expect(profiles.agentProfiles.map(item => item.id)).toContain(agentProfile.agentProfile.id)
 
-      await callRpc(port, 'application.deleteAgentLocalBinding', { localBindingId: binding.localBinding.id })
-      await callRpc(port, 'application.deleteAgentPreset', { agentPresetId: preset.agentPreset.id })
-      await expect(callRpc(port, 'application.getAgentLocalBinding', { localBindingId: binding.localBinding.id })).rejects.toThrow('Document not found')
-      await expect(callRpc(port, 'application.getAgentPreset', { agentPresetId: preset.agentPreset.id })).rejects.toThrow('Document not found')
+      await callRpc(port, 'application.deleteAgentProfile', { agentProfileId: agentProfile.agentProfile.id })
+      await callRpc(port, 'application.deletePromptResource', { resourceId: preset.id })
+      await expect(callRpc(port, 'application.getAgentProfile', { agentProfileId: agentProfile.agentProfile.id })).rejects.toThrow('Document not found')
+      await expect(callRpc(port, 'application.getPromptResource', { resourceId: preset.id })).rejects.toThrow('Document not found')
     })
   })
 
   it('rejects invalid Agent Turn RPC input before writing messages', async () => {
     await withStudioServer(async port => {
-      const preset = await callRpc<{ agentPreset: { id: string } }>(port, 'application.createAgentPreset', {
-        name: 'Safe Agent',
-        instructions: 'Stay safe.',
+      const preset = await createPreset(port, 'Safe Agent', 'Stay safe.')
+      const provider = await callRpc<{ providerProfile: { id: string } }>(port, 'application.createProviderProfile', {
+        providerExtensionId: 'official.fake',
+        displayName: 'Safe Provider',
+        config: { baseUrl: 'https://example.test/v1' },
+        enabledModelIds: ['test-model'],
+      })
+      const agentProfile = await callRpc<{ agentProfile: { id: string } }>(port, 'application.createAgentProfile', {
+        name: 'Safe Agent Profile',
+        presetId: preset.id,
+        model: { providerProfileId: provider.providerProfile.id, modelId: 'test-model' },
       })
       const session = await callRpc<{ session: { id: string } }>(port, 'application.createAgentSession', {
-        agentPresetId: preset.agentPreset.id,
+        agentProfileId: agentProfile.agentProfile.id,
       })
 
       await expect(callRpc(port, 'application.invokeAgentTurn', {
@@ -72,3 +75,23 @@ describe('studio server Agent Turn RPC', () => {
     })
   })
 })
+
+async function createPreset(port: number, name: string, instructions: string): Promise<{ id: string }> {
+  const created = await callRpc<{ resource: { id: string; rootNode: { id: string } } }>(port, 'application.createPromptResource', {
+    resourceKind: 'preset',
+    name,
+  })
+  await callRpc(port, 'application.createPromptResourceAsset', {
+    resourceId: created.resource.id,
+    targetAssetId: created.resource.rootNode.id,
+    position: 'inside',
+    asset: {
+      id: `${created.resource.id}.instructions`,
+      label: 'Agent Instructions',
+      category: 'preset',
+      kind: 'entry',
+      body: instructions,
+    },
+  })
+  return { id: created.resource.id }
+}

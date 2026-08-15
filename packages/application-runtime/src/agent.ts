@@ -2,8 +2,8 @@ import type { DocumentStore } from '@loom-studio/document-store'
 import { applicationDocumentTypes } from './document-types.js'
 import { readDocument } from './document-store.js'
 import type {
-  ModelProfileContent,
-  ProviderAccountContent,
+  ProviderModelSelection,
+  ProviderProfileContent,
 } from './types.js'
 
 export function assertNonEmpty(value: string, label: string): void {
@@ -12,10 +12,9 @@ export function assertNonEmpty(value: string, label: string): void {
   }
 }
 
-export async function assertProviderAccountExists(documents: DocumentStore, providerAccountId: string): Promise<void> {
-  await readDocument<ProviderAccountContent>(documents, providerAccountId, applicationDocumentTypes.providerAccount)
-}
-
-export async function assertModelProfileExists(documents: DocumentStore, modelProfileId: string): Promise<void> {
-  await readDocument<ModelProfileContent>(documents, modelProfileId, applicationDocumentTypes.modelProfile)
+export async function assertProviderModelExists(documents: DocumentStore, model: ProviderModelSelection): Promise<void> {
+  const profile = await readDocument<ProviderProfileContent>(documents, model.providerProfileId, applicationDocumentTypes.providerProfile)
+  if (!profile.content.enabledModelIds.includes(model.modelId)) {
+    throw new Error(`Provider model is not enabled: ${model.modelId}`)
+  }
 }

@@ -11,6 +11,7 @@
     { "path": "../document-store" },
     { "path": "../logging" },
     { "path": "../narrative-store" },
+    { "path": "../secret-store" },
     { "path": "../shared" }
   ],
   "include": ["src/**/*.ts"]

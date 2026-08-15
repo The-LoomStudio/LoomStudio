@@ -8,8 +8,9 @@ import type {
   SettingActivation,
   SettingLayerInput,
   PromptResourceCompositionCapabilities,
+  PromptResourceKind,
 } from '@loom-studio/application-runtime'
-import { isPromptActivation, isCardBundleArtifact } from '@loom-studio/application-runtime'
+import { isPromptActivation, isCardBundleArtifact, isPromptResourceArtifact } from '@loom-studio/application-runtime'
 import type { JsonValue } from '@loom-studio/shared'
 import { createNamespaceRpcCapabilities, type RpcCapability } from './rpc-capability.js'
 import {
@@ -27,27 +28,19 @@ const applicationRpcMethods = [
   'application.listCards',
   'application.updateCard',
   'application.deleteCard',
-  'application.createProviderAccount',
-  'application.getProviderAccount',
-  'application.listProviderAccounts',
-  'application.updateProviderAccount',
-  'application.deleteProviderAccount',
-  'application.createModelProfile',
-  'application.getModelProfile',
-  'application.listModelProfiles',
-  'application.updateModelProfile',
-  'application.deleteModelProfile',
-  'application.pingModelProfile',
-  'application.createAgentPreset',
-  'application.getAgentPreset',
-  'application.listAgentPresets',
-  'application.updateAgentPreset',
-  'application.deleteAgentPreset',
-  'application.createAgentLocalBinding',
-  'application.getAgentLocalBinding',
-  'application.listAgentLocalBindings',
-  'application.updateAgentLocalBinding',
-  'application.deleteAgentLocalBinding',
+  'application.createProviderProfile',
+  'application.getProviderProfile',
+  'application.listProviderProfiles',
+  'application.updateProviderProfile',
+  'application.replaceProviderCredential',
+  'application.deleteProviderProfile',
+  'application.listProviderModels',
+  'application.pingProviderModel',
+  'application.createAgentProfile',
+  'application.getAgentProfile',
+  'application.listAgentProfiles',
+  'application.updateAgentProfile',
+  'application.deleteAgentProfile',
   'application.createAgentSession',
   'application.getAgentSession',
   'application.getAgentMessagePage',
@@ -56,6 +49,7 @@ const applicationRpcMethods = [
   'application.previewAgentTurn',
   'application.createNarrativeTimelineFromCard',
   'application.getNarrativeTimeline',
+  'application.listNarrativeTimelines',
   'application.getNarrativePage',
   'application.forkNarrativeBranch',
   'application.switchNarrativeBranch',
@@ -63,8 +57,15 @@ const applicationRpcMethods = [
   'application.importCardBundle',
   'application.getImportBundle',
   'application.getPromptResource',
+  'application.listPromptResources',
+  'application.createPromptResource',
+  'application.duplicatePromptResource',
+  'application.deletePromptResource',
+  'application.importPromptResource',
+  'application.exportPromptResource',
   'application.listCardPromptResources',
   'application.updateCardPromptResources',
+  'application.updatePresetSettings',
   'application.createPromptResourceAsset',
   'application.updatePromptResourceAsset',
   'application.updatePromptResourceAssets',
@@ -129,133 +130,84 @@ export async function callApplicationRpc(
         cardId: readString(params, 'cardId'),
       }, context) as unknown as JsonValue
 
-    case 'application.createProviderAccount':
-      return await runtime.createProviderAccount({
+    case 'application.createProviderProfile':
+      return await runtime.createProviderProfile({
         providerExtensionId: readString(params, 'providerExtensionId'),
         displayName: readString(params, 'displayName'),
         config: readOptionalObject(params, 'config'),
-        secretRefs: readOptionalStringRecord(params, 'secretRefs'),
-      }) as unknown as JsonValue
-
-    case 'application.getProviderAccount':
-      return await runtime.getProviderAccount({
-        providerAccountId: readString(params, 'providerAccountId'),
-      }) as unknown as JsonValue
-
-    case 'application.listProviderAccounts':
-      return await runtime.listProviderAccounts({
-        cursor: readOptionalString(params, 'cursor'),
-        limit: readOptionalNumber(params, 'limit'),
-      }) as unknown as JsonValue
-
-    case 'application.updateProviderAccount':
-      return await runtime.updateProviderAccount({
-        providerAccountId: readString(params, 'providerAccountId'),
-        displayName: readOptionalString(params, 'displayName'),
-        config: readOptionalObject(params, 'config'),
-        secretRefs: readOptionalStringRecord(params, 'secretRefs'),
-      }) as unknown as JsonValue
-
-    case 'application.deleteProviderAccount':
-      return await runtime.deleteProviderAccount({
-        providerAccountId: readString(params, 'providerAccountId'),
-      }) as unknown as JsonValue
-
-    case 'application.createModelProfile':
-      return await runtime.createModelProfile({
-        providerAccountId: readString(params, 'providerAccountId'),
-        capability: readOptionalModelCapability(params, 'capability'),
-        displayName: readString(params, 'displayName'),
-        providerModelId: readString(params, 'providerModelId'),
-        config: readOptionalObject(params, 'config'),
-      }) as unknown as JsonValue
-
-    case 'application.getModelProfile':
-      return await runtime.getModelProfile({
-        modelProfileId: readString(params, 'modelProfileId'),
-      }) as unknown as JsonValue
-
-    case 'application.listModelProfiles':
-      return await runtime.listModelProfiles({
-        providerAccountId: readOptionalString(params, 'providerAccountId'),
-        cursor: readOptionalString(params, 'cursor'),
-        limit: readOptionalNumber(params, 'limit'),
-      }) as unknown as JsonValue
-
-    case 'application.updateModelProfile':
-      return await runtime.updateModelProfile({
-        modelProfileId: readString(params, 'modelProfileId'),
-        displayName: readOptionalString(params, 'displayName'),
-        providerModelId: readOptionalString(params, 'providerModelId'),
-        config: readOptionalObject(params, 'config'),
-      }) as unknown as JsonValue
-
-    case 'application.deleteModelProfile':
-      return await runtime.deleteModelProfile({
-        modelProfileId: readString(params, 'modelProfileId'),
-      }) as unknown as JsonValue
-
-    case 'application.pingModelProfile':
-      return await runtime.pingModelProfile({
-        modelProfileId: readString(params, 'modelProfileId'),
+        enabledModelIds: readOptionalStringArray(params, 'enabledModelIds'),
+        credential: readOptionalStringRecord(params, 'credential'),
       }, context) as unknown as JsonValue
 
-    case 'application.createAgentPreset':
-      return await runtime.createAgentPreset({
-        name: readString(params, 'name'),
-        instructions: readString(params, 'instructions'),
-        promptResourceIds: readOptionalStringArray(params, 'promptResourceIds'),
-        historyPolicy: readOptionalAgentHistoryPolicy(params),
+    case 'application.getProviderProfile':
+      return await runtime.getProviderProfile({
+        providerProfileId: readString(params, 'providerProfileId'),
       }) as unknown as JsonValue
 
-    case 'application.getAgentPreset':
-      return await runtime.getAgentPreset({ agentPresetId: readString(params, 'agentPresetId') }) as unknown as JsonValue
-
-    case 'application.listAgentPresets':
-      return await runtime.listAgentPresets({
+    case 'application.listProviderProfiles':
+      return await runtime.listProviderProfiles({
         cursor: readOptionalString(params, 'cursor'),
         limit: readOptionalNumber(params, 'limit'),
       }) as unknown as JsonValue
 
-    case 'application.updateAgentPreset':
-      return await runtime.updateAgentPreset({
-        agentPresetId: readString(params, 'agentPresetId'),
-        name: readOptionalString(params, 'name'),
-        instructions: readOptionalString(params, 'instructions'),
-        promptResourceIds: readOptionalStringArray(params, 'promptResourceIds'),
-        historyPolicy: readOptionalAgentHistoryPolicy(params),
+    case 'application.updateProviderProfile':
+      return await runtime.updateProviderProfile({
+        providerProfileId: readString(params, 'providerProfileId'),
+        displayName: readOptionalString(params, 'displayName'),
+        config: readOptionalObject(params, 'config'),
+        enabledModelIds: readOptionalStringArray(params, 'enabledModelIds'),
       }) as unknown as JsonValue
 
-    case 'application.deleteAgentPreset':
-      return await runtime.deleteAgentPreset({ agentPresetId: readString(params, 'agentPresetId') }) as unknown as JsonValue
+    case 'application.replaceProviderCredential':
+      return await runtime.replaceProviderCredential({
+        providerProfileId: readString(params, 'providerProfileId'),
+        credential: readRequiredStringRecord(params, 'credential'),
+      }, context) as unknown as JsonValue
 
-    case 'application.createAgentLocalBinding':
-      return await runtime.createAgentLocalBinding({
+    case 'application.deleteProviderProfile':
+      return await runtime.deleteProviderProfile({
+        providerProfileId: readString(params, 'providerProfileId'),
+      }, context) as unknown as JsonValue
+
+    case 'application.listProviderModels':
+      return await runtime.listProviderModels({
+        providerProfileId: readString(params, 'providerProfileId'),
+      }, context) as unknown as JsonValue
+
+    case 'application.pingProviderModel':
+      return await runtime.pingProviderModel({
+        providerProfileId: readString(params, 'providerProfileId'),
+        modelId: readString(params, 'modelId'),
+        text: readOptionalString(params, 'text'),
+      }, context) as unknown as JsonValue
+
+    case 'application.createAgentProfile':
+      return await runtime.createAgentProfile({
         name: readString(params, 'name'),
-        purpose: readOptionalString(params, 'purpose'),
-        modelProfileId: readOptionalString(params, 'modelProfileId'),
+        presetId: readString(params, 'presetId'),
+        model: readRequiredProviderModelSelection(params, 'model'),
       }) as unknown as JsonValue
 
-    case 'application.getAgentLocalBinding':
-      return await runtime.getAgentLocalBinding({ localBindingId: readString(params, 'localBindingId') }) as unknown as JsonValue
+    case 'application.getAgentProfile':
+      return await runtime.getAgentProfile({ agentProfileId: readString(params, 'agentProfileId') }) as unknown as JsonValue
 
-    case 'application.listAgentLocalBindings':
-      return await runtime.listAgentLocalBindings({ cursor: readOptionalString(params, 'cursor'), limit: readOptionalNumber(params, 'limit') }) as unknown as JsonValue
+    case 'application.listAgentProfiles':
+      return await runtime.listAgentProfiles({ cursor: readOptionalString(params, 'cursor'), limit: readOptionalNumber(params, 'limit') }) as unknown as JsonValue
 
-    case 'application.updateAgentLocalBinding':
-      return await runtime.updateAgentLocalBinding({
-        localBindingId: readString(params, 'localBindingId'),
+    case 'application.updateAgentProfile':
+      return await runtime.updateAgentProfile({
+        agentProfileId: readString(params, 'agentProfileId'),
         name: readOptionalString(params, 'name'),
-        purpose: readOptionalString(params, 'purpose'),
-        modelProfileId: readOptionalString(params, 'modelProfileId'),
+        presetId: readOptionalString(params, 'presetId'),
+        model: readOptionalProviderModelSelection(params, 'model'),
       }) as unknown as JsonValue
 
-    case 'application.deleteAgentLocalBinding':
-      return await runtime.deleteAgentLocalBinding({ localBindingId: readString(params, 'localBindingId') }) as unknown as JsonValue
+    case 'application.deleteAgentProfile':
+      return await runtime.deleteAgentProfile({ agentProfileId: readString(params, 'agentProfileId') }) as unknown as JsonValue
 
     case 'application.createAgentSession':
       return await runtime.createAgentSession({
-        agentPresetId: readString(params, 'agentPresetId'),
+        agentProfileId: readString(params, 'agentProfileId'),
         title: readOptionalString(params, 'title'),
       }, context) as unknown as JsonValue
 
@@ -279,7 +231,6 @@ export async function callApplicationRpc(
     case 'application.invokeAgentTurn':
       return await runtime.invokeAgentTurn({
         agentSessionId: readString(params, 'agentSessionId'),
-        localBindingId: readOptionalString(params, 'localBindingId'),
         input: readString(params, 'input'),
         activationFacts: readOptionalObject(params, 'activationFacts'),
         narrativeTarget: readOptionalNarrativeTarget(params),
@@ -288,7 +239,6 @@ export async function callApplicationRpc(
     case 'application.previewAgentTurn':
       return await runtime.previewAgentTurn({
         agentSessionId: readString(params, 'agentSessionId'),
-        localBindingId: readOptionalString(params, 'localBindingId'),
         input: readString(params, 'input'),
         activationFacts: readOptionalObject(params, 'activationFacts'),
         narrativeTarget: readOptionalNarrativeTarget(params),
@@ -303,6 +253,13 @@ export async function callApplicationRpc(
     case 'application.getNarrativeTimeline':
       return await runtime.getNarrativeTimeline({
         timelineId: readString(params, 'timelineId'),
+      }) as unknown as JsonValue
+
+    case 'application.listNarrativeTimelines':
+      return await runtime.listNarrativeTimelines({
+        createdFromCardId: readOptionalString(params, 'createdFromCardId'),
+        cursor: readOptionalString(params, 'cursor'),
+        limit: readOptionalNumber(params, 'limit'),
       }) as unknown as JsonValue
 
     case 'application.getNarrativePage':
@@ -346,6 +303,39 @@ export async function callApplicationRpc(
         resourceId: readString(params, 'resourceId'),
       }) as unknown as JsonValue
 
+    case 'application.listPromptResources':
+      return await runtime.listPromptResources({
+        resourceKind: readOptionalPromptResourceKind(params, 'resourceKind'),
+      }) as unknown as JsonValue
+
+    case 'application.createPromptResource':
+      return await runtime.createPromptResource({
+        resourceKind: readPromptResourceKind(params, 'resourceKind'),
+        name: readString(params, 'name'),
+      }, context) as unknown as JsonValue
+
+    case 'application.duplicatePromptResource':
+      return await runtime.duplicatePromptResource({
+        resourceId: readString(params, 'resourceId'),
+        name: readOptionalString(params, 'name'),
+      }, context) as unknown as JsonValue
+
+    case 'application.deletePromptResource':
+      return await runtime.deletePromptResource({
+        resourceId: readString(params, 'resourceId'),
+      }, context) as unknown as JsonValue
+
+    case 'application.importPromptResource': {
+      const artifact = isRecord(params) ? params.artifact : undefined
+      if (!isPromptResourceArtifact(artifact)) throw new Error('Expected valid Prompt Resource artifact param: artifact')
+      return await runtime.importPromptResource({ artifact }, context) as unknown as JsonValue
+    }
+
+    case 'application.exportPromptResource':
+      return await runtime.exportPromptResource({
+        resourceId: readString(params, 'resourceId'),
+      }) as unknown as JsonValue
+
     case 'application.listCardPromptResources':
       return await runtime.listCardPromptResources({
         cardId: readString(params, 'cardId'),
@@ -355,6 +345,12 @@ export async function callApplicationRpc(
       return await runtime.updateCardPromptResources({
         cardId: readString(params, 'cardId'),
         promptResourceIds: readRequiredStringArray(params, 'promptResourceIds'),
+      }, context) as unknown as JsonValue
+
+    case 'application.updatePresetSettings':
+      return await runtime.updatePresetSettings({
+        presetId: readString(params, 'presetId'),
+        linkedSettingIds: readRequiredStringArray(params, 'linkedSettingIds'),
       }, context) as unknown as JsonValue
 
     case 'application.createPromptResourceAsset':
@@ -448,6 +444,27 @@ function readOptionalStringArray(params: JsonValue | undefined, key: string): st
 function readRequiredStringArray(params: JsonValue | undefined, key: string): string[] {
   const value = readOptionalStringArray(params, key)
   if (!value) throw new Error(`Expected string array param: ${key}`)
+  return value
+}
+
+function readRequiredStringRecord(params: JsonValue | undefined, key: string): Record<string, string> {
+  const value = readOptionalStringRecord(params, key)
+  if (!value) throw new Error(`Expected string record param: ${key}`)
+  return value
+}
+
+function readOptionalProviderModelSelection(params: JsonValue | undefined, key: string) {
+  if (!isRecord(params) || params[key] === undefined) return undefined
+  const value = params[key]
+  if (!isRecord(value) || typeof value.providerProfileId !== 'string' || typeof value.modelId !== 'string') {
+    throw new Error(`Expected Provider model selection param: ${key}`)
+  }
+  return { providerProfileId: value.providerProfileId, modelId: value.modelId }
+}
+
+function readRequiredProviderModelSelection(params: JsonValue | undefined, key: string) {
+  const value = readOptionalProviderModelSelection(params, key)
+  if (!value) throw new Error(`Expected Provider model selection param: ${key}`)
   return value
 }
 
@@ -653,13 +670,6 @@ function readSlotRanks(value: JsonValue | undefined, key: string): ProjectionOrd
   })
 }
 
-function readOptionalModelCapability(params: JsonValue | undefined, key: string): 'chat.completion' | undefined {
-  const value = readOptionalString(params, key)
-  if (value === undefined) return undefined
-  if (value === 'chat.completion') return value
-  throw new Error(`Expected model capability param: ${key}`)
-}
-
 function readOptionalNarrativeTarget(params: JsonValue | undefined): {
   timelineId: string
   branchId?: string
@@ -679,10 +689,17 @@ function readOptionalNarrativeTarget(params: JsonValue | undefined): {
   }
 }
 
-function readOptionalAgentHistoryPolicy(params: JsonValue | undefined): 'persistent' | 'ephemeral' | undefined {
-  const value = readOptionalString(params, 'historyPolicy')
-  if (value === undefined || value === 'persistent' || value === 'ephemeral') return value
-  throw new Error('Expected Agent history policy param: historyPolicy')
+function readOptionalPromptResourceKind(params: JsonValue | undefined, key: string): PromptResourceKind | undefined {
+  if (!isRecord(params) || params[key] === undefined) return undefined
+  return readPromptResourceKind(params, key)
+}
+
+function readPromptResourceKind(params: JsonValue | undefined, key: string): PromptResourceKind {
+  const value = readString(params, key)
+  if (value === 'preset' || value === 'setting' || value === 'logic' || value === 'runtime' || value === 'history' || value === 'prompt') {
+    return value
+  }
+  throw new Error(`Expected Prompt Resource kind param: ${key}`)
 }
 
 function readProjectionSkeletonPatch(value: JsonValue | undefined, key: string): ProjectionOrderProfile['skeletonPatch'] {

@@ -25,9 +25,19 @@ export type PromptResource = {
   version: number
   resourceKind: 'preset' | 'setting' | 'logic' | 'runtime' | 'history' | 'prompt'
   rootNode: ContextAssetNode
+  linkedSettingIds?: string[]
+  historyPolicy?: 'persistent' | 'ephemeral'
+  origin?: { kind: 'builtin'; key: string }
   sourceArtifactRef?: ClientJsonValue
   createdAt: string
   updatedAt: string
+}
+
+export type PromptResourceArtifact = {
+  format: 'loom.promptResource'
+  schemaVersion: 1
+  resourceKind: PromptResource['resourceKind']
+  rootNode: ContextAssetNode
 }
 
 export type ImportBundle = {
@@ -51,6 +61,29 @@ export type GetPromptResourceResult = {
 
 export type ListCardPromptResourcesResult = {
   resources: PromptResource[]
+}
+
+export type ListPromptResourcesResult = {
+  resources: PromptResource[]
+}
+
+export type CreatePromptResourceResult = {
+  resource: PromptResource
+  mutation: MutationReceipt
+}
+
+export type DeletePromptResourceResult = {
+  deleted: true
+  detachedReferences: {
+    presets: number
+    cards: number
+    timelines: number
+  }
+  mutation: MutationReceipt
+}
+
+export type ExportPromptResourceResult = {
+  artifact: PromptResourceArtifact
 }
 
 export type UpdatePromptResourceResult = {

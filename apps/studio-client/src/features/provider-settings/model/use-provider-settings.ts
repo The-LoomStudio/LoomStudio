@@ -2,11 +2,8 @@ import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import { useState, type FormEvent } from 'react'
 import { toClientJsonObject } from '../../../shared/api/client-json-object.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
-import type { AgentRuntimeProfile, ModelProfile, ProviderAccount } from '../../../entities/index.js'
-import { safeLocalStorage } from '../../../shared/browser/safe-local-storage.js'
+import type { ModelProfile, ProviderAccount } from '../../../entities/index.js'
 import { normalizeOpenAICompatibleBaseUrl } from './provider-base-url.js'
-
-const selectedAgentRuntimeProfileStorageKey = 'loom.studio.selectedAgentRuntimeProfileId'
 
 export type ProviderAccountDraft = {
   displayName: string
@@ -22,41 +19,23 @@ type UseProviderSettingsInput = {
 
 export function useProviderSettings(input: UseProviderSettingsInput) {
   const [providerAccountDraft, setProviderAccountDraft] = useState(input.initialProviderAccountDraft)
-  const [selectedAgentRuntimeProfileId, setSelectedAgentRuntimeProfileId] = useState<string | undefined>(() => readStoredAgentRuntimeProfileId())
   const [providerAccounts, setProviderAccounts] = useState<ProviderAccount[]>([])
   const [providerAccountsLoaded, setProviderAccountsLoaded] = useState(false)
   const [modelProfiles, setModelProfiles] = useState<ModelProfile[]>([])
-  const [agentRuntimeProfiles, setAgentRuntimeProfiles] = useState<AgentRuntimeProfile[]>([])
 
   async function refreshProviderAccounts() {
     const result = await input.api.providerAccounts.list()
     setProviderAccounts(result.providerAccounts)
+    setModelProfiles(projectModelProfiles(result.providerAccounts))
     setProviderAccountsLoaded(true)
   }
 
   async function refreshModelProfiles() {
-    const result = await input.api.modelProfiles.list()
-    setModelProfiles(result.modelProfiles)
-  }
-
-  async function refreshAgentRuntimeProfiles() {
-    const result = await input.api.agentRuntimeProfiles.list()
-    setAgentRuntimeProfiles(result.agentRuntimeProfiles)
-    setSelectedAgentRuntimeProfileId(current => {
-      const selectedId = chooseAgentRuntimeProfileId({
-        currentId: current,
-        profiles: result.agentRuntimeProfiles,
-        storedId: readStoredAgentRuntimeProfileId(),
-      })
-      writeStoredAgentRuntimeProfileId(selectedId)
-      return selectedId
-    })
+    await refreshProviderAccounts()
   }
 
   async function refreshProviderSettings() {
     await refreshProviderAccounts()
-    await refreshModelProfiles()
-    await refreshAgentRuntimeProfiles()
   }
 
   async function createProviderAccount(event: FormEvent) {
@@ -71,9 +50,10 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
         config: toClientJsonObject({
           baseUrl: normalizedBaseUrl,
         }),
-        secretRefs: toClientJsonObject({
-          apiKey: providerAccountDraft.apiKey.startsWith('env:') ? providerAccountDraft.apiKey : `plain:${providerAccountDraft.apiKey}`,
-        }),
+        enabledModelIds: [],
+        ...(providerAccountDraft.apiKey.trim()
+          ? { credential: toClientJsonObject({ apiKey: providerAccountDraft.apiKey }) }
+          : {}),
       }))
       await refreshProviderSettings()
     })
@@ -83,118 +63,114 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
     const model = providerModelId.trim()
     if (!model) return
     await input.runAction(async () => {
-      await input.api.modelProfiles.create(toClientJsonObject({
-        providerAccountId,
-        displayName: model,
-        providerModelId: model,
-        config: {},
+      const account = providerAccounts.find(item => item.id === providerAccountId)
+      if (!account) throw new Error(`Provider Profile not found: ${providerAccountId}`)
+      await input.api.providerAccounts.update(toClientJsonObject({
+        providerProfileId: providerAccountId,
+        enabledModelIds: [...new Set([...account.enabledModelIds, model])],
       }))
-      await refreshModelProfiles()
+      await refreshProviderAccounts()
     })
   }
 
-  async function updateProviderAccount(providerAccountId: string, updates: { displayName?: string; config?: Record<string, ClientJsonValue>; secretRefs?: Record<string, string> }) {
+  async function updateProviderAccount(providerAccountId: string, updates: { displayName?: string; config?: Record<string, ClientJsonValue> }) {
     await input.runAction(async () => {
-      await input.api.providerAccounts.update(toClientJsonObject({ providerAccountId, ...updates }))
+      await input.api.providerAccounts.update(toClientJsonObject({ providerProfileId: providerAccountId, ...updates }))
       await refreshProviderAccounts()
     })
+  }
+
+  async function updateProviderConnection(providerAccountId: string, connection: { displayName: string; baseUrl: string; apiKey?: string }): Promise<boolean> {
+    const normalizedBaseUrl = normalizeOpenAICompatibleBaseUrl(connection.baseUrl)
+    let succeeded = false
+    await input.runAction(async () => {
+      const account = providerAccounts.find(item => item.id === providerAccountId)
+      if (!account) throw new Error(`Provider Profile not found: ${providerAccountId}`)
+      await input.api.providerAccounts.update(toClientJsonObject({
+        providerProfileId: providerAccountId,
+        displayName: connection.displayName.trim(),
+        config: toClientJsonObject({ ...account.config, baseUrl: normalizedBaseUrl }),
+      }))
+      if (connection.apiKey?.trim()) {
+        await input.api.providerAccounts.replaceCredential(providerAccountId, { apiKey: connection.apiKey.trim() })
+      }
+      await refreshProviderAccounts()
+      succeeded = true
+    })
+    return succeeded
   }
 
   async function deleteProviderAccount(providerAccountId: string) {
     await input.runAction(async () => {
       await input.api.providerAccounts.delete(providerAccountId)
       await refreshProviderAccounts()
-      await refreshModelProfiles()
     })
   }
 
   async function updateModelProfile(modelProfileId: string, updates: { displayName?: string; providerModelId?: string; config?: Record<string, ClientJsonValue> }) {
     await input.runAction(async () => {
-      await input.api.modelProfiles.update(toClientJsonObject({ modelProfileId, ...updates }))
-      await refreshModelProfiles()
+      const current = modelProfiles.find(model => model.id === modelProfileId)
+      const account = current && providerAccounts.find(item => item.id === current.providerAccountId)
+      if (!current || !account) throw new Error(`Provider model not found: ${modelProfileId}`)
+      const nextModelId = updates.providerModelId?.trim() || current.providerModelId
+      await input.api.providerAccounts.update(toClientJsonObject({
+        providerProfileId: account.id,
+        enabledModelIds: account.enabledModelIds.map(modelId => modelId === current.providerModelId ? nextModelId : modelId),
+      }))
+      await refreshProviderAccounts()
     })
   }
 
   async function deleteModelProfile(modelProfileId: string) {
     await input.runAction(async () => {
-      await input.api.modelProfiles.delete(modelProfileId)
-      await refreshModelProfiles()
+      const current = modelProfiles.find(model => model.id === modelProfileId)
+      const account = current && providerAccounts.find(item => item.id === current.providerAccountId)
+      if (!current || !account) return
+      await input.api.providerAccounts.update(toClientJsonObject({
+        providerProfileId: account.id,
+        enabledModelIds: account.enabledModelIds.filter(modelId => modelId !== current.providerModelId),
+      }))
+      await refreshProviderAccounts()
     })
   }
 
   async function pingModelProfile(modelProfileId: string): Promise<string> {
-    return await input.api.modelProfiles.ping(modelProfileId)
+    const model = modelProfiles.find(item => item.id === modelProfileId)
+    if (!model) throw new Error(`Provider model not found: ${modelProfileId}`)
+    return await input.api.providerModels.ping(model.providerAccountId, model.providerModelId)
   }
 
-  async function createAgentRuntimeProfile(profileInput: { name: string; purpose: string; presetId?: string; modelProfileId?: string }) {
-    await input.runAction(async () => {
-      const result = await input.api.agentRuntimeProfiles.create(toClientJsonObject(profileInput))
-      await refreshAgentRuntimeProfiles()
-      selectAgentRuntimeProfile(result.agentRuntimeProfile.id)
-    })
-  }
-
-  async function updateAgentRuntimeProfile(agentRuntimeProfileId: string, updates: { name?: string; purpose?: string; modelProfileId?: string }) {
-    await input.runAction(async () => {
-      await input.api.agentRuntimeProfiles.update(toClientJsonObject({ agentRuntimeProfileId, ...updates }))
-      await refreshAgentRuntimeProfiles()
-    })
-  }
-
-  async function deleteAgentRuntimeProfile(agentRuntimeProfileId: string) {
-    await input.runAction(async () => {
-      await input.api.agentRuntimeProfiles.delete(agentRuntimeProfileId)
-      await refreshAgentRuntimeProfiles()
-    })
+  async function listProviderModels(providerAccountId: string): Promise<string[]> {
+    return await input.api.providerModels.list(providerAccountId)
   }
 
   return {
     providerAccountDraft,
     setProviderAccountDraft,
-    selectedAgentRuntimeProfileId,
-    setSelectedAgentRuntimeProfileId: selectAgentRuntimeProfile,
     providerAccounts,
     providerAccountsLoaded,
     modelProfiles,
-    agentRuntimeProfiles,
     refreshProviderSettings,
     refreshProviderAccounts,
     refreshModelProfiles,
-    refreshAgentRuntimeProfiles,
     createProviderAccount,
     createModelProfile,
     updateProviderAccount,
+    updateProviderConnection,
     deleteProviderAccount,
     updateModelProfile,
     deleteModelProfile,
+    listProviderModels,
     pingModelProfile,
-    createAgentRuntimeProfile,
-    updateAgentRuntimeProfile,
-    deleteAgentRuntimeProfile,
-  }
-
-  function selectAgentRuntimeProfile(id: string | undefined) {
-    setSelectedAgentRuntimeProfileId(id)
-    writeStoredAgentRuntimeProfileId(id)
   }
 }
 
-export function chooseAgentRuntimeProfileId(input: {
-  currentId?: string
-  profiles: AgentRuntimeProfile[]
-  storedId?: string
-}): string | undefined {
-  if (input.currentId && input.profiles.some(profile => profile.id === input.currentId)) return input.currentId
-  if (input.storedId && input.profiles.some(profile => profile.id === input.storedId)) return input.storedId
-  return input.profiles[0]?.id
-}
-
-function readStoredAgentRuntimeProfileId(): string | undefined {
-  const value = safeLocalStorage.getItem(selectedAgentRuntimeProfileStorageKey)
-  return value && value.trim().length > 0 ? value : undefined
-}
-
-function writeStoredAgentRuntimeProfileId(id: string | undefined): void {
-  if (id) safeLocalStorage.setItem(selectedAgentRuntimeProfileStorageKey, id)
-  else safeLocalStorage.removeItem(selectedAgentRuntimeProfileStorageKey)
+function projectModelProfiles(accounts: ProviderAccount[]): ModelProfile[] {
+  return accounts.flatMap(account => account.enabledModelIds.map(modelId => ({
+    id: `${account.id}:${modelId}`,
+    version: account.version,
+    providerAccountId: account.id,
+    displayName: modelId,
+    providerModelId: modelId,
+  })))
 }

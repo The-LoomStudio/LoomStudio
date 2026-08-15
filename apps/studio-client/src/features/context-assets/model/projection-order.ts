@@ -22,8 +22,14 @@ export type ProjectionOrderRow = {
 }
 
 export type ProjectionOrderZone = {
+  displayName: string
   id: string
   rows: ProjectionOrderRow[]
+}
+
+export type ProjectionZoneDefinition = {
+  displayName: string
+  id: string
 }
 
 export function buildProjectionOrder(nodes: ContextAssetNode[]): ProjectionOrderEntry[] {
@@ -124,14 +130,15 @@ export function buildProjectionRows(entries: ProjectionOrderEntry[]): Projection
   return rows.sort((left, right) => left.primary.position - right.primary.position)
 }
 
-export function buildProjectionZones(entries: ProjectionOrderEntry[]): ProjectionOrderZone[] {
-  const zones = new Map<string, ProjectionOrderRow[]>()
+export function buildProjectionZones(entries: ProjectionOrderEntry[], definitions: ProjectionZoneDefinition[] = []): ProjectionOrderZone[] {
+  const zones = new Map<string, ProjectionOrderRow[]>(definitions.map(zone => [zone.id, []]))
 
   for (const row of buildProjectionRows(entries)) {
     zones.set(row.zoneId, [...(zones.get(row.zoneId) ?? []), row])
   }
 
-  return [...zones].map(([id, rows]) => ({ id, rows }))
+  const names = new Map(definitions.map(zone => [zone.id, zone.displayName]))
+  return [...zones].map(([id, rows]) => ({ id, displayName: names.get(id) ?? id, rows }))
 }
 
 export function moveProjectionZone(entries: ProjectionOrderEntry[], draggedZoneId: string, targetZoneId: string): string[] {

@@ -10,6 +10,7 @@ export type ContextAssetNode = {
   label: string
   meta?: string
   orderList?: string[]
+  readOnly?: boolean
   skeletonPatch?: {
     zones?: Array<{
       id: string

@@ -1,10 +1,7 @@
-import type { Branch, Session } from './session.js'
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
+import type { ChatMessage } from './agent.js'
 
-export type ProviderMessage = {
-  role: 'system' | 'user' | 'assistant'
-  content: string
-}
+export type ProviderMessage = ChatMessage
 
 export type PromptProjection = {
   zones: PromptProjectionZone[]
@@ -51,10 +48,8 @@ export type PromptProjectionZone = {
 }
 
 export type PromptPreview = {
-  session: Session
-  branch: Branch
+  runId: string
   messages: ProviderMessage[]
-  promptBuildTrace?: ClientJsonValue
   providerPayloadPreview?: ClientJsonValue
-  projection?: PromptProjection
+  projection: PromptProjection
 }

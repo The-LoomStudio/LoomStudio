@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
-import type { ContextAssetNode, PromptResource, Session, UpdatePromptResourceResult } from '../../../entities/index.js'
+import type { ContextAssetNode, PromptResource, UpdatePromptResourceResult } from '../../../entities/index.js'
 import { toClientJsonObject } from '../../../shared/api/client-json-object.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
@@ -13,7 +13,6 @@ import {
 } from './tree-ops.js'
 import { normalizeContextAssets } from './context-asset-normalization.js'
 import { findContextAssetNode } from './context-asset-tree.js'
-import { readDemoProjectionOrderProfile } from './projection-order-profile.js'
 import { findRootContextModule, type ContextAssetUpdate } from './projection-workbench.js'
 
 type UseContextAssetsInput = {
@@ -256,10 +255,6 @@ export function useContextAssets(input: UseContextAssetsInput) {
     return nextSelectedId
   }
 
-  function readProjectionOrderProfile(session: Session | undefined): ClientJsonValue | undefined {
-    return readDemoProjectionOrderProfile(nodes, session)
-  }
-
   return {
     nodes,
     setNodes,
@@ -270,7 +265,6 @@ export function useContextAssets(input: UseContextAssetsInput) {
     addContextAsset,
     duplicateContextAsset,
     deleteContextAsset,
-    readProjectionOrderProfile,
   }
 }
 

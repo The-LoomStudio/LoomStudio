@@ -203,6 +203,6 @@ function WindowResizeHandle(props: {
 }
 
 function readPanelPlacement(panel: StudioPanelId): 'beside-narrative' | 'cover-narrative' {
-  if (panel === 'model' || panel === 'character' || panel === 'settings') return 'beside-narrative'
+  if (panel === 'model' || panel === 'agent' || panel === 'character' || panel === 'settings') return 'beside-narrative'
   return 'cover-narrative'
 }

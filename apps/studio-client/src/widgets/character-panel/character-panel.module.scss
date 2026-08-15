@@ -98,6 +98,17 @@
   background: var(--loom-color-surface);
 }
 
+.galleryToolbar {
+  display: grid;
+  gap: 5px;
+}
+
+.galleryToolbarMain {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .profileToolbar > span {
   color: var(--loom-color-text-muted);
   font-size: var(--loom-font-size-2);
@@ -194,7 +205,7 @@
 }
 
 .gallerySearch {
-  width: clamp(5.5rem, 18vw, 10rem);
+  width: 100%;
   min-height: 26px;
   border: 0;
   border-bottom: 1px solid var(--loom-color-divider);
@@ -650,6 +661,95 @@
 
 .deleteButton {
   color: var(--loom-color-danger) !important;
+}
+
+.exportOptions {
+  display: grid;
+  gap: 6px;
+}
+
+.exportDialog {
+  border: 1px solid var(--loom-color-border);
+  background: var(--loom-color-surface);
+}
+
+.exportOption {
+  width: 100%;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: var(--loom-radius-control);
+  padding: 9px;
+  color: var(--loom-color-text);
+  background: transparent;
+  text-align: left;
+}
+
+.exportOption:hover,
+.exportOption:focus-visible {
+  background: var(--loom-color-surface-subtle);
+}
+
+.exportOptionIcon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--loom-radius-control);
+  color: var(--loom-color-accent-strong);
+  background: var(--loom-color-surface-subtle);
+}
+
+.exportOptionIcon svg {
+  width: var(--loom-icon-size-3);
+  height: var(--loom-icon-size-3);
+}
+
+.exportOption > span:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.exportOption strong {
+  font-size: var(--loom-font-size-3);
+  font-weight: var(--loom-font-weight-6);
+}
+
+.exportOption small {
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
+  line-height: var(--loom-line-height-body);
+}
+
+.remoteImportForm,
+.remoteImportForm label {
+  display: grid;
+  gap: 7px;
+}
+
+.remoteImportForm label > span {
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
+}
+
+.remoteImportForm input {
+  min-height: 34px;
+  padding: 6px 8px;
+}
+
+.remoteImportForm p {
+  margin: 0;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-2);
+  line-height: var(--loom-line-height-body);
+}
+
+.remoteImportForm .remoteImportError {
+  color: var(--loom-color-danger);
 }
 
 .sessions {

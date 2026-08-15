@@ -12,13 +12,17 @@ import {
   readProjectionOrderReorderUpdates,
   readProjectionZoneReorderUpdates,
 } from '../../features/context-assets/model/projection-workbench.js'
+import { readPromptResourceWorkbenchRoot } from '../../features/context-assets/model/prompt-resource-view.js'
 import { ContextAssetEditor, ContextAssetExplorer } from '../../features/context-assets/ui/context-asset-workbench.js'
 import { ProjectionOrderEditor } from '../../features/context-assets/ui/projection-order-editor/projection-order-editor.js'
-import type { ContextAssetNode } from '../../entities/index.js'
+import { PromptResourceToolbar } from '../../features/context-assets/ui/prompt-resource-toolbar/prompt-resource-toolbar.js'
+import type { ContextAssetNode, PromptResource } from '../../entities/index.js'
 import type { Translator } from '../../shared/i18n/index.js'
+import styles from './context-workbench.module.scss'
 
 type ContextWorkbenchProps = {
   nodes: ContextAssetNode[]
+  resources: PromptResource[]
   onChangeNode: (id: string, partial: Partial<ContextAssetNode>) => void
   onCommitNode: (id: string, partial: Partial<ContextAssetNode>) => void
   onChangeNodes: (updates: ContextAssetUpdate[]) => void
@@ -26,6 +30,11 @@ type ContextWorkbenchProps = {
   onAddNode: (parentId: string) => Promise<string | undefined>
   onDuplicateNode: (id: string) => Promise<string | undefined>
   onDeleteNode: (id: string, selectedId?: string) => Promise<string | undefined>
+  onCreateResource: (resourceKind: PromptResource['resourceKind']) => Promise<string | undefined>
+  onDuplicateResource: (resourceId: string) => Promise<string | undefined>
+  onDeleteResource: (resourceId: string) => Promise<void>
+  onImportResource: (file: File) => Promise<string | undefined>
+  onExportResource: (resourceId: string) => Promise<void>
   routeAssetId?: string
   initialSearchQuery?: string
   t: Translator
@@ -47,9 +56,13 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   const setTextEditorMode = useStudioLayoutStore(state => state.setTextEditorMode)
   const [viewModes, setViewModes] = useState<Record<string, 'asset' | 'projection'>>({})
   const [searchQuery, setSearchQuery] = useState(props.initialSearchQuery ?? '')
+  const [selectedResourceIds, setSelectedResourceIds] = useState<Partial<Record<ContextCategory, string>>>({})
+  const categoryResources = useMemo(() => props.resources.filter(resource => resource.resourceKind === activeCategory), [activeCategory, props.resources])
+  const selectedResource = categoryResources.find(resource => resource.id === selectedResourceIds[activeCategory]) ?? categoryResources[0]
+  const workbenchNodes = useMemo(() => selectedResource ? [readPromptResourceWorkbenchRoot(selectedResource)] : [], [selectedResource])
   const selectedId = explorerView.selectedId
-  const selectedNode = findContextNode(props.nodes, selectedId)
-  const projectionModel = useMemo(() => buildProjectionWorkbenchModel(props.nodes), [props.nodes])
+  const selectedNode = findContextNode(workbenchNodes, selectedId)
+  const projectionModel = useMemo(() => buildProjectionWorkbenchModel(workbenchNodes), [workbenchNodes])
   const { projectionEntries, orderNode, projectionOrderIds, orderedProjectionEntries } = projectionModel
 
   useEffect(() => {
@@ -61,10 +74,17 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
     setSearchQuery(props.initialSearchQuery ?? '')
   }, [props.initialSearchQuery])
 
+  useEffect(() => {
+    if (!selectedResource) return
+    if (selectedResourceIds[activeCategory] !== selectedResource.id) {
+      setSelectedResourceIds(current => ({ ...current, [activeCategory]: selectedResource.id }))
+    }
+  }, [activeCategory, selectedResource?.id, selectedResourceIds])
+
   const displayNodes = useMemo(() => {
-    return props.nodes
+    return workbenchNodes
       .filter(node => node.category === activeCategory)
-  }, [props.nodes, activeCategory])
+  }, [workbenchNodes, activeCategory])
   const projectionModuleIds = displayNodes
     .filter(node => node.kind === 'module' && viewModes[node.id] === 'projection')
     .map(node => node.id)
@@ -108,19 +128,33 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
       resizeLabel={props.t('context.resizeExplorer')}
       viewMode={explorerView.viewMode}
       toolbar={(
-        <nav className="loom-page-tabs">
-          {tabs.map(tab => (
-            <button
-              key={tab.value}
-              aria-current={activeCategory === tab.value ? 'page' : undefined}
-              className={`loom-page-tab ${activeCategory === tab.value ? 'loom-page-tab-active' : ''}`}
-              type="button"
-              onClick={() => setActiveCategory(tab.value)}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
+        <div className={styles.toolbarRow}>
+          <PromptResourceToolbar
+            resourceKind={activeCategory}
+            resources={categoryResources}
+            selectedResourceId={selectedResource?.id}
+            t={props.t}
+            onCreate={props.onCreateResource}
+            onDelete={props.onDeleteResource}
+            onDuplicate={props.onDuplicateResource}
+            onExport={props.onExportResource}
+            onImport={props.onImportResource}
+            onSelect={resourceId => setSelectedResourceIds(current => ({ ...current, [activeCategory]: resourceId }))}
+          />
+          <nav className="loom-page-tabs">
+            {tabs.map(tab => (
+              <button
+                key={tab.value}
+                aria-current={activeCategory === tab.value ? 'page' : undefined}
+                className={`loom-page-tab ${activeCategory === tab.value ? 'loom-page-tab-active' : ''}`}
+                type="button"
+                onClick={() => setActiveCategory(tab.value)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        </div>
       )}
       explorer={(
         <ContextAssetExplorer
@@ -141,9 +175,9 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
           onDuplicateNode={props.onDuplicateNode}
           onExpandedIdsChange={expandedIds => setExpandedIds('resources', props.workspaceId, expandedIds)}
           onMoveNode={(draggedId, targetId, position) => {
-            const rootModule = findRootContextModule(props.nodes, draggedId)
+            const rootModule = findRootContextModule(workbenchNodes, draggedId)
             if (rootModule && viewModes[rootModule.id] === 'projection') {
-              const update = readContextProjectionMoveUpdate(props.nodes, projectionEntries, draggedId, targetId, position)
+              const update = readContextProjectionMoveUpdate(workbenchNodes, projectionEntries, draggedId, targetId, position)
               if (update) props.onChangeNodes([update])
               return
             }

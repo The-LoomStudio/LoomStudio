@@ -21,6 +21,8 @@ export type ModelPanelProps = {
   onCreateProviderAccount(event: FormEvent): void
   onDeleteModelProfile(id: string): void
   onDeleteProviderAccount(id: string): void
+  onListProviderModels(providerAccountId: string): Promise<string[]>
+  onUpdateProviderConnection(providerAccountId: string, connection: { displayName: string; baseUrl: string; apiKey?: string }): Promise<boolean>
   providerAccounts: ProviderAccount[]
   t: Translator
 }
@@ -85,6 +87,8 @@ export function ModelPanel(props: ModelPanelProps) {
           onCreateModel={props.onCreateModelProfile}
           onDelete={props.onDeleteProviderAccount}
           onDeleteModel={props.onDeleteModelProfile}
+          onListModels={props.onListProviderModels}
+          onUpdateConnection={props.onUpdateProviderConnection}
           t={props.t}
         />
       </section>

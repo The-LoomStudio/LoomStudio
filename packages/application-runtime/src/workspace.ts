@@ -3,9 +3,10 @@ import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import { createId, nowIso } from '@loom-studio/shared'
 import { normalizeCardContent, normalizeOpening, normalizeOptionalString, normalizePreset, normalizeSettingLayer, renderMacros } from './card.js'
 import { applicationDocumentTypes } from './document-types.js'
-import { readDocument, toVersioned, writeDocument } from './document-store.js'
+import { listDocuments, readDocument, toVersioned, writeDocument } from './document-store.js'
 import { isObject } from './json.js'
 import type {
+  AgentHistoryPolicy,
   CardPresetInput,
   CardMediaRefs,
   CardSourceContent,
@@ -17,9 +18,11 @@ import type {
   CompositionSkeletonPatch,
   PromptCompositionCapabilities,
   PromptContribution,
+  PromptLifecycle,
   ProjectionOrderProfile,
   SourceNode,
 } from './prompt-builder.js'
+import { defaultCompositionSkeleton } from './prompt-builder.js'
 import { combineActivationGates, isPromptActivation, type PromptActivation } from './prompt-activation.js'
 
 const applicationActor = { kind: 'kernel', id: 'application-runtime' } as const
@@ -47,9 +50,22 @@ export type PromptResourceKind = 'preset' | 'setting' | 'logic' | 'runtime' | 'h
 export type PromptResourceContent = {
   resourceKind: PromptResourceKind
   rootNode: PromptResourceNode
+  linkedSettingIds?: string[]
+  historyPolicy?: AgentHistoryPolicy
+  origin?: {
+    kind: 'builtin'
+    key: string
+  }
   sourceArtifactRef?: CardBundleSourceArtifactRef
   createdAt: string
   updatedAt: string
+}
+
+export type PromptResourceArtifact = {
+  format: 'loom.promptResource'
+  schemaVersion: 1
+  resourceKind: PromptResourceKind
+  rootNode: PromptResourceNode
 }
 
 export type CardBundleSourceArtifactRef = {
@@ -227,6 +243,150 @@ export async function getPromptResource(input: {
   ))
 }
 
+export async function listPromptResources(input: {
+  documents: DocumentTransaction
+  resourceKind?: PromptResourceKind
+}): Promise<Array<PromptResourceContent & { id: string; version: number }>> {
+  const resources = await listDocuments<PromptResourceContent>(input.documents, applicationDocumentTypes.promptResource)
+  return resources
+    .filter(resource => !input.resourceKind || resource.content.resourceKind === input.resourceKind)
+    .sort((left, right) => left.content.rootNode.label.localeCompare(right.content.rootNode.label))
+    .map(toVersioned)
+}
+
+export async function createPromptResource(input: {
+  createId(prefix: string): string
+  documents: DocumentTransaction
+  name: string
+  now?: string
+  resourceKind: PromptResourceKind
+}): Promise<PromptResourceContent & { id: string; version: number }> {
+  const name = input.name.trim()
+  if (!name) throw new Error('Prompt resource name cannot be empty')
+  const timestamp = input.now ?? nowIso()
+  const rootId = input.createId('prompt-node')
+  const rootNode: PromptResourceNode = {
+    id: rootId,
+    label: name,
+    meta: input.resourceKind === 'preset' ? 'Composition Preset' : input.resourceKind === 'setting' ? 'Setting Layer' : 'Prompt Resource',
+    category: readPromptResourceCategory(input.resourceKind),
+    kind: 'module',
+    body: '',
+    children: input.resourceKind === 'preset'
+      ? [{
+          id: input.createId('prompt-node'),
+          label: '主排序',
+          meta: 'Projection Order Profile',
+          category: 'preset',
+          kind: 'order',
+          body: '',
+          skeletonPatch: {
+            zones: defaultCompositionSkeleton.zones.map(zone => ({ ...zone })),
+            fallbackZoneId: defaultCompositionSkeleton.fallbackZoneId,
+          },
+          orderList: [],
+          slotRanks: [],
+        }]
+      : [],
+  }
+  const resource = await writeDocument<PromptResourceContent>(input.documents, {
+    id: input.createId('prompt-resource'),
+    type: applicationDocumentTypes.promptResource,
+    content: {
+      resourceKind: input.resourceKind,
+      rootNode,
+      ...(input.resourceKind === 'preset' ? { linkedSettingIds: [], historyPolicy: 'persistent' as const } : {}),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    },
+    expectedVersion: 'new',
+  })
+  return toVersioned(resource)
+}
+
+export async function duplicatePromptResource(input: {
+  createId(prefix: string): string
+  documents: DocumentTransaction
+  name?: string
+  now?: string
+  resourceId: string
+}): Promise<PromptResourceContent & { id: string; version: number }> {
+  const source = await readPromptResourceDocument(input.documents, input.resourceId)
+  const timestamp = input.now ?? nowIso()
+  const rootNode = clonePromptResourceRoot(source.content.rootNode, input.createId)
+  rootNode.label = input.name?.trim() || `${source.content.rootNode.label} Copy`
+  const resource = await writeDocument<PromptResourceContent>(input.documents, {
+    id: input.createId('prompt-resource'),
+    type: applicationDocumentTypes.promptResource,
+    content: {
+      resourceKind: source.content.resourceKind,
+      rootNode,
+      ...(source.content.resourceKind === 'preset' ? {
+        linkedSettingIds: [...(source.content.linkedSettingIds ?? [])],
+        historyPolicy: source.content.historyPolicy ?? 'persistent',
+      } : {}),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    },
+    expectedVersion: 'new',
+  })
+  return toVersioned(resource)
+}
+
+export async function deletePromptResource(input: {
+  documents: DocumentTransaction
+  resourceId: string
+}): Promise<void> {
+  const resource = await readPromptResourceDocument(input.documents, input.resourceId)
+  assertPromptResourceWritable(resource)
+  await input.documents.delete({ id: resource.id, expectedVersion: resource.version })
+}
+
+export async function exportPromptResourceArtifact(input: {
+  documents: DocumentTransaction
+  resourceId: string
+}): Promise<PromptResourceArtifact> {
+  const resource = await readPromptResourceDocument(input.documents, input.resourceId)
+  return {
+    format: 'loom.promptResource',
+    schemaVersion: 1,
+    resourceKind: resource.content.resourceKind,
+    rootNode: resource.content.rootNode,
+  }
+}
+
+export async function importPromptResourceArtifact(input: {
+  artifact: PromptResourceArtifact
+  createId(prefix: string): string
+  documents: DocumentTransaction
+  now?: string
+}): Promise<PromptResourceContent & { id: string; version: number }> {
+  assertPromptResourceArtifact(input.artifact)
+  const timestamp = input.now ?? nowIso()
+  const resource = await writeDocument<PromptResourceContent>(input.documents, {
+    id: input.createId('prompt-resource'),
+    type: applicationDocumentTypes.promptResource,
+    content: {
+      resourceKind: input.artifact.resourceKind,
+      rootNode: clonePromptResourceRoot(input.artifact.rootNode, input.createId),
+      ...(input.artifact.resourceKind === 'preset' ? { linkedSettingIds: [], historyPolicy: 'persistent' as const } : {}),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    },
+    expectedVersion: 'new',
+  })
+  return toVersioned(resource)
+}
+
+export function isPromptResourceArtifact(value: JsonValue | undefined): value is PromptResourceArtifact {
+  try {
+    assertPromptResourceArtifact(value)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export async function getImportBundle(input: {
   documents: DocumentStore
   importBundleId: string
@@ -268,6 +428,29 @@ export async function updateCardPromptResources(input: {
   return toVersioned(updated)
 }
 
+export async function updatePresetSettingLinks(input: {
+  documents: DocumentTransaction
+  linkedSettingIds: string[]
+  now?: string
+  presetId: string
+}): Promise<PromptResourceContent & { id: string; version: number }> {
+  const preset = await readPromptResourceDocument(input.documents, input.presetId)
+  if (preset.content.resourceKind !== 'preset') throw new Error(`Prompt Resource is not a Preset: ${input.presetId}`)
+  assertPromptResourceWritable(preset)
+  const linkedSettingIds = await validateLinkedSettingIds(input.documents, input.linkedSettingIds)
+  const updated = await writeDocument<PromptResourceContent>(input.documents, {
+    id: preset.id,
+    type: applicationDocumentTypes.promptResource,
+    content: {
+      ...preset.content,
+      linkedSettingIds,
+      updatedAt: input.now ?? nowIso(),
+    },
+    expectedVersion: preset.version,
+  })
+  return toVersioned(updated)
+}
+
 export async function createPromptResourceAsset(input: {
   asset: PromptResourceNode
   documents: DocumentTransaction
@@ -277,10 +460,12 @@ export async function createPromptResourceAsset(input: {
   targetAssetId: string
 }): Promise<PromptResourceContent & { id: string; version: number }> {
   const resource = await readPromptResourceDocument(input.documents, input.resourceId)
-  if (findNode([resource.content.rootNode], node => node.id === input.asset.id)) {
-    throw new Error(`Prompt asset already exists: ${input.asset.id}`)
+  assertPromptResourceWritable(resource)
+  const asset = applyDefaultPromptProjection(input.asset, resource.content)
+  if (findNode([resource.content.rootNode], node => node.id === asset.id)) {
+    throw new Error(`Prompt asset already exists: ${asset.id}`)
   }
-  const result = insertPromptAssetNode([resource.content.rootNode], input.targetAssetId, input.position, input.asset)
+  const result = insertPromptAssetNode([resource.content.rootNode], input.targetAssetId, input.position, asset)
   if (!result.found) throw new Error(`Prompt asset target not found in resource ${input.resourceId}: ${input.targetAssetId}`)
   return await writePromptResourceRoot(input.documents, resource, readSingleResourceRoot(result.nodes, input.resourceId), input.now)
 }
@@ -307,6 +492,7 @@ export async function updatePromptResourceAssets(input: {
   }
 
   const resource = await readPromptResourceDocument(input.documents, input.resourceId)
+  assertPromptResourceWritable(resource)
   let rootNode = resource.content.rootNode
   for (const update of input.updates) {
     const result = updateNode([rootNode], update.assetId, node => {
@@ -359,6 +545,7 @@ export async function movePromptResourceAsset(input: {
 }): Promise<PromptResourceContent & { id: string; version: number }> {
   if (input.assetId === input.targetAssetId) throw new Error('Cannot move prompt asset onto itself')
   const resource = await readPromptResourceDocument(input.documents, input.resourceId)
+  assertPromptResourceWritable(resource)
   const nodes = [resource.content.rootNode]
   const asset = findNode(nodes, node => node.id === input.assetId)
   if (!asset) throw new Error(`Prompt asset not found in resource ${input.resourceId}: ${input.assetId}`)
@@ -389,6 +576,7 @@ export async function deletePromptResourceAsset(input: {
   resourceId: string
 }): Promise<PromptResourceContent & { id: string; version: number }> {
   const resource = await readPromptResourceDocument(input.documents, input.resourceId)
+  assertPromptResourceWritable(resource)
   const nodes = [resource.content.rootNode]
   const asset = findNode(nodes, node => node.id === input.assetId)
   if (!asset) throw new Error(`Prompt asset not found in resource ${input.resourceId}: ${input.assetId}`)
@@ -509,6 +697,7 @@ function collectPromptInputsFromNodes(
 
   collectPromptInputs({
     parentActivationGates: [],
+    parentEnabled: true,
     contributions,
     macroContext,
     nodes: contextAssets,
@@ -522,7 +711,11 @@ function collectPromptInputsFromNodes(
 }
 
 export function readPromptResourceOrderProfile(nodes: PromptResourceNode[]): ProjectionOrderProfile {
-  const orderNode = findNode(nodes, node => node.kind === 'order')
+  const orderNodes = findNodes(nodes, node => node.kind === 'order')
+  if (orderNodes.length > 1) {
+    throw new Error(`Prompt Build requires exactly one main order profile; received ${orderNodes.length}`)
+  }
+  const orderNode = orderNodes[0]
 
   return {
     id: orderNode?.id ?? 'profile.resources',
@@ -623,12 +816,14 @@ function collectPromptInputs(input: {
   macroContext: { user: string }
   nodes: PromptResourceNode[]
   parentActivationGates: PromptActivation[]
+  parentEnabled: boolean
   parentId: string | null
   sourceNodes: SourceNode[]
 }): void {
   for (const [index, node] of input.nodes.entries()) {
     const category = node.category ?? input.inheritedCategory
     const sourceId = node.kind === 'module' ? node.id : input.inheritedSourceId ?? node.id
+    const effectiveEnabled = input.parentEnabled && node.enabled !== false
     const activationGates = node.capabilities?.activation
       ? [...input.parentActivationGates, node.capabilities.activation]
       : input.parentActivationGates
@@ -640,7 +835,7 @@ function collectPromptInputs(input: {
       orderIndex: index + 1,
     })
 
-    if (category && isPromptContributionNode(node, category)) {
+    if (effectiveEnabled && category && isPromptContributionNode(node, category)) {
       const kind = readSourceKind(category)
       if (kind) {
         const effectiveActivation = combineActivationGates(activationGates)
@@ -655,7 +850,7 @@ function collectPromptInputs(input: {
           capabilities: {
             content: { kind: 'text' },
             ...(effectiveActivation ? { activation: effectiveActivation } : {}),
-            lifecycle: { lifecycle: 'always' },
+            lifecycle: { lifecycle: readPromptLifecycle(node.capabilities.lifecycle?.lifecycle) },
             projection: {
               zoneId: node.capabilities.projection.zoneId,
               ...(node.capabilities.projection.slotKey ? { joinSlotKey: node.capabilities.projection.slotKey } : {}),
@@ -671,6 +866,7 @@ function collectPromptInputs(input: {
       collectPromptInputs({
         ...input,
         parentActivationGates: activationGates,
+        parentEnabled: effectiveEnabled,
         nodes: node.children,
         parentId: node.id,
         inheritedCategory: category,
@@ -695,6 +891,10 @@ function readSourceKind(category: PromptResourceNode['category']): PromptContrib
   if (category === 'runtime') return 'runtime'
   if (category === 'history') return 'narrativeChat'
   return undefined
+}
+
+function readPromptLifecycle(value: string | undefined): PromptLifecycle {
+  return value === 'conditional' || value === 'fresh' ? value : 'always'
 }
 
 function updateNode(
@@ -791,6 +991,18 @@ async function readPromptResourceDocumentsByIds(
     readDocument<PromptResourceContent>(documents, resourceId, applicationDocumentTypes.promptResource)))
 }
 
+async function validateLinkedSettingIds(
+  documents: DocumentTransaction,
+  settingIds: string[],
+): Promise<string[]> {
+  const normalized = [...new Set(settingIds)]
+  if (normalized.length !== settingIds.length) throw new Error('Preset linked Setting ids cannot contain duplicates')
+  const settings = await readPromptResourceDocumentsByIds(documents, normalized)
+  const invalid = settings.find(setting => setting.content.resourceKind !== 'setting')
+  if (invalid) throw new Error(`Preset can only link Setting resources: ${invalid.id}`)
+  return normalized
+}
+
 function insertPromptAssetNode(
   nodes: PromptResourceNode[],
   targetId: string,
@@ -883,6 +1095,99 @@ function findNodes(nodes: PromptResourceNode[], predicate: (node: PromptResource
     if (node.children) results.push(...findNodes(node.children, predicate))
   }
   return results
+}
+
+function readPromptResourceCategory(resourceKind: PromptResourceKind): PromptResourceNode['category'] | undefined {
+  if (resourceKind === 'preset' || resourceKind === 'setting' || resourceKind === 'logic' || resourceKind === 'runtime' || resourceKind === 'history') {
+    return resourceKind
+  }
+  return undefined
+}
+
+function applyDefaultPromptProjection(asset: PromptResourceNode, resource: PromptResourceContent): PromptResourceNode {
+  if (asset.kind !== 'entry' || asset.capabilities?.projection) return asset
+  if (resource.resourceKind !== 'preset' && resource.resourceKind !== 'setting') return asset
+
+  const preset = resource.resourceKind === 'preset'
+  const zoneId = preset ? 'preset.system' : 'setting.stable'
+  const slotKey = `${preset ? 'preset' : 'setting-layer'}:${resource.rootNode.id}@${zoneId}`
+  const entryOrders = findNodes([resource.rootNode], node => node.capabilities?.projection?.slotKey === slotKey)
+    .map(node => node.capabilities?.projection?.entryOrderHint)
+    .filter((value): value is number => typeof value === 'number')
+  const entryOrderHint = entryOrders.length ? Math.max(...entryOrders) + 10 : 10
+
+  return {
+    ...asset,
+    capabilities: {
+      ...asset.capabilities,
+      ...(preset ? {} : { activation: asset.capabilities?.activation ?? { kind: 'always' as const } }),
+      lifecycle: asset.capabilities?.lifecycle ?? { lifecycle: 'always' },
+      projection: {
+        zoneId,
+        slotKey,
+        entryOrderHint,
+        slotOrderHint: preset ? 100 : 200,
+      },
+    },
+  }
+}
+
+function assertPromptResourceWritable(resource: DocumentRecord<PromptResourceContent>): void {
+  if (resource.content.origin?.kind === 'builtin') {
+    throw new Error(`Built-in Prompt Resource is read-only; duplicate it before editing: ${resource.id}`)
+  }
+}
+
+function clonePromptResourceRoot(
+  rootNode: PromptResourceNode,
+  createNodeId: (prefix: string) => string,
+): PromptResourceNode {
+  const idMap = new Map(findNodes([rootNode], () => true).map(node => [node.id, createNodeId('prompt-node')]))
+  const replaceNodeIds = (value: string): string => {
+    let next = value
+    for (const [sourceId, targetId] of [...idMap.entries()].sort((left, right) => right[0].length - left[0].length)) {
+      next = next.split(sourceId).join(targetId)
+    }
+    return next
+  }
+  const cloneNode = (node: PromptResourceNode): PromptResourceNode => ({
+    ...node,
+    id: idMap.get(node.id)!,
+    ...(node.orderList ? { orderList: node.orderList.map(id => idMap.get(id) ?? id) } : {}),
+    ...(node.slotRanks ? {
+      slotRanks: node.slotRanks.map(rank => ({ ...rank, slotKey: replaceNodeIds(rank.slotKey) })),
+    } : {}),
+    ...(node.capabilities?.projection?.slotKey ? {
+      capabilities: {
+        ...node.capabilities,
+        projection: {
+          ...node.capabilities.projection,
+          slotKey: replaceNodeIds(node.capabilities.projection.slotKey),
+        },
+      },
+    } : {}),
+    ...(node.children ? { children: node.children.map(cloneNode) } : {}),
+  })
+
+  return cloneNode(rootNode)
+}
+
+function assertPromptResourceArtifact(value: unknown): asserts value is PromptResourceArtifact {
+  if (!isObject(value)) throw new Error('Prompt Resource artifact must be an object')
+  if (value.format !== 'loom.promptResource') throw new Error(`Unsupported Prompt Resource artifact format: ${String(value.format)}`)
+  if (value.schemaVersion !== 1) throw new Error(`Unsupported Prompt Resource artifact schemaVersion: ${String(value.schemaVersion)}`)
+  if (!isPromptResourceKind(value.resourceKind)) throw new Error(`Invalid Prompt Resource kind: ${String(value.resourceKind)}`)
+  assertPromptResourceNode(value.rootNode, 'rootNode')
+  assertUniquePromptResourceNodeIds(value.rootNode)
+}
+
+function isPromptResourceKind(value: unknown): value is PromptResourceKind {
+  return value === 'preset'
+    || value === 'setting'
+    || value === 'logic'
+    || value === 'runtime'
+    || value === 'history'
+    || value === 'prompt'
 }
 
 export function isCardBundleArtifact(value: JsonValue | undefined): value is CardBundleArtifact {

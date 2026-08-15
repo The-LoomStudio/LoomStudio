@@ -6,6 +6,7 @@
     { "path": "./packages/diagnostics" },
     { "path": "./packages/transport" },
     { "path": "./packages/data-engine" },
+    { "path": "./packages/secret-store" },
     { "path": "./packages/blob-store" },
     { "path": "./packages/asset-store" },
     { "path": "./packages/agent-store" },

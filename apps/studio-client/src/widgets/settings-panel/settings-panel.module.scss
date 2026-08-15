@@ -12,6 +12,10 @@
   font-weight: var(--loom-font-weight-5);
 }
 
+.sectionHeading {
+  margin-top: 24px !important;
+}
+
 .settingRow {
   min-height: 36px;
   display: grid;
@@ -37,6 +41,31 @@
 .settingRow select:focus {
   border-color: var(--loom-color-accent);
   box-shadow: none;
+}
+
+.settingRow input {
+  min-height: 30px;
+  border: 0;
+  border-bottom: 1px solid var(--loom-color-divider);
+  border-radius: 0;
+  padding: 4px 2px;
+  color: var(--loom-color-text);
+  background: transparent;
+}
+
+.networkSettings {
+  display: grid;
+  gap: 8px;
+}
+
+.networkSettings > button {
+  justify-self: start;
+}
+
+.networkStatus {
+  margin: 0;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
 }
 
 .scaleRow {

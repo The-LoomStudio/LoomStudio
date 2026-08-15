@@ -66,12 +66,21 @@ describe('studio server persistence integration', () => {
     try {
       const firstServer = createStudioServer({ sqlitePath })
       const first = await firstServer.listen(0)
-      const preset = await callRpc<{ agentPreset: { id: string } }>(first.port, 'application.createAgentPreset', {
-        name: 'Persistent Agent Preset',
-        instructions: 'Persist this Agent.',
+      const presets = await callRpc<{ resources: Array<{ id: string }> }>(first.port, 'application.listPromptResources', { resourceKind: 'preset' })
+      const presetId = presets.resources[0]!.id
+      const provider = await callRpc<{ providerProfile: { id: string } }>(first.port, 'application.createProviderProfile', {
+        providerExtensionId: 'official.fake',
+        displayName: 'Persistent Provider',
+        config: { baseUrl: 'https://example.test/v1' },
+        enabledModelIds: ['test-model'],
+      })
+      const agentProfile = await callRpc<{ agentProfile: { id: string } }>(first.port, 'application.createAgentProfile', {
+        name: 'Persistent Agent Profile',
+        presetId,
+        model: { providerProfileId: provider.providerProfile.id, modelId: 'test-model' },
       })
       const created = await callRpc<{ session: { id: string } }>(first.port, 'application.createAgentSession', {
-        agentPresetId: preset.agentPreset.id,
+        agentProfileId: agentProfile.agentProfile.id,
         title: 'Persistent Agent',
       })
       await callRpc(first.port, 'application.invokeAgentTurn', {
@@ -82,7 +91,7 @@ describe('studio server persistence integration', () => {
 
       const secondServer = createStudioServer({ sqlitePath })
       const second = await secondServer.listen(0)
-      const read = await callRpc<{ session: { agentPresetId: string; title: string } }>(second.port, 'application.getAgentSession', {
+      const read = await callRpc<{ session: { agentProfileId: string; title: string } }>(second.port, 'application.getAgentSession', {
         agentSessionId: created.session.id,
       })
       const page = await callRpc<{ messages: unknown[] }>(second.port, 'application.getAgentMessagePage', {
@@ -90,7 +99,7 @@ describe('studio server persistence integration', () => {
       })
       await secondServer.close()
 
-      expect(read.session).toMatchObject({ agentPresetId: preset.agentPreset.id, title: 'Persistent Agent' })
+      expect(read.session).toMatchObject({ agentProfileId: agentProfile.agentProfile.id, title: 'Persistent Agent' })
       expect(page.messages).toMatchObject([
         { message: { role: 'user', content: 'Remember this turn.' } },
         { message: { role: 'assistant', content: 'Agent draft: Remember this turn.' } },

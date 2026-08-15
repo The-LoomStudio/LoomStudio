@@ -1,9 +1,7 @@
 export const applicationDocumentTypes = {
   cardSource: 'airp.cardSource',
-  providerAccount: 'airp.providerAccount',
-  modelProfile: 'airp.modelProfile',
-  agentPreset: 'airp.agentPreset',
-  agentLocalBinding: 'airp.agentLocalBinding',
+  providerProfile: 'airp.providerProfile',
+  agentProfile: 'airp.agentProfile',
   promptResource: 'airp.promptResource',
   importBundle: 'airp.importBundle',
 } as const

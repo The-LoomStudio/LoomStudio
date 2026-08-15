@@ -1,9 +1,9 @@
 # Event System / Extension Scope 基建实施计划
 
-> **状态**：Phase 1–4 Complete
+> **状态**：Phase 1–4 Complete / Extension Status SSE Implemented / General Transport Pending
 > **日期**：2026-08-13
 > **范围**：在现有 Kernel EventBus 与 Server Extension Host 上，建立可验证的事件定义、实例级生命周期资源收集、Extension 事件权限边界，以及可重复卸载/重载的最小基座。
-> **事实边界**：Phase 1–4 已于 2026-08-13 实施：Kernel 现有 Event Hub 已增加 Definition Registry、owner/visibility/capability/payload 边界与 subscriber failure reporting；Server Extension Host 已使用 `instanceId`、统一 Scope、事件 Host API 和 reload。Server Event Transport、Client Extension Host、权限持久化与 Agent durable trigger 仍未实现。
+> **事实边界**：Phase 1–4 已于 2026-08-13 实施：Kernel 现有 Event Hub 已增加 Definition Registry、owner/visibility/capability/payload 边界与 subscriber failure reporting；Server Extension Host 已使用 `instanceId`、统一 Scope、事件 Host API 和 reload。后续已增加只投递 `extensions.changed` 的 `GET /extensions/events` SSE，用于 Extension 状态同步；它不等于本文设想的通用 Server Event Transport。Client Extension Host、权限持久化与 Agent durable trigger 仍未实现。
 > **首轮施工边界**：Phase 1–4 已完成。后续仍按本文边界将 Phase 5–8 分开决策，不把内存 Event Hub 扩张为跨端或持久任务系统。
 
 相关文档：
@@ -614,7 +614,7 @@ Client：
 
 ### Phase 5：Server Event Transport（后置）
 
-建立 WebSocket Event Transport Adapter、连接身份过滤、订阅生命周期与重连后的 RPC refresh。此阶段删除或重新定义当前伪 `events.subscribe` RPC。
+当前已实现 Extension 状态专用 SSE：`GET /extensions/events` 只推送 `extensions.changed`，断线后由 RPC 重读状态。通用事件外发、连接身份过滤、动态订阅生命周期及是否需要 WebSocket 仍待独立设计；不得把专用 SSE 描述为完整 Phase 5。
 
 ### Phase 6：Client Extension Host（后置）
 

@@ -17,6 +17,7 @@ type ChatComposerProps = {
   previewLabel: string
   retryLabel: string
   sendLabel: string
+  sendLeadingAction?: ReactNode
   targetActionLabel?: string
   targetActive?: boolean
   targetLabel?: string
@@ -117,6 +118,7 @@ export function ChatComposer(props: ChatComposerProps) {
                     {props.previewLabel}
                   </button>
                 )}
+                {props.sendLeadingAction}
                 <button aria-label={props.sendLabel} className={styles.sendButton} type="submit" disabled={!props.canSend} title={props.sendLabel}>
                   <ArrowUp aria-hidden="true" absoluteStrokeWidth strokeWidth={1.7} />
                 </button>

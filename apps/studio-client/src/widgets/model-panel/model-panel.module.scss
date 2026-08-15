@@ -176,6 +176,42 @@
   font-size: var(--loom-font-size-1);
 }
 
+.connectionForm {
+  display: grid;
+  gap: 9px;
+}
+
+.connectionForm label {
+  display: grid;
+  gap: 4px;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
+}
+
+.connectionInputRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 4px;
+}
+
+.connectionForm > button {
+  justify-self: start;
+}
+
+.credentialConfigured,
+.credentialMissing {
+  font-size: var(--loom-font-size-1);
+}
+
+.credentialConfigured {
+  color: var(--loom-color-success);
+}
+
+.credentialMissing {
+  color: var(--loom-color-text-subtle);
+}
+
 .accountField {
   min-width: 0;
   gap: 10px;
@@ -206,8 +242,7 @@
 }
 
 .keys > p,
-.empty,
-.mockNotice {
+.empty {
   margin: 0;
   color: var(--loom-color-text-subtle);
   font-size: var(--loom-font-size-2);
@@ -283,6 +318,13 @@
   display: grid;
 }
 
+.modelCatalogStatus {
+  margin: 0;
+  padding: 5px 8px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-2);
+}
+
 .modelRow,
 .availableModel {
   min-height: 30px;
@@ -308,10 +350,6 @@
 .modelRow:hover,
 .availableModel:hover {
   color: var(--loom-color-accent-strong);
-}
-
-.mockNotice {
-  padding: 7px 9px 3px;
 }
 
 .enabledToggle:disabled {

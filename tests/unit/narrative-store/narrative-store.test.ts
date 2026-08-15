@@ -98,6 +98,27 @@ describe('narrative store', () => {
     engine.close()
   })
 
+  it('updates Timeline Prompt Resource references with optimistic conflict protection', async () => {
+    const { engine, store, actor } = createTestContext()
+    const created = await store.createTimeline({ actor, promptResourceIds: ['preset-1', 'setting-1'] })
+
+    const updated = await store.updatePromptResources({
+      actor,
+      timelineId: created.timeline.id,
+      promptResourceIds: ['setting-1'],
+      expectedPromptResourceIds: ['preset-1', 'setting-1'],
+    })
+
+    expect(updated.timeline.promptResourceIds).toEqual(['setting-1'])
+    await expect(store.updatePromptResources({
+      actor,
+      timelineId: created.timeline.id,
+      promptResourceIds: [],
+      expectedPromptResourceIds: ['preset-1', 'setting-1'],
+    })).rejects.toMatchObject({ code: 'narrative.prompt_resources_conflict' })
+    engine.close()
+  })
+
   it('rolls back an appended node and head update when the surrounding engine transaction fails', async () => {
     const { engine, store, actor } = createTestContext()
     const created = await store.createTimeline({
@@ -172,6 +193,43 @@ describe('narrative store', () => {
     engine.close()
   })
 
+  it('lists timelines by source card and returns every branch for one timeline', async () => {
+    const { engine, store, actor } = createTestContext()
+    const older = await store.createTimeline({
+      actor,
+      createdFrom: { cardId: 'card-1', cardVersion: 1 },
+      title: 'Older',
+    })
+    const newer = await store.createTimeline({
+      actor,
+      createdFrom: { cardId: 'card-1', cardVersion: 2 },
+      title: 'Newer',
+      openingNodes: [{ body: { format: 'loom-markdown.v1', raw: 'opening' } }],
+    })
+    await store.createTimeline({
+      actor,
+      createdFrom: { cardId: 'card-2', cardVersion: 1 },
+      title: 'Other Card',
+    })
+    const fork = await store.forkBranch({
+      actor,
+      timelineId: newer.timeline.id,
+      fromBranchId: newer.branch.id,
+      fromNodeId: newer.nodes[0]!.id,
+      title: 'Alternative',
+    })
+
+    const page = await store.listTimelines({ createdFromCardId: 'card-1', limit: 1 })
+    const next = await store.listTimelines({ createdFromCardId: 'card-1', cursor: page.nextCursor, limit: 1 })
+    expect(page.timelines.map(timeline => timeline.id)).toEqual([newer.timeline.id])
+    expect(next.timelines.map(timeline => timeline.id)).toEqual([older.timeline.id])
+    expect((await store.listBranches(newer.timeline.id)).map(branch => branch.id)).toEqual([
+      newer.branch.id,
+      fork.branch.id,
+    ])
+    engine.close()
+  })
+
   it('supports cross-domain use of one engine transaction and tombstones only the timeline root', async () => {
     const { engine, store, actor } = createTestContext()
     const result = await engine.transact({ actor, reason: 'test.cross-domain' }, async dataTx => {
@@ -235,7 +293,7 @@ describe('narrative store', () => {
         .get('application.narrative')
       const changesets = database.prepare('SELECT COUNT(*) AS count FROM changesets').get()
       database.close()
-      expect(migration).toEqual({ version: 1 })
+      expect(migration).toEqual({ version: 2 })
       expect(changesets).toEqual({ count: 1 })
     } finally {
       await rm(directory, { recursive: true, force: true })

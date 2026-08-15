@@ -98,11 +98,12 @@ describe('Studio Server logging', () => {
         }>
       }>(port, 'logs.list', { limit: 10, namespacePrefix: 'document.store' })
 
-      expect(page.items.map(record => record.event)).toEqual([
+      const operationItems = page.items.filter(record => record.data?.reason !== 'application.initializePromptResources')
+      expect(operationItems.map(record => record.event)).toEqual([
         'document.changeset.committed',
         'document.operation.failed',
       ])
-      expect(page.items[0]?.data).toMatchObject({
+      expect(operationItems[0]?.data).toMatchObject({
         reason: 'application.createCard',
         operations: [{ kind: 'create', type: 'airp.cardSource' }],
       })
@@ -139,12 +140,21 @@ describe('Studio Server logging', () => {
       const timeline = await callRpc<{
         timeline: { id: string }
       }>(port, 'application.createNarrativeTimelineFromCard', { cardId: card.card.id })
-      const preset = await callRpc<{ agentPreset: { id: string } }>(port, 'application.createAgentPreset', {
-        name: 'Private Agent',
-        instructions: 'Private agent instructions',
+      const presets = await callRpc<{ resources: Array<{ id: string }> }>(port, 'application.listPromptResources', { resourceKind: 'preset' })
+      const presetId = presets.resources[0]!.id
+      const provider = await callRpc<{ providerProfile: { id: string } }>(port, 'application.createProviderProfile', {
+        providerExtensionId: 'official.fake',
+        displayName: 'Private Provider',
+        config: { baseUrl: 'https://example.test/v1' },
+        enabledModelIds: ['test-model'],
+      })
+      const agentProfile = await callRpc<{ agentProfile: { id: string } }>(port, 'application.createAgentProfile', {
+        name: 'Private Agent Profile',
+        presetId,
+        model: { providerProfileId: provider.providerProfile.id, modelId: 'test-model' },
       })
       const created = await callRpc<{ session: { id: string } }>(port, 'application.createAgentSession', {
-        agentPresetId: preset.agentPreset.id,
+        agentProfileId: agentProfile.agentProfile.id,
       })
 
       await callRpc(port, 'application.previewAgentTurn', {
@@ -179,13 +189,13 @@ describe('Studio Server logging', () => {
         'prompt.build.completed',
       ])
       expect(page.items[0]?.message).toBe('preview prompt build started')
-      expect(page.items[1]?.message).toMatch(/^preview prompt build completed · 2 messages · \d+(?:\.\d+)? ms$/)
+      expect(page.items[1]?.message).toMatch(/^preview prompt build completed · 3 messages · \d+(?:\.\d+)? ms$/)
       expect(page.items[2]?.message).toBe('runtime prompt build started')
-      expect(page.items[3]?.message).toMatch(/^runtime prompt build completed · 2 messages · \d+(?:\.\d+)? ms$/)
-      expect(page.items[1]?.data).toMatchObject({ mode: 'preview', messageCount: 2 })
+      expect(page.items[3]?.message).toMatch(/^runtime prompt build completed · 3 messages · \d+(?:\.\d+)? ms$/)
+      expect(page.items[1]?.data).toMatchObject({ mode: 'preview', messageCount: 3 })
       expect(page.items[0]?.data?.buildId).toBe(page.items[1]?.data?.buildId)
       expect(page.items[0]?.correlationId).toBe(page.items[1]?.correlationId)
-      expect(page.items[3]?.data).toMatchObject({ mode: 'runtime', messageCount: 2 })
+      expect(page.items[3]?.data).toMatchObject({ mode: 'runtime', messageCount: 3 })
       expect(page.items[3]?.data?.runId).toMatch(/^run-/)
       expect(page.items[2]?.data?.buildId).toBe(page.items[3]?.data?.buildId)
       expect(JSON.stringify(page.items)).not.toContain('Private')
@@ -210,7 +220,7 @@ describe('Studio Server logging', () => {
         runId: turn.runId,
         provider: 'fake',
         model: 'fake-echo-m0',
-        messageCount: 2,
+        messageCount: 3,
       })
       expect(JSON.stringify(providerPage.items)).not.toContain('Private')
     } finally {

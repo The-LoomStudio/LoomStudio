@@ -4,6 +4,7 @@ import { createId, nowIso } from '@loom-studio/shared'
 import { isObject } from './json.js'
 import { isPromptActivation } from './prompt-activation.js'
 import type {
+  CardSummary,
   CardPresetContent,
   CardPresetInput,
   CardMediaRefs,
@@ -37,6 +38,20 @@ export function toCardSource(card: DocumentRecord<CardSourceContent>): CardSourc
     ...normalizeCardContent(card.content),
     id: card.id,
     version: card.version,
+  }
+}
+
+export function toCardSummary(card: DocumentRecord<CardSourceContent>): CardSummary {
+  const content = normalizeCardContent(card.content)
+  return {
+    id: card.id,
+    version: card.version,
+    name: content.name,
+    userName: content.userName,
+    description: content.description,
+    media: content.media,
+    createdAt: content.createdAt,
+    updatedAt: content.updatedAt,
   }
 }
 

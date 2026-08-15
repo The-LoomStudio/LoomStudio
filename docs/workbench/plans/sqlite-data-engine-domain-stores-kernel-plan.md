@@ -1,9 +1,9 @@
 # SQLite Data Engine / Domain Stores / Kernel 提交事实实施计划
 
-> **状态**：In Progress / Phase 1 Complete
+> **状态**：Implemented / Phase 1–6 Complete / Phase 7 Deferred
 > **日期**：2026-08-12
 > **范围**：将当前“Document Store 同时承担 SQLite 生命周期、所有业务持久化与全平台提交事实”的实现，收束为共享 SQLite Data Engine、版本化 Document Store、Application-owned Domain Stores 与统一 Commit Journal。
-> **事实边界**：当前代码仍只有 `DocumentStore` 一种事务性业务存储，Kernel 直接订阅 `DocumentCommitFact`。本文描述后续目标实现，不修改当前 Architecture 对已实现事实的记录。
+> **事实边界**：共享 SQLite Data Engine、Document Store、Narrative Store、Agent Store、Commit Journal 与 Kernel `DataCommitSource` 已完成；本文保留实施背景。Phase 7 的容量测量、Retention、FTS5 与冷归档仍未实施。
 > **数据兼容**：当前数据库主要是开发测试数据。本计划不要求保留旧 AIRP Session 数据；Document Store 中仍有价值的 Card、Prompt Resource、Provider 配置应由实施阶段明确决定保留或重新导入。
 
 相关文档：
@@ -659,7 +659,7 @@ Phase 1 完成时边界：
 - Node provenance 自动记录当前 Changeset ID；
 - cursor、fork source 与 Branch/Timeline 归属均在 Store 内校验；
 - Studio Server 已创建并注入 Narrative Store；Application Runtime 与 Server RPC 已提供 create/get/page/fork/switch/delete 生命周期；
-- 当前仍未替换旧 Session / submitTurn，也未接入 Client，因此不存在旧 Session 与新 Timeline 的隐式双写。
+- 后续 Phase 6 已删除旧 Session / submitTurn 后端链；Studio Client 迁移状态见独立的 Agent Session / Narrative Timeline 数据层计划。
 
 ### Phase 5：Agent Store
 
@@ -682,9 +682,11 @@ Phase 1 完成时边界：
 - 支持已批准的 `system/developer/user/assistant/tool` Message 子集与工具调用配对校验；
 - Studio Server 已创建并注入 Agent Store，公开 create/get/page/delete RPC；
 - append 保持 Runtime 内部能力，不向普通 Client RPC 暴露；
-- 当前没有迁移旧 submitTurn、Provider Gateway 或 Transcript 镜像。
+- 后续 Phase 6 已将 AIRP Turn Flow 与 Provider 调用切换到 Agent / Narrative Store，并删除 Transcript 镜像后端链；Studio Client 仍待迁移。
 
 ### Phase 6：Application / Server 切换
+
+状态：**Complete（2026-08-12）**。
 
 1. Server 创建并关闭 Data Engine；
 2. Application Runtime 注入三个 Store；
