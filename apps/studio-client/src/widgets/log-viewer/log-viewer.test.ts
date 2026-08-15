@@ -128,6 +128,19 @@ describe('log viewer model', () => {
     expect(committed).toEqual(['client'])
     expect(finished).toEqual(['second'])
   })
+
+  it('invalidates an in-flight poll snapshot when a refresh begins', () => {
+    const guard = createLatestRequestGuard()
+    const firstRefresh = guard.begin()
+    const pollSnapshot = guard.current()
+
+    expect(guard.isCurrent(firstRefresh)).toBe(true)
+    expect(guard.isCurrent(pollSnapshot)).toBe(true)
+
+    const nextRefresh = guard.begin()
+    expect(guard.isCurrent(pollSnapshot)).toBe(false)
+    expect(guard.isCurrent(nextRefresh)).toBe(true)
+  })
 })
 
 function deferred<T>() {

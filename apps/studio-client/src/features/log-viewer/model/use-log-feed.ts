@@ -4,6 +4,7 @@ import type { StudioApi } from '../../../shared/api/studio-api.js'
 import { createLatestRequestGuard, mergePolledLogRecords, readLogPages, runLatestRequest } from './log-feed-model.js'
 
 export type LogSource = 'server' | 'client'
+const EMPTY_LOG_RECORDS: LogRecord[] = []
 
 type UseLogFeedInput = {
   active: boolean
@@ -20,6 +21,8 @@ export function useLogFeed(input: UseLogFeedInput) {
   const [truncated, setTruncated] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>()
+  const [errorSource, setErrorSource] = useState<LogSource>()
+  const [committedSource, setCommittedSource] = useState<LogSource>()
   const cursorRef = useRef<string | undefined>(undefined)
   const refreshGuardRef = useRef(createLatestRequestGuard())
 
@@ -44,17 +47,22 @@ export function useLogFeed(input: UseLogFeedInput) {
       onStart: () => {
         setLoading(true)
         setError(undefined)
+        setErrorSource(undefined)
       },
       onSuccess: result => {
         cursorRef.current = result.cursor
         setRecords(result.items)
         setGap(result.gap)
         setTruncated(result.truncated)
+        setCommittedSource(input.source)
       },
-      onError: caught => setError(toErrorMessage(caught)),
+      onError: caught => {
+        setError(toErrorMessage(caught))
+        setErrorSource(input.source)
+      },
       onFinish: () => setLoading(false),
     })
-  }, [listLogs])
+  }, [input.source, listLogs])
 
   useEffect(() => {
     if (!input.active) {
@@ -62,7 +70,14 @@ export function useLogFeed(input: UseLogFeedInput) {
       setLoading(false)
       return
     }
+    refreshGuardRef.current.invalidate()
     cursorRef.current = undefined
+    setRecords([])
+    setGap(undefined)
+    setTruncated(false)
+    setError(undefined)
+    setErrorSource(undefined)
+    setCommittedSource(undefined)
     void refresh()
     return () => refreshGuardRef.current.invalidate()
   }, [input.active, refresh])
@@ -75,9 +90,11 @@ export function useLogFeed(input: UseLogFeedInput) {
     const poll = async () => {
       if (disposed || polling || document.visibilityState === 'hidden' || !cursorRef.current) return
       polling = true
+      const requestId = refreshGuardRef.current.current()
+      const cursor = cursorRef.current
       try {
-        const result = await readLogPages(listLogs, cursorRef.current)
-        if (disposed) return
+        const result = await readLogPages(listLogs, cursor)
+        if (disposed || !refreshGuardRef.current.isCurrent(requestId) || cursorRef.current !== cursor) return
         cursorRef.current = result.cursor
         setGap(result.gap)
         setTruncated(result.truncated)
@@ -85,7 +102,10 @@ export function useLogFeed(input: UseLogFeedInput) {
         setRecords(current => mergePolledLogRecords(current, result.items, result.gap))
         if (!input.followingLatestRef.current) input.onUnreadRecords(result.items)
       } catch (caught) {
-        if (!disposed) setError(toErrorMessage(caught))
+        if (!disposed && refreshGuardRef.current.isCurrent(requestId)) {
+          setError(toErrorMessage(caught))
+          setErrorSource(input.source)
+        }
       } finally {
         polling = false
       }
@@ -99,9 +119,18 @@ export function useLogFeed(input: UseLogFeedInput) {
       window.clearInterval(interval)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [input.active, input.followingLatestRef, input.onUnreadRecords, listLogs])
+  }, [input.active, input.followingLatestRef, input.onUnreadRecords, input.source, listLogs])
 
-  return { records, gap, truncated, loading, error, refresh }
+  const sourceReady = committedSource === input.source
+  return {
+    records: sourceReady ? records : EMPTY_LOG_RECORDS,
+    gap: sourceReady ? gap : undefined,
+    truncated: sourceReady ? truncated : false,
+    loading: input.active && !sourceReady ? true : loading,
+    error: errorSource === input.source ? error : undefined,
+    refresh,
+    sourceReady,
+  }
 }
 
 function toErrorMessage(caught: unknown): string {

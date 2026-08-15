@@ -62,7 +62,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
     >
       <div
         aria-hidden={!props.metadataOpen}
-        className={`${styles.metadataPanel} ${props.metadataOpen ? styles.metadataPanelOpen : ''}`}
+        className={`${styles.metadataPanel} ${props.metadataOpen ? styles.metadataPanelOpen : ''} loom-underlined-fields`}
         data-state={props.metadataOpen ? 'open' : 'closed'}
       >
         <span className={styles.metadataHandle} aria-hidden="true" />

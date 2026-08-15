@@ -73,6 +73,10 @@ Typography foundation:
   --loom-line-height-compact / title / tight / heading
   --loom-line-height-code / ui / body / reading / relaxed
 
+Interface scale and icons:
+  --loom-ui-scale
+  --loom-icon-size-1 ... 6
+
 Motion foundation:
   --loom-motion-duration-fast
   --loom-motion-duration-standard
@@ -93,7 +97,17 @@ Typography 使用“基础等级 + 克制语义别名”：字号等级只表达
 
 默认正文使用操作系统 UI 字体 `system-ui`，不加载 Loom 自有字体。代码、日志和结构化数据使用共享的系统等宽字体栈。Markdown 相对标题、错误页 Display 字号和特殊内容行高继续归宿主所有，不为了消灭所有字面量扩大全局合同。
 
-## 3. 表面层级
+## 3. 界面缩放
+
+设置页提供 `80%` 到 `125%`、步长 `5%` 的界面缩放偏好，默认值为 `100%`。该偏好由前端 Studio Layout Store 持久化，不进入后端合同。
+
+界面缩放不得通过顶层 `zoom` 或 `transform: scale()` 改写 Studio 的视口坐标系；这会破坏 Narrative 居中、Composer 贴底、Window 锚点和 `vw` / `vh` 消费者。当前实现把比例写入根级 `--loom-ui-scale`，由字体等级、共享图标等级和 Page Header 控件尺寸在正常布局计算中消费。
+
+组件 SVG 不使用全局 `svg` 选择器强制缩放。产品图标应消费 `--loom-icon-size-*` 或稳定的语义图标 Token；Logo、角色媒体、内容 SVG 和插图不自动归类为产品图标。仍使用固定尺寸的间距、头像、媒体和特殊几何不属于当前缩放合同，后续只有在出现明确消费需求时再迁移。
+
+Custom CSS 在应用生成的缩放声明之后加载，因此仍可覆盖 `--loom-ui-scale`、字体等级、图标等级或具体组件 Token。
+
+## 4. 表面层级
 
 颜色只表达视觉关系：
 
@@ -105,7 +119,7 @@ background < inset / surface < subtle / emphasis < raised
 
 旧 `--loom-bg`、`--loom-surface`、`--loom-panel`、`--loom-window*` 等变量仅作为 Custom CSS 兼容输入，由新的 `--loom-color-*` Token 读取；生产组件不再直接消费旧变量。新主题应只覆盖 `--loom-color-*`。
 
-## 4. 公共定制 hook
+## 5. 公共定制 hook
 
 需要允许用户或插件主题稳定选择的组件，应提供：
 
@@ -142,7 +156,7 @@ data-loom-component="long-text-editor"
 `--loom-overlay-width` 当前无生产消费者，等待 Window Architecture 决定后再移除。
 扁平视觉不定义 Shadow Token，阴影不是当前主题层级合同。
 
-## 5. Cascade 约定
+## 6. Cascade 约定
 
 为了让自定义 CSS 可维护：
 

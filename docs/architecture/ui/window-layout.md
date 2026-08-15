@@ -95,6 +95,8 @@ Studio Shell 从 Chat Composer 外框和未展开 Agent 时的 Composer Base 读
 
 两者的垂直范围都是 Window 顶部间距到 Composer Base 顶边。Agent 展开不改变该底部锚点。用户显式 Resize 后保存的 Window Size 优先于默认 Placement；Immersive Mode 继续覆盖 Reference Placement。
 
+Placement 只定义默认展开几何，不定义用户缩放下限。所有 Reference Window 共用 `--loom-window-min-width`，当前默认值为 `240px`；Model、Character、Settings、Preset、Resource、Inspector 和 Logs 都可以被用户缩到 Narrative 左边缘以内。内容是否仍适合窄宽度，由 Window 内的 Column 组合和业务 Panel 自己处理，不允许用 Placement 类型阻止缩放。
+
 ## 6. 资源工作台映射
 
 资源页的 `explorer`、`split` 和 `editor` 是领域视图动作，负责选择可见 Column 组合，不拥有独立的拖拽体系：
@@ -114,6 +116,8 @@ Studio 工作窗口使用相同机制表达 Rail Column 与当前 Panel Column�
 Column Layout 只接收受控宽度并报告变化。具体 Store 决定宽度字段、持久化键和恢复策略；浏览器存储损坏或旧版本缺少字段时必须回退到安全默认值。
 
 桌面持久化宽度不能直接决定移动端布局。窄屏可以隐藏、堆叠或覆盖某些 Column，但响应式策略属于 Window 或业务界面，不进入通用 Splitter 算法。
+
+Studio Panel Host 暴露名为 `studio-panel` 的 Inline Size Container。Window 内部业务组件必须优先使用 Panel Container Query 判断可用宽度，不能用浏览器 Viewport Media Query 猜测当前 Window 是否狭窄。Character、Model、Settings 和 Asset Workbench 已按这一合同处理窄宽布局。
 
 ## 8. 当前非目标
 

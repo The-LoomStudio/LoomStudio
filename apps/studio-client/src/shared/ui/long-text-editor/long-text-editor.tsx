@@ -7,6 +7,7 @@ import {
   type LongTextEditorMode,
 } from './long-text-editor-model.js'
 import { SkeletonText } from '../skeleton/skeleton.js'
+import { tryWriteClipboardText } from '../../browser/clipboard.js'
 import styles from './long-text-editor.module.scss'
 
 const CodeMirrorEditor = lazy(async () => {
@@ -84,12 +85,8 @@ export const LongTextEditor = forwardRef<LongTextEditorHandle, LongTextEditorPro
   }, [state.undoValue])
 
   async function copyValue() {
-    try {
-      await navigator.clipboard.writeText(props.value)
-      dispatch({ type: 'copy', status: 'copied' })
-    } catch {
-      dispatch({ type: 'copy', status: 'failed' })
-    }
+    const copied = await tryWriteClipboardText(props.value)
+    dispatch({ type: 'copy', status: copied ? 'copied' : 'failed' })
   }
 
   function clearValue() {

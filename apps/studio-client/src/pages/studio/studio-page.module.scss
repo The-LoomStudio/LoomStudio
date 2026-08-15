@@ -132,11 +132,7 @@
 
 .floatingDockOpen {
   width: var(--loom-window-rail-width, var(--loom-rail-expanded-width));
-  height: max-content;
   grid-template-columns: var(--loom-window-rail-width, var(--loom-rail-expanded-width)) 0 0;
-  border: 1px solid var(--loom-color-border);
-  border-radius: var(--loom-radius-window);
-  background: var(--loom-color-surface);
 }
 
 .floatingDock:not(.floatingDockActive) .dockDivider,
@@ -150,9 +146,6 @@
   height: calc(100% - var(--loom-window-gap) - var(--loom-composer-reserve));
   max-height: calc(100% - var(--loom-window-gap) - var(--loom-composer-reserve));
   display: block;
-  border: 1px solid var(--loom-color-border);
-  border-radius: var(--loom-radius-window);
-  background: var(--loom-color-surface);
 }
 
 .floatingDockBesideNarrative {
@@ -485,10 +478,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .floatingDock,
-  .dockSidebar,
-  .dockHeader,
-  .railLabel {
+  .floatingDock {
     transition: none;
   }
 }
@@ -501,10 +491,6 @@
     left: 0;
   }
 
-  .floatingDockOpen {
-    width: var(--loom-window-rail-width, var(--loom-rail-expanded-width));
-  }
-
   .floatingDockActive {
     right: auto;
     bottom: auto;
@@ -513,7 +499,4 @@
     max-height: calc(100% - 24px);
   }
 
-  .dockPanelHost {
-    border-left: 0;
-  }
 }

@@ -26,19 +26,8 @@
 .modelPicker input {
   width: 100%;
   min-height: 30px;
-  border: 0;
-  border-bottom: 1px solid var(--loom-color-divider);
-  border-radius: 0;
   padding: 4px 2px;
-  color: var(--loom-color-text);
-  background: transparent;
   font-size: var(--loom-font-size-3);
-}
-
-.providerForm input:focus,
-.modelPicker input:focus {
-  border-color: var(--loom-color-accent);
-  box-shadow: none;
 }
 
 .sectionHeader,

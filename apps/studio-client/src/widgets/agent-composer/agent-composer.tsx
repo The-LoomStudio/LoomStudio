@@ -1,7 +1,10 @@
 import { Check, Copy, GitBranch, Wrench } from 'lucide-react'
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type { Translator } from '../../shared/i18n/index.js'
+import { tryWriteClipboardText } from '../../shared/browser/clipboard.js'
+import type { MarkdownCodeBlockLabels } from '../../shared/ui/markdown-content/markdown-code-block.js'
 import { SkeletonText } from '../../shared/ui/skeleton/skeleton.js'
+import { ConversationMessageAction, ConversationMessageChrome } from '../../shared/ui/conversation-message-chrome/conversation-message-chrome.js'
 import { ChatComposer } from '../chat-composer/chat-composer.js'
 import {
   appendMockAgentTurn,
@@ -89,12 +92,7 @@ export function AgentComposer(props: AgentComposerProps) {
   }
 
   async function copyMessage(message: MockAgentMessage) {
-    try {
-      await navigator.clipboard.writeText(message.content)
-      setCopyState({ id: message.id, copied: true })
-    } catch {
-      setCopyState({ id: message.id, copied: false })
-    }
+    setCopyState({ id: message.id, copied: await tryWriteClipboardText(message.content) })
     if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
     copyTimerRef.current = setTimeout(() => setCopyState(undefined), 1600)
   }
@@ -144,6 +142,7 @@ export function AgentComposer(props: AgentComposerProps) {
               )}>
                 {activeBranch?.items.map((item, index) => item.type === 'message' ? (
                   <AgentMessage
+                    codeBlockLabels={codeBlockLabels}
                     copyState={copyState?.id === item.id ? copyState.copied : undefined}
                     index={index}
                     key={item.id}
@@ -183,6 +182,7 @@ export function AgentComposer(props: AgentComposerProps) {
 }
 
 function AgentMessage(props: {
+  codeBlockLabels: MarkdownCodeBlockLabels
   copyState?: boolean
   index: number
   message: MockAgentMessage
@@ -195,47 +195,36 @@ function AgentMessage(props: {
       <div className={styles.messageSurface}>
         <ConversationMarkdown
           className={styles.messageBody}
-          codeBlockLabels={{
-            copied: props.t('longTextEditor.copied'),
-            copy: props.t('longTextEditor.copy'),
-            copyFailed: props.t('longTextEditor.copyFailed'),
-            disableWrap: props.t('markdown.code.disableWrap'),
-            enableWrap: props.t('markdown.code.enableWrap'),
-          }}
+          codeBlockLabels={props.codeBlockLabels}
           role={props.message.role}
           value={props.message.content}
         />
       </div>
-      <footer className={styles.messageFooter}>
-        <span className={styles.messageTimestamp} title={formatFullTimestamp(props.message.createdAt)}>
-          #{props.index + 1} · {formatTimestamp(props.message.createdAt)}
-        </span>
-        <div className={styles.messageActions}>
-          <MessageAction
+      <ConversationMessageChrome
+        createdAt={props.message.createdAt}
+        index={props.index}
+        actions={(
+          <>
+          <ConversationMessageAction
             label={props.t(props.copyState === undefined
               ? 'timeline.copy'
               : props.copyState ? 'timeline.copied' : 'timeline.copyFailed')}
             onClick={props.onCopy}
           >
             {props.copyState ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-          </MessageAction>
-          <MessageAction label={props.t('agent.fork')} onClick={props.onFork}>
+          </ConversationMessageAction>
+          <ConversationMessageAction label={props.t('agent.fork')} onClick={props.onFork}>
             <GitBranch aria-hidden="true" />
-          </MessageAction>
-        </div>
-      </footer>
+          </ConversationMessageAction>
+          </>
+        )}
+      />
     </article>
   )
 }
 
 function AgentToolCall(props: {
-  codeBlockLabels: {
-    copied: string
-    copy: string
-    copyFailed: string
-    disableWrap: string
-    enableWrap: string
-  }
+  codeBlockLabels: MarkdownCodeBlockLabels
   item: MockAgentToolCall
   t: Translator
 }) {
@@ -259,23 +248,4 @@ function AgentToolCall(props: {
       <p className={styles.toolResult}>{props.item.result}</p>
     </article>
   )
-}
-
-function MessageAction(props: { children: ReactNode; label: string; onClick(): void }) {
-  return (
-    <button aria-label={props.label} className={styles.messageAction} title={props.label} type="button" onClick={props.onClick}>
-      {props.children}
-    </button>
-  )
-}
-
-function formatTimestamp(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '--:--'
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
-
-function formatFullTimestamp(value: string): string {
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
 }

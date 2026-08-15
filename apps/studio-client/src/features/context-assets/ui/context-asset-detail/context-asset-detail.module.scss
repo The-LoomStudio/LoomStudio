@@ -104,22 +104,11 @@
 }
 
 .inlineInput {
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid var(--loom-color-divider);
-  border-radius: 0;
-  color: inherit;
-  font: inherit;
   min-height: 28px;
   min-width: 0;
   outline: none;
   padding: 3px 0 5px;
   width: 100%;
-}
-
-.inlineInput:focus {
-  border-color: var(--loom-color-accent);
-  box-shadow: none;
 }
 
 .inlineInput:disabled {

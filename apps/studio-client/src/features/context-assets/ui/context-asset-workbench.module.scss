@@ -19,3 +19,13 @@
     padding-inline: 14px;
   }
 }
+.explorerContent {
+  min-width: 0;
+  height: 100%;
+  overflow: auto;
+}
+
+.explorerContent :global([data-loom-component='projection-runlist']) {
+  height: auto;
+  overflow: visible;
+}

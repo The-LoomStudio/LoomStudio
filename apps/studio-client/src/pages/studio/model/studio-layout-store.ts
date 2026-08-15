@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware'
+import { createJSONStorage, persist } from 'zustand/middleware'
+import { safeLocalStorage } from '../../../shared/browser/safe-local-storage.js'
 import type { WindowSize } from '../window-resize.js'
 import type { LongTextEditorMode } from '../../../shared/ui/long-text-editor/long-text-editor-model.js'
 
@@ -72,28 +73,29 @@ const UI_SCALE_DEFAULT = 100
 const UI_SCALE_MIN = 80
 const UI_SCALE_MAX = 125
 export const DEFAULT_ASSET_VIEW_STATE: AssetViewState = { viewMode: 'explorer' }
-const safeStorage: StateStorage = {
-  getItem: name => {
-    try {
-      return globalThis.localStorage?.getItem(name) ?? null
-    } catch {
-      return null
-    }
-  },
-  removeItem: name => {
-    try {
-      globalThis.localStorage?.removeItem(name)
-    } catch {
-      // Layout persistence is optional when browser storage is unavailable.
-    }
-  },
-  setItem: (name, value) => {
-    try {
-      globalThis.localStorage?.setItem(name, value)
-    } catch {
-      // Layout persistence is optional when browser storage is unavailable.
-    }
-  },
+
+function updateAssetView(
+  state: StudioLayoutData,
+  layoutId: AssetLayoutId,
+  workspaceId: string,
+  updates: Partial<AssetViewState>,
+): Pick<StudioLayoutData, 'assetLayouts'> {
+  const layout = state.assetLayouts[layoutId]
+  return {
+    assetLayouts: {
+      ...state.assetLayouts,
+      [layoutId]: {
+        ...layout,
+        views: {
+          ...layout.views,
+          [workspaceId]: {
+            ...(layout.views[workspaceId] ?? DEFAULT_ASSET_VIEW_STATE),
+            ...updates,
+          },
+        },
+      },
+    },
+  }
 }
 
 export function createDefaultStudioLayout(): StudioLayoutData {
@@ -167,57 +169,20 @@ export const useStudioLayoutStore = create<StudioLayoutStore>()(
         }
       }),
       setAssetMetadataOpen: assetMetadataOpen => set({ assetMetadataOpen }),
-      setAssetExpandedIds: (layoutId, workspaceId, expandedIds) => set(state => ({
-        assetLayouts: {
-          ...state.assetLayouts,
-          [layoutId]: {
-            ...state.assetLayouts[layoutId],
-            views: {
-              ...state.assetLayouts[layoutId].views,
-              [workspaceId]: {
-                ...(state.assetLayouts[layoutId].views[workspaceId] ?? DEFAULT_ASSET_VIEW_STATE),
-                expandedIds: [...new Set(expandedIds)],
-              },
-            },
-          },
-        },
-      })),
+      setAssetExpandedIds: (layoutId, workspaceId, expandedIds) => set(state => updateAssetView(
+        state,
+        layoutId,
+        workspaceId,
+        { expandedIds: [...new Set(expandedIds)] },
+      )),
       setAssetExplorerWidth: (layoutId, explorerWidth) => set(state => ({
         assetLayouts: {
           ...state.assetLayouts,
           [layoutId]: { ...state.assetLayouts[layoutId], explorerWidth },
         },
       })),
-      setAssetSelectedId: (layoutId, workspaceId, selectedId) => set(state => ({
-        assetLayouts: {
-          ...state.assetLayouts,
-          [layoutId]: {
-            ...state.assetLayouts[layoutId],
-            views: {
-              ...state.assetLayouts[layoutId].views,
-              [workspaceId]: {
-                ...(state.assetLayouts[layoutId].views[workspaceId] ?? DEFAULT_ASSET_VIEW_STATE),
-                selectedId,
-              },
-            },
-          },
-        },
-      })),
-      setAssetViewMode: (layoutId, workspaceId, viewMode) => set(state => ({
-        assetLayouts: {
-          ...state.assetLayouts,
-          [layoutId]: {
-            ...state.assetLayouts[layoutId],
-            views: {
-              ...state.assetLayouts[layoutId].views,
-              [workspaceId]: {
-                ...(state.assetLayouts[layoutId].views[workspaceId] ?? DEFAULT_ASSET_VIEW_STATE),
-                viewMode,
-              },
-            },
-          },
-        },
-      })),
+      setAssetSelectedId: (layoutId, workspaceId, selectedId) => set(state => updateAssetView(state, layoutId, workspaceId, { selectedId })),
+      setAssetViewMode: (layoutId, workspaceId, viewMode) => set(state => updateAssetView(state, layoutId, workspaceId, { viewMode })),
       setContextCategory: contextCategory => set({ contextCategory }),
       setPanelWindowSize: (panel, size) => set(state => ({
         panelWindowSizes: { ...state.panelWindowSizes, [panel]: size },
@@ -237,7 +202,7 @@ export const useStudioLayoutStore = create<StudioLayoutStore>()(
     {
       name: STORAGE_KEY,
       version: STORAGE_VERSION,
-      storage: createJSONStorage(() => safeStorage),
+      storage: createJSONStorage(() => safeLocalStorage),
       migrate: persisted => sanitizeStudioLayout(persisted),
       merge: (persisted, current) => ({ ...current, ...sanitizeStudioLayout(persisted) }),
       partialize: state => ({

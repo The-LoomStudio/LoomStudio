@@ -62,19 +62,13 @@
     width: 100%;
   }
 
-  .workbenchExplorer .explorerPane {
-    width: 100%;
-  }
-
   .workbench :global([role='separator']) {
     display: none;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .workbench,
-  .explorerPane,
-  .detailPane {
+  .workbench {
     transition: none;
   }
 }

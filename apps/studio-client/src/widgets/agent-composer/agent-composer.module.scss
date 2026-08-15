@@ -143,72 +143,25 @@
   --loom-conversation-user-block-bg: var(--loom-agent-message-surface-deep);
 }
 
-.messageFooter {
-  min-height: 23px;
-  display: flex;
-  align-items: center;
-  gap: 3px;
+.message :global([data-conversation-message-footer]) {
   margin-top: 6px;
-  color: var(--loom-color-text-subtle);
 }
 
-.user .messageFooter {
+.user :global([data-conversation-message-footer]) {
   width: 100%;
   margin-left: 0;
   justify-content: flex-end;
 }
 
-.user .messageTimestamp {
+.user :global([data-conversation-message-timestamp]) {
   order: 2;
   margin-left: 3px;
 }
 
-.messageTimestamp {
-  margin-right: 3px;
-  font-size: var(--loom-font-size-1);
-  line-height: var(--loom-line-height-compact);
-  white-space: nowrap;
-}
-
-.messageActions {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--loom-motion-duration-fast) ease;
-}
-
-.message:hover .messageActions,
-.message:focus-within .messageActions {
+.message:hover :global([data-conversation-message-actions]),
+.message:focus-within :global([data-conversation-message-actions]) {
   opacity: 1;
   pointer-events: auto;
-}
-
-.messageAction {
-  width: 23px;
-  min-width: 23px;
-  height: 23px;
-  min-height: 23px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: var(--loom-radius-control);
-  padding: 0;
-  color: var(--loom-color-text-subtle);
-  background: transparent;
-}
-
-.messageAction:hover,
-.messageAction:focus-visible {
-  color: var(--loom-color-accent-strong);
-  outline: 0;
-}
-
-.messageAction svg {
-  width: var(--loom-icon-size-3);
-  height: var(--loom-icon-size-3);
-  stroke-width: 1.25;
 }
 
 .toolCall {
@@ -306,18 +259,11 @@
   }
 
   .user .messageSurface,
-  .user .messageFooter {
+  .user :global([data-conversation-message-footer]) {
     width: 100%;
   }
 
   .user {
     max-width: min(88%, 620px);
-  }
-}
-
-@media (hover: none) {
-  .messageActions {
-    opacity: 1;
-    pointer-events: auto;
   }
 }

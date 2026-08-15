@@ -1,7 +1,8 @@
 import { memo, useEffect, useState, type ReactNode } from 'react'
-import { Columns2, FilePenLine, Folders, ListOrdered, ListTree, Maximize2, Minimize2, Plug, Settings, SquareTerminal, Users, Wrench, type LucideIcon } from 'lucide-react'
+import { Columns2, FilePenLine, ListTree, Maximize2, Minimize2, type LucideIcon } from 'lucide-react'
 import type { Translator } from '../../shared/i18n/index.js'
 import { DEFAULT_ASSET_VIEW_STATE, STUDIO_PANEL_IDS, useStudioLayoutStore, type AssetLayoutId, type AssetViewMode, type StudioPanelId } from './model/studio-layout-store.js'
+import { STUDIO_PANEL_PRESENTATION } from './model/studio-panel-presentation.js'
 import styles from './studio-page.module.scss'
 
 type StudioPanelHostProps = {
@@ -10,30 +11,6 @@ type StudioPanelHostProps = {
   panelHeaders?: Partial<Record<StudioPanelId, ReactNode>>
   panels: Record<StudioPanelId, (active: boolean) => ReactNode>
   t: Translator
-}
-
-type PanelDefinition = {
-  labelKey: 'rail.model' | 'rail.character' | 'rail.preset' | 'rail.resource' | 'rail.inspector' | 'rail.logs' | 'rail.settings'
-}
-
-const PANEL_DEFINITIONS = {
-  model: { labelKey: 'rail.model' },
-  character: { labelKey: 'rail.character' },
-  preset: { labelKey: 'rail.preset' },
-  resource: { labelKey: 'rail.resource' },
-  inspector: { labelKey: 'rail.inspector' },
-  logs: { labelKey: 'rail.logs' },
-  settings: { labelKey: 'rail.settings' },
-} satisfies Record<StudioPanelId, PanelDefinition>
-
-const PANEL_ICONS: Record<StudioPanelId, LucideIcon> = {
-  model: Plug,
-  character: Users,
-  preset: ListOrdered,
-  resource: Folders,
-  inspector: Wrench,
-  logs: SquareTerminal,
-  settings: Settings,
 }
 
 export function StudioPanelHost(props: StudioPanelHostProps) {
@@ -47,8 +24,8 @@ export function StudioPanelHost(props: StudioPanelHostProps) {
   const setAssetViewMode = useStudioLayoutStore(state => state.setAssetViewMode)
   const togglePanelWindowMode = useStudioLayoutStore(state => state.togglePanelWindowMode)
   const isImmersive = props.activePanel !== null && panelWindowModes[props.activePanel] === 'immersive'
-  const definition = props.activePanel === null ? null : PANEL_DEFINITIONS[props.activePanel]
-  const ActivePanelIcon = props.activePanel === null ? null : PANEL_ICONS[props.activePanel]
+  const definition = props.activePanel === null ? null : STUDIO_PANEL_PRESENTATION[props.activePanel]
+  const ActivePanelIcon = definition?.Icon
   const customHeader = props.activePanel === null ? null : props.panelHeaders?.[props.activePanel]
   const activeAssetViewMode = activeAssetViewModePreference === null
     ? null

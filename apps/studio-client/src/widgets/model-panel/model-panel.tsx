@@ -38,7 +38,7 @@ export function ModelPanel(props: ModelPanelProps) {
         </header>
         <details className={styles.createAccount}>
           <summary><ChevronRight aria-hidden="true" />{props.t('provider.addAccount')}</summary>
-          <form className={styles.providerForm} onSubmit={props.onCreateProviderAccount}>
+          <form className={`${styles.providerForm} loom-underlined-fields`} onSubmit={props.onCreateProviderAccount}>
             <label>
               <span>{props.t('provider.name')}</span>
               <input

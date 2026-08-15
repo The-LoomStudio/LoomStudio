@@ -34,6 +34,11 @@
   gap: 8px;
 }
 
+.agentHeaderInfo > svg {
+  width: var(--loom-icon-size-5);
+  height: var(--loom-icon-size-5);
+}
+
 .agentTitle {
   color: var(--loom-color-text);
   font-size: var(--loom-font-size-4);
@@ -75,6 +80,11 @@
   background: var(--loom-color-border);
 }
 
+.agentAddButton svg {
+  width: var(--loom-icon-size-4);
+  height: var(--loom-icon-size-4);
+}
+
 .agentBody {
   background: var(--loom-color-background);
   border-bottom-left-radius: var(--loom-radius-panel);
@@ -95,21 +105,9 @@
 
 .agentCreateForm input,
 .agentCreateForm select {
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid var(--loom-color-divider);
-  border-radius: 0;
-  color: var(--loom-color-text);
   flex: 1;
   font-size: var(--loom-font-size-3);
   padding: 4px 0 5px;
-}
-
-.agentCreateForm input:focus,
-.agentCreateForm select:focus,
-.agentItemActions select:focus {
-  border-color: var(--loom-color-accent);
-  box-shadow: none;
 }
 
 .agentFormActions {
@@ -228,11 +226,6 @@
 }
 
 .agentItemActions select {
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid var(--loom-color-divider);
-  border-radius: 0;
-  color: var(--loom-color-text);
   font-size: var(--loom-font-size-2);
   padding: 3px 0 4px;
 }

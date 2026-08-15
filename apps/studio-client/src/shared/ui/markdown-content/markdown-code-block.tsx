@@ -1,5 +1,6 @@
 import { Check, Copy, WrapText, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { tryWriteClipboardText } from '../../browser/clipboard.js'
 import { highlightCode } from './code-highlight.js'
 import styles from './markdown-content.module.scss'
 
@@ -27,12 +28,7 @@ export function MarkdownCodeBlock(props: {
   }, [copyState])
 
   async function copyCode() {
-    try {
-      await navigator.clipboard.writeText(props.code)
-      setCopyState('copied')
-    } catch {
-      setCopyState('failed')
-    }
+    setCopyState(await tryWriteClipboardText(props.code) ? 'copied' : 'failed')
   }
 
   const copyLabel = copyState === 'copied'

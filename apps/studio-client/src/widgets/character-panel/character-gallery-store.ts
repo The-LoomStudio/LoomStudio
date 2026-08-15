@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware'
+import { createJSONStorage, persist } from 'zustand/middleware'
+import { safeLocalStorage } from '../../shared/browser/safe-local-storage.js'
 
 type CharacterGroup = {
   id: string
@@ -26,30 +27,6 @@ type CharacterGalleryState = {
 type PersistedCharacterGalleryState = Pick<CharacterGalleryState, 'activeGroupId' | 'assignments' | 'groups'>
 
 const STORAGE_KEY = 'loom-character-gallery'
-const safeStorage: StateStorage = {
-  getItem: name => {
-    try {
-      return globalThis.localStorage?.getItem(name) ?? null
-    } catch {
-      return null
-    }
-  },
-  removeItem: name => {
-    try {
-      globalThis.localStorage?.removeItem(name)
-    } catch {
-      // Character organization is optional when browser storage is unavailable.
-    }
-  },
-  setItem: (name, value) => {
-    try {
-      globalThis.localStorage?.setItem(name, value)
-    } catch {
-      // Character organization is optional when browser storage is unavailable.
-    }
-  },
-}
-
 export function createDefaultCharacterGalleryState(): PersistedCharacterGalleryState {
   return { activeGroupId: undefined, assignments: {}, groups: [] }
 }
@@ -121,7 +98,7 @@ export const useCharacterGalleryStore = create<CharacterGalleryState>()(
     }),
     {
       name: STORAGE_KEY,
-      storage: createJSONStorage(() => safeStorage),
+      storage: createJSONStorage(() => safeLocalStorage),
       merge: (persisted, current) => ({ ...current, ...sanitizeCharacterGalleryState(persisted) }),
       partialize: state => ({
         activeGroupId: state.activeGroupId,

@@ -82,14 +82,14 @@ export function ChatComposer(props: ChatComposerProps) {
                     type="button"
                     onClick={props.onToggleExpanded}
                   >
-                    <ChevronUp aria-hidden="true" size={16} strokeWidth={1.7} />
+                    <ChevronUp aria-hidden="true" strokeWidth={1.7} />
                   </button>
                 ) : null}
                 <button aria-label={props.moreLabel} className={styles.utilityButton} disabled title={props.moreLabel} type="button">
-                  <Plus aria-hidden="true" size={17} strokeWidth={1.7} />
+                  <Plus aria-hidden="true" strokeWidth={1.7} />
                 </button>
                 <button aria-label={props.retryLabel} className={styles.utilityButton} disabled title={props.retryLabel} type="button">
-                  <RotateCcw aria-hidden="true" size={16} strokeWidth={1.7} />
+                  <RotateCcw aria-hidden="true" strokeWidth={1.7} />
                 </button>
               </div>
               <div className={styles.composerActions}>
@@ -118,7 +118,7 @@ export function ChatComposer(props: ChatComposerProps) {
                   </button>
                 )}
                 <button aria-label={props.sendLabel} className={styles.sendButton} type="submit" disabled={!props.canSend} title={props.sendLabel}>
-                  <ArrowUp aria-hidden="true" absoluteStrokeWidth size={16} strokeWidth={1.7} />
+                  <ArrowUp aria-hidden="true" absoluteStrokeWidth strokeWidth={1.7} />
                 </button>
               </div>
             </div>

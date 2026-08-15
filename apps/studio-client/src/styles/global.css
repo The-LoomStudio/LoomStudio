@@ -234,6 +234,22 @@
   color: var(--loom-color-text);
 }
 
+.loom-underlined-fields :where(input, select, textarea),
+.loom-underlined-field {
+  border: 0;
+  border-bottom: 1px solid var(--loom-color-divider);
+  border-radius: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+}
+
+.loom-underlined-fields :where(input, select, textarea):focus,
+.loom-underlined-field:focus {
+  border-color: var(--loom-color-accent);
+  box-shadow: none;
+}
+
 .loom-page-tab-active {
   font-weight: var(--loom-font-weight-6);
 }

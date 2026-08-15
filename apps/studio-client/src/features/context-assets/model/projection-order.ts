@@ -21,6 +21,11 @@ export type ProjectionOrderRow = {
   zoneId: string
 }
 
+export type ProjectionOrderZone = {
+  id: string
+  rows: ProjectionOrderRow[]
+}
+
 export function buildProjectionOrder(nodes: ContextAssetNode[]): ProjectionOrderEntry[] {
   return flattenContextNodes(nodes)
     .filter((node): node is ContextAssetNode & { projection: NonNullable<ContextAssetNode['projection']> } => Boolean(node.projection))
@@ -117,6 +122,25 @@ export function buildProjectionRows(entries: ProjectionOrderEntry[]): Projection
   }
 
   return rows.sort((left, right) => left.primary.position - right.primary.position)
+}
+
+export function buildProjectionZones(entries: ProjectionOrderEntry[]): ProjectionOrderZone[] {
+  const zones = new Map<string, ProjectionOrderRow[]>()
+
+  for (const row of buildProjectionRows(entries)) {
+    zones.set(row.zoneId, [...(zones.get(row.zoneId) ?? []), row])
+  }
+
+  return [...zones].map(([id, rows]) => ({ id, rows }))
+}
+
+export function moveProjectionZone(entries: ProjectionOrderEntry[], draggedZoneId: string, targetZoneId: string): string[] {
+  const zoneIds = [...new Set(entries.map(entry => entry.zoneId))]
+  const reorderedZoneIds = moveBefore(zoneIds, draggedZoneId, targetZoneId)
+
+  return reorderedZoneIds.flatMap(zoneId => (
+    entries.filter(entry => entry.zoneId === zoneId).map(entry => entry.node.id)
+  ))
 }
 
 export function buildSlotRanksFromOrder(entries: ProjectionOrderEntry[], orderedIds: string[]): ProjectionSlotRank[] {

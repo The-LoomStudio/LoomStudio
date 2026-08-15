@@ -458,19 +458,8 @@
   min-width: 0;
   flex: 1;
   min-height: 28px;
-  border: 0;
-  border-bottom: 1px solid var(--loom-color-divider);
-  border-radius: 0;
   padding: 3px 2px;
-  color: var(--loom-color-text);
-  background: transparent;
-  font: inherit;
   font-size: var(--loom-font-size-2);
-}
-
-.groupForm input:focus {
-  border-color: var(--loom-color-accent);
-  box-shadow: none;
 }
 
 @keyframes sheet-enter {
@@ -649,13 +638,7 @@
 .profileEditor input,
 .profileEditor textarea {
   width: 100%;
-  border: 0;
-  border-bottom: 1px solid var(--loom-color-divider);
-  border-radius: 0;
   padding: 6px 2px;
-  color: var(--loom-color-text);
-  background: transparent;
-  font: inherit;
   font-size: var(--loom-font-size-3);
 }
 
@@ -663,12 +646,6 @@
   min-height: 7rem;
   resize: vertical;
   line-height: var(--loom-line-height-body);
-}
-
-.profileEditor input:focus,
-.profileEditor textarea:focus {
-  border-color: var(--loom-color-accent);
-  box-shadow: none;
 }
 
 .deleteButton {

@@ -3,6 +3,7 @@ import { useState, type FormEvent } from 'react'
 import { toClientJsonObject } from '../../../shared/api/client-json-object.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { AgentRuntimeProfile, ModelProfile, ProviderAccount } from '../../../entities/index.js'
+import { safeLocalStorage } from '../../../shared/browser/safe-local-storage.js'
 import { normalizeOpenAICompatibleBaseUrl } from './provider-base-url.js'
 
 const selectedAgentRuntimeProfileStorageKey = 'loom.studio.selectedAgentRuntimeProfileId'
@@ -189,22 +190,11 @@ export function chooseAgentRuntimeProfileId(input: {
 }
 
 function readStoredAgentRuntimeProfileId(): string | undefined {
-  try {
-    const storage = globalThis.localStorage
-    const value = storage?.getItem(selectedAgentRuntimeProfileStorageKey)
-    return value && value.trim().length > 0 ? value : undefined
-  } catch {
-    return undefined
-  }
+  const value = safeLocalStorage.getItem(selectedAgentRuntimeProfileStorageKey)
+  return value && value.trim().length > 0 ? value : undefined
 }
 
 function writeStoredAgentRuntimeProfileId(id: string | undefined): void {
-  try {
-    const storage = globalThis.localStorage
-    if (!storage) return
-    if (id) storage.setItem(selectedAgentRuntimeProfileStorageKey, id)
-    else storage.removeItem(selectedAgentRuntimeProfileStorageKey)
-  } catch {
-    // Browser storage can be unavailable in private contexts.
-  }
+  if (id) safeLocalStorage.setItem(selectedAgentRuntimeProfileStorageKey, id)
+  else safeLocalStorage.removeItem(selectedAgentRuntimeProfileStorageKey)
 }

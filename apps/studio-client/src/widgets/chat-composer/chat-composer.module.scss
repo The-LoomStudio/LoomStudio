@@ -117,6 +117,12 @@
   background: transparent;
 }
 
+.utilityButton svg,
+.sendButton svg {
+  width: var(--loom-icon-size-5);
+  height: var(--loom-icon-size-5);
+}
+
 .expansionToggle svg {
   transition: transform var(--loom-motion-duration-standard) var(--loom-motion-easing-standard);
 }

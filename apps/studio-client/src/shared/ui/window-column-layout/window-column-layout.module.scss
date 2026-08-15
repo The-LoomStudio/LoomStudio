@@ -53,9 +53,3 @@
   outline: 1px solid var(--loom-color-accent);
   outline-offset: -2px;
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .layout {
-    transition: none;
-  }
-}

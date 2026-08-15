@@ -6,7 +6,7 @@
 
 .row {
   --loom-tree-base-x: 34px;
-  --loom-tree-guide-x: calc(var(--loom-tree-base-x) - 0.5px);
+  --loom-tree-guide-x: var(--loom-tree-base-x);
   --loom-tree-indent-step: 16px;
   --loom-tree-indent: calc((var(--loom-tree-level) - 1) * var(--loom-tree-indent-step));
   --loom-tree-icon-size: var(--loom-icon-size-4);
@@ -160,7 +160,7 @@
 .branchContinuation {
   position: absolute;
   z-index: 0;
-  top: calc(50% + 4px);
+  top: calc(50% + 8px);
   bottom: -2px;
   left: calc(var(--loom-tree-guide-x) + var(--loom-tree-indent));
   width: 1px;

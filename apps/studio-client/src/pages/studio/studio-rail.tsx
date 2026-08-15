@@ -1,6 +1,7 @@
-import { Blocks, Folders, ListOrdered, Plug, Settings, SquareTerminal, Users, Wrench, type LucideIcon } from 'lucide-react'
+import { Blocks } from 'lucide-react'
 import type { Translator } from '../../shared/i18n/index.js'
 import type { StudioPanelId } from './model/studio-layout-store.js'
+import { STUDIO_PANEL_PRESENTATION } from './model/studio-panel-presentation.js'
 import styles from './studio-page.module.scss'
 
 declare const __LOOM_STUDIO_VERSION__: string
@@ -15,13 +16,12 @@ type StudioRailProps = {
 }
 
 type RailTabProps = {
-  Icon: LucideIcon
   activePanel: StudioPanelId | null
-  label: string
+  label?: string
   panel: StudioPanelId
   status?: 'configured' | 'incomplete' | 'unknown'
+  t: Translator
   togglePanel(panel: StudioPanelId): void
-  visualLabel?: string
 }
 
 export function StudioRail(props: StudioRailProps) {
@@ -32,22 +32,14 @@ export function StudioRail(props: StudioRailProps) {
 
   return (
     <nav className={styles.studioRail} aria-label={props.t('rail.label')} data-loom-component="utility-rail">
-      <RailTab
-        Icon={Plug}
-        activePanel={props.activePanel}
-        label={modelLabel}
-        panel="model"
-        status={modelStatus}
-        togglePanel={props.togglePanel}
-        visualLabel={props.t('rail.model')}
-      />
+      <RailTab activePanel={props.activePanel} label={modelLabel} panel="model" status={modelStatus} t={props.t} togglePanel={props.togglePanel} />
       <span className={`loom-divider ${styles.railDivider}`} aria-hidden="true" />
-      <RailTab Icon={Users} activePanel={props.activePanel} label={props.t('rail.character')} panel="character" togglePanel={props.togglePanel} />
-      <RailTab Icon={ListOrdered} activePanel={props.activePanel} label={props.t('rail.preset')} panel="preset" togglePanel={props.togglePanel} />
-      <RailTab Icon={Folders} activePanel={props.activePanel} label={props.t('rail.resource')} panel="resource" togglePanel={props.togglePanel} />
+      <RailTab activePanel={props.activePanel} panel="character" t={props.t} togglePanel={props.togglePanel} />
+      <RailTab activePanel={props.activePanel} panel="preset" t={props.t} togglePanel={props.togglePanel} />
+      <RailTab activePanel={props.activePanel} panel="resource" t={props.t} togglePanel={props.togglePanel} />
       <span className={`loom-divider ${styles.railDivider}`} aria-hidden="true" />
-      <RailTab Icon={Wrench} activePanel={props.activePanel} label={props.t('rail.inspector')} panel="inspector" togglePanel={props.togglePanel} />
-      <RailTab Icon={SquareTerminal} activePanel={props.activePanel} label={props.t('rail.logs')} panel="logs" togglePanel={props.togglePanel} />
+      <RailTab activePanel={props.activePanel} panel="inspector" t={props.t} togglePanel={props.togglePanel} />
+      <RailTab activePanel={props.activePanel} panel="logs" t={props.t} togglePanel={props.togglePanel} />
       <button
         aria-label={props.t('rail.extensions')}
         className={styles.railTab}
@@ -58,7 +50,7 @@ export function StudioRail(props: StudioRailProps) {
         <Blocks aria-hidden="true" />
         <span className={styles.railLabel}>{props.t('rail.extensions')}</span>
       </button>
-      <RailTab Icon={Settings} activePanel={props.activePanel} label={props.t('rail.settings')} panel="settings" togglePanel={props.togglePanel} />
+      <RailTab activePanel={props.activePanel} panel="settings" t={props.t} togglePanel={props.togglePanel} />
       {props.activePanel !== null ? (
         <footer className={styles.railFooter}>
           <a
@@ -81,10 +73,13 @@ export function StudioRail(props: StudioRailProps) {
 function RailTab(props: RailTabProps) {
   const active = props.activePanel === props.panel
   const incomplete = props.status === 'incomplete'
+  const presentation = STUDIO_PANEL_PRESENTATION[props.panel]
+  const label = props.label ?? props.t(presentation.labelKey)
+  const Icon = presentation.Icon
 
   return (
     <button
-      aria-label={props.label}
+      aria-label={label}
       aria-controls={`studio-${props.panel}-panel`}
       aria-expanded={active}
       className={[
@@ -93,12 +88,12 @@ function RailTab(props: RailTabProps) {
         incomplete ? styles.railTabIncomplete : '',
       ].filter(Boolean).join(' ')}
       data-status={props.status}
-      title={props.label}
+      title={label}
       type="button"
       onClick={() => props.togglePanel(props.panel)}
     >
-      <props.Icon aria-hidden="true" />
-      <span className={styles.railLabel}>{props.visualLabel ?? props.label}</span>
+      <Icon aria-hidden="true" />
+      <span className={styles.railLabel}>{props.t(presentation.labelKey)}</span>
     </button>
   )
 }

@@ -31,6 +31,7 @@ export function mergePolledLogRecords(current: LogRecord[], incoming: LogRecord[
 
 export type LatestRequestGuard = {
   begin: () => number
+  current: () => number
   isCurrent: (requestId: number) => boolean
   invalidate: () => void
 }
@@ -39,6 +40,7 @@ export function createLatestRequestGuard(): LatestRequestGuard {
   let currentRequestId = 0
   return {
     begin: () => ++currentRequestId,
+    current: () => currentRequestId,
     isCurrent: requestId => requestId === currentRequestId,
     invalidate: () => { currentRequestId += 1 },
   }

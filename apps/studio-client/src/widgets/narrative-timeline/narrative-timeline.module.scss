@@ -120,74 +120,28 @@
   }
 }
 
-.messageFooter {
-  display: flex;
-  align-items: center;
-  gap: 3px;
+.message :global([data-conversation-message-footer]) {
   min-height: 24px;
   margin-top: 7px;
-  color: var(--loom-color-text-subtle);
 }
 
-.messageActions {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--loom-motion-duration-fast) ease;
-}
-
-.user .messageFooter {
+.user :global([data-conversation-message-footer]) {
   width: min(72%, 620px);
   margin-left: auto;
   justify-content: flex-end;
 }
 
-.user .messageTimestamp {
+.user :global([data-conversation-message-timestamp]) {
   order: 2;
   margin-right: 0;
   margin-left: 3px;
 }
 
-.message:hover .messageActions,
-.message:focus-within .messageActions,
-.message[data-loom-state='editing'] .messageActions {
+.message:hover :global([data-conversation-message-actions]),
+.message:focus-within :global([data-conversation-message-actions]),
+.message[data-loom-state='editing'] :global([data-conversation-message-actions]) {
   opacity: 1;
   pointer-events: auto;
-}
-
-.messageTimestamp {
-  margin-right: 3px;
-  font-size: var(--loom-font-size-1);
-  line-height: var(--loom-line-height-compact);
-  white-space: nowrap;
-}
-
-.messageAction {
-  width: 23px;
-  min-width: 23px;
-  height: 23px;
-  min-height: 23px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  border-radius: var(--loom-radius-control);
-  padding: 0;
-  color: var(--loom-color-text-subtle);
-  background: transparent;
-}
-
-.messageAction:hover:not(:disabled),
-.messageAction:focus-visible {
-  color: var(--loom-color-accent-strong);
-  outline: 0;
-}
-
-.messageAction svg {
-  width: var(--loom-icon-size-3);
-  height: var(--loom-icon-size-3);
-  stroke-width: 1.25;
 }
 
 .messageBody {
@@ -208,16 +162,8 @@
   }
 
   .user .messageSurface,
-  .user .messageFooter {
+  .user :global([data-conversation-message-footer]) {
     width: min(88%, 620px);
-  }
-
-}
-
-@media (hover: none) {
-  .messageActions {
-    opacity: 1;
-    pointer-events: auto;
   }
 
 }

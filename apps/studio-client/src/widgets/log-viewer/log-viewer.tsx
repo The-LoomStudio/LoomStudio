@@ -41,7 +41,7 @@ export function LogViewer(props: {
     }))
   }, [])
 
-  const { records, gap, truncated, loading, error, refresh } = useLogFeed({
+  const { records, gap, truncated, loading, error, refresh, sourceReady } = useLogFeed({
     active: props.active,
     source,
     api: props.api,
@@ -147,7 +147,7 @@ export function LogViewer(props: {
           <button aria-label={props.t('logs.refresh')} disabled={loading} title={props.t('logs.refresh')} type="button" onClick={handleRefresh}>
             <RefreshCw aria-hidden="true" />
           </button>
-          <button aria-label={props.t('logs.download')} disabled={visibleRecords.length === 0} title={props.t('logs.download')} type="button" onClick={downloadVisibleLogs}>
+          <button aria-label={props.t('logs.download')} disabled={!sourceReady || visibleRecords.length === 0} title={props.t('logs.download')} type="button" onClick={downloadVisibleLogs}>
             <Download aria-hidden="true" />
           </button>
         </div>

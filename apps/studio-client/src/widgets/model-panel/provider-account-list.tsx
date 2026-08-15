@@ -4,6 +4,7 @@ import type { ModelProfile, ProviderAccount } from '../../entities/index.js'
 import { mergeModelCatalog, mockModelCatalog } from '../../features/provider-settings/model/model-catalog.js'
 import { resolveModelBrand, resolveProviderBrand } from '../../features/provider-settings/model/model-brand.js'
 import type { Translator } from '../../shared/i18n/index.js'
+import { tryWriteClipboardText } from '../../shared/browser/clipboard.js'
 import { Toggle } from '../../shared/ui/toggle/toggle.js'
 import styles from './model-panel.module.scss'
 import { ModelBrandIcon } from './model-brand-icon.js'
@@ -49,7 +50,6 @@ function ProviderAccountItem(props: {
   t: Translator
 }) {
   const [query, setQuery] = useState('')
-  const [fetchVersion, setFetchVersion] = useState(0)
   const [copied, setCopied] = useState(false)
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const copyRequestRef = useRef(0)
@@ -81,18 +81,13 @@ function ProviderAccountItem(props: {
   async function copyBaseUrl() {
     if (!baseUrl) return
     const requestId = ++copyRequestRef.current
-    try {
-      await navigator.clipboard.writeText(baseUrl)
-      if (!mountedRef.current || requestId !== copyRequestRef.current) return
-      setCopied(true)
-      if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
-      copyTimerRef.current = setTimeout(() => {
-        copyTimerRef.current = undefined
-        setCopied(false)
-      }, 1200)
-    } catch {
-      // Clipboard availability depends on the browser permission and secure context.
-    }
+    if (!await tryWriteClipboardText(baseUrl) || !mountedRef.current || requestId !== copyRequestRef.current) return
+    setCopied(true)
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+    copyTimerRef.current = setTimeout(() => {
+      copyTimerRef.current = undefined
+      setCopied(false)
+    }, 1200)
   }
 
   return (
@@ -142,14 +137,13 @@ function ProviderAccountItem(props: {
             ))}
           </div>
 
-          <div className={styles.modelPicker} data-fetch-version={fetchVersion}>
+          <div className={`${styles.modelPicker} loom-underlined-fields`}>
             <form onSubmit={addModel}>
               <input
                 aria-label={props.t('provider.modelSearchPlaceholder')}
                 placeholder={props.t('provider.modelSearchPlaceholder')}
                 value={query}
                 onChange={event => setQuery(event.target.value)}
-                onFocus={() => setFetchVersion(version => version + 1)}
               />
               <button aria-label={props.t('provider.modelAdd')} disabled={!query.trim() || props.busy} title={props.t('provider.modelAdd')} type="submit">
                 <Plus aria-hidden="true" />

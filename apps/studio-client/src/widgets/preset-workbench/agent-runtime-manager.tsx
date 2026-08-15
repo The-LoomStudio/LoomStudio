@@ -35,7 +35,7 @@ export function AgentRuntimeManager(props: AgentRuntimeManagerProps) {
       <header className={styles.agentHeader}>
         <button className={styles.agentHeaderToggle} type="button" aria-expanded={isExpanded} onClick={() => setIsExpanded(value => !value)}>
           <span className={styles.agentHeaderInfo}>
-            <Package aria-hidden="true" size={16} />
+            <Package aria-hidden="true" />
             <span className={styles.agentTitle}>{props.t('preset.agentProfile')}</span>
             {activeProfile ? (
               <span className={styles.agentActiveBadge}>
@@ -54,14 +54,14 @@ export function AgentRuntimeManager(props: AgentRuntimeManagerProps) {
             setIsExpanded(true)
           }}
         >
-          <Plus aria-hidden="true" size={14} /> {props.t('preset.agentProfile.new')}
+          <Plus aria-hidden="true" /> {props.t('preset.agentProfile.new')}
         </button>
       </header>
 
       {isExpanded ? (
         <div className={styles.agentBody}>
           {isCreating ? (
-            <div className={styles.agentCreateForm}>
+            <div className={`${styles.agentCreateForm} loom-underlined-fields`}>
               <input
                 aria-label={props.t('preset.agentProfile.nameLabel')}
                 placeholder={props.t('preset.agentProfile.namePlaceholder')}
@@ -111,7 +111,7 @@ export function AgentRuntimeManager(props: AgentRuntimeManagerProps) {
                     <strong>{profile.name}</strong>
                     <span>{model ? model.displayName : props.t('preset.agentProfile.noModel')}</span>
                   </button>
-                  <div className={styles.agentItemActions}>
+                  <div className={`${styles.agentItemActions} loom-underlined-fields`}>
                     <select
                       aria-label={props.t('preset.agentProfile.profileModelLabel', { name: profile.name })}
                       value={profile.modelProfileId ?? ''}
