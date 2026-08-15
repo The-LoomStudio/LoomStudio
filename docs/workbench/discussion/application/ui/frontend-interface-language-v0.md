@@ -1,8 +1,8 @@
 # Frontend Interface Language v0
 
-> **状态**：Open Design / Naming Baseline  
-> **范围**：Studio Client 的产品称呼、中文 UI 文案、英文工程术语、React 组件、文件、CSS Hook、状态与动作命名。  
-> **目标**：让同一个界面对象在设计、讨论、文档、UI 文案和代码中拥有可追踪的一组名称，逐步结束 `Panel`、`Window`、`Widget`、`Workbench`、`Canvas`、`Entry`、`Message` 等词的混用。  
+> **状态**：Open Design / Naming Baseline
+> **范围**：Studio Client 的产品称呼、中文 UI 文案、英文工程术语、React 组件、文件、CSS Hook、状态与动作命名。
+> **目标**：让同一个界面对象在设计、讨论、文档、UI 文案和代码中拥有可追踪的一组名称，逐步结束 `Panel`、`Window`、`Widget`、`Workbench`、`Canvas`、`Entry`、`Message` 等词的混用。
 > **非目标**：本文不修改后端 Schema，不要求立即批量重命名生产代码，也不把所有普通 HTML 元素包装成组件。
 
 ## 1. 核心原则
