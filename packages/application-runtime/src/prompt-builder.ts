@@ -1,8 +1,29 @@
 import { evaluatePromptActivation, type ActivationFacts, type PromptActivation } from './prompt-activation.js'
 
-export type PromptProviderRole = 'system' | 'assistant' | 'user'
-export type PromptSourceKind = 'preset' | 'settingLayer' | 'narrativeChat' | 'runtime'
+export type PromptProviderRole = 'system' | 'developer' | 'assistant' | 'user'
+export type PromptSourceKind = 'preset' | 'settingLayer' | 'narrativeChat' | 'narrativeHistory' | 'sessionHistory' | 'runtime'
 export type PromptLifecycle = 'always' | 'conditional' | 'fresh'
+
+export const promptZoneIds = {
+  presetSystem: 'preset.system',
+  settingStable: 'setting.stable',
+  narrativeHistory: 'chat.history',
+  sessionHistory: 'session.history',
+  currentTurn: 'chat.inside',
+  freshTail: 'fresh.tail',
+} as const
+
+export const promptSlotIds = {
+  narrativeMain: `runtime:narrative.main@${promptZoneIds.narrativeHistory}`,
+  sessionMain: `runtime:session.main@${promptZoneIds.sessionHistory}`,
+  currentInput: `runtime:current.input@${promptZoneIds.currentTurn}`,
+} as const
+
+export const promptBindingIds = {
+  narrativeHistory: 'runtime.narrativeHistory',
+  sessionHistory: 'runtime.sessionHistory',
+  currentInput: 'runtime.currentInput',
+} as const
 
 export type PromptContentCapability = {
   kind: 'text'
@@ -44,16 +65,45 @@ export type PromptCompositionCapabilities = {
 export type CompositionSkeleton = {
   id: string
   rootZoneId: string
+  // ponytail: legacy Zone-only shape remains readable while the Core pipeline migrates to items; remove after CompositionItem consumption is complete.
   zones: ZoneNode[]
+  items: CompositionItem[]
   fallbackZoneId: string
 }
 
 export type CompositionSkeletonPatch = {
   zones?: ZoneNode[]
+  items?: CompositionItem[]
   fallbackZoneId?: string
 }
 
+export type CompositionItemBase = {
+  id: string
+  orderIndex: number
+  displayName: string
+  activation?: PromptActivation
+  renderHint?: {
+    providerRoleHint?: PromptProviderRole
+    wrapper?: 'section' | 'message' | 'inline'
+  }
+}
+
+export type SlotNode = CompositionItemBase & {
+  kind: 'slot'
+  bindingId: string
+}
+
+export type EntryNode = CompositionItemBase & {
+  kind: 'entry'
+  source:
+    | { kind: 'preset'; nodeId: string }
+    | { kind: 'binding'; bindingId: string }
+}
+
+export type CompositionItem = ZoneNode | SlotNode | EntryNode
+
 export type ZoneNode = {
+  kind?: 'zone'
   id: string
   parentId: string | null
   displayName: string
@@ -90,6 +140,7 @@ export type PromptFragment = {
     slotOrderHint?: number
     entryOrderHint?: number
     activation?: PromptActivation
+    render?: PromptRenderCapability
   }
 }
 
@@ -156,14 +207,47 @@ export const defaultCompositionSkeleton: CompositionSkeleton = {
   rootZoneId: 'zone.root',
   fallbackZoneId: 'setting.lower',
   zones: [
-    zone('preset.system', 'Preset System', 'stable-prefix', 10, 'system', ['preset', 'runtime']),
-    zone('setting.stable', 'Stable Setting', 'stable-prefix', 20, 'system', ['settingLayer']),
-    zone('chat.history', 'Narrative History', 'narrative', 30, 'assistant', ['narrativeChat']),
+    zone(promptZoneIds.presetSystem, 'Preset System', 'stable-prefix', 10, 'system', ['preset', 'runtime']),
+    zone(promptZoneIds.settingStable, 'Stable Setting', 'stable-prefix', 20, 'system', ['settingLayer']),
+    zone(promptZoneIds.narrativeHistory, 'Narrative History', 'narrative', 30, 'developer', ['narrativeChat', 'narrativeHistory']),
+    zone(promptZoneIds.sessionHistory, 'Session History', 'narrative', 35, 'assistant', ['sessionHistory']),
     zone('setting.lower', 'Lower Context Setting', 'lower-context', 40, 'system', ['settingLayer']),
     zone('chat.before', 'Before Current Chat', 'current-turn', 50, 'user', ['settingLayer', 'preset', 'runtime']),
-    zone('chat.inside', 'Current Chat', 'current-turn', 60, 'user', ['narrativeChat', 'runtime']),
+    zone(promptZoneIds.currentTurn, 'Current Chat', 'current-turn', 60, 'user', ['narrativeChat', 'narrativeHistory', 'sessionHistory', 'runtime']),
     zone('chat.after', 'After Current Chat', 'current-turn', 70, 'user', ['settingLayer', 'preset', 'runtime']),
     zone('fresh.tail', 'Fresh Tail', 'fresh-tail', 80, 'system', ['preset', 'settingLayer', 'runtime']),
+  ],
+  items: [
+    zone(promptZoneIds.presetSystem, 'Preset System', 'stable-prefix', 10, 'system', ['preset', 'runtime']),
+    zone(promptZoneIds.settingStable, 'Stable Setting', 'stable-prefix', 20, 'system', ['settingLayer']),
+    {
+      kind: 'slot',
+      id: 'runtime.narrative.main',
+      orderIndex: 30,
+      displayName: 'Narrative History',
+      bindingId: promptBindingIds.narrativeHistory,
+      renderHint: { providerRoleHint: 'developer', wrapper: 'section' },
+    },
+    zone('setting.lower', 'Lower Context Setting', 'lower-context', 40, 'system', ['settingLayer']),
+    zone('session.before', 'Before Session History', 'current-turn', 50, 'user', ['settingLayer', 'preset', 'runtime']),
+    {
+      kind: 'slot',
+      id: 'runtime.session.main',
+      orderIndex: 60,
+      displayName: 'Session History',
+      bindingId: promptBindingIds.sessionHistory,
+      renderHint: { providerRoleHint: 'assistant', wrapper: 'message' },
+    },
+    zone('session.after', 'After Session History', 'current-turn', 70, 'user', ['settingLayer', 'preset', 'runtime']),
+    {
+      kind: 'entry',
+      id: 'runtime.current.input',
+      orderIndex: 80,
+      displayName: 'Current User Input',
+      source: { kind: 'binding', bindingId: promptBindingIds.currentInput },
+      renderHint: { providerRoleHint: 'user', wrapper: 'message' },
+    },
+    zone('fresh.tail', 'Fresh Tail', 'fresh-tail', 90, 'system', ['preset', 'settingLayer', 'runtime']),
   ],
 }
 
@@ -182,6 +266,7 @@ export function applyCompositionSkeletonPatch(
   return {
     ...skeleton,
     zones: mergeByKey(skeleton.zones, patch.zones ?? [], zone => zone.id),
+    items: mergeByKey(skeleton.items, patch.items ?? [], item => item.id),
     fallbackZoneId: patch.fallbackZoneId ?? skeleton.fallbackZoneId,
   }
 }
@@ -203,6 +288,7 @@ export function materializePromptFragments(contributions: PromptContribution[]):
         ...(projection.slotOrderHint !== undefined ? { slotOrderHint: projection.slotOrderHint } : {}),
         ...(projection.entryOrderHint !== undefined ? { entryOrderHint: projection.entryOrderHint } : {}),
         ...(contribution.capabilities.activation ? { activation: contribution.capabilities.activation } : {}),
+        ...(contribution.capabilities.render ? { render: contribution.capabilities.render } : {}),
       },
     }
   })
@@ -276,17 +362,10 @@ export function compilePromptDataModel(input: {
 
   return {
     zones: sortedZones,
-    messages: sortedZones.map(compiledZone => {
+    messages: sortedZones.flatMap(compiledZone => {
       const renderZone = zonesById.get(compiledZone.zoneId)
       if (!renderZone) throw new Error(`Unknown compiled zone: ${compiledZone.zoneId}`)
-
-      return {
-        role: renderZone.renderHint.providerRoleHint,
-        content: compiledZone.slots
-          .flatMap(slot => slot.fragments)
-          .map(fragment => fragment.content)
-          .join('\n\n'),
-      }
+      return emitCompiledMessages(compiledZone, renderZone.renderHint.providerRoleHint)
     }),
     editorProjection: {
       sourceRows: fragments.map(fragment => ({
@@ -306,6 +385,24 @@ export function compilePromptDataModel(input: {
       }))),
     },
   }
+}
+
+function emitCompiledMessages(
+  zone: CompiledZone,
+  fallbackRole: PromptProviderRole,
+): Array<{ role: PromptProviderRole; content: string }> {
+  const messages: Array<{ role: PromptProviderRole; content: string }> = []
+  for (const fragment of zone.slots.flatMap(slot => slot.fragments)) {
+    const role = fragment.projection.render?.roleHint ?? fallbackRole
+    const wrapper = fragment.projection.render?.wrapper ?? 'section'
+    const previous = messages.at(-1)
+    if (wrapper !== 'message' && previous?.role === role) {
+      previous.content = `${previous.content}\n\n${fragment.content}`
+    } else {
+      messages.push({ role, content: fragment.content })
+    }
+  }
+  return messages
 }
 
 function sortCompiledZone(zone: CompiledZone, profile: ProjectionOrderProfile, sourceNodesById: Map<string, SourceNode>): CompiledZone {
@@ -406,6 +503,7 @@ function zone(
   accepts: PromptSourceKind[],
 ): ZoneNode {
   return {
+    kind: 'zone',
     id,
     parentId: 'zone.root',
     displayName,

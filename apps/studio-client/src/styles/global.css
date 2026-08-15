@@ -339,6 +339,17 @@ input {
   background: transparent;
 }
 
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: var(--loom-color-text);
+  -webkit-box-shadow: 0 0 0 1000px var(--loom-color-surface-subtle) inset;
+  box-shadow: 0 0 0 1000px var(--loom-color-surface-subtle) inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
 input[type="checkbox"] {
   appearance: none;
   width: 14px;

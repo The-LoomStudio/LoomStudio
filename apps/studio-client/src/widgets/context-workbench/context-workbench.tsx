@@ -14,6 +14,9 @@ import {
 } from '../../features/context-assets/model/projection-workbench.js'
 import { readPromptResourceWorkbenchRoot } from '../../features/context-assets/model/prompt-resource-view.js'
 import { ContextAssetEditor, ContextAssetExplorer } from '../../features/context-assets/ui/context-asset-workbench.js'
+import { ContextAssetHeader } from '../../features/context-assets/ui/context-asset-header/context-asset-header.js'
+import { findContextAssetPath } from '../../features/context-assets/model/context-asset-tree.js'
+import { STUDIO_PANEL_PRESENTATION } from '../../pages/studio/model/studio-panel-presentation.js'
 import { ProjectionOrderEditor } from '../../features/context-assets/ui/projection-order-editor/projection-order-editor.js'
 import { PromptResourceToolbar } from '../../features/context-assets/ui/prompt-resource-toolbar/prompt-resource-toolbar.js'
 import type { ContextAssetNode, PromptResource } from '../../entities/index.js'
@@ -124,38 +127,39 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   return (
     <AssetWorkbenchLayout
       explorerWidth={explorerLayout.explorerWidth}
+      toolbar={(
+        <PromptResourceToolbar
+          hideSelect
+          resourceKind={activeCategory}
+          resources={categoryResources}
+          selectedResourceId={selectedResource?.id}
+          t={props.t}
+          onCreate={props.onCreateResource}
+          onDelete={props.onDeleteResource}
+          onDuplicate={props.onDuplicateResource}
+          onExport={props.onExportResource}
+          onImport={props.onImportResource}
+          onSelect={resourceId => setSelectedResourceIds(current => ({ ...current, [activeCategory]: resourceId }))}
+        />
+      )}
+      footer={(
+        <nav className="loom-page-tabs">
+          {tabs.map(tab => (
+            <button
+              key={tab.value}
+              aria-current={activeCategory === tab.value ? 'page' : undefined}
+              className={`loom-page-tab ${activeCategory === tab.value ? 'loom-page-tab-active' : ''}`}
+              type="button"
+              onClick={() => setActiveCategory(tab.value)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+      )}
       onExplorerWidthChange={width => setExplorerWidth('resources', width)}
       resizeLabel={props.t('context.resizeExplorer')}
       viewMode={explorerView.viewMode}
-      toolbar={(
-        <div className={styles.toolbarRow}>
-          <PromptResourceToolbar
-            resourceKind={activeCategory}
-            resources={categoryResources}
-            selectedResourceId={selectedResource?.id}
-            t={props.t}
-            onCreate={props.onCreateResource}
-            onDelete={props.onDeleteResource}
-            onDuplicate={props.onDuplicateResource}
-            onExport={props.onExportResource}
-            onImport={props.onImportResource}
-            onSelect={resourceId => setSelectedResourceIds(current => ({ ...current, [activeCategory]: resourceId }))}
-          />
-          <nav className="loom-page-tabs">
-            {tabs.map(tab => (
-              <button
-                key={tab.value}
-                aria-current={activeCategory === tab.value ? 'page' : undefined}
-                className={`loom-page-tab ${activeCategory === tab.value ? 'loom-page-tab-active' : ''}`}
-                type="button"
-                onClick={() => setActiveCategory(tab.value)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        </div>
-      )}
       explorer={(
         <ContextAssetExplorer
           displayNodes={displayNodes}
@@ -211,12 +215,37 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
             t={props.t}
           />
         ) : undefined}
+        pathNodes={findContextAssetPath(workbenchNodes, selectedNode?.id)}
         t={props.t}
         onChangeNode={props.onChangeNode}
         onCommitNode={props.onCommitNode}
         onEditorModeChange={setTextEditorMode}
         onMetadataOpenChange={setMetadataOpen}
+        onSelectNodeId={handleSelectNode}
       />
     </AssetWorkbenchLayout>
+  )
+}
+
+export function ContextWorkbenchHeader(props: {
+  resources: PromptResource[]
+  t: Translator
+  workspaceId: string
+  onSelectResource?: (resourceId: string) => void
+}) {
+  const definition = STUDIO_PANEL_PRESENTATION.resource
+  const activeCategory = useStudioLayoutStore(state => state.contextCategory)
+  const categoryResources = useMemo(() => props.resources.filter(r => r.resourceKind === activeCategory), [activeCategory, props.resources])
+  const selectedResource = categoryResources[0]
+
+  return (
+    <ContextAssetHeader
+      Icon={definition.Icon}
+      title={props.t(definition.labelKey)}
+      resources={categoryResources}
+      selectedResourceId={selectedResource?.id}
+      t={props.t}
+      onSelectResource={resourceId => props.onSelectResource?.(resourceId)}
+    />
   )
 }

@@ -1,8 +1,8 @@
 import type { Logger, MemoryLogSink } from '@loom-studio/logging'
 import { useStudioState } from './use-studio-state.js'
 import { StudioPage } from '../pages/studio/studio-page.js'
-import { PresetWorkbench } from '../widgets/preset-workbench/preset-workbench.js'
-import { ContextWorkbench } from '../widgets/context-workbench/context-workbench.js'
+import { PresetWorkbench, PresetWorkbenchHeader } from '../widgets/preset-workbench/preset-workbench.js'
+import { ContextWorkbench, ContextWorkbenchHeader } from '../widgets/context-workbench/context-workbench.js'
 import { AgentComposer } from '../widgets/agent-composer/agent-composer.js'
 import { NarrativeTimeline } from '../widgets/narrative-timeline/narrative-timeline.js'
 import { CharacterPanel, CharacterPanelHeader } from '../widgets/character-panel/character-panel.js'
@@ -219,7 +219,23 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
       }}
       t={state.t}
       uiScale={uiScale}
-      panelHeaders={{ character: <CharacterPanelHeader t={state.t} /> }}
+      panelHeaders={{
+        character: <CharacterPanelHeader t={state.t} />,
+        preset: (
+          <PresetWorkbenchHeader
+            resources={state.promptResources}
+            t={state.t}
+            workspaceId={assetWorkspaceId}
+          />
+        ),
+        resource: (
+          <ContextWorkbenchHeader
+            resources={state.promptResources}
+            t={state.t}
+            workspaceId={assetWorkspaceId}
+          />
+        ),
+      }}
       panels={panels}
       canvas={(
         <div

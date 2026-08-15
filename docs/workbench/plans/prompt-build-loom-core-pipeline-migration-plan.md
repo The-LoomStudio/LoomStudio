@@ -1,6 +1,6 @@
 # PromptBuild 重新接入 Loom Core Pipeline 实施计划
 
-> **状态**：Phase 0-1 In Progress / Backend Core Slice
+> **状态**：Phase 0-2 Completed / Phase 3-4 Pending
 > **日期**：2026-08-15
 > **优先级**：P1 Architecture Regression
 > **范围**：将当前第一方 PromptBuild 从 `compilePromptDataModel()` 直接调用链迁移到真实的 `@loom/core` Fragment / Pass / Trace Pipeline，保持现有 Preset、Setting、Activation、Zone、Slot、Projection 和 Provider Message 结果兼容。
@@ -45,7 +45,7 @@ prompt.source.prepared
 
 ### 1.1 当前施工状态
 
-Phase 0-1 的后端切片已经开始：`packages/application-runtime/src/prompt-build-pipeline.ts` 通过 `@loom/core` public API 注册并执行 `prompt.materialize`、`prompt.order`、`prompt.emit` 三个第一方 Pass；`composeAgentTurnPrompt()` 已切换到该入口，Preview / Invoke 结果也开始携带受控的 compact PromptBuild Trace。
+Phase 0-2 已完成：`packages/application-runtime/src/prompt-build-pipeline.ts` 通过 `@loom/core` public API 注册并执行 `prompt.materialize`、`prompt.order`、`prompt.emit` 三个第一方 Pass；`composeAgentTurnPrompt()` 已切换到该入口，Preview / Invoke 共用同一条 Core Pipeline，并携带受控的 compact PromptBuild Trace。Narrative Timeline、Agent Session History 和当前输入也已经作为 Runtime Source 在同一次 Pipeline 中编译，不再在 Core 之后追加消息。
 
 当前仍未完成：characterization 覆盖扩展、Client Inspector 消费真实 Trace、400～500 条目性能验收，以及旧 `compilePromptDataModel()` 的最终删除。迁移期间旧编译器仅作为兼容基线保留，不再作为 Agent Runtime 的执行入口。
 
@@ -219,6 +219,30 @@ Emit Pass：
 
 Application Runtime 只从 Message Fragment 构造 `CompiledPrompt.messages` 和 Editor Projection。
 
+### 4.6 Runtime History 的固定挂载
+
+Timeline 和 Agent Session 不保存 `zoneId`。它们是领域数据，不应反向拥有 Prompt Skeleton 的结构。固定挂载关系由 Application Runtime 的稳定常量决定：
+
+```text
+NarrativeTimeline
+  sourceId = timeline.id
+  zoneId = chat.history
+  slot = runtime:narrative.main@chat.history
+
+AgentSession
+  sourceId = agentSession.id
+  zoneId = session.history
+  slot = runtime:session.main@session.history
+
+Current Input
+  zoneId = chat.inside
+  slot = runtime:current.input@chat.inside
+```
+
+Timeline Node 使用 `section` wrapper，并以 `developer` role 进入 Narrative History；Session Message 和当前输入使用 `message` wrapper，保留各自的 canonical Chat Message 边界与 role。这样 Zone/Slot 仍属于 Preset 的 Prompt Skeleton，而 Timeline、Session 只提供本次 Build 的来源数据。
+
+这不是另一条后置拼接路径：三类 Runtime Source 与 Preset、Setting Contribution 一起生成 Source Fragment，然后只执行一次 `@loom/core` Pipeline。工具 Call/Result 历史暂时在进入该链路时显式拒绝，待工具协议单独固化后再接入。
+
 ## 5. Agent History、Tool 与 Provider 边界
 
 ### 5.1 Agent Session History
@@ -335,7 +359,7 @@ Lifecycle Log 只继续记录 started / completed / failed 摘要，详细编译
 
 ### Phase 0：事实收口与行为冻结
 
-1. 在 Architecture 中暂时标明当前 Core Pipeline 已断开，本计划是权威施工入口；
+1. 已完成：在 Architecture 中核对并恢复 Core Pipeline 的真实接入事实；
 2. 将现有 `compilePromptDataModel()` 主要输出写入 characterization tests；
 3. 覆盖 Preset only、Preset + Setting、Timeline Setting、重复 Setting、Activation inactive、自定义 Zone / Order Profile；
 4. 加入一个接近 400～500 条目的真实规模 Fixture，但不将未授权第三方内容提交进仓库。
@@ -344,26 +368,26 @@ Lifecycle Log 只继续记录 started / completed / failed 摘要，详细编译
 
 ### Phase 1：Core-native Fragment 与 Pass
 
-1. 定义最小 PromptBuild Fragment meta；
-2. 实现稳定 Source Fragment adapter；
-3. 实现 `prompt.materialize` Factory；
-4. 实现 `prompt.order` Factory；
-5. 实现 `prompt.emit` Factory；
-6. 使用静态 Registry 和 JSON-compatible PassConfig；
-7. 从 final Message Fragment 构造 `CompiledPrompt`；
-8. 增加 Core status、Mutation、Diagnostic 与 Replay 定向测试。
+1. 已完成：定义最小 PromptBuild Fragment meta；
+2. 已完成：实现稳定 Source Fragment adapter；
+3. 已完成：实现 `prompt.materialize` Factory；
+4. 已完成：实现 `prompt.order` Factory；
+5. 已完成：实现 `prompt.emit` Factory；
+6. 已完成：使用静态 Registry 和 JSON-compatible PassConfig；
+7. 已完成：从 final Message Fragment 构造 `CompiledPrompt`；
+8. 已完成基础 Core status、Mutation、Diagnostic 定向验证；Replay 的独立验收仍属于后续 Core 验证。
 
 验证检查点：新 Pipeline 不通过 callback 返回结果；Trace 展示真实 materialize / order / emit 变化；Replay 可重建 final Fragment。
 
 ### Phase 2：Application Runtime 切换
 
-1. `composeAgentTurnPrompt()` 切换到新 Pipeline；
-2. Preview / Invoke 继续共用一条路径；
-3. PromptBuild 失败保持 Provider 调用前 fail-fast；
-4. `buildId` 进入 compact Trace 和 lifecycle Log correlation；
-5. `PreviewAgentTurnResult` 增加 compact PromptBuild Trace；
-6. Invoke 返回或内部保留同一 Trace envelope，具体传输范围以最小 Client 需求为准；
-7. 清理 `promptBuildTrace = undefined` 与不再可达的旧 Trace 假设。
+1. 已完成：`composeAgentTurnPrompt()` 切换到新 Pipeline；
+2. 已完成：Preview / Invoke 继续共用一条路径；
+3. 已完成：PromptBuild 失败保持 Provider 调用前 fail-fast；
+4. 已完成：`buildId` 进入 compact Trace 和 lifecycle Log correlation；
+5. 已完成：`PreviewAgentTurnResult` 增加 compact PromptBuild Trace；
+6. 已完成：Invoke 返回同一 Trace envelope；
+7. 已完成：清理不再可达的旧 Trace 假设，并移除 Runtime 的 Core 后置消息拼接。
 
 验证检查点：同一输入在旧 characterization oracle 与新 Pipeline 中产生等价 `messages / projection`；Provider payload 不发生非预期变化。
 
@@ -495,6 +519,6 @@ apps/studio-client/src/
 完成本计划后，才根据真实需求继续讨论：
 
 1. Extension 如何通过 Host 受控贡献 PromptBuild Pass；
-2. History / Tool / Multimodal content 如何以结构化身份参与 PromptBuild；
+2. History 与 Current Input 的结构身份转入 [`prompt-build-zone-slot-entry-composition-plan.md`](prompt-build-zone-slot-entry-composition-plan.md)；Tool / Multimodal content 继续延期；
 3. Core `mode: off`、Owner 聚合或 Trace 内存是否需要改造；
 4. Activation / Resolution / Budget 是否需要拆成更细粒度 Pass。

@@ -149,15 +149,15 @@
 }
 
 .floatingDockBesideNarrative {
-  width: calc(var(--loom-narrative-left-anchor, 42rem) - var(--loom-window-gap) * 2);
-  height: calc(var(--loom-composer-base-top-anchor, 100%) - var(--loom-window-gap));
-  max-height: calc(var(--loom-composer-base-top-anchor, 100%) - var(--loom-window-gap));
+  width: calc(var(--loom-narrative-left-anchor, 42rem) - var(--loom-window-gap) * 3);
+  height: calc(var(--loom-composer-base-top-anchor, 100%) - var(--loom-window-gap) * 2);
+  max-height: calc(var(--loom-composer-base-top-anchor, 100%) - var(--loom-window-gap) * 2);
 }
 
 .floatingDockCoverNarrative {
   width: calc(var(--loom-narrative-right-anchor, 72rem) - var(--loom-window-gap));
-  height: calc(var(--loom-composer-base-top-anchor, 100%) - var(--loom-window-gap));
-  max-height: calc(var(--loom-composer-base-top-anchor, 100%) - var(--loom-window-gap));
+  height: calc(var(--loom-composer-base-top-anchor, 100%) - var(--loom-window-gap) * 2);
+  max-height: calc(var(--loom-composer-base-top-anchor, 100%) - var(--loom-window-gap) * 2);
 }
 
 .floatingDockImmersive {

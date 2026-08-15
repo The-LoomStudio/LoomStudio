@@ -14,6 +14,9 @@ import {
   readProjectionZoneReorderUpdates,
 } from '../../features/context-assets/model/projection-workbench.js'
 import { ContextAssetEditor, ContextAssetProjectionExplorer } from '../../features/context-assets/ui/context-asset-workbench.js'
+import { ContextAssetHeader } from '../../features/context-assets/ui/context-asset-header/context-asset-header.js'
+import { findContextAssetPath } from '../../features/context-assets/model/context-asset-tree.js'
+import { STUDIO_PANEL_PRESENTATION } from '../../pages/studio/model/studio-panel-presentation.js'
 import { PromptResourceToolbar } from '../../features/context-assets/ui/prompt-resource-toolbar/prompt-resource-toolbar.js'
 import type { ContextAssetNode, PromptResource } from '../../entities/index.js'
 import styles from './preset-workbench.module.scss'
@@ -129,46 +132,49 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
     openAssetDetail('preset', props.workspaceId, id)
   }
 
+  const pathNodes = useMemo(() => findContextNode(workbenchNodes, selectedId) ? [findContextNode(workbenchNodes, selectedId)!] : [], [workbenchNodes, selectedId])
+
   return (
     <AssetWorkbenchLayout
       explorerWidth={explorerLayout.explorerWidth}
+      toolbar={(
+        <PromptResourceToolbar
+          hideSelect
+          resourceKind="preset"
+          resources={presetResources}
+          selectedResourceId={selectedResource?.id}
+          t={props.t}
+          onCreate={props.onCreateResource}
+          onDelete={props.onDeleteResource}
+          onDuplicate={props.onDuplicateResource}
+          onExport={props.onExportResource}
+          onImport={props.onImportResource}
+          onSelect={setSelectedResourceId}
+        />
+      )}
+      footer={(
+        <nav className="loom-page-tabs">
+          <button
+            aria-current={activePresetView === 'assets' ? 'page' : undefined}
+            className={`loom-page-tab ${activePresetView === 'assets' ? 'loom-page-tab-active' : ''}`}
+            type="button"
+            onClick={() => setActivePresetView('assets')}
+          >
+            {props.t('preset.panel.assets')}
+          </button>
+          <button
+            aria-current={activePresetView === 'order' ? 'page' : undefined}
+            className={`loom-page-tab ${activePresetView === 'order' ? 'loom-page-tab-active' : ''}`}
+            type="button"
+            onClick={() => setActivePresetView('order')}
+          >
+            {props.t('preset.panel.mainOrder')}
+          </button>
+        </nav>
+      )}
       onExplorerWidthChange={width => setExplorerWidth('preset', width)}
       resizeLabel={props.t('context.resizeExplorer')}
       viewMode={explorerView.viewMode}
-      toolbar={(
-        <div className={styles.toolbarRow}>
-          <PromptResourceToolbar
-            resourceKind="preset"
-            resources={presetResources}
-            selectedResourceId={selectedResource?.id}
-            t={props.t}
-            onCreate={props.onCreateResource}
-            onDelete={props.onDeleteResource}
-            onDuplicate={props.onDuplicateResource}
-            onExport={props.onExportResource}
-            onImport={props.onImportResource}
-            onSelect={setSelectedResourceId}
-          />
-          <nav className="loom-page-tabs">
-            <button
-              aria-current={activePresetView === 'assets' ? 'page' : undefined}
-              className={`loom-page-tab ${activePresetView === 'assets' ? 'loom-page-tab-active' : ''}`}
-              type="button"
-              onClick={() => setActivePresetView('assets')}
-            >
-              {props.t('preset.panel.assets')}
-            </button>
-            <button
-              aria-current={activePresetView === 'order' ? 'page' : undefined}
-              className={`loom-page-tab ${activePresetView === 'order' ? 'loom-page-tab-active' : ''}`}
-              type="button"
-              onClick={() => setActivePresetView('order')}
-            >
-              {props.t('preset.panel.mainOrder')}
-            </button>
-          </nav>
-        </div>
-      )}
       explorer={(
         <ContextAssetProjectionExplorer
           entries={activePresetView === 'order' ? orderedProjectionEntries : presetProjectionEntries}
@@ -201,11 +207,13 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
             editorMode={textEditorMode}
             metadataOpen={metadataOpen}
             node={detailNode}
+            pathNodes={findContextAssetPath(workbenchNodes, detailNode?.id)}
             t={props.t}
             onChangeNode={props.onChangeNode}
             onCommitNode={props.onCommitNode}
             onEditorModeChange={setTextEditorMode}
             onMetadataOpenChange={setMetadataOpen}
+            onSelectNodeId={handleSelectNode}
           />
         )}
       </div>
@@ -278,5 +286,27 @@ function ZoneDetail(props: {
         <div><dt>Wrapper</dt><dd>{zone.renderHint.wrapper}</dd></div>
       </dl>
     </section>
+  )
+}
+
+export function PresetWorkbenchHeader(props: {
+  resources: PromptResource[]
+  t: Translator
+  workspaceId: string
+  onSelectResource?: (resourceId: string) => void
+}) {
+  const definition = STUDIO_PANEL_PRESENTATION.preset
+  const presetResources = useMemo(() => props.resources.filter(r => r.resourceKind === 'preset'), [props.resources])
+  const selectedResource = presetResources[0]
+
+  return (
+    <ContextAssetHeader
+      Icon={definition.Icon}
+      title={props.t(definition.labelKey)}
+      resources={presetResources}
+      selectedResourceId={selectedResource?.id}
+      t={props.t}
+      onSelectResource={resourceId => props.onSelectResource?.(resourceId)}
+    />
   )
 }

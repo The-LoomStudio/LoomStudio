@@ -37,3 +37,16 @@ export function findContextAssetNodeInfo(
 
   return undefined
 }
+
+export function findContextAssetPath(nodes: ContextAssetNode[] | undefined, id: string | undefined): ContextAssetNode[] {
+  if (!nodes || !Array.isArray(nodes) || !id) return []
+
+  for (const node of nodes) {
+    if (!node) continue
+    if (node.id === id) return [node]
+    const childPath = findContextAssetPath(node.children ?? [], id)
+    if (childPath.length > 0) return [node, ...childPath]
+  }
+
+  return []
+}

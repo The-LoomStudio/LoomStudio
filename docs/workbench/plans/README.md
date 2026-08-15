@@ -6,7 +6,8 @@
 
 | 计划 | 当前状态 | 下一步 |
 | --- | --- | --- |
-| [`prompt-build-loom-core-pipeline-migration-plan.md`](prompt-build-loom-core-pipeline-migration-plan.md) | Phase 0-1 In Progress / Backend Core Slice | 扩展 characterization 覆盖，完成 Client Trace 消费与 400～500 条目性能验收 |
+| [`prompt-build-zone-slot-entry-composition-plan.md`](prompt-build-zone-slot-entry-composition-plan.md) | Approved Design / Implementation Pending | 先实施 Composition Schema 与官方默认 Preset，再迁移 Core Pipeline 和 Preset Workbench |
+| [`prompt-build-loom-core-pipeline-migration-plan.md`](prompt-build-loom-core-pipeline-migration-plan.md) | Phase 0-2 Complete / Phase 3-4 Pending | 扩展 characterization 覆盖，完成 Client Trace 消费与 400～500 条目性能验收 |
 | [`preset-agent-prompt-build-module-plan.md`](preset-agent-prompt-build-module-plan.md) | Phase 1-2 Complete / Phase 3 Main UI Complete | 完成关联 Setting Bundle 导入导出与 PromptBuild 来源诊断，收束 Timeline 混合字段 |
 | [`prompt-resource-foundation-plan.md`](prompt-resource-foundation-plan.md) | Foundation Partially Implemented / Binding Model Superseded | 保留已完成的 Prompt Resource 与静态编译基础；绑定迁移转入新 Preset 计划 |
 | [`provider-profile-secret-store-foundation-plan.md`](provider-profile-secret-store-foundation-plan.md) | In Progress / Provider Profile Backend Complete | 清理 Client 旧命名与 Agent Runtime 草稿，补原生壳 Secret/Auth |

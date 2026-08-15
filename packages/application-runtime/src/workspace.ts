@@ -282,6 +282,7 @@ export async function createPromptResource(input: {
           body: '',
           skeletonPatch: {
             zones: defaultCompositionSkeleton.zones.map(zone => ({ ...zone })),
+            items: defaultCompositionSkeleton.items.map(item => ({ ...item })),
             fallbackZoneId: defaultCompositionSkeleton.fallbackZoneId,
           },
           orderList: [],
@@ -1343,6 +1344,10 @@ function assertSkeletonPatch(value: JsonValue | undefined, path: string): void {
   if (value === undefined) return
   if (!isObject(value)) throw new Error(`Prompt resource skeletonPatch must be an object: ${path}`)
   assertOptionalString(value.fallbackZoneId, `Prompt resource fallbackZoneId: ${path}`)
+  if (value.items !== undefined) {
+    if (!Array.isArray(value.items)) throw new Error(`Prompt resource composition items must be an array: ${path}`)
+    value.items.forEach((item, index) => assertCompositionItem(item, `${path}.items[${index}]`))
+  }
   if (value.zones === undefined) return
   if (!Array.isArray(value.zones)) throw new Error(`Prompt resource skeleton zones must be an array: ${path}`)
   for (const zone of value.zones) {
@@ -1359,6 +1364,26 @@ function assertSkeletonPatch(value: JsonValue | undefined, path: string): void {
     }
     if (zone.accepts !== undefined && (!Array.isArray(zone.accepts) || !zone.accepts.every(kind => ['preset', 'settingLayer', 'narrativeChat', 'runtime'].includes(String(kind))))) {
       throw new Error(`Prompt resource skeleton zone accepts are invalid: ${path}`)
+    }
+  }
+}
+
+function assertCompositionItem(value: JsonValue, path: string): void {
+  if (!isObject(value)
+    || typeof value.id !== 'string'
+    || typeof value.displayName !== 'string'
+    || typeof value.orderIndex !== 'number'
+    || (value.kind !== 'zone' && value.kind !== 'slot' && value.kind !== 'entry')) {
+    throw new Error(`Prompt resource composition item is invalid: ${path}`)
+  }
+  if (value.kind === 'slot' && typeof value.bindingId !== 'string') {
+    throw new Error(`Prompt resource slot bindingId is invalid: ${path}`)
+  }
+  if (value.kind === 'entry') {
+    if (!isObject(value.source)
+      || (value.source.kind !== 'preset' && value.source.kind !== 'binding')
+      || typeof (value.source.kind === 'preset' ? value.source.nodeId : value.source.bindingId) !== 'string') {
+      throw new Error(`Prompt resource entry source is invalid: ${path}`)
     }
   }
 }

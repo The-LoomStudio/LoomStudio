@@ -123,6 +123,7 @@ function sourceContribution(fragment: PromptFragment): PromptContribution {
     },
     lifecycle: { lifecycle: fragment.projection.lifecycle },
     ...(fragment.projection.activation ? { activation: fragment.projection.activation } : {}),
+    ...(fragment.projection.render ? { render: fragment.projection.render } : {}),
   }
   return {
     id: fragment.id,
@@ -198,6 +199,7 @@ function materializePass(
         ...(projection.slotOrderHint !== undefined ? { slotOrderHint: projection.slotOrderHint } : {}),
         ...(projection.entryOrderHint !== undefined ? { entryOrderHint: projection.entryOrderHint } : {}),
         ...(activation ? { activation } : {}),
+        ...(contribution.capabilities.render ? { render: contribution.capabilities.render } : {}),
       },
     }
 
@@ -321,7 +323,7 @@ function emitPass(
           fragment: derived.fragment,
           active: true,
           activationReason: derived.activationReason,
-          role: zone.renderHint.providerRoleHint,
+          role: derived.fragment.projection.render?.roleHint ?? zone.renderHint.providerRoleHint,
         },
       },
     })
@@ -478,12 +480,34 @@ function buildCompiledPrompt(
   const sortedZones = [...compiledZones.values()]
     .map(zone => ({ ...zone, slots: [...zone.slots] }))
     .sort((left, right) => (zonesById.get(left.zoneId)?.orderIndex ?? 0) - (zonesById.get(right.zoneId)?.orderIndex ?? 0))
+  const emittedMessages: Array<{
+    role: PromptProviderRole
+    content: string
+    zoneId: string
+    slotKey: string
+    mergeable: boolean
+  }> = []
+  for (const item of messages) {
+    const zoneId = item.fragment.projection.zoneId
+    const slotKey = materializeSlotKey(item.fragment)
+    const role = item.role ?? zonesById.get(zoneId)?.renderHint.providerRoleHint ?? 'system'
+    const mergeable = item.fragment.projection.render?.wrapper !== 'message'
+    const previous = emittedMessages.at(-1)
+    if (
+      mergeable
+      && previous?.mergeable
+      && previous.role === role
+      && previous.zoneId === zoneId
+      && previous.slotKey === slotKey
+    ) {
+      previous.content = `${previous.content}\n\n${item.fragment.content}`
+    } else {
+      emittedMessages.push({ role, content: item.fragment.content, zoneId, slotKey, mergeable })
+    }
+  }
   const projection: CompiledPrompt = {
     zones: sortedZones,
-    messages: sortedZones.map(zone => ({
-      role: zonesById.get(zone.zoneId)!.renderHint.providerRoleHint,
-      content: zone.slots.flatMap(slot => slot.fragments).map(fragment => fragment.content).join('\n\n'),
-    })),
+    messages: emittedMessages.map(({ role, content }) => ({ role, content })),
     editorProjection: {
       sourceRows: composition.map(item => ({
         active: item.active,

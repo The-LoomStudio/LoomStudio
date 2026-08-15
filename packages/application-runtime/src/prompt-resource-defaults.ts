@@ -48,6 +48,7 @@ function createAssistantPresetRoot(): PromptResourceNode {
         body: '定义问答助手 Preset 与 Loom Studio 知识 Setting 的默认相对位置。',
         skeletonPatch: {
           zones: defaultCompositionSkeleton.zones.map(zone => ({ ...zone })),
+          items: defaultCompositionSkeleton.items.map(item => ({ ...item })),
           fallbackZoneId: defaultCompositionSkeleton.fallbackZoneId,
         },
         orderList: [

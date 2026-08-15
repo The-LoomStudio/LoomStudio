@@ -1,3 +1,4 @@
+import { ChevronRight } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { ContextAssetNode } from '../../../entities/index.js'
 import type { Translator } from '../../../shared/i18n/index.js'
@@ -151,13 +152,17 @@ export function ContextAssetEditor(props: {
   metadataOpen: boolean
   node?: ContextAssetNode
   orderEditor?: ReactNode
+  pathNodes?: ContextAssetNode[]
   t: Translator
   onChangeNode(id: string, partial: Partial<ContextAssetNode>): void
   onCommitNode(id: string, partial: Partial<ContextAssetNode>): void
   onEditorModeChange(mode: LongTextEditorMode): void
   onMetadataOpenChange(open: boolean): void
+  onSelectNodeId?(id: string): void
 }) {
   const node = props.node
+  const pathNodes = props.pathNodes ?? []
+
   return (
     <div className={styles.detailColumn} data-loom-component="context-detail-editor">
       <ContextAssetDetailHeader
@@ -185,6 +190,26 @@ export function ContextAssetEditor(props: {
           t={props.t}
         />
       )}
+      {pathNodes.length > 0 ? (
+        <nav aria-label="Breadcrumb" className={styles.detailBreadcrumbs} data-loom-component="detail-breadcrumbs">
+          {pathNodes.map((pathNode, idx) => {
+            const isLast = idx === pathNodes.length - 1
+            return (
+              <span key={pathNode.id} className={styles.breadcrumbItemWrapper}>
+                {idx > 0 ? <ChevronRight aria-hidden="true" className={styles.breadcrumbSeparator} size={12} /> : null}
+                <button
+                  className={`${styles.breadcrumbButton} ${isLast ? styles.breadcrumbButtonActive : ''}`}
+                  type="button"
+                  onClick={() => !isLast && props.onSelectNodeId?.(pathNode.id)}
+                >
+                  {renderContextAssetTreeIcon(pathNode, true)}
+                  <span>{pathNode.label}</span>
+                </button>
+              </span>
+            )
+          })}
+        </nav>
+      ) : null}
     </div>
   )
 }

@@ -4,8 +4,8 @@
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  padding: 14px 18px 18px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  padding: 14px 18px 8px;
 }
 
 .emptyState {
@@ -14,11 +14,72 @@
   padding-top: 24px;
 }
 
+.detailBreadcrumbs {
+  min-width: 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.detailBreadcrumbs::-webkit-scrollbar {
+  display: none;
+}
+
+.breadcrumbItemWrapper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.breadcrumbSeparator {
+  color: var(--loom-color-text-subtle);
+  opacity: 0.5;
+}
+
+.breadcrumbButton {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  padding: 2px 4px;
+  border-radius: var(--loom-radius-control);
+  background: transparent;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--loom-motion-duration-fast) ease, background var(--loom-motion-duration-fast) ease;
+}
+
+.breadcrumbButton:hover:not(.breadcrumbButtonActive) {
+  color: var(--loom-color-text);
+  background: var(--loom-color-surface-subtle);
+}
+
+.breadcrumbButtonActive {
+  color: var(--loom-color-text);
+  font-weight: var(--loom-font-weight-5);
+  cursor: default;
+}
+
+.breadcrumbButton svg {
+  width: var(--loom-icon-size-2);
+  height: var(--loom-icon-size-2);
+  stroke-width: 1.5;
+  flex: 0 0 auto;
+}
+
 @container studio-panel (max-width: 720px) {
   .detailColumn {
     padding-inline: 14px;
   }
 }
+
 .explorerContent {
   min-width: 0;
   height: 100%;

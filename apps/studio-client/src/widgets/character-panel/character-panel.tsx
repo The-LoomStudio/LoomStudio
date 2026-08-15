@@ -357,7 +357,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
               readPastedFile(selected, 'avatar', event)
             }}
           >
-            <img alt="" src={props.active ? mediaUrl(selected, 'avatar') : undefined} />
+            {mediaUrl(selected, 'avatar') && props.active ? <img alt="" src={mediaUrl(selected, 'avatar')} /> : null}
             <span className={styles.mediaLabel}>{props.t('character.changeAvatar')}</span>
           </button>
           </section>
@@ -556,7 +556,9 @@ function CharacterCard(props: {
         type="button"
         onClick={props.onOpenProfile}
       >
-        <img alt="" src={props.loadMedia ? props.mediaUrl : undefined} />
+        <div className={styles.cardCover}>
+          {props.loadMedia && props.mediaUrl ? <img alt="" src={props.mediaUrl} /> : null}
+        </div>
         <span><strong>{props.card.name}</strong><small>{props.card.userName || props.t('character.authorUnknown')}</small></span>
       </button>
       {props.selectionMode ? <Toggle checked={props.selected} className={styles.selectionToggle} label={props.selected ? props.t('character.deselect') : props.t('character.select')} onChange={props.onToggleSelection} /> : null}

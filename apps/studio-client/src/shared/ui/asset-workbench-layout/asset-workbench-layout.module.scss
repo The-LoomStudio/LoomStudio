@@ -1,17 +1,56 @@
 .workbench {
   position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
   background: var(--loom-color-surface);
   transition: grid-template-columns var(--loom-motion-duration-standard) var(--loom-motion-easing-standard);
 }
 
 .explorerPane {
+  position: relative;
   height: 100%;
   min-width: 0;
   min-height: 0;
-  display: grid;
-  grid-template-rows: var(--loom-page-header-height) calc(var(--loom-divider-space) * 2 + 1px) minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   background: var(--loom-color-surface);
+}
+
+.floatingExplorerTabs {
+  position: absolute;
+  z-index: 10;
+  bottom: 10px;
+  left: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: transparent;
+  pointer-events: auto;
+  white-space: nowrap;
+}
+
+.floatingExplorerTabs :global(.loom-page-tab) {
+  min-height: 20px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: var(--loom-font-size-2);
+  color: var(--loom-color-text-subtle);
+  cursor: pointer;
+  transition: color var(--loom-motion-duration-fast) ease;
+}
+
+.floatingExplorerTabs :global(.loom-page-tab:hover) {
+  color: var(--loom-color-text);
+  background: transparent;
+}
+
+.floatingExplorerTabs :global(.loom-page-tab-active) {
+  color: var(--loom-color-text);
+  font-weight: var(--loom-font-weight-6);
+  background: transparent;
 }
 
 .explorerToolbar {
@@ -30,7 +69,9 @@
 .explorerBody {
   min-width: 0;
   min-height: 0;
+  flex: 1;
   overflow: hidden;
+  padding-bottom: 36px;
 }
 
 .detailPane {

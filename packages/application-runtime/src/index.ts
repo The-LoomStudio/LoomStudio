@@ -41,12 +41,15 @@ export {
   isPromptActivation,
 } from './prompt-activation.js'
 export type {
+  CompositionItem,
+  CompositionItemBase,
   CompiledPrompt,
   CompiledSlot,
   CompiledZone,
   CompositionSkeleton,
   CompositionSkeletonPatch,
   EditorProjection,
+  EntryNode,
   ProjectionOrderProfile,
   PromptCompositionCapabilities,
   PromptContentCapability,
@@ -59,9 +62,11 @@ export type {
   PromptRenderCapability,
   PromptResolutionCapability,
   PromptSourceKind,
+  SlotNode,
   SourceNode,
   ZoneNode,
 } from './prompt-builder.js'
+export { promptBindingIds, promptSlotIds, promptZoneIds } from './prompt-builder.js'
 export type { PromptBuildTrace } from './prompt-build-pipeline.js'
 export type {
   ActivationCondition,

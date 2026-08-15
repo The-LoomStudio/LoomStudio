@@ -1,5 +1,6 @@
 import { applicationDocumentTypes, createApplicationRuntime, readPromptResourceInputs, type CardBundleArtifact } from '@loom-studio/application-runtime'
 import { createInMemoryDocumentStore } from '@loom-studio/document-store'
+import { createOfficialPromptResourceContents } from '../../../packages/application-runtime/src/prompt-resource-defaults.js'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -19,12 +20,44 @@ describe('application runtime card bundle integration', () => {
       linkedSettingIds: [setting!.id],
       historyPolicy: 'persistent',
     })
+    expect(preset?.rootNode.children?.find(node => node.kind === 'order')?.skeletonPatch?.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'slot', bindingId: 'runtime.narrativeHistory' }),
+      expect.objectContaining({ kind: 'slot', bindingId: 'runtime.sessionHistory' }),
+      expect.objectContaining({ kind: 'entry', source: { kind: 'binding', bindingId: 'runtime.currentInput' } }),
+    ]))
     expect(setting).toMatchObject({ resourceKind: 'setting', rootNode: { label: 'Loom Studio 基础知识' } })
     await expect(runtime.updatePromptResourceAsset({
       resourceId: preset!.id,
       assetId: preset!.rootNode.id,
       label: 'Changed',
     })).rejects.toThrow('read-only')
+  })
+
+  it('upgrades a stale official Prompt Skeleton during initialization', async () => {
+    const documents = createInMemoryDocumentStore()
+    const canonical = createOfficialPromptResourceContents('2026-08-15T00:00:00.000Z')
+    const stalePreset = structuredClone(canonical[0]!)
+    const orderNode = stalePreset.rootNode.children?.find(node => node.kind === 'order')
+    if (!orderNode?.skeletonPatch?.zones) throw new Error('Official preset fixture is missing its skeleton')
+    orderNode.skeletonPatch.zones = orderNode.skeletonPatch.zones.filter(zone => zone.id !== 'session.history')
+    await documents.write({
+      id: 'prompt-resource.official.loom-assistant',
+      type: applicationDocumentTypes.promptResource,
+      content: stalePreset,
+    })
+    await documents.write({
+      id: 'prompt-resource.official.loom-knowledge',
+      type: applicationDocumentTypes.promptResource,
+      content: canonical[1]!,
+    })
+
+    const runtime = createApplicationRuntime({ documents })
+    await runtime.initialize()
+
+    const listed = await runtime.listPromptResources({ resourceKind: 'preset' })
+    const preset = listed.resources.find(resource => resource.origin?.key === 'loom-assistant-preset')
+    const migratedOrder = preset?.rootNode.children?.find(node => node.kind === 'order')
+    expect(migratedOrder?.skeletonPatch?.zones?.map(zone => zone.id)).toContain('session.history')
   })
 
   it('migrates the legacy official Agent Preset reference without clearing other documents', async () => {

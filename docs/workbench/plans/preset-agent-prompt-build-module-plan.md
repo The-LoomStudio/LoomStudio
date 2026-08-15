@@ -9,6 +9,7 @@
 相关计划：
 
 - [`prompt-build-loom-core-pipeline-migration-plan.md`](prompt-build-loom-core-pipeline-migration-plan.md) — 负责将本计划已收束的 Preset / Setting 输入真正迁移到 `@loom/core` Pipeline。
+- [`prompt-build-zone-slot-entry-composition-plan.md`](prompt-build-zone-slot-entry-composition-plan.md) — 负责将 Preset 的主排序从纯 Zone 模型重构为 Zone / Slot / Entry，并固化 Runtime History 与 Current Input 的结构位置。
 - [`prompt-resource-foundation-plan.md`](prompt-resource-foundation-plan.md)
 - [`agent-session-narrative-timeline-data-layer-plan.md`](agent-session-narrative-timeline-data-layer-plan.md)
 - [`card-resource-manifest-migration-plan.md`](card-resource-manifest-migration-plan.md)

@@ -9,20 +9,30 @@ type AssetWorkbenchLayoutProps = {
   children: ReactNode
   explorer: ReactNode
   explorerWidth: number
+  footer?: ReactNode
   onExplorerWidthChange(width: number): void
   resizeLabel: string
-  toolbar: ReactNode
+  toolbar?: ReactNode
   viewMode: AssetViewMode
 }
 
 export function AssetWorkbenchLayout(props: AssetWorkbenchLayoutProps) {
   const explorer = (
     <aside className={styles.explorerPane} data-loom-component="asset-explorer">
-      <header className={styles.explorerToolbar}>
-        <div className={styles.toolbarContent}>{props.toolbar}</div>
-      </header>
-      <span className="loom-divider" aria-hidden="true" />
+      {props.toolbar ? (
+        <>
+          <header className={styles.explorerToolbar}>
+            <div className={styles.toolbarContent}>{props.toolbar}</div>
+          </header>
+          <span className="loom-divider" aria-hidden="true" />
+        </>
+      ) : null}
       <div className={styles.explorerBody}>{props.explorer}</div>
+      {props.footer ? (
+        <div className={styles.floatingExplorerTabs} data-loom-component="floating-explorer-tabs">
+          {props.footer}
+        </div>
+      ) : null}
     </aside>
   )
   const detail = (

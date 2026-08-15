@@ -6,6 +6,7 @@ import { Dialog } from '../../../../shared/ui/dialog/dialog.js'
 import styles from './prompt-resource-toolbar.module.scss'
 
 type PromptResourceToolbarProps = {
+  hideSelect?: boolean
   resourceKind: PromptResource['resourceKind']
   resources: PromptResource[]
   selectedResourceId?: string
@@ -31,19 +32,21 @@ export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
 
   return (
     <div className={styles.toolbar}>
-      <select
-        aria-label={props.t('promptResource.select')}
-        className={styles.select}
-        value={selected?.id ?? ''}
-        onChange={event => props.onSelect(event.target.value)}
-      >
-        {props.resources.length === 0 ? <option value="">{props.t('promptResource.empty')}</option> : null}
-        {props.resources.map(resource => (
-          <option key={resource.id} value={resource.id}>
-            {resource.rootNode.label}{resource.origin?.kind === 'builtin' ? ` · ${props.t('promptResource.official')}` : ''}
-          </option>
-        ))}
-      </select>
+      {!props.hideSelect ? (
+        <select
+          aria-label={props.t('promptResource.select')}
+          className={styles.select}
+          value={selected?.id ?? ''}
+          onChange={event => props.onSelect(event.target.value)}
+        >
+          {props.resources.length === 0 ? <option value="">{props.t('promptResource.empty')}</option> : null}
+          {props.resources.map(resource => (
+            <option key={resource.id} value={resource.id}>
+              {resource.rootNode.label}{resource.origin?.kind === 'builtin' ? ` · ${props.t('promptResource.official')}` : ''}
+            </option>
+          ))}
+        </select>
+      ) : null}
       <div className={styles.actions}>
         <button
           aria-label={props.t('promptResource.create')}

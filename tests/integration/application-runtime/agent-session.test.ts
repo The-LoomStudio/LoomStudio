@@ -1,5 +1,5 @@
 import { createAgentStore } from '@loom-studio/agent-store'
-import { createApplicationRuntime } from '@loom-studio/application-runtime'
+import { createApplicationRuntime, promptSlotIds, promptZoneIds } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createNarrativeStore } from '@loom-studio/narrative-store'
@@ -218,7 +218,7 @@ describe('application agent session lifecycle', () => {
     const session = await runtime.createAgentSession({ agentProfileId: profile.id })
 
     await runtime.invokeAgentTurn({ agentSessionId: session.session.id, input: 'First.' })
-    await runtime.invokeAgentTurn({ agentSessionId: session.session.id, input: 'Second.' })
+    const second = await runtime.invokeAgentTurn({ agentSessionId: session.session.id, input: 'Second.' })
 
     expect(calls[1]?.messages).toEqual([
       { role: 'system', content: 'Keep the conversation context.' },
@@ -227,6 +227,13 @@ describe('application agent session lifecycle', () => {
       { role: 'user', content: 'Second.' },
     ])
     expect((await runtime.getAgentMessagePage({ agentSessionId: session.session.id })).messages).toHaveLength(4)
+    expect(second.projection.zones.find(zone => zone.zoneId === promptZoneIds.sessionHistory)?.slots[0]).toMatchObject({
+      slotKey: promptSlotIds.sessionMain,
+      fragments: [
+        expect.objectContaining({ id: expect.any(String), content: 'First.' }),
+        expect.objectContaining({ id: expect.any(String), content: 'First reply.' }),
+      ],
+    })
     expect(engine.database.prepare('SELECT COUNT(*) AS count FROM narrative_nodes').get()).toEqual({ count: 0 })
     engine.close()
   })
@@ -256,6 +263,15 @@ describe('application agent session lifecycle', () => {
         },
       },
     })
+    expect(result.projection.zones.find(zone => zone.zoneId === promptZoneIds.narrativeHistory)?.slots[0]).toMatchObject({
+      slotKey: promptSlotIds.narrativeMain,
+      fragments: [expect.objectContaining({ content: 'Opening.' })],
+    })
+    expect(result.projection.messages).toEqual([
+      { role: 'system', content: 'Continue the accepted narrative.' },
+      { role: 'developer', content: 'Opening.' },
+      { role: 'user', content: 'Continue.' },
+    ])
     expect(JSON.parse(commit.operations_json).map((operation: { entityType: string }) => operation.entityType)).toEqual([
       'agent.message',
       'agent.message',

@@ -117,13 +117,13 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       const existing = await Promise.all(documentsToCreate.map(document => ctx.documents.get(document.id)))
       const existingProfiles = await listDocuments<AgentProfileContent>(ctx.documents, applicationDocumentTypes.agentProfile)
       const legacyOfficialPreset = await ctx.documents.get(legacyOfficialAgentPresetId)
-      const officialPreset = existing[0] as DocumentRecord<PromptResourceContent> | undefined
-      const officialPresetCurrent = officialPreset?.content.resourceKind === 'preset'
-        && officialPreset.content.historyPolicy === 'persistent'
-        && officialPreset.content.linkedSettingIds?.length === 1
-        && officialPreset.content.linkedSettingIds[0] === officialPromptResourceIds.knowledgeSetting
+      const officialResourcesCurrent = documentsToCreate.every((document, index) => {
+        const current = existing[index]
+        return current?.type === document.type
+          && isCanonicalOfficialPromptResource(current.content as PromptResourceContent, document.content)
+      })
       const hasLegacyProfile = existingProfiles.some(profile => profile.content.presetId === legacyOfficialAgentPresetId)
-      if (existing.every(Boolean) && officialPresetCurrent && !legacyOfficialPreset && !hasLegacyProfile) return
+      if (officialResourcesCurrent && !legacyOfficialPreset && !hasLegacyProfile) return
 
       await ctx.documents.transact({
         actor: applicationActor,
@@ -137,19 +137,32 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
             }
             if (document.id === officialPromptResourceIds.assistantPreset) {
               const content = current.content as PromptResourceContent
-              if (content.resourceKind === 'preset') {
+              if (content.resourceKind === 'preset' && !isCanonicalOfficialPromptResource(content, document.content)) {
+                const canonical = document.content as PromptResourceContent
                 await writeDocument(documents, {
                   id: current.id,
                   type: applicationDocumentTypes.promptResource,
                   content: {
-                    ...content,
-                    linkedSettingIds: [officialPromptResourceIds.knowledgeSetting],
-                    historyPolicy: 'persistent',
+                    ...canonical,
+                    createdAt: content.createdAt,
                     updatedAt: timestamp,
                   },
                   expectedVersion: current.version,
                 })
               }
+            } else if (!isCanonicalOfficialPromptResource(current.content as PromptResourceContent, document.content)) {
+              const content = current.content as PromptResourceContent
+              const canonical = document.content as PromptResourceContent
+              await writeDocument(documents, {
+                id: current.id,
+                type: applicationDocumentTypes.promptResource,
+                content: {
+                  ...canonical,
+                  createdAt: content.createdAt,
+                  updatedAt: timestamp,
+                },
+                expectedVersion: current.version,
+              })
             }
             continue
           }
@@ -979,6 +992,25 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
   }
 }
 
+function isCanonicalOfficialPromptResource(
+  current: PromptResourceContent,
+  canonical: PromptResourceContent,
+): boolean {
+  return JSON.stringify({
+    resourceKind: current.resourceKind,
+    rootNode: current.rootNode,
+    linkedSettingIds: current.linkedSettingIds,
+    historyPolicy: current.historyPolicy,
+    origin: current.origin,
+  }) === JSON.stringify({
+    resourceKind: canonical.resourceKind,
+    rootNode: canonical.rootNode,
+    linkedSettingIds: canonical.linkedSettingIds,
+    historyPolicy: canonical.historyPolicy,
+    origin: canonical.origin,
+  })
+}
+
 async function prepareAgentTurn(
   ctx: ApplicationRuntimeContext,
   input: {
@@ -1035,7 +1067,7 @@ async function prepareAgentTurn(
     prompt = await composeAgentTurnPrompt({
       activationFacts: input.activationFacts,
       agentMessages: (preset.historyPolicy ?? 'persistent') === 'persistent'
-        ? agentPage.messages.map(message => message.message)
+        ? agentPage.messages
         : [],
       documents: ctx.documents,
       narrative: narrativePage ? { nodes: narrativePage.nodes, timeline: narrativePage.timeline } : undefined,
