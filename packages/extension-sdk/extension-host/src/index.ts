@@ -1,23 +1,29 @@
 import type { Diagnostic, DiagnosticInput, DiagnosticsRegistry } from '@loom-studio/diagnostics'
-import type { ActorRef, DocumentStore, ListDocumentsInput, WriteDocumentInput, WriteDocumentResult } from '@loom-studio/document-store'
+import type { ActorRef, DocumentRecord, DocumentStore, WriteDocumentResult } from '@loom-studio/document-store'
 import type {
   EventCapabilityCategory,
   EventDefinitionRegistrationOwner,
   EventPublishIdentity,
   EventSubscriberIdentity,
+  ExtensionAssetCapability,
   ExtensionActivationContext,
+  ExtensionDocumentWriteInput,
   ExtensionEventDefinition,
   ExtensionManifest,
+  ExtensionModuleManifest,
+  ExtensionMediaAsset,
   ExtensionRpcHandler,
   ServerExtensionModule,
 } from '@loom-studio/extension-sdk'
 export type { ExtensionRpcHandler } from '@loom-studio/extension-sdk'
-export type { EventCapabilityCategory, ExtensionManifest } from '@loom-studio/extension-sdk'
+export type { EventCapabilityCategory, ExtensionAssetCapability, ExtensionManifest, ExtensionModuleManifest } from '@loom-studio/extension-sdk'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import { createId, serializeError } from '@loom-studio/shared'
 import type { StudioEvent } from '@loom-studio/transport'
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
-import { isAbsolute, relative, resolve } from 'node:path'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { isAbsolute, join, relative, resolve } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 
 export type ExtensionState = 'discovered' | 'manifestLoaded' | 'manifestValidated' | 'loaded' | 'activating' | 'active' | 'degraded' | 'disabled'
@@ -32,16 +38,18 @@ export type ExtensionInstanceState =
   | 'disposed'
   | 'dispose_failed'
 
-export type ExtensionSummary = {
-  id: string
+export type ExtensionModuleSummary = {
+  packageId: string
+  moduleId: string
+  runtime: 'server'
   version: string
   displayName?: string
+  tags?: string[]
   state: ExtensionState
   instance?: {
     instanceId: string
     state: ExtensionInstanceState
   }
-  roles?: string[]
   contributions?: {
     rpc?: string[]
     documentTypes?: string[]
@@ -50,7 +58,8 @@ export type ExtensionSummary = {
 }
 
 export type ExtensionRpcContext = {
-  extensionId: string
+  packageId: string
+  moduleId: string
   instanceId: string
   clientId?: string
   correlationId?: string
@@ -60,7 +69,8 @@ export type ExtensionRpcContext = {
 
 export type ExtensionRpcRegistration = {
   name: string
-  ownerExtensionId: string
+  ownerPackageId: string
+  ownerModuleId: string
   ownerInstanceId?: string
   handler: ExtensionRpcHandler
   dispose(): void
@@ -82,11 +92,27 @@ export type ExtensionHostOptions = {
   diagnostics: DiagnosticsRegistry
   logger?: ExtensionHostLogger
   mode?: 'development' | 'production' | 'test'
-  grantEventCapabilities?(manifest: ExtensionManifest): readonly EventCapabilityCategory[]
+  grantEventCapabilities?(packageManifest: ExtensionManifest, moduleManifest: ExtensionModuleManifest): readonly EventCapabilityCategory[]
+  grantAssetCapabilities?(packageManifest: ExtensionManifest, moduleManifest: ExtensionModuleManifest): readonly ExtensionAssetCapability[]
+  assets?: {
+    publish(input: {
+      bytes: Uint8Array
+      kind: string
+      label?: string
+      mediaType?: string
+      width?: number
+      height?: number
+      ownerPackageId: string
+      actor: { kind: 'extension'; id: string }
+    }): Promise<ExtensionMediaAsset>
+    get(assetId: string): Promise<ExtensionMediaAsset | undefined>
+    read(assetId: string, options?: { maxBytes?: number }): Promise<Uint8Array>
+  }
+  assetScratchRoot?: string
   callRpc(method: string, params?: JsonValue, context?: ExtensionRpcContext): Promise<JsonValue>
-  registerRpc(name: string, ownerExtensionId: string, handler: ExtensionRpcHandler, ownerInstanceId: string): ExtensionRpcRegistration
+  registerRpc(name: string, ownerPackageId: string, ownerModuleId: string, handler: ExtensionRpcHandler, ownerInstanceId: string): ExtensionRpcRegistration
   registerEventDefinition?(definition: ExtensionEventDefinition & {
-    owner: { kind: 'extension'; extensionId: string }
+    owner: { kind: 'extension'; packageId: string; moduleId: string }
     capability?: `extension:${string}`
   }, registeredBy: EventDefinitionRegistrationOwner): ExtensionEventRegistration
   emitEvent?(name: string, payload: JsonValue, publisher: EventPublishIdentity): StudioEvent
@@ -98,14 +124,14 @@ export type ExtensionHostOptions = {
 }
 
 export type ExtensionHost = {
-  discover(directory: string): Promise<ExtensionSummary>
-  activate(extensionId: string): Promise<ExtensionSummary>
-  activateAll(): Promise<ExtensionSummary[]>
-  reload(extensionId: string): Promise<ExtensionSummary>
-  dispose(extensionId: string): Promise<void>
+  discover(directory: string): Promise<ExtensionModuleSummary[]>
+  activate(packageId: string, moduleId: string): Promise<ExtensionModuleSummary>
+  activateAll(): Promise<ExtensionModuleSummary[]>
+  reload(packageId: string, moduleId: string): Promise<ExtensionModuleSummary>
+  dispose(packageId: string, moduleId: string): Promise<void>
   disposeAll(): Promise<void>
-  list(): ExtensionSummary[]
-  diagnostics(extensionId?: string): Diagnostic[]
+  list(): ExtensionModuleSummary[]
+  diagnostics(packageId?: string, moduleId?: string): Diagnostic[]
 }
 
 type Disposable = {
@@ -133,75 +159,84 @@ type ExtensionInstance = {
   registeredRpcNames: Set<string>
   registeredEventNames: Set<string>
   grantedEventCapabilities: readonly EventCapabilityCategory[]
+  grantedAssetCapabilities: readonly ExtensionAssetCapability[]
 }
 
-type ExtensionRecord = {
+type ExtensionModuleRecord = {
   directory: string
-  manifest?: ExtensionManifest
+  packageManifest: ExtensionManifest
+  moduleManifest: ExtensionModuleManifest & { runtime: 'server' }
   state: ExtensionState
   instance?: ExtensionInstance
 }
 
 const kernelNamespaces = ['system', 'events', 'docs', 'extensions', 'diagnostics', 'loom', 'trace', 'audit']
+const studioReservedNamespaces = [...kernelNamespaces, 'application', 'logs', 'studio']
 
 export function createExtensionHost(options: ExtensionHostOptions): ExtensionHost {
-  const records = new Map<string, ExtensionRecord>()
+  const records = new Map<string, ExtensionModuleRecord>()
 
   return {
     discover: async directory => {
       const manifest = readManifest(directory)
-      validateManifest(manifest)
-      const previous = records.get(manifest.id)
-      if (previous?.instance && isLiveInstance(previous.instance.state)) {
-        throw new Error(`Cannot rediscover active extension: ${manifest.id}`)
+      const summaries: ExtensionModuleSummary[] = []
+      for (const moduleManifest of serverModules(manifest)) {
+        const key = moduleKey(manifest.id, moduleManifest.id)
+        const previous = records.get(key)
+        if (previous?.instance && isLiveInstance(previous.instance.state)) {
+          throw new Error(`Cannot rediscover active extension module: ${key}`)
+        }
+        const record: ExtensionModuleRecord = {
+          directory,
+          packageManifest: manifest,
+          moduleManifest,
+          state: 'manifestValidated',
+          instance: previous?.instance,
+        }
+        records.set(key, record)
+        summaries.push(toSummary(record))
       }
-      const record: ExtensionRecord = {
-        directory,
-        manifest,
-        state: 'manifestValidated',
-        instance: previous?.instance,
-      }
-      records.set(manifest.id, record)
       options.logger?.info(`${manifest.id} discovered · v${manifest.version}`, {
         event: 'extension.discovered',
         data: {
-          extensionId: manifest.id,
+          packageId: manifest.id,
           version: manifest.version,
-          state: record.state,
-          contributions: contributionCounts(manifest),
+          serverModuleCount: summaries.length,
         },
       })
-      return toSummary(record)
+      return summaries
     },
 
-    activate: extensionId => activateRecord(extensionId, records, options),
+    activate: (packageId, moduleId) => activateRecord(packageId, moduleId, records, options),
 
     activateAll: async () => {
-      const summaries: ExtensionSummary[] = []
-      for (const id of [...records.keys()].sort()) {
-        summaries.push(await activateRecord(id, records, options))
+      const summaries: ExtensionModuleSummary[] = []
+      for (const record of [...records.values()].sort(compareRecords)) {
+        summaries.push(await activateRecord(record.packageManifest.id, record.moduleManifest.id, records, options))
       }
       return summaries
     },
 
-    reload: async extensionId => {
-      const record = records.get(extensionId)
-      if (!record) throw new Error(`Extension not found: ${extensionId}`)
+    reload: async (packageId, moduleId) => {
+      const record = records.get(moduleKey(packageId, moduleId))
+      if (!record) throw new Error(`Extension module not found: ${moduleKey(packageId, moduleId)}`)
       await stopInstance(record, options)
-      return activateRecord(extensionId, records, options)
+      return activateRecord(packageId, moduleId, records, options)
     },
 
-    dispose: async extensionId => {
-      const record = records.get(extensionId)
+    dispose: async (packageId, moduleId) => {
+      const key = moduleKey(packageId, moduleId)
+      const record = records.get(key)
       if (!record) return
       try {
         await stopInstance(record, options)
       } finally {
         record.state = 'disabled'
-        options.logger?.info(`${extensionId} disposed`, {
+        options.logger?.info(`${key} disposed`, {
           event: 'extension.disposed',
           data: {
-            extensionId,
+            packageId,
+            moduleId,
             ...(record.instance ? { instanceId: record.instance.instanceId } : {}),
             state: record.instance?.state ?? record.state,
           },
@@ -212,7 +247,7 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
     disposeAll: async () => {
       const errors: unknown[] = []
       for (const record of [...records.values()].reverse()) {
-        if (!record.manifest || !record.instance || !isLiveInstance(record.instance.state)) continue
+        if (!record.instance || !isLiveInstance(record.instance.state)) continue
         try {
           await stopInstance(record, options)
         } catch (error) {
@@ -224,19 +259,21 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
     },
 
     list: () => [...records.values()].map(toSummary),
-    diagnostics: extensionId => options.diagnostics.list(extensionId ? { extensionId } : undefined),
+    diagnostics: (packageId, moduleId) => options.diagnostics.list({ packageId, moduleId }),
   }
 }
 
 async function activateRecord(
-  extensionId: string,
-  records: Map<string, ExtensionRecord>,
+  packageId: string,
+  moduleId: string,
+  records: Map<string, ExtensionModuleRecord>,
   options: ExtensionHostOptions,
-): Promise<ExtensionSummary> {
-  const record = records.get(extensionId)
-  if (!record?.manifest) throw new Error(`Extension not found: ${extensionId}`)
+): Promise<ExtensionModuleSummary> {
+  const key = moduleKey(packageId, moduleId)
+  const record = records.get(key)
+  if (!record) throw new Error(`Extension module not found: ${key}`)
   if (record.instance && isLiveInstance(record.instance.state)) {
-    throw new Error(`Extension already active: ${extensionId}`)
+    throw new Error(`Extension module already active: ${key}`)
   }
 
   const startedAt = performance.now()
@@ -247,14 +284,15 @@ async function activateRecord(
     scope: createExtensionScope(instanceId),
     registeredRpcNames: new Set(),
     registeredEventNames: new Set(),
-    grantedEventCapabilities: [...new Set(options.grantEventCapabilities?.(record.manifest) ?? [])],
+    grantedEventCapabilities: [...new Set(options.grantEventCapabilities?.(record.packageManifest, record.moduleManifest) ?? [])],
+    grantedAssetCapabilities: [...new Set(options.grantAssetCapabilities?.(record.packageManifest, record.moduleManifest) ?? [])],
   }
   record.instance = instance
   record.state = 'activating'
   instance.state = 'activating'
-  options.logger?.info(`${extensionId} activation started`, {
+  options.logger?.info(`${key} activation started`, {
     event: 'extension.activation.started',
-    data: { extensionId, instanceId, version: record.manifest.version, state: instance.state },
+    data: { packageId, moduleId, instanceId, version: record.packageManifest.version, state: instance.state },
   })
 
   try {
@@ -265,21 +303,22 @@ async function activateRecord(
     instance.state = mismatched ? 'degraded' : 'active'
     record.state = instance.state
     const durationMs = elapsedMs(startedAt)
-    options.logger?.info(`${extensionId} activated · ${record.state} · ${durationMs} ms`, {
+    options.logger?.info(`${key} activated · ${record.state} · ${durationMs} ms`, {
       event: 'extension.activation.completed',
       data: {
-        extensionId,
+        packageId,
+        moduleId,
         instanceId,
-        version: record.manifest.version,
+        version: record.packageManifest.version,
         state: instance.state,
         durationMs,
-        contributions: contributionCounts(record.manifest),
+        contributions: contributionCounts(record.moduleManifest),
       },
     })
   } catch (error) {
     instance.state = 'activation_failed'
     record.state = 'disabled'
-    reportDiagnostic(options.diagnostics, extensionId, instanceId, {
+    reportDiagnostic(options.diagnostics, record, instanceId, {
       severity: 'error',
       code: 'extension.activation_failed',
       message: error instanceof Error ? error.message : String(error),
@@ -287,12 +326,13 @@ async function activateRecord(
     })
     await disposeFailedActivation(record, options)
     const durationMs = elapsedMs(startedAt)
-    options.logger?.error(`${extensionId} activation failed after ${durationMs} ms`, {
+    options.logger?.error(`${key} activation failed after ${durationMs} ms`, {
       event: 'extension.activation.failed',
       data: {
-        extensionId,
+        packageId,
+        moduleId,
         instanceId,
-        version: record.manifest.version,
+        version: record.packageManifest.version,
         state: instance.state,
         durationMs,
         failureType: error instanceof Error ? error.name : typeof error,
@@ -304,7 +344,7 @@ async function activateRecord(
   return toSummary(record)
 }
 
-function contributionCounts(manifest: ExtensionManifest): { rpc: number; documentTypes: number; events: number } {
+function contributionCounts(manifest: ExtensionModuleManifest): { rpc: number; documentTypes: number; events: number } {
   return {
     rpc: manifest.contributes?.rpc?.length ?? 0,
     documentTypes: manifest.contributes?.documentTypes?.length ?? 0,
@@ -336,35 +376,103 @@ function readManifest(directory: string): ExtensionManifest {
 }
 
 function validateManifest(manifest: Partial<ExtensionManifest>): void {
-  if (manifest.manifestVersion !== 1) throw new Error('manifestVersion must be 1')
+  if (manifest.manifestVersion !== 2) throw new Error('manifestVersion must be 2')
   if (!manifest.id) throw new Error('Manifest id is required')
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(manifest.id)) throw new Error('Manifest id is invalid')
+  if (studioReservedNamespaces.includes(manifest.id.split('.')[0] ?? '')) throw new Error(`Manifest id uses a reserved Studio namespace: ${manifest.id}`)
   if (!manifest.version) throw new Error('Manifest version is required')
   if (!manifest.displayName) throw new Error('Manifest displayName is required')
-  if (!manifest.engines?.studio) throw new Error('engines.studio is required')
-  if (!manifest.server?.entry) throw new Error('server.entry is required')
-
-  for (const event of manifest.contributes?.events ?? []) {
-    if (!event.name.startsWith(`${manifest.id}.`)) throw new Error(`Manifest event must use extension namespace: ${event.name}`)
-    if (!Number.isInteger(event.version) || event.version < 1) throw new Error(`Manifest event version must be positive: ${event.name}`)
-    if (event.visibility !== 'public' && event.visibility !== 'protected') {
-      throw new Error(`Manifest event visibility must be public or protected: ${event.name}`)
+  if ('roles' in manifest) throw new Error('Manifest roles is obsolete; use tags')
+  assertOptionalManifestText(manifest.description, 'description', 4_096)
+  assertOptionalManifestText(manifest.author, 'author', 255)
+  assertOptionalManifestUrl(manifest.homepage, 'homepage')
+  assertOptionalManifestUrl(manifest.repository, 'repository')
+  if (manifest.icon !== undefined) {
+    assertOptionalManifestText(manifest.icon, 'icon', 1_024)
+    if (isAbsolute(manifest.icon)) throw new Error('Manifest icon must be relative to the Package directory')
+    if (!/\.(png|jpe?g|webp|gif)$/i.test(manifest.icon)) {
+      throw new Error('Manifest icon must be PNG, JPEG, WebP, or GIF')
     }
   }
-
-  const eventCapabilities = manifest.capabilities?.['events.subscribe']
-  if (eventCapabilities !== undefined && (!Array.isArray(eventCapabilities) || !eventCapabilities.every(value => typeof value === 'string'))) {
-    throw new Error('capabilities.events.subscribe must be a string array')
+  if (manifest.tags !== undefined) {
+    if (!Array.isArray(manifest.tags) || manifest.tags.length > 32) throw new Error('Manifest tags must be an array with at most 32 entries')
+    const tags = new Set<string>()
+    for (const tag of manifest.tags) {
+      if (typeof tag !== 'string' || tag.length > 64 || !/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(tag)) {
+        throw new Error(`Manifest tag is invalid: ${String(tag)}`)
+      }
+      if (tags.has(tag)) throw new Error(`Manifest tag must be unique: ${tag}`)
+      tags.add(tag)
+    }
+  }
+  if (!manifest.engines?.studio) throw new Error('engines.studio is required')
+  const moduleIds = new Set<string>()
+  for (const moduleManifest of manifest.modules ?? []) {
+    if (!moduleManifest.id || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(moduleManifest.id)) throw new Error('Manifest module id is invalid')
+    if (moduleIds.has(moduleManifest.id)) throw new Error(`Manifest module id must be unique: ${moduleManifest.id}`)
+    moduleIds.add(moduleManifest.id)
+    if (moduleManifest.runtime !== 'server' && moduleManifest.runtime !== 'client') throw new Error(`Manifest module runtime is invalid: ${moduleManifest.id}`)
+    if (!moduleManifest.entry) throw new Error(`Manifest module entry is required: ${moduleManifest.id}`)
+    for (const event of moduleManifest.contributes?.events ?? []) {
+      if (!event.name.startsWith(`${manifest.id}.`)) throw new Error(`Manifest event must use package namespace: ${event.name}`)
+      if (!Number.isInteger(event.version) || event.version < 1) throw new Error(`Manifest event version must be positive: ${event.name}`)
+      if (event.visibility !== 'public' && event.visibility !== 'protected') {
+        throw new Error(`Manifest event visibility must be public or protected: ${event.name}`)
+      }
+    }
+    for (const rpc of moduleManifest.contributes?.rpc ?? []) {
+      if (!rpc.name.startsWith(`${manifest.id}.`)) throw new Error(`Manifest RPC must use package namespace: ${rpc.name}`)
+    }
+    const documentTypes = new Set<string>()
+    for (const documentType of moduleManifest.contributes?.documentTypes ?? []) {
+      if (!documentType.type.startsWith(`${manifest.id}.`)) throw new Error(`Manifest document type must use package namespace: ${documentType.type}`)
+      if (documentTypes.has(documentType.type)) throw new Error(`Manifest document type must be unique within a module: ${documentType.type}`)
+      documentTypes.add(documentType.type)
+    }
+    const eventCapabilities = moduleManifest.capabilities?.['events.subscribe']
+    if (eventCapabilities !== undefined && (!Array.isArray(eventCapabilities) || !eventCapabilities.every(value => typeof value === 'string'))) {
+      throw new Error(`Module capabilities.events.subscribe must be a string array: ${moduleManifest.id}`)
+    }
+    for (const capability of ['assets.publish', 'assets.read'] as const) {
+      const requested = moduleManifest.capabilities?.[capability]
+      if (requested !== undefined && typeof requested !== 'boolean') {
+        throw new Error(`Module capabilities.${capability} must be a boolean: ${moduleManifest.id}`)
+      }
+    }
+  }
+  for (const rule of manifest.contributes?.transformRules ?? []) {
+    if (!rule.source) throw new Error('Transform rule source is required')
   }
 }
 
-async function loadServerModule(record: ExtensionRecord, instanceId: string): Promise<ServerExtensionModule> {
-  const entry = record.manifest?.server?.entry
-  if (!entry) throw new Error('server.entry is required')
+function assertOptionalManifestText(value: unknown, field: string, maxLength: number): void {
+  if (value === undefined) return
+  if (typeof value !== 'string' || !value.trim() || value !== value.trim() || value.length > maxLength || value.includes('\0')) {
+    throw new Error(`Manifest ${field} is invalid`)
+  }
+}
+
+function assertOptionalManifestUrl(value: unknown, field: string): void {
+  if (value === undefined) return
+  assertOptionalManifestText(value, field, 2_048)
+  let parsed: URL
+  try {
+    parsed = new URL(value as string)
+  } catch {
+    throw new Error(`Manifest ${field} must be an absolute HTTP(S) URL`)
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new Error(`Manifest ${field} must be an absolute HTTP(S) URL`)
+  }
+}
+
+async function loadServerModule(record: ExtensionModuleRecord, instanceId: string): Promise<ServerExtensionModule> {
+  const entry = record.moduleManifest.entry
   const directory = realpathSync(record.directory)
   const modulePath = realpathSync(resolve(directory, entry))
   const pathFromDirectory = relative(directory, modulePath)
   if (!pathFromDirectory || pathFromDirectory.startsWith('..') || isAbsolute(pathFromDirectory)) {
-    throw new Error(`Extension server entry must stay inside its directory: ${entry}`)
+    throw new Error(`Extension module entry must stay inside its package directory: ${entry}`)
   }
   const loaded = await import(`${pathToFileURL(modulePath).href}?instance=${encodeURIComponent(instanceId)}`) as Partial<ServerExtensionModule> & { default?: ServerExtensionModule }
   if (loaded.activate) return loaded as ServerExtensionModule
@@ -373,43 +481,56 @@ async function loadServerModule(record: ExtensionRecord, instanceId: string): Pr
 }
 
 function createContext(
-  record: ExtensionRecord,
+  record: ExtensionModuleRecord,
   instance: ExtensionInstance,
   options: ExtensionHostOptions,
 ): ExtensionActivationContext {
-  const manifest = record.manifest!
-  const extensionActor: ActorRef = { kind: 'extension', id: manifest.id }
-  const publisher: EventPublishIdentity = { kind: 'extension', extensionId: manifest.id, instanceId: instance.instanceId }
+  const packageManifest = record.packageManifest
+  const moduleManifest = record.moduleManifest
+  const extensionActor: ActorRef = { kind: 'extension', id: packageManifest.id }
+  const publisher: EventPublishIdentity = {
+    kind: 'extension',
+    packageId: packageManifest.id,
+    moduleId: moduleManifest.id,
+    instanceId: instance.instanceId,
+  }
   const subscriber: EventSubscriberIdentity = {
     kind: 'extension',
-    extensionId: manifest.id,
+    packageId: packageManifest.id,
+    moduleId: moduleManifest.id,
     instanceId: instance.instanceId,
     capabilities: instance.grantedEventCapabilities,
   }
+  let scratchTracked = false
 
   return {
     extension: {
-      id: manifest.id,
+      packageId: packageManifest.id,
+      moduleId: moduleManifest.id,
       instanceId: instance.instanceId,
-      version: manifest.version,
-      displayName: manifest.displayName,
+      runtime: 'server',
+      version: packageManifest.version,
+      displayName: packageManifest.displayName,
       directory: record.directory,
     },
-    logger: createExtensionLogger(manifest.id, instance.instanceId, options.logger),
+    logger: createExtensionLogger(packageManifest.id, moduleManifest.id, instance.instanceId, options.logger),
     permissions: {
       events: { subscribe: instance.grantedEventCapabilities },
+      assets: instance.grantedAssetCapabilities,
     },
     rpc: {
       register: (name, handler) => {
         assertScopeActive(instance)
         if (isKernelNamespace(name)) throw new Error(`Extension cannot register Kernel namespace RPC: ${name}`)
+        if (isStudioReservedNamespace(name)) throw new Error(`Extension cannot register reserved Studio namespace RPC: ${name}`)
+        if (!name.startsWith(`${packageManifest.id}.`)) throw new Error(`Extension RPC must use package namespace: ${name}`)
         const wrapped: ExtensionRpcHandler = (params, context) => instance.scope.run(() => handler(params, context))
-        const registration = options.registerRpc(name, manifest.id, wrapped, instance.instanceId)
+        const registration = options.registerRpc(name, packageManifest.id, moduleManifest.id, wrapped, instance.instanceId)
         instance.scope.track(`rpc:${name}`, registration)
         instance.registeredRpcNames.add(name)
-        if (!manifest.contributes?.rpc?.some(rpc => rpc.name === name)) {
+        if (!moduleManifest.contributes?.rpc?.some(rpc => rpc.name === name)) {
           if (options.mode === 'production') throw new Error(`RPC ${name} is not declared in manifest contributes.rpc`)
-          reportDiagnostic(options.diagnostics, manifest.id, instance.instanceId, {
+          reportDiagnostic(options.diagnostics, record, instance.instanceId, {
             severity: 'warning',
             code: 'extension.rpc_not_declared',
             message: `RPC ${name} is not declared in manifest contributes.rpc`,
@@ -418,18 +539,24 @@ function createContext(
         }
         return registration
       },
-      call: async <T = JsonValue>(method: string, params?: JsonValue) => options.callRpc(method, params, {
-        extensionId: manifest.id,
-        instanceId: instance.instanceId,
-      }) as Promise<T>,
+      call: async <T = JsonValue>(method: string, params?: JsonValue) => {
+        assertScopeActive(instance)
+        if (isKernelNamespace(method)) throw new Error(`Extension cannot call Kernel namespace RPC through ctx.rpc: ${method}`)
+        if (isStudioReservedNamespace(method)) throw new Error(`Extension cannot call reserved Studio namespace RPC through ctx.rpc: ${method}`)
+        return options.callRpc(method, params, {
+          packageId: packageManifest.id,
+          moduleId: moduleManifest.id,
+          instanceId: instance.instanceId,
+        }) as Promise<T>
+      },
     },
     events: {
       define: definition => {
         assertScopeActive(instance)
-        const declared = manifest.contributes?.events?.find(event => event.name === definition.name)
+        const declared = moduleManifest.contributes?.events?.find(event => event.name === definition.name)
         if (!declared) {
           if (options.mode === 'production') throw new Error(`Event ${definition.name} is not declared in manifest contributes.events`)
-          reportDiagnostic(options.diagnostics, manifest.id, instance.instanceId, {
+          reportDiagnostic(options.diagnostics, record, instance.instanceId, {
             severity: 'warning',
             code: 'extension.event_not_declared',
             message: `Event ${definition.name} is not declared in manifest contributes.events`,
@@ -442,11 +569,12 @@ function createContext(
         if (!options.registerEventDefinition) throw new Error('Extension event definitions are not available in this host')
         const registration = options.registerEventDefinition({
           ...definition,
-          owner: { kind: 'extension', extensionId: manifest.id },
-          capability: definition.visibility === 'protected' ? `extension:${manifest.id}` : undefined,
+          owner: { kind: 'extension', packageId: packageManifest.id, moduleId: moduleManifest.id },
+          capability: definition.visibility === 'protected' ? `extension:${packageManifest.id}` : undefined,
         }, {
           kind: 'extension',
-          extensionId: manifest.id,
+          packageId: packageManifest.id,
+          moduleId: moduleManifest.id,
           instanceId: instance.instanceId,
         })
         instance.scope.track(`event-definition:${definition.name}`, registration)
@@ -467,15 +595,33 @@ function createContext(
       },
     },
     documents: {
-      get: id => options.documents.get(id) as never,
-      list: async (query?: ListDocumentsInput) => (await options.documents.list(query)).items,
-      write: async (input: Omit<WriteDocumentInput, 'actor' | 'correlationId' | 'callId' | 'parentCallId'>): Promise<WriteDocumentResult> => {
+      get: async id => {
         assertScopeActive(instance)
+        const document = await options.documents.get(id)
+        if (document) assertDocumentAccess(record, document, 'read')
+        return document as never
+      },
+      list: async query => {
+        assertScopeActive(instance)
+        assertDeclaredDocumentType(record, query?.type)
+        return (await options.documents.list({
+          ...query,
+          type: query.type,
+          ownerExtensionId: packageManifest.id,
+        })).items
+      },
+      write: async (input: ExtensionDocumentWriteInput): Promise<WriteDocumentResult> => {
+        assertScopeActive(instance)
+        assertDeclaredDocumentType(record, input.type)
+        if (input.id) {
+          const existing = await options.documents.get(input.id, { includeTombstone: true })
+          if (existing) assertDocumentAccess(record, existing, 'write')
+        }
         const result = await options.documents.write({
           ...input,
           meta: {
             ...input.meta,
-            ownerExtensionId: manifest.id,
+            ownerExtensionId: packageManifest.id,
           },
           actor: extensionActor,
         })
@@ -483,6 +629,9 @@ function createContext(
       },
       delete: async (id, deleteOptions) => {
         assertScopeActive(instance)
+        const existing = await options.documents.get(id, { includeTombstone: true })
+        if (!existing) throw new Error(`Extension document not found: ${id}`)
+        assertDocumentAccess(record, existing, 'delete')
         const result = await options.documents.delete({
           id,
           expectedVersion: deleteOptions?.expectedVersion,
@@ -492,9 +641,55 @@ function createContext(
         return result
       },
     },
+    assets: {
+      publish: async input => {
+        assertScopeActive(instance)
+        assertAssetCapability(instance, 'assets.publish')
+        if (!options.assets) throw new Error('Extension Media Assets are not available in this host')
+        return await options.assets.publish({
+          ...input,
+          bytes: new Uint8Array(input.bytes),
+          ownerPackageId: packageManifest.id,
+          actor: { kind: 'extension', id: packageManifest.id },
+        })
+      },
+      read: async (assetId, readOptions) => {
+        assertScopeActive(instance)
+        if (!options.assets) throw new Error('Extension Media Assets are not available in this host')
+        const asset = await options.assets.get(assetId)
+        if (!asset) throw new Error(`Media Asset not found: ${assetId}`)
+        if (asset.ownerPackageId !== packageManifest.id) assertAssetCapability(instance, 'assets.read')
+        return {
+          asset,
+          bytes: new Uint8Array(await options.assets.read(assetId, readOptions)),
+        }
+      },
+      materialize: async (assetId, materializeOptions) => {
+        assertScopeActive(instance)
+        if (!options.assets || !options.assetScratchRoot) throw new Error('Extension Asset materialization is not available in this host')
+        const asset = await options.assets.get(assetId)
+        if (!asset) throw new Error(`Media Asset not found: ${assetId}`)
+        if (asset.ownerPackageId !== packageManifest.id) assertAssetCapability(instance, 'assets.read')
+        const fileExtension = materializeOptions?.fileExtension ?? ''
+        if (fileExtension && !/^\.[A-Za-z0-9]{1,16}$/.test(fileExtension)) {
+          throw new Error('Materialized Asset fileExtension must be a short dot-prefixed alphanumeric extension')
+        }
+        const scratchDirectory = join(options.assetScratchRoot, packageManifest.id, instance.instanceId)
+        await mkdir(scratchDirectory, { recursive: true, mode: 0o700 })
+        if (!scratchTracked) {
+          instance.scope.track('asset-scratch', {
+            dispose: () => rm(scratchDirectory, { recursive: true, force: true }),
+          })
+          scratchTracked = true
+        }
+        const path = join(scratchDirectory, `asset-${randomUUID()}${fileExtension}`)
+        await writeFile(path, await options.assets.read(assetId, { maxBytes: materializeOptions?.maxBytes }), { mode: 0o600 })
+        return { asset, path }
+      },
+    },
     diagnostics: {
       report: input => {
-        reportDiagnostic(options.diagnostics, manifest.id, instance.instanceId, {
+        reportDiagnostic(options.diagnostics, record, instance.instanceId, {
           ...input,
           source: input.source ?? 'extension',
         })
@@ -507,15 +702,39 @@ function createContext(
   }
 }
 
+function assertDeclaredDocumentType(record: ExtensionModuleRecord, type: unknown): asserts type is string {
+  if (typeof type !== 'string' || !record.moduleManifest.contributes?.documentTypes?.some(item => item.type === type)) {
+    throw new Error(`Extension module ${moduleKey(record.packageManifest.id, record.moduleManifest.id)} did not declare document type: ${String(type)}`)
+  }
+}
+
+function assertAssetCapability(instance: ExtensionInstance, capability: ExtensionAssetCapability): void {
+  if (!instance.grantedAssetCapabilities.includes(capability)) {
+    throw new Error(`Extension instance ${instance.instanceId} was not granted ${capability}`)
+  }
+}
+
+function assertDocumentAccess(
+  record: ExtensionModuleRecord,
+  document: DocumentRecord,
+  operation: 'read' | 'write' | 'delete',
+): void {
+  if (document.meta.ownerExtensionId !== record.packageManifest.id) {
+    throw new Error(`Extension module ${moduleKey(record.packageManifest.id, record.moduleManifest.id)} cannot ${operation} document owned by another package: ${document.id}`)
+  }
+  assertDeclaredDocumentType(record, document.type)
+}
+
 function createExtensionLogger(
-  extensionId: string,
+  packageId: string,
+  moduleId: string,
   instanceId: string,
   logger: ExtensionHostLogger | undefined,
 ): ExtensionActivationContext['logger'] {
   const write = (level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: JsonObject) => {
     const fields = {
       event: 'extension.runtime.log',
-      data: { extensionId, instanceId, ...data },
+      data: { packageId, moduleId, instanceId, ...data },
     }
     if (level === 'debug') logger?.debug?.(message, fields)
     else if (level === 'warn') (logger?.warn ?? logger?.info)?.(message, fields)
@@ -530,8 +749,8 @@ function createExtensionLogger(
   }
 }
 
-function hasContributionMismatch(record: ExtensionRecord, instance: ExtensionInstance, options: ExtensionHostOptions): boolean {
-  const manifest = record.manifest!
+function hasContributionMismatch(record: ExtensionModuleRecord, instance: ExtensionInstance, options: ExtensionHostOptions): boolean {
+  const manifest = record.moduleManifest
   let mismatched = false
   const declaredRpcNames = new Set(manifest.contributes?.rpc?.map(rpc => rpc.name) ?? [])
   const declaredEventNames = new Set(manifest.contributes?.events?.map(event => event.name) ?? [])
@@ -546,7 +765,7 @@ function hasContributionMismatch(record: ExtensionRecord, instance: ExtensionIns
   for (const name of declaredRpcNames) {
     if (instance.registeredRpcNames.has(name)) continue
     mismatched = true
-    reportDiagnostic(options.diagnostics, manifest.id, instance.instanceId, {
+    reportDiagnostic(options.diagnostics, record, instance.instanceId, {
       severity: 'warning',
       code: 'extension.rpc_declared_but_not_registered',
       message: `RPC ${name} is declared in manifest contributes.rpc but was not registered during activation`,
@@ -557,7 +776,7 @@ function hasContributionMismatch(record: ExtensionRecord, instance: ExtensionIns
   for (const name of declaredEventNames) {
     if (instance.registeredEventNames.has(name)) continue
     mismatched = true
-    reportDiagnostic(options.diagnostics, manifest.id, instance.instanceId, {
+    reportDiagnostic(options.diagnostics, record, instance.instanceId, {
       severity: 'warning',
       code: 'extension.event_declared_but_not_registered',
       message: `Event ${name} is declared in manifest contributes.events but was not registered during activation`,
@@ -568,7 +787,7 @@ function hasContributionMismatch(record: ExtensionRecord, instance: ExtensionIns
   return mismatched
 }
 
-async function stopInstance(record: ExtensionRecord, options: ExtensionHostOptions): Promise<void> {
+async function stopInstance(record: ExtensionModuleRecord, options: ExtensionHostOptions): Promise<void> {
   const instance = record.instance
   if (!instance || !isLiveInstance(instance.state)) return
   instance.state = 'stopping'
@@ -577,10 +796,10 @@ async function stopInstance(record: ExtensionRecord, options: ExtensionHostOptio
     instance.state = 'disposed'
   } catch (error) {
     instance.state = 'dispose_failed'
-    reportDiagnostic(options.diagnostics, record.manifest?.id ?? 'unknown', instance.instanceId, {
+    reportDiagnostic(options.diagnostics, record, instance.instanceId, {
       severity: 'error',
       code: 'extension.dispose_failed',
-      message: `Extension dispose failed: ${record.manifest?.id ?? 'unknown'}`,
+      message: `Extension module dispose failed: ${moduleKey(record.packageManifest.id, record.moduleManifest.id)}`,
       source: 'extension-host',
       details: serializeError(error, 'extension.dispose_failed'),
     })
@@ -588,16 +807,16 @@ async function stopInstance(record: ExtensionRecord, options: ExtensionHostOptio
   }
 }
 
-async function disposeFailedActivation(record: ExtensionRecord, options: ExtensionHostOptions): Promise<void> {
+async function disposeFailedActivation(record: ExtensionModuleRecord, options: ExtensionHostOptions): Promise<void> {
   const instance = record.instance
   if (!instance) return
   try {
     await instance.scope.dispose()
   } catch (error) {
-    reportDiagnostic(options.diagnostics, record.manifest?.id ?? 'unknown', instance.instanceId, {
+    reportDiagnostic(options.diagnostics, record, instance.instanceId, {
       severity: 'error',
       code: 'extension.activation_cleanup_failed',
-      message: `Extension activation cleanup failed: ${record.manifest?.id ?? 'unknown'}`,
+      message: `Extension module activation cleanup failed: ${moduleKey(record.packageManifest.id, record.moduleManifest.id)}`,
       source: 'extension-host',
       details: serializeError(error, 'extension.activation_cleanup_failed'),
     })
@@ -676,37 +895,60 @@ function isLiveInstance(state: ExtensionInstanceState): boolean {
   return state === 'created' || state === 'activating' || state === 'active' || state === 'degraded' || state === 'stopping'
 }
 
-function toSummary(record: ExtensionRecord): ExtensionSummary {
+function toSummary(record: ExtensionModuleRecord): ExtensionModuleSummary {
   return {
-    id: record.manifest?.id ?? 'unknown',
-    version: record.manifest?.version ?? '0.0.0',
-    displayName: record.manifest?.displayName,
+    packageId: record.packageManifest.id,
+    moduleId: record.moduleManifest.id,
+    runtime: 'server',
+    version: record.packageManifest.version,
+    displayName: record.packageManifest.displayName,
     state: record.state,
     instance: record.instance ? { instanceId: record.instance.instanceId, state: record.instance.state } : undefined,
-    roles: record.manifest?.roles,
+    tags: record.packageManifest.tags,
     contributions: {
-      rpc: record.manifest?.contributes?.rpc?.map(rpc => rpc.name),
-      documentTypes: record.manifest?.contributes?.documentTypes?.map(item => item.type),
-      events: record.manifest?.contributes?.events?.map(item => item.name),
+      rpc: record.moduleManifest.contributes?.rpc?.map(rpc => rpc.name),
+      documentTypes: record.moduleManifest.contributes?.documentTypes?.map(item => item.type),
+      events: record.moduleManifest.contributes?.events?.map(item => item.name),
     },
   }
 }
 
 function reportDiagnostic(
   registry: DiagnosticsRegistry,
-  extensionId: string,
+  record: ExtensionModuleRecord,
   instanceId: string,
-  input: Omit<DiagnosticInput, 'extensionId' | 'instanceId'>,
+  input: Omit<DiagnosticInput, 'packageId' | 'moduleId' | 'extensionId' | 'instanceId'>,
 ): void {
   registry.add({
     ...input,
-    extensionId,
+    packageId: record.packageManifest.id,
+    moduleId: record.moduleManifest.id,
+    extensionId: record.packageManifest.id,
     instanceId,
   })
 }
 
+function serverModules(manifest: ExtensionManifest): Array<ExtensionModuleManifest & { runtime: 'server' }> {
+  return (manifest.modules ?? []).filter((moduleManifest): moduleManifest is ExtensionModuleManifest & { runtime: 'server' } => (
+    moduleManifest.runtime === 'server'
+  ))
+}
+
+function moduleKey(packageId: string, moduleId: string): string {
+  return `${packageId}/${moduleId}`
+}
+
+function compareRecords(left: ExtensionModuleRecord, right: ExtensionModuleRecord): number {
+  return moduleKey(left.packageManifest.id, left.moduleManifest.id)
+    .localeCompare(moduleKey(right.packageManifest.id, right.moduleManifest.id))
+}
+
 function isKernelNamespace(name: string): boolean {
   return kernelNamespaces.includes(name.split('.')[0] ?? '')
+}
+
+function isStudioReservedNamespace(name: string): boolean {
+  return studioReservedNamespaces.includes(name.split('.')[0] ?? '')
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

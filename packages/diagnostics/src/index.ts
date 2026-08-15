@@ -9,6 +9,8 @@ export type Diagnostic = {
   code: string
   message: string
   source: string
+  packageId?: string
+  moduleId?: string
   extensionId?: string
   instanceId?: string
   documentId?: string
@@ -26,6 +28,8 @@ export type DiagnosticInput = Omit<Diagnostic, 'id' | 'createdAt'> & {
 export type DiagnosticFilter = {
   severity?: DiagnosticSeverity
   source?: string
+  packageId?: string
+  moduleId?: string
   extensionId?: string
   instanceId?: string
 }
@@ -44,6 +48,8 @@ export function createInMemoryDiagnosticsRegistry(): DiagnosticsRegistry {
       return diagnostics.filter(diagnostic => {
         if (filter?.severity && diagnostic.severity !== filter.severity) return false
         if (filter?.source && diagnostic.source !== filter.source) return false
+        if (filter?.packageId && diagnostic.packageId !== filter.packageId) return false
+        if (filter?.moduleId && diagnostic.moduleId !== filter.moduleId) return false
         if (filter?.extensionId && diagnostic.extensionId !== filter.extensionId) return false
         if (filter?.instanceId && diagnostic.instanceId !== filter.instanceId) return false
         return true

@@ -5,7 +5,7 @@ import type { Logger } from '@loom-studio/logging'
 import type { NarrativeStore } from '@loom-studio/narrative-store'
 import { createId as createSharedId, nowIso } from '@loom-studio/shared'
 import { createDocumentBackedAiGateway, providerToGateway } from './gateway.js'
-import type { AiGateway, ApplicationRuntimeOptions } from './types.js'
+import type { AiGateway, ApplicationRuntimeOptions, MediaAssetLookup, SourceArtifactStorage } from './types.js'
 
 export type ApplicationRuntimeContext = {
   agents?: AgentStore
@@ -13,6 +13,8 @@ export type ApplicationRuntimeContext = {
   documents: DocumentStore
   logger?: Logger
   narratives?: NarrativeStore
+  sourceArtifacts?: SourceArtifactStorage
+  mediaAssets?: MediaAssetLookup
   gateway: AiGateway
   now(): string
   createId(prefix: string): string
@@ -25,6 +27,8 @@ export function createApplicationRuntimeContext(options: ApplicationRuntimeOptio
     documents: options.documents,
     logger: options.logger,
     narratives: options.narratives,
+    sourceArtifacts: options.sourceArtifacts,
+    mediaAssets: options.mediaAssets,
     gateway: options.gateway ?? (options.provider ? providerToGateway(options.provider) : createDocumentBackedAiGateway({ documents: options.documents })),
     now: () => nowIso(options.clock),
     createId: prefix => createSharedId(prefix),

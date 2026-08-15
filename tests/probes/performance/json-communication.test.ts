@@ -28,12 +28,15 @@ function createHarness() {
     documents,
     diagnostics,
     callRpc: (method, params, context) => kernel.callRpc(method, params, context),
-    registerRpc: (name, ownerExtensionId, handler) => {
-      const handle = kernel.registerExtensionRpc(name, ownerExtensionId, handler)
-      return { name, ownerExtensionId, handler, dispose: handle.dispose }
+    registerRpc: (name, ownerPackageId, ownerModuleId, handler, ownerInstanceId) => {
+      const handle = kernel.registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler, ownerInstanceId)
+      return { name, ownerPackageId, ownerModuleId, ownerInstanceId, handler, dispose: handle.dispose }
     },
-    emitEvent: (name, payload, ownerExtensionId) => {
-      kernel.getEventBus().emit(name, payload, { source: `extension:${ownerExtensionId}` })
+    emitEvent: (name, payload, publisher) => {
+      kernel.getEventBus().emit(name, payload, {
+        publisher,
+        source: publisher.kind === 'extension' ? `extension:${publisher.packageId}/${publisher.moduleId}` : publisher.kind,
+      })
     },
   })
 

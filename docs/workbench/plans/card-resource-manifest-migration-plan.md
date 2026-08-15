@@ -4,6 +4,7 @@
 > **日期**：2026-07-29
 > **范围**：将 `PromptWorkspace` 从 Card、Session、PromptBuild 的权威数据链中移除，改为 Card 直接声明资源集合、Session 只保存资源引用。
 > **实施约束**：本文属于 Workbench 工程计划；代码落地并通过测试前，不写入 `docs/architecture`。
+> **2026-08-15 后续说明**：本文的 Card / Session 术语记录已完成迁移阶段；后端现已由 Narrative Timeline 保存 Card 来源与有序 Prompt Resource 引用。当前 `ImportBundle.sourceArtifact` 仍在 SQLite 中保存标准化 Artifact，原始 PNG / JSON 字节保留、Blob Store 和本地路径迁移进入 [`local-data-blob-store-foundation-plan.md`](local-data-blob-store-foundation-plan.md)。
 
 ---
 

@@ -1,0 +1,22 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/shared" },
+    { "path": "./packages/logging" },
+    { "path": "./packages/diagnostics" },
+    { "path": "./packages/transport" },
+    { "path": "./packages/data-engine" },
+    { "path": "./packages/blob-store" },
+    { "path": "./packages/asset-store" },
+    { "path": "./packages/agent-store" },
+    { "path": "./packages/narrative-store" },
+    { "path": "./packages/document-store" },
+    { "path": "./packages/application-runtime" },
+    { "path": "./packages/extension-sdk" },
+    { "path": "./packages/extension-sdk/extension-host" },
+    { "path": "./packages/client-bridge" },
+    { "path": "./packages/trace-audit" },
+    { "path": "./packages/loom-runner" },
+    { "path": "./packages/kernel" }
+  ]
+}

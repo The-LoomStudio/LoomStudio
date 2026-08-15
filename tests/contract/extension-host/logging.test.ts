@@ -14,8 +14,8 @@ describe('extension host logging contract', () => {
     })
 
     await extensionHost.discover(directory)
-    const summary = await extensionHost.activate('example.loggingFailure')
-    await extensionHost.dispose('example.loggingFailure')
+    const summary = await extensionHost.activate('example.loggingFailure', 'server')
+    await extensionHost.dispose('example.loggingFailure', 'server')
 
     const page = logs.list().filter(item => item.namespace === 'extension.loader')
     expect(summary.state).toBe('disabled')
@@ -26,7 +26,7 @@ describe('extension host logging contract', () => {
       'extension.disposed',
     ])
     expect(page[0]?.message).toBe('example.loggingFailure discovered · v0.0.0')
-    expect(page[2]?.message).toMatch(/^example\.loggingFailure activation failed after \d+(?:\.\d+)? ms$/)
+    expect(page[2]?.message).toMatch(/^example\.loggingFailure\/server activation failed after \d+(?:\.\d+)? ms$/)
     expect(JSON.stringify(page)).not.toContain(directory)
     expect(JSON.stringify(page)).not.toContain('private plugin failure text')
   })
@@ -51,7 +51,7 @@ describe('extension host logging contract', () => {
 
     const completed = logs.list().filter(item => item.namespace === 'extension.loader' && item.event === 'extension.activation.completed')
     expect(completed.map(item => item.data?.state)).toEqual(['active', 'degraded'])
-    expect(completed[0]?.message).toMatch(/^example\.loggingActive activated · active · \d+(?:\.\d+)? ms$/)
-    expect(completed[1]?.message).toMatch(/^example\.loggingDegraded activated · degraded · \d+(?:\.\d+)? ms$/)
+    expect(completed[0]?.message).toMatch(/^example\.loggingActive\/server activated · active · \d+(?:\.\d+)? ms$/)
+    expect(completed[1]?.message).toMatch(/^example\.loggingDegraded\/server activated · degraded · \d+(?:\.\d+)? ms$/)
   })
 })

@@ -8,6 +8,8 @@
     { "path": "./packages/diagnostics" },
     { "path": "./packages/transport" },
     { "path": "./packages/data-engine" },
+    { "path": "./packages/blob-store" },
+    { "path": "./packages/asset-store" },
     { "path": "./packages/agent-store" },
     { "path": "./packages/narrative-store" },
     { "path": "./packages/document-store" },

@@ -12,10 +12,6 @@ Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本列表收�
 - **`system.getInfo`**: 获取内核与协议版本号，能力枚举。
 - **`system.introspect`**: 暴露当前内核中注册的所有 RPC、Event 等映射，供 Studio Client 动态探测能力。
 
-### Events
-- **`events.subscribe`**: 订阅服务器事件。
-- **`events.unsubscribe`**: 取消事件订阅。
-
 ### Document Store
 - **`docs.get`**: 根据 ID 获取单个 Document 的完整内容。
 - **`docs.list`**: 获取匹配类型的文档列表。
@@ -23,11 +19,13 @@ Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本列表收�
 - **`docs.delete`**: 删除文档。
 
 ### Extensions
-- **`extensions.list`**: 列出 Server Extension Manager 发现的来源、期望启用状态与当前 Host runtime 状态。
-- **`extensions.enable`**: 持久化启用选择与事件 capability grant，并激活或按需重载 Server Extension。
-- **`extensions.disable`**: 持久化禁用选择并释放当前 Server Extension instance。
-- **`extensions.reload`**: 在不改变启用选择的情况下重新加载已启用 Server Extension。
-- **`extensions.getDiagnostics`**: 查询 Extension 发现、激活、运行与清理 Diagnostics。
+- **`extensions.listPackages`**: 返回插件管理初始快照，包括 Package 展示元数据、`tags`、受控 `iconUrl`、不泄露物理目录的 `sourceKinds`、可用性、声明式资源和各 Module 的 desired/runtime 状态。
+- **`extensions.installPackage`**: 从本地 `sourceDirectory` 安全安装 Manifest v2 Package。
+- **`extensions.uninstallPackage`**: 删除指定 installed Package 版本；不删除其 Document 与 Media Asset。
+- **`extensions.enableModule`**: 使用 `packageId + moduleId` 持久化启用选择与事件 / Asset grant；Server Module 会被激活或按需 reload。
+- **`extensions.disableModule`**: 持久化禁用目标 Module；Server Module 的当前 instance 会被释放。
+- **`extensions.reloadModule`**: 重新加载一个已启用 Server Module，不改变 sibling Module。
+- **`extensions.getDiagnostics`**: 按可选 `packageId + moduleId` 查询发现、激活、运行与清理 Diagnostics。
 
 ### Observability
 - **`diagnostics.list`**: 获取系统范围内的所有诊断信息 (Diagnostics)。
@@ -48,32 +46,38 @@ Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本列表收�
 - **`application.createModelProfile`** / **`getModelProfile`** / **`listModelProfiles`** / **`updateModelProfile`** / **`deleteModelProfile`**
 - **`application.pingModelProfile`**: 测试特定模型端点的联通性。
 
-### Card & Agent Runtime Profile
-- **`application.createCard`** / **`getCard`** / **`listCards`**
+### Card 与导入导出
+- **`application.createCard`** / **`getCard`** / **`listCards`** / **`updateCard`** / **`deleteCard`**
 - **`application.importCardBundle`**: 导入自包含 Card Bundle，在同一事务中创建 Card、平铺 Prompt Resources 与 Import Bundle。
 - **`application.updateCardPromptResources`**: 以有序 `promptResourceIds` 更新 Card Manifest；拒绝重复、缺失或非 Prompt Resource 引用。
 - **`application.exportCardArtifact`**: 从 Card 的有序 Prompt Resource IDs 导出当前自包含 Artifact。
 - **`application.getImportBundle`**: 按 Card 保存的 `importBundleId` 查询独立导入来源与兼容数据。
-- **`application.createAgentRuntimeProfile`** / **`getAgentRuntimeProfile`** / **`listAgentRuntimeProfiles`** / **`updateAgentRuntimeProfile`** / **`deleteAgentRuntimeProfile`**
 
-### Session & Timeline
-- **`application.createSession`**: 创建全新会话。
-- **`application.createSessionFromCard`**: 从现有角色卡创建会话。
-- **`application.getSession`**: 获取会话详情与分支树。
-- **`application.getTimeline`**: 获取会话中某个分支的用户可见叙事时间线。
-- **`application.getAgentTranscript`**: 获取智能体的真实日志 (包含系统级思考、底层交互)。
-- **`application.forkBranch`**: 从时间线的特定位置分叉。
+### Agent 配置与 Session
+- **`application.createAgentPreset`** / **`getAgentPreset`** / **`listAgentPresets`** / **`updateAgentPreset`** / **`deleteAgentPreset`**
+- **`application.createAgentLocalBinding`** / **`getAgentLocalBinding`** / **`listAgentLocalBindings`** / **`updateAgentLocalBinding`** / **`deleteAgentLocalBinding`**
+- **`application.createAgentSession`** / **`getAgentSession`** / **`getAgentMessagePage`** / **`deleteAgentSession`**
+- **`application.previewAgentTurn`**: 构造本轮 Prompt 与 Provider payload，但不持久化 Agent Message 或 Narrative Node。
+- **`application.invokeAgentTurn`**: 调用 Provider 并提交 Agent Message；可选在同一 Changeset 中提交 Narrative Node。
+
+### Narrative Timeline
+- **`application.createNarrativeTimelineFromCard`**: 从 Card 当前版本创建 Timeline、初始 Branch 与 Opening Nodes。
+- **`application.getNarrativeTimeline`** / **`getNarrativePage`**
+- **`application.forkNarrativeBranch`** / **`switchNarrativeBranch`** / **`deleteNarrativeTimeline`**
 
 ### Prompt Resource
 - **`application.getPromptResource`**: 按 `resourceId` 读取一个 Prompt Resource。
 - **`application.listCardPromptResources`**: 按 Card Manifest 中的顺序读取全部 Prompt Resources。
 - **`application.createPromptResourceAsset`** / **`updatePromptResourceAsset`** / **`updatePromptResourceAssets`** / **`movePromptResourceAsset`** / **`deletePromptResourceAsset`**: 只修改指定 Resource Document；跨 Resource move / batch update 当前明确拒绝。
 
-### Prompt
-- **`application.previewPrompt`**: 在不提交真实对话的情况下，预览编译后发给模型的 Prompt。
+## 3. Media Asset HTTP 数据面
 
-### Core Turn Flow
-- **`application.submitTurn`**: 向当前会话分支提交一次回合操作，触发 AI 生成流程。
+大型字节不进入 JSON-RPC：
 
-### Run Trace
-- **`application.getRun`**: 获取特定一次 `submitTurn` 产生的所有过程数据 (Run)。
+- **`POST /assets`**: raw body 上传，使用 `Content-Type` 与 `X-Loom-Asset-Kind` 创建 Media Asset；
+- **`GET /assets/:assetId`** / **`HEAD /assets/:assetId`**: 按稳定 Asset ID 读取字节和 metadata headers。
+
+## 4. Extension HTTP 数据面
+
+- **`GET /extensions/:packageId/:version/icon`**: 读取 Manifest 声明的 Package 图标；只支持 Package 内的 PNG/JPEG/WebP/GIF，不暴露源目录。
+- **`GET /extensions/events`**: 建立 SSE 连接并推送 `extensions.changed`。初始和刷新后的完整状态仍通过 `extensions.listPackages` 获取。

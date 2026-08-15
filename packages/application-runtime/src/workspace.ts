@@ -7,6 +7,7 @@ import { readDocument, toVersioned, writeDocument } from './document-store.js'
 import { isObject } from './json.js'
 import type {
   CardPresetInput,
+  CardMediaRefs,
   CardSourceContent,
   OpeningChatInput,
   RuntimeRequestContext,
@@ -35,6 +36,7 @@ export type CardBundleArtifact = {
     preset?: CardPresetInput
     opening?: OpeningChatInput | string
     settingLayer?: SettingLayerInput
+    media?: CardMediaRefs
   }
   contextAssets: PromptResourceNode[]
   metadata?: JsonObject
@@ -56,12 +58,19 @@ export type CardBundleSourceArtifactRef = {
   format: 'loom.cardBundle'
   importedAt: string
   schemaVersion: CardBundleArtifact['schemaVersion']
+  sourceArtifactId?: string
+  blobId?: string
+  sha256?: string
+  sizeBytes?: number
+  originalFileName?: string
+  mediaType?: string
 }
 
 export type CardBundleImportManifest = {
   artifactId: string
   bindingIds: string[]
   documentIds: string[]
+  assetIds: string[]
   id: string
   importedAt: string
   sourceArtifactRef: CardBundleSourceArtifactRef
@@ -70,6 +79,7 @@ export type CardBundleImportManifest = {
 export type ImportBundleContent = {
   cardId: string
   documentIds: string[]
+  assetIds: string[]
   sourceArtifact: CardBundleArtifact
   sourceArtifactRef: CardBundleSourceArtifactRef
   bindings: CardBundleSourceBinding[]
@@ -128,6 +138,10 @@ type PromptContributionResourceNode = PromptResourceNode & {
 
 export async function importCardBundle(input: {
   artifact: CardBundleArtifact
+  storedSourceArtifact?: Pick<
+    CardBundleSourceArtifactRef,
+    'sourceArtifactId' | 'blobId' | 'sha256' | 'sizeBytes' | 'originalFileName' | 'mediaType'
+  >
   context?: RuntimeRequestContext
   documents: DocumentStore
   now?: string
@@ -137,7 +151,7 @@ export async function importCardBundle(input: {
 }> {
   const artifact = normalizeCardBundleArtifact(input.artifact)
   const timestamp = input.now ?? nowIso()
-  const sourceArtifactRef = createSourceArtifactRef(artifact, timestamp)
+  const sourceArtifactRef = createSourceArtifactRef(artifact, timestamp, input.storedSourceArtifact)
 
   const transaction = await input.documents.transact({
     actor: input.context?.clientId
@@ -163,6 +177,7 @@ export async function importCardBundle(input: {
         name: artifact.card.name,
         userName: normalizeOptionalString(artifact.card.userName),
         description: artifact.card.description,
+        media: artifact.card.media,
         importBundleId,
         promptResourceIds: resources.map(resource => resource.id),
         preset: normalizePreset(artifact.card.preset),
@@ -184,6 +199,7 @@ export async function importCardBundle(input: {
       content: {
         cardId: card.id,
         documentIds: [card.id, ...resources.map(resource => resource.id)],
+        assetIds: readCardAssetIds(artifact.card.media),
         sourceArtifact: artifact,
         sourceArtifactRef,
         bindings,
@@ -415,17 +431,20 @@ function buildExportArtifact(input: {
   const importBundle = input.importBundle ? toCardBundleImportManifest(input.importBundle) : undefined
 
   return {
+    ...sourceArtifact,
     schemaVersion: 1,
     artifactId: sourceArtifact?.artifactId ?? input.card.id,
     displayName: sourceArtifact?.displayName ?? cardContent.name,
     description: sourceArtifact?.description ?? cardContent.description,
     card: {
+      ...sourceArtifact?.card,
       name: cardContent.name,
       userName: cardContent.userName,
       description: cardContent.description,
       preset: cardContent.preset,
       opening: cardContent.opening,
       settingLayer: cardContent.settingLayer,
+      media: cardContent.media,
     },
     contextAssets: input.contextAssets,
     metadata: {
@@ -446,8 +465,13 @@ function toCardBundleImportManifest(importBundle: DocumentRecord<ImportBundleCon
     importedAt: importBundle.content.importedAt,
     sourceArtifactRef: importBundle.content.sourceArtifactRef,
     documentIds: importBundle.content.documentIds,
+    assetIds: importBundle.content.assetIds ?? [],
     bindingIds: importBundle.content.bindings.map(binding => binding.id),
   }
+}
+
+function readCardAssetIds(media: CardMediaRefs | undefined): string[] {
+  return [...new Set([media?.avatarAssetId, media?.coverAssetId].filter((value): value is string => Boolean(value)))]
 }
 
 async function readOptionalCardImportBundle(
@@ -512,6 +536,7 @@ export function normalizeCardBundleArtifact(artifact: CardBundleArtifact): CardB
   assertCardBundleArtifact(artifact)
 
   return {
+    ...artifact,
     schemaVersion: 1,
     artifactId: artifact.artifactId,
     displayName: artifact.displayName,
@@ -522,13 +547,21 @@ export function normalizeCardBundleArtifact(artifact: CardBundleArtifact): CardB
   }
 }
 
-function createSourceArtifactRef(artifact: CardBundleArtifact, importedAt: string): CardBundleSourceArtifactRef {
+function createSourceArtifactRef(
+  artifact: CardBundleArtifact,
+  importedAt: string,
+  stored?: Pick<
+    CardBundleSourceArtifactRef,
+    'sourceArtifactId' | 'blobId' | 'sha256' | 'sizeBytes' | 'originalFileName' | 'mediaType'
+  >,
+): CardBundleSourceArtifactRef {
   return {
     artifactId: artifact.artifactId,
     displayName: artifact.displayName,
     format: 'loom.cardBundle',
     importedAt,
     schemaVersion: artifact.schemaVersion,
+    ...stored,
   }
 }
 

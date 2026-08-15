@@ -13,7 +13,8 @@ import { join, resolve } from 'node:path'
 let checks = 0
 
 type WeatherStatus = {
-  extensionId: string
+  packageId: string
+  moduleId: string
   instanceId: string
   aborted: boolean
   grantedEventCapabilities: string[]
@@ -40,16 +41,16 @@ const extensionHost = createExtensionHost({
   diagnostics,
   logger: rootLogger.child('extension.loader'),
   mode: 'test',
-  grantEventCapabilities: manifest => manifest.capabilities?.['events.subscribe'] ?? [],
+  grantEventCapabilities: (_manifest, moduleManifest) => moduleManifest.capabilities?.['events.subscribe'] ?? [],
   callRpc: (method, params, context) => kernel.callRpc(method, params, context),
-  registerRpc: (name, ownerExtensionId, handler, ownerInstanceId) => {
-    const handle = kernel.registerExtensionRpc(name, ownerExtensionId, handler, ownerInstanceId)
-    return { name, ownerExtensionId, ownerInstanceId, handler, dispose: handle.dispose }
+  registerRpc: (name, ownerPackageId, ownerModuleId, handler, ownerInstanceId) => {
+    const handle = kernel.registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler, ownerInstanceId)
+    return { name, ownerPackageId, ownerModuleId, ownerInstanceId, handler, dispose: handle.dispose }
   },
   registerEventDefinition: (definition, registeredBy) => kernel.getEventBus().registerDefinition(definition, registeredBy),
   emitEvent: (name, payload, publisher) => kernel.getEventBus().emit(name, payload, {
     publisher,
-    source: publisher.kind === 'extension' ? `extension:${publisher.extensionId}` : publisher.kind,
+    source: publisher.kind === 'extension' ? `extension:${publisher.packageId}/${publisher.moduleId}` : publisher.kind,
   }),
   subscribeEvents: (patterns, handler, subscriber) => kernel.getEventBus().subscribe(patterns, handler, { subscriber }),
 })
@@ -69,15 +70,15 @@ kernel.getEventBus().subscribe(['example.weatherStation.*', 'docs.changed'], eve
 
 const extensionDirectory = resolve('extensions/weather-station')
 const discovered = await extensionHost.discover(extensionDirectory)
-assert(discovered.state === 'manifestValidated', 'extension discovery validates the manifest')
+assert(discovered[0]?.state === 'manifestValidated', 'extension discovery validates the manifest')
 
-const firstActivation = await extensionHost.activate('example.weatherStation')
+const firstActivation = await extensionHost.activate('example.weatherStation', 'server')
 assert(firstActivation.state === 'active', 'extension activates without degradation')
 const firstInstanceId = required(firstActivation.instance?.instanceId, 'first instanceId')
 
 await flushEventHandlers()
 const firstStatus = await kernel.callRpc<WeatherStatus>('example.weatherStation.status')
-assert(firstStatus.extensionId === 'example.weatherStation', 'RPC receives trusted extension identity')
+assert(firstStatus.packageId === 'example.weatherStation' && firstStatus.moduleId === 'server', 'RPC receives trusted package and module identity')
 assert(firstStatus.instanceId === firstInstanceId, 'RPC receives current instance identity')
 assert(firstStatus.aborted === false, 'activation AbortSignal remains active')
 assert(firstStatus.grantedEventCapabilities.includes('documents'), 'manifest event capability is granted')
@@ -131,7 +132,8 @@ expectThrow(
   }, {
     publisher: {
       kind: 'extension',
-      extensionId: 'example.weatherStation',
+      packageId: 'example.weatherStation',
+      moduleId: 'server',
       instanceId: firstInstanceId,
     },
   }),
@@ -145,7 +147,8 @@ expectThrow(
   () => kernel.getEventBus().subscribe(['docs.changed'], () => {}, {
     subscriber: {
       kind: 'extension',
-      extensionId: 'example.untrusted',
+      packageId: 'example.untrusted',
+      moduleId: 'server',
       instanceId: 'untrusted-1',
       capabilities: [],
     },
@@ -156,16 +159,17 @@ expectThrow(
 const firstDefinitions = kernel.getEventBus().definitions().filter(item => item.registeredBy.kind === 'extension')
 assert(firstDefinitions.length === 3, 'runtime registry contains all extension event definitions')
 assert(firstDefinitions.every(item => item.registeredBy.kind === 'extension' && item.registeredBy.instanceId === firstInstanceId), 'definitions belong to the first instance')
+assert(firstDefinitions.every(item => item.registeredBy.kind === 'extension' && item.registeredBy.packageId === 'example.weatherStation' && item.registeredBy.moduleId === 'server'), 'definitions retain package and module owner')
 
 const failingExtensionDirectory = createFailingExtensionFixture()
 await extensionHost.discover(failingExtensionDirectory)
-const failedActivation = await extensionHost.activate('example.activationFailure')
+const failedActivation = await extensionHost.activate('example.activationFailure', 'server')
 assert(failedActivation.instance?.state === 'activation_failed', 'activation failure preserves a dedicated instance state')
 await expectReject(() => kernel.callRpc('example.activationFailure.ping'), 'activation failure cleans partial RPC registration')
 assert(!kernel.getEventBus().eventNames().includes('example.activationFailure.ready'), 'activation failure cleans partial event definition')
 
 process.env.LOOM_WEATHER_TEST_FAIL_DISPOSE = '0'
-const reloaded = await extensionHost.reload('example.weatherStation')
+const reloaded = await extensionHost.reload('example.weatherStation', 'server')
 assert(reloaded.state === 'active', 'extension reload activates a fresh instance')
 const secondInstanceId = required(reloaded.instance?.instanceId, 'second instanceId')
 assert(secondInstanceId !== firstInstanceId, 'reload creates a new instanceId')
@@ -179,14 +183,14 @@ assert(secondStatus.instanceId === secondInstanceId, 'RPC points at the reloaded
 assert(secondStatus.counters.documentChanges === 0, 'reload does not recreate the existing document')
 
 process.env.LOOM_WEATHER_TEST_FAIL_DISPOSE = '1'
-const failingDisposeActivation = await extensionHost.reload('example.weatherStation')
+const failingDisposeActivation = await extensionHost.reload('example.weatherStation', 'server')
 const failingDisposeInstanceId = required(failingDisposeActivation.instance?.instanceId, 'failing dispose instanceId')
 assert(failingDisposeInstanceId !== secondInstanceId, 'dispose-failure verification uses a fresh instance')
 
 const thirdActivation = await verifyKernelStopCleanup(extensionHost, kernel)
 assert(thirdActivation.instance?.instanceId !== failingDisposeInstanceId, 'kernel-stop verification creates a fresh recovery instance')
 
-const disposeDiagnostics = diagnostics.list({ extensionId: 'example.weatherStation' }).filter(item => (
+const disposeDiagnostics = diagnostics.list({ packageId: 'example.weatherStation', moduleId: 'server' }).filter(item => (
   item.instanceId === failingDisposeInstanceId
   && item.code.startsWith('example.weatherStation.dispose.')
 ))
@@ -200,22 +204,23 @@ assert(diagnostics.list().some(item => item.code === 'extension.dispose_failed' 
 
 let finalDisposeRejected = false
 try {
-  await extensionHost.dispose('example.weatherStation')
+  await extensionHost.dispose('example.weatherStation', 'server')
 } catch {
   finalDisposeRejected = true
 }
 assert(finalDisposeRejected, 'explicit dispose reports aggregated cleanup failure')
 await expectReject(() => kernel.callRpc('example.weatherStation.status'), 'disposed RPC is removed')
 assert(kernel.getEventBus().definitions().every(item => item.registeredBy.kind !== 'extension'), 'disposed event definitions are removed')
-assert(extensionHost.list().find(item => item.id === 'example.weatherStation')?.instance?.state === 'dispose_failed', 'instance state preserves cleanup failure')
+assert(extensionHost.list().find(item => item.packageId === 'example.weatherStation' && item.moduleId === 'server')?.instance?.state === 'dispose_failed', 'instance state preserves cleanup failure')
 
-await extensionHost.dispose('example.weatherStation')
+await extensionHost.dispose('example.weatherStation', 'server')
 await kernel.stop()
 await rootLogger.close()
 
 const runtimeLogs = logs.list().filter(item => item.event === 'extension.runtime.log')
 assert(runtimeLogs.some(item => item.data?.instanceId === firstInstanceId), 'extension logger includes first instance identity')
 assert(runtimeLogs.some(item => item.data?.instanceId === secondInstanceId), 'extension logger includes reloaded instance identity')
+assert(runtimeLogs.every(item => item.data?.packageId === 'example.weatherStation' && item.data?.moduleId === 'server'), 'extension logger includes package and module identity')
 
 console.log(`Server extension verification passed: ${checks} checks`)
 
@@ -260,16 +265,20 @@ function createFailingExtensionFixture(): string {
   rmSync(directory, { recursive: true, force: true })
   mkdirSync(join(directory, 'dist'), { recursive: true })
   writeFileSync(join(directory, 'manifest.json'), JSON.stringify({
-    manifestVersion: 1,
+    manifestVersion: 2,
     id: 'example.activationFailure',
     version: '0.0.0',
     displayName: 'Activation Failure Test Extension',
     engines: { studio: '^0.1.0' },
-    server: { entry: './dist/index.js' },
-    contributes: {
-      rpc: [{ name: 'example.activationFailure.ping' }],
-      events: [{ name: 'example.activationFailure.ready', version: 1, visibility: 'public' }],
-    },
+    modules: [{
+      id: 'server',
+      runtime: 'server',
+      entry: './dist/index.js',
+      contributes: {
+        rpc: [{ name: 'example.activationFailure.ping' }],
+        events: [{ name: 'example.activationFailure.ready', version: 1, visibility: 'public' }],
+      },
+    }],
   }))
   writeFileSync(join(directory, 'dist/index.js'), `
 export function activate(ctx) {
@@ -302,7 +311,7 @@ async function verifyKernelStopCleanup(
   assert(activeKernel.getEventBus().definitions().every(item => item.registeredBy.kind !== 'extension'), 'kernel stop removes extension event definitions')
 
   await activeKernel.start()
-  const activation = await host.activate('example.weatherStation')
+  const activation = await host.activate('example.weatherStation', 'server')
   assert(activation.state === 'active', 'kernel can start and reactivate an extension after failed cleanup')
   return activation
 }

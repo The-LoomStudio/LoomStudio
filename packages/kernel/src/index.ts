@@ -21,6 +21,7 @@ import type {
   EventDefinitionRegistrationOwner,
   EventPublishIdentity,
   EventSubscriberIdentity,
+  ExtensionAssetCapability,
   RegisteredEventDefinition,
 } from '@loom-studio/extension-sdk'
 import type { LoomRunInput, LoomRunner } from '@loom-studio/loom-runner'
@@ -70,7 +71,7 @@ export type Kernel = {
   start(): Promise<void>
   stop(): Promise<void>
   registerKernelRpc(method: string, handler: KernelRpcHandler): RegistrationHandle
-  registerExtensionRpc(method: string, ownerExtensionId: string, handler: ExtensionRpcHandler, instanceId?: string): RegistrationHandle
+  registerExtensionRpc(method: string, ownerPackageId: string, ownerModuleId: string, handler: ExtensionRpcHandler, instanceId?: string): RegistrationHandle
   callRpc<T = JsonValue>(method: string, params?: JsonValue, context?: KernelRpcContext): Promise<T>
   getPublicSurface(): KernelPublicSurface
   getDocumentStore(): DocumentStore
@@ -85,16 +86,23 @@ export type KernelPublicSurface = {
   namespaces: string[]
   methods: Array<{
     name: string
-    owner: 'kernel' | `extension:${string}`
+    owner: 'kernel' | `extension:${string}/${string}`
   }>
   version: string
 }
 
 export type ExtensionManagementService = {
-  list(): JsonValue[]
-  enable(extensionId: string, grantedEventCapabilities?: EventCapabilityCategory[]): Promise<JsonValue>
-  disable(extensionId: string): Promise<JsonValue>
-  reload(extensionId: string): Promise<JsonValue>
+  listPackages(): JsonValue[]
+  installPackage(sourceDirectory: string): Promise<JsonValue>
+  uninstallPackage(packageId: string, version?: string): Promise<JsonValue>
+  enableModule(packageId: string, moduleId: string, grants?: ExtensionModuleCapabilityGrants): Promise<JsonValue>
+  disableModule(packageId: string, moduleId: string): Promise<JsonValue>
+  reloadModule(packageId: string, moduleId: string): Promise<JsonValue>
+}
+
+export type ExtensionModuleCapabilityGrants = {
+  eventCapabilities?: EventCapabilityCategory[]
+  assetCapabilities?: ExtensionAssetCapability[]
 }
 
 export type CreateKernelOptions = {
@@ -115,7 +123,7 @@ const kernelNamespaces = ['system', 'events', 'docs', 'extensions', 'diagnostics
 
 type RpcRegistryEntry = {
   handler: KernelRpcHandler
-  owner: 'kernel' | `extension:${string}`
+  owner: 'kernel' | `extension:${string}/${string}`
 }
 
 export type CreateEventBusOptions = {
@@ -277,7 +285,7 @@ export function createKernel(options: CreateKernelOptions): Kernel {
         },
       }
     },
-    registerExtensionRpc: (method, ownerExtensionId, handler, instanceId = `legacy:${ownerExtensionId}`) => {
+    registerExtensionRpc: (method, ownerPackageId, ownerModuleId, handler, instanceId = `legacy:${ownerPackageId}/${ownerModuleId}`) => {
       if (isKernelNamespace(method)) {
         throw new Error(`Extension cannot register Kernel namespace RPC: ${method}`)
       }
@@ -287,8 +295,13 @@ export function createKernel(options: CreateKernelOptions): Kernel {
       }
 
       const entry: RpcRegistryEntry = {
-        handler: (params, context) => handler(params, { ...context, extensionId: ownerExtensionId, instanceId }),
-        owner: `extension:${ownerExtensionId}`,
+        handler: (params, context) => handler(params, {
+          ...context,
+          packageId: ownerPackageId,
+          moduleId: ownerModuleId,
+          instanceId,
+        }),
+        owner: `extension:${ownerPackageId}/${ownerModuleId}`,
       }
       handlers.set(method, entry)
 
@@ -384,10 +397,11 @@ function registerStageOneHandlers(
       methods: kernel.getPublicSurface().methods,
       events: eventBus.eventNames(),
       documentTypes: [],
-      extensions: options.extensionManager?.list() ?? options.extensionHost.list().map(extension => ({
-        id: extension.id,
-        version: extension.version,
-        active: extension.state === 'active',
+      extensions: options.extensionManager?.listPackages() ?? options.extensionHost.list().map(module => ({
+        packageId: module.packageId,
+        moduleId: module.moduleId,
+        version: module.version,
+        active: module.state === 'active',
       })),
       diagnostics: includeDiagnostics ? options.diagnostics.list() : undefined,
     } as JsonValue
@@ -440,41 +454,73 @@ function registerStageOneHandlers(
     }
   })
 
-  register('extensions.list', () => {
+  register('extensions.listPackages', () => {
     return {
-      items: options.extensionManager?.list() ?? options.extensionHost.list(),
+      items: options.extensionManager?.listPackages() ?? options.extensionHost.list(),
     } as unknown as JsonValue
   })
 
-  register('extensions.enable', async (params, context) => {
+  register('extensions.installPackage', async (params, context) => {
     const manager = requireExtensionManager(options)
-    const extensionId = readString(params, 'extensionId')
-    const grants = readEventCapabilityGrants(params)
-    const extension = await manager.enable(extensionId, grants)
-    eventBus.emit('extensions.changed', { extensionId, action: 'enabled' }, context)
-    return { extension }
+    const sourceDirectory = readString(params, 'sourceDirectory')
+    const extensionPackage = await manager.installPackage(sourceDirectory)
+    if (!isRecord(extensionPackage) || typeof extensionPackage.packageId !== 'string') {
+      throw new Error('Extension manager returned an invalid installed Package summary')
+    }
+    eventBus.emit('extensions.changed', {
+      packageId: extensionPackage.packageId,
+      ...(typeof extensionPackage.version === 'string' ? { version: extensionPackage.version } : {}),
+      action: 'installed',
+    }, context)
+    return { package: extensionPackage }
   })
 
-  register('extensions.disable', async (params, context) => {
+  register('extensions.uninstallPackage', async (params, context) => {
     const manager = requireExtensionManager(options)
-    const extensionId = readString(params, 'extensionId')
-    const extension = await manager.disable(extensionId)
-    eventBus.emit('extensions.changed', { extensionId, action: 'disabled' }, context)
-    return { extension }
+    const packageId = readString(params, 'packageId')
+    const version = isRecord(params) && typeof params.version === 'string' ? params.version : undefined
+    const extensionPackage = await manager.uninstallPackage(packageId, version)
+    eventBus.emit('extensions.changed', {
+      packageId,
+      ...(version ? { version } : {}),
+      action: 'uninstalled',
+    }, context)
+    return { package: extensionPackage }
   })
 
-  register('extensions.reload', async (params, context) => {
+  register('extensions.enableModule', async (params, context) => {
     const manager = requireExtensionManager(options)
-    const extensionId = readString(params, 'extensionId')
-    const extension = await manager.reload(extensionId)
-    eventBus.emit('extensions.changed', { extensionId, action: 'reloaded' }, context)
-    return { extension }
+    const packageId = readString(params, 'packageId')
+    const moduleId = readString(params, 'moduleId')
+    const grants = readExtensionCapabilityGrants(params)
+    const module = await manager.enableModule(packageId, moduleId, grants)
+    eventBus.emit('extensions.changed', { packageId, moduleId, action: 'enabled' }, context)
+    return { module }
+  })
+
+  register('extensions.disableModule', async (params, context) => {
+    const manager = requireExtensionManager(options)
+    const packageId = readString(params, 'packageId')
+    const moduleId = readString(params, 'moduleId')
+    const module = await manager.disableModule(packageId, moduleId)
+    eventBus.emit('extensions.changed', { packageId, moduleId, action: 'disabled' }, context)
+    return { module }
+  })
+
+  register('extensions.reloadModule', async (params, context) => {
+    const manager = requireExtensionManager(options)
+    const packageId = readString(params, 'packageId')
+    const moduleId = readString(params, 'moduleId')
+    const module = await manager.reloadModule(packageId, moduleId)
+    eventBus.emit('extensions.changed', { packageId, moduleId, action: 'reloaded' }, context)
+    return { module }
   })
 
   register('extensions.getDiagnostics', params => {
-    const extensionId = isRecord(params) && typeof params.extensionId === 'string' ? params.extensionId : undefined
+    const packageId = isRecord(params) && typeof params.packageId === 'string' ? params.packageId : undefined
+    const moduleId = isRecord(params) && typeof params.moduleId === 'string' ? params.moduleId : undefined
     return {
-      diagnostics: options.extensionHost.diagnostics(extensionId),
+      diagnostics: options.extensionHost.diagnostics(packageId, moduleId),
     } as unknown as JsonValue
   })
 
@@ -512,15 +558,21 @@ function requireExtensionManager(options: CreateKernelOptions): ExtensionManagem
   return options.extensionManager
 }
 
-function readEventCapabilityGrants(params: JsonValue | undefined): EventCapabilityCategory[] | undefined {
+function readExtensionCapabilityGrants(params: JsonValue | undefined): ExtensionModuleCapabilityGrants | undefined {
   if (!isRecord(params) || params.grants === undefined) return undefined
-  if (!isRecord(params.grants)) throw new Error('extensions.enable grants must be an object')
+  if (!isRecord(params.grants)) throw new Error('extensions.enableModule grants must be an object')
   const subscriptions = params.grants['events.subscribe']
-  if (subscriptions === undefined) return undefined
-  if (!Array.isArray(subscriptions) || !subscriptions.every(value => typeof value === 'string')) {
-    throw new Error('extensions.enable grants.events.subscribe must be a string array')
+  if (subscriptions !== undefined && (!Array.isArray(subscriptions) || !subscriptions.every(value => typeof value === 'string'))) {
+    throw new Error('extensions.enableModule grants.events.subscribe must be a string array')
   }
-  return subscriptions as EventCapabilityCategory[]
+  const assets = params.grants.assets
+  if (assets !== undefined && (!Array.isArray(assets) || !assets.every(value => value === 'assets.publish' || value === 'assets.read'))) {
+    throw new Error('extensions.enableModule grants.assets must contain assets.publish/assets.read')
+  }
+  return {
+    eventCapabilities: subscriptions as EventCapabilityCategory[] | undefined,
+    assetCapabilities: assets as ExtensionAssetCapability[] | undefined,
+  }
 }
 
 function normalizeContext(context: KernelRpcContext): Required<Pick<KernelRpcContext, 'correlationId' | 'callId'>> & KernelRpcContext {
@@ -593,16 +645,20 @@ function validateEventDefinition(definition: EventDefinition, registeredBy: Even
   }
 
   if (registeredBy.kind !== 'extension') return
-  if (definition.owner.kind !== 'extension' || definition.owner.extensionId !== registeredBy.extensionId) {
+  if (
+    definition.owner.kind !== 'extension'
+    || definition.owner.packageId !== registeredBy.packageId
+    || definition.owner.moduleId !== registeredBy.moduleId
+  ) {
     throw new Error(`Extension event owner mismatch: ${definition.name}`)
   }
-  if (!definition.name.startsWith(`${registeredBy.extensionId}.`)) {
-    throw new Error(`Extension event must use its own namespace: ${definition.name}`)
+  if (!definition.name.startsWith(`${registeredBy.packageId}.`)) {
+    throw new Error(`Extension event must use its package namespace: ${definition.name}`)
   }
   if (definition.visibility === 'internal') {
     throw new Error(`Extension cannot register internal event: ${definition.name}`)
   }
-  if (definition.visibility === 'protected' && definition.capability !== `extension:${registeredBy.extensionId}`) {
+  if (definition.visibility === 'protected' && definition.capability !== `extension:${registeredBy.packageId}`) {
     throw new Error(`Extension protected event must use its extension capability: ${definition.name}`)
   }
 }
@@ -610,7 +666,11 @@ function validateEventDefinition(definition: EventDefinition, registeredBy: Even
 function assertCanPublish(registered: RegisteredEventDefinition, publisher: EventPublishIdentity): void {
   const owner = registered.definition.owner
   if (owner.kind === 'extension') {
-    if (publisher.kind === 'extension' && publisher.extensionId === owner.extensionId) return
+    if (
+      publisher.kind === 'extension'
+      && publisher.packageId === owner.packageId
+      && publisher.moduleId === owner.moduleId
+    ) return
     throw new Error(`Event publisher does not own definition: ${registered.definition.name}`)
   }
   if (publisher.kind !== owner.kind) {

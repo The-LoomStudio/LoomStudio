@@ -4,6 +4,7 @@
 > **日期**：2026-08-13
 > **范围**：在已经完成的 Server Extension Host 之前增加本地插件发现、启用状态、事件权限 grant 与运行时编排层，消除 Studio Server 对单个示例插件的硬编码加载。
 > **非目标**：Client Extension Host、WebSocket Event Transport、Marketplace、正式安装/卸载、签名、自动更新、依赖求解、Worker/子进程安全隔离。
+> **2026-08-15 路径说明**：本文记录的 `.loomstudio-dev/extensions/` 是当前已实现的开发态路径，不再作为正式安装布局。统一路径 Resolver、OS-native data root 与 `extensions/installed/<package-id>/<version>/` 目标见 [`local-data-blob-store-foundation-plan.md`](local-data-blob-store-foundation-plan.md)。
 
 相关文档：
 

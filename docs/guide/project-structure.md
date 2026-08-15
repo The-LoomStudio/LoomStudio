@@ -2,6 +2,13 @@
 
 Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要分为三大代码区域：`packages/` (内核与领域逻辑), `apps/` (独立应用程序), `extensions/` (插件实例)。
 
+## Workspace 工具链
+
+- Node.js 固定为 `22.18.0`，pnpm 固定为 `9.15.0`；版本来源分别是 `.node-version` / `.nvmrc` 与根 `package.json`。
+- 新依赖默认保存精确版本，所有依赖都禁止使用 `latest` 或 `*`。安装与 CI 使用 `pnpm install --frozen-lockfile`。
+- 内部 packages 的运行时入口位于各自 `dist/`。根目录的 `dev:server` 和 `dev:client` 会先构建并持续监听这些 packages，避免 workspace 链接正确但产物过期。
+- `pnpm run check:workspace` 会先构建内部 packages，再检查工具链版本、依赖确定性、lockfile 和关键跨包运行时导出。
+
 ## 依赖关系方向
 
 > **核心原则：内层不依赖外层。**
@@ -123,6 +130,10 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
   - 正式架构说明：[`architecture/kernel/README.md`](../architecture/kernel/README.md)。
 - 📦 `packages/document-store/`
   - 承载所有的状态与数据持久化逻辑（目前后端使用 SQLite 适配器实现）。
+- 📦 `packages/blob-store/`
+  - 基于 SHA-256 的不可变字节存储，负责 staging、去重、原子 finalize 与受控 stream/read，不包含业务 Asset 语义。
+- 📦 `packages/asset-store/`
+  - 在共享 SQLite 中保存 Source Artifact 与 Media Asset metadata，并通过稳定 ID 关联 Blob。
 - 📦 `packages/transport/`
   - 定义了系统内所有 RPC 消息、事件通知的格式 (Message Envelope)。
 - 📦 `packages/client-bridge/`

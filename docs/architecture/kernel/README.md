@@ -70,7 +70,7 @@ createKernel(options)
 Kernel 维护一个进程内 RPC Registry。每个条目包含 handler 与 owner：
 
 ```ts
-type RpcOwner = 'kernel' | `extension:${string}`
+type RpcOwner = 'kernel' | `extension:${string}/${string}`
 ```
 
 ### Kernel RPC
@@ -92,9 +92,9 @@ audit.*
 
 ### Extension RPC
 
-`registerExtensionRpc()` 不能写入 Kernel 保留命名空间。Extension 方法必须位于自己的命名空间，并记录 `ownerExtensionId`；重复方法名同样会被拒绝。
+`registerExtensionRpc()` 不能写入 Kernel 保留命名空间。Extension 方法必须位于 Package namespace，并记录 `ownerPackageId`、`ownerModuleId` 与 `instanceId`；重复方法名同样会被拒绝。
 
-Extension handler 获得的 context 由 Kernel 注入真实 `extensionId` 与 `instanceId`，不能通过请求参数伪造 owner。Registration handle 只会删除创建它的当前 Registry entry，旧实例清理不会误删 reload 后的新 handler。
+Extension handler 获得的 context 由 Kernel 注入真实 `packageId`、`moduleId` 与 `instanceId`，不能通过请求参数伪造 owner。Registration handle 只会删除创建它的当前 Registry entry，旧实例清理不会误删 reload 后的新 handler 或 sibling Module。
 
 ## 5. 当前 RPC families
 
@@ -103,7 +103,7 @@ Extension handler 获得的 context 由 Kernel 注入真实 `extensionId` 与 `i
 | `system.*` | 健康检查、版本与能力信息、动态 introspection |
 | `events.*` | 保留给未来真实 Event Transport；当前没有伪订阅 RPC |
 | `docs.*` | Document 查询、写入、删除、Changeset 查询与反向 Changeset |
-| `extensions.*` | Extension 状态和诊断查询 |
+| `extensions.*` | Package Catalog、Module 启停/reload 与诊断查询 |
 | `diagnostics.*` | 平台诊断读取 |
 | `loom.*` | 经 Loom Runner 执行领域无关 Fragment pipeline |
 | `trace.*` | Loom Trace 事实查询 |

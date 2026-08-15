@@ -98,6 +98,7 @@ export async function callApplicationRpc(
         opening: readOptionalOpening(params, 'opening'),
         setting: readOptionalObject(params, 'setting'),
         settingLayer: readOptionalSettingLayer(params, 'settingLayer'),
+        media: readOptionalCardMedia(params, 'media'),
       }, context) as unknown as JsonValue
 
     case 'application.getCard':
@@ -120,6 +121,7 @@ export async function callApplicationRpc(
         preset: readOptionalPreset(params, 'preset'),
         opening: readOptionalOpening(params, 'opening'),
         settingLayer: readOptionalSettingLayer(params, 'settingLayer'),
+        media: readOptionalCardMedia(params, 'media'),
       }, context) as unknown as JsonValue
 
     case 'application.deleteCard':
@@ -332,9 +334,7 @@ export async function callApplicationRpc(
       }, context) as unknown as JsonValue
 
     case 'application.importCardBundle':
-      return await runtime.importCardBundle({
-        artifact: readCardBundleArtifact(params, 'artifact'),
-      }, context) as unknown as JsonValue
+      return await runtime.importCardBundle(readCardBundleImportInput(params), context) as unknown as JsonValue
 
     case 'application.getImportBundle':
       return await runtime.getImportBundle({
@@ -458,6 +458,24 @@ function readCardBundleArtifact(params: JsonValue | undefined, key: string) {
   return value
 }
 
+function readCardBundleImportInput(params: JsonValue | undefined) {
+  if (!isRecord(params)) throw new Error('Expected card bundle import params')
+  if (params.source !== undefined) {
+    if (!isRecord(params.source) || typeof params.source.text !== 'string') {
+      throw new Error('Expected card bundle source text')
+    }
+    return {
+      source: {
+        text: params.source.text,
+        originalFileName: typeof params.source.originalFileName === 'string'
+          ? params.source.originalFileName
+          : undefined,
+      },
+    }
+  }
+  return { artifact: readCardBundleArtifact(params, 'artifact') }
+}
+
 function readOptionalPreset(params: JsonValue | undefined, key: string): { system?: string } | undefined {
   if (!isRecord(params) || params[key] === undefined) return undefined
   const value = params[key]
@@ -465,6 +483,16 @@ function readOptionalPreset(params: JsonValue | undefined, key: string): { syste
 
   return {
     system: typeof value.system === 'string' ? value.system : undefined,
+  }
+}
+
+function readOptionalCardMedia(params: JsonValue | undefined, key: string) {
+  if (!isRecord(params) || params[key] === undefined) return undefined
+  const value = params[key]
+  if (!isRecord(value)) throw new Error(`Expected card media param: ${key}`)
+  return {
+    avatarAssetId: typeof value.avatarAssetId === 'string' ? value.avatarAssetId : undefined,
+    coverAssetId: typeof value.coverAssetId === 'string' ? value.coverAssetId : undefined,
   }
 }
 

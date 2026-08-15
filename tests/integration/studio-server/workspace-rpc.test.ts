@@ -28,6 +28,41 @@ describe('studio server card bundle rpc integration', () => {
     })
   })
 
+  it('preserves exact raw bundle JSON in the local Blob Store', async () => {
+    await withStudioServer(async (port, dir) => {
+      const raw = await readFile(join(process.cwd(), 'packages/application-runtime/fixtures/workspaces/loom-city-v0.json'), 'utf8')
+      const imported = await callRpc<{
+        importBundle: {
+          sourceArtifactRef: {
+            sourceArtifactId: string
+            blobId: string
+            sha256: string
+            originalFileName: string
+          }
+        }
+      }>(port, 'application.importCardBundle', {
+        source: { text: raw, originalFileName: 'loom-city-v0.json' },
+      })
+      const ref = imported.importBundle.sourceArtifactRef
+      const filename = join(
+        dir,
+        'data',
+        'blobs',
+        'sha256',
+        ref.sha256.slice(0, 2),
+        ref.sha256.slice(2, 4),
+        ref.sha256,
+      )
+
+      expect(await readFile(filename, 'utf8')).toBe(raw)
+      expect(ref).toMatchObject({
+        sourceArtifactId: expect.any(String),
+        blobId: expect.any(String),
+        originalFileName: 'loom-city-v0.json',
+      })
+    })
+  })
+
   it('edits, undoes, redoes, and exports a resource through resource-scoped rpc', async () => {
     await withStudioServer(async port => {
       const imported = await callRpc<{

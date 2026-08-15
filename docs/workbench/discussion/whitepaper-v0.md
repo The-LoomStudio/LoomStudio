@@ -10,6 +10,8 @@
 
 > **仓库边界更新（2026-07-13）**：`@loom/core` 已迁入 LoomStudio 的 `packages/core` 作为独立 workspace package。物理同仓不改变 Engine 与 Studio 的逻辑分层、public API 或未来独立发布能力；本文中“必须位于独立 Git 仓库”的旧约束已被本次迁移取代。
 
+> **本地存储更新（2026-08-15）**：本文的 portable `my-workspace/workspace.db`、一个进程对应一个 workspace、Extension 跟随 workspace 安装及可替换 FsBackend 均属于早期白皮书设想。当前后端使用单 SQLite Data Engine、平铺 Resource、Narrative / Agent 专用表；正式本地路径与内容寻址 Blob Store 目标以 [`../plans/local-data-blob-store-foundation-plan.md`](../plans/local-data-blob-store-foundation-plan.md) 为准。
+
 ---
 
 ## 0. Intent

@@ -6,6 +6,7 @@ import { isPromptActivation } from './prompt-activation.js'
 import type {
   CardPresetContent,
   CardPresetInput,
+  CardMediaRefs,
   CardSourceContent,
   OpeningChatContent,
   OpeningChatEntryContent,
@@ -52,12 +53,20 @@ export function normalizeCardContent(content: CardSourceContent): CardSourceCont
     description: typeof legacyContent.description === 'string' ? legacyContent.description : undefined,
     importBundleId: normalizeOptionalString(legacyContent.importBundleId),
     promptResourceIds: normalizeOptionalIdList(legacyContent.promptResourceIds),
+    media: normalizeCardMedia(legacyContent.media),
     preset: normalizePreset(legacyContent.preset),
     opening: normalizeOpening(legacyContent.opening),
     settingLayer: normalizeSettingLayer(legacyContent.settingLayer, legacyContent.setting),
     createdAt: typeof legacyContent.createdAt === 'string' ? legacyContent.createdAt : nowIso(),
     updatedAt: typeof legacyContent.updatedAt === 'string' ? legacyContent.updatedAt : nowIso(),
   }
+}
+
+export function normalizeCardMedia(input: unknown): CardMediaRefs | undefined {
+  if (!isObject(input)) return undefined
+  const avatarAssetId = normalizeOptionalString(input.avatarAssetId)
+  const coverAssetId = normalizeOptionalString(input.coverAssetId)
+  return avatarAssetId || coverAssetId ? { avatarAssetId, coverAssetId } : undefined
 }
 
 export function normalizeOptionalString(input: unknown): string | undefined {

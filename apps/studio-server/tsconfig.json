@@ -7,7 +7,9 @@
   },
   "references": [
     { "path": "../../packages/agent-store" },
+    { "path": "../../packages/asset-store" },
     { "path": "../../packages/application-runtime" },
+    { "path": "../../packages/blob-store" },
     { "path": "../../packages/data-engine" },
     { "path": "../../packages/diagnostics" },
     { "path": "../../packages/document-store" },

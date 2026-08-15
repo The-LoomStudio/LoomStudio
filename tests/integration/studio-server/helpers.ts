@@ -1,11 +1,12 @@
 import { createStudioServer } from '../../../apps/studio-server/src/main.js'
+import { resolveLoomStudioLocalPaths } from '../../../apps/studio-server/src/local-paths.js'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 export async function withStudioServer<T>(run: (port: number, dir: string) => Promise<T>): Promise<T> {
   const dir = await mkdtemp(join(tmpdir(), 'loom-server-'))
-  const server = createStudioServer({ sqlitePath: join(dir, 'store.sqlite') })
+  const server = createStudioServer({ localPaths: resolveLoomStudioLocalPaths({ home: dir }) })
 
   try {
     const { port } = await server.listen(0)

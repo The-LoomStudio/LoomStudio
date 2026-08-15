@@ -78,6 +78,32 @@ describe('loom runner pass execution', () => {
     expect(result.diagnostics?.some(diagnostic => diagnostic.code === 'loom/pass-threw')).toBe(true)
   })
 
+  it('maps Core hint diagnostics to Studio info while preserving details', async () => {
+    const runner = createLoomRunner({
+      factories: [{
+        name: 'hint',
+        create: () => ({
+          name: 'hint',
+          run: (fragments, ctx) => {
+            ctx.diagnose({ severity: 'hint', code: 'test/hint', message: 'helpful hint' })
+            return fragments
+          },
+        }),
+      }],
+    })
+
+    const result = await runner.run({
+      fragments: [{ id: 'f1', content: 'hello', meta: {} }],
+      passes: [{ name: 'hint' }],
+    })
+
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      severity: 'info',
+      code: 'test/hint',
+      details: expect.objectContaining({ severity: 'hint' }),
+    }))
+  })
+
   it('persists trace when trace is enabled', async () => {
     const traceAudit = createInMemoryTraceAuditStore()
     const runner = createLoomRunner({ traceAudit })

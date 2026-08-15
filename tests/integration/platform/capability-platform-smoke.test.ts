@@ -20,12 +20,15 @@ function createHarness() {
     documents,
     diagnostics,
     callRpc: (method, params, context) => kernel.callRpc(method, params, context),
-    registerRpc: (name, ownerExtensionId, handler) => {
-      const handle = kernel.registerExtensionRpc(name, ownerExtensionId, handler)
-      return { name, ownerExtensionId, handler, dispose: handle.dispose }
+    registerRpc: (name, ownerPackageId, ownerModuleId, handler, ownerInstanceId) => {
+      const handle = kernel.registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler, ownerInstanceId)
+      return { name, ownerPackageId, ownerModuleId, ownerInstanceId, handler, dispose: handle.dispose }
     },
-    emitEvent: (name, payload, ownerExtensionId) => {
-      kernel.getEventBus().emit(name, payload, { source: `extension:${ownerExtensionId}` })
+    emitEvent: (name, payload, publisher) => {
+      kernel.getEventBus().emit(name, payload, {
+        publisher,
+        source: publisher.kind === 'extension' ? `extension:${publisher.packageId}/${publisher.moduleId}` : publisher.kind,
+      })
     },
   })
 
@@ -81,7 +84,7 @@ describe('platform capability integration smoke', () => {
       expectedVersion: 'new',
     })
     const documents = await bridge.call<{ items: Array<{ id: string; content: { ok: boolean } }> }>('docs.list', { type: 'example.platform-smoke.note' })
-    const echo = await bridge.call<{ extensionId: string; echo: { message: string } }>('example.echo.echo', { message: 'platform-smoke' })
+    const echo = await bridge.call<{ packageId: string; moduleId: string; echo: { message: string } }>('example.echo.echo', { message: 'platform-smoke' })
     const runResult = await bridge.call<{ fragments: Array<{ content: string }>; traceId?: string }>('loom.run', {
       fragments: [{ id: 'platform-smoke-fragment', content: 'hello platform smoke', meta: { __owner: 'platform-smoke' } }],
       passes: [{ name: 'uppercase' }],
@@ -94,14 +97,14 @@ describe('platform capability integration smoke', () => {
     const diagnostics = await bridge.call<{ items: Array<{ code: string }> }>('diagnostics.list')
     const traces = await bridge.call<{ items: Array<{ id: string }> }>('trace.list')
 
-    expect(introspect.methods).toContainEqual({ name: 'example.echo.echo', owner: 'extension:example.echo' })
+    expect(introspect.methods).toContainEqual({ name: 'example.echo.echo', owner: 'extension:example.echo/server' })
     expect(introspect.methods).toContainEqual({ name: 'loom.run', owner: 'kernel' })
     expect(introspect.events).toContain('docs.changed')
     expect(introspect.events).toContain('diagnostics.updated')
     expect(writeResult.documents[0]).toMatchObject({ id: 'platform-smoke:doc', content: { ok: true } })
     expect(documents.items[0]).toMatchObject({ id: 'platform-smoke:doc', content: { ok: true } })
     expect(events.some(event => event.name === 'docs.changed')).toBe(true)
-    expect(echo).toEqual({ extensionId: 'example.echo', echo: { message: 'platform-smoke' } })
+    expect(echo).toEqual({ packageId: 'example.echo', moduleId: 'server', echo: { message: 'platform-smoke' } })
     expect(runResult.fragments[0]?.content).toBe('HELLO PLATFORM SMOKE')
     expect(runResult.traceId).toBeDefined()
     expect(traceAudit.listTraces()).toHaveLength(1)

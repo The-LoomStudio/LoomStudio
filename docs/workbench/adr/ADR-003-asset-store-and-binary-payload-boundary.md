@@ -1,8 +1,9 @@
 # ADR-003: Asset Store and Binary Payload Boundary
 
-> **Status**: Proposed  
+> **Status**: Proposed / Refined
 > **Date**: 2026-05-16  
 > **Decision scope**: Future data-layer iteration after MVP Stage 0-5
+> **2026-08-15 refinement**: [`../plans/local-data-blob-store-foundation-plan.md`](../plans/local-data-blob-store-foundation-plan.md) 将底层字节层收束为通用内容寻址 Blob Store。Source Artifact 与 Media Asset 是引用 Blob 的不同逻辑记录；自动生成的 Thumbnail 属于可重建 Cache，不默认作为权威 Asset。
 
 ---
 
@@ -40,8 +41,14 @@ Loom Studio should split media handling into two planes:
 Document Store / SQLite:
   structured metadata, ownership, references, relations, revision facts
 
-Asset Store:
-  binary blobs, thumbnails, previews, derived files, checksums
+Blob Store:
+  immutable bytes, checksums, streaming storage
+
+Asset / Artifact metadata:
+  stable ids, blob refs, provenance, media metadata
+
+Cache:
+  generated thumbnails, previews, rebuildable derivatives
 ```
 
 A generated image document should store an asset reference, not the image bytes:

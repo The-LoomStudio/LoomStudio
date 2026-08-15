@@ -5,7 +5,7 @@ import type {
   AgentStore,
 } from '@loom-studio/agent-store'
 import type { DocumentStore } from '@loom-studio/document-store'
-import type { SqliteDataEngine } from '@loom-studio/data-engine'
+import type { DataActorRef, SqliteDataEngine } from '@loom-studio/data-engine'
 import type { Logger } from '@loom-studio/logging'
 import type {
   NarrativeBranch,
@@ -251,6 +251,34 @@ export type ApplicationRuntimeOptions = {
   gateway?: AiGateway
   provider?: ApplicationProvider
   clock?: { now(): Date }
+  sourceArtifacts?: SourceArtifactStorage
+  mediaAssets?: MediaAssetLookup
+}
+
+export type MediaAssetLookup = {
+  get(assetId: string): Promise<{ id: string } | undefined>
+}
+
+export type SourceArtifactStorage = {
+  preserve(input: {
+    source: Uint8Array
+    format: string
+    originalFileName?: string
+    mediaType?: string
+    importerVersion?: string
+    actor: DataActorRef
+    reason: string
+    correlationId?: string
+    callId?: string
+    parentCallId?: string
+  }): Promise<{
+    sourceArtifactId: string
+    blobId: string
+    sha256: string
+    sizeBytes: number
+    originalFileName?: string
+    mediaType?: string
+  }>
 }
 
 export type AiGateway = {
@@ -339,6 +367,7 @@ export type CreateCardInput = {
   opening?: OpeningChatInput | string
   setting?: JsonObject
   settingLayer?: SettingLayerInput
+  media?: CardMediaRefs
 }
 
 export type CreateCardResult = {
@@ -372,6 +401,7 @@ export type UpdateCardInput = {
   preset?: CardPresetInput
   opening?: OpeningChatInput | string
   settingLayer?: SettingLayerInput
+  media?: CardMediaRefs
 }
 
 export type UpdateCardResult = {
@@ -554,9 +584,18 @@ export type UpdateAgentLocalBindingResult = CreateAgentLocalBindingResult
 export type DeleteAgentLocalBindingInput = { localBindingId: string }
 export type DeleteAgentLocalBindingResult = { deleted: true }
 
-export type ImportCardBundleInput = {
-  artifact: CardBundleArtifact
-}
+export type ImportCardBundleInput =
+  | {
+    artifact: CardBundleArtifact
+    source?: never
+  }
+  | {
+    artifact?: never
+    source: {
+      text: string
+      originalFileName?: string
+    }
+  }
 
 export type ImportCardBundleResult = {
   card: CardSourceContent & { id: string; version: number }
@@ -700,11 +739,17 @@ export type CardSourceContent = {
   description?: string
   importBundleId?: string
   promptResourceIds?: string[]
+  media?: CardMediaRefs
   preset: CardPresetContent
   opening: OpeningChatContent
   settingLayer: SettingLayerContent
   createdAt: string
   updatedAt: string
+}
+
+export type CardMediaRefs = {
+  avatarAssetId?: string
+  coverAssetId?: string
 }
 
 export type CardPresetInput = {

@@ -1,12 +1,13 @@
 # Loom Studio Config and Local State v0
 
-> **Status**: Draft v0.1（第一批实现约束，2026-05-14）
+> **Status**: Historical Draft / Superseded（第一批实现约束，2026-05-14）
 > **Purpose**: 定义 Studio MVP 的配置文件、开发态本地状态、项目数据、Extension 搜索路径与 secrets 边界，避免实现阶段随手写入混乱路径。
 > **Audience**: Studio Server、Kernel bootstrap、Extension Host、Document Store、DevTool 实现者。
+> **2026-08-15 替代说明**：本文保留 P0 开发态路径的设计历史。`.loomstudio-dev/projects/<project-id>/`、未来 portable workspace 映射和各模块自行选择路径的方案已经停止演进。后续实现统一以 [`../plans/local-data-blob-store-foundation-plan.md`](../plans/local-data-blob-store-foundation-plan.md) 为准：正式版使用 OS-native data/cache/log roots，开发与测试通过 `LOOM_STUDIO_HOME` 收拢，结构化权威数据使用单 SQLite，不建立 per-project 物理目录。
 > **Related**:
 > - [`studio-repository-engineering-v0.md`](studio-repository-engineering-v0.md)
 > - [`studio-dependency-and-runtime-choices-v0.md`](studio-dependency-and-runtime-choices-v0.md)
-> - [`../04-data/studio-document-store-engineering-v0.md`](../04-data/studio-document-store-engineering-v0.md)
+> - [`data/studio-document-store-engineering-v0.md`](data/studio-document-store-engineering-v0.md)
 
 ---
 

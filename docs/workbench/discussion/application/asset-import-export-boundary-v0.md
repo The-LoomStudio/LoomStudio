@@ -6,10 +6,12 @@
 > - [`card-model-v0.md`](card-model-v0.md)
 > - [`compatibility-import-v0.md`](compatibility-import-v0.md)
 > - [`prompt/prompt-builder-philosophy-v0.md`](prompt/prompt-builder-philosophy-v0.md)
-> - [`../04-data/studio-data-layer-architecture.md`](../04-data/studio-data-layer-architecture.md)
-> - [`../06-engineering/studio-config-and-local-state-v0.md`](../06-engineering/studio-config-and-local-state-v0.md)
+> - [`../data/studio-data-layer-architecture.md`](../data/studio-data-layer-architecture.md)
+> - [`../studio-config-and-local-state-v0.md`](../studio-config-and-local-state-v0.md)
 >
 > **2026-07-29 更新**：本文中的 “Artifact seeds the workspace” 属于早期术语。下一阶段目标是 Artifact 创建 Card Manifest、平铺 Resources 与 Import Bundle；PromptWorkspace 不再进入 Session、PromptBuild 或 Export 权威链。实施计划见 [`../../plans/card-resource-manifest-migration-plan.md`](../../plans/card-resource-manifest-migration-plan.md)。
+>
+> **2026-08-15 更新**：原始 Artifact 的最终物理边界已收束为内容寻址 Blob Store。原始 JSON 也按不可变字节保留；Importer 解析出的可编辑、可查询内容进入 SQLite。内部不再按 Card / Worldbook / Preset 建立运行时权威文件夹，具体实施见 [`../../plans/local-data-blob-store-foundation-plan.md`](../../plans/local-data-blob-store-foundation-plan.md)。
 
 ---
 
@@ -42,7 +44,7 @@ Import Bundle / Binding 记录导入来源与推荐组合关系。
 
 - 导入文件不是运行时唯一事实源；
 - 用户编辑不直接写回原始 PNG / JSON；
-- 导入后 Card、Setting Layer、Prompt Asset、Preset 等应变成独立运行时内容；
+- 导入后 Card、Setting Layer、Prompt Asset、Preset、Transform Rule 等应变成独立运行时内容；
 - 导出是显式操作，会从当前 SQL state 重新生成 artifact；
 - 重置是显式操作，会从保留的 source artifact 或 canonical seed 重新初始化运行时内容。
 
@@ -97,6 +99,7 @@ airp.settingLayer
 airp.promptAsset
 airp.compositionSkeleton
 airp.projectionOrderProfile
+airp.transformRule
 airp.promptWorkspace
 ```
 
@@ -141,6 +144,21 @@ Binding 记录这些内容的推荐组合关系，而不是所有权关系。
 ```text
 这个 Setting Layer 被这张卡拥有。
 ```
+
+同一原则也适用于声明式规则。ST Regex 等兼容配置导入后应成为平铺的 Transform Rule Resource；Card、Preset 或其他资源只记录引用关系。规则可以随某个 Bundle 一起分发，但不被 Bundle、Card 或 Extension Module 强拥有。
+
+```text
+Bundle / Artifact:
+  决定导出时应收集哪些规则资源。
+
+Card / Preset Binding:
+  决定某个使用场景启用哪些规则资源。
+
+Transform Rule Resource:
+  保存规则配置并独立编辑、版本化、禁用和复用。
+```
+
+`promptResourceIds` 只表达参与 Prompt 内容组织的资源，不能顺便承担 Card 全部 Bundle inventory 或 Display Rule binding。正式关系 Schema 尚未确定，不在本文提前引入通用 Resource Binding Graph。
 
 ---
 
@@ -241,29 +259,22 @@ PNG card 是兼容和分发格式，不是运行时编辑格式。导入后可�
 
 ## 7. 本地目录边界
 
-MVP 应区分用户可见 artifact 与开发态运行状态。
+本文早期提出的 repo 内 `data/artifacts` 与 `.loomstudio-dev/document-store.sqlite` 双目录只是 MVP 候选，已由本地数据基建计划替代。
 
-候选目录：
+当前目标边界：
 
 ```text
-LoomStudio/
-├── data/
-│   ├── artifacts/
-│   ├── imports/
-│   └── exports/
-│
-└── .loomstudio-dev/
-    ├── document-store.sqlite
-    ├── cache/
-    └── logs/
+SQLite:
+  Card / Resources / Timeline / Import Bundle / Asset metadata
+
+Content-addressed Blob Store:
+  原始 PNG / JSON / Bundle 与正式媒体字节
+
+Cache / Logs:
+  可重建派生文件与 JSONL 运行日志
 ```
 
-边界：
-
-- `data/` 是用户可见、可备份、可导入导出的 artifact 区；
-- `.loomstudio-dev/` 是开发态 runtime state、cache、logs、SQLite；
-- SQL document store 仍是当前可编辑状态；
-- artifact 目录不作为 Prompt Builder 每轮直接扫描输入。
+原始 Artifact 不作为 Prompt Builder 每轮扫描输入。用户显式导出时选择目标目录；内部 Blob Store 不作为作者手工编辑工作区。
 
 ---
 

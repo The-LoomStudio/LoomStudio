@@ -1,1 +1,1 @@
-{"manifestVersion":1,"id":"example.echo","version":"0.0.0","displayName":"Example Echo","engines":{"studio":"^0.1.0"},"server":{"entry":"./dist/index.js"},"contributes":{"rpc":[{"name":"example.echo.echo"}]}}
+{"manifestVersion":2,"id":"example.echo","version":"0.0.0","displayName":"Example Echo","description":"Minimal Server Extension RPC example.","author":"Loom Studio","tags":["example","rpc"],"engines":{"studio":"^0.1.0"},"modules":[{"id":"server","runtime":"server","entry":"./dist/index.js","contributes":{"rpc":[{"name":"example.echo.echo"}]}}]}

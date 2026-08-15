@@ -4,6 +4,8 @@
 > **Purpose**: 明确 Loom Studio Extension Manifest 的职责、最小字段、动态注册关系、Server/Client 插件边界、贡献点模型、依赖/冲突方向，以及开放 `meta` 的规则。
 > **Audience**: Studio Kernel / Plugin Host 实现者、Extension SDK 作者、Extension 作者、DevTool 作者、插件管理器/市场实现者。
 > **Non-Replacement**: 本文不替代 Studio 总体架构、数据层 ADR 或未来 Manifest ADR。它先作为架构讨论稿，约束第一版 Manifest 设计方向。
+>
+> **2026-08-14 决策更新**：本文早期使用的 “Server Extension / Client Extension / Full Extension” 把分发包与运行单元混在一起。目标模型已改为 `Extension Package -> Extension Module -> Extension Instance`：一个 Package 可以包含零个或多个 Server / Client Module，声明式资源不需要可执行 Module。迁移计划见 [`../../plans/extension-package-module-foundation-plan.md`](../../plans/extension-package-module-foundation-plan.md)。本文尚未逐段重写的单数 `server` / `client` 示例应视为旧目标草图，而不是当前新 Schema。
 
 ---
 
@@ -455,6 +457,38 @@ Studio 使用 bundled Node LTS。
 `contributes` 是 Extension 对 Studio 生态的声明式能力索引。
 
 它不是运行时代码入口。
+
+### 6.0 可执行能力与声明式资源
+
+`contributes` 中需要区分两种性质不同的内容：
+
+```text
+Executable contribution:
+  Manifest 声明预期能力；Extension Module 激活后完成 runtime registration。
+  例如 RPC、Event、Semantic Compiler、Renderer、自定义 Transform 实现。
+
+Declarative resource contribution:
+  Package 携带可校验的数据资源；安装后进入统一资源层。
+  例如 Transform Rule、Preset、Setting Layer、主题或静态模板。
+```
+
+声明式资源不因为放在 Extension Package 中就变成可执行插件。它不获得 `instanceId`、Host Context 或独立生命周期，也不应要求对应的 Client / Server entry 启动。
+
+以 Transform Rule 为例：
+
+```text
+contributes.transformRules
+  -> 安装器读取资源声明
+  -> 注册为平铺 Transform Rule Resource
+  -> Card / Preset / Runtime Binding 按 ID 引用
+  -> Transform Rule System 负责实际执行
+```
+
+只有规则引用了平台未知的 matcher / transformer kind 时，才同时依赖某个可执行 Extension Module 注册该实现。缺失依赖时规则保持 unresolved 并产生 Diagnostic；导入资源不能自动激活代码或授予权限。
+
+因此：
+
+> Extension Package 可以是规则资源的分发入口，但 Extension Host 不是规则配置的执行入口。
 
 ### 6.1 `contributes.rpc`
 

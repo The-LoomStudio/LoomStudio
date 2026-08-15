@@ -1,5 +1,6 @@
 import type { DocumentRecord, DocumentStore } from '@loom-studio/document-store'
 import type { AgentMessage } from '@loom-studio/agent-store'
+import type { JsonValue } from '@loom-studio/shared'
 import {
   assertModelProfileExists,
   assertNonEmpty,
@@ -8,6 +9,7 @@ import {
 import {
   cardToSnapshot,
   normalizeCardContent,
+  normalizeCardMedia,
   normalizeOpening,
   normalizeOptionalString,
   normalizePreset,
@@ -29,18 +31,21 @@ import {
   getImportBundle,
   getPromptResource,
   importCardBundle,
+  isCardBundleArtifact,
   listCardPromptResources,
   movePromptResourceAsset,
   readPromptResourceInputs,
   updatePromptResourceAsset,
   updatePromptResourceAssets,
   updateCardPromptResources,
+  type CardBundleArtifact,
 } from './workspace.js'
 import type {
   AgentLocalBindingContent,
   AgentPresetContent,
   ApplicationRuntime,
   ApplicationRuntimeOptions,
+  CardMediaRefs,
   CardSourceContent,
   ModelProfileContent,
   ProviderAccountContent,
@@ -82,6 +87,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       if (input.name.trim().length === 0) {
         throw new Error('createCard name cannot be empty')
       }
+      await assertCardMedia(ctx, input.media)
 
       const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.createCard', async documents => {
         const timestamp = ctx.now()
@@ -93,6 +99,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
             userName: normalizeOptionalString(input.userName),
             description: input.description,
             promptResourceIds: [],
+            media: normalizeCardMedia(input.media),
             preset: normalizePreset(input.preset),
             opening: normalizeOpening(input.opening),
             settingLayer: normalizeSettingLayer(input.settingLayer, input.setting),
@@ -135,6 +142,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       if (input.name !== undefined && input.name.trim().length === 0) {
         throw new Error('updateCard name cannot be empty')
       }
+      await assertCardMedia(ctx, input.media)
       const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.updateCard', async documents => {
         const existing = await readDocument<CardSourceContent>(documents, input.cardId, applicationDocumentTypes.cardSource)
         const updated = await writeDocument<CardSourceContent>(documents, {
@@ -148,6 +156,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
             ...(input.preset !== undefined ? { preset: normalizePreset(input.preset) } : {}),
             ...(input.opening !== undefined ? { opening: normalizeOpening(input.opening) } : {}),
             ...(input.settingLayer !== undefined ? { settingLayer: normalizeSettingLayer(input.settingLayer, undefined) } : {}),
+            ...(input.media !== undefined ? { media: normalizeCardMedia(input.media) } : {}),
             updatedAt: ctx.now(),
           }),
           expectedVersion: existing.version,
@@ -639,11 +648,31 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     },
 
     importCardBundle: async (input, requestContext) => {
+      const artifact = input.source ? parseCardBundleSource(input.source.text) : input.artifact
+      await assertCardMedia(ctx, artifact.card.media)
+      const sourceText = input.source?.text ?? `${JSON.stringify(artifact, null, 2)}\n`
+      const storedSourceArtifact = ctx.sourceArtifacts
+        ? await ctx.sourceArtifacts.preserve({
+          source: new TextEncoder().encode(sourceText),
+          format: 'loom.cardBundle',
+          originalFileName: input.source?.originalFileName,
+          mediaType: 'application/json',
+          importerVersion: 'loom.cardBundle@1',
+          actor: requestContext?.clientId
+            ? { kind: 'client', id: requestContext.clientId }
+            : applicationActor,
+          reason: 'application.importCardBundle.sourceArtifact',
+          correlationId: requestContext?.correlationId,
+          callId: requestContext?.callId,
+          parentCallId: requestContext?.parentCallId,
+        })
+        : undefined
       return await importCardBundle({
-        artifact: input.artifact,
+        artifact,
         context: requestContext,
         documents: ctx.documents,
         now: ctx.now(),
+        storedSourceArtifact,
       })
     },
 
@@ -864,6 +893,32 @@ async function prepareAgentTurn(
 
 function readDurationMs(startedAt: number): number {
   return Math.round((performance.now() - startedAt) * 100) / 100
+}
+
+function parseCardBundleSource(source: string): CardBundleArtifact {
+  if (new TextEncoder().encode(source).byteLength > 16 * 1024 * 1024) {
+    throw new Error('Card bundle source exceeds 16 MiB')
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(source)
+  } catch {
+    throw new Error('Card bundle source must be valid JSON')
+  }
+  if (!isCardBundleArtifact(parsed as JsonValue)) throw new Error('Card bundle source does not contain a valid CardBundleArtifact')
+  return parsed as CardBundleArtifact
+}
+
+async function assertCardMedia(
+  ctx: ApplicationRuntimeContext,
+  media: CardMediaRefs | undefined,
+): Promise<void> {
+  const assetIds = [...new Set([media?.avatarAssetId, media?.coverAssetId].filter((value): value is string => Boolean(value)))]
+  if (assetIds.length === 0) return
+  if (!ctx.mediaAssets) throw new Error('Media Asset Store is not configured')
+  for (const assetId of assetIds) {
+    if (!await ctx.mediaAssets.get(assetId)) throw new Error(`Media Asset not found: ${assetId}`)
+  }
 }
 
 function redactProviderAccount<T extends { secretRefs: Record<string, string> }>(account: T): T {

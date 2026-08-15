@@ -1,13 +1,13 @@
 import { parseExtensionManifest, type ExtensionManifest } from '@loom-studio/extension-host'
 import { access, readFile, readdir, realpath } from 'node:fs/promises'
-import { dirname, isAbsolute, relative, resolve } from 'node:path'
+import { isAbsolute, relative, resolve } from 'node:path'
 
 export type ExtensionSourceKind = 'repository' | 'dev-link' | 'installed'
 
 export type ExtensionSource = {
   kind: ExtensionSourceKind
   directory: string
-  declaredId?: string
+  declaredPackageId?: string
 }
 
 export type DiscoveredExtensionSource = ExtensionSource & {
@@ -45,7 +45,7 @@ export async function discoverExtensionSources(options: {
   )
   await collectSources(
     { kind: 'installed', directory: options.installedDirectory },
-    () => scanChildDirectories(options.installedDirectory, 'installed'),
+    () => scanInstalledDirectories(options.installedDirectory),
     sources,
     failures,
   )
@@ -54,12 +54,16 @@ export async function discoverExtensionSources(options: {
     try {
       const directory = await realpath(source.directory)
       const manifest = parseExtensionManifest(JSON.parse(await readFile(resolve(directory, 'manifest.json'), 'utf8')) as unknown)
-      if (source.declaredId && source.declaredId !== manifest.id) {
-        throw new Error(`Dev link id ${source.declaredId} does not match manifest id ${manifest.id}`)
+      if (source.declaredPackageId && source.declaredPackageId !== manifest.id) {
+        throw new Error(`Dev link package id ${source.declaredPackageId} does not match manifest id ${manifest.id}`)
       }
-      const serverEntry = manifest.server?.entry
-      if (!serverEntry) throw new Error('server.entry is required')
-      await assertEntryInsideDirectory(directory, serverEntry)
+      for (const moduleManifest of manifest.modules ?? []) {
+        await assertEntryInsideDirectory(directory, moduleManifest.entry)
+      }
+      for (const rule of manifest.contributes?.transformRules ?? []) {
+        await assertEntryInsideDirectory(directory, rule.source)
+      }
+      if (manifest.icon) await assertEntryInsideDirectory(directory, manifest.icon)
       discovered.push({ ...source, directory, manifest })
     } catch (error) {
       failures.push({ source, error })
@@ -67,6 +71,34 @@ export async function discoverExtensionSources(options: {
   }
 
   return { discovered, failures }
+}
+
+async function scanInstalledDirectories(parent: string): Promise<ExtensionSource[]> {
+  let packageEntries
+  try {
+    packageEntries = await readdir(parent, { withFileTypes: true })
+  } catch (error) {
+    if (isNodeError(error, 'ENOENT')) return []
+    throw error
+  }
+
+  const sources: ExtensionSource[] = []
+  for (const packageEntry of packageEntries) {
+    if (packageEntry.name === '.staging' || !packageEntry.isDirectory()) continue
+    const packageDirectory = resolve(parent, packageEntry.name)
+    const versionEntries = await readdir(packageDirectory, { withFileTypes: true })
+    for (const versionEntry of versionEntries) {
+      if (!versionEntry.isDirectory()) continue
+      const directory = resolve(packageDirectory, versionEntry.name)
+      try {
+        await access(resolve(directory, 'manifest.json'))
+        sources.push({ kind: 'installed', directory })
+      } catch (error) {
+        if (!isNodeError(error, 'ENOENT')) throw error
+      }
+    }
+  }
+  return sources
 }
 
 async function collectSources(
@@ -123,7 +155,7 @@ async function readDevLinks(filename: string): Promise<ExtensionSource[]> {
     if (!isRecord(entry) || typeof entry.id !== 'string' || typeof entry.path !== 'string' || !isAbsolute(entry.path)) {
       throw new Error(`Invalid extension dev link at index ${index}`)
     }
-    return { kind: 'dev-link' as const, directory: entry.path, declaredId: entry.id }
+    return { kind: 'dev-link' as const, directory: entry.path, declaredPackageId: entry.id }
   })
 }
 
@@ -141,7 +173,7 @@ async function assertEntryInsideDirectory(directory: string, entry: string): Pro
 function assertContained(directory: string, candidate: string, entry: string): void {
   const pathFromDirectory = relative(directory, candidate)
   if (pathFromDirectory && !pathFromDirectory.startsWith('..') && !isAbsolute(pathFromDirectory)) return
-  throw new Error(`Extension server entry must stay inside its directory: ${entry}`)
+  throw new Error(`Extension package path must stay inside its directory: ${entry}`)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

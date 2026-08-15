@@ -12,7 +12,7 @@ describe('extension host cleanup contract', () => {
     })
 
     await extensionHost.discover(dir)
-    const summary = await extensionHost.activate('example.partialFailure')
+    const summary = await extensionHost.activate('example.partialFailure', 'server')
 
     expect(summary.state).toBe('disabled')
     await expect(kernel.callRpc('example.partialFailure.echo', {})).rejects.toThrow('method not found')
@@ -22,9 +22,9 @@ describe('extension host cleanup contract', () => {
     const { kernel, extensionHost } = createExtensionHostHarness()
     await kernel.start()
     await extensionHost.discover(join(process.cwd(), 'extensions/example-echo'))
-    await extensionHost.activate('example.echo')
+    await extensionHost.activate('example.echo', 'server')
 
-    await extensionHost.dispose('example.echo')
+    await extensionHost.dispose('example.echo', 'server')
 
     await expect(kernel.callRpc('example.echo.echo', {})).rejects.toThrow('method not found')
   })

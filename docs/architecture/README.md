@@ -35,7 +35,8 @@ Architecture
 ## 当前已晋升内容
 
 - [`kernel/README.md`](kernel/README.md) — Studio Kernel 当前架构；
-- [`extensions/README.md`](extensions/README.md) — Server Extension Host、Instance/Scope、Manifest 与 Event capability 当前架构；
+- [`extensions/README.md`](extensions/README.md) — Extension Package/Module/Instance、Server Host、Manifest 与 Event capability 当前架构；
+- [`data/local-storage-and-assets.md`](data/local-storage-and-assets.md) — OS-native 本地路径、SQLite / Blob / Source Artifact / Media Asset 与 Package 安装边界；
 - [`platform/logging.md`](platform/logging.md) — Server/Client 统一结构化运行日志、Sink、JSONL、查询与 Viewer 边界；
 - [`application/prompt-build/loom-core/`](application/prompt-build/loom-core/) — PromptBuild 使用的 Loom Core 执行底座、Trace 协议与 Studio 集成边界；
 - [`ui/`](ui/) — 当前 Workspace Shell、视觉语言、CSS / Theme、I18N 与基础无障碍约定。

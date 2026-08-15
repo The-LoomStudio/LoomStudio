@@ -30,6 +30,8 @@ export default defineConfig({
       '@loom-studio/client-bridge': new URL('./packages/client-bridge/src/index.ts', import.meta.url).pathname,
       '@loom-studio/diagnostics': new URL('./packages/diagnostics/src/index.ts', import.meta.url).pathname,
       '@loom-studio/data-engine': new URL('./packages/data-engine/src/index.ts', import.meta.url).pathname,
+      '@loom-studio/blob-store': new URL('./packages/blob-store/src/index.ts', import.meta.url).pathname,
+      '@loom-studio/asset-store': new URL('./packages/asset-store/src/index.ts', import.meta.url).pathname,
       '@loom-studio/document-store': new URL('./packages/document-store/src/index.ts', import.meta.url).pathname,
       '@loom-studio/application-runtime': new URL('./packages/application-runtime/src/index.ts', import.meta.url).pathname,
       '@loom-studio/extension-host': new URL('./packages/extension-sdk/extension-host/src/index.ts', import.meta.url).pathname,

@@ -3,13 +3,14 @@
 > **Status**: Draft v0.2（纯工程骨架，2026-05-14）
 > **Purpose**: 只锁定 Loom Studio 第一版仓库形态、目录规则、package 边界、前后端组织、FSD 适用范围、命名规则与 Loom Core 依赖边界。
 > **Audience**: Studio Kernel / Client / Extension Host / DevTool 实现者，未来 Extension SDK 维护者。
+> **2026-08-15 路径替代说明**：本文中的 `.loomstudio-dev/projects/<project-id>`、workspace-local Extension scratch 与 per-project runtime 目录属于早期工程草图，不再作为后续实现依据。本地结构化数据、Blob、Extension、Cache 与 Log 路径统一见 [`../plans/local-data-blob-store-foundation-plan.md`](../plans/local-data-blob-store-foundation-plan.md)。
 > **Related**:
 >
 > - [`loom-studio-mvp-engineering.md`](loom-studio-mvp-engineering.md)
-> - [`../03-kernel/studio-transport-protocol-v0.md`](../03-kernel/studio-transport-protocol-v0.md)
-> - [`../05-extensions/studio-extension-lifecycle-v0.md`](../05-extensions/studio-extension-lifecycle-v0.md)
-> - [`../04-data/studio-document-store-engineering-v0.md`](../04-data/studio-document-store-engineering-v0.md)
-> - [`../04-data/studio-trace-audit-correlation-v0.md`](../04-data/studio-trace-audit-correlation-v0.md)
+> - [`kernel/studio-transport-protocol-v0.md`](kernel/studio-transport-protocol-v0.md)
+> - [`extensions/studio-extension-lifecycle-v0.md`](extensions/studio-extension-lifecycle-v0.md)
+> - [`data/studio-document-store-engineering-v0.md`](data/studio-document-store-engineering-v0.md)
+> - [`data/studio-trace-audit-correlation-v0.md`](data/studio-trace-audit-correlation-v0.md)
 
 ---
 

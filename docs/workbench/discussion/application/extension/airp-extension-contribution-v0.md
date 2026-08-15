@@ -75,10 +75,15 @@ manifest declares:
   contributes.transformRules: [...]
 
 Runtime:
-  Extension 注册的 Transform Rule 进入指定 phase。
+  Package 携带的声明式 Transform Rule 进入统一资源层。
+  Card、Preset 或 Runtime Binding 按资源 ID 启用规则。
   遵循 Transform Rule System 的作用域和权限。
   Rule 执行进入 Trace。
 ```
+
+普通 Regex Rule 是资源配置，不是 Extension Module 或可执行脚本。它由平台内置 Transform Rule System 执行，不需要 `activate(ctx)`。
+
+Extension Module 只在需要新 matcher / transformer kind 时注册实现能力。规则资源可以引用该 kind；对应 Module 缺失或禁用时保持 unresolved，并产生 Diagnostic。导入规则资源不得隐式安装、启动 Extension 或授予权限。
 
 ### 2.5 AI Capability / SubAgent 贡献
 

@@ -5,6 +5,7 @@
 > **范围**：统一 Document Store 提交事实、Kernel 事件传播、SQLite Schema 演进、Card Resource 引用完整性和 Extension 数据权限边界。
 > **实施约束**：本文属于 Workbench 工程计划；只有经过代码与测试证明的稳定事实才能写入 `docs/architecture`。
 > **2026-08-12 边界修订**：本文 Phase 1–4 仍记录当前已实现的 Document Store / Kernel 基线；“所有业务事实都进入 Document Store”的后续方向已由 [`sqlite-data-engine-domain-stores-kernel-plan.md`](sqlite-data-engine-domain-stores-kernel-plan.md) 取代。Document 后续只表示需要版本与 Revision 的可编辑聚合；Narrative / Agent 等高数量 append-only 数据改用共享 SQLite Data Engine 上的专用 Domain Store。
+> **2026-08-15 文件边界修订**：本文中的 Asset Store / Filesystem 草图已由 [`local-data-blob-store-foundation-plan.md`](local-data-blob-store-foundation-plan.md) 细化。底层统一保存不可变字节的 Blob；Source Artifact 与 Media Asset 是引用 Blob 的逻辑记录；自动 Thumbnail 属于 Cache。
 
 ---
 
@@ -478,7 +479,7 @@ application.updateCardPromptResources({
 
 ### Phase 5：Extension Document 权限门
 
-状态：待实施，不阻塞 Phase 1–4。
+状态：**Phase 5A 自有 Document 权限门已完成（2026-08-14）；跨 Package capability 与 transaction 后置。**
 
 目标：把 `ownerExtensionId` 从 metadata 标记升级为 Host 授权边界。
 
@@ -491,6 +492,24 @@ application.updateCardPromptResources({
 5. 禁止伪造 actor、owner 和 correlation metadata；
 6. Extension transaction API 复用统一 Commit Fact；
 7. 保留可信官方 Extension 的可配置高级能力。
+
+已实施的 Phase 5A：
+
+- Manifest 与 runtime RPC、Document type 必须使用 Package namespace；Studio 保留 namespace 不能作为 Package identity；
+- Module 只能操作自己声明且由当前 Package 拥有的 Document type；
+- `list` 强制 type 与 Package owner filter，调用方不能伪造 owner；
+- update/delete 前读取现有 Document 并验证 owner，不能夺取官方或其他 Package 数据；
+- Host 强制 Extension actor 与 Package owner；
+- `ctx.rpc.call` 拒绝 Kernel/Application/Studio 保留 namespace，不能借 `docs.*` 绕过 Document facade；
+- 跨 Package 读取目前默认拒绝，不提前设计 `documents.read:any`；
+- 契约测试覆盖正常自有 CRUD、伪造 owner、跨包读写删、未声明类型和 RPC 绕过。
+
+仍后置的 Phase 5B：
+
+- Extension transaction 与统一调用级 correlation 继承；
+- 面向具体用例的跨 Package / 官方数据窄 capability；
+- 可信官方 Extension 的高级授权配置；
+- Application typed capability，不复用通用 Document 越权读取。
 
 ### Phase 6：数据库健康度观测
 
@@ -557,24 +576,27 @@ FTS 表只保存检索投影，不保存权威 Prompt 内容。
 
 ## 6. SQL / 文件 / 其他存储边界
 
-### Document Store / SQLite
+### SQLite / Domain Stores
 
 适合：
 
-- Card、Session、Prompt Resource；
-- Narrative Entry、State、Provider Profile；
+- Card、Prompt Resource、Provider Profile 等版本化 Document；
+- Narrative Timeline / Branch / Node 专用关系表；
+- Agent Session / Message 专用关系表；
+- 运行时 State 与可查询的 Asset / Artifact metadata；
 - Extension typed user-facing data；
-- revision、changeset、tombstone 和 ownership metadata。
+- revision、changeset、tombstone、关系索引和 ownership metadata。
 
-### Asset Store / Filesystem
+### Content-addressed Blob Store / Filesystem
 
 适合：
 
 - PNG、图片、音频、视频；
+- 原始 Preset / Worldbook JSON；
 - 原始导入包和需要 byte-perfect round-trip 的 artifact；
-- checksum、thumbnail、streaming data。
+- checksum 与 streaming data。
 
-Document 只保存 asset reference。
+SQL 只保存 Blob、Asset 与 Artifact 的 metadata 和稳定引用。自动生成的 Thumbnail / Preview 进入可重建 Cache，不默认成为权威 Blob 引用。
 
 ### JSONL / Log Store
 

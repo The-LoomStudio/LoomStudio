@@ -16,6 +16,8 @@
 > - [`../../../architecture/platform/logging.md`](../../../architecture/platform/logging.md)
 
 > **2026-08-13 决策更新**：Host 继续作为 identity/permission gate。Server Extension 每次激活现已生成新的 `instanceId` 和统一 `ExtensionScope`；`ctx` 仍只是 `activate(ctx)` 的参数名。Server Event Host 已接入 Definition Registry、`public/protected/internal` visibility 与 capability category。正式的 Base/Server/Client 类型拆分、Client Host 和持久 grant Store 仍未实现，具体边界见上方计划。
+>
+> **2026-08-14 实施更新**：Server Module 已完成 Package-owned Document 默认权限门。`contributes.documentTypes` 现在约束实际 CRUD，跨 Package/官方 Document 默认拒绝；`ctx.rpc.call` 不能调用 Kernel、Application 或其他 Studio 保留 namespace。跨 Package grant、Extension transaction 与 Application typed capability 尚未实现。
 
 ---
 

@@ -5,6 +5,38 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 describe('application runtime card bundle integration', () => {
+  it('preserves exact raw JSON through the Source Artifact capability', async () => {
+    const raw = await readFile(join(process.cwd(), 'packages/application-runtime/fixtures/workspaces/loom-city-v0.json'), 'utf8')
+    let preserved: Uint8Array | undefined
+    const runtime = createApplicationRuntime({
+      documents: createInMemoryDocumentStore(),
+      sourceArtifacts: {
+        preserve: async input => {
+          preserved = input.source
+          return {
+            sourceArtifactId: 'artifact-raw',
+            blobId: 'blob-raw',
+            sha256: 'a'.repeat(64),
+            sizeBytes: input.source.byteLength,
+            originalFileName: input.originalFileName,
+            mediaType: input.mediaType,
+          }
+        },
+      },
+    })
+
+    const imported = await runtime.importCardBundle({
+      source: { text: raw, originalFileName: 'loom-city.json' },
+    })
+
+    expect(new TextDecoder().decode(preserved)).toBe(raw)
+    expect(imported.importBundle.sourceArtifactRef).toMatchObject({
+      sourceArtifactId: 'artifact-raw',
+      blobId: 'blob-raw',
+      originalFileName: 'loom-city.json',
+    })
+  })
+
   it('edits a resource directly and exports the current card bundle', async () => {
     const runtime = createApplicationRuntime({ documents: createInMemoryDocumentStore() })
     const imported = await runtime.importCardBundle({ artifact: await readLoomCityArtifact() })
@@ -21,6 +53,29 @@ describe('application runtime card bundle integration', () => {
 
     expect(findNode(exported.artifact, 'preset-style-directive')?.body).toBe('Resource-scoped edit.')
     expect(exported.artifact.metadata).toMatchObject({ exportedFromCardId: imported.card.id })
+  })
+
+  it('passes through unknown source fields while canonical fields use current data', async () => {
+    const runtime = createApplicationRuntime({ documents: createInMemoryDocumentStore() })
+    const source = {
+      ...await readLoomCityArtifact(),
+      communityExtension: { retained: true },
+      card: {
+        ...(await readLoomCityArtifact()).card,
+        communityCardField: 'kept',
+      },
+    } as CardBundleArtifact
+    const imported = await runtime.importCardBundle({ artifact: source })
+    await runtime.updateCard({ cardId: imported.card.id, description: 'Current canonical description' })
+
+    const result = await runtime.exportCardArtifact({ cardId: imported.card.id })
+    const exported = result.artifact as CardBundleArtifact & {
+      communityExtension?: { retained: boolean }
+      card: CardBundleArtifact['card'] & { communityCardField?: string }
+    }
+    expect(exported.communityExtension).toEqual({ retained: true })
+    expect(exported.card.communityCardField).toBe('kept')
+    expect(exported.card.description).toBe('Current canonical description')
   })
 
   it('rejects invalid manifest references and keeps shared resources after deleting a card', async () => {

@@ -264,14 +264,7 @@ type LogGap = {
 
 Studio Server 默认启用 JSONL 持久化。每行是一条可独立解析的完整 `LogRecord`。
 
-默认目录：
-
-```text
-$LOOM_STUDIO_DATA_DIR/logs
-
-未设置时：
-~/.loomstudio/logs
-```
+目录由 Studio Server 的 `LoomStudioLocalPaths.logRoot` 注入。正式运行使用操作系统原生日志目录；开发脚本通过 `LOOM_STUDIO_HOME=.loomstudio-dev` 收拢到 `.loomstudio-dev/logs/`。Logging Package 不再读取独立 Home 环境变量。
 
 文件名包含：
 

@@ -14,6 +14,7 @@
 - [`card-resource-manifest-migration-plan.md`](card-resource-manifest-migration-plan.md)
 - [`document-store-kernel-data-foundation-plan.md`](document-store-kernel-data-foundation-plan.md)
 - [`sqlite-data-engine-domain-stores-kernel-plan.md`](sqlite-data-engine-domain-stores-kernel-plan.md)
+- [`local-data-blob-store-foundation-plan.md`](local-data-blob-store-foundation-plan.md)
 - [`search-and-timeline-indexing-plan.md`](search-and-timeline-indexing-plan.md)
 
 ---

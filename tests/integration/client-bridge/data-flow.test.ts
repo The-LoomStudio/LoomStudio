@@ -21,12 +21,15 @@ function createHarness() {
     documents,
     diagnostics,
     callRpc: (method, params, context) => kernel.callRpc(method, params, context),
-    registerRpc: (name, ownerExtensionId, handler) => {
-      const handle = kernel.registerExtensionRpc(name, ownerExtensionId, handler)
-      return { name, ownerExtensionId, handler, dispose: handle.dispose }
+    registerRpc: (name, ownerPackageId, ownerModuleId, handler, ownerInstanceId) => {
+      const handle = kernel.registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler, ownerInstanceId)
+      return { name, ownerPackageId, ownerModuleId, ownerInstanceId, handler, dispose: handle.dispose }
     },
-    emitEvent: (name, payload, ownerExtensionId) => {
-      kernel.getEventBus().emit(name, payload, { source: `extension:${ownerExtensionId}` })
+    emitEvent: (name, payload, publisher) => {
+      kernel.getEventBus().emit(name, payload, {
+        publisher,
+        source: publisher.kind === 'extension' ? `extension:${publisher.packageId}/${publisher.moduleId}` : publisher.kind,
+      })
     },
   })
 
@@ -91,7 +94,7 @@ describe('client bridge data-flow integration', () => {
       rpc: [{ name: 'example.clientDashboard.ping' }],
       source: `export function activate(ctx) { ctx.diagnostics.report({ severity: 'info', code: 'example.clientDashboard.ready', message: 'ready' }); ctx.rpc.register('example.clientDashboard.ping', () => ({ ok: true })) }`,
     }))
-    await extensionHost.activate('example.clientDashboard')
+    await extensionHost.activate('example.clientDashboard', 'server')
     const bridge = createBridge(kernel)
     await bridge.connect()
     await bridge.call('docs.write', {
@@ -111,7 +114,7 @@ describe('client bridge data-flow integration', () => {
     expect(dashboard.documents.items).toContainEqual(expect.objectContaining({ id: 'client-dashboard:doc' }))
     expect(dashboard.diagnostics.items).toContainEqual(expect.objectContaining({ code: 'example.clientDashboard.ready' }))
     expect(dashboard.traces.items).toHaveLength(1)
-    expect(dashboard.extensions.items).toContainEqual(expect.objectContaining({ id: 'example.clientDashboard', state: 'active' }))
+    expect(dashboard.extensions.items).toContainEqual(expect.objectContaining({ packageId: 'example.clientDashboard', moduleId: 'server', state: 'active' }))
   })
 
   it('surfaces missing method errors and remains usable afterward', async () => {
@@ -163,7 +166,7 @@ async function loadDashboardData(bridge: ClientBridge): Promise<{
   const documents = await bridge.call<{ items: unknown[] }>('docs.list')
   const diagnostics = await bridge.call<{ items: unknown[] }>('diagnostics.list')
   const traces = await bridge.call<{ items: unknown[] }>('trace.list')
-  const extensions = await bridge.call<{ items: unknown[] }>('extensions.list')
+  const extensions = await bridge.call<{ items: unknown[] }>('extensions.listPackages')
   return { documents, diagnostics, traces, extensions }
 }
 
@@ -171,13 +174,17 @@ function createExtensionFixture(name: string, input: { id: string; rpc: Array<{ 
   const root = join(process.cwd(), '.loomstudio-dev/client-bridge-scenario-extensions', name)
   mkdirSync(join(root, 'dist'), { recursive: true })
   writeFileSync(join(root, 'manifest.json'), JSON.stringify({
-    manifestVersion: 1,
+    manifestVersion: 2,
     id: input.id,
     version: '0.0.0',
     displayName: input.id,
     engines: { studio: '^0.1.0' },
-    server: { entry: './dist/index.js' },
-    contributes: { rpc: input.rpc },
+    modules: [{
+      id: 'server',
+      runtime: 'server',
+      entry: './dist/index.js',
+      contributes: { rpc: input.rpc },
+    }],
   }))
   writeFileSync(join(root, 'dist/index.js'), input.source)
   return root

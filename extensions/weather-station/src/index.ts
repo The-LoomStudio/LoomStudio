@@ -92,7 +92,8 @@ export const activate = defineServerExtension({
     ctx.rpc.register('example.weatherStation.status', async () => {
       const document = await ctx.documents.get<WeatherState>(documentId)
       return {
-        extensionId: ctx.extension.id,
+        packageId: ctx.extension.packageId,
+        moduleId: ctx.extension.moduleId,
         instanceId: ctx.extension.instanceId,
         aborted: ctx.lifecycle.signal.aborted,
         grantedEventCapabilities: [...ctx.permissions.events.subscribe],

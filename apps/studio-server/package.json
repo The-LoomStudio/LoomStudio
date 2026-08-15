@@ -11,7 +11,9 @@
   },
   "dependencies": {
     "@loom-studio/agent-store": "workspace:*",
+    "@loom-studio/asset-store": "workspace:*",
     "@loom-studio/application-runtime": "workspace:*",
+    "@loom-studio/blob-store": "workspace:*",
     "@loom-studio/data-engine": "workspace:*",
     "@loom-studio/diagnostics": "workspace:*",
     "@loom-studio/document-store": "workspace:*",

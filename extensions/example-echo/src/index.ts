@@ -4,7 +4,8 @@ export const activate = defineServerExtension({
   activate: ctx => {
     ctx.rpc.register('example.echo.echo', params => {
       return {
-        extensionId: ctx.extension.id,
+        packageId: ctx.extension.packageId,
+        moduleId: ctx.extension.moduleId,
         echo: params ?? null,
       }
     })

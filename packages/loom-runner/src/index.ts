@@ -124,7 +124,7 @@ function readPassConfigs(value: JsonValue[]): PassConfig[] {
 
 function toStudioDiagnostic(diagnostic: CoreDiagnostic): Diagnostic {
   return {
-    severity: diagnostic.severity,
+    severity: diagnostic.severity === 'hint' ? 'info' : diagnostic.severity,
     code: diagnostic.code,
     message: diagnostic.message,
     source: 'loom-runner',

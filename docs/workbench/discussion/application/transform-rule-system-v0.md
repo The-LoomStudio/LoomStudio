@@ -162,7 +162,60 @@ Agent 可能触发 Transform Rule:
 
 ## 7. 与 Extension 的关系
 
-Extension 可以贡献 Transform Rule。
+### 7.1 规则配置是资源，不是可执行插件
+
+普通 Regex / Transform Rule 本质上是声明式配置。它保存 matcher、replacement、phase、target、scope、enabled 等数据，由 Transform Rule System 在受控阶段读取并执行。
+
+```text
+Transform Rule Resource:
+  描述这条规则具体怎么匹配和变换。
+
+Transform Rule System:
+  负责校验、排序、执行、Trace、Diagnostic 和权限边界。
+
+Extension Module:
+  只在平台内置 matcher / transformer 无法表达需求时，注册新的实现能力。
+```
+
+因此一条普通正则规则：
+
+- 可以作为平铺、独立编辑和版本化的资源；
+- 可以被 Card、Preset 或其他运行配置引用；
+- 可以通过 Card Bundle、Preset Bundle、独立资源文件或 Extension Package 分发；
+- 导入后不因为来源不同而获得不同运行语义；
+- 不需要 JS entry、Host Context、独立生命周期或插件权限。
+
+Card / Preset 只保存对规则资源的引用，不在各自正文中复制一份隐藏配置。规则来自哪个 Bundle 只属于 provenance / 分发关系，不改变其资源身份。
+
+### 7.2 Extension 贡献实现能力或声明式资源
+
+Extension Package 可以携带 Transform Rule Resource，但“携带配置”不等于启动 Extension Module。安装器只需把规则注册进资源层，并保留 package provenance。
+
+只有以下需求才需要可执行 Extension Module：
+
+- 注册平台尚不存在的 matcher / transformer kind；
+- 注册 Semantic Compiler 或 Renderer；
+- 规则需要受控 API、动态状态、交互或其他运行时能力。
+
+候选引用关系：
+
+```text
+Transform Rule Resource
+  -> matcher.kind = regex
+  -> transformer.kind = replace
+  -> 完全由平台内置能力执行
+
+Transform Rule Resource
+  -> transformer.kind = author.example/special-transform
+  -> 由对应 Extension Module 注册实现
+  -> Extension 缺失或禁用时保持 unresolved，并产生 Diagnostic
+```
+
+系统不得因为导入规则资源而自动安装、启用 Extension 或授予权限。
+
+### 7.3 与 Extension Contribution 的关系
+
+Extension 仍然可以贡献 Transform Rule：
 
 ```text
 manifest declares:
@@ -172,6 +225,8 @@ manifest declares:
 遵循 Transform Rule System 的作用域和权限。
 Rule 执行进入 Trace。
 ```
+
+这里的 `contributes.transformRules` 是声明式资源索引，不表示每条规则都是一个运行实例。自定义实现能力应由独立的 runtime contribution / registration 表达，不能与规则配置混成同一个概念。
 
 详见 [`extension/airp-extension-contribution-v0.md`](extension/airp-extension-contribution-v0.md)。
 
@@ -218,4 +273,5 @@ Display Transform:
 5. Import Transform 是否需要单独文档？
 6. Display Transform 是否归入 Frontend Projection 文档？
 7. 规则执行错误如何处理：跳过 / 终止 / 通知用户？
-8. ST regex script 如何映射到 Transform Rule System？
+8. ST regex 配置的字段、作用阶段与兼容导入如何映射到 Transform Rule Resource？
+9. Card / Preset 引用 Transform Rule Resource 的正式 binding schema 是什么？

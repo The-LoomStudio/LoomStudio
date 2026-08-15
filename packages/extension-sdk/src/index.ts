@@ -17,10 +17,24 @@ export type EventCapabilityCategory =
   | 'platform-data'
   | `extension:${string}`
 
+export type ExtensionAssetCapability = 'assets.publish' | 'assets.read'
+
+export type ExtensionMediaAsset = {
+  id: string
+  kind: string
+  label?: string
+  mediaType?: string
+  sizeBytes: number
+  width?: number
+  height?: number
+  ownerPackageId?: string
+  createdAt: string
+}
+
 export type EventOwner =
   | { kind: 'kernel' }
   | { kind: 'application' }
-  | { kind: 'extension'; extensionId: string }
+  | { kind: 'extension'; packageId: string; moduleId: string }
 
 export type EventDefinition<TPayload extends JsonValue = JsonValue> = {
   name: string
@@ -42,7 +56,8 @@ export type EventDefinitionRegistrationOwner =
   | { kind: 'platform' }
   | {
       kind: 'extension'
-      extensionId: string
+      packageId: string
+      moduleId: string
       instanceId: string
     }
 
@@ -55,7 +70,8 @@ export type EventSubscriberIdentity =
   | { kind: 'platform' }
   | {
       kind: 'extension'
-      extensionId: string
+      packageId: string
+      moduleId: string
       instanceId: string
       capabilities: readonly EventCapabilityCategory[]
     }
@@ -65,39 +81,76 @@ export type EventPublishIdentity =
   | { kind: 'application' }
   | {
       kind: 'extension'
-      extensionId: string
+      packageId: string
+      moduleId: string
       instanceId: string
     }
 
+export type ExtensionModuleRuntime = 'server' | 'client'
+
+export type ExtensionRuntimeContributions = {
+  rpc?: Array<{ name: string }>
+  documentTypes?: Array<{ type: string }>
+  events?: Array<{
+    name: string
+    version: number
+    visibility: Exclude<EventVisibility, 'internal'>
+  }>
+  panels?: Array<{ id: string }>
+}
+
+export type ExtensionPackageContributions = {
+  transformRules?: Array<{ source: string }>
+}
+
+export type ExtensionModuleManifest = {
+  id: string
+  runtime: ExtensionModuleRuntime
+  entry: string
+  capabilities?: {
+    'events.subscribe'?: EventCapabilityCategory[]
+    'assets.publish'?: boolean
+    'assets.read'?: boolean
+    [key: string]: JsonValue | undefined
+  }
+  contributes?: ExtensionRuntimeContributions
+}
+
 export type ExtensionManifest = {
-  manifestVersion: 1
+  manifestVersion: 2
   id: string
   version: string
   displayName: string
+  description?: string
+  icon?: string
+  author?: string
+  homepage?: string
+  repository?: string
+  tags?: string[]
   engines: {
     studio: string
     loom?: string
   }
-  server?: {
-    entry: string
-  }
-  client?: {
-    entry: string
-  }
-  roles?: string[]
-  capabilities?: {
-    'events.subscribe'?: EventCapabilityCategory[]
-    [key: string]: JsonValue | undefined
-  }
-  contributes?: {
-    rpc?: Array<{ name: string }>
-    documentTypes?: Array<{ type: string }>
-    events?: Array<{
-      name: string
-      version: number
-      visibility: Exclude<EventVisibility, 'internal'>
-    }>
-  }
+  modules?: ExtensionModuleManifest[]
+  contributes?: ExtensionPackageContributions
+}
+
+export type ExtensionPackageIdentity = {
+  packageId: string
+  version: string
+  displayName: string
+  directory: string
+}
+
+export type ExtensionModuleIdentity = {
+  packageId: string
+  moduleId: string
+  runtime: ExtensionModuleRuntime
+  entry: string
+}
+
+export type ExtensionInstanceIdentity = ExtensionPackageIdentity & ExtensionModuleIdentity & {
+  instanceId: string
 }
 
 export type ExtensionRegistrationHandle = {
@@ -107,7 +160,8 @@ export type ExtensionRegistrationHandle = {
 export type ExtensionRpcHandler = (params: JsonValue | undefined, context: ExtensionRpcContext) => JsonValue | Promise<JsonValue>
 
 export type ExtensionRpcContext = {
-  extensionId: string
+  packageId: string
+  moduleId: string
   instanceId: string
   clientId?: string
   correlationId?: string
@@ -115,10 +169,25 @@ export type ExtensionRpcContext = {
   parentCallId?: string
 }
 
+export type ExtensionDocumentListInput = Omit<ListDocumentsInput, 'ownerExtensionId' | 'type'> & {
+  type: string
+}
+
+export type ExtensionDocumentWriteInput = Omit<
+  WriteDocumentInput,
+  'actor' | 'correlationId' | 'callId' | 'parentCallId' | 'meta'
+> & {
+  meta?: Omit<NonNullable<WriteDocumentInput['meta']>,
+    'ownerExtensionId' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy' | 'tombstone'
+  >
+}
+
 export type ExtensionActivationContext = {
   extension: {
-    id: string
+    packageId: string
+    moduleId: string
     instanceId: string
+    runtime: 'server'
     version: string
     displayName: string
     directory: string
@@ -133,6 +202,7 @@ export type ExtensionActivationContext = {
     events: {
       subscribe: readonly EventCapabilityCategory[]
     }
+    assets: readonly ExtensionAssetCapability[]
   }
   rpc: {
     register(name: string, handler: ExtensionRpcHandler): ExtensionRegistrationHandle
@@ -145,12 +215,30 @@ export type ExtensionActivationContext = {
   }
   documents: {
     get<T = JsonValue>(id: string): Promise<DocumentRecord<T> | null>
-    list(query?: ListDocumentsInput): Promise<DocumentRecord[]>
-    write(input: Omit<WriteDocumentInput, 'actor' | 'correlationId' | 'callId' | 'parentCallId'>): Promise<WriteDocumentResult>
+    list(query: ExtensionDocumentListInput): Promise<DocumentRecord[]>
+    write(input: ExtensionDocumentWriteInput): Promise<WriteDocumentResult>
     delete(id: string, options?: { expectedVersion?: number; reason?: string }): Promise<WriteDocumentResult>
   }
+  assets: {
+    publish(input: {
+      bytes: Uint8Array
+      kind: string
+      label?: string
+      mediaType?: string
+      width?: number
+      height?: number
+    }): Promise<ExtensionMediaAsset>
+    read(assetId: string, options?: { maxBytes?: number }): Promise<{
+      asset: ExtensionMediaAsset
+      bytes: Uint8Array
+    }>
+    materialize(assetId: string, options?: { fileExtension?: string; maxBytes?: number }): Promise<{
+      asset: ExtensionMediaAsset
+      path: string
+    }>
+  }
   diagnostics: {
-    report(input: Omit<DiagnosticInput, 'extensionId' | 'source'> & { source?: string }): void
+    report(input: Omit<DiagnosticInput, 'packageId' | 'moduleId' | 'extensionId' | 'source'> & { source?: string }): void
   }
   lifecycle: {
     signal: AbortSignal

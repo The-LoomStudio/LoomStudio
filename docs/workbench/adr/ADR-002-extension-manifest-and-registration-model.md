@@ -1,13 +1,16 @@
 # ADR-002: Extension Manifest 与 Runtime Registration 边界
 
-- **Status**: Accepted
+- **Status**: Superseded
 - **Date**: 2026-05-13
 - **Related**:
+  - [`ADR-006-extension-package-module-instance-model.md`](ADR-006-extension-package-module-instance-model.md)
   - [`../05-extensions/studio-extension-manifest-architecture.md`](../05-extensions/studio-extension-manifest-architecture.md)
   - [`../06-engineering/loom-studio-mvp-engineering.md`](../06-engineering/loom-studio-mvp-engineering.md)
   - [`ADR-001-data-layer-workspace-sync.md`](ADR-001-data-layer-workspace-sync.md)
 
 ## Context
+
+> 本 ADR 的 Manifest v1 与“Full Extension = Server + Client”模型已被 ADR-006 取代。本文保留为历史决策记录，不再描述当前实现事实。
 
 Loom Studio 的定位是本地优先的 Extension 工作台，而不是内置 Chat / Agent / Provider / Tool / MCP 业务框架。
 

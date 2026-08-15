@@ -1,5 +1,7 @@
 import { createApplicationRuntime, createDocumentBackedAiGateway } from '@loom-studio/application-runtime'
 import { createAgentStore } from '@loom-studio/agent-store'
+import { createAssetStore, type AssetStore } from '@loom-studio/asset-store'
+import { createBlobStore } from '@loom-studio/blob-store'
 import { createSqliteDataEngine, type SqliteDataEngine } from '@loom-studio/data-engine'
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
 import { createDocumentDataCommitSource, createSqliteDocumentStore, type DocumentStore } from '@loom-studio/document-store'
@@ -11,7 +13,6 @@ import { createNarrativeStore } from '@loom-studio/narrative-store'
 import { createLoomRunner } from '@loom-studio/loom-runner'
 import { createId, nowIso } from '@loom-studio/shared'
 import { createInMemoryTraceAuditStore } from '@loom-studio/trace-audit'
-import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { withAiGatewayLogging } from './ai-gateway-logging.js'
 import { withDocumentStoreLogging } from './document-store-logging.js'
@@ -19,9 +20,9 @@ import { createStudioHttpServer } from './http-server.js'
 import { createStudioRpcRouter } from './studio-rpc-router.js'
 import { createServerExtensionManager } from './extensions/extension-manager.js'
 import { createExtensionStateStore } from './extensions/extension-state-store.js'
+import { resolveLoomStudioLocalPaths, type LoomStudioLocalPaths } from './local-paths.js'
 
 const defaultPort = 4173
-const defaultSqlitePath = '.loomstudio-dev/document-store.sqlite'
 
 export type StudioServer = {
   listen(port?: number): Promise<{ port: number }>
@@ -29,6 +30,7 @@ export type StudioServer = {
 }
 
 export type CreateStudioServerOptions = {
+  localPaths?: LoomStudioLocalPaths
   documents?: DocumentStore
   sqlitePath?: string
   logger?: Logger
@@ -43,6 +45,7 @@ export type CreateStudioServerOptions = {
 }
 
 export function createStudioServer(options: CreateStudioServerOptions = {}): StudioServer {
+  const localPaths = options.localPaths ?? resolveLoomStudioLocalPaths({ home: '.loomstudio-dev' })
   const logger = options.logger
   const diagnostics = createInMemoryDiagnosticsRegistry()
   let dataEngine: SqliteDataEngine | undefined
@@ -50,7 +53,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
   if (options.documents) {
     rawDocuments = options.documents
   } else {
-    dataEngine = createSqliteDataEngine({ filename: options.sqlitePath ?? defaultSqlitePath, createId, now: nowIso })
+    dataEngine = createSqliteDataEngine({ filename: options.sqlitePath ?? localPaths.databaseFile, createId, now: nowIso })
     try {
       rawDocuments = createSqliteDocumentStore({ engine: dataEngine })
     } catch (error) {
@@ -64,9 +67,19 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
   const gateway = createDocumentBackedAiGateway({ documents })
   let agents
   let narratives
+  let assets: AssetStore | undefined
   try {
     agents = dataEngine ? createAgentStore({ engine: dataEngine, createId, now: nowIso }) : undefined
     narratives = dataEngine ? createNarrativeStore({ engine: dataEngine, createId, now: nowIso }) : undefined
+    if (dataEngine) {
+      const blobs = createBlobStore({
+        engine: dataEngine,
+        rootDirectory: localPaths.blobRoot,
+        createId,
+        now: nowIso,
+      })
+      assets = createAssetStore({ engine: dataEngine, blobs, createId, now: nowIso })
+    }
   } catch (error) {
     dataEngine?.close()
     throw error
@@ -76,6 +89,24 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     dataEngine,
     documents,
     narratives,
+    sourceArtifacts: assets
+      ? {
+        preserve: async input => {
+          const result = await assets.preserveSourceArtifact(input)
+          const blob = await assets.blobs.get(result.artifact.blobId)
+          if (!blob) throw new Error(`Preserved source Blob not found: ${result.artifact.blobId}`)
+          return {
+            sourceArtifactId: result.artifact.id,
+            blobId: blob.id,
+            sha256: blob.sha256,
+            sizeBytes: blob.sizeBytes,
+            originalFileName: result.artifact.originalFileName,
+            mediaType: result.artifact.mediaType,
+          }
+        },
+      }
+      : undefined,
+    mediaAssets: assets ? { get: assetId => assets.getMediaAsset(assetId) } : undefined,
     gateway: options.providerLogger ? withAiGatewayLogging(gateway, options.providerLogger) : gateway,
     logger: options.promptBuildLogger,
   })
@@ -84,31 +115,78 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     diagnostics,
     logger: options.extensionLogger,
     mode: 'development',
-    grantEventCapabilities: manifest => extensionManager.getGrantedEventCapabilities(manifest.id),
+    grantEventCapabilities: (manifest, moduleManifest) => extensionManager.getGrantedEventCapabilities(manifest.id, moduleManifest.id),
+    grantAssetCapabilities: (manifest, moduleManifest) => extensionManager.getGrantedAssetCapabilities(manifest.id, moduleManifest.id),
+    assetScratchRoot: localPaths.extensionCacheRoot,
+    assets: assets
+      ? {
+          publish: async input => {
+            const result = await assets.createMediaAsset({
+              source: input.bytes,
+              kind: input.kind,
+              label: input.label,
+              mediaType: input.mediaType,
+              width: input.width,
+              height: input.height,
+              ownerPackageId: input.ownerPackageId,
+              actor: input.actor,
+              reason: 'extension.asset.publish',
+            })
+            return {
+              id: result.asset.id,
+              kind: result.asset.kind,
+              label: result.asset.label,
+              mediaType: result.asset.mediaType,
+              sizeBytes: result.asset.sizeBytes,
+              width: result.asset.width,
+              height: result.asset.height,
+              ownerPackageId: result.asset.ownerPackageId,
+              createdAt: result.asset.createdAt,
+            }
+          },
+          get: async assetId => {
+            const asset = await assets.getMediaAsset(assetId)
+            return asset
+              ? {
+                  id: asset.id,
+                  kind: asset.kind,
+                  label: asset.label,
+                  mediaType: asset.mediaType,
+                  sizeBytes: asset.sizeBytes,
+                  width: asset.width,
+                  height: asset.height,
+                  ownerPackageId: asset.ownerPackageId,
+                  createdAt: asset.createdAt,
+                }
+              : undefined
+          },
+          read: (assetId, readOptions) => assets.readMediaAsset(assetId, readOptions),
+        }
+      : undefined,
     callRpc: (method, params, context) => kernel.callRpc(method, params, context),
-    registerRpc: (name, ownerExtensionId, handler, ownerInstanceId) => {
-      const handle = kernel.registerExtensionRpc(name, ownerExtensionId, handler, ownerInstanceId)
-      return { name, ownerExtensionId, ownerInstanceId, handler, dispose: handle.dispose }
+    registerRpc: (name, ownerPackageId, ownerModuleId, handler, ownerInstanceId) => {
+      const handle = kernel.registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler, ownerInstanceId)
+      return { name, ownerPackageId, ownerModuleId, ownerInstanceId, handler, dispose: handle.dispose }
     },
     registerEventDefinition: (definition, registeredBy) => kernel.getEventBus().registerDefinition(definition, registeredBy),
     emitEvent: (name, payload, publisher) => kernel.getEventBus().emit(name, payload, {
       publisher,
-      source: publisher.kind === 'extension' ? `extension:${publisher.extensionId}` : publisher.kind,
+      source: publisher.kind === 'extension' ? `extension:${publisher.packageId}/${publisher.moduleId}` : publisher.kind,
     }),
     subscribeEvents: (patterns, handler, subscriber) => kernel.getEventBus().subscribe(patterns, handler, { subscriber }),
   })
   const extensionRootDirectory = resolve(options.extensionRootDirectory ?? 'extensions')
-  const extensionStateDirectory = resolve(options.extensionStateDirectory ?? '.loomstudio-dev/extensions')
+  const extensionStateDirectory = resolve(options.extensionStateDirectory ?? localPaths.extensionRoot)
   const extensionManager = createServerExtensionManager({
     host: extensionHost,
     diagnostics,
     stateStore: createExtensionStateStore({
-      filename: join(extensionStateDirectory, 'state.json'),
+      filename: options.extensionStateDirectory ? join(extensionStateDirectory, 'state.json') : localPaths.extensionStateFile,
       now: nowIso,
     }),
     repositoryDirectory: extensionRootDirectory,
-    installedDirectory: join(extensionStateDirectory, 'installed'),
-    devLinksFile: join(extensionStateDirectory, 'dev-links.json'),
+    installedDirectory: options.extensionStateDirectory ? join(extensionStateDirectory, 'installed') : localPaths.extensionInstalledRoot,
+    devLinksFile: options.extensionStateDirectory ? join(extensionStateDirectory, 'dev-links.json') : localPaths.extensionDevLinksFile,
   })
   const kernel = createKernel({
     documents,
@@ -120,7 +198,17 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     loomRunner,
   })
   const rpcRouter = createStudioRpcRouter({ applicationRuntime, kernel, logs: options.logs })
-  const server = createStudioHttpServer({ logger: options.rpcLogger, rpcRouter })
+  const server = createStudioHttpServer({
+    assets,
+    extensionIcons: {
+      read: (packageId, version) => extensionManager.readPackageIcon(packageId, version),
+    },
+    extensionEvents: {
+      subscribe: handler => kernel.getEventBus().subscribe(['extensions.changed'], handler),
+    },
+    logger: options.rpcLogger,
+    rpcRouter,
+  })
 
   return {
     listen: async (port = defaultPort) => {
@@ -158,12 +246,14 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     close: async () => {
       logger?.info('Studio server stopping', { event: 'server.stopping' })
       if (server.listening) {
-        await new Promise<void>((resolve, reject) => {
+        const closed = new Promise<void>((resolve, reject) => {
           server.close(error => {
             if (error) reject(error)
             else resolve()
           })
         })
+        server.closeAllConnections()
+        await closed
       }
       try {
         await kernel.stop()
@@ -176,6 +266,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
 }
 
 export async function main(): Promise<void> {
+  const localPaths = resolveLoomStudioLocalPaths()
   const instanceId = createId('server')
   const memoryLogs = createMemoryLogSink({ capacity: 5_000 })
   const rootLogger = createRootLogger({
@@ -183,12 +274,13 @@ export async function main(): Promise<void> {
     instanceId,
     sinks: [
       memoryLogs,
-      createJsonlFileSink({ directory: resolveLogDirectory() }),
+      createJsonlFileSink({ directory: localPaths.logRoot }),
       createConsoleLogSink({ filter: shouldWriteServerConsoleLog }),
     ],
   })
   const logger = rootLogger.child('system')
   const server = createStudioServer({
+    localPaths,
     logger,
     logs: memoryLogs,
     rpcLogger: rootLogger.child('transport.rpc'),
@@ -232,11 +324,6 @@ export async function main(): Promise<void> {
     await rootLogger.close()
     throw error
   }
-}
-
-function resolveLogDirectory(): string {
-  const dataDirectory = process.env.LOOM_STUDIO_DATA_DIR ?? join(homedir(), '.loomstudio')
-  return join(dataDirectory, 'logs')
 }
 
 function shouldWriteServerConsoleLog(record: LogRecord): boolean {

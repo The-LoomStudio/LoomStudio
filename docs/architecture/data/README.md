@@ -12,6 +12,8 @@
 
 当前数据层设计过程位于 [`../../workbench/discussion/data/`](../../workbench/discussion/data/)。具体专题在与当前实现逐项核对后再晋升，本目录暂不复制 Draft 文档。
 
+本地路径、Blob、Source Artifact 与 Media Asset 的已实现边界见 [`local-storage-and-assets.md`](local-storage-and-assets.md)。
+
 ## 当前 SQLite Data Engine 基线
 
 Studio Server 当前创建一个 `@loom-studio/data-engine` SQLite Engine，并把同一 Engine 注入 Document Store。Engine 负责：
@@ -27,6 +29,8 @@ Studio Server 当前创建一个 `@loom-studio/data-engine` SQLite Engine，并�
 
 - `platform.data-engine@1`：`schema_migrations` 与通用 `changesets` Commit Journal；
 - `platform.documents@1`：`documents`、`document_revisions` 及其索引。
+- `platform.blob-store@1`：`stored_blobs` 与 SHA-256 唯一索引；
+- `platform.asset-store@1`：`source_artifacts`、`media_assets` 及 Blob / owner 索引。
 
 每个 migration namespace 独立按连续版本升级。迁移失败会回滚该 namespace 的本次升级；数据库中某 namespace 的版本高于当前程序支持版本时会拒绝打开。Engine 使用 WAL 与 foreign key，不依赖 ORM、通用 Repository 或外部 migration framework。
 

@@ -4,6 +4,7 @@
 > **目的**：统一记录 Card/Resource、Session/Branch 与 PromptBuild Zone 三组已经互相牵制的数据模型调整，并给出渐进实施与验证顺序。
 > **当前阶段**：只收束目标模型和迁移边界；本文不是已实现 Architecture，也不批准立即进行大规模代码重写。
 > **2026-07-29 替代说明**：本文中的 Zone Schema 历史与已完成阶段继续保留；Card、PromptWorkspace、Session Resource 关系及后续工程实施已由 [`card-resource-manifest-migration-plan.md`](card-resource-manifest-migration-plan.md) 替代。后续不得再从本文恢复 eager fork、Resource Mount 或 Workspace 运行主链。
+> **2026-08-15 数据与路径说明**：本文中的通用 Session 主链已被独立 Narrative Timeline 与 Agent Session 模型替代。当前 `promptResourceIds` 保存于 Narrative Timeline，Branch 只保存 Narrative head 与 fork 来源；未来 Branch State / Resource revision 不在本文恢复设计。Asset Store 的物理字节层、原始 JSON / PNG 保留和统一本地路径见 [`local-data-blob-store-foundation-plan.md`](local-data-blob-store-foundation-plan.md)。
 >
 > **相关讨论**：
 > - [`../discussion/application/card-model-v0.md`](../discussion/application/card-model-v0.md)
