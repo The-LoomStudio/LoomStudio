@@ -30,7 +30,7 @@ export function ModelPanel(props: ModelPanelProps) {
   const endpointWarning = isLikelyProviderEndpoint(props.providerAccountDraft.baseUrl)
 
   return (
-    <aside className={styles.modelPane} data-loom-component="model-panel">
+    <aside className={styles.modelPanel} data-loom-component="model-panel">
       <section className={styles.accountsSection}>
         <header className={styles.sectionHeader}>
           <h2>{props.t('provider.title')}</h2>
@@ -38,7 +38,7 @@ export function ModelPanel(props: ModelPanelProps) {
         </header>
         <details className={styles.createAccount}>
           <summary><ChevronRight aria-hidden="true" />{props.t('provider.addAccount')}</summary>
-          <form className={styles.providerForm} onSubmit={props.onCreateProviderAccount}>
+          <form className={`${styles.providerForm} loom-underlined-fields`} onSubmit={props.onCreateProviderAccount}>
             <label>
               <span>{props.t('provider.name')}</span>
               <input

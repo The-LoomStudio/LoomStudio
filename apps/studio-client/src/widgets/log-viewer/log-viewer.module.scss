@@ -3,7 +3,7 @@
   min-height: 0;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
-  background: var(--loom-window);
+  background: var(--loom-color-surface);
 }
 
 .toolbar {
@@ -16,7 +16,7 @@
   align-items: center;
   gap: 8px;
   padding: 8px 13px 7px;
-  background: var(--loom-window);
+  background: var(--loom-color-surface);
 }
 
 .sourceControl,
@@ -31,9 +31,9 @@
   min-height: var(--loom-page-header-control-size);
   padding: 0 7px;
   border: 0;
-  color: var(--loom-text-subtle);
+  color: var(--loom-color-text-subtle);
   background: transparent;
-  font-size: 11px;
+  font-size: var(--loom-font-size-2);
   white-space: nowrap;
 }
 
@@ -47,12 +47,12 @@
 .sourceControl .sourceActive,
 .actions button:hover:not(:disabled),
 .actions button:focus-visible {
-  color: var(--loom-text);
+  color: var(--loom-color-text);
   background: transparent;
 }
 
 .sourceControl .sourceActive {
-  color: var(--loom-info);
+  color: var(--loom-color-info);
 }
 
 .toolbar select,
@@ -61,9 +61,9 @@
   min-height: 28px;
   border: 0;
   border-radius: var(--loom-radius-panel);
-  color: var(--loom-text-muted);
-  background: var(--loom-surface-deep);
-  font-size: 11px;
+  color: var(--loom-color-text-muted);
+  background: var(--loom-color-surface-emphasis);
+  font-size: var(--loom-font-size-2);
 }
 
 .toolbar select {
@@ -83,8 +83,8 @@
 
 .searchField svg,
 .actions svg {
-  width: 14px;
-  height: 14px;
+  width: var(--loom-icon-size-4);
+  height: var(--loom-icon-size-4);
   flex: 0 0 auto;
   stroke-width: 1.25;
 }
@@ -96,19 +96,21 @@
   padding: 0;
   border: 0;
   outline: 0;
-  color: var(--loom-text);
+  color: var(--loom-color-text);
   background: transparent;
   font: inherit;
 }
 
 .searchField input::placeholder {
-  color: var(--loom-text-subtle);
+  color: var(--loom-color-text-subtle);
 }
 
 .count {
   margin-left: auto;
-  color: var(--loom-text-subtle);
-  font: 11px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--loom-color-text-subtle);
+  font-family: var(--loom-font-family-mono);
+  font-size: var(--loom-font-size-2);
+  line-height: var(--loom-line-height-compact);
   white-space: nowrap;
 }
 
@@ -120,19 +122,19 @@
   margin: 0 13px 5px;
   padding: 6px 9px;
   border-radius: var(--loom-radius-panel);
-  color: var(--loom-text-muted);
-  background: var(--loom-surface-deep);
-  font-size: 11px;
+  color: var(--loom-color-text-muted);
+  background: var(--loom-color-surface-emphasis);
+  font-size: var(--loom-font-size-2);
 }
 
 .status .warning {
-  color: var(--loom-warning);
-  background: var(--loom-warning-bg);
+  color: var(--loom-color-warning);
+  background: var(--loom-color-warning-background);
 }
 
 .status .error {
-  color: var(--loom-danger);
-  background: var(--loom-danger-bg);
+  color: var(--loom-color-danger);
+  background: var(--loom-color-danger-background);
 }
 
 .recordsShell {
@@ -145,9 +147,9 @@
   min-height: 0;
   overflow: auto;
   padding: 2px 13px 24px;
-  color: var(--loom-text-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
+  color: var(--loom-color-text-muted);
+  font-family: var(--loom-font-family-mono);
+  font-size: var(--loom-font-size-3);
 }
 
 .latestAnchor {
@@ -166,48 +168,48 @@
   gap: 6px;
   padding: 4px 10px;
   border: 0;
-  border-radius: 999px;
-  color: var(--loom-info);
-  background: var(--loom-info-bg);
-  font-size: 11px;
+  border-radius: var(--loom-radius-full);
+  color: var(--loom-color-info);
+  background: var(--loom-color-info-background);
+  font-size: var(--loom-font-size-2);
   text-decoration: none;
   white-space: nowrap;
 }
 
 .latestIndicator:hover,
 .latestIndicator:focus-visible {
-  color: var(--loom-text);
+  color: var(--loom-color-text);
 }
 
 .latestIndicator svg {
-  width: 13px;
-  height: 13px;
+  width: var(--loom-icon-size-3);
+  height: var(--loom-icon-size-3);
   stroke-width: 1.5;
 }
 
 .latestDebug {
-  color: var(--loom-text-muted);
-  background: var(--loom-surface-deep);
+  color: var(--loom-color-text-muted);
+  background: var(--loom-color-surface-emphasis);
 }
 
 .latestInfo {
-  color: var(--loom-info);
-  background: var(--loom-info-bg);
+  color: var(--loom-color-info);
+  background: var(--loom-color-info-background);
 }
 
 .latestWarn {
-  color: var(--loom-warning);
-  background: var(--loom-warning-bg);
+  color: var(--loom-color-warning);
+  background: var(--loom-color-warning-background);
 }
 
 .latestError {
-  color: var(--loom-danger);
-  background: var(--loom-danger-bg);
+  color: var(--loom-color-danger);
+  background: var(--loom-color-danger-background);
 }
 
 .empty {
   padding: 32px 0;
-  color: var(--loom-text-subtle);
+  color: var(--loom-color-text-subtle);
   text-align: center;
 }
 
@@ -247,13 +249,13 @@
 
 .chevron,
 .groupIcon {
-  width: 14px;
-  height: 14px;
+  width: var(--loom-icon-size-4);
+  height: var(--loom-icon-size-4);
   stroke-width: 1.35;
 }
 
 .chevron {
-  color: var(--loom-text-subtle);
+  color: var(--loom-color-text-subtle);
   transition: transform 130ms ease;
 }
 
@@ -264,12 +266,12 @@
 
 .groupIcon,
 .groupName {
-  color: var(--loom-info);
+  color: var(--loom-color-info);
 }
 
 .groupName {
   overflow: hidden;
-  font-weight: 600;
+  font-weight: var(--loom-font-weight-5);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -278,32 +280,32 @@
 .level {
   padding: 3px 7px;
   border-radius: var(--loom-radius-panel);
-  font-size: 11px;
+  font-size: var(--loom-font-size-2);
   line-height: 18px;
   white-space: nowrap;
 }
 
 .groupCount {
-  color: var(--loom-info);
-  background: var(--loom-info-bg);
+  color: var(--loom-color-info);
+  background: var(--loom-color-info-background);
 }
 
 .timeRange {
   justify-self: end;
-  color: var(--loom-text-subtle);
+  color: var(--loom-color-text-subtle);
   white-space: nowrap;
 }
 
 .groupRecords {
   margin-left: 18px;
   padding-left: 24px;
-  background: linear-gradient(var(--loom-divider-color), var(--loom-divider-color)) left top / 1px 100% no-repeat;
+  background: linear-gradient(var(--loom-color-divider), var(--loom-color-divider)) left top / 1px 100% no-repeat;
 }
 
 .record summary {
   min-height: 32px;
   display: grid;
-  grid-template-columns: 14px 64px 52px minmax(70px, 120px) minmax(100px, 1fr);
+  grid-template-columns: 14px 64px 52px minmax(160px, 220px) minmax(100px, 1fr);
   align-items: center;
   gap: 6px;
   padding: 2px 5px;
@@ -312,100 +314,100 @@
 }
 
 .record summary:hover {
-  background: color-mix(in srgb, var(--loom-window-raised) 36%, transparent);
+  background: color-mix(in srgb, var(--loom-color-surface-raised) 36%, transparent);
 }
 
 .record time {
-  color: var(--loom-text-subtle);
+  color: var(--loom-color-text-subtle);
 }
 
 .level {
   justify-self: start;
-  font-weight: 600;
+  font-weight: var(--loom-font-weight-5);
 }
 
 .namespace {
   overflow: hidden;
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .message {
   overflow: hidden;
-  color: var(--loom-text);
+  color: var(--loom-color-text);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .debug .level {
-  color: var(--loom-text-muted);
-  background: var(--loom-surface-deep);
+  color: var(--loom-color-text-muted);
+  background: var(--loom-color-surface-emphasis);
 }
 
 .info .level {
-  color: var(--loom-info);
-  background: var(--loom-info-bg);
+  color: var(--loom-color-info);
+  background: var(--loom-color-info-background);
 }
 
 .warn .level {
-  color: var(--loom-warning);
-  background: var(--loom-warning-bg);
+  color: var(--loom-color-warning);
+  background: var(--loom-color-warning-background);
 }
 
 .error .level {
-  color: var(--loom-danger);
-  background: var(--loom-danger-bg);
+  color: var(--loom-color-danger);
+  background: var(--loom-color-danger-background);
 }
 
 .json {
   max-height: 360px;
-  margin: 4px 5px 9px 22px;
+  margin: 4px 5px 9px 159px;
   overflow: auto;
   padding: 10px 12px;
   border: 0;
   border-radius: var(--loom-radius-panel);
-  color: var(--loom-text);
-  background: var(--loom-surface-deep);
+  color: var(--loom-color-text);
+  background: var(--loom-color-surface-emphasis);
   font: inherit;
-  line-height: 1.65;
+  line-height: var(--loom-line-height-relaxed);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
 .messageLink,
 .jsonProperty {
-  color: var(--loom-syntax-property);
+  color: var(--loom-color-syntax-property);
 }
 
 .messageEvent {
-  color: var(--loom-syntax-keyword);
+  color: var(--loom-color-syntax-keyword);
 }
 
 .messageProperty {
-  color: var(--loom-syntax-meta);
+  color: var(--loom-color-syntax-meta);
 }
 
 .messageConstant,
 .jsonConstant {
-  color: var(--loom-syntax-constant);
+  color: var(--loom-color-syntax-constant);
 }
 
 .messageNumber,
 .jsonNumber {
-  color: var(--loom-syntax-number);
+  color: var(--loom-color-syntax-number);
 }
 
 .jsonString {
-  color: var(--loom-syntax-string);
+  color: var(--loom-color-syntax-string);
 }
 
 .jsonPunctuation {
-  color: var(--loom-syntax-punctuation);
+  color: var(--loom-color-syntax-punctuation);
 }
 
 .jsonInvalid {
-  color: var(--loom-syntax-invalid);
+  color: var(--loom-color-syntax-invalid);
 }
 
 .srOnly {
@@ -418,7 +420,7 @@
   clip-path: inset(50%);
 }
 
-@media (max-width: 820px) {
+@container studio-panel (max-width: 820px) {
   .searchField {
     order: 2;
     flex-basis: 100%;
@@ -443,6 +445,10 @@
   .message {
     grid-column: 2 / -1;
     padding-bottom: 4px;
+  }
+
+  .json {
+    margin-left: 25px;
   }
 }
 

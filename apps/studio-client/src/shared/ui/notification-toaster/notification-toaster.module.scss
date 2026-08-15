@@ -5,12 +5,12 @@
   gap: 10px;
   padding: 12px 14px;
   border: 0;
-  border-radius: 12px;
-  color: var(--loom-text);
-  background: var(--loom-window-raised);
+  border-radius: var(--loom-radius-popover);
+  color: var(--loom-color-text);
+  background: var(--loom-color-surface-raised);
   box-shadow: 0 14px 36px rgb(0 0 0 / 32%);
   font-size: var(--loom-font-size-body);
-  line-height: 1.5;
+  line-height: var(--loom-line-height-ui);
 }
 
 .content {
@@ -23,43 +23,43 @@
 
 .title {
   overflow-wrap: anywhere;
-  font-weight: 600;
+  font-weight: var(--loom-font-weight-5);
 }
 
 .description {
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
 }
 
 .icon {
   order: 1;
-  width: 16px;
-  height: 20px;
-  flex: 0 0 16px;
+  width: var(--loom-icon-size-5);
+  height: var(--loom-icon-size-6);
+  flex: 0 0 var(--loom-icon-size-5);
   display: grid;
   place-items: center;
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
 }
 
 .icon svg {
-  width: 15px;
-  height: 15px;
+  width: calc(15px * var(--loom-ui-scale));
+  height: calc(15px * var(--loom-ui-scale));
   stroke-width: 1.6;
 }
 
 .error .icon {
-  color: var(--loom-danger);
+  color: var(--loom-color-danger);
 }
 
 .warning .icon {
-  color: var(--loom-warning);
+  color: var(--loom-color-warning);
 }
 
 .info .icon {
-  color: var(--loom-info);
+  color: var(--loom-color-info);
 }
 
 .success .icon {
-  color: var(--loom-success);
+  color: var(--loom-color-success);
 }
 
 .closeButton,
@@ -69,9 +69,9 @@
   min-height: 24px;
   border: 0;
   padding: 0 6px;
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
   background: transparent;
-  font-size: 12px;
+  font-size: var(--loom-font-size-3);
 }
 
 .closeButton {
@@ -89,14 +89,14 @@
 .actionButton:hover:not(:disabled),
 .cancelButton:hover:not(:disabled) {
   border-color: transparent;
-  color: var(--loom-text);
+  color: var(--loom-color-text);
   background: transparent;
 }
 
 .closeButton:focus-visible,
 .actionButton:focus-visible,
 .cancelButton:focus-visible {
-  outline: 1px solid var(--loom-accent);
+  outline: 1px solid var(--loom-color-accent);
   outline-offset: 1px;
   border-color: transparent;
   box-shadow: none;

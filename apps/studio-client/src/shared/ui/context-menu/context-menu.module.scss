@@ -8,13 +8,13 @@
   display: grid;
   gap: 2px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--loom-radius-popover);
   padding: 5px;
-  color: var(--loom-text);
-  background: var(--loom-window-raised);
+  color: var(--loom-color-text);
+  background: var(--loom-color-surface-raised);
   box-shadow: none;
   overflow: auto;
-  animation: menu-enter 100ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: menu-enter 100ms var(--loom-motion-easing-standard);
 }
 
 .item {
@@ -25,9 +25,9 @@
   align-items: center;
   gap: 8px;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--loom-radius-control);
   padding: 4px 8px;
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
   background: transparent;
   text-align: left;
 }
@@ -35,46 +35,46 @@
 .item:hover:not(:disabled),
 .item:focus-visible {
   border-color: transparent;
-  color: var(--loom-text);
-  background: color-mix(in srgb, var(--loom-panel) 68%, transparent);
+  color: var(--loom-color-text);
+  background: color-mix(in srgb, var(--loom-color-surface) 68%, transparent);
   box-shadow: none;
 }
 
 .leading {
-  width: 14px;
-  height: 14px;
+  width: var(--loom-icon-size-4);
+  height: var(--loom-icon-size-4);
   display: grid;
   place-items: center;
 }
 
 .leading svg {
-  width: 13px;
-  height: 13px;
+  width: var(--loom-icon-size-3);
+  height: var(--loom-icon-size-3);
   stroke-width: 1.4;
 }
 
 .label {
   min-width: 0;
   overflow: hidden;
-  font-size: 11px;
+  font-size: var(--loom-font-size-2);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .danger {
-  color: color-mix(in srgb, var(--loom-danger) 82%, var(--loom-text-muted));
+  color: color-mix(in srgb, var(--loom-color-danger) 82%, var(--loom-color-text-muted));
 }
 
 .danger:hover:not(:disabled),
 .danger:focus-visible {
-  color: var(--loom-danger);
-  background: color-mix(in srgb, var(--loom-danger-bg) 72%, transparent);
+  color: var(--loom-color-danger);
+  background: color-mix(in srgb, var(--loom-color-danger-background) 72%, transparent);
 }
 
 .separator {
   height: 5px;
   margin-inline: 7px;
-  background: linear-gradient(var(--loom-divider-color), var(--loom-divider-color)) center / 100% 1px no-repeat;
+  background: linear-gradient(var(--loom-color-divider), var(--loom-color-divider)) center / 100% 1px no-repeat;
 }
 
 @keyframes menu-enter {

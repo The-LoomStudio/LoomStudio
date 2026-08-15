@@ -1,4 +1,4 @@
-export type DialogRect = {
+type DialogRect = {
   bottom: number
   left: number
   right: number

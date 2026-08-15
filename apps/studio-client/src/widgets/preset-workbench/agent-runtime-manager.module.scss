@@ -1,7 +1,7 @@
 .agentRuntimeManager {
-  background: var(--loom-panel);
-  border: 1px solid var(--loom-border);
-  border-radius: 6px;
+  background: var(--loom-color-surface);
+  border: 1px solid var(--loom-color-border);
+  border-radius: var(--loom-radius-panel);
   margin: 16px 28px 0;
   max-height: 45%;
   overflow: auto;
@@ -34,59 +34,69 @@
   gap: 8px;
 }
 
+.agentHeaderInfo > svg {
+  width: var(--loom-icon-size-5);
+  height: var(--loom-icon-size-5);
+}
+
 .agentTitle {
-  color: var(--loom-text);
-  font-size: 13px;
-  font-weight: 600;
+  color: var(--loom-color-text);
+  font-size: var(--loom-font-size-4);
+  font-weight: var(--loom-font-weight-5);
 }
 
 .agentActiveBadge {
-  background: color-mix(in srgb, var(--loom-accent) 15%, transparent);
-  border-radius: 4px;
-  color: var(--loom-accent);
-  font-size: 11px;
-  font-weight: 600;
+  background: color-mix(in srgb, var(--loom-color-accent) 15%, transparent);
+  border-radius: var(--loom-radius-full);
+  color: var(--loom-color-accent);
+  font-size: var(--loom-font-size-2);
+  font-weight: var(--loom-font-weight-5);
   padding: 2px 6px;
 }
 
 .agentEmptyBadge {
-  background: color-mix(in srgb, var(--loom-border) 40%, transparent);
-  border-radius: 4px;
-  color: var(--loom-text-muted);
-  font-size: 11px;
+  background: color-mix(in srgb, var(--loom-color-border) 40%, transparent);
+  border-radius: var(--loom-radius-full);
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
   padding: 2px 6px;
 }
 
 .agentAddButton {
   align-items: center;
-  background: var(--loom-surface);
-  border: 1px solid var(--loom-border);
-  border-radius: 4px;
-  color: var(--loom-text);
+  background: var(--loom-color-surface-inset);
+  border: 1px solid var(--loom-color-border);
+  border-radius: var(--loom-radius-control);
+  color: var(--loom-color-text);
   cursor: pointer;
   display: flex;
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--loom-font-size-2);
+  font-weight: var(--loom-font-weight-5);
   gap: 4px;
   padding: 4px 8px;
 }
 
 .agentAddButton:hover {
-  background: var(--loom-border);
+  background: var(--loom-color-border);
+}
+
+.agentAddButton svg {
+  width: var(--loom-icon-size-4);
+  height: var(--loom-icon-size-4);
 }
 
 .agentBody {
-  background: var(--loom-bg);
-  border-bottom-left-radius: 6px;
-  border-bottom-right-radius: 6px;
-  border-top: 1px solid var(--loom-border);
+  background: var(--loom-color-background);
+  border-bottom-left-radius: var(--loom-radius-panel);
+  border-bottom-right-radius: var(--loom-radius-panel);
+  border-top: 1px solid var(--loom-color-border);
   padding: 12px 14px;
 }
 
 .agentCreateForm {
-  background: var(--loom-surface);
-  border: 1px dashed var(--loom-border);
-  border-radius: 4px;
+  background: var(--loom-color-surface-inset);
+  border: 1px dashed var(--loom-color-border);
+  border-radius: var(--loom-radius-surface);
   display: flex;
   gap: 8px;
   margin-bottom: 12px;
@@ -95,21 +105,9 @@
 
 .agentCreateForm input,
 .agentCreateForm select {
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid var(--loom-divider-color);
-  border-radius: 0;
-  color: var(--loom-text);
   flex: 1;
-  font-size: 12px;
+  font-size: var(--loom-font-size-3);
   padding: 4px 0 5px;
-}
-
-.agentCreateForm input:focus,
-.agentCreateForm select:focus,
-.agentItemActions select:focus {
-  border-color: var(--loom-accent);
-  box-shadow: none;
 }
 
 .agentFormActions {
@@ -120,17 +118,17 @@
 .agentBtnPrimary,
 .agentBtnCancel,
 .agentBtnDanger {
-  border-radius: 4px;
+  border-radius: var(--loom-radius-control);
   cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--loom-font-size-3);
+  font-weight: var(--loom-font-weight-2);
   padding: 6px 10px;
 }
 
 .agentBtnPrimary {
-  background: var(--loom-text);
+  background: var(--loom-color-text);
   border: none;
-  color: var(--loom-bg);
+  color: var(--loom-color-background);
 }
 
 .agentBtnPrimary:disabled {
@@ -140,24 +138,24 @@
 
 .agentBtnCancel {
   background: transparent;
-  border: 1px solid var(--loom-border);
-  color: var(--loom-text-muted);
+  border: 1px solid var(--loom-color-border);
+  color: var(--loom-color-text-muted);
 }
 
 .agentBtnCancel:hover {
-  background: var(--loom-surface);
+  background: var(--loom-color-surface-inset);
 }
 
 .agentBtnDanger {
   background: transparent;
   border: 1px solid transparent;
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
 }
 
 .agentBtnDanger:hover {
-  background: color-mix(in srgb, var(--loom-danger) 12%, transparent);
-  border-color: var(--loom-danger);
-  color: var(--loom-danger);
+  background: color-mix(in srgb, var(--loom-color-danger) 12%, transparent);
+  border-color: var(--loom-color-danger);
+  color: var(--loom-color-danger);
 }
 
 .agentList {
@@ -168,23 +166,23 @@
 
 .agentItem {
   align-items: center;
-  background: var(--loom-surface);
-  border: 1px solid var(--loom-border);
-  border-radius: 4px;
+  background: var(--loom-color-surface-inset);
+  border: 1px solid var(--loom-color-border);
+  border-radius: var(--loom-radius-card);
   cursor: pointer;
   display: flex;
   justify-content: space-between;
   padding: 8px 12px;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
 .agentItem:hover,
 .agentItemActive {
-  border-color: var(--loom-accent);
+  border-color: var(--loom-color-accent);
 }
 
 .agentItemActive {
-  background: color-mix(in srgb, var(--loom-accent) 8%, var(--loom-surface));
+  background: color-mix(in srgb, var(--loom-color-accent) 8%, var(--loom-color-surface-inset));
 }
 
 .agentItemInfo {
@@ -207,18 +205,18 @@
 .agentBtnPrimary:focus-visible,
 .agentBtnCancel:focus-visible,
 .agentBtnDanger:focus-visible {
-  outline: 1px solid var(--loom-accent);
+  outline: 1px solid var(--loom-color-accent);
   outline-offset: 2px;
 }
 
 .agentItemInfo strong {
-  color: var(--loom-text);
-  font-size: 13px;
+  color: var(--loom-color-text);
+  font-size: var(--loom-font-size-4);
 }
 
 .agentItemInfo span {
-  color: var(--loom-text-muted);
-  font-size: 11px;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
 }
 
 .agentItemActions {
@@ -228,17 +226,12 @@
 }
 
 .agentItemActions select {
-  background: transparent;
-  border: 0;
-  border-bottom: 1px solid var(--loom-divider-color);
-  border-radius: 0;
-  color: var(--loom-text);
-  font-size: 11px;
+  font-size: var(--loom-font-size-2);
   padding: 3px 0 4px;
 }
 
 .agentEmptyList {
-  color: var(--loom-text-muted);
-  font-size: 12px;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-3);
   margin: 0;
 }

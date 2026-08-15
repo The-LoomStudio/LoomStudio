@@ -6,10 +6,10 @@
 
 .row {
   --loom-tree-base-x: 34px;
-  --loom-tree-guide-x: calc(var(--loom-tree-base-x) - 0.5px);
+  --loom-tree-guide-x: var(--loom-tree-base-x);
   --loom-tree-indent-step: 16px;
   --loom-tree-indent: calc((var(--loom-tree-level) - 1) * var(--loom-tree-indent-step));
-  --loom-tree-icon-size: 14px;
+  --loom-tree-icon-size: var(--loom-icon-size-4);
   --loom-tree-icon-stroke: 1.25;
 
   position: relative;
@@ -19,10 +19,10 @@
   align-items: center;
   gap: 2px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--loom-radius-surface);
   margin-inline: 6px;
   padding: 2px 8px 2px 10px;
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
   background: transparent;
   text-align: left;
   user-select: none;
@@ -46,13 +46,13 @@
 .sectionDivider {
   flex: 1;
   height: 1px;
-  background: var(--loom-border);
+  background: var(--loom-color-border);
 }
 
 .sectionLabel {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--loom-text-subtle);
+  font-size: var(--loom-font-size-1);
+  font-weight: var(--loom-font-weight-5);
+  color: var(--loom-color-text-subtle);
   letter-spacing: 0.5px;
   text-transform: uppercase;
 }
@@ -69,7 +69,7 @@
 
 .guideColumn {
   width: var(--loom-tree-indent-step);
-  border-left: 1px solid var(--loom-border);
+  border-left: 1px solid var(--loom-color-border);
 }
 
 .dragHandle {
@@ -81,7 +81,7 @@
   place-items: center;
   border: 0;
   padding: 0;
-  color: var(--loom-text-subtle);
+  color: var(--loom-color-text-subtle);
   background: transparent;
   cursor: grab;
   opacity: 0;
@@ -115,8 +115,8 @@
 
 .row:hover,
 .selected {
-  color: var(--loom-text);
-  background: color-mix(in srgb, var(--loom-panel) 54%, transparent);
+  color: var(--loom-color-text);
+  background: color-mix(in srgb, var(--loom-color-surface) 54%, transparent);
 }
 
 .dragging {
@@ -124,15 +124,15 @@
 }
 
 .dragOver {
-  background: color-mix(in srgb, var(--loom-accent) 15%, transparent) !important;
-  box-shadow: inset 2px 0 0 var(--loom-accent);
+  background: color-mix(in srgb, var(--loom-color-accent) 15%, transparent);
+  box-shadow: inset 2px 0 0 var(--loom-color-accent);
 }
 
 .draggingOverlay {
-  background: var(--loom-surface);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), inset 2px 0 0 var(--loom-accent);
+  background: var(--loom-color-surface-inset);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), inset 2px 0 0 var(--loom-color-accent);
   opacity: 0.9;
-  cursor: grabbing !important;
+  cursor: grabbing;
 }
 
 .row > .disclosure {
@@ -144,7 +144,7 @@
   min-height: 16px;
   display: grid;
   place-items: center;
-  color: var(--loom-text-subtle);
+  color: var(--loom-color-text-subtle);
   background: transparent;
   border: none;
   padding: 0;
@@ -154,26 +154,26 @@
 }
 
 .row > .disclosure:hover {
-  color: var(--loom-text);
+  color: var(--loom-color-text);
 }
 
 .branchContinuation {
   position: absolute;
   z-index: 0;
-  top: calc(50% + 4px);
+  top: calc(50% + 8px);
   bottom: -2px;
   left: calc(var(--loom-tree-guide-x) + var(--loom-tree-indent));
   width: 1px;
-  background: var(--loom-border);
+  background: var(--loom-color-border);
   pointer-events: none;
 }
 
 .icon {
-  width: 16px;
-  height: 16px;
+  width: var(--loom-icon-size-5);
+  height: var(--loom-icon-size-5);
   display: grid;
   place-items: center;
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
 }
 
 .labelBlock {
@@ -202,15 +202,15 @@
 
 .label {
   color: currentColor;
-  font-size: 12px;
-  font-weight: 540;
+  font-size: var(--loom-font-size-3);
+  font-weight: var(--loom-font-weight-3);
 }
 
 .meta {
   min-width: 0;
-  color: var(--loom-text-subtle);
-  font-size: 10px;
-  font-weight: 500;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
+  font-weight: var(--loom-font-weight-2);
 }
 
 .flatTree .sectionRow {
@@ -244,10 +244,10 @@
   display: grid;
   place-items: center;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--loom-radius-control);
   padding: 0;
   opacity: 0;
-  color: var(--loom-text-subtle);
+  color: var(--loom-color-text-subtle);
   background: transparent;
 }
 
@@ -260,26 +260,15 @@
 .actions:hover:not(:disabled),
 .actions:focus-visible {
   border-color: transparent;
-  color: var(--loom-text);
-  background: var(--loom-panel-muted);
+  color: var(--loom-color-text);
+  background: var(--loom-color-surface-muted);
   box-shadow: none;
-}
-
-.trailing {
-  position: relative;
-  z-index: 1;
-  width: 14px;
-  min-width: 14px;
-  height: 22px;
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
 }
 
 .muted .icon,
 .muted .label,
 .muted .meta {
-  color: var(--loom-text-subtle);
+  color: var(--loom-color-text-subtle);
   opacity: 0.56;
 }
 

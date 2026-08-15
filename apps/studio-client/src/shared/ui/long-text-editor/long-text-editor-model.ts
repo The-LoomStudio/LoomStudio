@@ -5,7 +5,7 @@ export type LongTextEditorState = {
   undoValue?: string
 }
 
-export type LongTextEditorAction =
+type LongTextEditorAction =
   | { type: 'copy'; status: 'copied' | 'failed' }
   | { type: 'reset-copy' }
   | { type: 'clear'; value: string }

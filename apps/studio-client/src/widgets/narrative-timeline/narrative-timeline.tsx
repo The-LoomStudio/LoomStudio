@@ -1,17 +1,20 @@
 import { Check, Copy, GitBranch, Link, Pencil, Trash2, X } from 'lucide-react'
-import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Translator } from '../../shared/i18n/index.js'
+import { tryWriteClipboardText } from '../../shared/browser/clipboard.js'
 import {
-  ConversationNavigator,
-  type ConversationNavigatorItem,
-} from '../../shared/ui/conversation-navigator/conversation-navigator.js'
-import { createMockConversationMarkers } from '../../shared/ui/conversation-navigator/conversation-navigator-model.js'
+  NarrativeTimelineNavigator,
+  type NarrativeTimelineNavigatorItem,
+} from './narrative-timeline-navigator.js'
+import { createMockNarrativeTimelineMarkers } from './narrative-timeline-navigator-model.js'
 import { LongTextEditor } from '../../shared/ui/long-text-editor/long-text-editor.js'
-import styles from './narrative-canvas.module.scss'
+import { SkeletonText } from '../../shared/ui/skeleton/skeleton.js'
+import { ConversationMessageAction, ConversationMessageChrome, formatConversationTimestamp } from '../../shared/ui/conversation-message-chrome/conversation-message-chrome.js'
+import styles from './narrative-timeline.module.scss'
 
-const MarkdownContent = lazy(async () => {
-  const module = await import('../../shared/ui/markdown-content/markdown-content.js')
-  return { default: module.MarkdownContent }
+const ConversationMarkdown = lazy(async () => {
+  const module = await import('../../shared/ui/conversation-markdown/conversation-markdown.js')
+  return { default: module.ConversationMarkdown }
 })
 
 const MESSAGE_EDITOR_MIN_HEIGHT = 132
@@ -27,9 +30,10 @@ type NarrativeEntryView = {
   runId?: string
 }
 
-type NarrativeCanvasProps = {
+type NarrativeTimelineProps = {
   anchorEntryId?: string
   busy: boolean
+  composerExpanded: boolean
   composerHeight: number
   emptyTimelineText: string
   getEntryLink: (entryId: string) => string
@@ -40,7 +44,7 @@ type NarrativeCanvasProps = {
   timeline: NarrativeEntryView[]
 }
 
-export function NarrativeCanvas(props: NarrativeCanvasProps) {
+export function NarrativeTimeline(props: NarrativeTimelineProps) {
   const [editingId, setEditingId] = useState<string>()
   const [draft, setDraft] = useState('')
   const [editorMinHeight, setEditorMinHeight] = useState(0)
@@ -52,17 +56,19 @@ export function NarrativeCanvas(props: NarrativeCanvasProps) {
   const linkCopyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const handledAnchorRef = useRef<string | undefined>(undefined)
   const activeEntryFrameRef = useRef<number | undefined>(undefined)
+  const composerMotionActiveRef = useRef(false)
+  const composerMotionFrameRef = useRef<number | undefined>(undefined)
   const followsComposerRef = useRef(true)
   const messageSurfaceRefs = useRef(new Map<string, HTMLDivElement>())
   const timelineRef = useRef<HTMLDivElement>(null)
-  const navigatorItems = useMemo<ConversationNavigatorItem[]>(() => props.timeline.map((entry, index) => ({
+  const navigatorItems = useMemo<NarrativeTimelineNavigatorItem[]>(() => props.timeline.map((entry, index) => ({
     id: entry.id,
-    meta: `#${index + 1} · ${formatTimestamp(entry.createdAt)}`,
+    meta: `#${index + 1} · ${formatConversationTimestamp(entry.createdAt)}`,
     preview: entry.content,
     role: props.t(entry.role === 'user' ? 'timeline.role.user' : 'timeline.role.assistant'),
   })), [props.t, props.timeline])
   const navigatorMarkers = useMemo(
-    () => import.meta.env.DEV ? createMockConversationMarkers(props.timeline.map(entry => entry.id)) : [],
+    () => import.meta.env.DEV ? createMockNarrativeTimelineMarkers(props.timeline.map(entry => entry.id)) : [],
     [props.timeline],
   )
 
@@ -70,6 +76,7 @@ export function NarrativeCanvas(props: NarrativeCanvasProps) {
     if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
     if (linkCopyTimerRef.current) clearTimeout(linkCopyTimerRef.current)
     if (activeEntryFrameRef.current) cancelAnimationFrame(activeEntryFrameRef.current)
+    if (composerMotionFrameRef.current) cancelAnimationFrame(composerMotionFrameRef.current)
   }, [])
 
   useEffect(() => {
@@ -82,6 +89,35 @@ export function NarrativeCanvas(props: NarrativeCanvasProps) {
     if (!timeline || !props.composerHeight || !followsComposerRef.current) return
     timeline.scrollTop = timeline.scrollHeight
   }, [props.composerHeight])
+
+  useLayoutEffect(() => {
+    const timeline = timelineRef.current
+    if (!timeline || !followsComposerRef.current) return
+    if (composerMotionFrameRef.current) cancelAnimationFrame(composerMotionFrameRef.current)
+    const reduceMotion = globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    if (reduceMotion) {
+      timeline.scrollTop = timeline.scrollHeight
+      return
+    }
+
+    composerMotionActiveRef.current = true
+    const startedAt = performance.now()
+    const followComposer = (timestamp: number) => {
+      timeline.scrollTop = timeline.scrollHeight
+      if (timestamp - startedAt < 200) {
+        composerMotionFrameRef.current = requestAnimationFrame(followComposer)
+        return
+      }
+      composerMotionFrameRef.current = undefined
+      composerMotionActiveRef.current = false
+    }
+    composerMotionFrameRef.current = requestAnimationFrame(followComposer)
+    return () => {
+      if (composerMotionFrameRef.current) cancelAnimationFrame(composerMotionFrameRef.current)
+      composerMotionFrameRef.current = undefined
+      composerMotionActiveRef.current = false
+    }
+  }, [props.composerExpanded])
 
   useLayoutEffect(() => {
     if (!props.anchorEntryId) {
@@ -122,28 +158,21 @@ export function NarrativeCanvas(props: NarrativeCanvasProps) {
   }
 
   async function copyEntry(entry: NarrativeEntryView) {
-    try {
-      await navigator.clipboard.writeText(entry.content)
-      setCopyState({ id: entry.id, status: 'copied' })
-    } catch {
-      setCopyState({ id: entry.id, status: 'failed' })
-    }
+    const copied = await tryWriteClipboardText(entry.content)
+    setCopyState({ id: entry.id, status: copied ? 'copied' : 'failed' })
     if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
     copyTimerRef.current = setTimeout(() => setCopyState(undefined), 1600)
   }
 
   async function copyEntryLink(entry: NarrativeEntryView) {
-    try {
-      await navigator.clipboard.writeText(props.getEntryLink(entry.id))
-      setLinkCopyState({ id: entry.id, status: 'copied' })
-    } catch {
-      setLinkCopyState({ id: entry.id, status: 'failed' })
-    }
+    const copied = await tryWriteClipboardText(props.getEntryLink(entry.id))
+    setLinkCopyState({ id: entry.id, status: copied ? 'copied' : 'failed' })
     if (linkCopyTimerRef.current) clearTimeout(linkCopyTimerRef.current)
     linkCopyTimerRef.current = setTimeout(() => setLinkCopyState(undefined), 1600)
   }
 
   function scheduleActiveEntryUpdate() {
+    if (composerMotionActiveRef.current) return
     const timelineElement = timelineRef.current
     if (timelineElement) followsComposerRef.current = isTimelineNearBottom(timelineElement)
     if (activeEntryFrameRef.current) return
@@ -181,7 +210,11 @@ export function NarrativeCanvas(props: NarrativeCanvasProps) {
   }
 
   return (
-    <section className={styles.timelinePane} data-loom-component="narrative-canvas">
+    <section
+      className={styles.timelinePane}
+      data-loom-component="narrative-canvas"
+      data-loom-object="narrative-timeline"
+    >
       <div
         className={styles.timeline}
         data-loom-component="base-chat-canvas"
@@ -191,7 +224,11 @@ export function NarrativeCanvas(props: NarrativeCanvasProps) {
         {props.timeline.length === 0 ? (
           <div className={styles.empty}>{props.emptyTimelineText}</div>
         ) : (
-          <Suspense fallback={<div aria-busy="true" className={styles.renderingMessages} />}>
+          <Suspense fallback={(
+            <div aria-busy="true" className={styles.renderingMessages}>
+              <SkeletonText lines={6} />
+            </div>
+          )}>
             {props.timeline.map((entry, index) => (
               <article
                 className={`${styles.message} ${entry.role === 'user' ? styles.user : styles.assistant}`}
@@ -219,16 +256,11 @@ export function NarrativeCanvas(props: NarrativeCanvasProps) {
                       copiedLabel={props.t('longTextEditor.copied')}
                       copyFailedLabel={props.t('longTextEditor.copyFailed')}
                       copyLabel={props.t('longTextEditor.copy')}
-                      disableCodeWrapLabel={props.t('markdown.code.disableWrap')}
                       label={props.t('timeline.editLocal')}
-                      enableCodeWrapLabel={props.t('markdown.code.enableWrap')}
                       minHeight={editorMinHeight || undefined}
                       mode="source"
-                      previewEmptyLabel={props.t('longTextEditor.previewEmpty')}
-                      previewModeLabel={props.t('longTextEditor.previewMode')}
                       restoreInitialLabel={props.t('longTextEditor.restoreInitial')}
                       showLineNumbers={false}
-                      sourceModeLabel={props.t('longTextEditor.sourceMode')}
                       sourceOnly
                       spellCheck={false}
                       undoEditLabel={props.t('longTextEditor.undoEdit')}
@@ -240,7 +272,7 @@ export function NarrativeCanvas(props: NarrativeCanvasProps) {
                       onSubmit={saveValue}
                     />
                   ) : (
-                    <MarkdownContent
+                    <ConversationMarkdown
                       className={styles.messageBody}
                       codeBlockLabels={{
                         copied: props.t('longTextEditor.copied'),
@@ -249,51 +281,49 @@ export function NarrativeCanvas(props: NarrativeCanvasProps) {
                         disableWrap: props.t('markdown.code.disableWrap'),
                         enableWrap: props.t('markdown.code.enableWrap'),
                       }}
+                      role={entry.role}
                       value={entry.content}
                     />
                   )}
                 </div>
-                <footer className={styles.messageFooter}>
-                  <span className={styles.messageTimestamp} title={formatFullTimestamp(entry.createdAt)}>
-                    #{index + 1} · {formatTimestamp(entry.createdAt)}
-                  </span>
-                  <div className={styles.messageActions}>
-                    {editingId === entry.id ? (
-                      <>
-                      <MessageAction label={props.t('timeline.cancelEdit')} onClick={cancelEdit}><X aria-hidden="true" /></MessageAction>
-                      <MessageAction disabled={!draft.trim()} label={props.t('timeline.saveEdit')} onClick={saveEdit}><Check aria-hidden="true" /></MessageAction>
-                      </>
-                    ) : (
-                      <>
-                      <MessageAction
+                <ConversationMessageChrome
+                  createdAt={entry.createdAt}
+                  index={index}
+                  actions={editingId === entry.id ? (
+                    <>
+                      <ConversationMessageAction label={props.t('timeline.cancelEdit')} onClick={cancelEdit}><X aria-hidden="true" /></ConversationMessageAction>
+                      <ConversationMessageAction disabled={!draft.trim()} label={props.t('timeline.saveEdit')} onClick={saveEdit}><Check aria-hidden="true" /></ConversationMessageAction>
+                    </>
+                  ) : (
+                    <>
+                      <ConversationMessageAction
                         label={props.t(copyState?.id === entry.id
                           ? copyState.status === 'copied' ? 'timeline.copied' : 'timeline.copyFailed'
                           : 'timeline.copy')}
                         onClick={() => void copyEntry(entry)}
                       >
                         {copyState?.id === entry.id && copyState.status === 'copied' ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-                      </MessageAction>
-                      <MessageAction
+                      </ConversationMessageAction>
+                      <ConversationMessageAction
                         label={props.t(linkCopyState?.id === entry.id
                           ? linkCopyState.status === 'copied' ? 'timeline.linkCopied' : 'timeline.linkCopyFailed'
                           : 'timeline.copyLink')}
                         onClick={() => void copyEntryLink(entry)}
                       >
                         {linkCopyState?.id === entry.id && linkCopyState.status === 'copied' ? <Check aria-hidden="true" /> : <Link aria-hidden="true" />}
-                      </MessageAction>
-                      <MessageAction label={props.t('timeline.editLocal')} onClick={() => beginEdit(entry)}><Pencil aria-hidden="true" /></MessageAction>
-                      <MessageAction disabled={props.busy} label={props.t('timeline.fork')} onClick={() => props.onForkEntry(entry)}><GitBranch aria-hidden="true" /></MessageAction>
-                      <MessageAction disabled label={props.t('timeline.deleteUnavailable')}><Trash2 aria-hidden="true" /></MessageAction>
-                      </>
-                    )}
-                  </div>
-                </footer>
+                      </ConversationMessageAction>
+                      <ConversationMessageAction label={props.t('timeline.editLocal')} onClick={() => beginEdit(entry)}><Pencil aria-hidden="true" /></ConversationMessageAction>
+                      <ConversationMessageAction disabled={props.busy} label={props.t('timeline.fork')} onClick={() => props.onForkEntry(entry)}><GitBranch aria-hidden="true" /></ConversationMessageAction>
+                      <ConversationMessageAction disabled label={props.t('timeline.deleteUnavailable')}><Trash2 aria-hidden="true" /></ConversationMessageAction>
+                    </>
+                  )}
+                />
               </article>
             ))}
           </Suspense>
         )}
       </div>
-      <ConversationNavigator
+      <NarrativeTimelineNavigator
         activeId={activeEntryId}
         items={navigatorItems}
         label={props.t('timeline.navigator')}
@@ -306,23 +336,4 @@ export function NarrativeCanvas(props: NarrativeCanvasProps) {
 
 export function isTimelineNearBottom(element: Pick<HTMLElement, 'clientHeight' | 'scrollHeight' | 'scrollTop'>): boolean {
   return element.scrollHeight - element.scrollTop - element.clientHeight <= 48
-}
-
-function MessageAction(props: { children: ReactNode; disabled?: boolean; label: string; onClick?: () => void }) {
-  return (
-    <button aria-label={props.label} className={styles.messageAction} disabled={props.disabled} title={props.label} type="button" onClick={props.onClick}>
-      {props.children}
-    </button>
-  )
-}
-
-function formatTimestamp(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '--:--'
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
-
-function formatFullTimestamp(value: string): string {
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
 }

@@ -4,6 +4,7 @@ coverage/
 .vite/
 *.tsbuildinfo
 *.d.ts
+!apps/studio-client/src/vite-env.d.ts
 *.d.ts.map
 *.js.map
 apps/studio-client/vite.config.js

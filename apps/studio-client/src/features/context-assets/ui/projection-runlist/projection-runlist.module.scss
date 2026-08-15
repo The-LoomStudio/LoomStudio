@@ -1,0 +1,279 @@
+.runlist {
+  --loom-projection-guide-width: 28px;
+  --loom-projection-guide-color: var(--loom-color-border);
+
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  padding: 0 6px 16px;
+}
+
+.summary {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 4px;
+  color: var(--loom-color-text-subtle);
+  background: var(--loom-color-background);
+  font-size: var(--loom-font-size-1);
+}
+
+.summary strong {
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
+  font-weight: var(--loom-font-weight-4);
+}
+
+.zones {
+  min-width: 0;
+}
+
+.zone {
+  min-width: 0;
+}
+
+.zoneHeader,
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.zoneHeader {
+  height: 48px;
+  gap: 5px;
+  color: var(--loom-color-text-muted);
+  cursor: grab;
+  user-select: none;
+}
+
+.zoneHeader:active,
+.row:active {
+  cursor: grabbing;
+}
+
+.zoneHeader strong {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--loom-color-text);
+  font-size: var(--loom-font-size-3);
+  font-weight: var(--loom-font-weight-7);
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.position,
+.positionSpacer {
+  flex: 0 0 24px;
+}
+
+.position {
+  color: var(--loom-color-text-subtle);
+  font-family: var(--loom-font-family-mono);
+  font-size: var(--loom-font-size-1);
+  text-align: right;
+}
+
+.zoneStart,
+.zoneCollapsed,
+.guidePass,
+.guideBranch,
+.guideEnd,
+.guideEmpty {
+  position: relative;
+  align-self: stretch;
+  flex: 0 0 var(--loom-projection-guide-width);
+}
+
+.zoneStart::before {
+  position: absolute;
+  top: calc(50% - 0.5px);
+  bottom: 0;
+  left: 50%;
+  right: 0;
+  border-top: 1px solid var(--loom-projection-guide-color);
+  border-left: 1px solid var(--loom-projection-guide-color);
+  border-top-left-radius: var(--loom-radius-sm);
+  content: '';
+}
+
+.zoneCollapsed::before {
+  position: absolute;
+  top: calc(50% - 0.5px);
+  left: 50%;
+  right: 0;
+  border-top: 1px solid var(--loom-projection-guide-color);
+  content: '';
+}
+
+.zoneRows {
+  min-width: 0;
+}
+
+.zoneDivider {
+  flex: 1;
+  min-width: 12px;
+  border-top: 1px solid var(--loom-projection-guide-color);
+}
+
+.zoneCount,
+.source {
+  flex: 0 0 auto;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
+}
+
+.zoneIcon,
+.dragHandle,
+.disclosure svg {
+  width: var(--loom-icon-size-4);
+  height: var(--loom-icon-size-4);
+  stroke-width: 1.35;
+}
+
+.zoneIcon {
+  color: var(--loom-color-text-muted);
+}
+
+.rowGroup {
+  min-width: 0;
+}
+
+.row {
+  min-height: 36px;
+  gap: 5px;
+  border-radius: var(--loom-radius-surface);
+  color: var(--loom-color-text-muted);
+}
+
+.row:hover,
+.selected {
+  color: var(--loom-color-text);
+  background: color-mix(in srgb, var(--loom-color-surface) 48%, transparent);
+}
+
+.guidePass::before,
+.guideBranch::before {
+  position: absolute;
+  inset-block: 0;
+  left: 50%;
+  border-left: 1px solid var(--loom-projection-guide-color);
+  content: '';
+}
+
+.guideBranch::after {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 50%;
+  border-top: 1px solid var(--loom-projection-guide-color);
+  content: '';
+}
+
+.guideEnd::before {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 50%;
+  height: 50%;
+  border-bottom: 1px solid var(--loom-projection-guide-color);
+  border-left: 1px solid var(--loom-projection-guide-color);
+  border-bottom-left-radius: var(--loom-radius-sm);
+  content: '';
+}
+
+.dragHandle {
+  flex: 0 0 auto;
+  color: var(--loom-color-text-subtle);
+  opacity: 0;
+}
+
+.zoneHeader:hover .dragHandle,
+.row:hover .dragHandle {
+  opacity: 1;
+}
+
+.disclosure {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  padding: 0;
+  color: var(--loom-color-text-subtle);
+  background: transparent;
+}
+
+button.disclosure {
+  cursor: pointer;
+}
+
+button.disclosure:hover {
+  color: var(--loom-color-text);
+}
+
+.slotDisclosure {
+  flex-basis: var(--loom-projection-guide-width);
+  width: var(--loom-projection-guide-width);
+}
+
+.rowLabel {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 1px;
+  border: 0;
+  padding: 3px 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+}
+
+.rowLabel:hover:not(:disabled),
+.rowLabel:focus-visible {
+  color: inherit;
+  background: transparent;
+  box-shadow: none;
+}
+
+.rowLabel strong,
+.rowLabel small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowLabel strong {
+  font-size: var(--loom-font-size-3);
+  font-weight: var(--loom-font-weight-4);
+}
+
+.rowLabel small {
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
+}
+
+.source[data-loom-source-kind='virtual'] {
+  color: var(--loom-color-accent-strong);
+}
+
+.slotEntries .row {
+  color: var(--loom-color-text-muted);
+}
+
+@media (hover: none) {
+  .dragHandle {
+    opacity: 0.65;
+  }
+}

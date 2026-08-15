@@ -15,18 +15,18 @@
   gap: 5px;
   margin: 7px 8px 5px;
   padding: 0 4px 3px;
-  border-bottom: 1px solid var(--loom-border);
-  color: var(--loom-text-subtle);
+  border-bottom: 1px solid var(--loom-color-border);
+  color: var(--loom-color-text-subtle);
 }
 
 .searchField:focus-within {
-  border-color: var(--loom-text-muted);
-  color: var(--loom-text-muted);
+  border-color: var(--loom-color-text-muted);
+  color: var(--loom-color-text-muted);
 }
 
 .searchField > svg {
-  width: 14px;
-  height: 14px;
+  width: var(--loom-icon-size-4);
+  height: var(--loom-icon-size-4);
 }
 
 .searchField input {
@@ -34,9 +34,9 @@
   height: 25px;
   border: 0;
   padding: 0;
-  color: var(--loom-text);
+  color: var(--loom-color-text);
   background: transparent;
-  font-size: 12px;
+  font-size: var(--loom-font-size-3);
   box-shadow: none;
 }
 
@@ -53,17 +53,17 @@
   place-items: center;
   border: 0;
   padding: 0;
-  color: var(--loom-text-subtle);
+  color: var(--loom-color-text-subtle);
   background: transparent;
 }
 
 .searchField button:hover:not(:disabled) {
-  color: var(--loom-text);
+  color: var(--loom-color-text);
 }
 
 .searchField button svg {
-  width: 13px;
-  height: 13px;
+  width: var(--loom-icon-size-3);
+  height: var(--loom-icon-size-3);
 }
 
 .searchBody,
@@ -98,7 +98,7 @@
 
 .result:hover:not(:disabled),
 .result:focus-visible {
-  color: var(--loom-text);
+  color: var(--loom-color-text);
   background: transparent;
   box-shadow: none;
 }
@@ -107,20 +107,20 @@
 .result:hover:not(:disabled) .resultText strong,
 .result:focus-visible .resultIcon,
 .result:focus-visible .resultText strong {
-  color: var(--loom-accent-strong);
+  color: var(--loom-color-accent-strong);
 }
 
 .resultIcon {
-  width: 16px;
-  height: 16px;
+  width: var(--loom-icon-size-5);
+  height: var(--loom-icon-size-5);
   display: grid;
   place-items: center;
-  color: var(--loom-text-subtle);
+  color: var(--loom-color-text-subtle);
 }
 
 .resultIcon svg {
-  width: 14px;
-  height: 14px;
+  width: var(--loom-icon-size-4);
+  height: var(--loom-icon-size-4);
 }
 
 .resultText {
@@ -138,25 +138,25 @@
 }
 
 .resultText strong {
-  color: var(--loom-text);
-  font-size: 12px;
-  font-weight: 560;
+  color: var(--loom-color-text);
+  font-size: var(--loom-font-size-3);
+  font-weight: var(--loom-font-weight-4);
 }
 
 .resultText small,
 .resultText span {
-  color: var(--loom-text-subtle);
-  font-size: 10px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
 }
 
 .resultText mark {
-  color: var(--loom-accent-strong);
+  color: var(--loom-color-accent-strong);
   background: transparent;
 }
 
 .empty {
   padding: 20px 12px;
-  color: var(--loom-text-subtle);
-  font-size: 12px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-3);
   text-align: center;
 }

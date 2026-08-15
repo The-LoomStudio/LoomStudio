@@ -1,7 +1,7 @@
 import { matchPath } from 'react-router-dom'
 import type { StudioPanelId } from './studio-layout-store.js'
 
-export type StudioRoute = {
+type StudioRoute = {
   assetId?: string
   branchId?: string
   cardId?: string

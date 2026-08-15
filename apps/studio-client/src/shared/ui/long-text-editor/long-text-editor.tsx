@@ -6,6 +6,8 @@ import {
   reduceLongTextEditorState,
   type LongTextEditorMode,
 } from './long-text-editor-model.js'
+import { SkeletonText } from '../skeleton/skeleton.js'
+import { tryWriteClipboardText } from '../../browser/clipboard.js'
 import styles from './long-text-editor.module.scss'
 
 const CodeMirrorEditor = lazy(async () => {
@@ -18,37 +20,43 @@ const MarkdownPreview = lazy(async () => {
   return { default: module.MarkdownPreview }
 })
 
-type LongTextEditorProps = {
+type LongTextEditorBaseProps = {
   clearLabel: string
   clearedLabel: string
   copiedLabel: string
   copyFailedLabel: string
   copyLabel: string
-  disableCodeWrapLabel: string
   autoFocus?: boolean
   compact?: boolean
   disabled?: boolean
-  enableCodeWrapLabel: string
   label: string
   minHeight?: number
-  mode: LongTextEditorMode
-  sourceOnly?: boolean
   onChange(value: string): void
   onCommit(value: string): void
   placeholder?: string
-  previewEmptyLabel: string
-  previewModeLabel: string
   spellCheck?: boolean
-  sourceModeLabel: string
   restoreInitialLabel: string
   showLineNumbers?: boolean
   undoEditLabel: string
   undoLabel: string
   value: string
   onCancel?(): void
-  onModeChange?(mode: LongTextEditorMode): void
   onSubmit?(value: string): void
 }
+
+type LongTextEditorProps = LongTextEditorBaseProps & ({
+  sourceOnly: true
+  mode: 'source'
+} | {
+  sourceOnly?: false
+  mode: LongTextEditorMode
+  disableCodeWrapLabel: string
+  enableCodeWrapLabel: string
+  previewEmptyLabel: string
+  previewModeLabel: string
+  sourceModeLabel: string
+  onModeChange(mode: LongTextEditorMode): void
+})
 
 export type LongTextEditorHandle = CodeMirrorEditorHandle
 
@@ -77,12 +85,8 @@ export const LongTextEditor = forwardRef<LongTextEditorHandle, LongTextEditorPro
   }, [state.undoValue])
 
   async function copyValue() {
-    try {
-      await navigator.clipboard.writeText(props.value)
-      dispatch({ type: 'copy', status: 'copied' })
-    } catch {
-      dispatch({ type: 'copy', status: 'failed' })
-    }
+    const copied = await tryWriteClipboardText(props.value)
+    dispatch({ type: 'copy', status: copied ? 'copied' : 'failed' })
   }
 
   function clearValue() {
@@ -137,7 +141,7 @@ export const LongTextEditor = forwardRef<LongTextEditorHandle, LongTextEditorPro
       <span className={styles.label} id={labelId}>{props.label}</span>
       <header className={styles.toolbar}>
         <div className={styles.actions}>
-          {!props.sourceOnly ? (
+          {props.sourceOnly ? null : (
             <button
               aria-label={props.mode === 'source' ? props.previewModeLabel : props.sourceModeLabel}
               aria-pressed={props.mode === 'preview'}
@@ -149,7 +153,7 @@ export const LongTextEditor = forwardRef<LongTextEditorHandle, LongTextEditorPro
             >
               {props.mode === 'source' ? <Eye aria-hidden="true" /> : <Code2 aria-hidden="true" />}
             </button>
-          ) : null}
+          )}
           <button
             aria-label={props.undoEditLabel}
             className={styles.action}
@@ -212,7 +216,11 @@ export const LongTextEditor = forwardRef<LongTextEditorHandle, LongTextEditorPro
         </div>
       </header>
       {props.mode === 'source' ? (
-        <Suspense fallback={<div aria-busy="true" className={styles.editorHost} data-loom-component="code-editor-loading" />}>
+        <Suspense fallback={(
+          <div aria-busy="true" className={styles.editorHost} data-loom-component="code-editor-loading">
+            <SkeletonText className={styles.editorSkeleton} lines={8} />
+          </div>
+        )}>
           <CodeMirrorEditor
             ref={codeEditorRef}
             autoFocus={props.autoFocus}
@@ -231,8 +239,12 @@ export const LongTextEditor = forwardRef<LongTextEditorHandle, LongTextEditorPro
             onSubmit={props.onSubmit}
           />
         </Suspense>
-      ) : (
-        <Suspense fallback={<div aria-busy="true" className={styles.preview} data-loom-component="markdown-preview-loading" />}>
+      ) : !props.sourceOnly ? (
+        <Suspense fallback={(
+          <div aria-busy="true" className={styles.preview} data-loom-component="markdown-preview-loading">
+            <SkeletonText className={styles.previewSkeleton} lines={5} />
+          </div>
+        )}>
           <MarkdownPreview
             codeBlockLabels={{
               copied: props.copiedLabel,
@@ -245,7 +257,7 @@ export const LongTextEditor = forwardRef<LongTextEditorHandle, LongTextEditorPro
             value={props.value}
           />
         </Suspense>
-      )}
+      ) : null}
       <span className={styles.liveRegion} aria-live="polite">{liveFeedback}</span>
     </section>
   )

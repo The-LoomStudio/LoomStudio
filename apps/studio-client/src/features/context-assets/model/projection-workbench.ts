@@ -4,6 +4,7 @@ import {
   buildProjectionOrder,
   findContextNode,
   flattenContextNodes,
+  moveProjectionZone,
   moveBefore,
   orderProjectionEntries,
   readProjectionOrderIds,
@@ -88,61 +89,16 @@ export function readProjectionOrderReorderUpdates(input: {
   return [readProjectionOrderUpdate(input.orderNode, input.projectionEntries, newOrder)]
 }
 
-export function readPresetProjectionMoveUpdates(input: {
-  draggedId: string
-  nodes: ContextAssetNode[]
+export function readProjectionZoneReorderUpdates(input: {
+  draggedZoneId: string
   orderedProjectionEntries: ProjectionOrderEntry[]
   orderNode: ContextAssetNode | undefined
-  position: MovePosition
   projectionEntries: ProjectionOrderEntry[]
-  projectionOrderIds: string[]
-  targetId: string
+  targetZoneId: string
 }): ContextAssetUpdate[] {
-  const draggedNode = findContextNode(input.nodes, input.draggedId)
-  if (!draggedNode?.projection) return []
-
-  const targetNode = findContextNode(input.nodes, input.targetId)
-  const slotMove = targetNode?.projection && readSlotKey(draggedNode) === readSlotKey(targetNode)
-  if (slotMove) {
-    return [{
-      id: input.draggedId,
-      partial: {
-        projection: {
-          ...draggedNode.projection,
-          entryOrder: readReorderedEntryOrder(
-            input.orderedProjectionEntries,
-            draggedNode.id,
-            targetNode.id,
-            input.position,
-          ),
-        },
-      },
-    }]
-  }
-
-  let newZoneId = draggedNode.projection.zoneId
-  const newOrder = input.projectionOrderIds.filter(id => id !== input.draggedId)
-
-  if (input.targetId.includes('-zone-')) {
-    const zoneMatch = input.targetId.match(/-zone-(.+)$/)
-    if (zoneMatch) newZoneId = zoneMatch[1]!
-    newOrder.push(input.draggedId)
-  } else {
-    if (targetNode?.projection) newZoneId = targetNode.projection.zoneId
-    const targetIndex = newOrder.indexOf(input.targetId)
-    if (targetIndex >= 0) {
-      newOrder.splice(input.position === 'after' ? targetIndex + 1 : targetIndex, 0, input.draggedId)
-    } else {
-      newOrder.push(input.draggedId)
-    }
-  }
-
-  const updates: ContextAssetUpdate[] = []
-  if (newZoneId !== draggedNode.projection.zoneId) {
-    updates.push({ id: input.draggedId, partial: { projection: { ...draggedNode.projection, zoneId: newZoneId } } })
-  }
-  if (input.orderNode) updates.push(readProjectionOrderUpdate(input.orderNode, input.projectionEntries, newOrder))
-  return updates
+  if (!input.orderNode || input.draggedZoneId === input.targetZoneId) return []
+  const newOrder = moveProjectionZone(input.orderedProjectionEntries, input.draggedZoneId, input.targetZoneId)
+  return [readProjectionOrderUpdate(input.orderNode, input.projectionEntries, newOrder)]
 }
 
 function readProjectionOrderUpdate(

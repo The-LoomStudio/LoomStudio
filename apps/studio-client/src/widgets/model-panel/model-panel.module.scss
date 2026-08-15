@@ -1,39 +1,33 @@
-.modelPane {
-  width: 100%;
+.modelPanel {
+  --loom-model-panel-gutter: 16px;
+  --loom-model-card-inset: 12px;
+
+  min-width: 0;
   min-height: 100%;
+  overflow-x: hidden;
   padding-bottom: 32px;
-  color: var(--loom-text);
-  background: var(--loom-bg);
+  color: var(--loom-color-text);
+  background: var(--loom-color-surface);
 }
 
 .accountsSection {
-  padding: 14px 16px;
+  min-width: 0;
+  padding: 14px var(--loom-model-panel-gutter);
 }
 
 .providerForm label {
   display: grid;
   gap: 5px;
-  color: var(--loom-text-muted);
-  font-size: 11px;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
 }
 
 .providerForm input,
 .modelPicker input {
   width: 100%;
   min-height: 30px;
-  border: 0;
-  border-bottom: 1px solid var(--loom-divider-color);
-  border-radius: 0;
   padding: 4px 2px;
-  color: var(--loom-text);
-  background: transparent;
-  font-size: 12px;
-}
-
-.providerForm input:focus,
-.modelPicker input:focus {
-  border-color: var(--loom-accent);
-  box-shadow: none;
+  font-size: var(--loom-font-size-3);
 }
 
 .sectionHeader,
@@ -48,25 +42,30 @@
 .sectionHeader {
   justify-content: space-between;
   margin-bottom: 10px;
+  padding-inline: var(--loom-model-card-inset);
 }
 
 .sectionHeader h2,
 .accountBody h4 {
   margin: 0;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--loom-font-size-3);
+  font-weight: var(--loom-font-weight-5);
 }
 
 .sectionHeader > span {
-  color: var(--loom-text-subtle);
-  font-size: 11px;
+  flex: 0 0 auto;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-2);
 }
 
 .createAccount,
 .accountCard {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   border: 0;
-  border-radius: 10px;
-  background: var(--loom-surface);
+  border-radius: var(--loom-radius-card);
+  background: var(--loom-color-surface-subtle);
 }
 
 .createAccount {
@@ -79,11 +78,11 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 12px;
-  color: var(--loom-text);
+  padding: 7px var(--loom-model-card-inset);
+  color: var(--loom-color-text);
   cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--loom-font-size-3);
+  font-weight: var(--loom-font-weight-5);
   list-style: none;
 }
 
@@ -94,11 +93,11 @@
 
 .createAccount > summary > svg:first-child,
 .accountCard > summary > svg:first-child {
-  width: 12px;
-  height: 12px;
+  width: var(--loom-icon-size-2);
+  height: var(--loom-icon-size-2);
   flex: 0 0 auto;
   stroke-width: 1.25;
-  transition: transform 120ms ease;
+  transition: transform var(--loom-motion-duration-fast) ease;
 }
 
 .createAccount[open] > summary > svg:first-child,
@@ -115,26 +114,28 @@
 }
 
 .accountCard > summary > small {
-  color: var(--loom-text-subtle);
-  font-size: 10px;
-  font-weight: 400;
+  flex: 0 0 auto;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
+  font-weight: var(--loom-font-weight-1);
 }
 
 .brandIcon,
 .brandIconFallback {
-  width: 14px;
-  height: 14px;
-  flex: 0 0 14px;
+  width: var(--loom-icon-size-4);
+  height: var(--loom-icon-size-4);
+  flex: 0 0 var(--loom-icon-size-4);
   object-fit: contain;
 }
 
 .brandIconFallback {
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
   stroke-width: 1.25;
 }
 
 .providerForm,
 .accountBody {
+  min-width: 0;
   display: grid;
   gap: 13px;
   padding: 4px 12px 14px 26px;
@@ -145,44 +146,48 @@
   min-height: 28px;
   border: 0;
   padding-inline: 0;
-  color: var(--loom-accent-strong);
+  color: var(--loom-color-accent-strong);
   background: transparent;
-  font-size: 12px;
+  font-size: var(--loom-font-size-3);
 }
 
 .hint,
 .warning {
-  color: var(--loom-text-subtle);
-  font-size: 10px;
-  font-weight: 400;
+  font-size: var(--loom-font-size-1);
+  font-weight: var(--loom-font-weight-1);
+}
+
+.hint {
+  color: var(--loom-color-text-subtle);
 }
 
 .warning {
-  color: var(--loom-danger);
+  color: var(--loom-color-danger);
 }
 
 .accountList {
+  min-width: 0;
   display: grid;
   gap: 7px;
 }
 
 .extensionId {
-  color: var(--loom-text-subtle);
-  font-size: 10px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
 }
 
 .accountField {
   min-width: 0;
   gap: 10px;
-  color: var(--loom-text-muted);
-  font-size: 11px;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
 }
 
 .accountField code {
   min-width: 0;
   flex: 1;
   overflow: hidden;
-  color: var(--loom-text);
+  color: var(--loom-color-text);
   font-family: inherit;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -197,33 +202,33 @@
 
 .keys h4,
 .models h4 {
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
 }
 
 .keys > p,
 .empty,
 .mockNotice {
   margin: 0;
-  color: var(--loom-text-subtle);
-  font-size: 11px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-2);
 }
 
 .keyRow {
   min-height: 26px;
   gap: 10px;
-  color: var(--loom-text-muted);
-  font-size: 11px;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
 }
 
 .keyRow code {
-  color: var(--loom-text);
+  color: var(--loom-color-text);
   font-family: inherit;
 }
 
 .keyRow small {
   margin-left: auto;
-  color: var(--loom-success);
-  font-size: 10px;
+  color: var(--loom-color-success);
+  font-size: var(--loom-font-size-1);
 }
 
 .modelPicker {
@@ -244,25 +249,25 @@
   min-height: 26px;
   border: 0;
   padding: 0;
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
   background: transparent;
 }
 
 .modelPicker > form button:hover:not(:disabled),
 .iconButton:hover:not(:disabled) {
-  color: var(--loom-accent-strong);
+  color: var(--loom-color-accent-strong);
 }
 
 .iconButtonDanger:hover:not(:disabled) {
-  color: var(--loom-danger);
+  color: var(--loom-color-danger);
 }
 
 .modelPicker > form button svg,
 .iconButton svg,
 .iconButtonDanger svg,
 .deleteProvider svg {
-  width: 13px;
-  height: 13px;
+  width: var(--loom-icon-size-3);
+  height: var(--loom-icon-size-3);
   stroke-width: 1.25;
 }
 
@@ -270,8 +275,8 @@
   display: none;
   margin-top: 5px;
   padding: 6px 0;
-  border-radius: 8px;
-  background: var(--loom-surface-deep);
+  border-radius: var(--loom-radius-popover);
+  background: var(--loom-color-surface-emphasis);
 }
 
 .modelPicker:focus-within .modelMenu {
@@ -283,12 +288,12 @@
   min-height: 30px;
   gap: 8px;
   padding: 2px 8px;
-  color: var(--loom-text);
-  font-size: 11px;
+  color: var(--loom-color-text);
+  font-size: var(--loom-font-size-2);
 }
 
 .availableModel {
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
 }
 
 .modelRow > span,
@@ -302,7 +307,7 @@
 
 .modelRow:hover,
 .availableModel:hover {
-  color: var(--loom-accent-strong);
+  color: var(--loom-color-accent-strong);
 }
 
 .mockNotice {
@@ -322,18 +327,41 @@
   gap: 6px;
   border: 0;
   padding: 0;
-  color: var(--loom-text-subtle);
+  color: var(--loom-color-text-subtle);
   background: transparent;
-  font-size: 11px;
+  font-size: var(--loom-font-size-2);
 }
 
 .deleteProvider:hover:not(:disabled) {
-  color: var(--loom-danger);
+  color: var(--loom-color-danger);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .createAccount > summary > svg:first-child,
   .accountCard > summary > svg:first-child {
     transition: none;
+  }
+}
+
+@container studio-panel (max-width: 360px) {
+  .modelPanel {
+    --loom-model-panel-gutter: 10px;
+    --loom-model-card-inset: 8px;
+  }
+
+  .sectionHeader {
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .providerForm,
+  .accountBody {
+    padding-right: 8px;
+    padding-left: 20px;
+  }
+
+  .accountField,
+  .keyRow {
+    gap: 6px;
   }
 }

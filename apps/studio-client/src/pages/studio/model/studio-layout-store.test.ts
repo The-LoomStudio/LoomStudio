@@ -50,6 +50,7 @@ describe('studio layout store', () => {
   it('keeps window and explorer layouts isolated by page', () => {
     const store = useStudioLayoutStore.getState()
     store.setPanelWindowSize('preset', { width: 920, height: 700 })
+    store.setRailWidth(224)
     store.setPanelWindowSize('character', { width: 1080, height: 760 })
     store.togglePanelWindowMode('preset')
     store.setAssetExplorerWidth('preset', 260)
@@ -80,6 +81,7 @@ describe('studio layout store', () => {
         character: { width: 1080, height: 760 },
       },
       panelWindowModes: { preset: 'immersive' },
+      railWidth: 224,
     })
   })
 
@@ -111,6 +113,7 @@ describe('studio layout store', () => {
     useStudioLayoutStore.getState().setAssetExpandedIds('resources', 'card-a', ['resource-root', 'resource-folder'])
     useStudioLayoutStore.getState().setAssetViewMode('resources', 'card-a', 'split')
     useStudioLayoutStore.getState().togglePanelWindowMode('character')
+    useStudioLayoutStore.getState().setRailWidth(208)
     const persisted = storedValues.get('loom-studio-layout')
     expect(persisted).toBeDefined()
 
@@ -134,6 +137,7 @@ describe('studio layout store', () => {
       },
       dockOpen: true,
       panelWindowModes: { character: 'immersive' },
+      railWidth: 208,
     })
   })
 
@@ -181,6 +185,7 @@ describe('sanitizeStudioLayout', () => {
       },
       presetPanel: 'order',
       textEditorMode: 'preview',
+      uiScale: 100,
     })).toEqual({
       assetMetadataOpen: true,
       assetLayouts: {
@@ -193,8 +198,10 @@ describe('sanitizeStudioLayout', () => {
       panelWindowSizes: {
         preset: { width: 900, height: 680 },
       },
-      presetPanel: 'order',
+      presetView: 'order',
+      railWidth: 160,
       textEditorMode: 'preview',
+      uiScale: 100,
     })
   })
 
@@ -236,5 +243,17 @@ describe('sanitizeStudioLayout', () => {
 
   it('falls back to defaults when persisted data is not an object', () => {
     expect(sanitizeStudioLayout('broken')).toEqual(createDefaultStudioLayout())
+  })
+
+  it('keeps readable Rail widths and snaps the unreadable range to icon mode', () => {
+    expect(sanitizeStudioLayout({ railWidth: 240 }).railWidth).toBe(240)
+    expect(sanitizeStudioLayout({ railWidth: 70 }).railWidth).toBe(42)
+    expect(sanitizeStudioLayout({ railWidth: 900 }).railWidth).toBe(320)
+  })
+
+  it('clamps and snaps the persisted interface scale', () => {
+    expect(sanitizeStudioLayout({ uiScale: 117 }).uiScale).toBe(115)
+    expect(sanitizeStudioLayout({ uiScale: 40 }).uiScale).toBe(80)
+    expect(sanitizeStudioLayout({ uiScale: 180 }).uiScale).toBe(125)
   })
 })

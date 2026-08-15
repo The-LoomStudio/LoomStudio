@@ -1,0 +1,47 @@
+.skeleton {
+  display: block;
+  width: 100%;
+  height: 0.72em;
+  overflow: hidden;
+  border-radius: var(--loom-radius-full);
+  background: color-mix(in srgb, var(--loom-color-surface-emphasis) 72%, var(--loom-color-surface));
+  animation: skeleton-pulse var(--loom-motion-duration-loading) ease-in-out infinite;
+}
+
+.skeleton[data-shape='block'] {
+  height: 4rem;
+  border-radius: var(--loom-radius-surface);
+}
+
+.skeleton[data-shape='circle'] {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--loom-radius-full);
+}
+
+.text {
+  width: 100%;
+  display: grid;
+  gap: 0.62em;
+}
+
+.text > .skeleton:last-child {
+  width: 72%;
+}
+
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.48;
+  }
+
+  50% {
+    opacity: 0.82;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}

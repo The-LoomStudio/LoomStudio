@@ -1,6 +1,6 @@
 import type { ContextAssetNode } from '../../../entities/index.js'
 
-export type ContextAssetNodeInfo = {
+type ContextAssetNodeInfo = {
   category?: ContextAssetNode['category']
   node: ContextAssetNode
   parentId?: string

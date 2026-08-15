@@ -29,8 +29,6 @@ const renameManifest: RenameItem[] = [
   file('apps/studio-client/src/widgets/input-dashboard/InputDashboard.module.css', 'apps/studio-client/src/widgets/input-dashboard/input-dashboard.module.css'),
   file('apps/studio-client/src/widgets/master-detail-editor/MasterDetailEditor.tsx', 'apps/studio-client/src/widgets/master-detail-editor/master-detail-editor.tsx'),
   file('apps/studio-client/src/widgets/master-detail-editor/MasterDetailEditor.module.css', 'apps/studio-client/src/widgets/master-detail-editor/master-detail-editor.module.css'),
-  file('apps/studio-client/src/widgets/narrative-canvas/NarrativeCanvas.tsx', 'apps/studio-client/src/widgets/narrative-canvas/narrative-canvas.tsx'),
-  file('apps/studio-client/src/widgets/narrative-canvas/NarrativeCanvas.module.css', 'apps/studio-client/src/widgets/narrative-canvas/narrative-canvas.module.css'),
   file('apps/studio-client/src/widgets/preset-workbench/AgentRuntimeManager.tsx', 'apps/studio-client/src/widgets/preset-workbench/agent-runtime-manager.tsx'),
   file('apps/studio-client/src/widgets/preset-workbench/AgentRuntimeManager.module.css', 'apps/studio-client/src/widgets/preset-workbench/agent-runtime-manager.module.css'),
   file('apps/studio-client/src/widgets/preset-workbench/PresetWorkbench.tsx', 'apps/studio-client/src/widgets/preset-workbench/preset-workbench.tsx'),

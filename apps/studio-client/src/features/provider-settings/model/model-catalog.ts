@@ -1,4 +1,4 @@
-export type ModelCatalogItem = {
+type ModelCatalogItem = {
   enabled: boolean
   id: string
 }

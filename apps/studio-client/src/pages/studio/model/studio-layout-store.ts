@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware'
+import { createJSONStorage, persist } from 'zustand/middleware'
+import { safeLocalStorage } from '../../../shared/browser/safe-local-storage.js'
 import type { WindowSize } from '../window-resize.js'
 import type { LongTextEditorMode } from '../../../shared/ui/long-text-editor/long-text-editor-model.js'
 
@@ -10,7 +11,7 @@ export type AssetLayoutId = 'preset' | 'resources'
 export type AssetViewMode = 'explorer' | 'split' | 'editor'
 export type ContextCategory = 'setting' | 'logic' | 'runtime' | 'history'
 export type PanelWindowMode = 'reference' | 'immersive'
-export type PresetPanel = 'assets' | 'order'
+export type PresetView = 'assets' | 'order'
 
 export type AssetViewState = {
   expandedIds?: string[]
@@ -30,8 +31,10 @@ type StudioLayoutData = {
   dockOpen: boolean
   panelWindowModes: Partial<Record<StudioPanelId, PanelWindowMode>>
   panelWindowSizes: Partial<Record<StudioPanelId, WindowSize>>
-  presetPanel: PresetPanel
+  presetView: PresetView
+  railWidth: number
   textEditorMode: LongTextEditorMode
+  uiScale: number
 }
 
 type StudioLayoutStore = StudioLayoutData & {
@@ -44,8 +47,10 @@ type StudioLayoutStore = StudioLayoutData & {
   setAssetViewMode(layoutId: AssetLayoutId, workspaceId: string, viewMode: AssetViewMode): void
   setContextCategory(category: ContextCategory): void
   setPanelWindowSize(panel: StudioPanelId, size: WindowSize): void
-  setPresetPanel(panel: PresetPanel): void
+  setPresetView(view: PresetView): void
+  setRailWidth(width: number): void
   setTextEditorMode(mode: LongTextEditorMode): void
+  setUiScale(scale: number): void
   toggleDock(): void
   togglePanelWindowMode(panel: StudioPanelId): void
 }
@@ -58,31 +63,39 @@ type StudioPanelStore = {
 }
 
 const STORAGE_KEY = 'loom-studio-layout'
-const STORAGE_VERSION = 8
+const STORAGE_VERSION = 10
 const DEFAULT_EXPLORER_WIDTH = 300
+const DEFAULT_RAIL_WIDTH = 160
+const RAIL_COLLAPSED_WIDTH = 42
+const RAIL_MIN_TEXT_WIDTH = 96
+const RAIL_MAX_WIDTH = 320
+const UI_SCALE_DEFAULT = 100
+const UI_SCALE_MIN = 80
+const UI_SCALE_MAX = 125
 export const DEFAULT_ASSET_VIEW_STATE: AssetViewState = { viewMode: 'explorer' }
-const safeStorage: StateStorage = {
-  getItem: name => {
-    try {
-      return globalThis.localStorage?.getItem(name) ?? null
-    } catch {
-      return null
-    }
-  },
-  removeItem: name => {
-    try {
-      globalThis.localStorage?.removeItem(name)
-    } catch {
-      // Layout persistence is optional when browser storage is unavailable.
-    }
-  },
-  setItem: (name, value) => {
-    try {
-      globalThis.localStorage?.setItem(name, value)
-    } catch {
-      // Layout persistence is optional when browser storage is unavailable.
-    }
-  },
+
+function updateAssetView(
+  state: StudioLayoutData,
+  layoutId: AssetLayoutId,
+  workspaceId: string,
+  updates: Partial<AssetViewState>,
+): Pick<StudioLayoutData, 'assetLayouts'> {
+  const layout = state.assetLayouts[layoutId]
+  return {
+    assetLayouts: {
+      ...state.assetLayouts,
+      [layoutId]: {
+        ...layout,
+        views: {
+          ...layout.views,
+          [workspaceId]: {
+            ...(layout.views[workspaceId] ?? DEFAULT_ASSET_VIEW_STATE),
+            ...updates,
+          },
+        },
+      },
+    },
+  }
 }
 
 export function createDefaultStudioLayout(): StudioLayoutData {
@@ -96,8 +109,10 @@ export function createDefaultStudioLayout(): StudioLayoutData {
     dockOpen: false,
     panelWindowModes: {},
     panelWindowSizes: {},
-    presetPanel: 'assets',
+    presetView: 'assets',
+    railWidth: DEFAULT_RAIL_WIDTH,
     textEditorMode: 'source',
+    uiScale: UI_SCALE_DEFAULT,
   }
 }
 
@@ -115,8 +130,10 @@ export function sanitizeStudioLayout(value: unknown): StudioLayoutData {
     dockOpen: value.dockOpen === true || readPanelId(value.activePanel) !== null,
     panelWindowModes: readPanelWindowModes(value.panelWindowModes),
     panelWindowSizes: readPanelWindowSizes(value.panelWindowSizes),
-    presetPanel: value.presetPanel === 'order' ? 'order' : defaults.presetPanel,
+    presetView: value.presetView === 'order' || value.presetPanel === 'order' ? 'order' : defaults.presetView,
+    railWidth: readRailWidth(value.railWidth),
     textEditorMode: value.textEditorMode === 'preview' ? 'preview' : defaults.textEditorMode,
+    uiScale: readUiScale(value.uiScale),
   }
 }
 
@@ -152,63 +169,28 @@ export const useStudioLayoutStore = create<StudioLayoutStore>()(
         }
       }),
       setAssetMetadataOpen: assetMetadataOpen => set({ assetMetadataOpen }),
-      setAssetExpandedIds: (layoutId, workspaceId, expandedIds) => set(state => ({
-        assetLayouts: {
-          ...state.assetLayouts,
-          [layoutId]: {
-            ...state.assetLayouts[layoutId],
-            views: {
-              ...state.assetLayouts[layoutId].views,
-              [workspaceId]: {
-                ...(state.assetLayouts[layoutId].views[workspaceId] ?? DEFAULT_ASSET_VIEW_STATE),
-                expandedIds: [...new Set(expandedIds)],
-              },
-            },
-          },
-        },
-      })),
+      setAssetExpandedIds: (layoutId, workspaceId, expandedIds) => set(state => updateAssetView(
+        state,
+        layoutId,
+        workspaceId,
+        { expandedIds: [...new Set(expandedIds)] },
+      )),
       setAssetExplorerWidth: (layoutId, explorerWidth) => set(state => ({
         assetLayouts: {
           ...state.assetLayouts,
           [layoutId]: { ...state.assetLayouts[layoutId], explorerWidth },
         },
       })),
-      setAssetSelectedId: (layoutId, workspaceId, selectedId) => set(state => ({
-        assetLayouts: {
-          ...state.assetLayouts,
-          [layoutId]: {
-            ...state.assetLayouts[layoutId],
-            views: {
-              ...state.assetLayouts[layoutId].views,
-              [workspaceId]: {
-                ...(state.assetLayouts[layoutId].views[workspaceId] ?? DEFAULT_ASSET_VIEW_STATE),
-                selectedId,
-              },
-            },
-          },
-        },
-      })),
-      setAssetViewMode: (layoutId, workspaceId, viewMode) => set(state => ({
-        assetLayouts: {
-          ...state.assetLayouts,
-          [layoutId]: {
-            ...state.assetLayouts[layoutId],
-            views: {
-              ...state.assetLayouts[layoutId].views,
-              [workspaceId]: {
-                ...(state.assetLayouts[layoutId].views[workspaceId] ?? DEFAULT_ASSET_VIEW_STATE),
-                viewMode,
-              },
-            },
-          },
-        },
-      })),
+      setAssetSelectedId: (layoutId, workspaceId, selectedId) => set(state => updateAssetView(state, layoutId, workspaceId, { selectedId })),
+      setAssetViewMode: (layoutId, workspaceId, viewMode) => set(state => updateAssetView(state, layoutId, workspaceId, { viewMode })),
       setContextCategory: contextCategory => set({ contextCategory }),
       setPanelWindowSize: (panel, size) => set(state => ({
         panelWindowSizes: { ...state.panelWindowSizes, [panel]: size },
       })),
-      setPresetPanel: presetPanel => set({ presetPanel }),
+      setPresetView: presetView => set({ presetView }),
+      setRailWidth: railWidth => set({ railWidth: readRailWidth(railWidth) }),
       setTextEditorMode: textEditorMode => set({ textEditorMode }),
+      setUiScale: uiScale => set({ uiScale: readUiScale(uiScale) }),
       toggleDock: () => set(state => ({ dockOpen: !state.dockOpen })),
       togglePanelWindowMode: panel => set(state => ({
         panelWindowModes: {
@@ -220,7 +202,7 @@ export const useStudioLayoutStore = create<StudioLayoutStore>()(
     {
       name: STORAGE_KEY,
       version: STORAGE_VERSION,
-      storage: createJSONStorage(() => safeStorage),
+      storage: createJSONStorage(() => safeLocalStorage),
       migrate: persisted => sanitizeStudioLayout(persisted),
       merge: (persisted, current) => ({ ...current, ...sanitizeStudioLayout(persisted) }),
       partialize: state => ({
@@ -230,8 +212,10 @@ export const useStudioLayoutStore = create<StudioLayoutStore>()(
         dockOpen: state.dockOpen,
         panelWindowModes: state.panelWindowModes,
         panelWindowSizes: state.panelWindowSizes,
-        presetPanel: state.presetPanel,
+        presetView: state.presetView,
+        railWidth: state.railWidth,
         textEditorMode: state.textEditorMode,
+        uiScale: state.uiScale,
       }),
     },
   ),
@@ -244,6 +228,17 @@ function readAssetLayout(value: unknown, id: AssetLayoutId, fallback: AssetLayou
     explorerWidth: isFinitePositiveNumber(layout.explorerWidth) ? layout.explorerWidth : fallback.explorerWidth,
     views: readAssetViews(layout.views),
   }
+}
+
+function readRailWidth(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_RAIL_WIDTH
+  if (value < RAIL_MIN_TEXT_WIDTH) return RAIL_COLLAPSED_WIDTH
+  return Math.min(RAIL_MAX_WIDTH, value)
+}
+
+function readUiScale(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return UI_SCALE_DEFAULT
+  return Math.min(UI_SCALE_MAX, Math.max(UI_SCALE_MIN, Math.round(value / 5) * 5))
 }
 
 function readAssetViews(value: unknown): Record<string, AssetViewState> {

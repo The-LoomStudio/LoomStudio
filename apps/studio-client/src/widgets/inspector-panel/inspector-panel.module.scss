@@ -4,10 +4,10 @@
   min-height: 0;
   overflow: auto;
   border-left: 0;
-  background: var(--loom-bg);
+  background: var(--loom-color-surface);
 }
 
 .section {
   padding: 12px;
-  border-bottom: 1px solid var(--loom-border);
+  border-bottom: 1px solid var(--loom-color-border);
 }

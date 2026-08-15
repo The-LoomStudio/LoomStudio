@@ -5,17 +5,50 @@ export type WindowSize = {
   width: number
 }
 
-const WINDOW_MIN_WIDTH = 520
-const WINDOW_MIN_HEIGHT = 360
+type Rectangle = {
+  bottom: number
+  left: number
+  right: number
+  top: number
+}
+
+export type WindowResizeConstraints = {
+  edgeGap: number
+  minimumHeight: number
+  minimumWidth: number
+}
+
+export const DEFAULT_WINDOW_RESIZE_CONSTRAINTS: WindowResizeConstraints = {
+  edgeGap: 18,
+  minimumHeight: 360,
+  minimumWidth: 520,
+}
+
+export function readWindowResizeBounds(
+  stage: Pick<Rectangle, 'bottom' | 'right'>,
+  dock: Pick<Rectangle, 'left' | 'top'>,
+  cssMaximumHeight: number,
+  edgeGap = DEFAULT_WINDOW_RESIZE_CONSTRAINTS.edgeGap,
+): WindowSize {
+  const availableHeight = stage.bottom - dock.top - edgeGap
+
+  return {
+    width: stage.right - dock.left - edgeGap,
+    height: Number.isFinite(cssMaximumHeight)
+      ? Math.min(availableHeight, cssMaximumHeight)
+      : availableHeight,
+  }
+}
 
 export function resizeWindow(
   initial: WindowSize,
   delta: { x: number; y: number },
   bounds: WindowSize,
   axis: WindowResizeAxis,
+  constraints = DEFAULT_WINDOW_RESIZE_CONSTRAINTS,
 ): WindowSize {
-  const minimumWidth = Math.min(WINDOW_MIN_WIDTH, bounds.width)
-  const minimumHeight = Math.min(WINDOW_MIN_HEIGHT, bounds.height)
+  const minimumWidth = Math.min(constraints.minimumWidth, bounds.width)
+  const minimumHeight = Math.min(constraints.minimumHeight, bounds.height)
 
   return {
     width: axis === 'vertical'

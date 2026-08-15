@@ -5,10 +5,12 @@
   display: grid;
   grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
-  background: var(--loom-bg);
+  background: var(--loom-color-background);
 }
 
 .studioStage {
+  --loom-composer-reserve: calc(var(--loom-input-height) + 4rem);
+
   position: relative;
   min-width: 0;
   min-height: 0;
@@ -22,102 +24,94 @@
   min-height: 0;
   display: grid;
   justify-items: center;
-  background: var(--loom-bg);
+  background: var(--loom-color-background);
 }
 
 .floatingDock {
-  --loom-dock-expanded-width: 160px;
-  --loom-dock-toggle-size: 34px;
-  --loom-dock-toggle-rail-width: 48px;
-  --loom-dock-icon-size: 14px;
+  --loom-dock-icon-size: var(--loom-icon-size-4);
   --loom-dock-icon-stroke: 1.25;
   --loom-dock-content-inset: 5px;
   --loom-dock-item-height: calc(var(--loom-dock-icon-size) + 16px);
   --loom-dock-item-gap: calc(var(--loom-dock-icon-size) * 0.1);
-  --loom-dock-header-top-space: 6px;
   --loom-composer-reserve: calc(var(--loom-input-height) + 4rem);
 
   position: absolute;
   z-index: 30;
-  top: 18px;
-  left: 8px;
-  width: var(--loom-dock-toggle-rail-width);
-  height: calc(var(--loom-dock-item-height) + var(--loom-dock-header-top-space) * 2);
-  max-height: calc(100% - 36px);
-  max-width: calc(100% - 26px);
+  top: var(--loom-window-gap);
+  left: var(--loom-window-gap);
+  width: var(--loom-rail-collapsed-width);
+  height: max-content;
+  max-height: calc(100% - var(--loom-window-gap) * 2);
+  max-width: calc(100% - var(--loom-window-gap) * 2);
   display: grid;
-  grid-template-columns: var(--loom-dock-toggle-rail-width) 0 0;
+  grid-template-columns: var(--loom-rail-collapsed-width) 0 0;
   overflow: hidden;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
+  border: 1px solid var(--loom-color-border);
+  border-radius: var(--loom-radius-window);
+  background: var(--loom-color-surface);
   box-shadow: none;
   interpolate-size: allow-keywords;
   transition:
-    width 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    height 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    border-radius 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    width var(--loom-motion-duration-standard) var(--loom-motion-easing-standard),
+    height var(--loom-motion-duration-standard) var(--loom-motion-easing-standard),
+    border-radius var(--loom-motion-duration-standard) var(--loom-motion-easing-standard);
 }
 
 .dockSidebar {
-  min-width: 48px;
+  min-width: var(--loom-rail-collapsed-width);
   min-height: 0;
   display: grid;
-  grid-template-rows: 0 0 minmax(0, 1fr);
-  transition: grid-template-rows 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-.floatingDockOpen .dockSidebar,
-.floatingDockActive .dockSidebar {
   grid-template-rows: var(--loom-page-header-height) calc(var(--loom-divider-space) * 2 + 1px) minmax(0, 1fr);
+  container-name: studio-rail;
+  container-type: inline-size;
 }
 
 .dockHeader {
+  width: 100%;
+  height: var(--loom-page-header-height);
   min-width: 0;
   min-height: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns:
+    calc(var(--loom-rail-collapsed-width) - var(--loom-dock-content-inset) - var(--loom-dock-content-inset))
+    minmax(0, 1fr)
+    minmax(0, var(--loom-page-header-control-size));
   align-items: center;
-  gap: 8px;
+  gap: 0;
   overflow: hidden;
-  padding: 0 11px;
-  visibility: hidden;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 120ms ease, padding 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-.floatingDockOpen .dockHeader,
-.floatingDockActive .dockHeader {
-  padding-right: 8px;
-  padding-left: 43px;
+  padding: 6px var(--loom-dock-content-inset) 0;
+  color: var(--loom-color-text-muted);
   visibility: visible;
   opacity: 1;
   pointer-events: auto;
 }
 
 .dockTitle {
-  color: var(--loom-text-muted);
+  width: 100%;
+  padding-inline: 12px;
+  color: var(--loom-color-text-muted);
 }
 
 .dockWorkspaceToggle {
-  width: 26px;
-  min-width: 26px;
+  width: 100%;
+  min-width: 0;
   min-height: 26px;
   display: grid;
   place-items: center;
   border: 0;
   padding: 0;
-  color: var(--loom-text-muted);
+  overflow: hidden;
+  color: var(--loom-color-text-muted);
   background: transparent;
 }
 
 .dockWorkspaceToggle:hover:not(:disabled) {
-  color: var(--loom-accent-strong);
+  color: var(--loom-color-accent-strong);
 }
 
 .dockToggle:focus-visible,
 .dockWorkspaceToggle:focus-visible {
-  outline: 1px solid var(--loom-accent);
+  outline: 1px solid var(--loom-color-accent);
   outline-offset: -2px;
 }
 
@@ -129,64 +123,47 @@
 
 .dockHeaderDivider {
   min-width: 0;
-  margin-inline: calc(var(--loom-divider-inset) + var(--loom-dock-content-inset));
+  padding-inline: var(--loom-dock-content-inset);
+}
+
+.dockHeaderDivider > :global(.loom-divider) {
+  margin-inline: min(var(--loom-divider-inset), 12%);
 }
 
 .floatingDockOpen {
-  width: var(--loom-dock-expanded-width);
-  height: max-content;
-  grid-template-columns: var(--loom-dock-expanded-width) 0 0;
-  border-radius: 18px;
-  background: var(--loom-window);
+  width: var(--loom-window-rail-width, var(--loom-rail-expanded-width));
+  grid-template-columns: var(--loom-window-rail-width, var(--loom-rail-expanded-width)) 0 0;
 }
 
 .floatingDock:not(.floatingDockActive) .dockDivider,
-.floatingDock:not(.floatingDockActive) .dockPanelHost,
-.floatingDock:not(.floatingDockOpen):not(.floatingDockActive) .dockSidebar {
+.floatingDock:not(.floatingDockActive) .dockPanelHost {
   display: none;
 }
 
 .floatingDockActive {
   bottom: auto;
   width: clamp(42rem, 52vw, 72rem);
-  height: calc(100% - 18px - var(--loom-composer-reserve));
-  max-height: calc(100% - 18px - var(--loom-composer-reserve));
-  grid-template-columns: var(--loom-dock-expanded-width) 1px minmax(0, 1fr);
-  border-radius: 18px;
-  background: var(--loom-window);
+  height: calc(100% - var(--loom-window-gap) - var(--loom-composer-reserve));
+  max-height: calc(100% - var(--loom-window-gap) - var(--loom-composer-reserve));
+  display: block;
 }
 
-.floatingDockWorkspace {
-  width: calc(100% - 26px);
+.floatingDockBesideNarrative {
+  width: calc(var(--loom-narrative-left-anchor, 42rem) - var(--loom-window-gap) * 2);
+  height: calc(var(--loom-composer-base-top-anchor, 100%) - var(--loom-window-gap));
+  max-height: calc(var(--loom-composer-base-top-anchor, 100%) - var(--loom-window-gap));
+}
+
+.floatingDockCoverNarrative {
+  width: calc(var(--loom-narrative-right-anchor, 72rem) - var(--loom-window-gap));
+  height: calc(var(--loom-composer-base-top-anchor, 100%) - var(--loom-window-gap));
+  max-height: calc(var(--loom-composer-base-top-anchor, 100%) - var(--loom-window-gap));
 }
 
 .floatingDockImmersive {
-  width: calc(100% - 26px);
-  height: calc(100% - 36px);
-  max-height: calc(100% - 36px);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .floatingDock:not(.floatingDockOpen):not(.floatingDockActive):is(:hover, :focus-within) {
-    width: var(--loom-dock-expanded-width);
-    height: max-content;
-    grid-template-columns: var(--loom-dock-expanded-width) 0 0;
-    border-radius: 18px;
-    background: var(--loom-window);
-  }
-
-  .floatingDock:not(.floatingDockOpen):not(.floatingDockActive):is(:hover, :focus-within) .dockSidebar {
-    display: grid;
-    grid-template-rows: var(--loom-page-header-height) calc(var(--loom-divider-space) * 2 + 1px) minmax(0, 1fr);
-  }
-
-  .floatingDock:not(.floatingDockOpen):not(.floatingDockActive):is(:hover, :focus-within) .dockHeader {
-    padding-right: 8px;
-    padding-left: 43px;
-    visibility: visible;
-    opacity: 1;
-    pointer-events: auto;
-  }
+  width: calc(100% - var(--loom-window-gap) * 2);
+  height: calc(100% - var(--loom-window-gap) * 2);
+  max-height: calc(100% - var(--loom-window-gap) * 2);
 }
 
 .floatingDockResizing {
@@ -194,24 +171,20 @@
 }
 
 .dockToggle {
-  position: absolute;
-  z-index: 2;
-  top: var(--loom-dock-header-top-space);
-  left: 7px;
-  width: var(--loom-dock-toggle-size);
-  min-width: var(--loom-dock-toggle-size);
-  min-height: var(--loom-dock-item-height);
+  width: 100%;
+  min-width: 0;
+  min-height: var(--loom-page-header-control-size);
   display: grid;
   place-items: center;
   border: 0;
   border-radius: 0;
   padding: 0;
-  color: var(--loom-text);
+  color: var(--loom-color-text);
   background: transparent;
 }
 
 .dockToggle:hover:not(:disabled) {
-  color: var(--loom-accent-strong);
+  color: var(--loom-color-accent-strong);
 }
 
 .dockToggle svg {
@@ -221,11 +194,11 @@
 }
 
 .studioRail {
-  min-width: 48px;
+  min-width: var(--loom-rail-collapsed-width);
   display: flex;
   flex-direction: column;
   gap: var(--loom-dock-item-gap);
-  padding: 6px var(--loom-dock-content-inset);
+  padding: 2px var(--loom-dock-content-inset) 6px;
   border: 0;
   background: transparent;
 }
@@ -237,9 +210,10 @@
   justify-content: space-between;
   gap: 8px;
   margin-top: auto;
+  overflow: hidden;
   padding: 10px 10px 4px;
-  color: var(--loom-text-subtle);
-  font-size: 10px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
 }
 
 .githubLink {
@@ -253,12 +227,12 @@
 
 .githubLink:hover,
 .githubLink:focus-visible {
-  color: var(--loom-text);
+  color: var(--loom-color-text);
 }
 
 .githubLink svg {
-  width: 13px;
-  height: 13px;
+  width: var(--loom-icon-size-3);
+  height: var(--loom-icon-size-3);
   flex: 0 0 auto;
   fill: currentColor;
   stroke: none;
@@ -266,7 +240,7 @@
 
 .version {
   flex: 0 0 auto;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--loom-font-family-mono);
 }
 
 .railTab {
@@ -274,42 +248,44 @@
   width: 100%;
   min-height: var(--loom-dock-item-height);
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-columns:
+    calc(var(--loom-rail-collapsed-width) - var(--loom-dock-content-inset) - var(--loom-dock-content-inset))
+    minmax(0, 1fr);
   align-items: center;
   border: 0;
-  border-radius: 11px;
+  border-radius: var(--loom-radius-control);
   padding: 0;
-  color: var(--loom-text);
+  color: var(--loom-color-text);
   background: transparent;
   overflow: hidden;
   white-space: nowrap;
 }
 
 .railTab:hover:not(:disabled) {
-  color: var(--loom-accent-strong);
+  color: var(--loom-color-accent-strong);
   background: transparent;
 }
 
 .railTabActive {
-  color: var(--loom-accent-strong);
+  color: var(--loom-color-accent-strong);
   background: transparent;
 }
 
 .railTab:focus-visible {
-  outline: 1px solid var(--loom-accent);
+  outline: 1px solid var(--loom-color-accent);
   outline-offset: -2px;
   box-shadow: none;
 }
 
 .railTab:focus-visible svg {
-  color: var(--loom-accent-strong);
+  color: var(--loom-color-accent-strong);
 }
 
 .railTabIncomplete,
 .railTabIncomplete:hover:not(:disabled),
 .railTabIncomplete:focus-visible,
 .railTabIncomplete:focus-visible svg {
-  color: var(--loom-danger);
+  color: var(--loom-color-danger);
 }
 
 .railTab svg {
@@ -325,90 +301,55 @@
   overflow: hidden;
   padding-right: 12px;
   padding-left: 12px;
-  font-size: 12px;
+  font-size: var(--loom-font-size-3);
   text-align: left;
-  opacity: 0;
-  transform: translateX(-4px);
-  transition: opacity 120ms ease, transform 160ms ease;
-}
-
-.floatingDock:not(.floatingDockActive):hover .railLabel,
-.floatingDock:not(.floatingDockActive):focus-within .railLabel,
-.floatingDockOpen .railLabel {
   opacity: 1;
   transform: translateX(0);
-}
-
-.floatingDock:not(.floatingDockActive):hover .studioRail,
-.floatingDock:not(.floatingDockActive):focus-within .studioRail,
-.floatingDockOpen .studioRail {
-  padding: 2px var(--loom-dock-content-inset) 6px;
-}
-
-.floatingDock:not(.floatingDockActive):hover .railTab,
-.floatingDock:not(.floatingDockActive):focus-within .railTab,
-.floatingDockOpen .railTab {
-  display: flex;
-  padding: 8px 12px;
-}
-
-.floatingDockActive .studioRail {
-  min-width: var(--loom-dock-expanded-width);
-  padding: 2px var(--loom-dock-content-inset) 6px;
-}
-
-.floatingDockActive .railTab {
-  display: flex;
-  padding: 8px 12px;
-}
-
-.floatingDockActive .railLabel {
-  opacity: 1;
-  transform: translateX(0);
-}
-
-.floatingDock:not(.floatingDockActive):hover .railTab svg,
-.floatingDock:not(.floatingDockActive):focus-within .railTab svg,
-.floatingDockOpen .railTab svg,
-.floatingDockActive .railTab svg {
-  flex: 0 0 auto;
-  margin-right: 12px;
-}
-
-.floatingDock:not(.floatingDockActive):hover .railLabel,
-.floatingDock:not(.floatingDockActive):focus-within .railLabel,
-.floatingDockOpen .railLabel,
-.floatingDockActive .railLabel {
-  flex: 1;
-  padding: 0;
 }
 
 .railDivider {
   min-width: 0;
+  margin-inline: min(var(--loom-divider-inset), 12%);
 }
 
-.dockDivider {
-  align-self: stretch;
-  width: 1px;
+@container studio-rail (max-width: 140px) {
+  .version {
+    display: none;
+  }
+}
+
+@container studio-rail (max-width: 100px) {
+  .dockWorkspaceToggle,
+  .githubLink span {
+    display: none;
+  }
+}
+
+.workspaceColumnLayout {
+  background: var(--loom-color-surface);
+}
+
+.workspaceColumnLayout .dockSidebar,
+.workspaceColumnLayout .dockPanelHost {
+  height: 100%;
+}
+
+.workspaceColumnLayout :global([role='separator']) > span {
   margin-block: 16px;
-  background: color-mix(in srgb, var(--loom-border) 62%, transparent);
 }
 
 .dockPanelHost {
-  --loom-bg: var(--loom-window);
-  --loom-surface: var(--loom-window-surface);
-  --loom-panel: var(--loom-window-raised);
-  --loom-panel-muted: color-mix(in srgb, var(--loom-window-raised) 76%, var(--loom-text-muted));
-
   min-width: 0;
   min-height: 0;
   display: grid;
   grid-template-rows: var(--loom-page-header-height) calc(var(--loom-divider-space) * 2 + 1px) minmax(0, 1fr);
   overflow: hidden;
   border-left: 0;
-  background: var(--loom-bg);
-  font-size: 13px;
+  background: var(--loom-color-surface);
+  font-size: var(--loom-font-size-4);
   scrollbar-width: thin;
+  container-name: studio-panel;
+  container-type: inline-size;
 }
 
 .workspaceHeader {
@@ -416,7 +357,7 @@
 }
 
 .workspaceHeader svg {
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
 }
 
 .viewModeControl {
@@ -437,7 +378,7 @@
   place-items: center;
   border: 0;
   padding: 0;
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
   background: transparent;
 }
 
@@ -445,15 +386,15 @@
 .viewModeButtonActive,
 .windowModeButton:hover:not(:disabled),
 .windowModeButtonActive {
-  color: var(--loom-accent-strong);
+  color: var(--loom-color-accent-strong);
   background: transparent;
 }
 
 .viewModeButton:focus-visible,
 .viewModeButtonActive:focus-visible,
 .windowModeButton:focus-visible {
-  color: var(--loom-accent-strong);
-  outline: 1px solid var(--loom-accent);
+  color: var(--loom-color-accent-strong);
+  outline: 1px solid var(--loom-color-accent);
   outline-offset: -2px;
   box-shadow: none;
 }
@@ -476,32 +417,13 @@
   overflow: hidden;
 }
 
-.dockPanelHost button,
-.dockPanelHost input,
-.dockPanelHost select,
-.dockPanelHost textarea {
-  font-size: 12px;
-}
-
-.dockPanelHost h1 {
-  font-size: 17px;
-}
-
-.dockPanelHost h2 {
-  font-size: 11px;
-}
-
-.dockPanelHost h3 {
-  font-size: 12px;
-}
-
 .dockPanelHost::-webkit-scrollbar,
 .dockPanelHost *::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
-.stagePanel {
+.panelStage {
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -509,7 +431,7 @@
   overflow: auto;
 }
 
-.stagePanel[hidden] {
+.panelStage[hidden] {
   display: none;
 }
 
@@ -527,7 +449,7 @@
 
 .windowResizeHandle:focus-visible {
   opacity: 1;
-  outline: 1px solid var(--loom-accent);
+  outline: 1px solid var(--loom-color-accent);
   outline-offset: -2px;
 }
 
@@ -550,16 +472,13 @@
 .windowResizeCorner {
   right: -4px;
   bottom: -4px;
-  width: 14px;
-  height: 14px;
+  width: var(--loom-icon-size-4);
+  height: var(--loom-icon-size-4);
   cursor: nwse-resize;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .floatingDock,
-  .dockSidebar,
-  .dockHeader,
-  .railLabel {
+  .floatingDock {
     transition: none;
   }
 }
@@ -572,10 +491,6 @@
     left: 0;
   }
 
-  .floatingDockOpen {
-    width: var(--loom-dock-expanded-width);
-  }
-
   .floatingDockActive {
     right: auto;
     bottom: auto;
@@ -584,7 +499,4 @@
     max-height: calc(100% - 24px);
   }
 
-  .dockPanelHost {
-    border-left: 0;
-  }
 }

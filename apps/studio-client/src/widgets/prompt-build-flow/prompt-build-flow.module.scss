@@ -5,10 +5,10 @@
 }
 
 .flowStep {
-  border: 1px solid var(--loom-border);
-  border-radius: 6px;
+  border: 1px solid var(--loom-color-border);
+  border-radius: var(--loom-radius-card);
   padding: 10px;
-  background: var(--loom-surface);
+  background: var(--loom-color-surface-inset);
 }
 
 .flowStep dl {
@@ -21,11 +21,11 @@
   display: grid;
   grid-template-columns: 92px minmax(0, 1fr);
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--loom-font-size-3);
 }
 
 .flowStep dt {
-  color: var(--loom-text-muted);
+  color: var(--loom-color-text-muted);
 }
 
 .flowStep dd {
