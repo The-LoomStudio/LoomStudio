@@ -586,6 +586,27 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       }
     },
 
+    createNarrativeTimeline: async (input, requestContext) => {
+      const card = await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
+      const cardContent = normalizeCardContent(card.content)
+      const openingEntries = readOpeningEntries(cardToSnapshot(card))
+      const created = await requireNarratives().createTimeline({
+        ...narrativeWriteContext(requestContext, 'application.createNarrativeTimeline'),
+        title: input.title ?? cardContent.name,
+        createdFrom: { cardId: card.id, cardVersion: card.version },
+        promptResourceIds: cardContent.promptResourceIds ?? [],
+        openingNodes: openingEntries.map(entry => ({
+          body: { format: 'loom-markdown.v1' as const, raw: entry.content },
+        })),
+      })
+      return {
+        timeline: created.timeline,
+        branch: created.branch,
+        nodes: created.nodes,
+        mutation: { changesetId: created.commit.changesetId },
+      }
+    },
+
     createNarrativeTimelineFromCard: async (input, requestContext) => {
       const card = await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
       const cardContent = normalizeCardContent(card.content)
@@ -924,6 +945,16 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       return { resource: fromStoredResource(result.resource), mutation: { changesetId: result.commit.changesetId } }
     },
 
+    exportCardBundle: async input => {
+      return {
+        artifact: await exportCardArtifact({
+          cardId: input.cardId,
+          documents: ctx.documents,
+          promptResources: ctx.promptResources,
+        }),
+      }
+    },
+
     exportCardArtifact: async input => {
       return {
         artifact: await exportCardArtifact({
@@ -932,6 +963,20 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
           promptResources: ctx.promptResources,
         }),
       }
+    },
+
+    revertChangeset: async (input, requestContext) => {
+      const result = await ctx.documents.revertChangeset({
+        changesetId: input.changesetId,
+        actor: requestContext?.clientId
+          ? { kind: 'client' as const, id: requestContext.clientId }
+          : applicationActor,
+        reason: 'application.revertChangeset',
+        correlationId: requestContext?.correlationId,
+        callId: requestContext?.callId,
+        parentCallId: requestContext?.parentCallId,
+      })
+      return { mutation: { changesetId: result.commit.changesetId } }
     },
 
   }

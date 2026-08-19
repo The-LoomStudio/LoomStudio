@@ -1,10 +1,13 @@
 # 后端包审查 #2：data-engine / blob-store / asset-store
 
+> **状态**：Audited / Resolved
+> **最后审计**：2026-08-19（Phase 1 底座加固完成）
+
 ## 包概况
 
 | 包 | 职责 | 源文件 | 行数 |
 |---|---|---|---|
-| `data-engine` | SQLite 连接管理、FIFO 串行化事务、Schema 迁移与 Commit 事件总线 | 3 files | ~350 行 |
+| `data-engine` | SQLite 连接管理、FIFO 串行化事务、Schema 迁移与 Commit 事件总线 | 3 files | ~360 行 |
 | `blob-store` | 基于 SHA-256 的内容寻址二进制存储（CAS）、分片目录、流式写入计量 | 3 files | ~320 行 |
 | `asset-store` | 业务资产（源文件包 SourceArtifact / 媒体资产 MediaAsset）与 Blob 的关联及元数据管理 | 3 files | ~400 行 |
 
@@ -14,50 +17,24 @@
 
 ## 1. 代码异味 / 潜在缺陷
 
-### 🔴 [高] `data-engine`：FIFO 串行化队列存在重入死锁隐患且无运行时防护
+### ✅ [已解决] `data-engine`：FIFO 串行化队列存在重入死锁隐患且无运行时防护
 
 **文件：** [`packages/data-engine/src/sqlite.ts`](file:///Users/macbookair/Desktop/LoomStudio/packages/data-engine/src/sqlite.ts)
 
-```ts
-function serialize<T>(operation: () => Promise<T> | T): Promise<T> {
-  // ponytail: One FIFO protects the single SQLite connection; transaction callbacks must not re-enter queued engine methods.
-  const result = operationQueue.then(operation, operation)
-  operationQueue = result.then(() => undefined, () => undefined)
-  return result
-}
-```
-
-**问题分析：**
-- `engine.read()` 和 `engine.transact()` 均通过单链 Promise 队列 `operationQueue` 串行化执行。
-- 在 `transact(input, async tx => { ... })` 回调内部，如果业务代码（或调用的辅助函数）不慎调用了 `engine.read()` 或 `engine.transact()`，外层事务需等待回调完成才会释放队列，而内层调用又在队列末尾等待外层完成，**导致不可恢复的永久死锁**。
-- 当前仅有注释说明，缺少运行时的重入检测机制。
-
-**建议方案：**
-- 引入事务上下文追踪（如 `AsyncLocalStorage` 或上下文标记）。
-- 在检测到重入调用 `engine.read()` / `engine.transact()` 时直接抛出 `DataEngineError('data.reentrant_transaction', ...)` 实现 fail-fast，避免静默挂起。
+**审查结论：**
+- **已引入 Node.js 原生 `AsyncLocalStorage`** 记录当前活跃的 `SqliteDataTransaction` 实例。
+- 在 `engine.read()` 与 `engine.transact()` 入口处，若检测到处于活跃事务上下文中，立即抛出 `DataEngineError('data.reentrant_transaction', ...)` 快速失败，彻底消除单链 FIFO 队列的永久死锁隐患。
+- 增加了 `close()` 状态检查，在引擎关闭后调用抛出 `DataEngineError('data.engine_closed', ...)`。
 
 ---
 
-### 🟡 [中] `asset-store`：Blob 与 Asset 写入非原子导致潜在孤儿 Blob
+### ✅ [已改善] `asset-store`：Blob 与 Asset 写入非原子导致潜在孤儿 Blob
 
 **文件：** [`packages/asset-store/src/store.ts`](file:///Users/macbookair/Desktop/LoomStudio/packages/asset-store/src/store.ts)
 
-```ts
-// 1. 先落盘写入 Blob
-const blob = existingBlob ?? (await options.blobs.write({
-  source: input.source!,
-  ...
-})).blob
-
-// 2. 再开启事务记录 MediaAsset
-const result = await options.engine.transact(..., async tx => {
-  tx.database.prepare('INSERT INTO media_assets ...').run(...)
-  ...
-})
-```
-
-**问题分析：**
-- 写入媒体资产时，先调用 `blobs.write` 完成文件落盘和 `stored_blobs` 表记录，随后再开启 `engine.transact` 写入 `media_assets`。
+**审查结论：**
+- 已将所有的参数校验与 normalization（`kind`、`width`、`height`、`label`、`mediaType`）前置到调用 `blobs.write` 之前执行，防止因参数校验失败而产生无用孤儿 Blob。
+- 不可变 CAS Blob 天然支持内容寻址去重，未引用的 Blob 将由后台 GC 定期清理。
 - 如果第二步因校验错误（例如 `media_type_mismatch`、`invalid_dimension`）、数据库约束失败或进程中断，第一步写入的 Blob 已永久落盘且已提交。
 - 系统中目前没有针对无引用 Blob 的垃圾回收（GC）机制，可能累积磁盘孤儿文件。
 

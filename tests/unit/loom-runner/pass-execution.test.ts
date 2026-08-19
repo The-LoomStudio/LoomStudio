@@ -2,7 +2,7 @@ import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
 import { createDocumentDataCommitSource, createInMemoryDocumentStore } from '@loom-studio/document-store'
 import type { ExtensionHost } from '@loom-studio/extension-host'
 import { createKernel } from '@loom-studio/kernel'
-import { createLoomRunner } from '@loom-studio/loom-runner'
+import { createLoomRunner, createSamplePassFactories } from '@loom-studio/loom-runner'
 import { createInMemoryTraceAuditStore, type TraceAuditStore } from '@loom-studio/trace-audit'
 import { describe, expect, it } from 'vitest'
 
@@ -19,7 +19,7 @@ function createTestKernel(traceAudit: TraceAuditStore = createInMemoryTraceAudit
     list: () => [],
     diagnostics: () => [],
   }
-  const loomRunner = createLoomRunner({ traceAudit })
+  const loomRunner = createLoomRunner({ traceAudit, factories: createSamplePassFactories() })
   const kernel = createKernel({
     documents,
     dataCommits: createDocumentDataCommitSource(documents),
@@ -35,7 +35,7 @@ function createTestKernel(traceAudit: TraceAuditStore = createInMemoryTraceAudit
 
 describe('loom runner pass execution', () => {
   it('runs a no-op pass', async () => {
-    const runner = createLoomRunner()
+    const runner = createLoomRunner({ factories: createSamplePassFactories() })
 
     const result = await runner.run({
       fragments: [{ id: 'f1', content: 'hello', meta: {} }],
@@ -46,7 +46,7 @@ describe('loom runner pass execution', () => {
   })
 
   it('runs an uppercase pass', async () => {
-    const runner = createLoomRunner()
+    const runner = createLoomRunner({ factories: createSamplePassFactories() })
 
     const result = await runner.run({
       fragments: [{ id: 'f1', content: 'hello', meta: {} }],
@@ -64,18 +64,18 @@ describe('loom runner pass execution', () => {
       passes: [{ name: 'missing' }],
     })
 
-    expect(result.diagnostics?.some(diagnostic => diagnostic.code === 'loom/factory-missing')).toBe(true)
+    expect(result.diagnostics?.some((diagnostic: { code: string }) => diagnostic.code === 'loom/factory-missing')).toBe(true)
   })
 
   it('reports thrown passes as diagnostics', async () => {
-    const runner = createLoomRunner()
+    const runner = createLoomRunner({ factories: createSamplePassFactories() })
 
     const result = await runner.run({
       fragments: [{ id: 'f1', content: 'hello', meta: {} }],
       passes: [{ name: 'throw' }],
     })
 
-    expect(result.diagnostics?.some(diagnostic => diagnostic.code === 'loom/pass-threw')).toBe(true)
+    expect(result.diagnostics?.some((diagnostic: { code: string }) => diagnostic.code === 'loom/pass-threw')).toBe(true)
   })
 
   it('maps Core hint diagnostics to Studio info while preserving details', async () => {
@@ -84,9 +84,9 @@ describe('loom runner pass execution', () => {
         name: 'hint',
         create: () => ({
           name: 'hint',
-          run: (fragments, ctx) => {
+          run: (fragments: readonly unknown[], ctx: { diagnose(d: { severity: string; code: string; message: string }): void }) => {
             ctx.diagnose({ severity: 'hint', code: 'test/hint', message: 'helpful hint' })
-            return fragments
+            return fragments as never
           },
         }),
       }],
@@ -119,7 +119,7 @@ describe('loom runner pass execution', () => {
   })
 
   it('does not fail run when trace persist fails by default', async () => {
-    const runner = createLoomRunner({ traceAudit: failingTraceAudit() })
+    const runner = createLoomRunner({ traceAudit: failingTraceAudit(), factories: createSamplePassFactories() })
 
     const result = await runner.run({
       fragments: [{ id: 'f1', content: 'hello', meta: {} }],
@@ -128,11 +128,11 @@ describe('loom runner pass execution', () => {
     })
 
     expect(result.fragments[0]).toMatchObject({ content: 'HELLO' })
-    expect(result.diagnostics?.some(diagnostic => diagnostic.code === 'loom.trace_persist_failed')).toBe(true)
+    expect(result.diagnostics?.some((diagnostic: { code: string }) => diagnostic.code === 'loom.trace_persist_failed')).toBe(true)
   })
 
   it('fails run when strict trace persist is enabled', async () => {
-    const runner = createLoomRunner({ traceAudit: failingTraceAudit() })
+    const runner = createLoomRunner({ traceAudit: failingTraceAudit(), factories: createSamplePassFactories() })
 
     await expect(runner.run({
       fragments: [{ id: 'f1', content: 'hello', meta: {} }],
@@ -174,7 +174,7 @@ describe('kernel loom.run rpc contract', () => {
 
     const result = await kernel.callRpc<{ methods: Array<{ name: string }> }>('system.introspect', {})
 
-    expect(result.methods.some(method => method.name === 'loom.run')).toBe(true)
+    expect(result.methods.some((method: { name: string }) => method.name === 'loom.run')).toBe(true)
   })
 })
 

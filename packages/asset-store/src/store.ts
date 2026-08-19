@@ -3,9 +3,7 @@ import type { SqliteDataEngine } from '@loom-studio/data-engine'
 import type { DatabaseSync } from 'node:sqlite'
 import type {
   AssetStore,
-  CreateMediaAssetInput,
   MediaAssetRecord,
-  PreserveSourceArtifactInput,
   SourceArtifactRecord,
 } from './types.js'
 
@@ -36,6 +34,8 @@ export function createAssetStore(options: {
     blobs: options.blobs,
     preserveSourceArtifact: async input => {
       const format = normalizeToken(input.format, 'artifact format')
+      const originalFileName = normalizeOptionalText(input.originalFileName, 1024)
+      const importerVersion = normalizeOptionalText(input.importerVersion, 255)
       const blobResult = await options.blobs.write({
         source: input.source,
         mediaType: input.mediaType,
@@ -50,10 +50,10 @@ export function createAssetStore(options: {
         id: options.createId('artifact'),
         blobId: blobResult.blob.id,
         format,
-        originalFileName: normalizeOptionalText(input.originalFileName, 1024),
+        originalFileName,
         mediaType: blobResult.blob.mediaType,
         importedAt: options.now(),
-        importerVersion: normalizeOptionalText(input.importerVersion, 255),
+        importerVersion,
       }
       const result = await options.engine.transact({
         actor: input.actor,
@@ -91,6 +91,12 @@ export function createAssetStore(options: {
       if ((input.source === undefined) === (input.blobId === undefined)) {
         throw new AssetStoreError('asset.invalid_source', 'Media Asset requires exactly one of source or blobId')
       }
+      const kind = normalizeToken(input.kind, 'asset kind')
+      const label = normalizeOptionalText(input.label, 1024)
+      const width = normalizeDimension(input.width, 'width')
+      const height = normalizeDimension(input.height, 'height')
+      const ownerPackageId = normalizeOptionalText(input.ownerPackageId, 255)
+
       const existingBlob = input.blobId
         ? await options.blobs.get(input.blobId)
         : undefined
@@ -111,13 +117,13 @@ export function createAssetStore(options: {
       const asset: MediaAssetRecord = {
         id: options.createId('asset'),
         blobId: blob.id,
-        kind: normalizeToken(input.kind, 'asset kind'),
-        label: normalizeOptionalText(input.label, 1024),
+        kind,
+        label,
         mediaType: blob.mediaType ?? normalizeOptionalText(input.mediaType?.trim().toLowerCase(), 255),
         sizeBytes: blob.sizeBytes,
-        width: normalizeDimension(input.width, 'width'),
-        height: normalizeDimension(input.height, 'height'),
-        ownerPackageId: normalizeOptionalText(input.ownerPackageId, 255),
+        width,
+        height,
+        ownerPackageId,
         createdBy: structuredClone(input.actor),
         createdAt: options.now(),
       }

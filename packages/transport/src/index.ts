@@ -29,6 +29,8 @@ export type RpcResponseMeta = {
   clientId: string
   correlationId: string
   callId: string
+  durationMs?: number
+  serverTime?: string
 }
 
 export type EventMeta = {

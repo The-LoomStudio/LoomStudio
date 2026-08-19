@@ -1,4 +1,8 @@
-# 后端包审查 #1：document-store / narrative-store / agent-store
+# 后端包审查 #1：document-store / narrative-store / agent-store / prompt-resource-store
+
+> **状态**：Audited / Open
+> **最后审计**：2026-08-19（数据层大重构后重审）
+> **主要变更**：新增独立包 `prompt-resource-store` 承载 Prompt 资源树与 SettingMount 挂载；底层统一接入 `data-engine`。
 
 ## 包概况
 
@@ -7,44 +11,24 @@
 | `document-store` | 通用文档 CRUD + 版本 + 变更集 + Undo/Redo | 6 files | ~1200 行 |
 | `narrative-store` | 叙事时间线/分支/节点，链表式 append-only | 3 files | ~760 行 |
 | `agent-store` | AI Agent 会话 + 消息 + Tool Call 状态 | 3 files | ~490 行 |
+| `prompt-resource-store` | Prompt 资源树（Preset/Setting/Logic/Runtime）+ 节点版本 + SettingMount 挂载 | 3 files | ~1300 行 |
 
-三个包共享同一个 `data-engine` 抽象（`SqliteDataEngine`），由 `data-engine` 统一管理 `transact` / `commit` / `migrate`。
+四个包共享同一个 `data-engine` 抽象（`SqliteDataEngine`），由 `data-engine` 统一管理 `transact` / `commit` / `migrate`。
 
 ---
 
 ## 1. 代码异味 / 问题
 
-### 🔴 [高] `readPage` (narrative) 和 `readMessagePage` (agent) 链表遍历没有上限保护
+### ✅ [已解决] `readPage` (narrative) 和 `readMessagePage` (agent) 链表遍历没有上限保护与 N+1 查询
 
 **文件：**
-- [`narrative-store/store.ts` L349-L357](file:///Users/macbookair/Desktop/LoomStudio/packages/narrative-store/src/store.ts)
-- [`agent-store/store.ts` L219-L223](file:///Users/macbookair/Desktop/LoomStudio/packages/agent-store/src/store.ts)
+- [`narrative-store/store.ts`](file:///Users/macbookair/Desktop/LoomStudio/packages/narrative-store/src/store.ts)
+- [`agent-store/store.ts`](file:///Users/macbookair/Desktop/LoomStudio/packages/agent-store/src/store.ts)
 
-```ts
-// narrative-store
-while (nodeId && reverseNodes.length < limit) {
-  const node = requireNode(database, nodeId)       // ← 每次 1 条 SQL
-  reverseNodes.push(node)
-  nodeId = node.parentNodeId
-}
-
-// agent-store — 同样模式
-while (messageId && reverseMessages.length < limit) {
-  const message = requireMessage(database, messageId) // ← 每次 1 条 SQL
-  reverseMessages.push(message)
-  messageId = message.parentMessageId
-}
-```
-
-**问题：**
-- **N+1 查询问题**：每加载一条记录就执行一次 `SELECT ... WHERE id = ?`。`limit` 默认 50，最大 100，意味着一次分页请求最多发 100 条独立 SQL。虽然 SQLite 走的是本地文件没有网络开销，但在数据量大时仍然有显著性能影响。
-- **链表遍历无安全上限**：如果 `parentNodeId` / `parentMessageId` 因为 bug 产生了循环引用，这段代码会无限循环（虽然 `limit` 限制了结果集大小，但如果循环引用导致永远找不到 `null` 的 parent，`limit` 就是唯一的退出条件——这确实能兜住，但依赖的是业务 limit 而不是显式的循环检测）。
-
-**建议：**
-1. 用一条 SQL 替代 N 次查询：
-   - SQLite 支持 `WITH RECURSIVE` CTE，可以一条 SQL 完成链表遍历
-   - 或者用 `WHERE timeline_id = ? ORDER BY created_at DESC LIMIT ?` 直接按时间排序（前提是同 branch 内节点的 `created_at` 是严格递增的，但考虑 fork 的情况可能不成立）
-2. 加一个显式的 `maxTraversal` 安全阈值（如 10000），在超过时抛出错误。
+**审查结论：**
+- **已全面重构为单条 SQLite `WITH RECURSIVE` 递归 CTE 查询**，消除每次分页多达 100 次的逐条 `SELECT`（N+1 查询）。
+- 在递归 CTE 中内建了 `depth < 10000` 安全上限保护，从 SQL 层天然杜绝异常循环引用导致的无限死循环。
+- `isNodeInBranchPath` 同样升级为单条 CTE 查询，一次性判定节点归属。
 
 ---
 

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { AgentMessage, AgentSession } from '../../../entities/index.js'
-import { toClientJsonObject } from '../../../shared/api/client-json-object.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 
 type UseAgentChatRuntimeInput = {
@@ -34,10 +33,10 @@ export function useAgentChatRuntime(input: UseAgentChatRuntimeInput) {
 
     await input.runAction(async () => {
       const activeSession = await ensureSession(profileId, generation)
-      const result = await input.api.agentSessions.invoke(toClientJsonObject({
+      const result = await input.api.agentSessions.invoke({
         agentSessionId: activeSession.id,
         input: content,
-      }))
+      })
       if (profileGenerationRef.current !== generation) return
       setSession(result.agentSession)
       setMessages(current => [...current, result.messages.user, result.messages.assistant])
@@ -49,10 +48,10 @@ export function useAgentChatRuntime(input: UseAgentChatRuntimeInput) {
     if (session?.agentProfileId === profileId) return session
     if (sessionPromiseRef.current?.profileId === profileId) return sessionPromiseRef.current.promise
 
-    const promise = input.api.agentSessions.create(toClientJsonObject({
+    const promise = input.api.agentSessions.create({
       agentProfileId: profileId,
       ...(input.selectedAgentProfileName ? { title: input.selectedAgentProfileName } : {}),
-    })).then(result => {
+    }).then(result => {
       if (profileGenerationRef.current === generation) setSession(result.session)
       return result.session
     })

@@ -139,6 +139,8 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
   - 平台通用 Secret metadata、受控使用边界与凭证后端接口；SQLite 不保存 Secret 明文，真实系统凭证后端由 Server 组合根注入。
 - 📦 `packages/document-store/`
   - 保存适合版本化编辑的 Document 与 Revision，不再承载全部业务数据。
+- 📦 `packages/prompt-resource-store/`
+  - 在共享 SQLite 中持久化 Prompt Resource 树（Preset/Setting/Logic/Runtime）、细粒度节点版本与 SettingMount 挂载关系。
 - 📦 `packages/narrative-store/` / `packages/agent-store/`
   - 分别保存 Narrative Timeline / Branch / Node 与 Agent Session / append-only Message。
 - 📦 `packages/blob-store/`
@@ -154,8 +156,8 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
   - 正式架构说明：[`architecture/platform/logging.md`](../architecture/platform/logging.md)。
 - 📦 `packages/loom-runner/`
   - 面向 Kernel/RPC 的 Core adapter，负责 JSON 输入校验、默认 PassFactory 和 Trace Audit。
-- 📦 `packages/extension-sdk/`
-  - 提供给第三方开发者的插件开发 SDK。其内包含了 `extension-host` (管理插件加载生命周期的宿主)。
+- 📦 `packages/extension-sdk/` & `packages/extension-host/`
+  - 提供给第三方开发者的插件开发 SDK 与管理插件加载生命周期的独立宿主 Host。
 - 📦 `packages/shared/`
   - 通用的工具函数、通用的类型定义 (`JsonValue`, `createId`, 时间处理等)。
 - 📦 `packages/diagnostics/` & `packages/trace-audit/`

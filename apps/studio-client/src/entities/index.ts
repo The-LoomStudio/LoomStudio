@@ -1,5 +1,5 @@
 export type { JsonObject, MutationReceipt } from './common.js'
-export type { Card, CardMedia, CardSummary, CreateCardResult, DeleteCardResult, GetCardResult, ListCardsResult, UpdateCardResult } from './card.js'
+export type { Card, CardMedia, CardPresetInput, CardSummary, CreateCardResult, DeleteCardResult, GetCardResult, ListCardsResult, OpeningChatInput, SettingLayerInput, UpdateCardResult } from './card.js'
 export type {
   ContextAssetNode,
   ProjectionSlotRank,
@@ -55,13 +55,18 @@ export type {
   SettingMountSource,
 } from './workspace.js'
 export type {
+  ProviderProfile,
   ProviderAccount,
   ModelProfile,
   ProviderModelSelection,
   AgentProfile,
+  CreateProviderProfileResult,
   CreateProviderAccountResult,
+  ListProviderProfilesResult,
   ListProviderAccountsResult,
+  UpdateProviderProfileResult,
   UpdateProviderAccountResult,
+  DeleteProviderProfileResult,
   DeleteProviderAccountResult,
   CreateAgentProfileResult,
   ListAgentProfilesResult,

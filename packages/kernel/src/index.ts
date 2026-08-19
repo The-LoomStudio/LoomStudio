@@ -175,7 +175,7 @@ export function createEventBus(options: CreateEventBusOptions = {}): EventBus {
         },
       }
 
-      for (const subscription of subscriptions.values()) {
+      for (const [subscriptionId, subscription] of subscriptions.entries()) {
         if (!subscription.patterns.some(pattern => matchesEventPattern(pattern, name))) continue
         if (!canSubscribe(registered.definition, subscription.subscriber)) continue
         try {
@@ -183,14 +183,14 @@ export function createEventBus(options: CreateEventBusOptions = {}): EventBus {
           if (isPromiseLike(result)) {
             void result.catch(error => options.onSubscriberError?.({
               event,
-              subscriptionId: findSubscriptionId(subscriptions, subscription),
+              subscriptionId,
               error,
             }))
           }
         } catch (error) {
           options.onSubscriberError?.({
             event,
-            subscriptionId: findSubscriptionId(subscriptions, subscription),
+            subscriptionId,
             error,
           })
         }
@@ -349,17 +349,7 @@ function registerStageOneHandlers(
     environment: 'development' | 'production' | 'test'
   },
 ): void {
-  void options.loomRunner
-
-  const register = (method: string, handler: KernelRpcHandler) => {
-    try {
-      kernel.registerKernelRpc(method, handler)
-    } catch (error) {
-      if (!(error instanceof Error) || !error.message.includes('already registered')) {
-        throw error
-      }
-    }
-  }
+  const register = (method: string, handler: KernelRpcHandler) => kernel.registerKernelRpc(method, handler)
 
   register('system.ping', params => {
     return {
@@ -728,16 +718,6 @@ function isJsonValue(value: unknown, ancestors: Set<object>): value is JsonValue
 
 function isPromiseLike(value: unknown): value is Promise<void> {
   return value !== null && typeof value === 'object' && 'then' in value && typeof value.then === 'function'
-}
-
-function findSubscriptionId(
-  subscriptions: Map<string, { patterns: string[]; handler: EventHandler; subscriber: EventSubscriberIdentity }>,
-  target: { patterns: string[]; handler: EventHandler; subscriber: EventSubscriberIdentity },
-): string {
-  for (const [subscriptionId, subscription] of subscriptions) {
-    if (subscription === target) return subscriptionId
-  }
-  return 'unknown'
 }
 
 function matchesEventPattern(pattern: string, name: string): boolean {

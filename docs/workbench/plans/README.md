@@ -1,55 +1,28 @@
 # Workbench Plans 状态索引
 
-本页是 `docs/workbench/plans/` 的施工入口，用于区分当前任务、延期路线、已关闭计划与历史方案。计划正文可以原地保留设计过程；**状态以本页和文件顶部状态头为准，已实现事实仍以 `docs/architecture/` 与当前代码为准。**
+本页是 `docs/workbench/plans/` 的施工入口，用于跟踪当前正在推进及延期规划的路线图。
+已实现或已被新架构取代的历史 Plan 均已整理归档至 [`docs/archive/plans/`](../../archive/plans/)。
 
-## 当前施工入口
+---
 
-| 计划 | 当前状态 | 下一步 |
+## 活跃路线图与延期规划
+
+| 路线图 / 计划 | 当前状态 | 关注点 |
 | --- | --- | --- |
-| [`data-layer-v2-prompt-resource-node-store-plan.md`](data-layer-v2-prompt-resource-node-store-plan.md) | Approved Direction / Implementation Pending | 先固化 500/100 fixture 与 V1 characterization，再实现 PromptResourceStore 和节点级 Revision |
-| [`prompt-build-zone-slot-entry-composition-plan.md`](prompt-build-zone-slot-entry-composition-plan.md) | Approved Design / Implementation Pending | 先实施 Composition Schema 与官方默认 Preset，再迁移 Core Pipeline 和 Preset Workbench |
-| [`prompt-build-loom-core-pipeline-migration-plan.md`](prompt-build-loom-core-pipeline-migration-plan.md) | Phase 0-2 Complete / Phase 3-4 Pending | 扩展 characterization 覆盖，完成 Client Trace 消费与 400～500 条目性能验收 |
-| [`preset-agent-prompt-build-module-plan.md`](preset-agent-prompt-build-module-plan.md) | Phase 1-2 Complete / Setting Binding Superseded | 保留 Preset = Agent PromptBuild Module；Setting 激活迁移到 Data Layer V2 的 Global Setting Mount Registry |
-| [`prompt-resource-foundation-plan.md`](prompt-resource-foundation-plan.md) | Foundation Partially Implemented / Binding Model Superseded | 保留已完成的 Prompt Resource 与静态编译基础；绑定迁移转入新 Preset 计划 |
-| [`provider-profile-secret-store-foundation-plan.md`](provider-profile-secret-store-foundation-plan.md) | In Progress / Provider Profile Backend Complete | 清理 Client 旧命名与 Agent Runtime 草稿，补原生壳 Secret/Auth |
-| [`agent-session-narrative-timeline-data-layer-plan.md`](agent-session-narrative-timeline-data-layer-plan.md) | Backend Complete / Client Agent-only Runtime Complete | Agent Composer 已接入真实线性多轮对话；Session 恢复、流式、工具与 Narrative commit UI 延期 |
-| [`agent-session-chat-message-foundation-plan.md`](agent-session-chat-message-foundation-plan.md) | Phase 1 Complete | 后续 Agent Session 与 AIRP 迁移；具体施工以数据层计划为主入口 |
-| [`ui/prompt-resource-projection-workbench-v0.md`](ui/prompt-resource-projection-workbench-v0.md) | Frontend Foundation Complete / Backend Contract Pending | 收束 Folder/Zone effective enabled、默认 Projection 与诊断合同 |
-| [`event-system-extension-scope-plan.md`](event-system-extension-scope-plan.md) | Phase 1–4 Complete / Extension SSE Implemented | 通用跨端 Event Transport、Client Extension Host 与权限持久化仍待独立决策 |
-| [`log-plan/README.md`](log-plan/README.md) | Foundation Implemented / Follow-up Active | 历史查询、实时交付、Viewer 与通知系统仍是后续工作 |
+| [`ai-gateway-streaming-execution-plan.md`](./ai-gateway-streaming-execution-plan.md) | 延期规划 | AI Gateway 流式执行与 SSE 消费 |
+| [`extension-developer-experience.md`](./extension-developer-experience.md) | 延期规划 | Extension SDK、Host 与开发者体验路线图 |
+| [`application-runtime-modularization-plan.md`](./application-runtime-modularization-plan.md) | 延期规划 | 待真实领域边界长期稳定后渐进拆分 Runtime 包 |
+| [`search-and-timeline-indexing-plan.md`](./search-and-timeline-indexing-plan.md) | 延期规划 | 基于 Narrative Store 合同重定 Timeline Search 索引 |
+| [`ui/prompt-resource-diff-mode-v0.md`](./ui/prompt-resource-diff-mode-v0.md) | 延期规划 | PromptResource Revision 差异对比与 Tokenizer 合同 |
+| [`ui/provider-account-health-plan.md`](./ui/provider-account-health-plan.md) | 延期规划 | Provider Account 健康检查与连接状态探测 |
+| [`ui/provider-model-brand-icons-plan.md`](./ui/provider-model-brand-icons-plan.md) | 试验完成 | 正式模型品牌资产与图标合同收束 |
+| [`log-plan/README.md`](./log-plan/README.md) | 基础已实现 | 历史日志高级过滤、实时订阅与通知系统 |
 
-## 延期与路线图
+---
 
-这些方向仍有价值，但当前不应被误认为正在施工：
+## 历史已归档计划
 
-- [`ai-gateway-streaming-execution-plan.md`](ai-gateway-streaming-execution-plan.md) — AI Gateway 流式执行，延期；
-- [`extension-developer-experience.md`](extension-developer-experience.md) — Extension SDK、Host 与开发体验路线图；
-- [`application-runtime-modularization-plan.md`](application-runtime-modularization-plan.md) — 等真实领域边界稳定后再渐进拆分 Runtime；
-- [`search-and-timeline-indexing-plan.md`](search-and-timeline-indexing-plan.md) — Asset Search 已完成，Timeline Search 需基于新 Narrative Store 合同重定；
-- [`ui/prompt-resource-diff-mode-v0.md`](ui/prompt-resource-diff-mode-v0.md) — 等 Revision 与 Tokenizer 合同；
-- [`ui/provider-account-health-plan.md`](ui/provider-account-health-plan.md) — Provider Account 健康检查，延期；
-- [`ui/provider-model-brand-icons-plan.md`](ui/provider-model-brand-icons-plan.md) — 前端试验已完成，正式资产和合同未收束；
-- [`log-plan/agent-run-observability.md`](log-plan/agent-run-observability.md) — Agent 基建成熟后再恢复；
-- [`log-plan/prompt-build-observability.md`](log-plan/prompt-build-observability.md) — PromptBuild 专用调试界面阶段再恢复。
-
-## 已关闭或已实现
-
-下列文件保留实施背景和验收边界，不代表仍需继续施工：
-
-- [`card-resource-manifest-migration-plan.md`](card-resource-manifest-migration-plan.md) — Implemented / Phase 5 Complete；
-- [`extension-package-module-foundation-plan.md`](extension-package-module-foundation-plan.md) — Complete；
-- [`local-data-blob-store-foundation-plan.md`](local-data-blob-store-foundation-plan.md) — Implemented；
-- [`server-extension-manager-mvp-plan.md`](server-extension-manager-mvp-plan.md) — Complete；
-- [`sqlite-data-engine-domain-stores-kernel-plan.md`](sqlite-data-engine-domain-stores-kernel-plan.md) — Phase 1–6 Complete，Phase 7 测量延期；
-- [`document-store-kernel-data-foundation-plan.md`](document-store-kernel-data-foundation-plan.md) — 基线已实现；“所有业务数据均为 Document”的后续方向已被 Domain Store 架构取代。
-
-## 历史或已取代
-
-- [`airp-resource-session-prompt-schema-plan.md`](airp-resource-session-prompt-schema-plan.md) — Card/Session/路径等主链已分别被 Card Manifest、Narrative Timeline + Agent Session 和 Local Data 计划取代；仅保留 Zone Schema 等设计历史。
-
-## 维护规则
-
-1. 新计划必须在本页归入一个状态区，避免只靠文件名判断优先级。
-2. 实施完成后先更新状态头和本页；没有必要仅为“归档”移动文件并批量修改入站链接。
-3. 后续方案取代旧计划时，在旧文件顶部写明替代文档和仍然有效的范围。
-4. Discussion 记录设计过程；已经晋升的事实应链接到 Architecture，不再逐份回写成当前合同。
+已落地并在主线中稳定运行的历史 Plan（共 17 篇）已移至 [`docs/archive/plans/`](../../archive/plans/)：
+- **Prompt 与数据层 V2**：`data-layer-v2-prompt-resource-node-store-plan.md`、`prompt-build-zone-slot-entry-composition-plan.md`、`prompt-build-message-block-implementation-plan.md`、`prompt-build-loom-core-pipeline-migration-plan.md`、`preset-agent-prompt-build-module-plan.md`、`prompt-resource-foundation-plan.md`
+- **存储底座与 Session**：`sqlite-data-engine-domain-stores-kernel-plan.md`、`local-data-blob-store-foundation-plan.md`、`provider-profile-secret-store-foundation-plan.md`、`agent-session-narrative-timeline-data-layer-plan.md`、`agent-session-chat-message-foundation-plan.md`、`card-resource-manifest-migration-plan.md`
+- **插件、事件与早期基础**：`extension-package-module-foundation-plan.md`、`server-extension-manager-mvp-plan.md`、`event-system-extension-scope-plan.md`、`document-store-kernel-data-foundation-plan.md`、`airp-resource-session-prompt-schema-plan.md`

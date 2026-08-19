@@ -1,5 +1,9 @@
 # PromptBuild 链路代码审查报告
 
+> **状态**：Audited / Partially Resolved
+> **最后审计**：2026-08-19（数据层大重构后重审）
+> **主要进展**：已落地 MessageBlock 结构与 `provider-payload.ts` 中的相邻 System 消息合并；解耦了 Agent Profile 与 Session 创建；统一了空 Projection Profile。
+
 ## 链路覆盖范围
 
 ```
@@ -9,7 +13,7 @@ useNarrativeRuntime.submitTurn / previewPrompt   (前端 feature hook)
       → runtime.invokeAgentTurn / previewAgentTurn
         → prepareAgentTurn()
           → composeAgentTurnPrompt()  (agent-turn.ts)
-            → readPromptResourceInputs()  (workspace.ts)
+            → readPromptResourceInputs()  (workspace.ts / prompt-resource-store)
               → collectPromptInputs()
             → compilePromptDataModel()  (prompt-builder.ts)
               → evaluatePromptActivation()  (prompt-activation.ts)
@@ -19,38 +23,29 @@ useNarrativeRuntime.submitTurn / previewPrompt   (前端 feature hook)
 
 ---
 
-## 1. 代码异味 / 问题
+## 1. 代码异味 / 问题状态
 
-### 🔴 [高] `compilePromptDataModel` 的 `messages` 输出过滤了空 zone，会生成乱序的 Provider Message
+### ✅ [已解决] `compilePromptDataModel` 的 `messages` 输出过滤了空 zone，会生成乱序的 Provider Message
 
-**文件：** [`prompt-builder.ts` L277-L308](file:///Users/macbookair/Desktop/LoomStudio/packages/application-runtime/src/prompt-builder.ts)
+**文件：**
+- [`prompt-builder.ts`](file:///Users/macbookair/Desktop/LoomStudio/packages/application-runtime/src/prompt-builder.ts)
+- [`provider-payload.ts` L59-L70](file:///Users/macbookair/Desktop/LoomStudio/packages/application-runtime/src/provider-payload.ts)
 
-```ts
-return {
-  zones: sortedZones,
-  messages: sortedZones.map(compiledZone => {
-    // ...
-    return {
-      role: renderZone.renderHint.providerRoleHint,
-      content: compiledZone.slots
-        .flatMap(slot => slot.fragments)
-        .map(fragment => fragment.content)
-        .join('\n\n'),
-    }
-  }),
-  // ...
-}
-```
-
-**问题：** `sortedZones` 只包含**有 fragment 的 zone**（空 zone 不进 `compiledZones`），因此 `messages` 数组是压缩后的 zone 列表。但 zone 的 `providerRoleHint` 可能导致相邻的 `system` → `system` zone 被分别生成两条 `role: 'system'` 消息，而大多数 Provider 期望相同角色的消息被合并（OpenAI 在某些设置下会拒绝连续的 `system` 消息）。
-
-目前 skeleton 里 `preset.system`（system）和 `setting.stable`（system）都是 `system` 角色，若两者同时 active，则生成的 `messages` 数组会出现两条 `{ role: 'system', content: ... }`。
-
-**建议：** 在 `compilePromptDataModel` 内或 `composeAgentTurnPrompt` 内对相邻同角色 message 做 join/合并，或者在 skeleton 设计层面明确说明"应用层负责合并"，并在 `buildOpenAIChatPayload` 处统一处理。
+**审查结论：**
+- **已在 `provider-payload.ts` 中实现 `mergeAdjacentSystemMessages`**，在转为 Provider Payload 时将连续相邻的 `system` / `developer` 消息自动按双换行合并，解决了多 Provider 对连续 system message 的兼容性限制。
+- `prompt-builder.ts` 引入了 `MessageBlockNode`，同 MessageBlock 内的多个 fragment 已在编译阶段完成合并。
 
 ---
 
-### 🔴 [高] `composeAgentTurnPrompt` 中"无资源时仍调用 `compilePromptDataModel`"产生无意义的空编译
+### 🟡 [已改善 / 部分解决] `composeAgentTurnPrompt` 中"无资源时仍调用 `compilePromptDataModel`"产生无意义的空编译
+
+**文件：** [`agent-turn.ts`](file:///Users/macbookair/Desktop/LoomStudio/packages/application-runtime/src/agent-turn.ts)
+
+**审查结论：**
+- 数据层重构后引入了 `SettingMount` 挂载体系与 `createRuntimePromptSources`，空 profile 已收敛为导出的 `emptyProjectionOrderProfile`。
+- 无论有无设定资源，Runtime 消息与当前用户输入均通过统一的 DataModel 进行编译，行为已规范化。
+
+---
 
 **文件：** [`agent-turn.ts` L40-L47](file:///Users/macbookair/Desktop/LoomStudio/packages/application-runtime/src/agent-turn.ts)
 
@@ -130,47 +125,17 @@ function settingEntryMatches(entry: JsonObject, input: string): boolean {
 
 ---
 
-### 🟡 [中] `ensureAgentSession` 隐式创建了一个 hardcoded 的 AgentPreset
+### ✅ [已解决] `ensureAgentSession` 隐式创建了一个 hardcoded 的 AgentPreset
 
-**文件：** [`use-narrative-runtime.ts` L236-L249](file:///Users/macbookair/Desktop/LoomStudio/apps/studio-client/src/features/narrative-runtime/model/use-narrative-runtime.ts)
-
-```ts
-const preset = presets.agentPresets[0] ?? (await input.api.agentPresets.create(toClientJsonObject({
-  name: 'Narrative Agent',
-  instructions: 'Continue the accepted narrative. Return only the narrative text that should be committed.',
-  historyPolicy: 'ephemeral',
-}))).agentPreset
-```
-
-**问题：**
-- 把 `'Narrative Agent'` 和指令字符串直接硬编码在前端 hook 里，这相当于把 AI Agent 的行为配置散落在了 feature hook 中，而不是通过 AgentPreset 文档管理。
-- 如果用户已经有了多个 preset（比如自定义的 Narrative Agent），这里只取第一个 `agentPresets[0]`，没有任何过滤或优先级逻辑，语义不清晰。
-- `instructions` 是英文硬编码，在中文 UI 的项目里显得突兀。
-
-**建议：** 将"Narrative 默认 preset"的创建逻辑移到服务端，作为 bootstrap 阶段保证存在的 well-known preset，而不是在 feature hook 里即时创建。或者至少将 preset 名称和 instructions 移到 i18n 文件。
+**审查结论：**
+- 数据层大重构已将 Agent Profile 与 Agent Session 彻底解耦，Session 引用 `agentProfileId` 而非硬编码 Preset，前端不再即时伪造并依赖临时 AgentPreset。
 
 ---
 
-### 🟡 [中] `prepareAgentTurn` 中 `buildId` 被计算但从未使用
+### ✅ [已解决] `prepareAgentTurn` 中 `buildId` 被计算但从未使用
 
-**文件：** [`runtime.ts` L837](file:///Users/macbookair/Desktop/LoomStudio/packages/application-runtime/src/runtime.ts)
-
-```ts
-const runId = ctx.createId('run')
-const buildId = ctx.createId('build')  // ← 从未出现在 return 或其他地方
-const startedAt = performance.now()
-const references = {
-  buildId,   // ← 只用于日志
-  mode,
-  agentSessionId: session.id,
-  runId,
-  // ...
-}
-```
-
-**问题：** `buildId` 被分配了一个 ID，出现在日志 `references` 里，但在 `prepareAgentTurn` 的返回值中没有被传出，`invokeAgentTurn` 和 `previewAgentTurn` 也没有用到它。这是一个孤立的 ID，不参与任何下游逻辑。
-
-若 `buildId` 是为了未来的 Trace/Audit 预留，应有 ponytail 注释说明；若是遗留代码，应删除。
+**审查结论：**
+- `buildId` 目前已作为 `PromptBuildTrace` 的权威追踪 ID 注入结构化日志与 Audit 上下文，具备了清晰的 Tracing 语义。
 
 ---
 

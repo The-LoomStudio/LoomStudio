@@ -1,0 +1,36 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@loom-studio/agent-store": ["../packages/agent-store/src/index.ts"],
+      "@loom-studio/asset-store": ["../packages/asset-store/src/index.ts"],
+      "@loom-studio/blob-store": ["../packages/blob-store/src/index.ts"],
+      "@loom-studio/client-bridge": ["../packages/client-bridge/src/index.ts"],
+      "@loom-studio/data-engine": ["../packages/data-engine/src/index.ts"],
+      "@loom-studio/diagnostics": ["../packages/diagnostics/src/index.ts"],
+      "@loom-studio/document-store": ["../packages/document-store/src/index.ts"],
+      "@loom-studio/application-runtime": ["../packages/application-runtime/src/index.ts"],
+      "@loom-studio/extension-host": ["../packages/extension-sdk/extension-host/src/index.ts"],
+      "@loom-studio/extension-sdk": ["../packages/extension-sdk/src/index.ts"],
+      "@loom-studio/kernel": ["../packages/kernel/src/index.ts"],
+      "@loom-studio/logging": ["../packages/logging/src/index.ts"],
+      "@loom-studio/logging/node": ["../packages/logging/src/node.ts"],
+      "@loom-studio/loom-runner": ["../packages/loom-runner/src/index.ts"],
+      "@loom-studio/narrative-store": ["../packages/narrative-store/src/index.ts"],
+      "@loom-studio/prompt-resource-store": ["../packages/prompt-resource-store/src/index.ts"],
+      "@loom-studio/secret-store": ["../packages/secret-store/src/index.ts"],
+      "@loom-studio/shared": ["../packages/shared/src/index.ts"],
+      "@loom-studio/trace-audit": ["../packages/trace-audit/src/index.ts"],
+      "@loom-studio/transport": ["../packages/transport/src/index.ts"],
+      "@loom/core": ["../packages/core/src/index.ts"]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx"
+  ]
+}

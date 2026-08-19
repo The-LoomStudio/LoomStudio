@@ -39,6 +39,26 @@ export type CardSummary = Pick<Card,
   'id' | 'version' | 'name' | 'userName' | 'description' | 'media' | 'createdAt' | 'updatedAt'
 >
 
+export type CardPresetInput = {
+  system?: string
+}
+
+export type OpeningChatInput = {
+  entries?: Array<{ role?: 'user' | 'assistant'; content: string }>
+}
+
+export type SettingLayerInput = {
+  entries?: Array<{
+    id?: string
+    path?: string
+    title?: string
+    content: string
+    enabled?: boolean
+    activation?: JsonObject
+    tags?: string[]
+  }>
+}
+
 export type CreateCardResult = {
   card: Card
   mutation: MutationReceipt

@@ -48,7 +48,7 @@ export function createDocumentBackedAiGateway(options: {
   const fallback = options.fallback ?? createFakeAiGateway()
   const proxyTransports = new Map<string, typeof fetch>()
 
-  function resolveTransport(providerProfile: ProviderProfileContent): typeof fetch {
+  function resolveTransport(): typeof fetch {
     const proxyUrl = options.resolveProxyUrl?.()
     if (!proxyUrl) return fetch
     const existing = proxyTransports.get(proxyUrl)
@@ -85,7 +85,7 @@ export function createDocumentBackedAiGateway(options: {
           modelIds: await listOpenAICompatibleModels({
             baseUrl: providerProfile.content.config.baseUrl,
             apiKey,
-            fetch: resolveTransport(providerProfile.content),
+            fetch: resolveTransport(),
           }),
         }
       })
@@ -120,7 +120,7 @@ export function createDocumentBackedAiGateway(options: {
             },
             modelId: input.model!.modelId,
             apiKey,
-            fetch: resolveTransport(providerProfile.content),
+            fetch: resolveTransport(),
           }).invokeChat(input)
         })
       }

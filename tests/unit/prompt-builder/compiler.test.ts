@@ -147,6 +147,25 @@ describe('prompt builder compiler', () => {
             },
           },
         ],
+        items: [
+          {
+            kind: 'message',
+            id: 'block.memory-echo',
+            displayName: 'Memory Echo Block',
+            orderIndex: 15,
+            role: 'system',
+            items: [
+              {
+                kind: 'zone',
+                id: 'preset.memory-echo',
+                parentId: 'zone.root',
+                displayName: 'Memory Echo',
+                band: 'stable-prefix',
+                orderIndex: 15,
+              },
+            ],
+          },
+        ],
       },
       orderProfile: {
         id: 'profile.custom-zone',
@@ -283,11 +302,7 @@ describe('prompt builder compiler', () => {
     expect(compiled.messages).toEqual([
       {
         role: 'system',
-        content: '保持冷静克制的叙述。',
-      },
-      {
-        role: 'system',
-        content: '旧旅馆的柜台铃会吸引店主注意。',
+        content: '保持冷静克制的叙述。\n\n旧旅馆的柜台铃会吸引店主注意。',
       },
     ])
   })

@@ -50,5 +50,12 @@ Reference 当前仍位于 Workbench，尚未整体晋升为正式文档；如与
 所有处于讨论期的设计稿、遗留的白皮书巨型文档、ADR 记录、已知问题列表均存放在此。
 **在这些文档定稿之前，请不要将它们作为当前代码开发的绝对真理。**
 
+## 5. 🗄️ Archive: 历史归档库
+**入口: [`archive/README.md`](archive/README.md)**
+
+存放项目演进中已完全实现、已关闭或已被新架构取代的历史方案与专项审计文档：
+- [`archive/issues/`](archive/issues/) — 15 篇历史已解决专项审计与缺陷发现报告；
+- [`archive/plans/`](archive/plans/) — 17 篇已完全合入主线或已取代的技术方案与实施计划。
+
 ---
 > 如果你要开始进行开发，请优先阅读 [`guide/project-structure.md`](guide/project-structure.md) 建立全局视野。

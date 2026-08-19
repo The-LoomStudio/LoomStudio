@@ -1,5 +1,5 @@
 import type { DataCommitOperation, SqliteDataEngine, SqliteDataTransaction } from '@loom-studio/data-engine'
-import { createId, nowIso } from '@loom-studio/shared'
+import { createId, nowIso, optionalString } from '@loom-studio/shared'
 import type { DatabaseSync } from 'node:sqlite'
 import type {
   CreateNarrativeTimelineInput,
@@ -366,25 +366,48 @@ function readPage(
     throw new NarrativeStoreError('narrative.page_limit_invalid', `Narrative page limit must be between 1 and ${maximumPageLimit}`)
   }
 
-  let nodeId = input.cursor ?? branch.headNodeId
+  const startNodeId = input.cursor ?? branch.headNodeId
+  if (!startNodeId) {
+    return { timeline, branch, nodes: [] }
+  }
+
   if (input.cursor && !isNodeInBranchPath(database, branch, input.cursor)) {
     throw new NarrativeStoreError('narrative.cursor_not_in_branch', `Narrative cursor is not in branch path: ${input.cursor}`)
   }
-  const reverseNodes: NarrativeNode[] = []
-  while (nodeId && reverseNodes.length < limit) {
-    const node = requireNode(database, nodeId)
-    if (node.timelineId !== timeline.id) {
-      throw new NarrativeStoreError('narrative.node_timeline_mismatch', `Narrative node does not belong to timeline: ${node.id}`)
-    }
-    reverseNodes.push(node)
-    nodeId = node.parentNodeId
+
+  const rows = database.prepare(`
+    WITH RECURSIVE branch_nodes(id, timeline_id, parent_node_id, body_format, body_raw,
+                                source_agent_session_id, source_agent_message_id, source_run_id, source_changeset_id, created_at, depth) AS (
+      SELECT id, timeline_id, parent_node_id, body_format, body_raw,
+             source_agent_session_id, source_agent_message_id, source_run_id, source_changeset_id, created_at, 1
+      FROM narrative_nodes
+      WHERE id = ? AND timeline_id = ?
+      UNION ALL
+      SELECT n.id, n.timeline_id, n.parent_node_id, n.body_format, n.body_raw,
+             n.source_agent_session_id, n.source_agent_message_id, n.source_run_id, n.source_changeset_id, n.created_at, bn.depth + 1
+      FROM narrative_nodes n
+      JOIN branch_nodes bn ON n.id = bn.parent_node_id
+      WHERE bn.parent_node_id IS NOT NULL AND bn.depth < 10000
+    )
+    SELECT id, timeline_id, parent_node_id, body_format, body_raw,
+           source_agent_session_id, source_agent_message_id, source_run_id, source_changeset_id, created_at
+    FROM branch_nodes
+    LIMIT ?
+  `).all(startNodeId, timeline.id, limit)
+
+  if (rows.length === 0 && startNodeId) {
+    requireNode(database, startNodeId)
   }
+
+  const reverseNodes = rows.map(nodeFromRow)
+  const lastNode = reverseNodes.at(-1)
+  const nextCursor = reverseNodes.length === limit ? (lastNode?.parentNodeId ?? undefined) : undefined
 
   return {
     timeline,
     branch,
     nodes: reverseNodes.reverse(),
-    nextCursor: nodeId,
+    nextCursor,
   }
 }
 
@@ -551,12 +574,21 @@ function nodeFromRow(row: unknown): NarrativeNode {
 }
 
 function isNodeInBranchPath(database: DatabaseSync, branch: NarrativeBranch, nodeId: string): boolean {
-  let currentId = branch.headNodeId
-  while (currentId) {
-    if (currentId === nodeId) return true
-    currentId = requireNode(database, currentId).parentNodeId
-  }
-  return false
+  if (!branch.headNodeId) return false
+  const row = database.prepare(`
+    WITH RECURSIVE branch_path(id, parent_node_id, depth) AS (
+      SELECT id, parent_node_id, 1
+      FROM narrative_nodes
+      WHERE id = ?
+      UNION ALL
+      SELECT n.id, n.parent_node_id, bp.depth + 1
+      FROM narrative_nodes n
+      JOIN branch_path bp ON n.id = bp.parent_node_id
+      WHERE bp.parent_node_id IS NOT NULL AND bp.depth < 10000
+    )
+    SELECT 1 FROM branch_path WHERE id = ? LIMIT 1
+  `).get(branch.headNodeId, nodeId)
+  return Boolean(row)
 }
 
 function assertBranchTimeline(branch: NarrativeBranch, timelineId: string): void {
@@ -619,8 +651,4 @@ function parseStringArray(value: unknown, field: string): string[] {
   } catch {
     throw new NarrativeStoreError('narrative.data_invalid', `Narrative ${field} is invalid`)
   }
-}
-
-function optionalString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined
 }

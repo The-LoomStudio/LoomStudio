@@ -5,6 +5,6 @@ export function createDocumentDataCommitSource(
   documents: Pick<DocumentStore, 'subscribeCommits'>,
 ): DataCommitSource {
   return {
-    subscribeCommits: observer => documents.subscribeCommits(commit => observer(commit)),
+    subscribeCommits: observer => documents.subscribeCommits(observer),
   }
 }

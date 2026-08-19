@@ -142,4 +142,42 @@ describe('sqlite data engine', () => {
     expect(rolledBackTable).toBeUndefined()
     engine.close()
   })
+
+  it('rejects reentrant calls to read and transact inside an active transaction', async () => {
+    const engine = createTestEngine()
+    engine.migrate({
+      namespace: 'test.reentrancy',
+      migrations: [{
+        version: 1,
+        migrate: database => database.exec('CREATE TABLE test_reentrancy (id TEXT PRIMARY KEY)'),
+      }],
+    })
+
+    await expect(engine.transact({ actor: { kind: 'system', id: 'test' } }, async () => {
+      await engine.read(database => database.prepare('SELECT 1').get())
+      return 'done'
+    })).rejects.toMatchObject<DataEngineError>({ code: 'data.reentrant_transaction' })
+
+    await expect(engine.transact({ actor: { kind: 'system', id: 'test' } }, async () => {
+      await engine.transact({ actor: { kind: 'system', id: 'test' } }, async () => 'nested')
+      return 'done'
+    })).rejects.toMatchObject<DataEngineError>({ code: 'data.reentrant_transaction' })
+
+    engine.close()
+  })
+
+  it('rejects operations after engine is closed', async () => {
+    const engine = createTestEngine()
+    engine.close()
+
+    expect(() => engine.migrate({ namespace: 'test.closed', migrations: [] })).toThrowError(
+      expect.objectContaining({ code: 'data.engine_closed' }),
+    )
+    await expect(engine.read(database => database.prepare('SELECT 1').get())).rejects.toMatchObject<DataEngineError>({
+      code: 'data.engine_closed',
+    })
+    await expect(engine.transact({ actor: { kind: 'system', id: 'test' } }, async () => 'test')).rejects.toMatchObject<DataEngineError>({
+      code: 'data.engine_closed',
+    })
+  })
 })

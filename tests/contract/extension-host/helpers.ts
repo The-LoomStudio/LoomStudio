@@ -4,7 +4,7 @@ import { createExtensionHost } from '@loom-studio/extension-host'
 import type { ExtensionAssetCapability, ExtensionHostOptions } from '@loom-studio/extension-host'
 import { createKernel, type Kernel } from '@loom-studio/kernel'
 import type { Logger } from '@loom-studio/logging'
-import { createLoomRunner } from '@loom-studio/loom-runner'
+import { createLoomRunner, createSamplePassFactories } from '@loom-studio/loom-runner'
 import { createInMemoryTraceAuditStore } from '@loom-studio/trace-audit'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -18,25 +18,25 @@ export function createExtensionHostHarness(options: {
   const diagnostics = createInMemoryDiagnosticsRegistry()
   const documents = createInMemoryDocumentStore()
   const traceAudit = createInMemoryTraceAuditStore()
-  const loomRunner = createLoomRunner({ traceAudit })
+  const loomRunner = createLoomRunner({ traceAudit, factories: createSamplePassFactories() })
   let kernel: Kernel
   const extensionHost = createExtensionHost({
     documents,
     diagnostics,
     logger: options.logger,
-    grantAssetCapabilities: (packageManifest, moduleManifest) => (
+    grantAssetCapabilities: (packageManifest: { id: string }, moduleManifest: { id: string }) => (
       options.grantAssetCapabilities?.(packageManifest.id, moduleManifest.id) ?? []
     ),
     assets: options.assets,
     assetScratchRoot: options.assetScratchRoot,
-    callRpc: (method, params, context) => kernel.callRpc(method, params, context),
-    registerRpc: (name, ownerPackageId, ownerModuleId, handler, ownerInstanceId) => {
-      const handle = kernel.registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler, ownerInstanceId)
-      return { name, ownerPackageId, ownerModuleId, ownerInstanceId, handler, dispose: handle.dispose }
+    callRpc: (method: string, params?: unknown, context?: unknown) => kernel.callRpc(method, params as never, context as never),
+    registerRpc: (name: string, ownerPackageId: string, ownerModuleId: string, handler: (...args: unknown[]) => unknown, ownerInstanceId?: string) => {
+      const handle = kernel.registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler as never, ownerInstanceId)
+      return { name, ownerPackageId, ownerModuleId, ownerInstanceId, handler: handler as never, dispose: handle.dispose }
     },
-    emitEvent: (name, payload, publisher) => {
-      kernel.getEventBus().emit(name, payload, {
-        publisher,
+    emitEvent: (name: string, payload: unknown, publisher: { kind: string; packageId?: string; moduleId?: string }) => {
+      kernel.getEventBus().emit(name, payload as never, {
+        publisher: publisher as never,
         source: publisher.kind === 'extension' ? `extension:${publisher.packageId}/${publisher.moduleId}` : publisher.kind,
       })
     },

@@ -77,13 +77,13 @@ describe('studio client typed api', () => {
   it('maps application calls through the typed studio api surface', async () => {
     const calls: Array<{ method: string; params?: ClientJsonValue }> = []
     const api = createStudioApi(fakeBridge(calls, {
-      'docs.revertChangeset': { changesetId: 'change-undo' },
+      'application.revertChangeset': { mutation: { changesetId: 'change-undo' } },
       'application.getImportBundle': { importBundle: { id: 'import-bundle-1' } },
       'application.listCards': { cards: [] },
       'application.updateCard': { card: { id: 'card-1' } },
       'application.updateCardPromptResources': { card: { id: 'card-1' } },
       'application.deleteCard': { deleted: true },
-      'application.exportCardArtifact': { artifact: { artifactId: 'card-1' } },
+      'application.exportCardBundle': { artifact: { artifactId: 'card-1' } },
       'application.listProviderModels': { modelIds: ['model-1', 'model-2'] },
       'application.pingProviderModel': { text: 'pong' },
     }))
@@ -102,13 +102,13 @@ describe('studio client typed api', () => {
     expect(text).toBe('pong')
     expect(reverted).toEqual({ changesetId: 'change-undo' })
     expect(calls).toEqual([
-      { method: 'docs.revertChangeset', params: { changesetId: 'change-1' } },
+      { method: 'application.revertChangeset', params: { changesetId: 'change-1' } },
       { method: 'application.getImportBundle', params: { importBundleId: 'import-bundle-1' } },
       { method: 'application.listCards', params: {} },
       { method: 'application.updateCard', params: { cardId: 'card-1', name: 'Renamed' } },
       { method: 'application.updateCardPromptResources', params: { cardId: 'card-1', promptResourceIds: ['resource-1'] } },
       { method: 'application.deleteCard', params: { cardId: 'card-1' } },
-      { method: 'application.exportCardArtifact', params: { cardId: 'card-1' } },
+      { method: 'application.exportCardBundle', params: { cardId: 'card-1' } },
       { method: 'application.listProviderModels', params: { providerProfileId: 'provider-1' } },
       { method: 'application.pingProviderModel', params: { providerProfileId: 'provider-1', modelId: 'model-1' } },
     ])
@@ -120,7 +120,7 @@ describe('studio client typed api', () => {
       'application.importCardBundle': { card: { id: 'card-1' }, importBundle: { id: 'import-bundle-1' } },
     }))
 
-    await api.cardBundles.import({ artifact: { artifactId: 'loom-city-v0' } })
+    await api.cardBundles.import({ artifact: { artifactId: 'loom-city-v0' } as any })
 
     expect(calls).toEqual([
       { method: 'application.importCardBundle', params: { artifact: { artifactId: 'loom-city-v0' } } },
@@ -148,7 +148,7 @@ describe('studio client typed api', () => {
       { method: 'application.listNarrativeTimelines', params: { createdFromCardId: 'card-1', limit: 25 } },
       { method: 'application.getNarrativeTimeline', params: { timelineId: 'timeline-1' } },
       { method: 'application.getNarrativePage', params: { timelineId: 'timeline-1', branchId: 'branch-1' } },
-      { method: 'application.createNarrativeTimelineFromCard', params: { cardId: 'card-1' } },
+      { method: 'application.createNarrativeTimeline', params: { cardId: 'card-1' } },
       { method: 'application.forkNarrativeBranch', params: { timelineId: 'timeline-1', fromBranchId: 'branch-1', fromNodeId: 'node-1' } },
       { method: 'application.switchNarrativeBranch', params: { timelineId: 'timeline-1', branchId: 'branch-2' } },
       { method: 'application.listAgentProfiles', params: {} },
@@ -191,7 +191,7 @@ describe('studio client typed api', () => {
     })
     await api.promptResources.export('resource-1')
     await api.promptResources.listForCard('card-1')
-    await api.promptResources.createAsset({ resourceId: 'resource-1', targetAssetId: 'root', position: 'inside', asset: { id: 'asset-1' } })
+    await api.promptResources.createAsset({ resourceId: 'resource-1', targetAssetId: 'root', position: 'inside', asset: { id: 'asset-1' } as any })
     await api.promptResources.updateAsset({ resourceId: 'resource-1', assetId: 'asset-1', body: 'updated' })
     await api.promptResources.updateAssets({ resourceId: 'resource-1', updates: [{ assetId: 'asset-1', label: 'Renamed' }] })
     await api.promptResources.listSettingMounts({ kind: 'preset', id: 'resource-1' })
@@ -227,11 +227,11 @@ function fakeBridge(
   return {
     connect: async () => {},
     disconnect: async () => {},
-    call: async (method, params) => {
+    call: async (method: string, params?: ClientJsonValue) => {
       calls.push({ method, params })
       return responses[method] as never
     },
-    callWithMeta: async (method, params) => {
+    callWithMeta: async (method: string, params?: ClientJsonValue) => {
       calls.push({ method, params })
       return {
         result: responses[method] as never,

@@ -59,6 +59,7 @@ export type ApplicationRuntime = {
   deleteAgentSession(input: DeleteAgentSessionInput, context?: RuntimeRequestContext): Promise<DeleteAgentSessionResult>
   invokeAgentTurn(input: InvokeAgentTurnInput, context?: RuntimeRequestContext): Promise<InvokeAgentTurnResult>
   previewAgentTurn(input: PreviewAgentTurnInput, context?: RuntimeRequestContext): Promise<PreviewAgentTurnResult>
+  createNarrativeTimeline(input: CreateNarrativeTimelineFromCardInput, context?: RuntimeRequestContext): Promise<CreateNarrativeTimelineFromCardResult>
   createNarrativeTimelineFromCard(input: CreateNarrativeTimelineFromCardInput, context?: RuntimeRequestContext): Promise<CreateNarrativeTimelineFromCardResult>
   getNarrativeTimeline(input: GetNarrativeTimelineInput): Promise<GetNarrativeTimelineResult>
   listNarrativeTimelines(input?: ListNarrativeTimelinesInput): Promise<ListNarrativeTimelinesResult>
@@ -74,6 +75,7 @@ export type ApplicationRuntime = {
   duplicatePromptResource(input: DuplicatePromptResourceInput, context?: RuntimeRequestContext): Promise<CreatePromptResourceResult>
   deletePromptResource(input: DeletePromptResourceInput, context?: RuntimeRequestContext): Promise<DeletePromptResourceResult>
   revertPromptResourceChangeset(input: RevertPromptResourceChangesetInput, context?: RuntimeRequestContext): Promise<RevertPromptResourceChangesetResult>
+  revertChangeset(input: { changesetId: string }, context?: RuntimeRequestContext): Promise<{ mutation: MutationReceipt }>
   importPromptResource(input: ImportPromptResourceInput, context?: RuntimeRequestContext): Promise<CreatePromptResourceResult>
   exportPromptResource(input: ExportPromptResourceInput): Promise<ExportPromptResourceResult>
   listCardPromptResources(input: ListCardPromptResourcesInput): Promise<ListCardPromptResourcesResult>
@@ -85,6 +87,7 @@ export type ApplicationRuntime = {
   updatePromptResourceAssets(input: UpdatePromptResourceAssetsInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
   movePromptResourceAsset(input: MovePromptResourceAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
   deletePromptResourceAsset(input: DeletePromptResourceAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
+  exportCardBundle(input: ExportCardArtifactInput): Promise<ExportCardBundleResult>
   exportCardArtifact(input: ExportCardArtifactInput): Promise<ExportCardBundleResult>
 }
 

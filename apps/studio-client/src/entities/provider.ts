@@ -1,6 +1,6 @@
 import type { JsonObject } from './common.js'
 
-export type ProviderAccount = {
+export type ProviderProfile = {
   id: string
   version: number
   providerExtensionId: string
@@ -14,6 +14,8 @@ export type ProviderAccount = {
   createdAt: string
   updatedAt: string
 }
+
+export type ProviderAccount = ProviderProfile
 
 export type ModelProfile = {
   id: string
@@ -38,22 +40,37 @@ export type AgentProfile = {
   updatedAt: string
 }
 
-export type CreateProviderAccountResult = {
+export type CreateProviderProfileResult = {
+  providerProfile: ProviderProfile
+}
+
+export type CreateProviderAccountResult = CreateProviderProfileResult & {
   providerAccount: ProviderAccount
 }
 
-export type ListProviderAccountsResult = {
-  providerAccounts: ProviderAccount[]
+export type ListProviderProfilesResult = {
+  providerProfiles: ProviderProfile[]
   nextCursor?: string
 }
 
-export type UpdateProviderAccountResult = {
+export type ListProviderAccountsResult = ListProviderProfilesResult & {
+  providerAccounts: ProviderAccount[]
+}
+
+export type UpdateProviderProfileResult = {
+  providerProfile: ProviderProfile
+}
+
+export type UpdateProviderAccountResult = UpdateProviderProfileResult & {
   providerAccount: ProviderAccount
 }
 
-export type DeleteProviderAccountResult = {
+export type DeleteProviderProfileResult = {
   deleted: true
+  deletedProviderProfileId?: string
 }
+
+export type DeleteProviderAccountResult = DeleteProviderProfileResult
 
 export type CreateAgentProfileResult = {
   agentProfile: AgentProfile

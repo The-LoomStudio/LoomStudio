@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import type { AgentProfile, PromptResource, ProviderModelSelection } from '../../../entities/index.js'
-import { toClientJsonObject } from '../../../shared/api/client-json-object.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import { safeLocalStorage } from '../../../shared/browser/safe-local-storage.js'
 
@@ -37,11 +36,11 @@ export function useAgentProfiles(input: UseAgentProfilesInput) {
   async function createAgentProfile(profileInput: { name: string; presetId?: string; model: ProviderModelSelection }) {
     await input.runAction(async () => {
       const presetId = profileInput.presetId ?? await ensureDefaultPreset()
-      const result = await input.api.agentProfiles.create(toClientJsonObject({
+      const result = await input.api.agentProfiles.create({
         name: profileInput.name,
         presetId,
-        model: toClientJsonObject(profileInput.model),
-      }))
+        model: profileInput.model,
+      })
       await refreshAgentProfiles()
       selectAgentProfile(result.agentProfile.id)
     })
@@ -49,11 +48,10 @@ export function useAgentProfiles(input: UseAgentProfilesInput) {
 
   async function updateAgentProfile(agentProfileId: string, updates: { name?: string; presetId?: string; model?: ProviderModelSelection }) {
     await input.runAction(async () => {
-      await input.api.agentProfiles.update(toClientJsonObject({
+      await input.api.agentProfiles.update({
         agentProfileId,
         ...updates,
-        ...(updates.model ? { model: toClientJsonObject(updates.model) } : {}),
-      }))
+      })
       await refreshAgentProfiles()
     })
   }

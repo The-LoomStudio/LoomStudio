@@ -1,6 +1,6 @@
 # ADR-004: Platform Auth, Secrets, and Provider Credential Boundary
 
-> **Status**: Proposed  
+> **Status**: Accepted
 > **Date**: 2026-05-16  
 > **Decision scope**: Post-MVP security foundation before Studio AIRP Layer and production Provider extensions
 

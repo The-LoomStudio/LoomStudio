@@ -13,8 +13,8 @@ const ContextMenuTrigger = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Trigger>
 >(({ children, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onClickCapture, ...props }, ref) => {
   const triggerRef = React.useRef<HTMLElement | null>(null)
-  const longPressTimerRef = React.useRef<any>(null)
-  const suppressionTimerRef = React.useRef<any>(null)
+  const longPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const suppressionTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const suppressClickRef = React.useRef(false)
   const startPosRef = React.useRef<{ x: number; y: number } | null>(null)
 

@@ -1,5 +1,5 @@
 import type { DataCommitOperation, SqliteDataEngine, SqliteDataTransaction } from '@loom-studio/data-engine'
-import { createId, nowIso, type ChatMessage, type ChatToolCall } from '@loom-studio/shared'
+import { createId, isRecord, nowIso, optionalString, type ChatMessage, type ChatToolCall } from '@loom-studio/shared'
 import type { DatabaseSync } from 'node:sqlite'
 import type {
   AgentMessage,
@@ -226,24 +226,50 @@ function readMessagePage(
   if (!Number.isInteger(limit) || limit < 1 || limit > maximumPageLimit) {
     throw new AgentStoreError('agent.page_limit_invalid', `Agent message page limit must be between 1 and ${maximumPageLimit}`)
   }
-  let messageId = input.cursor ?? session.headMessageId
-  if (messageId) {
-    const cursor = requireMessage(database, messageId)
-    if (cursor.agentSessionId !== session.id) {
-      throw new AgentStoreError('agent.cursor_session_mismatch', `Agent message cursor does not belong to session: ${messageId}`)
+
+  const startMessageId = input.cursor ?? session.headMessageId
+  if (!startMessageId) {
+    return {
+      session,
+      messages: [],
     }
   }
 
-  const reverseMessages: AgentMessage[] = []
-  while (messageId && reverseMessages.length < limit) {
-    const message = requireMessage(database, messageId)
-    reverseMessages.push(message)
-    messageId = message.parentMessageId
+  if (input.cursor) {
+    const cursor = requireMessage(database, input.cursor)
+    if (cursor.agentSessionId !== session.id) {
+      throw new AgentStoreError('agent.cursor_session_mismatch', `Agent message cursor does not belong to session: ${input.cursor}`)
+    }
   }
+
+  const rows = database.prepare(`
+    WITH RECURSIVE session_messages(id, agent_session_id, parent_message_id, sequence, run_id, message_json, created_at, depth) AS (
+      SELECT id, agent_session_id, parent_message_id, sequence, run_id, message_json, created_at, 1
+      FROM agent_messages
+      WHERE id = ? AND agent_session_id = ?
+      UNION ALL
+      SELECT m.id, m.agent_session_id, m.parent_message_id, m.sequence, m.run_id, m.message_json, m.created_at, sm.depth + 1
+      FROM agent_messages m
+      JOIN session_messages sm ON m.id = sm.parent_message_id
+      WHERE sm.parent_message_id IS NOT NULL AND sm.depth < 10000
+    )
+    SELECT id, agent_session_id, parent_message_id, sequence, run_id, message_json, created_at
+    FROM session_messages
+    LIMIT ?
+  `).all(startMessageId, session.id, limit)
+
+  if (rows.length === 0 && startMessageId) {
+    requireMessage(database, startMessageId)
+  }
+
+  const reverseMessages = rows.map(messageFromRow)
+  const lastMessage = reverseMessages.at(-1)
+  const nextCursor = reverseMessages.length === limit ? (lastMessage?.parentMessageId ?? undefined) : undefined
+
   return {
     session,
     messages: reverseMessages.reverse(),
-    nextCursor: messageId,
+    nextCursor,
   }
 }
 
@@ -418,12 +444,4 @@ function validateId(value: unknown, field: string): asserts value is string {
 
 function operation(kind: DataCommitOperation['kind'], entityId: string, entityType: string): DataCommitOperation {
   return { store: 'agent', kind, entityId, entityType }
-}
-
-function optionalString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

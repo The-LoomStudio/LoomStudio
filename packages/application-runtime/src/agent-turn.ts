@@ -4,6 +4,7 @@ import type { AgentMessage } from '@loom-studio/agent-store'
 import type { NarrativeNode, NarrativeTimeline } from '@loom-studio/narrative-store'
 import {
   defaultCompositionSkeleton,
+  emptyProjectionOrderProfile,
   promptBindingIds,
   promptSlotIds,
   promptZoneIds,
@@ -66,33 +67,21 @@ export async function composeAgentTurnPrompt(input: {
     ...(resourceInputs?.contributions ?? []),
     ...runtimeInputs.contributions,
   ]
-  const resourceProjection = resourceInputs
-    ? compilePromptWithCore({
-        skeleton: defaultCompositionSkeleton,
-        sourceNodes,
-        contributions,
-        orderProfile: resourceInputs.orderProfile,
-        currentInput: input.userInput,
-        activationFacts: input.activationFacts,
-        buildId: input.buildId,
-        runId: input.runId,
-        agentSessionId: input.agentSessionId,
-        ...(input.narrative ? {
-          timelineId: input.narrative.timeline.id,
-          branchId: input.narrative.timeline.activeBranchId,
-        } : {}),
-      })
-    : compilePromptWithCore({
-        skeleton: defaultCompositionSkeleton,
-        sourceNodes,
-        contributions,
-        orderProfile: { id: 'profile.agent-empty', scope: 'global', slotRanks: [] },
-        currentInput: input.userInput,
-        activationFacts: input.activationFacts,
-        buildId: input.buildId,
-        runId: input.runId,
-        agentSessionId: input.agentSessionId,
-      })
+  const resourceProjection = compilePromptWithCore({
+    skeleton: defaultCompositionSkeleton,
+    sourceNodes,
+    contributions,
+    orderProfile: resourceInputs?.orderProfile ?? emptyProjectionOrderProfile,
+    currentInput: input.userInput,
+    activationFacts: input.activationFacts,
+    buildId: input.buildId,
+    runId: input.runId,
+    agentSessionId: input.agentSessionId,
+    ...(input.narrative ? {
+      timelineId: input.narrative.timeline.id,
+      branchId: input.narrative.timeline.activeBranchId,
+    } : {}),
+  })
   return {
     messages: resourceProjection.projection.messages,
     projection: resourceProjection.projection,

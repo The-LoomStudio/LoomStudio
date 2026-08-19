@@ -1,8 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { toClientJsonObject } from '../../../shared/api/client-json-object.js'
-import type { StudioApi } from '../../../shared/api/studio-api.js'
+import type { CreateCardInput, StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
-import type { Card, CardMedia, CardSummary, JsonObject } from '../../../entities/index.js'
+import type { Card, CardMedia, CardSummary } from '../../../entities/index.js'
 
 type UseCardsInput = {
   api: StudioApi
@@ -75,6 +74,25 @@ export function useCards(input: UseCardsInput) {
       })
       await refreshCards()
       setSelectedCardId(result.card.id)
+      setSelectedCardDetails(result.card)
+      setCardDraft({
+        name: result.card.name,
+        userName: result.card.userName ?? '',
+        description: result.card.description ?? '',
+      })
+    })
+  }
+
+  async function selectCard(cardId: string) {
+    await input.runAction(async () => {
+      const result = await input.api.cards.get(cardId)
+      setSelectedCardId(result.card.id)
+      setSelectedCardDetails(result.card)
+      setCardDraft({
+        name: result.card.name,
+        userName: result.card.userName ?? '',
+        description: result.card.description ?? '',
+      })
     })
   }
 
@@ -83,12 +101,12 @@ export function useCards(input: UseCardsInput) {
     if (!selectedCardId) return
 
     await input.runAction(async () => {
-      const result = await input.api.cards.update(toClientJsonObject({
+      const result = await input.api.cards.update({
         cardId: selectedCardId,
         name: cardDraft.name,
         userName: cardDraft.userName,
         description: cardDraft.description,
-      }))
+      })
       input.recordEdit({
         label: input.t('history.card.update'),
         changesetId: result.mutation.changesetId,
@@ -152,7 +170,7 @@ export function useCards(input: UseCardsInput) {
         ...current.card.media,
         ...(target === 'avatar' ? { avatarAssetId: assetId } : { coverAssetId: assetId }),
       }
-      const updated = await input.api.cards.update(toClientJsonObject({ cardId, media }))
+      const updated = await input.api.cards.update({ cardId, media })
       input.recordEdit({
         label: input.t('history.card.update'),
         changesetId: updated.mutation.changesetId,
@@ -219,6 +237,7 @@ export function useCards(input: UseCardsInput) {
     selectedCard,
     selectedCardDetails,
     refreshCards,
+    selectCard,
     createCard,
     updateCard,
     deleteCard,
@@ -242,6 +261,6 @@ function sanitizeFileName(value: string): string {
   return value.trim().replace(/[\\/:*?"<>|]/g, '-')
 }
 
-export function createBlankCardInput(t: Translator): JsonObject {
-  return toClientJsonObject({ name: t('character.new') })
+export function createBlankCardInput(t: Translator): CreateCardInput {
+  return { name: t('character.new') }
 }

@@ -3,7 +3,7 @@ import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
 import { createDocumentDataCommitSource, createInMemoryDocumentStore } from '@loom-studio/document-store'
 import { createExtensionHost } from '@loom-studio/extension-host'
 import { createKernel, type Kernel } from '@loom-studio/kernel'
-import { createLoomRunner } from '@loom-studio/loom-runner'
+import { createLoomRunner, createSamplePassFactories } from '@loom-studio/loom-runner'
 import { createId } from '@loom-studio/shared'
 import { createInMemoryTraceAuditStore } from '@loom-studio/trace-audit'
 import { createErrorResponse, createSuccessResponse, parseRpcRequest, type RpcResponse, type StudioEvent } from '@loom-studio/transport'
@@ -14,19 +14,19 @@ function createHarness() {
   const diagnostics = createInMemoryDiagnosticsRegistry()
   const documents = createInMemoryDocumentStore()
   const traceAudit = createInMemoryTraceAuditStore()
-  const loomRunner = createLoomRunner({ traceAudit })
+  const loomRunner = createLoomRunner({ traceAudit, factories: createSamplePassFactories() })
   let kernel: Kernel
   const extensionHost = createExtensionHost({
     documents,
     diagnostics,
-    callRpc: (method, params, context) => kernel.callRpc(method, params, context),
-    registerRpc: (name, ownerPackageId, ownerModuleId, handler, ownerInstanceId) => {
-      const handle = kernel.registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler, ownerInstanceId)
-      return { name, ownerPackageId, ownerModuleId, ownerInstanceId, handler, dispose: handle.dispose }
+    callRpc: (method: string, params?: unknown, context?: unknown) => kernel.callRpc(method, params as never, context as never),
+    registerRpc: (name: string, ownerPackageId: string, ownerModuleId: string, handler: (...args: unknown[]) => unknown, ownerInstanceId?: string) => {
+      const handle = kernel.registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler as never, ownerInstanceId)
+      return { name, ownerPackageId, ownerModuleId, ownerInstanceId, handler: handler as never, dispose: handle.dispose }
     },
-    emitEvent: (name, payload, publisher) => {
-      kernel.getEventBus().emit(name, payload, {
-        publisher,
+    emitEvent: (name: string, payload: unknown, publisher: { kind: string; packageId?: string; moduleId?: string }) => {
+      kernel.getEventBus().emit(name, payload as never, {
+        publisher: publisher as never,
         source: publisher.kind === 'extension' ? `extension:${publisher.packageId}/${publisher.moduleId}` : publisher.kind,
       })
     },
@@ -70,7 +70,7 @@ describe('platform capability integration smoke', () => {
     const { kernel, extensionHost, traceAudit } = createHarness()
     const events: StudioEvent[] = []
     await kernel.start()
-    kernel.getEventBus().subscribe(['docs.changed', 'diagnostics.updated'], event => events.push(event))
+    kernel.getEventBus().subscribe(['docs.changed', 'diagnostics.updated'], (event: StudioEvent) => events.push(event))
     await extensionHost.discover(join(process.cwd(), 'extensions/example-echo'))
     await extensionHost.activateAll()
     const bridge = createClientBridge({ endpoint: 'memory://kernel', fetch: createKernelFetch(kernel) })
@@ -109,7 +109,7 @@ describe('platform capability integration smoke', () => {
     expect(runResult.traceId).toBeDefined()
     expect(traceAudit.listTraces()).toHaveLength(1)
     expect(traces.items).toHaveLength(1)
-    expect(diagnostics.items.some(diagnostic => diagnostic.code === 'loom/factory-missing')).toBe(true)
+    expect(diagnostics.items.some((diagnostic: { code: string }) => diagnostic.code === 'loom/factory-missing')).toBe(true)
     expect(events.some(event => event.name === 'diagnostics.updated')).toBe(true)
   })
 

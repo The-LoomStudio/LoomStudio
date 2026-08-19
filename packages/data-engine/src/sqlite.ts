@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -84,18 +85,43 @@ export function createSqliteDataEngine(options: SqliteDataEngineOptions): Sqlite
   }
 
   const commitNotifier = createDataCommitNotifier<DataCommitFact>()
+  const activeTransactionContext = new AsyncLocalStorage<SqliteDataTransaction>()
   let operationQueue = Promise.resolve()
+  let isClosed = false
 
-  function serialize<T>(operation: () => Promise<T> | T): Promise<T> {
-    // ponytail: One FIFO protects the single SQLite connection; transaction callbacks must not re-enter queued engine methods.
-    const result = operationQueue.then(operation, operation)
+  function assertOpen(): void {
+    if (isClosed) {
+      throw new DataEngineError('data.engine_closed', 'Data engine is closed')
+    }
+  }
+
+  function assertNonReentrant(): void {
+    if (activeTransactionContext.getStore()) {
+      throw new DataEngineError(
+        'data.reentrant_transaction',
+        'Reentrant call to data engine read/transact inside an active transaction is forbidden. Use the transaction instance directly.',
+      )
+    }
+  }
+
+  async function serialize<T>(operation: () => Promise<T> | T): Promise<T> {
+    // ponytail: One FIFO protects the single SQLite connection; reentrancy is guarded by AsyncLocalStorage fail-fast.
+    assertOpen()
+    assertNonReentrant()
+    const result = operationQueue.then(() => {
+      assertOpen()
+      return operation()
+    })
     operationQueue = result.then(() => undefined, () => undefined)
     return result
   }
 
   return {
     database,
-    migrate: set => migrateNamespace(database, set),
+    migrate: set => {
+      assertOpen()
+      migrateNamespace(database, set)
+    },
     read: operation => serialize(() => operation(database)),
     transact: (input, operation) => serialize(async () => {
       const changesetId = options.createId('chg')
@@ -104,7 +130,7 @@ export function createSqliteDataEngine(options: SqliteDataEngineOptions): Sqlite
       database.exec('BEGIN IMMEDIATE')
 
       try {
-        const value = await operation({
+        const tx: SqliteDataTransaction = {
           database,
           changesetId,
           createdAt,
@@ -114,7 +140,9 @@ export function createSqliteDataEngine(options: SqliteDataEngineOptions): Sqlite
           callId: input.callId,
           parentCallId: input.parentCallId,
           recordOperations: recorded => operations.push(...structuredClone(recorded) as DataCommitOperation[]),
-        })
+        }
+
+        const value = await activeTransactionContext.run(tx, () => operation(tx))
 
         if (operations.length === 0) {
           throw new DataEngineError('data.transaction_empty', 'Data transaction produced no changes')
@@ -141,7 +169,11 @@ export function createSqliteDataEngine(options: SqliteDataEngineOptions): Sqlite
       }
     }),
     subscribeCommits: observer => commitNotifier.subscribe(observer),
-    close: () => database.close(),
+    close: () => {
+      if (isClosed) return
+      isClosed = true
+      database.close()
+    },
   }
 }
 

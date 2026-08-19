@@ -127,12 +127,10 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
       const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''
       const rows = database
         .prepare(`SELECT id, type, version, content_json, meta_json FROM documents ${where} ORDER BY rowid LIMIT ? OFFSET ?`)
-        .all(...values, limit, offset)
-      const items = rows.map(rowToDocument)
+        .all(...values, limit + 1, offset)
+      const items = rows.slice(0, limit).map(rowToDocument)
+      const hasMore = rows.length > limit
       const nextOffset = offset + limit
-      const hasMore = rows.length === limit && database
-        .prepare(`SELECT 1 FROM documents ${where} ORDER BY rowid LIMIT 1 OFFSET ?`)
-        .get(...values, nextOffset)
 
       return {
         items,

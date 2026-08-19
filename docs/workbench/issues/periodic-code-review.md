@@ -1,10 +1,10 @@
 # 周期性代码审查
 
 > **状态**：Active Review Ledger
-> **最后审查时间**：2026-08-17 12:21
-> **审查基线**：07745fce047e9d066838bbb5ffb121fba7d615d1
+> **最后审查时间**：2026-08-19 22:40
+> **审查基线**：f3418dc9080c571790435df2a9c379a957b42021
 > **当前分支**：main
-> **审查目标**：本地 Extension Package 安装、激活、重启恢复与卸载链路
+> **审查目标**：后端数据层大重构（PromptResourceStore / SettingMount / DataEngine 事务与迁移 / MessageBlock）与 Issues 全量审计
 
 ## 最近覆盖记录
 
@@ -12,6 +12,8 @@
 
 | 日期 | Commit | 审查目标 | 选择原因 | 结果 |
 | --- | --- | --- | --- | --- |
+| 2026-08-20 | `working` | 全局数据层重构收敛、RPC 强类型化、Prompt 对齐、跨包工具去重与测试治理 (Phase 1~5) | 加固底层 SQLite 事务防死锁与 CTE 递归分页；增强 RPC 响应元数据并统一 ProviderProfile DTO；对齐 Prompt Compiler 消息合并；收敛 `@loom-studio/shared` 基础守卫；清理废弃归档测试与 TS 配置别名对齐 | 全仓库 95 个测试文件、420 个用例 100% 全部通过；`build` / `lint` 0 错误；消除 70+ 行冗余代码与 1 个孤儿文件；删除历史失效归档 |
+| 2026-08-19 | `f3418dc` | 后端数据层大重构与 Issues 全量审计 | 引入了独立 `prompt-resource-store`、`SettingMount` 挂载体系、`data-engine` 事务归一、`MessageBlock` 组装与相邻 System 消息合并，需对全量 Issue 重新对齐事实 | 确认 PromptBuild System 消息合并、空 Projection Profile 统一、Agent Preset 解耦等已解决；确认链表 N+1、DataEngine 重入死锁防护、跨包工具重复依然开放；ADR-003/004 状态已更新 |
 | 2026-08-17 | `07745fc` | 本地 Extension Package 安装、激活、重启恢复与卸载链路 | 最近提交完成 Extension artifact 安装流；该链路跨越本地文件信任边界、原子复制、Catalog、Host 生命周期、持久化 desired state 与卸载清理 | 未发现新的可报告问题；确认旧 Session Turn P1 已由 2026-08-15 的 Narrative / Agent Runtime 重构消除并删除失效条目 |
 | 2026-08-10 | `ea7b4c6` | Session Turn 提交、RPC 持久化与 Client 状态回写链路 | 近期提交实质修改了 Session Runtime、分域异步状态和通知；该链路跨越用户输入、Provider 调用、事务写入与 UI 回写，且上次未覆盖 Client 成功后的恢复路径 | 新增 1 个 P1：Turn 已提交后若后续 Timeline 刷新失败，Client 清空草稿但仍展示旧 Timeline，并将已成功写入的操作表现为失败 |
 | 2026-08-03 | `f6253b8` | Document Store 写入、Commit Fact 与 Kernel 事件传播链路 | 最近提交及当前工作区对事务、SQLite migration、Commit observer、Application/Extension 写入传播进行了实质修改，链路涉及持久化原子性与公共事件边界 | 未发现新的可报告问题；既有 Logging P1 当时保持不变，已于 2026-08-07 复核关闭 |

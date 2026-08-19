@@ -30,7 +30,7 @@ export type LoomRunnerOptions = {
 
 export function createLoomRunner(options: LoomRunnerOptions = {}): LoomRunner {
   const registry = new PassRegistry()
-  for (const factory of [...defaultFactories(), ...(options.factories ?? [])]) {
+  for (const factory of (options.factories ?? [])) {
     registry.register(factory)
   }
 
@@ -68,7 +68,7 @@ export function createLoomRunner(options: LoomRunnerOptions = {}): LoomRunner {
   }
 }
 
-function defaultFactories(): PassFactory[] {
+export function createSamplePassFactories(): PassFactory[] {
   return [
     {
       name: 'noop',

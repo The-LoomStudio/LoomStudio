@@ -421,9 +421,24 @@ async function handleRpcRequest(
         },
       })
     }
-    writeJson(response, 200, createSuccessResponse(rpcRequest.id, result, context))
+    const responseMeta = {
+      clientId: context.clientId,
+      correlationId: context.correlationId,
+      callId: context.callId,
+      durationMs,
+      serverTime: new Date().toISOString(),
+    }
+    writeJson(response, 200, createSuccessResponse(rpcRequest.id, result, responseMeta))
   } catch (error) {
     const durationMs = readDurationMs(startedAt)
+    const responseMeta = context ? {
+      clientId: context.clientId,
+      correlationId: context.correlationId,
+      callId: context.callId,
+      durationMs,
+      serverTime: new Date().toISOString(),
+    } : undefined
+
     logger?.error(`${method} failed after ${durationMs} ms`, {
       event: 'rpc.failed',
       correlationId: context?.correlationId,
@@ -438,7 +453,7 @@ async function handleRpcRequest(
         ...readErrorCode(error),
       },
     })
-    writeJson(response, 200, createErrorResponse(rpcId, error, 'rpc.invalid_request'))
+    writeJson(response, 200, createErrorResponse(rpcId, error, 'rpc.invalid_request', responseMeta))
   }
 }
 

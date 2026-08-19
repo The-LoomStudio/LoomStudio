@@ -1,7 +1,5 @@
 import { useRef, useState } from 'react'
-import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import type { ContextAssetNode, PromptResource, UpdatePromptResourceResult } from '../../../entities/index.js'
-import { toClientJsonObject } from '../../../shared/api/client-json-object.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import {
@@ -86,10 +84,10 @@ export function useContextAssets(input: UseContextAssetsInput) {
 
       try {
         await commitContextAssetMutation({
-          mutate: () => input.api!.promptResources.updateAsset(toClientJsonObject({
+          mutate: () => input.api!.promptResources.updateAsset({
             resourceId,
             ...readPromptAssetPatch(nextNode),
-          })),
+          }),
           applyResource,
           recordEdit: input.recordEdit,
           entry: {
@@ -126,10 +124,10 @@ export function useContextAssets(input: UseContextAssetsInput) {
 
       try {
         await commitContextAssetMutation({
-          mutate: () => input.api!.promptResources.updateAssets(toClientJsonObject({
+          mutate: () => input.api!.promptResources.updateAssets({
             resourceId,
-            updates: changedNodes.map(node => readPromptAssetPatch(node)) as ClientJsonValue,
-          })),
+            updates: changedNodes.map(node => readPromptAssetPatch(node)),
+          }),
           applyResource,
           recordEdit: input.recordEdit,
           entry: {
@@ -157,12 +155,12 @@ export function useContextAssets(input: UseContextAssetsInput) {
       const asset = findContextAssetNode(mutation.nodes, mutation.selectedId)
       if (!asset || !mutation.selectedId) return
       const resourceId = readResourceId(parentId)
-      const result = await input.api!.promptResources.createAsset(toClientJsonObject({
+      const result = await input.api!.promptResources.createAsset({
         resourceId,
         targetAssetId: parentId,
         position: 'inside',
-        asset: asset as unknown as ClientJsonValue,
-      }))
+        asset,
+      })
       applyResource(result.resource)
       nextSelectedId = mutation.selectedId
       input.recordEdit({
@@ -187,12 +185,12 @@ export function useContextAssets(input: UseContextAssetsInput) {
       const asset = findContextAssetNode(mutation.nodes, mutation.selectedId)
       if (!asset || !mutation.selectedId) return
       const resourceId = readResourceId(parentId)
-      const result = await input.api!.promptResources.createAsset(toClientJsonObject({
+      const result = await input.api!.promptResources.createAsset({
         resourceId,
         targetAssetId: parentId,
         position: 'inside',
-        asset: asset as unknown as ClientJsonValue,
-      }))
+        asset,
+      })
       applyResource(result.resource)
       nextSelectedId = mutation.selectedId
       input.recordEdit({
@@ -215,12 +213,12 @@ export function useContextAssets(input: UseContextAssetsInput) {
       if (next === persistedNodesRef.current) return
       const resourceId = readResourceId(draggedId)
       if (readResourceId(targetId) !== resourceId) throw new Error('Cross-resource prompt asset move is not supported')
-      const result = await input.api!.promptResources.moveAsset(toClientJsonObject({
+      const result = await input.api!.promptResources.moveAsset({
         resourceId,
         assetId: draggedId,
         targetAssetId: targetId,
         position,
-      }))
+      })
       applyResource(result.resource)
       input.recordEdit({
         label: input.t('history.context.move'),
@@ -243,12 +241,12 @@ export function useContextAssets(input: UseContextAssetsInput) {
       const asset = findContextAssetNode(mutation.nodes, mutation.selectedId)
       if (!asset || !mutation.selectedId) return
       const resourceId = readResourceId(id)
-      const result = await input.api!.promptResources.createAsset(toClientJsonObject({
+      const result = await input.api!.promptResources.createAsset({
         resourceId,
         targetAssetId: id,
         position: 'after',
-        asset: asset as unknown as ClientJsonValue,
-      }))
+        asset,
+      })
       applyResource(result.resource)
       nextSelectedId = mutation.selectedId
       input.recordEdit({
@@ -272,10 +270,10 @@ export function useContextAssets(input: UseContextAssetsInput) {
       const mutation = deleteContextAssetNode(persistedNodesRef.current, id, currentSelectedId)
       if (mutation.nodes === persistedNodesRef.current) return
       const resourceId = readResourceId(id)
-      const result = await input.api!.promptResources.deleteAsset(toClientJsonObject({
+      const result = await input.api!.promptResources.deleteAsset({
         resourceId,
         assetId: id,
-      }))
+      })
       applyResource(result.resource)
       nextSelectedId = mutation.selectedId
       input.recordEdit({
@@ -304,12 +302,12 @@ export function useContextAssets(input: UseContextAssetsInput) {
       const asset = findContextAssetNode(mutation.nodes, mutation.selectedId)
       if (!asset || !mutation.selectedId) return
 
-      const result = await input.api!.promptResources.createAsset(toClientJsonObject({
+      const result = await input.api!.promptResources.createAsset({
         resourceId: targetResourceId,
         targetAssetId,
         position: 'inside',
-        asset: asset as unknown as ClientJsonValue,
-      }))
+        asset,
+      })
       applyResource(result.resource)
       nextSelectedId = mutation.selectedId
       input.recordEdit({
@@ -355,22 +353,22 @@ export async function commitContextAssetMutation(input: {
   return result
 }
 
-function readPromptAssetPatch(node: ContextAssetNode): { [key: string]: ClientJsonValue } {
+function readPromptAssetPatch(node: ContextAssetNode) {
   const capabilities = node.projection
     ? writeProjectionCapability(node.capabilities, node.projection)
     : node.capabilities
 
-  return toClientJsonObject({
+  return {
     assetId: node.id,
     body: node.body,
-    capabilities: capabilities as ClientJsonValue | undefined,
+    capabilities,
     enabled: node.enabled,
     label: node.label,
     meta: node.meta,
     orderList: node.orderList,
-    skeletonPatch: node.skeletonPatch as ClientJsonValue | undefined,
-    slotRanks: node.slotRanks as ClientJsonValue | undefined,
-  })
+    skeletonPatch: node.skeletonPatch,
+    slotRanks: node.slotRanks,
+  }
 }
 
 function samePromptAssetPatch(left: ContextAssetNode, right: ContextAssetNode): boolean {

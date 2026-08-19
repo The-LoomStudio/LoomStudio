@@ -51,6 +51,7 @@ const applicationRpcMethods = [
   'application.deleteAgentSession',
   'application.invokeAgentTurn',
   'application.previewAgentTurn',
+  'application.createNarrativeTimeline',
   'application.createNarrativeTimelineFromCard',
   'application.getNarrativeTimeline',
   'application.listNarrativeTimelines',
@@ -66,6 +67,7 @@ const applicationRpcMethods = [
   'application.duplicatePromptResource',
   'application.deletePromptResource',
   'application.revertPromptResourceChangeset',
+  'application.revertChangeset',
   'application.importPromptResource',
   'application.exportPromptResource',
   'application.listCardPromptResources',
@@ -77,6 +79,7 @@ const applicationRpcMethods = [
   'application.updatePromptResourceAssets',
   'application.movePromptResourceAsset',
   'application.deletePromptResourceAsset',
+  'application.exportCardBundle',
   'application.exportCardArtifact',
 ] as const
 
@@ -250,11 +253,14 @@ export async function callApplicationRpc(
         narrativeTarget: readOptionalNarrativeTarget(params),
       }, context) as unknown as JsonValue
 
-    case 'application.createNarrativeTimelineFromCard':
-      return await runtime.createNarrativeTimelineFromCard({
+    case 'application.createNarrativeTimeline':
+    case 'application.createNarrativeTimelineFromCard': {
+      const createTimeline = runtime.createNarrativeTimeline ?? runtime.createNarrativeTimelineFromCard
+      return await createTimeline.call(runtime, {
         cardId: readString(params, 'cardId'),
         title: readOptionalString(params, 'title'),
       }, context) as unknown as JsonValue
+    }
 
     case 'application.getNarrativeTimeline':
       return await runtime.getNarrativeTimeline({
@@ -337,6 +343,11 @@ export async function callApplicationRpc(
         expectedVersion: readOptionalNumber(params, 'expectedVersion'),
       }, context) as unknown as JsonValue
 
+    case 'application.revertChangeset':
+      return await runtime.revertChangeset({
+        changesetId: readString(params, 'changesetId'),
+      }, context) as unknown as JsonValue
+
     case 'application.importPromptResource': {
       const artifact = isRecord(params) ? params.artifact : undefined
       if (!isPromptResourceArtifact(artifact)) throw new Error('Expected valid Prompt Resource artifact param: artifact')
@@ -412,10 +423,13 @@ export async function callApplicationRpc(
         assetId: readString(params, 'assetId'),
       }, context) as unknown as JsonValue
 
-    case 'application.exportCardArtifact':
-      return await runtime.exportCardArtifact({
+    case 'application.exportCardBundle':
+    case 'application.exportCardArtifact': {
+      const exportBundle = runtime.exportCardBundle ?? runtime.exportCardArtifact
+      return await exportBundle.call(runtime, {
         cardId: readString(params, 'cardId'),
       }) as unknown as JsonValue
+    }
 
     default:
       throw new Error(`Application RPC method not found: ${method}`)

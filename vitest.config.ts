@@ -13,15 +13,12 @@ const defaultTestInclude = [
 const defaultTestExclude = [
   '**/node_modules/**',
   '**/dist/**',
-  'tests/archive/**/*.test.ts',
   'tests/probes/**/*.test.ts',
 ]
 const scopedTestInclude =
-  testScope === 'archive'
-    ? ['tests/archive/**/*.test.ts']
-    : testScope === 'probes'
-      ? ['tests/probes/**/*.test.ts']
-      : defaultTestInclude
+  testScope === 'probes'
+    ? ['tests/probes/**/*.test.ts']
+    : defaultTestInclude
 
 export default defineConfig({
   resolve: {

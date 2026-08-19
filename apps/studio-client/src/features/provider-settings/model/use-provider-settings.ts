@@ -1,6 +1,5 @@
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import { useState, type FormEvent } from 'react'
-import { toClientJsonObject } from '../../../shared/api/client-json-object.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { ModelProfile, ProviderAccount } from '../../../entities/index.js'
 import { normalizeOpenAICompatibleBaseUrl } from './provider-base-url.js'
@@ -25,8 +24,9 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
 
   async function refreshProviderAccounts() {
     const result = await input.api.providerAccounts.list()
-    setProviderAccounts(result.providerAccounts)
-    setModelProfiles(projectModelProfiles(result.providerAccounts))
+    const profiles = result.providerProfiles ?? []
+    setProviderAccounts(profiles)
+    setModelProfiles(projectModelProfiles(profiles))
     setProviderAccountsLoaded(true)
   }
 
@@ -44,17 +44,17 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
     setProviderAccountDraft(current => ({ ...current, baseUrl: normalizedBaseUrl }))
 
     await input.runAction(async () => {
-      await input.api.providerAccounts.create(toClientJsonObject({
+      await input.api.providerAccounts.create({
         providerExtensionId: 'official.openai-compatible',
         displayName: providerAccountDraft.displayName.trim(),
-        config: toClientJsonObject({
+        config: {
           baseUrl: normalizedBaseUrl,
-        }),
+        },
         enabledModelIds: [],
         ...(providerAccountDraft.apiKey.trim()
-          ? { credential: toClientJsonObject({ apiKey: providerAccountDraft.apiKey }) }
+          ? { credential: { apiKey: providerAccountDraft.apiKey.trim() } }
           : {}),
-      }))
+      })
       await refreshProviderSettings()
     })
   }
@@ -65,17 +65,17 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
     await input.runAction(async () => {
       const account = providerAccounts.find(item => item.id === providerAccountId)
       if (!account) throw new Error(`Provider Profile not found: ${providerAccountId}`)
-      await input.api.providerAccounts.update(toClientJsonObject({
+      await input.api.providerAccounts.update({
         providerProfileId: providerAccountId,
         enabledModelIds: [...new Set([...account.enabledModelIds, model])],
-      }))
+      })
       await refreshProviderAccounts()
     })
   }
 
   async function updateProviderAccount(providerAccountId: string, updates: { displayName?: string; config?: Record<string, ClientJsonValue> }) {
     await input.runAction(async () => {
-      await input.api.providerAccounts.update(toClientJsonObject({ providerProfileId: providerAccountId, ...updates }))
+      await input.api.providerAccounts.update({ providerProfileId: providerAccountId, ...updates })
       await refreshProviderAccounts()
     })
   }
@@ -86,11 +86,11 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
     await input.runAction(async () => {
       const account = providerAccounts.find(item => item.id === providerAccountId)
       if (!account) throw new Error(`Provider Profile not found: ${providerAccountId}`)
-      await input.api.providerAccounts.update(toClientJsonObject({
+      await input.api.providerAccounts.update({
         providerProfileId: providerAccountId,
         displayName: connection.displayName.trim(),
-        config: toClientJsonObject({ ...account.config, baseUrl: normalizedBaseUrl }),
-      }))
+        config: { ...account.config, baseUrl: normalizedBaseUrl },
+      })
       if (connection.apiKey?.trim()) {
         await input.api.providerAccounts.replaceCredential(providerAccountId, { apiKey: connection.apiKey.trim() })
       }
@@ -113,10 +113,10 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
       const account = current && providerAccounts.find(item => item.id === current.providerAccountId)
       if (!current || !account) throw new Error(`Provider model not found: ${modelProfileId}`)
       const nextModelId = updates.providerModelId?.trim() || current.providerModelId
-      await input.api.providerAccounts.update(toClientJsonObject({
+      await input.api.providerAccounts.update({
         providerProfileId: account.id,
         enabledModelIds: account.enabledModelIds.map(modelId => modelId === current.providerModelId ? nextModelId : modelId),
-      }))
+      })
       await refreshProviderAccounts()
     })
   }
@@ -126,10 +126,10 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
       const current = modelProfiles.find(model => model.id === modelProfileId)
       const account = current && providerAccounts.find(item => item.id === current.providerAccountId)
       if (!current || !account) return
-      await input.api.providerAccounts.update(toClientJsonObject({
+      await input.api.providerAccounts.update({
         providerProfileId: account.id,
         enabledModelIds: account.enabledModelIds.filter(modelId => modelId !== current.providerModelId),
-      }))
+      })
       await refreshProviderAccounts()
     })
   }

@@ -10,7 +10,6 @@ import type {
   NarrativeTimeline,
   PreviewAgentTurnResult,
 } from '../../../entities/index.js'
-import { toClientJsonObject } from '../../../shared/api/client-json-object.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { LatestOperationContext } from '../../../shared/hooks/use-async-operations.js'
 
@@ -78,7 +77,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
 
     let activated: { branchId: string; timelineId: string } | undefined
     await input.runAction(async () => {
-      const result = await input.api.narratives.createFromCard(toClientJsonObject({ cardId: input.selectedCardId }))
+      const result = await input.api.narratives.createFromCard({ cardId: input.selectedCardId! })
       setTimeline(result.timeline)
       setBranch(result.branch)
       setBranches([result.branch])
@@ -122,7 +121,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
 
     await input.runAction(async () => {
       const session = await ensureAgentSession()
-      const result = await input.api.agentSessions.invoke(toClientJsonObject({
+      const result = await input.api.agentSessions.invoke({
         agentSessionId: session.id,
         input: composerInput,
         activationFacts: input.activationFacts,
@@ -131,7 +130,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
           branchId: branch.id,
           commit: true,
         },
-      }))
+      })
       if (!result.narrative) throw new Error('Agent turn did not commit a Narrative node')
       setTimeline(result.narrative.timeline)
       setBranch(result.narrative.branch)
@@ -152,7 +151,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
 
     await input.runAction(async () => {
       const session = await ensureAgentSession()
-      const result = await input.api.agentSessions.preview(toClientJsonObject({
+      const result = await input.api.agentSessions.preview({
         agentSessionId: session.id,
         input: composerInput,
         activationFacts: input.activationFacts,
@@ -161,7 +160,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
           branchId: branch.id,
           commit: false,
         },
-      }))
+      })
       setPromptPreview(result)
     })
   }
@@ -240,10 +239,10 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     if (agentSessionPromiseRef.current) return agentSessionPromiseRef.current
     if (!input.selectedAgentProfileId) throw new Error('请先在 Agent 面板创建并选择 Agent Profile')
     const pending = (async () => {
-      const created = await input.api.agentSessions.create(toClientJsonObject({
-        agentProfileId: input.selectedAgentProfileId,
+      const created = await input.api.agentSessions.create({
+        agentProfileId: input.selectedAgentProfileId!,
         title: input.selectedCard?.name ?? timeline?.title,
-      }))
+      })
       setAgentSession(created.session)
       return created.session
     })()
