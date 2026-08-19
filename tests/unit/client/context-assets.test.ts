@@ -7,7 +7,7 @@ import { commitContextAssetMutation } from '../../../apps/studio-client/src/feat
 import { buildProjectionOrder } from '../../../apps/studio-client/src/features/context-assets/model/projection-order.js'
 import { readPromptResourceWorkbenchRoot } from '../../../apps/studio-client/src/features/context-assets/model/prompt-resource-view.js'
 import { resolvePresetBuildContextResources } from '../../../apps/studio-client/src/features/context-assets/model/preset-build-context.js'
-import type { ContextAssetNode, PromptResource } from '../../../apps/studio-client/src/entities/index.js'
+import type { ContextAssetNode, PromptResource, SettingMount } from '../../../apps/studio-client/src/entities/index.js'
 import { describe, expect, it } from 'vitest'
 
 describe('studio client context asset helpers', () => {
@@ -136,8 +136,8 @@ describe('studio client context asset helpers', () => {
     })
   })
 
-  it('resolves preset and timeline settings in stable deduplicated order', () => {
-    const preset = promptResource('preset-1', 'preset', ['setting-2', 'setting-1', 'missing'])
+  it('resolves manual, preset, and timeline settings in runtime order with stable deduplication', () => {
+    const preset = promptResource('preset-1', 'preset')
     const setting1 = promptResource('setting-1', 'setting')
     const setting2 = promptResource('setting-2', 'setting')
     const timelineSetting = promptResource('setting-3', 'setting')
@@ -146,17 +146,22 @@ describe('studio client context asset helpers', () => {
     expect(resolvePresetBuildContextResources({
       preset,
       resources: [preset, setting1, setting2, timelineSetting, logic],
-      timelinePromptResourceIds: ['setting-1', 'setting-3', 'logic-1', 'preset-1'],
-    }).map(resource => resource.id)).toEqual(['setting-2', 'setting-1', 'setting-3'])
+      settingMounts: [
+        ...mounts({ kind: 'manual', id: 'global' }, ['setting-1', 'setting-2']),
+        ...mounts({ kind: 'preset', id: 'preset-1' }, ['setting-2', 'setting-3', 'missing']),
+      ],
+      timelinePromptResourceIds: ['setting-3', 'setting-1', 'logic-1', 'preset-1'],
+    }).map(resource => resource.id)).toEqual(['setting-1', 'setting-2', 'setting-3'])
   })
 
   it('keeps preset-linked settings available without an active timeline', () => {
-    const preset = promptResource('preset-1', 'preset', ['setting-1'])
+    const preset = promptResource('preset-1', 'preset')
     const setting = promptResource('setting-1', 'setting')
 
     expect(resolvePresetBuildContextResources({
       preset,
       resources: [preset, setting],
+      settingMounts: mounts({ kind: 'preset', id: 'preset-1' }, ['setting-1']),
     })).toEqual([setting])
   })
 })
@@ -164,17 +169,26 @@ describe('studio client context asset helpers', () => {
 function promptResource(
   id: string,
   resourceKind: PromptResource['resourceKind'],
-  linkedSettingIds?: string[],
 ): PromptResource {
   return {
     id,
     version: 1,
     resourceKind,
-    linkedSettingIds,
     rootNode: { id: `${id}-root`, label: id, kind: 'module' },
     createdAt: '2026-08-16T00:00:00.000Z',
     updatedAt: '2026-08-16T00:00:00.000Z',
   }
+}
+
+function mounts(source: SettingMount['source'], settingResourceIds: string[]): SettingMount[] {
+  return settingResourceIds.map((settingResourceId, orderIndex) => ({
+    id: `mount-${orderIndex}`,
+    settingResourceId,
+    source,
+    orderIndex,
+    origin: {},
+    createdAt: '2026-08-16T00:00:00.000Z',
+  }))
 }
 
 function baseNodes(): ContextAssetNode[] {

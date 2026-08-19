@@ -68,7 +68,7 @@ Loom Studio 使用统一的 Document Store 进行数据持久化。所有被存�
 - **说明**: Prompt Resource 是 Application-owned Domain Store 的资源头、Node 和 Setting Mount，不再由 `airp.promptResource` Document 权威保存。
 - **权威表**: `prompt_resources`, `prompt_resource_nodes`, `prompt_resource_node_revisions`, `prompt_resource_header_revisions`, `global_setting_mounts`
 - **兼容类型**: `PromptResourceContent` 与嵌套 `rootNode.children[]` 仍用于 RPC、PromptBuild 和 `loom.promptResource` 外部 Artifact。
-- **备注**: Preset 的兼容 `linkedSettingIds` 响应由 `global_setting_mounts` 的 Preset Mount 派生；Agent Profile 的 `presetId` 仍指向稳定 Resource ID。
+- **备注**: Preset 与 Setting 的关系由 `global_setting_mounts` 的 Preset Mount 维护；Agent Profile 的 `presetId` 仍指向稳定 Resource ID。
 
 ### `airp.importBundle`
 - **说明**: 保存一次 Card Bundle 导入的来源 Artifact、来源引用、资源推荐关系和导入 Document 清单。

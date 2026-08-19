@@ -59,7 +59,6 @@ export type PromptResourceKind = 'preset' | 'setting' | 'logic' | 'runtime' | 'h
 export type PromptResourceContent = {
   resourceKind: PromptResourceKind
   rootNode: PromptResourceNode
-  linkedSettingIds?: string[]
   historyPolicy?: AgentHistoryPolicy
   origin?: {
     kind: 'builtin'
@@ -287,10 +286,7 @@ export async function exportCardArtifact(input: {
   const contextAssets = await Promise.all((card.content.promptResourceIds ?? []).map(async resourceId => {
         const resource = await input.promptResources.getResource(resourceId)
         if (!resource) throw new Error(`Prompt resource not found: ${resourceId}`)
-        const mounts = resource.resourceKind === 'preset'
-          ? await input.promptResources.listSettingMounts({ source: { kind: 'preset', id: resource.id } })
-          : []
-        return fromStoredResource(resource, mounts).rootNode
+        return fromStoredResource(resource).rootNode
       }))
 
   return buildExportArtifact({ card, contextAssets, importBundle })
@@ -415,10 +411,7 @@ export async function readPromptResourceInputs(input: {
   for (const resourceId of input.resourceIds) {
     const resource = await input.promptResources.getResource(resourceId)
     if (!resource) throw new Error(`Prompt resource not found: ${resourceId}`)
-    const mounts = resource.resourceKind === 'preset'
-      ? await input.promptResources.listSettingMounts({ source: { kind: 'preset', id: resource.id } })
-      : []
-    resources.push(fromStoredResource(resource, mounts))
+    resources.push(fromStoredResource(resource))
   }
   return collectPromptInputsFromNodes(resources.map(resource => resource.rootNode), input.macroContext)
 }

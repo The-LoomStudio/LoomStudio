@@ -1,8 +1,9 @@
-import type { PromptResource } from '../../../entities/index.js'
+import type { PromptResource, SettingMount } from '../../../entities/index.js'
 
 type ResolvePresetBuildContextResourcesInput = {
   preset?: PromptResource
   resources: PromptResource[]
+  settingMounts: SettingMount[]
   timelinePromptResourceIds?: string[]
 }
 
@@ -11,7 +12,14 @@ export function resolvePresetBuildContextResources(
 ): PromptResource[] {
   const resourcesById = new Map(input.resources.map(resource => [resource.id, resource]))
   const resourceIds = [
-    ...(input.preset?.linkedSettingIds ?? []),
+    ...input.settingMounts
+      .filter(mount => mount.source.kind === 'manual')
+      .sort((left, right) => left.orderIndex - right.orderIndex || left.id.localeCompare(right.id))
+      .map(mount => mount.settingResourceId),
+    ...input.settingMounts
+      .filter(mount => mount.source.kind === 'preset' && mount.source.id === input.preset?.id)
+      .sort((left, right) => left.orderIndex - right.orderIndex || left.id.localeCompare(right.id))
+      .map(mount => mount.settingResourceId),
     ...(input.timelinePromptResourceIds ?? []),
   ]
   const seen = new Set<string>()

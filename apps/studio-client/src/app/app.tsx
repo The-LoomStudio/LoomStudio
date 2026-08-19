@@ -164,7 +164,8 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
       <PresetWorkbench
         {...contextAssetEditorProps}
         timelinePromptResourceIds={state.narrativeTimeline?.promptResourceIds}
-        onUpdatePresetSettings={state.updatePresetSettings}
+        settingMounts={state.settingMounts}
+        onReplaceSettingMounts={state.replaceSettingMounts}
         routeAssetId={navigation.route.panel === 'preset' ? navigation.route.assetId : undefined}
         initialSearchQuery={navigation.route.panel === 'preset' ? navigation.searchQuery : ''}
       />

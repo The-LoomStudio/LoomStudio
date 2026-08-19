@@ -25,12 +25,33 @@ export type PromptResource = {
   version: number
   resourceKind: 'preset' | 'setting' | 'logic' | 'runtime' | 'history' | 'prompt'
   rootNode: ContextAssetNode
-  linkedSettingIds?: string[]
   historyPolicy?: 'persistent' | 'ephemeral'
   origin?: { kind: 'builtin'; key: string }
   sourceArtifactRef?: ClientJsonValue
   createdAt: string
   updatedAt: string
+}
+
+export type SettingMountSource =
+  | { kind: 'manual'; id?: 'global' }
+  | { kind: 'preset'; id: string }
+
+export type SettingMount = {
+  id: string
+  settingResourceId: string
+  source: SettingMountSource
+  orderIndex: number
+  origin: Record<string, ClientJsonValue>
+  createdAt: string
+}
+
+export type ListSettingMountsResult = {
+  mounts: SettingMount[]
+}
+
+export type ReplaceSettingMountsResult = {
+  mounts: SettingMount[]
+  mutation: MutationReceipt
 }
 
 export type PromptResourceArtifact = {

@@ -18,6 +18,7 @@
     "test:probes": "LOOM_TEST_SCOPE=probes vitest run",
     "verify:server-extension": "pnpm --filter @loom-studio/weather-station-test-extension build && tsx scripts/verify-server-extension.ts",
     "verify:server-extension-manager": "pnpm --filter @loom-studio/example-echo build && tsx scripts/verify-server-extension-manager.ts",
+    "measure:prompt-resource-storage": "tsx scripts/measure-prompt-resource-storage.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
     "dev:server": "node scripts/dev-with-packages.mjs server",

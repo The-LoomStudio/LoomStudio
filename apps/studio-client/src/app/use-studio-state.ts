@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { withClientBridgeLogging } from '../shared/api/client-bridge-logging.js'
 import { createTranslator, type Locale } from '../shared/i18n/index.js'
 import { createStudioApi, type NetworkSettings } from '../shared/api/studio-api.js'
-import { toClientJsonObject } from '../shared/api/client-json-object.js'
 import { useAsyncOperations } from '../shared/hooks/use-async-operations.js'
 import { useCards } from '../features/cards/model/use-cards.js'
 import { useEditHistory } from '../features/edit-history/model/use-edit-history.js'
@@ -17,7 +16,7 @@ import { useProviderSettings } from '../features/provider-settings/model/use-pro
 import { useAgentProfiles } from '../features/agent-profiles/model/use-agent-profiles.js'
 import { useAgentChatRuntime } from '../features/agent-runtime/model/use-agent-chat-runtime.js'
 import { useNarrativeRuntime } from '../features/narrative-runtime/model/use-narrative-runtime.js'
-import type { ContextAssetNode, PromptResource, PromptResourceArtifact } from '../entities/index.js'
+import type { ContextAssetNode, PromptResource, PromptResourceArtifact, SettingMount, SettingMountSource } from '../entities/index.js'
 import { readComposerHint, readEmptyTimelineText } from './utils.js'
 
 export type HistoryAssetTarget = {
@@ -44,6 +43,7 @@ export function useStudioState(transportLogger: Logger) {
   const api = useMemo(() => createStudioApi(observedBridge), [observedBridge])
   const editHistory = useEditHistory({ revertChangeset: api.history.revert })
   const [promptResources, setPromptResources] = useState<PromptResource[]>([])
+  const [settingMounts, setSettingMounts] = useState<SettingMount[]>([])
   const cardsState = useCards({
     api,
     initialCardName: '',
@@ -106,6 +106,12 @@ export function useStudioState(transportLogger: Logger) {
     return resources
   }
 
+  async function refreshSettingMounts(): Promise<SettingMount[]> {
+    const mounts = (await api.promptResources.listSettingMounts()).mounts
+    setSettingMounts(mounts)
+    return mounts
+  }
+
   useEffect(() => {
     editHistory.clear()
     void operations.run('bootstrap', async () => {
@@ -113,7 +119,7 @@ export function useStudioState(transportLogger: Logger) {
       const selectedCardId = cards[0]?.id
 
       if (selectedCardId) cardsState.setSelectedCardId(selectedCardId)
-      await refreshPromptResourceLibrary()
+      await Promise.all([refreshPromptResourceLibrary(), refreshSettingMounts()])
       await providerSettings.refreshProviderSettings()
       await agentProfiles.refreshAgentProfiles()
       setNetworkSettings(await api.settings.getNetwork())
@@ -213,7 +219,7 @@ export function useStudioState(transportLogger: Logger) {
         anchor: { documentId: result.resource.id, subjectId: result.resource.rootNode.id },
       })
       duplicatedId = result.resource.id
-      await refreshPromptResourceLibrary()
+      await Promise.all([refreshPromptResourceLibrary(), refreshSettingMounts()])
     })
     return duplicatedId
   }
@@ -221,7 +227,7 @@ export function useStudioState(transportLogger: Logger) {
   async function deletePromptResource(resourceId: string): Promise<void> {
     await operations.run('mutation', async () => {
       await api.promptResources.delete(resourceId)
-      await refreshPromptResourceLibrary()
+      await Promise.all([refreshPromptResourceLibrary(), refreshSettingMounts()])
       await Promise.all([
         cardsState.refreshCards(),
         agentProfiles.refreshAgentProfiles(),
@@ -230,15 +236,13 @@ export function useStudioState(transportLogger: Logger) {
     })
   }
 
-  async function updatePresetSettings(presetId: string, linkedSettingIds: string[]): Promise<void> {
+  async function replaceSettingMounts(source: SettingMountSource, settingResourceIds: string[]): Promise<void> {
     await operations.run('mutation', async () => {
-      const result = await api.promptResources.updatePresetSettings(toClientJsonObject({ presetId, linkedSettingIds }))
-      editHistory.record({
-        label: t('history.context.update'),
-        changesetId: result.mutation.changesetId,
-        anchor: { documentId: result.resource.id, subjectId: result.resource.rootNode.id },
-      })
-      setPromptResources(current => current.map(resource => resource.id === result.resource.id ? result.resource : resource))
+      const result = await api.promptResources.replaceSettingMounts({ source, settingResourceIds })
+      setSettingMounts(current => [
+        ...current.filter(mount => mount.source.kind !== source.kind || (source.kind === 'preset' ? mount.source.id !== source.id : mount.source.id !== (source.id ?? 'global'))),
+        ...result.mounts,
+      ])
       await agentProfiles.refreshAgentProfiles()
     })
   }
@@ -354,6 +358,7 @@ export function useStudioState(transportLogger: Logger) {
     customCss, setCustomCss,
     // context assets
     promptResources,
+    settingMounts,
     contextAssets: contextAssetState.nodes, setContextAssets: contextAssetState.setNodes,
     previewContextAsset: contextAssetState.previewContextAsset,
     updateContextAsset: contextAssetState.updateContextAsset,
@@ -369,7 +374,7 @@ export function useStudioState(transportLogger: Logger) {
     deletePromptResource,
     importPromptResource,
     exportPromptResource,
-    updatePresetSettings,
+    replaceSettingMounts,
     // derived
     canSend, canSendAgent, canPreviewPrompt, composerHint, emptyTimelineText,
     // actions

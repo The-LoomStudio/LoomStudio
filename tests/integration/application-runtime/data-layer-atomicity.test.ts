@@ -91,7 +91,7 @@ async function createDeleteFixture() {
   })
   const setting = await runtime.createPromptResource({ resourceKind: 'setting', name: 'Atomic Setting' })
   const preset = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Atomic Preset' })
-  await runtime.updatePresetSettings({ presetId: preset.resource.id, linkedSettingIds: [setting.resource.id] })
+  await runtime.replaceSettingMounts({ source: { kind: 'preset', id: preset.resource.id }, settingResourceIds: [setting.resource.id] })
   const card = await runtime.createCard({ name: 'Atomic Card' })
   await runtime.updateCardPromptResources({ cardId: card.card.id, promptResourceIds: [setting.resource.id] })
   const timeline = await runtime.createNarrativeTimelineFromCard({ cardId: card.card.id })

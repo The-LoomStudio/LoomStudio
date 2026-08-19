@@ -16,7 +16,8 @@ import type {
 } from '@loom-studio/narrative-store'
 import type { AssistantChatMessage, ChatMessage, JsonObject, JsonValue } from '@loom-studio/shared'
 import type { SecretRef, SecretStore } from '@loom-studio/secret-store'
-import type { PromptResourceStore } from '@loom-studio/prompt-resource-store'
+import type { PromptResourceStore, SettingMount, SettingMountSource } from '@loom-studio/prompt-resource-store'
+export type { SettingMount, SettingMountSource } from '@loom-studio/prompt-resource-store'
 import type { ActivationFacts, PromptActivation } from './prompt-activation.js'
 import type { OpenAIChatPayload } from './provider-payload.js'
 import type { PromptBuildTrace } from './prompt-build-pipeline.js'
@@ -77,9 +78,8 @@ export type ApplicationRuntime = {
   exportPromptResource(input: ExportPromptResourceInput): Promise<ExportPromptResourceResult>
   listCardPromptResources(input: ListCardPromptResourcesInput): Promise<ListCardPromptResourcesResult>
   updateCardPromptResources(input: UpdateCardPromptResourcesInput, context?: RuntimeRequestContext): Promise<UpdateCardPromptResourcesResult>
-  updatePresetSettings(input: UpdatePresetSettingsInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
-  listGlobalSettingMounts(): Promise<ListGlobalSettingMountsResult>
-  replaceGlobalSettingMounts(input: ReplaceGlobalSettingMountsInput, context?: RuntimeRequestContext): Promise<ReplaceGlobalSettingMountsResult>
+  listSettingMounts(input?: ListSettingMountsInput): Promise<ListSettingMountsResult>
+  replaceSettingMounts(input: ReplaceSettingMountsInput, context?: RuntimeRequestContext): Promise<ReplaceSettingMountsResult>
   createPromptResourceAsset(input: CreatePromptResourceAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
   updatePromptResourceAsset(input: UpdatePromptResourceAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
   updatePromptResourceAssets(input: UpdatePromptResourceAssetsInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
@@ -95,22 +95,21 @@ export type RuntimeRequestContext = {
   parentCallId?: string
 }
 
-export type SettingMountView = {
-  id: string
-  settingResourceId: string
-  orderIndex: number
-  origin: JsonObject
-  createdAt: string
+export type ListSettingMountsInput = {
+  source?: SettingMountSource
 }
 
-export type ListGlobalSettingMountsResult = { mounts: SettingMountView[] }
+export type ListSettingMountsResult = {
+  mounts: SettingMount[]
+}
 
-export type ReplaceGlobalSettingMountsInput = {
+export type ReplaceSettingMountsInput = {
+  source: SettingMountSource
   settingResourceIds: string[]
 }
 
-export type ReplaceGlobalSettingMountsResult = {
-  mounts: SettingMountView[]
+export type ReplaceSettingMountsResult = {
+  mounts: SettingMount[]
   mutation: MutationReceipt
 }
 
@@ -709,11 +708,6 @@ export type UpdateCardPromptResourcesInput = {
 export type UpdateCardPromptResourcesResult = {
   card: CardSourceContent & { id: string; version: number }
   mutation: MutationReceipt
-}
-
-export type UpdatePresetSettingsInput = {
-  presetId: string
-  linkedSettingIds: string[]
 }
 
 export type CreatePromptResourceAssetInput = {

@@ -727,7 +727,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         return { resource: created, mounts }
       })
       return {
-        resource: fromStoredResource(transaction.value.resource, transaction.value.mounts),
+        resource: fromStoredResource(transaction.value.resource),
         mutation: { changesetId: transaction.commit.changesetId },
       }
     },
@@ -860,41 +860,20 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       }
     },
 
-    updatePresetSettings: async (input, requestContext) => {
-      const preset = await ctx.promptResources.getResource(input.presetId)
-      if (!preset) throw new Error(`Prompt resource not found: ${input.presetId}`)
-      if (preset.resourceKind !== 'preset') throw new Error(`Prompt Resource is not a Preset: ${input.presetId}`)
-      for (const settingId of input.linkedSettingIds) {
+    listSettingMounts: async input => ({
+      mounts: await ctx.promptResources.listSettingMounts({ source: input?.source }),
+    }),
+
+    replaceSettingMounts: async (input, requestContext) => {
+      for (const settingId of input.settingResourceIds) {
         const setting = await ctx.promptResources.getResource(settingId)
         if (!setting) throw new Error(`Prompt resource not found: ${settingId}`)
         if (setting.resourceKind !== 'setting') throw new Error(`Prompt resource ${settingId} can only link Setting resources`)
       }
       const result = await ctx.promptResources.replaceSettingMounts({
         ...promptResourceWriteContext(requestContext),
-        reason: 'application.updatePresetSettings',
-        source: { kind: 'preset', id: input.presetId },
-        mounts: input.linkedSettingIds.map((settingResourceId, orderIndex) => ({ settingResourceId, orderIndex })),
-      })
-      return {
-        resource: fromStoredResource(preset, result.mounts),
-        mutation: { changesetId: result.commit.changesetId },
-      }
-    },
-
-    listGlobalSettingMounts: async () => ({
-      mounts: await ctx.promptResources.listSettingMounts({ source: { kind: 'manual', id: 'global' } }),
-    }),
-
-    replaceGlobalSettingMounts: async (input, requestContext) => {
-      for (const settingId of input.settingResourceIds) {
-        const setting = await ctx.promptResources.getResource(settingId)
-        if (!setting) throw new Error(`Prompt resource not found: ${settingId}`)
-        if (setting.resourceKind !== 'setting') throw new Error(`Prompt resource ${settingId} can only be mounted as a Setting resource`)
-      }
-      const result = await ctx.promptResources.replaceSettingMounts({
-        ...promptResourceWriteContext(requestContext),
-        reason: 'application.replaceGlobalSettingMounts',
-        source: { kind: 'manual', id: 'global' },
+        reason: 'application.replaceSettingMounts',
+        source: input.source,
         mounts: input.settingResourceIds.map((settingResourceId, orderIndex) => ({ settingResourceId, orderIndex })),
       })
       return { mounts: result.mounts, mutation: { changesetId: result.commit.changesetId } }

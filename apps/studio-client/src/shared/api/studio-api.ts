@@ -26,6 +26,7 @@ import type {
   ListProviderAccountsResult,
   ListCardPromptResourcesResult,
   ListPromptResourcesResult,
+  ListSettingMountsResult,
   ListNarrativeTimelinesResult,
   MutationReceipt,
   NarrativePage,
@@ -36,6 +37,8 @@ import type {
   UpdateCardResult,
   UpdateAgentProfileResult,
   UpdateProviderAccountResult,
+  ReplaceSettingMountsResult,
+  SettingMountSource,
 } from '../../entities/index.js'
 
 type JsonObject = { [key: string]: ClientJsonValue }
@@ -125,7 +128,8 @@ export type StudioApi = {
     listForCard(cardId: string): Promise<ListCardPromptResourcesResult>
     updateAsset(input: JsonObject): Promise<UpdatePromptResourceResult>
     updateAssets(input: JsonObject): Promise<UpdatePromptResourceResult>
-    updatePresetSettings(input: JsonObject): Promise<UpdatePromptResourceResult>
+    listSettingMounts(source?: SettingMountSource): Promise<ListSettingMountsResult>
+    replaceSettingMounts(input: { source: SettingMountSource; settingResourceIds: string[] }): Promise<ReplaceSettingMountsResult>
     createAsset(input: JsonObject): Promise<UpdatePromptResourceResult>
     moveAsset(input: JsonObject): Promise<UpdatePromptResourceResult>
     deleteAsset(input: JsonObject): Promise<UpdatePromptResourceResult>
@@ -227,7 +231,8 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       createAsset: input => bridge.call<UpdatePromptResourceResult>('application.createPromptResourceAsset', input),
       updateAsset: input => bridge.call<UpdatePromptResourceResult>('application.updatePromptResourceAsset', input),
       updateAssets: input => bridge.call<UpdatePromptResourceResult>('application.updatePromptResourceAssets', input),
-      updatePresetSettings: input => bridge.call<UpdatePromptResourceResult>('application.updatePresetSettings', input),
+      listSettingMounts: source => bridge.call<ListSettingMountsResult>('application.listSettingMounts', source ? { source } as unknown as ClientJsonValue : {}),
+      replaceSettingMounts: input => bridge.call<ReplaceSettingMountsResult>('application.replaceSettingMounts', input as unknown as ClientJsonValue),
       moveAsset: input => bridge.call<UpdatePromptResourceResult>('application.movePromptResourceAsset', input),
       deleteAsset: input => bridge.call<UpdatePromptResourceResult>('application.deletePromptResourceAsset', input),
     },

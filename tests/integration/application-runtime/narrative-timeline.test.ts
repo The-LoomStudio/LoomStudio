@@ -95,7 +95,7 @@ describe('application narrative timeline lifecycle', () => {
     const card = await runtime.createCard({ name: 'Story' })
     await runtime.updateCardPromptResources({ cardId: card.card.id, promptResourceIds: [resource.resource.id] })
     const preset = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Test Agent' })
-    await runtime.updatePresetSettings({ presetId: preset.resource.id, linkedSettingIds: [resource.resource.id] })
+    await runtime.replaceSettingMounts({ source: { kind: 'preset', id: preset.resource.id }, settingResourceIds: [resource.resource.id] })
     const timeline = await runtime.createNarrativeTimelineFromCard({ cardId: card.card.id })
 
     const deleted = await runtime.deletePromptResource({ resourceId: resource.resource.id })
@@ -103,7 +103,7 @@ describe('application narrative timeline lifecycle', () => {
     expect(deleted.detachedReferences).toEqual({ cards: 1, presets: 1, timelines: 1 })
     await expect(runtime.getPromptResource({ resourceId: resource.resource.id })).rejects.toThrow('Prompt resource not found')
     await expect(runtime.getCard({ cardId: card.card.id })).resolves.toMatchObject({ card: { promptResourceIds: [] } })
-    await expect(runtime.getPromptResource({ resourceId: preset.resource.id })).resolves.toMatchObject({ resource: { linkedSettingIds: [] } })
+    await expect(runtime.listSettingMounts({ source: { kind: 'preset', id: preset.resource.id } })).resolves.toEqual({ mounts: [] })
     await expect(runtime.getNarrativeTimeline({ timelineId: timeline.timeline.id })).resolves.toMatchObject({ timeline: { promptResourceIds: [] } })
     engine.close()
   })

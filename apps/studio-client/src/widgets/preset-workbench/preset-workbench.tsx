@@ -30,12 +30,13 @@ import {
   readCompositionItems,
   removeCompositionItem,
 } from '../../features/context-assets/model/composition-items.js'
-import type { ContextAssetNode, PromptCompositionItem, PromptResource } from '../../entities/index.js'
+import type { ContextAssetNode, PromptCompositionItem, PromptResource, SettingMount, SettingMountSource } from '../../entities/index.js'
 import styles from './preset-workbench.module.scss'
 
 type PresetWorkbenchProps = {
   nodes: ContextAssetNode[]
   resources: PromptResource[]
+  settingMounts: SettingMount[]
   timelinePromptResourceIds?: string[]
   onChangeNode: (id: string, partial: Partial<ContextAssetNode>) => void
   onCommitNode: (id: string, partial: Partial<ContextAssetNode>) => void
@@ -50,7 +51,7 @@ type PresetWorkbenchProps = {
   onDeleteResource: (resourceId: string) => Promise<void>
   onImportResource: (file: File) => Promise<string | undefined>
   onExportResource: (resourceId: string) => Promise<void>
-  onUpdatePresetSettings: (presetId: string, linkedSettingIds: string[]) => Promise<void>
+  onReplaceSettingMounts: (source: SettingMountSource, settingResourceIds: string[]) => Promise<void>
   routeAssetId?: string
   initialSearchQuery?: string
   t: Translator
@@ -81,11 +82,12 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
       ...resolvePresetBuildContextResources({
         preset: selectedResource,
         resources: props.resources,
+        settingMounts: props.settingMounts,
         timelinePromptResourceIds: props.timelinePromptResourceIds,
       }),
     ]
     return resources.map(readPromptResourceWorkbenchRoot)
-  }, [props.resources, props.timelinePromptResourceIds, selectedResource])
+  }, [props.resources, props.settingMounts, props.timelinePromptResourceIds, selectedResource])
   const workbenchNodes = activePresetView === 'order' ? mainOrderNodes : currentPresetNodes
   const selectedId = explorerView.selectedId
   const selectedNode = findContextNode(workbenchNodes, selectedId)
@@ -362,8 +364,9 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           <PresetSettingBindings
             preset={selectedResource}
             settings={settingResources}
+            settingMounts={props.settingMounts}
             t={props.t}
-            onChange={linkedSettingIds => props.onUpdatePresetSettings(selectedResource.id, linkedSettingIds)}
+            onChange={settingResourceIds => props.onReplaceSettingMounts({ kind: 'preset', id: selectedResource.id }, settingResourceIds)}
           />
         ) : null}
         {selectedCompositionItem ? <CompositionItemDetail item={selectedCompositionItem} nodes={workbenchNodes} t={props.t} /> : selectedZone ? <ZoneDetail zone={selectedZone} t={props.t} /> : (
@@ -389,11 +392,15 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
 function PresetSettingBindings(props: {
   preset: PromptResource
   settings: PromptResource[]
+  settingMounts: SettingMount[]
   t: Translator
-  onChange(linkedSettingIds: string[]): Promise<void>
+  onChange(settingResourceIds: string[]): Promise<void>
 }) {
   const [pending, setPending] = useState(false)
-  const linkedIds = props.preset.linkedSettingIds ?? []
+  const linkedIds = props.settingMounts
+    .filter(mount => mount.source.kind === 'preset' && mount.source.id === props.preset.id)
+    .sort((left, right) => left.orderIndex - right.orderIndex || left.id.localeCompare(right.id))
+    .map(mount => mount.settingResourceId)
   const readOnly = props.preset.origin?.kind === 'builtin'
   async function toggleSetting(settingId: string, checked: boolean) {
     setPending(true)

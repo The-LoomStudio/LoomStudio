@@ -32,7 +32,7 @@ describe('Prompt Resource Store application runtime', () => {
       asset: { id: 'persisted-entry', kind: 'entry', label: 'Entry', body: 'Persisted body' },
     })
     const preset = await firstRuntime.createPromptResource({ resourceKind: 'preset', name: 'Persisted Preset' })
-    await firstRuntime.updatePresetSettings({ presetId: preset.resource.id, linkedSettingIds: [setting.resource.id] })
+    await firstRuntime.replaceSettingMounts({ source: { kind: 'preset', id: preset.resource.id }, settingResourceIds: [setting.resource.id] })
     firstEngine.close()
 
     const secondEngine = createSqliteDataEngine({ filename, createId, now })
@@ -40,7 +40,7 @@ describe('Prompt Resource Store application runtime', () => {
     const secondStore = createPromptResourceStore({ engine: secondEngine, createId, now })
     const secondRuntime = createApplicationRuntime({ dataEngine: secondEngine, documents: secondDocuments, promptResources: secondStore })
     const readPreset = await secondRuntime.getPromptResource({ resourceId: preset.resource.id })
-    expect(readPreset.resource.linkedSettingIds).toEqual([setting.resource.id])
+    await expect(secondRuntime.listSettingMounts({ source: { kind: 'preset', id: preset.resource.id } })).resolves.toMatchObject({ mounts: [{ settingResourceId: setting.resource.id, source: { kind: 'preset', id: preset.resource.id } }] })
     expect(readPreset.resource.rootNode.children?.[0]?.label).toBe('主排序')
     expect((await secondRuntime.getPromptResource({ resourceId: setting.resource.id })).resource.rootNode.children?.[0]?.body).toBe('Persisted body')
     secondEngine.close()
@@ -66,8 +66,8 @@ describe('Prompt Resource Store application runtime', () => {
     }
     const presetA = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Preset A' })
     const presetB = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Preset B' })
-    await runtime.updatePresetSettings({ presetId: presetA.resource.id, linkedSettingIds: [settingA.resource.id] })
-    await runtime.updatePresetSettings({ presetId: presetB.resource.id, linkedSettingIds: [settingB.resource.id] })
+    await runtime.replaceSettingMounts({ source: { kind: 'preset', id: presetA.resource.id }, settingResourceIds: [settingA.resource.id] })
+    await runtime.replaceSettingMounts({ source: { kind: 'preset', id: presetB.resource.id }, settingResourceIds: [settingB.resource.id] })
     const promptA = await composeAgentTurnPrompt({ promptResources, preset: (await runtime.getPromptResource({ resourceId: presetA.resource.id })).resource, agentMessages: [], userInput: 'Hi' })
     const promptB = await composeAgentTurnPrompt({ promptResources, preset: (await runtime.getPromptResource({ resourceId: presetB.resource.id })).resource, agentMessages: [], userInput: 'Hi' })
     expect(promptA.messages.some(message => 'content' in message && message.content.includes('A only'))).toBe(true)

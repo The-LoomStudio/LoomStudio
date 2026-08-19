@@ -16,9 +16,9 @@ describe('studio server Agent Turn RPC', () => {
         resourceKind: 'setting',
         name: 'Guide Knowledge',
       })
-      const updatedPreset = await callRpc<{ resource: { linkedSettingIds: string[] } }>(port, 'application.updatePresetSettings', {
-        presetId: preset.id,
-        linkedSettingIds: [setting.resource.id],
+      const updatedPreset = await callRpc<{ mounts: Array<{ settingResourceId: string }> }>(port, 'application.replaceSettingMounts', {
+        source: { kind: 'preset', id: preset.id },
+        settingResourceIds: [setting.resource.id],
       })
       const agentProfile = await callRpc<{ agentProfile: { id: string } }>(port, 'application.createAgentProfile', {
         name: 'Local Guide',
@@ -33,7 +33,7 @@ describe('studio server Agent Turn RPC', () => {
       const presets = await callRpc<{ resources: Array<{ id: string }> }>(port, 'application.listPromptResources', { resourceKind: 'preset' })
       const profiles = await callRpc<{ agentProfiles: Array<{ id: string }> }>(port, 'application.listAgentProfiles', {})
 
-      expect(updatedPreset.resource.linkedSettingIds).toEqual([setting.resource.id])
+      expect(updatedPreset.mounts.map(mount => mount.settingResourceId)).toEqual([setting.resource.id])
       expect(updatedProfile.agentProfile.name).toBe('Updated Local Guide')
       expect(presets.resources.map(item => item.id)).toContain(preset.id)
       expect(profiles.agentProfiles.map(item => item.id)).toContain(agentProfile.agentProfile.id)

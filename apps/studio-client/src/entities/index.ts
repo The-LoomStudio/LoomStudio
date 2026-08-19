@@ -45,10 +45,14 @@ export type {
   ImportBundle,
   ListCardPromptResourcesResult,
   ListPromptResourcesResult,
+  ListSettingMountsResult,
   PromptResource,
   PromptResourceArtifact,
   CardBundleArtifact,
   UpdatePromptResourceResult,
+  ReplaceSettingMountsResult,
+  SettingMount,
+  SettingMountSource,
 } from './workspace.js'
 export type {
   ProviderAccount,

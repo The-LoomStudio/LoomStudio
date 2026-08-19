@@ -174,7 +174,8 @@ describe('studio client typed api', () => {
       'application.updatePromptResourceAssets': { resource: { id: 'resource-1' } },
       'application.movePromptResourceAsset': { resource: { id: 'resource-1' } },
       'application.deletePromptResourceAsset': { resource: { id: 'resource-1' } },
-      'application.updatePresetSettings': { resource: { id: 'resource-1' } },
+      'application.listSettingMounts': { mounts: [] },
+      'application.replaceSettingMounts': { mounts: [{ id: 'mount-1' }], mutation: { changesetId: 'changeset-1' } },
     }))
 
     await api.promptResources.get('resource-1')
@@ -193,7 +194,8 @@ describe('studio client typed api', () => {
     await api.promptResources.createAsset({ resourceId: 'resource-1', targetAssetId: 'root', position: 'inside', asset: { id: 'asset-1' } })
     await api.promptResources.updateAsset({ resourceId: 'resource-1', assetId: 'asset-1', body: 'updated' })
     await api.promptResources.updateAssets({ resourceId: 'resource-1', updates: [{ assetId: 'asset-1', label: 'Renamed' }] })
-    await api.promptResources.updatePresetSettings({ presetId: 'resource-1', linkedSettingIds: ['setting-1'] })
+    await api.promptResources.listSettingMounts({ kind: 'preset', id: 'resource-1' })
+    await api.promptResources.replaceSettingMounts({ source: { kind: 'preset', id: 'resource-1' }, settingResourceIds: ['setting-1'] })
     await api.promptResources.moveAsset({ resourceId: 'resource-1', assetId: 'asset-1', targetAssetId: 'root', position: 'after' })
     await api.promptResources.deleteAsset({ resourceId: 'resource-1', assetId: 'asset-1' })
 
@@ -209,7 +211,8 @@ describe('studio client typed api', () => {
       { method: 'application.createPromptResourceAsset', params: { resourceId: 'resource-1', targetAssetId: 'root', position: 'inside', asset: { id: 'asset-1' } } },
       { method: 'application.updatePromptResourceAsset', params: { resourceId: 'resource-1', assetId: 'asset-1', body: 'updated' } },
       { method: 'application.updatePromptResourceAssets', params: { resourceId: 'resource-1', updates: [{ assetId: 'asset-1', label: 'Renamed' }] } },
-      { method: 'application.updatePresetSettings', params: { presetId: 'resource-1', linkedSettingIds: ['setting-1'] } },
+      { method: 'application.listSettingMounts', params: { source: { kind: 'preset', id: 'resource-1' } } },
+      { method: 'application.replaceSettingMounts', params: { source: { kind: 'preset', id: 'resource-1' }, settingResourceIds: ['setting-1'] } },
       { method: 'application.movePromptResourceAsset', params: { resourceId: 'resource-1', assetId: 'asset-1', targetAssetId: 'root', position: 'after' } },
       { method: 'application.deletePromptResourceAsset', params: { resourceId: 'resource-1', assetId: 'asset-1' } },
     ])

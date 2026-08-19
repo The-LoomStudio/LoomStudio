@@ -1,6 +1,6 @@
 # Data Layer V2：Prompt Resource Node Store 实施计划
 
-> **状态**：Phase 0–4 Implemented；Phase 5 Deferred；Phase 6 后端文档收口部分完成（Agent mutation / Variable Store remain out of scope）
+> **状态**：Phase 0–4 Implemented；Phase 5 Deferred；Phase 6 已完成本轮旧路径清理与容量 characterization（Agent mutation / Variable Store remain out of scope）
 > **日期**：2026-08-19
 > **范围**：在现有共享 SQLite Data Engine 上，将 Prompt Resource 从完整 JSON Document 拆为资源头、独立 Node 与节点级 Revision；明确高频变量和 Agent 写入的持久化边界。
 > **取代范围**：取代旧计划中“Prompt Resource 长期保留为单一完整 Document、等待实际性能故障后再拆 Entry”的结论；不取代已经完成的 SQLite Data Engine、Document Store、Narrative Store、Agent Store、Blob Store 与 Commit Journal。
@@ -492,9 +492,9 @@ Agent 不获得任意 SQL 或任意 JSON Patch 权限，只能调用 Application
 - 生成确定性的 V1 nested 500 Entry Setting 与 100 Entry Preset fixture；
 - 验证 Store flatten/read 后的 nested 结果等价，并记录单 Node update 只产生一条 Node Revision；
 - PromptBuild、Card、Timeline 的 V1/V2 等价、导入导出与引用链已在 Phase 3–4 的 Runtime/RPC 定向验证中覆盖；
-- DB/WAL 容量基线仍待 Phase 6；`linkedSettingIds -> Global Setting Mount` 已由当前 Store 实现，兼容响应暂不删除。
+- DB/WAL 容量基线已在 Phase 6 通过临时 SQLite characterization 脚本记录；Setting Mount 已由独立通用 API 暴露，Prompt Resource 响应不再携带 `linkedSettingIds`。
 
-验证检查点：Phase 0 的 500/100 nested round-trip 与 Node revision characterization，加上 Phase 3–4 的 PromptBuild/Card/Timeline 定向集成验证，构成当前已实现链路；容量复测仍属于 Phase 6。
+验证检查点：Phase 0 的 500/100 nested round-trip 与 Node revision characterization，加上 Phase 3–4 的 PromptBuild/Card/Timeline 定向集成验证，以及 Phase 6 的 DB/WAL characterization，构成当前已实现链路。
 
 ### Phase 1：PromptResourceStore 与 Schema（已完成）
 
@@ -516,18 +516,18 @@ Agent 不获得任意 SQL 或任意 JSON Patch 权限，只能调用 Application
 
 验证检查点：修改一个 Entry 不产生完整 Resource Revision；create/update/move/delete 均可通过领域命令生成反向新版本。
 
-### Phase 3：Application Runtime 与 RPC 切换（已完成，保留兼容响应）
+### Phase 3：Application Runtime 与 RPC 切换（已完成）
 
 - Prompt Resource CRUD 改用 PromptResourceStore；
-- 保持或版本化当前 RPC response shape；
+- 保持嵌套 Prompt Resource response shape，但不再把 Setting Mount 投影进 Resource；
 - 增加批量 Node mutation RPC；
-- 增加全局 Setting Mount 查询和编辑 RPC；Preset 专属 `application.updatePresetSettings` 暂作为 `linkedSettingIds` 兼容投影保留；
+- 增加通用 `application.listSettingMounts` / `application.replaceSettingMounts` RPC；source 统一支持 manual/global 与 Preset；
 - Card、Preset、Timeline、Agent Profile 的 Resource ID 引用保持稳定；
 - Extension 不获得原始 Store 或 SQL handle。
 
 验证检查点：Client 在不理解 SQL Node 表的情况下可以完成当前创建、编辑、排序、删除和关联操作。
 
-本次实现事实：Studio Server 在同一 `SqliteDataEngine` 上创建并注入 `PromptResourceStore`；Runtime CRUD、Preset/Global Setting Mount、官方初始化、Prompt Resource JSON import/export 与 Card Bundle 中的 Resource flatten 均使用该 Store。`linkedSettingIds` 只由 Preset Mount 派生，旧 `airp.promptResource` Document 不参与读取或双写。
+本次实现事实：Studio Server 在同一 `SqliteDataEngine` 上创建并注入 `PromptResourceStore`；Runtime CRUD、Preset/Global Setting Mount、官方初始化、Prompt Resource JSON import/export 与 Card Bundle 中的 Resource flatten 均使用该 Store。Setting Mount 通过独立 API 和 Client state 读取，旧 `airp.promptResource` Document 不参与读取或双写。
 
 ### Phase 4：PromptBuild、Card 导入导出切换（已完成）
 
@@ -562,14 +562,12 @@ Agent 不获得任意 SQL 或任意 JSON Patch 权限，只能调用 Application
 
 未来验证检查点：Provider、Tool 或 Node 校验失败不会留下 Agent Message、Narrative Node、Resource version 或 Revision 的半提交。
 
-### Phase 6：旧路径清理与容量复测（本轮部分完成）
+### Phase 6：旧路径清理与容量复测（已完成本轮范围）
 
-- 本轮已删除无运行时消费者的 `applicationDocumentTypes.promptResource` 常量；确认无 `airp.promptResource` Document 读写路径；
-- 本轮已更新正式 Data Architecture、Document Types Reference、RPC Reference 与本计划状态；
-- `PromptResourceContent`、嵌套 Artifact、`prompt-resource-mapper`、`linkedSettingIds` 兼容投影和 `application.updatePresetSettings` 仍被 RPC/PromptBuild/Card Bundle/Client 合同使用，暂不删除；
-- 未处理开发数据库、未新增迁移或 reset 脚本，未在本轮完成容量复测；
-- 待重跑 500/100 fixture，比较 V1/V2 DB 和 WAL 增长；
-- 待记录是否需要 snapshot、retention、FTS5 或额外索引。
+- 已删除无运行时消费者的 `applicationDocumentTypes.promptResource` 常量和旧 Setting Mount RPC；Prompt Resource projection 不再包含 `linkedSettingIds`；
+- 新增 `scripts/measure-prompt-resource-storage.ts` 与 `pnpm run measure:prompt-resource-storage`，只创建并清理临时 SQLite DB，不读写用户数据库；
+- 已完成确定性 500 Entry Setting + 100 Entry Preset fixture 的 V1/V2 对比，以及同一 Setting Node 的 100 次等长 body 更新；脚本连续运行两次，量级稳定；
+- 当前数据不支持立即引入 snapshot、retention、FTS5 或额外索引：V2 的局部 Node Revision 已显著降低 WAL 与 checkpoint 后 DB 增长；保留后续在更高频率或更大文本规模下重新评估 retention/snapshot 的入口。
 
 验证检查点：权威 Prompt Resource 只存在于一个 Store；修改单 Node 的 Revision 增长与受影响 Node 大小同阶，不再与完整 Resource 大小同阶。
 
@@ -614,6 +612,19 @@ Agent 不获得任意 SQL 或任意 JSON Patch 权限，只能调用 Application
 - 100 次多 Node batch 更新；
 - Resource load、tree rebuild、PromptBuild 和 export 时间；
 - Server restart 与 migration 时间。
+
+#### Phase 6 本机 characterization（2026-08-19）
+
+脚本使用同一确定性 fixture：500 Entry Setting、100 Entry Preset、每个 Entry 1024 字节 body；关闭 `wal_autocheckpoint`，初始写入后执行一次 `wal_checkpoint(TRUNCATE)`，再对同一个 Setting Entry 连续执行 100 次等长 body 更新。以下数字只代表当前 Mac、本地 SQLite 和当前实现的 characterization，不是性能 SLA。
+
+| 实现 | 初始 checkpoint 后 DB bytes | 100 次更新后 WAL bytes | 最终 checkpoint 后 DB bytes | 更新耗时（两次运行） |
+| --- | ---: | ---: | ---: | ---: |
+| V1 DocumentStore 完整 nested JSON | 1,421,312 | 119,521,232 | 58,806,272 | 约 0.51–0.58 s |
+| V2 PromptResourceStore Node + Revision | 2,363,392 | 7,280,072 | 2,850,816 | 约 1.21–1.23 s |
+
+两次运行的行数均为 102 个 Changeset；V1 有 2 个 Document、102 个 Document Revision，V2 有 2 个 Resource、602 个 Node、702 个 Node Revision 和 102 个 Header Revision。V2 初始 DB 因关系表和初始 Revision 行较大，但 100 次局部更新后的 WAL 约为 V1 的 1/16，最终 checkpoint 后 DB 约为 V1 的 1/20；本次脚本中 V2 更新耗时较高，因此不能把容量改善解读成性能保证。
+
+基于该数据，本轮不新增 snapshot、Revision retention、FTS5 或额外索引。当前读取路径只依赖 current Node 状态，100 次更新的 Revision 数量和 WAL 仍处于可观察范围；如果未来出现更高频率、更大 body 或长期历史增长，再以实际保留策略和历史读取需求决定 snapshot/retention。FTS5 与额外索引属于查询需求，不由本次容量数据触发。
 
 自动化结果与人工 UI 编辑体验分别记录，不用 build/test 通过代替前端视觉和交互验收。
 
@@ -677,8 +688,8 @@ Agent mutation 必须经过 Resource/Node scope、Schema、引用和 expectedVer
 8. 导入导出继续使用嵌套可分享格式；
 9. **Deferred**：Agent 通过受控 Application capability 原子修改授权 Node；前置为 Agent Tool Runtime 与服务端 Resource/Node grant；
 10. 变量没有进入 Prompt Resource 作为临时高频状态；
-11. Preset 权威存储不保存 `linkedSettingIds`，手动与 Preset 来源 Setting 统一由 Global Setting Mount Registry 解析；兼容响应仍可派生该字段；
+11. Preset 权威存储不保存 `linkedSettingIds`，手动与 Preset 来源 Setting 统一由 Global Setting Mount Registry 解析；当前 RPC/Client 通过独立 Setting Mount API 读取；
 12. 切换 Preset 不修改全局 Resource，也不会移除 manual Mount；
-13. V1 Prompt Resource Document 权威路径和双写已删除；兼容嵌套投影、mapper、`linkedSettingIds` 与旧 RPC 仍待 Client/API 迁移后清理；
+13. V1 Prompt Resource Document 权威路径和双写、旧 Setting Mount RPC 与 `linkedSettingIds` 投影均已删除；兼容嵌套 Artifact 和 mapper 继续承担外部格式转换；
 14. 500/100 fixture 证明 Revision 增长与 changed Node 大小同阶；
 15. Architecture 文档只在代码、迁移和验证完成后更新为已实现事实。

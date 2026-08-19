@@ -12,6 +12,7 @@ import type {
   PromptResourceKind,
   PromptProviderRole,
   PromptSourceKind,
+  SettingMountSource,
 } from '@loom-studio/application-runtime'
 import { isPromptActivation, isCardBundleArtifact, isPromptResourceArtifact } from '@loom-studio/application-runtime'
 import type { JsonValue } from '@loom-studio/shared'
@@ -69,9 +70,8 @@ const applicationRpcMethods = [
   'application.exportPromptResource',
   'application.listCardPromptResources',
   'application.updateCardPromptResources',
-  'application.updatePresetSettings',
-  'application.listGlobalSettingMounts',
-  'application.replaceGlobalSettingMounts',
+  'application.listSettingMounts',
+  'application.replaceSettingMounts',
   'application.createPromptResourceAsset',
   'application.updatePromptResourceAsset',
   'application.updatePromptResourceAssets',
@@ -359,17 +359,14 @@ export async function callApplicationRpc(
         promptResourceIds: readRequiredStringArray(params, 'promptResourceIds'),
       }, context) as unknown as JsonValue
 
-    case 'application.updatePresetSettings':
-      return await runtime.updatePresetSettings({
-        presetId: readString(params, 'presetId'),
-        linkedSettingIds: readRequiredStringArray(params, 'linkedSettingIds'),
-      }, context) as unknown as JsonValue
+    case 'application.listSettingMounts':
+      return await runtime.listSettingMounts({
+        source: readOptionalSettingMountSource(params, 'source'),
+      }) as unknown as JsonValue
 
-    case 'application.listGlobalSettingMounts':
-      return await runtime.listGlobalSettingMounts() as unknown as JsonValue
-
-    case 'application.replaceGlobalSettingMounts':
-      return await runtime.replaceGlobalSettingMounts({
+    case 'application.replaceSettingMounts':
+      return await runtime.replaceSettingMounts({
+        source: readSettingMountSource(isRecord(params) ? params.source : undefined, 'source'),
         settingResourceIds: readRequiredStringArray(params, 'settingResourceIds'),
       }, context) as unknown as JsonValue
 
@@ -468,6 +465,23 @@ function readRequiredStringArray(params: JsonValue | undefined, key: string): st
   const value = readOptionalStringArray(params, key)
   if (!value) throw new Error(`Expected string array param: ${key}`)
   return value
+}
+
+function readOptionalSettingMountSource(params: JsonValue | undefined, key: string): SettingMountSource | undefined {
+  if (!isRecord(params) || params[key] === undefined) return undefined
+  return readSettingMountSource(params[key], key)
+}
+
+function readSettingMountSource(value: JsonValue | undefined, key: string): SettingMountSource {
+  if (!isRecord(value) || (value.kind !== 'manual' && value.kind !== 'preset')) {
+    throw new Error(`Expected Setting mount source param: ${key}`)
+  }
+  if (value.kind === 'manual') {
+    if (value.id !== undefined && value.id !== 'global') throw new Error(`Expected Setting mount source param: ${key}`)
+    return value.id === undefined ? { kind: 'manual' } : { kind: 'manual', id: 'global' }
+  }
+  if (typeof value.id !== 'string') throw new Error(`Expected Setting mount source param: ${key}`)
+  return { kind: 'preset', id: value.id }
 }
 
 function readRequiredStringRecord(params: JsonValue | undefined, key: string): Record<string, string> {

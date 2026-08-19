@@ -14,7 +14,6 @@ export function createOfficialPromptResourceContents(timestamp: string): PromptR
     {
       resourceKind: 'preset',
       rootNode: createAssistantPresetRoot(),
-      linkedSettingIds: [officialPromptResourceIds.knowledgeSetting],
       historyPolicy: 'persistent',
       origin: { kind: 'builtin', key: 'loom-assistant-preset' },
       createdAt: timestamp,

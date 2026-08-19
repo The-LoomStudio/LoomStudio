@@ -22,9 +22,9 @@ describe('application runtime card bundle integration', () => {
     expect(preset).toMatchObject({
       resourceKind: 'preset',
       rootNode: { label: 'Loom Studio 问答助手' },
-      linkedSettingIds: [setting!.id],
       historyPolicy: 'persistent',
     })
+    await expect(runtime.listSettingMounts({ source: { kind: 'preset', id: preset!.id } })).resolves.toMatchObject({ mounts: [{ settingResourceId: setting!.id }] })
     const compositionItems = preset?.rootNode.children?.find(node => node.kind === 'order')?.skeletonPatch?.items
       ?.flatMap(item => item.kind === 'message' ? item.items : [item])
     expect(compositionItems).toEqual(expect.arrayContaining([
@@ -72,15 +72,15 @@ describe('application runtime card bundle integration', () => {
     const preset = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Guide Preset' })
     const setting = await runtime.createPromptResource({ resourceKind: 'setting', name: 'Guide Knowledge' })
 
-    const updated = await runtime.updatePresetSettings({
-      presetId: preset.resource.id,
-      linkedSettingIds: [setting.resource.id],
+    const updated = await runtime.replaceSettingMounts({
+      source: { kind: 'preset', id: preset.resource.id },
+      settingResourceIds: [setting.resource.id],
     })
 
-    expect(updated.resource.linkedSettingIds).toEqual([setting.resource.id])
-    await expect(runtime.updatePresetSettings({
-      presetId: preset.resource.id,
-      linkedSettingIds: [preset.resource.id],
+    expect(updated.mounts).toMatchObject([{ settingResourceId: setting.resource.id }])
+    await expect(runtime.replaceSettingMounts({
+      source: { kind: 'preset', id: preset.resource.id },
+      settingResourceIds: [preset.resource.id],
     })).rejects.toThrow('can only link Setting resources')
   })
 

@@ -3,7 +3,6 @@ import type {
   PromptResourceNodeDraft as StoredPromptResourceNodeDraft,
   PromptResourceStore,
   PromptResourceTreeNode as StoredPromptResourceTreeNode,
-  SettingMount,
 } from '@loom-studio/prompt-resource-store'
 import type { JsonObject } from '@loom-studio/shared'
 import type {
@@ -63,21 +62,12 @@ export function toStoredNode(node: PromptResourceNode): StoredPromptResourceTree
   }
 }
 
-export function fromStoredResource(
-  resource: StoredPromptResource,
-  mounts: SettingMount[] = [],
-): PromptResourceContent & { id: string; version: number } {
+export function fromStoredResource(resource: StoredPromptResource): PromptResourceContent & { id: string; version: number } {
   const metadata = resource.metadata as PromptResourceMetadata
   return {
     resourceKind: resource.resourceKind,
     rootNode: fromStoredNode(resource.rootNode),
-    ...(resource.resourceKind === 'preset' ? {
-      linkedSettingIds: mounts
-        .filter(mount => mount.source.kind === 'preset' && mount.source.id === resource.id)
-        .sort((left, right) => left.orderIndex - right.orderIndex || left.id.localeCompare(right.id))
-        .map(mount => mount.settingResourceId),
-      historyPolicy: metadata.historyPolicy ?? 'persistent',
-    } : {}),
+    ...(resource.resourceKind === 'preset' ? { historyPolicy: metadata.historyPolicy ?? 'persistent' } : {}),
     ...(metadata.origin ? { origin: metadata.origin } : {}),
     ...(metadata.sourceArtifactRef ? { sourceArtifactRef: metadata.sourceArtifactRef } : {}),
     createdAt: resource.createdAt,
@@ -122,10 +112,7 @@ export async function readMappedResource(
 ): Promise<PromptResourceContent & { id: string; version: number }> {
   const resource = await store.getResource(resourceId)
   if (!resource) throw new Error(`Prompt resource not found: ${resourceId}`)
-  const mounts = resource.resourceKind === 'preset'
-    ? await store.listSettingMounts({ source: { kind: 'preset', id: resource.id } })
-    : []
-  return fromStoredResource(resource, mounts)
+  return fromStoredResource(resource)
 }
 
 export async function listMappedResources(
@@ -139,15 +126,7 @@ export async function listMappedResources(
     resources.push(...page.resources)
     cursor = page.nextCursor
   } while (cursor)
-  const mounts = await store.listSettingMounts()
-  const mountsByPreset = new Map<string, SettingMount[]>()
-  for (const mount of mounts) {
-    if (mount.source.kind !== 'preset') continue
-    const current = mountsByPreset.get(mount.source.id) ?? []
-    current.push(mount)
-    mountsByPreset.set(mount.source.id, current)
-  }
   return resources
     .sort((left, right) => left.label.localeCompare(right.label))
-    .map(resource => fromStoredResource(resource, mountsByPreset.get(resource.id) ?? []))
+    .map(resource => fromStoredResource(resource))
 }

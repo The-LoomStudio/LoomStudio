@@ -102,7 +102,7 @@ Prompt Resource 不再使用 `airp.promptResource` Document 作为权威存储�
 - `prompt_resource_header_revisions`：Header before/after Revision；
 - `global_setting_mounts`：manual 与 Preset 来源的 Setting Mount Registry。
 
-`PromptResourceContent`、嵌套 `rootNode.children[]` 和 `loom.promptResource` 是当前 RPC、PromptBuild 与 Card Bundle 使用的兼容投影/外部格式，不是 SQL 权威模型。兼容响应中的 `linkedSettingIds` 由 Preset Mount 派生，不是 Resource Header 字段。
+`PromptResourceContent`、嵌套 `rootNode.children[]` 和 `loom.promptResource` 是当前 RPC、PromptBuild 与 Card Bundle 使用的兼容投影/外部格式，不是 SQL 权威模型。Setting Mount 通过独立的 `application.listSettingMounts` / `application.replaceSettingMounts` API 读取和修改，不再嵌入 Prompt Resource 响应。
 
 其他小型、低频配置继续使用 Document Store：
 
@@ -110,7 +110,7 @@ Prompt Resource 不再使用 `airp.promptResource` Document 作为权威存储�
 - `airp.agentProfile`：本机 Profile 名称、直接指向 Preset Resource 的 `presetId` 与 `{ providerProfileId, modelId }`；
 - `airp.providerProfile`、`airp.importBundle`：Provider 配置与 Card Bundle 导入来源。
 
-旧 `airp.agentPreset` 权威类型与对应 RPC 已删除。官方初始化会把旧官方 Profile 引用迁移到 `prompt-resource.official.loom-assistant`，并删除旧官方 AgentPreset Document；不会清空 Provider、Secret 或其他 Document。
+旧 `airp.agentPreset` 权威类型、对应 RPC 与启动迁移均已删除；开发数据不再保留这条兼容路径。
 
 `createAgentSession` 必须引用真实 Agent Profile。`previewAgentTurn` 与 `invokeAgentTurn` 共用同一 Prompt 构建入口；后者从 Agent Session、Profile 选择的唯一 Preset、Preset 关联 Setting、可选 Narrative Timeline Setting 及 Provider Model 构造 canonical Chat Message，并在 Provider 成功后持久化本轮 Message。Provider 失败不会留下半轮。Settings 工作台的当前选中项只是编辑状态，不参与运行时绑定。
 

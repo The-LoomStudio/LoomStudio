@@ -200,9 +200,9 @@ describe('studio rpc router', () => {
         received.push(requestContext)
         return { card: { id: 'card-1' }, mutation: { changesetId: 'chg-1' } }
       },
-      updatePresetSettings: async (_input: unknown, requestContext?: unknown) => {
+      replaceSettingMounts: async (_input: unknown, requestContext?: unknown) => {
         received.push(requestContext)
-        return { resource: { id: 'preset-1' }, mutation: { changesetId: 'chg-2' } }
+        return { mounts: [], mutation: { changesetId: 'chg-2' } }
       },
     } as unknown as ApplicationRuntime
     const router = createStudioRpcRouter({
@@ -223,12 +223,33 @@ describe('studio rpc router', () => {
       cardId: 'card-1',
       promptResourceIds: ['resource-1'],
     }, context)
-    await router.call('application.updatePresetSettings', {
-      presetId: 'preset-1',
-      linkedSettingIds: ['setting-1'],
+    await router.call('application.replaceSettingMounts', {
+      source: { kind: 'preset', id: 'preset-1' },
+      settingResourceIds: ['setting-1'],
     }, context)
 
     expect(received).toEqual([context, context, context])
+  })
+
+  it('rejects invalid Setting Mount sources before invoking the runtime', async () => {
+    let invoked = false
+    const applicationRuntime = {
+      replaceSettingMounts: async () => {
+        invoked = true
+        return { mounts: [], mutation: { changesetId: 'chg-1' } }
+      },
+    } as unknown as ApplicationRuntime
+    const router = createStudioRpcRouter({ applicationRuntime, kernel: createKernelCaller() })
+
+    await expect(router.call('application.replaceSettingMounts', {
+      source: { kind: 'manual', id: 'workspace' },
+      settingResourceIds: [],
+    }, context)).rejects.toThrow('Expected Setting mount source param: source')
+    await expect(router.call('application.replaceSettingMounts', {
+      source: { kind: 'preset' },
+      settingResourceIds: [],
+    }, context)).rejects.toThrow('Expected Setting mount source param: source')
+    expect(invoked).toBe(false)
   })
 })
 
