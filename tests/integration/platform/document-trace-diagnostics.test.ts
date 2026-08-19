@@ -103,36 +103,9 @@ describe('document, trace, and diagnostics integration', () => {
     expect(events.map(event => event.name)).toEqual(['docs.changed', 'docs.changed', 'docs.changed'])
   })
 
-  it('emits one docs.changed event for an application transaction', async () => {
-    const { kernel, documents } = createHarness()
-    const events: StudioEvent[] = []
-    const runtime = createApplicationRuntime({ documents })
-    await kernel.start()
-    kernel.getEventBus().subscribe(['docs.changed'], event => events.push(event))
-
-    const created = await runtime.createCard({
-      name: 'Commit event card',
-      description: 'Application transaction event coverage.',
-    }, {
-      clientId: 'application-client',
-      correlationId: 'corr-application',
-      callId: 'call-application',
-    })
-
-    expect(events).toHaveLength(1)
-    expect(events[0]).toMatchObject({
-      name: 'docs.changed',
-      payload: {
-        changesetId: created.mutation.changesetId,
-        documents: [{ type: 'airp.cardSource', version: 1, tombstoned: false }],
-      },
-      meta: {
-        source: 'kernel',
-        clientId: 'application-client',
-        correlationId: 'corr-application',
-        callId: 'call-application',
-      },
-    })
+  it('requires a shared SQLite Data Engine for Application Runtime', async () => {
+    const { documents } = createHarness()
+    expect(() => createApplicationRuntime({ documents })).toThrow('Prompt Resource Store is required')
   })
 
   it('rejects stale document writes and preserves the current document', async () => {

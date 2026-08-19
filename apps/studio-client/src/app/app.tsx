@@ -11,7 +11,7 @@ import { AgentPanel } from '../widgets/agent-panel/agent-panel.js'
 import { InspectorPanel } from '../widgets/inspector-panel/inspector-panel.js'
 import { LogViewer } from '../widgets/log-viewer/log-viewer.js'
 import { SettingsPanel } from '../widgets/settings-panel/settings-panel.js'
-import { ContextMenuProvider } from '../shared/ui/context-menu/context-menu.js'
+
 import { NotificationToaster } from '../shared/ui/notification-toaster/notification-toaster.js'
 import { toast } from 'sonner'
 import { hasCompleteProviderAccount } from '../features/provider-settings/model/provider-account-status.js'
@@ -85,6 +85,8 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
     onChangeNodes: state.updateContextAssets,
     onMoveNode: state.moveContextAsset,
     onAddNode: state.addContextAsset,
+    onAddFolderNode: state.addContextAssetFolder,
+    onAddNodeInZone: state.addContextAssetInZone,
     onDuplicateNode: state.duplicateContextAsset,
     onDeleteNode: state.deleteContextAsset,
     onCreateResource: state.createPromptResource,
@@ -161,7 +163,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
     preset: () => (
       <PresetWorkbench
         {...contextAssetEditorProps}
-        buildContextResources={state.cardPromptResources}
+        timelinePromptResourceIds={state.narrativeTimeline?.promptResourceIds}
         onUpdatePresetSettings={state.updatePresetSettings}
         routeAssetId={navigation.route.panel === 'preset' ? navigation.route.assetId : undefined}
         initialSearchQuery={navigation.route.panel === 'preset' ? navigation.searchQuery : ''}
@@ -307,9 +309,9 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
   )
 
   return (
-    <ContextMenuProvider label={state.t('menu.label')}>
+    <>
       {studio}
       <NotificationToaster bottomOffset={composerHeight + 16} label={state.t('notification.label')} />
-    </ContextMenuProvider>
+    </>
   )
 }

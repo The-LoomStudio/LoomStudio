@@ -169,6 +169,10 @@ export type DocumentStore = Omit<DocumentTransaction, 'write' | 'delete'> & {
 }
 
 export type SqliteDocumentStore = DocumentStore & {
+  participateTransaction<T>(
+    tx: import('@loom-studio/data-engine').SqliteDataTransaction,
+    fn: (transaction: DocumentTransaction) => Promise<T>,
+  ): Promise<{ value: T; changeset: Changeset }>
   close(): void
 }
 

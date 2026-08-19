@@ -18,6 +18,7 @@
     "@loom-studio/document-store": "workspace:*",
     "@loom-studio/logging": "workspace:*",
     "@loom-studio/narrative-store": "workspace:*",
+    "@loom-studio/prompt-resource-store": "workspace:*",
     "@loom-studio/secret-store": "workspace:*",
     "@loom-studio/shared": "workspace:*",
     "@loom/core": "workspace:*",

@@ -1,5 +1,6 @@
 import type {
   ApplicationRuntime,
+  CompositionItem,
   OpeningChatInput,
   PromptAssetPatch,
   PromptResourceNode,
@@ -9,6 +10,8 @@ import type {
   SettingLayerInput,
   PromptResourceCompositionCapabilities,
   PromptResourceKind,
+  PromptProviderRole,
+  PromptSourceKind,
 } from '@loom-studio/application-runtime'
 import { isPromptActivation, isCardBundleArtifact, isPromptResourceArtifact } from '@loom-studio/application-runtime'
 import type { JsonValue } from '@loom-studio/shared'
@@ -61,11 +64,14 @@ const applicationRpcMethods = [
   'application.createPromptResource',
   'application.duplicatePromptResource',
   'application.deletePromptResource',
+  'application.revertPromptResourceChangeset',
   'application.importPromptResource',
   'application.exportPromptResource',
   'application.listCardPromptResources',
   'application.updateCardPromptResources',
   'application.updatePresetSettings',
+  'application.listGlobalSettingMounts',
+  'application.replaceGlobalSettingMounts',
   'application.createPromptResourceAsset',
   'application.updatePromptResourceAsset',
   'application.updatePromptResourceAssets',
@@ -325,6 +331,12 @@ export async function callApplicationRpc(
         resourceId: readString(params, 'resourceId'),
       }, context) as unknown as JsonValue
 
+    case 'application.revertPromptResourceChangeset':
+      return await runtime.revertPromptResourceChangeset({
+        changesetId: readString(params, 'changesetId'),
+        expectedVersion: readOptionalNumber(params, 'expectedVersion'),
+      }, context) as unknown as JsonValue
+
     case 'application.importPromptResource': {
       const artifact = isRecord(params) ? params.artifact : undefined
       if (!isPromptResourceArtifact(artifact)) throw new Error('Expected valid Prompt Resource artifact param: artifact')
@@ -353,6 +365,14 @@ export async function callApplicationRpc(
         linkedSettingIds: readRequiredStringArray(params, 'linkedSettingIds'),
       }, context) as unknown as JsonValue
 
+    case 'application.listGlobalSettingMounts':
+      return await runtime.listGlobalSettingMounts() as unknown as JsonValue
+
+    case 'application.replaceGlobalSettingMounts':
+      return await runtime.replaceGlobalSettingMounts({
+        settingResourceIds: readRequiredStringArray(params, 'settingResourceIds'),
+      }, context) as unknown as JsonValue
+
     case 'application.createPromptResourceAsset':
       return await runtime.createPromptResourceAsset({
         resourceId: readString(params, 'resourceId'),
@@ -370,6 +390,9 @@ export async function callApplicationRpc(
         label: readOptionalString(params, 'label'),
         meta: readOptionalString(params, 'meta'),
         enabled: readOptionalBoolean(params, 'enabled'),
+        orderList: isRecord(params) ? readStringArray(params.orderList, 'orderList') : undefined,
+        skeletonPatch: isRecord(params) ? readProjectionSkeletonPatch(params.skeletonPatch, 'skeletonPatch') : undefined,
+        slotRanks: isRecord(params) ? readSlotRanks(params.slotRanks, 'slotRanks') : undefined,
       }, context) as unknown as JsonValue
 
     case 'application.updatePromptResourceAssets':
@@ -707,9 +730,129 @@ function readProjectionSkeletonPatch(value: JsonValue | undefined, key: string):
   if (!isRecord(value)) throw new Error(`Expected projection skeleton patch object: ${key}`)
 
   return {
+    items: readCompositionItems(value.items, `${key}.items`),
     zones: readProjectionZones(value.zones, `${key}.zones`),
     fallbackZoneId: typeof value.fallbackZoneId === 'string' ? value.fallbackZoneId : undefined,
   }
+}
+
+function readCompositionItems(value: JsonValue | undefined, key: string): NonNullable<NonNullable<ProjectionOrderProfile['skeletonPatch']>['items']> | undefined {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value)) throw new Error(`Expected composition items array: ${key}`)
+  return value.map((item, index) => readCompositionItem(item, `${key}[${index}]`))
+}
+
+function readCompositionItem(value: JsonValue, key: string): CompositionItem {
+  if (!isRecord(value)) throw new Error(`Expected composition item object: ${key}`)
+  if (typeof value.id !== 'string' || typeof value.displayName !== 'string' || typeof value.orderIndex !== 'number') {
+    throw new Error(`Expected composition item identity fields: ${key}`)
+  }
+
+  const base = {
+    id: value.id,
+    displayName: value.displayName,
+    orderIndex: value.orderIndex,
+  }
+
+  if (value.kind === 'message') {
+    if (!isPromptProviderRole(value.role)) throw new Error(`Expected composition message role: ${key}.role`)
+    if (!Array.isArray(value.items)) throw new Error(`Expected composition message items array: ${key}.items`)
+    return {
+      ...base,
+      kind: 'message',
+      role: value.role,
+      items: value.items.map((child, index) => {
+        if (isRecord(child) && child.kind === 'message') {
+          throw new Error(`Nested composition message blocks are not supported: ${key}.items[${index}]`)
+        }
+        return readCompositionItem(child, `${key}.items[${index}]`) as Exclude<CompositionItem, { kind: 'message' }>
+      }),
+    }
+  }
+
+  if (value.kind === 'zone') {
+    if (value.parentId !== null && typeof value.parentId !== 'string') throw new Error(`Expected composition zone parentId: ${key}.parentId`)
+    return {
+      ...base,
+      kind: 'zone',
+      parentId: value.parentId,
+      band: readProjectionZoneBand(value.band, `${key}.band`),
+      accepts: readCompositionSourceKinds(value.accepts, `${key}.accepts`),
+    }
+  }
+
+  if (value.kind === 'slot') {
+    if (typeof value.bindingId !== 'string') throw new Error(`Expected composition slot bindingId: ${key}.bindingId`)
+    if (value.zoneId !== undefined && typeof value.zoneId !== 'string') throw new Error(`Expected composition slot zoneId: ${key}.zoneId`)
+    if (value.messageMode !== undefined && value.messageMode !== 'context' && value.messageMode !== 'native') {
+      throw new Error(`Expected composition slot messageMode: ${key}.messageMode`)
+    }
+    if (value.slotKey !== undefined && typeof value.slotKey !== 'string') throw new Error(`Expected composition slot slotKey: ${key}.slotKey`)
+    const messageMode: 'context' | 'native' | undefined = value.messageMode === 'context'
+      ? 'context'
+      : value.messageMode === 'native'
+        ? 'native'
+        : undefined
+    return {
+      ...base,
+      kind: 'slot',
+      bindingId: value.bindingId,
+      ...(typeof value.zoneId === 'string' ? { zoneId: value.zoneId } : {}),
+      ...(messageMode !== undefined ? { messageMode } : {}),
+      ...(typeof value.slotKey === 'string' ? { slotKey: value.slotKey } : {}),
+    }
+  }
+
+  if (value.kind === 'entry') {
+    if (!isRecord(value.source) || (value.source.kind !== 'preset' && value.source.kind !== 'binding')) {
+      throw new Error(`Expected composition entry source: ${key}.source`)
+    }
+    const sourceKey = value.source.kind === 'preset' ? 'nodeId' : 'bindingId'
+    if (typeof value.source[sourceKey] !== 'string') throw new Error(`Expected composition entry source id: ${key}.source.${sourceKey}`)
+    return {
+      ...base,
+      kind: 'entry',
+      source: value.source.kind === 'preset'
+        ? { kind: 'preset', nodeId: value.source.nodeId as string }
+        : { kind: 'binding', bindingId: value.source.bindingId as string },
+    }
+  }
+
+  throw new Error(`Expected composition item kind: ${key}.kind`)
+}
+
+function readZoneRenderHint(value: Record<string, JsonValue>, key: string): NonNullable<NonNullable<ProjectionOrderProfile['skeletonPatch']>['zones']>[number]['renderHint'] {
+  if (value.providerRoleHint !== undefined && !isPromptProviderRole(value.providerRoleHint)) {
+    throw new Error(`Expected projection provider role: ${key}.providerRoleHint`)
+  }
+  if (value.wrapper !== undefined && value.wrapper !== 'section' && value.wrapper !== 'message') {
+    throw new Error(`Expected projection wrapper: ${key}.wrapper`)
+  }
+  return {
+    ...(isPromptProviderRole(value.providerRoleHint) ? { providerRoleHint: value.providerRoleHint } : {}),
+    ...(value.wrapper === 'section' || value.wrapper === 'message' ? { wrapper: value.wrapper } : {}),
+  }
+}
+
+function readCompositionSourceKinds(value: JsonValue | undefined, key: string): PromptSourceKind[] | undefined {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value) || !value.every(item => isPromptSourceKind(item))) {
+    throw new Error(`Expected composition source kinds: ${key}`)
+  }
+  return value
+}
+
+function isPromptSourceKind(value: JsonValue): value is PromptSourceKind {
+  return value === 'preset'
+    || value === 'settingLayer'
+    || value === 'narrativeChat'
+    || value === 'narrativeHistory'
+    || value === 'sessionHistory'
+    || value === 'runtime'
+}
+
+function isPromptProviderRole(value: JsonValue | undefined): value is PromptProviderRole {
+  return value === 'system' || value === 'developer' || value === 'assistant' || value === 'user'
 }
 
 function readProjectionZones(value: JsonValue | undefined, key: string): NonNullable<ProjectionOrderProfile['skeletonPatch']>['zones'] {
@@ -721,8 +864,6 @@ function readProjectionZones(value: JsonValue | undefined, key: string): NonNull
     if (typeof item.id !== 'string') throw new Error(`Expected projection zone id: ${key}[${index}].id`)
     if (typeof item.displayName !== 'string') throw new Error(`Expected projection zone displayName: ${key}[${index}].displayName`)
     if (typeof item.orderIndex !== 'number') throw new Error(`Expected projection zone orderIndex: ${key}[${index}].orderIndex`)
-    if (!isRecord(item.renderHint)) throw new Error(`Expected projection zone renderHint: ${key}[${index}].renderHint`)
-
     return {
       id: item.id,
       parentId: typeof item.parentId === 'string' ? item.parentId : null,
@@ -730,17 +871,16 @@ function readProjectionZones(value: JsonValue | undefined, key: string): NonNull
       band: readProjectionZoneBand(item.band, `${key}[${index}].band`),
       orderIndex: item.orderIndex,
       accepts: readProjectionSourceKinds(item.accepts, `${key}[${index}].accepts`),
-      renderHint: {
-        providerRoleHint: readProjectionProviderRole(item.renderHint.providerRoleHint, `${key}[${index}].renderHint.providerRoleHint`),
-        wrapper: item.renderHint.wrapper === 'message' ? 'message' : 'section',
-      },
+      ...(isRecord(item.renderHint) ? {
+        renderHint: readZoneRenderHint(item.renderHint, `${key}[${index}].renderHint`),
+      } : {}),
     }
   })
 }
 
-function readProjectionSourceKinds(value: JsonValue | undefined, label: string): Array<'preset' | 'settingLayer' | 'narrativeChat' | 'runtime'> | undefined {
+function readProjectionSourceKinds(value: JsonValue | undefined, label: string): PromptSourceKind[] | undefined {
   if (value === undefined) return undefined
-  if (!Array.isArray(value) || !value.every(kind => kind === 'preset' || kind === 'settingLayer' || kind === 'narrativeChat' || kind === 'runtime')) {
+  if (!Array.isArray(value) || !value.every(kind => isPromptSourceKind(kind))) {
     throw new Error(`Expected projection source kinds: ${label}`)
   }
   return value
@@ -757,9 +897,4 @@ function readProjectionZoneBand(value: JsonValue | undefined, label: string): 's
     return value
   }
   throw new Error(`Expected projection zone band: ${label}`)
-}
-
-function readProjectionProviderRole(value: JsonValue | undefined, label: string): 'system' | 'assistant' | 'user' {
-  if (value === 'system' || value === 'assistant' || value === 'user') return value
-  throw new Error(`Expected projection provider role: ${label}`)
 }

@@ -52,6 +52,9 @@ export type SqliteDataTransaction = {
   readonly createdAt: string
   readonly actor: DataActorRef
   readonly reason?: string
+  readonly correlationId?: string
+  readonly callId?: string
+  readonly parentCallId?: string
   recordOperations(operations: DataCommitOperation[]): void
 }
 
@@ -107,6 +110,9 @@ export function createSqliteDataEngine(options: SqliteDataEngineOptions): Sqlite
           createdAt,
           actor: structuredClone(input.actor) as DataActorRef,
           reason: input.reason,
+          correlationId: input.correlationId,
+          callId: input.callId,
+          parentCallId: input.parentCallId,
           recordOperations: recorded => operations.push(...structuredClone(recorded) as DataCommitOperation[]),
         })
 

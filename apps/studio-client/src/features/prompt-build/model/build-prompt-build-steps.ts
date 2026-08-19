@@ -13,14 +13,16 @@ export function buildPromptBuildSteps(input: {
   card?: Card
   timeline?: NarrativeTimeline
   branch?: NarrativeBranch
-  nodes: NarrativeNode[]
+  nodes?: NarrativeNode[]
   input: string
   messages?: ProviderMessage[]
   projection?: PromptProjection
   activationFacts?: JsonObject
   promptBuildTrace?: unknown
+  session?: { cardSnapshot?: Card }
 }, t: Translator): PromptBuildStep[] {
-  const settingEntries = input.card?.settingLayer.entries ?? []
+  const card = input.card ?? input.session?.cardSnapshot
+  const settingEntries = card?.settingLayer?.entries ?? []
   const activeSettings = input.projection
     ? input.projection.editorProjection.sourceRows.filter(row => row.active && row.zoneId.startsWith('setting.'))
     : settingEntries.filter(entry => settingEntryMatches(entry, input.input))
@@ -33,11 +35,11 @@ export function buildPromptBuildSteps(input: {
     {
       title: t('prompt.step.sourceSet'),
       rows: [
-        { label: t('prompt.label.cardSnapshot'), value: input.card?.name ?? t('prompt.value.none') },
-        { label: t('prompt.label.userMacro'), value: input.card?.userName?.trim() || t('prompt.value.userFallback') },
-        { label: t('prompt.label.preset'), value: input.card?.preset?.system?.trim() ? t('prompt.value.system') : t('prompt.value.none') },
+        { label: t('prompt.label.cardSnapshot'), value: card?.name ?? t('prompt.value.none') },
+        { label: t('prompt.label.userMacro'), value: card?.userName?.trim() || t('prompt.value.userFallback') },
+        { label: t('prompt.label.preset'), value: card?.preset?.system?.trim() ? t('prompt.value.system') : t('prompt.value.none') },
         { label: t('prompt.label.branch'), value: input.branch ? shortId(input.branch.id) : t('prompt.value.none') },
-        { label: t('prompt.label.narrativeChat'), value: t('prompt.value.acceptedEntries', { count: input.nodes.length }) },
+        { label: t('prompt.label.narrativeChat'), value: t('prompt.value.acceptedEntries', { count: input.nodes?.length ?? 0 }) },
         { label: t('prompt.label.currentInput'), value: input.input.trim() || t('prompt.value.empty') },
       ],
     },
@@ -55,7 +57,7 @@ export function buildPromptBuildSteps(input: {
       title: t('prompt.step.zoneProjection'),
       rows: [
         { label: t('prompt.label.stablePrefix'), value: input.messages?.some(message => message.role === 'system') ? t('prompt.value.systemPrefix') : t('prompt.value.notPreviewed') },
-        { label: t('prompt.label.narrativeContext'), value: input.nodes.length > 0 ? t('prompt.value.branchPath') : t('prompt.value.noAcceptedEntries') },
+        { label: t('prompt.label.narrativeContext'), value: input.nodes && input.nodes.length > 0 ? t('prompt.value.branchPath') : t('prompt.value.noAcceptedEntries') },
         { label: t('prompt.label.currentTurn'), value: input.input.trim().length > 0 ? t('prompt.value.currentInputAppended') : t('prompt.value.noInput') },
         { label: 'Compiled zones', value: input.projection ? String(input.projection.zones.length) : t('prompt.value.notPreviewed') },
       ],

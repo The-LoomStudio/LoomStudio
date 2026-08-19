@@ -3,6 +3,7 @@ import { createApplicationRuntime, promptSlotIds, promptZoneIds } from '@loom-st
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createNarrativeStore } from '@loom-studio/narrative-store'
+import { createPromptResourceStore } from '@loom-studio/prompt-resource-store'
 import { describe, expect, it } from 'vitest'
 
 function createTestRuntime() {
@@ -14,7 +15,8 @@ function createTestRuntime() {
   const documents = createSqliteDocumentStore({ engine })
   const agents = createAgentStore({ engine, createId, now })
   const narratives = createNarrativeStore({ engine, createId, now })
-  const runtime = createApplicationRuntime({ agents, dataEngine: engine, documents, narratives })
+  const promptResources = createPromptResourceStore({ engine, createId, now })
+  const runtime = createApplicationRuntime({ agents, dataEngine: engine, documents, narratives, promptResources })
   return { engine, runtime }
 }
 
@@ -93,12 +95,9 @@ describe('application agent session lifecycle', () => {
     engine.close()
   })
 
-  it('keeps document-only Application Runtime consumers valid', async () => {
+  it('requires the shared Prompt Resource Store and Data Engine', async () => {
     const { createInMemoryDocumentStore } = await import('@loom-studio/document-store')
-    const runtime = createApplicationRuntime({ documents: createInMemoryDocumentStore() })
-
-    await expect(runtime.createCard({ name: 'Still works' })).resolves.toMatchObject({ card: { name: 'Still works' } })
-    await expect(runtime.getAgentSession({ agentSessionId: 'agent-session-1' })).rejects.toThrow('Agent Store is not configured')
+    expect(() => createApplicationRuntime({ documents: createInMemoryDocumentStore() })).toThrow('Prompt Resource Store is required')
   })
 
   it('runs an Agent-only turn without creating Narrative data', async () => {
@@ -149,10 +148,12 @@ describe('application agent session lifecycle', () => {
     const { engine } = createTestRuntime()
     const documents = createSqliteDocumentStore({ engine })
     const agents = createAgentStore({ engine, createId: prefix => `${prefix}-projection`, now: () => '2026-08-12T02:00:00.000Z' })
+    const promptResources = createPromptResourceStore({ engine, createId: prefix => `${prefix}-projection`, now: () => '2026-08-12T02:00:00.000Z' })
     const runtime = createApplicationRuntime({
       agents,
       dataEngine: engine,
       documents,
+      promptResources,
       gateway: {
         invokeChat: async input => {
           calls.push({ messages: input.request.messages })
@@ -196,11 +197,13 @@ describe('application agent session lifecycle', () => {
     const documents = createSqliteDocumentStore({ engine })
     const agents = createAgentStore({ engine, createId: prefix => `${prefix}-history`, now: () => '2026-08-12T03:00:00.000Z' })
     const narratives = createNarrativeStore({ engine, createId: prefix => `${prefix}-history`, now: () => '2026-08-12T03:00:00.000Z' })
+    const promptResources = createPromptResourceStore({ engine, createId: prefix => `${prefix}-history`, now: () => '2026-08-12T03:00:00.000Z' })
     const runtime = createApplicationRuntime({
       agents,
       dataEngine: engine,
       documents,
       narratives,
+      promptResources,
       gateway: {
         invokeChat: async input => {
           calls.push({ messages: input.request.messages })
@@ -287,10 +290,12 @@ describe('application agent session lifecycle', () => {
     const { engine } = createTestRuntime()
     const documents = createSqliteDocumentStore({ engine })
     const agents = createAgentStore({ engine, createId: prefix => `${prefix}-failure`, now: () => '2026-08-12T01:00:00.000Z' })
+    const promptResources = createPromptResourceStore({ engine, createId: prefix => `${prefix}-failure`, now: () => '2026-08-12T01:00:00.000Z' })
     const runtime = createApplicationRuntime({
       agents,
       dataEngine: engine,
       documents,
+      promptResources,
       gateway: { invokeChat: async () => { throw new Error('provider failed') } },
     })
     const preset = await createPreset(runtime, 'Failure Agent', 'Fail safely.')

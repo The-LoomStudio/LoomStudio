@@ -67,14 +67,16 @@ Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本列表收�
 - **`application.forkNarrativeBranch`** / **`switchNarrativeBranch`** / **`deleteNarrativeTimeline`**
 
 ### Prompt Resource
+- Prompt Resource 的权威数据来自 Application-owned `PromptResourceStore`；以下 RPC 返回嵌套兼容形状，不直接暴露 SQL Node 表。
 - **`application.listPromptResources`**: 按可选 `resourceKind` 列出全局平铺 Prompt Resource Library。
 - **`application.createPromptResource`** / **`duplicatePromptResource`**: 创建空资源或复制现有资源；复制会重建全部内部节点 ID。
-- **`application.updatePresetSettings`**: 用完整有序 `linkedSettingIds` 替换 Preset 的 Setting 绑定；目标必须是 Preset，引用目标必须全部是 Setting。
-- **`application.deletePromptResource`**: 删除非官方资源，并从引用它的 Card、Preset 与 Narrative Timeline 中解除绑定；仍被 Agent Profile 使用的 Preset 需要先处理 Profile，官方内置资源保持只读。
+- **`application.updatePresetSettings`**: 兼容 RPC；用完整有序 `linkedSettingIds` 替换 Preset 来源 Mount。权威数据仍是 `global_setting_mounts`，目标必须是 Preset，引用目标必须全部是 Setting。
+- **`application.listGlobalSettingMounts`** / **`application.replaceGlobalSettingMounts`**: 查询或替换 manual/global Setting Mount。
+- **`application.deletePromptResource`**: 删除非官方 Resource，并从引用它的 Card、Preset Mount 与 Narrative Timeline 中解除绑定；仍被 Agent Profile 使用的 Preset 需要先处理 Profile，官方内置资源保持只读。
 - **`application.importPromptResource`** / **`exportPromptResource`**: 导入、导出独立 `loom.promptResource` Artifact。
 - **`application.getPromptResource`**: 按 `resourceId` 读取一个 Prompt Resource。
 - **`application.listCardPromptResources`**: 按 Card Manifest 中的顺序读取全部 Prompt Resources。
-- **`application.createPromptResourceAsset`** / **`updatePromptResourceAsset`** / **`updatePromptResourceAssets`** / **`movePromptResourceAsset`** / **`deletePromptResourceAsset`**: 只修改指定 Resource Document；跨 Resource move / batch update 当前明确拒绝。
+- **`application.createPromptResourceAsset`** / **`updatePromptResourceAsset`** / **`updatePromptResourceAssets`** / **`movePromptResourceAsset`** / **`deletePromptResourceAsset`**: 只修改指定 Prompt Resource；跨 Resource move / batch update 当前明确拒绝。
 
 ## 3. Media Asset HTTP 数据面
 

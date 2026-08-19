@@ -7,24 +7,13 @@ import { describe, expect, it } from 'vitest'
 import { callRpc } from './helpers.js'
 
 describe('studio server persistence integration', () => {
-  it('does not close an injected document store when the server closes', async () => {
+  it('rejects an injected Document Store without a shared Data Engine', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'loom-server-'))
     const documents = createSqliteDocumentStore({ filename: join(dir, 'store.sqlite') })
-    const server = createStudioServer({ documents })
-
     try {
-      await server.listen(0)
-      await server.close()
-
-      await documents.write({
-        id: 'still-open',
-        type: 'example.note',
-        content: { ok: true },
-        expectedVersion: 'new',
-      })
-      expect(await documents.get('still-open')).toMatchObject({ content: { ok: true } })
-      documents.close()
+      expect(() => createStudioServer({ documents })).toThrow('shared SQLite Data Engine')
     } finally {
+      documents.close()
       await rm(dir, { recursive: true, force: true })
     }
   })

@@ -5,13 +5,15 @@ import { toClientJsonObject } from '../../../shared/api/client-json-object.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import {
+  addContextAssetFolderNode,
+  addContextAssetInZoneNode,
   addContextAssetNode,
   deleteContextAssetNode,
   duplicateContextAssetNode,
   moveContextAssetNode,
   updateContextAssetNode,
 } from './tree-ops.js'
-import { normalizeContextAssets } from './context-asset-normalization.js'
+import { normalizeContextAssets, writeProjectionCapability } from './context-asset-normalization.js'
 import { findContextAssetNode } from './context-asset-tree.js'
 import { findRootContextModule, type ContextAssetUpdate } from './projection-workbench.js'
 
@@ -172,6 +174,36 @@ export function useContextAssets(input: UseContextAssetsInput) {
     return nextSelectedId
   }
 
+  async function addContextAssetFolder(parentId: string): Promise<string | undefined> {
+    if (!input.api || input.resources.length === 0) {
+      const mutation = addContextAssetFolderNode(nodesRef.current, parentId)
+      setNodes(mutation.nodes)
+      return mutation.selectedId
+    }
+
+    let nextSelectedId: string | undefined
+    await enqueueMutation(async () => {
+      const mutation = addContextAssetFolderNode(persistedNodesRef.current, parentId)
+      const asset = findContextAssetNode(mutation.nodes, mutation.selectedId)
+      if (!asset || !mutation.selectedId) return
+      const resourceId = readResourceId(parentId)
+      const result = await input.api!.promptResources.createAsset(toClientJsonObject({
+        resourceId,
+        targetAssetId: parentId,
+        position: 'inside',
+        asset: asset as unknown as ClientJsonValue,
+      }))
+      applyResource(result.resource)
+      nextSelectedId = mutation.selectedId
+      input.recordEdit({
+        label: input.t('history.context.create'),
+        changesetId: result.mutation.changesetId,
+        anchor: { documentId: resourceId, subjectId: mutation.selectedId },
+      })
+    })
+    return nextSelectedId
+  }
+
   function moveContextAsset(draggedId: string, targetId: string, position: 'before' | 'inside' | 'after'): Promise<void> {
     if (!input.api || input.resources.length === 0) {
       setNodes(moveContextAssetNode(nodesRef.current, draggedId, targetId, position))
@@ -255,6 +287,40 @@ export function useContextAssets(input: UseContextAssetsInput) {
     return nextSelectedId
   }
 
+  async function addContextAssetInZone(resourceId: string, zoneId: string): Promise<string | undefined> {
+    const targetResource = input.resources.find(r => r.id === resourceId || r.rootNode.id === resourceId)
+    const targetResourceId = targetResource?.id ?? resourceId
+    const targetAssetId = targetResource?.rootNode.id ?? resourceId
+
+    if (!input.api || input.resources.length === 0) {
+      const mutation = addContextAssetInZoneNode(nodesRef.current, targetAssetId, zoneId)
+      setNodes(mutation.nodes)
+      return mutation.selectedId
+    }
+
+    let nextSelectedId: string | undefined
+    await enqueueMutation(async () => {
+      const mutation = addContextAssetInZoneNode(persistedNodesRef.current, targetAssetId, zoneId)
+      const asset = findContextAssetNode(mutation.nodes, mutation.selectedId)
+      if (!asset || !mutation.selectedId) return
+
+      const result = await input.api!.promptResources.createAsset(toClientJsonObject({
+        resourceId: targetResourceId,
+        targetAssetId,
+        position: 'inside',
+        asset: asset as unknown as ClientJsonValue,
+      }))
+      applyResource(result.resource)
+      nextSelectedId = mutation.selectedId
+      input.recordEdit({
+        label: input.t('history.context.create'),
+        changesetId: result.mutation.changesetId,
+        anchor: { documentId: targetResourceId, subjectId: mutation.selectedId },
+      })
+    })
+    return nextSelectedId
+  }
+
   return {
     nodes,
     setNodes,
@@ -263,6 +329,8 @@ export function useContextAssets(input: UseContextAssetsInput) {
     updateContextAssets,
     moveContextAsset,
     addContextAsset,
+    addContextAssetFolder,
+    addContextAssetInZone,
     duplicateContextAsset,
     deleteContextAsset,
   }
@@ -288,10 +356,14 @@ export async function commitContextAssetMutation(input: {
 }
 
 function readPromptAssetPatch(node: ContextAssetNode): { [key: string]: ClientJsonValue } {
+  const capabilities = node.projection
+    ? writeProjectionCapability(node.capabilities, node.projection)
+    : node.capabilities
+
   return toClientJsonObject({
     assetId: node.id,
     body: node.body,
-    capabilities: node.capabilities as ClientJsonValue | undefined,
+    capabilities: capabilities as ClientJsonValue | undefined,
     enabled: node.enabled,
     label: node.label,
     meta: node.meta,

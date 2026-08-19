@@ -17,6 +17,7 @@
     { "path": "../../packages/kernel" },
     { "path": "../../packages/logging" },
     { "path": "../../packages/narrative-store" },
+    { "path": "../../packages/prompt-resource-store" },
     { "path": "../../packages/loom-runner" },
     { "path": "../../packages/shared" },
     { "path": "../../packages/trace-audit" },

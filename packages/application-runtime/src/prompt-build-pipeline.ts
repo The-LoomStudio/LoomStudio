@@ -9,6 +9,8 @@ import {
 import { evaluatePromptActivation, type ActivationFacts } from './prompt-activation.js'
 import {
   applyCompositionSkeletonPatch,
+  compileMessageBlockPrompt,
+  compilePromptDataModel,
   defaultCompositionSkeleton,
   materializeSlotKey,
   type CompiledPrompt,
@@ -32,13 +34,20 @@ type PromptBuildSourceMeta = {
 }
 
 type PromptBuildDerivedMeta = {
-  promptBuild: {
-    phase: 'composition' | 'message'
-    fragment: PromptFragment
-    active: boolean
-    activationReason: string
-    role?: PromptProviderRole
-  }
+  promptBuild:
+    | {
+        phase: 'composition'
+        fragment: PromptFragment
+        active: boolean
+        activationReason: string
+      }
+    | {
+        phase: 'message'
+        fragment: PromptFragment
+        active: boolean
+        activationReason: string
+        role?: PromptProviderRole
+      }
 }
 
 export type PromptBuildCoreMeta = PromptBuildSourceMeta | PromptBuildDerivedMeta
@@ -57,6 +66,8 @@ type OrderParams = {
 
 type EmitParams = {
   skeleton: CompositionSkeleton
+  sourceNodes: SourceNode[]
+  orderProfile: ProjectionOrderProfile
 }
 
 export type PromptBuildTrace = {
@@ -116,6 +127,7 @@ function sourceContribution(fragment: PromptFragment): PromptContribution {
   const capabilities: PromptCompositionCapabilities = {
     projection: {
       zoneId: fragment.projection.zoneId,
+      ...(fragment.projection.bindingId ? { bindingId: fragment.projection.bindingId } : {}),
       ...(fragment.projection.sourceSlotKey ? { sourceSlotKey: fragment.projection.sourceSlotKey } : {}),
       ...(fragment.projection.joinSlotKey ? { joinSlotKey: fragment.projection.joinSlotKey } : {}),
       ...(fragment.projection.slotOrderHint !== undefined ? { slotOrderHint: fragment.projection.slotOrderHint } : {}),
@@ -193,6 +205,7 @@ function materializePass(
       content: contribution.content,
       projection: {
         zoneId: projection.zoneId,
+        ...(projection.bindingId ? { bindingId: projection.bindingId } : {}),
         lifecycle: contribution.capabilities.lifecycle?.lifecycle ?? 'always',
         ...(projection.sourceSlotKey ? { sourceSlotKey: projection.sourceSlotKey } : {}),
         ...(projection.joinSlotKey ? { joinSlotKey: projection.joinSlotKey } : {}),
@@ -307,6 +320,40 @@ function emitPass(
   fragments: readonly Fragment<PromptBuildCoreMeta>[],
   params: EmitParams,
 ): readonly Fragment<PromptBuildCoreMeta>[] {
+  if (params.skeleton.items.some(item => item.kind === 'message')) {
+    const composition = fragments
+      .map(readDerived)
+      .filter((item): item is Extract<PromptBuildDerivedMeta['promptBuild'], { phase: 'composition' }> => item?.phase === 'composition')
+    const compiled = compileMessageBlockPrompt({
+      skeleton: params.skeleton,
+      fragments: composition.map(item => item.fragment),
+      sourceNodesById: new Map(params.sourceNodes.map(node => [node.id, node])),
+      orderProfile: params.orderProfile,
+      activationByFragmentId: new Map(composition.map(item => [item.fragment.id, {
+        active: item.active,
+        reason: item.activationReason,
+      }])),
+      activeFragmentIds: new Set(composition.filter(item => item.active).map(item => item.fragment.id)),
+    })
+    const messages: Fragment<PromptBuildCoreMeta>[] = compiled.messageBlocks.map((message, index) => {
+      const firstFragment = composition.find(item => item.fragment.id === message.fragmentIds[0])
+      if (!firstFragment) throw new Error(`MessageBlock has no source fragments: ${index}`)
+      return {
+        id: `prompt.message:${message.messageBlockId ?? 'native'}:${index}`,
+        content: message.content,
+        meta: {
+          promptBuild: {
+            phase: 'message',
+            fragment: firstFragment.fragment,
+            active: true,
+            activationReason: 'message block compiled',
+            role: message.role,
+          },
+        },
+      }
+    })
+    return [...fragments, ...messages]
+  }
   const zonesById = new Map(params.skeleton.zones.map(zone => [zone.id, zone]))
   const messages: Fragment<PromptBuildCoreMeta>[] = []
   for (const fragment of fragments) {
@@ -323,7 +370,7 @@ function emitPass(
           fragment: derived.fragment,
           active: true,
           activationReason: derived.activationReason,
-          role: derived.fragment.projection.render?.roleHint ?? zone.renderHint.providerRoleHint,
+          role: derived.fragment.projection.render?.roleHint ?? zone.renderHint?.providerRoleHint ?? 'system',
         },
       },
     })
@@ -453,8 +500,22 @@ function buildCompiledPrompt(
   const derived = result.fragments
     .map(readDerived)
     .filter((item): item is PromptBuildDerivedMeta['promptBuild'] => Boolean(item))
-  const composition = derived.filter(item => item.phase === 'composition')
-  const messages = derived.filter(item => item.phase === 'message')
+  const composition = derived.filter((item): item is Extract<PromptBuildDerivedMeta['promptBuild'], { phase: 'composition' }> => item.phase === 'composition')
+  const messages = derived.filter((item): item is Extract<PromptBuildDerivedMeta['promptBuild'], { phase: 'message' }> => item.phase === 'message')
+  if (skeleton.items.some(item => item.kind === 'message')) {
+    const projection = compilePromptDataModel({
+      skeleton,
+      sourceNodes: input.sourceNodes,
+      fragments: composition.map(item => item.fragment),
+      orderProfile: input.orderProfile,
+      currentInput: input.currentInput,
+      activationFacts: input.activationFacts,
+    })
+    return {
+      projection,
+      trace: compactTrace(result.trace, input, projection.messageBlocks.length),
+    }
+  }
   const zonesById = new Map(skeleton.zones.map(zone => [zone.id, zone]))
   const compiledZones = new Map<string, CompiledZone>()
 
@@ -490,7 +551,7 @@ function buildCompiledPrompt(
   for (const item of messages) {
     const zoneId = item.fragment.projection.zoneId
     const slotKey = materializeSlotKey(item.fragment)
-    const role = item.role ?? zonesById.get(zoneId)?.renderHint.providerRoleHint ?? 'system'
+    const role = item.role ?? zonesById.get(zoneId)?.renderHint?.providerRoleHint ?? 'system'
     const mergeable = item.fragment.projection.render?.wrapper !== 'message'
     const previous = emittedMessages.at(-1)
     if (
@@ -508,6 +569,7 @@ function buildCompiledPrompt(
   const projection: CompiledPrompt = {
     zones: sortedZones,
     messages: emittedMessages.map(({ role, content }) => ({ role, content })),
+    messageBlocks: emittedMessages.map(({ role, content }) => ({ role, content, fragmentIds: [] })),
     editorProjection: {
       sourceRows: composition.map(item => ({
         active: item.active,
@@ -559,7 +621,11 @@ export function compilePromptWithCore(input: PromptBuildPipelineInput): {
     },
     {
       name: 'prompt.emit',
-      params: { skeleton },
+      params: {
+        skeleton,
+        sourceNodes: input.sourceNodes,
+        orderProfile: input.orderProfile,
+      },
     },
   ]
   const result = run({

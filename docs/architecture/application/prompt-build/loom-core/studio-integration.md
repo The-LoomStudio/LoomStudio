@@ -92,6 +92,8 @@ run({
 
 Agent Turn 的 Runtime Source 也经过这条 Pipeline：Narrative Timeline Node 固定投影到 `chat.history` 的 `runtime:narrative.main@chat.history` Slot，Agent Session Message 固定投影到 `session.history` 的 `runtime:session.main@session.history` Slot，当前输入固定投影到 `chat.inside` 的 `runtime:current.input@chat.inside` Slot。它们不在 Core 执行后另行拼接；Zone/Slot 归 Prompt Skeleton，领域对象只提供来源身份与正文数据。
 
+Narrative History 是可挂载的 Context，不是自带 role 的 Message。默认 Preset 将它放入 Developer MessageBlock；其他 Preset 可以将同一个稳定 Binding 放入自己的 MessageBlock，并由该 Block 选择 Provider role。Timeline 节点只负责正文和顺序，不能直接改变最终 Message role。
+
 ## 5. 编译结果的输出方式
 
 `prompt.emit` 生成 provider-neutral Message Fragment。Application Runtime 从 Core final Fragment 读取 Message Fragment、Composition Fragment 和稳定 Source 引用，构造 `CompiledPrompt` 与 Provider Message。

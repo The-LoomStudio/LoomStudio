@@ -1,4 +1,4 @@
-import { createClientBridge, type ClientJsonValue } from '@loom-studio/client-bridge'
+import { createClientBridge } from '@loom-studio/client-bridge'
 import type { Logger } from '@loom-studio/logging'
 import { useEffect, useMemo, useState } from 'react'
 import { withClientBridgeLogging } from '../shared/api/client-bridge-logging.js'
@@ -44,7 +44,6 @@ export function useStudioState(transportLogger: Logger) {
   const api = useMemo(() => createStudioApi(observedBridge), [observedBridge])
   const editHistory = useEditHistory({ revertChangeset: api.history.revert })
   const [promptResources, setPromptResources] = useState<PromptResource[]>([])
-  const [cardPromptResources, setCardPromptResources] = useState<PromptResource[]>([])
   const cardsState = useCards({
     api,
     initialCardName: '',
@@ -57,7 +56,6 @@ export function useStudioState(transportLogger: Logger) {
     initialNodes: [],
     onResourceChange: resource => {
       setPromptResources(current => current.map(item => item.id === resource.id ? resource : item))
-      setCardPromptResources(current => current.map(item => item.id === resource.id ? resource : item))
     },
     recordEdit: editHistory.record,
     runAction: action => operations.run('mutation', action).then(() => undefined),
@@ -112,7 +110,7 @@ export function useStudioState(transportLogger: Logger) {
     editHistory.clear()
     void operations.run('bootstrap', async () => {
       const cards = await cardsState.refreshCards()
-      let selectedCardId = cards[0]?.id
+      const selectedCardId = cards[0]?.id
 
       if (selectedCardId) cardsState.setSelectedCardId(selectedCardId)
       await refreshPromptResourceLibrary()
@@ -121,18 +119,6 @@ export function useStudioState(transportLogger: Logger) {
       setNetworkSettings(await api.settings.getNetwork())
     })
   }, [observedBridge])
-
-  useEffect(() => {
-    if (!cardsState.selectedCardId) {
-      setCardPromptResources([])
-      return
-    }
-
-    void operations.runLatest('resources', async context => {
-      const result = await api.promptResources.listForCard(cardsState.selectedCardId!)
-      if (context.isCurrent()) setCardPromptResources(result.resources)
-    })
-  }, [api, cardsState.selectedCardId])
 
   useEffect(() => {
     if (!cardsState.selectedCardId) return
@@ -235,7 +221,6 @@ export function useStudioState(transportLogger: Logger) {
   async function deletePromptResource(resourceId: string): Promise<void> {
     await operations.run('mutation', async () => {
       await api.promptResources.delete(resourceId)
-      setCardPromptResources(current => current.filter(resource => resource.id !== resourceId))
       await refreshPromptResourceLibrary()
       await Promise.all([
         cardsState.refreshCards(),
@@ -369,13 +354,14 @@ export function useStudioState(transportLogger: Logger) {
     customCss, setCustomCss,
     // context assets
     promptResources,
-    cardPromptResources,
     contextAssets: contextAssetState.nodes, setContextAssets: contextAssetState.setNodes,
     previewContextAsset: contextAssetState.previewContextAsset,
     updateContextAsset: contextAssetState.updateContextAsset,
     updateContextAssets: contextAssetState.updateContextAssets,
     moveContextAsset: contextAssetState.moveContextAsset,
     addContextAsset: contextAssetState.addContextAsset,
+    addContextAssetFolder: contextAssetState.addContextAssetFolder,
+    addContextAssetInZone: contextAssetState.addContextAssetInZone,
     duplicateContextAsset: contextAssetState.duplicateContextAsset,
     deleteContextAsset: contextAssetState.deleteContextAsset,
     createPromptResource,

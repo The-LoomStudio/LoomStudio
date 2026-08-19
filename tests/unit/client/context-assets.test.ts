@@ -6,6 +6,7 @@ import {
 import { commitContextAssetMutation } from '../../../apps/studio-client/src/features/context-assets/model/use-context-assets.js'
 import { buildProjectionOrder } from '../../../apps/studio-client/src/features/context-assets/model/projection-order.js'
 import { readPromptResourceWorkbenchRoot } from '../../../apps/studio-client/src/features/context-assets/model/prompt-resource-view.js'
+import { resolvePresetBuildContextResources } from '../../../apps/studio-client/src/features/context-assets/model/preset-build-context.js'
 import type { ContextAssetNode, PromptResource } from '../../../apps/studio-client/src/entities/index.js'
 import { describe, expect, it } from 'vitest'
 
@@ -131,10 +132,50 @@ describe('studio client context asset helpers', () => {
     expect(entries[0]).toMatchObject({
       zoneId: 'preset.system',
       slotKey: 'preset:preset-root@preset.system',
-      node: { id: 'assistant-entry', readOnly: true },
+      node: { id: 'assistant-entry' },
     })
   })
+
+  it('resolves preset and timeline settings in stable deduplicated order', () => {
+    const preset = promptResource('preset-1', 'preset', ['setting-2', 'setting-1', 'missing'])
+    const setting1 = promptResource('setting-1', 'setting')
+    const setting2 = promptResource('setting-2', 'setting')
+    const timelineSetting = promptResource('setting-3', 'setting')
+    const logic = promptResource('logic-1', 'logic')
+
+    expect(resolvePresetBuildContextResources({
+      preset,
+      resources: [preset, setting1, setting2, timelineSetting, logic],
+      timelinePromptResourceIds: ['setting-1', 'setting-3', 'logic-1', 'preset-1'],
+    }).map(resource => resource.id)).toEqual(['setting-2', 'setting-1', 'setting-3'])
+  })
+
+  it('keeps preset-linked settings available without an active timeline', () => {
+    const preset = promptResource('preset-1', 'preset', ['setting-1'])
+    const setting = promptResource('setting-1', 'setting')
+
+    expect(resolvePresetBuildContextResources({
+      preset,
+      resources: [preset, setting],
+    })).toEqual([setting])
+  })
 })
+
+function promptResource(
+  id: string,
+  resourceKind: PromptResource['resourceKind'],
+  linkedSettingIds?: string[],
+): PromptResource {
+  return {
+    id,
+    version: 1,
+    resourceKind,
+    linkedSettingIds,
+    rootNode: { id: `${id}-root`, label: id, kind: 'module' },
+    createdAt: '2026-08-16T00:00:00.000Z',
+    updatedAt: '2026-08-16T00:00:00.000Z',
+  }
+}
 
 function baseNodes(): ContextAssetNode[] {
   return [

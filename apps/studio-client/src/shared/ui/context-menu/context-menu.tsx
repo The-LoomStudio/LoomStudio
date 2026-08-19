@@ -1,192 +1,234 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type ReactNode,
-} from 'react'
-import { createPortal } from 'react-dom'
-import { Check } from 'lucide-react'
-import { placeContextMenu, type ContextMenuPoint } from './context-menu-model.js'
+import * as React from 'react'
+import * as ContextMenuPrimitive from '@radix-ui/react-context-menu'
+import { Check, ChevronRight } from 'lucide-react'
 import styles from './context-menu.module.scss'
 
-export type ContextMenuItem = {
-  checked?: boolean
-  disabled?: boolean
-  icon?: ReactNode
-  id: string
-  label: string
-  onSelect(): void
-  tone?: 'default' | 'danger'
-  type?: 'item'
-} | {
-  id: string
-  type: 'separator'
-}
+const LONG_PRESS_DELAY = 520
+const CLICK_SUPPRESSION_TIME = 800
 
-type OpenMenuInput = ContextMenuPoint & {
-  items: ContextMenuItem[]
-  returnFocus?: HTMLElement | null
-}
+const ContextMenu = ContextMenuPrimitive.Root
 
-type OpenMenuState = OpenMenuInput & {
-  instanceId: number
-}
+const ContextMenuTrigger = React.forwardRef<
+  React.ElementRef<typeof ContextMenuPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Trigger>
+>(({ children, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onClickCapture, ...props }, ref) => {
+  const triggerRef = React.useRef<HTMLElement | null>(null)
+  const longPressTimerRef = React.useRef<any>(null)
+  const suppressionTimerRef = React.useRef<any>(null)
+  const suppressClickRef = React.useRef(false)
+  const startPosRef = React.useRef<{ x: number; y: number } | null>(null)
 
-type ContextMenuApi = {
-  closeMenu(restoreFocus?: boolean): void
-  openMenu(input: OpenMenuInput): void
-}
+  const clearLongPress = () => {
+    clearTimeout(longPressTimerRef.current)
+  }
 
-const ContextMenuContext = createContext<ContextMenuApi | null>(null)
-
-export function ContextMenuProvider(props: { children: ReactNode; label: string }) {
-  const menuRef = useRef<HTMLDivElement>(null)
-  const openMenuRef = useRef<OpenMenuState | undefined>(undefined)
-  const instanceIdRef = useRef(0)
-  const [menu, setMenu] = useState<OpenMenuState>()
-  const [position, setPosition] = useState<ContextMenuPoint>({ x: 0, y: 0 })
-
-  const closeMenu = useCallback((restoreFocus = true) => {
-    const returnFocus = openMenuRef.current?.returnFocus
-    setMenu(undefined)
-    if (restoreFocus && returnFocus?.isConnected) {
-      queueMicrotask(() => {
-        if (returnFocus.isConnected) returnFocus.focus()
-      })
-    }
-  }, [])
-
-  const openMenu = useCallback((input: OpenMenuInput) => {
-    if (!input.items.some(item => item.type !== 'separator')) return
-    instanceIdRef.current += 1
-    setPosition({ x: input.x, y: input.y })
-    setMenu({ ...input, instanceId: instanceIdRef.current })
-  }, [])
-
-  useLayoutEffect(() => {
-    if (!menu || !menuRef.current) return
-    const bounds = menuRef.current.getBoundingClientRect()
-    setPosition(placeContextMenu(
-      { x: menu.x, y: menu.y },
-      { width: bounds.width, height: bounds.height },
-      { width: window.innerWidth, height: window.innerHeight },
-    ))
-    readEnabledMenuItems(menuRef.current)[0]?.focus()
-  }, [menu])
-
-  useEffect(() => {
-    if (!menu) return
-
-    function handlePointerDown(event: globalThis.PointerEvent) {
-      if (!menuRef.current?.contains(event.target as Node)) closeMenu(false)
-    }
-
-    function handleDismiss() {
-      closeMenu(false)
-    }
-
-    window.addEventListener('blur', handleDismiss)
-    window.addEventListener('pointerdown', handlePointerDown, true)
-    window.addEventListener('resize', handleDismiss)
-    document.addEventListener('scroll', handleDismiss, true)
+  React.useEffect(() => {
     return () => {
-      window.removeEventListener('blur', handleDismiss)
-      window.removeEventListener('pointerdown', handlePointerDown, true)
-      window.removeEventListener('resize', handleDismiss)
-      document.removeEventListener('scroll', handleDismiss, true)
+      clearLongPress()
+      clearTimeout(suppressionTimerRef.current)
     }
-  }, [closeMenu, menu])
+  }, [])
 
-  openMenuRef.current = menu
-  const api = useMemo(() => ({ closeMenu, openMenu }), [closeMenu, openMenu])
+  const handlePointerDown = (e: React.PointerEvent<HTMLSpanElement>) => {
+    onPointerDown?.(e)
+    if (e.pointerType === 'mouse' || e.button !== 0) return
+    clearLongPress()
+    startPosRef.current = { x: e.clientX, y: e.clientY }
+    const target = triggerRef.current
+    if (!target) return
+    
+    longPressTimerRef.current = setTimeout(() => {
+      suppressClickRef.current = true
+      clearTimeout(suppressionTimerRef.current)
+      suppressionTimerRef.current = setTimeout(() => {
+        suppressClickRef.current = false
+      }, CLICK_SUPPRESSION_TIME)
+      
+      target.dispatchEvent(new MouseEvent('contextmenu', { 
+        bubbles: true, 
+        clientX: startPosRef.current?.x ?? 0, 
+        clientY: startPosRef.current?.y ?? 0 
+      }))
+    }, LONG_PRESS_DELAY)
+  }
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLSpanElement>) => {
+    onPointerMove?.(e)
+    if (!startPosRef.current) return
+    const dx = e.clientX - startPosRef.current.x
+    const dy = e.clientY - startPosRef.current.y
+    if (dx * dx + dy * dy > 100) clearLongPress()
+  }
+
+  const handlePointerEnd = (e: React.PointerEvent<HTMLSpanElement>) => {
+    onPointerUp?.(e)
+    clearLongPress()
+  }
+
+  const handlePointerCancel = (e: React.PointerEvent<HTMLSpanElement>) => {
+    onPointerCancel?.(e)
+    clearLongPress()
+  }
 
   return (
-    <ContextMenuContext.Provider value={api}>
-      {props.children}
-      {menu ? createPortal(
-        <div
-          aria-label={props.label}
-          className={styles.menu}
-          data-loom-component="context-menu"
-          key={menu.instanceId}
-          ref={menuRef}
-          role="menu"
-          style={{ left: position.x, top: position.y }}
-          tabIndex={-1}
-          onContextMenu={event => event.preventDefault()}
-          onKeyDown={event => handleMenuKeyDown(event, menuRef.current, closeMenu)}
-        >
-          {menu.items.map(item => item.type === 'separator' ? (
-            <div className={styles.separator} key={item.id} role="separator" />
-          ) : (
-            <button
-              aria-checked={item.checked}
-              className={`${styles.item} ${item.tone === 'danger' ? styles.danger : ''}`}
-              disabled={item.disabled}
-              key={item.id}
-              role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
-              type="button"
-              onClick={() => {
-                closeMenu()
-                item.onSelect()
-              }}
-            >
-              <span className={styles.leading} aria-hidden="true">
-                {item.checked ? <Check /> : item.icon}
-              </span>
-              <span className={styles.label}>{item.label}</span>
-            </button>
-          ))}
-        </div>,
-        document.body,
-      ) : null}
-    </ContextMenuContext.Provider>
+    <ContextMenuPrimitive.Trigger
+      ref={(node) => {
+        triggerRef.current = node as HTMLElement | null
+        if (typeof ref === 'function') ref(node)
+        else if (ref) ref.current = node
+      }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerEnd}
+      onPointerCancel={handlePointerCancel}
+      onClickCapture={(e) => {
+        onClickCapture?.(e)
+        if (suppressClickRef.current) {
+          e.preventDefault()
+          e.stopPropagation()
+          suppressClickRef.current = false
+        }
+      }}
+      {...props}
+    >
+      {children}
+    </ContextMenuPrimitive.Trigger>
+  )
+})
+ContextMenuTrigger.displayName = ContextMenuPrimitive.Trigger.displayName
+
+const ContextMenuContent = React.forwardRef<
+  React.ElementRef<typeof ContextMenuPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Content>
+>(({ className, ...props }, ref) => (
+  <ContextMenuPrimitive.Portal>
+    <ContextMenuPrimitive.Content
+      ref={ref}
+      className={`${styles.menu} ${className ?? ''}`}
+      {...props}
+    />
+  </ContextMenuPrimitive.Portal>
+))
+ContextMenuContent.displayName = ContextMenuPrimitive.Content.displayName
+
+const ContextMenuItem = React.forwardRef<
+  React.ElementRef<typeof ContextMenuPrimitive.Item>,
+  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Item> & {
+    inset?: boolean
+    tone?: 'default' | 'danger'
+    icon?: React.ReactNode
+  }
+>(({ className, inset, tone, icon, children, ...props }, ref) => (
+  <ContextMenuPrimitive.Item
+    ref={ref}
+    className={`${styles.item} ${tone === 'danger' ? styles.danger : ''} ${inset ? styles.inset : ''} ${className ?? ''}`}
+    {...props}
+  >
+    {icon && (
+      <span className={styles.leading} aria-hidden="true">
+        {icon}
+      </span>
+    )}
+    <span className={styles.label}>{children}</span>
+  </ContextMenuPrimitive.Item>
+))
+ContextMenuItem.displayName = ContextMenuPrimitive.Item.displayName
+
+const ContextMenuCheckboxItem = React.forwardRef<
+  React.ElementRef<typeof ContextMenuPrimitive.CheckboxItem>,
+  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.CheckboxItem>
+>(({ className, children, checked, ...props }, ref) => (
+  <ContextMenuPrimitive.CheckboxItem
+    ref={ref}
+    className={`${styles.item} ${className ?? ''}`}
+    checked={checked}
+    {...props}
+  >
+    <span className={styles.leading} aria-hidden="true">
+      <ContextMenuPrimitive.ItemIndicator>
+        <Check />
+      </ContextMenuPrimitive.ItemIndicator>
+    </span>
+    <span className={styles.label}>{children}</span>
+  </ContextMenuPrimitive.CheckboxItem>
+))
+ContextMenuCheckboxItem.displayName = ContextMenuPrimitive.CheckboxItem.displayName
+
+const ContextMenuSeparator = React.forwardRef<
+  React.ElementRef<typeof ContextMenuPrimitive.Separator>,
+  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Separator>
+>(({ className, ...props }, ref) => (
+  <ContextMenuPrimitive.Separator
+    ref={ref}
+    className={`${styles.separator} ${className ?? ''}`}
+    {...props}
+  />
+))
+ContextMenuSeparator.displayName = ContextMenuPrimitive.Separator.displayName
+
+const ContextMenuShortcut = ({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLSpanElement>) => {
+  return (
+    <span
+      className={`${styles.shortcut} ${className ?? ''}`}
+      {...props}
+    />
   )
 }
+ContextMenuShortcut.displayName = "ContextMenuShortcut"
 
-export function useContextMenu(): ContextMenuApi {
-  const context = useContext(ContextMenuContext)
-  if (!context) throw new Error('useContextMenu must be used inside ContextMenuProvider')
-  return context
-}
+const ContextMenuSub = ContextMenuPrimitive.Sub
 
-function handleMenuKeyDown(
-  event: ReactKeyboardEvent<HTMLDivElement>,
-  menu: HTMLDivElement | null,
-  closeMenu: (restoreFocus?: boolean) => void,
-) {
-  if (!menu) return
-  const items = readEnabledMenuItems(menu)
-  if (items.length === 0) return
-
-  if (event.key === 'Escape' || event.key === 'Tab') {
-    event.preventDefault()
-    closeMenu()
-    return
+const ContextMenuSubTrigger = React.forwardRef<
+  React.ElementRef<typeof ContextMenuPrimitive.SubTrigger>,
+  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.SubTrigger> & {
+    inset?: boolean
+    icon?: React.ReactNode
   }
+>(({ className, inset, icon, children, ...props }, ref) => (
+  <ContextMenuPrimitive.SubTrigger
+    ref={ref}
+    className={`${styles.item} ${styles.subTrigger} ${inset ? styles.inset : ''} ${className ?? ''}`}
+    {...props}
+  >
+    {icon && (
+      <span className={styles.leading} aria-hidden="true">
+        {icon}
+      </span>
+    )}
+    <span className={styles.label}>{children}</span>
+    <span className={styles.trailing} aria-hidden="true">
+      <ChevronRight />
+    </span>
+  </ContextMenuPrimitive.SubTrigger>
+))
+ContextMenuSubTrigger.displayName = ContextMenuPrimitive.SubTrigger.displayName
 
-  if (event.key === 'Home' || event.key === 'End') {
-    event.preventDefault()
-    items[event.key === 'Home' ? 0 : items.length - 1]?.focus()
-    return
-  }
+const ContextMenuSubContent = React.forwardRef<
+  React.ElementRef<typeof ContextMenuPrimitive.SubContent>,
+  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.SubContent>
+>(({ className, ...props }, ref) => (
+  <ContextMenuPrimitive.Portal>
+    <ContextMenuPrimitive.SubContent
+      ref={ref}
+      className={`${styles.menu} ${className ?? ''}`}
+      {...props}
+    />
+  </ContextMenuPrimitive.Portal>
+))
+ContextMenuSubContent.displayName = ContextMenuPrimitive.SubContent.displayName
 
-  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
-  event.preventDefault()
-  const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement)
-  const direction = event.key === 'ArrowDown' ? 1 : -1
-  const nextIndex = currentIndex < 0
-    ? direction > 0 ? 0 : items.length - 1
-    : (currentIndex + direction + items.length) % items.length
-  items[nextIndex]?.focus()
-}
-
-function readEnabledMenuItems(menu: HTMLDivElement): HTMLButtonElement[] {
-  return Array.from(menu.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'))
+export {
+  ContextMenu,
+  ContextMenuTrigger,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuCheckboxItem,
+  ContextMenuSeparator,
+  ContextMenuShortcut,
+  ContextMenuSub,
+  ContextMenuSubTrigger,
+  ContextMenuSubContent,
 }

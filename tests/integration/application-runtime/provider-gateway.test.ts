@@ -3,6 +3,7 @@ import { createApplicationRuntime, createOpenAICompatibleGateway } from '@loom-s
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createMemorySecretBackend, createSecretStore } from '../../../packages/secret-store/src/index.js'
+import { createPromptResourceStore } from '../../../packages/prompt-resource-store/src/index.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 describe('application runtime Provider Profile integration', () => {
@@ -158,6 +159,7 @@ function createRuntimeFixture() {
     now: () => '2026-08-15T00:00:00.000Z',
   })
   const documents = createSqliteDocumentStore({ engine })
+  const promptResources = createPromptResourceStore({ engine })
   const secrets = createSecretStore({
     engine,
     backend: createMemorySecretBackend(),
@@ -171,6 +173,7 @@ function createRuntimeFixture() {
       agents: createAgentStore({ engine }),
       dataEngine: engine,
       documents,
+      promptResources,
       secrets,
     }),
     close: () => engine.close(),

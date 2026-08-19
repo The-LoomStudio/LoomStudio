@@ -33,7 +33,7 @@ function readProjectionFromCapabilities(capabilities: ContextAssetNode['capabili
   }
 }
 
-function writeProjectionCapability(
+export function writeProjectionCapability(
   capabilities: ContextAssetNode['capabilities'],
   projection: NonNullable<ContextAssetNode['projection']>,
 ): ContextAssetNode['capabilities'] {

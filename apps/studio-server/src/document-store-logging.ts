@@ -2,12 +2,14 @@ import type {
   ActorRef,
   ChangesetOperation,
   DocumentStore,
+  SqliteDocumentStore,
   WriteDocumentResult,
 } from '@loom-studio/document-store'
 import type { Logger } from '@loom-studio/logging'
 import type { JsonObject } from '@loom-studio/shared'
 
 export function withDocumentStoreLogging(documents: DocumentStore, logger: Logger): DocumentStore {
+  const sqliteDocuments = documents as Partial<SqliteDocumentStore>
   return {
     get: (id, options) => documents.get(id, options),
     list: input => documents.list(input),
@@ -43,6 +45,17 @@ export function withDocumentStoreLogging(documents: DocumentStore, logger: Logge
         throw error
       }
     },
+    ...(typeof sqliteDocuments.participateTransaction === 'function' ? {
+      participateTransaction: (
+        dataTx: Parameters<SqliteDocumentStore['participateTransaction']>[0],
+        fn: Parameters<SqliteDocumentStore['participateTransaction']>[1],
+      ) => observe(
+        logger,
+        failureData('participate', dataTx.actor, dataTx.reason),
+        () => sqliteDocuments.participateTransaction!(dataTx, fn),
+        () => undefined,
+      ),
+    } : {}),
     revertChangeset: input => observe(
       logger,
       {
@@ -129,7 +142,7 @@ function logCommitted(logger: Logger, change: {
 }
 
 function failureData(
-  operation: 'write' | 'delete' | 'transact' | 'revert',
+  operation: 'write' | 'delete' | 'transact' | 'participate' | 'revert',
   actor?: ActorRef,
   reason?: string,
   documentId?: string,

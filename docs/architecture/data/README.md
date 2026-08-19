@@ -94,10 +94,21 @@ Studio Server 已注入 Agent Store。当前公开生命周期 RPC 包括：
 
 `appendAgentMessages` 当前只作为 Application Runtime 内部能力，不公开给普通 Client，避免绕过 Agent Runtime 伪造 assistant/tool 历史。`agentProfileId` 必须绑定真实 Agent Profile Document；Profile 再确定 Preset Prompt Resource 与 Provider Model，调用时不接受第二套临时绑定。
 
-Preset 与运行配置继续保存为短小、可版本化的 Document：
+Prompt Resource 不再使用 `airp.promptResource` Document 作为权威存储。它由 Application-owned `PromptResourceStore` 管理，并与同一个 SQLite Data Engine 共享 transaction / Changeset：
 
-- `airp.promptResource(resourceKind=preset)`：Agent 的 PromptBuild Module，保存 Prompt 节点、Skeleton / Order、`linkedSettingIds` 与 history policy；
-- `airp.agentProfile`：本机 Profile 名称、直接指向 Preset Prompt Resource 的 `presetId` 与 `{ providerProfileId, modelId }`。
+- `prompt_resources`：Resource Header、版本和 tombstone；
+- `prompt_resource_nodes`：Resource Node 当前状态；
+- `prompt_resource_node_revisions`：受影响 Node 的 before/after Revision；
+- `prompt_resource_header_revisions`：Header before/after Revision；
+- `global_setting_mounts`：manual 与 Preset 来源的 Setting Mount Registry。
+
+`PromptResourceContent`、嵌套 `rootNode.children[]` 和 `loom.promptResource` 是当前 RPC、PromptBuild 与 Card Bundle 使用的兼容投影/外部格式，不是 SQL 权威模型。兼容响应中的 `linkedSettingIds` 由 Preset Mount 派生，不是 Resource Header 字段。
+
+其他小型、低频配置继续使用 Document Store：
+
+- `airp.cardSource`：Card Source / Manifest；
+- `airp.agentProfile`：本机 Profile 名称、直接指向 Preset Resource 的 `presetId` 与 `{ providerProfileId, modelId }`；
+- `airp.providerProfile`、`airp.importBundle`：Provider 配置与 Card Bundle 导入来源。
 
 旧 `airp.agentPreset` 权威类型与对应 RPC 已删除。官方初始化会把旧官方 Profile 引用迁移到 `prompt-resource.official.loom-assistant`，并删除旧官方 AgentPreset Document；不会清空 Provider、Secret 或其他 Document。
 

@@ -16,6 +16,7 @@ import type {
 } from '@loom-studio/narrative-store'
 import type { AssistantChatMessage, ChatMessage, JsonObject, JsonValue } from '@loom-studio/shared'
 import type { SecretRef, SecretStore } from '@loom-studio/secret-store'
+import type { PromptResourceStore } from '@loom-studio/prompt-resource-store'
 import type { ActivationFacts, PromptActivation } from './prompt-activation.js'
 import type { OpenAIChatPayload } from './provider-payload.js'
 import type { PromptBuildTrace } from './prompt-build-pipeline.js'
@@ -71,11 +72,14 @@ export type ApplicationRuntime = {
   createPromptResource(input: CreatePromptResourceInput, context?: RuntimeRequestContext): Promise<CreatePromptResourceResult>
   duplicatePromptResource(input: DuplicatePromptResourceInput, context?: RuntimeRequestContext): Promise<CreatePromptResourceResult>
   deletePromptResource(input: DeletePromptResourceInput, context?: RuntimeRequestContext): Promise<DeletePromptResourceResult>
+  revertPromptResourceChangeset(input: RevertPromptResourceChangesetInput, context?: RuntimeRequestContext): Promise<RevertPromptResourceChangesetResult>
   importPromptResource(input: ImportPromptResourceInput, context?: RuntimeRequestContext): Promise<CreatePromptResourceResult>
   exportPromptResource(input: ExportPromptResourceInput): Promise<ExportPromptResourceResult>
   listCardPromptResources(input: ListCardPromptResourcesInput): Promise<ListCardPromptResourcesResult>
   updateCardPromptResources(input: UpdateCardPromptResourcesInput, context?: RuntimeRequestContext): Promise<UpdateCardPromptResourcesResult>
   updatePresetSettings(input: UpdatePresetSettingsInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
+  listGlobalSettingMounts(): Promise<ListGlobalSettingMountsResult>
+  replaceGlobalSettingMounts(input: ReplaceGlobalSettingMountsInput, context?: RuntimeRequestContext): Promise<ReplaceGlobalSettingMountsResult>
   createPromptResourceAsset(input: CreatePromptResourceAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
   updatePromptResourceAsset(input: UpdatePromptResourceAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
   updatePromptResourceAssets(input: UpdatePromptResourceAssetsInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
@@ -89,6 +93,25 @@ export type RuntimeRequestContext = {
   correlationId?: string
   callId?: string
   parentCallId?: string
+}
+
+export type SettingMountView = {
+  id: string
+  settingResourceId: string
+  orderIndex: number
+  origin: JsonObject
+  createdAt: string
+}
+
+export type ListGlobalSettingMountsResult = { mounts: SettingMountView[] }
+
+export type ReplaceGlobalSettingMountsInput = {
+  settingResourceIds: string[]
+}
+
+export type ReplaceGlobalSettingMountsResult = {
+  mounts: SettingMountView[]
+  mutation: MutationReceipt
 }
 
 export type MutationReceipt = {
@@ -265,6 +288,7 @@ export type ApplicationRuntimeOptions = {
   dataEngine?: SqliteDataEngine
   documents: DocumentStore
   narratives?: NarrativeStore
+  promptResources: PromptResourceStore
   logger?: Logger
   gateway?: AiGateway
   provider?: ApplicationProvider
@@ -648,6 +672,15 @@ export type DeletePromptResourceResult = {
   mutation: MutationReceipt
 }
 
+export type RevertPromptResourceChangesetInput = {
+  changesetId: string
+  expectedVersion?: number
+}
+
+export type RevertPromptResourceChangesetResult = {
+  mutation: MutationReceipt
+}
+
 export type ImportPromptResourceInput = {
   artifact: PromptResourceArtifact
 }
@@ -698,6 +731,9 @@ export type UpdatePromptResourceAssetInput = {
   label?: string
   meta?: string
   enabled?: boolean
+  orderList?: string[]
+  skeletonPatch?: PromptResourceNode['skeletonPatch']
+  slotRanks?: PromptResourceNode['slotRanks']
 }
 
 export type UpdatePromptResourceAssetsInput = {

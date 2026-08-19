@@ -2,6 +2,7 @@ import { createApplicationRuntime } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createNarrativeStore } from '@loom-studio/narrative-store'
+import { createPromptResourceStore } from '@loom-studio/prompt-resource-store'
 import { describe, expect, it } from 'vitest'
 
 function createTestRuntime() {
@@ -12,7 +13,8 @@ function createTestRuntime() {
   const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
   const documents = createSqliteDocumentStore({ engine })
   const narratives = createNarrativeStore({ engine, createId, now })
-  const runtime = createApplicationRuntime({ documents, narratives })
+  const promptResources = createPromptResourceStore({ engine, createId, now })
+  const runtime = createApplicationRuntime({ dataEngine: engine, documents, narratives, promptResources })
   return { engine, runtime }
 }
 
@@ -99,18 +101,15 @@ describe('application narrative timeline lifecycle', () => {
     const deleted = await runtime.deletePromptResource({ resourceId: resource.resource.id })
 
     expect(deleted.detachedReferences).toEqual({ cards: 1, presets: 1, timelines: 1 })
-    await expect(runtime.getPromptResource({ resourceId: resource.resource.id })).rejects.toThrow('Document not found')
+    await expect(runtime.getPromptResource({ resourceId: resource.resource.id })).rejects.toThrow('Prompt resource not found')
     await expect(runtime.getCard({ cardId: card.card.id })).resolves.toMatchObject({ card: { promptResourceIds: [] } })
     await expect(runtime.getPromptResource({ resourceId: preset.resource.id })).resolves.toMatchObject({ resource: { linkedSettingIds: [] } })
     await expect(runtime.getNarrativeTimeline({ timelineId: timeline.timeline.id })).resolves.toMatchObject({ timeline: { promptResourceIds: [] } })
     engine.close()
   })
 
-  it('keeps existing document-only runtimes valid and reports the missing capability only on new calls', async () => {
+  it('requires the shared Prompt Resource Store and Data Engine', async () => {
     const { createInMemoryDocumentStore } = await import('@loom-studio/document-store')
-    const runtime = createApplicationRuntime({ documents: createInMemoryDocumentStore() })
-
-    await expect(runtime.createCard({ name: 'Still works' })).resolves.toMatchObject({ card: { name: 'Still works' } })
-    await expect(runtime.getNarrativeTimeline({ timelineId: 'timeline-1' })).rejects.toThrow('Narrative Store is not configured')
+    expect(() => createApplicationRuntime({ documents: createInMemoryDocumentStore() })).toThrow('Prompt Resource Store is required')
   })
 })

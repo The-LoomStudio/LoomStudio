@@ -10,6 +10,7 @@ import { createKernel } from '@loom-studio/kernel'
 import { createConsoleLogSink, createMemoryLogSink, createRootLogger, type Logger, type LogReader, type LogRecord } from '@loom-studio/logging'
 import { createJsonlFileSink } from '@loom-studio/logging/node'
 import { createNarrativeStore } from '@loom-studio/narrative-store'
+import { createPromptResourceStore, type PromptResourceStore } from '@loom-studio/prompt-resource-store'
 import { createKeyringSecretBackend, createSecretStore, type SecretBackend } from '@loom-studio/secret-store'
 import { createLoomRunner } from '@loom-studio/loom-runner'
 import { createId, nowIso } from '@loom-studio/shared'
@@ -99,7 +100,9 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
   let agents
   let narratives
   let assets: AssetStore | undefined
+  let promptResources: PromptResourceStore | undefined
   try {
+    promptResources = dataEngine ? createPromptResourceStore({ engine: dataEngine, createId, now: nowIso }) : undefined
     agents = dataEngine ? createAgentStore({ engine: dataEngine, createId, now: nowIso }) : undefined
     narratives = dataEngine ? createNarrativeStore({ engine: dataEngine, createId, now: nowIso }) : undefined
     if (dataEngine) {
@@ -115,11 +118,15 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     dataEngine?.close()
     throw error
   }
+  if (!dataEngine || !promptResources) {
+    throw new Error('Studio Server requires a shared SQLite Data Engine and Prompt Resource Store')
+  }
   const applicationRuntime = createApplicationRuntime({
     agents,
     dataEngine,
     documents,
     narratives,
+    promptResources,
     sourceArtifacts: assets
       ? {
         preserve: async input => {

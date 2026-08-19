@@ -17,6 +17,8 @@ PromptBuild 拥有 Card、Setting Layer、Narrative Timeline、Skeleton、Slot�
 
 当前 Agent Turn 的所有提示词来源都在同一次 Core Pipeline 中编译：Preset / Setting、可选 Narrative Timeline、Agent Session History 和当前输入先由 Application Runtime 准备为 Source Fragment，再交给 `@loom/core` 的第一方 `materialize -> order -> emit` Pass。Timeline 与 Session 不保存 `zoneId`；Runtime 通过稳定的 `chat.history`、`session.history` 和 `chat.inside` Zone/Slot 常量建立挂载关系。
 
+Narrative History 本身不携带 Provider role。它是可被 Preset MessageBlock 挂载的运行时 Context Slot；官方骨架默认将它包在 Developer Block 中，但 Preset 可以把该 Slot 放入任意 MessageBlock，由包裹它的 Block 决定最终的 `system`、`developer`、`user` 或 `assistant` role。
+
 ## 正式文档
 
 - [`loom-core/README.md`](loom-core/README.md) — Loom Core 定位、设计原则、非目标与 public surface；

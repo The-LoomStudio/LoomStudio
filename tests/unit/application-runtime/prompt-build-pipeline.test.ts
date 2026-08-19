@@ -46,8 +46,7 @@ describe('PromptBuild Core pipeline', () => {
     })
 
     expect(result.projection.messages).toEqual([
-      { role: 'system', content: 'Preset instruction.' },
-      { role: 'system', content: 'Stable setting.' },
+      { role: 'system', content: 'Preset instruction.\n\nStable setting.' },
     ])
     expect(result.projection.editorProjection.sourceRows).toEqual([
       expect.objectContaining({ fragmentId: 'preset-entry', active: true }),
@@ -61,7 +60,7 @@ describe('PromptBuild Core pipeline', () => {
       'prompt.order',
       'prompt.emit',
     ])
-    expect(result.trace.messageFragmentCount).toBe(2)
+    expect(result.trace.messageFragmentCount).toBe(1)
     expect(JSON.stringify(result.trace)).not.toContain('Stable setting.')
   })
 
@@ -83,4 +82,100 @@ describe('PromptBuild Core pipeline', () => {
 
     expect(compilePromptWithCore(input).projection).toEqual(compilePromptDataModel(input))
   })
+
+  it('keeps two explicit MessageBlocks separate even when they share a provider role', () => {
+    const skeleton = {
+      ...defaultCompositionSkeleton,
+      items: [
+        {
+          kind: 'message' as const,
+          id: 'message.first-system',
+          orderIndex: 10,
+          displayName: 'System',
+          role: 'system' as const,
+          items: [defaultCompositionSkeleton.zones[0]!],
+        },
+        {
+          kind: 'message' as const,
+          id: 'message.second-system',
+          orderIndex: 20,
+          displayName: 'System',
+          role: 'system' as const,
+          items: [defaultCompositionSkeleton.zones[1]!],
+        },
+      ],
+    }
+
+    const result = compilePromptWithCore({
+      skeleton,
+      sourceNodes: [
+        { id: 'preset', sourceId: 'preset-1', parentId: null, displayName: 'Preset', orderIndex: 0 },
+        { id: 'setting', sourceId: 'setting-1', parentId: null, displayName: 'Setting', orderIndex: 1 },
+      ],
+      orderProfile: { id: 'profile.test', scope: 'global', slotRanks: [] },
+      contributions: [
+        {
+          id: 'preset-entry',
+          sourceRef: { kind: 'preset', sourceId: 'preset-1', sourceNodeId: 'preset' },
+          content: 'Preset.',
+          capabilities: { projection: { zoneId: 'preset.system' } },
+        },
+        {
+          id: 'setting-entry',
+          sourceRef: { kind: 'settingLayer', sourceId: 'setting-1', sourceNodeId: 'setting' },
+          content: 'Setting.',
+          capabilities: { projection: { zoneId: 'setting.stable' } },
+        },
+      ],
+    })
+
+    expect(result.projection.messages).toEqual([
+      { role: 'system', content: 'Preset.' },
+      { role: 'system', content: 'Setting.' },
+    ])
+    expect(result.projection.messageBlocks.map(block => block.messageBlockId)).toEqual([
+      'message.first-system',
+      'message.second-system',
+    ])
+  })
+
+  it.each(['system', 'developer', 'user', 'assistant'] as const)(
+    'lets the containing MessageBlock choose the Narrative History role: %s',
+    (role) => {
+      const skeleton = {
+        ...defaultCompositionSkeleton,
+        items: defaultCompositionSkeleton.items.map(item => (
+          item.kind === 'message' && item.id === 'message.developer'
+            ? { ...item, role }
+            : item
+        )),
+      }
+
+      const result = compilePromptWithCore({
+        skeleton,
+        sourceNodes: [
+          { id: 'timeline', sourceId: 'timeline-1', parentId: null, displayName: 'Timeline', orderIndex: 0 },
+          { id: 'timeline-node', sourceId: 'timeline-1', parentId: 'timeline', displayName: 'Node 1', orderIndex: 1 },
+        ],
+        orderProfile: { id: 'profile.test', scope: 'global', slotRanks: [] },
+        contributions: [{
+          id: 'narrative-node-1',
+          sourceRef: { kind: 'narrativeHistory', sourceId: 'timeline-1', sourceNodeId: 'timeline-node' },
+          content: 'Previously, the party entered the city.',
+          capabilities: {
+            projection: {
+              zoneId: 'chat.history',
+              bindingId: 'runtime.narrativeHistory',
+              joinSlotKey: 'runtime:narrative.main@chat.history',
+            },
+          },
+        }],
+      })
+
+      expect(result.projection.messages).toContainEqual({
+        role,
+        content: 'Previously, the party entered the city.',
+      })
+    },
+  )
 })

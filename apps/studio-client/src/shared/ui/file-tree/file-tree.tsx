@@ -1,8 +1,9 @@
 import { ChevronDown, ChevronRight, GripVertical, MoreHorizontal } from 'lucide-react'
-import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type ElementType } from 'react'
 import { DndContext, DragOverlay, useDraggable, useDroppable, defaultDropAnimationSideEffects, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core'
-import type { ContextMenuItem } from '../context-menu/context-menu.js'
-import { useContextMenuTrigger } from '../context-menu/use-context-menu-trigger.js'
+import type { MenuAction } from '../menu-action.js'
+import { ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem, ContextMenuCheckboxItem, ContextMenuSeparator } from '../context-menu/context-menu.js'
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuSeparator } from '../dropdown-menu/dropdown-menu.js'
 import { findNodeById, readDropPosition, readFileTreeKeyboardTarget, readVisibleFileTreeNodes, type FileTreeNode } from './file-tree-model.js'
 import styles from './file-tree.module.scss'
 
@@ -12,12 +13,15 @@ type FileTreeProps = {
   ariaLabel: string
   getDisclosureLabel: (node: FileTreeNode, expanded: boolean) => string
   getDragLabel: (node: FileTreeNode) => string
+  editingId?: string
   expandedIds: string[]
-  getActions?: (node: FileTreeNode) => ContextMenuItem[]
+  getActions?: (node: FileTreeNode) => MenuAction[]
   isMuted?: (node: FileTreeNode) => boolean
   moreActionsLabel: string
   nodes: FileTreeNode[]
   onMoveNode?: (draggedId: string, targetId: string, position: 'before' | 'inside' | 'after') => void
+  onEditCommit?: (id: string, newLabel: string) => void
+  onEditCancel?: (id: string) => void
   onExpandedIdsChange: (expandedIds: string[]) => void
   onSelect: (node: FileTreeNode) => void
   renderIcon?: (node: FileTreeNode, expanded: boolean) => ReactNode
@@ -97,6 +101,7 @@ export function FileTree(props: FileTreeProps) {
       >
         {props.nodes.map(node => (
           <FileTreeRow
+            editingId={props.editingId}
             expandedIds={expandedIds}
             canDrag={Boolean(props.onMoveNode)}
             getDisclosureLabel={props.getDisclosureLabel}
@@ -107,6 +112,8 @@ export function FileTree(props: FileTreeProps) {
             level={1}
             moreActionsLabel={props.moreActionsLabel}
             node={node}
+            onEditCommit={props.onEditCommit}
+            onEditCancel={props.onEditCancel}
             onSelect={props.onSelect}
             onToggleExpand={toggleExpand}
             renderIcon={props.renderIcon}
@@ -137,15 +144,18 @@ export function FileTree(props: FileTreeProps) {
 }
 
 function FileTreeRow(props: {
+  editingId?: string
   expandedIds: Set<string>
   canDrag: boolean
   getDisclosureLabel: (node: FileTreeNode, expanded: boolean) => string
   getDragLabel: (node: FileTreeNode) => string
-  getActions?: (node: FileTreeNode) => ContextMenuItem[]
+  getActions?: (node: FileTreeNode) => MenuAction[]
   isMuted?: (node: FileTreeNode) => boolean
   level: number
   moreActionsLabel: string
   node: FileTreeNode
+  onEditCommit?: (id: string, newLabel: string) => void
+  onEditCancel?: (id: string) => void
   onSelect: (node: FileTreeNode) => void
   onToggleExpand: (id: string) => void
   renderIcon?: (node: FileTreeNode, expanded: boolean) => ReactNode
@@ -162,8 +172,32 @@ function FileTreeRow(props: {
   const selected = props.node.id === props.selectedId
   const actions = props.getActions?.(props.node) ?? []
   const metaLeading = props.renderMetaLeading?.(props.node)
-  const contextMenu = useContextMenuTrigger(actions)
   const labelId = useId()
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [draftLabel, setDraftLabel] = useState(props.node.label)
+  const isEditing = props.editingId === props.node.id
+
+  useEffect(() => {
+    setDraftLabel(props.node.label)
+  }, [props.node.label, isEditing])
+
+  useEffect(() => {
+    if (isEditing) {
+      const timer = setTimeout(() => {
+        inputRef.current?.focus()
+        inputRef.current?.select()
+      }, 50)
+      return () => clearTimeout(timer)
+    }
+  }, [isEditing])
+
+  const commitEdit = () => {
+    if (draftLabel.trim() && draftLabel !== props.node.label) {
+      props.onEditCommit?.(props.node.id, draftLabel.trim())
+    } else {
+      props.onEditCancel?.(props.node.id)
+    }
+  }
 
   const { attributes, listeners, setNodeRef: setDraggableRef, isDragging } = useDraggable({
     id: props.node.id,
@@ -182,6 +216,24 @@ function FileTreeRow(props: {
   if (isOver) rowClass += ` ${styles.dragOver}`
   if (props.isMuted?.(props.node)) rowClass += ` ${styles.muted}`
 
+  const renderMenuContent = (Item: ElementType, CheckboxItem: ElementType, Separator: ElementType) => {
+    return actions.map(action => {
+      if (action.type === 'separator') return <Separator key={action.id} />
+      if (action.checked !== undefined) {
+        return (
+          <CheckboxItem key={action.id} checked={action.checked} onCheckedChange={() => action.onSelect()} disabled={action.disabled}>
+            {action.label}
+          </CheckboxItem>
+        )
+      }
+      return (
+        <Item key={action.id} icon={action.icon} tone={action.tone} disabled={action.disabled} onSelect={() => action.onSelect()}>
+          {action.label}
+        </Item>
+      )
+    })
+  }
+
   return (
     <>
       {props.node.isSection ? (
@@ -195,8 +247,10 @@ function FileTreeRow(props: {
           <div className={styles.sectionDivider} />
         </div>
       ) : (
-        <div
-          ref={element => {
+        <ContextMenu>
+          <ContextMenuTrigger asChild disabled={actions.length === 0}>
+            <div
+            ref={element => {
             setDroppableRef(element)
             props.setTreeItemRef(props.node.id, element)
           }}
@@ -209,11 +263,9 @@ function FileTreeRow(props: {
           aria-selected={selected}
           role="treeitem"
           tabIndex={props.node.id === props.rovingId ? 0 : -1}
-          {...contextMenu.triggerProps}
           onClick={() => props.onSelect(props.node)}
           onFocus={() => props.onFocusNode(props.node.id)}
           onKeyDown={event => {
-            contextMenu.triggerProps.onKeyDown?.(event)
             if (!event.defaultPrevented) props.onTreeItemKeyDown(event, props.node)
           }}
         >
@@ -266,7 +318,28 @@ function FileTreeRow(props: {
               {props.renderIcon?.(props.node, expanded)}
             </span>
             <span className={styles.labelBlock}>
-              <span className={styles.label} id={labelId}>{props.node.label}</span>
+              {isEditing ? (
+                <input
+                  ref={inputRef}
+                  className={styles.editInput}
+                  value={draftLabel}
+                  onChange={e => setDraftLabel(e.target.value)}
+                  onBlur={commitEdit}
+                  onClick={e => e.stopPropagation()}
+                  onKeyDown={e => {
+                    e.stopPropagation()
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      commitEdit()
+                    } else if (e.key === 'Escape') {
+                      e.preventDefault()
+                      props.onEditCancel?.(props.node.id)
+                    }
+                  }}
+                />
+              ) : (
+                <span className={styles.label} id={labelId}>{props.node.label}</span>
+              )}
               {props.node.meta || metaLeading ? (
                 <span className={styles.metaRow}>
                   {metaLeading ? <span className={styles.metaLeading}>{metaLeading}</span> : null}
@@ -277,25 +350,36 @@ function FileTreeRow(props: {
           </div>
 
           {actions.length > 0 ? (
-            <button
-              {...contextMenu.triggerProps}
-              aria-label={props.moreActionsLabel}
-              className={styles.actions}
-              tabIndex={-1}
-              title={props.moreActionsLabel}
-              type="button"
-              onClick={event => {
-                event.stopPropagation()
-                contextMenu.openFromElement(event.currentTarget)
-              }}
-            >
-              <MoreHorizontal aria-hidden="true" />
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  aria-label={props.moreActionsLabel}
+                  className={styles.actions}
+                  tabIndex={-1}
+                  title={props.moreActionsLabel}
+                  type="button"
+                  onClick={event => event.stopPropagation()}
+                >
+                  <MoreHorizontal aria-hidden="true" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side="bottom">
+                {renderMenuContent(DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuSeparator)}
+              </DropdownMenuContent>
+            </DropdownMenu>
           ) : null}
-        </div>
+          </div>
+        </ContextMenuTrigger>
+          {actions.length > 0 ? (
+            <ContextMenuContent>
+              {renderMenuContent(ContextMenuItem, ContextMenuCheckboxItem, ContextMenuSeparator)}
+            </ContextMenuContent>
+          ) : null}
+        </ContextMenu>
       )}
       {expanded ? props.node.children?.map(child => (
         <FileTreeRow
+          editingId={props.editingId}
           expandedIds={props.expandedIds}
           canDrag={props.canDrag}
           getDisclosureLabel={props.getDisclosureLabel}
@@ -306,6 +390,8 @@ function FileTreeRow(props: {
           level={props.node.isSection ? props.level : props.level + 1}
           moreActionsLabel={props.moreActionsLabel}
           node={child}
+          onEditCommit={props.onEditCommit}
+          onEditCancel={props.onEditCancel}
           onSelect={props.onSelect}
           onToggleExpand={props.onToggleExpand}
           renderIcon={props.renderIcon}

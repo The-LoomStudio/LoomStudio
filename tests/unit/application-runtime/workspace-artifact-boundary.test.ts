@@ -1,20 +1,21 @@
 import {
-  applicationDocumentTypes,
+  createApplicationRuntime,
   exportCardArtifact,
   getImportBundle,
   importCardBundle,
   isCardBundleArtifact,
   readPromptResourceInputs,
-  updatePromptResourceAsset,
   type CardBundleArtifact,
 } from '@loom-studio/application-runtime'
-import { createInMemoryDocumentStore } from '@loom-studio/document-store'
+import { createSqliteDataEngine } from '@loom-studio/data-engine'
+import { createSqliteDocumentStore } from '@loom-studio/document-store'
+import { createPromptResourceStore } from '@loom-studio/prompt-resource-store'
 import { describe, expect, it } from 'vitest'
 
 describe('card bundle artifact boundary', () => {
   it('imports a card, flat prompt resources, and an immutable import bundle', async () => {
-    const documents = createInMemoryDocumentStore()
-    const imported = await importCardBundle({ artifact: createArtifact(), documents, now: '2026-06-22T00:00:00.000Z' })
+    const fixture = createFixture()
+    const imported = await importCardBundle({ artifact: createArtifact(), ...fixture, now: '2026-06-22T00:00:00.000Z' })
 
     expect(imported.card.promptResourceIds).toHaveLength(2)
     expect(imported.card.importBundleId).toBe(imported.importBundle.id)
@@ -22,48 +23,40 @@ describe('card bundle artifact boundary', () => {
     expect(imported.card.settingLayer.entries).toEqual([
       expect.objectContaining({ id: 'bundle-setting', content: 'Bundle setting content.' }),
     ])
-    expect(imported.importBundle.documentIds).toEqual([imported.card.id, ...imported.card.promptResourceIds!])
+    expect(imported.importBundle.documentIds).toEqual([imported.card.id, imported.importBundle.id])
     expect(imported.importBundle.sourceArtifactRef).toMatchObject({
       artifactId: 'test-card-bundle-v0',
       format: 'loom.cardBundle',
     })
-    await expect(documents.get(imported.card.promptResourceIds![0]!)).resolves.toMatchObject({
-      type: applicationDocumentTypes.promptResource,
-    })
-    await expect(getImportBundle({ documents, importBundleId: imported.importBundle.id })).resolves.toEqual(imported.importBundle)
+    await expect(fixture.promptResources.getResource(imported.card.promptResourceIds![0]!)).resolves.toBeTruthy()
+    await expect(getImportBundle({ documents: fixture.documents, importBundleId: imported.importBundle.id })).resolves.toEqual(imported.importBundle)
   })
 
   it('builds prompt inputs directly from ordered resource ids', async () => {
-    const documents = createInMemoryDocumentStore()
-    const imported = await importCardBundle({ artifact: createArtifact(), documents })
+    const fixture = createFixture()
+    const imported = await importCardBundle({ artifact: createArtifact(), ...fixture })
     const inputs = await readPromptResourceInputs({
-      documents,
+      promptResources: fixture.promptResources,
       resourceIds: imported.card.promptResourceIds ?? [],
       macroContext: { user: 'User' },
     })
 
     expect(inputs.contributions.map(contribution => contribution.content)).toContain('Original prompt asset.')
     await expect(readPromptResourceInputs({
-      documents,
+      promptResources: fixture.promptResources,
       resourceIds: [imported.card.promptResourceIds![0]!, imported.card.promptResourceIds![0]!],
       macroContext: { user: 'User' },
     })).rejects.toThrow('Duplicate prompt resource id')
   })
 
   it('exports current resource content while retaining source artifact metadata', async () => {
-    const documents = createInMemoryDocumentStore()
-    const imported = await importCardBundle({ artifact: createArtifact(), documents })
+    const fixture = createFixture()
+    const imported = await importCardBundle({ artifact: createArtifact(), ...fixture })
     const resourceId = imported.card.promptResourceIds![0]!
 
-    await documents.transact({ actor: { kind: 'kernel', id: 'test' }, reason: 'test.edit' }, async tx => {
-      await updatePromptResourceAsset({
-        assetId: 'preset-entry',
-        body: 'Edited prompt asset.',
-        documents: tx,
-        resourceId,
-      })
-    })
-    const exported = await exportCardArtifact({ cardId: imported.card.id, documents })
+    const runtime = createApplicationRuntime({ dataEngine: fixture.engine, documents: fixture.documents, promptResources: fixture.promptResources })
+    await runtime.updatePromptResourceAsset({ resourceId, assetId: 'preset-entry', body: 'Edited prompt asset.' })
+    const exported = await exportCardArtifact({ cardId: imported.card.id, documents: fixture.documents, promptResources: fixture.promptResources })
 
     expect(findNode(exported, 'preset-entry')?.body).toBe('Edited prompt asset.')
     expect(imported.importBundle.sourceArtifact.contextAssets[0]?.children?.[0]?.body).toBe('Original prompt asset.')
@@ -78,15 +71,15 @@ describe('card bundle artifact boundary', () => {
   })
 
   it('re-imports an export with fresh document ids', async () => {
-    const documents = createInMemoryDocumentStore()
-    const first = await importCardBundle({ artifact: createArtifact(), documents })
-    const exported = await exportCardArtifact({ cardId: first.card.id, documents })
-    const second = await importCardBundle({ artifact: exported, documents })
+    const fixture = createFixture()
+    const first = await importCardBundle({ artifact: createArtifact(), ...fixture })
+    const exported = await exportCardArtifact({ cardId: first.card.id, documents: fixture.documents, promptResources: fixture.promptResources })
+    const second = await importCardBundle({ artifact: exported, ...fixture })
 
     expect(second.card.id).not.toBe(first.card.id)
     expect(second.importBundle.id).not.toBe(first.importBundle.id)
     expect(second.card.promptResourceIds).not.toEqual(first.card.promptResourceIds)
-    expect(second.importBundle.documentIds).toEqual([second.card.id, ...second.card.promptResourceIds!])
+    expect(second.importBundle.documentIds).toEqual([second.card.id, second.importBundle.id])
     expect(second.card.preset).toEqual(first.card.preset)
     expect(second.card.settingLayer).toEqual(first.card.settingLayer)
   })
@@ -95,7 +88,7 @@ describe('card bundle artifact boundary', () => {
     const malformed = createArtifact() as unknown as { contextAssets: Array<{ children?: unknown }> }
     malformed.contextAssets[0]!.children = [{ id: 'missing-node-shape' }]
     expect(isCardBundleArtifact(malformed as never)).toBe(false)
-    await expect(importCardBundle({ artifact: malformed as never, documents: createInMemoryDocumentStore() }))
+    await expect(importCardBundle({ artifact: malformed as never, ...createFixture() }))
       .rejects.toThrow('Prompt resource node label must be a string')
 
     const duplicate = createArtifact()
@@ -105,14 +98,14 @@ describe('card bundle artifact boundary', () => {
       kind: 'entry',
     })
     expect(isCardBundleArtifact(duplicate as never)).toBe(false)
-    await expect(importCardBundle({ artifact: duplicate, documents: createInMemoryDocumentStore() }))
+    await expect(importCardBundle({ artifact: duplicate, ...createFixture() }))
       .rejects.toThrow('Duplicate prompt resource node id: preset-entry')
   })
 
   it('records trusted request context on the bundle transaction', async () => {
-    const documents = createInMemoryDocumentStore()
+    const fixture = createFixture()
     const commits: Array<{ changeset: { createdBy: unknown; correlationId?: string; callId?: string; parentCallId?: string } }> = []
-    documents.subscribeCommits(commit => commits.push(commit))
+    fixture.engine.subscribeCommits(commit => commits.push({ changeset: { createdBy: commit.actor, correlationId: commit.correlationId, callId: commit.callId, parentCallId: commit.parentCallId } }))
 
     await importCardBundle({
       artifact: createArtifact(),
@@ -122,7 +115,7 @@ describe('card bundle artifact boundary', () => {
         callId: 'call-bundle',
         parentCallId: 'call-parent',
       },
-      documents,
+      ...fixture,
     })
 
     expect(commits).toHaveLength(1)
@@ -186,4 +179,14 @@ function findNode(artifact: CardBundleArtifact, id: string): CardBundleArtifact[
     queue.push(...(node.children ?? []))
   }
   return undefined
+}
+
+function createFixture() {
+  let sequence = 0
+  const createId = (prefix: string) => `${prefix}-${++sequence}`
+  const now = () => '2026-06-22T00:00:00.000Z'
+  const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
+  const documents = createSqliteDocumentStore({ engine })
+  const promptResources = createPromptResourceStore({ engine, createId, now })
+  return { dataEngine: engine, engine, documents, promptResources }
 }

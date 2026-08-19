@@ -52,6 +52,74 @@ export function addContextAssetNode(
   }
 }
 
+export function addContextAssetFolderNode(
+  nodes: ContextAssetNode[],
+  parentId: string,
+  makeId: () => string = createContextAssetId,
+): ContextAssetMutation {
+  const parentInfo = findContextAssetNodeInfo(nodes, parentId)
+  if (!parentInfo || !canAddChild(parentInfo.node, parentInfo.category)) return { nodes }
+
+  const id = makeId()
+  const node: ContextAssetNode = {
+    id,
+    label: 'New Folder',
+    kind: 'folder',
+    children: [],
+  }
+
+  return {
+    nodes: normalizeContextAssets(insertContextAssetChild(nodes, parentId, node)),
+    selectedId: id,
+  }
+}
+
+export function addContextAssetInZoneNode(
+  nodes: ContextAssetNode[],
+  resourceId: string,
+  zoneId: string,
+  makeId: () => string = createContextAssetId,
+): ContextAssetMutation {
+  const rootNode = findContextAssetNode(nodes, resourceId) ?? nodes.find(n => n.id === resourceId) ?? nodes[0]
+  if (!rootNode) return { nodes }
+
+  const id = makeId()
+  const isPreset = rootNode.category === 'preset'
+  const slotKey = `${isPreset ? 'preset' : 'setting-layer'}:${rootNode.id}@${zoneId}`
+  const node: ContextAssetNode = {
+    id,
+    label: 'New Entry',
+    meta: 'draft / entry',
+    kind: 'entry',
+    enabled: true,
+    body: '',
+    category: rootNode.category,
+    projection: {
+      zoneId,
+      slotKey,
+      lifecycle: 'always',
+      order: 'entry: 100',
+      entryOrder: 100,
+      slotOrder: isPreset ? 100 : 200,
+      sourceKind: 'actual',
+    },
+    capabilities: {
+      lifecycle: { lifecycle: 'always' },
+      projection: {
+        zoneId,
+        slotKey,
+        entryOrderHint: 100,
+        slotOrderHint: isPreset ? 100 : 200,
+      },
+    },
+  }
+
+  return {
+    nodes: normalizeContextAssets(insertContextAssetChild(nodes, rootNode.id, node)),
+    selectedId: id,
+  }
+}
+
 export function duplicateContextAssetNode(
   nodes: ContextAssetNode[],
   id: string,

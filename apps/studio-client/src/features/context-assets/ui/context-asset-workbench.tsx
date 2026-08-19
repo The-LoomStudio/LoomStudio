@@ -1,6 +1,6 @@
 import { ChevronRight } from 'lucide-react'
-import type { ReactNode } from 'react'
-import type { ContextAssetNode } from '../../../entities/index.js'
+import { useState, type ReactNode } from 'react'
+import type { ContextAssetNode, PromptCompositionItem } from '../../../entities/index.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import { FileTree } from '../../../shared/ui/file-tree/file-tree.js'
 import type { LongTextEditorMode } from '../../../shared/ui/long-text-editor/long-text-editor-model.js'
@@ -18,7 +18,6 @@ import {
 import styles from './context-asset-workbench.module.scss'
 
 type MovePosition = 'before' | 'inside' | 'after'
-type ProjectionView = { mode: 'asset' | 'projection' | undefined; toggle(): void }
 
 export function ContextAssetExplorer(props: {
   displayNodes: ContextAssetNode[]
@@ -31,9 +30,9 @@ export function ContextAssetExplorer(props: {
   t: Translator
   zoneDefinitions?: ProjectionZoneDefinition[]
   variant?: 'tree' | 'flat'
-  view?: (node: ContextAssetNode) => ProjectionView
   workspaceId: string
   onAddNode(parentId: string): Promise<string | undefined>
+  onAddFolderNode?(parentId: string): Promise<string | undefined>
   onDeleteNode(id: string, selectedId?: string): Promise<string | undefined>
   onDuplicateNode(id: string): Promise<string | undefined>
   onExpandedIdsChange(ids: string[]): void
@@ -41,14 +40,28 @@ export function ContextAssetExplorer(props: {
   onReorderProjection?: (draggedId: string, targetId: string) => void
   onReorderProjectionZone?: (draggedZoneId: string, targetZoneId: string) => void
   onQueryChange(query: string): void
+  onRenameNode?(id: string, newLabel: string): Promise<void>
   onSelectId(id?: string): void
   onToggleEnabled(id: string, enabled: boolean): void
 }) {
+  const [editingId, setEditingId] = useState<string>()
   const projectionModuleIds = new Set(props.projectionModuleIds)
   const selectNode = (node: ContextAssetNode) => props.onSelectId(node.id)
   const selectCreated = async (create: Promise<string | undefined>) => {
     const id = await create
-    if (id) props.onSelectId(id)
+    if (id) {
+      props.onSelectId(id)
+      setEditingId(id)
+    }
+  }
+  const handleEditCommit = async (id: string, newLabel: string) => {
+    setEditingId(undefined)
+    if (props.onRenameNode) {
+      await props.onRenameNode(id, newLabel)
+    }
+  }
+  const handleEditCancel = () => {
+    setEditingId(undefined)
   }
   return (
     <ContextAssetSearch
@@ -67,9 +80,13 @@ export function ContextAssetExplorer(props: {
               <ProjectionRunlist
                 entries={(props.projectionEntries ?? []).filter(entry => entryIds.has(entry.node.id))}
                 key={node.id}
+                onDeleteNode={async id => props.onSelectId(await props.onDeleteNode(id, props.selectedId))}
+                onDuplicateNode={async id => selectCreated(props.onDuplicateNode(id))}
+                onRename={id => setEditingId(id)}
                 onReorder={props.onReorderProjection}
                 onReorderZone={props.onReorderProjectionZone}
                 onSelect={props.onSelectId}
+                onToggleEnabled={props.onToggleEnabled}
                 selectedId={props.selectedId}
                 t={props.t}
               />
@@ -79,17 +96,21 @@ export function ContextAssetExplorer(props: {
           return (
             <FileTree
               key={node.id}
+              editingId={editingId}
+              onEditCommit={handleEditCommit}
+              onEditCancel={handleEditCancel}
               ariaLabel={props.t('context.explorerLabel')}
               expandedIds={props.expandedIds ?? props.displayNodes.map(item => item.id)}
               getDisclosureLabel={(item, expanded) => props.t(expanded ? 'context.tree.collapse' : 'context.tree.expand', { label: item.label })}
               getDragLabel={item => props.t('context.tree.drag', { label: item.label })}
               getActions={item => readContextAssetTreeActions(item as ContextAssetNode, {
                 onAdd: async parentId => selectCreated(props.onAddNode(parentId)),
+                onAddFolder: props.onAddFolderNode ? async parentId => selectCreated(props.onAddFolderNode!(parentId)) : undefined,
                 onDelete: async id => props.onSelectId(await props.onDeleteNode(id, props.selectedId)),
                 onDuplicate: async id => selectCreated(props.onDuplicateNode(id)),
+                onRename: id => setEditingId(id),
                 onToggleEnabled: props.onToggleEnabled,
                 t: props.t,
-                view: props.view?.(item as ContextAssetNode),
               })}
               isMuted={item => (item as ContextAssetNode).kind === 'entry' && (item as ContextAssetNode).enabled === false}
               moreActionsLabel={props.t('context.actionMore')}
@@ -110,6 +131,7 @@ export function ContextAssetExplorer(props: {
 }
 
 export function ContextAssetProjectionExplorer(props: {
+  compositionItems?: PromptCompositionItem[]
   entries: ProjectionOrderEntry[]
   nodes: ContextAssetNode[]
   query: string
@@ -117,11 +139,24 @@ export function ContextAssetProjectionExplorer(props: {
   selectedZoneId?: string
   t: Translator
   zoneDefinitions?: ProjectionZoneDefinition[]
+  onAddEntryInZone?: (zoneId: string) => void
+  onAddDirectEntry?: (blockId: string) => void
+  onAddMessageBlock?: () => void
+  onAddSlot?: (blockId: string) => void
+  onAddZoneToMessageBlock?: (blockId: string) => void
+  onDeleteCompositionItem?: (id: string) => void
+  onMoveCompositionItem?: (id: string, direction: 'up' | 'down') => void
+  onAddZone?: (afterZoneId?: string) => void
+  onDeleteNode?: (id: string) => Promise<void | string | undefined>
+  onDeleteZone?: (zoneId: string) => void
+  onDuplicateNode?: (id: string) => Promise<void | string | undefined>
   onQueryChange(query: string): void
+  onRename?: (id: string) => void
   onReorder(draggedId: string, targetId: string): void
   onReorderZone(draggedZoneId: string, targetZoneId: string): void
   onSelectId(id: string): void
   onSelectZone?(zoneId: string): void
+  onToggleEnabled?: (id: string, enabled: boolean) => void
 }) {
   return (
     <ContextAssetSearch
@@ -132,11 +167,25 @@ export function ContextAssetProjectionExplorer(props: {
       onSelect={node => props.onSelectId(node.id)}
     >
       <ProjectionRunlist
+        compositionItems={props.compositionItems}
         entries={props.entries}
+        onAddDirectEntry={props.onAddDirectEntry}
+        onAddEntryInZone={props.onAddEntryInZone}
+        onAddMessageBlock={props.onAddMessageBlock}
+        onAddSlotToMessageBlock={props.onAddSlot}
+        onAddZone={props.onAddZone}
+        onAddZoneToMessageBlock={props.onAddZoneToMessageBlock}
+        onDeleteCompositionItem={props.onDeleteCompositionItem}
+        onDeleteNode={props.onDeleteNode}
+        onDeleteZone={props.onDeleteZone}
+        onDuplicateNode={props.onDuplicateNode}
+        onMoveCompositionItem={props.onMoveCompositionItem}
+        onRename={props.onRename}
         onReorder={props.onReorder}
         onReorderZone={props.onReorderZone}
         onSelect={props.onSelectId}
         onSelectZone={props.onSelectZone}
+        onToggleEnabled={props.onToggleEnabled}
         selectedId={props.selectedId}
         selectedZoneId={props.selectedZoneId}
         t={props.t}

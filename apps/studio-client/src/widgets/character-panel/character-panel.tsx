@@ -1,7 +1,7 @@
-import { ArrowLeft, Circle, ChevronRight, CloudDownload, Combine, Download, FileArchive, Folder, Grid2X2, ImageDown, List, Pencil, Plus, Trash2, Upload, Users, X } from 'lucide-react'
+import { ArrowLeft, Check, Circle, ChevronRight, CloudDownload, Combine, Download, FileArchive, Folder, Grid2X2, ImageDown, List, Pencil, Plus, Trash2, Upload, Users, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent } from 'react'
-import type { ContextMenuItem } from '../../shared/ui/context-menu/context-menu.js'
-import { useContextMenuTrigger } from '../../shared/ui/context-menu/use-context-menu-trigger.js'
+import type { MenuAction } from '../../shared/ui/menu-action.js'
+import { ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem, ContextMenuSeparator } from '../../shared/ui/context-menu/context-menu.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import { Toggle } from '../../shared/ui/toggle/toggle.js'
 import { Dialog } from '../../shared/ui/dialog/dialog.js'
@@ -539,30 +539,42 @@ function CharacterCard(props: {
   onSelect(): void
   onToggleSelection(): void
 }) {
-  const menuItems: ContextMenuItem[] = [
+  const menuItems: MenuAction[] = [
     { checked: props.selected, icon: <Circle aria-hidden="true" />, id: 'select', label: props.selected ? props.t('character.deselect') : props.t('character.select'), onSelect: props.selected ? props.onToggleSelection : props.onSelect },
     { icon: <Folder aria-hidden="true" />, id: 'move-group', label: props.t('character.moveToGroup'), onSelect: props.onOpenGroups },
     { id: 'separator', type: 'separator' as const },
     { icon: <Trash2 aria-hidden="true" />, id: 'delete', label: props.t('character.delete'), onSelect: props.onDelete, tone: 'danger' as const },
   ]
-  const contextMenu = useContextMenuTrigger(menuItems)
   const className = [props.mode === 'grid' ? styles.gridCard : styles.listCard, props.selected ? styles.cardSelected : ''].filter(Boolean).join(' ')
   return (
-    <div className={className}>
-      <button
-        {...contextMenu.triggerProps}
-        aria-pressed={props.selectionMode ? props.selected : undefined}
-        className={styles.cardOpen}
-        type="button"
-        onClick={props.onOpenProfile}
-      >
-        <div className={styles.cardCover}>
-          {props.loadMedia && props.mediaUrl ? <img alt="" src={props.mediaUrl} /> : null}
-        </div>
-        <span><strong>{props.card.name}</strong><small>{props.card.userName || props.t('character.authorUnknown')}</small></span>
-      </button>
-      {props.selectionMode ? <Toggle checked={props.selected} className={styles.selectionToggle} label={props.selected ? props.t('character.deselect') : props.t('character.select')} onChange={props.onToggleSelection} /> : null}
-    </div>
+    <ContextMenu>
+      <div className={className}>
+        <ContextMenuTrigger asChild>
+          <button
+            aria-pressed={props.selectionMode ? props.selected : undefined}
+            className={styles.cardOpen}
+            type="button"
+            onClick={props.onOpenProfile}
+          >
+            <div className={styles.cardCover}>
+              {props.loadMedia && props.mediaUrl ? <img alt="" src={props.mediaUrl} /> : null}
+            </div>
+            <span><strong>{props.card.name}</strong><small>{props.card.userName || props.t('character.authorUnknown')}</small></span>
+          </button>
+        </ContextMenuTrigger>
+        {props.selectionMode ? <Toggle checked={props.selected} className={styles.selectionToggle} label={props.selected ? props.t('character.deselect') : props.t('character.select')} onChange={props.onToggleSelection} /> : null}
+      </div>
+      <ContextMenuContent>
+        {menuItems.map(action => {
+          if (action.type === 'separator') return <ContextMenuSeparator key={action.id} />
+          return (
+            <ContextMenuItem key={action.id} icon={action.checked ? <Check /> : action.icon} tone={action.tone} disabled={action.disabled} onSelect={() => action.onSelect()}>
+              {action.label}
+            </ContextMenuItem>
+          )
+        })}
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }
 

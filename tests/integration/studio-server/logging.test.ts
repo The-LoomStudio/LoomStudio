@@ -1,5 +1,5 @@
 import { createMemoryLogSink, createRootLogger } from '@loom-studio/logging'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -115,6 +115,37 @@ describe('Studio Server logging', () => {
     }
   })
 
+  it('keeps Card bundle import working with document logging enabled', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'loom-server-card-logging-'))
+    const memory = createMemoryLogSink({ capacity: 20 })
+    const root = createRootLogger({
+      service: 'studio-server',
+      instanceId: 'card-document-integration-test',
+      sinks: [memory],
+    })
+    const server = createStudioServer({
+      sqlitePath: join(directory, 'store.sqlite'),
+      logs: memory,
+      documentLogger: root.child('document.store'),
+    })
+
+    try {
+      const { port } = await server.listen(0)
+      const artifact = JSON.parse(await readFile(join(process.cwd(), 'packages/application-runtime/fixtures/workspaces/loom-city-v0.json'), 'utf8'))
+      const imported = await callRpc<{
+        card: { id: string; promptResourceIds: string[] }
+        importBundle: { id: string }
+      }>(port, 'application.importCardBundle', { artifact })
+
+      expect(imported.card.promptResourceIds.length).toBeGreaterThan(0)
+      expect(imported.importBundle.id).toEqual(expect.any(String))
+    } finally {
+      await server.close()
+      await root.close()
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
   it('logs PromptBuild lifecycle summaries without prompt content', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'loom-server-prompt-logging-'))
     const memory = createMemoryLogSink({ capacity: 20 })
@@ -189,13 +220,13 @@ describe('Studio Server logging', () => {
         'prompt.build.completed',
       ])
       expect(page.items[0]?.message).toBe('preview prompt build started')
-      expect(page.items[1]?.message).toMatch(/^preview prompt build completed · 3 messages · \d+(?:\.\d+)? ms$/)
+      expect(page.items[1]?.message).toMatch(/^preview prompt build completed · 2 messages · \d+(?:\.\d+)? ms$/)
       expect(page.items[2]?.message).toBe('runtime prompt build started')
-      expect(page.items[3]?.message).toMatch(/^runtime prompt build completed · 3 messages · \d+(?:\.\d+)? ms$/)
-      expect(page.items[1]?.data).toMatchObject({ mode: 'preview', messageCount: 3 })
+      expect(page.items[3]?.message).toMatch(/^runtime prompt build completed · 2 messages · \d+(?:\.\d+)? ms$/)
+      expect(page.items[1]?.data).toMatchObject({ mode: 'preview', messageCount: 2 })
       expect(page.items[0]?.data?.buildId).toBe(page.items[1]?.data?.buildId)
       expect(page.items[0]?.correlationId).toBe(page.items[1]?.correlationId)
-      expect(page.items[3]?.data).toMatchObject({ mode: 'runtime', messageCount: 3 })
+      expect(page.items[3]?.data).toMatchObject({ mode: 'runtime', messageCount: 2 })
       expect(page.items[3]?.data?.runId).toMatch(/^run-/)
       expect(page.items[2]?.data?.buildId).toBe(page.items[3]?.data?.buildId)
       expect(JSON.stringify(page.items)).not.toContain('Private')
@@ -220,7 +251,7 @@ describe('Studio Server logging', () => {
         runId: turn.runId,
         provider: 'fake',
         model: 'fake-echo-m0',
-        messageCount: 3,
+        messageCount: 2,
       })
       expect(JSON.stringify(providerPage.items)).not.toContain('Private')
     } finally {

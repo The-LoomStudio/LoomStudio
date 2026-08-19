@@ -1,28 +1,15 @@
 export { applicationDocumentTypes } from './document-types.js'
 export { createApplicationRuntime } from './runtime.js'
+export { composeAgentTurnPrompt } from './agent-turn.js'
 export {
-  createPromptResource,
-  createPromptResourceAsset,
-  deletePromptResource,
-  deletePromptResourceAsset,
-  duplicatePromptResource,
   exportCardArtifact,
-  exportPromptResourceArtifact,
   getImportBundle,
-  getPromptResource,
   importCardBundle,
-  importPromptResourceArtifact,
   isPromptResourceArtifact,
   isCardBundleArtifact,
-  listCardPromptResources,
-  listPromptResources,
-  movePromptResourceAsset,
   normalizeCardBundleArtifact,
   readPromptResourceInputs,
   readPromptResourceOrderProfile,
-  updatePromptResourceAsset,
-  updatePromptResourceAssets,
-  updateCardPromptResources,
 } from './workspace.js'
 export {
   createDocumentBackedAiGateway,
@@ -43,6 +30,7 @@ export {
 export type {
   CompositionItem,
   CompositionItemBase,
+  CompiledMessage,
   CompiledPrompt,
   CompiledSlot,
   CompiledZone,
@@ -50,6 +38,8 @@ export type {
   CompositionSkeletonPatch,
   EditorProjection,
   EntryNode,
+  MessageBlockItem,
+  MessageBlockNode,
   ProjectionOrderProfile,
   PromptCompositionCapabilities,
   PromptContentCapability,

@@ -21,7 +21,6 @@ import { ProjectionOrderEditor } from '../../features/context-assets/ui/projecti
 import { PromptResourceToolbar } from '../../features/context-assets/ui/prompt-resource-toolbar/prompt-resource-toolbar.js'
 import type { ContextAssetNode, PromptResource } from '../../entities/index.js'
 import type { Translator } from '../../shared/i18n/index.js'
-import styles from './context-workbench.module.scss'
 
 type ContextWorkbenchProps = {
   nodes: ContextAssetNode[]
@@ -31,6 +30,7 @@ type ContextWorkbenchProps = {
   onChangeNodes: (updates: ContextAssetUpdate[]) => void
   onMoveNode: (draggedId: string, targetId: string, position: 'before' | 'inside' | 'after') => void
   onAddNode: (parentId: string) => Promise<string | undefined>
+  onAddFolderNode?: (parentId: string) => Promise<string | undefined>
   onDuplicateNode: (id: string) => Promise<string | undefined>
   onDeleteNode: (id: string, selectedId?: string) => Promise<string | undefined>
   onCreateResource: (resourceKind: PromptResource['resourceKind']) => Promise<string | undefined>
@@ -57,7 +57,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   const setActiveCategory = useStudioLayoutStore(state => state.setContextCategory)
   const setMetadataOpen = useStudioLayoutStore(state => state.setAssetMetadataOpen)
   const setTextEditorMode = useStudioLayoutStore(state => state.setTextEditorMode)
-  const [viewModes, setViewModes] = useState<Record<string, 'asset' | 'projection'>>({})
+  const [viewModes] = useState<Record<string, 'asset' | 'projection'>>({})
   const [searchQuery, setSearchQuery] = useState(props.initialSearchQuery ?? '')
   const [selectedResourceIds, setSelectedResourceIds] = useState<Partial<Record<ContextCategory, string>>>({})
   const categoryResources = useMemo(() => props.resources.filter(resource => resource.resourceKind === activeCategory), [activeCategory, props.resources])
@@ -169,12 +169,9 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
           projectionModuleIds={projectionModuleIds}
           selectedId={selectedId}
           t={props.t}
-          view={node => ({
-            mode: viewModes[node.id],
-            toggle: () => setViewModes(current => ({ ...current, [node.id]: current[node.id] === 'projection' ? 'asset' : 'projection' })),
-          })}
           workspaceId={props.workspaceId}
           onAddNode={props.onAddNode}
+          onAddFolderNode={props.onAddFolderNode}
           onDeleteNode={props.onDeleteNode}
           onDuplicateNode={props.onDuplicateNode}
           onExpandedIdsChange={expandedIds => setExpandedIds('resources', props.workspaceId, expandedIds)}

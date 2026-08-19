@@ -1,4 +1,4 @@
-import { applicationDocumentTypes, type CardBundleArtifact } from '@loom-studio/application-runtime'
+import type { CardBundleArtifact } from '@loom-studio/application-runtime'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -81,22 +81,62 @@ describe('studio server card bundle rpc integration', () => {
         assetId: 'preset-style-directive',
         body: 'RPC resource edit.',
       })
-      const changeset = await callRpc<{
-        changeset: { operations: Array<{ documentId: string; type: string }> }
-      }>(port, 'docs.getChangeset', { changesetId: updated.mutation.changesetId })
-      const undo = await callRpc<{ changesetId: string }>(port, 'docs.revertChangeset', {
+      const undo = await callRpc<{ mutation: { changesetId: string } }>(port, 'application.revertPromptResourceChangeset', {
         changesetId: updated.mutation.changesetId,
       })
-      await callRpc(port, 'docs.revertChangeset', { changesetId: undo.changesetId })
+      const redo = await callRpc<{ mutation: { changesetId: string } }>(port, 'application.revertPromptResourceChangeset', {
+        changesetId: undo.mutation.changesetId,
+      })
       const exported = await callRpc<{ artifact: CardBundleArtifact }>(port, 'application.exportCardArtifact', {
         cardId: imported.card.id,
       })
 
-      expect(changeset.changeset.operations).toEqual([expect.objectContaining({
-        documentId: preset.id,
-        type: applicationDocumentTypes.promptResource,
-      })])
+      expect(redo.mutation.changesetId).toEqual(expect.any(String))
       expect(findNode(exported.artifact, 'preset-style-directive')?.body).toBe('RPC resource edit.')
+    })
+  })
+
+  it('accepts and persists MessageBlock composition patches through RPC', async () => {
+    await withStudioServer(async port => {
+      const created = await callRpc<{
+        resource: { id: string; rootNode: { id: string; children?: Array<{ id: string; kind: string }> } }
+      }>(port, 'application.createPromptResource', {
+        resourceKind: 'preset',
+        name: 'Message Composition RPC',
+      })
+      const order = created.resource.rootNode.children?.find(node => node.kind === 'order')
+      if (!order) throw new Error('Expected created preset order profile')
+
+      const updated = await callRpc<{
+        resource: {
+          rootNode: {
+            children?: Array<{ kind: string; skeletonPatch?: { items?: Array<{ kind: string; role?: string }> } }>
+          }
+        }
+      }>(port, 'application.updatePromptResourceAsset', {
+        resourceId: created.resource.id,
+        assetId: order.id,
+        skeletonPatch: {
+          items: [{
+            id: 'message.rpc.system',
+            kind: 'message',
+            displayName: 'System',
+            orderIndex: 10,
+            role: 'system',
+            items: [{
+              id: 'zone.rpc.system',
+              kind: 'zone',
+              parentId: 'zone.root',
+              displayName: 'RPC System',
+              band: 'stable-prefix',
+              orderIndex: 10,
+            }],
+          }],
+        },
+      })
+
+      expect(updated.resource.rootNode.children?.find(node => node.kind === 'order')?.skeletonPatch?.items)
+        .toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'message', role: 'system' })]))
     })
   })
 })

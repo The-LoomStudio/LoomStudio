@@ -1,7 +1,7 @@
-import { AlignLeft, Code2, Copy, FileText, Folder, FolderOpen, GripVertical, Package, Plus, Trash2 } from 'lucide-react'
+import { Code2, Copy, FileText, Folder, FolderOpen, FolderPlus, GripVertical, Package, Pencil, Plus, Trash2 } from 'lucide-react'
 import type { ContextAssetNode } from '../../../entities/index.js'
 import type { Translator } from '../../../shared/i18n/index.js'
-import type { ContextMenuItem } from '../../../shared/ui/context-menu/context-menu.js'
+import type { MenuAction } from '../../../shared/ui/menu-action.js'
 import { StatusIndicator } from '../../../shared/ui/status-indicator/status-indicator.js'
 
 type ContextAssetTreeActionsInput = {
@@ -9,11 +9,9 @@ type ContextAssetTreeActionsInput = {
   onDelete(id: string): void
   onDuplicate(id: string): void
   onToggleEnabled(id: string, enabled: boolean): void
+  onRename?(id: string): void
+  onAddFolder?(parentId: string): void
   t: Translator
-  view?: {
-    mode: 'asset' | 'projection' | undefined
-    toggle(): void
-  }
 }
 
 export function renderContextAssetTreeIcon(node: ContextAssetNode, expanded: boolean) {
@@ -32,11 +30,11 @@ export function renderContextAssetLifecycleIndicator(node: ContextAssetNode, t: 
 export function readContextAssetTreeActions(
   node: ContextAssetNode,
   input: ContextAssetTreeActionsInput,
-): ContextMenuItem[] {
+): MenuAction[] {
   const canAdd = (node.kind === 'module' || node.kind === 'folder') && !isReadOnlyContextAssetTreeNode(node)
   const canDuplicate = node.kind !== 'module' && node.kind !== 'order' && !isReadOnlyContextAssetTreeNode(node)
   const isSettingLayer = node.category === 'setting' && node.kind === 'module'
-  const items: ContextMenuItem[] = []
+  const items: MenuAction[] = []
 
   if (canToggleContextAssetEnabled(node)) {
     items.push({
@@ -47,16 +45,12 @@ export function readContextAssetTreeActions(
     })
     if (isSettingLayer || canAdd || canDuplicate) items.push({ id: 'state-separator', type: 'separator' })
   }
-  if (isSettingLayer && input.view) {
-    items.push({
-      icon: input.view.mode === 'projection' ? <Folder aria-hidden="true" /> : <AlignLeft aria-hidden="true" />,
-      id: 'view-mode',
-      label: input.t(input.view.mode === 'projection' ? 'context.actionAssetView' : 'context.actionProjectionView'),
-      onSelect: input.view.toggle,
-    })
-  }
   if (canAdd) items.push({ icon: <Plus aria-hidden="true" />, id: 'add', label: input.t('context.actionAdd'), onSelect: () => input.onAdd(node.id) })
+  if (canAdd && input.onAddFolder) items.push({ icon: <FolderPlus aria-hidden="true" />, id: 'addFolder', label: input.t('context.actionAddFolder'), onSelect: () => input.onAddFolder!(node.id) })
   if (canDuplicate) items.push({ icon: <Copy aria-hidden="true" />, id: 'duplicate', label: input.t('context.actionDuplicate'), onSelect: () => input.onDuplicate(node.id) })
+  if (!isReadOnlyContextAssetTreeNode(node)) {
+    items.push({ icon: <Pencil aria-hidden="true" />, id: 'rename', label: input.t('context.actionRename'), onSelect: () => input.onRename?.(node.id) })
+  }
   if (canDuplicate) {
     if (items.length > 0) items.push({ id: 'delete-separator', type: 'separator' })
     items.push({ icon: <Trash2 aria-hidden="true" />, id: 'delete', label: input.t('context.actionDelete'), onSelect: () => input.onDelete(node.id), tone: 'danger' })

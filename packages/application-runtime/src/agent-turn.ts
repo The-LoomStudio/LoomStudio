@@ -1,9 +1,10 @@
 import type { ChatMessage } from '@loom-studio/shared'
+import type { PromptResourceStore } from '@loom-studio/prompt-resource-store'
 import type { AgentMessage } from '@loom-studio/agent-store'
-import type { DocumentStore } from '@loom-studio/document-store'
 import type { NarrativeNode, NarrativeTimeline } from '@loom-studio/narrative-store'
 import {
   defaultCompositionSkeleton,
+  promptBindingIds,
   promptSlotIds,
   promptZoneIds,
   type CompiledPrompt,
@@ -12,12 +13,12 @@ import {
 } from './prompt-builder.js'
 import type { ActivationFacts } from './prompt-activation.js'
 import { compilePromptWithCore, type PromptBuildTrace } from './prompt-build-pipeline.js'
-import { getPromptResource, readPromptResourceInputs, type PromptResourceContent } from './workspace.js'
+import { readPromptResourceInputs, type PromptResourceContent } from './workspace.js'
 
 export async function composeAgentTurnPrompt(input: {
   activationFacts?: ActivationFacts
   agentMessages: AgentMessage[]
-  documents: DocumentStore
+  promptResources: PromptResourceStore
   narrative?: {
     timeline: NarrativeTimeline
     nodes: NarrativeNode[]
@@ -28,21 +29,26 @@ export async function composeAgentTurnPrompt(input: {
   runId?: string
   agentSessionId?: string
 }): Promise<{ messages: ChatMessage[]; projection: CompiledPrompt; promptBuildTrace: PromptBuildTrace }> {
-  // ponytail: Timeline.promptResourceIds is a transitional mixed field; ignore non-Setting resources until Card inventory and Timeline setting bindings are split physically.
+  const manualMounts = await input.promptResources.listSettingMounts({ source: { kind: 'manual', id: 'global' } })
+  const presetMounts = await input.promptResources.listSettingMounts({ source: { kind: 'preset', id: input.preset.id } })
   const timelineSettingIds = input.narrative
-    ? (await Promise.all(input.narrative.timeline.promptResourceIds.map(resourceId => getPromptResource({
-        documents: input.documents,
-        resourceId,
-      })))).filter(resource => resource.resourceKind === 'setting').map(resource => resource.id)
+    ? (await Promise.all(input.narrative.timeline.promptResourceIds.map(async resourceId => {
+        const resource = await input.promptResources.getResource(resourceId)
+        if (!resource) throw new Error(`Prompt resource not found: ${resourceId}`)
+        return resource
+      })))
+      .filter(resource => resource.resourceKind === 'setting')
+      .map(resource => resource.id)
     : []
   const resourceIds = [...new Set([
     input.preset.id,
-    ...(input.preset.linkedSettingIds ?? []),
+    ...manualMounts.map(mount => mount.settingResourceId),
+    ...presetMounts.map(mount => mount.settingResourceId),
     ...timelineSettingIds,
   ])]
   const resourceInputs = resourceIds.length
     ? await readPromptResourceInputs({
-        documents: input.documents,
+        promptResources: input.promptResources,
         resourceIds,
         macroContext: { user: 'User' },
       })
@@ -135,12 +141,16 @@ function createRuntimePromptSources(input: {
         capabilities: {
           projection: {
             zoneId: promptZoneIds.narrativeHistory,
+            bindingId: promptBindingIds.narrativeHistory,
             joinSlotKey: promptSlotIds.narrativeMain,
             slotOrderHint: 0,
             entryOrderHint: index,
           },
           lifecycle: { lifecycle: 'always' },
-          render: { wrapper: 'section', roleHint: 'developer', label: 'Narrative History' },
+          // Narrative Timeline only contributes context. The containing
+          // MessageBlock owns the provider role when the contribution is
+          // compiled into a message.
+          render: { wrapper: 'section', label: 'Narrative History' },
         },
       })
     })
@@ -182,6 +192,7 @@ function createRuntimePromptSources(input: {
       capabilities: {
         projection: {
           zoneId: promptZoneIds.sessionHistory,
+          bindingId: promptBindingIds.sessionHistory,
           joinSlotKey: promptSlotIds.sessionMain,
           slotOrderHint: 0,
           entryOrderHint: agentMessage.sequence,
@@ -221,6 +232,7 @@ function createRuntimePromptSources(input: {
     capabilities: {
       projection: {
         zoneId: promptZoneIds.currentTurn,
+        bindingId: promptBindingIds.currentInput,
         joinSlotKey: promptSlotIds.currentInput,
         slotOrderHint: 0,
         entryOrderHint: 0,

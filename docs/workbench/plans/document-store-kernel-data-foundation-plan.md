@@ -6,6 +6,7 @@
 > **实施约束**：本文属于 Workbench 工程计划；只有经过代码与测试证明的稳定事实才能写入 `docs/architecture`。
 > **2026-08-12 边界修订**：本文 Phase 1–4 仍记录当前已实现的 Document Store / Kernel 基线；“所有业务事实都进入 Document Store”的后续方向已由 [`sqlite-data-engine-domain-stores-kernel-plan.md`](sqlite-data-engine-domain-stores-kernel-plan.md) 取代。Document 后续只表示需要版本与 Revision 的可编辑聚合；Narrative / Agent 等高数量 append-only 数据改用共享 SQLite Data Engine 上的专用 Domain Store。
 > **2026-08-15 文件边界修订**：本文中的 Asset Store / Filesystem 草图已由 [`local-data-blob-store-foundation-plan.md`](local-data-blob-store-foundation-plan.md) 细化。底层统一保存不可变字节的 Blob；Source Artifact 与 Media Asset 是引用 Blob 的逻辑记录；自动 Thumbnail 属于 Cache。
+> **2026-08-17 Prompt Resource 边界修订**：本文“Prompt Resource 继续保存为完整 Document、没有测量证据前不拆 Entry”的历史结论已被 [`data-layer-v2-prompt-resource-node-store-plan.md`](data-layer-v2-prompt-resource-node-store-plan.md) 取代。Document Store 基础能力仍然有效。
 
 ---
 

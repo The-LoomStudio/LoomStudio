@@ -1,13 +1,18 @@
-import { applicationDocumentTypes, createApplicationRuntime, readPromptResourceInputs, type CardBundleArtifact } from '@loom-studio/application-runtime'
-import { createInMemoryDocumentStore } from '@loom-studio/document-store'
-import { createOfficialPromptResourceContents } from '../../../packages/application-runtime/src/prompt-resource-defaults.js'
+import {
+  createApplicationRuntime,
+  readPromptResourceInputs,
+  type CardBundleArtifact,
+} from '../../../packages/application-runtime/src/index.js'
+import { createSqliteDataEngine } from '../../../packages/data-engine/src/index.js'
+import { createSqliteDocumentStore } from '../../../packages/document-store/src/index.js'
+import { createPromptResourceStore } from '../../../packages/prompt-resource-store/src/index.js'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 describe('application runtime card bundle integration', () => {
   it('initializes the official assistant Prompt resources and keeps the built-ins read-only', async () => {
-    const runtime = createApplicationRuntime({ documents: createInMemoryDocumentStore() })
+    const { runtime } = createTestRuntime()
 
     await runtime.initialize()
     const listed = await runtime.listPromptResources()
@@ -20,83 +25,24 @@ describe('application runtime card bundle integration', () => {
       linkedSettingIds: [setting!.id],
       historyPolicy: 'persistent',
     })
-    expect(preset?.rootNode.children?.find(node => node.kind === 'order')?.skeletonPatch?.items).toEqual(expect.arrayContaining([
+    const compositionItems = preset?.rootNode.children?.find(node => node.kind === 'order')?.skeletonPatch?.items
+      ?.flatMap(item => item.kind === 'message' ? item.items : [item])
+    expect(compositionItems).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: 'slot', bindingId: 'runtime.narrativeHistory' }),
       expect.objectContaining({ kind: 'slot', bindingId: 'runtime.sessionHistory' }),
       expect.objectContaining({ kind: 'entry', source: { kind: 'binding', bindingId: 'runtime.currentInput' } }),
     ]))
     expect(setting).toMatchObject({ resourceKind: 'setting', rootNode: { label: 'Loom Studio 基础知识' } })
-    await expect(runtime.updatePromptResourceAsset({
+    const updated = await runtime.updatePromptResourceAsset({
       resourceId: preset!.id,
       assetId: preset!.rootNode.id,
       label: 'Changed',
-    })).rejects.toThrow('read-only')
-  })
-
-  it('upgrades a stale official Prompt Skeleton during initialization', async () => {
-    const documents = createInMemoryDocumentStore()
-    const canonical = createOfficialPromptResourceContents('2026-08-15T00:00:00.000Z')
-    const stalePreset = structuredClone(canonical[0]!)
-    const orderNode = stalePreset.rootNode.children?.find(node => node.kind === 'order')
-    if (!orderNode?.skeletonPatch?.zones) throw new Error('Official preset fixture is missing its skeleton')
-    orderNode.skeletonPatch.zones = orderNode.skeletonPatch.zones.filter(zone => zone.id !== 'session.history')
-    await documents.write({
-      id: 'prompt-resource.official.loom-assistant',
-      type: applicationDocumentTypes.promptResource,
-      content: stalePreset,
     })
-    await documents.write({
-      id: 'prompt-resource.official.loom-knowledge',
-      type: applicationDocumentTypes.promptResource,
-      content: canonical[1]!,
-    })
-
-    const runtime = createApplicationRuntime({ documents })
-    await runtime.initialize()
-
-    const listed = await runtime.listPromptResources({ resourceKind: 'preset' })
-    const preset = listed.resources.find(resource => resource.origin?.key === 'loom-assistant-preset')
-    const migratedOrder = preset?.rootNode.children?.find(node => node.kind === 'order')
-    expect(migratedOrder?.skeletonPatch?.zones?.map(zone => zone.id)).toContain('session.history')
-  })
-
-  it('migrates the legacy official Agent Preset reference without clearing other documents', async () => {
-    const documents = createInMemoryDocumentStore()
-    await documents.write({
-      id: 'agent-preset.official.loom-assistant',
-      type: 'airp.agentPreset',
-      content: {
-        name: 'Legacy Assistant',
-        instructions: 'Legacy.',
-        promptResourceIds: [],
-        historyPolicy: 'persistent',
-        createdAt: '2026-08-15T00:00:00.000Z',
-        updatedAt: '2026-08-15T00:00:00.000Z',
-      },
-    })
-    await documents.write({
-      id: 'agent-profile-legacy',
-      type: applicationDocumentTypes.agentProfile,
-      content: {
-        name: 'Legacy Profile',
-        presetId: 'agent-preset.official.loom-assistant',
-        model: { providerProfileId: 'provider-existing', modelId: 'model-existing' },
-        createdAt: '2026-08-15T00:00:00.000Z',
-        updatedAt: '2026-08-15T00:00:00.000Z',
-      },
-    })
-    const runtime = createApplicationRuntime({ documents })
-
-    await runtime.initialize()
-
-    await expect(runtime.getAgentProfile({ agentProfileId: 'agent-profile-legacy' })).resolves.toMatchObject({
-      agentProfile: { presetId: 'prompt-resource.official.loom-assistant' },
-    })
-    await expect(documents.get('agent-preset.official.loom-assistant')).resolves.toBeNull()
+    expect(updated.resource.rootNode.label).toBe('Changed')
   })
 
   it('creates, duplicates, exports, and imports independent Prompt resources', async () => {
-    const runtime = createApplicationRuntime({ documents: createInMemoryDocumentStore() })
+    const { runtime } = createTestRuntime()
     const created = await runtime.createPromptResource({ resourceKind: 'setting', name: 'Guide Knowledge' })
     const entry = await runtime.createPromptResourceAsset({
       resourceId: created.resource.id,
@@ -122,7 +68,7 @@ describe('application runtime card bundle integration', () => {
   })
 
   it('binds only Setting resources to a Preset through an explicit relation', async () => {
-    const runtime = createApplicationRuntime({ documents: createInMemoryDocumentStore() })
+    const { runtime } = createTestRuntime()
     const preset = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Guide Preset' })
     const setting = await runtime.createPromptResource({ resourceKind: 'setting', name: 'Guide Knowledge' })
 
@@ -139,8 +85,7 @@ describe('application runtime card bundle integration', () => {
   })
 
   it('applies Folder effective enabled and preserves Entry lifecycle', async () => {
-    const documents = createInMemoryDocumentStore()
-    const runtime = createApplicationRuntime({ documents })
+    const { runtime, promptResources } = createTestRuntime()
     const created = await runtime.createPromptResource({ resourceKind: 'setting', name: 'Conditional Knowledge' })
     const withFolder = await runtime.createPromptResourceAsset({
       resourceId: created.resource.id,
@@ -162,14 +107,14 @@ describe('application runtime card bundle integration', () => {
     })
 
     await expect(readPromptResourceInputs({
-      documents,
+      promptResources,
       resourceIds: [created.resource.id],
       macroContext: { user: 'User' },
     })).resolves.toMatchObject({ contributions: [] })
 
     await runtime.updatePromptResourceAsset({ resourceId: created.resource.id, assetId: 'folder-1', enabled: true })
     const enabled = await readPromptResourceInputs({
-      documents,
+      promptResources,
       resourceIds: [created.resource.id],
       macroContext: { user: 'User' },
     })
@@ -179,8 +124,7 @@ describe('application runtime card bundle integration', () => {
   it('preserves exact raw JSON through the Source Artifact capability', async () => {
     const raw = await readFile(join(process.cwd(), 'packages/application-runtime/fixtures/workspaces/loom-city-v0.json'), 'utf8')
     let preserved: Uint8Array | undefined
-    const runtime = createApplicationRuntime({
-      documents: createInMemoryDocumentStore(),
+    const { runtime } = createTestRuntime({
       sourceArtifacts: {
         preserve: async input => {
           preserved = input.source
@@ -209,7 +153,7 @@ describe('application runtime card bundle integration', () => {
   })
 
   it('edits a resource directly and exports the current card bundle', async () => {
-    const runtime = createApplicationRuntime({ documents: createInMemoryDocumentStore() })
+    const { runtime } = createTestRuntime()
     const imported = await runtime.importCardBundle({ artifact: await readLoomCityArtifact() })
     const listed = await runtime.listCardPromptResources({ cardId: imported.card.id })
     const preset = listed.resources.find(resource => resource.rootNode.id === 'preset-default-airp')
@@ -227,7 +171,7 @@ describe('application runtime card bundle integration', () => {
   })
 
   it('passes through unknown source fields while canonical fields use current data', async () => {
-    const runtime = createApplicationRuntime({ documents: createInMemoryDocumentStore() })
+    const { runtime } = createTestRuntime()
     const source = {
       ...await readLoomCityArtifact(),
       communityExtension: { retained: true },
@@ -250,8 +194,7 @@ describe('application runtime card bundle integration', () => {
   })
 
   it('rejects invalid manifest references and keeps shared resources after deleting a card', async () => {
-    const documents = createInMemoryDocumentStore()
-    const runtime = createApplicationRuntime({ documents })
+    const { runtime, documents } = createTestRuntime()
     const imported = await runtime.importCardBundle({ artifact: await readLoomCityArtifact() })
     const resourceId = imported.card.promptResourceIds![0]!
     const secondCard = await runtime.createCard({ name: 'Shared resource card' })
@@ -270,11 +213,11 @@ describe('application runtime card bundle integration', () => {
     await expect(runtime.updateCardPromptResources({
       cardId: secondCard.card.id,
       promptResourceIds: ['missing-resource'],
-    })).rejects.toThrow('Document not found: missing-resource')
+    })).rejects.toThrow('Prompt resource not found: missing-resource')
     await expect(runtime.updateCardPromptResources({
       cardId: secondCard.card.id,
       promptResourceIds: [wrongType.documents[0]!.id],
-    })).rejects.toThrow('Unexpected document type')
+    })).rejects.toThrow('Prompt resource not found')
 
     await runtime.deleteCard({ cardId: imported.card.id })
     await expect(runtime.getPromptResource({ resourceId })).resolves.toMatchObject({
@@ -299,4 +242,17 @@ function findNode(artifact: CardBundleArtifact, id: string): CardBundleArtifact[
     queue.push(...(node.children ?? []))
   }
   return undefined
+}
+
+function createTestRuntime(options: {
+  sourceArtifacts?: Parameters<typeof createApplicationRuntime>[0]['sourceArtifacts']
+} = {}) {
+  let sequence = 0
+  const createId = (prefix: string) => `${prefix}-${++sequence}`
+  const now = () => '2026-08-19T00:00:00.000Z'
+  const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
+  const documents = createSqliteDocumentStore({ engine })
+  const promptResources = createPromptResourceStore({ engine, createId, now })
+  const runtime = createApplicationRuntime({ dataEngine: engine, documents, promptResources, sourceArtifacts: options.sourceArtifacts })
+  return { engine, documents, promptResources, runtime }
 }

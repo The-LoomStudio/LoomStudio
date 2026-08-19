@@ -6,6 +6,13 @@ export type ProviderMessage = ChatMessage
 export type PromptProjection = {
   zones: PromptProjectionZone[]
   messages: ProviderMessage[]
+  messageBlocks?: Array<{
+    role: ProviderMessage['role']
+    content: string
+    messageBlockId?: string
+    fragmentIds: string[]
+    native?: boolean
+  }>
   editorProjection: {
     sourceRows: Array<{
       active: boolean

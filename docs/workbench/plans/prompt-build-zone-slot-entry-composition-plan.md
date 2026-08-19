@@ -1,5 +1,7 @@
 # PromptBuild Zone / Slot / Entry Composition 重构计划
 
+> **模型修订说明（2026-08-16）**：本文记录的是 `Zone / Slot / Entry` 顶层模型的历史方案，已被 [`prompt-build-message-block-implementation-plan.md`](prompt-build-message-block-implementation-plan.md) 替代。当前实现中，`MessageBlock` 才是 Provider Message 的编译配置；Zone 只负责外部来源的显式注入锚点，Slot / Entry 是 Block 内的有序 Context 项，Native Session Slot 保留原生消息边界。本文不再作为新代码的施工依据。
+
 > **状态**：Approved Design / Implementation Pending
 > **日期**：2026-08-16
 > **优先级**：P1 PromptBuild Model Correction

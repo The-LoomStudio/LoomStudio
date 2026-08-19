@@ -263,6 +263,26 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
     }))
   }
 
+  async function participateTransaction<T>(
+    dataTx: import('@loom-studio/data-engine').SqliteDataTransaction,
+    fn: (tx: DocumentTransaction) => Promise<T>,
+  ): Promise<{ value: T; changeset: Changeset }> {
+    const pending = createPendingChangeset({
+      actor: dataTx.actor,
+      reason: dataTx.reason,
+      correlationId: dataTx.correlationId,
+      callId: dataTx.callId,
+      parentCallId: dataTx.parentCallId,
+    }, {
+      id: dataTx.changesetId,
+      createdAt: dataTx.createdAt,
+    })
+    const value = await fn(createTransaction(pending))
+    const changeset = finalizeChangeset(pending)
+    dataTx.recordOperations(changeset.operations.map(documentOperationToDataOperation))
+    return { value, changeset }
+  }
+
   const store: SqliteDocumentStore = {
     get: (id, options) => engine.read(() => transactionRead.get(id, options)),
     list: input => engine.read(() => transactionRead.list(input)),
@@ -278,6 +298,7 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
     },
 
     transact: (input, fn) => runTransaction(input, async (_pending, tx) => fn(tx)),
+    participateTransaction,
 
     getChangeset: id => engine.read(() => {
       const row = database

@@ -1,6 +1,17 @@
 export type { JsonObject, MutationReceipt } from './common.js'
 export type { Card, CardMedia, CardSummary, CreateCardResult, DeleteCardResult, GetCardResult, ListCardsResult, UpdateCardResult } from './card.js'
-export type { ContextAssetNode, ProjectionSlotRank, PromptCompositionCapabilities } from './context-asset.js'
+export type {
+  ContextAssetNode,
+  ProjectionSlotRank,
+  PromptCompositionCapabilities,
+  PromptCompositionEntry,
+  PromptCompositionItem,
+  PromptCompositionItemBase,
+  PromptCompositionSlot,
+  PromptCompositionZone,
+  PromptMessageBlock,
+  PromptProviderRole,
+} from './context-asset.js'
 export type {
   CreateNarrativeTimelineResult,
   ForkNarrativeBranchResult,

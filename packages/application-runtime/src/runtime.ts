@@ -1,6 +1,7 @@
-import type { DocumentRecord, DocumentStore } from '@loom-studio/document-store'
+import type { DocumentRecord, DocumentStore, SqliteDocumentStore } from '@loom-studio/document-store'
 import type { AgentMessage } from '@loom-studio/agent-store'
 import type { JsonValue } from '@loom-studio/shared'
+import type { PromptResourceMutation } from '@loom-studio/prompt-resource-store'
 import {
   assertProviderModelExists,
   assertNonEmpty,
@@ -27,30 +28,18 @@ import {
 } from './prompt-resource-defaults.js'
 import type { ActivationFacts } from './prompt-activation.js'
 import { buildOpenAIChatPayload, type OpenAIChatPayload } from './provider-payload.js'
+import { defaultCompositionSkeleton } from './prompt-builder.js'
 import { composeAgentTurnPrompt } from './agent-turn.js'
 import {
-  createPromptResource,
-  createPromptResourceAsset,
-  deletePromptResource,
-  deletePromptResourceAsset,
-  duplicatePromptResource,
   exportCardArtifact,
-  exportPromptResourceArtifact,
+  applyDefaultPromptProjection,
   getImportBundle,
-  getPromptResource,
   importCardBundle,
-  importPromptResourceArtifact,
   isCardBundleArtifact,
-  listCardPromptResources,
-  listPromptResources,
-  movePromptResourceAsset,
-  updatePresetSettingLinks,
-  updatePromptResourceAsset,
-  updatePromptResourceAssets,
-  updateCardPromptResources,
   type CardBundleArtifact,
   type PromptResourceContent,
 } from './workspace.js'
+import { fromStoredResource, listMappedResources, readMappedResource, toStoredNodeDraft, toStoredResourceInput } from './prompt-resource-mapper.js'
 import type {
   AgentProfileContent,
   ApplicationRuntime,
@@ -64,7 +53,6 @@ import type {
 } from './types.js'
 
 const applicationActor = { kind: 'kernel', id: 'application-runtime' } as const
-const legacyOfficialAgentPresetId = 'agent-preset.official.loom-assistant'
 
 export function createApplicationRuntime(options: ApplicationRuntimeOptions): ApplicationRuntime {
   const ctx = createApplicationRuntimeContext(options)
@@ -82,6 +70,14 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
   function requireSecrets() {
     if (!ctx.secrets) throw new Error('Secret Store is not configured')
     return ctx.secrets
+  }
+
+  function requireDocumentParticipant(): SqliteDocumentStore {
+    const participant = ctx.documents as Partial<SqliteDocumentStore>
+    if (typeof participant.participateTransaction !== 'function') {
+      throw new Error('Shared Sqlite Document Store participant is required')
+    }
+    return ctx.documents as SqliteDocumentStore
   }
 
   function narrativeWriteContext(requestContext: RuntimeRequestContext | undefined, reason: string) {
@@ -102,93 +98,27 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     initialize: async () => {
       const timestamp = ctx.now()
       const promptContents = createOfficialPromptResourceContents(timestamp)
-      const documentsToCreate = [
-        {
-          id: officialPromptResourceIds.assistantPreset,
-          type: applicationDocumentTypes.promptResource,
-          content: promptContents[0]!,
-        },
-        {
-          id: officialPromptResourceIds.knowledgeSetting,
-          type: applicationDocumentTypes.promptResource,
-          content: promptContents[1]!,
-        },
-      ]
-      const existing = await Promise.all(documentsToCreate.map(document => ctx.documents.get(document.id)))
-      const existingProfiles = await listDocuments<AgentProfileContent>(ctx.documents, applicationDocumentTypes.agentProfile)
-      const legacyOfficialPreset = await ctx.documents.get(legacyOfficialAgentPresetId)
-      const officialResourcesCurrent = documentsToCreate.every((document, index) => {
-        const current = existing[index]
-        return current?.type === document.type
-          && isCanonicalOfficialPromptResource(current.content as PromptResourceContent, document.content)
-      })
-      const hasLegacyProfile = existingProfiles.some(profile => profile.content.presetId === legacyOfficialAgentPresetId)
-      if (officialResourcesCurrent && !legacyOfficialPreset && !hasLegacyProfile) return
-
-      await ctx.documents.transact({
-        actor: applicationActor,
-        reason: 'application.initializePromptResources',
-      }, async documents => {
-        for (const document of documentsToCreate) {
-          const current = await documents.get(document.id)
-          if (current) {
-            if (current.type !== document.type) {
-              throw new Error(`Official Document id is occupied by another type: ${document.id}`)
-            }
-            if (document.id === officialPromptResourceIds.assistantPreset) {
-              const content = current.content as PromptResourceContent
-              if (content.resourceKind === 'preset' && !isCanonicalOfficialPromptResource(content, document.content)) {
-                const canonical = document.content as PromptResourceContent
-                await writeDocument(documents, {
-                  id: current.id,
-                  type: applicationDocumentTypes.promptResource,
-                  content: {
-                    ...canonical,
-                    createdAt: content.createdAt,
-                    updatedAt: timestamp,
-                  },
-                  expectedVersion: current.version,
-                })
-              }
-            } else if (!isCanonicalOfficialPromptResource(current.content as PromptResourceContent, document.content)) {
-              const content = current.content as PromptResourceContent
-              const canonical = document.content as PromptResourceContent
-              await writeDocument(documents, {
-                id: current.id,
-                type: applicationDocumentTypes.promptResource,
-                content: {
-                  ...canonical,
-                  createdAt: content.createdAt,
-                  updatedAt: timestamp,
-                },
-                expectedVersion: current.version,
-              })
-            }
-            continue
-          }
-          await writeDocument(documents, {
-            id: document.id,
-            type: document.type,
-            content: document.content,
-            expectedVersion: 'new',
+      for (const [index, content] of promptContents.entries()) {
+        const id = index === 0 ? officialPromptResourceIds.assistantPreset : officialPromptResourceIds.knowledgeSetting
+        if (!await ctx.promptResources.getResource(id)) {
+          await ctx.promptResources.createResource({
+            ...toStoredResourceInput({ id, content }),
+            actor: applicationActor,
+            reason: 'application.initializePromptResources',
           })
         }
-        const profiles = await listDocuments<AgentProfileContent>(documents, applicationDocumentTypes.agentProfile)
-        for (const profile of profiles.filter(item => item.content.presetId === legacyOfficialAgentPresetId)) {
-          await writeDocument<AgentProfileContent>(documents, {
-            id: profile.id,
-            type: applicationDocumentTypes.agentProfile,
-            content: {
-              ...profile.content,
-              presetId: officialPromptResourceIds.assistantPreset,
-              updatedAt: timestamp,
-            },
-            expectedVersion: profile.version,
-          })
-        }
-        const legacyPreset = await documents.get(legacyOfficialAgentPresetId)
-        if (legacyPreset) await documents.delete({ id: legacyPreset.id, expectedVersion: legacyPreset.version })
-      })
+      }
+      const officialMounts = await ctx.promptResources.listSettingMounts({ source: { kind: 'preset', id: officialPromptResourceIds.assistantPreset } })
+      if (!officialMounts.some(mount => mount.settingResourceId === officialPromptResourceIds.knowledgeSetting)) {
+        await ctx.promptResources.addSettingMount({
+          actor: applicationActor,
+          reason: 'application.initializePromptResources',
+          source: { kind: 'preset', id: officialPromptResourceIds.assistantPreset },
+          settingResourceId: officialPromptResourceIds.knowledgeSetting,
+          orderIndex: officialMounts.length,
+          origin: { kind: 'builtin', key: 'loom-assistant-preset' },
+        })
+      }
     },
 
     createCard: async (input, requestContext) => {
@@ -352,7 +282,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
 
     createAgentProfile: async input => {
       assertNonEmpty(input.name, 'name')
-      await readPresetResource(ctx.documents, input.presetId)
+      await readPresetResource(ctx.promptResources, input.presetId)
       await assertProviderModelExists(ctx.documents, input.model)
 
       const timestamp = ctx.now()
@@ -500,7 +430,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       const existing = await readDocument<AgentProfileContent>(ctx.documents, input.agentProfileId, applicationDocumentTypes.agentProfile)
       if (input.name !== undefined) assertNonEmpty(input.name, 'name')
       if (input.presetId !== undefined) {
-        await readPresetResource(ctx.documents, input.presetId)
+        await readPresetResource(ctx.promptResources, input.presetId)
       }
       if (input.model !== undefined) await assertProviderModelExists(ctx.documents, input.model)
       const timestamp = ctx.now()
@@ -738,6 +668,8 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         artifact,
         context: requestContext,
         documents: ctx.documents,
+        promptResources: ctx.promptResources,
+        dataEngine: ctx.dataEngine,
         now: ctx.now(),
         storedSourceArtifact,
       })
@@ -754,51 +686,54 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
 
     getPromptResource: async input => {
       return {
-        resource: await getPromptResource({
-          documents: ctx.documents,
-          resourceId: input.resourceId,
-        }),
+        resource: await readMappedResource(ctx.promptResources, input.resourceId),
       }
     },
 
     listPromptResources: async input => ({
-      resources: await listPromptResources({
-        documents: ctx.documents,
-        resourceKind: input?.resourceKind,
-      }),
+      resources: await listMappedResources(ctx.promptResources, input?.resourceKind),
     }),
 
     createPromptResource: async (input, requestContext) => {
-      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.createPromptResource', async documents => {
-        return await createPromptResource({
-          createId: ctx.createId,
-          documents,
-          name: input.name,
-          now: ctx.now(),
-          resourceKind: input.resourceKind,
-        })
+      const content = createEmptyPromptResourceContent(ctx.createId, input.name, input.resourceKind, ctx.now())
+      const result = await ctx.promptResources.createResource({
+        ...toStoredResourceInput({ content }),
+        ...promptResourceWriteContext(requestContext),
+        reason: 'application.createPromptResource',
       })
-      return { resource: mutation.value, mutation: mutation.mutation }
+      return { resource: fromStoredResource(result.resource), mutation: { changesetId: result.commit.changesetId } }
     },
 
     duplicatePromptResource: async (input, requestContext) => {
-      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.duplicatePromptResource', async documents => {
-        return await duplicatePromptResource({
-          createId: ctx.createId,
-          documents,
-          name: input.name,
-          now: ctx.now(),
-          resourceId: input.resourceId,
-        })
+      const source = await ctx.promptResources.getResource(input.resourceId)
+      if (!source) throw new Error(`Prompt resource not found: ${input.resourceId}`)
+      const sourceContent = await readMappedResource(ctx.promptResources, input.resourceId)
+      const duplicateContent = clonePromptResourceContent(sourceContent, ctx.createId, input.name?.trim() || `${sourceContent.rootNode.label} Copy`)
+      const sourceMounts = source.resourceKind === 'preset'
+        ? await ctx.promptResources.listSettingMounts({ source: { kind: 'preset', id: source.id } })
+        : []
+      const transaction = await ctx.dataEngine.transact({
+        ...promptResourceWriteContext(requestContext),
+        reason: 'application.duplicatePromptResource',
+      }, async dataTx => {
+        const resourceTx = ctx.promptResources.transaction(dataTx)
+        const created = resourceTx.createResource(toStoredResourceInput({ content: duplicateContent }))
+        const mounts = sourceMounts.map(mount => resourceTx.addSettingMount({
+          source: { kind: 'preset', id: created.id },
+          settingResourceId: mount.settingResourceId,
+          orderIndex: mount.orderIndex,
+          origin: mount.origin,
+        }))
+        return { resource: created, mounts }
       })
-      return { resource: mutation.value, mutation: mutation.mutation }
+      return {
+        resource: fromStoredResource(transaction.value.resource, transaction.value.mounts),
+        mutation: { changesetId: transaction.commit.changesetId },
+      }
     },
 
     deletePromptResource: async (input, requestContext) => {
-      const resource = await getPromptResource({ documents: ctx.documents, resourceId: input.resourceId })
-      if (resource.origin?.kind === 'builtin') {
-        throw new Error(`Built-in Prompt Resource is read-only; duplicate it before editing: ${resource.id}`)
-      }
+      const resource = await readMappedResource(ctx.promptResources, input.resourceId)
       if (resource.resourceKind === 'preset') {
         const profiles = await listDocuments<AgentProfileContent>(ctx.documents, applicationDocumentTypes.agentProfile)
         if (profiles.some(profile => profile.content.presetId === input.resourceId)) {
@@ -806,178 +741,208 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         }
       }
       const timelineReferences = await findTimelinePromptResourceReferences(ctx, input.resourceId)
-      const detachedTimelines = await detachTimelinePromptResourceReferences(ctx, timelineReferences, input.resourceId, requestContext)
-      let mutation
-      try {
-        mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.deletePromptResource', async documents => {
-        const cards = await listDocuments<CardSourceContent>(documents, applicationDocumentTypes.cardSource)
-        const referencedCards = cards.filter(card => card.content.promptResourceIds?.includes(input.resourceId))
-        for (const card of referencedCards) {
-          await writeDocument<CardSourceContent>(documents, {
-            id: card.id,
-            type: applicationDocumentTypes.cardSource,
-            content: {
-              ...card.content,
-              promptResourceIds: card.content.promptResourceIds?.filter(id => id !== input.resourceId),
-              updatedAt: ctx.now(),
-            },
-            expectedVersion: card.version,
+      const cards = await listDocuments<CardSourceContent>(ctx.documents, applicationDocumentTypes.cardSource)
+      const referencedCards = cards.filter(card => card.content.promptResourceIds?.includes(input.resourceId))
+      const settingMounts = resource.resourceKind === 'setting'
+        ? await ctx.promptResources.listSettingMounts({ settingResourceId: input.resourceId })
+        : []
+      const presetCount = new Set(settingMounts
+        .filter(mount => mount.source.kind === 'preset')
+        .map(mount => mount.source.id))
+        .size
+      const documentParticipant = requireDocumentParticipant()
+      const transaction = await ctx.dataEngine.transact({
+        ...promptResourceWriteContext(requestContext),
+        reason: 'application.deletePromptResource',
+      }, async dataTx => {
+        const resourceTx = ctx.promptResources.transaction(dataTx)
+        const narrativeTx = ctx.narratives?.transaction(dataTx)
+        for (const timeline of timelineReferences) {
+          narrativeTx?.updatePromptResources({
+            timelineId: timeline.id,
+            promptResourceIds: timeline.promptResourceIds.filter(id => id !== input.resourceId),
+            expectedPromptResourceIds: timeline.promptResourceIds,
           })
         }
-        const presets = await listPromptResources({ documents, resourceKind: 'preset' })
-        const referencedPresets = presets.filter(preset => preset.linkedSettingIds?.includes(input.resourceId))
-        for (const preset of referencedPresets) {
-          const { id, version, ...content } = preset
-          await writeDocument<PromptResourceContent>(documents, {
-            id,
-            type: applicationDocumentTypes.promptResource,
-            content: {
-              ...content,
-              linkedSettingIds: preset.linkedSettingIds?.filter(id => id !== input.resourceId),
-              updatedAt: ctx.now(),
-            },
-            expectedVersion: version,
-          })
+        if (referencedCards.length === 0) {
+          return { deleted: resourceTx.deleteResource({ resourceId: input.resourceId, expectedVersion: resource.version }) }
         }
-        await deletePromptResource({ documents, resourceId: input.resourceId })
-          return {
-            cards: referencedCards.length,
-            presets: referencedPresets.length,
+        return await documentParticipant.participateTransaction(dataTx, async documents => {
+          for (const card of referencedCards) {
+            const currentCard = await readDocument<CardSourceContent>(documents, card.id, applicationDocumentTypes.cardSource)
+            await writeDocument<CardSourceContent>(documents, {
+              id: currentCard.id,
+              type: applicationDocumentTypes.cardSource,
+              content: {
+                ...currentCard.content,
+                promptResourceIds: currentCard.content.promptResourceIds?.filter(id => id !== input.resourceId),
+                updatedAt: ctx.now(),
+              },
+              expectedVersion: currentCard.version,
+            })
           }
+          return { deleted: resourceTx.deleteResource({ resourceId: input.resourceId, expectedVersion: resource.version }) }
         })
-      } catch (error) {
-        await restoreTimelinePromptResourceReferences(ctx, detachedTimelines, input.resourceId, requestContext)
-        throw error
-      }
+      })
       return {
         deleted: true as const,
-        detachedReferences: {
-          ...mutation.value,
-          timelines: detachedTimelines.length,
-        },
-        mutation: mutation.mutation,
+        detachedReferences: { presets: presetCount, cards: referencedCards.length, timelines: timelineReferences.length },
+        mutation: { changesetId: transaction.commit.changesetId },
       }
+    },
+
+    revertPromptResourceChangeset: async (input, requestContext) => {
+      const result = await ctx.promptResources.revertChangeset({
+        changesetId: input.changesetId,
+        expectedVersion: input.expectedVersion,
+        ...promptResourceWriteContext(requestContext),
+        reason: 'application.revertPromptResourceChangeset',
+      })
+      return { mutation: { changesetId: result.commit.changesetId } }
     },
 
     importPromptResource: async (input, requestContext) => {
-      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.importPromptResource', async documents => {
-        return await importPromptResourceArtifact({
-          artifact: input.artifact,
-          createId: ctx.createId,
-          documents,
-          now: ctx.now(),
-        })
+      const content: PromptResourceContent = {
+        resourceKind: input.artifact.resourceKind,
+        rootNode: clonePromptResourceNode(input.artifact.rootNode, ctx.createId),
+        ...(input.artifact.resourceKind === 'preset' ? { historyPolicy: 'persistent' as const } : {}),
+        createdAt: ctx.now(),
+        updatedAt: ctx.now(),
+      }
+      const result = await ctx.promptResources.createResource({
+        ...toStoredResourceInput({ content }),
+        ...promptResourceWriteContext(requestContext),
+        reason: 'application.importPromptResource',
       })
-      return { resource: mutation.value, mutation: mutation.mutation }
+      return { resource: fromStoredResource(result.resource), mutation: { changesetId: result.commit.changesetId } }
     },
 
-    exportPromptResource: async input => ({
-      artifact: await exportPromptResourceArtifact({
-        documents: ctx.documents,
-        resourceId: input.resourceId,
-      }),
-    }),
-
-    listCardPromptResources: async input => {
+    exportPromptResource: async input => {
+      const resource = await readMappedResource(ctx.promptResources, input.resourceId)
       return {
-        resources: await listCardPromptResources({
-          cardId: input.cardId,
-          documents: ctx.documents,
-        }),
+        artifact: {
+          format: 'loom.promptResource' as const,
+          schemaVersion: 1 as const,
+          resourceKind: resource.resourceKind,
+          rootNode: resource.rootNode,
+        },
       }
     },
 
+    listCardPromptResources: async input => {
+      const card = await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
+      const resources = []
+      for (const resourceId of card.content.promptResourceIds ?? []) resources.push(await readMappedResource(ctx.promptResources, resourceId))
+      return { resources }
+    },
+
     updateCardPromptResources: async (input, requestContext) => {
-      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.updateCardPromptResources', async documents => {
-        return await updateCardPromptResources({
-          cardId: input.cardId,
-          documents,
-          now: ctx.now(),
-          promptResourceIds: input.promptResourceIds,
+      if (new Set(input.promptResourceIds).size !== input.promptResourceIds.length) throw new Error('Duplicate prompt resource id')
+      for (const resourceId of input.promptResourceIds) {
+        if (!await ctx.promptResources.getResource(resourceId)) throw new Error(`Prompt resource not found: ${resourceId}`)
+      }
+      const documentParticipant = requireDocumentParticipant()
+      const transaction = await ctx.dataEngine.transact({
+        ...promptResourceWriteContext(requestContext),
+        reason: 'application.updateCardPromptResources',
+      }, async dataTx => documentParticipant.participateTransaction(dataTx, async documents => {
+        const card = await readDocument<CardSourceContent>(documents, input.cardId, applicationDocumentTypes.cardSource)
+        return await writeDocument<CardSourceContent>(documents, {
+          id: card.id,
+          type: applicationDocumentTypes.cardSource,
+          content: normalizeCardContent({ ...card.content, promptResourceIds: [...input.promptResourceIds], updatedAt: ctx.now() }),
+          expectedVersion: card.version,
         })
-      })
-      return { card: mutation.value, mutation: mutation.mutation }
+      }))
+      return {
+        card: toCardSource(transaction.value.value),
+        mutation: { changesetId: transaction.commit.changesetId },
+      }
     },
 
     updatePresetSettings: async (input, requestContext) => {
-      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.updatePresetSettings', async documents => {
-        return await updatePresetSettingLinks({
-          documents,
-          linkedSettingIds: input.linkedSettingIds,
-          now: ctx.now(),
-          presetId: input.presetId,
-        })
+      const preset = await ctx.promptResources.getResource(input.presetId)
+      if (!preset) throw new Error(`Prompt resource not found: ${input.presetId}`)
+      if (preset.resourceKind !== 'preset') throw new Error(`Prompt Resource is not a Preset: ${input.presetId}`)
+      for (const settingId of input.linkedSettingIds) {
+        const setting = await ctx.promptResources.getResource(settingId)
+        if (!setting) throw new Error(`Prompt resource not found: ${settingId}`)
+        if (setting.resourceKind !== 'setting') throw new Error(`Prompt resource ${settingId} can only link Setting resources`)
+      }
+      const result = await ctx.promptResources.replaceSettingMounts({
+        ...promptResourceWriteContext(requestContext),
+        reason: 'application.updatePresetSettings',
+        source: { kind: 'preset', id: input.presetId },
+        mounts: input.linkedSettingIds.map((settingResourceId, orderIndex) => ({ settingResourceId, orderIndex })),
       })
-      return { resource: mutation.value, mutation: mutation.mutation }
+      return {
+        resource: fromStoredResource(preset, result.mounts),
+        mutation: { changesetId: result.commit.changesetId },
+      }
+    },
+
+    listGlobalSettingMounts: async () => ({
+      mounts: await ctx.promptResources.listSettingMounts({ source: { kind: 'manual', id: 'global' } }),
+    }),
+
+    replaceGlobalSettingMounts: async (input, requestContext) => {
+      for (const settingId of input.settingResourceIds) {
+        const setting = await ctx.promptResources.getResource(settingId)
+        if (!setting) throw new Error(`Prompt resource not found: ${settingId}`)
+        if (setting.resourceKind !== 'setting') throw new Error(`Prompt resource ${settingId} can only be mounted as a Setting resource`)
+      }
+      const result = await ctx.promptResources.replaceSettingMounts({
+        ...promptResourceWriteContext(requestContext),
+        reason: 'application.replaceGlobalSettingMounts',
+        source: { kind: 'manual', id: 'global' },
+        mounts: input.settingResourceIds.map((settingResourceId, orderIndex) => ({ settingResourceId, orderIndex })),
+      })
+      return { mounts: result.mounts, mutation: { changesetId: result.commit.changesetId } }
     },
 
     createPromptResourceAsset: async (input, requestContext) => {
-      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.createPromptResourceAsset', async documents => {
-        return await createPromptResourceAsset({
-          asset: input.asset,
-          documents,
-          now: ctx.now(),
-          position: input.position,
-          resourceId: input.resourceId,
-          targetAssetId: input.targetAssetId,
-        })
+      const current = await ctx.promptResources.getResource(input.resourceId)
+      if (!current) throw new Error(`Prompt resource not found: ${input.resourceId}`)
+      const placement = resolveAssetPlacement(fromStoredResource(current).rootNode, input.targetAssetId, input.position)
+      const asset = applyDefaultPromptProjection(input.asset, fromStoredResource(current))
+      const mutation: PromptResourceMutation = { kind: 'node.create', parentId: placement.parentId, node: toStoredNodeDraft(asset) }
+      const result = await ctx.promptResources.mutateResource({
+        ...promptResourceWriteContext(requestContext), reason: 'application.createPromptResourceAsset',
+        resourceId: input.resourceId, expectedVersion: current.version,
+        mutations: [{ ...mutation, node: { ...mutation.node, orderIndex: placement.orderIndex } }, ...buildInsertionReorderMutations(fromStoredResource(current).rootNode, placement.parentId, placement.orderIndex)],
       })
-      return { resource: mutation.value, mutation: mutation.mutation }
+      return { resource: fromStoredResource(result.resource), mutation: { changesetId: result.commit.changesetId } }
     },
 
     updatePromptResourceAsset: async (input, requestContext) => {
-      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.updatePromptResourceAsset', async documents => {
-        return await updatePromptResourceAsset({
-          assetId: input.assetId,
-          body: input.body,
-          capabilities: input.capabilities,
-          documents,
-          enabled: input.enabled,
-          label: input.label,
-          meta: input.meta,
-          now: ctx.now(),
-          resourceId: input.resourceId,
-        })
-      })
-      return { resource: mutation.value, mutation: mutation.mutation }
+      return updatePromptResourceAssets({ resourceId: input.resourceId, updates: [{ ...input, assetId: input.assetId }], requestContext, ctx })
     },
 
     updatePromptResourceAssets: async (input, requestContext) => {
-      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.updatePromptResourceAssets', async documents => {
-        return await updatePromptResourceAssets({
-          documents,
-          now: ctx.now(),
-          resourceId: input.resourceId,
-          updates: input.updates,
-        })
-      })
-      return { resource: mutation.value, mutation: mutation.mutation }
+      return updatePromptResourceAssets({ resourceId: input.resourceId, updates: input.updates, requestContext, ctx })
     },
 
     movePromptResourceAsset: async (input, requestContext) => {
-      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.movePromptResourceAsset', async documents => {
-        return await movePromptResourceAsset({
-          assetId: input.assetId,
-          documents,
-          now: ctx.now(),
-          position: input.position,
-          resourceId: input.resourceId,
-          targetAssetId: input.targetAssetId,
-        })
+      const current = await ctx.promptResources.getResource(input.resourceId)
+      if (!current) throw new Error(`Prompt resource not found: ${input.resourceId}`)
+      const placement = resolveAssetPlacement(fromStoredResource(current).rootNode, input.targetAssetId, input.position)
+      const result = await ctx.promptResources.mutateResource({
+        ...promptResourceWriteContext(requestContext), reason: 'application.movePromptResourceAsset',
+        resourceId: input.resourceId, expectedVersion: current.version,
+        mutations: buildMoveMutations(fromStoredResource(current).rootNode, input.assetId, placement),
       })
-      return { resource: mutation.value, mutation: mutation.mutation }
+      return { resource: fromStoredResource(result.resource), mutation: { changesetId: result.commit.changesetId } }
     },
 
     deletePromptResourceAsset: async (input, requestContext) => {
-      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.deletePromptResourceAsset', async documents => {
-        return await deletePromptResourceAsset({
-          assetId: input.assetId,
-          documents,
-          now: ctx.now(),
-          resourceId: input.resourceId,
-        })
+      const current = await ctx.promptResources.getResource(input.resourceId)
+      if (!current) throw new Error(`Prompt resource not found: ${input.resourceId}`)
+      const result = await ctx.promptResources.mutateResource({
+        ...promptResourceWriteContext(requestContext), reason: 'application.deletePromptResourceAsset',
+        resourceId: input.resourceId, expectedVersion: current.version,
+        mutations: [{ kind: 'node.delete', nodeId: input.assetId }],
       })
-      return { resource: mutation.value, mutation: mutation.mutation }
+      return { resource: fromStoredResource(result.resource), mutation: { changesetId: result.commit.changesetId } }
     },
 
     exportCardArtifact: async input => {
@@ -985,6 +950,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         artifact: await exportCardArtifact({
           cardId: input.cardId,
           documents: ctx.documents,
+          promptResources: ctx.promptResources,
         }),
       }
     },
@@ -992,24 +958,221 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
   }
 }
 
-function isCanonicalOfficialPromptResource(
-  current: PromptResourceContent,
-  canonical: PromptResourceContent,
-): boolean {
-  return JSON.stringify({
-    resourceKind: current.resourceKind,
-    rootNode: current.rootNode,
-    linkedSettingIds: current.linkedSettingIds,
-    historyPolicy: current.historyPolicy,
-    origin: current.origin,
-  }) === JSON.stringify({
-    resourceKind: canonical.resourceKind,
-    rootNode: canonical.rootNode,
-    linkedSettingIds: canonical.linkedSettingIds,
-    historyPolicy: canonical.historyPolicy,
-    origin: canonical.origin,
-  })
+function promptResourceWriteContext(requestContext: RuntimeRequestContext | undefined) {
+  return {
+    actor: requestContext?.clientId
+      ? { kind: 'client' as const, id: requestContext.clientId }
+      : applicationActor,
+    correlationId: requestContext?.correlationId,
+    callId: requestContext?.callId,
+    parentCallId: requestContext?.parentCallId,
+  }
 }
+
+function createEmptyPromptResourceContent(
+  createId: (prefix: string) => string,
+  name: string,
+  resourceKind: PromptResourceContent['resourceKind'],
+  timestamp: string,
+): PromptResourceContent {
+  const rootNode: PromptResourceContent['rootNode'] = {
+    id: createId('prompt-node'),
+    label: name.trim(),
+    meta: resourceKind === 'preset' ? 'Composition Preset' : resourceKind === 'setting' ? 'Setting Layer' : 'Prompt Resource',
+    category: resourceKind === 'history' || resourceKind === 'runtime' || resourceKind === 'prompt' ? undefined : resourceKind,
+    kind: 'module',
+    body: '',
+    ...(resourceKind === 'preset' ? {
+      children: [{
+        id: createId('prompt-node'),
+        label: '主排序',
+        meta: 'Projection Order Profile',
+        category: 'preset' as const,
+        kind: 'order' as const,
+        body: '',
+        skeletonPatch: {
+          zones: defaultCompositionSkeleton.zones.map(zone => ({ ...zone })),
+          items: defaultCompositionSkeleton.items.map(item => ({ ...item })),
+          fallbackZoneId: defaultCompositionSkeleton.fallbackZoneId,
+        },
+        orderList: [],
+        slotRanks: [],
+      }],
+    } : {}),
+  }
+  return {
+    resourceKind,
+    rootNode,
+    ...(resourceKind === 'preset' ? { historyPolicy: 'persistent' as const } : {}),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }
+}
+
+function clonePromptResourceContent(
+  source: PromptResourceContent & { id: string; version: number },
+  createId: (prefix: string) => string,
+  name?: string,
+): PromptResourceContent {
+  const rootNode = clonePromptResourceNode(source.rootNode, createId)
+  if (name?.trim()) rootNode.label = name.trim()
+  return {
+    ...source,
+    rootNode,
+    createdAt: source.createdAt,
+    updatedAt: source.updatedAt,
+  }
+}
+
+function clonePromptResourceNode(
+  node: PromptResourceContent['rootNode'],
+  createId: (prefix: string) => string,
+): PromptResourceContent['rootNode'] {
+  return {
+    ...node,
+    id: createId('prompt-node'),
+    ...(node.children ? { children: node.children.map(child => clonePromptResourceNode(child, createId)) } : {}),
+  }
+}
+
+function findPromptNode(
+  root: PromptResourceContent['rootNode'],
+  id: string,
+  parentId?: string,
+): { node: PromptResourceContent['rootNode']; parentId?: string; index: number } | undefined {
+  if (root.id === id) return { node: root, parentId, index: 0 }
+  for (const [index, child] of (root.children ?? []).entries()) {
+    if (child.id === id) return { node: child, parentId: root.id, index }
+    const found = findPromptNode(child, id, root.id)
+    if (found) return found
+  }
+  return undefined
+}
+
+function resolveAssetPlacement(
+  root: PromptResourceContent['rootNode'],
+  targetId: string,
+  position: 'before' | 'inside' | 'after',
+): { parentId: string; orderIndex: number } {
+  const target = findPromptNode(root, targetId)
+  if (!target) throw new Error(`Prompt asset target not found: ${targetId}`)
+  if (position === 'inside') {
+    if (target.node.kind !== 'module' && target.node.kind !== 'folder') throw new Error(`Prompt asset target cannot contain children: ${targetId}`)
+    return { parentId: target.node.id, orderIndex: target.node.children?.length ?? 0 }
+  }
+  if (!target.parentId) throw new Error(`Prompt asset cannot be placed beside the root: ${targetId}`)
+  return { parentId: target.parentId, orderIndex: target.index + (position === 'after' ? 1 : 0) }
+}
+
+function buildInsertionReorderMutations(
+  root: PromptResourceContent['rootNode'],
+  parentId: string,
+  insertedIndex: number,
+): PromptResourceMutation[] {
+  const parent = findPromptNode(root, parentId)?.node
+  if (!parent) return []
+  return (parent.children ?? [])
+    .filter((_, index) => index >= insertedIndex)
+    .map((node, offset) => ({
+      kind: 'node.move' as const,
+      nodeId: node.id,
+      parentId,
+      orderIndex: insertedIndex + offset + 1,
+    }))
+}
+
+function buildMoveMutations(
+  root: PromptResourceContent['rootNode'],
+  nodeId: string,
+  placement: { parentId: string; orderIndex: number },
+): PromptResourceMutation[] {
+  const source = findPromptNode(root, nodeId)
+  if (!source) throw new Error(`Prompt asset not found: ${nodeId}`)
+  if (!source.parentId) throw new Error(`Prompt asset cannot be moved: ${nodeId}`)
+  if (source.node.kind === 'module' || source.node.kind === 'order') throw new Error(`Prompt asset cannot be moved: ${nodeId}`)
+  if (findPromptNode(source.node, placement.parentId)) throw new Error('Cannot move prompt asset inside its own subtree')
+
+  const siblingLists = new Map<string, string[]>()
+  const visit = (parent: PromptResourceContent['rootNode']): void => {
+    siblingLists.set(parent.id, (parent.children ?? []).map(child => child.id))
+    parent.children?.forEach(visit)
+  }
+  visit(root)
+  const sourceSiblings = siblingLists.get(source.parentId) ?? []
+  const destinationSiblings = siblingLists.get(placement.parentId) ?? []
+  const nextSource = sourceSiblings.filter(id => id !== nodeId)
+  const nextDestination = placement.parentId === source.parentId ? nextSource : destinationSiblings.filter(id => id !== nodeId)
+  const insertAt = Math.max(0, Math.min(placement.orderIndex, nextDestination.length))
+  nextDestination.splice(insertAt, 0, nodeId)
+  siblingLists.set(source.parentId, nextSource)
+  siblingLists.set(placement.parentId, nextDestination)
+
+  const mutations: PromptResourceMutation[] = []
+  for (const [parentId, desired] of siblingLists) {
+    const currentParent = findPromptNode(root, parentId)?.node
+    const current = (currentParent?.children ?? []).map(child => child.id)
+    for (const [orderIndex, childId] of desired.entries()) {
+      if (current[orderIndex] === childId && childId !== nodeId) continue
+      if (childId === nodeId || current[orderIndex] !== childId) {
+        mutations.push({ kind: 'node.move', nodeId: childId, parentId, orderIndex })
+      }
+    }
+  }
+  return mutations
+}
+
+async function updatePromptResourceAssets(input: {
+  ctx: ApplicationRuntimeContext
+  requestContext?: RuntimeRequestContext
+  resourceId: string
+  updates: Array<{
+    assetId: string
+    body?: string
+    capabilities?: PromptResourceContent['rootNode']['capabilities']
+    enabled?: boolean
+    label?: string
+    meta?: string
+    orderList?: string[]
+    skeletonPatch?: PromptResourceContent['rootNode']['skeletonPatch']
+    slotRanks?: PromptResourceContent['rootNode']['slotRanks']
+  }>
+}): Promise<{ resource: PromptResourceContent & { id: string; version: number }; mutation: { changesetId: string } }> {
+  const current = await input.ctx.promptResources.getResource(input.resourceId)
+  if (!current) throw new Error(`Prompt resource not found: ${input.resourceId}`)
+  const currentTree = fromStoredResource(current).rootNode
+  const mutations: PromptResourceMutation[] = input.updates.map(update => ({
+    kind: 'node.update',
+    nodeId: update.assetId,
+    patch: {
+      ...(update.label === undefined ? {} : { label: update.label }),
+      ...(update.body === undefined ? {} : { body: update.body }),
+      ...(update.capabilities === undefined ? {} : { capabilities: update.capabilities }),
+      ...(update.enabled === undefined ? {} : { enabled: update.enabled }),
+      ...(update.meta === undefined ? {} : { meta: update.meta }),
+      ...(update.orderList === undefined && update.skeletonPatch === undefined && update.slotRanks === undefined ? {} : {
+        extra: {
+          ...(findPromptNode(currentTree, update.assetId) ? (toStoredNodeDraft(findPromptNode(currentTree, update.assetId)!.node).extra ?? {}) : {}),
+          ...(update.orderList === undefined ? {} : { orderList: update.orderList }),
+          ...(update.skeletonPatch === undefined ? {} : { skeletonPatch: update.skeletonPatch }),
+          ...(update.slotRanks === undefined ? {} : { slotRanks: update.slotRanks }),
+        },
+      }),
+    },
+  }))
+  const result = await input.ctx.promptResources.mutateResource({
+    ...promptResourceWriteContext(input.requestContext),
+    reason: 'application.updatePromptResourceAssets',
+    resourceId: input.resourceId,
+    expectedVersion: current.version,
+    mutations,
+  })
+  return {
+    resource: fromStoredResource(result.resource),
+    mutation: { changesetId: result.commit.changesetId },
+  }
+}
+
+
 
 async function prepareAgentTurn(
   ctx: ApplicationRuntimeContext,
@@ -1038,7 +1201,7 @@ async function prepareAgentTurn(
     : undefined
   const agentPage = await ctx.agents.getMessagePage({ agentSessionId: session.id, limit: 100 })
   const agentProfile = await readDocument<AgentProfileContent>(ctx.documents, session.agentProfileId, applicationDocumentTypes.agentProfile)
-  const preset = await readPresetResource(ctx.documents, agentProfile.content.presetId)
+      const preset = await readPresetResource(ctx.promptResources, agentProfile.content.presetId)
   const runId = ctx.createId('run')
   const buildId = ctx.createId('build')
   const startedAt = performance.now()
@@ -1069,7 +1232,7 @@ async function prepareAgentTurn(
       agentMessages: (preset.historyPolicy ?? 'persistent') === 'persistent'
         ? agentPage.messages
         : [],
-      documents: ctx.documents,
+        promptResources: ctx.promptResources,
       narrative: narrativePage ? { nodes: narrativePage.nodes, timeline: narrativePage.timeline } : undefined,
       preset,
       userInput: input.input,
@@ -1107,10 +1270,10 @@ async function prepareAgentTurn(
 }
 
 async function readPresetResource(
-  documents: DocumentStore,
+  promptResources: ApplicationRuntimeContext['promptResources'],
   presetId: string,
 ): Promise<PromptResourceContent & { id: string; version: number }> {
-  const preset = await getPromptResource({ documents, resourceId: presetId })
+  const preset = await readMappedResource(promptResources, presetId)
   if (preset.resourceKind !== 'preset') throw new Error(`Prompt Resource is not a Preset: ${presetId}`)
   return preset
 }
@@ -1130,61 +1293,6 @@ async function findTimelinePromptResourceReferences(
     cursor = page.nextCursor
   } while (cursor)
   return references
-}
-
-async function detachTimelinePromptResourceReferences(
-  ctx: ApplicationRuntimeContext,
-  timelines: Array<{ id: string; promptResourceIds: string[] }>,
-  resourceId: string,
-  requestContext: RuntimeRequestContext | undefined,
-): Promise<Array<{ id: string; promptResourceIds: string[] }>> {
-  if (!ctx.narratives) return []
-  const detached: Array<{ id: string; promptResourceIds: string[] }> = []
-  try {
-    for (const timeline of timelines) {
-      await ctx.narratives.updatePromptResources({
-        ...narrativeWriteContextFromRequest(requestContext, 'application.deletePromptResource.detachTimeline'),
-        timelineId: timeline.id,
-        promptResourceIds: timeline.promptResourceIds.filter(id => id !== resourceId),
-        expectedPromptResourceIds: timeline.promptResourceIds,
-      })
-      detached.push(timeline)
-    }
-  } catch (error) {
-    await restoreTimelinePromptResourceReferences(ctx, detached, resourceId, requestContext)
-    throw error
-  }
-  return detached
-}
-
-async function restoreTimelinePromptResourceReferences(
-  ctx: ApplicationRuntimeContext,
-  timelines: Array<{ id: string; promptResourceIds: string[] }>,
-  resourceId: string,
-  requestContext: RuntimeRequestContext | undefined,
-): Promise<void> {
-  if (!ctx.narratives) return
-  for (const timeline of timelines) {
-    const detachedIds = timeline.promptResourceIds.filter(id => id !== resourceId)
-    await ctx.narratives.updatePromptResources({
-      ...narrativeWriteContextFromRequest(requestContext, 'application.deletePromptResource.restoreTimeline'),
-      timelineId: timeline.id,
-      promptResourceIds: timeline.promptResourceIds,
-      expectedPromptResourceIds: detachedIds,
-    })
-  }
-}
-
-function narrativeWriteContextFromRequest(requestContext: RuntimeRequestContext | undefined, reason: string) {
-  return {
-    actor: requestContext?.clientId
-      ? { kind: 'client' as const, id: requestContext.clientId }
-      : applicationActor,
-    reason,
-    correlationId: requestContext?.correlationId,
-    callId: requestContext?.callId,
-    parentCallId: requestContext?.parentCallId,
-  }
 }
 
 function readDurationMs(startedAt: number): number {

@@ -283,3 +283,17 @@
     opacity: 0.65;
   }
 }
+.editInput {
+  color: var(--loom-color-text);
+  background: var(--loom-color-surface-raised);
+  border: 1px solid var(--loom-color-focus);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-family: inherit;
+  font-size: var(--loom-font-size-3);
+  font-weight: var(--loom-font-weight-3);
+  line-height: inherit;
+  outline: none;
+  min-width: 0;
+  width: 100%;
+}

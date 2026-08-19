@@ -64,11 +64,11 @@ Loom Studio 使用统一的 Document Store 进行数据持久化。所有被存�
 - **关联类型**: `AgentProfileContent`
 - **关键字段**: `name`, `presetId`, `model.providerProfileId`, `model.modelId`
 
-### `airp.promptResource`
-- **说明**: 一个平铺、独立编辑的顶层 Prompt 资源根节点，例如 Preset、Setting Layer、Runtime 视图或 History 视图。
-- **关联类型**: `PromptResourceContent`
-- **关键字段**: `resourceKind`, `rootNode`, `linkedSettingIds`, `historyPolicy`, `sourceArtifactRef`, `origin`
-- **备注**: `resourceKind=preset` 时，该 Document 是 Agent 的完整 PromptBuild Module，并可通过 `linkedSettingIds` 显式引用平铺 Setting。Agent Profile 的 `presetId` 直接指向它。`origin.kind=builtin` 的官方资源只读；删除 Setting 时会解除 Card、Preset 与 Narrative Timeline 引用。
+### Prompt Resource Store（非 Document Type）
+- **说明**: Prompt Resource 是 Application-owned Domain Store 的资源头、Node 和 Setting Mount，不再由 `airp.promptResource` Document 权威保存。
+- **权威表**: `prompt_resources`, `prompt_resource_nodes`, `prompt_resource_node_revisions`, `prompt_resource_header_revisions`, `global_setting_mounts`
+- **兼容类型**: `PromptResourceContent` 与嵌套 `rootNode.children[]` 仍用于 RPC、PromptBuild 和 `loom.promptResource` 外部 Artifact。
+- **备注**: Preset 的兼容 `linkedSettingIds` 响应由 `global_setting_mounts` 的 Preset Mount 派生；Agent Profile 的 `presetId` 仍指向稳定 Resource ID。
 
 ### `airp.importBundle`
 - **说明**: 保存一次 Card Bundle 导入的来源 Artifact、来源引用、资源推荐关系和导入 Document 清单。

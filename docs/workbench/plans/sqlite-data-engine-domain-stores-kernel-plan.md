@@ -5,6 +5,7 @@
 > **范围**：将当前“Document Store 同时承担 SQLite 生命周期、所有业务持久化与全平台提交事实”的实现，收束为共享 SQLite Data Engine、版本化 Document Store、Application-owned Domain Stores 与统一 Commit Journal。
 > **事实边界**：共享 SQLite Data Engine、Document Store、Narrative Store、Agent Store、Commit Journal 与 Kernel `DataCommitSource` 已完成；本文保留实施背景。Phase 7 的容量测量、Retention、FTS5 与冷归档仍未实施。
 > **数据兼容**：当前数据库主要是开发测试数据。本计划不要求保留旧 AIRP Session 数据；Document Store 中仍有价值的 Card、Prompt Resource、Provider 配置应由实施阶段明确决定保留或重新导入。
+> **2026-08-17 Prompt Resource 边界修订**：共享 Data Engine / Domain Store 基线继续有效；Prompt Resource 长期保留为完整 Document 与 Phase 7 等待测量后再决定拆分的结论，已由 [`data-layer-v2-prompt-resource-node-store-plan.md`](data-layer-v2-prompt-resource-node-store-plan.md) 取代。
 
 相关文档：
 

@@ -18,18 +18,31 @@ import { ContextAssetHeader } from '../../features/context-assets/ui/context-ass
 import { findContextAssetPath } from '../../features/context-assets/model/context-asset-tree.js'
 import { STUDIO_PANEL_PRESENTATION } from '../../pages/studio/model/studio-panel-presentation.js'
 import { PromptResourceToolbar } from '../../features/context-assets/ui/prompt-resource-toolbar/prompt-resource-toolbar.js'
-import type { ContextAssetNode, PromptResource } from '../../entities/index.js'
+import { resolvePresetBuildContextResources } from '../../features/context-assets/model/preset-build-context.js'
+import {
+  appendCompositionItem,
+  createCompositionEntry,
+  createCompositionSlot,
+  createCompositionZone,
+  createMessageBlock,
+  findCompositionItem,
+  moveCompositionItem,
+  readCompositionItems,
+  removeCompositionItem,
+} from '../../features/context-assets/model/composition-items.js'
+import type { ContextAssetNode, PromptCompositionItem, PromptResource } from '../../entities/index.js'
 import styles from './preset-workbench.module.scss'
 
 type PresetWorkbenchProps = {
   nodes: ContextAssetNode[]
   resources: PromptResource[]
-  buildContextResources: PromptResource[]
+  timelinePromptResourceIds?: string[]
   onChangeNode: (id: string, partial: Partial<ContextAssetNode>) => void
   onCommitNode: (id: string, partial: Partial<ContextAssetNode>) => void
   onChangeNodes: (updates: ContextAssetUpdate[]) => void
   onMoveNode: (draggedId: string, targetId: string, position: 'before' | 'inside' | 'after') => void
   onAddNode: (parentId: string) => Promise<string | undefined>
+  onAddNodeInZone?: (resourceId: string, zoneId: string) => Promise<string | undefined>
   onDuplicateNode: (id: string) => Promise<string | undefined>
   onDeleteNode: (id: string, selectedId?: string) => Promise<string | undefined>
   onCreateResource: (resourceKind: PromptResource['resourceKind']) => Promise<string | undefined>
@@ -65,10 +78,14 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const mainOrderNodes = useMemo(() => {
     const resources = [
       ...(selectedResource ? [selectedResource] : []),
-      ...props.buildContextResources.filter(resource => resource.id !== selectedResource?.id),
+      ...resolvePresetBuildContextResources({
+        preset: selectedResource,
+        resources: props.resources,
+        timelinePromptResourceIds: props.timelinePromptResourceIds,
+      }),
     ]
     return resources.map(readPromptResourceWorkbenchRoot)
-  }, [props.buildContextResources, selectedResource])
+  }, [props.resources, props.timelinePromptResourceIds, selectedResource])
   const workbenchNodes = activePresetView === 'order' ? mainOrderNodes : currentPresetNodes
   const selectedId = explorerView.selectedId
   const selectedNode = findContextNode(workbenchNodes, selectedId)
@@ -77,8 +94,11 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const { projectionEntries, orderNode, projectionOrderIds, orderedProjectionEntries } = projectionModel
   const [searchQuery, setSearchQuery] = useState(props.initialSearchQuery ?? '')
   const [selectedZoneId, setSelectedZoneId] = useState<string>()
+  const [selectedCompositionId, setSelectedCompositionId] = useState<string>()
   const zoneDefinitions = orderNode?.skeletonPatch?.zones ?? []
   const selectedZone = zoneDefinitions.find(zone => zone.id === selectedZoneId)
+  const compositionItems = orderNode?.skeletonPatch?.items
+  const selectedCompositionItem = findCompositionItem(compositionItems ?? [], selectedCompositionId)
 
   useEffect(() => {
     if (!props.routeAssetId) return
@@ -127,12 +147,139 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
     }))
   }
 
+  function handleAddZone(afterZoneId?: string) {
+    if (!orderNode) return
+    const currentZones = orderNode.skeletonPatch?.zones
+      ? [...orderNode.skeletonPatch.zones]
+      : [
+          { id: 'preset.system', displayName: 'Preset System', band: 'stable-prefix' as const, orderIndex: 10, parentId: null, renderHint: { providerRoleHint: 'system' as const, wrapper: 'section' as const } },
+          { id: 'setting.stable', displayName: 'Stable Setting', band: 'stable-prefix' as const, orderIndex: 20, parentId: null, renderHint: { providerRoleHint: 'system' as const, wrapper: 'section' as const } },
+          { id: 'chat.history', displayName: 'Narrative History', band: 'narrative' as const, orderIndex: 30, parentId: null, renderHint: { providerRoleHint: 'system' as const, wrapper: 'message' as const } },
+          { id: 'session.history', displayName: 'Session History', band: 'narrative' as const, orderIndex: 35, parentId: null, renderHint: { providerRoleHint: 'assistant' as const, wrapper: 'message' as const } },
+          { id: 'setting.lower', displayName: 'Lower Context Setting', band: 'lower-context' as const, orderIndex: 40, parentId: null, renderHint: { providerRoleHint: 'system' as const, wrapper: 'section' as const } },
+          { id: 'chat.inside', displayName: 'Current Chat', band: 'current-turn' as const, orderIndex: 60, parentId: null, renderHint: { providerRoleHint: 'user' as const, wrapper: 'message' as const } },
+          { id: 'fresh.tail', displayName: 'Fresh Tail', band: 'fresh-tail' as const, orderIndex: 80, parentId: null, renderHint: { providerRoleHint: 'system' as const, wrapper: 'section' as const } },
+        ]
+
+    const newZoneId = `custom.zone.${Date.now().toString(36)}`
+    const newZone = {
+      id: newZoneId,
+      displayName: props.t('context.newZoneName'),
+      band: 'current-turn' as const,
+      orderIndex: (currentZones.length + 1) * 10,
+      parentId: null,
+      renderHint: {
+        providerRoleHint: 'system' as const,
+        wrapper: 'section' as const,
+      },
+    }
+
+    let nextZones: typeof currentZones
+    if (afterZoneId) {
+      const afterIndex = currentZones.findIndex(z => z.id === afterZoneId)
+      if (afterIndex >= 0) {
+        nextZones = [
+          ...currentZones.slice(0, afterIndex + 1),
+          newZone,
+          ...currentZones.slice(afterIndex + 1),
+        ]
+      } else {
+        nextZones = [...currentZones, newZone]
+      }
+    } else {
+      nextZones = [...currentZones, newZone]
+    }
+
+    props.onCommitNode(orderNode.id, {
+      skeletonPatch: {
+        ...orderNode.skeletonPatch,
+        zones: nextZones,
+      },
+    })
+  }
+
+  function handleDeleteZone(zoneId: string) {
+    if (!orderNode || !orderNode.skeletonPatch?.zones) return
+    const nextZones = orderNode.skeletonPatch.zones.filter(z => z.id !== zoneId)
+    props.onCommitNode(orderNode.id, {
+      skeletonPatch: {
+        ...orderNode.skeletonPatch,
+        zones: nextZones,
+      },
+    })
+  }
+
   function handleSelectNode(id: string) {
+    const compositionItem = findCompositionItem(compositionItems ?? [], id)
+    if (compositionItem) {
+      setSelectedCompositionId(id)
+      setSelectedZoneId(compositionItem.kind === 'zone' ? compositionItem.id : undefined)
+      return
+    }
+    setSelectedCompositionId(undefined)
     setSelectedZoneId(undefined)
     openAssetDetail('preset', props.workspaceId, id)
   }
 
-  const pathNodes = useMemo(() => findContextNode(workbenchNodes, selectedId) ? [findContextNode(workbenchNodes, selectedId)!] : [], [workbenchNodes, selectedId])
+  function commitCompositionItems(items: PromptCompositionItem[], zones = zoneDefinitions) {
+    if (!orderNode) return
+    props.onCommitNode(orderNode.id, {
+      skeletonPatch: {
+        ...orderNode.skeletonPatch,
+        items,
+        zones,
+      },
+    })
+  }
+
+  function handleAddMessageBlock() {
+    const items = readCompositionItems(orderNode)
+    commitCompositionItems([...items, createMessageBlock(items)])
+  }
+
+  function handleAddZoneToMessageBlock(blockId: string) {
+    const items = readCompositionItems(orderNode)
+    const zone = createCompositionZone(items, props.t('context.newZoneName'))
+    commitCompositionItems(appendCompositionItem(items, zone, blockId), [...zoneDefinitions, zone])
+  }
+
+  function handleAddSlotToMessageBlock(blockId: string) {
+    const items = readCompositionItems(orderNode)
+    const block = findCompositionItem(items, blockId)
+    const zoneId = block?.kind === 'message' ? block.items.find(item => item.kind === 'zone')?.id : undefined
+    const slot = createCompositionSlot(items, zoneId)
+    commitCompositionItems(appendCompositionItem(items, slot, blockId))
+  }
+
+  async function handleAddDirectEntry(blockId: string) {
+    if (!selectedResource) return
+    const createdId = await props.onAddNode(selectedResource.rootNode.id)
+    if (!createdId) return
+    const items = readCompositionItems(orderNode)
+    const entry = createCompositionEntry(items, createdId)
+    commitCompositionItems(appendCompositionItem(items, entry, blockId))
+    handleSelectNode(createdId)
+  }
+
+  function handleDeleteCompositionItem(id: string) {
+    const items = readCompositionItems(orderNode)
+    const removed = findCompositionItem(items, id)
+    const removedZoneIds = new Set<string>()
+    if (removed?.kind === 'zone') removedZoneIds.add(removed.id)
+    if (removed?.kind === 'message') {
+      removed.items.forEach(item => {
+        if (item.kind === 'zone') removedZoneIds.add(item.id)
+      })
+    }
+    commitCompositionItems(removeCompositionItem(items, id), zoneDefinitions.filter(zone => !removedZoneIds.has(zone.id)))
+    setSelectedCompositionId(undefined)
+    setSelectedZoneId(undefined)
+  }
+
+  function handleMoveCompositionItem(id: string, direction: 'up' | 'down') {
+    const items = readCompositionItems(orderNode)
+    commitCompositionItems(moveCompositionItem(items, id, direction))
+  }
 
   return (
     <AssetWorkbenchLayout
@@ -180,15 +327,33 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           entries={activePresetView === 'order' ? orderedProjectionEntries : presetProjectionEntries}
           nodes={activePresetView === 'order' ? workbenchNodes.filter(node => node.kind !== 'order') : displayNodes}
           query={searchQuery}
-          selectedId={selectedId}
+          selectedId={selectedCompositionId ?? selectedId}
           selectedZoneId={selectedZoneId}
           t={props.t}
+          compositionItems={activePresetView === 'order' && compositionItems?.length ? compositionItems : undefined}
+          onAddDirectEntry={handleAddDirectEntry}
+          onAddMessageBlock={handleAddMessageBlock}
+          onAddSlot={handleAddSlotToMessageBlock}
+          onAddZoneToMessageBlock={handleAddZoneToMessageBlock}
+          onDeleteCompositionItem={handleDeleteCompositionItem}
+          onMoveCompositionItem={handleMoveCompositionItem}
           zoneDefinitions={zoneDefinitions}
+          onAddEntryInZone={zoneId => {
+            if (selectedResource) void props.onAddNodeInZone?.(selectedResource.id, zoneId)
+          }}
+          onAddZone={handleAddZone}
+          onDeleteNode={props.onDeleteNode}
+          onDeleteZone={handleDeleteZone}
+          onDuplicateNode={props.onDuplicateNode}
           onQueryChange={setSearchQuery}
           onReorder={handleProjectionReorder}
           onReorderZone={handleProjectionZoneReorder}
           onSelectId={handleSelectNode}
           onSelectZone={setSelectedZoneId}
+          onToggleEnabled={(id, enabled) => {
+            props.onChangeNode(id, { enabled })
+            props.onCommitNode(id, { enabled })
+          }}
         />
       )}
     >
@@ -201,7 +366,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
             onChange={linkedSettingIds => props.onUpdatePresetSettings(selectedResource.id, linkedSettingIds)}
           />
         ) : null}
-        {selectedZone ? <ZoneDetail zone={selectedZone} t={props.t} /> : (
+        {selectedCompositionItem ? <CompositionItemDetail item={selectedCompositionItem} nodes={workbenchNodes} t={props.t} /> : selectedZone ? <ZoneDetail zone={selectedZone} t={props.t} /> : (
           <ContextAssetEditor
             activationEditable
             editorMode={textEditorMode}
@@ -282,8 +447,41 @@ function ZoneDetail(props: {
         <div><dt>Band</dt><dd>{zone.band}</dd></div>
         <div><dt>Order</dt><dd>{zone.orderIndex}</dd></div>
         <div><dt>Accepts</dt><dd>{zone.accepts?.join(', ') || 'Any'}</dd></div>
-        <div><dt>Provider role</dt><dd>{zone.renderHint.providerRoleHint}</dd></div>
-        <div><dt>Wrapper</dt><dd>{zone.renderHint.wrapper}</dd></div>
+        <div><dt>Provider role</dt><dd>{zone.renderHint?.providerRoleHint || '—'}</dd></div>
+        <div><dt>Wrapper</dt><dd>{zone.renderHint?.wrapper || '—'}</dd></div>
+      </dl>
+    </section>
+  )
+}
+
+function CompositionItemDetail(props: {
+  item: PromptCompositionItem
+  nodes: ContextAssetNode[]
+  t: Translator
+}) {
+  const sourceNodes = flattenContextNodes(props.nodes)
+  const item = props.item
+  let sourceLabel: string | undefined
+  if (item.kind === 'entry') {
+    const source = item.source
+    if (source.kind === 'preset') sourceLabel = sourceNodes.find(node => node.id === source.nodeId)?.label ?? source.nodeId
+    else sourceLabel = source.bindingId
+  }
+  return (
+    <section className={styles.zoneDetail}>
+      <header>
+        <p>{item.kind === 'message' ? props.t('context.messageBlockDetail') : props.t('context.compositionItemDetail')}</p>
+        <h1>{item.displayName}</h1>
+        <span>{item.id}</span>
+      </header>
+      <dl>
+        <div><dt>Kind</dt><dd>{item.kind}</dd></div>
+        <div><dt>Order</dt><dd>{item.orderIndex}</dd></div>
+        {item.kind === 'message' ? <div><dt>Role</dt><dd>{item.role}</dd></div> : null}
+        {item.kind === 'zone' ? <div><dt>Accepts</dt><dd>{item.accepts?.join(', ') || 'Any'}</dd></div> : null}
+        {item.kind === 'slot' ? <div><dt>Binding</dt><dd>{item.bindingId}</dd></div> : null}
+        {item.kind === 'slot' ? <div><dt>Mode</dt><dd>{item.messageMode || 'context'}</dd></div> : null}
+        {sourceLabel ? <div><dt>Source</dt><dd>{sourceLabel}</dd></div> : null}
       </dl>
     </section>
   )
