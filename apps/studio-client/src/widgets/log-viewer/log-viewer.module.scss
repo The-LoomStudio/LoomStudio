@@ -420,6 +420,109 @@
   clip-path: inset(50%);
 }
 
+.entityChip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  padding: 0px 5px;
+  margin: 0 2px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-weight: 500;
+  line-height: 1.45;
+  vertical-align: baseline;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--loom-color-text);
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.09);
+  }
+
+  &[data-type="card"] {
+    background: rgba(168, 85, 247, 0.12);
+    color: #c084fc;
+    border-color: rgba(168, 85, 247, 0.25);
+    &:hover {
+      background: rgba(168, 85, 247, 0.22);
+      border-color: rgba(168, 85, 247, 0.45);
+    }
+  }
+
+  &[data-type="agent"] {
+    background: rgba(20, 184, 166, 0.12);
+    color: #2dd4bf;
+    border-color: rgba(20, 184, 166, 0.25);
+    &:hover {
+      background: rgba(20, 184, 166, 0.22);
+      border-color: rgba(20, 184, 166, 0.45);
+    }
+  }
+
+  &[data-type="timeline"] {
+    background: rgba(59, 130, 246, 0.12);
+    color: #60a5fa;
+    border-color: rgba(59, 130, 246, 0.25);
+    &:hover {
+      background: rgba(59, 130, 246, 0.22);
+      border-color: rgba(59, 130, 246, 0.45);
+    }
+  }
+
+  &[data-type="resource"] {
+    background: rgba(245, 158, 11, 0.12);
+    color: #fbbf24;
+    border-color: rgba(245, 158, 11, 0.25);
+    &:hover {
+      background: rgba(245, 158, 11, 0.22);
+      border-color: rgba(245, 158, 11, 0.45);
+    }
+  }
+
+  &[data-type="provider"] {
+    background: rgba(16, 185, 129, 0.12);
+    color: #34d399;
+    border-color: rgba(16, 185, 129, 0.25);
+    &:hover {
+      background: rgba(16, 185, 129, 0.22);
+      border-color: rgba(16, 185, 129, 0.45);
+    }
+  }
+
+  &[data-type="model"] {
+    background: rgba(236, 72, 153, 0.12);
+    color: #f472b6;
+    border-color: rgba(236, 72, 153, 0.25);
+    &:hover {
+      background: rgba(236, 72, 153, 0.22);
+      border-color: rgba(236, 72, 153, 0.45);
+    }
+  }
+
+  &[data-type="changeset"] {
+    background: rgba(148, 163, 184, 0.12);
+    color: #94a3b8;
+    border-color: rgba(148, 163, 184, 0.25);
+    &:hover {
+      background: rgba(148, 163, 184, 0.22);
+      border-color: rgba(148, 163, 184, 0.45);
+    }
+  }
+
+  .chipType {
+    opacity: 0.65;
+    font-size: 0.85em;
+  }
+
+  .chipLabel {
+    font-weight: 500;
+  }
+}
+
 @container studio-panel (max-width: 820px) {
   .searchField {
     order: 2;

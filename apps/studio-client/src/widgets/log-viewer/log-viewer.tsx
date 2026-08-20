@@ -1,6 +1,7 @@
 import type { LogLevel, LogRecord, MemoryLogSink } from '@loom-studio/logging'
 import { ArrowDown, ChevronRight, Download, Layers3, RefreshCw, Search } from 'lucide-react'
 import { Fragment, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useLogFeed, type LogSource } from '../../features/log-viewer/model/use-log-feed.js'
 import type { StudioApi } from '../../shared/api/studio-api.js'
 import type { Translator } from '../../shared/i18n/index.js'
@@ -224,22 +225,83 @@ function formatTime(timestamp: string): string {
   })
 }
 
+function EntityMentionChip({ type, id, label }: { type: string; id: string; label?: string }) {
+  const navigate = useNavigate()
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+
+    if (type === 'card') {
+      navigate(`/studio/characters/${encodeURIComponent(id)}`)
+    } else if (type === 'timeline') {
+      navigate(`/studio/chat/${encodeURIComponent(id)}`)
+    } else if (type === 'resource') {
+      navigate('/studio/resources')
+    } else if (type === 'agent') {
+      navigate('/studio/agents')
+    } else if (type === 'provider' || type === 'model') {
+      navigate('/studio/models')
+    } else if (navigator.clipboard) {
+      void navigator.clipboard.writeText(id)
+    }
+  }
+
+  const displayLabel = label || id
+
+  return (
+    <span
+      className={styles.entityChip}
+      data-type={type}
+      data-id={id}
+      title={`${type}: ${id}${label ? ` (${label})` : ''} - 点击跳转`}
+      onClick={handleClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          handleClick(e as unknown as React.MouseEvent)
+        }
+      }}
+    >
+      <span className={styles.chipType}>@{type}:</span>
+      <span className={styles.chipLabel}>{displayLabel}</span>
+    </span>
+  )
+}
+
 function highlightMessage(message: string): ReactNode {
-  const tokens = message.split(/(https?:\/\/\S+|#[\w-]+|\b[A-Z][A-Z0-9_]{2,}\b|\b(?:true|false|null|undefined)\b|\b\d+(?:\.\d+)?\b)/g)
-  return tokens.map((token, index) => {
-    let className: string | undefined
-    if (/^https?:\/\//.test(token)) className = styles.messageLink
-    else if (/^#/.test(token)) className = styles.messageProperty
-    else if (/^[A-Z][A-Z0-9_]{2,}$/.test(token)) className = styles.messageEvent
-    else if (/^(?:true|false|null|undefined)$/.test(token)) className = styles.messageConstant
-    else if (/^\d+(?:\.\d+)?$/.test(token)) className = styles.messageNumber
-    return className ? <span className={className} key={index}>{token}</span> : token
+  const mentionPattern = /(<@[a-zA-Z0-9_-]+:[^>]+>)/g
+  const parts = message.split(mentionPattern)
+
+  return parts.map((part, partIndex) => {
+    const mentionMatch = /^<@([a-zA-Z0-9_-]+):([^>|]+)(?:\|([^>]+))?>$/.exec(part)
+    if (mentionMatch) {
+      const [, type, id, label] = mentionMatch
+      return <EntityMentionChip key={partIndex} type={type!} id={id!} label={label} />
+    }
+
+    const tokens = part.split(/(https?:\/\/\S+|#[\w-]+|\b[A-Z][A-Z0-9_]{2,}\b|\b(?:true|false|null|undefined)\b|\b\d+(?:\.\d+)?\b)/g)
+    return tokens.map((token, index) => {
+      let className: string | undefined
+      if (/^https?:\/\//.test(token)) className = styles.messageLink
+      else if (/^#/.test(token)) className = styles.messageProperty
+      else if (/^[A-Z][A-Z0-9_]{2,}$/.test(token)) className = styles.messageEvent
+      else if (/^(?:true|false|null|undefined)$/.test(token)) className = styles.messageConstant
+      else if (/^\d+(?:\.\d+)?$/.test(token)) className = styles.messageNumber
+      return className ? <span className={className} key={`${partIndex}-${index}`}>{token}</span> : token
+    })
   })
 }
 
 function renderJson(value: unknown, depth = 0): ReactNode {
   if (value === null) return <span className={styles.jsonConstant}>null</span>
-  if (typeof value === 'string') return <span className={styles.jsonString}>{JSON.stringify(value)}</span>
+  if (typeof value === 'string') {
+    if (/<@[a-zA-Z0-9_-]+:[^>]+>/.test(value)) {
+      return <span className={styles.jsonString}>"{highlightMessage(value)}"</span>
+    }
+    return <span className={styles.jsonString}>{JSON.stringify(value)}</span>
+  }
   if (typeof value === 'number') return <span className={styles.jsonNumber}>{value}</span>
   if (typeof value === 'boolean') return <span className={styles.jsonConstant}>{String(value)}</span>
   if (Array.isArray(value)) return renderJsonEntries('[', ']', value.map((item, index) => [String(index), item]), depth, false)

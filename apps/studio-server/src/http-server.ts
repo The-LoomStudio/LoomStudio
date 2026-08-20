@@ -1,9 +1,10 @@
 import type { Logger } from '@loom-studio/logging'
-import { createId, type JsonValue } from '@loom-studio/shared'
+import { createId, type JsonObject, type JsonValue } from '@loom-studio/shared'
 import type { StudioEvent } from '@loom-studio/transport'
 import { createErrorResponse, createSuccessResponse, parseRpcRequest } from '@loom-studio/transport'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { ApplicationSession, ApplicationSessionAuth } from './application-session-auth.js'
+import { sanitizeRpcParams, summarizeRpc } from './rpc-summary.js'
 import type { StudioRpcRouter } from './studio-rpc-router.js'
 
 export function createStudioHttpServer(options: {
@@ -408,7 +409,13 @@ async function handleRpcRequest(
     const result = await rpcRouter.call(rpcRequest.method, rpcRequest.params, context)
     const durationMs = readDurationMs(startedAt)
     if (method !== 'logs.list') {
-      logger?.info(`${method} completed in ${durationMs} ms`, {
+      const summary = summarizeRpc(method, rpcRequest.params, result)
+      const safeParams = sanitizeRpcParams(rpcRequest.params)
+      const messageText = summary.textSuffix
+        ? `${method} completed in ${durationMs} ms -> ${summary.textSuffix}`
+        : `${method} completed in ${durationMs} ms`
+
+      logger?.info(messageText, {
         event: 'rpc.completed',
         correlationId: context.correlationId,
         callId: context.callId,
@@ -418,6 +425,8 @@ async function handleRpcRequest(
           transport: 'http',
           durationMs,
           outcome: 'success',
+          ...(safeParams !== undefined && safeParams !== null ? { params: safeParams as JsonObject } : {}),
+          ...(summary.summaryData ? { summary: summary.summaryData } : {}),
         },
       })
     }
