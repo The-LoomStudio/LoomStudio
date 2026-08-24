@@ -87,3 +87,143 @@
   color: var(--loom-color-text);
   margin: 0;
 }
+
+.toolExplorer {
+  display: grid;
+  gap: 8px;
+  height: 100%;
+  overflow: auto;
+  padding: 12px 10px 48px;
+}
+
+.toolExplorer > header {
+  display: grid;
+  gap: 4px;
+  padding: 4px 6px 8px;
+}
+
+.toolExplorer > header span,
+.toolExplorerItem span,
+.toolExplorerActive span,
+.toolExplorerItem em,
+.toolExplorerActive em {
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
+  font-style: normal;
+}
+
+.toolExplorerItem,
+.toolExplorerActive {
+  display: grid;
+  gap: 3px;
+  border: 0;
+  border-radius: var(--loom-radius-control);
+  padding: 10px;
+  color: var(--loom-color-text);
+  text-align: left;
+  background: var(--loom-color-surface-subtle);
+}
+
+.toolExplorerActive {
+  box-shadow: inset 2px 0 0 var(--loom-color-accent-strong);
+}
+
+.toolEmpty {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  color: var(--loom-color-text-subtle);
+}
+
+.toolDetail {
+  display: grid;
+  gap: 18px;
+  height: 100%;
+  overflow: auto;
+  padding: 24px;
+}
+
+.toolDetailHeader,
+.toolSection > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.toolDetailHeader h1,
+.toolDetailHeader p,
+.toolSection h2,
+.toolSection p {
+  margin: 0;
+}
+
+.toolDetailHeader h1 {
+  margin-block: 4px;
+}
+
+.toolDetailHeader span,
+.toolDetailHeader p,
+.toolSection header p,
+.providerSurfaceNote {
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-2);
+}
+
+.toolSection {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid var(--loom-color-border);
+  padding-top: 18px;
+}
+
+.toolMountToggle,
+.toolCheckbox {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 7px;
+}
+
+.providerSurfaceNote {
+  border-radius: var(--loom-radius-control);
+  padding: 9px 10px;
+  background: var(--loom-color-surface-subtle);
+}
+
+.toolForm,
+.toolForm fieldset {
+  display: grid;
+  gap: 10px;
+}
+
+.toolForm label {
+  display: grid;
+  gap: 4px;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
+}
+
+.toolForm textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+
+.toolForm .jsonEditor {
+  min-height: 132px;
+  font-family: var(--loom-font-family-mono);
+}
+
+.toolForm fieldset {
+  margin: 0;
+  border: 1px solid var(--loom-color-border-muted);
+  border-radius: var(--loom-radius-control);
+  padding: 10px;
+}
+
+.toolForm button {
+  justify-self: start;
+}
+
+.toolError {
+  color: var(--loom-color-danger) !important;
+}

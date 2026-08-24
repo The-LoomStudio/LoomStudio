@@ -10,6 +10,7 @@
     "dev": "tsx src/main.ts"
   },
   "dependencies": {
+    "@loom-studio/ai-gateway": "workspace:*",
     "@loom-studio/agent-store": "workspace:*",
     "@loom-studio/application-runtime": "workspace:*",
     "@loom-studio/asset-store": "workspace:*",

@@ -6,6 +6,7 @@ export type PromptLifecycle = 'always' | 'conditional' | 'fresh'
 
 export const promptZoneIds = {
   presetSystem: 'preset.system',
+  tools: 'tools',
   settingStable: 'setting.stable',
   narrativeHistory: 'chat.history',
   sessionHistory: 'session.history',
@@ -236,6 +237,7 @@ export const defaultCompositionSkeleton: CompositionSkeleton = {
   fallbackZoneId: 'setting.lower',
   zones: [
     zone(promptZoneIds.presetSystem, 'Preset System', 'stable-prefix', 10, ['preset', 'runtime']),
+    zone(promptZoneIds.tools, 'Tools', 'stable-prefix', 15, ['runtime']),
     zone(promptZoneIds.settingStable, 'Stable Setting', 'stable-prefix', 20, ['settingLayer']),
     zone(promptZoneIds.narrativeHistory, 'Narrative History', 'narrative', 30, ['narrativeChat', 'narrativeHistory']),
     zone(promptZoneIds.sessionHistory, 'Session History', 'narrative', 35, ['sessionHistory']),
@@ -248,6 +250,7 @@ export const defaultCompositionSkeleton: CompositionSkeleton = {
   items: [
     messageBlock('message.system', 'System', 'system', 10, [
       zone(promptZoneIds.presetSystem, 'Preset System', 'stable-prefix', 10, ['preset', 'runtime']),
+      zone(promptZoneIds.tools, 'Tools', 'stable-prefix', 15, ['runtime']),
       zone(promptZoneIds.settingStable, 'Stable Setting', 'stable-prefix', 20, ['settingLayer']),
       zone('setting.lower', 'Lower Context Setting', 'lower-context', 40, ['settingLayer']),
     ]),
@@ -521,12 +524,14 @@ export function compileMessageBlockPrompt(input: {
 
   const appendBlockItem = (block: MessageBlockNode, child: MessageBlockItem): void => {
     let candidates: PromptFragment[]
+    let preservesCompiledOrder = false
     if (child.kind === 'zone') {
       const explicitChildren = blockItems.get(block.id) ?? []
       candidates = flattenZoneFragments(compiledZones.get(child.id)).filter(fragment => !explicitChildren.some(item => (
         (item.kind === 'slot' && matchesSlot(item, fragment))
         || (item.kind === 'entry' && matchesEntry(item, fragment))
       )))
+      preservesCompiledOrder = true
     } else if (child.kind === 'slot') {
       candidates = activeFragments.filter(fragment => matchesSlot(child, fragment))
     } else if (child.kind === 'entry') {
@@ -534,9 +539,12 @@ export function compileMessageBlockPrompt(input: {
     } else {
       candidates = []
     }
-    const fragments = candidates
-      .filter(fragment => !claimed.has(fragment.id))
-      .sort((left, right) => compareFragmentOrder(input.sourceNodesById, left, right))
+    const unclaimedCandidates = candidates.filter(fragment => !claimed.has(fragment.id))
+    const fragments = preservesCompiledOrder
+      ? unclaimedCandidates
+      : unclaimedCandidates.sort((left, right) =>
+          compareFragmentOrder(input.sourceNodesById, left, right),
+        )
     if (fragments.length === 0) return
     fragments.forEach(fragment => claimed.add(fragment.id))
     const previous = messages.at(-1)

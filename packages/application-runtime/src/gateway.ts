@@ -1,17 +1,15 @@
+import { createAiGateway, createOfficialProviderAdapterRegistry, listOpenAICompatibleModels as listPlatformModels, type ProviderAdapterRegistry } from '@loom-studio/ai-gateway'
 import type { DocumentStore } from '@loom-studio/document-store'
 import type { SecretStore } from '@loom-studio/secret-store'
 import type { JsonValue } from '@loom-studio/shared'
-import type { AssistantChatMessage, ChatToolCall } from '@loom-studio/shared'
 import { createId } from '@loom-studio/shared'
 import { fetch as undiciFetch, ProxyAgent } from 'undici'
 import { applicationDocumentTypes } from './document-types.js'
 import { readDocument } from './document-store.js'
-import { isObject } from './json.js'
 import { buildOpenAIChatPayload } from './provider-payload.js'
 import type {
   AiGateway,
   ApplicationProvider,
-  GatewayChatResult,
   OpenAICompatibleGatewayOptions,
   ProviderProfileContent,
 } from './types.js'
@@ -44,8 +42,10 @@ export function createDocumentBackedAiGateway(options: {
   secrets?: SecretStore
   fallback?: AiGateway
   resolveProxyUrl?: () => string | undefined
+  providerAdapters?: ProviderAdapterRegistry
 }): AiGateway {
   const fallback = options.fallback ?? createFakeAiGateway()
+  const providerAdapters = options.providerAdapters ?? createOfficialProviderAdapterRegistry()
   const proxyTransports = new Map<string, typeof fetch>()
 
   function resolveTransport(): typeof fetch {
@@ -65,26 +65,23 @@ export function createDocumentBackedAiGateway(options: {
     listModels: async input => {
       const providerProfile = await readDocument<ProviderProfileContent>(options.documents, input.providerProfileId, applicationDocumentTypes.providerProfile)
       const providerExtensionId = providerProfile.content.providerExtensionId
-
-      if (providerExtensionId === 'official.fake' || providerExtensionId === 'fake') {
+      providerAdapters.validateAccountConfig(providerExtensionId, providerProfile.content.config)
+      if (!providerProfile.content.secretRef) {
+        const resolved = providerAdapters.resolve(providerExtensionId, { config: providerProfile.content.config })
+        if (resolved.provider.kind !== 'fake') throw new Error('Provider credential is not configured')
         return { modelIds: [...providerProfile.content.enabledModelIds] }
       }
-      if (providerExtensionId !== 'official.openai-compatible' && providerExtensionId !== 'openai-compatible') {
-        throw new Error(`Provider does not support model discovery: ${providerExtensionId}`)
-      }
-      if (!options.secrets || !providerProfile.content.secretRef) throw new Error('Provider credential is not configured')
+      if (!options.secrets) throw new Error('Provider credential is not configured')
 
       return await options.secrets.withSecret(providerProfile.content.secretRef, {
         caller: 'application.ai-gateway',
         owner: { type: 'provider-profile', id: providerProfile.id },
         purpose: 'provider.credentials',
       }, async secret => {
-        const apiKey = secret.values.apiKey
-        if (!apiKey) throw new Error('Provider credential is missing apiKey')
         return {
-          modelIds: await listOpenAICompatibleModels({
-            baseUrl: providerProfile.content.config.baseUrl,
-            apiKey,
+          modelIds: await providerAdapters.listModels(providerExtensionId, {
+            config: providerProfile.content.config,
+            credential: secret.values,
             fetch: resolveTransport(),
           }),
         }
@@ -100,36 +97,34 @@ export function createDocumentBackedAiGateway(options: {
         throw new Error(`Provider model is not enabled: ${input.model.modelId}`)
       }
       const providerExtensionId = providerProfile.content.providerExtensionId
-
-      if (providerExtensionId === 'official.openai-compatible' || providerExtensionId === 'openai-compatible') {
-        if (!options.secrets || !providerProfile.content.secretRef) throw new Error('Provider credential is not configured')
+      providerAdapters.validateAccountConfig(providerExtensionId, providerProfile.content.config)
+      if (providerProfile.content.secretRef) {
+        if (!options.secrets) throw new Error('Provider credential is not configured')
         return await options.secrets.withSecret(providerProfile.content.secretRef, {
           caller: 'application.ai-gateway',
           owner: { type: 'provider-profile', id: providerProfile.id },
           purpose: 'provider.credentials',
         }, async secret => {
-          const apiKey = secret.values.apiKey
-          if (!apiKey) throw new Error('Provider credential is missing apiKey')
-          return await createOpenAICompatibleGateway({
-            providerProfile: {
-              id: providerProfile.id,
-              providerExtensionId: providerProfile.content.providerExtensionId,
-              displayName: providerProfile.content.displayName,
-              config: providerProfile.content.config,
-              enabledModelIds: providerProfile.content.enabledModelIds,
-            },
-            modelId: input.model!.modelId,
-            apiKey,
+          const resolved = providerAdapters.resolve(providerExtensionId, {
+            config: providerProfile.content.config,
+            credential: secret.values,
             fetch: resolveTransport(),
-          }).invokeChat(input)
+          })
+          if (resolved.provider.kind === 'fake') return await fallback.invokeChat(input)
+          const payload = buildOpenAIChatPayload({ messages: input.request.messages, modelId: input.model!.modelId })
+          return await invokePlatformGateway(createAiGateway(), {
+            provider: resolved.provider,
+            modelId: input.model!.modelId,
+            messages: payload.messages,
+            ...(input.request.tools ? { tools: input.request.tools } : {}),
+            ...(input.request.toolChoice ? { toolChoice: input.request.toolChoice } : {}),
+            ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
+          })
         })
       }
-
-      if (providerExtensionId === 'official.fake' || providerExtensionId === 'fake') {
-        return await fallback.invokeChat(input)
-      }
-
-      throw new Error(`Unsupported provider extension for AI Gateway M0: ${providerExtensionId}`)
+      const resolved = providerAdapters.resolve(providerExtensionId, { config: providerProfile.content.config })
+      if (resolved.provider.kind === 'fake') return await fallback.invokeChat(input)
+      throw new Error('Provider credential is not configured')
     },
   }
 }
@@ -139,28 +134,21 @@ export async function listOpenAICompatibleModels(options: {
   apiKey: string
   fetch?: typeof fetch
 }): Promise<string[]> {
-  const transport = options.fetch ?? fetch
-  const baseUrl = normalizeBaseUrl(typeof options.baseUrl === 'string' ? options.baseUrl : 'https://api.openai.com/v1')
-  const response = await requestProvider(transport, `${baseUrl}/models`, {
-    headers: { authorization: `Bearer ${options.apiKey}` },
-  })
-  const responseBody = await response.json() as JsonValue
-
-  if (!response.ok) throw new Error(readProviderErrorMessage(responseBody, response.status))
-  if (!isObject(responseBody) || !Array.isArray(responseBody.data)) {
-    throw new Error('Provider model list response is invalid')
+  try {
+    return await listPlatformModels({
+      ...(typeof options.baseUrl === 'string' ? { baseUrl: options.baseUrl } : {}),
+      apiKey: options.apiKey,
+      ...(options.fetch ? { fetch: options.fetch } : {}),
+    })
+  } catch (error) {
+    if (!isProviderNetworkFailure(error)) throw error
+    throw normalizeProviderNetworkError(error)
   }
-
-  return [...new Set(responseBody.data.flatMap(item => {
-    if (!isObject(item) || typeof item.id !== 'string') return []
-    const id = item.id.trim()
-    return id ? [id] : []
-  }))]
 }
 
 export function createOpenAICompatibleGateway(options: OpenAICompatibleGatewayOptions): AiGateway {
   const transport = options.fetch ?? fetch
-  const baseUrl = normalizeBaseUrl(options.providerProfile.config?.baseUrl ?? 'https://api.openai.com/v1')
+  const platformGateway = createAiGateway()
 
   return {
     invokeChat: async input => {
@@ -172,30 +160,48 @@ export function createOpenAICompatibleGateway(options: OpenAICompatibleGatewayOp
         messages: input.request.messages,
         modelId: options.modelId,
       })
-      const response = await requestProvider(transport, `${baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${options.apiKey}`,
-        },
-        body: JSON.stringify(payload),
+      return await invokePlatformGateway(platformGateway, {
+          provider: {
+            kind: 'openai-compatible',
+            apiKey: options.apiKey,
+            baseUrl: options.providerProfile.config?.baseUrl ?? 'https://api.openai.com/v1',
+            fetch: transport,
+          },
+          modelId: options.modelId,
+          messages: payload.messages,
+          ...(input.request.tools ? { tools: input.request.tools } : {}),
+          ...(input.request.toolChoice ? { toolChoice: input.request.toolChoice } : {}),
+          ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
       })
-      const responseBody = await response.json() as JsonValue
-
-      if (!response.ok) {
-        throw new Error(readProviderErrorMessage(responseBody, response.status))
-      }
-
-      return parseOpenAICompatibleChatResult(responseBody, options.modelId)
     },
   }
 }
 
-async function requestProvider(transport: typeof fetch, url: string, init: RequestInit): Promise<Response> {
+type PlatformGateway = ReturnType<typeof createAiGateway>
+type PlatformGatewayInput = Parameters<PlatformGateway['invokeChat']>[0]
+
+async function invokePlatformGateway(gateway: PlatformGateway, input: PlatformGatewayInput) {
   try {
-    return await transport(url, init)
+    return toApplicationGatewayResult(await gateway.invokeChat(input))
   } catch (error) {
+    const providerError = readProviderHttpError(error)
+    if (providerError) throw providerError
+    if (!isProviderNetworkFailure(error)) throw error
     throw normalizeProviderNetworkError(error)
+  }
+}
+
+function toApplicationGatewayResult(result: Awaited<ReturnType<ReturnType<typeof createAiGateway>['invokeChat']>>) {
+  return {
+    message: result.message,
+    text: result.text,
+    provider: result.provider,
+    model: result.model,
+    ...(result.finishReason ? { finishReason: result.finishReason } : {}),
+    ...(result.rawFinishReason ? { rawStopReason: result.rawFinishReason } : {}),
+    ...(result.usage ? { usage: result.usage } : {}),
+    providerCallId: result.providerCallId ?? createId('provider-call'),
+    ...(result.raw ? { raw: result.raw } : {}),
   }
 }
 
@@ -218,12 +224,53 @@ function normalizeProviderNetworkError(error: unknown): Error {
   return normalized
 }
 
+function isProviderNetworkFailure(error: unknown): boolean {
+  if (readCauseCode(error)) return true
+  let current = error
+  for (let depth = 0; depth < 5 && current && typeof current === 'object'; depth += 1) {
+    if (current instanceof TypeError) return true
+    current = 'cause' in current ? Reflect.get(current, 'cause') : undefined
+  }
+  return false
+}
+
+function readProviderHttpError(error: unknown): Error | undefined {
+  let current = error
+  for (let depth = 0; depth < 5 && current && typeof current === 'object'; depth += 1) {
+    const statusCode = 'statusCode' in current ? Reflect.get(current, 'statusCode') : undefined
+    const responseBody = 'responseBody' in current ? Reflect.get(current, 'responseBody') : undefined
+    if (typeof statusCode === 'number') {
+      let message: string | undefined
+      if (typeof responseBody === 'string') {
+        try {
+          const parsed = JSON.parse(responseBody) as JsonValue
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'error' in parsed) {
+            const providerError = parsed.error
+            if (providerError && typeof providerError === 'object' && !Array.isArray(providerError) && typeof providerError.message === 'string') {
+              message = providerError.message
+            }
+          }
+        } catch {
+          // Keep the stable status-only fallback for non-JSON provider errors.
+        }
+      }
+      return new Error(message ? `Provider request failed (${statusCode}): ${message}` : `Provider request failed (${statusCode})`)
+    }
+    current = 'cause' in current ? Reflect.get(current, 'cause') : undefined
+  }
+  return undefined
+}
+
 function readCauseCode(error: unknown): string | undefined {
-  if (!error || typeof error !== 'object' || !('cause' in error)) return undefined
-  const cause = Reflect.get(error, 'cause')
-  if (!cause || typeof cause !== 'object' || !('code' in cause)) return undefined
-  const code = Reflect.get(cause, 'code')
-  return typeof code === 'string' ? code : undefined
+  let current = error
+  for (let depth = 0; depth < 5 && current && typeof current === 'object'; depth += 1) {
+    if ('code' in current) {
+      const code = Reflect.get(current, 'code')
+      if (typeof code === 'string') return code
+    }
+    current = 'cause' in current ? Reflect.get(current, 'cause') : undefined
+  }
+  return undefined
 }
 
 export function providerToGateway(provider: ApplicationProvider): AiGateway {
@@ -267,91 +314,4 @@ function gatewayToProvider(gateway: AiGateway): ApplicationProvider {
       }
     },
   }
-}
-
-function normalizeBaseUrl(input: string): string {
-  const trimmed = input.trim().replace(/\/+$/, '')
-  if (trimmed === 'https://api.openai.com') return 'https://api.openai.com/v1'
-  return trimmed
-}
-
-function readProviderErrorMessage(body: JsonValue, status: number): string {
-  if (isObject(body) && isObject(body.error) && typeof body.error.message === 'string') {
-    return `Provider request failed (${status}): ${body.error.message}`
-  }
-
-  return `Provider request failed (${status})`
-}
-
-function parseOpenAICompatibleChatResult(body: JsonValue, fallbackModel: string): GatewayChatResult {
-  if (!isObject(body)) {
-    throw new Error('Provider response must be an object')
-  }
-
-  const choices = Array.isArray(body.choices) ? body.choices : []
-  const firstChoice = choices.find(isObject)
-  const message = isObject(firstChoice?.message) ? firstChoice.message : undefined
-  const assistantMessage = parseAssistantMessage(message)
-  const text = assistantMessage.content ?? ''
-
-  const usage = isObject(body.usage)
-    ? {
-        inputTokens: typeof body.usage.prompt_tokens === 'number' ? body.usage.prompt_tokens : undefined,
-        outputTokens: typeof body.usage.completion_tokens === 'number' ? body.usage.completion_tokens : undefined,
-      }
-    : undefined
-  const finishReason = typeof firstChoice?.finish_reason === 'string' ? normalizeFinishReason(firstChoice.finish_reason) : undefined
-
-  return {
-    message: assistantMessage,
-    text,
-    provider: 'openai-compatible',
-    model: typeof body.model === 'string' ? body.model : fallbackModel,
-    finishReason,
-    usage,
-    providerCallId: typeof body.id === 'string' ? body.id : createId('provider-call'),
-    raw: body,
-  }
-}
-
-function parseAssistantMessage(message: Record<string, JsonValue> | undefined): AssistantChatMessage {
-  if (!message || message.role !== 'assistant') {
-    throw new Error('Provider response did not include choices[0].message')
-  }
-  const content = typeof message.content === 'string' && message.content.length > 0 ? message.content : undefined
-  const toolCalls = message.tool_calls === undefined ? undefined : parseToolCalls(message.tool_calls)
-  if (!content && (!toolCalls || toolCalls.length === 0)) {
-    throw new Error('Provider assistant response did not include content or tool_calls')
-  }
-  return {
-    role: 'assistant',
-    ...(content ? { content } : {}),
-    ...(toolCalls?.length ? { tool_calls: toolCalls } : {}),
-  }
-}
-
-function parseToolCalls(value: JsonValue): ChatToolCall[] {
-  if (!Array.isArray(value) || value.length === 0) {
-    throw new Error('Provider assistant tool_calls must be a non-empty array')
-  }
-  return value.map((item, index) => {
-    if (!isObject(item) || item.type !== 'function' || typeof item.id !== 'string' || !isObject(item.function)) {
-      throw new Error(`Provider assistant tool call is invalid: tool_calls[${index}]`)
-    }
-    if (typeof item.function.name !== 'string' || typeof item.function.arguments !== 'string') {
-      throw new Error(`Provider assistant tool function is invalid: tool_calls[${index}].function`)
-    }
-    return {
-      id: item.id,
-      type: 'function',
-      function: { name: item.function.name, arguments: item.function.arguments },
-    }
-  })
-}
-
-function normalizeFinishReason(input: string): GatewayChatResult['finishReason'] {
-  if (input === 'stop') return 'stop'
-  if (input === 'length') return 'length'
-  if (input === 'tool_calls' || input === 'tool_call') return 'tool_call'
-  return undefined
 }

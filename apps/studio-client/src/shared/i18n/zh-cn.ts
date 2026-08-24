@@ -287,6 +287,7 @@ export const zhCN = {
   'preset.rename': '重命名',
   'preset.panel.assets': '资产',
   'preset.panel.mainOrder': '主排序',
+  'preset.panel.tools': '工具',
   'promptResource.select': '选择提示词资源',
   'promptResource.empty': '暂无资源',
   'promptResource.create': '新建资源',

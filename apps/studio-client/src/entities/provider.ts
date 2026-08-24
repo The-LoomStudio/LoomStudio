@@ -36,6 +36,7 @@ export type AgentProfile = {
   name: string
   presetId: string
   model: ProviderModelSelection
+  toolOverrides: Record<string, boolean>
   createdAt: string
   updatedAt: string
 }

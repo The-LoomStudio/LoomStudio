@@ -20,19 +20,24 @@ export type AgentSession = {
   id: string
   agentProfileId: string
   title?: string
-  headMessageId?: string
-  messageCount: number
+  headEntryId?: string
+  entryCount: number
   createdAt: string
   updatedAt: string
 }
 
-export type AgentMessage = {
+export type AgentTranscriptEntry = {
   id: string
   agentSessionId: string
-  parentMessageId?: string
+  parentEntryId?: string
   sequence: number
   runId?: string
-  message: ChatMessage
+  entry: {
+    kind: string
+    role?: 'user' | 'assistant'
+    content?: string
+    [key: string]: ClientJsonValue | undefined
+  }
   createdAt: string
 }
 
@@ -41,25 +46,61 @@ export type CreateAgentSessionResult = {
   mutation: MutationReceipt
 }
 
-export type AgentMessagePage = {
+export type AgentTranscriptPage = {
   session: AgentSession
-  messages: AgentMessage[]
+  entries: AgentTranscriptEntry[]
   nextCursor?: string
+}
+
+export type AgentToolDefinition = {
+  id: string
+  version: number
+  owner: { namespace: string }
+  name: string
+  description: string
+  input: {
+    kind: 'structured' | 'freeform' | 'hybrid'
+    [key: string]: ClientJsonValue | undefined
+  }
+  prompt?: {
+    parameterDescriptions?: Record<string, string>
+    guidance?: string
+    activation?: ClientJsonValue
+    provider?: { order?: number }
+    content?: {
+      zone?: string
+      slot?: string
+      rankKey?: string
+      orderHint?: number
+    }
+  }
+  createdAt: string
+  updatedAt: string
+}
+
+export type ToolExposure = {
+  toolId: string
+  exposed: boolean
+  transport?: 'native-function' | 'provider-custom' | 'content'
+  diagnostics: ClientJsonValue[]
+  [key: string]: ClientJsonValue | undefined
 }
 
 export type PreviewAgentTurnResult = {
   runId: string
   messages: ChatMessage[]
   projection: PromptProjection
+  toolExposures: ToolExposure[]
+  toolPromptBuildTrace: ClientJsonValue
   providerPayloadPreview?: ClientJsonValue
 }
 
 export type InvokeAgentTurnResult = {
   runId: string
   agentSession: AgentSession
-  messages: {
-    user: AgentMessage
-    assistant: AgentMessage
+  entries: {
+    user: AgentTranscriptEntry
+    assistant: AgentTranscriptEntry
   }
   narrative?: {
     timeline: import('./narrative.js').NarrativeTimeline
@@ -74,5 +115,7 @@ export type InvokeAgentTurnResult = {
     providerCallId?: string
   }
   projection: PromptProjection
+  toolExposures: ToolExposure[]
+  toolPromptBuildTrace: ClientJsonValue
   mutation: MutationReceipt
 }

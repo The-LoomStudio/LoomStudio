@@ -1,7 +1,7 @@
 # Agent Runtime 与 AI SDK Phase 0 Compatibility Spike
 
 > 日期：2026-08-23  
-> 状态：Phase 0 已完成并通过主审；Phase 1 待批准。既定结论：**Go with Gateway wrapper**
+> 状态：Phase 0 已完成并通过主审；Phase 1 后续已完成。既定结论：**Go with Gateway wrapper**
 
 ## 1. 结论先行
 

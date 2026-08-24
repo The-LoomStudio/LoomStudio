@@ -1,7 +1,8 @@
 import type { ClientBridge, ClientJsonValue } from '@loom-studio/client-bridge'
 import type { LogLevel, LogPage } from '@loom-studio/logging'
 import type {
-  AgentMessagePage,
+  AgentTranscriptPage,
+  AgentToolDefinition,
   AgentSession,
   CardBundleArtifact,
   CardMedia,
@@ -31,6 +32,7 @@ import type {
   ListCardsResult,
   ListNarrativeTimelinesResult,
   ListPromptResourcesResult,
+  ListPresetToolMountsResult,
   ListProviderProfilesResult,
   ListSettingMountsResult,
   MutationReceipt,
@@ -41,8 +43,10 @@ import type {
   PromptCompositionCapabilities,
   PromptResource,
   PromptResourceArtifact,
+  PresetToolMountInput,
   ProviderModelSelection,
   ReplaceSettingMountsResult,
+  ReplacePresetToolMountsResult,
   SettingLayerInput,
   SettingMountSource,
   SwitchNarrativeBranchResult,
@@ -142,6 +146,7 @@ export type CreateAgentProfileInput = {
   name: string
   presetId: string
   model: ProviderModelSelection
+  toolOverrides?: Record<string, boolean>
 }
 
 export type UpdateAgentProfileInput = {
@@ -149,6 +154,7 @@ export type UpdateAgentProfileInput = {
   name?: string
   presetId?: string
   model?: ProviderModelSelection
+  toolOverrides?: Record<string, boolean>
 }
 
 // ─── Narrative DTOs ─────────────────────────────────────────────────────────
@@ -271,7 +277,7 @@ export type StudioApi = {
   agentSessions: {
     create(input: CreateAgentSessionInput): Promise<CreateAgentSessionResult>
     get(agentSessionId: string): Promise<{ session: AgentSession }>
-    getMessages(input: { agentSessionId: string; cursor?: string; limit?: number }): Promise<AgentMessagePage>
+    getTranscript(input: { agentSessionId: string; cursor?: string; limit?: number }): Promise<AgentTranscriptPage>
     invoke(input: InvokeAgentTurnInput): Promise<InvokeAgentTurnResult>
     preview(input: PreviewAgentTurnInput): Promise<PreviewAgentTurnResult>
   }
@@ -292,6 +298,11 @@ export type StudioApi = {
     create(input: CreateAgentProfileInput): Promise<CreateAgentProfileResult>
     update(input: UpdateAgentProfileInput): Promise<UpdateAgentProfileResult>
     delete(agentProfileId: string): Promise<DeleteAgentProfileResult>
+  }
+  agentTools: {
+    list(): Promise<{ tools: AgentToolDefinition[] }>
+    update(input: { toolId: string; expectedVersion: number; definition: Omit<AgentToolDefinition, 'version' | 'createdAt' | 'updatedAt'> }): Promise<{ tool: AgentToolDefinition }>
+    analyze(agentProfileId: string): Promise<{ analysis: ClientJsonValue }>
   }
   narratives: {
     create(input: CreateNarrativeTimelineInput): Promise<CreateNarrativeTimelineResult>
@@ -315,6 +326,8 @@ export type StudioApi = {
     updateAssets(input: UpdatePromptResourceAssetsInput): Promise<UpdatePromptResourceResult>
     listSettingMounts(source?: SettingMountSource): Promise<ListSettingMountsResult>
     replaceSettingMounts(input: { source: SettingMountSource; settingResourceIds: string[] }): Promise<ReplaceSettingMountsResult>
+    listPresetToolMounts(input?: { presetId?: string; toolId?: string }): Promise<ListPresetToolMountsResult>
+    replacePresetToolMounts(input: { presetId: string; mounts: PresetToolMountInput[] }): Promise<ReplacePresetToolMountsResult>
     createAsset(input: CreatePromptResourceAssetInput): Promise<UpdatePromptResourceResult>
     moveAsset(input: MovePromptResourceAssetInput): Promise<UpdatePromptResourceResult>
     deleteAsset(input: DeletePromptResourceAssetInput): Promise<UpdatePromptResourceResult>
@@ -367,7 +380,7 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
     agentSessions: {
       create: input => bridge.call<CreateAgentSessionResult>('application.createAgentSession', input as unknown as ClientJsonValue),
       get: agentSessionId => bridge.call<{ session: AgentSession }>('application.getAgentSession', { agentSessionId }),
-      getMessages: input => bridge.call<AgentMessagePage>('application.getAgentMessagePage', input as unknown as ClientJsonValue),
+      getTranscript: input => bridge.call<AgentTranscriptPage>('application.getAgentTranscriptPage', input as unknown as ClientJsonValue),
       invoke: input => bridge.call<InvokeAgentTurnResult>('application.invokeAgentTurn', input as unknown as ClientJsonValue),
       preview: input => bridge.call<PreviewAgentTurnResult>('application.previewAgentTurn', input as unknown as ClientJsonValue),
     },
@@ -388,6 +401,11 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       create: input => bridge.call<CreateAgentProfileResult>('application.createAgentProfile', input as unknown as ClientJsonValue),
       update: input => bridge.call<UpdateAgentProfileResult>('application.updateAgentProfile', input as unknown as ClientJsonValue),
       delete: agentProfileId => bridge.call<DeleteAgentProfileResult>('application.deleteAgentProfile', { agentProfileId }),
+    },
+    agentTools: {
+      list: () => bridge.call<{ tools: AgentToolDefinition[] }>('application.listAgentTools', {}),
+      update: input => bridge.call<{ tool: AgentToolDefinition }>('application.updateAgentTool', input as unknown as ClientJsonValue),
+      analyze: agentProfileId => bridge.call<{ analysis: ClientJsonValue }>('application.analyzeAgentTools', { agentProfileId }),
     },
     narratives: {
       create: input => bridge.call<CreateNarrativeTimelineResult>('application.createNarrativeTimeline', input as unknown as ClientJsonValue),
@@ -412,6 +430,8 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       updateAssets: input => bridge.call<UpdatePromptResourceResult>('application.updatePromptResourceAssets', input as unknown as ClientJsonValue),
       listSettingMounts: source => bridge.call<ListSettingMountsResult>('application.listSettingMounts', source ? { source } as unknown as ClientJsonValue : {}),
       replaceSettingMounts: input => bridge.call<ReplaceSettingMountsResult>('application.replaceSettingMounts', input as unknown as ClientJsonValue),
+      listPresetToolMounts: input => bridge.call<ListPresetToolMountsResult>('application.listPresetToolMounts', (input ?? {}) as unknown as ClientJsonValue),
+      replacePresetToolMounts: input => bridge.call<ReplacePresetToolMountsResult>('application.replacePresetToolMounts', input as unknown as ClientJsonValue),
       moveAsset: input => bridge.call<UpdatePromptResourceResult>('application.movePromptResourceAsset', input as unknown as ClientJsonValue),
       deleteAsset: input => bridge.call<UpdatePromptResourceResult>('application.deletePromptResourceAsset', input as unknown as ClientJsonValue),
     },

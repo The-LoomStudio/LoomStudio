@@ -13,13 +13,14 @@ describe('PromptResourceStore', () => {
     const setting = await store.createResource({ actor, id: 'setting-500', resourceKind: 'setting', rootNode: settingFixture })
     const preset = await store.createResource({ actor, id: 'preset-100', resourceKind: 'preset', rootNode: presetFixture })
 
-    expect(engine.database.prepare('SELECT version FROM schema_migrations WHERE namespace = ?').get('application.prompt-resource')).toEqual({ version: 1 })
-    expect(engine.database.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND (name LIKE 'prompt_resource%' OR name = 'global_setting_mounts')`).all()).toEqual(expect.arrayContaining([
+    expect(engine.database.prepare('SELECT version FROM schema_migrations WHERE namespace = ?').get('application.prompt-resource')).toEqual({ version: 2 })
+    expect(engine.database.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND (name LIKE 'prompt_resource%' OR name IN ('global_setting_mounts', 'preset_tool_mounts'))`).all()).toEqual(expect.arrayContaining([
       { name: 'prompt_resources' },
       { name: 'prompt_resource_nodes' },
       { name: 'global_setting_mounts' },
       { name: 'prompt_resource_node_revisions' },
       { name: 'prompt_resource_header_revisions' },
+      { name: 'preset_tool_mounts' },
     ]))
 
     expect(setting.resource.rootNode).toEqual(settingFixture)
@@ -41,6 +42,24 @@ describe('PromptResourceStore', () => {
     expect((await store.listSettingMounts({ settingResourceId: setting.resource.id })).map(mount => mount.source)).toEqual([
       { kind: 'manual', id: 'global' },
       { kind: 'preset', id: preset.resource.id },
+    ])
+    await store.addPresetToolMount({
+      actor,
+      presetResourceId: preset.resource.id,
+      toolId: 'official/test_tool',
+      orderIndex: 0,
+      defaultEnabled: true,
+      activation: { kind: 'keyword', keywords: ['tool'] },
+      provider: { order: 10 },
+    })
+    expect(await store.listPresetToolMounts({ presetResourceId: preset.resource.id })).toEqual([
+      expect.objectContaining({
+        presetResourceId: preset.resource.id,
+        toolId: 'official/test_tool',
+        defaultEnabled: true,
+        activation: { kind: 'keyword', keywords: ['tool'] },
+        provider: { order: 10 },
+      }),
     ])
     engine.close()
   })
@@ -270,6 +289,42 @@ describe('PromptResourceStore', () => {
       { store: 'prompt-resources', kind: 'delete', entityId: firstMount.mounts[0]!.id, entityType: 'prompt-resource.mount' },
       { store: 'prompt-resources', kind: 'delete', entityId: first.resource.id, entityType: 'prompt-resource', fromVersion: 1, toVersion: 2 },
     ])
+    engine.close()
+  })
+
+  it('replaces Preset Tool mounts atomically and removes them with the Preset', async () => {
+    const { engine, store } = createStore()
+    const preset = await store.createResource({ actor, id: 'tool-preset', resourceKind: 'preset', rootNode: createSmallTree('tool-preset-root', 'tool-preset') })
+    const first = await store.replacePresetToolMounts({
+      actor,
+      presetResourceId: preset.resource.id,
+      mounts: [
+        { toolId: 'official/first', orderIndex: 0, defaultEnabled: true, provider: { order: 10 } },
+        { toolId: 'official/second', orderIndex: 1, defaultEnabled: false, content: { zone: 'tools', slot: 'official-tools' } },
+      ],
+    })
+    const second = await store.replacePresetToolMounts({
+      actor,
+      presetResourceId: preset.resource.id,
+      mounts: [{ toolId: 'official/second', orderIndex: 0, defaultEnabled: true, content: { zone: 'tools', slot: 'preset-tools', orderHint: 5 } }],
+    })
+
+    expect(second.commit.operations).toEqual([
+      ...first.mounts.map(mount => ({ store: 'prompt-resources', kind: 'delete' as const, entityId: mount.id, entityType: 'prompt-resource.tool-mount' })).sort((left, right) => left.entityId.localeCompare(right.entityId)),
+      { store: 'prompt-resources', kind: 'create', entityId: second.mounts[0]!.id, entityType: 'prompt-resource.tool-mount' },
+    ])
+    expect(await store.listPresetToolMounts({ presetResourceId: preset.resource.id })).toEqual([
+      expect.objectContaining({ toolId: 'official/second', defaultEnabled: true, content: { zone: 'tools', slot: 'preset-tools', orderHint: 5 } }),
+    ])
+
+    const deleted = await store.deleteResource({ actor, resourceId: preset.resource.id, expectedVersion: 1 })
+    expect(deleted.commit.operations).toContainEqual({
+      store: 'prompt-resources',
+      kind: 'delete',
+      entityId: second.mounts[0]!.id,
+      entityType: 'prompt-resource.tool-mount',
+    })
+    expect(await store.listPresetToolMounts({ presetResourceId: preset.resource.id })).toEqual([])
     engine.close()
   })
 })

@@ -176,6 +176,8 @@ describe('studio client typed api', () => {
       'application.deletePromptResourceAsset': { resource: { id: 'resource-1' } },
       'application.listSettingMounts': { mounts: [] },
       'application.replaceSettingMounts': { mounts: [{ id: 'mount-1' }], mutation: { changesetId: 'changeset-1' } },
+      'application.listPresetToolMounts': { mounts: [] },
+      'application.replacePresetToolMounts': { mounts: [{ id: 'tool-mount-1' }], mutation: { changesetId: 'changeset-2' } },
     }))
 
     await api.promptResources.get('resource-1')
@@ -196,6 +198,11 @@ describe('studio client typed api', () => {
     await api.promptResources.updateAssets({ resourceId: 'resource-1', updates: [{ assetId: 'asset-1', label: 'Renamed' }] })
     await api.promptResources.listSettingMounts({ kind: 'preset', id: 'resource-1' })
     await api.promptResources.replaceSettingMounts({ source: { kind: 'preset', id: 'resource-1' }, settingResourceIds: ['setting-1'] })
+    await api.promptResources.listPresetToolMounts({ presetId: 'resource-1' })
+    await api.promptResources.replacePresetToolMounts({
+      presetId: 'resource-1',
+      mounts: [{ toolId: 'official/test_structured', orderIndex: 0, defaultEnabled: true, provider: { order: 10 } }],
+    })
     await api.promptResources.moveAsset({ resourceId: 'resource-1', assetId: 'asset-1', targetAssetId: 'root', position: 'after' })
     await api.promptResources.deleteAsset({ resourceId: 'resource-1', assetId: 'asset-1' })
 
@@ -213,6 +220,8 @@ describe('studio client typed api', () => {
       { method: 'application.updatePromptResourceAssets', params: { resourceId: 'resource-1', updates: [{ assetId: 'asset-1', label: 'Renamed' }] } },
       { method: 'application.listSettingMounts', params: { source: { kind: 'preset', id: 'resource-1' } } },
       { method: 'application.replaceSettingMounts', params: { source: { kind: 'preset', id: 'resource-1' }, settingResourceIds: ['setting-1'] } },
+      { method: 'application.listPresetToolMounts', params: { presetId: 'resource-1' } },
+      { method: 'application.replacePresetToolMounts', params: { presetId: 'resource-1', mounts: [{ toolId: 'official/test_structured', orderIndex: 0, defaultEnabled: true, provider: { order: 10 } }] } },
       { method: 'application.movePromptResourceAsset', params: { resourceId: 'resource-1', assetId: 'asset-1', targetAssetId: 'root', position: 'after' } },
       { method: 'application.deletePromptResourceAsset', params: { resourceId: 'resource-1', assetId: 'asset-1' } },
     ])

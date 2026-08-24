@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import type { AgentMessage, AgentSession } from '../../../entities/index.js'
+import type { AgentTranscriptEntry, AgentSession } from '../../../entities/index.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 
 type UseAgentChatRuntimeInput = {
@@ -11,7 +11,7 @@ type UseAgentChatRuntimeInput = {
 
 export function useAgentChatRuntime(input: UseAgentChatRuntimeInput) {
   const [session, setSession] = useState<AgentSession>()
-  const [messages, setMessages] = useState<AgentMessage[]>([])
+  const [messages, setMessages] = useState<AgentTranscriptEntry[]>([])
   const [composerInput, setComposerInput] = useState('')
   const profileGenerationRef = useRef(0)
   const sessionPromiseRef = useRef<{ profileId: string; promise: Promise<AgentSession> } | undefined>(undefined)
@@ -33,13 +33,15 @@ export function useAgentChatRuntime(input: UseAgentChatRuntimeInput) {
 
     await input.runAction(async () => {
       const activeSession = await ensureSession(profileId, generation)
-      const result = await input.api.agentSessions.invoke({
+      await input.api.agentSessions.invoke({
         agentSessionId: activeSession.id,
         input: content,
       })
       if (profileGenerationRef.current !== generation) return
-      setSession(result.agentSession)
-      setMessages(current => [...current, result.messages.user, result.messages.assistant])
+      const transcript = await loadTranscript(input.api, activeSession.id)
+      if (profileGenerationRef.current !== generation) return
+      setSession(transcript.session)
+      setMessages(transcript.entries)
       setComposerInput('')
     })
   }
@@ -70,4 +72,18 @@ export function useAgentChatRuntime(input: UseAgentChatRuntimeInput) {
     setInput: setComposerInput,
     submitTurn,
   }
+}
+
+async function loadTranscript(api: StudioApi, agentSessionId: string) {
+  const entries: AgentTranscriptEntry[] = []
+  let cursor: string | undefined
+  let session: AgentSession | undefined
+  do {
+    const page = await api.agentSessions.getTranscript({ agentSessionId, cursor, limit: 100 })
+    session = page.session
+    entries.unshift(...page.entries)
+    cursor = page.nextCursor
+  } while (cursor)
+  if (!session) throw new Error(`Agent session not found: ${agentSessionId}`)
+  return { entries, session }
 }

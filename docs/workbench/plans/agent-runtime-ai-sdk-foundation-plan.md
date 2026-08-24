@@ -1,9 +1,9 @@
 # Agent Runtime 与 AI SDK 基建计划
 
-> **状态**：Phase 0 已完成并通过主审；Phase 1 待批准
-> **日期**：2026-08-23
+> **状态**：Phase 4 已完成并通过主审；Phase 5 已完成可编辑 Tool Entry、Native / Content 分类投影和 Content Tool tools-zone 接缝，Responses Custom 与 Profile 级 placement override 待后续切片
+> **日期**：2026-08-24
 > **范围**：重新将 Vercel AI SDK 纳入 AI Gateway，实现 Provider 单步调用、流式事件、统一 ToolCall / ToolResult、三类工具 Transport、Agent Loop 与可恢复持久化。
-> **事实边界**：本文是实施计划，不是当前 Architecture。当前代码仍以手写 OpenAI-compatible Chat Completions Gateway 和线性 Agent Message Store 为准。
+> **事实边界**：本文是实施计划与阶段状态记录，不替代 Architecture。当前代码已有 canonical Transcript、Agent Loop、Native / Content Tool 与版本化 Tool Entry；跨进程 Resume 和 Responses Custom 仍未完成。
 
 ## 1. 决策摘要
 
@@ -51,18 +51,16 @@ Assistant Content In-band Tool
 
 ## 2. 当前实现事实
 
-### 2.1 AI Gateway 仍是手写 Chat Completions Client
+### 2.1 AI Gateway 已接入 AI SDK，Application 仍保留上层账户边界
 
-当前 [`packages/application-runtime/src/gateway.ts`](../../../packages/application-runtime/src/gateway.ts) 直接使用 `fetch` 请求 `/chat/completions`，负责：
+当前已新增 [`packages/ai-gateway`](../../../packages/ai-gateway)，在包内使用 Vercel AI SDK 及官方 Provider adapter，负责完整响应、流式响应、Provider-native Function Tool、usage、finish metadata 和取消。其 public contract 不暴露 AI SDK 类型。
 
-- OpenAI-compatible payload；
-- API Key 注入；
-- Provider Profile / Model 校验；
-- 非流式完整响应；
-- `finish_reason`、usage 和 `tool_calls` 的局部解析；
-- 网络错误的基础归一。
+[`packages/application-runtime/src/gateway.ts`](../../../packages/application-runtime/src/gateway.ts) 继续负责：
 
-当前没有 Vercel AI SDK 依赖，也没有统一 Provider SDK adapter。Gateway 位于 `application-runtime` 内部，但既有 Workbench 已将长期归属定义为 Platform AI Gateway。
+- Provider Profile、Secret、Model Enablement 与 Proxy；
+- 将账户交给 Provider Adapter Registry 解析；
+- 保持既有 Application Gateway 结果与 HTTP / 网络错误语义；
+- 当前 Agent Turn 的非流式兼容入口。
 
 ### 2.2 Canonical Message 仍绑定 OpenAI Chat Completions
 
@@ -700,25 +698,9 @@ Header 不保存完整 Loop KV。当前恢复状态由 active leaf 到 root 的�
 
 ### 9.3 当前数据迁移
 
-当前 `agent_messages.message_json` 中的 OpenAI-style Message 必须通过显式 migration 转成 canonical Transcript Entry：
+项目仍处于初期，已批准不兼容旧 Agent Session 数据。`application.agent@3` 直接删除旧 `agent_messages`、`agent_tool_calls` 与 Session 行并建立 canonical Transcript schema，不实现数据转换器、双写或兼容读取。
 
-```text
-system / developer / user
-  -> message entry
-
-assistant content
-  -> assistant-message entry
-
-assistant tool_calls[]
-  -> assistant-message + tool-invocation entries
-
-role: tool
-  -> tool-result entry
-```
-
-现有数据不能原地解释成新的自由正文 Tool。迁移完成前，旧表只作为 migration source，不继续成为双写权威。
-
-是否在同一版本直接替换 Agent Store schema，属于实施前必须批准的数据迁移决策。
+这是开发期 breaking migration，不代表未来稳定版本可以无条件丢弃用户数据。进入正式数据兼容承诺后，后续 Agent Store migration 必须重新采用显式转换或导出恢复方案。
 
 ## 10. Tool Registry、权限和调度
 
@@ -828,6 +810,17 @@ Persistent Kernel、代码反向调用 Agent Tool、文件系统和网络权限�
 
 验证检查点：现有 Provider Gateway、Agent Session、Secret、Proxy、日志测试保持通过；SDK 类型不出现在 `application-runtime`、RPC 或 Client public type 中。
 
+实际结果：
+
+- 新增 `packages/ai-gateway`，AI SDK 与 Provider adapter 类型均限制在包内部；
+- `application-runtime` 继续持有 Document、Secret、Provider Profile、Model Enablement 与 Proxy，只委托低层执行；
+- Phase 1 当时正式路由只替换既有 OpenAI-compatible 非流式调用；OpenAI、Anthropic 与 Google 的 Provider Profile 路由在 Phase 2 Registry 中补齐；
+- Gateway 只构造无 `execute` 的 Function Tool，不提供多步 stop condition，并在请求前拒绝重复 Tool 名、未知 Tool Choice 和无 Tool 的强制调用；
+- 恢复并验证既有 developer/system 合并、Provider 边界校验、HTTP 与网络错误语义；
+- 定向 TypeScript、4 个测试文件 / 21 项测试、Workspace Health、ESLint、公开 `.d.ts` 泄漏检查与 `git diff --check` 均通过。
+
+Phase 1 完成后停止，不自动进入 Streaming、Content Tool、Agent Loop 或持久化状态机阶段。
+
 ### Phase 2：统一 Gateway Run / Stream Contract
 
 目标：完整响应和流式共用一套执行合同。
@@ -841,6 +834,20 @@ Persistent Kernel、代码反向调用 Agent Tool、文件系统和网络权限�
 5. raw payload 进入受控 artifact / trace ref，不进入普通 Document。
 
 验证检查点：流和非流结果一致；取消到达 Provider；慢消费者、断连和 Provider 提前关流不会制造重复 completion。
+
+实际结果：
+
+- 落地统一 `GatewayRun { id, events, result, cancel }`；既有 `invokeChat` 只是完整响应兼容封装；
+- 完整响应与流式响应共用请求准备、Tool 注册、Provider options、结果归一和取消逻辑；AI SDK 自动重试固定为 `0`，不提供 Tool `execute` 或多步 `stopWhen`；
+- 事件覆盖 `started`、`text-delta`、`tool-input-delta`、`usage`、`completed`、`failed`、`cancelled`，一次 Run 只产生一个终态；没有真实 token 数据时不伪造空 usage；
+- 新增官方 Provider Adapter Registry，静态支持 OpenAI、Anthropic、Google、OpenAI-compatible 与 Fake；Provider Account/Profile 仍是持久化权威，Registry 负责配置、凭据、Provider kind、能力和模型发现；
+- OpenAI 与 OpenAI-compatible 支持 `/models` 发现；Anthropic 与 Google 当前明确返回不支持模型发现，不使用未经验证的伪通用接口；
+- Application Runtime 在创建、更新 Profile 和替换凭据时经 Registry 校验并保存规范化结果；Studio Server Composition Root 注入并共享同一个 Registry；
+- 定向 TypeScript 与 6 个测试文件 / 35 项测试通过；Workspace Health、ESLint、公开 `.d.ts` 泄漏检查与 `git diff --check` 见本阶段主审记录。
+
+本阶段明确未实现 RPC / Client Streaming、动态插件 Registry、raw chunk artifact、完整 Provider error category / retryable 分类、Content Tool、CodeAct、Agent Store Schema 或 Session Tree。Server 内部事件流暂为保留完整历史的内存广播；在暴露长生命周期 Run 前必须替换为有界缓冲。
+
+Phase 2 完成后停止，不自动进入 Tool Foundation、Agent Loop 或 Prompt Build / Preset 接缝。
 
 ### Phase 3：Canonical Transcript 与 Tool Foundation
 
@@ -860,6 +867,27 @@ Persistent Kernel、代码反向调用 Agent Tool、文件系统和网络权限�
 
 验证检查点：同一 Agent Profile 开关同时控制 Native、Provider Custom 和 Content 暴露；同一 ToolInvocation 可以映射为 Chat Completions Function Tool 和 Responses Tool Item；Agent Store 不再要求所有调用使用 `type: function` wire shape。
 
+批准并采用的实施边界：
+
+- 不兼容初期旧 Agent Session 数据，不实现旧 `agent_messages` / `agent_tool_calls` 转换器或双轨读取；
+- canonical Transcript 使用显式判别联合，不扩展 OpenAI `ChatMessage`；
+- Tool 使用 namespaced 稳定 ID，Provider 可见名称不作为持久化主键；
+- Agent Profile 只保存 `enabledToolIds`，不复制 Tool Schema，也不提前保存 Content Tool Prompt 位置；
+- 本阶段定义 Registry 与分析接口，不执行真实 Tool、不实现 approval、Content Parser 或 Agent Loop。
+
+实际结果：
+
+- Agent Store `application.agent@3` 使用 `agent_transcript_entries` 与 `agent_tool_invocations`；Session 改为 `headEntryId / entryCount`；
+- Transcript Entry 覆盖 message、provider-observation、tool-invocation、tool-result 与 run-state；Provider transport messages 只在调用边界生成；
+- ToolInvocation / ToolResult 以 Studio Invocation ID 配对，跨批拒绝重复 Invocation、未知 Result、Tool ID 不匹配与重复 Result；
+- `invokeAgentTurn` 持久化 user message、Provider Observation 与 assistant message；Prompt Build 当前只投影 message Entry；
+- 新增静态 Agent Tool Registry，提供 `list / resolve / validateInvocation / analyze`，支持 structured、freeform、hybrid 与 Native / Provider Custom / Content Transport 分析；
+- Agent Profile 新增去重后的 `enabledToolIds`；创建和更新时拒绝未注册 Tool；Application RPC 提供工具列表与按 Profile 分析接口；
+- Provider Adapter capability 补充 Native Function / Provider Custom Tool 能力事实；当前 Content Transport 标记为未实现，不会被分析接口虚假暴露。
+- 完整测试 100 个文件 / 451 项、定向 TypeScript、Workspace Health、ESLint、公开 `.d.ts` 泄漏检查与 `git diff --check` 均通过。
+
+Phase 3 不包含 Tool execute、approval、Provider Tool replay compiler、Content Tool tools-zone Slot、Agent Loop 或恢复状态机。这些从 Phase 4 开始单独推进。
+
 ### Phase 4：Native Function Tool Loop
 
 目标：先跑通最成熟、风险最低的 Tool 路径。
@@ -874,6 +902,21 @@ Persistent Kernel、代码反向调用 Agent Tool、文件系统和网络权限�
 6. 中断时生成 synthetic ToolResult。
 
 验证检查点：`provider -> tool call -> execute -> result -> provider -> stop` 完整闭环可恢复；Provider 返回错误 finish reason 时仍按 canonical ToolInvocation 判断是否继续。
+
+实际结果：
+
+- Agent Tool Registry 新增可选 Runtime Registration、approval allow/deny、AbortSignal-aware execute 与稳定失败结果；Definition 和运行时 Handler 仍保持分离；
+- Agent Profile 的已启用 structured Tool 会按 Provider capability 编译成顶层 Native Function Tool；缺失 Handler、不可用 Transport 与重复 Provider 可见名称在请求前拒绝；
+- Runtime 每次只推进一个 Provider Step，Provider ToolCall 先转换并持久化为 Studio Invocation ID，同时保留 Provider call ID 用于本次 Run replay；
+- ToolInvocation、ToolResult、ProviderObservation 和 Run State 分边界追加；Tool Result 使用原 Provider call ID 编译成下一 Step 的 `role: tool`，不把 Provider ID 变成持久化主键；
+- approval deny、执行抛错、未知 Tool 与取消都会形成明确 ToolResult；取消时先写 `aborted` synthetic Result 和 Run 终态，再向调用方返回 AbortError；
+- 多 Tool 当前串行执行；固定最多 8 个 Provider Step、单 Tool 30 秒 timeout，AI SDK 自动重试仍为 `0`；Provider 即使返回 `stop`，只要存在 canonical Invocation 仍继续 Loop；
+- 无 Tool 的既有 Agent Turn 也使用同一 Loop，并记录 `running -> completed / failed / aborted`；Provider error / length 且无 Invocation 不会被误判为完成；
+- 完整测试 101 个文件 / 456 项、Workspace Health、TypeScript、ESLint 与定向 Native Tool Loop 测试通过。
+
+本阶段的“可恢复”只指关键事实已在每个边界持久化，且同一进程内取消和失败不会留下无 Result 的已执行 Tool。跨进程 Resume、从历史 Transcript 重建 Provider Tool replay、Permission UI suspend 与分支恢复仍未实现，不能据此宣称完整状态机恢复已经完成。
+
+Phase 4 不包含 Responses Custom、Content Tool、tools-zone Slot、CodeAct、Bash、动态 Extension Tool 注册或写入领域 Mutation Tool。
 
 ### Phase 5：Responses Custom 与 Content Tool
 
@@ -894,6 +937,29 @@ Persistent Kernel、代码反向调用 Agent Tool、文件系统和网络权限�
 11. 对未知 Tool、未闭合标签、截断、重复调用和保留标签进行错误测试。
 
 验证检查点：同一个 `commit_narrative` Tool 在 Responses Custom、Chat Completions Content 和 JSON fallback 下产生相同 canonical Invocation；官方与 Extension Tool Slot 可以独立启停、排序和卸载；Chat Completions 原始 `stop` 不会误结束 Agent Run。
+
+当前完成状态（2026-08-24）：
+
+- 已注册无副作用的 `official/test_structured` 与 `official/test_content`，分别覆盖 Native JSON 与 hybrid Content 输入；两者只产生确定性成功结果或按 `mode: error` 返回稳定失败；
+- 已实现 `loom-content-v1` 增量 Scanner 与 Result Renderer，覆盖 chunk 边界、普通正文分离、未知 Tool、非法 metadata、重复/未知字段、未闭合协议、长度限制与结果文本转义；
+- Agent Loop 会把 Content Block 转换为 Studio Invocation ID 和 canonical `tool-invocation`，并依据 Invocation 而非 Provider 原始 `stop` 决定继续；
+- Content ToolResult 在 canonical Transcript 中保持 `tool-result`，Provider replay 使用 Runtime 生成的 `role: user` Content Block，不伪造 Chat Completions `role: tool` 或 Provider Call ID；
+- Content Tool 说明已作为外部 Runtime Source 进入统一 Prompt Build 的 `tools` zone，并按 `official-tools`、Extension owner slot 等稳定 Slot 编译；Preset 的 order profile 可以覆盖同名外部 Slot 的默认 rank；
+- M1 多 Content Invocation 串行执行；同一 Provider Step 同时出现 Native 与 Content 调用会被拒绝，避免双重派发。
+- Tool 描述、参数描述与 guidance 已作为模型可见模板进入独立 Tool Prompt Source；`{{User}}` 宏、现有 Prompt Activation、Provider order 与 Content zone/slot/rank/orderHint 经 Loom Core Pass 编译；
+- Native JSON、Provider Custom 候选与 Content Tool 分属两种投影平面：Native / Custom 使用 Provider 顶层 Tool Order，Content 使用 Prompt Message 的 Zone / Slot。Structured Tool 不再错误降级为需要 rawInput 的 Content Transport；
+- 宏只作用于 description、parameter description 和 guidance。Tool ID/name、参数键、type、required、enum、grammar、Handler 与 replay identity 保持结构稳定；
+- Agent Turn 的普通 Prompt Resource 与 Tool Prompt 现共用同一 User 宏上下文；绑定 Narrative 时从 Timeline 对应 Card 的 `userName` 派生，Agent-only Turn 回退为 `User`。
+- Client 现从统一 Tool Registry 加载 Workspace Tool Definition；Preset 通过独立 `preset_tool_mounts` 关系保存挂载、默认开关、Activation、Provider Tool Order 与 Content Zone / Slot / Rank / Order，Agent Profile 只保存按 Tool ID 的 `toolOverrides` 快速覆盖；
+- 有效工具集合按 `Preset 已挂载 && (Agent override ?? Preset defaultEnabled) && Activation matched` 编译。未挂载 Tool 不能由 Agent 单独启用；Preset 复制会复制 Mount，但不会复制 Tool Definition；
+- Tool Definition 已持久化为版本化 `airp.agentTool` Document。Preset Tools Tab 编辑同一份 Workspace Tool Entry 的 Name、Description、Guidance、Input 与 Parameter Description；内部 Resource ID 保持稳定，修改后 Registry 立即刷新并可在 Runtime 重建后恢复；
+- Structured Provider Tool 在 Preset 中显示为 Message 数组之外的 Provider-managed surface；系统只控制顶层 Tool Order，不承诺它位于第一个 System 前或后。Freeform / Hybrid 同时保存 Provider Custom 候选顺序与 Chat Completions Content fallback 的 Zone / Slot；
+- Agent-only Turn 完成后，Client 会从 Agent Store 分页回载完整 canonical Transcript，而不是只追加 user / assistant 首尾消息；Message、Provider Observation、Run State、Tool Invocation 与 Tool Result 均可在 Agent 会话中检查；
+- 新增一次 Turn 内 `Native Function -> Content Tool -> Final Answer` 的三步集成验证，确认原生 Tool Result 与 Content Tool user-role Result 可以依次 replay，且 Provider 原始 `stop` 不会提前结束 Content 调用。
+
+本切片明确未完成：Responses Custom Tool adapter、Provider Custom Result replay、AI Tool Router Controller、动态 Extension Tool 注册和真实领域写入 Tool。Preset Tool Mount 已成为 Activation 与 Placement 的权威关系；Tool Definition 中同名字段暂保留为新建 Mount 的默认模板，Agent Profile 不拥有 Placement。
+
+已使用 OpenAI-compatible 实际模型人工验证 Native Structured、Content Tool 和多步 Loop；Anthropic、Google、OpenAI Responses Custom 仍未进行真实 Provider 验收。自动化验证继续使用确定性的 Fake Gateway 覆盖持久化、投影与 replay 边界。
 
 ### Phase 6：Agent Session Tree 与恢复
 
@@ -937,7 +1003,7 @@ Persistent Kernel、代码反向调用 Agent Tool、文件系统和网络权限�
 | Native Tool       | Schema、unknown tool、invalid args、tool error、parallel flag |
 | Responses Custom  | raw input、grammar、custom output 配对                        |
 | Content Tool      | chunk 边界、未闭合标签、正文与 Tool Block 混合、多个调用      |
-| Tool Exposure     | Agent Profile 开关、Owner Slot、requested/effective placement |
+| Tool Exposure     | Preset Mount、Agent override、Activation、Provider / Content requested/effective placement |
 | Loop              | stop、tool-call、length、error、cancelled、max steps          |
 | Permission        | allow、deny、prompt、恢复后重新检查                           |
 | Persistence       | call/result 配对、synthetic result、orphan repair、branch     |
@@ -986,7 +1052,6 @@ AI SDK 的性价比成立，但前提是边界足够窄：
 - Bash / CodeAct 的默认启用；
 - Multi-Agent orchestration；
 - Prompt Builder 重写；
-- 在 Preset 界面维护 Agent Tool 开关；
 - 将 Provider 顶层 Native Tool 伪装成 Message Slot；
 - Narrative Timeline 与 Agent Session 镜像；
 - 已提交 Changeset 随 Run discard 自动回滚。

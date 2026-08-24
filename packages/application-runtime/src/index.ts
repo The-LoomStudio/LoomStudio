@@ -20,6 +20,66 @@ export {
 export {
   buildOpenAIChatPayload,
 } from './provider-payload.js'
+export { createAgentToolRegistry } from './agent/tool-registry.js'
+export {
+  createOfficialTestAgentToolRegistry,
+  officialTestAgentToolDefinitions,
+  officialTestContentTool,
+  officialTestStructuredTool,
+} from './agent/official-tools/index.js'
+export {
+  createLoomContentScannerState,
+  finishLoomContentScan,
+  pushLoomContentChunk,
+  renderLoomContentToolResult,
+} from './agent/content-transport.js'
+export type {
+  LoomContentScanError,
+  LoomContentScanErrorCode,
+  LoomContentScanEvent,
+  LoomContentScannerOptions,
+  LoomContentScannerState,
+  LoomContentScanResult,
+  LoomContentToolInvocation,
+  LoomContentToolResult,
+} from './agent/content-transport.js'
+export { compileToolPromptSources } from './agent/tool-prompt-build.js'
+export type {
+  CompiledToolExposure,
+  CompiledToolPrompt,
+  ToolPromptActivationTrace,
+  ToolPromptBuildInput,
+  ToolPromptBuildResult,
+  ToolPromptBuildTrace,
+  ToolPromptOrderTrace,
+  ToolContentPlacement,
+  ToolPromptSource,
+  ToolPromptTemplate,
+} from './agent/tool-prompt-build.js'
+export type {
+  AgentToolAnalysis,
+  AgentToolRegistry,
+  ModelToolTransportCapabilities,
+  ResolvedAgentTools,
+  StructuredToolFallback,
+  ToolDefinition,
+  ToolDiagnostic,
+  ToolExposureAnalysis,
+  ToolGrammar,
+  ToolInputDefinition,
+  ToolInvocation,
+  ToolInvocationValidation,
+  ToolOwnerRef,
+  ToolApprovalContext,
+  ToolApprovalDecision,
+  ToolApprovalHandler,
+  ToolExecutionContext,
+  ToolExecutor,
+  ToolRuntimeRegistration,
+  ToolResult,
+  ToolResultPart,
+  ToolTransport,
+} from './agent/tool-registry.js'
 export {
   combineActivationGates,
   evaluateCondition,

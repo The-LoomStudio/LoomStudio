@@ -24,13 +24,15 @@ export type {
   SwitchNarrativeBranchResult,
 } from './narrative.js'
 export type {
-  AgentMessage,
-  AgentMessagePage,
+  AgentTranscriptEntry,
+  AgentTranscriptPage,
+  AgentToolDefinition,
   AgentSession,
   ChatMessage,
   CreateAgentSessionResult,
   InvokeAgentTurnResult,
   PreviewAgentTurnResult,
+  ToolExposure,
 } from './agent.js'
 export type { Run, RunDetails, RuntimeEntry, CommitCandidate } from './run.js'
 export type { PromptProjection, PromptProjectionZone, ProviderMessage, PromptPreview } from './prompt.js'
@@ -45,12 +47,16 @@ export type {
   ImportBundle,
   ListCardPromptResourcesResult,
   ListPromptResourcesResult,
+  ListPresetToolMountsResult,
   ListSettingMountsResult,
   PromptResource,
   PromptResourceArtifact,
+  PresetToolMount,
+  PresetToolMountInput,
   CardBundleArtifact,
   UpdatePromptResourceResult,
   ReplaceSettingMountsResult,
+  ReplacePresetToolMountsResult,
   SettingMount,
   SettingMountSource,
 } from './workspace.js'

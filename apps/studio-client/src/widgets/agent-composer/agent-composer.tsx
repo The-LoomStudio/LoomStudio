@@ -1,6 +1,6 @@
 import { Check, ChevronDown, Copy } from 'lucide-react'
 import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from 'react'
-import type { AgentMessage as AgentMessageEntity, AgentProfile, AgentSession, ProviderAccount } from '../../entities/index.js'
+import type { AgentTranscriptEntry as AgentTranscriptEntryEntity, AgentProfile, AgentSession, ProviderAccount } from '../../entities/index.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import { tryWriteClipboardText } from '../../shared/browser/clipboard.js'
 import type { MarkdownCodeBlockLabels } from '../../shared/ui/markdown-content/markdown-code-block.js'
@@ -20,7 +20,7 @@ type AgentComposerProps = {
   canSendNarrative: boolean
   agentBusy: boolean
   agentInput: string
-  agentMessages: AgentMessageEntity[]
+  agentMessages: AgentTranscriptEntryEntity[]
   agentSession?: AgentSession
   narrativeInput: string
   narrativeTextareaDisabled: boolean
@@ -67,7 +67,7 @@ export function AgentComposer(props: AgentComposerProps) {
     props.onExpandedChange(nextOpen)
   }
 
-  async function copyMessage(message: AgentMessageEntity, content: string) {
+  async function copyMessage(message: AgentTranscriptEntryEntity, content: string) {
     setCopyState({ id: message.id, copied: await tryWriteClipboardText(content) })
     if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
     copyTimerRef.current = setTimeout(() => setCopyState(undefined), 1600)
@@ -96,15 +96,15 @@ export function AgentComposer(props: AgentComposerProps) {
             <div className={styles.conversation} ref={conversationRef}>
               <Suspense fallback={<div aria-busy="true" className={styles.loading}><SkeletonText lines={5} /></div>}>
                 {props.agentMessages.length === 0 && !props.agentBusy ? <p className={styles.empty}>{props.t('agent.sessionEmpty')}</p> : null}
-                {props.agentMessages.map((message, index) => {
-                  const display = readAgentMessageDisplay(message)
-                  if (!display) return null
+                {props.agentMessages.map((message) => {
+                  const display = readAgentTranscriptEntryDisplay(message)
+                  if (display.kind === 'event') return <AgentTranscriptEvent key={message.id} message={message} />
                   return (
-                    <AgentMessage
+                    <AgentTranscriptEntry
                       codeBlockLabels={codeBlockLabels}
                       content={display.content}
                       copyState={copyState?.id === message.id ? copyState.copied : undefined}
-                      index={index}
+                      index={countMessageEntriesThrough(props.agentMessages, message.sequence) - 1}
                       key={message.id}
                       message={message}
                       role={display.role}
@@ -195,7 +195,7 @@ function AgentProfilePicker(props: {
   )
 }
 
-function AgentMessage(props: { codeBlockLabels: MarkdownCodeBlockLabels; content: string; copyState?: boolean; index: number; message: AgentMessageEntity; role: 'user' | 'assistant'; t: Translator; onCopy(): void }) {
+function AgentTranscriptEntry(props: { codeBlockLabels: MarkdownCodeBlockLabels; content: string; copyState?: boolean; index: number; message: AgentTranscriptEntryEntity; role: 'user' | 'assistant'; t: Translator; onCopy(): void }) {
   return (
     <article className={`${styles.message} ${styles[props.role]}`}>
       <div className={styles.messageSurface}><ConversationMarkdown className={styles.messageBody} codeBlockLabels={props.codeBlockLabels} role={props.role} value={props.content} /></div>
@@ -204,8 +204,31 @@ function AgentMessage(props: { codeBlockLabels: MarkdownCodeBlockLabels; content
   )
 }
 
-function readAgentMessageDisplay(message: AgentMessageEntity): { role: 'user' | 'assistant'; content: string } | undefined {
-  if (message.message.role === 'user') return { role: 'user', content: message.message.content }
-  if (message.message.role === 'assistant' && message.message.content) return { role: 'assistant', content: message.message.content }
-  return undefined
+function AgentTranscriptEvent(props: { message: AgentTranscriptEntryEntity }) {
+  const entry = props.message.entry
+  const detail = entry.kind === 'tool-invocation' || entry.kind === 'tool-result'
+    ? String(entry.toolId ?? '')
+    : entry.kind === 'run-state'
+      ? String(entry.state ?? '')
+      : ''
+  return (
+    <details className={styles.transcriptEvent}>
+      <summary><span>{entry.kind}</span>{detail ? <code>{detail}</code> : null}</summary>
+      <pre>{JSON.stringify(entry, null, 2)}</pre>
+    </details>
+  )
+}
+
+function readAgentTranscriptEntryDisplay(message: AgentTranscriptEntryEntity):
+  | { kind: 'message'; role: 'user' | 'assistant'; content: string }
+  | { kind: 'event' } {
+  if (message.entry.kind === 'message' && message.entry.content) {
+    if (message.entry.role === 'user') return { kind: 'message', role: 'user', content: message.entry.content }
+    if (message.entry.role === 'assistant') return { kind: 'message', role: 'assistant', content: message.entry.content }
+  }
+  return { kind: 'event' }
+}
+
+function countMessageEntriesThrough(entries: AgentTranscriptEntryEntity[], sequence: number): number {
+  return entries.filter(entry => entry.sequence <= sequence && entry.entry.kind === 'message').length
 }

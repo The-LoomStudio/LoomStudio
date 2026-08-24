@@ -14,6 +14,7 @@
     { "path": "./packages/narrative-store" },
     { "path": "./packages/prompt-resource-store" },
     { "path": "./packages/document-store" },
+    { "path": "./packages/ai-gateway" },
     { "path": "./packages/application-runtime" },
     { "path": "./packages/extension-sdk/extension-host" },
     { "path": "./packages/extension-sdk" },

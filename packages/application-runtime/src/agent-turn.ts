@@ -1,6 +1,6 @@
 import type { ChatMessage } from '@loom-studio/shared'
 import type { PromptResourceStore } from '@loom-studio/prompt-resource-store'
-import type { AgentMessage } from '@loom-studio/agent-store'
+import type { AgentTranscriptEntry } from '@loom-studio/agent-store'
 import type { NarrativeNode, NarrativeTimeline } from '@loom-studio/narrative-store'
 import {
   defaultCompositionSkeleton,
@@ -18,7 +18,8 @@ import { readPromptResourceInputs, type PromptResourceContent } from './workspac
 
 export async function composeAgentTurnPrompt(input: {
   activationFacts?: ActivationFacts
-  agentMessages: AgentMessage[]
+  macroContext?: { user: string }
+  agentMessages: AgentTranscriptEntry[]
   promptResources: PromptResourceStore
   narrative?: {
     timeline: NarrativeTimeline
@@ -29,6 +30,11 @@ export async function composeAgentTurnPrompt(input: {
   buildId?: string
   runId?: string
   agentSessionId?: string
+  externalRuntime?: {
+    sourceNodes: SourceNode[]
+    contributions: PromptContribution[]
+    slotRanks?: Array<{ zoneId: string; slotKey: string; rankKey: string }>
+  }
 }): Promise<{ messages: ChatMessage[]; projection: CompiledPrompt; promptBuildTrace: PromptBuildTrace }> {
   const manualMounts = await input.promptResources.listSettingMounts({ source: { kind: 'manual', id: 'global' } })
   const presetMounts = await input.promptResources.listSettingMounts({ source: { kind: 'preset', id: input.preset.id } })
@@ -51,7 +57,7 @@ export async function composeAgentTurnPrompt(input: {
     ? await readPromptResourceInputs({
         promptResources: input.promptResources,
         resourceIds,
-        macroContext: { user: 'User' },
+        macroContext: input.macroContext ?? { user: 'User' },
       })
     : undefined
   const runtimeInputs = createRuntimePromptSources({
@@ -62,16 +68,31 @@ export async function composeAgentTurnPrompt(input: {
   const sourceNodes = [
     ...(resourceInputs?.sourceNodes ?? []),
     ...runtimeInputs.sourceNodes,
+    ...(input.externalRuntime?.sourceNodes ?? []),
   ]
   const contributions = [
     ...(resourceInputs?.contributions ?? []),
     ...runtimeInputs.contributions,
+    ...(input.externalRuntime?.contributions ?? []),
   ]
+  const resourceOrderProfile = resourceInputs?.orderProfile ?? emptyProjectionOrderProfile
+  const rankedSlots = new Set(
+    resourceOrderProfile.slotRanks.map(rank => `${rank.zoneId}\u0000${rank.slotKey}`),
+  )
+  const orderProfile = {
+    ...resourceOrderProfile,
+    slotRanks: [
+      ...resourceOrderProfile.slotRanks,
+      ...(input.externalRuntime?.slotRanks ?? []).filter(
+        rank => !rankedSlots.has(`${rank.zoneId}\u0000${rank.slotKey}`),
+      ),
+    ],
+  }
   const resourceProjection = compilePromptWithCore({
     skeleton: defaultCompositionSkeleton,
     sourceNodes,
     contributions,
-    orderProfile: resourceInputs?.orderProfile ?? emptyProjectionOrderProfile,
+    orderProfile,
     currentInput: input.userInput,
     activationFacts: input.activationFacts,
     buildId: input.buildId,
@@ -90,7 +111,7 @@ export async function composeAgentTurnPrompt(input: {
 }
 
 function createRuntimePromptSources(input: {
-  agentMessages: AgentMessage[]
+  agentMessages: AgentTranscriptEntry[]
   narrative?: {
     timeline: NarrativeTimeline
     nodes: NarrativeNode[]
@@ -154,11 +175,9 @@ function createRuntimePromptSources(input: {
     orderIndex: 0,
   })
   input.agentMessages.forEach(agentMessage => {
-    const message = agentMessage.message
-    if (message.role === 'tool' || (message.role === 'assistant' && message.tool_calls?.length)) {
-      throw new Error(`Agent Session tool messages are not yet supported by PromptBuild: ${agentMessage.id}`)
-    }
-    const content = 'content' in message && typeof message.content === 'string' ? message.content : undefined
+    const message = agentMessage.entry
+    if (message.kind !== 'message') return
+    const content = message.content
     if (!content || content.trim().length === 0) {
       throw new Error(`Agent Session message cannot enter PromptBuild without text content: ${agentMessage.id}`)
     }

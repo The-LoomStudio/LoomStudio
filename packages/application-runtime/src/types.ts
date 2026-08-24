@@ -1,10 +1,11 @@
 import type {
-  AgentMessage,
-  AgentMessagePage,
+  AgentTranscriptEntry,
+  AgentTranscriptPage,
   AgentSession,
   AgentStore,
 } from '@loom-studio/agent-store'
 import type { DocumentStore } from '@loom-studio/document-store'
+import type { ProviderAdapterRegistry } from '@loom-studio/ai-gateway'
 import type { DataActorRef, SqliteDataEngine } from '@loom-studio/data-engine'
 import type { Logger } from '@loom-studio/logging'
 import type {
@@ -16,9 +17,14 @@ import type {
 } from '@loom-studio/narrative-store'
 import type { AssistantChatMessage, ChatMessage, JsonObject, JsonValue } from '@loom-studio/shared'
 import type { SecretRef, SecretStore } from '@loom-studio/secret-store'
-import type { PromptResourceStore, SettingMount, SettingMountSource } from '@loom-studio/prompt-resource-store'
-export type { SettingMount, SettingMountSource } from '@loom-studio/prompt-resource-store'
+import type { PresetToolMount, PromptResourceStore, SettingMount, SettingMountSource } from '@loom-studio/prompt-resource-store'
+export type { PresetToolMount, SettingMount, SettingMountSource } from '@loom-studio/prompt-resource-store'
 import type { ActivationFacts, PromptActivation } from './prompt-activation.js'
+import type { AgentToolAnalysis, AgentToolRegistry, ToolDefinition } from './agent/tool-registry.js'
+import type {
+  CompiledToolExposure,
+  ToolPromptBuildTrace,
+} from './agent/tool-prompt-build.js'
 import type { OpenAIChatPayload } from './provider-payload.js'
 import type { PromptBuildTrace } from './prompt-build-pipeline.js'
 import type { CompiledPrompt, CompositionSkeletonPatch, ProjectionOrderProfile } from './prompt-builder.js'
@@ -47,6 +53,11 @@ export type ApplicationRuntime = {
   deleteProviderProfile(input: DeleteProviderProfileInput, context?: RuntimeRequestContext): Promise<DeleteProviderProfileResult>
   listProviderModels(input: ListProviderModelsInput, context?: RuntimeRequestContext): Promise<ListProviderModelsResult>
   pingProviderModel(input: PingProviderModelInput, context?: RuntimeRequestContext): Promise<PingProviderModelResult>
+  listAgentTools(): Promise<{ tools: AgentToolEntry[] }>
+  updateAgentTool(input: UpdateAgentToolInput): Promise<UpdateAgentToolResult>
+  analyzeAgentTools(input: { agentProfileId: string }): Promise<{ analysis: AgentToolAnalysis }>
+  listPresetToolMounts(input?: ListPresetToolMountsInput): Promise<ListPresetToolMountsResult>
+  replacePresetToolMounts(input: ReplacePresetToolMountsInput, context?: RuntimeRequestContext): Promise<ReplacePresetToolMountsResult>
   createAgentProfile(input: CreateAgentProfileInput): Promise<CreateAgentProfileResult>
   getAgentProfile(input: GetAgentProfileInput): Promise<GetAgentProfileResult>
   listAgentProfiles(input?: ListAgentProfilesInput): Promise<ListAgentProfilesResult>
@@ -54,8 +65,8 @@ export type ApplicationRuntime = {
   deleteAgentProfile(input: DeleteAgentProfileInput): Promise<DeleteAgentProfileResult>
   createAgentSession(input: CreateAgentSessionInput, context?: RuntimeRequestContext): Promise<CreateAgentSessionResult>
   getAgentSession(input: GetAgentSessionInput): Promise<GetAgentSessionResult>
-  getAgentMessagePage(input: GetAgentMessagePageInput): Promise<AgentMessagePage>
-  appendAgentMessages(input: AppendAgentMessagesInput, context?: RuntimeRequestContext): Promise<AppendAgentMessagesResult>
+  getAgentTranscriptPage(input: GetAgentTranscriptPageInput): Promise<AgentTranscriptPage>
+  appendAgentTranscriptEntries(input: AppendAgentTranscriptEntriesInput, context?: RuntimeRequestContext): Promise<AppendAgentTranscriptEntriesResult>
   deleteAgentSession(input: DeleteAgentSessionInput, context?: RuntimeRequestContext): Promise<DeleteAgentSessionResult>
   invokeAgentTurn(input: InvokeAgentTurnInput, context?: RuntimeRequestContext): Promise<InvokeAgentTurnResult>
   previewAgentTurn(input: PreviewAgentTurnInput, context?: RuntimeRequestContext): Promise<PreviewAgentTurnResult>
@@ -96,6 +107,7 @@ export type RuntimeRequestContext = {
   correlationId?: string
   callId?: string
   parentCallId?: string
+  abortSignal?: AbortSignal
 }
 
 export type ListSettingMountsInput = {
@@ -113,6 +125,34 @@ export type ReplaceSettingMountsInput = {
 
 export type ReplaceSettingMountsResult = {
   mounts: SettingMount[]
+  mutation: MutationReceipt
+}
+
+export type ListPresetToolMountsInput = {
+  presetId?: string
+  toolId?: string
+}
+
+export type ListPresetToolMountsResult = {
+  mounts: PresetToolMount[]
+}
+
+export type PresetToolMountInput = {
+  toolId: string
+  orderIndex: number
+  defaultEnabled: boolean
+  activation?: PromptActivation
+  provider?: PresetToolMount['provider']
+  content?: PresetToolMount['content']
+}
+
+export type ReplacePresetToolMountsInput = {
+  presetId: string
+  mounts: PresetToolMountInput[]
+}
+
+export type ReplacePresetToolMountsResult = {
+  mounts: PresetToolMount[]
   mutation: MutationReceipt
 }
 
@@ -209,25 +249,25 @@ export type GetAgentSessionResult = {
   session: AgentSession
 }
 
-export type GetAgentMessagePageInput = {
+export type GetAgentTranscriptPageInput = {
   agentSessionId: string
   cursor?: string
   limit?: number
 }
 
-export type AppendAgentMessagesInput = {
+export type AppendAgentTranscriptEntriesInput = {
   agentSessionId: string
-  expectedMessageCount: number
-  messages: Array<{
+  expectedEntryCount: number
+  entries: Array<{
     id?: string
     runId?: string
-    message: ChatMessage
+    entry: import('@loom-studio/agent-store').AgentTranscriptEntryData
   }>
 }
 
-export type AppendAgentMessagesResult = {
+export type AppendAgentTranscriptEntriesResult = {
   session: AgentSession
-  messages: AgentMessage[]
+  entries: AgentTranscriptEntry[]
   mutation: MutationReceipt
 }
 
@@ -258,15 +298,17 @@ export type PreviewAgentTurnResult = {
   messages: ChatMessage[]
   projection: CompiledPrompt
   promptBuildTrace: PromptBuildTrace
+  toolExposures: CompiledToolExposure[]
+  toolPromptBuildTrace: ToolPromptBuildTrace
   providerPayloadPreview?: OpenAIChatPayload
 }
 
 export type InvokeAgentTurnResult = {
   runId: string
   agentSession: AgentSession
-  messages: {
-    user: AgentMessage
-    assistant: AgentMessage
+  entries: {
+    user: AgentTranscriptEntry
+    assistant: AgentTranscriptEntry
   }
   narrative?: {
     timeline: NarrativeTimeline
@@ -282,11 +324,14 @@ export type InvokeAgentTurnResult = {
   }
   projection: CompiledPrompt
   promptBuildTrace: PromptBuildTrace
+  toolExposures: CompiledToolExposure[]
+  toolPromptBuildTrace: ToolPromptBuildTrace
   mutation: MutationReceipt
 }
 
 export type ApplicationRuntimeOptions = {
   agents?: AgentStore
+  agentTools?: AgentToolRegistry
   dataEngine?: SqliteDataEngine
   documents: DocumentStore
   narratives?: NarrativeStore
@@ -298,6 +343,7 @@ export type ApplicationRuntimeOptions = {
   sourceArtifacts?: SourceArtifactStorage
   mediaAssets?: MediaAssetLookup
   secrets?: SecretStore
+  providerAdapters?: ProviderAdapterRegistry
 }
 
 export type MediaAssetLookup = {
@@ -373,10 +419,13 @@ export type GatewayInvokeChatInput = {
   sessionId: string
   branchId: string
   context?: RuntimeRequestContext
+  abortSignal?: AbortSignal
 }
 
 export type CanonicalChatRequest = {
   messages: ProviderMessage[]
+  tools?: Array<{ name: string; description?: string; inputSchema: JsonObject }>
+  toolChoice?: 'auto' | 'none' | 'required' | { type: 'tool'; toolName: string }
   metadata?: JsonObject
 }
 
@@ -386,6 +435,7 @@ export type GatewayChatResult = {
   model: string
   provider: string
   finishReason?: 'stop' | 'length' | 'tool_call' | 'error'
+  rawStopReason?: string
   usage?: {
     inputTokens?: number
     outputTokens?: number
@@ -582,6 +632,7 @@ export type CreateAgentProfileInput = {
   name: string
   presetId: string
   model: ProviderModelSelection
+  toolOverrides?: Record<string, boolean>
 }
 export type CreateAgentProfileResult = {
   agentProfile: AgentProfileContent & { id: string; version: number }
@@ -598,6 +649,7 @@ export type UpdateAgentProfileInput = {
   name?: string
   presetId?: string
   model?: ProviderModelSelection
+  toolOverrides?: Record<string, boolean>
 }
 export type UpdateAgentProfileResult = CreateAgentProfileResult
 export type DeleteAgentProfileInput = { agentProfileId: string }
@@ -789,8 +841,30 @@ export type AgentProfileContent = {
   name: string
   presetId: string
   model: ProviderModelSelection
+  toolOverrides: Record<string, boolean>
   createdAt: string
   updatedAt: string
+}
+
+export type AgentToolContent = Omit<ToolDefinition, 'id'> & {
+  createdAt: string
+  updatedAt: string
+}
+
+export type AgentToolEntry = ToolDefinition & {
+  version: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type UpdateAgentToolInput = {
+  toolId: string
+  expectedVersion: number
+  definition: ToolDefinition
+}
+
+export type UpdateAgentToolResult = {
+  tool: AgentToolEntry
 }
 
 export type CardSourceContent = {

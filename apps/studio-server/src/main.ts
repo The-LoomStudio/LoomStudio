@@ -1,4 +1,9 @@
-import { createApplicationRuntime, createDocumentBackedAiGateway } from '@loom-studio/application-runtime'
+import {
+  createApplicationRuntime,
+  createDocumentBackedAiGateway,
+  createOfficialTestAgentToolRegistry,
+} from '@loom-studio/application-runtime'
+import { createOfficialProviderAdapterRegistry } from '@loom-studio/ai-gateway'
 import { createAgentStore } from '@loom-studio/agent-store'
 import { createAssetStore, type AssetStore } from '@loom-studio/asset-store'
 import { createBlobStore } from '@loom-studio/blob-store'
@@ -92,10 +97,12 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
   }) : undefined
   const traceAudit = createInMemoryTraceAuditStore()
   const loomRunner = createLoomRunner({ traceAudit })
+  const providerAdapters = createOfficialProviderAdapterRegistry()
   const gateway = createDocumentBackedAiGateway({
     documents,
     secrets,
     resolveProxyUrl: networkSettings.resolveProxyUrl,
+    providerAdapters,
   })
   let agents
   let narratives
@@ -123,6 +130,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
   }
   const applicationRuntime = createApplicationRuntime({
     agents,
+    agentTools: createOfficialTestAgentToolRegistry(),
     dataEngine,
     documents,
     narratives,
@@ -146,6 +154,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
       : undefined,
     mediaAssets: assets ? { get: assetId => assets.getMediaAsset(assetId) } : undefined,
     secrets,
+    providerAdapters,
     gateway: options.providerLogger ? withAiGatewayLogging(gateway, options.providerLogger) : gateway,
     logger: options.promptBuildLogger,
   })

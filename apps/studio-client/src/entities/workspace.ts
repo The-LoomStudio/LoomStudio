@@ -54,6 +54,35 @@ export type ReplaceSettingMountsResult = {
   mutation: MutationReceipt
 }
 
+export type PresetToolMount = {
+  id: string
+  presetResourceId: string
+  toolId: string
+  orderIndex: number
+  defaultEnabled: boolean
+  activation?: ClientJsonValue
+  provider?: { order?: number }
+  content?: {
+    zone?: string
+    slot?: string
+    rankKey?: string
+    orderHint?: number
+  }
+  origin: Record<string, ClientJsonValue>
+  createdAt: string
+}
+
+export type PresetToolMountInput = Omit<PresetToolMount, 'id' | 'presetResourceId' | 'origin' | 'createdAt'>
+
+export type ListPresetToolMountsResult = {
+  mounts: PresetToolMount[]
+}
+
+export type ReplacePresetToolMountsResult = {
+  mounts: PresetToolMount[]
+  mutation: MutationReceipt
+}
+
 export type PromptResourceArtifact = {
   format: 'loom.promptResource'
   schemaVersion: 1

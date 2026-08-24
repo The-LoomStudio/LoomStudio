@@ -130,6 +130,75 @@
 .messageRoleAssistant .messageBlockHeader { color: var(--loom-color-role-assistant, #fab387); }
 .messageRoleUser .messageBlockHeader { color: var(--loom-color-role-user, #a6e3a1); }
 
+.providerTools {
+  margin: 4px 0 10px;
+  border: 1px solid color-mix(in srgb, var(--loom-color-accent) 42%, var(--loom-color-border));
+  border-radius: var(--loom-radius-surface);
+  background: color-mix(in srgb, var(--loom-color-accent) 7%, transparent);
+}
+
+.providerToolsHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--loom-color-border);
+  color: var(--loom-color-accent-strong);
+}
+
+.providerToolsHeader svg {
+  width: var(--loom-icon-size-4);
+  height: var(--loom-icon-size-4);
+}
+
+.providerToolsHeader div,
+.providerToolRow div {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.providerToolsHeader strong {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.providerToolsHeader small,
+.providerToolsHeader span,
+.providerToolRow small,
+.providerToolRow > span {
+  color: var(--loom-color-text-subtle);
+  font-family: var(--loom-font-family-mono);
+  font-size: var(--loom-font-size-1);
+  font-weight: var(--loom-font-weight-4);
+}
+
+.providerToolRows {
+  padding: 3px 7px 5px;
+}
+
+.providerToolRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 3px 4px;
+}
+
+.providerToolRow strong,
+.providerToolRow small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.providerToolRow strong {
+  color: var(--loom-color-text);
+  font-size: var(--loom-font-size-3);
+  font-weight: var(--loom-font-weight-4);
+}
+
 .zones {
   min-width: 0;
 }

@@ -1,0 +1,23 @@
+{
+  "name": "@loom-studio/ai-gateway",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "4.0.41",
+    "@ai-sdk/google": "4.0.50",
+    "@ai-sdk/openai": "4.0.46",
+    "@ai-sdk/openai-compatible": "3.0.35",
+    "@loom-studio/shared": "workspace:*",
+    "ai": "7.0.77",
+    "zod": "4.4.3"
+  }
+}

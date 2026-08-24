@@ -202,7 +202,7 @@ export function summarizeRpc(method: string, _params: unknown, result: unknown):
     }
   }
 
-  // 7. Pages & Nodes (getNarrativePage / getAgentMessagePage)
+  // 7. Pages & Nodes (getNarrativePage / getAgentTranscriptPage)
   if (Array.isArray(res.nodes) || Array.isArray(res.items)) {
     const list = (res.nodes ?? res.items) as unknown[]
     return {

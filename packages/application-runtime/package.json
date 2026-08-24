@@ -13,6 +13,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@loom-studio/ai-gateway": "workspace:*",
     "@loom-studio/agent-store": "workspace:*",
     "@loom-studio/data-engine": "workspace:*",
     "@loom-studio/document-store": "workspace:*",

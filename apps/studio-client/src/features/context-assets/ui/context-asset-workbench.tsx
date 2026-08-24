@@ -9,6 +9,7 @@ import { ContextAssetDetail } from './context-asset-detail/context-asset-detail.
 import { ContextAssetDetailHeader } from './context-asset-detail-header/context-asset-detail-header.js'
 import { ContextAssetSearch } from './context-asset-search/context-asset-search.js'
 import { ProjectionRunlist } from './projection-runlist/projection-runlist.js'
+import type { ProviderToolSurfaceItem } from '../model/preset-tool-projection.js'
 import {
   canToggleContextAssetEnabled,
   readContextAssetTreeActions,
@@ -133,6 +134,7 @@ export function ContextAssetExplorer(props: {
 export function ContextAssetProjectionExplorer(props: {
   compositionItems?: PromptCompositionItem[]
   entries: ProjectionOrderEntry[]
+  providerTools?: ProviderToolSurfaceItem[]
   nodes: ContextAssetNode[]
   query: string
   selectedId?: string
@@ -169,6 +171,7 @@ export function ContextAssetProjectionExplorer(props: {
       <ProjectionRunlist
         compositionItems={props.compositionItems}
         entries={props.entries}
+        providerTools={props.providerTools}
         onAddDirectEntry={props.onAddDirectEntry}
         onAddEntryInZone={props.onAddEntryInZone}
         onAddMessageBlock={props.onAddMessageBlock}

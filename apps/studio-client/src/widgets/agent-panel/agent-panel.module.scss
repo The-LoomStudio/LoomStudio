@@ -122,6 +122,74 @@
   gap: 10px;
 }
 
+.toolsField {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+  margin: 2px 0 0;
+  border: 0;
+  padding: 0;
+}
+
+.toolsLegend {
+  padding: 0;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
+}
+
+.toolList {
+  display: grid;
+  gap: 6px;
+}
+
+.toolOption {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  border-radius: var(--loom-radius-control);
+  padding: 7px 8px;
+  background: var(--loom-color-surface);
+}
+
+.toolOption input {
+  margin-top: 2px;
+}
+
+.toolDetails {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.toolDetails strong {
+  overflow: hidden;
+  color: var(--loom-color-text);
+  font-size: var(--loom-font-size-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolDetails small,
+.toolDetails em {
+  overflow: hidden;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolDetails button {
+  justify-self: start;
+  border: 0;
+  padding: 0;
+  color: var(--loom-color-accent-strong);
+  font-size: var(--loom-font-size-1);
+  background: transparent;
+}
+
 .deleteButton {
   justify-self: start;
   color: var(--loom-color-danger);

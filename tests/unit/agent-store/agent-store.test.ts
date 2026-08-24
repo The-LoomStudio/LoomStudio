@@ -10,7 +10,8 @@ function createTestContext() {
   let nextId = 0
   let nextTime = 0
   const createId = (prefix: string) => `${prefix}-${++nextId}`
-  const now = () => `2026-08-12T00:00:${String(nextTime++).padStart(2, '0')}.000Z`
+  const now = () =>
+    `2026-08-12T00:00:${String(nextTime++).padStart(2, '0')}.000Z`
   const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
   const store = createAgentStore({ engine, createId, now })
   const actor = { kind: 'system' as const, id: 'test' }
@@ -18,136 +19,279 @@ function createTestContext() {
 }
 
 describe('agent store', () => {
+  it('repairs a version 3 development schema missing tool invocations', async () => {
+    const engine = createSqliteDataEngine({
+      filename: ':memory:',
+      createId: prefix => `${prefix}-1`,
+      now: () => '2026-08-24T00:00:00.000Z',
+    })
+    engine.database.exec(`
+      CREATE TABLE agent_sessions (id TEXT PRIMARY KEY, agent_profile_id TEXT NOT NULL, title TEXT, head_entry_id TEXT, entry_count INTEGER NOT NULL DEFAULT 0 CHECK (entry_count >= 0), created_at TEXT NOT NULL, updated_at TEXT NOT NULL, tombstoned INTEGER NOT NULL DEFAULT 0, deleted_at TEXT, deleted_by_json TEXT, delete_reason TEXT);
+      CREATE TABLE agent_transcript_entries (id TEXT PRIMARY KEY, agent_session_id TEXT NOT NULL REFERENCES agent_sessions(id), parent_entry_id TEXT REFERENCES agent_transcript_entries(id), sequence INTEGER NOT NULL CHECK (sequence > 0), run_id TEXT, entry_json TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE (agent_session_id, sequence));
+      INSERT INTO schema_migrations (namespace, version) VALUES ('application.agent', 3);
+    `)
+
+    createAgentStore({ engine })
+
+    expect(
+      engine.database
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'agent_tool_invocations'")
+        .get(),
+    ).toEqual({ name: 'agent_tool_invocations' })
+    expect(
+      engine.database
+        .prepare("SELECT version FROM schema_migrations WHERE namespace = 'application.agent'")
+        .get(),
+    ).toEqual({ version: 4 })
+    engine.close()
+  })
+
   it('creates a session and appends a linear batch with server-assigned sequence', async () => {
     const { engine, store, actor } = createTestContext()
-    const created = await store.createSession({ actor, agentProfileId: 'profile-guide', title: 'Guide' })
-    const appended = await store.appendMessages({
+    const created = await store.createSession({
+      actor,
+      agentProfileId: 'profile-guide',
+      title: 'Guide',
+    })
+    const appended = await store.appendEntries({
       actor,
       agentSessionId: created.session.id,
-      expectedMessageCount: 0,
-      messages: [
-        { runId: 'run-1', message: { role: 'user', content: 'Hello' } },
-        { runId: 'run-1', message: { role: 'assistant', content: 'Hi' } },
+      expectedEntryCount: 0,
+      entries: [
+        {
+          runId: 'run-1',
+          entry: { kind: 'message', role: 'user', content: 'Hello' },
+        },
+        {
+          runId: 'run-1',
+          entry: { kind: 'message', role: 'assistant', content: 'Hi' },
+        },
       ],
     })
 
-    expect(appended.messages).toMatchObject([
-      { sequence: 1, parentMessageId: undefined, message: { role: 'user' } },
-      { sequence: 2, parentMessageId: appended.messages[0]?.id, message: { role: 'assistant' } },
+    expect(appended.entries).toMatchObject([
+      {
+        sequence: 1,
+        parentEntryId: undefined,
+        entry: { kind: 'message', role: 'user' },
+      },
+      {
+        sequence: 2,
+        parentEntryId: appended.entries[0]?.id,
+        entry: { kind: 'message', role: 'assistant' },
+      },
     ])
     expect(appended.session).toMatchObject({
-      headMessageId: appended.messages[1]?.id,
-      messageCount: 2,
+      headEntryId: appended.entries[1]?.id,
+      entryCount: 2,
     })
-    expect(appended.commit.operations.map(operation => operation.entityType)).toEqual([
-      'agent.message',
-      'agent.message',
+    expect(
+      appended.commit.operations.map((operation) => operation.entityType),
+    ).toEqual([
+      'agent.transcript-entry',
+      'agent.transcript-entry',
       'agent.session',
     ])
-    expect(engine.database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('documents', 'document_revisions')").all()).toEqual([])
+    expect(
+      engine.database
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('documents', 'document_revisions')",
+        )
+        .all(),
+    ).toEqual([])
     engine.close()
   })
 
   it('validates tool call/result pairing across batches', async () => {
     const { engine, store, actor } = createTestContext()
-    const { session } = await store.createSession({ actor, agentProfileId: 'profile-tools' })
-    const call = await store.appendMessages({
+    const { session } = await store.createSession({
       actor,
-      agentSessionId: session.id,
-      expectedMessageCount: 0,
-      messages: [{
-        message: {
-          role: 'assistant',
-          tool_calls: [{
-            id: 'call-1',
-            type: 'function',
-            function: { name: 'lookup', arguments: '{"id":"x"}' },
-          }],
-        },
-      }],
+      agentProfileId: 'profile-tools',
     })
-    const result = await store.appendMessages({
+    const call = await store.appendEntries({
       actor,
       agentSessionId: session.id,
-      expectedMessageCount: 1,
-      messages: [{ message: { role: 'tool', tool_call_id: 'call-1', content: 'found' } }],
+      expectedEntryCount: 0,
+      entries: [
+        {
+          entry: {
+            kind: 'tool-invocation',
+            invocationId: 'call-1',
+            toolId: 'official/lookup',
+            exposedName: 'lookup',
+            transport: 'native-function',
+            arguments: { id: 'x' },
+            status: 'proposed',
+          },
+        },
+      ],
+    })
+    const result = await store.appendEntries({
+      actor,
+      agentSessionId: session.id,
+      expectedEntryCount: 1,
+      entries: [
+        {
+          entry: {
+            kind: 'tool-result',
+            invocationId: 'call-1',
+            toolId: 'official/lookup',
+            status: 'completed',
+            content: [{ type: 'text', text: 'found' }],
+          },
+        },
+      ],
     })
 
-    expect(result.messages[0]).toMatchObject({
+    expect(result.entries[0]).toMatchObject({
       sequence: 2,
-      parentMessageId: call.messages[0]?.id,
-      message: { role: 'tool', tool_call_id: 'call-1' },
+      parentEntryId: call.entries[0]?.id,
+      entry: { kind: 'tool-result', invocationId: 'call-1' },
     })
-    await expect(store.appendMessages({
-      actor,
-      agentSessionId: session.id,
-      expectedMessageCount: 2,
-      messages: [{ message: { role: 'tool', tool_call_id: 'call-1', content: 'duplicate' } }],
-    })).rejects.toMatchObject({ code: 'agent.tool_result_duplicate' })
-    await expect(store.appendMessages({
-      actor,
-      agentSessionId: session.id,
-      expectedMessageCount: 2,
-      messages: [{ message: { role: 'tool', tool_call_id: 'missing', content: 'bad' } }],
-    })).rejects.toMatchObject({ code: 'agent.tool_call_not_found' })
+    await expect(
+      store.appendEntries({
+        actor,
+        agentSessionId: session.id,
+        expectedEntryCount: 2,
+        entries: [
+          {
+            entry: {
+              kind: 'tool-result',
+              invocationId: 'call-1',
+              toolId: 'official/lookup',
+              status: 'completed',
+              content: [],
+            },
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: 'agent.tool_result_duplicate' })
+    await expect(
+      store.appendEntries({
+        actor,
+        agentSessionId: session.id,
+        expectedEntryCount: 2,
+        entries: [
+          {
+            entry: {
+              kind: 'tool-result',
+              invocationId: 'missing',
+              toolId: 'official/lookup',
+              status: 'failed',
+              content: [],
+            },
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: 'agent.tool_invocation_not_found' })
     engine.close()
   })
 
   it('rejects stale appends and fully rolls back failed surrounding transactions', async () => {
     const { engine, store, actor } = createTestContext()
-    const { session } = await store.createSession({ actor, agentProfileId: 'profile-1' })
-    await store.appendMessages({
+    const { session } = await store.createSession({
+      actor,
+      agentProfileId: 'profile-1',
+    })
+    await store.appendEntries({
       actor,
       agentSessionId: session.id,
-      expectedMessageCount: 0,
-      messages: [{ message: { role: 'user', content: 'stable' } }],
+      expectedEntryCount: 0,
+      entries: [
+        { entry: { kind: 'message', role: 'user', content: 'stable' } },
+      ],
     })
 
-    await expect(store.appendMessages({
-      actor,
-      agentSessionId: session.id,
-      expectedMessageCount: 0,
-      messages: [{ message: { role: 'user', content: 'stale' } }],
-    })).rejects.toMatchObject({ code: 'agent.message_count_conflict' })
-
-    const commitCount = engine.database.prepare('SELECT COUNT(*) AS count FROM changesets').get()
-    await expect(engine.transact({ actor }, async dataTx => {
-      store.transaction(dataTx).appendMessages({
+    await expect(
+      store.appendEntries({
+        actor,
         agentSessionId: session.id,
-        expectedMessageCount: 1,
-        messages: [{ id: 'rolled-back-message', message: { role: 'assistant', content: 'rollback' } }],
-      })
-      throw new Error('abort agent transaction')
-    })).rejects.toThrow('abort agent transaction')
+        expectedEntryCount: 0,
+        entries: [
+          { entry: { kind: 'message', role: 'user', content: 'stale' } },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: 'agent.entry_count_conflict' })
 
-    expect(await store.getMessage('rolled-back-message')).toBeNull()
-    expect(await store.getSession(session.id)).toMatchObject({ messageCount: 1 })
-    expect(engine.database.prepare('SELECT COUNT(*) AS count FROM changesets').get()).toEqual(commitCount)
+    const commitCount = engine.database
+      .prepare('SELECT COUNT(*) AS count FROM changesets')
+      .get()
+    await expect(
+      engine.transact({ actor }, async (dataTx) => {
+        store.transaction(dataTx).appendEntries({
+          agentSessionId: session.id,
+          expectedEntryCount: 1,
+          entries: [
+            {
+              id: 'rolled-back-entry',
+              entry: {
+                kind: 'message',
+                role: 'assistant',
+                content: 'rollback',
+              },
+            },
+          ],
+        })
+        throw new Error('abort agent transaction')
+      }),
+    ).rejects.toThrow('abort agent transaction')
+
+    expect(await store.getEntry('rolled-back-entry')).toBeNull()
+    expect(await store.getSession(session.id)).toMatchObject({ entryCount: 1 })
+    expect(
+      engine.database.prepare('SELECT COUNT(*) AS count FROM changesets').get(),
+    ).toEqual(commitCount)
     engine.close()
   })
 
   it('pages by parent cursor and tombstones the session without deleting message rows', async () => {
     const { engine, store, actor } = createTestContext()
-    const { session } = await store.createSession({ actor, agentProfileId: 'profile-1' })
-    await store.appendMessages({
+    const { session } = await store.createSession({
+      actor,
+      agentProfileId: 'profile-1',
+    })
+    await store.appendEntries({
       actor,
       agentSessionId: session.id,
-      expectedMessageCount: 0,
-      messages: [1, 2, 3].map(index => ({ message: { role: 'user' as const, content: `message-${index}` } })),
+      expectedEntryCount: 0,
+      entries: [1, 2, 3].map((index) => ({
+        entry: {
+          kind: 'message' as const,
+          role: 'user' as const,
+          content: `message-${index}`,
+        },
+      })),
     })
 
-    const latest = await store.getMessagePage({ agentSessionId: session.id, limit: 2 })
-    const older = await store.getMessagePage({ agentSessionId: session.id, cursor: latest.nextCursor, limit: 2 })
-    expect(latest.messages.map(message => message.message)).toEqual([
-      { role: 'user', content: 'message-2' },
-      { role: 'user', content: 'message-3' },
+    const latest = await store.getEntryPage({
+      agentSessionId: session.id,
+      limit: 2,
+    })
+    const older = await store.getEntryPage({
+      agentSessionId: session.id,
+      cursor: latest.nextCursor,
+      limit: 2,
+    })
+    expect(latest.entries.map((entry) => entry.entry)).toEqual([
+      { kind: 'message', role: 'user', content: 'message-2' },
+      { kind: 'message', role: 'user', content: 'message-3' },
     ])
-    expect(older.messages.map(message => message.message)).toEqual([{ role: 'user', content: 'message-1' }])
+    expect(older.entries.map((entry) => entry.entry)).toEqual([
+      { kind: 'message', role: 'user', content: 'message-1' },
+    ])
 
-    await store.deleteSession({ actor, agentSessionId: session.id, reason: 'delete test' })
+    await store.deleteSession({
+      actor,
+      agentSessionId: session.id,
+      reason: 'delete test',
+    })
     expect(await store.getSession(session.id)).toBeNull()
-    expect(await store.getMessage(latest.messages[0]!.id)).toBeNull()
-    expect(engine.database.prepare('SELECT COUNT(*) AS count FROM agent_messages').get()).toEqual({ count: 3 })
+    expect(await store.getEntry(latest.entries[0]!.id)).toBeNull()
+    expect(
+      engine.database
+        .prepare('SELECT COUNT(*) AS count FROM agent_transcript_entries')
+        .get(),
+    ).toEqual({ count: 3 })
     engine.close()
   })
 
@@ -159,30 +303,46 @@ describe('agent store', () => {
     const now = () => '2026-08-12T00:00:00.000Z'
     try {
       const firstEngine = createSqliteDataEngine({ filename, createId, now })
-      const firstStore = createAgentStore({ engine: firstEngine, createId, now })
+      const firstStore = createAgentStore({
+        engine: firstEngine,
+        createId,
+        now,
+      })
       const { session } = await firstStore.createSession({
         actor: { kind: 'system', id: 'test' },
         agentProfileId: 'profile-persist',
       })
-      await firstStore.appendMessages({
+      await firstStore.appendEntries({
         actor: { kind: 'system', id: 'test' },
         agentSessionId: session.id,
-        expectedMessageCount: 0,
-        messages: [{ message: { role: 'developer', content: 'persistent' } }],
+        expectedEntryCount: 0,
+        entries: [
+          { entry: { kind: 'message', role: 'user', content: 'persistent' } },
+        ],
       })
       firstEngine.close()
 
       const secondEngine = createSqliteDataEngine({ filename, createId, now })
-      const secondStore = createAgentStore({ engine: secondEngine, createId, now })
-      expect(await secondStore.getMessagePage({ agentSessionId: session.id })).toMatchObject({
-        messages: [{ message: { role: 'developer', content: 'persistent' } }],
+      const secondStore = createAgentStore({
+        engine: secondEngine,
+        createId,
+        now,
+      })
+      expect(
+        await secondStore.getEntryPage({ agentSessionId: session.id }),
+      ).toMatchObject({
+        entries: [
+          { entry: { kind: 'message', role: 'user', content: 'persistent' } },
+        ],
       })
       secondEngine.close()
 
       const database = new DatabaseSync(filename)
-      const migration = database.prepare('SELECT version FROM schema_migrations WHERE namespace = ?').get('application.agent')
+      const migration = database
+        .prepare('SELECT version FROM schema_migrations WHERE namespace = ?')
+        .get('application.agent')
       database.close()
-      expect(migration).toEqual({ version: 2 })
+      expect(migration).toEqual({ version: 4 })
     } finally {
       await rm(directory, { recursive: true, force: true })
     }

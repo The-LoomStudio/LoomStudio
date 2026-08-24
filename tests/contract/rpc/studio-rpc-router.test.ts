@@ -56,7 +56,19 @@ describe('studio rpc router', () => {
       owner: 'application',
       stability: 'experimental',
     }))
-    expect(listed.capabilities.map(capability => capability.name)).not.toContain('application.appendAgentMessages')
+    expect(listed.capabilities).toContainEqual(expect.objectContaining({
+      name: 'application.updateAgentTool',
+      namespace: 'application',
+      owner: 'application',
+      stability: 'experimental',
+    }))
+    expect(listed.capabilities).toContainEqual(expect.objectContaining({
+      name: 'application.replacePresetToolMounts',
+      namespace: 'application',
+      owner: 'application',
+      stability: 'experimental',
+    }))
+    expect(listed.capabilities.map(capability => capability.name)).not.toContain('application.appendAgentTranscriptEntrys')
   })
 
   it('falls back to kernel rpc for unknown studio-server namespaces', async () => {
@@ -91,6 +103,88 @@ describe('studio rpc router', () => {
     await router.call('application.createCard', { name: 'Card' }, context)
 
     expect(receivedContext).toEqual(context)
+  })
+
+  it('parses editable Agent Tool entries without changing their stable id', async () => {
+    let receivedInput: unknown
+    const applicationRuntime = {
+      updateAgentTool: async (input: unknown) => {
+        receivedInput = input
+        return { tool: { id: 'official/test_content', version: 2 } }
+      },
+    } as unknown as ApplicationRuntime
+    const router = createStudioRpcRouter({
+      applicationRuntime,
+      kernel: createKernelCaller(),
+    })
+    const definition = {
+      id: 'official/test_content',
+      owner: { namespace: 'official' },
+      name: 'write_content',
+      description: 'Write raw content for {{User}}.',
+      input: {
+        kind: 'hybrid',
+        metadataSchema: { type: 'object' },
+        rawField: 'content',
+        mediaType: 'text/plain',
+      },
+      prompt: {
+        provider: { order: 20 },
+        content: {
+          zone: 'tools',
+          slot: 'official-tools',
+          rankKey: '10',
+          orderHint: 20,
+        },
+      },
+    }
+
+    await router.call('application.updateAgentTool', {
+      toolId: definition.id,
+      expectedVersion: 1,
+      definition,
+    }, context)
+
+    expect(receivedInput).toEqual({
+      toolId: definition.id,
+      expectedVersion: 1,
+      definition,
+    })
+  })
+
+  it('parses Preset Tool mounts as relation data instead of Tool definitions', async () => {
+    let receivedInput: unknown
+    const applicationRuntime = {
+      replacePresetToolMounts: async (input: unknown) => {
+        receivedInput = input
+        return { mounts: [], mutation: { changesetId: 'chg-tool-mount' } }
+      },
+    } as unknown as ApplicationRuntime
+    const router = createStudioRpcRouter({ applicationRuntime, kernel: createKernelCaller() })
+
+    await router.call('application.replacePresetToolMounts', {
+      presetId: 'preset-1',
+      mounts: [{
+        toolId: 'official/test_content',
+        orderIndex: 0,
+        defaultEnabled: true,
+        activation: { kind: 'keyword', keywords: ['write'] },
+        provider: { order: 10 },
+        content: { zone: 'tools', slot: 'official-tools', rankKey: '10', orderHint: 20 },
+      }],
+    }, context)
+
+    expect(receivedInput).toEqual({
+      presetId: 'preset-1',
+      mounts: [{
+        toolId: 'official/test_content',
+        orderIndex: 0,
+        defaultEnabled: true,
+        activation: { kind: 'keyword', keywords: ['write'] },
+        provider: { order: 10 },
+        content: { zone: 'tools', slot: 'official-tools', rankKey: '10', orderHint: 20 },
+      }],
+    })
   })
 
   it('parses the optional Narrative target for Agent turns', async () => {
@@ -204,6 +298,10 @@ describe('studio rpc router', () => {
         received.push(requestContext)
         return { mounts: [], mutation: { changesetId: 'chg-2' } }
       },
+      replacePresetToolMounts: async (_input: unknown, requestContext?: unknown) => {
+        received.push(requestContext)
+        return { mounts: [], mutation: { changesetId: 'chg-3' } }
+      },
     } as unknown as ApplicationRuntime
     const router = createStudioRpcRouter({
       applicationRuntime,
@@ -227,8 +325,12 @@ describe('studio rpc router', () => {
       source: { kind: 'preset', id: 'preset-1' },
       settingResourceIds: ['setting-1'],
     }, context)
+    await router.call('application.replacePresetToolMounts', {
+      presetId: 'preset-1',
+      mounts: [],
+    }, context)
 
-    expect(received).toEqual([context, context, context])
+    expect(received).toEqual([context, context, context, context])
   })
 
   it('rejects invalid Setting Mount sources before invoking the runtime', async () => {

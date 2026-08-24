@@ -136,6 +136,45 @@ export type ListSettingMountsInput = {
   settingResourceId?: string
 }
 
+export type PresetToolMount = {
+  id: string
+  presetResourceId: string
+  toolId: string
+  orderIndex: number
+  defaultEnabled: boolean
+  activation?: JsonObject
+  provider?: { order?: number }
+  content?: {
+    zone?: string
+    slot?: string
+    rankKey?: string
+    orderHint?: number
+  }
+  origin: JsonObject
+  createdAt: string
+}
+
+export type AddPresetToolMountInput = PromptResourceWriteContext & {
+  presetResourceId: string
+  toolId: string
+  orderIndex: number
+  defaultEnabled: boolean
+  activation?: JsonObject
+  provider?: PresetToolMount['provider']
+  content?: PresetToolMount['content']
+  origin?: JsonObject
+}
+
+export type ReplacePresetToolMountsInput = PromptResourceWriteContext & {
+  presetResourceId: string
+  mounts: Array<Omit<AddPresetToolMountInput, keyof PromptResourceWriteContext | 'presetResourceId'>>
+}
+
+export type ListPresetToolMountsInput = {
+  presetResourceId?: string
+  toolId?: string
+}
+
 export type RevertPromptResourceChangesetInput = PromptResourceWriteContext & {
   changesetId: string
   expectedVersion?: number
@@ -151,23 +190,33 @@ export type SettingMountMutationResult = {
   commit: DataCommitFact
 }
 
+export type PresetToolMountMutationResult = {
+  mounts: PresetToolMount[]
+  commit: DataCommitFact
+}
+
 export type PromptResourceTransaction = {
   createResource(input: Omit<CreatePromptResourceInput, keyof PromptResourceWriteContext>): PromptResource
   mutateResource(input: Omit<MutatePromptResourceInput, keyof PromptResourceWriteContext>): PromptResource
   deleteResource(input: Omit<DeletePromptResourceInput, keyof PromptResourceWriteContext>): PromptResource
   addSettingMount(input: Omit<AddSettingMountInput, keyof PromptResourceWriteContext>): SettingMount
   replaceSettingMounts(input: Omit<ReplaceSettingMountsInput, keyof PromptResourceWriteContext>): SettingMount[]
+  addPresetToolMount(input: Omit<AddPresetToolMountInput, keyof PromptResourceWriteContext>): PresetToolMount
+  replacePresetToolMounts(input: Omit<ReplacePresetToolMountsInput, keyof PromptResourceWriteContext>): PresetToolMount[]
 }
 
 export type PromptResourceStore = {
   getResource(id: string, options?: { includeTombstone?: boolean }): Promise<PromptResource | null>
   listResources(input?: ListPromptResourcesInput): Promise<PromptResourcePage>
   listSettingMounts(input?: ListSettingMountsInput): Promise<SettingMount[]>
+  listPresetToolMounts(input?: ListPresetToolMountsInput): Promise<PresetToolMount[]>
   createResource(input: CreatePromptResourceInput): Promise<PromptResourceMutationResult>
   mutateResource(input: MutatePromptResourceInput): Promise<PromptResourceMutationResult>
   deleteResource(input: DeletePromptResourceInput): Promise<PromptResourceMutationResult>
   addSettingMount(input: AddSettingMountInput): Promise<SettingMountMutationResult>
   replaceSettingMounts(input: ReplaceSettingMountsInput): Promise<SettingMountMutationResult>
+  addPresetToolMount(input: AddPresetToolMountInput): Promise<PresetToolMountMutationResult>
+  replacePresetToolMounts(input: ReplacePresetToolMountsInput): Promise<PresetToolMountMutationResult>
   revertChangeset(input: RevertPromptResourceChangesetInput): Promise<PromptResourceMutationResult>
   transaction(tx: SqliteDataTransaction): PromptResourceTransaction
 }

@@ -15,6 +15,112 @@ function createIds() {
 }
 
 describe('Prompt Resource Store application runtime', () => {
+  it('projects external Content Tool slots through Prompt Build ordering', async () => {
+    const createId = createIds()
+    const now = () => '2026-08-24T00:00:00.000Z'
+    const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
+    const documents = createSqliteDocumentStore({ engine })
+    const promptResources = createPromptResourceStore({ engine, createId, now })
+    const runtime = createApplicationRuntime({ dataEngine: engine, documents, promptResources })
+    const preset = await runtime.createPromptResource({
+      resourceKind: 'preset',
+      name: 'Tool Projection Preset',
+    })
+    const result = await composeAgentTurnPrompt({
+      promptResources,
+      preset: (await runtime.getPromptResource({ resourceId: preset.resource.id })).resource,
+      agentMessages: [],
+      userInput: 'Hi',
+      externalRuntime: {
+        sourceNodes: [
+          { id: 'tools-root', sourceId: 'tools', parentId: null, displayName: 'Tools', orderIndex: 0 },
+          { id: 'tool-a', sourceId: 'tools', parentId: 'tools-root', displayName: 'Tool A', orderIndex: 1 },
+          { id: 'tool-b', sourceId: 'tools', parentId: 'tools-root', displayName: 'Tool B', orderIndex: 2 },
+        ],
+        contributions: [
+          {
+            id: 'tool-a-content',
+            sourceRef: { kind: 'runtime', sourceId: 'tools', sourceNodeId: 'tool-a' },
+            content: 'Tool A instructions.',
+            capabilities: {
+              projection: { zoneId: 'tools', joinSlotKey: 'tool-a-slot' },
+              lifecycle: { lifecycle: 'always' },
+            },
+          },
+          {
+            id: 'tool-b-content',
+            sourceRef: { kind: 'runtime', sourceId: 'tools', sourceNodeId: 'tool-b' },
+            content: 'Tool B instructions.',
+            capabilities: {
+              projection: { zoneId: 'tools', joinSlotKey: 'tool-b-slot' },
+              lifecycle: { lifecycle: 'always' },
+            },
+          },
+        ],
+        slotRanks: [
+          { zoneId: 'tools', slotKey: 'tool-a-slot', rankKey: '20' },
+          { zoneId: 'tools', slotKey: 'tool-b-slot', rankKey: '10' },
+        ],
+      },
+    })
+
+    expect(result.projection.zones.find(zone => zone.zoneId === 'tools')?.slots.map(slot => slot.slotKey)).toEqual([
+      'tool-b-slot',
+      'tool-a-slot',
+    ])
+    expect(result.messages).toEqual([
+      { role: 'system', content: 'Tool B instructions.\n\nTool A instructions.' },
+      { role: 'user', content: 'Hi' },
+    ])
+    engine.close()
+  })
+
+  it('uses the supplied Agent Turn User macro context', async () => {
+    const createId = createIds()
+    const now = () => '2026-08-23T00:00:00.000Z'
+    const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
+    const documents = createSqliteDocumentStore({ engine })
+    const promptResources = createPromptResourceStore({ engine, createId, now })
+    const runtime = createApplicationRuntime({
+      dataEngine: engine,
+      documents,
+      promptResources,
+    })
+    const preset = await runtime.createPromptResource({
+      resourceKind: 'preset',
+      name: 'Macro Preset',
+    })
+    await runtime.createPromptResourceAsset({
+      resourceId: preset.resource.id,
+      targetAssetId: preset.resource.rootNode.id,
+      position: 'inside',
+      asset: {
+        id: 'macro-entry',
+        kind: 'entry',
+        label: 'Macro',
+        body: 'Current user is {{User}}.',
+      },
+    })
+
+    const result = await composeAgentTurnPrompt({
+      promptResources,
+      preset: (
+        await runtime.getPromptResource({ resourceId: preset.resource.id })
+      ).resource,
+      agentMessages: [],
+      userInput: 'Hi',
+      macroContext: { user: 'Mio' },
+    })
+
+    expect(result.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ content: expect.stringContaining('Mio') }),
+      ]),
+    )
+    expect(JSON.stringify(result.messages)).not.toContain('{{User}}')
+    engine.close()
+  })
+
   it('persists Runtime resources, nodes and mounts across engine restart', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'loom-prompt-resource-'))
     const filename = join(directory, 'studio.sqlite')

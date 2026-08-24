@@ -10,9 +10,11 @@ import type {
   SettingLayerInput,
   PromptResourceCompositionCapabilities,
   PromptResourceKind,
+  PresetToolMountInput,
   PromptProviderRole,
   PromptSourceKind,
   SettingMountSource,
+  ToolDefinition,
 } from '@loom-studio/application-runtime'
 import { isPromptActivation, isCardBundleArtifact, isPromptResourceArtifact } from '@loom-studio/application-runtime'
 import type { JsonValue } from '@loom-studio/shared'
@@ -23,6 +25,7 @@ import {
   readOptionalObject,
   readOptionalString,
   readOptionalStringRecord,
+  readNumber,
   readString,
 } from './rpc-params.js'
 
@@ -40,6 +43,11 @@ const applicationRpcMethods = [
   'application.deleteProviderProfile',
   'application.listProviderModels',
   'application.pingProviderModel',
+  'application.listAgentTools',
+  'application.updateAgentTool',
+  'application.analyzeAgentTools',
+  'application.listPresetToolMounts',
+  'application.replacePresetToolMounts',
   'application.createAgentProfile',
   'application.getAgentProfile',
   'application.listAgentProfiles',
@@ -47,7 +55,7 @@ const applicationRpcMethods = [
   'application.deleteAgentProfile',
   'application.createAgentSession',
   'application.getAgentSession',
-  'application.getAgentMessagePage',
+  'application.getAgentTranscriptPage',
   'application.deleteAgentSession',
   'application.invokeAgentTurn',
   'application.previewAgentTurn',
@@ -195,6 +203,7 @@ export async function callApplicationRpc(
         name: readString(params, 'name'),
         presetId: readString(params, 'presetId'),
         model: readRequiredProviderModelSelection(params, 'model'),
+        toolOverrides: readOptionalBooleanRecord(params, 'toolOverrides'),
       }) as unknown as JsonValue
 
     case 'application.getAgentProfile':
@@ -209,7 +218,33 @@ export async function callApplicationRpc(
         name: readOptionalString(params, 'name'),
         presetId: readOptionalString(params, 'presetId'),
         model: readOptionalProviderModelSelection(params, 'model'),
+        toolOverrides: readOptionalBooleanRecord(params, 'toolOverrides'),
       }) as unknown as JsonValue
+
+    case 'application.listAgentTools':
+      return await runtime.listAgentTools() as unknown as JsonValue
+
+    case 'application.updateAgentTool':
+      return await runtime.updateAgentTool({
+        toolId: readString(params, 'toolId'),
+        expectedVersion: readNumber(params, 'expectedVersion'),
+        definition: readAgentToolDefinition(params),
+      }) as unknown as JsonValue
+
+    case 'application.analyzeAgentTools':
+      return await runtime.analyzeAgentTools({ agentProfileId: readString(params, 'agentProfileId') }) as unknown as JsonValue
+
+    case 'application.listPresetToolMounts':
+      return await runtime.listPresetToolMounts({
+        presetId: readOptionalString(params, 'presetId'),
+        toolId: readOptionalString(params, 'toolId'),
+      }) as unknown as JsonValue
+
+    case 'application.replacePresetToolMounts':
+      return await runtime.replacePresetToolMounts({
+        presetId: readString(params, 'presetId'),
+        mounts: readPresetToolMountInputs(params, 'mounts'),
+      }, context) as unknown as JsonValue
 
     case 'application.deleteAgentProfile':
       return await runtime.deleteAgentProfile({ agentProfileId: readString(params, 'agentProfileId') }) as unknown as JsonValue
@@ -225,8 +260,8 @@ export async function callApplicationRpc(
         agentSessionId: readString(params, 'agentSessionId'),
       }) as unknown as JsonValue
 
-    case 'application.getAgentMessagePage':
-      return await runtime.getAgentMessagePage({
+    case 'application.getAgentTranscriptPage':
+      return await runtime.getAgentTranscriptPage({
         agentSessionId: readString(params, 'agentSessionId'),
         cursor: readOptionalString(params, 'cursor'),
         limit: readOptionalNumber(params, 'limit'),
@@ -436,6 +471,12 @@ export async function callApplicationRpc(
   }
 }
 
+function readAgentToolDefinition(params: JsonValue | undefined): ToolDefinition {
+  const definition = readOptionalObject(params, 'definition')
+  if (!definition) throw new Error('Expected agent tool definition: definition')
+  return definition as unknown as ToolDefinition
+}
+
 function readOptionalOpening(params: JsonValue | undefined, key: string): OpeningChatInput | string | undefined {
   if (!isRecord(params) || params[key] === undefined) return undefined
   const value = params[key]
@@ -473,6 +514,49 @@ function readOptionalStringArray(params: JsonValue | undefined, key: string): st
     throw new Error(`Expected optional string array param: ${key}`)
   }
   return value
+}
+
+function readOptionalBooleanRecord(params: JsonValue | undefined, key: string): Record<string, boolean> | undefined {
+  if (!isRecord(params) || params[key] === undefined) return undefined
+  const value = params[key]
+  if (!isRecord(value) || !Object.values(value).every(item => typeof item === 'boolean')) {
+    throw new Error(`Expected optional boolean record param: ${key}`)
+  }
+  return value as Record<string, boolean>
+}
+
+function readPresetToolMountInputs(params: JsonValue | undefined, key: string): PresetToolMountInput[] {
+  if (!isRecord(params) || !Array.isArray(params[key])) throw new Error(`Expected Preset Tool mount array param: ${key}`)
+  return params[key].map((value, index) => {
+    if (!isRecord(value)) throw new Error(`Expected Preset Tool mount object: ${key}[${index}]`)
+    const activation = value.activation
+    if (activation !== undefined && !isPromptActivation(activation)) {
+      throw new Error(`Expected Preset Tool mount activation: ${key}[${index}].activation`)
+    }
+    const provider = value.provider
+    if (provider !== undefined && (!isRecord(provider) || (provider.order !== undefined && typeof provider.order !== 'number'))) {
+      throw new Error(`Expected Preset Tool provider placement: ${key}[${index}].provider`)
+    }
+    const content = value.content
+    if (content !== undefined && (!isRecord(content)
+      || (content.zone !== undefined && typeof content.zone !== 'string')
+      || (content.slot !== undefined && typeof content.slot !== 'string')
+      || (content.rankKey !== undefined && typeof content.rankKey !== 'string')
+      || (content.orderHint !== undefined && typeof content.orderHint !== 'number'))) {
+      throw new Error(`Expected Preset Tool content placement: ${key}[${index}].content`)
+    }
+    if (typeof value.toolId !== 'string' || typeof value.orderIndex !== 'number' || typeof value.defaultEnabled !== 'boolean') {
+      throw new Error(`Expected Preset Tool mount fields: ${key}[${index}]`)
+    }
+    return {
+      toolId: value.toolId,
+      orderIndex: value.orderIndex,
+      defaultEnabled: value.defaultEnabled,
+      ...(activation === undefined ? {} : { activation }),
+      ...(provider === undefined ? {} : { provider: provider as PresetToolMountInput['provider'] }),
+      ...(content === undefined ? {} : { content: content as PresetToolMountInput['content'] }),
+    }
+  })
 }
 
 function readRequiredStringArray(params: JsonValue | undefined, key: string): string[] {

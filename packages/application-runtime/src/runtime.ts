@@ -1,5 +1,5 @@
 import type { DocumentRecord, DocumentStore, SqliteDocumentStore } from '@loom-studio/document-store'
-import type { AgentMessage } from '@loom-studio/agent-store'
+import type { AgentTranscriptEntry } from '@loom-studio/agent-store'
 import type { JsonValue } from '@loom-studio/shared'
 import type { PromptResourceMutation } from '@loom-studio/prompt-resource-store'
 import {
@@ -26,10 +26,17 @@ import {
   createOfficialPromptResourceContents,
   officialPromptResourceIds,
 } from './prompt-resource-defaults.js'
-import type { ActivationFacts } from './prompt-activation.js'
+import { isPromptActivation, type ActivationFacts } from './prompt-activation.js'
 import { buildOpenAIChatPayload, type OpenAIChatPayload } from './provider-payload.js'
 import { defaultCompositionSkeleton } from './prompt-builder.js'
 import { composeAgentTurnPrompt } from './agent-turn.js'
+import { createAgentToolRegistry, type ToolDefinition } from './agent/tool-registry.js'
+import {
+  compileAgentToolSet,
+  createContentToolPromptRuntimeInputs,
+  resolveEnabledPresetToolMounts,
+  runNativeToolLoop,
+} from './agent/tool-loop.js'
 import {
   exportCardArtifact,
   applyDefaultPromptProjection,
@@ -42,6 +49,8 @@ import {
 import { fromStoredResource, listMappedResources, readMappedResource, toStoredNodeDraft, toStoredResourceInput } from './prompt-resource-mapper.js'
 import type {
   AgentProfileContent,
+  AgentToolContent,
+  AgentToolEntry,
   ApplicationRuntime,
   ApplicationRuntimeOptions,
   CardMediaRefs,
@@ -116,6 +125,32 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
           source: { kind: 'preset', id: officialPromptResourceIds.assistantPreset },
           settingResourceId: officialPromptResourceIds.knowledgeSetting,
           orderIndex: officialMounts.length,
+          origin: { kind: 'builtin', key: 'loom-assistant-preset' },
+        })
+      }
+      for (const definition of ctx.agentTools.list()) {
+        if (await ctx.documents.get(definition.id)) continue
+        await writeDocument<AgentToolContent>(ctx.documents, {
+          id: definition.id,
+          type: applicationDocumentTypes.agentTool,
+          content: toAgentToolContent(definition, timestamp),
+          expectedVersion: 'new',
+        })
+      }
+      await refreshAgentToolRegistry(ctx)
+      const officialToolMounts = await ctx.promptResources.listPresetToolMounts({ presetResourceId: officialPromptResourceIds.assistantPreset })
+      for (const [orderIndex, definition] of ctx.agentTools.list().entries()) {
+        if (officialToolMounts.some(mount => mount.toolId === definition.id)) continue
+        await ctx.promptResources.addPresetToolMount({
+          actor: applicationActor,
+          reason: 'application.initializePromptResources',
+          presetResourceId: officialPromptResourceIds.assistantPreset,
+          toolId: definition.id,
+          orderIndex,
+          defaultEnabled: false,
+          ...(definition.prompt?.activation ? { activation: structuredClone(definition.prompt.activation) } : {}),
+          ...(definition.prompt?.provider ? { provider: { ...definition.prompt.provider } } : {}),
+          ...(definition.prompt?.content ? { content: { ...definition.prompt.content } } : {}),
           origin: { kind: 'builtin', key: 'loom-assistant-preset' },
         })
       }
@@ -219,17 +254,20 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     createProviderProfile: async (input, requestContext) => {
       assertNonEmpty(input.providerExtensionId, 'providerExtensionId')
       assertNonEmpty(input.displayName, 'displayName')
-      assertProviderCredential(input.providerExtensionId, input.credential)
+      const providerConfig = ctx.providerAdapters.validateAccountConfig(input.providerExtensionId, input.config ?? {})
+      const providerCredential = input.credential
+        ? ctx.providerAdapters.validateCredential(input.providerExtensionId, input.credential)
+        : undefined
       const id = ctx.createId('provider-profile')
       const timestamp = ctx.now()
       const enabledModelIds = normalizeModelIds(input.enabledModelIds)
-      const secret = input.credential
+      const secret = providerCredential
         ? await requireSecrets().create({
             ...secretWriteContext(requestContext, 'application.createProviderProfile.credential'),
             owner: { type: 'provider-profile', id },
             purpose: 'provider.credentials',
             label: input.displayName,
-            plaintext: { values: input.credential },
+            plaintext: { values: providerCredential },
           })
         : undefined
       let providerProfile
@@ -240,7 +278,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         content: {
           providerExtensionId: input.providerExtensionId,
           displayName: input.displayName,
-          config: input.config ?? {},
+          config: providerConfig,
           enabledModelIds,
           ...(secret ? { secretRef: secret.metadata.ref } : {}),
           createdAt: timestamp,
@@ -284,6 +322,8 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       assertNonEmpty(input.name, 'name')
       await readPresetResource(ctx.promptResources, input.presetId)
       await assertProviderModelExists(ctx.documents, input.model)
+      const toolOverrides = normalizeToolOverrides(input.toolOverrides)
+      assertResolvedTools(ctx, Object.keys(toolOverrides))
 
       const timestamp = ctx.now()
       const agentProfile = await writeDocument<AgentProfileContent>(ctx.documents, {
@@ -293,18 +333,19 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
           name: input.name,
           presetId: input.presetId,
           model: input.model,
+          toolOverrides,
           createdAt: timestamp,
           updatedAt: timestamp,
         },
         expectedVersion: 'new',
       })
 
-      return { agentProfile: toVersioned(agentProfile) }
+      return { agentProfile: toAgentProfileEntry(agentProfile) }
     },
 
     getAgentProfile: async input => {
       const agentProfile = await readDocument<AgentProfileContent>(ctx.documents, input.agentProfileId, applicationDocumentTypes.agentProfile)
-      return { agentProfile: toVersioned(agentProfile) }
+      return { agentProfile: toAgentProfileEntry(agentProfile) }
     },
 
     listAgentProfiles: async input => {
@@ -315,7 +356,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       })
 
       return {
-        agentProfiles: result.items.map(agentProfile => toVersioned(agentProfile as never)),
+        agentProfiles: result.items.map(agentProfile => toAgentProfileEntry(agentProfile as DocumentRecord<AgentProfileContent>)),
         nextCursor: result.nextCursor,
       }
     },
@@ -323,6 +364,9 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     updateProviderProfile: async input => {
       const existing = await readDocument<ProviderProfileContent>(ctx.documents, input.providerProfileId, applicationDocumentTypes.providerProfile)
       if (input.displayName !== undefined) assertNonEmpty(input.displayName, 'displayName')
+      const providerConfig = input.config === undefined
+        ? existing.content.config
+        : ctx.providerAdapters.validateAccountConfig(existing.content.providerExtensionId, input.config)
       const timestamp = ctx.now()
       const updated = await writeDocument<ProviderProfileContent>(ctx.documents, {
         id: existing.id,
@@ -330,7 +374,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         content: {
           ...existing.content,
           ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
-          ...(input.config !== undefined ? { config: input.config } : {}),
+          config: providerConfig,
           ...(input.enabledModelIds !== undefined ? { enabledModelIds: normalizeModelIds(input.enabledModelIds) } : {}),
           updatedAt: timestamp,
         },
@@ -341,7 +385,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
 
     replaceProviderCredential: async (input, requestContext) => {
       const existing = await readDocument<ProviderProfileContent>(ctx.documents, input.providerProfileId, applicationDocumentTypes.providerProfile)
-      assertProviderCredential(existing.content.providerExtensionId, input.credential)
+      const providerCredential = ctx.providerAdapters.validateCredential(existing.content.providerExtensionId, input.credential)
       const secrets = requireSecrets()
       const owner = { type: 'provider-profile', id: existing.id }
       if (existing.content.secretRef) {
@@ -349,7 +393,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
           ...secretWriteContext(requestContext, 'application.replaceProviderCredential'),
           ref: existing.content.secretRef,
           owner,
-          plaintext: { values: input.credential },
+          plaintext: { values: providerCredential },
         })
         return { credential: { configured: true, updatedAt: result.metadata.updatedAt } }
       }
@@ -358,7 +402,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         owner,
         purpose: 'provider.credentials',
         label: existing.content.displayName,
-        plaintext: { values: input.credential },
+        plaintext: { values: providerCredential },
       })
       try {
         await writeDocument<ProviderProfileContent>(ctx.documents, {
@@ -433,6 +477,10 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         await readPresetResource(ctx.promptResources, input.presetId)
       }
       if (input.model !== undefined) await assertProviderModelExists(ctx.documents, input.model)
+      const toolOverrides = input.toolOverrides === undefined
+        ? existing.content.toolOverrides ?? {}
+        : normalizeToolOverrides(input.toolOverrides)
+      assertResolvedTools(ctx, Object.keys(toolOverrides))
       const timestamp = ctx.now()
       const updated = await writeDocument<AgentProfileContent>(ctx.documents, {
         id: existing.id,
@@ -442,11 +490,54 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
           ...(input.name !== undefined ? { name: input.name } : {}),
           ...(input.presetId !== undefined ? { presetId: input.presetId } : {}),
           ...(input.model !== undefined ? { model: input.model } : {}),
+          toolOverrides,
           updatedAt: timestamp,
         },
         expectedVersion: existing.version,
       })
-      return { agentProfile: toVersioned(updated) }
+      return { agentProfile: toAgentProfileEntry(updated) }
+    },
+
+    listAgentTools: async () => ({ tools: await listAgentToolEntries(ctx) }),
+
+    updateAgentTool: async (input) => {
+      const existing = await readDocument<AgentToolContent>(
+        ctx.documents,
+        input.toolId,
+        applicationDocumentTypes.agentTool,
+      )
+      if (input.expectedVersion !== existing.version)
+        throw new Error(`Agent tool version conflict: ${input.toolId}`)
+      if (input.definition.id !== input.toolId)
+        throw new Error('Agent tool definition id cannot change')
+      createAgentToolRegistry([input.definition])
+      const updated = await writeDocument<AgentToolContent>(ctx.documents, {
+        id: existing.id,
+        type: applicationDocumentTypes.agentTool,
+        content: {
+          ...toAgentToolContent(input.definition, existing.content.createdAt),
+          updatedAt: ctx.now(),
+        },
+        expectedVersion: existing.version,
+      })
+      await refreshAgentToolRegistry(ctx)
+      return {
+        tool: toAgentToolEntry(updated),
+      }
+    },
+
+    analyzeAgentTools: async input => {
+      const profile = await readDocument<AgentProfileContent>(ctx.documents, input.agentProfileId, applicationDocumentTypes.agentProfile)
+      const capability = await readProviderCapability(ctx, profile.content.model.providerProfileId)
+      const mounts = await ctx.promptResources.listPresetToolMounts({ presetResourceId: profile.content.presetId })
+      const enabledToolIds = resolveEnabledPresetToolMounts(mounts, profile.content.toolOverrides ?? {}).map(mount => mount.toolId)
+      return {
+        analysis: ctx.agentTools.analyze(enabledToolIds, {
+          nativeFunction: capability.nativeFunctionTools,
+          providerCustom: capability.providerCustomTools,
+          content: true,
+        }),
+      }
     },
 
     deleteAgentProfile: async input => {
@@ -474,16 +565,16 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       return { session }
     },
 
-    getAgentMessagePage: input => requireAgents().getMessagePage(input),
+    getAgentTranscriptPage: input => requireAgents().getEntryPage(input),
 
-    appendAgentMessages: async (input, requestContext) => {
-      const result = await requireAgents().appendMessages({
-        ...agentWriteContext(requestContext, 'application.appendAgentMessages'),
+    appendAgentTranscriptEntries: async (input, requestContext) => {
+      const result = await requireAgents().appendEntries({
+        ...agentWriteContext(requestContext, 'application.appendAgentTranscriptEntries'),
         ...input,
       })
       return {
         session: result.session,
-        messages: result.messages,
+        entries: result.entries,
         mutation: { changesetId: result.commit.changesetId },
       }
     },
@@ -500,89 +591,79 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       const prepared = await prepareAgentTurn(ctx, input, 'preview', requestContext)
       return {
         runId: prepared.runId,
-        messages: prepared.prompt.messages,
+        messages: prepared.agentStepMessages,
         projection: prepared.prompt.projection,
         promptBuildTrace: prepared.prompt.promptBuildTrace,
+        toolExposures: prepared.compiledToolSet.tools.map(
+          (tool) => tool.exposure,
+        ),
+        toolPromptBuildTrace: prepared.compiledToolSet.trace,
         providerPayloadPreview: await buildProviderPayloadPreview({
           documents: ctx.documents,
-          messages: prepared.prompt.messages,
+          messages: prepared.agentStepMessages,
           model: prepared.model,
         }),
       }
     },
 
     invokeAgentTurn: async (input, requestContext) => {
-      if (!ctx.dataEngine) throw new Error('Data Engine is not configured')
       const agents = requireAgents()
       const prepared = await prepareAgentTurn(ctx, input, 'runtime', requestContext)
-      const { model, narrativePage, narratives, prompt, runId, session } = prepared
-      const providerResult = await ctx.gateway.invokeChat({
-        request: {
-          messages: prompt.messages,
-          metadata: {
-            purpose: input.narrativeTarget?.commit ? 'narrative' : 'agent',
-            agentSessionId: session.id,
-            runId,
-            ...(narrativePage ? {
-              timelineId: narrativePage.timeline.id,
-              branchId: narrativePage.branch.id,
-            } : {}),
-          },
-        },
+      const {
         model,
+        narrativePage,
+        narratives,
+        prompt,
+        agentStepMessages,
+        compiledToolSet,
         runId,
-        sessionId: session.id,
+        session,
+      } = prepared
+      const loop = await runNativeToolLoop({
+        ctx,
+        agents,
+        session,
+        runId,
+        model,
+        initialMessages: agentStepMessages,
+        userInput: input.input,
+        compiledToolSet,
         branchId: narrativePage?.branch.id ?? 'agent-only',
-        ...(requestContext ? { context: requestContext } : {}),
+        purpose: input.narrativeTarget?.commit ? 'narrative' : 'agent',
+        ...(requestContext ? { requestContext } : {}),
       })
-      if (input.narrativeTarget?.commit && !providerResult.message.content) {
-        throw new Error('Narrative commit requires assistant text content')
-      }
-
-      const userMessageId = ctx.createId('agent-message')
-      const assistantMessageId = ctx.createId('agent-message')
-      const writeContext = agentWriteContext(requestContext, 'application.invokeAgentTurn')
-      const transaction = await ctx.dataEngine.transact(writeContext, async dataTx => {
-        const appended = agents.transaction(dataTx).appendMessages({
-          agentSessionId: session.id,
-          expectedMessageCount: session.messageCount,
-          messages: [
-            { id: userMessageId, runId, message: { role: 'user', content: input.input } },
-            { id: assistantMessageId, runId, message: providerResult.message },
-          ],
-        })
-        const narrative = narrativePage && input.narrativeTarget?.commit
-          ? narratives!.transaction(dataTx).appendNode({
-              timelineId: narrativePage.timeline.id,
-              branchId: narrativePage.branch.id,
-              expectedHeadNodeId: narrativePage.branch.headNodeId ?? null,
-              body: { format: 'loom-markdown.v1', raw: providerResult.message.content! },
-              source: {
-                agentSessionId: session.id,
-                agentMessageId: assistantMessageId,
-                runId,
-              },
-            })
-          : undefined
-        return { appended, narrative }
-      })
-      const [user, assistant] = transaction.value.appended.messages as [AgentMessage, AgentMessage]
+      const narrative = narrativePage && input.narrativeTarget?.commit
+        ? await narratives!.appendNode({
+            ...narrativeWriteContext(requestContext, 'application.invokeAgentTurn.narrative'),
+            timelineId: narrativePage.timeline.id,
+            branchId: narrativePage.branch.id,
+            expectedHeadNodeId: narrativePage.branch.headNodeId ?? null,
+            body: { format: 'loom-markdown.v1', raw: readMessageEntryContent(loop.assistantEntry) },
+            source: {
+              agentSessionId: session.id,
+              agentMessageId: loop.assistantEntry.id,
+              runId,
+            },
+          })
+        : undefined
 
       return {
         runId,
-        agentSession: transaction.value.appended.session,
-        messages: { user, assistant },
-        ...(transaction.value.narrative ? { narrative: transaction.value.narrative } : {}),
+        agentSession: loop.session,
+        entries: { user: loop.userEntry, assistant: loop.assistantEntry },
+        ...(narrative ? { narrative: { timeline: narrative.timeline, branch: narrative.branch, node: narrative.node } } : {}),
         provider: {
-          provider: providerResult.provider,
-          model: providerResult.model,
-          ...(providerResult.finishReason ? { finishReason: providerResult.finishReason } : {}),
-          ...(providerResult.usage ? { usage: providerResult.usage } : {}),
-          ...(providerResult.providerCallId ? { providerCallId: providerResult.providerCallId } : {}),
+          provider: loop.providerResult.provider,
+          model: loop.providerResult.model,
+          ...(loop.providerResult.finishReason ? { finishReason: loop.providerResult.finishReason } : {}),
+          ...(loop.providerResult.usage ? { usage: loop.providerResult.usage } : {}),
+          ...(loop.providerResult.providerCallId ? { providerCallId: loop.providerResult.providerCallId } : {}),
         },
         projection: prompt.projection,
         promptBuildTrace: prompt.promptBuildTrace,
-        mutation: { changesetId: transaction.commit.changesetId },
+        toolExposures: compiledToolSet.tools.map((tool) => tool.exposure),
+        toolPromptBuildTrace: loop.toolPromptBuildTrace,
+        mutation: { changesetId: narrative?.commit.changesetId ?? loop.changesetId },
       }
     },
 
@@ -733,6 +814,9 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       const sourceMounts = source.resourceKind === 'preset'
         ? await ctx.promptResources.listSettingMounts({ source: { kind: 'preset', id: source.id } })
         : []
+      const sourceToolMounts = source.resourceKind === 'preset'
+        ? await ctx.promptResources.listPresetToolMounts({ presetResourceId: source.id })
+        : []
       const transaction = await ctx.dataEngine.transact({
         ...promptResourceWriteContext(requestContext),
         reason: 'application.duplicatePromptResource',
@@ -745,7 +829,17 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
           orderIndex: mount.orderIndex,
           origin: mount.origin,
         }))
-        return { resource: created, mounts }
+        const toolMounts = sourceToolMounts.map(mount => resourceTx.addPresetToolMount({
+          presetResourceId: created.id,
+          toolId: mount.toolId,
+          orderIndex: mount.orderIndex,
+          defaultEnabled: mount.defaultEnabled,
+          ...(mount.activation ? { activation: mount.activation } : {}),
+          ...(mount.provider ? { provider: mount.provider } : {}),
+          ...(mount.content ? { content: mount.content } : {}),
+          origin: mount.origin,
+        }))
+        return { resource: created, mounts, toolMounts }
       })
       return {
         resource: fromStoredResource(transaction.value.resource),
@@ -896,6 +990,45 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         reason: 'application.replaceSettingMounts',
         source: input.source,
         mounts: input.settingResourceIds.map((settingResourceId, orderIndex) => ({ settingResourceId, orderIndex })),
+      })
+      return { mounts: result.mounts, mutation: { changesetId: result.commit.changesetId } }
+    },
+
+    listPresetToolMounts: async input => ({
+      mounts: await ctx.promptResources.listPresetToolMounts({
+        presetResourceId: input?.presetId,
+        toolId: input?.toolId,
+      }),
+    }),
+
+    replacePresetToolMounts: async (input, requestContext) => {
+      await readPresetResource(ctx.promptResources, input.presetId)
+      const seen = new Set<string>()
+      for (const mount of input.mounts) {
+        if (seen.has(mount.toolId)) throw new Error(`Preset Tool mount is duplicated: ${mount.toolId}`)
+        seen.add(mount.toolId)
+        const resolved = ctx.agentTools.resolve([mount.toolId])
+        const definition = resolved.tools[0]
+        if (!definition) throw new Error(resolved.diagnostics[0]?.message ?? `Agent tool is not registered: ${mount.toolId}`)
+        if (mount.activation !== undefined && !isPromptActivation(mount.activation)) {
+          throw new Error(`Preset Tool mount activation is invalid: ${mount.toolId}`)
+        }
+        if (definition.input.kind === 'structured' && mount.content !== undefined) {
+          throw new Error(`Structured Tool cannot use Content placement: ${mount.toolId}`)
+        }
+      }
+      const result = await ctx.promptResources.replacePresetToolMounts({
+        ...promptResourceWriteContext(requestContext),
+        reason: 'application.replacePresetToolMounts',
+        presetResourceId: input.presetId,
+        mounts: input.mounts.map(mount => ({
+          toolId: mount.toolId,
+          orderIndex: mount.orderIndex,
+          defaultEnabled: mount.defaultEnabled,
+          ...(mount.activation ? { activation: structuredClone(mount.activation) } : {}),
+          ...(mount.provider ? { provider: { ...mount.provider } } : {}),
+          ...(mount.content ? { content: { ...mount.content } } : {}),
+        })),
       })
       return { mounts: result.mounts, mutation: { changesetId: result.commit.changesetId } }
     },
@@ -1223,9 +1356,10 @@ async function prepareAgentTurn(
         limit: 100,
       })
     : undefined
-  const agentPage = await ctx.agents.getMessagePage({ agentSessionId: session.id, limit: 100 })
+  const agentPage = await ctx.agents.getEntryPage({ agentSessionId: session.id, limit: 100 })
   const agentProfile = await readDocument<AgentProfileContent>(ctx.documents, session.agentProfileId, applicationDocumentTypes.agentProfile)
-      const preset = await readPresetResource(ctx.promptResources, agentProfile.content.presetId)
+  const preset = await readPresetResource(ctx.promptResources, agentProfile.content.presetId)
+  const toolMounts = await ctx.promptResources.listPresetToolMounts({ presetResourceId: preset.id })
   const runId = ctx.createId('run')
   const buildId = ctx.createId('build')
   const startedAt = performance.now()
@@ -1250,11 +1384,26 @@ async function prepareAgentTurn(
     ...logContext,
   })
   let prompt
+  let compiledToolSet
+  const macroContext = await readAgentTurnMacroContext(
+    ctx,
+    narrativePage?.timeline.createdFrom?.cardId,
+  )
   try {
+    compiledToolSet = await compileAgentToolSet({
+      ctx,
+      model: agentProfile.content.model,
+      toolMounts,
+      toolOverrides: agentProfile.content.toolOverrides ?? {},
+      macroContext,
+      currentInput: input.input,
+      activationFacts: input.activationFacts,
+    })
     prompt = await composeAgentTurnPrompt({
       activationFacts: input.activationFacts,
+      macroContext,
       agentMessages: (preset.historyPolicy ?? 'persistent') === 'persistent'
-        ? agentPage.messages
+        ? agentPage.entries
         : [],
         promptResources: ctx.promptResources,
       narrative: narrativePage ? { nodes: narrativePage.nodes, timeline: narrativePage.timeline } : undefined,
@@ -1263,6 +1412,7 @@ async function prepareAgentTurn(
       buildId,
       runId,
       agentSessionId: session.id,
+      externalRuntime: createContentToolPromptRuntimeInputs(compiledToolSet),
     })
     const durationMs = readDurationMs(startedAt)
     ctx.logger?.info(`${mode} prompt build completed · ${prompt.messages.length} messages · ${durationMs} ms`, {
@@ -1284,12 +1434,35 @@ async function prepareAgentTurn(
     throw error
   }
   return {
+    agentProfile,
     model: agentProfile.content.model,
     narrativePage,
     narratives,
     prompt,
+    macroContext,
+    compiledToolSet,
+    agentStepMessages: prompt.messages,
     runId,
     session,
+  }
+}
+
+async function readAgentTurnMacroContext(
+  ctx: ApplicationRuntimeContext,
+  cardId: string | undefined,
+): Promise<{ user: string }> {
+  if (!cardId) return { user: 'User' }
+  const card = await readDocument<CardSourceContent>(
+    ctx.documents,
+    cardId,
+    applicationDocumentTypes.cardSource,
+  )
+  return {
+    user:
+      typeof card.content.userName === 'string' &&
+      card.content.userName.trim().length > 0
+        ? card.content.userName
+        : 'User',
   }
 }
 
@@ -1355,14 +1528,108 @@ function normalizeModelIds(modelIds: string[] | undefined): string[] {
   return normalized
 }
 
-function assertProviderCredential(providerExtensionId: string, credential: Record<string, string> | undefined): void {
-  if (!credential) return
-  if (
-    (providerExtensionId === 'official.openai-compatible' || providerExtensionId === 'openai-compatible')
-    && !credential.apiKey?.trim()
-  ) {
-    throw new Error('OpenAI-compatible Provider credential requires apiKey')
+function readMessageEntryContent(entry: AgentTranscriptEntry): string {
+  if (entry.entry.kind !== 'message' || entry.entry.role !== 'assistant') {
+    throw new Error(`Expected final assistant message entry: ${entry.id}`)
   }
+  return entry.entry.content
+}
+
+function normalizeToolOverrides(overrides: Record<string, boolean> | undefined): Record<string, boolean> {
+  const normalized: Record<string, boolean> = {}
+  for (const [toolId, enabled] of Object.entries(overrides ?? {})) {
+    const normalizedToolId = toolId.trim()
+    if (!normalizedToolId) throw new Error('Agent Profile Tool override id cannot be empty')
+    if (typeof enabled !== 'boolean') throw new Error(`Agent Profile Tool override must be boolean: ${normalizedToolId}`)
+    normalized[normalizedToolId] = enabled
+  }
+  if (Object.keys(normalized).length > 200) throw new Error('Agent Profile toolOverrides exceeds 200 entries')
+  return normalized
+}
+
+function assertResolvedTools(ctx: ApplicationRuntimeContext, toolIds: string[]): void {
+  const error = ctx.agentTools.resolve(toolIds).diagnostics.find(diagnostic => diagnostic.severity === 'error')
+  if (error) throw new Error(error.message)
+}
+
+function toAgentProfileEntry(document: DocumentRecord<AgentProfileContent>) {
+  return {
+    ...toVersioned(document),
+    toolOverrides: { ...(document.content.toolOverrides ?? {}) },
+  }
+}
+
+function toAgentToolContent(
+  definition: ToolDefinition,
+  createdAt: string,
+  updatedAt = createdAt,
+): AgentToolContent {
+  return {
+    owner: structuredClone(definition.owner),
+    name: definition.name,
+    description: definition.description,
+    input: structuredClone(definition.input),
+    ...(definition.prompt ? { prompt: structuredClone(definition.prompt) } : {}),
+    createdAt,
+    updatedAt,
+  }
+}
+
+function toAgentToolEntry(
+  document: DocumentRecord<AgentToolContent>,
+): AgentToolEntry {
+  const { createdAt, updatedAt, ...definition } = document.content
+  return {
+    id: document.id,
+    version: document.version,
+    ...structuredClone(definition),
+    createdAt,
+    updatedAt,
+  }
+}
+
+async function listAgentToolEntries(
+  ctx: ApplicationRuntimeContext,
+): Promise<AgentToolEntry[]> {
+  const documents = await listDocuments<AgentToolContent>(
+    ctx.documents,
+    applicationDocumentTypes.agentTool,
+  )
+  if (documents.length > 0) return documents.map(toAgentToolEntry)
+  const timestamp = ctx.now()
+  return ctx.agentTools.list().map((definition) => ({
+    ...structuredClone(definition),
+    version: 0,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  }))
+}
+
+async function refreshAgentToolRegistry(
+  ctx: ApplicationRuntimeContext,
+): Promise<void> {
+  const documents = await listDocuments<AgentToolContent>(
+    ctx.documents,
+    applicationDocumentTypes.agentTool,
+  )
+  if (documents.length === 0) return
+  ctx.agentTools.replaceDefinitions(
+    documents.map((document) => ({
+      id: document.id,
+      owner: structuredClone(document.content.owner),
+      name: document.content.name,
+      description: document.content.description,
+      input: structuredClone(document.content.input),
+      ...(document.content.prompt
+        ? { prompt: structuredClone(document.content.prompt) }
+        : {}),
+    })),
+  )
+}
+
+async function readProviderCapability(ctx: ApplicationRuntimeContext, providerProfileId: string) {
+  const profile = await readDocument<ProviderProfileContent>(ctx.documents, providerProfileId, applicationDocumentTypes.providerProfile)
+  return ctx.providerAdapters.getCapability(profile.content.providerExtensionId)
 }
 
 function secretWriteContext(requestContext: RuntimeRequestContext | undefined, reason: string) {

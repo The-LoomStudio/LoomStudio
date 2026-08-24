@@ -1,12 +1,14 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
-import type { AgentProfile, ModelProfile, PromptResource, ProviderAccount, ProviderModelSelection } from '../../entities/index.js'
+import type { AgentProfile, AgentToolDefinition, ModelProfile, PresetToolMount, PromptResource, ProviderAccount, ProviderModelSelection } from '../../entities/index.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import styles from './agent-panel.module.scss'
 
 type AgentPanelProps = {
   presets: PromptResource[]
   agentProfiles: AgentProfile[]
+  tools: AgentToolDefinition[]
+  toolMounts: PresetToolMount[]
   busy: boolean
   modelProfiles: ModelProfile[]
   providerAccounts: ProviderAccount[]
@@ -15,7 +17,7 @@ type AgentPanelProps = {
   onCreate(input: { name: string; presetId?: string; model: ProviderModelSelection }): void
   onDelete(id: string): void
   onSelect(id: string): void
-  onUpdate(id: string, updates: { name?: string; presetId?: string; model?: ProviderModelSelection }): void
+  onUpdate(id: string, updates: { name?: string; presetId?: string; model?: ProviderModelSelection; toolOverrides?: Record<string, boolean> }): void
 }
 
 export function AgentPanel(props: AgentPanelProps) {
@@ -120,6 +122,46 @@ export function AgentPanel(props: AgentPanelProps) {
                       ))}
                     </select>
                   </label>
+                  {props.tools.length ? (
+                    <fieldset className={styles.toolsField}>
+                      <legend className={styles.toolsLegend}>Tools</legend>
+                      <div className={styles.toolList}>
+                        {props.tools.map(tool => {
+                          const mount = props.toolMounts.find(item => item.presetResourceId === profile.presetId && item.toolId === tool.id)
+                          const inherited = profile.toolOverrides[tool.id] === undefined
+                          const enabled = mount ? profile.toolOverrides[tool.id] ?? mount.defaultEnabled : false
+                          return (
+                            <div className={styles.toolOption} key={tool.id}>
+                              <input
+                                aria-label={`${tool.name} enabled`}
+                                checked={enabled}
+                                disabled={props.busy || !mount}
+                                type="checkbox"
+                                onChange={event => {
+                                  props.onUpdate(profile.id, {
+                                    toolOverrides: {
+                                      ...profile.toolOverrides,
+                                      [tool.id]: event.target.checked,
+                                    },
+                                  })
+                                }}
+                              />
+                              <span className={styles.toolDetails}>
+                                <strong>{tool.name}</strong>
+                                <small>{tool.description}</small>
+                                <em>{mount ? `${tool.owner.namespace} · ${tool.input.kind} · ${inherited ? 'Preset default' : 'Agent override'}` : 'Not mounted by Preset'}</em>
+                                {!inherited && mount ? (
+                                  <button type="button" onClick={() => props.onUpdate(profile.id, { toolOverrides: omitToolOverride(profile.toolOverrides, tool.id) })}>
+                                    Use Preset default
+                                  </button>
+                                ) : null}
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </fieldset>
+                  ) : null}
                   <button aria-label={props.t('agent.profile.deleteNamed', { name: profile.name })} className={styles.deleteButton} disabled={props.busy} title={props.t('agent.profile.delete')} type="button" onClick={() => props.onDelete(profile.id)}>
                     <Trash2 aria-hidden="true" />{props.t('agent.profile.delete')}
                   </button>
@@ -135,6 +177,10 @@ export function AgentPanel(props: AgentPanelProps) {
 
 function readPresetLabel(preset: PromptResource, t: Translator): string {
   return preset.origin?.kind === 'builtin' ? `${preset.rootNode.label} · ${t('promptResource.official')}` : preset.rootNode.label
+}
+
+function omitToolOverride(overrides: Record<string, boolean>, toolId: string): Record<string, boolean> {
+  return Object.fromEntries(Object.entries(overrides).filter(([id]) => id !== toolId))
 }
 
 function readModelSelection(modelProfileId: string, models: ModelProfile[]): ProviderModelSelection | undefined {

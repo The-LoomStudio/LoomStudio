@@ -67,11 +67,11 @@ describe('studio server Agent Turn RPC', () => {
         agentSessionId: session.session.id,
         input: '',
       })).rejects.toThrow('Agent turn input cannot be empty')
-      const page = await callRpc<{ messages: unknown[] }>(port, 'application.getAgentMessagePage', {
+      const page = await callRpc<{ entries: unknown[] }>(port, 'application.getAgentTranscriptPage', {
         agentSessionId: session.session.id,
       })
 
-      expect(page.messages).toEqual([])
+      expect(page.entries).toEqual([])
     })
   })
 })

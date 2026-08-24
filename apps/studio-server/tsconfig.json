@@ -6,6 +6,7 @@
     "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
   "references": [
+    { "path": "../../packages/ai-gateway" },
     { "path": "../../packages/agent-store" },
     { "path": "../../packages/asset-store" },
     { "path": "../../packages/application-runtime" },

@@ -16,7 +16,7 @@ import { useProviderSettings } from '../features/provider-settings/model/use-pro
 import { useAgentProfiles } from '../features/agent-profiles/model/use-agent-profiles.js'
 import { useAgentChatRuntime } from '../features/agent-runtime/model/use-agent-chat-runtime.js'
 import { useNarrativeRuntime } from '../features/narrative-runtime/model/use-narrative-runtime.js'
-import type { ContextAssetNode, PromptResource, PromptResourceArtifact, SettingMount, SettingMountSource } from '../entities/index.js'
+import type { ContextAssetNode, PresetToolMount, PresetToolMountInput, PromptResource, PromptResourceArtifact, SettingMount, SettingMountSource } from '../entities/index.js'
 import { readComposerHint, readEmptyTimelineText } from './utils.js'
 
 export type HistoryAssetTarget = {
@@ -44,6 +44,7 @@ export function useStudioState(transportLogger: Logger) {
   const editHistory = useEditHistory({ revertChangeset: api.history.revert })
   const [promptResources, setPromptResources] = useState<PromptResource[]>([])
   const [settingMounts, setSettingMounts] = useState<SettingMount[]>([])
+  const [presetToolMounts, setPresetToolMounts] = useState<PresetToolMount[]>([])
   const cardsState = useCards({
     api,
     initialCardName: '',
@@ -112,6 +113,12 @@ export function useStudioState(transportLogger: Logger) {
     return mounts
   }
 
+  async function refreshPresetToolMounts(): Promise<PresetToolMount[]> {
+    const mounts = (await api.promptResources.listPresetToolMounts()).mounts
+    setPresetToolMounts(mounts)
+    return mounts
+  }
+
   useEffect(() => {
     editHistory.clear()
     void operations.run('bootstrap', async () => {
@@ -119,7 +126,7 @@ export function useStudioState(transportLogger: Logger) {
       const selectedCardId = cards[0]?.id
 
       if (selectedCardId) cardsState.setSelectedCardId(selectedCardId)
-      await Promise.all([refreshPromptResourceLibrary(), refreshSettingMounts()])
+      await Promise.all([refreshPromptResourceLibrary(), refreshSettingMounts(), refreshPresetToolMounts()])
       await providerSettings.refreshProviderSettings()
       await agentProfiles.refreshAgentProfiles()
       setNetworkSettings(await api.settings.getNetwork())
@@ -219,7 +226,7 @@ export function useStudioState(transportLogger: Logger) {
         anchor: { documentId: result.resource.id, subjectId: result.resource.rootNode.id },
       })
       duplicatedId = result.resource.id
-      await Promise.all([refreshPromptResourceLibrary(), refreshSettingMounts()])
+      await Promise.all([refreshPromptResourceLibrary(), refreshSettingMounts(), refreshPresetToolMounts()])
     })
     return duplicatedId
   }
@@ -227,7 +234,7 @@ export function useStudioState(transportLogger: Logger) {
   async function deletePromptResource(resourceId: string): Promise<void> {
     await operations.run('mutation', async () => {
       await api.promptResources.delete(resourceId)
-      await Promise.all([refreshPromptResourceLibrary(), refreshSettingMounts()])
+      await Promise.all([refreshPromptResourceLibrary(), refreshSettingMounts(), refreshPresetToolMounts()])
       await Promise.all([
         cardsState.refreshCards(),
         agentProfiles.refreshAgentProfiles(),
@@ -241,6 +248,17 @@ export function useStudioState(transportLogger: Logger) {
       const result = await api.promptResources.replaceSettingMounts({ source, settingResourceIds })
       setSettingMounts(current => [
         ...current.filter(mount => mount.source.kind !== source.kind || (source.kind === 'preset' ? mount.source.id !== source.id : mount.source.id !== (source.id ?? 'global'))),
+        ...result.mounts,
+      ])
+      await agentProfiles.refreshAgentProfiles()
+    })
+  }
+
+  async function replacePresetToolMounts(presetId: string, mounts: PresetToolMountInput[]): Promise<void> {
+    await operations.run('mutation', async () => {
+      const result = await api.promptResources.replacePresetToolMounts({ presetId, mounts })
+      setPresetToolMounts(current => [
+        ...current.filter(mount => mount.presetResourceId !== presetId),
         ...result.mounts,
       ])
       await agentProfiles.refreshAgentProfiles()
@@ -359,6 +377,7 @@ export function useStudioState(transportLogger: Logger) {
     // context assets
     promptResources,
     settingMounts,
+    presetToolMounts,
     contextAssets: contextAssetState.nodes, setContextAssets: contextAssetState.setNodes,
     previewContextAsset: contextAssetState.previewContextAsset,
     updateContextAsset: contextAssetState.updateContextAsset,
@@ -375,6 +394,7 @@ export function useStudioState(transportLogger: Logger) {
     importPromptResource,
     exportPromptResource,
     replaceSettingMounts,
+    replacePresetToolMounts,
     // derived
     canSend, canSendAgent, canPreviewPrompt, composerHint, emptyTimelineText,
     // actions
@@ -399,6 +419,7 @@ export function useStudioState(transportLogger: Logger) {
     providerAccountsLoaded: providerSettings.providerAccountsLoaded,
     modelProfiles: providerSettings.modelProfiles,
     agentProfiles: agentProfiles.agentProfiles,
+    agentTools: agentProfiles.tools,
     presets: agentProfiles.presets,
     refreshProviderAccounts: providerSettings.refreshProviderAccounts,
     refreshModelProfiles: providerSettings.refreshModelProfiles,
@@ -411,6 +432,7 @@ export function useStudioState(transportLogger: Logger) {
     pingModelProfile: providerSettings.pingModelProfile,
     createAgentProfile: agentProfiles.createAgentProfile,
     updateAgentProfile: agentProfiles.updateAgentProfile,
+    updateAgentTool: agentProfiles.updateAgentTool,
     deleteAgentProfile: agentProfiles.deleteAgentProfile,
   }
 }

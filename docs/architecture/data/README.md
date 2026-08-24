@@ -77,22 +77,22 @@ Studio Server 已在组合根创建 Narrative Store，并注入 Application Runt
 
 后端旧 `Session / NarrativeEntry / submitTurn` 路径已经删除，不再公开旧 Session、Transcript、Run RPC，也不保留双轨或兼容读取。Studio Client 已切换到 Narrative Timeline、Agent Profile 与按需 Agent Session 合同。
 
-Agent Store 也已接入共享 Engine，使用 `application.agent@2` migration namespace：
+Agent Store 也已接入共享 Engine，使用 `application.agent@3` migration namespace：
 
-- `agent_sessions`：Agent Profile identity、标题、message head/count 与 tombstone；
-- `agent_messages`：不可变 Chat Completions-compatible Message、parent、sequence 与可选 runId；
-- `agent_tool_calls`：ToolCall 与 ToolResult 的轻量配对索引，不保存参数或结果正文。
+- `agent_sessions`：Agent Profile identity、标题、transcript entry head/count 与 tombstone；
+- `agent_transcript_entries`：不可变 canonical Transcript Entry、parent、sequence 与可选 runId；
+- `agent_tool_invocations`：Studio Invocation ID、Tool ID 与 ToolResult 的轻量配对索引，不保存参数或结果正文。
 
-Message append 在同一 transaction 内分配连续 sequence、插入一条或多条 Message，并更新 Session head/count。写入通过 `expectedMessageCount` 防止并发覆盖；分页沿 parent 链读取，不使用 offset。assistant tool call 与 tool result 可以跨批提交，但重复 call ID、未知 result 或重复 result 都会被拒绝。
+Transcript append 在同一 transaction 内分配连续 sequence、插入一条或多条 Entry，并更新 Session head/count。写入通过 `expectedEntryCount` 防止并发覆盖；分页沿 parent 链读取，不使用 offset。ToolInvocation 与 ToolResult 可以跨批提交，但重复 Invocation ID、未知 Result、Tool ID 不匹配或重复 Result 都会被拒绝。
 
 Studio Server 已注入 Agent Store。当前公开生命周期 RPC 包括：
 
 - `application.createAgentSession`；
 - `application.getAgentSession`；
-- `application.getAgentMessagePage`；
+- `application.getAgentTranscriptPage`；
 - `application.deleteAgentSession`。
 
-`appendAgentMessages` 当前只作为 Application Runtime 内部能力，不公开给普通 Client，避免绕过 Agent Runtime 伪造 assistant/tool 历史。`agentProfileId` 必须绑定真实 Agent Profile Document；Profile 再确定 Preset Prompt Resource 与 Provider Model，调用时不接受第二套临时绑定。
+`appendAgentTranscriptEntries` 当前只作为 Application Runtime 内部能力，不公开给普通 Client，避免绕过 Agent Runtime 伪造运行事实。`agentProfileId` 必须绑定真实 Agent Profile Document；Profile 再确定 Preset Prompt Resource、Provider Model 与 Tool 快速开关覆盖，实际 Tool 集合由 Preset Tool Mount 合并得出，调用时不接受第二套临时绑定。
 
 Prompt Resource 不再使用 `airp.promptResource` Document 作为权威存储。它由 Application-owned `PromptResourceStore` 管理，并与同一个 SQLite Data Engine 共享 transaction / Changeset：
 
@@ -100,14 +100,15 @@ Prompt Resource 不再使用 `airp.promptResource` Document 作为权威存储�
 - `prompt_resource_nodes`：Resource Node 当前状态；
 - `prompt_resource_node_revisions`：受影响 Node 的 before/after Revision；
 - `prompt_resource_header_revisions`：Header before/after Revision；
-- `global_setting_mounts`：manual 与 Preset 来源的 Setting Mount Registry。
+- `global_setting_mounts`：manual 与 Preset 来源的 Setting Mount Registry；
+- `preset_tool_mounts`：Preset 到 Workspace Tool Definition 的挂载关系、默认开关、Activation 与 Provider / Content 投影策略。
 
-`PromptResourceContent`、嵌套 `rootNode.children[]` 和 `loom.promptResource` 是当前 RPC、PromptBuild 与 Card Bundle 使用的兼容投影/外部格式，不是 SQL 权威模型。Setting Mount 通过独立的 `application.listSettingMounts` / `application.replaceSettingMounts` API 读取和修改，不再嵌入 Prompt Resource 响应。
+`PromptResourceContent`、嵌套 `rootNode.children[]` 和 `loom.promptResource` 是当前 RPC、PromptBuild 与 Card Bundle 使用的兼容投影/外部格式，不是 SQL 权威模型。Setting Mount 通过独立的 `application.listSettingMounts` / `application.replaceSettingMounts` API 读取和修改；Preset Tool Mount 通过 `application.listPresetToolMounts` / `application.replacePresetToolMounts` 读取和修改。两者都不嵌入 Prompt Resource 响应，也不复制被引用的 Setting 或 Tool Definition。
 
 其他小型、低频配置继续使用 Document Store：
 
 - `airp.cardSource`：Card Source / Manifest；
-- `airp.agentProfile`：本机 Profile 名称、直接指向 Preset Resource 的 `presetId` 与 `{ providerProfileId, modelId }`；
+- `airp.agentProfile`：本机 Profile 名称、直接指向 Preset Resource 的 `presetId`、`{ providerProfileId, modelId }` 与按 Tool ID 保存的快速开关覆盖 `toolOverrides`；
 - `airp.providerProfile`、`airp.importBundle`：Provider 配置与 Card Bundle 导入来源。
 
 旧 `airp.agentPreset` 权威类型、对应 RPC 与启动迁移均已删除；开发数据不再保留这条兼容路径。
@@ -116,4 +117,4 @@ Prompt Resource 不再使用 `airp.promptResource` Document 作为权威存储�
 
 当 `narrativeTarget.commit = true` 时，两条 Agent Message 与一条 Narrative Node 在同一 Data Engine transaction / Changeset 中提交；未指定目标或 `commit = false` 时只写 Agent Session。Narrative provenance 可以记录 Agent Session、Agent Message、runId 与 changesetId，但 Timeline 和 Agent Session 仍然互不拥有。
 
-Provider Message 已支持 canonical assistant tool calls 与 tool result 关联。当前 M0 仅投影最近 100 条 Agent Message / Narrative Node；这是明确容量上限，后续由上下文窗口与摘要策略替换，不在本阶段引入通用 Run Document、JSONL 活跃存储或额外 Repository 抽象。
+Runtime Transcript 已解除对 OpenAI Chat Message wire shape 的持久化绑定。当前只把 `message` Entry 投影进 Prompt Build；Provider Observation、ToolInvocation、ToolResult 与 Run State 作为运行事实保存，由后续 Runtime Policy 决定是否进入 Provider Replay。当前 M0 仅读取最近 100 条 Transcript Entry / Narrative Node；这是明确容量上限，后续由上下文窗口与摘要策略替换。

@@ -118,6 +118,8 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
       <AgentPanel
         presets={state.presets}
         agentProfiles={state.agentProfiles}
+        tools={state.agentTools}
+        toolMounts={state.presetToolMounts}
         busy={agentProfileBusy}
         modelProfiles={state.modelProfiles}
         providerAccounts={state.providerAccounts}
@@ -165,7 +167,11 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         {...contextAssetEditorProps}
         timelinePromptResourceIds={state.narrativeTimeline?.promptResourceIds}
         settingMounts={state.settingMounts}
+        tools={state.agentTools}
+        toolMounts={state.presetToolMounts}
         onReplaceSettingMounts={state.replaceSettingMounts}
+        onReplaceToolMounts={state.replacePresetToolMounts}
+        onUpdateTool={state.updateAgentTool}
         routeAssetId={navigation.route.panel === 'preset' ? navigation.route.assetId : undefined}
         initialSearchQuery={navigation.route.panel === 'preset' ? navigation.searchQuery : ''}
       />

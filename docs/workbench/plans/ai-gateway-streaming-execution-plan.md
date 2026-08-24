@@ -1,8 +1,8 @@
 # AI Gateway Streaming Execution Plan
 
-> **状态**：Planned / Deferred
+> **状态**：Server 内部基础已实现；RPC / Client 消费延期
 > **日期**：2026-08-05
-> **边界**：本文只固定流式执行的职责边界。当前前端阶段不修改 Gateway、Provider Adapter、RPC 或插件 SDK。
+> **边界**：本文固定流式执行的职责边界。Gateway 与 Provider Adapter 的 Server 内部基础已经实现；RPC、Client 和插件 SDK 尚未接入。
 
 ## 决策
 
@@ -14,7 +14,7 @@
 - Gateway 根据请求与模型能力执行、拒绝或降级；
 - 插件不得直接处理 Provider SSE、API Key 或厂商协议。
 
-## 候选合同
+## 已实现的 Server 内部合同
 
 ```ts
 type GatewayExecutionRequest = {
@@ -32,7 +32,7 @@ type GatewayRun = {
 }
 ```
 
-非流式调用也走统一 Run 合同，只产生 `started -> completed`，避免第一方 Application 和插件维护两套状态机。
+非流式调用也走统一 Run 合同，根据 Provider 是否返回 usage 产生 `started -> usage? -> completed`，避免上层维护两套执行状态机。
 
 规范化事件至少覆盖：
 
@@ -45,6 +45,8 @@ type GatewayRun = {
 - `cancelled`。
 
 iframe 插件不能直接跨边界传递 `AsyncIterable` 或 `AbortSignal`。插件 Bridge 后续使用 `runId + subscribe + event + cancel` 映射同一合同。
+
+当前事件流只存在于 `packages/ai-gateway` 的 Server 内部，尚未暴露 RPC subscribe / cancel。事件历史当前保留在单次 Run 的内存广播中；长生命周期和跨进程消费前需要有界缓冲、断线策略和 artifact / trace ref。
 
 ## 重试边界
 

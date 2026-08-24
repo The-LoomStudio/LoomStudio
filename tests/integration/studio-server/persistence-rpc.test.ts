@@ -83,15 +83,18 @@ describe('studio server persistence integration', () => {
       const read = await callRpc<{ session: { agentProfileId: string; title: string } }>(second.port, 'application.getAgentSession', {
         agentSessionId: created.session.id,
       })
-      const page = await callRpc<{ messages: unknown[] }>(second.port, 'application.getAgentMessagePage', {
+      const page = await callRpc<{ entries: unknown[] }>(second.port, 'application.getAgentTranscriptPage', {
         agentSessionId: created.session.id,
       })
       await secondServer.close()
 
       expect(read.session).toMatchObject({ agentProfileId: agentProfile.agentProfile.id, title: 'Persistent Agent' })
-      expect(page.messages).toMatchObject([
-        { message: { role: 'user', content: 'Remember this turn.' } },
-        { message: { role: 'assistant', content: 'Agent draft: Remember this turn.' } },
+      expect(page.entries).toMatchObject([
+        { entry: { kind: 'message', role: 'user', content: 'Remember this turn.' } },
+        { entry: { kind: 'run-state', state: 'running' } },
+        { entry: { kind: 'provider-observation', provider: 'fake', model: 'fake-echo-m0' } },
+        { entry: { kind: 'message', role: 'assistant', content: 'Agent draft: Remember this turn.' } },
+        { entry: { kind: 'run-state', state: 'completed' } },
       ])
     } finally {
       await rm(dir, { recursive: true, force: true })

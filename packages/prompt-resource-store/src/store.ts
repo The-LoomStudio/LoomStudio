@@ -3,10 +3,12 @@ import { createId, nowIso, type JsonObject, type JsonValue } from '@loom-studio/
 import type { DatabaseSync } from 'node:sqlite'
 import {
   PromptResourceStoreError,
+  type AddPresetToolMountInput,
   type AddSettingMountInput,
   type CreatePromptResourceInput,
   type DeletePromptResourceInput,
   type ListPromptResourcesInput,
+  type ListPresetToolMountsInput,
   type ListSettingMountsInput,
   type MutatePromptResourceInput,
   type PromptResource,
@@ -19,6 +21,8 @@ import {
   type PromptResourceTransaction,
   type PromptResourceTreeNode,
   type PromptResourceWriteContext,
+  type PresetToolMount,
+  type ReplacePresetToolMountsInput,
   type ReplaceSettingMountsInput,
   type RevertPromptResourceChangesetInput,
   type SettingMount,
@@ -102,7 +106,10 @@ export function createPromptResourceStore(options: PromptResourceStoreOptions): 
   const { engine } = options
   engine.migrate({
     namespace: migrationNamespace,
-    migrations: [{ version: 1, migrate: migrateVersionOne }],
+    migrations: [
+      { version: 1, migrate: migrateVersionOne },
+      { version: 2, migrate: migrateVersionTwo },
+    ],
   })
   const database = engine.database
 
@@ -113,6 +120,8 @@ export function createPromptResourceStore(options: PromptResourceStoreOptions): 
       deleteResource: input => applyDeleteResource(database, tx, input, now),
       addSettingMount: input => applyAddSettingMount(database, tx, input, nextId, now),
       replaceSettingMounts: input => applyReplaceSettingMounts(database, tx, input, nextId, now),
+      addPresetToolMount: input => applyAddPresetToolMount(database, tx, input, nextId, now),
+      replacePresetToolMounts: input => applyReplacePresetToolMounts(database, tx, input, nextId, now),
     }
   }
 
@@ -127,6 +136,7 @@ export function createPromptResourceStore(options: PromptResourceStoreOptions): 
     getResource: (id, readOptions) => engine.read(database => readResource(database, id, readOptions?.includeTombstone ?? false)),
     listResources: input => engine.read(database => listResources(database, input)),
     listSettingMounts: input => engine.read(database => listMounts(database, input)),
+    listPresetToolMounts: input => engine.read(database => listPresetToolMounts(database, input)),
     createResource: async input => {
       const result = await runTransaction(input, tx => transaction(tx).createResource(input))
       return { resource: result.value, commit: result.commit }
@@ -145,6 +155,14 @@ export function createPromptResourceStore(options: PromptResourceStoreOptions): 
     },
     replaceSettingMounts: async input => {
       const result = await runTransaction(input, tx => transaction(tx).replaceSettingMounts(input))
+      return { mounts: result.value, commit: result.commit }
+    },
+    addPresetToolMount: async input => {
+      const result = await runTransaction(input, tx => transaction(tx).addPresetToolMount(input))
+      return { mounts: [result.value], commit: result.commit }
+    },
+    replacePresetToolMounts: async input => {
+      const result = await runTransaction(input, tx => transaction(tx).replacePresetToolMounts(input))
       return { mounts: result.value, commit: result.commit }
     },
     revertChangeset: async input => {
@@ -318,6 +336,8 @@ function applyDeleteResource(
   } else if (row.resource_kind === 'preset') {
     recordDeletedMountOperations(database, tx, 'source_kind = ? AND source_id = ?', 'preset', input.resourceId)
     database.prepare('DELETE FROM global_setting_mounts WHERE source_kind = ? AND source_id = ?').run('preset', input.resourceId)
+    recordDeletedPresetToolMountOperations(database, tx, input.resourceId)
+    database.prepare('DELETE FROM preset_tool_mounts WHERE preset_resource_id = ?').run(input.resourceId)
   }
   database.prepare(`
     UPDATE prompt_resources
@@ -395,6 +415,85 @@ function applyReplaceSettingMounts(
   database.prepare('DELETE FROM global_setting_mounts WHERE source_kind = ? AND source_id = ?').run(input.source.kind, sourceId)
   const mounts = input.mounts.map(mount => applyAddSettingMount(database, tx, { ...mount, source: input.source }, nextId, now))
   return mounts
+}
+
+function applyAddPresetToolMount(
+  database: DatabaseSync,
+  tx: SqliteDataTransaction,
+  input: Omit<AddPresetToolMountInput, keyof PromptResourceWriteContext>,
+  nextId: (prefix: string) => string,
+  now: () => string,
+): PresetToolMount {
+  requirePreset(database, input.presetResourceId)
+  validateId(input.toolId, 'toolId')
+  validateOrderIndex(input.orderIndex)
+  validatePresetToolMountFields(input)
+  const mount: PresetToolMount = {
+    id: nextId('preset-tool-mount'),
+    presetResourceId: input.presetResourceId,
+    toolId: input.toolId,
+    orderIndex: input.orderIndex,
+    defaultEnabled: input.defaultEnabled,
+    ...(input.activation ? { activation: structuredClone(input.activation) } : {}),
+    ...(input.provider ? { provider: { ...input.provider } } : {}),
+    ...(input.content ? { content: { ...input.content } } : {}),
+    origin: input.origin ?? {},
+    createdAt: now(),
+  }
+  try {
+    database.prepare(`
+      INSERT INTO preset_tool_mounts (
+        id, preset_resource_id, tool_id, order_index, default_enabled,
+        activation_json, provider_order, content_zone, content_slot,
+        content_rank_key, content_order_hint, origin_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      mount.id,
+      mount.presetResourceId,
+      mount.toolId,
+      mount.orderIndex,
+      Number(mount.defaultEnabled),
+      mount.activation ? stringifyJson(mount.activation, 'tool mount activation') : null,
+      mount.provider?.order ?? null,
+      mount.content?.zone ?? null,
+      mount.content?.slot ?? null,
+      mount.content?.rankKey ?? null,
+      mount.content?.orderHint ?? null,
+      stringifyJson(mount.origin, 'tool mount origin'),
+      mount.createdAt,
+    )
+  } catch (error) {
+    if (isPresetToolMountUniqueConstraint(error)) {
+      throw new PromptResourceStoreError('prompt_resource.tool_mount_conflict', `Tool mount already exists for ${mount.toolId}`)
+    }
+    throw error
+  }
+  tx.recordOperations([operation('create', mount.id, 'prompt-resource.tool-mount')])
+  return mount
+}
+
+function applyReplacePresetToolMounts(
+  database: DatabaseSync,
+  tx: SqliteDataTransaction,
+  input: Omit<ReplacePresetToolMountsInput, keyof PromptResourceWriteContext>,
+  nextId: (prefix: string) => string,
+  now: () => string,
+): PresetToolMount[] {
+  requirePreset(database, input.presetResourceId)
+  const seen = new Set<string>()
+  for (const mount of input.mounts) {
+    if (seen.has(mount.toolId)) throw new PromptResourceStoreError('prompt_resource.tool_mount_duplicate', `Tool mount is duplicated: ${mount.toolId}`)
+    seen.add(mount.toolId)
+    validateId(mount.toolId, 'toolId')
+    validateOrderIndex(mount.orderIndex)
+    validatePresetToolMountFields(mount)
+  }
+  recordDeletedPresetToolMountOperations(database, tx, input.presetResourceId)
+  database.prepare('DELETE FROM preset_tool_mounts WHERE preset_resource_id = ?').run(input.presetResourceId)
+  return input.mounts.map(mount => applyAddPresetToolMount(database, tx, {
+    ...mount,
+    presetResourceId: input.presetResourceId,
+  }, nextId, now))
 }
 
 function applyRevert(
@@ -512,6 +611,29 @@ function listMounts(database: DatabaseSync, input: ListSettingMountsInput = {}):
   return (database.prepare(`SELECT id, setting_resource_id, source_kind, source_id, order_index, origin_json, created_at FROM global_setting_mounts ${where} ORDER BY order_index ASC, id ASC`).all(...values) as Array<Record<string, unknown>>).map(mountFromRow)
 }
 
+function listPresetToolMounts(database: DatabaseSync, input: ListPresetToolMountsInput = {}): PresetToolMount[] {
+  const clauses: string[] = []
+  const values: string[] = []
+  if (input.presetResourceId) {
+    validateId(input.presetResourceId, 'presetResourceId')
+    clauses.push('preset_resource_id = ?')
+    values.push(input.presetResourceId)
+  }
+  if (input.toolId) {
+    validateId(input.toolId, 'toolId')
+    clauses.push('tool_id = ?')
+    values.push(input.toolId)
+  }
+  const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''
+  return (database.prepare(`
+    SELECT id, preset_resource_id, tool_id, order_index, default_enabled,
+           activation_json, provider_order, content_zone, content_slot,
+           content_rank_key, content_order_hint, origin_json, created_at
+    FROM preset_tool_mounts ${where}
+    ORDER BY order_index ASC, id ASC
+  `).all(...values) as Array<Record<string, unknown>>).map(presetToolMountFromRow)
+}
+
 function readResourceRow(database: DatabaseSync, id: string): ResourceRow | undefined {
   return database.prepare(`SELECT id, resource_kind, root_node_id, label, version, metadata_json, created_at, updated_at, tombstoned, deleted_at, deleted_by_json, delete_reason FROM prompt_resources WHERE id = ?`).get(id) as ResourceRow | undefined
 }
@@ -620,6 +742,11 @@ function recordDeletedMountOperations(database: DatabaseSync, tx: SqliteDataTran
   if (rows.length > 0) tx.recordOperations(rows.map(row => operation('delete', row.id, 'prompt-resource.mount')))
 }
 
+function recordDeletedPresetToolMountOperations(database: DatabaseSync, tx: SqliteDataTransaction, presetResourceId: string): void {
+  const rows = database.prepare('SELECT id FROM preset_tool_mounts WHERE preset_resource_id = ? ORDER BY id ASC').all(presetResourceId) as Array<{ id: string }>
+  if (rows.length > 0) tx.recordOperations(rows.map(row => operation('delete', row.id, 'prompt-resource.tool-mount')))
+}
+
 function flattenTree(root: PromptResourceTreeNode, resourceId: string, timestamp: string): Map<string, StoredNode> {
   const nodes = new Map<string, StoredNode>()
   function visit(node: PromptResourceTreeNode, parentId: string | undefined, orderIndex: number): void {
@@ -723,6 +850,33 @@ function mountFromRow(row: Record<string, unknown>): SettingMount {
   }
 }
 
+function presetToolMountFromRow(row: Record<string, unknown>): PresetToolMount {
+  const activation = row.activation_json === null ? undefined : parseObject(String(row.activation_json), 'tool mount activation')
+  const providerOrder = row.provider_order === null ? undefined : Number(row.provider_order)
+  const contentZone = row.content_zone === null ? undefined : String(row.content_zone)
+  const contentSlot = row.content_slot === null ? undefined : String(row.content_slot)
+  const contentRankKey = row.content_rank_key === null ? undefined : String(row.content_rank_key)
+  const contentOrderHint = row.content_order_hint === null ? undefined : Number(row.content_order_hint)
+  const hasContent = contentZone !== undefined || contentSlot !== undefined || contentRankKey !== undefined || contentOrderHint !== undefined
+  return {
+    id: String(row.id),
+    presetResourceId: String(row.preset_resource_id),
+    toolId: String(row.tool_id),
+    orderIndex: Number(row.order_index),
+    defaultEnabled: Boolean(row.default_enabled),
+    ...(activation ? { activation } : {}),
+    ...(providerOrder === undefined ? {} : { provider: { order: providerOrder } }),
+    ...(hasContent ? { content: {
+      ...(contentZone === undefined ? {} : { zone: contentZone }),
+      ...(contentSlot === undefined ? {} : { slot: contentSlot }),
+      ...(contentRankKey === undefined ? {} : { rankKey: contentRankKey }),
+      ...(contentOrderHint === undefined ? {} : { orderHint: contentOrderHint }),
+    } } : {}),
+    origin: parseObject(String(row.origin_json), 'tool mount origin'),
+    createdAt: String(row.created_at),
+  }
+}
+
 function validateTree(resourceId: string, nodes: Map<string, StoredNode>, rootId: string): void {
   const roots = [...nodes.values()].filter(node => !node.parentId)
   if (roots.length !== 1 || roots[0]?.id !== rootId) throw new PromptResourceStoreError('prompt_resource.root_invalid', `Prompt resource must have exactly one root: ${resourceId}`)
@@ -771,6 +925,30 @@ function validateMountSource(database: DatabaseSync, source: SettingMountSource,
 function requireSetting(database: DatabaseSync, id: string): void {
   const row = requireResourceRow(database, id)
   if (row.resource_kind !== 'setting' || row.tombstoned) throw new PromptResourceStoreError('prompt_resource.setting_invalid', `Mount target is not an active Setting: ${id}`)
+}
+
+function requirePreset(database: DatabaseSync, id: string): void {
+  const row = requireResourceRow(database, id)
+  if (row.resource_kind !== 'preset' || row.tombstoned) throw new PromptResourceStoreError('prompt_resource.preset_invalid', `Tool mount source is not an active Preset: ${id}`)
+}
+
+function validatePresetToolMountFields(input: Pick<AddPresetToolMountInput, 'defaultEnabled' | 'activation' | 'provider' | 'content' | 'origin'>): void {
+  if (typeof input.defaultEnabled !== 'boolean') throw new PromptResourceStoreError('prompt_resource.tool_mount_enabled_invalid', 'Tool mount defaultEnabled must be a boolean')
+  if (input.activation !== undefined) validateJsonObject(input.activation, 'tool mount activation')
+  if (input.origin !== undefined) validateJsonObject(input.origin, 'tool mount origin')
+  if (input.provider?.order !== undefined && !Number.isFinite(input.provider.order)) {
+    throw new PromptResourceStoreError('prompt_resource.tool_mount_provider_order_invalid', 'Tool mount provider order must be finite')
+  }
+  if (input.content) {
+    for (const [label, value] of [['zone', input.content.zone], ['slot', input.content.slot], ['rankKey', input.content.rankKey]] as const) {
+      if (value !== undefined && (typeof value !== 'string' || !value.trim())) {
+        throw new PromptResourceStoreError('prompt_resource.tool_mount_content_invalid', `Tool mount content ${label} must be a non-empty string`)
+      }
+    }
+    if (input.content.orderHint !== undefined && !Number.isFinite(input.content.orderHint)) {
+      throw new PromptResourceStoreError('prompt_resource.tool_mount_content_order_invalid', 'Tool mount content order hint must be finite')
+    }
+  }
 }
 
 function assertExpectedVersion(row: ResourceRow, expectedVersion: number): void {
@@ -925,6 +1103,10 @@ function isMountUniqueConstraint(error: unknown): boolean {
   return error instanceof Error && error.message.includes('UNIQUE constraint failed: global_setting_mounts.')
 }
 
+function isPresetToolMountUniqueConstraint(error: unknown): boolean {
+  return error instanceof Error && error.message.includes('UNIQUE constraint failed: preset_tool_mounts.')
+}
+
 function isPromptResourceOperation(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object') return false
   const operation = value as Record<string, unknown>
@@ -1011,5 +1193,30 @@ function migrateVersionOne(database: DatabaseSync): void {
     CREATE INDEX idx_global_setting_mounts_setting ON global_setting_mounts(setting_resource_id);
     CREATE INDEX idx_prompt_resource_revisions_changeset ON prompt_resource_node_revisions(changeset_id);
     CREATE INDEX idx_prompt_resource_header_revisions_changeset ON prompt_resource_header_revisions(changeset_id);
+  `)
+}
+
+function migrateVersionTwo(database: DatabaseSync): void {
+  database.exec(`
+    CREATE TABLE preset_tool_mounts (
+      id TEXT PRIMARY KEY,
+      preset_resource_id TEXT NOT NULL REFERENCES prompt_resources(id),
+      tool_id TEXT NOT NULL,
+      order_index INTEGER NOT NULL CHECK (order_index >= 0),
+      default_enabled INTEGER NOT NULL CHECK (default_enabled IN (0, 1)),
+      activation_json TEXT,
+      provider_order REAL,
+      content_zone TEXT,
+      content_slot TEXT,
+      content_rank_key TEXT,
+      content_order_hint REAL,
+      origin_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(preset_resource_id, tool_id)
+    );
+
+    CREATE INDEX idx_preset_tool_mounts_preset
+      ON preset_tool_mounts(preset_resource_id, order_index, id);
+    CREATE INDEX idx_preset_tool_mounts_tool ON preset_tool_mounts(tool_id);
   `)
 }

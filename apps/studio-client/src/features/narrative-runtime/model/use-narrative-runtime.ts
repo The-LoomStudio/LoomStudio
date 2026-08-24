@@ -1,7 +1,7 @@
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type {
-  AgentMessage,
+  AgentTranscriptEntry,
   AgentSession,
   Card,
   InvokeAgentTurnResult,
@@ -35,7 +35,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
   const [olderCursor, setOlderCursor] = useState<string>()
   const [cardTimelines, setCardTimelines] = useState<NarrativeTimeline[]>([])
   const [agentSession, setAgentSession] = useState<AgentSession>()
-  const [agentMessages, setAgentMessages] = useState<AgentMessage[]>([])
+  const [agentMessages, setAgentTranscriptEntries] = useState<AgentTranscriptEntry[]>([])
   const [lastRun, setLastRun] = useState<InvokeAgentTurnResult>()
   const [promptPreview, setPromptPreview] = useState<PreviewAgentTurnResult>()
   const [composerInput, setComposerInput] = useState(input.initialInput)
@@ -137,7 +137,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
       setBranches(current => current.map(item => item.id === result.narrative!.branch.id ? result.narrative!.branch : item))
       setNodes(current => [...current, result.narrative!.node])
       setAgentSession(result.agentSession)
-      setAgentMessages(current => [...current, result.messages.user, result.messages.assistant])
+      setAgentTranscriptEntries(current => [...current, result.entries.user, result.entries.assistant])
       setLastRun(result)
       setPromptPreview(undefined)
       composerDraftsRef.current.delete(readComposerDraftKey(timeline, branch, input.selectedCardId))
@@ -257,7 +257,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
   function resetAgentSession() {
     agentSessionPromiseRef.current = undefined
     setAgentSession(undefined)
-    setAgentMessages([])
+    setAgentTranscriptEntries([])
   }
 
   return {

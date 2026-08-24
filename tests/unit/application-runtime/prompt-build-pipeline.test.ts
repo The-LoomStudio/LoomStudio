@@ -93,7 +93,7 @@ describe('PromptBuild Core pipeline', () => {
           orderIndex: 10,
           displayName: 'System',
           role: 'system' as const,
-          items: [defaultCompositionSkeleton.zones[0]!],
+          items: [defaultCompositionSkeleton.zones.find(zone => zone.id === 'preset.system')!],
         },
         {
           kind: 'message' as const,
@@ -101,7 +101,7 @@ describe('PromptBuild Core pipeline', () => {
           orderIndex: 20,
           displayName: 'System',
           role: 'system' as const,
-          items: [defaultCompositionSkeleton.zones[1]!],
+          items: [defaultCompositionSkeleton.zones.find(zone => zone.id === 'setting.stable')!],
         },
       ],
     }

@@ -46,6 +46,29 @@ describe('application runtime Provider Profile integration', () => {
     fixture.close()
   })
 
+  it('validates Provider Profile config and credentials through the adapter registry', async () => {
+    const fixture = createRuntimeFixture()
+    await expect(fixture.runtime.createProviderProfile({
+      providerExtensionId: 'official.anthropic',
+      displayName: 'Invalid config',
+      config: { unknown: true },
+    })).rejects.toThrow()
+    await expect(fixture.runtime.createProviderProfile({
+      providerExtensionId: 'official.anthropic',
+      displayName: 'Invalid credential',
+      credential: { apiKey: '' },
+    })).rejects.toThrow()
+    await expect(fixture.runtime.createProviderProfile({
+      providerExtensionId: 'anthropic',
+      displayName: 'Anthropic account',
+      config: { baseUrl: 'https://anthropic.test/v1' },
+      credential: { apiKey: 'account-key' },
+    })).resolves.toMatchObject({
+      providerProfile: { providerExtensionId: 'anthropic', credential: { configured: true } },
+    })
+    fixture.close()
+  })
+
   it('builds a minimal OpenAI-compatible payload from an explicit model selection', async () => {
     const requests: Array<{ url: string; init: RequestInit; body: Record<string, unknown> }> = []
     const gateway = createOpenAICompatibleGateway({
@@ -65,7 +88,13 @@ describe('application runtime Provider Profile integration', () => {
     })
 
     const result = await gateway.invokeChat({
-      request: { messages: [{ role: 'user', content: 'hello' }] },
+      request: {
+        messages: [
+          { role: 'developer', content: 'Agent instructions.' },
+          { role: 'system', content: 'Preset system.' },
+          { role: 'user', content: 'hello' },
+        ],
+      },
       runId: 'run-1',
       sessionId: 'session-1',
       branchId: 'branch-1',
@@ -73,12 +102,123 @@ describe('application runtime Provider Profile integration', () => {
 
     expect(requests[0]).toMatchObject({
       url: 'https://example.test/v1/chat/completions',
-      body: { model: 'test-model', stream: false },
+      body: {
+        model: 'test-model',
+        stream: false,
+        messages: [
+          { role: 'system', content: 'Agent instructions.\n\nPreset system.' },
+          { role: 'user', content: 'hello' },
+        ],
+      },
     })
     expect(requests[0]?.body).not.toHaveProperty('temperature')
     expect(requests[0]?.body).not.toHaveProperty('max_tokens')
     expect(requests[0]?.init.headers).toMatchObject({ authorization: 'Bearer test-key' })
     expect(result.text).toBe('真实模型回复。')
+  })
+
+  it('keeps provider-boundary validation in the delegated gateway path', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>()
+    const gateway = createOpenAICompatibleGateway({
+      providerProfile: {
+        id: 'provider-1',
+        providerExtensionId: 'official.openai-compatible',
+        displayName: 'Provider',
+        config: { baseUrl: 'https://example.test/v1' },
+        enabledModelIds: ['test-model'],
+      },
+      modelId: 'test-model',
+      apiKey: 'test-key',
+      fetch,
+    })
+
+    await expect(
+      gateway.invokeChat({
+        request: { messages: [{ role: 'user', content: '' }] },
+        runId: 'run-1',
+        sessionId: 'session-1',
+        branchId: 'branch-1',
+      }),
+    ).rejects.toThrow('content cannot be empty')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('preserves stable HTTP and network errors across the SDK boundary', async () => {
+    const options = {
+      providerProfile: {
+        id: 'provider-1',
+        providerExtensionId: 'official.openai-compatible',
+        displayName: 'Provider',
+        config: { baseUrl: 'https://example.test/v1' },
+        enabledModelIds: ['test-model'],
+      },
+      modelId: 'test-model',
+      apiKey: 'test-key',
+    } as const
+    const input = {
+      request: { messages: [{ role: 'user' as const, content: 'hello' }] },
+      runId: 'run-1',
+      sessionId: 'session-1',
+      branchId: 'branch-1',
+    }
+    const httpGateway = createOpenAICompatibleGateway({
+      ...options,
+      fetch: (async () =>
+        new Response(
+          JSON.stringify({
+            error: { message: 'Invalid credential' },
+          }),
+          {
+            status: 401,
+            headers: { 'content-type': 'application/json' },
+          },
+        )) as typeof fetch,
+    })
+
+    await expect(httpGateway.invokeChat(input)).rejects.toThrow(
+      'Provider request failed (401): Invalid credential',
+    )
+
+    const networkGateway = createOpenAICompatibleGateway({
+      ...options,
+      fetch: (async () => {
+        throw new TypeError('fetch failed', {
+          cause: Object.assign(new Error('connect timeout'), {
+            code: 'ETIMEDOUT',
+          }),
+        })
+      }) as typeof fetch,
+    })
+    const networkError = await networkGateway
+      .invokeChat(input)
+      .catch((error) => error as Error)
+    expect(networkError).toMatchObject({
+      name: 'ProviderConnectTimeoutError',
+      message: 'Provider network connection timed out',
+    })
+  })
+
+  it('preserves stable provider errors through the document-backed registry route', async () => {
+    vi.stubGlobal('fetch', (async () => new Response(JSON.stringify({
+      error: { message: 'Invalid account credential' },
+    }), {
+      status: 401,
+      headers: { 'content-type': 'application/json' },
+    })) satisfies typeof fetch)
+    const fixture = createRuntimeFixture()
+    const profile = await fixture.runtime.createProviderProfile({
+      providerExtensionId: 'official.openai-compatible',
+      displayName: 'OpenAI Compatible',
+      config: { baseUrl: 'https://gateway.test/v1' },
+      enabledModelIds: ['doc-model'],
+      credential: { apiKey: 'document-secret' },
+    })
+
+    await expect(fixture.runtime.pingProviderModel({
+      providerProfileId: profile.providerProfile.id,
+      modelId: 'doc-model',
+    })).rejects.toThrow('Provider request failed (401): Invalid account credential')
+    fixture.close()
   })
 
   it('loads Provider Profile and credential through the controlled Secret Store path', async () => {
@@ -98,7 +238,7 @@ describe('application runtime Provider Profile integration', () => {
       displayName: 'OpenAI Compatible',
       config: { baseUrl: 'https://gateway.test/v1' },
       enabledModelIds: ['doc-model'],
-      credential: { apiKey: 'document-secret' },
+      credential: { apiKey: ' document-secret ' },
     })
     const preset = await createPreset(fixture.runtime)
     const agentProfile = await fixture.runtime.createAgentProfile({
@@ -117,7 +257,7 @@ describe('application runtime Provider Profile integration', () => {
       authorization: 'Bearer document-secret',
       body: expect.objectContaining({ model: 'doc-model', stream: false }),
     })])
-    expect(turn.messages.assistant.message.content).toBe('Document-backed response.')
+    expect(turn.entries.assistant.entry).toMatchObject({ kind: 'message', role: 'assistant', content: 'Document-backed response.' })
     fixture.close()
   })
 

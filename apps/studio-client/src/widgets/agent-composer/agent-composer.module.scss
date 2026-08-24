@@ -222,6 +222,27 @@
   pointer-events: auto;
 }
 
+.transcriptEvent {
+  margin: 2px 12px;
+  border-left: 2px solid var(--loom-color-border-muted);
+  padding-left: 10px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
+}
+
+.transcriptEvent summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.transcriptEvent pre {
+  overflow: auto;
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+}
+
 @media (max-width: 820px) {
   .layer {
     width: calc(100% - 24px);

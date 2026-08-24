@@ -289,6 +289,7 @@ export const enUS = {
   'preset.rename': 'Rename',
   'preset.panel.assets': 'Assets',
   'preset.panel.mainOrder': 'Main Order',
+  'preset.panel.tools': 'Tools',
   'promptResource.select': 'Select prompt resource',
   'promptResource.empty': 'No resources',
   'promptResource.create': 'Create resource',

@@ -7,6 +7,7 @@
   },
   "references": [
     { "path": "../agent-store" },
+    { "path": "../ai-gateway" },
     { "path": "../data-engine" },
     { "path": "../document-store" },
     { "path": "../logging" },

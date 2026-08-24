@@ -1,12 +1,12 @@
 import { createAgentStore } from '@loom-studio/agent-store'
-import { createApplicationRuntime, promptSlotIds, promptZoneIds } from '@loom-studio/application-runtime'
+import { createAgentToolRegistry, createApplicationRuntime, promptSlotIds, promptZoneIds, type ToolDefinition, type ToolRuntimeRegistration } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createNarrativeStore } from '@loom-studio/narrative-store'
 import { createPromptResourceStore } from '@loom-studio/prompt-resource-store'
 import { describe, expect, it } from 'vitest'
 
-function createTestRuntime() {
+function createTestRuntime(agentTools = createAgentToolRegistry([])) {
   let nextId = 0
   let nextTime = 0
   const createId = (prefix: string) => `${prefix}-${++nextId}`
@@ -16,7 +16,7 @@ function createTestRuntime() {
   const agents = createAgentStore({ engine, createId, now })
   const narratives = createNarrativeStore({ engine, createId, now })
   const promptResources = createPromptResourceStore({ engine, createId, now })
-  const runtime = createApplicationRuntime({ agents, dataEngine: engine, documents, narratives, promptResources })
+  const runtime = createApplicationRuntime({ agents, agentTools, dataEngine: engine, documents, narratives, promptResources })
   return { engine, runtime }
 }
 
@@ -51,6 +51,213 @@ async function createPreset(
 }
 
 describe('application agent session lifecycle', () => {
+  it('persists editable Agent Tool entries and reloads them into the registry', async () => {
+    const tool: ToolDefinition = {
+      id: 'official/read_context',
+      owner: { namespace: 'official' },
+      name: 'read_context',
+      description: 'Read context for {{User}}.',
+      input: { kind: 'structured', schema: { type: 'object' } },
+      prompt: {
+        provider: { order: 10 },
+      },
+    }
+    let nextId = 0
+    let nextTime = 0
+    const createId = (prefix: string) => `${prefix}-${++nextId}`
+    const now = () => `2026-08-12T00:00:${String(nextTime++).padStart(2, '0')}.000Z`
+    const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
+    const documents = createSqliteDocumentStore({ engine })
+    const agents = createAgentStore({ engine, createId, now })
+    const narratives = createNarrativeStore({ engine, createId, now })
+    const promptResources = createPromptResourceStore({ engine, createId, now })
+    const providerRequests: Array<{ tools?: unknown[] }> = []
+    const registration: ToolRuntimeRegistration = {
+      toolId: tool.id,
+      execute: ({ invocation }) => ({
+        invocationId: invocation.id,
+        toolId: invocation.toolId,
+        status: 'completed' as const,
+        content: [],
+      }),
+    }
+    const firstRegistry = createAgentToolRegistry([tool], [registration])
+    const firstRuntime = createApplicationRuntime({
+      agents,
+      agentTools: firstRegistry,
+      dataEngine: engine,
+      documents,
+      gateway: {
+        invokeChat: async input => {
+          providerRequests.push({ tools: input.request.tools })
+          return {
+            provider: 'test',
+            model: 'test-model',
+            text: 'Done.',
+            finishReason: 'stop',
+            message: { role: 'assistant', content: 'Done.' },
+          }
+        },
+      },
+      narratives,
+      promptResources,
+    })
+    await firstRuntime.initialize()
+
+    const initial = (await firstRuntime.listAgentTools()).tools[0]!
+    const definition: ToolDefinition = {
+      ...tool,
+      name: 'read_workspace_context',
+      description: 'Read the active workspace for {{User}}.',
+      prompt: {
+        guidance: 'Return only relevant context.',
+        provider: { order: 3 },
+      },
+    }
+    const updated = await firstRuntime.updateAgentTool({
+      toolId: tool.id,
+      expectedVersion: initial.version,
+      definition,
+    })
+
+    expect(updated.tool).toMatchObject({
+      ...definition,
+      version: initial.version + 1,
+      createdAt: initial.createdAt,
+    })
+    expect(firstRegistry.resolve([tool.id]).tools).toEqual([definition])
+
+    const provider = await firstRuntime.createProviderProfile({
+      providerExtensionId: 'official.openai-compatible',
+      displayName: 'Tool Provider',
+      config: { baseUrl: 'https://example.test/v1' },
+      enabledModelIds: ['test-model'],
+    })
+    const preset = await createPreset(firstRuntime, 'Tool Prompt', 'Use available tools.')
+    await firstRuntime.replacePresetToolMounts({
+      presetId: preset.id,
+      mounts: [{ toolId: tool.id, orderIndex: 0, defaultEnabled: true, provider: { order: 3 } }],
+    })
+    const profile = await firstRuntime.createAgentProfile({
+      name: 'Tool Agent',
+      presetId: preset.id,
+      model: {
+        providerProfileId: provider.providerProfile.id,
+        modelId: 'test-model',
+      },
+    })
+    const session = await firstRuntime.createAgentSession({
+      agentProfileId: profile.agentProfile.id,
+    })
+    const turn = await firstRuntime.invokeAgentTurn({
+      agentSessionId: session.session.id,
+      input: 'Read the workspace.',
+    })
+    expect(turn.toolPromptBuildTrace.orders).toEqual([
+      expect.objectContaining({ toolId: tool.id, providerOrder: 3, projection: 'provider-tools' }),
+    ])
+    expect(providerRequests[0]?.tools).toEqual([
+      expect.objectContaining({
+        name: definition.name,
+        description: expect.stringContaining('Read the active workspace for User.'),
+      }),
+    ])
+    expect(providerRequests[0]?.tools?.[0]).toEqual(
+      expect.objectContaining({
+        description: expect.stringContaining('Return only relevant context.'),
+      }),
+    )
+
+    const secondRegistry = createAgentToolRegistry([tool], [registration])
+    const secondRuntime = createApplicationRuntime({
+      agents,
+      agentTools: secondRegistry,
+      dataEngine: engine,
+      documents,
+      narratives,
+      promptResources,
+    })
+    await secondRuntime.initialize()
+
+    expect((await secondRuntime.listAgentTools()).tools).toEqual([updated.tool])
+    expect(secondRegistry.resolve([tool.id]).tools).toEqual([definition])
+    expect(await secondRuntime.listPresetToolMounts({ presetId: preset.id })).toEqual({
+      mounts: [expect.objectContaining({
+        presetResourceId: preset.id,
+        toolId: tool.id,
+        defaultEnabled: true,
+        provider: { order: 3 },
+      })],
+    })
+    engine.close()
+  })
+
+  it('stores Agent Profile tool selection and exposes registry analysis without executing tools', async () => {
+    const tool: ToolDefinition = {
+      id: 'official/read_context',
+      owner: { namespace: 'official' },
+      name: 'read_context',
+      description: 'Read context.',
+      input: {
+        kind: 'hybrid',
+        metadataSchema: { type: 'object' },
+        rawField: 'content',
+        mediaType: 'text/plain',
+      },
+    }
+    const { engine, runtime } = createTestRuntime(createAgentToolRegistry([tool], [{
+      toolId: tool.id,
+      execute: ({ invocation }) => ({
+        invocationId: invocation.id,
+        toolId: invocation.toolId,
+        status: 'completed',
+        content: [],
+      }),
+    }]))
+    const provider = await runtime.createProviderProfile({
+      providerExtensionId: 'official.fake', displayName: 'Fake', config: {}, enabledModelIds: ['test-model'],
+    })
+    const preset = await createPreset(runtime, 'Tool Agent', 'Use tools when available.')
+    await runtime.replacePresetToolMounts({
+      presetId: preset.id,
+      mounts: [{
+        toolId: tool.id,
+        orderIndex: 0,
+        defaultEnabled: false,
+        activation: { kind: 'keyword', keywords: ['context'] },
+        content: { zone: promptZoneIds.tools, slot: 'preset-tools', rankKey: '10', orderHint: 5 },
+      }],
+    })
+    const profile = (await runtime.createAgentProfile({
+      name: 'Tool Agent', presetId: preset.id,
+      model: { providerProfileId: provider.providerProfile.id, modelId: 'test-model' },
+      toolOverrides: { [tool.id]: true },
+    })).agentProfile
+
+    expect(profile.toolOverrides).toEqual({ [tool.id]: true })
+    expect((await runtime.listAgentTools()).tools).toEqual([
+      expect.objectContaining(tool),
+    ])
+    expect((await runtime.analyzeAgentTools({ agentProfileId: profile.id })).analysis.exposures).toEqual([
+      expect.objectContaining({
+        toolId: tool.id,
+        exposed: true,
+        transport: 'content',
+      }),
+    ])
+    const session = await runtime.createAgentSession({ agentProfileId: profile.id })
+    const inactive = await runtime.previewAgentTurn({ agentSessionId: session.session.id, input: 'Hello.' })
+    const active = await runtime.previewAgentTurn({ agentSessionId: session.session.id, input: 'Read context.' })
+    expect(inactive.toolExposures).toEqual([])
+    expect(active.toolExposures).toEqual([expect.objectContaining({ toolId: tool.id, transport: 'content' })])
+    expect(active.projection.zones.find(zone => zone.zoneId === promptZoneIds.tools)?.slots).toEqual([
+      expect.objectContaining({ slotKey: 'preset-tools' }),
+    ])
+    await expect(runtime.updateAgentProfile({ agentProfileId: profile.id, toolOverrides: { 'missing/tool': true } }))
+      .rejects.toThrow('not registered')
+    engine.close()
+  })
+
   it('creates, appends internally, pages, and deletes an independent Agent Session', async () => {
     const { engine, runtime } = createTestRuntime()
     const { profile } = await createProfile(runtime)
@@ -62,26 +269,26 @@ describe('application agent session lifecycle', () => {
       correlationId: 'corr-1',
       callId: 'call-1',
     })
-    const appended = await runtime.appendAgentMessages({
+    const appended = await runtime.appendAgentTranscriptEntries({
       agentSessionId: created.session.id,
-      expectedMessageCount: 0,
-      messages: [
-        { runId: 'run-1', message: { role: 'user', content: 'Help me' } },
-        { runId: 'run-1', message: { role: 'assistant', content: 'Ready' } },
+      expectedEntryCount: 0,
+      entries: [
+        { runId: 'run-1', entry: { kind: 'message', role: 'user', content: 'Help me' } },
+        { runId: 'run-1', entry: { kind: 'message', role: 'assistant', content: 'Ready' } },
       ],
     })
-    const page = await runtime.getAgentMessagePage({ agentSessionId: created.session.id })
+    const page = await runtime.getAgentTranscriptPage({ agentSessionId: created.session.id })
     const commit = engine.database.prepare('SELECT created_by_json, correlation_id, call_id FROM changesets WHERE id = ?')
       .get(created.mutation.changesetId)
 
     expect(await runtime.getAgentSession({ agentSessionId: created.session.id })).toMatchObject({
-      session: { agentProfileId: profile.id, messageCount: 2 },
+      session: { agentProfileId: profile.id, entryCount: 2 },
     })
-    expect(appended.messages.map(message => message.message)).toEqual([
-      { role: 'user', content: 'Help me' },
-      { role: 'assistant', content: 'Ready' },
+    expect(appended.entries.map(entry => entry.entry)).toEqual([
+      { kind: 'message', role: 'user', content: 'Help me' },
+      { kind: 'message', role: 'assistant', content: 'Ready' },
     ])
-    expect(page.messages).toHaveLength(2)
+    expect(page.entries).toHaveLength(2)
     expect(commit).toEqual({
       created_by_json: JSON.stringify({ kind: 'client', id: 'client-1' }),
       correlation_id: 'corr-1',
@@ -109,12 +316,12 @@ describe('application agent session lifecycle', () => {
       input: 'Discuss the next scene without writing it.',
     })
 
-    expect(result.messages).toMatchObject({
-      user: { message: { role: 'user', content: 'Discuss the next scene without writing it.' } },
-      assistant: { message: { role: 'assistant', content: 'Agent draft: Discuss the next scene without writing it.' } },
+    expect(result.entries).toMatchObject({
+      user: { entry: { kind: 'message', role: 'user', content: 'Discuss the next scene without writing it.' } },
+      assistant: { entry: { kind: 'message', role: 'assistant', content: 'Agent draft: Discuss the next scene without writing it.' } },
     })
     expect(result.narrative).toBeUndefined()
-    expect((await runtime.getAgentMessagePage({ agentSessionId: created.session.id })).messages).toHaveLength(2)
+    expect((await runtime.getAgentTranscriptPage({ agentSessionId: created.session.id })).entries).toHaveLength(5)
     expect(engine.database.prepare('SELECT COUNT(*) AS count FROM narrative_nodes').get()).toEqual({ count: 0 })
     engine.close()
   })
@@ -147,7 +354,8 @@ describe('application agent session lifecycle', () => {
     const calls: Array<{ messages: unknown[] }> = []
     const { engine } = createTestRuntime()
     const documents = createSqliteDocumentStore({ engine })
-    const agents = createAgentStore({ engine, createId: prefix => `${prefix}-projection`, now: () => '2026-08-12T02:00:00.000Z' })
+    let nextAgentId = 0
+    const agents = createAgentStore({ engine, createId: prefix => `${prefix}-projection-${++nextAgentId}`, now: () => '2026-08-12T02:00:00.000Z' })
     const promptResources = createPromptResourceStore({ engine, createId: prefix => `${prefix}-projection`, now: () => '2026-08-12T02:00:00.000Z' })
     const runtime = createApplicationRuntime({
       agents,
@@ -195,7 +403,8 @@ describe('application agent session lifecycle', () => {
     const calls: Array<{ messages: unknown[] }> = []
     const { engine } = createTestRuntime()
     const documents = createSqliteDocumentStore({ engine })
-    const agents = createAgentStore({ engine, createId: prefix => `${prefix}-history`, now: () => '2026-08-12T03:00:00.000Z' })
+    let nextAgentId = 0
+    const agents = createAgentStore({ engine, createId: prefix => `${prefix}-history-${++nextAgentId}`, now: () => '2026-08-12T03:00:00.000Z' })
     const narratives = createNarrativeStore({ engine, createId: prefix => `${prefix}-history`, now: () => '2026-08-12T03:00:00.000Z' })
     const promptResources = createPromptResourceStore({ engine, createId: prefix => `${prefix}-history`, now: () => '2026-08-12T03:00:00.000Z' })
     const runtime = createApplicationRuntime({
@@ -229,7 +438,7 @@ describe('application agent session lifecycle', () => {
       { role: 'assistant', content: 'First reply.' },
       { role: 'user', content: 'Second.' },
     ])
-    expect((await runtime.getAgentMessagePage({ agentSessionId: session.session.id })).messages).toHaveLength(4)
+    expect((await runtime.getAgentTranscriptPage({ agentSessionId: session.session.id })).entries).toHaveLength(10)
     expect(second.projection.zones.find(zone => zone.zoneId === promptZoneIds.sessionHistory)?.slots[0]).toMatchObject({
       slotKey: promptSlotIds.sessionMain,
       fragments: [
@@ -241,7 +450,7 @@ describe('application agent session lifecycle', () => {
     engine.close()
   })
 
-  it('commits Agent messages and an explicitly targeted Narrative node in one changeset', async () => {
+  it('commits the final assistant output to an explicitly targeted Narrative node', async () => {
     const { engine, runtime } = createTestRuntime()
     const card = await runtime.createCard({ name: 'Story', opening: 'Opening.' })
     const timeline = await runtime.createNarrativeTimelineFromCard({ cardId: card.card.id })
@@ -260,7 +469,7 @@ describe('application agent session lifecycle', () => {
         body: { raw: 'Agent draft: Continue.' },
         source: {
           agentSessionId: agent.session.id,
-          agentMessageId: result.messages.assistant.id,
+          agentMessageId: result.entries.assistant.id,
           runId: result.runId,
           changesetId: result.mutation.changesetId,
         },
@@ -276,9 +485,6 @@ describe('application agent session lifecycle', () => {
       { role: 'user', content: 'Continue.' },
     ])
     expect(JSON.parse(commit.operations_json).map((operation: { entityType: string }) => operation.entityType)).toEqual([
-      'agent.message',
-      'agent.message',
-      'agent.session',
       'narrative.node',
       'narrative.branch',
       'narrative.timeline',
@@ -286,10 +492,11 @@ describe('application agent session lifecycle', () => {
     engine.close()
   })
 
-  it('does not persist a partial Agent turn when the provider fails', async () => {
+  it('persists a failed Run boundary when the provider fails', async () => {
     const { engine } = createTestRuntime()
     const documents = createSqliteDocumentStore({ engine })
-    const agents = createAgentStore({ engine, createId: prefix => `${prefix}-failure`, now: () => '2026-08-12T01:00:00.000Z' })
+    let nextAgentId = 0
+    const agents = createAgentStore({ engine, createId: prefix => `${prefix}-failure-${++nextAgentId}`, now: () => '2026-08-12T01:00:00.000Z' })
     const promptResources = createPromptResourceStore({ engine, createId: prefix => `${prefix}-failure`, now: () => '2026-08-12T01:00:00.000Z' })
     const runtime = createApplicationRuntime({
       agents,
@@ -316,7 +523,11 @@ describe('application agent session lifecycle', () => {
       agentSessionId: session.session.id,
       input: 'Fail.',
     })).rejects.toThrow('provider failed')
-    expect((await runtime.getAgentMessagePage({ agentSessionId: session.session.id })).messages).toEqual([])
+    expect((await runtime.getAgentTranscriptPage({ agentSessionId: session.session.id })).entries.map(entry => entry.entry)).toEqual([
+      { kind: 'message', role: 'user', content: 'Fail.' },
+      { kind: 'run-state', state: 'running' },
+      { kind: 'run-state', state: 'failed', reason: 'provider failed' },
+    ])
     engine.close()
   })
 })

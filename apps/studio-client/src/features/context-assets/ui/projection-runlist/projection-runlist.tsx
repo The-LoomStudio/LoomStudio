@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Copy, Diamond, Eye, EyeOff, GripVertical, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Braces, ChevronDown, ChevronRight, Copy, Diamond, Eye, EyeOff, GripVertical, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { PromptCompositionItem, PromptMessageBlock } from '../../../../entities/index.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
@@ -12,6 +12,7 @@ import {
   ContextMenuSeparator,
 } from '../../../../shared/ui/context-menu/context-menu.js'
 import { buildProjectionZones, type ProjectionOrderEntry, type ProjectionOrderRow, type ProjectionZoneDefinition } from '../../model/projection-order.js'
+import type { ProviderToolSurfaceItem } from '../../model/preset-tool-projection.js'
 import { readSlotEntrySummary } from '../../model/projection-slot.js'
 import styles from './projection-runlist.module.scss'
 
@@ -20,6 +21,7 @@ type DragTarget = { id: string; type: 'row' | 'zone' }
 type ProjectionRunlistProps = {
   compositionItems?: PromptCompositionItem[]
   entries: ProjectionOrderEntry[]
+  providerTools?: ProviderToolSurfaceItem[]
   onReorder?: (draggedId: string, targetId: string) => void
   onReorderZone?: (draggedZoneId: string, targetZoneId: string) => void
   onSelect?: (id: string) => void
@@ -368,23 +370,25 @@ export function ProjectionRunlist(props: ProjectionRunlistProps) {
   function renderZone(zone: (typeof zones)[number]) {
     const zoneIndex = zones.findIndex(candidate => candidate.id === zone.id)
     const collapsed = collapsedIds.has(zone.id)
+    const editable = zone.rows.every(row => row.primary.sourceKind !== 'virtual')
+    const reorderable = Boolean(props.onReorderZone) && editable
     const prevZoneId = zoneIndex > 0 ? zones[zoneIndex - 1]?.id : undefined
     const nextZoneId = zoneIndex < zones.length - 1 ? zones[zoneIndex + 1]?.id : undefined
     const zoneActions = readProjectionZoneActions(zone.id, {
-      canMoveDown: Boolean(props.onReorderZone && nextZoneId),
-      canMoveUp: Boolean(props.onReorderZone && prevZoneId),
-      onAddEntryInZone: props.onAddEntryInZone,
-      onAddZone: props.onAddZone,
-      onDeleteZone: props.onDeleteZone,
-      onMoveDown: nextZoneId && props.onReorderZone ? () => props.onReorderZone!(zone.id, nextZoneId) : undefined,
-      onMoveUp: prevZoneId && props.onReorderZone ? () => props.onReorderZone!(zone.id, prevZoneId) : undefined,
+      canMoveDown: Boolean(reorderable && nextZoneId),
+      canMoveUp: Boolean(reorderable && prevZoneId),
+      onAddEntryInZone: editable ? props.onAddEntryInZone : undefined,
+      onAddZone: editable ? props.onAddZone : undefined,
+      onDeleteZone: editable ? props.onDeleteZone : undefined,
+      onMoveDown: nextZoneId && reorderable ? () => props.onReorderZone!(zone.id, nextZoneId) : undefined,
+      onMoveUp: prevZoneId && reorderable ? () => props.onReorderZone!(zone.id, prevZoneId) : undefined,
       t: props.t,
     })
 
     return (
       <section
         className={`${styles.zone} ${props.selectedZoneId === zone.id ? styles.selectedZone : ''}`}
-        draggable={Boolean(props.onReorderZone)}
+        draggable={reorderable}
         key={zone.id}
         role="listitem"
         onDragEnd={() => setDragging(undefined)}
@@ -395,7 +399,7 @@ export function ProjectionRunlist(props: ProjectionRunlistProps) {
         <ContextMenu>
           <ContextMenuTrigger asChild disabled={zoneActions.length === 0}>
             <div className={styles.zoneHeader}>
-              {props.onReorderZone ? <GripVertical className={styles.dragHandle} aria-hidden="true" /> : null}
+              {reorderable ? <GripVertical className={styles.dragHandle} aria-hidden="true" /> : null}
               <span className={styles.positionSpacer} aria-hidden="true" />
               <span className={collapsed ? styles.zoneCollapsed : styles.zoneStart} aria-hidden="true" />
               <button
@@ -446,7 +450,7 @@ export function ProjectionRunlist(props: ProjectionRunlistProps) {
                 onReorder={props.onReorder}
                 onSelect={props.onSelect}
                 onToggleEnabled={props.onToggleEnabled}
-                reorderable={Boolean(props.onReorder)}
+                reorderable={Boolean(props.onReorder) && row.primary.sourceKind !== 'virtual'}
               />
             ))}
           </div>
@@ -522,6 +526,30 @@ export function ProjectionRunlist(props: ProjectionRunlistProps) {
             ) : null}
           </div>
         </div>
+      ) : null}
+
+      {props.providerTools?.length ? (
+        <section className={styles.providerTools} aria-label="Provider Tools">
+          <header className={styles.providerToolsHeader}>
+            <Braces aria-hidden="true" />
+            <div>
+              <strong>Tools</strong>
+              <small>Provider-managed surface · outside messages</small>
+            </div>
+            <span>{props.providerTools.length}</span>
+          </header>
+          <div className={styles.providerToolRows}>
+            {props.providerTools.map((tool, index) => (
+              <div className={styles.providerToolRow} key={tool.toolId}>
+                <span>{String(index + 1).padStart(2, '0')}</span>
+                <div>
+                  <strong>{tool.name}</strong>
+                  <small>{tool.inputKind === 'structured' ? 'Native Function' : 'Provider Custom candidate'}</small>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
       ) : null}
 
       <div className={styles.zones} role="list">
