@@ -15,6 +15,7 @@ import {
 import type { ActivationFacts } from './prompt-activation.js'
 import { compilePromptWithCore, type PromptBuildTrace } from './prompt-build-pipeline.js'
 import { readPromptResourceInputs, type PromptResourceContent } from './workspace.js'
+import { createPromptToolExecutionScope } from './agent/official-tools/index.js'
 
 export async function composeAgentTurnPrompt(input: {
   activationFacts?: ActivationFacts
@@ -35,7 +36,7 @@ export async function composeAgentTurnPrompt(input: {
     contributions: PromptContribution[]
     slotRanks?: Array<{ zoneId: string; slotKey: string; rankKey: string }>
   }
-}): Promise<{ messages: ChatMessage[]; projection: CompiledPrompt; promptBuildTrace: PromptBuildTrace }> {
+}): Promise<{ messages: ChatMessage[]; projection: CompiledPrompt; promptBuildTrace: PromptBuildTrace; toolExecutionScope: import('./agent/tool-registry.js').ToolExecutionScope }> {
   const manualMounts = await input.promptResources.listSettingMounts({ source: { kind: 'manual', id: 'global' } })
   const presetMounts = await input.promptResources.listSettingMounts({ source: { kind: 'preset', id: input.preset.id } })
   const timelineSettingIds = input.narrative
@@ -107,6 +108,11 @@ export async function composeAgentTurnPrompt(input: {
     messages: resourceProjection.projection.messages,
     projection: resourceProjection.projection,
     promptBuildTrace: resourceProjection.trace,
+    toolExecutionScope: createPromptToolExecutionScope({
+      prompt: resourceProjection.projection,
+      contributions,
+      sourceNodes,
+    }),
   }
 }
 

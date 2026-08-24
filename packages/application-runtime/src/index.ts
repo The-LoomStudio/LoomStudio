@@ -22,10 +22,11 @@ export {
 } from './provider-payload.js'
 export { createAgentToolRegistry } from './agent/tool-registry.js'
 export {
-  createOfficialTestAgentToolRegistry,
-  officialTestAgentToolDefinitions,
-  officialTestContentTool,
-  officialTestStructuredTool,
+  createOfficialAgentToolRegistry,
+  createPromptToolExecutionScope,
+  officialAgentToolDefinitions,
+  officialReadContextTool,
+  officialSearchContextTool,
 } from './agent/official-tools/index.js'
 export {
   createLoomContentScannerState,
@@ -74,6 +75,8 @@ export type {
   ToolApprovalDecision,
   ToolApprovalHandler,
   ToolExecutionContext,
+  ToolExecutionScope,
+  ToolContextItem,
   ToolExecutor,
   ToolRuntimeRegistration,
   ToolResult,

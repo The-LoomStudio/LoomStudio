@@ -8,6 +8,7 @@ import type {
 import {
   appendCompositionItem,
   moveCompositionItem,
+  moveCompositionItemTo,
   removeCompositionItem,
 } from './composition-items.js'
 
@@ -40,6 +41,45 @@ describe('prompt composition items', () => {
     expect(next).toHaveLength(1)
     expect(next[0]?.kind === 'message' ? next[0].items.map(item => item.id) : []).toEqual(['entry.second'])
   })
+
+  it('moves blocks freely before and after root composition items', () => {
+    const items = [message('system', 10), slot('session', 20), message('user', 30)]
+
+    expect(sortedIds(moveCompositionItemTo(items, 'message.system', 'message.user', 'after'))).toEqual([
+      'slot.session',
+      'message.user',
+      'message.system',
+    ])
+    expect(sortedIds(moveCompositionItemTo(items, 'message.user', 'message.system', 'before'))).toEqual([
+      'message.user',
+      'message.system',
+      'slot.session',
+    ])
+  })
+
+  it('moves zones before, after, and inside another block without moving slots', () => {
+    const first = message('system', 10, [zone('zone.first', 10), slot('fixed', 20)])
+    const second = message('user', 20, [zone('zone.second', 10)])
+
+    const afterSlot = moveCompositionItemTo([first, second], 'zone.first', 'slot.fixed', 'after')
+    expect(afterSlot[0]?.kind === 'message' ? sortedIds(afterSlot[0].items) : []).toEqual(['slot.fixed', 'zone.first'])
+
+    const insideSecond = moveCompositionItemTo(afterSlot, 'zone.first', 'message.user', 'inside')
+    expect(insideSecond[0]?.kind === 'message' ? insideSecond[0].items.map(item => item.id) : []).toEqual(['slot.fixed'])
+    expect(insideSecond[1]?.kind === 'message' ? sortedIds(insideSecond[1].items) : []).toEqual(['zone.second', 'zone.first'])
+
+    expect(moveCompositionItemTo(insideSecond, 'slot.fixed', 'zone.second', 'after')).toEqual(insideSecond)
+  })
+
+  it('extracts a zone to a new sibling block while preserving its provider role', () => {
+    const items = [message('system', 10, [zone('zone.first', 10)]), slot('session', 20)]
+    const extracted = moveCompositionItemTo(items, 'zone.first', 'slot.session', 'after')
+
+    expect(extracted).toHaveLength(3)
+    expect(extracted[0]).toMatchObject({ kind: 'message', role: 'system', items: [] })
+    expect(extracted[1]).toMatchObject({ kind: 'slot', id: 'slot.session' })
+    expect(extracted[2]).toMatchObject({ kind: 'message', role: 'system', items: [{ id: 'zone.first' }] })
+  })
 })
 
 function message(role: PromptMessageBlock['role'], orderIndex: number, items: PromptMessageBlock['items'] = []): PromptMessageBlock {
@@ -71,6 +111,17 @@ function entry(id: string, orderIndex: number): PromptCompositionEntry {
     displayName: id,
     orderIndex,
     source: { kind: 'preset', nodeId: id },
+  }
+}
+
+function slot(id: string, orderIndex: number) {
+  return {
+    id: `slot.${id}`,
+    kind: 'slot' as const,
+    displayName: id,
+    orderIndex,
+    bindingId: id,
+    messageMode: 'native' as const,
   }
 }
 

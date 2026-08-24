@@ -940,7 +940,7 @@ Phase 4 不包含 Responses Custom、Content Tool、tools-zone Slot、CodeAct、
 
 当前完成状态（2026-08-24）：
 
-- 已注册无副作用的 `official/test_structured` 与 `official/test_content`，分别覆盖 Native JSON 与 hybrid Content 输入；两者只产生确定性成功结果或按 `mode: error` 返回稳定失败；
+- Phase 5 曾使用 `official/test_structured` 与 `official/test_content` 验证 Native JSON 和 Content Transport；完成验证后已从产品内置 Tool 中移除，由定向测试 fixture 继续覆盖协议行为；
 - 已实现 `loom-content-v1` 增量 Scanner 与 Result Renderer，覆盖 chunk 边界、普通正文分离、未知 Tool、非法 metadata、重复/未知字段、未闭合协议、长度限制与结果文本转义；
 - Agent Loop 会把 Content Block 转换为 Studio Invocation ID 和 canonical `tool-invocation`，并依据 Invocation 而非 Provider 原始 `stop` 决定继续；
 - Content ToolResult 在 canonical Transcript 中保持 `tool-result`，Provider replay 使用 Runtime 生成的 `role: user` Content Block，不伪造 Chat Completions `role: tool` 或 Provider Call ID；

@@ -90,21 +90,161 @@
 
 .toolExplorer {
   display: grid;
-  gap: 8px;
+  grid-template-rows: auto minmax(0, 1fr);
   height: 100%;
-  overflow: auto;
-  padding: 12px 10px 48px;
+  min-height: 0;
 }
 
-.toolExplorer > header {
+.toolSearch {
+  align-items: center;
   display: grid;
-  gap: 4px;
-  padding: 4px 6px 8px;
+  grid-template-columns: 16px minmax(0, 1fr) 24px;
+  gap: 5px;
+  margin: 7px 8px 5px;
+  padding: 0 4px 3px;
+  border-bottom: 1px solid var(--loom-color-border);
+  color: var(--loom-color-text-subtle);
 }
 
-.toolExplorer > header span,
-.toolExplorerItem span,
-.toolExplorerActive span,
+.toolSearch:focus-within {
+  border-color: var(--loom-color-text-muted);
+  color: var(--loom-color-text-muted);
+}
+
+.toolSearch > svg {
+  width: var(--loom-icon-size-4);
+  height: var(--loom-icon-size-4);
+}
+
+.toolSearch input {
+  min-width: 0;
+  height: 25px;
+  border: 0;
+  padding: 0;
+  color: var(--loom-color-text);
+  background: transparent;
+  box-shadow: none;
+}
+
+.toolSearch input:focus {
+  border: 0;
+  box-shadow: none;
+}
+
+.toolSearch button {
+  width: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  padding: 0;
+  color: var(--loom-color-text-subtle);
+  background: transparent;
+}
+
+.toolSearch button:hover:not(:disabled) {
+  color: var(--loom-color-text);
+}
+
+.toolSearch button svg {
+  width: var(--loom-icon-size-3);
+  height: var(--loom-icon-size-3);
+}
+
+.toolGroups {
+  min-height: 0;
+  overflow: auto;
+  padding: 2px 6px 48px;
+}
+
+.toolGroup {
+  display: grid;
+}
+
+.toolGroupHeader {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 14px 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  padding: 7px 6px;
+  color: var(--loom-color-text-subtle);
+  text-align: left;
+  background: transparent;
+}
+
+.toolGroupHeader:hover:not(:disabled) {
+  color: var(--loom-color-text);
+  background: transparent;
+}
+
+.toolGroupHeader svg {
+  width: var(--loom-icon-size-3);
+  height: var(--loom-icon-size-3);
+}
+
+.toolGroupHeader strong {
+  overflow: hidden;
+  color: var(--loom-color-text);
+  font-size: var(--loom-font-size-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolGroupHeader span {
+  font-family: var(--loom-font-family-mono);
+  font-size: var(--loom-font-size-1);
+}
+
+.toolGroupItems {
+  display: grid;
+  gap: 2px;
+  padding-left: 14px;
+}
+
+.toolExplorerItem,
+.toolExplorerActive {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: var(--loom-radius-control);
+  padding: 7px 8px;
+  color: var(--loom-color-text-subtle);
+  text-align: left;
+  background: transparent;
+}
+
+.toolExplorerItem:hover:not(:disabled),
+.toolExplorerActive {
+  color: var(--loom-color-text);
+  background: var(--loom-color-surface-subtle);
+}
+
+.toolExplorerItem > svg,
+.toolExplorerActive > svg {
+  width: var(--loom-icon-size-4);
+  height: var(--loom-icon-size-4);
+}
+
+.toolExplorerText {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.toolExplorerText strong,
+.toolExplorerText small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolExplorerText small,
 .toolExplorerItem em,
 .toolExplorerActive em {
   color: var(--loom-color-text-subtle);
@@ -112,20 +252,20 @@
   font-style: normal;
 }
 
-.toolExplorerItem,
-.toolExplorerActive {
-  display: grid;
-  gap: 3px;
-  border: 0;
-  border-radius: var(--loom-radius-control);
-  padding: 10px;
-  color: var(--loom-color-text);
-  text-align: left;
-  background: var(--loom-color-surface-subtle);
+.toolExplorerItem em,
+.toolExplorerActive em {
+  white-space: nowrap;
 }
 
 .toolExplorerActive {
-  box-shadow: inset 2px 0 0 var(--loom-color-accent-strong);
+  background: color-mix(in srgb, var(--loom-color-accent) 12%, var(--loom-color-surface-subtle));
+}
+
+.toolSearchEmpty {
+  padding: 20px 12px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-3);
+  text-align: center;
 }
 
 .toolEmpty {

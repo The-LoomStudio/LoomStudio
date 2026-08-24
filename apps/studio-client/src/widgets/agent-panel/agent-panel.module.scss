@@ -96,7 +96,7 @@
 }
 
 .profileActive {
-  box-shadow: inset 2px 0 0 var(--loom-color-accent-strong);
+  background: color-mix(in srgb, var(--loom-color-accent) 12%, var(--loom-color-surface-subtle));
 }
 
 .profileIdentity {

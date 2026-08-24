@@ -115,6 +115,21 @@ export type ToolApprovalContext = {
 export type ToolApprovalDecision =
   { decision: 'allow' } | { decision: 'deny'; reason?: string }
 
+export type ToolContextItem = {
+  id: string
+  name: string
+  zoneId: string
+  slotKey: string
+  sourceKind: string
+  sourceId: string
+  promptState: 'injected' | 'not-triggered' | 'agent-only'
+  content: string
+}
+
+export type ToolExecutionScope = {
+  context: readonly ToolContextItem[]
+}
+
 export type ToolApprovalHandler = (
   context: ToolApprovalContext,
 ) => ToolApprovalDecision | Promise<ToolApprovalDecision>
@@ -123,6 +138,7 @@ export type ToolExecutionContext = {
   tool: ToolDefinition
   invocation: ToolInvocation
   signal: AbortSignal
+  scope?: ToolExecutionScope
 }
 
 export type ToolExecutor = (
@@ -161,7 +177,7 @@ export type AgentToolRegistry = {
   getRegistration(toolId: string): ToolRuntimeRegistration | undefined
   getExecutor(toolId: string): ToolExecutor | undefined
   approve(invocation: ToolInvocation): Promise<ToolApprovalDecision>
-  execute(invocation: ToolInvocation, signal: AbortSignal): Promise<ToolResult>
+  execute(invocation: ToolInvocation, signal: AbortSignal, scope?: ToolExecutionScope): Promise<ToolResult>
   analyze(
     toolIds: readonly string[],
     capabilities: ModelToolTransportCapabilities,
@@ -200,8 +216,8 @@ export function createAgentToolRegistry(
     getRegistration: (toolId) => registrations.get(toolId),
     getExecutor: (toolId) => registrations.get(toolId)?.execute,
     approve: (invocation) => approveInvocation(invocation, byId, registrations),
-    execute: (invocation, signal) =>
-      executeInvocation(invocation, signal, byId, registrations),
+    execute: (invocation, signal, scope) =>
+      executeInvocation(invocation, signal, scope, byId, registrations),
     analyze: (toolIds, capabilities) =>
       analyzeTools(toolIds, byId, capabilities),
   }
@@ -270,6 +286,7 @@ async function approveInvocation(
 async function executeInvocation(
   invocation: ToolInvocation,
   signal: AbortSignal,
+  scope: ToolExecutionScope | undefined,
   byId: ReadonlyMap<string, ToolDefinition>,
   registrations: ReadonlyMap<string, ToolRuntimeRegistration>,
 ): Promise<ToolResult> {
@@ -291,6 +308,7 @@ async function executeInvocation(
       tool: validation.tool,
       invocation,
       signal,
+      scope,
     })
   } catch (error) {
     if (signal.aborted) return createAbortedResult(invocation)

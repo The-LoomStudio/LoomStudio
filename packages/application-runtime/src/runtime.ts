@@ -62,6 +62,20 @@ import type {
 } from './types.js'
 
 const applicationActor = { kind: 'kernel', id: 'application-runtime' } as const
+const obsoleteBuiltinAgentToolIds = new Set([
+  'official/test_structured',
+  'official/test_content',
+])
+const obsoleteBuiltinAgentToolDescriptions = new Map([
+  [
+    'official/search_context',
+    'Search active context items already authorized for the current Agent turn. Returns item IDs and short snippets for read_context.',
+  ],
+  [
+    'official/read_context',
+    'Read one active context item from the current Agent turn by the item ID returned by search_context.',
+  ],
+])
 
 export function createApplicationRuntime(options: ApplicationRuntimeOptions): ApplicationRuntime {
   const ctx = createApplicationRuntimeContext(options)
@@ -128,8 +142,48 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
           origin: { kind: 'builtin', key: 'loom-assistant-preset' },
         })
       }
+      const existingToolMounts = await ctx.promptResources.listPresetToolMounts({ presetResourceId: officialPromptResourceIds.assistantPreset })
+      const retainedToolMounts = existingToolMounts.filter(mount => !obsoleteBuiltinAgentToolIds.has(mount.toolId))
+      if (retainedToolMounts.length !== existingToolMounts.length) {
+        await ctx.promptResources.replacePresetToolMounts({
+          actor: applicationActor,
+          reason: 'application.removeObsoleteBuiltinAgentTools',
+          presetResourceId: officialPromptResourceIds.assistantPreset,
+          mounts: retainedToolMounts.map(mount => ({
+            toolId: mount.toolId,
+            orderIndex: mount.orderIndex,
+            defaultEnabled: mount.defaultEnabled,
+            ...(mount.activation ? { activation: structuredClone(mount.activation) } : {}),
+            ...(mount.provider ? { provider: { ...mount.provider } } : {}),
+            ...(mount.content ? { content: { ...mount.content } } : {}),
+            origin: structuredClone(mount.origin),
+          })),
+        })
+      }
+      for (const toolId of obsoleteBuiltinAgentToolIds) {
+        const document = await ctx.documents.get(toolId)
+        if (!document) continue
+        await ctx.documents.delete({
+          id: toolId,
+          expectedVersion: document.version,
+          actor: applicationActor,
+          reason: 'application.removeObsoleteBuiltinAgentTools',
+        })
+      }
       for (const definition of ctx.agentTools.list()) {
-        if (await ctx.documents.get(definition.id)) continue
+        const existing = await ctx.documents.get(definition.id)
+        if (existing) {
+          const content = existing.content as AgentToolContent
+          if (content.description === obsoleteBuiltinAgentToolDescriptions.get(definition.id)) {
+            await writeDocument<AgentToolContent>(ctx.documents, {
+              id: definition.id,
+              type: applicationDocumentTypes.agentTool,
+              content: toAgentToolContent(definition, content.createdAt, timestamp),
+              expectedVersion: existing.version,
+            })
+          }
+          continue
+        }
         await writeDocument<AgentToolContent>(ctx.documents, {
           id: definition.id,
           type: applicationDocumentTypes.agentTool,
@@ -628,6 +682,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         initialMessages: agentStepMessages,
         userInput: input.input,
         compiledToolSet,
+        toolExecutionScope: prompt.toolExecutionScope,
         branchId: narrativePage?.branch.id ?? 'agent-only',
         purpose: input.narrativeTarget?.commit ? 'narrative' : 'agent',
         ...(requestContext ? { requestContext } : {}),

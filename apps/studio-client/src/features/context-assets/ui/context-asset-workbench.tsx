@@ -135,9 +135,11 @@ export function ContextAssetProjectionExplorer(props: {
   compositionItems?: PromptCompositionItem[]
   entries: ProjectionOrderEntry[]
   providerTools?: ProviderToolSurfaceItem[]
+  onSelectProviderTool?: (toolId: string) => void
   nodes: ContextAssetNode[]
   query: string
   selectedId?: string
+  selectedProviderToolId?: string
   selectedZoneId?: string
   t: Translator
   zoneDefinitions?: ProjectionZoneDefinition[]
@@ -148,6 +150,7 @@ export function ContextAssetProjectionExplorer(props: {
   onAddZoneToMessageBlock?: (blockId: string) => void
   onDeleteCompositionItem?: (id: string) => void
   onMoveCompositionItem?: (id: string, direction: 'up' | 'down') => void
+  onDropCompositionItem?: (draggedId: string, targetId: string, position: 'before' | 'after' | 'inside') => void
   onAddZone?: (afterZoneId?: string) => void
   onDeleteNode?: (id: string) => Promise<void | string | undefined>
   onDeleteZone?: (zoneId: string) => void
@@ -183,13 +186,16 @@ export function ContextAssetProjectionExplorer(props: {
         onDeleteZone={props.onDeleteZone}
         onDuplicateNode={props.onDuplicateNode}
         onMoveCompositionItem={props.onMoveCompositionItem}
+        onDropCompositionItem={props.onDropCompositionItem}
         onRename={props.onRename}
         onReorder={props.onReorder}
         onReorderZone={props.onReorderZone}
         onSelect={props.onSelectId}
+        onSelectProviderTool={props.onSelectProviderTool}
         onSelectZone={props.onSelectZone}
         onToggleEnabled={props.onToggleEnabled}
         selectedId={props.selectedId}
+        selectedProviderToolId={props.selectedProviderToolId}
         selectedZoneId={props.selectedZoneId}
         t={props.t}
         zoneDefinitions={props.zoneDefinitions}

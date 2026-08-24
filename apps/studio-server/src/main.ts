@@ -1,7 +1,7 @@
 import {
   createApplicationRuntime,
   createDocumentBackedAiGateway,
-  createOfficialTestAgentToolRegistry,
+  createOfficialAgentToolRegistry,
 } from '@loom-studio/application-runtime'
 import { createOfficialProviderAdapterRegistry } from '@loom-studio/ai-gateway'
 import { createAgentStore } from '@loom-studio/agent-store'
@@ -130,7 +130,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
   }
   const applicationRuntime = createApplicationRuntime({
     agents,
-    agentTools: createOfficialTestAgentToolRegistry(),
+    agentTools: createOfficialAgentToolRegistry(),
     dataEngine,
     documents,
     narratives,

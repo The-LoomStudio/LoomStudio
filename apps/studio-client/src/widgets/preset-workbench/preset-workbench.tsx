@@ -1,4 +1,5 @@
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
+import { ChevronDown, ChevronRight, Package, Search, Wrench, X } from 'lucide-react'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore } from '../../pages/studio/model/studio-layout-store.js'
 import { AssetWorkbenchLayout } from '../../shared/ui/asset-workbench-layout/asset-workbench-layout.js'
@@ -29,6 +30,7 @@ import {
   createMessageBlock,
   findCompositionItem,
   moveCompositionItem,
+  moveCompositionItemTo,
   readCompositionItems,
   removeCompositionItem,
 } from '../../features/context-assets/model/composition-items.js'
@@ -109,6 +111,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const [selectedZoneId, setSelectedZoneId] = useState<string>()
   const [selectedCompositionId, setSelectedCompositionId] = useState<string>()
   const [selectedToolId, setSelectedToolId] = useState<string>()
+  const [selectedOrderToolId, setSelectedOrderToolId] = useState<string>()
   const presetZoneDefinitions = useMemo(() => orderNode?.skeletonPatch?.zones ?? [], [orderNode?.skeletonPatch?.zones])
   const displayZoneDefinitions = useMemo(() => {
     const ids = new Set(presetZoneDefinitions.map(zone => zone.id))
@@ -224,31 +227,38 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
 
   function handleDeleteZone(zoneId: string) {
     if (!orderNode || !orderNode.skeletonPatch?.zones) return
+    const items = readCompositionItems(orderNode)
     const nextZones = orderNode.skeletonPatch.zones.filter(z => z.id !== zoneId)
-    props.onCommitNode(orderNode.id, {
-      skeletonPatch: {
-        ...orderNode.skeletonPatch,
-        zones: nextZones,
-      },
-    })
+    commitCompositionItems(removeCompositionItem(items, zoneId), nextZones)
   }
 
   function handleSelectNode(id: string) {
     const toolId = toolProjection.toolIdByNodeId.get(id)
     if (toolId) {
       setSelectedToolId(toolId)
-      setActivePresetView('tools')
+      setSelectedOrderToolId(toolId)
+      setSelectedCompositionId(undefined)
+      setSelectedZoneId(undefined)
       return
     }
     const compositionItem = findCompositionItem(compositionItems ?? [], id)
     if (compositionItem) {
+      setSelectedOrderToolId(undefined)
       setSelectedCompositionId(id)
       setSelectedZoneId(compositionItem.kind === 'zone' ? compositionItem.id : undefined)
       return
     }
     setSelectedCompositionId(undefined)
     setSelectedZoneId(undefined)
+    setSelectedOrderToolId(undefined)
     openAssetDetail('preset', props.workspaceId, id)
+  }
+
+  function handleSelectProviderTool(toolId: string) {
+    setSelectedToolId(toolId)
+    setSelectedOrderToolId(toolId)
+    setSelectedCompositionId(undefined)
+    setSelectedZoneId(undefined)
   }
 
   function commitCompositionItems(items: PromptCompositionItem[], zones = presetZoneDefinitions) {
@@ -260,6 +270,22 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
         zones,
       },
     })
+  }
+
+  function commitOrderedCompositionItems(items: PromptCompositionItem[]) {
+    const zoneOrderById = new Map<string, number>()
+    for (const item of items) {
+      if (item.kind === 'zone') zoneOrderById.set(item.id, item.orderIndex)
+      if (item.kind === 'message') {
+        item.items.forEach(child => {
+          if (child.kind === 'zone') zoneOrderById.set(child.id, child.orderIndex)
+        })
+      }
+    }
+    commitCompositionItems(items, presetZoneDefinitions.map(zone => ({
+      ...zone,
+      orderIndex: zoneOrderById.get(zone.id) ?? zone.orderIndex,
+    })))
   }
 
   function handleAddMessageBlock() {
@@ -308,7 +334,12 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
 
   function handleMoveCompositionItem(id: string, direction: 'up' | 'down') {
     const items = readCompositionItems(orderNode)
-    commitCompositionItems(moveCompositionItem(items, id, direction))
+    commitOrderedCompositionItems(moveCompositionItem(items, id, direction))
+  }
+
+  function handleDropCompositionItem(draggedId: string, targetId: string, position: 'before' | 'after' | 'inside') {
+    const items = readCompositionItems(orderNode)
+    commitOrderedCompositionItems(moveCompositionItemTo(items, draggedId, targetId, position))
   }
 
   return (
@@ -363,6 +394,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
       explorer={activePresetView === 'tools' ? (
         <PresetToolExplorer
           selectedToolId={selectedToolId}
+          t={props.t}
           toolMounts={props.toolMounts}
           tools={props.tools}
           presetId={selectedResource?.id}
@@ -375,20 +407,24 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           nodes={activePresetView === 'order' ? workbenchNodes.filter(node => node.kind !== 'order') : displayNodes}
           query={searchQuery}
           selectedId={selectedCompositionId ?? selectedId}
+          selectedProviderToolId={selectedOrderToolId}
           selectedZoneId={selectedZoneId}
           t={props.t}
-          compositionItems={activePresetView === 'order' && compositionItems?.length ? compositionItems : undefined}
+          compositionItems={activePresetView === 'order' ? compositionItems ?? [] : undefined}
           onAddDirectEntry={handleAddDirectEntry}
           onAddMessageBlock={handleAddMessageBlock}
           onAddSlot={handleAddSlotToMessageBlock}
           onAddZoneToMessageBlock={handleAddZoneToMessageBlock}
           onDeleteCompositionItem={handleDeleteCompositionItem}
           onMoveCompositionItem={handleMoveCompositionItem}
-          zoneDefinitions={displayZoneDefinitions}
+          onDropCompositionItem={handleDropCompositionItem}
+          zoneDefinitions={activePresetView === 'order'
+            ? displayZoneDefinitions
+            : displayZoneDefinitions.filter(zone => zone.id !== 'chat.history' && zone.id !== 'session.history')}
           onAddEntryInZone={zoneId => {
             if (selectedResource) void props.onAddNodeInZone?.(selectedResource.id, zoneId)
           }}
-          onAddZone={handleAddZone}
+          onAddZone={activePresetView === 'order' ? undefined : handleAddZone}
           onDeleteNode={props.onDeleteNode}
           onDeleteZone={handleDeleteZone}
           onDuplicateNode={props.onDuplicateNode}
@@ -396,7 +432,12 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           onReorder={handleProjectionReorder}
           onReorderZone={handleProjectionZoneReorder}
           onSelectId={handleSelectNode}
-          onSelectZone={setSelectedZoneId}
+          onSelectProviderTool={handleSelectProviderTool}
+          onSelectZone={zoneId => {
+            setSelectedOrderToolId(undefined)
+            setSelectedCompositionId(undefined)
+            setSelectedZoneId(zoneId)
+          }}
           onToggleEnabled={(id, enabled) => {
             props.onChangeNode(id, { enabled })
             props.onCommitNode(id, { enabled })
@@ -404,12 +445,13 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
         />
       )}
     >
-      {activePresetView === 'tools' ? (
+      {activePresetView === 'tools' || (activePresetView === 'order' && selectedOrderToolId) ? (
         <PresetToolDetail
-          mount={props.toolMounts.find(mount => mount.presetResourceId === selectedResource?.id && mount.toolId === selectedToolId)}
+          mount={props.toolMounts.find(mount => mount.presetResourceId === selectedResource?.id && mount.toolId === (activePresetView === 'order' ? selectedOrderToolId : selectedToolId))}
           preset={selectedResource}
           presetMounts={props.toolMounts.filter(mount => mount.presetResourceId === selectedResource?.id)}
-          tool={props.tools.find(tool => tool.id === selectedToolId)}
+          t={props.t}
+          tool={props.tools.find(tool => tool.id === (activePresetView === 'order' ? selectedOrderToolId : selectedToolId))}
           onReplaceMounts={props.onReplaceToolMounts}
           onUpdateTool={props.onUpdateTool}
         />
@@ -446,31 +488,107 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
 function PresetToolExplorer(props: {
   presetId?: string
   selectedToolId?: string
+  t: Translator
   tools: AgentToolDefinition[]
   toolMounts: PresetToolMount[]
   onSelect(toolId: string): void
 }) {
-  const mountedIds = new Set(props.toolMounts
+  const [query, setQuery] = useState('')
+  const [collapsedNamespaces, setCollapsedNamespaces] = useState<Set<string>>(() => new Set())
+  const mountedIds = useMemo(() => new Set(props.toolMounts
     .filter(mount => mount.presetResourceId === props.presetId)
-    .map(mount => mount.toolId))
+    .map(mount => mount.toolId)), [props.presetId, props.toolMounts])
+  const toolGroups = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase()
+    const groups = new Map<string, AgentToolDefinition[]>()
+    for (const tool of props.tools) {
+      const searchableText = [tool.name, tool.description, tool.id, tool.owner.namespace, tool.input.kind]
+        .join(' ')
+        .toLocaleLowerCase()
+      if (normalizedQuery && !searchableText.includes(normalizedQuery)) continue
+      const tools = groups.get(tool.owner.namespace) ?? []
+      tools.push(tool)
+      groups.set(tool.owner.namespace, tools)
+    }
+    return [...groups.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([namespace, tools]) => ({
+        namespace,
+        tools: tools.sort((left, right) => left.name.localeCompare(right.name)),
+      }))
+  }, [props.tools, query])
+
+  function toggleNamespace(namespace: string) {
+    setCollapsedNamespaces(current => {
+      const next = new Set(current)
+      if (next.has(namespace)) next.delete(namespace)
+      else next.add(namespace)
+      return next
+    })
+  }
+
   return (
     <div className={styles.toolExplorer}>
-      <header>
-        <strong>Workspace Tools</strong>
-        <span>Preset controls mounting and projection; Agent only applies quick overrides.</span>
-      </header>
-      {props.tools.map(tool => (
-        <button
-          className={tool.id === props.selectedToolId ? styles.toolExplorerActive : styles.toolExplorerItem}
-          key={tool.id}
-          type="button"
-          onClick={() => props.onSelect(tool.id)}
-        >
-          <strong>{tool.name}</strong>
-          <span>{tool.input.kind === 'structured' ? 'Provider Tool' : 'Custom / Content Tool'}</span>
-          <em>{mountedIds.has(tool.id) ? 'Mounted' : 'Not mounted'}</em>
-        </button>
-      ))}
+      <div className={styles.toolSearch}>
+        <Search aria-hidden="true" />
+        <input
+          aria-label={props.t('preset.tools.searchLabel')}
+          placeholder={props.t('preset.tools.searchPlaceholder')}
+          type="search"
+          value={query}
+          onChange={event => {
+            setQuery(event.target.value)
+            setCollapsedNamespaces(new Set())
+          }}
+        />
+        {query ? (
+          <button aria-label={props.t('preset.tools.searchClear')} type="button" onClick={() => setQuery('')}>
+            <X aria-hidden="true" />
+          </button>
+        ) : null}
+      </div>
+      <div className={styles.toolGroups}>
+        {toolGroups.length ? toolGroups.map(group => {
+          const collapsed = collapsedNamespaces.has(group.namespace)
+          const groupId = `tool-group-${group.namespace.replace(/[^a-zA-Z0-9_-]/g, '-')}`
+          return (
+            <section className={styles.toolGroup} key={group.namespace}>
+              <button
+                aria-controls={groupId}
+                aria-expanded={!collapsed}
+                aria-label={props.t(collapsed ? 'context.tree.expand' : 'context.tree.collapse', { label: group.namespace })}
+                className={styles.toolGroupHeader}
+                type="button"
+                onClick={() => toggleNamespace(group.namespace)}
+              >
+                {collapsed ? <ChevronRight aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+                <Package aria-hidden="true" />
+                <strong>{group.namespace}</strong>
+                <span>{group.tools.length}</span>
+              </button>
+              {!collapsed ? (
+                <div className={styles.toolGroupItems} id={groupId}>
+                  {group.tools.map(tool => (
+                    <button
+                      className={tool.id === props.selectedToolId ? styles.toolExplorerActive : styles.toolExplorerItem}
+                      key={tool.id}
+                      type="button"
+                      onClick={() => props.onSelect(tool.id)}
+                    >
+                      <Wrench aria-hidden="true" />
+                      <span className={styles.toolExplorerText}>
+                        <strong>{tool.name}</strong>
+                        <small>{props.t(tool.input.kind === 'structured' ? 'preset.tools.kind.provider' : 'preset.tools.kind.custom')}</small>
+                      </span>
+                      <em>{props.t(mountedIds.has(tool.id) ? 'preset.tools.mounted' : 'preset.tools.notMounted')}</em>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </section>
+          )
+        }) : <div className={styles.toolSearchEmpty}>{props.t('preset.tools.searchEmpty')}</div>}
+      </div>
     </div>
   )
 }
@@ -480,17 +598,18 @@ function PresetToolDetail(props: {
   tool?: AgentToolDefinition
   mount?: PresetToolMount
   presetMounts: PresetToolMount[]
+  t: Translator
   onReplaceMounts(presetId: string, mounts: PresetToolMountInput[]): Promise<void>
   onUpdateTool(tool: AgentToolDefinition): Promise<void> | void
 }) {
   if (!props.preset || !props.tool) {
-    return <div className={styles.toolEmpty}>Select a Preset and Tool.</div>
+    return <div className={styles.toolEmpty}>{props.t('preset.tools.selectEmpty')}</div>
   }
   return (
     <div className={styles.toolDetail}>
       <header className={styles.toolDetailHeader}>
         <div>
-          <span>{props.tool.input.kind === 'structured' ? 'Provider Tool' : 'Custom / Content Tool'}</span>
+          <span>{props.t(props.tool.input.kind === 'structured' ? 'preset.tools.kind.provider' : 'preset.tools.kind.custom')}</span>
           <h1>{props.tool.name}</h1>
           <p>{props.tool.description}</p>
         </div>
@@ -500,10 +619,11 @@ function PresetToolDetail(props: {
         mount={props.mount}
         preset={props.preset}
         presetMounts={props.presetMounts}
+        t={props.t}
         tool={props.tool}
         onReplace={props.onReplaceMounts}
       />
-      <ToolEntryEditor tool={props.tool} onSave={props.onUpdateTool} />
+      <ToolEntryEditor t={props.t} tool={props.tool} onSave={props.onUpdateTool} />
     </div>
   )
 }
@@ -513,6 +633,7 @@ function ToolMountEditor(props: {
   tool: AgentToolDefinition
   mount?: PresetToolMount
   presetMounts: PresetToolMount[]
+  t: Translator
   onReplace(presetId: string, mounts: PresetToolMountInput[]): Promise<void>
 }) {
   const [draft, setDraft] = useState(() => createMountDraft(props.tool, props.mount))
@@ -552,10 +673,10 @@ function ToolMountEditor(props: {
     if (!props.mount) return
     try {
       const activation = draft.activation.trim()
-        ? readJsonObject(draft.activation, 'Activation')
+        ? readJsonObject(draft.activation, props.t('preset.tools.activation'))
         : undefined
-      const providerOrder = readOptionalFiniteNumber(draft.providerOrder, 'Provider Tool order')
-      const contentOrder = readOptionalFiniteNumber(draft.contentOrder, 'Content order hint')
+      const providerOrder = readOptionalFiniteNumber(draft.providerOrder, props.t('preset.tools.providerOrder'))
+      const contentOrder = readOptionalFiniteNumber(draft.contentOrder, props.t('preset.tools.contentOrder'))
       const updated: PresetToolMountInput = {
         toolId: props.tool.id,
         orderIndex: props.mount.orderIndex,
@@ -581,38 +702,38 @@ function ToolMountEditor(props: {
     <section className={styles.toolSection}>
       <header>
         <div>
-          <h2>Preset Mount</h2>
-          <p>Controls whether this Preset exposes the Tool and how its prompt surface is projected.</p>
+          <h2>{props.t('preset.tools.mountTitle')}</h2>
+          <p>{props.t('preset.tools.mountDescription')}</p>
         </div>
         <label className={styles.toolMountToggle}>
           <input checked={Boolean(props.mount)} disabled={pending} type="checkbox" onChange={toggleMounted} />
-          <span>Mounted</span>
+          <span>{props.t('preset.tools.mounted')}</span>
         </label>
       </header>
       {props.tool.input.kind === 'structured' ? (
-        <p className={styles.providerSurfaceNote}>Provider-managed surface · serialized beside <code>messages</code>. Its internal prompt position is not controlled by Message Zone or Slot.</p>
+        <p className={styles.providerSurfaceNote}>{props.t('preset.tools.providerSurfaceBefore')} <code>messages</code>{props.t('preset.tools.providerSurfaceAfter')}</p>
       ) : (
-        <p className={styles.providerSurfaceNote}>Responses Custom Tool uses the provider-managed surface; Chat Completions fallback uses the Content Zone and Slot below.</p>
+        <p className={styles.providerSurfaceNote}>{props.t('preset.tools.customSurfaceNote')}</p>
       )}
       {props.mount ? (
         <form className={`${styles.toolForm} loom-underlined-fields`} onSubmit={submit}>
-          <label className={styles.toolCheckbox}><input checked={draft.defaultEnabled} type="checkbox" onChange={event => setDraft(current => ({ ...current, defaultEnabled: event.target.checked }))} /><span>Enabled by default in this Preset</span></label>
-          <label><span>Activation · JSON</span><textarea className={styles.jsonEditor} spellCheck={false} value={draft.activation} onChange={event => setDraft(current => ({ ...current, activation: event.target.value }))} /></label>
+          <label className={styles.toolCheckbox}><input checked={draft.defaultEnabled} type="checkbox" onChange={event => setDraft(current => ({ ...current, defaultEnabled: event.target.checked }))} /><span>{props.t('preset.tools.enabledByDefault')}</span></label>
+          <label><span>{props.t('preset.tools.activationJson')}</span><textarea className={styles.jsonEditor} spellCheck={false} value={draft.activation} onChange={event => setDraft(current => ({ ...current, activation: event.target.value }))} /></label>
           <fieldset>
-            <legend>Provider-managed surface</legend>
-            <label><span>Provider Tool order</span><input inputMode="numeric" value={draft.providerOrder} onChange={event => setDraft(current => ({ ...current, providerOrder: event.target.value }))} /></label>
+            <legend>{props.t('preset.tools.providerSurface')}</legend>
+            <label><span>{props.t('preset.tools.providerOrder')}</span><input inputMode="numeric" value={draft.providerOrder} onChange={event => setDraft(current => ({ ...current, providerOrder: event.target.value }))} /></label>
           </fieldset>
           {props.tool.input.kind === 'structured' ? null : (
             <fieldset>
-              <legend>Content fallback placement</legend>
-              <label><span>Zone</span><input value={draft.contentZone} onChange={event => setDraft(current => ({ ...current, contentZone: event.target.value }))} /></label>
-              <label><span>Slot</span><input value={draft.contentSlot} onChange={event => setDraft(current => ({ ...current, contentSlot: event.target.value }))} /></label>
-              <label><span>Rank key</span><input value={draft.contentRankKey} onChange={event => setDraft(current => ({ ...current, contentRankKey: event.target.value }))} /></label>
-              <label><span>Order hint</span><input inputMode="numeric" value={draft.contentOrder} onChange={event => setDraft(current => ({ ...current, contentOrder: event.target.value }))} /></label>
+              <legend>{props.t('preset.tools.contentFallback')}</legend>
+              <label><span>{props.t('preset.tools.zone')}</span><input value={draft.contentZone} onChange={event => setDraft(current => ({ ...current, contentZone: event.target.value }))} /></label>
+              <label><span>{props.t('preset.tools.slot')}</span><input value={draft.contentSlot} onChange={event => setDraft(current => ({ ...current, contentSlot: event.target.value }))} /></label>
+              <label><span>{props.t('preset.tools.rankKey')}</span><input value={draft.contentRankKey} onChange={event => setDraft(current => ({ ...current, contentRankKey: event.target.value }))} /></label>
+              <label><span>{props.t('preset.tools.orderHint')}</span><input inputMode="numeric" value={draft.contentOrder} onChange={event => setDraft(current => ({ ...current, contentOrder: event.target.value }))} /></label>
             </fieldset>
           )}
           {error ? <p className={styles.toolError}>{error}</p> : null}
-          <button disabled={pending} type="submit">Save Preset Tool Config</button>
+          <button disabled={pending} type="submit">{props.t('preset.tools.saveMount')}</button>
         </form>
       ) : null}
     </section>
@@ -620,6 +741,7 @@ function ToolMountEditor(props: {
 }
 
 function ToolEntryEditor(props: {
+  t: Translator
   tool: AgentToolDefinition
   onSave(tool: AgentToolDefinition): Promise<void> | void
 }) {
@@ -634,9 +756,9 @@ function ToolEntryEditor(props: {
   async function submit(event: FormEvent) {
     event.preventDefault()
     try {
-      const input = readJsonObject(draft.input, 'Input definition') as AgentToolDefinition['input']
+      const input = readJsonObject(draft.input, props.t('preset.tools.inputDefinition')) as AgentToolDefinition['input']
       const parameterDescriptions = draft.parameterDescriptions.trim()
-        ? readStringRecord(draft.parameterDescriptions, 'Parameter descriptions')
+        ? readStringRecord(draft.parameterDescriptions, props.t('preset.tools.parameterDescriptions'))
         : undefined
       const prompt = { ...props.tool.prompt }
       if (parameterDescriptions) prompt.parameterDescriptions = parameterDescriptions
@@ -663,18 +785,18 @@ function ToolEntryEditor(props: {
     <section className={styles.toolSection}>
       <header>
         <div>
-          <h2>Workspace Tool Entry</h2>
-          <p>This edits the single shared Tool Definition. Presets only store mounts and projection policy.</p>
+          <h2>{props.t('preset.tools.entryTitle')}</h2>
+          <p>{props.t('preset.tools.entryDescription')}</p>
         </div>
       </header>
       <form className={`${styles.toolForm} loom-underlined-fields`} onSubmit={submit}>
-        <label><span>Name</span><input value={draft.name} onChange={event => setDraft(current => ({ ...current, name: event.target.value }))} /></label>
-        <label><span>Description</span><textarea value={draft.description} onChange={event => setDraft(current => ({ ...current, description: event.target.value }))} /></label>
-        <label><span>Guidance</span><textarea value={draft.guidance} onChange={event => setDraft(current => ({ ...current, guidance: event.target.value }))} /></label>
-        <label><span>Input definition · JSON</span><textarea className={styles.jsonEditor} spellCheck={false} value={draft.input} onChange={event => setDraft(current => ({ ...current, input: event.target.value }))} /></label>
-        <label><span>Parameter descriptions · JSON</span><textarea className={styles.jsonEditor} spellCheck={false} value={draft.parameterDescriptions} onChange={event => setDraft(current => ({ ...current, parameterDescriptions: event.target.value }))} /></label>
+        <label><span>{props.t('preset.tools.name')}</span><input value={draft.name} onChange={event => setDraft(current => ({ ...current, name: event.target.value }))} /></label>
+        <label><span>{props.t('preset.tools.description')}</span><textarea value={draft.description} onChange={event => setDraft(current => ({ ...current, description: event.target.value }))} /></label>
+        <label><span>{props.t('preset.tools.guidance')}</span><textarea value={draft.guidance} onChange={event => setDraft(current => ({ ...current, guidance: event.target.value }))} /></label>
+        <label><span>{props.t('preset.tools.inputDefinitionJson')}</span><textarea className={styles.jsonEditor} spellCheck={false} value={draft.input} onChange={event => setDraft(current => ({ ...current, input: event.target.value }))} /></label>
+        <label><span>{props.t('preset.tools.parameterDescriptionsJson')}</span><textarea className={styles.jsonEditor} spellCheck={false} value={draft.parameterDescriptions} onChange={event => setDraft(current => ({ ...current, parameterDescriptions: event.target.value }))} /></label>
         {error ? <p className={styles.toolError}>{error}</p> : null}
-        <button disabled={pending || !draft.name.trim()} type="submit">Save Workspace Tool Entry</button>
+        <button disabled={pending || !draft.name.trim()} type="submit">{props.t('preset.tools.saveEntry')}</button>
       </form>
     </section>
   )
@@ -816,11 +938,11 @@ function ZoneDetail(props: {
         <span>{zone.id}</span>
       </header>
       <dl>
-        <div><dt>Band</dt><dd>{zone.band}</dd></div>
-        <div><dt>Order</dt><dd>{zone.orderIndex}</dd></div>
-        <div><dt>Accepts</dt><dd>{zone.accepts?.join(', ') || 'Any'}</dd></div>
-        <div><dt>Provider role</dt><dd>{zone.renderHint?.providerRoleHint || '—'}</dd></div>
-        <div><dt>Wrapper</dt><dd>{zone.renderHint?.wrapper || '—'}</dd></div>
+        <div><dt>{props.t('context.detail.band')}</dt><dd>{zone.band}</dd></div>
+        <div><dt>{props.t('context.detail.order')}</dt><dd>{zone.orderIndex}</dd></div>
+        <div><dt>{props.t('context.detail.accepts')}</dt><dd>{zone.accepts?.join(', ') || props.t('context.detail.any')}</dd></div>
+        <div><dt>{props.t('context.detail.providerRole')}</dt><dd>{zone.renderHint?.providerRoleHint || '—'}</dd></div>
+        <div><dt>{props.t('context.detail.wrapper')}</dt><dd>{zone.renderHint?.wrapper || '—'}</dd></div>
       </dl>
     </section>
   )
@@ -847,13 +969,13 @@ function CompositionItemDetail(props: {
         <span>{item.id}</span>
       </header>
       <dl>
-        <div><dt>Kind</dt><dd>{item.kind}</dd></div>
-        <div><dt>Order</dt><dd>{item.orderIndex}</dd></div>
-        {item.kind === 'message' ? <div><dt>Role</dt><dd>{item.role}</dd></div> : null}
-        {item.kind === 'zone' ? <div><dt>Accepts</dt><dd>{item.accepts?.join(', ') || 'Any'}</dd></div> : null}
-        {item.kind === 'slot' ? <div><dt>Binding</dt><dd>{item.bindingId}</dd></div> : null}
-        {item.kind === 'slot' ? <div><dt>Mode</dt><dd>{item.messageMode || 'context'}</dd></div> : null}
-        {sourceLabel ? <div><dt>Source</dt><dd>{sourceLabel}</dd></div> : null}
+        <div><dt>{props.t('context.detail.kind')}</dt><dd>{item.kind}</dd></div>
+        <div><dt>{props.t('context.detail.order')}</dt><dd>{item.orderIndex}</dd></div>
+        {item.kind === 'message' ? <div><dt>{props.t('context.detail.role')}</dt><dd>{item.role}</dd></div> : null}
+        {item.kind === 'zone' ? <div><dt>{props.t('context.detail.accepts')}</dt><dd>{item.accepts?.join(', ') || props.t('context.detail.any')}</dd></div> : null}
+        {item.kind === 'slot' ? <div><dt>{props.t('context.detail.binding')}</dt><dd>{item.bindingId}</dd></div> : null}
+        {item.kind === 'slot' ? <div><dt>{props.t('context.detail.mode')}</dt><dd>{item.messageMode || 'context'}</dd></div> : null}
+        {sourceLabel ? <div><dt>{props.t('context.detail.source')}</dt><dd>{sourceLabel}</dd></div> : null}
       </dl>
     </section>
   )

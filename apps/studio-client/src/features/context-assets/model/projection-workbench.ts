@@ -72,21 +72,61 @@ export function readProjectionOrderReorderUpdates(input: {
   const draggedEntry = input.orderedProjectionEntries.find(entry => entry.node.id === input.draggedId)
   const targetEntry = input.orderedProjectionEntries.find(entry => entry.node.id === input.targetId)
 
+  if (!draggedEntry || !targetEntry || draggedEntry.sourceKind === 'virtual' || targetEntry.sourceKind === 'virtual') return []
+
   if (draggedEntry && targetEntry && draggedEntry.slotKey === targetEntry.slotKey) {
+    const draggedIndex = input.orderedProjectionEntries.findIndex(entry => entry.node.id === input.draggedId)
+    const targetIndex = input.orderedProjectionEntries.findIndex(entry => entry.node.id === input.targetId)
     return [{
       id: input.draggedId,
       partial: {
         projection: {
           ...draggedEntry.node.projection!,
-          entryOrder: readReorderedEntryOrder(input.orderedProjectionEntries, input.draggedId, input.targetId, 'before'),
+          entryOrder: readReorderedEntryOrder(input.orderedProjectionEntries, input.draggedId, input.targetId, draggedIndex < targetIndex ? 'after' : 'before'),
         },
       },
     }]
   }
 
-  if (!input.orderNode) return []
-  const newOrder = moveBefore(input.projectionOrderIds, input.draggedId, input.targetId)
-  return [readProjectionOrderUpdate(input.orderNode, input.projectionEntries, newOrder)]
+  const draggedIndex = input.projectionOrderIds.indexOf(input.draggedId)
+  const targetIndex = input.projectionOrderIds.indexOf(input.targetId)
+  const newOrder = draggedIndex >= 0 && draggedIndex < targetIndex
+    ? moveAfter(input.projectionOrderIds, input.draggedId, input.targetId)
+    : moveBefore(input.projectionOrderIds, input.draggedId, input.targetId)
+  const updates: ContextAssetUpdate[] = []
+  let projectionEntries = input.projectionEntries
+
+  if (draggedEntry.zoneId !== targetEntry.zoneId) {
+    const slotKey = moveSlotKeyToZone(draggedEntry.slotKey, targetEntry.zoneId)
+    updates.push({
+      id: input.draggedId,
+      partial: {
+        projection: {
+          ...draggedEntry.node.projection!,
+          slotKey,
+          zoneId: targetEntry.zoneId,
+        },
+      },
+    })
+    projectionEntries = input.projectionEntries.map(entry => entry.node.id === input.draggedId
+      ? { ...entry, slotKey, zoneId: targetEntry.zoneId }
+      : entry)
+  }
+
+  if (input.orderNode) updates.push(readProjectionOrderUpdate(input.orderNode, projectionEntries, newOrder))
+  return updates
+}
+
+function moveSlotKeyToZone(slotKey: string, zoneId: string): string {
+  const separator = slotKey.lastIndexOf('@')
+  return separator < 0 ? `${slotKey}@${zoneId}` : `${slotKey.slice(0, separator)}@${zoneId}`
+}
+
+function moveAfter(ids: string[], draggedId: string, targetId: string): string[] {
+  const current = ids.filter(id => id !== draggedId)
+  const targetIndex = current.indexOf(targetId)
+  if (targetIndex < 0) return ids
+  return [...current.slice(0, targetIndex + 1), draggedId, ...current.slice(targetIndex + 1)]
 }
 
 export function readProjectionZoneReorderUpdates(input: {

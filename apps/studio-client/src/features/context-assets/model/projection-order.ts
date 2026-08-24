@@ -143,7 +143,11 @@ export function buildProjectionZones(entries: ProjectionOrderEntry[], definition
 
 export function moveProjectionZone(entries: ProjectionOrderEntry[], draggedZoneId: string, targetZoneId: string): string[] {
   const zoneIds = [...new Set(entries.map(entry => entry.zoneId))]
-  const reorderedZoneIds = moveBefore(zoneIds, draggedZoneId, targetZoneId)
+  const draggedIndex = zoneIds.indexOf(draggedZoneId)
+  const targetIndex = zoneIds.indexOf(targetZoneId)
+  const reorderedZoneIds = draggedIndex >= 0 && draggedIndex < targetIndex
+    ? moveAfter(zoneIds, draggedZoneId, targetZoneId)
+    : moveBefore(zoneIds, draggedZoneId, targetZoneId)
 
   return reorderedZoneIds.flatMap(zoneId => (
     entries.filter(entry => entry.zoneId === zoneId).map(entry => entry.node.id)
@@ -193,6 +197,13 @@ export function moveBefore(ids: string[], draggedId: string, targetId: string): 
   const targetIndex = current.indexOf(targetId)
   if (targetIndex < 0) return ids
   return [...current.slice(0, targetIndex), draggedId, ...current.slice(targetIndex)]
+}
+
+function moveAfter(ids: string[], draggedId: string, targetId: string): string[] {
+  const current = ids.filter(id => id !== draggedId)
+  const targetIndex = current.indexOf(targetId)
+  if (targetIndex < 0) return ids
+  return [...current.slice(0, targetIndex + 1), draggedId, ...current.slice(targetIndex + 1)]
 }
 
 export function flattenContextNodes(nodes: ContextAssetNode[]): ContextAssetNode[] {

@@ -135,12 +135,96 @@ export function moveCompositionItem(items: PromptCompositionItem[], id: string, 
   })
 }
 
+export function moveCompositionItemTo(
+  items: PromptCompositionItem[],
+  draggedId: string,
+  targetId: string,
+  position: 'before' | 'after' | 'inside',
+): PromptCompositionItem[] {
+  if (draggedId === targetId) return items
+  const next = items.map(item => item.kind === 'message' ? { ...item, items: [...item.items] } : item)
+  const draggedLocation = findCompositionItemLocation(next, draggedId)
+  const targetLocation = findCompositionItemLocation(next, targetId)
+  if (!draggedLocation || !targetLocation) return items
+
+  if (draggedLocation.item.kind === 'message') {
+    if (draggedLocation.parentId || targetLocation.parentId || position === 'inside') return items
+    next.splice(draggedLocation.index, 1)
+    const targetIndex = next.findIndex(item => item.id === targetId)
+    if (targetIndex < 0) return items
+    next.splice(position === 'after' ? targetIndex + 1 : targetIndex, 0, draggedLocation.item)
+    return normalizeCompositionOrder(next)
+  }
+
+  if (draggedLocation.item.kind !== 'zone') return items
+  const sourceBlock = draggedLocation.parentId
+    ? next.find(item => item.id === draggedLocation.parentId)
+    : undefined
+  const source = draggedLocation.parentId
+    ? sourceBlock?.kind === 'message' ? sourceBlock.items : undefined
+    : next
+  if (!source) return items
+  source.splice(draggedLocation.index, 1)
+
+  if (position === 'inside') {
+    const targetBlock = next.find(item => item.kind === 'message' && item.id === targetId)
+    if (!targetBlock || targetBlock.kind !== 'message') return items
+    targetBlock.items.push(draggedLocation.item)
+    return normalizeCompositionOrder(next)
+  }
+
+  const refreshedTarget = findCompositionItemLocation(next, targetId)
+  if (!refreshedTarget) return items
+  if (!refreshedTarget.parentId) {
+    if (sourceBlock?.kind !== 'message') return items
+    const extractedBlock: PromptMessageBlock = {
+      id: createCompositionId('message'),
+      kind: 'message',
+      displayName: sourceBlock.displayName,
+      orderIndex: 0,
+      role: sourceBlock.role,
+      items: [{ ...draggedLocation.item, orderIndex: 10 }],
+    }
+    next.splice(position === 'after' ? refreshedTarget.index + 1 : refreshedTarget.index, 0, extractedBlock)
+    return normalizeCompositionOrder(next)
+  }
+  const targetBlock = next.find(item => item.kind === 'message' && item.id === refreshedTarget.parentId)
+  if (!targetBlock || targetBlock.kind !== 'message') return items
+  targetBlock.items.splice(position === 'after' ? refreshedTarget.index + 1 : refreshedTarget.index, 0, draggedLocation.item)
+  return normalizeCompositionOrder(next)
+}
+
 export function createCompositionId(kind: string): string {
   return `composition.${kind}.${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 7)}`
 }
 
 function nextOrderIndex(items: PromptCompositionItem[]): number {
   return Math.max(0, ...items.map(item => item.orderIndex)) + 10
+}
+
+function findCompositionItemLocation(items: PromptCompositionItem[], id: string): {
+  index: number
+  item: PromptCompositionItem
+  parentId?: string
+} | undefined {
+  const rootIndex = items.findIndex(item => item.id === id)
+  if (rootIndex >= 0) return { index: rootIndex, item: items[rootIndex]! }
+  for (const item of items) {
+    if (item.kind !== 'message') continue
+    const childIndex = item.items.findIndex(child => child.id === id)
+    if (childIndex >= 0) return { index: childIndex, item: item.items[childIndex]!, parentId: item.id }
+  }
+  return undefined
+}
+
+function normalizeCompositionOrder(items: PromptCompositionItem[]): PromptCompositionItem[] {
+  return items.map((item, index) => item.kind === 'message'
+    ? {
+        ...item,
+        orderIndex: (index + 1) * 10,
+        items: item.items.map((child, childIndex) => ({ ...child, orderIndex: (childIndex + 1) * 10 })),
+      }
+    : { ...item, orderIndex: (index + 1) * 10 })
 }
 
 function swapCompositionItems<T extends { orderIndex: number }>(items: T[], index: number, direction: 'up' | 'down'): T[] {

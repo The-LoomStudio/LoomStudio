@@ -438,6 +438,7 @@
 .windowResizeHandle {
   position: absolute;
   z-index: 5;
+  min-height: 0;
   display: block;
   border: 0;
   border-radius: 0;

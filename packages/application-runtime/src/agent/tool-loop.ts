@@ -14,6 +14,7 @@ import {
 } from '../prompt-builder.js'
 import type {
   ToolDefinition,
+  ToolExecutionScope,
   ToolInvocation,
   ToolResult,
 } from './tool-registry.js'
@@ -231,6 +232,7 @@ export async function runNativeToolLoop(input: {
   initialMessages: ChatMessage[]
   userInput: string
   compiledToolSet: CompiledAgentToolSet
+  toolExecutionScope?: ToolExecutionScope
   branchId: string
   purpose: 'agent' | 'narrative'
   requestContext?: RuntimeRequestContext
@@ -400,6 +402,7 @@ export async function runNativeToolLoop(input: {
           input.ctx,
           pair.invocation,
           pair.resolved?.transport,
+          input.toolExecutionScope,
           input.requestContext?.abortSignal,
         )
         await append([
@@ -606,6 +609,7 @@ async function executeInvocation(
   ctx: ApplicationRuntimeContext,
   invocation: ToolInvocation,
   expectedTransport?: CompiledToolExposure['transport'],
+  scope?: ToolExecutionScope,
   externalSignal?: AbortSignal,
 ): Promise<ToolResult> {
   if (!expectedTransport)
@@ -643,7 +647,7 @@ async function executeInvocation(
   const { signal, dispose } = createToolSignal(externalSignal)
   try {
     return await raceWithAbort(
-      ctx.agentTools.execute(invocation, signal),
+      ctx.agentTools.execute(invocation, signal, scope),
       signal,
     )
   } catch (error) {

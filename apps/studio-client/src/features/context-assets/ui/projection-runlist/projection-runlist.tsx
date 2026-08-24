@@ -1,6 +1,6 @@
-import { ArrowDown, ArrowUp, Braces, ChevronDown, ChevronRight, Copy, Diamond, Eye, EyeOff, GripVertical, Pencil, Plus, Trash2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
-import type { PromptCompositionItem, PromptMessageBlock } from '../../../../entities/index.js'
+import { ArrowDown, ArrowUp, Bot, ChevronDown, ChevronRight, Code2, Cog, Copy, Diamond, Eye, EyeOff, GripVertical, History, Pencil, Plus, Trash2, UserRound, Wrench } from 'lucide-react'
+import { useLayoutEffect, useMemo, useState, type DragEvent } from 'react'
+import type { PromptCompositionEntry, PromptCompositionItem, PromptCompositionSlot, PromptMessageBlock } from '../../../../entities/index.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
 import type { MenuAction } from '../../../../shared/ui/menu-action.js'
 import {
@@ -16,16 +16,28 @@ import type { ProviderToolSurfaceItem } from '../../model/preset-tool-projection
 import { readSlotEntrySummary } from '../../model/projection-slot.js'
 import styles from './projection-runlist.module.scss'
 
-type DragTarget = { id: string; type: 'row' | 'zone' }
+type DragTarget = { id: string; type: 'row' | 'zone' | 'block' }
+type CompositionDropTarget = { id: string; position: 'before' | 'after' | 'inside' }
+type ProjectionDropTarget = CompositionDropTarget & { valid: boolean }
+
+function hideNativeDragPreview(event: DragEvent<HTMLElement>) {
+  const canvas = document.createElement('canvas')
+  canvas.width = 1
+  canvas.height = 1
+  event.dataTransfer.effectAllowed = 'move'
+  event.dataTransfer.setDragImage(canvas, 0, 0)
+}
 
 type ProjectionRunlistProps = {
   compositionItems?: PromptCompositionItem[]
   entries: ProjectionOrderEntry[]
   providerTools?: ProviderToolSurfaceItem[]
+  onSelectProviderTool?: (toolId: string) => void
   onReorder?: (draggedId: string, targetId: string) => void
   onReorderZone?: (draggedZoneId: string, targetZoneId: string) => void
   onSelect?: (id: string) => void
   selectedId?: string
+  selectedProviderToolId?: string
   selectedZoneId?: string
   showSummary?: boolean
   t: Translator
@@ -44,6 +56,7 @@ type ProjectionRunlistProps = {
   onAddZoneToMessageBlock?: (blockId: string) => void
   onDeleteCompositionItem?: (id: string) => void
   onMoveCompositionItem?: (id: string, direction: 'up' | 'down') => void
+  onDropCompositionItem?: (draggedId: string, targetId: string, position: CompositionDropTarget['position']) => void
 }
 
 function renderContextMenuItems(actions: MenuAction[]) {
@@ -209,42 +222,6 @@ function readProjectionZoneActions(
   return items
 }
 
-type MessageProjectionSegment = {
-  block?: PromptMessageBlock
-  zones: ReturnType<typeof buildProjectionZones>
-}
-
-function readMessageBlockByZone(items: PromptCompositionItem[] | undefined): Map<string, PromptMessageBlock> {
-  const result = new Map<string, PromptMessageBlock>()
-  for (const item of items ?? []) {
-    if (item.kind !== 'message') continue
-    for (const child of item.items) {
-      if (child.kind === 'zone' || child.kind === 'slot' && child.zoneId) {
-        result.set(child.kind === 'zone' ? child.id : child.zoneId!, item)
-      }
-    }
-  }
-  return result
-}
-
-function splitMessageProjectionSegments(
-  zones: ReturnType<typeof buildProjectionZones>,
-  compositionItems: PromptCompositionItem[] | undefined,
-): MessageProjectionSegment[] {
-  const blockByZone = readMessageBlockByZone(compositionItems)
-  const segments: MessageProjectionSegment[] = []
-  for (const zone of zones) {
-    const block = blockByZone.get(zone.id)
-    const previous = segments[segments.length - 1]
-    if (previous && previous.block?.id === block?.id) {
-      previous.zones.push(zone)
-    } else {
-      segments.push({ block, zones: [zone] })
-    }
-  }
-  return segments
-}
-
 function readMessageBlockActions(
   block: PromptMessageBlock,
   input: {
@@ -323,19 +300,44 @@ function messageRoleClass(role: PromptMessageBlock['role']): string {
         : styles.messageRoleUser
 }
 
-function messageRoleLabel(role: PromptMessageBlock['role']): string {
-  return role[0]!.toUpperCase() + role.slice(1)
+function renderMessageRoleIcon(role: PromptMessageBlock['role']) {
+  if (role === 'system') return <Cog aria-hidden="true" />
+  if (role === 'developer') return <Code2 aria-hidden="true" />
+  if (role === 'assistant') return <Bot aria-hidden="true" />
+  return <UserRound aria-hidden="true" />
+}
+
+function renderZoneIcon(zoneId: string) {
+  return zoneId === 'chat.history'
+    ? <History className={styles.zoneIcon} aria-hidden="true" />
+    : <Diamond className={styles.zoneIcon} aria-hidden="true" />
 }
 
 export function ProjectionRunlist(props: ProjectionRunlistProps) {
+  const compositionMode = props.compositionItems !== undefined
   const zones = useMemo(() => buildProjectionZones(props.entries, props.zoneDefinitions), [props.entries, props.zoneDefinitions])
-  const messageBlocks = useMemo(() => (props.compositionItems ?? []).filter((item): item is PromptMessageBlock => item.kind === 'message').sort((left, right) => left.orderIndex - right.orderIndex), [props.compositionItems])
+  const zonesById = useMemo(() => new Map(zones.map(zone => [zone.id, zone])), [zones])
+  const compositionItems = useMemo(() => [...(props.compositionItems ?? [])].sort((left, right) => left.orderIndex - right.orderIndex), [props.compositionItems])
+  const compositionSlotZoneIds = useMemo(() => new Set(compositionItems.flatMap(item => item.kind === 'message'
+    ? item.items.flatMap(child => child.kind === 'slot' && child.zoneId ? [child.zoneId] : [])
+    : item.kind === 'slot' && item.zoneId ? [item.zoneId] : [])), [compositionItems])
+  const visibleZones = useMemo(() => zones.filter(zone => !compositionMode || !compositionSlotZoneIds.has(zone.id)), [compositionMode, compositionSlotZoneIds, zones])
+  const displayPositionById = useMemo(() => new Map(zones
+    .flatMap(zone => zone.rows.flatMap(row => row.entries))
+    .map((entry, index) => [entry.node.id, index + 1])), [zones])
+  const compositionVisualIds = useMemo(() => compositionItems.flatMap(item => item.kind === 'message'
+    ? [item.id, ...[...item.items].sort((left, right) => left.orderIndex - right.orderIndex).map(child => child.id)]
+    : [item.id]), [compositionItems])
   const [collapsedIds, setCollapsedIds] = useState(() => new Set<string>())
   const [messageViewEnabled, setMessageViewEnabled] = useState(true)
   const [dragging, setDragging] = useState<DragTarget>()
-  const messageSegments = useMemo(() => messageViewEnabled
-    ? splitMessageProjectionSegments(zones, props.compositionItems)
-    : zones.map(zone => ({ zones: [zone] })), [messageViewEnabled, props.compositionItems, zones])
+  const [compositionDropTarget, setCompositionDropTarget] = useState<CompositionDropTarget>()
+  const [projectionDropTarget, setProjectionDropTarget] = useState<ProjectionDropTarget>()
+  const messageViewAvailable = Boolean(props.compositionItems)
+
+  useLayoutEffect(() => {
+    if (messageViewAvailable) setMessageViewEnabled(true)
+  }, [messageViewAvailable])
 
   const entryIndexMap = useMemo(() => {
     const map = new Map<string, number>()
@@ -364,42 +366,118 @@ export function ProjectionRunlist(props: ProjectionRunlistProps) {
   function drop(target: DragTarget) {
     if (!dragging || dragging.type !== target.type || dragging.id === target.id) return
     if (target.type === 'zone') props.onReorderZone?.(dragging.id, target.id)
-    else props.onReorder?.(dragging.id, target.id)
+    else if (target.type === 'row' && projectionDropTarget?.valid) props.onReorder?.(dragging.id, target.id)
+    setProjectionDropTarget(undefined)
+    setDragging(undefined)
+  }
+
+  function previewProjectionDrop(targetId: string) {
+    if (dragging?.type !== 'row' || dragging.id === targetId) return
+    const draggedIndex = entryIndexMap.get(dragging.id)
+    const targetIndex = entryIndexMap.get(targetId)
+    if (draggedIndex === undefined || targetIndex === undefined) return
+    const draggedEntry = props.entries[draggedIndex]
+    const targetEntry = props.entries[targetIndex]
+    setProjectionDropTarget({
+      id: targetId,
+      position: draggedIndex < targetIndex ? 'after' : 'before',
+      valid: draggedEntry?.sourceKind === 'actual' && targetEntry?.sourceKind === 'actual',
+    })
+  }
+
+  function readDropPosition(targetId: string): 'before' | 'after' {
+    const draggedIndex = compositionVisualIds.indexOf(dragging?.id ?? '')
+    const targetIndex = compositionVisualIds.indexOf(targetId)
+    return draggedIndex >= 0 && draggedIndex < targetIndex ? 'after' : 'before'
+  }
+
+  function previewCompositionDrop(event: DragEvent<HTMLElement>, targetId: string, position: CompositionDropTarget['position']) {
+    if (!dragging || dragging.id === targetId || !props.onDropCompositionItem) return
+    event.preventDefault()
+    event.stopPropagation()
+    setCompositionDropTarget({ id: targetId, position })
+  }
+
+  function commitCompositionDrop(event: DragEvent<HTMLElement>, targetId: string, position: CompositionDropTarget['position']) {
+    if (!dragging || dragging.id === targetId || !props.onDropCompositionItem) return
+    event.preventDefault()
+    event.stopPropagation()
+    props.onDropCompositionItem(dragging.id, targetId, position)
+    setCompositionDropTarget(undefined)
+    setDragging(undefined)
   }
 
   function renderZone(zone: (typeof zones)[number]) {
     const zoneIndex = zones.findIndex(candidate => candidate.id === zone.id)
     const collapsed = collapsedIds.has(zone.id)
     const editable = zone.rows.every(row => row.primary.sourceKind !== 'virtual')
-    const reorderable = Boolean(props.onReorderZone) && editable
+    const projectionReorderable = Boolean(props.onReorderZone) && editable
+    const compositionReorderable = Boolean(compositionMode && props.onDropCompositionItem) && editable
+    const reorderable = projectionReorderable || compositionReorderable
+    const compositionParent = compositionItems.find(item => item.kind === 'message' && item.items.some(child => child.id === zone.id))
+    const compositionIndex = compositionParent?.kind === 'message' ? compositionParent.items.findIndex(child => child.id === zone.id) : -1
+    const previousCompositionId = compositionParent?.kind === 'message' && compositionIndex > 0 ? compositionParent.items[compositionIndex - 1]?.id : undefined
+    const nextCompositionId = compositionParent?.kind === 'message' && compositionIndex >= 0 && compositionIndex < compositionParent.items.length - 1 ? compositionParent.items[compositionIndex + 1]?.id : undefined
     const prevZoneId = zoneIndex > 0 ? zones[zoneIndex - 1]?.id : undefined
     const nextZoneId = zoneIndex < zones.length - 1 ? zones[zoneIndex + 1]?.id : undefined
     const zoneActions = readProjectionZoneActions(zone.id, {
-      canMoveDown: Boolean(reorderable && nextZoneId),
-      canMoveUp: Boolean(reorderable && prevZoneId),
+      canMoveDown: Boolean(compositionMode ? nextCompositionId : reorderable && nextZoneId),
+      canMoveUp: Boolean(compositionMode ? previousCompositionId : reorderable && prevZoneId),
       onAddEntryInZone: editable ? props.onAddEntryInZone : undefined,
       onAddZone: editable ? props.onAddZone : undefined,
       onDeleteZone: editable ? props.onDeleteZone : undefined,
-      onMoveDown: nextZoneId && reorderable ? () => props.onReorderZone!(zone.id, nextZoneId) : undefined,
-      onMoveUp: prevZoneId && reorderable ? () => props.onReorderZone!(zone.id, prevZoneId) : undefined,
+      onMoveDown: compositionMode && nextCompositionId
+        ? () => props.onDropCompositionItem?.(zone.id, nextCompositionId, 'after')
+        : nextZoneId && reorderable ? () => props.onReorderZone!(zone.id, nextZoneId) : undefined,
+      onMoveUp: compositionMode && previousCompositionId
+        ? () => props.onDropCompositionItem?.(zone.id, previousCompositionId, 'before')
+        : prevZoneId && reorderable ? () => props.onReorderZone!(zone.id, prevZoneId) : undefined,
       t: props.t,
     })
 
     return (
       <section
         className={`${styles.zone} ${props.selectedZoneId === zone.id ? styles.selectedZone : ''}`}
-        draggable={reorderable}
+        data-drop-position={compositionDropTarget?.id === zone.id ? compositionDropTarget.position : undefined}
+        draggable={!compositionMode && projectionReorderable}
         key={zone.id}
         role="listitem"
+        onDragOver={event => {
+          if (dragging?.type !== 'zone') return
+          if (compositionMode) previewCompositionDrop(event, zone.id, readDropPosition(zone.id))
+          else event.preventDefault()
+        }}
+        onDrop={event => {
+          if (dragging?.type !== 'zone') return
+          if (compositionMode) commitCompositionDrop(event, zone.id, readDropPosition(zone.id))
+          else drop({ id: zone.id, type: 'zone' })
+        }}
         onDragEnd={() => setDragging(undefined)}
-        onDragOver={event => event.preventDefault()}
-        onDragStart={() => setDragging({ id: zone.id, type: 'zone' })}
-        onDrop={() => drop({ id: zone.id, type: 'zone' })}
+        onDragStart={event => {
+          hideNativeDragPreview(event)
+          if (!compositionMode && projectionReorderable) setDragging({ id: zone.id, type: 'zone' })
+        }}
       >
         <ContextMenu>
           <ContextMenuTrigger asChild disabled={zoneActions.length === 0}>
             <div className={styles.zoneHeader}>
-              {reorderable ? <GripVertical className={styles.dragHandle} aria-hidden="true" /> : null}
+              {reorderable ? (
+                <span
+                  className={styles.dragHandle}
+                  draggable={compositionMode}
+                  onDragEnd={() => {
+                    setDragging(undefined)
+                    setCompositionDropTarget(undefined)
+                  }}
+                  onDragStart={event => {
+                    hideNativeDragPreview(event)
+                    event.stopPropagation()
+                    if (compositionMode) setDragging({ id: zone.id, type: 'zone' })
+                  }}
+                >
+                  <GripVertical aria-hidden="true" />
+                </span>
+              ) : <span className={styles.dragHandleSpacer} aria-hidden="true" />}
               <span className={styles.positionSpacer} aria-hidden="true" />
               <span className={collapsed ? styles.zoneCollapsed : styles.zoneStart} aria-hidden="true" />
               <button
@@ -411,7 +489,7 @@ export function ProjectionRunlist(props: ProjectionRunlistProps) {
               >
                 {collapsed ? <ChevronRight aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
               </button>
-              <Diamond className={styles.zoneIcon} aria-hidden="true" />
+              {renderZoneIcon(zone.id)}
               {props.onSelectZone ? (
                 <button className={styles.zoneLabel} type="button" onClick={() => props.onSelectZone?.(zone.id)}>
                   <strong>{zone.displayName}</strong>
@@ -434,6 +512,8 @@ export function ProjectionRunlist(props: ProjectionRunlistProps) {
             {zone.rows.map((row, index) => (
               <ProjectionRow
                 collapsedIds={collapsedIds}
+                displayPositionById={displayPositionById}
+                dropTarget={projectionDropTarget}
                 getNeighbors={getNeighbors}
                 isLast={index === zone.rows.length - 1}
                 key={row.id}
@@ -442,7 +522,11 @@ export function ProjectionRunlist(props: ProjectionRunlistProps) {
                 t={props.t}
                 toggle={toggle}
                 onDeleteNode={props.onDeleteNode}
-                onDragEnd={() => setDragging(undefined)}
+                onDragEnd={() => {
+                  setDragging(undefined)
+                  setProjectionDropTarget(undefined)
+                }}
+                onDragOver={previewProjectionDrop}
                 onDragStart={id => setDragging({ id, type: 'row' })}
                 onDrop={id => drop({ id, type: 'row' })}
                 onDuplicateNode={props.onDuplicateNode}
@@ -459,11 +543,11 @@ export function ProjectionRunlist(props: ProjectionRunlistProps) {
     )
   }
 
-  function renderSegment(segment: MessageProjectionSegment, segmentIndex: number) {
-    if (!segment.block) return segment.zones.map(renderZone)
-    const blockIndex = messageBlocks.findIndex(block => block.id === segment.block?.id)
-    const actions = readMessageBlockActions(segment.block, {
-      canMoveDown: blockIndex >= 0 && blockIndex < messageBlocks.length - 1,
+  function renderBlock(block: PromptMessageBlock) {
+    const collapsed = collapsedIds.has(block.id)
+    const blockIndex = compositionItems.findIndex(item => item.id === block.id)
+    const actions = readMessageBlockActions(block, {
+      canMoveDown: blockIndex >= 0 && blockIndex < compositionItems.length - 1,
       canMoveUp: blockIndex > 0,
       onAddDirectEntry: props.onAddDirectEntry,
       onAddSlot: props.onAddSlotToMessageBlock,
@@ -472,28 +556,173 @@ export function ProjectionRunlist(props: ProjectionRunlistProps) {
       onMove: props.onMoveCompositionItem,
       t: props.t,
     })
+    const children = [...block.items].sort((left, right) => left.orderIndex - right.orderIndex)
+    const slotZoneIds = new Set(children.flatMap(item => item.kind === 'slot' && item.zoneId ? [item.zoneId] : []))
+    return (
+      <ContextMenu key={block.id}>
+        <ContextMenuTrigger asChild disabled={actions.length === 0}>
+          <section
+            aria-label={`${block.displayName}, ${block.role}, ${block.items.length} ${props.t('context.compositionItems')}`}
+            className={`${styles.messageBlock} ${messageRoleClass(block.role)}`}
+            data-drop-position={compositionDropTarget?.id === block.id ? compositionDropTarget.position : undefined}
+            data-message-block-id={block.id}
+            tabIndex={0}
+            onDragOver={event => {
+              if (dragging?.type === 'block') previewCompositionDrop(event, block.id, readDropPosition(block.id))
+              else if (dragging?.type === 'zone') previewCompositionDrop(event, block.id, 'inside')
+            }}
+            onDrop={event => {
+              if (dragging?.type === 'block') commitCompositionDrop(event, block.id, readDropPosition(block.id))
+              else if (dragging?.type === 'zone') commitCompositionDrop(event, block.id, 'inside')
+            }}
+            onClick={event => {
+              if (event.target === event.currentTarget) props.onSelect?.(block.id)
+            }}
+            onKeyDown={event => {
+              if (event.target !== event.currentTarget) return
+              if (event.key !== 'Enter' && event.key !== ' ') return
+              event.preventDefault()
+              props.onSelect?.(block.id)
+            }}
+          >
+            <button
+              aria-expanded={!collapsed}
+              aria-label={props.t(collapsed ? 'context.tree.expand' : 'context.tree.collapse', { label: block.displayName })}
+              className={styles.messageBlockIcon}
+              draggable
+              type="button"
+              onClick={() => toggle(block.id)}
+              onDragEnd={() => {
+                setDragging(undefined)
+                setCompositionDropTarget(undefined)
+              }}
+              onDragStart={event => {
+                hideNativeDragPreview(event)
+                event.stopPropagation()
+                setDragging({ id: block.id, type: 'block' })
+              }}
+            >
+              {renderMessageRoleIcon(block.role)}
+            </button>
+            {!collapsed ? (
+              <div className={styles.messageBlockZones}>
+                {children.map((item, index) => {
+                  if (item.kind === 'zone') {
+                    const zone = zonesById.get(item.id)
+                    if (!zone || slotZoneIds.has(item.id)) return null
+                    return renderZone(zone)
+                  }
+                  if (item.kind === 'slot') return renderCompositionSlot(item, false, index === children.length - 1)
+                  return renderCompositionEntry(item, index === children.length - 1)
+                })}
+              </div>
+            ) : null}
+          </section>
+        </ContextMenuTrigger>
+        {actions.length > 0 ? <ContextMenuContent>{renderContextMenuItems(actions)}</ContextMenuContent> : null}
+      </ContextMenu>
+    )
+  }
+
+  function renderCompositionSlot(slot: PromptCompositionSlot, root: boolean, isLast = false) {
+    const collapsed = collapsedIds.has(slot.id)
+    const zone = slot.zoneId ? zonesById.get(slot.zoneId) : undefined
+    const content = (
+      <>
+        <button className={styles.compositionNodeLabel} type="button" onClick={() => props.onSelect?.(slot.id)}>
+          <strong>{slot.displayName}</strong>
+          <small>{slot.messageMode === 'native' ? props.t('context.nativeMessageSlot') : slot.bindingId}</small>
+        </button>
+        {zone ? <span className={styles.zoneCount}>{zone.rows.length}</span> : null}
+      </>
+    )
+    if (!root) {
+      return (
+        <div
+          className={styles.compositionNode}
+          data-drop-position={compositionDropTarget?.id === slot.id ? compositionDropTarget.position : undefined}
+          key={slot.id}
+          onDragOver={event => {
+            if (dragging?.type === 'zone') previewCompositionDrop(event, slot.id, readDropPosition(slot.id))
+          }}
+          onDrop={event => {
+            if (dragging?.type === 'zone') commitCompositionDrop(event, slot.id, readDropPosition(slot.id))
+          }}
+        >
+          <span className={styles.dragHandleSpacer} aria-hidden="true" />
+          <span className={styles.positionSpacer} aria-hidden="true" />
+          <span className={isLast ? styles.guideEnd : styles.guideBranch} aria-hidden="true" />
+          <span className={styles.disclosureSpacer} aria-hidden="true" />
+          <span className={styles.nodeIconSpacer} aria-hidden="true" />
+          {content}
+        </div>
+      )
+    }
     return (
       <section
-        className={`${styles.messageBlock} ${messageRoleClass(segment.block.role)}`}
-        data-message-block-id={segment.block.id}
-        key={`${segment.block.id}:${segmentIndex}`}
+        className={`${styles.messageBlock} ${styles.nativeCompositionBlock}`}
+        data-drop-position={compositionDropTarget?.id === slot.id ? compositionDropTarget.position : undefined}
+        key={slot.id}
+        onDragOver={event => {
+          if (dragging?.type === 'block') previewCompositionDrop(event, slot.id, readDropPosition(slot.id))
+        }}
+        onDrop={event => {
+          if (dragging?.type === 'block') commitCompositionDrop(event, slot.id, readDropPosition(slot.id))
+        }}
       >
-        <ContextMenu>
-          <ContextMenuTrigger asChild disabled={actions.length === 0}>
-            <button
-              aria-label={segment.block.displayName}
-              className={styles.messageBlockHeader}
-              type="button"
-              onClick={() => props.onSelect?.(segment.block!.id)}
-            >
-              <span>{messageRoleLabel(segment.block.role)}</span>
-              <small>{segment.block.items.length} {props.t('context.compositionItems')}</small>
-            </button>
-          </ContextMenuTrigger>
-          {actions.length > 0 ? <ContextMenuContent>{renderContextMenuItems(actions)}</ContextMenuContent> : null}
-        </ContextMenu>
-        <div className={styles.messageBlockZones}>{segment.zones.map(renderZone)}</div>
+        <button
+          aria-expanded={!collapsed}
+          aria-label={props.t(collapsed ? 'context.tree.expand' : 'context.tree.collapse', { label: slot.displayName })}
+          className={styles.messageBlockIcon}
+          type="button"
+          onClick={() => toggle(slot.id)}
+        >
+          {collapsed ? <ChevronRight aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+        </button>
+        {!collapsed ? <div className={`${styles.compositionNode} ${styles.nativeCompositionContent}`}>{content}</div> : null}
       </section>
+    )
+  }
+
+  function renderCompositionEntry(item: PromptCompositionEntry, isLast = false) {
+    return (
+      <div
+        className={styles.compositionNode}
+        data-drop-position={compositionDropTarget?.id === item.id ? compositionDropTarget.position : undefined}
+        key={item.id}
+        onDragOver={event => {
+          if (dragging?.type === 'zone') previewCompositionDrop(event, item.id, readDropPosition(item.id))
+        }}
+        onDrop={event => {
+          if (dragging?.type === 'zone') commitCompositionDrop(event, item.id, readDropPosition(item.id))
+        }}
+      >
+        <span className={styles.dragHandleSpacer} aria-hidden="true" />
+        <span className={styles.positionSpacer} aria-hidden="true" />
+        <span className={isLast ? styles.guideEnd : styles.guideBranch} aria-hidden="true" />
+        <span className={styles.disclosureSpacer} aria-hidden="true" />
+        <span className={styles.nodeIconSpacer} aria-hidden="true" />
+        <button className={styles.compositionNodeLabel} type="button" onClick={() => props.onSelect?.(item.id)}>
+          <strong>{item.displayName}</strong>
+          <small>{item.source.kind === 'binding' ? item.source.bindingId : item.source.nodeId}</small>
+        </button>
+      </div>
+    )
+  }
+
+  function renderRootDropGap(targetId: string, position: 'before' | 'after', key: string) {
+    return (
+      <div
+        className={styles.compositionDropGap}
+        data-active={compositionDropTarget?.id === targetId && compositionDropTarget.position === position ? 'true' : undefined}
+        key={key}
+        onDragOver={event => {
+          if (dragging?.type === 'block' || dragging?.type === 'zone') previewCompositionDrop(event, targetId, position)
+        }}
+        onDrop={event => {
+          if (dragging?.type === 'block' || dragging?.type === 'zone') commitCompositionDrop(event, targetId, position)
+        }}
+      />
     )
   }
 
@@ -529,31 +758,50 @@ export function ProjectionRunlist(props: ProjectionRunlistProps) {
       ) : null}
 
       {props.providerTools?.length ? (
-        <section className={styles.providerTools} aria-label="Provider Tools">
-          <header className={styles.providerToolsHeader}>
-            <Braces aria-hidden="true" />
-            <div>
-              <strong>Tools</strong>
-              <small>Provider-managed surface · outside messages</small>
-            </div>
-            <span>{props.providerTools.length}</span>
-          </header>
-          <div className={styles.providerToolRows}>
+        <section className={styles.providerTools} aria-label={props.t('context.providerTools.label')}>
+          <button
+            aria-expanded={!collapsedIds.has('provider-tools')}
+            aria-label={props.t(collapsedIds.has('provider-tools') ? 'context.tree.expand' : 'context.tree.collapse', { label: props.t('context.providerTools.label') })}
+            className={styles.providerToolsIcon}
+            type="button"
+            onClick={() => toggle('provider-tools')}
+          >
+            <Wrench aria-hidden="true" />
+          </button>
+          {!collapsedIds.has('provider-tools') ? <div className={styles.providerToolRows}>
             {props.providerTools.map((tool, index) => (
-              <div className={styles.providerToolRow} key={tool.toolId}>
+              <button
+                aria-current={tool.toolId === props.selectedProviderToolId ? 'true' : undefined}
+                className={`${styles.providerToolRow} ${tool.toolId === props.selectedProviderToolId ? styles.providerToolSelected : ''}`}
+                key={tool.toolId}
+                type="button"
+                onClick={() => props.onSelectProviderTool?.(tool.toolId)}
+              >
                 <span>{String(index + 1).padStart(2, '0')}</span>
-                <div>
-                  <strong>{tool.name}</strong>
-                  <small>{tool.inputKind === 'structured' ? 'Native Function' : 'Provider Custom candidate'}</small>
-                </div>
-              </div>
+                <strong>{tool.name}</strong>
+              </button>
             ))}
-          </div>
+          </div> : null}
         </section>
       ) : null}
 
       <div className={styles.zones} role="list">
-        {messageSegments.flatMap(renderSegment)}
+        {messageViewEnabled && props.compositionItems
+          ? compositionItems.flatMap((item, index) => {
+              const rendered = item.kind === 'message'
+                ? renderBlock(item)
+                : item.kind === 'slot'
+                  ? renderCompositionSlot(item, true)
+                  : item.kind === 'zone'
+                    ? zonesById.has(item.id) ? renderZone(zonesById.get(item.id)!) : null
+                    : renderCompositionEntry(item)
+              return [
+                renderRootDropGap(item.id, 'before', `drop-before:${item.id}`),
+                rendered,
+                ...(index === compositionItems.length - 1 ? [renderRootDropGap(item.id, 'after', `drop-after:${item.id}`)] : []),
+              ]
+            })
+          : visibleZones.map(renderZone)}
       </div>
 
       {props.onAddZone ? (
@@ -574,10 +822,13 @@ export function ProjectionRunlist(props: ProjectionRunlistProps) {
 
 function ProjectionRow(props: {
   collapsedIds: Set<string>
+  displayPositionById: Map<string, number>
+  dropTarget?: ProjectionDropTarget
   getNeighbors: (id: string) => { nextId?: string; prevId?: string }
   isLast: boolean
   onDeleteNode?: (id: string) => void
   onDragEnd(): void
+  onDragOver(id: string): void
   onDragStart(id: string): void
   onDrop(id: string): void
   onDuplicateNode?: (id: string) => void
@@ -614,6 +865,8 @@ function ProjectionRow(props: {
         <ContextMenuTrigger asChild disabled={primaryActions.length === 0}>
           <div
             className={`${styles.row} ${selected ? styles.selected : ''}`}
+            data-drop-position={props.dropTarget?.id === primary.node.id ? props.dropTarget.position : undefined}
+            data-drop-state={props.dropTarget?.id === primary.node.id && !props.dropTarget.valid ? 'invalid' : undefined}
             draggable={props.reorderable}
             onDragEnd={event => {
               event.stopPropagation()
@@ -622,8 +875,10 @@ function ProjectionRow(props: {
             onDragOver={event => {
               event.preventDefault()
               event.stopPropagation()
+              props.onDragOver(primary.node.id)
             }}
             onDragStart={event => {
+              hideNativeDragPreview(event)
               event.stopPropagation()
               props.onDragStart(primary.node.id)
             }}
@@ -635,7 +890,7 @@ function ProjectionRow(props: {
             {props.reorderable ? <GripVertical className={styles.dragHandle} aria-hidden="true" /> : null}
             {props.row.type === 'slot'
               ? <span className={styles.positionSpacer} aria-hidden="true" />
-              : <span className={styles.position}>{String(primary.position).padStart(2, '0')}</span>}
+              : <span className={styles.position}>{String(props.displayPositionById.get(primary.node.id) ?? 0).padStart(2, '0')}</span>}
             <span className={props.isLast ? styles.guideEnd : styles.guideBranch} aria-hidden="true" />
             {props.row.type === 'slot' ? (
               <button
@@ -692,7 +947,9 @@ function ProjectionRow(props: {
                 <ContextMenuTrigger asChild disabled={entryActions.length === 0}>
                   <div
                     className={`${styles.row} ${styles.slotEntry} ${entry.node.id === props.selectedId ? styles.selected : ''}`}
-                    draggable={props.reorderable}
+                    data-drop-position={props.dropTarget?.id === entry.node.id ? props.dropTarget.position : undefined}
+                    data-drop-state={props.dropTarget?.id === entry.node.id && !props.dropTarget.valid ? 'invalid' : undefined}
+                    draggable={props.reorderable && entry.sourceKind === 'actual'}
                     onDragEnd={event => {
                       event.stopPropagation()
                       props.onDragEnd()
@@ -700,8 +957,10 @@ function ProjectionRow(props: {
                     onDragOver={event => {
                       event.preventDefault()
                       event.stopPropagation()
+                      props.onDragOver(entry.node.id)
                     }}
                     onDragStart={event => {
+                      hideNativeDragPreview(event)
                       event.stopPropagation()
                       props.onDragStart(entry.node.id)
                     }}
@@ -711,7 +970,7 @@ function ProjectionRow(props: {
                     }}
                   >
                     {props.reorderable ? <GripVertical className={styles.dragHandle} aria-hidden="true" /> : null}
-                    <span className={styles.position}>{String(entry.position).padStart(2, '0')}</span>
+                    <span className={styles.position}>{String(props.displayPositionById.get(entry.node.id) ?? 0).padStart(2, '0')}</span>
                     <span className={props.isLast ? styles.guideEmpty : styles.guidePass} aria-hidden="true" />
                     <span className={index === props.row.entries.length - 1 ? styles.guideEnd : styles.guideBranch} aria-hidden="true" />
                     {props.onSelect ? (

@@ -69,7 +69,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
         <div className={styles.metadataScroller}>
           <section className={styles.configGrid} aria-label={props.t('context.configLabel')}>
         <div>
-            <dt><Tag aria-hidden="true" />Label</dt>
+            <dt><Tag aria-hidden="true" />{props.t('context.metadata.label')}</dt>
           <dd>
             <input
               className={styles.inlineInput}
@@ -81,7 +81,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
           </dd>
         </div>
         <div>
-            <dt><Info aria-hidden="true" />Meta</dt>
+            <dt><Info aria-hidden="true" />{props.t('context.metadata.meta')}</dt>
           <dd>
             <input
               className={styles.inlineInput}
@@ -201,7 +201,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
           {isEntry ? (
             <section className={styles.configGrid} aria-label={props.t('context.configLabel')}>
           <div>
-            <dt><MapPin aria-hidden="true" />Zone ID</dt>
+            <dt><MapPin aria-hidden="true" />{props.t('context.metadata.zoneId')}</dt>
             <dd>
               <input
                 className={styles.inlineInput}
@@ -210,7 +210,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
                 value={props.node.projection?.zoneId ?? ''}
                 onChange={event => updateProjection({ zoneId: event.target.value })}
                 onBlur={event => updateProjection({ zoneId: event.target.value }, true)}
-                placeholder="Enter or select a zone..."
+                placeholder={props.t('context.metadata.zonePlaceholder')}
               />
               <datalist id="builtin-zones">
                 <option value="preset.system" />
@@ -225,7 +225,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
             </dd>
           </div>
           <div>
-            <dt><ListOrdered aria-hidden="true" />Order Hint</dt>
+            <dt><ListOrdered aria-hidden="true" />{props.t('context.metadata.orderHint')}</dt>
             <dd>
               <input
                 className={styles.inlineInput}
@@ -238,7 +238,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
             </dd>
           </div>
           <div>
-            <dt><KeyRound aria-hidden="true" />Slot Key</dt>
+            <dt><KeyRound aria-hidden="true" />{props.t('context.metadata.slotKey')}</dt>
             <dd>
               <input
                 className={styles.inlineInput}
@@ -250,7 +250,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
             </dd>
           </div>
           <div>
-            <dt><RefreshCw aria-hidden="true" />Lifecycle</dt>
+            <dt><RefreshCw aria-hidden="true" />{props.t('context.metadata.lifecycle')}</dt>
             <dd>
               <select
                 className={styles.inlineInput}
@@ -258,10 +258,10 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
                 value={props.node.projection?.lifecycle ?? 'always'}
                 onChange={event => updateProjection({ lifecycle: event.target.value }, true)}
               >
-                <option value="always">always</option>
-                <option value="keyword">keyword</option>
-                <option value="manual">manual</option>
-                <option value="current-turn">current-turn</option>
+                <option value="always">{props.t('context.activation.always')}</option>
+                <option value="keyword">{props.t('context.activation.keyword')}</option>
+                <option value="manual">{props.t('context.activation.manual')}</option>
+                <option value="current-turn">{props.t('context.metadata.lifecycleCurrentTurn')}</option>
               </select>
             </dd>
           </div>

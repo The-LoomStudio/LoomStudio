@@ -86,111 +86,223 @@
 }
 
 .messageBlock {
+  --loom-message-block-color: var(--loom-color-accent);
+
   margin: 4px 0 8px;
-  border: 1px solid var(--loom-color-border);
-  border-radius: var(--loom-radius-surface);
-  background: color-mix(in srgb, var(--loom-color-surface-inset) 32%, transparent);
-}
-
-.messageBlockHeader {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  width: 100%;
-  min-height: 28px;
+  position: relative;
   border: 0;
-  border-bottom: 1px solid var(--loom-color-border);
-  padding: 4px 8px;
-  color: var(--loom-color-text-muted);
+  border-radius: var(--loom-radius-message);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: hidden;
+  padding: 6px 7px;
+  background: color-mix(in srgb, var(--loom-message-block-color) 10%, var(--loom-color-surface-inset));
+}
+
+.messageBlock:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--loom-message-block-color) 72%, transparent);
+  outline-offset: -2px;
+}
+
+.messageBlockIcon {
+  width: var(--loom-icon-size-4);
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  padding: 0;
+  color: var(--loom-message-block-color);
   background: transparent;
-  font-size: var(--loom-font-size-2);
-  font-weight: var(--loom-font-weight-7);
-  text-align: left;
-  cursor: pointer;
 }
 
-.messageBlockHeader:hover {
-  background: color-mix(in srgb, var(--loom-color-surface-hover) 60%, transparent);
+.messageBlockIcon:hover:not(:disabled),
+.messageBlockIcon:focus-visible {
+  color: var(--loom-message-block-color);
+  background: transparent;
+  box-shadow: none;
 }
 
-.messageBlockHeader small {
-  color: var(--loom-color-text-subtle);
-  font-family: var(--loom-font-family-mono);
-  font-size: var(--loom-font-size-1);
-  font-weight: var(--loom-font-weight-4);
+.messageBlockIcon svg {
+  width: var(--loom-icon-size-5);
+  height: var(--loom-icon-size-5);
+  stroke-width: 1.45;
 }
 
 .messageBlockZones {
   min-width: 0;
-  padding: 0 5px 4px;
+  padding: 0;
 }
 
-.messageRoleSystem .messageBlockHeader { color: var(--loom-color-role-system, #cba6f7); }
-.messageRoleDeveloper .messageBlockHeader { color: var(--loom-color-role-developer, #89b4fa); }
-.messageRoleAssistant .messageBlockHeader { color: var(--loom-color-role-assistant, #fab387); }
-.messageRoleUser .messageBlockHeader { color: var(--loom-color-role-user, #a6e3a1); }
-
-.providerTools {
-  margin: 4px 0 10px;
-  border: 1px solid color-mix(in srgb, var(--loom-color-accent) 42%, var(--loom-color-border));
-  border-radius: var(--loom-radius-surface);
-  background: color-mix(in srgb, var(--loom-color-accent) 7%, transparent);
+.nativeCompositionBlock {
+  --loom-message-block-color: var(--loom-color-role-assistant, #fab387);
 }
 
-.providerToolsHeader {
+.compositionNode {
+  position: relative;
+  min-width: 0;
+  min-height: 36px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 36px;
-  padding: 5px 8px;
-  border-bottom: 1px solid var(--loom-color-border);
-  color: var(--loom-color-accent-strong);
+  gap: 5px;
+  border-radius: var(--loom-radius-surface);
+  padding: 3px 5px;
+  color: var(--loom-color-text-muted);
 }
 
-.providerToolsHeader svg {
+.compositionNode:hover {
+  color: var(--loom-color-text);
+  background: color-mix(in srgb, var(--loom-color-surface) 48%, transparent);
+}
+
+.compositionNode > svg {
   width: var(--loom-icon-size-4);
   height: var(--loom-icon-size-4);
+  color: var(--loom-message-block-color, var(--loom-color-text-subtle));
 }
 
-.providerToolsHeader div,
-.providerToolRow div {
-  display: grid;
+.nativeCompositionContent {
+  padding-left: 0;
+}
+
+.dragHandleSpacer,
+.nodeIconSpacer {
+  flex: 0 0 var(--loom-icon-size-4);
+  width: var(--loom-icon-size-4);
+}
+
+.disclosureSpacer {
+  flex: 0 0 18px;
+  width: 18px;
+}
+
+.compositionDropGap {
+  position: relative;
+  min-height: 8px;
+  margin: -4px 0;
+}
+
+.compositionDropGap[data-active='true']::before {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  left: 4px;
+  border-top: 2px solid var(--loom-color-accent-strong);
+  content: '';
+}
+
+.compositionNodeLabel {
+  min-width: 0;
   flex: 1;
+  display: grid;
+  gap: 1px;
+  border: 0;
+  padding: 2px 0;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+}
+
+.compositionNodeLabel:hover:not(:disabled),
+.compositionNodeLabel:focus-visible {
+  color: inherit;
+  background: transparent;
+  box-shadow: none;
+}
+
+.compositionNodeLabel strong,
+.compositionNodeLabel small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compositionNodeLabel small {
+  color: var(--loom-color-text-subtle);
+  font-family: var(--loom-font-family-mono);
+  font-size: var(--loom-font-size-1);
+}
+
+.messageRoleSystem { --loom-message-block-color: var(--loom-color-role-system, #cba6f7); }
+.messageRoleDeveloper { --loom-message-block-color: var(--loom-color-role-developer, #89b4fa); }
+.messageRoleAssistant { --loom-message-block-color: var(--loom-color-role-assistant, #fab387); }
+.messageRoleUser { --loom-message-block-color: var(--loom-color-role-user, #a6e3a1); }
+
+.providerTools {
+  --loom-message-block-color: var(--loom-color-accent-strong);
+
+  margin: 4px 0 10px;
+  border: 0;
+  border-radius: var(--loom-radius-message);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: hidden;
+  padding: 6px 7px;
+  background: color-mix(in srgb, var(--loom-message-block-color) 10%, var(--loom-color-surface-inset));
+}
+
+.providerToolsIcon {
+  width: var(--loom-icon-size-4);
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  padding: 0;
+  color: var(--loom-message-block-color);
+  background: transparent;
+}
+
+.providerToolsIcon:hover:not(:disabled),
+.providerToolsIcon:focus-visible {
+  color: var(--loom-message-block-color);
+  background: transparent;
+  box-shadow: none;
+}
+
+.providerToolsIcon svg {
+  width: var(--loom-icon-size-5);
+  height: var(--loom-icon-size-5);
+  stroke-width: 1.45;
+}
+
+.providerToolRows {
   min-width: 0;
 }
 
-.providerToolsHeader strong {
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+.providerToolRow {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  min-height: 34px;
+  border: 0;
+  border-radius: var(--loom-radius-surface);
+  padding: 3px 5px;
+  color: var(--loom-color-text-muted);
+  text-align: left;
+  background: transparent;
 }
 
-.providerToolsHeader small,
-.providerToolsHeader span,
-.providerToolRow small,
+.providerToolRow:hover:not(:disabled),
+.providerToolRow:focus-visible,
+.providerToolSelected {
+  color: var(--loom-color-text);
+  background: color-mix(in srgb, var(--loom-color-surface) 48%, transparent);
+  box-shadow: none;
+}
+
+.providerToolRow strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .providerToolRow > span {
   color: var(--loom-color-text-subtle);
   font-family: var(--loom-font-family-mono);
   font-size: var(--loom-font-size-1);
   font-weight: var(--loom-font-weight-4);
-}
-
-.providerToolRows {
-  padding: 3px 7px 5px;
-}
-
-.providerToolRow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 34px;
-  padding: 3px 4px;
-}
-
-.providerToolRow strong,
-.providerToolRow small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .providerToolRow strong {
@@ -204,7 +316,49 @@
 }
 
 .zone {
+  position: relative;
   min-width: 0;
+}
+
+.messageBlock[data-drop-position='before']::before,
+.messageBlock[data-drop-position='after']::after,
+.zone[data-drop-position='before']::before,
+.zone[data-drop-position='after']::after,
+.row[data-drop-position='before']::before,
+.row[data-drop-position='after']::after,
+.compositionNode[data-drop-position='before']::before,
+.compositionNode[data-drop-position='after']::after {
+  position: absolute;
+  z-index: 3;
+  right: 4px;
+  left: 4px;
+  border-top: 2px solid var(--loom-color-accent-strong);
+  content: '';
+}
+
+.messageBlock[data-drop-position='before']::before,
+.zone[data-drop-position='before']::before,
+.row[data-drop-position='before']::before,
+.compositionNode[data-drop-position='before']::before {
+  top: 0;
+}
+
+.messageBlock[data-drop-position='after']::after,
+.zone[data-drop-position='after']::after,
+.row[data-drop-position='after']::after,
+.compositionNode[data-drop-position='after']::after {
+  bottom: 0;
+}
+
+.messageBlock[data-drop-position='inside'] {
+  outline: 1px solid var(--loom-color-accent-strong);
+  outline-offset: -2px;
+}
+
+.row[data-drop-state='invalid']::before,
+.row[data-drop-state='invalid']::after {
+  border-color: var(--loom-color-text-subtle);
+  opacity: 0.55;
 }
 
 .zoneHeader,
@@ -329,6 +483,7 @@
 
 .zoneIcon,
 .dragHandle,
+.dragHandle svg,
 .disclosure svg {
   width: var(--loom-icon-size-4);
   height: var(--loom-icon-size-4);
@@ -388,8 +543,15 @@
 
 .dragHandle {
   flex: 0 0 auto;
+  display: grid;
+  place-items: center;
   color: var(--loom-color-text-subtle);
+  cursor: grab;
   opacity: 0;
+}
+
+.dragHandle:active {
+  cursor: grabbing;
 }
 
 .zoneHeader:hover .dragHandle,
