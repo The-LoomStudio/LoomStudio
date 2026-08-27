@@ -14,7 +14,8 @@
     { "path": "../narrative-store" },
     { "path": "../prompt-resource-store" },
     { "path": "../secret-store" },
-    { "path": "../shared" }
+    { "path": "../shared" },
+    { "path": "../state-store" }
   ],
   "include": ["src/**/*.ts"]
 }

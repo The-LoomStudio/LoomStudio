@@ -24,6 +24,28 @@
   flex: 0 0 auto;
 }
 
+.breadcrumb {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--loom-color-text);
+  font-size: var(--loom-font-size-3);
+  font-weight: var(--loom-font-weight-5);
+}
+
+.breadcrumb > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breadcrumb > span:first-child {
+  flex: 0 0 auto;
+  color: var(--loom-color-text-subtle);
+  opacity: 0.6;
+}
+
 .resourceSelect {
   min-width: 0;
   max-width: 240px;

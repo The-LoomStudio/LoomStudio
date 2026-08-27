@@ -19,6 +19,7 @@ import { createPromptResourceStore, type PromptResourceStore } from '@loom-studi
 import { createKeyringSecretBackend, createSecretStore, type SecretBackend } from '@loom-studio/secret-store'
 import { createLoomRunner } from '@loom-studio/loom-runner'
 import { createId, nowIso } from '@loom-studio/shared'
+import { createStateStore } from '@loom-studio/state-store'
 import { createInMemoryTraceAuditStore } from '@loom-studio/trace-audit'
 import { join, resolve } from 'node:path'
 import { withAiGatewayLogging } from './ai-gateway-logging.js'
@@ -106,12 +107,14 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
   })
   let agents
   let narratives
+  let states
   let assets: AssetStore | undefined
   let promptResources: PromptResourceStore | undefined
   try {
     promptResources = dataEngine ? createPromptResourceStore({ engine: dataEngine, createId, now: nowIso }) : undefined
     agents = dataEngine ? createAgentStore({ engine: dataEngine, createId, now: nowIso }) : undefined
     narratives = dataEngine ? createNarrativeStore({ engine: dataEngine, createId, now: nowIso }) : undefined
+    states = dataEngine ? createStateStore({ engine: dataEngine, createId, now: nowIso }) : undefined
     if (dataEngine) {
       const blobs = createBlobStore({
         engine: dataEngine,
@@ -135,6 +138,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     documents,
     narratives,
     promptResources,
+    states,
     sourceArtifacts: assets
       ? {
         preserve: async input => {
@@ -247,7 +251,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
   })
   const rpcRouter = createStudioRpcRouter({ applicationRuntime, kernel, logs: options.logs, networkSettings })
   const readCardExport = async (cardId: string) => {
-    const { artifact } = await applicationRuntime.exportCardArtifact({ cardId })
+    const { artifact } = await applicationRuntime.exportCardBundle({ cardId })
     const readMedia = async (assetId: string | undefined): Promise<CardBundleMedia | undefined> => {
       if (!assetId) return undefined
       const media = await assets?.getMediaAsset(assetId)

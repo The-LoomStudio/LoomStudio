@@ -4,7 +4,7 @@ import type { Card } from './card.js'
 import type { ContextAssetNode } from './context-asset.js'
 
 export type CardBundleArtifact = {
-  schemaVersion: 1
+  schemaVersion: 2
   artifactId: string
   displayName: string
   description?: string
@@ -17,6 +17,19 @@ export type CardBundleArtifact = {
     settingLayer?: ClientJsonValue
   }
   contextAssets: ContextAssetNode[]
+  stateTemplates?: Array<{
+    id: string
+    templateVersion: number
+    schema: Record<string, ClientJsonValue>
+    initial: Record<string, ClientJsonValue>
+    label?: string
+  }>
+  timelineStateBindings?: Array<{
+    path: string
+    templateId: string
+    templateVersion: number
+    initial?: Record<string, ClientJsonValue>
+  }>
   metadata?: Record<string, ClientJsonValue>
 }
 

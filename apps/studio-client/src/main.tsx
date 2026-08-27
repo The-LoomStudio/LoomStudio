@@ -68,6 +68,8 @@ async function startStudioClient(rootElement: HTMLElement): Promise<void> {
             <Route path="/studio/resources/:cardId?/:assetId?" element={studio} />
             <Route path="/studio/presets/:cardId?/:assetId?" element={studio} />
             <Route path="/studio/models" element={studio} />
+            <Route path="/studio/agents" element={studio} />
+            <Route path="/studio/history" element={studio} />
             <Route path="/studio/debug" element={studio} />
             <Route path="/studio/logs" element={studio} />
             <Route path="/studio/settings" element={studio} />

@@ -68,6 +68,32 @@ describe('Data Layer shared transaction atomicity', () => {
     await assertDeleteState(fixture)
     expect(changesetCount(fixture.engine)).toBe(beforeChangesets)
   })
+
+  it('rolls back Timeline State Scope and Revision when Narrative creation fails', async () => {
+    const fixture = createFixture()
+    const importRuntime = createApplicationRuntime({
+      dataEngine: fixture.engine,
+      documents: fixture.documents,
+      promptResources: fixture.promptResources,
+      narratives: fixture.narratives,
+    })
+    const imported = await importRuntime.importCardBundle({ artifact: createStatefulArtifact() })
+    const beforeScopes = tableCount(fixture.engine, 'state_scopes')
+    const beforeRevisions = tableCount(fixture.engine, 'state_revisions')
+    const beforeTimelines = tableCount(fixture.engine, 'narrative_timelines')
+    const runtime = createApplicationRuntime({
+      dataEngine: fixture.engine,
+      documents: fixture.documents,
+      promptResources: fixture.promptResources,
+      narratives: withFailingNarrativeCreate(fixture.narratives),
+    })
+
+    await expect(runtime.createNarrativeTimeline({ cardId: imported.card.id }))
+      .rejects.toThrow('injected narrative create failure')
+    expect(tableCount(fixture.engine, 'state_scopes')).toBe(beforeScopes)
+    expect(tableCount(fixture.engine, 'state_revisions')).toBe(beforeRevisions)
+    expect(tableCount(fixture.engine, 'narrative_timelines')).toBe(beforeTimelines)
+  })
 })
 
 function createFixture() {
@@ -94,7 +120,7 @@ async function createDeleteFixture() {
   await runtime.replaceSettingMounts({ source: { kind: 'preset', id: preset.resource.id }, settingResourceIds: [setting.resource.id] })
   const card = await runtime.createCard({ name: 'Atomic Card' })
   await runtime.updateCardPromptResources({ cardId: card.card.id, promptResourceIds: [setting.resource.id] })
-  const timeline = await runtime.createNarrativeTimelineFromCard({ cardId: card.card.id })
+  const timeline = await runtime.createNarrativeTimeline({ cardId: card.card.id })
   return {
     ...fixture,
     cardId: card.card.id,
@@ -141,13 +167,27 @@ function withFailingNarrativeUpdate(narratives: NarrativeStore): NarrativeStore 
   }
 }
 
+function withFailingNarrativeCreate(narratives: NarrativeStore): NarrativeStore {
+  return {
+    ...narratives,
+    transaction: dataTx => ({
+      ...narratives.transaction(dataTx),
+      createTimeline: () => { throw new Error('injected narrative create failure') },
+    }),
+  }
+}
+
 function changesetCount(engine: ReturnType<typeof createSqliteDataEngine>): number {
   return (engine.database.prepare('SELECT COUNT(*) AS count FROM changesets').get() as { count: number }).count
 }
 
+function tableCount(engine: ReturnType<typeof createSqliteDataEngine>, table: string): number {
+  return (engine.database.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }).count
+}
+
 function createArtifact(): CardBundleArtifact {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     artifactId: 'atomic-card-bundle',
     displayName: 'Atomic Card Bundle',
     card: { name: 'Atomic Import' },
@@ -158,5 +198,21 @@ function createArtifact(): CardBundleArtifact {
       kind: 'module',
       children: [],
     }],
+  }
+}
+
+function createStatefulArtifact(): CardBundleArtifact {
+  return {
+    schemaVersion: 2,
+    artifactId: 'atomic-state-card',
+    displayName: 'Atomic State Card',
+    card: { name: 'Atomic State' },
+    contextAssets: [],
+    stateTemplates: [{
+      id: 'template.atomic', templateVersion: 1,
+      schema: { type: 'object', properties: { gold: { type: 'number' } }, required: ['gold'] },
+      initial: { gold: 10 },
+    }],
+    timelineStateBindings: [{ path: 'player', templateId: 'template.atomic', templateVersion: 1 }],
   }
 }

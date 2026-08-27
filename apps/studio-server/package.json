@@ -26,6 +26,7 @@
     "@loom-studio/prompt-resource-store": "workspace:*",
     "@loom-studio/secret-store": "workspace:*",
     "@loom-studio/shared": "workspace:*",
+    "@loom-studio/state-store": "workspace:*",
     "@loom-studio/trace-audit": "workspace:*",
     "@loom-studio/transport": "workspace:*",
     "fflate": "0.8.3"

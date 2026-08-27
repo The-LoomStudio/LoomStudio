@@ -78,6 +78,7 @@ export type PromptBuildTrace = {
   agentSessionId?: string
   timelineId?: string
   branchId?: string
+  variables?: import('./variables.js').VariableRenderTrace
   initialFragmentCount: number
   finalFragmentCount: number
   messageFragmentCount: number

@@ -11,6 +11,9 @@ import { AgentPanel } from '../widgets/agent-panel/agent-panel.js'
 import { InspectorPanel } from '../widgets/inspector-panel/inspector-panel.js'
 import { LogViewer } from '../widgets/log-viewer/log-viewer.js'
 import { SettingsPanel } from '../widgets/settings-panel/settings-panel.js'
+import { SessionsPanel } from '../widgets/sessions-panel/sessions-panel.js'
+import { StateVariablesPanel } from '../features/state-variables/ui/state-variables-panel.js'
+import { TextTransformPanel } from '../features/text-transforms/ui/text-transform-panel.js'
 
 import { NotificationToaster } from '../shared/ui/notification-toaster/notification-toaster.js'
 import { toast } from 'sonner'
@@ -25,6 +28,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
   const state = useStudioState(props.transportLogger)
   const [composerHeight, setComposerHeight] = useState(0)
   const [agentExpanded, setAgentExpanded] = useState(false)
+  const [agentExpansionHeight, setAgentExpansionHeight] = useState(320)
   const timelineRouteRequestRef = useRef(0)
   const navigation = useStudioNavigation()
   const uiScale = useStudioLayoutStore(current => current.uiScale)
@@ -37,9 +41,9 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
   const cardsBusy = bootstrapBusy || state.operationPending.cards.pendingCount > 0
   const providerBusy = bootstrapBusy || state.operationPending['provider-settings'].pendingCount > 0
   const agentProfileBusy = bootstrapBusy || state.operationPending['agent-profiles'].pendingCount > 0
-  const agentChatBusy = state.operationPending['agent-chat'].pendingCount > 0
   const narrativeCharacterName = state.selectedCard?.name
   const sessionBusy = state.operationPending.session.pendingCount > 0
+  const agentChatBusy = state.operationPending['agent-chat'].pendingCount > 0 || sessionBusy
   const mutationBusy = state.operationPending.mutation.pendingCount > 0
 
   function focusHistoryAsset(target: Awaited<ReturnType<typeof state.undoEdit>>) {
@@ -131,6 +135,24 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         onUpdate={state.updateAgentProfile}
       />
     ),
+    sessions: () => (
+      <SessionsPanel
+        activeBranch={state.branch}
+        activeTimeline={state.narrativeTimeline}
+        agentChatSession={state.agentChatSession}
+        agentProfiles={state.agentProfiles}
+        branches={state.branches}
+        narrativeAgentSession={state.narrativeAgentSession}
+        selectedCardName={state.selectedCardDetails?.name ?? state.selectedCard?.name}
+        t={state.t}
+        timelines={state.cardTimelines}
+        onOpenTimeline={timeline => {
+          void state.activateTimeline(timeline.id).then(branchId => {
+            if (branchId) navigation.openNarrative(timeline.id, branchId)
+          })
+        }}
+      />
+    ),
     character: active => (
       <CharacterPanel
         active={active}
@@ -151,12 +173,20 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         onDeleteCards={state.deleteCards}
         onExportCard={state.exportCard}
         onImportCards={state.importCards}
-        onSelectCard={state.setSelectedCardId}
+        onSelectCard={cardId => {
+          state.setSelectedCardId(cardId)
+          void state.refreshCardTimelines(cardId).then(timelines => {
+            const latest = [...timelines].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]
+            if (!latest || latest.id === state.narrativeTimeline?.id) return
+            void state.activateTimeline(latest.id)
+          })
+        }}
         onOpenTimeline={timeline => {
           void state.activateTimeline(timeline.id).then(branchId => {
             if (branchId) navigation.openNarrative(timeline.id, branchId)
           })
         }}
+        onOpenStatePanel={() => useStudioPanelStore.getState().setActivePanel('state')}
         onUpdateCardMedia={state.updateCardMedia}
         onUpdateCard={state.updateCard}
         routeCardId={navigation.route.panel === 'character' ? navigation.route.cardId : undefined}
@@ -169,7 +199,6 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         settingMounts={state.settingMounts}
         tools={state.agentTools}
         toolMounts={state.presetToolMounts}
-        onReplaceSettingMounts={state.replaceSettingMounts}
         onReplaceToolMounts={state.replacePresetToolMounts}
         onUpdateTool={state.updateAgentTool}
         routeAssetId={navigation.route.panel === 'preset' ? navigation.route.assetId : undefined}
@@ -179,8 +208,33 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
     resource: () => (
       <ContextWorkbench
         {...contextAssetEditorProps}
+        card={state.selectedCardDetails}
+        settingMounts={state.settingMounts}
+        onReplaceSettingMounts={state.replaceSettingMounts}
+        onReplaceCardResources={state.replaceCardPromptResources}
         routeAssetId={navigation.route.panel === 'resource' ? navigation.route.assetId : undefined}
         initialSearchQuery={navigation.route.panel === 'resource' ? navigation.searchQuery : ''}
+      />
+    ),
+    state: () => (
+      <StateVariablesPanel
+        api={state.statesApi}
+        card={state.selectedCardDetails}
+        refreshToken={state.lastRun?.runId}
+        timelineTarget={state.narrativeTimeline && state.branch ? {
+          scope: 'timeline', timelineId: state.narrativeTimeline.id, branchId: state.branch.id,
+        } : undefined}
+        onUpdateCardConfig={state.updateCardStateConfig}
+      />
+    ),
+    'text-transform': () => (
+      <TextTransformPanel
+        api={state.textTransformsApi}
+        source={state.narrativeTimeline && state.branch
+          ? { kind: 'narrative', timelineId: state.narrativeTimeline.id, branchId: state.branch.id }
+          : state.agentChatSession
+            ? { kind: 'agent-session', sessionId: state.agentChatSession.id }
+            : undefined}
       />
     ),
     inspector: () => (
@@ -253,6 +307,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
           style={{
             '--loom-composer-height': composerHeight ? `${composerHeight}px` : undefined,
             '--loom-composer-mask-depth': composerHeight ? `${Math.ceil(composerHeight / 2)}px` : undefined,
+            '--loom-agent-expansion-height': agentExpanded ? `${agentExpansionHeight}px` : undefined,
           } as CSSProperties}
         >
           <NarrativeTimeline
@@ -284,6 +339,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
           ) : null}
           <AgentComposer
             agentBusy={agentChatBusy}
+            agentExpansionHeight={agentExpansionHeight}
             agentInput={state.agentChatInput}
             agentMessages={state.agentChatMessages}
             agentProfiles={state.agentProfiles}
@@ -302,6 +358,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
               state.setInput(value)
             }}
             onHeightChange={setComposerHeight}
+            onExpansionHeightChange={setAgentExpansionHeight}
             onExpandedChange={setAgentExpanded}
             onPreviewPrompt={() => {
               void state.previewPrompt()
@@ -318,7 +375,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
   return (
     <>
       {studio}
-      <NotificationToaster bottomOffset={composerHeight + 16} label={state.t('notification.label')} />
+      <NotificationToaster label={state.t('notification.label')} />
     </>
   )
 }

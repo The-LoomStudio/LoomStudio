@@ -32,7 +32,7 @@ describe('studio server persistence integration', () => {
       const created = await callRpc<{
         timeline: { id: string }
         branch: { id: string }
-      }>(first.port, 'application.createNarrativeTimelineFromCard', { cardId: card.card.id })
+      }>(first.port, 'application.createNarrativeTimeline', { cardId: card.card.id })
       await firstServer.close()
 
       const secondServer = createStudioServer({ sqlitePath })

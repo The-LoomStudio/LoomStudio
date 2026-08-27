@@ -4,6 +4,7 @@ import type { Translator } from '../../../../shared/i18n/index.js'
 import styles from './context-asset-header.module.scss'
 
 type ContextAssetHeaderProps = {
+  breadcrumbs?: string[]
   Icon: LucideIcon
   title: string
   resources: PromptResource[]
@@ -22,6 +23,12 @@ export function ContextAssetHeader(props: ContextAssetHeaderProps) {
         <Icon aria-hidden="true" />
         <span>{props.title}</span>
       </div>
+      {props.breadcrumbs?.map(segment => (
+        <span className={styles.breadcrumb} key={segment}>
+          <span aria-hidden="true">·</span>
+          <span>{segment}</span>
+        </span>
+      ))}
       {props.resources.length > 0 ? (
         <>
           <span style={{ color: 'var(--loom-color-text-subtle)', opacity: 0.6 }}>·</span>

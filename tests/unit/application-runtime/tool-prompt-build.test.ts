@@ -4,6 +4,7 @@ import {
   type ToolPromptSource,
 } from '../../../packages/application-runtime/src/agent/tool-prompt-build.js'
 import type { ToolDefinition } from '../../../packages/application-runtime/src/agent/tool-registry.js'
+import { createVariableRenderContext } from '../../../packages/application-runtime/src/variables.js'
 
 const structuredTool: ToolDefinition = {
   id: 'official/read_context',
@@ -60,7 +61,7 @@ describe('Tool Prompt Compiler', () => {
   it('expands User macros only in model-visible template text', () => {
     const result = compileToolPromptSources({
       sources: [source(structuredTool)],
-      macroContext: { user: 'Mio' },
+      variables: createVariableRenderContext({ global: { user: { name: 'Mio' } } }),
     })
 
     expect(result.exposures[0]).toMatchObject({
@@ -99,7 +100,7 @@ describe('Tool Prompt Compiler', () => {
           activation: { kind: 'condition', conditions: [{ fact: 'mode', equals: 'preview' }] },
         }),
       ],
-      macroContext: { user: 'User' },
+      variables: createVariableRenderContext(),
       currentInput: 'show weather',
       activationFacts: { mode: 'draft' },
     })
@@ -117,7 +118,7 @@ describe('Tool Prompt Compiler', () => {
         source(structuredTool),
         source({ ...contentTool, name: structuredTool.name }),
       ],
-      macroContext: { user: 'User' },
+      variables: createVariableRenderContext(),
     })).toThrow('Agent tools expose duplicate model name read_context')
   })
 
@@ -135,7 +136,7 @@ describe('Tool Prompt Compiler', () => {
 
     const result = compileToolPromptSources({
       sources: [first, second, third],
-      macroContext: { user: 'User' },
+      variables: createVariableRenderContext(),
     })
 
     expect(result.trace.requestedOrder).toEqual([
@@ -198,7 +199,7 @@ describe('Tool Prompt Compiler', () => {
 
     const result = compileToolPromptSources({
       sources: [fifth, third, first, fourth, second],
-      macroContext: { user: 'User' },
+      variables: createVariableRenderContext(),
     })
 
     expect(result.trace.requestedOrder).toEqual([
@@ -284,7 +285,7 @@ describe('Tool Prompt Compiler', () => {
           providerOrder: 2,
         }),
       ],
-      macroContext: { user: 'User' },
+      variables: createVariableRenderContext(),
     })
 
     expect(result.exposures[0]?.input).toEqual(structuredInput)

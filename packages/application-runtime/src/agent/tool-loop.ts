@@ -7,6 +7,7 @@ import type {
 import type { PresetToolMount } from '@loom-studio/prompt-resource-store'
 import type { ChatMessage, JsonObject, JsonValue } from '@loom-studio/shared'
 import type { ApplicationRuntimeContext } from '../application-context.js'
+import type { VariableRenderContext } from '../variables.js'
 import {
   promptZoneIds,
   type PromptContribution,
@@ -36,6 +37,10 @@ import type {
   ProviderModelSelection,
   RuntimeRequestContext,
 } from '../types.js'
+import {
+  projectHistoryEntries,
+  type TextTransformRuleEntry,
+} from '../history-text.js'
 
 const maximumProviderSteps = 8
 const toolTimeoutMs = 30_000
@@ -70,7 +75,7 @@ export async function compileAgentToolSet(input: {
   model: ProviderModelSelection
   toolMounts: PresetToolMount[]
   toolOverrides: Record<string, boolean>
-  macroContext: { user: string }
+  variables: VariableRenderContext
   currentInput: string
   activationFacts?: ActivationFacts
 }): Promise<CompiledAgentToolSet> {
@@ -117,7 +122,7 @@ export async function compileAgentToolSet(input: {
         transport,
       }
     }),
-    macroContext: input.macroContext,
+    variables: input.variables,
     currentInput: input.currentInput,
     activationFacts: input.activationFacts,
   })
@@ -235,6 +240,7 @@ export async function runNativeToolLoop(input: {
   toolExecutionScope?: ToolExecutionScope
   branchId: string
   purpose: 'agent' | 'narrative'
+  classificationRules?: TextTransformRuleEntry[]
   requestContext?: RuntimeRequestContext
 }): Promise<NativeToolLoopResult> {
   let session = input.session
@@ -245,6 +251,7 @@ export async function runNativeToolLoop(input: {
   )
   const contentTools = tools.filter((tool) => tool.transport === 'content')
   const providerMessages = [...input.initialMessages]
+  let freshContextMessages: ChatMessage[] = []
   const toolSpecs = nativeTools.map(({ exposure }) => ({
     name: exposure.name,
     description: renderNativeToolDescription(exposure),
@@ -264,9 +271,11 @@ export async function runNativeToolLoop(input: {
     for (let step = 1; step <= maximumProviderSteps; step += 1) {
       if (input.requestContext?.abortSignal?.aborted)
         throw createAbortError(input.requestContext.abortSignal.reason)
+      const stepMessages = [...providerMessages, ...freshContextMessages]
+      freshContextMessages = []
       const providerResult = await input.ctx.gateway.invokeChat({
         request: {
-          messages: providerMessages,
+          messages: stepMessages,
           ...(toolSpecs.length
             ? { tools: toolSpecs, toolChoice: 'auto' as const }
             : {}),
@@ -305,9 +314,14 @@ export async function runNativeToolLoop(input: {
         }
         return { call, invocation, resolved, transport: 'native-function' as const }
       })
-      const contentScan = providerResult.message.content
+      const classified = classifyAssistantContent(
+        providerResult.message.content ?? '',
+        session.id,
+        input.classificationRules ?? [],
+      )
+      const contentScan = classified.text
         ? scanContentTools(
-            providerResult.message.content,
+            classified.text,
             contentTools.map((tool) => tool.definition.name),
           )
         : { text: '', invocations: [] }
@@ -342,6 +356,17 @@ export async function runNativeToolLoop(input: {
       const stepEntries: AgentTranscriptEntryData[] = [
         providerObservation(providerResult),
       ]
+      for (const reasoning of classified.reasoning) {
+        stepEntries.push({
+          kind: 'reasoning',
+          content: reasoning.content,
+          source: 'assistant-content',
+          visibility: reasoning.visibility,
+          replay: reasoning.replay,
+          ...(reasoning.dialect ? { dialect: reasoning.dialect } : {}),
+          ...(providerResult.providerCallId ? { providerCallId: providerResult.providerCallId } : {}),
+        })
+      }
       if (contentScan.text) {
         stepEntries.push({
           kind: 'message',
@@ -408,6 +433,7 @@ export async function runNativeToolLoop(input: {
         await append([
           toTranscriptResult(result, input.requestContext?.abortSignal),
         ])
+        freshContextMessages.push(...renderFreshContextMounts(result))
         if (input.requestContext?.abortSignal?.aborted)
           throw createAbortError(input.requestContext.abortSignal.reason)
         if (pair.transport === 'native-function') {
@@ -533,6 +559,28 @@ function readNativeSchema(tool: CompiledToolExposure): JsonObject {
     applyParameterDescription(schema, path, description)
   }
   return schema
+}
+
+function classifyAssistantContent(
+  content: string,
+  sessionId: string,
+  rules: TextTransformRuleEntry[],
+) {
+  if (!content || rules.length === 0) return { text: content, reasoning: [] as import('../history-text.js').PromotedReasoningPart[] }
+  const snapshot = projectHistoryEntries({
+    source: { kind: 'agent-session', sessionId },
+    phase: 'classify',
+    entries: [{
+      id: 'provider.current.assistant-content',
+      source: { kind: 'agent-session', sessionId },
+      role: 'assistant',
+      text: content,
+      sequence: 1,
+    }],
+    rules,
+  })
+  const entry = snapshot.entries[0]
+  return { text: entry?.text ?? content, reasoning: entry?.promotedReasoning ?? [] }
 }
 
 function scanContentTools(content: string, knownToolNames: string[]) {
@@ -762,6 +810,14 @@ function renderToolResult(result: ToolResult): string {
     )
     .join('\n')
   return content || result.error?.message || result.status
+}
+
+function renderFreshContextMounts(result: ToolResult): ChatMessage[] {
+  if (result.status !== 'completed') return []
+  return (result.contextMounts ?? []).map(item => ({
+    role: 'system',
+    content: `[Fresh Context: ${item.name}]\n${item.content}`,
+  }))
 }
 
 function failedResult(

@@ -31,7 +31,7 @@
   margin-bottom: -2px;
   opacity: 0;
   transition:
-    height var(--loom-motion-duration-standard) var(--loom-motion-easing-standard),
+    height var(--loom-agent-expansion-transition-duration, var(--loom-motion-duration-standard)) var(--loom-motion-easing-standard),
     margin-bottom var(--loom-motion-duration-standard) var(--loom-motion-easing-standard),
     opacity var(--loom-motion-duration-fast) ease;
 }

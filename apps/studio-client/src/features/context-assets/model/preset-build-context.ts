@@ -16,10 +16,6 @@ export function resolvePresetBuildContextResources(
       .filter(mount => mount.source.kind === 'manual')
       .sort((left, right) => left.orderIndex - right.orderIndex || left.id.localeCompare(right.id))
       .map(mount => mount.settingResourceId),
-    ...input.settingMounts
-      .filter(mount => mount.source.kind === 'preset' && mount.source.id === input.preset?.id)
-      .sort((left, right) => left.orderIndex - right.orderIndex || left.id.localeCompare(right.id))
-      .map(mount => mount.settingResourceId),
     ...(input.timelinePromptResourceIds ?? []),
   ]
   const seen = new Set<string>()

@@ -1,0 +1,9 @@
+.panel { display: grid; gap: 16px; padding: 18px; overflow: auto; }
+.panel > header { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.panel h2, .panel h3, .panel p { margin: 0; }
+.panel header p, .block p, .block code { color: var(--loom-text-muted); font-size: 12px; }
+.block { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--loom-border-subtle); border-radius: 10px; background: var(--loom-surface-raised); }
+.block textarea, .block input, .block select { width: 100%; box-sizing: border-box; padding: 9px; border: 1px solid var(--loom-border-subtle); border-radius: 7px; background: var(--loom-surface-base); color: inherit; font: 12px/1.5 ui-monospace, monospace; }
+.actions { display: flex; gap: 8px; }
+.error { padding: 10px; border-radius: 8px; background: color-mix(in srgb, var(--loom-danger) 14%, transparent); color: var(--loom-danger); }
+.scope { overflow-wrap: anywhere; color: var(--loom-text-muted); font: 11px/1.5 ui-monospace, monospace; }

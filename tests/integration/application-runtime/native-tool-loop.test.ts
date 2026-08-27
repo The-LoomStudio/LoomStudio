@@ -1,7 +1,10 @@
 import { createAgentStore } from '@loom-studio/agent-store'
 import {
   createAgentToolRegistry,
+  createOfficialAgentToolRegistry,
   createApplicationRuntime,
+  officialReadStateTool,
+  officialUpdateStateTool,
   promptZoneIds,
   type ApplicationRuntimeOptions,
   type PresetToolMountInput,
@@ -10,6 +13,7 @@ import {
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createPromptResourceStore } from '@loom-studio/prompt-resource-store'
+import { createNarrativeStore } from '@loom-studio/narrative-store'
 import { describe, expect, it } from 'vitest'
 
 const readContextTool: ToolDefinition = {
@@ -56,6 +60,73 @@ const testContentTool: ToolDefinition = {
 }
 
 describe('Native Function Tool Loop', () => {
+  it('reads, updates, and reads Timeline State again across Provider steps', async () => {
+    const requests: unknown[][] = []
+    let target!: { scope: 'timeline'; timelineId: string; branchId: string }
+    let initialRevisionId = ''
+    const fixture = await createFixture({
+      agentTools: createOfficialAgentToolRegistry(),
+      tools: [officialReadStateTool, officialUpdateStateTool],
+      invokeChat: async input => {
+        requests.push(input.request.messages)
+        if (requests.length === 1) return toolCall('read-initial', 'read_state', { target })
+        if (requests.length === 2) return toolCall('update-gold', 'update_state', {
+          target,
+          expectedRevisionId: initialRevisionId,
+          operations: [{ op: 'increment', path: '/characters/alice/gold', by: -3 }],
+        })
+        if (requests.length === 3) return toolCall('read-updated', 'read_state', { target, paths: ['/characters/alice/gold'] })
+        return {
+          provider: 'test', model: 'test-model', text: 'Gold is now 7.', finishReason: 'stop',
+          message: { role: 'assistant', content: 'Gold is now 7.' },
+        }
+      },
+    })
+    const card = await fixture.runtime.importCardBundle({ artifact: statefulCardArtifact() })
+    const timeline = await fixture.runtime.createNarrativeTimeline({ cardId: card.card.id })
+    target = { scope: 'timeline', timelineId: timeline.timeline.id, branchId: timeline.branch.id }
+    initialRevisionId = (await fixture.runtime.getStateSnapshot({ target })).snapshot.revisionId
+
+    await fixture.runtime.invokeAgentTurn({ agentSessionId: fixture.sessionId, input: 'Spend three gold.', narrativeTarget: { ...target, commit: false } })
+
+    expect(requests).toHaveLength(4)
+    expect((requests[3] as Array<{ role?: string; content?: string }>).findLast(message => message.role === 'tool')?.content)
+      .toContain('"/characters/alice/gold":7')
+    await expect(fixture.runtime.getStateSnapshot({ target })).resolves.toMatchObject({
+      snapshot: { value: { characters: { alice: { gold: 7 } } } },
+    })
+    fixture.close()
+  })
+
+  it('keeps a committed State Tool mutation when a later Provider step fails', async () => {
+    let target!: { scope: 'timeline'; timelineId: string; branchId: string }
+    let initialRevisionId = ''
+    let calls = 0
+    const fixture = await createFixture({
+      agentTools: createOfficialAgentToolRegistry(),
+      tools: [officialUpdateStateTool],
+      invokeChat: async () => {
+        calls += 1
+        if (calls === 1) return toolCall('update-before-failure', 'update_state', {
+          target, expectedRevisionId: initialRevisionId,
+          operations: [{ op: 'increment', path: '/characters/alice/gold', by: -3 }],
+        })
+        throw new Error('provider disconnected')
+      },
+    })
+    const card = await fixture.runtime.importCardBundle({ artifact: statefulCardArtifact() })
+    const timeline = await fixture.runtime.createNarrativeTimeline({ cardId: card.card.id })
+    target = { scope: 'timeline', timelineId: timeline.timeline.id, branchId: timeline.branch.id }
+    initialRevisionId = (await fixture.runtime.getStateSnapshot({ target })).snapshot.revisionId
+
+    await expect(fixture.runtime.invokeAgentTurn({
+      agentSessionId: fixture.sessionId, input: 'Spend three gold.', narrativeTarget: { ...target, commit: false },
+    })).rejects.toThrow('provider disconnected')
+    await expect(fixture.runtime.getStateSnapshot({ target })).resolves.toMatchObject({
+      snapshot: { value: { characters: { alice: { gold: 7 } } } },
+    })
+    fixture.close()
+  })
   it('runs native then content tools in one turn before returning the final answer', async () => {
     const requests: Array<{ messages: unknown[]; tools?: unknown[] }> = []
     const fixture = await createFixture({
@@ -65,6 +136,18 @@ describe('Native Function Tool Loop', () => {
         toolId: invocation.toolId,
         status: 'completed',
         content: [{ type: 'text', text: `result:${invocation.toolId}` }],
+        ...(invocation.toolId === readContextTool.id ? {
+          contextMounts: [{
+            id: 'context-weather',
+            name: 'Weather',
+            zoneId: 'setting.stable',
+            slotKey: 'setting:weather',
+            sourceKind: 'settingLayer',
+            sourceId: 'setting-weather',
+            promptState: 'not-triggered' as const,
+            content: 'Fresh weather context.',
+          }],
+        } : {}),
       }),
       invokeChat: async (input) => {
         requests.push({ messages: input.request.messages, tools: input.request.tools })
@@ -117,12 +200,16 @@ describe('Native Function Tool Loop', () => {
     expect(requests).toHaveLength(3)
     expect(requests[1]?.messages).toEqual(expect.arrayContaining([
       expect.objectContaining({ role: 'tool', tool_call_id: 'provider-native-call' }),
+      { role: 'system', content: '[Fresh Context: Weather]\nFresh weather context.' },
     ]))
     expect(requests[2]?.messages).toEqual(expect.arrayContaining([
       expect.objectContaining({
         role: 'user',
         content: expect.stringContaining('<loom_tool_result invocation_id="tool-invocation-'),
       }),
+    ]))
+    expect(requests[2]?.messages).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ content: expect.stringContaining('Fresh weather context.') }),
     ]))
     expect(entries.filter(entry => entry.kind === 'tool-invocation')).toHaveLength(2)
     expect(entries.filter(entry => entry.kind === 'tool-result')).toHaveLength(2)
@@ -437,6 +524,80 @@ describe('Native Function Tool Loop', () => {
     fixture.close()
   })
 
+  it('promotes reasoning before scanning content tools and ignores fake calls inside reasoning', async () => {
+    let calls = 0
+    const executed: string[] = []
+    const fixture = await createFixture({
+      tool: testContentTool,
+      execute: ({ invocation }) => {
+        executed.push(invocation.rawInput ?? '')
+        return { invocationId: invocation.id, toolId: invocation.toolId, status: 'completed', content: [{ type: 'text', text: 'ok' }] }
+      },
+      invokeChat: async () => {
+        calls += 1
+        if (calls === 1) return {
+          provider: 'test', model: 'test-model', text: '', finishReason: 'stop', providerCallId: 'reasoning-step',
+          message: { role: 'assistant', content: '<think>draft <loom_tool name="test_content"><metadata>{"mode":"success"}</metadata><content>fake</content></loom_tool></think>visible<loom_tool name="test_content"><metadata>{"mode":"success"}</metadata><content>real</content></loom_tool>' },
+        }
+        return { provider: 'test', model: 'test-model', text: 'done', finishReason: 'stop', message: { role: 'assistant', content: 'done' } }
+      },
+    })
+    await fixture.runtime.upsertTextTransformRule({
+      ruleId: 'workspace.think',
+      rule: {
+        name: 'Think promotion', owner: { kind: 'workspace' }, enabled: true, orderIndex: 0,
+        matcher: { kind: 'regex', pattern: '<think>([\\s\\S]*?)</think>', flags: 'g' },
+        effect: { kind: 'promote-reasoning', contentGroup: 1, visibility: 'collapsed', replay: 'omit', dialect: 'think' },
+        targets: ['agent-session'], phases: ['classify'],
+      },
+    })
+
+    await fixture.runtime.invokeAgentTurn({ agentSessionId: fixture.sessionId, input: 'test' })
+    const entries = (await fixture.runtime.getAgentTranscriptPage({ agentSessionId: fixture.sessionId })).entries.map(item => item.entry)
+
+    expect(executed).toEqual(['real'])
+    expect(entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'reasoning', content: expect.stringContaining('fake'), source: 'assistant-content' }),
+      expect.objectContaining({ kind: 'message', role: 'assistant', content: 'visible' }),
+      expect.objectContaining({ kind: 'tool-invocation', rawInput: 'real' }),
+    ]))
+    fixture.close()
+  })
+
+  it('projects persisted Agent Session history through ordered prompt rules', async () => {
+    const fixture = await createFixture({
+      execute: ({ invocation }) => ({ invocationId: invocation.id, toolId: invocation.toolId, status: 'completed', content: [] }),
+      invokeChat: async () => ({
+        provider: 'test', model: 'test-model', text: 'secret answer', finishReason: 'stop',
+        message: { role: 'assistant', content: 'secret answer' },
+      }),
+    })
+    await fixture.runtime.invokeAgentTurn({ agentSessionId: fixture.sessionId, input: 'secret request' })
+    await fixture.runtime.upsertTextTransformRule({
+      ruleId: 'workspace.redact',
+      rule: {
+        name: 'Redact', owner: { kind: 'workspace' }, enabled: true, orderIndex: 0,
+        matcher: { kind: 'regex', pattern: 'secret', flags: 'g' },
+        effect: { kind: 'replace', replacement: 'projected' },
+        targets: ['agent-session'], phases: ['prompt'],
+      },
+    })
+
+    const projected = await fixture.runtime.projectHistory({
+      source: { kind: 'agent-session', sessionId: fixture.sessionId },
+      phase: 'prompt',
+    })
+    const canonical = await fixture.runtime.getAgentTranscriptPage({ agentSessionId: fixture.sessionId })
+    const preview = await fixture.runtime.previewAgentTurn({ agentSessionId: fixture.sessionId, input: 'next' })
+
+    expect(projected.snapshot.entries.filter(entry => entry.role).map(entry => entry.text)).toEqual(['projected request', 'projected answer'])
+    expect(canonical.entries.filter(entry => entry.entry.kind === 'message').map(entry => entry.entry.kind === 'message' ? entry.entry.content : '')).toEqual(['secret request', 'secret answer'])
+    expect(projected.snapshot.matches).toHaveLength(2)
+    expect(preview.messages.some(message => typeof message.content === 'string' && message.content.includes('projected answer'))).toBe(true)
+    expect(preview.messages.some(message => typeof message.content === 'string' && message.content.includes('secret answer'))).toBe(false)
+    fixture.close()
+  })
+
   it('rejects a native call for a content-only tool and lets the Provider retry with content protocol', async () => {
     let requestCount = 0
     const fixture = await createFixture({
@@ -520,10 +681,11 @@ async function createFixture(input: {
   tool?: ToolDefinition
   tools?: ToolDefinition[]
   mounts?: PresetToolMountInput[]
-  execute: NonNullable<
+  execute?: NonNullable<
     Parameters<typeof createAgentToolRegistry>[1]
   >[number]['execute']
   invokeChat: NonNullable<ApplicationRuntimeOptions['gateway']>['invokeChat']
+  agentTools?: ReturnType<typeof createAgentToolRegistry>
 }) {
   const tools = input.tools ?? [input.tool ?? readContextTool]
   let nextId = 0
@@ -533,14 +695,16 @@ async function createFixture(input: {
   const documents = createSqliteDocumentStore({ engine })
   const agents = createAgentStore({ engine, createId, now })
   const promptResources = createPromptResourceStore({ engine, createId, now })
+  const narratives = createNarrativeStore({ engine, createId, now })
   const runtime = createApplicationRuntime({
     agents,
-    agentTools: createAgentToolRegistry(
+    agentTools: input.agentTools ?? createAgentToolRegistry(
       tools,
-      tools.map(tool => ({ toolId: tool.id, execute: input.execute })),
+      tools.map(tool => ({ toolId: tool.id, execute: input.execute! })),
     ),
     dataEngine: engine,
     documents,
+    narratives,
     promptResources,
     gateway: { invokeChat: input.invokeChat },
   })
@@ -581,5 +745,34 @@ async function createFixture(input: {
     runtime,
     sessionId,
     close: () => engine.close(),
+  }
+}
+
+function toolCall(id: string, name: string, args: unknown) {
+  return {
+    provider: 'test', model: 'test-model', text: '', finishReason: 'tool_call' as const,
+    message: {
+      role: 'assistant' as const,
+      tool_calls: [{ id, type: 'function' as const, function: { name, arguments: JSON.stringify(args) } }],
+    },
+  }
+}
+
+function statefulCardArtifact() {
+  return {
+    schemaVersion: 2 as const,
+    artifactId: 'state-tool-card',
+    displayName: 'State Tool Card',
+    card: { name: 'Alice' },
+    contextAssets: [],
+    stateTemplates: [{
+      id: 'template.tool-person', templateVersion: 1,
+      schema: {
+        type: 'object', properties: { gold: { type: 'number', minimum: 0 } },
+        required: ['gold'], additionalProperties: false,
+      },
+      initial: { gold: 10 },
+    }],
+    timelineStateBindings: [{ path: 'characters.alice', templateId: 'template.tool-person', templateVersion: 1 }],
   }
 }

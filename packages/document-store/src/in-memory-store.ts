@@ -109,9 +109,7 @@ export function createInMemoryDocumentStore(): DocumentStore {
       throw new StoreError('document.not_found', `Document not found: ${input.id}`)
     }
 
-    if (typeof input.expectedVersion === 'number' && existing.version !== input.expectedVersion) {
-      throw new StoreError('document.conflict', `Document version conflict: ${input.id}`)
-    }
+    assertExpectedVersion(input.id, existing, input.expectedVersion)
 
     const timestamp = nowIso()
     const document: DocumentRecord = {

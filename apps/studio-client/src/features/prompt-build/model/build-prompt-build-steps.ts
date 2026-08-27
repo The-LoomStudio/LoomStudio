@@ -1,5 +1,6 @@
 import type { Translator } from '../../../shared/i18n/index.js'
 import type { Card, JsonObject, NarrativeBranch, NarrativeNode, NarrativeTimeline, PromptProjection, ProviderMessage } from '../../../entities/index.js'
+import type { ActivationFacts } from './activation-control.js'
 
 export type PromptBuildStep = {
   title: string
@@ -17,7 +18,7 @@ export function buildPromptBuildSteps(input: {
   input: string
   messages?: ProviderMessage[]
   projection?: PromptProjection
-  activationFacts?: JsonObject
+  activationFacts?: ActivationFacts
   promptBuildTrace?: unknown
   session?: { cardSnapshot?: Card }
 }, t: Translator): PromptBuildStep[] {
@@ -103,14 +104,12 @@ function readInactiveReasons(projection: PromptProjection | undefined, t: Transl
   return rows.join(', ') || t('prompt.value.none')
 }
 
-function readActivationFacts(facts: JsonObject | undefined, t: Translator): string {
+function readActivationFacts(facts: ActivationFacts | undefined, t: Translator): string {
   if (!facts) return t('prompt.value.none')
-  const mode = typeof facts['agent.mode'] === 'string' ? facts['agent.mode'] : t('prompt.value.none')
-  const tags = Array.isArray(facts.tags) ? facts.tags.filter(tag => typeof tag === 'string') : []
 
-  return tags.length > 0
-    ? t('prompt.value.runtimeFactsWithTags', { mode, tags: tags.join(', ') })
-    : t('prompt.value.runtimeFacts', { mode })
+  return facts.tags.length > 0
+    ? t('prompt.value.runtimeFactsWithTags', { mode: facts['agent.mode'], tags: facts.tags.join(', ') })
+    : t('prompt.value.runtimeFacts', { mode: facts['agent.mode'] })
 }
 
 function settingEntryMatches(entry: JsonObject, input: string): boolean {

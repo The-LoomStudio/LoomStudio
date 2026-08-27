@@ -35,6 +35,7 @@ export type NarrativeBranch = {
   timelineId: string
   title?: string
   headNodeId?: string
+  stateHeadRevisionId: string
   parentBranchId?: string
   forkedFromNodeId?: string
   createdAt: string
@@ -45,6 +46,7 @@ export type NarrativeNode = {
   id: string
   timelineId: string
   parentNodeId?: string
+  stateRevisionId: string
   body: NarrativeBody
   source?: NarrativeNodeSource
   createdAt: string
@@ -68,6 +70,7 @@ export type CreateNarrativeTimelineInput = NarrativeWriteContext & {
   promptResourceIds?: string[]
   primaryBranchId?: string
   primaryBranchTitle?: string
+  stateRevisionId: string
   openingNodes?: Array<{
     id?: string
     body: NarrativeBody
@@ -88,6 +91,7 @@ export type AppendNarrativeNodeInput = NarrativeWriteContext & {
   expectedHeadNodeId: string | null
   nodeId?: string
   body: NarrativeBody
+  stateRevisionId: string
   source?: Omit<NarrativeNodeSource, 'changesetId'>
 }
 
@@ -104,6 +108,14 @@ export type ForkNarrativeBranchInput = NarrativeWriteContext & {
   fromNodeId: string
   branchId?: string
   title?: string
+  stateRevisionId: string
+}
+
+export type SetNarrativeBranchStateHeadInput = NarrativeWriteContext & {
+  timelineId: string
+  branchId: string
+  expectedStateHeadRevisionId: string | null
+  stateRevisionId: string
 }
 
 export type SwitchNarrativeBranchInput = NarrativeWriteContext & {
@@ -138,6 +150,7 @@ export type NarrativeTransaction = {
   createTimeline(input: Omit<CreateNarrativeTimelineInput, keyof NarrativeWriteContext>): CreateNarrativeTimelineResultWithoutCommit
   appendNode(input: Omit<AppendNarrativeNodeInput, keyof NarrativeWriteContext>): AppendNarrativeNodeResultWithoutCommit
   forkBranch(input: Omit<ForkNarrativeBranchInput, keyof NarrativeWriteContext>): NarrativeBranch
+  setBranchStateHead(input: Omit<SetNarrativeBranchStateHeadInput, keyof NarrativeWriteContext>): NarrativeBranch
   switchBranch(input: Omit<SwitchNarrativeBranchInput, keyof NarrativeWriteContext>): NarrativeTimeline
   deleteTimeline(input: Omit<DeleteNarrativeTimelineInput, keyof NarrativeWriteContext>): NarrativeTimeline
   updatePromptResources(input: Omit<UpdateNarrativePromptResourcesInput, keyof NarrativeWriteContext>): NarrativeTimeline
@@ -156,6 +169,7 @@ export type NarrativeStore = {
   createTimeline(input: CreateNarrativeTimelineInput): Promise<CreateNarrativeTimelineResult>
   appendNode(input: AppendNarrativeNodeInput): Promise<AppendNarrativeNodeResult>
   forkBranch(input: ForkNarrativeBranchInput): Promise<{ branch: NarrativeBranch; commit: DataCommitFact }>
+  setBranchStateHead(input: SetNarrativeBranchStateHeadInput): Promise<{ branch: NarrativeBranch; commit: DataCommitFact }>
   switchBranch(input: SwitchNarrativeBranchInput): Promise<{ timeline: NarrativeTimeline; commit: DataCommitFact }>
   deleteTimeline(input: DeleteNarrativeTimelineInput): Promise<{ timeline: NarrativeTimeline; commit: DataCommitFact }>
   updatePromptResources(input: UpdateNarrativePromptResourcesInput): Promise<{ timeline: NarrativeTimeline; commit: DataCommitFact }>

@@ -1,5 +1,6 @@
 import {
   createApplicationRuntime,
+  createVariableRenderContext,
   readPromptResourceInputs,
   type CardBundleArtifact,
 } from '../../../packages/application-runtime/src/index.js'
@@ -24,7 +25,7 @@ describe('application runtime card bundle integration', () => {
       rootNode: { label: 'Loom Studio 问答助手' },
       historyPolicy: 'persistent',
     })
-    await expect(runtime.listSettingMounts({ source: { kind: 'preset', id: preset!.id } })).resolves.toMatchObject({ mounts: [{ settingResourceId: setting!.id }] })
+    await expect(runtime.listSettingMounts({ source: { kind: 'manual', id: 'global' } })).resolves.toMatchObject({ mounts: [{ settingResourceId: setting!.id }] })
     const compositionItems = preset?.rootNode.children?.find(node => node.kind === 'order')?.skeletonPatch?.items
       ?.flatMap(item => item.kind === 'message' ? item.items : [item])
     expect(compositionItems).toEqual(expect.arrayContaining([
@@ -109,14 +110,14 @@ describe('application runtime card bundle integration', () => {
     await expect(readPromptResourceInputs({
       promptResources,
       resourceIds: [created.resource.id],
-      macroContext: { user: 'User' },
+      variables: createVariableRenderContext(),
     })).resolves.toMatchObject({ contributions: [] })
 
     await runtime.updatePromptResourceAsset({ resourceId: created.resource.id, assetId: 'folder-1', enabled: true })
     const enabled = await readPromptResourceInputs({
       promptResources,
       resourceIds: [created.resource.id],
-      macroContext: { user: 'User' },
+      variables: createVariableRenderContext(),
     })
     expect(enabled.contributions[0]?.capabilities.lifecycle).toEqual({ lifecycle: 'fresh' })
   })
@@ -152,6 +153,47 @@ describe('application runtime card bundle integration', () => {
     })
   })
 
+  it('round-trips Card V2 State Templates and Bindings and rejects identity conflicts', async () => {
+    const { runtime, documents } = createTestRuntime()
+    const artifact: CardBundleArtifact = {
+      schemaVersion: 2,
+      artifactId: 'state-card-v2',
+      displayName: 'State Card V2',
+      card: { name: 'State Card' },
+      contextAssets: [],
+      stateTemplates: [{
+        id: 'template.person.v1', templateVersion: 1, label: 'Person',
+        schema: { type: 'object', properties: { gold: { type: 'number' } }, required: ['gold'] },
+        initial: { gold: 10 },
+      }],
+      timelineStateBindings: [{ path: 'characters.alice', templateId: 'template.person.v1', templateVersion: 1, initial: { gold: 12 } }],
+    }
+    const imported = await runtime.importCardBundle({ artifact })
+    const exported = await runtime.exportCardBundle({ cardId: imported.card.id })
+
+    expect(exported.artifact).toMatchObject({
+      schemaVersion: 2,
+      stateTemplates: artifact.stateTemplates,
+      timelineStateBindings: artifact.timelineStateBindings,
+    })
+    await expect(documents.get('template.person.v1')).resolves.toMatchObject({ type: 'airp.stateDefinition' })
+    await expect(runtime.importCardBundle({ artifact })).resolves.toBeDefined()
+    await expect(runtime.importCardBundle({
+      artifact: {
+        ...artifact,
+        artifactId: 'conflicting-state-card',
+        stateTemplates: [{ ...artifact.stateTemplates![0]!, initial: { gold: 99 } }],
+      },
+    })).rejects.toThrow('State template identity conflict')
+    await expect(runtime.importCardBundle({
+      artifact: {
+        ...artifact,
+        artifactId: 'missing-template-card',
+        stateTemplates: [],
+      },
+    })).rejects.toThrow('template is missing')
+  })
+
   it('edits a resource directly and exports the current card bundle', async () => {
     const { runtime } = createTestRuntime()
     const imported = await runtime.importCardBundle({ artifact: await readLoomCityArtifact() })
@@ -164,7 +206,7 @@ describe('application runtime card bundle integration', () => {
       assetId: 'preset-style-directive',
       body: 'Resource-scoped edit.',
     })
-    const exported = await runtime.exportCardArtifact({ cardId: imported.card.id })
+    const exported = await runtime.exportCardBundle({ cardId: imported.card.id })
 
     expect(findNode(exported.artifact, 'preset-style-directive')?.body).toBe('Resource-scoped edit.')
     expect(exported.artifact.metadata).toMatchObject({ exportedFromCardId: imported.card.id })
@@ -183,7 +225,7 @@ describe('application runtime card bundle integration', () => {
     const imported = await runtime.importCardBundle({ artifact: source })
     await runtime.updateCard({ cardId: imported.card.id, description: 'Current canonical description' })
 
-    const result = await runtime.exportCardArtifact({ cardId: imported.card.id })
+    const result = await runtime.exportCardBundle({ cardId: imported.card.id })
     const exported = result.artifact as CardBundleArtifact & {
       communityExtension?: { retained: boolean }
       card: CardBundleArtifact['card'] & { communityCardField?: string }

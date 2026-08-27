@@ -1,4 +1,4 @@
-import { createApplicationRuntime, composeAgentTurnPrompt } from '../../../packages/application-runtime/src/index.js'
+import { createApplicationRuntime, composeAgentTurnPrompt, createVariableRenderContext } from '../../../packages/application-runtime/src/index.js'
 import { createSqliteDataEngine } from '../../../packages/data-engine/src/index.js'
 import { createSqliteDocumentStore } from '../../../packages/document-store/src/index.js'
 import { createPromptResourceStore } from '../../../packages/prompt-resource-store/src/index.js'
@@ -109,7 +109,7 @@ describe('Prompt Resource Store application runtime', () => {
       ).resource,
       agentMessages: [],
       userInput: 'Hi',
-      macroContext: { user: 'Mio' },
+      variables: createVariableRenderContext({ global: { user: { name: 'Mio' } } }),
     })
 
     expect(result.messages).toEqual(
@@ -153,7 +153,7 @@ describe('Prompt Resource Store application runtime', () => {
     await rm(directory, { recursive: true, force: true })
   })
 
-  it('resolves manual and preset mounts without cross-preset leakage', async () => {
+  it('resolves global mounts and ignores legacy preset mounts', async () => {
     const createId = createIds()
     const now = () => '2026-08-19T00:00:00.000Z'
     const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
@@ -172,14 +172,14 @@ describe('Prompt Resource Store application runtime', () => {
     }
     const presetA = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Preset A' })
     const presetB = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Preset B' })
-    await runtime.replaceSettingMounts({ source: { kind: 'preset', id: presetA.resource.id }, settingResourceIds: [settingA.resource.id] })
+    await runtime.replaceSettingMounts({ source: { kind: 'manual', id: 'global' }, settingResourceIds: [settingA.resource.id] })
     await runtime.replaceSettingMounts({ source: { kind: 'preset', id: presetB.resource.id }, settingResourceIds: [settingB.resource.id] })
     const promptA = await composeAgentTurnPrompt({ promptResources, preset: (await runtime.getPromptResource({ resourceId: presetA.resource.id })).resource, agentMessages: [], userInput: 'Hi' })
     const promptB = await composeAgentTurnPrompt({ promptResources, preset: (await runtime.getPromptResource({ resourceId: presetB.resource.id })).resource, agentMessages: [], userInput: 'Hi' })
     expect(promptA.messages.some(message => 'content' in message && message.content.includes('A only'))).toBe(true)
     expect(promptA.messages.some(message => 'content' in message && message.content.includes('B only'))).toBe(false)
-    expect(promptB.messages.some(message => 'content' in message && message.content.includes('B only'))).toBe(true)
-    expect(promptB.messages.some(message => 'content' in message && message.content.includes('A only'))).toBe(false)
+    expect(promptB.messages.some(message => 'content' in message && message.content.includes('A only'))).toBe(true)
+    expect(promptB.messages.some(message => 'content' in message && message.content.includes('B only'))).toBe(false)
     engine.close()
   })
 
@@ -195,7 +195,7 @@ describe('Prompt Resource Store application runtime', () => {
     expect((await documents.list({ type: 'airp.promptResource' })).items).toHaveLength(0)
     const resources = await runtime.listCardPromptResources({ cardId: imported.card.id })
     expect(resources.resources.length).toBeGreaterThan(0)
-    const exported = await runtime.exportCardArtifact({ cardId: imported.card.id })
+    const exported = await runtime.exportCardBundle({ cardId: imported.card.id })
     expect(exported.artifact.contextAssets.map(node => node.id)).toEqual(artifact.contextAssets.map(node => node.id))
 
     const promptExport = await runtime.exportPromptResource({ resourceId: resources.resources[0]!.id })

@@ -19,6 +19,16 @@ export type AgentSession = {
 export type AgentTranscriptEntryData =
   | { kind: 'message'; role: 'user' | 'assistant'; content: string }
   | {
+      kind: 'reasoning'
+      content: string
+      source: 'provider-native' | 'assistant-content'
+      dialect?: string
+      providerCallId?: string
+      rawRef?: string
+      visibility: 'collapsed' | 'hidden' | 'visible'
+      replay: 'omit' | 'assistant-content'
+    }
+  | {
       kind: 'provider-observation'
       provider: string
       model: string

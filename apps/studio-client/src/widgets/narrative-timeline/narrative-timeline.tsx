@@ -59,7 +59,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
     id: node.id,
     meta: `#${index + 1} · ${formatConversationTimestamp(node.createdAt)}`,
     preview: node.body.raw,
-    role: props.t('timeline.role.assistant'),
+    role: props.t(readNarrativeNodeRole(props.timeline, index) === 'user' ? 'timeline.role.user' : 'timeline.role.assistant'),
   })), [props.t, props.timeline])
   const navigatorMarkers: NarrativeTimelineMarker[] = []
 
@@ -221,9 +221,11 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
             </div>
           )}>
             {props.hasOlder ? <button disabled={props.busy} type="button" onClick={props.onLoadOlder}>{props.t('timeline.loadOlder')}</button> : null}
-            {props.timeline.map((entry, index) => (
-              <article
-                className={`${styles.message} ${styles.assistant}`}
+            {props.timeline.map((entry, index) => {
+              const role = readNarrativeNodeRole(props.timeline, index)
+              return (
+                <article
+                className={`${styles.message} ${styles[role]}`}
                 data-loom-component="chat-message"
                 data-loom-role="narrative"
                 data-loom-motion={messageMotion?.id === entry.id ? messageMotion.direction : undefined}
@@ -273,7 +275,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                         disableWrap: props.t('markdown.code.disableWrap'),
                         enableWrap: props.t('markdown.code.enableWrap'),
                       }}
-                      role="assistant"
+                      role={role}
                       value={entry.body.raw}
                     />
                   )}
@@ -310,8 +312,9 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                     </>
                   )}
                 />
-              </article>
-            ))}
+                </article>
+              )
+            })}
           </Suspense>
         )}
       </div>
@@ -324,6 +327,19 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
       />
     </section>
   )
+}
+
+export function readNarrativeNodeRole(nodes: NarrativeNode[], index: number): 'user' | 'assistant' {
+  const node = nodes[index]
+  const next = nodes[index + 1]
+  if (!node?.source?.runId || !node.source.agentMessageId || !next?.source?.agentMessageId) return 'assistant'
+
+  // ponytail: Narrative Store 暂无持久化 role 字段；同一 Run 的连续父子节点当前固定为 user → assistant，新增其他多节点提交形态时应改为显式 role。
+  return next.parentNodeId === node.id
+    && next.source?.runId === node.source.runId
+    && next.source.agentSessionId === node.source.agentSessionId
+    ? 'user'
+    : 'assistant'
 }
 
 export function isTimelineNearBottom(element: Pick<HTMLElement, 'clientHeight' | 'scrollHeight' | 'scrollTop'>): boolean {

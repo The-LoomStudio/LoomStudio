@@ -71,7 +71,7 @@ export type Kernel = {
   start(): Promise<void>
   stop(): Promise<void>
   registerKernelRpc(method: string, handler: KernelRpcHandler): RegistrationHandle
-  registerExtensionRpc(method: string, ownerPackageId: string, ownerModuleId: string, handler: ExtensionRpcHandler, instanceId?: string): RegistrationHandle
+  registerExtensionRpc(method: string, ownerPackageId: string, ownerModuleId: string, handler: ExtensionRpcHandler, instanceId: string): RegistrationHandle
   callRpc<T = JsonValue>(method: string, params?: JsonValue, context?: KernelRpcContext): Promise<T>
   getPublicSurface(): KernelPublicSurface
   getDocumentStore(): DocumentStore
@@ -91,13 +91,29 @@ export type KernelPublicSurface = {
   version: string
 }
 
+export type ManagedExtensionPackage = Record<string, JsonValue> & {
+  packageId: string
+  version: string
+}
+
+export type ManagedExtensionModule = Record<string, JsonValue> & {
+  packageId: string
+  moduleId: string
+}
+
+export type RemovedExtensionPackage = Record<string, JsonValue> & {
+  packageId: string
+  version: string
+  removed: true
+}
+
 export type ExtensionManagementService = {
-  listPackages(): JsonValue[]
-  installPackage(sourceDirectory: string): Promise<JsonValue>
-  uninstallPackage(packageId: string, version?: string): Promise<JsonValue>
-  enableModule(packageId: string, moduleId: string, grants?: ExtensionModuleCapabilityGrants): Promise<JsonValue>
-  disableModule(packageId: string, moduleId: string): Promise<JsonValue>
-  reloadModule(packageId: string, moduleId: string): Promise<JsonValue>
+  listPackages(): ManagedExtensionPackage[]
+  installPackage(sourceDirectory: string): Promise<ManagedExtensionPackage>
+  uninstallPackage(packageId: string, version?: string): Promise<RemovedExtensionPackage>
+  enableModule(packageId: string, moduleId: string, grants?: ExtensionModuleCapabilityGrants): Promise<ManagedExtensionModule>
+  disableModule(packageId: string, moduleId: string): Promise<ManagedExtensionModule>
+  reloadModule(packageId: string, moduleId: string): Promise<ManagedExtensionModule>
 }
 
 export type ExtensionModuleCapabilityGrants = {
@@ -285,7 +301,7 @@ export function createKernel(options: CreateKernelOptions): Kernel {
         },
       }
     },
-    registerExtensionRpc: (method, ownerPackageId, ownerModuleId, handler, instanceId = `legacy:${ownerPackageId}/${ownerModuleId}`) => {
+    registerExtensionRpc: (method, ownerPackageId, ownerModuleId, handler, instanceId) => {
       if (isKernelNamespace(method)) {
         throw new Error(`Extension cannot register Kernel namespace RPC: ${method}`)
       }
@@ -454,12 +470,9 @@ function registerStageOneHandlers(
     const manager = requireExtensionManager(options)
     const sourceDirectory = readString(params, 'sourceDirectory')
     const extensionPackage = await manager.installPackage(sourceDirectory)
-    if (!isRecord(extensionPackage) || typeof extensionPackage.packageId !== 'string') {
-      throw new Error('Extension manager returned an invalid installed Package summary')
-    }
     eventBus.emit('extensions.changed', {
       packageId: extensionPackage.packageId,
-      ...(typeof extensionPackage.version === 'string' ? { version: extensionPackage.version } : {}),
+      version: extensionPackage.version,
       action: 'installed',
     }, context)
     return { package: extensionPackage }

@@ -1,4 +1,4 @@
-import type { CardBundleArtifact } from '@loom-studio/application-runtime'
+import { normalizeCardBundleArtifact, type CardBundleArtifact } from '@loom-studio/application-runtime'
 import { deflateSync, inflateSync } from 'node:zlib'
 
 const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
@@ -7,7 +7,7 @@ const maxArtifactBytes = 16 * 1024 * 1024
 
 export function encodeCardPng(source: Uint8Array, artifact: CardBundleArtifact): Uint8Array {
   const chunks = readPngChunks(source)
-  const artifactJson = Buffer.from(JSON.stringify(artifact), 'utf8')
+  const artifactJson = Buffer.from(JSON.stringify(normalizeCardBundleArtifact(artifact)), 'utf8')
   if (artifactJson.byteLength > maxArtifactBytes) throw new Error(`Card Artifact exceeds ${maxArtifactBytes} bytes`)
   const text = deflateSync(artifactJson)
   const iTxtData = Buffer.concat([
@@ -32,7 +32,7 @@ export function decodeCardPng(source: Uint8Array): CardBundleArtifact {
       throw new Error('Unsupported Loom Card PNG compression')
     }
     const json = inflateSync(chunk.data.subarray(separators.textOffset), { maxOutputLength: maxArtifactBytes }).toString('utf8')
-    return JSON.parse(json) as CardBundleArtifact
+    return normalizeCardBundleArtifact(JSON.parse(json) as CardBundleArtifact)
   }
   throw new Error('PNG does not contain a Loom Card iTXt chunk')
 }

@@ -1,4 +1,4 @@
-import type { CardBundleArtifact } from '@loom-studio/application-runtime'
+import { normalizeCardBundleArtifact, type CardBundleArtifact } from '@loom-studio/application-runtime'
 import { Unzip, UnzipInflate, UnzipPassThrough, zipSync } from 'fflate'
 
 const manifestPath = 'manifest.json'
@@ -25,7 +25,7 @@ export function encodeCardBundleZip(input: {
   avatar: CardBundleMedia
   background?: CardBundleMedia
 }): Uint8Array {
-  const artifact = structuredClone(input.artifact)
+  const artifact = normalizeCardBundleArtifact(input.artifact)
   delete artifact.card.media
   const avatarPath = `assets/avatar${extensionForMediaType(input.avatar.mediaType)}`
   const backgroundPath = input.background
@@ -61,7 +61,7 @@ export async function decodeCardBundleZip(source: Uint8Array): Promise<{
   }
   const avatar = readMedia(files, manifest.media.avatar)
   const background = manifest.media.background ? readMedia(files, manifest.media.background) : undefined
-  return { artifact: manifest.artifact, avatar, background }
+  return { artifact: normalizeCardBundleArtifact(manifest.artifact), avatar, background }
 }
 
 function unzipSafely(source: Uint8Array): Promise<Map<string, Uint8Array>> {

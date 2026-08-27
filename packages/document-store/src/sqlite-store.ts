@@ -181,9 +181,7 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
       throw new StoreError('document.not_found', `Document not found: ${input.id}`)
     }
 
-    if (typeof input.expectedVersion === 'number' && existing.version !== input.expectedVersion) {
-      throw new StoreError('document.conflict', `Document version conflict: ${input.id}`)
-    }
+    assertExpectedVersion(input.id, existing, input.expectedVersion)
 
     const timestamp = nowIso()
     const document: DocumentRecord = {
@@ -311,8 +309,9 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
           .prepare('SELECT id, created_at, created_by_json, reason, correlation_id, call_id, parent_call_id, operations_json FROM changesets WHERE id = ?')
           .get(input.changesetId)
         if (!row) throw new StoreError('document.changeset_not_found', `Changeset not found: ${input.changesetId}`)
-        assertDocumentOnlyChangeset(row)
-        const target = rowToChangeset(row)
+        const storedOperations = readStoredChangesetOperations(row)
+        assertDocumentOnlyChangeset(storedOperations)
+        const target = rowToChangeset(row, storedOperations)
         const restoreTargets = target.operations.map(operation => {
           const existing = getCurrent(database, operation.documentId)
           if (!existing || existing.version !== operation.toVersion) {
@@ -431,7 +430,10 @@ function rowToDocument(row: unknown): DocumentRecord {
   }
 }
 
-function rowToChangeset(row: unknown): Changeset {
+function rowToChangeset(
+  row: unknown,
+  storedOperations = readStoredChangesetOperations(row),
+): Changeset {
   const value = row as {
     id: string
     created_at: string
@@ -443,7 +445,6 @@ function rowToChangeset(row: unknown): Changeset {
     operations_json: string
   }
 
-  const storedOperations = JSON.parse(value.operations_json) as Array<ChangesetOperation | DataCommitOperation>
   return {
     id: value.id,
     createdAt: value.created_at,
@@ -516,9 +517,12 @@ function requireDocumentVersion(operation: DataCommitOperation): number {
   return operation.toVersion
 }
 
-function assertDocumentOnlyChangeset(row: unknown): void {
+function readStoredChangesetOperations(row: unknown): Array<ChangesetOperation | DataCommitOperation> {
   const value = row as { operations_json: string }
-  const operations = JSON.parse(value.operations_json) as Array<ChangesetOperation | DataCommitOperation>
+  return JSON.parse(value.operations_json) as Array<ChangesetOperation | DataCommitOperation>
+}
+
+function assertDocumentOnlyChangeset(operations: Array<ChangesetOperation | DataCommitOperation>): void {
   if (operations.some(operation => 'store' in operation && operation.store !== 'documents')) {
     throw new StoreError('document.changeset_not_revertible', 'Changeset contains non-document operations')
   }

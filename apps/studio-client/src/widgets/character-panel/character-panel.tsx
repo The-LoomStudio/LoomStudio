@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, Circle, ChevronRight, CloudDownload, Combine, Download, FileArchive, Folder, Grid2X2, ImageDown, List, Pencil, Plus, Trash2, Upload, Users, X } from 'lucide-react'
+import { ArrowLeft, Braces, Check, Circle, ChevronRight, CloudDownload, Combine, Download, FileArchive, Folder, Grid2X2, ImageDown, List, Pencil, Plus, Trash2, Upload, Users, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent } from 'react'
 import type { MenuAction } from '../../shared/ui/menu-action.js'
 import { ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem, ContextMenuSeparator } from '../../shared/ui/context-menu/context-menu.js'
@@ -36,6 +36,7 @@ type CharacterPanelProps = {
   onDeleteCards(cardIds: string[]): Promise<void>
   onSelectCard(cardId: string): void
   onOpenTimeline(timeline: NarrativeTimelineView): void
+  onOpenStatePanel(): void
   onUpdateCardMedia(cardId: string, target: MediaTarget, file: File): Promise<void>
   onUpdateCard(event: FormEvent): Promise<void>
   selectedCard?: CharacterCardSummary
@@ -392,6 +393,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
           <section className={styles.profileContent}>
             <div><h3>{props.t('character.description')}</h3><p>{selected.description || props.t('character.descriptionEmpty')}</p></div>
             <div className={styles.resourceOverview}><h3>{props.t('character.resources')}</h3><span>{props.t('character.resourcesCount', { count: selected.settingLayer?.entries.length ?? 0 })}</span></div>
+            <button type="button" onClick={props.onOpenStatePanel}><Braces aria-hidden="true" />{props.t('character.stateVariables')}</button>
           </section>
           )}
 

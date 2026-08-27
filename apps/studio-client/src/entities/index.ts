@@ -1,4 +1,15 @@
 export type { JsonObject, MutationReceipt } from './common.js'
+export type {
+  HistoryProjectionSnapshot,
+  HistorySource,
+  RendererDefinition,
+  TextExtractor,
+  TextExtractorDraft,
+  TextRuleOwner,
+  TextTransformMutationResult,
+  TextTransformRule,
+  TextTransformRuleDraft,
+} from './text-transform.js'
 export type { Card, CardMedia, CardPresetInput, CardSummary, CreateCardResult, DeleteCardResult, GetCardResult, ListCardsResult, OpeningChatInput, SettingLayerInput, UpdateCardResult } from './card.js'
 export type {
   ContextAssetNode,
@@ -35,6 +46,20 @@ export type {
   ToolExposure,
 } from './agent.js'
 export type { Run, RunDetails, RuntimeEntry, CommitCandidate } from './run.js'
+export type {
+  ApplyStateMutationInput,
+  ApplyStateMutationResult,
+  GetStateSnapshotResult,
+  GetStateDefinitionResult,
+  ListStateDefinitionsResult,
+  StateDefinition,
+  StateDefinitionDraft,
+  StateMutationOperation,
+  StateSnapshot,
+  StateTarget,
+  UpsertStateDefinitionResult,
+  DeleteStateDefinitionResult,
+} from './state.js'
 export type { PromptProjection, PromptProjectionZone, ProviderMessage, PromptPreview } from './prompt.js'
 export type {
   CreatePromptResourceResult,

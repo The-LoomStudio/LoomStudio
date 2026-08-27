@@ -34,7 +34,7 @@ import {
   readCompositionItems,
   removeCompositionItem,
 } from '../../features/context-assets/model/composition-items.js'
-import type { AgentToolDefinition, ContextAssetNode, PresetToolMount, PresetToolMountInput, PromptCompositionItem, PromptResource, SettingMount, SettingMountSource } from '../../entities/index.js'
+import type { AgentToolDefinition, ContextAssetNode, PresetToolMount, PresetToolMountInput, PromptCompositionItem, PromptResource, SettingMount } from '../../entities/index.js'
 import styles from './preset-workbench.module.scss'
 
 type PresetWorkbenchProps = {
@@ -57,7 +57,6 @@ type PresetWorkbenchProps = {
   onDeleteResource: (resourceId: string) => Promise<void>
   onImportResource: (file: File) => Promise<string | undefined>
   onExportResource: (resourceId: string) => Promise<void>
-  onReplaceSettingMounts: (source: SettingMountSource, settingResourceIds: string[]) => Promise<void>
   onReplaceToolMounts: (presetId: string, mounts: PresetToolMountInput[]) => Promise<void>
   onUpdateTool: (tool: AgentToolDefinition) => Promise<void> | void
   routeAssetId?: string
@@ -80,7 +79,6 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const setMetadataOpen = useStudioLayoutStore(state => state.setAssetMetadataOpen)
   const setTextEditorMode = useStudioLayoutStore(state => state.setTextEditorMode)
   const presetResources = useMemo(() => props.resources.filter(resource => resource.resourceKind === 'preset'), [props.resources])
-  const settingResources = useMemo(() => props.resources.filter(resource => resource.resourceKind === 'setting'), [props.resources])
   const [selectedResourceId, setSelectedResourceId] = useState<string>()
   const selectedResource = presetResources.find(resource => resource.id === selectedResourceId) ?? presetResources[0]
   const currentPresetNodes = selectedResource ? [readPromptResourceWorkbenchRoot(selectedResource)] : []
@@ -456,15 +454,6 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           onUpdateTool={props.onUpdateTool}
         />
       ) : <div className={styles.detailStack}>
-        {selectedResource ? (
-          <PresetSettingBindings
-            preset={selectedResource}
-            settings={settingResources}
-            settingMounts={props.settingMounts}
-            t={props.t}
-            onChange={settingResourceIds => props.onReplaceSettingMounts({ kind: 'preset', id: selectedResource.id }, settingResourceIds)}
-          />
-        ) : null}
         {selectedCompositionItem ? <CompositionItemDetail item={selectedCompositionItem} nodes={workbenchNodes} t={props.t} /> : selectedZone ? <ZoneDetail zone={selectedZone} t={props.t} /> : (
           <ContextAssetEditor
             activationEditable
@@ -874,55 +863,6 @@ function readOptionalFiniteNumber(value: string, label: string): number | undefi
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) throw new Error(`${label} must be a finite number`)
   return parsed
-}
-
-function PresetSettingBindings(props: {
-  preset: PromptResource
-  settings: PromptResource[]
-  settingMounts: SettingMount[]
-  t: Translator
-  onChange(settingResourceIds: string[]): Promise<void>
-}) {
-  const [pending, setPending] = useState(false)
-  const linkedIds = props.settingMounts
-    .filter(mount => mount.source.kind === 'preset' && mount.source.id === props.preset.id)
-    .sort((left, right) => left.orderIndex - right.orderIndex || left.id.localeCompare(right.id))
-    .map(mount => mount.settingResourceId)
-  const readOnly = props.preset.origin?.kind === 'builtin'
-  async function toggleSetting(settingId: string, checked: boolean) {
-    setPending(true)
-    try {
-      await props.onChange(checked
-        ? linkedIds.filter(id => id !== settingId)
-        : [...linkedIds, settingId])
-    } finally {
-      setPending(false)
-    }
-  }
-  return (
-    <section className={styles.settingBindings}>
-      <div>
-        <strong>{props.t('preset.settings.title')}</strong>
-        <span>{props.t('preset.settings.description')}</span>
-      </div>
-      <div className={styles.settingOptions}>
-        {props.settings.length === 0 ? <span>{props.t('preset.settings.empty')}</span> : props.settings.map(setting => {
-          const checked = linkedIds.includes(setting.id)
-          return (
-            <label key={setting.id}>
-              <input
-                checked={checked}
-                disabled={readOnly || pending}
-                type="checkbox"
-                onChange={() => void toggleSetting(setting.id, checked)}
-              />
-              <span>{setting.rootNode.label}</span>
-            </label>
-          )
-        })}
-      </div>
-    </section>
-  )
 }
 
 function ZoneDetail(props: {

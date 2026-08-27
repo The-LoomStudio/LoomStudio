@@ -135,7 +135,7 @@ describe('studio client typed api', () => {
     await api.narratives.list({ createdFromCardId: 'card-1', limit: 25 })
     await api.narratives.get('timeline-1')
     await api.narratives.getPage({ timelineId: 'timeline-1', branchId: 'branch-1' })
-    await api.narratives.createFromCard({ cardId: 'card-1' })
+    await api.narratives.create({ cardId: 'card-1' })
     await api.narratives.fork({ timelineId: 'timeline-1', fromBranchId: 'branch-1', fromNodeId: 'node-1' })
     await api.narratives.switch({ timelineId: 'timeline-1', branchId: 'branch-2' })
     await api.agentProfiles.list()

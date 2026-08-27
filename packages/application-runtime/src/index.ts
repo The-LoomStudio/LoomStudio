@@ -1,5 +1,14 @@
 export { applicationDocumentTypes } from './document-types.js'
+export * from './history-text.js'
 export { createApplicationRuntime } from './runtime.js'
+export {
+  materializeTimelineState,
+  StateDefinitionError,
+  toStateDefinitionEntry,
+  validateStateDefinitionDraft,
+  validateStateValue,
+  validateTimelineStateBinding,
+} from './state-definition.js'
 export { composeAgentTurnPrompt } from './agent-turn.js'
 export {
   exportCardArtifact,
@@ -26,7 +35,9 @@ export {
   createPromptToolExecutionScope,
   officialAgentToolDefinitions,
   officialReadContextTool,
+  officialReadStateTool,
   officialSearchContextTool,
+  officialUpdateStateTool,
 } from './agent/official-tools/index.js'
 export {
   createLoomContentScannerState,
@@ -121,6 +132,18 @@ export type {
 } from './prompt-builder.js'
 export { promptBindingIds, promptSlotIds, promptZoneIds } from './prompt-builder.js'
 export type { PromptBuildTrace } from './prompt-build-pipeline.js'
+export {
+  cloneVariableRenderTrace,
+  createVariableRenderContext,
+  renderVariableMacros,
+} from './variables.js'
+export type {
+  VariableDiagnostic,
+  VariableReadTrace,
+  VariableRenderContext,
+  VariableRenderTrace,
+  VariableSnapshot,
+} from './variables.js'
 export type {
   ActivationCondition,
   ActivationEvaluation,

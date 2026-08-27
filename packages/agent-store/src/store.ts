@@ -462,6 +462,17 @@ function validateTranscriptEntry(
     validateContent(value.content)
     return
   }
+  if (value.kind === 'reasoning') {
+    validateContent(value.content)
+    if (value.source !== 'provider-native' && value.source !== 'assistant-content')
+      throw new AgentStoreError('agent.reasoning_source_invalid', 'Agent reasoning source is invalid')
+    if (!['collapsed', 'hidden', 'visible'].includes(String(value.visibility)))
+      throw new AgentStoreError('agent.reasoning_visibility_invalid', 'Agent reasoning visibility is invalid')
+    if (value.replay !== 'omit' && value.replay !== 'assistant-content')
+      throw new AgentStoreError('agent.reasoning_replay_invalid', 'Agent reasoning replay policy is invalid')
+    validateOptionalId(value.providerCallId as string | undefined, 'providerCallId')
+    return
+  }
   if (value.kind === 'provider-observation') {
     validateId(value.provider, 'provider')
     validateId(value.model, 'model')

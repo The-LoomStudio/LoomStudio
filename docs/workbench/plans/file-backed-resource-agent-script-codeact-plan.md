@@ -4,6 +4,7 @@
 > **日期**：2026-08-24
 > **范围**：从非 Prompt、文件型 Workspace Resource 的持久化开始，建立 Agent Script Definition、Card / Preset / Agent Profile / Session 挂载、角色包导入导出、受控 JavaScript Runtime，以及 CodeAct inline / resource 两种执行模式。
 > **事实边界**：本文是 Workbench Plan，不是已实现 Architecture。当前已实现 Document Store、共享 SQLite Data Engine、内容寻址 Blob Store、Source Artifact、Media Asset、Agent Tool Registry、Content Tool 与 Agent Loop；通用 File-backed Resource、Agent Script、Script Mount、Sandbox Host 和 CodeAct 尚未实现。
+> **2026-08-25 Bundle 边界补充**：Preset / Setting 的增强分发不建立通用 Package 领域实体或递归依赖图。未来 Bundle 必须拥有唯一主体，导入后仍回到 Preset / Setting / Card canonical state；附件关系、运行时 Mount 与外部 Requirement 保持分离。详见 [`typed-primary-resource-bundle-plan.md`](./typed-primary-resource-bundle-plan.md)。
 
 ## 1. 决策摘要
 

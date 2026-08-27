@@ -19,6 +19,105 @@ function createTestRuntime() {
 }
 
 describe('application narrative timeline lifecycle', () => {
+  it('initializes timeline State atomically from Card bindings and advances the branch head on mutation', async () => {
+    const { engine, runtime } = createTestRuntime()
+    const imported = await runtime.importCardBundle({
+      artifact: {
+        schemaVersion: 2,
+        artifactId: 'stateful-card',
+        displayName: 'Stateful Card',
+        card: {
+          name: 'Alice',
+          opening: { entries: [
+            { content: 'Gold: {{timeline.characters.alice.gold}}' },
+            { content: 'The story begins.' },
+          ] },
+        },
+        contextAssets: [],
+        stateTemplates: [{
+          id: 'template.person',
+          templateVersion: 1,
+          schema: {
+            type: 'object',
+            properties: { gold: { type: 'number', minimum: 0 } },
+            required: ['gold'],
+            additionalProperties: false,
+          },
+          initial: { gold: 10 },
+        }],
+        timelineStateBindings: [{ path: 'characters.alice', templateId: 'template.person', templateVersion: 1 }],
+      },
+    })
+    const created = await runtime.createNarrativeTimeline({ cardId: imported.card.id })
+    const initial = await runtime.getStateSnapshot({
+      target: { scope: 'timeline', timelineId: created.timeline.id, branchId: created.branch.id },
+    })
+    const updated = await runtime.applyStateMutation({
+      target: initial.snapshot.target,
+      expectedRevisionId: initial.snapshot.revisionId,
+      operations: [{ op: 'increment', path: '/characters/alice/gold', by: -3 }],
+    })
+
+    expect(created.nodes[0]).toMatchObject({
+      stateRevisionId: initial.snapshot.revisionId,
+      body: { raw: 'Gold: 10' },
+    })
+    expect(updated.snapshot.value).toEqual({ characters: { alice: { gold: 7 } } })
+    const fork = await runtime.forkNarrativeBranch({
+      timelineId: created.timeline.id,
+      fromBranchId: created.branch.id,
+      fromNodeId: created.nodes.at(-1)!.id,
+      title: 'After state-only mutation',
+    })
+    await expect(runtime.getStateSnapshot({
+      target: { scope: 'timeline', timelineId: created.timeline.id, branchId: fork.branch.id },
+    })).resolves.toMatchObject({ snapshot: { revisionId: updated.snapshot.revisionId, value: { characters: { alice: { gold: 7 } } } } })
+    const forkUpdated = await runtime.applyStateMutation({
+      target: { scope: 'timeline', timelineId: created.timeline.id, branchId: fork.branch.id },
+      expectedRevisionId: updated.snapshot.revisionId,
+      operations: [{ op: 'increment', path: '/characters/alice/gold', by: 5 }],
+    })
+    const historicalFork = await runtime.forkNarrativeBranch({
+      timelineId: created.timeline.id,
+      fromBranchId: created.branch.id,
+      fromNodeId: created.nodes[0]!.id,
+      title: 'Historical state',
+    })
+    await expect(runtime.getStateSnapshot({
+      target: { scope: 'timeline', timelineId: created.timeline.id, branchId: historicalFork.branch.id },
+    })).resolves.toMatchObject({ snapshot: { value: { characters: { alice: { gold: 10 } } } } })
+    await runtime.switchNarrativeBranch({
+      timelineId: created.timeline.id,
+      branchId: fork.branch.id,
+      expectedActiveBranchId: created.branch.id,
+    })
+    await expect(runtime.getStateSnapshot({
+      target: { scope: 'timeline', timelineId: created.timeline.id, branchId: fork.branch.id },
+    })).resolves.toMatchObject({ snapshot: { revisionId: forkUpdated.snapshot.revisionId, value: { characters: { alice: { gold: 12 } } } } })
+    await runtime.switchNarrativeBranch({
+      timelineId: created.timeline.id,
+      branchId: created.branch.id,
+      expectedActiveBranchId: fork.branch.id,
+    })
+    await expect(runtime.getStateSnapshot({ target: initial.snapshot.target })).resolves.toMatchObject({
+      snapshot: { revisionId: updated.snapshot.revisionId, value: { characters: { alice: { gold: 7 } } } },
+    })
+    await runtime.revertChangeset({ changesetId: forkUpdated.mutation.changesetId })
+    const revertedFork = await runtime.getStateSnapshot({
+      target: { scope: 'timeline', timelineId: created.timeline.id, branchId: fork.branch.id },
+    })
+    expect(revertedFork.snapshot.value).toEqual({ characters: { alice: { gold: 7 } } })
+    expect(revertedFork.snapshot.revisionId).not.toBe(updated.snapshot.revisionId)
+    expect(engine.database.prepare('SELECT id FROM state_revisions WHERE id = ?').get(forkUpdated.snapshot.revisionId))
+      .toEqual({ id: forkUpdated.snapshot.revisionId })
+    await expect(runtime.applyStateMutation({
+      target: initial.snapshot.target,
+      expectedRevisionId: updated.snapshot.revisionId,
+      operations: [{ op: 'increment', path: '/characters/alice/gold', by: -20 }],
+    })).rejects.toMatchObject({ code: 'state.schema_minimum' })
+    engine.close()
+  })
+
   it('creates a roleless timeline from a card and keeps its launch resource links stable', async () => {
     const { engine, runtime } = createTestRuntime()
     const card = await runtime.createCard({
@@ -36,7 +135,7 @@ describe('application narrative timeline lifecycle', () => {
       promptResourceIds: [],
     })
 
-    const created = await runtime.createNarrativeTimelineFromCard({ cardId: card.card.id }, {
+    const created = await runtime.createNarrativeTimeline({ cardId: card.card.id }, {
       clientId: 'client-1',
       correlationId: 'corr-1',
       callId: 'call-1',
@@ -68,7 +167,7 @@ describe('application narrative timeline lifecycle', () => {
       name: 'Story',
       opening: { entries: [{ content: 'root' }, { content: 'main' }] },
     })
-    const created = await runtime.createNarrativeTimelineFromCard({ cardId: card.card.id })
+    const created = await runtime.createNarrativeTimeline({ cardId: card.card.id })
     const fork = await runtime.forkNarrativeBranch({
       timelineId: created.timeline.id,
       fromBranchId: created.branch.id,
@@ -86,6 +185,9 @@ describe('application narrative timeline lifecycle', () => {
     const deleted = await runtime.deleteNarrativeTimeline({ timelineId: created.timeline.id })
     expect(deleted.deleted).toBe(true)
     await expect(runtime.getNarrativeTimeline({ timelineId: created.timeline.id })).rejects.toThrow('Narrative timeline not found')
+    await expect(runtime.getStateSnapshot({
+      target: { scope: 'timeline', timelineId: created.timeline.id, branchId: created.branch.id },
+    })).rejects.toMatchObject({ code: 'state.timeline_not_initialized' })
     engine.close()
   })
 
@@ -96,7 +198,7 @@ describe('application narrative timeline lifecycle', () => {
     await runtime.updateCardPromptResources({ cardId: card.card.id, promptResourceIds: [resource.resource.id] })
     const preset = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Test Agent' })
     await runtime.replaceSettingMounts({ source: { kind: 'preset', id: preset.resource.id }, settingResourceIds: [resource.resource.id] })
-    const timeline = await runtime.createNarrativeTimelineFromCard({ cardId: card.card.id })
+    const timeline = await runtime.createNarrativeTimeline({ cardId: card.card.id })
 
     const deleted = await runtime.deletePromptResource({ resourceId: resource.resource.id })
 

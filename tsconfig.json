@@ -12,6 +12,7 @@
     { "path": "./packages/asset-store" },
     { "path": "./packages/agent-store" },
     { "path": "./packages/narrative-store" },
+    { "path": "./packages/state-store" },
     { "path": "./packages/prompt-resource-store" },
     { "path": "./packages/document-store" },
     { "path": "./packages/ai-gateway" },

@@ -11,6 +11,9 @@
   box-shadow: 0 14px 36px rgb(0 0 0 / 32%);
   font-size: var(--loom-font-size-body);
   line-height: var(--loom-line-height-ui);
+  cursor: copy;
+  touch-action: auto;
+  user-select: text;
 }
 
 .content {
@@ -72,6 +75,8 @@
   color: var(--loom-color-text-muted);
   background: transparent;
   font-size: var(--loom-font-size-3);
+  cursor: pointer;
+  user-select: none;
 }
 
 .closeButton {

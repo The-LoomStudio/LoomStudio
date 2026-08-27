@@ -32,13 +32,13 @@ describe('extension host rpc registration contract', () => {
     const { kernel } = createExtensionHostHarness()
     await kernel.start()
 
-    expect(() => kernel.registerExtensionRpc('system.bad', 'example.bad', 'server', () => null)).toThrow('Kernel namespace')
+    expect(() => kernel.registerExtensionRpc('system.bad', 'example.bad', 'server', () => null, 'bad-1')).toThrow('Kernel namespace')
   })
 
   it('marks duplicate rpc registration activation as disabled', async () => {
     const { kernel, extensionHost } = createExtensionHostHarness()
     await kernel.start()
-    kernel.registerExtensionRpc('example.conflict.echo', 'owner.one', 'server', () => null)
+    kernel.registerExtensionRpc('example.conflict.echo', 'owner.one', 'server', () => null, 'owner-1')
     const dir = createExtensionFixture('conflict-extension', {
       manifest: manifest('example.conflict', [{ name: 'example.conflict.echo' }]),
       source: `export function activate(ctx) { ctx.rpc.register('example.conflict.echo', () => null) }`,

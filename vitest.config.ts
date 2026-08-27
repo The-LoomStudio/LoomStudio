@@ -37,6 +37,7 @@ export default defineConfig({
       '@loom-studio/logging/node': new URL('./packages/logging/src/node.ts', import.meta.url).pathname,
       '@loom-studio/logging': new URL('./packages/logging/src/index.ts', import.meta.url).pathname,
       '@loom-studio/narrative-store': new URL('./packages/narrative-store/src/index.ts', import.meta.url).pathname,
+      '@loom-studio/state-store': new URL('./packages/state-store/src/index.ts', import.meta.url).pathname,
       '@loom-studio/prompt-resource-store': new URL('./packages/prompt-resource-store/src/index.ts', import.meta.url).pathname,
       '@loom-studio/loom-runner': new URL('./packages/loom-runner/src/index.ts', import.meta.url).pathname,
       '@loom-studio/shared': new URL('./packages/shared/src/index.ts', import.meta.url).pathname,

@@ -118,6 +118,20 @@ export function useCards(input: UseCardsInput) {
     })
   }
 
+  async function replaceCardPromptResources(cardId: string, promptResourceIds: string[]) {
+    await input.runAction(async () => {
+      const result = await input.api.cards.updatePromptResources({ cardId, promptResourceIds })
+      input.recordEdit({
+        label: input.t('history.card.update'),
+        changesetId: result.mutation.changesetId,
+        anchor: { documentId: result.card.id },
+      })
+      setSelectedCardDetails(result.card)
+      await refreshCards()
+      setSelectedCardId(result.card.id)
+    })
+  }
+
   async function deleteCard() {
     if (!selectedCardId) return
 
@@ -240,6 +254,7 @@ export function useCards(input: UseCardsInput) {
     selectCard,
     createCard,
     updateCard,
+    replaceCardPromptResources,
     deleteCard,
     deleteCards,
     updateCardMedia,

@@ -22,6 +22,7 @@
     "@loom-studio/prompt-resource-store": "workspace:*",
     "@loom-studio/secret-store": "workspace:*",
     "@loom-studio/shared": "workspace:*",
+    "@loom-studio/state-store": "workspace:*",
     "@loom/core": "workspace:*",
     "undici": "^7.16.0"
   }

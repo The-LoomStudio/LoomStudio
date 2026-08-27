@@ -1,6 +1,6 @@
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import { runPasses, type Fragment, type Pass } from '@loom/core'
-import { renderMacros } from '../card.js'
+import { renderVariableMacros, type VariableRenderContext } from '../variables.js'
 import {
   evaluatePromptActivation,
   type ActivationFacts,
@@ -93,7 +93,7 @@ export type ToolPromptBuildResult = {
 
 export type ToolPromptBuildInput = {
   sources: readonly ToolPromptSource[]
-  macroContext: { user: string }
+  variables: VariableRenderContext
   currentInput?: string
   activationFacts?: ActivationFacts
 }
@@ -126,7 +126,7 @@ export function compileToolPromptSources(
           })
           const prompt = compilePromptTemplate(
             meta.source.template,
-            input.macroContext,
+            input.variables,
           )
           return {
             ...fragment,
@@ -268,23 +268,23 @@ function readCoreMeta(fragment: Fragment<ToolPromptCoreMeta>): {
 
 function compilePromptTemplate(
   template: ToolPromptTemplate,
-  macroContext: { user: string },
+  variables: VariableRenderContext,
 ): CompiledToolPrompt {
   return {
-    description: renderMacros(template.description, macroContext),
+    description: renderVariableMacros(template.description, variables),
     ...(template.parameterDescriptions === undefined
       ? {}
       : {
           parameterDescriptions: Object.fromEntries(
             Object.entries(template.parameterDescriptions).map(([key, value]) => [
               key,
-              renderMacros(value, macroContext),
+              renderVariableMacros(value, variables),
             ]),
           ),
         }),
     ...(template.guidance === undefined
       ? {}
-      : { guidance: renderMacros(template.guidance, macroContext) }),
+      : { guidance: renderVariableMacros(template.guidance, variables) }),
   }
 }
 

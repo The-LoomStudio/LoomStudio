@@ -1,46 +1,10 @@
 .detailStack {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   height: 100%;
   min-height: 0;
   overflow: hidden;
   width: 100%;
-}
-
-.settingBindings {
-  align-items: start;
-  border-bottom: 1px solid var(--loom-color-border);
-  display: grid;
-  gap: 16px;
-  grid-template-columns: minmax(180px, 0.35fr) minmax(0, 1fr);
-  padding: 14px 20px;
-}
-
-.settingBindings > div:first-child {
-  display: grid;
-  gap: 4px;
-}
-
-.settingBindings strong {
-  color: var(--loom-color-text);
-}
-
-.settingBindings span {
-  color: var(--loom-color-text-subtle);
-  font-size: var(--loom-font-size-1);
-}
-
-.settingOptions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-}
-
-.settingOptions label {
-  align-items: center;
-  color: var(--loom-color-text);
-  display: inline-flex;
-  gap: 7px;
 }
 
 .toolbarRow {

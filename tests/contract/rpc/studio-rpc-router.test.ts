@@ -33,10 +33,16 @@ describe('studio rpc router', () => {
       stability: 'experimental',
     }))
     expect(listed.capabilities).toContainEqual(expect.objectContaining({
-      name: 'application.createNarrativeTimelineFromCard',
+      name: 'application.createNarrativeTimeline',
       namespace: 'application',
       owner: 'application',
       stability: 'experimental',
+    }))
+    expect(listed.capabilities).not.toContainEqual(expect.objectContaining({
+      name: 'application.createNarrativeTimelineFromCard',
+    }))
+    expect(listed.capabilities).not.toContainEqual(expect.objectContaining({
+      name: 'application.exportCardArtifact',
     }))
     expect(listed.capabilities).toContainEqual(expect.objectContaining({
       name: 'application.createAgentSession',
@@ -251,7 +257,7 @@ describe('studio rpc router', () => {
   it('passes rpc call context into narrative mutations', async () => {
     let receivedContext: unknown
     const applicationRuntime = {
-      createNarrativeTimelineFromCard: async (_input: unknown, requestContext?: unknown) => {
+      createNarrativeTimeline: async (_input: unknown, requestContext?: unknown) => {
         receivedContext = requestContext
         return {
           timeline: { id: 'timeline-1' },
@@ -263,7 +269,7 @@ describe('studio rpc router', () => {
     } as unknown as ApplicationRuntime
     const router = createStudioRpcRouter({ applicationRuntime, kernel: createKernelCaller() })
 
-    await router.call('application.createNarrativeTimelineFromCard', { cardId: 'card-1' }, context)
+    await router.call('application.createNarrativeTimeline', { cardId: 'card-1' }, context)
 
     expect(receivedContext).toEqual(context)
   })
@@ -310,7 +316,7 @@ describe('studio rpc router', () => {
 
     await router.call('application.importCardBundle', {
       artifact: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         artifactId: 'artifact-1',
         displayName: 'Artifact',
         card: { name: 'Card' },

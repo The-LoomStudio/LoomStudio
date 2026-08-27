@@ -1,13 +1,12 @@
 import type { DocumentRecord, DocumentStore, SqliteDocumentStore } from '@loom-studio/document-store'
 import type { AgentTranscriptEntry } from '@loom-studio/agent-store'
-import type { JsonValue } from '@loom-studio/shared'
+import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import type { PromptResourceMutation } from '@loom-studio/prompt-resource-store'
 import {
   assertProviderModelExists,
   assertNonEmpty,
 } from './agent.js'
 import {
-  cardToSnapshot,
   normalizeCardContent,
   normalizeCardMedia,
   normalizeOpening,
@@ -22,6 +21,28 @@ import { createApplicationRuntimeContext, type ApplicationRuntimeContext } from 
 import { applicationDocumentTypes } from './document-types.js'
 import { listDocuments, readDocument, toVersioned, writeDocument } from './document-store.js'
 import { executeDocumentMutation } from './mutation.js'
+import { applyApplicationStateMutation, applyGlobalStateDefaultInTransaction, getApplicationStateSnapshot, initializeGlobalState, revertApplicationStateChangeset } from './state.js'
+import {
+  toStateDefinitionEntry,
+  materializeTimelineState,
+  validateStateDefinitionDraft,
+  validateStateValue,
+  validateTimelineStateBinding,
+} from './state-definition.js'
+import { createVariableRenderContext, type VariableRenderContext } from './variables.js'
+import {
+  extractHistory as extractHistorySnapshot,
+  projectHistoryEntries,
+  validateTextExtractorDraft,
+  validateTextTransformRuleDraft,
+  type HistorySource,
+  type HistoryTextEntry,
+  type RendererDefinition,
+  type TextExtractorContent,
+  type TextTransformPhase,
+  type TextTransformRuleContent,
+  type TextTransformRuleEntry,
+} from './history-text.js'
 import {
   createOfficialPromptResourceContents,
   officialPromptResourceIds,
@@ -55,6 +76,9 @@ import type {
   ApplicationRuntimeOptions,
   CardMediaRefs,
   CardSourceContent,
+  StateDefinitionContent,
+  StateDefinitionDraft,
+  StateMutationOperation,
   ProviderProfileContent,
   ProviderProfileView,
   ProviderMessage,
@@ -117,8 +141,66 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
 
   const agentWriteContext = narrativeWriteContext
 
+  async function createTimelineFromCard(
+    input: { cardId: string; title?: string },
+    requestContext: RuntimeRequestContext | undefined,
+    reason: string,
+  ) {
+    const narratives = requireNarratives()
+    const card = await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
+    const cardContent = normalizeCardContent(card.content)
+    const templates = new Map<string, Extract<StateDefinitionDraft, { kind: 'timeline-template' }>>()
+    for (const definitionId of cardContent.stateDefinitionIds ?? []) {
+      const definition = await readDocument<StateDefinitionContent>(ctx.documents, definitionId, applicationDocumentTypes.stateDefinition)
+      if (definition.content.kind !== 'timeline-template') {
+        throw new Error(`Card State Definition is not a timeline template: ${definitionId}`)
+      }
+      templates.set(definition.id, definition.content)
+    }
+    const initialState = materializeTimelineState({
+      bindings: cardContent.timelineStateBindings ?? [],
+      templates,
+    })
+    const timelineId = ctx.createId('timeline')
+    const branchId = ctx.createId('branch')
+    const stateScopeId = ctx.createId('state-scope')
+    const stateRevisionId = ctx.createId('state-revision')
+    const variables = await readAgentTurnVariables(ctx, card.id, initialState)
+    const openingEntries = readOpeningEntries(cardContent, variables)
+    const transaction = await ctx.dataEngine.transact(
+      narrativeWriteContext(requestContext, reason),
+      async dataTx => {
+        const stateTx = ctx.states.transaction(dataTx)
+        const narrativeTx = narratives.transaction(dataTx)
+        stateTx.createScope({ id: stateScopeId, kind: 'timeline', ownerId: timelineId })
+        stateTx.createRevision({
+          id: stateRevisionId,
+          scopeId: stateScopeId,
+          snapshot: initialState,
+          operations: [],
+        })
+        return narrativeTx.createTimeline({
+          id: timelineId,
+          primaryBranchId: branchId,
+          stateRevisionId,
+          title: input.title ?? cardContent.name,
+          createdFrom: { cardId: card.id, cardVersion: card.version },
+          promptResourceIds: cardContent.promptResourceIds ?? [],
+          openingNodes: openingEntries.map(entry => ({
+            body: { format: 'loom-markdown.v1' as const, raw: entry.content },
+          })),
+        })
+      },
+    )
+    return {
+      ...transaction.value,
+      mutation: { changesetId: transaction.commit.changesetId },
+    }
+  }
+
   return {
     initialize: async () => {
+      await initializeGlobalState(ctx)
       const timestamp = ctx.now()
       const promptContents = createOfficialPromptResourceContents(timestamp)
       for (const [index, content] of promptContents.entries()) {
@@ -131,12 +213,12 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
           })
         }
       }
-      const officialMounts = await ctx.promptResources.listSettingMounts({ source: { kind: 'preset', id: officialPromptResourceIds.assistantPreset } })
+      const officialMounts = await ctx.promptResources.listSettingMounts({ source: { kind: 'manual', id: 'global' } })
       if (!officialMounts.some(mount => mount.settingResourceId === officialPromptResourceIds.knowledgeSetting)) {
         await ctx.promptResources.addSettingMount({
           actor: applicationActor,
           reason: 'application.initializePromptResources',
-          source: { kind: 'preset', id: officialPromptResourceIds.assistantPreset },
+          source: { kind: 'manual', id: 'global' },
           settingResourceId: officialPromptResourceIds.knowledgeSetting,
           orderIndex: officialMounts.length,
           origin: { kind: 'builtin', key: 'loom-assistant-preset' },
@@ -210,6 +292,198 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       }
     },
 
+    getStateSnapshot: async input => ({
+      snapshot: await getApplicationStateSnapshot(ctx, input.target),
+    }),
+
+    applyStateMutation: (input, requestContext) => applyApplicationStateMutation(ctx, input, requestContext),
+
+    listStateDefinitions: async input => {
+      const definitions = await listDocuments<StateDefinitionContent>(ctx.documents, applicationDocumentTypes.stateDefinition)
+      return {
+        definitions: definitions
+          .map(toStateDefinitionEntry)
+          .filter(definition => input?.kind === undefined || definition.kind === input.kind),
+      }
+    },
+
+    getStateDefinition: async input => ({
+      definition: toStateDefinitionEntry(await readDocument<StateDefinitionContent>(
+        ctx.documents,
+        input.definitionId,
+        applicationDocumentTypes.stateDefinition,
+      )),
+    }),
+
+    upsertStateDefinition: async (input, requestContext) => {
+      validateStateDefinitionDraft(input.definition)
+      const existing = await ctx.documents.get(input.definitionId)
+      if (existing && existing.type !== applicationDocumentTypes.stateDefinition) {
+        throw new Error(`Unexpected document type for ${input.definitionId}: ${existing.type}`)
+      }
+      if (existing && input.expectedVersion === undefined) {
+        throw new Error(`expectedVersion is required when updating State Definition: ${input.definitionId}`)
+      }
+      if (existing && existing.version !== input.expectedVersion) {
+        throw new Error(`State Definition version conflict: ${input.definitionId}`)
+      }
+      if (!existing && input.expectedVersion !== undefined) {
+        throw new Error(`State Definition does not exist: ${input.definitionId}`)
+      }
+
+      const timestamp = ctx.now()
+      const content: StateDefinitionContent = {
+        ...structuredClone(input.definition),
+        createdAt: existing ? (existing.content as StateDefinitionContent).createdAt : timestamp,
+        updatedAt: timestamp,
+      }
+      const globalDefinition = input.definition.kind === 'global' ? input.definition : undefined
+      const globalSnapshot = globalDefinition
+        ? await ctx.states.getGlobalSnapshot('workspace')
+        : null
+      if (globalDefinition && !globalSnapshot) {
+        throw new Error('Global state is not initialized')
+      }
+      const currentValue = globalDefinition
+        ? readDotPath(globalSnapshot!.revision.snapshot, globalDefinition.path.replace(/^global\./, ''))
+        : { found: false as const }
+      if (globalDefinition && currentValue.found) {
+        validateStateValue(currentValue.value, globalDefinition.schema, globalDefinition.path)
+      }
+      const shouldCreateDefault = globalDefinition !== undefined
+        && !currentValue.found
+        && globalDefinition.default !== undefined
+      const documentParticipant = requireDocumentParticipant()
+      const transaction = await ctx.dataEngine.transact({
+        ...narrativeWriteContext(requestContext, 'application.upsertStateDefinition'),
+      }, async dataTx => documentParticipant.participateTransaction(dataTx, async documents => {
+        const written = await writeDocument<StateDefinitionContent>(documents, {
+          id: input.definitionId,
+          type: applicationDocumentTypes.stateDefinition,
+          content,
+          expectedVersion: existing ? existing.version : 'new',
+        })
+        if (shouldCreateDefault) {
+          applyGlobalStateDefaultInTransaction(ctx, dataTx, {
+            scopeId: globalSnapshot!.scope.id,
+            parentRevisionId: globalSnapshot!.revision.id,
+            snapshot: globalSnapshot!.revision.snapshot,
+            path: globalDefinition.path.replace(/^global\./, ''),
+            value: globalDefinition.default!,
+          })
+        }
+        return written
+      }))
+      return {
+        definition: toStateDefinitionEntry(transaction.value.value),
+        mutation: { changesetId: transaction.commit.changesetId },
+      }
+    },
+
+    deleteStateDefinition: async (input, requestContext) => {
+      const existing = await readDocument<StateDefinitionContent>(ctx.documents, input.definitionId, applicationDocumentTypes.stateDefinition)
+      if (input.expectedVersion !== undefined && input.expectedVersion !== existing.version) {
+        throw new Error(`State Definition version conflict: ${input.definitionId}`)
+      }
+      const cards = await listDocuments<CardSourceContent>(ctx.documents, applicationDocumentTypes.cardSource)
+      if (cards.some(card => card.content.stateDefinitionIds?.includes(input.definitionId)
+        || card.content.timelineStateBindings?.some(binding => binding.templateId === input.definitionId))) {
+        throw new Error(`State Definition is still referenced by a Card: ${input.definitionId}`)
+      }
+      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.deleteStateDefinition', async documents => {
+        await documents.delete({ id: existing.id, expectedVersion: existing.version })
+        return true as const
+      })
+      return { deleted: mutation.value, mutation: mutation.mutation }
+    },
+
+    listTextTransformRules: async () => ({
+      rules: (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule))
+        .map(document => toVersioned(document)),
+    }),
+
+    getTextTransformRule: async input => ({
+      rule: toVersioned(await readDocument<TextTransformRuleContent>(ctx.documents, input.ruleId, applicationDocumentTypes.textTransformRule)),
+    }),
+
+    upsertTextTransformRule: async (input, requestContext) => {
+      validateTextTransformRuleDraft(input.rule)
+      const existing = await ctx.documents.get(input.ruleId)
+      assertExpectedDocumentVersion(existing, input.expectedVersion, applicationDocumentTypes.textTransformRule, 'Text Transform Rule', input.ruleId)
+      const timestamp = ctx.now()
+      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.upsertTextTransformRule', async documents =>
+        writeDocument<TextTransformRuleContent>(documents, {
+          id: input.ruleId,
+          type: applicationDocumentTypes.textTransformRule,
+          content: {
+            ...structuredClone(input.rule),
+            createdAt: existing ? (existing.content as TextTransformRuleContent).createdAt : timestamp,
+            updatedAt: timestamp,
+          },
+          expectedVersion: existing ? existing.version : 'new',
+        }),
+      )
+      return { rule: toVersioned(mutation.value), mutation: mutation.mutation }
+    },
+
+    deleteTextTransformRule: async (input, requestContext) => {
+      const existing = await readDocument<TextTransformRuleContent>(ctx.documents, input.ruleId, applicationDocumentTypes.textTransformRule)
+      if (input.expectedVersion !== undefined && existing.version !== input.expectedVersion) throw new Error(`Text Transform Rule version conflict: ${input.ruleId}`)
+      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.deleteTextTransformRule', async documents => {
+        await documents.delete({ id: existing.id, expectedVersion: existing.version })
+        return true as const
+      })
+      return { deleted: mutation.value, mutation: mutation.mutation }
+    },
+
+    listTextExtractors: async () => ({
+      extractors: (await listDocuments<TextExtractorContent>(ctx.documents, applicationDocumentTypes.textExtractor)).map(document => toVersioned(document)),
+    }),
+
+    getTextExtractor: async input => ({
+      extractor: toVersioned(await readDocument<TextExtractorContent>(ctx.documents, input.extractorId, applicationDocumentTypes.textExtractor)),
+    }),
+
+    upsertTextExtractor: async (input, requestContext) => {
+      validateTextExtractorDraft(input.extractor)
+      const existing = await ctx.documents.get(input.extractorId)
+      assertExpectedDocumentVersion(existing, input.expectedVersion, applicationDocumentTypes.textExtractor, 'Text Extractor', input.extractorId)
+      const timestamp = ctx.now()
+      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.upsertTextExtractor', async documents =>
+        writeDocument<TextExtractorContent>(documents, {
+          id: input.extractorId,
+          type: applicationDocumentTypes.textExtractor,
+          content: {
+            ...structuredClone(input.extractor),
+            createdAt: existing ? (existing.content as TextExtractorContent).createdAt : timestamp,
+            updatedAt: timestamp,
+          },
+          expectedVersion: existing ? existing.version : 'new',
+        }),
+      )
+      return { extractor: toVersioned(mutation.value), mutation: mutation.mutation }
+    },
+
+    deleteTextExtractor: async (input, requestContext) => {
+      const existing = await readDocument<TextExtractorContent>(ctx.documents, input.extractorId, applicationDocumentTypes.textExtractor)
+      if (input.expectedVersion !== undefined && existing.version !== input.expectedVersion) throw new Error(`Text Extractor version conflict: ${input.extractorId}`)
+      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.deleteTextExtractor', async documents => {
+        await documents.delete({ id: existing.id, expectedVersion: existing.version })
+        return true as const
+      })
+      return { deleted: mutation.value, mutation: mutation.mutation }
+    },
+
+    projectHistory: async input => ({ snapshot: await projectRuntimeHistory(ctx, input.source, input.phase) }),
+
+    extractHistory: async input => {
+      const extractor = toVersioned(await readDocument<TextExtractorContent>(ctx.documents, input.extractorId, applicationDocumentTypes.textExtractor))
+      const snapshot = await projectRuntimeHistory(ctx, input.source, input.phase ?? 'display')
+      return { extraction: extractHistorySnapshot({ snapshot, extractor }), snapshot }
+    },
+
+    listRenderers: async () => ({ renderers: builtInRenderers.map(renderer => structuredClone(renderer)) }),
+
     createCard: async (input, requestContext) => {
       if (input.name.trim().length === 0) {
         throw new Error('createCard name cannot be empty')
@@ -272,6 +546,19 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       await assertCardMedia(ctx, input.media)
       const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.updateCard', async documents => {
         const existing = await readDocument<CardSourceContent>(documents, input.cardId, applicationDocumentTypes.cardSource)
+        const stateDefinitionIds = input.stateDefinitionIds ?? existing.content.stateDefinitionIds ?? []
+        const timelineStateBindings = input.timelineStateBindings ?? existing.content.timelineStateBindings ?? []
+        if (new Set(stateDefinitionIds).size !== stateDefinitionIds.length) throw new Error('Duplicate State Definition id')
+        for (const definitionId of stateDefinitionIds) {
+          const definition = await readDocument<StateDefinitionContent>(documents, definitionId, applicationDocumentTypes.stateDefinition)
+          if (definition.content.kind !== 'timeline-template') throw new Error(`Card State Definition is not a timeline template: ${definitionId}`)
+        }
+        for (const binding of timelineStateBindings) {
+          validateTimelineStateBinding(binding)
+          if (!stateDefinitionIds.includes(binding.templateId)) {
+            throw new Error(`Timeline State Binding template is not mounted on Card: ${binding.templateId}`)
+          }
+        }
         const updated = await writeDocument<CardSourceContent>(documents, {
           id: existing.id,
           type: applicationDocumentTypes.cardSource,
@@ -284,6 +571,8 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
             ...(input.opening !== undefined ? { opening: normalizeOpening(input.opening) } : {}),
             ...(input.settingLayer !== undefined ? { settingLayer: normalizeSettingLayer(input.settingLayer, undefined) } : {}),
             ...(input.media !== undefined ? { media: normalizeCardMedia(input.media) } : {}),
+            ...(input.stateDefinitionIds !== undefined ? { stateDefinitionIds: [...input.stateDefinitionIds] } : {}),
+            ...(input.timelineStateBindings !== undefined ? { timelineStateBindings: structuredClone(input.timelineStateBindings) } : {}),
             updatedAt: ctx.now(),
           }),
           expectedVersion: existing.version,
@@ -673,6 +962,11 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         runId,
         session,
       } = prepared
+      const classificationRules = await filterRulesForSource(
+        ctx,
+        { kind: 'agent-session', sessionId: session.id },
+        (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule)).map(document => toVersioned(document)),
+      )
       const loop = await runNativeToolLoop({
         ctx,
         agents,
@@ -685,28 +979,53 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         toolExecutionScope: prompt.toolExecutionScope,
         branchId: narrativePage?.branch.id ?? 'agent-only',
         purpose: input.narrativeTarget?.commit ? 'narrative' : 'agent',
+        classificationRules,
         ...(requestContext ? { requestContext } : {}),
       })
       const narrative = narrativePage && input.narrativeTarget?.commit
-        ? await narratives!.appendNode({
-            ...narrativeWriteContext(requestContext, 'application.invokeAgentTurn.narrative'),
-            timelineId: narrativePage.timeline.id,
-            branchId: narrativePage.branch.id,
-            expectedHeadNodeId: narrativePage.branch.headNodeId ?? null,
-            body: { format: 'loom-markdown.v1', raw: readMessageEntryContent(loop.assistantEntry) },
-            source: {
-              agentSessionId: session.id,
-              agentMessageId: loop.assistantEntry.id,
-              runId,
+        ? await ctx.dataEngine.transact(
+            narrativeWriteContext(requestContext, 'application.invokeAgentTurn.narrative'),
+            async dataTx => {
+              const narrativeTx = narratives!.transaction(dataTx)
+              const user = narrativeTx.appendNode({
+                timelineId: narrativePage.timeline.id,
+                branchId: narrativePage.branch.id,
+                expectedHeadNodeId: narrativePage.branch.headNodeId ?? null,
+                stateRevisionId: narrativePage.branch.stateHeadRevisionId,
+                body: { format: 'loom-markdown.v1', raw: readMessageEntryContent(loop.userEntry, 'user') },
+                source: {
+                  agentSessionId: session.id,
+                  agentMessageId: loop.userEntry.id,
+                  runId,
+                },
+              })
+              const assistant = narrativeTx.appendNode({
+                timelineId: narrativePage.timeline.id,
+                branchId: narrativePage.branch.id,
+                expectedHeadNodeId: user.node.id,
+                stateRevisionId: narrativePage.branch.stateHeadRevisionId,
+                body: { format: 'loom-markdown.v1', raw: readMessageEntryContent(loop.assistantEntry, 'assistant') },
+                source: {
+                  agentSessionId: session.id,
+                  agentMessageId: loop.assistantEntry.id,
+                  runId,
+                },
+              })
+              return {
+                timeline: assistant.timeline,
+                branch: assistant.branch,
+                node: assistant.node,
+                nodes: [user.node, assistant.node],
+              }
             },
-          })
+          )
         : undefined
 
       return {
         runId,
         agentSession: loop.session,
         entries: { user: loop.userEntry, assistant: loop.assistantEntry },
-        ...(narrative ? { narrative: { timeline: narrative.timeline, branch: narrative.branch, node: narrative.node } } : {}),
+        ...(narrative ? { narrative: narrative.value } : {}),
         provider: {
           provider: loop.providerResult.provider,
           model: loop.providerResult.model,
@@ -722,47 +1041,9 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       }
     },
 
-    createNarrativeTimeline: async (input, requestContext) => {
-      const card = await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
-      const cardContent = normalizeCardContent(card.content)
-      const openingEntries = readOpeningEntries(cardToSnapshot(card))
-      const created = await requireNarratives().createTimeline({
-        ...narrativeWriteContext(requestContext, 'application.createNarrativeTimeline'),
-        title: input.title ?? cardContent.name,
-        createdFrom: { cardId: card.id, cardVersion: card.version },
-        promptResourceIds: cardContent.promptResourceIds ?? [],
-        openingNodes: openingEntries.map(entry => ({
-          body: { format: 'loom-markdown.v1' as const, raw: entry.content },
-        })),
-      })
-      return {
-        timeline: created.timeline,
-        branch: created.branch,
-        nodes: created.nodes,
-        mutation: { changesetId: created.commit.changesetId },
-      }
-    },
-
-    createNarrativeTimelineFromCard: async (input, requestContext) => {
-      const card = await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
-      const cardContent = normalizeCardContent(card.content)
-      const openingEntries = readOpeningEntries(cardToSnapshot(card))
-      const created = await requireNarratives().createTimeline({
-        ...narrativeWriteContext(requestContext, 'application.createNarrativeTimelineFromCard'),
-        title: input.title ?? cardContent.name,
-        createdFrom: { cardId: card.id, cardVersion: card.version },
-        promptResourceIds: cardContent.promptResourceIds ?? [],
-        openingNodes: openingEntries.map(entry => ({
-          body: { format: 'loom-markdown.v1' as const, raw: entry.content },
-        })),
-      })
-      return {
-        timeline: created.timeline,
-        branch: created.branch,
-        nodes: created.nodes,
-        mutation: { changesetId: created.commit.changesetId },
-      }
-    },
+    createNarrativeTimeline: (input, requestContext) => createTimelineFromCard(
+      input, requestContext, 'application.createNarrativeTimeline',
+    ),
 
     getNarrativeTimeline: async input => {
       const timeline = await requireNarratives().getTimeline(input.timelineId)
@@ -778,9 +1059,20 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     getNarrativePage: input => requireNarratives().getPage(input),
 
     forkNarrativeBranch: async (input, requestContext) => {
+      const narratives = requireNarratives()
+      const branches = await narratives.listBranches(input.timelineId)
+      const sourceBranch = branches.find(branch => branch.id === input.fromBranchId)
+      if (!sourceBranch) throw new Error(`Narrative branch not found: ${input.fromBranchId}`)
+      const page = await narratives.getPage({ timelineId: input.timelineId, branchId: input.fromBranchId })
+      const fromNode = page.nodes.find(node => node.id === input.fromNodeId)
+      if (!fromNode) throw new Error(`Narrative node not found on branch: ${input.fromNodeId}`)
+      const stateRevisionId = sourceBranch.headNodeId === fromNode.id
+        ? sourceBranch.stateHeadRevisionId
+        : fromNode.stateRevisionId
       const result = await requireNarratives().forkBranch({
         ...narrativeWriteContext(requestContext, 'application.forkNarrativeBranch'),
         ...input,
+        stateRevisionId,
       })
       return { branch: result.branch, mutation: { changesetId: result.commit.changesetId } }
     },
@@ -794,10 +1086,16 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     },
 
     deleteNarrativeTimeline: async (input, requestContext) => {
-      const result = await requireNarratives().deleteTimeline({
-        ...narrativeWriteContext(requestContext, 'application.deleteNarrativeTimeline'),
-        ...input,
-      })
+      const narratives = requireNarratives()
+      const scope = await ctx.states.getScope({ kind: 'timeline', ownerId: input.timelineId })
+      const result = await ctx.dataEngine.transact(
+        narrativeWriteContext(requestContext, 'application.deleteNarrativeTimeline'),
+        async dataTx => {
+          const timeline = narratives.transaction(dataTx).deleteTimeline(input)
+          if (scope) ctx.states.transaction(dataTx).tombstoneScope({ scopeId: scope.id })
+          return timeline
+        },
+      )
       return { deleted: true as const, mutation: { changesetId: result.commit.changesetId } }
     },
 
@@ -811,7 +1109,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
           format: 'loom.cardBundle',
           originalFileName: input.source?.originalFileName,
           mediaType: 'application/json',
-          importerVersion: 'loom.cardBundle@1',
+          importerVersion: 'loom.cardBundle@2',
           actor: requestContext?.clientId
             ? { kind: 'client', id: requestContext.clientId }
             : applicationActor,
@@ -1143,17 +1441,20 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       }
     },
 
-    exportCardArtifact: async input => {
-      return {
-        artifact: await exportCardArtifact({
-          cardId: input.cardId,
-          documents: ctx.documents,
-          promptResources: ctx.promptResources,
-        }),
-      }
-    },
-
     revertChangeset: async (input, requestContext) => {
+      const stateRevision = ctx.dataEngine.database.prepare('SELECT 1 FROM state_revisions WHERE changeset_id = ? LIMIT 1').get(input.changesetId)
+      if (stateRevision) {
+        const documentChangeset = await ctx.documents.getChangeset(input.changesetId)
+        const result = await revertApplicationStateChangeset(
+          ctx,
+          input.changesetId,
+          requestContext,
+          documentChangeset?.operations.length
+            ? { participant: requireDocumentParticipant(), changeset: documentChangeset }
+            : undefined,
+        )
+        return { mutation: result }
+      }
       const result = await ctx.documents.revertChangeset({
         changesetId: input.changesetId,
         actor: requestContext?.clientId
@@ -1168,6 +1469,17 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     },
 
   }
+}
+
+function readDotPath(root: JsonObject, path: string): { found: true; value: JsonValue } | { found: false } {
+  let current: JsonValue = root
+  for (const segment of path.split('.')) {
+    if (typeof current !== 'object' || current === null || Array.isArray(current) || !(segment in current)) {
+      return { found: false }
+    }
+    current = current[segment]!
+  }
+  return { found: true, value: current }
 }
 
 function promptResourceWriteContext(requestContext: RuntimeRequestContext | undefined) {
@@ -1440,35 +1752,75 @@ async function prepareAgentTurn(
   })
   let prompt
   let compiledToolSet
-  const macroContext = await readAgentTurnMacroContext(
+  const timelineState = narrativePage
+    ? await getApplicationStateSnapshot(ctx, {
+        scope: 'timeline',
+        timelineId: narrativePage.timeline.id,
+        branchId: narrativePage.branch.id,
+      })
+    : undefined
+  const variables = await readAgentTurnVariables(
     ctx,
     narrativePage?.timeline.createdFrom?.cardId,
+    timelineState?.value,
   )
   try {
+    const textRules = (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule)).map(document => toVersioned(document))
+    const globalAndExtensionRules = textRules.filter(rule => rule.owner.kind === 'workspace' || rule.owner.kind === 'extension' || rule.owner.kind === 'user-override')
+    const presetRules = textRules.filter(rule => rule.owner.kind === 'preset' && rule.owner.presetId === preset.id)
+    const cardRules = narrativePage?.timeline.createdFrom?.cardId
+      ? textRules.filter(rule => rule.owner.kind === 'card' && rule.owner.cardId === narrativePage.timeline.createdFrom!.cardId)
+      : []
     compiledToolSet = await compileAgentToolSet({
       ctx,
       model: agentProfile.content.model,
       toolMounts,
       toolOverrides: agentProfile.content.toolOverrides ?? {},
-      macroContext,
+      variables,
       currentInput: input.input,
       activationFacts: input.activationFacts,
     })
     prompt = await composeAgentTurnPrompt({
       activationFacts: input.activationFacts,
-      macroContext,
+      variables,
       agentMessages: (preset.historyPolicy ?? 'persistent') === 'persistent'
         ? agentPage.entries
         : [],
         promptResources: ctx.promptResources,
-      narrative: narrativePage ? { nodes: narrativePage.nodes, timeline: narrativePage.timeline } : undefined,
+      narrative: narrativePage ? { nodes: narrativePage.nodes, timeline: narrativePage.timeline, branchId: narrativePage.branch.id } : undefined,
       preset,
       userInput: input.input,
       buildId,
       runId,
       agentSessionId: session.id,
+      historyRules: {
+        session: [...globalAndExtensionRules, ...presetRules],
+        narrative: [...globalAndExtensionRules, ...presetRules, ...cardRules],
+      },
       externalRuntime: createContentToolPromptRuntimeInputs(compiledToolSet),
     })
+    const allowedTimelineTarget = narrativePage
+      ? { scope: 'timeline' as const, timelineId: narrativePage.timeline.id, branchId: narrativePage.branch.id }
+      : undefined
+    prompt.toolExecutionScope.state = {
+      canAccess: target => target.scope === 'global'
+        || (allowedTimelineTarget !== undefined
+          && target.timelineId === allowedTimelineTarget.timelineId
+          && target.branchId === allowedTimelineTarget.branchId),
+      read: async target => {
+        const snapshot = await getApplicationStateSnapshot(ctx, target)
+        return { revisionId: snapshot.revisionId, value: snapshot.value }
+      },
+      update: async stateInput => {
+        const result = await applyApplicationStateMutation(ctx, {
+          target: stateInput.target,
+          expectedRevisionId: stateInput.expectedRevisionId,
+          operations: stateInput.operations as unknown as StateMutationOperation[],
+          idempotencyKey: stateInput.idempotencyKey,
+        }, requestContext)
+        return { revisionId: result.snapshot.revisionId }
+      },
+    }
     const durationMs = readDurationMs(startedAt)
     ctx.logger?.info(`${mode} prompt build completed · ${prompt.messages.length} messages · ${durationMs} ms`, {
       event: 'prompt.build.completed',
@@ -1494,7 +1846,7 @@ async function prepareAgentTurn(
     narrativePage,
     narratives,
     prompt,
-    macroContext,
+    variables,
     compiledToolSet,
     agentStepMessages: prompt.messages,
     runId,
@@ -1502,23 +1854,39 @@ async function prepareAgentTurn(
   }
 }
 
-async function readAgentTurnMacroContext(
+async function readAgentTurnVariables(
   ctx: ApplicationRuntimeContext,
   cardId: string | undefined,
-): Promise<{ user: string }> {
-  if (!cardId) return { user: 'User' }
-  const card = await readDocument<CardSourceContent>(
-    ctx.documents,
-    cardId,
-    applicationDocumentTypes.cardSource,
-  )
-  return {
-    user:
-      typeof card.content.userName === 'string' &&
-      card.content.userName.trim().length > 0
-        ? card.content.userName
-        : 'User',
+  timeline?: JsonObject,
+): Promise<VariableRenderContext> {
+  const globalSnapshot = await ctx.states.getGlobalSnapshot()
+  const global = structuredClone(globalSnapshot?.revision.snapshot ?? {})
+  let fallbackUser = 'User'
+  if (cardId) {
+    const card = await readDocument<CardSourceContent>(
+      ctx.documents,
+      cardId,
+      applicationDocumentTypes.cardSource,
+    )
+    if (typeof card.content.userName === 'string' && card.content.userName.trim().length > 0) {
+      fallbackUser = card.content.userName
+    }
   }
+  const user = global.user
+  if (!user || typeof user !== 'object' || Array.isArray(user)) {
+    global.user = { name: fallbackUser }
+  } else if (typeof user.name !== 'string' || user.name.trim().length === 0) {
+    user.name = fallbackUser
+  }
+  return createVariableRenderContext({
+    global,
+    ...(timeline ? { timeline } : {}),
+    computed: {
+      global: {
+        time: { now: ctx.now() },
+      },
+    },
+  })
 }
 
 async function readPresetResource(
@@ -1528,6 +1896,106 @@ async function readPresetResource(
   const preset = await readMappedResource(promptResources, presetId)
   if (preset.resourceKind !== 'preset') throw new Error(`Prompt Resource is not a Preset: ${presetId}`)
   return preset
+}
+
+const builtInRenderers: RendererDefinition[] = [
+  {
+    id: 'official/json-artifact',
+    name: 'JSON Artifact',
+    artifactType: 'application/json',
+    slot: 'studio.panel',
+    renderMode: 'panel',
+    fallback: 'json',
+  },
+]
+
+async function projectRuntimeHistory(
+  ctx: ApplicationRuntimeContext,
+  source: HistorySource,
+  phase: TextTransformPhase,
+) {
+  const entries = await readRuntimeHistoryEntries(ctx, source)
+  const documents = await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule)
+  const rules = documents.map(document => toVersioned(document))
+  const activeRules = await filterRulesForSource(ctx, source, rules)
+  return projectHistoryEntries({ source, phase, entries, rules: activeRules })
+}
+
+async function readRuntimeHistoryEntries(
+  ctx: ApplicationRuntimeContext,
+  source: HistorySource,
+): Promise<HistoryTextEntry[]> {
+  if (source.kind === 'agent-session') {
+    const agents = ctx.agents
+    if (!agents) throw new Error('Agent Store is not configured')
+    let cursor = source.headEntryId
+    let first = true
+    const entries: AgentTranscriptEntry[] = []
+    do {
+      const page = await agents.getEntryPage({ agentSessionId: source.sessionId, ...(cursor ? { cursor } : {}), limit: 100 })
+      entries.unshift(...page.entries)
+      cursor = page.nextCursor
+      first = false
+    } while (cursor || first)
+    return entries.flatMap(entry => entry.entry.kind === 'message'
+      ? [{ id: entry.id, source, role: entry.entry.role, text: entry.entry.content, sequence: entry.sequence, createdAt: entry.createdAt }]
+      : [])
+  }
+  const narratives = ctx.narratives
+  if (!narratives) throw new Error('Narrative Store is not configured')
+  let cursor: string | undefined
+  let first = true
+  const nodes: import('@loom-studio/narrative-store').NarrativeNode[] = []
+  do {
+    const page = await narratives.getPage({ timelineId: source.timelineId, branchId: source.branchId, ...(cursor ? { cursor } : {}), limit: 100 })
+    nodes.unshift(...page.nodes)
+    cursor = page.nextCursor
+    first = false
+  } while (cursor || first)
+  return nodes.map((node, sequence) => ({
+    id: node.id,
+    source,
+    text: node.body.raw,
+    sequence: sequence + 1,
+    createdAt: node.createdAt,
+  }))
+}
+
+async function filterRulesForSource(
+  ctx: ApplicationRuntimeContext,
+  source: HistorySource,
+  rules: TextTransformRuleEntry[],
+): Promise<TextTransformRuleEntry[]> {
+  let presetId: string | undefined
+  let cardId: string | undefined
+  if (source.kind === 'agent-session') {
+    const session = await ctx.agents?.getSession(source.sessionId)
+    if (!session) throw new Error(`Agent Session not found: ${source.sessionId}`)
+    const profile = await readDocument<AgentProfileContent>(ctx.documents, session.agentProfileId, applicationDocumentTypes.agentProfile)
+    presetId = profile.content.presetId
+  } else {
+    const timeline = await ctx.narratives?.getTimeline(source.timelineId)
+    if (!timeline) throw new Error(`Narrative Timeline not found: ${source.timelineId}`)
+    cardId = timeline.createdFrom?.cardId
+  }
+  return rules.filter(rule => {
+    if (rule.owner.kind === 'preset') return rule.owner.presetId === presetId
+    if (rule.owner.kind === 'card') return rule.owner.cardId === cardId
+    return true
+  })
+}
+
+function assertExpectedDocumentVersion(
+  existing: DocumentRecord | null,
+  expectedVersion: number | undefined,
+  expectedType: string,
+  label: string,
+  id: string,
+): void {
+  if (existing && existing.type !== expectedType) throw new Error(`Unexpected document type for ${id}: ${existing.type}`)
+  if (existing && expectedVersion === undefined) throw new Error(`expectedVersion is required when updating ${label}: ${id}`)
+  if (existing && existing.version !== expectedVersion) throw new Error(`${label} version conflict: ${id}`)
+  if (!existing && expectedVersion !== undefined) throw new Error(`${label} does not exist: ${id}`)
 }
 
 async function findTimelinePromptResourceReferences(
@@ -1583,9 +2051,9 @@ function normalizeModelIds(modelIds: string[] | undefined): string[] {
   return normalized
 }
 
-function readMessageEntryContent(entry: AgentTranscriptEntry): string {
-  if (entry.entry.kind !== 'message' || entry.entry.role !== 'assistant') {
-    throw new Error(`Expected final assistant message entry: ${entry.id}`)
+function readMessageEntryContent(entry: AgentTranscriptEntry, role: 'user' | 'assistant'): string {
+  if (entry.entry.kind !== 'message' || entry.entry.role !== role) {
+    throw new Error(`Expected ${role} message entry: ${entry.id}`)
   }
   return entry.entry.content
 }

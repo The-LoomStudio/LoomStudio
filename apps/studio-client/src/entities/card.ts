@@ -8,6 +8,8 @@ export type Card = {
   description?: string
   importBundleId?: string
   promptResourceIds?: string[]
+  stateDefinitionIds?: string[]
+  timelineStateBindings?: Array<{ path: string; templateId: string; templateVersion: number; initial?: JsonObject }>
   media?: CardMedia
   preset?: {
     system?: string

@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import type { CardBundleArtifact } from '@loom-studio/application-runtime'
+import { normalizeCardBundleArtifact, type CardBundleArtifact } from '@loom-studio/application-runtime'
 import { createPolyglotCardPng, decodeCardPng, defaultCardPng, encodeCardPng, isPng, readPngImageBytes, readPolyglotArchive } from './card-png.js'
 
 describe('Loom Card PNG', () => {
   it('round-trips a UTF-8 Card Artifact through compressed iTXt', () => {
     const artifact: CardBundleArtifact = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       artifactId: 'card-artifact-1',
       displayName: '雾港角色',
       card: { name: '雾港角色', description: '包含中文提示词。' },
@@ -16,7 +16,14 @@ describe('Loom Card PNG', () => {
 
     expect(isPng(encoded)).toBe(true)
     expect(encoded.byteLength).toBeGreaterThan(defaultCardPng.byteLength)
-    expect(decodeCardPng(encoded)).toEqual(artifact)
+    expect(decodeCardPng(encoded)).toEqual(normalizeCardBundleArtifact(artifact))
+  })
+
+  it('rejects a non-V2 Artifact at the PNG boundary', () => {
+    expect(() => encodeCardPng(defaultCardPng, {
+      schemaVersion: 1,
+      artifactId: 'legacy', displayName: 'Legacy', card: { name: 'Legacy' }, contextAssets: [],
+    } as never)).toThrow('Unsupported card bundle schemaVersion')
   })
 
   it('rejects an ordinary PNG without Loom metadata', () => {

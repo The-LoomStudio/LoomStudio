@@ -33,7 +33,16 @@ export const officialReadContextRegistration: ToolRuntimeRegistration = {
       invocationId: invocation.id,
       toolId: invocation.toolId,
       status: 'completed',
-      content: [{ type: 'json', value: { ...item } }],
+      content: [{
+        type: 'json',
+        value: {
+          id: item.id,
+          name: item.name,
+          promptState: item.promptState,
+          mounted: 'fresh',
+        },
+      }],
+      contextMounts: [{ ...item }],
     }
   },
 }

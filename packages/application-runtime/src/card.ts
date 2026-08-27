@@ -3,6 +3,7 @@ import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import { createId, nowIso } from '@loom-studio/shared'
 import { isObject } from './json.js'
 import { isPromptActivation } from './prompt-activation.js'
+import { createVariableRenderContext, renderVariableMacros } from './variables.js'
 import type {
   CardSummary,
   CardPresetContent,
@@ -17,21 +18,6 @@ import type {
   SettingLayerContent,
   SettingLayerInput,
 } from './types.js'
-
-export function cardToSnapshot(card: DocumentRecord<CardSourceContent>): JsonObject {
-  const content = normalizeCardContent(card.content)
-
-  return {
-    id: card.id,
-    version: card.version,
-    name: content.name,
-    userName: content.userName ?? '',
-    description: content.description ?? '',
-    preset: content.preset as unknown as JsonValue,
-    opening: content.opening as unknown as JsonValue,
-    settingLayer: content.settingLayer as unknown as JsonValue,
-  }
-}
 
 export function toCardSource(card: DocumentRecord<CardSourceContent>): CardSourceContent & { id: string; version: number } {
   return {
@@ -68,6 +54,8 @@ export function normalizeCardContent(content: CardSourceContent): CardSourceCont
     description: typeof legacyContent.description === 'string' ? legacyContent.description : undefined,
     importBundleId: normalizeOptionalString(legacyContent.importBundleId),
     promptResourceIds: normalizeOptionalIdList(legacyContent.promptResourceIds),
+    stateDefinitionIds: normalizeOptionalIdList(legacyContent.stateDefinitionIds),
+    timelineStateBindings: structuredClone(legacyContent.timelineStateBindings ?? []),
     media: normalizeCardMedia(legacyContent.media),
     preset: normalizePreset(legacyContent.preset),
     opening: normalizeOpening(legacyContent.opening),
@@ -156,14 +144,21 @@ export function normalizeSettingLayer(input: SettingLayerInput | undefined, lega
   return { entries: [] }
 }
 
-export function readOpeningEntries(snapshot: JsonObject): OpeningChatEntryContent[] {
-  const opening = snapshot.opening
-  if (!isObject(opening) || !Array.isArray(opening.entries)) return []
-  const macroContext = getMacroContext(snapshot)
+export function readOpeningEntries(
+  content: CardSourceContent,
+  variables?: import('./variables.js').VariableRenderContext,
+): OpeningChatEntryContent[] {
+  const renderContext = variables ?? createVariableRenderContext({
+    global: {
+      user: {
+        name: content.userName?.trim() || 'User',
+      },
+    },
+  })
 
-  return opening.entries.filter(isOpeningEntry).map(entry => ({
+  return content.opening.entries.map(entry => ({
     role: entry.role,
-    content: renderMacros(entry.content, macroContext),
+    content: renderVariableMacros(entry.content, renderContext),
   }))
 }
 
@@ -183,16 +178,4 @@ export function isSettingEntry(value: JsonValue): value is SettingEntryContent {
 
 export function isActivation(value: JsonValue | undefined): value is SettingActivation {
   return isPromptActivation(value)
-}
-
-export function getMacroContext(snapshot: JsonObject): { user: string } {
-  const user = typeof snapshot.userName === 'string' && snapshot.userName.trim().length > 0
-    ? snapshot.userName
-    : 'User'
-
-  return { user }
-}
-
-export function renderMacros(input: string, context: { user: string }): string {
-  return input.replace(/\{\{\s*User\s*\}\}/g, context.user)
 }

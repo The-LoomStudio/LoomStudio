@@ -17,6 +17,7 @@ import type {
 } from '@loom-studio/narrative-store'
 import type { AssistantChatMessage, ChatMessage, JsonObject, JsonValue } from '@loom-studio/shared'
 import type { SecretRef, SecretStore } from '@loom-studio/secret-store'
+import type { StateStore } from '@loom-studio/state-store'
 import type { PresetToolMount, PromptResourceStore, SettingMount, SettingMountSource } from '@loom-studio/prompt-resource-store'
 export type { PresetToolMount, SettingMount, SettingMountSource } from '@loom-studio/prompt-resource-store'
 import type { ActivationFacts, PromptActivation } from './prompt-activation.js'
@@ -27,6 +28,17 @@ import type {
 } from './agent/tool-prompt-build.js'
 import type { OpenAIChatPayload } from './provider-payload.js'
 import type { PromptBuildTrace } from './prompt-build-pipeline.js'
+import type {
+  HistoryProjectionSnapshot,
+  HistorySource,
+  RendererDefinition,
+  TextExtractionResult,
+  TextExtractorDraft,
+  TextExtractorEntry,
+  TextTransformPhase,
+  TextTransformRuleDraft,
+  TextTransformRuleEntry,
+} from './history-text.js'
 import type { CompiledPrompt, CompositionSkeletonPatch, ProjectionOrderProfile } from './prompt-builder.js'
 import type {
   CardBundleArtifact,
@@ -40,6 +52,23 @@ import type {
 
 export type ApplicationRuntime = {
   initialize(): Promise<void>
+  getStateSnapshot(input: GetStateSnapshotInput): Promise<GetStateSnapshotResult>
+  applyStateMutation(input: ApplyStateMutationInput, context?: RuntimeRequestContext): Promise<ApplyStateMutationResult>
+  listStateDefinitions(input?: ListStateDefinitionsInput): Promise<ListStateDefinitionsResult>
+  getStateDefinition(input: GetStateDefinitionInput): Promise<GetStateDefinitionResult>
+  upsertStateDefinition(input: UpsertStateDefinitionInput, context?: RuntimeRequestContext): Promise<UpsertStateDefinitionResult>
+  deleteStateDefinition(input: DeleteStateDefinitionInput, context?: RuntimeRequestContext): Promise<DeleteStateDefinitionResult>
+  listTextTransformRules(): Promise<{ rules: TextTransformRuleEntry[] }>
+  getTextTransformRule(input: { ruleId: string }): Promise<{ rule: TextTransformRuleEntry }>
+  upsertTextTransformRule(input: { ruleId: string; expectedVersion?: number; rule: TextTransformRuleDraft }, context?: RuntimeRequestContext): Promise<{ rule: TextTransformRuleEntry; mutation: MutationReceipt }>
+  deleteTextTransformRule(input: { ruleId: string; expectedVersion?: number }, context?: RuntimeRequestContext): Promise<{ deleted: true; mutation: MutationReceipt }>
+  listTextExtractors(): Promise<{ extractors: TextExtractorEntry[] }>
+  getTextExtractor(input: { extractorId: string }): Promise<{ extractor: TextExtractorEntry }>
+  upsertTextExtractor(input: { extractorId: string; expectedVersion?: number; extractor: TextExtractorDraft }, context?: RuntimeRequestContext): Promise<{ extractor: TextExtractorEntry; mutation: MutationReceipt }>
+  deleteTextExtractor(input: { extractorId: string; expectedVersion?: number }, context?: RuntimeRequestContext): Promise<{ deleted: true; mutation: MutationReceipt }>
+  projectHistory(input: { source: HistorySource; phase: TextTransformPhase }): Promise<{ snapshot: HistoryProjectionSnapshot }>
+  extractHistory(input: { source: HistorySource; phase?: TextTransformPhase; extractorId: string }): Promise<{ extraction: TextExtractionResult; snapshot: HistoryProjectionSnapshot }>
+  listRenderers(): Promise<{ renderers: RendererDefinition[] }>
   createCard(input: CreateCardInput, context?: RuntimeRequestContext): Promise<CreateCardResult>
   getCard(input: GetCardInput): Promise<GetCardResult>
   listCards(input?: ListCardsInput): Promise<ListCardsResult>
@@ -70,8 +99,7 @@ export type ApplicationRuntime = {
   deleteAgentSession(input: DeleteAgentSessionInput, context?: RuntimeRequestContext): Promise<DeleteAgentSessionResult>
   invokeAgentTurn(input: InvokeAgentTurnInput, context?: RuntimeRequestContext): Promise<InvokeAgentTurnResult>
   previewAgentTurn(input: PreviewAgentTurnInput, context?: RuntimeRequestContext): Promise<PreviewAgentTurnResult>
-  createNarrativeTimeline(input: CreateNarrativeTimelineFromCardInput, context?: RuntimeRequestContext): Promise<CreateNarrativeTimelineFromCardResult>
-  createNarrativeTimelineFromCard(input: CreateNarrativeTimelineFromCardInput, context?: RuntimeRequestContext): Promise<CreateNarrativeTimelineFromCardResult>
+  createNarrativeTimeline(input: CreateNarrativeTimelineInput, context?: RuntimeRequestContext): Promise<CreateNarrativeTimelineResult>
   getNarrativeTimeline(input: GetNarrativeTimelineInput): Promise<GetNarrativeTimelineResult>
   listNarrativeTimelines(input?: ListNarrativeTimelinesInput): Promise<ListNarrativeTimelinesResult>
   getNarrativePage(input: GetNarrativePageInput): Promise<NarrativePage>
@@ -98,8 +126,7 @@ export type ApplicationRuntime = {
   updatePromptResourceAssets(input: UpdatePromptResourceAssetsInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
   movePromptResourceAsset(input: MovePromptResourceAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
   deletePromptResourceAsset(input: DeletePromptResourceAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
-  exportCardBundle(input: ExportCardArtifactInput): Promise<ExportCardBundleResult>
-  exportCardArtifact(input: ExportCardArtifactInput): Promise<ExportCardBundleResult>
+  exportCardBundle(input: ExportCardBundleInput): Promise<ExportCardBundleResult>
 }
 
 export type RuntimeRequestContext = {
@@ -108,6 +135,116 @@ export type RuntimeRequestContext = {
   callId?: string
   parentCallId?: string
   abortSignal?: AbortSignal
+}
+
+export type StateTarget =
+  | { scope: 'global' }
+  | { scope: 'timeline'; timelineId: string; branchId: string }
+
+export type StateMutationOperation =
+  | { op: 'set'; path: string; value: JsonValue }
+  | { op: 'remove'; path: string }
+  | { op: 'increment'; path: string; by: number }
+
+export type StateSnapshotView = {
+  scopeId: string
+  target: StateTarget
+  revisionId: string
+  value: JsonObject
+  createdAt: string
+}
+
+export type GetStateSnapshotInput = {
+  target: StateTarget
+}
+
+export type GetStateSnapshotResult = {
+  snapshot: StateSnapshotView
+}
+
+export type ApplyStateMutationInput = {
+  target: StateTarget
+  expectedRevisionId: string
+  operations: StateMutationOperation[]
+  idempotencyKey?: string
+}
+
+export type ApplyStateMutationResult = {
+  snapshot: StateSnapshotView
+  mutation: MutationReceipt
+}
+
+export type GlobalStateDefinitionDraft = {
+  kind: 'global'
+  path: string
+  schema: JsonObject
+  default?: JsonValue
+  readOnly?: boolean
+  label?: string
+}
+
+export type TimelineStateTemplateDraft = {
+  kind: 'timeline-template'
+  templateVersion: number
+  schema: JsonObject
+  initial: JsonObject
+  label?: string
+}
+
+export type StateDefinitionDraft = GlobalStateDefinitionDraft | TimelineStateTemplateDraft
+
+export type StateDefinitionContent = StateDefinitionDraft & {
+  createdAt: string
+  updatedAt: string
+}
+
+export type StateDefinitionEntry = StateDefinitionContent & {
+  id: string
+  version: number
+}
+
+export type TimelineStateBinding = {
+  path: string
+  templateId: string
+  templateVersion: number
+  initial?: JsonObject
+}
+
+export type ListStateDefinitionsInput = {
+  kind?: StateDefinitionDraft['kind']
+}
+
+export type ListStateDefinitionsResult = {
+  definitions: StateDefinitionEntry[]
+}
+
+export type GetStateDefinitionInput = {
+  definitionId: string
+}
+
+export type GetStateDefinitionResult = {
+  definition: StateDefinitionEntry
+}
+
+export type UpsertStateDefinitionInput = {
+  definitionId: string
+  expectedVersion?: number
+  definition: StateDefinitionDraft
+}
+
+export type UpsertStateDefinitionResult = {
+  definition: StateDefinitionEntry
+  mutation: MutationReceipt
+}
+
+export type DeleteStateDefinitionInput = {
+  definitionId: string
+  expectedVersion?: number
+}
+
+export type DeleteStateDefinitionResult = {
+  deleted: true
+  mutation: MutationReceipt
 }
 
 export type ListSettingMountsInput = {
@@ -160,12 +297,12 @@ export type MutationReceipt = {
   changesetId: string
 }
 
-export type CreateNarrativeTimelineFromCardInput = {
+export type CreateNarrativeTimelineInput = {
   cardId: string
   title?: string
 }
 
-export type CreateNarrativeTimelineFromCardResult = {
+export type CreateNarrativeTimelineResult = {
   timeline: NarrativeTimeline
   branch: NarrativeBranch
   nodes: NarrativeNode[]
@@ -313,6 +450,7 @@ export type InvokeAgentTurnResult = {
   narrative?: {
     timeline: NarrativeTimeline
     branch: NarrativeBranch
+    nodes: NarrativeNode[]
     node: NarrativeNode
   }
   provider: {
@@ -336,6 +474,7 @@ export type ApplicationRuntimeOptions = {
   documents: DocumentStore
   narratives?: NarrativeStore
   promptResources: PromptResourceStore
+  states?: StateStore
   logger?: Logger
   gateway?: AiGateway
   provider?: ApplicationProvider
@@ -515,6 +654,8 @@ export type UpdateCardInput = {
   opening?: OpeningChatInput | string
   settingLayer?: SettingLayerInput
   media?: CardMediaRefs
+  stateDefinitionIds?: string[]
+  timelineStateBindings?: TimelineStateBinding[]
 }
 
 export type UpdateCardResult = {
@@ -819,7 +960,7 @@ export type PromptAssetPatch = {
   slotRanks?: ProjectionOrderProfile['slotRanks']
 }
 
-export type ExportCardArtifactInput = {
+export type ExportCardBundleInput = {
   cardId: string
 }
 
@@ -873,6 +1014,8 @@ export type CardSourceContent = {
   description?: string
   importBundleId?: string
   promptResourceIds?: string[]
+  stateDefinitionIds?: string[]
+  timelineStateBindings?: TimelineStateBinding[]
   media?: CardMediaRefs
   preset: CardPresetContent
   opening: OpeningChatContent

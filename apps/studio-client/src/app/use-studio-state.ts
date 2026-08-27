@@ -14,7 +14,6 @@ import { createActivationFacts, toggleActivationTag, type ActivationControlState
 import { buildPromptBuildSteps } from '../features/prompt-build/model/build-prompt-build-steps.js'
 import { useProviderSettings } from '../features/provider-settings/model/use-provider-settings.js'
 import { useAgentProfiles } from '../features/agent-profiles/model/use-agent-profiles.js'
-import { useAgentChatRuntime } from '../features/agent-runtime/model/use-agent-chat-runtime.js'
 import { useNarrativeRuntime } from '../features/narrative-runtime/model/use-narrative-runtime.js'
 import type { ContextAssetNode, PresetToolMount, PresetToolMountInput, PromptResource, PromptResourceArtifact, SettingMount, SettingMountSource } from '../entities/index.js'
 import { readComposerHint, readEmptyTimelineText } from './utils.js'
@@ -77,12 +76,6 @@ export function useStudioState(transportLogger: Logger) {
     runAction: action => operations.run('agent-profiles', action).then(() => undefined),
   })
   const selectedAgentProfile = agentProfiles.agentProfiles.find(profile => profile.id === agentProfiles.selectedAgentProfileId)
-  const agentChat = useAgentChatRuntime({
-    api,
-    selectedAgentProfileId: selectedAgentProfile?.id,
-    selectedAgentProfileName: selectedAgentProfile?.name,
-    runAction: action => operations.run('agent-chat', action).then(() => undefined),
-  })
   const activationFacts = useMemo(() => createActivationFacts(activationControl), [activationControl])
   const narrativeRuntime = useNarrativeRuntime({
     activationFacts,
@@ -92,6 +85,7 @@ export function useStudioState(transportLogger: Logger) {
     selectedCard: cardsState.selectedCardDetails,
     selectedCardId: cardsState.selectedCardId,
     selectedAgentProfileId: agentProfiles.selectedAgentProfileId,
+    runAgentAction: action => operations.run('agent-chat', action).then(() => undefined),
     runAction: action => operations.run('session', action).then(() => undefined),
     runLatestAction: action => operations.runLatest('session', action).then(() => undefined),
   })
@@ -142,11 +136,13 @@ export function useStudioState(transportLogger: Logger) {
   const sessionBusy = operations.isPending('session')
   const canSend = Boolean(narrativeRuntime.timeline && narrativeRuntime.branch && agentProfiles.selectedAgentProfileId)
     && !sessionBusy
+    && !operations.isPending('agent-chat')
     && narrativeRuntime.input.trim().length > 0
   const canPreviewPrompt = canSend
   const canSendAgent = Boolean(selectedAgentProfile)
-    && agentChat.input.trim().length > 0
+    && narrativeRuntime.agentInput.trim().length > 0
     && !operations.isPending('agent-chat')
+    && !sessionBusy
   const composerHint = readComposerHint({
     timeline: narrativeRuntime.timeline,
     branch: narrativeRuntime.branch,
@@ -196,6 +192,23 @@ export function useStudioState(transportLogger: Logger) {
   async function updateNetworkSettings(next: { proxyMode: NetworkSettings['proxyMode']; proxyUrl?: string }) {
     const updated = await operations.run('settings', () => api.settings.updateNetwork(next))
     if (updated) setNetworkSettings(updated)
+  }
+
+  async function updateCardStateConfig(input: {
+    stateDefinitionIds: string[]
+    timelineStateBindings: NonNullable<NonNullable<typeof cardsState.selectedCardDetails>['timelineStateBindings']>
+  }) {
+    const card = cardsState.selectedCardDetails
+    if (!card) return
+    await operations.run('mutation', async () => {
+      const result = await api.cards.update({ cardId: card.id, ...input })
+      editHistory.record({
+        label: 'Update Card State Config',
+        changesetId: result.mutation.changesetId,
+        anchor: { documentId: card.id },
+      })
+      await cardsState.refreshCards()
+    })
   }
 
   async function createPromptResource(resourceKind: PromptResource['resourceKind']): Promise<string | undefined> {
@@ -324,6 +337,8 @@ export function useStudioState(transportLogger: Logger) {
     // bridge
     endpoint, setEndpoint,
     logsApi: api.logs,
+    statesApi: api.states,
+    textTransformsApi: api.textTransforms,
     // cards
     cards: cardsState.cards,
     selectedCardId: cardsState.selectedCardId,
@@ -333,6 +348,8 @@ export function useStudioState(transportLogger: Logger) {
     selectedCard: cardsState.selectedCard,
     selectedCardDetails: cardsState.selectedCardDetails,
     updateCardMedia: cardsState.updateCardMedia,
+    updateCardStateConfig,
+    replaceCardPromptResources: cardsState.replaceCardPromptResources,
     importCards: cardsState.importCards,
     exportCard: cardsState.exportCard,
     // narrative
@@ -345,11 +362,12 @@ export function useStudioState(transportLogger: Logger) {
     hasOlderNarrativeNodes: Boolean(narrativeRuntime.olderCursor),
     // agent
     agentMessages: narrativeRuntime.agentMessages,
-    agentChatSession: agentChat.session,
-    agentChatMessages: agentChat.messages,
-    agentChatInput: agentChat.input,
-    setAgentChatInput: agentChat.setInput,
-    submitAgentTurn: agentChat.submitTurn,
+    narrativeAgentSession: narrativeRuntime.agentSession,
+    agentChatSession: narrativeRuntime.agentSession,
+    agentChatMessages: narrativeRuntime.agentMessages,
+    agentChatInput: narrativeRuntime.agentInput,
+    setAgentChatInput: narrativeRuntime.setAgentInput,
+    submitAgentTurn: narrativeRuntime.submitAgentTurn,
     // run
     lastRun: narrativeRuntime.lastRun,
     // prompt
@@ -414,6 +432,7 @@ export function useStudioState(transportLogger: Logger) {
     switchBranch: narrativeRuntime.switchBranch,
     loadOlderNodes: narrativeRuntime.loadOlderNodes,
     refreshCards: cardsState.refreshCards,
+    refreshCardTimelines: narrativeRuntime.refreshCardTimelines,
     // provider management
     providerAccounts: providerSettings.providerAccounts,
     providerAccountsLoaded: providerSettings.providerAccountsLoaded,

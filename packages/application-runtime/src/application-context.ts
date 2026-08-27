@@ -6,6 +6,7 @@ import type { Logger } from '@loom-studio/logging'
 import type { NarrativeStore } from '@loom-studio/narrative-store'
 import type { PromptResourceStore } from '@loom-studio/prompt-resource-store'
 import { createId as createSharedId, nowIso } from '@loom-studio/shared'
+import { createStateStore, type StateStore } from '@loom-studio/state-store'
 import { createDocumentBackedAiGateway, providerToGateway } from './gateway.js'
 import { createAgentToolRegistry, type AgentToolRegistry } from './agent/tool-registry.js'
 import type { AiGateway, ApplicationRuntimeOptions, MediaAssetLookup, SourceArtifactStorage } from './types.js'
@@ -17,6 +18,7 @@ export type ApplicationRuntimeContext = {
   logger?: Logger
   narratives?: NarrativeStore
   promptResources: PromptResourceStore
+  states: StateStore
   sourceArtifacts?: SourceArtifactStorage
   mediaAssets?: MediaAssetLookup
   secrets: ApplicationRuntimeOptions['secrets']
@@ -32,6 +34,8 @@ export function createApplicationRuntimeContext(options: ApplicationRuntimeOptio
   if (!options.dataEngine) throw new Error('Shared Data Engine is required')
   const providerAdapters = options.providerAdapters ?? createOfficialProviderAdapterRegistry()
   const agentTools = options.agentTools ?? createAgentToolRegistry([])
+  const runtimeNow = () => nowIso(options.clock)
+  const runtimeCreateId = (prefix: string) => createSharedId(prefix)
   return {
     agents: options.agents,
     dataEngine: options.dataEngine,
@@ -39,6 +43,11 @@ export function createApplicationRuntimeContext(options: ApplicationRuntimeOptio
     logger: options.logger,
     narratives: options.narratives,
     promptResources: options.promptResources,
+    states: options.states ?? createStateStore({
+      engine: options.dataEngine,
+      createId: runtimeCreateId,
+      now: runtimeNow,
+    }),
     sourceArtifacts: options.sourceArtifacts,
     mediaAssets: options.mediaAssets,
     secrets: options.secrets,
@@ -49,7 +58,7 @@ export function createApplicationRuntimeContext(options: ApplicationRuntimeOptio
       secrets: options.secrets,
       providerAdapters,
     })),
-    now: () => nowIso(options.clock),
-    createId: prefix => createSharedId(prefix),
+    now: runtimeNow,
+    createId: runtimeCreateId,
   }
 }

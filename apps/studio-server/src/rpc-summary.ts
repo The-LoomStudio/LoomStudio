@@ -146,7 +146,7 @@ export function summarizeRpc(method: string, _params: unknown, result: unknown):
       }),
     }
   }
-  if ((method === 'application.createNarrativeTimeline' || method === 'application.createNarrativeTimelineFromCard' || method === 'application.getNarrativeTimeline') && res.timeline && typeof res.timeline === 'object') {
+  if ((method === 'application.createNarrativeTimeline' || method === 'application.getNarrativeTimeline') && res.timeline && typeof res.timeline === 'object') {
     const t = res.timeline as { id?: string; cardId?: string }
     const tMention = formatEntityMention('timeline', t.id || 'unknown')
     const cMention = t.cardId ? ` for ${formatEntityMention('card', t.cardId)}` : ''

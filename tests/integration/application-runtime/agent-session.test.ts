@@ -374,7 +374,7 @@ describe('application agent session lifecycle', () => {
         },
       },
     })
-    const preset = await createPreset(runtime, 'Projection Agent', 'Follow the preset instructions.')
+    const preset = await createPreset(runtime, 'Projection Agent', 'Follow the preset instructions for {{User}}.')
     const provider = await runtime.createProviderProfile({
       providerExtensionId: 'official.fake',
       displayName: 'Projection Provider',
@@ -392,7 +392,7 @@ describe('application agent session lifecycle', () => {
 
     expect(preview.messages).toEqual(calls[0]?.messages)
     expect(preview.messages).toEqual([
-      { role: 'system', content: 'Follow the preset instructions.' },
+      { role: 'system', content: 'Follow the preset instructions for User.' },
       { role: 'user', content: 'Act.' },
     ])
     expect(result.projection).toEqual(preview.projection)
@@ -450,10 +450,10 @@ describe('application agent session lifecycle', () => {
     engine.close()
   })
 
-  it('commits the final assistant output to an explicitly targeted Narrative node', async () => {
+  it('commits the user input and final assistant output to an explicitly targeted Narrative branch', async () => {
     const { engine, runtime } = createTestRuntime()
     const card = await runtime.createCard({ name: 'Story', opening: 'Opening.' })
-    const timeline = await runtime.createNarrativeTimelineFromCard({ cardId: card.card.id })
+    const timeline = await runtime.createNarrativeTimeline({ cardId: card.card.id })
     const { profile } = await createProfile(runtime, 'Continue the accepted narrative.')
     const agent = await runtime.createAgentSession({ agentProfileId: profile.id })
     const result = await runtime.invokeAgentTurn({
@@ -465,6 +465,26 @@ describe('application agent session lifecycle', () => {
       .get(result.mutation.changesetId) as { operations_json: string }
 
     expect(result.narrative).toMatchObject({
+      nodes: [
+        {
+          body: { raw: 'Continue.' },
+          source: {
+            agentSessionId: agent.session.id,
+            agentMessageId: result.entries.user.id,
+            runId: result.runId,
+            changesetId: result.mutation.changesetId,
+          },
+        },
+        {
+          body: { raw: 'Agent draft: Continue.' },
+          source: {
+            agentSessionId: agent.session.id,
+            agentMessageId: result.entries.assistant.id,
+            runId: result.runId,
+            changesetId: result.mutation.changesetId,
+          },
+        },
+      ],
       node: {
         body: { raw: 'Agent draft: Continue.' },
         source: {
@@ -485,6 +505,9 @@ describe('application agent session lifecycle', () => {
       { role: 'user', content: 'Continue.' },
     ])
     expect(JSON.parse(commit.operations_json).map((operation: { entityType: string }) => operation.entityType)).toEqual([
+      'narrative.node',
+      'narrative.branch',
+      'narrative.timeline',
       'narrative.node',
       'narrative.branch',
       'narrative.timeline',

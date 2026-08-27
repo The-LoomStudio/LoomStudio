@@ -105,6 +105,7 @@ export type InvokeAgentTurnResult = {
   narrative?: {
     timeline: import('./narrative.js').NarrativeTimeline
     branch: import('./narrative.js').NarrativeBranch
+    nodes: import('./narrative.js').NarrativeNode[]
     node: import('./narrative.js').NarrativeNode
   }
   provider: {

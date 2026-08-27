@@ -5,7 +5,7 @@ import { decodeCardBundleZip, encodeCardBundleZip } from './card-bundle-zip.js'
 describe('Loom Card ZIP', () => {
   it('round-trips an Artifact with avatar and optional background', async () => {
     const artifact: CardBundleArtifact = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       artifactId: 'artifact-1',
       displayName: '完整角色包',
       card: {
@@ -28,6 +28,16 @@ describe('Loom Card ZIP', () => {
     expect(decoded.avatar.mediaType).toBe('image/png')
     expect(Buffer.from(decoded.background!.bytes).toString()).toBe('background')
     expect(decoded.background?.mediaType).toBe('image/webp')
+  })
+
+  it('rejects a non-V2 Artifact at the ZIP boundary', () => {
+    expect(() => encodeCardBundleZip({
+      artifact: {
+        schemaVersion: 1,
+        artifactId: 'legacy', displayName: 'Legacy', card: { name: 'Legacy' }, contextAssets: [],
+      } as never,
+      avatar: { bytes: new Uint8Array([1]), mediaType: 'image/png' },
+    })).toThrow('Unsupported card bundle schemaVersion')
   })
 
   it('rejects input that is not a ZIP package', async () => {

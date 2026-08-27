@@ -25,6 +25,7 @@ describe('narrative store', () => {
 
     const created = await store.createTimeline({
       actor,
+      stateRevisionId: 'state-opening',
       title: 'Test Story',
       createdFrom: { cardId: 'card-1', cardVersion: 3 },
       promptResourceIds: ['setting-1', 'setting-1', 'preset-1'],
@@ -60,6 +61,7 @@ describe('narrative store', () => {
     const { engine, store, actor } = createTestContext()
     const created = await store.createTimeline({
       actor,
+      stateRevisionId: 'state-one',
       openingNodes: [{ body: { format: 'loom-markdown.v1', raw: 'one' } }],
     })
     const second = await store.appendNode({
@@ -67,6 +69,7 @@ describe('narrative store', () => {
       timelineId: created.timeline.id,
       branchId: created.branch.id,
       expectedHeadNodeId: created.branch.headNodeId ?? null,
+      stateRevisionId: 'state-two',
       body: { format: 'loom-markdown.v1', raw: 'two' },
     })
     const third = await store.appendNode({
@@ -74,6 +77,7 @@ describe('narrative store', () => {
       timelineId: created.timeline.id,
       branchId: created.branch.id,
       expectedHeadNodeId: second.node.id,
+      stateRevisionId: 'state-three',
       body: { format: 'loom-markdown.v1', raw: 'three' },
     })
 
@@ -89,6 +93,7 @@ describe('narrative store', () => {
       timelineId: created.timeline.id,
       branchId: created.branch.id,
       expectedHeadNodeId: second.node.id,
+      stateRevisionId: 'state-stale',
       body: { format: 'loom-markdown.v1', raw: 'stale write' },
     })).rejects.toMatchObject({ code: 'narrative.head_conflict' })
     const commitsAfterConflict = engine.database.prepare('SELECT COUNT(*) AS count FROM changesets').get() as { count: number }
@@ -100,7 +105,7 @@ describe('narrative store', () => {
 
   it('updates Timeline Prompt Resource references with optimistic conflict protection', async () => {
     const { engine, store, actor } = createTestContext()
-    const created = await store.createTimeline({ actor, promptResourceIds: ['preset-1', 'setting-1'] })
+    const created = await store.createTimeline({ actor, stateRevisionId: 'state-resources', promptResourceIds: ['preset-1', 'setting-1'] })
 
     const updated = await store.updatePromptResources({
       actor,
@@ -123,6 +128,7 @@ describe('narrative store', () => {
     const { engine, store, actor } = createTestContext()
     const created = await store.createTimeline({
       actor,
+      stateRevisionId: 'state-stable',
       openingNodes: [{ body: { format: 'loom-markdown.v1', raw: 'stable head' } }],
     })
     const originalHead = created.branch.headNodeId
@@ -134,6 +140,7 @@ describe('narrative store', () => {
         branchId: created.branch.id,
         expectedHeadNodeId: originalHead ?? null,
         nodeId: 'rolled-back-node',
+        stateRevisionId: 'state-rolled-back',
         body: { format: 'loom-markdown.v1', raw: 'must disappear' },
       })
       throw new Error('abort narrative transaction')
@@ -149,6 +156,7 @@ describe('narrative store', () => {
     const { engine, store, actor } = createTestContext()
     const created = await store.createTimeline({
       actor,
+      stateRevisionId: 'state-main',
       openingNodes: [
         { body: { format: 'loom-markdown.v1', raw: 'root' } },
         { body: { format: 'loom-markdown.v1', raw: 'main' } },
@@ -159,6 +167,7 @@ describe('narrative store', () => {
       timelineId: created.timeline.id,
       fromBranchId: created.branch.id,
       fromNodeId: created.nodes[0]!.id,
+      stateRevisionId: 'state-root',
       title: 'Alternative',
     })
     const forkAppend = await store.appendNode({
@@ -166,6 +175,7 @@ describe('narrative store', () => {
       timelineId: created.timeline.id,
       branchId: fork.branch.id,
       expectedHeadNodeId: created.nodes[0]!.id,
+      stateRevisionId: 'state-fork',
       body: { format: 'loom-markdown.v1', raw: 'fork' },
     })
     const switched = await store.switchBranch({
@@ -184,6 +194,7 @@ describe('narrative store', () => {
       timelineId: created.timeline.id,
       fromBranchId: created.branch.id,
       fromNodeId: forkAppend.node.id,
+      stateRevisionId: 'state-invalid-fork',
     })).rejects.toMatchObject({ code: 'narrative.node_not_in_branch' })
     await expect(store.getPage({
       timelineId: created.timeline.id,
@@ -197,17 +208,20 @@ describe('narrative store', () => {
     const { engine, store, actor } = createTestContext()
     const older = await store.createTimeline({
       actor,
+      stateRevisionId: 'state-older',
       createdFrom: { cardId: 'card-1', cardVersion: 1 },
       title: 'Older',
     })
     const newer = await store.createTimeline({
       actor,
+      stateRevisionId: 'state-newer',
       createdFrom: { cardId: 'card-1', cardVersion: 2 },
       title: 'Newer',
       openingNodes: [{ body: { format: 'loom-markdown.v1', raw: 'opening' } }],
     })
     await store.createTimeline({
       actor,
+      stateRevisionId: 'state-other',
       createdFrom: { cardId: 'card-2', cardVersion: 1 },
       title: 'Other Card',
     })
@@ -216,6 +230,7 @@ describe('narrative store', () => {
       timelineId: newer.timeline.id,
       fromBranchId: newer.branch.id,
       fromNodeId: newer.nodes[0]!.id,
+      stateRevisionId: 'state-newer-fork',
       title: 'Alternative',
     })
 
@@ -235,6 +250,7 @@ describe('narrative store', () => {
     const result = await engine.transact({ actor, reason: 'test.cross-domain' }, async dataTx => {
       const narrative = store.transaction(dataTx)
       const created = narrative.createTimeline({
+        stateRevisionId: 'state-cross-domain',
         openingNodes: [{ body: { format: 'loom-markdown.v1', raw: 'created together' } }],
       })
       dataTx.database.exec('CREATE TABLE test_state (id TEXT PRIMARY KEY)')
@@ -276,6 +292,7 @@ describe('narrative store', () => {
       const firstStore = createNarrativeStore({ engine: firstEngine, createId, now })
       const created = await firstStore.createTimeline({
         actor: { kind: 'system', id: 'test' },
+        stateRevisionId: 'state-persistent',
         openingNodes: [{ body: { format: 'loom-markdown.v1', raw: 'persistent' } }],
       })
       firstEngine.close()
@@ -293,7 +310,7 @@ describe('narrative store', () => {
         .get('application.narrative')
       const changesets = database.prepare('SELECT COUNT(*) AS count FROM changesets').get()
       database.close()
-      expect(migration).toEqual({ version: 2 })
+      expect(migration).toEqual({ version: 3 })
       expect(changesets).toEqual({ count: 1 })
     } finally {
       await rm(directory, { recursive: true, force: true })

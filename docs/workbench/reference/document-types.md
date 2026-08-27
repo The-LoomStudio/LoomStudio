@@ -7,6 +7,16 @@ Loom Studio 使用统一的 Document Store 进行数据持久化。所有被存�
 > **详细的 TypeScript Schema 定义位于:**
 > `packages/application-runtime/src/types.ts` 和 `packages/application-runtime/src/document-types.ts`
 
+## History Text Pipeline
+
+### `airp.textTransformRule`
+
+有序的 History Regex / Reasoning Promotion Rule。Carrier 来源保存在 `owner`，Runtime 只对 Narrative History 与 Agent Session History 解析有效规则。
+
+### `airp.textExtractor`
+
+消费 `HistoryProjectionSnapshot` 的语义提取配置。Extractor 不直接扫描 Store、DOM 或 Provider Raw Payload。
+
 ## 1. 对话与叙事树 (Narrative Tree)
 
 ### `airp.session`
@@ -56,7 +66,7 @@ Loom Studio 使用统一的 Document Store 进行数据持久化。所有被存�
 ### `airp.cardSource`
 - **说明**: 基础角色卡资产。
 - **关联类型**: `CardSourceContent`
-- **关键字段**: `name`, `opening`, `promptResourceIds`, `importBundleId`, `createdAt`, `updatedAt`
+- **关键字段**: `name`, `opening`, `promptResourceIds`, `stateDefinitionIds`, `timelineStateBindings`, `importBundleId`, `createdAt`, `updatedAt`
 - **备注**: Bundle import 路径中 Card 直接保存有序 `promptResourceIds` 与独立 `importBundleId`。`createCard` 的 M0 simple-card 路径仍保留 `preset` / `settingLayer`。
 
 ### `airp.agentProfile`
@@ -68,13 +78,18 @@ Loom Studio 使用统一的 Document Store 进行数据持久化。所有被存�
 - **说明**: Prompt Resource 是 Application-owned Domain Store 的资源头、Node 和 Setting Mount，不再由 `airp.promptResource` Document 权威保存。
 - **权威表**: `prompt_resources`, `prompt_resource_nodes`, `prompt_resource_node_revisions`, `prompt_resource_header_revisions`, `global_setting_mounts`
 - **兼容类型**: `PromptResourceContent` 与嵌套 `rootNode.children[]` 仍用于 RPC、PromptBuild 和 `loom.promptResource` 外部 Artifact。
-- **备注**: Preset 与 Setting 的关系由 `global_setting_mounts` 的 Preset Mount 维护；Agent Profile 的 `presetId` 仍指向稳定 Resource ID。
+- **备注**: 当前 PromptBuild 与 Studio Client 只消费 `manual/global` Setting Mount；旧 Preset 来源 Mount 暂留在 Store/API 中作为非破坏性兼容数据。Agent Profile 的 `presetId` 仍只指向稳定 Preset Resource ID。
 
 ### `airp.importBundle`
 - **说明**: 保存一次 Card Bundle 导入的来源 Artifact、来源引用、资源推荐关系和导入 Document 清单。
 - **关联类型**: `ImportBundleContent`
 - **关键字段**: `cardId`, `documentIds`, `sourceArtifact`, `sourceArtifactRef`, `bindings`, `importedAt`
 - **备注**: Card export 通过 `Card.importBundleId` 回读来源与兼容数据。
+
+### `airp.stateDefinition`
+- **说明**: Workspace 共享的 Global State Definition 或 Timeline State Template。
+- **关联类型**: `StateDefinitionContent`
+- **关键字段**: Global 使用 `path`, `schema`, `default`, `readOnly`；Timeline Template 使用 `templateVersion`, `schema`, `initial`。
 
 ## 4. 平台与提供商 (Platform Provider)
 

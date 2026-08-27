@@ -8,6 +8,7 @@ Studio Application 是 Loom Studio 第一方内建的 AIRP 领域层。它定义
 |---|---|---|
 | [`prompt-build/`](prompt-build/) | Sources、Composition、PromptBuild pipeline 与 Loom Core 对接 | Loom Core 边界已晋升 |
 | [`agent/`](agent/) | Agent Session、Loop、Tool、Provider 与 PromptBuild 接缝 | 基础运行架构已晋升；恢复、子智能体与领域 Tool 仍在演进 |
+| [`history-text-pipeline.md`](history-text-pipeline.md) | Narrative / Session History 的 Regex、Reasoning Promotion、Extractor 与 Renderer Slot | Phase 0—5 基础闭环已实现 |
 | [`extension/`](extension/) | Extension 向第一方 AIRP 领域贡献能力的协议 | 分类已建立，具体设计仍在 Workbench |
 | [`ui/`](ui/) | 第一方 AIRP UI 如何使用 Studio Shell | 分类已建立，具体设计仍在 Workbench |
 

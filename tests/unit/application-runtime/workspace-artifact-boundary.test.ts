@@ -1,5 +1,6 @@
 import {
   createApplicationRuntime,
+  createVariableRenderContext,
   exportCardArtifact,
   getImportBundle,
   importCardBundle,
@@ -38,14 +39,14 @@ describe('card bundle artifact boundary', () => {
     const inputs = await readPromptResourceInputs({
       promptResources: fixture.promptResources,
       resourceIds: imported.card.promptResourceIds ?? [],
-      macroContext: { user: 'User' },
+      variables: createVariableRenderContext(),
     })
 
     expect(inputs.contributions.map(contribution => contribution.content)).toContain('Original prompt asset.')
     await expect(readPromptResourceInputs({
       promptResources: fixture.promptResources,
       resourceIds: [imported.card.promptResourceIds![0]!, imported.card.promptResourceIds![0]!],
-      macroContext: { user: 'User' },
+      variables: createVariableRenderContext(),
     })).rejects.toThrow('Duplicate prompt resource id')
   })
 
@@ -130,7 +131,7 @@ describe('card bundle artifact boundary', () => {
 
 function createArtifact(): CardBundleArtifact {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     artifactId: 'test-card-bundle-v0',
     displayName: 'Test Card Bundle',
     card: {

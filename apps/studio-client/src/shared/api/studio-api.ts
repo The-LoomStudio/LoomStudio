@@ -2,6 +2,8 @@ import type { ClientBridge, ClientJsonValue } from '@loom-studio/client-bridge'
 import type { LogLevel, LogPage } from '@loom-studio/logging'
 import type {
   AgentTranscriptPage,
+  ApplyStateMutationInput,
+  ApplyStateMutationResult,
   AgentToolDefinition,
   AgentSession,
   CardBundleArtifact,
@@ -25,6 +27,8 @@ import type {
   GetImportBundleResult,
   GetNarrativeTimelineResult,
   GetPromptResourceResult,
+  GetStateSnapshotResult,
+  GetStateDefinitionResult,
   ImportCardBundleResult,
   InvokeAgentTurnResult,
   ListAgentProfilesResult,
@@ -35,6 +39,7 @@ import type {
   ListPresetToolMountsResult,
   ListProviderProfilesResult,
   ListSettingMountsResult,
+  ListStateDefinitionsResult,
   MutationReceipt,
   NarrativePage,
   OpeningChatInput,
@@ -49,11 +54,22 @@ import type {
   ReplacePresetToolMountsResult,
   SettingLayerInput,
   SettingMountSource,
+  StateTarget,
+  StateDefinitionDraft,
+  UpsertStateDefinitionResult,
+  DeleteStateDefinitionResult,
   SwitchNarrativeBranchResult,
   UpdateAgentProfileResult,
   UpdateCardResult,
   UpdatePromptResourceResult,
   UpdateProviderProfileResult,
+  HistoryProjectionSnapshot,
+  HistorySource,
+  RendererDefinition,
+  TextExtractor,
+  TextExtractorDraft,
+  TextTransformRule,
+  TextTransformRuleDraft,
 } from '../../entities/index.js'
 
 export type LogsListInput = {
@@ -98,6 +114,8 @@ export type UpdateCardInput = {
   settingLayer?: SettingLayerInput
   media?: CardMedia
   promptResourceIds?: string[]
+  stateDefinitionIds?: string[]
+  timelineStateBindings?: Array<{ path: string; templateId: string; templateVersion: number; initial?: Record<string, ClientJsonValue> }>
 }
 
 export type UpdateCardPromptResourcesInput = {
@@ -262,6 +280,27 @@ export type StudioApi = {
   history: {
     revert(changesetId: string): Promise<MutationReceipt>
   }
+  states: {
+    get(target: StateTarget): Promise<GetStateSnapshotResult>
+    apply(input: ApplyStateMutationInput): Promise<ApplyStateMutationResult>
+    listDefinitions(kind?: StateDefinitionDraft['kind']): Promise<ListStateDefinitionsResult>
+    getDefinition(definitionId: string): Promise<GetStateDefinitionResult>
+    upsertDefinition(input: { definitionId: string; expectedVersion?: number; definition: StateDefinitionDraft }): Promise<UpsertStateDefinitionResult>
+    deleteDefinition(input: { definitionId: string; expectedVersion?: number }): Promise<DeleteStateDefinitionResult>
+  }
+  textTransforms: {
+    listRules(): Promise<{ rules: TextTransformRule[] }>
+    getRule(ruleId: string): Promise<{ rule: TextTransformRule }>
+    upsertRule(input: { ruleId: string; expectedVersion?: number; rule: TextTransformRuleDraft }): Promise<{ rule: TextTransformRule; mutation: MutationReceipt }>
+    deleteRule(input: { ruleId: string; expectedVersion?: number }): Promise<{ deleted: true; mutation: MutationReceipt }>
+    listExtractors(): Promise<{ extractors: TextExtractor[] }>
+    getExtractor(extractorId: string): Promise<{ extractor: TextExtractor }>
+    upsertExtractor(input: { extractorId: string; expectedVersion?: number; extractor: TextExtractorDraft }): Promise<{ extractor: TextExtractor; mutation: MutationReceipt }>
+    deleteExtractor(input: { extractorId: string; expectedVersion?: number }): Promise<{ deleted: true; mutation: MutationReceipt }>
+    project(input: { source: HistorySource; phase: 'classify' | 'prompt' | 'display' }): Promise<{ snapshot: HistoryProjectionSnapshot }>
+    extract(input: { source: HistorySource; phase?: 'classify' | 'prompt' | 'display'; extractorId: string }): Promise<{ extraction: ClientJsonValue; snapshot: HistoryProjectionSnapshot }>
+    listRenderers(): Promise<{ renderers: RendererDefinition[] }>
+  }
   importBundles: {
     get(importBundleId: string): Promise<GetImportBundleResult>
   }
@@ -306,7 +345,6 @@ export type StudioApi = {
   }
   narratives: {
     create(input: CreateNarrativeTimelineInput): Promise<CreateNarrativeTimelineResult>
-    createFromCard(input: CreateNarrativeTimelineInput): Promise<CreateNarrativeTimelineResult>
     get(timelineId: string): Promise<GetNarrativeTimelineResult>
     list(input?: { createdFromCardId?: string; cursor?: string; limit?: number }): Promise<ListNarrativeTimelinesResult>
     getPage(input: { timelineId: string; branchId?: string; cursor?: string; limit?: number }): Promise<NarrativePage>
@@ -365,6 +403,27 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
         return result.mutation
       },
     },
+    states: {
+      get: target => bridge.call<GetStateSnapshotResult>('application.getStateSnapshot', { target } as unknown as ClientJsonValue),
+      apply: input => bridge.call<ApplyStateMutationResult>('application.applyStateMutation', input as unknown as ClientJsonValue),
+      listDefinitions: kind => bridge.call<ListStateDefinitionsResult>('application.listStateDefinitions', kind ? { kind } : {}),
+      getDefinition: definitionId => bridge.call<GetStateDefinitionResult>('application.getStateDefinition', { definitionId }),
+      upsertDefinition: input => bridge.call<UpsertStateDefinitionResult>('application.upsertStateDefinition', input as unknown as ClientJsonValue),
+      deleteDefinition: input => bridge.call<DeleteStateDefinitionResult>('application.deleteStateDefinition', input as unknown as ClientJsonValue),
+    },
+    textTransforms: {
+      listRules: () => bridge.call('application.listTextTransformRules', {}),
+      getRule: ruleId => bridge.call('application.getTextTransformRule', { ruleId }),
+      upsertRule: input => bridge.call('application.upsertTextTransformRule', input as unknown as ClientJsonValue),
+      deleteRule: input => bridge.call('application.deleteTextTransformRule', input as unknown as ClientJsonValue),
+      listExtractors: () => bridge.call('application.listTextExtractors', {}),
+      getExtractor: extractorId => bridge.call('application.getTextExtractor', { extractorId }),
+      upsertExtractor: input => bridge.call('application.upsertTextExtractor', input as unknown as ClientJsonValue),
+      deleteExtractor: input => bridge.call('application.deleteTextExtractor', input as unknown as ClientJsonValue),
+      project: input => bridge.call('application.projectHistory', input as unknown as ClientJsonValue),
+      extract: input => bridge.call('application.extractHistory', input as unknown as ClientJsonValue),
+      listRenderers: () => bridge.call('application.listRenderers', {}),
+    },
     importBundles: {
       get: importBundleId => bridge.call<GetImportBundleResult>('application.getImportBundle', { importBundleId }),
     },
@@ -409,7 +468,6 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
     },
     narratives: {
       create: input => bridge.call<CreateNarrativeTimelineResult>('application.createNarrativeTimeline', input as unknown as ClientJsonValue),
-      createFromCard: input => bridge.call<CreateNarrativeTimelineResult>('application.createNarrativeTimeline', input as unknown as ClientJsonValue),
       get: timelineId => bridge.call<GetNarrativeTimelineResult>('application.getNarrativeTimeline', { timelineId }),
       list: input => bridge.call<ListNarrativeTimelinesResult>('application.listNarrativeTimelines', (input ?? {}) as unknown as ClientJsonValue),
       getPage: input => bridge.call<NarrativePage>('application.getNarrativePage', input as unknown as ClientJsonValue),

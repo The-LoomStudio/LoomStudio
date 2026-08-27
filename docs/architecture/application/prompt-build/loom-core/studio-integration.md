@@ -45,6 +45,8 @@ Documents / Runtime Sources
 
 数据库、文件、网络与宏展开发生在 Core 外。Core 不提供 `runWithSources()`，也不把 Card、Setting Layer 或 Session 输入变成命名参数。
 
+Source Preparation 可以修改节点自己的文本内容，但不会把外部提示词资源压成供 Preset 二次展开的命名字符串。外部资源以带 Source 引用和 Composition Capability 的 Contribution 进入 Pipeline，由 Application-owned Pass 保留其 Activation、Projection、排序和 Trace 身份；Macro 不承担结构化节点注入。
+
 当前 `composeAgentTurnPrompt()` 会在调用 Core 前异步完成：
 
 - Narrative branch 读取；

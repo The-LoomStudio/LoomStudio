@@ -1,5 +1,14 @@
 import { Check, ChevronDown, Copy } from 'lucide-react'
-import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from 'react'
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
 import type { AgentTranscriptEntry as AgentTranscriptEntryEntity, AgentProfile, AgentSession, ProviderAccount } from '../../entities/index.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import { tryWriteClipboardText } from '../../shared/browser/clipboard.js'
@@ -14,11 +23,16 @@ const ConversationMarkdown = lazy(async () => {
   return { default: module.ConversationMarkdown }
 })
 
+const AGENT_EXPANSION_MIN_HEIGHT = 220
+const AGENT_EXPANSION_MAX_HEIGHT = 720
+const AGENT_EXPANSION_KEYBOARD_STEP = 24
+
 type AgentComposerProps = {
   canPreviewPrompt: boolean
   canSendAgent: boolean
   canSendNarrative: boolean
   agentBusy: boolean
+  agentExpansionHeight: number
   agentInput: string
   agentMessages: AgentTranscriptEntryEntity[]
   agentSession?: AgentSession
@@ -31,6 +45,7 @@ type AgentComposerProps = {
   t: Translator
   onChangeAgentInput(value: string): void
   onChangeNarrativeInput(value: string): void
+  onExpansionHeightChange(height: number): void
   onExpandedChange(expanded: boolean): void
   onHeightChange(height: number): void
   onPreviewPrompt(): void
@@ -45,6 +60,13 @@ export function AgentComposer(props: AgentComposerProps) {
   const [copyState, setCopyState] = useState<{ id: string; copied: boolean }>()
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const conversationRef = useRef<HTMLDivElement>(null)
+  const resizeDragRef = useRef<{
+    canvas: HTMLElement
+    currentHeight: number
+    pointerId: number
+    startHeight: number
+    startY: number
+  } | undefined>(undefined)
 
   useEffect(() => {
     if (!props.workspaceOpen) setAgentRaised(false)
@@ -73,6 +95,51 @@ export function AgentComposer(props: AgentComposerProps) {
     copyTimerRef.current = setTimeout(() => setCopyState(undefined), 1600)
   }
 
+  function resizeAgentPanel(height: number) {
+    props.onExpansionHeightChange(clampAgentExpansionHeight(height, readAgentExpansionMaxHeight()))
+  }
+
+  function startResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return
+    const canvas = event.currentTarget.closest<HTMLElement>('[data-loom-object="agent-composer-layer"]')?.parentElement
+    if (!canvas) return
+    event.preventDefault()
+    canvas.style.setProperty('--loom-agent-expansion-transition-duration', '0ms')
+    resizeDragRef.current = {
+      canvas,
+      currentHeight: props.agentExpansionHeight,
+      pointerId: event.pointerId,
+      startHeight: props.agentExpansionHeight,
+      startY: event.clientY,
+    }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  function continueResize(event: ReactPointerEvent<HTMLDivElement>) {
+    const drag = resizeDragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    drag.currentHeight = clampAgentExpansionHeight(
+      drag.startHeight + drag.startY - event.clientY,
+      readAgentExpansionMaxHeight(),
+    )
+    drag.canvas.style.setProperty('--loom-agent-expansion-height', `${drag.currentHeight}px`)
+  }
+
+  function finishResize(event: ReactPointerEvent<HTMLDivElement>) {
+    const drag = resizeDragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    resizeDragRef.current = undefined
+    drag.canvas.style.removeProperty('--loom-agent-expansion-transition-duration')
+    props.onExpansionHeightChange(drag.currentHeight)
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+  }
+
+  function resizeWithKeyboard(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+    event.preventDefault()
+    resizeAgentPanel(props.agentExpansionHeight + (event.key === 'ArrowUp' ? AGENT_EXPANSION_KEYBOARD_STEP : -AGENT_EXPANSION_KEYBOARD_STEP))
+  }
+
   const codeBlockLabels = {
     copied: props.t('longTextEditor.copied'),
     copy: props.t('longTextEditor.copy'),
@@ -89,6 +156,22 @@ export function AgentComposer(props: AgentComposerProps) {
         expanded={agentOpen}
         expansion={(
           <div className={styles.session}>
+            <div
+              aria-label={props.t('agent.resize')}
+              aria-orientation="horizontal"
+              aria-valuemax={readAgentExpansionMaxHeight()}
+              aria-valuemin={AGENT_EXPANSION_MIN_HEIGHT}
+              aria-valuenow={props.agentExpansionHeight}
+              className={styles.resizeHandle}
+              role="separator"
+              tabIndex={0}
+              onKeyDown={resizeWithKeyboard}
+              onLostPointerCapture={finishResize}
+              onPointerCancel={finishResize}
+              onPointerDown={startResize}
+              onPointerMove={continueResize}
+              onPointerUp={finishResize}
+            />
             <header className={styles.sessionBar}>
               <span className={styles.sessionLabel}>{props.t('agent.session')}</span>
               {props.agentSession ? <code>{props.agentSession.id.slice(0, 18)}</code> : <span>{props.t('agent.sessionPending')}</span>}
@@ -148,6 +231,18 @@ export function AgentComposer(props: AgentComposerProps) {
         onToggleExpanded={toggleAgent}
       />
     </div>
+  )
+}
+
+export function clampAgentExpansionHeight(height: number, maximumHeight: number): number {
+  return Math.min(Math.max(AGENT_EXPANSION_MIN_HEIGHT, height), maximumHeight)
+}
+
+function readAgentExpansionMaxHeight(): number {
+  if (typeof window === 'undefined') return AGENT_EXPANSION_MAX_HEIGHT
+  return Math.max(
+    AGENT_EXPANSION_MIN_HEIGHT,
+    Math.min(AGENT_EXPANSION_MAX_HEIGHT, Math.floor(window.innerHeight * 0.72)),
   )
 }
 

@@ -21,6 +21,7 @@
     { "path": "../../packages/prompt-resource-store" },
     { "path": "../../packages/loom-runner" },
     { "path": "../../packages/shared" },
+    { "path": "../../packages/state-store" },
     { "path": "../../packages/trace-audit" },
     { "path": "../../packages/transport" }
   ],

@@ -5,3 +5,98 @@
   justify-content: space-between;
   min-width: 0;
 }
+
+.resourceExplorer {
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.bindResourcesButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 10px 12px 4px;
+  border: 1px dashed var(--loom-color-border);
+  border-radius: var(--loom-radius-surface);
+  padding: 7px 10px;
+  color: var(--loom-color-text-muted);
+  background: transparent;
+}
+
+.bindResourcesButton:hover {
+  border-color: var(--loom-color-accent-strong);
+  color: var(--loom-color-text);
+  background: color-mix(in srgb, var(--loom-color-accent-strong) 8%, transparent);
+}
+
+.bindResourcesButton svg {
+  width: var(--loom-icon-size-4);
+  height: var(--loom-icon-size-4);
+}
+
+.globalSettingOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.globalSettingOptions button {
+  align-items: center;
+  color: var(--loom-color-text);
+  display: inline-flex;
+  gap: 8px;
+  border: 0;
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: var(--loom-color-surface-raised);
+}
+
+.bindingEditor {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.bindingEditor > input {
+  width: 100%;
+}
+
+.bindingResults {
+  display: grid;
+  max-height: 180px;
+  overflow: auto;
+  border-radius: var(--loom-radius-surface);
+  background: var(--loom-color-surface-raised);
+}
+
+.bindingResults > span {
+  padding: 12px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
+}
+
+.bindingResults > button {
+  min-width: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border: 0;
+  border-radius: 0;
+  padding: 8px 10px;
+  color: var(--loom-color-text-muted);
+  text-align: left;
+  background: transparent;
+}
+
+.bindingResults > button:hover {
+  color: var(--loom-color-text);
+  background: color-mix(in srgb, var(--loom-color-accent-strong) 10%, transparent);
+}
+
+.bindingResults small {
+  color: var(--loom-color-text-subtle);
+}

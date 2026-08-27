@@ -87,7 +87,7 @@ describe('studio server card bundle rpc integration', () => {
       const redo = await callRpc<{ mutation: { changesetId: string } }>(port, 'application.revertPromptResourceChangeset', {
         changesetId: undo.mutation.changesetId,
       })
-      const exported = await callRpc<{ artifact: CardBundleArtifact }>(port, 'application.exportCardArtifact', {
+      const exported = await callRpc<{ artifact: CardBundleArtifact }>(port, 'application.exportCardBundle', {
         cardId: imported.card.id,
       })
 

@@ -64,9 +64,11 @@ Studio Server 直接把共享 SQLite Data Engine 作为 Kernel 的 Data Commit S
 
 Narrative append 在一个 Engine transaction 中同时插入 Node、更新 Branch head 与 Timeline `updated_at`；分页沿 parent 链向历史读取，不使用 SQLite offset。
 
+State Store 使用 `application.state@1` migration namespace，拥有 `state_scopes` 与 `state_revisions`。完整合同与 Narrative Branch、Card V2、Macro、Undo、Agent Tool 的接缝见 [`../application/state-and-variables.md`](../application/state-and-variables.md)。
+
 Studio Server 已在组合根创建 Narrative Store，并注入 Application Runtime。当前新增独立 RPC：
 
-- `application.createNarrativeTimelineFromCard`；
+- `application.createNarrativeTimeline`；
 - `application.getNarrativeTimeline`；
 - `application.getNarrativePage`；
 - `application.forkNarrativeBranch`；
@@ -100,7 +102,7 @@ Prompt Resource 不再使用 `airp.promptResource` Document 作为权威存储�
 - `prompt_resource_nodes`：Resource Node 当前状态；
 - `prompt_resource_node_revisions`：受影响 Node 的 before/after Revision；
 - `prompt_resource_header_revisions`：Header before/after Revision；
-- `global_setting_mounts`：manual 与 Preset 来源的 Setting Mount Registry；
+- `global_setting_mounts`：Setting Mount Registry；当前 PromptBuild 与 Studio Client 只消费 `manual/global` 来源，旧 Preset 来源记录暂保留为非破坏性兼容数据；
 - `preset_tool_mounts`：Preset 到 Workspace Tool Definition 的挂载关系、默认开关、Activation 与 Provider / Content 投影策略。
 
 `PromptResourceContent`、嵌套 `rootNode.children[]` 和 `loom.promptResource` 是当前 RPC、PromptBuild 与 Card Bundle 使用的兼容投影/外部格式，不是 SQL 权威模型。Setting Mount 通过独立的 `application.listSettingMounts` / `application.replaceSettingMounts` API 读取和修改；Preset Tool Mount 通过 `application.listPresetToolMounts` / `application.replacePresetToolMounts` 读取和修改。两者都不嵌入 Prompt Resource 响应，也不复制被引用的 Setting 或 Tool Definition。
@@ -113,7 +115,7 @@ Prompt Resource 不再使用 `airp.promptResource` Document 作为权威存储�
 
 旧 `airp.agentPreset` 权威类型、对应 RPC 与启动迁移均已删除；开发数据不再保留这条兼容路径。
 
-`createAgentSession` 必须引用真实 Agent Profile。`previewAgentTurn` 与 `invokeAgentTurn` 共用同一 Prompt 构建入口；后者从 Agent Session、Profile 选择的唯一 Preset、Preset 关联 Setting、可选 Narrative Timeline Setting 及 Provider Model 构造 canonical Chat Message，并在 Provider 成功后持久化本轮 Message。Provider 失败不会留下半轮。Settings 工作台的当前选中项只是编辑状态，不参与运行时绑定。
+`createAgentSession` 必须引用真实 Agent Profile。`previewAgentTurn` 与 `invokeAgentTurn` 共用同一 Prompt 构建入口；后者从 Agent Session、Profile 选择的唯一 Preset、全局 Setting Mount、可选 Narrative Timeline Setting 及 Provider Model 构造 canonical Chat Message，并在 Provider 成功后持久化本轮 Message。Provider 失败不会留下半轮。Resource 工作台提供唯一的全局 Setting Mount 编辑入口；Settings 工作台的当前选中项只是编辑状态，不参与运行时绑定。
 
 当 `narrativeTarget.commit = true` 时，两条 Agent Message 与一条 Narrative Node 在同一 Data Engine transaction / Changeset 中提交；未指定目标或 `commit = false` 时只写 Agent Session。Narrative provenance 可以记录 Agent Session、Agent Message、runId 与 changesetId，但 Timeline 和 Agent Session 仍然互不拥有。
 

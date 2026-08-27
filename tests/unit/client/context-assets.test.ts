@@ -136,7 +136,7 @@ describe('studio client context asset helpers', () => {
     })
   })
 
-  it('resolves manual, preset, and timeline settings in runtime order with stable deduplication', () => {
+  it('resolves global and timeline settings in runtime order with stable deduplication', () => {
     const preset = promptResource('preset-1', 'preset')
     const setting1 = promptResource('setting-1', 'setting')
     const setting2 = promptResource('setting-2', 'setting')
@@ -154,7 +154,7 @@ describe('studio client context asset helpers', () => {
     }).map(resource => resource.id)).toEqual(['setting-1', 'setting-2', 'setting-3'])
   })
 
-  it('keeps preset-linked settings available without an active timeline', () => {
+  it('ignores legacy preset-linked settings without an active timeline', () => {
     const preset = promptResource('preset-1', 'preset')
     const setting = promptResource('setting-1', 'setting')
 
@@ -162,7 +162,7 @@ describe('studio client context asset helpers', () => {
       preset,
       resources: [preset, setting],
       settingMounts: mounts({ kind: 'preset', id: 'preset-1' }, ['setting-1']),
-    })).toEqual([setting])
+    })).toEqual([])
   })
 })
 

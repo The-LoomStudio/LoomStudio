@@ -1,0 +1,132 @@
+.panel {
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.panel > nav {
+  border-bottom: 1px solid var(--loom-color-border-subtle);
+}
+
+.content {
+  min-height: 0;
+  overflow: auto;
+  padding: var(--loom-space-4);
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--loom-space-3);
+  margin-bottom: var(--loom-space-4);
+  color: var(--loom-color-text-muted);
+}
+
+.sectionHeader > svg {
+  width: var(--loom-icon-size-5);
+  height: var(--loom-icon-size-5);
+}
+
+.sectionHeader > div,
+.itemBody {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.sectionHeader span,
+.itemBody small,
+.limitNote {
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
+}
+
+.list {
+  display: grid;
+  gap: var(--loom-space-2);
+}
+
+.item {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--loom-space-3);
+  border: 0;
+  border-radius: var(--loom-radius-surface);
+  padding: var(--loom-space-3);
+  color: var(--loom-color-text-muted);
+  text-align: left;
+  background: color-mix(in srgb, var(--loom-color-surface) 58%, transparent);
+}
+
+button.item:hover,
+button.item:focus-visible,
+.itemActive {
+  color: var(--loom-color-text);
+  background: color-mix(in srgb, var(--loom-color-accent) 12%, var(--loom-color-surface));
+}
+
+.item > svg {
+  flex: 0 0 auto;
+  width: var(--loom-icon-size-4);
+  height: var(--loom-icon-size-4);
+}
+
+.itemBody {
+  flex: 1;
+}
+
+.itemBody strong,
+.itemBody small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.count,
+.badge {
+  flex: 0 0 auto;
+  color: var(--loom-color-text-subtle);
+  font-family: var(--loom-font-family-mono);
+  font-size: var(--loom-font-size-1);
+}
+
+.badge {
+  border-radius: 999px;
+  padding: 2px 6px;
+  background: color-mix(in srgb, var(--loom-color-surface-raised) 70%, transparent);
+}
+
+.activeContext {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--loom-space-3);
+  margin-top: var(--loom-space-4);
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
+}
+
+.activeContext code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty {
+  min-height: 160px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: var(--loom-space-3);
+  color: var(--loom-color-text-subtle);
+}
+
+.empty svg {
+  width: var(--loom-icon-size-6);
+  height: var(--loom-icon-size-6);
+}
+
+.limitNote {
+  margin: var(--loom-space-4) 0 0;
+}

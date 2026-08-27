@@ -1,5 +1,3 @@
-import type { ClientJsonValue } from '@loom-studio/client-bridge'
-
 export type ActivationMode = 'draft' | 'finalize'
 export type ActivationTag = 'scene:combat' | 'style:cinematic'
 
@@ -8,7 +6,12 @@ export type ActivationControlState = {
   tags: ActivationTag[]
 }
 
-export function createActivationFacts(state: ActivationControlState): { [key: string]: ClientJsonValue } {
+export type ActivationFacts = {
+  'agent.mode': ActivationMode
+  tags: ActivationTag[]
+}
+
+export function createActivationFacts(state: ActivationControlState): ActivationFacts {
   return {
     'agent.mode': state.mode,
     tags: state.tags,

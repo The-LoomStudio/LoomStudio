@@ -6,7 +6,11 @@ import type {
   ExtensionModuleManifest,
   ExtensionModuleSummary,
 } from '@loom-studio/extension-host'
-import type { ExtensionManagementService } from '@loom-studio/kernel'
+import type {
+  ExtensionManagementService,
+  ManagedExtensionModule,
+  ManagedExtensionPackage,
+} from '@loom-studio/kernel'
 import type { DiagnosticsRegistry } from '@loom-studio/diagnostics'
 import type { JsonValue } from '@loom-studio/shared'
 import { serializeError } from '@loom-studio/shared'
@@ -121,7 +125,7 @@ export function createServerExtensionManager(options: {
       const runtimeByKey = new Map(options.host.list().map(summary => [moduleKey(summary.packageId, summary.moduleId), summary]))
       return [...catalog.entries()]
         .sort(([left], [right]) => left.localeCompare(right))
-        .map(([packageId, record]) => toManagedPackage(packageId, record, options.stateStore, runtimeByKey)) as unknown as JsonValue[]
+        .map(([packageId, record]) => toManagedPackage(packageId, record, options.stateStore, runtimeByKey))
     },
 
     installPackage: sourceDirectory => serialize(async () => {
@@ -147,7 +151,7 @@ export function createServerExtensionManager(options: {
           await options.host.activate(installed.manifest.id, moduleManifest.id)
         }
         const runtimeByKey = new Map(options.host.list().map(summary => [moduleKey(summary.packageId, summary.moduleId), summary]))
-        return toManagedPackage(installed.manifest.id, record, options.stateStore, runtimeByKey) as unknown as JsonValue
+        return toManagedPackage(installed.manifest.id, record, options.stateStore, runtimeByKey)
       } catch (error) {
         await uninstallExtensionPackageDirectory({
           directory: installed.directory,
@@ -178,7 +182,7 @@ export function createServerExtensionManager(options: {
         packageId,
         version: record.manifest.version,
         removed: true,
-      } as unknown as JsonValue
+      }
     }),
 
     enableModule: (packageId, moduleId, requestedGrants) => serialize(async () => {
@@ -208,7 +212,7 @@ export function createServerExtensionManager(options: {
             : await options.host.reload(packageId, moduleId)
           : await options.host.activate(packageId, moduleId)
       }
-      return toManagedModule(packageId, moduleManifest, desired, runtime) as unknown as JsonValue
+      return toManagedModule(packageId, moduleManifest, desired, runtime)
     }),
 
     disableModule: (packageId, moduleId) => serialize(async () => {
@@ -222,7 +226,7 @@ export function createServerExtensionManager(options: {
         grantedAssetCapabilities: previous.grantedAssetCapabilities,
       })
       if (moduleManifest.runtime === 'server') await options.host.dispose(packageId, moduleId)
-      return toManagedModule(packageId, moduleManifest, desired, findRuntime(options.host, packageId, moduleId)) as unknown as JsonValue
+      return toManagedModule(packageId, moduleManifest, desired, findRuntime(options.host, packageId, moduleId))
     }),
 
     reloadModule: (packageId, moduleId) => serialize(async () => {
@@ -233,7 +237,7 @@ export function createServerExtensionManager(options: {
       const desired = readDesiredState(options.stateStore, packageId, moduleId)
       if (!desired.enabled) throw new Error(`Extension module is not enabled: ${moduleKey(packageId, moduleId)}`)
       const runtime = await options.host.reload(packageId, moduleId)
-      return toManagedModule(packageId, moduleManifest, desired, runtime) as unknown as JsonValue
+      return toManagedModule(packageId, moduleManifest, desired, runtime)
     }),
 
     getGrantedEventCapabilities: (packageId, moduleId) => {
@@ -328,7 +332,7 @@ function toManagedPackage(
   record: PackageCatalogRecord,
   stateStore: ExtensionStateStore,
   runtimeByKey: Map<string, ExtensionModuleSummary>,
-): Record<string, JsonValue> {
+): ManagedExtensionPackage {
   return {
     packageId,
     version: record.manifest.version,
@@ -372,7 +376,7 @@ function toManagedModule(
   moduleManifest: ExtensionModuleManifest,
   desired: ExtensionModuleDesiredState,
   runtime?: ExtensionModuleSummary,
-): Record<string, JsonValue> {
+): ManagedExtensionModule {
   return {
     packageId,
     moduleId: moduleManifest.id,

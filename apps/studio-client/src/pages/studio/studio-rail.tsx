@@ -36,8 +36,11 @@ export function StudioRail(props: StudioRailProps) {
       <RailTab activePanel={props.activePanel} panel="agent" t={props.t} togglePanel={props.togglePanel} />
       <span className={`loom-divider ${styles.railDivider}`} aria-hidden="true" />
       <RailTab activePanel={props.activePanel} panel="character" t={props.t} togglePanel={props.togglePanel} />
+      <RailTab activePanel={props.activePanel} panel="sessions" t={props.t} togglePanel={props.togglePanel} />
       <RailTab activePanel={props.activePanel} panel="preset" t={props.t} togglePanel={props.togglePanel} />
       <RailTab activePanel={props.activePanel} panel="resource" t={props.t} togglePanel={props.togglePanel} />
+      <RailTab activePanel={props.activePanel} panel="state" t={props.t} togglePanel={props.togglePanel} />
+      <RailTab activePanel={props.activePanel} panel="text-transform" t={props.t} togglePanel={props.togglePanel} />
       <span className={`loom-divider ${styles.railDivider}`} aria-hidden="true" />
       <RailTab activePanel={props.activePanel} panel="inspector" t={props.t} togglePanel={props.togglePanel} />
       <RailTab activePanel={props.activePanel} panel="logs" t={props.t} togglePanel={props.togglePanel} />

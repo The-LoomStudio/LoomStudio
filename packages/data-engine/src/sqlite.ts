@@ -198,8 +198,9 @@ function initializeCoreSchema(database: DatabaseSync): void {
         operations_json TEXT NOT NULL
       );
     `)
-    ensureOptionalColumn(database, 'changesets', 'committed_at', 'TEXT')
-    ensureRequiredColumns(database, 'changesets', [
+    const changesetColumns = readTableColumns(database, 'changesets')
+    ensureOptionalColumn(database, 'changesets', changesetColumns, 'committed_at', 'TEXT')
+    ensureRequiredColumns('changesets', changesetColumns, [
       'id',
       'created_at',
       'created_by_json',
@@ -289,18 +290,21 @@ function writeMigrationVersion(database: DatabaseSync, namespace: string, versio
     .run(namespace, version)
 }
 
-function ensureRequiredColumns(database: DatabaseSync, table: string, required: string[]): void {
+function readTableColumns(database: DatabaseSync, table: string): Set<string> {
   const rows = database.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name?: string }>
-  const available = new Set(rows.map(row => row.name).filter((name): name is string => typeof name === 'string'))
+  return new Set(rows.map(row => row.name).filter((name): name is string => typeof name === 'string'))
+}
+
+function ensureRequiredColumns(table: string, available: Set<string>, required: string[]): void {
   const missing = required.filter(column => !available.has(column))
   if (missing.length > 0) {
     throw new DataEngineError('data.sqlite_schema_invalid', `SQLite table ${table} is missing required columns: ${missing.join(', ')}`)
   }
 }
 
-function ensureOptionalColumn(database: DatabaseSync, table: string, column: string, definition: string): void {
-  const rows = database.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name?: string }>
-  if (!rows.some(row => row.name === column)) {
+function ensureOptionalColumn(database: DatabaseSync, table: string, available: Set<string>, column: string, definition: string): void {
+  if (!available.has(column)) {
     database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+    available.add(column)
   }
 }

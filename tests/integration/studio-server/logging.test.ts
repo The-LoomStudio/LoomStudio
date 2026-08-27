@@ -170,7 +170,7 @@ describe('Studio Server logging', () => {
       })
       const timeline = await callRpc<{
         timeline: { id: string }
-      }>(port, 'application.createNarrativeTimelineFromCard', { cardId: card.card.id })
+      }>(port, 'application.createNarrativeTimeline', { cardId: card.card.id })
       const presets = await callRpc<{ resources: Array<{ id: string }> }>(port, 'application.listPromptResources', { resourceKind: 'preset' })
       const presetId = presets.resources[0]!.id
       const provider = await callRpc<{ providerProfile: { id: string } }>(port, 'application.createProviderProfile', {

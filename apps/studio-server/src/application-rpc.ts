@@ -14,7 +14,12 @@ import type {
   PromptProviderRole,
   PromptSourceKind,
   SettingMountSource,
+  StateMutationOperation,
+  StateDefinitionDraft,
+  StateTarget,
   ToolDefinition,
+  TextExtractorDraft,
+  TextTransformRuleDraft,
 } from '@loom-studio/application-runtime'
 import { isPromptActivation, isCardBundleArtifact, isPromptResourceArtifact } from '@loom-studio/application-runtime'
 import type { JsonValue } from '@loom-studio/shared'
@@ -35,6 +40,23 @@ const applicationRpcMethods = [
   'application.listCards',
   'application.updateCard',
   'application.deleteCard',
+  'application.getStateSnapshot',
+  'application.applyStateMutation',
+  'application.listStateDefinitions',
+  'application.getStateDefinition',
+  'application.upsertStateDefinition',
+  'application.deleteStateDefinition',
+  'application.listTextTransformRules',
+  'application.getTextTransformRule',
+  'application.upsertTextTransformRule',
+  'application.deleteTextTransformRule',
+  'application.listTextExtractors',
+  'application.getTextExtractor',
+  'application.upsertTextExtractor',
+  'application.deleteTextExtractor',
+  'application.projectHistory',
+  'application.extractHistory',
+  'application.listRenderers',
   'application.createProviderProfile',
   'application.getProviderProfile',
   'application.listProviderProfiles',
@@ -60,7 +82,6 @@ const applicationRpcMethods = [
   'application.invokeAgentTurn',
   'application.previewAgentTurn',
   'application.createNarrativeTimeline',
-  'application.createNarrativeTimelineFromCard',
   'application.getNarrativeTimeline',
   'application.listNarrativeTimelines',
   'application.getNarrativePage',
@@ -88,7 +109,6 @@ const applicationRpcMethods = [
   'application.movePromptResourceAsset',
   'application.deletePromptResourceAsset',
   'application.exportCardBundle',
-  'application.exportCardArtifact',
 ] as const
 
 export function listApplicationRpcCapabilities(): RpcCapability[] {
@@ -140,12 +160,100 @@ export async function callApplicationRpc(
         opening: readOptionalOpening(params, 'opening'),
         settingLayer: readOptionalSettingLayer(params, 'settingLayer'),
         media: readOptionalCardMedia(params, 'media'),
+        stateDefinitionIds: readOptionalStringArray(params, 'stateDefinitionIds'),
+        timelineStateBindings: readOptionalTimelineStateBindings(params, 'timelineStateBindings'),
       }, context) as unknown as JsonValue
 
     case 'application.deleteCard':
       return await runtime.deleteCard({
         cardId: readString(params, 'cardId'),
       }, context) as unknown as JsonValue
+
+    case 'application.getStateSnapshot':
+      return await runtime.getStateSnapshot({
+        target: readStateTarget(params),
+      }) as unknown as JsonValue
+
+    case 'application.applyStateMutation':
+      return await runtime.applyStateMutation({
+        target: readStateTarget(params),
+        expectedRevisionId: readString(params, 'expectedRevisionId'),
+        operations: readStateMutationOperations(params),
+        idempotencyKey: readOptionalString(params, 'idempotencyKey'),
+      }, context) as unknown as JsonValue
+
+    case 'application.listStateDefinitions':
+      return await runtime.listStateDefinitions({ kind: readOptionalStateDefinitionKind(params, 'kind') }) as unknown as JsonValue
+
+    case 'application.getStateDefinition':
+      return await runtime.getStateDefinition({ definitionId: readString(params, 'definitionId') }) as unknown as JsonValue
+
+    case 'application.upsertStateDefinition':
+      return await runtime.upsertStateDefinition({
+        definitionId: readString(params, 'definitionId'),
+        expectedVersion: readOptionalNumber(params, 'expectedVersion'),
+        definition: readStateDefinitionDraft(params),
+      }, context) as unknown as JsonValue
+
+    case 'application.deleteStateDefinition':
+      return await runtime.deleteStateDefinition({
+        definitionId: readString(params, 'definitionId'),
+        expectedVersion: readOptionalNumber(params, 'expectedVersion'),
+      }, context) as unknown as JsonValue
+
+    case 'application.listTextTransformRules':
+      return await runtime.listTextTransformRules() as unknown as JsonValue
+
+    case 'application.getTextTransformRule':
+      return await runtime.getTextTransformRule({ ruleId: readString(params, 'ruleId') }) as unknown as JsonValue
+
+    case 'application.upsertTextTransformRule':
+      return await runtime.upsertTextTransformRule({
+        ruleId: readString(params, 'ruleId'),
+        expectedVersion: readOptionalNumber(params, 'expectedVersion'),
+        rule: readRequiredRecord(params, 'rule') as unknown as TextTransformRuleDraft,
+      }, context) as unknown as JsonValue
+
+    case 'application.deleteTextTransformRule':
+      return await runtime.deleteTextTransformRule({
+        ruleId: readString(params, 'ruleId'),
+        expectedVersion: readOptionalNumber(params, 'expectedVersion'),
+      }, context) as unknown as JsonValue
+
+    case 'application.listTextExtractors':
+      return await runtime.listTextExtractors() as unknown as JsonValue
+
+    case 'application.getTextExtractor':
+      return await runtime.getTextExtractor({ extractorId: readString(params, 'extractorId') }) as unknown as JsonValue
+
+    case 'application.upsertTextExtractor':
+      return await runtime.upsertTextExtractor({
+        extractorId: readString(params, 'extractorId'),
+        expectedVersion: readOptionalNumber(params, 'expectedVersion'),
+        extractor: readRequiredRecord(params, 'extractor') as unknown as TextExtractorDraft,
+      }, context) as unknown as JsonValue
+
+    case 'application.deleteTextExtractor':
+      return await runtime.deleteTextExtractor({
+        extractorId: readString(params, 'extractorId'),
+        expectedVersion: readOptionalNumber(params, 'expectedVersion'),
+      }, context) as unknown as JsonValue
+
+    case 'application.projectHistory':
+      return await runtime.projectHistory({
+        source: readHistorySource(params),
+        phase: readTextTransformPhase(params, 'phase'),
+      }) as unknown as JsonValue
+
+    case 'application.extractHistory':
+      return await runtime.extractHistory({
+        source: readHistorySource(params),
+        phase: readOptionalTextTransformPhase(params, 'phase'),
+        extractorId: readString(params, 'extractorId'),
+      }) as unknown as JsonValue
+
+    case 'application.listRenderers':
+      return await runtime.listRenderers() as unknown as JsonValue
 
     case 'application.createProviderProfile':
       return await runtime.createProviderProfile({
@@ -289,13 +397,10 @@ export async function callApplicationRpc(
       }, context) as unknown as JsonValue
 
     case 'application.createNarrativeTimeline':
-    case 'application.createNarrativeTimelineFromCard': {
-      const createTimeline = runtime.createNarrativeTimeline ?? runtime.createNarrativeTimelineFromCard
-      return await createTimeline.call(runtime, {
+      return await runtime.createNarrativeTimeline({
         cardId: readString(params, 'cardId'),
         title: readOptionalString(params, 'title'),
       }, context) as unknown as JsonValue
-    }
 
     case 'application.getNarrativeTimeline':
       return await runtime.getNarrativeTimeline({
@@ -459,12 +564,9 @@ export async function callApplicationRpc(
       }, context) as unknown as JsonValue
 
     case 'application.exportCardBundle':
-    case 'application.exportCardArtifact': {
-      const exportBundle = runtime.exportCardBundle ?? runtime.exportCardArtifact
-      return await exportBundle.call(runtime, {
+      return await runtime.exportCardBundle({
         cardId: readString(params, 'cardId'),
       }) as unknown as JsonValue
-    }
 
     default:
       throw new Error(`Application RPC method not found: ${method}`)
@@ -824,6 +926,101 @@ function readOptionalNarrativeTarget(params: JsonValue | undefined): {
   }
 }
 
+function readStateTarget(params: JsonValue | undefined): StateTarget {
+  const value = readOptionalObject(params, 'target')
+  if (!value) throw new Error('Expected object param: target')
+  if (value.scope === 'global') return { scope: 'global' }
+  if (value.scope === 'timeline') {
+    if (typeof value.timelineId !== 'string' || value.timelineId.length === 0) {
+      throw new Error('Expected string param: target.timelineId')
+    }
+    if (typeof value.branchId !== 'string' || value.branchId.length === 0) {
+      throw new Error('Expected string param: target.branchId')
+    }
+    return { scope: 'timeline', timelineId: value.timelineId, branchId: value.branchId }
+  }
+  throw new Error('Expected state target scope: target.scope')
+}
+
+function readStateMutationOperations(params: JsonValue | undefined): StateMutationOperation[] {
+  if (!isRecord(params) || !Array.isArray(params.operations)) {
+    throw new Error('Expected array param: operations')
+  }
+  return params.operations.map((value, index) => {
+    if (!isRecord(value) || typeof value.path !== 'string') {
+      throw new Error(`Expected state mutation operation: operations[${index}]`)
+    }
+    if (value.op === 'set') {
+      if (!Object.hasOwn(value, 'value')) throw new Error(`Expected state set value: operations[${index}].value`)
+      return { op: 'set', path: value.path, value: value.value as JsonValue }
+    }
+    if (value.op === 'remove') return { op: 'remove', path: value.path }
+    if (value.op === 'increment') {
+      if (typeof value.by !== 'number' || !Number.isFinite(value.by)) {
+        throw new Error(`Expected finite state increment: operations[${index}].by`)
+      }
+      return { op: 'increment', path: value.path, by: value.by }
+    }
+    throw new Error(`Expected state mutation op: operations[${index}].op`)
+  })
+}
+
+function readOptionalTimelineStateBindings(params: JsonValue | undefined, key: string) {
+  if (!isRecord(params) || params[key] === undefined) return undefined
+  const value = params[key]
+  if (!Array.isArray(value)) throw new Error(`Expected array param: ${key}`)
+  return value.map((binding, index) => {
+    if (!isRecord(binding) || typeof binding.path !== 'string' || typeof binding.templateId !== 'string' || typeof binding.templateVersion !== 'number') {
+      throw new Error(`Expected Timeline State Binding: ${key}[${index}]`)
+    }
+    if (binding.initial !== undefined && !isRecord(binding.initial)) throw new Error(`Expected object: ${key}[${index}].initial`)
+    return {
+      path: binding.path,
+      templateId: binding.templateId,
+      templateVersion: binding.templateVersion,
+      ...(isRecord(binding.initial) ? { initial: binding.initial } : {}),
+    }
+  })
+}
+
+function readOptionalStateDefinitionKind(params: JsonValue | undefined, key: string): StateDefinitionDraft['kind'] | undefined {
+  if (!isRecord(params) || params[key] === undefined) return undefined
+  const value = params[key]
+  if (value === 'global' || value === 'timeline-template') return value
+  throw new Error(`Expected State Definition kind: ${key}`)
+}
+
+function readStateDefinitionDraft(params: JsonValue | undefined): StateDefinitionDraft {
+  const value = readOptionalObject(params, 'definition')
+  if (!value) throw new Error('Expected object param: definition')
+  if (!isRecord(value.schema)) throw new Error('Expected object param: definition.schema')
+  const label = typeof value.label === 'string' ? value.label : undefined
+  if (value.kind === 'global') {
+    if (typeof value.path !== 'string') throw new Error('Expected string param: definition.path')
+    if (value.readOnly !== undefined && typeof value.readOnly !== 'boolean') throw new Error('Expected boolean param: definition.readOnly')
+    return {
+      kind: 'global',
+      path: value.path,
+      schema: value.schema,
+      ...(Object.hasOwn(value, 'default') ? { default: value.default as JsonValue } : {}),
+      ...(typeof value.readOnly === 'boolean' ? { readOnly: value.readOnly } : {}),
+      ...(label !== undefined ? { label } : {}),
+    }
+  }
+  if (value.kind === 'timeline-template') {
+    if (typeof value.templateVersion !== 'number') throw new Error('Expected number param: definition.templateVersion')
+    if (!isRecord(value.initial)) throw new Error('Expected object param: definition.initial')
+    return {
+      kind: 'timeline-template',
+      templateVersion: value.templateVersion,
+      schema: value.schema,
+      initial: value.initial,
+      ...(label !== undefined ? { label } : {}),
+    }
+  }
+  throw new Error('Expected State Definition kind: definition.kind')
+}
+
 function readOptionalPromptResourceKind(params: JsonValue | undefined, key: string): PromptResourceKind | undefined {
   if (!isRecord(params) || params[key] === undefined) return undefined
   return readPromptResourceKind(params, key)
@@ -1009,4 +1206,39 @@ function readProjectionZoneBand(value: JsonValue | undefined, label: string): 's
     return value
   }
   throw new Error(`Expected projection zone band: ${label}`)
+}
+
+function readRequiredRecord(value: JsonValue | undefined, key: string): Record<string, JsonValue> {
+  if (!isRecord(value) || !isRecord(value[key])) throw new Error(`Expected object: ${key}`)
+  return value[key]
+}
+
+function readHistorySource(value: JsonValue | undefined) {
+  const source = readRequiredRecord(value, 'source')
+  if (source.kind === 'narrative') {
+    if (typeof source.timelineId !== 'string' || typeof source.branchId !== 'string') {
+      throw new Error('Narrative History source requires timelineId and branchId')
+    }
+    return { kind: 'narrative' as const, timelineId: source.timelineId, branchId: source.branchId }
+  }
+  if (source.kind === 'agent-session') {
+    if (typeof source.sessionId !== 'string') throw new Error('Agent Session History source requires sessionId')
+    return {
+      kind: 'agent-session' as const,
+      sessionId: source.sessionId,
+      ...(typeof source.headEntryId === 'string' ? { headEntryId: source.headEntryId } : {}),
+    }
+  }
+  throw new Error('Unsupported History source')
+}
+
+function readTextTransformPhase(value: JsonValue | undefined, key: string): 'classify' | 'prompt' | 'display' {
+  const phase = isRecord(value) ? value[key] : undefined
+  if (phase === 'classify' || phase === 'prompt' || phase === 'display') return phase
+  throw new Error(`Expected Text Transform phase: ${key}`)
+}
+
+function readOptionalTextTransformPhase(value: JsonValue | undefined, key: string): 'classify' | 'prompt' | 'display' | undefined {
+  const phase = isRecord(value) ? value[key] : undefined
+  return phase === undefined ? undefined : readTextTransformPhase(value, key)
 }

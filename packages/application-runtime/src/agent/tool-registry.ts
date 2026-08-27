@@ -81,6 +81,7 @@ export type ToolResult = {
   toolId: string
   status: 'completed' | 'failed' | 'denied' | 'aborted' | 'skipped'
   content: ToolResultPart[]
+  contextMounts?: ToolContextItem[]
   detailsRef?: string
   error?: {
     code: string
@@ -128,6 +129,19 @@ export type ToolContextItem = {
 
 export type ToolExecutionScope = {
   context: readonly ToolContextItem[]
+  state?: {
+    canAccess(target: { scope: 'global' } | { scope: 'timeline'; timelineId: string; branchId: string }): boolean
+    read(target: { scope: 'global' } | { scope: 'timeline'; timelineId: string; branchId: string }): Promise<{
+      revisionId: string
+      value: JsonObject
+    }>
+    update(input: {
+      target: { scope: 'global' } | { scope: 'timeline'; timelineId: string; branchId: string }
+      expectedRevisionId: string
+      operations: JsonObject[]
+      idempotencyKey: string
+    }): Promise<{ revisionId: string }>
+  }
 }
 
 export type ToolApprovalHandler = (
@@ -318,7 +332,7 @@ async function executeInvocation(
       status: 'failed',
       content: [],
       error: {
-        code: 'tool.execution_failed',
+        code: readErrorCode(error) ?? 'tool.execution_failed',
         message: errorMessage(error),
       },
     }
@@ -326,6 +340,11 @@ async function executeInvocation(
 
   assertExecutionResult(result, invocation)
   return result
+}
+
+function readErrorCode(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null || !('code' in error)) return undefined
+  return typeof error.code === 'string' && error.code.length > 0 ? error.code : undefined
 }
 
 function invalidInvocationError(
