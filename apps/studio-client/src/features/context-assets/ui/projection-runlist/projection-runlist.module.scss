@@ -96,7 +96,7 @@
   grid-template-columns: minmax(0, 1fr);
   overflow: hidden;
   padding: 6px 7px;
-  background: color-mix(in srgb, var(--loom-message-block-color) 10%, var(--loom-color-surface-inset));
+  background: var(--loom-color-surface-subtle);
 }
 
 .messageBlock:focus-visible {
@@ -237,7 +237,7 @@
   grid-template-columns: minmax(0, 1fr);
   overflow: hidden;
   padding: 6px 7px;
-  background: color-mix(in srgb, var(--loom-message-block-color) 10%, var(--loom-color-surface-inset));
+  background: var(--loom-color-surface-subtle);
 }
 
 .providerToolsIcon {

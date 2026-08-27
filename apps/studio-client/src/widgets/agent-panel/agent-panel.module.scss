@@ -95,10 +95,6 @@
   gap: 8px;
 }
 
-.profileActive {
-  background: color-mix(in srgb, var(--loom-color-accent) 12%, var(--loom-color-surface-subtle));
-}
-
 .profileIdentity {
   min-width: 0;
   display: grid;
@@ -150,7 +146,7 @@
   gap: 8px;
   border-radius: var(--loom-radius-control);
   padding: 7px 8px;
-  background: var(--loom-color-surface);
+  background: var(--loom-color-surface-subtle);
 }
 
 .toolOption input {

@@ -19,7 +19,7 @@
   --loom-color-surface-inset: var(--loom-surface, #181825);
   --loom-color-surface-emphasis: var(--loom-surface-deep, #373849);
   --loom-color-surface: var(--loom-window, var(--loom-panel, #313244));
-  --loom-color-surface-subtle: var(--loom-window-surface, #3b3d50);
+  --loom-color-surface-subtle: var(--loom-window-surface, #3c3d50);
   --loom-color-surface-muted: var(--loom-panel-muted, #45475a);
   --loom-color-surface-raised: var(--loom-window-raised, var(--loom-panel-muted, #45475a));
   --loom-divider-inset: 13px;
