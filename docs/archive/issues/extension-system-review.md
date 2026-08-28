@@ -1,5 +1,7 @@
 # 扩展系统与插件运行时审查报告 (Extension System & Host Review)
 
+> **状态**：Historical Audit Snapshot / Superseded
+
 ## 审查目标
 
 全面排查 Loom Studio 的 **扩展与插件基础设施**（涵盖 `packages/extension-sdk/`、`packages/extension-sdk/extension-host/`、`apps/studio-server/src/extensions/` 及示例插件 `extensions/example-echo/`），重点审查：
@@ -26,7 +28,7 @@
 
 ### 🔴 [高] 1. 进程内执行（In-Process）带来的安全与隔离边界限制
 
-**文件：** [`packages/extension-sdk/extension-host/src/index.ts` L469-L481](file:///Users/macbookair/Desktop/LoomStudio/packages/extension-sdk/extension-host/src/index.ts)
+**文件：** [`packages/extension-sdk/extension-host/src/index.ts` L469-L481](../../../packages/extension-sdk/extension-host/src/index.ts)
 
 **现象分析：**
 - 当前 Server 插件通过动态 ESM `import(modulePath)` 直接加载进 **Server 主进程** 运行。
@@ -43,7 +45,7 @@
 
 ### 🟡 [中] 2. Node.js ESM 动态重载的内存累积（V8 Module Cache Leak）
 
-**文件：** [`packages/extension-sdk/extension-host/src/index.ts` L477](file:///Users/macbookair/Desktop/LoomStudio/packages/extension-sdk/extension-host/src/index.ts)
+**文件：** [`packages/extension-sdk/extension-host/src/index.ts` L477](../../../packages/extension-sdk/extension-host/src/index.ts)
 
 ```ts
 const loaded = await import(`${pathToFileURL(modulePath).href}?instance=${encodeURIComponent(instanceId)}`)

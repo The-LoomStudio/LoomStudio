@@ -1,5 +1,7 @@
 # 工作区包依赖关系图 (Dependency Graph)
 
+> **状态**：Active Reference / Current Workspace Manifests Are Authority
+
 Loom Studio 严格遵循依赖单向流动（从外围应用到内核）的设计原则。不允许出现循环依赖，也不允许内部基础设施依赖具体的应用逻辑。
 
 ## 依赖全景图

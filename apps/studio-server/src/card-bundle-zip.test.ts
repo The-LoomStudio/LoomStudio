@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CardBundleArtifact } from '@loom-studio/application-runtime'
+import { unzipSync } from 'fflate'
 import { decodeCardBundleZip, encodeCardBundleZip } from './card-bundle-zip.js'
 
 describe('Loom Card ZIP', () => {
@@ -13,6 +14,14 @@ describe('Loom Card ZIP', () => {
         media: { avatarAssetId: 'local-avatar', coverAssetId: 'local-background' },
       },
       contextAssets: [],
+      extensionPayloads: [{
+        id: 'image-style-v1',
+        packageId: 'example.image-generator',
+        fileName: 'style.json',
+        format: 'example.image-style',
+        mediaType: 'application/json',
+        content: '{"style":"watercolor"}',
+      }],
     }
     const archive = encodeCardBundleZip({
       artifact,
@@ -28,6 +37,15 @@ describe('Loom Card ZIP', () => {
     expect(decoded.avatar.mediaType).toBe('image/png')
     expect(Buffer.from(decoded.background!.bytes).toString()).toBe('background')
     expect(decoded.background?.mediaType).toBe('image/webp')
+    expect(decoded.artifact.extensionPayloads).toEqual(artifact.extensionPayloads)
+    const entries = unzipSync(archive)
+    expect(entries['extensions/example.image-generator/image-style-v1/style.json']).toBeDefined()
+    const manifest = JSON.parse(Buffer.from(entries['manifest.json']!).toString('utf8')) as {
+      artifact: { extensionPayloads?: unknown }
+      extensionPayloads?: Array<{ path: string }>
+    }
+    expect(manifest.artifact.extensionPayloads).toBeUndefined()
+    expect(manifest.extensionPayloads?.[0]?.path).toBe('extensions/example.image-generator/image-style-v1/style.json')
   })
 
   it('rejects a non-V2 Artifact at the ZIP boundary', () => {

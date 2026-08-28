@@ -1,9 +1,30 @@
+import type {
+  AiGatewayInvokeInput,
+  AiGatewayInvokeResult,
+  AiGatewayProviderRegistration,
+  AiGatewayProviderRegistrationHandle,
+  RegisteredAiGatewayProvider,
+} from '@loom-studio/ai-gateway'
 import type { DiagnosticInput } from '@loom-studio/diagnostics'
 import type { DocumentRecord, ListDocumentsInput, WriteDocumentInput, WriteDocumentResult } from '@loom-studio/document-store'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import type { StudioEvent } from '@loom-studio/transport'
 
 export type { JsonValue } from '@loom-studio/shared'
+export type {
+  AiGatewayCapabilityDefinition,
+  AiGatewayCapabilityHandler,
+  AiGatewayCapabilityRegistry,
+  AiGatewayFieldDefinition,
+  AiGatewayFieldType,
+  AiGatewayInvokeInput,
+  AiGatewayInvokeResult,
+  AiGatewayProviderDefinition,
+  AiGatewayProviderRegistration,
+  AiGatewayProviderRegistrationHandle,
+  ProfiledAiGateway,
+  RegisteredAiGatewayProvider,
+} from '@loom-studio/ai-gateway'
 
 export type EventVisibility = 'public' | 'protected' | 'internal'
 
@@ -97,6 +118,7 @@ export type ExtensionRuntimeContributions = {
     visibility: Exclude<EventVisibility, 'internal'>
   }>
   panels?: Array<{ id: string }>
+  aiProviders?: Array<{ id: string }>
 }
 
 export type ExtensionPackageContributions = {
@@ -111,6 +133,7 @@ export type ExtensionModuleManifest = {
     'events.subscribe'?: EventCapabilityCategory[]
     'assets.publish'?: boolean
     'assets.read'?: boolean
+    'ai.invoke'?: boolean
     [key: string]: JsonValue | undefined
   }
   contributes?: ExtensionRuntimeContributions
@@ -182,6 +205,61 @@ export type ExtensionDocumentWriteInput = Omit<
   >
 }
 
+export type ExtensionPortablePayloadDraft = {
+  fileName: string
+  format: string
+  mediaType: string
+  schemaVersion?: number
+  requirement?: {
+    versionRange?: string
+  }
+  metadata?: JsonObject
+  content: string
+}
+
+export type ExtensionPortablePayload = ExtensionPortablePayloadDraft & {
+  id: string
+  artifactPayloadId: string
+  packageId: string
+  version: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type ExtensionStorageScope =
+  | { kind: 'global' }
+  | { kind: 'timeline'; timelineId: string }
+  | { kind: 'agent-session'; agentSessionId: string }
+
+export type ExtensionEntityRef =
+  | { kind: 'narrative-node'; timelineId: string; nodeId: string }
+  | { kind: 'agent-message'; agentSessionId: string; messageId: string }
+  | { kind: 'asset'; assetId: string }
+  | { kind: 'state-path'; timelineId: string; path: string }
+
+export type ExtensionConfigEntry = {
+  id: string
+  packageId: string
+  scope: ExtensionStorageScope
+  key: string
+  value: JsonValue
+  version: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type ExtensionRecordEntry = {
+  id: string
+  packageId: string
+  scope: ExtensionStorageScope
+  recordType: string
+  data: JsonValue
+  bindings: ExtensionEntityRef[]
+  version: number
+  createdAt: string
+  updatedAt: string
+}
+
 export type ExtensionActivationContext = {
   extension: {
     packageId: string
@@ -213,11 +291,60 @@ export type ExtensionActivationContext = {
     emit(name: string, payload: JsonValue): StudioEvent
     subscribe(patterns: string[], handler: (event: StudioEvent) => void | Promise<void>): ExtensionRegistrationHandle
   }
+  ai: {
+    registerProvider(registration: AiGatewayProviderRegistration): AiGatewayProviderRegistrationHandle
+    listProviders(): RegisteredAiGatewayProvider[]
+    invoke(input: Omit<AiGatewayInvokeInput, 'caller'>): Promise<AiGatewayInvokeResult>
+  }
   documents: {
     get<T = JsonValue>(id: string): Promise<DocumentRecord<T> | null>
     list(query: ExtensionDocumentListInput): Promise<DocumentRecord[]>
     write(input: ExtensionDocumentWriteInput): Promise<WriteDocumentResult>
     delete(id: string, options?: { expectedVersion?: number; reason?: string }): Promise<WriteDocumentResult>
+  }
+  portablePayloads: {
+    publish(input: { artifactPayloadId?: string; payload: ExtensionPortablePayloadDraft }): Promise<ExtensionPortablePayload>
+    listOwn(): Promise<ExtensionPortablePayload[]>
+    readOwn(payloadId: string): Promise<ExtensionPortablePayload>
+    updateOwn(input: { payloadId: string; expectedVersion: number; payload: ExtensionPortablePayloadDraft }): Promise<ExtensionPortablePayload>
+    deleteOwn(input: { payloadId: string; expectedVersion: number }): Promise<void>
+    replaceOwnCardBindings(input: { cardId: string; expectedVersion: number; payloadIds: string[] }): Promise<{ cardVersion: number }>
+  }
+  storage: {
+    configs: {
+      list(input?: { scope?: ExtensionStorageScope }): Promise<ExtensionConfigEntry[]>
+      get(input: { scope: ExtensionStorageScope; key: string }): Promise<ExtensionConfigEntry | null>
+      upsert(input: {
+        scope: ExtensionStorageScope
+        key: string
+        value: JsonValue
+        expectedVersion?: number
+      }): Promise<ExtensionConfigEntry>
+      delete(input: { scope: ExtensionStorageScope; key: string; expectedVersion: number }): Promise<void>
+    }
+    records: {
+      list(input?: {
+        scope?: ExtensionStorageScope
+        recordType?: string
+        binding?: ExtensionEntityRef
+      }): Promise<ExtensionRecordEntry[]>
+      get(recordId: string): Promise<ExtensionRecordEntry | null>
+      create(input: {
+        scope: ExtensionStorageScope
+        recordType: string
+        data: JsonValue
+        bindings?: ExtensionEntityRef[]
+      }): Promise<ExtensionRecordEntry>
+      update(input: {
+        recordId: string
+        expectedVersion: number
+        scope: ExtensionStorageScope
+        recordType: string
+        data: JsonValue
+        bindings?: ExtensionEntityRef[]
+      }): Promise<ExtensionRecordEntry>
+      delete(input: { recordId: string; expectedVersion: number }): Promise<void>
+    }
   }
   assets: {
     publish(input: {

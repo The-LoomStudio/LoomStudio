@@ -1,8 +1,8 @@
 # Card Model v0
 
 > **状态**：从 ADR-005 迁移 / 开放设计  
-> **来源**：[`../adr/ADR-005-official-concept-stack-open-design.md`](../adr/ADR-005-official-concept-stack-open-design.md)
-> **最新实施收束**：Card 作为直接资源清单、PromptWorkspace 退出运行主链的迁移计划见 [`../../plans/card-resource-manifest-migration-plan.md`](../../plans/card-resource-manifest-migration-plan.md)。本文保留早期概念讨论，不作为下一阶段工程入口。
+> **来源**：[`../adr/ADR-005-official-concept-stack-open-design.md`](../../adr/ADR-005-official-concept-stack-open-design.md)
+> **最新实施收束**：Card 作为直接资源清单、PromptWorkspace 退出运行主链的迁移计划见 [`../../plans/card-resource-manifest-migration-plan.md`](../../../archive/plans/card-resource-manifest-migration-plan.md)。本文保留早期概念讨论，不作为下一阶段工程入口。
 
 ---
 

@@ -1,5 +1,7 @@
 # 核心类型速查 (Core Types)
 
+> **状态**：Active Reference / Current Source Is Authority
+
 Loom Studio 使用 TypeScript 构建。以下是最关键的接口定义概念以及它们所在的位置，方便你建立心智模型并在代码中查找源码。
 
 ## 1. 内核与扩展基础设施 (Kernel & Extension)

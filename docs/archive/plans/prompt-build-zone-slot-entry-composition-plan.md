@@ -2,7 +2,7 @@
 
 > **模型修订说明（2026-08-16）**：本文记录的是 `Zone / Slot / Entry` 顶层模型的历史方案，已被 [`prompt-build-message-block-implementation-plan.md`](prompt-build-message-block-implementation-plan.md) 替代。当前实现中，`MessageBlock` 才是 Provider Message 的编译配置；Zone 只负责外部来源的显式注入锚点，Slot / Entry 是 Block 内的有序 Context 项，Native Session Slot 保留原生消息边界。本文不再作为新代码的施工依据。
 
-> **状态**：Approved Design / Implementation Pending
+> **状态**：Archived / Superseded
 > **日期**：2026-08-16
 > **优先级**：P1 PromptBuild Model Correction
 > **范围**：将当前“所有内容必须投影到 Zone”的 Composition 模型重构为 `Zone / Slot / Entry` 三类结构节点；让 Preset 直接拥有完整主排序，让 Narrative History、Agent Session History 和当前用户输入以固定 Slot / Entry 参与同一次 Loom Core Pipeline。
@@ -12,8 +12,8 @@
 
 - [`prompt-build-loom-core-pipeline-migration-plan.md`](prompt-build-loom-core-pipeline-migration-plan.md)
 - [`preset-agent-prompt-build-module-plan.md`](preset-agent-prompt-build-module-plan.md)
-- [`ui/prompt-resource-projection-workbench-v0.md`](ui/prompt-resource-projection-workbench-v0.md)
-- [`../discussion/application/prompt/composition-skeleton-and-preset-v0.md`](../discussion/application/prompt/composition-skeleton-and-preset-v0.md)
+- [`ui/prompt-resource-projection-workbench-v0.md`](../../workbench/plans/ui/prompt-resource-projection-workbench-v0.md)
+- [`../discussion/application/prompt/composition-skeleton-and-preset-v0.md`](../../workbench/discussion/application/prompt/composition-skeleton-and-preset-v0.md)
 - [`../../architecture/application/prompt-build/README.md`](../../architecture/application/prompt-build/README.md)
 
 ---

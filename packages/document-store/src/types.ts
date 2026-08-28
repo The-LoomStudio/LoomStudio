@@ -172,6 +172,7 @@ export type SqliteDocumentStore = DocumentStore & {
   participateTransaction<T>(
     tx: import('@loom-studio/data-engine').SqliteDataTransaction,
     fn: (transaction: DocumentTransaction) => Promise<T>,
+    options?: { allowEmpty?: boolean },
   ): Promise<{ value: T; changeset: Changeset }>
   close(): void
 }

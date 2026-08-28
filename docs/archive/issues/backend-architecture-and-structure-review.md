@@ -1,5 +1,7 @@
 # 后端宏观工程结构、包分类与命名审查报告 (Backend Architecture & Structure Review)
 
+> **状态**：Historical Audit Snapshot / Superseded
+
 ## 审查目标
 
 全面排查 Loom Studio **后端工程拓扑**（涵盖 `packages/` 18 个包、`apps/studio-server/` 及 `extensions/`），重点审查：
@@ -26,8 +28,8 @@
 ### 🔴 [高] 1. `application-runtime` 内部巨型文件膨胀与平铺混乱
 
 **文件：**
-- [`packages/application-runtime/src/workspace.ts`](file:///Users/macbookair/Desktop/LoomStudio/packages/application-runtime/src/workspace.ts) (**1,391 行**)
-- [`packages/application-runtime/src/runtime.ts`](file:///Users/macbookair/Desktop/LoomStudio/packages/application-runtime/src/runtime.ts) (**1,249 行**)
+- [`packages/application-runtime/src/workspace.ts`](../../../packages/application-runtime/src/workspace.ts) (**1,391 行**)
+- [`packages/application-runtime/src/runtime.ts`](../../../packages/application-runtime/src/runtime.ts) (**1,249 行**)
 
 **现象分析：**
 - `application-runtime` 一个包占据了整个后端近 40% 的代码量（5,188 行），其内部 17 个文件全量平铺在 `src/` 顶层。
@@ -69,7 +71,7 @@
 
 ### 🟡 [中] 4. `studio-server` 顶级平铺与单一聚合路由过大
 
-**文件：** [`apps/studio-server/src/application-rpc.ts`](file:///Users/macbookair/Desktop/LoomStudio/apps/studio-server/src/application-rpc.ts) (766 行)
+**文件：** [`apps/studio-server/src/application-rpc.ts`](../../../apps/studio-server/src/application-rpc.ts) (766 行)
 
 **现象分析：**
 - `application-rpc.ts` 用一个庞大的 `switch(method)` 承载了 50 多个 RPC 的参数读取与转发。

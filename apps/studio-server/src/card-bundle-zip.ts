@@ -1,18 +1,27 @@
-import { normalizeCardBundleArtifact, type CardBundleArtifact } from '@loom-studio/application-runtime'
+import {
+  normalizeCardBundleArtifact,
+  type CardBundleArtifact,
+  type PortableExtensionPayloadArtifact,
+} from '@loom-studio/application-runtime'
 import { Unzip, UnzipInflate, UnzipPassThrough, zipSync } from 'fflate'
 
 const manifestPath = 'manifest.json'
-const maxEntryCount = 16
+const maxEntryCount = 80
 const maxEntryBytes = 64 * 1024 * 1024
 const maxBundleBytes = 128 * 1024 * 1024
 
+type LoomCardPayloadManifest = Omit<PortableExtensionPayloadArtifact, 'content'> & {
+  path: string
+}
+
 type LoomCardManifest = {
   schema: 'loom.cardBundle.zip.v1'
-  artifact: CardBundleArtifact
+  artifact: Omit<CardBundleArtifact, 'extensionPayloads'>
   media?: {
     avatar?: string
     background?: string
   }
+  extensionPayloads?: LoomCardPayloadManifest[]
 }
 
 export type CardBundleMedia = {
@@ -26,7 +35,9 @@ export function encodeCardBundleZip(input: {
   background?: CardBundleMedia
 }): Uint8Array {
   const artifact = normalizeCardBundleArtifact(input.artifact)
+  const extensionPayloads = artifact.extensionPayloads ?? []
   delete artifact.card.media
+  delete artifact.extensionPayloads
   const avatarPath = `assets/avatar${extensionForMediaType(input.avatar.mediaType)}`
   const backgroundPath = input.background
     ? `assets/background${extensionForMediaType(input.background.mediaType)}`
@@ -38,11 +49,27 @@ export function encodeCardBundleZip(input: {
       avatar: avatarPath,
       ...(backgroundPath ? { background: backgroundPath } : {}),
     },
+    extensionPayloads: extensionPayloads.map(payload => ({
+      id: payload.id,
+      packageId: payload.packageId,
+      fileName: payload.fileName,
+      format: payload.format,
+      mediaType: payload.mediaType,
+      ...(payload.schemaVersion !== undefined ? { schemaVersion: payload.schemaVersion } : {}),
+      ...(payload.requirement !== undefined ? { requirement: payload.requirement } : {}),
+      ...(payload.metadata !== undefined ? { metadata: payload.metadata } : {}),
+      path: portablePayloadPath(payload),
+    })),
   }
+  const payloadEntries = Object.fromEntries(extensionPayloads.map(payload => [
+    portablePayloadPath(payload),
+    Buffer.from(payload.content, 'utf8'),
+  ]))
   return zipSync({
     [manifestPath]: Buffer.from(JSON.stringify(manifest, null, 2), 'utf8'),
     [avatarPath]: input.avatar.bytes,
     ...(backgroundPath && input.background ? { [backgroundPath]: input.background.bytes } : {}),
+    ...payloadEntries,
   }, { level: 6 })
 }
 
@@ -61,7 +88,12 @@ export async function decodeCardBundleZip(source: Uint8Array): Promise<{
   }
   const avatar = readMedia(files, manifest.media.avatar)
   const background = manifest.media.background ? readMedia(files, manifest.media.background) : undefined
-  return { artifact: normalizeCardBundleArtifact(manifest.artifact), avatar, background }
+  const extensionPayloads = readExtensionPayloads(files, manifest.extensionPayloads)
+  return {
+    artifact: normalizeCardBundleArtifact({ ...manifest.artifact, extensionPayloads }),
+    avatar,
+    background,
+  }
 }
 
 function unzipSafely(source: Uint8Array): Promise<Map<string, Uint8Array>> {
@@ -140,6 +172,40 @@ function readMedia(files: Map<string, Uint8Array>, path: string): CardBundleMedi
   const bytes = files.get(path)
   if (!bytes) throw new Error(`Loom Card package is missing ${path}`)
   return { bytes, mediaType: mediaTypeForPath(path) }
+}
+
+function readExtensionPayloads(
+  files: Map<string, Uint8Array>,
+  payloads: LoomCardPayloadManifest[] | undefined,
+): PortableExtensionPayloadArtifact[] {
+  if (payloads === undefined) return []
+  if (!Array.isArray(payloads)) throw new Error('Invalid Loom Card extension payload manifest')
+  return payloads.map((payload, index) => {
+    if (!payload || typeof payload !== 'object' || typeof payload.path !== 'string') {
+      throw new Error(`Invalid Loom Card extension payload manifest: ${index}`)
+    }
+    validateArchivePath(payload.path)
+    if (!payload.path.startsWith('extensions/')) {
+      throw new Error(`Loom Card extension payload path must stay under extensions/: ${payload.path}`)
+    }
+    const bytes = files.get(payload.path)
+    if (!bytes) throw new Error(`Loom Card package is missing ${payload.path}`)
+    return {
+      id: payload.id,
+      packageId: payload.packageId,
+      fileName: payload.fileName,
+      format: payload.format,
+      mediaType: payload.mediaType,
+      ...(payload.schemaVersion !== undefined ? { schemaVersion: payload.schemaVersion } : {}),
+      ...(payload.requirement !== undefined ? { requirement: payload.requirement } : {}),
+      ...(payload.metadata !== undefined ? { metadata: payload.metadata } : {}),
+      content: new TextDecoder('utf-8', { fatal: true }).decode(bytes),
+    }
+  })
+}
+
+function portablePayloadPath(payload: PortableExtensionPayloadArtifact): string {
+  return `extensions/${payload.packageId}/${payload.id}/${payload.fileName}`
 }
 
 function extensionForMediaType(mediaType: string): string {

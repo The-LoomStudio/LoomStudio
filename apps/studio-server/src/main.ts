@@ -1,9 +1,14 @@
 import {
   createApplicationRuntime,
   createDocumentBackedAiGateway,
+  createDocumentBackedProfiledAiGateway,
   createOfficialAgentToolRegistry,
 } from '@loom-studio/application-runtime'
-import { createOfficialProviderAdapterRegistry } from '@loom-studio/ai-gateway'
+import {
+  createAiGatewayCapabilityRegistry,
+  createOfficialProviderAdapterRegistry,
+  registerOfficialFakeAiProvider,
+} from '@loom-studio/ai-gateway'
 import { createAgentStore } from '@loom-studio/agent-store'
 import { createAssetStore, type AssetStore } from '@loom-studio/asset-store'
 import { createBlobStore } from '@loom-studio/blob-store'
@@ -98,7 +103,14 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
   }) : undefined
   const traceAudit = createInMemoryTraceAuditStore()
   const loomRunner = createLoomRunner({ traceAudit })
-  const providerAdapters = createOfficialProviderAdapterRegistry()
+  const aiCapabilities = createAiGatewayCapabilityRegistry()
+  registerOfficialFakeAiProvider(aiCapabilities)
+  const providerAdapters = createOfficialProviderAdapterRegistry({ aiCapabilities })
+  const profiledAiGateway = createDocumentBackedProfiledAiGateway({
+    documents,
+    registry: aiCapabilities,
+    secrets,
+  })
   const gateway = createDocumentBackedAiGateway({
     documents,
     secrets,
@@ -159,6 +171,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     mediaAssets: assets ? { get: assetId => assets.getMediaAsset(assetId) } : undefined,
     secrets,
     providerAdapters,
+    aiCapabilities,
     gateway: options.providerLogger ? withAiGatewayLogging(gateway, options.providerLogger) : gateway,
     logger: options.promptBuildLogger,
   })
@@ -215,6 +228,69 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
           read: (assetId, readOptions) => assets.readMediaAsset(assetId, readOptions),
         }
       : undefined,
+    portablePayloads: {
+      create: async input => (await applicationRuntime.createPortableExtensionPayload({
+        artifactPayloadId: input.artifactPayloadId,
+        payload: { ...input.payload, packageId: input.packageId },
+      }, { actor: { kind: 'extension', id: input.packageId } })).payload,
+      list: async packageId => (await applicationRuntime.listPortableExtensionPayloads({ packageId })).payloads,
+      get: async payloadId => (await applicationRuntime.getPortableExtensionPayload({ payloadId })).payload,
+      update: async input => (await applicationRuntime.updatePortableExtensionPayload({
+        payloadId: input.payloadId,
+        expectedVersion: input.expectedVersion,
+        payload: { ...input.payload, packageId: input.packageId },
+      }, { actor: { kind: 'extension', id: input.packageId } })).payload,
+      delete: async input => {
+        await applicationRuntime.deletePortableExtensionPayload({
+          payloadId: input.payloadId,
+          expectedVersion: input.expectedVersion,
+        }, { actor: { kind: 'extension', id: input.packageId } })
+      },
+      replaceCardBindings: async input => {
+        const [{ card }, { payloads }] = await Promise.all([
+          applicationRuntime.getCard({ cardId: input.cardId }),
+          applicationRuntime.listPortableExtensionPayloads({ packageId: input.packageId }),
+        ])
+        const ownPayloadIds = new Set(payloads.map(payload => payload.id))
+        const otherPayloadIds = (card.portableExtensionPayloadIds ?? []).filter(payloadId => !ownPayloadIds.has(payloadId))
+        const result = await applicationRuntime.replaceCardPortableExtensionPayloads({
+          cardId: input.cardId,
+          expectedVersion: input.expectedVersion,
+          payloadIds: [...otherPayloadIds, ...input.payloadIds],
+        }, { actor: { kind: 'extension', id: input.packageId } })
+        return { cardVersion: result.card.version }
+      },
+    },
+    aiCapabilities,
+    aiGateway: profiledAiGateway,
+    validateStorageScope: async scope => {
+      if (scope.kind === 'global') return
+      if (scope.kind === 'timeline') {
+        const timeline = await narratives?.getTimeline(scope.timelineId)
+        if (!timeline || timeline.deletedAt) throw new Error(`Narrative Timeline not found: ${scope.timelineId}`)
+        return
+      }
+      const session = await agents?.getSession(scope.agentSessionId)
+      if (!session || session.deletedAt) throw new Error(`Agent Session not found: ${scope.agentSessionId}`)
+    },
+    validateEntityRef: async ref => {
+      if (ref.kind === 'narrative-node') {
+        const node = await narratives?.getNode(ref.nodeId)
+        if (!node || node.timelineId !== ref.timelineId) throw new Error(`Narrative Node not found in Timeline: ${ref.nodeId}`)
+        return
+      }
+      if (ref.kind === 'agent-message') {
+        const entry = await agents?.getEntry(ref.messageId)
+        if (!entry || entry.agentSessionId !== ref.agentSessionId) throw new Error(`Agent Message not found in Session: ${ref.messageId}`)
+        return
+      }
+      if (ref.kind === 'asset') {
+        if (!await assets?.getMediaAsset(ref.assetId)) throw new Error(`Media Asset not found: ${ref.assetId}`)
+        return
+      }
+      const timeline = await narratives?.getTimeline(ref.timelineId)
+      if (!timeline || timeline.deletedAt) throw new Error(`Narrative Timeline not found: ${ref.timelineId}`)
+    },
     callRpc: (method, params, context) => kernel.callRpc(method, params, context),
     registerRpc: (name, ownerPackageId, ownerModuleId, handler, ownerInstanceId) => {
       const handle = kernel.registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler, ownerInstanceId)
@@ -249,7 +325,14 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     extensionManager,
     loomRunner,
   })
-  const rpcRouter = createStudioRpcRouter({ applicationRuntime, kernel, logs: options.logs, networkSettings })
+  const rpcRouter = createStudioRpcRouter({
+    applicationRuntime,
+    aiCapabilities,
+    aiGateway: profiledAiGateway,
+    kernel,
+    logs: options.logs,
+    networkSettings,
+  })
   const readCardExport = async (cardId: string) => {
     const { artifact } = await applicationRuntime.exportCardBundle({ cardId })
     const readMedia = async (assetId: string | undefined): Promise<CardBundleMedia | undefined> => {

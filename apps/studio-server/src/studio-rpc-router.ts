@@ -1,7 +1,9 @@
+import type { AiGatewayCapabilityRegistry, ProfiledAiGateway } from '@loom-studio/ai-gateway'
 import type { ApplicationRuntime } from '@loom-studio/application-runtime'
 import type { LogReader } from '@loom-studio/logging'
 import type { JsonValue } from '@loom-studio/shared'
 import { callApplicationRpc, listApplicationRpcCapabilities } from './application-rpc.js'
+import { callAiGatewayRpc, listAiGatewayRpcCapabilities } from './ai-gateway-rpc.js'
 import { callLogsRpc, listLogsRpcCapabilities } from './logs-rpc.js'
 import type { NetworkSettingsStore } from './network-settings.js'
 import type { RpcCapability } from './rpc-capability.js'
@@ -31,6 +33,8 @@ export type StudioRpcRouter = {
 
 export function createStudioRpcRouter(services: {
   applicationRuntime: ApplicationRuntime
+  aiCapabilities?: AiGatewayCapabilityRegistry
+  aiGateway?: ProfiledAiGateway
   kernel: KernelRpcCaller
   logs?: LogReader
   networkSettings?: NetworkSettingsStore
@@ -61,6 +65,17 @@ export function createStudioRpcRouter(services: {
       call: (method, params, context) => callApplicationRpc(services.applicationRuntime, method, params, context),
     },
   )
+
+  if (services.aiCapabilities && services.aiGateway) {
+    routes.push({
+      namespace: 'ai',
+      capabilities: listAiGatewayRpcCapabilities(),
+      call: (method, params) => callAiGatewayRpc({
+        registry: services.aiCapabilities!,
+        gateway: services.aiGateway!,
+      }, method, params),
+    })
+  }
 
   if (services.networkSettings) {
     routes.push({

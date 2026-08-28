@@ -7,6 +7,7 @@ export type Card = {
   userName?: string
   description?: string
   importBundleId?: string
+  portableExtensionPayloadIds?: string[]
   promptResourceIds?: string[]
   stateDefinitionIds?: string[]
   timelineStateBindings?: Array<{ path: string; templateId: string; templateVersion: number; initial?: JsonObject }>

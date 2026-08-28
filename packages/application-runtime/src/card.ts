@@ -53,6 +53,7 @@ export function normalizeCardContent(content: CardSourceContent): CardSourceCont
     userName: normalizeOptionalString(legacyContent.userName),
     description: typeof legacyContent.description === 'string' ? legacyContent.description : undefined,
     importBundleId: normalizeOptionalString(legacyContent.importBundleId),
+    portableExtensionPayloadIds: normalizeOptionalIdList(legacyContent.portableExtensionPayloadIds),
     promptResourceIds: normalizeOptionalIdList(legacyContent.promptResourceIds),
     stateDefinitionIds: normalizeOptionalIdList(legacyContent.stateDefinitionIds),
     timelineStateBindings: structuredClone(legacyContent.timelineStateBindings ?? []),

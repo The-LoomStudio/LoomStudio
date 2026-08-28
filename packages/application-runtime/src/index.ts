@@ -17,11 +17,13 @@ export {
   isPromptResourceArtifact,
   isCardBundleArtifact,
   normalizeCardBundleArtifact,
+  normalizePortableExtensionPayloadArtifact,
   readPromptResourceInputs,
   readPromptResourceOrderProfile,
 } from './workspace.js'
 export {
   createDocumentBackedAiGateway,
+  createDocumentBackedProfiledAiGateway,
   createFakeAiGateway,
   createFakeProvider,
   createOpenAICompatibleGateway,
@@ -160,6 +162,8 @@ export type {
   ImportBundleContent,
   CardBundleArtifact,
   CardBundleImportManifest,
+  PortableExtensionPayloadArtifact,
+  PortableExtensionPayloadContent,
   PromptResourceNode,
   PromptResourceContent,
   PromptResourceArtifact,

@@ -1,4 +1,14 @@
-import { createAiGateway, createOfficialProviderAdapterRegistry, listOpenAICompatibleModels as listPlatformModels, type ProviderAdapterRegistry } from '@loom-studio/ai-gateway'
+import {
+  createAiGateway,
+  createOfficialFakeChatCompletion,
+  createOfficialProviderAdapterRegistry,
+  createProfiledAiGateway,
+  listOpenAICompatibleModels as listPlatformModels,
+  officialFakeModelId,
+  type AiGatewayCapabilityRegistry,
+  type ProfiledAiGateway,
+  type ProviderAdapterRegistry,
+} from '@loom-studio/ai-gateway'
 import type { DocumentStore } from '@loom-studio/document-store'
 import type { SecretStore } from '@loom-studio/secret-store'
 import type { JsonValue } from '@loom-studio/shared'
@@ -9,27 +19,61 @@ import { readDocument } from './document-store.js'
 import { buildOpenAIChatPayload } from './provider-payload.js'
 import type {
   AiGateway,
+  AiCapabilityProfileContent,
   ApplicationProvider,
   OpenAICompatibleGatewayOptions,
   ProviderProfileContent,
 } from './types.js'
 
-export function createFakeAiGateway(): AiGateway {
-  return {
-    invokeChat: async input => {
-      const lastUser = [...input.request.messages].reverse().find(message => message.role === 'user')
+export function createDocumentBackedProfiledAiGateway(options: {
+  documents: DocumentStore
+  registry: AiGatewayCapabilityRegistry
+  secrets?: SecretStore
+}): ProfiledAiGateway {
+  return createProfiledAiGateway({
+    registry: options.registry,
+    resolveProfile: async profileId => {
+      const profile = await readDocument<AiCapabilityProfileContent>(
+        options.documents,
+        profileId,
+        applicationDocumentTypes.aiCapabilityProfile,
+      )
+      const providerProfile = await readDocument<ProviderProfileContent>(
+        options.documents,
+        profile.content.providerProfileId,
+        applicationDocumentTypes.providerProfile,
+      )
       return {
-        provider: 'fake',
-        model: 'fake-echo-m0',
-        message: { role: 'assistant', content: `Agent draft: ${lastUser?.content ?? ''}` },
-        text: `Agent draft: ${lastUser?.content ?? ''}`,
-        providerCallId: createId('provider-call'),
-        raw: {
-          messageCount: input.request.messages.length,
-          runId: input.runId,
-        },
+        profileId: profile.id,
+        providerProfileId: providerProfile.id,
+        providerId: providerProfile.content.providerExtensionId,
+        capabilityId: profile.content.capabilityId,
+        accountConfig: providerProfile.content.config,
+        profileConfig: profile.content.config,
       }
     },
+    credentials: {
+      withCredential: async (profile, operation) => {
+        const providerProfile = await readDocument<ProviderProfileContent>(
+          options.documents,
+          profile.providerProfileId,
+          applicationDocumentTypes.providerProfile,
+        )
+        if (!providerProfile.content.secretRef) return await operation(undefined)
+        if (!options.secrets) throw new Error('Provider credential is not configured')
+        return await options.secrets.withSecret(providerProfile.content.secretRef, {
+          caller: 'application.ai-gateway',
+          owner: { type: 'provider-profile', id: providerProfile.id },
+          purpose: 'provider.credentials',
+        }, async secret => await operation({ ...secret.values }))
+      },
+    },
+  })
+}
+
+export function createFakeAiGateway(): AiGateway {
+  return {
+    invokeChat: input => invokeFakeChat(input, {}),
   }
 }
 
@@ -110,7 +154,7 @@ export function createDocumentBackedAiGateway(options: {
             credential: secret.values,
             fetch: resolveTransport(),
           })
-          if (resolved.provider.kind === 'fake') return await fallback.invokeChat(input)
+          if (resolved.provider.kind === 'fake') return await invokeFakeChat(input)
           const payload = buildOpenAIChatPayload({ messages: input.request.messages, modelId: input.model!.modelId })
           return await invokePlatformGateway(createAiGateway(), {
             provider: resolved.provider,
@@ -123,9 +167,29 @@ export function createDocumentBackedAiGateway(options: {
         })
       }
       const resolved = providerAdapters.resolve(providerExtensionId, { config: providerProfile.content.config })
-      if (resolved.provider.kind === 'fake') return await fallback.invokeChat(input)
+      if (resolved.provider.kind === 'fake') return await invokeFakeChat(input)
       throw new Error('Provider credential is not configured')
     },
+  }
+}
+
+async function invokeFakeChat(
+  input: Parameters<AiGateway['invokeChat']>[0],
+) {
+  const providerCallId = createId('provider-call')
+  const { completion, text } = createOfficialFakeChatCompletion({
+    id: providerCallId,
+    messages: input.request.messages,
+  })
+  return {
+    provider: 'fake',
+    model: input.model?.modelId ?? officialFakeModelId,
+    message: { role: 'assistant' as const, content: text },
+    text,
+    finishReason: 'stop' as const,
+    usage: { inputTokens: 0, outputTokens: 0 },
+    providerCallId,
+    raw: completion,
   }
 }
 

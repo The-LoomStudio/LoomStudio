@@ -2,6 +2,8 @@
 
 Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要分为三大代码区域：`packages/` (内核与领域逻辑), `apps/` (独立应用程序), `extensions/` (插件实例)。
 
+本页提供全仓地图。开始具体任务时，先通过 [`workspace-development.md`](workspace-development.md) 进入目标 Workspace，再阅读该目录的本地 `README.md`；局部 README 负责入口和命令，本页不重复维护每个 Package 的完整文件清单。
+
 ## Workspace 工具链
 
 - Node.js 固定为 `22.18.0`，pnpm 固定为 `9.15.0`；版本来源分别是 `.node-version` / `.nvmrc` 与根 `package.json`。
@@ -18,6 +20,8 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
 ---
 
 ## 💻 前端架构: `apps/studio-client/src/`
+
+局部开发入口：[`apps/studio-client/README.md`](../../apps/studio-client/README.md)。
 
 前端采用严格的按业务职能分层，而非简单按 UI 组件分类。
 
@@ -68,20 +72,20 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
 
 如果你没有上下文，先按任务类型定位，不要从 `App` 或 widget 盲目向下翻。
 
-| 任务                                    | 先看                                                        | 常见改动位置                                                                                           | 对应测试                                                                                      |
-| --------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| 修改角色卡列表、创建卡、选中卡          | `features/cards/model/use-cards.ts`                         | `entities/card.ts`, `widgets/character-panel/`                                                         | `tests/unit/client/cards.test.ts`                                                             |
-| 修改叙事时间线、分支、Narrative Agent 调用流程 | `features/narrative-runtime/model/use-narrative-runtime.ts` | `entities/narrative.ts`, `entities/agent.ts`, `widgets/narrative-timeline/` | `tests/unit/client/narrative-runtime.test.ts` |
-| 修改独立 Agent Session 对话流程        | `features/agent-runtime/model/use-agent-chat-runtime.ts`   | `entities/agent.ts`, `widgets/agent-composer/` | `tests/integration/application-runtime/agent-session.test.ts` 与 client build                  |
-| 修改 Context Assets 树操作              | `features/context-assets/model/tree-ops.ts`                 | `context-asset-tree.ts`, `context-asset-normalization.ts`, `widgets/context-workbench/`                | `tests/unit/client/context-assets.test.ts`                                                    |
-| 修改 projection order / projection view | `features/context-assets/model/projection-order.ts`         | `features/context-assets/model/projection-workbench.ts`, `features/context-assets/ui/projection-order-editor/`, `features/context-assets/ui/projection-runlist/` | `features/context-assets/model/projection-order.test.ts` |
-| 修改 Prompt Build 展示步骤              | `features/prompt-build/model/build-prompt-build-steps.ts`   | `widgets/prompt-build-flow/`, `widgets/inspector-panel/`                                               | `tests/unit/client/prompt-build-steps.test.ts`                                                |
-| 修改 Provider Profile / 模型选择设置    | `features/provider-settings/model/use-provider-settings.ts` | `widgets/model-panel/`                                                                                 | `tests/unit/client/provider-settings.test.ts`                                                 |
-| 修改 Agent Profile 与当前选择            | `features/agent-profiles/model/use-agent-profiles.ts`       | `widgets/agent-panel/`, `widgets/agent-composer/`                                                      | `tests/unit/client/provider-settings.test.ts`                                                 |
-| 修改 typed Studio API client            | `shared/api/studio-api.ts`                                  | `apps/studio-server/src/application-rpc.ts`, consuming feature hooks                                   | `tests/unit/client/studio-api.test.ts`                                                        |
-| 修改通用文件树交互                      | `shared/ui/file-tree/file-tree-model.ts`                    | `shared/ui/file-tree/file-tree.tsx`                                                                    | `tests/unit/client/file-tree.test.ts`                                                         |
-| 修改页面整体排布                        | `pages/studio/studio-page.tsx`                              | `app/app.tsx`, `widgets/*`                                                                             | 先跑相关 feature test，再跑 client build                                                      |
-| 新增用户可见文案                        | `shared/i18n/en-us.ts`, `shared/i18n/zh-cn.ts`              | 使用方组件或 feature                                                                                   | 相关 feature test / client build                                                              |
+| 任务                                           | 先看                                                        | 常见改动位置                                                                                                                                                     | 对应测试                                                                      |
+| ---------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| 修改角色卡列表、创建卡、选中卡                 | `features/cards/model/use-cards.ts`                         | `entities/card.ts`, `widgets/character-panel/`                                                                                                                   | `tests/unit/client/cards.test.ts`                                             |
+| 修改叙事时间线、分支、Narrative Agent 调用流程 | `features/narrative-runtime/model/use-narrative-runtime.ts` | `entities/narrative.ts`, `entities/agent.ts`, `widgets/narrative-timeline/`                                                                                      | `tests/unit/client/narrative-runtime.test.ts`                                 |
+| 修改独立 Agent Session 对话流程                | `features/agent-runtime/model/use-agent-chat-runtime.ts`    | `entities/agent.ts`, `widgets/agent-composer/`                                                                                                                   | `tests/integration/application-runtime/agent-session.test.ts` 与 client build |
+| 修改 Context Assets 树操作                     | `features/context-assets/model/tree-ops.ts`                 | `context-asset-tree.ts`, `context-asset-normalization.ts`, `widgets/context-workbench/`                                                                          | `tests/unit/client/context-assets.test.ts`                                    |
+| 修改 projection order / projection view        | `features/context-assets/model/projection-order.ts`         | `features/context-assets/model/projection-workbench.ts`, `features/context-assets/ui/projection-order-editor/`, `features/context-assets/ui/projection-runlist/` | `features/context-assets/model/projection-order.test.ts`                      |
+| 修改 Prompt Build 展示步骤                     | `features/prompt-build/model/build-prompt-build-steps.ts`   | `widgets/prompt-build-flow/`, `widgets/inspector-panel/`                                                                                                         | `tests/unit/client/prompt-build-steps.test.ts`                                |
+| 修改 Provider Profile / 模型选择设置           | `features/provider-settings/model/use-provider-settings.ts` | `widgets/model-panel/`                                                                                                                                           | `tests/unit/client/provider-settings.test.ts`                                 |
+| 修改 Agent Profile 与当前选择                  | `features/agent-profiles/model/use-agent-profiles.ts`       | `widgets/agent-panel/`, `widgets/agent-composer/`                                                                                                                | `tests/unit/client/provider-settings.test.ts`                                 |
+| 修改 typed Studio API client                   | `shared/api/studio-api.ts`                                  | `apps/studio-server/src/application-rpc.ts`, consuming feature hooks                                                                                             | `tests/unit/client/studio-api.test.ts`                                        |
+| 修改通用文件树交互                             | `shared/ui/file-tree/file-tree-model.ts`                    | `shared/ui/file-tree/file-tree.tsx`                                                                                                                              | `tests/unit/client/file-tree.test.ts`                                         |
+| 修改页面整体排布                               | `pages/studio/studio-page.tsx`                              | `app/app.tsx`, `widgets/*`                                                                                                                                       | 先跑相关 feature test，再跑 client build                                      |
+| 新增用户可见文案                               | `shared/i18n/en-us.ts`, `shared/i18n/zh-cn.ts`              | 使用方组件或 feature                                                                                                                                             | 相关 feature test / client build                                              |
 
 ### Client 模块索引
 
@@ -112,11 +116,13 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
 
 后端是一个组合器，主要将 `packages/` 下的各个基础设施组装为可运行的 Node.js 进程。
 
+局部开发入口：[`apps/studio-server/README.md`](../../apps/studio-server/README.md)。
+
 - `main.ts`: 服务器启动入口，实例化各个 Store、Kernel、Host。
 - `http-server.ts`: 基于 Node HTTP 挂载 RPC、Asset、Card、Extension SSE 等数据入口，并统一执行应用会话认证。
 - `application-session-auth.ts`: 本地 Web 启动会话、严格 loopback 同源校验与 HttpOnly Cookie 验证；不承载多用户或业务权限。
-- `application-rpc.ts`: 庞大的 Application 层 RPC 方法实现，负责将客户端请求转发至 `ApplicationRuntime`。
-- `studio-rpc-router.ts`: Kernel Rpc 的转发器。
+- `application-rpc.ts`: Application RPC 的边界 adapter，负责参数读取、校验、请求上下文转换和 `ApplicationRuntime` 调用；领域规则仍属于 Runtime。
+- `studio-rpc-router.ts`: 按 namespace 路由 `studio.*`、`application.*`、`ai.*`、`settings.*`、`logs.*`；未知 namespace 才回落 Kernel。
 - `rpc-capability.ts`, `rpc-params.ts`: RPC 参数解析与权限能力定义工具。
 
 ---
@@ -130,11 +136,14 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
   - 正式架构说明：[`architecture/application/prompt-build/loom-core/`](../architecture/application/prompt-build/loom-core/)。
 - 📦 `packages/application-runtime/` (AIRP Layer)
   - Studio 的**业务心脏**。编排 Card、Agent、Narrative Timeline、PromptBuild、Provider Gateway 与相关 Document Types；权威 Narrative / Agent 持久化分别由专用 Store 承担。
+  - 局部开发入口：[`packages/application-runtime/README.md`](../../packages/application-runtime/README.md)。
 - 📦 `packages/kernel/`
   - Studio 的底层发动机，管理内部的六个核心服务（RPC注册, 事件总线等）。**禁止包含任何 AI/业务（Provider/Agent）逻辑。**
+  - 局部开发入口：[`packages/kernel/README.md`](../../packages/kernel/README.md)。
   - 正式架构说明：[`architecture/kernel/README.md`](../architecture/kernel/README.md)。
 - 📦 `packages/data-engine/`
   - 共享 SQLite connection、transaction、migration、Commit Journal 与提交通知。
+  - 局部开发入口：[`packages/data-engine/README.md`](../../packages/data-engine/README.md)。
 - 📦 `packages/secret-store/`
   - 平台通用 Secret metadata、受控使用边界与凭证后端接口；SQLite 不保存 Secret 明文，真实系统凭证后端由 Server 组合根注入。
 - 📦 `packages/document-store/`
@@ -156,8 +165,10 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
   - 正式架构说明：[`architecture/platform/logging.md`](../architecture/platform/logging.md)。
 - 📦 `packages/loom-runner/`
   - 面向 Kernel/RPC 的 Core adapter，负责 JSON 输入校验、默认 PassFactory 和 Trace Audit。
-- 📦 `packages/extension-sdk/` & `packages/extension-host/`
-  - 提供给第三方开发者的插件开发 SDK 与管理插件加载生命周期的独立宿主 Host。
+- 📦 `packages/extension-sdk/`
+  - 第三方 Extension 作者侧合同。局部开发入口：[`packages/extension-sdk/README.md`](../../packages/extension-sdk/README.md)。
+- 📦 `packages/extension-sdk/extension-host/`
+  - 物理嵌套但具有独立 Workspace identity 的 Server Extension Host。局部开发入口：[`packages/extension-sdk/extension-host/README.md`](../../packages/extension-sdk/extension-host/README.md)。
 - 📦 `packages/shared/`
   - 通用的工具函数、通用的类型定义 (`JsonValue`, `createId`, 时间处理等)。
 - 📦 `packages/diagnostics/` & `packages/trace-audit/`
@@ -173,7 +184,7 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
 
 ## 给 AI 助手的特别提示
 
-1. 当你需要理解 **核心业务数据结构** 时，第一步应当查看 `packages/application-runtime/src/types.ts`。这里定义了所有的类型。
+1. 当你需要理解 **Application Runtime 公共合同** 时，先看 `packages/application-runtime/README.md`，再按需进入 `src/types.ts`；持久化类型还需查看对应领域 Store。
 2. 当你需要修改 **前端 UI 界面** 时，先定位页面级 widget，再把业务状态、RPC 与领域算法放回对应 `features/`。widget 只保留布局、局部交互和 props 传递。
-3. 当你需要查看 **RPC 路由是如何注册的** 时，去 `apps/studio-server/src/application-rpc.ts` 查看。
+3. 当你需要查看 **RPC 如何分流** 时，先看 `apps/studio-server/src/studio-rpc-router.ts`；`application.*` 的边界映射再看 `application-rpc.ts`。
 4. **绝对不要** 为了贪图便利在不合适的层级写代码（比如在 `kernel` 里写 `Prompt` 的解析）。

@@ -151,4 +151,4 @@ Kernel、Document Store、Extension Host、Client 和 ordinary Extension 不应�
 - [`packages/core/test/`](../../../../../packages/core/test/)
 - [`packages/application-runtime/src/prompt-build-pipeline.ts`](../../../../../packages/application-runtime/src/prompt-build-pipeline.ts)
 
-历史白皮书、PoC、Accepted ADR 与 Engineering Blueprint 已保存在 [`workbench/archive/loom-project/`](../../../../workbench/archive/loom-project/)。它们解释设计来源，但当前代码和本目录中的正式说明拥有更高权威性。
+历史白皮书、PoC、Accepted ADR 与 Engineering Blueprint 已保存在 [`archive/loom-project/`](../../../../archive/loom-project/)。它们解释设计来源，但当前代码和本目录中的正式说明拥有更高权威性。

@@ -1,7 +1,8 @@
 # Loom Core 对接边界 v0
 
-> **状态**：Open Design
+> **状态**：Partially Promoted / Residual Open Design
 > **主题**：Prompt Builder 如何使用 `@loom/core`，以及哪些能力不应进入 Core。
+> **当前权威**：已实现 Pipeline、Pass、Trace 与 Provider 接缝见 [`docs/architecture/application/prompt-build/`](../../../../architecture/application/prompt-build/)；本文保留设计理由与 Compiled Payload / Trace 演进问题，候选 Pass 名称不构成当前合同。
 
 ---
 

@@ -10,7 +10,7 @@
 
 - [`event-system-extension-scope-plan.md`](event-system-extension-scope-plan.md)
 - [`../discussion/extensions/studio-extension-lifecycle-v0.md`](../discussion/extensions/studio-extension-lifecycle-v0.md)
-- [`../discussion/extensions/studio-extension-host-capabilities-v0.md`](../discussion/extensions/studio-extension-host-capabilities-v0.md)
+- [`../discussion/extensions/studio-extension-host-capabilities-v0.md`](../../workbench/discussion/extensions/studio-extension-host-capabilities-v0.md)
 - [`../discussion/studio-config-and-local-state-v0.md`](../discussion/studio-config-and-local-state-v0.md)
 
 ## 1. 当前事实与目标

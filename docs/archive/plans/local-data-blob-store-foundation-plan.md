@@ -12,8 +12,8 @@
 - [`card-resource-manifest-migration-plan.md`](card-resource-manifest-migration-plan.md)
 - [`agent-session-narrative-timeline-data-layer-plan.md`](agent-session-narrative-timeline-data-layer-plan.md)
 - [`../discussion/studio-config-and-local-state-v0.md`](../discussion/studio-config-and-local-state-v0.md)
-- [`../discussion/application/asset-import-export-boundary-v0.md`](../discussion/application/asset-import-export-boundary-v0.md)
-- [`../adr/ADR-003-asset-store-and-binary-payload-boundary.md`](../adr/ADR-003-asset-store-and-binary-payload-boundary.md)
+- [`../discussion/application/asset-import-export-boundary-v0.md`](../../workbench/discussion/application/asset-import-export-boundary-v0.md)
+- [`../adr/ADR-003-asset-store-and-binary-payload-boundary.md`](../../workbench/adr/ADR-003-asset-store-and-binary-payload-boundary.md)
 - [`extension-package-module-foundation-plan.md`](extension-package-module-foundation-plan.md)
 
 ---

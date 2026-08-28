@@ -1,6 +1,6 @@
 # Extension Contribution 领域文档
 
-> **状态**：Open Design / Discussion Capture  
+> **状态**：Data Foundation Implemented / Remaining Design Capture
 > **目的**：集中记录 Studio Application 中 Extension 如何贡献领域能力的设计讨论。
 
 ---
@@ -146,6 +146,8 @@ Application:
 | 文件 | 状态 | 主题 |
 |---|---|---|
 | [`airp-extension-contribution-v0.md`](airp-extension-contribution-v0.md) | Open Design | Extension 如何贡献 AIRP 领域能力 |
+| [`extension-module-scenarios-v0.md`](extension-module-scenarios-v0.md) | Partial Implementation | 数据 Capability 已实现；Renderer、Job 与高级贡献点待讨论 |
+| [`card-extension-portable-payload-v0.md`](card-extension-portable-payload-v0.md) | Implemented Foundation | Card 安全携带插件私有配置和初始数据；UI、Asset closure 与二进制待讨论 |
 
 ---
 
@@ -154,4 +156,4 @@ Application:
 - [`../agent/tool-capability-v0.md`](../agent/tool-capability-v0.md) — Tool / Capability
 - [`../agent/permission-consent-v0.md`](../agent/permission-consent-v0.md) — Permission / Consent
 - [`../prompt/README.md`](../prompt/README.md) — Prompt Builder 领域
-- [`../../extensions/studio-extension-manifest-architecture.md`](../../extensions/studio-extension-manifest-architecture.md) — 平台层 Extension 架构
+- [`docs/architecture/extensions/`](../../../../architecture/extensions/) — 当前平台层 Extension 架构

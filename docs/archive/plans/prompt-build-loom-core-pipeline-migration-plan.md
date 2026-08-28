@@ -1,6 +1,7 @@
 # PromptBuild 重新接入 Loom Core Pipeline 实施计划
 
-> **状态**：Phase 0-2 Completed / Phase 3-4 Pending
+> **状态**：Archived / Superseded by Current PromptBuild Architecture
+> **归档说明**：本文中的 Phase 3—4 是历史迁移方案，不自动构成当前待办。当前 Pipeline、Pass 与 Trace 边界见 [`docs/architecture/application/prompt-build/`](../../architecture/application/prompt-build/)。
 > **日期**：2026-08-15
 > **优先级**：P1 Architecture Regression
 > **范围**：将当前第一方 PromptBuild 从 `compilePromptDataModel()` 直接调用链迁移到真实的 `@loom/core` Fragment / Pass / Trace Pipeline，保持现有 Preset、Setting、Activation、Zone、Slot、Projection 和 Provider Message 结果兼容。
@@ -10,8 +11,8 @@
 
 - [`preset-agent-prompt-build-module-plan.md`](preset-agent-prompt-build-module-plan.md)
 - [`prompt-resource-foundation-plan.md`](prompt-resource-foundation-plan.md)
-- [`log-plan/prompt-build-observability.md`](log-plan/prompt-build-observability.md)
-- [`../discussion/application/prompt/loom-core-integration-v0.md`](../discussion/application/prompt/loom-core-integration-v0.md)
+- [`log-plan/prompt-build-observability.md`](../../workbench/plans/log-plan/prompt-build-observability.md)
+- [`../discussion/application/prompt/loom-core-integration-v0.md`](../../workbench/discussion/application/prompt/loom-core-integration-v0.md)
 - [`../../architecture/application/prompt-build/loom-core/README.md`](../../architecture/application/prompt-build/loom-core/README.md)
 
 ---

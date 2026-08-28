@@ -1,6 +1,7 @@
 # Event System / Extension Scope 基建实施计划
 
-> **状态**：Phase 1–4 Complete / Extension Status SSE Implemented / General Transport Pending
+> **状态**：Archived / Phase 1—4 Complete / Residuals Split
+> **归档说明**：通用 Transport、Client Host 与权限演进不再由本归档计划继续跟踪；当前入口为 [`extension-package-source-host-runtime-plan.md`](../../workbench/plans/extension-package-source-host-runtime-plan.md)、[`studio-extension-host-capabilities-v0.md`](../../workbench/discussion/extensions/studio-extension-host-capabilities-v0.md) 与 [`docs/architecture/kernel/`](../../architecture/kernel/)。
 > **日期**：2026-08-13
 > **范围**：在现有 Kernel EventBus 与 Server Extension Host 上，建立可验证的事件定义、实例级生命周期资源收集、Extension 事件权限边界，以及可重复卸载/重载的最小基座。
 > **事实边界**：Phase 1–4 已于 2026-08-13 实施：Kernel 现有 Event Hub 已增加 Definition Registry、owner/visibility/capability/payload 边界与 subscriber failure reporting；Server Extension Host 已使用 `instanceId`、统一 Scope、事件 Host API 和 reload。后续已增加只投递 `extensions.changed` 的 `GET /extensions/events` SSE，用于 Extension 状态同步；它不等于本文设想的通用 Server Event Transport。Client Extension Host、权限持久化与 Agent durable trigger 仍未实现。
@@ -9,10 +10,10 @@
 相关文档：
 
 - [`../discussion/extensions/studio-extension-lifecycle-v0.md`](../discussion/extensions/studio-extension-lifecycle-v0.md)
-- [`../discussion/extensions/studio-extension-host-capabilities-v0.md`](../discussion/extensions/studio-extension-host-capabilities-v0.md)
+- [`../discussion/extensions/studio-extension-host-capabilities-v0.md`](../../workbench/discussion/extensions/studio-extension-host-capabilities-v0.md)
 - [`../discussion/extensions/studio-extension-manifest-architecture.md`](../discussion/extensions/studio-extension-manifest-architecture.md)
-- [`../discussion/kernel/studio-kernel-public-surface-v0.md`](../discussion/kernel/studio-kernel-public-surface-v0.md)
-- [`../adr/ADR-002-extension-manifest-and-registration-model.md`](../adr/ADR-002-extension-manifest-and-registration-model.md)
+- [`../discussion/kernel/studio-kernel-public-surface-v0.md`](../../workbench/discussion/kernel/studio-kernel-public-surface-v0.md)
+- [`../adr/ADR-002-extension-manifest-and-registration-model.md`](../../workbench/adr/ADR-002-extension-manifest-and-registration-model.md)
 
 ---
 

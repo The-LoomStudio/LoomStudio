@@ -1,6 +1,7 @@
 # 后端包审查 #1：document-store / narrative-store / agent-store / prompt-resource-store
 
-> **状态**：Audited / Open
+> **状态**：Historical Audit Snapshot / Superseded
+> **当前入口**：后续全仓问题以 [`full-repo-code-review-2026-08-27.md`](../../workbench/issues/full-repo-code-review-2026-08-27.md) 与 [`periodic-code-review.md`](../../workbench/issues/periodic-code-review.md) 为准；本文中的 Open 只表示归档时状态。
 > **最后审计**：2026-08-19（数据层大重构后重审）
 > **主要变更**：新增独立包 `prompt-resource-store` 承载 Prompt 资源树与 SettingMount 挂载；底层统一接入 `data-engine`。
 
@@ -22,8 +23,8 @@
 ### ✅ [已解决] `readPage` (narrative) 和 `readMessagePage` (agent) 链表遍历没有上限保护与 N+1 查询
 
 **文件：**
-- [`narrative-store/store.ts`](file:///Users/macbookair/Desktop/LoomStudio/packages/narrative-store/src/store.ts)
-- [`agent-store/store.ts`](file:///Users/macbookair/Desktop/LoomStudio/packages/agent-store/src/store.ts)
+- [`narrative-store/store.ts`](../../../packages/narrative-store/src/store.ts)
+- [`agent-store/store.ts`](../../../packages/agent-store/src/store.ts)
 
 **审查结论：**
 - **已全面重构为单条 SQLite `WITH RECURSIVE` 递归 CTE 查询**，消除每次分页多达 100 次的逐条 `SELECT`（N+1 查询）。
@@ -34,7 +35,7 @@
 
 ### 🟡 [中] `in-memory-store` 的 `snapshotState` 全量深拷贝是 O(N) 的开销
 
-**文件：** [`in-memory-store.ts` L257-L271](file:///Users/macbookair/Desktop/LoomStudio/packages/document-store/src/in-memory-store.ts)
+**文件：** [`in-memory-store.ts` L257-L271](../../../packages/document-store/src/in-memory-store.ts)
 
 ```ts
 function snapshotState(current, revisions, changesets) {
@@ -58,7 +59,7 @@ function snapshotState(current, revisions, changesets) {
 
 ### 🟡 [中] `sqlite-store` 的 `list` 分页实现有冗余查询
 
-**文件：** [`sqlite-store.ts` L128-L141](file:///Users/macbookair/Desktop/LoomStudio/packages/document-store/src/sqlite-store.ts)
+**文件：** [`sqlite-store.ts` L128-L141](../../../packages/document-store/src/sqlite-store.ts)
 
 ```ts
 const rows = database
@@ -98,7 +99,7 @@ const hasMore = rows.length === limit && database
 
 ### 🟡 [中] `narrative-store` 的 `readPage` 没有利用已建索引
 
-**文件：** [`narrative-store/store.ts` L283](file:///Users/macbookair/Desktop/LoomStudio/packages/narrative-store/src/store.ts)
+**文件：** [`narrative-store/store.ts` L283](../../../packages/narrative-store/src/store.ts)
 
 ```sql
 -- 已建索引
@@ -116,7 +117,7 @@ CREATE INDEX idx_narrative_nodes_timeline_created ON narrative_nodes(timeline_id
 
 ### 🟢 [低] `rowToDocument` 和 `rowToChangeset` 使用 `as` 强转而非运行时校验
 
-**文件：** [`sqlite-store.ts` L397-L412, L415-L448](file:///Users/macbookair/Desktop/LoomStudio/packages/document-store/src/sqlite-store.ts)
+**文件：** [`sqlite-store.ts` L397-L412, L415-L448](../../../packages/document-store/src/sqlite-store.ts)
 
 ```ts
 function rowToDocument(row: unknown): DocumentRecord {
@@ -140,7 +141,7 @@ function rowToDocument(row: unknown): DocumentRecord {
 
 ### 🟢 [低] `createDocumentDataCommitSource` 是一个纯透传函数
 
-**文件：** [`data-commit.ts` L4-L10](file:///Users/macbookair/Desktop/LoomStudio/packages/document-store/src/data-commit.ts)
+**文件：** [`data-commit.ts` L4-L10](../../../packages/document-store/src/data-commit.ts)
 
 ```ts
 export function createDocumentDataCommitSource(
@@ -160,7 +161,7 @@ export function createDocumentDataCommitSource(
 
 ### 🟢 [低] `assertExpectedVersion` 对 `expectedVersion === 'new'` 且 `existing` 有 tombstone 的情况没有特殊处理
 
-**文件：** [`changeset.ts` L171-L179](file:///Users/macbookair/Desktop/LoomStudio/packages/document-store/src/changeset.ts)
+**文件：** [`changeset.ts` L171-L179](../../../packages/document-store/src/changeset.ts)
 
 ```ts
 export function assertExpectedVersion(id, existing, expectedVersion) {

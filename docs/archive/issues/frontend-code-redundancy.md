@@ -1,5 +1,7 @@
 # 前端代码冗余与精简审查报告 (Frontend Code Redundancy)
 
+> **状态**：Historical Audit Snapshot / Superseded
+
 ## 审查目标
 
 本轮审查专注排查前端（`apps/studio-client`）中的**代码冗余、重复造轮子、样板代码（Boilerplate）、样式重复、组件克隆与过度工程**，以“缩减代码物理体积、提升架构优雅度、降低维护成本”为核心准则。
@@ -31,7 +33,7 @@ const result = await input.api.agentProfiles.create(toClientJsonObject({
 ### 🔴 [高] 2. `ContextWorkbench` 与 `PresetWorkbench` 高度重复（重合度 > 70%）
 
 **现状：**
-对比 [`widgets/context-workbench/context-workbench.tsx`](file:///Users/macbookair/Desktop/LoomStudio/apps/studio-client/src/widgets/context-workbench/context-workbench.tsx) 与 [`widgets/preset-workbench/preset-workbench.tsx`](file:///Users/macbookair/Desktop/LoomStudio/apps/studio-client/src/widgets/preset-workbench/preset-workbench.tsx)：
+对比 [`widgets/context-workbench/context-workbench.tsx`](../../../apps/studio-client/src/widgets/context-workbench/context-workbench.tsx) 与 [`widgets/preset-workbench/preset-workbench.tsx`](../../../apps/studio-client/src/widgets/preset-workbench/preset-workbench.tsx)：
 - 两个组件的 Props 声明有 **16 个字段完全一样**。
 - 内部对 `useStudioLayoutStore` 的状态订阅与更新（`openAssetDetail`、`setExplorerWidth`、`setMetadataOpen`、`setTextEditorMode`）完全相同。
 - 外层 `AssetWorkbenchLayout`、顶部 `PromptResourceToolbar`、右侧 `ContextAssetEditor`、搜索框联动、以及 `buildProjectionWorkbenchModel` 的计算结构几乎 100% 同构。
@@ -46,13 +48,13 @@ const result = await input.api.agentProfiles.create(toClientJsonObject({
 ### 🔴 [高] 3. 组件内重复手写低劣弹窗轮子（80 行手写 vs 现成 `<Dialog />`）
 
 **现状：**
-在 [`character-panel.tsx` L478-L564](file:///Users/macbookair/Desktop/LoomStudio/apps/studio-client/src/widgets/character-panel/character-panel.tsx)，`CharacterGroupDialog` 独立实现了：
+在 [`character-panel.tsx` L478-L564](../../../apps/studio-client/src/widgets/character-panel/character-panel.tsx)，`CharacterGroupDialog` 独立实现了：
 - 手写 `div.dialogBackdrop + section.groupDialog`
 - 手动监听 `Escape` 和键盘 `Tab` 焦点陷阱（Focus Trap 算法）
 - 手动维护 `returnFocusRef` 和微任务焦点还原
 - 在 `character-panel.module.scss` 中手写了 40 多行 `.dialogBackdrop`、`.groupDialog` 及动画样式
 
-而同文件内的 `DeleteConfirmation` 却直接复用了 [`shared/ui/dialog/dialog.tsx`](file:///Users/macbookair/Desktop/LoomStudio/apps/studio-client/src/shared/ui/dialog/dialog.tsx)（基于原生 HTML5 `<dialog>` 实现）。
+而同文件内的 `DeleteConfirmation` 却直接复用了 [`shared/ui/dialog/dialog.tsx`](../../../apps/studio-client/src/shared/ui/dialog/dialog.tsx)（基于原生 HTML5 `<dialog>` 实现）。
 
 **瘦身方案：**
 - 将 `CharacterGroupDialog` 改用公共的 `<Dialog>` 组件实现。
@@ -63,7 +65,7 @@ const result = await input.api.agentProfiles.create(toClientJsonObject({
 ### 🟡 [中] 4. 树操作内部辅助函数双重重复（`tree-ops.ts`）
 
 **现状：**
-在 [`features/context-assets/model/tree-ops.ts`](file:///Users/macbookair/Desktop/LoomStudio/apps/studio-client/src/features/context-assets/model/tree-ops.ts)：
+在 [`features/context-assets/model/tree-ops.ts`](../../../apps/studio-client/src/features/context-assets/model/tree-ops.ts)：
 - `moveContextAssetNode` 内部闭包重新写了一遍 `removeNode` 和 `insertNode`（L94-L115）。
 - 文件外部又单独定义了 `insertContextAssetChild`、`insertContextAssetSiblingAfter`、`removeContextAssetNode`（L143-L165）。
 - 两套递归逻辑 90% 重合。
@@ -91,9 +93,9 @@ const result = await input.api.agentProfiles.create(toClientJsonObject({
 ### 🟡 [中] 6. 重复实现并发防竞态逻辑（`runLatestRequest` vs `useAsyncOperations.runLatest`）
 
 **现状：**
-在 [`features/log-viewer/model/log-feed-model.ts` L32-L68](file:///Users/macbookair/Desktop/LoomStudio/apps/studio-client/src/features/log-viewer/model/log-feed-model.ts)，为了实现日志拉取的并发防竞态，私自手写了一套 `createLatestRequestGuard` + `runLatestRequest`（36 行）。
+在 [`features/log-viewer/model/log-feed-model.ts` L32-L68](../../../apps/studio-client/src/features/log-viewer/model/log-feed-model.ts)，为了实现日志拉取的并发防竞态，私自手写了一套 `createLatestRequestGuard` + `runLatestRequest`（36 行）。
 
-而全局早已在 [`shared/hooks/use-async-operations.ts`](file:///Users/macbookair/Desktop/LoomStudio/apps/studio-client/src/shared/hooks/use-async-operations.ts) 中提供了标准且支持状态追踪的 `runLatest(scope, async context => ...)`。
+而全局早已在 [`shared/hooks/use-async-operations.ts`](../../../apps/studio-client/src/shared/hooks/use-async-operations.ts) 中提供了标准且支持状态追踪的 `runLatest(scope, async context => ...)`。
 
 **瘦身方案：**
 - 将 `useLogFeed` 接入公共的 `useAsyncOperations`。

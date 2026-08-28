@@ -1,6 +1,7 @@
 # 文档体系审查报告：不匹配、过时与状态漂移 (Documentation Audit)
 
-> **状态**：Audited / Partially Resolved
+> **状态**：Historical Audit Snapshot / Superseded
+> **后续审计记录**：2026-08-28 的方向与生命周期审计及修复结果见 [`documentation-direction-and-lifecycle-audit-2026-08-28.md`](documentation-direction-and-lifecycle-audit-2026-08-28.md)。
 > **最后审计**：2026-08-19（数据层大重构后重审）
 > **主要进展**：ADR-003 与 ADR-004 已正式标记为 Accepted/Implemented；明确 PromptBuild 当前为 TS DataModel 编译模式。
 
@@ -16,9 +17,9 @@
 
 #### A. PromptBuild 架构事实界定：纯 TS DataModel 编译 vs `@loom/core` Pipeline
 - **涉及文档：**
-  - [`docs/architecture/application/prompt-build/README.md`](file:///Users/macbookair/Desktop/LoomStudio/docs/architecture/application/prompt-build/README.md)
-  - [`docs/architecture/application/prompt-build/loom-core/studio-integration.md`](file:///Users/macbookair/Desktop/LoomStudio/docs/architecture/application/prompt-build/loom-core/studio-integration.md)
-  - [`docs/guide/project-structure.md`](file:///Users/macbookair/Desktop/LoomStudio/docs/guide/project-structure.md) L164
+  - [`docs/architecture/application/prompt-build/README.md`](../../architecture/application/prompt-build/README.md)
+  - [`docs/architecture/application/prompt-build/loom-core/studio-integration.md`](../../architecture/application/prompt-build/loom-core/studio-integration.md)
+  - [`docs/guide/project-structure.md`](../../guide/project-structure.md) L164
 - **现状事实：**
   `packages/application-runtime/src/prompt-builder.ts` 采用纯 TS 进行 Zone / Slot / Entry / MessageBlock 的树形与列表组装，未直接在运行时执行 `@loom/core` pipeline。`@loom/core` 目前作为底层通用 Fragment/Trace 执行层及 `loom-runner` 的底层驱动。
 - **治理建议：**
@@ -28,23 +29,23 @@
 
 #### B. Migration Namespace 版本号在文档中倒错
 - **涉及文档：**
-  - [`docs/architecture/data/README.md`](file:///Users/macbookair/Desktop/LoomStudio/docs/architecture/data/README.md) L59, L80
+  - [`docs/architecture/data/README.md`](../../architecture/data/README.md) L59, L80
 - **实际代码事实：**
-  - [`packages/narrative-store/src/store.ts`](file:///Users/macbookair/Desktop/LoomStudio/packages/narrative-store/src/store.ts)：包含了版本 1 和版本 2（添加了 `idx_narrative_timelines_card_updated` 索引），实际为 **`application.narrative@2`**。
-  - [`packages/agent-store/src/store.ts`](file:///Users/macbookair/Desktop/LoomStudio/packages/agent-store/src/store.ts)：实际定义了版本 1 和版本 2（`agent_preset_id` 重命名为 `agent_profile_id`），实际为 **`application.agent@2`**。
-  - [`packages/prompt-resource-store/src/store.ts`](file:///Users/macbookair/Desktop/LoomStudio/packages/prompt-resource-store/src/store.ts)：新引入的 Prompt 资源存储为 **`application.prompt_resources@1`**。
+  - [`packages/narrative-store/src/store.ts`](../../../packages/narrative-store/src/store.ts)：包含了版本 1 和版本 2（添加了 `idx_narrative_timelines_card_updated` 索引），实际为 **`application.narrative@2`**。
+  - [`packages/agent-store/src/store.ts`](../../../packages/agent-store/src/store.ts)：实际定义了版本 1 和版本 2（`agent_preset_id` 重命名为 `agent_profile_id`），实际为 **`application.agent@2`**。
+  - [`packages/prompt-resource-store/src/store.ts`](../../../packages/prompt-resource-store/src/store.ts)：新引入的 Prompt 资源存储为 **`application.prompt_resources@1`**。
 
 ---
 
 #### C. 虚假/过时文件引用
-- **涉及文档：** [`docs/guide/project-structure.md`](file:///Users/macbookair/Desktop/LoomStudio/docs/guide/project-structure.md) L93
+- **涉及文档：** [`docs/guide/project-structure.md`](../../guide/project-structure.md) L93
 - **实际代码事实：**
   `apps/studio-client/src/shared/api/` 下只有 `studio-api.ts`、`client-bridge-logging.ts` 和 `client-json-object.ts`，不存在 `renderer-api.ts`。
 
 ---
 
 #### D. Package 层级结构描述不符
-- **涉及文档：** [`docs/guide/project-structure.md`](file:///Users/macbookair/Desktop/LoomStudio/docs/guide/project-structure.md) L158
+- **涉及文档：** [`docs/guide/project-structure.md`](../../guide/project-structure.md) L158
 - **实际代码事实：**
   `packages/extension-sdk` 与 `packages/extension-host` 是同级的两个独立 Workspace Package。
 

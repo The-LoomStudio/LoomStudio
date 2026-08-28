@@ -4,8 +4,8 @@
 - **Date**: 2026-08-14
 - **Supersedes**: [`ADR-002-extension-manifest-and-registration-model.md`](ADR-002-extension-manifest-and-registration-model.md)
 - **Related**:
-  - [`../plans/extension-package-module-foundation-plan.md`](../plans/extension-package-module-foundation-plan.md)
-  - [`../discussion/extensions/studio-extension-manifest-architecture.md`](../discussion/extensions/studio-extension-manifest-architecture.md)
+  - [`../plans/extension-package-module-foundation-plan.md`](../../archive/plans/extension-package-module-foundation-plan.md)
+  - [`../discussion/extensions/studio-extension-manifest-architecture.md`](../../archive/discussion/extensions/studio-extension-manifest-architecture.md)
 
 ## Context
 

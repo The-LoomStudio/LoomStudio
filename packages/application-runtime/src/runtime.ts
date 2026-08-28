@@ -1,4 +1,5 @@
-import type { DocumentRecord, DocumentStore, SqliteDocumentStore } from '@loom-studio/document-store'
+import type { DocumentRecord, DocumentStore, DocumentTransaction, SqliteDocumentStore } from '@loom-studio/document-store'
+import { officialFakeModelId } from '@loom-studio/ai-gateway'
 import type { AgentTranscriptEntry } from '@loom-studio/agent-store'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import type { PromptResourceMutation } from '@loom-studio/prompt-resource-store'
@@ -64,7 +65,10 @@ import {
   getImportBundle,
   importCardBundle,
   isCardBundleArtifact,
+  normalizePortableExtensionPayloadArtifact,
   type CardBundleArtifact,
+  type PortableExtensionPayloadArtifact,
+  type PortableExtensionPayloadContent,
   type PromptResourceContent,
 } from './workspace.js'
 import { fromStoredResource, listMappedResources, readMappedResource, toStoredNodeDraft, toStoredResourceInput } from './prompt-resource-mapper.js'
@@ -72,10 +76,13 @@ import type {
   AgentProfileContent,
   AgentToolContent,
   AgentToolEntry,
+  AiCapabilityProfileContent,
+  AiCapabilityProfileView,
   ApplicationRuntime,
   ApplicationRuntimeOptions,
   CardMediaRefs,
   CardSourceContent,
+  PortableExtensionPayloadEntry,
   StateDefinitionContent,
   StateDefinitionDraft,
   StateMutationOperation,
@@ -119,6 +126,11 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     return ctx.secrets
   }
 
+  function requireAiCapabilities() {
+    if (!ctx.aiCapabilities) throw new Error('AI Gateway capabilities are not configured')
+    return ctx.aiCapabilities
+  }
+
   function requireDocumentParticipant(): SqliteDocumentStore {
     const participant = ctx.documents as Partial<SqliteDocumentStore>
     if (typeof participant.participateTransaction !== 'function') {
@@ -129,9 +141,9 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
 
   function narrativeWriteContext(requestContext: RuntimeRequestContext | undefined, reason: string) {
     return {
-      actor: requestContext?.clientId
+      actor: requestContext?.actor ?? (requestContext?.clientId
         ? { kind: 'client' as const, id: requestContext.clientId }
-        : applicationActor,
+        : applicationActor),
       reason,
       correlationId: requestContext?.correlationId,
       callId: requestContext?.callId,
@@ -201,6 +213,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
   return {
     initialize: async () => {
       await initializeGlobalState(ctx)
+      await initializeOfficialFakeProviderProfiles(ctx)
       const timestamp = ctx.now()
       const promptContents = createOfficialPromptResourceContents(timestamp)
       for (const [index, content] of promptContents.entries()) {
@@ -257,20 +270,24 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         if (existing) {
           const content = existing.content as AgentToolContent
           if (content.description === obsoleteBuiltinAgentToolDescriptions.get(definition.id)) {
-            await writeDocument<AgentToolContent>(ctx.documents, {
+            await ctx.documents.write({
               id: definition.id,
               type: applicationDocumentTypes.agentTool,
               content: toAgentToolContent(definition, content.createdAt, timestamp),
               expectedVersion: existing.version,
+              actor: applicationActor,
+              reason: 'application.initializePromptResources',
             })
           }
           continue
         }
-        await writeDocument<AgentToolContent>(ctx.documents, {
+        await ctx.documents.write({
           id: definition.id,
           type: applicationDocumentTypes.agentTool,
           content: toAgentToolContent(definition, timestamp),
           expectedVersion: 'new',
+          actor: applicationActor,
+          reason: 'application.initializePromptResources',
         })
       }
       await refreshAgentToolRegistry(ctx)
@@ -594,6 +611,144 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       return { deleted: mutation.value, mutation: mutation.mutation }
     },
 
+    listPortableExtensionPayloads: async input => ({
+      payloads: (await listDocuments<PortableExtensionPayloadContent>(
+        ctx.documents,
+        applicationDocumentTypes.portableExtensionPayload,
+      ))
+        .map(toPortableExtensionPayloadEntry)
+        .filter(payload => input?.packageId === undefined || payload.packageId === input.packageId),
+    }),
+
+    getPortableExtensionPayload: async input => ({
+      payload: toPortableExtensionPayloadEntry(await readDocument<PortableExtensionPayloadContent>(
+        ctx.documents,
+        input.payloadId,
+        applicationDocumentTypes.portableExtensionPayload,
+      )),
+    }),
+
+    createPortableExtensionPayload: async (input, requestContext) => {
+      const artifactPayloadId = input.artifactPayloadId ?? ctx.createId('payload')
+      const payload = normalizePortableExtensionPayloadArtifact({ id: artifactPayloadId, ...input.payload })
+      const mutation = await executeDocumentMutation(
+        ctx.documents,
+        requestContext,
+        'application.createPortableExtensionPayload',
+        async documents => {
+          const timestamp = ctx.now()
+          return await writeDocument<PortableExtensionPayloadContent>(documents, {
+            id: ctx.createId('portable-payload'),
+            type: applicationDocumentTypes.portableExtensionPayload,
+            content: {
+              ...portableExtensionPayloadFields(payload),
+              artifactPayloadId,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            },
+            expectedVersion: 'new',
+          })
+        },
+      )
+      return { payload: toPortableExtensionPayloadEntry(mutation.value), mutation: mutation.mutation }
+    },
+
+    updatePortableExtensionPayload: async (input, requestContext) => {
+      const mutation = await executeDocumentMutation(
+        ctx.documents,
+        requestContext,
+        'application.updatePortableExtensionPayload',
+        async documents => {
+          const existing = await readDocument<PortableExtensionPayloadContent>(
+            documents,
+            input.payloadId,
+            applicationDocumentTypes.portableExtensionPayload,
+          )
+          if (existing.version !== input.expectedVersion) {
+            throw new Error(`Portable Extension Payload version conflict: ${input.payloadId}`)
+          }
+          const payload = normalizePortableExtensionPayloadArtifact({
+            id: existing.content.artifactPayloadId,
+            ...input.payload,
+          })
+          return await writeDocument<PortableExtensionPayloadContent>(documents, {
+            id: existing.id,
+            type: applicationDocumentTypes.portableExtensionPayload,
+            content: {
+              ...portableExtensionPayloadFields(payload),
+              artifactPayloadId: existing.content.artifactPayloadId,
+              createdAt: existing.content.createdAt,
+              updatedAt: ctx.now(),
+            },
+            expectedVersion: existing.version,
+          })
+        },
+      )
+      return { payload: toPortableExtensionPayloadEntry(mutation.value), mutation: mutation.mutation }
+    },
+
+    deletePortableExtensionPayload: async (input, requestContext) => {
+      const cards = await listDocuments<CardSourceContent>(ctx.documents, applicationDocumentTypes.cardSource)
+      const referencingCard = cards.find(card => card.content.portableExtensionPayloadIds?.includes(input.payloadId))
+      if (referencingCard) {
+        throw new Error(`Portable Extension Payload is still bound to Card: ${referencingCard.id}`)
+      }
+      const existing = await readDocument<PortableExtensionPayloadContent>(
+        ctx.documents,
+        input.payloadId,
+        applicationDocumentTypes.portableExtensionPayload,
+      )
+      if (existing.version !== input.expectedVersion) {
+        throw new Error(`Portable Extension Payload version conflict: ${input.payloadId}`)
+      }
+      const mutation = await executeDocumentMutation(
+        ctx.documents,
+        requestContext,
+        'application.deletePortableExtensionPayload',
+        async documents => {
+          await documents.delete({ id: existing.id, expectedVersion: existing.version })
+          return true as const
+        },
+      )
+      return { deleted: mutation.value, mutation: mutation.mutation }
+    },
+
+    replaceCardPortableExtensionPayloads: async (input, requestContext) => {
+      if (new Set(input.payloadIds).size !== input.payloadIds.length) {
+        throw new Error('Duplicate Portable Extension Payload binding')
+      }
+      const mutation = await executeDocumentMutation(
+        ctx.documents,
+        requestContext,
+        'application.replaceCardPortableExtensionPayloads',
+        async documents => {
+          const card = await readDocument<CardSourceContent>(documents, input.cardId, applicationDocumentTypes.cardSource)
+          if (card.version !== input.expectedVersion) throw new Error(`Card version conflict: ${input.cardId}`)
+          const payloads = await Promise.all(input.payloadIds.map(payloadId => readDocument<PortableExtensionPayloadContent>(
+            documents,
+            payloadId,
+            applicationDocumentTypes.portableExtensionPayload,
+          )))
+          const artifactPayloadIds = payloads.map(payload => payload.content.artifactPayloadId)
+          if (new Set(artifactPayloadIds).size !== artifactPayloadIds.length) {
+            throw new Error('Duplicate Artifact Payload id in Card bindings')
+          }
+          const updated = await writeDocument<CardSourceContent>(documents, {
+            id: card.id,
+            type: applicationDocumentTypes.cardSource,
+            content: normalizeCardContent({
+              ...card.content,
+              portableExtensionPayloadIds: [...input.payloadIds],
+              updatedAt: ctx.now(),
+            }),
+            expectedVersion: card.version,
+          })
+          return toCardSource(updated)
+        },
+      )
+      return { card: mutation.value, mutation: mutation.mutation }
+    },
+
     createProviderProfile: async (input, requestContext) => {
       assertNonEmpty(input.providerExtensionId, 'providerExtensionId')
       assertNonEmpty(input.displayName, 'displayName')
@@ -603,7 +758,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         : undefined
       const id = ctx.createId('provider-profile')
       const timestamp = ctx.now()
-      const enabledModelIds = normalizeModelIds(input.enabledModelIds)
+      const enabledModelIds = normalizeProviderModelIds(input.providerExtensionId, input.enabledModelIds)
       const secret = providerCredential
         ? await requireSecrets().create({
             ...secretWriteContext(requestContext, 'application.createProviderProfile.credential'),
@@ -659,6 +814,107 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         providerProfiles: await Promise.all(result.items.map(profile => toProviderProfileView(ctx, profile as never))),
         nextCursor: result.nextCursor,
       }
+    },
+
+    createAiCapabilityProfile: async input => {
+      assertNonEmpty(input.providerProfileId, 'providerProfileId')
+      assertNonEmpty(input.capabilityId, 'capabilityId')
+      assertNonEmpty(input.displayName, 'displayName')
+      const providerProfile = await readDocument<ProviderProfileContent>(
+        ctx.documents,
+        input.providerProfileId,
+        applicationDocumentTypes.providerProfile,
+      )
+      const config = requireAiCapabilities().validateProfileConfig(
+        providerProfile.content.providerExtensionId,
+        input.capabilityId,
+        input.config ?? {},
+      )
+      const timestamp = ctx.now()
+      const profile = await writeDocument<AiCapabilityProfileContent>(ctx.documents, {
+        id: ctx.createId('ai-capability-profile'),
+        type: applicationDocumentTypes.aiCapabilityProfile,
+        content: {
+          providerProfileId: providerProfile.id,
+          capabilityId: input.capabilityId,
+          displayName: input.displayName,
+          config,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+        expectedVersion: 'new',
+      })
+      return { profile: await toAiCapabilityProfileView(ctx, profile) }
+    },
+
+    getAiCapabilityProfile: async input => {
+      const profile = await readDocument<AiCapabilityProfileContent>(
+        ctx.documents,
+        input.profileId,
+        applicationDocumentTypes.aiCapabilityProfile,
+      )
+      return { profile: await toAiCapabilityProfileView(ctx, profile) }
+    },
+
+    listAiCapabilityProfiles: async input => {
+      const result = await ctx.documents.list({
+        type: applicationDocumentTypes.aiCapabilityProfile,
+        cursor: input?.cursor,
+        limit: input?.limit,
+      })
+      const profiles = result.items as DocumentRecord<AiCapabilityProfileContent>[]
+      const filtered = profiles.filter(profile => (
+        (!input?.providerProfileId || profile.content.providerProfileId === input.providerProfileId)
+        && (!input?.capabilityId || profile.content.capabilityId === input.capabilityId)
+      ))
+      return {
+        profiles: await Promise.all(filtered.map(profile => toAiCapabilityProfileView(ctx, profile))),
+        nextCursor: result.nextCursor,
+      }
+    },
+
+    updateAiCapabilityProfile: async input => {
+      const existing = await readDocument<AiCapabilityProfileContent>(
+        ctx.documents,
+        input.profileId,
+        applicationDocumentTypes.aiCapabilityProfile,
+      )
+      if (input.displayName !== undefined) assertNonEmpty(input.displayName, 'displayName')
+      let config = existing.content.config
+      if (input.config !== undefined) {
+        const providerProfile = await readDocument<ProviderProfileContent>(
+          ctx.documents,
+          existing.content.providerProfileId,
+          applicationDocumentTypes.providerProfile,
+        )
+        config = requireAiCapabilities().validateProfileConfig(
+          providerProfile.content.providerExtensionId,
+          existing.content.capabilityId,
+          input.config,
+        )
+      }
+      const updated = await writeDocument<AiCapabilityProfileContent>(ctx.documents, {
+        id: existing.id,
+        type: applicationDocumentTypes.aiCapabilityProfile,
+        content: {
+          ...existing.content,
+          ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
+          config,
+          updatedAt: ctx.now(),
+        },
+        expectedVersion: existing.version,
+      })
+      return { profile: await toAiCapabilityProfileView(ctx, updated) }
+    },
+
+    deleteAiCapabilityProfile: async input => {
+      const existing = await readDocument<AiCapabilityProfileContent>(
+        ctx.documents,
+        input.profileId,
+        applicationDocumentTypes.aiCapabilityProfile,
+      )
+      await ctx.documents.delete({ id: existing.id, expectedVersion: existing.version })
+      return { deleted: true as const }
     },
 
     createAgentProfile: async input => {
@@ -718,7 +974,9 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
           ...existing.content,
           ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
           config: providerConfig,
-          ...(input.enabledModelIds !== undefined ? { enabledModelIds: normalizeModelIds(input.enabledModelIds) } : {}),
+          ...(input.enabledModelIds !== undefined
+            ? { enabledModelIds: normalizeProviderModelIds(existing.content.providerExtensionId, input.enabledModelIds) }
+            : {}),
           updatedAt: timestamp,
         },
         expectedVersion: existing.version,
@@ -770,6 +1028,13 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       const profiles = await listDocuments<AgentProfileContent>(ctx.documents, applicationDocumentTypes.agentProfile)
       if (profiles.some(profile => profile.content.model.providerProfileId === existing.id)) {
         throw new Error(`Provider Profile is still referenced by an Agent Profile: ${existing.id}`)
+      }
+      const capabilityProfiles = await listDocuments<AiCapabilityProfileContent>(
+        ctx.documents,
+        applicationDocumentTypes.aiCapabilityProfile,
+      )
+      if (capabilityProfiles.some(profile => profile.content.providerProfileId === existing.id)) {
+        throw new Error(`Provider Profile is still referenced by an AI Capability Profile: ${existing.id}`)
       }
       await ctx.documents.delete({ id: existing.id, expectedVersion: existing.version })
       let credentialCleanupPending = false
@@ -923,10 +1188,19 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     },
 
     deleteAgentSession: async (input, requestContext) => {
-      const result = await requireAgents().deleteSession({
-        ...agentWriteContext(requestContext, 'application.deleteAgentSession'),
-        ...input,
-      })
+      const agents = requireAgents()
+      const documentParticipant = requireDocumentParticipant()
+      const result = await ctx.dataEngine.transact(
+        agentWriteContext(requestContext, 'application.deleteAgentSession'),
+        async dataTx => documentParticipant.participateTransaction(dataTx, async documents => {
+          const session = agents.transaction(dataTx).deleteSession(input)
+          await tombstoneExtensionStorageScope(documents, {
+            kind: 'agent-session',
+            agentSessionId: input.agentSessionId,
+          })
+          return session
+        }, { allowEmpty: true }),
+      )
       return { deleted: true as const, mutation: { changesetId: result.commit.changesetId } }
     },
 
@@ -1088,13 +1362,18 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     deleteNarrativeTimeline: async (input, requestContext) => {
       const narratives = requireNarratives()
       const scope = await ctx.states.getScope({ kind: 'timeline', ownerId: input.timelineId })
+      const documentParticipant = requireDocumentParticipant()
       const result = await ctx.dataEngine.transact(
         narrativeWriteContext(requestContext, 'application.deleteNarrativeTimeline'),
-        async dataTx => {
+        async dataTx => documentParticipant.participateTransaction(dataTx, async documents => {
           const timeline = narratives.transaction(dataTx).deleteTimeline(input)
           if (scope) ctx.states.transaction(dataTx).tombstoneScope({ scopeId: scope.id })
+          await tombstoneExtensionStorageScope(documents, {
+            kind: 'timeline',
+            timelineId: input.timelineId,
+          })
           return timeline
-        },
+        }, { allowEmpty: true }),
       )
       return { deleted: true as const, mutation: { changesetId: result.commit.changesetId } }
     },
@@ -1110,9 +1389,9 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
           originalFileName: input.source?.originalFileName,
           mediaType: 'application/json',
           importerVersion: 'loom.cardBundle@2',
-          actor: requestContext?.clientId
+          actor: requestContext?.actor ?? (requestContext?.clientId
             ? { kind: 'client', id: requestContext.clientId }
-            : applicationActor,
+            : applicationActor),
           reason: 'application.importCardBundle.sourceArtifact',
           correlationId: requestContext?.correlationId,
           callId: requestContext?.callId,
@@ -1457,9 +1736,9 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       }
       const result = await ctx.documents.revertChangeset({
         changesetId: input.changesetId,
-        actor: requestContext?.clientId
+        actor: requestContext?.actor ?? (requestContext?.clientId
           ? { kind: 'client' as const, id: requestContext.clientId }
-          : applicationActor,
+          : applicationActor),
         reason: 'application.revertChangeset',
         correlationId: requestContext?.correlationId,
         callId: requestContext?.callId,
@@ -1484,9 +1763,9 @@ function readDotPath(root: JsonObject, path: string): { found: true; value: Json
 
 function promptResourceWriteContext(requestContext: RuntimeRequestContext | undefined) {
   return {
-    actor: requestContext?.clientId
+    actor: requestContext?.actor ?? (requestContext?.clientId
       ? { kind: 'client' as const, id: requestContext.clientId }
-      : applicationActor,
+      : applicationActor),
     correlationId: requestContext?.correlationId,
     callId: requestContext?.callId,
     parentCallId: requestContext?.parentCallId,
@@ -1929,14 +2208,12 @@ async function readRuntimeHistoryEntries(
     const agents = ctx.agents
     if (!agents) throw new Error('Agent Store is not configured')
     let cursor = source.headEntryId
-    let first = true
     const entries: AgentTranscriptEntry[] = []
     do {
       const page = await agents.getEntryPage({ agentSessionId: source.sessionId, ...(cursor ? { cursor } : {}), limit: 100 })
       entries.unshift(...page.entries)
       cursor = page.nextCursor
-      first = false
-    } while (cursor || first)
+    } while (cursor)
     return entries.flatMap(entry => entry.entry.kind === 'message'
       ? [{ id: entry.id, source, role: entry.entry.role, text: entry.entry.content, sequence: entry.sequence, createdAt: entry.createdAt }]
       : [])
@@ -1944,14 +2221,12 @@ async function readRuntimeHistoryEntries(
   const narratives = ctx.narratives
   if (!narratives) throw new Error('Narrative Store is not configured')
   let cursor: string | undefined
-  let first = true
   const nodes: import('@loom-studio/narrative-store').NarrativeNode[] = []
   do {
     const page = await narratives.getPage({ timelineId: source.timelineId, branchId: source.branchId, ...(cursor ? { cursor } : {}), limit: 100 })
     nodes.unshift(...page.nodes)
     cursor = page.nextCursor
-    first = false
-  } while (cursor || first)
+  } while (cursor)
   return nodes.map((node, sequence) => ({
     id: node.id,
     source,
@@ -1996,6 +2271,44 @@ function assertExpectedDocumentVersion(
   if (existing && expectedVersion === undefined) throw new Error(`expectedVersion is required when updating ${label}: ${id}`)
   if (existing && existing.version !== expectedVersion) throw new Error(`${label} version conflict: ${id}`)
   if (!existing && expectedVersion !== undefined) throw new Error(`${label} does not exist: ${id}`)
+}
+
+function portableExtensionPayloadFields(
+  payload: PortableExtensionPayloadArtifact,
+): Omit<PortableExtensionPayloadArtifact, 'id'> {
+  return {
+    packageId: payload.packageId,
+    fileName: payload.fileName,
+    format: payload.format,
+    mediaType: payload.mediaType,
+    ...(payload.schemaVersion !== undefined ? { schemaVersion: payload.schemaVersion } : {}),
+    ...(payload.requirement !== undefined ? { requirement: structuredClone(payload.requirement) } : {}),
+    ...(payload.metadata !== undefined ? { metadata: structuredClone(payload.metadata) } : {}),
+    content: payload.content,
+  }
+}
+
+function toPortableExtensionPayloadEntry(
+  document: DocumentRecord<PortableExtensionPayloadContent>,
+): PortableExtensionPayloadEntry {
+  return {
+    id: document.id,
+    artifactPayloadId: document.content.artifactPayloadId,
+    ...portableExtensionPayloadFields({
+      id: document.content.artifactPayloadId,
+      packageId: document.content.packageId,
+      fileName: document.content.fileName,
+      format: document.content.format,
+      mediaType: document.content.mediaType,
+      ...(document.content.schemaVersion !== undefined ? { schemaVersion: document.content.schemaVersion } : {}),
+      ...(document.content.requirement !== undefined ? { requirement: document.content.requirement } : {}),
+      ...(document.content.metadata !== undefined ? { metadata: document.content.metadata } : {}),
+      content: document.content.content,
+    }),
+    version: document.version,
+    createdAt: document.content.createdAt,
+    updatedAt: document.content.updatedAt,
+  }
 }
 
 async function findTimelinePromptResourceReferences(
@@ -2049,6 +2362,65 @@ function normalizeModelIds(modelIds: string[] | undefined): string[] {
   const normalized = [...new Set((modelIds ?? []).map(modelId => modelId.trim()).filter(Boolean))]
   if (normalized.length > 500) throw new Error('Provider Profile enabledModelIds exceeds 500 entries')
   return normalized
+}
+
+function normalizeProviderModelIds(providerExtensionId: string, modelIds: string[] | undefined): string[] {
+  return isOfficialFakeProvider(providerExtensionId)
+    ? [officialFakeModelId]
+    : normalizeModelIds(modelIds)
+}
+
+async function initializeOfficialFakeProviderProfiles(ctx: ApplicationRuntimeContext): Promise<void> {
+  const profiles = await listDocuments<ProviderProfileContent>(ctx.documents, applicationDocumentTypes.providerProfile)
+  const providerProfileIds = new Set<string>()
+  for (const profile of profiles) {
+    if (!isOfficialFakeProvider(profile.content.providerExtensionId)) continue
+    providerProfileIds.add(profile.id)
+    const config = ctx.providerAdapters.validateAccountConfig(profile.content.providerExtensionId, profile.content.config)
+    const enabledModelIds = [officialFakeModelId]
+    if (
+      JSON.stringify(config) === JSON.stringify(profile.content.config)
+      && enabledModelIds.length === profile.content.enabledModelIds.length
+    ) continue
+    await writeDocument<ProviderProfileContent>(ctx.documents, {
+      id: profile.id,
+      type: applicationDocumentTypes.providerProfile,
+      content: {
+        ...profile.content,
+        config,
+        enabledModelIds,
+        updatedAt: ctx.now(),
+      },
+      expectedVersion: profile.version,
+    })
+  }
+
+  const capabilityProfiles = await listDocuments<AiCapabilityProfileContent>(
+    ctx.documents,
+    applicationDocumentTypes.aiCapabilityProfile,
+  )
+  for (const profile of capabilityProfiles) {
+    if (!providerProfileIds.has(profile.content.providerProfileId)) continue
+    const capabilityId = profile.content.capabilityId === 'text.generate'
+      ? 'chat.completions'
+      : profile.content.capabilityId
+    if (capabilityId === profile.content.capabilityId && Object.keys(profile.content.config).length === 0) continue
+    await writeDocument<AiCapabilityProfileContent>(ctx.documents, {
+      id: profile.id,
+      type: applicationDocumentTypes.aiCapabilityProfile,
+      content: {
+        ...profile.content,
+        capabilityId,
+        config: {},
+        updatedAt: ctx.now(),
+      },
+      expectedVersion: profile.version,
+    })
+  }
+}
+
+function isOfficialFakeProvider(providerExtensionId: string): boolean {
+  return providerExtensionId === 'official.fake' || providerExtensionId === 'fake'
 }
 
 function readMessageEntryContent(entry: AgentTranscriptEntry, role: 'user' | 'assistant'): string {
@@ -2155,11 +2527,47 @@ async function readProviderCapability(ctx: ApplicationRuntimeContext, providerPr
   return ctx.providerAdapters.getCapability(profile.content.providerExtensionId)
 }
 
+type ExtensionStorageScopeRef =
+  | { kind: 'timeline'; timelineId: string }
+  | { kind: 'agent-session'; agentSessionId: string }
+
+async function tombstoneExtensionStorageScope(
+  documents: DocumentTransaction,
+  scope: ExtensionStorageScopeRef,
+): Promise<void> {
+  for (const type of [applicationDocumentTypes.extensionConfig, applicationDocumentTypes.extensionRecord]) {
+    const matches: DocumentRecord[] = []
+    let cursor: string | undefined
+    do {
+      const page = await documents.list({ type, cursor, limit: 200 })
+      matches.push(...page.items.filter(document => hasExtensionStorageScope(document.content, scope)))
+      cursor = page.nextCursor
+    } while (cursor)
+    for (const document of matches) {
+      await documents.delete({
+        id: document.id,
+        expectedVersion: document.version,
+        reason: `extension.storage.scope.deleted:${scope.kind}`,
+      })
+    }
+  }
+}
+
+function hasExtensionStorageScope(content: JsonValue, scope: ExtensionStorageScopeRef): boolean {
+  if (!content || typeof content !== 'object' || Array.isArray(content)) return false
+  const storedScope = content.scope
+  if (!storedScope || typeof storedScope !== 'object' || Array.isArray(storedScope)) return false
+  if (scope.kind === 'timeline') {
+    return storedScope.kind === 'timeline' && storedScope.timelineId === scope.timelineId
+  }
+  return storedScope.kind === 'agent-session' && storedScope.agentSessionId === scope.agentSessionId
+}
+
 function secretWriteContext(requestContext: RuntimeRequestContext | undefined, reason: string) {
   return {
-    actor: requestContext?.clientId
+    actor: requestContext?.actor ?? (requestContext?.clientId
       ? { kind: 'client' as const, id: requestContext.clientId }
-      : applicationActor,
+      : applicationActor),
     reason,
     correlationId: requestContext?.correlationId,
     callId: requestContext?.callId,
@@ -2185,6 +2593,30 @@ async function toProviderProfileView(
       configured: metadata?.state === 'active',
       ...(metadata?.updatedAt ? { updatedAt: metadata.updatedAt } : {}),
     },
+    createdAt: profile.content.createdAt,
+    updatedAt: profile.content.updatedAt,
+  }
+}
+
+async function toAiCapabilityProfileView(
+  ctx: ApplicationRuntimeContext,
+  profile: DocumentRecord<AiCapabilityProfileContent>,
+): Promise<AiCapabilityProfileView> {
+  const providerProfile = await readDocument<ProviderProfileContent>(
+    ctx.documents,
+    profile.content.providerProfileId,
+    applicationDocumentTypes.providerProfile,
+  )
+  const provider = ctx.aiCapabilities?.get(providerProfile.content.providerExtensionId)
+  return {
+    id: profile.id,
+    version: profile.version,
+    providerProfileId: providerProfile.id,
+    providerExtensionId: providerProfile.content.providerExtensionId,
+    capabilityId: profile.content.capabilityId,
+    displayName: profile.content.displayName,
+    config: profile.content.config,
+    available: provider?.capabilities.some(capability => capability.id === profile.content.capabilityId) ?? false,
     createdAt: profile.content.createdAt,
     updatedAt: profile.content.updatedAt,
   }

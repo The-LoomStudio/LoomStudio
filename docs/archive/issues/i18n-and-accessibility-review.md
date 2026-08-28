@@ -1,5 +1,7 @@
 # i18n 国际化与 ARIA 无障碍审查报告 (i18n & Accessibility Review)
 
+> **状态**：Historical Audit Snapshot / Superseded
+
 ## 审查目标
 
 全面排查 Loom Studio 前端（`apps/studio-client/`）中的 **i18n 双语字典质量、死 Key 冗余、中英文硬编码** 以及 **ARIA 无障碍可访问性（Accessibility）支持**。
@@ -17,8 +19,8 @@
 ### 🔴 [高] 废弃死 Key 泛滥（51 个未使用的废弃词条，冗余度 > 12%）
 
 **文件：**
-- [`apps/studio-client/src/shared/i18n/zh-cn.ts`](file:///Users/macbookair/Desktop/LoomStudio/apps/studio-client/src/shared/i18n/zh-cn.ts)
-- [`apps/studio-client/src/shared/i18n/en-us.ts`](file:///Users/macbookair/Desktop/LoomStudio/apps/studio-client/src/shared/i18n/en-us.ts)
+- [`apps/studio-client/src/shared/i18n/zh-cn.ts`](../../../apps/studio-client/src/shared/i18n/zh-cn.ts)
+- [`apps/studio-client/src/shared/i18n/en-us.ts`](../../../apps/studio-client/src/shared/i18n/en-us.ts)
 
 **现象分析：**
 经代码全局引用扫描，双语字典中共有 **51 个 Key 在整个前端代码库中已无任何引用**。主要是由于历史版本重构（如 Session 迁移为 Timeline、旧 Branch 概念重构、Workbench 布局调整）后未同步清理旧词条所致：
@@ -53,7 +55,7 @@
 ### 🟡 [中] 关键无障碍缺陷清单
 
 #### 1. 纯图标按钮缺少 `aria-label`（屏幕阅读器无法识别按钮动作）
-- **文件：** [`widgets/chat-composer/chat-composer.tsx`](file:///Users/macbookair/Desktop/LoomStudio/apps/studio-client/src/widgets/chat-composer/chat-composer.tsx)
+- **文件：** [`widgets/chat-composer/chat-composer.tsx`](../../../apps/studio-client/src/widgets/chat-composer/chat-composer.tsx)
   ```tsx
   <button className={styles.previewButton} onClick={props.onPreviewPrompt}>
     <Sparkles size={14} />
@@ -63,7 +65,7 @@
   - **修复**：添加 `aria-label={props.t('chat.previewPrompt')}` 及 `title` 提示。
 
 #### 2. 手写弹窗破坏模态语义（`CharacterGroupDialog`）
-- **文件：** [`widgets/character-panel/character-panel.tsx` L478](file:///Users/macbookair/Desktop/LoomStudio/apps/studio-client/src/widgets/character-panel/character-panel.tsx)
+- **文件：** [`widgets/character-panel/character-panel.tsx` L478](../../../apps/studio-client/src/widgets/character-panel/character-panel.tsx)
   - **问题**：未复用公共的 `<Dialog />`，使用普通 `<div>` 模拟弹窗，缺少 `role="dialog"`、`aria-modal="true"` 和 `aria-labelledby`，屏幕阅读器无法将其识别为对话框，且键盘焦点容易逃逸至背景页面。
   - **修复**：迁移至公共 `<Dialog />`。
 

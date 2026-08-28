@@ -1,6 +1,8 @@
 import type { ClientBridge, ClientJsonValue } from '@loom-studio/client-bridge'
 import type { LogLevel, LogPage } from '@loom-studio/logging'
 import type {
+  AiGatewayInvokeInput,
+  AiGatewayInvokeResult,
   AgentTranscriptPage,
   ApplyStateMutationInput,
   ApplyStateMutationResult,
@@ -11,6 +13,7 @@ import type {
   CardPresetInput,
   ContextAssetNode,
   CreateAgentProfileResult,
+  CreateAiCapabilityProfileResult,
   CreateAgentSessionResult,
   CreateCardResult,
   CreateNarrativeTimelineResult,
@@ -32,6 +35,7 @@ import type {
   ImportCardBundleResult,
   InvokeAgentTurnResult,
   ListAgentProfilesResult,
+  ListAiCapabilityProfilesResult,
   ListCardPromptResourcesResult,
   ListCardsResult,
   ListNarrativeTimelinesResult,
@@ -41,6 +45,7 @@ import type {
   ListSettingMountsResult,
   ListStateDefinitionsResult,
   MutationReceipt,
+  UpdateAiCapabilityProfileResult,
   NarrativePage,
   OpeningChatInput,
   PreviewAgentTurnResult,
@@ -48,10 +53,15 @@ import type {
   PromptCompositionCapabilities,
   PromptResource,
   PromptResourceArtifact,
+  PortableExtensionPayloadDraft,
+  ListPortableExtensionPayloadsResult,
+  GetPortableExtensionPayloadResult,
+  MutatePortableExtensionPayloadResult,
   PresetToolMountInput,
   ProviderModelSelection,
   ReplaceSettingMountsResult,
   ReplacePresetToolMountsResult,
+  RegisteredAiGatewayProvider,
   SettingLayerInput,
   SettingMountSource,
   StateTarget,
@@ -328,9 +338,19 @@ export type StudioApi = {
     delete(providerProfileId: string): Promise<DeleteProviderProfileResult>
   }
   providerAccounts: StudioApi['providerProfiles']
+  aiCapabilityProfiles: {
+    list(input?: { providerProfileId?: string; capabilityId?: string; cursor?: string; limit?: number }): Promise<ListAiCapabilityProfilesResult>
+    create(input: { providerProfileId: string; capabilityId: string; displayName: string; config?: Record<string, ClientJsonValue> }): Promise<CreateAiCapabilityProfileResult>
+    update(input: { profileId: string; displayName?: string; config?: Record<string, ClientJsonValue> }): Promise<UpdateAiCapabilityProfileResult>
+    delete(profileId: string): Promise<{ deleted: true }>
+  }
   providerModels: {
     list(providerProfileId: string): Promise<string[]>
     ping(providerProfileId: string, modelId: string): Promise<string>
+  }
+  aiGateway: {
+    listProviders(): Promise<RegisteredAiGatewayProvider[]>
+    invoke(input: Omit<AiGatewayInvokeInput, 'signal' | 'caller'>): Promise<AiGatewayInvokeResult>
   }
   agentProfiles: {
     list(input?: { cursor?: string; limit?: number }): Promise<ListAgentProfilesResult>
@@ -372,6 +392,14 @@ export type StudioApi = {
   }
   cardBundles: {
     import(input: ImportCardBundleInput): Promise<ImportCardBundleResult>
+  }
+  portableExtensionPayloads: {
+    list(packageId?: string): Promise<ListPortableExtensionPayloadsResult>
+    get(payloadId: string): Promise<GetPortableExtensionPayloadResult>
+    create(input: { artifactPayloadId?: string; payload: PortableExtensionPayloadDraft }): Promise<MutatePortableExtensionPayloadResult>
+    update(input: { payloadId: string; expectedVersion: number; payload: PortableExtensionPayloadDraft }): Promise<MutatePortableExtensionPayloadResult>
+    delete(input: { payloadId: string; expectedVersion: number }): Promise<{ deleted: true; mutation: MutationReceipt }>
+    replaceCardBindings(input: { cardId: string; expectedVersion: number; payloadIds: string[] }): Promise<UpdateCardResult>
   }
 }
 
@@ -445,6 +473,12 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
     },
     providerProfiles,
     providerAccounts: providerProfiles,
+    aiCapabilityProfiles: {
+      list: input => bridge.call<ListAiCapabilityProfilesResult>('application.listAiCapabilityProfiles', (input ?? {}) as unknown as ClientJsonValue),
+      create: input => bridge.call<CreateAiCapabilityProfileResult>('application.createAiCapabilityProfile', input as unknown as ClientJsonValue),
+      update: input => bridge.call<UpdateAiCapabilityProfileResult>('application.updateAiCapabilityProfile', input as unknown as ClientJsonValue),
+      delete: profileId => bridge.call('application.deleteAiCapabilityProfile', { profileId }),
+    },
     providerModels: {
       list: async providerProfileId => {
         const result = await bridge.call<{ modelIds: string[] }>('application.listProviderModels', { providerProfileId })
@@ -454,6 +488,13 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
         const result = await bridge.call<{ text: string }>('application.pingProviderModel', { providerProfileId, modelId })
         return result.text
       },
+    },
+    aiGateway: {
+      listProviders: async () => {
+        const result = await bridge.call<{ providers: RegisteredAiGatewayProvider[] }>('ai.providers.list', {})
+        return result.providers
+      },
+      invoke: input => bridge.call<AiGatewayInvokeResult>('ai.invoke', input as unknown as ClientJsonValue),
     },
     agentProfiles: {
       list: input => bridge.call<ListAgentProfilesResult>('application.listAgentProfiles', (input ?? {}) as unknown as ClientJsonValue),
@@ -495,6 +536,14 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
     },
     cardBundles: {
       import: input => bridge.call<ImportCardBundleResult>('application.importCardBundle', input as unknown as ClientJsonValue),
+    },
+    portableExtensionPayloads: {
+      list: packageId => bridge.call<ListPortableExtensionPayloadsResult>('application.listPortableExtensionPayloads', packageId ? { packageId } : {}),
+      get: payloadId => bridge.call<GetPortableExtensionPayloadResult>('application.getPortableExtensionPayload', { payloadId }),
+      create: input => bridge.call<MutatePortableExtensionPayloadResult>('application.createPortableExtensionPayload', input as unknown as ClientJsonValue),
+      update: input => bridge.call<MutatePortableExtensionPayloadResult>('application.updatePortableExtensionPayload', input as unknown as ClientJsonValue),
+      delete: input => bridge.call<{ deleted: true; mutation: MutationReceipt }>('application.deletePortableExtensionPayload', input as unknown as ClientJsonValue),
+      replaceCardBindings: input => bridge.call<UpdateCardResult>('application.replaceCardPortableExtensionPayloads', input as unknown as ClientJsonValue),
     },
   }
 }

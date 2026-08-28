@@ -1,5 +1,6 @@
 import { createAgentStore } from '@loom-studio/agent-store'
-import { createApplicationRuntime, createOpenAICompatibleGateway } from '@loom-studio/application-runtime'
+import { officialFakeModelId } from '@loom-studio/ai-gateway'
+import { applicationDocumentTypes, createApplicationRuntime, createOpenAICompatibleGateway } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createMemorySecretBackend, createSecretStore } from '../../../packages/secret-store/src/index.js'
@@ -65,6 +66,97 @@ describe('application runtime Provider Profile integration', () => {
       credential: { apiKey: 'account-key' },
     })).resolves.toMatchObject({
       providerProfile: { providerExtensionId: 'anthropic', credential: { configured: true } },
+    })
+    fixture.close()
+  })
+
+  it('creates a selectable fixed fake model and returns an OpenAI Chat Completion response', async () => {
+    const fixture = createRuntimeFixture()
+    const created = await fixture.runtime.createProviderProfile({
+      providerExtensionId: 'official.fake',
+      displayName: 'Fake AI',
+      config: {},
+    })
+
+    expect(created.providerProfile).toMatchObject({
+      config: {},
+      enabledModelIds: [officialFakeModelId],
+      credential: { configured: false },
+    })
+    await expect(fixture.runtime.pingProviderModel({
+      providerProfileId: created.providerProfile.id,
+      modelId: officialFakeModelId,
+      text: 'hello',
+    })).resolves.toMatchObject({
+      text: 'Agent draft: hello',
+      raw: {
+        object: 'chat.completion',
+        model: officialFakeModelId,
+        choices: [{ message: { role: 'assistant', content: 'Agent draft: hello' } }],
+      },
+    })
+
+    const preset = await createPreset(fixture.runtime)
+    await expect(fixture.runtime.createAgentProfile({
+      name: 'Fake Agent',
+      presetId: preset.id,
+      model: { providerProfileId: created.providerProfile.id, modelId: officialFakeModelId },
+    })).resolves.toMatchObject({
+      agentProfile: { model: { providerProfileId: created.providerProfile.id, modelId: officialFakeModelId } },
+    })
+    fixture.close()
+  })
+
+  it('keeps the fake account on its single built-in model', async () => {
+    const fixture = createRuntimeFixture()
+    const created = await fixture.runtime.createProviderProfile({
+      providerExtensionId: 'official.fake',
+      displayName: 'Existing Fake',
+      config: {},
+      enabledModelIds: ['custom-fake-model'],
+    })
+    expect(created.providerProfile.enabledModelIds).toEqual([officialFakeModelId])
+    await fixture.runtime.updateProviderProfile({
+      providerProfileId: created.providerProfile.id,
+      enabledModelIds: [],
+    })
+
+    await expect(fixture.runtime.getProviderProfile({
+      providerProfileId: created.providerProfile.id,
+    })).resolves.toMatchObject({
+      providerProfile: {
+        config: {},
+        enabledModelIds: [officialFakeModelId],
+      },
+    })
+    fixture.close()
+  })
+
+  it('migrates the earlier Fake capability profile to Chat Completions', async () => {
+    const fixture = createRuntimeFixture()
+    const account = await fixture.runtime.createProviderProfile({
+      providerExtensionId: 'official.fake',
+      displayName: 'Fake AI',
+      config: {},
+    })
+    await fixture.documents.write({
+      id: 'legacy-fake-capability',
+      type: applicationDocumentTypes.aiCapabilityProfile,
+      content: {
+        providerProfileId: account.providerProfile.id,
+        capabilityId: 'text.generate',
+        displayName: 'Legacy Fake',
+        config: { mode: 'template' },
+        createdAt: '2026-08-15T00:00:00.000Z',
+        updatedAt: '2026-08-15T00:00:00.000Z',
+      },
+      expectedVersion: 'new',
+    })
+
+    await fixture.runtime.initialize()
+
+    await expect(fixture.runtime.getAiCapabilityProfile({ profileId: 'legacy-fake-capability' })).resolves.toMatchObject({
+      profile: { capabilityId: 'chat.completions', config: {} },
     })
     fixture.close()
   })

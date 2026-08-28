@@ -1,5 +1,7 @@
 # 全量 RPC 方法速查 (RPC Methods)
 
+> **状态**：Active Reference / Current RPC Registries Are Authority
+
 Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本列表收录了内核层 (`kernel`) 和应用层 (`application`) 所有暴露的 RPC 方法。
 
 ## History Text Pipeline

@@ -1,5 +1,7 @@
 # RPC API 契约层审查报告 (RPC API Contract Review)
 
+> **状态**：Historical Audit Snapshot / Superseded
+
 ## 审查目标
 
 全面排查 Loom Studio 暴露的 **RPC API 契约层**（涵盖 `studio-server/application-rpc.ts`、`studio-rpc-router.ts`、`studio-client/studio-api.ts` 及传输协议边界），重点审查：
@@ -16,8 +18,8 @@
 ### 🔴 [高] 1. 前后端核心术语割裂与胶水转换（`ProviderProfile` vs `ProviderAccount`）
 
 **文件：**
-- 后端：[`apps/studio-server/src/application-rpc.ts` L31-L36](file:///Users/macbookair/Desktop/LoomStudio/apps/studio-server/src/application-rpc.ts)
-- 前端：[`apps/studio-client/src/shared/api/studio-api.ts` L181-L202](file:///Users/macbookair/Desktop/LoomStudio/apps/studio-client/src/shared/api/studio-api.ts)
+- 后端：[`apps/studio-server/src/application-rpc.ts` L31-L36](../../../apps/studio-server/src/application-rpc.ts)
+- 前端：[`apps/studio-client/src/shared/api/studio-api.ts` L181-L202](../../../apps/studio-client/src/shared/api/studio-api.ts)
 
 **现象分析：**
 - **后端 RPC 全面使用 `ProviderProfile`**：
@@ -49,7 +51,7 @@
 
 ### 🔴 [高] 2. 客户端 API 契约退化：裸 `JsonObject` 导致类型安全丧失
 
-**文件：** [`apps/studio-client/src/shared/api/studio-api.ts` L78-L141](file:///Users/macbookair/Desktop/LoomStudio/apps/studio-client/src/shared/api/studio-api.ts)
+**文件：** [`apps/studio-client/src/shared/api/studio-api.ts` L78-L141](../../../apps/studio-client/src/shared/api/studio-api.ts)
 
 **现象分析：**
 在 `StudioApi` 接口定义中，超过 20 个方法的入参被直接粗暴地声明为 `input: JsonObject`：
@@ -86,7 +88,7 @@ export type StudioApi = {
 
 ### 🟡 [中] 3. RPC 命名风格不一致与动词不对称
 
-**文件：** [`apps/studio-server/src/application-rpc.ts` L25-L79](file:///Users/macbookair/Desktop/LoomStudio/apps/studio-server/src/application-rpc.ts)
+**文件：** [`apps/studio-server/src/application-rpc.ts` L25-L79](../../../apps/studio-server/src/application-rpc.ts)
 
 | 领域 | 当前 RPC 命名 | 不一致点说明 | 建议标准化命名 |
 |---|---|---|---|
@@ -118,7 +120,7 @@ export type StudioApi = {
 
 ### 🟡 [中] 5. 跨层直接穿透调用 Kernel RPC（命名空间混淆）
 
-**文件：** [`apps/studio-client/src/shared/api/studio-api.ts` L154](file:///Users/macbookair/Desktop/LoomStudio/apps/studio-client/src/shared/api/studio-api.ts)
+**文件：** [`apps/studio-client/src/shared/api/studio-api.ts` L154](../../../apps/studio-client/src/shared/api/studio-api.ts)
 
 ```ts
 history: {
@@ -141,7 +143,7 @@ history: {
 
 ### 🟢 [低] 6. 后端手写解包样板代码庞大（~300 行 `rpc-params.ts` 串行提取）
 
-**文件：** [`apps/studio-server/src/application-rpc.ts`](file:///Users/macbookair/Desktop/LoomStudio/apps/studio-server/src/application-rpc.ts)
+**文件：** [`apps/studio-server/src/application-rpc.ts`](../../../apps/studio-server/src/application-rpc.ts)
 
 **现象分析：**
 每个 RPC 方法中都包含大量的显式参数读取：

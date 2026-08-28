@@ -9,13 +9,13 @@
 相关文档：
 
 - [`agent-session-chat-message-foundation-plan.md`](agent-session-chat-message-foundation-plan.md)
-- [`../discussion/application/narrative-timeline-content-schema-v0.md`](../discussion/application/narrative-timeline-content-schema-v0.md)
-- [`../discussion/application/session-timeline-data-model-v0.md`](../discussion/application/session-timeline-data-model-v0.md)
+- [`../discussion/application/narrative-timeline-content-schema-v0.md`](../../workbench/discussion/application/narrative-timeline-content-schema-v0.md)
+- [`../discussion/application/session-timeline-data-model-v0.md`](../../workbench/discussion/application/session-timeline-data-model-v0.md)
 - [`card-resource-manifest-migration-plan.md`](card-resource-manifest-migration-plan.md)
 - [`document-store-kernel-data-foundation-plan.md`](document-store-kernel-data-foundation-plan.md)
 - [`sqlite-data-engine-domain-stores-kernel-plan.md`](sqlite-data-engine-domain-stores-kernel-plan.md)
 - [`local-data-blob-store-foundation-plan.md`](local-data-blob-store-foundation-plan.md)
-- [`search-and-timeline-indexing-plan.md`](search-and-timeline-indexing-plan.md)
+- [`search-and-timeline-indexing-plan.md`](../../workbench/plans/search-and-timeline-indexing-plan.md)
 
 ---
 

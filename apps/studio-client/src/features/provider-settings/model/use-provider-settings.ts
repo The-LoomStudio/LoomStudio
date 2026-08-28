@@ -1,7 +1,14 @@
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import { useState, type FormEvent } from 'react'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
-import type { ModelProfile, ProviderAccount } from '../../../entities/index.js'
+import type {
+  AiGatewayInvokeInput,
+  AiGatewayInvokeResult,
+  AiCapabilityProfile,
+  ModelProfile,
+  ProviderAccount,
+  RegisteredAiGatewayProvider,
+} from '../../../entities/index.js'
 import { normalizeOpenAICompatibleBaseUrl } from './provider-base-url.js'
 
 export type ProviderAccountDraft = {
@@ -21,6 +28,8 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
   const [providerAccounts, setProviderAccounts] = useState<ProviderAccount[]>([])
   const [providerAccountsLoaded, setProviderAccountsLoaded] = useState(false)
   const [modelProfiles, setModelProfiles] = useState<ModelProfile[]>([])
+  const [aiProviders, setAiProviders] = useState<RegisteredAiGatewayProvider[]>([])
+  const [aiCapabilityProfiles, setAiCapabilityProfiles] = useState<AiCapabilityProfile[]>([])
 
   async function refreshProviderAccounts() {
     const result = await input.api.providerAccounts.list()
@@ -35,7 +44,33 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
   }
 
   async function refreshProviderSettings() {
-    await refreshProviderAccounts()
+    await Promise.all([
+      refreshProviderAccounts(),
+      refreshAiProviders(),
+      refreshAiCapabilityProfiles(),
+    ])
+  }
+
+  async function refreshAiProviders() {
+    setAiProviders(await input.api.aiGateway.listProviders())
+  }
+
+  async function refreshAiCapabilityProfiles() {
+    setAiCapabilityProfiles((await input.api.aiCapabilityProfiles.list()).profiles)
+  }
+
+  async function refreshAiGatewaySettings() {
+    await Promise.all([
+      refreshProviderAccounts(),
+      refreshAiProviders(),
+      refreshAiCapabilityProfiles(),
+    ])
+  }
+
+  async function invokeAiCapability(
+    request: Omit<AiGatewayInvokeInput, 'signal' | 'caller'>,
+  ): Promise<AiGatewayInvokeResult> {
+    return await input.api.aiGateway.invoke(request)
   }
 
   async function createProviderAccount(event: FormEvent) {
@@ -56,6 +91,68 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
           : {}),
       })
       await refreshProviderSettings()
+    })
+  }
+
+  async function createAiProviderAccount(request: {
+    providerExtensionId: string
+    displayName: string
+    config: Record<string, ClientJsonValue>
+    credential?: Record<string, string>
+  }): Promise<string | undefined> {
+    let providerProfileId: string | undefined
+    await input.runAction(async () => {
+      const result = await input.api.providerAccounts.create({
+        ...request,
+      })
+      providerProfileId = result.providerProfile.id
+      await refreshProviderAccounts()
+    })
+    return providerProfileId
+  }
+
+  async function createAiCapabilityProfile(request: {
+    providerProfileId: string
+    capabilityId: string
+    displayName: string
+    config: Record<string, ClientJsonValue>
+  }): Promise<string | undefined> {
+    let profileId: string | undefined
+    await input.runAction(async () => {
+      const result = await input.api.aiCapabilityProfiles.create(request)
+      profileId = result.profile.id
+      await refreshAiCapabilityProfiles()
+    })
+    return profileId
+  }
+
+  async function updateAiProviderAccount(request: {
+    providerProfileId: string
+    displayName: string
+    config: Record<string, ClientJsonValue>
+    credential?: Record<string, string>
+  }): Promise<void> {
+    await input.runAction(async () => {
+      await input.api.providerAccounts.update({
+        providerProfileId: request.providerProfileId,
+        displayName: request.displayName,
+        config: request.config,
+      })
+      if (request.credential && Object.keys(request.credential).length > 0) {
+        await input.api.providerAccounts.replaceCredential(request.providerProfileId, request.credential)
+      }
+      await refreshProviderAccounts()
+    })
+  }
+
+  async function updateAiCapabilityProfile(request: {
+    profileId: string
+    displayName: string
+    config: Record<string, ClientJsonValue>
+  }): Promise<void> {
+    await input.runAction(async () => {
+      await input.api.aiCapabilityProfiles.update(request)
+      await refreshAiCapabilityProfiles()
     })
   }
 
@@ -150,10 +247,17 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
     providerAccounts,
     providerAccountsLoaded,
     modelProfiles,
+    aiProviders,
+    aiCapabilityProfiles,
     refreshProviderSettings,
+    refreshAiProviders: refreshAiGatewaySettings,
     refreshProviderAccounts,
     refreshModelProfiles,
     createProviderAccount,
+    createAiProviderAccount,
+    createAiCapabilityProfile,
+    updateAiProviderAccount,
+    updateAiCapabilityProfile,
     createModelProfile,
     updateProviderAccount,
     updateProviderConnection,
@@ -162,6 +266,7 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
     deleteModelProfile,
     listProviderModels,
     pingModelProfile,
+    invokeAiCapability,
   }
 }
 

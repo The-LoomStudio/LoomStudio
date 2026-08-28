@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { officialFakeModelId } from '@loom-studio/ai-gateway'
 import { callRpc, withStudioServer } from './helpers.js'
 
 describe('studio server Agent Turn RPC', () => {
@@ -7,8 +8,8 @@ describe('studio server Agent Turn RPC', () => {
       const profile = await callRpc<{ providerProfile: { id: string } }>(port, 'application.createProviderProfile', {
         providerExtensionId: 'official.fake',
         displayName: 'Local Provider',
-        config: { baseUrl: 'https://example.test/v1' },
-        enabledModelIds: ['test-model'],
+        config: {},
+        enabledModelIds: [officialFakeModelId],
       })
       expect(JSON.stringify(profile)).not.toContain('secret:')
       const preset = await createPreset(port, 'Guide', 'Guide the user.')
@@ -23,7 +24,7 @@ describe('studio server Agent Turn RPC', () => {
       const agentProfile = await callRpc<{ agentProfile: { id: string } }>(port, 'application.createAgentProfile', {
         name: 'Local Guide',
         presetId: preset.id,
-        model: { providerProfileId: profile.providerProfile.id, modelId: 'test-model' },
+        model: { providerProfileId: profile.providerProfile.id, modelId: officialFakeModelId },
       })
 
       const updatedProfile = await callRpc<{ agentProfile: { name: string } }>(port, 'application.updateAgentProfile', {
@@ -51,13 +52,13 @@ describe('studio server Agent Turn RPC', () => {
       const provider = await callRpc<{ providerProfile: { id: string } }>(port, 'application.createProviderProfile', {
         providerExtensionId: 'official.fake',
         displayName: 'Safe Provider',
-        config: { baseUrl: 'https://example.test/v1' },
-        enabledModelIds: ['test-model'],
+        config: {},
+        enabledModelIds: [officialFakeModelId],
       })
       const agentProfile = await callRpc<{ agentProfile: { id: string } }>(port, 'application.createAgentProfile', {
         name: 'Safe Agent Profile',
         presetId: preset.id,
-        model: { providerProfileId: provider.providerProfile.id, modelId: 'test-model' },
+        model: { providerProfileId: provider.providerProfile.id, modelId: officialFakeModelId },
       })
       const session = await callRpc<{ session: { id: string } }>(port, 'application.createAgentSession', {
         agentProfileId: agentProfile.agentProfile.id,

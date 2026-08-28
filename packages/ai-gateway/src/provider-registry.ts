@@ -1,6 +1,8 @@
 import type { JsonObject } from '@loom-studio/shared'
 import { z } from 'zod'
 import { listOpenAICompatibleModels } from './gateway.js'
+import { officialFakeModelId } from './fake-provider.js'
+import type { AiGatewayCapabilityRegistry, AiGatewayFieldDefinition } from './capability-registry.js'
 import type {
   AiProviderConfig,
   AiProviderKind,
@@ -16,7 +18,7 @@ type ProviderAdapter = {
   kind: AiProviderKind | 'fake'
   accountConfigSchema: ProviderAccountSchema
   credentialSchema: ProviderAccountSchema
-  parseAccountConfig(input: JsonObject): { baseUrl?: string }
+  parseAccountConfig(input: JsonObject): JsonObject
   parseCredential(input: Record<string, string>): { apiKey?: string }
   capability: ProviderModelCapability
   listModels?: (input: { config: JsonObject; credential: Record<string, string>; fetch?: typeof fetch }) => Promise<string[]>
@@ -25,6 +27,10 @@ type ProviderAdapter = {
 const baseUrlSchema = z.strictObject({ baseUrl: z.string().url().optional() })
 const apiKeySchema = z.strictObject({ apiKey: z.string().trim().min(1) })
 const emptySchema = z.strictObject({})
+const fakeAccountConfigParser = z.strictObject({
+  responseTemplate: z.string().optional(),
+  baseUrl: z.string().url().optional(),
+}).transform(() => ({}))
 const accountConfigSchema: ProviderAccountSchema = {
   type: 'object',
   properties: { baseUrl: { type: 'string', format: 'uri' } },
@@ -42,7 +48,9 @@ const emptyAccountSchema: ProviderAccountSchema = {
   additionalProperties: false,
 }
 
-export function createOfficialProviderAdapterRegistry(): ProviderAdapterRegistry {
+export function createOfficialProviderAdapterRegistry(options: {
+  aiCapabilities?: AiGatewayCapabilityRegistry
+} = {}): ProviderAdapterRegistry {
   const adapters = createOfficialAdapters()
   const aliases = new Map(adapters.flatMap(adapter => adapter.aliases.map(alias => [alias, adapter] as const)))
 
@@ -50,6 +58,10 @@ export function createOfficialProviderAdapterRegistry(): ProviderAdapterRegistry
     const adapter = aliases.get(providerExtensionId)
     if (!adapter) throw new Error(`Unsupported provider extension: ${providerExtensionId}`)
     return adapter
+  }
+
+  function getDynamicProvider(providerExtensionId: string) {
+    return options.aiCapabilities?.get(providerExtensionId)
   }
 
   return {
@@ -68,16 +80,36 @@ export function createOfficialProviderAdapterRegistry(): ProviderAdapterRegistry
         kind: adapter.kind,
         apiKey: credential.apiKey,
         name: adapter.kind,
-        ...(config.baseUrl ? { baseUrl: config.baseUrl } : {}),
+        ...(typeof config.baseUrl === 'string' ? { baseUrl: config.baseUrl } : {}),
         ...(input.fetch ? { fetch: input.fetch } : {}),
       }
       return { adapterId: adapter.id, provider, capability: adapter.capability }
     },
-    validateAccountConfig: (providerExtensionId, config) => requireAdapter(providerExtensionId).parseAccountConfig(config) as JsonObject,
-    validateCredential: (providerExtensionId, credential) => requireAdapter(providerExtensionId).parseCredential(credential) as Record<string, string>,
+    validateAccountConfig: (providerExtensionId, config) => {
+      const adapter = aliases.get(providerExtensionId)
+      if (adapter) return adapter.parseAccountConfig(config) as JsonObject
+      if (getDynamicProvider(providerExtensionId)) {
+        return options.aiCapabilities!.validateAccountConfig(providerExtensionId, config)
+      }
+      throw new Error(`Unsupported provider extension: ${providerExtensionId}`)
+    },
+    validateCredential: (providerExtensionId, credential) => {
+      const adapter = aliases.get(providerExtensionId)
+      if (adapter) return adapter.parseCredential(credential) as Record<string, string>
+      if (getDynamicProvider(providerExtensionId)) {
+        return options.aiCapabilities!.validateCredential(providerExtensionId, credential)
+      }
+      throw new Error(`Unsupported provider extension: ${providerExtensionId}`)
+    },
     getSchemas: providerExtensionId => {
-      const adapter = requireAdapter(providerExtensionId)
-      return { accountConfig: adapter.accountConfigSchema, credential: adapter.credentialSchema }
+      const adapter = aliases.get(providerExtensionId)
+      if (adapter) return { accountConfig: adapter.accountConfigSchema, credential: adapter.credentialSchema }
+      const provider = getDynamicProvider(providerExtensionId)
+      if (!provider) throw new Error(`Unsupported provider extension: ${providerExtensionId}`)
+      return {
+        accountConfig: readObjectSchema(provider.accountSchema, provider.accountFields ?? []),
+        credential: readObjectSchema(provider.credentialSchema, provider.credentialFields ?? []),
+      }
     },
     listModels: async (providerExtensionId, input) => {
       const adapter = requireAdapter(providerExtensionId)
@@ -87,6 +119,26 @@ export function createOfficialProviderAdapterRegistry(): ProviderAdapterRegistry
       return await adapter.listModels(input)
     },
   }
+}
+
+function readObjectSchema(schema: JsonObject | undefined, fields: AiGatewayFieldDefinition[]): ProviderAccountSchema {
+  if (schema?.type === 'object' && schema.additionalProperties === false && schema.properties) {
+    return schema as ProviderAccountSchema
+  }
+  return {
+    type: 'object',
+    properties: Object.fromEntries(fields.map(field => [field.key, fieldSchema(field)])),
+    ...(fields.some(field => field.required) ? { required: fields.filter(field => field.required).map(field => field.key) } : {}),
+    additionalProperties: false,
+  }
+}
+
+function fieldSchema(field: AiGatewayFieldDefinition): JsonObject {
+  if (field.type === 'boolean') return { type: 'boolean' }
+  if (field.type === 'number') return { type: 'number' }
+  if (field.type === 'json') return {}
+  if (field.type === 'select') return { type: 'string', enum: field.options?.map(option => option.value) ?? [] }
+  return { type: 'string' }
 }
 
 function createOfficialAdapters(): ProviderAdapter[] {
@@ -119,11 +171,12 @@ function createOfficialAdapters(): ProviderAdapter[] {
       id: 'official.fake',
       aliases: ['official.fake', 'fake'],
       kind: 'fake',
-      accountConfigSchema,
+      accountConfigSchema: emptyAccountSchema,
       credentialSchema: emptyAccountSchema,
-      parseAccountConfig: input => baseUrlSchema.parse(input),
+      parseAccountConfig: input => fakeAccountConfigParser.parse(input),
       parseCredential: input => emptySchema.parse(input),
       capability: { streaming: false, nativeFunctionTools: false, providerCustomTools: false },
+      listModels: async () => [officialFakeModelId],
     },
   ]
 }

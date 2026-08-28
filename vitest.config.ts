@@ -23,6 +23,7 @@ const scopedTestInclude =
 export default defineConfig({
   resolve: {
     alias: {
+      '@loom-studio/ai-gateway': new URL('./packages/ai-gateway/src/index.ts', import.meta.url).pathname,
       '@loom-studio/agent-store': new URL('./packages/agent-store/src/index.ts', import.meta.url).pathname,
       '@loom-studio/client-bridge': new URL('./packages/client-bridge/src/index.ts', import.meta.url).pathname,
       '@loom-studio/diagnostics': new URL('./packages/diagnostics/src/index.ts', import.meta.url).pathname,

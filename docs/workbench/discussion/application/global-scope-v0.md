@@ -1,7 +1,7 @@
 # Global Scope v0
 
 > **状态**：从 ADR-005 迁移 / 开放设计  
-> **来源**：[`../adr/ADR-005-official-concept-stack-open-design.md`](../adr/ADR-005-official-concept-stack-open-design.md)
+> **来源**：[`../adr/ADR-005-official-concept-stack-open-design.md`](../../adr/ADR-005-official-concept-stack-open-design.md)
 
 ---
 

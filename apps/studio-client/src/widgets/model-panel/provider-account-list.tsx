@@ -68,6 +68,7 @@ function ProviderAccountItem(props: {
   const baseUrl = typeof props.account.config.baseUrl === 'string' ? props.account.config.baseUrl : ''
   const catalog = mergeModelCatalog(props.models.map(profile => profile.providerModelId), fetchedModels, query)
   const providerBrand = resolveProviderBrand(props.account.displayName, baseUrl, props.account.providerExtensionId)
+  const fake = props.account.providerExtensionId === 'official.fake' || props.account.providerExtensionId === 'fake'
 
   useEffect(() => {
     mountedRef.current = true
@@ -84,7 +85,6 @@ function ProviderAccountItem(props: {
   useEffect(() => {
     setDisplayNameDraft(props.account.displayName)
   }, [props.account.displayName])
-
 
   function addModel(event: FormEvent) {
     event.preventDefault()
@@ -148,15 +148,30 @@ function ProviderAccountItem(props: {
       <div className={styles.accountBody}>
         <span className={styles.extensionId}>{props.account.providerExtensionId}</span>
 
-        <form className={`${styles.connectionForm} loom-underlined-fields`} onSubmit={saveConnection}>
+        {fake ? (
+          <p className={styles.modelCatalogStatus}>{props.t('provider.fakeAccountHint')}</p>
+        ) : (
+          <form autoComplete="off" className={`${styles.connectionForm} loom-underlined-fields`} onSubmit={saveConnection}>
           <label>
             <span>{props.t('provider.name')}</span>
-            <input required value={displayNameDraft} onChange={event => setDisplayNameDraft(event.target.value)} />
+            <input
+              autoComplete="off"
+              name={`loom-provider-name-${props.account.id}`}
+              required
+              value={displayNameDraft}
+              onChange={event => setDisplayNameDraft(event.target.value)}
+            />
           </label>
           <label>
             <span>{props.t('provider.baseUrl')}</span>
             <div className={styles.connectionInputRow}>
-              <input required value={baseUrlDraft} onChange={event => setBaseUrlDraft(event.target.value)} />
+              <input
+                autoComplete="off"
+                name={`loom-provider-base-url-${props.account.id}`}
+                required
+                value={baseUrlDraft}
+                onChange={event => setBaseUrlDraft(event.target.value)}
+              />
               <IconButton disabled={!baseUrl} label={copied ? props.t('provider.baseUrlCopied') : props.t('provider.copyBaseUrl')} onClick={() => void copyBaseUrl()}>
                 <Copy aria-hidden="true" />
               </IconButton>
@@ -165,7 +180,8 @@ function ProviderAccountItem(props: {
           <label>
             <span>{props.t('provider.apiKey')}</span>
             <input
-              autoComplete="off"
+              autoComplete="new-password"
+              name={`loom-provider-api-key-${props.account.id}`}
               placeholder={props.account.credential.configured ? '••••••••' : props.t('provider.apiKeyPlaceholder')}
               type="password"
               value={apiKeyDraft}
@@ -178,7 +194,8 @@ function ProviderAccountItem(props: {
             </small>
           </label>
           <button disabled={props.busy || !displayNameDraft.trim() || !baseUrlDraft.trim()} type="submit">{props.t('provider.saveConnection')}</button>
-        </form>
+          </form>
+        )}
 
         <section className={styles.models}>
           <h4>{props.t('provider.models')}</h4>
@@ -188,14 +205,16 @@ function ProviderAccountItem(props: {
                 <Toggle checked className={styles.enabledToggle} disabled label={`${profile.providerModelId} · ${props.t('provider.modelEnabled')}`} onChange={() => {}} />
                 <ModelBrandIcon brand={resolveModelBrand(profile.providerModelId) ?? providerBrand} />
                 <span>{profile.providerModelId}</span>
-                <IconButton danger disabled={props.busy} label={props.t('provider.modelDelete')} onClick={() => props.onDeleteModel(profile.id)}>
-                  <Trash2 aria-hidden="true" />
-                </IconButton>
+                {!fake ? (
+                  <IconButton danger disabled={props.busy} label={props.t('provider.modelDelete')} onClick={() => props.onDeleteModel(profile.id)}>
+                    <Trash2 aria-hidden="true" />
+                  </IconButton>
+                ) : null}
               </div>
             ))}
           </div>
 
-          <div className={`${styles.modelPicker} loom-underlined-fields`}>
+          {!fake ? <div className={`${styles.modelPicker} loom-underlined-fields`}>
             <form onSubmit={addModel}>
               <input
                 aria-label={props.t('provider.modelSearchPlaceholder')}
@@ -222,7 +241,7 @@ function ProviderAccountItem(props: {
                 </div>
               ))}
             </div>
-          </div>
+          </div> : null}
         </section>
 
         <button className={styles.deleteProvider} disabled={props.busy} type="button" onClick={() => props.onDelete(props.account.id)}>

@@ -1,10 +1,11 @@
 # ADR-001: Studio 数据层、项目工作区与运行时输入边界
 
-- **Status**: Accepted
+- **Status**: Partially Superseded
 - **Date**: 2026-05-09
+- **Current authority**: SQL / Workspace / Import-Export 决策仍有效；Runtime、Provider、Tool 与 Concept Stack 章节已由 [`docs/architecture/application/`](../../architecture/application/) 和 [`docs/architecture/platform/`](../../architecture/platform/) 取代。
 - **Related**:
-  - [`../04-data/studio-data-layer-architecture.md`](../04-data/studio-data-layer-architecture.md)
-  - [`../06-engineering/loom-studio-mvp-engineering.md`](../06-engineering/loom-studio-mvp-engineering.md)
+  - [`../04-data/studio-data-layer-architecture.md`](../discussion/data/studio-data-layer-architecture.md)
+  - [`../06-engineering/loom-studio-mvp-engineering.md`](../../archive/discussion/loom-studio-mvp-engineering.md)
 
 ## Context
 
@@ -18,7 +19,7 @@ Loom Studio 需要同时服务三类使用场景：
 
 > Studio 项目到底如何在内部可靠数据层、外部开发者工作区、运行时输入和发布包之间转换？
 
-同时，Studio 必须保持既定架构边界：
+以下内容记录 2026-05 的历史架构边界。其中 Kernel 不承载 AIRP 业务语义仍然有效；“Runtime / Provider / Tool / MCP 都是 Extension Pattern”与 Concept Stack 编译链已经被当前 Application / Platform Architecture 取代：
 
 - Kernel 不内置 Chat Runtime、Agent Runtime、Provider Gateway、Tool Loop、MCP Bridge。
 - Kernel 不理解 `messages[]`、角色卡、世界书、预设、SillyTavern JSON 或具体 runtime artifact 语义。

@@ -50,6 +50,45 @@ describe('card bundle artifact boundary', () => {
     })).rejects.toThrow('Duplicate prompt resource id')
   })
 
+  it('persists opaque Extension Payloads as canonical documents and exports them unchanged', async () => {
+    const fixture = createFixture()
+    const artifact = createArtifact()
+    artifact.extensionPayloads = [{
+      id: 'image-style-v1',
+      packageId: 'example.image-generator',
+      fileName: 'style.json',
+      format: 'example.image-style',
+      mediaType: 'application/json',
+      schemaVersion: 1,
+      requirement: { versionRange: '^1.0.0' },
+      metadata: { label: 'Watercolor' },
+      content: '{"artist":"example","style":"watercolor"}',
+    }]
+
+    const imported = await importCardBundle({ artifact, ...fixture })
+    const payloadId = imported.card.portableExtensionPayloadIds?.[0]
+    expect(payloadId).toBeTruthy()
+    await expect(fixture.documents.get(payloadId!)).resolves.toMatchObject({
+      type: 'airp.portableExtensionPayload',
+      content: {
+        artifactPayloadId: 'image-style-v1',
+        packageId: 'example.image-generator',
+        content: artifact.extensionPayloads[0]!.content,
+      },
+    })
+    expect(imported.importBundle.documentIds).toContain(payloadId)
+
+    const exported = await exportCardArtifact({
+      cardId: imported.card.id,
+      documents: fixture.documents,
+      promptResources: fixture.promptResources,
+    })
+    expect(exported.extensionPayloads).toEqual(artifact.extensionPayloads)
+
+    const reimported = await importCardBundle({ artifact: exported, ...fixture })
+    expect(reimported.card.portableExtensionPayloadIds?.[0]).not.toBe(payloadId)
+  })
+
   it('exports current resource content while retaining source artifact metadata', async () => {
     const fixture = createFixture()
     const imported = await importCardBundle({ artifact: createArtifact(), ...fixture })
@@ -101,6 +140,56 @@ describe('card bundle artifact boundary', () => {
     expect(isCardBundleArtifact(duplicate as never)).toBe(false)
     await expect(importCardBundle({ artifact: duplicate, ...createFixture() }))
       .rejects.toThrow('Duplicate prompt resource node id: preset-entry')
+  })
+
+  it('rejects malformed, duplicate, and oversized Extension Payloads before writing', async () => {
+    const duplicate = createArtifact()
+    duplicate.extensionPayloads = [createPayload(), createPayload()]
+    expect(isCardBundleArtifact(duplicate as never)).toBe(false)
+    await expect(importCardBundle({ artifact: duplicate, ...createFixture() }))
+      .rejects.toThrow('Duplicate Extension Payload id')
+
+    const unsafeName = createArtifact()
+    unsafeName.extensionPayloads = [{ ...createPayload(), fileName: '../config.json' }]
+    await expect(importCardBundle({ artifact: unsafeName, ...createFixture() }))
+      .rejects.toThrow('fileName is invalid')
+
+    const unsafePackage = createArtifact()
+    unsafePackage.extensionPayloads = [{ ...createPayload(), packageId: 'example/extension' }]
+    await expect(importCardBundle({ artifact: unsafePackage, ...createFixture() }))
+      .rejects.toThrow('packageId')
+
+    const invalidVersion = createArtifact()
+    invalidVersion.extensionPayloads = [{ ...createPayload(), schemaVersion: 0 }]
+    await expect(importCardBundle({ artifact: invalidVersion, ...createFixture() }))
+      .rejects.toThrow('schemaVersion is invalid')
+
+    const emptyFormat = createArtifact()
+    emptyFormat.extensionPayloads = [{ ...createPayload(), format: '   ' }]
+    await expect(importCardBundle({ artifact: emptyFormat, ...createFixture() }))
+      .rejects.toThrow('format')
+
+    const oversized = createArtifact()
+    oversized.extensionPayloads = [{ ...createPayload(), content: 'x'.repeat(1024 * 1024 + 1) }]
+    await expect(importCardBundle({ artifact: oversized, ...createFixture() }))
+      .rejects.toThrow('Extension Payload exceeds')
+
+    const tooMany = createArtifact()
+    tooMany.extensionPayloads = Array.from({ length: 65 }, (_, index) => ({
+      ...createPayload(),
+      id: `payload-${index}`,
+    }))
+    await expect(importCardBundle({ artifact: tooMany, ...createFixture() }))
+      .rejects.toThrow('exceed 64 entries')
+
+    const totalOversized = createArtifact()
+    totalOversized.extensionPayloads = Array.from({ length: 9 }, (_, index) => ({
+      ...createPayload(),
+      id: `payload-${index}`,
+      content: 'x'.repeat(1024 * 1024),
+    }))
+    await expect(importCardBundle({ artifact: totalOversized, ...createFixture() }))
+      .rejects.toThrow('total bytes')
   })
 
   it('records trusted request context on the bundle transaction', async () => {
@@ -168,6 +257,17 @@ function createArtifact(): CardBundleArtifact {
         children: [],
       },
     ],
+  }
+}
+
+function createPayload(): NonNullable<CardBundleArtifact['extensionPayloads']>[number] {
+  return {
+    id: 'payload-v1',
+    packageId: 'example.extension',
+    fileName: 'config.json',
+    format: 'example.config',
+    mediaType: 'application/json',
+    content: '{}',
   }
 }
 

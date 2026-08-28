@@ -1,8 +1,10 @@
 # Studio Application 文档区
 
-> **Status**: Planning / Open Design  
-> **Purpose**: 收纳 Studio Application 的长期设计材料，避免所有讨论都堆进单个 ADR。  
-> **Related ADR**: [`../../adr/ADR-005-official-concept-stack-open-design.md`](../../adr/ADR-005-official-concept-stack-open-design.md)
+> **Status**: Active Open Design Index
+>
+> **Purpose**: 收纳尚未晋升到正式 Architecture 的 Studio Application 设计；已晋升事实从 [`docs/architecture/application/`](../../../architecture/application/) 进入。
+>
+> **Historical ADR**: [`../../adr/ADR-005-official-concept-stack-open-design.md`](../../adr/ADR-005-official-concept-stack-open-design.md)
 
 ---
 
@@ -22,16 +24,19 @@ Provider adapters、Importers、Exporters、Tools、模型特定 payload adapter
 
 其中 AI Gateway / Provider Extension 已从单纯 Application Provider 边界上升为平台级共享能力，详见 [`../platform/ai-gateway-and-provider-extension-v0.md`](../platform/ai-gateway-and-provider-extension-v0.md)。
 
-ADR-005 仍是当前主讨论入口，但它不应无限增长。随着各议题稳定，应逐步拆出本目录下的专题文档。
+ADR-005 已冻结为历史决策日志。本目录是仍未晋升议题的当前讨论入口；已经稳定的事实必须进入 Architecture，已经被完整取代的正文进入 Archive。
 
 当前原则：
 
 ```text
-ADR-005:
-  记录开放问题、阶段性决策、讨论顺序。
+Architecture:
+  记录已经实现并验证的当前事实。
 
-08-concept-stack/:
-  承载逐步稳定下来的专题规格、设计笔记和大议题草案。
+Workbench Application:
+  只承载真实开放问题、设计笔记和待验证候选。
+
+Archive:
+  保存 ADR-005、MVP / M0 与已被完整取代的历史规格。
 ```
 
 ### 1.1 术语约定
@@ -116,7 +121,6 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 | 文件 | 状态 | 目的 |
 |---|---|---|
 | [`0-overview-v0.md`](0-overview-v0.md) | Migrated / Open Design | Studio Application 总览、原则、边界 |
-| `concept-stack-glossary-v0.md` | Planned | Card、Opening、Setting、Skeleton 等术语表 |
 | [`discussion-order-v0.md`](discussion-order-v0.md) | Migrated / Open Design | 讨论顺序、未定事项、实施前置条件 |
 | [`discussion-plan-v0.md`](discussion-plan-v0.md) | Open Design | 决策驱动讨论计划、依赖图、近期讨论安排 |
 | [`document-map-v0.md`](document-map-v0.md) | Open Design / Navigation | Application Layer 文档分区地图 |
@@ -127,7 +131,6 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 |---|---|---|
 | [`card-model-v0.md`](card-model-v0.md) | Migrated / Open Design | Card 作为顶层内容单元的模型 |
 | [`asset-import-export-boundary-v0.md`](asset-import-export-boundary-v0.md) | Open Design / Implementation Planning | Card、Setting Layer、Workspace Artifact、导入导出与运行时 SQL 文档边界 |
-| `card-packaging-v0.md` | Planned | Card 分发、资源引用、readme / metadata 边界 |
 
 ### 3.3 设定层与状态
 
@@ -153,14 +156,12 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 | [`chat-opening-model-v0.md`](chat-opening-model-v0.md) | Migrated / Open Design | Chat / Opening / compiled message 的语义边界 |
 | [`session-timeline-data-model-v0.md`](session-timeline-data-model-v0.md) | Open Design | Narrative Timeline、Agent Session Tree、Step 与 Changeset 数据边界 |
 | [`narrative-timeline-content-schema-v0.md`](narrative-timeline-content-schema-v0.md) | Approved Direction / Implementation Pending | Narrative Node、Loom Markdown source、Semantic Part 与派生 Projection |
-| `session-model-v0.md` | Superseded by session-timeline-data-model-v0 | Session、timeline、branch、运行实例边界 |
 
 ### 3.5 Composition Skeleton
 
 | 文件 | 状态 | 目的 |
 |---|---|---|
 | [`composition-skeleton-v0.md`](composition-skeleton-v0.md) | Migrated / Open Design | Skeleton、slot、cluster、排序、输出结构 |
-| [`composition-pipeline-v0.md`](composition-pipeline-v0.md) | Migrated / Open Design | Documents -> Fragments -> loom.run -> compiled payload |
 | [`trace-explainability-v0.md`](trace-explainability-v0.md) | Migrated / Open Design | 来源、激活、排序、裁剪的解释模型 |
 
 ### 3.6 Prompt Builder
@@ -172,6 +173,7 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 | [`prompt/composition-skeleton-and-preset-v0.md`](prompt/composition-skeleton-and-preset-v0.md) | Open Design | 预设层、骨架填充、slot / marker、provider 兼容性 |
 | [`prompt/setting-layer-prompt-source-v0.md`](prompt/setting-layer-prompt-source-v0.md) | Open Design | Setting Layer 作为 prompt-facing source 的边界 |
 | [`prompt/content-component-and-binding-v0.md`](prompt/content-component-and-binding-v0.md) | Open Design | 内容层组件化、binding、宏与变量注入 |
+| [`prompt/token-estimation-and-audit-v0.md`](prompt/token-estimation-and-audit-v0.md) | Open Design / Research Capture | Message、Prompt Resource、Setting、Tool Schema 与 Provider Payload 的 Token 估算、缓存、持久化和审计边界 |
 
 ### 3.7 Agent
 
@@ -194,7 +196,6 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 | [`runtime-turn-flow-v0.md`](runtime-turn-flow-v0.md) | Open Design | 玩家输入到回复落盘的完整 loop |
 | [`provider-adapter-contract-v0.md`](provider-adapter-contract-v0.md) | Open Design | Provider Adapter / Gateway contract、invoke / stream、capability、usage / error |
 | [`../platform/ai-gateway-and-provider-extension-v0.md`](../platform/ai-gateway-and-provider-extension-v0.md) | Open Design | 平台级 AI Gateway、Provider Extension、Model Profile、统一配置面板 |
-| [`m0-backend-slice-v0.md`](m0-backend-slice-v0.md) | M0 Implementation Slice | 不接 UI / 真实模型前提下的 Application Runtime 后端闭环 |
 
 ### 3.9 Transform Rule
 
@@ -242,7 +243,6 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 | 文件 | 状态 | 目的 |
 |---|---|---|
 | [`compatibility-import-v0.md`](compatibility-import-v0.md) | Migrated / Deferred | ST / CityTalent / 旧角色卡导入兼容 |
-| `transform-script-extension-v0.md` | Deferred -> Superseded by [`transform-rule-system-v0.md`](transform-rule-system-v0.md) | Regex、Card Script、扩展绑定、transform rules |
 
 ---
 
@@ -299,5 +299,5 @@ Application Layer 设计遵循方法论文档中的流程：
 
 详见：
 
-- [`../../archive/README.md`](../../archive/README.md)
+- [`docs/archive/README.md`](../../../archive/README.md)
 - [`../scenario-driven-design-v0.md`](../scenario-driven-design-v0.md)

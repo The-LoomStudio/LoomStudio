@@ -3,7 +3,7 @@
 > **Status**: Draft v0.1（第一批工程约束，2026-05-13）
 > **Purpose**: 定义 Studio MVP 中 request、RPC、Document changeset、Loom run、Trace 与 Audit 之间的 id 关系和事实记录边界。
 > **Audience**: Kernel、Transport、Extension Host、Document Store、Loom Runner、DevTool 实现者。
-> **Related**: [`../03-kernel/studio-transport-protocol-v0.md`](../03-kernel/studio-transport-protocol-v0.md), [`studio-document-store-engineering-v0.md`](studio-document-store-engineering-v0.md)
+> **Related**: [`docs/architecture/kernel/`](../../../architecture/kernel/), [`studio-document-store-engineering-v0.md`](studio-document-store-engineering-v0.md)
 
 ---
 

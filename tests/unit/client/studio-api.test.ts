@@ -127,6 +127,42 @@ describe('studio client typed api', () => {
     ])
   })
 
+  it('maps portable Extension Payload calls through the typed studio api surface', async () => {
+    const calls: Array<{ method: string; params?: ClientJsonValue }> = []
+    const api = createStudioApi(fakeBridge(calls, {}))
+    const payload = {
+      packageId: 'example.renderer',
+      fileName: 'theme.json',
+      format: 'example.theme',
+      mediaType: 'application/json',
+      schemaVersion: 1,
+      content: '{"accent":"violet"}',
+    }
+
+    await api.portableExtensionPayloads.list('example.renderer')
+    await api.portableExtensionPayloads.get('payload-1')
+    await api.portableExtensionPayloads.create({ artifactPayloadId: 'theme-default', payload })
+    await api.portableExtensionPayloads.update({ payloadId: 'payload-1', expectedVersion: 1, payload })
+    await api.portableExtensionPayloads.delete({ payloadId: 'payload-1', expectedVersion: 2 })
+    await api.portableExtensionPayloads.replaceCardBindings({
+      cardId: 'card-1',
+      expectedVersion: 3,
+      payloadIds: ['payload-1'],
+    })
+
+    expect(calls).toEqual([
+      { method: 'application.listPortableExtensionPayloads', params: { packageId: 'example.renderer' } },
+      { method: 'application.getPortableExtensionPayload', params: { payloadId: 'payload-1' } },
+      { method: 'application.createPortableExtensionPayload', params: { artifactPayloadId: 'theme-default', payload } },
+      { method: 'application.updatePortableExtensionPayload', params: { payloadId: 'payload-1', expectedVersion: 1, payload } },
+      { method: 'application.deletePortableExtensionPayload', params: { payloadId: 'payload-1', expectedVersion: 2 } },
+      {
+        method: 'application.replaceCardPortableExtensionPayloads',
+        params: { cardId: 'card-1', expectedVersion: 3, payloadIds: ['payload-1'] },
+      },
+    ])
+  })
+
   it('maps narrative and agent calls through the typed studio api surface', async () => {
     const calls: Array<{ method: string; params?: ClientJsonValue }> = []
     const api = createStudioApi(fakeBridge(calls, {}))
@@ -155,6 +191,50 @@ describe('studio client typed api', () => {
       { method: 'application.createAgentSession', params: { agentProfileId: 'profile-1' } },
       { method: 'application.invokeAgentTurn', params: { agentSessionId: 'agent-session-1', input: 'continue' } },
       { method: 'application.previewAgentTurn', params: { agentSessionId: 'agent-session-1', input: 'preview' } },
+    ])
+  })
+
+  it('maps profile-backed AI Gateway calls without exposing credentials', async () => {
+    const calls: Array<{ method: string; params?: ClientJsonValue }> = []
+    const api = createStudioApi(fakeBridge(calls, {
+      'ai.providers.list': { providers: [] },
+      'application.listAiCapabilityProfiles': { profiles: [] },
+      'application.createAiCapabilityProfile': { profile: { id: 'profile-1' } },
+      'application.updateAiCapabilityProfile': { profile: { id: 'profile-1' } },
+      'application.deleteAiCapabilityProfile': { deleted: true },
+      'ai.invoke': { profileId: 'profile-1', output: { text: 'done' } },
+    }))
+
+    await api.aiGateway.listProviders()
+    await api.aiCapabilityProfiles.list({ providerProfileId: 'provider-1' })
+    await api.aiCapabilityProfiles.create({
+      providerProfileId: 'provider-1',
+      capabilityId: 'text.generate',
+      displayName: 'Default',
+      config: { mode: 'fixed' },
+    })
+    await api.aiCapabilityProfiles.update({
+      profileId: 'profile-1',
+      config: { mode: 'echo' },
+    })
+    await api.aiCapabilityProfiles.delete('profile-1')
+    await api.aiGateway.invoke({ profileId: 'profile-1', input: { text: 'hello' } })
+
+    expect(calls).toEqual([
+      { method: 'ai.providers.list', params: {} },
+      { method: 'application.listAiCapabilityProfiles', params: { providerProfileId: 'provider-1' } },
+      {
+        method: 'application.createAiCapabilityProfile',
+        params: {
+          providerProfileId: 'provider-1',
+          capabilityId: 'text.generate',
+          displayName: 'Default',
+          config: { mode: 'fixed' },
+        },
+      },
+      { method: 'application.updateAiCapabilityProfile', params: { profileId: 'profile-1', config: { mode: 'echo' } } },
+      { method: 'application.deleteAiCapabilityProfile', params: { profileId: 'profile-1' } },
+      { method: 'ai.invoke', params: { profileId: 'profile-1', input: { text: 'hello' } } },
     ])
   })
 

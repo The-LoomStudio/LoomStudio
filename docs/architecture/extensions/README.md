@@ -110,12 +110,14 @@ Server Module 通过 `activate(ctx)` 获得当前实例绑定的 capability faca
 - RPC register/call；
 - Event define/emit/subscribe；
 - Package-owned Document get/list/write/delete；
+- Application-owned Scoped Config / Record typed storage；
+- Package-owned Card Portable Payload publish/read/update/delete/binding；
 - Media Asset publish/read 与 Instance scratch materialize；
 - `AbortSignal` 与 dispose callback。
 
 Host 不暴露 Kernel、SQL connection 或内部 Registry，也不保存插件业务状态。
 
-`ctx.rpc.call()` 只用于调用 Extension RPC。它拒绝 `system.*`、`docs.*`、`extensions.*`、`application.*` 等 Studio 保留 namespace，插件不能借通用 RPC 绕过 Host capability。Application 领域能力未来通过明确的 typed capability / RPC contract 开放，不把全部 Studio RPC 默认交给插件。
+`ctx.rpc.call()` 只用于调用 Extension RPC。它拒绝 `system.*`、`docs.*`、`extensions.*`、`application.*` 等 Studio 保留 namespace，插件不能借通用 RPC 绕过 Host capability。Application 领域能力通过明确的 typed capability 开放；当前包括 Scoped Storage 与 Portable Payload，不把全部 Studio RPC 默认交给插件。
 
 实例 Scope 的清理顺序是：停止接收新调用并 abort、等待已进入 callback、按注册反序执行 disposer、汇总清理错误。旧实例 handle 只能删除自己注册的资源，因此 reload 一个 Module 不会误删 sibling 或新实例的 RPC/Event。
 
@@ -145,7 +147,7 @@ Server Module 的 `ctx.documents` 当前执行以下默认拒绝规则：
 - `list` 必须提供已声明 type，Host 强制附加当前 Package owner filter，调用方不能伪造 owner；
 - Package 内 sibling Module 如需共享同一 Document type，必须分别声明该 type。
 
-当前没有 `documents.read:any`、跨 Package grant 或可信插件豁免。出现明确用例后应增加窄 capability，而不是开放通用 Store。Extension transaction、调用级 correlation 继承和 Application typed capability 仍是后续工作。
+当前没有 `documents.read:any`、跨 Package grant 或可信插件豁免。出现明确用例后应增加窄 capability，而不是开放通用 Store。Application-owned Config / Record 不要求插件声明 Core Document Type，而由 `ctx.storage` 强制 Package owner、Scope、optimistic version 和 typed binding；完整协议见 [`../application/extension/data-and-portable-payload.md`](../application/extension/data-and-portable-payload.md)。
 
 ### 5.2 Media Asset 权限门
 

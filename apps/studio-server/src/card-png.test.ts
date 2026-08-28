@@ -10,6 +10,14 @@ describe('Loom Card PNG', () => {
       displayName: '雾港角色',
       card: { name: '雾港角色', description: '包含中文提示词。' },
       contextAssets: [],
+      extensionPayloads: [{
+        id: 'style-v1',
+        packageId: 'example.renderer',
+        fileName: 'style.json',
+        format: 'example.style',
+        mediaType: 'application/json',
+        content: '{"主题":"雾港"}',
+      }],
     }
 
     const encoded = encodeCardPng(defaultCardPng, artifact)

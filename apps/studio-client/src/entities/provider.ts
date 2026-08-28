@@ -1,4 +1,11 @@
 import type { JsonObject } from './common.js'
+export type {
+  AiGatewayCapabilityDefinition,
+  AiGatewayFieldDefinition,
+  AiGatewayInvokeInput,
+  AiGatewayInvokeResult,
+  RegisteredAiGatewayProvider,
+} from '@loom-studio/ai-gateway'
 
 export type ProviderProfile = {
   id: string
@@ -16,6 +23,30 @@ export type ProviderProfile = {
 }
 
 export type ProviderAccount = ProviderProfile
+
+export type AiCapabilityProfile = {
+  id: string
+  version: number
+  providerProfileId: string
+  providerExtensionId: string
+  capabilityId: string
+  displayName: string
+  config: JsonObject
+  available: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export type ListAiCapabilityProfilesResult = {
+  profiles: AiCapabilityProfile[]
+  nextCursor?: string
+}
+
+export type CreateAiCapabilityProfileResult = {
+  profile: AiCapabilityProfile
+}
+
+export type UpdateAiCapabilityProfileResult = CreateAiCapabilityProfileResult
 
 export type ModelProfile = {
   id: string

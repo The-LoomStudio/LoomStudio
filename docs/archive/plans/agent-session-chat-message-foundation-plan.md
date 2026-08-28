@@ -28,7 +28,7 @@ Step:
 
 Narrative Timeline 与 Agent Session 数据上独立。Timeline 保存剧情来源、资源引用、正文树和状态；Agent Session 不内嵌 Timeline。一次 AIRP 调用可以把 `timelineId` 作为 invocation target 传入，但 `AgentRun.timelineId` 不作为通用基础字段。
 
-Narrative Timeline 的正文 Schema 已由 [`../discussion/application/narrative-timeline-content-schema-v0.md`](../discussion/application/narrative-timeline-content-schema-v0.md) 固化：Node 保存 `loom-markdown.v1` raw source；Markdown 只渲染普通 TextSegment；已注册标签由对应 Semantic Compiler 编译成 JSON-compatible Semantic Part。YAML-like KV 只是作者 string 内的排版约定，不成为系统配置格式。
+Narrative Timeline 的正文 Schema 已由 [`../discussion/application/narrative-timeline-content-schema-v0.md`](../../workbench/discussion/application/narrative-timeline-content-schema-v0.md) 固化：Node 保存 `loom-markdown.v1` raw source；Markdown 只渲染普通 TextSegment；已注册标签由对应 Semantic Compiler 编译成 JSON-compatible Semantic Part。YAML-like KV 只是作者 string 内的排版约定，不成为系统配置格式。
 
 ## 2. Chat Message Contract
 

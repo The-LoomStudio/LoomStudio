@@ -790,7 +790,7 @@ Persistent Kernel、代码反向调用 Agent Tool、文件系统和网络权限�
 
 验证检查点：形成一份最小 spike 结果和固定依赖版本；任一关键能力缺失时，明确由 Gateway adapter 补齐，不向 Application 泄漏 SDK 特例。
 
-实际结果见 [`agent-runtime-ai-sdk-phase-0-spike.md`](./agent-runtime-ai-sdk-phase-0-spike.md)。主审结论为 Go with guardrails：完整与流式调用均可取得 raw finish reason；Responses Custom replay 会随 Provider `store` 策略选择 `item_reference` 或重发调用项；Chat Completions 不支持 Custom Tool，必须在 Gateway 编译前拒绝或选择 Content Transport。
+实际结果见 [`agent-runtime-ai-sdk-phase-0-spike.md`](../../archive/plans/agent-runtime-ai-sdk-phase-0-spike.md)。主审结论为 Go with guardrails：完整与流式调用均可取得 raw finish reason；Responses Custom replay 会随 Provider `store` 策略选择 `item_reference` 或重发调用项；Chat Completions 不支持 Custom Tool，必须在 Gateway 编译前拒绝或选择 Content Transport。
 
 ### Phase 1：Platform AI Gateway 与 AI SDK 接入
 

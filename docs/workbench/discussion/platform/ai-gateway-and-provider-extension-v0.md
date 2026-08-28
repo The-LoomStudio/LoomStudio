@@ -2,7 +2,7 @@
 
 > **状态**：Open Design
 > **主题**：平台级 AI Gateway、Provider Extension、Model Profile、统一配置面板、网络收发与密钥边界。
-> **相关**：[`../08-ApplicationLayer/provider-adapter-contract-v0.md`](../08-ApplicationLayer/provider-adapter-contract-v0.md)、[`../08-ApplicationLayer/runtime-turn-flow-v0.md`](../08-ApplicationLayer/runtime-turn-flow-v0.md)、[`../08-ApplicationLayer/prompt/composition-skeleton-and-preset-v0.md`](../08-ApplicationLayer/prompt/composition-skeleton-and-preset-v0.md)、[`../adr/ADR-004-platform-auth-secrets-and-provider-credential-boundary.md`](../adr/ADR-004-platform-auth-secrets-and-provider-credential-boundary.md)、[`../05-extensions/studio-extension-manifest-architecture.md`](../05-extensions/studio-extension-manifest-architecture.md)
+> **相关**：[`provider-adapter-contract-v0.md`](../application/provider-adapter-contract-v0.md)、[`runtime-turn-flow-v0.md`](../application/runtime-turn-flow-v0.md)、[`composition-skeleton-and-preset-v0.md`](../application/prompt/composition-skeleton-and-preset-v0.md)、[`ADR-004`](../../adr/ADR-004-platform-auth-secrets-and-provider-credential-boundary.md)、[`docs/architecture/extensions/`](../../../architecture/extensions/)
 
 ---
 

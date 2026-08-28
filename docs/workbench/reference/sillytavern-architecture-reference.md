@@ -19,7 +19,7 @@ SillyTavern 目前是 LLM 角色扮演生态里提示词组装能力最自由、
 - 内部聊天消息与 provider-facing `messages[]` 并不是同一个东西；
 - 最终消息构建阶段需要统一处理 token budget。
 
-本文刻意放在 `docs/reference/` 下，因为 Official Concept Stack 设计仍然开放，需要继续讨论。
+本文保存在 `docs/workbench/reference/`，只作为历史外部参考；当前 Application 方向以 Architecture 和仍活跃的 Workbench 议题为准。
 
 ---
 
@@ -698,4 +698,3 @@ Official Concept Stack 应该保留 skeleton-and-slot 洞察，同时将它拆�
 6. M0 应该只输出 messages-like payload，还是同时输出 fragments 和 messages-like payload？
 7. M0 应该保留多少 ST-style depth injection？
 8. 群聊 actor identity 应该如何映射到 canonical message documents？
- 

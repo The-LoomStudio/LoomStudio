@@ -4,8 +4,8 @@
 - **Date**: 2026-05-13
 - **Related**:
   - [`ADR-006-extension-package-module-instance-model.md`](ADR-006-extension-package-module-instance-model.md)
-  - [`../05-extensions/studio-extension-manifest-architecture.md`](../05-extensions/studio-extension-manifest-architecture.md)
-  - [`../06-engineering/loom-studio-mvp-engineering.md`](../06-engineering/loom-studio-mvp-engineering.md)
+  - [`../05-extensions/studio-extension-manifest-architecture.md`](../../archive/discussion/extensions/studio-extension-manifest-architecture.md)
+  - [`../06-engineering/loom-studio-mvp-engineering.md`](../../archive/discussion/loom-studio-mvp-engineering.md)
   - [`ADR-001-data-layer-workspace-sync.md`](ADR-001-data-layer-workspace-sync.md)
 
 ## Context

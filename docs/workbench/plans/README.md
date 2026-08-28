@@ -9,11 +9,14 @@
 
 | 路线图 / 计划                                                                                | 当前状态     | 关注点                                                                  |
 | -------------------------------------------------------------------------------------------- | ------------ | ----------------------------------------------------------------------- |
-| [`agent-runtime-ai-sdk-foundation-plan.md`](./agent-runtime-ai-sdk-foundation-plan.md)       | Phase 4 完成 | AI SDK Gateway、canonical Tool、三类 Transport、Agent Loop 与恢复持久化 |
+| [`agent-runtime-ai-sdk-foundation-plan.md`](./agent-runtime-ai-sdk-foundation-plan.md)       | Phase 5 完成 | AI SDK Gateway、canonical Tool、三类 Transport、Agent Loop 与恢复持久化 |
 | [`ai-gateway-streaming-execution-plan.md`](./ai-gateway-streaming-execution-plan.md)         | 后端基础完成 | AI Gateway 流式执行；RPC / Client 消费延期                              |
-| [`variable-state-system-foundation-plan.md`](./variable-state-system-foundation-plan.md)    | 讨论草案     | Variable / State、Macro、模板、Artifact 携带与 SQL 权威边界             |
-| [`variable-state-system-implementation-plan.md`](./variable-state-system-implementation-plan.md) | 已实施       | State Store、Runtime/RPC、Macro、Card 初始化、回滚、Agent Tool 与最小 UI |
-| [`history-text-transform-and-rendering-plan.md`](./history-text-transform-and-rendering-plan.md) | 待实施       | History Regex、Reasoning Promotion、Text Extractor 与非消息 Renderer     |
+| [`ai-gateway-extension-capability-registry-plan.md`](./ai-gateway-extension-capability-registry-plan.md) | M0 已实施 | Extension Provider/Capability 动态注册、通用调用与 Schema 调试 UI |
+| [`variable-state-system-implementation-plan.md`](./variable-state-system-implementation-plan.md) | Closing | Phase 0—6 与自动化验收完成；仅剩人工视觉验收 |
+| [`history-text-transform-and-rendering-plan.md`](./history-text-transform-and-rendering-plan.md) | 基础闭环完成 | Phase 0—5 已实施；Archive/Summary 与第三方 Renderer 为后续增强 |
+| [`extension-data-and-portable-payload-foundation-plan.md`](./extension-data-and-portable-payload-foundation-plan.md) | Phase 1—5 完成 | Scoped Storage、Card Portable Payload；Renderer / Job / GC 待讨论 |
+| [`application-capability-cli-mcp-adapters-plan.md`](./application-capability-cli-mcp-adapters-plan.md) | 待实施提案 | Application Capability、CLI 与 MCP 适配器 |
+| [`file-backed-resource-agent-script-codeact-plan.md`](./file-backed-resource-agent-script-codeact-plan.md) | 待实施提案 | File-backed Resource、Agent Script、Sandbox 与 CodeAct |
 | [`extension-developer-experience.md`](./extension-developer-experience.md)                   | 延期规划     | Extension SDK、Host 与开发者体验路线图                                  |
 | [`extension-package-source-host-runtime-plan.md`](./extension-package-source-host-runtime-plan.md) | 延期规划     | pnpm / Package Source、Installer 与 Host Runtime 分层                    |
 | [`application-runtime-modularization-plan.md`](./application-runtime-modularization-plan.md) | 延期规划     | 待真实领域边界长期稳定后渐进拆分 Runtime 包                             |
@@ -29,8 +32,4 @@
 
 ## 历史已归档计划
 
-已落地并在主线中稳定运行的历史 Plan（共 17 篇）已移至 [`docs/archive/plans/`](../../archive/plans/)：
-
-- **Prompt 与数据层 V2**：`data-layer-v2-prompt-resource-node-store-plan.md`、`prompt-build-zone-slot-entry-composition-plan.md`、`prompt-build-message-block-implementation-plan.md`、`prompt-build-loom-core-pipeline-migration-plan.md`、`preset-agent-prompt-build-module-plan.md`、`prompt-resource-foundation-plan.md`
-- **存储底座与 Session**：`sqlite-data-engine-domain-stores-kernel-plan.md`、`local-data-blob-store-foundation-plan.md`、`provider-profile-secret-store-foundation-plan.md`、`agent-session-narrative-timeline-data-layer-plan.md`、`agent-session-chat-message-foundation-plan.md`、`card-resource-manifest-migration-plan.md`
-- **插件、事件与早期基础**：`extension-package-module-foundation-plan.md`、`server-extension-manager-mvp-plan.md`、`event-system-extension-scope-plan.md`、`document-store-kernel-data-foundation-plan.md`、`airp-resource-session-prompt-schema-plan.md`
+历史 Plan 统一位于 [`docs/archive/plans/`](../../archive/plans/)。其中包括已完成计划、被 Architecture 取代的实施稿，以及原基线已经冻结且剩余工作已拆分到当前 successor 的阶段记录。Archive 中出现的 Pending 不自动构成当前路线；当前施工只以本表为准。

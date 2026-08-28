@@ -7,12 +7,21 @@ import type {
   EventSubscriberIdentity,
   ExtensionAssetCapability,
   ExtensionActivationContext,
+  AiGatewayCapabilityRegistry,
+  AiGatewayProviderRegistration,
+  ProfiledAiGateway,
+  ExtensionConfigEntry,
   ExtensionDocumentWriteInput,
+  ExtensionEntityRef,
   ExtensionEventDefinition,
   ExtensionManifest,
   ExtensionModuleManifest,
   ExtensionMediaAsset,
+  ExtensionPortablePayload,
+  ExtensionPortablePayloadDraft,
+  ExtensionRecordEntry,
   ExtensionRpcHandler,
+  ExtensionStorageScope,
   ServerExtensionModule,
 } from '@loom-studio/extension-sdk'
 export type { ExtensionRpcHandler } from '@loom-studio/extension-sdk'
@@ -54,6 +63,7 @@ export type ExtensionModuleSummary = {
     rpc?: string[]
     documentTypes?: string[]
     events?: string[]
+    aiProviders?: string[]
   }
 }
 
@@ -108,6 +118,32 @@ export type ExtensionHostOptions = {
     get(assetId: string): Promise<ExtensionMediaAsset | undefined>
     read(assetId: string, options?: { maxBytes?: number }): Promise<Uint8Array>
   }
+  portablePayloads?: {
+    create(input: {
+      packageId: string
+      artifactPayloadId?: string
+      payload: ExtensionPortablePayloadDraft
+    }): Promise<ExtensionPortablePayload>
+    list(packageId: string): Promise<ExtensionPortablePayload[]>
+    get(payloadId: string): Promise<ExtensionPortablePayload>
+    update(input: {
+      packageId: string
+      payloadId: string
+      expectedVersion: number
+      payload: ExtensionPortablePayloadDraft
+    }): Promise<ExtensionPortablePayload>
+    delete(input: { packageId: string; payloadId: string; expectedVersion: number }): Promise<void>
+    replaceCardBindings(input: {
+      packageId: string
+      cardId: string
+      expectedVersion: number
+      payloadIds: string[]
+    }): Promise<{ cardVersion: number }>
+  }
+  aiCapabilities?: AiGatewayCapabilityRegistry
+  aiGateway?: ProfiledAiGateway
+  validateStorageScope?(scope: ExtensionStorageScope): Promise<void>
+  validateEntityRef?(ref: ExtensionEntityRef): Promise<void>
   assetScratchRoot?: string
   callRpc(method: string, params?: JsonValue, context?: ExtensionRpcContext): Promise<JsonValue>
   registerRpc(name: string, ownerPackageId: string, ownerModuleId: string, handler: ExtensionRpcHandler, ownerInstanceId: string): ExtensionRpcRegistration
@@ -158,6 +194,7 @@ type ExtensionInstance = {
   scope: ExtensionScope
   registeredRpcNames: Set<string>
   registeredEventNames: Set<string>
+  registeredAiProviderIds: Set<string>
   grantedEventCapabilities: readonly EventCapabilityCategory[]
   grantedAssetCapabilities: readonly ExtensionAssetCapability[]
 }
@@ -172,6 +209,26 @@ type ExtensionModuleRecord = {
 
 const kernelNamespaces = ['system', 'events', 'docs', 'extensions', 'diagnostics', 'loom', 'trace', 'audit']
 const studioReservedNamespaces = [...kernelNamespaces, 'application', 'logs', 'studio']
+const extensionConfigDocumentType = 'airp.extensionConfig'
+const extensionRecordDocumentType = 'airp.extensionRecord'
+const extensionStorageTokenPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
+
+type ExtensionConfigContent = {
+  scope: ExtensionStorageScope
+  key: string
+  value: JsonValue
+  createdAt: string
+  updatedAt: string
+}
+
+type ExtensionRecordContent = {
+  scope: ExtensionStorageScope
+  recordType: string
+  data: JsonValue
+  bindings: ExtensionEntityRef[]
+  createdAt: string
+  updatedAt: string
+}
 
 export function createExtensionHost(options: ExtensionHostOptions): ExtensionHost {
   const records = new Map<string, ExtensionModuleRecord>()
@@ -284,6 +341,7 @@ async function activateRecord(
     scope: createExtensionScope(instanceId),
     registeredRpcNames: new Set(),
     registeredEventNames: new Set(),
+    registeredAiProviderIds: new Set(),
     grantedEventCapabilities: [...new Set(options.grantEventCapabilities?.(record.packageManifest, record.moduleManifest) ?? [])],
     grantedAssetCapabilities: [...new Set(options.grantAssetCapabilities?.(record.packageManifest, record.moduleManifest) ?? [])],
   }
@@ -344,11 +402,12 @@ async function activateRecord(
   return toSummary(record)
 }
 
-function contributionCounts(manifest: ExtensionModuleManifest): { rpc: number; documentTypes: number; events: number } {
+function contributionCounts(manifest: ExtensionModuleManifest): { rpc: number; documentTypes: number; events: number; aiProviders: number } {
   return {
     rpc: manifest.contributes?.rpc?.length ?? 0,
     documentTypes: manifest.contributes?.documentTypes?.length ?? 0,
     events: manifest.contributes?.events?.length ?? 0,
+    aiProviders: manifest.contributes?.aiProviders?.length ?? 0,
   }
 }
 
@@ -429,11 +488,17 @@ function validateManifest(manifest: Partial<ExtensionManifest>): void {
       if (documentTypes.has(documentType.type)) throw new Error(`Manifest document type must be unique within a module: ${documentType.type}`)
       documentTypes.add(documentType.type)
     }
+    const aiProviderIds = new Set<string>()
+    for (const provider of moduleManifest.contributes?.aiProviders ?? []) {
+      if (!provider.id.startsWith(`${manifest.id}.`)) throw new Error(`Manifest AI provider must use package namespace: ${provider.id}`)
+      if (aiProviderIds.has(provider.id)) throw new Error(`Manifest AI provider must be unique within a module: ${provider.id}`)
+      aiProviderIds.add(provider.id)
+    }
     const eventCapabilities = moduleManifest.capabilities?.['events.subscribe']
     if (eventCapabilities !== undefined && (!Array.isArray(eventCapabilities) || !eventCapabilities.every(value => typeof value === 'string'))) {
       throw new Error(`Module capabilities.events.subscribe must be a string array: ${moduleManifest.id}`)
     }
-    for (const capability of ['assets.publish', 'assets.read'] as const) {
+    for (const capability of ['assets.publish', 'assets.read', 'ai.invoke'] as const) {
       const requested = moduleManifest.capabilities?.[capability]
       if (requested !== undefined && typeof requested !== 'boolean') {
         throw new Error(`Module capabilities.${capability} must be a boolean: ${moduleManifest.id}`)
@@ -594,6 +659,65 @@ function createContext(
         return registration
       },
     },
+    ai: {
+      registerProvider: registration => {
+        assertScopeActive(instance)
+        if (!options.aiCapabilities) throw new Error('AI Gateway capabilities are not available in this host')
+        const providerId = registration.provider.id
+        if (!providerId.startsWith(`${packageManifest.id}.`)) {
+          throw new Error(`Extension AI provider must use package namespace: ${providerId}`)
+        }
+        const declared = moduleManifest.contributes?.aiProviders?.some(provider => provider.id === providerId)
+        if (!declared) {
+          if (options.mode === 'production') throw new Error(`AI provider ${providerId} is not declared in manifest contributes.aiProviders`)
+          reportDiagnostic(options.diagnostics, record, instance.instanceId, {
+            severity: 'warning',
+            code: 'extension.ai_provider_not_declared',
+            message: `AI provider ${providerId} is not declared in manifest contributes.aiProviders`,
+            source: 'extension-host',
+          })
+        }
+        const wrappedHandlers = Object.fromEntries(Object.entries(registration.handlers).map(([capabilityId, handler]) => [
+          capabilityId,
+          (input: Parameters<typeof handler>[0]) => instance.scope.run(() => handler({
+            ...input,
+            signal: input.signal
+              ? AbortSignal.any([input.signal, instance.scope.signal])
+              : instance.scope.signal,
+          })),
+        ])) as AiGatewayProviderRegistration['handlers']
+        const handle = options.aiCapabilities.register({
+          provider: registration.provider,
+          handlers: wrappedHandlers,
+        }, {
+          kind: 'extension',
+          packageId: packageManifest.id,
+          moduleId: moduleManifest.id,
+          instanceId: instance.instanceId,
+        })
+        instance.scope.track(`ai-provider:${providerId}`, handle)
+        instance.registeredAiProviderIds.add(providerId)
+        return handle
+      },
+      listProviders: () => {
+        assertScopeActive(instance)
+        return options.aiCapabilities?.list() ?? []
+      },
+      invoke: input => {
+        assertScopeActive(instance)
+        if (moduleManifest.capabilities?.['ai.invoke'] !== true) {
+          throw new Error(`Extension module is not allowed to invoke AI capabilities: ${moduleKey(packageManifest.id, moduleManifest.id)}`)
+        }
+        if (!options.aiGateway) throw new Error('AI Gateway invocation is not available in this host')
+        return options.aiGateway.invoke({
+          ...input,
+          signal: input.signal
+            ? AbortSignal.any([input.signal, instance.scope.signal])
+            : instance.scope.signal,
+          caller: { kind: 'extension', id: packageManifest.id },
+        })
+      },
+    },
     documents: {
       get: async id => {
         assertScopeActive(instance)
@@ -641,6 +765,62 @@ function createContext(
         return result
       },
     },
+    portablePayloads: {
+      publish: async input => {
+        assertScopeActive(instance)
+        const portablePayloads = requirePortablePayloads(options)
+        return await portablePayloads.create({
+          packageId: packageManifest.id,
+          artifactPayloadId: input.artifactPayloadId,
+          payload: input.payload,
+        })
+      },
+      listOwn: async () => {
+        assertScopeActive(instance)
+        return await requirePortablePayloads(options).list(packageManifest.id)
+      },
+      readOwn: async payloadId => {
+        assertScopeActive(instance)
+        const payload = await requirePortablePayloads(options).get(payloadId)
+        assertPortablePayloadOwner(packageManifest.id, payload)
+        return payload
+      },
+      updateOwn: async input => {
+        assertScopeActive(instance)
+        const portablePayloads = requirePortablePayloads(options)
+        assertPortablePayloadOwner(packageManifest.id, await portablePayloads.get(input.payloadId))
+        return await portablePayloads.update({
+          packageId: packageManifest.id,
+          payloadId: input.payloadId,
+          expectedVersion: input.expectedVersion,
+          payload: input.payload,
+        })
+      },
+      deleteOwn: async input => {
+        assertScopeActive(instance)
+        const portablePayloads = requirePortablePayloads(options)
+        assertPortablePayloadOwner(packageManifest.id, await portablePayloads.get(input.payloadId))
+        await portablePayloads.delete({
+          packageId: packageManifest.id,
+          payloadId: input.payloadId,
+          expectedVersion: input.expectedVersion,
+        })
+      },
+      replaceOwnCardBindings: async input => {
+        assertScopeActive(instance)
+        const portablePayloads = requirePortablePayloads(options)
+        for (const payloadId of input.payloadIds) {
+          assertPortablePayloadOwner(packageManifest.id, await portablePayloads.get(payloadId))
+        }
+        return await portablePayloads.replaceCardBindings({
+          packageId: packageManifest.id,
+          cardId: input.cardId,
+          expectedVersion: input.expectedVersion,
+          payloadIds: input.payloadIds,
+        })
+      },
+    },
+    storage: createExtensionStorageContext(record, instance, options, extensionActor),
     assets: {
       publish: async input => {
         assertScopeActive(instance)
@@ -702,6 +882,316 @@ function createContext(
   }
 }
 
+function requirePortablePayloads(options: ExtensionHostOptions): NonNullable<ExtensionHostOptions['portablePayloads']> {
+  if (!options.portablePayloads) throw new Error('Portable Extension Payloads are not available in this host')
+  return options.portablePayloads
+}
+
+function assertPortablePayloadOwner(packageId: string, payload: ExtensionPortablePayload): void {
+  if (payload.packageId !== packageId) {
+    throw new Error(`Extension package ${packageId} cannot access Portable Payload owned by another package: ${payload.id}`)
+  }
+}
+
+function createExtensionStorageContext(
+  record: ExtensionModuleRecord,
+  instance: ExtensionInstance,
+  options: ExtensionHostOptions,
+  actor: ActorRef,
+): ExtensionActivationContext['storage'] {
+  const packageId = record.packageManifest.id
+  return {
+    configs: {
+      list: async input => {
+        assertScopeActive(instance)
+        if (input?.scope) await validateStorageScope(options, input.scope)
+        // ponytail: 首版按 package/type 分页读取后在内存中过滤 Scope；出现真实规模压力时再增加 Document 索引。
+        const documents = await listOwnedExtensionDocuments<ExtensionConfigContent>(options.documents, packageId, extensionConfigDocumentType)
+        return documents
+          .map(document => toExtensionConfigEntry(packageId, document))
+          .filter(entry => !input?.scope || sameStorageScope(entry.scope, input.scope))
+      },
+      get: async input => {
+        assertScopeActive(instance)
+        assertStorageToken(input.key, 'Extension Config key')
+        await validateStorageScope(options, input.scope)
+        const document = await options.documents.get(configDocumentId(packageId, input.scope, input.key))
+        if (!document) return null
+        assertOwnedStorageDocument(packageId, document, extensionConfigDocumentType)
+        return toExtensionConfigEntry(packageId, document as DocumentRecord<ExtensionConfigContent>)
+      },
+      upsert: async input => {
+        assertScopeActive(instance)
+        assertStorageToken(input.key, 'Extension Config key')
+        await validateStorageScope(options, input.scope)
+        const id = configDocumentId(packageId, input.scope, input.key)
+        const existing = await options.documents.get(id, { includeTombstone: true }) as DocumentRecord<ExtensionConfigContent> | null
+        if (existing) assertOwnedStorageDocument(packageId, existing, extensionConfigDocumentType)
+        if (existing && !existing.meta.tombstone && input.expectedVersion === undefined) {
+          throw new Error(`expectedVersion is required when updating Extension Config: ${input.key}`)
+        }
+        const timestamp = new Date().toISOString()
+        const result = await options.documents.write({
+          id,
+          type: extensionConfigDocumentType,
+          content: {
+            scope: cloneStorageScope(input.scope),
+            key: input.key,
+            value: structuredClone(input.value),
+            createdAt: existing?.content.createdAt ?? timestamp,
+            updatedAt: timestamp,
+          },
+          expectedVersion: existing
+            ? (existing.meta.tombstone ? existing.version : input.expectedVersion!)
+            : 'new',
+          actor,
+          reason: 'extension.storage.config.upsert',
+          meta: { ownerExtensionId: packageId },
+        })
+        return toExtensionConfigEntry(packageId, result.documents[0] as DocumentRecord<ExtensionConfigContent>)
+      },
+      delete: async input => {
+        assertScopeActive(instance)
+        assertStorageToken(input.key, 'Extension Config key')
+        await validateStorageScope(options, input.scope)
+        const id = configDocumentId(packageId, input.scope, input.key)
+        const existing = await options.documents.get(id)
+        if (!existing) throw new Error(`Extension Config not found: ${input.key}`)
+        assertOwnedStorageDocument(packageId, existing, extensionConfigDocumentType)
+        await options.documents.delete({
+          id,
+          expectedVersion: input.expectedVersion,
+          actor,
+          reason: 'extension.storage.config.delete',
+        })
+      },
+    },
+    records: {
+      list: async input => {
+        assertScopeActive(instance)
+        if (input?.scope) await validateStorageScope(options, input.scope)
+        if (input?.recordType) assertStorageToken(input.recordType, 'Extension Record type')
+        if (input?.binding) assertEntityRef(input.binding)
+        // ponytail: 首版按 package/type 分页读取后在内存中过滤 Scope、Record Type 与 Binding；真实查询量出现后再补窄索引。
+        const documents = await listOwnedExtensionDocuments<ExtensionRecordContent>(options.documents, packageId, extensionRecordDocumentType)
+        return documents
+          .map(document => toExtensionRecordEntry(packageId, document))
+          .filter(entry => (!input?.scope || sameStorageScope(entry.scope, input.scope))
+            && (!input?.recordType || entry.recordType === input.recordType)
+            && (!input?.binding || entry.bindings.some(binding => sameEntityRef(binding, input.binding!))))
+      },
+      get: async recordId => {
+        assertScopeActive(instance)
+        const document = await options.documents.get(recordId)
+        if (!document) return null
+        assertOwnedStorageDocument(packageId, document, extensionRecordDocumentType)
+        return toExtensionRecordEntry(packageId, document as DocumentRecord<ExtensionRecordContent>)
+      },
+      create: async input => {
+        assertScopeActive(instance)
+        assertStorageToken(input.recordType, 'Extension Record type')
+        await validateStorageScope(options, input.scope)
+        const bindings = await validateEntityRefs(options, input.bindings ?? [])
+        const timestamp = new Date().toISOString()
+        const result = await options.documents.write({
+          id: createId('extension-record'),
+          type: extensionRecordDocumentType,
+          content: {
+            scope: cloneStorageScope(input.scope),
+            recordType: input.recordType,
+            data: structuredClone(input.data),
+            bindings,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          },
+          expectedVersion: 'new',
+          actor,
+          reason: 'extension.storage.record.create',
+          meta: { ownerExtensionId: packageId },
+        })
+        return toExtensionRecordEntry(packageId, result.documents[0] as DocumentRecord<ExtensionRecordContent>)
+      },
+      update: async input => {
+        assertScopeActive(instance)
+        assertStorageToken(input.recordType, 'Extension Record type')
+        await validateStorageScope(options, input.scope)
+        const existing = await options.documents.get(input.recordId) as DocumentRecord<ExtensionRecordContent> | null
+        if (!existing) throw new Error(`Extension Record not found: ${input.recordId}`)
+        assertOwnedStorageDocument(packageId, existing, extensionRecordDocumentType)
+        const bindings = await validateEntityRefs(options, input.bindings ?? [])
+        const result = await options.documents.write({
+          id: input.recordId,
+          type: extensionRecordDocumentType,
+          content: {
+            scope: cloneStorageScope(input.scope),
+            recordType: input.recordType,
+            data: structuredClone(input.data),
+            bindings,
+            createdAt: existing.content.createdAt,
+            updatedAt: new Date().toISOString(),
+          },
+          expectedVersion: input.expectedVersion,
+          actor,
+          reason: 'extension.storage.record.update',
+          meta: { ownerExtensionId: packageId },
+        })
+        return toExtensionRecordEntry(packageId, result.documents[0] as DocumentRecord<ExtensionRecordContent>)
+      },
+      delete: async input => {
+        assertScopeActive(instance)
+        const existing = await options.documents.get(input.recordId)
+        if (!existing) throw new Error(`Extension Record not found: ${input.recordId}`)
+        assertOwnedStorageDocument(packageId, existing, extensionRecordDocumentType)
+        await options.documents.delete({
+          id: input.recordId,
+          expectedVersion: input.expectedVersion,
+          actor,
+          reason: 'extension.storage.record.delete',
+        })
+      },
+    },
+  }
+}
+
+async function listOwnedExtensionDocuments<T>(
+  documents: DocumentStore,
+  packageId: string,
+  type: string,
+): Promise<Array<DocumentRecord<T>>> {
+  const items: Array<DocumentRecord<T>> = []
+  let cursor: string | undefined
+  do {
+    const page = await documents.list({ type, ownerExtensionId: packageId, cursor, limit: 200 })
+    items.push(...page.items as Array<DocumentRecord<T>>)
+    cursor = page.nextCursor
+  } while (cursor)
+  return items
+}
+
+async function validateStorageScope(options: ExtensionHostOptions, scope: ExtensionStorageScope): Promise<void> {
+  assertStorageScope(scope)
+  if (scope.kind !== 'global' && !options.validateStorageScope) {
+    throw new Error(`Extension Storage Scope validation is not available for: ${scope.kind}`)
+  }
+  await options.validateStorageScope?.(cloneStorageScope(scope))
+}
+
+async function validateEntityRefs(options: ExtensionHostOptions, refs: ExtensionEntityRef[]): Promise<ExtensionEntityRef[]> {
+  if (refs.length > 0 && !options.validateEntityRef) {
+    throw new Error('Extension Entity Ref validation is not available in this host')
+  }
+  const result: ExtensionEntityRef[] = []
+  for (const ref of refs) {
+    assertEntityRef(ref)
+    await options.validateEntityRef?.(structuredClone(ref))
+    result.push(structuredClone(ref))
+  }
+  return result
+}
+
+function assertOwnedStorageDocument(packageId: string, document: DocumentRecord, type: string): void {
+  if (document.type !== type) throw new Error(`Unexpected Extension Storage document type: ${document.type}`)
+  if (document.meta.ownerExtensionId !== packageId) {
+    throw new Error(`Extension package ${packageId} cannot access storage owned by another package: ${document.id}`)
+  }
+}
+
+function configDocumentId(packageId: string, scope: ExtensionStorageScope, key: string): string {
+  return `extension-config:${encodeURIComponent(packageId)}:${encodeURIComponent(storageScopeKey(scope))}:${encodeURIComponent(key)}`
+}
+
+function storageScopeKey(scope: ExtensionStorageScope): string {
+  if (scope.kind === 'global') return 'global'
+  if (scope.kind === 'timeline') return `timeline:${scope.timelineId}`
+  return `agent-session:${scope.agentSessionId}`
+}
+
+function sameStorageScope(left: ExtensionStorageScope, right: ExtensionStorageScope): boolean {
+  return storageScopeKey(left) === storageScopeKey(right)
+}
+
+function sameEntityRef(left: ExtensionEntityRef, right: ExtensionEntityRef): boolean {
+  if (left.kind !== right.kind) return false
+  if (left.kind === 'narrative-node' && right.kind === 'narrative-node') {
+    return left.timelineId === right.timelineId && left.nodeId === right.nodeId
+  }
+  if (left.kind === 'agent-message' && right.kind === 'agent-message') {
+    return left.agentSessionId === right.agentSessionId && left.messageId === right.messageId
+  }
+  if (left.kind === 'asset' && right.kind === 'asset') return left.assetId === right.assetId
+  if (left.kind === 'state-path' && right.kind === 'state-path') {
+    return left.timelineId === right.timelineId && left.path === right.path
+  }
+  return false
+}
+
+function cloneStorageScope(scope: ExtensionStorageScope): ExtensionStorageScope {
+  return structuredClone(scope)
+}
+
+function assertStorageScope(scope: ExtensionStorageScope): void {
+  if (!scope || typeof scope !== 'object') throw new Error('Extension Storage Scope must be an object')
+  if (scope.kind === 'global') return
+  if (scope.kind === 'timeline' && typeof scope.timelineId === 'string' && scope.timelineId.length > 0) return
+  if (scope.kind === 'agent-session' && typeof scope.agentSessionId === 'string' && scope.agentSessionId.length > 0) return
+  throw new Error('Invalid Extension Storage Scope')
+}
+
+function assertEntityRef(ref: ExtensionEntityRef): void {
+  if (!ref || typeof ref !== 'object') throw new Error('Extension Entity Ref must be an object')
+  if (ref.kind === 'narrative-node' && nonEmpty(ref.timelineId) && nonEmpty(ref.nodeId)) return
+  if (ref.kind === 'agent-message' && nonEmpty(ref.agentSessionId) && nonEmpty(ref.messageId)) return
+  if (ref.kind === 'asset' && nonEmpty(ref.assetId)) return
+  if (ref.kind === 'state-path' && nonEmpty(ref.timelineId) && nonEmpty(ref.path)) return
+  throw new Error('Invalid Extension Entity Ref')
+}
+
+function assertStorageToken(value: string, label: string): void {
+  if (!extensionStorageTokenPattern.test(value)) throw new Error(`${label} must be a stable token`)
+}
+
+function nonEmpty(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0
+}
+
+function toExtensionConfigEntry(
+  packageId: string,
+  document: DocumentRecord<ExtensionConfigContent>,
+): ExtensionConfigEntry {
+  assertStorageScope(document.content.scope)
+  assertStorageToken(document.content.key, 'Extension Config key')
+  return {
+    id: document.id,
+    packageId,
+    scope: cloneStorageScope(document.content.scope),
+    key: document.content.key,
+    value: structuredClone(document.content.value),
+    version: document.version,
+    createdAt: document.content.createdAt,
+    updatedAt: document.content.updatedAt,
+  }
+}
+
+function toExtensionRecordEntry(
+  packageId: string,
+  document: DocumentRecord<ExtensionRecordContent>,
+): ExtensionRecordEntry {
+  assertStorageScope(document.content.scope)
+  assertStorageToken(document.content.recordType, 'Extension Record type')
+  for (const binding of document.content.bindings) assertEntityRef(binding)
+  return {
+    id: document.id,
+    packageId,
+    scope: cloneStorageScope(document.content.scope),
+    recordType: document.content.recordType,
+    data: structuredClone(document.content.data),
+    bindings: structuredClone(document.content.bindings),
+    version: document.version,
+    createdAt: document.content.createdAt,
+    updatedAt: document.content.updatedAt,
+  }
+}
+
 function assertDeclaredDocumentType(record: ExtensionModuleRecord, type: unknown): asserts type is string {
   if (typeof type !== 'string' || !record.moduleManifest.contributes?.documentTypes?.some(item => item.type === type)) {
     throw new Error(`Extension module ${moduleKey(record.packageManifest.id, record.moduleManifest.id)} did not declare document type: ${String(type)}`)
@@ -754,12 +1244,16 @@ function hasContributionMismatch(record: ExtensionModuleRecord, instance: Extens
   let mismatched = false
   const declaredRpcNames = new Set(manifest.contributes?.rpc?.map(rpc => rpc.name) ?? [])
   const declaredEventNames = new Set(manifest.contributes?.events?.map(event => event.name) ?? [])
+  const declaredAiProviderIds = new Set(manifest.contributes?.aiProviders?.map(provider => provider.id) ?? [])
 
   for (const name of instance.registeredRpcNames) {
     if (!declaredRpcNames.has(name)) mismatched = true
   }
   for (const name of instance.registeredEventNames) {
     if (!declaredEventNames.has(name)) mismatched = true
+  }
+  for (const providerId of instance.registeredAiProviderIds) {
+    if (!declaredAiProviderIds.has(providerId)) mismatched = true
   }
 
   for (const name of declaredRpcNames) {
@@ -780,6 +1274,17 @@ function hasContributionMismatch(record: ExtensionModuleRecord, instance: Extens
       severity: 'warning',
       code: 'extension.event_declared_but_not_registered',
       message: `Event ${name} is declared in manifest contributes.events but was not registered during activation`,
+      source: 'extension-host',
+    })
+  }
+
+  for (const providerId of declaredAiProviderIds) {
+    if (instance.registeredAiProviderIds.has(providerId)) continue
+    mismatched = true
+    reportDiagnostic(options.diagnostics, record, instance.instanceId, {
+      severity: 'warning',
+      code: 'extension.ai_provider_declared_but_not_registered',
+      message: `AI provider ${providerId} is declared in manifest contributes.aiProviders but was not registered during activation`,
       source: 'extension-host',
     })
   }
@@ -909,6 +1414,7 @@ function toSummary(record: ExtensionModuleRecord): ExtensionModuleSummary {
       rpc: record.moduleManifest.contributes?.rpc?.map(rpc => rpc.name),
       documentTypes: record.moduleManifest.contributes?.documentTypes?.map(item => item.type),
       events: record.moduleManifest.contributes?.events?.map(item => item.name),
+      aiProviders: record.moduleManifest.contributes?.aiProviders?.map(item => item.id),
     },
   }
 }

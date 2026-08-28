@@ -326,4 +326,4 @@ PromptBuild Inspector 应从原始 JSON 展示逐步演进为四层解释视图�
 - [Prompt Builder 领域文档](../../discussion/application/prompt/README.md)
 - [Prompt Builder 设计哲学](../../discussion/application/prompt/prompt-builder-philosophy-v0.md)
 - [Trace / 可解释性](../../discussion/application/trace-explainability-v0.md)
-- [Composition Pipeline](../../discussion/application/composition-pipeline-v0.md)
+- [历史 Composition Pipeline](../../../archive/discussion/application/composition-pipeline-v0.md)

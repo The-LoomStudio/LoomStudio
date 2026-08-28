@@ -29,18 +29,22 @@ pnpm build
 Loom Studio 是一个典型的 C/S 架构。你需要同时启动 Server 端和 Client 端。我们建议开启两个独立的终端窗口：
 
 **终端 A: 启动 Server**
+
 ```bash
 # 启动基于 Node 的后端服务，暴露 RPC 接口
 pnpm dev:server
 ```
-Server 会在 `localhost:8080` 或配置好的端口上启动 WebSocket 及 HTTP 监听。
+
+Server 默认监听 `127.0.0.1:4173`，可通过 `PORT` 覆盖。当前主 RPC 是建立应用会话后的 HTTP `POST /rpc`；Extension Catalog 变化通过专用 `GET /extensions/events` SSE 推送，不存在通用 WebSocket 当前合同。
 
 **终端 B: 启动 Client**
+
 ```bash
 # 启动前端 Vite 调试服务器
 pnpm dev:client
 ```
-Client 通常会启动在 `localhost:5173`。打开浏览器访问该地址即可。
+
+Client 默认监听 `127.0.0.1:5173`。打开浏览器访问该地址即可；Vite 会把 `/auth`、`/assets`、`/cards` 与 `/rpc` 代理到 Studio Server。
 
 两个开发命令都会先构建内部 packages，再持续监听它们的输出。修改 `packages/` 下的源码后无需手动重新构建；Server 还会在 package 产物变化时自动重启。
 
@@ -64,12 +68,10 @@ Loom Studio 提供多层级的测试以保证质量：
 # 运行所有活跃的测试
 pnpm test
 
-# 运行特定模块的测试（例如只跑 application-runtime）
-pnpm --filter application-runtime test
+# 运行 Application Runtime 的当前单元与集成测试
+pnpm exec vitest run tests/unit/application-runtime tests/integration/application-runtime
 ```
 
 ## 6. 项目结构初探
 
-现在你已经可以跑通项目了！在写下第一行代码前，强烈建议你阅读：
-👉 **[`project-structure.md`](project-structure.md)**
-这是整个项目的全局文件地图，让你清楚每个 package 是做什么的，以及去哪里寻找对应的代码。
+现在你已经可以跑通项目了。修改代码前先阅读 [`workspace-development.md`](workspace-development.md)，按任务进入目标 Workspace 的本地 README；需要理解全仓依赖和目录时，再查看 [`project-structure.md`](project-structure.md)。

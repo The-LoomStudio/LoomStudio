@@ -7,11 +7,11 @@
 > - [`compatibility-import-v0.md`](compatibility-import-v0.md)
 > - [`prompt/prompt-builder-philosophy-v0.md`](prompt/prompt-builder-philosophy-v0.md)
 > - [`../data/studio-data-layer-architecture.md`](../data/studio-data-layer-architecture.md)
-> - [`../studio-config-and-local-state-v0.md`](../studio-config-and-local-state-v0.md)
+> - [历史 Config / Local State 草案](../../../archive/discussion/studio-config-and-local-state-v0.md)
 >
-> **2026-07-29 更新**：本文中的 “Artifact seeds the workspace” 属于早期术语。下一阶段目标是 Artifact 创建 Card Manifest、平铺 Resources 与 Import Bundle；PromptWorkspace 不再进入 Session、PromptBuild 或 Export 权威链。实施计划见 [`../../plans/card-resource-manifest-migration-plan.md`](../../plans/card-resource-manifest-migration-plan.md)。
+> **2026-07-29 更新**：本文中的 “Artifact seeds the workspace” 属于早期术语。下一阶段目标是 Artifact 创建 Card Manifest、平铺 Resources 与 Import Bundle；PromptWorkspace 不再进入 Session、PromptBuild 或 Export 权威链。实施计划见 [`../../plans/card-resource-manifest-migration-plan.md`](../../../archive/plans/card-resource-manifest-migration-plan.md)。
 >
-> **2026-08-15 更新**：原始 Artifact 的最终物理边界已收束为内容寻址 Blob Store。原始 JSON 也按不可变字节保留；Importer 解析出的可编辑、可查询内容进入 SQLite。内部不再按 Card / Worldbook / Preset 建立运行时权威文件夹，具体实施见 [`../../plans/local-data-blob-store-foundation-plan.md`](../../plans/local-data-blob-store-foundation-plan.md)。
+> **2026-08-15 更新**：原始 Artifact 的最终物理边界已收束为内容寻址 Blob Store。原始 JSON 也按不可变字节保留；Importer 解析出的可编辑、可查询内容进入 SQLite。内部不再按 Card / Worldbook / Preset 建立运行时权威文件夹，具体实施见 [`../../plans/local-data-blob-store-foundation-plan.md`](../../../archive/plans/local-data-blob-store-foundation-plan.md)。
 
 ---
 
@@ -159,6 +159,20 @@ Transform Rule Resource:
 ```
 
 `promptResourceIds` 只表达参与 Prompt 内容组织的资源，不能顺便承担 Card 全部 Bundle inventory 或 Display Rule binding。正式关系 Schema 尚未确定，不在本文提前引入通用 Resource Binding Graph。
+
+同一分发边界也适用于 Card 作者与 Extension 作者之间的配置协作。Core 不需要理解文生图、记忆或其他插件配置 Schema；Extension 可以把允许分发的配置和初始数据序列化为 Portable Extension Payload，由 Card 作者显式绑定并随 Bundle 运输。这不建立 Card 运行时存储 Scope，也不表示 Card 强拥有 Extension 数据。
+
+```text
+Extension creates Portable Payload
+  -> Card author binds Payload
+  -> Core exports generic metadata and bytes
+  -> Importer preserves opaque Payload and Extension Requirement
+  -> installed Extension validates, migrates and applies it explicitly
+```
+
+只被 Extension 消费的画师串、模型参数和插件初始记录进入 Portable Payload；会被 Prompt、脚本、UI 和分支回滚共同消费的角色语义值进入 State Template。Secret、用户私有历史、缓存、生成任务和全部 Timeline 运行数据不得因为“与 Card 一起使用”就默认进入导出包。
+
+Core 负责 namespace、hash、大小预算、安全路径、未知 Payload 保留和再次导出；Extension 负责内容选择、私有 Schema、版本迁移与应用目标。正式讨论见 [`extension/card-extension-portable-payload-v0.md`](extension/card-extension-portable-payload-v0.md)。实现前只需定义最小 Payload / Binding 合同，不引入通用 Card-owned Extension database。
 
 ---
 

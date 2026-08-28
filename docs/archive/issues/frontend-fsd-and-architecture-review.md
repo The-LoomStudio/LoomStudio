@@ -1,5 +1,7 @@
 # 前端 FSD 架构与宏观工程结构审查报告 (Frontend FSD & Architecture Review)
 
+> **状态**：Historical Audit Snapshot / Superseded
+
 ## 审查目标
 
 全面从宏观工程结构、代码分类、文件夹与文件命名、以及 **FSD (Feature-Sliced Design) 分层架构规范** 角度排查前端工程（`apps/studio-client/`），重点审查：
@@ -42,7 +44,7 @@
 当前扫描发现 2 处违规：
 
 1. **`widgets/agent-composer` 直接引用 `widgets/chat-composer`**：
-   - [`apps/studio-client/src/widgets/agent-composer/agent-composer.tsx` L9](file:///Users/macbookair/Desktop/LoomStudio/apps/studio-client/src/widgets/agent-composer/agent-composer.tsx)
+   - [`apps/studio-client/src/widgets/agent-composer/agent-composer.tsx` L9](../../../apps/studio-client/src/widgets/agent-composer/agent-composer.tsx)
    ```ts
    import { ChatComposer } from '../chat-composer/chat-composer.js'
    ```
@@ -50,7 +52,7 @@
    - **纠偏**：将 `ChatComposer` 下沉归位至 `features/chat-composer/ui` 或公共 `shared/ui`。
 
 2. **`widgets/inspector-panel` 直接引用 `widgets/prompt-build-flow`**：
-   - [`apps/studio-client/src/widgets/inspector-panel/inspector-panel.tsx` L4](file:///Users/macbookair/Desktop/LoomStudio/apps/studio-client/src/widgets/inspector-panel/inspector-panel.tsx)
+   - [`apps/studio-client/src/widgets/inspector-panel/inspector-panel.tsx` L4](../../../apps/studio-client/src/widgets/inspector-panel/inspector-panel.tsx)
    ```ts
    import { PromptBuildFlow } from '../prompt-build-flow/prompt-build-flow.js'
    ```
@@ -61,7 +63,7 @@
 
 ### 🟡 [中] 3. 全局布局状态错置于 Page 私有模型（Misplaced Store）
 
-**文件：** [`apps/studio-client/src/pages/studio/model/studio-layout-store.ts`](file:///Users/macbookair/Desktop/LoomStudio/apps/studio-client/src/pages/studio/model/studio-layout-store.ts)
+**文件：** [`apps/studio-client/src/pages/studio/model/studio-layout-store.ts`](../../../apps/studio-client/src/pages/studio/model/studio-layout-store.ts)
 
 **现象分析：**
 - `pages/studio/model/` 内部定义了 `useStudioPanelStore`（活动面板切换）和 `useStudioLayoutStore`（左侧资源管理器宽度、Asset 详情展开、元数据弹窗等）。

@@ -1,25 +1,26 @@
 # ADR-005: Studio AIRP Layer Open Design
 
-> **Status**: Incomplete / Open Design; historical content split to `docs/08-concept-stack/`
+> **Status**: Historical / Superseded
 > **Date**: 2026-05-17
-> **Decision scope**: Studio AIRP Layer domain model, prompt composition model, frontend integration, and runtime boundary after MVP Stage 0-5
+> **Decision scope**: 2026-05 Studio AIRP Layer 开放设计与术语迁移历史
 > **Owner**: Loom Studio architecture discussion
+> **Current authority**: [`docs/architecture/application/`](../../architecture/application/) 记录已实现事实；[`discussion/application/`](../discussion/application/) 只保留尚未晋升的开放问题。
 > **Related**:
 > - [`ADR-004-platform-auth-secrets-and-provider-credential-boundary.md`](ADR-004-platform-auth-secrets-and-provider-credential-boundary.md)
-> - [`../00-overview/loom-studio-architecture.md`](../00-overview/loom-studio-architecture.md)
-> - [`../03-kernel/studio-kernel-public-surface-v0.md`](../03-kernel/studio-kernel-public-surface-v0.md)
-> - [`../05-extensions/studio-extension-lifecycle-v0.md`](../05-extensions/studio-extension-lifecycle-v0.md)
-> - [`../06-engineering/studio-mvp-development-plan.md`](../06-engineering/studio-mvp-development-plan.md)
-> - [`../08-concept-stack/README.md`](../08-concept-stack/README.md)
+> - [`docs/architecture/README.md`](../../architecture/README.md)
+> - [`../03-kernel/studio-kernel-public-surface-v0.md`](../discussion/kernel/studio-kernel-public-surface-v0.md)
+> - [`../05-extensions/studio-extension-lifecycle-v0.md`](../../archive/discussion/extensions/studio-extension-lifecycle-v0.md)
+> - [`../06-engineering/studio-mvp-development-plan.md`](../../archive/discussion/studio-mvp-development-plan.md)
+> - [`discussion/application/README.md`](../discussion/application/README.md)
 
 ---
 
 ## 0. Status
 
-本 ADR 仍是 Studio AIRP Layer 的主入口和决策追踪文档，但原本堆积在这里的详细开放设计内容已经分类迁移到历史目录：
+本 ADR 已冻结为历史决策追踪，不再是 Studio Application 的当前入口。原本堆积在这里的详细开放设计后来迁入 Workbench Application 目录，其中已实现部分继续晋升到正式 Architecture：
 
 ```text
-docs/08-concept-stack/
+docs/workbench/discussion/application/
 ```
 
 这样做是为了避免 ADR-005 继续膨胀，并为后续大议题保留独立讨论空间。
@@ -28,13 +29,13 @@ docs/08-concept-stack/
 
 ```text
 ADR-005:
-  保留索引、状态、链接、总体决策追踪。
+  冻结历史术语、决策顺序与方向修正。
 
-08-concept-stack/:
-  原封不动承载已迁移的专题内容，后续在专题文档中继续细化。
+Architecture / Workbench Application:
+  分别承载当前事实与仍未晋升的开放问题。
 ```
 
-在 `Status` 变为 `Accepted` 前，`08-concept-stack/` 内的候选 TypeScript 草案和模型描述仍不是 accepted API。
+本文中的候选 TypeScript 草案和模型描述均不是当前 accepted API。
 
 ### 0.1 2026-05-20 方向修正
 
@@ -92,45 +93,45 @@ Settings:
 
 | 文件 | 内容 |
 |---|---|
-| [`../08-concept-stack/README.md`](../08-concept-stack/README.md) | Studio AIRP Layer 历史文档区索引 |
-| [`../08-concept-stack/concept-stack-overview-v0.md`](../08-concept-stack/concept-stack-overview-v0.md) | 原 ADR-005 §0~§5：状态说明、Context、Problem、Non-goals、High-level Boundary、Open Discussion Layers |
-| [`../08-concept-stack/discussion-order-v0.md`](../08-concept-stack/discussion-order-v0.md) | 原 ADR-005 §17、§19、§21：讨论顺序、未决事项、实施前置条件 |
+| [`discussion/application/README.md`](../discussion/application/README.md) | Studio Application 当前开放设计索引 |
+| [`discussion/application/0-overview-v0.md`](../discussion/application/0-overview-v0.md) | 原 ADR-005 §0~§5：状态说明、Context、Problem、Non-goals、High-level Boundary、Open Discussion Layers |
+| [`../08-concept-stack/discussion-order-v0.md`](../discussion/application/discussion-order-v0.md) | 原 ADR-005 §17、§19、§21：讨论顺序、未决事项、实施前置条件 |
 
 ### 1.2 Card 与内容单元
 
 | 文件 | 内容 |
 |---|---|
-| [`../08-concept-stack/card-model-v0.md`](../08-concept-stack/card-model-v0.md) | 原 ADR-005 CS-0 中 Card、metadata、Character 字段、Example Dialogues、Group Chat、硬编码类层级、Import 延后等内容 |
+| [`../08-concept-stack/card-model-v0.md`](../discussion/application/card-model-v0.md) | 原 ADR-005 CS-0 中 Card、metadata、Character 字段、Example Dialogues、Group Chat、硬编码类层级、Import 延后等内容 |
 
 ### 1.3 Chat 与 Opening
 
 | 文件 | 内容 |
 |---|---|
-| [`../08-concept-stack/chat-opening-model-v0.md`](../08-concept-stack/chat-opening-model-v0.md) | 原 ADR-005 Opening 方向与 CS-1 Chat / Opening Model |
+| [`../08-concept-stack/chat-opening-model-v0.md`](../discussion/application/chat-opening-model-v0.md) | 原 ADR-005 Opening 方向与 CS-1 Chat / Opening Model |
 
 ### 1.4 Composition Skeleton
 
 | 文件 | 内容 |
 |---|---|
-| [`../08-concept-stack/composition-skeleton-v0.md`](../08-concept-stack/composition-skeleton-v0.md) | 原 ADR-005 Preset / Composition Skeleton 方向与 CS-2 |
+| [`../08-concept-stack/composition-skeleton-v0.md`](../discussion/application/composition-skeleton-v0.md) | 原 ADR-005 Preset / Composition Skeleton 方向与 CS-2 |
 
 ### 1.5 Unified Setting Layer / Global / State
 
 | 文件 | 内容 |
 |---|---|
-| [`../08-concept-stack/setting-layer-v0.md`](../08-concept-stack/setting-layer-v0.md) | 原 ADR-005 统一设定层方向与 CS-3 |
-| [`../08-concept-stack/global-scope-v0.md`](../08-concept-stack/global-scope-v0.md) | 原 ADR-005 CS-4 Global Scope |
-| [`../08-concept-stack/state-mutation-api-v0.md`](../08-concept-stack/state-mutation-api-v0.md) | 原 ADR-005 CS-5 State / Mutation API |
+| [`../08-concept-stack/setting-layer-v0.md`](../discussion/application/setting-layer-v0.md) | 原 ADR-005 统一设定层方向与 CS-3 |
+| [`../08-concept-stack/global-scope-v0.md`](../discussion/application/global-scope-v0.md) | 原 ADR-005 CS-4 Global Scope |
+| [`../08-concept-stack/state-mutation-api-v0.md`](../discussion/application/state-mutation-api-v0.md) | 原 ADR-005 CS-5 State / Mutation API |
 
 ### 1.6 Composition / Runtime / Frontend / Compatibility / Trace
 
 | 文件 | 内容 |
 |---|---|
-| [`../08-concept-stack/composition-pipeline-v0.md`](../08-concept-stack/composition-pipeline-v0.md) | 原 ADR-005 CS-6 与 M0 Candidate Scope |
-| [`../08-concept-stack/runtime-boundary-v0.md`](../08-concept-stack/runtime-boundary-v0.md) | 原 ADR-005 CS-7 Runtime Boundary |
-| [`../08-concept-stack/frontend-projection-v0.md`](../08-concept-stack/frontend-projection-v0.md) | 原 ADR-005 CS-8 Frontend Projection |
-| [`../08-concept-stack/compatibility-import-v0.md`](../08-concept-stack/compatibility-import-v0.md) | 原 ADR-005 CS-9 Import / Compatibility |
-| [`../08-concept-stack/trace-explainability-v0.md`](../08-concept-stack/trace-explainability-v0.md) | 原 ADR-005 CS-10 Trace / Explainability |
+| [`../08-concept-stack/composition-pipeline-v0.md`](../../archive/discussion/application/composition-pipeline-v0.md) | 原 ADR-005 CS-6 与 M0 Candidate Scope |
+| [`../08-concept-stack/runtime-boundary-v0.md`](../discussion/application/runtime-boundary-v0.md) | 原 ADR-005 CS-7 Runtime Boundary |
+| [`../08-concept-stack/frontend-projection-v0.md`](../discussion/application/frontend-projection-v0.md) | 原 ADR-005 CS-8 Frontend Projection |
+| [`../08-concept-stack/compatibility-import-v0.md`](../discussion/application/compatibility-import-v0.md) | 原 ADR-005 CS-9 Import / Compatibility |
+| [`../08-concept-stack/trace-explainability-v0.md`](../discussion/application/trace-explainability-v0.md) | 原 ADR-005 CS-10 Trace / Explainability |
 
 ---
 
@@ -153,9 +154,9 @@ Settings:
 
 ---
 
-## 3. Next Discussion Focus
+## 3. Historical Next Discussion Focus
 
-当前建议下一步优先讨论：
+以下内容只记录 2026-05 当时建议的下一步，不再构成当前路线：
 
 ```text
 Unified Setting Layer
@@ -164,7 +165,7 @@ Unified Setting Layer
 入口文档：
 
 ```text
-docs/08-concept-stack/setting-layer-v0.md
+docs/workbench/discussion/application/setting-layer-v0.md
 ```
 
 原因：
@@ -177,9 +178,9 @@ docs/08-concept-stack/setting-layer-v0.md
 
 ## 4. Decision Status
 
-Current status: **Incomplete / Open Design**.
+Current status: **Historical / Superseded**.
 
-No implementation should treat the migrated candidate sketches as accepted API.
+No implementation should treat these historical candidate sketches as accepted API.
 
 Before implementation, at minimum the project should accept or revise:
 

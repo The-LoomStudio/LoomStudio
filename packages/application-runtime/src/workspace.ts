@@ -62,7 +62,28 @@ export type CardBundleArtifact = {
     label?: string
   }>
   timelineStateBindings?: TimelineStateBinding[]
+  extensionPayloads?: PortableExtensionPayloadArtifact[]
   metadata?: JsonObject
+}
+
+export type PortableExtensionPayloadArtifact = {
+  id: string
+  packageId: string
+  fileName: string
+  format: string
+  mediaType: string
+  schemaVersion?: number
+  requirement?: {
+    versionRange?: string
+  }
+  metadata?: JsonObject
+  content: string
+}
+
+export type PortableExtensionPayloadContent = Omit<PortableExtensionPayloadArtifact, 'id'> & {
+  artifactPayloadId: string
+  createdAt: string
+  updatedAt: string
 }
 
 export type PromptResourceKind = 'preset' | 'setting' | 'logic' | 'runtime' | 'history' | 'prompt'
@@ -199,7 +220,8 @@ export async function importCardBundle(input: {
 
   const documentParticipant = requireSqliteDocumentParticipant(input.documents)
   const transaction = await input.dataEngine.transact({
-    actor: input.context?.clientId ? { kind: 'client', id: input.context.clientId } : applicationActor,
+    actor: input.context?.actor
+      ?? (input.context?.clientId ? { kind: 'client', id: input.context.clientId } : applicationActor),
     reason: 'application.importCardBundle',
     correlationId: input.context?.correlationId,
     callId: input.context?.callId,
@@ -217,6 +239,22 @@ export async function importCardBundle(input: {
         rootNode: node,
       }))
       const resourceIds = storedResources.map(resource => resource.id)
+      const portablePayloadDocuments: DocumentRecord<PortableExtensionPayloadContent>[] = []
+      for (const payload of artifact.extensionPayloads ?? []) {
+        const { id: artifactPayloadId, ...portablePayload } = payload
+        portablePayloadDocuments.push(await writeDocument<PortableExtensionPayloadContent>(tx, {
+          id: createId('portable-payload'),
+          type: applicationDocumentTypes.portableExtensionPayload,
+          content: {
+            ...structuredClone(portablePayload),
+            artifactPayloadId,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          },
+          expectedVersion: 'new',
+        }))
+      }
+      const portableExtensionPayloadIds = portablePayloadDocuments.map(document => document.id)
       const stateDefinitionIds: string[] = []
       for (const template of artifact.stateTemplates ?? []) {
         const definition = {
@@ -261,6 +299,7 @@ export async function importCardBundle(input: {
           description: artifact.card.description,
           media: artifact.card.media,
           importBundleId,
+          portableExtensionPayloadIds,
           promptResourceIds: resourceIds,
           stateDefinitionIds,
           timelineStateBindings: structuredClone(artifact.timelineStateBindings ?? []),
@@ -284,7 +323,7 @@ export async function importCardBundle(input: {
         type: applicationDocumentTypes.importBundle,
         content: {
           cardId: card.id,
-          documentIds: [card.id, importBundleId, ...stateDefinitionIds],
+          documentIds: [card.id, importBundleId, ...stateDefinitionIds, ...portableExtensionPayloadIds],
           promptResourceIds: resourceIds,
           assetIds: readCardAssetIds(artifact.card.media),
           sourceArtifact: artifact,
@@ -347,14 +386,23 @@ export async function exportCardArtifact(input: {
       ...(definition.content.label !== undefined ? { label: definition.content.label } : {}),
     }
   }))
+  const extensionPayloads = await Promise.all((card.content.portableExtensionPayloadIds ?? []).map(async payloadId => {
+    const payload = await readDocument<PortableExtensionPayloadContent>(
+      input.documents,
+      payloadId,
+      applicationDocumentTypes.portableExtensionPayload,
+    )
+    return toPortableExtensionPayloadArtifact(payload.content)
+  }))
 
-  return buildExportArtifact({ card, contextAssets, stateTemplates, importBundle })
+  return buildExportArtifact({ card, contextAssets, stateTemplates, extensionPayloads, importBundle })
 }
 
 function buildExportArtifact(input: {
   card: DocumentRecord<CardSourceContent>
   contextAssets: PromptResourceNode[]
   stateTemplates: NonNullable<CardBundleArtifact['stateTemplates']>
+  extensionPayloads: PortableExtensionPayloadArtifact[]
   importBundle?: DocumentRecord<ImportBundleContent>
 }): CardBundleArtifact {
   const cardContent = input.card.content
@@ -383,6 +431,7 @@ function buildExportArtifact(input: {
     contextAssets: input.contextAssets,
     stateTemplates: input.stateTemplates,
     timelineStateBindings: structuredClone(cardContent.timelineStateBindings ?? []),
+    extensionPayloads: input.extensionPayloads.map(payload => structuredClone(payload)),
     metadata: {
       ...(sourceArtifact?.metadata ?? {}),
       ...(sourceArtifactRef ? { sourceArtifactRef } : {}),
@@ -531,7 +580,22 @@ export function normalizeCardBundleArtifact(artifact: CardBundleArtifact): CardB
     description: artifact.description,
     card: artifact.card,
     contextAssets: artifact.contextAssets ?? [],
+    extensionPayloads: structuredClone(artifact.extensionPayloads ?? []),
     metadata: artifact.metadata ?? {},
+  }
+}
+
+function toPortableExtensionPayloadArtifact(content: PortableExtensionPayloadContent): PortableExtensionPayloadArtifact {
+  return {
+    id: content.artifactPayloadId,
+    packageId: content.packageId,
+    fileName: content.fileName,
+    format: content.format,
+    mediaType: content.mediaType,
+    ...(content.schemaVersion !== undefined ? { schemaVersion: content.schemaVersion } : {}),
+    ...(content.requirement !== undefined ? { requirement: structuredClone(content.requirement) } : {}),
+    ...(content.metadata !== undefined ? { metadata: structuredClone(content.metadata) } : {}),
+    content: content.content,
   }
 }
 
@@ -740,7 +804,83 @@ function assertCardBundleArtifact(value: unknown): asserts value is CardBundleAr
     if (!Array.isArray(value.timelineStateBindings)) throw new Error('Card bundle timelineStateBindings must be an array')
     for (const binding of value.timelineStateBindings) validateTimelineStateBinding(binding as TimelineStateBinding)
   }
+  assertPortableExtensionPayloads(value.extensionPayloads)
   if (value.metadata !== undefined && !isObject(value.metadata)) throw new Error('Card bundle metadata must be an object')
+}
+
+const portablePayloadTokenPattern = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+const portablePayloadFileNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
+const maxPortablePayloadCount = 64
+const maxPortablePayloadBytes = 1024 * 1024
+const maxPortablePayloadTotalBytes = 8 * 1024 * 1024
+
+function assertPortableExtensionPayloads(value: unknown): void {
+  if (value === undefined) return
+  if (!Array.isArray(value)) throw new Error('Card bundle extensionPayloads must be an array')
+  if (value.length > maxPortablePayloadCount) {
+    throw new Error(`Card bundle extensionPayloads exceed ${maxPortablePayloadCount} entries`)
+  }
+
+  const ids = new Set<string>()
+  let totalBytes = 0
+  for (const [index, payload] of value.entries()) {
+    if (!isObject(payload)) throw new Error(`Card bundle Extension Payload must be an object: ${index}`)
+    assertPortablePayloadToken(payload.id, `Card bundle Extension Payload id: ${index}`)
+    if (ids.has(payload.id)) throw new Error(`Duplicate Extension Payload id: ${payload.id}`)
+    ids.add(payload.id)
+    assertPortablePayloadToken(payload.packageId, `Card bundle Extension Payload packageId: ${index}`)
+    if (typeof payload.fileName !== 'string' || !portablePayloadFileNamePattern.test(payload.fileName)) {
+      throw new Error(`Card bundle Extension Payload fileName is invalid: ${index}`)
+    }
+    assertBoundedNonEmptyString(payload.format, `Card bundle Extension Payload format: ${index}`, 128)
+    assertBoundedNonEmptyString(payload.mediaType, `Card bundle Extension Payload mediaType: ${index}`, 255)
+    if (payload.schemaVersion !== undefined
+      && (typeof payload.schemaVersion !== 'number'
+        || !Number.isSafeInteger(payload.schemaVersion)
+        || payload.schemaVersion < 1)) {
+      throw new Error(`Card bundle Extension Payload schemaVersion is invalid: ${index}`)
+    }
+    if (payload.requirement !== undefined) {
+      if (!isObject(payload.requirement)) throw new Error(`Card bundle Extension Payload requirement is invalid: ${index}`)
+      if (payload.requirement.versionRange !== undefined) {
+        assertBoundedNonEmptyString(
+          payload.requirement.versionRange,
+          `Card bundle Extension Payload requirement.versionRange: ${index}`,
+          128,
+        )
+      }
+    }
+    if (payload.metadata !== undefined && !isObject(payload.metadata)) {
+      throw new Error(`Card bundle Extension Payload metadata is invalid: ${index}`)
+    }
+    if (typeof payload.content !== 'string') throw new Error(`Card bundle Extension Payload content must be a string: ${index}`)
+    // ponytail: 首版只运输 UTF-8 JSON/text；需要任意二进制时改为 Blob-backed Payload，不引入 Base64。
+    const contentBytes = new TextEncoder().encode(payload.content).byteLength
+    if (contentBytes > maxPortablePayloadBytes) {
+      throw new Error(`Card bundle Extension Payload exceeds ${maxPortablePayloadBytes} bytes: ${payload.id}`)
+    }
+    totalBytes += contentBytes
+    if (totalBytes > maxPortablePayloadTotalBytes) {
+      throw new Error(`Card bundle Extension Payloads exceed ${maxPortablePayloadTotalBytes} total bytes`)
+    }
+  }
+}
+
+export function normalizePortableExtensionPayloadArtifact(
+  payload: PortableExtensionPayloadArtifact,
+): PortableExtensionPayloadArtifact {
+  assertPortableExtensionPayloads([payload])
+  return structuredClone(payload)
+}
+
+function assertPortablePayloadToken(value: unknown, label: string): asserts value is string {
+  if (typeof value !== 'string' || !portablePayloadTokenPattern.test(value)) throw new Error(`${label} is invalid`)
+}
+
+function assertBoundedNonEmptyString(value: unknown, label: string, maxLength: number): asserts value is string {
+  if (typeof value !== 'string' || value.trim().length === 0 || value.length > maxLength) {
+    throw new Error(`${label} must be a non-empty string no longer than ${maxLength} characters`)
+  }
 }
 
 function sameTimelineTemplate(value: JsonValue, definition: Extract<StateDefinitionDraft, { kind: 'timeline-template' }>): boolean {

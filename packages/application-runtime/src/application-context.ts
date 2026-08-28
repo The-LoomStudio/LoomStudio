@@ -24,6 +24,7 @@ export type ApplicationRuntimeContext = {
   secrets: ApplicationRuntimeOptions['secrets']
   gateway: AiGateway
   providerAdapters: ProviderAdapterRegistry
+  aiCapabilities: ApplicationRuntimeOptions['aiCapabilities']
   agentTools: AgentToolRegistry
   now(): string
   createId(prefix: string): string
@@ -32,7 +33,9 @@ export type ApplicationRuntimeContext = {
 export function createApplicationRuntimeContext(options: ApplicationRuntimeOptions): ApplicationRuntimeContext {
   if (!options.promptResources) throw new Error('Prompt Resource Store is required')
   if (!options.dataEngine) throw new Error('Shared Data Engine is required')
-  const providerAdapters = options.providerAdapters ?? createOfficialProviderAdapterRegistry()
+  const providerAdapters = options.providerAdapters ?? createOfficialProviderAdapterRegistry({
+    aiCapabilities: options.aiCapabilities,
+  })
   const agentTools = options.agentTools ?? createAgentToolRegistry([])
   const runtimeNow = () => nowIso(options.clock)
   const runtimeCreateId = (prefix: string) => createSharedId(prefix)
@@ -52,6 +55,7 @@ export function createApplicationRuntimeContext(options: ApplicationRuntimeOptio
     mediaAssets: options.mediaAssets,
     secrets: options.secrets,
     providerAdapters,
+    aiCapabilities: options.aiCapabilities,
     agentTools,
     gateway: options.gateway ?? (options.provider ? providerToGateway(options.provider) : createDocumentBackedAiGateway({
       documents: options.documents,

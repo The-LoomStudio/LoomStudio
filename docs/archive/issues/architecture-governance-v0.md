@@ -1,6 +1,7 @@
 # 架构债务清单 v0
 
-> **状态**：Open Issues
+> **状态**：Historical Audit Snapshot / Superseded
+> **当前入口**：架构规则见 [`docs/guide/architecture-rules.md`](../../guide/architecture-rules.md)，当前缺陷见 [`full-repo-code-review-2026-08-27.md`](../../workbench/issues/full-repo-code-review-2026-08-27.md)。
 > **最后核对**：2026-07-23
 > **适用范围**：packages、Studio Server 与公开平台能力
 

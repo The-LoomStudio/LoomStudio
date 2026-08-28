@@ -30,7 +30,9 @@ Text Pipeline 对它分类、匹配和替换，
 Prompt / Display / Extractor / Extension 消费冻结后的阶段产物。
 ```
 
-## 2. 当前实现事实
+## 2. 实施前基线（历史）
+
+以下内容记录本计划开始前的缺口，不是 2026-08-26 完成 Phase 0—5 后的当前事实；当前实现以文首“实施事实”和正式 Architecture 为准。
 
 - `AgentTranscriptEntryData.message` 当前只有 `role + content: string`，没有 canonical Reasoning Entry；
 - Agent Tool Loop 已实现 Content Tool Scanner：从 Assistant Content 分离普通文本与 `<loom_tool>`，再持久化 `message` 与 `tool-invocation`；

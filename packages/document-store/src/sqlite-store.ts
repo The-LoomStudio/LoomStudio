@@ -262,6 +262,7 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
   async function participateTransaction<T>(
     dataTx: import('@loom-studio/data-engine').SqliteDataTransaction,
     fn: (tx: DocumentTransaction) => Promise<T>,
+    options?: { allowEmpty?: boolean },
   ): Promise<{ value: T; changeset: Changeset }> {
     const pending = createPendingChangeset({
       actor: dataTx.actor,
@@ -274,7 +275,18 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
       createdAt: dataTx.createdAt,
     })
     const value = await fn(createTransaction(pending))
-    const changeset = finalizeChangeset(pending)
+    const changeset: Changeset = pending.changes.size === 0 && options?.allowEmpty
+      ? {
+          id: pending.id,
+          createdAt: pending.createdAt,
+          createdBy: pending.createdBy,
+          reason: pending.reason,
+          correlationId: pending.correlationId,
+          callId: pending.callId,
+          parentCallId: pending.parentCallId,
+          operations: [],
+        }
+      : finalizeChangeset(pending)
     dataTx.recordOperations(changeset.operations.map(documentOperationToDataOperation))
     return { value, changeset }
   }

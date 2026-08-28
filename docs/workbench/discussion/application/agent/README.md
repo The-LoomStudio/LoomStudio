@@ -91,6 +91,7 @@ Kernel 不认识这些领域语义。Provider Adapter 只消费编译后的 payl
 | [`tool-capability-v0.md`](tool-capability-v0.md) | Open Design | Tool、ToolCall / ToolResult、受控 Mutation |
 | [`multi-agent-orchestration-v0.md`](multi-agent-orchestration-v0.md) | Open Design | Agent Preset 之间的调用与编排 |
 | [`retrieval-search-v0.md`](retrieval-search-v0.md) | Open Design | Agent 主动搜索与 Context Source |
+| [`tool-data-view-interaction-v0.md`](tool-data-view-interaction-v0.md) | Open Design | Agent Tool 面向模型的数据视图、检索、读取与写入交互边界 |
 | [`permission-consent-v0.md`](permission-consent-v0.md) | Open Design | Agent 权限、确认和安全边界 |
 
 ---

@@ -1,6 +1,8 @@
 # Studio Client 前端审计台账 v0
 
-> 当前用途：只保留尚未实施的确认项、延期边界和实施顺序。第一阶段的逐轮扫描、批次 1–8 实施过程与详细验收记录已完成，不再保留在当前 Issue 正文；需要时由 Git 历史追溯。
+> **状态**：Historical Audit Snapshot / Superseded
+>
+> **当前入口**：本文保留旧前端分支的确认项与实施历史，不再作为当前待办；当前问题以 [`full-repo-code-review-2026-08-27.md`](../../workbench/issues/full-repo-code-review-2026-08-27.md) 和相关活跃 Plan 为准。
 
 ## 当前边界
 

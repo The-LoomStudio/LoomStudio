@@ -11,7 +11,7 @@
 
 在你准备修改任何一行代码前，为了避免打破系统的分层架构，你必须了解项目的目录结构和各个 package 的职责划分。
 👉 **[第二步: 仔细阅读《项目全量文件地图》](project-structure.md)**
-你也可以参考 [Package 依赖图](../reference/dependency-graph.md)。
+你也可以参考 [Package 依赖图](../workbench/reference/dependency-graph.md)。
 
 ## 3. 认领任务与设计
 

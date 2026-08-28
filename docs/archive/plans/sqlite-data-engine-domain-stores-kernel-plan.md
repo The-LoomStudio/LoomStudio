@@ -12,9 +12,9 @@
 - [`document-store-kernel-data-foundation-plan.md`](document-store-kernel-data-foundation-plan.md)
 - [`agent-session-narrative-timeline-data-layer-plan.md`](agent-session-narrative-timeline-data-layer-plan.md)
 - [`local-data-blob-store-foundation-plan.md`](local-data-blob-store-foundation-plan.md)
-- [`../discussion/data/studio-data-layer-architecture.md`](../discussion/data/studio-data-layer-architecture.md)
-- [`../discussion/data/studio-document-store-engineering-v0.md`](../discussion/data/studio-document-store-engineering-v0.md)
-- [`../discussion/kernel/studio-kernel-public-surface-v0.md`](../discussion/kernel/studio-kernel-public-surface-v0.md)
+- [`../discussion/data/studio-data-layer-architecture.md`](../../workbench/discussion/data/studio-data-layer-architecture.md)
+- [`../discussion/data/studio-document-store-engineering-v0.md`](../../workbench/discussion/data/studio-document-store-engineering-v0.md)
+- [`../discussion/kernel/studio-kernel-public-surface-v0.md`](../../workbench/discussion/kernel/studio-kernel-public-surface-v0.md)
 
 ---
 

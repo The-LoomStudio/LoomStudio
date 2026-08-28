@@ -3,7 +3,7 @@
 > **状态**：Planned / Deferred
 > **日期**：2026-08-05
 > **边界**：本文规划 Provider Account 连接探测。当前阶段只实现配置完整性提示，不实现 RPC、轮询或后台健康状态。
-> **迁移说明**：Provider Account / Model Profile 术语与持久化模型已由 [`../provider-profile-secret-store-foundation-plan.md`](../provider-profile-secret-store-foundation-plan.md) 重定向。后续实现应使用 Provider Profile 与 `providerProfileId + modelId`，本文只继续保留按需健康探测策略。
+> **迁移说明**：Provider Account / Model Profile 术语与持久化模型已由 [`../provider-profile-secret-store-foundation-plan.md`](../../../archive/plans/provider-profile-secret-store-foundation-plan.md) 重定向。后续实现应使用 Provider Profile 与 `providerProfileId + modelId`，本文只继续保留按需健康探测策略。
 
 ## 目标
 

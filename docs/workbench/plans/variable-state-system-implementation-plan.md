@@ -1,8 +1,8 @@
 # Variable / State System 具体实施计划
 
-> **状态**：已实施；Phase 0 → Phase 6 主链与自动化验收已完成，人工视觉验收待执行
+> **状态**：Closing；Phase 0 → Phase 6 主链与自动化验收已完成，仅剩人工视觉验收
 > **日期**：2026-08-25
-> **设计来源**：[`variable-state-system-foundation-plan.md`](./variable-state-system-foundation-plan.md)
+> **设计来源**：[`variable-state-system-foundation-plan.md`](../../archive/plans/variable-state-system-foundation-plan.md)
 > **目标**：在不引入复杂变量 DSL、模板继承或第二套 Prompt 系统的前提下，打通 State SQL 权威、Application API、Prompt Macro、Card 初始化、Narrative 回滚、Agent Tool 与最小 UI。
 > **事实边界**：本文保留实施路线与原始验收标准；“实施前基线”是历史记录，其余已落地能力以当前 Architecture 文档和代码为准。
 

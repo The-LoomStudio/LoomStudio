@@ -19,7 +19,7 @@ Architecture
 3. 文档不包含 `Draft`、`Open Design` 或未落地的未来承诺；
 4. 文档与当前 package public API、依赖方向和运行时行为一致。
 
-原 Discussion 文档不会因晋升而删除。它继续保留设计过程，但不能覆盖本目录中的当前事实。
+原 Discussion 中仍有独立开放问题的部分可以保留并标记 `Partially Promoted`；已被完整取代的正文进入 `docs/archive/`，不能继续占据活跃入口。
 
 ## 分类
 
@@ -32,13 +32,8 @@ Architecture
 | [`application/`](application/) | Studio 第一方 AIRP 领域层，包括 PromptBuild、Agent、Runtime 和默认体验 | [`workbench/discussion/application/`](../workbench/discussion/application/) |
 | [`ui/`](ui/) | Studio Shell、通用界面容器和全局 UI 原语 | [`workbench/discussion/ui/`](../workbench/discussion/ui/) |
 
-## 当前已晋升内容
+## 权威入口
 
-- [`kernel/README.md`](kernel/README.md) — Studio Kernel 当前架构；
-- [`extensions/README.md`](extensions/README.md) — Extension Package/Module/Instance、Server Host、Manifest 与 Event capability 当前架构；
-- [`data/local-storage-and-assets.md`](data/local-storage-and-assets.md) — OS-native 本地路径、SQLite / Blob / Source Artifact / Media Asset 与 Package 安装边界；
-- [`platform/logging.md`](platform/logging.md) — Server/Client 统一结构化运行日志、Sink、JSONL、查询与 Viewer 边界；
-- [`application/prompt-build/loom-core/`](application/prompt-build/loom-core/) — PromptBuild 使用的 Loom Core 执行底座、Trace 协议与 Studio 集成边界；
-- [`ui/`](ui/) — 当前 Workspace Shell、视觉语言、CSS / Theme、I18N 与基础无障碍约定。
+上方六个分类 README 是正式内容的唯一索引。新增或晋升 Architecture 时，必须同步所属分类 README；根索引不再复制一份容易漂移的专题清单。
 
-没有列在这里的专题仍应先从 [`../workbench/`](../workbench/) 查阅，并以当前代码为最终依据。
+未出现在分类 README 中的文件不自动视为未晋升，应先检查同目录文件与当前代码；若发现漏项，修复分类索引，而不是回到旧 Workbench 猜测当前合同。

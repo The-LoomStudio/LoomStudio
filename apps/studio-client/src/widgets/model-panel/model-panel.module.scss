@@ -15,6 +15,142 @@
   padding: 14px var(--loom-model-panel-gutter);
 }
 
+.aiLab {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  margin: 14px var(--loom-model-panel-gutter) 0;
+  padding: 12px var(--loom-model-card-inset);
+  border-radius: var(--loom-radius-card);
+  background: var(--loom-color-surface-subtle);
+}
+
+.aiLab .sectionHeader {
+  margin: 0;
+  padding: 0;
+}
+
+.aiLabHeaderMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-2);
+}
+
+.aiLabHeaderMeta button {
+  border: 0;
+  padding: 0;
+  color: var(--loom-color-accent-strong);
+  background: transparent;
+  font-size: inherit;
+}
+
+.aiLabSelectors {
+  display: grid;
+  gap: 10px;
+}
+
+.aiLabSelectors label,
+.aiLabFields label,
+.aiLabRawJson {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
+}
+
+.aiLabSelectors select,
+.aiLabFields input:not([type='checkbox']),
+.aiLabFields select,
+.aiLabFields textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 30px;
+  color: var(--loom-color-text);
+  border: 1px solid var(--loom-color-border);
+  border-radius: var(--loom-radius-control);
+  background: var(--loom-color-surface);
+}
+
+.aiLabRawJson textarea {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  color: var(--loom-color-text);
+  border: 1px solid var(--loom-color-border);
+  border-radius: var(--loom-radius-control);
+  background: var(--loom-color-surface);
+  font-family: var(--loom-font-family-mono);
+}
+
+.aiLabRawJson small {
+  overflow: hidden;
+  color: var(--loom-color-text-subtle);
+  font-family: var(--loom-font-family-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aiLabFields textarea {
+  min-height: 96px;
+  resize: vertical;
+  font-family: var(--loom-font-family-mono);
+}
+
+.aiLabDescription,
+.aiLabError {
+  margin: 0;
+  font-size: var(--loom-font-size-2);
+}
+
+.aiLabDescription {
+  color: var(--loom-color-text-subtle);
+}
+
+.aiLabError {
+  color: var(--loom-color-danger);
+}
+
+.aiLabForm {
+  display: grid;
+  gap: 10px;
+}
+
+.aiLabForm > button {
+  justify-self: start;
+}
+
+.aiLabFields {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.aiLabFields legend {
+  margin-bottom: 5px;
+  padding: 0;
+  color: var(--loom-color-text);
+  font-size: var(--loom-font-size-2);
+  font-weight: var(--loom-font-weight-5);
+}
+
+.aiLabOutput {
+  max-height: 260px;
+  overflow: auto;
+  margin: 0;
+  padding: 9px;
+  border-radius: var(--loom-radius-control);
+  color: var(--loom-color-text);
+  background: var(--loom-color-surface);
+  font-size: var(--loom-font-size-1);
+  white-space: pre-wrap;
+}
+
 .providerForm label {
   display: grid;
   gap: 5px;

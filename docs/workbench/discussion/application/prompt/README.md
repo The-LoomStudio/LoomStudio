@@ -408,6 +408,7 @@ Prompt 视图:
 - [`composition-skeleton-and-preset-v0.md`](composition-skeleton-and-preset-v0.md)
 - [`setting-layer-prompt-source-v0.md`](setting-layer-prompt-source-v0.md)
 - [`content-component-and-binding-v0.md`](content-component-and-binding-v0.md)
+- [`token-estimation-and-audit-v0.md`](token-estimation-and-audit-v0.md) — Message、Prompt Resource、Setting、Tool Schema 与最终 Provider Payload 的 Token 估算、缓存和持久化边界
 - [`multi-party-contribution-walkthrough-v0.md`](multi-party-contribution-walkthrough-v0.md) — 多方作者走查模拟、空白账本、官方词汇表与"区 / 块 / 条"结构收束（2026-07-26）
 
 ---
@@ -415,7 +416,7 @@ Prompt 视图:
 ## 6. 相关文档
 
 - [`../composition-skeleton-v0.md`](../composition-skeleton-v0.md)
-- [`../composition-pipeline-v0.md`](../composition-pipeline-v0.md)
+- [`../../../../archive/discussion/application/composition-pipeline-v0.md`](../../../../archive/discussion/application/composition-pipeline-v0.md) — 已归档的旧 M0 Pipeline
 - [`../setting-layer-v0.md`](../setting-layer-v0.md)
 - [`../chat-opening-model-v0.md`](../chat-opening-model-v0.md)
-- [`../../reference/sillytavern-architecture-reference.md`](../../reference/sillytavern-architecture-reference.md)
+- [`../../../reference/sillytavern-architecture-reference.md`](../../../reference/sillytavern-architecture-reference.md)

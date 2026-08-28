@@ -1,5 +1,7 @@
 # 测试套件质量审查报告 (Test Suite & Quality Review)
 
+> **状态**：Historical Audit Snapshot / Superseded
+
 ## 审查目标
 
 全面排查 Loom Studio 项目中的 **测试套件架构、测试有效性与代码质量**（涵盖 `tests/` 目录、各 Package 内嵌测试与 Vitest 配置），重点审查：
@@ -16,7 +18,7 @@
 ### 🔴 [高] 1. 包级测试脚本失效与空跑假象（Ghost Test Scripts）
 
 **文件：**
-- [`packages/application-runtime/package.json` L12](file:///Users/macbookair/Desktop/LoomStudio/packages/application-runtime/package.json)
+- [`packages/application-runtime/package.json` L12](../../../packages/application-runtime/package.json)
 - 多个 `packages/*/package.json`
 
 **现象分析：**
@@ -39,8 +41,8 @@
 ### 🔴 [高] 2. 顶层 `tests/archive/` 堆积近 1000 行僵尸测试
 
 **文件：**
-- [`tests/archive/design-spikes/prompt-builder-data-model.test.ts`](file:///Users/macbookair/Desktop/LoomStudio/tests/archive/design-spikes/prompt-builder-data-model.test.ts) (704 行)
-- [`tests/archive/whitepaper-scenarios/mvp-whitepaper-scenarios.test.ts`](file:///Users/macbookair/Desktop/LoomStudio/tests/archive/whitepaper-scenarios/mvp-whitepaper-scenarios.test.ts) (208 行)
+- 历史路径 `tests/archive/design-spikes/prompt-builder-data-model.test.ts`（704 行，现已删除）
+- 历史路径 `tests/archive/whitepaper-scenarios/mvp-whitepaper-scenarios.test.ts`（208 行，现已删除）
 
 **现象分析：**
 - `vitest.config.ts` 中配置了 `defaultTestExclude = ['tests/archive/**/*.test.ts', ...]`，这意味着这些测试在日常开发和 CI 中**被完全排除、从不执行**。
@@ -55,8 +57,8 @@
 ### 🟡 [中] 3. 形式主义单测（Trivial / Low-Value Tests）
 
 **文件：**
-- [`tests/unit/client/narrative-runtime.test.ts`](file:///Users/macbookair/Desktop/LoomStudio/tests/unit/client/narrative-runtime.test.ts) (17 行)
-- [`tests/unit/client/activation-control.test.ts`](file:///Users/macbookair/Desktop/LoomStudio/tests/unit/client/activation-control.test.ts) (23 行)
+- [`tests/unit/client/narrative-runtime.test.ts`](../../../tests/unit/client/narrative-runtime.test.ts) (17 行)
+- [`tests/unit/client/activation-control.test.ts`](../../../tests/unit/client/activation-control.test.ts) (23 行)
 
 **现象分析：**
 - `narrative-runtime.test.ts`：作为承载 Narrative 分支切换、多轮对话调用、时间线加载等 300+ 行复杂状态机的前端核心 Feature，其单测文件里**仅包含 1 个测试用例——验证数组 `find(b => b.id === id)` 是否能查到元素**！
@@ -69,7 +71,7 @@
 
 ### 🟡 [中] 4. 架构指南中引用的测试文件物理缺失
 
-**文件：** [`docs/guide/project-structure.md` L73](file:///Users/macbookair/Desktop/LoomStudio/docs/guide/project-structure.md)
+**文件：** [`docs/guide/project-structure.md` L73](../../guide/project-structure.md)
 
 **现象分析：**
 - 指南中的 Client 任务路由表写明：

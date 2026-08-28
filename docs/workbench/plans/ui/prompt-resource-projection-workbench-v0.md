@@ -8,7 +8,7 @@
 相关文档：
 
 - [`../../discussion/application/prompt/composition-skeleton-and-preset-v0.md`](../../discussion/application/prompt/composition-skeleton-and-preset-v0.md)
-- [`../airp-resource-session-prompt-schema-plan.md`](../airp-resource-session-prompt-schema-plan.md)
+- [`../airp-resource-session-prompt-schema-plan.md`](../../../archive/plans/airp-resource-session-prompt-schema-plan.md)
 - [`../../../architecture/ui/window-layout.md`](../../../architecture/ui/window-layout.md)
 - [`../../../architecture/ui/workspace-shell.md`](../../../architecture/ui/workspace-shell.md)
 

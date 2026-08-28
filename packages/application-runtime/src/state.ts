@@ -89,9 +89,9 @@ export async function applyApplicationStateMutation(
   const nextValue = applyStateOperations(current.revision.snapshot, input.operations)
   await validateSnapshotAgainstDefinitions(ctx, input.target, current.revision.snapshot, nextValue)
   const result = await ctx.dataEngine.transact({
-    actor: requestContext?.clientId
+    actor: requestContext?.actor ?? (requestContext?.clientId
       ? { kind: 'client', id: requestContext.clientId }
-      : { kind: 'kernel', id: 'application-runtime' },
+      : { kind: 'kernel', id: 'application-runtime' }),
     reason: 'application.applyStateMutation',
     correlationId: requestContext?.correlationId,
     callId: requestContext?.callId,
@@ -203,7 +203,8 @@ export async function revertApplicationStateChangeset(
     branchId = branches[0]!.id
   }
   const result = await ctx.dataEngine.transact({
-    actor: requestContext?.clientId ? { kind: 'client', id: requestContext.clientId } : { kind: 'kernel', id: 'application-runtime' },
+    actor: requestContext?.actor
+      ?? (requestContext?.clientId ? { kind: 'client', id: requestContext.clientId } : { kind: 'kernel', id: 'application-runtime' }),
     reason: 'application.revertStateChangeset',
     correlationId: requestContext?.correlationId,
     callId: requestContext?.callId,

@@ -1,6 +1,7 @@
 # 待处理架构重构任务 (P1-P3)
 
-> **状态**：Active Backlog / Event Catalog Foundation Partially Implemented
+> **状态**：Historical Backlog Snapshot / Superseded
+> **当前入口**：Application Runtime 拆分见 [`application-runtime-modularization-plan.md`](../../workbench/plans/application-runtime-modularization-plan.md)；Extension / Event 后续见当前 Extension Plans 与 Discussion。
 > **边界**：本页只记录尚未进入具体计划的治理任务。事件 Definition Registry 与 Extension 事件权限边界已经落地；通用外发目录、能力发现面和 Application Runtime 模块化仍待后续决策。
 
 本文件记录了在 Loom Studio 开发过程中需要逐步落地的三项重要架构治理“杂活”任务，后续可以根据优先级安排实施。

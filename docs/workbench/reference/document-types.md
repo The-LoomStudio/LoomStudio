@@ -1,5 +1,7 @@
 # Document Types 字典 (Document Schema)
 
+> **状态**：Active Reference / Current Registries Are Authority
+
 Loom Studio 使用统一的 Document Store 进行数据持久化。所有被存储在 Kernel 层的数据都必须具有合法的 `type`。由于 Kernel 本身对业务无感，这些 type 和 schema 实际上是由 Application 层或者 Extension 层定义的。
 
 以下是由 `packages/application-runtime` (AIRP) 定义的官方内置的 Document Types。

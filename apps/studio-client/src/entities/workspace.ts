@@ -30,7 +30,43 @@ export type CardBundleArtifact = {
     templateVersion: number
     initial?: Record<string, ClientJsonValue>
   }>
+  extensionPayloads?: PortableExtensionPayloadArtifact[]
   metadata?: Record<string, ClientJsonValue>
+}
+
+export type PortableExtensionPayloadArtifact = {
+  id: string
+  packageId: string
+  fileName: string
+  format: string
+  mediaType: string
+  schemaVersion?: number
+  requirement?: { versionRange?: string }
+  metadata?: Record<string, ClientJsonValue>
+  content: string
+}
+
+export type PortableExtensionPayloadDraft = Omit<PortableExtensionPayloadArtifact, 'id'>
+
+export type PortableExtensionPayload = PortableExtensionPayloadDraft & {
+  id: string
+  artifactPayloadId: string
+  version: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type ListPortableExtensionPayloadsResult = {
+  payloads: PortableExtensionPayload[]
+}
+
+export type GetPortableExtensionPayloadResult = {
+  payload: PortableExtensionPayload
+}
+
+export type MutatePortableExtensionPayloadResult = {
+  payload: PortableExtensionPayload
+  mutation: MutationReceipt
 }
 
 export type PromptResource = {

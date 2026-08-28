@@ -9,8 +9,8 @@
 
 - [`../discussion/extensions/studio-extension-manifest-architecture.md`](../discussion/extensions/studio-extension-manifest-architecture.md)
 - [`../discussion/extensions/studio-extension-lifecycle-v0.md`](../discussion/extensions/studio-extension-lifecycle-v0.md)
-- [`../discussion/extensions/studio-extension-host-capabilities-v0.md`](../discussion/extensions/studio-extension-host-capabilities-v0.md)
-- [`../discussion/application/transform-rule-system-v0.md`](../discussion/application/transform-rule-system-v0.md)
+- [`../discussion/extensions/studio-extension-host-capabilities-v0.md`](../../workbench/discussion/extensions/studio-extension-host-capabilities-v0.md)
+- [`../discussion/application/transform-rule-system-v0.md`](../../workbench/discussion/application/transform-rule-system-v0.md)
 - [`event-system-extension-scope-plan.md`](event-system-extension-scope-plan.md)
 - [`server-extension-manager-mvp-plan.md`](server-extension-manager-mvp-plan.md)
 

@@ -1,4 +1,5 @@
 import { createAgentStore } from '@loom-studio/agent-store'
+import { officialFakeModelId } from '@loom-studio/ai-gateway'
 import { createAgentToolRegistry, createApplicationRuntime, promptSlotIds, promptZoneIds, type ToolDefinition, type ToolRuntimeRegistration } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
@@ -24,14 +25,14 @@ async function createProfile(runtime: ReturnType<typeof createTestRuntime>['runt
   const provider = await runtime.createProviderProfile({
     providerExtensionId: 'official.fake',
     displayName: 'Test Provider',
-    config: { baseUrl: 'https://example.test/v1' },
-    enabledModelIds: ['test-model'],
+    config: {},
+    enabledModelIds: [officialFakeModelId],
   })
   const preset = await createPreset(runtime, 'Test Agent', instructions)
   const profile = (await runtime.createAgentProfile({
     name: 'Test Agent Profile',
     presetId: preset.id,
-    model: { providerProfileId: provider.providerProfile.id, modelId: 'test-model' },
+    model: { providerProfileId: provider.providerProfile.id, modelId: officialFakeModelId },
   })).agentProfile
   return { preset, profile }
 }
@@ -131,7 +132,7 @@ describe('application agent session lifecycle', () => {
       providerExtensionId: 'official.openai-compatible',
       displayName: 'Tool Provider',
       config: { baseUrl: 'https://example.test/v1' },
-      enabledModelIds: ['test-model'],
+      enabledModelIds: [officialFakeModelId],
     })
     const preset = await createPreset(firstRuntime, 'Tool Prompt', 'Use available tools.')
     await firstRuntime.replacePresetToolMounts({
@@ -143,7 +144,7 @@ describe('application agent session lifecycle', () => {
       presetId: preset.id,
       model: {
         providerProfileId: provider.providerProfile.id,
-        modelId: 'test-model',
+        modelId: officialFakeModelId,
       },
     })
     const session = await firstRuntime.createAgentSession({
@@ -215,7 +216,7 @@ describe('application agent session lifecycle', () => {
       }),
     }]))
     const provider = await runtime.createProviderProfile({
-      providerExtensionId: 'official.fake', displayName: 'Fake', config: {}, enabledModelIds: ['test-model'],
+      providerExtensionId: 'official.fake', displayName: 'Fake', config: {}, enabledModelIds: [officialFakeModelId],
     })
     const preset = await createPreset(runtime, 'Tool Agent', 'Use tools when available.')
     await runtime.replacePresetToolMounts({
@@ -230,7 +231,7 @@ describe('application agent session lifecycle', () => {
     })
     const profile = (await runtime.createAgentProfile({
       name: 'Tool Agent', presetId: preset.id,
-      model: { providerProfileId: provider.providerProfile.id, modelId: 'test-model' },
+      model: { providerProfileId: provider.providerProfile.id, modelId: officialFakeModelId },
       toolOverrides: { [tool.id]: true },
     })).agentProfile
 
@@ -334,13 +335,13 @@ describe('application agent session lifecycle', () => {
     const provider = await runtime.createProviderProfile({
       providerExtensionId: 'official.fake',
       displayName: 'Official Test Provider',
-      config: { baseUrl: 'https://example.test/v1' },
-      enabledModelIds: ['test-model'],
+      config: {},
+      enabledModelIds: [officialFakeModelId],
     })
     const profile = await runtime.createAgentProfile({
       name: 'Official Assistant',
       presetId: preset.id,
-      model: { providerProfileId: provider.providerProfile.id, modelId: 'test-model' },
+      model: { providerProfileId: provider.providerProfile.id, modelId: officialFakeModelId },
     })
     const session = await runtime.createAgentSession({ agentProfileId: profile.agentProfile.id })
     const preview = await runtime.previewAgentTurn({ agentSessionId: session.session.id, input: 'What is Loom Studio?' })
@@ -378,13 +379,13 @@ describe('application agent session lifecycle', () => {
     const provider = await runtime.createProviderProfile({
       providerExtensionId: 'official.fake',
       displayName: 'Projection Provider',
-      config: { baseUrl: 'https://example.test/v1' },
-      enabledModelIds: ['projection-model'],
+      config: {},
+      enabledModelIds: [officialFakeModelId],
     })
     const profile = await runtime.createAgentProfile({
       name: 'Projection Profile',
       presetId: preset.id,
-      model: { providerProfileId: provider.providerProfile.id, modelId: 'projection-model' },
+      model: { providerProfileId: provider.providerProfile.id, modelId: officialFakeModelId },
     })
     const session = await runtime.createAgentSession({ agentProfileId: profile.agentProfile.id })
     const preview = await runtime.previewAgentTurn({ agentSessionId: session.session.id, input: 'Act.' })
@@ -532,13 +533,13 @@ describe('application agent session lifecycle', () => {
     const provider = await runtime.createProviderProfile({
       providerExtensionId: 'official.fake',
       displayName: 'Failure Provider',
-      config: { baseUrl: 'https://example.test/v1' },
-      enabledModelIds: ['failure-model'],
+      config: {},
+      enabledModelIds: [officialFakeModelId],
     })
     const profile = await runtime.createAgentProfile({
       name: 'Failure Profile',
       presetId: preset.id,
-      model: { providerProfileId: provider.providerProfile.id, modelId: 'failure-model' },
+      model: { providerProfileId: provider.providerProfile.id, modelId: officialFakeModelId },
     })
     const session = await runtime.createAgentSession({ agentProfileId: profile.agentProfile.id })
 

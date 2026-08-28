@@ -1,9 +1,10 @@
 # Provider Profile 与通用 Secret Store 基建计划
 
-> **状态**：In Progress / Provider Profile Backend Complete，Client Naming Cleanup Pending
+> **状态**：Archived / Historical Phase Record
+> **归档说明**：Provider Profile Backend 已完成；本文中的 Client Naming Cleanup 不再由本归档计划跟踪。当前 Provider UI / Health 路线见 [`provider-account-health-plan.md`](../../workbench/plans/ui/provider-account-health-plan.md)，Secret 决策见 [`ADR-004`](../../workbench/adr/ADR-004-platform-auth-secrets-and-provider-credential-boundary.md)。
 > **日期**：2026-08-15
 > **边界**：本计划独立于 Narrative Timeline / Agent Session 数据迁移。它只处理 Provider Profile、模型选择、通用 Secret Store、调用授权与现有明文凭据路径淘汰；不实现流式生成、模型参数面板、多用户权限、Key 轮询或 Provider Extension 完整生态。
-> **相关决策**：[`ADR-004`](../adr/ADR-004-platform-auth-secrets-and-provider-credential-boundary.md)、[`AI Gateway and Provider Extension v0`](../discussion/platform/ai-gateway-and-provider-extension-v0.md)、[`Provider Adapter Contract v0`](../discussion/application/provider-adapter-contract-v0.md)。
+> **相关决策**：[`ADR-004`](../../workbench/adr/ADR-004-platform-auth-secrets-and-provider-credential-boundary.md)、[`AI Gateway and Provider Extension v0`](../../workbench/discussion/platform/ai-gateway-and-provider-extension-v0.md)、[`Provider Adapter Contract v0`](../../workbench/discussion/application/provider-adapter-contract-v0.md)。
 
 ## 1. 背景与当前事实
 

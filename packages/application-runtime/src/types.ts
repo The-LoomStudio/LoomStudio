@@ -5,7 +5,7 @@ import type {
   AgentStore,
 } from '@loom-studio/agent-store'
 import type { DocumentStore } from '@loom-studio/document-store'
-import type { ProviderAdapterRegistry } from '@loom-studio/ai-gateway'
+import type { AiGatewayCapabilityRegistry, ProviderAdapterRegistry } from '@loom-studio/ai-gateway'
 import type { DataActorRef, SqliteDataEngine } from '@loom-studio/data-engine'
 import type { Logger } from '@loom-studio/logging'
 import type {
@@ -43,6 +43,7 @@ import type { CompiledPrompt, CompositionSkeletonPatch, ProjectionOrderProfile }
 import type {
   CardBundleArtifact,
   ImportBundleContent,
+  PortableExtensionPayloadArtifact,
   PromptResourceArtifact,
   PromptResourceCompositionCapabilities,
   PromptResourceContent,
@@ -74,12 +75,23 @@ export type ApplicationRuntime = {
   listCards(input?: ListCardsInput): Promise<ListCardsResult>
   updateCard(input: UpdateCardInput, context?: RuntimeRequestContext): Promise<UpdateCardResult>
   deleteCard(input: DeleteCardInput, context?: RuntimeRequestContext): Promise<DeleteCardResult>
+  listPortableExtensionPayloads(input?: ListPortableExtensionPayloadsInput): Promise<ListPortableExtensionPayloadsResult>
+  getPortableExtensionPayload(input: GetPortableExtensionPayloadInput): Promise<GetPortableExtensionPayloadResult>
+  createPortableExtensionPayload(input: CreatePortableExtensionPayloadInput, context?: RuntimeRequestContext): Promise<CreatePortableExtensionPayloadResult>
+  updatePortableExtensionPayload(input: UpdatePortableExtensionPayloadInput, context?: RuntimeRequestContext): Promise<UpdatePortableExtensionPayloadResult>
+  deletePortableExtensionPayload(input: DeletePortableExtensionPayloadInput, context?: RuntimeRequestContext): Promise<DeletePortableExtensionPayloadResult>
+  replaceCardPortableExtensionPayloads(input: ReplaceCardPortableExtensionPayloadsInput, context?: RuntimeRequestContext): Promise<ReplaceCardPortableExtensionPayloadsResult>
   createProviderProfile(input: CreateProviderProfileInput, context?: RuntimeRequestContext): Promise<CreateProviderProfileResult>
   getProviderProfile(input: GetProviderProfileInput): Promise<GetProviderProfileResult>
   listProviderProfiles(input?: ListProviderProfilesInput): Promise<ListProviderProfilesResult>
   updateProviderProfile(input: UpdateProviderProfileInput): Promise<UpdateProviderProfileResult>
   replaceProviderCredential(input: ReplaceProviderCredentialInput, context?: RuntimeRequestContext): Promise<ReplaceProviderCredentialResult>
   deleteProviderProfile(input: DeleteProviderProfileInput, context?: RuntimeRequestContext): Promise<DeleteProviderProfileResult>
+  createAiCapabilityProfile(input: CreateAiCapabilityProfileInput): Promise<CreateAiCapabilityProfileResult>
+  getAiCapabilityProfile(input: GetAiCapabilityProfileInput): Promise<GetAiCapabilityProfileResult>
+  listAiCapabilityProfiles(input?: ListAiCapabilityProfilesInput): Promise<ListAiCapabilityProfilesResult>
+  updateAiCapabilityProfile(input: UpdateAiCapabilityProfileInput): Promise<UpdateAiCapabilityProfileResult>
+  deleteAiCapabilityProfile(input: DeleteAiCapabilityProfileInput): Promise<DeleteAiCapabilityProfileResult>
   listProviderModels(input: ListProviderModelsInput, context?: RuntimeRequestContext): Promise<ListProviderModelsResult>
   pingProviderModel(input: PingProviderModelInput, context?: RuntimeRequestContext): Promise<PingProviderModelResult>
   listAgentTools(): Promise<{ tools: AgentToolEntry[] }>
@@ -130,6 +142,7 @@ export type ApplicationRuntime = {
 }
 
 export type RuntimeRequestContext = {
+  actor?: DataActorRef
   clientId?: string
   correlationId?: string
   callId?: string
@@ -483,6 +496,7 @@ export type ApplicationRuntimeOptions = {
   mediaAssets?: MediaAssetLookup
   secrets?: SecretStore
   providerAdapters?: ProviderAdapterRegistry
+  aiCapabilities?: AiGatewayCapabilityRegistry
 }
 
 export type MediaAssetLookup = {
@@ -672,6 +686,71 @@ export type DeleteCardResult = {
   mutation: MutationReceipt
 }
 
+export type PortableExtensionPayloadDraft = Omit<PortableExtensionPayloadArtifact, 'id'>
+
+export type PortableExtensionPayloadEntry = PortableExtensionPayloadDraft & {
+  id: string
+  artifactPayloadId: string
+  version: number
+  createdAt: string
+  updatedAt: string
+}
+
+export type ListPortableExtensionPayloadsInput = {
+  packageId?: string
+}
+
+export type ListPortableExtensionPayloadsResult = {
+  payloads: PortableExtensionPayloadEntry[]
+}
+
+export type GetPortableExtensionPayloadInput = {
+  payloadId: string
+}
+
+export type GetPortableExtensionPayloadResult = {
+  payload: PortableExtensionPayloadEntry
+}
+
+export type CreatePortableExtensionPayloadInput = {
+  artifactPayloadId?: string
+  payload: PortableExtensionPayloadDraft
+}
+
+export type CreatePortableExtensionPayloadResult = {
+  payload: PortableExtensionPayloadEntry
+  mutation: MutationReceipt
+}
+
+export type UpdatePortableExtensionPayloadInput = {
+  payloadId: string
+  expectedVersion: number
+  payload: PortableExtensionPayloadDraft
+}
+
+export type UpdatePortableExtensionPayloadResult = CreatePortableExtensionPayloadResult
+
+export type DeletePortableExtensionPayloadInput = {
+  payloadId: string
+  expectedVersion: number
+}
+
+export type DeletePortableExtensionPayloadResult = {
+  deleted: true
+  mutation: MutationReceipt
+}
+
+export type ReplaceCardPortableExtensionPayloadsInput = {
+  cardId: string
+  expectedVersion: number
+  payloadIds: string[]
+}
+
+export type ReplaceCardPortableExtensionPayloadsResult = {
+  card: CardSourceContent & { id: string; version: number }
+  mutation: MutationReceipt
+}
+
 export type ProviderCredentialStatus = {
   configured: boolean
   updatedAt?: string
@@ -746,6 +825,68 @@ export type DeleteProviderProfileInput = {
 export type DeleteProviderProfileResult = {
   deleted: true
   credentialCleanupPending: boolean
+}
+
+export type AiCapabilityProfileView = {
+  id: string
+  version: number
+  providerProfileId: string
+  providerExtensionId: string
+  capabilityId: string
+  displayName: string
+  config: JsonObject
+  available: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export type CreateAiCapabilityProfileInput = {
+  providerProfileId: string
+  capabilityId: string
+  displayName: string
+  config?: JsonObject
+}
+
+export type CreateAiCapabilityProfileResult = {
+  profile: AiCapabilityProfileView
+}
+
+export type GetAiCapabilityProfileInput = {
+  profileId: string
+}
+
+export type GetAiCapabilityProfileResult = {
+  profile: AiCapabilityProfileView
+}
+
+export type ListAiCapabilityProfilesInput = {
+  providerProfileId?: string
+  capabilityId?: string
+  limit?: number
+  cursor?: string
+}
+
+export type ListAiCapabilityProfilesResult = {
+  profiles: AiCapabilityProfileView[]
+  nextCursor?: string
+}
+
+export type UpdateAiCapabilityProfileInput = {
+  profileId: string
+  displayName?: string
+  config?: JsonObject
+}
+
+export type UpdateAiCapabilityProfileResult = {
+  profile: AiCapabilityProfileView
+}
+
+export type DeleteAiCapabilityProfileInput = {
+  profileId: string
+}
+
+export type DeleteAiCapabilityProfileResult = {
+  deleted: true
 }
 
 export type ListProviderModelsInput = {
@@ -978,6 +1119,15 @@ export type ProviderProfileContent = {
   updatedAt: string
 }
 
+export type AiCapabilityProfileContent = {
+  providerProfileId: string
+  capabilityId: string
+  displayName: string
+  config: JsonObject
+  createdAt: string
+  updatedAt: string
+}
+
 export type AgentProfileContent = {
   name: string
   presetId: string
@@ -1013,6 +1163,7 @@ export type CardSourceContent = {
   userName?: string
   description?: string
   importBundleId?: string
+  portableExtensionPayloadIds?: string[]
   promptResourceIds?: string[]
   stateDefinitionIds?: string[]
   timelineStateBindings?: TimelineStateBinding[]

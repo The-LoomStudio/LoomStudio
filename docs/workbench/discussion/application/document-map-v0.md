@@ -107,7 +107,7 @@ UI / Extension:
 | [`prompt/composition-skeleton-and-preset-v0.md`](prompt/composition-skeleton-and-preset-v0.md) | Zone Tree / Injection Group / Preset |
 | [`prompt/setting-layer-prompt-source-v0.md`](prompt/setting-layer-prompt-source-v0.md) | Setting Layer 作为 prompt source |
 | [`prompt/content-component-and-binding-v0.md`](prompt/content-component-and-binding-v0.md) | Binding / macro / component |
-| [`composition-pipeline-v0.md`](composition-pipeline-v0.md) | Documents -> Fragments -> Payload |
+| [历史 `composition-pipeline-v0.md`](../../../archive/discussion/application/composition-pipeline-v0.md) | 已归档；当前事实见 Architecture PromptBuild |
 | [`composition-skeleton-v0.md`](composition-skeleton-v0.md) | 旧 Skeleton 迁移内容 |
 
 ### 2.6 Provider / IO

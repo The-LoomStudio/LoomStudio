@@ -194,6 +194,129 @@ describe('application runtime card bundle integration', () => {
     })).rejects.toThrow('template is missing')
   })
 
+  it('creates, edits, binds, exports, unbinds, and deletes Portable Extension Payloads', async () => {
+    const { runtime, documents } = createTestRuntime()
+    const created = await runtime.createPortableExtensionPayload({
+      artifactPayloadId: 'image-style-v1',
+      payload: {
+        packageId: 'example.image-generator',
+        fileName: 'style.json',
+        format: 'example.image-style',
+        mediaType: 'application/json',
+        content: '{"style":"watercolor"}',
+      },
+    }, { actor: { kind: 'extension', id: 'example.image-generator' } })
+    expect(created.mutation.changesetId).toBeTruthy()
+    await expect(documents.getChangeset(created.mutation.changesetId)).resolves.toMatchObject({
+      createdBy: { kind: 'extension', id: 'example.image-generator' },
+    })
+    await expect(runtime.getPortableExtensionPayload({ payloadId: created.payload.id }))
+      .resolves.toEqual({ payload: created.payload })
+    await expect(runtime.listPortableExtensionPayloads({ packageId: 'example.image-generator' }))
+      .resolves.toMatchObject({ payloads: [{ id: created.payload.id }] })
+
+    const updated = await runtime.updatePortableExtensionPayload({
+      payloadId: created.payload.id,
+      expectedVersion: created.payload.version,
+      payload: {
+        packageId: created.payload.packageId,
+        fileName: created.payload.fileName,
+        format: created.payload.format,
+        mediaType: created.payload.mediaType,
+        content: '{"style":"oil-painting"}',
+      },
+    })
+    expect(updated.payload).toMatchObject({
+      artifactPayloadId: 'image-style-v1',
+      version: created.payload.version + 1,
+      content: '{"style":"oil-painting"}',
+    })
+
+    const duplicateArtifactPayload = await runtime.createPortableExtensionPayload({
+      artifactPayloadId: 'image-style-v1',
+      payload: {
+        packageId: 'example.image-generator',
+        fileName: 'alternate-style.json',
+        format: 'example.image-style',
+        mediaType: 'application/json',
+        content: '{"style":"ink"}',
+      },
+    })
+    const card = await runtime.createCard({ name: 'Portable Payload Card' })
+    await expect(runtime.replaceCardPortableExtensionPayloads({
+      cardId: card.card.id,
+      expectedVersion: card.card.version,
+      payloadIds: [updated.payload.id, updated.payload.id],
+    })).rejects.toThrow('Duplicate Portable Extension Payload binding')
+    await expect(runtime.replaceCardPortableExtensionPayloads({
+      cardId: card.card.id,
+      expectedVersion: card.card.version,
+      payloadIds: [updated.payload.id, duplicateArtifactPayload.payload.id],
+    })).rejects.toThrow('Duplicate Artifact Payload id in Card bindings')
+    const bound = await runtime.replaceCardPortableExtensionPayloads({
+      cardId: card.card.id,
+      expectedVersion: card.card.version,
+      payloadIds: [updated.payload.id],
+    })
+    const exported = await runtime.exportCardBundle({ cardId: card.card.id })
+    expect(bound.card.portableExtensionPayloadIds).toEqual([updated.payload.id])
+    expect(exported.artifact.extensionPayloads).toEqual([{
+      id: 'image-style-v1',
+      packageId: 'example.image-generator',
+      fileName: 'style.json',
+      format: 'example.image-style',
+      mediaType: 'application/json',
+      content: '{"style":"oil-painting"}',
+    }])
+    await expect(runtime.deletePortableExtensionPayload({
+      payloadId: updated.payload.id,
+      expectedVersion: updated.payload.version,
+    })).rejects.toThrow('still bound to Card')
+
+    const unbound = await runtime.replaceCardPortableExtensionPayloads({
+      cardId: card.card.id,
+      expectedVersion: bound.card.version,
+      payloadIds: [],
+    })
+    expect(unbound.card.portableExtensionPayloadIds).toEqual([])
+    await expect(runtime.deletePortableExtensionPayload({
+      payloadId: updated.payload.id,
+      expectedVersion: updated.payload.version,
+    })).resolves.toMatchObject({ deleted: true })
+    await expect(runtime.deletePortableExtensionPayload({
+      payloadId: duplicateArtifactPayload.payload.id,
+      expectedVersion: duplicateArtifactPayload.payload.version,
+    })).resolves.toMatchObject({ deleted: true })
+  })
+
+  it('keeps a Portable Extension Payload after deleting its bound Card', async () => {
+    const { runtime } = createTestRuntime()
+    const payload = await runtime.createPortableExtensionPayload({
+      payload: {
+        packageId: 'example.retained',
+        fileName: 'config.json',
+        format: 'example.retained-config',
+        mediaType: 'application/json',
+        content: '{}',
+      },
+    })
+    const card = await runtime.createCard({ name: 'Disposable Card' })
+    await runtime.replaceCardPortableExtensionPayloads({
+      cardId: card.card.id,
+      expectedVersion: card.card.version,
+      payloadIds: [payload.payload.id],
+    })
+
+    await runtime.deleteCard({ cardId: card.card.id })
+
+    await expect(runtime.getPortableExtensionPayload({ payloadId: payload.payload.id }))
+      .resolves.toMatchObject({ payload: { id: payload.payload.id } })
+    await expect(runtime.deletePortableExtensionPayload({
+      payloadId: payload.payload.id,
+      expectedVersion: payload.payload.version,
+    })).resolves.toMatchObject({ deleted: true })
+  })
+
   it('edits a resource directly and exports the current card bundle', async () => {
     const { runtime } = createTestRuntime()
     const imported = await runtime.importCardBundle({ artifact: await readLoomCityArtifact() })

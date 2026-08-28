@@ -1,4 +1,5 @@
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
+import type { AiGatewayCapabilityRegistry, ProfiledAiGateway } from '@loom-studio/ai-gateway'
 import { createDocumentDataCommitSource, createInMemoryDocumentStore } from '@loom-studio/document-store'
 import { createExtensionHost } from '@loom-studio/extension-host'
 import type { ExtensionAssetCapability, ExtensionHostOptions } from '@loom-studio/extension-host'
@@ -13,7 +14,12 @@ export function createExtensionHostHarness(options: {
   logger?: Logger
   grantAssetCapabilities?: (packageId: string, moduleId: string) => readonly ExtensionAssetCapability[]
   assets?: ExtensionHostOptions['assets']
+  portablePayloads?: ExtensionHostOptions['portablePayloads']
+  validateStorageScope?: ExtensionHostOptions['validateStorageScope']
+  validateEntityRef?: ExtensionHostOptions['validateEntityRef']
   assetScratchRoot?: string
+  aiCapabilities?: AiGatewayCapabilityRegistry
+  aiGateway?: ProfiledAiGateway
 } = {}) {
   const diagnostics = createInMemoryDiagnosticsRegistry()
   const documents = createInMemoryDocumentStore()
@@ -28,7 +34,12 @@ export function createExtensionHostHarness(options: {
       options.grantAssetCapabilities?.(packageManifest.id, moduleManifest.id) ?? []
     ),
     assets: options.assets,
+    portablePayloads: options.portablePayloads,
+    validateStorageScope: options.validateStorageScope,
+    validateEntityRef: options.validateEntityRef,
     assetScratchRoot: options.assetScratchRoot,
+    aiCapabilities: options.aiCapabilities,
+    aiGateway: options.aiGateway,
     callRpc: (method: string, params?: unknown, context?: unknown) => kernel.callRpc(method, params as never, context as never),
     registerRpc: (name: string, ownerPackageId: string, ownerModuleId: string, handler: (...args: unknown[]) => unknown, ownerInstanceId?: string) => {
       const handle = kernel.registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler as never, ownerInstanceId)

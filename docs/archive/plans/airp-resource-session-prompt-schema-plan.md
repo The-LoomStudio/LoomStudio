@@ -7,14 +7,14 @@
 > **2026-08-15 数据与路径说明**：本文中的通用 Session 主链已被独立 Narrative Timeline 与 Agent Session 模型替代。当前 `promptResourceIds` 保存于 Narrative Timeline，Branch 只保存 Narrative head 与 fork 来源；未来 Branch State / Resource revision 不在本文恢复设计。Asset Store 的物理字节层、原始 JSON / PNG 保留和统一本地路径见 [`local-data-blob-store-foundation-plan.md`](local-data-blob-store-foundation-plan.md)。
 >
 > **相关讨论**：
-> - [`../discussion/application/card-model-v0.md`](../discussion/application/card-model-v0.md)
-> - [`../discussion/application/asset-import-export-boundary-v0.md`](../discussion/application/asset-import-export-boundary-v0.md)
-> - [`../discussion/application/isolation-scope-boundary-v0.md`](../discussion/application/isolation-scope-boundary-v0.md)
-> - [`../discussion/application/state-store-v0.md`](../discussion/application/state-store-v0.md)
-> - [`../discussion/application/prompt/multi-party-contribution-walkthrough-v0.md`](../discussion/application/prompt/multi-party-contribution-walkthrough-v0.md)
-> - [`../discussion/application/prompt/composition-skeleton-and-preset-v0.md`](../discussion/application/prompt/composition-skeleton-and-preset-v0.md)
-> - [`../adr/ADR-001-data-layer-workspace-sync.md`](../adr/ADR-001-data-layer-workspace-sync.md)
-> - [`../adr/ADR-003-asset-store-and-binary-payload-boundary.md`](../adr/ADR-003-asset-store-and-binary-payload-boundary.md)
+> - [`../discussion/application/card-model-v0.md`](../../workbench/discussion/application/card-model-v0.md)
+> - [`../discussion/application/asset-import-export-boundary-v0.md`](../../workbench/discussion/application/asset-import-export-boundary-v0.md)
+> - [`../discussion/application/isolation-scope-boundary-v0.md`](../../workbench/discussion/application/isolation-scope-boundary-v0.md)
+> - [`../discussion/application/state-store-v0.md`](../../workbench/discussion/application/state-store-v0.md)
+> - [`../discussion/application/prompt/multi-party-contribution-walkthrough-v0.md`](../../workbench/discussion/application/prompt/multi-party-contribution-walkthrough-v0.md)
+> - [`../discussion/application/prompt/composition-skeleton-and-preset-v0.md`](../../workbench/discussion/application/prompt/composition-skeleton-and-preset-v0.md)
+> - [`../adr/ADR-001-data-layer-workspace-sync.md`](../../workbench/adr/ADR-001-data-layer-workspace-sync.md)
+> - [`../adr/ADR-003-asset-store-and-binary-payload-boundary.md`](../../workbench/adr/ADR-003-asset-store-and-binary-payload-boundary.md)
 
 ---
 

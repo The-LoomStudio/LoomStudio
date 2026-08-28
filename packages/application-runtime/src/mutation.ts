@@ -13,9 +13,9 @@ export async function executeDocumentMutation<T>(
   mutate: (tx: DocumentTransaction) => Promise<T>,
 ): Promise<DocumentMutationResult<T>> {
   const result = await documents.transact({
-    actor: context?.clientId
+    actor: context?.actor ?? (context?.clientId
       ? { kind: 'client', id: context.clientId }
-      : { kind: 'kernel', id: 'application-runtime' },
+      : { kind: 'kernel', id: 'application-runtime' }),
     reason,
     correlationId: context?.correlationId,
     callId: context?.callId,

@@ -477,9 +477,9 @@ export async function runNativeToolLoop(input: {
 
   async function append(entries: AgentTranscriptEntryData[]) {
     const result = await input.agents.appendEntries({
-      actor: input.requestContext?.clientId
+      actor: input.requestContext?.actor ?? (input.requestContext?.clientId
         ? { kind: 'client', id: input.requestContext.clientId }
-        : { kind: 'kernel', id: 'application-runtime' },
+        : { kind: 'kernel', id: 'application-runtime' }),
       reason: 'application.invokeAgentTurn',
       correlationId: input.requestContext?.correlationId,
       callId: input.requestContext?.callId,

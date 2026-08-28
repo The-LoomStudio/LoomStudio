@@ -15,7 +15,7 @@
 - [`../../ui/widget-workspace-and-motion-v0.md`](../../ui/widget-workspace-and-motion-v0.md)：尚未实现的一维横向窗口、插件窗口与 Motion Contract。
 - [`../frontend-projection-v0.md`](../frontend-projection-v0.md)：早期 AIRP UI integration 入口和候选 frontend projection 问题。
 - [`../runtime-turn-flow-v0.md`](../runtime-turn-flow-v0.md)：玩家回合从输入到落盘的业务 flow。
-- [`../../extensions/studio-extension-manifest-architecture.md`](../../extensions/studio-extension-manifest-architecture.md)：Client Extension panel / command / sandbox contribution。
+- [`docs/architecture/extensions/`](../../../../architecture/extensions/)：当前 Extension Package / Module / Instance 与 Client Host 边界。
 
 当前边界：
 
@@ -58,7 +58,7 @@ apps/studio-client + docs/architecture/ui:
 2. AIRP UI 需要支持的界面能力：card list / detail、session list、chat timeline、setting layer editor、opening editor、composition preview、trace viewer：见 [`../frontend-projection-v0.md`](../frontend-projection-v0.md)。
 3. 玩家回合 UI 事件：输入、运行状态、确认、中止、重试、stream deltas、tool status、diagnostics：见 [`../runtime-turn-flow-v0.md`](../runtime-turn-flow-v0.md)。
 4. Trace 可解释性 UI：slot / source / activation / ordering / trimming / redaction：见 [`../trace-explainability-v0.md`](../trace-explainability-v0.md)。
-5. Client Extension panel、command、keybinding、context-aware action：见 [`../../extensions/studio-extension-manifest-architecture.md`](../../extensions/studio-extension-manifest-architecture.md)。
+5. Client Extension panel、command、keybinding、context-aware action：当前平台边界见 [`docs/architecture/extensions/`](../../../../architecture/extensions/)，未实现部分继续在 Extension Host Discussion 收敛。
 
 ---
 

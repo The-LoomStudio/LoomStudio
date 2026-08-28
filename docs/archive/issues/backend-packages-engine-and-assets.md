@@ -19,7 +19,7 @@
 
 ### ✅ [已解决] `data-engine`：FIFO 串行化队列存在重入死锁隐患且无运行时防护
 
-**文件：** [`packages/data-engine/src/sqlite.ts`](file:///Users/macbookair/Desktop/LoomStudio/packages/data-engine/src/sqlite.ts)
+**文件：** [`packages/data-engine/src/sqlite.ts`](../../../packages/data-engine/src/sqlite.ts)
 
 **审查结论：**
 - **已引入 Node.js 原生 `AsyncLocalStorage`** 记录当前活跃的 `SqliteDataTransaction` 实例。
@@ -30,7 +30,7 @@
 
 ### ✅ [已改善] `asset-store`：Blob 与 Asset 写入非原子导致潜在孤儿 Blob
 
-**文件：** [`packages/asset-store/src/store.ts`](file:///Users/macbookair/Desktop/LoomStudio/packages/asset-store/src/store.ts)
+**文件：** [`packages/asset-store/src/store.ts`](../../../packages/asset-store/src/store.ts)
 
 **审查结论：**
 - 已将所有的参数校验与 normalization（`kind`、`width`、`height`、`label`、`mediaType`）前置到调用 `blobs.write` 之前执行，防止因参数校验失败而产生无用孤儿 Blob。
@@ -46,7 +46,7 @@
 
 ### 🟡 [中] `blob-store`：POSIX 环境下 `rename` 假设不符（原子覆盖而非抛出 EEXIST）
 
-**文件：** [`packages/blob-store/src/store.ts`](file:///Users/macbookair/Desktop/LoomStudio/packages/blob-store/src/store.ts)
+**文件：** [`packages/blob-store/src/store.ts`](../../../packages/blob-store/src/store.ts)
 
 ```ts
 try {
@@ -69,7 +69,7 @@ try {
 
 ### 🟡 [中] `data-engine`：`close()` 缺少对排队操作的安全排空与状态标记
 
-**文件：** [`packages/data-engine/src/sqlite.ts`](file:///Users/macbookair/Desktop/LoomStudio/packages/data-engine/src/sqlite.ts)
+**文件：** [`packages/data-engine/src/sqlite.ts`](../../../packages/data-engine/src/sqlite.ts)
 
 ```ts
 close: () => database.close(),
@@ -87,7 +87,7 @@ close: () => database.close(),
 
 ### 🟢 [低] `data-engine`：Commit Notifier 同步通知可能阻塞事务返回
 
-**文件：** [`packages/data-engine/src/commit.ts`](file:///Users/macbookair/Desktop/LoomStudio/packages/data-engine/src/commit.ts)
+**文件：** [`packages/data-engine/src/commit.ts`](../../../packages/data-engine/src/commit.ts)
 
 ```ts
 notify: commit => {

@@ -33,6 +33,12 @@ describe('studio rpc router', () => {
       stability: 'experimental',
     }))
     expect(listed.capabilities).toContainEqual(expect.objectContaining({
+      name: 'application.createPortableExtensionPayload',
+      namespace: 'application',
+      owner: 'application',
+      stability: 'experimental',
+    }))
+    expect(listed.capabilities).toContainEqual(expect.objectContaining({
       name: 'application.createNarrativeTimeline',
       namespace: 'application',
       owner: 'application',
@@ -337,6 +343,66 @@ describe('studio rpc router', () => {
     }, context)
 
     expect(received).toEqual([context, context, context, context])
+  })
+
+  it('parses portable Extension Payload mutations and preserves rpc context', async () => {
+    const received: Array<{ method: string; input: unknown; requestContext: unknown }> = []
+    const applicationRuntime = {
+      createPortableExtensionPayload: async (input: unknown, requestContext?: unknown) => {
+        received.push({ method: 'create', input, requestContext })
+        return { payload: { id: 'payload-1' }, mutation: { changesetId: 'chg-1' } }
+      },
+      updatePortableExtensionPayload: async (input: unknown, requestContext?: unknown) => {
+        received.push({ method: 'update', input, requestContext })
+        return { payload: { id: 'payload-1' }, mutation: { changesetId: 'chg-2' } }
+      },
+      replaceCardPortableExtensionPayloads: async (input: unknown, requestContext?: unknown) => {
+        received.push({ method: 'bind', input, requestContext })
+        return { card: { id: 'card-1' }, mutation: { changesetId: 'chg-3' } }
+      },
+    } as unknown as ApplicationRuntime
+    const router = createStudioRpcRouter({ applicationRuntime, kernel: createKernelCaller() })
+    const payload = {
+      packageId: 'example.renderer',
+      fileName: 'theme.json',
+      format: 'example.theme',
+      mediaType: 'application/json',
+      schemaVersion: 1,
+      content: '{"accent":"violet"}',
+    }
+
+    await router.call('application.createPortableExtensionPayload', {
+      artifactPayloadId: 'theme-default',
+      payload,
+    }, context)
+    await router.call('application.updatePortableExtensionPayload', {
+      payloadId: 'payload-1',
+      expectedVersion: 1,
+      payload,
+    }, context)
+    await router.call('application.replaceCardPortableExtensionPayloads', {
+      cardId: 'card-1',
+      expectedVersion: 2,
+      payloadIds: ['payload-1'],
+    }, context)
+
+    expect(received).toEqual([
+      {
+        method: 'create',
+        input: { artifactPayloadId: 'theme-default', payload },
+        requestContext: context,
+      },
+      {
+        method: 'update',
+        input: { payloadId: 'payload-1', expectedVersion: 1, payload },
+        requestContext: context,
+      },
+      {
+        method: 'bind',
+        input: { cardId: 'card-1', expectedVersion: 2, payloadIds: ['payload-1'] },
+        requestContext: context,
+      },
+    ])
   })
 
   it('rejects invalid Setting Mount sources before invoking the runtime', async () => {

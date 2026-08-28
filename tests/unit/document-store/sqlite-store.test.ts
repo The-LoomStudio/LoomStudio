@@ -346,6 +346,38 @@ describe('sqlite document store', () => {
     }
   })
 
+  it('allows an explicitly empty Document participant only inside a non-empty composite transaction', async () => {
+    let sequence = 0
+    const engine = createSqliteDataEngine({
+      filename: ':memory:',
+      createId: prefix => `${prefix}-${++sequence}`,
+      now: () => '2026-08-27T00:00:00.000Z',
+    })
+    const store = createSqliteDocumentStore({ engine })
+    const operation = {
+      store: 'test.lifecycle',
+      kind: 'update' as const,
+      entityId: 'scope-1',
+      entityType: 'scope',
+      fromVersion: 1,
+      toVersion: 2,
+    }
+
+    await expect(engine.transact({ actor: { kind: 'system', id: 'test' } }, async tx => {
+      tx.recordOperations([operation])
+      return await store.participateTransaction(tx, async () => 'strict')
+    })).rejects.toMatchObject({ code: 'document.transaction_empty' })
+
+    const result = await engine.transact({ actor: { kind: 'system', id: 'test' } }, async tx => {
+      tx.recordOperations([operation])
+      return await store.participateTransaction(tx, async () => 'allowed', { allowEmpty: true })
+    })
+
+    expect(result.value).toMatchObject({ value: 'allowed', changeset: { operations: [] } })
+    expect(result.commit.operations).toEqual([operation])
+    engine.close()
+  })
+
   it('rolls back writes when a transaction fails', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'loom-docstore-'))
     const filename = join(dir, 'store.sqlite')

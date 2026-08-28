@@ -4,20 +4,22 @@
 >
 > **Purpose**: 讨论 Extension 如何获得 Studio 能力、Host 如何成为身份与权限边界，以及 `activate(ctx)`、未来 Virtual Module Import 和公开 API Client 之间的关系。
 >
-> **Current Reality**: Server Extension Host 已实现部分生命周期与 capability facade；Client Extension Host、完整权限 enforcement、Virtual Module 和 Extension 作者 Logger 尚未实现。
+> **Current Reality**: Server Extension Host 已实现生命周期、Package-owned Document/Asset、Scoped Storage、Portable Payload、Event、RPC、Logger 与 Diagnostic capability facade；Client Extension Host、强进程隔离和 Virtual Module 尚未实现。
 >
 > **Related**:
-> - [`studio-extension-lifecycle-v0.md`](studio-extension-lifecycle-v0.md)
-> - [`studio-extension-manifest-architecture.md`](studio-extension-manifest-architecture.md)
+> - [`docs/architecture/extensions/`](../../../architecture/extensions/)
 > - [`../../adr/ADR-002-extension-manifest-and-registration-model.md`](../../adr/ADR-002-extension-manifest-and-registration-model.md)
+> - [`../../adr/ADR-006-extension-package-module-instance-model.md`](../../adr/ADR-006-extension-package-module-instance-model.md)
 > - [`../../adr/ADR-004-platform-auth-secrets-and-provider-credential-boundary.md`](../../adr/ADR-004-platform-auth-secrets-and-provider-credential-boundary.md)
 > - [`../../plans/extension-developer-experience.md`](../../plans/extension-developer-experience.md)
-> - [`../../plans/event-system-extension-scope-plan.md`](../../plans/event-system-extension-scope-plan.md)
+> - [历史 Event System / Extension Scope Plan](../../../archive/plans/event-system-extension-scope-plan.md)
 > - [`../../../architecture/platform/logging.md`](../../../architecture/platform/logging.md)
 
 > **2026-08-13 决策更新**：Host 继续作为 identity/permission gate。Server Extension 每次激活现已生成新的 `instanceId` 和统一 `ExtensionScope`；`ctx` 仍只是 `activate(ctx)` 的参数名。Server Event Host 已接入 Definition Registry、`public/protected/internal` visibility 与 capability category。正式的 Base/Server/Client 类型拆分、Client Host 和持久 grant Store 仍未实现，具体边界见上方计划。
 >
 > **2026-08-14 实施更新**：Server Module 已完成 Package-owned Document 默认权限门。`contributes.documentTypes` 现在约束实际 CRUD，跨 Package/官方 Document 默认拒绝；`ctx.rpc.call` 不能调用 Kernel、Application 或其他 Studio 保留 namespace。跨 Package grant、Extension transaction 与 Application typed capability 尚未实现。
+>
+> **2026-08-27 实施更新**：Application typed capability 已提供 `ctx.portablePayloads` 与 `ctx.storage.configs/records`。Host 强制 Package owner、Scope、optimistic version 和 typed binding；Portable Payload 可绑定 Card，Config / Record 进入 Document Changeset。通用 Extension-owned multi-document transaction、Client Host 与跨 Package grant 仍未实现。正式事实见 [`../../../architecture/application/extension/data-and-portable-payload.md`](../../../architecture/application/extension/data-and-portable-payload.md)。
 
 ---
 

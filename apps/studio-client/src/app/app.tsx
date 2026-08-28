@@ -107,14 +107,22 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         busy={providerBusy}
         providerAccountDraft={state.providerAccountDraft}
         modelProfiles={state.modelProfiles}
+        aiProviders={state.aiProviders}
+        aiCapabilityProfiles={state.aiCapabilityProfiles}
         providerAccounts={state.providerAccounts}
         t={state.t}
         onChangeProviderAccountDraft={state.setProviderAccountDraft}
         onCreateModelProfile={state.createModelProfile}
         onCreateProviderAccount={state.createProviderAccount}
+        onCreateAiProviderAccount={state.createAiProviderAccount}
+        onCreateAiCapabilityProfile={state.createAiCapabilityProfile}
+        onUpdateAiProviderAccount={state.updateAiProviderAccount}
+        onUpdateAiCapabilityProfile={state.updateAiCapabilityProfile}
         onDeleteModelProfile={state.deleteModelProfile}
         onDeleteProviderAccount={state.deleteProviderAccount}
         onListProviderModels={state.listProviderModels}
+        onInvokeAiCapability={state.invokeAiCapability}
+        onRefreshAiProviders={state.refreshAiProviders}
         onUpdateProviderConnection={state.updateProviderConnection}
       />
     ),

@@ -12,6 +12,7 @@ import type {
   PromptResourceKind,
   PresetToolMountInput,
   PromptProviderRole,
+  PortableExtensionPayloadDraft,
   PromptSourceKind,
   SettingMountSource,
   StateMutationOperation,
@@ -40,6 +41,12 @@ const applicationRpcMethods = [
   'application.listCards',
   'application.updateCard',
   'application.deleteCard',
+  'application.listPortableExtensionPayloads',
+  'application.getPortableExtensionPayload',
+  'application.createPortableExtensionPayload',
+  'application.updatePortableExtensionPayload',
+  'application.deletePortableExtensionPayload',
+  'application.replaceCardPortableExtensionPayloads',
   'application.getStateSnapshot',
   'application.applyStateMutation',
   'application.listStateDefinitions',
@@ -63,6 +70,11 @@ const applicationRpcMethods = [
   'application.updateProviderProfile',
   'application.replaceProviderCredential',
   'application.deleteProviderProfile',
+  'application.createAiCapabilityProfile',
+  'application.getAiCapabilityProfile',
+  'application.listAiCapabilityProfiles',
+  'application.updateAiCapabilityProfile',
+  'application.deleteAiCapabilityProfile',
   'application.listProviderModels',
   'application.pingProviderModel',
   'application.listAgentTools',
@@ -167,6 +179,42 @@ export async function callApplicationRpc(
     case 'application.deleteCard':
       return await runtime.deleteCard({
         cardId: readString(params, 'cardId'),
+      }, context) as unknown as JsonValue
+
+    case 'application.listPortableExtensionPayloads':
+      return await runtime.listPortableExtensionPayloads({
+        packageId: readOptionalString(params, 'packageId'),
+      }) as unknown as JsonValue
+
+    case 'application.getPortableExtensionPayload':
+      return await runtime.getPortableExtensionPayload({
+        payloadId: readString(params, 'payloadId'),
+      }) as unknown as JsonValue
+
+    case 'application.createPortableExtensionPayload':
+      return await runtime.createPortableExtensionPayload({
+        artifactPayloadId: readOptionalString(params, 'artifactPayloadId'),
+        payload: readRequiredRecord(params, 'payload') as unknown as PortableExtensionPayloadDraft,
+      }, context) as unknown as JsonValue
+
+    case 'application.updatePortableExtensionPayload':
+      return await runtime.updatePortableExtensionPayload({
+        payloadId: readString(params, 'payloadId'),
+        expectedVersion: readNumber(params, 'expectedVersion'),
+        payload: readRequiredRecord(params, 'payload') as unknown as PortableExtensionPayloadDraft,
+      }, context) as unknown as JsonValue
+
+    case 'application.deletePortableExtensionPayload':
+      return await runtime.deletePortableExtensionPayload({
+        payloadId: readString(params, 'payloadId'),
+        expectedVersion: readNumber(params, 'expectedVersion'),
+      }, context) as unknown as JsonValue
+
+    case 'application.replaceCardPortableExtensionPayloads':
+      return await runtime.replaceCardPortableExtensionPayloads({
+        cardId: readString(params, 'cardId'),
+        expectedVersion: readNumber(params, 'expectedVersion'),
+        payloadIds: readRequiredStringArray(params, 'payloadIds'),
       }, context) as unknown as JsonValue
 
     case 'application.getStateSnapshot':
@@ -293,6 +341,39 @@ export async function callApplicationRpc(
       return await runtime.deleteProviderProfile({
         providerProfileId: readString(params, 'providerProfileId'),
       }, context) as unknown as JsonValue
+
+    case 'application.createAiCapabilityProfile':
+      return await runtime.createAiCapabilityProfile({
+        providerProfileId: readString(params, 'providerProfileId'),
+        capabilityId: readString(params, 'capabilityId'),
+        displayName: readString(params, 'displayName'),
+        config: readOptionalObject(params, 'config'),
+      }) as unknown as JsonValue
+
+    case 'application.getAiCapabilityProfile':
+      return await runtime.getAiCapabilityProfile({
+        profileId: readString(params, 'profileId'),
+      }) as unknown as JsonValue
+
+    case 'application.listAiCapabilityProfiles':
+      return await runtime.listAiCapabilityProfiles({
+        providerProfileId: readOptionalString(params, 'providerProfileId'),
+        capabilityId: readOptionalString(params, 'capabilityId'),
+        cursor: readOptionalString(params, 'cursor'),
+        limit: readOptionalNumber(params, 'limit'),
+      }) as unknown as JsonValue
+
+    case 'application.updateAiCapabilityProfile':
+      return await runtime.updateAiCapabilityProfile({
+        profileId: readString(params, 'profileId'),
+        displayName: readOptionalString(params, 'displayName'),
+        config: readOptionalObject(params, 'config'),
+      }) as unknown as JsonValue
+
+    case 'application.deleteAiCapabilityProfile':
+      return await runtime.deleteAiCapabilityProfile({
+        profileId: readString(params, 'profileId'),
+      }) as unknown as JsonValue
 
     case 'application.listProviderModels':
       return await runtime.listProviderModels({

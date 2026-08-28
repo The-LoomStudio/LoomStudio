@@ -140,6 +140,9 @@ importers:
       '@lobehub/icons-static-svg':
         specifier: 1.94.0
         version: 1.94.0
+      '@loom-studio/ai-gateway':
+        specifier: workspace:*
+        version: link:../../packages/ai-gateway
       '@loom-studio/client-bridge':
         specifier: workspace:*
         version: link:../../packages/client-bridge
@@ -395,6 +398,9 @@ importers:
 
   packages/extension-sdk:
     dependencies:
+      '@loom-studio/ai-gateway':
+        specifier: workspace:*
+        version: link:../ai-gateway
       '@loom-studio/diagnostics':
         specifier: workspace:*
         version: link:../diagnostics

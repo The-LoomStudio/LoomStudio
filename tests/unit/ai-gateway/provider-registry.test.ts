@@ -42,9 +42,19 @@ describe('official provider adapter registry', () => {
   })
 
   it('keeps fake as a credential-free built-in adapter', () => {
-    expect(createOfficialProviderAdapterRegistry().resolve('fake', { config: {} })).toMatchObject({
+    const registry = createOfficialProviderAdapterRegistry()
+    expect(registry.resolve('fake', { config: {} })).toMatchObject({
       provider: { kind: 'fake' },
       capability: { streaming: false },
+    })
+    expect(registry.validateAccountConfig('official.fake', {})).toEqual({})
+    expect(registry.validateAccountConfig('official.fake', {
+      responseTemplate: 'obsolete',
+      baseUrl: 'https://obsolete.test',
+    })).toEqual({})
+    expect(registry.getSchemas('official.fake')).toMatchObject({
+      accountConfig: { properties: {} },
+      credential: { properties: {} },
     })
   })
 })
