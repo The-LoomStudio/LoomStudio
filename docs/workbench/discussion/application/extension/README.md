@@ -148,6 +148,7 @@ Application:
 | [`airp-extension-contribution-v0.md`](airp-extension-contribution-v0.md) | Open Design | Extension 如何贡献 AIRP 领域能力 |
 | [`extension-module-scenarios-v0.md`](extension-module-scenarios-v0.md) | Partial Implementation | 数据 Capability 已实现；Renderer、Job 与高级贡献点待讨论 |
 | [`card-extension-portable-payload-v0.md`](card-extension-portable-payload-v0.md) | Implemented Foundation | Card 安全携带插件私有配置和初始数据；UI、Asset closure 与二进制待讨论 |
+| [`../ui/narrative-inline-rendering-and-render-mount-v0.md`](../ui/narrative-inline-rendering-and-render-mount-v0.md) | Accepted Direction / Implementation Pending | Node-bound Extension Record 如何动态贡献消息内 Render Mount，不复制数据层 |
 
 ---
 

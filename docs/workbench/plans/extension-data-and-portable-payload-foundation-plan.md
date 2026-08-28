@@ -19,7 +19,7 @@
 - 用户可见的 canonical Extension 写入进入 Document Store / Data Engine Changeset；缓存、索引和临时 Job 状态不伪装成可撤销业务事实；
 - State 继续承载跨 Prompt、脚本、UI 与分支回滚共享的角色或世界语义；插件私有配置和记录不塞进 State；
 - Secret 不进入 Document、Portable Payload 或 Card Bundle；
-- Renderer、Client 挂载点、iframe / Shadow DOM 交互和 Narrative Attachment 展示协议不属于本计划。
+- Renderer、Client 挂载点、iframe / Shadow DOM 交互和消息内 Render Mount 展示协议不属于本计划。
 
 ## 2. 现有可复用基础
 
@@ -154,7 +154,7 @@ type ExtensionStorageScope =
 - Asset rollback 只删除持久引用，不隐式删除可能共享的 Asset；
 - Extension 禁用期间漏过 Event 后，可以通过持久化 scope / binding 查询对账。
 
-Branch lineage 驱动的可见性属于 Renderer / Narrative Attachment 阶段；Derived memory / embedding checkpoint、rebuild、Job Queue 和未引用 Asset / Blob GC 属于各自后续基础设施。本 Phase 只保证 canonical 数据、引用和 Scope 生命周期不会妨碍这些后续能力，不提前实现不存在的 Memory 或 GC 系统。
+Branch lineage 驱动的可见性属于 Renderer / Render Mount 阶段；Derived memory / embedding checkpoint、rebuild、Job Queue 和未引用 Asset / Blob GC 属于各自后续基础设施。本 Phase 只保证 canonical 数据、引用和 Scope 生命周期不会妨碍这些后续能力，不提前实现不存在的 Memory 或 GC 系统。
 
 ### 7.1 实施结果
 
@@ -164,15 +164,17 @@ Branch lineage 驱动的可见性属于 Renderer / Narrative Attachment 阶段�
 - Timeline / Agent Session 删除会在同一 Data Engine transaction 中 tombstone 对应 Scope 的 Config / Record；Global 和其他 Scope 保持不变；
 - Node / Message / Asset 仅为持久引用，不被建模为 Store 或隐式级联；删除绑定 Record 已验证不会删除仍存在的 Asset；Asset GC、Derived memory checkpoint 和 Renderer lineage 仍留给后续专门阶段。
 
-## 8. 下一阶段：Renderer 与 Narrative Attachment
+## 8. 下一阶段：Renderer 与消息内 Render Mount
 
-完成本计划后再确定：
+消息内方向已在 [`../discussion/application/ui/narrative-inline-rendering-and-render-mount-v0.md`](../discussion/application/ui/narrative-inline-rendering-and-render-mount-v0.md) 收束：Extension 继续用自己的 Record 持久绑定 Node / Asset，Host 在 Display Projection 中动态生成 Render Mount 与 DisplayPart，当前不新建重复的通用 `NarrativeAttachment` Document。
 
-- 正文稳定 Marker 与 Narrative Attachment Schema；
-- inline、before / after、sidebar 等挂载位置；
+后续仍需确定：
+
+- inline、before / after 的正式 API 与可选 Marker；
+- sidebar、background、overlay 等非消息 Surface；
 - Renderer Registry 的第三方 Client code 加载；
 - Extension 缺失时的静态 fallback；
-- Node lineage、Marker 删除与 Attachment 可见性。
+- Node lineage、Marker 删除与 Render Mount 可见性。
 
 ## 9. 实施验证
 

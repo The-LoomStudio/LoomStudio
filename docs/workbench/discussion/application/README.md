@@ -233,6 +233,7 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 | [`ui/ui-preflight-decisions-v0.md`](ui/ui-preflight-decisions-v0.md) | Open Design / Initial Decisions | UI 动工前的 I18N、滚动、焦点、渲染安全和插件 slot 基础决策 |
 | [`ui/css-architecture-and-customization-v0.md`](ui/css-architecture-and-customization-v0.md) | Open Design | CSS Modules、Design Tokens、Custom CSS、插件样式边界 |
 | [`ui/agent-panel-rendering-v0.md`](ui/agent-panel-rendering-v0.md) | Open Design | Agent 面板内文本、Artifact、ToolCall 和交互卡片的渲染边界 |
+| [`ui/narrative-inline-rendering-and-render-mount-v0.md`](ui/narrative-inline-rendering-and-render-mount-v0.md) | Accepted Direction / Implementation Pending | 消息内 DisplayPart、Node Binding、动态 Render Mount、Streaming 与文生图示例 |
 | [`ui/custom-renderer-poc-plan-v0.md`](ui/custom-renderer-poc-plan-v0.md) | PoC Plan | 多标签页 Custom Renderer 的隔离、状态同步、轻量 SDK、CSS/A11Y/I18N smoke |
 | [`ui/layout-and-scroll-containers-v0.md`](ui/layout-and-scroll-containers-v0.md) | Open Design | Application 布局、滚动所有权、虚拟列表、滚动恢复 |
 | [`ui/interaction-states-v0.md`](ui/interaction-states-v0.md) | Open Design | empty / loading / error / pending / dirty / optimistic / degraded 等状态 |
