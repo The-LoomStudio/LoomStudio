@@ -27,13 +27,13 @@ pnpm exec vitest run tests/unit/studio-server tests/integration/studio-server ap
 
 ## 入口与组成
 
-- [`src/main.ts`](./src/main.ts)：进程入口、服务组装和关闭顺序。
-- [`src/http-server.ts`](./src/http-server.ts)：认证 HTTP、RPC、Asset 与 Card 文件数据面。
-- [`src/application-session-auth.ts`](./src/application-session-auth.ts)：loopback Origin 和 HttpOnly/SameSite Application Session。
-- [`src/studio-rpc-router.ts`](./src/studio-rpc-router.ts)：路由 `studio.*`、`application.*`、`ai.*`、`settings.*`、`logs.*`，其他 namespace 回落 Kernel。
-- [`src/application-rpc.ts`](./src/application-rpc.ts)：边界参数读取、校验与 Application Runtime 调用。
+- [`src/main.ts`](./src/main.ts)：进程入口、服务组装和关闭顺序（Composition Root）。
+- [`src/http/`](./src/http/)：HTTP 传输接入与本地安全认证（`http-server.ts`, `application-session-auth.ts`）。
+- [`src/rpc/`](./src/rpc/)：RPC 路由分发、参数校验与领域处理器（`studio-rpc-router.ts`, `rpc-params.ts`, `handlers/`）。
+- [`src/codecs/`](./src/codecs/)：Card PNG / ZIP 编解码与打包器（`card-png.ts`, `card-bundle-zip.ts`）。
+- [`src/platform/`](./src/platform/)：本地运行路径、系统代理与网络设置（`local-paths.ts`, `system-proxy.ts`, `network-settings.ts`）。
+- [`src/logging/`](./src/logging/)：结构化日志观测适配器（`ai-gateway-logging.ts`, `document-store-logging.ts`）。
 - [`src/extensions/`](./src/extensions/)：Package Source、安装、desired state 和 Server Module 编排。
-- [`src/local-paths.ts`](./src/local-paths.ts)：数据库、Blob、Extension、缓存和日志路径合同。
 
 ```text
 Studio Server

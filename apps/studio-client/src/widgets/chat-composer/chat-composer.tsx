@@ -1,6 +1,20 @@
 import { useLayoutEffect, useRef, type FormEvent, type ReactNode } from 'react'
 import { ArrowUp, BringToFront, ChevronUp, Plus, RotateCcw } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../../shared/ui/dropdown-menu/dropdown-menu.js'
 import styles from './chat-composer.module.scss'
+
+export type ChatComposerQuickAction = {
+  disabled?: boolean
+  icon?: ReactNode
+  id: string
+  label: string
+  onSelect(): void
+}
 
 type ChatComposerProps = {
   canPreviewPrompt: boolean
@@ -11,11 +25,13 @@ type ChatComposerProps = {
   onChangeInput: (value: string) => void
   onHeightChange?: (height: number) => void
   onPreviewPrompt: () => void
+  quickActions?: readonly ChatComposerQuickAction[]
   onSubmit: (event: FormEvent) => void
   moreLabel: string
   placeholder?: string
   previewLabel: string
   retryLabel: string
+  sheet?: ReactNode
   sendLabel: string
   sendLeadingAction?: ReactNode
   targetActionLabel?: string
@@ -59,6 +75,7 @@ export function ChatComposer(props: ChatComposerProps) {
     <form className={`${styles.composer} ${props.expanded ? styles.composerExpanded : ''}`} data-loom-component="chat-composer" ref={composerRef} onSubmit={props.onSubmit}>
       <div className={styles.composerBody}>
         <div className={styles.inputSurface} data-loom-anchor="narrative-composer-surface">
+          {props.sheet ? <div className={styles.sheet} data-loom-surface="composer.sheet">{props.sheet}</div> : null}
           {props.expansion ? (
             <div aria-hidden={!props.expanded} className={styles.expansionShell}>
               <div className={styles.expansionContent}>{props.expansion}</div>
@@ -86,9 +103,26 @@ export function ChatComposer(props: ChatComposerProps) {
                     <ChevronUp aria-hidden="true" strokeWidth={1.7} />
                   </button>
                 ) : null}
-                <button aria-label={props.moreLabel} className={styles.utilityButton} disabled title={props.moreLabel} type="button">
-                  <Plus aria-hidden="true" strokeWidth={1.7} />
-                </button>
+                {props.quickActions?.length ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button aria-label={props.moreLabel} className={styles.utilityButton} title={props.moreLabel} type="button">
+                        <Plus aria-hidden="true" strokeWidth={1.7} />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" side="top">
+                      {props.quickActions.map(action => (
+                        <DropdownMenuItem disabled={action.disabled} icon={action.icon} key={action.id} onSelect={action.onSelect}>
+                          {action.label}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : (
+                  <button aria-label={props.moreLabel} className={styles.utilityButton} disabled title={props.moreLabel} type="button">
+                    <Plus aria-hidden="true" strokeWidth={1.7} />
+                  </button>
+                )}
                 <button aria-label={props.retryLabel} className={styles.utilityButton} disabled title={props.retryLabel} type="button">
                   <RotateCcw aria-hidden="true" strokeWidth={1.7} />
                 </button>

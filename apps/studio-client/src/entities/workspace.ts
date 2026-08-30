@@ -150,16 +150,8 @@ export type ImportBundle = {
   importedAt: string
 }
 
-export type GetImportBundleResult = {
-  importBundle: ImportBundle
-}
-
 export type GetPromptResourceResult = {
   resource: PromptResource
-}
-
-export type ListCardPromptResourcesResult = {
-  resources: PromptResource[]
 }
 
 export type ListPromptResourcesResult = {

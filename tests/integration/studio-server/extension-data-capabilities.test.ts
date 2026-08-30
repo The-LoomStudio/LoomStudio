@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { officialFakeModelId } from '@loom-studio/ai-gateway'
 import { authenticatedFetch, callRpc, withStudioServer } from './helpers.js'
 
 describe('Studio Server Extension data capabilities', () => {
@@ -103,7 +104,7 @@ describe('Studio Server Extension data capabilities', () => {
         providerExtensionId: 'official.fake',
         displayName: 'Extension Data Test Provider',
         config: { baseUrl: 'https://example.test/v1' },
-        enabledModelIds: ['test-model'],
+        enabledModelIds: [officialFakeModelId],
       })
       const preset = await callRpc<{ resource: { id: string } }>(port, 'application.createPromptResource', {
         resourceKind: 'preset',
@@ -112,7 +113,7 @@ describe('Studio Server Extension data capabilities', () => {
       const profile = await callRpc<{ agentProfile: { id: string } }>(port, 'application.createAgentProfile', {
         name: 'Extension Data Test Agent',
         presetId: preset.resource.id,
-        model: { providerProfileId: provider.providerProfile.id, modelId: 'test-model' },
+        model: { providerProfileId: provider.providerProfile.id, modelId: officialFakeModelId },
       })
       const agentSession = await callRpc<{ session: { id: string } }>(port, 'application.createAgentSession', {
         agentProfileId: profile.agentProfile.id,
@@ -141,6 +142,25 @@ describe('Studio Server Extension data capabilities', () => {
         'asset',
         'state-path',
       ])
+      const listedRecords = await callRpc<{ records: Array<{ id: string; packageId: string; recordType: string }> }>(
+        port,
+        'application.listExtensionRecords',
+        {
+          packageId: 'example.data-capabilities',
+          binding: { kind: 'narrative-node', timelineId: timeline.timeline.id, nodeId: narrative.nodes[0]!.id },
+        },
+      )
+      expect(listedRecords.records).toEqual([
+        expect.objectContaining({ id: expect.any(String), packageId: 'example.data-capabilities', recordType: 'memory' }),
+      ])
+      await expect(callRpc(port, 'application.getExtensionRecord', {
+        packageId: 'example.data-capabilities',
+        recordId: listedRecords.records[0]!.id,
+      })).resolves.toMatchObject({ record: { id: listedRecords.records[0]!.id } })
+      await expect(callRpc(port, 'application.getExtensionRecord', {
+        packageId: 'other.package',
+        recordId: listedRecords.records[0]!.id,
+      })).rejects.toThrow('not owned by package')
       await callRpc(port, 'example.data-capabilities.saveTimelineConfig', {
         timelineId: timeline.timeline.id,
         value: { style: 'watercolor' },

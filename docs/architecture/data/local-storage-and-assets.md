@@ -71,4 +71,4 @@ Server Extension 通过 `ctx.assets.publish/read/materialize` 使用媒体：
 - `materialize` 只把已授权 Asset 写入当前 Instance 的 cache scratch，reload / dispose 会删除 scratch，不影响正式 Asset；
 - Extension 通过 `assetId` 协作，不写 sibling Package 目录。
 
-本地 Package 安装首版只接受目录来源。Installer 拒绝 symlink、特殊文件、越界 entry、非法 ID/version 与超限 Package，先复制到 `.staging`，验证 Manifest v2 后原子 rename 到 `installed/<package-id>/<version>`。卸载只允许 installed 来源，先释放 Module，再删除该版本代码；Package-owned Documents 与已发布 Media Assets 保留。Archive、Marketplace、签名、在线更新和依赖求解尚未实现。
+本地 Package 安装首版只接受目录来源。Installer 拒绝 symlink、特殊文件、越界 entry、非法 ID/version 与超限 Package，先复制到 `.staging`，验证 Manifest v2 后原子 rename 到 `installed/<package-id>/<version>`。卸载接受 installed 与 dev-link：前者删除复制后的版本目录，后者只移除开发链接；两者都释放并 forget Module、删除 Package 的 enabled/grant 状态，但保留 Package-owned Documents、已导入资源与已发布 Media Assets。Archive、Marketplace、签名、在线更新、依赖求解和 Media Asset 引用安全删除尚未实现。

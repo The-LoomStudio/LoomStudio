@@ -1,4 +1,5 @@
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
+import type { RendererContributionDefinition } from '@loom-studio/extension-sdk'
 import type { MutationReceipt } from './common.js'
 
 export type HistorySource =
@@ -58,13 +59,6 @@ export type HistoryProjectionSnapshot = {
   ruleIds: string[]
 }
 
-export type RendererDefinition = {
-  id: string
-  name: string
-  artifactType: string
-  slot: 'message.inline' | 'studio.sidebar' | 'studio.panel'
-  renderMode: 'inline' | 'panel' | 'iframe'
-  fallback: 'json' | 'text' | 'hidden'
-}
+export type RendererDefinition = RendererContributionDefinition
 
 export type TextTransformMutationResult<T> = { mutation: MutationReceipt } & T

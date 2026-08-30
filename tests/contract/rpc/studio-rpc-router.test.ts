@@ -1,7 +1,7 @@
 import type { ApplicationRuntime } from '@loom-studio/application-runtime'
 import type { JsonValue } from '@loom-studio/shared'
 import { describe, expect, it } from 'vitest'
-import { createStudioRpcRouter } from '../../../apps/studio-server/src/studio-rpc-router.js'
+import { createStudioRpcRouter } from '../../../apps/studio-server/src/rpc/studio-rpc-router.js'
 
 const context = {
   clientId: 'test-client',
@@ -10,79 +10,6 @@ const context = {
 }
 
 describe('studio rpc router', () => {
-  it('exposes studio-server rpc capabilities with required metadata', async () => {
-    const router = createStudioRpcRouter({
-      applicationRuntime: {} as ApplicationRuntime,
-      kernel: createKernelCaller(),
-    })
-
-    const listed = await router.call('studio.rpc.listCapabilities', {}, context) as {
-      capabilities: Array<{ name: string; namespace: string; owner: string; stability: string }>
-    }
-
-    expect(listed.capabilities).toContainEqual(expect.objectContaining({
-      name: 'studio.rpc.listCapabilities',
-      namespace: 'studio',
-      owner: 'studio-server',
-      stability: 'experimental',
-    }))
-    expect(listed.capabilities).toContainEqual(expect.objectContaining({
-      name: 'application.createCard',
-      namespace: 'application',
-      owner: 'application',
-      stability: 'experimental',
-    }))
-    expect(listed.capabilities).toContainEqual(expect.objectContaining({
-      name: 'application.createPortableExtensionPayload',
-      namespace: 'application',
-      owner: 'application',
-      stability: 'experimental',
-    }))
-    expect(listed.capabilities).toContainEqual(expect.objectContaining({
-      name: 'application.createNarrativeTimeline',
-      namespace: 'application',
-      owner: 'application',
-      stability: 'experimental',
-    }))
-    expect(listed.capabilities).not.toContainEqual(expect.objectContaining({
-      name: 'application.createNarrativeTimelineFromCard',
-    }))
-    expect(listed.capabilities).not.toContainEqual(expect.objectContaining({
-      name: 'application.exportCardArtifact',
-    }))
-    expect(listed.capabilities).toContainEqual(expect.objectContaining({
-      name: 'application.createAgentSession',
-      namespace: 'application',
-      owner: 'application',
-      stability: 'experimental',
-    }))
-    expect(listed.capabilities).toContainEqual(expect.objectContaining({
-      name: 'application.invokeAgentTurn',
-      namespace: 'application',
-      owner: 'application',
-      stability: 'experimental',
-    }))
-    expect(listed.capabilities).toContainEqual(expect.objectContaining({
-      name: 'application.previewAgentTurn',
-      namespace: 'application',
-      owner: 'application',
-      stability: 'experimental',
-    }))
-    expect(listed.capabilities).toContainEqual(expect.objectContaining({
-      name: 'application.updateAgentTool',
-      namespace: 'application',
-      owner: 'application',
-      stability: 'experimental',
-    }))
-    expect(listed.capabilities).toContainEqual(expect.objectContaining({
-      name: 'application.replacePresetToolMounts',
-      namespace: 'application',
-      owner: 'application',
-      stability: 'experimental',
-    }))
-    expect(listed.capabilities.map(capability => capability.name)).not.toContain('application.appendAgentTranscriptEntrys')
-  })
-
   it('falls back to kernel rpc for unknown studio-server namespaces', async () => {
     const router = createStudioRpcRouter({
       applicationRuntime: {} as ApplicationRuntime,
@@ -115,6 +42,40 @@ describe('studio rpc router', () => {
     await router.call('application.createCard', { name: 'Card' }, context)
 
     expect(receivedContext).toEqual(context)
+  })
+
+  it('emits Card lifecycle facts after deletion commits', async () => {
+    const emitted: Array<{ name: string; payload: JsonValue; context: unknown }> = []
+    const applicationRuntime = {
+      previewCardDeletion: async () => ({
+        cardId: 'card-1',
+        timelines: [{ id: 'timeline-1' }],
+        extensionData: {
+          cardScoped: { configs: 1, records: 2 },
+          timelineScoped: { configs: 3, records: 4 },
+        },
+        textTransformRuleIds: [],
+      }),
+      deleteCard: async () => ({ deleted: true, mutation: { changesetId: 'chg-delete' } }),
+    } as unknown as ApplicationRuntime
+    const router = createStudioRpcRouter({
+      applicationRuntime,
+      kernel: createKernelCaller(),
+      emitEvent: (name, payload, eventContext) => emitted.push({ name, payload, context: eventContext }),
+    })
+
+    await router.call('application.deleteCard', { cardId: 'card-1', includePlayData: true }, context)
+
+    expect(emitted).toEqual([{
+      name: 'entity.lifecycle.changed',
+      payload: {
+        operation: 'tombstoned',
+        root: { kind: 'card', id: 'card-1' },
+        affected: { timelines: 1, extensionConfigs: 4, extensionRecords: 6 },
+        changesetId: 'chg-delete',
+      },
+      context,
+    }])
   })
 
   it('parses editable Agent Tool entries without changing their stable id', async () => {

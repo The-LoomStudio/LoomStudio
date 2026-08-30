@@ -310,6 +310,27 @@ describe('Agent Tool Foundation', () => {
     })
   })
 
+  it('registers and disposes Extension runtime handlers independently from definitions', async () => {
+    const registry = createAgentToolRegistry([])
+    const handle = registry.registerRuntime({
+      toolId: structuredTool.id,
+      execute: ({ invocation }) => ({
+        invocationId: invocation.id,
+        toolId: invocation.toolId,
+        status: 'completed',
+        content: [{ type: 'json', value: { echoed: invocation.arguments } }],
+      }),
+    })
+    registry.replaceDefinitions([structuredTool])
+    const invocation = { id: 'dynamic', toolId: structuredTool.id, arguments: { query: 'hello' } }
+    await expect(registry.execute(invocation, new AbortController().signal)).resolves.toMatchObject({
+      status: 'completed',
+      content: [{ type: 'json', value: { echoed: { query: 'hello' } } }],
+    })
+    handle.dispose()
+    await expect(registry.execute(invocation, new AbortController().signal)).rejects.toThrow('No runtime handler registered')
+  })
+
   it('passes AbortSignal and converts handler throws into ToolResult failures', async () => {
     const abortController = new AbortController()
     const registry = createAgentToolRegistry(

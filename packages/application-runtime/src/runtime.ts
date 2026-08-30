@@ -1,6 +1,8 @@
 import type { DocumentRecord, DocumentStore, DocumentTransaction, SqliteDocumentStore } from '@loom-studio/document-store'
+import type { ExtensionEntityRef, ExtensionRecordEntry, ExtensionStorageScope } from '@loom-studio/extension-sdk'
 import { officialFakeModelId } from '@loom-studio/ai-gateway'
 import type { AgentTranscriptEntry } from '@loom-studio/agent-store'
+import type { NarrativeTimeline } from '@loom-studio/narrative-store'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import type { PromptResourceMutation } from '@loom-studio/prompt-resource-store'
 import {
@@ -22,6 +24,7 @@ import { createApplicationRuntimeContext, type ApplicationRuntimeContext } from 
 import { applicationDocumentTypes } from './document-types.js'
 import { listDocuments, readDocument, toVersioned, writeDocument } from './document-store.js'
 import { executeDocumentMutation } from './mutation.js'
+import { isObject } from './json.js'
 import { applyApplicationStateMutation, applyGlobalStateDefaultInTransaction, getApplicationStateSnapshot, initializeGlobalState, revertApplicationStateChangeset } from './state.js'
 import {
   toStateDefinitionEntry,
@@ -31,6 +34,7 @@ import {
   validateTimelineStateBinding,
 } from './state-definition.js'
 import { createVariableRenderContext, type VariableRenderContext } from './variables.js'
+import { readTimelineRuntimeContext, timelineRuntimeContextId } from './timeline-runtime-context.js'
 import {
   extractHistory as extractHistorySnapshot,
   projectHistoryEntries,
@@ -62,13 +66,14 @@ import {
 import {
   exportCardArtifact,
   applyDefaultPromptProjection,
-  getImportBundle,
   importCardBundle,
   isCardBundleArtifact,
+  isPromptResourceArtifact,
   normalizePortableExtensionPayloadArtifact,
   type CardBundleArtifact,
   type PortableExtensionPayloadArtifact,
   type PortableExtensionPayloadContent,
+  type PromptResourceArtifact,
   type PromptResourceContent,
 } from './workspace.js'
 import { fromStoredResource, listMappedResources, readMappedResource, toStoredNodeDraft, toStoredResourceInput } from './prompt-resource-mapper.js'
@@ -82,10 +87,15 @@ import type {
   ApplicationRuntimeOptions,
   CardMediaRefs,
   CardSourceContent,
+  ImportExtensionPackageResourcesInput,
+  ImportExtensionPackageResourcesResult,
   PortableExtensionPayloadEntry,
+  RemoveExtensionPackageResourcesInput,
+  RemoveExtensionPackageResourcesResult,
   StateDefinitionContent,
   StateDefinitionDraft,
   StateMutationOperation,
+  TimelineRuntimeContextContent,
   ProviderProfileContent,
   ProviderProfileView,
   ProviderMessage,
@@ -177,13 +187,25 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     const branchId = ctx.createId('branch')
     const stateScopeId = ctx.createId('state-scope')
     const stateRevisionId = ctx.createId('state-revision')
-    const variables = await readAgentTurnVariables(ctx, card.id, initialState)
+    const runtimeContext = await buildTimelineRuntimeContext(ctx, {
+      timelineId,
+      card,
+      cardContent,
+      templates,
+    })
+    const variables = await readAgentTurnVariables(ctx, runtimeContext.fallbackUserName, initialState)
     const openingEntries = readOpeningEntries(cardContent, variables)
     const transaction = await ctx.dataEngine.transact(
       narrativeWriteContext(requestContext, reason),
-      async dataTx => {
+      async dataTx => requireDocumentParticipant().participateTransaction(dataTx, async documents => {
         const stateTx = ctx.states.transaction(dataTx)
         const narrativeTx = narratives.transaction(dataTx)
+        await writeDocument<TimelineRuntimeContextContent>(documents, {
+          id: timelineRuntimeContextId(timelineId),
+          type: applicationDocumentTypes.timelineRuntimeContext,
+          content: runtimeContext,
+          expectedVersion: 'new',
+        })
         stateTx.createScope({ id: stateScopeId, kind: 'timeline', ownerId: timelineId })
         stateTx.createRevision({
           id: stateRevisionId,
@@ -202,10 +224,10 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
             body: { format: 'loom-markdown.v1' as const, raw: entry.content },
           })),
         })
-      },
+      }),
     )
     return {
-      ...transaction.value,
+      ...transaction.value.value,
       mutation: { changesetId: transaction.commit.changesetId },
     }
   }
@@ -500,6 +522,8 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     },
 
     listRenderers: async () => ({ renderers: builtInRenderers.map(renderer => structuredClone(renderer)) }),
+    listExtensionRecords: async input => ({ records: await listApplicationExtensionRecords(ctx.documents, input) }),
+    getExtensionRecord: async input => ({ record: await getApplicationExtensionRecord(ctx.documents, input.packageId, input.recordId) }),
 
     createCard: async (input, requestContext) => {
       if (input.name.trim().length === 0) {
@@ -601,10 +625,91 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       return { card: mutation.value, mutation: mutation.mutation }
     },
 
+    previewCardDeletion: async input => {
+      await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
+      const timelines = ctx.narratives ? await listAllCardTimelines(ctx, input.cardId) : []
+      const timelineIds = new Set(timelines.map(timeline => timeline.id))
+      const extensionData = await countCardDeletionExtensionData(ctx.documents, input.cardId, timelineIds)
+      const textTransformRuleIds = (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule))
+        .filter(rule => rule.content.owner.kind === 'card' && rule.content.owner.cardId === input.cardId)
+        .map(rule => rule.id)
+      return {
+        cardId: input.cardId,
+        timelines: timelines.map(timeline => ({
+          id: timeline.id,
+          ...(timeline.title ? { title: timeline.title } : {}),
+        })),
+        extensionData,
+        textTransformRuleIds,
+      }
+    },
+
     deleteCard: async (input, requestContext) => {
+      const card = await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
+      const timelines = ctx.narratives ? await listAllCardTimelines(ctx, input.cardId) : []
+      const ownedRules = (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule))
+        .filter(rule => rule.content.owner.kind === 'card' && rule.content.owner.cardId === input.cardId)
+      if (input.includePlayData && timelines.length > 0) {
+        const narratives = requireNarratives()
+        const documentParticipant = requireDocumentParticipant()
+        const scopes = new Map<string, string>()
+        for (const timeline of timelines) {
+          const scope = await ctx.states.getScope({ kind: 'timeline', ownerId: timeline.id })
+          if (scope) scopes.set(timeline.id, scope.id)
+        }
+        const result = await ctx.dataEngine.transact(
+          narrativeWriteContext(requestContext, 'application.deleteCard'),
+          async dataTx => documentParticipant.participateTransaction(dataTx, async documents => {
+            const narrativeTx = narratives.transaction(dataTx)
+            const stateTx = ctx.states.transaction(dataTx)
+            for (const timeline of timelines) {
+              narrativeTx.deleteTimeline({ timelineId: timeline.id })
+              const scopeId = scopes.get(timeline.id)
+              if (scopeId) stateTx.tombstoneScope({ scopeId })
+              const runtimeContext = await documents.get(timelineRuntimeContextId(timeline.id))
+              if (runtimeContext && !runtimeContext.meta.tombstone) {
+                await documents.delete({ id: runtimeContext.id, expectedVersion: runtimeContext.version })
+              }
+              await tombstoneExtensionStorageScope(documents, { kind: 'timeline', timelineId: timeline.id })
+            }
+            const currentCard = await readDocument<CardSourceContent>(documents, input.cardId, applicationDocumentTypes.cardSource)
+            await tombstoneExtensionStorageScope(documents, { kind: 'card', cardId: input.cardId })
+            for (const rule of ownedRules) await documents.delete({ id: rule.id, expectedVersion: rule.version })
+            await documents.delete({ id: currentCard.id, expectedVersion: currentCard.version })
+            return true as const
+          }, { allowEmpty: true }),
+        )
+        return { deleted: true as const, mutation: { changesetId: result.commit.changesetId } }
+      }
+      const cardContent = normalizeCardContent(card.content)
+      const templates = new Map<string, Extract<StateDefinitionDraft, { kind: 'timeline-template' }>>()
+      for (const definitionId of cardContent.stateDefinitionIds ?? []) {
+        const definition = await readDocument<StateDefinitionContent>(ctx.documents, definitionId, applicationDocumentTypes.stateDefinition)
+        if (definition.content.kind === 'timeline-template') templates.set(definition.id, definition.content)
+      }
+      const missingRuntimeContexts = [] as TimelineRuntimeContextContent[]
+      for (const timeline of timelines) {
+        if (await readTimelineRuntimeContext(ctx, timeline.id)) continue
+        missingRuntimeContexts.push(await buildTimelineRuntimeContext(ctx, {
+          timelineId: timeline.id,
+          card,
+          cardContent,
+          templates,
+        }))
+      }
       const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.deleteCard', async documents => {
-        const card = await readDocument<CardSourceContent>(documents, input.cardId, applicationDocumentTypes.cardSource)
-        await documents.delete({ id: card.id, expectedVersion: card.version })
+        const currentCard = await readDocument<CardSourceContent>(documents, input.cardId, applicationDocumentTypes.cardSource)
+        for (const runtimeContext of missingRuntimeContexts) {
+          await writeDocument<TimelineRuntimeContextContent>(documents, {
+            id: timelineRuntimeContextId(runtimeContext.timelineId),
+            type: applicationDocumentTypes.timelineRuntimeContext,
+            content: runtimeContext,
+            expectedVersion: 'new',
+          })
+        }
+        await tombstoneExtensionStorageScope(documents, { kind: 'card', cardId: input.cardId })
+        for (const rule of ownedRules) await documents.delete({ id: rule.id, expectedVersion: rule.version })
+        await documents.delete({ id: currentCard.id, expectedVersion: currentCard.version })
         return true as const
       })
 
@@ -1108,6 +1213,10 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
 
     listAgentTools: async () => ({ tools: await listAgentToolEntries(ctx) }),
 
+    importExtensionPackageResources: (input, requestContext) => importExtensionPackageResources(ctx, input, requestContext, requireDocumentParticipant()),
+
+    removeExtensionPackageResources: (input, requestContext) => removeExtensionPackageResources(ctx, input, requestContext, requireDocumentParticipant()),
+
     updateAgentTool: async (input) => {
       const existing = await readDocument<AgentToolContent>(
         ctx.documents,
@@ -1123,7 +1232,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         id: existing.id,
         type: applicationDocumentTypes.agentTool,
         content: {
-          ...toAgentToolContent(input.definition, existing.content.createdAt),
+          ...toAgentToolContent(input.definition, existing.content.createdAt, ctx.now(), existing.content.origin),
           updatedAt: ctx.now(),
         },
         expectedVersion: existing.version,
@@ -1131,20 +1240,6 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       await refreshAgentToolRegistry(ctx)
       return {
         tool: toAgentToolEntry(updated),
-      }
-    },
-
-    analyzeAgentTools: async input => {
-      const profile = await readDocument<AgentProfileContent>(ctx.documents, input.agentProfileId, applicationDocumentTypes.agentProfile)
-      const capability = await readProviderCapability(ctx, profile.content.model.providerProfileId)
-      const mounts = await ctx.promptResources.listPresetToolMounts({ presetResourceId: profile.content.presetId })
-      const enabledToolIds = resolveEnabledPresetToolMounts(mounts, profile.content.toolOverrides ?? {}).map(mount => mount.toolId)
-      return {
-        analysis: ctx.agentTools.analyze(enabledToolIds, {
-          nativeFunction: capability.nativeFunctionTools,
-          providerCustom: capability.providerCustomTools,
-          content: true,
-        }),
       }
     },
 
@@ -1368,6 +1463,10 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         async dataTx => documentParticipant.participateTransaction(dataTx, async documents => {
           const timeline = narratives.transaction(dataTx).deleteTimeline(input)
           if (scope) ctx.states.transaction(dataTx).tombstoneScope({ scopeId: scope.id })
+          const runtimeContext = await documents.get(timelineRuntimeContextId(input.timelineId))
+          if (runtimeContext && !runtimeContext.meta.tombstone) {
+            await documents.delete({ id: runtimeContext.id, expectedVersion: runtimeContext.version })
+          }
           await tombstoneExtensionStorageScope(documents, {
             kind: 'timeline',
             timelineId: input.timelineId,
@@ -1407,15 +1506,6 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         now: ctx.now(),
         storedSourceArtifact,
       })
-    },
-
-    getImportBundle: async input => {
-      return {
-        importBundle: await getImportBundle({
-          documents: ctx.documents,
-          importBundleId: input.importBundleId,
-        }),
-      }
     },
 
     getPromptResource: async input => {
@@ -1490,6 +1580,10 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       const timelineReferences = await findTimelinePromptResourceReferences(ctx, input.resourceId)
       const cards = await listDocuments<CardSourceContent>(ctx.documents, applicationDocumentTypes.cardSource)
       const referencedCards = cards.filter(card => card.content.promptResourceIds?.includes(input.resourceId))
+      const ownedRules = resource.resourceKind === 'preset'
+        ? (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule))
+          .filter(rule => rule.content.owner.kind === 'preset' && rule.content.owner.presetId === input.resourceId)
+        : []
       const settingMounts = resource.resourceKind === 'setting'
         ? await ctx.promptResources.listSettingMounts({ settingResourceId: input.resourceId })
         : []
@@ -1512,7 +1606,10 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
           })
         }
         if (referencedCards.length === 0) {
-          return { deleted: resourceTx.deleteResource({ resourceId: input.resourceId, expectedVersion: resource.version }) }
+          return documentParticipant.participateTransaction(dataTx, async documents => {
+            for (const rule of ownedRules) await documents.delete({ id: rule.id, expectedVersion: rule.version })
+            return { deleted: resourceTx.deleteResource({ resourceId: input.resourceId, expectedVersion: resource.version }) }
+          }, { allowEmpty: true })
         }
         return await documentParticipant.participateTransaction(dataTx, async documents => {
           for (const card of referencedCards) {
@@ -1528,6 +1625,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
               expectedVersion: currentCard.version,
             })
           }
+          for (const rule of ownedRules) await documents.delete({ id: rule.id, expectedVersion: rule.version })
           return { deleted: resourceTx.deleteResource({ resourceId: input.resourceId, expectedVersion: resource.version }) }
         })
       })
@@ -1574,13 +1672,6 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
           rootNode: resource.rootNode,
         },
       }
-    },
-
-    listCardPromptResources: async input => {
-      const card = await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
-      const resources = []
-      for (const resourceId of card.content.promptResourceIds ?? []) resources.push(await readMappedResource(ctx.promptResources, resourceId))
-      return { resources }
     },
 
     updateCardPromptResources: async (input, requestContext) => {
@@ -2038,18 +2129,22 @@ async function prepareAgentTurn(
         branchId: narrativePage.branch.id,
       })
     : undefined
+  const timelineRuntimeContext = narrativePage
+    ? await readTimelineRuntimeContext(ctx, narrativePage.timeline.id)
+    : undefined
   const variables = await readAgentTurnVariables(
     ctx,
-    narrativePage?.timeline.createdFrom?.cardId,
+    timelineRuntimeContext?.fallbackUserName
+      ?? await readLegacyCardUserName(ctx, narrativePage?.timeline.createdFrom?.cardId),
     timelineState?.value,
   )
   try {
     const textRules = (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule)).map(document => toVersioned(document))
     const globalAndExtensionRules = textRules.filter(rule => rule.owner.kind === 'workspace' || rule.owner.kind === 'extension' || rule.owner.kind === 'user-override')
     const presetRules = textRules.filter(rule => rule.owner.kind === 'preset' && rule.owner.presetId === preset.id)
-    const cardRules = narrativePage?.timeline.createdFrom?.cardId
+    const cardRules = timelineRuntimeContext?.textTransformRules ?? (narrativePage?.timeline.createdFrom?.cardId
       ? textRules.filter(rule => rule.owner.kind === 'card' && rule.owner.cardId === narrativePage.timeline.createdFrom!.cardId)
-      : []
+      : [])
     compiledToolSet = await compileAgentToolSet({
       ctx,
       model: agentProfile.content.model,
@@ -2135,22 +2230,12 @@ async function prepareAgentTurn(
 
 async function readAgentTurnVariables(
   ctx: ApplicationRuntimeContext,
-  cardId: string | undefined,
+  fallbackUserName: string | undefined,
   timeline?: JsonObject,
 ): Promise<VariableRenderContext> {
   const globalSnapshot = await ctx.states.getGlobalSnapshot()
   const global = structuredClone(globalSnapshot?.revision.snapshot ?? {})
-  let fallbackUser = 'User'
-  if (cardId) {
-    const card = await readDocument<CardSourceContent>(
-      ctx.documents,
-      cardId,
-      applicationDocumentTypes.cardSource,
-    )
-    if (typeof card.content.userName === 'string' && card.content.userName.trim().length > 0) {
-      fallbackUser = card.content.userName
-    }
-  }
+  const fallbackUser = fallbackUserName?.trim() || 'User'
   const user = global.user
   if (!user || typeof user !== 'object' || Array.isArray(user)) {
     global.user = { name: fallbackUser }
@@ -2168,6 +2253,56 @@ async function readAgentTurnVariables(
   })
 }
 
+async function readLegacyCardUserName(
+  ctx: ApplicationRuntimeContext,
+  cardId: string | undefined,
+): Promise<string | undefined> {
+  if (!cardId) return undefined
+  const card = await readDocument<CardSourceContent>(ctx.documents, cardId, applicationDocumentTypes.cardSource)
+  return card.content.userName
+}
+
+async function buildTimelineRuntimeContext(
+  ctx: ApplicationRuntimeContext,
+  input: {
+    timelineId: string
+    card: DocumentRecord<CardSourceContent>
+    cardContent: CardSourceContent
+    templates: Map<string, Extract<StateDefinitionDraft, { kind: 'timeline-template' }>>
+  },
+): Promise<TimelineRuntimeContextContent> {
+  const textTransformRules = (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule))
+    .filter(rule => rule.content.owner.kind === 'card' && rule.content.owner.cardId === input.card.id)
+    .map(rule => toVersioned(rule))
+  return {
+    timelineId: input.timelineId,
+    sourceCardId: input.card.id,
+    sourceCardVersion: input.card.version,
+    fallbackUserName: input.cardContent.userName?.trim() || 'User',
+    stateBindings: (input.cardContent.timelineStateBindings ?? []).map(binding => {
+      const template = input.templates.get(binding.templateId)
+      if (!template) throw new Error(`Timeline State template not found: ${binding.templateId}`)
+      return { path: binding.path, schema: structuredClone(template.schema) }
+    }),
+    textTransformRules,
+    createdAt: ctx.now(),
+  }
+}
+
+async function listAllCardTimelines(
+  ctx: ApplicationRuntimeContext,
+  cardId: string,
+) {
+  const timelines: NarrativeTimeline[] = []
+  let cursor: string | undefined
+  do {
+    const page = await ctx.narratives!.listTimelines({ createdFromCardId: cardId, ...(cursor ? { cursor } : {}), limit: 100 })
+    timelines.push(...page.timelines)
+    cursor = page.nextCursor
+  } while (cursor)
+  return timelines
+}
+
 async function readPresetResource(
   promptResources: ApplicationRuntimeContext['promptResources'],
   presetId: string,
@@ -2182,8 +2317,8 @@ const builtInRenderers: RendererDefinition[] = [
     id: 'official/json-artifact',
     name: 'JSON Artifact',
     artifactType: 'application/json',
-    slot: 'studio.panel',
-    renderMode: 'panel',
+    surface: 'shell.workspace-panel',
+    instanceScope: 'workspace',
     fallback: 'json',
   },
 ]
@@ -2243,6 +2378,8 @@ async function filterRulesForSource(
 ): Promise<TextTransformRuleEntry[]> {
   let presetId: string | undefined
   let cardId: string | undefined
+  let snapshotRules: TextTransformRuleEntry[] = []
+  let hasTimelineRuntimeContext = false
   if (source.kind === 'agent-session') {
     const session = await ctx.agents?.getSession(source.sessionId)
     if (!session) throw new Error(`Agent Session not found: ${source.sessionId}`)
@@ -2252,12 +2389,16 @@ async function filterRulesForSource(
     const timeline = await ctx.narratives?.getTimeline(source.timelineId)
     if (!timeline) throw new Error(`Narrative Timeline not found: ${source.timelineId}`)
     cardId = timeline.createdFrom?.cardId
+    const runtimeContext = await readTimelineRuntimeContext(ctx, source.timelineId)
+    hasTimelineRuntimeContext = Boolean(runtimeContext)
+    snapshotRules = runtimeContext?.textTransformRules ?? []
   }
-  return rules.filter(rule => {
+  const active = rules.filter(rule => {
     if (rule.owner.kind === 'preset') return rule.owner.presetId === presetId
-    if (rule.owner.kind === 'card') return rule.owner.cardId === cardId
+    if (rule.owner.kind === 'card') return !hasTimelineRuntimeContext && rule.owner.cardId === cardId
     return true
   })
+  return [...active, ...snapshotRules]
 }
 
 function assertExpectedDocumentVersion(
@@ -2309,6 +2450,112 @@ function toPortableExtensionPayloadEntry(
     createdAt: document.content.createdAt,
     updatedAt: document.content.updatedAt,
   }
+}
+
+type ApplicationExtensionRecordContent = {
+  scope: ExtensionStorageScope
+  recordType: string
+  data: JsonValue
+  bindings: ExtensionEntityRef[]
+  createdAt: string
+  updatedAt: string
+}
+
+async function listApplicationExtensionRecords(
+  documents: DocumentTransaction,
+  input: { packageId: string; scope?: ExtensionStorageScope; recordType?: string; binding?: ExtensionEntityRef },
+): Promise<ExtensionRecordEntry[]> {
+  const records: ExtensionRecordEntry[] = []
+  let cursor: string | undefined
+  do {
+    const page = await documents.list({
+      type: applicationDocumentTypes.extensionRecord,
+      ownerExtensionId: input.packageId,
+      cursor,
+      limit: 100,
+    })
+    for (const document of page.items) {
+      const record = toApplicationExtensionRecord(input.packageId, document)
+      if (input.scope && !sameExtensionStorageScope(record.scope, input.scope)) continue
+      if (input.recordType && record.recordType !== input.recordType) continue
+      if (input.binding && !record.bindings.some(binding => sameExtensionEntityRef(binding, input.binding!))) continue
+      records.push(record)
+    }
+    cursor = page.nextCursor
+  } while (cursor)
+  return records.sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id))
+}
+
+async function getApplicationExtensionRecord(
+  documents: DocumentTransaction,
+  packageId: string,
+  recordId: string,
+): Promise<ExtensionRecordEntry | null> {
+  const document = await documents.get(recordId)
+  if (!document) return null
+  if (document.type !== applicationDocumentTypes.extensionRecord || document.meta.ownerExtensionId !== packageId) {
+    throw new Error(`Extension Record is not owned by package ${packageId}: ${recordId}`)
+  }
+  return toApplicationExtensionRecord(packageId, document)
+}
+
+function toApplicationExtensionRecord(packageId: string, document: DocumentRecord): ExtensionRecordEntry {
+  if (!isObject(document.content)) throw new Error(`Extension Record content must be an object: ${document.id}`)
+  const content = document.content as unknown as Partial<ApplicationExtensionRecordContent>
+  if (!isExtensionStorageScope(content.scope) || typeof content.recordType !== 'string' || !content.recordType) {
+    throw new Error(`Extension Record content is invalid: ${document.id}`)
+  }
+  if (!Array.isArray(content.bindings) || !content.bindings.every(isExtensionEntityRef)) {
+    throw new Error(`Extension Record bindings are invalid: ${document.id}`)
+  }
+  if (typeof content.createdAt !== 'string' || typeof content.updatedAt !== 'string' || content.data === undefined) {
+    throw new Error(`Extension Record metadata is invalid: ${document.id}`)
+  }
+  return {
+    id: document.id,
+    packageId,
+    scope: structuredClone(content.scope),
+    recordType: content.recordType,
+    data: structuredClone(content.data),
+    bindings: structuredClone(content.bindings),
+    version: document.version,
+    createdAt: content.createdAt,
+    updatedAt: content.updatedAt,
+  }
+}
+
+function isExtensionStorageScope(value: unknown): value is ExtensionStorageScope {
+  return isObject(value) && (
+    value.kind === 'global'
+    || (value.kind === 'card' && typeof value.cardId === 'string' && Boolean(value.cardId))
+    || (value.kind === 'timeline' && typeof value.timelineId === 'string' && Boolean(value.timelineId))
+    || (value.kind === 'agent-session' && typeof value.agentSessionId === 'string' && Boolean(value.agentSessionId))
+  )
+}
+
+function isExtensionEntityRef(value: unknown): value is ExtensionEntityRef {
+  return isObject(value) && (
+    (value.kind === 'narrative-node' && typeof value.timelineId === 'string' && typeof value.nodeId === 'string')
+    || (value.kind === 'agent-message' && typeof value.agentSessionId === 'string' && typeof value.messageId === 'string')
+    || (value.kind === 'asset' && typeof value.assetId === 'string')
+    || (value.kind === 'state-path' && typeof value.timelineId === 'string' && typeof value.path === 'string')
+  )
+}
+
+function sameExtensionStorageScope(left: ExtensionStorageScope, right: ExtensionStorageScope): boolean {
+  if (left.kind !== right.kind) return false
+  if (left.kind === 'global') return true
+  if (left.kind === 'card' && right.kind === 'card') return left.cardId === right.cardId
+  if (left.kind === 'timeline' && right.kind === 'timeline') return left.timelineId === right.timelineId
+  return left.kind === 'agent-session' && right.kind === 'agent-session' && left.agentSessionId === right.agentSessionId
+}
+
+function sameExtensionEntityRef(left: ExtensionEntityRef, right: ExtensionEntityRef): boolean {
+  if (left.kind !== right.kind) return false
+  if (left.kind === 'narrative-node' && right.kind === 'narrative-node') return left.timelineId === right.timelineId && left.nodeId === right.nodeId
+  if (left.kind === 'agent-message' && right.kind === 'agent-message') return left.agentSessionId === right.agentSessionId && left.messageId === right.messageId
+  if (left.kind === 'asset' && right.kind === 'asset') return left.assetId === right.assetId
+  return left.kind === 'state-path' && right.kind === 'state-path' && left.timelineId === right.timelineId && left.path === right.path
 }
 
 async function findTimelinePromptResourceReferences(
@@ -2458,6 +2705,7 @@ function toAgentToolContent(
   definition: ToolDefinition,
   createdAt: string,
   updatedAt = createdAt,
+  origin?: AgentToolContent['origin'],
 ): AgentToolContent {
   return {
     owner: structuredClone(definition.owner),
@@ -2465,6 +2713,7 @@ function toAgentToolContent(
     description: definition.description,
     input: structuredClone(definition.input),
     ...(definition.prompt ? { prompt: structuredClone(definition.prompt) } : {}),
+    ...(origin ? { origin: structuredClone(origin) } : {}),
     createdAt,
     updatedAt,
   }
@@ -2473,14 +2722,335 @@ function toAgentToolContent(
 function toAgentToolEntry(
   document: DocumentRecord<AgentToolContent>,
 ): AgentToolEntry {
-  const { createdAt, updatedAt, ...definition } = document.content
+  const { createdAt, updatedAt, origin, ...definition } = document.content
   return {
     id: document.id,
     version: document.version,
     ...structuredClone(definition),
+    ...(origin ? { origin: structuredClone(origin) } : {}),
     createdAt,
     updatedAt,
   }
+}
+
+async function importExtensionPackageResources(
+  ctx: ApplicationRuntimeContext,
+  input: ImportExtensionPackageResourcesInput,
+  requestContext: RuntimeRequestContext | undefined,
+  documentParticipant: SqliteDocumentStore,
+): Promise<ImportExtensionPackageResourcesResult> {
+  assertNonEmpty(input.packageId, 'packageId')
+  assertNonEmpty(input.packageVersion, 'packageVersion')
+  const timestamp = ctx.now()
+  const origin = (contributionId: string) => ({
+    kind: 'extension-package' as const,
+    packageId: input.packageId,
+    packageVersion: input.packageVersion,
+    contributionId,
+  })
+
+  const promptContributions = new Map(input.promptResources.map(item => [item.contribution.id, item]))
+  if (promptContributions.size !== input.promptResources.length) throw new Error('Extension Prompt Resource contribution ids must be unique')
+  const agentToolDefinitions = new Map<string, ToolDefinition>()
+  for (const item of input.agentTools) {
+    if (agentToolDefinitions.has(item.contribution.id)) throw new Error(`Extension Agent Tool contribution is duplicated: ${item.contribution.id}`)
+    agentToolDefinitions.set(item.contribution.id, readExtensionAgentToolDefinition(input.packageId, item.contribution.id, item.definition))
+  }
+
+  const promptArtifacts = new Map<string, PromptResourceArtifact>()
+  const nodeIds = new Set<string>()
+  for (const item of input.promptResources) {
+    if (!isPromptResourceArtifact(item.artifact)) throw new Error(`Extension Prompt Resource artifact is invalid: ${item.contribution.id}`)
+    if (item.artifact.resourceKind !== item.contribution.resourceKind) {
+      throw new Error(`Extension Prompt Resource kind does not match its manifest: ${item.contribution.id}`)
+    }
+    validateExtensionPromptNodeIds(input.packageId, item.artifact.rootNode, nodeIds)
+    promptArtifacts.set(item.contribution.id, structuredClone(item.artifact))
+    for (const mount of item.contribution.settingMounts ?? []) {
+      const target = promptContributions.get(mount.resourceId)
+      if (!target || target.contribution.resourceKind !== 'setting') throw new Error(`Extension Preset Setting mount is unresolved: ${mount.resourceId}`)
+    }
+    for (const mount of item.contribution.toolMounts ?? []) {
+      const definition = agentToolDefinitions.get(mount.toolId)
+      if (!definition) throw new Error(`Extension Preset Tool mount is unresolved: ${mount.toolId}`)
+      if (mount.activation !== undefined && !isPromptActivation(mount.activation)) throw new Error(`Extension Preset Tool activation is invalid: ${mount.toolId}`)
+      if (definition.input.kind === 'structured' && mount.content !== undefined) throw new Error(`Structured Tool cannot use Content placement: ${mount.toolId}`)
+    }
+  }
+
+  const existingPromptResources = await listMappedResources(ctx.promptResources, undefined, { includeTombstone: true })
+  const promptResourceIds = new Map<string, string>()
+  const restorablePromptResourceVersions = new Map<string, number>()
+  for (const resource of existingPromptResources) {
+    const resourceOrigin = resource.origin
+    if (resourceOrigin?.kind !== 'extension-package' || resourceOrigin.packageId !== input.packageId) continue
+    if (resourceOrigin.packageVersion !== input.packageVersion) {
+      throw new Error(`Extension Prompt Resource update requires an explicit migration: ${resourceOrigin.contributionId}`)
+    }
+    if (!promptContributions.has(resourceOrigin.contributionId)) continue
+    if (promptResourceIds.has(resourceOrigin.contributionId)) throw new Error(`Extension Prompt Resource origin is duplicated: ${resourceOrigin.contributionId}`)
+    promptResourceIds.set(resourceOrigin.contributionId, resource.id)
+    if (resource.tombstoned) restorablePromptResourceVersions.set(resourceOrigin.contributionId, resource.version)
+  }
+
+  for (const tool of await listAgentToolEntries(ctx)) {
+    if (tool.origin?.kind !== 'extension-package' || tool.origin.packageId !== input.packageId) continue
+    if (tool.origin.packageVersion !== input.packageVersion) {
+      throw new Error(`Extension Agent Tool update requires an explicit migration: ${tool.origin.contributionId}`)
+    }
+  }
+
+  const existingAgentTools = new Set<string>()
+  const restorableAgentToolVersions = new Map<string, number>()
+  for (const [toolId] of agentToolDefinitions) {
+    const document = await ctx.documents.get(toolId, { includeTombstone: true })
+    if (!document) continue
+    if (document.type !== applicationDocumentTypes.agentTool) throw new Error(`Extension Agent Tool id conflicts with another Document: ${toolId}`)
+    const content = document.content as AgentToolContent
+    if (content.origin?.kind !== 'extension-package' || content.origin.packageId !== input.packageId || content.origin.contributionId !== toolId) {
+      throw new Error(`Extension Agent Tool id is already owned by another source: ${toolId}`)
+    }
+    if (content.origin.packageVersion !== input.packageVersion) {
+      throw new Error(`Extension Agent Tool update requires an explicit migration: ${toolId}`)
+    }
+    if (document.meta.tombstone) {
+      restorableAgentToolVersions.set(toolId, document.version)
+      continue
+    }
+    existingAgentTools.add(toolId)
+  }
+
+  const missingPromptResources = input.promptResources.filter(item => !promptResourceIds.has(item.contribution.id) || restorablePromptResourceVersions.has(item.contribution.id))
+  const missingAgentTools = input.agentTools.filter(item => !existingAgentTools.has(item.contribution.id))
+  if (missingPromptResources.length === 0 && missingAgentTools.length === 0) {
+    return {
+      promptResources: input.promptResources.map(item => ({
+        contributionId: item.contribution.id,
+        resourceId: promptResourceIds.get(item.contribution.id)!,
+        resourceKind: item.contribution.resourceKind,
+      })),
+      agentTools: input.agentTools.map(item => ({ contributionId: item.contribution.id, toolId: item.contribution.id })),
+    }
+  }
+
+  const transaction = await ctx.dataEngine.transact({
+    ...promptResourceWriteContext(requestContext),
+    reason: 'application.importExtensionPackageResources',
+  }, async dataTx => {
+    const resourceTx = ctx.promptResources.transaction(dataTx)
+    return documentParticipant.participateTransaction(dataTx, async documents => {
+      const newlyCreatedPromptIds = new Set<string>()
+      for (const item of missingPromptResources) {
+        const artifact = promptArtifacts.get(item.contribution.id)!
+        const restorableVersion = restorablePromptResourceVersions.get(item.contribution.id)
+        const resourceId = promptResourceIds.get(item.contribution.id) ?? ctx.createId('prompt-resource')
+        if (restorableVersion === undefined) {
+          resourceTx.createResource(toStoredResourceInput({
+            id: resourceId,
+            content: {
+              resourceKind: artifact.resourceKind,
+              rootNode: structuredClone(artifact.rootNode),
+              ...(artifact.resourceKind === 'preset' ? { historyPolicy: 'persistent' as const } : {}),
+              origin: origin(item.contribution.id),
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            },
+          }))
+        } else {
+          resourceTx.restoreResource({ resourceId, expectedVersion: restorableVersion })
+        }
+        promptResourceIds.set(item.contribution.id, resourceId)
+        newlyCreatedPromptIds.add(item.contribution.id)
+      }
+      for (const item of missingAgentTools) {
+        const definition = agentToolDefinitions.get(item.contribution.id)!
+        await writeDocument<AgentToolContent>(documents, {
+          id: definition.id,
+          type: applicationDocumentTypes.agentTool,
+          content: toAgentToolContent(definition, timestamp, timestamp, origin(item.contribution.id)),
+          expectedVersion: restorableAgentToolVersions.get(definition.id) ?? 'new',
+        })
+      }
+      for (const item of input.promptResources) {
+        if (!newlyCreatedPromptIds.has(item.contribution.id) || item.contribution.resourceKind !== 'preset') continue
+        const presetResourceId = promptResourceIds.get(item.contribution.id)!
+        for (const [orderIndex, mount] of (item.contribution.settingMounts ?? []).entries()) {
+          resourceTx.addSettingMount({
+            source: { kind: 'preset', id: presetResourceId },
+            settingResourceId: promptResourceIds.get(mount.resourceId)!,
+            orderIndex: mount.orderIndex ?? orderIndex,
+            origin: origin(item.contribution.id),
+          })
+        }
+        for (const [orderIndex, mount] of (item.contribution.toolMounts ?? []).entries()) {
+          resourceTx.addPresetToolMount({
+            presetResourceId,
+            toolId: mount.toolId,
+            orderIndex: mount.orderIndex ?? orderIndex,
+            defaultEnabled: mount.defaultEnabled ?? false,
+            ...(mount.activation ? { activation: structuredClone(mount.activation) } : {}),
+            ...(mount.provider ? { provider: { ...mount.provider } } : {}),
+            ...(mount.content ? { content: { ...mount.content } } : {}),
+            origin: origin(item.contribution.id),
+          })
+        }
+      }
+      return undefined
+    }, { allowEmpty: true })
+  })
+  await refreshAgentToolRegistry(ctx)
+  return {
+    promptResources: input.promptResources.map(item => ({
+      contributionId: item.contribution.id,
+      resourceId: promptResourceIds.get(item.contribution.id)!,
+      resourceKind: item.contribution.resourceKind,
+    })),
+    agentTools: input.agentTools.map(item => ({ contributionId: item.contribution.id, toolId: item.contribution.id })),
+    mutation: { changesetId: transaction.commit.changesetId },
+  }
+}
+
+async function removeExtensionPackageResources(
+  ctx: ApplicationRuntimeContext,
+  input: RemoveExtensionPackageResourcesInput,
+  requestContext: RuntimeRequestContext | undefined,
+  documentParticipant: SqliteDocumentStore,
+): Promise<RemoveExtensionPackageResourcesResult> {
+  assertNonEmpty(input.packageId, 'packageId')
+  const promptResources = (await listMappedResources(ctx.promptResources))
+    .filter(resource => resource.origin?.kind === 'extension-package' && resource.origin.packageId === input.packageId)
+  const promptResourceIds = new Set(promptResources.map(resource => resource.id))
+  const presetResourceIds = new Set(promptResources.filter(resource => resource.resourceKind === 'preset').map(resource => resource.id))
+  const agentTools = (await listAgentToolEntries(ctx))
+    .filter(tool => tool.origin?.kind === 'extension-package' && tool.origin.packageId === input.packageId)
+  const agentToolIds = new Set(agentTools.map(tool => tool.id))
+
+  if (promptResources.length === 0 && agentTools.length === 0) {
+    return {
+      packageId: input.packageId,
+      promptResourceIds: [],
+      agentToolIds: [],
+      detachedReferences: { cards: 0, timelines: 0, agentProfiles: 0, presetToolMounts: 0 },
+    }
+  }
+
+  const profiles = await listDocuments<AgentProfileContent>(ctx.documents, applicationDocumentTypes.agentProfile)
+  const blockingProfiles = profiles.filter(profile => presetResourceIds.has(profile.content.presetId))
+  if (blockingProfiles.length > 0) {
+    throw new Error(`Extension Package resources are still referenced by Agent Profiles: ${blockingProfiles.map(profile => profile.id).join(', ')}`)
+  }
+  const profilesWithToolOverrides = profiles.filter(profile => Object.keys(profile.content.toolOverrides ?? {}).some(toolId => agentToolIds.has(toolId)))
+  const cards = (await listDocuments<CardSourceContent>(ctx.documents, applicationDocumentTypes.cardSource))
+    .filter(card => card.content.promptResourceIds?.some(resourceId => promptResourceIds.has(resourceId)))
+  const timelineReferences = new Map<string, { id: string; promptResourceIds: string[] }>()
+  for (const resourceId of promptResourceIds) {
+    for (const timeline of await findTimelinePromptResourceReferences(ctx, resourceId)) timelineReferences.set(timeline.id, timeline)
+  }
+
+  const toolMounts = await ctx.promptResources.listPresetToolMounts()
+  const removedToolMounts = toolMounts.filter(mount => presetResourceIds.has(mount.presetResourceId) || agentToolIds.has(mount.toolId))
+  const affectedPresetIds = new Set(removedToolMounts
+    .filter(mount => !presetResourceIds.has(mount.presetResourceId))
+    .map(mount => mount.presetResourceId))
+
+  const transaction = await ctx.dataEngine.transact({
+    ...promptResourceWriteContext(requestContext),
+    reason: 'application.removeExtensionPackageResources',
+  }, async dataTx => {
+    const resourceTx = ctx.promptResources.transaction(dataTx)
+    const narrativeTx = ctx.narratives?.transaction(dataTx)
+    for (const timeline of timelineReferences.values()) {
+      narrativeTx?.updatePromptResources({
+        timelineId: timeline.id,
+        promptResourceIds: timeline.promptResourceIds.filter(resourceId => !promptResourceIds.has(resourceId)),
+        expectedPromptResourceIds: timeline.promptResourceIds,
+      })
+    }
+    for (const presetResourceId of affectedPresetIds) {
+      resourceTx.replacePresetToolMounts({
+        presetResourceId,
+        mounts: toolMounts
+          .filter(mount => mount.presetResourceId === presetResourceId && !agentToolIds.has(mount.toolId))
+          .map(mount => ({
+            toolId: mount.toolId,
+            orderIndex: mount.orderIndex,
+            defaultEnabled: mount.defaultEnabled,
+            ...(mount.activation ? { activation: structuredClone(mount.activation) } : {}),
+            ...(mount.provider ? { provider: { ...mount.provider } } : {}),
+            ...(mount.content ? { content: { ...mount.content } } : {}),
+            origin: structuredClone(mount.origin),
+          })),
+      })
+    }
+    return documentParticipant.participateTransaction(dataTx, async documents => {
+      for (const card of cards) {
+        await writeDocument<CardSourceContent>(documents, {
+          id: card.id,
+          type: applicationDocumentTypes.cardSource,
+          content: {
+            ...card.content,
+            promptResourceIds: card.content.promptResourceIds?.filter(resourceId => !promptResourceIds.has(resourceId)),
+            updatedAt: ctx.now(),
+          },
+          expectedVersion: card.version,
+        })
+      }
+      for (const profile of profilesWithToolOverrides) {
+        await writeDocument<AgentProfileContent>(documents, {
+          id: profile.id,
+          type: applicationDocumentTypes.agentProfile,
+          content: {
+            ...profile.content,
+            toolOverrides: Object.fromEntries(Object.entries(profile.content.toolOverrides ?? {}).filter(([toolId]) => !agentToolIds.has(toolId))),
+            updatedAt: ctx.now(),
+          },
+          expectedVersion: profile.version,
+        })
+      }
+      for (const tool of agentTools) await documents.delete({ id: tool.id, expectedVersion: tool.version })
+      for (const resource of promptResources) resourceTx.deleteResource({ resourceId: resource.id, expectedVersion: resource.version })
+      return undefined
+    }, { allowEmpty: true })
+  })
+  await refreshAgentToolRegistry(ctx)
+  return {
+    packageId: input.packageId,
+    promptResourceIds: [...promptResourceIds].sort(),
+    agentToolIds: [...agentToolIds].sort(),
+    detachedReferences: {
+      cards: cards.length,
+      timelines: timelineReferences.size,
+      agentProfiles: profilesWithToolOverrides.length,
+      presetToolMounts: removedToolMounts.length,
+    },
+    mutation: { changesetId: transaction.commit.changesetId },
+  }
+}
+
+function readExtensionAgentToolDefinition(packageId: string, toolId: string, value: JsonValue): ToolDefinition {
+  if (!isObject(value)) throw new Error(`Extension Agent Tool definition must be an object: ${toolId}`)
+  if ('id' in value || 'owner' in value) throw new Error(`Extension Agent Tool definition cannot override id or owner: ${toolId}`)
+  if (typeof value.name !== 'string' || typeof value.description !== 'string' || !isObject(value.input)) {
+    throw new Error(`Extension Agent Tool definition is incomplete: ${toolId}`)
+  }
+  if (value.prompt !== undefined && !isObject(value.prompt)) throw new Error(`Extension Agent Tool prompt must be an object: ${toolId}`)
+  const definition: ToolDefinition = {
+    id: toolId,
+    owner: { namespace: packageId },
+    name: value.name,
+    description: value.description,
+    input: structuredClone(value.input) as ToolDefinition['input'],
+    ...(value.prompt === undefined ? {} : { prompt: structuredClone(value.prompt) as ToolDefinition['prompt'] }),
+  }
+  createAgentToolRegistry([definition])
+  return definition
+}
+
+function validateExtensionPromptNodeIds(packageId: string, node: PromptResourceArtifact['rootNode'], seen: Set<string>): void {
+  if (!node.id.startsWith(`${packageId}.`)) throw new Error(`Extension Prompt Resource node id must use package namespace: ${node.id}`)
+  if (seen.has(node.id)) throw new Error(`Extension Prompt Resource node id must be unique: ${node.id}`)
+  seen.add(node.id)
+  for (const child of node.children ?? []) validateExtensionPromptNodeIds(packageId, child, seen)
 }
 
 async function listAgentToolEntries(
@@ -2528,6 +3098,7 @@ async function readProviderCapability(ctx: ApplicationRuntimeContext, providerPr
 }
 
 type ExtensionStorageScopeRef =
+  | { kind: 'card'; cardId: string }
   | { kind: 'timeline'; timelineId: string }
   | { kind: 'agent-session'; agentSessionId: string }
 
@@ -2557,10 +3128,50 @@ function hasExtensionStorageScope(content: JsonValue, scope: ExtensionStorageSco
   if (!content || typeof content !== 'object' || Array.isArray(content)) return false
   const storedScope = content.scope
   if (!storedScope || typeof storedScope !== 'object' || Array.isArray(storedScope)) return false
+  if (scope.kind === 'card') {
+    return storedScope.kind === 'card' && storedScope.cardId === scope.cardId
+  }
   if (scope.kind === 'timeline') {
     return storedScope.kind === 'timeline' && storedScope.timelineId === scope.timelineId
   }
   return storedScope.kind === 'agent-session' && storedScope.agentSessionId === scope.agentSessionId
+}
+
+async function countCardDeletionExtensionData(
+  documents: DocumentStore,
+  cardId: string,
+  timelineIds: ReadonlySet<string>,
+) {
+  const counts = {
+    cardScoped: { configs: 0, records: 0 },
+    timelineScoped: { configs: 0, records: 0 },
+  }
+  for (const [type, key] of [
+    [applicationDocumentTypes.extensionConfig, 'configs'],
+    [applicationDocumentTypes.extensionRecord, 'records'],
+  ] as const) {
+    const entries = await listDocuments<JsonValue>(documents, type)
+    for (const entry of entries) {
+      if (hasExtensionStorageScope(entry.content, { kind: 'card', cardId })) counts.cardScoped[key] += 1
+      if (hasTimelineExtensionStorageScope(entry.content, timelineIds)) {
+        counts.timelineScoped[key] += 1
+      }
+    }
+  }
+  return counts
+}
+
+function hasTimelineExtensionStorageScope(content: JsonValue, timelineIds: ReadonlySet<string>): boolean {
+  if (!content || typeof content !== 'object' || Array.isArray(content)) return false
+  const scope = content.scope
+  return Boolean(
+    scope
+    && typeof scope === 'object'
+    && !Array.isArray(scope)
+    && scope.kind === 'timeline'
+    && typeof scope.timelineId === 'string'
+    && timelineIds.has(scope.timelineId),
+  )
 }
 
 function secretWriteContext(requestContext: RuntimeRequestContext | undefined, reason: string) {

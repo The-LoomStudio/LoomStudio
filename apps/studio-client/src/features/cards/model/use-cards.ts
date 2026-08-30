@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import type { CreateCardInput, StudioApi } from '../../../shared/api/studio-api.js'
+import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import type { Card, CardMedia, CardSummary } from '../../../entities/index.js'
 
@@ -66,7 +66,7 @@ export function useCards(input: UseCardsInput) {
 
   async function createCard() {
     await input.runAction(async () => {
-      const result = await input.api.cards.create(createBlankCardInput(input.t))
+      const result = await input.api.cards.create({ name: input.t('character.new') })
       input.recordEdit({
         label: input.t('history.card.create'),
         changesetId: result.mutation.changesetId,
@@ -138,7 +138,7 @@ export function useCards(input: UseCardsInput) {
     await deleteCards([selectedCardId])
   }
 
-  async function deleteCards(cardIds: string[]) {
+  async function deleteCards(cardIds: string[], options?: { includePlayData?: boolean }) {
     const ids = [...new Set(cardIds)].filter(cardId => cards.some(card => card.id === cardId))
     if (ids.length === 0) return
 
@@ -147,7 +147,7 @@ export function useCards(input: UseCardsInput) {
       try {
         // ponytail: RPC only exposes single-card deletion. Keep FIFO calls until a batch-delete mutation exists.
         for (const cardId of ids) {
-          const deleted = await input.api.cards.delete(cardId)
+          const deleted = await input.api.cards.delete(cardId, options)
           hasDeletedCard = true
           input.recordEdit({
             label: input.t('history.card.delete'),
@@ -159,6 +159,10 @@ export function useCards(input: UseCardsInput) {
         if (hasDeletedCard) await refreshCards()
       }
     })
+  }
+
+  async function previewCardDeletion(cardId: string) {
+    return await input.api.cards.previewDeletion(cardId)
   }
 
   async function updateCardMedia(cardId: string, target: 'avatar' | 'background', file: File) {
@@ -257,6 +261,7 @@ export function useCards(input: UseCardsInput) {
     replaceCardPromptResources,
     deleteCard,
     deleteCards,
+    previewCardDeletion,
     updateCardMedia,
     importCards,
     exportCard,
@@ -274,8 +279,4 @@ function readJsonResponse(value: string): unknown {
 
 function sanitizeFileName(value: string): string {
   return value.trim().replace(/[\\/:*?"<>|]/g, '-')
-}
-
-export function createBlankCardInput(t: Translator): CreateCardInput {
-  return { name: t('character.new') }
 }

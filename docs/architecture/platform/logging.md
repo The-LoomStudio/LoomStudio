@@ -7,7 +7,7 @@ Loom Studio 使用统一的结构化运行日志记录 Server、Client、Transpo
 - [`packages/logging`](../../../packages/logging/)；
 - [`apps/studio-server/src/main.ts`](../../../apps/studio-server/src/main.ts)；
 - [`apps/studio-client/src/main.tsx`](../../../apps/studio-client/src/main.tsx)；
-- [`apps/studio-server/src/logs-rpc.ts`](../../../apps/studio-server/src/logs-rpc.ts)；
+- [`apps/studio-server/src/rpc/handlers/logs-rpc.ts`](../../../apps/studio-server/src/rpc/handlers/logs-rpc.ts)；
 - [`apps/studio-client/src/widgets/log-viewer/`](../../../apps/studio-client/src/widgets/log-viewer/)；
 - [`tests/unit/logging/`](../../../tests/unit/logging/)；
 - [`tests/integration/studio-server/logging.test.ts`](../../../tests/integration/studio-server/logging.test.ts)。

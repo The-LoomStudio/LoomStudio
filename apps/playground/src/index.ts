@@ -29,7 +29,6 @@ const kernel = createKernel({
   traceAudit,
   extensionHost,
   loomRunner,
-  environment: 'development',
 })
 
 await kernel.start()

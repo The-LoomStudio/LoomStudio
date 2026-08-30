@@ -46,14 +46,9 @@ describe('studio client state api', () => {
 
 function createFakeBridge(calls: Array<{ method: string; params?: ClientJsonValue }>): ClientBridge {
   return {
-    connect: async () => undefined,
-    disconnect: async () => undefined,
     call: async <T>(method: string, params?: ClientJsonValue) => {
       calls.push({ method, params })
       return {} as T
     },
-    callWithMeta: async <T>() => ({ result: {} as T, meta: {} }),
-    request: async () => ({ jsonrpc: '2.0', id: 'test', result: {} }),
-    getConnectionState: () => 'connected',
   }
 }

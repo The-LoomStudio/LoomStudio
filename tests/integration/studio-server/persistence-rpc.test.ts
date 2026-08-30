@@ -1,3 +1,4 @@
+import { officialFakeModelId } from '@loom-studio/ai-gateway'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createStudioServer } from '../../../apps/studio-server/src/main.js'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -61,12 +62,12 @@ describe('studio server persistence integration', () => {
         providerExtensionId: 'official.fake',
         displayName: 'Persistent Provider',
         config: { baseUrl: 'https://example.test/v1' },
-        enabledModelIds: ['test-model'],
+        enabledModelIds: [officialFakeModelId],
       })
       const agentProfile = await callRpc<{ agentProfile: { id: string } }>(first.port, 'application.createAgentProfile', {
         name: 'Persistent Agent Profile',
         presetId,
-        model: { providerProfileId: provider.providerProfile.id, modelId: 'test-model' },
+        model: { providerProfileId: provider.providerProfile.id, modelId: officialFakeModelId },
       })
       const created = await callRpc<{ session: { id: string } }>(first.port, 'application.createAgentSession', {
         agentProfileId: agentProfile.agentProfile.id,

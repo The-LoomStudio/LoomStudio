@@ -170,8 +170,6 @@
 }
 
 .sectionHeader,
-.accountField,
-.keyRow,
 .modelRow,
 .availableModel {
   display: flex;
@@ -351,58 +349,20 @@
   color: var(--loom-color-text-subtle);
 }
 
-.accountField {
-  min-width: 0;
-  gap: 10px;
-  color: var(--loom-color-text-muted);
-  font-size: var(--loom-font-size-2);
-}
-
-.accountField code {
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
-  color: var(--loom-color-text);
-  font-family: inherit;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.keys,
 .models,
 .enabledModels {
   display: grid;
   gap: 7px;
 }
 
-.keys h4,
 .models h4 {
   color: var(--loom-color-text-muted);
 }
 
-.keys > p,
 .empty {
   margin: 0;
   color: var(--loom-color-text-subtle);
   font-size: var(--loom-font-size-2);
-}
-
-.keyRow {
-  min-height: 26px;
-  gap: 10px;
-  color: var(--loom-color-text-muted);
-  font-size: var(--loom-font-size-2);
-}
-
-.keyRow code {
-  color: var(--loom-color-text);
-  font-family: inherit;
-}
-
-.keyRow small {
-  margin-left: auto;
-  color: var(--loom-color-success);
-  font-size: var(--loom-font-size-1);
 }
 
 .modelPicker {
@@ -537,8 +497,4 @@
     padding-left: 20px;
   }
 
-  .accountField,
-  .keyRow {
-    gap: 6px;
-  }
 }

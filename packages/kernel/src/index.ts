@@ -107,6 +107,15 @@ export type RemovedExtensionPackage = Record<string, JsonValue> & {
   removed: true
 }
 
+export type ImportedExtensionPackageResources = Record<string, JsonValue> & {
+  packageId: string
+  version: string
+}
+
+export type RemovedExtensionPackageResources = Record<string, JsonValue> & {
+  packageId: string
+}
+
 export type ExtensionManagementService = {
   listPackages(): ManagedExtensionPackage[]
   installPackage(sourceDirectory: string): Promise<ManagedExtensionPackage>
@@ -114,6 +123,8 @@ export type ExtensionManagementService = {
   enableModule(packageId: string, moduleId: string, grants?: ExtensionModuleCapabilityGrants): Promise<ManagedExtensionModule>
   disableModule(packageId: string, moduleId: string): Promise<ManagedExtensionModule>
   reloadModule(packageId: string, moduleId: string): Promise<ManagedExtensionModule>
+  importPackageResources(packageId: string): Promise<ImportedExtensionPackageResources>
+  removePackageResources(packageId: string): Promise<RemovedExtensionPackageResources>
 }
 
 export type ExtensionModuleCapabilityGrants = {
@@ -132,7 +143,6 @@ export type CreateKernelOptions = {
   studioVersion?: string
   kernelVersion?: string
   protocolVersion?: string
-  environment?: 'development' | 'production' | 'test'
 }
 
 const kernelNamespaces = ['system', 'events', 'docs', 'extensions', 'diagnostics', 'loom', 'trace', 'audit']
@@ -256,14 +266,13 @@ export function createKernel(options: CreateKernelOptions): Kernel {
   const studioVersion = options.studioVersion ?? '0.0.0'
   const kernelVersion = options.kernelVersion ?? '0.0.0'
   const protocolVersion = options.protocolVersion ?? '0.1.0'
-  const environment = options.environment ?? 'development'
   let active = false
   let dataCommitSubscription: DataCommitSubscription | undefined
 
   const kernel: Kernel = {
     start: async () => {
       if (active) return
-      registerStageOneHandlers(kernel, options, eventBus, { studioVersion, kernelVersion, protocolVersion, environment })
+      registerStageOneHandlers(kernel, options, eventBus, { studioVersion, kernelVersion, protocolVersion })
       dataCommitSubscription = options.dataCommits.subscribeCommits(commit => {
         const eventOptions = dataCommitEventOptions(commit)
         eventBus.emit('data.changed', summarizeDataCommit(commit), eventOptions)
@@ -362,7 +371,6 @@ function registerStageOneHandlers(
     studioVersion: string
     kernelVersion: string
     protocolVersion: string
-    environment: 'development' | 'production' | 'test'
   },
 ): void {
   const register = (method: string, handler: KernelRpcHandler) => kernel.registerKernelRpc(method, handler)
@@ -372,21 +380,6 @@ function registerStageOneHandlers(
       ok: true,
       echo: isRecord(params) ? params.echo : undefined,
       serverTime: nowIso(),
-    } as JsonValue
-  })
-
-  register('system.getInfo', () => {
-    return {
-      studioVersion: versions.studioVersion,
-      kernelVersion: versions.kernelVersion,
-      protocolVersion: versions.protocolVersion,
-      environment: versions.environment,
-      capabilities: {
-        documents: true,
-        extensions: true,
-        loomRun: true,
-        traceAudit: true,
-      },
     } as JsonValue
   })
 
@@ -519,6 +512,16 @@ function registerStageOneHandlers(
     return { module }
   })
 
+  register('extensions.importPackageResources', async params => {
+    const manager = requireExtensionManager(options)
+    return await manager.importPackageResources(readString(params, 'packageId'))
+  })
+
+  register('extensions.removePackageResources', async params => {
+    const manager = requireExtensionManager(options)
+    return await manager.removePackageResources(readString(params, 'packageId'))
+  })
+
   register('extensions.getDiagnostics', params => {
     const packageId = isRecord(params) && typeof params.packageId === 'string' ? params.packageId : undefined
     const moduleId = isRecord(params) && typeof params.moduleId === 'string' ? params.moduleId : undefined
@@ -604,6 +607,8 @@ function registerBuiltinEventDefinitions(eventBus: EventBus): void {
     platformEvent('docs.rollback.failed', 'Document changeset rollback failed', 'protected', 'documents'),
     platformEvent('diagnostics.updated', 'Diagnostics registry changed', 'protected', 'diagnostics'),
     platformEvent('extensions.changed', 'Extension runtime state changed', 'public'),
+    platformEvent('extensions.data.changed', 'Extension-visible data projection may have changed', 'public'),
+    platformEvent('entity.lifecycle.changed', 'Application entity lifecycle transaction completed', 'public'),
     platformEvent('system.ready', 'Kernel completed startup', 'public'),
     platformEvent('system.stopping', 'Kernel shutdown started', 'public'),
   ]

@@ -85,3 +85,13 @@ export type DeleteCardResult = {
   deleted: true
   mutation: MutationReceipt
 }
+
+export type PreviewCardDeletionResult = {
+  cardId: string
+  timelines: Array<{ id: string; title?: string }>
+  extensionData: {
+    cardScoped: { configs: number; records: number }
+    timelineScoped: { configs: number; records: number }
+  }
+  textTransformRuleIds: string[]
+}

@@ -24,6 +24,25 @@ describe('studio client typed api', () => {
     ])
   })
 
+  it('maps Extension Package import, resource removal, and uninstall', async () => {
+    const calls: Array<{ method: string; params?: ClientJsonValue }> = []
+    const api = createStudioApi(fakeBridge(calls, {
+      'extensions.importPackageResources': { packageId: 'example.package', version: '1.0.0', promptResources: [], agentTools: [] },
+      'extensions.removePackageResources': { packageId: 'example.package', promptResourceIds: [], agentToolIds: [], detachedReferences: {} },
+      'extensions.uninstallPackage': { package: { packageId: 'example.package', removed: true } },
+    }))
+
+    await api.extensions.importResources('example.package')
+    await api.extensions.removeResources('example.package')
+    await api.extensions.uninstall('example.package', '1.0.0')
+
+    expect(calls).toEqual([
+      { method: 'extensions.importPackageResources', params: { packageId: 'example.package' } },
+      { method: 'extensions.removePackageResources', params: { packageId: 'example.package' } },
+      { method: 'extensions.uninstallPackage', params: { packageId: 'example.package', version: '1.0.0' } },
+    ])
+  })
+
   it('logs failed rpc calls without params or error messages', async () => {
     const logs = createMemoryLogSink({ capacity: 10 })
     const root = createRootLogger({ service: 'studio-client', instanceId: 'client-test', sinks: [logs] })
@@ -78,10 +97,10 @@ describe('studio client typed api', () => {
     const calls: Array<{ method: string; params?: ClientJsonValue }> = []
     const api = createStudioApi(fakeBridge(calls, {
       'application.revertChangeset': { mutation: { changesetId: 'change-undo' } },
-      'application.getImportBundle': { importBundle: { id: 'import-bundle-1' } },
       'application.listCards': { cards: [] },
       'application.updateCard': { card: { id: 'card-1' } },
       'application.updateCardPromptResources': { card: { id: 'card-1' } },
+      'application.previewCardDeletion': { cardId: 'card-1', timelines: [] },
       'application.deleteCard': { deleted: true },
       'application.exportCardBundle': { artifact: { artifactId: 'card-1' } },
       'application.listProviderModels': { modelIds: ['model-1', 'model-2'] },
@@ -89,11 +108,11 @@ describe('studio client typed api', () => {
     }))
 
     const reverted = await api.history.revert('change-1')
-    await api.importBundles.get('import-bundle-1')
     await api.cards.list()
     await api.cards.update({ cardId: 'card-1', name: 'Renamed' })
     await api.cards.updatePromptResources({ cardId: 'card-1', promptResourceIds: ['resource-1'] })
-    await api.cards.delete('card-1')
+    await api.cards.previewDeletion('card-1')
+    await api.cards.delete('card-1', { includePlayData: true })
     await api.cards.export('card-1')
     const models = await api.providerModels.list('provider-1')
     const text = await api.providerModels.ping('provider-1', 'model-1')
@@ -103,11 +122,11 @@ describe('studio client typed api', () => {
     expect(reverted).toEqual({ changesetId: 'change-undo' })
     expect(calls).toEqual([
       { method: 'application.revertChangeset', params: { changesetId: 'change-1' } },
-      { method: 'application.getImportBundle', params: { importBundleId: 'import-bundle-1' } },
       { method: 'application.listCards', params: {} },
       { method: 'application.updateCard', params: { cardId: 'card-1', name: 'Renamed' } },
       { method: 'application.updateCardPromptResources', params: { cardId: 'card-1', promptResourceIds: ['resource-1'] } },
-      { method: 'application.deleteCard', params: { cardId: 'card-1' } },
+      { method: 'application.previewCardDeletion', params: { cardId: 'card-1' } },
+      { method: 'application.deleteCard', params: { cardId: 'card-1', includePlayData: true } },
       { method: 'application.exportCardBundle', params: { cardId: 'card-1' } },
       { method: 'application.listProviderModels', params: { providerProfileId: 'provider-1' } },
       { method: 'application.pingProviderModel', params: { providerProfileId: 'provider-1', modelId: 'model-1' } },
@@ -248,7 +267,6 @@ describe('studio client typed api', () => {
       'application.deletePromptResource': { deleted: true },
       'application.importPromptResource': { resource: { id: 'resource-4' } },
       'application.exportPromptResource': { artifact: { format: 'loom.promptResource', schemaVersion: 1 } },
-      'application.listCardPromptResources': { resources: [{ id: 'resource-1' }] },
       'application.createPromptResourceAsset': { resource: { id: 'resource-1' } },
       'application.updatePromptResourceAsset': { resource: { id: 'resource-1' } },
       'application.updatePromptResourceAssets': { resource: { id: 'resource-1' } },
@@ -272,7 +290,6 @@ describe('studio client typed api', () => {
       rootNode: { id: 'root', label: 'Preset', kind: 'module' },
     })
     await api.promptResources.export('resource-1')
-    await api.promptResources.listForCard('card-1')
     await api.promptResources.createAsset({ resourceId: 'resource-1', targetAssetId: 'root', position: 'inside', asset: { id: 'asset-1' } as any })
     await api.promptResources.updateAsset({ resourceId: 'resource-1', assetId: 'asset-1', body: 'updated' })
     await api.promptResources.updateAssets({ resourceId: 'resource-1', updates: [{ assetId: 'asset-1', label: 'Renamed' }] })
@@ -294,7 +311,6 @@ describe('studio client typed api', () => {
       { method: 'application.deletePromptResource', params: { resourceId: 'resource-1' } },
       { method: 'application.importPromptResource', params: { artifact: { format: 'loom.promptResource', schemaVersion: 1, resourceKind: 'preset', rootNode: { id: 'root', label: 'Preset', kind: 'module' } } } },
       { method: 'application.exportPromptResource', params: { resourceId: 'resource-1' } },
-      { method: 'application.listCardPromptResources', params: { cardId: 'card-1' } },
       { method: 'application.createPromptResourceAsset', params: { resourceId: 'resource-1', targetAssetId: 'root', position: 'inside', asset: { id: 'asset-1' } } },
       { method: 'application.updatePromptResourceAsset', params: { resourceId: 'resource-1', assetId: 'asset-1', body: 'updated' } },
       { method: 'application.updatePromptResourceAssets', params: { resourceId: 'resource-1', updates: [{ assetId: 'asset-1', label: 'Renamed' }] } },
@@ -314,31 +330,15 @@ function fakeBridge(
   responses: Record<string, unknown>,
 ): ClientBridge {
   return {
-    connect: async () => {},
-    disconnect: async () => {},
     call: async (method: string, params?: ClientJsonValue) => {
       calls.push({ method, params })
       return responses[method] as never
     },
-    callWithMeta: async (method: string, params?: ClientJsonValue) => {
-      calls.push({ method, params })
-      return {
-        result: responses[method] as never,
-        meta: { clientId: 'test-client', correlationId: 'corr-test', callId: 'call-test' },
-      }
-    },
-    request: async () => ({ jsonrpc: '2.0', id: null, result: null, meta: {} }),
-    getConnectionState: () => 'connected',
   }
 }
 
 function failingBridge(error: Error): ClientBridge {
   return {
-    connect: async () => {},
-    disconnect: async () => {},
     call: async () => { throw error },
-    callWithMeta: async () => { throw error },
-    request: async () => { throw error },
-    getConnectionState: () => 'connected',
   }
 }

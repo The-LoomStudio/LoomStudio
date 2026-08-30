@@ -47,11 +47,6 @@ Core 不生成 Fragment ID。谁创建 Fragment，谁负责它的语义身份。
 ```ts
 interface Pass<M = unknown> {
   readonly name: string
-  readonly version?: string
-  readonly reads?: readonly string[]
-  readonly writes?: readonly string[]
-  readonly requires?: readonly string[]
-  readonly provides?: readonly string[]
   run(fragments: readonly Fragment<M>[], ctx: PassContext): readonly Fragment<M>[]
 }
 ```
@@ -75,16 +70,7 @@ Pass 应满足：
 - 不依赖隐式全局状态；
 - 不原地修改调用方数据。
 
-这些是生态与 Replay 成立的前提，但 Core 当前不会静态或运行时证明 Pass 为纯函数。`version` 也是可选 metadata，尚未承担缓存或兼容性校验。
-
-### 2.3 声明字段
-
-`reads`、`writes`、`requires`、`provides` 是供上层 lint、DevTool 和文档使用的声明字段。Core 当前不会：
-
-- 校验 capability 链；
-- 自动拓扑排序；
-- 因声明缺失阻止运行；
-- 验证实际 Mutation 是否符合 reads/writes。
+这些是确定执行与 Replay 成立的前提，但 Core 当前不会静态或运行时证明 Pass 为纯函数。
 
 ## 3. PassContext
 
@@ -93,13 +79,10 @@ interface PassContext {
   readonly passName: string
   readonly passIndex: number
   diagnose(diagnostic): void
-  log(message: string, data?: unknown): void
 }
 ```
 
 `diagnose()` 会自动补充当前 Pass 与相对时间并进入 RunResult/Trace。
-
-`log()` 当前会在执行期间收集日志，但 public Trace 尚未暴露日志字段。调用方不能依赖这些日志被持久化或传输。
 
 Core 当前不向 PassContext 提供：
 
@@ -113,8 +96,6 @@ Core 当前不向 PassContext 提供：
 ```ts
 interface PassFactory<P = unknown, M = unknown> {
   readonly name: string
-  readonly version?: string
-  readonly paramsSchema?: unknown
   create(params: P): Pass<M>
 }
 
@@ -148,7 +129,7 @@ PassConfig JSON
 - Factory 抛错产生 `loom/factory-threw`；
 - 每个 PassConfig 都会调用一次 `factory.create()`；Factory 应返回独立 Pass instance，Core 当前不检测 Factory 是否复用同一对象。
 
-Core 只保存和透传 `paramsSchema`，不在 runtime 中执行 schema validation。PassConfig params 也尚未由 Core 完整验证为 JSON-serializable。
+PassConfig params 尚未由 Core 完整验证为 JSON-serializable。
 
 ## 5. 执行入口
 
@@ -158,9 +139,8 @@ Core 提供两类入口：
 run({ fragments, passes, registry, trace })
   面向配置化 Pipeline。
 
-pipeline(passes).run(fragments, traceOptions)
 runPasses({ fragments, passes, ... })
-  面向直接代码调用和测试。
+  面向直接代码调用。
 ```
 
 配置化 `run()` 会把 `PassConfig[]` 写入 Trace。直接 Pass 入口没有完整 PassConfig，因此只能重建状态，不能仅凭 Trace 重新实例化原始 Pass。

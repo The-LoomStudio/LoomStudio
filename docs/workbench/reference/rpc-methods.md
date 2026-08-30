@@ -25,8 +25,7 @@ Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本列表收�
 
 ### System
 - **`system.ping`**: 心跳测试，返回 `serverTime`。
-- **`system.getInfo`**: 获取内核与协议版本号，能力枚举。
-- **`system.introspect`**: 暴露当前内核中注册的所有 RPC、Event 等映射，供 Studio Client 动态探测能力。
+- **`system.introspect`**: 暴露当前 Kernel/Extension 注册的 RPC、Event 与版本信息。
 
 ### Document Store
 - **`docs.get`**: 根据 ID 获取单个 Document 的完整内容。
@@ -37,7 +36,9 @@ Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本列表收�
 ### Extensions
 - **`extensions.listPackages`**: 返回插件管理初始快照，包括 Package 展示元数据、`tags`、受控 `iconUrl`、不泄露物理目录的 `sourceKinds`、可用性、声明式资源和各 Module 的 desired/runtime 状态。
 - **`extensions.installPackage`**: 从本地 `sourceDirectory` 安全安装 Manifest v2 Package。
-- **`extensions.uninstallPackage`**: 删除指定 installed Package 版本；不删除其 Document 与 Media Asset。
+- **`extensions.uninstallPackage`**: 卸载指定 installed 或 dev-linked Package；释放并 forget Module、清除 enabled/grant。installed 删除复制目录，dev-link 只删除链接，二者均保留已导入资源、Document 与 Media Asset。
+- **`extensions.importPackageResources`**: 显式实例化 Package 声明的 Prompt Resource、Preset Mount 与 Agent Tool Definition。
+- **`extensions.removePackageResources`**: 按 Package provenance 删除已实例化的 Prompt Resource、Agent Tool Definition 与关联 Mount；仍被 Agent Profile 使用的 Preset 会阻止删除。
 - **`extensions.enableModule`**: 使用 `packageId + moduleId` 持久化启用选择与事件 / Asset grant；Server Module 会被激活或按需 reload。
 - **`extensions.disableModule`**: 持久化禁用目标 Module；Server Module 的当前 instance 会被释放。
 - **`extensions.reloadModule`**: 重新加载一个已启用 Server Module，不改变 sibling Module。
@@ -63,11 +64,12 @@ Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本列表收�
 - **`application.pingProviderModel`**: 使用 `providerProfileId + modelId` 测试已启用模型。
 
 ### Card 与导入导出
-- **`application.createCard`** / **`getCard`** / **`listCards`** / **`updateCard`** / **`deleteCard`**
+- **`application.createCard`** / **`getCard`** / **`listCards`** / **`updateCard`**
+- **`application.previewCardDeletion`**: 返回关联 Timeline、Card / Timeline Scope Extension Storage 与 Card-owned Text Rule 影响范围。
+- **`application.deleteCard`**: 默认只删除 Card 及其直接拥有的数据；`includePlayData: true` 时在同一事务级联关联 Timeline、Timeline State、Runtime Context 与 Timeline Scope Extension Storage。提交后广播 `entity.lifecycle.changed`。
 - **`application.importCardBundle`**: 导入自包含 Card Bundle，在同一事务中创建 Card、平铺 Prompt Resources 与 Import Bundle。
 - **`application.updateCardPromptResources`**: 以有序 `promptResourceIds` 更新 Card Manifest；拒绝重复、缺失或非 Prompt Resource 引用。
 - **`application.exportCardBundle`**: 从 Card 的有序 Prompt Resource IDs 导出当前自包含 Bundle。
-- **`application.getImportBundle`**: 按 Card 保存的 `importBundleId` 查询独立导入来源与兼容数据。
 - **Card file HTTP data plane**: `GET /cards/:cardId/export.png` 输出压缩 `iTXt/loom`；`GET /cards/:cardId/export.polyglot.png` 输出头像 PNG + 完整 ZIP；`GET /cards/:cardId/export.loomcard` 输出稳定 ZIP。`POST /cards/import/png` 自动识别普通 PNG 或 Polyglot，`POST /cards/import/loomcard` 导入完整包；所有格式最终复用 `application.importCardBundle`。
 
 ### Agent 配置与 Session
@@ -91,7 +93,6 @@ Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本列表收�
 - **`application.deletePromptResource`**: 删除非官方 Resource，并从引用它的 Card、Preset Mount 与 Narrative Timeline 中解除绑定；仍被 Agent Profile 使用的 Preset 需要先处理 Profile，官方内置资源保持只读。
 - **`application.importPromptResource`** / **`exportPromptResource`**: 导入、导出独立 `loom.promptResource` Artifact。
 - **`application.getPromptResource`**: 按 `resourceId` 读取一个 Prompt Resource。
-- **`application.listCardPromptResources`**: 按 Card Manifest 中的顺序读取全部 Prompt Resources。
 - **`application.createPromptResourceAsset`** / **`updatePromptResourceAsset`** / **`updatePromptResourceAssets`** / **`movePromptResourceAsset`** / **`deletePromptResourceAsset`**: 只修改指定 Prompt Resource；跨 Resource move / batch update 当前明确拒绝。
 
 ## 3. Media Asset HTTP 数据面

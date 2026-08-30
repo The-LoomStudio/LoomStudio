@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveLoomStudioLocalPaths } from '../../../apps/studio-server/src/local-paths.js'
+import { resolveLoomStudioLocalPaths } from '../../../apps/studio-server/src/platform/local-paths.js'
 
 describe('resolveLoomStudioLocalPaths', () => {
   it('collapses development paths under LOOM_STUDIO_HOME', () => {

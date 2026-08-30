@@ -355,13 +355,9 @@ async function loadTranscript(api: StudioApi, agentSessionId: string) {
   return { entries, session }
 }
 
-export function readNarrativeBranchById(branches: NarrativeBranch[], branchId: string): NarrativeBranch | undefined {
-  return branches.find(branch => branch.id === branchId)
-}
-
 export function resolveNarrativeBranch(branches: NarrativeBranch[], activeBranchId: string, requestedBranchId?: string): NarrativeBranch | undefined {
-  return (requestedBranchId ? readNarrativeBranchById(branches, requestedBranchId) : undefined)
-    ?? readNarrativeBranchById(branches, activeBranchId)
+  return (requestedBranchId ? branches.find(branch => branch.id === requestedBranchId) : undefined)
+    ?? branches.find(branch => branch.id === activeBranchId)
 }
 
 export function readComposerDraftKey(

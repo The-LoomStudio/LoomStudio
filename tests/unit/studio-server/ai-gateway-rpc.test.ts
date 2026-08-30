@@ -4,7 +4,7 @@ import {
   registerOfficialFakeAiProvider,
 } from '@loom-studio/ai-gateway'
 import { describe, expect, it } from 'vitest'
-import { callAiGatewayRpc } from '../../../apps/studio-server/src/ai-gateway-rpc.js'
+import { callAiGatewayRpc } from '../../../apps/studio-server/src/rpc/handlers/ai-gateway-rpc.js'
 
 describe('AI Gateway RPC', () => {
   it('lists registered providers and invokes a capability', async () => {

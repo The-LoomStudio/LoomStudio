@@ -16,6 +16,7 @@ function createTestKernel() {
     activateAll: async () => [],
     reload: async () => { throw new Error('not implemented') },
     dispose: async () => {},
+    forget: async () => {},
     disposeAll: async () => {},
     list: () => [],
     diagnostics: () => [],
@@ -30,7 +31,6 @@ function createTestKernel() {
     traceAudit,
     extensionHost,
     loomRunner,
-    environment: 'test',
   })
 
   return { kernel, documents, diagnostics, traceAudit }
@@ -47,24 +47,17 @@ describe('kernel rpc contract', () => {
     expect(result.echo).toBe('hello')
   })
 
-  it('reports only platform capabilities from system.getInfo', async () => {
-    const { kernel } = createTestKernel()
-    await kernel.start()
-
-    const result = await kernel.callRpc<{ capabilities: { documents: boolean; loomRun: boolean } }>('system.getInfo', {})
-
-    expect(result.capabilities.documents).toBe(true)
-    expect(result.capabilities.loomRun).toBe(true)
-    expect(JSON.stringify(result)).not.toContain('chat')
-    expect(JSON.stringify(result)).not.toContain('provider')
-  })
-
   it('exposes kernel-owned methods and events through system.introspect', async () => {
     const { kernel } = createTestKernel()
     await kernel.start()
 
-    const result = await kernel.callRpc<{ methods: Array<{ name: string }>; events: string[] }>('system.introspect', {})
+    const result = await kernel.callRpc<{
+      kernel: { studioVersion: string; kernelVersion: string; protocolVersion: string }
+      methods: Array<{ name: string }>
+      events: string[]
+    }>('system.introspect', {})
 
+    expect(result.kernel).toEqual({ studioVersion: '0.0.0', kernelVersion: '0.0.0', protocolVersion: '0.1.0' })
     expect(result.methods.some(method => method.name === 'system.introspect')).toBe(true)
     expect(result.methods.some(method => method.name === 'docs.write')).toBe(true)
     expect(result.methods.some(method => method.name === 'docs.getChangeset')).toBe(true)

@@ -6,7 +6,6 @@ export function createPassContext(input: {
   readonly passName: string
   readonly passIndex: number
   readonly diagnostics: Diagnostic[]
-  readonly logs: { readonly message: string; readonly data?: unknown; readonly at: number }[]
 }): PassContext {
   return {
     passName: input.passName,
@@ -17,9 +16,6 @@ export function createPassContext(input: {
         pass: input.passName,
         at: now(),
       })
-    },
-    log(message: string, data?: unknown): void {
-      input.logs.push({ message, data, at: now() })
     },
   }
 }

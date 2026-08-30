@@ -1,3 +1,4 @@
+import { officialFakeModelId } from '@loom-studio/ai-gateway'
 import { createMemoryLogSink, createRootLogger } from '@loom-studio/logging'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -177,12 +178,12 @@ describe('Studio Server logging', () => {
         providerExtensionId: 'official.fake',
         displayName: 'Private Provider',
         config: { baseUrl: 'https://example.test/v1' },
-        enabledModelIds: ['test-model'],
+        enabledModelIds: [officialFakeModelId],
       })
       const agentProfile = await callRpc<{ agentProfile: { id: string } }>(port, 'application.createAgentProfile', {
         name: 'Private Agent Profile',
         presetId,
-        model: { providerProfileId: provider.providerProfile.id, modelId: 'test-model' },
+        model: { providerProfileId: provider.providerProfile.id, modelId: officialFakeModelId },
       })
       const created = await callRpc<{ session: { id: string } }>(port, 'application.createAgentSession', {
         agentProfileId: agentProfile.agentProfile.id,

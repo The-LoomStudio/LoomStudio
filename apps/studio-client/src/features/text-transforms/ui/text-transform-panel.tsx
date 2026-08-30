@@ -115,9 +115,9 @@ export function TextTransformPanel(props: Props) {
       <h3>History Dry Run</h3>
       <div className={styles.actions}><select value={phase} onChange={event => setPhase(event.target.value as typeof phase)}><option value="classify">Classify</option><option value="prompt">Prompt</option><option value="display">Display</option></select><button disabled={!props.source} type="button" onClick={() => void dryRun()}>运行当前 History</button><button disabled={!props.source || !selectedExtractorId} type="button" onClick={() => void runExtractor()}>运行所选 Extractor</button></div>
       <pre>{projection ? JSON.stringify(projection, null, 2) : props.source ? '尚未运行' : '当前没有可用的 Narrative / Agent Session'}</pre>
-      {extraction ? <ArtifactSlotHost slot="studio.panel" renderers={renderers} artifacts={[{ id: 'dry-run-extraction', artifactType: 'application/json', content: extraction as never }]} /> : null}
+      {extraction ? <ArtifactSlotHost surface="shell.workspace-panel" renderers={renderers} artifacts={[{ id: 'dry-run-extraction', artifactType: 'application/json', content: extraction as never }]} /> : null}
     </section>
-    <section className={styles.block}><h3>Renderer Registry</h3>{renderers.map(renderer => <p key={renderer.id}><strong>{renderer.name}</strong> · {renderer.slot} · {renderer.renderMode}</p>)}</section>
+    <section className={styles.block}><h3>Renderer Registry</h3>{renderers.map(renderer => <p key={renderer.id}><strong>{renderer.name}</strong> · {renderer.surface} · {renderer.instanceScope}</p>)}</section>
   </section>
 }
 

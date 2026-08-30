@@ -18,7 +18,7 @@
 ### 🔴 [高] 1. 前后端核心术语割裂与胶水转换（`ProviderProfile` vs `ProviderAccount`）
 
 **文件：**
-- 后端：[`apps/studio-server/src/application-rpc.ts` L31-L36](../../../apps/studio-server/src/application-rpc.ts)
+- 后端：[`apps/studio-server/src/rpc/handlers/application/index.ts`](../../../apps/studio-server/src/rpc/handlers/application/index.ts)
 - 前端：[`apps/studio-client/src/shared/api/studio-api.ts` L181-L202](../../../apps/studio-client/src/shared/api/studio-api.ts)
 
 **现象分析：**
@@ -88,7 +88,7 @@ export type StudioApi = {
 
 ### 🟡 [中] 3. RPC 命名风格不一致与动词不对称
 
-**文件：** [`apps/studio-server/src/application-rpc.ts` L25-L79](../../../apps/studio-server/src/application-rpc.ts)
+**文件：** [`apps/studio-server/src/rpc/handlers/application/index.ts`](../../../apps/studio-server/src/rpc/handlers/application/index.ts)
 
 | 领域 | 当前 RPC 命名 | 不一致点说明 | 建议标准化命名 |
 |---|---|---|---|
@@ -143,7 +143,7 @@ history: {
 
 ### 🟢 [低] 6. 后端手写解包样板代码庞大（~300 行 `rpc-params.ts` 串行提取）
 
-**文件：** [`apps/studio-server/src/application-rpc.ts`](../../../apps/studio-server/src/application-rpc.ts)
+**文件：** [`apps/studio-server/src/rpc/handlers/application/index.ts`](../../../apps/studio-server/src/rpc/handlers/application/index.ts)
 
 **现象分析：**
 每个 RPC 方法中都包含大量的显式参数读取：

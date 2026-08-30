@@ -16,7 +16,7 @@ import { useProviderSettings } from '../features/provider-settings/model/use-pro
 import { useAgentProfiles } from '../features/agent-profiles/model/use-agent-profiles.js'
 import { useNarrativeRuntime } from '../features/narrative-runtime/model/use-narrative-runtime.js'
 import type { ContextAssetNode, PresetToolMount, PresetToolMountInput, PromptResource, PromptResourceArtifact, SettingMount, SettingMountSource } from '../entities/index.js'
-import { readComposerHint, readEmptyTimelineText } from './utils.js'
+import { readEmptyTimelineText } from './utils.js'
 
 export type HistoryAssetTarget = {
   assetId: string
@@ -37,9 +37,15 @@ export function useStudioState(transportLogger: Logger) {
     tags: [],
   })
   const operations = useAsyncOperations()
-  const bridge = useMemo(() => createClientBridge({ endpoint, source: 'studio-client' }), [endpoint])
+  const bridge = useMemo(() => createClientBridge({ endpoint }), [endpoint])
   const observedBridge = useMemo(() => withClientBridgeLogging(bridge, transportLogger), [bridge, transportLogger])
   const api = useMemo(() => createStudioApi(observedBridge), [observedBridge])
+  const clientExtensionApi = useMemo(() => ({
+    extensions: api.extensions,
+    extensionRuntime: api.extensionRuntime,
+    states: api.states,
+    textTransforms: api.textTransforms,
+  }), [api])
   const editHistory = useEditHistory({ revertChangeset: api.history.revert })
   const [promptResources, setPromptResources] = useState<PromptResource[]>([])
   const [settingMounts, setSettingMounts] = useState<SettingMount[]>([])
@@ -53,7 +59,6 @@ export function useStudioState(transportLogger: Logger) {
   })
   const contextAssetState = useContextAssets({
     api,
-    initialNodes: [],
     onResourceChange: resource => {
       setPromptResources(current => current.map(item => item.id === resource.id ? resource : item))
     },
@@ -113,6 +118,30 @@ export function useStudioState(transportLogger: Logger) {
     return mounts
   }
 
+  async function importExtensionPackageResources(packageId: string) {
+    const result = await api.extensions.importResources(packageId)
+    await Promise.all([
+      refreshPromptResourceLibrary(),
+      refreshSettingMounts(),
+      refreshPresetToolMounts(),
+      agentProfiles.refreshAgentProfiles(),
+    ])
+    return result
+  }
+
+  async function removeExtensionPackageResources(packageId: string) {
+    const result = await api.extensions.removeResources(packageId)
+    await Promise.all([
+      refreshPromptResourceLibrary(),
+      refreshSettingMounts(),
+      refreshPresetToolMounts(),
+      agentProfiles.refreshAgentProfiles(),
+      cardsState.refreshCards(),
+      cardsState.selectedCardId ? narrativeRuntime.refreshCardTimelines(cardsState.selectedCardId) : Promise.resolve([]),
+    ])
+    return result
+  }
+
   useEffect(() => {
     editHistory.clear()
     void operations.run('bootstrap', async () => {
@@ -143,12 +172,6 @@ export function useStudioState(transportLogger: Logger) {
     && narrativeRuntime.agentInput.trim().length > 0
     && !operations.isPending('agent-chat')
     && !sessionBusy
-  const composerHint = readComposerHint({
-    timeline: narrativeRuntime.timeline,
-    branch: narrativeRuntime.branch,
-    busy: sessionBusy,
-    input: narrativeRuntime.input,
-  }, t)
   const emptyTimelineText = readEmptyTimelineText({ timeline: narrativeRuntime.timeline, branch: narrativeRuntime.branch }, t)
   const promptMessages = narrativeRuntime.promptPreview?.messages
   const promptProjection = narrativeRuntime.promptPreview?.projection ?? narrativeRuntime.lastRun?.projection
@@ -339,6 +362,9 @@ export function useStudioState(transportLogger: Logger) {
     logsApi: api.logs,
     statesApi: api.states,
     textTransformsApi: api.textTransforms,
+    clientExtensionApi,
+    importExtensionPackageResources,
+    removeExtensionPackageResources,
     // cards
     cards: cardsState.cards,
     selectedCardId: cardsState.selectedCardId,
@@ -416,7 +442,7 @@ export function useStudioState(transportLogger: Logger) {
     replaceSettingMounts,
     replacePresetToolMounts,
     // derived
-    canSend, canSendAgent, canPreviewPrompt, composerHint, emptyTimelineText,
+    canSend, canSendAgent, canPreviewPrompt, emptyTimelineText,
     // actions
     undoEdit,
     redoEdit,
@@ -424,6 +450,7 @@ export function useStudioState(transportLogger: Logger) {
     updateCard: cardsState.updateCard,
     deleteCard: cardsState.deleteCard,
     deleteCards: cardsState.deleteCards,
+    previewCardDeletion: cardsState.previewCardDeletion,
     createProviderAccount: providerSettings.createProviderAccount,
     createAiProviderAccount: providerSettings.createAiProviderAccount,
     createAiCapabilityProfile: providerSettings.createAiCapabilityProfile,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatEntityMention, sanitizeRpcParams, summarizeRpc } from '../../../apps/studio-server/src/rpc-summary.js'
+import { formatEntityMention, sanitizeRpcParams, summarizeRpc } from '../../../apps/studio-server/src/rpc/rpc-summary.js'
 
 describe('rpc-summary & entity mentions', () => {
   it('formats entity mentions with and without label', () => {

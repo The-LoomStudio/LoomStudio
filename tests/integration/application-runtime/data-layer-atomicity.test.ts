@@ -4,7 +4,7 @@ import { createSqliteDocumentStore, type SqliteDocumentStore } from '../../../pa
 import { createNarrativeStore, type NarrativeStore } from '../../../packages/narrative-store/src/index.js'
 import { createPromptResourceStore } from '../../../packages/prompt-resource-store/src/index.js'
 import { createMemoryLogSink, createRootLogger } from '../../../packages/logging/src/index.js'
-import { withDocumentStoreLogging } from '../../../apps/studio-server/src/document-store-logging.js'
+import { withDocumentStoreLogging } from '../../../apps/studio-server/src/logging/document-store-logging.js'
 import { describe, expect, it } from 'vitest'
 
 describe('Data Layer shared transaction atomicity', () => {

@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createNetworkSettingsStore } from '../../../apps/studio-server/src/network-settings.js'
+import { createNetworkSettingsStore } from '../../../apps/studio-server/src/platform/network-settings.js'
 
 describe('network settings store', () => {
   it('defaults to the detected system proxy', () => {

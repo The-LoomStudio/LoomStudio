@@ -1,7 +1,7 @@
-import { Bot, Braces, Folders, ListOrdered, Plug, Regex, Settings, SquareTerminal, Users, Waypoints, Wrench, type LucideIcon } from 'lucide-react'
+import { Blocks, Bot, Braces, Folders, ListOrdered, Plug, Regex, Settings, SquareTerminal, Users, Waypoints, Wrench, type LucideIcon } from 'lucide-react'
 import type { StudioPanelId } from './studio-layout-store.js'
 
-export type StudioPanelLabelKey = 'rail.model' | 'rail.agent' | 'rail.sessions' | 'rail.character' | 'rail.preset' | 'rail.resource' | 'rail.state' | 'rail.textTransform' | 'rail.inspector' | 'rail.logs' | 'rail.settings'
+export type StudioPanelLabelKey = 'rail.model' | 'rail.agent' | 'rail.sessions' | 'rail.character' | 'rail.preset' | 'rail.resource' | 'rail.state' | 'rail.textTransform' | 'rail.inspector' | 'rail.logs' | 'rail.extensions' | 'rail.settings'
 
 export const STUDIO_PANEL_PRESENTATION = {
   model: { Icon: Plug, labelKey: 'rail.model' },
@@ -14,5 +14,6 @@ export const STUDIO_PANEL_PRESENTATION = {
   'text-transform': { Icon: Regex, labelKey: 'rail.textTransform' },
   inspector: { Icon: Wrench, labelKey: 'rail.inspector' },
   logs: { Icon: SquareTerminal, labelKey: 'rail.logs' },
+  extensions: { Icon: Blocks, labelKey: 'rail.extensions' },
   settings: { Icon: Settings, labelKey: 'rail.settings' },
 } satisfies Record<StudioPanelId, { Icon: LucideIcon; labelKey: StudioPanelLabelKey }>

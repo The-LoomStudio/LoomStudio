@@ -11,13 +11,6 @@ export type TraceStatus = 'ok' | 'error'
 export interface TraceOptions {
   readonly mode?: TraceMode
   readonly snapshot?: SnapshotMode
-  readonly sink?: TraceSink | readonly TraceSink[]
-}
-
-export interface TraceSink {
-  onPassStart?(passName: string, passIndex: number): void
-  onPassEnd?(execution: TraceExecution): void
-  onDiagnostic?(diagnostic: Diagnostic): void
 }
 
 export interface TraceExecution<M = unknown> {

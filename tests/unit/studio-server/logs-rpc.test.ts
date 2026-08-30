@@ -1,6 +1,6 @@
 import type { LogQuery, LogReader } from '@loom-studio/logging'
 import { describe, expect, it, vi } from 'vitest'
-import { callLogsRpc } from '../../../apps/studio-server/src/logs-rpc.js'
+import { callLogsRpc } from '../../../apps/studio-server/src/rpc/handlers/logs-rpc.js'
 
 describe('logs.list RPC', () => {
   it('validates and forwards query parameters', () => {

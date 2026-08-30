@@ -13,7 +13,8 @@
 | [`ai-gateway-streaming-execution-plan.md`](./ai-gateway-streaming-execution-plan.md)         | 后端基础完成 | AI Gateway 流式执行；RPC / Client 消费延期                              |
 | [`ai-gateway-extension-capability-registry-plan.md`](./ai-gateway-extension-capability-registry-plan.md) | M0 已实施 | Extension Provider/Capability 动态注册、通用调用与 Schema 调试 UI |
 | [`variable-state-system-implementation-plan.md`](./variable-state-system-implementation-plan.md) | Closing | Phase 0—6 与自动化验收完成；仅剩人工视觉验收 |
-| [`history-text-transform-and-rendering-plan.md`](./history-text-transform-and-rendering-plan.md) | 基础闭环完成 | Phase 0—5 已实施；Archive/Summary 与第三方 Renderer 为后续增强 |
+| [`history-text-transform-and-rendering-plan.md`](./history-text-transform-and-rendering-plan.md) | 基础闭环完成 | Phase 0—5 已实施；Archive/Summary 为后续增强，Client Renderer 已由独立计划完成 |
+| [`renderer-surface-and-client-host-implementation-plan.md`](./renderer-surface-and-client-host-implementation-plan.md) | Phase 0—5 已审计；Phase 6 待实施 | Renderer Host 已完成；下一步接入 Client Command 与 Human Action Placement |
 | [`extension-data-and-portable-payload-foundation-plan.md`](./extension-data-and-portable-payload-foundation-plan.md) | Phase 1—5 完成 | Scoped Storage、Card Portable Payload；Renderer / Job / GC 待讨论 |
 | [`application-capability-cli-mcp-adapters-plan.md`](./application-capability-cli-mcp-adapters-plan.md) | 待实施提案 | Application Capability、CLI 与 MCP 适配器 |
 | [`file-backed-resource-agent-script-codeact-plan.md`](./file-backed-resource-agent-script-codeact-plan.md) | 待实施提案 | File-backed Resource、Agent Script、Sandbox 与 CodeAct |

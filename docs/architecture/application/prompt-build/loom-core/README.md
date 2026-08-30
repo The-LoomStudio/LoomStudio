@@ -116,17 +116,11 @@ Core 不提供 Promise/Thunk Content、Scope、Resolve Barrier、异步 Pass 或
 
 ## 5. Public API 面
 
-当前 `@loom/core` public exports 包括：
+`@loom/core` 现为只服务 Studio 的 private workspace package。跨 package surface 只保留：
 
-- Fragment clone 与 validation；
-- Diagnostic 类型；
-- Mutation diff、apply 与 replay；
+- Fragment、Diagnostic、Trace 类型；
 - Pass、PassFactory、PassConfig、PassRegistry；
-- Trace、TraceCollector、TraceSink 与序列化；
-- Owner annotation 与 cross-owner detection；
-- `pipeline()`、`run()`、`runPasses()`；
-- Pipeline 错误类型与序列化错误；
-- `@loom/core/schemas/trace.schema.json`。
+- `run()`、`runPasses()`。
 
 跨 package 使用必须从 `@loom/core` public exports 进入，禁止 deep import `packages/core/src/*`。
 
@@ -148,7 +142,7 @@ Kernel、Document Store、Extension Host、Client 和 ordinary Extension 不应�
 
 - [`packages/core/src/index.ts`](../../../../../packages/core/src/index.ts)
 - [`packages/core/src/pipeline/runner.ts`](../../../../../packages/core/src/pipeline/runner.ts)
-- [`packages/core/test/`](../../../../../packages/core/test/)
+- [`tests/unit/core/`](../../../../../tests/unit/core/)
 - [`packages/application-runtime/src/prompt-build-pipeline.ts`](../../../../../packages/application-runtime/src/prompt-build-pipeline.ts)
 
 历史白皮书、PoC、Accepted ADR 与 Engineering Blueprint 已保存在 [`archive/loom-project/`](../../../../archive/loom-project/)。它们解释设计来源，但当前代码和本目录中的正式说明拥有更高权威性。

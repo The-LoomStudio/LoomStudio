@@ -2,7 +2,6 @@ import {
   createApplicationRuntime,
   createVariableRenderContext,
   exportCardArtifact,
-  getImportBundle,
   importCardBundle,
   isCardBundleArtifact,
   readPromptResourceInputs,
@@ -30,7 +29,6 @@ describe('card bundle artifact boundary', () => {
       format: 'loom.cardBundle',
     })
     await expect(fixture.promptResources.getResource(imported.card.promptResourceIds![0]!)).resolves.toBeTruthy()
-    await expect(getImportBundle({ documents: fixture.documents, importBundleId: imported.importBundle.id })).resolves.toEqual(imported.importBundle)
   })
 
   it('builds prompt inputs directly from ordered resource ids', async () => {

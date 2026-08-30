@@ -13,7 +13,7 @@ pnpm dev:server
 pnpm dev:client
 ```
 
-`dev:client` 会先构建并监听内部 Packages，再启动 `127.0.0.1:5173`。Vite 将 `/auth`、`/assets`、`/cards` 和 `/rpc` 代理到 `STUDIO_SERVER_URL`，默认是 `http://127.0.0.1:4173`。
+`dev:client` 会先构建并监听内部 Packages，再启动 `127.0.0.1:5173`。Vite 将 `/auth`、`/assets`、`/cards`、`/extensions` 和 `/rpc` 代理到 `STUDIO_SERVER_URL`，默认是 `http://127.0.0.1:4173`。
 
 定向命令：
 

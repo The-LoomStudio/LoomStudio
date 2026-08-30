@@ -33,7 +33,8 @@ type CharacterPanelProps = {
   onCreateTimelineFromCard(): Promise<void>
   onExportCard(card: CharacterCardSummary, format: 'png' | 'polyglot' | 'loomcard'): Promise<void>
   onImportCards(files: File[]): Promise<void>
-  onDeleteCards(cardIds: string[]): Promise<void>
+  onDeleteCards(cardIds: string[], options?: { includePlayData?: boolean }): Promise<void>
+  onPreviewCardDeletion(cardId: string): Promise<{ timelines: Array<{ id: string }> }>
   onSelectCard(cardId: string): void
   onOpenTimeline(timeline: NarrativeTimelineView): void
   onOpenStatePanel(): void
@@ -82,6 +83,8 @@ export function CharacterPanel(props: CharacterPanelProps) {
   const [groupDraft, setGroupDraft] = useState('')
   const [editingGroupId, setEditingGroupId] = useState<string>()
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>()
+  const [deleteTimelineCount, setDeleteTimelineCount] = useState(0)
+  const [includePlayData, setIncludePlayData] = useState(false)
   const [exportCard, setExportCard] = useState<CharacterCardSummary>()
   const [remoteImportOpen, setRemoteImportOpen] = useState(false)
   const [remoteImportUrl, setRemoteImportUrl] = useState('')
@@ -113,6 +116,23 @@ export function CharacterPanel(props: CharacterPanelProps) {
   useEffect(() => {
     if (!props.active) closeGroupDialog()
   }, [props.active])
+
+  useEffect(() => {
+    let active = true
+    setIncludePlayData(false)
+    if (!pendingDeleteIds?.length) {
+      setDeleteTimelineCount(0)
+      return () => { active = false }
+    }
+    void Promise.all(pendingDeleteIds.map(cardId => props.onPreviewCardDeletion(cardId)))
+      .then(previews => {
+        if (active) setDeleteTimelineCount(previews.reduce((total, preview) => total + preview.timelines.length, 0))
+      })
+      .catch(() => {
+        if (active) setDeleteTimelineCount(0)
+      })
+    return () => { active = false }
+  }, [pendingDeleteIds, props.onPreviewCardDeletion])
   useEffect(() => {
     const knownCardIds = new Set(galleryCards.map(card => card.id))
     setSelectedCardIds(current => new Set([...current].filter(cardId => knownCardIds.has(cardId))))
@@ -216,7 +236,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
       setPendingDeleteIds(undefined)
       return
     }
-    await props.onDeleteCards(cardIds)
+    await props.onDeleteCards(cardIds, { includePlayData })
     organization.removeCards(cardIds)
     setSelectedCardIds(current => new Set([...current].filter(cardId => !cardIds.includes(cardId))))
     setPendingDeleteIds(undefined)
@@ -302,7 +322,17 @@ export function CharacterPanel(props: CharacterPanelProps) {
           {remoteImportError ? <p aria-live="polite" className={styles.remoteImportError}>{remoteImportError}</p> : null}
         </form>
       </Dialog>
-      <DeleteConfirmation open={Boolean(pendingDeleteIds)} count={pendingDeleteIds?.length ?? 0} busy={props.busy} onCancel={() => setPendingDeleteIds(undefined)} onConfirm={() => void confirmDelete()} t={props.t} />
+      <DeleteConfirmation
+        busy={props.busy}
+        count={pendingDeleteIds?.length ?? 0}
+        includePlayData={includePlayData}
+        open={Boolean(pendingDeleteIds)}
+        timelineCount={deleteTimelineCount}
+        t={props.t}
+        onCancel={() => setPendingDeleteIds(undefined)}
+        onConfirm={() => void confirmDelete()}
+        onIncludePlayDataChange={setIncludePlayData}
+      />
     </>
   )
 
@@ -668,7 +698,7 @@ function CharacterGroupDialog(props: {
   )
 }
 
-function DeleteConfirmation(props: { busy: boolean; count: number; onCancel(): void; onConfirm(): void; open: boolean; t: Translator }) {
+function DeleteConfirmation(props: { busy: boolean; count: number; includePlayData: boolean; onCancel(): void; onConfirm(): void; onIncludePlayDataChange(value: boolean): void; open: boolean; timelineCount: number; t: Translator }) {
   return (
     <Dialog
       actions={(
@@ -684,7 +714,14 @@ function DeleteConfirmation(props: { busy: boolean; count: number; onCancel(): v
       role="alertdialog"
       title={props.t('character.deleteConfirmTitle')}
       onClose={props.onCancel}
-    />
+    >
+      {props.timelineCount > 0 ? (
+        <label className={styles.deletePlayDataOption}>
+          <input checked={props.includePlayData} disabled={props.busy} type="checkbox" onChange={event => props.onIncludePlayDataChange(event.target.checked)} />
+          <span>{props.t('character.deletePlayData', { count: props.timelineCount })}</span>
+        </label>
+      ) : null}
+    </Dialog>
   )
 }
 

@@ -7,6 +7,7 @@ import type {
   EventSubscriberIdentity,
   ExtensionAssetCapability,
   ExtensionActivationContext,
+  ExtensionAgentToolHandler,
   AiGatewayCapabilityRegistry,
   AiGatewayProviderRegistration,
   ProfiledAiGateway,
@@ -19,13 +20,23 @@ import type {
   ExtensionMediaAsset,
   ExtensionPortablePayload,
   ExtensionPortablePayloadDraft,
+  ExtensionPromptResourceContribution,
   ExtensionRecordEntry,
   ExtensionRpcHandler,
   ExtensionStorageScope,
   ServerExtensionModule,
 } from '@loom-studio/extension-sdk'
 export type { ExtensionRpcHandler } from '@loom-studio/extension-sdk'
-export type { EventCapabilityCategory, ExtensionAssetCapability, ExtensionManifest, ExtensionModuleManifest } from '@loom-studio/extension-sdk'
+export type {
+  EventCapabilityCategory,
+  ExtensionAssetCapability,
+  ExtensionAgentToolContribution,
+  ExtensionEntityRef,
+  ExtensionManifest,
+  ExtensionModuleManifest,
+  ExtensionPromptResourceContribution,
+  ExtensionStorageScope,
+} from '@loom-studio/extension-sdk'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import { createId, serializeError } from '@loom-studio/shared'
 import type { StudioEvent } from '@loom-studio/transport'
@@ -64,6 +75,7 @@ export type ExtensionModuleSummary = {
     documentTypes?: string[]
     events?: string[]
     aiProviders?: string[]
+    agentToolHandlers?: string[]
   }
 }
 
@@ -142,6 +154,13 @@ export type ExtensionHostOptions = {
   }
   aiCapabilities?: AiGatewayCapabilityRegistry
   aiGateway?: ProfiledAiGateway
+  registerAgentToolHandler?(
+    toolId: string,
+    ownerPackageId: string,
+    ownerModuleId: string,
+    ownerInstanceId: string,
+    handler: ExtensionAgentToolHandler,
+  ): Disposable
   validateStorageScope?(scope: ExtensionStorageScope): Promise<void>
   validateEntityRef?(ref: ExtensionEntityRef): Promise<void>
   assetScratchRoot?: string
@@ -165,6 +184,7 @@ export type ExtensionHost = {
   activateAll(): Promise<ExtensionModuleSummary[]>
   reload(packageId: string, moduleId: string): Promise<ExtensionModuleSummary>
   dispose(packageId: string, moduleId: string): Promise<void>
+  forget(packageId: string, moduleId: string): Promise<void>
   disposeAll(): Promise<void>
   list(): ExtensionModuleSummary[]
   diagnostics(packageId?: string, moduleId?: string): Diagnostic[]
@@ -195,6 +215,7 @@ type ExtensionInstance = {
   registeredRpcNames: Set<string>
   registeredEventNames: Set<string>
   registeredAiProviderIds: Set<string>
+  registeredAgentToolIds: Set<string>
   grantedEventCapabilities: readonly EventCapabilityCategory[]
   grantedAssetCapabilities: readonly ExtensionAssetCapability[]
 }
@@ -301,6 +322,10 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
       }
     },
 
+    forget: async (packageId, moduleId) => {
+      await stopAndForgetRecord(packageId, moduleId, records, options)
+    },
+
     disposeAll: async () => {
       const errors: unknown[] = []
       for (const record of [...records.values()].reverse()) {
@@ -317,6 +342,22 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
 
     list: () => [...records.values()].map(toSummary),
     diagnostics: (packageId, moduleId) => options.diagnostics.list({ packageId, moduleId }),
+  }
+}
+
+async function stopAndForgetRecord(
+  packageId: string,
+  moduleId: string,
+  records: Map<string, ExtensionModuleRecord>,
+  options: ExtensionHostOptions,
+): Promise<void> {
+  const key = moduleKey(packageId, moduleId)
+  const record = records.get(key)
+  if (!record) return
+  try {
+    await stopInstance(record, options)
+  } finally {
+    records.delete(key)
   }
 }
 
@@ -342,6 +383,7 @@ async function activateRecord(
     registeredRpcNames: new Set(),
     registeredEventNames: new Set(),
     registeredAiProviderIds: new Set(),
+    registeredAgentToolIds: new Set(),
     grantedEventCapabilities: [...new Set(options.grantEventCapabilities?.(record.packageManifest, record.moduleManifest) ?? [])],
     grantedAssetCapabilities: [...new Set(options.grantAssetCapabilities?.(record.packageManifest, record.moduleManifest) ?? [])],
   }
@@ -402,12 +444,13 @@ async function activateRecord(
   return toSummary(record)
 }
 
-function contributionCounts(manifest: ExtensionModuleManifest): { rpc: number; documentTypes: number; events: number; aiProviders: number } {
+function contributionCounts(manifest: ExtensionModuleManifest): { rpc: number; documentTypes: number; events: number; aiProviders: number; agentToolHandlers: number } {
   return {
     rpc: manifest.contributes?.rpc?.length ?? 0,
     documentTypes: manifest.contributes?.documentTypes?.length ?? 0,
     events: manifest.contributes?.events?.length ?? 0,
     aiProviders: manifest.contributes?.aiProviders?.length ?? 0,
+    agentToolHandlers: manifest.contributes?.agentToolHandlers?.length ?? 0,
   }
 }
 
@@ -465,6 +508,43 @@ function validateManifest(manifest: Partial<ExtensionManifest>): void {
     }
   }
   if (!manifest.engines?.studio) throw new Error('engines.studio is required')
+  const promptResources = new Map<string, ExtensionPromptResourceContribution>()
+  for (const resource of manifest.contributes?.promptResources ?? []) {
+    if (!resource.id || !extensionStorageTokenPattern.test(resource.id)) throw new Error(`Manifest Prompt Resource id is invalid: ${resource.id}`)
+    if (promptResources.has(resource.id)) throw new Error(`Manifest Prompt Resource id must be unique: ${resource.id}`)
+    assertPackageJsonSource(resource.source, `Prompt Resource ${resource.id}`)
+    promptResources.set(resource.id, resource)
+  }
+  const agentTools = new Set<string>()
+  for (const tool of manifest.contributes?.agentTools ?? []) {
+    if (!tool.id.startsWith(`${manifest.id}/`) || !extensionStorageTokenPattern.test(tool.id.slice(manifest.id.length + 1))) {
+      throw new Error(`Manifest Agent Tool must use package namespace: ${tool.id}`)
+    }
+    if (agentTools.has(tool.id)) throw new Error(`Manifest Agent Tool id must be unique: ${tool.id}`)
+    assertPackageJsonSource(tool.source, `Agent Tool ${tool.id}`)
+    agentTools.add(tool.id)
+  }
+  for (const resource of promptResources.values()) {
+    if ((resource.settingMounts?.length || resource.toolMounts?.length) && resource.resourceKind !== 'preset') {
+      throw new Error(`Manifest Prompt Resource mounts require a Preset: ${resource.id}`)
+    }
+    const settingMounts = new Set<string>()
+    for (const mount of resource.settingMounts ?? []) {
+      const setting = promptResources.get(mount.resourceId)
+      if (!setting || setting.resourceKind !== 'setting') throw new Error(`Manifest Preset references an undeclared Setting: ${mount.resourceId}`)
+      if (settingMounts.has(mount.resourceId)) throw new Error(`Manifest Preset Setting mount must be unique: ${mount.resourceId}`)
+      if (mount.orderIndex !== undefined && (!Number.isInteger(mount.orderIndex) || mount.orderIndex < 0)) throw new Error(`Manifest Preset Setting order is invalid: ${mount.resourceId}`)
+      settingMounts.add(mount.resourceId)
+    }
+    const toolMounts = new Set<string>()
+    for (const mount of resource.toolMounts ?? []) {
+      if (!agentTools.has(mount.toolId)) throw new Error(`Manifest Preset references an undeclared Agent Tool: ${mount.toolId}`)
+      if (toolMounts.has(mount.toolId)) throw new Error(`Manifest Preset Tool mount must be unique: ${mount.toolId}`)
+      if (mount.orderIndex !== undefined && (!Number.isInteger(mount.orderIndex) || mount.orderIndex < 0)) throw new Error(`Manifest Preset Tool order is invalid: ${mount.toolId}`)
+      if (mount.defaultEnabled !== undefined && typeof mount.defaultEnabled !== 'boolean') throw new Error(`Manifest Preset Tool enabled flag is invalid: ${mount.toolId}`)
+      toolMounts.add(mount.toolId)
+    }
+  }
   const moduleIds = new Set<string>()
   for (const moduleManifest of manifest.modules ?? []) {
     if (!moduleManifest.id || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(moduleManifest.id)) throw new Error('Manifest module id is invalid')
@@ -494,6 +574,68 @@ function validateManifest(manifest: Partial<ExtensionManifest>): void {
       if (aiProviderIds.has(provider.id)) throw new Error(`Manifest AI provider must be unique within a module: ${provider.id}`)
       aiProviderIds.add(provider.id)
     }
+    const agentToolHandlerIds = new Set<string>()
+    for (const handler of moduleManifest.contributes?.agentToolHandlers ?? []) {
+      if (moduleManifest.runtime !== 'server') throw new Error(`Manifest Agent Tool Handler requires a server module: ${handler.toolId}`)
+      if (!agentTools.has(handler.toolId)) throw new Error(`Manifest Agent Tool Handler references an undeclared Agent Tool: ${handler.toolId}`)
+      if (agentToolHandlerIds.has(handler.toolId)) throw new Error(`Manifest Agent Tool Handler must be unique within a module: ${handler.toolId}`)
+      agentToolHandlerIds.add(handler.toolId)
+    }
+    const rendererIds = new Set<string>()
+    for (const renderer of moduleManifest.contributes?.renderers ?? []) {
+      if (moduleManifest.runtime !== 'client') throw new Error(`Manifest Renderer requires a client module: ${renderer.id}`)
+      if (!renderer.id || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(renderer.id)) throw new Error(`Manifest Renderer id is invalid: ${renderer.id}`)
+      if (rendererIds.has(renderer.id)) throw new Error(`Manifest Renderer id must be unique within a module: ${renderer.id}`)
+      rendererIds.add(renderer.id)
+      assertOptionalManifestText(renderer.name, `Renderer name (${renderer.id})`, 255)
+      if (!rendererSurfaces.includes(renderer.surface)) throw new Error(`Manifest Renderer surface is invalid: ${renderer.id}`)
+      if (!rendererScopes.includes(renderer.instanceScope)) throw new Error(`Manifest Renderer instanceScope is invalid: ${renderer.id}`)
+      if (!rendererSurfaceScopes[renderer.surface].includes(renderer.instanceScope)) {
+        throw new Error(`Manifest Renderer scope does not match surface: ${renderer.id}`)
+      }
+      if (renderer.suggestedOrder !== undefined && (!Number.isInteger(renderer.suggestedOrder) || Math.abs(renderer.suggestedOrder) > 1_000_000)) {
+        throw new Error(`Manifest Renderer suggestedOrder is invalid: ${renderer.id}`)
+      }
+      if (renderer.artifactType !== undefined) assertOptionalManifestText(renderer.artifactType, `Renderer artifactType (${renderer.id})`, 255)
+      if (renderer.fallback !== undefined && renderer.fallback !== 'json' && renderer.fallback !== 'text' && renderer.fallback !== 'hidden') {
+        throw new Error(`Manifest Renderer fallback is invalid: ${renderer.id}`)
+      }
+      if (renderer.adapter !== undefined && renderer.adapter !== 'direct' && renderer.adapter !== 'shadow' && renderer.adapter !== 'sandbox-iframe') {
+        throw new Error(`Manifest Renderer adapter is invalid: ${renderer.id}`)
+      }
+    }
+    const commandIds = new Set<string>()
+    for (const command of moduleManifest.contributes?.commands ?? []) {
+      if (moduleManifest.runtime !== 'client') throw new Error(`Manifest Client Command requires a client module: ${command.id}`)
+      if (!command.id || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(command.id)) throw new Error(`Manifest Client Command id is invalid: ${command.id}`)
+      if (commandIds.has(command.id)) throw new Error(`Manifest Client Command id must be unique within a module: ${command.id}`)
+      commandIds.add(command.id)
+      if (typeof command.title !== 'string') throw new Error(`Manifest Client Command title is required: ${command.id}`)
+      assertOptionalManifestText(command.title, `Client Command title (${command.id})`, 255)
+      if (command.icon !== undefined && !clientHostIcons.includes(command.icon)) {
+        throw new Error(`Manifest Client Command icon is invalid: ${command.id}`)
+      }
+    }
+    const actionKeys = new Set<string>()
+    for (const action of moduleManifest.contributes?.actions ?? []) {
+      if (moduleManifest.runtime !== 'client') throw new Error(`Manifest Client Action requires a client module: ${action.commandId}`)
+      if (!commandIds.has(action.commandId)) throw new Error(`Manifest Client Action references an undeclared Command: ${action.commandId}`)
+      if (!clientActionSurfaces.includes(action.surface)) throw new Error(`Manifest Client Action surface is invalid: ${action.commandId}`)
+      if (action.group !== undefined) assertOptionalManifestText(action.group, `Client Action group (${action.commandId})`, 64)
+      if (action.suggestedOrder !== undefined && (!Number.isInteger(action.suggestedOrder) || Math.abs(action.suggestedOrder) > 1_000_000)) {
+        throw new Error(`Manifest Client Action suggestedOrder is invalid: ${action.commandId}`)
+      }
+      if (action.when !== undefined) {
+        if (typeof action.when !== 'object' || action.when === null
+          || Object.keys(action.when).some(key => key !== 'active')
+          || (action.when.active !== undefined && action.when.active !== 'timeline' && action.when.active !== 'agent-session')) {
+          throw new Error(`Manifest Client Action condition is invalid: ${action.commandId}`)
+        }
+      }
+      const actionKey = `${action.commandId}@${action.surface}@${action.group ?? ''}`
+      if (actionKeys.has(actionKey)) throw new Error(`Manifest Client Action placement must be unique within a module: ${actionKey}`)
+      actionKeys.add(actionKey)
+    }
     const eventCapabilities = moduleManifest.capabilities?.['events.subscribe']
     if (eventCapabilities !== undefined && (!Array.isArray(eventCapabilities) || !eventCapabilities.every(value => typeof value === 'string'))) {
       throw new Error(`Module capabilities.events.subscribe must be a string array: ${moduleManifest.id}`)
@@ -506,8 +648,44 @@ function validateManifest(manifest: Partial<ExtensionManifest>): void {
     }
   }
   for (const rule of manifest.contributes?.transformRules ?? []) {
-    if (!rule.source) throw new Error('Transform rule source is required')
+    assertPackageJsonSource(rule.source, 'Transform Rule')
   }
+}
+
+function assertPackageJsonSource(source: unknown, label: string): asserts source is string {
+  if (typeof source !== 'string' || !source.trim() || source !== source.trim() || source.includes('\0') || isAbsolute(source) || !source.toLowerCase().endsWith('.json')) {
+    throw new Error(`Manifest ${label} source must be a relative JSON file`)
+  }
+}
+
+const rendererSurfaces = [
+  'shell.background',
+  'narrative.entry.inline',
+  'narrative.timeline.tail',
+  'agent.message.inline',
+  'agent.session.tail',
+  'composer.sheet',
+  'shell.workspace-panel',
+  'shell.focus-surface',
+  'standalone.page',
+] as const
+
+const rendererScopes = ['workspace', 'timeline', 'agent-session', 'node', 'message'] as const
+
+const clientActionSurfaces = ['composer.quick-actions', 'extension.workbench.actions'] as const
+
+const clientHostIcons = ['image', 'refresh', 'settings', 'sparkles'] as const
+
+const rendererSurfaceScopes: Record<(typeof rendererSurfaces)[number], readonly (typeof rendererScopes)[number][]> = {
+  'shell.background': ['workspace'],
+  'narrative.entry.inline': ['node'],
+  'narrative.timeline.tail': ['timeline'],
+  'agent.message.inline': ['message'],
+  'agent.session.tail': ['agent-session'],
+  'composer.sheet': ['workspace', 'timeline', 'agent-session'],
+  'shell.workspace-panel': ['workspace'],
+  'shell.focus-surface': ['workspace', 'timeline', 'agent-session'],
+  'standalone.page': ['workspace', 'timeline', 'agent-session'],
 }
 
 function assertOptionalManifestText(value: unknown, field: string, maxLength: number): void {
@@ -716,6 +894,34 @@ function createContext(
             : instance.scope.signal,
           caller: { kind: 'extension', id: packageManifest.id },
         })
+      },
+    },
+    agentTools: {
+      register: (toolId, handler) => {
+        assertScopeActive(instance)
+        const declared = moduleManifest.contributes?.agentToolHandlers?.some(item => item.toolId === toolId)
+        if (!declared) {
+          if (options.mode === 'production') throw new Error(`Agent Tool Handler ${toolId} is not declared in manifest contributes.agentToolHandlers`)
+          reportDiagnostic(options.diagnostics, record, instance.instanceId, {
+            severity: 'warning',
+            code: 'extension.agent_tool_handler_not_declared',
+            message: `Agent Tool Handler ${toolId} is not declared in manifest contributes.agentToolHandlers`,
+            source: 'extension-host',
+          })
+        }
+        if (!options.registerAgentToolHandler) throw new Error('Agent Tool Handler registration is not available in this host')
+        const registration = options.registerAgentToolHandler(
+          toolId,
+          packageManifest.id,
+          moduleManifest.id,
+          instance.instanceId,
+          (input, context) => instance.scope.run(() => handler(input, {
+            signal: AbortSignal.any([context.signal, instance.scope.signal]),
+          })),
+        )
+        instance.scope.track(`agent-tool:${toolId}`, registration)
+        instance.registeredAgentToolIds.add(toolId)
+        return registration
       },
     },
     documents: {
@@ -1102,6 +1308,7 @@ function configDocumentId(packageId: string, scope: ExtensionStorageScope, key: 
 
 function storageScopeKey(scope: ExtensionStorageScope): string {
   if (scope.kind === 'global') return 'global'
+  if (scope.kind === 'card') return `card:${scope.cardId}`
   if (scope.kind === 'timeline') return `timeline:${scope.timelineId}`
   return `agent-session:${scope.agentSessionId}`
 }
@@ -1132,6 +1339,7 @@ function cloneStorageScope(scope: ExtensionStorageScope): ExtensionStorageScope 
 function assertStorageScope(scope: ExtensionStorageScope): void {
   if (!scope || typeof scope !== 'object') throw new Error('Extension Storage Scope must be an object')
   if (scope.kind === 'global') return
+  if (scope.kind === 'card' && typeof scope.cardId === 'string' && scope.cardId.length > 0) return
   if (scope.kind === 'timeline' && typeof scope.timelineId === 'string' && scope.timelineId.length > 0) return
   if (scope.kind === 'agent-session' && typeof scope.agentSessionId === 'string' && scope.agentSessionId.length > 0) return
   throw new Error('Invalid Extension Storage Scope')
@@ -1245,6 +1453,7 @@ function hasContributionMismatch(record: ExtensionModuleRecord, instance: Extens
   const declaredRpcNames = new Set(manifest.contributes?.rpc?.map(rpc => rpc.name) ?? [])
   const declaredEventNames = new Set(manifest.contributes?.events?.map(event => event.name) ?? [])
   const declaredAiProviderIds = new Set(manifest.contributes?.aiProviders?.map(provider => provider.id) ?? [])
+  const declaredAgentToolIds = new Set(manifest.contributes?.agentToolHandlers?.map(handler => handler.toolId) ?? [])
 
   for (const name of instance.registeredRpcNames) {
     if (!declaredRpcNames.has(name)) mismatched = true
@@ -1254,6 +1463,9 @@ function hasContributionMismatch(record: ExtensionModuleRecord, instance: Extens
   }
   for (const providerId of instance.registeredAiProviderIds) {
     if (!declaredAiProviderIds.has(providerId)) mismatched = true
+  }
+  for (const toolId of instance.registeredAgentToolIds) {
+    if (!declaredAgentToolIds.has(toolId)) mismatched = true
   }
 
   for (const name of declaredRpcNames) {
@@ -1285,6 +1497,17 @@ function hasContributionMismatch(record: ExtensionModuleRecord, instance: Extens
       severity: 'warning',
       code: 'extension.ai_provider_declared_but_not_registered',
       message: `AI provider ${providerId} is declared in manifest contributes.aiProviders but was not registered during activation`,
+      source: 'extension-host',
+    })
+  }
+
+  for (const toolId of declaredAgentToolIds) {
+    if (instance.registeredAgentToolIds.has(toolId)) continue
+    mismatched = true
+    reportDiagnostic(options.diagnostics, record, instance.instanceId, {
+      severity: 'warning',
+      code: 'extension.agent_tool_handler_declared_but_not_registered',
+      message: `Agent Tool Handler ${toolId} is declared in manifest contributes.agentToolHandlers but was not registered during activation`,
       source: 'extension-host',
     })
   }
@@ -1415,6 +1638,7 @@ function toSummary(record: ExtensionModuleRecord): ExtensionModuleSummary {
       documentTypes: record.moduleManifest.contributes?.documentTypes?.map(item => item.type),
       events: record.moduleManifest.contributes?.events?.map(item => item.name),
       aiProviders: record.moduleManifest.contributes?.aiProviders?.map(item => item.id),
+      agentToolHandlers: record.moduleManifest.contributes?.agentToolHandlers?.map(item => item.toolId),
     },
   }
 }

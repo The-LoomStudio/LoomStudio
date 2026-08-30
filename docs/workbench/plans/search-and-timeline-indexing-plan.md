@@ -8,7 +8,7 @@
 
 搜索按数据规模与加载边界分为两层：
 
-1. 当前角色卡或 Preset 的 Prompt Resource 已由 `application.listCardPromptResources` 整体加载到前端，通常不超过约 800 个节点，因此使用纯前端搜索；
+1. 当前角色卡或 Preset 的 Prompt Resource 可由 Card 的有序 `promptResourceIds` 与单项读取接口加载到前端，通常不超过约 800 个节点，因此使用纯前端搜索；
 2. 长会话可能超过 1000 楼和数百万字，不应为了搜索完整加载到浏览器，后续采用 Timeline 分页、后端搜索与消息窗口加载。
 
 两层可以共享搜索框、结果摘要和跳转语义，但不强求共享执行器。

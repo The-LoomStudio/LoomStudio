@@ -44,7 +44,7 @@ Server 默认监听 `127.0.0.1:4173`，可通过 `PORT` 覆盖。当前主 RPC �
 pnpm dev:client
 ```
 
-Client 默认监听 `127.0.0.1:5173`。打开浏览器访问该地址即可；Vite 会把 `/auth`、`/assets`、`/cards` 与 `/rpc` 代理到 Studio Server。
+Client 默认监听 `127.0.0.1:5173`。打开浏览器访问该地址即可；Vite 会把 `/auth`、`/assets`、`/cards`、`/extensions` 与 `/rpc` 代理到 Studio Server。
 
 两个开发命令都会先构建内部 packages，再持续监听它们的输出。修改 `packages/` 下的源码后无需手动重新构建；Server 还会在 package 产物变化时自动重启。
 

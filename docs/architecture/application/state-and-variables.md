@@ -12,7 +12,7 @@ Loom Studio 当前只区分两个持久化 Scope：Workspace Global State 与 Na
 - `narrative_nodes.state_revision_id` 保存该正文节点对应的 State Revision；
 - Card 的 `stateDefinitionIds` 与 `timelineStateBindings` 只保存共享 Definition 引用和实例路径，不复制模板权威。
 
-创建 Timeline 时，Card Binding 与 Timeline Template 先物化为初始 Snapshot，再在同一个 Data Engine transaction 中创建 State Scope、Initial Revision、Timeline、Primary Branch 与 Opening Nodes。删除 Timeline 时同一事务 tombstone 对应 State Scope。
+创建 Timeline 时，Card Binding 与 Timeline Template 先物化为初始 Snapshot，并把 Schema、User 名字回退与 Card-owned Text Transform Rule 固化为 Timeline Runtime Context；随后在同一个 Data Engine transaction 中创建 Runtime Context、State Scope、Initial Revision、Timeline、Primary Branch 与 Opening Nodes。删除 Timeline 时同一事务 tombstone 对应 Runtime Context 与 State Scope。删除来源 Card 默认不影响该快照；只有显式选择删除游玩数据时才级联 Timeline。
 
 ## Definition 与 Artifact
 

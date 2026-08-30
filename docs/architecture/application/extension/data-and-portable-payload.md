@@ -1,19 +1,20 @@
 # Extension Data 与 Portable Payload
 
-本文记录 Renderer 挂载点之前已经实现的 Extension 数据基础设施。它覆盖 Package-owned 持久数据、Timeline / Agent Session Scope、实体引用、Card Portable Payload、Changeset 与生命周期；不定义 Client Renderer、Narrative Attachment 或 UI 注入协议。
+本文记录 Extension 的持久数据基础设施。它覆盖 Package-owned 持久数据、Timeline / Agent Session Scope、实体引用、Card Portable Payload、Changeset 与生命周期；Client Renderer 只通过受控 API 消费这里的数据，Renderer Surface 合同见 [`../../extensions/client-renderer-host.md`](../../extensions/client-renderer-host.md)。本文仍不定义 Narrative Attachment。
 
 ## 1. 稳定边界
 
-Extension 运行时持久化只提供三种 Scope：
+Extension 运行时持久化提供四种 Scope：
 
 ```ts
 type ExtensionStorageScope =
   | { kind: 'global' }
+  | { kind: 'card'; cardId: string }
   | { kind: 'timeline'; timelineId: string }
   | { kind: 'agent-session'; agentSessionId: string }
 ```
 
-Card 是可移植内容的分发 Carrier，不是运行时 Scope。Narrative Node、Agent Message、Asset 和 State Path 是 Record 的绑定目标，不是独立存储桶。State 继续承载跨 Prompt、UI、脚本和回滚共享的角色或世界语义；Extension 私有配置与记录不写入 State。
+Card 既是可移植内容的分发 Carrier，也可作为作者默认配置的持久 Scope；创建新 Timeline 时是否继承这些默认值由 Extension 自己决定。Narrative Node、Agent Message、Asset 和 State Path 是 Record 的绑定目标，不是独立存储桶。State 继续承载跨 Prompt、UI、脚本和回滚共享的角色或世界语义；Extension 私有配置与记录不写入 State。
 
 Secret 不得进入 Extension Config、Record、Portable Payload 或 Card Bundle。这是数据合同与作者责任边界：Core 不尝试从任意字符串中猜测 API Key；SDK 不提供把 Secret Store 内容直接导出为上述数据的能力。
 
@@ -64,9 +65,12 @@ Host 始终使用当前 `packageId`，Extension 不能伪造 owner、读取其�
 - Config / Record 的更新可以通过 Document Changeset revert；
 - Extension disable / reload 不删除 Package 数据，重新激活后可通过持久查询对账；
 - 删除 Narrative Timeline 时，同一 Data Engine transaction 会 tombstone 该 Timeline Scope 的 Config / Record，并同时 tombstone Timeline State Scope；
+- 删除 Card 时，同一 transaction 会 tombstone Card Scope Config / Record 与 Card-owned Text Transform Rule；默认保留已创建 Timeline，显式选择删除游玩数据时再级联 Timeline、Timeline State、Timeline Runtime Context 与 Timeline Scope Config / Record；
 - 删除 Agent Session 时，同一 transaction 会 tombstone 该 Session Scope 的 Config / Record；
 - Global 和其他 Scope 不受上述删除影响；
 - Node / Message Event 只负责触发处理，持久 Binding 才是可恢复事实；
+- Data commit 会经 `extensions.data.changed` 通知 Client Renderer 使 Projection 失效，但 SSE 不是持久事实或增量数据载荷；
+- Card 删除提交后会广播 `entity.lifecycle.changed`；Event 只用于扩展对账，不参与删除事务的正确性；
 - 删除或回滚 Record 只改变 Asset 引用，未引用 Asset / Blob 的回收留给独立 GC。
 
 Document Store 的 SQLite transaction participant 允许在组合事务中显式接受空 Document 变更，以便“删除无 Extension 数据的 Timeline / Session”仍保持单一业务事务，而不制造占位 Document。
@@ -87,13 +91,13 @@ Extension publishes Payload
 
 - 任意二进制 Portable Payload 与 Payload Asset closure；
 - Pending Payload 的作者 UI、授权、迁移和失败重试界面；
-- Card/Node Extension Storage Scope；
+- Node Extension Storage Scope；
 - Branch lineage 驱动的 Renderer 可见性；
-- Narrative Attachment、inline/sidebar 等 Renderer 挂载点；
-- Client Extension Host、Shadow DOM / iframe adapter；
+- Narrative Attachment 与 Asset / placement 的正式关系模型；
+- Client Config mutation、Host Appearance / Style Contribution 与第三方网络权限；
 - Derived memory、embedding、Job queue 与 Asset GC。
 
-这些内容不得被当前文档描述为已实现能力。Renderer 与前端挂载协议进入下一阶段单独设计。
+这些内容不得被当前文档描述为已实现能力。当前 Renderer 可以读取 Package Record、State 与 History，并把 Node-bound Record 投影为瞬时 Render Mount，但不会把 DisplayPart 或 Renderer DOM 持久化为数据。
 
 ## 6. 实现位置
 
@@ -102,4 +106,4 @@ Extension publishes Payload
 - [`packages/application-runtime/src/runtime.ts`](../../../../packages/application-runtime/src/runtime.ts)
 - [`packages/application-runtime/src/workspace.ts`](../../../../packages/application-runtime/src/workspace.ts)
 - [`apps/studio-server/src/main.ts`](../../../../apps/studio-server/src/main.ts)
-- [`apps/studio-server/src/card-bundle-zip.ts`](../../../../apps/studio-server/src/card-bundle-zip.ts)
+- [`apps/studio-server/src/codecs/card-bundle-zip.ts`](../../../../apps/studio-server/src/codecs/card-bundle-zip.ts)

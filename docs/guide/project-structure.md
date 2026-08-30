@@ -74,8 +74,8 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
 
 | 任务                                           | 先看                                                        | 常见改动位置                                                                                                                                                     | 对应测试                                                                      |
 | ---------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| 修改角色卡列表、创建卡、选中卡                 | `features/cards/model/use-cards.ts`                         | `entities/card.ts`, `widgets/character-panel/`                                                                                                                   | `tests/unit/client/cards.test.ts`                                             |
-| 修改叙事时间线、分支、Narrative Agent 调用流程 | `features/narrative-runtime/model/use-narrative-runtime.ts` | `entities/narrative.ts`, `entities/agent.ts`, `widgets/narrative-timeline/`                                                                                      | `tests/unit/client/narrative-runtime.test.ts`                                 |
+| 修改角色卡列表、创建卡、选中卡                 | `features/cards/model/use-cards.ts`                         | `entities/card.ts`, `widgets/character-panel/`                                                                                                                   | 暂无专属测试，跑 `tests/unit/client/` 相关用例与 client build                   |
+| 修改叙事时间线、分支、Narrative Agent 调用流程 | `features/narrative-runtime/model/use-narrative-runtime.ts` | `entities/narrative.ts`, `entities/agent.ts`, `widgets/narrative-timeline/`                                                                                      | `tests/unit/client/use-narrative-runtime.test.ts`                             |
 | 修改独立 Agent Session 对话流程                | `features/agent-runtime/model/use-agent-chat-runtime.ts`    | `entities/agent.ts`, `widgets/agent-composer/`                                                                                                                   | `tests/integration/application-runtime/agent-session.test.ts` 与 client build |
 | 修改 Context Assets 树操作                     | `features/context-assets/model/tree-ops.ts`                 | `context-asset-tree.ts`, `context-asset-normalization.ts`, `widgets/context-workbench/`                                                                          | `tests/unit/client/context-assets.test.ts`                                    |
 | 修改 projection order / projection view        | `features/context-assets/model/projection-order.ts`         | `features/context-assets/model/projection-workbench.ts`, `features/context-assets/ui/projection-order-editor/`, `features/context-assets/ui/projection-runlist/` | `features/context-assets/model/projection-order.test.ts`                      |
@@ -118,12 +118,13 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
 
 局部开发入口：[`apps/studio-server/README.md`](../../apps/studio-server/README.md)。
 
-- `main.ts`: 服务器启动入口，实例化各个 Store、Kernel、Host。
-- `http-server.ts`: 基于 Node HTTP 挂载 RPC、Asset、Card、Extension SSE 等数据入口，并统一执行应用会话认证。
-- `application-session-auth.ts`: 本地 Web 启动会话、严格 loopback 同源校验与 HttpOnly Cookie 验证；不承载多用户或业务权限。
-- `application-rpc.ts`: Application RPC 的边界 adapter，负责参数读取、校验、请求上下文转换和 `ApplicationRuntime` 调用；领域规则仍属于 Runtime。
-- `studio-rpc-router.ts`: 按 namespace 路由 `studio.*`、`application.*`、`ai.*`、`settings.*`、`logs.*`；未知 namespace 才回落 Kernel。
-- `rpc-capability.ts`, `rpc-params.ts`: RPC 参数解析与权限能力定义工具。
+- `main.ts`: 服务器启动入口与组合根，实例化各个 Store、Kernel、Host。
+- `http/`: 基于 Node HTTP 挂载 RPC、Asset、Card、Extension SSE 等数据入口，并统一执行应用会话认证 (`http-server.ts`, `application-session-auth.ts`)。
+- `rpc/`: RPC 路由中心与按领域细分的 RPC 边界 Adapters（消除了巨型单一入口，细分为 `cards`, `agents`, `workspaces`, `providers` 等子模块）。
+- `codecs/`: 卡片 PNG 与 ZIP 打包/解包格式编解码。
+- `platform/`: 宿主系统路径、系统代理与网络配置。
+- `logging/`: 日志观测与审计适配器。
+- `extensions/`: 插件包源管理、安装与生命周期编排。
 
 ---
 
@@ -132,7 +133,7 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
 这些包大多是独立于运行环境的（Node / Browser 均可或有明确边界）。
 
 - 📦 `packages/core/` (`@loom/core`)
-  - 同步、确定、可重放的 Fragment / Pass / Pipeline / Trace 执行层。它与 Studio 同仓开发，但保持独立 package 和 public API 边界。
+  - 同步、确定的 Fragment / Pass / Pipeline / Trace 执行层。它是只服务 Studio 的 private workspace package，并保留明确的跨 package API 边界。
   - 正式架构说明：[`architecture/application/prompt-build/loom-core/`](../architecture/application/prompt-build/loom-core/)。
 - 📦 `packages/application-runtime/` (AIRP Layer)
   - Studio 的**业务心脏**。编排 Card、Agent、Narrative Timeline、PromptBuild、Provider Gateway 与相关 Document Types；权威 Narrative / Agent 持久化分别由专用 Store 承担。

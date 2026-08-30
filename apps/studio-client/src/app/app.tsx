@@ -14,18 +14,27 @@ import { SettingsPanel } from '../widgets/settings-panel/settings-panel.js'
 import { SessionsPanel } from '../widgets/sessions-panel/sessions-panel.js'
 import { StateVariablesPanel } from '../features/state-variables/ui/state-variables-panel.js'
 import { TextTransformPanel } from '../features/text-transforms/ui/text-transform-panel.js'
+import { createClientRendererHost } from '../features/extension-renderers/model/client-renderer-host.js'
+import { RendererFocusSurface } from '../features/extension-renderers/ui/renderer-focus-surface.js'
+import { RendererSurfaceHost } from '../features/extension-renderers/ui/renderer-surface-host.js'
+import { RendererWorkspacePanel } from '../features/extension-renderers/ui/renderer-workspace-panel.js'
+import { useClientExtensionRuntime } from '../features/extension-renderers/model/use-client-extension-runtime.js'
+import { listClientActions } from '../features/extension-renderers/model/client-actions.js'
+import { ClientActionIcon } from '../features/extension-renderers/ui/client-action-icon.js'
 
 import { NotificationToaster } from '../shared/ui/notification-toaster/notification-toaster.js'
 import { toast } from 'sonner'
 import { hasCompleteProviderAccount } from '../features/provider-settings/model/provider-account-status.js'
 import { useStudioLayoutStore, useStudioPanelStore, type StudioPanelId } from '../pages/studio/model/studio-layout-store.js'
 import { useStudioNavigation } from '../pages/studio/model/use-studio-navigation.js'
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import styles from './app.module.scss'
 import '../styles/global.css'
 
 export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger }) {
   const state = useStudioState(props.transportLogger)
+  const rendererHost = useMemo(() => createClientRendererHost(), [])
+  const clientExtensions = useClientExtensionRuntime({ api: state.clientExtensionApi, rendererHost })
   const [composerHeight, setComposerHeight] = useState(0)
   const [agentExpanded, setAgentExpanded] = useState(false)
   const [agentExpansionHeight, setAgentExpansionHeight] = useState(320)
@@ -45,6 +54,31 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
   const sessionBusy = state.operationPending.session.pendingCount > 0
   const agentChatBusy = state.operationPending['agent-chat'].pendingCount > 0 || sessionBusy
   const mutationBusy = state.operationPending.mutation.pendingCount > 0
+  const composerCommandContext = {
+    sourceSurface: 'composer.quick-actions' as const,
+    workspaceId: 'workspace',
+    ...(state.narrativeTimeline ? { timelineId: state.narrativeTimeline.id } : {}),
+    ...(state.agentChatSession ? { agentSessionId: state.agentChatSession.id } : {}),
+  }
+  const composerQuickActions = listClientActions({
+    packages: clientExtensions.packages,
+    surface: 'composer.quick-actions',
+    context: composerCommandContext,
+  }).map(action => ({
+    id: action.key,
+    label: action.command.title,
+    ...(action.command.icon ? { icon: <ClientActionIcon name={action.command.icon} /> } : {}),
+    onSelect: () => {
+      void clientExtensions.host.executeCommand({
+        packageId: action.packageId,
+        moduleId: action.moduleId,
+        commandId: action.command.id,
+        sourceSurface: 'composer.quick-actions',
+      }).then(result => {
+        if (result.status === 'failed') toast.error(result.message)
+      })
+    },
+  }))
 
   function focusHistoryAsset(target: Awaited<ReturnType<typeof state.undoEdit>>) {
     if (!target) return
@@ -57,6 +91,14 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
       id: `operation-error-${state.operationError.sequence}`,
     })
   }, [state.operationError])
+
+  useEffect(() => {
+    rendererHost.setScopeSnapshot({
+      workspace: 'workspace',
+      ...(state.narrativeTimeline ? { timelineId: state.narrativeTimeline.id } : {}),
+      ...(state.agentChatSession ? { agentSessionId: state.agentChatSession.id } : {}),
+    })
+  }, [rendererHost, state.agentChatSession?.id, state.narrativeTimeline?.id])
 
   useEffect(() => {
     if (navigation.route.panel !== 'preset' && navigation.route.panel !== 'resource') return
@@ -179,6 +221,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
           if (activated) navigation.openNarrative(activated.timelineId, activated.branchId)
         }}
         onDeleteCards={state.deleteCards}
+        onPreviewCardDeletion={state.previewCardDeletion}
         onExportCard={state.exportCard}
         onImportCards={state.importCards}
         onSelectCard={cardId => {
@@ -258,6 +301,22 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
       />
     ),
     logs: active => <LogViewer active={active} api={state.logsApi} clientLogs={props.clientLogs} t={state.t} />,
+    extensions: () => (
+      <RendererWorkspacePanel
+        extensionHost={clientExtensions.host}
+        host={rendererHost}
+        packages={clientExtensions.packages}
+        serverDiagnostics={clientExtensions.serverDiagnostics}
+        sessionHost={clientExtensions.sessionHost}
+        t={state.t}
+        onDisable={clientExtensions.disable}
+        onEnable={clientExtensions.enable}
+        onImportResources={state.importExtensionPackageResources}
+        onRemoveResources={state.removeExtensionPackageResources}
+        onReload={clientExtensions.reload}
+        onUninstall={clientExtensions.uninstall}
+      />
+    ),
     settings: () => (
       <SettingsPanel
         busy={state.operationPending.settings.pendingCount > 0}
@@ -277,6 +336,13 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
   const studio = (
     <StudioPage
       assetWorkspaceId={assetWorkspaceId}
+      background={(
+        <RendererSurfaceHost
+          host={rendererHost}
+          scope={{ kind: 'workspace', key: 'workspace' }}
+          surface="shell.background"
+        />
+      )}
       modelConfigured={state.providerAccountsLoaded ? hasCompleteProviderAccount(state.providerAccounts) : undefined}
       busy={mutationBusy}
       canRedo={state.canRedoEdit}
@@ -334,8 +400,17 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
                 if (activated) navigation.openNarrative(activated.timelineId, activated.branchId)
               })
             }}
+            rendererHost={rendererHost}
             t={state.t}
             timeline={state.narrativeNodes}
+            timelineId={state.narrativeTimeline?.id}
+            tail={state.narrativeTimeline ? (
+              <RendererSurfaceHost
+                host={rendererHost}
+                scope={{ kind: 'timeline', key: state.narrativeTimeline.id }}
+                surface="narrative.timeline.tail"
+              />
+            ) : undefined}
           />
           {narrativeCharacterName ? (
             <div className={styles.narrativeIdentity} data-loom-component="narrative-character-identity">
@@ -352,12 +427,32 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
             agentMessages={state.agentChatMessages}
             agentProfiles={state.agentProfiles}
             agentSession={state.agentChatSession}
+            agentSessionTail={state.agentChatSession ? (
+              <RendererSurfaceHost
+                host={rendererHost}
+                scope={{ kind: 'agent-session', key: state.agentChatSession.id }}
+                surface="agent.session.tail"
+              />
+            ) : undefined}
+            composerSheet={(
+              <RendererSurfaceHost
+                host={rendererHost}
+                scope={state.narrativeTimeline
+                  ? { kind: 'timeline', key: state.narrativeTimeline.id }
+                  : state.agentChatSession
+                    ? { kind: 'agent-session', key: state.agentChatSession.id }
+                    : { kind: 'workspace', key: 'workspace' }}
+                surface="composer.sheet"
+              />
+            )}
             canPreviewPrompt={state.canPreviewPrompt}
             canSendAgent={state.canSendAgent}
             canSendNarrative={state.canSend}
             narrativeInput={state.input}
             narrativeTextareaDisabled={sessionBusy}
             providerAccounts={state.providerAccounts}
+            quickActions={composerQuickActions}
+            rendererHost={rendererHost}
             selectedAgentProfileId={state.selectedAgentProfileId}
             t={state.t}
             workspaceOpen={workspaceOpen}
@@ -383,6 +478,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
   return (
     <>
       {studio}
+      <RendererFocusSurface host={rendererHost} scope={{ kind: 'workspace', key: 'workspace' }} />
       <NotificationToaster label={state.t('notification.label')} />
     </>
   )

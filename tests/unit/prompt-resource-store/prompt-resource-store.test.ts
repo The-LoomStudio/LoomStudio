@@ -289,6 +289,12 @@ describe('PromptResourceStore', () => {
       { store: 'prompt-resources', kind: 'delete', entityId: firstMount.mounts[0]!.id, entityType: 'prompt-resource.mount' },
       { store: 'prompt-resources', kind: 'delete', entityId: first.resource.id, entityType: 'prompt-resource', fromVersion: 1, toVersion: 2 },
     ])
+    const restored = await store.restoreResource({ actor, resourceId: first.resource.id, expectedVersion: 2 })
+    expect(restored.resource).toMatchObject({ id: first.resource.id, version: 3 })
+    expect(restored.commit.operations).toEqual([
+      { store: 'prompt-resources', kind: 'restore', entityId: first.resource.id, entityType: 'prompt-resource', fromVersion: 2, toVersion: 3 },
+    ])
+    expect(await store.listSettingMounts({ settingResourceId: first.resource.id })).toEqual([])
     engine.close()
   })
 

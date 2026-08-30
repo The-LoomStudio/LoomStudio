@@ -1,5 +1,5 @@
 import { Check, Copy, GitBranch, Link, Pencil, Trash2, X } from 'lucide-react'
-import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Translator } from '../../shared/i18n/index.js'
 import type { NarrativeNode } from '../../entities/index.js'
 import { tryWriteClipboardText } from '../../shared/browser/clipboard.js'
@@ -12,6 +12,8 @@ import { LongTextEditor } from '../../shared/ui/long-text-editor/long-text-edito
 import { SkeletonText } from '../../shared/ui/skeleton/skeleton.js'
 import { ConversationMessageAction, ConversationMessageChrome, formatConversationTimestamp } from '../../shared/ui/conversation-message-chrome/conversation-message-chrome.js'
 import styles from './narrative-timeline.module.scss'
+import type { ClientRendererHost } from '../../features/extension-renderers/model/client-renderer-host.js'
+import { RendererNodeMountHost } from '../../features/extension-renderers/ui/renderer-node-mount-host.js'
 
 const ConversationMarkdown = lazy(async () => {
   const module = await import('../../shared/ui/conversation-markdown/conversation-markdown.js')
@@ -34,8 +36,11 @@ type NarrativeTimelineProps = {
   onForkNode: (node: NarrativeNodeView) => void
   onLoadOlder(): void
   onNodeAnchorChange: (nodeId: string) => void
+  rendererHost?: ClientRendererHost
+  tail?: ReactNode
   t: Translator
   timeline: NarrativeNodeView[]
+  timelineId?: string
 }
 
 export function NarrativeTimeline(props: NarrativeTimelineProps) {
@@ -266,18 +271,41 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                       onSubmit={saveValue}
                     />
                   ) : (
-                    <ConversationMarkdown
-                      className={styles.messageBody}
-                      codeBlockLabels={{
-                        copied: props.t('longTextEditor.copied'),
-                        copy: props.t('longTextEditor.copy'),
-                        copyFailed: props.t('longTextEditor.copyFailed'),
-                        disableWrap: props.t('markdown.code.disableWrap'),
-                        enableWrap: props.t('markdown.code.enableWrap'),
-                      }}
-                      role={role}
-                      value={entry.body.raw}
-                    />
+                    props.rendererHost && props.timelineId ? (
+                      <RendererNodeMountHost
+                        host={props.rendererHost}
+                        nodeId={entry.id}
+                        rawText={entry.body.raw}
+                        surface="narrative"
+                        timelineId={props.timelineId}
+                      >
+                        <ConversationMarkdown
+                          className={styles.messageBody}
+                          codeBlockLabels={{
+                            copied: props.t('longTextEditor.copied'),
+                            copy: props.t('longTextEditor.copy'),
+                            copyFailed: props.t('longTextEditor.copyFailed'),
+                            disableWrap: props.t('markdown.code.disableWrap'),
+                            enableWrap: props.t('markdown.code.enableWrap'),
+                          }}
+                          role={role}
+                          value={entry.body.raw}
+                        />
+                      </RendererNodeMountHost>
+                    ) : (
+                      <ConversationMarkdown
+                        className={styles.messageBody}
+                        codeBlockLabels={{
+                          copied: props.t('longTextEditor.copied'),
+                          copy: props.t('longTextEditor.copy'),
+                          copyFailed: props.t('longTextEditor.copyFailed'),
+                          disableWrap: props.t('markdown.code.disableWrap'),
+                          enableWrap: props.t('markdown.code.enableWrap'),
+                        }}
+                        role={role}
+                        value={entry.body.raw}
+                      />
+                    )
                   )}
                 </div>
                 <ConversationMessageChrome
@@ -317,6 +345,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
             })}
           </Suspense>
         )}
+        {props.tail ? <div className={styles.tail} data-loom-surface="narrative.timeline.tail">{props.tail}</div> : null}
       </div>
       <NarrativeTimelineNavigator
         activeId={activeEntryId}

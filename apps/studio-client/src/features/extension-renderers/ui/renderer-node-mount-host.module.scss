@@ -1,0 +1,9 @@
+.projection {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.projection :global([data-loom-render-mount='true']) {
+  display: inline;
+}

@@ -1,4 +1,5 @@
 export type { JsonObject, MutationReceipt } from './common.js'
+export type { ExtensionPackageResourceImportResult, ExtensionPackageResourceRemovalResult, ManagedClientExtensionModule, ManagedClientExtensionPackage, ManagedExtensionModule, ManagedExtensionPackage } from './extension.js'
 export type {
   HistoryProjectionSnapshot,
   HistorySource,
@@ -10,7 +11,7 @@ export type {
   TextTransformRule,
   TextTransformRuleDraft,
 } from './text-transform.js'
-export type { Card, CardMedia, CardPresetInput, CardSummary, CreateCardResult, DeleteCardResult, GetCardResult, ListCardsResult, OpeningChatInput, SettingLayerInput, UpdateCardResult } from './card.js'
+export type { Card, CardMedia, CardPresetInput, CardSummary, CreateCardResult, DeleteCardResult, GetCardResult, ListCardsResult, OpeningChatInput, PreviewCardDeletionResult, SettingLayerInput, UpdateCardResult } from './card.js'
 export type {
   ContextAssetNode,
   ProjectionSlotRank,
@@ -66,11 +67,9 @@ export type {
   DeletePromptResourceResult,
   ExportCardBundleResult,
   ExportPromptResourceResult,
-  GetImportBundleResult,
   GetPromptResourceResult,
   ImportCardBundleResult,
   ImportBundle,
-  ListCardPromptResourcesResult,
   ListPromptResourcesResult,
   ListPresetToolMountsResult,
   ListSettingMountsResult,

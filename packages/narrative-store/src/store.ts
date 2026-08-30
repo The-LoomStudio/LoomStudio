@@ -122,7 +122,7 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
       appendNode: input => {
         validateBody(input.body)
         validateId(input.stateRevisionId, 'stateRevisionId')
-        const timeline = requireActiveTimeline(database, input.timelineId)
+        const timeline = requireTimeline(database, input.timelineId)
         const branch = requireBranch(database, input.branchId)
         assertBranchTimeline(branch, timeline.id)
         const expectedHead = input.expectedHeadNodeId ?? undefined
@@ -161,7 +161,7 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
 
       forkBranch: input => {
         validateId(input.stateRevisionId, 'stateRevisionId')
-        const timeline = requireActiveTimeline(database, input.timelineId)
+        const timeline = requireTimeline(database, input.timelineId)
         const sourceBranch = requireBranch(database, input.fromBranchId)
         assertBranchTimeline(sourceBranch, timeline.id)
         const fromNode = requireNode(database, input.fromNodeId)
@@ -187,7 +187,7 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
       },
 
       setBranchStateHead: input => {
-        const timeline = requireActiveTimeline(database, input.timelineId)
+        const timeline = requireTimeline(database, input.timelineId)
         const branch = requireBranch(database, input.branchId)
         assertBranchTimeline(branch, timeline.id)
         const expected = input.expectedStateHeadRevisionId ?? undefined
@@ -207,7 +207,7 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
       },
 
       switchBranch: input => {
-        const timeline = requireActiveTimeline(database, input.timelineId)
+        const timeline = requireTimeline(database, input.timelineId)
         const branch = requireBranch(database, input.branchId)
         assertBranchTimeline(branch, timeline.id)
         if (input.expectedActiveBranchId !== undefined && timeline.activeBranchId !== input.expectedActiveBranchId) {
@@ -220,7 +220,7 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
       },
 
       deleteTimeline: input => {
-        const timeline = requireActiveTimeline(database, input.timelineId)
+        const timeline = requireTimeline(database, input.timelineId)
         const deletedAt = now()
         database.prepare(`
           UPDATE narrative_timelines
@@ -232,7 +232,7 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
       },
 
       updatePromptResources: input => {
-        const timeline = requireActiveTimeline(database, input.timelineId)
+        const timeline = requireTimeline(database, input.timelineId)
         const promptResourceIds = [...new Set(input.promptResourceIds)]
         validateStringIds(promptResourceIds, 'promptResourceIds')
         if (input.expectedPromptResourceIds && !sameStringArray(timeline.promptResourceIds, input.expectedPromptResourceIds)) {
@@ -405,7 +405,7 @@ function readPage(
   database: DatabaseSync,
   input: { timelineId: string; branchId?: string; cursor?: string; limit?: number },
 ): { timeline: NarrativeTimeline; branch: NarrativeBranch; nodes: NarrativeNode[]; nextCursor?: string } {
-  const timeline = requireActiveTimeline(database, input.timelineId)
+  const timeline = requireTimeline(database, input.timelineId)
   const branch = requireBranch(database, input.branchId ?? timeline.activeBranchId)
   assertBranchTimeline(branch, timeline.id)
   const limit = input.limit ?? defaultPageLimit
@@ -515,7 +515,7 @@ function readTimelines(
 
 function readBranches(database: DatabaseSync, timelineId: string): NarrativeBranch[] {
   validateId(timelineId, 'timelineId')
-  requireActiveTimeline(database, timelineId)
+  requireTimeline(database, timelineId)
   return database.prepare(`
     SELECT id, timeline_id, title, head_node_id, state_head_revision_id,
            parent_branch_id, forked_from_node_id, created_at, updated_at
@@ -529,10 +529,6 @@ function requireTimeline(database: DatabaseSync, id: string, includeDeleted = fa
   const timeline = readTimeline(database, id, includeDeleted)
   if (!timeline) throw new NarrativeStoreError('narrative.timeline_not_found', `Narrative timeline not found: ${id}`)
   return timeline
-}
-
-function requireActiveTimeline(database: DatabaseSync, id: string): NarrativeTimeline {
-  return requireTimeline(database, id)
 }
 
 function readBranch(database: DatabaseSync, id: string): NarrativeBranch | null {

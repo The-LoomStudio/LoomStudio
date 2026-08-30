@@ -1,3 +1,4 @@
+import type { RendererContributionDefinition } from '@loom-studio/extension-sdk'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 
 export type HistorySource =
@@ -378,11 +379,4 @@ export type DisplayPart =
   | { type: 'text'; text: string }
   | { type: 'artifact'; artifactType: string; content: JsonValue; renderMode: 'inline' | 'panel' | 'iframe' }
 
-export type RendererDefinition = {
-  id: string
-  name: string
-  artifactType: string
-  slot: 'message.inline' | 'studio.sidebar' | 'studio.panel'
-  renderMode: 'inline' | 'panel' | 'iframe'
-  fallback: 'json' | 'text' | 'hidden'
-}
+export type RendererDefinition = RendererContributionDefinition

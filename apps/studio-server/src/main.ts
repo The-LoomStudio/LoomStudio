@@ -1,4 +1,5 @@
 import {
+  applicationDocumentTypes,
   createApplicationRuntime,
   createDocumentBackedAiGateway,
   createDocumentBackedProfiledAiGateway,
@@ -23,16 +24,16 @@ import { createNarrativeStore } from '@loom-studio/narrative-store'
 import { createPromptResourceStore, type PromptResourceStore } from '@loom-studio/prompt-resource-store'
 import { createKeyringSecretBackend, createSecretStore, type SecretBackend } from '@loom-studio/secret-store'
 import { createLoomRunner } from '@loom-studio/loom-runner'
-import { createId, nowIso } from '@loom-studio/shared'
+import { createId, nowIso, type JsonValue } from '@loom-studio/shared'
 import { createStateStore } from '@loom-studio/state-store'
 import { createInMemoryTraceAuditStore } from '@loom-studio/trace-audit'
 import { join, resolve } from 'node:path'
-import { withAiGatewayLogging } from './ai-gateway-logging.js'
-import { createNetworkSettingsStore } from './network-settings.js'
-import { resolveSystemProxyUrl } from './system-proxy.js'
-import { createApplicationSessionAuth } from './application-session-auth.js'
-import { withDocumentStoreLogging } from './document-store-logging.js'
-import { createStudioHttpServer } from './http-server.js'
+import { withAiGatewayLogging } from './logging/ai-gateway-logging.js'
+import { createNetworkSettingsStore } from './platform/network-settings.js'
+import { resolveSystemProxyUrl } from './platform/system-proxy.js'
+import { createApplicationSessionAuth } from './http/application-session-auth.js'
+import { withDocumentStoreLogging } from './logging/document-store-logging.js'
+import { createStudioHttpServer } from './http/http-server.js'
 import {
   createPolyglotCardPng,
   decodeCardPng,
@@ -41,12 +42,12 @@ import {
   isPng,
   readPngImageBytes,
   readPolyglotArchive,
-} from './card-png.js'
-import { decodeCardBundleZip, encodeCardBundleZip, type CardBundleMedia } from './card-bundle-zip.js'
-import { createStudioRpcRouter } from './studio-rpc-router.js'
+} from './codecs/card-png.js'
+import { decodeCardBundleZip, encodeCardBundleZip, type CardBundleMedia } from './codecs/card-bundle-zip.js'
+import { createStudioRpcRouter } from './rpc/studio-rpc-router.js'
 import { createServerExtensionManager } from './extensions/extension-manager.js'
 import { createExtensionStateStore } from './extensions/extension-state-store.js'
-import { resolveLoomStudioLocalPaths, type LoomStudioLocalPaths } from './local-paths.js'
+import { resolveLoomStudioLocalPaths, type LoomStudioLocalPaths } from './platform/local-paths.js'
 
 const defaultPort = 4173
 
@@ -143,9 +144,10 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
   if (!dataEngine || !promptResources) {
     throw new Error('Studio Server requires a shared SQLite Data Engine and Prompt Resource Store')
   }
+  const agentTools = createOfficialAgentToolRegistry()
   const applicationRuntime = createApplicationRuntime({
     agents,
-    agentTools: createOfficialAgentToolRegistry(),
+    agentTools,
     dataEngine,
     documents,
     narratives,
@@ -263,8 +265,31 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     },
     aiCapabilities,
     aiGateway: profiledAiGateway,
+    registerAgentToolHandler: (toolId, _ownerPackageId, _ownerModuleId, _ownerInstanceId, handler) => agentTools.registerRuntime({
+      toolId,
+      execute: async ({ invocation, signal }) => {
+        const output = await handler({
+          ...(invocation.arguments ? { arguments: structuredClone(invocation.arguments) } : {}),
+          ...(invocation.rawInput !== undefined ? { rawInput: invocation.rawInput } : {}),
+          ...(invocation.transport ? { transport: invocation.transport } : {}),
+        }, { signal })
+        return {
+          invocationId: invocation.id,
+          toolId: invocation.toolId,
+          status: 'completed',
+          content: typeof output === 'string'
+            ? [{ type: 'text', text: output }]
+            : [{ type: 'json', value: output }],
+        }
+      },
+    }),
     validateStorageScope: async scope => {
       if (scope.kind === 'global') return
+      if (scope.kind === 'card') {
+        const card = await documents.get(scope.cardId)
+        if (!card || card.type !== applicationDocumentTypes.cardSource || card.meta.tombstone) throw new Error(`Card not found: ${scope.cardId}`)
+        return
+      }
       if (scope.kind === 'timeline') {
         const timeline = await narratives?.getTimeline(scope.timelineId)
         if (!timeline || timeline.deletedAt) throw new Error(`Narrative Timeline not found: ${scope.timelineId}`)
@@ -315,6 +340,12 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     repositoryDirectory: extensionRootDirectory,
     installedDirectory: options.extensionStateDirectory ? join(extensionStateDirectory, 'installed') : localPaths.extensionInstalledRoot,
     devLinksFile: options.extensionStateDirectory ? join(extensionStateDirectory, 'dev-links.json') : localPaths.extensionDevLinksFile,
+    importPackageResources: input => applicationRuntime.importExtensionPackageResources(input, {
+      actor: { kind: 'extension', id: input.packageId },
+    }) as Promise<Record<string, JsonValue>>,
+    removePackageResources: input => applicationRuntime.removeExtensionPackageResources(input, {
+      actor: { kind: 'extension', id: input.packageId },
+    }) as Promise<Record<string, JsonValue>>,
   })
   const kernel = createKernel({
     documents,
@@ -332,6 +363,13 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     kernel,
     logs: options.logs,
     networkSettings,
+    emitEvent: (name, payload, context) => {
+      kernel.getEventBus().emit(name, payload, {
+        publisher: { kind: 'kernel' },
+        source: 'studio-server',
+        ...context,
+      })
+    },
   })
   const readCardExport = async (cardId: string) => {
     const { artifact } = await applicationRuntime.exportCardBundle({ cardId })
@@ -403,8 +441,27 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     extensionIcons: {
       read: (packageId, version) => extensionManager.readPackageIcon(packageId, version),
     },
+    extensionFiles: {
+      read: (packageId, version, path) => extensionManager.readPackageFile(packageId, version, path),
+    },
     extensionEvents: {
-      subscribe: handler => kernel.getEventBus().subscribe(['extensions.changed'], handler),
+      subscribe: handler => {
+        const eventBus = kernel.getEventBus()
+        const delivery = eventBus.subscribe(['extensions.changed', 'extensions.data.changed', 'entity.lifecycle.changed'], handler)
+        const data = eventBus.subscribe(['data.changed'], event => {
+          const changesetId = event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload)
+            && typeof event.payload.changesetId === 'string'
+            ? event.payload.changesetId
+            : undefined
+          eventBus.emit('extensions.data.changed', changesetId ? { changesetId } : {}, { publisher: { kind: 'kernel' } })
+        })
+        return {
+          dispose: () => {
+            delivery.dispose()
+            data.dispose()
+          },
+        }
+      },
     },
     logger: options.rpcLogger,
     rpcRouter,

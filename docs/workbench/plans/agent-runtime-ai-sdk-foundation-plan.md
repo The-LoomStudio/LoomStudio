@@ -946,7 +946,7 @@ Phase 4 不包含 Responses Custom、Content Tool、tools-zone Slot、CodeAct、
 - Content ToolResult 在 canonical Transcript 中保持 `tool-result`，Provider replay 使用 Runtime 生成的 `role: user` Content Block，不伪造 Chat Completions `role: tool` 或 Provider Call ID；
 - Content Tool 说明已作为外部 Runtime Source 进入统一 Prompt Build 的 `tools` zone，并按 `official-tools`、Extension owner slot 等稳定 Slot 编译；Preset 的 order profile 可以覆盖同名外部 Slot 的默认 rank；
 - M1 多 Content Invocation 串行执行；同一 Provider Step 同时出现 Native 与 Content 调用会被拒绝，避免双重派发。
-- Tool 描述、参数描述与 guidance 已作为模型可见模板进入独立 Tool Prompt Source；`{{User}}` 宏、现有 Prompt Activation、Provider order 与 Content zone/slot/rank/orderHint 经 Loom Core Pass 编译；
+- Tool 描述、参数描述与 guidance 已作为模型可见模板进入独立 Tool Prompt Source；`{{User}}` 宏、现有 Prompt Activation、Provider order 与 Content zone/slot/rank/orderHint 由 Application Runtime 直接编译；
 - Native JSON、Provider Custom 候选与 Content Tool 分属两种投影平面：Native / Custom 使用 Provider 顶层 Tool Order，Content 使用 Prompt Message 的 Zone / Slot。Structured Tool 不再错误降级为需要 rawInput 的 Content Transport；
 - 宏只作用于 description、parameter description 和 guidance。Tool ID/name、参数键、type、required、enum、grammar、Handler 与 replay identity 保持结构稳定；
 - Agent Turn 的普通 Prompt Resource 与 Tool Prompt 现共用同一 User 宏上下文；绑定 Narrative 时从 Timeline 对应 Card 的 `userName` 派生，Agent-only Turn 回退为 `User`。

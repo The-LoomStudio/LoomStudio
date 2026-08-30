@@ -193,12 +193,14 @@ describe('Prompt Resource Store application runtime', () => {
     const artifact = JSON.parse(await readFile(join(process.cwd(), 'packages/application-runtime/fixtures/workspaces/loom-city-v0.json'), 'utf8')) as CardBundleArtifact
     const imported = await runtime.importCardBundle({ artifact })
     expect((await documents.list({ type: 'airp.promptResource' })).items).toHaveLength(0)
-    const resources = await runtime.listCardPromptResources({ cardId: imported.card.id })
-    expect(resources.resources.length).toBeGreaterThan(0)
+    const resources = await Promise.all(imported.card.promptResourceIds.map(async resourceId => (
+      await runtime.getPromptResource({ resourceId })
+    ).resource))
+    expect(resources.length).toBeGreaterThan(0)
     const exported = await runtime.exportCardBundle({ cardId: imported.card.id })
     expect(exported.artifact.contextAssets.map(node => node.id)).toEqual(artifact.contextAssets.map(node => node.id))
 
-    const promptExport = await runtime.exportPromptResource({ resourceId: resources.resources[0]!.id })
+    const promptExport = await runtime.exportPromptResource({ resourceId: resources[0]!.id })
     const promptImport = await runtime.importPromptResource({ artifact: promptExport.artifact })
     expect(promptImport.resource.rootNode.label).toBe(promptExport.artifact.rootNode.label)
     expect(promptImport.resource.rootNode.children?.map(node => node.label)).toEqual(promptExport.artifact.rootNode.children?.map(node => node.label))

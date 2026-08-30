@@ -1,0 +1,30 @@
+.surface {
+  min-width: 0;
+  position: relative;
+  isolation: isolate;
+}
+
+.instance {
+  min-width: 0;
+  position: relative;
+  isolation: isolate;
+}
+
+.instance > iframe {
+  width: 100%;
+  min-height: 180px;
+  border: 0;
+  color-scheme: light dark;
+  background: transparent;
+}
+
+.instance[data-renderer-layout='inline'] {
+  display: inline;
+}
+
+.error {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--loom-color-danger-text, var(--loom-color-text));
+  background: var(--loom-color-surface-subtle);
+}

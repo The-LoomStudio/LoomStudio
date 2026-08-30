@@ -5,7 +5,7 @@
   display: grid;
   grid-template-rows: minmax(0, 1fr);
   overflow: visible;
-  background: var(--loom-color-background);
+  background: transparent;
 }
 
 .timeline {
@@ -20,7 +20,7 @@
   gap: 18px;
   padding: 34px 0 var(--loom-composer-clearance, 200px);
   scroll-padding: 36px 0 var(--loom-composer-clearance, 200px);
-  background: var(--loom-color-background);
+  background: transparent;
   transition:
     padding-bottom var(--loom-motion-duration-standard) var(--loom-motion-easing-standard),
     scroll-padding-bottom var(--loom-motion-duration-standard) var(--loom-motion-easing-standard);
@@ -146,6 +146,13 @@
 
 .messageBody {
   min-width: 0;
+}
+
+.tail {
+  width: min(var(--loom-chat-width), 100%);
+  min-width: 0;
+  position: relative;
+  isolation: isolate;
 }
 
 @media (max-width: 820px) {

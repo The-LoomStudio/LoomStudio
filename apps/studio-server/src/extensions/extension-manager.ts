@@ -1,22 +1,26 @@
 import type {
   EventCapabilityCategory,
+  ExtensionAgentToolContribution,
   ExtensionAssetCapability,
   ExtensionHost,
   ExtensionManifest,
   ExtensionModuleManifest,
   ExtensionModuleSummary,
+  ExtensionPromptResourceContribution,
 } from '@loom-studio/extension-host'
 import type {
   ExtensionManagementService,
+  ImportedExtensionPackageResources,
   ManagedExtensionModule,
   ManagedExtensionPackage,
+  RemovedExtensionPackageResources,
 } from '@loom-studio/kernel'
 import type { DiagnosticsRegistry } from '@loom-studio/diagnostics'
 import type { JsonValue } from '@loom-studio/shared'
 import { serializeError } from '@loom-studio/shared'
 import { readFile, realpath, stat } from 'node:fs/promises'
-import { extname, isAbsolute, relative, resolve } from 'node:path'
-import { discoverExtensionSources, type DiscoveredExtensionSource, type ExtensionSource } from './extension-sources.js'
+import { extname, isAbsolute, relative, resolve, sep } from 'node:path'
+import { discoverExtensionSources, removeExtensionDevLink, type DiscoveredExtensionSource, type ExtensionSource } from './extension-sources.js'
 import {
   installExtensionPackageFromDirectory,
   uninstallExtensionPackageDirectory,
@@ -38,6 +42,10 @@ export type ServerExtensionManager = ExtensionManagementService & {
     bytes: Uint8Array
     mediaType: string
   } | undefined>
+  readPackageFile(packageId: string, version: string, path: string): Promise<{
+    bytes: Uint8Array
+    mediaType: string
+  }>
 }
 
 export function createServerExtensionManager(options: {
@@ -47,6 +55,19 @@ export function createServerExtensionManager(options: {
   repositoryDirectory: string
   installedDirectory: string
   devLinksFile: string
+  importPackageResources(input: {
+    packageId: string
+    packageVersion: string
+    promptResources: Array<{
+      contribution: ExtensionPromptResourceContribution
+      artifact: JsonValue
+    }>
+    agentTools: Array<{
+      contribution: ExtensionAgentToolContribution
+      definition: JsonValue
+    }>
+  }): Promise<Record<string, JsonValue>>
+  removePackageResources(input: { packageId: string }): Promise<Record<string, JsonValue>>
 }): ServerExtensionManager {
   const catalog = new Map<string, PackageCatalogRecord>()
   let initialized = false
@@ -167,16 +188,21 @@ export function createServerExtensionManager(options: {
       if (version !== undefined && version !== record.manifest.version) {
         throw new Error(`Installed Extension Package version does not match: ${packageId}@${version}`)
       }
-      if (record.sources.length !== 1 || record.sources[0]?.kind !== 'installed') {
-        throw new Error(`Only an installed Extension Package can be uninstalled: ${packageId}`)
+      if (record.sources.length !== 1 || !['installed', 'dev-link'].includes(record.sources[0]?.kind ?? '')) {
+        throw new Error(`Only an installed or dev-linked Extension Package can be uninstalled: ${packageId}`)
       }
       for (const moduleManifest of serverModules(record.manifest)) {
-        await options.host.dispose(packageId, moduleManifest.id)
+        await options.host.forget(packageId, moduleManifest.id)
       }
-      await uninstallExtensionPackageDirectory({
-        directory: record.directory,
-        installedDirectory: options.installedDirectory,
-      })
+      await options.stateStore.deletePackage(packageId)
+      if (record.sources[0]?.kind === 'installed') {
+        await uninstallExtensionPackageDirectory({
+          directory: record.directory,
+          installedDirectory: options.installedDirectory,
+        })
+      } else if (!await removeExtensionDevLink(options.devLinksFile, packageId)) {
+        throw new Error(`Extension dev link not found: ${packageId}`)
+      }
       catalog.delete(packageId)
       return {
         packageId,
@@ -212,7 +238,7 @@ export function createServerExtensionManager(options: {
             : await options.host.reload(packageId, moduleId)
           : await options.host.activate(packageId, moduleId)
       }
-      return toManagedModule(packageId, moduleManifest, desired, runtime)
+        return toManagedModule(packageId, record.manifest.version, moduleManifest, desired, runtime)
     }),
 
     disableModule: (packageId, moduleId) => serialize(async () => {
@@ -226,18 +252,41 @@ export function createServerExtensionManager(options: {
         grantedAssetCapabilities: previous.grantedAssetCapabilities,
       })
       if (moduleManifest.runtime === 'server') await options.host.dispose(packageId, moduleId)
-      return toManagedModule(packageId, moduleManifest, desired, findRuntime(options.host, packageId, moduleId))
+      return toManagedModule(packageId, record.manifest.version, moduleManifest, desired, findRuntime(options.host, packageId, moduleId))
     }),
 
     reloadModule: (packageId, moduleId) => serialize(async () => {
       assertInitialized(initialized)
       const record = requireAvailablePackage(catalog, packageId)
       const moduleManifest = requireModule(record.manifest, moduleId)
-      if (moduleManifest.runtime !== 'server') throw new Error(`Client module reload belongs to the Client Host: ${moduleKey(packageId, moduleId)}`)
       const desired = readDesiredState(options.stateStore, packageId, moduleId)
       if (!desired.enabled) throw new Error(`Extension module is not enabled: ${moduleKey(packageId, moduleId)}`)
-      const runtime = await options.host.reload(packageId, moduleId)
-      return toManagedModule(packageId, moduleManifest, desired, runtime)
+      const runtime = moduleManifest.runtime === 'server' ? await options.host.reload(packageId, moduleId) : undefined
+      return toManagedModule(packageId, record.manifest.version, moduleManifest, desired, runtime)
+    }),
+
+    importPackageResources: packageId => serialize(async (): Promise<ImportedExtensionPackageResources> => {
+      assertInitialized(initialized)
+      const record = requireAvailablePackage(catalog, packageId)
+      const imported = await options.importPackageResources({
+        packageId,
+        packageVersion: record.manifest.version,
+        promptResources: await Promise.all((record.manifest.contributes?.promptResources ?? []).map(async contribution => ({
+          contribution,
+          artifact: await readPackageJson(record, contribution.source),
+        }))),
+        agentTools: await Promise.all((record.manifest.contributes?.agentTools ?? []).map(async contribution => ({
+          contribution,
+          definition: await readPackageJson(record, contribution.source),
+        }))),
+      })
+      return { packageId, version: record.manifest.version, ...imported }
+    }),
+
+    removePackageResources: packageId => serialize(async (): Promise<RemovedExtensionPackageResources> => {
+      assertInitialized(initialized)
+      const removed = await options.removePackageResources({ packageId })
+      return { packageId, ...removed }
     }),
 
     getGrantedEventCapabilities: (packageId, moduleId) => {
@@ -267,6 +316,28 @@ export function createServerExtensionManager(options: {
         bytes: await readFile(iconPath),
         mediaType: iconMediaType(iconPath),
       }
+    },
+    readPackageFile: async (packageId, version, path) => {
+      assertInitialized(initialized)
+      const record = requireAvailablePackage(catalog, packageId)
+      if (record.manifest.version !== version) throw new Error(`Extension Package version does not match: ${packageId}@${version}`)
+      const packageDirectory = await realpath(record.directory)
+      const requestedPath = resolve(packageDirectory, path)
+      const pathFromPackage = relative(packageDirectory, requestedPath)
+      if (!pathFromPackage || pathFromPackage.startsWith(`..${sep}`) || pathFromPackage === '..' || isAbsolute(pathFromPackage)) {
+        throw new Error(`Extension Package file escaped its directory: ${packageId}`)
+      }
+      const filePath = await realpath(requestedPath)
+      const realPathFromPackage = relative(packageDirectory, filePath)
+      if (!realPathFromPackage || realPathFromPackage.startsWith(`..${sep}`) || realPathFromPackage === '..' || isAbsolute(realPathFromPackage)) {
+        throw new Error(`Extension Package file escaped its directory: ${packageId}`)
+      }
+      const fileStat = await stat(filePath)
+      const maxFileBytes = 16 * 1024 * 1024
+      if (!fileStat.isFile() || fileStat.size > maxFileBytes) {
+        throw new Error(`Extension Package file must be no larger than ${maxFileBytes} bytes: ${packageId}`)
+      }
+      return { bytes: await readFile(filePath), mediaType: packageFileMediaType(filePath) }
     },
   }
 }
@@ -349,14 +420,32 @@ function toManagedPackage(
     sourceKinds: [...new Set(record.sources.map(source => source.kind))],
     modules: (record.manifest.modules ?? []).map(moduleManifest => toManagedModule(
       packageId,
+      record.manifest.version,
       moduleManifest,
       readDesiredState(stateStore, packageId, moduleManifest.id),
       runtimeByKey.get(moduleKey(packageId, moduleManifest.id)),
     )),
     resources: {
       transformRules: record.manifest.contributes?.transformRules ?? [],
+      promptResources: record.manifest.contributes?.promptResources ?? [],
+      agentTools: record.manifest.contributes?.agentTools ?? [],
     },
   }
+}
+
+async function readPackageJson(record: PackageCatalogRecord, path: string): Promise<JsonValue> {
+  const packageDirectory = await realpath(record.directory)
+  const filePath = await realpath(resolve(packageDirectory, path))
+  const pathFromPackage = relative(packageDirectory, filePath)
+  if (!pathFromPackage || pathFromPackage.startsWith(`..${sep}`) || pathFromPackage === '..' || isAbsolute(pathFromPackage)) {
+    throw new Error(`Extension Package resource escaped its directory: ${record.manifest.id}`)
+  }
+  const fileStat = await stat(filePath)
+  const maxResourceBytes = 1024 * 1024
+  if (!fileStat.isFile() || fileStat.size > maxResourceBytes) {
+    throw new Error(`Extension Package JSON resource must be no larger than ${maxResourceBytes} bytes: ${record.manifest.id}`)
+  }
+  return JSON.parse(await readFile(filePath, 'utf8')) as JsonValue
 }
 
 function iconMediaType(filename: string): string {
@@ -373,6 +462,7 @@ function iconMediaType(filename: string): string {
 
 function toManagedModule(
   packageId: string,
+  version: string,
   moduleManifest: ExtensionModuleManifest,
   desired: ExtensionModuleDesiredState,
   runtime?: ExtensionModuleSummary,
@@ -390,7 +480,25 @@ function toManagedModule(
       ...(desired.updatedAt ? { updatedAt: desired.updatedAt } : {}),
     },
     contributions: moduleManifest.contributes as unknown as JsonValue ?? {},
+    ...(moduleManifest.runtime === 'client' ? { entryUrl: packageFileUrl(packageId, version, moduleManifest.entry) } : {}),
     ...(runtime ? { runtime: runtime as unknown as JsonValue } : {}),
+  }
+}
+
+function packageFileUrl(packageId: string, version: string, path: string): string {
+  const encodedPath = path.replace(/^\.\//, '').split('/').map(encodeURIComponent).join('/')
+  return `/extensions/${encodeURIComponent(packageId)}/${encodeURIComponent(version)}/files/${encodedPath}`
+}
+
+function packageFileMediaType(filename: string): string {
+  switch (extname(filename).toLowerCase()) {
+    case '.js':
+    case '.mjs': return 'text/javascript; charset=utf-8'
+    case '.json': return 'application/json; charset=utf-8'
+    case '.css': return 'text/css; charset=utf-8'
+    case '.wasm': return 'application/wasm'
+    case '.svg': return 'image/svg+xml'
+    default: return iconMediaType(filename)
   }
 }
 

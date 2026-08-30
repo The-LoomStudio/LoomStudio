@@ -3,20 +3,7 @@ import type { Logger } from '@loom-studio/logging'
 
 export function withClientBridgeLogging(bridge: ClientBridge, logger: Logger): ClientBridge {
   return {
-    ...bridge,
     call: <T = ClientJsonValue>(method: string, params?: ClientJsonValue) => logRpcFailure(logger, method, () => bridge.call<T>(method, params)),
-    callWithMeta: <T = ClientJsonValue>(method: string, params?: ClientJsonValue) => logRpcFailure(logger, method, () => bridge.callWithMeta<T>(method, params)),
-    request: async request => {
-      const startedAt = performance.now()
-      try {
-        const response = await bridge.request(request)
-        if (response.error) logRpcError(logger, request.method, startedAt, response.error)
-        return response
-      } catch (error) {
-        logRpcError(logger, request.method, startedAt, error)
-        throw error
-      }
-    },
   }
 }
 

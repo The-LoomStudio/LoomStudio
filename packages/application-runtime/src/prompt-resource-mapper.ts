@@ -62,7 +62,7 @@ export function toStoredNode(node: PromptResourceNode): StoredPromptResourceTree
   }
 }
 
-export function fromStoredResource(resource: StoredPromptResource): PromptResourceContent & { id: string; version: number } {
+export function fromStoredResource(resource: StoredPromptResource): PromptResourceContent & { id: string; version: number; tombstoned?: boolean } {
   const metadata = resource.metadata as PromptResourceMetadata
   return {
     resourceKind: resource.resourceKind,
@@ -74,6 +74,7 @@ export function fromStoredResource(resource: StoredPromptResource): PromptResour
     updatedAt: resource.updatedAt,
     id: resource.id,
     version: resource.version,
+    ...(resource.tombstoned ? { tombstoned: true } : {}),
   }
 }
 
@@ -118,11 +119,12 @@ export async function readMappedResource(
 export async function listMappedResources(
   store: PromptResourceStore,
   resourceKind?: PromptResourceKind,
-): Promise<Array<PromptResourceContent & { id: string; version: number }>> {
+  options?: { includeTombstone?: boolean },
+): Promise<Array<PromptResourceContent & { id: string; version: number; tombstoned?: boolean }>> {
   const resources: StoredPromptResource[] = []
   let cursor: string | undefined
   do {
-    const page = await store.listResources({ resourceKind, cursor, limit: 500 })
+    const page = await store.listResources({ resourceKind, includeTombstone: options?.includeTombstone, cursor, limit: 500 })
     resources.push(...page.resources)
     cursor = page.nextCursor
   } while (cursor)

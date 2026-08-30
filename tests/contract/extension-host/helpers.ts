@@ -60,7 +60,6 @@ export function createExtensionHostHarness(options: {
     traceAudit,
     extensionHost,
     loomRunner,
-    environment: 'test',
   })
 
   return { kernel, extensionHost, diagnostics, documents }

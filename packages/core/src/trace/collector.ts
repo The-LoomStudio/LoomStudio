@@ -4,34 +4,11 @@ import { cloneFragments } from '../fragment/clone.js'
 import type { Mutation } from '../mutation/types.js'
 import type { PassConfig } from '../pass/types.js'
 import type { SerializedError } from '../pipeline/errors.js'
-import type { Trace, TraceExecution, TraceOptions, TraceSink } from './types.js'
-
-function normalizeSinks(sink?: TraceSink | readonly TraceSink[]): readonly TraceSink[] {
-  if (!sink) return []
-  return Array.isArray(sink) ? sink : [sink as TraceSink]
-}
-
-function notifySink<K extends keyof TraceSink>(
-  sinks: readonly TraceSink[],
-  method: K,
-  ...args: Parameters<NonNullable<TraceSink[K]>>
-): void {
-  for (const sink of sinks) {
-    const fn = sink[method]
-    if (typeof fn === 'function') {
-      try {
-        ;(fn as (...innerArgs: unknown[]) => void)(...args)
-      } catch {
-        // Trace sinks must not affect Core execution.
-      }
-    }
-  }
-}
+import type { Trace, TraceExecution, TraceOptions } from './types.js'
 
 export class TraceCollector<M = unknown> {
   private readonly mode: 'on' | 'off'
   private readonly snapshotMode: 'off' | 'boundaries' | 'after-only'
-  private readonly sinks: readonly TraceSink[]
   private readonly executions: TraceExecution<M>[] = []
   private readonly diagnostics: Diagnostic[] = []
   private finalFragments: readonly Fragment<M>[] = []
@@ -43,18 +20,10 @@ export class TraceCollector<M = unknown> {
   ) {
     this.mode = options.mode ?? 'on'
     this.snapshotMode = options.snapshot ?? 'off'
-    this.sinks = normalizeSinks(options.sink)
-  }
-
-  startPass(passName: string, passIndex: number): void {
-    if (this.mode === 'off') return
-    notifySink(this.sinks, 'onPassStart', passName, passIndex)
   }
 
   addDiagnostic(diagnostic: Diagnostic): void {
     this.diagnostics.push(diagnostic)
-    if (this.mode === 'off') return
-    notifySink(this.sinks, 'onDiagnostic', diagnostic)
   }
 
   endPass(input: {
@@ -87,7 +56,6 @@ export class TraceCollector<M = unknown> {
     }
 
     this.executions.push(execution)
-    notifySink(this.sinks, 'onPassEnd', execution)
   }
 
   endTrace(finalFragments: readonly Fragment<M>[], status: 'ok' | 'error' = 'ok', error?: SerializedError): Trace<M> {

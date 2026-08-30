@@ -84,10 +84,6 @@ describe('Tool Prompt Compiler', () => {
         projection: 'provider-tools',
       },
     ])
-    expect(result.trace.coreExecutions.map((execution) => execution.passName)).toEqual([
-      'tool.prompt.materialize',
-      'tool.prompt.order',
-    ])
   })
 
   it('excludes inactive tools while tracing activation facts', () => {

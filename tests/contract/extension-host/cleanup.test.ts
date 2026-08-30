@@ -28,4 +28,18 @@ describe('extension host cleanup contract', () => {
 
     await expect(kernel.callRpc('example.echo.echo', {})).rejects.toThrow('method not found')
   })
+
+  it('forget removes the discovered module and allows a later rediscovery', async () => {
+    const { kernel, extensionHost } = createExtensionHostHarness()
+    await kernel.start()
+    const directory = join(process.cwd(), 'extensions/example-echo')
+    await extensionHost.discover(directory)
+    await extensionHost.activate('example.echo', 'server')
+
+    await extensionHost.forget('example.echo', 'server')
+
+    expect(extensionHost.list()).toEqual([])
+    await expect(kernel.callRpc('example.echo.echo', {})).rejects.toThrow('method not found')
+    await expect(extensionHost.discover(directory)).resolves.toHaveLength(1)
+  })
 })

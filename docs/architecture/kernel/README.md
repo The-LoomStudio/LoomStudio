@@ -169,12 +169,12 @@ Event Bus 描述平台事实，不是 Application Command Bus、Hook Registry、
 
 - Studio、Kernel 与 Protocol 版本；
 - Kernel 保留命名空间；
-- 当前 RPC 方法及 owner；
+- 当前 Kernel/Extension RPC 方法及 owner；
 - 当前已知事件；
 - 已加载 Extension 的状态；
 - 可选的 Diagnostics。
 
-它是动态能力发现面。静态 Manifest 可以声明能力，但运行时 Registry 才是当前事实。
+它是 Kernel 与 Extension 的动态能力发现面。Application、AI、Settings 与 Logs 是 Studio Server 的内部路由，不维护第二份发现目录。
 
 ## 9. Transport 边界
 

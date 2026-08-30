@@ -24,6 +24,7 @@ import {
   type PresetToolMount,
   type ReplacePresetToolMountsInput,
   type ReplaceSettingMountsInput,
+  type RestorePromptResourceInput,
   type RevertPromptResourceChangesetInput,
   type SettingMount,
   type SettingMountSource,
@@ -118,6 +119,7 @@ export function createPromptResourceStore(options: PromptResourceStoreOptions): 
       createResource: input => applyCreateResource(database, tx, input, nextId, now),
       mutateResource: input => applyMutateResource(database, tx, input, now),
       deleteResource: input => applyDeleteResource(database, tx, input, now),
+      restoreResource: input => applyRestoreResource(database, tx, input, now),
       addSettingMount: input => applyAddSettingMount(database, tx, input, nextId, now),
       replaceSettingMounts: input => applyReplaceSettingMounts(database, tx, input, nextId, now),
       addPresetToolMount: input => applyAddPresetToolMount(database, tx, input, nextId, now),
@@ -147,6 +149,10 @@ export function createPromptResourceStore(options: PromptResourceStoreOptions): 
     },
     deleteResource: async input => {
       const result = await runTransaction(input, tx => transaction(tx).deleteResource(input))
+      return { resource: result.value, commit: result.commit }
+    },
+    restoreResource: async input => {
+      const result = await runTransaction(input, tx => transaction(tx).restoreResource(input))
       return { resource: result.value, commit: result.commit }
     },
     addSettingMount: async input => {
@@ -355,6 +361,33 @@ function applyDeleteResource(
     ...(tx.reason ? { deleteReason: tx.reason } : {}),
   })
   tx.recordOperations([operation('delete', input.resourceId, 'prompt-resource', row.version, version)])
+  return resource
+}
+
+function applyRestoreResource(
+  database: DatabaseSync,
+  tx: SqliteDataTransaction,
+  input: Omit<RestorePromptResourceInput, keyof PromptResourceWriteContext>,
+  now: () => string,
+): PromptResource {
+  const row = requireResourceRow(database, input.resourceId)
+  if (!row.tombstoned) throw new PromptResourceStoreError('prompt_resource.active', `Prompt resource is already active: ${input.resourceId}`)
+  if (input.expectedVersion !== undefined) assertExpectedVersion(row, input.expectedVersion)
+  const timestamp = now()
+  const version = row.version + 1
+  database.prepare(`
+    UPDATE prompt_resources
+    SET version = ?, updated_at = ?, tombstoned = 0, deleted_at = NULL, deleted_by_json = NULL, delete_reason = NULL
+    WHERE id = ?
+  `).run(version, timestamp, input.resourceId)
+  const resource = readResource(database, input.resourceId, false)
+  if (!resource) throw new PromptResourceStoreError('prompt_resource.not_found', `Prompt resource not found: ${input.resourceId}`)
+  insertHeaderRevision(database, tx, input.resourceId, version, headerStateFromRow(row), {
+    label: row.label,
+    metadata: parseObject(row.metadata_json, 'metadata'),
+    tombstoned: false,
+  })
+  tx.recordOperations([operation('restore', input.resourceId, 'prompt-resource', row.version, version)])
   return resource
 }
 

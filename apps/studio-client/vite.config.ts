@@ -34,6 +34,7 @@ export default defineConfig({
       '/auth': studioServerUrl,
       '/assets': studioServerUrl,
       '/cards': studioServerUrl,
+      '/extensions': studioServerUrl,
       '/rpc': studioServerUrl,
     },
   },

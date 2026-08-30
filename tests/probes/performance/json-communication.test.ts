@@ -47,7 +47,6 @@ function createHarness() {
     traceAudit,
     extensionHost,
     loomRunner,
-    environment: 'test',
   })
 
   return { kernel }
@@ -82,7 +81,6 @@ describe('JSON communication performance probes', () => {
     const { kernel } = createHarness()
     await kernel.start()
     const bridge = createBridge(kernel)
-    await bridge.connect()
 
     const measurement = await measure('100 sequential system.ping', 100, async index => {
       await bridge.call('system.ping', { echo: `ping-${index}` })
@@ -97,7 +95,6 @@ describe('JSON communication performance probes', () => {
     const { kernel } = createHarness()
     await kernel.start()
     const bridge = createBridge(kernel)
-    await bridge.connect()
 
     const measurement = await measure('100 sequential small docs.write', 100, async index => {
       await bridge.call('docs.write', {
@@ -118,7 +115,6 @@ describe('JSON communication performance probes', () => {
     const { kernel } = createHarness()
     await kernel.start()
     const bridge = createBridge(kernel)
-    await bridge.connect()
     const content = createJsonPayload(128 * 1024)
 
     const write = await measure('1 medium docs.write 128KiB JSON', 1, async () => {
@@ -143,7 +139,6 @@ describe('JSON communication performance probes', () => {
     const { kernel } = createHarness()
     await kernel.start()
     const bridge = createBridge(kernel)
-    await bridge.connect()
 
     for (let index = 0; index < 500; index += 1) {
       await bridge.call('docs.write', {

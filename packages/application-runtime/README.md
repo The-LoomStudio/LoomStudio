@@ -39,7 +39,7 @@ Package 只通过 [`src/index.ts`](./src/index.ts) 暴露 public API，构建产
 
 - 领域存储：Agent、Narrative、Prompt Resource、State、Document；
 - 平台能力：Data Engine、AI Gateway、Secret Store、Logging、Shared；
-- `@loom/core`：只用于第一方 PromptBuild 与 Tool Prompt Pipeline；
+- `@loom/core`：只用于第一方 PromptBuild Pipeline；
 - `undici`：OpenAI-compatible Gateway 的代理传输。
 
 本包不注册 HTTP/JSON-RPC 路由，不拥有 React/Zustand 状态，不提供 Kernel RPC/Event/Extension Host，也不实现各 Store 的 SQLite 内部细节。Shared Data Engine 和 Prompt Resource Store 在当前运行时是必需依赖。

@@ -178,18 +178,14 @@ export function runPasses<M = unknown>(input: {
   for (let passIndex = 0; passIndex < input.passes.length; passIndex++) {
     const pass = input.passes[passIndex]!
     const passDiagnostics: Diagnostic[] = []
-    const logs: { readonly message: string; readonly data?: unknown; readonly at: number }[] = []
     const before = cloneFragments(current)
     const startedAt = now()
-
-    collector.startPass(pass.name, passIndex)
 
     try {
       const ctx = createPassContext({
         passName: pass.name,
         passIndex,
         diagnostics: passDiagnostics,
-        logs,
       })
       const result = pass.run(current, ctx)
       if (isPromiseLike(result)) {

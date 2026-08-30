@@ -181,6 +181,13 @@
   min-height: 72px;
 }
 
+.sessionTail {
+  width: 100%;
+  min-width: 0;
+  position: relative;
+  isolation: isolate;
+}
+
 .message {
   width: 100%;
   min-width: 0;

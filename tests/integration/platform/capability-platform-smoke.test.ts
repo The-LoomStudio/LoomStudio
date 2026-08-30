@@ -39,7 +39,6 @@ function createHarness() {
     traceAudit,
     extensionHost,
     loomRunner,
-    environment: 'test',
   })
 
   return { kernel, extensionHost, traceAudit }
@@ -74,7 +73,6 @@ describe('platform capability integration smoke', () => {
     await extensionHost.discover(join(process.cwd(), 'extensions/example-echo'))
     await extensionHost.activateAll()
     const bridge = createClientBridge({ endpoint: 'memory://kernel', fetch: createKernelFetch(kernel) })
-    await bridge.connect()
 
     const introspect = await bridge.call<{ methods: Array<{ name: string; owner: string }>; events: string[] }>('system.introspect')
     const writeResult = await bridge.call<{ documents: Array<{ id: string; content: { ok: boolean } }> }>('docs.write', {

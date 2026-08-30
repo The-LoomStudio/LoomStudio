@@ -1,5 +1,7 @@
 import { parseExtensionManifest, type ExtensionManifest } from '@loom-studio/extension-host'
-import { access, readFile, readdir, realpath } from 'node:fs/promises'
+import { access, mkdir, readFile, readdir, realpath, rename, unlink, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { dirname } from 'node:path'
 import { isAbsolute, relative, resolve } from 'node:path'
 
 export type ExtensionSourceKind = 'repository' | 'dev-link' | 'installed'
@@ -62,6 +64,12 @@ export async function discoverExtensionSources(options: {
       }
       for (const rule of manifest.contributes?.transformRules ?? []) {
         await assertEntryInsideDirectory(directory, rule.source)
+      }
+      for (const resource of manifest.contributes?.promptResources ?? []) {
+        await assertEntryInsideDirectory(directory, resource.source)
+      }
+      for (const tool of manifest.contributes?.agentTools ?? []) {
+        await assertEntryInsideDirectory(directory, tool.source)
       }
       if (manifest.icon) await assertEntryInsideDirectory(directory, manifest.icon)
       discovered.push({ ...source, directory, manifest })
@@ -157,6 +165,37 @@ async function readDevLinks(filename: string): Promise<ExtensionSource[]> {
     }
     return { kind: 'dev-link' as const, directory: entry.path, declaredPackageId: entry.id }
   })
+}
+
+export async function removeExtensionDevLink(filename: string, packageId: string): Promise<boolean> {
+  let source: string
+  try {
+    source = await readFile(filename, 'utf8')
+  } catch (error) {
+    if (isNodeError(error, 'ENOENT')) return false
+    throw error
+  }
+  const value = JSON.parse(source) as unknown
+  if (!isRecord(value) || !Array.isArray(value.extensions)) {
+    throw new Error('Extension dev links must contain an extensions array')
+  }
+  const extensions = value.extensions.filter((entry, index) => {
+    if (!isRecord(entry) || typeof entry.id !== 'string' || typeof entry.path !== 'string' || !isAbsolute(entry.path)) {
+      throw new Error(`Invalid extension dev link at index ${index}`)
+    }
+    return entry.id !== packageId
+  })
+  if (extensions.length === value.extensions.length) return false
+  await mkdir(dirname(filename), { recursive: true })
+  const temporary = `${filename}.${process.pid}.${randomUUID()}.tmp`
+  try {
+    await writeFile(temporary, `${JSON.stringify({ extensions }, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
+    await rename(temporary, filename)
+  } catch (error) {
+    await unlink(temporary).catch(() => undefined)
+    throw error
+  }
+  return true
 }
 
 async function assertEntryInsideDirectory(directory: string, entry: string): Promise<void> {

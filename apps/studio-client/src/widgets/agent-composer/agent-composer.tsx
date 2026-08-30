@@ -8,6 +8,7 @@ import {
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from 'react'
 import type { AgentTranscriptEntry as AgentTranscriptEntryEntity, AgentProfile, AgentSession, ProviderAccount } from '../../entities/index.js'
 import type { Translator } from '../../shared/i18n/index.js'
@@ -15,8 +16,10 @@ import { tryWriteClipboardText } from '../../shared/browser/clipboard.js'
 import type { MarkdownCodeBlockLabels } from '../../shared/ui/markdown-content/markdown-code-block.js'
 import { SkeletonText } from '../../shared/ui/skeleton/skeleton.js'
 import { ConversationMessageAction, ConversationMessageChrome } from '../../shared/ui/conversation-message-chrome/conversation-message-chrome.js'
-import { ChatComposer } from '../chat-composer/chat-composer.js'
+import { ChatComposer, type ChatComposerQuickAction } from '../chat-composer/chat-composer.js'
 import styles from './agent-composer.module.scss'
+import type { ClientRendererHost } from '../../features/extension-renderers/model/client-renderer-host.js'
+import { RendererNodeMountHost } from '../../features/extension-renderers/ui/renderer-node-mount-host.js'
 
 const ConversationMarkdown = lazy(async () => {
   const module = await import('../../shared/ui/conversation-markdown/conversation-markdown.js')
@@ -36,11 +39,15 @@ type AgentComposerProps = {
   agentInput: string
   agentMessages: AgentTranscriptEntryEntity[]
   agentSession?: AgentSession
+  agentSessionTail?: ReactNode
+  composerSheet?: ReactNode
   narrativeInput: string
   narrativeTextareaDisabled: boolean
   agentProfiles: AgentProfile[]
   providerAccounts: ProviderAccount[]
+  quickActions?: readonly ChatComposerQuickAction[]
   selectedAgentProfileId?: string
+  rendererHost?: ClientRendererHost
   workspaceOpen: boolean
   t: Translator
   onChangeAgentInput(value: string): void
@@ -191,12 +198,15 @@ export function AgentComposer(props: AgentComposerProps) {
                       key={message.id}
                       message={message}
                       role={display.role}
+                      rendererHost={props.rendererHost}
+                      agentSessionId={props.agentSession?.id}
                       t={props.t}
                       onCopy={() => void copyMessage(message, display.content)}
                     />
                   )
                 })}
                 {props.agentBusy ? <div aria-busy="true" className={styles.loading}><SkeletonText lines={2} /></div> : null}
+                {props.agentSessionTail ? <div className={styles.sessionTail} data-loom-surface="agent.session.tail">{props.agentSessionTail}</div> : null}
               </Suspense>
             </div>
           </div>
@@ -205,7 +215,9 @@ export function AgentComposer(props: AgentComposerProps) {
         moreLabel={props.t('composer.more')}
         placeholder={agentOpen ? props.t('agent.composerPlaceholder') : undefined}
         previewLabel={props.t('composer.preview')}
+        quickActions={props.quickActions}
         retryLabel={props.t('composer.retry')}
+        sheet={props.composerSheet}
         sendLabel={props.t(agentOpen ? 'agent.send' : 'composer.send')}
         sendLeadingAction={agentOpen ? (
           <AgentProfilePicker
@@ -290,10 +302,24 @@ function AgentProfilePicker(props: {
   )
 }
 
-function AgentTranscriptEntry(props: { codeBlockLabels: MarkdownCodeBlockLabels; content: string; copyState?: boolean; index: number; message: AgentTranscriptEntryEntity; role: 'user' | 'assistant'; t: Translator; onCopy(): void }) {
+function AgentTranscriptEntry(props: { agentSessionId?: string; codeBlockLabels: MarkdownCodeBlockLabels; content: string; copyState?: boolean; index: number; message: AgentTranscriptEntryEntity; rendererHost?: ClientRendererHost; role: 'user' | 'assistant'; t: Translator; onCopy(): void }) {
   return (
     <article className={`${styles.message} ${styles[props.role]}`}>
-      <div className={styles.messageSurface}><ConversationMarkdown className={styles.messageBody} codeBlockLabels={props.codeBlockLabels} role={props.role} value={props.content} /></div>
+      <div className={styles.messageSurface}>
+        {props.rendererHost && props.agentSessionId ? (
+          <RendererNodeMountHost
+            agentSessionId={props.agentSessionId}
+            host={props.rendererHost}
+            messageId={props.message.id}
+            rawText={props.content}
+            surface="agent-message"
+          >
+            <ConversationMarkdown className={styles.messageBody} codeBlockLabels={props.codeBlockLabels} role={props.role} value={props.content} />
+          </RendererNodeMountHost>
+        ) : (
+          <ConversationMarkdown className={styles.messageBody} codeBlockLabels={props.codeBlockLabels} role={props.role} value={props.content} />
+        )}
+      </div>
       <ConversationMessageChrome createdAt={props.message.createdAt} index={props.index} actions={<ConversationMessageAction label={props.t(props.copyState === undefined ? 'timeline.copy' : props.copyState ? 'timeline.copied' : 'timeline.copyFailed')} onClick={props.onCopy}>{props.copyState ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}</ConversationMessageAction>} />
     </article>
   )

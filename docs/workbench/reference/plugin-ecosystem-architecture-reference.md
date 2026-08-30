@@ -275,12 +275,12 @@ Container 成员不会自动进入 Context。`list()` 只列资源，`get()` 或
 
 Loom 当前 Prompt Resource 保存版本化树、node body、enabled、capabilities 和 metadata；Setting Mount 与 Preset Tool Mount 是独立关系。证据：`packages/prompt-resource-store/src/types.ts:9-47`、`:109-176`。
 
-当前 Manifest 顶层声明式资源只有 `transformRules`，Module runtime contributions 只有 RPC、Document Type、Event、Panel；Extension Host 也没有 Prompt contribution registration。所以下述链路是应接入现有权威的建议，不是已实现能力。证据：`packages/extension-sdk/src/index.ts:89-136`。
+当前 Manifest 已支持顶层 `promptResources`、`agentTools` 与 `transformRules`。Prompt Resource / Tool Definition 通过显式 `extensions.importPackageResources` 实例化到现有 Application 权威存储；Server Module 仅通过 `agentToolHandlers + ctx.agentTools.register()` 提供生命周期绑定的执行器。安装本身不注入 Prompt，也不自动启用 Tool。运行时 Prompt Source Adapter 仍未实现。
 
-未来 Extension Package 提供 Prompt 内容时，建议分成两类：
+Extension Package 提供 Prompt 内容时分成两类：
 
-1. **声明式 Prompt Resource**：Package 安装后进入 Package Catalog，由 Application 导入、引用或实例化；不需要启动 Module；
-2. **运行时 Prompt Source Adapter**：Module 获得窄 capability，根据当前领域对象产出 `PromptContribution[]`，不能直接提交最终 Provider payload。
+1. **声明式 Prompt Resource**：已实现。Package 安装后进入 Package Catalog，由 Application 显式实例化；不需要启动 Module；
+2. **运行时 Prompt Source Adapter**：尚未实现。未来 Module 只能通过窄 capability 产出 `PromptContribution[]`，不能直接提交最终 Provider payload。
 
 最小链应是：
 

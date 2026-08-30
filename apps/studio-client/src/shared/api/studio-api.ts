@@ -1,5 +1,6 @@
 import type { ClientBridge, ClientJsonValue } from '@loom-studio/client-bridge'
 import type { LogLevel, LogPage } from '@loom-studio/logging'
+import type { ExtensionEntityRef, ExtensionRecordEntry, ExtensionStorageScope } from '@loom-studio/extension-sdk'
 import type {
   AiGatewayInvokeInput,
   AiGatewayInvokeResult,
@@ -25,9 +26,10 @@ import type {
   DeleteProviderProfileResult,
   ExportCardBundleResult,
   ExportPromptResourceResult,
+  ExtensionPackageResourceImportResult,
+  ExtensionPackageResourceRemovalResult,
   ForkNarrativeBranchResult,
   GetCardResult,
-  GetImportBundleResult,
   GetNarrativeTimelineResult,
   GetPromptResourceResult,
   GetStateSnapshotResult,
@@ -36,19 +38,21 @@ import type {
   InvokeAgentTurnResult,
   ListAgentProfilesResult,
   ListAiCapabilityProfilesResult,
-  ListCardPromptResourcesResult,
   ListCardsResult,
   ListNarrativeTimelinesResult,
   ListPromptResourcesResult,
   ListPresetToolMountsResult,
   ListProviderProfilesResult,
   ListSettingMountsResult,
+  ManagedExtensionModule,
+  ManagedExtensionPackage,
   ListStateDefinitionsResult,
   MutationReceipt,
   UpdateAiCapabilityProfileResult,
   NarrativePage,
   OpeningChatInput,
   PreviewAgentTurnResult,
+  PreviewCardDeletionResult,
   ProjectionSlotRank,
   PromptCompositionCapabilities,
   PromptResource,
@@ -280,6 +284,21 @@ export type ImportCardBundleInput = {
 // ─── Studio API Interface ───────────────────────────────────────────────────
 
 export type StudioApi = {
+  extensions: {
+    list(): Promise<{ items: ManagedExtensionPackage[] }>
+    enable(packageId: string, moduleId: string): Promise<{ module: ManagedExtensionModule }>
+    disable(packageId: string, moduleId: string): Promise<{ module: ManagedExtensionModule }>
+    reload(packageId: string, moduleId: string): Promise<{ module: ManagedExtensionModule }>
+    uninstall(packageId: string, version?: string): Promise<{ package: ClientJsonValue }>
+    importResources(packageId: string): Promise<ExtensionPackageResourceImportResult>
+    removeResources(packageId: string): Promise<ExtensionPackageResourceRemovalResult>
+    diagnostics(packageId?: string, moduleId?: string): Promise<{ diagnostics: ClientJsonValue[] }>
+  }
+  extensionRuntime: {
+    listRecords(input: { packageId: string; scope?: ExtensionStorageScope; recordType?: string; binding?: ExtensionEntityRef }): Promise<{ records: ExtensionRecordEntry[] }>
+    getRecord(packageId: string, recordId: string): Promise<{ record: ExtensionRecordEntry | null }>
+    call<T = ClientJsonValue>(method: string, params?: ClientJsonValue): Promise<T>
+  }
   settings: {
     getNetwork(): Promise<NetworkSettings>
     updateNetwork(input: { proxyMode: NetworkProxyMode; proxyUrl?: string }): Promise<NetworkSettings>
@@ -311,16 +330,14 @@ export type StudioApi = {
     extract(input: { source: HistorySource; phase?: 'classify' | 'prompt' | 'display'; extractorId: string }): Promise<{ extraction: ClientJsonValue; snapshot: HistoryProjectionSnapshot }>
     listRenderers(): Promise<{ renderers: RendererDefinition[] }>
   }
-  importBundles: {
-    get(importBundleId: string): Promise<GetImportBundleResult>
-  }
   cards: {
     get(cardId: string): Promise<GetCardResult>
     list(input?: { cursor?: string; limit?: number }): Promise<ListCardsResult>
     create(input: CreateCardInput): Promise<CreateCardResult>
     update(input: UpdateCardInput): Promise<UpdateCardResult>
     updatePromptResources(input: UpdateCardPromptResourcesInput): Promise<UpdateCardResult>
-    delete(cardId: string): Promise<DeleteCardResult>
+    previewDeletion(cardId: string): Promise<PreviewCardDeletionResult>
+    delete(cardId: string, options?: { includePlayData?: boolean }): Promise<DeleteCardResult>
     export(cardId: string): Promise<ExportCardBundleResult>
   }
   agentSessions: {
@@ -361,7 +378,6 @@ export type StudioApi = {
   agentTools: {
     list(): Promise<{ tools: AgentToolDefinition[] }>
     update(input: { toolId: string; expectedVersion: number; definition: Omit<AgentToolDefinition, 'version' | 'createdAt' | 'updatedAt'> }): Promise<{ tool: AgentToolDefinition }>
-    analyze(agentProfileId: string): Promise<{ analysis: ClientJsonValue }>
   }
   narratives: {
     create(input: CreateNarrativeTimelineInput): Promise<CreateNarrativeTimelineResult>
@@ -379,7 +395,6 @@ export type StudioApi = {
     delete(resourceId: string): Promise<DeletePromptResourceResult>
     import(artifact: PromptResourceArtifact): Promise<CreatePromptResourceResult>
     export(resourceId: string): Promise<ExportPromptResourceResult>
-    listForCard(cardId: string): Promise<ListCardPromptResourcesResult>
     updateAsset(input: UpdatePromptResourceAssetInput): Promise<UpdatePromptResourceResult>
     updateAssets(input: UpdatePromptResourceAssetsInput): Promise<UpdatePromptResourceResult>
     listSettingMounts(source?: SettingMountSource): Promise<ListSettingMountsResult>
@@ -418,6 +433,24 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
   }
 
   return {
+    extensions: {
+      list: () => bridge.call('extensions.listPackages', {}),
+      enable: (packageId, moduleId) => bridge.call('extensions.enableModule', { packageId, moduleId }),
+      disable: (packageId, moduleId) => bridge.call('extensions.disableModule', { packageId, moduleId }),
+      reload: (packageId, moduleId) => bridge.call('extensions.reloadModule', { packageId, moduleId }),
+      uninstall: (packageId, version) => bridge.call('extensions.uninstallPackage', { packageId, ...(version ? { version } : {}) }),
+      importResources: packageId => bridge.call('extensions.importPackageResources', { packageId }),
+      removeResources: packageId => bridge.call('extensions.removePackageResources', { packageId }),
+      diagnostics: (packageId, moduleId) => bridge.call('extensions.getDiagnostics', {
+        ...(packageId ? { packageId } : {}),
+        ...(moduleId ? { moduleId } : {}),
+      }),
+    },
+    extensionRuntime: {
+      listRecords: input => bridge.call('application.listExtensionRecords', input as unknown as ClientJsonValue),
+      getRecord: (packageId, recordId) => bridge.call('application.getExtensionRecord', { packageId, recordId }),
+      call: (method, params) => bridge.call(method, params),
+    },
     settings: {
       getNetwork: () => bridge.call<NetworkSettings>('settings.network.get', {}),
       updateNetwork: input => bridge.call<NetworkSettings>('settings.network.update', input as unknown as ClientJsonValue),
@@ -452,16 +485,17 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       extract: input => bridge.call('application.extractHistory', input as unknown as ClientJsonValue),
       listRenderers: () => bridge.call('application.listRenderers', {}),
     },
-    importBundles: {
-      get: importBundleId => bridge.call<GetImportBundleResult>('application.getImportBundle', { importBundleId }),
-    },
     cards: {
       get: cardId => bridge.call<GetCardResult>('application.getCard', { cardId }),
       list: input => bridge.call<ListCardsResult>('application.listCards', (input ?? {}) as unknown as ClientJsonValue),
       create: input => bridge.call<CreateCardResult>('application.createCard', input as unknown as ClientJsonValue),
       update: input => bridge.call<UpdateCardResult>('application.updateCard', input as unknown as ClientJsonValue),
       updatePromptResources: input => bridge.call<UpdateCardResult>('application.updateCardPromptResources', input as unknown as ClientJsonValue),
-      delete: cardId => bridge.call<DeleteCardResult>('application.deleteCard', { cardId }),
+      previewDeletion: cardId => bridge.call<PreviewCardDeletionResult>('application.previewCardDeletion', { cardId }),
+      delete: (cardId, options) => bridge.call<DeleteCardResult>('application.deleteCard', {
+        cardId,
+        ...(options?.includePlayData ? { includePlayData: true } : {}),
+      }),
       export: cardId => bridge.call<ExportCardBundleResult>('application.exportCardBundle', { cardId }),
     },
     agentSessions: {
@@ -505,7 +539,6 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
     agentTools: {
       list: () => bridge.call<{ tools: AgentToolDefinition[] }>('application.listAgentTools', {}),
       update: input => bridge.call<{ tool: AgentToolDefinition }>('application.updateAgentTool', input as unknown as ClientJsonValue),
-      analyze: agentProfileId => bridge.call<{ analysis: ClientJsonValue }>('application.analyzeAgentTools', { agentProfileId }),
     },
     narratives: {
       create: input => bridge.call<CreateNarrativeTimelineResult>('application.createNarrativeTimeline', input as unknown as ClientJsonValue),
@@ -523,7 +556,6 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       delete: resourceId => bridge.call<DeletePromptResourceResult>('application.deletePromptResource', { resourceId }),
       import: artifact => bridge.call<CreatePromptResourceResult>('application.importPromptResource', { artifact: artifact as unknown as ClientJsonValue }),
       export: resourceId => bridge.call<ExportPromptResourceResult>('application.exportPromptResource', { resourceId }),
-      listForCard: cardId => bridge.call<ListCardPromptResourcesResult>('application.listCardPromptResources', { cardId }),
       createAsset: input => bridge.call<UpdatePromptResourceResult>('application.createPromptResourceAsset', input as unknown as ClientJsonValue),
       updateAsset: input => bridge.call<UpdatePromptResourceResult>('application.updatePromptResourceAsset', input as unknown as ClientJsonValue),
       updateAssets: input => bridge.call<UpdatePromptResourceResult>('application.updatePromptResourceAssets', input as unknown as ClientJsonValue),

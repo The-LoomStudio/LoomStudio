@@ -1,9 +1,7 @@
 import {
-  PassRegistry,
-  run,
+  runPasses,
   type Fragment,
-  type PassFactory,
-  type PassConfig,
+  type Pass,
   type Trace,
 } from '@loom/core'
 import { evaluatePromptActivation, type ActivationFacts } from './prompt-activation.js'
@@ -160,18 +158,6 @@ function readDerived(fragment: Fragment<PromptBuildCoreMeta>): PromptBuildDerive
   return meta && meta.phase !== 'source' ? meta : undefined
 }
 
-function materializeFactory(): PassFactory<MaterializeParams, PromptBuildCoreMeta> {
-  return {
-    name: 'prompt.materialize',
-    version: '1',
-    create: (params) => ({
-      name: 'prompt.materialize',
-      version: '1',
-      run: (fragments) => materializePass(fragments, params),
-    }),
-  }
-}
-
 function materializePass(
   fragments: readonly Fragment<PromptBuildCoreMeta>[],
   params: MaterializeParams,
@@ -234,18 +220,6 @@ function materializePass(
   return [...fragments, ...derived]
 }
 
-function orderFactory(): PassFactory<OrderParams, PromptBuildCoreMeta> {
-  return {
-    name: 'prompt.order',
-    version: '1',
-    create: (params) => ({
-      name: 'prompt.order',
-      version: '1',
-      run: (fragments) => orderPass(fragments, params),
-    }),
-  }
-}
-
 function orderPass(
   fragments: readonly Fragment<PromptBuildCoreMeta>[],
   params: OrderParams,
@@ -303,18 +277,6 @@ function compareDerivedFragments(
 
 function readSlotRank(profile: ProjectionOrderProfile, zoneId: string, slotKey: string): string | undefined {
   return profile.slotRanks.find(rank => rank.zoneId === zoneId && rank.slotKey === slotKey)?.rankKey
-}
-
-function emitFactory(): PassFactory<EmitParams, PromptBuildCoreMeta> {
-  return {
-    name: 'prompt.emit',
-    version: '1',
-    create: (params) => ({
-      name: 'prompt.emit',
-      version: '1',
-      run: (fragments) => emitPass(fragments, params),
-    }),
-  }
 }
 
 function emitPass(
@@ -377,14 +339,6 @@ function emitPass(
     })
   }
   return [...fragments, ...messages]
-}
-
-function createRegistry(): PassRegistry<PromptBuildCoreMeta> {
-  const registry = new PassRegistry<PromptBuildCoreMeta>()
-  registry.register(materializeFactory())
-  registry.register(orderFactory())
-  registry.register(emitFactory())
-  return registry
 }
 
 function createSourceFragments(input: PromptBuildPipelineInput): Fragment<PromptBuildCoreMeta>[] {
@@ -492,7 +446,7 @@ function readOrderSource(
 
 function buildCompiledPrompt(
   input: PromptBuildPipelineInput,
-  result: ReturnType<typeof run<PromptBuildCoreMeta>>,
+  result: ReturnType<typeof runPasses<PromptBuildCoreMeta>>,
   skeleton: CompositionSkeleton,
 ): { projection: CompiledPrompt; trace: PromptBuildTrace } {
   if (result.status === 'error') throw new Error(result.error?.message ?? 'PromptBuild Core pipeline failed')
@@ -603,35 +557,34 @@ export function compilePromptWithCore(input: PromptBuildPipelineInput): {
     input.skeleton ?? defaultCompositionSkeleton,
     input.skeletonPatch ?? input.orderProfile.skeletonPatch,
   )
-  const passConfigs: readonly PassConfig[] = [
+  const passes: readonly Pass<PromptBuildCoreMeta>[] = [
     {
       name: 'prompt.materialize',
-      params: {
+      run: fragments => materializePass(fragments, {
         skeleton,
         currentInput: input.currentInput,
         activationFacts: input.activationFacts,
-      },
+      }),
     },
     {
       name: 'prompt.order',
-      params: {
+      run: fragments => orderPass(fragments, {
         skeleton,
         sourceNodes: input.sourceNodes,
         orderProfile: input.orderProfile,
-      },
+      }),
     },
     {
       name: 'prompt.emit',
-      params: {
+      run: fragments => emitPass(fragments, {
         skeleton,
         sourceNodes: input.sourceNodes,
         orderProfile: input.orderProfile,
-      },
+      }),
     },
   ]
-  const result = run({
-    registry: createRegistry(),
-    passes: passConfigs,
+  const result = runPasses({
+    passes,
     fragments: createSourceFragments(input),
   })
   return buildCompiledPrompt(input, result, skeleton)

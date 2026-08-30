@@ -25,13 +25,7 @@ export class SecretStoreError extends Error {
   }
 }
 
-export function createSecretStore(options: {
-  engine: SqliteDataEngine
-  backend: SecretBackend
-  createId(prefix: string): string
-  now(): string
-  authorizeUse(metadata: SecretMetadata, context: SecretUseContext): Promise<boolean> | boolean
-}): SecretStore {
+export function createSecretStore(options: SecretStoreOptions): SecretStore {
   options.engine.migrate({
     namespace: migrationNamespace,
     migrations: [{ version: 1, migrate: migrateVersionOne }],

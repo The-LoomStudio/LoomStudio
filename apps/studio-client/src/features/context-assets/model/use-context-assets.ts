@@ -16,9 +16,8 @@ import { findContextAssetNode } from './context-asset-tree.js'
 import { findRootContextModule, type ContextAssetUpdate } from './projection-workbench.js'
 
 type UseContextAssetsInput = {
-  api?: StudioApi
-  initialNodes: ContextAssetNode[]
-  onResourceChange?(resource: PromptResource): void
+  api: StudioApi
+  onResourceChange(resource: PromptResource): void
   recordEdit(entry: {
     label: string
     changesetId: string
@@ -30,10 +29,9 @@ type UseContextAssetsInput = {
 }
 
 export function useContextAssets(input: UseContextAssetsInput) {
-  const initialNodes = normalizeContextAssets(input.initialNodes)
-  const [nodes, setNodeState] = useState<ContextAssetNode[]>(initialNodes)
-  const nodesRef = useRef(initialNodes)
-  const persistedNodesRef = useRef(initialNodes)
+  const [nodes, setNodeState] = useState<ContextAssetNode[]>([])
+  const nodesRef = useRef<ContextAssetNode[]>([])
+  const persistedNodesRef = useRef<ContextAssetNode[]>([])
   const mutationQueueRef = useRef<Promise<void>>(Promise.resolve())
 
   function applyDraftNodes(next: ContextAssetNode[]) {
@@ -49,7 +47,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
 
   function applyResource(resource: PromptResource) {
     setNodes(persistedNodesRef.current.map(node => node.id === resource.rootNode.id ? resource.rootNode : node))
-    input.onResourceChange?.(resource)
+    input.onResourceChange(resource)
   }
 
   function readResourceId(assetId: string): string {
@@ -70,11 +68,6 @@ export function useContextAssets(input: UseContextAssetsInput) {
   }
 
   function updateContextAsset(id: string, partial: Partial<ContextAssetNode>): Promise<void> {
-    if (!input.api || input.resources.length === 0) {
-      persistedNodesRef.current = nodesRef.current
-      return Promise.resolve()
-    }
-
     return enqueueMutation(async () => {
       const next = updateContextAssetNode(persistedNodesRef.current, id, partial)
       const previousNode = findContextAssetNode(persistedNodesRef.current, id)
@@ -84,7 +77,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
 
       try {
         await commitContextAssetMutation({
-          mutate: () => input.api!.promptResources.updateAsset({
+          mutate: () => input.api.promptResources.updateAsset({
             resourceId,
             ...readPromptAssetPatch(nextNode),
           }),
@@ -104,12 +97,6 @@ export function useContextAssets(input: UseContextAssetsInput) {
 
   function updateContextAssets(updates: ContextAssetUpdate[]): Promise<void> {
     if (updates.length === 0) return Promise.resolve()
-    if (!input.api || input.resources.length === 0) {
-      const next = updates.reduce((current, update) => updateContextAssetNode(current, update.id, update.partial), nodesRef.current)
-      setNodes(next)
-      return Promise.resolve()
-    }
-
     return enqueueMutation(async () => {
       const next = updates.reduce((current, update) => updateContextAssetNode(current, update.id, update.partial), persistedNodesRef.current)
       const changedNodes = updates.flatMap(update => {
@@ -124,7 +111,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
 
       try {
         await commitContextAssetMutation({
-          mutate: () => input.api!.promptResources.updateAssets({
+          mutate: () => input.api.promptResources.updateAssets({
             resourceId,
             updates: changedNodes.map(node => readPromptAssetPatch(node)),
           }),
@@ -143,19 +130,13 @@ export function useContextAssets(input: UseContextAssetsInput) {
   }
 
   async function addContextAsset(parentId: string): Promise<string | undefined> {
-    if (!input.api || input.resources.length === 0) {
-      const mutation = addContextAssetNode(nodesRef.current, parentId)
-      setNodes(mutation.nodes)
-      return mutation.selectedId
-    }
-
     let nextSelectedId: string | undefined
     await enqueueMutation(async () => {
       const mutation = addContextAssetNode(persistedNodesRef.current, parentId)
       const asset = findContextAssetNode(mutation.nodes, mutation.selectedId)
       if (!asset || !mutation.selectedId) return
       const resourceId = readResourceId(parentId)
-      const result = await input.api!.promptResources.createAsset({
+      const result = await input.api.promptResources.createAsset({
         resourceId,
         targetAssetId: parentId,
         position: 'inside',
@@ -173,19 +154,13 @@ export function useContextAssets(input: UseContextAssetsInput) {
   }
 
   async function addContextAssetFolder(parentId: string): Promise<string | undefined> {
-    if (!input.api || input.resources.length === 0) {
-      const mutation = addContextAssetFolderNode(nodesRef.current, parentId)
-      setNodes(mutation.nodes)
-      return mutation.selectedId
-    }
-
     let nextSelectedId: string | undefined
     await enqueueMutation(async () => {
       const mutation = addContextAssetFolderNode(persistedNodesRef.current, parentId)
       const asset = findContextAssetNode(mutation.nodes, mutation.selectedId)
       if (!asset || !mutation.selectedId) return
       const resourceId = readResourceId(parentId)
-      const result = await input.api!.promptResources.createAsset({
+      const result = await input.api.promptResources.createAsset({
         resourceId,
         targetAssetId: parentId,
         position: 'inside',
@@ -203,17 +178,12 @@ export function useContextAssets(input: UseContextAssetsInput) {
   }
 
   function moveContextAsset(draggedId: string, targetId: string, position: 'before' | 'inside' | 'after'): Promise<void> {
-    if (!input.api || input.resources.length === 0) {
-      setNodes(moveContextAssetNode(nodesRef.current, draggedId, targetId, position))
-      return Promise.resolve()
-    }
-
     return enqueueMutation(async () => {
       const next = moveContextAssetNode(persistedNodesRef.current, draggedId, targetId, position)
       if (next === persistedNodesRef.current) return
       const resourceId = readResourceId(draggedId)
       if (readResourceId(targetId) !== resourceId) throw new Error('Cross-resource prompt asset move is not supported')
-      const result = await input.api!.promptResources.moveAsset({
+      const result = await input.api.promptResources.moveAsset({
         resourceId,
         assetId: draggedId,
         targetAssetId: targetId,
@@ -229,19 +199,13 @@ export function useContextAssets(input: UseContextAssetsInput) {
   }
 
   async function duplicateContextAsset(id: string): Promise<string | undefined> {
-    if (!input.api || input.resources.length === 0) {
-      const mutation = duplicateContextAssetNode(nodesRef.current, id)
-      setNodes(mutation.nodes)
-      return mutation.selectedId
-    }
-
     let nextSelectedId: string | undefined
     await enqueueMutation(async () => {
       const mutation = duplicateContextAssetNode(persistedNodesRef.current, id)
       const asset = findContextAssetNode(mutation.nodes, mutation.selectedId)
       if (!asset || !mutation.selectedId) return
       const resourceId = readResourceId(id)
-      const result = await input.api!.promptResources.createAsset({
+      const result = await input.api.promptResources.createAsset({
         resourceId,
         targetAssetId: id,
         position: 'after',
@@ -259,18 +223,12 @@ export function useContextAssets(input: UseContextAssetsInput) {
   }
 
   async function deleteContextAsset(id: string, currentSelectedId?: string): Promise<string | undefined> {
-    if (!input.api || input.resources.length === 0) {
-      const mutation = deleteContextAssetNode(nodesRef.current, id, currentSelectedId)
-      setNodes(mutation.nodes)
-      return mutation.selectedId
-    }
-
     let nextSelectedId: string | undefined
     await enqueueMutation(async () => {
       const mutation = deleteContextAssetNode(persistedNodesRef.current, id, currentSelectedId)
       if (mutation.nodes === persistedNodesRef.current) return
       const resourceId = readResourceId(id)
-      const result = await input.api!.promptResources.deleteAsset({
+      const result = await input.api.promptResources.deleteAsset({
         resourceId,
         assetId: id,
       })
@@ -290,19 +248,13 @@ export function useContextAssets(input: UseContextAssetsInput) {
     const targetResourceId = targetResource?.id ?? resourceId
     const targetAssetId = targetResource?.rootNode.id ?? resourceId
 
-    if (!input.api || input.resources.length === 0) {
-      const mutation = addContextAssetInZoneNode(nodesRef.current, targetAssetId, zoneId)
-      setNodes(mutation.nodes)
-      return mutation.selectedId
-    }
-
     let nextSelectedId: string | undefined
     await enqueueMutation(async () => {
       const mutation = addContextAssetInZoneNode(persistedNodesRef.current, targetAssetId, zoneId)
       const asset = findContextAssetNode(mutation.nodes, mutation.selectedId)
       if (!asset || !mutation.selectedId) return
 
-      const result = await input.api!.promptResources.createAsset({
+      const result = await input.api.promptResources.createAsset({
         resourceId: targetResourceId,
         targetAssetId,
         position: 'inside',

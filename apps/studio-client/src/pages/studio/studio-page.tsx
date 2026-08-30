@@ -13,6 +13,7 @@ import styles from './studio-page.module.scss'
 
 type StudioPageProps = {
   assetWorkspaceId: string
+  background?: ReactNode
   modelConfigured?: boolean
   busy: boolean
   canRedo: boolean
@@ -134,6 +135,11 @@ export function StudioPage(props: StudioPageProps) {
         className={styles.studioStage}
         data-loom-component="application-layer-stage"
       >
+        {props.background ? (
+          <div className={styles.stageBackground} data-loom-component="shell-background-layer">
+            {props.background}
+          </div>
+        ) : null}
         <div className={styles.stageBase} data-loom-component="base-chat-canvas-layer">
           {props.canvas}
         </div>

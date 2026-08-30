@@ -24,11 +24,6 @@ export function findCompositionItem(items: PromptCompositionItem[], id: string |
   return undefined
 }
 
-export function findCompositionBlock(items: PromptCompositionItem[], id: string | undefined): PromptMessageBlock | undefined {
-  const item = items.find(candidate => candidate.kind === 'message' && candidate.id === id)
-  return item?.kind === 'message' ? item : undefined
-}
-
 export function createMessageBlock(
   items: PromptCompositionItem[],
   role: PromptProviderRole = 'system',
@@ -105,21 +100,6 @@ export function removeCompositionItem(items: PromptCompositionItem[], id: string
     .map(item => item.kind === 'message'
       ? { ...item, items: item.items.filter(child => child.id !== id) }
       : item)
-}
-
-export function updateCompositionItem(
-  items: PromptCompositionItem[],
-  id: string,
-  update: (item: PromptCompositionItem) => PromptCompositionItem,
-): PromptCompositionItem[] {
-  return items.map(item => {
-    if (item.id === id) return update(item)
-    if (item.kind !== 'message') return item
-    return {
-      ...item,
-      items: item.items.map(child => child.id === id ? update(child) as Exclude<PromptCompositionItem, PromptMessageBlock> : child),
-    }
-  })
 }
 
 export function moveCompositionItem(items: PromptCompositionItem[], id: string, direction: 'up' | 'down'): PromptCompositionItem[] {

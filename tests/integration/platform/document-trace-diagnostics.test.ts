@@ -39,7 +39,6 @@ function createHarness() {
     traceAudit,
     extensionHost,
     loomRunner,
-    environment: 'test',
   })
 
   return { kernel, documents, diagnostics, traceAudit }
@@ -76,7 +75,6 @@ describe('document, trace, and diagnostics integration', () => {
     await kernel.start()
     kernel.getEventBus().subscribe(['docs.changed'], (event: StudioEvent) => events.push(event))
     const bridge = createBridge(kernel)
-    await bridge.connect()
 
     await bridge.call('docs.write', {
       id: 'doc-scenario:revision',
@@ -112,7 +110,6 @@ describe('document, trace, and diagnostics integration', () => {
     const { kernel } = createHarness()
     await kernel.start()
     const bridge = createBridge(kernel)
-    await bridge.connect()
 
     await bridge.call('docs.write', {
       id: 'doc-scenario:conflict',
@@ -138,7 +135,6 @@ describe('document, trace, and diagnostics integration', () => {
     await kernel.start()
     kernel.getEventBus().subscribe(['docs.*'], (event: StudioEvent) => events.push(event))
     const bridge = createBridge(kernel)
-    await bridge.connect()
     const created = await bridge.call<{ changesetId: string }>('docs.write', {
       id: 'doc-scenario:undo',
       type: 'example.documentScenario.note',
@@ -190,7 +186,6 @@ describe('document, trace, and diagnostics integration', () => {
     })
 
     const bridge = createBridge(kernel)
-    await bridge.connect()
     const result = await bridge.call<{ items: Array<{ id: string; meta: { ownerExtensionId?: string } }> }>('docs.list', { ownerExtensionId: 'example.ownerA' })
 
     expect(result.items).toHaveLength(1)
@@ -201,7 +196,6 @@ describe('document, trace, and diagnostics integration', () => {
     const { kernel } = createHarness()
     await kernel.start()
     const bridge = createBridge(kernel)
-    await bridge.connect()
 
     const run = await bridge.call<{ traceId?: string }>('loom.run', {
       fragments: [{ id: 'trace-scenario', content: 'trace visible', meta: { __owner: 'trace-scenario' } }],
@@ -222,7 +216,6 @@ describe('document, trace, and diagnostics integration', () => {
     await kernel.start()
     kernel.getEventBus().subscribe(['diagnostics.updated'], (event: StudioEvent) => events.push(event))
     const bridge = createBridge(kernel)
-    await bridge.connect()
 
     await bridge.call('loom.run', {
       fragments: [{ id: 'diagnostic-scenario', content: 'diagnostic', meta: {} }],

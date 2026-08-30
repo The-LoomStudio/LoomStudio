@@ -7,6 +7,14 @@ import type {
 import type { DocumentStore } from '@loom-studio/document-store'
 import type { AiGatewayCapabilityRegistry, ProviderAdapterRegistry } from '@loom-studio/ai-gateway'
 import type { DataActorRef, SqliteDataEngine } from '@loom-studio/data-engine'
+import type {
+  ExtensionAgentToolContribution,
+  ExtensionEntityRef,
+  ExtensionPromptResourceContribution,
+  ExtensionRecordEntry,
+  ExtensionStorageScope,
+} from '@loom-studio/extension-sdk'
+export type { ExtensionEntityRef, ExtensionRecordEntry, ExtensionStorageScope } from '@loom-studio/extension-sdk'
 import type { Logger } from '@loom-studio/logging'
 import type {
   NarrativeBranch,
@@ -21,7 +29,7 @@ import type { StateStore } from '@loom-studio/state-store'
 import type { PresetToolMount, PromptResourceStore, SettingMount, SettingMountSource } from '@loom-studio/prompt-resource-store'
 export type { PresetToolMount, SettingMount, SettingMountSource } from '@loom-studio/prompt-resource-store'
 import type { ActivationFacts, PromptActivation } from './prompt-activation.js'
-import type { AgentToolAnalysis, AgentToolRegistry, ToolDefinition } from './agent/tool-registry.js'
+import type { AgentToolRegistry, ToolDefinition } from './agent/tool-registry.js'
 import type {
   CompiledToolExposure,
   ToolPromptBuildTrace,
@@ -70,10 +78,13 @@ export type ApplicationRuntime = {
   projectHistory(input: { source: HistorySource; phase: TextTransformPhase }): Promise<{ snapshot: HistoryProjectionSnapshot }>
   extractHistory(input: { source: HistorySource; phase?: TextTransformPhase; extractorId: string }): Promise<{ extraction: TextExtractionResult; snapshot: HistoryProjectionSnapshot }>
   listRenderers(): Promise<{ renderers: RendererDefinition[] }>
+  listExtensionRecords(input: { packageId: string; scope?: ExtensionStorageScope; recordType?: string; binding?: ExtensionEntityRef }): Promise<{ records: ExtensionRecordEntry[] }>
+  getExtensionRecord(input: { packageId: string; recordId: string }): Promise<{ record: ExtensionRecordEntry | null }>
   createCard(input: CreateCardInput, context?: RuntimeRequestContext): Promise<CreateCardResult>
   getCard(input: GetCardInput): Promise<GetCardResult>
   listCards(input?: ListCardsInput): Promise<ListCardsResult>
   updateCard(input: UpdateCardInput, context?: RuntimeRequestContext): Promise<UpdateCardResult>
+  previewCardDeletion(input: PreviewCardDeletionInput): Promise<PreviewCardDeletionResult>
   deleteCard(input: DeleteCardInput, context?: RuntimeRequestContext): Promise<DeleteCardResult>
   listPortableExtensionPayloads(input?: ListPortableExtensionPayloadsInput): Promise<ListPortableExtensionPayloadsResult>
   getPortableExtensionPayload(input: GetPortableExtensionPayloadInput): Promise<GetPortableExtensionPayloadResult>
@@ -95,8 +106,9 @@ export type ApplicationRuntime = {
   listProviderModels(input: ListProviderModelsInput, context?: RuntimeRequestContext): Promise<ListProviderModelsResult>
   pingProviderModel(input: PingProviderModelInput, context?: RuntimeRequestContext): Promise<PingProviderModelResult>
   listAgentTools(): Promise<{ tools: AgentToolEntry[] }>
+  importExtensionPackageResources(input: ImportExtensionPackageResourcesInput, context?: RuntimeRequestContext): Promise<ImportExtensionPackageResourcesResult>
+  removeExtensionPackageResources(input: RemoveExtensionPackageResourcesInput, context?: RuntimeRequestContext): Promise<RemoveExtensionPackageResourcesResult>
   updateAgentTool(input: UpdateAgentToolInput): Promise<UpdateAgentToolResult>
-  analyzeAgentTools(input: { agentProfileId: string }): Promise<{ analysis: AgentToolAnalysis }>
   listPresetToolMounts(input?: ListPresetToolMountsInput): Promise<ListPresetToolMountsResult>
   replacePresetToolMounts(input: ReplacePresetToolMountsInput, context?: RuntimeRequestContext): Promise<ReplacePresetToolMountsResult>
   createAgentProfile(input: CreateAgentProfileInput): Promise<CreateAgentProfileResult>
@@ -119,7 +131,6 @@ export type ApplicationRuntime = {
   switchNarrativeBranch(input: SwitchNarrativeBranchInput, context?: RuntimeRequestContext): Promise<SwitchNarrativeBranchResult>
   deleteNarrativeTimeline(input: DeleteNarrativeTimelineInput, context?: RuntimeRequestContext): Promise<DeleteNarrativeTimelineResult>
   importCardBundle(input: ImportCardBundleInput, context?: RuntimeRequestContext): Promise<ImportCardBundleResult>
-  getImportBundle(input: GetImportBundleInput): Promise<GetImportBundleResult>
   getPromptResource(input: GetPromptResourceInput): Promise<GetPromptResourceResult>
   listPromptResources(input?: ListPromptResourcesInput): Promise<ListPromptResourcesResult>
   createPromptResource(input: CreatePromptResourceInput, context?: RuntimeRequestContext): Promise<CreatePromptResourceResult>
@@ -129,7 +140,6 @@ export type ApplicationRuntime = {
   revertChangeset(input: { changesetId: string }, context?: RuntimeRequestContext): Promise<{ mutation: MutationReceipt }>
   importPromptResource(input: ImportPromptResourceInput, context?: RuntimeRequestContext): Promise<CreatePromptResourceResult>
   exportPromptResource(input: ExportPromptResourceInput): Promise<ExportPromptResourceResult>
-  listCardPromptResources(input: ListCardPromptResourcesInput): Promise<ListCardPromptResourcesResult>
   updateCardPromptResources(input: UpdateCardPromptResourcesInput, context?: RuntimeRequestContext): Promise<UpdateCardPromptResourcesResult>
   listSettingMounts(input?: ListSettingMountsInput): Promise<ListSettingMountsResult>
   replaceSettingMounts(input: ReplaceSettingMountsInput, context?: RuntimeRequestContext): Promise<ReplaceSettingMountsResult>
@@ -221,6 +231,19 @@ export type TimelineStateBinding = {
   templateId: string
   templateVersion: number
   initial?: JsonObject
+}
+
+export type TimelineRuntimeContextContent = {
+  timelineId: string
+  sourceCardId: string
+  sourceCardVersion: number
+  fallbackUserName: string
+  stateBindings: Array<{
+    path: string
+    schema: JsonObject
+  }>
+  textTransformRules: TextTransformRuleEntry[]
+  createdAt: string
 }
 
 export type ListStateDefinitionsInput = {
@@ -679,6 +702,21 @@ export type UpdateCardResult = {
 
 export type DeleteCardInput = {
   cardId: string
+  includePlayData?: boolean
+}
+
+export type PreviewCardDeletionInput = {
+  cardId: string
+}
+
+export type PreviewCardDeletionResult = {
+  cardId: string
+  timelines: Array<{ id: string; title?: string }>
+  extensionData: {
+    cardScoped: { configs: number; records: number }
+    timelineScoped: { configs: number; records: number }
+  }
+  textTransformRuleIds: string[]
 }
 
 export type DeleteCardResult = {
@@ -955,14 +993,6 @@ export type ImportCardBundleResult = {
   importBundle: ImportBundleContent & { id: string; version: number }
 }
 
-export type GetImportBundleInput = {
-  importBundleId: string
-}
-
-export type GetImportBundleResult = {
-  importBundle: ImportBundleContent & { id: string; version: number }
-}
-
 export type GetPromptResourceInput = {
   resourceId: string
 }
@@ -1027,14 +1057,6 @@ export type ExportPromptResourceInput = {
 
 export type ExportPromptResourceResult = {
   artifact: PromptResourceArtifact
-}
-
-export type ListCardPromptResourcesInput = {
-  cardId: string
-}
-
-export type ListCardPromptResourcesResult = {
-  resources: Array<PromptResourceContent & { id: string; version: number }>
 }
 
 export type UpdateCardPromptResourcesInput = {
@@ -1138,11 +1160,13 @@ export type AgentProfileContent = {
 }
 
 export type AgentToolContent = Omit<ToolDefinition, 'id'> & {
+  origin?: ExtensionPackageResourceOrigin
   createdAt: string
   updatedAt: string
 }
 
 export type AgentToolEntry = ToolDefinition & {
+  origin?: ExtensionPackageResourceOrigin
   version: number
   createdAt: string
   updatedAt: string
@@ -1156,6 +1180,49 @@ export type UpdateAgentToolInput = {
 
 export type UpdateAgentToolResult = {
   tool: AgentToolEntry
+}
+
+export type ExtensionPackageResourceOrigin = {
+  kind: 'extension-package'
+  packageId: string
+  packageVersion: string
+  contributionId: string
+}
+
+export type ImportExtensionPackageResourcesInput = {
+  packageId: string
+  packageVersion: string
+  promptResources: Array<{
+    contribution: ExtensionPromptResourceContribution
+    artifact: JsonValue
+  }>
+  agentTools: Array<{
+    contribution: ExtensionAgentToolContribution
+    definition: JsonValue
+  }>
+}
+
+export type ImportExtensionPackageResourcesResult = {
+  promptResources: Array<{ contributionId: string; resourceId: string; resourceKind: PromptResourceKind }>
+  agentTools: Array<{ contributionId: string; toolId: string }>
+  mutation?: MutationReceipt
+}
+
+export type RemoveExtensionPackageResourcesInput = {
+  packageId: string
+}
+
+export type RemoveExtensionPackageResourcesResult = {
+  packageId: string
+  promptResourceIds: string[]
+  agentToolIds: string[]
+  detachedReferences: {
+    cards: number
+    timelines: number
+    agentProfiles: number
+    presetToolMounts: number
+  }
+  mutation?: MutationReceipt
 }
 
 export type CardSourceContent = {

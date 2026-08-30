@@ -1,6 +1,6 @@
 # AIRP Extension Contribution v0
 
-> **状态**：Open Design  
+> **状态**：Partial Implementation
 > **主题**：Extension 如何贡献 Studio Application 领域能力。
 
 ---
@@ -44,6 +44,8 @@ Runtime:
 ```
 
 ### 2.2 Tool 贡献
+
+当前已实现最小链：Package 顶层 `contributes.agentTools` 声明 Definition JSON；显式导入后进入 `airp.agentTool` 与 Preset Tool Mount；Server Module 用 `contributes.agentToolHandlers` 和 `ctx.agentTools.register()` 注册生命周期绑定的 Handler。权限/Consent 的细粒度产品合同仍待后续阶段。
 
 ```text
 manifest declares:

@@ -1,7 +1,7 @@
 import type { AiGateway } from '@loom-studio/application-runtime'
 import { createMemoryLogSink, createRootLogger } from '@loom-studio/logging'
 import { describe, expect, it } from 'vitest'
-import { withAiGatewayLogging } from '../../../apps/studio-server/src/ai-gateway-logging.js'
+import { withAiGatewayLogging } from '../../../apps/studio-server/src/logging/ai-gateway-logging.js'
 
 describe('AI gateway logging', () => {
   it('preserves optional model discovery capability', async () => {

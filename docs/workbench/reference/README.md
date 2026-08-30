@@ -10,3 +10,4 @@
 - [`oh-my-pi-architecture-and-engineering-reference.md`](oh-my-pi-architecture-and-engineering-reference.md) — oh-my-pi 与 LoomStudio 的 Agent Runtime、生态和工程实践对照审计
 - [`pulsarai-architecture-and-product-reference.md`](pulsarai-architecture-and-product-reference.md) — PulsarAI 与 LoomStudio 的生成流程、Plugin、记忆、产品和安全边界对照审计
 - [`plugin-ecosystem-architecture-reference.md`](plugin-ecosystem-architecture-reference.md) — oh-my-pi、PulsarAI 与 LoomStudio 的插件分发、Manifest、Prompt/CTX、权限、注册和卸载横向参考
+- [`ecosystem-audit-improvement-summary.md`](ecosystem-audit-improvement-summary.md) — 三方 Reference 审计提炼出的 LoomStudio 改进优先级、边界与后续 Workbench 课题

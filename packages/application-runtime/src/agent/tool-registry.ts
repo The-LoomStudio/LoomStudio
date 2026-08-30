@@ -186,6 +186,7 @@ export type AgentToolAnalysis = {
 export type AgentToolRegistry = {
   list(): ToolDefinition[]
   replaceDefinitions(definitions: readonly ToolDefinition[]): void
+  registerRuntime(registration: ToolRuntimeRegistration): { dispose(): void }
   resolve(toolIds: readonly string[]): ResolvedAgentTools
   validateInvocation(invocation: ToolInvocation): ToolInvocationValidation
   getRegistration(toolId: string): ToolRuntimeRegistration | undefined
@@ -206,7 +207,7 @@ export function createAgentToolRegistry(
 
   const registrations = new Map<string, ToolRuntimeRegistration>()
   for (const registration of runtimeRegistrations) {
-    validateRuntimeRegistration(registration, byId)
+    validateRuntimeRegistration(registration)
     if (registrations.has(registration.toolId))
       throw new Error(
         `Duplicate agent tool runtime registration: ${registration.toolId}`,
@@ -218,12 +219,20 @@ export function createAgentToolRegistry(
     list: () => [...tools],
     replaceDefinitions: (definitions) => {
       const next = buildDefinitionIndex(definitions)
-      for (const toolId of registrations.keys()) {
-        if (!next.byId.has(toolId))
-          throw new Error(`Agent tool definition is required by a runtime registration: ${toolId}`)
-      }
       tools = next.tools
       byId = next.byId
+    },
+    registerRuntime: registration => {
+      validateRuntimeRegistration(registration)
+      if (registrations.has(registration.toolId)) {
+        throw new Error(`Duplicate agent tool runtime registration: ${registration.toolId}`)
+      }
+      registrations.set(registration.toolId, registration)
+      return {
+        dispose: () => {
+          if (registrations.get(registration.toolId) === registration) registrations.delete(registration.toolId)
+        },
+      }
     },
     resolve: (toolIds) => resolveTools(toolIds, byId),
     validateInvocation: (invocation) => validateInvocation(invocation, byId),
@@ -252,14 +261,9 @@ function buildDefinitionIndex(definitions: readonly ToolDefinition[]): {
 
 function validateRuntimeRegistration(
   registration: ToolRuntimeRegistration,
-  byId: ReadonlyMap<string, ToolDefinition>,
 ): void {
   if (!isNonEmptyString(registration.toolId))
     throw new Error('Agent tool runtime registration toolId cannot be empty')
-  if (!byId.has(registration.toolId))
-    throw new Error(
-      `Agent tool runtime registration has no matching definition: ${registration.toolId}`,
-    )
   if (typeof registration.execute !== 'function')
     throw new Error(
       `Agent tool runtime registration executor is invalid: ${registration.toolId}`,

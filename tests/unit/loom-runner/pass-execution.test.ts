@@ -15,6 +15,7 @@ function createTestKernel(traceAudit: TraceAuditStore = createInMemoryTraceAudit
     activateAll: async () => [],
     reload: async () => { throw new Error('not implemented') },
     dispose: async () => {},
+    forget: async () => {},
     disposeAll: async () => {},
     list: () => [],
     diagnostics: () => [],
@@ -27,7 +28,6 @@ function createTestKernel(traceAudit: TraceAuditStore = createInMemoryTraceAudit
     traceAudit,
     extensionHost,
     loomRunner,
-    environment: 'test',
   })
 
   return { kernel, diagnostics, traceAudit }

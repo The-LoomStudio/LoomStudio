@@ -81,7 +81,7 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
         return session
       },
       appendEntries: (input) => {
-        const session = requireActiveSession(database, input.agentSessionId)
+        const session = requireSession(database, input.agentSessionId)
         if (
           !Number.isInteger(input.expectedEntryCount) ||
           input.expectedEntryCount < 0
@@ -140,7 +140,7 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
         }
       },
       deleteSession: (input) => {
-        const session = requireActiveSession(database, input.agentSessionId)
+        const session = requireSession(database, input.agentSessionId)
         const deletedAt = now()
         database
           .prepare(
@@ -323,7 +323,7 @@ function readEntryPage(
   database: DatabaseSync,
   input: { agentSessionId: string; cursor?: string; limit?: number },
 ): AgentTranscriptPage {
-  const session = requireActiveSession(database, input.agentSessionId)
+  const session = requireSession(database, input.agentSessionId)
   const limit = input.limit ?? defaultPageLimit
   if (!Number.isInteger(limit) || limit < 1 || limit > maximumPageLimit)
     throw new AgentStoreError(
@@ -386,12 +386,6 @@ function requireSession(
       `Agent session not found: ${id}`,
     )
   return session
-}
-function requireActiveSession(
-  database: DatabaseSync,
-  id: string,
-): AgentSession {
-  return requireSession(database, id)
 }
 function readEntry(
   database: DatabaseSync,

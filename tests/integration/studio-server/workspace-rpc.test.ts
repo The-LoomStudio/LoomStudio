@@ -9,18 +9,15 @@ describe('studio server card bundle rpc integration', () => {
     await withStudioServer(async port => {
       const imported = await callRpc<{
         card: { id: string; importBundleId: string; promptResourceIds: string[] }
-        importBundle: { id: string }
-      }>(port, 'application.importCardBundle', { artifact: await readLoomCityArtifact() })
-      const listed = await callRpc<{
-        resources: Array<{ id: string; rootNode: CardBundleArtifact['contextAssets'][number] }>
-      }>(port, 'application.listCardPromptResources', { cardId: imported.card.id })
-      const bundle = await callRpc<{
         importBundle: { id: string; cardId: string; sourceArtifactRef: { format: string } }
-      }>(port, 'application.getImportBundle', { importBundleId: imported.importBundle.id })
+      }>(port, 'application.importCardBundle', { artifact: await readLoomCityArtifact() })
+      const resources = await Promise.all(imported.card.promptResourceIds.map(async resourceId => (
+        await callRpc<{ resource: { id: string } }>(port, 'application.getPromptResource', { resourceId })
+      ).resource))
 
-      expect(listed.resources.map(resource => resource.id)).toEqual(imported.card.promptResourceIds)
+      expect(resources.map(resource => resource.id)).toEqual(imported.card.promptResourceIds)
       expect(imported.card.importBundleId).toBe(imported.importBundle.id)
-      expect(bundle.importBundle).toMatchObject({
+      expect(imported.importBundle).toMatchObject({
         id: imported.importBundle.id,
         cardId: imported.card.id,
         sourceArtifactRef: { format: 'loom.cardBundle' },
@@ -68,10 +65,12 @@ describe('studio server card bundle rpc integration', () => {
       const imported = await callRpc<{
         card: { id: string; promptResourceIds: string[] }
       }>(port, 'application.importCardBundle', { artifact: await readLoomCityArtifact() })
-      const listed = await callRpc<{
-        resources: Array<{ id: string; rootNode: CardBundleArtifact['contextAssets'][number] }>
-      }>(port, 'application.listCardPromptResources', { cardId: imported.card.id })
-      const preset = listed.resources.find(resource => resource.rootNode.id === 'preset-default-airp')
+      const resources = await Promise.all(imported.card.promptResourceIds.map(async resourceId => (
+        await callRpc<{
+          resource: { id: string; rootNode: CardBundleArtifact['contextAssets'][number] }
+        }>(port, 'application.getPromptResource', { resourceId })
+      ).resource))
+      const preset = resources.find(resource => resource.rootNode.id === 'preset-default-airp')
       if (!preset) throw new Error('Expected preset resource')
 
       const updated = await callRpc<{

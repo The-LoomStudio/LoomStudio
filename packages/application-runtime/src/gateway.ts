@@ -73,7 +73,7 @@ export function createDocumentBackedProfiledAiGateway(options: {
 
 export function createFakeAiGateway(): AiGateway {
   return {
-    invokeChat: input => invokeFakeChat(input, {}),
+    invokeChat: input => invokeFakeChat(input),
   }
 }
 

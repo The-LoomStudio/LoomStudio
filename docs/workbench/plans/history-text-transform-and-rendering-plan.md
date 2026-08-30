@@ -1,12 +1,14 @@
 # History Text Transform、Reasoning Promotion 与 Rendering 实施计划
 
-> **状态**：Phase 0—5 基础闭环已实施；Extension Renderer 注册与正式 Archive/Summary 字段保留为后续增强
+> **状态**：Phase 0—5 基础闭环已实施；Extension Renderer 已拆入 [`renderer-surface-and-client-host-implementation-plan.md`](renderer-surface-and-client-host-implementation-plan.md)，正式 Archive/Summary 字段保留为后续增强
 >
 > **日期**：2026-08-26
 >
 > **目标**：只围绕 Narrative History 与 Agent Session History 建立受控的文本匹配、替换、内容分类、派生数据和渲染投影管线；不复制 SillyTavern 面向任意世界书、快捷命令和 Provider 内部字段的泛化 Regex 范围。
 >
-> **实施事实**：Regex Rule / Extractor Document、History Projection、Reasoning Entry、Prompt 接入、RPC/Client API、集中 Workbench、Dry Run、Host Renderer Registry 与 UI Slot Host 已存在。正式 Archive/Summary Store 字段与第三方 Client Renderer 注册尚未实现。
+> **实施事实**：Regex Rule / Extractor Document、History Projection、Reasoning Entry、Prompt 接入、RPC/Client API、集中 Workbench、Dry Run、内置 Artifact Renderer 与 UI Slot Host 已存在；第三方 Client Renderer、Surface 与 Node Render Mount 已由独立计划实现。正式 Archive/Summary Store 字段仍未实现。
+
+> **后续施工边界**：本计划中的 Phase 4 记录基础 Host Slot 的历史实施目标；动态 Client Module、正式 Surface 冲突仲裁、Tail / Focus / Workspace Panel 和 Node Render Mount 接缝以新的 Renderer 实施计划为准。
 
 ## 1. 决策摘要
 
@@ -41,7 +43,7 @@ Prompt / Display / Extractor / Extension 消费冻结后的阶段产物。
 - Prompt Build 已将 Narrative History 与 Session History 投影到不同 Zone / Slot，并使用 `@loom/core` Pass、Trace 与 Diagnostics；
 - Variable / State 已有冻结 Snapshot 与 Macro Renderer，不需要 Regex 承担变量赋值；
 - 当前没有统一 Regex Rule Definition、RuleSet Mount、History Projection API、Text Extractor、DisplayPart Registry 或 Client Extension Host；
-- 当前 Extension Host 主要是 Server Module 生命周期和能力边界，不是不可信 Client Renderer 的 iframe sandbox。
+- 当前 Client Extension Host 已提供 Direct、Shadow 与 sandbox iframe Renderer Adapter，但 Client Module 本身仍是受信任同源代码；iframe 不能被描述成整个插件的不可信代码沙箱。
 
 ## 3. 正式概念边界
 

@@ -71,7 +71,7 @@
 
 ### 🟡 [中] 4. `studio-server` 顶级平铺与单一聚合路由过大
 
-**文件：** [`apps/studio-server/src/application-rpc.ts`](../../../apps/studio-server/src/application-rpc.ts) (766 行)
+**文件：** [`apps/studio-server/src/rpc/handlers/application/index.ts`](../../../apps/studio-server/src/rpc/handlers/application/index.ts) (历史原文件：`application-rpc.ts`)
 
 **现象分析：**
 - `application-rpc.ts` 用一个庞大的 `switch(method)` 承载了 50 多个 RPC 的参数读取与转发。

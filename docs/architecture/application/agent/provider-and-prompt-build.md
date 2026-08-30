@@ -64,7 +64,7 @@ Content Tool runtime contributions
   -> PromptBuild Source / Contribution / Slot Rank
 ```
 
-Tool Prompt Build 使用 Loom Core Pass 执行模板、Activation 和排序，但 Tool Registry、Executor 与 Provider wire mapping 不进入 Loom Core。
+Tool Prompt Build 直接执行模板、Activation 和排序；Tool Registry、Executor 与 Provider wire mapping 都不进入 Loom Core。
 
 ## 5. Preset 主排序视图
 

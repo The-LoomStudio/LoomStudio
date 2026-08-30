@@ -5,6 +5,7 @@ import type { ApplicationRuntimeContext } from './application-context.js'
 import { applicationDocumentTypes } from './document-types.js'
 import { listDocuments } from './document-store.js'
 import { validateStateValue } from './state-definition.js'
+import { readTimelineRuntimeContext } from './timeline-runtime-context.js'
 import type {
   ApplyStateMutationInput,
   ApplyStateMutationResult,
@@ -371,6 +372,15 @@ async function validateSnapshotAgainstDefinitions(
         throw new ApplicationStateError('state.read_only', `Read-only State value cannot be changed: ${definition.content.path}`)
       }
       if (value.found) validateStateValue(value.value, definition.content.schema, definition.content.path)
+    }
+    return
+  }
+  const runtimeContext = await readTimelineRuntimeContext(ctx, target.timelineId)
+  if (runtimeContext) {
+    for (const binding of runtimeContext.stateBindings) {
+      const value = readDotPath(snapshot, binding.path)
+      if (!value.found) throw new ApplicationStateError('state.schema_required', `Bound Timeline State is missing: timeline.${binding.path}`)
+      validateStateValue(value.value, binding.schema, `timeline.${binding.path}`)
     }
     return
   }

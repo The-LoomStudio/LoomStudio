@@ -57,7 +57,7 @@
 ### 🟡 [中] 3. 形式主义单测（Trivial / Low-Value Tests）
 
 **文件：**
-- [`tests/unit/client/narrative-runtime.test.ts`](../../../tests/unit/client/narrative-runtime.test.ts) (17 行)
+- `tests/unit/client/narrative-runtime.test.ts`（历史文件，17 行，现已删除）
 - [`tests/unit/client/activation-control.test.ts`](../../../tests/unit/client/activation-control.test.ts) (23 行)
 
 **现象分析：**

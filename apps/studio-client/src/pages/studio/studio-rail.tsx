@@ -1,4 +1,3 @@
-import { Blocks } from 'lucide-react'
 import type { Translator } from '../../shared/i18n/index.js'
 import type { StudioPanelId } from './model/studio-layout-store.js'
 import { STUDIO_PANEL_PRESENTATION } from './model/studio-panel-presentation.js'
@@ -44,16 +43,7 @@ export function StudioRail(props: StudioRailProps) {
       <span className={`loom-divider ${styles.railDivider}`} aria-hidden="true" />
       <RailTab activePanel={props.activePanel} panel="inspector" t={props.t} togglePanel={props.togglePanel} />
       <RailTab activePanel={props.activePanel} panel="logs" t={props.t} togglePanel={props.togglePanel} />
-      <button
-        aria-label={props.t('rail.extensions')}
-        className={styles.railTab}
-        disabled
-        title={props.t('rail.extensions')}
-        type="button"
-      >
-        <Blocks aria-hidden="true" />
-        <span className={styles.railLabel}>{props.t('rail.extensions')}</span>
-      </button>
+      <RailTab activePanel={props.activePanel} panel="extensions" t={props.t} togglePanel={props.togglePanel} />
       <RailTab activePanel={props.activePanel} panel="settings" t={props.t} togglePanel={props.togglePanel} />
       {props.activePanel !== null ? (
         <footer className={styles.railFooter}>

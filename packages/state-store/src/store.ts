@@ -9,7 +9,6 @@ import type {
   CreateStateRevisionInput,
   CreateStateRevisionResult,
   CreateStateScopeInput,
-  SetGlobalStateHeadInput,
   StateRevision,
   StateScope,
   StateScopeKind,

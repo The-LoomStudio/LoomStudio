@@ -27,6 +27,7 @@ type PersistedExtensionState = {
 export type ExtensionStateStore = {
   load(): Promise<void>
   get(packageId: string, moduleId: string): ExtensionModuleDesiredState | undefined
+  deletePackage(packageId: string): Promise<boolean>
   set(
     packageId: string,
     moduleId: string,
@@ -52,6 +53,20 @@ export function createExtensionStateStore(options: {
       assertLoaded(loaded)
       const entry = state.packages[packageId]?.modules[moduleId]
       return entry ? toDesiredState(entry) : undefined
+    },
+    deletePackage: async packageId => {
+      assertLoaded(loaded)
+      if (!state.packages[packageId]) return false
+      const operation = writeQueue.then(async () => {
+        const packages = { ...state.packages }
+        delete packages[packageId]
+        const next: PersistedExtensionState = { version: 3, packages }
+        await writeState(options.filename, next)
+        state = next
+      })
+      writeQueue = operation.then(() => undefined, () => undefined)
+      await operation
+      return true
     },
     set: async (packageId, moduleId, input) => {
       assertLoaded(loaded)

@@ -1,5 +1,4 @@
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
-import { runPasses, type Fragment, type Pass } from '@loom/core'
 import { renderVariableMacros, type VariableRenderContext } from '../variables.js'
 import {
   evaluatePromptActivation,
@@ -79,11 +78,6 @@ export type ToolPromptBuildTrace = {
   effectiveOrder: string[]
   activations: ToolPromptActivationTrace[]
   orders: ToolPromptOrderTrace[]
-  coreExecutions: Array<{
-    passName: string
-    passIndex: number
-    mutationCount: number
-  }>
 }
 
 export type ToolPromptBuildResult = {
@@ -105,52 +99,16 @@ export type ToolPromptBuildInput = {
 export function compileToolPromptSources(
   input: ToolPromptBuildInput,
 ): ToolPromptBuildResult {
-  const initial = input.sources.map(
-    (source, sourceIndex): Fragment<ToolPromptCoreMeta> => ({
-      id: `tool.prompt:${source.tool.id}`,
-      content: source.template.description,
-      meta: { toolPrompt: { source, sourceIndex } },
+  const requested = input.sources.map((source, sourceIndex) => ({
+    source,
+    sourceIndex,
+    activation: evaluatePromptActivation({
+      activation: source.activation,
+      currentInput: input.currentInput,
+      facts: input.activationFacts,
     }),
-  )
-  const passes: Pass<ToolPromptCoreMeta>[] = [
-    {
-      name: 'tool.prompt.materialize',
-      version: '1',
-      run: (fragments) =>
-        fragments.map((fragment) => {
-          const meta = readSourceCoreMeta(fragment)
-          const activation = evaluatePromptActivation({
-            activation: meta.source.activation,
-            currentInput: input.currentInput,
-            facts: input.activationFacts,
-          })
-          const prompt = compilePromptTemplate(
-            meta.source.template,
-            input.variables,
-          )
-          return {
-            ...fragment,
-            content: prompt.description,
-            meta: {
-              ...fragment.meta,
-              toolPrompt: { ...meta, activation, prompt },
-            },
-          }
-        }),
-    },
-    {
-      name: 'tool.prompt.order',
-      version: '1',
-      run: (fragments) =>
-        [...fragments].sort((left, right) =>
-          compareRequestedOrder(readCoreMeta(left), readCoreMeta(right)),
-        ),
-    },
-  ]
-  const core = runPasses({ fragments: initial, passes })
-  if (core.status === 'error')
-    throw new Error(core.error?.message ?? 'Tool Prompt Build failed')
-  const requested = core.fragments.map(readCoreMeta)
+    prompt: compilePromptTemplate(source.template, input.variables),
+  })).sort(compareRequestedOrder)
   const active = requested.filter(item => item.activation.active)
   assertUniqueExposedNames(active)
   const requestedIndexByToolId = new Map(
@@ -206,11 +164,6 @@ export function compileToolPromptSources(
           ? {}
           : { providerOrder: item.source.providerOrder }),
       })),
-      coreExecutions: core.trace.executions.map((execution) => ({
-        passName: execution.passName,
-        passIndex: execution.passIndex,
-        mutationCount: execution.mutations.length,
-      })),
     },
   }
 }
@@ -227,42 +180,6 @@ function assertUniqueExposedNames(
       )
     }
     toolIdByName.set(item.source.tool.name, item.source.tool.id)
-  }
-}
-
-type ToolPromptCoreMeta = {
-  toolPrompt: {
-    source: ToolPromptSource
-    sourceIndex: number
-    activation?: ReturnType<typeof evaluatePromptActivation>
-    prompt?: CompiledToolPrompt
-  }
-}
-
-function readSourceCoreMeta(fragment: Fragment<ToolPromptCoreMeta>): {
-  source: ToolPromptSource
-  sourceIndex: number
-} {
-  const meta = fragment.meta?.toolPrompt
-  if (!meta)
-    throw new Error(`Tool Prompt fragment has no source meta: ${fragment.id}`)
-  return { source: meta.source, sourceIndex: meta.sourceIndex }
-}
-
-function readCoreMeta(fragment: Fragment<ToolPromptCoreMeta>): {
-  source: ToolPromptSource
-  sourceIndex: number
-  activation: ReturnType<typeof evaluatePromptActivation>
-  prompt: CompiledToolPrompt
-} {
-  const meta = fragment.meta?.toolPrompt
-  if (!meta?.activation || !meta.prompt)
-    throw new Error(`Tool Prompt fragment is not materialized: ${fragment.id}`)
-  return {
-    source: meta.source,
-    sourceIndex: meta.sourceIndex,
-    activation: meta.activation,
-    prompt: meta.prompt,
   }
 }
 

@@ -2,9 +2,6 @@ import { defineConfig } from 'vitest/config'
 
 const testScope = process.env.LOOM_TEST_SCOPE
 const defaultTestInclude = [
-  'packages/**/*.test.ts',
-  'apps/**/*.test.ts',
-  'extensions/**/*.test.ts',
   'tests/unit/**/*.test.ts',
   'tests/contract/**/*.test.ts',
   'tests/integration/**/*.test.ts',

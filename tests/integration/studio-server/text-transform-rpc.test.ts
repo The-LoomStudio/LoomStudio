@@ -25,7 +25,9 @@ describe('Studio Server text transform RPC', () => {
         },
       })
       await expect(callRpc(port, 'application.listTextExtractors', {})).resolves.toMatchObject({ extractors: [{ id: 'workspace.world-state' }] })
-      await expect(callRpc(port, 'application.listRenderers', {})).resolves.toMatchObject({ renderers: [{ id: 'official/json-artifact', slot: 'studio.panel' }] })
+      await expect(callRpc(port, 'application.listRenderers', {})).resolves.toMatchObject({
+        renderers: [{ id: 'official/json-artifact', surface: 'shell.workspace-panel', instanceScope: 'workspace' }],
+      })
     })
   })
 })

@@ -1,5 +1,5 @@
 import { createStudioServer } from '../../../apps/studio-server/src/main.js'
-import { resolveLoomStudioLocalPaths } from '../../../apps/studio-server/src/local-paths.js'
+import { resolveLoomStudioLocalPaths } from '../../../apps/studio-server/src/platform/local-paths.js'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

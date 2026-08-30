@@ -24,6 +24,15 @@
   box-shadow: none;
 }
 
+.sheet {
+  min-width: 0;
+  max-height: min(42vh, 420px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border-bottom: 1px solid var(--loom-color-border);
+  padding: 4px 2px 8px;
+}
+
 .expansionShell {
   height: 0;
   min-height: 0;
@@ -186,6 +195,10 @@
 
   .composerActions {
     justify-content: flex-end;
+  }
+
+  .sheet {
+    max-height: min(36vh, 300px);
   }
 
 }

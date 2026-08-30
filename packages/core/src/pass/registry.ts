@@ -40,10 +40,6 @@ export class PassRegistry<M = unknown> {
     this.factories.set(factory.name, factory as PassFactory<unknown, M>)
   }
 
-  has(name: string): boolean {
-    return this.factories.has(name)
-  }
-
   create(config: PassConfig, passIndex?: number): Pass<M> {
     const factory = this.factories.get(config.name)
     if (!factory) {

@@ -317,11 +317,36 @@ describe('application runtime card bundle integration', () => {
     })).resolves.toMatchObject({ deleted: true })
   })
 
+  it('deletes Text Transform Rules owned by a deleted Card or Preset', async () => {
+    const { runtime } = createTestRuntime()
+    const card = await runtime.createCard({ name: 'Rule Owner Card' })
+    const preset = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Rule Owner Preset' })
+    const rule = (owner: { kind: 'card'; cardId: string } | { kind: 'preset'; presetId: string }) => ({
+      name: 'Owned Rule',
+      owner,
+      enabled: true,
+      orderIndex: 0,
+      matcher: { kind: 'regex' as const, pattern: 'owned', flags: 'g' },
+      effect: { kind: 'replace' as const, replacement: '' },
+      targets: ['narrative' as const],
+      phases: ['display' as const],
+    })
+    await runtime.upsertTextTransformRule({ ruleId: 'card-owned-rule', rule: rule({ kind: 'card', cardId: card.card.id }) })
+    await runtime.upsertTextTransformRule({ ruleId: 'preset-owned-rule', rule: rule({ kind: 'preset', presetId: preset.resource.id }) })
+
+    await runtime.deleteCard({ cardId: card.card.id })
+    await runtime.deletePromptResource({ resourceId: preset.resource.id })
+
+    await expect(runtime.listTextTransformRules()).resolves.toEqual({ rules: [] })
+  })
+
   it('edits a resource directly and exports the current card bundle', async () => {
     const { runtime } = createTestRuntime()
     const imported = await runtime.importCardBundle({ artifact: await readLoomCityArtifact() })
-    const listed = await runtime.listCardPromptResources({ cardId: imported.card.id })
-    const preset = listed.resources.find(resource => resource.rootNode.id === 'preset-default-airp')
+    const resources = await Promise.all(imported.card.promptResourceIds.map(async resourceId => (
+      await runtime.getPromptResource({ resourceId })
+    ).resource))
+    const preset = resources.find(resource => resource.rootNode.id === 'preset-default-airp')
     if (!preset) throw new Error('Expected preset resource')
 
     await runtime.updatePromptResourceAsset({

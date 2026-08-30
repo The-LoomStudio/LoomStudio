@@ -12,7 +12,6 @@ export {
 export { composeAgentTurnPrompt } from './agent-turn.js'
 export {
   exportCardArtifact,
-  getImportBundle,
   importCardBundle,
   isPromptResourceArtifact,
   isCardBundleArtifact,

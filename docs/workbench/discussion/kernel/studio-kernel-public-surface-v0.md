@@ -240,7 +240,6 @@ sillytavern.workspace.import
 
 ```text
 system.ping
-system.getInfo
 system.introspect
 ```
 

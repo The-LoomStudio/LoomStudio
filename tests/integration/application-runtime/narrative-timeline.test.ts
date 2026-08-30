@@ -19,6 +19,51 @@ function createTestRuntime() {
 }
 
 describe('application narrative timeline lifecycle', () => {
+  it('keeps Timeline runtime dependencies after deleting its source Card', async () => {
+    const { engine, runtime } = createTestRuntime()
+    const imported = await runtime.importCardBundle({ artifact: {
+      schemaVersion: 2,
+      artifactId: 'detached-card',
+      displayName: 'Detached Card',
+      card: { name: 'Detached Card', opening: { entries: [{ content: 'Ready.' }] } },
+      contextAssets: [],
+      stateTemplates: [{
+        id: 'template.detached', templateVersion: 1,
+        schema: { type: 'object', properties: { value: { type: 'number', minimum: 0 } }, required: ['value'], additionalProperties: false },
+        initial: { value: 1 },
+      }],
+      timelineStateBindings: [{ path: 'detached', templateId: 'template.detached', templateVersion: 1 }],
+    } })
+    const timeline = await runtime.createNarrativeTimeline({ cardId: imported.card.id })
+    const initial = await runtime.getStateSnapshot({ target: { scope: 'timeline', timelineId: timeline.timeline.id, branchId: timeline.branch.id } })
+
+    await expect(runtime.deleteCard({ cardId: imported.card.id })).resolves.toMatchObject({ deleted: true })
+    await expect(runtime.getNarrativeTimeline({ timelineId: timeline.timeline.id })).resolves.toMatchObject({ timeline: { id: timeline.timeline.id } })
+    await expect(runtime.applyStateMutation({
+      target: initial.snapshot.target,
+      expectedRevisionId: initial.snapshot.revisionId,
+      operations: [{ op: 'set', path: '/detached/value', value: -1 }],
+    })).rejects.toMatchObject({ code: 'state.schema_minimum' })
+    engine.close()
+  })
+
+  it('previews and optionally deletes play data with its source Card', async () => {
+    const { engine, runtime } = createTestRuntime()
+    const card = await runtime.createCard({ name: 'Disposable Card' })
+    const timeline = await runtime.createNarrativeTimeline({ cardId: card.card.id })
+
+    await expect(runtime.previewCardDeletion({ cardId: card.card.id })).resolves.toMatchObject({
+      cardId: card.card.id,
+      timelines: [{ id: timeline.timeline.id, title: 'Disposable Card' }],
+    })
+    await expect(runtime.deleteCard({ cardId: card.card.id, includePlayData: true })).resolves.toMatchObject({ deleted: true })
+    await expect(runtime.getNarrativeTimeline({ timelineId: timeline.timeline.id })).rejects.toThrow()
+    await expect(runtime.getStateSnapshot({
+      target: { scope: 'timeline', timelineId: timeline.timeline.id, branchId: timeline.branch.id },
+    })).rejects.toThrow()
+    engine.close()
+  })
+
   it('initializes timeline State atomically from Card bindings and advances the branch head on mutation', async () => {
     const { engine, runtime } = createTestRuntime()
     const imported = await runtime.importCardBundle({

@@ -1,4 +1,4 @@
-# Trace、Mutation 与 Replay
+# Trace 与 Mutation
 
 Core 的可观测性目标不是替调用方解决冲突，而是提供一份足以解释“每个 Pass 改了什么”的结构化事实。
 
@@ -6,7 +6,7 @@ Core 的可观测性目标不是替调用方解决冲突，而是提供一份足
 
 ### 1.1 协议先于 UI
 
-Core 产出 Trace，但不知道谁消费 Trace。CLI、HTML、Studio Inspector 或第三方工具都应读取同一数据格式，不能依赖 Core 或 Studio 内部对象。
+Core 产出供 Studio 诊断与审计链使用的结构化 Trace，调用方不应依赖 Core 内部对象。
 
 ### 1.2 暴露，而不是隐藏
 
@@ -43,14 +43,13 @@ type Mutation<M> =
 
 ### 2.1 自包含要求
 
-`add`、`remove`、`update` 保存 Replay 所需的完整 Fragment；`move` 保存顺序变化。Replay 不依赖私有 `afterFragments` shortcut。
+`add`、`remove`、`update` 保存解释变化所需的完整 Fragment；`move` 保存顺序变化。
 
 当前选择完整 `before/after`，而不是 field-level patch，优先保证：
 
 - 语义清晰；
 - Debug 工具实现简单；
-- Trace 可独立读取；
-- Replay 不需要重新加载 Extension。
+- Trace 可独立读取。
 
 ### 2.2 排序是 Mutation
 
@@ -112,44 +111,10 @@ Snapshot 是显式调试成本，Mutation 是默认解释路径。
 - `RunResult.fragments` 仍返回真实结果；
 - Trace 的 initial/final/executions 为空；
 - Diagnostic 仍然保留；
-- Trace Sink 不接收 Pass 事件。
 
 但当前 Runner 仍会创建 Pass 前安全副本、执行 Owner 检查并计算 Mutation。因此 `mode: off` 还不是历史 RFC 所设想的“接近 no-op”性能模式。上层不能把它当作零成本保证。
 
-## 6. Replay
-
-Core 提供：
-
-```ts
-applyMutation(fragments, mutation): Fragment[]
-replayTrace(trace, { untilPassIndex? }): Fragment[]
-```
-
-Replay 从 `initialFragments` 开始，按 execution 与 mutation 顺序应用变化：
-
-```text
-initialFragments
-  -> Pass 0 mutations
-  -> Pass 1 mutations
-  -> ...
-  -> reconstructed state
-```
-
-它可以重建最终状态或指定 Pass 后的状态。
-
-### 6.1 Replay 不等于重新执行
-
-当前 `replayTrace()` 只重建 Fragment 状态，不会：
-
-- 重新实例化 Factory；
-- 重新执行 Pass 代码；
-- 检查 Pass 版本；
-- Fork 参数并从中间重新运行；
-- 调用 Extension 或外部资源。
-
-历史 DevTool 文档中的 Replayer / Workbench 是建立在 Trace 协议上的未来工具形态，不是当前 Core 已提供的运行能力。
-
-## 7. Diagnostic
+## 6. Diagnostic
 
 ```ts
 interface Diagnostic {
@@ -187,46 +152,7 @@ loom/cross-owner-write
 loom/owner-mutation
 ```
 
-## 8. TraceSink
-
-当前 Core `TraceSink` 提供三个可选 callback：
-
-```ts
-onPassStart?(passName, passIndex)
-onPassEnd?(execution)
-onDiagnostic?(diagnostic)
-```
-
-Sink 是旁路观察者：任何 callback 抛错都会被忽略，不能改变 Core 执行结果。
-
-Core 当前没有独立 `MemorySink`、`NullSink`、`ConsoleSink` 或 `FileSink` class。`TraceCollector` 是运行内部的默认内存收集器。
-
-File、HTML、远程和 UI Sink 不应进入 `@loom/core`。
-
-## 9. 序列化与 Schema
-
-Core 提供：
-
-```ts
-serializeTrace(trace): string
-deserializeTrace(input): Trace
-deserializeTraceChecked(input): Trace
-```
-
-`deserializeTraceChecked()` 当前只验证 Trace v1 的最小顶层结构，不执行完整 JSON Schema validation。
-
-完整 Schema 位于：
-
-```text
-packages/core/src/schemas/trace.schema.json
-@loom/core/schemas/trace.schema.json
-```
-
-Schema 当前由 AJV 测试验证运行时 Trace 和序列化 Trace。它定义 Fragment、PassConfig、Diagnostic、Mutation、Snapshot 和 Execution 的 JSON 形态。
-
-Trace 有显式 `version: '1'`，但跨 major 的兼容读取策略尚未冻结。工具作者当前应拒绝无法理解的版本，而不是猜测字段语义。
-
-## 10. 隐私与持久化边界
+## 7. 隐私与持久化边界
 
 Core Trace 可能包含完整 Fragment content 和 meta。Core 不做自动脱敏，因为它不知道哪些字段敏感。
 
@@ -239,9 +165,9 @@ Core Trace 可能包含完整 Fragment content 和 meta。Core 不做自动脱�
 
 PromptBuild 当前使用自己的 compact Trace 投影，只保留 content length、有限 preview 和领域统计，详见 [`studio-integration.md`](studio-integration.md)。
 
-## 11. DevTool 边界
+## 8. 调试工具边界
 
-Core 保证机器可读的 Trace、Mutation 和 Replay 原语。DevTool 可以在其上提供：
+Core 保证机器可读的 Trace 与 Mutation。Studio 调试工具可以在其上提供：
 
 - 时间线；
 - Fragment diff；
@@ -250,4 +176,4 @@ Core 保证机器可读的 Trace、Mutation 和 Replay 原语。DevTool 可以�
 - 静态报告；
 - Workbench 或历史对比。
 
-DevTool 只能消费公开 Trace 数据，不能要求 Core 为官方 UI 提供私有旁路。
+调试工具只能消费 Trace 数据，不能要求 Core 为 UI 提供私有旁路。

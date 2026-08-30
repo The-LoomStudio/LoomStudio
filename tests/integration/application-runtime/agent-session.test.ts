@@ -193,7 +193,7 @@ describe('application agent session lifecycle', () => {
     engine.close()
   })
 
-  it('stores Agent Profile tool selection and exposes registry analysis without executing tools', async () => {
+  it('stores Agent Profile tool selection and previews active tools without executing them', async () => {
     const tool: ToolDefinition = {
       id: 'official/read_context',
       owner: { namespace: 'official' },
@@ -238,13 +238,6 @@ describe('application agent session lifecycle', () => {
     expect(profile.toolOverrides).toEqual({ [tool.id]: true })
     expect((await runtime.listAgentTools()).tools).toEqual([
       expect.objectContaining(tool),
-    ])
-    expect((await runtime.analyzeAgentTools({ agentProfileId: profile.id })).analysis.exposures).toEqual([
-      expect.objectContaining({
-        toolId: tool.id,
-        exposed: true,
-        transport: 'content',
-      }),
     ])
     const session = await runtime.createAgentSession({ agentProfileId: profile.id })
     const inactive = await runtime.previewAgentTurn({ agentSessionId: session.session.id, input: 'Hello.' })

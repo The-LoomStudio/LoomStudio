@@ -109,6 +109,212 @@ export type EventPublishIdentity =
 
 export type ExtensionModuleRuntime = 'server' | 'client'
 
+export type RendererSurface =
+  | 'shell.background'
+  | 'narrative.entry.inline'
+  | 'narrative.timeline.tail'
+  | 'agent.message.inline'
+  | 'agent.session.tail'
+  | 'composer.sheet'
+  | 'shell.workspace-panel'
+  | 'shell.focus-surface'
+  | 'standalone.page'
+
+export type RendererInstanceScope = 'workspace' | 'timeline' | 'agent-session' | 'node' | 'message'
+
+export type RendererConflictPolicy = 'collection' | 'exclusive' | 'navigation' | 'anchored-projection'
+
+export type RendererFallback = 'json' | 'text' | 'hidden'
+export type RendererMountAdapter = 'direct' | 'shadow' | 'sandbox-iframe'
+
+export type ClientActionSurface = 'composer.quick-actions' | 'extension.workbench.actions'
+
+export type ClientHostIconName = 'image' | 'refresh' | 'settings' | 'sparkles'
+
+export type ClientCommandDeclaration = {
+  id: string
+  title: string
+  icon?: ClientHostIconName
+}
+
+export type ClientActionCondition = {
+  active?: 'timeline' | 'agent-session'
+}
+
+export type ClientActionPlacement = {
+  commandId: string
+  surface: ClientActionSurface
+  group?: string
+  suggestedOrder?: number
+  when?: ClientActionCondition
+}
+
+export type ClientCommandInvocationContext = {
+  sourceSurface: ClientActionSurface
+  workspaceId: string
+  timelineId?: string
+  agentSessionId?: string
+}
+
+export type ClientCommandHandler = (context: ClientCommandInvocationContext) => void | Promise<void>
+
+export type RendererContributionDefinition = {
+  id: string
+  name: string
+  surface: RendererSurface
+  instanceScope: RendererInstanceScope
+  suggestedOrder?: number
+  artifactType?: string
+  fallback?: RendererFallback
+  adapter?: RendererMountAdapter
+}
+
+export type RendererContributionIdentity = {
+  packageId: string
+  moduleId: string
+  contributionId: string
+}
+
+export type RendererInstanceIdentity = RendererContributionIdentity & {
+  scopeKey: string
+}
+
+export type ClientRendererScope = {
+  kind: RendererInstanceScope
+  key: string
+  entity?: ExtensionEntityRef
+}
+
+export type ClientDisplayPart =
+  | { type: 'text'; content: string }
+  | { type: 'artifact'; artifactType: string; content: JsonValue }
+
+export type ClientTextSelector =
+  | { kind: 'literal'; value: string }
+  | { kind: 'match-ref'; matchId: string }
+  | { kind: 'marker'; markerId: string }
+
+export type ClientNodeRenderMount = {
+  key: string
+  target:
+    | { slot: 'node.before' }
+    | { slot: 'node.after' }
+    | { slot: 'node.inline'; selector: ClientTextSelector; placement: 'before' | 'after' | 'replace' }
+  part: ClientDisplayPart
+}
+
+export type ClientNodeDisplayProjectionContext =
+  | {
+      nodeId: string
+      timelineId: string
+      rawText: string
+      displayText: string
+      surface: 'narrative'
+      signal: AbortSignal
+    }
+  | {
+      messageId: string
+      agentSessionId: string
+      rawText: string
+      displayText: string
+      surface: 'agent-message'
+      signal: AbortSignal
+    }
+
+export type ClientRendererContext = {
+  identity: RendererContributionIdentity
+  surface: RendererSurface
+  scope: ClientRendererScope
+  part?: ClientDisplayPart
+  host: {
+    compact: boolean
+    prefersReducedMotion: boolean
+    theme: 'inherit'
+  }
+  signal: AbortSignal
+  close(): void
+}
+
+export type ClientRenderer = {
+  mount(root: HTMLElement, context: ClientRendererContext): void | ExtensionRegistrationHandle | Promise<void | ExtensionRegistrationHandle>
+  update?(context: ClientRendererContext): void | Promise<void>
+  projectNode?(context: ClientNodeDisplayProjectionContext): readonly ClientNodeRenderMount[] | Promise<readonly ClientNodeRenderMount[]>
+  frame?: { src: string; title?: string }
+}
+
+export type ClientRendererSessionHandle = ExtensionRegistrationHandle & {
+  sessionId: string
+  state(): 'opening' | 'connected' | 'disconnected' | 'revoked'
+}
+
+export type ClientStateTarget =
+  | { scope: 'global' }
+  | { scope: 'timeline'; timelineId: string; branchId: string }
+
+export type ClientStateSnapshot = {
+  scopeId: string
+  target: ClientStateTarget
+  revisionId: string
+  value: JsonObject
+  createdAt: string
+}
+
+export type ClientHistorySource =
+  | { kind: 'narrative'; timelineId: string; branchId: string }
+  | { kind: 'agent-session'; sessionId: string; headEntryId?: string }
+
+export type ClientExtensionLogger = {
+  debug(message: string, data?: JsonObject): void
+  info(message: string, data?: JsonObject): void
+  warn(message: string, data?: JsonObject): void
+  error(message: string, data?: JsonObject): void
+}
+
+export type ClientExtensionActivationContext = {
+  extension: {
+    packageId: string
+    moduleId: string
+    instanceId: string
+    version: string
+    displayName: string
+  }
+  signal: AbortSignal
+  logger: ClientExtensionLogger
+  commands: {
+    register(commandId: string, handler: ClientCommandHandler): ExtensionRegistrationHandle
+  }
+  renderers: {
+    register(definition: RendererContributionDefinition, renderer: ClientRenderer): ExtensionRegistrationHandle
+    open(contributionId: string, options?: { scope?: ClientRendererScope; replace?: boolean }): boolean
+    close(contributionId: string, scope?: ClientRendererScope): void
+    openStandalone(contributionId: string, options?: { scope?: ClientRendererScope }): ClientRendererSessionHandle
+  }
+  records: {
+    list(input?: { scope?: ExtensionStorageScope; recordType?: string; binding?: ExtensionEntityRef }): Promise<ExtensionRecordEntry[]>
+    get(recordId: string): Promise<ExtensionRecordEntry | null>
+  }
+  state: {
+    get(target: ClientStateTarget): Promise<ClientStateSnapshot>
+  }
+  history: {
+    project(input: { source: ClientHistorySource; phase: 'classify' | 'prompt' | 'display' }): Promise<JsonValue>
+    extract(input: { source: ClientHistorySource; phase?: 'classify' | 'prompt' | 'display'; extractorId: string }): Promise<JsonValue>
+  }
+  rpc: {
+    call<T extends JsonValue = JsonValue>(method: string, params?: JsonValue): Promise<T>
+  }
+  assets: {
+    url(assetId: string): string
+  }
+  files: {
+    url(path: string): string
+  }
+}
+
+export type ClientExtensionModule = {
+  activate(context: ClientExtensionActivationContext): void | ExtensionRegistrationHandle | Promise<void | ExtensionRegistrationHandle>
+}
+
 export type ExtensionRuntimeContributions = {
   rpc?: Array<{ name: string }>
   documentTypes?: Array<{ type: string }>
@@ -117,12 +323,42 @@ export type ExtensionRuntimeContributions = {
     version: number
     visibility: Exclude<EventVisibility, 'internal'>
   }>
-  panels?: Array<{ id: string }>
+  renderers?: RendererContributionDefinition[]
+  commands?: ClientCommandDeclaration[]
+  actions?: ClientActionPlacement[]
   aiProviders?: Array<{ id: string }>
+  agentToolHandlers?: Array<{ toolId: string }>
+}
+
+export type ExtensionPromptResourceKind = 'preset' | 'setting' | 'logic' | 'runtime' | 'history' | 'prompt'
+
+export type ExtensionPromptResourceContribution = {
+  id: string
+  resourceKind: ExtensionPromptResourceKind
+  source: string
+  settingMounts?: Array<{
+    resourceId: string
+    orderIndex?: number
+  }>
+  toolMounts?: Array<{
+    toolId: string
+    orderIndex?: number
+    defaultEnabled?: boolean
+    activation?: JsonObject
+    provider?: { order?: number }
+    content?: { zone?: string; slot?: string; rankKey?: string; orderHint?: number }
+  }>
+}
+
+export type ExtensionAgentToolContribution = {
+  id: string
+  source: string
 }
 
 export type ExtensionPackageContributions = {
   transformRules?: Array<{ source: string }>
+  promptResources?: ExtensionPromptResourceContribution[]
+  agentTools?: ExtensionAgentToolContribution[]
 }
 
 export type ExtensionModuleManifest = {
@@ -228,6 +464,7 @@ export type ExtensionPortablePayload = ExtensionPortablePayloadDraft & {
 
 export type ExtensionStorageScope =
   | { kind: 'global' }
+  | { kind: 'card'; cardId: string }
   | { kind: 'timeline'; timelineId: string }
   | { kind: 'agent-session'; agentSessionId: string }
 
@@ -295,6 +532,9 @@ export type ExtensionActivationContext = {
     registerProvider(registration: AiGatewayProviderRegistration): AiGatewayProviderRegistrationHandle
     listProviders(): RegisteredAiGatewayProvider[]
     invoke(input: Omit<AiGatewayInvokeInput, 'caller'>): Promise<AiGatewayInvokeResult>
+  }
+  agentTools: {
+    register(toolId: string, handler: ExtensionAgentToolHandler): ExtensionRegistrationHandle
   }
   documents: {
     get<T = JsonValue>(id: string): Promise<DocumentRecord<T> | null>
@@ -372,6 +612,21 @@ export type ExtensionActivationContext = {
     onDispose(callback: () => void | Promise<void>): void
   }
 }
+
+export type ExtensionAgentToolHandlerInput = {
+  arguments?: JsonObject
+  rawInput?: string
+  transport?: 'native-function' | 'provider-custom' | 'content'
+}
+
+export type ExtensionAgentToolHandlerContext = {
+  signal: AbortSignal
+}
+
+export type ExtensionAgentToolHandler = (
+  input: ExtensionAgentToolHandlerInput,
+  context: ExtensionAgentToolHandlerContext,
+) => JsonValue | Promise<JsonValue>
 
 export type ServerExtensionModule = {
   activate(ctx: ExtensionActivationContext): void | Promise<void>

@@ -67,5 +67,3 @@ export function computeMutations<M>(
 
   return mutations
 }
-
-export const computeMutation = computeMutations

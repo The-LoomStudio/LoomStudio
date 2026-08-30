@@ -15,7 +15,7 @@
   grid-template-rows: minmax(0, 1fr);
   overflow: visible;
   isolation: isolate;
-  background: var(--loom-color-background);
+  background: transparent;
 }
 
 .canvasStack[data-agent-expanded='true'] {
@@ -91,6 +91,10 @@
 .canvasStack > :global([data-loom-object='agent-composer-layer']) {
   grid-column: 1;
   grid-row: 1;
+}
+
+.canvasStack > :global([data-loom-object='narrative-timeline']) {
+  z-index: 1;
 }
 
 .canvasStack > :global([data-loom-object='agent-composer-layer']) {

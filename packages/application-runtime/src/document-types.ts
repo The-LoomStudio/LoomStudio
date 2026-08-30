@@ -1,5 +1,6 @@
 export const applicationDocumentTypes = {
   cardSource: 'airp.cardSource',
+  timelineRuntimeContext: 'airp.timelineRuntimeContext',
   providerProfile: 'airp.providerProfile',
   aiCapabilityProfile: 'airp.aiCapabilityProfile',
   agentProfile: 'airp.agentProfile',

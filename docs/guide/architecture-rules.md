@@ -14,10 +14,9 @@ Loom Studio 随着功能的增长，最容易腐化的区域是应用运行时�
 它的职责仅限于：启动进程、挂载 WS/HTTP 服务、注册 RPC 路由字典、实例化各层依赖。
 它**绝对不能**承担任何业务规则的判定（如：不写长篇的 Switch Case 判断不同的业务动作，不负责 Provider 的选择逻辑，不解析 Prompt）。所有的业务逻辑必须在 `application-runtime` 内部消化闭环。
 
-## 3. 能力与 RPC 的单一发现面
+## 3. Kernel 与 Extension 的能力发现
 
-无论是 Kernel 级别、Application 级别还是 Extension 提供的 RPC，**都必须能在一个统一的发现面上被注册和获取**（通常通过 `system.introspect`）。
-在注册 RPC 或 Capability 时，必须明确提供所有者标识 (`owner`)、命名空间和类型签名。禁止为了偷懒而"旁路"系统字典直接监听方法。
+Kernel 与 Extension RPC 必须注册到同一个 Runtime Registry，并通过 `system.introspect` 暴露 owner 与命名空间。Application、AI、Settings 与 Logs 属于 Studio Server 内部路由，以当前源码和类型为事实源，不再维护平行的静态 Capability 目录。
 
 ## 4. 事件 (Events) 约束法则
 

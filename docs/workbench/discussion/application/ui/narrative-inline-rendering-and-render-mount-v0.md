@@ -1,10 +1,10 @@
 # Narrative Inline Rendering 与 Render Mount v0
 
-> **状态**：Accepted Direction / Implementation Pending
+> **状态**：Partially Promoted / Core Implemented
 >
 > **日期**：2026-08-28
 >
-> **目的**：固定 Narrative 与 Agent Message 的消息内渲染边界，定义正文派生 DisplayPart、Extension Node Binding、动态 Render Mount 与流式显示之间的关系；非消息 Surface、Client Runtime Adapter 和独立页面 Renderer 留给后续专题。
+> **目的**：固定 Narrative 与 Agent Message 的消息内渲染边界，定义正文派生 DisplayPart、Extension Node Binding、动态 Render Mount 与流式显示之间的关系；已落地的 Client Renderer Host 与 Render Mount 合同见 [`../../../../architecture/extensions/client-renderer-host.md`](../../../../architecture/extensions/client-renderer-host.md)。
 
 ## 1. 决策摘要
 
@@ -34,14 +34,17 @@ Node-bound Extension Record
 
 ## 2. 当前实现事实
 
-当前 History Text Pipeline 已经提供：
+当前已经实现：
 
 - Narrative / Agent Session History Projection；
 - Display Transform、Match Record 与 Text Extractor；
-- Host Renderer Registry 和最小 Slot Host；
-- `DisplayPart` 的基础方向。
+- 内置 Artifact Renderer Catalog 与最小 Slot Host；
+- Client Extension Renderer Registry、Surface 仲裁与动态实例生命周期；
+- Narrative Node / Agent Message 的 `node.before`、`node.after` 与唯一 literal inline anchor；
+- Direct、Shadow DOM、sandbox iframe 与 Standalone Adapter；
+- `DisplayPart` 与 Node Render Mount 的瞬时投影。
 
-当前 Renderer Registry 仍只有 Host 内置 JSON Renderer。第三方 Client Renderer、Shadow DOM / iframe Adapter、Narrative inline Slot 和正式 Render Mount API 尚未实现。
+当前仍未实现的是正式 Match / Marker Anchor 数据源、Streaming Draft Projection、Narrative Attachment，以及 Host Appearance / Style Contribution。内置 `listRenderers` 仍只返回官方 JSON 兼容 Renderer；第三方 Renderer 从 Extension Catalog 声明并在浏览器运行时注册。
 
 Extension 数据基础已经提供：
 
@@ -260,18 +263,22 @@ Extension Record + Render Mount
 
 不要为每张图片、每个按钮或每条插件记录注册一次性 Regex Rule。Extension 可以使用自己的 Schema 保存目标句子或其他定位依据，再通过 Host 的统一 Selector 能力解析；所有匹配继续受官方文本引擎的范围、预算和 Diagnostic 管理。
 
-## 10. 后续议题
+## 10. 后续实施接缝
 
-消息内主链暂时收束后，Renderer 下一轮重点转向：
+非消息 Surface、冲突仲裁与 Client Extension Host 已收束为独立实施计划：
 
-1. 非消息 Surface：Timeline HUD、Sidebar、Overlay、Background、Composer Accessory、Studio Panel；
-2. Surface、Runtime Adapter、Instance Scope 的正交合同；
-3. Direct、Shadow DOM、sandbox iframe、Worker 的加载与权限边界；
-4. Workspace Window、Focus Surface 与 Standalone Page / tab / window；
-5. Client Extension Host 如何获得 Node-bound Record Projection，而不暴露其他 Package 数据；
-6. 多 Provider Mount 排序、可见性、Branch lineage、Archive 和缓存失效；
-7. Extension 缺失时，哪些数据足以支持 Core 静态 fallback；
-8. Renderer Action 如何通过受控 Action / RPC 修改 Extension Record 或发起 Job。
+- [`Renderer Surface 与 Client Extension Host 实施计划`](../../../plans/renderer-surface-and-client-host-implementation-plan.md)
+
+已接受的核心边界：
+
+- Surface 是 Host 管理位置、生命周期、冲突和降级的合同，不是 Extension 插入 DOM 的权限；
+- `narrative.timeline.tail` / `agent.session.tail` 是多实例 Collection Surface；
+- `shell.background`、`composer.sheet` 与 `shell.focus-surface` 是单实例 Exclusive Surface；
+- `shell.workspace-panel` 与 `standalone.page` 是 Navigation Surface；
+- Node 内 Render Mount 是 Anchored Projection；
+- 同源 Direct DOM 只能作为不受支持的 escape hatch，不能冒充正式 Renderer 合同或安全边界。
+
+消息内 Node Render Mount 在实施计划 Phase 3 接入 Client Renderer Data Source，不复制 Extension Record、Asset 或 Node Binding。
 
 ## 11. 非目标
 
@@ -283,5 +290,4 @@ Extension Record + Render Mount
 - 任意 HTML / CSS / JavaScript 写入正文；
 - Renderer 内直接执行副作用；
 - 完整 Regex 兼容层；
-- 非消息 Surface 的最终 Slot 清单和布局；
 - Client Runtime Adapter 的具体实现。

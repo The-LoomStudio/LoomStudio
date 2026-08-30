@@ -40,14 +40,13 @@ function createHarness() {
     traceAudit,
     extensionHost,
     loomRunner,
-    environment: 'test',
   })
 
   return { kernel, extensionHost }
 }
 
 function createBridge(kernel: Kernel, calls?: RpcRequest[]): ClientBridge {
-  return createClientBridge({ endpoint: 'memory://kernel', source: 'scenario-client', fetch: createKernelFetch(kernel, calls) })
+  return createClientBridge({ endpoint: 'memory://kernel', fetch: createKernelFetch(kernel, calls) })
 }
 
 function createKernelFetch(kernel: Kernel, calls: RpcRequest[] = []): typeof fetch {
@@ -72,18 +71,15 @@ function createKernelFetch(kernel: Kernel, calls: RpcRequest[] = []): typeof fet
 }
 
 describe('client bridge data-flow integration', () => {
-  it('preserves JSON-RPC request source metadata and monotonic request ids', async () => {
+  it('uses monotonic request ids', async () => {
     const { kernel } = createHarness()
     const calls: RpcRequest[] = []
     await kernel.start()
     const bridge = createBridge(kernel, calls)
-    await bridge.connect()
-
     await bridge.call('system.ping', { echo: 'one' })
     await bridge.call('system.ping', { echo: 'two' })
 
     expect(calls.map(call => call.id)).toEqual(['client-1', 'client-2'])
-    expect(calls.map(call => call.meta?.source)).toEqual(['scenario-client', 'scenario-client'])
   })
 
   it('loads dashboard data through ClientBridge without direct service access', async () => {
@@ -96,7 +92,6 @@ describe('client bridge data-flow integration', () => {
     }))
     await extensionHost.activate('example.clientDashboard', 'server')
     const bridge = createBridge(kernel)
-    await bridge.connect()
     await bridge.call('docs.write', {
       id: 'client-dashboard:doc',
       type: 'example.clientDashboard.note',
@@ -121,39 +116,10 @@ describe('client bridge data-flow integration', () => {
     const { kernel } = createHarness()
     await kernel.start()
     const bridge = createBridge(kernel)
-    await bridge.connect()
-
     await expect(bridge.call('missing.method')).rejects.toThrow('RPC method not found: missing.method')
     const ping = await bridge.call<{ ok: boolean }>('system.ping')
 
     expect(ping.ok).toBe(true)
-    expect(bridge.getConnectionState()).toBe('connected')
-  })
-
-  it('marks the bridge disconnected without preventing later explicit calls', async () => {
-    const { kernel } = createHarness()
-    await kernel.start()
-    const bridge = createBridge(kernel)
-    await bridge.connect()
-    await bridge.disconnect()
-
-    const ping = await bridge.call<{ ok: boolean }>('system.ping')
-
-    expect(bridge.getConnectionState()).toBe('disconnected')
-    expect(ping.ok).toBe(true)
-  })
-
-  it('exposes response metadata for correlation-aware UI diagnostics', async () => {
-    const { kernel } = createHarness()
-    await kernel.start()
-    const bridge = createBridge(kernel)
-    await bridge.connect()
-
-    const envelope = await bridge.callWithMeta<{ ok: boolean }>('system.ping')
-
-    expect(envelope.result.ok).toBe(true)
-    expect(envelope.meta?.correlationId).toBeDefined()
-    expect(envelope.meta?.callId).toBeDefined()
   })
 })
 

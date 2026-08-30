@@ -37,6 +37,18 @@ describe('application Extension Storage lifecycle', () => {
     })
     const session = await runtime.createAgentSession({ agentProfileId: 'profile-1' })
 
+    await writeStorageDocument(documents, 'card-config', 'airp.extensionConfig', {
+      scope: { kind: 'card', cardId: card.card.id },
+      key: 'portrait-style',
+      value: 'painted',
+    })
+    await writeStorageDocument(documents, 'card-record', 'airp.extensionRecord', {
+      scope: { kind: 'card', cardId: card.card.id },
+      recordType: 'defaults',
+      data: { inherited: true },
+      bindings: [],
+    })
+
     await writeStorageDocument(documents, 'timeline-config', 'airp.extensionConfig', {
       scope: { kind: 'timeline', timelineId: timeline.timeline.id },
       key: 'theme',
@@ -75,15 +87,25 @@ describe('application Extension Storage lifecycle', () => {
       })
     }
 
-    const timelineDelete = await runtime.deleteNarrativeTimeline({ timelineId: timeline.timeline.id })
-    const timelineChangeset = await documents.getChangeset(timelineDelete.mutation.changesetId)
-    expect(timelineChangeset?.operations).toEqual(expect.arrayContaining([
+    await expect(runtime.previewCardDeletion({ cardId: card.card.id })).resolves.toMatchObject({
+      extensionData: {
+        cardScoped: { configs: 1, records: 1 },
+        timelineScoped: { configs: 1, records: 206 },
+      },
+      timelines: [{ id: timeline.timeline.id }],
+    })
+
+    const cardDelete = await runtime.deleteCard({ cardId: card.card.id, includePlayData: true })
+    const cardChangeset = await documents.getChangeset(cardDelete.mutation.changesetId)
+    expect(cardChangeset?.operations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'delete', documentId: 'card-config' }),
+      expect.objectContaining({ kind: 'delete', documentId: 'card-record' }),
       expect.objectContaining({ kind: 'delete', documentId: 'timeline-config' }),
       expect.objectContaining({ kind: 'delete', documentId: 'timeline-record' }),
       expect.objectContaining({ kind: 'delete', documentId: 'timeline-bulk-204' }),
     ]))
-    expect(timelineChangeset?.operations.filter(operation => operation.type === 'airp.extensionRecord')).toHaveLength(206)
-    await expectTombstoned(documents, ['timeline-config', 'timeline-record', ...bulkTimelineRecordIds])
+    expect(cardChangeset?.operations.filter(operation => operation.type === 'airp.extensionRecord')).toHaveLength(207)
+    await expectTombstoned(documents, ['card-config', 'card-record', 'timeline-config', 'timeline-record', ...bulkTimelineRecordIds])
     await expectLive(documents, ['session-config', 'session-record', 'global-record'])
 
     const sessionDelete = await runtime.deleteAgentSession({ agentSessionId: session.session.id })

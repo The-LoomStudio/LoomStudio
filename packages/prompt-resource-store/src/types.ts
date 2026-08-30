@@ -94,6 +94,11 @@ export type DeletePromptResourceInput = PromptResourceWriteContext & {
   expectedVersion?: number
 }
 
+export type RestorePromptResourceInput = PromptResourceWriteContext & {
+  resourceId: string
+  expectedVersion?: number
+}
+
 export type ListPromptResourcesInput = {
   resourceKind?: PromptResourceKind
   includeTombstone?: boolean
@@ -199,6 +204,7 @@ export type PromptResourceTransaction = {
   createResource(input: Omit<CreatePromptResourceInput, keyof PromptResourceWriteContext>): PromptResource
   mutateResource(input: Omit<MutatePromptResourceInput, keyof PromptResourceWriteContext>): PromptResource
   deleteResource(input: Omit<DeletePromptResourceInput, keyof PromptResourceWriteContext>): PromptResource
+  restoreResource(input: Omit<RestorePromptResourceInput, keyof PromptResourceWriteContext>): PromptResource
   addSettingMount(input: Omit<AddSettingMountInput, keyof PromptResourceWriteContext>): SettingMount
   replaceSettingMounts(input: Omit<ReplaceSettingMountsInput, keyof PromptResourceWriteContext>): SettingMount[]
   addPresetToolMount(input: Omit<AddPresetToolMountInput, keyof PromptResourceWriteContext>): PresetToolMount
@@ -213,6 +219,7 @@ export type PromptResourceStore = {
   createResource(input: CreatePromptResourceInput): Promise<PromptResourceMutationResult>
   mutateResource(input: MutatePromptResourceInput): Promise<PromptResourceMutationResult>
   deleteResource(input: DeletePromptResourceInput): Promise<PromptResourceMutationResult>
+  restoreResource(input: RestorePromptResourceInput): Promise<PromptResourceMutationResult>
   addSettingMount(input: AddSettingMountInput): Promise<SettingMountMutationResult>
   replaceSettingMounts(input: ReplaceSettingMountsInput): Promise<SettingMountMutationResult>
   addPresetToolMount(input: AddPresetToolMountInput): Promise<PresetToolMountMutationResult>

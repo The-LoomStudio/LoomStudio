@@ -95,6 +95,11 @@ export type PromptResourceContent = {
   origin?: {
     kind: 'builtin'
     key: string
+  } | {
+    kind: 'extension-package'
+    packageId: string
+    packageVersion: string
+    contributionId: string
   }
   sourceArtifactRef?: CardBundleSourceArtifactRef
   createdAt: string
@@ -350,17 +355,6 @@ export function isPromptResourceArtifact(value: JsonValue | undefined): value is
   } catch {
     return false
   }
-}
-
-export async function getImportBundle(input: {
-  documents: DocumentStore
-  importBundleId: string
-}): Promise<ImportBundleContent & { id: string; version: number }> {
-  return toVersioned(await readDocument<ImportBundleContent>(
-    input.documents,
-    input.importBundleId,
-    applicationDocumentTypes.importBundle,
-  ))
 }
 
 export async function exportCardArtifact(input: {
