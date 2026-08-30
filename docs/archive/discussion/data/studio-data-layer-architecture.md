@@ -1,6 +1,6 @@
 # Loom Studio Data Layer Architecture
 
-> **Status**: Draft v0.1（数据层问题与能力清单，2026-05-04）
+> **Status**: Archived / Fully Promoted to Architecture（历史讨论稿，已由 docs/architecture/data/ 替代）
 > **Purpose**: 明确 Loom Studio 数据层必须解决的问题、必须提供的能力，以及不应承诺的边界。
 > **Audience**: Studio Kernel 实现者、Extension 作者、Runtime Extension 作者、DevTool 作者。
 > **Principle**: 本文只定义“我们需要解决的问题”和“平台需要提供的能力”。具体 schema / SQLite 表结构 / API 细节可在后续工程文档中继续收敛。

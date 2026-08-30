@@ -2,7 +2,7 @@
 
 > **状态**：Open Design
 > **主题**：Provider / Gateway 层 contract、model capability、invoke / stream、tool-call 映射、错误和 usage 归一。
-> **相关**：[`runtime-boundary-v0.md`](runtime-boundary-v0.md)、[`runtime-turn-flow-v0.md`](runtime-turn-flow-v0.md)、[`prompt/loom-core-integration-v0.md`](prompt/loom-core-integration-v0.md)、[`../adr/ADR-004-platform-auth-secrets-and-provider-credential-boundary.md`](../../adr/ADR-004-platform-auth-secrets-and-provider-credential-boundary.md)
+> **相关**：[`runtime-boundary-v0.md`](runtime-boundary-v0.md)、[`runtime-turn-flow-v0.md`](runtime-turn-flow-v0.md)、[`../../../archive/discussion/application/loom-core-integration-v0.md`](../../../archive/discussion/application/loom-core-integration-v0.md)、[`../adr/ADR-004-platform-auth-secrets-and-provider-credential-boundary.md`](../../adr/ADR-004-platform-auth-secrets-and-provider-credential-boundary.md)
 
 ---
 

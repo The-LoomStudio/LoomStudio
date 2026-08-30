@@ -1,6 +1,6 @@
 # Loom Studio Extension Host Capability 与 Runtime Access v0
 
-> **Status**: Draft v0.1（2026-07-23）
+> **Status**: Archived / Fully Promoted to Architecture（历史能力草案，已由 docs/architecture/extensions/ 替代）
 >
 > **Purpose**: 讨论 Extension 如何获得 Studio 能力、Host 如何成为身份与权限边界，以及 `activate(ctx)`、未来 Virtual Module Import 和公开 API Client 之间的关系。
 >
@@ -8,10 +8,10 @@
 >
 > **Related**:
 > - [`docs/architecture/extensions/`](../../../architecture/extensions/)
-> - [`../../adr/ADR-002-extension-manifest-and-registration-model.md`](../../adr/ADR-002-extension-manifest-and-registration-model.md)
-> - [`../../adr/ADR-006-extension-package-module-instance-model.md`](../../adr/ADR-006-extension-package-module-instance-model.md)
-> - [`../../adr/ADR-004-platform-auth-secrets-and-provider-credential-boundary.md`](../../adr/ADR-004-platform-auth-secrets-and-provider-credential-boundary.md)
-> - [`../../plans/extension-developer-experience.md`](../../plans/extension-developer-experience.md)
+> - [`../../../workbench/adr/ADR-002-extension-manifest-and-registration-model.md`](../../../workbench/adr/ADR-002-extension-manifest-and-registration-model.md)
+> - [`../../../workbench/adr/ADR-006-extension-package-module-instance-model.md`](../../../workbench/adr/ADR-006-extension-package-module-instance-model.md)
+> - [`../../../workbench/adr/ADR-004-platform-auth-secrets-and-provider-credential-boundary.md`](../../../workbench/adr/ADR-004-platform-auth-secrets-and-provider-credential-boundary.md)
+> - [`../../../workbench/plans/extension-developer-experience.md`](../../../workbench/plans/extension-developer-experience.md)
 > - [历史 Event System / Extension Scope Plan](../../../archive/plans/event-system-extension-scope-plan.md)
 > - [`../../../architecture/platform/logging.md`](../../../architecture/platform/logging.md)
 

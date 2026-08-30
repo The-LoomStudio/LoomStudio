@@ -1,8 +1,8 @@
 # I18N and Accessibility v0
 
-> **状态**: Open Design
+> **状态**: Archived / Fully Promoted to Architecture（已由 docs/architecture/ui/localization-and-accessibility.md 替代）
 > **主题**: Studio Application UI 的国际化、键盘导航、焦点管理和无障碍基础约束。
-> **晋升说明**: 当前 TypeScript 字典实现和已落地的基础无障碍约定已整理至 [`../../../../architecture/ui/localization-and-accessibility.md`](../../../../architecture/ui/localization-and-accessibility.md)。本文继续保留插件 locale、完整焦点模型等未实施设计；两者冲突时以 Architecture 文档和当前实现为准。
+> **晋升说明**: 当前 TypeScript 字典实现和已落地的基础无障碍约定已整理至 [`../../../architecture/ui/localization-and-accessibility.md`](../../../architecture/ui/localization-and-accessibility.md)。本文继续保留插件 locale、完整焦点模型等未实施设计；两者冲突时以 Architecture 文档和当前实现为准。
 
 ---
 

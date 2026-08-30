@@ -394,4 +394,4 @@ TUI 不编辑 Narrative、不承担 Commit review、不展示完整 Agent 工作
 - [Tool Capability](../../discussion/application/agent/tool-capability-v0.md)
 - [Runtime Turn Flow](../../discussion/application/runtime-turn-flow-v0.md)
 - [Agent Panel Rendering](../../discussion/application/ui/agent-panel-rendering-v0.md)
-- [Trace / Audit / Correlation](../../discussion/data/studio-trace-audit-correlation-v0.md)
+- [Trace / Audit / Correlation](../../../archive/discussion/data/studio-trace-audit-correlation-v0.md)

@@ -4,7 +4,7 @@
 > **Archived**: 2026-08-28；当前 Module / Instance lifecycle 与 Scope 见 [`docs/architecture/extensions/`](../../../architecture/extensions/)。  
 > **Purpose**: 定义 Server Extension MVP 生命周期、`activate(ctx)` 入口、Host API 最小形状、runtime registration 规则、状态机与 diagnostics 边界。  
 > **Audience**: Extension Host 实现者、Extension SDK 作者、Server Extension 作者、Plugin Manager / DevTool 作者。  
-> **Related**: [`../../adr/ADR-002-extension-manifest-and-registration-model.md`](../../../workbench/adr/ADR-002-extension-manifest-and-registration-model.md), [`studio-extension-host-capabilities-v0.md`](../../../workbench/discussion/extensions/studio-extension-host-capabilities-v0.md), [`../kernel/studio-transport-protocol-v0.md`](../kernel/studio-transport-protocol-v0.md)
+> **Related**: [`../../adr/ADR-002-extension-manifest-and-registration-model.md`](../../../workbench/adr/ADR-002-extension-manifest-and-registration-model.md), [`studio-extension-host-capabilities-v0.md`](studio-extension-host-capabilities-v0.md), [`../kernel/studio-transport-protocol-v0.md`](../kernel/studio-transport-protocol-v0.md)
 > **2026-08-13 决策更新**：[`../../plans/event-system-extension-scope-plan.md`](../../plans/event-system-extension-scope-plan.md) 的 Phase 1–4 已实施。稳定 `extensionId` 与每次激活的 `instanceId` 已分开；当前 Server Host 的 RPC、事件定义/订阅与 dispose callback 已统一归入 instance-scoped `ExtensionScope`，并实现 reload 与 Kernel stop 清理。Timer/UI mount 仍是未来 Client/扩展能力，不应误写为当前已接入资源。
 
 ---
@@ -96,7 +96,7 @@ Extension 公开能力只能在 `activate(ctx)` 内通过 `ctx` 注册。
 
 ## 3. ServerExtensionContext MVP Shape
 
-> **Current implementation note (2026-07-23)**: 当前 `ExtensionActivationContext` 已实现 extension、rpc、events、documents、diagnostics 与 lifecycle；Extension 作者可用的 `logger` 尚未进入 SDK Context。下述 Logger 与自动 correlation 仍是候选 contract，后续由 [`studio-extension-host-capabilities-v0.md`](../../../workbench/discussion/extensions/studio-extension-host-capabilities-v0.md) 继续收敛。
+> **Current implementation note (2026-07-23)**: 当前 `ExtensionActivationContext` 已实现 extension、rpc、events、documents、diagnostics 与 lifecycle；Extension 作者可用的 `logger` 尚未进入 SDK Context。下述 Logger 与自动 correlation 仍是候选 contract，后续由 [`studio-extension-host-capabilities-v0.md`](studio-extension-host-capabilities-v0.md) 继续收敛。
 
 ```ts
 type ServerExtensionContext = {

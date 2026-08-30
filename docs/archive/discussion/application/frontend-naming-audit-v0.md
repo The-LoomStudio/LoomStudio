@@ -1,8 +1,8 @@
 # Frontend Naming Audit v0
 
-> **状态**：Migration Complete / Deferred Items Recorded
+> **状态**：Archived / Migration Completed（历史审计与迁移记录）
 > **基线**：2026-08-13，`apps/studio-client/src` 当前工作树。
-> **上游词汇**：[`frontend-interface-language-v0.md`](frontend-interface-language-v0.md)。
+> **上游词汇**：[`../../../workbench/discussion/application/ui/frontend-interface-language-v0.md`](../../../workbench/discussion/application/ui/frontend-interface-language-v0.md)。
 > **范围**：组件、文件、类型、状态、动作、CSS Module、`data-loom-*`、CSS Token 与 I18N Key 的命名一致性。
 > **非目标**：不改变后端 Schema、RPC、Session/Card Resources，也不把局部私有类名升级为公共 API。
 
@@ -442,7 +442,7 @@ Token 重命名也必须保持旧 Custom CSS Override 可继续生效。推荐�
 
 从本文确认后，新代码应遵守：
 
-1. 先在 [`frontend-interface-language-v0.md`](frontend-interface-language-v0.md) 找对象名；没有定义则先补术语，不在代码里自造近义词。
+1. 先在 [`../../../workbench/discussion/application/ui/frontend-interface-language-v0.md`](../../../workbench/discussion/application/ui/frontend-interface-language-v0.md) 找对象名；没有定义则先补术语，不在代码里自造近义词。
 2. 组件使用“所有者 + 对象类型”：`EntryContextMenu`、`SettingsPanel`、`WindowResizeHandle`。
 3. 文件名与主要导出对应，使用 kebab-case。
 4. Props 使用领域动作；DOM Adapter 才使用 `handle*`。

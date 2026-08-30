@@ -1,6 +1,6 @@
 # UI Foundation v0
 
-> **状态**: Open Design
+> **状态**: Archived / Fully Promoted to Architecture（已由 docs/architecture/ui/visual-language.md 替代）
 > **主题**: Studio Application UI 的基础原则，服务默认 AIRP 第一方体验。
 
 ---

@@ -35,7 +35,7 @@ Loom Studio 架构文档已经回答了：
 > - [`studio-initial-package-api-v0.md`](studio-initial-package-api-v0.md)
 > - [`../05-extensions/studio-extension-manifest-architecture.md`](extensions/studio-extension-manifest-architecture.md)
 > - [`../03-kernel/studio-rpc-methods-v0.md`](kernel/studio-rpc-methods-v0.md)
-> - [`../04-data/studio-document-store-engineering-v0.md`](../../workbench/discussion/data/studio-document-store-engineering-v0.md)
+> - [`../04-data/studio-document-store-engineering-v0.md`](data/studio-document-store-engineering-v0.md)
 >
 > 本文中出现的 `plugin-sdk`、`packages/protocol`、`apps/studio-kernel`、`server.contributes`、`client.bundle`、`Document.data`、`pluginId` 等早期命名均视为历史草案，不作为施工依据。正式命名统一采用 `extension-sdk`、`transport`、`apps/studio-server` / `apps/studio-client`、顶层 `contributes`、`client.entry`、`DocumentRecord.content`、`ownerExtensionId`。
 

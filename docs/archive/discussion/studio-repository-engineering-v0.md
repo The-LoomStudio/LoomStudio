@@ -10,8 +10,8 @@
 > - [`loom-studio-mvp-engineering.md`](../../archive/discussion/loom-studio-mvp-engineering.md)
 > - [`kernel/studio-transport-protocol-v0.md`](../../archive/discussion/kernel/studio-transport-protocol-v0.md)
 > - [`extensions/studio-extension-lifecycle-v0.md`](../../archive/discussion/extensions/studio-extension-lifecycle-v0.md)
-> - [`data/studio-document-store-engineering-v0.md`](../../workbench/discussion/data/studio-document-store-engineering-v0.md)
-> - [`data/studio-trace-audit-correlation-v0.md`](../../workbench/discussion/data/studio-trace-audit-correlation-v0.md)
+> - [`data/studio-document-store-engineering-v0.md`](data/studio-document-store-engineering-v0.md)
+> - [`data/studio-trace-audit-correlation-v0.md`](data/studio-trace-audit-correlation-v0.md)
 
 ---
 

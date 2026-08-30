@@ -4,7 +4,7 @@
 > **目的**：规划 Loom Studio 对于第三方 Extension 开发者的体验与生态支持建设方向。
 > **适用范围**：SDK 发布规范、工具链支持、动态能力发现
 >
-> **相关讨论**：[`../discussion/extensions/studio-extension-host-capabilities-v0.md`](../discussion/extensions/studio-extension-host-capabilities-v0.md)
+> **相关讨论**：[`../../archive/discussion/extensions/studio-extension-host-capabilities-v0.md`](../../archive/discussion/extensions/studio-extension-host-capabilities-v0.md)
 >
 > **相关延期计划**：[`extension-package-source-host-runtime-plan.md`](./extension-package-source-host-runtime-plan.md)
 

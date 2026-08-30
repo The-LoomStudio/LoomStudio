@@ -12,7 +12,7 @@
 - [`document-store-kernel-data-foundation-plan.md`](document-store-kernel-data-foundation-plan.md)
 - [`prompt-resource-foundation-plan.md`](prompt-resource-foundation-plan.md)
 - [`prompt-build-message-block-implementation-plan.md`](prompt-build-message-block-implementation-plan.md)
-- [`../discussion/data/studio-data-layer-architecture.md`](../../workbench/discussion/data/studio-data-layer-architecture.md)
+- [`../discussion/data/studio-data-layer-architecture.md`](../discussion/data/studio-data-layer-architecture.md)
 - [`../../architecture/data/README.md`](../../architecture/data/README.md)
 
 ---

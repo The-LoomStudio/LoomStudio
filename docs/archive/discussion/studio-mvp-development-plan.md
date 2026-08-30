@@ -9,9 +9,9 @@
 > - [`studio-dependency-and-runtime-choices-v0.md`](studio-dependency-and-runtime-choices-v0.md)
 > - [`studio-initial-package-api-v0.md`](studio-initial-package-api-v0.md)
 > - [`studio-config-and-local-state-v0.md`](studio-config-and-local-state-v0.md)
-> - [`../03-kernel/studio-kernel-public-surface-v0.md`](../../workbench/discussion/kernel/studio-kernel-public-surface-v0.md)
+> - [`../03-kernel/studio-kernel-public-surface-v0.md`](kernel/studio-kernel-public-surface-v0.md)
 > - [`../03-kernel/studio-rpc-methods-v0.md`](kernel/studio-rpc-methods-v0.md)
-> - [`../04-data/studio-document-store-engineering-v0.md`](../../workbench/discussion/data/studio-document-store-engineering-v0.md)
+> - [`../04-data/studio-document-store-engineering-v0.md`](data/studio-document-store-engineering-v0.md)
 > - [`../05-extensions/studio-extension-lifecycle-v0.md`](extensions/studio-extension-lifecycle-v0.md)
 
 ---
@@ -310,7 +310,7 @@ Capability 基础模型只做声明与 audit placeholder，不做复杂权限系
 
 人工检查：
 
-- Kernel public surface 是否仍符合 [`../03-kernel/studio-kernel-public-surface-v0.md`](../../workbench/discussion/kernel/studio-kernel-public-surface-v0.md)；
+- Kernel public surface 是否仍符合 [`../03-kernel/studio-kernel-public-surface-v0.md`](kernel/studio-kernel-public-surface-v0.md)；
 - Kernel RPC 是否仍符合 [`../03-kernel/studio-rpc-methods-v0.md`](kernel/studio-rpc-methods-v0.md)；
 - `system.introspect` 是否存在；
 - event name 是否使用 `docs.changed`；

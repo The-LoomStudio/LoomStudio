@@ -8,7 +8,7 @@
 > **Related**:
 > - [`studio-repository-engineering-v0.md`](studio-repository-engineering-v0.md)
 > - [`studio-dependency-and-runtime-choices-v0.md`](studio-dependency-and-runtime-choices-v0.md)
-> - [`data/studio-document-store-engineering-v0.md`](../../workbench/discussion/data/studio-document-store-engineering-v0.md)
+> - [`data/studio-document-store-engineering-v0.md`](data/studio-document-store-engineering-v0.md)
 
 ---
 

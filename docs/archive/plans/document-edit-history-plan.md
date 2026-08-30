@@ -2,7 +2,7 @@
 
 > **状态**：Archived / Phase 1–5 Complete
 > **归档日期**：2026-07-23
-> **归档原因**：原生 Document、Kernel、Application、Card 与 Context Assets 的撤回闭环已经完成；Phase 6 Extension Transaction 已转移到 [`../../discussion/extensions/studio-extension-host-capabilities-v0.md`](../../workbench/discussion/extensions/studio-extension-host-capabilities-v0.md)。
+> **归档原因**：原生 Document、Kernel、Application、Card 与 Context Assets 的撤回闭环已经完成；Phase 6 Extension Transaction 已转移到 [`../../discussion/extensions/studio-extension-host-capabilities-v0.md`](../discussion/extensions/studio-extension-host-capabilities-v0.md)。
 > **日期**：2026-07-13
 > **主题**：以 Document Revision / Changeset 为事实基础，为原生编辑器与 Extension Document 提供统一、原子、安全的 Undo / Redo 能力。
 > **相关计划**：[`application-runtime-context-plan.md`](application-runtime-context-plan.md)

@@ -2,7 +2,7 @@
 
 > **状态**：Archived / Core Direction Implemented
 > **归档日期**：2026-07-23
-> **归档原因**：基础设施 Context 与请求级 correlation 已落地；稳定边界已提炼到 [`docs/architecture/application/README.md`](../../architecture/application/README.md)，Extension Host Context 由 [`studio-extension-host-capabilities-v0.md`](../../workbench/discussion/extensions/studio-extension-host-capabilities-v0.md) 继续讨论。
+> **归档原因**：基础设施 Context 与请求级 correlation 已落地；稳定边界已提炼到 [`docs/architecture/application/README.md`](../../architecture/application/README.md)，Extension Host Context 由 [`studio-extension-host-capabilities-v0.md`](../discussion/extensions/studio-extension-host-capabilities-v0.md) 继续讨论。
 > **目的**：评估是否在 Application Runtime 引入 `ctx` 风格的运行上下文，以减少横切型传参，同时避免把业务输入藏进隐式全局对象。
 > **适用范围**：`packages/application-runtime`、`apps/studio-server` 的 RPC 调用上下文、未来 Extension / Plugin Context。
 

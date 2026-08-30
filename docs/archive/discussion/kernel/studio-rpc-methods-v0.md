@@ -5,9 +5,9 @@
 > **Purpose**: 定义 Studio MVP 第一批 Kernel RPC method 的 params/result 形状，作为 Transport、Client Bridge、Kernel registry 与测试的共同依据。
 > **Audience**: Kernel、Transport、Client Bridge、Document Store、Extension Host、Loom Runner 实现者。
 > **Related**:
-> - [`studio-kernel-public-surface-v0.md`](../../../workbench/discussion/kernel/studio-kernel-public-surface-v0.md)
+> - [`studio-kernel-public-surface-v0.md`](studio-kernel-public-surface-v0.md)
 > - [`studio-transport-protocol-v0.md`](studio-transport-protocol-v0.md)
-> - [`../04-data/studio-document-store-engineering-v0.md`](../../../workbench/discussion/data/studio-document-store-engineering-v0.md)
+> - [`../04-data/studio-document-store-engineering-v0.md`](../data/studio-document-store-engineering-v0.md)
 
 ---
 

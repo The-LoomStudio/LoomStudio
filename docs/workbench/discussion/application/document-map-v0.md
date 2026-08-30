@@ -103,7 +103,7 @@ UI / Extension:
 | 文件 | 作用 |
 |---|---|
 | [`prompt/README.md`](prompt/README.md) | Prompt Builder 入口 |
-| [`prompt/loom-core-integration-v0.md`](prompt/loom-core-integration-v0.md) | 与 `@loom/core` 的边界 |
+| [`../../../archive/discussion/application/loom-core-integration-v0.md`](../../../archive/discussion/application/loom-core-integration-v0.md) | 与 `@loom/core` 的边界 |
 | [`prompt/composition-skeleton-and-preset-v0.md`](prompt/composition-skeleton-and-preset-v0.md) | Zone Tree / Injection Group / Preset |
 | [`prompt/setting-layer-prompt-source-v0.md`](prompt/setting-layer-prompt-source-v0.md) | Setting Layer 作为 prompt source |
 | [`prompt/content-component-and-binding-v0.md`](prompt/content-component-and-binding-v0.md) | Binding / macro / component |

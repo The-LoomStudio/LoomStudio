@@ -12,7 +12,7 @@
 - [`preset-agent-prompt-build-module-plan.md`](preset-agent-prompt-build-module-plan.md)
 - [`prompt-resource-foundation-plan.md`](prompt-resource-foundation-plan.md)
 - [`log-plan/prompt-build-observability.md`](../../workbench/plans/log-plan/prompt-build-observability.md)
-- [`../discussion/application/prompt/loom-core-integration-v0.md`](../../workbench/discussion/application/prompt/loom-core-integration-v0.md)
+- [`../discussion/application/prompt/loom-core-integration-v0.md`](../discussion/application/loom-core-integration-v0.md)
 - [`../../architecture/application/prompt-build/loom-core/README.md`](../../architecture/application/prompt-build/loom-core/README.md)
 
 ---

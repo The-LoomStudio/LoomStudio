@@ -404,7 +404,6 @@ Prompt 视图:
 
 ## 5. 文件列表
 
-- [`loom-core-integration-v0.md`](loom-core-integration-v0.md)
 - [`composition-skeleton-and-preset-v0.md`](composition-skeleton-and-preset-v0.md)
 - [`setting-layer-prompt-source-v0.md`](setting-layer-prompt-source-v0.md)
 - [`content-component-and-binding-v0.md`](content-component-and-binding-v0.md)
@@ -415,6 +414,8 @@ Prompt 视图:
 
 ## 6. 相关文档
 
+- [`docs/architecture/application/prompt-build/loom-core/`](../../../../architecture/application/prompt-build/loom-core/) — 已晋升的 Loom Core 执行模型与集成架构
+- [`../../../../archive/discussion/application/loom-core-integration-v0.md`](../../../../archive/discussion/application/loom-core-integration-v0.md) — 已归档的历史 Loom Core 对接讨论
 - [`../composition-skeleton-v0.md`](../composition-skeleton-v0.md)
 - [`../../../../archive/discussion/application/composition-pipeline-v0.md`](../../../../archive/discussion/application/composition-pipeline-v0.md) — 已归档的旧 M0 Pipeline
 - [`../setting-layer-v0.md`](../setting-layer-v0.md)

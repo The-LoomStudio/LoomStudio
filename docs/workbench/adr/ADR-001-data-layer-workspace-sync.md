@@ -4,7 +4,7 @@
 - **Date**: 2026-05-09
 - **Current authority**: SQL / Workspace / Import-Export 决策仍有效；Runtime、Provider、Tool 与 Concept Stack 章节已由 [`docs/architecture/application/`](../../architecture/application/) 和 [`docs/architecture/platform/`](../../architecture/platform/) 取代。
 - **Related**:
-  - [`../04-data/studio-data-layer-architecture.md`](../discussion/data/studio-data-layer-architecture.md)
+  - [`../04-data/studio-data-layer-architecture.md`](../../archive/discussion/data/studio-data-layer-architecture.md)
   - [`../06-engineering/loom-studio-mvp-engineering.md`](../../archive/discussion/loom-studio-mvp-engineering.md)
 
 ## Context

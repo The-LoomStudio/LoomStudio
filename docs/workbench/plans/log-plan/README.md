@@ -116,7 +116,7 @@ Client Extension
   -> optional Host-owned batch ingest
 ```
 
-Host Logger 必须自动绑定 extension identity 和 namespace，不能把内部 Root Logger、Sink、service 或 instance 控制权交给插件。详细设计保留在 [`../../discussion/extensions/studio-extension-host-capabilities-v0.md`](../../discussion/extensions/studio-extension-host-capabilities-v0.md)。
+Host Logger 必须自动绑定 extension identity 和 namespace，不能把内部 Root Logger、Sink、service 或 instance 控制权交给插件。详细设计保留在 [`../../../archive/discussion/extensions/studio-extension-host-capabilities-v0.md`](../../../archive/discussion/extensions/studio-extension-host-capabilities-v0.md)。
 
 ## 5. Workstream C：Viewer 增强
 

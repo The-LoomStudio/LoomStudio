@@ -6,7 +6,7 @@
 > **Audience**: 所有 Studio package 实现者、Extension SDK 维护者。
 > **Related**:
 > - [`studio-repository-engineering-v0.md`](studio-repository-engineering-v0.md)
-> - [`../03-kernel/studio-kernel-public-surface-v0.md`](../../workbench/discussion/kernel/studio-kernel-public-surface-v0.md)
+> - [`../03-kernel/studio-kernel-public-surface-v0.md`](kernel/studio-kernel-public-surface-v0.md)
 > - [`../03-kernel/studio-rpc-methods-v0.md`](../../archive/discussion/kernel/studio-rpc-methods-v0.md)
 
 ---

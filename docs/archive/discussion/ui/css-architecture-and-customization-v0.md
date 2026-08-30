@@ -1,6 +1,6 @@
 # CSS Architecture and Customization v0
 
-> **状态**: Open Design
+> **状态**: Archived / Fully Promoted to Architecture（已由 docs/architecture/ui/css-and-theming.md 替代）
 > **主题**: Studio Application UI 的 CSS 架构、主题 token、用户 Custom CSS 与插件样式边界。
 
 ---

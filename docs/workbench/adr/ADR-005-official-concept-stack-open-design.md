@@ -8,7 +8,7 @@
 > **Related**:
 > - [`ADR-004-platform-auth-secrets-and-provider-credential-boundary.md`](ADR-004-platform-auth-secrets-and-provider-credential-boundary.md)
 > - [`docs/architecture/README.md`](../../architecture/README.md)
-> - [`../03-kernel/studio-kernel-public-surface-v0.md`](../discussion/kernel/studio-kernel-public-surface-v0.md)
+> - [`../03-kernel/studio-kernel-public-surface-v0.md`](../../archive/discussion/kernel/studio-kernel-public-surface-v0.md)
 > - [`../05-extensions/studio-extension-lifecycle-v0.md`](../../archive/discussion/extensions/studio-extension-lifecycle-v0.md)
 > - [`../06-engineering/studio-mvp-development-plan.md`](../../archive/discussion/studio-mvp-development-plan.md)
 > - [`discussion/application/README.md`](../discussion/application/README.md)

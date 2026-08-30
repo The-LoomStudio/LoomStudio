@@ -36,19 +36,19 @@ apps/studio-client + docs/architecture/ui:
 
 | 文件 | 状态 | 主题 |
 |---|---|---|
-| [`ui-foundation-v0.md`](ui-foundation-v0.md) | Partially Promoted / Open Design | 已实现基础见 Architecture；继续讨论 Application RPC、领域状态和桌面优先边界 |
 | [`default-airp-layout-v0.md`](default-airp-layout-v0.md) | Partially Promoted / Open Design | Base Canvas 与浮动 Workspace 已实现；继续讨论输入舱和渲染扩展 |
 | [`ui-preflight-decisions-v0.md`](ui-preflight-decisions-v0.md) | Open Design / Initial Decisions | UI 动工前的 I18N、滚动、焦点、渲染安全和插件 slot 基础决策 |
-| [`css-architecture-and-customization-v0.md`](css-architecture-and-customization-v0.md) | Partially Promoted / Open Design | 当前 CSS / Theme 已晋升；继续讨论插件样式、iframe 和版本边界 |
 | [`agent-panel-rendering-v0.md`](agent-panel-rendering-v0.md) | Open Design | Agent 面板内文本、Artifact、ToolCall 和交互卡片的渲染边界 |
 | [`narrative-inline-rendering-and-render-mount-v0.md`](narrative-inline-rendering-and-render-mount-v0.md) | Partially Promoted / Core Implemented | 消息内 DisplayPart、Node Binding 与动态 Render Mount 已落地；Streaming、Marker 数据源与 Attachment 仍开放 |
 | [`../../../plans/renderer-surface-and-client-host-implementation-plan.md`](../../../plans/renderer-surface-and-client-host-implementation-plan.md) | Implemented / Audited | 非消息 Surface、冲突仲裁、Client Extension Host 与动态实例生命周期 |
 | [`custom-renderer-poc-plan-v0.md`](custom-renderer-poc-plan-v0.md) | PoC Plan | 多标签页 Custom Renderer 的隔离、状态同步、轻量 SDK、CSS/A11Y/I18N smoke |
 | [`layout-and-scroll-containers-v0.md`](layout-and-scroll-containers-v0.md) | Open Design | Shell 内的 Application 布局、滚动所有权、虚拟列表、滚动恢复 |
 | [`interaction-states-v0.md`](interaction-states-v0.md) | Open Design | empty / loading / error / pending / dirty / optimistic / degraded 等状态 |
-| [`i18n-and-accessibility-v0.md`](i18n-and-accessibility-v0.md) | Partially Promoted / Open Design | 当前 typed I18N 与基础 ARIA 已晋升；继续讨论插件 locale 和完整焦点模型 |
 | [`frontend-interface-language-v0.md`](frontend-interface-language-v0.md) | Open Design / Naming Baseline | Window、Panel、Pane、Surface、Entry、Message 等界面对象及其中文、代码、文件、状态与动作命名 |
-| [`frontend-naming-audit-v0.md`](frontend-naming-audit-v0.md) | Migration Complete / Deferred Items Recorded | 当前组件、文件、状态、动作、CSS Hook、Token 与 I18N 命名迁移结果及架构延期项 |
+| [`../../../../archive/discussion/ui/ui-foundation-v0.md`](../../../../archive/discussion/ui/ui-foundation-v0.md) | Archived | 早期 UI 原则草稿（已由 [`docs/architecture/ui/visual-language.md`](../../../../architecture/ui/visual-language.md) 替代） |
+| [`../../../../archive/discussion/ui/css-architecture-and-customization-v0.md`](../../../../archive/discussion/ui/css-architecture-and-customization-v0.md) | Archived | 早期 CSS 架构草稿（已由 [`docs/architecture/ui/css-and-theming.md`](../../../../architecture/ui/css-and-theming.md) 替代） |
+| [`../../../../archive/discussion/ui/i18n-and-accessibility-v0.md`](../../../../archive/discussion/ui/i18n-and-accessibility-v0.md) | Archived | 早期 I18N 草稿（已由 [`docs/architecture/ui/localization-and-accessibility.md`](../../../../architecture/ui/localization-and-accessibility.md) 替代） |
+| [`../../../../archive/discussion/application/frontend-naming-audit-v0.md`](../../../../archive/discussion/application/frontend-naming-audit-v0.md) | Archived | 历史前端命名审计表（迁移已完成） |
 
 ---
 

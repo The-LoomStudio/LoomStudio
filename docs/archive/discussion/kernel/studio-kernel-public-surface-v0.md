@@ -1,6 +1,6 @@
 # Loom Studio Kernel Public Surface v0
 
-> **Status**: Draft v0.1（第一批实现约束，2026-05-14）
+> **Status**: Archived / Fully Promoted to Architecture（历史实现约束，已由 docs/architecture/kernel/ 替代）
 > **Purpose**: 锁定 Studio Kernel 第一版 public surface，防止 Kernel 在实现中滑向 Chat / Provider / Tool / Runtime 业务框架。
 > **Audience**: Kernel、Transport、Extension Host、Client Bridge、Loom Runner 实现者。
 > **2026-08-12 演进说明**：本文仍适用于当前 Document-only Kernel public surface。未来数据层重构不会把 NarrativeStore / AgentStore 暴露给 Kernel；Kernel 将从直接订阅 `DocumentCommitFact` 改为订阅领域无关的 `DataCommitFact`，具体施工见 [`../../plans/sqlite-data-engine-domain-stores-kernel-plan.md`](../../../archive/plans/sqlite-data-engine-domain-stores-kernel-plan.md)。
@@ -218,7 +218,7 @@ trace.*
 audit.*
 ```
 
-当前 RPC family 与 Transport 边界见 [`docs/architecture/kernel/`](../../../architecture/kernel/)；具体运行时方法以 `system.introspect` 和 [`rpc-methods.md`](../../reference/rpc-methods.md) 为准，不再维护第二份静态 v0 方法表。
+当前 RPC family 与 Transport 边界见 [`docs/architecture/kernel/`](../../../architecture/kernel/)；具体运行时方法以 `system.introspect` 和 [`rpc-methods.md`](../../../workbench/reference/rpc-methods.md) 为准，不再维护第二份静态 v0 方法表。
 
 Extension RPC 应使用 extension id / reverse-DNS prefix，例如：
 
