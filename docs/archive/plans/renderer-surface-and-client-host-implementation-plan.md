@@ -1,6 +1,6 @@
 # Renderer Surface 与 Client Extension Host 实施计划
 
-> **状态**：Phase 0—6 Implemented；Automated Verification Complete / Browser Acceptance Pending
+> **状态**：Archived / Phase 0—6 Implemented
 >
 > **日期**：2026-08-28
 >
@@ -8,7 +8,7 @@
 >
 > **后续目标**：在 Renderer 基建之上补充最小 Human Action Contribution，让 Extension 使用同一个 Client Command 注册行为，再由 Host 将其投影到 Context Menu、Toolbar、Sidebar、Quick Action 或 Command Palette。
 >
-> **设计来源**：消息内 DisplayPart、Node Render Mount 与持久化边界见 [`../discussion/application/ui/narrative-inline-rendering-and-render-mount-v0.md`](../discussion/application/ui/narrative-inline-rendering-and-render-mount-v0.md)。
+> **设计来源**：消息内 DisplayPart、Node Render Mount 与持久化边界见 [`../../workbench/discussion/application/ui/narrative-inline-rendering-and-render-mount-v0.md`](../../workbench/discussion/application/ui/narrative-inline-rendering-and-render-mount-v0.md)。
 
 ## 1. 实施前基线
 

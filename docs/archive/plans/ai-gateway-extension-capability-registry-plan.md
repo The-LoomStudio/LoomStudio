@@ -1,6 +1,6 @@
 # AI Gateway Extension Capability Registry Plan
 
-> **状态**：M1 已实施  
+> **状态**：Archived / M1 已实施  
 > **目标**：Extension 注册任意 AI Provider/Capability；Studio 统一提供发现、配置、Secret 与真正的 Profile 驱动 Gateway 调用。  
 > **非目标**：LoomStudio 不内置 NovelAI、Embedding、Rerank、ComfyUI 等具体适配，也不统一它们的业务参数。
 

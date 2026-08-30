@@ -1,6 +1,6 @@
 # History Text Transform、Reasoning Promotion 与 Rendering 实施计划
 
-> **状态**：Phase 0—5 基础闭环已实施；Extension Renderer 已拆入 [`renderer-surface-and-client-host-implementation-plan.md`](renderer-surface-and-client-host-implementation-plan.md)，正式 Archive/Summary 字段保留为后续增强
+> **状态**：Archived / Phase 0—5 闭环；Extension Renderer 已拆入 [`renderer-surface-and-client-host-implementation-plan.md`](renderer-surface-and-client-host-implementation-plan.md)，正式 Archive/Summary 字段保留为后续增强
 >
 > **日期**：2026-08-26
 >

@@ -25,11 +25,15 @@
 - [`provider-profile-secret-store-foundation-plan.md`](./provider-profile-secret-store-foundation-plan.md)
 - [`sqlite-data-engine-domain-stores-kernel-plan.md`](./sqlite-data-engine-domain-stores-kernel-plan.md)
 - [`variable-state-system-foundation-plan.md`](./variable-state-system-foundation-plan.md)
+- [`variable-state-system-implementation-plan.md`](./variable-state-system-implementation-plan.md)
+- [`history-text-transform-and-rendering-plan.md`](./history-text-transform-and-rendering-plan.md)
 
 ## Extension、事件与工程里程碑
 
 - [`event-system-extension-scope-plan.md`](./event-system-extension-scope-plan.md)
 - [`extension-package-module-foundation-plan.md`](./extension-package-module-foundation-plan.md)
 - [`server-extension-manager-mvp-plan.md`](./server-extension-manager-mvp-plan.md)
+- [`ai-gateway-extension-capability-registry-plan.md`](./ai-gateway-extension-capability-registry-plan.md)
+- [`renderer-surface-and-client-host-implementation-plan.md`](./renderer-surface-and-client-host-implementation-plan.md)
 - [`loom-core-monorepo-migration-plan.md`](./loom-core-monorepo-migration-plan.md)
 - [`macro-roadmap-2026-06.md`](./macro-roadmap-2026-06.md)

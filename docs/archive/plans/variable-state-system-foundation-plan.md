@@ -2,7 +2,7 @@
 
 > **状态**：Archived / Superseded
 > **日期**：2026-08-25
-> **归档原因**：实施前基线已被 [`docs/architecture/application/state-and-variables.md`](../../architecture/application/state-and-variables.md) 与 [`variable-state-system-implementation-plan.md`](../../workbench/plans/variable-state-system-implementation-plan.md) 取代。
+> **归档原因**：实施前基线已被 [`docs/architecture/application/state-and-variables.md`](../../architecture/application/state-and-variables.md) 与 [`variable-state-system-implementation-plan.md`](./variable-state-system-implementation-plan.md) 取代。
 > **范围**：定义 Loom Studio 的变量、State、Macro、模板、Artifact 携带方式与 SQL 权威边界，为后续 State Store、PromptBuild 接入、Agent Tool 和 UI 编辑器提供共同基础。
 > **历史边界**：下文“State Store 尚未实现”的描述只代表施工前基线，不得作为当前事实。
 

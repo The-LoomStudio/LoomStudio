@@ -267,7 +267,7 @@ Extension Record + Render Mount
 
 非消息 Surface、冲突仲裁与 Client Extension Host 已收束为独立实施计划：
 
-- [`Renderer Surface 与 Client Extension Host 实施计划`](../../../plans/renderer-surface-and-client-host-implementation-plan.md)
+- [`Renderer Surface 与 Client Extension Host 实施计划`](../../../../archive/plans/renderer-surface-and-client-host-implementation-plan.md)
 
 已接受的核心边界：
 
