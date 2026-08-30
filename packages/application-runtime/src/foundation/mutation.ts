@@ -1,5 +1,5 @@
 import type { DocumentStore, DocumentTransaction } from '@loom-studio/document-store'
-import type { MutationReceipt, RuntimeRequestContext } from './types.js'
+import type { MutationReceipt, RuntimeRequestContext } from '../types.js'
 
 type DocumentMutationResult<T> = {
   value: T

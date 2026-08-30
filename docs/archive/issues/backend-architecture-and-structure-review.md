@@ -28,7 +28,7 @@
 ### 🔴 [高] 1. `application-runtime` 内部巨型文件膨胀与平铺混乱
 
 **文件：**
-- [`packages/application-runtime/src/workspace.ts`](../../../packages/application-runtime/src/workspace.ts) (**1,391 行**)
+- [`packages/application-runtime/src/cards/workspace.ts`](../../../packages/application-runtime/src/cards/workspace.ts) (**1,391 行**)
 - [`packages/application-runtime/src/runtime.ts`](../../../packages/application-runtime/src/runtime.ts) (**1,249 行**)
 
 **现象分析：**

@@ -87,5 +87,5 @@ Agent-only Turn 只写 Agent Session。绑定 Narrative 且显式提交时，Age
 
 - [`packages/agent-store/src/types.ts`](../../../../packages/agent-store/src/types.ts)
 - [`packages/agent-store/src/store.ts`](../../../../packages/agent-store/src/store.ts)
-- [`packages/application-runtime/src/agent/tool-loop.ts`](../../../../packages/application-runtime/src/agent/tool-loop.ts)
-- [`packages/application-runtime/src/agent-turn.ts`](../../../../packages/application-runtime/src/agent-turn.ts)
+- [`packages/application-runtime/src/agents/tool-loop.ts`](../../../../packages/application-runtime/src/agents/tool-loop.ts)
+- [`packages/application-runtime/src/agents/agent-turn.ts`](../../../../packages/application-runtime/src/agents/agent-turn.ts)

@@ -1,4 +1,4 @@
-import { buildOpenAIChatPayload } from '../../../packages/application-runtime/src/provider-payload.js'
+import { buildOpenAIChatPayload } from '../../../packages/application-runtime/src/providers/provider-payload.js'
 import { describe, expect, it } from 'vitest'
 
 describe('OpenAI-compatible provider payload builder', () => {

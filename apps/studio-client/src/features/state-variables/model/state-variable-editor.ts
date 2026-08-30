@@ -27,8 +27,12 @@ export function parseCardStateConfig(text: string): {
 }
 
 export function toStateDefinitionDraft(definition: StateDefinition): StateDefinitionDraft {
-  const { id: _id, version: _version, createdAt: _createdAt, updatedAt: _updatedAt, ...draft } = definition
-  return draft
+  const draft = { ...definition } as Record<string, unknown>
+  delete draft.id
+  delete draft.version
+  delete draft.createdAt
+  delete draft.updatedAt
+  return draft as StateDefinitionDraft
 }
 
 function parseJsonObject(text: string, label: string): Record<string, ClientJsonValue> {

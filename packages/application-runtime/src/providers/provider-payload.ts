@@ -1,6 +1,6 @@
 import type { JsonObject } from '@loom-studio/shared'
 import type { ChatMessage } from '@loom-studio/shared'
-import type { ProviderMessage } from './types.js'
+import type { ProviderMessage } from '../types.js'
 
 export type OpenAIChatMessage = ChatMessage
 

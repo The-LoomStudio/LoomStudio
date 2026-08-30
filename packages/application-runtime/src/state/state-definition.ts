@@ -6,7 +6,7 @@ import type {
   StateDefinitionEntry,
   TimelineStateBinding,
   TimelineStateTemplateDraft,
-} from './types.js'
+} from '../types.js'
 
 export class StateDefinitionError extends Error {
   constructor(

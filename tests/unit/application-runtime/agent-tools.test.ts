@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   createAgentToolRegistry,
   type ToolDefinition,
-} from '../../../packages/application-runtime/src/agent/tool-registry.js'
+} from '../../../packages/application-runtime/src/agents/tool-registry.js'
 
 const structuredTool: ToolDefinition = {
   id: 'official/read_context',

@@ -1,10 +1,10 @@
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
-import { renderVariableMacros, type VariableRenderContext } from '../variables.js'
+import { renderVariableMacros, type VariableRenderContext } from '../prompt/variables.js'
 import {
   evaluatePromptActivation,
   type ActivationFacts,
   type PromptActivation,
-} from '../prompt-activation.js'
+} from '../prompt/prompt-activation.js'
 import type {
   ToolDefinition,
   ToolInputDefinition,

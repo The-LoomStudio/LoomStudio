@@ -1,4 +1,4 @@
-import type { CompiledPrompt, PromptContribution, SourceNode } from '../../prompt-builder.js'
+import type { CompiledPrompt, PromptContribution, SourceNode } from '../../prompt/prompt-builder.js'
 import type { ToolExecutionScope } from '../tool-registry.js'
 
 export function createPromptToolExecutionScope(input: {

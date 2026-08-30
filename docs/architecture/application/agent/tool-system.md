@@ -87,8 +87,8 @@ tools zone
 
 ## 8. 实现来源
 
-- [`packages/application-runtime/src/agent/tool-registry.ts`](../../../../packages/application-runtime/src/agent/tool-registry.ts)
-- [`packages/application-runtime/src/agent/content-transport.ts`](../../../../packages/application-runtime/src/agent/content-transport.ts)
-- [`packages/application-runtime/src/agent/tool-prompt-build.ts`](../../../../packages/application-runtime/src/agent/tool-prompt-build.ts)
-- [`packages/application-runtime/src/agent/tool-loop.ts`](../../../../packages/application-runtime/src/agent/tool-loop.ts)
+- [`packages/application-runtime/src/agents/tool-registry.ts`](../../../../packages/application-runtime/src/agents/tool-registry.ts)
+- [`packages/application-runtime/src/agents/content-transport.ts`](../../../../packages/application-runtime/src/agents/content-transport.ts)
+- [`packages/application-runtime/src/agents/tool-prompt-build.ts`](../../../../packages/application-runtime/src/agents/tool-prompt-build.ts)
+- [`packages/application-runtime/src/agents/tool-loop.ts`](../../../../packages/application-runtime/src/agents/tool-loop.ts)
 - [`packages/prompt-resource-store/src/types.ts`](../../../../packages/prompt-resource-store/src/types.ts)

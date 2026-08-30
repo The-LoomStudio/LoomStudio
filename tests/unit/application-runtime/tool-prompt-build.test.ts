@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   compileToolPromptSources,
   type ToolPromptSource,
-} from '../../../packages/application-runtime/src/agent/tool-prompt-build.js'
-import type { ToolDefinition } from '../../../packages/application-runtime/src/agent/tool-registry.js'
-import { createVariableRenderContext } from '../../../packages/application-runtime/src/variables.js'
+} from '../../../packages/application-runtime/src/agents/tool-prompt-build.js'
+import type { ToolDefinition } from '../../../packages/application-runtime/src/agents/tool-registry.js'
+import { createVariableRenderContext } from '../../../packages/application-runtime/src/prompt/variables.js'
 
 const structuredTool: ToolDefinition = {
   id: 'official/read_context',

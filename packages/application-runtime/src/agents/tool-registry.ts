@@ -2,7 +2,7 @@ import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import {
   isPromptActivation,
   type PromptActivation,
-} from '../prompt-activation.js'
+} from '../prompt/prompt-activation.js'
 
 export type ToolOwnerRef = {
   namespace: string

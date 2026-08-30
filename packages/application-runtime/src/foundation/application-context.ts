@@ -7,9 +7,9 @@ import type { NarrativeStore } from '@loom-studio/narrative-store'
 import type { PromptResourceStore } from '@loom-studio/prompt-resource-store'
 import { createId as createSharedId, nowIso } from '@loom-studio/shared'
 import { createStateStore, type StateStore } from '@loom-studio/state-store'
-import { createDocumentBackedAiGateway, providerToGateway } from './gateway.js'
-import { createAgentToolRegistry, type AgentToolRegistry } from './agent/tool-registry.js'
-import type { AiGateway, ApplicationRuntimeOptions, MediaAssetLookup, SourceArtifactStorage } from './types.js'
+import { createDocumentBackedAiGateway, providerToGateway } from '../providers/gateway.js'
+import { createAgentToolRegistry, type AgentToolRegistry } from '../agents/tool-registry.js'
+import type { AiGateway, ApplicationRuntimeOptions, MediaAssetLookup, SourceArtifactStorage } from '../types.js'
 
 export type ApplicationRuntimeContext = {
   agents?: AgentStore

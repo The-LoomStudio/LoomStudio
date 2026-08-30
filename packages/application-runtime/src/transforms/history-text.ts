@@ -124,7 +124,7 @@ export function validateTextTransformRuleDraft(rule: TextTransformRuleDraft): vo
   try {
     new RegExp(rule.matcher.pattern, rule.matcher.flags)
   } catch (error) {
-    throw new Error(`Invalid Text Transform Rule regex: ${error instanceof Error ? error.message : String(error)}`)
+    throw new Error(`Invalid Text Transform Rule regex: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
   }
   const minDepth = rule.range?.minDepth ?? 0
   const maxDepth = rule.range?.maxDepth
@@ -303,7 +303,7 @@ export function validateTextExtractorDraft(extractor: TextExtractorDraft): void 
   try {
     new RegExp(extractor.matcher.pattern, extractor.matcher.flags)
   } catch (error) {
-    throw new Error(`Invalid Text Extractor regex: ${error instanceof Error ? error.message : String(error)}`)
+    throw new Error(`Invalid Text Extractor regex: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
   }
 }
 

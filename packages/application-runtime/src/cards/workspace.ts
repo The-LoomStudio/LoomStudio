@@ -3,9 +3,9 @@ import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import type { PromptResourceStore } from '@loom-studio/prompt-resource-store'
 import { createId, nowIso } from '@loom-studio/shared'
 import { normalizeOpening, normalizeOptionalString, normalizePreset, normalizeSettingLayer } from './card.js'
-import { applicationDocumentTypes } from './document-types.js'
-import { readDocument, toVersioned, writeDocument } from './document-store.js'
-import { isObject } from './json.js'
+import { applicationDocumentTypes } from '../foundation/document-types.js'
+import { readDocument, toVersioned, writeDocument } from '../foundation/document-store.js'
+import { isObject } from '../foundation/json.js'
 import type {
   AgentHistoryPolicy,
   CardPresetInput,
@@ -14,7 +14,7 @@ import type {
   OpeningChatInput,
   RuntimeRequestContext,
   SettingLayerInput,
-} from './types.js'
+} from '../types.js'
 import type {
   CompositionSkeletonPatch,
   PromptCompositionCapabilities,
@@ -22,12 +22,12 @@ import type {
   PromptLifecycle,
   ProjectionOrderProfile,
   SourceNode,
-} from './prompt-builder.js'
-import { combineActivationGates, isPromptActivation, type PromptActivation } from './prompt-activation.js'
-import { fromStoredResource } from './prompt-resource-mapper.js'
-import { renderVariableMacros, type VariableRenderContext } from './variables.js'
-import { validateStateDefinitionDraft, validateTimelineStateBinding } from './state-definition.js'
-import type { StateDefinitionContent, StateDefinitionDraft, TimelineStateBinding } from './types.js'
+} from '../prompt/prompt-builder.js'
+import { combineActivationGates, isPromptActivation, type PromptActivation } from '../prompt/prompt-activation.js'
+import { fromStoredResource } from '../prompt/prompt-resource-mapper.js'
+import { renderVariableMacros, type VariableRenderContext } from '../prompt/variables.js'
+import { validateStateDefinitionDraft, validateTimelineStateBinding } from '../state/state-definition.js'
+import type { StateDefinitionContent, StateDefinitionDraft, TimelineStateBinding } from '../types.js'
 
 const applicationActor = { kind: 'kernel', id: 'application-runtime' } as const
 

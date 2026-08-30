@@ -1,10 +1,10 @@
 import type { DocumentStore } from '@loom-studio/document-store'
-import { applicationDocumentTypes } from './document-types.js'
-import { readDocument } from './document-store.js'
+import { applicationDocumentTypes } from '../foundation/document-types.js'
+import { readDocument } from '../foundation/document-store.js'
 import type {
   ProviderModelSelection,
   ProviderProfileContent,
-} from './types.js'
+} from '../types.js'
 
 export function assertNonEmpty(value: string, label: string): void {
   if (value.trim().length === 0) {

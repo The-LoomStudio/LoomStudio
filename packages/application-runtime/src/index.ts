@@ -1,6 +1,6 @@
-export { applicationDocumentTypes } from './document-types.js'
-export * from './history-text.js'
-export { createApplicationRuntime } from './runtime.js'
+export { applicationDocumentTypes } from './foundation/document-types.js'
+export * from './transforms/history-text.js'
+export { createApplicationRuntime } from './runtime/runtime.js'
 export {
   materializeTimelineState,
   StateDefinitionError,
@@ -8,8 +8,8 @@ export {
   validateStateDefinitionDraft,
   validateStateValue,
   validateTimelineStateBinding,
-} from './state-definition.js'
-export { composeAgentTurnPrompt } from './agent-turn.js'
+} from './state/state-definition.js'
+export { composeAgentTurnPrompt } from './agents/agent-turn.js'
 export {
   exportCardArtifact,
   importCardBundle,
@@ -19,18 +19,19 @@ export {
   normalizePortableExtensionPayloadArtifact,
   readPromptResourceInputs,
   readPromptResourceOrderProfile,
-} from './workspace.js'
+} from './cards/workspace.js'
 export {
   createDocumentBackedAiGateway,
   createDocumentBackedProfiledAiGateway,
   createFakeAiGateway,
   createFakeProvider,
   createOpenAICompatibleGateway,
-} from './gateway.js'
+} from './providers/gateway.js'
+export { officialFakeModelId } from './runtime/providers-runtime.js'
 export {
   buildOpenAIChatPayload,
-} from './provider-payload.js'
-export { createAgentToolRegistry } from './agent/tool-registry.js'
+} from './providers/provider-payload.js'
+export { createAgentToolRegistry } from './agents/tool-registry.js'
 export {
   createOfficialAgentToolRegistry,
   createPromptToolExecutionScope,
@@ -39,13 +40,13 @@ export {
   officialReadStateTool,
   officialSearchContextTool,
   officialUpdateStateTool,
-} from './agent/official-tools/index.js'
+} from './agents/official-tools/index.js'
 export {
   createLoomContentScannerState,
   finishLoomContentScan,
   pushLoomContentChunk,
   renderLoomContentToolResult,
-} from './agent/content-transport.js'
+} from './agents/content-transport.js'
 export type {
   LoomContentScanError,
   LoomContentScanErrorCode,
@@ -55,8 +56,8 @@ export type {
   LoomContentScanResult,
   LoomContentToolInvocation,
   LoomContentToolResult,
-} from './agent/content-transport.js'
-export { compileToolPromptSources } from './agent/tool-prompt-build.js'
+} from './agents/content-transport.js'
+export { compileToolPromptSources } from './agents/tool-prompt-build.js'
 export type {
   CompiledToolExposure,
   CompiledToolPrompt,
@@ -68,7 +69,7 @@ export type {
   ToolContentPlacement,
   ToolPromptSource,
   ToolPromptTemplate,
-} from './agent/tool-prompt-build.js'
+} from './agents/tool-prompt-build.js'
 export type {
   AgentToolAnalysis,
   AgentToolRegistry,
@@ -94,14 +95,14 @@ export type {
   ToolResult,
   ToolResultPart,
   ToolTransport,
-} from './agent/tool-registry.js'
+} from './agents/tool-registry.js'
 export {
   combineActivationGates,
   evaluateCondition,
   evaluatePromptActivation,
   isActivationCondition,
   isPromptActivation,
-} from './prompt-activation.js'
+} from './prompt/prompt-activation.js'
 export type {
   CompositionItem,
   CompositionItemBase,
@@ -130,31 +131,31 @@ export type {
   SlotNode,
   SourceNode,
   ZoneNode,
-} from './prompt-builder.js'
-export { promptBindingIds, promptSlotIds, promptZoneIds } from './prompt-builder.js'
-export type { PromptBuildTrace } from './prompt-build-pipeline.js'
+} from './prompt/prompt-builder.js'
+export { promptBindingIds, promptSlotIds, promptZoneIds } from './prompt/prompt-builder.js'
+export type { PromptBuildTrace } from './prompt/prompt-build-pipeline.js'
 export {
   cloneVariableRenderTrace,
   createVariableRenderContext,
   renderVariableMacros,
-} from './variables.js'
+} from './prompt/variables.js'
 export type {
   VariableDiagnostic,
   VariableReadTrace,
   VariableRenderContext,
   VariableRenderTrace,
   VariableSnapshot,
-} from './variables.js'
+} from './prompt/variables.js'
 export type {
   ActivationCondition,
   ActivationEvaluation,
   ActivationFacts,
   PromptActivation,
-} from './prompt-activation.js'
+} from './prompt/prompt-activation.js'
 export type {
   OpenAIChatMessage,
   OpenAIChatPayload,
-} from './provider-payload.js'
+} from './providers/provider-payload.js'
 export type * from './types.js'
 export type {
   CardBundleBindingEndpoint,
@@ -170,4 +171,4 @@ export type {
   CardBundleSourceArtifactRef,
   CardBundleSourceBinding,
   PromptResourceCompositionCapabilities,
-} from './workspace.js'
+} from './cards/workspace.js'

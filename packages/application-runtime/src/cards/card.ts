@@ -1,9 +1,9 @@
 import type { DocumentRecord } from '@loom-studio/document-store'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import { createId, nowIso } from '@loom-studio/shared'
-import { isObject } from './json.js'
-import { isPromptActivation } from './prompt-activation.js'
-import { createVariableRenderContext, renderVariableMacros } from './variables.js'
+import { isObject } from '../foundation/json.js'
+import { isPromptActivation } from '../prompt/prompt-activation.js'
+import { createVariableRenderContext, renderVariableMacros } from '../prompt/variables.js'
 import type {
   CardSummary,
   CardPresetContent,
@@ -17,7 +17,7 @@ import type {
   SettingEntryContent,
   SettingLayerContent,
   SettingLayerInput,
-} from './types.js'
+} from '../types.js'
 
 export function toCardSource(card: DocumentRecord<CardSourceContent>): CardSourceContent & { id: string; version: number } {
   return {
@@ -147,7 +147,7 @@ export function normalizeSettingLayer(input: SettingLayerInput | undefined, lega
 
 export function readOpeningEntries(
   content: CardSourceContent,
-  variables?: import('./variables.js').VariableRenderContext,
+  variables?: import('../prompt/variables.js').VariableRenderContext,
 ): OpeningChatEntryContent[] {
   const renderContext = variables ?? createVariableRenderContext({
     global: {

@@ -4,6 +4,11 @@ import type {
   AgentSession,
   AgentStore,
 } from '@loom-studio/agent-store'
+export type {
+  AgentTranscriptEntry,
+  AgentTranscriptPage,
+  AgentSession,
+} from '@loom-studio/agent-store'
 import type { DocumentStore } from '@loom-studio/document-store'
 import type { AiGatewayCapabilityRegistry, ProviderAdapterRegistry } from '@loom-studio/ai-gateway'
 import type { DataActorRef, SqliteDataEngine } from '@loom-studio/data-engine'
@@ -23,19 +28,25 @@ import type {
   NarrativeStore,
   NarrativeTimeline,
 } from '@loom-studio/narrative-store'
+export type {
+  NarrativeBranch,
+  NarrativeNode,
+  NarrativePage,
+  NarrativeTimeline,
+} from '@loom-studio/narrative-store'
 import type { AssistantChatMessage, ChatMessage, JsonObject, JsonValue } from '@loom-studio/shared'
 import type { SecretRef, SecretStore } from '@loom-studio/secret-store'
 import type { StateStore } from '@loom-studio/state-store'
 import type { PresetToolMount, PromptResourceStore, SettingMount, SettingMountSource } from '@loom-studio/prompt-resource-store'
 export type { PresetToolMount, SettingMount, SettingMountSource } from '@loom-studio/prompt-resource-store'
-import type { ActivationFacts, PromptActivation } from './prompt-activation.js'
-import type { AgentToolRegistry, ToolDefinition } from './agent/tool-registry.js'
+import type { ActivationFacts, PromptActivation } from './prompt/prompt-activation.js'
+import type { AgentToolRegistry, ToolDefinition } from './agents/tool-registry.js'
 import type {
   CompiledToolExposure,
   ToolPromptBuildTrace,
-} from './agent/tool-prompt-build.js'
-import type { OpenAIChatPayload } from './provider-payload.js'
-import type { PromptBuildTrace } from './prompt-build-pipeline.js'
+} from './agents/tool-prompt-build.js'
+import type { OpenAIChatPayload } from './providers/provider-payload.js'
+import type { PromptBuildTrace } from './prompt/prompt-build-pipeline.js'
 import type {
   HistoryProjectionSnapshot,
   HistorySource,
@@ -46,8 +57,22 @@ import type {
   TextTransformPhase,
   TextTransformRuleDraft,
   TextTransformRuleEntry,
-} from './history-text.js'
-import type { CompiledPrompt, CompositionSkeletonPatch, ProjectionOrderProfile } from './prompt-builder.js'
+} from './transforms/history-text.js'
+export type {
+  HistoryProjectionSnapshot,
+  HistorySource,
+  HistoryTextEntry,
+  RendererDefinition,
+  TextExtractionResult,
+  TextExtractorContent,
+  TextExtractorDraft,
+  TextExtractorEntry,
+  TextTransformPhase,
+  TextTransformRuleContent,
+  TextTransformRuleDraft,
+  TextTransformRuleEntry,
+} from './transforms/history-text.js'
+import type { CompiledPrompt, CompositionSkeletonPatch, ProjectionOrderProfile } from './prompt/prompt-builder.js'
 import type {
   CardBundleArtifact,
   ImportBundleContent,
@@ -57,7 +82,17 @@ import type {
   PromptResourceContent,
   PromptResourceKind,
   PromptResourceNode,
-} from './workspace.js'
+} from './cards/workspace.js'
+export type {
+  CardBundleArtifact,
+  ImportBundleContent,
+  PortableExtensionPayloadArtifact,
+  PromptResourceArtifact,
+  PromptResourceCompositionCapabilities,
+  PromptResourceContent,
+  PromptResourceKind,
+  PromptResourceNode,
+} from './cards/workspace.js'
 
 export type ApplicationRuntime = {
   initialize(): Promise<void>
@@ -948,6 +983,9 @@ export type PingProviderModelResult = {
 
 export type AgentHistoryPolicy = 'persistent' | 'ephemeral'
 
+export type AgentProfileEntry = AgentProfileContent & { id: string; version: number }
+export type ListAgentToolsResult = { tools: AgentToolEntry[] }
+
 export type CreateAgentProfileInput = {
   name: string
   presetId: string
@@ -955,13 +993,13 @@ export type CreateAgentProfileInput = {
   toolOverrides?: Record<string, boolean>
 }
 export type CreateAgentProfileResult = {
-  agentProfile: AgentProfileContent & { id: string; version: number }
+  agentProfile: AgentProfileEntry
 }
 export type GetAgentProfileInput = { agentProfileId: string }
 export type GetAgentProfileResult = CreateAgentProfileResult
 export type ListAgentProfilesInput = { limit?: number; cursor?: string }
 export type ListAgentProfilesResult = {
-  agentProfiles: Array<AgentProfileContent & { id: string; version: number }>
+  agentProfiles: AgentProfileEntry[]
   nextCursor?: string
 }
 export type UpdateAgentProfileInput = {

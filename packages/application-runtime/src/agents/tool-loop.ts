@@ -6,13 +6,13 @@ import type {
 } from '@loom-studio/agent-store'
 import type { PresetToolMount } from '@loom-studio/prompt-resource-store'
 import type { ChatMessage, JsonObject, JsonValue } from '@loom-studio/shared'
-import type { ApplicationRuntimeContext } from '../application-context.js'
-import type { VariableRenderContext } from '../variables.js'
+import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
+import type { VariableRenderContext } from '../prompt/variables.js'
 import {
   promptZoneIds,
   type PromptContribution,
   type SourceNode,
-} from '../prompt-builder.js'
+} from '../prompt/prompt-builder.js'
 import type {
   ToolDefinition,
   ToolExecutionScope,
@@ -31,7 +31,7 @@ import {
   type ToolPromptBuildTrace,
   type ToolPromptSource,
 } from './tool-prompt-build.js'
-import type { ActivationFacts } from '../prompt-activation.js'
+import type { ActivationFacts } from '../prompt/prompt-activation.js'
 import type {
   GatewayChatResult,
   ProviderModelSelection,
@@ -40,7 +40,7 @@ import type {
 import {
   projectHistoryEntries,
   type TextTransformRuleEntry,
-} from '../history-text.js'
+} from '../transforms/history-text.js'
 
 const maximumProviderSteps = 8
 const toolTimeoutMs = 30_000
@@ -566,7 +566,7 @@ function classifyAssistantContent(
   sessionId: string,
   rules: TextTransformRuleEntry[],
 ) {
-  if (!content || rules.length === 0) return { text: content, reasoning: [] as import('../history-text.js').PromotedReasoningPart[] }
+  if (!content || rules.length === 0) return { text: content, reasoning: [] as import('../transforms/history-text.js').PromotedReasoningPart[] }
   const snapshot = projectHistoryEntries({
     source: { kind: 'agent-session', sessionId },
     phase: 'classify',

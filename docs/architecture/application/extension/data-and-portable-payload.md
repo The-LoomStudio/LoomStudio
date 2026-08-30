@@ -104,6 +104,6 @@ Extension publishes Payload
 - [`packages/extension-sdk/src/index.ts`](../../../../packages/extension-sdk/src/index.ts)
 - [`packages/extension-sdk/extension-host/src/index.ts`](../../../../packages/extension-sdk/extension-host/src/index.ts)
 - [`packages/application-runtime/src/runtime.ts`](../../../../packages/application-runtime/src/runtime.ts)
-- [`packages/application-runtime/src/workspace.ts`](../../../../packages/application-runtime/src/workspace.ts)
+- [`packages/application-runtime/src/cards/workspace.ts`](../../../../packages/application-runtime/src/cards/workspace.ts)
 - [`apps/studio-server/src/main.ts`](../../../../apps/studio-server/src/main.ts)
 - [`apps/studio-server/src/codecs/card-bundle-zip.ts`](../../../../apps/studio-server/src/codecs/card-bundle-zip.ts)

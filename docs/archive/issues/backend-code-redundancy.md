@@ -47,7 +47,7 @@
 **文件：** `packages/application-runtime/package.json`
 
 **审查结论：**
-- 经全量符号排查，[`packages/application-runtime/src/prompt-build-pipeline.ts`](../../../packages/application-runtime/src/prompt-build-pipeline.ts) 深度依赖了 `@loom/core` 中的 Pipeline 阶段与执行能力，确系合法核心依赖，非幽灵依赖。
+- 经全量符号排查，[`packages/application-runtime/src/prompt/prompt-build-pipeline.ts`](../../../packages/application-runtime/src/prompt/prompt-build-pipeline.ts) 深度依赖了 `@loom/core` 中的 Pipeline 阶段与执行能力，确系合法核心依赖，非幽灵依赖。
 
 ---
 

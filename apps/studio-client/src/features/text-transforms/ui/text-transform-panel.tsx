@@ -125,8 +125,22 @@ function Editor(props: { title: string; selectedId: string; items: Array<{ id: s
   return <section className={styles.block}><h3>{props.title}</h3><select value={props.selectedId} onChange={event => props.onSelect(event.target.value)}><option value="">新建或选择</option>{props.items.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select><input placeholder="Document ID" value={props.selectedId} onChange={event => props.onId(event.target.value)} /><textarea rows={18} spellCheck={false} value={props.text} onChange={event => props.onText(event.target.value)} /><div className={styles.actions}><button disabled={!props.selectedId} type="button" onClick={props.onSave}>保存</button><button disabled={!props.items.some(item => item.id === props.selectedId)} type="button" onClick={props.onDelete}>删除</button></div></section>
 }
 
-function toRuleDraft(rule: TextTransformRule): TextTransformRuleDraft { const { id: _id, version: _version, createdAt: _createdAt, updatedAt: _updatedAt, ...draft } = rule; return draft }
-function toExtractorDraft(extractor: TextExtractor): TextExtractorDraft { const { id: _id, version: _version, createdAt: _createdAt, updatedAt: _updatedAt, ...draft } = extractor; return draft }
+function toRuleDraft(rule: TextTransformRule): TextTransformRuleDraft {
+  const draft = { ...rule } as Record<string, unknown>
+  delete draft.id
+  delete draft.version
+  delete draft.createdAt
+  delete draft.updatedAt
+  return draft as TextTransformRuleDraft
+}
+function toExtractorDraft(extractor: TextExtractor): TextExtractorDraft {
+  const draft = { ...extractor } as Record<string, unknown>
+  delete draft.id
+  delete draft.version
+  delete draft.createdAt
+  delete draft.updatedAt
+  return draft as TextExtractorDraft
+}
 function readError(value: unknown): string { return value instanceof Error ? value.message : String(value) }
 
 const defaultRuleText = JSON.stringify({ name: 'Hide marker', owner: { kind: 'workspace' }, enabled: true, orderIndex: 0, matcher: { kind: 'regex', pattern: '<marker>[\\s\\S]*?</marker>', flags: 'g' }, effect: { kind: 'replace', replacement: '' }, targets: ['narrative', 'agent-session'], phases: ['prompt', 'display'] }, null, 2)

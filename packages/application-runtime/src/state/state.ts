@@ -1,11 +1,11 @@
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import type { Changeset, SqliteDocumentStore } from '@loom-studio/document-store'
 import type { SqliteDataTransaction } from '@loom-studio/data-engine'
-import type { ApplicationRuntimeContext } from './application-context.js'
-import { applicationDocumentTypes } from './document-types.js'
-import { listDocuments } from './document-store.js'
+import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
+import { applicationDocumentTypes } from '../foundation/document-types.js'
+import { listDocuments } from '../foundation/document-store.js'
 import { validateStateValue } from './state-definition.js'
-import { readTimelineRuntimeContext } from './timeline-runtime-context.js'
+import { readTimelineRuntimeContext } from '../narrative/timeline-runtime-context.js'
 import type {
   ApplyStateMutationInput,
   ApplyStateMutationResult,
@@ -14,7 +14,7 @@ import type {
   StateSnapshotView,
   StateTarget,
   StateDefinitionContent,
-} from './types.js'
+} from '../types.js'
 
 const globalOwnerId = 'workspace'
 

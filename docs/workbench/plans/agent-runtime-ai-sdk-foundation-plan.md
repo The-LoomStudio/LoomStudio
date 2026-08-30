@@ -55,7 +55,7 @@ Assistant Content In-band Tool
 
 当前已新增 [`packages/ai-gateway`](../../../packages/ai-gateway)，在包内使用 Vercel AI SDK 及官方 Provider adapter，负责完整响应、流式响应、Provider-native Function Tool、usage、finish metadata 和取消。其 public contract 不暴露 AI SDK 类型。
 
-[`packages/application-runtime/src/gateway.ts`](../../../packages/application-runtime/src/gateway.ts) 继续负责：
+[`packages/application-runtime/src/providers/gateway.ts`](../../../packages/application-runtime/src/providers/gateway.ts) 继续负责：
 
 - Provider Profile、Secret、Model Enablement 与 Proxy；
 - 将账户交给 Provider Adapter Registry 解析；

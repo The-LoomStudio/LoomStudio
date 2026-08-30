@@ -11,13 +11,14 @@ import {
   type CompiledPrompt,
   type PromptContribution,
   type SourceNode,
-} from './prompt-builder.js'
-import type { ActivationFacts } from './prompt-activation.js'
-import { compilePromptWithCore, type PromptBuildTrace } from './prompt-build-pipeline.js'
-import { readPromptResourceInputs, type PromptResourceContent } from './workspace.js'
-import { createPromptToolExecutionScope } from './agent/official-tools/index.js'
-import { cloneVariableRenderTrace, createVariableRenderContext, type VariableRenderContext } from './variables.js'
-import { projectHistoryEntries, type TextTransformRuleEntry } from './history-text.js'
+} from '../prompt/prompt-builder.js'
+import type { ActivationFacts } from '../prompt/prompt-activation.js'
+import { compilePromptWithCore, type PromptBuildTrace } from '../prompt/prompt-build-pipeline.js'
+import { readPromptResourceInputs, type PromptResourceContent } from '../cards/workspace.js'
+import { createPromptToolExecutionScope } from './official-tools/index.js'
+import type { ToolExecutionScope } from './tool-registry.js'
+import { cloneVariableRenderTrace, createVariableRenderContext, type VariableRenderContext } from '../prompt/variables.js'
+import { projectHistoryEntries, type TextTransformRuleEntry } from '../transforms/history-text.js'
 
 export async function composeAgentTurnPrompt(input: {
   activationFacts?: ActivationFacts
@@ -43,7 +44,7 @@ export async function composeAgentTurnPrompt(input: {
     contributions: PromptContribution[]
     slotRanks?: Array<{ zoneId: string; slotKey: string; rankKey: string }>
   }
-}): Promise<{ messages: ChatMessage[]; projection: CompiledPrompt; promptBuildTrace: PromptBuildTrace; toolExecutionScope: import('./agent/tool-registry.js').ToolExecutionScope }> {
+}): Promise<{ messages: ChatMessage[]; projection: CompiledPrompt; promptBuildTrace: PromptBuildTrace; toolExecutionScope: ToolExecutionScope }> {
   const variables = input.variables ?? createVariableRenderContext()
   const manualMounts = await input.promptResources.listSettingMounts({ source: { kind: 'manual', id: 'global' } })
   const timelineSettingIds = input.narrative

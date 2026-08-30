@@ -1,6 +1,6 @@
-import type { ApplicationRuntimeContext } from './application-context.js'
-import { applicationDocumentTypes } from './document-types.js'
-import type { TimelineRuntimeContextContent } from './types.js'
+import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
+import { applicationDocumentTypes } from '../foundation/document-types.js'
+import type { TimelineRuntimeContextContent } from '../types.js'
 
 export function timelineRuntimeContextId(timelineId: string): string {
   return `timeline-runtime-context:${timelineId}`

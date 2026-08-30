@@ -14,8 +14,8 @@ import type { SecretStore } from '@loom-studio/secret-store'
 import type { JsonValue } from '@loom-studio/shared'
 import { createId } from '@loom-studio/shared'
 import { fetch as undiciFetch, ProxyAgent } from 'undici'
-import { applicationDocumentTypes } from './document-types.js'
-import { readDocument } from './document-store.js'
+import { applicationDocumentTypes } from '../foundation/document-types.js'
+import { readDocument } from '../foundation/document-store.js'
 import { buildOpenAIChatPayload } from './provider-payload.js'
 import type {
   AiGateway,
@@ -23,7 +23,7 @@ import type {
   ApplicationProvider,
   OpenAICompatibleGatewayOptions,
   ProviderProfileContent,
-} from './types.js'
+} from '../types.js'
 
 export function createDocumentBackedProfiledAiGateway(options: {
   documents: DocumentStore

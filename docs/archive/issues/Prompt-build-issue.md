@@ -29,8 +29,8 @@ useNarrativeRuntime.submitTurn / previewPrompt   (前端 feature hook)
 ### ✅ [已解决] `compilePromptDataModel` 的 `messages` 输出过滤了空 zone，会生成乱序的 Provider Message
 
 **文件：**
-- [`prompt-builder.ts`](../../../packages/application-runtime/src/prompt-builder.ts)
-- [`provider-payload.ts` L59-L70](../../../packages/application-runtime/src/provider-payload.ts)
+- [`prompt-builder.ts`](../../../packages/application-runtime/src/prompt/prompt-builder.ts)
+- [`provider-payload.ts` L59-L70](../../../packages/application-runtime/src/providers/provider-payload.ts)
 
 **审查结论：**
 - **已在 `provider-payload.ts` 中实现 `mergeAdjacentSystemMessages`**，在转为 Provider Payload 时将连续相邻的 `system` / `developer` 消息自动按双换行合并，解决了多 Provider 对连续 system message 的兼容性限制。
@@ -40,7 +40,7 @@ useNarrativeRuntime.submitTurn / previewPrompt   (前端 feature hook)
 
 ### 🟡 [已改善 / 部分解决] `composeAgentTurnPrompt` 中"无资源时仍调用 `compilePromptDataModel`"产生无意义的空编译
 
-**文件：** [`agent-turn.ts`](../../../packages/application-runtime/src/agent-turn.ts)
+**文件：** [`agent-turn.ts`](../../../packages/application-runtime/src/agents/agent-turn.ts)
 
 **审查结论：**
 - 数据层重构后引入了 `SettingMount` 挂载体系与 `createRuntimePromptSources`，空 profile 已收敛为导出的 `emptyProjectionOrderProfile`。
@@ -48,7 +48,7 @@ useNarrativeRuntime.submitTurn / previewPrompt   (前端 feature hook)
 
 ---
 
-**文件：** [`agent-turn.ts` L40-L47](../../../packages/application-runtime/src/agent-turn.ts)
+**文件：** [`agent-turn.ts` L40-L47](../../../packages/application-runtime/src/agents/agent-turn.ts)
 
 ```ts
 // resourceIds.length === 0 时的分支
@@ -73,7 +73,7 @@ useNarrativeRuntime.submitTurn / previewPrompt   (前端 feature hook)
 
 ### 🟡 [中] `readFact` 函数存在优先级二义性
 
-**文件：** [`prompt-activation.ts` L125-L134](../../../packages/application-runtime/src/prompt-activation.ts)
+**文件：** [`prompt-activation.ts` L125-L134](../../../packages/application-runtime/src/prompt/prompt-activation.ts)
 
 ```ts
 function readFact(facts: ActivationFacts, path: string): JsonValue | undefined {
@@ -159,7 +159,7 @@ function settingEntryMatches(entry: JsonObject, input: string): boolean {
 
 ### 🟢 [低] `mergeByKey` 中 patch 不会覆盖已存在的 zone
 
-**文件：** [`prompt-builder.ts` L422-L431](../../../packages/application-runtime/src/prompt-builder.ts)
+**文件：** [`prompt-builder.ts` L422-L431](../../../packages/application-runtime/src/prompt/prompt-builder.ts)
 
 ```ts
 function mergeByKey<T>(baseItems: T[], patchItems: T[], readKey: (item: T) => string): T[] {

@@ -9,7 +9,7 @@ import type {
   PromptResourceContent,
   PromptResourceNode,
   PromptResourceKind,
-} from './workspace.js'
+} from '../cards/workspace.js'
 
 const legacyNodeKeys = ['configRows', 'isSection', 'orderList', 'skeletonPatch', 'slotRanks'] as const
 

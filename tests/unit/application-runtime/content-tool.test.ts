@@ -4,7 +4,7 @@ import {
   finishLoomContentScan,
   pushLoomContentChunk,
   renderLoomContentToolResult,
-} from '../../../packages/application-runtime/src/agent/content-transport.js'
+} from '../../../packages/application-runtime/src/agents/content-transport.js'
 
 const scannerOptions = {
   knownToolNames: ['test_content'],

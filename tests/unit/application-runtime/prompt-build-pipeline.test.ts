@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { compilePromptWithCore } from '../../../packages/application-runtime/src/prompt-build-pipeline.js'
-import { compilePromptDataModel, defaultCompositionSkeleton } from '../../../packages/application-runtime/src/prompt-builder.js'
+import { compilePromptWithCore } from '../../../packages/application-runtime/src/prompt/prompt-build-pipeline.js'
+import { compilePromptDataModel, defaultCompositionSkeleton } from '../../../packages/application-runtime/src/prompt/prompt-builder.js'
 
 describe('PromptBuild Core pipeline', () => {
   it('runs materialize, order, and emit while preserving activation projection', () => {

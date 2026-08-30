@@ -31,7 +31,7 @@ export async function callApplicationRpc(
   const textTransformsResult = await handleTextTransformsRpc(runtime, method, params, context)
   if (textTransformsResult !== undefined) return textTransformsResult
 
-  const extensionRecordsResult = await handleExtensionRecordsRpc(runtime, method, params, context)
+  const extensionRecordsResult = await handleExtensionRecordsRpc(runtime, method, params)
   if (extensionRecordsResult !== undefined) return extensionRecordsResult
 
   const providersResult = await handleProvidersRpc(runtime, method, params, context)

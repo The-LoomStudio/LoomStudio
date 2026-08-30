@@ -95,6 +95,6 @@ Preset Main Order 是构建表面的静态投影：
 - [`packages/ai-gateway/src/types.ts`](../../../../packages/ai-gateway/src/types.ts)
 - [`packages/ai-gateway/src/gateway.ts`](../../../../packages/ai-gateway/src/gateway.ts)
 - [`packages/ai-gateway/src/provider-registry.ts`](../../../../packages/ai-gateway/src/provider-registry.ts)
-- [`packages/application-runtime/src/agent/tool-prompt-build.ts`](../../../../packages/application-runtime/src/agent/tool-prompt-build.ts)
-- [`packages/application-runtime/src/agent/tool-loop.ts`](../../../../packages/application-runtime/src/agent/tool-loop.ts)
+- [`packages/application-runtime/src/agents/tool-prompt-build.ts`](../../../../packages/application-runtime/src/agents/tool-prompt-build.ts)
+- [`packages/application-runtime/src/agents/tool-loop.ts`](../../../../packages/application-runtime/src/agents/tool-loop.ts)
 - [`apps/studio-client/src/features/context-assets/model/preset-tool-projection.ts`](../../../../apps/studio-client/src/features/context-assets/model/preset-tool-projection.ts)

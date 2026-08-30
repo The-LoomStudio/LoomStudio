@@ -7,7 +7,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import type { CardBundleArtifact } from '../../../packages/application-runtime/src/workspace.js'
+import type { CardBundleArtifact } from '../../../packages/application-runtime/src/cards/workspace.js'
 
 function createIds() {
   let sequence = 0
