@@ -1,16 +1,16 @@
 # Prompt Resource Projection Workbench v0
 
-> **状态**：Frontend Foundation Complete / Backend Contract Pending
+> **状态**：Archived / Superseded by [`prompt-resource-ordered-tree-and-caged-slot-plan.md`](../../workbench/plans/prompt-resource-ordered-tree-and-caged-slot-plan.md)
 > **日期**：2026-08-15
 > **主题**：收束 Prompt Resource 的 Source Tree、资源内投影、Preset 主排序、批量编辑与 Folder/Zone 有效启用合同。
-> **计划边界**：Resource Tree、Projection Runlist、Preset 排序与批量编辑的前端基础已经落地。下一阶段只收束 PromptBuild、Document Schema 与 RPC 的后端合同；后端完成前，不把前端推导状态描述为权威运行结果。
+> **历史边界**：Resource Tree、Projection Runlist、Preset 排序与批量编辑的前端基础已经落地。该设计基于旧的 Zone / RankKey 投影模型，现已被有序文件树与 Anchor / Slot 架构取代。
 
 相关文档：
 
-- [`../../discussion/application/prompt/composition-skeleton-and-preset-v0.md`](../../discussion/application/prompt/composition-skeleton-and-preset-v0.md)
-- [`../airp-resource-session-prompt-schema-plan.md`](../../../archive/plans/airp-resource-session-prompt-schema-plan.md)
-- [`../../../architecture/ui/window-layout.md`](../../../architecture/ui/window-layout.md)
-- [`../../../architecture/ui/workspace-shell.md`](../../../architecture/ui/workspace-shell.md)
+- [`../../workbench/discussion/application/prompt/composition-skeleton-and-preset-v0.md`](../../workbench/discussion/application/prompt/composition-skeleton-and-preset-v0.md)
+- [`./airp-resource-session-prompt-schema-plan.md`](./airp-resource-session-prompt-schema-plan.md)
+- [`../../architecture/ui/window-layout.md`](../../architecture/ui/window-layout.md)
+- [`../../architecture/ui/workspace-shell.md`](../../architecture/ui/workspace-shell.md)
 
 ---
 

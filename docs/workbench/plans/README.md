@@ -20,8 +20,8 @@
 | [`search-and-timeline-indexing-plan.md`](./search-and-timeline-indexing-plan.md)             | 延期规划     | 基于 Narrative Store 合同重定 Timeline Search 索引                      |
 | [`typed-primary-resource-bundle-plan.md`](./typed-primary-resource-bundle-plan.md)           | 延期规划     | Preset / Setting 主体加附件的增强导入导出 Artifact                      |
 | [`product-website-documentation-demo-plan.md`](./product-website-documentation-demo-plan.md) | 讨论草案     | 官网、公开文档、下载页、共享视觉语言与轻量交互 Demo                     |
+| [`prompt-resource-ordered-tree-and-caged-slot-plan.md`](./prompt-resource-ordered-tree-and-caged-slot-plan.md) | 待实施方案   | 预设有序文件树、Anchor/Slot 统一抽象与笼中深度（Caged Depth）排序        |
 | [`ui/prompt-resource-diff-mode-v0.md`](./ui/prompt-resource-diff-mode-v0.md)                 | 延期规划     | PromptResource Revision 差异对比与 Tokenizer 合同                       |
-| [`ui/prompt-resource-projection-workbench-v0.md`](./ui/prompt-resource-projection-workbench-v0.md) | 前端基础完成 | Source Tree、投影、Preset 排序与批量编辑；后端合同待收束                 |
 | [`ui/provider-account-health-plan.md`](./ui/provider-account-health-plan.md)                 | 延期规划     | Provider Account 健康检查与连接状态探测                                 |
 | [`ui/provider-model-brand-icons-plan.md`](./ui/provider-model-brand-icons-plan.md)           | 试验完成     | 正式模型品牌资产与图标合同收束                                          |
 | [`log-plan/README.md`](./log-plan/README.md)                                                 | 基础已实现   | 历史日志高级过滤、实时订阅与通知系统                                    |

@@ -11,6 +11,7 @@
 - [`preset-agent-prompt-build-module-plan.md`](./preset-agent-prompt-build-module-plan.md)
 - [`prompt-resource-foundation-plan.md`](./prompt-resource-foundation-plan.md)
 - [`airp-resource-session-prompt-schema-plan.md`](./airp-resource-session-prompt-schema-plan.md)
+- [`prompt-resource-projection-workbench-v0.md`](./prompt-resource-projection-workbench-v0.md)
 
 ## Runtime、Session 与存储
 

@@ -12,8 +12,8 @@
 
 - [`prompt-build-loom-core-pipeline-migration-plan.md`](prompt-build-loom-core-pipeline-migration-plan.md)
 - [`preset-agent-prompt-build-module-plan.md`](preset-agent-prompt-build-module-plan.md)
-- [`ui/prompt-resource-projection-workbench-v0.md`](../../workbench/plans/ui/prompt-resource-projection-workbench-v0.md)
-- [`../discussion/application/prompt/composition-skeleton-and-preset-v0.md`](../../workbench/discussion/application/prompt/composition-skeleton-and-preset-v0.md)
+- [`./prompt-resource-projection-workbench-v0.md`](./prompt-resource-projection-workbench-v0.md)
+- [`../../workbench/discussion/application/prompt/composition-skeleton-and-preset-v0.md`](../../workbench/discussion/application/prompt/composition-skeleton-and-preset-v0.md)
 - [`../../architecture/application/prompt-build/README.md`](../../architecture/application/prompt-build/README.md)
 
 ---
