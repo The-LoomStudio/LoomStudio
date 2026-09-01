@@ -44,11 +44,9 @@ export function mountFromRow(row: Record<string, unknown>): SettingMount {
 export function presetToolMountFromRow(row: Record<string, unknown>): PresetToolMount {
   const activation = row.activation_json === null ? undefined : parseObject(String(row.activation_json), 'tool mount activation')
   const providerOrder = row.provider_order === null ? undefined : Number(row.provider_order)
-  const contentZone = row.content_zone === null ? undefined : String(row.content_zone)
-  const contentSlot = row.content_slot === null ? undefined : String(row.content_slot)
-  const contentRankKey = row.content_rank_key === null ? undefined : String(row.content_rank_key)
-  const contentOrderHint = row.content_order_hint === null ? undefined : Number(row.content_order_hint)
-  const hasContent = contentZone !== undefined || contentSlot !== undefined || contentRankKey !== undefined || contentOrderHint !== undefined
+  const targetAnchorId = row.target_anchor_id === null ? undefined : String(row.target_anchor_id)
+  const localDepth = row.local_depth === null ? undefined : Number(row.local_depth)
+  const hasContent = targetAnchorId !== undefined || localDepth !== undefined
   return {
     id: String(row.id),
     presetResourceId: String(row.preset_resource_id),
@@ -58,10 +56,8 @@ export function presetToolMountFromRow(row: Record<string, unknown>): PresetTool
     ...(activation ? { activation } : {}),
     ...(providerOrder === undefined ? {} : { provider: { order: providerOrder } }),
     ...(hasContent ? { content: {
-      ...(contentZone === undefined ? {} : { zone: contentZone }),
-      ...(contentSlot === undefined ? {} : { slot: contentSlot }),
-      ...(contentRankKey === undefined ? {} : { rankKey: contentRankKey }),
-      ...(contentOrderHint === undefined ? {} : { orderHint: contentOrderHint }),
+      ...(targetAnchorId === undefined ? {} : { targetAnchorId }),
+      ...(localDepth === undefined ? {} : { localDepth }),
     } } : {}),
     origin: parseObject(String(row.origin_json), 'tool mount origin'),
     createdAt: String(row.created_at),
@@ -97,13 +93,11 @@ export function validatePresetToolMountFields(input: Pick<AddPresetToolMountInpu
     throw new PromptResourceStoreError('prompt_resource.tool_mount_provider_order_invalid', 'Tool mount provider order must be finite')
   }
   if (input.content) {
-    for (const [label, value] of [['zone', input.content.zone], ['slot', input.content.slot], ['rankKey', input.content.rankKey]] as const) {
-      if (value !== undefined && (typeof value !== 'string' || !value.trim())) {
-        throw new PromptResourceStoreError('prompt_resource.tool_mount_content_invalid', `Tool mount content ${label} must be a non-empty string`)
-      }
+    if (input.content.targetAnchorId !== undefined && (typeof input.content.targetAnchorId !== 'string' || !input.content.targetAnchorId.trim())) {
+      throw new PromptResourceStoreError('prompt_resource.tool_mount_content_invalid', `Tool mount content targetAnchorId must be a non-empty string`)
     }
-    if (input.content.orderHint !== undefined && !Number.isFinite(input.content.orderHint)) {
-      throw new PromptResourceStoreError('prompt_resource.tool_mount_content_order_invalid', 'Tool mount content order hint must be finite')
+    if (input.content.localDepth !== undefined && !Number.isFinite(input.content.localDepth)) {
+      throw new PromptResourceStoreError('prompt_resource.tool_mount_content_order_invalid', 'Tool mount content localDepth must be finite')
     }
   }
 }
@@ -214,9 +208,9 @@ export function applyAddPresetToolMount(
     database.prepare(`
       INSERT INTO preset_tool_mounts (
         id, preset_resource_id, tool_id, order_index, default_enabled,
-        activation_json, provider_order, content_zone, content_slot,
-        content_rank_key, content_order_hint, origin_json, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        activation_json, provider_order, target_anchor_id, local_depth,
+        origin_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       mount.id,
       mount.presetResourceId,
@@ -225,10 +219,8 @@ export function applyAddPresetToolMount(
       Number(mount.defaultEnabled),
       mount.activation ? stringifyJson(mount.activation, 'tool mount activation') : null,
       mount.provider?.order ?? null,
-      mount.content?.zone ?? null,
-      mount.content?.slot ?? null,
-      mount.content?.rankKey ?? null,
-      mount.content?.orderHint ?? null,
+      mount.content?.targetAnchorId ?? null,
+      mount.content?.localDepth ?? null,
       stringifyJson(mount.origin, 'tool mount origin'),
       mount.createdAt,
     )

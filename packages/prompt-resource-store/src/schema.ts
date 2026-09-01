@@ -109,3 +109,14 @@ export function migrateVersionTwo(database: DatabaseSync): void {
     CREATE INDEX idx_preset_tool_mounts_tool ON preset_tool_mounts(tool_id);
   `)
 }
+
+export function migrateVersionThree(database: DatabaseSync): void {
+  database.exec(`
+    ALTER TABLE preset_tool_mounts DROP COLUMN content_zone;
+    ALTER TABLE preset_tool_mounts DROP COLUMN content_slot;
+    ALTER TABLE preset_tool_mounts DROP COLUMN content_rank_key;
+    ALTER TABLE preset_tool_mounts DROP COLUMN content_order_hint;
+    ALTER TABLE preset_tool_mounts ADD COLUMN target_anchor_id TEXT;
+    ALTER TABLE preset_tool_mounts ADD COLUMN local_depth REAL;
+  `)
+}

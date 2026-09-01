@@ -150,10 +150,8 @@ export type PresetToolMount = {
   activation?: JsonObject
   provider?: { order?: number }
   content?: {
-    zone?: string
-    slot?: string
-    rankKey?: string
-    orderHint?: number
+    targetAnchorId?: string
+    localDepth?: number
   }
   origin: JsonObject
   createdAt: string
