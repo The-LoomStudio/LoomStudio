@@ -24,11 +24,11 @@ export function buildPromptBuildSteps(input: {
 }, t: Translator): PromptBuildStep[] {
   const card = input.card ?? input.session?.cardSnapshot
   const settingEntries = card?.settingLayer?.entries ?? []
-  const activeSettings = input.projection
-    ? input.projection.editorProjection.sourceRows.filter(row => row.active && row.zoneId.startsWith('setting.'))
+  const activeSettings = input.projection?.editorProjection?.sourceRows
+    ? input.projection.editorProjection.sourceRows.filter(row => row.active && row.zoneId?.startsWith('setting.'))
     : settingEntries.filter(entry => settingEntryMatches(entry, input.input))
-  const inactiveSettings = input.projection
-    ? input.projection.editorProjection.sourceRows.filter(row => !row.active && row.zoneId.startsWith('setting.')).length
+  const inactiveSettings = input.projection?.editorProjection?.sourceRows
+    ? input.projection.editorProjection.sourceRows.filter(row => !row.active && row.zoneId?.startsWith('setting.')).length
     : settingEntries.length - activeSettings.length
   const projectionSteps = input.projection ? buildProjectionSteps(input.projection) : []
 
@@ -60,7 +60,7 @@ export function buildPromptBuildSteps(input: {
         { label: t('prompt.label.stablePrefix'), value: input.messages?.some(message => message.role === 'system') ? t('prompt.value.systemPrefix') : t('prompt.value.notPreviewed') },
         { label: t('prompt.label.narrativeContext'), value: input.nodes && input.nodes.length > 0 ? t('prompt.value.branchPath') : t('prompt.value.noAcceptedEntries') },
         { label: t('prompt.label.currentTurn'), value: input.input.trim().length > 0 ? t('prompt.value.currentInputAppended') : t('prompt.value.noInput') },
-        { label: 'Compiled zones', value: input.projection ? String(input.projection.zones.length) : t('prompt.value.notPreviewed') },
+        { label: 'Compiled zones', value: input.projection?.zones ? String(input.projection.zones.length) : t('prompt.value.notPreviewed') },
       ],
     },
     ...projectionSteps,
@@ -71,23 +71,25 @@ export function buildPromptBuildSteps(input: {
         { label: t('prompt.label.messages'), value: input.messages ? input.messages.map(message => message.role).join(' -> ') : t('prompt.value.clickPreviewOrSend') },
         { label: 'Core status', value: readCoreTraceStatus(input.promptBuildTrace, t) },
         { label: 'Core passes', value: readCoreTracePasses(input.promptBuildTrace, t) },
-        { label: 'Trace rows', value: input.projection ? String(input.projection.editorProjection.promptRows.length) : t('prompt.value.notPreviewed') },
+        { label: 'Trace rows', value: input.projection?.editorProjection?.promptRows ? String(input.projection.editorProjection.promptRows.length) : t('prompt.value.notPreviewed') },
       ],
     },
   ]
 }
 
 function buildProjectionSteps(projection: PromptProjection): PromptBuildStep[] {
+  if (!Array.isArray(projection?.zones)) return []
   return projection.zones.map(zone => ({
     title: `Zone: ${zone.displayName}`,
-    rows: zone.slots.map(slot => ({
+    rows: (zone.slots ?? []).map(slot => ({
       label: slot.orderSource,
-      value: `${slot.slotKey} -> ${slot.fragments.map(fragment => fragment.id).join(' -> ')}`,
+      value: `${slot.slotKey} -> ${(slot.fragments ?? []).map(fragment => fragment.id).join(' -> ')}`,
     })),
   }))
 }
 
-function readActiveEntryLabels(entries: Array<JsonObject | PromptProjection['editorProjection']['sourceRows'][number]>, t: Translator): string {
+function readActiveEntryLabels(entries: Array<JsonObject | NonNullable<PromptProjection['editorProjection']>['sourceRows'][number]>, t: Translator): string {
+  if (!Array.isArray(entries)) return t('prompt.value.activeEntryListEmpty')
   const labels = entries.map(entry => {
     if ('sourcePath' in entry) return entry.sourcePath
     return entry.title ?? entry.path ?? entry.id ?? t('prompt.value.untitled')
@@ -97,9 +99,9 @@ function readActiveEntryLabels(entries: Array<JsonObject | PromptProjection['edi
 }
 
 function readInactiveReasons(projection: PromptProjection | undefined, t: Translator): string {
-  const rows = projection?.editorProjection.sourceRows
-    .filter(row => !row.active)
-    .map(row => `${row.sourcePath}: ${row.activationReason ?? t('prompt.value.noActivationReason')}`) ?? []
+  const rows = projection?.editorProjection?.sourceRows
+    ?.filter(row => !row.active)
+    ?.map(row => `${row.sourcePath}: ${row.activationReason ?? t('prompt.value.noActivationReason')}`) ?? []
 
   return rows.join(', ') || t('prompt.value.none')
 }

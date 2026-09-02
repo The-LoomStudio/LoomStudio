@@ -4,7 +4,7 @@ import type { ChatMessage } from './agent.js'
 export type ProviderMessage = ChatMessage
 
 export type PromptProjection = {
-  zones: PromptProjectionZone[]
+  zones?: PromptProjectionZone[]
   messages: ProviderMessage[]
   messageBlocks?: Array<{
     role: ProviderMessage['role']
@@ -13,7 +13,7 @@ export type PromptProjection = {
     fragmentIds: string[]
     native?: boolean
   }>
-  editorProjection: {
+  editorProjection?: {
     sourceRows: Array<{
       active: boolean
       activationReason?: string
