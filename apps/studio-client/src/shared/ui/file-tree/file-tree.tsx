@@ -77,6 +77,15 @@ export function FileTree(props: FileTreeProps) {
     setDraggedNode(node)
   }
 
+  function isNodeContainer(node: FileTreeNode): boolean {
+    return node.children !== undefined
+      || node.container === true
+      || node.kind === 'folder'
+      || node.kind === 'module'
+      || node.kind === 'message'
+      || node.kind === 'slot'
+  }
+
   function handleDragEnd(event: DragEndEvent) {
     setDraggedNode(undefined)
     if (!props.onMoveNode || !event.over || event.active.id === event.over.id) return
@@ -87,7 +96,7 @@ export function FileTree(props: FileTreeProps) {
     const targetNode = findNodeById(props.nodes, overId)
     if (!targetNode) return
 
-    const position = targetNode.children ? 'inside' : readDropPosition(props.nodes, draggedId, overId)
+    const position = isNodeContainer(targetNode) ? 'inside' : readDropPosition(props.nodes, draggedId, overId)
     props.onMoveNode(draggedId, overId, position)
   }
 
@@ -210,7 +219,13 @@ function FileTreeRow(props: {
     data: props.node,
   })
 
+  const hasCount = props.level === 1 && Boolean(props.node.children && props.node.children.length > 0)
+  const childCount = props.node.children?.length ?? 0
+  const isMessageBlock = props.node.kind === 'message'
+  const showMeta = !isMessageBlock && Boolean(props.node.meta || metaLeading)
+
   let rowClass = styles.row
+  if (isMessageBlock) rowClass += ` ${styles.messageBlockRow}`
   if (selected) rowClass += ` ${styles.selected}`
   if (isDragging) rowClass += ` ${styles.dragging}`
   if (isOver) rowClass += ` ${styles.dragOver}`
@@ -234,23 +249,11 @@ function FileTreeRow(props: {
     })
   }
 
-  return (
-    <>
-      {props.node.isSection ? (
+  const rowElement = (
+    <ContextMenu>
+      <ContextMenuTrigger asChild disabled={actions.length === 0}>
         <div
-          ref={setDroppableRef}
-          className={styles.sectionRow}
-          role="presentation"
-        >
-          <div className={styles.sectionDivider} />
-          <span className={styles.sectionLabel}>{props.node.label}</span>
-          <div className={styles.sectionDivider} />
-        </div>
-      ) : (
-        <ContextMenu>
-          <ContextMenuTrigger asChild disabled={actions.length === 0}>
-            <div
-            ref={element => {
+          ref={element => {
             setDroppableRef(element)
             props.setTreeItemRef(props.node.id, element)
           }}
@@ -338,9 +341,12 @@ function FileTreeRow(props: {
                   }}
                 />
               ) : (
-                <span className={styles.label} id={labelId}>{props.node.label}</span>
+                <span className={styles.label} id={labelId}>
+                  {props.node.label}
+                  {hasCount ? <sup className={styles.childCountSup}>{childCount}</sup> : null}
+                </span>
               )}
-              {props.node.meta || metaLeading ? (
+              {showMeta ? (
                 <span className={styles.metaRow}>
                   {metaLeading ? <span className={styles.metaLeading}>{metaLeading}</span> : null}
                   {props.node.meta ? <span className={styles.meta}>{props.node.meta}</span> : null}
@@ -368,42 +374,77 @@ function FileTreeRow(props: {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
+        </div>
+      </ContextMenuTrigger>
+      {actions.length > 0 ? (
+        <ContextMenuContent>
+          {renderMenuContent(ContextMenuItem, ContextMenuCheckboxItem, ContextMenuSeparator)}
+        </ContextMenuContent>
+      ) : null}
+    </ContextMenu>
+  )
+
+  const childrenElements = expanded && props.node.children?.length ? props.node.children.map(child => (
+    <FileTreeRow
+      editingId={props.editingId}
+      expandedIds={props.expandedIds}
+      canDrag={props.canDrag}
+      getDisclosureLabel={props.getDisclosureLabel}
+      getDragLabel={props.getDragLabel}
+      getActions={props.getActions}
+      isMuted={props.isMuted}
+      key={child.id}
+      level={props.node.isSection ? props.level : props.level + 1}
+      moreActionsLabel={props.moreActionsLabel}
+      node={child}
+      onEditCommit={props.onEditCommit}
+      onEditCancel={props.onEditCancel}
+      onSelect={props.onSelect}
+      onToggleExpand={props.onToggleExpand}
+      renderIcon={props.renderIcon}
+      renderMetaLeading={props.renderMetaLeading}
+      rovingId={props.rovingId}
+      selectedId={props.selectedId}
+      setTreeItemRef={props.setTreeItemRef}
+      variant={props.variant}
+      onFocusNode={props.onFocusNode}
+      onTreeItemKeyDown={props.onTreeItemKeyDown}
+    />
+  )) : null
+
+  if (isMessageBlock) {
+    let containerClass = styles.messageBlockContainer
+    if (selected) containerClass += ` ${styles.messageBlockContainerSelected}`
+
+    return (
+      <div
+        className={containerClass}
+        data-message-block={props.node.id}
+      >
+        {rowElement}
+        {childrenElements ? (
+          <div className={styles.messageBlockChildren}>
+            {childrenElements}
           </div>
-        </ContextMenuTrigger>
-          {actions.length > 0 ? (
-            <ContextMenuContent>
-              {renderMenuContent(ContextMenuItem, ContextMenuCheckboxItem, ContextMenuSeparator)}
-            </ContextMenuContent>
-          ) : null}
-        </ContextMenu>
-      )}
-      {expanded ? props.node.children?.map(child => (
-        <FileTreeRow
-          editingId={props.editingId}
-          expandedIds={props.expandedIds}
-          canDrag={props.canDrag}
-          getDisclosureLabel={props.getDisclosureLabel}
-          getDragLabel={props.getDragLabel}
-          getActions={props.getActions}
-          isMuted={props.isMuted}
-          key={child.id}
-          level={props.node.isSection ? props.level : props.level + 1}
-          moreActionsLabel={props.moreActionsLabel}
-          node={child}
-          onEditCommit={props.onEditCommit}
-          onEditCancel={props.onEditCancel}
-          onSelect={props.onSelect}
-          onToggleExpand={props.onToggleExpand}
-          renderIcon={props.renderIcon}
-          renderMetaLeading={props.renderMetaLeading}
-          rovingId={props.rovingId}
-          selectedId={props.selectedId}
-          setTreeItemRef={props.setTreeItemRef}
-          variant={props.variant}
-          onFocusNode={props.onFocusNode}
-          onTreeItemKeyDown={props.onTreeItemKeyDown}
-        />
-      )) : null}
+        ) : null}
+      </div>
+    )
+  }
+
+  return (
+    <>
+      {props.node.isSection ? (
+        <div
+          ref={setDroppableRef}
+          className={styles.sectionRow}
+          role="presentation"
+        >
+          <div className={styles.sectionDivider} />
+          <span className={styles.sectionLabel}>{props.node.label}</span>
+          <div className={styles.sectionDivider} />
+        </div>
+      ) : rowElement}
+      {childrenElements}
     </>
   )
 }

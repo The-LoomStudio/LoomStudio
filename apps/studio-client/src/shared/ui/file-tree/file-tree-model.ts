@@ -4,6 +4,9 @@ export type FileTreeNode = {
   label: string
   meta?: string
   isSection?: boolean
+  kind?: string
+  container?: boolean
+  capabilities?: Record<string, unknown>
 }
 
 export type VisibleFileTreeNode = {

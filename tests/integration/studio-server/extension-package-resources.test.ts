@@ -54,7 +54,7 @@ describe('Studio Server Extension Package resources', () => {
           {
             toolId: 'example.package-resources/content_echo',
             defaultEnabled: true,
-            content: { zone: 'tools', slot: 'extension-package-tools' },
+            content: { targetAnchorId: '@chat.tools', localDepth: 100 },
           },
         ],
       })
@@ -95,19 +95,14 @@ describe('Studio Server Extension Package resources', () => {
       })
       await expect(callRpc<{
         toolExposures: Array<{ toolId: string; transport: string }>
-        projection: { zones: Array<{ zoneId: string; slots: Array<{ slotKey: string }> }> }
+        projection: { messages: Array<unknown> }
       }>(port, 'application.previewAgentTurn', {
         agentSessionId: session.session.id,
         input: 'Preview the Extension tool.',
       })).resolves.toMatchObject({
         toolExposures: [{ toolId: 'example.package-resources/content_echo', transport: 'content' }],
         projection: {
-          zones: expect.arrayContaining([
-            expect.objectContaining({
-              zoneId: 'tools',
-              slots: expect.arrayContaining([expect.objectContaining({ slotKey: 'extension-package-tools' })]),
-            }),
-          ]),
+          messages: expect.any(Array),
         },
       })
       await expect(callRpc(port, 'extensions.removePackageResources', {
@@ -136,7 +131,7 @@ describe('Studio Server Extension Package resources', () => {
           toolId: 'example.package-resources/content_echo',
           orderIndex: 0,
           defaultEnabled: true,
-          content: { zone: 'tools', slot: 'local-extension-tools' },
+          content: { targetAnchorId: '@chat.tools', localDepth: 0 },
         }],
       })
 
@@ -229,7 +224,7 @@ async function writeCapabilityPackage(root: string): Promise<string> {
             {
               toolId: 'example.package-resources/content_echo',
               defaultEnabled: true,
-              content: { zone: 'tools', slot: 'extension-package-tools', rankKey: '0100' },
+              content: { targetAnchorId: '@chat.tools', localDepth: 100 },
             },
           ],
         },

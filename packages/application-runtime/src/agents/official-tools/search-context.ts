@@ -38,13 +38,13 @@ export const officialSearchContextRegistration: ToolRuntimeRegistration = {
     const requestedLimit = invocation.arguments?.limit
     const limit = typeof requestedLimit === 'number' ? requestedLimit : defaultLimit
     const matches = (scope?.context ?? [])
-      .filter(item => item.content.toLocaleLowerCase().includes(query))
+      .filter(item => item.content.toLocaleLowerCase().includes(query) || item.virtualPath.toLocaleLowerCase().includes(query))
       .slice(0, limit)
       .map(item => ({
         id: item.id,
         name: item.name,
-        zoneId: item.zoneId,
-        slotKey: item.slotKey,
+        virtualPath: item.virtualPath,
+        mediaType: item.mediaType,
         sourceKind: item.sourceKind,
         promptState: item.promptState,
         snippet: readSnippet(item.content, query),

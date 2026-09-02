@@ -18,10 +18,8 @@ export type ToolPromptTemplate = {
 }
 
 export type ToolContentPlacement = {
-  zone: string
-  slot: string
-  rankKey?: string
-  orderHint?: number
+  targetAnchorId: string
+  localDepth: number
 }
 
 export type ToolPromptSource = {
@@ -155,10 +153,8 @@ export function compileToolPromptSources(
           : {}),
         projection: item.source.transport === 'content' ? 'content-message' : 'provider-tools',
         ...(item.source.transport !== 'content' || item.source.contentPlacement === undefined ? {} : {
-          zone: item.source.contentPlacement.zone,
-          slot: item.source.contentPlacement.slot,
-          ...(item.source.contentPlacement.rankKey === undefined ? {} : { rankKey: item.source.contentPlacement.rankKey }),
-          ...(item.source.contentPlacement.orderHint === undefined ? {} : { orderHint: item.source.contentPlacement.orderHint }),
+          targetAnchorId: item.source.contentPlacement.targetAnchorId,
+          localDepth: item.source.contentPlacement.localDepth,
         }),
         ...(item.source.transport === 'content' || item.source.providerOrder === undefined
           ? {}
@@ -223,25 +219,19 @@ function compareRequestedOrder(
   }
 
   const leftSlot = left.source.contentPlacement ?? {
-    zone: 'tools',
-    slot: `${left.source.tool.owner.namespace}-tools`,
+    targetAnchorId: '@chat.tools',
+    localDepth: 0,
   }
   const rightSlot = right.source.contentPlacement ?? {
-    zone: 'tools',
-    slot: `${right.source.tool.owner.namespace}-tools`,
+    targetAnchorId: '@chat.tools',
+    localDepth: 0,
   }
 
-  const zoneComparison = compareText(leftSlot.zone, rightSlot.zone)
-  if (zoneComparison !== 0) return zoneComparison
+  const anchorComparison = compareText(leftSlot.targetAnchorId, rightSlot.targetAnchorId)
+  if (anchorComparison !== 0) return anchorComparison
 
-  const rankComparison = compareOptionalText(leftSlot.rankKey, rightSlot.rankKey)
-  if (rankComparison !== 0) return rankComparison
-
-  const slotHintComparison = compareOptionalNumber(leftSlot.orderHint, rightSlot.orderHint)
-  if (slotHintComparison !== 0) return slotHintComparison
-
-  const slotComparison = compareText(leftSlot.slot, rightSlot.slot)
-  if (slotComparison !== 0) return slotComparison
+  const depthComparison = leftSlot.localDepth - rightSlot.localDepth
+  if (depthComparison !== 0) return depthComparison
 
   const sourceIndexComparison = left.sourceIndex - right.sourceIndex
   if (sourceIndexComparison !== 0) return sourceIndexComparison

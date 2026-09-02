@@ -16,11 +16,9 @@ import type {
   SettingLayerInput,
 } from '../types.js'
 import type {
-  CompositionSkeletonPatch,
   PromptCompositionCapabilities,
   PromptContribution,
   PromptLifecycle,
-  ProjectionOrderProfile,
   SourceNode,
 } from '../prompt/prompt-builder.js'
 import { combineActivationGates, isPromptActivation, type PromptActivation } from '../prompt/prompt-activation.js'
@@ -86,7 +84,7 @@ export type PortableExtensionPayloadContent = Omit<PortableExtensionPayloadArtif
   updatedAt: string
 }
 
-export type PromptResourceKind = 'preset' | 'setting' | 'logic' | 'runtime' | 'history' | 'prompt'
+export type PromptResourceKind = 'preset' | 'setting' | 'logic' | 'runtime' | 'history' | 'prompt' | (string & {})
 
 export type PromptResourceContent = {
   resourceKind: PromptResourceKind
@@ -167,39 +165,29 @@ export type CardBundleBindingEndpoint = {
 
 export type PromptResourceNode = {
   body?: string
-  category?: 'preset' | 'setting' | 'logic' | 'runtime' | 'history'
+  category?: 'preset' | 'setting' | 'logic' | 'runtime' | 'history' | (string & {})
   children?: PromptResourceNode[]
   configRows?: Array<{ label: string; value: string }>
   enabled?: boolean
   id: string
   isSection?: boolean
-  kind: 'module' | 'folder' | 'entry' | 'script' | 'virtual' | 'order'
+  kind: 'module' | 'folder' | 'entry' | 'script' | 'virtual' | 'order' | 'slot' | 'message' | (string & {})
   label: string
   meta?: string
   orderList?: string[]
-  skeletonPatch?: CompositionSkeletonPatch
-  slotRanks?: ProjectionOrderProfile['slotRanks']
   capabilities?: PromptResourceCompositionCapabilities
   extra?: JsonObject
 }
 
-export type PromptResourceCompositionCapabilities = Omit<PromptCompositionCapabilities, 'activation' | 'lifecycle' | 'projection'> & {
+export type PromptResourceCompositionCapabilities = PromptCompositionCapabilities & {
   activation?: PromptActivation
   lifecycle?: { lifecycle: 'always' | 'conditional' | 'fresh' | string }
-  projection?: {
-    entryOrderHint?: number
-    zoneId: string
-    bindingId?: string
-    slotKey?: string
-    slotOrderHint?: number
-    sourceKind?: 'actual' | 'virtual'
-  }
 }
 
 type PromptContributionResourceNode = PromptResourceNode & {
   body: string
   capabilities: PromptResourceCompositionCapabilities & {
-    projection: NonNullable<PromptResourceCompositionCapabilities['projection']>
+    targetAnchorId: NonNullable<PromptResourceCompositionCapabilities['targetAnchorId']>
   }
 }
 
@@ -481,13 +469,7 @@ function clonePromptResourceNode(rootNode: PromptResourceNode): PromptResourceNo
     ...node,
     id: idMap.get(node.id) ?? createId('prompt-node'),
     ...(node.orderList ? { orderList: node.orderList.map(replaceId) } : {}),
-    ...(node.slotRanks ? { slotRanks: node.slotRanks.map(rank => ({ ...rank, slotKey: replaceId(rank.slotKey) })) } : {}),
-    ...(node.capabilities?.projection?.slotKey ? {
-      capabilities: {
-        ...node.capabilities,
-        projection: { ...node.capabilities.projection, slotKey: replaceId(node.capabilities.projection.slotKey) },
-      },
-    } : {}),
+    ...(node.orderList ? { orderList: node.orderList.map(replaceId) } : {}),
     ...(node.children ? { children: node.children.map(clone) } : {}),
   })
   return clone(rootNode)
@@ -506,7 +488,6 @@ export async function readPromptResourceInputs(input: {
   resourceIds: string[]
   variables: VariableRenderContext
 }): Promise<{
-  orderProfile: ProjectionOrderProfile
   sourceNodes: SourceNode[]
   contributions: PromptContribution[]
 }> {
@@ -525,11 +506,9 @@ function collectPromptInputsFromNodes(
   contextAssets: PromptResourceNode[],
   variables: VariableRenderContext,
 ): {
-  orderProfile: ProjectionOrderProfile
   sourceNodes: SourceNode[]
   contributions: PromptContribution[]
 } {
-  const orderProfile = readPromptResourceOrderProfile(contextAssets)
   const sourceNodes: SourceNode[] = []
   const contributions: PromptContribution[] = []
 
@@ -545,22 +524,7 @@ function collectPromptInputsFromNodes(
     sourceNodes,
   })
 
-  return { orderProfile, sourceNodes, contributions }
-}
-
-export function readPromptResourceOrderProfile(nodes: PromptResourceNode[]): ProjectionOrderProfile {
-  const orderNodes = findNodes(nodes, node => node.kind === 'order')
-  if (orderNodes.length > 1) {
-    throw new Error(`Prompt Build requires exactly one main order profile; received ${orderNodes.length}`)
-  }
-  const orderNode = orderNodes[0]
-
-  return {
-    id: orderNode?.id ?? 'profile.resources',
-    scope: 'global',
-    ...(orderNode?.skeletonPatch ? { skeletonPatch: orderNode.skeletonPatch } : {}),
-    slotRanks: orderNode?.slotRanks ?? [],
-  }
+  return { sourceNodes, contributions }
 }
 
 export function normalizeCardBundleArtifact(artifact: CardBundleArtifact): CardBundleArtifact {
@@ -635,9 +599,11 @@ function collectPromptInputs(input: {
       parentId: input.parentId,
       displayName: node.label,
       orderIndex: index + 1,
+      kind: node.kind,
+      ...(node.capabilities ? { capabilities: node.capabilities } : {}),
     })
 
-    if (effectiveEnabled && category && isPromptContributionNode(node, category)) {
+    if (effectiveEnabled && category && isPromptContributionNode(node)) {
       const kind = readSourceKind(category)
       if (kind) {
         const effectiveActivation = combineActivationGates(activationGates)
@@ -650,16 +616,11 @@ function collectPromptInputs(input: {
           },
           content: renderVariableMacros(node.body, input.variables),
           capabilities: {
-            content: { kind: 'text' },
             ...(effectiveActivation ? { activation: effectiveActivation } : {}),
-            lifecycle: { lifecycle: readPromptLifecycle(node.capabilities.lifecycle?.lifecycle) },
-            projection: {
-              zoneId: node.capabilities.projection.zoneId,
-              ...(node.capabilities.projection.bindingId ? { bindingId: node.capabilities.projection.bindingId } : {}),
-              ...(node.capabilities.projection.slotKey ? { joinSlotKey: node.capabilities.projection.slotKey } : {}),
-              ...(node.capabilities.projection.entryOrderHint !== undefined ? { entryOrderHint: node.capabilities.projection.entryOrderHint } : {}),
-              ...(node.capabilities.projection.slotOrderHint !== undefined ? { slotOrderHint: node.capabilities.projection.slotOrderHint } : {}),
-            },
+            ...(node.capabilities.targetAnchorId ? { targetAnchorId: node.capabilities.targetAnchorId } : {}),
+            ...(node.capabilities.localDepth !== undefined ? { localDepth: node.capabilities.localDepth } : {}),
+            ...(node.capabilities.roleHint ? { roleHint: node.capabilities.roleHint } : {}),
+            ...(node.capabilities.lifecycle ? { lifecycle: node.capabilities.lifecycle } : {}),
           },
         })
       }
@@ -679,13 +640,11 @@ function collectPromptInputs(input: {
   }
 }
 
-function isPromptContributionNode(node: PromptResourceNode, category: PromptResourceNode['category']): node is PromptContributionResourceNode {
+function isPromptContributionNode(node: PromptResourceNode): node is PromptContributionResourceNode {
   return node.kind === 'entry'
     && node.enabled !== false
     && typeof node.body === 'string'
-    && Boolean(node.capabilities?.projection)
-    && node.capabilities?.projection?.sourceKind !== 'virtual'
-    && (node.capabilities?.projection?.zoneId !== 'chat.history' || category === 'history')
+    && Boolean(node.capabilities?.targetAnchorId)
 }
 
 function readSourceKind(category: PromptResourceNode['category']): PromptContribution['sourceRef']['kind'] | undefined {
@@ -694,10 +653,6 @@ function readSourceKind(category: PromptResourceNode['category']): PromptContrib
   if (category === 'runtime') return 'runtime'
   if (category === 'history') return 'narrativeChat'
   return undefined
-}
-
-function readPromptLifecycle(value: string | undefined): PromptLifecycle {
-  return value === 'conditional' || value === 'fresh' ? value : 'always'
 }
 
 function findNodes(nodes: PromptResourceNode[], predicate: (node: PromptResourceNode) => boolean): PromptResourceNode[] {
@@ -710,16 +665,15 @@ function findNodes(nodes: PromptResourceNode[], predicate: (node: PromptResource
 }
 
 export function applyDefaultPromptProjection(asset: PromptResourceNode, resource: PromptResourceContent): PromptResourceNode {
-  if (asset.kind !== 'entry' || asset.capabilities?.projection) return asset
+  if (asset.kind !== 'entry' || asset.capabilities?.targetAnchorId) return asset
   if (resource.resourceKind !== 'preset' && resource.resourceKind !== 'setting') return asset
 
   const preset = resource.resourceKind === 'preset'
-  const zoneId = preset ? 'preset.system' : 'setting.stable'
-  const slotKey = `${preset ? 'preset' : 'setting-layer'}:${resource.rootNode.id}@${zoneId}`
-  const entryOrders = findNodes([resource.rootNode], node => node.capabilities?.projection?.slotKey === slotKey)
-    .map(node => node.capabilities?.projection?.entryOrderHint)
+  const targetAnchorId = '@chat.system'
+  const entryOrders = findNodes([resource.rootNode], node => node.capabilities?.targetAnchorId === targetAnchorId)
+    .map(node => node.capabilities?.localDepth)
     .filter((value): value is number => typeof value === 'number')
-  const entryOrderHint = entryOrders.length ? Math.max(...entryOrders) + 10 : 10
+  const localDepth = entryOrders.length ? Math.max(...entryOrders) + 10 : 10
 
   return {
     ...asset,
@@ -727,12 +681,9 @@ export function applyDefaultPromptProjection(asset: PromptResourceNode, resource
       ...asset.capabilities,
       ...(preset ? {} : { activation: asset.capabilities?.activation ?? { kind: 'always' as const } }),
       lifecycle: asset.capabilities?.lifecycle ?? { lifecycle: 'always' },
-      projection: {
-        zoneId,
-        slotKey,
-        entryOrderHint,
-        slotOrderHint: preset ? 100 : 200,
-      },
+      targetAnchorId,
+      localDepth,
+      roleHint: 'system',
     },
   }
 }
@@ -932,6 +883,7 @@ function assertCardBundleCard(value: unknown): asserts value is CardBundleArtifa
       if (entry.tags !== undefined && (!Array.isArray(entry.tags) || !entry.tags.every(tag => typeof tag === 'string'))) {
         throw new Error(`Card bundle setting entry tags must be strings: ${index}`)
       }
+      
     }
   }
 }
@@ -955,8 +907,6 @@ function assertPromptResourceNode(value: unknown, path: string): asserts value i
     }
   }
   assertOptionalStringArray(value.orderList, `Prompt resource node orderList: ${path}`)
-  assertSlotRanks(value.slotRanks, path)
-  assertSkeletonPatch(value.skeletonPatch, path)
   assertPromptResourceCapabilities(value.capabilities, path)
 
   if (value.children !== undefined) {
@@ -982,13 +932,9 @@ function assertPromptResourceCapabilities(value: JsonValue | undefined, path: st
   if (value.content !== undefined && (!isObject(value.content) || value.content.kind !== 'text')) throw new Error(`Prompt resource content capability is invalid: ${path}`)
   if (value.lifecycle !== undefined && (!isObject(value.lifecycle) || typeof value.lifecycle.lifecycle !== 'string')) throw new Error(`Prompt resource lifecycle is invalid: ${path}`)
   if (value.projection !== undefined) {
-    if (!isObject(value.projection) || typeof value.projection.zoneId !== 'string') throw new Error(`Prompt resource projection is invalid: ${path}`)
-    assertOptionalString(value.projection.slotKey, `Prompt resource projection slotKey: ${path}`)
-    assertOptionalNumber(value.projection.entryOrderHint, `Prompt resource projection entryOrderHint: ${path}`)
-    assertOptionalNumber(value.projection.slotOrderHint, `Prompt resource projection slotOrderHint: ${path}`)
-    if (value.projection.sourceKind !== undefined && value.projection.sourceKind !== 'actual' && value.projection.sourceKind !== 'virtual') {
-      throw new Error(`Prompt resource projection sourceKind is invalid: ${path}`)
-    }
+    if (!isObject(value.projection)) throw new Error(`Prompt resource projection is invalid: ${path}`)
+    assertOptionalString(value.projection.targetAnchorId, `Prompt resource projection targetAnchorId: ${path}`)
+    assertOptionalNumber(value.projection.localDepth, `Prompt resource projection localDepth: ${path}`)
   }
   if (value.resolution !== undefined) {
     if (!isObject(value.resolution) || typeof value.resolution.semanticSlotKey !== 'string') throw new Error(`Prompt resource resolution is invalid: ${path}`)
@@ -1003,83 +949,7 @@ function assertPromptResourceCapabilities(value: JsonValue | undefined, path: st
   }
 }
 
-function assertSlotRanks(value: JsonValue | undefined, path: string): void {
-  if (value === undefined) return
-  if (!Array.isArray(value) || !value.every(rank => isObject(rank) && typeof rank.zoneId === 'string' && typeof rank.slotKey === 'string' && typeof rank.rankKey === 'string')) {
-    throw new Error(`Prompt resource slotRanks are invalid: ${path}`)
-  }
-}
 
-function assertSkeletonPatch(value: JsonValue | undefined, path: string): void {
-  if (value === undefined) return
-  if (!isObject(value)) throw new Error(`Prompt resource skeletonPatch must be an object: ${path}`)
-  assertOptionalString(value.fallbackZoneId, `Prompt resource fallbackZoneId: ${path}`)
-  if (value.items !== undefined) {
-    if (!Array.isArray(value.items)) throw new Error(`Prompt resource composition items must be an array: ${path}`)
-    value.items.forEach((item, index) => assertCompositionItem(item, `${path}.items[${index}]`))
-  }
-  if (value.zones === undefined) return
-  if (!Array.isArray(value.zones)) throw new Error(`Prompt resource skeleton zones must be an array: ${path}`)
-  for (const zone of value.zones) {
-    if (!isObject(zone)
-      || typeof zone.id !== 'string'
-      || (zone.parentId !== null && typeof zone.parentId !== 'string')
-      || typeof zone.displayName !== 'string'
-      || !['stable-prefix', 'narrative', 'lower-context', 'current-turn', 'fresh-tail'].includes(String(zone.band))
-      || typeof zone.orderIndex !== 'number') {
-      throw new Error(`Prompt resource skeleton zone is invalid: ${path}`)
-    }
-    if (zone.renderHint !== undefined) {
-      if (!isObject(zone.renderHint)
-        || (zone.renderHint.providerRoleHint !== undefined && !['system', 'developer', 'assistant', 'user'].includes(String(zone.renderHint.providerRoleHint)))
-        || (zone.renderHint.wrapper !== undefined && !['section', 'message'].includes(String(zone.renderHint.wrapper)))) {
-        throw new Error(`Prompt resource skeleton zone renderHint is invalid: ${path}`)
-      }
-    }
-    if (zone.accepts !== undefined && (!Array.isArray(zone.accepts) || !zone.accepts.every(kind => ['preset', 'settingLayer', 'narrativeChat', 'narrativeHistory', 'sessionHistory', 'runtime'].includes(String(kind))))) {
-      throw new Error(`Prompt resource skeleton zone accepts are invalid: ${path}`)
-    }
-  }
-}
-
-function assertCompositionItem(value: JsonValue, path: string): void {
-  if (!isObject(value)
-    || typeof value.id !== 'string'
-    || typeof value.displayName !== 'string'
-    || typeof value.orderIndex !== 'number'
-    || (value.kind !== 'message' && value.kind !== 'zone' && value.kind !== 'slot' && value.kind !== 'entry')) {
-    throw new Error(`Prompt resource composition item is invalid: ${path}`)
-  }
-  if (value.kind === 'message') {
-    if (!['system', 'developer', 'assistant', 'user'].includes(String(value.role))) {
-      throw new Error(`Prompt resource message block role is invalid: ${path}`)
-    }
-    if (!Array.isArray(value.items)) throw new Error(`Prompt resource message block items are invalid: ${path}`)
-    value.items.forEach((item, index) => {
-      if (isObject(item) && item.kind === 'message') {
-        throw new Error(`Nested Prompt resource message blocks are not supported: ${path}.items[${index}]`)
-      }
-      assertCompositionItem(item, `${path}.items[${index}]`)
-    })
-    return
-  }
-  if (value.kind === 'slot' && typeof value.bindingId !== 'string') {
-    throw new Error(`Prompt resource slot bindingId is invalid: ${path}`)
-  }
-  if (value.kind === 'slot' && value.zoneId !== undefined && typeof value.zoneId !== 'string') {
-    throw new Error(`Prompt resource slot zoneId is invalid: ${path}`)
-  }
-  if (value.kind === 'slot' && value.messageMode !== undefined && value.messageMode !== 'context' && value.messageMode !== 'native') {
-    throw new Error(`Prompt resource slot messageMode is invalid: ${path}`)
-  }
-  if (value.kind === 'entry') {
-    if (!isObject(value.source)
-      || (value.source.kind !== 'preset' && value.source.kind !== 'binding')
-      || typeof (value.source.kind === 'preset' ? value.source.nodeId : value.source.bindingId) !== 'string') {
-      throw new Error(`Prompt resource entry source is invalid: ${path}`)
-    }
-  }
-}
 
 function assertNonEmptyString(value: unknown, label: string): asserts value is string {
   if (typeof value !== 'string' || value.trim().length === 0) throw new Error(`${label} must be a non-empty string`)
@@ -1100,9 +970,9 @@ function assertOptionalStringArray(value: unknown, label: string): void {
 }
 
 function isPromptResourceNodeKind(value: unknown): value is PromptResourceNode['kind'] {
-  return value === 'module' || value === 'folder' || value === 'entry' || value === 'script' || value === 'virtual' || value === 'order'
+  return typeof value === 'string' && value.trim().length > 0
 }
 
 function isPromptResourceNodeCategory(value: unknown): value is NonNullable<PromptResourceNode['category']> {
-  return value === 'preset' || value === 'setting' || value === 'logic' || value === 'runtime' || value === 'history'
+  return typeof value === 'string' && value.trim().length > 0
 }

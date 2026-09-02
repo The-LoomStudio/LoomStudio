@@ -244,7 +244,7 @@ function createArtifact(): CardBundleArtifact {
           category: 'preset',
           kind: 'entry',
           body: 'Original prompt asset.',
-          capabilities: { projection: { zoneId: 'preset.system' } },
+          capabilities: { targetAnchorId: 'preset.system' },
         }],
       },
       {

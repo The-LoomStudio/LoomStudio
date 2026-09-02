@@ -9,7 +9,6 @@ import type { ChatMessage, JsonObject, JsonValue } from '@loom-studio/shared'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import type { VariableRenderContext } from '../prompt/variables.js'
 import {
-  promptZoneIds,
   type PromptContribution,
   type SourceNode,
 } from '../prompt/prompt-builder.js'
@@ -67,7 +66,6 @@ export type CompiledAgentToolSet = {
 export type ContentToolPromptRuntimeInputs = {
   sourceNodes: SourceNode[]
   contributions: PromptContribution[]
-  slotRanks: Array<{ zoneId: string; slotKey: string; rankKey: string }>
 }
 
 export async function compileAgentToolSet(input: {
@@ -113,10 +111,8 @@ export async function compileAgentToolSet(input: {
           ? {}
           : {
               contentPlacement: {
-                zone: content.zone ?? 'tools',
-                slot: content.slot ?? `${definition.owner.namespace}-tools`,
-                ...(content.rankKey ? { rankKey: content.rankKey } : {}),
-                ...(content.orderHint === undefined ? {} : { orderHint: content.orderHint }),
+                targetAnchorId: content.targetAnchorId ?? '@chat.tools',
+                localDepth: content.localDepth ?? 0,
               },
             }),
         transport,
@@ -147,27 +143,18 @@ export function createContentToolPromptRuntimeInputs(
     (tool) => tool.transport === 'content',
   )
   const groups = new Map<string, {
-    zoneId: string
-    slotKey: string
-    rankKey?: string
-    orderHint?: number
+    targetAnchorId: string
+    localDepth: number
     tools: CompiledToolExposure[]
   }>()
   for (const tool of contentTools) {
     const content = tool.mount.content ?? {}
-    const zoneId = content.zone ?? promptZoneIds.tools
-    const slotKey = content.slot
-      ?? `${tool.definition.owner.namespace}-tools`
-    const key = JSON.stringify([zoneId, slotKey])
+    const targetAnchorId = content.targetAnchorId ?? '@chat.tools'
+    const localDepth = content.localDepth ?? 0
+    const key = JSON.stringify([targetAnchorId, localDepth])
     const group = groups.get(key) ?? {
-      zoneId,
-      slotKey,
-      ...(content.rankKey
-        ? { rankKey: content.rankKey }
-        : {}),
-      ...(content.orderHint !== undefined
-        ? { orderHint: content.orderHint }
-        : {}),
+      targetAnchorId,
+      localDepth,
       tools: [],
     }
     group.tools.push(tool.exposure)
@@ -183,42 +170,32 @@ export function createContentToolPromptRuntimeInputs(
         parentId: null,
         displayName: 'Agent Tools',
         orderIndex: 0,
+        kind: 'folder',
       }]
   const contributions: PromptContribution[] = []
-  const slotRanks: ContentToolPromptRuntimeInputs['slotRanks'] = []
+  
+  // Convert map to array to give them orderIndex
   for (const [index, group] of [...groups.values()].entries()) {
-    const sourceNodeId = `${sourceId}.slot.${index}`
+    const sourceNodeId = `${sourceId}.group.${index}`
     sourceNodes.push({
       id: sourceNodeId,
       sourceId,
       parentId: sourceId,
-      displayName: group.slotKey,
+      displayName: `Tools at ${group.targetAnchorId}`,
       orderIndex: index + 1,
+      kind: 'entry',
     })
     contributions.push({
       id: `${sourceId}.contribution.${index}`,
       sourceRef: { kind: 'runtime', sourceId, sourceNodeId },
       content: renderContentToolInstructions(group.tools),
       capabilities: {
-        projection: {
-          zoneId: group.zoneId,
-          joinSlotKey: group.slotKey,
-          ...(group.orderHint === undefined
-            ? {}
-            : { slotOrderHint: group.orderHint }),
-        },
-        lifecycle: { lifecycle: 'always' },
+        targetAnchorId: group.targetAnchorId,
+        localDepth: group.localDepth,
       },
     })
-    if (group.rankKey) {
-      slotRanks.push({
-        zoneId: group.zoneId,
-        slotKey: group.slotKey,
-        rankKey: group.rankKey,
-      })
-    }
   }
-  return { sourceNodes, contributions, slotRanks }
+  return { sourceNodes, contributions }
 }
 
 export function resolveEnabledPresetToolMounts(

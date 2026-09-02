@@ -6,8 +6,8 @@ import type {
 } from '@loom-studio/data-engine'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 
-export type PromptResourceKind = 'preset' | 'setting' | 'logic' | 'runtime' | 'history' | 'prompt'
-export type PromptResourceNodeKind = 'module' | 'folder' | 'entry' | 'script' | 'virtual' | 'order'
+export type PromptResourceKind = 'preset' | 'setting' | 'logic' | 'runtime' | 'history' | 'prompt' | (string & {})
+export type PromptResourceNodeKind = 'module' | 'folder' | 'entry' | 'script' | 'virtual' | 'order' | 'slot' | 'message' | (string & {})
 
 export type PromptResourceNode = {
   id: string

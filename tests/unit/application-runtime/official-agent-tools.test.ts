@@ -174,7 +174,7 @@ describe('official Agent context tools', () => {
           id: 'tool-fragment',
           sourceRef: { kind: 'runtime', sourceId: 'tools', sourceNodeId: 'tools-node' },
           content: 'tool instructions',
-          capabilities: { projection: { zoneId: 'tools' } },
+          capabilities: { targetAnchorId: '@chat.tools' },
         },
         {
           id: 'knowledge-fragment',
@@ -182,7 +182,7 @@ describe('official Agent context tools', () => {
           content: 'visible knowledge',
           capabilities: {
             activation: { kind: 'keyword', keywords: [] },
-            projection: { zoneId: 'setting.stable', joinSlotKey: 'setting:knowledge' },
+            targetAnchorId: 'setting.stable', localDepth: 10,
           },
         },
       ],

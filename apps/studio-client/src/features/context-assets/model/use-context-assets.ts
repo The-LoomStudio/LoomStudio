@@ -3,8 +3,10 @@ import type { ContextAssetNode, PromptResource, UpdatePromptResourceResult } fro
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import {
+  addContextAssetAnchorNode,
   addContextAssetFolderNode,
   addContextAssetInZoneNode,
+  addContextAssetMessageBlockNode,
   addContextAssetNode,
   deleteContextAssetNode,
   duplicateContextAssetNode,
@@ -177,6 +179,58 @@ export function useContextAssets(input: UseContextAssetsInput) {
     return nextSelectedId
   }
 
+  async function addContextAssetAnchor(parentId: string): Promise<string | undefined> {
+    let nextSelectedId: string | undefined
+    await enqueueMutation(async () => {
+      const mutation = addContextAssetAnchorNode(persistedNodesRef.current, parentId)
+      const asset = findContextAssetNode(mutation.nodes, mutation.selectedId)
+      if (!asset || !mutation.selectedId) return
+      const resourceId = readResourceId(parentId)
+      const result = await input.api.promptResources.createAsset({
+        resourceId,
+        targetAssetId: parentId,
+        position: 'inside',
+        asset,
+      })
+      applyResource(result.resource)
+      nextSelectedId = mutation.selectedId
+      input.recordEdit({
+        label: input.t('history.context.create'),
+        changesetId: result.mutation.changesetId,
+        anchor: { documentId: resourceId, subjectId: mutation.selectedId },
+      })
+    })
+    return nextSelectedId
+  }
+
+  async function addContextAssetMessageBlock(parentId: string, role: 'system' | 'user' | 'assistant' = 'system'): Promise<string | undefined> {
+    let nextSelectedId: string | undefined
+    await enqueueMutation(async () => {
+      const parentNode = findContextAssetNode(persistedNodesRef.current, parentId)
+      const mutation = addContextAssetMessageBlockNode(persistedNodesRef.current, parentId, role)
+      const asset = findContextAssetNode(mutation.nodes, mutation.selectedId)
+      if (!asset || !mutation.selectedId) return
+      const resourceId = readResourceId(parentId)
+
+      const isMessageOrLeaf = parentNode?.kind === 'message' || parentNode?.kind === 'entry' || parentNode?.kind === 'virtual' || parentNode?.kind === 'slot'
+
+      const result = await input.api.promptResources.createAsset({
+        resourceId,
+        targetAssetId: parentId,
+        position: isMessageOrLeaf ? 'after' : 'inside',
+        asset,
+      })
+      applyResource(result.resource)
+      nextSelectedId = mutation.selectedId
+      input.recordEdit({
+        label: input.t('history.context.create'),
+        changesetId: result.mutation.changesetId,
+        anchor: { documentId: resourceId, subjectId: mutation.selectedId },
+      })
+    })
+    return nextSelectedId
+  }
+
   function moveContextAsset(draggedId: string, targetId: string, position: 'before' | 'inside' | 'after'): Promise<void> {
     return enqueueMutation(async () => {
       const next = moveContextAssetNode(persistedNodesRef.current, draggedId, targetId, position)
@@ -280,6 +334,8 @@ export function useContextAssets(input: UseContextAssetsInput) {
     moveContextAsset,
     addContextAsset,
     addContextAssetFolder,
+    addContextAssetAnchor,
+    addContextAssetMessageBlock,
     addContextAssetInZone,
     duplicateContextAsset,
     deleteContextAsset,

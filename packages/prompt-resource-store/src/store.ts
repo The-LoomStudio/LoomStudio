@@ -20,6 +20,7 @@ import {
   migrateVersionOne,
   migrateVersionTwo,
   migrateVersionThree,
+  migrateVersionFour,
   migrationNamespace,
 } from './schema.js'
 import {
@@ -49,6 +50,7 @@ export function createPromptResourceStore(options: PromptResourceStoreOptions): 
       { version: 1, migrate: migrateVersionOne },
       { version: 2, migrate: migrateVersionTwo },
       { version: 3, migrate: migrateVersionThree },
+      { version: 4, migrate: migrateVersionFour },
     ],
   })
   const database = engine.database

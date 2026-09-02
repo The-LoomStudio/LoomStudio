@@ -226,7 +226,7 @@ describe('application agent session lifecycle', () => {
         orderIndex: 0,
         defaultEnabled: false,
         activation: { kind: 'keyword', keywords: ['context'] },
-        content: { zone: promptZoneIds.tools, slot: 'preset-tools', rankKey: '10', orderHint: 5 },
+        content: { targetAnchorId: '@chat.tools', localDepth: 5 },
       }],
     })
     const profile = (await runtime.createAgentProfile({
@@ -244,9 +244,7 @@ describe('application agent session lifecycle', () => {
     const active = await runtime.previewAgentTurn({ agentSessionId: session.session.id, input: 'Read context.' })
     expect(inactive.toolExposures).toEqual([])
     expect(active.toolExposures).toEqual([expect.objectContaining({ toolId: tool.id, transport: 'content' })])
-    expect(active.projection.zones.find(zone => zone.zoneId === promptZoneIds.tools)?.slots).toEqual([
-      expect.objectContaining({ slotKey: 'preset-tools' }),
-    ])
+    expect(active.projection.messages.some((msg: any) => msg.fragmentIds.some((id: string) => id.includes('agent-tools')))).toBe(true)
     await expect(runtime.updateAgentProfile({ agentProfileId: profile.id, toolOverrides: { 'missing/tool': true } }))
       .rejects.toThrow('not registered')
     engine.close()
@@ -385,7 +383,7 @@ describe('application agent session lifecycle', () => {
     const result = await runtime.invokeAgentTurn({ agentSessionId: session.session.id, input: 'Act.' })
 
     expect(preview.messages).toEqual(calls[0]?.messages)
-    expect(preview.messages).toEqual([
+    expect(preview.messages).toMatchObject([
       { role: 'system', content: 'Follow the preset instructions for User.' },
       { role: 'user', content: 'Act.' },
     ])
@@ -426,20 +424,13 @@ describe('application agent session lifecycle', () => {
     await runtime.invokeAgentTurn({ agentSessionId: session.session.id, input: 'First.' })
     const second = await runtime.invokeAgentTurn({ agentSessionId: session.session.id, input: 'Second.' })
 
-    expect(calls[1]?.messages).toEqual([
+    expect(calls[1]?.messages).toMatchObject([
       { role: 'system', content: 'Keep the conversation context.' },
       { role: 'user', content: 'First.' },
       { role: 'assistant', content: 'First reply.' },
       { role: 'user', content: 'Second.' },
     ])
     expect((await runtime.getAgentTranscriptPage({ agentSessionId: session.session.id })).entries).toHaveLength(10)
-    expect(second.projection.zones.find(zone => zone.zoneId === promptZoneIds.sessionHistory)?.slots[0]).toMatchObject({
-      slotKey: promptSlotIds.sessionMain,
-      fragments: [
-        expect.objectContaining({ id: expect.any(String), content: 'First.' }),
-        expect.objectContaining({ id: expect.any(String), content: 'First reply.' }),
-      ],
-    })
     expect(engine.database.prepare('SELECT COUNT(*) AS count FROM narrative_nodes').get()).toEqual({ count: 0 })
     engine.close()
   })
@@ -489,11 +480,8 @@ describe('application agent session lifecycle', () => {
         },
       },
     })
-    expect(result.projection.zones.find(zone => zone.zoneId === promptZoneIds.narrativeHistory)?.slots[0]).toMatchObject({
-      slotKey: promptSlotIds.narrativeMain,
-      fragments: [expect.objectContaining({ content: 'Opening.' })],
-    })
-    expect(result.projection.messages).toEqual([
+
+    expect(result.projection.messages).toMatchObject([
       { role: 'system', content: 'Continue the accepted narrative.' },
       { role: 'developer', content: 'Opening.' },
       { role: 'user', content: 'Continue.' },

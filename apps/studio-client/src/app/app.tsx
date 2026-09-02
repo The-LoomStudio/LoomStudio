@@ -132,6 +132,8 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
     onMoveNode: state.moveContextAsset,
     onAddNode: state.addContextAsset,
     onAddFolderNode: state.addContextAssetFolder,
+    onAddAnchorNode: state.addContextAssetAnchor,
+    onAddMessageBlockNode: state.addContextAssetMessageBlock,
     onAddNodeInZone: state.addContextAssetInZone,
     onDuplicateNode: state.duplicateContextAsset,
     onDeleteNode: state.deleteContextAsset,

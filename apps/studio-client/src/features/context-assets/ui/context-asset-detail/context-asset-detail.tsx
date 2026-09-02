@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { Braces, Equal, Info, KeyRound, ListFilter, ListOrdered, MapPin, RefreshCw, Settings2, Tag, Zap } from 'lucide-react'
+import { Bot, Braces, Equal, Info, KeyRound, ListFilter, ListOrdered, MapPin, RefreshCw, Settings2, Tag, Zap } from 'lucide-react'
 import type { ContextAssetNode } from '../../../../entities/index.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
 import { LongTextEditor, type LongTextEditorHandle } from '../../../../shared/ui/long-text-editor/long-text-editor.js'
@@ -80,6 +80,29 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
             />
           </dd>
         </div>
+        {props.node.kind === 'message' ? (
+          <div>
+            <dt><Bot aria-hidden="true" />Role</dt>
+            <dd>
+              <select
+                className={styles.inlineInput}
+                disabled={readOnly}
+                value={props.node.capabilities?.roleHint ?? 'system'}
+                onChange={event => {
+                  const role = event.target.value as 'system' | 'user' | 'assistant' | 'developer'
+                  const update = { capabilities: { ...props.node.capabilities, roleHint: role } }
+                  props.onChangeNode(update)
+                  props.onCommitNode(update)
+                }}
+              >
+                <option value="system">System</option>
+                <option value="user">User</option>
+                <option value="assistant">Assistant</option>
+                <option value="developer">Developer</option>
+              </select>
+            </dd>
+          </div>
+        ) : null}
         <div>
             <dt><Info aria-hidden="true" />{props.t('context.metadata.meta')}</dt>
           <dd>

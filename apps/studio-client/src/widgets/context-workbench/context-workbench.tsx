@@ -9,14 +9,13 @@ import {
   buildProjectionWorkbenchModel,
   type ContextAssetUpdate,
   findRootContextModule,
-  readContextProjectionMoveUpdate,
   readProjectionOrderReorderUpdates,
   readProjectionZoneReorderUpdates,
 } from '../../features/context-assets/model/projection-workbench.js'
 import { readPromptResourceWorkbenchRoot } from '../../features/context-assets/model/prompt-resource-view.js'
 import { ContextAssetEditor, ContextAssetExplorer } from '../../features/context-assets/ui/context-asset-workbench.js'
 import { ContextAssetHeader } from '../../features/context-assets/ui/context-asset-header/context-asset-header.js'
-import { findContextAssetPath } from '../../features/context-assets/model/context-asset-tree.js'
+import { findContextAssetPath, findContextAssetByVirtualPath } from '../../features/context-assets/model/context-asset-tree.js'
 import { STUDIO_PANEL_PRESENTATION } from '../../pages/studio/model/studio-panel-presentation.js'
 import { ProjectionOrderEditor } from '../../features/context-assets/ui/projection-order-editor/projection-order-editor.js'
 import { PromptResourceToolbar } from '../../features/context-assets/ui/prompt-resource-toolbar/prompt-resource-toolbar.js'
@@ -102,14 +101,39 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   }, [props.initialSearchQuery])
 
   useEffect(() => {
+    const handleNavigate = (event: Event) => {
+      const detail = (event as CustomEvent<{ path: string }>).detail
+      if (!detail?.path) return
+      
+      const matchedNode = findContextAssetByVirtualPath(workbenchNodes, detail.path)
+      if (matchedNode) {
+        openAssetDetail('resources', props.workspaceId, matchedNode.id)
+        
+        const pathNodes = findContextAssetPath(workbenchNodes, matchedNode.id)
+        const expandedIds = new Set(explorerView.expandedIds ?? [])
+        let changed = false
+        for (const pathNode of pathNodes) {
+          if (!expandedIds.has(pathNode.id)) {
+            expandedIds.add(pathNode.id)
+            changed = true
+          }
+        }
+        if (changed) {
+          setExpandedIds('resources', props.workspaceId, [...expandedIds])
+        }
+      }
+    }
+    
+    window.addEventListener('loom:navigate', handleNavigate)
+    return () => window.removeEventListener('loom:navigate', handleNavigate)
+  }, [workbenchNodes, explorerView.expandedIds, props.workspaceId, setExpandedIds, openAssetDetail])
+
+  useEffect(() => {
     if (selectedId && findContextNode(workbenchNodes, selectedId)) return
     setSelectedId('resources', props.workspaceId, workbenchNodes[0]?.id)
   }, [props.workspaceId, selectedId, setSelectedId, workbenchNodes])
 
   const displayNodes = workbenchNodes
-  const projectionModuleIds = displayNodes
-    .filter(node => node.kind === 'module' && viewModes[node.id] === 'projection')
-    .map(node => node.id)
 
   function handleProjectionReorder(draggedId: string, targetId: string) {
     props.onChangeNodes(readProjectionOrderReorderUpdates({
@@ -188,31 +212,21 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
           </button>
           <ContextAssetExplorer
             displayNodes={displayNodes}
-          expandedIds={explorerView.expandedIds}
-          query={searchQuery}
-          projectionEntries={orderedProjectionEntries}
-          projectionModuleIds={projectionModuleIds}
-          selectedId={selectedId}
-          t={props.t}
-          workspaceId={props.workspaceId}
-          onAddNode={props.onAddNode}
-          onAddFolderNode={props.onAddFolderNode}
-          onDeleteNode={props.onDeleteNode}
-          onDuplicateNode={props.onDuplicateNode}
-          onExpandedIdsChange={expandedIds => setExpandedIds('resources', props.workspaceId, expandedIds)}
-          onMoveNode={(draggedId, targetId, position) => {
-            const rootModule = findRootContextModule(workbenchNodes, draggedId)
-            if (rootModule && viewModes[rootModule.id] === 'projection') {
-              const update = readContextProjectionMoveUpdate(workbenchNodes, projectionEntries, draggedId, targetId, position)
-              if (update) props.onChangeNodes([update])
-              return
-            }
-            props.onMoveNode(draggedId, targetId, position)
-          }}
-          onReorderProjection={handleProjectionReorder}
-          onReorderProjectionZone={handleProjectionZoneReorder}
-          onQueryChange={setSearchQuery}
-          onSelectId={id => {
+            expandedIds={explorerView.expandedIds}
+            query={searchQuery}
+            selectedId={selectedId}
+            t={props.t}
+            workspaceId={props.workspaceId}
+            onAddNode={props.onAddNode}
+            onAddFolderNode={props.onAddFolderNode}
+            onDeleteNode={props.onDeleteNode}
+            onDuplicateNode={props.onDuplicateNode}
+            onExpandedIdsChange={expandedIds => setExpandedIds('resources', props.workspaceId, expandedIds)}
+            onMoveNode={(draggedId, targetId, position) => {
+              props.onMoveNode(draggedId, targetId, position)
+            }}
+            onQueryChange={setSearchQuery}
+            onSelectId={id => {
             if (id) handleSelectNode(id)
             else setSelectedId('resources', props.workspaceId, undefined)
           }}

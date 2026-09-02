@@ -239,6 +239,8 @@ function migrateNamespace(database: DatabaseSync, set: SqliteMigrationSet): void
 
   if (currentVersion === supportedVersion) return
 
+  database.exec('PRAGMA foreign_keys = OFF')
+  database.exec('PRAGMA legacy_alter_table = ON')
   database.exec('BEGIN IMMEDIATE')
   try {
     let migratedVersion = currentVersion
@@ -258,6 +260,9 @@ function migrateNamespace(database: DatabaseSync, set: SqliteMigrationSet): void
   } catch (error) {
     database.exec('ROLLBACK')
     throw error
+  } finally {
+    database.exec('PRAGMA legacy_alter_table = OFF')
+    database.exec('PRAGMA foreign_keys = ON')
   }
 }
 

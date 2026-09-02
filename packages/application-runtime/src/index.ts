@@ -18,7 +18,6 @@ export {
   normalizeCardBundleArtifact,
   normalizePortableExtensionPayloadArtifact,
   readPromptResourceInputs,
-  readPromptResourceOrderProfile,
 } from './cards/workspace.js'
 export {
   createDocumentBackedAiGateway,
@@ -104,35 +103,16 @@ export {
   isPromptActivation,
 } from './prompt/prompt-activation.js'
 export type {
-  CompositionItem,
-  CompositionItemBase,
   CompiledMessage,
   CompiledPrompt,
-  CompiledSlot,
-  CompiledZone,
-  CompositionSkeleton,
-  CompositionSkeletonPatch,
   EditorProjection,
-  EntryNode,
-  MessageBlockItem,
-  MessageBlockNode,
-  ProjectionOrderProfile,
   PromptCompositionCapabilities,
-  PromptContentCapability,
   PromptContribution,
   PromptFragment,
-  PromptLifecycle,
-  PromptLifecycleCapability,
-  PromptProjectionCapability,
   PromptProviderRole,
-  PromptRenderCapability,
-  PromptResolutionCapability,
   PromptSourceKind,
-  SlotNode,
   SourceNode,
-  ZoneNode,
 } from './prompt/prompt-builder.js'
-export { promptBindingIds, promptSlotIds, promptZoneIds } from './prompt/prompt-builder.js'
 export type { PromptBuildTrace } from './prompt/prompt-build-pipeline.js'
 export {
   cloneVariableRenderTrace,

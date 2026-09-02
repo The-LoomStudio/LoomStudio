@@ -37,8 +37,15 @@ function readLastUserText(messages: JsonValue): string {
       && typeof message === 'object'
       && !Array.isArray(message)
       && message.role === 'user'
-      && typeof message.content === 'string'
-    ) return message.content
+    ) {
+      if (typeof message.content === 'string') return message.content
+      if (Array.isArray(message.content) && message.content.length > 0) {
+        const first = message.content[0]
+        if (first && typeof first === 'object' && 'type' in first && first.type === 'text' && 'text' in first && typeof first.text === 'string') {
+          return first.text
+        }
+      }
+    }
   }
   throw new Error('Fake Chat Completion input requires a user message with string content')
 }

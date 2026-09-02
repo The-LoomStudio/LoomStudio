@@ -95,49 +95,7 @@ describe('studio server card bundle rpc integration', () => {
     })
   })
 
-  it('accepts and persists MessageBlock composition patches through RPC', async () => {
-    await withStudioServer(async port => {
-      const created = await callRpc<{
-        resource: { id: string; rootNode: { id: string; children?: Array<{ id: string; kind: string }> } }
-      }>(port, 'application.createPromptResource', {
-        resourceKind: 'preset',
-        name: 'Message Composition RPC',
-      })
-      const order = created.resource.rootNode.children?.find(node => node.kind === 'order')
-      if (!order) throw new Error('Expected created preset order profile')
 
-      const updated = await callRpc<{
-        resource: {
-          rootNode: {
-            children?: Array<{ kind: string; skeletonPatch?: { items?: Array<{ kind: string; role?: string }> } }>
-          }
-        }
-      }>(port, 'application.updatePromptResourceAsset', {
-        resourceId: created.resource.id,
-        assetId: order.id,
-        skeletonPatch: {
-          items: [{
-            id: 'message.rpc.system',
-            kind: 'message',
-            displayName: 'System',
-            orderIndex: 10,
-            role: 'system',
-            items: [{
-              id: 'zone.rpc.system',
-              kind: 'zone',
-              parentId: 'zone.root',
-              displayName: 'RPC System',
-              band: 'stable-prefix',
-              orderIndex: 10,
-            }],
-          }],
-        },
-      })
-
-      expect(updated.resource.rootNode.children?.find(node => node.kind === 'order')?.skeletonPatch?.items)
-        .toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'message', role: 'system' })]))
-    })
-  })
 })
 
 async function readLoomCityArtifact(): Promise<CardBundleArtifact> {

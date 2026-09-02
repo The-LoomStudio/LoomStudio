@@ -1,4 +1,4 @@
-const LOOM_TOKEN_PATTERN = /(\{\{[^\n{}]+\}\}|\{%[^\n%]+%\}|@[\p{L}\p{N}_-]+(?:\/[\p{L}\p{N}_. -]+)+)/gu
+const LOOM_TOKEN_PATTERN = /(\{\{[^\n{}]+\}\}|\{%[^\n%]+%\}|@(?:\/(?:[\p{L}\p{N}_.-]+\/?)*|[\p{L}\p{N}_-]+(?:\/[\p{L}\p{N}_.-]+)+))/gu
 
 export function prepareLoomMarkdown(value: string): string {
   let fence: string | undefined

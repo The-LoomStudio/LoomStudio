@@ -51,10 +51,8 @@ export type ToolDefinition = {
       order?: number
     }
     content?: {
-      zone?: string
-      slot?: string
-      rankKey?: string
-      orderHint?: number
+      targetAnchorId?: string
+      localDepth?: number
     }
   }
 }
@@ -119,8 +117,8 @@ export type ToolApprovalDecision =
 export type ToolContextItem = {
   id: string
   name: string
-  zoneId: string
-  slotKey: string
+  virtualPath: string
+  mediaType: string
   sourceKind: string
   sourceId: string
   promptState: 'injected' | 'not-triggered' | 'agent-only'
@@ -427,25 +425,15 @@ function validateDefinition(tool: ToolDefinition): ToolDefinition {
         )
     }
     if (
-      tool.prompt.content?.zone !== undefined &&
-      !isNonEmptyString(tool.prompt.content.zone)
+      tool.prompt.content?.targetAnchorId !== undefined &&
+      !isNonEmptyString(tool.prompt.content.targetAnchorId)
     )
-      throw new Error(`Agent tool content zone cannot be empty: ${tool.id}`)
+      throw new Error(`Agent tool content anchor cannot be empty: ${tool.id}`)
     if (
-      tool.prompt.content?.slot !== undefined &&
-      !isNonEmptyString(tool.prompt.content.slot)
+      tool.prompt.content?.localDepth !== undefined &&
+      !Number.isFinite(tool.prompt.content.localDepth)
     )
-      throw new Error(`Agent tool content slot cannot be empty: ${tool.id}`)
-    if (
-      tool.prompt.content?.rankKey !== undefined &&
-      !isNonEmptyString(tool.prompt.content.rankKey)
-    )
-      throw new Error(`Agent tool content rank cannot be empty: ${tool.id}`)
-    if (
-      tool.prompt.content?.orderHint !== undefined &&
-      !Number.isFinite(tool.prompt.content.orderHint)
-    )
-      throw new Error(`Agent tool content order is invalid: ${tool.id}`)
+      throw new Error(`Agent tool content depth is invalid: ${tool.id}`)
     if (
       tool.prompt.provider?.order !== undefined &&
       !Number.isFinite(tool.prompt.provider.order)

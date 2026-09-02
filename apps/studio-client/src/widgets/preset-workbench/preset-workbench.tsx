@@ -12,28 +12,15 @@ import { readPromptResourceWorkbenchRoot } from '../../features/context-assets/m
 import {
   buildProjectionWorkbenchModel,
   type ContextAssetUpdate,
-  readProjectionOrderReorderUpdates,
-  readProjectionZoneReorderUpdates,
 } from '../../features/context-assets/model/projection-workbench.js'
-import { ContextAssetEditor, ContextAssetProjectionExplorer } from '../../features/context-assets/ui/context-asset-workbench.js'
+import { ContextAssetEditor, ContextAssetExplorer } from '../../features/context-assets/ui/context-asset-workbench.js'
 import { ContextAssetHeader } from '../../features/context-assets/ui/context-asset-header/context-asset-header.js'
-import { findContextAssetPath } from '../../features/context-assets/model/context-asset-tree.js'
+import { findContextAssetPath, findContextAssetByVirtualPath, flattenContextAssetNodes } from '../../features/context-assets/model/context-asset-tree.js'
 import { STUDIO_PANEL_PRESENTATION } from '../../pages/studio/model/studio-panel-presentation.js'
 import { PromptResourceToolbar } from '../../features/context-assets/ui/prompt-resource-toolbar/prompt-resource-toolbar.js'
 import { resolvePresetBuildContextResources } from '../../features/context-assets/model/preset-build-context.js'
 import { buildPresetToolProjection } from '../../features/context-assets/model/preset-tool-projection.js'
-import {
-  appendCompositionItem,
-  createCompositionEntry,
-  createCompositionSlot,
-  createCompositionZone,
-  createMessageBlock,
-  findCompositionItem,
-  moveCompositionItem,
-  moveCompositionItemTo,
-  readCompositionItems,
-  removeCompositionItem,
-} from '../../features/context-assets/model/composition-items.js'
+import { findCompositionItem } from '../../features/context-assets/model/composition-items.js'
 import type { AgentToolDefinition, ContextAssetNode, PresetToolMount, PresetToolMountInput, PromptCompositionItem, PromptResource, SettingMount } from '../../entities/index.js'
 import styles from './preset-workbench.module.scss'
 
@@ -49,6 +36,9 @@ type PresetWorkbenchProps = {
   onChangeNodes: (updates: ContextAssetUpdate[]) => void
   onMoveNode: (draggedId: string, targetId: string, position: 'before' | 'inside' | 'after') => void
   onAddNode: (parentId: string) => Promise<string | undefined>
+  onAddFolderNode?: (parentId: string) => Promise<string | undefined>
+  onAddAnchorNode?: (parentId: string) => Promise<string | undefined>
+  onAddMessageBlockNode?: (parentId: string, role?: 'system' | 'user' | 'assistant') => Promise<string | undefined>
   onAddNodeInZone?: (resourceId: string, zoneId: string) => Promise<string | undefined>
   onDuplicateNode: (id: string) => Promise<string | undefined>
   onDeleteNode: (id: string, selectedId?: string) => Promise<string | undefined>
@@ -75,41 +65,40 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const explorerView = explorerLayout.views[props.workspaceId] ?? DEFAULT_ASSET_VIEW_STATE
   const setExplorerWidth = useStudioLayoutStore(state => state.setAssetExplorerWidth)
   const openAssetDetail = useStudioLayoutStore(state => state.openAssetDetail)
+  const setAssetExpandedIds = useStudioLayoutStore(state => state.setAssetExpandedIds)
   const setActivePresetView = useStudioLayoutStore(state => state.setPresetView)
   const setMetadataOpen = useStudioLayoutStore(state => state.setAssetMetadataOpen)
   const setTextEditorMode = useStudioLayoutStore(state => state.setTextEditorMode)
   const presetResources = useMemo(() => props.resources.filter(resource => resource.resourceKind === 'preset'), [props.resources])
   const [selectedResourceId, setSelectedResourceId] = useState<string>()
   const selectedResource = presetResources.find(resource => resource.id === selectedResourceId) ?? presetResources[0]
-  const currentPresetNodes = selectedResource ? [readPromptResourceWorkbenchRoot(selectedResource)] : []
   const toolProjection = useMemo(() => buildPresetToolProjection({
     mounts: props.toolMounts,
     presetId: selectedResource?.id,
     tools: props.tools,
   }), [props.toolMounts, props.tools, selectedResource?.id])
+  const contextResources = useMemo(() => resolvePresetBuildContextResources({
+    preset: selectedResource,
+    resources: props.resources,
+    settingMounts: props.settingMounts,
+    timelinePromptResourceIds: props.timelinePromptResourceIds,
+  }), [props.resources, props.settingMounts, props.timelinePromptResourceIds, selectedResource])
+
   const mainOrderNodes = useMemo(() => {
-    const resources = [
-      ...(selectedResource ? [selectedResource] : []),
-      ...resolvePresetBuildContextResources({
-        preset: selectedResource,
-        resources: props.resources,
-        settingMounts: props.settingMounts,
-        timelinePromptResourceIds: props.timelinePromptResourceIds,
-      }),
-    ]
-    return [...resources.map(readPromptResourceWorkbenchRoot), ...toolProjection.contentNodes]
-  }, [props.resources, props.settingMounts, props.timelinePromptResourceIds, selectedResource, toolProjection.contentNodes])
-  const workbenchNodes = activePresetView === 'order' ? mainOrderNodes : currentPresetNodes
+    if (!selectedResource) return []
+    const presetRoot = readPromptResourceWorkbenchRoot(selectedResource)
+    return [injectContextNodesIntoPresetTree(presetRoot, contextResources, toolProjection.contentNodes)]
+  }, [contextResources, selectedResource, toolProjection.contentNodes])
+  const workbenchNodes = mainOrderNodes
   const selectedId = explorerView.selectedId
   const selectedNode = findContextNode(workbenchNodes, selectedId)
   const detailNode = selectedNode?.kind === 'order' ? undefined : selectedNode
   const projectionModel = useMemo(() => buildProjectionWorkbenchModel(workbenchNodes), [workbenchNodes])
-  const { projectionEntries, orderNode, projectionOrderIds, orderedProjectionEntries } = projectionModel
+  const { orderNode } = projectionModel
   const [searchQuery, setSearchQuery] = useState(props.initialSearchQuery ?? '')
   const [selectedZoneId, setSelectedZoneId] = useState<string>()
   const [selectedCompositionId, setSelectedCompositionId] = useState<string>()
   const [selectedToolId, setSelectedToolId] = useState<string>()
-  const [selectedOrderToolId, setSelectedOrderToolId] = useState<string>()
   const presetZoneDefinitions = useMemo(() => orderNode?.skeletonPatch?.zones ?? [], [orderNode?.skeletonPatch?.zones])
   const displayZoneDefinitions = useMemo(() => {
     const ids = new Set(presetZoneDefinitions.map(zone => zone.id))
@@ -142,202 +131,57 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
     else if (!selectedToolId || !props.tools.some(tool => tool.id === selectedToolId)) setSelectedToolId(props.tools[0]?.id)
   }, [props.tools, selectedToolId])
 
-  const displayNodes = useMemo(() => {
-    return currentPresetNodes
-      .filter(node => node.category === 'preset' && node.kind !== 'order')
-  }, [currentPresetNodes])
-  const presetProjectionEntries = useMemo(() => {
-    const presetNodeIds = new Set(flattenContextNodes(displayNodes).map(node => node.id))
-    return orderedProjectionEntries.filter(entry => presetNodeIds.has(entry.node.id))
-  }, [displayNodes, orderedProjectionEntries])
-  function handleProjectionReorder(draggedId: string, targetId: string) {
-    if (toolProjection.toolIdByNodeId.has(draggedId) || toolProjection.toolIdByNodeId.has(targetId)) return
-    props.onChangeNodes(readProjectionOrderReorderUpdates({
-      draggedId,
-      orderedProjectionEntries,
-      orderNode,
-      projectionEntries,
-      projectionOrderIds,
-      targetId,
-    }))
-  }
-
-  function handleProjectionZoneReorder(draggedZoneId: string, targetZoneId: string) {
-    props.onChangeNodes(readProjectionZoneReorderUpdates({
-      draggedZoneId,
-      orderedProjectionEntries,
-      orderNode,
-      projectionEntries,
-      targetZoneId,
-    }))
-  }
-
-  function handleAddZone(afterZoneId?: string) {
-    if (!orderNode) return
-    const currentZones = orderNode.skeletonPatch?.zones
-      ? [...orderNode.skeletonPatch.zones]
-      : [
-          { id: 'preset.system', displayName: 'Preset System', band: 'stable-prefix' as const, orderIndex: 10, parentId: null, renderHint: { providerRoleHint: 'system' as const, wrapper: 'section' as const } },
-          { id: 'setting.stable', displayName: 'Stable Setting', band: 'stable-prefix' as const, orderIndex: 20, parentId: null, renderHint: { providerRoleHint: 'system' as const, wrapper: 'section' as const } },
-          { id: 'chat.history', displayName: 'Narrative History', band: 'narrative' as const, orderIndex: 30, parentId: null, renderHint: { providerRoleHint: 'system' as const, wrapper: 'message' as const } },
-          { id: 'session.history', displayName: 'Session History', band: 'narrative' as const, orderIndex: 35, parentId: null, renderHint: { providerRoleHint: 'assistant' as const, wrapper: 'message' as const } },
-          { id: 'setting.lower', displayName: 'Lower Context Setting', band: 'lower-context' as const, orderIndex: 40, parentId: null, renderHint: { providerRoleHint: 'system' as const, wrapper: 'section' as const } },
-          { id: 'chat.inside', displayName: 'Current Chat', band: 'current-turn' as const, orderIndex: 60, parentId: null, renderHint: { providerRoleHint: 'user' as const, wrapper: 'message' as const } },
-          { id: 'fresh.tail', displayName: 'Fresh Tail', band: 'fresh-tail' as const, orderIndex: 80, parentId: null, renderHint: { providerRoleHint: 'system' as const, wrapper: 'section' as const } },
-        ]
-
-    const newZoneId = `custom.zone.${Date.now().toString(36)}`
-    const newZone = {
-      id: newZoneId,
-      displayName: props.t('context.newZoneName'),
-      band: 'current-turn' as const,
-      orderIndex: (currentZones.length + 1) * 10,
-      parentId: null,
-      renderHint: {
-        providerRoleHint: 'system' as const,
-        wrapper: 'section' as const,
-      },
-    }
-
-    let nextZones: typeof currentZones
-    if (afterZoneId) {
-      const afterIndex = currentZones.findIndex(z => z.id === afterZoneId)
-      if (afterIndex >= 0) {
-        nextZones = [
-          ...currentZones.slice(0, afterIndex + 1),
-          newZone,
-          ...currentZones.slice(afterIndex + 1),
-        ]
-      } else {
-        nextZones = [...currentZones, newZone]
+  useEffect(() => {
+    const handleNavigate = (event: Event) => {
+      const detail = (event as CustomEvent<{ path: string }>).detail
+      if (!detail?.path) return
+      
+      const matchedNode = findContextAssetByVirtualPath(workbenchNodes, detail.path)
+      if (matchedNode) {
+        setActivePresetView('assets')
+        openAssetDetail('preset', props.workspaceId, matchedNode.id)
+        
+        const pathNodes = findContextAssetPath(workbenchNodes, matchedNode.id)
+        const expandedIds = new Set(explorerView.expandedIds ?? [])
+        let changed = false
+        for (const pathNode of pathNodes) {
+          if (!expandedIds.has(pathNode.id)) {
+            expandedIds.add(pathNode.id)
+            changed = true
+          }
+        }
+        if (changed) {
+          setAssetExpandedIds('preset', props.workspaceId, [...expandedIds])
+        }
       }
-    } else {
-      nextZones = [...currentZones, newZone]
     }
+    
+    window.addEventListener('loom:navigate', handleNavigate)
+    return () => window.removeEventListener('loom:navigate', handleNavigate)
+  }, [workbenchNodes, explorerView.expandedIds, props.workspaceId, setAssetExpandedIds, openAssetDetail, setActivePresetView])
 
-    props.onCommitNode(orderNode.id, {
-      skeletonPatch: {
-        ...orderNode.skeletonPatch,
-        zones: nextZones,
-      },
-    })
-  }
-
-  function handleDeleteZone(zoneId: string) {
-    if (!orderNode || !orderNode.skeletonPatch?.zones) return
-    const items = readCompositionItems(orderNode)
-    const nextZones = orderNode.skeletonPatch.zones.filter(z => z.id !== zoneId)
-    commitCompositionItems(removeCompositionItem(items, zoneId), nextZones)
-  }
+  const displayNodes = useMemo(() => {
+    return mainOrderNodes
+      .filter(node => node.kind !== 'order')
+  }, [mainOrderNodes])
 
   function handleSelectNode(id: string) {
     const toolId = toolProjection.toolIdByNodeId.get(id)
     if (toolId) {
       setSelectedToolId(toolId)
-      setSelectedOrderToolId(toolId)
       setSelectedCompositionId(undefined)
       setSelectedZoneId(undefined)
       return
     }
     const compositionItem = findCompositionItem(compositionItems ?? [], id)
     if (compositionItem) {
-      setSelectedOrderToolId(undefined)
       setSelectedCompositionId(id)
       setSelectedZoneId(compositionItem.kind === 'zone' ? compositionItem.id : undefined)
       return
     }
     setSelectedCompositionId(undefined)
     setSelectedZoneId(undefined)
-    setSelectedOrderToolId(undefined)
     openAssetDetail('preset', props.workspaceId, id)
-  }
-
-  function handleSelectProviderTool(toolId: string) {
-    setSelectedToolId(toolId)
-    setSelectedOrderToolId(toolId)
-    setSelectedCompositionId(undefined)
-    setSelectedZoneId(undefined)
-  }
-
-  function commitCompositionItems(items: PromptCompositionItem[], zones = presetZoneDefinitions) {
-    if (!orderNode) return
-    props.onCommitNode(orderNode.id, {
-      skeletonPatch: {
-        ...orderNode.skeletonPatch,
-        items,
-        zones,
-      },
-    })
-  }
-
-  function commitOrderedCompositionItems(items: PromptCompositionItem[]) {
-    const zoneOrderById = new Map<string, number>()
-    for (const item of items) {
-      if (item.kind === 'zone') zoneOrderById.set(item.id, item.orderIndex)
-      if (item.kind === 'message') {
-        item.items.forEach(child => {
-          if (child.kind === 'zone') zoneOrderById.set(child.id, child.orderIndex)
-        })
-      }
-    }
-    commitCompositionItems(items, presetZoneDefinitions.map(zone => ({
-      ...zone,
-      orderIndex: zoneOrderById.get(zone.id) ?? zone.orderIndex,
-    })))
-  }
-
-  function handleAddMessageBlock() {
-    const items = readCompositionItems(orderNode)
-    commitCompositionItems([...items, createMessageBlock(items)])
-  }
-
-  function handleAddZoneToMessageBlock(blockId: string) {
-    const items = readCompositionItems(orderNode)
-    const zone = createCompositionZone(items, props.t('context.newZoneName'))
-    commitCompositionItems(appendCompositionItem(items, zone, blockId), [...presetZoneDefinitions, zone])
-  }
-
-  function handleAddSlotToMessageBlock(blockId: string) {
-    const items = readCompositionItems(orderNode)
-    const block = findCompositionItem(items, blockId)
-    const zoneId = block?.kind === 'message' ? block.items.find(item => item.kind === 'zone')?.id : undefined
-    const slot = createCompositionSlot(items, zoneId)
-    commitCompositionItems(appendCompositionItem(items, slot, blockId))
-  }
-
-  async function handleAddDirectEntry(blockId: string) {
-    if (!selectedResource) return
-    const createdId = await props.onAddNode(selectedResource.rootNode.id)
-    if (!createdId) return
-    const items = readCompositionItems(orderNode)
-    const entry = createCompositionEntry(items, createdId)
-    commitCompositionItems(appendCompositionItem(items, entry, blockId))
-    handleSelectNode(createdId)
-  }
-
-  function handleDeleteCompositionItem(id: string) {
-    const items = readCompositionItems(orderNode)
-    const removed = findCompositionItem(items, id)
-    const removedZoneIds = new Set<string>()
-    if (removed?.kind === 'zone') removedZoneIds.add(removed.id)
-    if (removed?.kind === 'message') {
-      removed.items.forEach(item => {
-        if (item.kind === 'zone') removedZoneIds.add(item.id)
-      })
-    }
-    commitCompositionItems(removeCompositionItem(items, id), presetZoneDefinitions.filter(zone => !removedZoneIds.has(zone.id)))
-    setSelectedCompositionId(undefined)
-    setSelectedZoneId(undefined)
-  }
-
-  function handleMoveCompositionItem(id: string, direction: 'up' | 'down') {
-    const items = readCompositionItems(orderNode)
-    commitOrderedCompositionItems(moveCompositionItem(items, id, direction))
-  }
-
-  function handleDropCompositionItem(draggedId: string, targetId: string, position: 'before' | 'after' | 'inside') {
-    const items = readCompositionItems(orderNode)
-    commitOrderedCompositionItems(moveCompositionItemTo(items, draggedId, targetId, position))
   }
 
   return (
@@ -369,14 +213,6 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
             {props.t('preset.panel.assets')}
           </button>
           <button
-            aria-current={activePresetView === 'order' ? 'page' : undefined}
-            className={`loom-page-tab ${activePresetView === 'order' ? 'loom-page-tab-active' : ''}`}
-            type="button"
-            onClick={() => setActivePresetView('order')}
-          >
-            {props.t('preset.panel.mainOrder')}
-          </button>
-          <button
             aria-current={activePresetView === 'tools' ? 'page' : undefined}
             className={`loom-page-tab ${activePresetView === 'tools' ? 'loom-page-tab-active' : ''}`}
             type="button"
@@ -399,57 +235,42 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           onSelect={setSelectedToolId}
         />
       ) : (
-        <ContextAssetProjectionExplorer
-          entries={activePresetView === 'order' ? orderedProjectionEntries : presetProjectionEntries}
-          providerTools={activePresetView === 'order' ? toolProjection.providerTools : undefined}
-          nodes={activePresetView === 'order' ? workbenchNodes.filter(node => node.kind !== 'order') : displayNodes}
+        <ContextAssetExplorer
+          displayNodes={displayNodes}
+          expandedIds={explorerView.expandedIds}
           query={searchQuery}
-          selectedId={selectedCompositionId ?? selectedId}
-          selectedProviderToolId={selectedOrderToolId}
-          selectedZoneId={selectedZoneId}
+          selectedId={selectedId}
           t={props.t}
-          compositionItems={activePresetView === 'order' ? compositionItems ?? [] : undefined}
-          onAddDirectEntry={handleAddDirectEntry}
-          onAddMessageBlock={handleAddMessageBlock}
-          onAddSlot={handleAddSlotToMessageBlock}
-          onAddZoneToMessageBlock={handleAddZoneToMessageBlock}
-          onDeleteCompositionItem={handleDeleteCompositionItem}
-          onMoveCompositionItem={handleMoveCompositionItem}
-          onDropCompositionItem={handleDropCompositionItem}
-          zoneDefinitions={activePresetView === 'order'
-            ? displayZoneDefinitions
-            : displayZoneDefinitions.filter(zone => zone.id !== 'chat.history' && zone.id !== 'session.history')}
-          onAddEntryInZone={zoneId => {
-            if (selectedResource) void props.onAddNodeInZone?.(selectedResource.id, zoneId)
-          }}
-          onAddZone={activePresetView === 'order' ? undefined : handleAddZone}
+          workspaceId={props.workspaceId}
+          onAddNode={props.onAddNode}
+          onAddFolderNode={props.onAddFolderNode}
+          onAddAnchorNode={props.onAddAnchorNode}
+          onAddMessageBlockNode={props.onAddMessageBlockNode}
           onDeleteNode={props.onDeleteNode}
-          onDeleteZone={handleDeleteZone}
           onDuplicateNode={props.onDuplicateNode}
+          onExpandedIdsChange={expandedIds => setAssetExpandedIds('preset', props.workspaceId, expandedIds)}
+          onMoveNode={props.onMoveNode}
           onQueryChange={setSearchQuery}
-          onReorder={handleProjectionReorder}
-          onReorderZone={handleProjectionZoneReorder}
           onSelectId={handleSelectNode}
-          onSelectProviderTool={handleSelectProviderTool}
-          onSelectZone={zoneId => {
-            setSelectedOrderToolId(undefined)
-            setSelectedCompositionId(undefined)
-            setSelectedZoneId(zoneId)
-          }}
           onToggleEnabled={(id, enabled) => {
             props.onChangeNode(id, { enabled })
             props.onCommitNode(id, { enabled })
           }}
+          onChangeRole={(id, role) => {
+            const update = { capabilities: { roleHint: role } }
+            props.onChangeNode(id, update)
+            props.onCommitNode(id, update)
+          }}
         />
       )}
     >
-      {activePresetView === 'tools' || (activePresetView === 'order' && selectedOrderToolId) ? (
+      {activePresetView === 'tools' ? (
         <PresetToolDetail
-          mount={props.toolMounts.find(mount => mount.presetResourceId === selectedResource?.id && mount.toolId === (activePresetView === 'order' ? selectedOrderToolId : selectedToolId))}
+          mount={props.toolMounts.find(mount => mount.presetResourceId === selectedResource?.id && mount.toolId === selectedToolId)}
           preset={selectedResource}
           presetMounts={props.toolMounts.filter(mount => mount.presetResourceId === selectedResource?.id)}
           t={props.t}
-          tool={props.tools.find(tool => tool.id === (activePresetView === 'order' ? selectedOrderToolId : selectedToolId))}
+          tool={props.tools.find(tool => tool.id === selectedToolId)}
           onReplaceMounts={props.onReplaceToolMounts}
           onUpdateTool={props.onUpdateTool}
         />
@@ -817,6 +638,85 @@ function createDefaultPresetToolMountInput(tool: AgentToolDefinition, orderIndex
     ...(tool.prompt?.provider ? { provider: { ...tool.prompt.provider } } : {}),
     ...(tool.input.kind === 'structured' || !tool.prompt?.content ? {} : { content: { ...tool.prompt.content } }),
   }
+}
+
+function injectContextNodesIntoPresetTree(
+  presetRoot: ContextAssetNode,
+  contextResources: PromptResource[],
+  toolNodes: ContextAssetNode[],
+): ContextAssetNode {
+  const slotNodesByAnchor = new Map<string, ContextAssetNode[]>()
+
+  for (const resource of contextResources) {
+    const root = readPromptResourceWorkbenchRoot(resource)
+    const entries = flattenContextAssetNodes(root.children ?? []).filter(e => e.kind === 'entry')
+    if (entries.length === 0) continue
+
+    const targetAnchor = entries[0]?.capabilities?.targetAnchorId ?? '@setting.stable'
+    const localDepth = entries[0]?.capabilities?.localDepth ?? 10
+
+    const slotNode: ContextAssetNode = {
+      id: `slot.${resource.id}`,
+      label: resource.rootNode.label,
+      kind: 'slot',
+      category: 'setting',
+      meta: `Slot • depth ${localDepth}`,
+      capabilities: {
+        targetAnchorId: targetAnchor,
+        localDepth,
+      },
+      children: entries.map(entry => ({
+        ...entry,
+        meta: entry.meta ?? 'setting',
+      })),
+    }
+
+    const list = slotNodesByAnchor.get(targetAnchor) ?? []
+    list.push(slotNode)
+    slotNodesByAnchor.set(targetAnchor, list)
+  }
+
+  if (toolNodes.length > 0) {
+    const toolsSlot: ContextAssetNode = {
+      id: 'slot.tools',
+      label: 'Agent Tools',
+      kind: 'slot',
+      category: 'runtime',
+      meta: `Slot • ${toolNodes.length} tools`,
+      capabilities: {
+        targetAnchorId: '@chat.tools',
+        localDepth: 10,
+      },
+      children: toolNodes,
+    }
+    const list = slotNodesByAnchor.get('@chat.tools') ?? []
+    list.push(toolsSlot)
+    slotNodesByAnchor.set('@chat.tools', list)
+  }
+
+  function transformNode(node: ContextAssetNode): ContextAssetNode {
+    if (node.kind === 'virtual') {
+      const anchorKey = node.label.startsWith('@') ? node.label : (node.capabilities?.targetAnchorId ?? node.label)
+      const matchingSlots = (slotNodesByAnchor.get(anchorKey) ?? slotNodesByAnchor.get(node.label) ?? slotNodesByAnchor.get(node.id) ?? [])
+        .sort((a, b) => (a.capabilities?.localDepth ?? 0) - (b.capabilities?.localDepth ?? 0))
+
+      return {
+        ...node,
+        children: matchingSlots.length > 0 ? matchingSlots : undefined,
+      }
+    }
+
+    if (node.children && node.children.length > 0) {
+      return {
+        ...node,
+        children: node.children.map(transformNode),
+      }
+    }
+
+    return node
+  }
+
+  return transformNode(presetRoot)
 }
 
 function toPresetToolMountInput(mount: PresetToolMount): PresetToolMountInput {

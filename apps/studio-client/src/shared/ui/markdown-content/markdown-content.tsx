@@ -19,7 +19,22 @@ export function MarkdownContent(props: { className?: string; codeBlockLabels: Ma
             const macro = readLoomToken(href ?? '', 'loom-macro:')
             if (macro) return <span className={`${styles.semanticToken} ${styles.macroToken}`} title={macro}>{children}</span>
             const asset = readLoomToken(href ?? '', 'loom-asset:')
-            if (asset) return <span className={`${styles.semanticToken} ${styles.assetToken}`} title={asset}>{children}</span>
+            if (asset) {
+              return (
+                <button
+                  className={`${styles.semanticToken} ${styles.assetToken}`}
+                  title={asset}
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    window.dispatchEvent(new CustomEvent('loom:navigate', { detail: { path: asset } }))
+                  }}
+                >
+                  {children}
+                </button>
+              )
+            }
             return <a href={href} rel="noreferrer noopener" target="_blank" title={title}>{children}</a>
           },
           code: ({ children, className, node }) => {

@@ -50,3 +50,38 @@ export function findContextAssetPath(nodes: ContextAssetNode[] | undefined, id: 
 
   return []
 }
+
+export function resolveVirtualExtension(kind: ContextAssetNode['kind']): string | undefined {
+  switch (kind) {
+    case 'entry':
+      return '.md'
+    case 'script':
+      return '.js'
+    case 'order':
+    case 'virtual':
+      return '.json'
+    case 'folder':
+    case 'module':
+      return undefined
+    default:
+      return undefined
+  }
+}
+
+export function resolveVirtualPath(node: Pick<ContextAssetNode, 'label' | 'kind'>): string {
+  const extension = resolveVirtualExtension(node.kind)
+  const safeName = node.label.replace(/[^a-zA-Z0-9_.\-\u4e00-\u9fa5]/g, '_')
+  
+  if (extension && !safeName.toLowerCase().endsWith(extension)) {
+    return `/${safeName}${extension}`
+  }
+  
+  return `/${safeName}`
+}
+
+export function findContextAssetByVirtualPath(nodes: ContextAssetNode[], path: string): ContextAssetNode | undefined {
+  for (const node of flattenContextAssetNodes(nodes)) {
+    if (resolveVirtualPath(node) === path) return node
+  }
+  return undefined
+}

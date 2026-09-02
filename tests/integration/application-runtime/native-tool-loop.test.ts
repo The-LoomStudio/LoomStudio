@@ -405,7 +405,7 @@ describe('Native Function Tool Loop', () => {
         toolId: testContentTool.id,
         orderIndex: 0,
         defaultEnabled: true,
-        content: { zone: promptZoneIds.tools, slot: 'preset-content-tools', rankKey: '05', orderHint: 7 },
+        content: { targetAnchorId: '@chat.tools', localDepth: 7 },
       }],
       execute: ({ invocation }) => ({
         invocationId: invocation.id,
@@ -462,20 +462,7 @@ describe('Native Function Tool Loop', () => {
     ).entries.map((entry) => entry.entry)
 
     expect(requests[0]?.tools).toBeUndefined()
-    expect(
-      turn.projection.zones.find(zone => zone.zoneId === promptZoneIds.tools),
-    ).toMatchObject({
-      slots: [
-        {
-          slotKey: 'preset-content-tools',
-          fragments: [
-            expect.objectContaining({
-              id: 'runtime.agent-tools.contribution.0',
-            }),
-          ],
-        },
-      ],
-    })
+    expect(turn.projection.messages.some((msg: any) => msg.fragmentIds.includes('runtime.agent-tools.contribution.0'))).toBe(true)
     expect(requests[0]?.messages[0]).toEqual(
       expect.objectContaining({
         role: 'system',

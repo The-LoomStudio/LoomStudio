@@ -8,6 +8,7 @@ import {
   officialPromptResourceIds,
 } from '../prompt/prompt-resource-defaults.js'
 import { toStoredResourceInput } from '../prompt/prompt-resource-mapper.js'
+import type { PromptResourceNode } from '../cards/workspace.js'
 import type {
   AgentToolContent,
   ApplicationRuntime,
@@ -41,12 +42,75 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       const promptContents = createOfficialPromptResourceContents(timestamp)
       for (const [index, content] of promptContents.entries()) {
         const id = index === 0 ? officialPromptResourceIds.assistantPreset : officialPromptResourceIds.knowledgeSetting
-        if (!await ctx.promptResources.getResource(id)) {
+        let existing = await ctx.promptResources.getResource(id, { includeTombstone: true })
+        if (existing?.tombstoned) {
+          const restored = await ctx.promptResources.restoreResource({
+            actor: applicationActor,
+            reason: 'application.restoreBuiltinPromptResources',
+            resourceId: id,
+            expectedVersion: existing.version,
+          })
+          existing = restored.resource
+        }
+        if (!existing) {
           await ctx.promptResources.createResource({
             ...toStoredResourceInput({ id, content }),
             actor: applicationActor,
             reason: 'application.initializePromptResources',
           })
+        } else if (existing.metadata && typeof existing.metadata === 'object' && 'origin' in existing.metadata && (existing.metadata as { origin?: { kind?: string } }).origin?.kind === 'builtin') {
+          if (content.resourceKind === 'preset') {
+            const existingChildIds = new Set(existing.rootNode.children?.map(c => c.id) ?? [])
+            const expectedIds = new Set(content.rootNode.children?.map(c => c.id) ?? [])
+            const legacyNodes = existing.rootNode.children?.filter(c => c.kind === 'order' || !expectedIds.has(c.id)) ?? []
+            const missingNodes = content.rootNode.children?.filter(c => !existingChildIds.has(c.id)) ?? []
+            const mutations = [
+              ...legacyNodes.map(node => ({ kind: 'node.delete' as const, nodeId: node.id })),
+              ...missingNodes.map((node, i) => ({
+                kind: 'node.create' as const,
+                parentId: existing.rootNode.id,
+                node: {
+                  id: node.id,
+                  kind: node.kind,
+                  label: node.label,
+                  meta: node.meta,
+                  category: node.category,
+                  capabilities: node.capabilities,
+                  orderIndex: 100 + i,
+                },
+              })),
+            ]
+            if (mutations.length > 0) {
+              await ctx.promptResources.mutateResource({
+                actor: applicationActor,
+                reason: 'application.upgradeBuiltinPromptResources',
+                resourceId: id,
+                expectedVersion: existing.version,
+                mutations,
+              })
+            }
+          } else if (content.resourceKind === 'setting') {
+            const mutations: Array<{ kind: 'node.update'; nodeId: string; patch: { capabilities?: PromptResourceNode['capabilities'] } }> = []
+            for (const expected of content.rootNode.children ?? []) {
+              const current = existing.rootNode.children?.find(c => c.id === expected.id)
+              if (current && JSON.stringify(current.capabilities) !== JSON.stringify(expected.capabilities)) {
+                mutations.push({
+                  kind: 'node.update',
+                  nodeId: current.id,
+                  patch: { capabilities: expected.capabilities },
+                })
+              }
+            }
+            if (mutations.length > 0) {
+              await ctx.promptResources.mutateResource({
+                actor: applicationActor,
+                reason: 'application.upgradeBuiltinPromptResources',
+                resourceId: id,
+                expectedVersion: existing.version,
+                mutations,
+              })
+            }
+          }
         }
       }
       const officialMounts = await ctx.promptResources.listSettingMounts({ source: { kind: 'manual', id: 'global' } })

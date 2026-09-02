@@ -11,8 +11,8 @@ import {
 
 export const defaultPageLimit = 100
 export const maximumPageLimit = 500
-export const allowedNodeKinds = new Set(['module', 'folder', 'entry', 'script', 'virtual', 'order'])
-export const containerNodeKinds = new Set(['module', 'folder'])
+export const containerNodeKinds = new Set(['module', 'folder', 'message', 'slot', 'virtual'])
+export const nonContainerNodeKinds = new Set(['entry', 'script', 'order'])
 
 export type NodeRow = {
   id: string
@@ -182,7 +182,9 @@ export function validateTree(resourceId: string, nodes: Map<string, StoredNode>,
 
 export function validateNodeShape(node: Pick<PromptResourceNode, 'id' | 'kind' | 'label' | 'orderIndex'>): void {
   validateId(node.id, 'nodeId')
-  if (!allowedNodeKinds.has(node.kind)) throw new PromptResourceStoreError('prompt_resource.kind_invalid', `Prompt resource node kind is invalid: ${node.kind}`)
+  if (typeof node.kind !== 'string' || !node.kind || node.kind.trim() !== node.kind) {
+    throw new PromptResourceStoreError('prompt_resource.kind_invalid', `Prompt resource node kind is invalid: ${node.kind}`)
+  }
   if (typeof node.label !== 'string' || !node.label.trim()) throw new PromptResourceStoreError('prompt_resource.label_invalid', `Prompt resource node label must be a non-empty string: ${node.id}`)
   validateOrderIndex(node.orderIndex)
 }
@@ -195,7 +197,7 @@ export function validateNodeDraft(node: PromptResourceNodeDraft): void {
 }
 
 export function assertContainer(node: StoredNode): void {
-  if (!containerNodeKinds.has(node.kind)) throw new PromptResourceStoreError('prompt_resource.parent_invalid', `Node cannot contain children: ${node.id}`)
+  if (nonContainerNodeKinds.has(node.kind)) throw new PromptResourceStoreError('prompt_resource.parent_invalid', `Node cannot contain children: ${node.id}`)
 }
 
 export function validateId(id: unknown, label: string, optional = false): void {
@@ -208,7 +210,9 @@ export function validateOrderIndex(orderIndex: number): void {
 }
 
 export function validateResourceKind(kind: string): asserts kind is PromptResourceKind {
-  if (!['preset', 'setting', 'logic', 'runtime', 'history', 'prompt'].includes(kind)) throw new PromptResourceStoreError('prompt_resource.resource_kind_invalid', `Prompt resource kind is invalid: ${kind}`)
+  if (typeof kind !== 'string' || !kind || kind.trim() !== kind) {
+    throw new PromptResourceStoreError('prompt_resource.resource_kind_invalid', `Prompt resource kind is invalid: ${kind}`)
+  }
 }
 
 export function validateCategory(category: string | null | undefined): void {
@@ -227,7 +231,9 @@ export function readResourceKind(kind: string): PromptResourceKind {
 }
 
 export function readNodeKind(kind: string): PromptResourceNodeKind {
-  if (!allowedNodeKinds.has(kind)) throw new PromptResourceStoreError('prompt_resource.kind_invalid', `Prompt resource node kind is invalid: ${kind}`)
+  if (typeof kind !== 'string' || !kind || kind.trim() !== kind) {
+    throw new PromptResourceStoreError('prompt_resource.kind_invalid', `Prompt resource node kind is invalid: ${kind}`)
+  }
   return kind as PromptResourceNodeKind
 }
 

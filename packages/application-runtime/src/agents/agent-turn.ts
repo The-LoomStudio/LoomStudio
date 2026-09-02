@@ -2,18 +2,13 @@ import type { ChatMessage } from '@loom-studio/shared'
 import type { PromptResourceStore } from '@loom-studio/prompt-resource-store'
 import type { AgentTranscriptEntry } from '@loom-studio/agent-store'
 import type { NarrativeNode, NarrativeTimeline } from '@loom-studio/narrative-store'
-import {
-  defaultCompositionSkeleton,
-  emptyProjectionOrderProfile,
-  promptBindingIds,
-  promptSlotIds,
-  promptZoneIds,
-  type CompiledPrompt,
-  type PromptContribution,
-  type SourceNode,
+import type {
+  CompiledPrompt,
+  PromptContribution,
+  SourceNode,
 } from '../prompt/prompt-builder.js'
 import type { ActivationFacts } from '../prompt/prompt-activation.js'
-import { compilePromptWithCore, type PromptBuildTrace } from '../prompt/prompt-build-pipeline.js'
+import { compilePromptDataModel, type PromptBuildTrace } from '../prompt/prompt-build-pipeline.js'
 import { readPromptResourceInputs, type PromptResourceContent } from '../cards/workspace.js'
 import { createPromptToolExecutionScope } from './official-tools/index.js'
 import type { ToolExecutionScope } from './tool-registry.js'
@@ -42,7 +37,6 @@ export async function composeAgentTurnPrompt(input: {
   externalRuntime?: {
     sourceNodes: SourceNode[]
     contributions: PromptContribution[]
-    slotRanks?: Array<{ zoneId: string; slotKey: string; rankKey: string }>
   }
 }): Promise<{ messages: ChatMessage[]; projection: CompiledPrompt; promptBuildTrace: PromptBuildTrace; toolExecutionScope: ToolExecutionScope }> {
   const variables = input.variables ?? createVariableRenderContext()
@@ -84,43 +78,36 @@ export async function composeAgentTurnPrompt(input: {
     ...runtimeInputs.contributions,
     ...(input.externalRuntime?.contributions ?? []),
   ]
-  const resourceOrderProfile = resourceInputs?.orderProfile ?? emptyProjectionOrderProfile
-  const rankedSlots = new Set(
-    resourceOrderProfile.slotRanks.map(rank => `${rank.zoneId}\u0000${rank.slotKey}`),
-  )
-  const orderProfile = {
-    ...resourceOrderProfile,
-    slotRanks: [
-      ...resourceOrderProfile.slotRanks,
-      ...(input.externalRuntime?.slotRanks ?? []).filter(
-        rank => !rankedSlots.has(`${rank.zoneId}\u0000${rank.slotKey}`),
-      ),
-    ],
-  }
-  const resourceProjection = compilePromptWithCore({
-    skeleton: defaultCompositionSkeleton,
+  const resourceProjection = compilePromptDataModel({
     sourceNodes,
     contributions,
-    orderProfile,
     currentInput: input.userInput,
     activationFacts: input.activationFacts,
+  })
+
+  // Create a minimal trace for now since DFS compiler is simplified
+  const trace: PromptBuildTrace = {
+    version: 'core-compact-1',
+    status: 'ok',
     buildId: input.buildId,
     runId: input.runId,
     agentSessionId: input.agentSessionId,
-    ...(input.narrative ? {
-      timelineId: input.narrative.timeline.id,
-      branchId: input.narrative.timeline.activeBranchId,
-    } : {}),
-  })
+    initialFragmentCount: contributions.length,
+    finalFragmentCount: resourceProjection.messages.length,
+    messageFragmentCount: resourceProjection.messages.length,
+    diagnostics: [],
+    executions: []
+  }
+
   return {
-    messages: resourceProjection.projection.messages,
-    projection: resourceProjection.projection,
+    messages: resourceProjection.messages,
+    projection: resourceProjection,
     promptBuildTrace: {
-      ...resourceProjection.trace,
+      ...trace,
       variables: cloneVariableRenderTrace(variables.trace),
     },
     toolExecutionScope: createPromptToolExecutionScope({
-      prompt: resourceProjection.projection,
+      prompt: resourceProjection,
       contributions,
       sourceNodes,
     }),
@@ -150,7 +137,7 @@ function createRuntimePromptSources(input: {
       sourceId: input.narrative.timeline.id,
       parentId: null,
       displayName: input.narrative.timeline.title ?? 'Narrative Timeline',
-      orderIndex: 0,
+      orderIndex: 0, kind: 'folder',
     })
     const projectedNarrative = projectHistoryEntries({
       source: { kind: 'narrative', timelineId: input.narrative.timeline.id, branchId: input.narrative.branchId },
@@ -173,6 +160,7 @@ function createRuntimePromptSources(input: {
         parentId: rootId,
         displayName: `Narrative ${index + 1}`,
         orderIndex: index + 1,
+        kind: 'entry',
       })
       const content = narrativeText.get(node.id) ?? node.body.raw
       if (content.trim().length === 0) return
@@ -185,18 +173,9 @@ function createRuntimePromptSources(input: {
         },
         content,
         capabilities: {
-          projection: {
-            zoneId: promptZoneIds.narrativeHistory,
-            bindingId: promptBindingIds.narrativeHistory,
-            joinSlotKey: promptSlotIds.narrativeMain,
-            slotOrderHint: 0,
-            entryOrderHint: index,
-          },
-          lifecycle: { lifecycle: 'always' },
-          // Narrative Timeline only contributes context. The containing
-          // MessageBlock owns the provider role when the contribution is
-          // compiled into a message.
-          render: { wrapper: 'section', label: 'Narrative History' },
+          targetAnchorId: '@chat.narrative',
+          localDepth: index,
+          roleHint: 'developer',
         },
       })
     })
@@ -208,7 +187,7 @@ function createRuntimePromptSources(input: {
     sourceId: input.agentMessages[0]?.agentSessionId ?? 'agent-session',
     parentId: null,
     displayName: 'Session History',
-    orderIndex: 0,
+    orderIndex: 0, kind: 'folder',
   })
   const projectedSession = projectHistoryEntries({
     source: { kind: 'agent-session', sessionId: input.agentMessages[0]?.agentSessionId ?? 'agent-session' },
@@ -237,21 +216,16 @@ function createRuntimePromptSources(input: {
         parentId: sessionRootId,
         displayName: `Reasoning ${agentMessage.sequence}`,
         orderIndex: agentMessage.sequence,
+        kind: 'entry',
       })
       contributions.push({
         id: `runtime.session.reasoning:${agentMessage.id}`,
         sourceRef: { kind: 'sessionHistory', sourceId: agentMessage.agentSessionId, sourceNodeId },
         content: renderReasoningReplay(message.content, message.dialect),
         capabilities: {
-          projection: {
-            zoneId: promptZoneIds.sessionHistory,
-            bindingId: promptBindingIds.sessionHistory,
-            joinSlotKey: promptSlotIds.sessionMain,
-            slotOrderHint: 0,
-            entryOrderHint: agentMessage.sequence,
-          },
-          lifecycle: { lifecycle: 'always' },
-          render: { wrapper: 'message', roleHint: 'assistant' },
+          targetAnchorId: '@chat.session',
+          localDepth: agentMessage.sequence,
+          roleHint: 'assistant',
         },
       })
       return
@@ -268,6 +242,7 @@ function createRuntimePromptSources(input: {
       parentId: sessionRootId,
       displayName: `Message ${agentMessage.sequence}`,
       orderIndex: agentMessage.sequence,
+      kind: 'entry',
     })
     contributions.push({
       id: `runtime.session:${agentMessage.id}`,
@@ -278,15 +253,9 @@ function createRuntimePromptSources(input: {
       },
       content,
       capabilities: {
-        projection: {
-          zoneId: promptZoneIds.sessionHistory,
-          bindingId: promptBindingIds.sessionHistory,
-          joinSlotKey: promptSlotIds.sessionMain,
-          slotOrderHint: 0,
-          entryOrderHint: agentMessage.sequence,
-        },
-        lifecycle: { lifecycle: 'always' },
-        render: { wrapper: 'message', roleHint: message.role },
+        targetAnchorId: '@chat.session',
+        localDepth: agentMessage.sequence,
+        roleHint: message.role,
       },
     })
   })
@@ -299,14 +268,14 @@ function createRuntimePromptSources(input: {
       sourceId: 'runtime.current-turn',
       parentId: null,
       displayName: 'Current Turn',
-      orderIndex: 0,
+      orderIndex: 0, kind: 'folder',
     },
     {
       id: currentNodeId,
       sourceId: 'runtime.current-turn',
       parentId: currentRootId,
       displayName: 'User Input',
-      orderIndex: 0,
+      orderIndex: 0, kind: 'folder',
     },
   )
   contributions.push({
@@ -318,15 +287,9 @@ function createRuntimePromptSources(input: {
     },
     content: input.userInput,
     capabilities: {
-      projection: {
-        zoneId: promptZoneIds.currentTurn,
-        bindingId: promptBindingIds.currentInput,
-        joinSlotKey: promptSlotIds.currentInput,
-        slotOrderHint: 0,
-        entryOrderHint: 0,
-      },
-      lifecycle: { lifecycle: 'fresh' },
-      render: { wrapper: 'message', roleHint: 'user', label: 'Current Input' },
+      targetAnchorId: '@chat.input',
+      localDepth: 0,
+      roleHint: 'user',
     },
   })
 

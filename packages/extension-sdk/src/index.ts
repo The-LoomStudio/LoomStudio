@@ -346,7 +346,7 @@ export type ExtensionPromptResourceContribution = {
     defaultEnabled?: boolean
     activation?: JsonObject
     provider?: { order?: number }
-    content?: { zone?: string; slot?: string; rankKey?: string; orderHint?: number }
+    content?: { targetAnchorId?: string; localDepth?: number }
   }>
 }
 

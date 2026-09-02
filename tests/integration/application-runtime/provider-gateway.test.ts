@@ -343,6 +343,7 @@ describe('application runtime Provider Profile integration', () => {
       agentSessionId: session.session.id,
       input: '走默认 document-backed gateway。',
     })
+    console.log('TURN RESULT:', turn)
 
     expect(requests).toEqual([expect.objectContaining({
       url: 'https://gateway.test/v1/chat/completions',

@@ -177,20 +177,20 @@ describe('Tool Prompt Compiler', () => {
 
   it('sorts content tools by content placement and traces the content projection', () => {
     const first = source(contentTool, {
-      contentPlacement: { zone: 'context', slot: 'extension-z', rankKey: '99', orderHint: 99 },
+      contentPlacement: { targetAnchorId: 'context', localDepth: 99 },
     })
     const second = source({ ...contentTool, id: 'extension/slot_a', name: 'slot_a' }, {
       providerOrder: 999,
-      contentPlacement: { zone: 'tools', slot: 'extension-a', rankKey: '10', orderHint: 1 },
+      contentPlacement: { targetAnchorId: 'tools', localDepth: 10 },
     })
     const third = source({ ...contentTool, id: 'extension/slot_b', name: 'slot_b' }, {
-      contentPlacement: { zone: 'tools', slot: 'extension-b', rankKey: '10', orderHint: 1 },
+      contentPlacement: { targetAnchorId: 'tools', localDepth: 15 },
     })
     const fourth = source({ ...contentTool, id: 'extension/order_later', name: 'order_later' }, {
-      contentPlacement: { zone: 'tools', slot: 'extension-a', rankKey: '10', orderHint: 2 },
+      contentPlacement: { targetAnchorId: 'tools', localDepth: 20 },
     })
     const fifth = source({ ...contentTool, id: 'extension/rank_later', name: 'rank_later' }, {
-      contentPlacement: { zone: 'tools', slot: 'extension-a', rankKey: '20', orderHint: 1 },
+      contentPlacement: { targetAnchorId: 'tools', localDepth: 25 },
     })
 
     const result = compileToolPromptSources({
@@ -218,50 +218,40 @@ describe('Tool Prompt Compiler', () => {
         requestedIndex: 0,
         effectiveIndex: 0,
         projection: 'content-message',
-        zone: 'context',
-        slot: 'extension-z',
-        rankKey: '99',
-        orderHint: 99,
+        targetAnchorId: 'context',
+        localDepth: 99,
       },
       {
         toolId: second.tool.id,
         requestedIndex: 1,
         effectiveIndex: 1,
         projection: 'content-message',
-        zone: 'tools',
-        slot: 'extension-a',
-        rankKey: '10',
-        orderHint: 1,
+        targetAnchorId: 'tools',
+        localDepth: 10,
       },
       {
         toolId: third.tool.id,
         requestedIndex: 2,
         effectiveIndex: 2,
         projection: 'content-message',
-        zone: 'tools',
-        slot: 'extension-b',
-        rankKey: '10',
-        orderHint: 1,
+        targetAnchorId: 'tools',
+        localDepth: 15,
       },
       {
         toolId: fourth.tool.id,
         requestedIndex: 3,
         effectiveIndex: 3,
         projection: 'content-message',
-        zone: 'tools',
-        slot: 'extension-a',
-        rankKey: '10',
-        orderHint: 2,
+        targetAnchorId: 'tools',
+        localDepth: 20,
       },
       {
         toolId: fifth.tool.id,
         requestedIndex: 4,
         effectiveIndex: 4,
         projection: 'content-message',
-        zone: 'tools',
-        slot: 'extension-a',
-        rankKey: '20',
-        orderHint: 1,
+        targetAnchorId: 'tools',
+        localDepth: 25,
       },
     ])
   })

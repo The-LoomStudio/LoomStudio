@@ -6,7 +6,7 @@ export function migrateVersionOne(database: DatabaseSync): void {
   database.exec(`
     CREATE TABLE prompt_resources (
       id TEXT PRIMARY KEY,
-      resource_kind TEXT NOT NULL CHECK (resource_kind IN ('preset', 'setting', 'logic', 'runtime', 'history', 'prompt')),
+      resource_kind TEXT NOT NULL,
       root_node_id TEXT NOT NULL,
       label TEXT NOT NULL,
       version INTEGER NOT NULL CHECK (version > 0),
@@ -24,7 +24,7 @@ export function migrateVersionOne(database: DatabaseSync): void {
       resource_id TEXT NOT NULL REFERENCES prompt_resources(id),
       parent_id TEXT,
       order_index INTEGER NOT NULL CHECK (order_index >= 0),
-      kind TEXT NOT NULL CHECK (kind IN ('module', 'folder', 'entry', 'script', 'virtual', 'order')),
+      kind TEXT NOT NULL,
       category TEXT,
       label TEXT NOT NULL,
       meta TEXT,
@@ -118,5 +118,60 @@ export function migrateVersionThree(database: DatabaseSync): void {
     ALTER TABLE preset_tool_mounts DROP COLUMN content_order_hint;
     ALTER TABLE preset_tool_mounts ADD COLUMN target_anchor_id TEXT;
     ALTER TABLE preset_tool_mounts ADD COLUMN local_depth REAL;
+  `)
+}
+
+export function migrateVersionFour(database: DatabaseSync): void {
+  database.exec(`
+    CREATE TABLE prompt_resource_nodes_new (
+      id TEXT PRIMARY KEY,
+      resource_id TEXT NOT NULL,
+      parent_id TEXT,
+      order_index INTEGER NOT NULL CHECK (order_index >= 0),
+      kind TEXT NOT NULL,
+      category TEXT,
+      label TEXT NOT NULL,
+      meta TEXT,
+      enabled INTEGER,
+      body TEXT,
+      capabilities_json TEXT,
+      extra_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(resource_id, id)
+    );
+
+    INSERT INTO prompt_resource_nodes_new SELECT * FROM prompt_resource_nodes;
+    DROP TABLE prompt_resource_nodes;
+    ALTER TABLE prompt_resource_nodes_new RENAME TO prompt_resource_nodes;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_prompt_resource_one_root
+      ON prompt_resource_nodes(resource_id) WHERE parent_id IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_prompt_resource_nodes_parent_order
+      ON prompt_resource_nodes(resource_id, parent_id, order_index, id);
+    CREATE INDEX IF NOT EXISTS idx_prompt_resource_nodes_kind
+      ON prompt_resource_nodes(resource_id, kind);
+
+    CREATE TABLE prompt_resources_new (
+      id TEXT PRIMARY KEY,
+      resource_kind TEXT NOT NULL,
+      root_node_id TEXT NOT NULL,
+      label TEXT NOT NULL,
+      version INTEGER NOT NULL CHECK (version > 0),
+      metadata_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      tombstoned INTEGER NOT NULL DEFAULT 0,
+      deleted_at TEXT,
+      deleted_by_json TEXT,
+      delete_reason TEXT
+    );
+
+    INSERT INTO prompt_resources_new SELECT * FROM prompt_resources;
+    DROP TABLE prompt_resources;
+    ALTER TABLE prompt_resources_new RENAME TO prompt_resources;
+
+    CREATE INDEX IF NOT EXISTS idx_prompt_resources_kind_label
+      ON prompt_resources(resource_kind, label);
   `)
 }

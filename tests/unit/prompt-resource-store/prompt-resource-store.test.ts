@@ -13,7 +13,7 @@ describe('PromptResourceStore', () => {
     const setting = await store.createResource({ actor, id: 'setting-500', resourceKind: 'setting', rootNode: settingFixture })
     const preset = await store.createResource({ actor, id: 'preset-100', resourceKind: 'preset', rootNode: presetFixture })
 
-    expect(engine.database.prepare('SELECT version FROM schema_migrations WHERE namespace = ?').get('application.prompt-resource')).toEqual({ version: 2 })
+    expect(engine.database.prepare('SELECT version FROM schema_migrations WHERE namespace = ?').get('application.prompt-resource')).toEqual({ version: 4 })
     expect(engine.database.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND (name LIKE 'prompt_resource%' OR name IN ('global_setting_mounts', 'preset_tool_mounts'))`).all()).toEqual(expect.arrayContaining([
       { name: 'prompt_resources' },
       { name: 'prompt_resource_nodes' },
@@ -128,7 +128,7 @@ describe('PromptResourceStore', () => {
     await expect(store.mutateResource({ actor, resourceId: resource.resource.id, expectedVersion: 1, mutations: [{ kind: 'resource.update', patch: {} }] })).rejects.toMatchObject({ code: 'prompt_resource.noop' })
     await expect(store.mutateResource({ actor, resourceId: resource.resource.id, expectedVersion: 1, mutations: [{ kind: 'resource.update', patch: { label: 'Root', metadata: { mode: 'one' } } }] })).rejects.toMatchObject({ code: 'prompt_resource.noop' })
     await expect(store.mutateResource({ actor, resourceId: resource.resource.id, expectedVersion: 1, mutations: [{ kind: 'node.create', parentId: other.resource.rootNodeId, node: { id: 'foreign-child', kind: 'entry', label: 'Foreign' } }] })).rejects.toMatchObject({ code: 'prompt_resource.node_not_found' })
-    await expect(store.mutateResource({ actor, resourceId: resource.resource.id, expectedVersion: 1, mutations: [{ kind: 'node.create', parentId: 'folder-a', node: { id: 'bad-kind', kind: 'invalid' as never, label: 'Invalid' } }] })).rejects.toMatchObject({ code: 'prompt_resource.kind_invalid' })
+    await expect(store.mutateResource({ actor, resourceId: resource.resource.id, expectedVersion: 1, mutations: [{ kind: 'node.create', parentId: 'folder-a', node: { id: 'bad-kind', kind: '' as never, label: 'Invalid' } }] })).rejects.toMatchObject({ code: 'prompt_resource.kind_invalid' })
 
     const cyclic = {} as { self?: unknown }
     cyclic.self = cyclic
@@ -306,13 +306,13 @@ describe('PromptResourceStore', () => {
       presetResourceId: preset.resource.id,
       mounts: [
         { toolId: 'official/first', orderIndex: 0, defaultEnabled: true, provider: { order: 10 } },
-        { toolId: 'official/second', orderIndex: 1, defaultEnabled: false, content: { zone: 'tools', slot: 'official-tools' } },
+        { toolId: 'official/second', orderIndex: 1, defaultEnabled: false, content: { targetAnchorId: 'tools' } },
       ],
     })
     const second = await store.replacePresetToolMounts({
       actor,
       presetResourceId: preset.resource.id,
-      mounts: [{ toolId: 'official/second', orderIndex: 0, defaultEnabled: true, content: { zone: 'tools', slot: 'preset-tools', orderHint: 5 } }],
+      mounts: [{ toolId: 'official/second', orderIndex: 0, defaultEnabled: true, content: { targetAnchorId: 'tools', localDepth: 5 } }],
     })
 
     expect(second.commit.operations).toEqual([
@@ -320,7 +320,7 @@ describe('PromptResourceStore', () => {
       { store: 'prompt-resources', kind: 'create', entityId: second.mounts[0]!.id, entityType: 'prompt-resource.tool-mount' },
     ])
     expect(await store.listPresetToolMounts({ presetResourceId: preset.resource.id })).toEqual([
-      expect.objectContaining({ toolId: 'official/second', defaultEnabled: true, content: { zone: 'tools', slot: 'preset-tools', orderHint: 5 } }),
+      expect.objectContaining({ toolId: 'official/second', defaultEnabled: true, content: { targetAnchorId: 'tools', localDepth: 5 } }),
     ])
 
     const deleted = await store.deleteResource({ actor, resourceId: preset.resource.id, expectedVersion: 1 })

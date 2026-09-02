@@ -2,7 +2,7 @@ import styles from './status-indicator.module.scss'
 
 type StatusIndicatorProps = {
   label: string
-  tone: 'info'
+  tone?: 'info' | 'warning' | 'success' | 'danger'
 }
 
 export function StatusIndicator(props: StatusIndicatorProps) {

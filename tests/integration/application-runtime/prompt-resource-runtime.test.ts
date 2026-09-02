@@ -43,7 +43,7 @@ describe('Prompt Resource Store application runtime', () => {
             sourceRef: { kind: 'runtime', sourceId: 'tools', sourceNodeId: 'tool-a' },
             content: 'Tool A instructions.',
             capabilities: {
-              projection: { zoneId: 'tools', joinSlotKey: 'tool-a-slot' },
+              targetAnchorId: '@chat.tools', localDepth: 20,
               lifecycle: { lifecycle: 'always' },
             },
           },
@@ -52,23 +52,19 @@ describe('Prompt Resource Store application runtime', () => {
             sourceRef: { kind: 'runtime', sourceId: 'tools', sourceNodeId: 'tool-b' },
             content: 'Tool B instructions.',
             capabilities: {
-              projection: { zoneId: 'tools', joinSlotKey: 'tool-b-slot' },
+              targetAnchorId: '@chat.tools', localDepth: 10,
               lifecycle: { lifecycle: 'always' },
             },
           },
         ],
-        slotRanks: [
-          { zoneId: 'tools', slotKey: 'tool-a-slot', rankKey: '20' },
-          { zoneId: 'tools', slotKey: 'tool-b-slot', rankKey: '10' },
-        ],
       },
     })
 
-    expect(result.projection.zones.find(zone => zone.zoneId === 'tools')?.slots.map(slot => slot.slotKey)).toEqual([
-      'tool-b-slot',
-      'tool-a-slot',
+    expect(result.projection.messages.find(msg => msg.role === 'system')?.fragmentIds).toEqual([
+      'tool-b-content',
+      'tool-a-content',
     ])
-    expect(result.messages).toEqual([
+    expect(result.messages).toMatchObject([
       { role: 'system', content: 'Tool B instructions.\n\nTool A instructions.' },
       { role: 'user', content: 'Hi' },
     ])
@@ -147,7 +143,7 @@ describe('Prompt Resource Store application runtime', () => {
     const secondRuntime = createApplicationRuntime({ dataEngine: secondEngine, documents: secondDocuments, promptResources: secondStore })
     const readPreset = await secondRuntime.getPromptResource({ resourceId: preset.resource.id })
     await expect(secondRuntime.listSettingMounts({ source: { kind: 'preset', id: preset.resource.id } })).resolves.toMatchObject({ mounts: [{ settingResourceId: setting.resource.id, source: { kind: 'preset', id: preset.resource.id } }] })
-    expect(readPreset.resource.rootNode.children?.[0]?.label).toBe('主排序')
+    expect(readPreset.resource.rootNode.children?.find((c: any) => c.capabilities?.targetAnchorId === '@chat.system')?.capabilities?.targetAnchorId).toBe('@chat.system')
     expect((await secondRuntime.getPromptResource({ resourceId: setting.resource.id })).resource.rootNode.children?.[0]?.body).toBe('Persisted body')
     secondEngine.close()
     await rm(directory, { recursive: true, force: true })
@@ -167,7 +163,7 @@ describe('Prompt Resource Store application runtime', () => {
         resourceId: resource.resource.id,
         targetAssetId: resource.resource.rootNode.id,
         position: 'inside',
-        asset: { id: `${resource.resource.id}.entry`, kind: 'entry', label: body, body },
+        asset: { id: `${resource.resource.id}.entry`, kind: 'entry', label: body, body, capabilities: { targetAnchorId: '@chat.system' } },
       })
     }
     const presetA = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Preset A' })

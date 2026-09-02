@@ -72,7 +72,7 @@ export type {
   TextTransformRuleDraft,
   TextTransformRuleEntry,
 } from './transforms/history-text.js'
-import type { CompiledPrompt, CompositionSkeletonPatch, ProjectionOrderProfile } from './prompt/prompt-builder.js'
+import type { CompiledPrompt } from './prompt/prompt-builder.js'
 import type {
   CardBundleArtifact,
   ImportBundleContent,
@@ -1123,8 +1123,6 @@ export type UpdatePromptResourceAssetInput = {
   meta?: string
   enabled?: boolean
   orderList?: string[]
-  skeletonPatch?: PromptResourceNode['skeletonPatch']
-  slotRanks?: PromptResourceNode['slotRanks']
 }
 
 export type UpdatePromptResourceAssetsInput = {
@@ -1157,8 +1155,6 @@ export type PromptAssetPatch = {
   meta?: string
   enabled?: boolean
   orderList?: string[]
-  skeletonPatch?: CompositionSkeletonPatch
-  slotRanks?: ProjectionOrderProfile['slotRanks']
 }
 
 export type ExportCardBundleInput = {

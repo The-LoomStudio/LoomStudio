@@ -1,4 +1,3 @@
-import { defaultCompositionSkeleton } from './prompt-builder.js'
 import type { PromptResourceContent, PromptResourceNode } from '../cards/workspace.js'
 
 export const officialPromptResourceIds = {
@@ -55,37 +54,6 @@ function createAssistantPresetRoot(): PromptResourceNode {
     body: 'Loom Studio 官方问答助手的 Prompt 结构、标准 Zone 与默认排序。',
     children: [
       {
-        id: 'official.loom-assistant.order',
-        label: '主排序',
-        meta: 'Projection Order Profile',
-        category: 'preset',
-        kind: 'order',
-        body: '定义问答助手 Preset 与 Loom Studio 知识 Setting 的默认相对位置。',
-        skeletonPatch: {
-          zones: defaultCompositionSkeleton.zones.map(zone => ({ ...zone })),
-          items: defaultCompositionSkeleton.items.map(item => ({ ...item })),
-          fallbackZoneId: defaultCompositionSkeleton.fallbackZoneId,
-        },
-        orderList: [
-          'official.loom-assistant.instructions',
-          'official.loom-knowledge.product',
-          'official.loom-knowledge.resources',
-          'official.loom-knowledge.workflow',
-        ],
-        slotRanks: [
-          {
-            zoneId: 'preset.system',
-            slotKey: `preset:${assistantPresetRootId}@preset.system`,
-            rankKey: '0000',
-          },
-          {
-            zoneId: 'setting.stable',
-            slotKey: `setting-layer:${knowledgeSettingRootId}@setting.stable`,
-            rankKey: '0001',
-          },
-        ],
-      },
-      {
         id: 'official.loom-assistant.instructions',
         label: '助手行为',
         meta: 'preset.system',
@@ -94,14 +62,66 @@ function createAssistantPresetRoot(): PromptResourceNode {
         enabled: true,
         body: '你是 Loom Studio 内置问答助手。优先依据已加载的 Loom Studio 知识回答问题；表达清晰、简洁，并在知识不足时明确说明不确定之处。使用与用户相同的语言回答。',
         capabilities: {
-          lifecycle: { lifecycle: 'always' },
-          projection: {
-            zoneId: 'preset.system',
-            slotKey: `preset:${assistantPresetRootId}@preset.system`,
-            entryOrderHint: 10,
-            slotOrderHint: 100,
-          },
+          targetAnchorId: '@preset.system',
+          localDepth: 10,
+          roleHint: 'system',
         },
+      },
+      {
+        id: 'official.loom-assistant.virtual-preset-system',
+        label: '@preset.system',
+        meta: 'preset.virtual',
+        category: 'preset',
+        kind: 'virtual',
+        capabilities: { targetAnchorId: '@preset.system' },
+      },
+      {
+        id: 'official.loom-assistant.virtual-setting-stable',
+        label: '@setting.stable',
+        meta: 'preset.virtual',
+        category: 'preset',
+        kind: 'virtual',
+        capabilities: { targetAnchorId: '@setting.stable' },
+      },
+      {
+        id: 'official.loom-assistant.virtual-tools',
+        label: '@chat.tools',
+        meta: 'preset.virtual',
+        category: 'preset',
+        kind: 'virtual',
+        capabilities: { targetAnchorId: '@chat.tools' },
+      },
+      {
+        id: 'official.loom-assistant.virtual-narrative',
+        label: '@chat.narrative',
+        meta: 'preset.virtual',
+        category: 'preset',
+        kind: 'virtual',
+        capabilities: { targetAnchorId: '@chat.narrative' },
+      },
+      {
+        id: 'official.loom-assistant.virtual-session',
+        label: '@chat.session',
+        meta: 'preset.virtual',
+        category: 'preset',
+        kind: 'virtual',
+        capabilities: { targetAnchorId: '@chat.session' },
+      },
+      {
+        id: 'official.loom-assistant.virtual-input',
+        label: '@chat.input',
+        meta: 'preset.virtual',
+        category: 'preset',
+        kind: 'virtual',
+        capabilities: { targetAnchorId: '@chat.input' },
+      },
+      {
+        id: 'official.loom-assistant.virtual-fresh-tail',
+        label: '@fresh.tail',
+        meta: 'preset.virtual',
+        category: 'preset',
+        kind: 'virtual',
+        capabilities: { targetAnchorId: '@fresh.tail' },
       },
     ],
   }
@@ -149,13 +169,9 @@ function settingEntry(id: string, label: string, body: string, entryOrderHint: n
     body,
     capabilities: {
       activation: { kind: 'always' },
-      lifecycle: { lifecycle: 'always' },
-      projection: {
-        zoneId: 'setting.stable',
-        slotKey: `setting-layer:${knowledgeSettingRootId}@setting.stable`,
-        entryOrderHint,
-        slotOrderHint: 200,
-      },
+      targetAnchorId: '@setting.stable',
+      localDepth: entryOrderHint,
+      roleHint: 'system',
     },
   }
 }

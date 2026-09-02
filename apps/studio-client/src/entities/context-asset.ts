@@ -1,12 +1,12 @@
 export type ContextAssetNode = {
   body?: string
-  category?: 'preset' | 'setting' | 'logic' | 'runtime' | 'history'
+  category?: 'preset' | 'setting' | 'logic' | 'runtime' | 'history' | (string & {})
   children?: ContextAssetNode[]
   configRows?: Array<{ label: string; value: string }>
   enabled?: boolean
   id: string
   isSection?: boolean
-  kind: 'module' | 'folder' | 'entry' | 'script' | 'virtual' | 'order'
+  kind: 'module' | 'folder' | 'entry' | 'script' | 'virtual' | 'order' | 'slot' | 'message' | (string & {})
   label: string
   meta?: string
   orderList?: string[]
@@ -49,6 +49,9 @@ export type ProjectionSlotRank = {
 export type PromptCompositionCapabilities = {
   activation?: PromptActivationCapability
   lifecycle?: { lifecycle: string }
+  targetAnchorId?: string
+  localDepth?: number
+  roleHint?: PromptProviderRole
   projection?: {
     entryOrderHint?: number
     bindingId?: string

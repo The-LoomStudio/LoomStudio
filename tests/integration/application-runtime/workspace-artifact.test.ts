@@ -26,12 +26,11 @@ describe('application runtime card bundle integration', () => {
       historyPolicy: 'persistent',
     })
     await expect(runtime.listSettingMounts({ source: { kind: 'manual', id: 'global' } })).resolves.toMatchObject({ mounts: [{ settingResourceId: setting!.id }] })
-    const compositionItems = preset?.rootNode.children?.find(node => node.kind === 'order')?.skeletonPatch?.items
-      ?.flatMap(item => item.kind === 'message' ? item.items : [item])
-    expect(compositionItems).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: 'slot', bindingId: 'runtime.narrativeHistory' }),
-      expect.objectContaining({ kind: 'slot', bindingId: 'runtime.sessionHistory' }),
-      expect.objectContaining({ kind: 'entry', source: { kind: 'binding', bindingId: 'runtime.currentInput' } }),
+    const virtualAnchors = preset?.rootNode.children?.filter(node => node.kind === 'virtual').map(node => node.capabilities?.targetAnchorId)
+    expect(virtualAnchors).toEqual(expect.arrayContaining([
+      '@chat.narrative',
+      '@chat.session',
+      '@chat.input',
     ]))
     expect(setting).toMatchObject({ resourceKind: 'setting', rootNode: { label: 'Loom Studio 基础知识' } })
     const updated = await runtime.updatePromptResourceAsset({
@@ -51,11 +50,11 @@ describe('application runtime card bundle integration', () => {
       position: 'inside',
       asset: { id: 'imported-entry', label: 'Guide', kind: 'entry', body: 'Helpful knowledge.' },
     })
-    const createdEntry = entry.resource.rootNode.children?.[0]
+    const createdEntry = entry.resource.rootNode.children?.find(c => c.label === 'Guide')
 
-    expect(createdEntry?.capabilities?.projection).toMatchObject({
-      zoneId: 'setting.stable',
-      entryOrderHint: 10,
+    expect(createdEntry?.capabilities).toMatchObject({
+      targetAnchorId: '@chat.system',
+      localDepth: 10,
     })
 
     const duplicated = await runtime.duplicatePromptResource({ resourceId: created.resource.id })

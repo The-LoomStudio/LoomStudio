@@ -42,11 +42,31 @@ function callRpc(fetchImpl: typeof fetch, endpoint: string, id: RpcId, method: s
 }
 
 async function sendRequest(fetchImpl: typeof fetch, endpoint: string, request: RpcRequest): Promise<RpcResponse> {
-  const response = await fetchImpl(endpoint, {
+  let response = await fetchImpl(endpoint, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(request),
+    credentials: 'same-origin',
   })
+
+  if (response.status === 401 && typeof globalThis.window !== 'undefined') {
+    try {
+      const authRes = await fetchImpl('/auth/session', {
+        method: 'POST',
+        credentials: 'same-origin',
+      })
+      if (authRes.ok) {
+        response = await fetchImpl(endpoint, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(request),
+          credentials: 'same-origin',
+        })
+      }
+    } catch {
+      // Fall through to error handling
+    }
+  }
 
   if (!response.ok) {
     throw new Error(`RPC HTTP request failed: ${response.status}`)

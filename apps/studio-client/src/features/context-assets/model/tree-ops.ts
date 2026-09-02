@@ -74,6 +74,68 @@ export function addContextAssetFolderNode(
   }
 }
 
+export function addContextAssetAnchorNode(
+  nodes: ContextAssetNode[],
+  parentId: string,
+  makeId: () => string = createContextAssetId,
+): ContextAssetMutation {
+  const parentInfo = findContextAssetNodeInfo(nodes, parentId)
+  if (!parentInfo || !canAddChild(parentInfo.node, parentInfo.category)) return { nodes }
+
+  const id = makeId()
+  const node: ContextAssetNode = {
+    id,
+    label: '@new.anchor',
+    meta: 'preset.virtual',
+    kind: 'virtual',
+    category: 'preset',
+    capabilities: {
+      targetAnchorId: '@new.anchor',
+    },
+  }
+
+  return {
+    nodes: normalizeContextAssets(insertContextAssetChild(nodes, parentId, node)),
+    selectedId: id,
+  }
+}
+
+export function addContextAssetMessageBlockNode(
+  nodes: ContextAssetNode[],
+  parentId: string,
+  role: 'system' | 'user' | 'assistant' = 'system',
+  makeId: () => string = createContextAssetId,
+): ContextAssetMutation {
+  const parentInfo = findContextAssetNodeInfo(nodes, parentId)
+  if (!parentInfo) return { nodes }
+
+  const id = makeId()
+  const roleTitle = role.charAt(0).toUpperCase() + role.slice(1)
+  const node: ContextAssetNode = {
+    id,
+    label: `${roleTitle} Message`,
+    meta: `message.${role}`,
+    kind: 'message',
+    category: 'preset',
+    children: [],
+    capabilities: {
+      roleHint: role,
+    },
+  }
+
+  if (parentInfo.node.kind === 'message' || parentInfo.node.kind === 'entry' || parentInfo.node.kind === 'virtual' || parentInfo.node.kind === 'slot') {
+    return {
+      nodes: normalizeContextAssets(insertContextAssetSiblingAfter(nodes, parentInfo.node.id, node)),
+      selectedId: id,
+    }
+  }
+
+  return {
+    nodes: normalizeContextAssets(insertContextAssetChild(nodes, parentId, node)),
+    selectedId: id,
+  }
+}
+
 export function addContextAssetInZoneNode(
   nodes: ContextAssetNode[],
   resourceId: string,
@@ -189,7 +251,7 @@ export function moveContextAssetNode(
 }
 
 function canAddChild(node: ContextAssetNode, inheritedCategory?: ContextAssetNode['category']): boolean {
-  return (node.kind === 'module' || node.kind === 'folder') && !isReadOnlyContextNode(node, inheritedCategory)
+  return (node.kind === 'module' || node.kind === 'folder' || node.kind === 'message') && !isReadOnlyContextNode(node, inheritedCategory)
 }
 
 function canDuplicateNode(node: ContextAssetNode, inheritedCategory?: ContextAssetNode['category']): boolean {

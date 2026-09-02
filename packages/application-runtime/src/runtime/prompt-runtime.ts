@@ -2,7 +2,6 @@ import type { PromptResourceMutation } from '@loom-studio/prompt-resource-store'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments, readDocument, writeDocument } from '../foundation/document-store.js'
-import { defaultCompositionSkeleton } from '../prompt/prompt-builder.js'
 import {
   fromStoredResource,
   listMappedResources,
@@ -323,21 +322,13 @@ export function createEmptyPromptResourceContent(
     kind: 'module',
     body: '',
     ...(resourceKind === 'preset' ? {
-      children: [{
-        id: createId('prompt-node'),
-        label: '主排序',
-        meta: 'Projection Order Profile',
-        category: 'preset' as const,
-        kind: 'order' as const,
-        body: '',
-        skeletonPatch: {
-          zones: defaultCompositionSkeleton.zones.map(zone => ({ ...zone })),
-          items: defaultCompositionSkeleton.items.map(item => ({ ...item })),
-          fallbackZoneId: defaultCompositionSkeleton.fallbackZoneId,
-        },
-        orderList: [],
-        slotRanks: [],
-      }],
+      children: [
+        { id: createId('prompt-node'), label: 'System Context', kind: 'virtual', capabilities: { targetAnchorId: '@chat.system' } },
+        { id: createId('prompt-node'), label: 'Tools Context', kind: 'virtual', capabilities: { targetAnchorId: '@chat.tools' } },
+        { id: createId('prompt-node'), label: 'Narrative History', kind: 'virtual', capabilities: { targetAnchorId: '@chat.narrative' } },
+        { id: createId('prompt-node'), label: 'Session History', kind: 'virtual', capabilities: { targetAnchorId: '@chat.session' } },
+        { id: createId('prompt-node'), label: 'User Input', kind: 'virtual', capabilities: { targetAnchorId: '@chat.input' } },
+      ],
     } : {}),
   }
   return {
@@ -397,7 +388,7 @@ export function resolveAssetPlacement(
   const target = findPromptNode(root, targetId)
   if (!target) throw new Error(`Prompt asset target not found: ${targetId}`)
   if (position === 'inside') {
-    if (target.node.kind !== 'module' && target.node.kind !== 'folder') throw new Error(`Prompt asset target cannot contain children: ${targetId}`)
+    if (target.node.kind === 'entry' || target.node.kind === 'script' || target.node.kind === 'order') throw new Error(`Prompt asset target cannot contain children: ${targetId}`)
     return { parentId: target.node.id, orderIndex: target.node.children?.length ?? 0 }
   }
   if (!target.parentId) throw new Error(`Prompt asset cannot be placed beside the root: ${targetId}`)
@@ -473,8 +464,6 @@ export async function updatePromptResourceAssets(input: {
     label?: string
     meta?: string
     orderList?: string[]
-    skeletonPatch?: PromptResourceContent['rootNode']['skeletonPatch']
-    slotRanks?: PromptResourceContent['rootNode']['slotRanks']
   }>
 }): Promise<UpdatePromptResourceResult> {
   const current = await input.ctx.promptResources.getResource(input.resourceId)
@@ -489,12 +478,10 @@ export async function updatePromptResourceAssets(input: {
       ...(update.capabilities === undefined ? {} : { capabilities: update.capabilities }),
       ...(update.enabled === undefined ? {} : { enabled: update.enabled }),
       ...(update.meta === undefined ? {} : { meta: update.meta }),
-      ...(update.orderList === undefined && update.skeletonPatch === undefined && update.slotRanks === undefined ? {} : {
+      ...(update.orderList === undefined ? {} : {
         extra: {
           ...(findPromptNode(currentTree, update.assetId) ? (toStoredNodeDraft(findPromptNode(currentTree, update.assetId)!.node).extra ?? {}) : {}),
           ...(update.orderList === undefined ? {} : { orderList: update.orderList }),
-          ...(update.skeletonPatch === undefined ? {} : { skeletonPatch: update.skeletonPatch }),
-          ...(update.slotRanks === undefined ? {} : { slotRanks: update.slotRanks }),
         },
       }),
     },

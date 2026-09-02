@@ -5,19 +5,22 @@ export const officialReadContextTool: ToolDefinition = {
   id: 'official/read_context',
   owner: { namespace: 'official' },
   name: 'read_context',
-  description: 'Read one accessible context resource by the item ID returned by search_context, including resources that were not injected because Activation did not trigger.',
+  description: 'Read one accessible context resource by the virtual path or item ID returned by search_context.',
   input: {
     kind: 'structured',
     schema: {
       type: 'object',
-      properties: { id: { type: 'string', minLength: 1 } },
-      required: ['id'],
+      properties: { 
+        path: { type: 'string', minLength: 1 },
+        id: { type: 'string', minLength: 1 },
+      },
       additionalProperties: false,
     } satisfies JsonObject,
   },
   prompt: {
     parameterDescriptions: {
-      id: 'The exact accessible context item ID returned by search_context.',
+      path: 'The virtual path of the context item.',
+      id: 'The exact item ID (fallback if path is unknown).',
     },
     provider: { order: 20 },
   },
@@ -26,9 +29,10 @@ export const officialReadContextTool: ToolDefinition = {
 export const officialReadContextRegistration: ToolRuntimeRegistration = {
   toolId: officialReadContextTool.id,
   execute: ({ invocation, scope }) => {
-    const id = String(invocation.arguments?.id ?? '')
-    const item = scope?.context.find(candidate => candidate.id === id)
-    if (!item) throw new Error(`Active context item not found: ${id}`)
+    const id = invocation.arguments?.id ? String(invocation.arguments.id) : undefined
+    const path = invocation.arguments?.path ? String(invocation.arguments.path) : undefined
+    const item = scope?.context.find(candidate => (path && candidate.virtualPath === path) || (id && candidate.id === id))
+    if (!item) throw new Error(`Active context item not found: ${path ?? id}`)
     return {
       invocationId: invocation.id,
       toolId: invocation.toolId,
@@ -38,6 +42,8 @@ export const officialReadContextRegistration: ToolRuntimeRegistration = {
         value: {
           id: item.id,
           name: item.name,
+          virtualPath: item.virtualPath,
+          mediaType: item.mediaType,
           promptState: item.promptState,
           mounted: 'fresh',
         },

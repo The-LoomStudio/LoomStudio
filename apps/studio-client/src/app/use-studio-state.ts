@@ -431,6 +431,8 @@ export function useStudioState(transportLogger: Logger) {
     moveContextAsset: contextAssetState.moveContextAsset,
     addContextAsset: contextAssetState.addContextAsset,
     addContextAssetFolder: contextAssetState.addContextAssetFolder,
+    addContextAssetAnchor: contextAssetState.addContextAssetAnchor,
+    addContextAssetMessageBlock: contextAssetState.addContextAssetMessageBlock,
     addContextAssetInZone: contextAssetState.addContextAssetInZone,
     duplicateContextAsset: contextAssetState.duplicateContextAsset,
     deleteContextAsset: contextAssetState.deleteContextAsset,
