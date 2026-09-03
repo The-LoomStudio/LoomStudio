@@ -600,6 +600,12 @@ function printStudioServerBanner(port: number): void {
     const lines = raw.split('\n')
     const rawTag = '\x1b[?loom-raw]'
 
+    // 每次打印前先通过 ANSI 转义码软清屏，防止热重启时出现两个 Banner 重叠
+    const isInteractive = typeof process !== 'undefined' && process.stdout?.isTTY
+    if (isInteractive) {
+      process.stdout.write(`${rawTag}\x1b[2J\x1b[3J\x1b[H`)
+    }
+
     // 采用与 Logo 完全一致的金属冷银灰渐变插值 (从浅冷银 198,208,222 过渡到深沉岩蓝 90,104,126)
     const startRgb = [198, 208, 222]
     const endRgb = [90, 104, 126]
@@ -622,10 +628,16 @@ function printStudioServerBanner(port: number): void {
 
     const time = new Date().toLocaleTimeString('zh-CN', { hour12: false })
     const nodeVer = process.version
+    const serverUrl = `http://127.0.0.1:${port}`
+    const clientUrl = 'http://127.0.0.1:5173'
+
+    // OSC 8 原生终端可点击超链接 (VSCode/iTerm2/Ghostty 支持直接按住点击打开)
+    const serverLink = `\x1b]8;;${serverUrl}\x1b\\${serverUrl}\x1b]8;;\x1b\\`
+    const clientLink = `\x1b]8;;${clientUrl}\x1b\\${clientUrl}\x1b]8;;\x1b\\`
 
     console.log(`${rawTag}╭─ ${bold}${silver}Loom Studio${reset}  \x1b[32m● active\x1b[0m  ${dim}${nodeVer}   ${time}${reset}`)
-    console.log(`${rawTag}│  ${dim}➜${reset}  ${bold}Local Server:${reset}  http://127.0.0.1:${port}`)
-    console.log(`${rawTag}│  ${dim}➜${reset}  ${bold}Studio Client:${reset} http://127.0.0.1:5173`)
+    console.log(`${rawTag}│  ${dim}➜${reset}  ${bold}Local Server:${reset}  ${serverLink}`)
+    console.log(`${rawTag}│  ${dim}➜${reset}  ${bold}Studio Client:${reset} ${clientLink}`)
     console.log(`${rawTag}╰─ ${dim}Weave worlds, branch stories.${reset}\n`)
   } catch {
     // ignore banner printing errors

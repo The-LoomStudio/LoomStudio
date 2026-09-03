@@ -18,15 +18,15 @@ export function createConsoleLogSink(options: {
       let prefix: string
       if (colorize) {
         const dim = '\x1b[2m'
-        const bold = '\x1b[1m'
         const reset = '\x1b[0m'
-        let levelBadge = `\x1b[32mINFO \x1b[0m`
-        if (record.level === 'error') levelBadge = `\x1b[1;31mERROR\x1b[0m`
-        else if (record.level === 'warn') levelBadge = `\x1b[1;33mWARN \x1b[0m`
-        else if (record.level === 'debug') levelBadge = `\x1b[35mDEBUG\x1b[0m`
+        let levelBadge = `\x1b[7;32m INFO  \x1b[0m`
+        if (record.level === 'error') levelBadge = `\x1b[7;1;31m ERROR \x1b[0m`
+        else if (record.level === 'warn') levelBadge = `\x1b[7;1;33m WARN  \x1b[0m`
+        else if (record.level === 'debug') levelBadge = `\x1b[7;35m DEBUG \x1b[0m`
         const time = record.timestamp.length >= 23 ? record.timestamp.slice(11, 23) : record.timestamp
         const namespaceColor = '\x1b[38;2;130;165;200m'
-        prefix = `${dim}[${time}]${reset} ${levelBadge} ${namespaceColor}${record.namespace}${reset}:`
+        const nsPadded = record.namespace.padEnd(16, ' ')
+        prefix = `${dim}[${time}]${reset} ${levelBadge} ${namespaceColor}${nsPadded}${reset}`
         if (details) {
           output[record.level](`${prefix} ${record.message}\n${colorizeObject(details, 1)}`)
         } else {
