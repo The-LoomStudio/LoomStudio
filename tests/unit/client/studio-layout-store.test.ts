@@ -32,6 +32,38 @@ describe('studio layout store', () => {
     expect(useStudioLayoutStore.getState().dockOpen).toBe(false)
   })
 
+  it('toggles dockPinned preference independently', () => {
+    expect(useStudioLayoutStore.getState().dockPinned).toBe(false)
+
+    useStudioLayoutStore.getState().toggleDockPinned()
+    expect(useStudioLayoutStore.getState().dockPinned).toBe(true)
+
+    useStudioLayoutStore.getState().toggleDockPinned()
+    expect(useStudioLayoutStore.getState().dockPinned).toBe(false)
+  })
+
+  it('keeps window immersive mode global across all panel switches', () => {
+    const layout = useStudioLayoutStore.getState()
+    const panels = useStudioPanelStore.getState()
+
+    expect(layout.panelWindowMode).toBe('reference')
+
+    layout.togglePanelWindowMode()
+    expect(useStudioLayoutStore.getState().panelWindowMode).toBe('immersive')
+
+    panels.togglePanel('agent')
+    expect(useStudioLayoutStore.getState().panelWindowMode).toBe('immersive')
+
+    panels.togglePanel('character')
+    expect(useStudioLayoutStore.getState().panelWindowMode).toBe('immersive')
+
+    panels.togglePanel('sessions')
+    expect(useStudioLayoutStore.getState().panelWindowMode).toBe('immersive')
+
+    useStudioLayoutStore.getState().togglePanelWindowMode()
+    expect(useStudioLayoutStore.getState().panelWindowMode).toBe('reference')
+  })
+
   it('switches workspace panels without changing persisted layout data', () => {
     const writesBefore = vi.mocked(localStorage.setItem).mock.calls.length
     const store = useStudioPanelStore.getState()
@@ -194,6 +226,8 @@ describe('sanitizeStudioLayout', () => {
       },
       contextCategory: 'history',
       dockOpen: false,
+      dockPinned: false,
+      panelWindowMode: 'immersive',
       panelWindowModes: { preset: 'immersive' },
       panelWindowSizes: {
         preset: { width: 900, height: 680 },

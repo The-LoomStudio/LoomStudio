@@ -13,8 +13,10 @@ import styles from './window-column-layout.module.scss'
 export type WindowColumnDefinition = ColumnSizeConstraints & {
   className?: string
   content: ReactNode
+  divider?: boolean
   fill?: boolean
   id: string
+  resizable?: boolean
   resizeLabel?: string
   shrinkPriority?: number
   size?: number
@@ -138,7 +140,20 @@ export function WindowColumnLayout(props: WindowColumnLayoutProps) {
             {column.content}
           </div>
         )
-        if (index === props.columns.length - 1 || !column.resizeLabel || column.fill) return [columnElement]
+        if (index === props.columns.length - 1 || (!column.resizeLabel && !column.divider) || column.fill) return [columnElement]
+        if (column.resizable === false || !column.resizeLabel) {
+          return [
+            columnElement,
+            <div
+              className={styles.splitterStatic}
+              key={`${column.id}-splitter`}
+              role="separator"
+              aria-hidden="true"
+            >
+              <span className={styles.splitterLine} aria-hidden="true" />
+            </div>,
+          ]
+        }
         return [
           columnElement,
           <div

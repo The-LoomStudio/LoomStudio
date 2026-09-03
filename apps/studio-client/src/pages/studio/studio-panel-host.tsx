@@ -20,10 +20,10 @@ export function StudioPanelHost(props: StudioPanelHostProps) {
     : (state.assetLayouts[activeAssetLayoutId].views[props.assetWorkspaceId] ?? DEFAULT_ASSET_VIEW_STATE).viewMode)
   const activeAssetHasSelection = useStudioLayoutStore(state => activeAssetLayoutId !== null
     && Boolean(state.assetLayouts[activeAssetLayoutId].views[props.assetWorkspaceId]?.selectedId))
-  const panelWindowModes = useStudioLayoutStore(state => state.panelWindowModes)
+  const panelWindowMode = useStudioLayoutStore(state => state.panelWindowMode)
   const setAssetViewMode = useStudioLayoutStore(state => state.setAssetViewMode)
   const togglePanelWindowMode = useStudioLayoutStore(state => state.togglePanelWindowMode)
-  const isImmersive = props.activePanel !== null && panelWindowModes[props.activePanel] === 'immersive'
+  const isImmersive = props.activePanel !== null && panelWindowMode === 'immersive'
   const definition = props.activePanel === null ? null : STUDIO_PANEL_PRESENTATION[props.activePanel]
   const ActivePanelIcon = definition?.Icon
   const customHeader = props.activePanel === null ? null : props.panelHeaders?.[props.activePanel]
@@ -67,7 +67,7 @@ export function StudioPanelHost(props: StudioPanelHostProps) {
             title={props.t(isImmersive ? 'window.exitImmersive' : 'window.enterImmersive')}
             type="button"
             onClick={() => {
-              if (props.activePanel !== null) togglePanelWindowMode(props.activePanel)
+              togglePanelWindowMode()
             }}
           >
             {isImmersive ? <Minimize2 aria-hidden="true" /> : <Maximize2 aria-hidden="true" />}

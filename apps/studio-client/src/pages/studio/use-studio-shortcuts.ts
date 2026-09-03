@@ -14,7 +14,7 @@ type UseStudioShortcutsOptions = {
   onRedo(): void
   onUndo(): void
   setAssetMetadataOpen(open: boolean): void
-  togglePanelWindowMode(panel: StudioPanelId): void
+  togglePanelWindowMode(panel?: StudioPanelId): void
 }
 
 export function useStudioShortcuts(options: UseStudioShortcutsOptions) {

@@ -55,22 +55,47 @@
   z-index: 30;
   top: var(--loom-window-gap);
   left: var(--loom-window-gap);
-  width: var(--loom-rail-collapsed-width);
+  width: var(--loom-rail-expanded-width);
   height: max-content;
   max-height: calc(100% - var(--loom-window-gap) * 2);
   max-width: calc(100% - var(--loom-window-gap) * 2);
   display: grid;
-  grid-template-columns: var(--loom-rail-collapsed-width) 0 0;
+  grid-template-columns: var(--loom-rail-expanded-width) 0 0;
   overflow: hidden;
   border: 1px solid var(--loom-color-border);
   border-radius: var(--loom-radius-window);
   background: var(--loom-color-surface);
-  box-shadow: none;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
   interpolate-size: allow-keywords;
   transition:
+    transform 280ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 240ms ease-out,
     width var(--loom-motion-duration-standard) var(--loom-motion-easing-standard),
     height var(--loom-motion-duration-standard) var(--loom-motion-easing-standard),
     border-radius var(--loom-motion-duration-standard) var(--loom-motion-easing-standard);
+}
+
+.floatingDockHidden {
+  transform: translateX(calc(-100% - var(--loom-window-gap) * 2));
+  opacity: 0;
+  pointer-events: none;
+}
+
+.floatingDockVisible {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.dockTriggerZone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 18px;
+  z-index: 29;
+  background: transparent;
+  pointer-events: auto;
 }
 
 .dockSidebar {
@@ -125,6 +150,10 @@
   color: var(--loom-color-accent-strong);
 }
 
+.dockWorkspaceToggleActive {
+  color: var(--loom-color-accent-strong);
+}
+
 .dockToggle:focus-visible,
 .dockWorkspaceToggle:focus-visible {
   outline: 1px solid var(--loom-color-accent);
@@ -157,6 +186,9 @@
 }
 
 .floatingDockActive {
+  transform: none !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
   bottom: auto;
   width: clamp(42rem, 52vw, 72rem);
   height: calc(100% - var(--loom-window-gap) - var(--loom-composer-reserve));
@@ -200,6 +232,10 @@
 }
 
 .dockToggle:hover:not(:disabled) {
+  color: var(--loom-color-accent-strong);
+}
+
+.dockTogglePinned {
   color: var(--loom-color-accent-strong);
 }
 
@@ -494,26 +530,117 @@
   cursor: nwse-resize;
 }
 
+.mobileMenuTrigger {
+  display: none;
+}
+
+.mobileBackdrop {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .floatingDock {
     transition: none;
   }
 }
 
-@media (max-width: 820px) {
-  .floatingDock {
-    top: 12px;
-    right: auto;
-    bottom: auto;
+@media (max-width: 768px) {
+  .dockTriggerZone {
+    display: none;
+  }
+
+  .mobileMenuTrigger {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 28;
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    min-height: 34px;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--loom-color-border);
+    border-radius: var(--loom-radius-control);
+    background: var(--loom-color-surface);
+    color: var(--loom-color-text-muted);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .mobileMenuTrigger:hover:not(:disabled) {
+    color: var(--loom-color-text);
+    border-color: var(--loom-color-border-strong, var(--loom-color-border));
+  }
+
+  .mobileMenuTrigger svg {
+    width: var(--loom-dock-icon-size);
+    height: var(--loom-dock-icon-size);
+    stroke-width: var(--loom-dock-icon-stroke);
+  }
+
+  .viewModeControl {
+    display: none !important;
+  }
+
+  .windowModeButton {
+    display: none !important;
+  }
+
+  .mobileBackdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 29;
+    display: block;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(4px);
+  }
+
+  .floatingDock:not(.floatingDockActive):not(.floatingDockMobileOpen) {
+    transform: translateX(-100%) !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+
+  .floatingDockMobileOpen {
+    transform: translateX(0) !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    position: fixed;
+    top: 0;
+    bottom: 0;
     left: 0;
+    width: min(280px, 78vw) !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    border-radius: 0;
+    border-top: none;
+    border-bottom: none;
+    border-left: none;
+    border-right: 1px solid var(--loom-color-border);
+    z-index: 30;
+    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.36);
   }
 
   .floatingDockActive {
-    right: auto;
-    bottom: auto;
-    width: calc(100% - 12px);
-    height: calc(100% - 24px);
-    max-height: calc(100% - 24px);
+    position: fixed;
+    inset: 0;
+    top: 0;
+    left: 0;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+    z-index: 50;
   }
 
+  .windowResizeRight,
+  .windowResizeBottom,
+  .windowResizeCorner {
+    display: none !important;
+  }
 }

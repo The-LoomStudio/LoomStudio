@@ -162,7 +162,10 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
 
   const displayNodes = mainOrderNodes
 
+  const [mobilePane, setMobilePane] = useState<'explorer' | 'detail'>('explorer')
+
   function handleSelectNode(id: string) {
+    setMobilePane('detail')
     const toolId = toolProjection.toolIdByNodeId.get(id)
     if (toolId) {
       setSelectedToolId(toolId)
@@ -184,6 +187,9 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   return (
     <AssetWorkbenchLayout
       explorerWidth={explorerLayout.explorerWidth}
+      mobilePane={mobilePane}
+      onMobilePaneChange={setMobilePane}
+      onBack={() => setMobilePane('explorer')}
       toolbar={(
         <PromptResourceToolbar
           hideSelect

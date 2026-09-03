@@ -37,6 +37,21 @@
   touch-action: none;
 }
 
+.splitterStatic {
+  position: relative;
+  z-index: 2;
+  width: var(--loom-column-splitter-size);
+  min-width: var(--loom-column-splitter-size);
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  cursor: default;
+}
+
 .splitterLine {
   width: 1px;
   align-self: stretch;

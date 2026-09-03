@@ -128,13 +128,19 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
 
   const displayNodes = workbenchNodes
 
+  const [mobilePane, setMobilePane] = useState<'explorer' | 'detail'>('explorer')
+
   function handleSelectNode(id: string) {
+    setMobilePane('detail')
     openAssetDetail('resources', props.workspaceId, id)
   }
 
   return (
     <AssetWorkbenchLayout
       explorerWidth={explorerLayout.explorerWidth}
+      mobilePane={mobilePane}
+      onMobilePaneChange={setMobilePane}
+      onBack={() => setMobilePane('explorer')}
       toolbar={(
         <PromptResourceToolbar
           hideSelect

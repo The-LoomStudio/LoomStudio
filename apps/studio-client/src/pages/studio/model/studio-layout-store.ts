@@ -29,6 +29,8 @@ type StudioLayoutData = {
   assetLayouts: Record<AssetLayoutId, AssetLayout>
   contextCategory: ContextCategory
   dockOpen: boolean
+  dockPinned: boolean
+  panelWindowMode: PanelWindowMode
   panelWindowModes: Partial<Record<StudioPanelId, PanelWindowMode>>
   panelWindowSizes: Partial<Record<StudioPanelId, WindowSize>>
   presetView: PresetView
@@ -52,7 +54,8 @@ type StudioLayoutStore = StudioLayoutData & {
   setTextEditorMode(mode: LongTextEditorMode): void
   setUiScale(scale: number): void
   toggleDock(): void
-  togglePanelWindowMode(panel: StudioPanelId): void
+  toggleDockPinned(): void
+  togglePanelWindowMode(panel?: StudioPanelId): void
 }
 
 type StudioPanelStore = {
@@ -107,6 +110,8 @@ export function createDefaultStudioLayout(): StudioLayoutData {
     },
     contextCategory: 'setting',
     dockOpen: false,
+    dockPinned: false,
+    panelWindowMode: 'reference',
     panelWindowModes: {},
     panelWindowSizes: {},
     presetView: 'assets',
@@ -120,6 +125,12 @@ export function sanitizeStudioLayout(value: unknown): StudioLayoutData {
   const defaults = createDefaultStudioLayout()
   if (!isRecord(value)) return defaults
 
+  const panelWindowModes = readPanelWindowModes(value.panelWindowModes)
+  const panelWindowMode: PanelWindowMode = value.panelWindowMode === 'immersive' ||
+    Object.values(panelWindowModes).some(mode => mode === 'immersive')
+      ? 'immersive'
+      : 'reference'
+
   return {
     assetMetadataOpen: value.assetMetadataOpen === true,
     assetLayouts: {
@@ -128,7 +139,9 @@ export function sanitizeStudioLayout(value: unknown): StudioLayoutData {
     },
     contextCategory: isContextCategory(value.contextCategory) ? value.contextCategory : defaults.contextCategory,
     dockOpen: value.dockOpen === true || readPanelId(value.activePanel) !== null,
-    panelWindowModes: readPanelWindowModes(value.panelWindowModes),
+    dockPinned: value.dockPinned === true,
+    panelWindowMode,
+    panelWindowModes,
     panelWindowSizes: readPanelWindowSizes(value.panelWindowSizes),
     presetView: value.presetView === 'tools'
       ? 'tools'
@@ -196,12 +209,19 @@ export const useStudioLayoutStore = create<StudioLayoutStore>()(
       setTextEditorMode: textEditorMode => set({ textEditorMode }),
       setUiScale: uiScale => set({ uiScale: readUiScale(uiScale) }),
       toggleDock: () => set(state => ({ dockOpen: !state.dockOpen })),
-      togglePanelWindowMode: panel => set(state => ({
-        panelWindowModes: {
-          ...state.panelWindowModes,
-          [panel]: state.panelWindowModes[panel] === 'immersive' ? 'reference' : 'immersive',
-        },
-      })),
+      toggleDockPinned: () => set(state => ({ dockPinned: !state.dockPinned })),
+      togglePanelWindowMode: (panel?: StudioPanelId) => set(state => {
+        const nextMode: PanelWindowMode = (state.panelWindowMode === 'immersive' || (panel && state.panelWindowModes[panel] === 'immersive'))
+          ? 'reference'
+          : 'immersive'
+        const nextModes: Partial<Record<StudioPanelId, PanelWindowMode>> = nextMode === 'immersive'
+          ? Object.fromEntries(STUDIO_PANEL_IDS.map(id => [id, 'immersive']))
+          : {}
+        return {
+          panelWindowMode: nextMode,
+          panelWindowModes: nextModes,
+        }
+      }),
     }),
     {
       name: STORAGE_KEY,
@@ -214,6 +234,8 @@ export const useStudioLayoutStore = create<StudioLayoutStore>()(
         assetLayouts: state.assetLayouts,
         contextCategory: state.contextCategory,
         dockOpen: state.dockOpen,
+        dockPinned: state.dockPinned,
+        panelWindowMode: state.panelWindowMode,
         panelWindowModes: state.panelWindowModes,
         panelWindowSizes: state.panelWindowSizes,
         presetView: state.presetView,
