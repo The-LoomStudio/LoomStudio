@@ -27,6 +27,7 @@ import { createLoomRunner } from '@loom-studio/loom-runner'
 import { createId, nowIso, type JsonValue } from '@loom-studio/shared'
 import { createStateStore } from '@loom-studio/state-store'
 import { createInMemoryTraceAuditStore } from '@loom-studio/trace-audit'
+import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { withAiGatewayLogging } from './logging/ai-gateway-logging.js'
@@ -575,13 +576,38 @@ export async function main(): Promise<void> {
   process.once('SIGTERM', handleSigterm)
 
   try {
-    await server.listen(port)
+    const { port: actualPort } = await server.listen(port)
+    printStudioServerBanner(actualPort)
   } catch (error) {
     process.off('SIGINT', handleSigint)
     process.off('SIGTERM', handleSigterm)
     await server.close()
     await rootLogger.close()
     throw error
+  }
+}
+
+function printStudioServerBanner(port: number): void {
+  try {
+    const candidatePaths = [
+      fileURLToPath(new URL('./banner.txt', import.meta.url)),
+      fileURLToPath(new URL('../src/banner.txt', import.meta.url)),
+    ]
+    const bannerPath = candidatePaths.find(p => existsSync(p))
+    if (!bannerPath) return
+
+    const banner = readFileSync(bannerPath, 'utf8')
+    const cyan = '\x1b[36m'
+    const bold = '\x1b[1m'
+    const dim = '\x1b[2m'
+    const reset = '\x1b[0m'
+
+    console.log(`\n${cyan}${banner}${reset}`)
+    console.log(`  ${bold}Loom Studio${reset}  ${dim}—  Weave worlds, branch stories.${reset}`)
+    console.log(`  ${dim}➜${reset}  ${bold}Local Server:${reset}  http://127.0.0.1:${port}`)
+    console.log(`  ${dim}➜${reset}  ${bold}Studio Client:${reset} http://127.0.0.1:5173\n`)
+  } catch {
+    // ignore banner printing errors
   }
 }
 
