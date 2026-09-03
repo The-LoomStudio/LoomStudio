@@ -28,7 +28,7 @@ export function createConsoleLogSink(options: {
         const nsPadded = record.namespace.padEnd(16, ' ')
         prefix = `${dim}[${time}]${reset} ${levelBadge} ${namespaceColor}${nsPadded}${reset}`
         if (details) {
-          output[record.level](`${prefix} ${record.message}\n${colorizeObject(details, 1)}`)
+          output[record.level](`${prefix} ${record.message}\n${renderTreeDetails(details)}`)
         } else {
           output[record.level](`${prefix} ${record.message}`)
         }
@@ -41,7 +41,7 @@ export function createConsoleLogSink(options: {
   }
 }
 
-function colorizeObject(val: unknown, depth = 0, indent = '  '): string {
+function renderTreeDetails(val: unknown, prefix = '  '): string {
   const reset = '\x1b[0m'
   const dim = '\x1b[2m'
   const green = '\x1b[32m'
@@ -50,35 +50,58 @@ function colorizeObject(val: unknown, depth = 0, indent = '  '): string {
   const cyan = '\x1b[36m'
   const red = '\x1b[31m'
 
-  if (val === null) return `${dim}null${reset}`
-  if (val === undefined) return `${dim}undefined${reset}`
-  if (typeof val === 'string') return `${green}'${val}'${reset}`
-  if (typeof val === 'number') return `${yellow}${val}${reset}`
-  if (typeof val === 'boolean') return `${magenta}${val}${reset}`
-  if (val instanceof Error) {
-    return `${red}${val.name}: ${val.message}${reset}`
+  function formatScalar(v: unknown): string {
+    if (v === null) return `${dim}null${reset}`
+    if (v === undefined) return `${dim}undefined${reset}`
+    if (typeof v === 'string') return `${green}'${v}'${reset}`
+    if (typeof v === 'number') return `${yellow}${v}${reset}`
+    if (typeof v === 'boolean') return `${magenta}${v}${reset}`
+    if (v instanceof Error) return `${red}${v.name}: ${v.message}${reset}`
+    return String(v)
   }
 
-  const spaces = indent.repeat(depth)
-  const nextSpaces = indent.repeat(depth + 1)
+  function renderNode(node: unknown, currentPrefix: string): string[] {
+    if (node === null || node === undefined || typeof node !== 'object') {
+      return [`${currentPrefix}${formatScalar(node)}`]
+    }
 
-  if (Array.isArray(val)) {
-    if (val.length === 0) return '[]'
-    const items = val.map(item => `${nextSpaces}${colorizeObject(item, depth + 1, indent)}`).join(',\n')
-    return `[\n${items}\n${spaces}]`
+    if (Array.isArray(node)) {
+      if (node.length === 0) return [`${currentPrefix}[]`]
+      const lines: string[] = []
+      node.forEach((item, idx) => {
+        const isLast = idx === node.length - 1
+        const branch = isLast ? '└─ ' : '├─ '
+        const childPrefix = isLast ? '   ' : '│  '
+        if (item !== null && typeof item === 'object') {
+          lines.push(`${currentPrefix}${dim}${branch}${reset}[${idx}]`)
+          lines.push(...renderNode(item, `${currentPrefix}${dim}${childPrefix}${reset}`))
+        } else {
+          lines.push(`${currentPrefix}${dim}${branch}${reset}[${idx}]: ${formatScalar(item)}`)
+        }
+      })
+      return lines
+    }
+
+    const keys = Object.keys(node as object)
+    if (keys.length === 0) return [`${currentPrefix}{}`]
+    const lines: string[] = []
+    keys.forEach((key, idx) => {
+      const isLast = idx === keys.length - 1
+      const branch = isLast ? '└─ ' : '├─ '
+      const childPrefix = isLast ? '   ' : '│  '
+      const v = (node as Record<string, unknown>)[key]
+
+      if (v !== null && typeof v === 'object') {
+        lines.push(`${currentPrefix}${dim}${branch}${reset}${cyan}${key}${reset}:`)
+        lines.push(...renderNode(v, `${currentPrefix}${dim}${childPrefix}${reset}`))
+      } else {
+        lines.push(`${currentPrefix}${dim}${branch}${reset}${cyan}${key}${reset}: ${formatScalar(v)}`)
+      }
+    })
+    return lines
   }
 
-  if (typeof val === 'object') {
-    const keys = Object.keys(val)
-    if (keys.length === 0) return '{}'
-    const entries = keys.map(k => {
-      const v = (val as Record<string, unknown>)[k]
-      return `${nextSpaces}${cyan}${k}${reset}: ${colorizeObject(v, depth + 1, indent)}`
-    }).join(',\n')
-    return `{\n${entries}\n${spaces}}`
-  }
-
-  return String(val)
+  return renderNode(val, prefix).join('\n')
 }
 
 function readDetails(record: LogRecord): Record<string, unknown> | undefined {

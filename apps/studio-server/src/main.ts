@@ -635,12 +635,41 @@ function printStudioServerBanner(port: number): void {
     const serverLink = `\x1b]8;;${serverUrl}\x1b\\${serverUrl}\x1b]8;;\x1b\\`
     const clientLink = `\x1b]8;;${clientUrl}\x1b\\${clientUrl}\x1b]8;;\x1b\\`
 
+    const ramBar = renderRamBar()
+
     console.log(`${rawTag}╭─ ${bold}${silver}Loom Studio${reset}  \x1b[32m● active\x1b[0m  ${dim}${nodeVer}   ${time}${reset}`)
     console.log(`${rawTag}│  ${dim}➜${reset}  ${bold}Local Server:${reset}  ${serverLink}`)
     console.log(`${rawTag}│  ${dim}➜${reset}  ${bold}Studio Client:${reset} ${clientLink}`)
+    if (ramBar) {
+      console.log(`${rawTag}│  ${dim}➜${reset}  ${bold}RAM Meter:${reset}     ${ramBar}`)
+    }
     console.log(`${rawTag}╰─ ${dim}Weave worlds, branch stories.${reset}\n`)
   } catch {
     // ignore banner printing errors
+  }
+}
+
+function renderRamBar(): string {
+  try {
+    const mem = process.memoryUsage()
+    const heapUsedMb = Math.round(mem.heapUsed / 1024 / 1024)
+    const heapTotalMb = Math.round(mem.heapTotal / 1024 / 1024)
+    const percent = heapTotalMb > 0 ? Math.min(100, Math.round((heapUsedMb / heapTotalMb) * 100)) : 0
+    const totalBars = 10
+    const filledBars = Math.round((percent / 100) * totalBars)
+    const emptyBars = Math.max(0, totalBars - filledBars)
+
+    const green = '\x1b[32m'
+    const yellow = '\x1b[33m'
+    const red = '\x1b[31m'
+    const dim = '\x1b[2m'
+    const reset = '\x1b[0m'
+
+    const color = percent > 85 ? red : percent > 65 ? yellow : green
+    const bar = `${color}${'█'.repeat(filledBars)}${dim}${'░'.repeat(emptyBars)}${reset}`
+    return `[${bar}] ${color}${percent}%${reset} ${dim}(${heapUsedMb}MB / ${heapTotalMb}MB)${reset}`
+  } catch {
+    return ''
   }
 }
 
