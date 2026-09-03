@@ -5,8 +5,8 @@
   "type": "module",
   "packageManager": "pnpm@9.15.0",
   "engines": {
-    "node": ">=22.18.0 <23",
-    "pnpm": "9.15.0"
+    "node": ">=22.18.0",
+    "pnpm": ">=9.0.0"
   },
   "scripts": {
     "build": "pnpm run build:packages && tsc -b",

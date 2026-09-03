@@ -1,20 +1,22 @@
+import { fileURLToPath } from 'node:url'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { readFileSync } from 'node:fs'
 
-const packageVersion = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version as string
+const resolvePath = (relative: string) => fileURLToPath(new URL(relative, import.meta.url))
+const packageVersion = JSON.parse(readFileSync(resolvePath('./package.json'), 'utf8')).version as string
 const studioServerUrl = process.env.STUDIO_SERVER_URL ?? 'http://127.0.0.1:4173'
 
 export default defineConfig({
-  root: new URL('.', import.meta.url).pathname,
+  root: resolvePath('.'),
   define: {
     __LOOM_STUDIO_VERSION__: JSON.stringify(packageVersion),
   },
   plugins: [react()],
   resolve: {
     alias: {
-      '@': new URL('./src', import.meta.url).pathname,
-      '@loom-studio/logging': new URL('../../packages/logging/src/index.ts', import.meta.url).pathname,
+      '@': resolvePath('./src'),
+      '@loom-studio/logging': resolvePath('../../packages/logging/src/index.ts'),
     },
   },
   css: {
