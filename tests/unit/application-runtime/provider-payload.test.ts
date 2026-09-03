@@ -24,7 +24,8 @@ describe('OpenAI-compatible provider payload builder', () => {
     expect(payload).toEqual({
       model: 'gpt-test',
       messages: [
-        { role: 'system', content: 'System rules.\n\nDeveloper rules.' },
+        { role: 'system', content: 'System rules.' },
+        { role: 'system', content: 'Developer rules.' },
         { role: 'user', content: 'Hello.' },
         {
           role: 'assistant',
@@ -40,7 +41,7 @@ describe('OpenAI-compatible provider payload builder', () => {
     })
   })
 
-  it('downgrades developer messages and coalesces adjacent system context for broad compatibility', () => {
+  it('downgrades developer messages and preserves message boundaries without coalescing', () => {
     const payload = buildOpenAIChatPayload({
       messages: [
         { role: 'developer', content: 'Agent instructions.' },
@@ -52,7 +53,9 @@ describe('OpenAI-compatible provider payload builder', () => {
     })
 
     expect(payload.messages).toEqual([
-      { role: 'system', content: 'Agent instructions.\n\nPreset system.\n\nStable knowledge.' },
+      { role: 'system', content: 'Agent instructions.' },
+      { role: 'system', content: 'Preset system.' },
+      { role: 'system', content: 'Stable knowledge.' },
       { role: 'user', content: 'Hello.' },
     ])
   })

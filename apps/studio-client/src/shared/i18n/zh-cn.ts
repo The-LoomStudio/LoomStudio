@@ -465,6 +465,7 @@ export const zhCN = {
   'timeline.loadOlder': '加载更早正文',
   'timeline.empty.noBranch': '会话已打开，但没有加载分支。',
   'timeline.empty.ready': '这个分支还没有已接受的剧情正文。可以发送第一条玩家输入。',
+  'timeline.opening.placeholder': '尚未配置开场白，我们从哪里开始？',
   'composer.preview': '预览',
   'composer.inputLabel': '角色行动输入区',
   'composer.more': '更多快捷操作（即将提供）',

@@ -33,7 +33,8 @@ export function addContextAssetNode(
   makeId: () => string = createContextAssetId,
 ): ContextAssetMutation {
   const parentInfo = findContextAssetNodeInfo(nodes, parentId)
-  if (!parentInfo || !canAddChild(parentInfo.node, parentInfo.category)) return { nodes }
+  const isPresetRoot = parentInfo?.category === 'preset' && parentInfo?.node.kind === 'module'
+  if (!parentInfo || isPresetRoot || !canAddChild(parentInfo.node, parentInfo.category)) return { nodes }
 
   const id = makeId()
   const node: ContextAssetNode = {
@@ -80,7 +81,8 @@ export function addContextAssetAnchorNode(
   makeId: () => string = createContextAssetId,
 ): ContextAssetMutation {
   const parentInfo = findContextAssetNodeInfo(nodes, parentId)
-  if (!parentInfo || !canAddChild(parentInfo.node, parentInfo.category)) return { nodes }
+  const isPresetRoot = parentInfo?.category === 'preset' && parentInfo?.node.kind === 'module'
+  if (!parentInfo || isPresetRoot || !canAddChild(parentInfo.node, parentInfo.category)) return { nodes }
 
   const id = makeId()
   const node: ContextAssetNode = {

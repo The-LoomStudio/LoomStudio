@@ -113,4 +113,82 @@ describe('PromptBuildPipeline', () => {
     expect(compiled.messages[2]?.role).toBe('system')
     expect(compiled.messages[2]?.content).toBe('Sys 2')
   })
+
+  it('treats kind: message as first-class message boundaries and does not merge adjacent same-role messages', () => {
+    const compiled = compilePromptDataModel({
+      sourceNodes: [
+        node('root', null, 0, 'module'),
+        {
+          id: 'msg1',
+          sourceId: 'preset',
+          parentId: 'root',
+          orderIndex: 0,
+          kind: 'message',
+          capabilities: { roleHint: 'system' },
+        },
+        {
+          id: 'entry1',
+          sourceId: 'preset',
+          parentId: 'msg1',
+          orderIndex: 0,
+          kind: 'entry',
+          body: 'System Part A',
+        },
+        {
+          id: 'msg2',
+          sourceId: 'preset',
+          parentId: 'root',
+          orderIndex: 1,
+          kind: 'message',
+          capabilities: { roleHint: 'system' },
+        },
+        {
+          id: 'anchor2',
+          sourceId: 'preset',
+          parentId: 'msg2',
+          orderIndex: 0,
+          kind: 'virtual',
+          capabilities: { targetAnchorId: '@test.setting' },
+        },
+        {
+          id: 'msg3',
+          sourceId: 'preset',
+          parentId: 'root',
+          orderIndex: 2,
+          kind: 'message',
+          capabilities: { roleHint: 'user' },
+        },
+        {
+          id: 'anchor3',
+          sourceId: 'preset',
+          parentId: 'msg3',
+          orderIndex: 0,
+          kind: 'virtual',
+          capabilities: { targetAnchorId: '@chat.input' },
+        },
+      ],
+      contributions: [
+        contribution('c-setting', 'setting1', 'System Part B (World Setting)', '@test.setting'),
+        contribution('c-input', 'input1', 'User Input Content', '@chat.input'),
+      ],
+    })
+
+    expect(compiled.messages.length).toBe(3)
+    expect(compiled.messages[0]).toEqual({
+      role: 'system',
+      content: 'System Part A',
+      fragmentIds: ['entry1'],
+    })
+    expect(compiled.messages[1]).toEqual({
+      role: 'system',
+      content: 'System Part B (World Setting)',
+      fragmentIds: ['c-setting'],
+    })
+    expect(compiled.messages[2]).toEqual({
+      role: 'user',
+      content: 'User Input Content',
+      fragmentIds: ['c-input'],
+    })
+  })
 })
+

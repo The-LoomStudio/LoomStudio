@@ -146,9 +146,22 @@ export type NarrativeTimelinePage = {
   nextCursor?: string
 }
 
+export type EditNarrativeNodeInput = NarrativeWriteContext & {
+  timelineId: string
+  nodeId: string
+  body: NarrativeBody
+}
+
+export type EditNarrativeNodeResult = {
+  node: NarrativeNode
+  timeline: NarrativeTimeline
+  commit: DataCommitFact
+}
+
 export type NarrativeTransaction = {
   createTimeline(input: Omit<CreateNarrativeTimelineInput, keyof NarrativeWriteContext>): CreateNarrativeTimelineResultWithoutCommit
   appendNode(input: Omit<AppendNarrativeNodeInput, keyof NarrativeWriteContext>): AppendNarrativeNodeResultWithoutCommit
+  editNode(input: Omit<EditNarrativeNodeInput, keyof NarrativeWriteContext>): { node: NarrativeNode; timeline: NarrativeTimeline }
   forkBranch(input: Omit<ForkNarrativeBranchInput, keyof NarrativeWriteContext>): NarrativeBranch
   setBranchStateHead(input: Omit<SetNarrativeBranchStateHeadInput, keyof NarrativeWriteContext>): NarrativeBranch
   switchBranch(input: Omit<SwitchNarrativeBranchInput, keyof NarrativeWriteContext>): NarrativeTimeline
@@ -168,6 +181,7 @@ export type NarrativeStore = {
   getPage(input: { timelineId: string; branchId?: string; cursor?: string; limit?: number }): Promise<NarrativePage>
   createTimeline(input: CreateNarrativeTimelineInput): Promise<CreateNarrativeTimelineResult>
   appendNode(input: AppendNarrativeNodeInput): Promise<AppendNarrativeNodeResult>
+  editNode(input: EditNarrativeNodeInput): Promise<EditNarrativeNodeResult>
   forkBranch(input: ForkNarrativeBranchInput): Promise<{ branch: NarrativeBranch; commit: DataCommitFact }>
   setBranchStateHead(input: SetNarrativeBranchStateHeadInput): Promise<{ branch: NarrativeBranch; commit: DataCommitFact }>
   switchBranch(input: SwitchNarrativeBranchInput): Promise<{ timeline: NarrativeTimeline; commit: DataCommitFact }>

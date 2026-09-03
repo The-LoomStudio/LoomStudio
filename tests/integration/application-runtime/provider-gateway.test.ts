@@ -198,7 +198,8 @@ describe('application runtime Provider Profile integration', () => {
         model: 'test-model',
         stream: false,
         messages: [
-          { role: 'system', content: 'Agent instructions.\n\nPreset system.' },
+          { role: 'system', content: 'Agent instructions.' },
+          { role: 'system', content: 'Preset system.' },
           { role: 'user', content: 'hello' },
         ],
       },

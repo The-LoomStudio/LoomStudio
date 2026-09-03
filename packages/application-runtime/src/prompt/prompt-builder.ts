@@ -65,10 +65,12 @@ export type SourceNode = {
   displayName: string
   orderIndex: number
   kind: 'module' | 'folder' | 'entry' | 'script' | 'virtual' | 'slot' | 'message' | (string & {})
+  meta?: string
   body?: string
   capabilities?: {
     targetAnchorId?: string
     localDepth?: number
+    roleHint?: PromptProviderRole
     [key: string]: unknown
   }
 }

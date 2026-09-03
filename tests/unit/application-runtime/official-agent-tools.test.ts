@@ -1,6 +1,8 @@
 import {
   createOfficialAgentToolRegistry,
   createPromptToolExecutionScope,
+  officialAppendNarrativeTool,
+  officialEditNarrativeTool,
   officialReadContextTool,
   officialReadStateTool,
   officialSearchContextTool,
@@ -25,20 +27,24 @@ const scope = {
 }
 
 describe('official Agent context tools', () => {
-  it('registers search_context and read_context as structured tools', () => {
+  it('registers search_context, read_context, read_state, update_state, append_narrative, edit_narrative as structured tools', () => {
     const registry = createOfficialAgentToolRegistry()
     expect(registry.list()).toEqual([
       officialSearchContextTool,
       officialReadContextTool,
       officialReadStateTool,
       officialUpdateStateTool,
+      officialAppendNarrativeTool,
+      officialEditNarrativeTool,
     ])
     expect(
       registry.analyze(
-        [officialSearchContextTool.id, officialReadContextTool.id],
+        [officialSearchContextTool.id, officialReadContextTool.id, officialAppendNarrativeTool.id, officialEditNarrativeTool.id],
         { nativeFunction: true, providerCustom: false, content: true },
       ).exposures,
     ).toEqual([
+      expect.objectContaining({ transport: 'native-function' }),
+      expect.objectContaining({ transport: 'native-function' }),
       expect.objectContaining({ transport: 'native-function' }),
       expect.objectContaining({ transport: 'native-function' }),
     ])
@@ -191,4 +197,82 @@ describe('official Agent context tools', () => {
     expect(result.context.map(item => item.id)).toEqual(['knowledge-fragment'])
     expect(result.context[0]).toMatchObject({ name: 'Hidden Knowledge', promptState: 'not-triggered' })
   })
+
+  it('appends narrative node to active timeline through append_narrative tool', async () => {
+    const registry = createOfficialAgentToolRegistry()
+    let appendedContent = ''
+    const narrativeScope = {
+      ...scope,
+      narrative: {
+        timelineId: 'timeline-1',
+        branchId: 'branch-1',
+        appendNode: async ({ content }: { content: string }) => {
+          appendedContent = content
+          return { nodeId: 'node-new-1' }
+        },
+        editNode: async () => {
+          throw new Error('Not used')
+        },
+      },
+    }
+
+    const result = await registry.execute({
+      id: 'inv-append-1',
+      toolId: officialAppendNarrativeTool.id,
+      arguments: { content: '新情节发生在一个雨夜。' },
+      transport: 'native-function',
+    }, signal, narrativeScope)
+
+    expect(result.status).toBe('completed')
+    expect(appendedContent).toBe('新情节发生在一个雨夜。')
+    expect(result.content).toEqual([{
+      type: 'json',
+      value: {
+        nodeId: 'node-new-1',
+        timelineId: 'timeline-1',
+        branchId: 'branch-1',
+      },
+    }])
+  })
+
+  it('edits narrative node in active timeline through edit_narrative tool', async () => {
+    const registry = createOfficialAgentToolRegistry()
+    let editedNodeId = ''
+    let editedContent = ''
+    const narrativeScope = {
+      ...scope,
+      narrative: {
+        timelineId: 'timeline-1',
+        branchId: 'branch-1',
+        appendNode: async () => {
+          throw new Error('Not used')
+        },
+        editNode: async ({ nodeId, content }: { nodeId: string; content: string }) => {
+          editedNodeId = nodeId
+          editedContent = content
+          return { nodeId }
+        },
+      },
+    }
+
+    const result = await registry.execute({
+      id: 'inv-edit-1',
+      toolId: officialEditNarrativeTool.id,
+      arguments: { nodeId: 'node-existing-1', content: '修改后的情节' },
+      transport: 'native-function',
+    }, signal, narrativeScope)
+
+    expect(result.status).toBe('completed')
+    expect(editedNodeId).toBe('node-existing-1')
+    expect(editedContent).toBe('修改后的情节')
+    expect(result.content).toEqual([{
+      type: 'json',
+      value: {
+        nodeId: 'node-existing-1',
+        timelineId: 'timeline-1',
+        branchId: 'branch-1',
+      },
+    }])
+  })
 })
+

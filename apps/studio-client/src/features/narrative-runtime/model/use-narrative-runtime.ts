@@ -118,35 +118,71 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     return activatedBranchId
   }
 
+  function resetToDraftTimeline() {
+    setTimeline(undefined)
+    setBranch(undefined)
+    setBranches([])
+    setNodes([])
+    setOlderCursor(undefined)
+    resetAgentSession()
+    setPromptPreview(undefined)
+    setLastRun(undefined)
+    activateComposerDraft(undefined, undefined, composerInput)
+  }
+
   async function submitTurn(event: FormEvent) {
     event.preventDefault()
-    if (!timeline || !branch || composerInput.trim().length === 0) return
+    const content = composerInput.trim()
+    if (content.length === 0) return undefined
+    if (!timeline && !input.selectedCardId) return undefined
 
+    let resultActivated: { timelineId: string; branchId: string } | undefined
     await input.runAction(async () => {
+      let currentTimeline = timeline
+      let currentBranch = branch
+      if (!currentTimeline || !currentBranch) {
+        const created = await input.api.narratives.create({ cardId: input.selectedCardId! })
+        currentTimeline = created.timeline
+        currentBranch = created.branch
+        setTimeline(created.timeline)
+        setBranch(created.branch)
+        setBranches([created.branch])
+        setNodes(created.nodes)
+        setOlderCursor(undefined)
+        resetAgentSession()
+        resultActivated = { timelineId: created.timeline.id, branchId: created.branch.id }
+      }
+
       const session = await ensureAgentSession()
       const result = await input.api.agentSessions.invoke({
         agentSessionId: session.id,
-        input: composerInput,
+        input: content,
         activationFacts: input.activationFacts,
         narrativeTarget: {
-          timelineId: timeline.id,
-          branchId: branch.id,
+          timelineId: currentTimeline.id,
+          branchId: currentBranch.id,
           commit: true,
         },
       })
       if (!result.narrative) throw new Error('Agent turn did not commit a Narrative node')
       setTimeline(result.narrative.timeline)
       setBranch(result.narrative.branch)
-      setBranches(current => current.map(item => item.id === result.narrative!.branch.id ? result.narrative!.branch : item))
+      setBranches(current => {
+        const exists = current.some(item => item.id === result.narrative!.branch.id)
+        return exists
+          ? current.map(item => item.id === result.narrative!.branch.id ? result.narrative!.branch : item)
+          : [...current, result.narrative!.branch]
+      })
       setNodes(current => [...current, ...result.narrative!.nodes])
       setAgentSession(result.agentSession)
       setAgentTranscriptEntries(current => [...current, result.entries.user, result.entries.assistant])
       setLastRun(result)
       setPromptPreview(undefined)
-      composerDraftsRef.current.delete(readComposerDraftKey(timeline, branch, input.selectedCardId))
+      composerDraftsRef.current.delete(readComposerDraftKey(currentTimeline, currentBranch, input.selectedCardId))
       setComposerInput('')
-      if (timeline.createdFrom?.cardId) await refreshCardTimelines(timeline.createdFrom.cardId)
+      if (currentTimeline.createdFrom?.cardId) await refreshCardTimelines(currentTimeline.createdFrom.cardId)
     })
+    return resultActivated
   }
 
   async function submitAgentTurn(event: FormEvent) {
@@ -338,6 +374,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     submitAgentTurn,
     submitTurn,
     switchBranch,
+    resetToDraftTimeline,
   }
 }
 

@@ -18,7 +18,7 @@ export function buildOpenAIChatPayload(input: {
 
   return {
     model: input.modelId,
-    messages: mergeAdjacentSystemMessages(input.messages.map((message, index) => normalizeMessage(message, index))),
+    messages: input.messages.map((message, index) => normalizeMessage(message, index)),
     stream: false,
   }
 }
@@ -56,18 +56,6 @@ function normalizeMessage(message: ProviderMessage, index: number): OpenAIChatMe
   }
 }
 
-function mergeAdjacentSystemMessages(messages: OpenAIChatMessage[]): OpenAIChatMessage[] {
-  const merged: OpenAIChatMessage[] = []
-  for (const message of messages) {
-    const previous = merged.at(-1)
-    if (message.role === 'system' && previous?.role === 'system') {
-      previous.content = `${previous.content}\n\n${message.content}`
-    } else {
-      merged.push(message)
-    }
-  }
-  return merged
-}
 
 function assertContent(content: string, index: number): void {
   if (typeof content !== 'string' || content.length === 0) {

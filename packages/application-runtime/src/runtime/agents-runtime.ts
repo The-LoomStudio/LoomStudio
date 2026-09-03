@@ -616,6 +616,47 @@ export async function prepareAgentTurn(
         return { revisionId: result.snapshot.revisionId }
       },
     }
+    if (narrativePage && narratives) {
+      prompt.toolExecutionScope.narrative = {
+        timelineId: narrativePage.timeline.id,
+        branchId: narrativePage.branch.id,
+        appendNode: async ({ content }) => {
+          const result = await ctx.dataEngine.transact(
+            narrativeWriteContext(requestContext, 'application.tool.appendNarrative'),
+            async dataTx => {
+              const currentBranch = await narratives.getBranch(narrativePage.branch.id)
+              const appended = narratives.transaction(dataTx).appendNode({
+                timelineId: narrativePage.timeline.id,
+                branchId: narrativePage.branch.id,
+                expectedHeadNodeId: currentBranch?.headNodeId ?? null,
+                stateRevisionId: currentBranch?.stateHeadRevisionId ?? narrativePage.branch.stateHeadRevisionId,
+                body: { format: 'loom-markdown.v1', raw: content },
+                source: {
+                  agentSessionId: session.id,
+                  runId,
+                },
+              })
+              return { nodeId: appended.node.id }
+            },
+          )
+          return result.value
+        },
+        editNode: async ({ nodeId, content }) => {
+          const result = await ctx.dataEngine.transact(
+            narrativeWriteContext(requestContext, 'application.tool.editNarrative'),
+            async dataTx => {
+              const edited = narratives.transaction(dataTx).editNode({
+                timelineId: narrativePage.timeline.id,
+                nodeId,
+                body: { format: 'loom-markdown.v1', raw: content },
+              })
+              return { nodeId: edited.node.id }
+            },
+          )
+          return result.value
+        },
+      }
+    }
     const durationMs = readDurationMs(startedAt)
     ctx.logger?.info(`${mode} prompt build completed · ${prompt.messages.length} messages · ${durationMs} ms`, {
       event: 'prompt.build.completed',

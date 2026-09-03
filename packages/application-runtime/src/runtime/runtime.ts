@@ -60,34 +60,52 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
           })
         } else if (existing.metadata && typeof existing.metadata === 'object' && 'origin' in existing.metadata && (existing.metadata as { origin?: { kind?: string } }).origin?.kind === 'builtin') {
           if (content.resourceKind === 'preset') {
-            const existingChildIds = new Set(existing.rootNode.children?.map(c => c.id) ?? [])
-            const expectedIds = new Set(content.rootNode.children?.map(c => c.id) ?? [])
-            const legacyNodes = existing.rootNode.children?.filter(c => !expectedIds.has(c.id)) ?? []
-            const missingNodes = content.rootNode.children?.filter(c => !existingChildIds.has(c.id)) ?? []
-            const mutations = [
-              ...legacyNodes.map(node => ({ kind: 'node.delete' as const, nodeId: node.id })),
-              ...missingNodes.map((node, i) => ({
+            const expectedFlat = collectAllPresetNodes(existing.rootNode.id, content.rootNode.children)
+            const existingChildIds = existing.rootNode.children?.map(c => c.id) ?? []
+            const currentSubtreeNodeIds = new Set(collectExistingAllNodeIds(existing.rootNode.children))
+            const expectedNodeIds = new Set(expectedFlat.map(c => c.id))
+
+            const isIdentical = expectedNodeIds.size === currentSubtreeNodeIds.size
+              && [...expectedNodeIds].every(nodeId => currentSubtreeNodeIds.has(nodeId))
+
+            if (!isIdentical) {
+              let currentVersion = existing.version
+              if (existingChildIds.length > 0) {
+                const deleteResult = await ctx.promptResources.mutateResource({
+                  actor: applicationActor,
+                  reason: 'application.upgradeBuiltinPromptResources.cleanup',
+                  resourceId: id,
+                  expectedVersion: currentVersion,
+                  mutations: existingChildIds.map(nodeId => ({ kind: 'node.delete' as const, nodeId })),
+                })
+                currentVersion = deleteResult.resource.version
+              }
+
+              const createMutations = expectedFlat.map(item => ({
                 kind: 'node.create' as const,
-                parentId: existing.rootNode.id,
+                parentId: item.parentId,
                 node: {
-                  id: node.id,
-                  kind: node.kind,
-                  label: node.label,
-                  meta: node.meta,
-                  category: node.category,
-                  capabilities: node.capabilities,
-                  orderIndex: 100 + i,
+                  id: item.node.id,
+                  kind: item.node.kind,
+                  label: item.node.label,
+                  meta: item.node.meta,
+                  category: item.node.category,
+                  enabled: item.node.enabled,
+                  body: item.node.body,
+                  capabilities: item.node.capabilities,
+                  orderIndex: item.orderIndex,
                 },
-              })),
-            ]
-            if (mutations.length > 0) {
-              await ctx.promptResources.mutateResource({
-                actor: applicationActor,
-                reason: 'application.upgradeBuiltinPromptResources',
-                resourceId: id,
-                expectedVersion: existing.version,
-                mutations,
-              })
+              }))
+
+              if (createMutations.length > 0) {
+                await ctx.promptResources.mutateResource({
+                  actor: applicationActor,
+                  reason: 'application.upgradeBuiltinPromptResources.rebuild',
+                  resourceId: id,
+                  expectedVersion: currentVersion,
+                  mutations: createMutations,
+                })
+              }
             }
           } else if (content.resourceKind === 'setting') {
             const mutations: Array<{ kind: 'node.update'; nodeId: string; patch: { capabilities?: PromptResourceNode['capabilities'] } }> = []
@@ -206,3 +224,28 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     ...createExtensionsRuntimeMethods(ctx),
   }
 }
+
+type FlatPresetNode = {
+  id: string
+  parentId: string
+  node: PromptResourceNode
+  orderIndex: number
+}
+
+function collectAllPresetNodes(parentId: string, children?: PromptResourceNode[]): FlatPresetNode[] {
+  if (!children) return []
+  const list: FlatPresetNode[] = []
+  for (const [i, child] of children.entries()) {
+    list.push({ id: child.id, parentId, node: child, orderIndex: 100 + i })
+    if (child.children?.length) {
+      list.push(...collectAllPresetNodes(child.id, child.children))
+    }
+  }
+  return list
+}
+
+function collectExistingAllNodeIds(children?: Array<{ id: string; children?: any[] }>): string[] {
+  if (!children) return []
+  return children.flatMap(child => [child.id, ...collectExistingAllNodeIds(child.children)])
+}
+

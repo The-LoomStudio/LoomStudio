@@ -140,6 +140,12 @@ export type ToolExecutionScope = {
       idempotencyKey: string
     }): Promise<{ revisionId: string }>
   }
+  narrative?: {
+    timelineId: string
+    branchId: string
+    appendNode(input: { content: string }): Promise<{ nodeId: string }>
+    editNode(input: { nodeId: string; content: string }): Promise<{ nodeId: string }>
+  }
 }
 
 export type ToolApprovalHandler = (

@@ -26,7 +26,14 @@ describe('application runtime card bundle integration', () => {
       historyPolicy: 'persistent',
     })
     await expect(runtime.listSettingMounts({ source: { kind: 'manual', id: 'global' } })).resolves.toMatchObject({ mounts: [{ settingResourceId: setting!.id }] })
-    const virtualAnchors = preset?.rootNode.children?.filter(node => node.kind === 'virtual').map(node => node.capabilities?.targetAnchorId)
+    const collectVirtualAnchors = (nodes?: Array<{ kind?: string; capabilities?: { targetAnchorId?: string }; children?: unknown[] }>): string[] => {
+      if (!nodes) return []
+      return nodes.flatMap(node => [
+        ...(node.kind === 'virtual' && node.capabilities?.targetAnchorId ? [node.capabilities.targetAnchorId] : []),
+        ...collectVirtualAnchors(node.children as any),
+      ])
+    }
+    const virtualAnchors = collectVirtualAnchors(preset?.rootNode.children)
     expect(virtualAnchors).toEqual(expect.arrayContaining([
       '@chat.narrative',
       '@chat.session',

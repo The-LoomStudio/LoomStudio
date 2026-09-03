@@ -467,6 +467,7 @@ export const enUS = {
   'timeline.loadOlder': 'Load older narrative',
   'timeline.empty.noBranch': 'Session is open, but no branch is loaded.',
   'timeline.empty.ready': 'This branch has no accepted narrative entries yet. You can send the first player input.',
+  'timeline.opening.placeholder': 'No opening message configured. Where should we begin?',
   'composer.preview': 'Preview',
   'composer.inputLabel': 'Character action composer',
   'composer.more': 'More quick actions (coming soon)',

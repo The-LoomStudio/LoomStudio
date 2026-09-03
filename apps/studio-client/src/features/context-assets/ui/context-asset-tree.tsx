@@ -48,6 +48,8 @@ export function readContextAssetTreeActions(
   const canAdd = (node.kind === 'module' || node.kind === 'folder' || node.kind === 'message') && !isReadOnlyContextAssetTreeNode(node)
   const canDuplicate = node.kind !== 'module' && node.kind !== 'slot' && !isReadOnlyContextAssetTreeNode(node)
   const isPreset = node.category === 'preset'
+  const isPresetRoot = isPreset && node.kind === 'module'
+  const canAddEntryOrAnchor = canAdd && !isPresetRoot
   const isSettingLayer = node.category === 'setting' && node.kind === 'module'
   const items: MenuAction[] = []
 
@@ -60,9 +62,9 @@ export function readContextAssetTreeActions(
     })
     if (isSettingLayer || canAdd || canDuplicate) items.push({ id: 'state-separator', type: 'separator' })
   }
-  if (canAdd) items.push({ icon: <Plus aria-hidden="true" />, id: 'add', label: input.t('context.actionAdd'), onSelect: () => input.onAdd(node.id) })
+  if (canAddEntryOrAnchor) items.push({ icon: <Plus aria-hidden="true" />, id: 'add', label: input.t('context.actionAdd'), onSelect: () => input.onAdd(node.id) })
   if (canAdd && input.onAddFolder) items.push({ icon: <FolderPlus aria-hidden="true" />, id: 'addFolder', label: input.t('context.actionAddFolder'), onSelect: () => input.onAddFolder!(node.id) })
-  if (canAdd && isPreset && input.onAddAnchor) items.push({ icon: <Anchor aria-hidden="true" />, id: 'addAnchor', label: input.t('context.actionAddAnchor'), onSelect: () => input.onAddAnchor!(node.id) })
+  if (canAddEntryOrAnchor && isPreset && input.onAddAnchor) items.push({ icon: <Anchor aria-hidden="true" />, id: 'addAnchor', label: input.t('context.actionAddAnchor'), onSelect: () => input.onAddAnchor!(node.id) })
   if (canAdd && isPreset && input.onAddMessageBlock) items.push({ icon: <MessageSquare aria-hidden="true" />, id: 'addMessageBlock', label: input.t('context.actionAddMessageBlock'), onSelect: () => input.onAddMessageBlock!(node.id) })
 
   if (node.kind === 'message' && input.onChangeRole) {

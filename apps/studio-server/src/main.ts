@@ -28,6 +28,7 @@ import { createId, nowIso, type JsonValue } from '@loom-studio/shared'
 import { createStateStore } from '@loom-studio/state-store'
 import { createInMemoryTraceAuditStore } from '@loom-studio/trace-audit'
 import { join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { withAiGatewayLogging } from './logging/ai-gateway-logging.js'
 import { createNetworkSettingsStore } from './platform/network-settings.js'
 import { resolveSystemProxyUrl } from './platform/system-proxy.js'
@@ -591,7 +592,8 @@ function shouldWriteServerConsoleLog(record: LogRecord): boolean {
     || record.namespace === 'runtime.provider'
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+const isMainModule = typeof process.argv[1] === 'string' && fileURLToPath(import.meta.url) === resolve(process.argv[1])
+if (isMainModule) {
   void main().catch(error => {
     if (isAddressInUseError(error)) {
       console.error(`Loom Studio server port ${error.port ?? defaultPort} is already in use. Stop the existing server or set PORT to another port.`)

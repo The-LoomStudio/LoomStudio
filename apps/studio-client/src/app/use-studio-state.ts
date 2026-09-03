@@ -163,7 +163,7 @@ export function useStudioState(transportLogger: Logger) {
 
   // 派生计算
   const sessionBusy = operations.isPending('session')
-  const canSend = Boolean(narrativeRuntime.timeline && narrativeRuntime.branch && agentProfiles.selectedAgentProfileId)
+  const canSend = Boolean(((narrativeRuntime.timeline && narrativeRuntime.branch) || cardsState.selectedCardId) && agentProfiles.selectedAgentProfileId)
     && !sessionBusy
     && !operations.isPending('agent-chat')
     && narrativeRuntime.input.trim().length > 0
@@ -173,6 +173,13 @@ export function useStudioState(transportLogger: Logger) {
     && !operations.isPending('agent-chat')
     && !sessionBusy
   const emptyTimelineText = readEmptyTimelineText({ timeline: narrativeRuntime.timeline, branch: narrativeRuntime.branch }, t)
+  const cardOpeningEntry = cardsState.selectedCardDetails?.opening?.entries?.[0]?.content?.trim()
+  const openingDraft = cardsState.selectedCardDetails ? {
+    content: cardOpeningEntry && cardOpeningEntry.length > 0
+      ? cardOpeningEntry
+      : t('timeline.opening.placeholder'),
+    isPlaceholder: !cardOpeningEntry || cardOpeningEntry.length === 0,
+  } : undefined
   const promptMessages = narrativeRuntime.promptPreview?.messages
   const promptProjection = narrativeRuntime.promptPreview?.projection ?? narrativeRuntime.lastRun?.projection
   const promptBuildTrace = undefined
@@ -444,7 +451,7 @@ export function useStudioState(transportLogger: Logger) {
     replaceSettingMounts,
     replacePresetToolMounts,
     // derived
-    canSend, canSendAgent, canPreviewPrompt, emptyTimelineText,
+    canSend, canSendAgent, canPreviewPrompt, emptyTimelineText, openingDraft,
     // actions
     undoEdit,
     redoEdit,
@@ -460,6 +467,7 @@ export function useStudioState(transportLogger: Logger) {
     updateAiCapabilityProfile: providerSettings.updateAiCapabilityProfile,
     createModelProfile: providerSettings.createModelProfile,
     createTimelineFromCard: narrativeRuntime.createTimelineFromCard,
+    resetToDraftTimeline: narrativeRuntime.resetToDraftTimeline,
     activateTimeline: narrativeRuntime.activateTimeline,
     submitTurn: narrativeRuntime.submitTurn,
     previewPrompt: narrativeRuntime.previewPrompt,

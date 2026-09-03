@@ -30,6 +30,7 @@ type NarrativeTimelineProps = {
   composerExpanded: boolean
   composerHeight: number
   emptyTimelineText: string
+  openingDraft?: { content: string; isPlaceholder: boolean }
   getNodeLink: (nodeId: string) => string
   hasOlder: boolean
   onEditNode: (nodeId: string, content: string) => void
@@ -218,7 +219,40 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
         onScroll={scheduleActiveEntryUpdate}
       >
         {props.timeline.length === 0 ? (
-          <div className={styles.empty}>{props.emptyTimelineText}</div>
+          props.openingDraft ? (
+            <Suspense fallback={(
+              <div aria-busy="true" className={styles.renderingMessages}>
+                <SkeletonText lines={4} />
+              </div>
+            )}>
+              <article
+                className={`${styles.message} ${styles.assistant}`}
+                data-loom-component="chat-message"
+                data-loom-role="narrative"
+                data-loom-state="draft"
+              >
+                <div
+                  className={styles.messageSurface}
+                  data-loom-slot="message-content"
+                >
+                  <ConversationMarkdown
+                    className={`${styles.messageBody} ${props.openingDraft.isPlaceholder ? styles.placeholderBody : ''}`}
+                    codeBlockLabels={{
+                      copied: props.t('longTextEditor.copied'),
+                      copy: props.t('longTextEditor.copy'),
+                      copyFailed: props.t('longTextEditor.copyFailed'),
+                      disableWrap: props.t('markdown.code.disableWrap'),
+                      enableWrap: props.t('markdown.code.enableWrap'),
+                    }}
+                    role="assistant"
+                    value={props.openingDraft.content}
+                  />
+                </div>
+              </article>
+            </Suspense>
+          ) : (
+            <div className={styles.empty}>{props.emptyTimelineText}</div>
+          )
         ) : (
           <Suspense fallback={(
             <div aria-busy="true" className={styles.renderingMessages}>

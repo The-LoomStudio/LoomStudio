@@ -39,6 +39,8 @@ export {
   officialReadStateTool,
   officialSearchContextTool,
   officialUpdateStateTool,
+  officialAppendNarrativeTool,
+  officialEditNarrativeTool,
 } from './agents/official-tools/index.js'
 export {
   createLoomContentScannerState,

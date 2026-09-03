@@ -155,7 +155,14 @@ export function createDocumentBackedAiGateway(options: {
             fetch: resolveTransport(),
           })
           if (resolved.provider.kind === 'fake') return await invokeFakeChat(input)
-          const payload = buildOpenAIChatPayload({ messages: input.request.messages, modelId: input.model!.modelId })
+          const sanitizedMessages = input.request.messages.filter(message => {
+            if (message.role === 'assistant') {
+              return (typeof message.content === 'string' && message.content.trim().length > 0)
+                || Boolean(message.tool_calls && message.tool_calls.length > 0)
+            }
+            return typeof message.content === 'string' && message.content.trim().length > 0
+          })
+          const payload = buildOpenAIChatPayload({ messages: sanitizedMessages, modelId: input.model!.modelId })
           return await invokePlatformGateway(createAiGateway(), {
             provider: resolved.provider,
             modelId: input.model!.modelId,

@@ -159,6 +159,30 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
         }
       },
 
+      editNode: input => {
+        validateBody(input.body)
+        const timeline = requireTimeline(database, input.timelineId)
+        const existingNode = requireNode(database, input.nodeId)
+        if (existingNode.timelineId !== timeline.id) {
+          throw new NarrativeStoreError('narrative.node_not_found', `Narrative node ${input.nodeId} does not belong to timeline ${timeline.id}`)
+        }
+        database.prepare(`
+          UPDATE narrative_nodes
+          SET body_format = ?, body_raw = ?
+          WHERE id = ?
+        `).run(input.body.format, input.body.raw, existingNode.id)
+        const updatedAt = now()
+        database.prepare('UPDATE narrative_timelines SET updated_at = ? WHERE id = ?').run(updatedAt, timeline.id)
+        tx.recordOperations([
+          operation('update', existingNode.id, 'narrative.node'),
+          operation('update', timeline.id, 'narrative.timeline'),
+        ])
+        return {
+          node: requireNode(database, existingNode.id),
+          timeline: requireTimeline(database, timeline.id),
+        }
+      },
+
       forkBranch: input => {
         validateId(input.stateRevisionId, 'stateRevisionId')
         const timeline = requireTimeline(database, input.timelineId)
@@ -266,6 +290,10 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
     },
     appendNode: async input => {
       const result = await write(input, tx => tx.appendNode(input))
+      return { ...result.value, commit: result.commit }
+    },
+    editNode: async input => {
+      const result = await write(input, tx => tx.editNode(input))
       return { ...result.value, commit: result.commit }
     },
     forkBranch: async input => {

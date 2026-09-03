@@ -219,8 +219,8 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         onChangeCardDraft={state.setCardDraft}
         onCreateCard={state.createCard}
         onCreateTimelineFromCard={async () => {
-          const activated = await state.createTimelineFromCard()
-          if (activated) navigation.openNarrative(activated.timelineId, activated.branchId)
+          state.resetToDraftTimeline()
+          navigation.openNarrative(undefined, undefined)
         }}
         onDeleteCards={state.deleteCards}
         onPreviewCardDeletion={state.previewCardDeletion}
@@ -230,8 +230,14 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
           state.setSelectedCardId(cardId)
           void state.refreshCardTimelines(cardId).then(timelines => {
             const latest = [...timelines].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]
-            if (!latest || latest.id === state.narrativeTimeline?.id) return
-            void state.activateTimeline(latest.id)
+            if (latest) {
+              void state.activateTimeline(latest.id).then(branchId => {
+                if (branchId) navigation.openNarrative(latest.id, branchId)
+              })
+            } else {
+              state.resetToDraftTimeline()
+              navigation.openNarrative(undefined, undefined)
+            }
           })
         }}
         onOpenTimeline={timeline => {
@@ -392,6 +398,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
             composerExpanded={agentExpanded}
             composerHeight={composerHeight}
             emptyTimelineText={state.emptyTimelineText}
+            openingDraft={state.openingDraft}
             getNodeLink={navigation.getNodeLink}
             hasOlder={state.hasOlderNarrativeNodes}
             onEditNode={state.editNarrativeNode}
@@ -470,7 +477,10 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
             }}
             onSelectAgentProfile={state.selectAgentProfile}
             onSubmitAgent={state.submitAgentTurn}
-            onSubmitNarrative={state.submitTurn}
+            onSubmitNarrative={async event => {
+              const activated = await state.submitTurn(event)
+              if (activated) navigation.openNarrative(activated.timelineId, activated.branchId)
+            }}
           />
         </div>
       )}
