@@ -138,8 +138,8 @@ export const LongTextEditor = forwardRef<LongTextEditorHandle, LongTextEditorPro
       data-undo-available={state.undoValue === undefined ? 'false' : 'true'}
       style={editorStyle}
     >
-      <span className={styles.label} id={labelId}>{props.label}</span>
       <header className={styles.toolbar}>
+        <span className={styles.label} id={labelId}>{props.label}</span>
         <div className={styles.actions}>
           {props.sourceOnly ? null : (
             <button

@@ -1,21 +1,47 @@
-import { SlidersHorizontal } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { Check, Copy, SlidersHorizontal } from 'lucide-react'
 import type { ContextAssetNode } from '../../../../entities/index.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
+import { tryWriteClipboardText } from '../../../../shared/browser/clipboard.js'
 import { Toggle } from '../../../../shared/ui/toggle/toggle.js'
-import { resolveVirtualDisplayName } from '../../model/context-asset-tree.js'
+import { resolveContextAssetUri, resolveVirtualDisplayName } from '../../model/context-asset-tree.js'
 import styles from './context-asset-detail-header.module.scss'
 
 type ContextAssetDetailHeaderProps = {
   metadataOpen: boolean
   node?: ContextAssetNode
+  pathNodes?: ContextAssetNode[]
+  readOnly?: boolean
   toggleEnabled: boolean
   t: Translator
+  onChangeLabel?(label: string): void
+  onCommitLabel?(label: string): void
   onEnabledChange(enabled: boolean): void
   onMetadataOpenChange(open: boolean): void
 }
 
 export function ContextAssetDetailHeader(props: ContextAssetDetailHeaderProps) {
+  const [copied, setCopied] = useState(false)
+  const copyTimeoutRef = useRef<number | null>(null)
   const muted = props.node?.kind === 'entry' && props.node.enabled === false
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) window.clearTimeout(copyTimeoutRef.current)
+    }
+  }, [])
+
+  const uri = props.node ? resolveContextAssetUri(props.node, props.pathNodes) : ''
+
+  const handleCopyUri = async () => {
+    if (!uri) return
+    const success = await tryWriteClipboardText(uri)
+    if (success) {
+      setCopied(true)
+      if (copyTimeoutRef.current) window.clearTimeout(copyTimeoutRef.current)
+      copyTimeoutRef.current = window.setTimeout(() => setCopied(false), 1600)
+    }
+  }
 
   return (
     <header className={`${styles.header} ${muted ? styles.muted : ''}`}>
@@ -28,7 +54,36 @@ export function ContextAssetDetailHeader(props: ContextAssetDetailHeaderProps) {
             onChange={props.onEnabledChange}
           />
         ) : null}
-        <h1>{props.node ? resolveVirtualDisplayName(props.node.label, props.node.kind) : props.t('context.emptyTitle')}</h1>
+        {props.node ? (
+          <div className={styles.titleWrapper}>
+            <input
+              aria-label={props.t('context.metadata.label')}
+              className={styles.titleInput}
+              disabled={props.readOnly}
+              value={props.node.label}
+              onChange={event => props.onChangeLabel?.(event.target.value)}
+              onBlur={event => props.onCommitLabel?.(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === 'Enter') {
+                  event.currentTarget.blur()
+                }
+              }}
+            />
+            {uri ? (
+              <button
+                aria-label={`复制条目 URI: ${uri}`}
+                className={`${styles.uriCopyBadge} ${copied ? styles.uriCopyBadgeSuccess : ''}`}
+                title={copied ? '已复制 URI' : `复制条目 URI (${uri})`}
+                type="button"
+                onClick={handleCopyUri}
+              >
+                {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+              </button>
+            ) : null}
+          </div>
+        ) : (
+          <h1>{props.t('context.emptyTitle')}</h1>
+        )}
         {props.node ? (
           <button
             aria-expanded={props.metadataOpen}

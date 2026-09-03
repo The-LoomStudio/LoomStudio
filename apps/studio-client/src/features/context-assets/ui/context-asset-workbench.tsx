@@ -4,7 +4,7 @@ import type { ContextAssetNode } from '../../../entities/index.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import { FileTree } from '../../../shared/ui/file-tree/file-tree.js'
 import type { LongTextEditorMode } from '../../../shared/ui/long-text-editor/long-text-editor-model.js'
-import { ContextAssetDetail } from './context-asset-detail/context-asset-detail.js'
+import { ContextAssetDetail, isReadOnlyDetailNode } from './context-asset-detail/context-asset-detail.js'
 import { ContextAssetDetailHeader } from './context-asset-detail-header/context-asset-detail-header.js'
 import { ContextAssetSearch } from './context-asset-search/context-asset-search.js'
 import {
@@ -127,8 +127,18 @@ export function ContextAssetEditor(props: {
       <ContextAssetDetailHeader
         metadataOpen={props.metadataOpen}
         node={node}
+        pathNodes={pathNodes}
+        readOnly={node ? isReadOnlyDetailNode(node) : false}
         toggleEnabled={canToggleContextAssetEnabled(node)}
         t={props.t}
+        onChangeLabel={label => {
+          if (!node) return
+          props.onChangeNode(node.id, { label })
+        }}
+        onCommitLabel={label => {
+          if (!node) return
+          props.onCommitNode(node.id, { label })
+        }}
         onEnabledChange={enabled => {
           if (!node) return
           props.onChangeNode(node.id, { enabled })

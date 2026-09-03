@@ -10,7 +10,11 @@
   min-height: 0;
   overflow: auto;
   border-radius: var(--loom-radius-panel) var(--loom-radius-panel) 0 0;
-  padding: 14px 0 clamp(180px, 34vh, 420px);
+  padding: 0 0 clamp(180px, 34vh, 420px);
+}
+
+.editorScroller > :global([data-loom-component='long-text-editor']) {
+  margin-top: 14px;
 }
 
 .editorScrollerMetadataOpen {

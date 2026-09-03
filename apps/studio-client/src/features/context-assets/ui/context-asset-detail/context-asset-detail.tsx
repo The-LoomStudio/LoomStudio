@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { Bot, Braces, Equal, Info, KeyRound, ListFilter, ListOrdered, MapPin, RefreshCw, Settings2, Tag, Zap } from 'lucide-react'
+import { Bot, Braces, Equal, Info, KeyRound, ListFilter, ListOrdered, MapPin, RefreshCw, Settings2, Zap } from 'lucide-react'
 import type { ContextAssetNode } from '../../../../entities/index.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
 import { LongTextEditor, type LongTextEditorHandle } from '../../../../shared/ui/long-text-editor/long-text-editor.js'
@@ -68,18 +68,6 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
         <span className={styles.metadataHandle} aria-hidden="true" />
         <div className={styles.metadataScroller}>
           <section className={styles.configGrid} aria-label={props.t('context.configLabel')}>
-        <div>
-            <dt><Tag aria-hidden="true" />{props.t('context.metadata.label')}</dt>
-          <dd>
-            <input
-              className={styles.inlineInput}
-              disabled={readOnly}
-              value={props.node.label}
-              onChange={event => props.onChangeNode({ label: event.target.value })}
-              onBlur={event => props.onCommitNode({ label: event.target.value })}
-            />
-          </dd>
-        </div>
         {props.node.kind === 'message' ? (
           <div>
             <dt><Bot aria-hidden="true" />Role</dt>
@@ -325,7 +313,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
   )
 }
 
-function isReadOnlyDetailNode(node: ContextAssetNode): boolean {
+export function isReadOnlyDetailNode(node: ContextAssetNode): boolean {
   return node.readOnly === true
     || node.category === 'runtime'
     || node.category === 'history'

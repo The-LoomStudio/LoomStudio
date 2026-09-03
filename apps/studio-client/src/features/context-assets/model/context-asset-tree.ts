@@ -86,9 +86,47 @@ export function resolveVirtualPath(node: Pick<ContextAssetNode, 'label' | 'kind'
   return `/${safeName}`
 }
 
-export function findContextAssetByVirtualPath(nodes: ContextAssetNode[], path: string): ContextAssetNode | undefined {
-  for (const node of flattenContextAssetNodes(nodes)) {
-    if (resolveVirtualPath(node) === path) return node
+export function resolveContextAssetUri(node: ContextAssetNode, pathNodes?: ContextAssetNode[]): string {
+  if (!pathNodes || pathNodes.length === 0) {
+    const virtualName = resolveVirtualDisplayName(node.label, node.kind)
+    return `@/${virtualName}`
   }
+
+  const anchorIdx = pathNodes.findIndex(item => item.label.startsWith('@'))
+  if (anchorIdx !== -1) {
+    const relevant = pathNodes.slice(anchorIdx)
+    const segments = relevant.map((item, idx) => {
+      if (idx === relevant.length - 1) {
+        return resolveVirtualDisplayName(item.label, item.kind)
+      }
+      return item.label
+    })
+    return segments.join('/')
+  }
+
+  const segments = (pathNodes.length > 1 ? pathNodes.slice(1) : pathNodes).map((item, idx, arr) => {
+    if (idx === arr.length - 1) {
+      return resolveVirtualDisplayName(item.label, item.kind)
+    }
+    return item.label
+  })
+  return `@/${segments.join('/')}`
+}
+
+export function findContextAssetByVirtualPath(nodes: ContextAssetNode[], path: string): ContextAssetNode | undefined {
+  const flat = flattenContextAssetNodes(nodes)
+  const normalized = path.replace(/^@/, '').replace(/^\//, '')
+
+  for (const node of flat) {
+    if (resolveVirtualPath(node) === path || resolveVirtualPath(node) === `/${normalized}`) return node
+    const displayName = resolveVirtualDisplayName(node.label, node.kind)
+    if (displayName === normalized || node.label === normalized) return node
+  }
+
+  for (const node of flat) {
+    const displayName = resolveVirtualDisplayName(node.label, node.kind)
+    if (normalized.endsWith(`/${displayName}`) || normalized.endsWith(`/${node.label}`)) return node
+  }
+
   return undefined
 }
