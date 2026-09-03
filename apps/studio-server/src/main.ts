@@ -620,9 +620,13 @@ function printStudioServerBanner(port: number): void {
       console.log(`${rawTag}${color}${lines[i]}${reset}`)
     }
 
-    console.log(`${rawTag}  ${bold}${silver}Loom Studio${reset}  ${dim}—  Weave worlds, branch stories.${reset}`)
-    console.log(`${rawTag}  ${dim}➜${reset}  ${bold}Local Server:${reset}  http://127.0.0.1:${port}`)
-    console.log(`${rawTag}  ${dim}➜${reset}  ${bold}Studio Client:${reset} http://127.0.0.1:5173\n`)
+    const time = new Date().toLocaleTimeString('zh-CN', { hour12: false })
+    const nodeVer = process.version
+
+    console.log(`${rawTag}╭─ ${bold}${silver}Loom Studio${reset}  \x1b[32m● active\x1b[0m  ${dim}${nodeVer}   ${time}${reset}`)
+    console.log(`${rawTag}│  ${dim}➜${reset}  ${bold}Local Server:${reset}  http://127.0.0.1:${port}`)
+    console.log(`${rawTag}│  ${dim}➜${reset}  ${bold}Studio Client:${reset} http://127.0.0.1:5173`)
+    console.log(`${rawTag}╰─ ${dim}Weave worlds, branch stories.${reset}\n`)
   } catch {
     // ignore banner printing errors
   }

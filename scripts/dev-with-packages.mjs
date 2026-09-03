@@ -66,7 +66,13 @@ function writePrefixed(stream, label, chunk) {
       stream.write(line)
       continue
     }
-    stream.write(`[${label}] ${line}`)
+    if (label === 'studio-server') {
+      stream.write(line)
+      continue
+    }
+    const dim = '\x1b[2m'
+    const reset = '\x1b[0m'
+    stream.write(`${dim}[${label}]${reset} ${line}`)
   }
 }
 
