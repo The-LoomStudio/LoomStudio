@@ -48,11 +48,11 @@ Content Tools
 
 Provider-managed Tool 不是 System Message。Loom Studio 可以控制顶层 Tool 数组的顺序，但 Provider 没有承诺它在内部位于第一个 System Message 前或后。
 
-Content Tool 拥有真实 Zone / Slot placement，并与 Preset、Setting、Narrative 和 Session 等 Prompt Source 一起进入统一 PromptBuild Pipeline。
+Content Tool 拥有真实 Anchor / Slot placement，并与 Preset、Setting、Narrative 和 Session 等 Prompt Source 一起进入统一 PromptBuild Pipeline。
 
 ## 4. Tool Prompt Build
 
-Tool Prompt Build 在每轮调用时处理 Preset Mount 与 Agent override 合并后的候选 Tool、Activation、User 宏、Provider Tool order、Content zone / slot / rank / order hint、requested / effective order trace 和重复 exposed name 诊断。
+Tool Prompt Build 在每轮调用时处理 Preset Mount 与 Agent override 合并后的候选 Tool、Activation、User 宏、Provider Tool order、Content anchor / slot / local_depth、requested / effective order trace 和重复 exposed name 诊断。
 
 输出分为：
 
@@ -61,17 +61,17 @@ Compiled provider exposures
   -> Gateway tools[]
 
 Content Tool runtime contributions
-  -> PromptBuild Source / Contribution / Slot Rank
+  -> PromptBuild Source / Contribution / Slot Local Depth
 ```
 
 Tool Prompt Build 直接执行模板、Activation 和排序；Tool Registry、Executor 与 Provider wire mapping 都不进入 Loom Core。
 
-## 5. Preset 主排序视图
+## 5. Preset 挂载与预览视图
 
-Preset Main Order 是构建表面的静态投影：
+Preset 挂载与预览是构建表面的静态投影：
 
 - Provider Tools 在顶部显示为独立 `Tools` Block；
-- Content Tools 显示为 `Content Tools` Zone 中的外部 Slot；
+- Content Tools 显示为对应 Anchor 孔位中的外部 Slot；
 - 同一 Slot 的多个 Tool 合并为一个来源投影；
 - 虚拟 Tool Source 只读，实际编辑仍在 Preset Tools Tab；
 - Extension 可以贡献自己的 Slot，不与官方 Slot 混为一个所有者。

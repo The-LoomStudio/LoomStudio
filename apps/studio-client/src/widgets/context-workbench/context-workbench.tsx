@@ -6,18 +6,14 @@ import {
   findContextNode,
 } from '../../features/context-assets/model/projection-order.js'
 import {
-  buildProjectionWorkbenchModel,
   type ContextAssetUpdate,
   findRootContextModule,
-  readProjectionOrderReorderUpdates,
-  readProjectionZoneReorderUpdates,
 } from '../../features/context-assets/model/projection-workbench.js'
 import { readPromptResourceWorkbenchRoot } from '../../features/context-assets/model/prompt-resource-view.js'
 import { ContextAssetEditor, ContextAssetExplorer } from '../../features/context-assets/ui/context-asset-workbench.js'
 import { ContextAssetHeader } from '../../features/context-assets/ui/context-asset-header/context-asset-header.js'
 import { findContextAssetPath, findContextAssetByVirtualPath } from '../../features/context-assets/model/context-asset-tree.js'
 import { STUDIO_PANEL_PRESENTATION } from '../../pages/studio/model/studio-panel-presentation.js'
-import { ProjectionOrderEditor } from '../../features/context-assets/ui/projection-order-editor/projection-order-editor.js'
 import { PromptResourceToolbar } from '../../features/context-assets/ui/prompt-resource-toolbar/prompt-resource-toolbar.js'
 import { Dialog } from '../../shared/ui/dialog/dialog.js'
 import type { Card, ContextAssetNode, PromptResource, SettingMount, SettingMountSource } from '../../entities/index.js'
@@ -61,7 +57,6 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   const setSelectedId = useStudioLayoutStore(state => state.setAssetSelectedId)
   const setMetadataOpen = useStudioLayoutStore(state => state.setAssetMetadataOpen)
   const setTextEditorMode = useStudioLayoutStore(state => state.setTextEditorMode)
-  const [viewModes] = useState<Record<string, 'asset' | 'projection'>>({})
   const [searchQuery, setSearchQuery] = useState(props.initialSearchQuery ?? '')
   const [scope, setScope] = useState<'character' | 'global'>('character')
   const [bindingOpen, setBindingOpen] = useState(false)
@@ -88,8 +83,6 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
       .filter(mount => mount.source.kind === 'manual')
       .sort((left, right) => left.orderIndex - right.orderIndex || left.id.localeCompare(right.id))
       .map(mount => mount.settingResourceId)
-  const projectionModel = useMemo(() => buildProjectionWorkbenchModel(workbenchNodes), [workbenchNodes])
-  const { projectionEntries, orderNode, projectionOrderIds, orderedProjectionEntries } = projectionModel
 
   useEffect(() => {
     if (!props.routeAssetId) return
@@ -134,27 +127,6 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   }, [props.workspaceId, selectedId, setSelectedId, workbenchNodes])
 
   const displayNodes = workbenchNodes
-
-  function handleProjectionReorder(draggedId: string, targetId: string) {
-    props.onChangeNodes(readProjectionOrderReorderUpdates({
-      draggedId,
-      orderedProjectionEntries,
-      orderNode,
-      projectionEntries,
-      projectionOrderIds,
-      targetId,
-    }))
-  }
-
-  function handleProjectionZoneReorder(draggedZoneId: string, targetZoneId: string) {
-    props.onChangeNodes(readProjectionZoneReorderUpdates({
-      draggedZoneId,
-      orderedProjectionEntries,
-      orderNode,
-      projectionEntries,
-      targetZoneId,
-    }))
-  }
 
   function handleSelectNode(id: string) {
     openAssetDetail('resources', props.workspaceId, id)
@@ -255,15 +227,6 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
           editorMode={textEditorMode}
           metadataOpen={metadataOpen}
           node={selectedNode}
-          orderEditor={selectedNode?.kind === 'order' ? (
-            <ProjectionOrderEditor
-              entries={orderedProjectionEntries}
-              onReorder={handleProjectionReorder}
-              onReorderZone={handleProjectionZoneReorder}
-              selectedId={selectedId}
-              t={props.t}
-            />
-          ) : undefined}
           pathNodes={findContextAssetPath(workbenchNodes, selectedNode?.id)}
           t={props.t}
           onChangeNode={props.onChangeNode}

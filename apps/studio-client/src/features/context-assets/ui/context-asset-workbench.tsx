@@ -1,5 +1,5 @@
 import { ChevronRight } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import type { ContextAssetNode } from '../../../entities/index.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import { FileTree } from '../../../shared/ui/file-tree/file-tree.js'
@@ -12,6 +12,7 @@ import {
   readContextAssetTreeActions,
   renderContextAssetLifecycleIndicator,
   renderContextAssetTreeIcon,
+  resolveVirtualDisplayName,
 } from './context-asset-tree.js'
 import styles from './context-asset-workbench.module.scss'
 
@@ -88,6 +89,7 @@ export function ContextAssetExplorer(props: {
             t: props.t,
           })}
           isMuted={item => (item as ContextAssetNode).kind === 'entry' && (item as ContextAssetNode).enabled === false}
+          formatLabel={node => resolveVirtualDisplayName(node.label, (node as ContextAssetNode).kind)}
           moreActionsLabel={props.t('context.actionMore')}
           nodes={props.displayNodes}
           onExpandedIdsChange={props.onExpandedIdsChange}
@@ -109,7 +111,6 @@ export function ContextAssetEditor(props: {
   editorMode: LongTextEditorMode
   metadataOpen: boolean
   node?: ContextAssetNode
-  orderEditor?: ReactNode
   pathNodes?: ContextAssetNode[]
   t: Translator
   onChangeNode(id: string, partial: Partial<ContextAssetNode>): void
@@ -135,7 +136,7 @@ export function ContextAssetEditor(props: {
         }}
         onMetadataOpenChange={props.onMetadataOpenChange}
       />
-      {!node ? <div className={styles.emptyState}>{props.t('context.emptyBody')}</div> : node.kind === 'order' ? props.orderEditor : (
+      {!node ? <div className={styles.emptyState}>{props.t('context.emptyBody')}</div> : (
         <ContextAssetDetail
           activationEditable={props.activationEditable}
           metadataOpen={props.metadataOpen}

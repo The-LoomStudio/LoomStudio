@@ -33,7 +33,7 @@ Context 是 Application Runtime 的基础设施工具箱，不是业务状态容
 
 ```text
 sessionId / branchId / workspaceId
-userInput / activationFacts / projectionOrderProfile
+userInput / activationFacts / timelineTarget
 providerProfileId / modelId
 ```
 

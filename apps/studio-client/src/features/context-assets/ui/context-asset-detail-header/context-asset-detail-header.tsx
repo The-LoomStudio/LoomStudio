@@ -2,6 +2,7 @@ import { SlidersHorizontal } from 'lucide-react'
 import type { ContextAssetNode } from '../../../../entities/index.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
 import { Toggle } from '../../../../shared/ui/toggle/toggle.js'
+import { resolveVirtualDisplayName } from '../../model/context-asset-tree.js'
 import styles from './context-asset-detail-header.module.scss'
 
 type ContextAssetDetailHeaderProps = {
@@ -27,8 +28,8 @@ export function ContextAssetDetailHeader(props: ContextAssetDetailHeaderProps) {
             onChange={props.onEnabledChange}
           />
         ) : null}
-        <h1>{props.node?.label ?? props.t('context.emptyTitle')}</h1>
-        {props.node && props.node.kind !== 'order' ? (
+        <h1>{props.node ? resolveVirtualDisplayName(props.node.label, props.node.kind) : props.t('context.emptyTitle')}</h1>
+        {props.node ? (
           <button
             aria-expanded={props.metadataOpen}
             aria-label={props.t(props.metadataOpen ? 'context.hideMetadata' : 'context.showMetadata')}
@@ -53,6 +54,5 @@ function readKindLabel(node: ContextAssetNode | undefined, t: Translator): strin
   if (node.kind === 'folder') return t('context.kind.folder')
   if (node.kind === 'script') return t('context.kind.script')
   if (node.kind === 'virtual') return t('context.kind.virtual')
-  if (node.kind === 'order') return t('context.kind.order')
   return t('context.kind.entry')
 }

@@ -62,7 +62,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
           if (content.resourceKind === 'preset') {
             const existingChildIds = new Set(existing.rootNode.children?.map(c => c.id) ?? [])
             const expectedIds = new Set(content.rootNode.children?.map(c => c.id) ?? [])
-            const legacyNodes = existing.rootNode.children?.filter(c => c.kind === 'order' || !expectedIds.has(c.id)) ?? []
+            const legacyNodes = existing.rootNode.children?.filter(c => !expectedIds.has(c.id)) ?? []
             const missingNodes = content.rootNode.children?.filter(c => !existingChildIds.has(c.id)) ?? []
             const mutations = [
               ...legacyNodes.map(node => ({ kind: 'node.delete' as const, nodeId: node.id })),

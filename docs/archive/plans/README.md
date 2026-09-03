@@ -12,6 +12,7 @@
 - [`prompt-resource-foundation-plan.md`](./prompt-resource-foundation-plan.md)
 - [`airp-resource-session-prompt-schema-plan.md`](./airp-resource-session-prompt-schema-plan.md)
 - [`prompt-resource-projection-workbench-v0.md`](./prompt-resource-projection-workbench-v0.md)
+- [`prompt-resource-ordered-tree-and-caged-slot-plan.md`](./prompt-resource-ordered-tree-and-caged-slot-plan.md)
 
 ## Runtime、Session 与存储
 

@@ -1,8 +1,9 @@
-import { Anchor, Bot, Code2, Cog, Copy, FileText, Folder, FolderOpen, FolderPlus, GripVertical, Layers, MessageSquare, MessagesSquare, Package, Pencil, Plus, Trash2, UserRound } from 'lucide-react'
+import { Anchor, Book, Bot, Code2, Cog, Copy, FileText, Folder, FolderOpen, FolderPlus, MessageSquare, MessagesSquare, Pencil, Plus, Trash2, UserRound } from 'lucide-react'
 import type { ContextAssetNode } from '../../../entities/index.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import type { MenuAction } from '../../../shared/ui/menu-action.js'
 import { StatusIndicator } from '../../../shared/ui/status-indicator/status-indicator.js'
+export { resolveVirtualDisplayName, resolveVirtualExtension, resolveVirtualPath } from '../model/context-asset-tree.js'
 
 type ContextAssetTreeActionsInput = {
   onAdd(parentId: string): void
@@ -18,12 +19,11 @@ type ContextAssetTreeActionsInput = {
 }
 
 export function renderContextAssetTreeIcon(node: ContextAssetNode, expanded: boolean) {
-  if (node.kind === 'module') return <Package />
+  if (node.kind === 'slot') return null
+  if (node.kind === 'module') return <Book />
   if (node.kind === 'folder') return expanded ? <FolderOpen /> : <Folder />
   if (node.kind === 'script') return <Code2 />
-  if (node.kind === 'order') return <GripVertical />
   if (node.kind === 'virtual') return <Anchor />
-  if (node.kind === 'slot') return <Layers />
   if (node.kind === 'message') {
     const role = node.capabilities?.roleHint
     if (role === 'system') return <Cog aria-hidden="true" />
@@ -46,7 +46,7 @@ export function readContextAssetTreeActions(
   input: ContextAssetTreeActionsInput,
 ): MenuAction[] {
   const canAdd = (node.kind === 'module' || node.kind === 'folder' || node.kind === 'message') && !isReadOnlyContextAssetTreeNode(node)
-  const canDuplicate = node.kind !== 'module' && node.kind !== 'order' && node.kind !== 'slot' && !isReadOnlyContextAssetTreeNode(node)
+  const canDuplicate = node.kind !== 'module' && node.kind !== 'slot' && !isReadOnlyContextAssetTreeNode(node)
   const isPreset = node.category === 'preset'
   const isSettingLayer = node.category === 'setting' && node.kind === 'module'
   const items: MenuAction[] = []

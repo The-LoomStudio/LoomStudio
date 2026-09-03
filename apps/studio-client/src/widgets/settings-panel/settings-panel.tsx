@@ -1,8 +1,11 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { Globe, Info, Network, Palette } from 'lucide-react'
 import type { NetworkSettings } from '../../shared/api/studio-api.js'
 import type { Locale, Translator } from '../../shared/i18n/index.js'
 import { localeLabels, supportedLocales } from '../../shared/i18n/index.js'
 import styles from './settings-panel.module.scss'
+
+type SettingsCategory = 'general' | 'network' | 'appearance' | 'about'
 
 export function SettingsPanel(props: {
   busy: boolean
@@ -16,6 +19,7 @@ export function SettingsPanel(props: {
   onUpdateNetworkSettings(value: { proxyMode: NetworkSettings['proxyMode']; proxyUrl?: string }): void
   t: Translator
 }) {
+  const [category, setCategory] = useState<SettingsCategory>('general')
   const [proxyMode, setProxyMode] = useState(props.networkSettings.proxyMode)
   const [proxyUrl, setProxyUrl] = useState(props.networkSettings.proxyUrl ?? '')
 
@@ -34,54 +38,192 @@ export function SettingsPanel(props: {
 
   return (
     <section className={styles.settingsPanel} data-loom-component="settings-panel">
-      <h2>{props.t('settings.general')}</h2>
-      <label className={styles.settingRow}>
-        <span>{props.t('app.localeLabel')}</span>
-        <select value={props.locale} onChange={event => props.onChangeLocale(event.target.value as Locale)}>
-          {supportedLocales.map(locale => <option key={locale} value={locale}>{localeLabels[locale]}</option>)}
-        </select>
-      </label>
-      <h2 className={styles.sectionHeading}>{props.t('settings.network')}</h2>
-      <form className={styles.networkSettings} onSubmit={saveNetworkSettings}>
-        <label className={styles.settingRow}>
-          <span>{props.t('settings.proxyMode')}</span>
-          <select value={proxyMode} onChange={event => setProxyMode(event.target.value as NetworkSettings['proxyMode'])}>
-            <option value="system">{props.t('settings.proxyModeSystem')}</option>
-            <option value="direct">{props.t('settings.proxyModeDirect')}</option>
-            <option value="manual">{props.t('settings.proxyModeManual')}</option>
-          </select>
-        </label>
-        {proxyMode === 'manual' ? (
-          <label className={styles.settingRow}>
-            <span>{props.t('settings.proxyUrl')}</span>
-            <input required placeholder="http://127.0.0.1:7890" value={proxyUrl} onChange={event => setProxyUrl(event.target.value)} />
-          </label>
-        ) : null}
-        <p className={styles.networkStatus}>
-          {props.networkSettings.systemProxyDetected
-            ? props.t('settings.systemProxyDetected')
-            : props.t('settings.systemProxyNotDetected')}
-        </p>
-        <button disabled={props.busy || (proxyMode === 'manual' && !proxyUrl.trim())} type="submit">{props.t('settings.saveNetwork')}</button>
-      </form>
-      <h2>{props.t('settings.appearance')}</h2>
-      <label className={styles.scaleRow}>
-        <span>{props.t('settings.uiScale')}</span>
-        <input
-          aria-label={props.t('settings.uiScale')}
-          max="125"
-          min="80"
-          step="5"
-          type="range"
-          value={props.uiScale}
-          onChange={event => props.onChangeUiScale(Number(event.target.value))}
-        />
-        <output>{props.uiScale}%</output>
-      </label>
-      <label className={styles.customCss}>
-        <span>{props.t('settings.customCss')}</span>
-        <textarea placeholder={props.t('settings.customCssPlaceholder')} spellCheck={false} value={props.customCss} onChange={event => props.onChangeCustomCss(event.target.value)} />
-      </label>
+      <header className={styles.intro}>
+        <div>
+          <h2>系统设置 (Settings)</h2>
+          <p>定制 Loom Studio 客户端环境、代理与外观表现。</p>
+        </div>
+      </header>
+
+      <div className={styles.workbench}>
+        <nav aria-label="Settings Navigation" className={styles.masterNav}>
+          <button
+            aria-current={category === 'general' ? 'page' : undefined}
+            className={styles.navItem}
+            type="button"
+            onClick={() => setCategory('general')}
+          >
+            <Globe aria-hidden="true" />
+            <span className={styles.navItemBody}>
+              <strong>{props.t('settings.general')}</strong>
+              <small>语言与区域</small>
+            </span>
+          </button>
+
+          <button
+            aria-current={category === 'network' ? 'page' : undefined}
+            className={styles.navItem}
+            type="button"
+            onClick={() => setCategory('network')}
+          >
+            <Network aria-hidden="true" />
+            <span className={styles.navItemBody}>
+              <strong>{props.t('settings.network')}</strong>
+              <small>代理与网络连接</small>
+            </span>
+          </button>
+
+          <button
+            aria-current={category === 'appearance' ? 'page' : undefined}
+            className={styles.navItem}
+            type="button"
+            onClick={() => setCategory('appearance')}
+          >
+            <Palette aria-hidden="true" />
+            <span className={styles.navItemBody}>
+              <strong>{props.t('settings.appearance')}</strong>
+              <small>UI 缩放与自定义 CSS</small>
+            </span>
+          </button>
+
+          <button
+            aria-current={category === 'about' ? 'page' : undefined}
+            className={styles.navItem}
+            type="button"
+            onClick={() => setCategory('about')}
+          >
+            <Info aria-hidden="true" />
+            <span className={styles.navItemBody}>
+              <strong>系统与关于</strong>
+              <small>运行时信息与状态</small>
+            </span>
+          </button>
+        </nav>
+
+        <div className={styles.detailPane}>
+          {category === 'general' ? (
+            <>
+              <header className={styles.detailHeader}>
+                <h3>{props.t('settings.general')}</h3>
+              </header>
+              <div className={styles.cardSection}>
+                <h4>语言选择</h4>
+                <p>切换 Loom Studio 的界面显示语言。</p>
+                <label className={styles.settingRow}>
+                  <span>{props.t('app.localeLabel')}</span>
+                  <select
+                    value={props.locale}
+                    onChange={event => props.onChangeLocale(event.target.value as Locale)}
+                  >
+                    {supportedLocales.map(locale => (
+                      <option key={locale} value={locale}>{localeLabels[locale]}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </>
+          ) : category === 'network' ? (
+            <>
+              <header className={styles.detailHeader}>
+                <h3>{props.t('settings.network')}</h3>
+              </header>
+              <form className={styles.cardSection} onSubmit={saveNetworkSettings}>
+                <h4>代理与网络模式</h4>
+                <p>配置用于 AI Gateway 和扩展通信的网络出口。</p>
+
+                <label className={styles.settingRow}>
+                  <span>{props.t('settings.proxyMode')}</span>
+                  <select
+                    value={proxyMode}
+                    onChange={event => setProxyMode(event.target.value as NetworkSettings['proxyMode'])}
+                  >
+                    <option value="system">{props.t('settings.proxyModeSystem')}</option>
+                    <option value="direct">{props.t('settings.proxyModeDirect')}</option>
+                    <option value="manual">{props.t('settings.proxyModeManual')}</option>
+                  </select>
+                </label>
+
+                {proxyMode === 'manual' ? (
+                  <label className={styles.settingRow}>
+                    <span>{props.t('settings.proxyUrl')}</span>
+                    <input
+                      required
+                      placeholder="http://127.0.0.1:7890"
+                      value={proxyUrl}
+                      onChange={event => setProxyUrl(event.target.value)}
+                    />
+                  </label>
+                ) : null}
+
+                <p className={styles.networkStatus}>
+                  {props.networkSettings.systemProxyDetected
+                    ? props.t('settings.systemProxyDetected')
+                    : props.t('settings.systemProxyNotDetected')}
+                </p>
+
+                <button
+                  className={styles.primaryButton}
+                  disabled={props.busy || (proxyMode === 'manual' && !proxyUrl.trim())}
+                  type="submit"
+                >
+                  {props.t('settings.saveNetwork')}
+                </button>
+              </form>
+            </>
+          ) : category === 'appearance' ? (
+            <>
+              <header className={styles.detailHeader}>
+                <h3>{props.t('settings.appearance')}</h3>
+              </header>
+              <div className={styles.cardSection}>
+                <h4>界面缩放 (UI Scale)</h4>
+                <p>调整客户端整体视觉比例大小。</p>
+                <div className={styles.scaleRow}>
+                  <span>{props.t('settings.uiScale')}</span>
+                  <input
+                    aria-label={props.t('settings.uiScale')}
+                    max="125"
+                    min="80"
+                    step="5"
+                    type="range"
+                    value={props.uiScale}
+                    onChange={event => props.onChangeUiScale(Number(event.target.value))}
+                  />
+                  <output>{props.uiScale}%</output>
+                </div>
+              </div>
+
+              <div className={styles.cardSection}>
+                <h4>自定义 CSS (Custom Styles)</h4>
+                <p>注入自定义样式规则以调整界面风格。</p>
+                <textarea
+                  className={styles.customCssTextarea}
+                  placeholder={props.t('settings.customCssPlaceholder')}
+                  spellCheck={false}
+                  value={props.customCss}
+                  onChange={event => props.onChangeCustomCss(event.target.value)}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <header className={styles.detailHeader}>
+                <h3>系统与关于 (About)</h3>
+              </header>
+              <div className={styles.cardSection}>
+                <h4>Loom Studio</h4>
+                <p>下一代 Agentic Narrative 沉浸式创作与工作台。</p>
+                <div style={{ display: 'grid', gap: '8px', fontSize: '12.5px', marginTop: '6px' }}>
+                  <div><strong>版本:</strong> 0.0.0-developer-preview</div>
+                  <div><strong>架构:</strong> Next-Gen Agent Pipeline & Unified Master-Detail Engine</div>
+                  <div><strong>数据状态:</strong> Local Native SQLite + Reactive State Sync</div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </section>
   )
 }
+

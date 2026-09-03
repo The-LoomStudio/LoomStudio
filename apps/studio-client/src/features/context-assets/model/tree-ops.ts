@@ -255,11 +255,11 @@ function canAddChild(node: ContextAssetNode, inheritedCategory?: ContextAssetNod
 }
 
 function canDuplicateNode(node: ContextAssetNode, inheritedCategory?: ContextAssetNode['category']): boolean {
-  return node.kind !== 'module' && node.kind !== 'order' && !isReadOnlyContextNode(node, inheritedCategory)
+  return node.kind !== 'module' && !isReadOnlyContextNode(node, inheritedCategory)
 }
 
 function canDeleteNode(node: ContextAssetNode, inheritedCategory?: ContextAssetNode['category']): boolean {
-  return node.kind !== 'module' && node.kind !== 'order' && !isReadOnlyContextNode(node, inheritedCategory)
+  return node.kind !== 'module' && !isReadOnlyContextNode(node, inheritedCategory)
 }
 
 function isReadOnlyContextNode(node: ContextAssetNode, inheritedCategory?: ContextAssetNode['category']): boolean {

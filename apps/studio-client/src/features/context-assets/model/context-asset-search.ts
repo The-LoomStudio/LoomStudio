@@ -1,4 +1,5 @@
 import type { ContextAssetNode } from '../../../entities/index.js'
+import { resolveVirtualDisplayName } from './context-asset-tree.js'
 
 export type ContextAssetSearchRecord = {
   body: string
@@ -20,7 +21,8 @@ export function buildContextAssetSearchIndex(nodes: ContextAssetNode[]): Context
   const records: ContextAssetSearchRecord[] = []
 
   function visit(node: ContextAssetNode, ancestors: string[]) {
-    const pathParts = [...ancestors, node.label]
+    const displayLabel = resolveVirtualDisplayName(node.label, node.kind)
+    const pathParts = [...ancestors, displayLabel]
     const path = pathParts.join(' / ')
     const body = node.body ?? ''
     const meta = node.meta ?? ''
@@ -28,11 +30,11 @@ export function buildContextAssetSearchIndex(nodes: ContextAssetNode[]): Context
       body,
       id: node.id,
       kind: node.kind,
-      label: node.label,
+      label: displayLabel,
       meta,
       node,
       path,
-      searchableText: normalizeSearchText([node.label, path, meta, body].join('\n')),
+      searchableText: normalizeSearchText([displayLabel, node.label, path, meta, body].join('\n')),
     })
     node.children?.forEach(child => visit(child, pathParts))
   }

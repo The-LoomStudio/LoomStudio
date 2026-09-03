@@ -92,7 +92,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const workbenchNodes = mainOrderNodes
   const selectedId = explorerView.selectedId
   const selectedNode = findContextNode(workbenchNodes, selectedId)
-  const detailNode = selectedNode?.kind === 'order' ? undefined : selectedNode
+  const detailNode = selectedNode
   const projectionModel = useMemo(() => buildProjectionWorkbenchModel(workbenchNodes), [workbenchNodes])
   const { orderNode } = projectionModel
   const [searchQuery, setSearchQuery] = useState(props.initialSearchQuery ?? '')
@@ -160,10 +160,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
     return () => window.removeEventListener('loom:navigate', handleNavigate)
   }, [workbenchNodes, explorerView.expandedIds, props.workspaceId, setAssetExpandedIds, openAssetDetail, setActivePresetView])
 
-  const displayNodes = useMemo(() => {
-    return mainOrderNodes
-      .filter(node => node.kind !== 'order')
-  }, [mainOrderNodes])
+  const displayNodes = mainOrderNodes
 
   function handleSelectNode(id: string) {
     const toolId = toolProjection.toolIdByNodeId.get(id)

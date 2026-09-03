@@ -7,10 +7,21 @@ import { commitContextAssetMutation } from '../../../apps/studio-client/src/feat
 import { buildProjectionOrder } from '../../../apps/studio-client/src/features/context-assets/model/projection-order.js'
 import { readPromptResourceWorkbenchRoot } from '../../../apps/studio-client/src/features/context-assets/model/prompt-resource-view.js'
 import { resolvePresetBuildContextResources } from '../../../apps/studio-client/src/features/context-assets/model/preset-build-context.js'
+import { resolveVirtualDisplayName, resolveVirtualExtension } from '../../../apps/studio-client/src/features/context-assets/model/context-asset-tree.js'
 import type { ContextAssetNode, PromptResource, SettingMount } from '../../../apps/studio-client/src/entities/index.js'
 import { describe, expect, it } from 'vitest'
 
 describe('studio client context asset helpers', () => {
+  it('resolves virtual display names with correct file extensions for UI presentation', () => {
+    expect(resolveVirtualDisplayName('爱丽丝人设', 'entry')).toBe('爱丽丝人设.md')
+    expect(resolveVirtualDisplayName('爱丽丝人设.md', 'entry')).toBe('爱丽丝人设.md')
+    expect(resolveVirtualDisplayName('动作钩子', 'script')).toBe('动作钩子.js')
+    expect(resolveVirtualDisplayName('动作钩子.js', 'script')).toBe('动作钩子.js')
+    expect(resolveVirtualDisplayName('风格注入锚点', 'virtual')).toBe('风格注入锚点')
+    expect(resolveVirtualDisplayName('设定目录', 'folder')).toBe('设定目录')
+    expect(resolveVirtualDisplayName('核心模块', 'module')).toBe('核心模块')
+    expect(resolveVirtualDisplayName('对话块', 'message')).toBe('对话块')
+  })
   it('adds a setting entry with a backend-shaped projection', () => {
     const result = addContextAssetNode(baseNodes(), 'setting-folder', idSequence('new-entry'))
     const folder = findNode(result.nodes, 'setting-folder')
@@ -45,16 +56,11 @@ describe('studio client context asset helpers', () => {
     expect(copy?.capabilities?.projection?.entryOrderHint).toBe(11)
   })
 
-  it('deletes editable nodes and prunes orphan projection order references', () => {
+  it('deletes editable nodes', () => {
     const result = deleteContextAssetNode(baseNodes(), 'preset-entry', 'preset-entry')
-    const orderNode = findNode(result.nodes, 'projection-order')
 
     expect(findNode(result.nodes, 'preset-entry')).toBeUndefined()
     expect(result.selectedId).toBe('preset-folder')
-    expect(orderNode?.orderList).toEqual(['setting-entry'])
-    expect(orderNode?.slotRanks?.map(rank => rank.slotKey)).toEqual([
-      'setting-layer:city-layers-main@setting.stable',
-    ])
   })
 
   it('keeps inherited history nodes read-only for destructive helpers', () => {
@@ -199,16 +205,6 @@ function baseNodes(): ContextAssetNode[] {
       category: 'preset',
       kind: 'module',
       children: [
-        {
-          id: 'projection-order',
-          label: 'Projection Order',
-          kind: 'order',
-          orderList: ['preset-entry', 'setting-entry'],
-          slotRanks: [
-            { zoneId: 'preset.system', slotKey: 'preset:default-airp-preset@preset.system', rankKey: '0000' },
-            { zoneId: 'setting.stable', slotKey: 'setting-layer:city-layers-main@setting.stable', rankKey: '0001' },
-          ],
-        },
         {
           id: 'preset-folder',
           label: 'Style',

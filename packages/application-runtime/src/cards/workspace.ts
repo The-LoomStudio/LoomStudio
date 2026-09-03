@@ -18,7 +18,6 @@ import type {
 import type {
   PromptCompositionCapabilities,
   PromptContribution,
-  PromptLifecycle,
   SourceNode,
 } from '../prompt/prompt-builder.js'
 import { combineActivationGates, isPromptActivation, type PromptActivation } from '../prompt/prompt-activation.js'
@@ -171,7 +170,7 @@ export type PromptResourceNode = {
   enabled?: boolean
   id: string
   isSection?: boolean
-  kind: 'module' | 'folder' | 'entry' | 'script' | 'virtual' | 'order' | 'slot' | 'message' | (string & {})
+  kind: 'module' | 'folder' | 'entry' | 'script' | 'virtual' | 'slot' | 'message' | (string & {})
   label: string
   meta?: string
   orderList?: string[]

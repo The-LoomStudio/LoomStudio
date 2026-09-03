@@ -57,15 +57,22 @@ export function resolveVirtualExtension(kind: ContextAssetNode['kind']): string 
       return '.md'
     case 'script':
       return '.js'
-    case 'order':
     case 'virtual':
-      return '.json'
     case 'folder':
     case 'module':
+    case 'message':
+    case 'slot':
       return undefined
     default:
       return undefined
   }
+}
+
+export function resolveVirtualDisplayName(label: string, kind: ContextAssetNode['kind'] | string | undefined): string {
+  const extension = resolveVirtualExtension(kind as ContextAssetNode['kind'])
+  if (!extension) return label
+  if (label.toLowerCase().endsWith(extension.toLowerCase())) return label
+  return `${label}${extension}`
 }
 
 export function resolveVirtualPath(node: Pick<ContextAssetNode, 'label' | 'kind'>): string {

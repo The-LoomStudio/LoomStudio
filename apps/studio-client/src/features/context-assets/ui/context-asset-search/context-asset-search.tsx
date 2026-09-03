@@ -1,4 +1,4 @@
-import { FileText, Folder, Package, Search, X } from 'lucide-react'
+import { Book, FileText, Folder, Search, X } from 'lucide-react'
 import { useDeferredValue, useMemo, type ReactNode } from 'react'
 import type { ContextAssetNode } from '../../../../entities/index.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
@@ -65,7 +65,8 @@ export function ContextAssetSearch(props: ContextAssetSearchProps) {
 }
 
 function renderResultIcon(kind: ContextAssetNode['kind']) {
-  if (kind === 'module') return <Package aria-hidden="true" />
+  if (kind === 'slot') return null
+  if (kind === 'module') return <Book aria-hidden="true" />
   if (kind === 'folder') return <Folder aria-hidden="true" />
   return <FileText aria-hidden="true" />
 }

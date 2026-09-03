@@ -1,9 +1,10 @@
 # Prompt Resource 有序文件树与笼中深度 (Ordered File Tree & Caged Slot) 实施计划
 
-> **状态**：Ready for Implementation / Architecture Modernization  
-> **日期**：2026-08-30  
-> **前置讨论**：[`docs/workbench/discussion/application/prompt/ordered-file-tree-and-anchor-slot-v0.md`](../discussion/application/prompt/ordered-file-tree-and-anchor-slot-v0.md)  
-> **取代计划**：[`docs/archive/plans/prompt-resource-projection-workbench-v0.md`](../../archive/plans/prompt-resource-projection-workbench-v0.md)  
+> **状态**：Archived / Fully Implemented (已全部落地归档) / Architecture Modernization  
+> **日期**：2026-08-30 (归档于 2026-09-03)  
+> **前置讨论**：[`docs/workbench/discussion/application/prompt/ordered-file-tree-and-anchor-slot-v0.md`](../../workbench/discussion/application/prompt/ordered-file-tree-and-anchor-slot-v0.md)  
+> **取代计划**：[`docs/archive/plans/prompt-resource-projection-workbench-v0.md`](./prompt-resource-projection-workbench-v0.md)  
+> **后续计划**：原规划中的 Phase 5（本地文件双向同步）因涉及复杂的元数据组织、Anchor 物理表现形式与冲突仲裁，已拆分至独立提案 [`docs/workbench/plans/workspace-dev-sync-plan.md`](../../workbench/plans/workspace-dev-sync-plan.md)  
 > **核心目标**：废除臃肿的 `Zone -> InjectionGroup -> RankKey` 多层间接体系，将 PromptBuild 与资源编排收束为**“预设即有序文件树 + 笼中深度（Caged Depth）”**的极简架构，完成前后端合同闭环。
 
 ---
@@ -16,7 +17,8 @@
 2. **强类型节点（一切皆 Node）**：
    - `Folder`（文件夹）：纯分类折叠，无注入与文本语义，排版由 `order_index` 确定；
    - `Entry`（原生条目）：预设作者撰写的固定提示词文本，排版由 `order_index` 确定；
-   - `Anchor`（注入锚点）：预设作者留出的语义孔位（如 `@style.card`），在树中拥有固定的 `order_index`，实现对外部内容的精准物理包裹。
+   - `Anchor`（注入锚点，`kind === 'virtual'`）：预设作者留出的语义孔位（如 `@style.card`），在树中拥有固定的 `order_index`，实现对外部内容的精准物理包裹；
+   - **剔除历史遗留的 `order` 节点**：彻底废弃早期过渡性的 `kind: 'order'` 实体节点，所有同级节点的物理排序完全由树上同级兄弟节点的 `order_index` 决定，不保留向下兼容包袱。
 3. **分级嵌套排序（笼中深度 1~9999）**：
    - 外部来源（角色卡、世界书、插件）注入到指定 `Anchor` 后，在运行时自动聚合为 `Slot`（来源块）；
    - `Slot` 内部的子条目使用 `local_depth: 1~9999` 进行局部排序；
@@ -35,8 +37,10 @@
    - 一个通用的 `Tree UI` 组件向多个不相干的后端 Provider（Prompt Store, Extension API, Asset API）并行拉取数据；
    - 依靠统一定义的纯前端接口（如 `WorkspaceTreeNode`）展示统一视觉，并依靠基于 URI Scheme 的前端路由分发器，在点击时调用不同的右侧阅读器（文本编辑器、图片浏览器、Markdown 渲染器）。
 4. **虚拟文件系统 (VFS) 与动态扩展名映射**：
-   - **底层纯洁性**：数据库 `label` 字段保持原本名称（不强制存扩展名），依靠 `kind` 字段区分文本和二进制。
-   - **VFS 虚拟映射**：向外部（前端 UI 或 LLM Tools）暴露文件列表时，VFS 层依据 `kind` 动态推导并附加扩展名（如 `kind: 'entry'` ➔ 暴露为 `条目.md`），确保 AI 能够利用通用世界知识进行语法解析。
+   - **底层纯洁性**：数据库 `label` 字段保持原本名称（不强制存扩展名），依靠 `kind` 字段区分文本和虚拟锚点。
+   - **VFS 虚拟映射**：向外部（前端 UI 或 LLM Tools）暴露文件列表时，VFS 层依据 `kind` 动态推导并附加扩展名：
+     - `kind: 'entry'` ➔ 统一映射为 `.md`（如 `条目.md`），确保 AI 能够利用通用世界知识进行 Markdown 解析；
+     - `kind: 'virtual'`（Anchor 锚点）➔ 统一映射为 `.virtual`（如 `preset.virtual`），**彻底摒弃 `.json`**，消除了误导。
    - **基于 ID 的路径解析**：工具调用层绝不采用“字符串剥离后缀查库”的方案。所有基于路径的工具请求（如 `read_file('/设定/爱丽丝.md')`），必须在内存树中通过层级遍历找到匹配的虚拟名称（Virtual Name），获取其底层的节点 `id`（UUID），最后完全通过 `id` 对数据库进行绝对精准的数据读写。
 
 ---
@@ -77,7 +81,11 @@
   - 现有 `apps/studio-client/src/features/context-assets/ui/projection-runlist/` 作为历史复杂视图代码予以保留，不直接物理删除，但解除其作为主视图的强耦合。
 - **统一 Workbench 视图至 FileTree**：
   - `context-asset-workbench.tsx`：全面切换为基于 `FileTree` 的树状视图；
-  - 增强 `FileTree` 节点组件：当节点为 `Anchor` 时显示锚点图标；在 Preset 预览模式下，允许展开 Anchor 节点查看其内部动态注入的外部 Slot（来源块）及子条目；
+  - 规范 `FileTree` 节点图标表达：
+    - `Anchor`（`kind === 'virtual'`）：显示专属锚点图标（`Anchor`）；
+    - `Slot`（运行时挂载来源块）：**不渲染任何图标**（返回 `null`），保持出处包裹层的视觉纯粹度；
+    - `Timeline` 基础图标统一为 `git-commit-horizontal`，侧边栏导航为 `folder-git-2`，单条时间线记录为 `rotate-ccw-clock`；
+  - **弹性自适应容器（Flexbox）**：将 `FileTree` 行容器从硬编码的 16px 网格升级为弹性 Flexbox 布局，确保无图标节点（如 Slot）标题文字拥有完整展示空间，绝不被固定网格截断；
   - 简化 `context-assets/model/`：移除 `projection-order.ts` 中的复杂多层排序逻辑（`zoneOrder` / `slotOrder` / `rankKey` 矩阵），改为简单的树形状态派生。
 
 ---
@@ -85,26 +93,26 @@
 ## 3. 分阶段实施路线 (Implementation Phases)
 
 ```text
-Phase 1: Schema & Mount 模型清理
+[x] Phase 1: Schema & Mount 模型清理与 order 节点剔除
   -> 移除冗余的 slotRanks、RankKey，明确 Anchor 语义与 local_depth。
+  -> 彻底清理早期残留的 kind: 'order' 节点，兄弟节点顺序完全由 order_index 决定。
   -> 完成 packages/prompt-resource-store 的数据库和类型改造。
 
-Phase 2: PromptBuild 编译管线重构
+[x] Phase 2: PromptBuild 编译管线重构
   -> 废除矩阵投影逻辑，改为“基于有序树的 DFS 遍历 + 笼中深度局部聚合”。
   -> 重写 packages/application-runtime 下的 Pipeline 与 Runtime。
 
-Phase 3: 虚拟文件系统 (VFS) 网关建设
-  -> 在核心接口层实现基于 kind 的动态扩展名映射（强绑 .md）。
+[x] Phase 3: 虚拟文件系统 (VFS) 网关建设
+  -> 在核心接口层实现基于 kind 的动态扩展名映射（entry ➔ .md，anchor ➔ .virtual，废除 .json）。
   -> 实现工具调用层严格依赖 ID 进行的 Virtual Name 路径解析机制。
 
-Phase 4: Studio Client 多根大一统视图 (Multi-root Shell)
+[x] Phase 4: Studio Client 多根大一统视图 (Multi-root Shell) 与体验闭环
   -> 废弃旧的 ProjectionRunlist 面板（仅作历史归档保留）。
   -> 彻底将工作台升级为多根目录的 Tree UI，实现基于 URI Scheme 的前端资源路由分发。
-
-Phase 5: 本地开发化同步 (Workspace Dev Sync)
-  -> 基于标准的 .md 映射与 VFS，提供“角色卡/预设导出为真实本地文件夹”的功能。
-  -> 支持将实体 Folder 和 Entry.md 文件序列化落盘，打通外部 IDE 与本地 AI Agent（如 Copilot/Cursor）的文件级共建通道。
+  -> 落地无图标 Slot、锚点专属图标、Timeline 基础图标收敛与自适应弹性树节点排版。
 ```
+
+> **注**：原规划中的 Phase 5（本地开发化同步 Workspace Dev Sync）已独立拆分为 [`docs/workbench/plans/workspace-dev-sync-plan.md`](../../workbench/plans/workspace-dev-sync-plan.md)，作为后续专属方案推进。
 
 ---
 

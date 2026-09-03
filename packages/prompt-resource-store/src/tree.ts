@@ -12,7 +12,7 @@ import {
 export const defaultPageLimit = 100
 export const maximumPageLimit = 500
 export const containerNodeKinds = new Set(['module', 'folder', 'message', 'slot', 'virtual'])
-export const nonContainerNodeKinds = new Set(['entry', 'script', 'order'])
+export const nonContainerNodeKinds = new Set(['entry', 'script'])
 
 export type NodeRow = {
   id: string

@@ -24,7 +24,7 @@ describe('projection workbench reorder updates', () => {
     const target = entry('assistant-entry', 'preset.system')
     const orderNode: ContextAssetNode = {
       id: 'order',
-      kind: 'order',
+      kind: 'virtual',
       label: 'Order',
       orderList: [target.id, dragged.id],
     }

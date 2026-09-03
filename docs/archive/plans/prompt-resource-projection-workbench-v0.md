@@ -1,6 +1,6 @@
 # Prompt Resource Projection Workbench v0
 
-> **状态**：Archived / Superseded by [`prompt-resource-ordered-tree-and-caged-slot-plan.md`](../../workbench/plans/prompt-resource-ordered-tree-and-caged-slot-plan.md)
+> **状态**：Archived / Superseded by [`prompt-resource-ordered-tree-and-caged-slot-plan.md`](./prompt-resource-ordered-tree-and-caged-slot-plan.md)
 > **日期**：2026-08-15
 > **主题**：收束 Prompt Resource 的 Source Tree、资源内投影、Preset 主排序、批量编辑与 Folder/Zone 有效启用合同。
 > **历史边界**：Resource Tree、Projection Runlist、Preset 排序与批量编辑的前端基础已经落地。该设计基于旧的 Zone / RankKey 投影模型，现已被有序文件树与 Anchor / Slot 架构取代。

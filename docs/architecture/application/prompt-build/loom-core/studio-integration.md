@@ -25,8 +25,8 @@ PromptBuild 在 Core 之外负责：
 - 构造 SourceNode 与 PromptContribution；
 - 执行宏与领域数据准备；
 - 计算 Activation；
-- 解释 Skeleton、Zone、Slot 和 Injection Group；
-- 应用 Projection order；
+- 解释 Ordered Tree、Anchor、Slot 和 Caged Depth；
+- 应用树状结构 DFS 遍历与 Anchor 局部深度聚合；
 - 生成 CompiledPrompt 与 ProviderMessage；
 - 决定 Trace 对上层暴露的内容。
 
@@ -45,14 +45,14 @@ Documents / Runtime Sources
 
 数据库、文件、网络与宏展开发生在 Core 外。Core 不提供 `runWithSources()`，也不把 Card、Setting Layer 或 Session 输入变成命名参数。
 
-Source Preparation 可以修改节点自己的文本内容，但不会把外部提示词资源压成供 Preset 二次展开的命名字符串。外部资源以带 Source 引用和 Composition Capability 的 Contribution 进入 Pipeline，由 Application-owned Pass 保留其 Activation、Projection、排序和 Trace 身份；Macro 不承担结构化节点注入。
+Source Preparation 可以修改节点自己的文本内容，但不会把外部提示词资源压成供 Preset 二次展开的命名字符串。外部资源以带 Source 引用和 Composition Capability 的 Contribution 进入 Pipeline，由 Application-owned Pass 保留其 Activation、Anchor/Slot 挂载、排序和 Trace 身份；Macro 不承担结构化节点注入。
 
 当前 `composeAgentTurnPrompt()` 会在调用 Core 前异步完成：
 
 - Narrative branch 读取；
 - Workspace prompt asset 读取；
 - Card snapshot 与 macro context 准备；
-- SourceNode、Contribution 和 OrderProfile 组合。
+- Preset 树节点、外部 Mount 与局部深度（`local_depth`）组合。
 
 ## 4. 当前 PromptBuild Pipeline
 
@@ -64,7 +64,7 @@ prompt.materialize
   -> 计算 Activation，并保留 active / inactive 原因
 
 prompt.order
-  -> 按 Zone、Projection Order、Slot Hint 与 Source Tree 排序
+  -> 按 Preset 有序树物理顺序（DFS）与 Anchor 内部 local_depth 局部排序
 
 prompt.emit
   -> 从 active Composition Fragment 生成 Message Fragment
@@ -92,7 +92,7 @@ run({
 
 当前实现已经能够通过独立 Core Pass 展示 materialize / order / emit 的 Mutation；400～500 条目真实性能门槛、Client Inspector 消费和旧编译器删除仍属于迁移计划的后续阶段。
 
-Agent Turn 的 Runtime Source 也经过这条 Pipeline：Narrative Timeline Node 固定投影到 `chat.history` 的 `runtime:narrative.main@chat.history` Slot，Agent Session Message 固定投影到 `session.history` 的 `runtime:session.main@session.history` Slot，当前输入固定投影到 `chat.inside` 的 `runtime:current.input@chat.inside` Slot。它们不在 Core 执行后另行拼接；Zone/Slot 归 Prompt Skeleton，领域对象只提供来源身份与正文数据。
+Agent Turn 的 Runtime Source 也经过这条 Pipeline：Narrative Timeline Node 固定挂载到预设对应的 Anchor 孔位（如 `@history.narrative`），Agent Session Message 固定挂载到 `@history.session`，当前输入固定挂载到对应输入 Anchor。它们不在 Core 执行后另行拼接；Anchor 归属于预设作者的物理树排版，外部领域对象只提供来源身份与正文数据。
 
 Narrative History 是可挂载的 Context，不是自带 role 的 Message。默认 Preset 将它放入 Developer MessageBlock；其他 Preset 可以将同一个稳定 Binding 放入自己的 MessageBlock，并由该 Block 选择 Provider role。Timeline 节点只负责正文和顺序，不能直接改变最终 Message role。
 

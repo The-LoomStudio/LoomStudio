@@ -11,6 +11,7 @@ export type { FileTreeNode } from './file-tree-model.js'
 
 type FileTreeProps = {
   ariaLabel: string
+  formatLabel?: (node: FileTreeNode) => string
   getDisclosureLabel: (node: FileTreeNode, expanded: boolean) => string
   getDragLabel: (node: FileTreeNode) => string
   editingId?: string
@@ -113,6 +114,7 @@ export function FileTree(props: FileTreeProps) {
             editingId={props.editingId}
             expandedIds={expandedIds}
             canDrag={Boolean(props.onMoveNode)}
+            formatLabel={props.formatLabel}
             getDisclosureLabel={props.getDisclosureLabel}
             getDragLabel={props.getDragLabel}
             getActions={props.getActions}
@@ -142,6 +144,7 @@ export function FileTree(props: FileTreeProps) {
       <DragOverlay dropAnimation={{ sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0.4' } } }) }}>
         {draggedNode ? (
           <FileTreeRowOverlay
+            formatLabel={props.formatLabel}
             level={1}
             node={draggedNode}
             renderIcon={props.renderIcon}
@@ -156,6 +159,7 @@ function FileTreeRow(props: {
   editingId?: string
   expandedIds: Set<string>
   canDrag: boolean
+  formatLabel?: (node: FileTreeNode) => string
   getDisclosureLabel: (node: FileTreeNode, expanded: boolean) => string
   getDragLabel: (node: FileTreeNode) => string
   getActions?: (node: FileTreeNode) => MenuAction[]
@@ -249,6 +253,8 @@ function FileTreeRow(props: {
     })
   }
 
+  const iconElement = props.renderIcon?.(props.node, expanded)
+
   const rowElement = (
     <ContextMenu>
       <ContextMenuTrigger asChild disabled={actions.length === 0}>
@@ -317,9 +323,11 @@ function FileTreeRow(props: {
           <div
             className={styles.rowContent}
           >
-            <span className={styles.icon} aria-hidden="true">
-              {props.renderIcon?.(props.node, expanded)}
-            </span>
+            {iconElement ? (
+              <span className={styles.icon} aria-hidden="true">
+                {iconElement}
+              </span>
+            ) : null}
             <span className={styles.labelBlock}>
               {isEditing ? (
                 <input
@@ -342,7 +350,7 @@ function FileTreeRow(props: {
                 />
               ) : (
                 <span className={styles.label} id={labelId}>
-                  {props.node.label}
+                  {props.formatLabel ? props.formatLabel(props.node) : props.node.label}
                   {hasCount ? <sup className={styles.childCountSup}>{childCount}</sup> : null}
                 </span>
               )}
@@ -389,6 +397,7 @@ function FileTreeRow(props: {
       editingId={props.editingId}
       expandedIds={props.expandedIds}
       canDrag={props.canDrag}
+      formatLabel={props.formatLabel}
       getDisclosureLabel={props.getDisclosureLabel}
       getDragLabel={props.getDragLabel}
       getActions={props.getActions}
@@ -440,7 +449,7 @@ function FileTreeRow(props: {
           role="presentation"
         >
           <div className={styles.sectionDivider} />
-          <span className={styles.sectionLabel}>{props.node.label}</span>
+          <span className={styles.sectionLabel}>{props.formatLabel ? props.formatLabel(props.node) : props.node.label}</span>
           <div className={styles.sectionDivider} />
         </div>
       ) : rowElement}
@@ -450,10 +459,13 @@ function FileTreeRow(props: {
 }
 
 function FileTreeRowOverlay(props: {
+  formatLabel?: (node: FileTreeNode) => string
   level: number
   node: FileTreeNode
   renderIcon?: (node: FileTreeNode, expanded: boolean) => ReactNode
 }) {
+  const iconElement = props.renderIcon?.(props.node, false)
+
   return (
     <div
       className={`${styles.row} ${styles.draggingOverlay}`}
@@ -461,11 +473,13 @@ function FileTreeRowOverlay(props: {
     >
       <span className={styles.disclosure} />
       <div className={styles.rowContent}>
-        <span className={styles.icon}>
-          {props.renderIcon?.(props.node, false)}
-        </span>
+        {iconElement ? (
+          <span className={styles.icon}>
+            {iconElement}
+          </span>
+        ) : null}
         <span className={styles.labelBlock}>
-          <span className={styles.label}>{props.node.label}</span>
+          <span className={styles.label}>{props.formatLabel ? props.formatLabel(props.node) : props.node.label}</span>
           {props.node.meta ? <span className={styles.meta}>{props.node.meta}</span> : null}
         </span>
       </div>

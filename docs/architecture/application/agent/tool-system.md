@@ -74,16 +74,16 @@ Executor 接收 Tool Definition、Invocation 和 AbortSignal。Tool Result 必�
 
 ## 7. Owner 与 Slot
 
-Content Tool Description 作为外部 Runtime Source 进入 PromptBuild。Zone 表达出现区域，Slot 表达来源所有权：
+Content Tool Description 作为外部 Runtime Source 进入 PromptBuild。Anchor 表达预设中的挂载孔位，Slot 表达来源所有权与聚合：
 
 ```text
-tools zone
-  official-tools
-  extension:weather-tools
-  extension:other-tools
+@tools.content anchor
+  official-tools (slot)
+  extension:weather-tools (slot)
+  extension:other-tools (slot)
 ```
 
-官方 Tool 不拥有整个 `tools` Zone。Extension、角色、Setting 或其他外部来源以后可以贡献自己的 Slot；卸载一个来源只移除自己的 Slot。
+官方 Tool 不拥有整个孔位。Extension、角色、Setting 或其他外部来源可以贡献自己的 Slot；卸载一个来源只移除自己的 Slot。
 
 ## 8. 实现来源
 

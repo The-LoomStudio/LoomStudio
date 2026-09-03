@@ -64,7 +64,7 @@ export type SourceNode = {
   parentId: string | null
   displayName: string
   orderIndex: number
-  kind: 'module' | 'folder' | 'entry' | 'script' | 'virtual' | 'order' | 'slot' | 'message' | (string & {})
+  kind: 'module' | 'folder' | 'entry' | 'script' | 'virtual' | 'slot' | 'message' | (string & {})
   body?: string
   capabilities?: {
     targetAnchorId?: string

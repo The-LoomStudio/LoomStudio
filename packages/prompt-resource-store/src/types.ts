@@ -7,7 +7,7 @@ import type {
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 
 export type PromptResourceKind = 'preset' | 'setting' | 'logic' | 'runtime' | 'history' | 'prompt' | (string & {})
-export type PromptResourceNodeKind = 'module' | 'folder' | 'entry' | 'script' | 'virtual' | 'order' | 'slot' | 'message' | (string & {})
+export type PromptResourceNodeKind = 'module' | 'folder' | 'entry' | 'script' | 'virtual' | 'slot' | 'message' | (string & {})
 
 export type PromptResourceNode = {
   id: string

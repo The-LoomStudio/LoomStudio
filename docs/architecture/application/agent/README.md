@@ -31,7 +31,7 @@ Agent Profile
 - Tool Validation、Approval、Execution 和 Result Replay；
 - 多 Provider Step Agent Loop；
 - Preset Tool Mount、Agent Profile 快速开关和 Tool Activation；
-- Tool Prompt 宏、Provider Tool Order、Content Zone / Slot；
+- Tool Prompt 宏、Provider Tool Order、Content Anchor / Slot；
 - Provider Observation、Run State、Tool Invocation 和 Tool Result 的会话检查。
 
 当前尚未完成：

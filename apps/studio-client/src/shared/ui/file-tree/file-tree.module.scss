@@ -105,10 +105,9 @@
   position: relative;
   z-index: 1;
   flex: 1;
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr);
+  display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   min-width: 0;
   cursor: pointer;
 }
@@ -169,6 +168,7 @@
 }
 
 .icon {
+  flex: 0 0 auto;
   width: var(--loom-icon-size-5);
   height: var(--loom-icon-size-5);
   display: grid;
@@ -177,6 +177,7 @@
 }
 
 .labelBlock {
+  flex: 1;
   min-width: 0;
   display: grid;
   gap: 1px;

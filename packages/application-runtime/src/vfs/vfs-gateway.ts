@@ -17,9 +17,7 @@ export function resolveVirtualExtension(kind: PromptResourceNode['kind']): strin
       return '.md'
     case 'script':
       return '.js'
-    case 'order':
     case 'virtual':
-      return '.json'
     case 'folder':
     case 'module':
       return undefined
@@ -34,9 +32,8 @@ export function resolveMediaType(kind: PromptResourceNode['kind']): string {
       return 'text/markdown'
     case 'script':
       return 'application/javascript'
-    case 'order':
     case 'virtual':
-      return 'application/json'
+      return 'application/x-loom-anchor'
     default:
       return 'application/octet-stream'
   }

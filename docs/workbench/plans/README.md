@@ -20,7 +20,7 @@
 | [`search-and-timeline-indexing-plan.md`](./search-and-timeline-indexing-plan.md)             | 延期规划     | 基于 Narrative Store 合同重定 Timeline Search 索引                      |
 | [`typed-primary-resource-bundle-plan.md`](./typed-primary-resource-bundle-plan.md)           | 延期规划     | Preset / Setting 主体加附件的增强导入导出 Artifact                      |
 | [`product-website-documentation-demo-plan.md`](./product-website-documentation-demo-plan.md) | 讨论草案     | 官网、公开文档、下载页、共享视觉语言与轻量交互 Demo                     |
-| [`prompt-resource-ordered-tree-and-caged-slot-plan.md`](./prompt-resource-ordered-tree-and-caged-slot-plan.md) | 待实施方案   | 预设有序文件树、Anchor/Slot 统一抽象与笼中深度（Caged Depth）排序        |
+| [`workspace-dev-sync-plan.md`](./workspace-dev-sync-plan.md)                                 | 待讨论提案   | 角色卡/预设本地文件系统双向同步、MD 元数据与物理目录映射                 |
 | [`ui/prompt-resource-diff-mode-v0.md`](./ui/prompt-resource-diff-mode-v0.md)                 | 延期规划     | PromptResource Revision 差异对比与 Tokenizer 合同                       |
 | [`ui/provider-account-health-plan.md`](./ui/provider-account-health-plan.md)                 | 延期规划     | Provider Account 健康检查与连接状态探测                                 |
 | [`ui/provider-model-brand-icons-plan.md`](./ui/provider-model-brand-icons-plan.md)           | 试验完成     | 正式模型品牌资产与图标合同收束                                          |
@@ -32,8 +32,9 @@
 
 历史 Plan 统一位于 [`docs/archive/plans/`](../../archive/plans/)。其中包括已完成计划、被 Architecture 取代的实施稿，以及原基线已经冻结且剩余工作已拆分到当前 successor 的阶段记录。Archive 中出现的 Pending 不自动构成当前路线；当前施工只以本表为准。
 
-本次归档（2026-08-30）：
+本次归档（2026-09-03）：
 
+- [`prompt-resource-ordered-tree-and-caged-slot-plan.md`](../../archive/plans/prompt-resource-ordered-tree-and-caged-slot-plan.md) — 预设有序文件树与笼中深度架构（Phase 1—4 已落地归档，本地文件同步已拆分至独立 Plan）
 - [`renderer-surface-and-client-host-implementation-plan.md`](../../archive/plans/renderer-surface-and-client-host-implementation-plan.md) — Phase 0—6 全部实施
 - [`variable-state-system-implementation-plan.md`](../../archive/plans/variable-state-system-implementation-plan.md) — Phase 0—6 完成
 - [`history-text-transform-and-rendering-plan.md`](../../archive/plans/history-text-transform-and-rendering-plan.md) — Phase 0—5 闭环

@@ -388,7 +388,7 @@ export function resolveAssetPlacement(
   const target = findPromptNode(root, targetId)
   if (!target) throw new Error(`Prompt asset target not found: ${targetId}`)
   if (position === 'inside') {
-    if (target.node.kind === 'entry' || target.node.kind === 'script' || target.node.kind === 'order') throw new Error(`Prompt asset target cannot contain children: ${targetId}`)
+    if (target.node.kind === 'entry' || target.node.kind === 'script') throw new Error(`Prompt asset target cannot contain children: ${targetId}`)
     return { parentId: target.node.id, orderIndex: target.node.children?.length ?? 0 }
   }
   if (!target.parentId) throw new Error(`Prompt asset cannot be placed beside the root: ${targetId}`)
@@ -420,7 +420,7 @@ export function buildMoveMutations(
   const source = findPromptNode(root, nodeId)
   if (!source) throw new Error(`Prompt asset not found: ${nodeId}`)
   if (!source.parentId) throw new Error(`Prompt asset cannot be moved: ${nodeId}`)
-  if (source.node.kind === 'module' || source.node.kind === 'order') throw new Error(`Prompt asset cannot be moved: ${nodeId}`)
+  if (source.node.kind === 'module') throw new Error(`Prompt asset cannot be moved: ${nodeId}`)
   if (findPromptNode(source.node, placement.parentId)) throw new Error('Cannot move prompt asset inside its own subtree')
 
   const siblingLists = new Map<string, string[]>()

@@ -6,7 +6,7 @@ export type ContextAssetNode = {
   enabled?: boolean
   id: string
   isSection?: boolean
-  kind: 'module' | 'folder' | 'entry' | 'script' | 'virtual' | 'order' | 'slot' | 'message' | (string & {})
+  kind: 'module' | 'folder' | 'entry' | 'script' | 'virtual' | 'slot' | 'message' | (string & {})
   label: string
   meta?: string
   orderList?: string[]
