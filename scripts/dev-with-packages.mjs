@@ -57,7 +57,16 @@ function start(label, args) {
 
 function writePrefixed(stream, label, chunk) {
   for (const line of String(chunk).split(/(?<=\n)/)) {
-    if (line) stream.write(`[${label}] ${line}`)
+    if (!line) continue
+    if (line.startsWith('\x1b[?loom-raw]')) {
+      stream.write(line.replace('\x1b[?loom-raw]', ''))
+      continue
+    }
+    if (/^\r?\n$/.test(line)) {
+      stream.write(line)
+      continue
+    }
+    stream.write(`[${label}] ${line}`)
   }
 }
 

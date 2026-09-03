@@ -535,7 +535,7 @@ export async function main(): Promise<void> {
     sinks: [
       memoryLogs,
       createJsonlFileSink({ directory: localPaths.logRoot }),
-      createConsoleLogSink({ filter: shouldWriteServerConsoleLog }),
+      createConsoleLogSink({ filter: shouldWriteServerConsoleLog, colorize: true }),
     ],
   })
   const logger = rootLogger.child('system')
@@ -598,32 +598,31 @@ function printStudioServerBanner(port: number): void {
 
     const raw = readFileSync(bannerPath, 'utf8')
     const lines = raw.split('\n')
+    const rawTag = '\x1b[?loom-raw]'
 
-    // 采用与 Logo 完全一致的金属冷银灰 (Slate Silver) 渐变色阶
-    const silverGradient = [
-      '\x1b[38;2;198;208;222m',
-      '\x1b[38;2;180;191;207m',
-      '\x1b[38;2;160;172;190m',
-      '\x1b[38;2;140;153;172m',
-      '\x1b[38;2;120;134;154m',
-      '\x1b[38;2;100;115;136m',
-      '\x1b[38;2;85;100;122m',
-    ]
+    // 采用与 Logo 完全一致的金属冷银灰渐变插值 (从浅冷银 198,208,222 过渡到深沉岩蓝 90,104,126)
+    const startRgb = [198, 208, 222]
+    const endRgb = [90, 104, 126]
+    const total = lines.length
 
     const bold = '\x1b[1m'
     const dim = '\x1b[2m'
     const reset = '\x1b[0m'
     const silver = '\x1b[38;2;175;186;202m'
 
-    console.log('')
-    for (let i = 0; i < lines.length; i++) {
-      const color = silverGradient[i] ?? silverGradient[silverGradient.length - 1]
-      console.log(`${color}${lines[i]}${reset}`)
+    console.log(rawTag)
+    for (let i = 0; i < total; i++) {
+      const t = total <= 1 ? 0 : i / (total - 1)
+      const r = Math.round(startRgb[0] + (endRgb[0] - startRgb[0]) * t)
+      const g = Math.round(startRgb[1] + (endRgb[1] - startRgb[1]) * t)
+      const b = Math.round(startRgb[2] + (endRgb[2] - startRgb[2]) * t)
+      const color = `\x1b[38;2;${r};${g};${b}m`
+      console.log(`${rawTag}${color}${lines[i]}${reset}`)
     }
 
-    console.log(`  ${bold}${silver}Loom Studio${reset}  ${dim}—  Weave worlds, branch stories.${reset}`)
-    console.log(`  ${dim}➜${reset}  ${bold}Local Server:${reset}  http://127.0.0.1:${port}`)
-    console.log(`  ${dim}➜${reset}  ${bold}Studio Client:${reset} http://127.0.0.1:5173\n`)
+    console.log(`${rawTag}  ${bold}${silver}Loom Studio${reset}  ${dim}—  Weave worlds, branch stories.${reset}`)
+    console.log(`${rawTag}  ${dim}➜${reset}  ${bold}Local Server:${reset}  http://127.0.0.1:${port}`)
+    console.log(`${rawTag}  ${dim}➜${reset}  ${bold}Studio Client:${reset} http://127.0.0.1:5173\n`)
   } catch {
     // ignore banner printing errors
   }
