@@ -211,7 +211,13 @@ export function SettingsPanel(props: {
                 <h3>系统与关于 (About)</h3>
               </header>
               <div className={styles.cardSection}>
-                <h4>Loom Studio</h4>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                  <img src="/images/logo.png" alt="Loom Studio Logo" style={{ width: '38px', height: '38px', objectFit: 'contain' }} />
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '15px' }}>Loom Studio</h4>
+                    <span style={{ fontSize: '11.5px', color: 'var(--loom-muted-foreground, #888)' }}>Weave worlds, branch stories.</span>
+                  </div>
+                </div>
                 <p>下一代 Agentic Narrative 沉浸式创作与工作台。</p>
                 <div style={{ display: 'grid', gap: '10px', fontSize: '12.5px', marginTop: '10px' }}>
                   <div><strong>版本:</strong> v{STUDIO_VERSION}</div>

@@ -9,6 +9,7 @@ const studioServerUrl = process.env.STUDIO_SERVER_URL ?? 'http://127.0.0.1:4173'
 
 export default defineConfig({
   root: resolvePath('.'),
+  publicDir: resolvePath('../../public'),
   define: {
     __LOOM_STUDIO_VERSION__: JSON.stringify(packageVersion),
   },
