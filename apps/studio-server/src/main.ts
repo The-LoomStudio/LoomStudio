@@ -643,7 +643,7 @@ function printStudioServerBanner(port: number): void {
     if (ramBar) {
       console.log(`${rawTag}│  ${dim}➜${reset}  ${bold}RAM Meter:${reset}     ${ramBar}`)
     }
-    console.log(`${rawTag}╰─ ${dim}Weave worlds, branch stories.${reset}\n`)
+    console.log(`${rawTag}╰─ ${dim}Weave worlds, interweave stories.${reset}\n`)
   } catch {
     // ignore banner printing errors
   }

@@ -215,7 +215,7 @@ export function SettingsPanel(props: {
                   <img src="/images/logo.png" alt="Loom Studio Logo" style={{ width: '38px', height: '38px', objectFit: 'contain' }} />
                   <div>
                     <h4 style={{ margin: 0, fontSize: '15px' }}>Loom Studio</h4>
-                    <span style={{ fontSize: '11.5px', color: 'var(--loom-muted-foreground, #888)' }}>Weave worlds, branch stories.</span>
+                    <span style={{ fontSize: '11.5px', color: 'var(--loom-muted-foreground, #888)' }}>Weave worlds, interweave stories.</span>
                   </div>
                 </div>
                 <p>下一代 Agentic Narrative 沉浸式创作与工作台。</p>

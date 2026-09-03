@@ -4,8 +4,8 @@
 
 # Loom Studio
 
-**Weave worlds, branch stories.**  
-*经纬织境，叙事无界*
+**Weave worlds, interweave stories.**  
+*编织世界，交织故事*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 [![Node Version](https://img.shields.io/badge/Node-%3E%3D22.18.0-339933.svg?style=flat-square&logo=node.js&logoColor=white)](package.json)
