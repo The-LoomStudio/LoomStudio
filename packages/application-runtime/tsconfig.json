@@ -10,6 +10,7 @@
     { "path": "../ai-gateway" },
     { "path": "../data-engine" },
     { "path": "../document-store" },
+    { "path": "../extension-sdk" },
     { "path": "../logging" },
     { "path": "../narrative-store" },
     { "path": "../prompt-resource-store" },
