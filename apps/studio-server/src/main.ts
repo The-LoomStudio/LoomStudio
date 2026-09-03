@@ -596,14 +596,32 @@ function printStudioServerBanner(port: number): void {
     const bannerPath = candidatePaths.find(p => existsSync(p))
     if (!bannerPath) return
 
-    const banner = readFileSync(bannerPath, 'utf8')
-    const cyan = '\x1b[36m'
+    const raw = readFileSync(bannerPath, 'utf8')
+    const lines = raw.split('\n')
+
+    // 采用与 Logo 完全一致的金属冷银灰 (Slate Silver) 渐变色阶
+    const silverGradient = [
+      '\x1b[38;2;198;208;222m',
+      '\x1b[38;2;180;191;207m',
+      '\x1b[38;2;160;172;190m',
+      '\x1b[38;2;140;153;172m',
+      '\x1b[38;2;120;134;154m',
+      '\x1b[38;2;100;115;136m',
+      '\x1b[38;2;85;100;122m',
+    ]
+
     const bold = '\x1b[1m'
     const dim = '\x1b[2m'
     const reset = '\x1b[0m'
+    const silver = '\x1b[38;2;175;186;202m'
 
-    console.log(`\n${cyan}${banner}${reset}`)
-    console.log(`  ${bold}Loom Studio${reset}  ${dim}—  Weave worlds, branch stories.${reset}`)
+    console.log('')
+    for (let i = 0; i < lines.length; i++) {
+      const color = silverGradient[i] ?? silverGradient[silverGradient.length - 1]
+      console.log(`${color}${lines[i]}${reset}`)
+    }
+
+    console.log(`  ${bold}${silver}Loom Studio${reset}  ${dim}—  Weave worlds, branch stories.${reset}`)
     console.log(`  ${dim}➜${reset}  ${bold}Local Server:${reset}  http://127.0.0.1:${port}`)
     console.log(`  ${dim}➜${reset}  ${bold}Studio Client:${reset} http://127.0.0.1:5173\n`)
   } catch {
