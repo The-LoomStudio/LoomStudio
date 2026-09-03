@@ -241,3 +241,25 @@
   font-size: 12px;
   color: var(--loom-color-text-subtle);
 }
+
+.aboutLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--loom-color-accent-strong);
+  text-decoration: none;
+  font-weight: 500;
+  transition: opacity 0.12s ease;
+
+  &:hover {
+    opacity: 0.85;
+    text-decoration: underline;
+  }
+
+  svg {
+    width: 15px;
+    height: 15px;
+    fill: currentColor;
+    flex-shrink: 0;
+  }
+}

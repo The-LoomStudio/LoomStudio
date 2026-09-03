@@ -255,46 +255,6 @@
   background: transparent;
 }
 
-.railFooter {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: auto;
-  overflow: hidden;
-  padding: 10px 10px 4px;
-  color: var(--loom-color-text-subtle);
-  font-size: var(--loom-font-size-1);
-}
-
-.githubLink {
-  min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: inherit;
-  text-decoration: none;
-}
-
-.githubLink:hover,
-.githubLink:focus-visible {
-  color: var(--loom-color-text);
-}
-
-.githubLink svg {
-  width: var(--loom-icon-size-3);
-  height: var(--loom-icon-size-3);
-  flex: 0 0 auto;
-  fill: currentColor;
-  stroke: none;
-}
-
-.version {
-  flex: 0 0 auto;
-  font-family: var(--loom-font-family-mono);
-}
-
 .railTab {
   position: relative;
   width: 100%;
@@ -364,15 +324,8 @@
   margin-inline: min(var(--loom-divider-inset), 12%);
 }
 
-@container studio-rail (max-width: 140px) {
-  .version {
-    display: none;
-  }
-}
-
 @container studio-rail (max-width: 100px) {
-  .dockWorkspaceToggle,
-  .githubLink span {
+  .dockWorkspaceToggle {
     display: none;
   }
 }
