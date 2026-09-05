@@ -53,6 +53,9 @@ export function useStudioState(transportLogger: Logger) {
   const cardsState = useCards({
     api,
     initialCardName: '',
+    onCardsImported: async () => {
+      await refreshPromptResourceLibrary()
+    },
     recordEdit: editHistory.record,
     runAction: action => operations.run('cards', action).then(() => undefined),
     t,
@@ -317,7 +320,8 @@ export function useStudioState(transportLogger: Logger) {
       } catch {
         throw new Error('Prompt Resource import must be valid JSON')
       }
-      const result = await api.promptResources.import(artifact)
+      const baseName = file.name.replace(/\.[^/.]+$/, '').trim()
+      const result = await api.promptResources.import(artifact, baseName || undefined)
       resourceId = result.resource.id
       editHistory.record({
         label: t('history.context.create'),

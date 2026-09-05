@@ -1,4 +1,5 @@
 export { applicationDocumentTypes } from './foundation/document-types.js'
+export { officialPromptResourceIds } from './prompt/prompt-resource-defaults.js'
 export * from './transforms/history-text.js'
 export { createApplicationRuntime } from './runtime/runtime.js'
 export {

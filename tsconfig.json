@@ -25,6 +25,7 @@
     { "path": "./packages/kernel" },
     { "path": "./extensions/example-echo" },
     { "path": "./extensions/weather-station" },
+    { "path": "./extensions/sillytavern-importer" },
     { "path": "./apps/playground" }
   ]
 }

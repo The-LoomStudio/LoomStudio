@@ -94,6 +94,32 @@ describe('Data Layer shared transaction atomicity', () => {
     expect(tableCount(fixture.engine, 'state_revisions')).toBe(beforeRevisions)
     expect(tableCount(fixture.engine, 'narrative_timelines')).toBe(beforeTimelines)
   })
+
+  it('successfully deletes unreferenced PromptResource when DocumentStore is wrapped with logging', async () => {
+    const fixture = createFixture()
+    const memory = createMemoryLogSink({ capacity: 20 })
+    const root = createRootLogger({
+      service: 'application-runtime-atomicity-test',
+      instanceId: 'logging-delete-success',
+      sinks: [memory],
+    })
+    const runtime = createApplicationRuntime({
+      dataEngine: fixture.engine,
+      documents: withDocumentStoreLogging(fixture.documents, root.child('document.store')),
+      promptResources: fixture.promptResources,
+      narratives: fixture.narratives,
+    })
+
+    const standaloneSetting = await runtime.createPromptResource({ resourceKind: 'setting', name: 'Standalone Lore' })
+    const standalonePreset = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Standalone Preset' })
+
+    const deleteSettingResult = await runtime.deletePromptResource({ resourceId: standaloneSetting.resource.id })
+    expect(deleteSettingResult.deleted).toBe(true)
+
+    const deletePresetResult = await runtime.deletePromptResource({ resourceId: standalonePreset.resource.id })
+    expect(deletePresetResult.deleted).toBe(true)
+    await root.close()
+  })
 })
 
 function createFixture() {

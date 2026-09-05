@@ -1,0 +1,28 @@
+{
+  "manifestVersion": 2,
+  "id": "sillytavern.importer",
+  "version": "0.1.0",
+  "displayName": "SillyTavern Data Importer",
+  "description": "Seamless zero-config SillyTavern cards, lorebooks, and presets compatibility engine.",
+  "author": "Loom Studio",
+  "icon": "./icon.png",
+  "engines": {
+    "studio": "^0.1.0"
+  },
+  "tags": ["sillytavern", "importer", "cards", "lorebook", "presets"],
+  "modules": [
+    {
+      "id": "server",
+      "runtime": "server",
+      "entry": "./dist/index.js",
+      "contributes": {
+        "rpc": [
+          { "name": "sillytavern.importer.sniff" },
+          { "name": "sillytavern.importer.convertCard" },
+          { "name": "sillytavern.importer.convertLorebook" },
+          { "name": "sillytavern.importer.convertPreset" }
+        ]
+      }
+    }
+  ]
+}

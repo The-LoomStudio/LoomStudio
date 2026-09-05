@@ -261,6 +261,9 @@ importers:
       '@loom-studio/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@loom-studio/sillytavern-importer':
+        specifier: workspace:*
+        version: link:../../extensions/sillytavern-importer
       '@loom-studio/state-store':
         specifier: workspace:*
         version: link:../../packages/state-store
@@ -279,6 +282,18 @@ importers:
       '@loom-studio/extension-sdk':
         specifier: workspace:*
         version: link:../../packages/extension-sdk
+
+  extensions/sillytavern-importer:
+    dependencies:
+      '@loom-studio/application-runtime':
+        specifier: workspace:*
+        version: link:../../packages/application-runtime
+      '@loom-studio/extension-sdk':
+        specifier: workspace:*
+        version: link:../../packages/extension-sdk
+      '@loom-studio/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
 
   extensions/weather-station:
     dependencies:

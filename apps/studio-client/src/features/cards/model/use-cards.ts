@@ -6,6 +6,7 @@ import type { Card, CardMedia, CardSummary } from '../../../entities/index.js'
 type UseCardsInput = {
   api: StudioApi
   initialCardName: string
+  onCardsImported?: () => Promise<void> | void
   recordEdit(entry: {
     label: string
     changesetId: string
@@ -223,6 +224,7 @@ export function useCards(input: UseCardsInput) {
         }
       }
       await refreshCards()
+      await input.onCardsImported?.()
       if (importedCardId) setSelectedCardId(importedCardId)
       if (failures.length > 0) throw new Error(failures.join('\n'))
     })

@@ -175,12 +175,32 @@ export type PromptResourceNode = {
   meta?: string
   orderList?: string[]
   capabilities?: PromptResourceCompositionCapabilities
+  projection?: {
+    entryOrder?: number
+    lifecycle?: string
+    order?: string
+    reason?: string
+    slotKey?: string
+    slotOrder?: number
+    sourceKind?: 'actual' | 'virtual'
+    zoneId: string
+  }
   extra?: JsonObject
 }
 
 export type PromptResourceCompositionCapabilities = PromptCompositionCapabilities & {
   activation?: PromptActivation
   lifecycle?: { lifecycle: 'always' | 'conditional' | 'fresh' | string }
+  projection?: {
+    entryOrderHint?: number
+    bindingId?: string
+    zoneId: string
+    order?: string
+    reason?: string
+    slotKey?: string
+    slotOrderHint?: number
+    sourceKind?: 'actual' | 'virtual'
+  }
 }
 
 type PromptContributionResourceNode = PromptResourceNode & {

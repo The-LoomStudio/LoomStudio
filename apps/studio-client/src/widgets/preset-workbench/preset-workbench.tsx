@@ -51,6 +51,8 @@ type PresetWorkbenchProps = {
   onUpdateTool: (tool: AgentToolDefinition) => Promise<void> | void
   routeAssetId?: string
   initialSearchQuery?: string
+  selectedResourceId?: string
+  onSelectResource?: (resourceId: string) => void
   t: Translator
   workspaceId: string
 }
@@ -70,7 +72,12 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const setMetadataOpen = useStudioLayoutStore(state => state.setAssetMetadataOpen)
   const setTextEditorMode = useStudioLayoutStore(state => state.setTextEditorMode)
   const presetResources = useMemo(() => props.resources.filter(resource => resource.resourceKind === 'preset'), [props.resources])
-  const [selectedResourceId, setSelectedResourceId] = useState<string>()
+  const [internalSelectedResourceId, setInternalSelectedResourceId] = useState<string>()
+  const selectedResourceId = props.selectedResourceId ?? internalSelectedResourceId
+  const setSelectedResourceId = (id: string | undefined) => {
+    setInternalSelectedResourceId(id)
+    if (id) props.onSelectResource?.(id)
+  }
   const selectedResource = presetResources.find(resource => resource.id === selectedResourceId) ?? presetResources[0]
   const toolProjection = useMemo(() => buildPresetToolProjection({
     mounts: props.toolMounts,
@@ -826,13 +833,14 @@ function CompositionItemDetail(props: {
 
 export function PresetWorkbenchHeader(props: {
   resources: PromptResource[]
+  selectedResourceId?: string
   t: Translator
   workspaceId: string
   onSelectResource?: (resourceId: string) => void
 }) {
   const definition = STUDIO_PANEL_PRESENTATION.preset
   const presetResources = useMemo(() => props.resources.filter(r => r.resourceKind === 'preset'), [props.resources])
-  const selectedResource = presetResources[0]
+  const selectedResource = presetResources.find(r => r.id === props.selectedResourceId) ?? presetResources[0]
 
   return (
     <ContextAssetHeader

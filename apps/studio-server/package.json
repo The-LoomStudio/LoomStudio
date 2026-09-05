@@ -29,6 +29,7 @@
     "@loom-studio/state-store": "workspace:*",
     "@loom-studio/trace-audit": "workspace:*",
     "@loom-studio/transport": "workspace:*",
+    "@loom-studio/sillytavern-importer": "workspace:*",
     "fflate": "0.8.3"
   }
 }

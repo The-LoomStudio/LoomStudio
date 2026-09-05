@@ -23,7 +23,8 @@
     { "path": "../../packages/shared" },
     { "path": "../../packages/state-store" },
     { "path": "../../packages/trace-audit" },
-    { "path": "../../packages/transport" }
+    { "path": "../../packages/transport" },
+    { "path": "../../extensions/sillytavern-importer" }
   ],
   "include": ["src/**/*.ts"]
 }

@@ -44,6 +44,7 @@ export default defineConfig({
       '@loom-studio/shared': resolvePath('./packages/shared/src/index.ts'),
       '@loom-studio/trace-audit': resolvePath('./packages/trace-audit/src/index.ts'),
       '@loom-studio/transport': resolvePath('./packages/transport/src/index.ts'),
+      '@loom-studio/sillytavern-importer': resolvePath('./extensions/sillytavern-importer/src/index.ts'),
       '@loom/core': resolvePath('./packages/core/src/index.ts'),
     },
   },

@@ -393,7 +393,7 @@ export type StudioApi = {
     create(input: CreatePromptResourceInput): Promise<CreatePromptResourceResult>
     duplicate(input: DuplicatePromptResourceInput): Promise<CreatePromptResourceResult>
     delete(resourceId: string): Promise<DeletePromptResourceResult>
-    import(artifact: PromptResourceArtifact): Promise<CreatePromptResourceResult>
+    import(artifact: PromptResourceArtifact, name?: string): Promise<CreatePromptResourceResult>
     export(resourceId: string): Promise<ExportPromptResourceResult>
     updateAsset(input: UpdatePromptResourceAssetInput): Promise<UpdatePromptResourceResult>
     updateAssets(input: UpdatePromptResourceAssetsInput): Promise<UpdatePromptResourceResult>
@@ -554,7 +554,10 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       create: input => bridge.call<CreatePromptResourceResult>('application.createPromptResource', input as unknown as ClientJsonValue),
       duplicate: input => bridge.call<CreatePromptResourceResult>('application.duplicatePromptResource', input as unknown as ClientJsonValue),
       delete: resourceId => bridge.call<DeletePromptResourceResult>('application.deletePromptResource', { resourceId }),
-      import: artifact => bridge.call<CreatePromptResourceResult>('application.importPromptResource', { artifact: artifact as unknown as ClientJsonValue }),
+      import: (artifact, name?: string) => bridge.call<CreatePromptResourceResult>('application.importPromptResource', {
+        artifact: artifact as unknown as ClientJsonValue,
+        ...(name ? { name } : {}),
+      }),
       export: resourceId => bridge.call<ExportPromptResourceResult>('application.exportPromptResource', { resourceId }),
       createAsset: input => bridge.call<UpdatePromptResourceResult>('application.createPromptResourceAsset', input as unknown as ClientJsonValue),
       updateAsset: input => bridge.call<UpdatePromptResourceResult>('application.updatePromptResourceAsset', input as unknown as ClientJsonValue),

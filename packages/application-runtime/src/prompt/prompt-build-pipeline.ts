@@ -104,6 +104,46 @@ export function compilePromptDataModel(input: {
             })
           }
         }
+        if (anchorId === '@chat.session') {
+          const hasExplicitLowerAnchor = sourceNodes.some(
+            n => n.kind === 'virtual' && (n.capabilities?.targetAnchorId === '@setting.lower' || n.id === '@setting.lower')
+          )
+          if (!hasExplicitLowerAnchor) {
+            const fallbackLowerMounts = activeContributions.filter(c => c.capabilities.targetAnchorId === '@setting.lower')
+            fallbackLowerMounts.sort((a, b) => (a.capabilities.localDepth ?? Number.MAX_SAFE_INTEGER) - (b.capabilities.localDepth ?? Number.MAX_SAFE_INTEGER))
+            for (const m of fallbackLowerMounts) {
+              if (m.content && m.content.trim().length > 0) {
+                fragments.push({
+                  id: m.id,
+                  source: m.sourceRef,
+                  content: m.content,
+                  role: inheritedRole,
+                  targetAnchorId: node.id,
+                  localDepth: m.capabilities.localDepth,
+                })
+              }
+            }
+          }
+          const hasExplicitPostAnchor = sourceNodes.some(
+            n => n.kind === 'virtual' && (n.capabilities?.targetAnchorId === '@chat.session.post' || n.id === '@chat.session.post')
+          )
+          if (!hasExplicitPostAnchor) {
+            const fallbackMounts = activeContributions.filter(c => c.capabilities.targetAnchorId === '@chat.session.post')
+            fallbackMounts.sort((a, b) => (a.capabilities.localDepth ?? Number.MAX_SAFE_INTEGER) - (b.capabilities.localDepth ?? Number.MAX_SAFE_INTEGER))
+            for (const m of fallbackMounts) {
+              if (m.content && m.content.trim().length > 0) {
+                fragments.push({
+                  id: m.id,
+                  source: m.sourceRef,
+                  content: m.content,
+                  role: inheritedRole,
+                  targetAnchorId: node.id,
+                  localDepth: m.capabilities.localDepth,
+                })
+              }
+            }
+          }
+        }
       }
 
       const children = childrenByParent.get(node.id) ?? []
@@ -189,6 +229,46 @@ export function compilePromptDataModel(input: {
               targetAnchorId: child.id,
               localDepth: m.capabilities.localDepth,
             })
+          }
+        }
+        if (anchorId === '@chat.session') {
+          const hasExplicitLowerAnchor = sourceNodes.some(
+            n => n.kind === 'virtual' && (n.capabilities?.targetAnchorId === '@setting.lower' || n.id === '@setting.lower')
+          )
+          if (!hasExplicitLowerAnchor) {
+            const fallbackLowerMounts = activeContributions.filter(c => c.capabilities.targetAnchorId === '@setting.lower')
+            fallbackLowerMounts.sort((a, b) => (a.capabilities.localDepth ?? Number.MAX_SAFE_INTEGER) - (b.capabilities.localDepth ?? Number.MAX_SAFE_INTEGER))
+            for (const m of fallbackLowerMounts) {
+              if (m.content && m.content.trim().length > 0) {
+                fragments.push({
+                  id: m.id,
+                  source: m.sourceRef,
+                  content: m.content,
+                  role: m.capabilities.roleHint ?? 'system',
+                  targetAnchorId: child.id,
+                  localDepth: m.capabilities.localDepth,
+                })
+              }
+            }
+          }
+          const hasExplicitPostAnchor = sourceNodes.some(
+            n => n.kind === 'virtual' && (n.capabilities?.targetAnchorId === '@chat.session.post' || n.id === '@chat.session.post')
+          )
+          if (!hasExplicitPostAnchor) {
+            const fallbackMounts = activeContributions.filter(c => c.capabilities.targetAnchorId === '@chat.session.post')
+            fallbackMounts.sort((a, b) => (a.capabilities.localDepth ?? Number.MAX_SAFE_INTEGER) - (b.capabilities.localDepth ?? Number.MAX_SAFE_INTEGER))
+            for (const m of fallbackMounts) {
+              if (m.content && m.content.trim().length > 0) {
+                fragments.push({
+                  id: m.id,
+                  source: m.sourceRef,
+                  content: m.content,
+                  role: m.capabilities.roleHint ?? 'system',
+                  targetAnchorId: child.id,
+                  localDepth: m.capabilities.localDepth,
+                })
+              }
+            }
           }
         }
       }

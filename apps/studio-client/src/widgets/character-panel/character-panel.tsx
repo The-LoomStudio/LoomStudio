@@ -17,6 +17,7 @@ type CharacterCardSummary = {
   description?: string
   media?: { avatarAssetId?: string; coverAssetId?: string }
   settingLayer?: { entries: unknown[] }
+  opening?: { entries: Array<{ role: 'user' | 'assistant'; content: string }> }
 }
 
 type NarrativeTimelineView = { id: string; title?: string; createdAt: string; updatedAt: string }
@@ -424,6 +425,12 @@ export function CharacterPanel(props: CharacterPanelProps) {
             <div><h3>{props.t('character.description')}</h3><p>{selected.description || props.t('character.descriptionEmpty')}</p></div>
             <div className={styles.resourceOverview}><h3>{props.t('character.resources')}</h3><span>{props.t('character.resourcesCount', { count: selected.settingLayer?.entries.length ?? 0 })}</span></div>
             <button type="button" onClick={props.onOpenStatePanel}><Braces aria-hidden="true" />{props.t('character.stateVariables')}</button>
+            {selected.opening?.entries?.[0]?.content ? (
+              <div>
+                <h3>{props.t('character.opening')}</h3>
+                <p>{selected.opening.entries[0].content}</p>
+              </div>
+            ) : null}
           </section>
           )}
 

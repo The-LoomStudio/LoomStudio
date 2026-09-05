@@ -1072,6 +1072,7 @@ export type DeletePromptResourceResult = {
     presets: number
     cards: number
     timelines: number
+    agentProfiles?: number
   }
   mutation: MutationReceipt
 }

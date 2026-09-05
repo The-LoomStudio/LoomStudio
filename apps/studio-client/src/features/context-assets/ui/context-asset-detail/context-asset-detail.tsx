@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { Bot, Braces, Equal, Info, KeyRound, ListFilter, ListOrdered, MapPin, RefreshCw, Settings2, Zap } from 'lucide-react'
+import { Anchor, Bot, Braces, Equal, Info, KeyRound, ListFilter, ListOrdered, RefreshCw, Settings2, Zap } from 'lucide-react'
 import type { ContextAssetNode } from '../../../../entities/index.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
 import { LongTextEditor, type LongTextEditorHandle } from '../../../../shared/ui/long-text-editor/long-text-editor.js'
@@ -35,9 +35,8 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
   const activationDraft = readActivationDraft(props.node)
   const canShowActivation = Boolean(props.activationEditable && (props.node.kind === 'module' || props.node.kind === 'folder' || props.node.kind === 'entry'))
 
-  function updateProjection(partial: Partial<NonNullable<ContextAssetNode['projection']>>, commit = false) {
-    if (!props.node.projection) return
-    const update = { projection: { ...props.node.projection, ...partial } }
+  function updateCapabilities(partial: Partial<NonNullable<ContextAssetNode['capabilities']>>, commit = false) {
+    const update = { capabilities: { ...props.node.capabilities, ...partial } }
     props.onChangeNode(update)
     if (commit) props.onCommitNode(update)
   }
@@ -212,51 +211,40 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
           {isEntry ? (
             <section className={styles.configGrid} aria-label={props.t('context.configLabel')}>
           <div>
-            <dt><MapPin aria-hidden="true" />{props.t('context.metadata.zoneId')}</dt>
+            <dt><Anchor aria-hidden="true" />{props.t('context.metadata.targetAnchor') || '目标锚点'}</dt>
             <dd>
               <input
                 className={styles.inlineInput}
-                list="builtin-zones"
+                list="builtin-anchors"
                 disabled={readOnly}
-                value={props.node.projection?.zoneId ?? ''}
-                onChange={event => updateProjection({ zoneId: event.target.value })}
-                onBlur={event => updateProjection({ zoneId: event.target.value }, true)}
-                placeholder={props.t('context.metadata.zonePlaceholder')}
+                value={props.node.capabilities?.targetAnchorId ?? ''}
+                onChange={event => updateCapabilities({ targetAnchorId: event.target.value })}
+                onBlur={event => updateCapabilities({ targetAnchorId: event.target.value }, true)}
+                placeholder={props.t('context.metadata.targetAnchorPlaceholder') || '@setting.stable, @setting.lower, @chat.session.post…'}
               />
-              <datalist id="builtin-zones">
-                <option value="preset.system" />
-                <option value="setting.stable" />
-                <option value="chat.history" />
-                <option value="setting.lower" />
-                <option value="chat.before" />
-                <option value="chat.inside" />
-                <option value="chat.after" />
-                <option value="fresh.tail" />
+              <datalist id="builtin-anchors">
+                <option value="@preset.system" />
+                <option value="@setting.stable" />
+                <option value="@chat.tools" />
+                <option value="@chat.narrative" />
+                <option value="@chat.session" />
+                <option value="@setting.lower" />
+                <option value="@chat.session.post" />
+                <option value="@chat.input" />
+                <option value="@fresh.tail" />
               </datalist>
             </dd>
           </div>
           <div>
-            <dt><ListOrdered aria-hidden="true" />{props.t('context.metadata.orderHint')}</dt>
+            <dt><ListOrdered aria-hidden="true" />{props.t('context.metadata.localDepth') || '排序深度 (Depth)'}</dt>
             <dd>
               <input
                 className={styles.inlineInput}
                 disabled={readOnly}
                 type="number"
-                value={props.node.projection?.entryOrder ?? 0}
-                onChange={event => updateProjection({ entryOrder: parseInt(event.target.value, 10) || 0 })}
-                onBlur={event => updateProjection({ entryOrder: parseInt(event.target.value, 10) || 0 }, true)}
-              />
-            </dd>
-          </div>
-          <div>
-            <dt><KeyRound aria-hidden="true" />{props.t('context.metadata.slotKey')}</dt>
-            <dd>
-              <input
-                className={styles.inlineInput}
-                disabled={readOnly}
-                value={props.node.projection?.slotKey ?? ''}
-                onChange={event => updateProjection({ slotKey: event.target.value })}
-                onBlur={event => updateProjection({ slotKey: event.target.value }, true)}
+                value={props.node.capabilities?.localDepth ?? 0}
+                onChange={event => updateCapabilities({ localDepth: parseInt(event.target.value, 10) || 0 })}
+                onBlur={event => updateCapabilities({ localDepth: parseInt(event.target.value, 10) || 0 }, true)}
               />
             </dd>
           </div>
@@ -266,13 +254,12 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
               <select
                 className={styles.inlineInput}
                 disabled={readOnly}
-                value={props.node.projection?.lifecycle ?? 'always'}
-                onChange={event => updateProjection({ lifecycle: event.target.value }, true)}
+                value={props.node.capabilities?.lifecycle?.lifecycle ?? 'always'}
+                onChange={event => updateCapabilities({ lifecycle: { lifecycle: event.target.value } }, true)}
               >
                 <option value="always">{props.t('context.activation.always')}</option>
-                <option value="keyword">{props.t('context.activation.keyword')}</option>
-                <option value="manual">{props.t('context.activation.manual')}</option>
-                <option value="current-turn">{props.t('context.metadata.lifecycleCurrentTurn')}</option>
+                <option value="conditional">{props.t('context.activation.condition')}</option>
+                <option value="fresh">{props.t('context.metadata.lifecycleFresh') || '新鲜'}</option>
               </select>
             </dd>
           </div>

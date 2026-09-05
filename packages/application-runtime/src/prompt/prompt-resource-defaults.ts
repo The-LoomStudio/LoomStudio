@@ -146,6 +146,32 @@ function createAssistantPresetRoot(): PromptResourceNode {
         ],
       },
       {
+        id: 'official.loom-assistant.message-post-session',
+        label: 'Post Session Message',
+        meta: 'message.system',
+        category: 'preset',
+        kind: 'message',
+        capabilities: { roleHint: 'system' },
+        children: [
+          {
+            id: 'official.loom-assistant.virtual-setting-lower',
+            label: '@setting.lower',
+            meta: 'preset.virtual',
+            category: 'preset',
+            kind: 'virtual',
+            capabilities: { targetAnchorId: '@setting.lower' },
+          },
+          {
+            id: 'official.loom-assistant.virtual-post-session',
+            label: '@chat.session.post',
+            meta: 'preset.virtual',
+            category: 'preset',
+            kind: 'virtual',
+            capabilities: { targetAnchorId: '@chat.session.post' },
+          },
+        ],
+      },
+      {
         id: 'official.loom-assistant.message-user',
         label: 'User Input Message',
         meta: 'message.user',

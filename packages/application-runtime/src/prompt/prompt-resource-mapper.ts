@@ -11,7 +11,7 @@ import type {
   PromptResourceKind,
 } from '../cards/workspace.js'
 
-const legacyNodeKeys = ['configRows', 'isSection', 'orderList'] as const
+const legacyNodeKeys = ['configRows', 'isSection', 'orderList', 'projection'] as const
 
 type PromptResourceMetadata = JsonObject & {
   historyPolicy?: PromptResourceContent['historyPolicy']
@@ -86,6 +86,7 @@ export function fromStoredNode(node: StoredPromptResourceTreeNode): PromptResour
     ...(extra.configRows === undefined ? {} : { configRows: extra.configRows as PromptResourceNode['configRows'] }),
     ...(extra.isSection === undefined ? {} : { isSection: extra.isSection as boolean }),
     ...(extra.orderList === undefined ? {} : { orderList: extra.orderList as string[] }),
+    ...(extra.projection === undefined ? {} : { projection: extra.projection as PromptResourceNode['projection'] }),
     ...(Object.keys(unknownExtra).length === 0 ? {} : { extra: unknownExtra }),
     id: node.id,
     kind: node.kind,

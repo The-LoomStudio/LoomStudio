@@ -27,6 +27,10 @@ describe('studio server Agent Turn RPC', () => {
         model: { providerProfileId: profile.providerProfile.id, modelId: officialFakeModelId },
       })
 
+      const toolMounts = await callRpc<{ mounts: Array<{ toolId: string }> }>(port, 'application.listPresetToolMounts', { presetResourceId: preset.id })
+      expect(toolMounts.mounts.length).toBeGreaterThan(0)
+      expect(toolMounts.mounts.map(m => m.toolId)).toContain('official/search_context')
+
       const updatedProfile = await callRpc<{ agentProfile: { name: string } }>(port, 'application.updateAgentProfile', {
         agentProfileId: agentProfile.agentProfile.id,
         name: 'Updated Local Guide',
@@ -39,10 +43,24 @@ describe('studio server Agent Turn RPC', () => {
       expect(presets.resources.map(item => item.id)).toContain(preset.id)
       expect(profiles.agentProfiles.map(item => item.id)).toContain(agentProfile.agentProfile.id)
 
-      await callRpc(port, 'application.deleteAgentProfile', { agentProfileId: agentProfile.agentProfile.id })
-      await callRpc(port, 'application.deletePromptResource', { resourceId: preset.id })
-      await expect(callRpc(port, 'application.getAgentProfile', { agentProfileId: agentProfile.agentProfile.id })).rejects.toThrow('Document not found')
+      // 直接删除被 Agent Profile 引用的预设，验证无需手动解绑，且不会抛出阻断错误或 empty transaction 错误
+      const deletePresetResult = await callRpc<{ deleted: boolean; detachedReferences: { agentProfiles?: number } }>(port, 'application.deletePromptResource', { resourceId: preset.id })
+      expect(deletePresetResult.deleted).toBe(true)
+      expect(deletePresetResult.detachedReferences.agentProfiles).toBe(1)
       await expect(callRpc(port, 'application.getPromptResource', { resourceId: preset.id })).rejects.toThrow('Prompt resource not found')
+
+      // 验证 Agent Profile 依然保留，且 presetId 自动回退为官方默认预设
+      const profileAfterPresetDeletion = await callRpc<{ agentProfile: { id: string; presetId: string } }>(port, 'application.getAgentProfile', { agentProfileId: agentProfile.agentProfile.id })
+      expect(profileAfterPresetDeletion.agentProfile.id).toBe(agentProfile.agentProfile.id)
+      expect(profileAfterPresetDeletion.agentProfile.presetId).toBe('prompt-resource.official.loom-assistant')
+
+      // 创建一个纯空预设并立即删除，验证在没有任何关联引用/规则时，Document 参与者不会因 0 变更报 Document transaction produced no changes
+      const standalonePreset = await createPreset(port, 'Standalone Preset', 'Standalone prompt.')
+      const deleteStandaloneResult = await callRpc<{ deleted: boolean }>(port, 'application.deletePromptResource', { resourceId: standalonePreset.id })
+      expect(deleteStandaloneResult.deleted).toBe(true)
+
+      await callRpc(port, 'application.deleteAgentProfile', { agentProfileId: agentProfile.agentProfile.id })
+      await expect(callRpc(port, 'application.getAgentProfile', { agentProfileId: agentProfile.agentProfile.id })).rejects.toThrow('Document not found')
     })
   })
 

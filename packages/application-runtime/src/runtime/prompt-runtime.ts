@@ -10,6 +10,7 @@ import {
   toStoredResourceInput,
 } from '../prompt/prompt-resource-mapper.js'
 import { applyDefaultPromptProjection, type PromptResourceNode } from '../cards/workspace.js'
+import { officialPromptResourceIds } from '../prompt/prompt-resource-defaults.js'
 import { revertApplicationStateChangeset } from '../state/state.js'
 import type {
   AgentProfileContent,
@@ -66,6 +67,23 @@ export function createPromptRuntimeMethods(ctx: ApplicationRuntimeContext) {
         ...promptResourceWriteContext(requestContext),
         reason: 'application.createPromptResource',
       })
+      if (content.resourceKind === 'preset') {
+        const availableTools = ctx.agentTools.list()
+        for (const [orderIndex, definition] of availableTools.entries()) {
+          await ctx.promptResources.addPresetToolMount({
+            actor: applicationActor,
+            reason: 'application.createPromptResource',
+            presetResourceId: result.resource.id,
+            toolId: definition.id,
+            orderIndex,
+            defaultEnabled: false,
+            ...(definition.prompt?.activation ? { activation: structuredClone(definition.prompt.activation) } : {}),
+            ...(definition.prompt?.provider ? { provider: { ...definition.prompt.provider } } : {}),
+            ...(definition.prompt?.content ? { content: { ...definition.prompt.content } } : {}),
+            origin: { kind: 'manual' },
+          })
+        }
+      }
       return { resource: fromStoredResource(result.resource), mutation: { changesetId: result.commit.changesetId } }
     },
 
@@ -112,12 +130,13 @@ export function createPromptRuntimeMethods(ctx: ApplicationRuntimeContext) {
 
     deletePromptResource: async (input: DeletePromptResourceInput, requestContext?: RuntimeRequestContext): Promise<DeletePromptResourceResult> => {
       const resource = await readMappedResource(ctx.promptResources, input.resourceId)
-      if (resource.resourceKind === 'preset') {
-        const profiles = await listDocuments<AgentProfileContent>(ctx.documents, applicationDocumentTypes.agentProfile)
-        if (profiles.some(profile => profile.content.presetId === input.resourceId)) {
-          throw new Error(`Preset is still referenced by an Agent Profile: ${input.resourceId}`)
-        }
+      if (resource.origin?.kind === 'builtin') {
+        throw new Error(`Builtin prompt resource cannot be deleted: ${input.resourceId}`)
       }
+      const referencedProfiles = resource.resourceKind === 'preset'
+        ? (await listDocuments<AgentProfileContent>(ctx.documents, applicationDocumentTypes.agentProfile))
+          .filter(profile => profile.content.presetId === input.resourceId)
+        : []
       const timelineReferences = await findTimelinePromptResourceReferences(ctx, input.resourceId)
       const cards = await listDocuments<CardSourceContent>(ctx.documents, applicationDocumentTypes.cardSource)
       const referencedCards = cards.filter(card => card.content.promptResourceIds?.includes(input.resourceId))
@@ -146,13 +165,20 @@ export function createPromptRuntimeMethods(ctx: ApplicationRuntimeContext) {
             expectedPromptResourceIds: timeline.promptResourceIds,
           })
         }
-        if (referencedCards.length === 0) {
-          return documentParticipant.participateTransaction(dataTx, async documents => {
-            for (const rule of ownedRules) await documents.delete({ id: rule.id, expectedVersion: rule.version })
-            return { deleted: resourceTx.deleteResource({ resourceId: input.resourceId, expectedVersion: resource.version }) }
-          }, { allowEmpty: true })
-        }
         return await documentParticipant.participateTransaction(dataTx, async documents => {
+          for (const profile of referencedProfiles) {
+            const currentProfile = await readDocument<AgentProfileContent>(documents, profile.id, applicationDocumentTypes.agentProfile)
+            await writeDocument<AgentProfileContent>(documents, {
+              id: currentProfile.id,
+              type: applicationDocumentTypes.agentProfile,
+              content: {
+                ...currentProfile.content,
+                presetId: officialPromptResourceIds.assistantPreset,
+                updatedAt: ctx.now(),
+              },
+              expectedVersion: currentProfile.version,
+            })
+          }
           for (const card of referencedCards) {
             const currentCard = await readDocument<CardSourceContent>(documents, card.id, applicationDocumentTypes.cardSource)
             await writeDocument<CardSourceContent>(documents, {
@@ -168,11 +194,16 @@ export function createPromptRuntimeMethods(ctx: ApplicationRuntimeContext) {
           }
           for (const rule of ownedRules) await documents.delete({ id: rule.id, expectedVersion: rule.version })
           return { deleted: resourceTx.deleteResource({ resourceId: input.resourceId, expectedVersion: resource.version }) }
-        })
+        }, { allowEmpty: true })
       })
       return {
         deleted: true as const,
-        detachedReferences: { presets: presetCount, cards: referencedCards.length, timelines: timelineReferences.length },
+        detachedReferences: {
+          presets: presetCount,
+          cards: referencedCards.length,
+          timelines: timelineReferences.length,
+          ...(referencedProfiles.length > 0 ? { agentProfiles: referencedProfiles.length } : {}),
+        },
         mutation: { changesetId: transaction.commit.changesetId },
       }
     },
@@ -200,6 +231,23 @@ export function createPromptRuntimeMethods(ctx: ApplicationRuntimeContext) {
         ...promptResourceWriteContext(requestContext),
         reason: 'application.importPromptResource',
       })
+      if (content.resourceKind === 'preset') {
+        const availableTools = ctx.agentTools.list()
+        for (const [orderIndex, definition] of availableTools.entries()) {
+          await ctx.promptResources.addPresetToolMount({
+            actor: applicationActor,
+            reason: 'application.importPromptResource',
+            presetResourceId: result.resource.id,
+            toolId: definition.id,
+            orderIndex,
+            defaultEnabled: false,
+            ...(definition.prompt?.activation ? { activation: structuredClone(definition.prompt.activation) } : {}),
+            ...(definition.prompt?.provider ? { provider: { ...definition.prompt.provider } } : {}),
+            ...(definition.prompt?.content ? { content: { ...definition.prompt.content } } : {}),
+            origin: { kind: 'manual' },
+          })
+        }
+      }
       return { resource: fromStoredResource(result.resource), mutation: { changesetId: result.commit.changesetId } }
     },
 
@@ -327,6 +375,7 @@ export function createEmptyPromptResourceContent(
         { id: createId('prompt-node'), label: 'Tools Context', kind: 'virtual', capabilities: { targetAnchorId: '@chat.tools' } },
         { id: createId('prompt-node'), label: 'Narrative History', kind: 'virtual', capabilities: { targetAnchorId: '@chat.narrative' } },
         { id: createId('prompt-node'), label: 'Session History', kind: 'virtual', capabilities: { targetAnchorId: '@chat.session' } },
+        { id: createId('prompt-node'), label: 'Post Session Context', kind: 'virtual', capabilities: { targetAnchorId: '@chat.session.post' } },
         { id: createId('prompt-node'), label: 'User Input', kind: 'virtual', capabilities: { targetAnchorId: '@chat.input' } },
       ],
     } : {}),

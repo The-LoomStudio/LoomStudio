@@ -11,6 +11,7 @@ import type {
   SettingMountSource,
 } from '@loom-studio/application-runtime'
 import { isPromptActivation, isPromptResourceArtifact } from '@loom-studio/application-runtime'
+import { convertSillyTavernLorebook, convertSillyTavernPreset, sniffData } from '@loom-studio/sillytavern-importer'
 import type { JsonValue } from '@loom-studio/shared'
 import {
   isRecord,
@@ -66,8 +67,21 @@ export async function handleWorkspacesRpc(
       }, context) as unknown as JsonValue
 
     case 'application.importPromptResource': {
-      const artifact = isRecord(params) ? params.artifact : undefined
-      if (!isPromptResourceArtifact(artifact)) throw new Error('Expected valid Prompt Resource artifact param: artifact')
+      const rawArtifact = isRecord(params) ? params.artifact : undefined
+      const defaultName = isRecord(params) && typeof params.name === 'string' && params.name.trim() ? params.name.trim() : undefined
+      let artifact: import('@loom-studio/application-runtime').PromptResourceArtifact
+      if (isPromptResourceArtifact(rawArtifact)) {
+        artifact = rawArtifact
+      } else {
+        const sniff = sniffData(rawArtifact)
+        if (sniff.detected && sniff.format === 'st.lorebook.json') {
+          artifact = convertSillyTavernLorebook(rawArtifact as never, defaultName).artifact
+        } else if (sniff.detected && sniff.format === 'st.preset.json') {
+          artifact = convertSillyTavernPreset(rawArtifact as never, defaultName).artifact
+        } else {
+          throw new Error('Expected valid Prompt Resource artifact param: artifact')
+        }
+      }
       return await runtime.importPromptResource({ artifact }, context) as unknown as JsonValue
     }
 

@@ -7,7 +7,7 @@ import {
   obsoleteBuiltinAgentToolIds,
   officialPromptResourceIds,
 } from '../prompt/prompt-resource-defaults.js'
-import { toStoredResourceInput } from '../prompt/prompt-resource-mapper.js'
+import { listMappedResources, toStoredResourceInput } from '../prompt/prompt-resource-mapper.js'
 import type { PromptResourceNode } from '../cards/workspace.js'
 import type {
   AgentToolContent,
@@ -196,21 +196,25 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         })
       }
       await refreshAgentToolRegistry(ctx)
-      const officialToolMounts = await ctx.promptResources.listPresetToolMounts({ presetResourceId: officialPromptResourceIds.assistantPreset })
-      for (const [orderIndex, definition] of ctx.agentTools.list().entries()) {
-        if (officialToolMounts.some(mount => mount.toolId === definition.id)) continue
-        await ctx.promptResources.addPresetToolMount({
-          actor: applicationActor,
-          reason: 'application.initializePromptResources',
-          presetResourceId: officialPromptResourceIds.assistantPreset,
-          toolId: definition.id,
-          orderIndex,
-          defaultEnabled: false,
-          ...(definition.prompt?.activation ? { activation: structuredClone(definition.prompt.activation) } : {}),
-          ...(definition.prompt?.provider ? { provider: { ...definition.prompt.provider } } : {}),
-          ...(definition.prompt?.content ? { content: { ...definition.prompt.content } } : {}),
-          origin: { kind: 'builtin', key: 'loom-assistant-preset' },
-        })
+      const presets = await listMappedResources(ctx.promptResources, 'preset')
+      const availableTools = ctx.agentTools.list()
+      for (const preset of presets) {
+        const existingMounts = await ctx.promptResources.listPresetToolMounts({ presetResourceId: preset.id })
+        for (const [orderIndex, definition] of availableTools.entries()) {
+          if (existingMounts.some(mount => mount.toolId === definition.id)) continue
+          await ctx.promptResources.addPresetToolMount({
+            actor: applicationActor,
+            reason: 'application.initializePromptResources',
+            presetResourceId: preset.id,
+            toolId: definition.id,
+            orderIndex,
+            defaultEnabled: false,
+            ...(definition.prompt?.activation ? { activation: structuredClone(definition.prompt.activation) } : {}),
+            ...(definition.prompt?.provider ? { provider: { ...definition.prompt.provider } } : {}),
+            ...(definition.prompt?.content ? { content: { ...definition.prompt.content } } : {}),
+            origin: preset.origin ?? { kind: 'manual' },
+          })
+        }
       }
     },
 

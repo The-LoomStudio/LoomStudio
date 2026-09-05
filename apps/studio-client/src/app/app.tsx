@@ -38,6 +38,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
   const [composerHeight, setComposerHeight] = useState(0)
   const [agentExpanded, setAgentExpanded] = useState(false)
   const [agentExpansionHeight, setAgentExpansionHeight] = useState(320)
+  const [selectedPresetId, setSelectedPresetId] = useState<string>()
   const timelineRouteRequestRef = useRef(0)
   const navigation = useStudioNavigation()
   const uiScale = useStudioLayoutStore(current => current.uiScale)
@@ -139,7 +140,12 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
     onDeleteNode: state.deleteContextAsset,
     onCreateResource: state.createPromptResource,
     onDuplicateResource: state.duplicatePromptResource,
-    onDeleteResource: state.deletePromptResource,
+    onDeleteResource: async (resourceId: string) => {
+      await state.deletePromptResource(resourceId)
+      if (selectedPresetId === resourceId) {
+        setSelectedPresetId(undefined)
+      }
+    },
     onImportResource: state.importPromptResource,
     onExportResource: state.exportPromptResource,
     t: state.t,
@@ -219,8 +225,10 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         onChangeCardDraft={state.setCardDraft}
         onCreateCard={state.createCard}
         onCreateTimelineFromCard={async () => {
-          state.resetToDraftTimeline()
-          navigation.openNarrative(undefined, undefined)
+          const activated = await state.createTimelineFromCard()
+          if (activated) {
+            navigation.openNarrative(activated.timelineId, activated.branchId)
+          }
         }}
         onDeleteCards={state.deleteCards}
         onPreviewCardDeletion={state.previewCardDeletion}
@@ -231,12 +239,9 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
           void state.refreshCardTimelines(cardId).then(timelines => {
             const latest = [...timelines].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]
             if (latest) {
-              void state.activateTimeline(latest.id).then(branchId => {
-                if (branchId) navigation.openNarrative(latest.id, branchId)
-              })
+              void state.activateTimeline(latest.id)
             } else {
-              state.resetToDraftTimeline()
-              navigation.openNarrative(undefined, undefined)
+              void state.createTimelineFromCard()
             }
           })
         }}
@@ -254,6 +259,8 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
     preset: () => (
       <PresetWorkbench
         {...contextAssetEditorProps}
+        selectedResourceId={selectedPresetId}
+        onSelectResource={setSelectedPresetId}
         timelinePromptResourceIds={state.narrativeTimeline?.promptResourceIds}
         settingMounts={state.settingMounts}
         tools={state.agentTools}
@@ -369,6 +376,8 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         preset: (
           <PresetWorkbenchHeader
             resources={state.promptResources}
+            selectedResourceId={selectedPresetId}
+            onSelectResource={setSelectedPresetId}
             t={state.t}
             workspaceId={assetWorkspaceId}
           />

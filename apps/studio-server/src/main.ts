@@ -4,6 +4,7 @@ import {
   createDocumentBackedAiGateway,
   createDocumentBackedProfiledAiGateway,
   createOfficialAgentToolRegistry,
+  type CardBundleArtifact,
 } from '@loom-studio/application-runtime'
 import {
   createAiGatewayCapabilityRegistry,
@@ -46,6 +47,7 @@ import {
   readPolyglotArchive,
 } from './codecs/card-png.js'
 import { decodeCardBundleZip, encodeCardBundleZip, type CardBundleMedia } from './codecs/card-bundle-zip.js'
+import { convertSillyTavernCard, sniffData } from '@loom-studio/sillytavern-importer'
 import { createStudioRpcRouter } from './rpc/studio-rpc-router.js'
 import { createServerExtensionManager } from './extensions/extension-manager.js'
 import { createExtensionStateStore } from './extensions/extension-state-store.js'
@@ -418,9 +420,23 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
       import: async (source, session) => {
         const archive = readPolyglotArchive(source)
         if (archive) return await importCardArchive(await decodeCardBundleZip(archive), session.clientId)
-        const artifact = decodeCardPng(source)
+        let artifact: CardBundleArtifact
+        let avatarBytes: Uint8Array
+        try {
+          artifact = decodeCardPng(source)
+          avatarBytes = readPngImageBytes(source)
+        } catch (error) {
+          const sniff = sniffData(source)
+          if (sniff.detected && sniff.format === 'st.card.png') {
+            const converted = convertSillyTavernCard(source)
+            artifact = converted.artifact
+            avatarBytes = converted.avatarBytes ?? readPngImageBytes(source)
+          } else {
+            throw error
+          }
+        }
         const media = await assets.createMediaAsset({
-          source: readPngImageBytes(source),
+          source: avatarBytes,
           kind: 'card.avatar',
           mediaType: 'image/png',
           maxBytes: 32 * 1024 * 1024,

@@ -49,10 +49,11 @@ export function withDocumentStoreLogging(documents: DocumentStore, logger: Logge
       participateTransaction: (
         dataTx: Parameters<SqliteDocumentStore['participateTransaction']>[0],
         fn: Parameters<SqliteDocumentStore['participateTransaction']>[1],
+        options?: Parameters<SqliteDocumentStore['participateTransaction']>[2],
       ) => observe(
         logger,
         failureData('participate', dataTx.actor, dataTx.reason),
-        () => sqliteDocuments.participateTransaction!(dataTx, fn),
+        () => sqliteDocuments.participateTransaction!(dataTx, fn, options),
         () => undefined,
       ),
     } : {}),
