@@ -1,4 +1,5 @@
-import type { DocumentRecord, DocumentStore } from '@loom-studio/document-store'
+import type { DocumentRecord, DocumentStore, DocumentTransaction } from '@loom-studio/document-store'
+import type { SqliteDataTransaction } from '@loom-studio/data-engine'
 import type { NarrativeTimeline } from '@loom-studio/narrative-store'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
@@ -185,6 +186,35 @@ export function createCardsRuntimeMethods(ctx: ApplicationRuntimeContext) {
       const timelines = ctx.narratives ? await listAllCardTimelines(ctx, input.cardId) : []
       const ownedRules = (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule))
         .filter(rule => rule.content.owner.kind === 'card' && rule.content.owner.cardId === input.cardId)
+
+      const targetResources = input.includePromptResources
+        ? (await Promise.all((card.content.promptResourceIds ?? []).map(id => ctx.promptResources.getResource(id))))
+            .filter((resource): resource is NonNullable<typeof resource> => Boolean(resource && !resource.tombstoned))
+        : []
+
+      const deleteCascadeResources = async (
+        dataTx: SqliteDataTransaction,
+        documents: DocumentTransaction,
+      ) => {
+        if (!input.includePromptResources) return
+        const resourceTx = ctx.promptResources.transaction(dataTx)
+        for (const resource of targetResources) {
+          resourceTx.deleteResource({ resourceId: resource.id, expectedVersion: resource.version })
+        }
+        for (const payloadId of card.content.portableExtensionPayloadIds ?? []) {
+          const payloadDoc = await documents.get(payloadId)
+          if (payloadDoc && !payloadDoc.meta.tombstone) {
+            await documents.delete({ id: payloadDoc.id, expectedVersion: payloadDoc.version })
+          }
+        }
+        if (card.content.importBundleId) {
+          const bundleDoc = await documents.get(card.content.importBundleId)
+          if (bundleDoc && !bundleDoc.meta.tombstone) {
+            await documents.delete({ id: bundleDoc.id, expectedVersion: bundleDoc.version })
+          }
+        }
+      }
+
       if (input.includePlayData && timelines.length > 0) {
         const narratives = requireNarratives(ctx)
         const documentParticipant = requireDocumentParticipant(ctx)
@@ -208,6 +238,7 @@ export function createCardsRuntimeMethods(ctx: ApplicationRuntimeContext) {
               }
               await tombstoneExtensionStorageScope(documents, { kind: 'timeline', timelineId: timeline.id })
             }
+            await deleteCascadeResources(dataTx, documents)
             const currentCard = await readDocument<CardSourceContent>(documents, input.cardId, applicationDocumentTypes.cardSource)
             await tombstoneExtensionStorageScope(documents, { kind: 'card', cardId: input.cardId })
             for (const rule of ownedRules) await documents.delete({ id: rule.id, expectedVersion: rule.version })
@@ -233,6 +264,31 @@ export function createCardsRuntimeMethods(ctx: ApplicationRuntimeContext) {
           templates,
         }))
       }
+
+      if (input.includePromptResources) {
+        const documentParticipant = requireDocumentParticipant(ctx)
+        const result = await ctx.dataEngine.transact(
+          narrativeWriteContext(requestContext, 'application.deleteCard'),
+          async dataTx => documentParticipant.participateTransaction(dataTx, async documents => {
+            await deleteCascadeResources(dataTx, documents)
+            const currentCard = await readDocument<CardSourceContent>(documents, input.cardId, applicationDocumentTypes.cardSource)
+            for (const runtimeContext of missingRuntimeContexts) {
+              await writeDocument<TimelineRuntimeContextContent>(documents, {
+                id: timelineRuntimeContextId(runtimeContext.timelineId),
+                type: applicationDocumentTypes.timelineRuntimeContext,
+                content: runtimeContext,
+                expectedVersion: 'new',
+              })
+            }
+            await tombstoneExtensionStorageScope(documents, { kind: 'card', cardId: input.cardId })
+            for (const rule of ownedRules) await documents.delete({ id: rule.id, expectedVersion: rule.version })
+            await documents.delete({ id: currentCard.id, expectedVersion: currentCard.version })
+            return true as const
+          }, { allowEmpty: true }),
+        )
+        return { deleted: true as const, mutation: { changesetId: result.commit.changesetId } }
+      }
+
       const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.deleteCard', async documents => {
         const currentCard = await readDocument<CardSourceContent>(documents, input.cardId, applicationDocumentTypes.cardSource)
         for (const runtimeContext of missingRuntimeContexts) {
@@ -285,12 +341,11 @@ export function createCardsRuntimeMethods(ctx: ApplicationRuntimeContext) {
     ): Promise<ImportCardBundleResult> => {
       const artifact = input.source ? parseCardBundleSource(input.source.text) : input.artifact
       await assertCardMedia(ctx, artifact.card.media)
-      const sourceText = input.source?.text ?? `${JSON.stringify(artifact, null, 2)}\n`
-      const storedSourceArtifact = ctx.sourceArtifacts
+      const storedSourceArtifact = ctx.sourceArtifacts && input.source
         ? await ctx.sourceArtifacts.preserve({
-          source: new TextEncoder().encode(sourceText),
+          source: new TextEncoder().encode(input.source.text),
           format: 'loom.cardBundle',
-          originalFileName: input.source?.originalFileName,
+          originalFileName: input.source.originalFileName,
           mediaType: 'application/json',
           importerVersion: 'loom.cardBundle@2',
           actor: requestContext?.actor ?? (requestContext?.clientId

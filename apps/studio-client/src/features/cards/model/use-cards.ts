@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { toast } from 'sonner'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import type { Card, CardMedia, CardSummary } from '../../../entities/index.js'
@@ -7,6 +8,7 @@ type UseCardsInput = {
   api: StudioApi
   initialCardName: string
   onCardsImported?: () => Promise<void> | void
+  onCardsDeleted?: () => Promise<void> | void
   recordEdit(entry: {
     label: string
     changesetId: string
@@ -139,9 +141,10 @@ export function useCards(input: UseCardsInput) {
     await deleteCards([selectedCardId])
   }
 
-  async function deleteCards(cardIds: string[], options?: { includePlayData?: boolean }) {
+  async function deleteCards(cardIds: string[], options?: { includePlayData?: boolean; includePromptResources?: boolean }) {
     const ids = [...new Set(cardIds)].filter(cardId => cards.some(card => card.id === cardId))
     if (ids.length === 0) return
+    const deletedNames = ids.map(id => cards.find(card => card.id === id)?.name).filter((name): name is string => Boolean(name))
 
     await input.runAction(async () => {
       let hasDeletedCard = false
@@ -157,7 +160,17 @@ export function useCards(input: UseCardsInput) {
           })
         }
       } finally {
-        if (hasDeletedCard) await refreshCards()
+        if (hasDeletedCard) {
+          await refreshCards()
+          if (options?.includePromptResources) {
+            await input.onCardsDeleted?.()
+          }
+          if (deletedNames.length === 1) {
+            toast.success(input.t('character.cardDeletedNotice', { name: deletedNames[0] }))
+          } else if (deletedNames.length > 1) {
+            toast.success(input.t('character.cardsDeletedNotice', { count: deletedNames.length }))
+          }
+        }
       }
     })
   }
@@ -205,6 +218,7 @@ export function useCards(input: UseCardsInput) {
     if (files.length === 0) return
     await input.runAction(async () => {
       let importedCardId: string | undefined
+      const importedNames: string[] = []
       const failures: string[] = []
       for (const file of files) {
         try {
@@ -214,11 +228,13 @@ export function useCards(input: UseCardsInput) {
             headers: { 'content-type': loomCard ? 'application/vnd.loom.card+zip' : 'image/png' },
             body: file,
           })
-          const result = readJsonResponse(await response.text()) as { card?: { id?: unknown }; error?: { message?: unknown } }
+          const result = readJsonResponse(await response.text()) as { card?: { id?: unknown; name?: unknown }; error?: { message?: unknown } }
           if (!response.ok || typeof result.card?.id !== 'string') {
             throw new Error(typeof result.error?.message === 'string' ? result.error.message : `Card import failed (${response.status})`)
           }
           importedCardId = result.card.id
+          const cardName = typeof result.card.name === 'string' ? result.card.name : file.name.replace(/\.[^/.]+$/, '')
+          importedNames.push(cardName)
         } catch (error) {
           failures.push(`${file.name}: ${error instanceof Error ? error.message : String(error)}`)
         }
@@ -226,6 +242,11 @@ export function useCards(input: UseCardsInput) {
       await refreshCards()
       await input.onCardsImported?.()
       if (importedCardId) setSelectedCardId(importedCardId)
+      if (importedNames.length === 1) {
+        toast.success(input.t('character.cardImportedNotice', { name: importedNames[0] }))
+      } else if (importedNames.length > 1) {
+        toast.success(input.t('character.cardsImportedNotice', { count: importedNames.length }))
+      }
       if (failures.length > 0) throw new Error(failures.join('\n'))
     })
   }

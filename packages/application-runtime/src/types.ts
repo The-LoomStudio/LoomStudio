@@ -738,6 +738,7 @@ export type UpdateCardResult = {
 export type DeleteCardInput = {
   cardId: string
   includePlayData?: boolean
+  includePromptResources?: boolean
 }
 
 export type PreviewCardDeletionInput = {

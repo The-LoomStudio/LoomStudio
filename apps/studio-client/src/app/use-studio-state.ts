@@ -56,6 +56,9 @@ export function useStudioState(transportLogger: Logger) {
     onCardsImported: async () => {
       await refreshPromptResourceLibrary()
     },
+    onCardsDeleted: async () => {
+      await refreshPromptResourceLibrary()
+    },
     recordEdit: editHistory.record,
     runAction: action => operations.run('cards', action).then(() => undefined),
     t,

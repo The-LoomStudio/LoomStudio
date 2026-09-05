@@ -24,7 +24,7 @@ const processes = [
   start('loom-core', ['--filter', '@loom/core', 'exec', 'tsc', '-p', 'tsconfig.build.json', '--watch', '--preserveWatchOutput']),
   start('studio-packages', ['exec', 'tsc', '-b', 'tsconfig.packages.json', '--watch', '--preserveWatchOutput']),
   target === 'server'
-    ? start('studio-server', ['exec', 'tsx', 'watch', '--include', 'packages/**/dist/**/*', 'apps/studio-server/src/main.ts'])
+    ? start('studio-server', ['exec', 'tsx', 'watch', '--include', 'packages/**/dist/**/*', '--include', 'extensions/**/dist/**/*', 'apps/studio-server/src/main.ts'])
     : start('studio-client', ['exec', 'vite', '--config', 'apps/studio-client/vite.config.ts']),
 ]
 

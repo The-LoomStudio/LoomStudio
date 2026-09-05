@@ -323,6 +323,39 @@ describe('application runtime card bundle integration', () => {
     })).resolves.toMatchObject({ deleted: true })
   })
 
+  it('cascade deletes prompt resources and portable extension payloads when includePromptResources is true', async () => {
+    const { runtime } = createTestRuntime()
+    const resource = await runtime.createPromptResource({ resourceKind: 'setting', name: 'Card Lorebook' })
+    const payload = await runtime.createPortableExtensionPayload({
+      payload: {
+        packageId: 'example.script',
+        fileName: 'script.json',
+        format: 'example.script',
+        mediaType: 'application/json',
+        content: '{"active":true}',
+      },
+    })
+    const card = await runtime.createCard({ name: 'Cascaded Card' })
+    await runtime.updateCardPromptResources({
+      cardId: card.card.id,
+      promptResourceIds: [resource.resource.id],
+    })
+    const updatedCard = await runtime.getCard({ cardId: card.card.id })
+    await runtime.replaceCardPortableExtensionPayloads({
+      cardId: card.card.id,
+      expectedVersion: updatedCard.card.version,
+      payloadIds: [payload.payload.id],
+    })
+
+    await expect(runtime.deleteCard({ cardId: card.card.id, includePromptResources: true }))
+      .resolves.toMatchObject({ deleted: true })
+
+    await expect(runtime.getPromptResource({ resourceId: resource.resource.id }))
+      .rejects.toThrow('Prompt resource not found')
+    await expect(runtime.getPortableExtensionPayload({ payloadId: payload.payload.id }))
+      .rejects.toThrow('Document not found')
+  })
+
   it('deletes Text Transform Rules owned by a deleted Card or Preset', async () => {
     const { runtime } = createTestRuntime()
     const card = await runtime.createCard({ name: 'Rule Owner Card' })

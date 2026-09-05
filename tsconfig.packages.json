@@ -21,6 +21,7 @@
     { "path": "./packages/client-bridge" },
     { "path": "./packages/trace-audit" },
     { "path": "./packages/loom-runner" },
-    { "path": "./packages/kernel" }
+    { "path": "./packages/kernel" },
+    { "path": "./extensions/sillytavern-importer" }
   ]
 }

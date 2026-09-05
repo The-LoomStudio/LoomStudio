@@ -337,7 +337,7 @@ export type StudioApi = {
     update(input: UpdateCardInput): Promise<UpdateCardResult>
     updatePromptResources(input: UpdateCardPromptResourcesInput): Promise<UpdateCardResult>
     previewDeletion(cardId: string): Promise<PreviewCardDeletionResult>
-    delete(cardId: string, options?: { includePlayData?: boolean }): Promise<DeleteCardResult>
+    delete(cardId: string, options?: { includePlayData?: boolean; includePromptResources?: boolean }): Promise<DeleteCardResult>
     export(cardId: string): Promise<ExportCardBundleResult>
   }
   agentSessions: {
@@ -495,6 +495,7 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       delete: (cardId, options) => bridge.call<DeleteCardResult>('application.deleteCard', {
         cardId,
         ...(options?.includePlayData ? { includePlayData: true } : {}),
+        ...(options?.includePromptResources ? { includePromptResources: true } : {}),
       }),
       export: cardId => bridge.call<ExportCardBundleResult>('application.exportCardBundle', { cardId }),
     },

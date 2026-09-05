@@ -34,7 +34,7 @@ type CharacterPanelProps = {
   onCreateTimelineFromCard(): Promise<void>
   onExportCard(card: CharacterCardSummary, format: 'png' | 'polyglot' | 'loomcard'): Promise<void>
   onImportCards(files: File[]): Promise<void>
-  onDeleteCards(cardIds: string[], options?: { includePlayData?: boolean }): Promise<void>
+  onDeleteCards(cardIds: string[], options?: { includePlayData?: boolean; includePromptResources?: boolean }): Promise<void>
   onPreviewCardDeletion(cardId: string): Promise<{ timelines: Array<{ id: string }> }>
   onSelectCard(cardId: string): void
   onOpenTimeline(timeline: NarrativeTimelineView): void
@@ -85,7 +85,8 @@ export function CharacterPanel(props: CharacterPanelProps) {
   const [editingGroupId, setEditingGroupId] = useState<string>()
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>()
   const [deleteTimelineCount, setDeleteTimelineCount] = useState(0)
-  const [includePlayData, setIncludePlayData] = useState(false)
+  const [includePlayData, setIncludePlayData] = useState(true)
+  const [includePromptResources, setIncludePromptResources] = useState(true)
   const [exportCard, setExportCard] = useState<CharacterCardSummary>()
   const [remoteImportOpen, setRemoteImportOpen] = useState(false)
   const [remoteImportUrl, setRemoteImportUrl] = useState('')
@@ -120,7 +121,8 @@ export function CharacterPanel(props: CharacterPanelProps) {
 
   useEffect(() => {
     let active = true
-    setIncludePlayData(false)
+    setIncludePlayData(true)
+    setIncludePromptResources(true)
     if (!pendingDeleteIds?.length) {
       setDeleteTimelineCount(0)
       return () => { active = false }
@@ -237,7 +239,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
       setPendingDeleteIds(undefined)
       return
     }
-    await props.onDeleteCards(cardIds, { includePlayData })
+    await props.onDeleteCards(cardIds, { includePlayData, includePromptResources })
     organization.removeCards(cardIds)
     setSelectedCardIds(current => new Set([...current].filter(cardId => !cardIds.includes(cardId))))
     setPendingDeleteIds(undefined)
@@ -327,12 +329,14 @@ export function CharacterPanel(props: CharacterPanelProps) {
         busy={props.busy}
         count={pendingDeleteIds?.length ?? 0}
         includePlayData={includePlayData}
+        includePromptResources={includePromptResources}
         open={Boolean(pendingDeleteIds)}
         timelineCount={deleteTimelineCount}
         t={props.t}
         onCancel={() => setPendingDeleteIds(undefined)}
         onConfirm={() => void confirmDelete()}
         onIncludePlayDataChange={setIncludePlayData}
+        onIncludePromptResourcesChange={setIncludePromptResources}
       />
     </>
   )
@@ -705,7 +709,19 @@ function CharacterGroupDialog(props: {
   )
 }
 
-function DeleteConfirmation(props: { busy: boolean; count: number; includePlayData: boolean; onCancel(): void; onConfirm(): void; onIncludePlayDataChange(value: boolean): void; open: boolean; timelineCount: number; t: Translator }) {
+function DeleteConfirmation(props: {
+  busy: boolean
+  count: number
+  includePlayData: boolean
+  includePromptResources: boolean
+  onCancel(): void
+  onConfirm(): void
+  onIncludePlayDataChange(value: boolean): void
+  onIncludePromptResourcesChange(value: boolean): void
+  open: boolean
+  timelineCount: number
+  t: Translator
+}) {
   return (
     <Dialog
       actions={(
@@ -728,6 +744,10 @@ function DeleteConfirmation(props: { busy: boolean; count: number; includePlayDa
           <span>{props.t('character.deletePlayData', { count: props.timelineCount })}</span>
         </label>
       ) : null}
+      <label className={styles.deletePlayDataOption}>
+        <input checked={props.includePromptResources} disabled={props.busy} type="checkbox" onChange={event => props.onIncludePromptResourcesChange(event.target.checked)} />
+        <span>{props.t('character.deletePromptResources')}</span>
+      </label>
     </Dialog>
   )
 }

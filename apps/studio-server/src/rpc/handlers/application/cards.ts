@@ -63,6 +63,7 @@ export async function handleCardsRpc(
       return await runtime.deleteCard({
         cardId: readString(params, 'cardId'),
         includePlayData: readOptionalBoolean(params, 'includePlayData'),
+        includePromptResources: readOptionalBoolean(params, 'includePromptResources'),
       }, context) as unknown as JsonValue
 
     case 'application.previewCardDeletion':
