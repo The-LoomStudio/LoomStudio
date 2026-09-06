@@ -139,7 +139,7 @@
 
   /* ── 布局尺寸 ── */
   --loom-chat-width: 680px;
-  --loom-canvas-width: 860px;
+  --loom-canvas-width: var(--loom-chat-width);
   /* Old Custom CSS overrides flow into the new collapsed-width contract. */
   --loom-rail-width: 42px;
   --loom-rail-collapsed-width: var(--loom-rail-width);

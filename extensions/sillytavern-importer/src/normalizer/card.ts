@@ -137,6 +137,20 @@ export function convertSillyTavernCard(
 
   // 5. Build portable payload storing the original untouched ST card
   const artifactId = `card-st-${randomUUID()}`
+  let sourceCardContent = rawJson || JSON.stringify(card)
+  if (new TextEncoder().encode(sourceCardContent).byteLength > 8 * 1024 * 1024 && data.character_book) {
+    const trimmedData = {
+      ...data,
+      character_book: {
+        ...data.character_book,
+        entries: [],
+        description: `${data.character_book.name || 'Lorebook'} (Extracted to Loom PromptResource)`,
+      },
+    }
+    const trimmedCard = { ...card, data: trimmedData }
+    sourceCardContent = JSON.stringify(trimmedCard)
+  }
+
   const extensionPayloads = [
     {
       id: 'sillytavern-source-card',
@@ -144,7 +158,7 @@ export function convertSillyTavernCard(
       fileName: 'sillytavern_card.json',
       format: 'sillytavern.character+json',
       mediaType: 'application/json',
-      content: rawJson || JSON.stringify(card),
+      content: sourceCardContent,
     },
   ]
 

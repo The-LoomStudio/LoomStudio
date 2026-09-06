@@ -3,7 +3,7 @@ import { deflateSync, inflateSync } from 'node:zlib'
 
 const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
 const loomKeyword = Buffer.from('loom', 'latin1')
-const maxArtifactBytes = 16 * 1024 * 1024
+const maxArtifactBytes = 32 * 1024 * 1024
 
 export function encodeCardPng(source: Uint8Array, artifact: CardBundleArtifact): Uint8Array {
   const chunks = readPngChunks(source)

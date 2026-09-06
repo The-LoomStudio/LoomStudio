@@ -168,7 +168,7 @@ describe('card bundle artifact boundary', () => {
       .rejects.toThrow('format')
 
     const oversized = createArtifact()
-    oversized.extensionPayloads = [{ ...createPayload(), content: 'x'.repeat(1024 * 1024 + 1) }]
+    oversized.extensionPayloads = [{ ...createPayload(), content: 'x'.repeat(8 * 1024 * 1024 + 1) }]
     await expect(importCardBundle({ artifact: oversized, ...createFixture() }))
       .rejects.toThrow('Extension Payload exceeds')
 
@@ -181,10 +181,10 @@ describe('card bundle artifact boundary', () => {
       .rejects.toThrow('exceed 64 entries')
 
     const totalOversized = createArtifact()
-    totalOversized.extensionPayloads = Array.from({ length: 9 }, (_, index) => ({
+    totalOversized.extensionPayloads = Array.from({ length: 5 }, (_, index) => ({
       ...createPayload(),
       id: `payload-${index}`,
-      content: 'x'.repeat(1024 * 1024),
+      content: 'x'.repeat(7 * 1024 * 1024),
     }))
     await expect(importCardBundle({ artifact: totalOversized, ...createFixture() }))
       .rejects.toThrow('total bytes')

@@ -51,7 +51,14 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
   const cardsBusy = bootstrapBusy || state.operationPending.cards.pendingCount > 0
   const providerBusy = bootstrapBusy || state.operationPending['provider-settings'].pendingCount > 0
   const agentProfileBusy = bootstrapBusy || state.operationPending['agent-profiles'].pendingCount > 0
-  const narrativeCharacterName = state.selectedCard?.name
+  const activeCardId = state.narrativeTimeline?.createdFrom?.cardId ?? (state.narrativeTimeline ? state.selectedCardId : undefined)
+  const activeCard = activeCardId
+    ? (state.cards.find(c => c.id === activeCardId) ?? (state.selectedCard?.id === activeCardId ? state.selectedCard : undefined))
+    : undefined
+  const narrativeCharacterName = state.narrativeTimeline ? activeCard?.name : undefined
+  const narrativeCharacterAvatarUrl = state.narrativeTimeline && activeCard?.media?.avatarAssetId
+    ? `/assets/${encodeURIComponent(activeCard.media.avatarAssetId)}`
+    : undefined
   const sessionBusy = state.operationPending.session.pendingCount > 0
   const agentChatBusy = state.operationPending['agent-chat'].pendingCount > 0 || sessionBusy
   const mutationBusy = state.operationPending.mutation.pendingCount > 0
@@ -362,6 +369,8 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
       busy={mutationBusy}
       canRedo={state.canRedoEdit}
       canUndo={state.canUndoEdit}
+      characterAvatarUrl={narrativeCharacterAvatarUrl}
+      characterName={narrativeCharacterName}
       customCss={state.customCss}
       onRedo={() => {
         void state.redoEdit().then(focusHistoryAsset)
@@ -430,14 +439,6 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
               />
             ) : undefined}
           />
-          {narrativeCharacterName ? (
-            <div className={styles.narrativeIdentity} data-loom-component="narrative-character-identity">
-              <span aria-hidden="true" className={styles.narrativeIdentityAvatar}>
-                {Array.from(narrativeCharacterName.trim())[0]}
-              </span>
-              <span className={styles.narrativeIdentityName}>{narrativeCharacterName}</span>
-            </div>
-          ) : null}
           <AgentComposer
             agentBusy={agentChatBusy}
             agentExpansionHeight={agentExpansionHeight}

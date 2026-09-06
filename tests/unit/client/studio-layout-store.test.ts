@@ -33,13 +33,13 @@ describe('studio layout store', () => {
   })
 
   it('toggles dockPinned preference independently', () => {
-    expect(useStudioLayoutStore.getState().dockPinned).toBe(false)
-
-    useStudioLayoutStore.getState().toggleDockPinned()
     expect(useStudioLayoutStore.getState().dockPinned).toBe(true)
 
     useStudioLayoutStore.getState().toggleDockPinned()
     expect(useStudioLayoutStore.getState().dockPinned).toBe(false)
+
+    useStudioLayoutStore.getState().toggleDockPinned()
+    expect(useStudioLayoutStore.getState().dockPinned).toBe(true)
   })
 
   it('keeps window immersive mode global across all panel switches', () => {
@@ -226,7 +226,7 @@ describe('sanitizeStudioLayout', () => {
       },
       contextCategory: 'history',
       dockOpen: false,
-      dockPinned: false,
+      dockPinned: true,
       panelWindowMode: 'immersive',
       panelWindowModes: { preset: 'immersive' },
       panelWindowSizes: {

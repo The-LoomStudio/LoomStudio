@@ -27,20 +27,34 @@ export function StudioRail(props: StudioRailProps) {
 
   return (
     <nav className={styles.studioRail} aria-label={props.t('rail.label')} data-loom-component="utility-rail">
-      <RailTab activePanel={props.activePanel} label={modelLabel} panel="model" status={modelStatus} t={props.t} togglePanel={props.togglePanel} />
-      <RailTab activePanel={props.activePanel} panel="agent" t={props.t} togglePanel={props.togglePanel} />
-      <span className={`loom-divider ${styles.railDivider}`} aria-hidden="true" />
-      <RailTab activePanel={props.activePanel} panel="character" t={props.t} togglePanel={props.togglePanel} />
-      <RailTab activePanel={props.activePanel} panel="sessions" t={props.t} togglePanel={props.togglePanel} />
-      <RailTab activePanel={props.activePanel} panel="preset" t={props.t} togglePanel={props.togglePanel} />
-      <RailTab activePanel={props.activePanel} panel="resource" t={props.t} togglePanel={props.togglePanel} />
-      <RailTab activePanel={props.activePanel} panel="state" t={props.t} togglePanel={props.togglePanel} />
-      <RailTab activePanel={props.activePanel} panel="text-transform" t={props.t} togglePanel={props.togglePanel} />
-      <span className={`loom-divider ${styles.railDivider}`} aria-hidden="true" />
-      <RailTab activePanel={props.activePanel} panel="inspector" t={props.t} togglePanel={props.togglePanel} />
-      <RailTab activePanel={props.activePanel} panel="logs" t={props.t} togglePanel={props.togglePanel} />
-      <RailTab activePanel={props.activePanel} panel="extensions" t={props.t} togglePanel={props.togglePanel} />
-      <RailTab activePanel={props.activePanel} panel="settings" t={props.t} togglePanel={props.togglePanel} />
+      <div className={styles.railTopSection}>
+        <div className={styles.railGroup}>
+          <div className={styles.railGroupLabel}>{props.t('rail.groupConfig')}</div>
+          <RailTab activePanel={props.activePanel} label={modelLabel} panel="model" status={modelStatus} t={props.t} togglePanel={props.togglePanel} />
+          <RailTab activePanel={props.activePanel} panel="agent" t={props.t} togglePanel={props.togglePanel} />
+        </div>
+
+        <div className={styles.railGroup}>
+          <div className={styles.railGroupLabel}>{props.t('rail.groupEdit')}</div>
+          <RailTab activePanel={props.activePanel} panel="preset" t={props.t} togglePanel={props.togglePanel} />
+          <RailTab activePanel={props.activePanel} panel="resource" t={props.t} togglePanel={props.togglePanel} />
+          <RailTab activePanel={props.activePanel} panel="state" t={props.t} togglePanel={props.togglePanel} />
+          <RailTab activePanel={props.activePanel} panel="text-transform" t={props.t} togglePanel={props.togglePanel} />
+        </div>
+
+        <div className={styles.railGroup}>
+          <div className={styles.railGroupLabel}>{props.t('rail.groupPlay')}</div>
+          <RailTab activePanel={props.activePanel} panel="character" t={props.t} togglePanel={props.togglePanel} />
+          <RailTab activePanel={props.activePanel} panel="sessions" t={props.t} togglePanel={props.togglePanel} />
+        </div>
+      </div>
+      <div className={styles.railBottomSection}>
+        <span className={`loom-divider ${styles.railDivider}`} aria-hidden="true" />
+        <RailTab activePanel={props.activePanel} panel="inspector" t={props.t} togglePanel={props.togglePanel} />
+        <RailTab activePanel={props.activePanel} panel="logs" t={props.t} togglePanel={props.togglePanel} />
+        <RailTab activePanel={props.activePanel} panel="extensions" t={props.t} togglePanel={props.togglePanel} />
+        <RailTab activePanel={props.activePanel} panel="settings" t={props.t} togglePanel={props.togglePanel} />
+      </div>
     </nav>
   )
 }

@@ -45,47 +45,16 @@
   top: 0;
   right: 0;
   left: 0;
-  height: 28px;
-  background: linear-gradient(to bottom, var(--loom-color-background), transparent);
+  height: 70px;
+  background: linear-gradient(
+    to bottom,
+    var(--loom-color-background) 0%,
+    var(--loom-color-background) 12px,
+    transparent 100%
+  );
   pointer-events: none;
 }
 
-.narrativeIdentity {
-  position: absolute;
-  z-index: 6;
-  top: 7px;
-  left: 50%;
-  max-width: min(70%, 320px);
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--loom-color-text-muted);
-  pointer-events: none;
-  transform: translateX(-50%);
-}
-
-.narrativeIdentityAvatar {
-  width: 24px;
-  height: 24px;
-  flex: 0 0 24px;
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-  border: 1px solid var(--loom-color-border);
-  border-radius: var(--loom-radius-full);
-  color: var(--loom-color-text);
-  background: var(--loom-color-surface);
-  font-size: var(--loom-font-size-2);
-  line-height: var(--loom-line-height-compact);
-}
-
-.narrativeIdentityName {
-  min-width: 0;
-  overflow: hidden;
-  font-size: var(--loom-font-size-3);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 .canvasStack > :global([data-loom-object='narrative-timeline']),
 .canvasStack > :global([data-loom-object='agent-composer-layer']) {

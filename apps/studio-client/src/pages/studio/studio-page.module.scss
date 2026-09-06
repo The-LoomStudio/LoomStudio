@@ -44,28 +44,28 @@
 }
 
 .floatingDock {
-  --loom-dock-icon-size: var(--loom-icon-size-4);
-  --loom-dock-icon-stroke: 1.25;
+  --loom-dock-icon-size: 17px;
+  --loom-dock-icon-stroke: 1.85;
   --loom-dock-content-inset: 5px;
-  --loom-dock-item-height: calc(var(--loom-dock-icon-size) + 16px);
-  --loom-dock-item-gap: calc(var(--loom-dock-icon-size) * 0.1);
+  --loom-dock-item-height: 34px;
+  --loom-dock-item-gap: 3px;
   --loom-composer-reserve: calc(var(--loom-input-height) + 4rem);
 
   position: absolute;
   z-index: 30;
-  top: var(--loom-window-gap);
-  left: var(--loom-window-gap);
+  top: 0;
+  left: 0;
   width: var(--loom-rail-expanded-width);
-  height: max-content;
-  max-height: calc(100% - var(--loom-window-gap) * 2);
-  max-width: calc(100% - var(--loom-window-gap) * 2);
+  height: 100%;
+  max-height: 100%;
+  max-width: 100%;
   display: grid;
   grid-template-columns: var(--loom-rail-expanded-width) 0 0;
   overflow: hidden;
-  border: 1px solid var(--loom-color-border);
-  border-radius: var(--loom-radius-window);
+  border: none;
+  border-radius: 0;
   background: var(--loom-color-surface);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  box-shadow: none;
   interpolate-size: allow-keywords;
   transition:
     transform 280ms cubic-bezier(0.16, 1, 0.3, 1),
@@ -76,7 +76,7 @@
 }
 
 .floatingDockHidden {
-  transform: translateX(calc(-100% - var(--loom-window-gap) * 2));
+  transform: translateX(-100%);
   opacity: 0;
   pointer-events: none;
 }
@@ -99,6 +99,7 @@
 }
 
 .dockSidebar {
+  height: 100%;
   min-width: var(--loom-rail-collapsed-width);
   min-height: 0;
   display: grid;
@@ -109,28 +110,83 @@
 
 .dockHeader {
   width: 100%;
-  height: var(--loom-page-header-height);
+  height: 50px;
   min-width: 0;
   min-height: 0;
-  display: grid;
-  grid-template-columns:
-    calc(var(--loom-rail-collapsed-width) - var(--loom-dock-content-inset) - var(--loom-dock-content-inset))
-    minmax(0, 1fr)
-    minmax(0, var(--loom-page-header-control-size));
+  display: flex;
   align-items: center;
-  gap: 0;
+  gap: 5px;
   overflow: hidden;
-  padding: 6px var(--loom-dock-content-inset) 0;
-  color: var(--loom-color-text-muted);
-  visibility: visible;
-  opacity: 1;
-  pointer-events: auto;
+  padding: 0 12px;
+  box-sizing: border-box;
 }
 
-.dockTitle {
-  width: 100%;
-  padding-inline: 12px;
+.dockBrandIconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  border-radius: var(--loom-radius-control);
+  color: var(--loom-color-text);
+  outline: none;
+  transition: opacity var(--loom-motion-duration-fast) ease;
+
+  &:hover {
+    opacity: 0.8;
+  }
+
+  &:focus-visible {
+    outline: 1px solid var(--loom-color-accent);
+    outline-offset: 2px;
+  }
+}
+
+.dockBrandTextButton {
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  border-radius: var(--loom-radius-control);
   color: var(--loom-color-text-muted);
+  outline: none;
+  transition:
+    color var(--loom-motion-duration-fast) ease,
+    opacity var(--loom-motion-duration-fast) ease;
+
+  &:hover {
+    color: var(--loom-color-accent-strong);
+  }
+
+  &:focus-visible {
+    outline: 1px solid var(--loom-color-accent);
+    outline-offset: 2px;
+  }
+}
+
+.dockBrandTextButtonPinned {
+  color: var(--loom-color-accent-strong);
+}
+
+.dockBrandIcon {
+  width: 21px;
+  height: 21px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.dockBrandText {
+  font-family: 'Montserrat', system-ui, -apple-system, sans-serif;
+  font-weight: 900;
+  font-size: 15px;
+  letter-spacing: -0.02em;
+  user-select: none;
+  white-space: nowrap;
+  line-height: 1;
 }
 
 .dockWorkspaceToggle {
@@ -189,29 +245,29 @@
   transform: none !important;
   opacity: 1 !important;
   pointer-events: auto !important;
-  bottom: auto;
+  bottom: 0;
   width: clamp(42rem, 52vw, 72rem);
-  height: calc(100% - var(--loom-window-gap) - var(--loom-composer-reserve));
-  max-height: calc(100% - var(--loom-window-gap) - var(--loom-composer-reserve));
+  height: 100%;
+  max-height: 100%;
   display: block;
 }
 
 .floatingDockBesideNarrative {
-  width: calc(var(--loom-narrative-left-anchor, 42rem) - var(--loom-window-gap) * 3);
-  height: calc(var(--loom-composer-base-top-anchor, 100%) - var(--loom-window-gap) * 2);
-  max-height: calc(var(--loom-composer-base-top-anchor, 100%) - var(--loom-window-gap) * 2);
+  width: calc(var(--loom-narrative-left-anchor, 42rem) - 16px);
+  height: 100%;
+  max-height: 100%;
 }
 
 .floatingDockCoverNarrative {
-  width: calc(var(--loom-narrative-right-anchor, 72rem) - var(--loom-window-gap));
-  height: calc(var(--loom-composer-base-top-anchor, 100%) - var(--loom-window-gap) * 2);
-  max-height: calc(var(--loom-composer-base-top-anchor, 100%) - var(--loom-window-gap) * 2);
+  width: var(--loom-narrative-right-anchor, 72rem);
+  height: 100%;
+  max-height: 100%;
 }
 
 .floatingDockImmersive {
-  width: calc(100% - var(--loom-window-gap) * 2);
-  height: calc(100% - var(--loom-window-gap) * 2);
-  max-height: calc(100% - var(--loom-window-gap) * 2);
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
 }
 
 .floatingDockResizing {
@@ -246,31 +302,80 @@
 }
 
 .studioRail {
+  height: 100%;
   min-width: var(--loom-rail-collapsed-width);
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--loom-dock-item-gap);
-  padding: 2px var(--loom-dock-content-inset) 6px;
+  justify-content: space-between;
+  padding: 4px 8px 8px;
   border: 0;
   background: transparent;
+  box-sizing: border-box;
+}
+
+.railTopSection {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.railGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.railGroupLabel {
+  display: flex;
+  align-items: center;
+  padding: 6px 8px 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--loom-color-text-subtle);
+  letter-spacing: 0.04em;
+  user-select: none;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.railGroup:first-child .railGroupLabel {
+  padding-top: 2px;
+}
+
+.railBottomSection {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: auto;
+  padding-top: 6px;
 }
 
 .railTab {
   position: relative;
   width: 100%;
-  min-height: var(--loom-dock-item-height);
-  display: grid;
-  grid-template-columns:
-    calc(var(--loom-rail-collapsed-width) - var(--loom-dock-content-inset) - var(--loom-dock-content-inset))
-    minmax(0, 1fr);
+  height: 32px;
+  min-height: 32px;
+  display: flex;
   align-items: center;
+  gap: 8px;
   border: 0;
-  border-radius: var(--loom-radius-control);
-  padding: 0;
-  color: var(--loom-color-text);
+  border-radius: 6px;
+  padding: 0 8px;
+  color: var(--loom-color-text-muted);
   background: transparent;
   overflow: hidden;
   white-space: nowrap;
+  box-sizing: border-box;
+  transition:
+    color var(--loom-motion-duration-fast) ease,
+    background-color var(--loom-motion-duration-fast) ease;
 }
 
 .railTab:hover:not(:disabled) {
@@ -281,6 +386,7 @@
 .railTabActive {
   color: var(--loom-color-accent-strong);
   background: transparent;
+  font-weight: 500;
 }
 
 .railTab:focus-visible {
@@ -301,19 +407,19 @@
 }
 
 .railTab svg {
-  width: var(--loom-dock-icon-size);
-  height: var(--loom-dock-icon-size);
-  display: block;
-  justify-self: center;
-  stroke-width: var(--loom-dock-icon-stroke);
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.85;
+  flex-shrink: 0;
 }
 
 .railLabel {
   min-width: 0;
   overflow: hidden;
-  padding-right: 12px;
-  padding-left: 12px;
-  font-size: var(--loom-font-size-3);
+  padding: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
   text-align: left;
   opacity: 1;
   transform: translateX(0);
@@ -327,6 +433,44 @@
 @container studio-rail (max-width: 100px) {
   .dockWorkspaceToggle {
     display: none;
+  }
+
+  .dockHeader {
+    padding: 0;
+    justify-content: center;
+    gap: 0;
+  }
+
+  .dockBrandIconButton {
+    width: 100%;
+    height: 100%;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .dockBrandTextButton {
+    display: none !important;
+  }
+
+  .studioRail {
+    padding-inline: 0;
+  }
+
+  .railTab {
+    justify-content: center;
+    padding: 0;
+    gap: 0;
+  }
+
+  .railLabel {
+    display: none !important;
+  }
+
+  .railGroupLabel {
+    visibility: hidden;
+    overflow: hidden;
+    pointer-events: none;
+    user-select: none;
   }
 }
 
@@ -441,16 +585,7 @@
 }
 
 .windowResizeHandle {
-  position: absolute;
-  z-index: 5;
-  min-height: 0;
-  display: block;
-  border: 0;
-  border-radius: 0;
-  padding: 0;
-  background: transparent;
-  opacity: 0;
-  touch-action: none;
+  display: none !important;
 }
 
 .windowResizeHandle:focus-visible {
@@ -483,8 +618,182 @@
   cursor: nwse-resize;
 }
 
-.mobileMenuTrigger {
-  display: none;
+.stageFloatingHeader {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  height: 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 28;
+  background: transparent;
+  pointer-events: none;
+  gap: 12px;
+}
+
+.stageHeaderLeft {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  pointer-events: none;
+}
+
+.stageHeaderRight {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  min-width: 0;
+  pointer-events: none;
+  margin-left: auto;
+}
+
+.stageHeaderButton {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: var(--loom-color-background);
+  box-shadow: none;
+  color: var(--loom-color-text);
+  cursor: pointer;
+  padding: 0;
+  outline: none;
+  pointer-events: auto;
+  transition:
+    color var(--loom-motion-duration-fast) ease;
+
+  &:hover:not(:disabled) {
+    color: var(--loom-color-accent-strong);
+    background: var(--loom-color-background);
+  }
+
+  &:active:not(:disabled) {
+    color: var(--loom-color-accent-strong);
+    background: var(--loom-color-background);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--loom-color-accent);
+    outline-offset: -2px;
+  }
+}
+
+.stageHeaderButtonIcon {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2;
+  pointer-events: none;
+}
+
+.stageAvatarFallbackIcon {
+  width: 14px;
+  height: 14px;
+  color: var(--loom-color-text-subtle);
+  stroke-width: 1.75;
+  pointer-events: none;
+}
+
+.stageCharacterCapsule {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding: 4px 14px 4px 5px;
+  gap: 8px;
+  border: none;
+  border-radius: 999px;
+  background: var(--loom-color-background);
+  color: var(--loom-color-text);
+  cursor: pointer;
+  outline: none;
+  pointer-events: auto;
+  user-select: none;
+  box-shadow: none;
+  transition:
+    color var(--loom-motion-duration-fast) ease;
+
+  &:hover:not(:disabled) {
+    color: var(--loom-color-accent-strong);
+    background: var(--loom-color-background);
+
+    .stageCharacterCapsuleArrow {
+      color: var(--loom-color-text);
+    }
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--loom-color-accent);
+    outline-offset: 1px;
+  }
+}
+
+.stageCharacterCapsuleActive {
+  color: var(--loom-color-accent-strong);
+
+  .stageCharacterCapsuleArrow {
+    transform: rotate(180deg);
+    color: var(--loom-color-accent-strong);
+  }
+}
+
+.stageCharacterCapsuleAvatar {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--loom-color-surface-inset);
+  flex-shrink: 0;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+}
+
+.stageCharacterCapsuleName {
+  font-size: 14px;
+  font-weight: 500;
+  color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+  line-height: 1;
+}
+
+.stageCharacterCapsuleArrow {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2;
+  color: var(--loom-color-text-subtle);
+  flex-shrink: 0;
+  transition:
+    transform var(--loom-motion-duration-fast) ease,
+    color var(--loom-motion-duration-fast) ease;
+}
+
+@media (max-width: 768px) {
+  .stageFloatingHeader {
+    gap: 6px;
+    left: 8px;
+    right: 8px;
+  }
+
+  .stageCharacterCapsuleName {
+    max-width: 96px;
+  }
 }
 
 .mobileBackdrop {
@@ -492,7 +801,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .floatingDock {
+  .floatingDock,
+  .stageHeaderButton {
     transition: none;
   }
 }
@@ -500,37 +810,6 @@
 @media (max-width: 768px) {
   .dockTriggerZone {
     display: none;
-  }
-
-  .mobileMenuTrigger {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    z-index: 28;
-    width: 34px;
-    height: 34px;
-    min-width: 34px;
-    min-height: 34px;
-    display: grid;
-    place-items: center;
-    border: 1px solid var(--loom-color-border);
-    border-radius: var(--loom-radius-control);
-    background: var(--loom-color-surface);
-    color: var(--loom-color-text-muted);
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
-    cursor: pointer;
-    padding: 0;
-  }
-
-  .mobileMenuTrigger:hover:not(:disabled) {
-    color: var(--loom-color-text);
-    border-color: var(--loom-color-border-strong, var(--loom-color-border));
-  }
-
-  .mobileMenuTrigger svg {
-    width: var(--loom-dock-icon-size);
-    height: var(--loom-dock-icon-size);
-    stroke-width: var(--loom-dock-icon-stroke);
   }
 
   .viewModeControl {
@@ -567,13 +846,9 @@
     width: min(280px, 78vw) !important;
     height: 100% !important;
     max-height: 100% !important;
-    border-radius: 0;
-    border-top: none;
-    border-bottom: none;
-    border-left: none;
-    border-right: 1px solid var(--loom-color-border);
+    border: none;
     z-index: 30;
-    box-shadow: 8px 0 32px rgba(0, 0, 0, 0.36);
+    box-shadow: none;
   }
 
   .floatingDockActive {

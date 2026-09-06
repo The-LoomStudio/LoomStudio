@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { Lock, Menu, PanelLeftClose } from 'lucide-react'
+import { AlignLeft, Bot, ChevronDown, ImageOff } from 'lucide-react'
 import type { Translator } from '../../shared/i18n/index.js'
 import { WindowColumnLayout } from '../../shared/ui/window-column-layout/window-column-layout.js'
 import { useStudioLayoutStore, useStudioPanelStore, type StudioPanelId } from './model/studio-layout-store.js'
@@ -14,12 +14,14 @@ import styles from './studio-page.module.scss'
 type StudioPageProps = {
   assetWorkspaceId: string
   background?: ReactNode
-  modelConfigured?: boolean
   busy: boolean
   canRedo: boolean
   canUndo: boolean
   canvas: ReactNode
+  characterAvatarUrl?: string
+  characterName?: string
   customCss: string
+  modelConfigured?: boolean
   onRedo(): void
   onUndo(): void
   panelHeaders?: Partial<Record<StudioPanelId, ReactNode>>
@@ -42,7 +44,6 @@ export function StudioPage(props: StudioPageProps) {
   const panelWindowSizes = useStudioLayoutStore(state => state.panelWindowSizes)
   const setPanelWindowSize = useStudioLayoutStore(state => state.setPanelWindowSize)
   const setAssetMetadataOpen = useStudioLayoutStore(state => state.setAssetMetadataOpen)
-  const toggleDock = useStudioLayoutStore(state => state.toggleDock)
   const toggleDockPinned = useStudioLayoutStore(state => state.toggleDockPinned)
   const togglePanel = useStudioPanelStore(state => state.togglePanel)
   const togglePanelWindowMode = useStudioLayoutStore(state => state.togglePanelWindowMode)
@@ -68,13 +69,21 @@ export function StudioPage(props: StudioPageProps) {
     }, 260)
   }
 
+  const [isMobile, setIsMobile] = useState(() => (typeof window !== 'undefined' ? window.innerWidth <= 768 : false))
+
   useEffect(() => {
-    return () => {
-      if (leaveTimerRef.current) clearTimeout(leaveTimerRef.current)
+    const handleResize = () => {
+      setIsMobile(window.innerWidth <= 768)
     }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  const isDockVisible = activePanel !== null || dockPinned || dockHovered || mobileDrawerOpen
+  const isDockVisible = isMobile
+    ? (activePanel !== null || mobileDrawerOpen)
+    : (activePanel !== null || dockPinned || dockHovered)
+
+
 
   useStudioShortcuts({
     activePanel,
@@ -110,48 +119,46 @@ export function StudioPage(props: StudioPageProps) {
   const dockStyle = {
     '--loom-window-rail-width': '160px',
     ...(activePanelWindowSize && !isImmersive
-      ? { width: `${activePanelWindowSize.width}px`, height: `${activePanelWindowSize.height}px` }
+      ? { width: `${activePanelWindowSize.width}px` }
       : {}),
   } as CSSProperties
   const dockSidebar = (
     <div className={styles.dockSidebar}>
       <header className={styles.dockHeader} data-loom-component="page-header">
         <button
-          aria-label={activePanel === null
-            ? props.t(dockPinned ? 'rail.unpinDock' : 'rail.pinDock')
-            : props.t('rail.label')}
-          aria-expanded={activePanel !== null || dockPinned || mobileDrawerOpen}
-          className={`${styles.dockToggle} ${activePanel === null && dockPinned ? styles.dockTogglePinned : ''}`}
-          title={activePanel === null
-            ? props.t(dockPinned ? 'rail.unpinDock' : 'rail.pinDock')
-            : props.t('rail.label')}
+          aria-label={props.t('rail.closePanel')}
+          className={styles.dockBrandIconButton}
+          title={props.t('rail.closePanel')}
           type="button"
           onClick={() => {
             if (activePanel !== null) {
               closePanel()
             } else if (mobileDrawerOpen) {
               setMobileDrawerOpen(false)
-            } else {
+            } else if (dockPinned) {
               toggleDockPinned()
             }
           }}
         >
-          {activePanel === null && dockPinned ? <Lock aria-hidden="true" /> : <Menu aria-hidden="true" />}
+          <img
+            alt="LoomStudio"
+            className={styles.dockBrandIcon}
+            src="/images/favicon.ico"
+          />
         </button>
-        <span className={`loom-page-header-title ${styles.dockTitle}`}>{props.t('rail.label')}</span>
-        {activePanel !== null ? (
-          <button
-            aria-controls={`studio-${activePanel}-panel`}
-            aria-expanded="true"
-            aria-label={props.t('rail.closePanel')}
-            className={styles.dockWorkspaceToggle}
-            title={props.t('rail.closePanel')}
-            type="button"
-            onClick={closePanel}
-          >
-            <PanelLeftClose aria-hidden="true" />
-          </button>
-        ) : null}
+        <button
+          aria-label={dockPinned ? props.t('rail.unpinDock') : props.t('rail.pinDock')}
+          aria-pressed={dockPinned}
+          className={[
+            styles.dockBrandTextButton,
+            dockPinned ? styles.dockBrandTextButtonPinned : '',
+          ].filter(Boolean).join(' ')}
+          title={dockPinned ? props.t('rail.unpinDock') : props.t('rail.pinDock')}
+          type="button"
+          onClick={() => toggleDockPinned()}
+        >
+          <span className={styles.dockBrandText}>LoomStudio</span>
+        </button>
       </header>
       <div className={styles.dockHeaderDivider} aria-hidden="true">
         <span className="loom-divider" />
@@ -194,17 +201,57 @@ export function StudioPage(props: StudioPageProps) {
           {props.canvas}
         </div>
 
-        {activePanel === null && !mobileDrawerOpen ? (
-          <button
-            aria-label={props.t('rail.label')}
-            className={styles.mobileMenuTrigger}
-            title={props.t('rail.label')}
-            type="button"
-            onClick={() => setMobileDrawerOpen(true)}
-          >
-            <Menu aria-hidden="true" />
-          </button>
-        ) : null}
+        <header className={styles.stageFloatingHeader} data-loom-component="stage-floating-header">
+          <div className={styles.stageHeaderLeft}>
+            <button
+              aria-label={props.t('rail.label')}
+              className={styles.stageHeaderButton}
+              title={props.t('rail.label')}
+              type="button"
+              onClick={() => {
+                if (isMobile) {
+                  setMobileDrawerOpen(true)
+                } else {
+                  toggleDockPinned()
+                }
+              }}
+              onMouseEnter={handleMouseEnter}
+              onMouseLeave={handleMouseLeave}
+            >
+              <AlignLeft aria-hidden="true" className={styles.stageHeaderButtonIcon} />
+            </button>
+
+            {props.characterName ? (
+              <button
+                aria-label={`${props.characterName} - ${props.t('rail.character')}`}
+                className={[
+                  styles.stageCharacterCapsule,
+                  activePanel === 'character' ? styles.stageCharacterCapsuleActive : '',
+                ].filter(Boolean).join(' ')}
+                title={`${props.characterName} (${props.t('rail.character')})`}
+                type="button"
+                onClick={() => togglePanel('character')}
+              >
+                <span aria-hidden="true" className={styles.stageCharacterCapsuleAvatar}>
+                  <StageCharacterAvatar avatarUrl={props.characterAvatarUrl} name={props.characterName} />
+                </span>
+                <span className={styles.stageCharacterCapsuleName}>{props.characterName}</span>
+                <ChevronDown aria-hidden="true" className={styles.stageCharacterCapsuleArrow} />
+              </button>
+            ) : null}
+          </div>
+
+          <div className={styles.stageHeaderRight}>
+            <button
+              aria-label="Agent"
+              className={styles.stageHeaderButton}
+              title="Agent"
+              type="button"
+            >
+              <Bot aria-hidden="true" className={styles.stageHeaderButtonIcon} />
+            </button>
+          </div>
+        </header>
 
         {activePanel === null && mobileDrawerOpen ? (
           <div
@@ -286,4 +333,23 @@ function WindowResizeHandle(props: {
 function readPanelPlacement(panel: StudioPanelId): 'beside-narrative' | 'cover-narrative' {
   if (panel === 'model' || panel === 'agent' || panel === 'sessions' || panel === 'character') return 'beside-narrative'
   return 'cover-narrative'
+}
+
+function StageCharacterAvatar(props: { avatarUrl?: string; name?: string }) {
+  const [loadError, setLoadError] = useState(false)
+
+  useEffect(() => {
+    setLoadError(false)
+  }, [props.avatarUrl])
+
+  if (props.avatarUrl && !loadError) {
+    return (
+      <img
+        alt=""
+        src={props.avatarUrl}
+        onError={() => setLoadError(true)}
+      />
+    )
+  }
+  return <ImageOff aria-hidden="true" className={styles.stageAvatarFallbackIcon} />
 }

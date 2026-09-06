@@ -775,8 +775,8 @@ function assertCardBundleArtifact(value: unknown): asserts value is CardBundleAr
 const portablePayloadTokenPattern = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 const portablePayloadFileNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
 const maxPortablePayloadCount = 64
-const maxPortablePayloadBytes = 1024 * 1024
-const maxPortablePayloadTotalBytes = 8 * 1024 * 1024
+const maxPortablePayloadBytes = 8 * 1024 * 1024
+const maxPortablePayloadTotalBytes = 32 * 1024 * 1024
 
 function assertPortableExtensionPayloads(value: unknown): void {
   if (value === undefined) return

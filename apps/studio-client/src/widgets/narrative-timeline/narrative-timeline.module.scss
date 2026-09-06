@@ -5,7 +5,8 @@
   display: grid;
   grid-template-rows: minmax(0, 1fr);
   overflow: visible;
-  background: transparent;
+  background: color-mix(in srgb, var(--loom-color-background) 88%, transparent);
+  backdrop-filter: blur(16px);
 }
 
 .timeline {
@@ -18,8 +19,8 @@
   align-content: start;
   justify-items: center;
   gap: 18px;
-  padding: 34px 0 var(--loom-composer-clearance, 200px);
-  scroll-padding: 36px 0 var(--loom-composer-clearance, 200px);
+  padding: 50px 0 var(--loom-composer-clearance, 200px);
+  scroll-padding: 50px 0 var(--loom-composer-clearance, 200px);
   background: transparent;
   transition:
     padding-bottom var(--loom-motion-duration-standard) var(--loom-motion-easing-standard),
