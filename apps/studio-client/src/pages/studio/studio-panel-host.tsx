@@ -74,7 +74,6 @@ export function StudioPanelHost(props: StudioPanelHostProps) {
           </button>
         </header>
       ) : null}
-      <span className={`loom-divider ${styles.workspaceHeaderDivider}`} aria-hidden="true" />
       <div className={styles.workspaceBody}>
         {STUDIO_PANEL_IDS.map(panel => (
           <StudioPanelStage key={panel} active={props.activePanel === panel} panel={panel} render={props.panels[panel]} />
@@ -101,6 +100,7 @@ const StudioPanelStage = memo(function StudioPanelStage(props: {
       id={`studio-${props.panel}-panel`}
       aria-hidden={!props.active}
       hidden={!props.active}
+      style={{ display: props.active ? undefined : 'none' }}
       data-loom-component={`overlay-${props.panel}-layer`}
       data-loom-object={`${props.panel}-panel`}
     >

@@ -24,11 +24,11 @@
   --loom-color-surface-raised: var(--loom-window-raised, var(--loom-panel-muted, #45475a));
   --loom-divider-inset: 13px;
   --loom-divider-space: 5px;
-  --loom-page-header-height: calc(36px * var(--loom-ui-scale));
-  --loom-page-header-padding: calc(13px * var(--loom-ui-scale));
-  --loom-page-header-icon-size: calc(14px * var(--loom-ui-scale));
-  --loom-page-header-control-size: calc(26px * var(--loom-ui-scale));
-  --loom-page-header-icon-stroke: 1.25;
+  --loom-page-header-height: 40px;
+  --loom-page-header-padding: 8px;
+  --loom-page-header-icon-size: 18px;
+  --loom-page-header-control-size: 40px;
+  --loom-page-header-icon-stroke: 1.85;
 
   /* ── 图标：客观尺寸等级 ── */
   --loom-icon-size-1: calc(10px * var(--loom-ui-scale));
@@ -183,8 +183,7 @@
   height: var(--loom-page-header-height);
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding-top: 6px;
+  gap: 8px;
   padding-inline: var(--loom-page-header-padding);
   color: var(--loom-color-text-muted);
 }
@@ -406,4 +405,8 @@ h3 {
   line-height: var(--loom-line-height-heading);
   font-weight: var(--loom-font-weight-8);
   color: var(--loom-color-text);
+}
+
+[hidden] {
+  display: none !important;
 }

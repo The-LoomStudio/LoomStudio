@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { AlignLeft, Bot, ChevronDown, ImageOff } from 'lucide-react'
+import { AlignLeft, ChevronDown, ImageOff, PanelRight, PanelRightClose, Plus, X } from 'lucide-react'
 import type { Translator } from '../../shared/i18n/index.js'
+import { ChatComposer } from '../../widgets/chat-composer/chat-composer.js'
+import { StudioPanelRight } from './studio-panel-right.js'
+import { ConversationMarkdown } from '../../shared/ui/conversation-markdown/conversation-markdown.js'
 import { WindowColumnLayout } from '../../shared/ui/window-column-layout/window-column-layout.js'
 import { useStudioLayoutStore, useStudioPanelStore, type StudioPanelId } from './model/studio-layout-store.js'
 import { StudioPanelHost } from './studio-panel-host.js'
@@ -30,6 +33,37 @@ type StudioPageProps = {
   uiScale: number
 }
 
+type MockAgentMessage = {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  time: string
+}
+
+const INITIAL_MOCK_AGENT_MESSAGES: MockAgentMessage[] = [
+  {
+    id: 'mock-1',
+    role: 'user',
+    content: '帮我分析一下当前章节的剧情节奏与角色动机。',
+    time: '17:36',
+  },
+  {
+    id: 'mock-2',
+    role: 'assistant',
+    content: `已对当前剧情分支进行全流程溯源分析：
+
+1. **核心动机冲突**：角色在面对旧信物时表现出克制与犹豫，建议在后续对话中增加一段微小的心理动作刻画。
+2. **伏笔呼应**：前序章节提到的信物在此处可作为关键线索激活。
+
+\`\`\`markdown
+> 示例：“她握紧了掌心中的铜镜，镜面泛起微弱的光芒，终究没有回头。”
+\`\`\`
+
+你可以继续探索其他分支，或者直接告诉我需要修改的方向。`,
+    time: '17:36',
+  },
+]
+
 export function StudioPage(props: StudioPageProps) {
   const stageRef = useRef<HTMLElement>(null)
   const dockRef = useRef<HTMLElement>(null)
@@ -49,6 +83,48 @@ export function StudioPage(props: StudioPageProps) {
   const togglePanelWindowMode = useStudioLayoutStore(state => state.togglePanelWindowMode)
   const isImmersive = activePanel !== null && panelWindowMode === 'immersive'
   const windowResize = useStudioWindowResize({ activePanel, dockRef, setPanelWindowSize, stageRef })
+
+  const [agentPanelOpen, setAgentPanelOpen] = useState(false)
+  const [agentPanelWidth, setAgentPanelWidth] = useState<number | undefined>(undefined)
+  const [agentMockInput, setAgentMockInput] = useState('')
+  const [mockAgentMessages, setMockAgentMessages] = useState<MockAgentMessage[]>(INITIAL_MOCK_AGENT_MESSAGES)
+  const agentTimelineRef = useRef<HTMLDivElement>(null)
+
+  const handleSendAgentMockMessage = () => {
+    const trimmed = agentMockInput.trim()
+    if (!trimmed) return
+    const userMsg: MockAgentMessage = {
+      id: `msg-${Date.now()}`,
+      role: 'user',
+      content: trimmed,
+      time: '刚刚',
+    }
+    setMockAgentMessages(prev => [...prev, userMsg])
+    setAgentMockInput('')
+    setTimeout(() => {
+      const assistantMsg: MockAgentMessage = {
+        id: `msg-${Date.now() + 1}`,
+        role: 'assistant',
+        content: `收到你的指示：“${trimmed}”。\n\n已完成分析并更新当前侧边上下文，你可以随时让我调整草稿或应用到正文中。`,
+        time: '刚刚',
+      }
+      setMockAgentMessages(prev => [...prev, assistantMsg])
+    }, 450)
+  }
+
+  useEffect(() => {
+    if (!agentPanelOpen) return
+    const el = agentTimelineRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [agentPanelOpen, mockAgentMessages.length])
+
+  const codeBlockLabels = {
+    copied: props.t('longTextEditor.copied'),
+    copy: props.t('longTextEditor.copy'),
+    copyFailed: props.t('longTextEditor.copyFailed'),
+    disableWrap: props.t('markdown.code.disableWrap'),
+    enableWrap: props.t('markdown.code.enableWrap'),
+  }
 
   const [dockHovered, setDockHovered] = useState(false)
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
@@ -242,16 +318,114 @@ export function StudioPage(props: StudioPageProps) {
           </div>
 
           <div className={styles.stageHeaderRight}>
+            {agentPanelOpen ? (
+              <button
+                type="button"
+                className={styles.stageHeaderButton}
+                title="新建对话"
+                onClick={() => {
+                  setMockAgentMessages([
+                    {
+                      id: `init-${Date.now()}`,
+                      role: 'assistant',
+                      content: '你好！我是你的创作助手。已建立新的临时侧边对话，你可以随时向我提问剧情、分析设定或调试节点。',
+                      time: '刚刚',
+                    },
+                  ])
+                }}
+              >
+                <Plus aria-hidden="true" className={styles.stageHeaderButtonIcon} />
+              </button>
+            ) : null}
             <button
-              aria-label="Agent"
-              className={styles.stageHeaderButton}
-              title="Agent"
+              aria-label={agentPanelOpen ? '关闭侧边面板' : '打开侧边面板'}
+              className={[
+                styles.stageHeaderButton,
+                agentPanelOpen ? styles.stageHeaderButtonActive : '',
+              ].filter(Boolean).join(' ')}
+              title={agentPanelOpen ? '关闭侧边面板' : '打开侧边面板'}
               type="button"
+              onClick={() => setAgentPanelOpen(prev => !prev)}
             >
-              <Bot aria-hidden="true" className={styles.stageHeaderButtonIcon} />
+              {agentPanelOpen ? (
+                <PanelRightClose aria-hidden="true" className={styles.stageHeaderButtonIcon} />
+              ) : (
+                <PanelRight aria-hidden="true" className={styles.stageHeaderButtonIcon} />
+              )}
             </button>
           </div>
         </header>
+
+        <StudioPanelRight
+          open={agentPanelOpen}
+          width={agentPanelWidth}
+          onClose={() => setAgentPanelOpen(false)}
+          onWidthChange={setAgentPanelWidth}
+          footer={(
+            <div
+              onKeyDownCapture={e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  handleSendAgentMockMessage()
+                }
+              }}
+            >
+              <ChatComposer
+                canPreviewPrompt={false}
+                canSend={Boolean(agentMockInput.trim())}
+                input={agentMockInput}
+                moreLabel={props.t('composer.more')}
+                placeholder="随心输入，Shift + Enter 换行..."
+                previewLabel={props.t('composer.preview')}
+                retryLabel={props.t('composer.retry')}
+                sendLabel={props.t('composer.send')}
+                textareaDisabled={false}
+                textareaLabel={props.t('composer.inputLabel')}
+                onChangeInput={setAgentMockInput}
+                onPreviewPrompt={() => {}}
+                onSubmit={e => {
+                  e.preventDefault()
+                  handleSendAgentMockMessage()
+                }}
+              />
+            </div>
+          )}
+        >
+          <div className={styles.pseudoAgentTimeline} ref={agentTimelineRef}>
+            <div className={styles.pseudoAgentWelcome}>
+              <div className={styles.pseudoAgentWelcomeIconWrap}>
+                <PanelRight aria-hidden="true" size={22} />
+              </div>
+              <div className={styles.pseudoAgentWelcomeTitle}>侧边对话</div>
+              <div className={styles.pseudoAgentWelcomeSubtitle}>
+                侧边对话为独立浮层，不挤占正文排版，关闭或刷新后可清空。
+              </div>
+            </div>
+
+            {mockAgentMessages.map(msg => (
+              <article
+                key={msg.id}
+                className={`${styles.pseudoAgentMessage} ${styles[msg.role]}`}
+              >
+                <div className={styles.pseudoAgentMessageSurface}>
+                  {msg.role === 'assistant' ? (
+                    <div className={styles.pseudoAgentMessageHeader}>
+                      <span className={styles.pseudoAgentSender}>Agent</span>
+                      <span className={styles.pseudoAgentTime}>{msg.time}</span>
+                    </div>
+                  ) : null}
+                  <div className={styles.pseudoAgentMessageBody}>
+                    <ConversationMarkdown
+                      codeBlockLabels={codeBlockLabels}
+                      role={msg.role}
+                      value={msg.content}
+                    />
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </StudioPanelRight>
 
         {activePanel === null && mobileDrawerOpen ? (
           <div

@@ -1,0 +1,130 @@
+.panelRight {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  z-index: 15; /* 高于 stageBase (1)，但低于 stageFloatingHeader (25) 与 floatingDock (40/50) */
+  width: max(400px, calc(50vw - (var(--loom-chat-width) / 2)));
+  max-width: 85vw;
+  min-width: 320px;
+  display: flex;
+  flex-direction: column;
+  padding-top: var(--loom-page-header-height, 40px);
+  background: var(--loom-color-background);
+  border: none;
+  box-sizing: border-box;
+  overflow: hidden;
+  box-shadow: none;
+  pointer-events: auto;
+  animation: panel-right-slide-in var(--loom-motion-duration-standard) var(--loom-motion-easing-standard);
+
+  /* 正文同款顶部渐隐遮罩：内容往上滚动时自然渐隐，无多余横线 */
+  &::before {
+    content: '';
+    position: absolute;
+    z-index: 5;
+    top: 0;
+    right: 0;
+    left: 0;
+    height: 70px;
+    background: linear-gradient(
+      to bottom,
+      var(--loom-color-background) 0%,
+      var(--loom-color-background) 12px,
+      transparent 100%
+    );
+    pointer-events: none;
+  }
+
+  /* 桌面端不贯穿的左侧垂直分割线：上下各留出 16px 留白 */
+  &::after {
+    content: '';
+    position: absolute;
+    top: 16px;
+    bottom: 16px;
+    left: 0;
+    width: 1px;
+    background: var(--loom-color-border);
+    pointer-events: none;
+    z-index: 1;
+  }
+}
+
+@keyframes panel-right-slide-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.resizeHandle {
+  position: absolute;
+  top: calc(var(--loom-page-header-height, 40px) + 16px);
+  bottom: 16px;
+  left: -4px;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 10;
+  background: transparent;
+  transition: background-color var(--loom-motion-duration-fast) ease;
+
+  &:hover,
+  &:active {
+    background: var(--loom-color-accent);
+    opacity: 0.5;
+  }
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  display: flex;
+  flex-direction: column;
+}
+
+.footer {
+  position: relative;
+  padding: 0 12px 8px;
+  background: var(--loom-color-background);
+  border-top: none;
+  flex-shrink: 0;
+
+  :global([data-loom-component='chat-composer']) {
+    width: 100%;
+    margin: 0;
+  }
+}
+
+@media (max-width: 820px) {
+  .panelRight {
+    position: fixed !important;
+    inset: 0 !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    z-index: 20 !important; /* 移动端全屏但低于 stageFloatingHeader (25) 与 floatingDock (40/50) */
+    padding-top: var(--loom-page-header-height, 40px) !important;
+    border-radius: 0 !important;
+
+    /* 移动端全屏不需要左侧垂直分割线 */
+    &::after {
+      display: none !important;
+    }
+  }
+
+  .resizeHandle {
+    display: none !important;
+  }
+
+  .footer {
+    padding: 0 12px calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+}

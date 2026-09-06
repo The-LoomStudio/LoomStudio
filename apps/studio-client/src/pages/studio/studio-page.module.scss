@@ -52,7 +52,7 @@
   --loom-composer-reserve: calc(var(--loom-input-height) + 4rem);
 
   position: absolute;
-  z-index: 30;
+  z-index: 40;
   top: 0;
   left: 0;
   width: var(--loom-rail-expanded-width);
@@ -93,7 +93,7 @@
   bottom: 0;
   left: 0;
   width: 18px;
-  z-index: 29;
+  z-index: 35;
   background: transparent;
   pointer-events: auto;
 }
@@ -103,22 +103,35 @@
   min-width: var(--loom-rail-collapsed-width);
   min-height: 0;
   display: grid;
-  grid-template-rows: var(--loom-page-header-height) calc(var(--loom-divider-space) * 2 + 1px) minmax(0, 1fr);
+  grid-template-rows: 40px minmax(0, 1fr);
   container-name: studio-rail;
   container-type: inline-size;
 }
 
 .dockHeader {
+  position: relative;
   width: 100%;
-  height: 50px;
+  height: 40px;
   min-width: 0;
   min-height: 0;
   display: flex;
   align-items: center;
   gap: 5px;
   overflow: hidden;
-  padding: 0 12px;
+  padding: 0 8px;
   box-sizing: border-box;
+
+  /* 不贯穿的底部横向分割线：左右两端各缩进 8px */
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 8px;
+    right: 8px;
+    height: 1px;
+    background: var(--loom-color-border);
+    pointer-events: none;
+  }
 }
 
 .dockBrandIconButton {
@@ -173,8 +186,8 @@
 }
 
 .dockBrandIcon {
-  width: 21px;
-  height: 21px;
+  width: 25px;
+  height: 25px;
   object-fit: contain;
   flex-shrink: 0;
 }
@@ -223,12 +236,7 @@
 }
 
 .dockHeaderDivider {
-  min-width: 0;
-  padding-inline: var(--loom-dock-content-inset);
-}
-
-.dockHeaderDivider > :global(.loom-divider) {
-  margin-inline: min(var(--loom-divider-inset), 12%);
+  display: none;
 }
 
 .floatingDockOpen {
@@ -490,8 +498,8 @@
 .dockPanelHost {
   min-width: 0;
   min-height: 0;
-  display: grid;
-  grid-template-rows: var(--loom-page-header-height) calc(var(--loom-divider-space) * 2 + 1px) minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   border-left: 0;
   background: var(--loom-color-surface);
@@ -502,7 +510,26 @@
 }
 
 .workspaceHeader {
+  position: relative;
+  height: 40px !important;
+  min-height: 40px !important;
+  flex: 0 0 40px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px !important;
+  box-sizing: border-box;
   min-width: 0;
+
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 8px;
+    right: 8px;
+    height: 1px;
+    background: var(--loom-color-border);
+    pointer-events: none;
+  }
 }
 
 .workspaceHeader svg {
@@ -557,12 +584,14 @@
 }
 
 .workspaceHeaderDivider {
-  min-width: 0;
+  display: none !important;
 }
 
 .workspaceBody {
+  flex: 1;
   min-width: 0;
   min-height: 0;
+  position: relative;
   overflow: hidden;
 }
 
@@ -578,10 +607,10 @@
   min-width: 0;
   min-height: 0;
   overflow: auto;
-}
 
-.panelStage[hidden] {
-  display: none;
+  &[hidden] {
+    display: none !important;
+  }
 }
 
 .windowResizeHandle {
@@ -620,17 +649,19 @@
 
 .stageFloatingHeader {
   position: absolute;
-  top: 12px;
-  left: 12px;
-  right: 12px;
+  top: 0;
+  left: 0;
+  right: 0;
   height: 40px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  z-index: 28;
+  z-index: 25;
   background: transparent;
   pointer-events: none;
   gap: 12px;
+  padding: 0 8px;
+  box-sizing: border-box;
 }
 
 .stageHeaderLeft {
@@ -646,16 +677,17 @@
   display: flex;
   justify-content: flex-end;
   align-items: center;
+  gap: 6px;
   min-width: 0;
   pointer-events: none;
   margin-left: auto;
 }
 
 .stageHeaderButton {
-  width: 40px;
-  height: 40px;
-  min-width: 40px;
-  min-height: 40px;
+  width: var(--loom-page-header-control-size);
+  height: var(--loom-page-header-control-size);
+  min-width: var(--loom-page-header-control-size);
+  min-height: var(--loom-page-header-control-size);
   display: grid;
   place-items: center;
   border: none;
@@ -687,9 +719,9 @@
 }
 
 .stageHeaderButtonIcon {
-  width: 20px;
-  height: 20px;
-  stroke-width: 2;
+  width: var(--loom-page-header-icon-size);
+  height: var(--loom-page-header-icon-size);
+  stroke-width: var(--loom-page-header-icon-stroke);
   pointer-events: none;
 }
 
@@ -697,15 +729,15 @@
   width: 14px;
   height: 14px;
   color: var(--loom-color-text-subtle);
-  stroke-width: 1.75;
+  stroke-width: var(--loom-page-header-icon-stroke);
   pointer-events: none;
 }
 
 .stageCharacterCapsule {
   display: inline-flex;
   align-items: center;
-  height: 40px;
-  padding: 4px 14px 4px 5px;
+  height: var(--loom-page-header-control-size);
+  padding: 3px 12px 3px 4px;
   gap: 8px;
   border: none;
   border-radius: 999px;
@@ -744,10 +776,10 @@
 }
 
 .stageCharacterCapsuleAvatar {
-  width: 30px;
-  height: 30px;
-  min-width: 30px;
-  min-height: 30px;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
   border-radius: 50%;
   display: grid;
   place-items: center;
@@ -763,7 +795,7 @@
 }
 
 .stageCharacterCapsuleName {
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 500;
   color: inherit;
   white-space: nowrap;
@@ -774,21 +806,26 @@
 }
 
 .stageCharacterCapsuleArrow {
-  width: 14px;
-  height: 14px;
-  stroke-width: 2;
+  width: 16px;
+  height: 16px;
+  stroke-width: var(--loom-page-header-icon-stroke);
   color: var(--loom-color-text-subtle);
   flex-shrink: 0;
   transition:
     transform var(--loom-motion-duration-fast) ease,
     color var(--loom-motion-duration-fast) ease;
+  pointer-events: none;
 }
 
 @media (max-width: 768px) {
   .stageFloatingHeader {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    padding: 0 8px !important;
+    z-index: 25 !important;
     gap: 6px;
-    left: 8px;
-    right: 8px;
   }
 
   .stageCharacterCapsuleName {
@@ -823,7 +860,7 @@
   .mobileBackdrop {
     position: fixed;
     inset: 0;
-    z-index: 29;
+    z-index: 38;
     display: block;
     background: rgba(0, 0, 0, 0.45);
     backdrop-filter: blur(4px);
@@ -847,7 +884,7 @@
     height: 100% !important;
     max-height: 100% !important;
     border: none;
-    z-index: 30;
+    z-index: 40;
     box-shadow: none;
   }
 
@@ -872,3 +909,110 @@
     display: none !important;
   }
 }
+
+.stageHeaderButtonActive {
+  color: var(--loom-color-accent-strong) !important;
+}
+
+
+
+.pseudoAgentTimeline {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.pseudoAgentWelcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 24px 12px 12px;
+  color: var(--loom-color-text-muted);
+  user-select: none;
+}
+
+.pseudoAgentWelcomeIconWrap {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--loom-color-surface);
+  color: var(--loom-color-accent-strong);
+  margin-bottom: 12px;
+}
+
+.pseudoAgentWelcomeTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--loom-color-text);
+  margin-bottom: 4px;
+}
+
+.pseudoAgentWelcomeSubtitle {
+  font-size: 12px;
+  color: var(--loom-color-text-subtle);
+  max-width: 280px;
+  line-height: 1.5;
+}
+
+.pseudoAgentMessage {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-width: 100%;
+
+  &.user {
+    align-self: flex-end;
+    max-width: 85%;
+
+    .pseudoAgentMessageSurface {
+      border-radius: var(--loom-radius-message);
+      padding: 10px 14px;
+      background: var(--loom-color-surface);
+      color: var(--loom-color-text);
+    }
+  }
+
+  &.assistant {
+    align-self: flex-start;
+    width: 100%;
+
+    .pseudoAgentMessageSurface {
+      padding: 4px 0;
+    }
+  }
+}
+
+.pseudoAgentMessageHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.pseudoAgentSender {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--loom-color-accent-strong);
+}
+
+.pseudoAgentTime {
+  font-size: 11px;
+  color: var(--loom-color-text-subtle);
+}
+
+.pseudoAgentMessageBody {
+  font-size: 14px;
+  line-height: var(--loom-line-height-reading);
+  color: var(--loom-color-text);
+  word-break: break-word;
+}
+
+
