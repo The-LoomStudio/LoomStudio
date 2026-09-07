@@ -30,4 +30,8 @@ describe('NarrativeTimeline.readNarrativeNodeRole', () => {
   it('keeps legacy standalone Narrative nodes as assistant content', () => {
     expect(readNarrativeNodeRole([{ id: 'legacy-node' } as NarrativeNode], 0)).toBe('assistant')
   })
+
+  it('recognizes optimistic narrative nodes as user content', () => {
+    expect(readNarrativeNodeRole([{ id: 'optimistic-narrative-node-1' } as NarrativeNode], 0)).toBe('user')
+  })
 })

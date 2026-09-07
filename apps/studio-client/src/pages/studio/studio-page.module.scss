@@ -280,6 +280,8 @@
 
 .floatingDockResizing {
   transition: none;
+  user-select: none;
+  cursor: ew-resize;
 }
 
 .dockToggle {
@@ -614,37 +616,48 @@
 }
 
 .windowResizeHandle {
-  display: none !important;
+  position: absolute;
+  z-index: 20;
+  display: block;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  touch-action: none;
 }
 
 .windowResizeHandle:focus-visible {
-  opacity: 1;
   outline: 1px solid var(--loom-color-accent);
   outline-offset: -2px;
 }
 
 .windowResizeRight {
-  top: 12px;
-  right: -4px;
-  bottom: 12px;
+  top: 0;
+  right: 0;
+  bottom: 0;
   width: 8px;
   cursor: ew-resize;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 2px;
+    background: transparent;
+    transition: background-color var(--loom-motion-duration-fast) ease;
+  }
+
+  &:hover::after,
+  &:active::after {
+    background: var(--loom-color-accent);
+  }
 }
 
-.windowResizeBottom {
-  right: 12px;
-  bottom: -4px;
-  left: 12px;
-  height: 8px;
-  cursor: ns-resize;
-}
-
-.windowResizeCorner {
-  right: -4px;
-  bottom: -4px;
-  width: var(--loom-icon-size-4);
-  height: var(--loom-icon-size-4);
-  cursor: nwse-resize;
+.windowResizeActive.windowResizeRight::after,
+.floatingDockResizing .windowResizeRight::after {
+  background: var(--loom-color-accent);
 }
 
 .stageFloatingHeader {
@@ -903,116 +916,13 @@
     z-index: 50;
   }
 
-  .windowResizeRight,
-  .windowResizeBottom,
-  .windowResizeCorner {
+  .windowResizeRight {
     display: none !important;
   }
 }
 
 .stageHeaderButtonActive {
   color: var(--loom-color-accent-strong) !important;
-}
-
-
-
-.pseudoAgentTimeline {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
-  padding: 20px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.pseudoAgentWelcome {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: 24px 12px 12px;
-  color: var(--loom-color-text-muted);
-  user-select: none;
-}
-
-.pseudoAgentWelcomeIconWrap {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: var(--loom-color-surface);
-  color: var(--loom-color-accent-strong);
-  margin-bottom: 12px;
-}
-
-.pseudoAgentWelcomeTitle {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--loom-color-text);
-  margin-bottom: 4px;
-}
-
-.pseudoAgentWelcomeSubtitle {
-  font-size: 12px;
-  color: var(--loom-color-text-subtle);
-  max-width: 280px;
-  line-height: 1.5;
-}
-
-.pseudoAgentMessage {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  max-width: 100%;
-
-  &.user {
-    align-self: flex-end;
-    max-width: 85%;
-
-    .pseudoAgentMessageSurface {
-      border-radius: var(--loom-radius-message);
-      padding: 10px 14px;
-      background: var(--loom-color-surface);
-      color: var(--loom-color-text);
-    }
-  }
-
-  &.assistant {
-    align-self: flex-start;
-    width: 100%;
-
-    .pseudoAgentMessageSurface {
-      padding: 4px 0;
-    }
-  }
-}
-
-.pseudoAgentMessageHeader {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-.pseudoAgentSender {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--loom-color-accent-strong);
-}
-
-.pseudoAgentTime {
-  font-size: 11px;
-  color: var(--loom-color-text-subtle);
-}
-
-.pseudoAgentMessageBody {
-  font-size: 14px;
-  line-height: var(--loom-line-height-reading);
-  color: var(--loom-color-text);
-  word-break: break-word;
 }
 
 

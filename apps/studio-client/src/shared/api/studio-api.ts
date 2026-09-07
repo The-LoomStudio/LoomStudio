@@ -50,6 +50,7 @@ import type {
   MutationReceipt,
   UpdateAiCapabilityProfileResult,
   NarrativePage,
+  NarrativeTimeline,
   OpeningChatInput,
   PreviewAgentTurnResult,
   PreviewCardDeletionResult,
@@ -142,6 +143,7 @@ export type UpdateCardPromptResourcesInput = {
 export type CreateAgentSessionInput = {
   agentProfileId: string
   title?: string
+  timelineId?: string
 }
 
 export type InvokeAgentTurnInput = {
@@ -342,10 +344,13 @@ export type StudioApi = {
   }
   agentSessions: {
     create(input: CreateAgentSessionInput): Promise<CreateAgentSessionResult>
+    list(input?: { agentProfileId?: string; timelineId?: string; standalone?: boolean; cursor?: string; limit?: number }): Promise<{ sessions: AgentSession[]; nextCursor?: string }>
     get(agentSessionId: string): Promise<{ session: AgentSession }>
     getTranscript(input: { agentSessionId: string; cursor?: string; limit?: number }): Promise<AgentTranscriptPage>
     invoke(input: InvokeAgentTurnInput): Promise<InvokeAgentTurnResult>
     preview(input: PreviewAgentTurnInput): Promise<PreviewAgentTurnResult>
+    delete(agentSessionId: string): Promise<{ deleted: true; mutation: MutationReceipt }>
+    update(input: { agentSessionId: string; title?: string }): Promise<{ session: AgentSession; mutation: MutationReceipt }>
   }
   providerProfiles: {
     list(input?: { cursor?: string; limit?: number }): Promise<ListProviderProfilesResult>
@@ -386,6 +391,8 @@ export type StudioApi = {
     getPage(input: { timelineId: string; branchId?: string; cursor?: string; limit?: number }): Promise<NarrativePage>
     fork(input: ForkNarrativeBranchInput): Promise<ForkNarrativeBranchResult>
     switch(input: SwitchNarrativeBranchInput): Promise<SwitchNarrativeBranchResult>
+    delete(timelineId: string): Promise<{ deleted: true; mutation: MutationReceipt }>
+    update(input: { timelineId: string; title?: string }): Promise<{ timeline: NarrativeTimeline; mutation: MutationReceipt }>
   }
   promptResources: {
     get(resourceId: string): Promise<GetPromptResourceResult>
@@ -501,10 +508,13 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
     },
     agentSessions: {
       create: input => bridge.call<CreateAgentSessionResult>('application.createAgentSession', input as unknown as ClientJsonValue),
+      list: input => bridge.call<{ sessions: AgentSession[]; nextCursor?: string }>('application.listAgentSessions', (input ?? {}) as unknown as ClientJsonValue),
       get: agentSessionId => bridge.call<{ session: AgentSession }>('application.getAgentSession', { agentSessionId }),
       getTranscript: input => bridge.call<AgentTranscriptPage>('application.getAgentTranscriptPage', input as unknown as ClientJsonValue),
       invoke: input => bridge.call<InvokeAgentTurnResult>('application.invokeAgentTurn', input as unknown as ClientJsonValue),
       preview: input => bridge.call<PreviewAgentTurnResult>('application.previewAgentTurn', input as unknown as ClientJsonValue),
+      delete: agentSessionId => bridge.call<{ deleted: true; mutation: MutationReceipt }>('application.deleteAgentSession', { agentSessionId }),
+      update: input => bridge.call<{ session: AgentSession; mutation: MutationReceipt }>('application.updateAgentSession', input as unknown as ClientJsonValue),
     },
     providerProfiles,
     providerAccounts: providerProfiles,
@@ -548,6 +558,8 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       getPage: input => bridge.call<NarrativePage>('application.getNarrativePage', input as unknown as ClientJsonValue),
       fork: input => bridge.call<ForkNarrativeBranchResult>('application.forkNarrativeBranch', input as unknown as ClientJsonValue),
       switch: input => bridge.call<SwitchNarrativeBranchResult>('application.switchNarrativeBranch', input as unknown as ClientJsonValue),
+      delete: timelineId => bridge.call<{ deleted: true; mutation: MutationReceipt }>('application.deleteNarrativeTimeline', { timelineId }),
+      update: input => bridge.call<{ timeline: NarrativeTimeline; mutation: MutationReceipt }>('application.updateNarrativeTimeline', input as unknown as ClientJsonValue),
     },
     promptResources: {
       get: resourceId => bridge.call<GetPromptResourceResult>('application.getPromptResource', { resourceId }),

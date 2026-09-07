@@ -42,6 +42,8 @@ import type {
   InvokeAgentTurnResult,
   ListAgentProfilesInput,
   ListAgentProfilesResult,
+  ListAgentSessionsInput,
+  ListAgentSessionsResult,
   ListAgentToolsResult,
   ListPresetToolMountsInput,
   ListPresetToolMountsResult,
@@ -58,6 +60,8 @@ import type {
   TextTransformRuleEntry,
   UpdateAgentProfileInput,
   UpdateAgentProfileResult,
+  UpdateAgentSessionInput,
+  UpdateAgentSessionResult,
   UpdateAgentToolInput,
   UpdateAgentToolResult,
 } from '../types.js'
@@ -158,9 +162,15 @@ export function createAgentsRuntimeMethods(ctx: ApplicationRuntimeContext) {
       const result = await requireAgents(ctx).createSession({
         ...agentWriteContext(requestContext, 'application.createAgentSession'),
         agentProfileId: input.agentProfileId,
+        timelineId: input.timelineId,
         title: input.title,
       })
       return { session: result.session, mutation: { changesetId: result.commit.changesetId } }
+    },
+
+    listAgentSessions: async (input?: ListAgentSessionsInput): Promise<ListAgentSessionsResult> => {
+      const page = await requireAgents(ctx).listSessions(input)
+      return { sessions: page.sessions, nextCursor: page.nextCursor }
     },
 
     getAgentSession: async (input: GetAgentSessionInput): Promise<GetAgentSessionResult> => {
@@ -199,6 +209,14 @@ export function createAgentsRuntimeMethods(ctx: ApplicationRuntimeContext) {
         }, { allowEmpty: true }),
       )
       return { deleted: true as const, mutation: { changesetId: result.commit.changesetId } }
+    },
+
+    updateAgentSession: async (input: UpdateAgentSessionInput, requestContext?: RuntimeRequestContext): Promise<UpdateAgentSessionResult> => {
+      const result = await requireAgents(ctx).updateSession({
+        ...agentWriteContext(requestContext, 'application.updateAgentSession'),
+        ...input,
+      })
+      return { session: result.session, mutation: { changesetId: result.commit.changesetId } }
     },
 
     previewAgentTurn: async (input: PreviewAgentTurnInput, requestContext?: RuntimeRequestContext): Promise<PreviewAgentTurnResult> => {

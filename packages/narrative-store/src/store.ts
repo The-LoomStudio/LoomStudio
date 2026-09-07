@@ -270,6 +270,18 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
         tx.recordOperations([operation('update', timeline.id, 'narrative.timeline')])
         return requireTimeline(database, timeline.id)
       },
+
+      updateTimeline: input => {
+        const timeline = requireTimeline(database, input.timelineId)
+        validateOptionalText(input.title, 'title')
+        database.prepare(`
+          UPDATE narrative_timelines
+          SET title = ?, updated_at = ?
+          WHERE id = ?
+        `).run(input.title ?? null, now(), timeline.id)
+        tx.recordOperations([operation('update', timeline.id, 'narrative.timeline')])
+        return requireTimeline(database, timeline.id)
+      },
     }
   }
 
@@ -310,6 +322,10 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
     },
     deleteTimeline: async input => {
       const result = await write(input, tx => tx.deleteTimeline(input))
+      return { timeline: result.value, commit: result.commit }
+    },
+    updateTimeline: async input => {
+      const result = await write(input, tx => tx.updateTimeline(input))
       return { timeline: result.value, commit: result.commit }
     },
     updatePromptResources: async input => {

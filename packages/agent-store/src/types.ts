@@ -8,6 +8,7 @@ import type { JsonObject, JsonValue } from '@loom-studio/shared'
 export type AgentSession = {
   id: string
   agentProfileId: string
+  timelineId?: string
   title?: string
   headEntryId?: string
   entryCount: number
@@ -109,6 +110,7 @@ export type AgentWriteContext = {
 export type CreateAgentSessionInput = AgentWriteContext & {
   id?: string
   agentProfileId: string
+  timelineId?: string
   title?: string
 }
 export type AppendAgentTranscriptEntriesInput = AgentWriteContext & {
@@ -123,9 +125,26 @@ export type AppendAgentTranscriptEntriesInput = AgentWriteContext & {
 export type DeleteAgentSessionInput = AgentWriteContext & {
   agentSessionId: string
 }
+export type UpdateAgentSessionInput = AgentWriteContext & {
+  agentSessionId: string
+  title?: string
+}
 export type AgentTranscriptPage = {
   session: AgentSession
   entries: AgentTranscriptEntry[]
+  nextCursor?: string
+}
+
+export type ListAgentSessionsInput = {
+  agentProfileId?: string
+  timelineId?: string
+  standalone?: boolean
+  cursor?: string
+  limit?: number
+}
+
+export type AgentSessionPage = {
+  sessions: AgentSession[]
   nextCursor?: string
 }
 
@@ -133,16 +152,21 @@ export type AgentTransaction = {
   createSession(
     input: Omit<CreateAgentSessionInput, keyof AgentWriteContext>,
   ): AgentSession
+  listSessions(input?: ListAgentSessionsInput): AgentSessionPage
   appendEntries(
     input: Omit<AppendAgentTranscriptEntriesInput, keyof AgentWriteContext>,
   ): { session: AgentSession; entries: AgentTranscriptEntry[] }
   deleteSession(
     input: Omit<DeleteAgentSessionInput, keyof AgentWriteContext>,
   ): AgentSession
+  updateSession(
+    input: Omit<UpdateAgentSessionInput, keyof AgentWriteContext>,
+  ): AgentSession
 }
 
 export type AgentStore = {
   getSession(id: string): Promise<AgentSession | null>
+  listSessions(input?: ListAgentSessionsInput): Promise<AgentSessionPage>
   getEntry(id: string): Promise<AgentTranscriptEntry | null>
   getEntryPage(input: {
     agentSessionId: string
@@ -160,6 +184,9 @@ export type AgentStore = {
   }>
   deleteSession(
     input: DeleteAgentSessionInput,
+  ): Promise<{ session: AgentSession; commit: DataCommitFact }>
+  updateSession(
+    input: UpdateAgentSessionInput,
   ): Promise<{ session: AgentSession; commit: DataCommitFact }>
   transaction(tx: SqliteDataTransaction): AgentTransaction
 }

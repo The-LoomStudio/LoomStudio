@@ -9,6 +9,7 @@ import type { JsonValue } from '@loom-studio/shared'
 import {
   isRecord,
   readNumber,
+  readOptionalBoolean,
   readOptionalNumber,
   readOptionalObject,
   readOptionalString,
@@ -73,8 +74,18 @@ export async function handleAgentsRpc(
     case 'application.createAgentSession':
       return await runtime.createAgentSession({
         agentProfileId: readString(params, 'agentProfileId'),
+        timelineId: readOptionalString(params, 'timelineId'),
         title: readOptionalString(params, 'title'),
       }, context) as unknown as JsonValue
+
+    case 'application.listAgentSessions':
+      return await runtime.listAgentSessions({
+        agentProfileId: readOptionalString(params, 'agentProfileId'),
+        timelineId: readOptionalString(params, 'timelineId'),
+        standalone: readOptionalBoolean(params, 'standalone'),
+        cursor: readOptionalString(params, 'cursor'),
+        limit: readOptionalNumber(params, 'limit'),
+      }) as unknown as JsonValue
 
     case 'application.getAgentSession':
       return await runtime.getAgentSession({
@@ -91,6 +102,12 @@ export async function handleAgentsRpc(
     case 'application.deleteAgentSession':
       return await runtime.deleteAgentSession({
         agentSessionId: readString(params, 'agentSessionId'),
+      }, context) as unknown as JsonValue
+
+    case 'application.updateAgentSession':
+      return await runtime.updateAgentSession({
+        agentSessionId: readString(params, 'agentSessionId'),
+        title: readOptionalString(params, 'title'),
       }, context) as unknown as JsonValue
 
     case 'application.invokeAgentTurn':

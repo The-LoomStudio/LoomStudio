@@ -316,4 +316,28 @@ describe('narrative store', () => {
       await rm(directory, { recursive: true, force: true })
     }
   })
+
+  it('updates timeline title with audit operation', async () => {
+    const { engine, store, actor } = createTestContext()
+    const created = await store.createTimeline({
+      actor,
+      stateRevisionId: 'state-1',
+      title: 'Original Title',
+    })
+
+    const updated = await store.updateTimeline({
+      actor,
+      timelineId: created.timeline.id,
+      title: 'Renamed Story',
+    })
+
+    expect(updated.timeline.title).toBe('Renamed Story')
+    expect(updated.commit.operations).toEqual([
+      { store: 'narrative', kind: 'update', entityId: created.timeline.id, entityType: 'narrative.timeline' },
+    ])
+
+    const fetched = await store.getTimeline(created.timeline.id)
+    expect(fetched?.title).toBe('Renamed Story')
+    engine.close()
+  })
 })

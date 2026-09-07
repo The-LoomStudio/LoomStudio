@@ -35,6 +35,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
   const [nodes, setNodes] = useState<NarrativeNode[]>(() => input.initialNodes ?? [])
   const [olderCursor, setOlderCursor] = useState<string>()
   const [cardTimelines, setCardTimelines] = useState<NarrativeTimeline[]>([])
+  const [allTimelines, setAllTimelines] = useState<NarrativeTimeline[]>([])
   const [agentSession, setAgentSession] = useState<AgentSession>()
   const [agentMessages, setAgentTranscriptEntries] = useState<AgentTranscriptEntry[]>([])
   const [agentComposerInput, setAgentComposerInput] = useState('')
@@ -74,6 +75,22 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     setCardTimelines(timelines)
     return timelines
   }
+
+  async function refreshAllTimelines() {
+    const timelines: NarrativeTimeline[] = []
+    let cursor: string | undefined
+    do {
+      const page = await input.api.narratives.list({ cursor, limit: 100 })
+      timelines.push(...page.timelines)
+      cursor = page.nextCursor
+    } while (cursor)
+    setAllTimelines(timelines)
+    return timelines
+  }
+
+  useEffect(() => {
+    void refreshAllTimelines()
+  }, [])
 
   async function createTimelineFromCard() {
     if (!input.selectedCardId) return
@@ -154,6 +171,41 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
       }
 
       const session = await ensureAgentSession()
+
+      const optimisticNodeId = `optimistic-narrative-node-${++optimisticEntryIdRef.current}`
+      const optimisticEntryId = `optimistic-agent-entry-${++optimisticEntryIdRef.current}`
+
+      setNodes(current => {
+        const lastNode = current.at(-1)
+        const optimisticNode: NarrativeNode = {
+          id: optimisticNodeId,
+          timelineId: currentTimeline.id,
+          parentNodeId: currentBranch.headNodeId ?? lastNode?.id,
+          body: {
+            format: 'loom-markdown.v1',
+            raw: content,
+          },
+          createdAt: new Date().toISOString(),
+        }
+        return [...current, optimisticNode]
+      })
+
+      setAgentTranscriptEntries(current => {
+        const lastEntry = current.at(-1)
+        const optimisticEntry: AgentTranscriptEntry = {
+          id: optimisticEntryId,
+          agentSessionId: session.id,
+          parentEntryId: lastEntry?.id,
+          sequence: (lastEntry?.sequence ?? 0) + 1,
+          entry: { kind: 'message', role: 'user', content },
+          createdAt: new Date().toISOString(),
+        }
+        return [...current, optimisticEntry]
+      })
+
+      composerDraftsRef.current.delete(readComposerDraftKey(currentTimeline, currentBranch, input.selectedCardId))
+      setComposerInput('')
+
       const result = await input.api.agentSessions.invoke({
         agentSessionId: session.id,
         input: content,
@@ -165,6 +217,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
         },
       })
       if (!result.narrative) throw new Error('Agent turn did not commit a Narrative node')
+
       setTimeline(result.narrative.timeline)
       setBranch(result.narrative.branch)
       setBranches(current => {
@@ -173,14 +226,27 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
           ? current.map(item => item.id === result.narrative!.branch.id ? result.narrative!.branch : item)
           : [...current, result.narrative!.branch]
       })
-      setNodes(current => [...current, ...result.narrative!.nodes])
+      setNodes(current => [
+        ...current.filter(item => item.id !== optimisticNodeId),
+        ...result.narrative!.nodes,
+      ])
       setAgentSession(result.agentSession)
-      setAgentTranscriptEntries(current => [...current, result.entries.user, result.entries.assistant])
+      setAgentTranscriptEntries(current => [
+        ...current.filter(item => item.id !== optimisticEntryId),
+        result.entries.user,
+        result.entries.assistant,
+      ])
       setLastRun(result)
       setPromptPreview(undefined)
-      composerDraftsRef.current.delete(readComposerDraftKey(currentTimeline, currentBranch, input.selectedCardId))
-      setComposerInput('')
       if (currentTimeline.createdFrom?.cardId) await refreshCardTimelines(currentTimeline.createdFrom.cardId)
+
+      try {
+        const transcript = await loadTranscript(input.api, session.id)
+        setAgentSession(transcript.session)
+        setAgentTranscriptEntries(transcript.entries)
+      } catch {
+        // The persisted user and assistant entries above remain usable if the optional transcript refresh fails.
+      }
     })
     return resultActivated
   }
@@ -193,28 +259,24 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     await input.runAgentAction(async () => {
       const session = await ensureAgentSession()
       const optimisticId = `optimistic-agent-entry-${++optimisticEntryIdRef.current}`
-      const optimisticEntry: AgentTranscriptEntry = {
-        id: optimisticId,
-        agentSessionId: session.id,
-        parentEntryId: agentMessages.at(-1)?.id,
-        sequence: (agentMessages.at(-1)?.sequence ?? 0) + 1,
-        entry: { kind: 'message', role: 'user', content },
-        createdAt: new Date().toISOString(),
-      }
-      setAgentTranscriptEntries(current => [...current, optimisticEntry])
+      setAgentTranscriptEntries(current => {
+        const lastEntry = current.at(-1)
+        const optimisticEntry: AgentTranscriptEntry = {
+          id: optimisticId,
+          agentSessionId: session.id,
+          parentEntryId: lastEntry?.id,
+          sequence: (lastEntry?.sequence ?? 0) + 1,
+          entry: { kind: 'message', role: 'user', content },
+          createdAt: new Date().toISOString(),
+        }
+        return [...current, optimisticEntry]
+      })
       setAgentComposerInput('')
 
-      let result: InvokeAgentTurnResult
-      try {
-        result = await input.api.agentSessions.invoke({
-          agentSessionId: session.id,
-          input: content,
-        })
-      } catch (error) {
-        setAgentTranscriptEntries(current => current.filter(entry => entry.id !== optimisticId))
-        setAgentComposerInput(current => current || content)
-        throw error
-      }
+      const result = await input.api.agentSessions.invoke({
+        agentSessionId: session.id,
+        input: content,
+      })
 
       setAgentSession(result.agentSession)
       setAgentTranscriptEntries(current => [
@@ -329,6 +391,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     const pending = (async () => {
       const created = await input.api.agentSessions.create({
         agentProfileId: input.selectedAgentProfileId!,
+        timelineId: timeline?.id,
         title: input.selectedCard?.name ?? timeline?.title,
       })
       setAgentSession(created.session)
@@ -349,14 +412,84 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     setAgentComposerInput('')
   }
 
+  async function activateAgentSession(sessionOrId: AgentSession | string) {
+    const sessionId = typeof sessionOrId === 'string' ? sessionOrId : sessionOrId.id
+    try {
+      const transcript = await loadTranscript(input.api, sessionId)
+      setAgentSession(transcript.session)
+      setAgentTranscriptEntries(transcript.entries)
+      return transcript.session
+    } catch {
+      if (typeof sessionOrId !== 'string') {
+        setAgentSession(sessionOrId)
+        return sessionOrId
+      }
+      return undefined
+    }
+  }
+
+  async function deleteTimeline(timelineId: string) {
+    await input.runAction(async () => {
+      await input.api.narratives.delete(timelineId)
+      if (timeline?.id === timelineId) {
+        resetToDraftTimeline()
+      }
+      await refreshAllTimelines()
+      if (input.selectedCardId) {
+        await refreshCardTimelines(input.selectedCardId)
+      }
+    })
+  }
+
+  async function renameTimeline(timelineId: string, title: string) {
+    let updated: NarrativeTimeline | undefined
+    await input.runAction(async () => {
+      const result = await input.api.narratives.update({ timelineId, title: title.trim() || undefined })
+      updated = result.timeline
+      if (timeline?.id === timelineId) {
+        setTimeline(result.timeline)
+      }
+      await refreshAllTimelines()
+      if (input.selectedCardId) {
+        await refreshCardTimelines(input.selectedCardId)
+      }
+    })
+    return updated
+  }
+
+  async function deleteAgentSession(agentSessionId: string) {
+    await input.runAgentAction(async () => {
+      await input.api.agentSessions.delete(agentSessionId)
+      if (agentSession?.id === agentSessionId) {
+        resetAgentSession()
+      }
+    })
+  }
+
+  async function renameAgentSession(agentSessionId: string, title: string) {
+    let updated: AgentSession | undefined
+    await input.runAgentAction(async () => {
+      const result = await input.api.agentSessions.update({ agentSessionId, title: title.trim() || undefined })
+      updated = result.session
+      if (agentSession?.id === agentSessionId) {
+        setAgentSession(result.session)
+      }
+    })
+    return updated
+  }
+
   return {
-    agentMessages,
+    agentComposerInput,
     agentInput: agentComposerInput,
+    agentMessages,
     agentSession,
+    allTimelines,
     branch,
     branches,
     cardTimelines,
+    composerInput,
     editNarrativeNode,
+    hasOlderNarrativeNodes: Boolean(olderCursor),
     input: composerInput,
     lastRun,
     loadOlderNodes,
@@ -367,10 +500,16 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     setInput: setComposerDraft,
     timeline,
     activateTimeline,
+    activateAgentSession,
     createTimelineFromCard,
+    deleteTimeline,
+    renameTimeline,
+    deleteAgentSession,
+    renameAgentSession,
     forkFromNode,
     previewPrompt,
     refreshCardTimelines,
+    refreshAllTimelines,
     submitAgentTurn,
     submitTurn,
     switchBranch,

@@ -16,6 +16,35 @@
   overflow: auto;
 }
 
+.characterWorkbench {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.galleryPane {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.profilePane {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.profileEmpty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 200px;
+  color: var(--loom-color-text-subtle);
+}
+
 .headerTitle {
   min-width: 0;
   flex: 1;
@@ -81,8 +110,8 @@
 .profileToolbar,
 .profileIdentity,
 .editorActions,
-.resourceOverview,
-.sessions > header {
+.sectionHeader,
+.sessionsHeader {
   display: flex;
   align-items: center;
 }
@@ -99,8 +128,14 @@
 }
 
 .galleryToolbar {
+  position: sticky;
+  z-index: 1;
+  top: 0;
   display: grid;
   gap: 5px;
+  min-height: 42px;
+  padding: 7px 12px;
+  background: var(--loom-color-surface);
 }
 
 .galleryToolbarMain {
@@ -224,9 +259,9 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
-  gap: 10px;
-  padding: 0 16px 20px;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 8px;
+  padding: 0 12px 20px;
 }
 
 .gridCard,
@@ -307,6 +342,25 @@
   color: var(--loom-color-accent-strong);
 }
 
+.cardActive > .cardOpen .cardCover {
+  border-color: var(--loom-color-accent-strong);
+  box-shadow: 0 0 0 1.5px var(--loom-color-accent);
+}
+
+.cardActive strong {
+  color: var(--loom-color-accent-strong);
+}
+
+.cardActive img {
+  filter: saturate(1);
+}
+
+@media (min-width: 641px) {
+  .profileBackButton {
+    display: none !important;
+  }
+}
+
 .selectionToggle {
   position: absolute;
   z-index: 1;
@@ -317,7 +371,7 @@
 .list {
   display: grid;
   gap: 4px;
-  padding: 0 16px 20px;
+  padding: 0 12px 20px;
 }
 
 .listCard {
@@ -672,12 +726,145 @@
   white-space: pre-wrap;
 }
 
-.resourceOverview {
-  justify-content: space-between;
-  padding-top: 3px;
+.characterResourcesSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 6px;
 }
 
-.resourceOverview span,
+.resourceCardsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 8px;
+}
+
+.resourceCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: var(--loom-radius-card);
+  border: 0;
+  background: var(--loom-color-surface-subtle);
+  color: var(--loom-color-text);
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s ease;
+
+  &:hover {
+    background: var(--loom-color-surface-raised);
+  }
+
+  &:active {
+    transform: scale(0.99);
+  }
+}
+
+.resourceCardIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--loom-color-accent);
+  flex-shrink: 0;
+
+  svg {
+    width: 17px;
+    height: 17px;
+    stroke-width: 1.75;
+  }
+}
+
+.resourceCardInfo {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.resourceCardName {
+  font-size: var(--loom-font-size-2);
+  font-weight: var(--loom-font-weight-5);
+  color: var(--loom-color-text);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resourceCardMeta {
+  font-size: 11px;
+  color: var(--loom-color-text-muted);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resourceCardArrow {
+  width: 14px;
+  height: 14px;
+  color: var(--loom-color-text-subtle);
+  opacity: 0.5;
+  flex-shrink: 0;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+
+  .resourceCard:hover & {
+    opacity: 0.9;
+    transform: translateX(2px);
+    color: var(--loom-color-text);
+  }
+}
+
+.openingSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 4px;
+}
+
+.openingHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.openingToggle {
+  border: 0;
+  background: transparent;
+  color: var(--loom-color-accent);
+  font-size: var(--loom-font-size-2);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: var(--loom-radius-sm, 4px);
+  transition: opacity 0.15s ease;
+
+  &:hover {
+    opacity: 0.8;
+  }
+}
+
+.openingContentCollapsed {
+  margin: 0;
+  color: var(--loom-color-text);
+  font-size: var(--loom-font-size-3);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.openingContentExpanded {
+  margin: 0;
+  color: var(--loom-color-text);
+  font-size: var(--loom-font-size-3);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
 .currentSession,
 .sessionList small,
 .sessionList > p {
@@ -800,8 +987,34 @@
   border-top: 1px solid var(--loom-color-divider);
 }
 
-.sessions > header {
+.sessionsHeader {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
+}
+
+.sortToggleButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: var(--loom-radius-sm, 4px);
+  background: transparent;
+  color: var(--loom-color-text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
+
+  svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  &:hover {
+    color: var(--loom-color-accent);
+    background: var(--loom-color-surface-raised);
+  }
 }
 
 .currentSession {
@@ -817,7 +1030,8 @@
   overflow: hidden;
   border: 0;
   border-radius: var(--loom-radius-card);
-  background: var(--loom-color-surface-inset);
+  background: var(--loom-color-surface-subtle);
+  transition: background-color 0.15s ease;
 }
 
 .sessionCard summary {
@@ -828,6 +1042,11 @@
   padding: 7px 10px;
   cursor: pointer;
   list-style: none;
+  transition: background-color 0.15s ease;
+
+  &:hover {
+    background: var(--loom-color-surface-raised);
+  }
 }
 
 .sessionCard summary::-webkit-details-marker {
@@ -847,19 +1066,42 @@
   transform: rotate(90deg);
 }
 
-.sessionCard summary > span {
+.sessionCardHeader {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
-  display: grid;
+  flex: 1;
   gap: 2px;
 }
 
-.sessionCard summary strong {
+.sessionCardTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sessionCardTitleRow strong {
   color: var(--loom-color-text);
   font-size: var(--loom-font-size-3);
   font-weight: var(--loom-font-weight-5);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.sessionCard summary small {
+.currentBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: var(--loom-font-weight-6);
+  background: color-mix(in srgb, var(--loom-color-accent) 20%, transparent);
+  color: var(--loom-color-accent);
+  line-height: 1.3;
+}
+
+.sessionCardHeader small {
   color: var(--loom-color-text-subtle);
   font-size: var(--loom-font-size-1);
 }
@@ -867,7 +1109,7 @@
 .sessionCardBody {
   display: grid;
   gap: 10px;
-  padding: 1px 10px 10px 29px;
+  padding: 4px 10px 12px 29px;
 }
 
 .sessionCardBody dl {
@@ -896,16 +1138,40 @@
   line-height: var(--loom-line-height-code);
 }
 
-.sessionCardBody > button {
-  justify-self: start;
-  padding: 2px 0;
-  color: var(--loom-color-accent-strong);
+.openSessionButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 6px 12px;
+  border-radius: var(--loom-radius-sm, 4px);
+  border: 0;
+  background: var(--loom-color-accent);
+  color: #fff;
   font-size: var(--loom-font-size-2);
-  text-align: left;
-}
+  font-weight: var(--loom-font-weight-5);
+  cursor: pointer;
+  justify-self: start;
+  transition: opacity 0.15s ease, transform 0.1s ease;
 
-.sessionCardBody > button:disabled {
-  color: var(--loom-color-text-subtle);
+  svg {
+    width: 12px;
+    height: 12px;
+    fill: currentColor;
+  }
+
+  &:hover:not(:disabled) {
+    opacity: 0.9;
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

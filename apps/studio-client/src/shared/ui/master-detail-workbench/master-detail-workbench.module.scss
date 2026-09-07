@@ -1,0 +1,70 @@
+.container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--loom-color-surface-base);
+}
+
+.workbenchColumnLayout {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.masterPane {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.detailPane {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.detailBody {
+  flex: 1 1 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.narrowBackBar {
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--loom-color-divider, var(--loom-color-border));
+  background: var(--loom-color-surface-base, var(--loom-color-surface));
+  flex-shrink: 0;
+}
+
+.narrowBackButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  margin: 0;
+  border: 0;
+  border-radius: var(--loom-radius-control);
+  background: transparent;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
+  font-weight: var(--loom-font-weight-5);
+  cursor: pointer;
+  transition: color var(--loom-motion-duration-fast) ease, background var(--loom-motion-duration-fast) ease;
+
+  &:hover:not(:disabled),
+  &:focus-visible {
+    color: var(--loom-color-accent-strong);
+    background: var(--loom-color-surface-hover, rgba(255, 255, 255, 0.05));
+  }
+}

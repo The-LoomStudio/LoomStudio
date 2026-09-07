@@ -40,6 +40,8 @@ type ContextWorkbenchProps = {
   onExportResource: (resourceId: string) => Promise<void>
   onReplaceSettingMounts: (source: SettingMountSource, settingResourceIds: string[]) => Promise<void>
   onReplaceCardResources: (cardId: string, resourceIds: string[]) => Promise<void>
+  selectedResourceId?: string
+  onSelectResource?: (resourceId: string) => void
   routeAssetId?: string
   initialSearchQuery?: string
   t: Translator
@@ -60,29 +62,53 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   const [searchQuery, setSearchQuery] = useState(props.initialSearchQuery ?? '')
   const [scope, setScope] = useState<'character' | 'global'>('character')
   const [bindingOpen, setBindingOpen] = useState(false)
+  const [internalSelectedResourceId, setInternalSelectedResourceId] = useState<string>()
+
+  const settingResources = useMemo(
+    () => props.resources.filter(resource => resource.resourceKind === 'setting'),
+    [props.resources],
+  )
   const cardResourceIds = useMemo(() => new Set(props.card?.promptResourceIds ?? []), [props.card?.promptResourceIds])
   const globalSettingIds = useMemo(() => new Set(props.settingMounts
     .filter(mount => mount.source.kind === 'manual')
     .map(mount => mount.settingResourceId)), [props.settingMounts])
-  const scopedResources = useMemo(() => scope === 'character'
-    ? props.resources.filter(resource => cardResourceIds.has(resource.id))
-    : props.resources.filter(resource => resource.resourceKind === 'setting' && globalSettingIds.has(resource.id)), [cardResourceIds, globalSettingIds, props.resources, scope])
-  const workbenchNodes = useMemo(() => scopedResources.map(readPromptResourceWorkbenchRoot), [scopedResources])
+
+  const routeTargetResource = useMemo(() => {
+    if (!props.routeAssetId) return undefined
+    return settingResources.find(r => r.id === props.routeAssetId || Boolean(findContextNode([r.rootNode], props.routeAssetId)))
+  }, [props.routeAssetId, settingResources])
+
   const selectedId = explorerView.selectedId
+
+  const selectedNodeResource = useMemo(() => {
+    if (!selectedId) return undefined
+    return settingResources.find(r => r.id === selectedId || Boolean(findContextNode([r.rootNode], selectedId)))
+  }, [selectedId, settingResources])
+
+  const selectedResourceId = props.selectedResourceId
+    ?? routeTargetResource?.id
+    ?? selectedNodeResource?.id
+    ?? internalSelectedResourceId
+    ?? (settingResources.find(r => cardResourceIds.has(r.id))?.id ?? settingResources[0]?.id)
+
+  const characterSettingResources = useMemo(() => {
+    if (!props.card?.promptResourceIds?.length) return []
+    const ids = new Set(props.card.promptResourceIds)
+    return settingResources.filter(r => ids.has(r.id))
+  }, [props.card?.promptResourceIds, settingResources])
+
+  const targetResources = characterSettingResources.length > 0
+    ? characterSettingResources
+    : settingResources
+
+  const workbenchNodes = useMemo(() => {
+    return targetResources.map(readPromptResourceWorkbenchRoot)
+  }, [targetResources])
+
   const selectedNode = findContextNode(workbenchNodes, selectedId)
-  const selectedResource = useMemo(() => {
-    const root = selectedId ? findRootContextModule(workbenchNodes, selectedId) : undefined
-    return scopedResources.find(resource => resource.rootNode.id === root?.id) ?? scopedResources[0]
-  }, [scopedResources, selectedId, workbenchNodes])
-  const bindingResources = scope === 'character'
-    ? props.resources
-    : props.resources.filter(resource => resource.resourceKind === 'setting')
-  const boundIds = scope === 'character'
-    ? props.card?.promptResourceIds ?? []
-    : props.settingMounts
-      .filter(mount => mount.source.kind === 'manual')
-      .sort((left, right) => left.orderIndex - right.orderIndex || left.id.localeCompare(right.id))
-      .map(mount => mount.settingResourceId)
+
+  const bindingResources = settingResources
+  const boundIds = props.card?.promptResourceIds ?? []
 
   useEffect(() => {
     if (!props.routeAssetId) return
@@ -123,7 +149,9 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
 
   useEffect(() => {
     if (selectedId && findContextNode(workbenchNodes, selectedId)) return
-    setSelectedId('resources', props.workspaceId, workbenchNodes[0]?.id)
+    if (workbenchNodes[0]?.id) {
+      setSelectedId('resources', props.workspaceId, workbenchNodes[0].id)
+    }
   }, [props.workspaceId, selectedId, setSelectedId, workbenchNodes])
 
   const displayNodes = workbenchNodes
@@ -135,6 +163,15 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
     openAssetDetail('resources', props.workspaceId, id)
   }
 
+  function handleSelectResource(resourceId: string) {
+    setInternalSelectedResourceId(resourceId)
+    props.onSelectResource?.(resourceId)
+    const resource = settingResources.find(r => r.id === resourceId)
+    if (resource) {
+      handleSelectNode(resource.rootNode.id)
+    }
+  }
+
   return (
     <AssetWorkbenchLayout
       explorerWidth={explorerLayout.explorerWidth}
@@ -144,40 +181,17 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
       toolbar={(
         <PromptResourceToolbar
           hideSelect
-          resourceKind={selectedResource?.resourceKind ?? 'setting'}
-          resources={scopedResources}
-          selectedResourceId={selectedResource?.id}
+          resourceKind="setting"
+          resources={settingResources}
+          selectedResourceId={selectedResourceId}
           t={props.t}
           onCreate={props.onCreateResource}
           onDelete={props.onDeleteResource}
           onDuplicate={props.onDuplicateResource}
           onExport={props.onExportResource}
           onImport={props.onImportResource}
-          onSelect={resourceId => {
-            const resource = scopedResources.find(candidate => candidate.id === resourceId)
-            if (resource) handleSelectNode(resource.rootNode.id)
-          }}
+          onSelect={handleSelectResource}
         />
-      )}
-      footer={(
-        <nav className="loom-page-tabs">
-          <button
-            aria-current={scope === 'character' ? 'page' : undefined}
-            className={`loom-page-tab ${scope === 'character' ? 'loom-page-tab-active' : ''}`}
-            type="button"
-            onClick={() => setScope('character')}
-          >
-            {props.t('context.scope.character')}
-          </button>
-          <button
-            aria-current={scope === 'global' ? 'page' : undefined}
-            className={`loom-page-tab ${scope === 'global' ? 'loom-page-tab-active' : ''}`}
-            type="button"
-            onClick={() => setScope('global')}
-          >
-            {props.t('context.scope.global')}
-          </button>
-        </nav>
       )}
       onExplorerWidthChange={width => setExplorerWidth('resources', width)}
       resizeLabel={props.t('context.resizeExplorer')}
@@ -186,7 +200,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
         <div className={styles.resourceExplorer}>
           <button className={styles.bindResourcesButton} type="button" onClick={() => setBindingOpen(true)}>
             <Link2 aria-hidden="true" />
-            <span>{props.t(scope === 'character' ? 'context.cardBindings.action' : 'context.globalSettings.action')}</span>
+            <span>{props.t('context.cardBindings.action')}</span>
           </button>
           <ContextAssetExplorer
             displayNodes={displayNodes}
@@ -205,24 +219,22 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
             }}
             onQueryChange={setSearchQuery}
             onSelectId={id => {
-            if (id) handleSelectNode(id)
-            else setSelectedId('resources', props.workspaceId, undefined)
-          }}
-          onToggleEnabled={(id, enabled) => {
-            props.onChangeNode(id, { enabled })
-            props.onCommitNode(id, { enabled })
-          }}
+              if (id) handleSelectNode(id)
+              else setSelectedId('resources', props.workspaceId, undefined)
+            }}
+            onToggleEnabled={(id, enabled) => {
+              props.onChangeNode(id, { enabled })
+              props.onCommitNode(id, { enabled })
+            }}
           />
           <ResourceBindingDialog
             boundIds={boundIds}
-            description={props.t(scope === 'character' ? 'context.cardBindings.description' : 'context.globalSettings.description')}
+            description={props.t('context.cardBindings.description')}
             open={bindingOpen}
             resources={bindingResources}
             t={props.t}
-            title={props.t(scope === 'character' ? 'context.cardBindings.title' : 'context.globalSettings.title')}
-            onChange={resourceIds => scope === 'character'
-              ? props.card ? props.onReplaceCardResources(props.card.id, resourceIds) : Promise.resolve()
-              : props.onReplaceSettingMounts({ kind: 'manual', id: 'global' }, resourceIds)}
+            title={props.t('context.cardBindings.title')}
+            onChange={resourceIds => props.card ? props.onReplaceCardResources(props.card.id, resourceIds) : Promise.resolve()}
             onClose={() => setBindingOpen(false)}
           />
         </div>
@@ -309,23 +321,23 @@ function ResourceBindingDialog(props: {
 
 export function ContextWorkbenchHeader(props: {
   resources: PromptResource[]
+  selectedResourceId?: string
   t: Translator
   workspaceId: string
   onSelectResource?: (resourceId: string) => void
 }) {
   const definition = STUDIO_PANEL_PRESENTATION.resource
+  const settingResources = useMemo(() => props.resources.filter(r => r.resourceKind === 'setting'), [props.resources])
   const selectedId = useStudioLayoutStore(state => state.assetLayouts.resources.views[props.workspaceId]?.selectedId)
-  const selectedResource = props.resources.find(resource => Boolean(findContextNode([resource.rootNode], selectedId)))
-  const breadcrumbs = selectedResource
-    ? [selectedResource.rootNode.label, ...(selectedResource.origin?.kind === 'builtin' ? [props.t('promptResource.official')] : [])]
-    : []
+  const selectedResource = settingResources.find(r => r.id === props.selectedResourceId)
+    ?? settingResources.find(resource => resource.id === selectedId || Boolean(findContextNode([resource.rootNode], selectedId)))
+    ?? settingResources[0]
 
   return (
     <ContextAssetHeader
       Icon={definition.Icon}
-      breadcrumbs={breadcrumbs}
       title={props.t(definition.labelKey)}
-      resources={[]}
+      resources={settingResources}
       selectedResourceId={selectedResource?.id}
       t={props.t}
       onSelectResource={resourceId => props.onSelectResource?.(resourceId)}

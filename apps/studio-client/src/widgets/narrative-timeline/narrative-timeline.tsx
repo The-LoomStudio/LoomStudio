@@ -27,7 +27,7 @@ type NarrativeNodeView = NarrativeNode
 type NarrativeTimelineProps = {
   anchorNodeId?: string
   busy: boolean
-  composerExpanded: boolean
+  composerExpanded?: boolean
   composerHeight: number
   emptyTimelineText: string
   openingDraft?: { content: string; isPlaceholder: boolean }
@@ -394,6 +394,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
 
 export function readNarrativeNodeRole(nodes: NarrativeNode[], index: number): 'user' | 'assistant' {
   const node = nodes[index]
+  if (node?.id?.startsWith('optimistic-')) return 'user'
   const next = nodes[index + 1]
   if (!node?.source?.runId || !node.source.agentMessageId || !next?.source?.agentMessageId) return 'assistant'
 

@@ -14,6 +14,8 @@ import type {
   CreateNarrativeTimelineResult,
   DeleteNarrativeTimelineInput,
   DeleteNarrativeTimelineResult,
+  UpdateNarrativeTimelineInput,
+  UpdateNarrativeTimelineResult,
   ForkNarrativeBranchInput,
   ForkNarrativeBranchResult,
   GetNarrativePageInput,
@@ -104,6 +106,14 @@ export function createNarrativeRuntimeMethods(ctx: ApplicationRuntimeContext) {
         }, { allowEmpty: true }),
       )
       return { deleted: true as const, mutation: { changesetId: result.commit.changesetId } }
+    },
+
+    updateNarrativeTimeline: async (input: UpdateNarrativeTimelineInput, requestContext?: RuntimeRequestContext): Promise<UpdateNarrativeTimelineResult> => {
+      const result = await requireNarratives(ctx).updateTimeline({
+        ...narrativeWriteContext(requestContext, 'application.updateNarrativeTimeline'),
+        ...input,
+      })
+      return { timeline: result.timeline, mutation: { changesetId: result.commit.changesetId } }
     },
   }
 }

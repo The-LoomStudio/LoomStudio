@@ -62,6 +62,12 @@ export async function handleTimelineRpc(
         timelineId: readString(params, 'timelineId'),
       }, context) as unknown as JsonValue
 
+    case 'application.updateNarrativeTimeline':
+      return await runtime.updateNarrativeTimeline({
+        timelineId: readString(params, 'timelineId'),
+        title: readOptionalString(params, 'title'),
+      }, context) as unknown as JsonValue
+
     default:
       return undefined
   }

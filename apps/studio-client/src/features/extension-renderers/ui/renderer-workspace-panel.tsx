@@ -12,6 +12,7 @@ import { rendererContributionKey, rendererSurfacePolicies } from '../model/rende
 import { clientCommandKey, matchesClientActionCondition } from '../model/client-actions.js'
 import { ClientActionIcon } from './client-action-icon.js'
 import { RendererSurfaceHost } from './renderer-surface-host.js'
+import { MasterDetailWorkbench } from '../../../shared/ui/master-detail-workbench/master-detail-workbench.js'
 import styles from './renderer-workspace-panel.module.scss'
 
 const WORKSPACE_SCOPE_KEY = 'workspace'
@@ -34,6 +35,7 @@ export function RendererWorkspacePanel(props: {
   useSyncExternalStore(props.extensionHost.subscribe, props.extensionHost.revision, props.extensionHost.revision)
   useSyncExternalStore(props.sessionHost.subscribe, () => props.sessionHost.summaries().map(item => `${item.sessionId}:${item.state}`).join('|'), () => '')
   const [selectedPackageId, setSelectedPackageId] = useState(props.packages[0]?.packageId)
+  const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
   const [busyKey, setBusyKey] = useState<string>()
   const registrations = props.host.list('shell.workspace-panel')
   const activeKey = props.host.activeContributionKey('shell.workspace-panel', WORKSPACE_SCOPE_KEY)
@@ -107,15 +109,29 @@ export function RendererWorkspacePanel(props: {
         <p>{props.t('renderer.workspaceDescription')}</p>
         <small>{props.packages.length} · {instances.length} {props.t('renderer.activeInstances')}</small>
       </header>
-      <div className={styles.workbench}>
-        <nav aria-label={props.t('renderer.packages')} className={styles.packageList}>
-          {props.packages.length === 0 ? <p className={styles.empty}>{props.t('renderer.workspaceEmpty')}</p> : props.packages.map(extensionPackage => (
-            <button aria-current={extensionPackage.packageId === selected?.packageId ? 'page' : undefined} key={extensionPackage.packageId} type="button" onClick={() => setSelectedPackageId(extensionPackage.packageId)}>
-              <strong>{extensionPackage.displayName}</strong>
-              <small>{extensionPackage.packageId} · {extensionPackage.version}</small>
-            </button>
-          ))}
-        </nav>
+      <MasterDetailWorkbench
+        masterWidth="minmax(180px, 0.34fr)"
+        mobilePane={mobilePane}
+        onMobilePaneChange={setMobilePane}
+        master={(
+          <nav aria-label={props.t('renderer.packages')} className={styles.packageList}>
+            {props.packages.length === 0 ? <p className={styles.empty}>{props.t('renderer.workspaceEmpty')}</p> : props.packages.map(extensionPackage => (
+              <button
+                aria-current={extensionPackage.packageId === selected?.packageId ? 'page' : undefined}
+                key={extensionPackage.packageId}
+                type="button"
+                onClick={() => {
+                  setSelectedPackageId(extensionPackage.packageId)
+                  setMobilePane('detail')
+                }}
+              >
+                <strong>{extensionPackage.displayName}</strong>
+                <small>{extensionPackage.packageId} · {extensionPackage.version}</small>
+              </button>
+            ))}
+          </nav>
+        )}
+      >
         <div className={styles.detail}>
           {selected ? (
             <>
@@ -228,7 +244,7 @@ export function RendererWorkspacePanel(props: {
             </>
           ) : <p className={styles.empty}>{props.t('renderer.workspaceEmpty')}</p>}
         </div>
-      </div>
+      </MasterDetailWorkbench>
     </section>
   )
 }

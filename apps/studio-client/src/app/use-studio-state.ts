@@ -397,6 +397,8 @@ export function useStudioState(transportLogger: Logger) {
     branch: narrativeRuntime.branch,
     branches: narrativeRuntime.branches,
     cardTimelines: narrativeRuntime.cardTimelines,
+    allTimelines: narrativeRuntime.allTimelines,
+    refreshAllTimelines: narrativeRuntime.refreshAllTimelines,
     narrativeNodes: narrativeRuntime.nodes,
     editNarrativeNode: narrativeRuntime.editNarrativeNode,
     hasOlderNarrativeNodes: Boolean(narrativeRuntime.olderCursor),
@@ -427,6 +429,8 @@ export function useStudioState(transportLogger: Logger) {
     selectAgentProfile: agentProfiles.selectAgentProfile,
     // input
     input: narrativeRuntime.input, setInput: narrativeRuntime.setInput,
+    // api & runtime
+    api,
     // state
     operationPending: operations.pending,
     operationError: operations.error,
@@ -476,6 +480,11 @@ export function useStudioState(transportLogger: Logger) {
     createTimelineFromCard: narrativeRuntime.createTimelineFromCard,
     resetToDraftTimeline: narrativeRuntime.resetToDraftTimeline,
     activateTimeline: narrativeRuntime.activateTimeline,
+    activateAgentSession: narrativeRuntime.activateAgentSession,
+    deleteTimeline: narrativeRuntime.deleteTimeline,
+    renameTimeline: narrativeRuntime.renameTimeline,
+    deleteAgentSession: narrativeRuntime.deleteAgentSession,
+    renameAgentSession: narrativeRuntime.renameAgentSession,
     submitTurn: narrativeRuntime.submitTurn,
     previewPrompt: narrativeRuntime.previewPrompt,
     forkFromNode: narrativeRuntime.forkFromNode,

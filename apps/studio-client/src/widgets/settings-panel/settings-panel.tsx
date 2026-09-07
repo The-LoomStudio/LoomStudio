@@ -3,6 +3,7 @@ import { Globe, Info, Network, Palette } from 'lucide-react'
 import type { NetworkSettings } from '../../shared/api/studio-api.js'
 import type { Locale, Translator } from '../../shared/i18n/index.js'
 import { localeLabels, supportedLocales } from '../../shared/i18n/index.js'
+import { MasterDetailWorkbench } from '../../shared/ui/master-detail-workbench/master-detail-workbench.js'
 import styles from './settings-panel.module.scss'
 
 type SettingsCategory = 'general' | 'network' | 'appearance' | 'about'
@@ -20,6 +21,7 @@ export function SettingsPanel(props: {
   t: Translator
 }) {
   const [category, setCategory] = useState<SettingsCategory>('general')
+  const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
   const [proxyMode, setProxyMode] = useState(props.networkSettings.proxyMode)
   const [proxyUrl, setProxyUrl] = useState(props.networkSettings.proxyUrl ?? '')
 
@@ -45,61 +47,78 @@ export function SettingsPanel(props: {
         </div>
       </header>
 
-      <div className={styles.workbench}>
-        <nav aria-label="Settings Navigation" className={styles.masterNav}>
-          <button
-            aria-current={category === 'general' ? 'page' : undefined}
-            className={styles.navItem}
-            type="button"
-            onClick={() => setCategory('general')}
-          >
-            <Globe aria-hidden="true" />
-            <span className={styles.navItemBody}>
-              <strong>{props.t('settings.general')}</strong>
-              <small>语言与区域</small>
-            </span>
-          </button>
+      <MasterDetailWorkbench
+        masterWidth="minmax(220px, 260px)"
+        mobilePane={mobilePane}
+        onMobilePaneChange={setMobilePane}
+        master={(
+          <nav aria-label="Settings Navigation" className={styles.masterNav}>
+            <button
+              aria-current={category === 'general' ? 'page' : undefined}
+              className={styles.navItem}
+              type="button"
+              onClick={() => {
+                setCategory('general')
+                setMobilePane('detail')
+              }}
+            >
+              <Globe aria-hidden="true" />
+              <span className={styles.navItemBody}>
+                <strong>{props.t('settings.general')}</strong>
+                <small>语言与区域</small>
+              </span>
+            </button>
 
-          <button
-            aria-current={category === 'network' ? 'page' : undefined}
-            className={styles.navItem}
-            type="button"
-            onClick={() => setCategory('network')}
-          >
-            <Network aria-hidden="true" />
-            <span className={styles.navItemBody}>
-              <strong>{props.t('settings.network')}</strong>
-              <small>代理与网络连接</small>
-            </span>
-          </button>
+            <button
+              aria-current={category === 'network' ? 'page' : undefined}
+              className={styles.navItem}
+              type="button"
+              onClick={() => {
+                setCategory('network')
+                setMobilePane('detail')
+              }}
+            >
+              <Network aria-hidden="true" />
+              <span className={styles.navItemBody}>
+                <strong>{props.t('settings.network')}</strong>
+                <small>代理与网络连接</small>
+              </span>
+            </button>
 
-          <button
-            aria-current={category === 'appearance' ? 'page' : undefined}
-            className={styles.navItem}
-            type="button"
-            onClick={() => setCategory('appearance')}
-          >
-            <Palette aria-hidden="true" />
-            <span className={styles.navItemBody}>
-              <strong>{props.t('settings.appearance')}</strong>
-              <small>UI 缩放与自定义 CSS</small>
-            </span>
-          </button>
+            <button
+              aria-current={category === 'appearance' ? 'page' : undefined}
+              className={styles.navItem}
+              type="button"
+              onClick={() => {
+                setCategory('appearance')
+                setMobilePane('detail')
+              }}
+            >
+              <Palette aria-hidden="true" />
+              <span className={styles.navItemBody}>
+                <strong>{props.t('settings.appearance')}</strong>
+                <small>UI 缩放与自定义 CSS</small>
+              </span>
+            </button>
 
-          <button
-            aria-current={category === 'about' ? 'page' : undefined}
-            className={styles.navItem}
-            type="button"
-            onClick={() => setCategory('about')}
-          >
-            <Info aria-hidden="true" />
-            <span className={styles.navItemBody}>
-              <strong>系统与关于</strong>
-              <small>运行时信息与状态</small>
-            </span>
-          </button>
-        </nav>
-
+            <button
+              aria-current={category === 'about' ? 'page' : undefined}
+              className={styles.navItem}
+              type="button"
+              onClick={() => {
+                setCategory('about')
+                setMobilePane('detail')
+              }}
+            >
+              <Info aria-hidden="true" />
+              <span className={styles.navItemBody}>
+                <strong>系统与关于</strong>
+                <small>运行时信息与状态</small>
+              </span>
+            </button>
+          </nav>
+        )}
+      >
         <div className={styles.detailPane}>
           {category === 'general' ? (
             <>
@@ -240,7 +259,7 @@ export function SettingsPanel(props: {
             </>
           )}
         </div>
-      </div>
+      </MasterDetailWorkbench>
     </section>
   )
 }

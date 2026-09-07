@@ -10,6 +10,7 @@ import type {
   TextTransformRuleDraft,
 } from '../../../entities/index.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
+import { MasterDetailWorkbench } from '../../../shared/ui/master-detail-workbench/master-detail-workbench.js'
 import styles from './text-transform-panel.module.scss'
 import { ArtifactSlotHost } from './artifact-slot-host.js'
 
@@ -29,6 +30,7 @@ export function TextTransformPanel(props: Props) {
   const [extractors, setExtractors] = useState<TextExtractor[]>([])
   const [renderers, setRenderers] = useState<RendererDefinition[]>([])
   const [selectedTarget, setSelectedTarget] = useState<SelectedTarget>({ kind: 'dry-run' })
+  const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
   const [selectedRuleId, setSelectedRuleId] = useState('')
   const [selectedExtractorId, setSelectedExtractorId] = useState('')
   const [ruleText, setRuleText] = useState(defaultRuleText)
@@ -63,6 +65,7 @@ export function TextTransformPanel(props: Props) {
   function selectRule(id: string) {
     setSelectedRuleId(id)
     setSelectedTarget({ kind: 'rule', id })
+    setMobilePane('detail')
     const selected = rules.find(rule => rule.id === id)
     setRuleText(selected ? JSON.stringify(toRuleDraft(selected), null, 2) : defaultRuleText)
   }
@@ -71,12 +74,14 @@ export function TextTransformPanel(props: Props) {
     const newId = `rule-${Date.now().toString(36)}`
     setSelectedRuleId(newId)
     setSelectedTarget({ kind: 'rule', id: newId })
+    setMobilePane('detail')
     setRuleText(defaultRuleText)
   }
 
   function selectExtractor(id: string) {
     setSelectedExtractorId(id)
     setSelectedTarget({ kind: 'extractor', id })
+    setMobilePane('detail')
     const selected = extractors.find(extractor => extractor.id === id)
     setExtractorText(selected ? JSON.stringify(toExtractorDraft(selected), null, 2) : defaultExtractorText)
   }
@@ -85,6 +90,7 @@ export function TextTransformPanel(props: Props) {
     const newId = `extractor-${Date.now().toString(36)}`
     setSelectedExtractorId(newId)
     setSelectedTarget({ kind: 'extractor', id: newId })
+    setMobilePane('detail')
     setExtractorText(defaultExtractorText)
   }
 
@@ -155,13 +161,17 @@ export function TextTransformPanel(props: Props) {
 
       {error ? <div className={styles.errorBanner}>{error}</div> : null}
 
-      <div className={styles.workbench}>
-        <nav aria-label="Pipeline Navigation" className={styles.masterNav}>
-          <div className={styles.navGroup}>
-            <header>
-              <span>Replace / Classify Rules</span>
-              <button className={styles.navAddBtn} title="新建 Rule" type="button" onClick={startNewRule}>
-                <Plus aria-hidden="true" size={14} />
+      <MasterDetailWorkbench
+        masterWidth="minmax(240px, 300px)"
+        mobilePane={mobilePane}
+        onMobilePaneChange={setMobilePane}
+        master={(
+          <nav aria-label="Pipeline Navigation" className={styles.masterNav}>
+            <div className={styles.navGroup}>
+              <header>
+                <span>Replace / Classify Rules</span>
+                <button className={styles.navAddBtn} title="新建 Rule" type="button" onClick={startNewRule}>
+                  <Plus aria-hidden="true" size={14} />
               </button>
             </header>
             {finalOrder.map(rule => (
@@ -240,7 +250,10 @@ export function TextTransformPanel(props: Props) {
               aria-current={selectedTarget.kind === 'dry-run' ? 'page' : undefined}
               className={styles.navItem}
               type="button"
-              onClick={() => setSelectedTarget({ kind: 'dry-run' })}
+              onClick={() => {
+                setSelectedTarget({ kind: 'dry-run' })
+                setMobilePane('detail')
+              }}
             >
               <Sparkles aria-hidden="true" />
               <span className={styles.navItemBody}>
@@ -252,7 +265,10 @@ export function TextTransformPanel(props: Props) {
               aria-current={selectedTarget.kind === 'renderers' ? 'page' : undefined}
               className={styles.navItem}
               type="button"
-              onClick={() => setSelectedTarget({ kind: 'renderers' })}
+              onClick={() => {
+                setSelectedTarget({ kind: 'renderers' })
+                setMobilePane('detail')
+              }}
             >
               <Layers aria-hidden="true" />
               <span className={styles.navItemBody}>
@@ -262,8 +278,9 @@ export function TextTransformPanel(props: Props) {
             </button>
           </div>
         </nav>
-
-        <div className={styles.detailPane}>
+      )}
+    >
+      <div className={styles.detailPane}>
           {selectedTarget.kind === 'rule' ? (
             <>
               <header className={styles.detailHeader}>
@@ -450,7 +467,7 @@ export function TextTransformPanel(props: Props) {
             </>
           )}
         </div>
-      </div>
+      </MasterDetailWorkbench>
     </section>
   )
 }

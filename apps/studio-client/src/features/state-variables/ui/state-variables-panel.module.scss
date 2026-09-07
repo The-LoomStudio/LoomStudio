@@ -46,16 +46,10 @@
   }
 }
 
-.workbench {
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
-}
-
 .masterNav {
   min-height: 0;
+  height: 100%;
   overflow-y: auto;
-  border-right: 1px solid var(--loom-color-divider);
   padding: 12px 10px;
   display: flex;
   flex-direction: column;

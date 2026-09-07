@@ -42,7 +42,7 @@ describe('agent store', () => {
       engine.database
         .prepare("SELECT version FROM schema_migrations WHERE namespace = 'application.agent'")
         .get(),
-    ).toEqual({ version: 4 })
+    ).toEqual({ version: 5 })
     engine.close()
   })
 
@@ -295,6 +295,47 @@ describe('agent store', () => {
     engine.close()
   })
 
+  it('lists sessions with timeline and standalone filters and pagination', async () => {
+    const { engine, store, actor } = createTestContext()
+    const sessionTimeline1 = await store.createSession({
+      actor,
+      agentProfileId: 'profile-1',
+      timelineId: 'timeline-a',
+      title: 'Session Timeline A',
+    })
+    const sessionTimeline2 = await store.createSession({
+      actor,
+      agentProfileId: 'profile-2',
+      timelineId: 'timeline-a',
+      title: 'Session Timeline A-2',
+    })
+    const sessionStandalone = await store.createSession({
+      actor,
+      agentProfileId: 'profile-1',
+      title: 'Session Standalone',
+    })
+
+    const allSessions = await store.listSessions()
+    expect(allSessions.sessions.length).toBe(3)
+
+    const timelineSessions = await store.listSessions({ timelineId: 'timeline-a' })
+    expect(timelineSessions.sessions.map(s => s.id)).toEqual([
+      sessionTimeline2.session.id,
+      sessionTimeline1.session.id,
+    ])
+
+    const standaloneSessions = await store.listSessions({ standalone: true })
+    expect(standaloneSessions.sessions.map(s => s.id)).toEqual([
+      sessionStandalone.session.id,
+    ])
+
+    const paged = await store.listSessions({ limit: 2 })
+    expect(paged.sessions.length).toBe(2)
+    expect(paged.nextCursor).toBeDefined()
+
+    engine.close()
+  })
+
   it('persists schema and messages across engine instances', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'loom-agent-'))
     const filename = join(directory, 'studio.sqlite')
@@ -342,9 +383,33 @@ describe('agent store', () => {
         .prepare('SELECT version FROM schema_migrations WHERE namespace = ?')
         .get('application.agent')
       database.close()
-      expect(migration).toEqual({ version: 4 })
+      expect(migration).toEqual({ version: 5 })
     } finally {
       await rm(directory, { recursive: true, force: true })
     }
+  })
+
+  it('updates session title with audit operation', async () => {
+    const { engine, store, actor } = createTestContext()
+    const { session } = await store.createSession({
+      actor,
+      agentProfileId: 'profile-1',
+      title: 'Initial Session Title',
+    })
+
+    const updated = await store.updateSession({
+      actor,
+      agentSessionId: session.id,
+      title: 'Renamed Session Title',
+    })
+
+    expect(updated.session.title).toBe('Renamed Session Title')
+    expect(updated.commit.operations).toEqual([
+      { store: 'agent', kind: 'update', entityId: session.id, entityType: 'agent.session' },
+    ])
+
+    const fetched = await store.getSession(session.id)
+    expect(fetched?.title).toBe('Renamed Session Title')
+    engine.close()
   })
 })

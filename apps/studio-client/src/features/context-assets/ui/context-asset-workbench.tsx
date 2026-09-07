@@ -159,26 +159,6 @@ export function ContextAssetEditor(props: {
           t={props.t}
         />
       )}
-      {pathNodes.length > 0 ? (
-        <nav aria-label="Breadcrumb" className={styles.detailBreadcrumbs} data-loom-component="detail-breadcrumbs">
-          {pathNodes.map((pathNode, idx) => {
-            const isLast = idx === pathNodes.length - 1
-            return (
-              <span key={pathNode.id} className={styles.breadcrumbItemWrapper}>
-                {idx > 0 ? <ChevronRight aria-hidden="true" className={styles.breadcrumbSeparator} size={12} /> : null}
-                <button
-                  className={`${styles.breadcrumbButton} ${isLast ? styles.breadcrumbButtonActive : ''}`}
-                  type="button"
-                  onClick={() => !isLast && props.onSelectNodeId?.(pathNode.id)}
-                >
-                  {renderContextAssetTreeIcon(pathNode, true)}
-                  <span>{pathNode.label}</span>
-                </button>
-              </span>
-            )
-          })}
-        </nav>
-      ) : null}
     </div>
   )
 }

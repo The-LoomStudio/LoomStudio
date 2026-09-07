@@ -7,12 +7,14 @@ import { createId, isRecord, nowIso, optionalString } from '@loom-studio/shared'
 import type { DatabaseSync } from 'node:sqlite'
 import type {
   AgentSession,
+  AgentSessionPage,
   AgentStore,
   AgentTransaction,
   AgentTranscriptEntry,
   AgentTranscriptEntryData,
   AgentTranscriptPage,
   AgentWriteContext,
+  ListAgentSessionsInput,
 } from './types.js'
 
 const migrationNamespace = 'application.agent'
@@ -46,6 +48,7 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
       { version: 2, migrate: migrateVersionTwo },
       { version: 3, migrate: migrateVersionThree },
       { version: 4, migrate: migrateVersionFour },
+      { version: 5, migrate: migrateVersionFive },
     ],
   })
 
@@ -55,10 +58,12 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
       createSession: (input) => {
         validateId(input.agentProfileId, 'agentProfileId')
         validateOptionalText(input.title, 'title')
+        validateOptionalId(input.timelineId, 'timelineId')
         const timestamp = now()
         const session: AgentSession = {
           id: input.id ?? nextId('agent-session'),
           agentProfileId: input.agentProfileId,
+          timelineId: input.timelineId,
           title: input.title,
           entryCount: 0,
           createdAt: timestamp,
@@ -67,12 +72,13 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
         database
           .prepare(
             `INSERT INTO agent_sessions (
-          id, agent_profile_id, title, head_entry_id, entry_count, created_at, updated_at, tombstoned
-        ) VALUES (?, ?, ?, NULL, 0, ?, ?, 0)`,
+          id, agent_profile_id, timeline_id, title, head_entry_id, entry_count, created_at, updated_at, tombstoned
+        ) VALUES (?, ?, ?, ?, NULL, 0, ?, ?, 0)`,
           )
           .run(
             session.id,
             session.agentProfileId,
+            session.timelineId ?? null,
             session.title ?? null,
             timestamp,
             timestamp,
@@ -80,6 +86,7 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
         tx.recordOperations([operation('create', session.id, 'agent.session')])
         return session
       },
+      listSessions: (input) => readSessions(database, input),
       appendEntries: (input) => {
         const session = requireSession(database, input.agentSessionId)
         if (
@@ -156,6 +163,17 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
         tx.recordOperations([operation('delete', session.id, 'agent.session')])
         return requireSession(database, session.id, true)
       },
+      updateSession: (input) => {
+        const session = requireSession(database, input.agentSessionId)
+        validateOptionalText(input.title, 'title')
+        database
+          .prepare(
+            `UPDATE agent_sessions SET title = ?, updated_at = ? WHERE id = ?`,
+          )
+          .run(input.title ?? null, now(), session.id)
+        tx.recordOperations([operation('update', session.id, 'agent.session')])
+        return requireSession(database, session.id)
+      },
     }
   }
 
@@ -170,6 +188,8 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
 
   return {
     getSession: (id) => engine.read((database) => readSession(database, id)),
+    listSessions: (input) =>
+      engine.read((database) => readSessions(database, input)),
     getEntry: (id) => engine.read((database) => readEntry(database, id)),
     getEntryPage: (input) =>
       engine.read((database) => readEntryPage(database, input)),
@@ -194,6 +214,10 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
     },
     deleteSession: async (input) => {
       const result = await write(input, (tx) => tx.deleteSession(input))
+      return { session: result.value, commit: result.commit }
+    },
+    updateSession: async (input) => {
+      const result = await write(input, (tx) => tx.updateSession(input))
       return { session: result.value, commit: result.commit }
     },
     transaction,
@@ -234,6 +258,14 @@ function migrateVersionFour(database: DatabaseSync): void {
     CREATE TABLE IF NOT EXISTS agent_tool_invocations (agent_session_id TEXT NOT NULL REFERENCES agent_sessions(id), invocation_id TEXT NOT NULL, tool_id TEXT NOT NULL, invocation_entry_id TEXT NOT NULL REFERENCES agent_transcript_entries(id), result_entry_id TEXT REFERENCES agent_transcript_entries(id), PRIMARY KEY (agent_session_id, invocation_id));
     CREATE INDEX IF NOT EXISTS idx_agent_entries_session_sequence ON agent_transcript_entries(agent_session_id, sequence);
     CREATE INDEX IF NOT EXISTS idx_agent_entries_session_run ON agent_transcript_entries(agent_session_id, run_id);
+  `)
+}
+
+function migrateVersionFive(database: DatabaseSync): void {
+  database.exec(`
+    ALTER TABLE agent_sessions ADD COLUMN timeline_id TEXT;
+    CREATE INDEX IF NOT EXISTS idx_agent_sessions_timeline ON agent_sessions(timeline_id);
+    CREATE INDEX IF NOT EXISTS idx_agent_sessions_updated ON agent_sessions(updated_at);
   `)
 }
 
@@ -415,6 +447,7 @@ function sessionFromRow(row: unknown): AgentSession {
   return {
     id: String(value.id),
     agentProfileId: String(value.agent_profile_id),
+    timelineId: optionalString(value.timeline_id),
     title: optionalString(value.title),
     headEntryId: optionalString(value.head_entry_id),
     entryCount: Number(value.entry_count),
@@ -422,6 +455,62 @@ function sessionFromRow(row: unknown): AgentSession {
     updatedAt: String(value.updated_at),
     deletedAt: optionalString(value.deleted_at),
   }
+}
+
+function readSessions(
+  database: DatabaseSync,
+  input: ListAgentSessionsInput = {},
+): AgentSessionPage {
+  const limit = input.limit ?? defaultPageLimit
+  if (!Number.isInteger(limit) || limit < 1 || limit > maximumPageLimit) {
+    throw new AgentStoreError(
+      'agent.session_list_limit_invalid',
+      `Agent session list limit must be between 1 and ${maximumPageLimit}`,
+    )
+  }
+  validateOptionalId(input.agentProfileId, 'agentProfileId')
+  validateOptionalId(input.timelineId, 'timelineId')
+  validateOptionalId(input.cursor, 'cursor')
+
+  const cursor = input.cursor ? readSession(database, input.cursor) : undefined
+  if (input.cursor && !cursor) {
+    throw new AgentStoreError(
+      'agent.session_cursor_not_found',
+      `Agent session cursor not found: ${input.cursor}`,
+    )
+  }
+
+  const conditions = ['tombstoned = 0']
+  const params: Array<string | number> = []
+
+  if (input.agentProfileId) {
+    conditions.push('agent_profile_id = ?')
+    params.push(input.agentProfileId)
+  }
+  if (input.timelineId) {
+    conditions.push('timeline_id = ?')
+    params.push(input.timelineId)
+  } else if (input.standalone) {
+    conditions.push('timeline_id IS NULL')
+  }
+  if (cursor) {
+    conditions.push('(updated_at < ? OR (updated_at = ? AND id < ?))')
+    params.push(cursor.updatedAt, cursor.updatedAt, cursor.id)
+  }
+
+  const rows = database
+    .prepare(
+      `SELECT id, agent_profile_id, timeline_id, title, head_entry_id, entry_count, created_at, updated_at, deleted_at
+       FROM agent_sessions
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY updated_at DESC, id DESC
+       LIMIT ?`,
+    )
+    .all(...params, limit + 1)
+
+  const items = rows.slice(0, limit).map(sessionFromRow)
+  const nextCursor = rows.length > limit ? items[items.length - 1]?.id : undefined
+  return { sessions: items, nextCursor }
 }
 function entryFromRow(row: unknown): AgentTranscriptEntry {
   const value = row as Record<string, unknown>

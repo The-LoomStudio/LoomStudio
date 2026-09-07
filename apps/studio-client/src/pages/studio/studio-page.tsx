@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import { AlignLeft, ChevronDown, ImageOff, PanelRight, PanelRightClose, Plus, X } from 'lucide-react'
+import type { AgentProfile, AgentSession, AgentTranscriptEntry, ProviderAccount } from '../../entities/index.js'
+import type { ClientRendererHost } from '../../features/extension-renderers/model/client-renderer-host.js'
 import type { Translator } from '../../shared/i18n/index.js'
-import { ChatComposer } from '../../widgets/chat-composer/chat-composer.js'
+import { AgentChatPanel } from '../../widgets/agent-chat-panel/agent-chat-panel.js'
 import { StudioPanelRight } from './studio-panel-right.js'
-import { ConversationMarkdown } from '../../shared/ui/conversation-markdown/conversation-markdown.js'
 import { WindowColumnLayout } from '../../shared/ui/window-column-layout/window-column-layout.js'
 import { useStudioLayoutStore, useStudioPanelStore, type StudioPanelId } from './model/studio-layout-store.js'
 import { StudioPanelHost } from './studio-panel-host.js'
@@ -15,6 +16,13 @@ import type { WindowResizeAxis } from './window-resize.js'
 import styles from './studio-page.module.scss'
 
 type StudioPageProps = {
+  agentChatBusy?: boolean
+  agentChatInput?: string
+  agentChatMessages?: AgentTranscriptEntry[]
+  agentChatSession?: AgentSession
+  agentPanelOpen?: boolean
+  agentProfiles?: AgentProfile[]
+  agentSessionTail?: ReactNode
   assetWorkspaceId: string
   background?: ReactNode
   busy: boolean
@@ -25,44 +33,20 @@ type StudioPageProps = {
   characterName?: string
   customCss: string
   modelConfigured?: boolean
-  onRedo(): void
-  onUndo(): void
   panelHeaders?: Partial<Record<StudioPanelId, ReactNode>>
   panels: Record<StudioPanelId, (active: boolean) => ReactNode>
+  providerAccounts?: ProviderAccount[]
+  rendererHost?: ClientRendererHost
+  selectedAgentProfileId?: string
   t: Translator
   uiScale: number
+  onChangeAgentChatInput?(value: string): void
+  onRedo(): void
+  onSelectAgentProfile?(id: string): void
+  onSubmitAgentChat?(event: FormEvent): void
+  onToggleAgentPanel?(): void
+  onUndo(): void
 }
-
-type MockAgentMessage = {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  time: string
-}
-
-const INITIAL_MOCK_AGENT_MESSAGES: MockAgentMessage[] = [
-  {
-    id: 'mock-1',
-    role: 'user',
-    content: '帮我分析一下当前章节的剧情节奏与角色动机。',
-    time: '17:36',
-  },
-  {
-    id: 'mock-2',
-    role: 'assistant',
-    content: `已对当前剧情分支进行全流程溯源分析：
-
-1. **核心动机冲突**：角色在面对旧信物时表现出克制与犹豫，建议在后续对话中增加一段微小的心理动作刻画。
-2. **伏笔呼应**：前序章节提到的信物在此处可作为关键线索激活。
-
-\`\`\`markdown
-> 示例：“她握紧了掌心中的铜镜，镜面泛起微弱的光芒，终究没有回头。”
-\`\`\`
-
-你可以继续探索其他分支，或者直接告诉我需要修改的方向。`,
-    time: '17:36',
-  },
-]
 
 export function StudioPage(props: StudioPageProps) {
   const stageRef = useRef<HTMLElement>(null)
@@ -84,47 +68,10 @@ export function StudioPage(props: StudioPageProps) {
   const isImmersive = activePanel !== null && panelWindowMode === 'immersive'
   const windowResize = useStudioWindowResize({ activePanel, dockRef, setPanelWindowSize, stageRef })
 
-  const [agentPanelOpen, setAgentPanelOpen] = useState(false)
+  const [localAgentPanelOpen, setLocalAgentPanelOpen] = useState(false)
+  const isAgentPanelOpen = props.agentPanelOpen !== undefined ? props.agentPanelOpen : localAgentPanelOpen
+  const toggleAgentPanel = props.onToggleAgentPanel ?? (() => setLocalAgentPanelOpen(prev => !prev))
   const [agentPanelWidth, setAgentPanelWidth] = useState<number | undefined>(undefined)
-  const [agentMockInput, setAgentMockInput] = useState('')
-  const [mockAgentMessages, setMockAgentMessages] = useState<MockAgentMessage[]>(INITIAL_MOCK_AGENT_MESSAGES)
-  const agentTimelineRef = useRef<HTMLDivElement>(null)
-
-  const handleSendAgentMockMessage = () => {
-    const trimmed = agentMockInput.trim()
-    if (!trimmed) return
-    const userMsg: MockAgentMessage = {
-      id: `msg-${Date.now()}`,
-      role: 'user',
-      content: trimmed,
-      time: '刚刚',
-    }
-    setMockAgentMessages(prev => [...prev, userMsg])
-    setAgentMockInput('')
-    setTimeout(() => {
-      const assistantMsg: MockAgentMessage = {
-        id: `msg-${Date.now() + 1}`,
-        role: 'assistant',
-        content: `收到你的指示：“${trimmed}”。\n\n已完成分析并更新当前侧边上下文，你可以随时让我调整草稿或应用到正文中。`,
-        time: '刚刚',
-      }
-      setMockAgentMessages(prev => [...prev, assistantMsg])
-    }, 450)
-  }
-
-  useEffect(() => {
-    if (!agentPanelOpen) return
-    const el = agentTimelineRef.current
-    if (el) el.scrollTop = el.scrollHeight
-  }, [agentPanelOpen, mockAgentMessages.length])
-
-  const codeBlockLabels = {
-    copied: props.t('longTextEditor.copied'),
-    copy: props.t('longTextEditor.copy'),
-    copyFailed: props.t('longTextEditor.copyFailed'),
-    disableWrap: props.t('markdown.code.disableWrap'),
-    enableWrap: props.t('markdown.code.enableWrap'),
-  }
 
   const [dockHovered, setDockHovered] = useState(false)
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
@@ -318,36 +265,17 @@ export function StudioPage(props: StudioPageProps) {
           </div>
 
           <div className={styles.stageHeaderRight}>
-            {agentPanelOpen ? (
-              <button
-                type="button"
-                className={styles.stageHeaderButton}
-                title="新建对话"
-                onClick={() => {
-                  setMockAgentMessages([
-                    {
-                      id: `init-${Date.now()}`,
-                      role: 'assistant',
-                      content: '你好！我是你的创作助手。已建立新的临时侧边对话，你可以随时向我提问剧情、分析设定或调试节点。',
-                      time: '刚刚',
-                    },
-                  ])
-                }}
-              >
-                <Plus aria-hidden="true" className={styles.stageHeaderButtonIcon} />
-              </button>
-            ) : null}
             <button
-              aria-label={agentPanelOpen ? '关闭侧边面板' : '打开侧边面板'}
+              aria-label={isAgentPanelOpen ? '关闭侧边面板' : '打开侧边面板'}
               className={[
                 styles.stageHeaderButton,
-                agentPanelOpen ? styles.stageHeaderButtonActive : '',
+                isAgentPanelOpen ? styles.stageHeaderButtonActive : '',
               ].filter(Boolean).join(' ')}
-              title={agentPanelOpen ? '关闭侧边面板' : '打开侧边面板'}
+              title={isAgentPanelOpen ? '关闭侧边面板' : '打开侧边面板'}
               type="button"
-              onClick={() => setAgentPanelOpen(prev => !prev)}
+              onClick={toggleAgentPanel}
             >
-              {agentPanelOpen ? (
+              {isAgentPanelOpen ? (
                 <PanelRightClose aria-hidden="true" className={styles.stageHeaderButtonIcon} />
               ) : (
                 <PanelRight aria-hidden="true" className={styles.stageHeaderButtonIcon} />
@@ -357,74 +285,26 @@ export function StudioPage(props: StudioPageProps) {
         </header>
 
         <StudioPanelRight
-          open={agentPanelOpen}
+          open={isAgentPanelOpen}
           width={agentPanelWidth}
-          onClose={() => setAgentPanelOpen(false)}
+          onClose={toggleAgentPanel}
           onWidthChange={setAgentPanelWidth}
-          footer={(
-            <div
-              onKeyDownCapture={e => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  handleSendAgentMockMessage()
-                }
-              }}
-            >
-              <ChatComposer
-                canPreviewPrompt={false}
-                canSend={Boolean(agentMockInput.trim())}
-                input={agentMockInput}
-                moreLabel={props.t('composer.more')}
-                placeholder="随心输入，Shift + Enter 换行..."
-                previewLabel={props.t('composer.preview')}
-                retryLabel={props.t('composer.retry')}
-                sendLabel={props.t('composer.send')}
-                textareaDisabled={false}
-                textareaLabel={props.t('composer.inputLabel')}
-                onChangeInput={setAgentMockInput}
-                onPreviewPrompt={() => {}}
-                onSubmit={e => {
-                  e.preventDefault()
-                  handleSendAgentMockMessage()
-                }}
-              />
-            </div>
-          )}
         >
-          <div className={styles.pseudoAgentTimeline} ref={agentTimelineRef}>
-            <div className={styles.pseudoAgentWelcome}>
-              <div className={styles.pseudoAgentWelcomeIconWrap}>
-                <PanelRight aria-hidden="true" size={22} />
-              </div>
-              <div className={styles.pseudoAgentWelcomeTitle}>侧边对话</div>
-              <div className={styles.pseudoAgentWelcomeSubtitle}>
-                侧边对话为独立浮层，不挤占正文排版，关闭或刷新后可清空。
-              </div>
-            </div>
-
-            {mockAgentMessages.map(msg => (
-              <article
-                key={msg.id}
-                className={`${styles.pseudoAgentMessage} ${styles[msg.role]}`}
-              >
-                <div className={styles.pseudoAgentMessageSurface}>
-                  {msg.role === 'assistant' ? (
-                    <div className={styles.pseudoAgentMessageHeader}>
-                      <span className={styles.pseudoAgentSender}>Agent</span>
-                      <span className={styles.pseudoAgentTime}>{msg.time}</span>
-                    </div>
-                  ) : null}
-                  <div className={styles.pseudoAgentMessageBody}>
-                    <ConversationMarkdown
-                      codeBlockLabels={codeBlockLabels}
-                      role={msg.role}
-                      value={msg.content}
-                    />
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
+          <AgentChatPanel
+            busy={props.agentChatBusy ?? false}
+            input={props.agentChatInput ?? ''}
+            messages={props.agentChatMessages ?? []}
+            profiles={props.agentProfiles ?? []}
+            providerAccounts={props.providerAccounts ?? []}
+            rendererHost={props.rendererHost}
+            selectedProfileId={props.selectedAgentProfileId}
+            session={props.agentChatSession}
+            sessionTail={props.agentSessionTail}
+            t={props.t}
+            onChangeInput={props.onChangeAgentChatInput ?? (() => {})}
+            onSelectProfile={props.onSelectAgentProfile ?? (() => {})}
+            onSubmit={props.onSubmitAgentChat ?? (() => {})}
+          />
         </StudioPanelRight>
 
         {activePanel === null && mobileDrawerOpen ? (
@@ -470,11 +350,7 @@ export function StudioPage(props: StudioPageProps) {
           )}
 
           {activePanel !== null && !isImmersive ? (
-            <>
-              <WindowResizeHandle axis="horizontal" className={styles.windowResizeRight} label={props.t('window.resizeWidth')} resize={windowResize} />
-              <WindowResizeHandle axis="vertical" className={styles.windowResizeBottom} label={props.t('window.resizeHeight')} resize={windowResize} />
-              <WindowResizeHandle axis="both" className={styles.windowResizeCorner} label={props.t('window.resizeBoth')} resize={windowResize} />
-            </>
+            <WindowResizeHandle axis="horizontal" className={styles.windowResizeRight} label={props.t('window.resizeWidth')} resize={windowResize} />
           ) : null}
         </aside>
 
@@ -492,7 +368,7 @@ function WindowResizeHandle(props: {
   return (
     <button
       aria-label={props.label}
-      className={`${styles.windowResizeHandle} ${props.className}`}
+      className={`${styles.windowResizeHandle} ${props.className} ${props.resize.resizing ? styles.windowResizeActive : ''}`}
       type="button"
       onKeyDown={event => props.resize.resizeWithKeyboard(props.axis, event)}
       onPointerDown={event => props.resize.begin(props.axis, event)}

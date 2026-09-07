@@ -20,6 +20,7 @@ export type AgentSession = {
   id: string
   agentProfileId: string
   title?: string
+  timelineId?: string
   headEntryId?: string
   entryCount: number
   createdAt: string

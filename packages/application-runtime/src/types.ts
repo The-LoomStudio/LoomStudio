@@ -152,10 +152,12 @@ export type ApplicationRuntime = {
   updateAgentProfile(input: UpdateAgentProfileInput): Promise<UpdateAgentProfileResult>
   deleteAgentProfile(input: DeleteAgentProfileInput): Promise<DeleteAgentProfileResult>
   createAgentSession(input: CreateAgentSessionInput, context?: RuntimeRequestContext): Promise<CreateAgentSessionResult>
+  listAgentSessions(input?: ListAgentSessionsInput): Promise<ListAgentSessionsResult>
   getAgentSession(input: GetAgentSessionInput): Promise<GetAgentSessionResult>
   getAgentTranscriptPage(input: GetAgentTranscriptPageInput): Promise<AgentTranscriptPage>
   appendAgentTranscriptEntries(input: AppendAgentTranscriptEntriesInput, context?: RuntimeRequestContext): Promise<AppendAgentTranscriptEntriesResult>
   deleteAgentSession(input: DeleteAgentSessionInput, context?: RuntimeRequestContext): Promise<DeleteAgentSessionResult>
+  updateAgentSession(input: UpdateAgentSessionInput, context?: RuntimeRequestContext): Promise<UpdateAgentSessionResult>
   invokeAgentTurn(input: InvokeAgentTurnInput, context?: RuntimeRequestContext): Promise<InvokeAgentTurnResult>
   previewAgentTurn(input: PreviewAgentTurnInput, context?: RuntimeRequestContext): Promise<PreviewAgentTurnResult>
   createNarrativeTimeline(input: CreateNarrativeTimelineInput, context?: RuntimeRequestContext): Promise<CreateNarrativeTimelineResult>
@@ -165,6 +167,7 @@ export type ApplicationRuntime = {
   forkNarrativeBranch(input: ForkNarrativeBranchInput, context?: RuntimeRequestContext): Promise<ForkNarrativeBranchResult>
   switchNarrativeBranch(input: SwitchNarrativeBranchInput, context?: RuntimeRequestContext): Promise<SwitchNarrativeBranchResult>
   deleteNarrativeTimeline(input: DeleteNarrativeTimelineInput, context?: RuntimeRequestContext): Promise<DeleteNarrativeTimelineResult>
+  updateNarrativeTimeline(input: UpdateNarrativeTimelineInput, context?: RuntimeRequestContext): Promise<UpdateNarrativeTimelineResult>
   importCardBundle(input: ImportCardBundleInput, context?: RuntimeRequestContext): Promise<ImportCardBundleResult>
   getPromptResource(input: GetPromptResourceInput): Promise<GetPromptResourceResult>
   listPromptResources(input?: ListPromptResourcesInput): Promise<ListPromptResourcesResult>
@@ -439,9 +442,20 @@ export type DeleteNarrativeTimelineResult = {
   mutation: MutationReceipt
 }
 
+export type UpdateNarrativeTimelineInput = {
+  timelineId: string
+  title?: string
+}
+
+export type UpdateNarrativeTimelineResult = {
+  timeline: NarrativeTimeline
+  mutation: MutationReceipt
+}
+
 export type CreateAgentSessionInput = {
   agentProfileId: string
   title?: string
+  timelineId?: string
 }
 
 export type CreateAgentSessionResult = {
@@ -455,6 +469,19 @@ export type GetAgentSessionInput = {
 
 export type GetAgentSessionResult = {
   session: AgentSession
+}
+
+export type ListAgentSessionsInput = {
+  agentProfileId?: string
+  timelineId?: string
+  standalone?: boolean
+  cursor?: string
+  limit?: number
+}
+
+export type ListAgentSessionsResult = {
+  sessions: AgentSession[]
+  nextCursor?: string
 }
 
 export type GetAgentTranscriptPageInput = {
@@ -485,6 +512,16 @@ export type DeleteAgentSessionInput = {
 
 export type DeleteAgentSessionResult = {
   deleted: true
+  mutation: MutationReceipt
+}
+
+export type UpdateAgentSessionInput = {
+  agentSessionId: string
+  title?: string
+}
+
+export type UpdateAgentSessionResult = {
+  session: AgentSession
   mutation: MutationReceipt
 }
 

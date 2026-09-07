@@ -128,6 +128,11 @@ export type DeleteNarrativeTimelineInput = NarrativeWriteContext & {
   timelineId: string
 }
 
+export type UpdateNarrativeTimelineInput = NarrativeWriteContext & {
+  timelineId: string
+  title?: string
+}
+
 export type UpdateNarrativePromptResourcesInput = NarrativeWriteContext & {
   timelineId: string
   promptResourceIds: string[]
@@ -166,6 +171,7 @@ export type NarrativeTransaction = {
   setBranchStateHead(input: Omit<SetNarrativeBranchStateHeadInput, keyof NarrativeWriteContext>): NarrativeBranch
   switchBranch(input: Omit<SwitchNarrativeBranchInput, keyof NarrativeWriteContext>): NarrativeTimeline
   deleteTimeline(input: Omit<DeleteNarrativeTimelineInput, keyof NarrativeWriteContext>): NarrativeTimeline
+  updateTimeline(input: Omit<UpdateNarrativeTimelineInput, keyof NarrativeWriteContext>): NarrativeTimeline
   updatePromptResources(input: Omit<UpdateNarrativePromptResourcesInput, keyof NarrativeWriteContext>): NarrativeTimeline
 }
 
@@ -186,6 +192,7 @@ export type NarrativeStore = {
   setBranchStateHead(input: SetNarrativeBranchStateHeadInput): Promise<{ branch: NarrativeBranch; commit: DataCommitFact }>
   switchBranch(input: SwitchNarrativeBranchInput): Promise<{ timeline: NarrativeTimeline; commit: DataCommitFact }>
   deleteTimeline(input: DeleteNarrativeTimelineInput): Promise<{ timeline: NarrativeTimeline; commit: DataCommitFact }>
+  updateTimeline(input: UpdateNarrativeTimelineInput): Promise<{ timeline: NarrativeTimeline; commit: DataCommitFact }>
   updatePromptResources(input: UpdateNarrativePromptResourcesInput): Promise<{ timeline: NarrativeTimeline; commit: DataCommitFact }>
   transaction(tx: SqliteDataTransaction): NarrativeTransaction
 }

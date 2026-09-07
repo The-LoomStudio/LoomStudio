@@ -36,8 +36,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
   const rendererHost = useMemo(() => createClientRendererHost(), [])
   const clientExtensions = useClientExtensionRuntime({ api: state.clientExtensionApi, rendererHost })
   const [composerHeight, setComposerHeight] = useState(0)
-  const [agentExpanded, setAgentExpanded] = useState(false)
-  const [agentExpansionHeight, setAgentExpansionHeight] = useState(320)
+  const [agentPanelOpen, setAgentPanelOpen] = useState(false)
   const [selectedPresetId, setSelectedPresetId] = useState<string>()
   const timelineRouteRequestRef = useRef(0)
   const navigation = useStudioNavigation()
@@ -206,16 +205,26 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         activeTimeline={state.narrativeTimeline}
         agentChatSession={state.agentChatSession}
         agentProfiles={state.agentProfiles}
+        api={state.api}
         branches={state.branches}
+        cards={state.cards}
         narrativeAgentSession={state.narrativeAgentSession}
         selectedCardName={state.selectedCardDetails?.name ?? state.selectedCard?.name}
         t={state.t}
-        timelines={state.cardTimelines}
+        timelines={state.allTimelines.length > 0 ? state.allTimelines : state.cardTimelines}
+        onDeleteAgentSession={state.deleteAgentSession}
+        onDeleteTimeline={state.deleteTimeline}
+        onOpenAgentSessionInSidebar={session => {
+          void state.activateAgentSession(session)
+          setAgentPanelOpen(true)
+        }}
         onOpenTimeline={timeline => {
           void state.activateTimeline(timeline.id).then(branchId => {
             if (branchId) navigation.openNarrative(timeline.id, branchId)
           })
         }}
+        onRenameAgentSession={state.renameAgentSession}
+        onRenameTimeline={state.renameTimeline}
       />
     ),
     character: active => (
@@ -258,6 +267,13 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
           })
         }}
         onOpenStatePanel={() => useStudioPanelStore.getState().setActivePanel('state')}
+        onOpenResourcePanel={resourceId => {
+          useStudioPanelStore.getState().setActivePanel('resource')
+          if (resourceId) {
+            useStudioLayoutStore.getState().openAssetDetail('resources', assetWorkspaceId, resourceId)
+          }
+        }}
+        resources={state.promptResources}
         onUpdateCardMedia={state.updateCardMedia}
         onUpdateCard={state.updateCard}
         routeCardId={navigation.route.panel === 'character' ? navigation.route.cardId : undefined}
@@ -368,18 +384,33 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
       modelConfigured={state.providerAccountsLoaded ? hasCompleteProviderAccount(state.providerAccounts) : undefined}
       busy={mutationBusy}
       canRedo={state.canRedoEdit}
+      agentChatBusy={agentChatBusy}
+      agentChatInput={state.agentChatInput}
+      agentChatMessages={state.agentChatMessages}
+      agentChatSession={state.agentChatSession}
+      agentPanelOpen={agentPanelOpen}
+      agentProfiles={state.agentProfiles}
+      agentSessionTail={state.agentChatSession ? (
+        <RendererSurfaceHost
+          host={rendererHost}
+          scope={{ kind: 'agent-session', key: state.agentChatSession.id }}
+          surface="agent.session.tail"
+        />
+      ) : undefined}
       canUndo={state.canUndoEdit}
       characterAvatarUrl={narrativeCharacterAvatarUrl}
       characterName={narrativeCharacterName}
       customCss={state.customCss}
+      onChangeAgentChatInput={state.setAgentChatInput}
       onRedo={() => {
         void state.redoEdit().then(focusHistoryAsset)
       }}
+      onSelectAgentProfile={state.selectAgentProfile}
+      onSubmitAgentChat={state.submitAgentTurn}
+      onToggleAgentPanel={() => setAgentPanelOpen(prev => !prev)}
       onUndo={() => {
         void state.undoEdit().then(focusHistoryAsset)
       }}
-      t={state.t}
-      uiScale={uiScale}
       panelHeaders={{
         character: <CharacterPanelHeader t={state.t} />,
         preset: (
@@ -396,24 +427,32 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
             resources={state.promptResources}
             t={state.t}
             workspaceId={assetWorkspaceId}
+            onSelectResource={resourceId => {
+              const target = state.promptResources.find(r => r.id === resourceId)
+              if (target) {
+                useStudioLayoutStore.getState().openAssetDetail('resources', assetWorkspaceId, target.rootNode.id)
+              }
+            }}
           />
         ),
       }}
       panels={panels}
+      providerAccounts={state.providerAccounts}
+      rendererHost={rendererHost}
+      selectedAgentProfileId={state.selectedAgentProfileId}
+      t={state.t}
+      uiScale={uiScale}
       canvas={(
         <div
           className={styles.canvasStack}
-          data-agent-expanded={agentExpanded ? 'true' : 'false'}
           style={{
             '--loom-composer-height': composerHeight ? `${composerHeight}px` : undefined,
             '--loom-composer-mask-depth': composerHeight ? `${Math.ceil(composerHeight / 2)}px` : undefined,
-            '--loom-agent-expansion-height': agentExpanded ? `${agentExpansionHeight}px` : undefined,
           } as CSSProperties}
         >
           <NarrativeTimeline
             anchorNodeId={navigation.nodeAnchorId}
             busy={sessionBusy}
-            composerExpanded={agentExpanded}
             composerHeight={composerHeight}
             emptyTimelineText={state.emptyTimelineText}
             openingDraft={state.openingDraft}
@@ -440,19 +479,9 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
             ) : undefined}
           />
           <AgentComposer
-            agentBusy={agentChatBusy}
-            agentExpansionHeight={agentExpansionHeight}
-            agentInput={state.agentChatInput}
-            agentMessages={state.agentChatMessages}
-            agentProfiles={state.agentProfiles}
-            agentSession={state.agentChatSession}
-            agentSessionTail={state.agentChatSession ? (
-              <RendererSurfaceHost
-                host={rendererHost}
-                scope={{ kind: 'agent-session', key: state.agentChatSession.id }}
-                surface="agent.session.tail"
-              />
-            ) : undefined}
+            agentPanelOpen={agentPanelOpen}
+            canPreviewPrompt={state.canPreviewPrompt}
+            canSendNarrative={state.canSend}
             composerSheet={(
               <RendererSurfaceHost
                 host={rendererHost}
@@ -464,33 +493,22 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
                 surface="composer.sheet"
               />
             )}
-            canPreviewPrompt={state.canPreviewPrompt}
-            canSendAgent={state.canSendAgent}
-            canSendNarrative={state.canSend}
             narrativeInput={state.input}
             narrativeTextareaDisabled={sessionBusy}
-            providerAccounts={state.providerAccounts}
             quickActions={composerQuickActions}
-            rendererHost={rendererHost}
-            selectedAgentProfileId={state.selectedAgentProfileId}
             t={state.t}
-            workspaceOpen={workspaceOpen}
-            onChangeAgentInput={state.setAgentChatInput}
             onChangeNarrativeInput={value => {
               state.setInput(value)
             }}
             onHeightChange={setComposerHeight}
-            onExpansionHeightChange={setAgentExpansionHeight}
-            onExpandedChange={setAgentExpanded}
             onPreviewPrompt={() => {
               void state.previewPrompt()
             }}
-            onSelectAgentProfile={state.selectAgentProfile}
-            onSubmitAgent={state.submitAgentTurn}
             onSubmitNarrative={async event => {
               const activated = await state.submitTurn(event)
               if (activated) navigation.openNarrative(activated.timelineId, activated.branchId)
             }}
+            onToggleAgentPanel={() => setAgentPanelOpen(prev => !prev)}
           />
         </div>
       )}

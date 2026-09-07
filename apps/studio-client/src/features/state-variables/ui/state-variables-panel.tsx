@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Code2, Database, FileCode, GitBranch, Globe, Plus, RefreshCw, Trash2, Wand2 } from 'lucide-react'
 import type { Card, StateDefinition, StateDefinitionDraft, StateSnapshot, StateTarget } from '../../../entities/index.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
+import { MasterDetailWorkbench } from '../../../shared/ui/master-detail-workbench/master-detail-workbench.js'
 import styles from './state-variables-panel.module.scss'
 import { createSnapshotReplaceInput, parseCardStateConfig, toStateDefinitionDraft } from '../model/state-variable-editor.js'
 
@@ -24,6 +25,7 @@ export function StateVariablesPanel(props: Props) {
   const [timeline, setTimeline] = useState<StateSnapshot>()
   const [definitions, setDefinitions] = useState<StateDefinition[]>([])
   const [selectedTarget, setSelectedTarget] = useState<SelectedTarget>({ kind: 'global' })
+  const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
   const [definitionId, setDefinitionId] = useState('')
   const [definitionText, setDefinitionText] = useState('')
   const [globalText, setGlobalText] = useState('{}')
@@ -58,6 +60,7 @@ export function StateVariablesPanel(props: Props) {
   function selectDefinition(id: string) {
     setDefinitionId(id)
     setSelectedTarget({ kind: 'definition', id })
+    setMobilePane('detail')
     const definition = definitions.find(item => item.id === id)
     setDefinitionText(definition ? JSON.stringify(toStateDefinitionDraft(definition), null, 2) : '{\n  "name": "",\n  "kind": "object",\n  "initial": {},\n  "schema": {}\n}')
   }
@@ -66,6 +69,7 @@ export function StateVariablesPanel(props: Props) {
     const newId = `state-def-${Date.now().toString(36)}`
     setDefinitionId(newId)
     setSelectedTarget({ kind: 'definition', id: newId })
+    setMobilePane('detail')
     setDefinitionText('{\n  "name": "New State Definition",\n  "kind": "object",\n  "initial": {},\n  "schema": {}\n}')
   }
 
@@ -121,51 +125,63 @@ export function StateVariablesPanel(props: Props) {
 
       {error ? <div className={styles.errorBanner}>{error}</div> : null}
 
-      <div className={styles.workbench}>
-        <nav aria-label="State Navigation" className={styles.masterNav}>
-          <div className={styles.navGroup}>
-            <header>状态作用域 (Scopes)</header>
-            <button
-              aria-current={selectedTarget.kind === 'global' ? 'page' : undefined}
-              className={styles.navItem}
-              type="button"
-              onClick={() => setSelectedTarget({ kind: 'global' })}
-            >
-              <Globe aria-hidden="true" />
-              <span className={styles.navItemBody}>
-                <strong>Workspace Global State</strong>
-                <small>{global?.revisionId ? `rev: ${global.revisionId.slice(0, 8)}` : '未初始化'}</small>
-              </span>
-            </button>
-            <button
-              aria-current={selectedTarget.kind === 'timeline' ? 'page' : undefined}
-              className={styles.navItem}
-              type="button"
-              onClick={() => setSelectedTarget({ kind: 'timeline' })}
-            >
-              <GitBranch aria-hidden="true" />
-              <span className={styles.navItemBody}>
-                <strong>当前 Timeline / Branch State</strong>
-                <small>
-                  {props.timelineTarget
-                    ? `timeline: ${props.timelineTarget.timelineId} · branch: ${props.timelineTarget.branchId}`
-                    : '未绑定 Timeline'}
-                </small>
-              </span>
-            </button>
-            <button
-              aria-current={selectedTarget.kind === 'card' ? 'page' : undefined}
-              className={styles.navItem}
-              type="button"
-              onClick={() => setSelectedTarget({ kind: 'card' })}
-            >
-              <Database aria-hidden="true" />
-              <span className={styles.navItemBody}>
-                <strong>当前 Card Template / Binding</strong>
-                <small>{props.card?.name ?? '未选择 Card'}</small>
-              </span>
-            </button>
-          </div>
+      <MasterDetailWorkbench
+        mobilePane={mobilePane}
+        onMobilePaneChange={setMobilePane}
+        master={(
+          <nav aria-label="State Navigation" className={styles.masterNav}>
+            <div className={styles.navGroup}>
+              <header>状态作用域 (Scopes)</header>
+              <button
+                aria-current={selectedTarget.kind === 'global' ? 'page' : undefined}
+                className={styles.navItem}
+                type="button"
+                onClick={() => {
+                  setSelectedTarget({ kind: 'global' })
+                  setMobilePane('detail')
+                }}
+              >
+                <Globe aria-hidden="true" />
+                <span className={styles.navItemBody}>
+                  <strong>Workspace Global State</strong>
+                  <small>{global?.revisionId ? `rev: ${global.revisionId.slice(0, 8)}` : '未初始化'}</small>
+                </span>
+              </button>
+              <button
+                aria-current={selectedTarget.kind === 'timeline' ? 'page' : undefined}
+                className={styles.navItem}
+                type="button"
+                onClick={() => {
+                  setSelectedTarget({ kind: 'timeline' })
+                  setMobilePane('detail')
+                }}
+              >
+                <GitBranch aria-hidden="true" />
+                <span className={styles.navItemBody}>
+                  <strong>当前 Timeline / Branch State</strong>
+                  <small>
+                    {props.timelineTarget
+                      ? `timeline: ${props.timelineTarget.timelineId} · branch: ${props.timelineTarget.branchId}`
+                      : '未绑定 Timeline'}
+                  </small>
+                </span>
+              </button>
+              <button
+                aria-current={selectedTarget.kind === 'card' ? 'page' : undefined}
+                className={styles.navItem}
+                type="button"
+                onClick={() => {
+                  setSelectedTarget({ kind: 'card' })
+                  setMobilePane('detail')
+                }}
+              >
+                <Database aria-hidden="true" />
+                <span className={styles.navItemBody}>
+                  <strong>当前 Card Template / Binding</strong>
+                  <small>{props.card?.name ?? '未选择 Card'}</small>
+                </span>
+              </button>
+            </div>
 
           <div className={styles.navGroup}>
             <header>
@@ -211,8 +227,9 @@ export function StateVariablesPanel(props: Props) {
             )}
           </div>
         </nav>
-
-        <div className={styles.detailPane}>
+      )}
+    >
+      <div className={styles.detailPane}>
           {selectedTarget.kind === 'global' ? (
             <>
               <header className={styles.detailHeader}>
@@ -380,7 +397,7 @@ export function StateVariablesPanel(props: Props) {
             </>
           )}
         </div>
-      </div>
+      </MasterDetailWorkbench>
     </section>
   )
 }
