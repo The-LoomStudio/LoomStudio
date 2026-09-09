@@ -9,18 +9,19 @@
 
 | 路线图 / 计划                                                                                | 当前状态     | 关注点                                                                  |
 | -------------------------------------------------------------------------------------------- | ------------ | ----------------------------------------------------------------------- |
+| [`macro-value-provider-and-inspector-plan.md`](./macro-value-provider-and-inspector-plan.md) | In Progress | 作者宏 Master–Detail、动态提供者、冲突选择与构建快照已实现，自动化验证通过，等待人工验收 |
+| [`ui/state-authoring-runtime-separation-plan.md`](./ui/state-authoring-runtime-separation-plan.md) | Paused | 有效范围转交宏计划统一验收；不恢复 Preset State 与 Workspace 作者 CRUD |
 | [`agent-runtime-ai-sdk-foundation-plan.md`](./agent-runtime-ai-sdk-foundation-plan.md)       | Phase 5 完成 | AI SDK Gateway、canonical Tool、三类 Transport、Agent Loop 与恢复持久化 |
 | [`ai-gateway-streaming-execution-plan.md`](./ai-gateway-streaming-execution-plan.md)         | 后端基础完成 | AI Gateway 流式执行；RPC / Client 消费延期                              |
-| [`extension-data-and-portable-payload-foundation-plan.md`](./extension-data-and-portable-payload-foundation-plan.md) | Phase 1—5 完成 | Scoped Storage、Card Portable Payload；Renderer / Job / GC 待讨论 |
 | [`application-capability-cli-mcp-adapters-plan.md`](./application-capability-cli-mcp-adapters-plan.md) | 待实施提案 | Application Capability、CLI 与 MCP 适配器 |
 | [`file-backed-resource-agent-script-codeact-plan.md`](./file-backed-resource-agent-script-codeact-plan.md) | 待实施提案 | File-backed Resource、Agent Script、Sandbox 与 CodeAct |
 | [`extension-developer-experience.md`](./extension-developer-experience.md)                   | 延期规划     | Extension SDK、Host 与开发者体验路线图                                  |
 | [`extension-package-source-host-runtime-plan.md`](./extension-package-source-host-runtime-plan.md) | 延期规划     | pnpm / Package Source、Installer 与 Host Runtime 分层                    |
-| [`application-runtime-modularization-plan.md`](./application-runtime-modularization-plan.md) | 延期规划     | 待真实领域边界长期稳定后渐进拆分 Runtime 包                             |
 | [`search-and-timeline-indexing-plan.md`](./search-and-timeline-indexing-plan.md)             | 延期规划     | 基于 Narrative Store 合同重定 Timeline Search 索引                      |
 | [`typed-primary-resource-bundle-plan.md`](./typed-primary-resource-bundle-plan.md)           | 延期规划     | Preset / Setting 主体加附件的增强导入导出 Artifact                      |
 | [`product-website-documentation-demo-plan.md`](./product-website-documentation-demo-plan.md) | 讨论草案     | 官网、公开文档、下载页、共享视觉语言与轻量交互 Demo                     |
 | [`workspace-dev-sync-plan.md`](./workspace-dev-sync-plan.md)                                 | 待讨论提案   | 角色卡/预设本地文件系统双向同步、MD 元数据与物理目录映射                 |
+| [`st-data-compatibility-and-anchor-system-plan.md`](./st-data-compatibility-and-anchor-system-plan.md) | 待评审提案 | SillyTavern 数据兼容导入与 Prompt Anchor 系统演进 |
 | [`ui/prompt-resource-diff-mode-v0.md`](./ui/prompt-resource-diff-mode-v0.md)                 | 延期规划     | PromptResource Revision 差异对比与 Tokenizer 合同                       |
 | [`ui/provider-account-health-plan.md`](./ui/provider-account-health-plan.md)                 | 延期规划     | Provider Account 健康检查与连接状态探测                                 |
 | [`ui/provider-model-brand-icons-plan.md`](./ui/provider-model-brand-icons-plan.md)           | 试验完成     | 正式模型品牌资产与图标合同收束                                          |
@@ -39,3 +40,9 @@
 - [`variable-state-system-implementation-plan.md`](../../archive/plans/variable-state-system-implementation-plan.md) — Phase 0—6 完成
 - [`history-text-transform-and-rendering-plan.md`](../../archive/plans/history-text-transform-and-rendering-plan.md) — Phase 0—5 闭环
 - [`ai-gateway-extension-capability-registry-plan.md`](../../archive/plans/ai-gateway-extension-capability-registry-plan.md) — M1 已实施
+
+本次归档（2026-09-09）：
+
+- [`application-runtime-modularization-plan.md`](../../archive/plans/application-runtime-modularization-plan.md) — Runtime facade 与领域模块边界已落地
+- [`extension-data-and-portable-payload-foundation-plan.md`](../../archive/plans/extension-data-and-portable-payload-foundation-plan.md) — Phase 1—5 完成；后续 Renderer / Job / GC 保持开放
+- [`state-entity-reference-v1-plan.md`](../../archive/plans/state-entity-reference-v1-plan.md) — State v1 核心完成并晋升 Architecture；独立 Artifact 与运行引用检查转入 Workbench Issue

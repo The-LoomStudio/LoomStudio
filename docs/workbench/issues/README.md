@@ -4,6 +4,8 @@
 
 - [`full-repo-code-review-2026-08-27.md`](./full-repo-code-review-2026-08-27.md) — **2026-08-27 全仓代码审阅**（2 个 P1、14 个 P2、3 个 P3 与 6 个优化候选）。
 - [`documentation-direction-and-lifecycle-follow-up-2026-08-28.md`](./documentation-direction-and-lifecycle-follow-up-2026-08-28.md) — **文档方向与生命周期复核**（2 个 P2：旧 M0 实现基线残留、归档 Plan successor 缺失）。
+- [`extension-dev-hot-reload-enhancement.md`](./extension-dev-hot-reload-enhancement.md) — **插件开发态热重载机制增强**（待排期的低优先级开发体验改进）。
+- [`state-resource-and-reference-follow-ups.md`](./state-resource-and-reference-follow-ups.md) — **State 资源与引用检查后续**（独立 State Artifact 资源链、运行态软引用诊断）。
 - [`periodic-code-review.md`](./periodic-code-review.md) — **周期代码审查台账**（滚动记录最近 12 次重大审查与核心链路发现）。
 
 > [!NOTE]

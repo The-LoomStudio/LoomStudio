@@ -10,6 +10,8 @@ import { createStateStore, type StateStore } from '@loom-studio/state-store'
 import { createDocumentBackedAiGateway, providerToGateway } from '../providers/gateway.js'
 import { createAgentToolRegistry, type AgentToolRegistry } from '../agents/tool-registry.js'
 import type { AiGateway, ApplicationRuntimeOptions, MediaAssetLookup, SourceArtifactStorage } from '../types.js'
+import { createMacroProviderRegistry, type MacroProviderRegistry } from '../prompt/macro-provider-registry.js'
+import { createStateContributionRegistry, type StateContributionRegistry } from '../state/state-contribution-registry.js'
 
 export type ApplicationRuntimeContext = {
   agents?: AgentStore
@@ -26,6 +28,8 @@ export type ApplicationRuntimeContext = {
   providerAdapters: ProviderAdapterRegistry
   aiCapabilities: ApplicationRuntimeOptions['aiCapabilities']
   agentTools: AgentToolRegistry
+  macroProviders: MacroProviderRegistry
+  stateContributions: StateContributionRegistry
   now(): string
   createId(prefix: string): string
 }
@@ -57,6 +61,8 @@ export function createApplicationRuntimeContext(options: ApplicationRuntimeOptio
     providerAdapters,
     aiCapabilities: options.aiCapabilities,
     agentTools,
+    macroProviders: options.macroProviders ?? createMacroProviderRegistry(),
+    stateContributions: options.stateContributions ?? createStateContributionRegistry(),
     gateway: options.gateway ?? (options.provider ? providerToGateway(options.provider) : createDocumentBackedAiGateway({
       documents: options.documents,
       secrets: options.secrets,

@@ -5,7 +5,7 @@
 > **关联文档**：
 > - [`ordered-file-tree-and-anchor-slot-v0.md`](../discussion/application/prompt/ordered-file-tree-and-anchor-slot-v0.md) — 有序文件树与 Anchor / Slot 架构推演
 > - [`airp-extension-contribution-v0.md`](../discussion/application/extension/airp-extension-contribution-v0.md) — Extension 领域能力贡献规范
-> - [`extension-data-and-portable-payload-foundation-plan.md`](extension-data-and-portable-payload-foundation-plan.md) — Extension 数据与 Portable Payload 基建
+> - [`extension-data-and-portable-payload-foundation-plan.md`](../../archive/plans/extension-data-and-portable-payload-foundation-plan.md) — Extension 数据与 Portable Payload 基建
 >
 > **目标**：以官方 Server Extension 插件形式，实现对 SillyTavern（ST）角色卡（V2/V3 PNG & JSON）、世界书（Lorebook）、预设（OpenAI Presets）的无损导入与格式归一化；同时演进 Loom Studio 的 Prompt 锚点系统，建立 `@chat.session.post` 黄金锚点与扩展声明式/自定义锚点拓扑降级机制，彻底废除无意义的 `injection_position`。
 

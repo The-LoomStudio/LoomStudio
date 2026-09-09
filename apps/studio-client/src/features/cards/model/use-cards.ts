@@ -135,10 +135,52 @@ export function useCards(input: UseCardsInput) {
     })
   }
 
+  async function updateCardStateConfig(config: {
+    cardId: string
+    expectedVersion: number
+    stateTemplates?: Card['stateTemplates']
+    stateDefinitionIds: string[]
+    stateEntityTypes: NonNullable<Card['stateEntityTypes']>
+    timelineStateEntities: NonNullable<Card['timelineStateEntities']>
+    timelineComponentMounts: NonNullable<Card['timelineComponentMounts']>
+    stateContributionIds: NonNullable<Card['stateContributionIds']>
+    timelineStateBindings: NonNullable<Card['timelineStateBindings']>
+  }) {
+    const result = await input.api.cards.update(config)
+    input.recordEdit({
+      label: input.t('history.card.update'),
+      changesetId: result.mutation.changesetId,
+      anchor: { documentId: config.cardId },
+    })
+    setSelectedCardDetails(current => current?.id === result.card.id && current.version <= result.card.version ? result.card : current)
+    setCards(current => current.map(card => card.id === result.card.id && card.version <= result.card.version
+      ? { ...card, version: result.card.version, updatedAt: result.card.updatedAt }
+      : card))
+    return result.card
+  }
+
   async function deleteCard() {
     if (!selectedCardId) return
 
     await deleteCards([selectedCardId])
+  }
+
+  async function updateCardMacros(config: {
+    cardId: string
+    expectedVersion: number
+    macros: Record<string, string>
+  }) {
+    const result = await input.api.cards.update(config)
+    input.recordEdit({
+      label: input.t('history.card.update'),
+      changesetId: result.mutation.changesetId,
+      anchor: { documentId: config.cardId },
+    })
+    setSelectedCardDetails(current => current?.id === result.card.id && current.version <= result.card.version ? result.card : current)
+    setCards(current => current.map(card => card.id === result.card.id && card.version <= result.card.version
+      ? { ...card, version: result.card.version, updatedAt: result.card.updatedAt }
+      : card))
+    return { version: result.card.version, macros: result.card.macros ?? {} }
   }
 
   async function deleteCards(cardIds: string[], options?: { includePlayData?: boolean; includePromptResources?: boolean }) {
@@ -282,6 +324,8 @@ export function useCards(input: UseCardsInput) {
     createCard,
     updateCard,
     replaceCardPromptResources,
+    updateCardStateConfig,
+    updateCardMacros,
     deleteCard,
     deleteCards,
     previewCardDeletion,

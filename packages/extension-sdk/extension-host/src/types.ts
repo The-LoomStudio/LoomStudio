@@ -13,13 +13,18 @@ import type {
   ExtensionManifest,
   ExtensionMediaAsset,
   ExtensionModuleManifest,
+  ExtensionMacroProvider,
   ExtensionPortablePayload,
   ExtensionPortablePayloadDraft,
   ExtensionRpcHandler,
   ExtensionStorageScope,
+  ExtensionStateMutationInput,
+  ExtensionStateMutationResult,
+  ExtensionStateSnapshot,
+  ExtensionStateTarget,
   ProfiledAiGateway,
 } from '@loom-studio/extension-sdk'
-import type { JsonObject, JsonValue } from '@loom-studio/shared'
+import type { JsonObject, JsonValue, StateContribution } from '@loom-studio/shared'
 import type { StudioEvent } from '@loom-studio/transport'
 
 export type { ExtensionRpcHandler } from '@loom-studio/extension-sdk'
@@ -142,6 +147,19 @@ export type ExtensionHostOptions = {
   }
   aiCapabilities?: AiGatewayCapabilityRegistry
   aiGateway?: ProfiledAiGateway
+  registerMacroProvider?(provider: ExtensionMacroProvider, owner: {
+    packageId: string
+    moduleId: string
+    instanceId: string
+  }): Disposable
+  registerStateContribution?(contribution: StateContribution, owner: {
+    packageId: string
+    moduleId: string
+    instanceId: string
+    packageVersion: string
+  }): Disposable
+  readState?(target: ExtensionStateTarget, owner: { packageId: string; moduleId: string; instanceId: string }): Promise<ExtensionStateSnapshot>
+  writeState?(input: ExtensionStateMutationInput, owner: { packageId: string; moduleId: string; instanceId: string }): Promise<ExtensionStateMutationResult>
   registerAgentToolHandler?(
     toolId: string,
     ownerPackageId: string,

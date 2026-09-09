@@ -1,4 +1,5 @@
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
+import type { MacroInspection } from '@loom-studio/shared'
 import type { MutationReceipt } from './common.js'
 import type { PromptProjection } from './prompt.js'
 
@@ -88,6 +89,7 @@ export type ToolExposure = {
 }
 
 export type PreviewAgentTurnResult = {
+  macroInspection?: MacroInspection
   runId: string
   messages: ChatMessage[]
   projection: PromptProjection
@@ -97,6 +99,7 @@ export type PreviewAgentTurnResult = {
 }
 
 export type InvokeAgentTurnResult = {
+  macroInspection?: MacroInspection
   runId: string
   agentSession: AgentSession
   entries: {

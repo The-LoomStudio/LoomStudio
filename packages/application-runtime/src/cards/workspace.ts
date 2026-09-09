@@ -3,6 +3,7 @@ import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import type { PromptResourceStore } from '@loom-studio/prompt-resource-store'
 import { createId, nowIso } from '@loom-studio/shared'
 import { normalizeOpening, normalizeOptionalString, normalizePreset, normalizeSettingLayer } from './card.js'
+import { normalizeMacros } from './card.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { readDocument, toVersioned, writeDocument } from '../foundation/document-store.js'
 import { isObject } from '../foundation/json.js'
@@ -24,7 +25,13 @@ import { combineActivationGates, isPromptActivation, type PromptActivation } fro
 import { fromStoredResource } from '../prompt/prompt-resource-mapper.js'
 import { renderVariableMacros, type VariableRenderContext } from '../prompt/variables.js'
 import { validateStateDefinitionDraft, validateTimelineStateBinding } from '../state/state-definition.js'
-import type { StateDefinitionContent, StateDefinitionDraft, TimelineStateBinding } from '../types.js'
+import { createStateArtifact, parseStateArtifact } from '../state/state-contribution.js'
+import type {
+  StateArtifact,
+  StateDefinitionContent,
+  StateDefinitionDraft,
+  TimelineStateBinding,
+} from '../types.js'
 
 const applicationActor = { kind: 'kernel', id: 'application-runtime' } as const
 
@@ -49,13 +56,18 @@ export type CardBundleArtifact = {
     opening?: OpeningChatInput | string
     settingLayer?: SettingLayerInput
     media?: CardMediaRefs
+    macros?: Record<string, string>
+    stateContributionIds?: string[]
   }
   contextAssets: PromptResourceNode[]
+  state?: StateArtifact
   stateTemplates?: Array<{
     id: string
     templateVersion: number
     schema: JsonObject
     initial: JsonObject
+    componentKey?: string
+    targetEntityTypeIds?: string[]
     label?: string
   }>
   timelineStateBindings?: TimelineStateBinding[]
@@ -99,6 +111,7 @@ export type PromptResourceContent = {
     contributionId: string
   }
   sourceArtifactRef?: CardBundleSourceArtifactRef
+  macros?: Record<string, string>
   createdAt: string
   updatedAt: string
 }
@@ -108,6 +121,7 @@ export type PromptResourceArtifact = {
   schemaVersion: 1
   resourceKind: PromptResourceKind
   rootNode: PromptResourceNode
+  macros?: Record<string, string>
 }
 
 export type CardBundleSourceArtifactRef = {
@@ -226,6 +240,9 @@ export async function importCardBundle(input: {
   importBundle: ImportBundleContent & { id: string; version: number }
 }> {
   const artifact = normalizeCardBundleArtifact(input.artifact)
+  const stateContribution = artifact.state?.contribution
+  const artifactStateTemplates = stateContribution?.templates ?? artifact.stateTemplates ?? []
+  const artifactStateBindings = stateContribution?.bindings ?? artifact.timelineStateBindings ?? []
   const timestamp = input.now ?? nowIso()
   const sourceArtifactRef = createSourceArtifactRef(artifact, timestamp, input.storedSourceArtifact)
   const contextAssets = await cloneConflictingPromptNodes(input.promptResources, artifact.contextAssets)
@@ -268,12 +285,14 @@ export async function importCardBundle(input: {
       }
       const portableExtensionPayloadIds = portablePayloadDocuments.map(document => document.id)
       const stateDefinitionIds: string[] = []
-      for (const template of artifact.stateTemplates ?? []) {
+      for (const template of artifactStateTemplates) {
         const definition = {
           kind: 'timeline-template' as const,
           templateVersion: template.templateVersion,
           schema: template.schema,
           initial: template.initial,
+          ...(template.componentKey !== undefined ? { componentKey: template.componentKey } : {}),
+          ...(template.targetEntityTypeIds !== undefined ? { targetEntityTypeIds: [...template.targetEntityTypeIds] } : {}),
           ...(template.label !== undefined ? { label: template.label } : {}),
         }
         validateStateDefinitionDraft(definition)
@@ -293,8 +312,8 @@ export async function importCardBundle(input: {
         }
         stateDefinitionIds.push(template.id)
       }
-      const artifactTemplates = new Map((artifact.stateTemplates ?? []).map(template => [template.id, template]))
-      for (const binding of artifact.timelineStateBindings ?? []) {
+      const artifactTemplates = new Map(artifactStateTemplates.map(template => [template.id, template]))
+      for (const binding of artifactStateBindings) {
         validateTimelineStateBinding(binding)
         const template = artifactTemplates.get(binding.templateId)
         if (!template) throw new Error(`Timeline State Binding template is missing from Card Bundle: ${binding.templateId}`)
@@ -314,10 +333,15 @@ export async function importCardBundle(input: {
           portableExtensionPayloadIds,
           promptResourceIds: resourceIds,
           stateDefinitionIds,
-          timelineStateBindings: structuredClone(artifact.timelineStateBindings ?? []),
+          ...(stateContribution ? { stateEntityTypes: structuredClone(stateContribution.entityTypes) } : {}),
+          ...(stateContribution ? { timelineStateEntities: structuredClone(stateContribution.entities) } : {}),
+          ...(stateContribution ? { timelineComponentMounts: structuredClone(stateContribution.componentMounts) } : {}),
+          timelineStateBindings: structuredClone(artifactStateBindings),
           preset: normalizePreset(artifact.card.preset),
           opening: normalizeOpening(artifact.card.opening),
           settingLayer: normalizeSettingLayer(artifact.card.settingLayer, undefined),
+          ...(artifact.card.macros !== undefined ? { macros: normalizeMacros(artifact.card.macros, 'Card') } : {}),
+          ...(artifact.card.stateContributionIds !== undefined ? { stateContributionIds: [...artifact.card.stateContributionIds] } : {}),
           createdAt: timestamp,
           updatedAt: timestamp,
         },
@@ -376,17 +400,22 @@ export async function exportCardArtifact(input: {
         if (!resource) throw new Error(`Prompt resource not found: ${resourceId}`)
         return fromStoredResource(resource).rootNode
       }))
-  const stateTemplates = await Promise.all((card.content.stateDefinitionIds ?? []).map(async definitionId => {
-    const definition = await readDocument<StateDefinitionContent>(input.documents, definitionId, applicationDocumentTypes.stateDefinition)
-    if (definition.content.kind !== 'timeline-template') throw new Error(`Card State Definition is not a timeline template: ${definitionId}`)
-    return {
-      id: definition.id,
-      templateVersion: definition.content.templateVersion,
-      schema: definition.content.schema,
-      initial: definition.content.initial,
-      ...(definition.content.label !== undefined ? { label: definition.content.label } : {}),
-    }
-  }))
+  const inlineTemplates = structuredClone(card.content.stateTemplates ?? [])
+  const inlineTemplateIds = new Set(inlineTemplates.map(template => template.id))
+  const sharedTemplates = await Promise.all((card.content.stateDefinitionIds ?? [])
+    .filter(definitionId => !inlineTemplateIds.has(definitionId))
+    .map(async definitionId => {
+      const definition = await readDocument<StateDefinitionContent>(input.documents, definitionId, applicationDocumentTypes.stateDefinition)
+      if (definition.content.kind !== 'timeline-template') throw new Error(`Card State Definition is not a timeline template: ${definitionId}`)
+      return {
+        id: definition.id,
+        templateVersion: definition.content.templateVersion,
+        schema: definition.content.schema,
+        initial: definition.content.initial,
+        ...(definition.content.label !== undefined ? { label: definition.content.label } : {}),
+      }
+    }))
+  const stateTemplates = [...inlineTemplates, ...sharedTemplates]
   const extensionPayloads = await Promise.all((card.content.portableExtensionPayloadIds ?? []).map(async payloadId => {
     const payload = await readDocument<PortableExtensionPayloadContent>(
       input.documents,
@@ -428,8 +457,18 @@ function buildExportArtifact(input: {
       opening: cardContent.opening,
       settingLayer: cardContent.settingLayer,
       media: cardContent.media,
+      macros: cardContent.macros,
+      stateContributionIds: cardContent.stateContributionIds,
     },
     contextAssets: input.contextAssets,
+    state: createStateArtifact({
+      id: `card:${input.card.id}`,
+      entityTypes: structuredClone(cardContent.stateEntityTypes ?? []),
+      templates: structuredClone(input.stateTemplates),
+      entities: structuredClone(cardContent.timelineStateEntities ?? []),
+      componentMounts: structuredClone(cardContent.timelineComponentMounts ?? []),
+      bindings: structuredClone(cardContent.timelineStateBindings ?? []),
+    }),
     stateTemplates: input.stateTemplates,
     timelineStateBindings: structuredClone(cardContent.timelineStateBindings ?? []),
     extensionPayloads: input.extensionPayloads.map(payload => structuredClone(payload)),
@@ -747,6 +786,7 @@ function assertCardBundleArtifact(value: unknown): asserts value is CardBundleAr
     assertPromptResourceNode(node, `contextAssets[${index}]`)
     assertUniquePromptResourceNodeIds(node)
   }
+  if (value.state !== undefined) parseStateArtifact(value.state)
   if (value.stateTemplates !== undefined) {
     if (!Array.isArray(value.stateTemplates)) throw new Error('Card bundle stateTemplates must be an array')
     const ids = new Set<string>()
@@ -760,6 +800,8 @@ function assertCardBundleArtifact(value: unknown): asserts value is CardBundleAr
         templateVersion: template.templateVersion as number,
         schema: template.schema as JsonObject,
         initial: template.initial as JsonObject,
+        ...(typeof template.componentKey === 'string' ? { componentKey: template.componentKey } : {}),
+        ...(Array.isArray(template.targetEntityTypeIds) ? { targetEntityTypeIds: template.targetEntityTypeIds as string[] } : {}),
         ...(typeof template.label === 'string' ? { label: template.label } : {}),
       })
     }
@@ -852,6 +894,8 @@ function sameTimelineTemplate(value: JsonValue, definition: Extract<StateDefinit
   return value.templateVersion === definition.templateVersion
     && JSON.stringify(value.schema) === JSON.stringify(definition.schema)
     && JSON.stringify(value.initial) === JSON.stringify(definition.initial)
+    && value.componentKey === definition.componentKey
+    && JSON.stringify(value.targetEntityTypeIds) === JSON.stringify(definition.targetEntityTypeIds)
     && value.label === definition.label
 }
 
@@ -860,10 +904,16 @@ function assertCardBundleCard(value: unknown): asserts value is CardBundleArtifa
   assertNonEmptyString(value.name, 'Card bundle card.name')
   assertOptionalString(value.userName, 'Card bundle card.userName')
   assertOptionalString(value.description, 'Card bundle card.description')
+  if (value.macros !== undefined) validateBundleMacros(value.macros)
+  if (value.stateContributionIds !== undefined
+    && (!Array.isArray(value.stateContributionIds) || !value.stateContributionIds.every(id => typeof id === 'string' && id.trim().length > 0))) {
+    throw new Error('Card bundle card.stateContributionIds must be non-empty strings')
+  }
 
   if (value.preset !== undefined) {
     if (!isObject(value.preset)) throw new Error('Card bundle card.preset must be an object')
     assertOptionalString(value.preset.system, 'Card bundle card.preset.system')
+    if (value.preset.macros !== undefined) validateBundleMacros(value.preset.macros)
   }
 
   if (value.opening !== undefined && typeof value.opening !== 'string') {
@@ -904,6 +954,13 @@ function assertCardBundleCard(value: unknown): asserts value is CardBundleArtifa
       }
       
     }
+  }
+}
+
+function validateBundleMacros(value: unknown): void {
+  if (!isObject(value)) throw new Error('Card bundle macros must be an object')
+  for (const [name, macroValue] of Object.entries(value)) {
+    if (typeof macroValue !== 'string') throw new Error(`Card bundle macro value must be a string: ${name}`)
   }
 }
 

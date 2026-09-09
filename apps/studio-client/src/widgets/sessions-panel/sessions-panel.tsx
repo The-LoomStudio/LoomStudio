@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  ArrowDownUp,
   ArrowRight,
   Bot,
   Check,
   CheckSquare,
   ChevronDown,
   ChevronRight,
+  ChevronsDown,
+  ChevronsUp,
+  Eye,
   FolderGit2,
   GitCommitHorizontal,
   History,
@@ -14,6 +18,7 @@ import {
   Play,
   Trash2,
   User,
+  X,
 } from 'lucide-react'
 import type {
   AgentProfile,
@@ -26,16 +31,27 @@ import type {
 } from '../../entities/index.js'
 import type { StudioApi } from '../../shared/api/studio-api.js'
 import type { Translator } from '../../shared/i18n/index.js'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '../../shared/ui/context-menu/context-menu.js'
 import { MasterDetailWorkbench } from '../../shared/ui/master-detail-workbench/master-detail-workbench.js'
 import { Toggle } from '../../shared/ui/toggle/toggle.js'
 import {
+  areAllExpandablesExpanded,
   areAllSelected,
   areAllSessionsSelected,
   areAllTimelinesSelected,
   filterStandaloneSessions,
   filterTimelines,
+  getExpandableTimelineIds,
   partitionSessions,
-  sortTimelinesByUpdated,
+  sortSessions,
+  sortTimelines,
+  toggleExpandAll,
   toggleItemSelection,
   toggleSelectAll,
   toggleSelectAllSessions,
@@ -78,7 +94,9 @@ export function SessionsPanel(props: SessionsPanelProps) {
   const [selectedTimelineIds, setSelectedTimelineIds] = useState<Set<string>>(new Set())
   const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(new Set())
 
-  const sortedTimelines = useMemo(() => sortTimelinesByUpdated(props.timelines), [props.timelines])
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc')
+
+  const sortedTimelines = useMemo(() => sortTimelines(props.timelines, sortOrder), [props.timelines, sortOrder])
 
   const initialSelectedId = props.activeTimeline?.id ?? sortedTimelines[0]?.id
   const [selectedItem, setSelectedItem] = useState<SelectedHistoryItem | undefined>(
@@ -111,13 +129,17 @@ export function SessionsPanel(props: SessionsPanelProps) {
     for (const s of [...remoteSessions, ...memory]) {
       map.set(s.id, s)
     }
-    return [...map.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    return [...map.values()]
   }, [props.agentChatSession, props.narrativeAgentSession, remoteSessions])
 
-  // 区分绑定会话与独立会话
+  // 区分绑定会话与独立会话并应用排序
   const { sessionsByTimelineId, standaloneSessions } = useMemo(() => {
-    return partitionSessions(allSessions)
-  }, [allSessions])
+    const partitioned = partitionSessions(allSessions)
+    return {
+      sessionsByTimelineId: partitioned.sessionsByTimelineId,
+      standaloneSessions: sortSessions(partitioned.standaloneSessions, sortOrder),
+    }
+  }, [allSessions, sortOrder])
 
   // 构建角色快速检索映射表
   const cardMap = useMemo(() => {
@@ -134,6 +156,18 @@ export function SessionsPanel(props: SessionsPanelProps) {
     if (filter === 'timelines') return []
     return filterStandaloneSessions(standaloneSessions, props.agentProfiles, searchQuery)
   }, [filter, searchQuery, standaloneSessions, props.agentProfiles])
+
+  const expandableTimelineIds = useMemo(() => {
+    return getExpandableTimelineIds(filteredTimelines.map(t => t.id), sessionsByTimelineId)
+  }, [filteredTimelines, sessionsByTimelineId])
+
+  const isAllExpanded = useMemo(() => {
+    return areAllExpandablesExpanded(expandableTimelineIds, expandedTimelines)
+  }, [expandableTimelineIds, expandedTimelines])
+
+  const handleToggleExpandAll = () => {
+    setExpandedTimelines(prev => toggleExpandAll(expandableTimelineIds, prev))
+  }
 
   // 可见项 IDs 汇总与批量状态
   const visibleTimelineIds = useMemo(() => filteredTimelines.map(t => t.id), [filteredTimelines])
@@ -461,12 +495,55 @@ export function SessionsPanel(props: SessionsPanelProps) {
                 </button>
               </div>
             ) : (
-              <input
-                className={styles.searchInput}
-                placeholder="搜索时间线、角色或会话..."
-                value={searchQuery}
-                onChange={event => setSearchQuery(event.target.value)}
-              />
+              <div className={styles.toolbarRow}>
+                <div className={styles.searchContainer}>
+                  <input
+                    className={styles.searchInput}
+                    placeholder="搜索时间线、角色或会话..."
+                    value={searchQuery}
+                    onChange={event => setSearchQuery(event.target.value)}
+                  />
+                  {searchQuery ? (
+                    <button
+                      aria-label={props.t('sessions.clearSearch')}
+                      className={styles.clearSearchBtn}
+                      title={props.t('sessions.clearSearch')}
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                    >
+                      <X aria-hidden="true" size={11} />
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className={styles.toolbarActions}>
+                  <button
+                    aria-label={props.t(sortOrder === 'desc' ? 'sessions.sortLatest' : 'sessions.sortEarliest')}
+                    className={styles.toolbarIconBtn}
+                    data-active={sortOrder === 'asc' ? 'true' : 'false'}
+                    title={props.t(sortOrder === 'desc' ? 'sessions.sortLatest' : 'sessions.sortEarliest')}
+                    type="button"
+                    onClick={() => setSortOrder(prev => (prev === 'desc' ? 'asc' : 'desc'))}
+                  >
+                    <ArrowDownUp aria-hidden="true" size={13} />
+                  </button>
+
+                  <button
+                    aria-label={props.t(isAllExpanded ? 'sessions.collapseAll' : 'sessions.expandAll')}
+                    className={styles.toolbarIconBtn}
+                    disabled={expandableTimelineIds.length === 0}
+                    title={props.t(isAllExpanded ? 'sessions.collapseAll' : 'sessions.expandAll')}
+                    type="button"
+                    onClick={handleToggleExpandAll}
+                  >
+                    {isAllExpanded ? (
+                      <ChevronsUp aria-hidden="true" size={14} />
+                    ) : (
+                      <ChevronsDown aria-hidden="true" size={14} />
+                    )}
+                  </button>
+                </div>
+              </div>
             )}
 
             <div className={styles.list}>
@@ -519,104 +596,149 @@ export function SessionsPanel(props: SessionsPanelProps) {
 
                     return (
                       <div key={timeline.id} className={styles.timelineGroup}>
-                        <div
-                          className={styles.itemRow}
-                          data-active={isSelected ? 'true' : 'false'}
-                          data-selected={isTimelineChecked ? 'true' : 'false'}
-                          onClick={isSelectionMode ? (e) => handleToggleTimelineSelect(timeline.id, e) : undefined}
-                        >
-                          {isSelectionMode ? (
-                            <div className={styles.selectionToggleWrapper}>
-                              <Toggle
-                                checked={isTimelineChecked}
-                                label={`选择时间线 ${timeline.title || card?.name || ''}`}
-                                onChange={() => {}}
-                              />
-                            </div>
-                          ) : (
-                            hasChildren ? (
-                              <button
-                                aria-expanded={isExpanded}
-                                aria-label="展开关联会话"
-                                className={styles.expandButton}
-                                type="button"
-                                onClick={e => toggleExpandTimeline(timeline.id, e)}
-                              >
-                                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                              </button>
-                            ) : (
-                              <div className={styles.expandPlaceholder} />
-                            )
-                          )}
-
-                          <button
-                            className={styles.itemButton}
-                            type="button"
-                            onClick={e => {
-                              if (isSelectionMode) {
-                                handleToggleTimelineSelect(timeline.id, e)
-                                return
-                              }
-                              setSelectedItem({ kind: 'timeline', id: timeline.id })
-                              if (hasChildren) {
-                                setExpandedTimelines(prev => new Set(prev).add(timeline.id))
-                              }
-                              setMobilePane('detail')
-                            }}
-                            onDoubleClick={() => {
-                              if (!isSelectionMode) props.onOpenTimeline(timeline)
-                            }}
-                          >
-                            {avatarUrl ? (
-                              <img className={styles.characterAvatar} src={avatarUrl} alt={card?.name ?? ''} />
-                            ) : (
-                              <div className={styles.avatarPlaceholder}>
-                                <History aria-hidden="true" />
-                              </div>
-                            )}
-                            <span className={styles.itemBody}>
-                              <strong>{timeline.title || card?.name || props.t('sessions.untitledTimeline')}</strong>
-                              <small>
-                                {card?.name ? `${card.name} · ` : ''}
-                                {formatDate(timeline.updatedAt)}
-                              </small>
-                            </span>
-                          </button>
-
-                          {hasChildren ? (
-                            <span className={styles.badge} title={props.t('sessions.boundSessions', { count: boundSessions.length })}>
-                              <MessageSquareText aria-hidden="true" size={11} />
-                              <span>{boundSessions.length}</span>
-                            </span>
-                          ) : null}
-
-                          {isSelectionMode && hasChildren ? (
-                            <button
-                              aria-expanded={isExpanded}
-                              aria-label="展开关联会话"
-                              className={styles.expandButton}
-                              type="button"
-                              onClick={e => toggleExpandTimeline(timeline.id, e)}
+                        <ContextMenu>
+                          <ContextMenuTrigger asChild>
+                            <div
+                              className={styles.itemRow}
+                              data-active={isSelected ? 'true' : 'false'}
+                              data-selected={isTimelineChecked ? 'true' : 'false'}
+                              onClick={isSelectionMode ? (e) => handleToggleTimelineSelect(timeline.id, e) : undefined}
                             >
-                              {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                            </button>
-                          ) : null}
+                              {isSelectionMode ? (
+                                <div className={styles.selectionToggleWrapper}>
+                                  <Toggle
+                                    checked={isTimelineChecked}
+                                    label={`选择时间线 ${timeline.title || card?.name || ''}`}
+                                    onChange={() => {}}
+                                  />
+                                </div>
+                              ) : (
+                                hasChildren ? (
+                                  <button
+                                    aria-expanded={isExpanded}
+                                    aria-label="展开关联会话"
+                                    className={styles.expandButton}
+                                    type="button"
+                                    onClick={e => toggleExpandTimeline(timeline.id, e)}
+                                  >
+                                    {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                  </button>
+                                ) : (
+                                  <div className={styles.expandPlaceholder} />
+                                )
+                              )}
 
-                          {!isSelectionMode ? (
-                            <button
-                              aria-label={props.t('sessions.enterTimeline')}
-                              className={styles.itemActionButton}
-                              title={props.t('sessions.enterTimeline')}
-                              type="button"
-                              onClick={e => {
-                                e.stopPropagation()
-                                props.onOpenTimeline(timeline)
+                              <button
+                                className={styles.itemButton}
+                                type="button"
+                                onClick={e => {
+                                  if (isSelectionMode) {
+                                    handleToggleTimelineSelect(timeline.id, e)
+                                    return
+                                  }
+                                  setSelectedItem({ kind: 'timeline', id: timeline.id })
+                                  if (hasChildren) {
+                                    setExpandedTimelines(prev => new Set(prev).add(timeline.id))
+                                  }
+                                  setMobilePane('detail')
+                                }}
+                                onDoubleClick={() => {
+                                  if (!isSelectionMode) props.onOpenTimeline(timeline)
+                                }}
+                              >
+                                {avatarUrl ? (
+                                  <img className={styles.characterAvatar} src={avatarUrl} alt={card?.name ?? ''} />
+                                ) : (
+                                  <div className={styles.avatarPlaceholder}>
+                                    <History aria-hidden="true" />
+                                  </div>
+                                )}
+                                <span className={styles.itemBody}>
+                                  <strong>{timeline.title || card?.name || props.t('sessions.untitledTimeline')}</strong>
+                                  <small>
+                                    {card?.name ? `${card.name} · ` : ''}
+                                    {formatDate(timeline.updatedAt)}
+                                  </small>
+                                </span>
+                              </button>
+
+                              {hasChildren ? (
+                                <span className={styles.badge} title={props.t('sessions.boundSessions', { count: boundSessions.length })}>
+                                  <MessageSquareText aria-hidden="true" size={11} />
+                                  <span>{boundSessions.length}</span>
+                                </span>
+                              ) : null}
+
+                              {isSelectionMode && hasChildren ? (
+                                <button
+                                  aria-expanded={isExpanded}
+                                  aria-label="展开关联会话"
+                                  className={styles.expandButton}
+                                  type="button"
+                                  onClick={e => toggleExpandTimeline(timeline.id, e)}
+                                >
+                                  {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                </button>
+                              ) : null}
+
+                              {!isSelectionMode ? (
+                                <button
+                                  aria-label={props.t('sessions.enterTimeline')}
+                                  className={styles.itemActionButton}
+                                  title={props.t('sessions.enterTimeline')}
+                                  type="button"
+                                  onClick={e => {
+                                    e.stopPropagation()
+                                    props.onOpenTimeline(timeline)
+                                  }}
+                                >
+                                  <ArrowRight aria-hidden="true" size={14} />
+                                </button>
+                              ) : null}
+                            </div>
+                          </ContextMenuTrigger>
+                          <ContextMenuContent>
+                            <ContextMenuItem
+                              icon={<ArrowRight size={13} />}
+                              onSelect={() => props.onOpenTimeline(timeline)}
+                            >
+                              {props.t('sessions.enterTimeline')}
+                            </ContextMenuItem>
+                            <ContextMenuItem
+                              icon={<Eye size={13} />}
+                              onSelect={() => {
+                                setSelectedItem({ kind: 'timeline', id: timeline.id })
+                                setMobilePane('detail')
                               }}
                             >
-                              <ArrowRight aria-hidden="true" size={14} />
-                            </button>
-                          ) : null}
-                        </div>
+                              {props.t('sessions.viewDetail')}
+                            </ContextMenuItem>
+                            <ContextMenuItem
+                              icon={<Pencil size={13} />}
+                              onSelect={() => void handleRenameTimeline(timeline)}
+                            >
+                              {props.t('sessions.rename')}
+                            </ContextMenuItem>
+                            <ContextMenuSeparator />
+                            <ContextMenuItem
+                              icon={<CheckSquare size={13} />}
+                              onSelect={() => {
+                                if (!isSelectionMode) setIsSelectionMode(true)
+                                setSelectedTimelineIds(prev => toggleItemSelection(prev, timeline.id))
+                              }}
+                            >
+                              {isTimelineChecked ? props.t('character.deselect') : props.t('sessions.selectThis')}
+                            </ContextMenuItem>
+                            <ContextMenuSeparator />
+                            <ContextMenuItem
+                              icon={<Trash2 size={13} />}
+                              tone="danger"
+                              onSelect={() => void handleDeleteTimeline(timeline)}
+                            >
+                              {props.t('sessions.delete')}
+                            </ContextMenuItem>
+                          </ContextMenuContent>
+                        </ContextMenu>
 
                         {/* 挂载在时间线下的 Agent 会话子树 */}
                         {hasChildren && isExpanded ? (
@@ -626,53 +748,97 @@ export function SessionsPanel(props: SessionsPanelProps) {
                               const isSessionChecked = selectedSessionIds.has(session.id)
                               const profile = props.agentProfiles.find(p => p.id === session.agentProfileId)
                               return (
-                                <div
-                                  key={session.id}
-                                  className={styles.childItemRow}
-                                  data-active={isSessionSelected ? 'true' : 'false'}
-                                  data-selected={isSessionChecked ? 'true' : 'false'}
-                                  onClick={e => {
-                                    if (isSelectionMode) {
-                                      handleToggleSessionSelect(session.id, e)
-                                      return
-                                    }
-                                    setSelectedItem({ kind: 'session', id: session.id })
-                                    setMobilePane('detail')
-                                  }}
-                                  onDoubleClick={() => {
-                                    if (!isSelectionMode) handleOpenSessionInSidebar(session)
-                                  }}
-                                >
-                                  {isSelectionMode ? (
-                                    <div className={styles.selectionToggleWrapper}>
-                                      <Toggle
-                                        checked={isSessionChecked}
-                                        label={`选择会话 ${session.title || profile?.name || ''}`}
-                                        onChange={() => {}}
-                                      />
-                                    </div>
-                                  ) : null}
-                                  <MessageSquareText aria-hidden="true" />
-                                  <span className={styles.childItemBody}>
-                                    <strong>{session.title || profile?.name || props.t('sessions.untitledAgentSession')}</strong>
-                                    <small>{formatDate(session.updatedAt)}</small>
-                                  </span>
-                                  <span className={styles.count}>{session.entryCount}</span>
-                                  {!isSelectionMode ? (
-                                    <button
-                                      aria-label={props.t('sessions.openInSidebar')}
-                                      className={styles.itemActionButton}
-                                      title={props.t('sessions.openInSidebar')}
-                                      type="button"
+                                <ContextMenu key={session.id}>
+                                  <ContextMenuTrigger asChild>
+                                    <div
+                                      className={styles.childItemRow}
+                                      data-active={isSessionSelected ? 'true' : 'false'}
+                                      data-selected={isSessionChecked ? 'true' : 'false'}
                                       onClick={e => {
-                                        e.stopPropagation()
-                                        handleOpenSessionInSidebar(session)
+                                        if (isSelectionMode) {
+                                          handleToggleSessionSelect(session.id, e)
+                                          return
+                                        }
+                                        setSelectedItem({ kind: 'session', id: session.id })
+                                        setMobilePane('detail')
+                                      }}
+                                      onDoubleClick={() => {
+                                        if (!isSelectionMode) handleOpenSessionInSidebar(session)
                                       }}
                                     >
-                                      <ArrowRight aria-hidden="true" size={13} />
-                                    </button>
-                                  ) : null}
-                                </div>
+                                      {isSelectionMode ? (
+                                        <div className={styles.selectionToggleWrapper}>
+                                          <Toggle
+                                            checked={isSessionChecked}
+                                            label={`选择会话 ${session.title || profile?.name || ''}`}
+                                            onChange={() => {}}
+                                          />
+                                        </div>
+                                      ) : null}
+                                      <MessageSquareText aria-hidden="true" />
+                                      <span className={styles.childItemBody}>
+                                        <strong>{session.title || profile?.name || props.t('sessions.untitledAgentSession')}</strong>
+                                        <small>{formatDate(session.updatedAt)}</small>
+                                      </span>
+                                      <span className={styles.count}>{session.entryCount}</span>
+                                      {!isSelectionMode ? (
+                                        <button
+                                          aria-label={props.t('sessions.openInSidebar')}
+                                          className={styles.itemActionButton}
+                                          title={props.t('sessions.openInSidebar')}
+                                          type="button"
+                                          onClick={e => {
+                                            e.stopPropagation()
+                                            handleOpenSessionInSidebar(session)
+                                          }}
+                                        >
+                                          <ArrowRight aria-hidden="true" size={13} />
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  </ContextMenuTrigger>
+                                  <ContextMenuContent>
+                                    <ContextMenuItem
+                                      icon={<ArrowRight size={13} />}
+                                      onSelect={() => handleOpenSessionInSidebar(session)}
+                                    >
+                                      {props.t('sessions.openInSidebar')}
+                                    </ContextMenuItem>
+                                    <ContextMenuItem
+                                      icon={<Eye size={13} />}
+                                      onSelect={() => {
+                                        setSelectedItem({ kind: 'session', id: session.id })
+                                        setMobilePane('detail')
+                                      }}
+                                    >
+                                      {props.t('sessions.viewDetail')}
+                                    </ContextMenuItem>
+                                    <ContextMenuItem
+                                      icon={<Pencil size={13} />}
+                                      onSelect={() => void handleRenameSession(session)}
+                                    >
+                                      {props.t('sessions.rename')}
+                                    </ContextMenuItem>
+                                    <ContextMenuSeparator />
+                                    <ContextMenuItem
+                                      icon={<CheckSquare size={13} />}
+                                      onSelect={() => {
+                                        if (!isSelectionMode) setIsSelectionMode(true)
+                                        setSelectedSessionIds(prev => toggleItemSelection(prev, session.id))
+                                      }}
+                                    >
+                                      {isSessionChecked ? props.t('character.deselect') : props.t('sessions.selectThis')}
+                                    </ContextMenuItem>
+                                    <ContextMenuSeparator />
+                                    <ContextMenuItem
+                                      icon={<Trash2 size={13} />}
+                                      tone="danger"
+                                      onSelect={() => void handleDeleteSession(session)}
+                                    >
+                                      {props.t('sessions.delete')}
+                                    </ContextMenuItem>
+                                  </ContextMenuContent>
+                                </ContextMenu>
                               )
                             })}
                           </div>
@@ -720,63 +886,107 @@ export function SessionsPanel(props: SessionsPanelProps) {
                     const isSessionChecked = selectedSessionIds.has(session.id)
                     const profile = props.agentProfiles.find(p => p.id === session.agentProfileId)
                     return (
-                      <div
-                        key={session.id}
-                        className={styles.itemRow}
-                        data-active={isSessionSelected ? 'true' : 'false'}
-                        data-selected={isSessionChecked ? 'true' : 'false'}
-                        onClick={isSelectionMode ? (e) => handleToggleSessionSelect(session.id, e) : undefined}
-                        onDoubleClick={() => {
-                          if (!isSelectionMode) handleOpenSessionInSidebar(session)
-                        }}
-                      >
-                        {isSelectionMode ? (
-                          <div className={styles.selectionToggleWrapper}>
-                            <Toggle
-                              checked={isSessionChecked}
-                              label={`选择会话 ${session.title || profile?.name || ''}`}
-                              onChange={() => {}}
-                            />
-                          </div>
-                        ) : (
-                          <div className={styles.expandPlaceholder} />
-                        )}
-                        <button
-                          className={styles.itemButton}
-                          type="button"
-                          onClick={e => {
-                            if (isSelectionMode) {
-                              handleToggleSessionSelect(session.id, e)
-                              return
-                            }
-                            setSelectedItem({ kind: 'session', id: session.id })
-                            setMobilePane('detail')
-                          }}
-                        >
-                          <div className={styles.avatarPlaceholder}>
-                            <Bot aria-hidden="true" />
-                          </div>
-                          <span className={styles.itemBody}>
-                            <strong>{session.title || profile?.name || props.t('sessions.untitledAgentSession')}</strong>
-                            <small>{profile?.name ?? session.agentProfileId} · {formatDate(session.updatedAt)}</small>
-                          </span>
-                        </button>
-                        <span className={styles.count}>{session.entryCount}</span>
-                        {!isSelectionMode ? (
-                          <button
-                            aria-label={props.t('sessions.openInSidebar')}
-                            className={styles.itemActionButton}
-                            title={props.t('sessions.openInSidebar')}
-                            type="button"
-                            onClick={e => {
-                              e.stopPropagation()
-                              handleOpenSessionInSidebar(session)
+                      <ContextMenu key={session.id}>
+                        <ContextMenuTrigger asChild>
+                          <div
+                            className={styles.itemRow}
+                            data-active={isSessionSelected ? 'true' : 'false'}
+                            data-selected={isSessionChecked ? 'true' : 'false'}
+                            onClick={isSelectionMode ? (e) => handleToggleSessionSelect(session.id, e) : undefined}
+                            onDoubleClick={() => {
+                              if (!isSelectionMode) handleOpenSessionInSidebar(session)
                             }}
                           >
-                            <ArrowRight aria-hidden="true" size={13} />
-                          </button>
-                        ) : null}
-                      </div>
+                            {isSelectionMode ? (
+                              <div className={styles.selectionToggleWrapper}>
+                                <Toggle
+                                  checked={isSessionChecked}
+                                  label={`选择会话 ${session.title || profile?.name || ''}`}
+                                  onChange={() => {}}
+                                />
+                              </div>
+                            ) : (
+                              <div className={styles.expandPlaceholder} />
+                            )}
+                            <button
+                              className={styles.itemButton}
+                              type="button"
+                              onClick={e => {
+                                if (isSelectionMode) {
+                                  handleToggleSessionSelect(session.id, e)
+                                  return
+                                }
+                                setSelectedItem({ kind: 'session', id: session.id })
+                                setMobilePane('detail')
+                              }}
+                            >
+                              <div className={styles.avatarPlaceholder}>
+                                <Bot aria-hidden="true" />
+                              </div>
+                              <span className={styles.itemBody}>
+                                <strong>{session.title || profile?.name || props.t('sessions.untitledAgentSession')}</strong>
+                                <small>{profile?.name ?? session.agentProfileId} · {formatDate(session.updatedAt)}</small>
+                              </span>
+                            </button>
+                            <span className={styles.count}>{session.entryCount}</span>
+                            {!isSelectionMode ? (
+                              <button
+                                aria-label={props.t('sessions.openInSidebar')}
+                                className={styles.itemActionButton}
+                                title={props.t('sessions.openInSidebar')}
+                                type="button"
+                                onClick={e => {
+                                  e.stopPropagation()
+                                  handleOpenSessionInSidebar(session)
+                                }}
+                              >
+                                <ArrowRight aria-hidden="true" size={13} />
+                              </button>
+                            ) : null}
+                          </div>
+                        </ContextMenuTrigger>
+                        <ContextMenuContent>
+                          <ContextMenuItem
+                            icon={<ArrowRight size={13} />}
+                            onSelect={() => handleOpenSessionInSidebar(session)}
+                          >
+                            {props.t('sessions.openInSidebar')}
+                          </ContextMenuItem>
+                          <ContextMenuItem
+                            icon={<Eye size={13} />}
+                            onSelect={() => {
+                              setSelectedItem({ kind: 'session', id: session.id })
+                              setMobilePane('detail')
+                            }}
+                          >
+                            {props.t('sessions.viewDetail')}
+                          </ContextMenuItem>
+                          <ContextMenuItem
+                            icon={<Pencil size={13} />}
+                            onSelect={() => void handleRenameSession(session)}
+                          >
+                            {props.t('sessions.rename')}
+                          </ContextMenuItem>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem
+                            icon={<CheckSquare size={13} />}
+                            onSelect={() => {
+                              if (!isSelectionMode) setIsSelectionMode(true)
+                              setSelectedSessionIds(prev => toggleItemSelection(prev, session.id))
+                            }}
+                          >
+                            {isSessionChecked ? props.t('character.deselect') : props.t('sessions.selectThis')}
+                          </ContextMenuItem>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem
+                            icon={<Trash2 size={13} />}
+                            tone="danger"
+                            onSelect={() => void handleDeleteSession(session)}
+                          >
+                            {props.t('sessions.delete')}
+                          </ContextMenuItem>
+                        </ContextMenuContent>
+                      </ContextMenu>
                     )
                   })}
                 </>

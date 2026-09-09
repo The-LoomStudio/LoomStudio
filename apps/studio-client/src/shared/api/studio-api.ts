@@ -109,6 +109,7 @@ export type NetworkSettings = {
 // ─── Card DTOs ──────────────────────────────────────────────────────────────
 
 export type CreateCardInput = {
+  macros?: Record<string, string>
   name: string
   userName?: string
   description?: string
@@ -120,7 +121,9 @@ export type CreateCardInput = {
 }
 
 export type UpdateCardInput = {
+  macros?: Record<string, string>
   cardId: string
+  expectedVersion?: number
   name?: string
   userName?: string
   description?: string
@@ -129,7 +132,28 @@ export type UpdateCardInput = {
   settingLayer?: SettingLayerInput
   media?: CardMedia
   promptResourceIds?: string[]
+  stateTemplates?: Array<{
+    id: string
+    templateVersion: number
+    schema: Record<string, ClientJsonValue>
+    initial: Record<string, ClientJsonValue>
+    componentKey?: string
+    targetEntityTypeIds?: string[]
+    label?: string
+  }>
   stateDefinitionIds?: string[]
+  stateEntityTypes?: Array<{ id: string; collectionPath: string; label?: string }>
+  timelineStateEntities?: Array<{ typeId: string; entityId: string }>
+  timelineComponentMounts?: Array<{
+    templateId: string
+    templateVersion: number
+    componentKey: string
+    target:
+      | { kind: 'entity'; entity: { typeId: string; entityId: string } }
+      | { kind: 'entity-type'; typeId: string }
+    initial?: Record<string, ClientJsonValue>
+  }>
+  stateContributionIds?: string[]
   timelineStateBindings?: Array<{ path: string; templateId: string; templateVersion: number; initial?: Record<string, ClientJsonValue> }>
 }
 
@@ -147,6 +171,7 @@ export type CreateAgentSessionInput = {
 }
 
 export type InvokeAgentTurnInput = {
+  macroSelections?: Record<string, string>
   agentSessionId: string
   input: string
   activationFacts?: Record<string, unknown>
@@ -285,7 +310,17 @@ export type ImportCardBundleInput = {
 
 // ─── Studio API Interface ───────────────────────────────────────────────────
 
+export type InspectMacrosInput = {
+  cardId?: string
+  presetId?: string
+  timelineTarget?: { timelineId: string; branchId?: string }
+  macroSelections?: Record<string, string>
+}
+
 export type StudioApi = {
+  macros: {
+    inspect(input: InspectMacrosInput): Promise<{ macroInspection: import('@loom-studio/shared').MacroInspection }>
+  }
   extensions: {
     list(): Promise<{ items: ManagedExtensionPackage[] }>
     enable(packageId: string, moduleId: string): Promise<{ module: ManagedExtensionModule }>
@@ -395,6 +430,7 @@ export type StudioApi = {
     update(input: { timelineId: string; title?: string }): Promise<{ timeline: NarrativeTimeline; mutation: MutationReceipt }>
   }
   promptResources: {
+    updateMacros(input: { resourceId: string; expectedVersion: number; macros: Record<string, string> }): Promise<UpdatePromptResourceResult>
     get(resourceId: string): Promise<GetPromptResourceResult>
     list(resourceKind?: 'preset' | 'setting'): Promise<ListPromptResourcesResult>
     create(input: CreatePromptResourceInput): Promise<CreatePromptResourceResult>
@@ -479,6 +515,9 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       upsertDefinition: input => bridge.call<UpsertStateDefinitionResult>('application.upsertStateDefinition', input as unknown as ClientJsonValue),
       deleteDefinition: input => bridge.call<DeleteStateDefinitionResult>('application.deleteStateDefinition', input as unknown as ClientJsonValue),
     },
+    macros: {
+      inspect: input => bridge.call('application.inspectMacros', input as unknown as ClientJsonValue),
+    },
     textTransforms: {
       listRules: () => bridge.call('application.listTextTransformRules', {}),
       getRule: ruleId => bridge.call('application.getTextTransformRule', { ruleId }),
@@ -562,6 +601,7 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       update: input => bridge.call<{ timeline: NarrativeTimeline; mutation: MutationReceipt }>('application.updateNarrativeTimeline', input as unknown as ClientJsonValue),
     },
     promptResources: {
+      updateMacros: input => bridge.call<UpdatePromptResourceResult>('application.updatePromptResourceMacros', input as unknown as ClientJsonValue),
       get: resourceId => bridge.call<GetPromptResourceResult>('application.getPromptResource', { resourceId }),
       list: resourceKind => bridge.call<ListPromptResourcesResult>('application.listPromptResources', resourceKind ? { resourceKind } : {}),
       create: input => bridge.call<CreatePromptResourceResult>('application.createPromptResource', input as unknown as ClientJsonValue),

@@ -4,7 +4,7 @@
 
 ## 1. 前端技术栈 (Client)
 
-- **框架基座**：当前使用 `React 19.2.7`、`Vite 8.1.1` 与 `react-router-dom` 的 SPA。
+- **框架基座**：当前使用 `React 19.2.8`、`Vite 8.2.2` 与 `react-router-dom` 的 SPA。
 - **状态边界**：React 组件状态处理局部渲染；Zustand 处理布局和交互状态；Server 通过 typed RPC 持有 canonical 业务状态。当前没有安装 `@tanstack/react-query`，不要按旧计划假设它已负责 Server State。
 - **CSS 方案**：SCSS Modules 配合 `--loom-*` CSS Custom Properties。项目没有 Tailwind、Styled-components、Ant Design 或 MUI；不要为局部样式建立第二套主题系统。
 - **交互基础设施**：复杂菜单优先复用当前已安装的 Radix Context Menu / Dropdown Menu，拖放使用 `dnd-kit`，通知使用 Sonner，图标使用 Lucide 与既有图标资产。

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { Link2 } from 'lucide-react'
 import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore } from '../../pages/studio/model/studio-layout-store.js'
 import { AssetWorkbenchLayout } from '../../shared/ui/asset-workbench-layout/asset-workbench-layout.js'
@@ -16,11 +16,15 @@ import { findContextAssetPath, findContextAssetByVirtualPath } from '../../featu
 import { STUDIO_PANEL_PRESENTATION } from '../../pages/studio/model/studio-panel-presentation.js'
 import { PromptResourceToolbar } from '../../features/context-assets/ui/prompt-resource-toolbar/prompt-resource-toolbar.js'
 import { Dialog } from '../../shared/ui/dialog/dialog.js'
+import { MacroAuthoringDetail, MacroAuthoringExplorer, type MacroAuthoringPanelProps, useMacroAuthoring } from '../../features/state-variables/ui/macro-authoring-panel.js'
 import type { Card, ContextAssetNode, PromptResource, SettingMount, SettingMountSource } from '../../entities/index.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import styles from './context-workbench.module.scss'
 
 type ContextWorkbenchProps = {
+  view: 'settings' | 'macros'
+  onViewChange: (view: 'settings' | 'macros') => void
+  macroAuthoring?: MacroAuthoringPanelProps
   card?: Card
   nodes: ContextAssetNode[]
   resources: PromptResource[]
@@ -49,6 +53,7 @@ type ContextWorkbenchProps = {
 }
 
 export function ContextWorkbench(props: ContextWorkbenchProps) {
+  const viewId = useId()
   const metadataOpen = useStudioLayoutStore(state => state.assetMetadataOpen)
   const textEditorMode = useStudioLayoutStore(state => state.textEditorMode)
   const explorerLayout = useStudioLayoutStore(state => state.assetLayouts.resources)
@@ -63,6 +68,8 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   const [scope, setScope] = useState<'character' | 'global'>('character')
   const [bindingOpen, setBindingOpen] = useState(false)
   const [internalSelectedResourceId, setInternalSelectedResourceId] = useState<string>()
+  const [mobilePane, setMobilePane] = useState<'explorer' | 'detail'>('explorer')
+  const macroController = useMacroAuthoring(props.macroAuthoring)
 
   const settingResources = useMemo(
     () => props.resources.filter(resource => resource.resourceKind === 'setting'),
@@ -156,7 +163,16 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
 
   const displayNodes = workbenchNodes
 
-  const [mobilePane, setMobilePane] = useState<'explorer' | 'detail'>('explorer')
+  useEffect(() => {
+    setMobilePane('explorer')
+    macroController.selectRow(undefined)
+  }, [props.macroAuthoring?.ownerId])
+
+  function changeView(view: 'settings' | 'macros') {
+    setMobilePane('explorer')
+    if (view !== 'macros') macroController.selectRow(undefined)
+    props.onViewChange(view)
+  }
 
   function handleSelectNode(id: string) {
     setMobilePane('detail')
@@ -172,13 +188,47 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
     }
   }
 
+  function handleSelectMacro(id: string) {
+    macroController.selectRow(id)
+    setMobilePane('detail')
+  }
+
   return (
     <AssetWorkbenchLayout
       explorerWidth={explorerLayout.explorerWidth}
       mobilePane={mobilePane}
       onMobilePaneChange={setMobilePane}
       onBack={() => setMobilePane('explorer')}
-      toolbar={(
+      footer={(
+        <nav className="loom-page-tabs" role="tablist" aria-label={props.t('context.authoring.views')}>
+          {(['settings', 'macros'] as const).map(view => (
+            <button
+              key={view}
+              id={`${viewId}-${view}`}
+              className={`loom-page-tab ${props.view === view ? 'loom-page-tab-active' : ''}`}
+              role="tab"
+              type="button"
+              aria-selected={props.view === view}
+              aria-controls={`${viewId}-${view}-content`}
+              tabIndex={props.view === view ? 0 : -1}
+              onClick={() => changeView(view)}
+              onKeyDown={event => {
+                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+                event.preventDefault()
+                const views = ['settings', 'macros'] as const
+                const index = views.indexOf(view)
+                const next = event.key === 'Home' ? views[0] : event.key === 'End' ? views[views.length - 1]
+                  : views[(index + (event.key === 'ArrowRight' ? 1 : -1) + views.length) % views.length]
+                changeView(next)
+                document.getElementById(`${viewId}-${next}`)?.focus()
+              }}
+            >
+              {props.t(`context.authoring.${view}`)}
+            </button>
+          ))}
+        </nav>
+      )}
+      toolbar={props.view === 'settings' ? (
         <PromptResourceToolbar
           hideSelect
           resourceKind="setting"
@@ -192,11 +242,13 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
           onImport={props.onImportResource}
           onSelect={handleSelectResource}
         />
-      )}
+      ) : undefined}
       onExplorerWidthChange={width => setExplorerWidth('resources', width)}
       resizeLabel={props.t('context.resizeExplorer')}
       viewMode={explorerView.viewMode}
-      explorer={(
+      explorer={props.view === 'macros' ? (
+        <MacroAuthoringExplorer controller={macroController} onAdd={() => setMobilePane('detail')} onSelect={handleSelectMacro} />
+      ) : (
         <div className={styles.resourceExplorer}>
           <button className={styles.bindResourcesButton} type="button" onClick={() => setBindingOpen(true)}>
             <Link2 aria-hidden="true" />
@@ -240,6 +292,22 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
         </div>
       )}
     >
+      <div
+        className={styles.viewContent}
+        id={`${viewId}-macros-content`}
+        role="tabpanel"
+        aria-labelledby={`${viewId}-macros`}
+        hidden={props.view !== 'macros'}
+      >
+        <MacroAuthoringDetail controller={macroController} />
+      </div>
+      <div
+        className={styles.viewContent}
+        id={`${viewId}-settings-content`}
+        role="tabpanel"
+        aria-labelledby={`${viewId}-settings`}
+        hidden={props.view !== 'settings'}
+      >
       <ContextAssetEditor
           activationEditable={selectedNode?.category === 'setting'}
           editorMode={textEditorMode}
@@ -253,6 +321,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
           onMetadataOpenChange={setMetadataOpen}
           onSelectNodeId={handleSelectNode}
       />
+      </div>
     </AssetWorkbenchLayout>
   )
 }

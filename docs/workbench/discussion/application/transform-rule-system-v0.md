@@ -1,6 +1,6 @@
 # Transform Rule System v0
 
-> **状态**：Open Design  
+> **状态**：Open Design / Capture Ownership Decided  
 > **主题**：Regex / Transform 规则系统，包括作用阶段、权限、trace 和 rollback。
 
 ---
@@ -230,6 +230,37 @@ Rule 执行进入 Trace。
 
 详见 [`extension/airp-extension-contribution-v0.md`](extension/airp-extension-contribution-v0.md)。
 
+### 7.4 捕获默认属于消费者，不是必经的平台注册流程
+
+文本替换会改变多个消费者共享的 Projection，因此属于 Host 管理的 Transform Rule System。文本捕获通常只是某个 Extension 对正文的只读解释，默认应由该 Extension 自己完成，不要求为每一种专用捕获逻辑注册 Transform Rule 或 Extractor Resource。
+
+Host 负责提供有界、稳定的数据视图：
+
+```text
+History Query:
+  明确 Timeline、活动分支、role、depth / tail、字符预算。
+  明确读取 canonical text 还是指定用途的 HistoryProjectionSnapshot。
+
+Extension Capture:
+  Extension 使用 Regex、Parser 或代码解释查询结果。
+  捕获失败和领域语义由该 Extension 负责。
+
+Effect Commit:
+  捕获本身只读。
+  写入 State、挂载 Renderer 或产生其他副作用时，必须通过对应 Host Capability 显式提交。
+```
+
+普通 Extension 不应默认读取 Provider Raw Payload。Provider 原始响应属于运行诊断与审计数据；正文捕获使用 Canonical History 或冻结后的官方 Projection，避免把 Provider 私有结构变成 Extension 合同。
+
+`airp.textExtractor` 保留为可选的声明式共享能力，适用于以下场景：
+
+- 作者需要不写代码地配置捕获；
+- Prompt、Renderer、State Trigger 等多个消费者需要引用同一个具名结果；
+- 捕获需要统一的 Dry Run、Trace、解析诊断或 `latest-valid` 回退语义；
+- 捕获配置需要独立编辑、版本化或随 Bundle 分发。
+
+只被单个 Extension 内部消费的捕获逻辑不应进入中央 Capture Registry。若 Extension 需要把捕获结果写入 State，捕获与 State Mutation 必须保持为两个步骤；后者继续接受 State Schema、Timeline 归属、权限、Trace 与回滚约束。
+
 ---
 
 ## 8. M0 候选
@@ -275,3 +306,4 @@ Display Transform:
 7. 规则执行错误如何处理：跳过 / 终止 / 通知用户？
 8. ST regex 配置的字段、作用阶段与兼容导入如何映射到 Transform Rule Resource？
 9. Card / Preset 引用 Transform Rule Resource 的正式 binding schema 是什么？
+10. Extension History Query 的最小读取合同如何表达 canonical / projection、role、tail 和字符预算？

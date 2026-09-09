@@ -2,10 +2,18 @@
 
 - **Status**: Partially Superseded
 - **Date**: 2026-05-09
-- **Current authority**: SQL / Workspace / Import-Export 决策仍有效；Runtime、Provider、Tool 与 Concept Stack 章节已由 [`docs/architecture/application/`](../../architecture/application/) 和 [`docs/architecture/platform/`](../../architecture/platform/) 取代。
+- **Current authority**: SQLite Data Engine、SQL / Document 与 Card Bundle / Import-Export 边界仍有效；Dev Workspace 尚未实现，Runtime、Provider、Tool 与 Concept Stack 章节已由 [`docs/architecture/application/`](../../architecture/application/) 和 [`docs/architecture/platform/`](../../architecture/platform/) 取代。
 - **Related**:
-  - [`../04-data/studio-data-layer-architecture.md`](../../archive/discussion/data/studio-data-layer-architecture.md)
-  - [`../06-engineering/loom-studio-mvp-engineering.md`](../../archive/discussion/loom-studio-mvp-engineering.md)
+  - [`studio-data-layer-architecture.md`](../../archive/discussion/data/studio-data-layer-architecture.md)
+  - [`loom-studio-mvp-engineering.md`](../../archive/discussion/loom-studio-mvp-engineering.md)
+
+## Current implementation calibration (2026-09-09)
+
+本 ADR 保留的是数据表示与来源边界，不代表其中列出的 Dev Workspace 施工方案已经落地：
+
+- SQLite Data Engine、SQL-backed Document Store，以及 Card Bundle 的导入/导出边界是当前实现事实。
+- Dev Workspace、文件监听、自动同步、Workspace Adapter 写回和 `last valid snapshot` 工作流仍未实现；相关章节是后续设计约束，不是现有能力声明。
+- 当前运行主链由 Studio Application / Application Runtime 负责。`Runtime Extension`、Provider / Tool 作为统一 Extension Pattern 的旧方向已被 Application / Platform Architecture 取代。
 
 ## Context
 
@@ -58,7 +66,7 @@ Dev Mode:
     -> SQL Document Snapshot
     -> compile
     -> Runtime Artifact
-    -> Runtime Extension
+    -> Application Runtime
 
 Play Mode:
   Aggregated JSON / Package
@@ -66,7 +74,7 @@ Play Mode:
     -> SQL Documents
     -> compile
     -> Runtime Artifact
-    -> Runtime Extension
+    -> Application Runtime
 
 Distribution:
   SQL Documents or Workspace Files
@@ -126,7 +134,7 @@ Business rollback semantics are extension-defined.
 Dev Workspace / Workspace Sync
 ```
 
-它是官方一等 DevTool / Authoring Extension 能力，但不是 Kernel 的领域能力。
+在本 ADR 的历史提案中，它被设想为官方一等 DevTool / Authoring Extension 能力；当前尚未实现，也不是 Kernel 的领域能力。
 
 Kernel 不理解：
 
@@ -150,11 +158,11 @@ Studio Core / Kernel 只提供通用底座：
 - source mapping metadata；
 - import / export 需要的事务边界。
 
-具体目录布局和 pack / unpack / validate / build 规则由 Concept Stack 或 Workspace Adapter 提供。
+历史提案中，具体目录布局和 pack / unpack / validate / build 规则由 Concept Stack 或 Workspace Adapter 提供。
 
-### 5. Dev Mode 下 Workspace Files 是 authoring source
+### 5. 历史提案：Dev Mode 下 Workspace Files 是 authoring source
 
-启用 Dev Workspace 后：
+如果未来实现 Dev Workspace，预期行为是：
 
 ```text
 Workspace files become the authoring source.
@@ -163,7 +171,7 @@ SQL stores the last valid imported snapshot and runtime operational state.
 
 这避免 SQL 与物理文件长期形成“双真相”。
 
-在 Dev Workspace 启用时：
+在该历史方案中：
 
 - VSCode / 外部工具修改文件后，Studio 自动 import 到 SQL last valid snapshot；
 - Studio 内置世界书 / 预设 / 角色快速编辑面板如果修改同一类 authoring data，应通过 Workspace Adapter 写回源文件；
@@ -177,9 +185,9 @@ SQL Documents are canonical.
 Files / packages are import-export artifacts.
 ```
 
-### 6. Runtime 不直接消费任意工作区文件
+### 6. 运行时不直接消费任意工作区文件
 
-Runtime Extension 不应直接扫描或读取 Dev Workspace 目录作为主输入。
+无论未来是否实现 Dev Workspace，Application Runtime 都不应直接扫描或读取工作区目录作为主输入。
 
 默认运行链路必须是：
 
@@ -187,23 +195,23 @@ Runtime Extension 不应直接扫描或读取 Dev Workspace 目录作为主输�
 Workspace Files
   -> import / validate
   -> SQL last valid snapshot
-  -> Concept Stack compile
+  -> Application compile / projection
   -> Runtime Artifact
-  -> Runtime Extension
+  -> Application Runtime
 ```
 
 Play Mode 链路为：
 
 ```text
 SQL Documents
-  -> Concept Stack compile
+  -> Application compile / projection
   -> Runtime Artifact
-  -> Runtime Extension
+  -> Application Runtime
 ```
 
-Runtime 可以由 Extension 实现，项目或 Concept Stack 可以声明推荐 Runtime，但 Studio 本体不决定具体 Runtime。
+当前 Runtime 由 Studio Application / Application Runtime 负责；Provider Adapter 负责把编译后的 Application payload 映射为 Provider 请求。旧的“Runtime 由普通 Extension 实现”方向不再是当前架构合同。
 
-### 7. Concept Stack 定义语义映射，Studio 提供通用机制
+### 7. 历史职责划分：Concept Stack 定义语义映射，Studio 提供通用机制
 
 职责划分：
 
@@ -220,9 +228,9 @@ Concept Stack / Workspace Adapter:
   detect layout, import files, export documents, validate source,
   map files to document ids, build runtime artifact, package distribution output.
 
-Runtime Extension:
-  consume compiled artifact, run the business loop, call providers/tools,
-  write runtime documents and audit/trace facts.
+Application Runtime / Provider Adapter:
+  consume compiled Application data, run the business loop, map provider
+  requests, and write runtime documents and audit/trace facts.
 ```
 
 ### 8. 自动同步取代手动反复打包导入

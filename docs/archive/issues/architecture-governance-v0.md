@@ -12,7 +12,7 @@
 - package 引用方向与 Runtime / Server 约束已进入 Guide；
 - Studio RPC 已有带 owner、namespace、stability 的 capability 描述；
 - Client、Application、Renderer、Logs RPC 已通过 `studio-rpc-router.ts` 统一路由；
-- Application Runtime 的大规模拆分已单独进入 `docs/workbench/plans/application-runtime-modularization-plan.md`。
+- Application Runtime 的大规模拆分已单独记录于 `docs/archive/plans/application-runtime-modularization-plan.md`。
 
 旧版的大段推荐目录、事件命名教程和 Review Checklist 已删除，避免与 Guide 双重维护。
 
@@ -56,6 +56,6 @@ Kernel 当前通过 `knownEvents` 收集事件名，但没有统一记录 owner�
 
 Application Runtime 的 God Object 风险不在本文重复展开，统一跟踪：
 
-- `docs/workbench/plans/application-runtime-modularization-plan.md`
+- `docs/archive/plans/application-runtime-modularization-plan.md`
 
 在领域分类与命名确认前，不直接移动 `runtime.ts` 中的大块代码。

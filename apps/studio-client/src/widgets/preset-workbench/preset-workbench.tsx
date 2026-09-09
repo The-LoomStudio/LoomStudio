@@ -21,6 +21,7 @@ import { PromptResourceToolbar } from '../../features/context-assets/ui/prompt-r
 import { resolvePresetBuildContextResources } from '../../features/context-assets/model/preset-build-context.js'
 import { buildPresetToolProjection } from '../../features/context-assets/model/preset-tool-projection.js'
 import { findCompositionItem } from '../../features/context-assets/model/composition-items.js'
+import { MacroAuthoringDetail, MacroAuthoringExplorer, type MacroAuthoringPanelProps, useMacroAuthoring } from '../../features/state-variables/ui/macro-authoring-panel.js'
 import type { AgentToolDefinition, ContextAssetNode, PresetToolMount, PresetToolMountInput, PromptCompositionItem, PromptResource, SettingMount } from '../../entities/index.js'
 import styles from './preset-workbench.module.scss'
 
@@ -49,6 +50,7 @@ type PresetWorkbenchProps = {
   onExportResource: (resourceId: string) => Promise<void>
   onReplaceToolMounts: (presetId: string, mounts: PresetToolMountInput[]) => Promise<void>
   onUpdateTool: (tool: AgentToolDefinition) => Promise<void> | void
+  onSaveMacros: (resourceId: string, input: { expectedVersion: number; macros: Record<string, string> }) => Promise<{ version: number; macros: Record<string, string> }>
   routeAssetId?: string
   initialSearchQuery?: string
   selectedResourceId?: string
@@ -73,12 +75,22 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const setTextEditorMode = useStudioLayoutStore(state => state.setTextEditorMode)
   const presetResources = useMemo(() => props.resources.filter(resource => resource.resourceKind === 'preset'), [props.resources])
   const [internalSelectedResourceId, setInternalSelectedResourceId] = useState<string>()
+  const [mobilePane, setMobilePane] = useState<'explorer' | 'detail'>('explorer')
   const selectedResourceId = props.selectedResourceId ?? internalSelectedResourceId
   const setSelectedResourceId = (id: string | undefined) => {
     setInternalSelectedResourceId(id)
+    setMobilePane('explorer')
     if (id) props.onSelectResource?.(id)
   }
   const selectedResource = presetResources.find(resource => resource.id === selectedResourceId) ?? presetResources[0]
+  const macroController = useMacroAuthoring(selectedResource ? {
+    ownerId: selectedResource.id,
+    ownerLabel: selectedResource.rootNode.label,
+    version: selectedResource.version,
+    macros: selectedResource.macros ?? {},
+    onSave: input => props.onSaveMacros(selectedResource.id, input),
+    t: props.t,
+  } satisfies MacroAuthoringPanelProps : undefined)
   const toolProjection = useMemo(() => buildPresetToolProjection({
     mounts: props.toolMounts,
     presetId: selectedResource?.id,
@@ -130,6 +142,11 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   }, [selectedResource?.id, selectedResourceId])
 
   useEffect(() => {
+    setMobilePane('explorer')
+    macroController.selectRow(undefined)
+  }, [selectedResource?.id])
+
+  useEffect(() => {
     if (selectedZoneId && !displayZoneDefinitions.some(zone => zone.id === selectedZoneId)) setSelectedZoneId(undefined)
   }, [selectedZoneId, displayZoneDefinitions])
 
@@ -169,7 +186,12 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
 
   const displayNodes = mainOrderNodes
 
-  const [mobilePane, setMobilePane] = useState<'explorer' | 'detail'>('explorer')
+
+  function changePresetView(view: 'assets' | 'order' | 'tools' | 'macros') {
+    setMobilePane('explorer')
+    macroController.selectRow(undefined)
+    setActivePresetView(view)
+  }
 
   function handleSelectNode(id: string) {
     setMobilePane('detail')
@@ -218,7 +240,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
             aria-current={activePresetView === 'assets' ? 'page' : undefined}
             className={`loom-page-tab ${activePresetView === 'assets' ? 'loom-page-tab-active' : ''}`}
             type="button"
-            onClick={() => setActivePresetView('assets')}
+            onClick={() => changePresetView('assets')}
           >
             {props.t('preset.panel.assets')}
           </button>
@@ -226,9 +248,17 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
             aria-current={activePresetView === 'tools' ? 'page' : undefined}
             className={`loom-page-tab ${activePresetView === 'tools' ? 'loom-page-tab-active' : ''}`}
             type="button"
-            onClick={() => setActivePresetView('tools')}
+            onClick={() => changePresetView('tools')}
           >
             {props.t('preset.panel.tools')}
+          </button>
+          <button
+            aria-current={activePresetView === 'macros' ? 'page' : undefined}
+            className={`loom-page-tab ${activePresetView === 'macros' ? 'loom-page-tab-active' : ''}`}
+            type="button"
+            onClick={() => changePresetView('macros')}
+          >
+            {props.t('context.authoring.macros')}
           </button>
         </nav>
       )}
@@ -244,6 +274,8 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           presetId={selectedResource?.id}
           onSelect={setSelectedToolId}
         />
+      ) : activePresetView === 'macros' ? (
+        <MacroAuthoringExplorer controller={macroController} onAdd={() => setMobilePane('detail')} onSelect={() => setMobilePane('detail')} />
       ) : (
         <ContextAssetExplorer
           displayNodes={displayNodes}
@@ -285,7 +317,9 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           onUpdateTool={props.onUpdateTool}
         />
       ) : <div className={styles.detailStack}>
-        {selectedCompositionItem ? <CompositionItemDetail item={selectedCompositionItem} nodes={workbenchNodes} t={props.t} /> : selectedZone ? <ZoneDetail zone={selectedZone} t={props.t} /> : (
+        {activePresetView === 'macros' ? (
+          <MacroAuthoringDetail controller={macroController} />
+        ) : selectedCompositionItem ? <CompositionItemDetail item={selectedCompositionItem} nodes={workbenchNodes} t={props.t} /> : selectedZone ? <ZoneDetail zone={selectedZone} t={props.t} /> : (
           <ContextAssetEditor
             activationEditable
             editorMode={textEditorMode}

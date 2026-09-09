@@ -2,6 +2,8 @@
 
 PromptBuild 是 Studio Application 中负责把领域数据投影为模型输入的编译能力。
 
+内容接入分为 **Anchor / Slot 的独立贡献注入** 和 **宏的正文内联展开**。前者保留贡献的编排身份，后者将值展开到宿主正文。Agent 主动读取属于 Tool / Runtime 的上下文获取流程，不是第三种注入语法；详细边界见 [注入与内联展开](injection-and-inline-expansion.md)。
+
 当前稳定边界：
 
 ```text
@@ -45,10 +47,11 @@ External Source
 - **Slot（来源块）与笼中深度（Caged Depth）**：外部来源（角色卡、世界书、插件）注入到指定 Anchor 后自动聚合为 Slot；Slot 内部条目通过 `local_depth: 1~9999` 局部排序，其影响范围被严格封闭在 Anchor 内，绝对无法越界打乱预设层的原生条目；
 - **单次 DFS 遍历编译**：消除复杂的矩阵解算，编译时按预设树顺序做一次深度优先遍历，线性产出最终有序的 Prompt Fragment。
 
-同一变量值中出现的 Macro 标记不构成新的结构化注入。需要动态生成一段完整状态栏或其他复合提示词时，领域 Renderer 应产出新的 Prompt Contribution，而不是让标量 Macro 递归生成节点。
+同一变量值中出现的 Macro 标记不构成新的结构化注入。需要独立来源、激活或排序的状态栏等内容，应产出 Prompt Contribution；只需嵌入宿主正文的一段字符串可以使用宏，不按文本长短划分。宏不会递归生成节点。
 
 ## 正式文档
 
+- [`injection-and-inline-expansion.md`](injection-and-inline-expansion.md) — Anchor / Slot 与宏的消费边界，以及 Agent 主动读取的领域交界；
 - [`loom-core/README.md`](loom-core/README.md) — Loom Core 定位、设计原则、非目标与 public surface；
 - [`loom-core/execution-model.md`](loom-core/execution-model.md) — Fragment、Pass、Registry、错误和 Owner Tracking；
 - [`loom-core/trace-and-replay.md`](loom-core/trace-and-replay.md) — Mutation、Trace v1、Diagnostic、Replay 与 DevTool 边界；

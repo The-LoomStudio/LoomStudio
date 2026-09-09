@@ -4,6 +4,7 @@ import { createId, nowIso } from '@loom-studio/shared'
 import { isObject } from '../foundation/json.js'
 import { isPromptActivation } from '../prompt/prompt-activation.js'
 import { createVariableRenderContext, renderVariableMacros } from '../prompt/variables.js'
+import { assertWritableMacroName } from '../prompt/macro-provider-registry.js'
 import type {
   CardSummary,
   CardPresetContent,
@@ -56,11 +57,25 @@ export function normalizeCardContent(content: CardSourceContent): CardSourceCont
     portableExtensionPayloadIds: normalizeOptionalIdList(legacyContent.portableExtensionPayloadIds),
     promptResourceIds: normalizeOptionalIdList(legacyContent.promptResourceIds),
     stateDefinitionIds: normalizeOptionalIdList(legacyContent.stateDefinitionIds),
+    ...(Array.isArray(legacyContent.stateTemplates) ? {
+      stateTemplates: structuredClone(legacyContent.stateTemplates),
+    } : {}),
+    ...(Array.isArray(legacyContent.stateEntityTypes) ? {
+      stateEntityTypes: structuredClone(legacyContent.stateEntityTypes),
+    } : {}),
+    ...(Array.isArray(legacyContent.timelineStateEntities) ? {
+      timelineStateEntities: structuredClone(legacyContent.timelineStateEntities),
+    } : {}),
+    ...(Array.isArray(legacyContent.timelineComponentMounts) ? {
+      timelineComponentMounts: structuredClone(legacyContent.timelineComponentMounts),
+    } : {}),
+    stateContributionIds: normalizeOptionalIdList(legacyContent.stateContributionIds),
     timelineStateBindings: structuredClone(legacyContent.timelineStateBindings ?? []),
     media: normalizeCardMedia(legacyContent.media),
     preset: normalizePreset(legacyContent.preset),
     opening: normalizeOpening(legacyContent.opening),
     settingLayer: normalizeSettingLayer(legacyContent.settingLayer, legacyContent.setting),
+    ...(legacyContent.macros !== undefined ? { macros: normalizeMacros(legacyContent.macros, 'Card') } : {}),
     createdAt: typeof legacyContent.createdAt === 'string' ? legacyContent.createdAt : nowIso(),
     updatedAt: typeof legacyContent.updatedAt === 'string' ? legacyContent.updatedAt : nowIso(),
   }
@@ -87,7 +102,24 @@ export function normalizePreset(input: CardPresetInput | undefined): CardPresetC
 
   return {
     system: normalizeOptionalString(input.system),
+    ...(input.macros !== undefined ? { macros: normalizeMacros(input.macros, 'Preset') } : {}),
   }
+}
+
+export function normalizeMacros(input: unknown, subject: string): Record<string, string> {
+  if (!isObject(input)) throw new Error(`${subject} macros must be an object`)
+  const macros: Record<string, string> = {}
+  for (const [name, value] of Object.entries(input)) {
+    assertWritableMacroName(name, subject.toLowerCase() + ' macro')
+    if (typeof value !== 'string') throw new Error(`${subject} macro value must be a string: ${name}`)
+    Object.defineProperty(macros, name, {
+      configurable: true,
+      enumerable: true,
+      writable: true,
+      value,
+    })
+  }
+  return macros
 }
 
 export function normalizeOpening(input: OpeningChatInput | string | undefined): OpeningChatContent {
@@ -154,6 +186,10 @@ export function readOpeningEntries(
       user: {
         name: content.userName?.trim() || 'User',
       },
+    },
+    computed: {
+      char: { name: content.name },
+      bot: { name: content.name },
     },
   })
 

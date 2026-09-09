@@ -16,6 +16,7 @@ import type { LatestOperationContext } from '../../../shared/hooks/use-async-ope
 type JsonObject = { [key: string]: ClientJsonValue }
 
 type UseNarrativeRuntimeInput = {
+  getMacroSelections?: (timelineId?: string, branchId?: string) => Record<string, string>
   activationFacts?: JsonObject
   api: StudioApi
   initialInput: string
@@ -210,6 +211,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
         agentSessionId: session.id,
         input: content,
         activationFacts: input.activationFacts,
+        macroSelections: input.getMacroSelections?.(timeline?.id, branch?.id),
         narrativeTarget: {
           timelineId: currentTimeline.id,
           branchId: currentBranch.id,
@@ -276,6 +278,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
       const result = await input.api.agentSessions.invoke({
         agentSessionId: session.id,
         input: content,
+        macroSelections: input.getMacroSelections?.(timeline?.id, branch?.id),
       })
 
       setAgentSession(result.agentSession)
@@ -305,6 +308,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
         agentSessionId: session.id,
         input: composerInput,
         activationFacts: input.activationFacts,
+        macroSelections: input.getMacroSelections?.(timeline?.id, branch?.id),
         narrativeTarget: {
           timelineId: timeline.id,
           branchId: branch.id,

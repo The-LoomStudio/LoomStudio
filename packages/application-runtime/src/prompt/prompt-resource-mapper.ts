@@ -10,6 +10,7 @@ import type {
   PromptResourceNode,
   PromptResourceKind,
 } from '../cards/workspace.js'
+import { normalizeMacros } from '../cards/card.js'
 
 const legacyNodeKeys = ['configRows', 'isSection', 'orderList', 'projection'] as const
 
@@ -17,6 +18,7 @@ type PromptResourceMetadata = JsonObject & {
   historyPolicy?: PromptResourceContent['historyPolicy']
   origin?: PromptResourceContent['origin']
   sourceArtifactRef?: PromptResourceContent['sourceArtifactRef']
+  macros?: Record<string, string>
 }
 
 export function toStoredResourceInput(input: {
@@ -33,6 +35,7 @@ export function toStoredResourceInput(input: {
   if (input.content.historyPolicy !== undefined) metadata.historyPolicy = input.content.historyPolicy
   if (input.content.origin !== undefined) metadata.origin = input.content.origin
   if (input.content.sourceArtifactRef !== undefined) metadata.sourceArtifactRef = input.content.sourceArtifactRef
+  if (input.content.macros !== undefined) metadata.macros = normalizeMacros(input.content.macros, 'Preset')
   return {
     ...(input.id ? { id: input.id } : {}),
     resourceKind: input.content.resourceKind,
@@ -70,6 +73,7 @@ export function fromStoredResource(resource: StoredPromptResource): PromptResour
     ...(resource.resourceKind === 'preset' ? { historyPolicy: metadata.historyPolicy ?? 'persistent' } : {}),
     ...(metadata.origin ? { origin: metadata.origin } : {}),
     ...(metadata.sourceArtifactRef ? { sourceArtifactRef: metadata.sourceArtifactRef } : {}),
+    ...(metadata.macros ? { macros: normalizeMacros(metadata.macros, 'Preset') } : {}),
     createdAt: resource.createdAt,
     updatedAt: resource.updatedAt,
     id: resource.id,

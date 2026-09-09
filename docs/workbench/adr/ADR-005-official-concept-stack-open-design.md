@@ -8,16 +8,16 @@
 > **Related**:
 > - [`ADR-004-platform-auth-secrets-and-provider-credential-boundary.md`](ADR-004-platform-auth-secrets-and-provider-credential-boundary.md)
 > - [`docs/architecture/README.md`](../../architecture/README.md)
-> - [`../03-kernel/studio-kernel-public-surface-v0.md`](../../archive/discussion/kernel/studio-kernel-public-surface-v0.md)
-> - [`../05-extensions/studio-extension-lifecycle-v0.md`](../../archive/discussion/extensions/studio-extension-lifecycle-v0.md)
-> - [`../06-engineering/studio-mvp-development-plan.md`](../../archive/discussion/studio-mvp-development-plan.md)
+> - [`studio-kernel-public-surface-v0.md`](../../archive/discussion/kernel/studio-kernel-public-surface-v0.md)
+> - [`studio-extension-lifecycle-v0.md`](../../archive/discussion/extensions/studio-extension-lifecycle-v0.md)
+> - [`studio-mvp-development-plan.md`](../../archive/discussion/studio-mvp-development-plan.md)
 > - [`discussion/application/README.md`](../discussion/application/README.md)
 
 ---
 
 ## 0. Status
 
-本 ADR 已冻结为历史决策追踪，不再是 Studio Application 的当前入口。原本堆积在这里的详细开放设计后来迁入 Workbench Application 目录，其中已实现部分继续晋升到正式 Architecture：
+本 ADR 已冻结为历史决策追踪，不再是 Studio Application 的当前入口。原本堆积在这里的详细开放设计后来迁入 Workbench Application 目录，其中已实现部分继续晋升到正式 Architecture。本文中的术语、候选 API 与开放问题不应被当作当前实现合同：
 
 ```text
 docs/workbench/discussion/application/

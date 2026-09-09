@@ -1,5 +1,6 @@
 import { createClientBridge } from '@loom-studio/client-bridge'
 import type { Logger } from '@loom-studio/logging'
+import type { MacroInspection } from '@loom-studio/shared'
 import { useEffect, useMemo, useState } from 'react'
 import { withClientBridgeLogging } from '../shared/api/client-bridge-logging.js'
 import { createTranslator, type Locale } from '../shared/i18n/index.js'
@@ -16,6 +17,7 @@ import { useProviderSettings } from '../features/provider-settings/model/use-pro
 import { useAgentProfiles } from '../features/agent-profiles/model/use-agent-profiles.js'
 import { useNarrativeRuntime } from '../features/narrative-runtime/model/use-narrative-runtime.js'
 import type { ContextAssetNode, PresetToolMount, PresetToolMountInput, PromptResource, PromptResourceArtifact, SettingMount, SettingMountSource } from '../entities/index.js'
+import { renderTemplateMacros, type MacroRenderContext } from '../features/state-variables/model/macro-renderer.js'
 import { readEmptyTimelineText } from './utils.js'
 
 export type HistoryAssetTarget = {
@@ -87,9 +89,17 @@ export function useStudioState(transportLogger: Logger) {
     runAction: action => operations.run('agent-profiles', action).then(() => undefined),
   })
   const selectedAgentProfile = agentProfiles.agentProfiles.find(profile => profile.id === agentProfiles.selectedAgentProfileId)
+  const [macroChoice, setMacroChoice] = useState<{ key: string; values: Record<string, string> }>({ key: '', values: {} })
+  function macroTargetKey(timelineId?: string, branchId?: string) {
+    return JSON.stringify([endpoint, timelineId ?? cardsState.selectedCardId, branchId, selectedAgentProfile?.presetId])
+  }
+  function getMacroSelections(timelineId?: string, branchId?: string) {
+    return macroChoice.key === macroTargetKey(timelineId, branchId) ? macroChoice.values : {}
+  }
   const activationFacts = useMemo(() => createActivationFacts(activationControl), [activationControl])
   const narrativeRuntime = useNarrativeRuntime({
     activationFacts,
+    getMacroSelections,
     api,
     initialInput: '我看向柜台后的铃铛。',
     initialNodes: [],
@@ -167,6 +177,74 @@ export function useStudioState(transportLogger: Logger) {
     void narrativeRuntime.refreshCardTimelines(cardsState.selectedCardId)
   }, [api, cardsState.selectedCardId])
 
+  const [macroRefreshToken, setMacroRefreshToken] = useState(0)
+  const [macroPreview, setMacroPreview] = useState<{
+    key: string
+    inspection?: MacroInspection
+    error?: string
+    loading: boolean
+  }>({ key: '', loading: false })
+  const macroKey = macroTargetKey(narrativeRuntime.timeline?.id, narrativeRuntime.branch?.id)
+  const macroSelections = useMemo(
+    () => macroChoice.key === macroKey ? macroChoice.values : {},
+    [macroChoice, macroKey],
+  )
+  function refreshMacros() {
+    setMacroRefreshToken(current => current + 1)
+  }
+  function selectMacroSource(name: string, sourceId: string | undefined) {
+    setMacroChoice(current => {
+      const values = { ...(current.key === macroKey ? current.values : {}) }
+      if (sourceId === undefined) delete values[name]
+      else values[name] = sourceId
+      return { key: macroKey, values }
+    })
+  }
+  useEffect(() => {
+    setMacroChoice(current => current.key === macroKey ? current : { key: macroKey, values: {} })
+  }, [macroKey])
+  useEffect(() => {
+    let cancelled = false
+    setMacroPreview(current => ({ key: macroKey, inspection: current.key === macroKey ? current.inspection : undefined, loading: true }))
+    void api.macros.inspect({
+      ...(narrativeRuntime.timeline
+        ? { timelineTarget: { timelineId: narrativeRuntime.timeline.id, branchId: narrativeRuntime.branch?.id } }
+        : { cardId: cardsState.selectedCardId }),
+      presetId: selectedAgentProfile?.presetId,
+      macroSelections,
+    }).then(result => {
+      if (!cancelled) setMacroPreview({ key: macroKey, inspection: result.macroInspection, loading: false })
+    }, error => {
+      if (!cancelled) setMacroPreview({ key: macroKey, loading: false, error: error instanceof Error ? error.message : String(error) })
+    })
+    return () => { cancelled = true }
+  }, [api, macroKey, macroSelections, macroRefreshToken, cardsState.selectedCardDetails, promptResources, narrativeRuntime.lastRun?.runId])
+
+  async function updatePresetMacros(resourceId: string, config: { expectedVersion: number; macros: Record<string, string> }) {
+    const result = await api.promptResources.updateMacros({ resourceId, ...config })
+    editHistory.record({
+      label: t('history.context.update'),
+      changesetId: result.mutation.changesetId,
+      anchor: { documentId: resourceId },
+    })
+    setPromptResources(current => current.map(resource => resource.id === result.resource.id && resource.version <= result.resource.version ? result.resource : resource))
+    return { version: result.resource.version, macros: result.resource.macros ?? {} }
+  }
+
+  async function refreshStates() {
+    refreshMacros()
+  }
+
+  const macroContext = useMemo<MacroRenderContext>(() => ({
+    snapshot: macroPreview.key === macroKey ? macroPreview.inspection?.snapshot : undefined,
+    card: narrativeRuntime.timeline ? undefined : cardsState.selectedCardDetails ?? cardsState.selectedCard,
+  }), [macroPreview, macroKey, narrativeRuntime.timeline, cardsState.selectedCardDetails, cardsState.selectedCard])
+  const buildMacroInspection = [
+    narrativeRuntime.promptPreview?.macroInspection,
+    narrativeRuntime.lastRun?.macroInspection,
+  ].filter((inspection): inspection is MacroInspection => Boolean(inspection))
+    .sort((left, right) => right.capturedAt.localeCompare(left.capturedAt))[0]
+
   // 派生计算
   const sessionBusy = operations.isPending('session')
   const canSend = Boolean(((narrativeRuntime.timeline && narrativeRuntime.branch) || cardsState.selectedCardId) && agentProfiles.selectedAgentProfileId)
@@ -180,10 +258,13 @@ export function useStudioState(transportLogger: Logger) {
     && !sessionBusy
   const emptyTimelineText = readEmptyTimelineText({ timeline: narrativeRuntime.timeline, branch: narrativeRuntime.branch }, t)
   const cardOpeningEntry = cardsState.selectedCardDetails?.opening?.entries?.[0]?.content?.trim()
+  const rawOpeningContent = cardOpeningEntry && cardOpeningEntry.length > 0
+    ? cardOpeningEntry
+    : t('timeline.opening.placeholder')
   const openingDraft = cardsState.selectedCardDetails ? {
     content: cardOpeningEntry && cardOpeningEntry.length > 0
-      ? cardOpeningEntry
-      : t('timeline.opening.placeholder'),
+      ? renderTemplateMacros(rawOpeningContent, macroContext)
+      : rawOpeningContent,
     isPlaceholder: !cardOpeningEntry || cardOpeningEntry.length === 0,
   } : undefined
   const promptMessages = narrativeRuntime.promptPreview?.messages
@@ -228,23 +309,6 @@ export function useStudioState(transportLogger: Logger) {
   async function updateNetworkSettings(next: { proxyMode: NetworkSettings['proxyMode']; proxyUrl?: string }) {
     const updated = await operations.run('settings', () => api.settings.updateNetwork(next))
     if (updated) setNetworkSettings(updated)
-  }
-
-  async function updateCardStateConfig(input: {
-    stateDefinitionIds: string[]
-    timelineStateBindings: NonNullable<NonNullable<typeof cardsState.selectedCardDetails>['timelineStateBindings']>
-  }) {
-    const card = cardsState.selectedCardDetails
-    if (!card) return
-    await operations.run('mutation', async () => {
-      const result = await api.cards.update({ cardId: card.id, ...input })
-      editHistory.record({
-        label: 'Update Card State Config',
-        changesetId: result.mutation.changesetId,
-        anchor: { documentId: card.id },
-      })
-      await cardsState.refreshCards()
-    })
   }
 
   async function createPromptResource(resourceKind: PromptResource['resourceKind']): Promise<string | undefined> {
@@ -388,7 +452,17 @@ export function useStudioState(transportLogger: Logger) {
     selectedCard: cardsState.selectedCard,
     selectedCardDetails: cardsState.selectedCardDetails,
     updateCardMedia: cardsState.updateCardMedia,
-    updateCardStateConfig,
+    updateCardStateConfig: cardsState.updateCardStateConfig,
+    updateCardMacros: cardsState.updateCardMacros,
+    updatePresetMacros,
+    macroInspection: macroPreview.key === macroKey ? macroPreview.inspection : undefined,
+    macroInspectionLoading: macroPreview.key !== macroKey || macroPreview.loading,
+    macroInspectionError: macroPreview.key === macroKey ? macroPreview.error : undefined,
+    macroSelections,
+    macroTargetKey: macroKey,
+    buildMacroInspection,
+    selectMacroSource,
+    refreshMacros,
     replaceCardPromptResources: cardsState.replaceCardPromptResources,
     importCards: cardsState.importCards,
     exportCard: cardsState.exportCard,
@@ -463,6 +537,7 @@ export function useStudioState(transportLogger: Logger) {
     replacePresetToolMounts,
     // derived
     canSend, canSendAgent, canPreviewPrompt, emptyTimelineText, openingDraft,
+    macroContext, refreshStates,
     // actions
     undoEdit,
     redoEdit,

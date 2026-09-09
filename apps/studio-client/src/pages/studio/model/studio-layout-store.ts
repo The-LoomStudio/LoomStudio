@@ -11,7 +11,7 @@ export type AssetLayoutId = 'preset' | 'resources'
 export type AssetViewMode = 'explorer' | 'split' | 'editor'
 export type ContextCategory = 'setting' | 'logic' | 'runtime' | 'history'
 export type PanelWindowMode = 'reference' | 'immersive'
-export type PresetView = 'assets' | 'order' | 'tools'
+export type PresetView = 'assets' | 'order' | 'tools' | 'macros'
 
 export type AssetViewState = {
   expandedIds?: string[]
@@ -145,9 +145,11 @@ export function sanitizeStudioLayout(value: unknown): StudioLayoutData {
     panelWindowSizes: readPanelWindowSizes(value.panelWindowSizes),
     presetView: value.presetView === 'tools'
       ? 'tools'
-      : value.presetView === 'order' || value.presetPanel === 'order'
-        ? 'order'
-        : defaults.presetView,
+      : value.presetView === 'macros'
+        ? 'macros'
+        : value.presetView === 'order' || value.presetPanel === 'order'
+          ? 'order'
+          : defaults.presetView,
     railWidth: readRailWidth(value.railWidth),
     textEditorMode: value.textEditorMode === 'preview' ? 'preview' : defaults.textEditorMode,
     uiScale: readUiScale(value.uiScale),

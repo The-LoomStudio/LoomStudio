@@ -2,8 +2,9 @@
 
 > **Status**: Accepted / Implemented
 > **Date**: 2026-05-16  
-> **Decision scope**: Future data-layer iteration after MVP Stage 0-5
-> **2026-08-15 refinement**: [`../plans/local-data-blob-store-foundation-plan.md`](../../archive/plans/local-data-blob-store-foundation-plan.md) 将底层字节层收束为通用内容寻址 Blob Store。Source Artifact 与 Media Asset 是引用 Blob 的不同逻辑记录；自动生成的 Thumbnail 属于可重建 Cache，不默认作为权威 Asset。
+> **Decision scope**: SQLite-backed Blob Store、Source Artifact 与 Media Asset 的二进制边界
+> **Current authority**: [`docs/architecture/data/local-storage-and-assets.md`](../../architecture/data/local-storage-and-assets.md)
+> **2026-09-09 calibration**: 底层字节层已实现为内容寻址 Blob Store；Source Artifact 与 Media Asset 是引用 Blob 的不同逻辑记录，媒体通过 `POST /assets` 创建并由 `GET /assets/:assetId` / `HEAD /assets/:assetId` 读取。Thumbnail 仍是可重建 Cache，不默认作为权威 Asset。
 
 ---
 
@@ -11,11 +12,11 @@
 
 Loom Studio may support media-producing extensions in future stages, including text-to-image, image editing, audio generation, previews, thumbnails, and other binary artifacts.
 
-The current MVP data model is JSON-first:
+The control-plane data model remains JSON-first:
 
 - JSON-RPC request / response envelopes.
 - `DocumentRecord.content` as JSON.
-- In-memory Document Store with full `structuredClone()` snapshots.
+- SQLite-backed Document Store with structured metadata and revision snapshots.
 - Trace / Audit / Diagnostics as JSON facts.
 
 This is appropriate for control-plane data:
@@ -68,12 +69,12 @@ A generated image document should store an asset reference, not the image bytes:
 }
 ```
 
-The binary bytes should be served through asset/data-plane endpoints, for example:
+The binary bytes are served through the asset/data plane:
 
 ```text
-GET /assets/:assetId/original
-GET /assets/:assetId/thumb
-POST /assets/upload
+POST /assets
+GET /assets/:assetId
+HEAD /assets/:assetId
 ```
 
 or through an equivalent future local transport.
@@ -113,14 +114,11 @@ Keeping binary in an Asset Store allows:
 - Frontend rendering should use an asset URL or blob URL.
 - Trace/Audit should record asset ids, hashes, sizes, and metadata, not raw binary by default.
 
-### Deferred
+### Remaining work
 
-- Concrete Asset Store API.
-- Filesystem vs SQLite BLOB vs object-store backend.
-- Thumbnail generation pipeline.
-- Asset garbage collection.
-- Asset export/import package format.
-- Permission model for media access.
+- Thumbnail generation and other rebuildable derivative pipelines.
+- Asset garbage collection and safe deletion of unreferenced media.
+- Complete asset export/import packaging semantics.
 
 ### Rejected for default path
 
@@ -139,4 +137,4 @@ MVP performance tests should focus on JSON control-plane performance:
 - pagination behavior;
 - request/response serialization overhead.
 
-Media/binary tests are deferred until the Asset Store design exists.
+Media/binary tests should cover the implemented Blob / Asset Store and HTTP data-plane endpoints; they are no longer blocked on an initial Asset Store design.

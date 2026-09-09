@@ -1,10 +1,16 @@
 .panel {
   height: 100%;
   min-height: 0;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   background: var(--loom-color-surface-base);
+}
+
+.panelBody {
+  flex: 1 1 0;
+  min-height: 0;
+  height: auto;
 }
 
 .intro {
@@ -12,37 +18,115 @@
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--loom-color-divider);
-  padding: 14px 18px;
+  padding: 12px 18px;
   gap: 12px;
 
   h2 {
     margin: 0;
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 600;
   }
 
   p {
-    margin: 4px 0 0;
-    font-size: 12px;
+    margin: 3px 0 0;
+    font-size: 11.5px;
     color: var(--loom-color-text-subtle);
   }
 }
 
-.refreshButton {
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 依照项目设计规范，所有按钮默认无实体方框背景容器 */
+.iconButton {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border: 1px solid var(--loom-color-divider);
-  border-radius: var(--loom-radius-control);
-  background: var(--loom-color-surface-subtle);
+  gap: 5px;
+  padding: 4px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--loom-color-text-subtle);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.12s ease, opacity 0.12s ease;
+
+  svg {
+    transition: color 0.12s ease;
+  }
+
+  &:hover:not(:disabled) {
+    color: var(--loom-color-text);
+  }
+
+  &:active {
+    opacity: 0.75;
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+}
+
+.primaryActionBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 6px;
+  border: 0;
+  background: transparent;
   color: var(--loom-color-text);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.12s ease, opacity 0.12s ease;
+
+  svg {
+    color: var(--loom-color-accent);
+    transition: color 0.12s ease;
+  }
+
+  &:hover:not(:disabled) {
+    color: var(--loom-color-accent);
+
+    svg {
+      color: var(--loom-color-accent);
+    }
+  }
+
+  &:active {
+    opacity: 0.75;
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+}
+
+.dangerActionBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--loom-color-text-subtle);
   font-size: 12px;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: color 0.12s ease;
 
-  &:hover {
-    background: var(--loom-color-surface-hover, color-mix(in srgb, var(--loom-color-surface-subtle) 80%, white 20%));
+  &:hover:not(:disabled) {
+    color: var(--loom-color-danger, #ef4444);
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
   }
 }
 
@@ -50,16 +134,16 @@
   min-height: 0;
   height: 100%;
   overflow-y: auto;
-  padding: 12px 10px;
+  padding: 10px 8px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 
 .navGroup {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 
   header {
     display: flex;
@@ -80,13 +164,12 @@
   color: var(--loom-color-text-subtle);
   cursor: pointer;
   padding: 2px 4px;
-  border-radius: 4px;
   display: inline-flex;
   align-items: center;
+  transition: color 0.12s ease;
 
   &:hover {
-    color: var(--loom-color-text);
-    background: var(--loom-color-surface-subtle);
+    color: var(--loom-color-accent);
   }
 }
 
@@ -95,15 +178,15 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 7px 9px;
   border: 0;
   border-radius: var(--loom-radius-control);
   background: transparent;
   color: var(--loom-color-text);
-  font-size: 13px;
+  font-size: 12.5px;
   text-align: left;
   cursor: pointer;
-  transition: background 0.12s ease;
+  transition: background 0.12s ease, color 0.12s ease;
 
   &:hover {
     background: var(--loom-color-surface-subtle);
@@ -111,7 +194,12 @@
 
   &[aria-current='page'] {
     background: var(--loom-color-surface-subtle);
+    color: var(--loom-color-accent);
     font-weight: 500;
+
+    svg {
+      color: var(--loom-color-accent);
+    }
   }
 
   svg {
@@ -160,94 +248,52 @@
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--loom-color-divider);
-  padding: 12px 18px;
+  padding: 10px 18px;
   gap: 12px;
   flex-wrap: wrap;
 
   .headerTitle {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
 
     h3 {
       margin: 0;
-      font-size: 14px;
+      font-size: 13.5px;
       font-weight: 600;
+    }
+
+    svg {
+      color: var(--loom-color-accent);
     }
   }
 }
 
-.headerActions {
+/* 作用域快捷切换 Tab (如 State 对象中的 Global vs Timeline) */
+.scopeTabs {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
 }
 
-.primaryButton {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
+.scopeTab {
   border: 0;
-  border-radius: var(--loom-radius-control);
-  background: var(--loom-color-primary, #3b82f6);
-  color: #fff;
+  background: transparent;
+  color: var(--loom-color-text-subtle);
   font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: opacity 0.15s ease;
-
-  &:hover:not(:disabled) {
-    opacity: 0.9;
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-}
-
-.secondaryButton {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border: 1px solid var(--loom-color-divider);
+  padding: 3px 8px;
   border-radius: var(--loom-radius-control);
-  background: var(--loom-color-surface-subtle);
-  color: var(--loom-color-text);
-  font-size: 12px;
   cursor: pointer;
+  transition: all 0.12s ease;
 
-  &:hover:not(:disabled) {
-    background: var(--loom-color-surface-hover, color-mix(in srgb, var(--loom-color-surface-subtle) 80%, white 20%));
+  &:hover {
+    color: var(--loom-color-text);
   }
 
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-}
-
-.dangerButton {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border: 1px solid color-mix(in srgb, var(--loom-danger, #ef4444) 40%, transparent);
-  border-radius: var(--loom-radius-control);
-  background: color-mix(in srgb, var(--loom-danger, #ef4444) 10%, transparent);
-  color: var(--loom-danger, #ef4444);
-  font-size: 12px;
-  cursor: pointer;
-
-  &:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--loom-danger, #ef4444) 20%, transparent);
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+  &[data-active='true'] {
+    color: var(--loom-color-accent);
+    background: var(--loom-color-surface-subtle);
+    font-weight: 500;
   }
 }
 
@@ -260,35 +306,33 @@
   font-family: ui-monospace, monospace;
   background: var(--loom-color-surface-subtle);
   color: var(--loom-color-text-subtle);
-  border: 1px solid var(--loom-color-divider);
 }
 
-.definitionIdInput {
-  padding: 5px 10px;
-  border: 1px solid var(--loom-color-divider);
-  border-radius: var(--loom-radius-control);
-  background: var(--loom-color-surface-subtle);
-  color: var(--loom-color-text);
-  font-size: 12.5px;
-  min-width: 200px;
+.cardFooterMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--loom-color-text-subtle);
 }
 
+/* YAML / JSON 代码编辑器视图 */
 .editorContainer {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 14px 18px;
-  gap: 10px;
+  padding: 12px 18px;
+  gap: 8px;
 }
 
-.rawJsonTextarea {
+.yamlTextarea {
   flex: 1;
   min-height: 0;
   width: 100%;
   box-sizing: border-box;
   padding: 12px 14px;
-  border: 1px solid var(--loom-color-divider);
+  border: 0;
   border-radius: var(--loom-radius-control);
   background: var(--loom-color-surface-subtle);
   color: var(--loom-color-text);
@@ -297,8 +341,8 @@
   tab-size: 2;
 
   &:focus {
-    outline: none;
-    border-color: var(--loom-color-primary, #3b82f6);
+    outline: 1px solid var(--loom-color-accent);
+    outline-offset: 0;
   }
 
   &:disabled {
@@ -306,14 +350,643 @@
   }
 }
 
+.definitionIdInput {
+  padding: 4px 0;
+  border: 0;
+  border-bottom: 1px solid var(--loom-color-divider);
+  border-radius: 0;
+  background: transparent;
+  color: var(--loom-color-text);
+  font-size: 12px;
+  min-width: 180px;
+
+  &:focus {
+    outline: none;
+    border-color: var(--loom-color-accent);
+  }
+}
+
+.macroEditorList,
+.macroInspectionList {
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 18px;
+}
+
+.macroInspectorBody {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.macroInspectorMaster {
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  padding: 10px 8px;
+}
+
+.macroInspectorSearch {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 5px 10px;
+  padding: 0 3px 5px;
+  border-bottom: 1px solid var(--loom-color-divider);
+  color: var(--loom-color-text-subtle);
+
+  &:focus-within {
+    border-color: var(--loom-color-accent);
+    color: var(--loom-color-accent);
+  }
+
+  input {
+    width: 100%;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    color: var(--loom-color-text);
+    background: transparent;
+    font: inherit;
+  }
+}
+
+.macroInspectorGroup {
+  margin-bottom: 10px;
+
+  > header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 9px;
+    color: var(--loom-color-text-subtle);
+    font-size: 11px;
+    font-weight: 600;
+
+    small {
+      font: inherit;
+      font-weight: 400;
+    }
+  }
+}
+
+.macroInspectorListItem {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 9px;
+  border: 0;
+  border-radius: var(--loom-radius-control);
+  color: var(--loom-color-text);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover,
+  &[aria-current='page'] {
+    color: var(--loom-color-accent);
+    background: var(--loom-color-surface-subtle);
+  }
+
+  strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  span {
+    font-size: 11px;
+  }
+}
+
+.sourceMarker {
+  width: 14px;
+  color: var(--loom-color-text-subtle);
+  text-align: center;
+}
+
+.macroEditorList {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.macroEditorRow {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(160px, 1.6fr) auto;
+  align-items: end;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--loom-color-divider);
+
+  label {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+
+    span {
+      color: var(--loom-color-text-subtle);
+      font-size: 11px;
+    }
+
+    input {
+      min-width: 0;
+    }
+  }
+}
+
+.macroAuthoringExplorer {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 8px;
+}
+
+.macroAuthoringListItem {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: var(--loom-radius-control);
+  color: var(--loom-color-text);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover,
+  &[aria-current='page'] {
+    color: var(--loom-color-accent);
+    background: var(--loom-color-surface-subtle);
+  }
+
+  span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.macroAuthoringDetail {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 18px;
+}
+
+.macroAuthoringFields {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+
+  label {
+    display: grid;
+    gap: 4px;
+
+    span {
+      color: var(--loom-color-text-subtle);
+      font-size: 11px;
+    }
+
+    input {
+      width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      border: 0;
+      border-bottom: 1px solid var(--loom-color-divider);
+      border-radius: 0;
+      padding: 6px 0 5px;
+      color: var(--loom-color-text);
+      background: transparent;
+    }
+
+    textarea {
+      width: 100%;
+      min-width: 0;
+      min-height: 88px;
+      box-sizing: border-box;
+      border: 0;
+      border-radius: var(--loom-radius-control);
+      padding: 9px 10px;
+      color: var(--loom-color-text);
+      background: var(--loom-color-surface-subtle);
+      resize: vertical;
+      font: inherit;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: var(--loom-color-accent);
+      box-shadow: none;
+    }
+
+    textarea:focus {
+      outline: 1px solid var(--loom-color-accent);
+      outline-offset: 0;
+      box-shadow: none;
+    }
+  }
+}
+
+.macroInspectionList {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.macroInspectionEntry {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--loom-color-divider);
+  border-radius: var(--loom-radius-control);
+  background: var(--loom-color-surface-subtle);
+
+  > header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  > code {
+    overflow-wrap: anywhere;
+    color: var(--loom-color-text);
+    font: 12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
+
+  fieldset {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+    margin: 0;
+    padding: 8px;
+    border: 1px solid var(--loom-color-divider);
+  }
+
+  legend {
+    padding: 0 4px;
+    color: var(--loom-color-text-subtle);
+    font-size: 11px;
+  }
+
+  label {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    color: var(--loom-color-text);
+    font-size: 12px;
+
+    small,
+    em {
+      color: var(--loom-color-text-subtle);
+      font-size: 11px;
+    }
+
+    code {
+      grid-column: 2 / -1;
+      overflow-wrap: anywhere;
+      color: var(--loom-color-text-muted);
+      font: 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+  }
+}
+
+.statusResolved,
+.statusConflict,
+.statusError {
+  font-size: 11px;
+}
+
+.statusResolved { color: var(--loom-color-success, #22c55e); }
+.statusConflict { color: var(--loom-color-warning, #eab308); }
+.statusError { color: var(--loom-color-danger, #ef4444); }
+
+.stateAuthoringBody {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.stateAuthoringSidebar {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 8px;
+  border-right: 1px solid var(--loom-color-divider);
+}
+
+.stateAuthoringSectionHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  color: var(--loom-color-text-subtle);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+
+  small {
+    font: inherit;
+    font-weight: 400;
+  }
+}
+
+.stateAuthoringSubheader {
+  padding: 6px 8px 3px 29px;
+  color: var(--loom-color-text-subtle);
+  font-size: 10px;
+}
+
+.stateAuthoringKind {
+  padding: 2px 6px;
+  border-radius: var(--loom-radius-control);
+  color: var(--loom-color-text-subtle);
+  background: var(--loom-color-surface-subtle);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.stateAuthoringListItem {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: var(--loom-radius-control);
+  color: var(--loom-color-text);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover,
+  &[aria-current='page'] {
+    background: var(--loom-color-surface-subtle);
+    color: var(--loom-color-accent);
+  }
+
+  .stateAuthoringListText {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+
+    strong,
+    small {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    strong {
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    small {
+      color: var(--loom-color-text-subtle);
+      font-size: 10px;
+    }
+  }
+
+  > svg {
+    flex: 0 0 auto;
+  }
+
+  > span:not(.stateAuthoringListText) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.stateAuthoringDetails {
+  min-height: 0;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: auto;
+  padding: 12px 16px;
+}
+
+.stateAuthoringDetailLayout {
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: minmax(220px, 1fr) minmax(220px, 42%);
+  overflow: hidden;
+}
+
+.stateAuthoringEditorScroll {
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 16px 18px;
+}
+
+.stateAuthoringEditor {
+  display: grid;
+  gap: 10px;
+
+  .detailHeader {
+    padding: 0 0 10px;
+  }
+}
+
+.mountPreview {
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--loom-color-divider);
+  min-width: 0;
+  overflow-wrap: anywhere;
+
+  h3 {
+    margin: 0 0 12px;
+    font-size: 13px;
+    letter-spacing: 0;
+  }
+}
+
+.stateAuthoringFields {
+  display: grid;
+  gap: 9px;
+
+  label {
+    display: grid;
+    gap: 4px;
+
+    span {
+      color: var(--loom-color-text-subtle);
+      font-size: 11px;
+    }
+
+    input,
+    select,
+    textarea {
+      min-width: 0;
+      box-sizing: border-box;
+      width: 100%;
+    }
+
+    input,
+    select {
+      padding: 5px 0 4px;
+      border: 0;
+      border-bottom: 1px solid var(--loom-color-divider);
+      border-radius: 0;
+      color: var(--loom-color-text);
+      background: transparent;
+
+      &:focus {
+        outline: none;
+        border-color: var(--loom-color-accent);
+        box-shadow: none;
+      }
+    }
+
+    textarea {
+      min-height: 80px;
+      padding: 8px 10px;
+      border: 0;
+      border-radius: var(--loom-radius-control);
+      color: var(--loom-color-text);
+      background: var(--loom-color-surface-subtle);
+      resize: vertical;
+      font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+      &:focus {
+        outline: 1px solid var(--loom-color-accent);
+        outline-offset: 0;
+        box-shadow: none;
+      }
+    }
+  }
+}
+
+.stateAuthoringFields .stateAuthoringCodeField {
+  min-height: 180px;
+}
+
+.checkboxField {
+  margin: 0;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--loom-radius-control);
+  background: var(--loom-color-surface-subtle);
+
+  legend {
+    padding: 0 0 4px;
+    color: var(--loom-color-text-subtle);
+    font-size: 11px;
+  }
+
+  label {
+    display: flex;
+    grid-template-columns: none;
+    align-items: center;
+    gap: 7px;
+    min-height: 26px;
+    font-size: 12px;
+  }
+
+  input {
+    width: auto !important;
+    margin: 0;
+    accent-color: var(--loom-color-accent);
+  }
+}
+
+.assemblyPreview {
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 16px 18px;
+  border-top: 1px solid var(--loom-color-divider);
+  background: color-mix(in srgb, var(--loom-color-surface-subtle) 38%, var(--loom-color-surface-base));
+
+  > header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+
+    h3 {
+      margin: 0;
+      font-size: 13px;
+      letter-spacing: 0;
+    }
+
+    span {
+      color: var(--loom-color-text-subtle);
+      font-size: 10.5px;
+    }
+  }
+}
+
+.assemblyRuleList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 8px;
+
+  span {
+    max-width: 100%;
+    padding: 3px 6px;
+    overflow: hidden;
+    border-radius: 4px;
+    color: var(--loom-color-text-subtle);
+    background: var(--loom-color-surface-subtle);
+    font: 10.5px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.fieldError {
+  color: var(--loom-danger, #ef4444);
+  font-size: 11px;
+}
+
+.stateAuthoringSource {
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.stateAuthoringSource .yamlTextarea {
+  min-height: 240px;
+  height: 100%;
+}
+
+@media (max-width: 680px) {
+  .macroEditorRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .macroEditorRow label:nth-child(2) {
+    grid-column: 1 / -1;
+  }
+
+  .stateAuthoringDetailLayout {
+    grid-template-rows: minmax(280px, 1fr) minmax(200px, 38%);
+  }
+}
+
 .errorBanner {
-  margin: 12px 18px 0;
-  padding: 10px 14px;
+  margin: 10px 18px 0;
+  padding: 8px 12px;
   border-radius: var(--loom-radius-control);
   background: color-mix(in srgb, var(--loom-danger, #ef4444) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--loom-danger, #ef4444) 25%, transparent);
   color: var(--loom-danger, #ef4444);
-  font-size: 12.5px;
+  font-size: 12px;
 }
 
 .scopeBanner {
@@ -321,4 +994,199 @@
   color: var(--loom-color-text-subtle);
   font-family: ui-monospace, monospace;
   padding: 2px 0;
+}
+
+.emptyState {
+  padding: 24px;
+  text-align: center;
+  color: var(--loom-color-text-subtle);
+  font-size: 12.5px;
+}
+
+
+/* 数字微调步进器 */
+.stepperContainer {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--loom-color-divider);
+  border-radius: var(--loom-radius-control);
+  background: var(--loom-color-surface-base);
+  overflow: hidden;
+}
+
+.stepperBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  color: var(--loom-color-text-subtle);
+  cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease;
+
+  &:hover {
+    color: var(--loom-color-text);
+    background: var(--loom-color-surface-subtle);
+  }
+
+  &:active {
+    opacity: 0.75;
+  }
+}
+
+.stepperInput {
+  width: 64px;
+  height: 26px;
+  padding: 0 4px;
+  border: 0;
+  border-left: 1px solid var(--loom-color-divider);
+  border-right: 1px solid var(--loom-color-divider);
+  background: transparent;
+  color: var(--loom-color-text);
+  font-size: 12px;
+  text-align: center;
+  font-family: ui-monospace, monospace;
+
+  &:focus {
+    outline: none;
+    background: color-mix(in srgb, var(--loom-color-accent) 6%, transparent);
+  }
+
+  /* 隐藏原生 number 箭头 */
+  &::-webkit-inner-spin-button,
+  &::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+}
+
+/* 布尔开关 Toggle */
+.toggleBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 8px;
+  border: 1px solid var(--loom-color-divider);
+  border-radius: var(--loom-radius-control);
+  background: var(--loom-color-surface-base);
+  color: var(--loom-color-text-subtle);
+  font-size: 11.5px;
+  font-family: ui-monospace, monospace;
+  cursor: pointer;
+  transition: all 0.12s ease;
+
+  &[data-checked='true'] {
+    border-color: color-mix(in srgb, var(--loom-color-accent) 40%, transparent);
+    background: color-mix(in srgb, var(--loom-color-accent) 10%, transparent);
+    color: var(--loom-color-accent);
+  }
+
+  &:hover {
+    border-color: var(--loom-color-accent);
+  }
+}
+
+.toggleTrack {
+  position: relative;
+  width: 24px;
+  height: 13px;
+  background: var(--loom-color-divider);
+  border-radius: 7px;
+  transition: background 0.15s ease;
+
+  .toggleBtn[data-checked='true'] & {
+    background: var(--loom-color-accent);
+  }
+}
+
+.toggleThumb {
+  position: absolute;
+  top: 1.5px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  background: #ffffff;
+  border-radius: 50%;
+  transition: transform 0.15s ease;
+
+  .toggleBtn[data-checked='true'] & {
+    transform: translateX(10px);
+  }
+}
+
+/* 行内文本输入 */
+.propertyTextInput {
+  padding: 4px 0;
+  border: 0;
+  border-bottom: 1px solid var(--loom-color-divider);
+  border-radius: 0;
+  background: transparent;
+  color: var(--loom-color-text);
+  font-size: 12px;
+  min-width: 140px;
+  font-family: inherit;
+
+  &:focus {
+    outline: none;
+    border-color: var(--loom-color-accent);
+  }
+}
+
+.treeContainer {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 12px;
+}
+
+.treeTrailingControl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.treePreviewText {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  color: var(--loom-color-text-subtle);
+  font-family: inherit;
+}
+
+.treeLongTextDrawer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.treeLongTextarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--loom-radius-control);
+  background: var(--loom-color-surface-base);
+  color: var(--loom-color-text);
+  font-size: 12.5px;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 70px;
+  font-family: inherit;
+
+  &:focus {
+    outline: 1px solid var(--loom-color-accent);
+    outline-offset: 0;
+  }
+}
+
+.treeLongTextActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }

@@ -280,7 +280,7 @@ export function applyStateOperations(
         next = structuredClone(operation.value)
         continue
       }
-      const target = resolveParent(next, operation.path)
+      const target = resolveParent(next, operation.path, true)
       setChild(target.parent, target.key, structuredClone(operation.value))
       continue
     }
@@ -402,7 +402,7 @@ async function validateSnapshotAgainstDefinitions(
 function readDotPath(root: JsonObject, path: string): { found: true; value: JsonValue } | { found: false } {
   let current: JsonValue = root
   for (const segment of path.split('.')) {
-    if (typeof current !== 'object' || current === null || Array.isArray(current) || !(segment in current)) return { found: false }
+    if (typeof current !== 'object' || current === null || Array.isArray(current) || !Object.hasOwn(current, segment)) return { found: false }
     current = current[segment]!
   }
   return { found: true, value: current }
@@ -412,10 +412,10 @@ function setDotPath(root: JsonObject, path: string, value: JsonValue): void {
   const segments = path.split('.')
   let current = root
   for (const segment of segments.slice(0, -1)) {
-    const existing = current[segment]
+    const existing = Object.hasOwn(current, segment) ? current[segment] : undefined
     if (existing === undefined) {
       const child: JsonObject = {}
-      current[segment] = child
+      setOwnProperty(current, segment, child)
       current = child
       continue
     }
@@ -424,7 +424,7 @@ function setDotPath(root: JsonObject, path: string, value: JsonValue): void {
     }
     current = existing
   }
-  current[segments.at(-1)!] = value
+  setOwnProperty(current, segments.at(-1)!, value)
 }
 
 function parsePointer(path: string): string[] {
@@ -440,11 +440,23 @@ function parsePointer(path: string): string[] {
   })
 }
 
-function resolveParent(root: JsonObject, path: string): { parent: JsonObject | JsonValue[]; key: string } {
+function resolveParent(
+  root: JsonObject,
+  path: string,
+  createMissingParents = false,
+): { parent: JsonObject | JsonValue[]; key: string } {
   const segments = parsePointer(path)
   if (segments.length === 0) throw new ApplicationStateError('state.path_invalid', 'State path must select a child')
   let current: JsonValue = root
   for (const segment of segments.slice(0, -1)) {
+    if (createMissingParents && isJsonObject(current)) {
+      if (!Object.hasOwn(current, segment) || current[segment] === undefined || current[segment] === null) {
+        const child: JsonObject = {}
+        setOwnProperty(current, segment, child)
+        current = child
+        continue
+      }
+    }
     current = readChild(current, segment, path)
   }
   if (!isJsonObject(current) && !Array.isArray(current)) {
@@ -464,7 +476,7 @@ function readChild(parent: JsonValue, key: string, path: string): JsonValue {
     const index = readArrayIndex(key, parent.length, path)
     return parent[index]!
   }
-  if (!isJsonObject(parent) || !(key in parent)) {
+  if (!isJsonObject(parent) || !Object.hasOwn(parent, key)) {
     throw new ApplicationStateError('state.path_not_found', `State path does not exist: ${path}`)
   }
   return parent[key]!
@@ -476,7 +488,7 @@ function setChild(parent: JsonObject | JsonValue[], key: string, value: JsonValu
     parent[index] = value
     return
   }
-  parent[key] = value
+  setOwnProperty(parent, key, value)
 }
 
 function removeChild(parent: JsonObject | JsonValue[], key: string): void {
@@ -485,8 +497,17 @@ function removeChild(parent: JsonObject | JsonValue[], key: string): void {
     parent.splice(index, 1)
     return
   }
-  if (!(key in parent)) throw new ApplicationStateError('state.path_not_found', `State path does not exist: ${key}`)
+  if (!Object.hasOwn(parent, key)) throw new ApplicationStateError('state.path_not_found', `State path does not exist: ${key}`)
   delete parent[key]
+}
+
+function setOwnProperty(parent: JsonObject, key: string, value: JsonValue): void {
+  Object.defineProperty(parent, key, {
+    configurable: true,
+    enumerable: true,
+    writable: true,
+    value,
+  })
 }
 
 function readArrayIndex(value: string, length: number, path: string): number {

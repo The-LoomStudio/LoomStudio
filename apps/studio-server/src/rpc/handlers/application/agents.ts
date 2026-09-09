@@ -116,6 +116,7 @@ export async function handleAgentsRpc(
         input: readString(params, 'input'),
         activationFacts: readOptionalObject(params, 'activationFacts'),
         narrativeTarget: readOptionalNarrativeTarget(params),
+        macroSelections: readOptionalStringRecord(params, 'macroSelections'),
       }, context) as unknown as JsonValue
 
     case 'application.previewAgentTurn':
@@ -124,7 +125,16 @@ export async function handleAgentsRpc(
         input: readString(params, 'input'),
         activationFacts: readOptionalObject(params, 'activationFacts'),
         narrativeTarget: readOptionalNarrativeTarget(params),
+        macroSelections: readOptionalStringRecord(params, 'macroSelections'),
       }, context) as unknown as JsonValue
+
+    case 'application.inspectMacros':
+      return await runtime.inspectMacros({
+        cardId: readOptionalString(params, 'cardId'),
+        presetId: readOptionalString(params, 'presetId'),
+        timelineTarget: readOptionalMacroTimelineTarget(params),
+        macroSelections: readOptionalStringRecord(params, 'macroSelections'),
+      }) as unknown as JsonValue
 
     default:
       return undefined
@@ -144,6 +154,15 @@ function readOptionalBooleanRecord(params: JsonValue | undefined, key: string): 
     throw new Error(`Expected optional boolean record param: ${key}`)
   }
   return value as Record<string, boolean>
+}
+
+function readOptionalStringRecord(params: JsonValue | undefined, key: string): Record<string, string> | undefined {
+  if (!isRecord(params) || params[key] === undefined) return undefined
+  const value = params[key]
+  if (!isRecord(value) || !Object.values(value).every(item => typeof item === 'string')) {
+    throw new Error(`Expected optional string record param: ${key}`)
+  }
+  return value as Record<string, string>
 }
 
 function readPresetToolMountInputs(params: JsonValue | undefined, key: string): PresetToolMountInput[] {
@@ -212,4 +231,12 @@ function readOptionalNarrativeTarget(params: JsonValue | undefined): {
     ...(typeof value.branchId === 'string' ? { branchId: value.branchId } : {}),
     commit: value.commit,
   }
+}
+
+function readOptionalMacroTimelineTarget(params: JsonValue | undefined): { timelineId: string; branchId?: string } | undefined {
+  const value = readOptionalObject(params, 'timelineTarget')
+  if (value === undefined) return undefined
+  if (typeof value.timelineId !== 'string') throw new Error('Expected string param: timelineTarget.timelineId')
+  if (value.branchId !== undefined && typeof value.branchId !== 'string') throw new Error('Expected optional string param: timelineTarget.branchId')
+  return { timelineId: value.timelineId, ...(typeof value.branchId === 'string' ? { branchId: value.branchId } : {}) }
 }

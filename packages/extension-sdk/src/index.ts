@@ -7,10 +7,11 @@ import type {
 } from '@loom-studio/ai-gateway'
 import type { DiagnosticInput } from '@loom-studio/diagnostics'
 import type { DocumentRecord, ListDocumentsInput, WriteDocumentInput, WriteDocumentResult } from '@loom-studio/document-store'
-import type { JsonObject, JsonValue } from '@loom-studio/shared'
+import type { JsonObject, JsonValue, StateContribution } from '@loom-studio/shared'
 import type { StudioEvent } from '@loom-studio/transport'
 
 export type { JsonValue } from '@loom-studio/shared'
+export type { StateContribution } from '@loom-studio/shared'
 export type {
   AiGatewayCapabilityDefinition,
   AiGatewayCapabilityHandler,
@@ -370,6 +371,10 @@ export type ExtensionModuleManifest = {
     'assets.publish'?: boolean
     'assets.read'?: boolean
     'ai.invoke'?: boolean
+    'macros.provide'?: boolean
+    'state.contribute'?: boolean
+    'state.read'?: boolean
+    'state.write'?: boolean
     [key: string]: JsonValue | undefined
   }
   contributes?: ExtensionRuntimeContributions
@@ -497,6 +502,47 @@ export type ExtensionRecordEntry = {
   updatedAt: string
 }
 
+export type ExtensionMacroContext = {
+  readonly global: JsonObject
+  readonly timeline?: JsonObject
+  readonly cardId?: string
+  readonly presetId?: string
+}
+
+export type ExtensionMacroProvider = {
+  id: string
+  name: string
+  resolve(context: ExtensionMacroContext): string | Promise<string>
+}
+
+export type ExtensionStateTarget =
+  | { scope: 'global' }
+  | { scope: 'timeline'; timelineId: string; branchId: string }
+
+export type ExtensionStateSnapshot = {
+  scopeId: string
+  target: ExtensionStateTarget
+  revisionId: string
+  value: JsonObject
+  createdAt: string
+}
+
+export type ExtensionStateMutationOperation =
+  | { op: 'set'; path: string; value: JsonValue }
+  | { op: 'remove'; path: string }
+
+export type ExtensionStateMutationInput = {
+  target: ExtensionStateTarget
+  expectedRevisionId: string
+  operations: ExtensionStateMutationOperation[]
+  idempotencyKey?: string
+}
+
+export type ExtensionStateMutationResult = {
+  snapshot: ExtensionStateSnapshot
+  changesetId: string
+}
+
 export type ExtensionActivationContext = {
   extension: {
     packageId: string
@@ -532,6 +578,14 @@ export type ExtensionActivationContext = {
     registerProvider(registration: AiGatewayProviderRegistration): AiGatewayProviderRegistrationHandle
     listProviders(): RegisteredAiGatewayProvider[]
     invoke(input: Omit<AiGatewayInvokeInput, 'caller'>): Promise<AiGatewayInvokeResult>
+  }
+  macros: {
+    register(provider: ExtensionMacroProvider): ExtensionRegistrationHandle
+  }
+  state: {
+    contribute(contribution: StateContribution): ExtensionRegistrationHandle
+    read(target: ExtensionStateTarget): Promise<ExtensionStateSnapshot>
+    write(input: ExtensionStateMutationInput): Promise<ExtensionStateMutationResult>
   }
   agentTools: {
     register(toolId: string, handler: ExtensionAgentToolHandler): ExtensionRegistrationHandle

@@ -12,7 +12,7 @@ Loom Studio 当前不是纯 SDD，也不是纯 DDD。
 更准确的描述是：
 
 ```text
-领域发现 -> 场景模拟 -> ADR / Spec 收口 -> 最小实现验证
+领域发现 -> 场景模拟 -> 决策收口 -> Plan / 最小实现验证
 ```
 
 或者：
@@ -25,7 +25,8 @@ Domain Discovery + Scenario-Driven Design + Spec-Gated Implementation
 
 - 用 DDD 式的领域发现识别 Card、Session、Opening、Setting Layer、Composition Skeleton、Runtime、Provider Adapter 等边界；
 - 用真实使用场景检查这些边界是否帮到了作者、玩家、插件作者和 provider adapter 作者；
-- 用 ADR / spec 把稳定结论写下来，再进入实现；
+- 用 Architecture 记录已验证事实，用 Plan 记录已经决定的非平庸改动；
+- 只有跨域、长期、难逆转且需要保留取舍理由的决策才写 ADR；ADR 不是默认实施门槛；
 - 实现时只做能验证当前场景的最小闭环，不预先建模所有未来数据。
 
 ---
@@ -122,9 +123,22 @@ Loom Studio 是开发平台，不只是单一应用。
 3. 模拟场景中的操作流程
 4. 记录 Studio 提供的支持与阻碍
 5. 找到最小稳定抽象
-6. 写入 ADR / spec
+6. 对非平庸改动形成明确决策，并进入 Plan
 7. 用 M0 实现或 fixture 验证
 ```
+
+### 3.1 ADR 的例外触发条件
+
+日常修补、局部 UI 调整、一次性迁移和已经讨论清楚的实施切片不要求 ADR。它们在决策明确后直接进入对应 Plan，完成后把验证过的事实更新到 Architecture。
+
+只有同时满足以下条件时，才新增或更新 ADR：
+
+- 决策跨越多个模块、团队边界或生态合同；
+- 未来很可能再次被质疑，需要保留选项比较和取舍理由；
+- 变更代价高、难以逆转，或会形成长期兼容承诺；
+- 单靠当前 Architecture 无法解释为什么选择该方案。
+
+如果只是记录当前实现是什么，更新 Architecture；如果还没有决定，保留在 Discussion；如果已经决定并准备施工，写入 Plan。
 
 如果第 2 步和第 3 步说不清楚，通常不应该直接写最终 schema。
 
@@ -150,7 +164,7 @@ Loom Studio 也需要规格驱动，因为平台边界一旦实现就会成为�
 
 因此稳定结论要进入：
 
-- ADR；
+- Architecture 或对应的 Plan；
 - Application Layer spec；
 - RPC surface 文档；
 - scenario fixture / test plan。
@@ -169,8 +183,8 @@ Loom Studio 也需要规格驱动，因为平台边界一旦实现就会成为�
 
 ## 5. 相关文档
 
-- [`../discussion/scenario-driven-design-v0.md`](../workbench/discussion/scenario-driven-design-v0.md)
-- [`../issues/architecture-governance-v0.md`](../archive/issues/architecture-governance-v0.md)
+- [`scenario-driven-design-v0.md`](../workbench/discussion/scenario-driven-design-v0.md)
+- [`architecture-governance-v0.md`](../archive/issues/architecture-governance-v0.md)
 - [`architecture-rules.md`](architecture-rules.md)
 - [`testing.md`](testing.md)
 - [`../workbench/discussion/application/README.md`](../workbench/discussion/application/README.md)
@@ -180,6 +194,6 @@ Loom Studio 也需要规格驱动，因为平台边界一旦实现就会成为�
 
 ## 6. 历史来源归档
 
-- [`loom-project/ARCHIVE.md`](../archive/loom-project/ARCHIVE.md) — LoomProject 原始设计文档、Core PoC、Accepted ADR 与 Engineering Blueprint 的无损归档。正式架构以 [`../architecture/`](../architecture/) 和当前代码为准。
-- [`archive/plans/`](../archive/plans/) — 已完成或已被后续方向取代的实施计划。
-- [`archive/ui/`](../archive/ui/README.md) — 已被正式 UI Architecture 或后续 Workspace 方向取代的早期 UI 草稿。
+- [`../archive/loom-project/ARCHIVE.md`](../archive/loom-project/ARCHIVE.md) — LoomProject 原始设计文档、Core PoC、Accepted ADR 与 Engineering Blueprint 的无损归档。正式架构以 [`../architecture/`](../architecture/) 和当前代码为准。
+- [`../archive/plans/`](../archive/plans/) — 已完成或已被后续方向取代的实施计划。
+- [`../archive/ui/`](../archive/ui/README.md) — 已被正式 UI Architecture 或后续 Workspace 方向取代的早期 UI 草稿。

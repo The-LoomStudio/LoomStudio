@@ -63,6 +63,8 @@ Tool Result 的 canonical 身份不随 Provider 改变。Native Function 使用 
 
 失败、拒绝、Abort 和 Timeout 都返回 ToolResult，而不是把已执行调用留成无结果状态。
 
+Agent 主动读取与 ToolResult 的生命周期由 Runtime 管理，不等于 PromptBuild 的第三种注入语法。Anchor / Slot、正文宏与主动读取之间的边界见 [注入与内联展开](../prompt-build/injection-and-inline-expansion.md)；持续 Pin 的保留策略仍属于 Agent 侧的待实施设计。
+
 ## 5. 持久化与恢复边界
 
 当前每个 Provider Observation、Invocation、Result 和 terminal Run State 都会分阶段持久化，因此进程内失败不会只存在于临时 callback 中。

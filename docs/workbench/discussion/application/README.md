@@ -82,7 +82,7 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 5. ST `Example Dialogues` 暂不继承为一等概念。
 6. 不复刻 ST Group Chat 产品概念。
 7. 不建立 `Actor` / `Participant` / `Speaker` / `CharacterProfile` 等过早硬编码类层级。
-8. `Setting Layer` 是设定与可变状态的统一地基。
+8. 文本资源与结构化 State 按用途和所需保证区分，不再以 Setting Layer 统一承载所有可变状态；见 [数据能力与运行内容](data-capabilities-and-runtime-content.md)。
 9. `Book` 概念弱化为 collection / folder / namespace，不作为核心语义。
 10. `Preset` 属于 Application composition layer，但 backend canonical 倾向 `Composition Skeleton`。
 11. `Author's Note` / 临时注入提示不作为独立 canonical concept。
@@ -98,7 +98,7 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 21. Agent 基座保存 Run / Step / ToolCall / ToolResult / Trace；Agent Preset / Runtime Policy 决定历史工作记录如何投影。
 22. Agent 主动读取结果先进入 Fresh Read Tail，被消费一轮后沉淀到 Dynamic Context Mount，并按作者设定排序。
 23. 程序性触发和主动读取共享动态挂载面，但生命周期不同；关键词失效不能卸载主动读取 item。
-24. State Store 不承载"慢变量"；低频人设、性格、年龄、长期关系等仍属于 Setting Store。
+24. State 与文本不按更新频率划分；需要结构化校验和程序消费的数据可以进入 State，自由文本记录不因持久化而成为 State。
 25. Preset / Composition Skeleton 采用 Zone Tree + Injection Group：Source Tree 负责存储和分类，Injection Group 只是 Prompt Build 的挂载锚点。
 26. 注入位置组不是文件夹；同一个世界书 / preset source 可以按不同 injection group 产生多个 source-scoped slots，并分别排序。
 27. 动态 slots 不写死在全局 preset 中；Prompt Build 根据当前 source set materialize slots，并用 Projection Order Profile 的稳定 rankKey 承载 UI 拖拽排序。
@@ -124,6 +124,7 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 | [`discussion-order-v0.md`](discussion-order-v0.md) | Migrated / Open Design | 讨论顺序、未定事项、实施前置条件 |
 | [`discussion-plan-v0.md`](discussion-plan-v0.md) | Open Design | 决策驱动讨论计划、依赖图、近期讨论安排 |
 | [`document-map-v0.md`](document-map-v0.md) | Open Design / Navigation | Application Layer 文档分区地图 |
+| [`data-capabilities-and-runtime-content.md`](data-capabilities-and-runtime-content.md) | Open Design / 已确认原则 | 按用途区分文本、State、宏与运行内容，保留记忆及跨类型生命周期的开放边界 |
 
 ### 3.2 Card 与内容单元
 

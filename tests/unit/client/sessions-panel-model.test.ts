@@ -1,13 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentProfile, AgentSession, CardSummary, NarrativeTimeline } from '../../../apps/studio-client/src/entities/index.js'
 import {
+  areAllExpandablesExpanded,
   areAllSelected,
   areAllSessionsSelected,
   areAllTimelinesSelected,
   filterStandaloneSessions,
   filterTimelines,
+  getExpandableTimelineIds,
   partitionSessions,
+  sortSessions,
+  sortTimelines,
   sortTimelinesByUpdated,
+  toggleExpandAll,
   toggleItemSelection,
   toggleSelectAll,
   toggleSelectAllSessions,
@@ -139,6 +144,46 @@ describe('sessions-panel-model', () => {
     expect(Array.from(none)).toEqual([])
     expect(areAllSessionsSelected(sessions, none)).toBe(false)
   })
+
+  it('sorts timelines and sessions by updatedAt asc and desc', () => {
+    const items = [
+      { id: '1', updatedAt: '2026-09-01T10:00:00Z' },
+      { id: '2', updatedAt: '2026-09-03T10:00:00Z' },
+      { id: '3', updatedAt: '2026-09-02T10:00:00Z' },
+    ]
+
+    const desc = sortTimelines(items, 'desc')
+    expect(desc.map(i => i.id)).toEqual(['2', '3', '1'])
+
+    const asc = sortTimelines(items, 'asc')
+    expect(asc.map(i => i.id)).toEqual(['1', '3', '2'])
+
+    const sessionsDesc = sortSessions(items, 'desc')
+    expect(sessionsDesc.map(i => i.id)).toEqual(['2', '3', '1'])
+  })
+
+  it('computes expandable timeline ids and toggles expand all', () => {
+    const timelineIds = ['t1', 't2', 't3']
+    const sessionsMap = new Map([
+      ['t1', [{ id: 's1' }]],
+      ['t2', []],
+      ['t3', [{ id: 's2' }, { id: 's3' }]],
+    ])
+
+    const expandableIds = getExpandableTimelineIds(timelineIds, sessionsMap)
+    expect(expandableIds).toEqual(['t1', 't3'])
+
+    expect(areAllExpandablesExpanded(expandableIds, new Set())).toBe(false)
+    expect(areAllExpandablesExpanded(expandableIds, new Set(['t1']))).toBe(false)
+    expect(areAllExpandablesExpanded(expandableIds, new Set(['t1', 't3']))).toBe(true)
+
+    const expandedAll = toggleExpandAll(expandableIds, new Set(['t1']))
+    expect(Array.from(expandedAll)).toEqual(['t1', 't3'])
+
+    const collapsedAll = toggleExpandAll(expandableIds, expandedAll)
+    expect(Array.from(collapsedAll)).toEqual([])
+  })
 })
+
 
 

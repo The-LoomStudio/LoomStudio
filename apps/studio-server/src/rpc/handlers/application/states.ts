@@ -108,8 +108,9 @@ function readStateDefinitionDraft(params: JsonValue | undefined): StateDefinitio
   const value = readOptionalObject(params, 'definition')
   if (!value) throw new Error('Expected object param: definition')
   if (!isRecord(value.schema)) throw new Error('Expected object param: definition.schema')
-  const label = typeof value.label === 'string' ? value.label : undefined
-  if (value.kind === 'global') {
+  const label = typeof value.label === 'string' ? value.label : typeof value.name === 'string' ? value.name : undefined
+  const kind = value.kind ?? 'timeline-template'
+  if (kind === 'global') {
     if (typeof value.path !== 'string') throw new Error('Expected string param: definition.path')
     if (value.readOnly !== undefined && typeof value.readOnly !== 'boolean') throw new Error('Expected boolean param: definition.readOnly')
     return {
@@ -121,14 +122,14 @@ function readStateDefinitionDraft(params: JsonValue | undefined): StateDefinitio
       ...(label !== undefined ? { label } : {}),
     }
   }
-  if (value.kind === 'timeline-template') {
-    if (typeof value.templateVersion !== 'number') throw new Error('Expected number param: definition.templateVersion')
-    if (!isRecord(value.initial)) throw new Error('Expected object param: definition.initial')
+  if (kind === 'timeline-template') {
+    const templateVersion = typeof value.templateVersion === 'number' ? value.templateVersion : 1
+    const initial = isRecord(value.initial) ? value.initial : {}
     return {
       kind: 'timeline-template',
-      templateVersion: value.templateVersion,
+      templateVersion,
       schema: value.schema,
-      initial: value.initial,
+      initial,
       ...(label !== undefined ? { label } : {}),
     }
   }

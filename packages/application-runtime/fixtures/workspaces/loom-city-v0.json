@@ -7,6 +7,10 @@
     "name": "雨线车站",
     "userName": "旅人",
     "description": "Loom City 中一座只在雨夜显现的车站。它用于测试 Prompt Builder 的导入、编辑、排序、预览和导出闭环。",
+    "macros": {
+      "loom.city.name": "Loom City",
+      "loom.city.location": "雨线车站"
+    },
     "preset": {
       "system": "你是 Loom City 的叙事代理。保持都市奇幻、轻微悬疑和第二人称叙事。"
     },
@@ -153,8 +157,247 @@
       ]
     }
   ],
+  "state": {
+    "kind": "loom.state",
+    "schemaVersion": 1,
+    "contribution": {
+      "id": "loom.city.state",
+      "entityTypes": [
+        {
+          "id": "character",
+          "collectionPath": "entities.characters",
+          "label": "角色"
+        },
+        {
+          "id": "item",
+          "collectionPath": "entities.items",
+          "label": "物品"
+        }
+      ],
+      "templates": [
+        {
+          "id": "loom.example.character.identity",
+          "templateVersion": 1,
+          "componentKey": "identity",
+          "targetEntityTypeIds": ["character"],
+          "label": "角色身份",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "displayName": { "type": "string" },
+              "role": { "type": "string" },
+              "present": { "type": "boolean" }
+            },
+            "required": ["displayName", "role", "present"],
+            "additionalProperties": false
+          },
+          "initial": {
+            "displayName": "Unknown Character",
+            "role": "visitor",
+            "present": true
+          }
+        },
+        {
+          "id": "loom.example.character.vitals",
+          "templateVersion": 1,
+          "componentKey": "vitals",
+          "targetEntityTypeIds": ["character"],
+          "label": "生命状态",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "hp": { "type": "number", "minimum": 0 },
+              "maxHp": { "type": "number", "minimum": 1 },
+              "status": { "type": "string" }
+            },
+            "required": ["hp", "maxHp", "status"],
+            "additionalProperties": false
+          },
+          "initial": {
+            "hp": 100,
+            "maxHp": 100,
+            "status": "healthy"
+          }
+        },
+        {
+          "id": "loom.example.character.inventory",
+          "templateVersion": 1,
+          "componentKey": "inventory",
+          "targetEntityTypeIds": ["character"],
+          "label": "背包",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "x-loom-entity-ref": { "allowedTypeIds": ["item"] }
+                }
+              }
+            },
+            "required": ["items"],
+            "additionalProperties": false
+          },
+          "initial": { "items": [] }
+        },
+        {
+          "id": "loom.example.item.identity",
+          "templateVersion": 1,
+          "componentKey": "identity",
+          "targetEntityTypeIds": ["item"],
+          "label": "物品身份",
+          "schema": {
+            "type": "object",
+            "properties": {
+              "displayName": { "type": "string" },
+              "description": { "type": "string" }
+            },
+            "required": ["displayName", "description"],
+            "additionalProperties": false
+          },
+          "initial": {
+            "displayName": "Unknown Item",
+            "description": ""
+          }
+        }
+      ],
+      "entities": [
+        { "typeId": "character", "entityId": "archive_keeper" },
+        { "typeId": "character", "entityId": "night_conductor" },
+        { "typeId": "item", "entityId": "rainline-key" }
+      ],
+      "componentMounts": [
+        {
+          "templateId": "loom.example.character.identity",
+          "templateVersion": 1,
+          "componentKey": "identity",
+          "target": {
+            "kind": "entity",
+            "entity": { "typeId": "character", "entityId": "archive_keeper" }
+          },
+          "initial": {
+            "displayName": "档案管理员",
+            "role": "archive-keeper"
+          }
+        },
+        {
+          "templateId": "loom.example.character.identity",
+          "templateVersion": 1,
+          "componentKey": "identity",
+          "target": {
+            "kind": "entity",
+            "entity": { "typeId": "character", "entityId": "night_conductor" }
+          },
+          "initial": {
+            "displayName": "夜班车长",
+            "role": "conductor"
+          }
+        },
+        {
+          "templateId": "loom.example.character.vitals",
+          "templateVersion": 1,
+          "componentKey": "vitals",
+          "target": { "kind": "entity-type", "typeId": "character" }
+        },
+        {
+          "templateId": "loom.example.character.inventory",
+          "templateVersion": 1,
+          "componentKey": "inventory",
+          "target": {
+            "kind": "entity",
+            "entity": { "typeId": "character", "entityId": "archive_keeper" }
+          },
+          "initial": {
+            "items": [{ "typeId": "item", "entityId": "rainline-key" }]
+          }
+        },
+        {
+          "templateId": "loom.example.item.identity",
+          "templateVersion": 1,
+          "componentKey": "identity",
+          "target": {
+            "kind": "entity",
+            "entity": { "typeId": "item", "entityId": "rainline-key" }
+          },
+          "initial": {
+            "displayName": "雨线钥匙",
+            "description": "能够开启雨线车站档案库的旧铜钥匙。"
+          }
+        }
+      ],
+      "bindings": []
+    }
+  },
+  "stateTemplates": [
+    {
+      "id": "loom.example.character.identity",
+      "templateVersion": 1,
+      "label": "角色身份",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "displayName": { "type": "string" },
+          "role": { "type": "string" },
+          "present": { "type": "boolean" }
+        },
+        "required": ["displayName", "role", "present"],
+        "additionalProperties": false
+      },
+      "initial": {
+        "displayName": "Unknown Character",
+        "role": "visitor",
+        "present": true
+      }
+    },
+    {
+      "id": "loom.example.character.vitals",
+      "templateVersion": 1,
+      "label": "生命状态",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "hp": { "type": "number", "minimum": 0 },
+          "maxHp": { "type": "number", "minimum": 1 },
+          "status": { "type": "string" }
+        },
+        "required": ["hp", "maxHp", "status"],
+        "additionalProperties": false
+      },
+      "initial": {
+        "hp": 100,
+        "maxHp": 100,
+        "status": "healthy"
+      }
+    }
+  ],
+  "timelineStateBindings": [
+    {
+      "path": "entities.characters.archive_keeper.components.identity",
+      "templateId": "loom.example.character.identity",
+      "templateVersion": 1,
+      "initial": {
+        "displayName": "档案管理员",
+        "role": "archive-keeper"
+      }
+    },
+    {
+      "path": "entities.characters.night_conductor.components.identity",
+      "templateId": "loom.example.character.identity",
+      "templateVersion": 1,
+      "initial": {
+        "displayName": "夜班车长",
+        "role": "conductor"
+      }
+    },
+    {
+      "path": "entities.characters.*.components.vitals",
+      "templateId": "loom.example.character.vitals",
+      "templateVersion": 1
+    }
+  ],
   "metadata": {
     "kind": "demo-workspace",
-    "createdFor": "prompt-builder-closed-loop"
+    "createdFor": "prompt-builder-and-state-authoring"
   }
 }

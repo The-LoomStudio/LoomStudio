@@ -13,6 +13,8 @@ import { LogViewer } from '../widgets/log-viewer/log-viewer.js'
 import { SettingsPanel } from '../widgets/settings-panel/settings-panel.js'
 import { SessionsPanel } from '../widgets/sessions-panel/sessions-panel.js'
 import { StateVariablesPanel } from '../features/state-variables/ui/state-variables-panel.js'
+import { StateAuthoringPanel } from '../features/state-variables/ui/state-authoring-panel.js'
+import { MacroInspectorPanel } from '../features/state-variables/ui/macro-inspector-panel.js'
 import { TextTransformPanel } from '../features/text-transforms/ui/text-transform-panel.js'
 import { createClientRendererHost } from '../features/extension-renderers/model/client-renderer-host.js'
 import { RendererFocusSurface } from '../features/extension-renderers/ui/renderer-focus-surface.js'
@@ -27,6 +29,8 @@ import { toast } from 'sonner'
 import { hasCompleteProviderAccount } from '../features/provider-settings/model/provider-account-status.js'
 import { useStudioLayoutStore, useStudioPanelStore, type StudioPanelId } from '../pages/studio/model/studio-layout-store.js'
 import { useStudioNavigation } from '../pages/studio/model/use-studio-navigation.js'
+import { buildStudioPanelPath } from '../pages/studio/model/studio-route.js'
+import { useNavigate } from 'react-router-dom'
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import styles from './app.module.scss'
 import '../styles/global.css'
@@ -40,6 +44,9 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
   const [selectedPresetId, setSelectedPresetId] = useState<string>()
   const timelineRouteRequestRef = useRef(0)
   const navigation = useStudioNavigation()
+  const navigate = useNavigate()
+  const [resourceView, setResourceView] = useState<'settings' | 'macros'>('settings')
+  const [variableView, setVariableView] = useState<'state' | 'authoring' | 'preview' | 'build'>('state')
   const uiScale = useStudioLayoutStore(current => current.uiScale)
   const setUiScale = useStudioLayoutStore(current => current.setUiScale)
   const workspaceOpen = useStudioPanelStore(current => current.activePanel !== null)
@@ -55,6 +62,8 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
     ? (state.cards.find(c => c.id === activeCardId) ?? (state.selectedCard?.id === activeCardId ? state.selectedCard : undefined))
     : undefined
   const narrativeCharacterName = state.narrativeTimeline ? activeCard?.name : undefined
+  const sourceCardId = state.narrativeTimeline?.createdFrom?.cardId
+  const canOpenTimelineSource = Boolean(sourceCardId && state.cards.some(card => card.id === sourceCardId))
   const narrativeCharacterAvatarUrl = state.narrativeTimeline && activeCard?.media?.avatarAssetId
     ? `/assets/${encodeURIComponent(activeCard.media.avatarAssetId)}`
     : undefined
@@ -90,6 +99,12 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
   function focusHistoryAsset(target: Awaited<ReturnType<typeof state.undoEdit>>) {
     if (!target) return
     useStudioLayoutStore.getState().openAssetDetail(target.layoutId, assetWorkspaceId, target.assetId)
+  }
+
+  function openStateSource(scope: 'global' | 'timeline') {
+    if (scope !== 'timeline' || !canOpenTimelineSource) return
+    setVariableView('authoring')
+    useStudioPanelStore.getState().setActivePanel('state')
   }
 
   useEffect(() => {
@@ -237,6 +252,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         selectedCardId={state.selectedCardId}
         timeline={state.narrativeTimeline}
         timelines={state.cardTimelines}
+        macroContext={state.macroContext}
         t={state.t}
         onChangeCardDraft={state.setCardDraft}
         onCreateCard={state.createCard}
@@ -257,7 +273,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
             if (latest) {
               void state.activateTimeline(latest.id)
             } else {
-              void state.createTimelineFromCard()
+              state.resetToDraftTimeline()
             }
           })
         }}
@@ -266,7 +282,14 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
             if (branchId) navigation.openNarrative(timeline.id, branchId)
           })
         }}
-        onOpenStatePanel={() => useStudioPanelStore.getState().setActivePanel('state')}
+        onOpenStatePanel={cardId => {
+          if (cardId !== sourceCardId) {
+            toast.error(state.t('stateAuthoring.noCard'))
+            return
+          }
+          setVariableView('authoring')
+          useStudioPanelStore.getState().setActivePanel('state')
+        }}
         onOpenResourcePanel={resourceId => {
           useStudioPanelStore.getState().setActivePanel('resource')
           if (resourceId) {
@@ -282,6 +305,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
     preset: () => (
       <PresetWorkbench
         {...contextAssetEditorProps}
+        onSaveMacros={state.updatePresetMacros}
         selectedResourceId={selectedPresetId}
         onSelectResource={setSelectedPresetId}
         timelinePromptResourceIds={state.narrativeTimeline?.promptResourceIds}
@@ -297,6 +321,16 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
     resource: () => (
       <ContextWorkbench
         {...contextAssetEditorProps}
+        view={resourceView}
+        onViewChange={setResourceView}
+        macroAuthoring={state.selectedCardDetails?.id === assetWorkspaceId ? {
+          ownerId: assetWorkspaceId,
+          ownerLabel: state.selectedCardDetails.name,
+          version: state.selectedCardDetails.version,
+          macros: state.selectedCardDetails.macros ?? {},
+          onSave: config => state.updateCardMacros({ cardId: assetWorkspaceId, ...config }),
+          t: state.t,
+        } : undefined}
         card={state.selectedCardDetails}
         settingMounts={state.settingMounts}
         onReplaceSettingMounts={state.replaceSettingMounts}
@@ -306,15 +340,50 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
       />
     ),
     state: () => (
-      <StateVariablesPanel
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+      {(variableView === 'state' || variableView === 'authoring') && !state.narrativeTimeline ? (
+        <p>{state.t('stateVariables.noTimeline')}</p>
+      ) : variableView === 'authoring' ? <StateAuthoringPanel
+        key={sourceCardId ?? 'none'}
+        card={state.narrativeTimeline && state.selectedCardDetails?.id === sourceCardId ? state.selectedCardDetails : undefined}
+        t={state.t}
+        onSaveCard={state.updateCardStateConfig}
+      /> : variableView === 'state' ? <StateVariablesPanel
         api={state.statesApi}
-        card={state.selectedCardDetails}
+        t={state.t}
+        canOpenTimelineSource={canOpenTimelineSource}
+        onOpenSource={openStateSource}
         refreshToken={state.lastRun?.runId}
         timelineTarget={state.narrativeTimeline && state.branch ? {
           scope: 'timeline', timelineId: state.narrativeTimeline.id, branchId: state.branch.id,
         } : undefined}
-        onUpdateCardConfig={state.updateCardStateConfig}
-      />
+        onStateMutated={state.refreshStates}
+      /> : <MacroInspectorPanel
+        key={`${state.macroTargetKey}:${variableView}`}
+        inspection={variableView === 'preview' ? state.macroInspection : state.buildMacroInspection}
+        loading={variableView === 'preview' && state.macroInspectionLoading}
+        error={variableView === 'preview' ? state.macroInspectionError : undefined}
+        selections={variableView === 'preview' ? state.macroSelections : {}}
+        onSelectSource={state.selectMacroSource}
+        onRefresh={state.refreshMacros}
+        readOnly={variableView === 'build'}
+        t={state.t}
+      />}
+      </div>
+      <div className="loom-page-tabs" role="tablist">
+        {(['state', 'authoring', 'preview', 'build'] as const).map(view => (
+          <button
+            key={view}
+            type="button"
+            role="tab"
+            aria-selected={variableView === view}
+            className={`loom-page-tab${variableView === view ? ' loom-page-tab-active' : ''}`}
+            onClick={() => setVariableView(view)}
+          >{view === 'state' ? 'State' : view === 'authoring' ? state.t('stateAuthoring.tab') : state.t(`macroInspector.${view}`)}</button>
+        ))}
+      </div>
+      </div>
     ),
     'text-transform': () => (
       <TextTransformPanel
@@ -467,6 +536,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
               })
             }}
             rendererHost={rendererHost}
+            macroContext={state.macroContext}
             t={state.t}
             timeline={state.narrativeNodes}
             timelineId={state.narrativeTimeline?.id}

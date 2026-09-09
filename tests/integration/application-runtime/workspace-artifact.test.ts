@@ -165,7 +165,7 @@ describe('application runtime card bundle integration', () => {
       schemaVersion: 2,
       artifactId: 'state-card-v2',
       displayName: 'State Card V2',
-      card: { name: 'State Card' },
+      card: { name: 'State Card', stateContributionIds: ['example.health.character-vitals'] },
       contextAssets: [],
       stateTemplates: [{
         id: 'template.person.v1', templateVersion: 1, label: 'Person',
@@ -181,7 +181,9 @@ describe('application runtime card bundle integration', () => {
       schemaVersion: 2,
       stateTemplates: artifact.stateTemplates,
       timelineStateBindings: artifact.timelineStateBindings,
+      card: { stateContributionIds: ['example.health.character-vitals'] },
     })
+    expect(imported.card.stateContributionIds).toEqual(['example.health.character-vitals'])
     await expect(documents.get('template.person.v1')).resolves.toMatchObject({ type: 'airp.stateDefinition' })
     await expect(runtime.importCardBundle({ artifact })).resolves.toBeDefined()
     await expect(runtime.importCardBundle({
@@ -198,6 +200,44 @@ describe('application runtime card bundle integration', () => {
         stateTemplates: [],
       },
     })).rejects.toThrow('template is missing')
+  })
+
+  it('exports inline templates with shared references and round-trips both sources', async () => {
+    const { runtime } = createTestRuntime()
+    await runtime.upsertStateDefinition({
+      definitionId: 'template.shared',
+      definition: {
+        kind: 'timeline-template',
+        templateVersion: 1,
+        schema: { type: 'object', properties: { gold: { type: 'number' } }, required: ['gold'] },
+        initial: { gold: 10 },
+      },
+    })
+    const card = await runtime.createCard({ name: 'Mixed State Card' })
+    await runtime.updateCard({
+      cardId: card.card.id,
+      stateTemplates: [{
+        id: 'template.inline', templateVersion: 1,
+        schema: { type: 'object', properties: { hp: { type: 'number' } }, required: ['hp'] },
+        initial: { hp: 100 },
+      }],
+      stateDefinitionIds: ['template.shared'],
+      timelineStateBindings: [
+        { path: 'hero', templateId: 'template.inline', templateVersion: 1 },
+        { path: 'wallet', templateId: 'template.shared', templateVersion: 1 },
+      ],
+    })
+
+    const exported = await runtime.exportCardBundle({ cardId: card.card.id })
+    expect(exported.artifact.stateTemplates).toEqual([
+      expect.objectContaining({ id: 'template.inline', initial: { hp: 100 } }),
+      expect.objectContaining({ id: 'template.shared', initial: { gold: 10 } }),
+    ])
+
+    const imported = await runtime.importCardBundle({ artifact: exported.artifact })
+    await expect(runtime.exportCardBundle({ cardId: imported.card.id })).resolves.toMatchObject({
+      artifact: { stateTemplates: exported.artifact.stateTemplates, timelineStateBindings: exported.artifact.timelineStateBindings },
+    })
   })
 
   it('creates, edits, binds, exports, unbinds, and deletes Portable Extension Payloads', async () => {

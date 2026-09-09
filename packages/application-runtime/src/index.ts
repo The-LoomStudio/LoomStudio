@@ -3,6 +3,7 @@ export { officialPromptResourceIds } from './prompt/prompt-resource-defaults.js'
 export * from './transforms/history-text.js'
 export { createApplicationRuntime } from './runtime/runtime.js'
 export {
+  expandTimelineStateBindings,
   materializeTimelineState,
   StateDefinitionError,
   toStateDefinitionEntry,
@@ -10,6 +11,17 @@ export {
   validateStateValue,
   validateTimelineStateBinding,
 } from './state/state-definition.js'
+export {
+  createCardStateContribution,
+  composeStateContributions,
+  createStateArtifact,
+  materializeStateContribution,
+  parseStateArtifact,
+  StateContributionError,
+  validateStateContribution,
+} from './state/state-contribution.js'
+export { createStateContributionRegistry } from './state/state-contribution-registry.js'
+export type { StateContributionRegistry, StateContributionSource } from './state/state-contribution-registry.js'
 export { composeAgentTurnPrompt } from './agents/agent-turn.js'
 export {
   exportCardArtifact,
@@ -32,6 +44,8 @@ export {
   buildOpenAIChatPayload,
 } from './providers/provider-payload.js'
 export { createAgentToolRegistry } from './agents/tool-registry.js'
+export { createMacroProviderRegistry } from './prompt/macro-provider-registry.js'
+export type { MacroProviderRegistry, MacroStaticSource } from './prompt/macro-provider-registry.js'
 export {
   createOfficialAgentToolRegistry,
   createPromptToolExecutionScope,

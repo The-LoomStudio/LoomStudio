@@ -1,6 +1,45 @@
 import { randomUUID } from 'node:crypto'
 
 export type { AssistantChatMessage, ChatMessage, ChatToolCall } from './chat.js'
+export type {
+  StateArtifact,
+  StateComponentTemplate,
+  StateContribution,
+  StateEntityId,
+  StateEntityRefAnnotation,
+  StateEntityType,
+  TimelineComponentMount,
+  TimelineStateBinding,
+} from './state-contribution.js'
+export type {
+  MacroCandidate,
+  MacroInspection,
+  MacroInspectionEntry,
+  MacroProviderContext,
+  MacroProviderDefinition,
+  MacroRenderContext,
+  MacroRenderTrace,
+  MacroSelectionMap,
+  MacroSourceKind,
+  VariableDiagnostic,
+  VariableRenderContext,
+  VariableRenderTrace,
+  VariableReadTrace,
+  VariableSnapshot,
+} from './macros.js'
+export {
+  builtinMacroAliases,
+  canonicalMacroName,
+  cloneMacroInspection,
+  cloneVariableSnapshot,
+  cloneVariableRenderTrace,
+  createVariableRenderContext,
+  isJsonScalar,
+  isValidMacroName,
+  isReservedMacroName,
+  macroNamePattern,
+  renderVariableMacros,
+} from './macros.js'
 
 export type JsonPrimitive = null | boolean | number | string
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue }

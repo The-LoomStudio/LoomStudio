@@ -20,6 +20,10 @@ export function createExtensionHostHarness(options: {
   assetScratchRoot?: string
   aiCapabilities?: AiGatewayCapabilityRegistry
   aiGateway?: ProfiledAiGateway
+  registerMacroProvider?: ExtensionHostOptions['registerMacroProvider']
+  registerStateContribution?: ExtensionHostOptions['registerStateContribution']
+  readState?: ExtensionHostOptions['readState']
+  writeState?: ExtensionHostOptions['writeState']
 } = {}) {
   const diagnostics = createInMemoryDiagnosticsRegistry()
   const documents = createInMemoryDocumentStore()
@@ -40,6 +44,10 @@ export function createExtensionHostHarness(options: {
     assetScratchRoot: options.assetScratchRoot,
     aiCapabilities: options.aiCapabilities,
     aiGateway: options.aiGateway,
+    registerMacroProvider: options.registerMacroProvider,
+    registerStateContribution: options.registerStateContribution,
+    readState: options.readState,
+    writeState: options.writeState,
     callRpc: (method: string, params?: unknown, context?: unknown) => kernel.callRpc(method, params as never, context as never),
     registerRpc: (name: string, ownerPackageId: string, ownerModuleId: string, handler: (...args: unknown[]) => unknown, ownerInstanceId?: string) => {
       const handle = kernel.registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler as never, ownerInstanceId)

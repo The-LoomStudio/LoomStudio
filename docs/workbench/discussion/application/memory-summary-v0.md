@@ -3,6 +3,8 @@
 > **状态**：Open Design  
 > **主题**：Memory 和 Summary 作为 Agent 的写操作，伴随截断以前的内容。
 
+> **2026-09-09 边界更新**：本文“存储在 Setting Layer”及专用 Memory Tool 是旧候选，不是正式合同。当前不预设独立 Memory Store，也不预设所有记忆必存 Setting；先按数据用途、程序消费与分支生命周期判断，见 [数据能力与运行内容](data-capabilities-and-runtime-content.md)。下文保留候选细节，不作为实施授权。
+
 ---
 
 ## 1. 核心判断

@@ -8,6 +8,7 @@ import { listDocuments, readDocument, writeDocument } from '../foundation/docume
 import { executeDocumentMutation } from '../foundation/mutation.js'
 import {
   normalizeCardContent,
+  normalizeMacros,
   normalizeCardMedia,
   normalizeOpening,
   normalizeOptionalString,
@@ -22,7 +23,11 @@ import {
   isCardBundleArtifact,
   type CardBundleArtifact,
 } from '../cards/workspace.js'
-import { validateTimelineStateBinding } from '../state/state-definition.js'
+import {
+  validateStateDefinitionDraft,
+  validateTimelineStateBinding,
+} from '../state/state-definition.js'
+import { createCardStateContribution, materializeStateContribution } from '../state/state-contribution.js'
 import { readTimelineRuntimeContext, timelineRuntimeContextId } from '../narrative/timeline-runtime-context.js'
 import type {
   CardMediaRefs,
@@ -82,6 +87,7 @@ export function createCardsRuntimeMethods(ctx: ApplicationRuntimeContext) {
             preset: normalizePreset(input.preset),
             opening: normalizeOpening(input.opening),
             settingLayer: normalizeSettingLayer(input.settingLayer, input.setting),
+            ...(input.macros !== undefined ? { macros: normalizeMacros(input.macros, 'Card') } : {}),
             createdAt: timestamp,
             updatedAt: timestamp,
           },
@@ -118,25 +124,70 @@ export function createCardsRuntimeMethods(ctx: ApplicationRuntimeContext) {
     },
 
     updateCard: async (input: UpdateCardInput, requestContext?: RuntimeRequestContext): Promise<UpdateCardResult> => {
+      if (input.expectedVersion !== undefined
+        && (!Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1)) {
+        throw new Error('updateCard expectedVersion must be a positive integer')
+      }
       if (input.name !== undefined && input.name.trim().length === 0) {
         throw new Error('updateCard name cannot be empty')
       }
       await assertCardMedia(ctx, input.media)
       const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.updateCard', async documents => {
         const existing = await readDocument<CardSourceContent>(documents, input.cardId, applicationDocumentTypes.cardSource)
+        const stateTemplates = input.stateTemplates ?? existing.content.stateTemplates ?? []
         const stateDefinitionIds = input.stateDefinitionIds ?? existing.content.stateDefinitionIds ?? []
+        const stateEntityTypes = input.stateEntityTypes ?? existing.content.stateEntityTypes ?? []
+        const timelineStateEntities = input.timelineStateEntities ?? existing.content.timelineStateEntities ?? []
+        const timelineComponentMounts = input.timelineComponentMounts ?? existing.content.timelineComponentMounts ?? []
+        const stateContributionIds = input.stateContributionIds ?? existing.content.stateContributionIds ?? []
         const timelineStateBindings = input.timelineStateBindings ?? existing.content.timelineStateBindings ?? []
         if (new Set(stateDefinitionIds).size !== stateDefinitionIds.length) throw new Error('Duplicate State Definition id')
+        if (new Set(stateContributionIds).size !== stateContributionIds.length) throw new Error('Duplicate State contribution id')
+
+        const availableTemplates = new Map<string, Extract<StateDefinitionDraft, { kind: 'timeline-template' }>>()
+        for (const template of stateTemplates) {
+          if (!template.id.trim()) throw new Error('State template id is required')
+          if (availableTemplates.has(template.id)) throw new Error(`Duplicate State template id: ${template.id}`)
+          const definition = {
+            kind: 'timeline-template',
+            templateVersion: template.templateVersion,
+            schema: template.schema,
+            initial: template.initial,
+            ...(template.componentKey !== undefined ? { componentKey: template.componentKey } : {}),
+            ...(template.targetEntityTypeIds !== undefined ? { targetEntityTypeIds: [...template.targetEntityTypeIds] } : {}),
+            ...(template.label !== undefined ? { label: template.label } : {}),
+          } as const
+          validateStateDefinitionDraft(definition)
+          availableTemplates.set(template.id, definition)
+        }
+
         for (const definitionId of stateDefinitionIds) {
+          if (availableTemplates.has(definitionId)) continue
           const definition = await readDocument<StateDefinitionContent>(documents, definitionId, applicationDocumentTypes.stateDefinition)
           if (definition.content.kind !== 'timeline-template') throw new Error(`Card State Definition is not a timeline template: ${definitionId}`)
+          availableTemplates.set(definitionId, definition.content)
         }
+
         for (const binding of timelineStateBindings) {
           validateTimelineStateBinding(binding)
-          if (!stateDefinitionIds.includes(binding.templateId)) {
+          const template = availableTemplates.get(binding.templateId)
+          if (!template) {
             throw new Error(`Timeline State Binding template is not mounted on Card: ${binding.templateId}`)
           }
+          if (template.templateVersion !== binding.templateVersion) {
+            throw new Error(`Timeline State Binding template version mismatch: ${binding.templateId}`)
+          }
         }
+        materializeStateContribution(createCardStateContribution(existing.id, {
+          ...existing.content,
+          stateTemplates,
+          stateDefinitionIds,
+          stateEntityTypes,
+          timelineStateEntities,
+          timelineComponentMounts,
+          stateContributionIds,
+          timelineStateBindings,
+        }, availableTemplates))
         const updated = await writeDocument<CardSourceContent>(documents, {
           id: existing.id,
           type: applicationDocumentTypes.cardSource,
@@ -149,11 +200,17 @@ export function createCardsRuntimeMethods(ctx: ApplicationRuntimeContext) {
             ...(input.opening !== undefined ? { opening: normalizeOpening(input.opening) } : {}),
             ...(input.settingLayer !== undefined ? { settingLayer: normalizeSettingLayer(input.settingLayer, undefined) } : {}),
             ...(input.media !== undefined ? { media: normalizeCardMedia(input.media) } : {}),
+            ...(input.stateTemplates !== undefined ? { stateTemplates: structuredClone(input.stateTemplates) } : {}),
             ...(input.stateDefinitionIds !== undefined ? { stateDefinitionIds: [...input.stateDefinitionIds] } : {}),
+            ...(input.stateEntityTypes !== undefined ? { stateEntityTypes: structuredClone(input.stateEntityTypes) } : {}),
+            ...(input.timelineStateEntities !== undefined ? { timelineStateEntities: structuredClone(input.timelineStateEntities) } : {}),
+            ...(input.timelineComponentMounts !== undefined ? { timelineComponentMounts: structuredClone(input.timelineComponentMounts) } : {}),
+            ...(input.stateContributionIds !== undefined ? { stateContributionIds: [...input.stateContributionIds] } : {}),
             ...(input.timelineStateBindings !== undefined ? { timelineStateBindings: structuredClone(input.timelineStateBindings) } : {}),
+            ...(input.macros !== undefined ? { macros: normalizeMacros(input.macros, 'Card') } : {}),
             updatedAt: ctx.now(),
           }),
-          expectedVersion: existing.version,
+          expectedVersion: input.expectedVersion ?? existing.version,
         })
 
         return toCardSource(updated)
@@ -471,12 +528,18 @@ async function buildTimelineRuntimeContextInternal(
   const textTransformRules = (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule))
     .filter(rule => rule.content.owner.kind === 'card' && rule.content.owner.cardId === input.card.id)
     .map(rule => ({ ...rule.content, id: rule.id, version: rule.version }))
+  const materializedState = materializeStateContribution(createCardStateContribution(input.card.id, input.cardContent, input.templates))
   return {
     timelineId: input.timelineId,
     sourceCardId: input.card.id,
     sourceCardVersion: input.card.version,
     fallbackUserName: input.cardContent.userName?.trim() || 'User',
-    stateBindings: (input.cardContent.timelineStateBindings ?? []).map(binding => {
+    stateEntityTypes: structuredClone(materializedState.entityTypes),
+    stateEntities: structuredClone(materializedState.entities),
+    stateComponents: structuredClone(materializedState.components),
+    stateReferences: structuredClone(materializedState.references),
+    stateContributionSources: [],
+    stateBindings: materializedState.bindings.map(binding => {
       const template = input.templates.get(binding.templateId)
       if (!template) throw new Error(`Timeline State template not found: ${binding.templateId}`)
       return { path: binding.path, schema: structuredClone(template.schema) }

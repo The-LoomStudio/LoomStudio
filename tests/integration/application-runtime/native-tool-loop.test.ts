@@ -98,6 +98,51 @@ describe('Native Function Tool Loop', () => {
     fixture.close()
   })
 
+  it('updates state in a single step using dot notation without target or revision lock', async () => {
+    const requests: unknown[][] = []
+    let target!: { scope: 'timeline'; timelineId: string; branchId: string }
+    const fixture = await createFixture({
+      agentTools: createOfficialAgentToolRegistry(),
+      tools: [officialUpdateStateTool],
+      invokeChat: async input => {
+        requests.push(input.request.messages)
+        if (requests.length === 1) {
+          // 模型直接发起增量修改：无需 target，无需 expectedRevisionId，纯属性点语法
+          return toolCall('update-gold-fast', 'update_state', {
+            increment: { 'characters.alice.gold': -3 },
+          })
+        }
+        return {
+          provider: 'test', model: 'test-model', text: '已消耗 3 枚金币。', finishReason: 'stop',
+          message: { role: 'assistant', content: '已消耗 3 枚金币。' },
+        }
+      },
+    })
+    const card = await fixture.runtime.importCardBundle({ artifact: statefulCardArtifact() })
+    const timeline = await fixture.runtime.createNarrativeTimeline({ cardId: card.card.id })
+    target = { scope: 'timeline', timelineId: timeline.timeline.id, branchId: timeline.branch.id }
+
+    await fixture.runtime.invokeAgentTurn({
+      agentSessionId: fixture.sessionId,
+      input: '扣除爱丽丝 3 个金币。',
+      narrativeTarget: { ...target, commit: false },
+    })
+
+    expect(requests).toHaveLength(2)
+    await expect(fixture.runtime.getStateSnapshot({ target })).resolves.toMatchObject({
+      snapshot: {
+        value: {
+          characters: {
+            alice: {
+              gold: 7,
+            },
+          },
+        },
+      },
+    })
+    fixture.close()
+  })
+
   it('keeps a committed State Tool mutation when a later Provider step fails', async () => {
     let target!: { scope: 'timeline'; timelineId: string; branchId: string }
     let initialRevisionId = ''

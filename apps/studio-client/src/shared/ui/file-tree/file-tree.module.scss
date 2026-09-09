@@ -27,6 +27,10 @@
   text-align: left;
   user-select: none;
   touch-action: none; /* Required for dnd-kit touch sensors */
+
+  &.noDrag {
+    --loom-tree-base-x: 18px;
+  }
 }
 
 .sectionRow {
@@ -364,6 +368,22 @@
   font-weight: var(--loom-font-weight-4, 500);
   user-select: none;
 }
+
+.trailing {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.expandedRow {
+  position: relative;
+  padding: 6px 14px 10px calc(var(--loom-tree-guide-x) + (var(--loom-tree-level) * var(--loom-tree-indent-step)) + 16px);
+  background: color-mix(in srgb, var(--loom-color-surface) 25%, transparent);
+  border-bottom: 1px solid var(--loom-color-divider, rgba(255, 255, 255, 0.05));
+}
+
 
 
 

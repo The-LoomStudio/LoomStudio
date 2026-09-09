@@ -9,6 +9,7 @@ export type CardBundleArtifact = {
   displayName: string
   description?: string
   card: {
+    macros?: Record<string, string>
     name: string
     userName?: string
     description?: string
@@ -70,6 +71,7 @@ export type MutatePortableExtensionPayloadResult = {
 }
 
 export type PromptResource = {
+  macros?: Record<string, string>
   id: string
   version: number
   resourceKind: 'preset' | 'setting' | 'logic' | 'runtime' | 'history' | 'prompt'
@@ -133,6 +135,7 @@ export type ReplacePresetToolMountsResult = {
 }
 
 export type PromptResourceArtifact = {
+  macros?: Record<string, string>
   format: 'loom.promptResource'
   schemaVersion: 1
   resourceKind: PromptResource['resourceKind']

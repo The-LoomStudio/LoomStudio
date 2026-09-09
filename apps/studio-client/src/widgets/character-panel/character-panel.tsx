@@ -9,6 +9,7 @@ import { useCharacterGalleryStore, type CharacterGroupFilter } from './character
 import { useCharacterProfileNavigation } from './use-character-profile-navigation.js'
 import { MasterDetailWorkbench } from '../../shared/ui/master-detail-workbench/master-detail-workbench.js'
 import type { PromptResource } from '../../entities/index.js'
+import { renderTemplateMacros, type MacroRenderContext } from '../../features/state-variables/model/macro-renderer.js'
 import styles from './character-panel.module.scss'
 
 type CharacterCardSummary = {
@@ -41,7 +42,7 @@ type CharacterPanelProps = {
   onPreviewCardDeletion(cardId: string): Promise<{ timelines: Array<{ id: string }> }>
   onSelectCard(cardId: string): void
   onOpenTimeline(timeline: NarrativeTimelineView): void
-  onOpenStatePanel(): void
+  onOpenStatePanel(cardId: string): void
   onOpenResourcePanel?: (resourceId?: string) => void
   resources?: PromptResource[]
   onUpdateCardMedia(cardId: string, target: MediaTarget, file: File): Promise<void>
@@ -51,6 +52,7 @@ type CharacterPanelProps = {
   routeCardId?: string
   timeline?: NarrativeTimelineView
   timelines: NarrativeTimelineView[]
+  macroContext?: MacroRenderContext
   t: Translator
 }
 
@@ -611,7 +613,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
                     <button
                       className={styles.resourceCard}
                       type="button"
-                      onClick={props.onOpenStatePanel}
+                      onClick={() => targetCardId && props.onOpenStatePanel(targetCardId)}
                     >
                       <div className={styles.resourceCardIcon}>
                         <Braces aria-hidden="true" />
@@ -638,7 +640,11 @@ export function CharacterPanel(props: CharacterPanelProps) {
                       </button>
                     </header>
                     <p className={openingExpanded ? styles.openingContentExpanded : styles.openingContentCollapsed}>
-                      {selected.opening.entries[0].content}
+                      {renderTemplateMacros(selected.opening.entries[0].content, {
+                        ...props.macroContext,
+                        card: selected,
+                        fallbackUserName: selected.userName || props.macroContext?.fallbackUserName,
+                      })}
                     </p>
                   </div>
                 ) : null}

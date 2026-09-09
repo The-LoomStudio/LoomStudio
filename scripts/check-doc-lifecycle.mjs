@@ -172,24 +172,64 @@ for (const workbenchFile of activeWorkbenchFiles) {
 
 const plansRoot = path.join(workbenchRoot, 'plans')
 const plansReadme = path.join(plansRoot, 'README.md')
-const indexedPlans = new Set(resolveMarkdownTargets(plansReadme))
-const topLevelPlans = readdirSync(plansRoot, { withFileTypes: true })
-  .filter(
-    (entry) =>
-      entry.isFile() &&
-      entry.name.endsWith('.md') &&
-      entry.name !== 'README.md',
-  )
-  .map((entry) => path.join(plansRoot, entry.name))
+const planFiles = markdownFiles.filter(
+  (file) =>
+    file.startsWith(`${plansRoot}${path.sep}`) &&
+    path.basename(file) !== 'README.md',
+)
+const planIndexFiles = markdownFiles.filter(
+  (file) =>
+    file.startsWith(`${plansRoot}${path.sep}`) &&
+    path.basename(file) === 'README.md',
+)
+const reachablePlanFiles = new Set([plansReadme])
+const pendingPlanIndexes = [plansReadme]
 
-for (const planFile of topLevelPlans) {
-  if (!indexedPlans.has(planFile)) {
+while (pendingPlanIndexes.length > 0) {
+  const sourceFile = pendingPlanIndexes.shift()
+
+  for (const targetFile of resolveMarkdownTargets(sourceFile)) {
+    if (
+      targetFile.startsWith(`${plansRoot}${path.sep}`) &&
+      !reachablePlanFiles.has(targetFile)
+    ) {
+      reachablePlanFiles.add(targetFile)
+      if (planIndexFiles.includes(targetFile)) {
+        pendingPlanIndexes.push(targetFile)
+      }
+    }
+  }
+}
+
+for (const planFile of planFiles) {
+  const parentReadme = path.join(path.dirname(planFile), 'README.md')
+
+  if (!existsSync(parentReadme)) {
     addProblem(
       planFile,
-      'top-level active Plan is missing from plans/README.md',
+      'Plan directory must provide a README.md index',
+    )
+    continue
+  }
+
+  if (!resolveMarkdownTargets(parentReadme).includes(planFile)) {
+    addProblem(
+      planFile,
+      `Plan is missing from its directory index: ${relativePath(parentReadme)}`,
+    )
+  }
+
+  if (!reachablePlanFiles.has(planFile)) {
+    addProblem(
+      planFile,
+      'Plan is not reachable from plans/README.md through nested Plan indexes',
     )
   }
 }
+
+const topLevelPlans = planFiles.filter(
+  (file) => path.dirname(file) === plansRoot,
+)
 
 const archivePlansReadme = path.join(archiveRoot, 'plans', 'README.md')
 const indexedArchivePlans = new Set(resolveMarkdownTargets(archivePlansReadme))
@@ -298,6 +338,6 @@ if (problems.length > 0) {
   process.exitCode = 1
 } else {
   console.log(
-    `Checked documentation lifecycle: ${topLevelPlans.length} active Plans indexed, ${activeWorkbenchFiles.length} active Workbench documents classified and reachable from ${workbenchIndexFiles.length} indexes, ${archivePlanFiles.length} archived Plans indexed, ${governedArchiveFiles.length} Archive documents classified, and ${adrFiles.length} ADR statuses aligned.`,
+    `Checked documentation lifecycle: ${topLevelPlans.length} top-level Plans and ${planFiles.length - topLevelPlans.length} nested Plans indexed, ${activeWorkbenchFiles.length} active Workbench documents classified and reachable from ${workbenchIndexFiles.length} indexes, ${archivePlanFiles.length} archived Plans indexed, ${governedArchiveFiles.length} Archive documents classified, and ${adrFiles.length} ADR statuses aligned.`,
   )
 }

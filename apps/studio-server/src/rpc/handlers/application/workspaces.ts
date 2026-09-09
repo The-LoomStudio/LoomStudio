@@ -90,6 +90,13 @@ export async function handleWorkspacesRpc(
         resourceId: readString(params, 'resourceId'),
       }) as unknown as JsonValue
 
+    case 'application.updatePromptResourceMacros':
+      return await runtime.updatePromptResourceMacros({
+        resourceId: readString(params, 'resourceId'),
+        expectedVersion: readRequiredNumber(params, 'expectedVersion'),
+        macros: readRequiredStringRecord(params, 'macros'),
+      }, context) as unknown as JsonValue
+
     case 'application.listSettingMounts':
       return await runtime.listSettingMounts({
         source: readOptionalSettingMountSource(params, 'source'),
@@ -152,6 +159,18 @@ function readRequiredStringArray(params: JsonValue | undefined, key: string): st
     throw new Error(`Expected string array param: ${key}`)
   }
   return params[key]
+}
+
+function readRequiredNumber(params: JsonValue | undefined, key: string): number {
+  const value = isRecord(params) ? params[key] : undefined
+  if (typeof value !== 'number' || !Number.isSafeInteger(value)) throw new Error(`Expected integer param: ${key}`)
+  return value
+}
+
+function readRequiredStringRecord(params: JsonValue | undefined, key: string): Record<string, string> {
+  const value = isRecord(params) ? params[key] : undefined
+  if (!isRecord(value) || !Object.values(value).every(item => typeof item === 'string')) throw new Error(`Expected string record param: ${key}`)
+  return value as Record<string, string>
 }
 
 function readOptionalSettingMountSource(params: JsonValue | undefined, key: string): SettingMountSource | undefined {

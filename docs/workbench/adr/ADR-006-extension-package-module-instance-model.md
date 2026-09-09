@@ -1,11 +1,12 @@
 # ADR-006: Extension Package / Module / Instance 模型
 
-- **Status**: Accepted
+- **Status**: Accepted / Implemented
 - **Date**: 2026-08-14
 - **Supersedes**: [`ADR-002-extension-manifest-and-registration-model.md`](ADR-002-extension-manifest-and-registration-model.md)
+- **Current authority**: [`docs/architecture/extensions/`](../../architecture/extensions/) 与 [`docs/architecture/extensions/client-renderer-host.md`](../../architecture/extensions/client-renderer-host.md)
 - **Related**:
-  - [`../plans/extension-package-module-foundation-plan.md`](../../archive/plans/extension-package-module-foundation-plan.md)
-  - [`../discussion/extensions/studio-extension-manifest-architecture.md`](../../archive/discussion/extensions/studio-extension-manifest-architecture.md)
+  - [`extension-package-module-foundation-plan.md`](../../archive/plans/extension-package-module-foundation-plan.md)
+  - [`studio-extension-manifest-architecture.md`](../../archive/discussion/extensions/studio-extension-manifest-architecture.md)
 
 ## Context
 
@@ -21,7 +22,7 @@ Extension 使用三层身份：
 
 Manifest 升级为 v2：Package 顶层可以携带声明式 `contributes`，`modules[]` 可以为空；Module 声明 `runtime`、`entry`、`capabilities` 与 runtime `contributes`。
 
-Server Manager 只编排 Server Module；Client Module 当前进入同一 Catalog 和 desired state，但真实 Instance 属于未来 Client Host。Module 独立启停、grant 和 reload，同包 sibling 不继承权限。
+Server Manager 只编排 Server Module；Client Module 进入同一 Catalog 和 desired state，由已实现的 Client Host 独立 reconcile 真实 Instance。Module 独立启停、grant 和 reload，同包 sibling 不继承权限。
 
 RPC/Event 的公开名称继续使用 Package namespace；Registry、Logger、Diagnostic 与 Introspection 同时记录 Package、Module、Instance owner。Extension-owned Document 继续保持 Package 级归属，现有 `ownerExtensionId` 字段暂不迁移数据库语义。
 
@@ -34,4 +35,4 @@ Server Host 默认只允许 Module 操作自己声明、且归当前 Package 所
 - 一个 Package 可以拥有零个或多个 Server/Client Module，也可以只携带资源；
 - Package source conflict 与资源 provenance 保持稳定，运行生命周期不再被 Package 粗粒度绑定；
 - 状态与授权以 `packageId + moduleId` 持久化，旧 Manifest v1 和旧管理 RPC 不继续双轨维护；
-- Client Host、依赖图、加载顺序、Marketplace、安装器和进程隔离必须在后续独立设计，不塞入当前 Server 基座。
+- Client Host、Package 安装、Module reconcile 与 Renderer 生命周期已在当前架构中落地；依赖图、Marketplace、在线更新和进程隔离仍是后续独立设计，不塞入当前 Server 基座。

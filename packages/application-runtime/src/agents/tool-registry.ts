@@ -128,6 +128,7 @@ export type ToolContextItem = {
 export type ToolExecutionScope = {
   context: readonly ToolContextItem[]
   state?: {
+    defaultTarget?: { scope: 'global' } | { scope: 'timeline'; timelineId: string; branchId: string }
     canAccess(target: { scope: 'global' } | { scope: 'timeline'; timelineId: string; branchId: string }): boolean
     read(target: { scope: 'global' } | { scope: 'timeline'; timelineId: string; branchId: string }): Promise<{
       revisionId: string

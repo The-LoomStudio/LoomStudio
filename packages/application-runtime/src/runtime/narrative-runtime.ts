@@ -4,12 +4,14 @@ import type { ApplicationRuntimeContext } from '../foundation/application-contex
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments, readDocument, writeDocument } from '../foundation/document-store.js'
 import { normalizeCardContent, readOpeningEntries } from '../cards/card.js'
-import { materializeTimelineState } from '../state/state-definition.js'
+import { composeStateContributions, createCardStateContribution, materializeStateContribution } from '../state/state-contribution.js'
+import type { StateContributionSource } from '../state/state-contribution-registry.js'
 import { createVariableRenderContext, type VariableRenderContext } from '../prompt/variables.js'
 import { timelineRuntimeContextId } from '../narrative/timeline-runtime-context.js'
 import type { NarrativePage } from '@loom-studio/narrative-store'
 import type {
   CardSourceContent,
+  MaterializedStateContribution,
   CreateNarrativeTimelineInput,
   CreateNarrativeTimelineResult,
   DeleteNarrativeTimelineInput,
@@ -128,17 +130,51 @@ export async function createTimelineFromCard(
   const card = await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
   const cardContent = normalizeCardContent(card.content)
   const templates = new Map<string, Extract<StateDefinitionDraft, { kind: 'timeline-template' }>>()
-  for (const definitionId of cardContent.stateDefinitionIds ?? []) {
-    const definition = await readDocument<StateDefinitionContent>(ctx.documents, definitionId, applicationDocumentTypes.stateDefinition)
-    if (definition.content.kind !== 'timeline-template') {
-      throw new Error(`Card State Definition is not a timeline template: ${definitionId}`)
-    }
-    templates.set(definition.id, definition.content)
+  for (const template of cardContent.stateTemplates ?? []) {
+    templates.set(template.id, {
+      kind: 'timeline-template',
+      templateVersion: template.templateVersion,
+      schema: template.schema,
+      initial: template.initial,
+      ...(template.componentKey !== undefined ? { componentKey: template.componentKey } : {}),
+      ...(template.targetEntityTypeIds !== undefined ? { targetEntityTypeIds: [...template.targetEntityTypeIds] } : {}),
+      ...(template.label !== undefined ? { label: template.label } : {}),
+    })
   }
-  const initialState = materializeTimelineState({
-    bindings: cardContent.timelineStateBindings ?? [],
-    templates,
+  for (const definitionId of cardContent.stateDefinitionIds ?? []) {
+    if (templates.has(definitionId)) continue
+    try {
+      const definition = await readDocument<StateDefinitionContent>(ctx.documents, definitionId, applicationDocumentTypes.stateDefinition)
+      if (definition.content.kind === 'timeline-template') {
+        templates.set(definition.id, definition.content)
+      }
+    } catch {
+      // Global definition may be omitted if template is self-contained
+    }
+  }
+  const contributionSources = (cardContent.stateContributionIds ?? []).map(contributionId => {
+    const source = ctx.stateContributions.get(contributionId)
+    if (!source) throw new Error(`Card State contribution is not registered: ${contributionId}`)
+    return source
   })
+  const composedContribution = composeStateContributions(`timeline:${card.id}`, [
+    createCardStateContribution(card.id, cardContent, templates),
+    ...contributionSources.map(source => source.contribution),
+  ])
+  templates.clear()
+  for (const template of composedContribution.templates) {
+    templates.set(template.id, {
+      kind: 'timeline-template',
+      templateVersion: template.templateVersion,
+      schema: template.schema,
+      initial: template.initial,
+      ...(template.componentKey !== undefined ? { componentKey: template.componentKey } : {}),
+      ...(template.targetEntityTypeIds !== undefined ? { targetEntityTypeIds: [...template.targetEntityTypeIds] } : {}),
+      ...(template.label !== undefined ? { label: template.label } : {}),
+    })
+  }
+  const materializedState = materializeStateContribution(composedContribution)
+  const initialState = materializedState.snapshot
   const timelineId = ctx.createId('timeline')
   const branchId = ctx.createId('branch')
   const stateScopeId = ctx.createId('state-scope')
@@ -148,8 +184,10 @@ export async function createTimelineFromCard(
     card,
     cardContent,
     templates,
+    materializedState,
+    contributionSources,
   })
-  const variables = await readAgentTurnVariables(ctx, runtimeContext.fallbackUserName, initialState)
+  const variables = await readAgentTurnVariables(ctx, runtimeContext.fallbackUserName, initialState, cardContent.name)
   const openingEntries = readOpeningEntries(cardContent, variables)
   const transaction = await ctx.dataEngine.transact(
     narrativeWriteContext(requestContext, reason),
@@ -192,6 +230,7 @@ export async function readAgentTurnVariables(
   ctx: ApplicationRuntimeContext,
   fallbackUserName: string | undefined,
   timeline?: JsonObject,
+  characterName?: string,
 ): Promise<VariableRenderContext> {
   const globalSnapshot = await ctx.states.getGlobalSnapshot()
   const global = structuredClone(globalSnapshot?.revision.snapshot ?? {}) as JsonObject
@@ -209,6 +248,10 @@ export async function readAgentTurnVariables(
       global: {
         time: { now: ctx.now() },
       },
+      ...(characterName ? {
+        char: { name: characterName },
+        bot: { name: characterName },
+      } : {}),
     },
   })
 }
@@ -229,6 +272,8 @@ export async function buildTimelineRuntimeContext(
     card: DocumentRecord<CardSourceContent>
     cardContent: CardSourceContent
     templates: Map<string, Extract<StateDefinitionDraft, { kind: 'timeline-template' }>>
+    materializedState: MaterializedStateContribution
+    contributionSources: StateContributionSource[]
   },
 ): Promise<TimelineRuntimeContextContent> {
   const textTransformRules = (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule))
@@ -238,8 +283,20 @@ export async function buildTimelineRuntimeContext(
     timelineId: input.timelineId,
     sourceCardId: input.card.id,
     sourceCardVersion: input.card.version,
+    cardName: input.cardContent.name,
     fallbackUserName: input.cardContent.userName?.trim() || 'User',
-    stateBindings: (input.cardContent.timelineStateBindings ?? []).map(binding => {
+    ...(input.cardContent.macros !== undefined ? { macros: structuredClone(input.cardContent.macros) } : {}),
+    stateEntityTypes: structuredClone(input.materializedState.entityTypes),
+    stateEntities: structuredClone(input.materializedState.entities),
+    stateComponents: structuredClone(input.materializedState.components),
+    stateReferences: structuredClone(input.materializedState.references),
+    stateContributionSources: input.contributionSources.map(source => ({
+      contributionId: source.contributionId,
+      packageId: source.packageId,
+      moduleId: source.moduleId,
+      packageVersion: source.packageVersion,
+    })),
+    stateBindings: input.materializedState.bindings.map(binding => {
       const template = input.templates.get(binding.templateId)
       if (!template) throw new Error(`Timeline State template not found: ${binding.templateId}`)
       return { path: binding.path, schema: structuredClone(template.schema) }

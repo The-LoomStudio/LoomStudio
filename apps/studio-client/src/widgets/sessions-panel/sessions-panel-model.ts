@@ -155,4 +155,56 @@ export function toggleSelectAllSessions(
   return next
 }
 
+export function sortTimelines<T extends { updatedAt: string }>(
+  timelines: T[],
+  sortOrder: 'desc' | 'asc',
+): T[] {
+  return [...timelines].sort((a, b) => {
+    const diff = b.updatedAt.localeCompare(a.updatedAt)
+    return sortOrder === 'desc' ? diff : -diff
+  })
+}
+
+export function sortSessions<T extends { updatedAt: string }>(
+  sessions: T[],
+  sortOrder: 'desc' | 'asc',
+): T[] {
+  return [...sessions].sort((a, b) => {
+    const diff = b.updatedAt.localeCompare(a.updatedAt)
+    return sortOrder === 'desc' ? diff : -diff
+  })
+}
+
+export function getExpandableTimelineIds(
+  timelineIds: string[],
+  sessionsByTimelineId: Map<string, { length: number }>,
+): string[] {
+  return timelineIds.filter(id => {
+    const sessions = sessionsByTimelineId.get(id)
+    return sessions && sessions.length > 0
+  })
+}
+
+export function areAllExpandablesExpanded(
+  expandableIds: string[],
+  expandedTimelines: Set<string>,
+): boolean {
+  if (expandableIds.length === 0) return false
+  return expandableIds.every(id => expandedTimelines.has(id))
+}
+
+export function toggleExpandAll(
+  expandableIds: string[],
+  expandedTimelines: Set<string>,
+): Set<string> {
+  const isAllExpanded = areAllExpandablesExpanded(expandableIds, expandedTimelines)
+  const next = new Set(expandedTimelines)
+  if (isAllExpanded) {
+    expandableIds.forEach(id => next.delete(id))
+  } else {
+    expandableIds.forEach(id => next.add(id))
+  }
+  return next
+}
+
 

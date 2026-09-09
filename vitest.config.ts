@@ -41,6 +41,7 @@ export default defineConfig({
       '@loom-studio/state-store': resolvePath('./packages/state-store/src/index.ts'),
       '@loom-studio/prompt-resource-store': resolvePath('./packages/prompt-resource-store/src/index.ts'),
       '@loom-studio/loom-runner': resolvePath('./packages/loom-runner/src/index.ts'),
+      '@loom-studio/shared/macros': resolvePath('./packages/shared/src/macros.ts'),
       '@loom-studio/shared': resolvePath('./packages/shared/src/index.ts'),
       '@loom-studio/trace-audit': resolvePath('./packages/trace-audit/src/index.ts'),
       '@loom-studio/transport': resolvePath('./packages/transport/src/index.ts'),

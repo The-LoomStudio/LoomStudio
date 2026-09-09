@@ -2,10 +2,11 @@
 
 - **Status**: Superseded
 - **Date**: 2026-05-13
+- **Current authority**: [`ADR-006-extension-package-module-instance-model.md`](ADR-006-extension-package-module-instance-model.md) 与 [`docs/architecture/extensions/`](../../architecture/extensions/)；本文仅保留 Manifest v1 的历史决策，不回填 Manifest v2 实现细节。
 - **Related**:
   - [`ADR-006-extension-package-module-instance-model.md`](ADR-006-extension-package-module-instance-model.md)
-  - [`../05-extensions/studio-extension-manifest-architecture.md`](../../archive/discussion/extensions/studio-extension-manifest-architecture.md)
-  - [`../06-engineering/loom-studio-mvp-engineering.md`](../../archive/discussion/loom-studio-mvp-engineering.md)
+  - [`studio-extension-manifest-architecture.md`](../../archive/discussion/extensions/studio-extension-manifest-architecture.md)
+  - [`loom-studio-mvp-engineering.md`](../../archive/discussion/loom-studio-mvp-engineering.md)
   - [`ADR-001-data-layer-workspace-sync.md`](ADR-001-data-layer-workspace-sync.md)
 
 ## Context

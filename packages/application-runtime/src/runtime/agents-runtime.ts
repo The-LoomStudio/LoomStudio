@@ -38,6 +38,7 @@ import type {
   GetAgentSessionResult,
   GetAgentTranscriptPageInput,
   HistorySource,
+  InspectMacrosInput,
   InvokeAgentTurnInput,
   InvokeAgentTurnResult,
   ListAgentProfilesInput,
@@ -74,6 +75,7 @@ import {
   tombstoneExtensionStorageScope,
 } from './context.js'
 import { readAgentTurnVariables, readLegacyCardUserName } from './narrative-runtime.js'
+import { inspectApplicationMacros, inspectPreparedMacros, variableContextFromInspection } from './macros-runtime.js'
 
 export function createAgentsRuntimeMethods(ctx: ApplicationRuntimeContext) {
   return {
@@ -235,6 +237,7 @@ export function createAgentsRuntimeMethods(ctx: ApplicationRuntimeContext) {
           messages: prepared.agentStepMessages,
           model: prepared.model,
         }),
+        macroInspection: prepared.macroInspection,
       }
     },
 
@@ -327,8 +330,11 @@ export function createAgentsRuntimeMethods(ctx: ApplicationRuntimeContext) {
         toolExposures: compiledToolSet.tools.map((tool) => tool.exposure),
         toolPromptBuildTrace: loop.toolPromptBuildTrace,
         mutation: { changesetId: narrative?.commit.changesetId ?? loop.changesetId },
+        macroInspection: prepared.macroInspection,
       }
     },
+
+    inspectMacros: (input: InspectMacrosInput) => inspectApplicationMacros(ctx, input),
 
     listAgentTools: async (): Promise<ListAgentToolsResult> => ({ tools: await listAgentToolEntries(ctx) }),
 
@@ -515,6 +521,7 @@ export async function prepareAgentTurn(
     input: string
     activationFacts?: ActivationFacts
     narrativeTarget?: { timelineId: string; branchId?: string; commit: boolean }
+    macroSelections?: import('@loom-studio/shared').MacroSelectionMap
   },
   mode: 'preview' | 'runtime',
   requestContext?: RuntimeRequestContext,
@@ -576,7 +583,19 @@ export async function prepareAgentTurn(
     timelineRuntimeContext?.fallbackUserName
       ?? await readLegacyCardUserName(ctx, narrativePage?.timeline.createdFrom?.cardId),
     timelineState?.value,
+    timelineRuntimeContext?.cardName,
   )
+  const macroInspection = await inspectPreparedMacros({
+    ctx,
+    variables,
+    cardId: timelineRuntimeContext?.sourceCardId,
+    presetId: preset.id,
+    timeline: timelineState?.value,
+    cardMacros: timelineRuntimeContext?.macros,
+    presetMacros: preset.macros,
+    macroSelections: input.macroSelections,
+  })
+  const inspectedVariables = variableContextFromInspection(macroInspection)
   try {
     const textRules = (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule)).map(document => toVersioned(document))
     const globalAndExtensionRules = textRules.filter(rule => rule.owner.kind === 'workspace' || rule.owner.kind === 'extension' || rule.owner.kind === 'user-override')
@@ -589,13 +608,13 @@ export async function prepareAgentTurn(
       model: agentProfile.content.model,
       toolMounts,
       toolOverrides: agentProfile.content.toolOverrides ?? {},
-      variables,
+      variables: inspectedVariables,
       currentInput: input.input,
       activationFacts: input.activationFacts,
     })
     prompt = await composeAgentTurnPrompt({
       activationFacts: input.activationFacts,
-      variables,
+      variables: inspectedVariables,
       agentMessages: (preset.historyPolicy ?? 'persistent') === 'persistent'
         ? agentPage.entries
         : [],
@@ -616,6 +635,7 @@ export async function prepareAgentTurn(
       ? { scope: 'timeline' as const, timelineId: narrativePage.timeline.id, branchId: narrativePage.branch.id }
       : undefined
     prompt.toolExecutionScope.state = {
+      defaultTarget: allowedTimelineTarget ?? { scope: 'global' as const },
       canAccess: target => target.scope === 'global'
         || (allowedTimelineTarget !== undefined
           && target.timelineId === allowedTimelineTarget.timelineId
@@ -700,7 +720,8 @@ export async function prepareAgentTurn(
     narrativePage,
     narratives,
     prompt,
-    variables,
+    variables: inspectedVariables,
+    macroInspection,
     compiledToolSet,
     agentStepMessages: prompt.messages,
     runId,

@@ -108,6 +108,71 @@ export function StudioPage(props: StudioPageProps) {
 
 
 
+  const pointerDownOutsideRef = useRef(false)
+
+  useEffect(() => {
+    if (activePanel === null || dockPinned || isImmersive) return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null
+      if (!target) {
+        pointerDownOutsideRef.current = false
+        return
+      }
+
+      if (dockRef.current?.contains(target)) {
+        pointerDownOutsideRef.current = false
+        return
+      }
+
+      if (
+        (target as Element).closest?.(
+          '[data-radix-portal], [role="menu"], [role="dialog"], [role="alertdialog"], [data-radix-popper-content-wrapper], [data-radix-context-menu-content], [data-radix-dropdown-menu-content]'
+        )
+      ) {
+        pointerDownOutsideRef.current = false
+        return
+      }
+
+      if ((target as Element).closest?.(`.${styles.stageFloatingHeader}`)) {
+        pointerDownOutsideRef.current = false
+        return
+      }
+
+      pointerDownOutsideRef.current = true
+    }
+
+    const handleClick = (event: MouseEvent) => {
+      if (!pointerDownOutsideRef.current || windowResize.resizing) return
+
+      const target = event.target as Node | null
+      if (!target) return
+
+      if (dockRef.current?.contains(target)) return
+      if (
+        (target as Element).closest?.(
+          '[data-radix-portal], [role="menu"], [role="dialog"], [role="alertdialog"], [data-radix-popper-content-wrapper], [data-radix-context-menu-content], [data-radix-dropdown-menu-content]'
+        )
+      ) {
+        return
+      }
+      if ((target as Element).closest?.(`.${styles.stageFloatingHeader}`)) {
+        return
+      }
+
+      event.stopPropagation()
+      event.preventDefault()
+      closePanel()
+    }
+
+    window.addEventListener('pointerdown', handlePointerDown, true)
+    window.addEventListener('click', handleClick, true)
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown, true)
+      window.removeEventListener('click', handleClick, true)
+    }
+  }, [activePanel, dockPinned, isImmersive, windowResize.resizing, closePanel])
+
   useStudioShortcuts({
     activePanel,
     assetMetadataOpen,
@@ -307,11 +372,17 @@ export function StudioPage(props: StudioPageProps) {
           />
         </StudioPanelRight>
 
-        {activePanel === null && mobileDrawerOpen ? (
+        {isMobile && (activePanel !== null || mobileDrawerOpen) ? (
           <div
             className={styles.mobileBackdrop}
             aria-hidden="true"
-            onClick={() => setMobileDrawerOpen(false)}
+            onClick={() => {
+              if (activePanel !== null) {
+                closePanel()
+              } else if (mobileDrawerOpen) {
+                setMobileDrawerOpen(false)
+              }
+            }}
           />
         ) : null}
 

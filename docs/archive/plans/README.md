@@ -16,6 +16,8 @@
 
 ## Runtime、Session 与存储
 
+- [`application-runtime-modularization-plan.md`](./application-runtime-modularization-plan.md)
+- [`extension-data-and-portable-payload-foundation-plan.md`](./extension-data-and-portable-payload-foundation-plan.md)
 - [`agent-runtime-ai-sdk-phase-0-spike.md`](./agent-runtime-ai-sdk-phase-0-spike.md)
 - [`agent-session-chat-message-foundation-plan.md`](./agent-session-chat-message-foundation-plan.md)
 - [`agent-session-narrative-timeline-data-layer-plan.md`](./agent-session-narrative-timeline-data-layer-plan.md)
@@ -28,10 +30,12 @@
 - [`sqlite-data-engine-domain-stores-kernel-plan.md`](./sqlite-data-engine-domain-stores-kernel-plan.md)
 - [`variable-state-system-foundation-plan.md`](./variable-state-system-foundation-plan.md)
 - [`variable-state-system-implementation-plan.md`](./variable-state-system-implementation-plan.md)
+- [`state-entity-reference-v1-plan.md`](./state-entity-reference-v1-plan.md)
 - [`history-text-transform-and-rendering-plan.md`](./history-text-transform-and-rendering-plan.md)
 
 ## Extension、事件与工程里程碑
 
+- [`documentation-workflow-and-adr-refresh-plan.md`](./documentation-workflow-and-adr-refresh-plan.md)
 - [`event-system-extension-scope-plan.md`](./event-system-extension-scope-plan.md)
 - [`extension-package-module-foundation-plan.md`](./extension-package-module-foundation-plan.md)
 - [`server-extension-manager-mvp-plan.md`](./server-extension-manager-mvp-plan.md)

@@ -1,406 +1,403 @@
-import { useEffect, useState } from 'react'
-import { Code2, Database, FileCode, GitBranch, Globe, Plus, RefreshCw, Trash2, Wand2 } from 'lucide-react'
-import type { Card, StateDefinition, StateDefinitionDraft, StateSnapshot, StateTarget } from '../../../entities/index.js'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ChevronDown, ChevronUp, Clock, Code2, Copy, FileText, Globe, Layers, Maximize2, Minus, Plus, RefreshCw, Save } from 'lucide-react'
+import { toast } from 'sonner'
+import type { ClientJsonValue } from '@loom-studio/client-bridge'
+import type { StateSnapshot, StateTarget } from '../../../entities/index.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
+import type { Translator } from '../../../shared/i18n/index.js'
+import type { MenuAction } from '../../../shared/ui/menu-action.js'
+import { FileTree, type FileTreeNode } from '../../../shared/ui/file-tree/file-tree.js'
 import { MasterDetailWorkbench } from '../../../shared/ui/master-detail-workbench/master-detail-workbench.js'
 import styles from './state-variables-panel.module.scss'
-import { createSnapshotReplaceInput, parseCardStateConfig, toStateDefinitionDraft } from '../model/state-variable-editor.js'
+import { createBatchSetStatePropertiesInput, stateSnapshotToTreeNodes, type StateTreeNodeCapabilities } from '../model/state-variable-editor.js'
 
 type Props = {
   api: StudioApi['states']
-  card?: Card
   timelineTarget?: Extract<StateTarget, { scope: 'timeline' }>
   refreshToken?: string
-  onUpdateCardConfig(input: { stateDefinitionIds: string[]; timelineStateBindings: NonNullable<Card['timelineStateBindings']> }): Promise<void>
+  t: Translator
+  canOpenTimelineSource?: boolean
+  onOpenSource?(scope: 'global' | 'timeline'): void
+  onStateMutated?(): void | Promise<void>
 }
 
-type SelectedTarget =
-  | { kind: 'global' }
-  | { kind: 'timeline' }
-  | { kind: 'card' }
-  | { kind: 'definition'; id: string }
+type RuntimeScope = 'global' | 'timeline'
 
 export function StateVariablesPanel(props: Props) {
-  const [global, setGlobal] = useState<StateSnapshot>()
-  const [timeline, setTimeline] = useState<StateSnapshot>()
-  const [definitions, setDefinitions] = useState<StateDefinition[]>([])
-  const [selectedTarget, setSelectedTarget] = useState<SelectedTarget>({ kind: 'global' })
+  const [globalSnapshot, setGlobalSnapshot] = useState<StateSnapshot>()
+  const [timelineSnapshot, setTimelineSnapshot] = useState<StateSnapshot>()
+  const [scope, setScope] = useState<RuntimeScope>(props.timelineTarget ? 'timeline' : 'global')
   const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
-  const [definitionId, setDefinitionId] = useState('')
-  const [definitionText, setDefinitionText] = useState('')
-  const [globalText, setGlobalText] = useState('{}')
-  const [timelineText, setTimelineText] = useState('{}')
-  const [cardText, setCardText] = useState('{}')
+  const [editedProperties, setEditedProperties] = useState<Record<string, unknown>>({})
+  const [draftContextKey, setDraftContextKey] = useState('')
+  const [snapshotKey, setSnapshotKey] = useState('')
+  const [treeExpandedIds, setTreeExpandedIds] = useState<string[]>([])
+  const [expandedLongTextPaths, setExpandedLongTextPaths] = useState<Set<string>>(new Set())
   const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const requestIdRef = useRef(0)
+  const mountedRef = useRef(true)
+  const targetKey = `${props.timelineTarget?.timelineId ?? 'none'}:${props.timelineTarget?.branchId ?? 'none'}:${props.refreshToken ?? ''}`
+  const targetKeyRef = useRef(targetKey)
+  targetKeyRef.current = targetKey
+
+  const currentSnapshot = snapshotKey === targetKey
+    ? (scope === 'timeline' ? timelineSnapshot : globalSnapshot)
+    : undefined
+  const editContextKey = currentSnapshot
+    ? `${targetKey}:${scope}:${currentSnapshot.revisionId}`
+    : `${targetKey}:${scope}:loading`
+  const treeNodes = useMemo(
+    () => stateSnapshotToTreeNodes(currentSnapshot?.value),
+    [currentSnapshot?.value],
+  )
+  const dirtyCount = Object.keys(editedProperties).length
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      requestIdRef.current += 1
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!props.timelineTarget) setScope('global')
+  }, [props.timelineTarget])
+
+  useEffect(() => {
+    setDraftContextKey(editContextKey)
+    setEditedProperties({})
+  }, [editContextKey])
+
+  useEffect(() => {
+    if (treeNodes.length > 0 && treeExpandedIds.length === 0) {
+      setTreeExpandedIds(treeNodes.map(node => node.id))
+    }
+  }, [treeExpandedIds.length, treeNodes])
 
   async function refresh() {
+    const requestId = ++requestIdRef.current
+    const requestKey = targetKeyRef.current
+    const target = props.timelineTarget
     try {
-      const [globalResult, definitionResult, timelineResult] = await Promise.all([
+      const [globalResult, timelineResult] = await Promise.all([
         props.api.get({ scope: 'global' }),
-        props.api.listDefinitions(),
-        props.timelineTarget ? props.api.get(props.timelineTarget) : Promise.resolve(undefined),
+        target ? props.api.get(target) : Promise.resolve(undefined),
       ])
-      setGlobal(globalResult.snapshot)
-      setGlobalText(JSON.stringify(globalResult.snapshot.value, null, 2))
-      setDefinitions(definitionResult.definitions)
-      setTimeline(timelineResult?.snapshot)
-      setTimelineText(JSON.stringify(timelineResult?.snapshot.value ?? {}, null, 2))
-      setCardText(JSON.stringify({
-        stateDefinitionIds: props.card?.stateDefinitionIds ?? [],
-        timelineStateBindings: props.card?.timelineStateBindings ?? [],
-      }, null, 2))
+      if (!mountedRef.current || requestId !== requestIdRef.current || targetKeyRef.current !== requestKey) return
+      setGlobalSnapshot(globalResult.snapshot)
+      setTimelineSnapshot(timelineResult?.snapshot)
+      setSnapshotKey(requestKey)
       setError('')
     } catch (cause) {
-      setError(readError(cause))
+      if (mountedRef.current && requestId === requestIdRef.current && targetKeyRef.current === requestKey) {
+        setError(readError(cause))
+      }
     }
   }
 
-  useEffect(() => { void refresh() }, [props.card?.id, props.timelineTarget?.timelineId, props.timelineTarget?.branchId, props.refreshToken])
+  useEffect(() => {
+    setSnapshotKey('')
+    setGlobalSnapshot(undefined)
+    setTimelineSnapshot(undefined)
+    setDraftContextKey('')
+    setEditedProperties({})
+    void refresh()
+  }, [targetKey])
 
-  function selectDefinition(id: string) {
-    setDefinitionId(id)
-    setSelectedTarget({ kind: 'definition', id })
-    setMobilePane('detail')
-    const definition = definitions.find(item => item.id === id)
-    setDefinitionText(definition ? JSON.stringify(toStateDefinitionDraft(definition), null, 2) : '{\n  "name": "",\n  "kind": "object",\n  "initial": {},\n  "schema": {}\n}')
-  }
-
-  function startNewDefinition() {
-    const newId = `state-def-${Date.now().toString(36)}`
-    setDefinitionId(newId)
-    setSelectedTarget({ kind: 'definition', id: newId })
-    setMobilePane('detail')
-    setDefinitionText('{\n  "name": "New State Definition",\n  "kind": "object",\n  "initial": {},\n  "schema": {}\n}')
-  }
-
-  async function saveSnapshot(snapshot: StateSnapshot | undefined, text: string) {
-    if (!snapshot) return
+  async function saveAllDirtyProperties() {
+    const snapshot = currentSnapshot
+    const saveContextKey = draftContextKey
+    const saveTargetKey = targetKeyRef.current
+    const changes = editedProperties as Record<string, ClientJsonValue>
+    if (!snapshot || dirtyCount === 0 || saving) return
+    setSaving(true)
     try {
-      await props.api.apply(createSnapshotReplaceInput(snapshot, text))
+      await props.api.apply(createBatchSetStatePropertiesInput(snapshot.target, snapshot.revisionId, changes))
+      if (!mountedRef.current || targetKeyRef.current !== saveTargetKey || draftContextKey !== saveContextKey) return
+      setEditedProperties({})
+      toast.success(`${props.t('stateVariables.savedProperties')} ${Object.keys(changes).length}`)
       await refresh()
-    } catch (cause) { setError(readError(cause)) }
+      if (mountedRef.current && targetKeyRef.current === saveTargetKey) void props.onStateMutated?.()
+    } catch (cause) {
+      if (mountedRef.current && targetKeyRef.current === saveTargetKey) setError(readError(cause))
+    } finally {
+      if (mountedRef.current && targetKeyRef.current === saveTargetKey) setSaving(false)
+    }
   }
 
-  async function saveDefinition() {
-    try {
-      const existing = definitions.find(item => item.id === definitionId)
-      await props.api.upsertDefinition({
-        definitionId,
-        ...(existing ? { expectedVersion: existing.version } : {}),
-        definition: JSON.parse(definitionText) as StateDefinitionDraft,
+  function toggleExpanded(path: string) {
+    setExpandedLongTextPaths(previous => {
+      const next = new Set(previous)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }
+
+  function copyMacro(token: string) {
+    void navigator.clipboard.writeText(token).then(() => {
+      toast.success(`${props.t('stateVariables.copiedMacro')}: ${token}`)
+    })
+  }
+
+  function setProperty(path: string, value: unknown) {
+    setEditedProperties(previous => ({ ...previous, [path]: value }))
+  }
+
+  function renderTrailing(node: FileTreeNode) {
+    const capabilities = node.capabilities as StateTreeNodeCapabilities | undefined
+    if (!capabilities || node.container || node.kind === 'object') return null
+    const currentValue = editedProperties[capabilities.path] !== undefined
+      ? editedProperties[capabilities.path]
+      : capabilities.value
+
+    if (capabilities.type === 'number') {
+      const value = typeof currentValue === 'number' ? currentValue : 0
+      return (
+        <div className={styles.treeTrailingControl}>
+          <div className={styles.stepperContainer}>
+            <button
+              aria-label={props.t('stateVariables.decrease')}
+              className={styles.stepperBtn}
+              type="button"
+              onClick={() => setProperty(capabilities.path, value - 1)}
+            >
+              <Minus aria-hidden="true" size={12} />
+            </button>
+            <input
+              aria-label={capabilities.path}
+              className={styles.stepperInput}
+              type="number"
+              value={typeof currentValue === 'number' ? currentValue : ''}
+              onChange={event => setProperty(capabilities.path, event.target.value === '' ? 0 : Number(event.target.value))}
+              onKeyDown={event => { if (event.key === 'Enter') void saveAllDirtyProperties() }}
+            />
+            <button
+              aria-label={props.t('stateVariables.increase')}
+              className={styles.stepperBtn}
+              type="button"
+              onClick={() => setProperty(capabilities.path, value + 1)}
+            >
+              <Plus aria-hidden="true" size={12} />
+            </button>
+          </div>
+        </div>
+      )
+    }
+
+    if (capabilities.type === 'boolean') {
+      return (
+        <div className={styles.treeTrailingControl}>
+          <button
+            aria-checked={Boolean(currentValue)}
+            aria-label={capabilities.path}
+            className={styles.toggleBtn}
+            role="switch"
+            type="button"
+            onClick={() => setProperty(capabilities.path, !Boolean(currentValue))}
+          >
+            <span className={styles.toggleTrack}><span className={styles.toggleThumb} /></span>
+            <span>{Boolean(currentValue) ? 'true' : 'false'}</span>
+          </button>
+        </div>
+      )
+    }
+
+    if (capabilities.isLongText) {
+      const expanded = expandedLongTextPaths.has(capabilities.path)
+      return (
+        <div className={styles.treeTrailingControl}>
+          <span className={styles.treePreviewText} title={String(currentValue ?? '')}>
+            {String(currentValue ?? '').replace(/\n/g, ' ').slice(0, 24)}
+            {String(currentValue ?? '').length > 24 ? '…' : ''}
+          </span>
+          <button
+            aria-label={expanded ? props.t('stateVariables.collapseEditor') : props.t('stateVariables.expandEditor')}
+            className={styles.iconButton}
+            type="button"
+            onClick={() => toggleExpanded(capabilities.path)}
+          >
+            {expanded ? <ChevronUp aria-hidden="true" size={12} /> : <ChevronDown aria-hidden="true" size={12} />}
+            <span>{expanded ? props.t('stateVariables.collapse') : props.t('stateVariables.edit')}</span>
+          </button>
+        </div>
+      )
+    }
+
+    return (
+      <div className={styles.treeTrailingControl}>
+        <input
+          aria-label={capabilities.path}
+          className={styles.propertyTextInput}
+          type="text"
+          value={typeof currentValue === 'string' ? currentValue : String(currentValue ?? '')}
+          onChange={event => setProperty(capabilities.path, event.target.value)}
+          onKeyDown={event => { if (event.key === 'Enter') void saveAllDirtyProperties() }}
+        />
+      </div>
+    )
+  }
+
+  function renderExpandedRow(node: FileTreeNode) {
+    const capabilities = node.capabilities as StateTreeNodeCapabilities | undefined
+    if (!capabilities?.isLongText || !expandedLongTextPaths.has(capabilities.path)) return null
+    const currentValue = editedProperties[capabilities.path] !== undefined
+      ? editedProperties[capabilities.path]
+      : capabilities.value
+    return (
+      <div className={styles.treeLongTextDrawer}>
+        <textarea
+          aria-label={capabilities.path}
+          className={styles.treeLongTextarea}
+          rows={4}
+          value={typeof currentValue === 'string' ? currentValue : String(currentValue ?? '')}
+          onChange={event => setProperty(capabilities.path, event.target.value)}
+        />
+        <div className={styles.treeLongTextActions}>
+          <span className={styles.cardFooterMeta}>{props.t('stateVariables.macro')}: {capabilities.macroToken} · {String(currentValue ?? '').length}</span>
+          <button className={styles.iconButton} type="button" onClick={() => copyMacro(capabilities.macroToken)}>
+            <Copy aria-hidden="true" size={12} />
+            <span>{props.t('stateVariables.copyMacro')}</span>
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  function getActions(node: FileTreeNode): MenuAction[] {
+    const capabilities = node.capabilities as StateTreeNodeCapabilities | undefined
+    if (!capabilities) return []
+    const actions: MenuAction[] = [
+      {
+        id: 'copy-macro',
+        label: `${props.t('stateVariables.copyMacro')} (${capabilities.macroToken})`,
+        icon: <Copy aria-hidden="true" />,
+        onSelect: () => copyMacro(capabilities.macroToken),
+      },
+      {
+        id: 'copy-pointer',
+        label: `${props.t('stateVariables.copyPointer')} (${capabilities.path})`,
+        icon: <Code2 aria-hidden="true" />,
+        onSelect: () => void navigator.clipboard.writeText(capabilities.path),
+      },
+    ]
+    if (capabilities.value !== undefined && !node.container && node.kind !== 'object') {
+      actions.push({
+        id: 'copy-value',
+        label: props.t('stateVariables.copyValue'),
+        icon: <FileText aria-hidden="true" />,
+        onSelect: () => void navigator.clipboard.writeText(String(capabilities.value)),
       })
-      await refresh()
-    } catch (cause) { setError(readError(cause)) }
-  }
-
-  async function saveCardConfig() {
-    try {
-      await props.onUpdateCardConfig(parseCardStateConfig(cardText))
-      await refresh()
-    } catch (cause) { setError(readError(cause)) }
-  }
-
-  function formatJson(text: string, setter: (val: string) => void) {
-    try {
-      const parsed = JSON.parse(text)
-      setter(JSON.stringify(parsed, null, 2))
-      setError('')
-    } catch (cause) {
-      setError(`JSON 语法错误: ${readError(cause)}`)
     }
+    if (capabilities.isLongText) {
+      actions.push(
+        { id: 'longtext-separator', type: 'separator' },
+        {
+          id: 'expand-longtext',
+          label: props.t('stateVariables.expandEditor'),
+          icon: <Maximize2 aria-hidden="true" />,
+          onSelect: () => toggleExpanded(capabilities.path),
+        },
+      )
+    }
+    return actions
   }
 
   return (
     <section className={styles.panel} data-loom-component="state-variables-panel">
       <header className={styles.intro}>
-        <div>
-          <h2>变量与 State</h2>
-          <p>Revision 冲突不会静默覆盖，纯净 JSON 数据模型展示。</p>
-        </div>
-        <button className={styles.refreshButton} type="button" onClick={() => void refresh()}>
-          <RefreshCw aria-hidden="true" size={14} />
-          <span>刷新</span>
+        <h2>{props.t('stateVariables.title')}</h2>
+        <button aria-label={props.t('stateVariables.refresh')} className={styles.iconButton} type="button" onClick={() => void refresh()}>
+          <RefreshCw aria-hidden="true" size={13} />
+          <span>{props.t('stateVariables.refresh')}</span>
         </button>
       </header>
-
       {error ? <div className={styles.errorBanner}>{error}</div> : null}
-
       <MasterDetailWorkbench
+        className={styles.panelBody}
         mobilePane={mobilePane}
         onMobilePaneChange={setMobilePane}
         master={(
-          <nav aria-label="State Navigation" className={styles.masterNav}>
+          <nav aria-label={props.t('stateVariables.navigation')} className={styles.masterNav}>
             <div className={styles.navGroup}>
-              <header>状态作用域 (Scopes)</header>
+              <header>{props.t('stateVariables.runtimeGroup')}</header>
               <button
-                aria-current={selectedTarget.kind === 'global' ? 'page' : undefined}
+                aria-current={scope === 'timeline' ? 'page' : undefined}
                 className={styles.navItem}
+                disabled={!props.timelineTarget}
                 type="button"
-                onClick={() => {
-                  setSelectedTarget({ kind: 'global' })
-                  setMobilePane('detail')
-                }}
+                onClick={() => { setScope('timeline'); setMobilePane('detail') }}
               >
-                <Globe aria-hidden="true" />
+                <Clock aria-hidden="true" size={14} />
                 <span className={styles.navItemBody}>
-                  <strong>Workspace Global State</strong>
-                  <small>{global?.revisionId ? `rev: ${global.revisionId.slice(0, 8)}` : '未初始化'}</small>
+                  <strong>{props.t('stateVariables.timelineState')}</strong>
+                  <small>{props.timelineTarget ? `${props.timelineTarget.timelineId} · ${props.timelineTarget.branchId}` : props.t('stateVariables.noTimeline')}</small>
                 </span>
               </button>
               <button
-                aria-current={selectedTarget.kind === 'timeline' ? 'page' : undefined}
+                aria-current={scope === 'global' ? 'page' : undefined}
                 className={styles.navItem}
                 type="button"
-                onClick={() => {
-                  setSelectedTarget({ kind: 'timeline' })
-                  setMobilePane('detail')
-                }}
+                onClick={() => { setScope('global'); setMobilePane('detail') }}
               >
-                <GitBranch aria-hidden="true" />
+                <Globe aria-hidden="true" size={14} />
                 <span className={styles.navItemBody}>
-                  <strong>当前 Timeline / Branch State</strong>
-                  <small>
-                    {props.timelineTarget
-                      ? `timeline: ${props.timelineTarget.timelineId} · branch: ${props.timelineTarget.branchId}`
-                      : '未绑定 Timeline'}
-                  </small>
-                </span>
-              </button>
-              <button
-                aria-current={selectedTarget.kind === 'card' ? 'page' : undefined}
-                className={styles.navItem}
-                type="button"
-                onClick={() => {
-                  setSelectedTarget({ kind: 'card' })
-                  setMobilePane('detail')
-                }}
-              >
-                <Database aria-hidden="true" />
-                <span className={styles.navItemBody}>
-                  <strong>当前 Card Template / Binding</strong>
-                  <small>{props.card?.name ?? '未选择 Card'}</small>
+                  <strong>{props.t('stateVariables.globalState')}</strong>
+                  <small>{props.t('stateVariables.globalDescription')}</small>
                 </span>
               </button>
             </div>
-
-          <div className={styles.navGroup}>
-            <header>
-              <span>共享 State Definition</span>
-              <button
-                className={styles.navAddBtn}
-                title="新建 State Definition"
-                type="button"
-                onClick={startNewDefinition}
-              >
-                <Plus aria-hidden="true" size={14} />
-              </button>
-            </header>
-            {definitions.length === 0 ? (
-              <button
-                aria-current={selectedTarget.kind === 'definition' && definitionId ? 'page' : undefined}
-                className={styles.navItem}
-                type="button"
-                onClick={startNewDefinition}
-              >
-                <Plus aria-hidden="true" />
-                <span className={styles.navItemBody}>
-                  <strong>新建 Definition</strong>
-                  <small>点击创建新的共享定义</small>
-                </span>
-              </button>
-            ) : (
-              definitions.map(item => (
-                <button
-                  key={item.id}
-                  aria-current={selectedTarget.kind === 'definition' && selectedTarget.id === item.id ? 'page' : undefined}
-                  className={styles.navItem}
-                  type="button"
-                  onClick={() => selectDefinition(item.id)}
-                >
-                  <Code2 aria-hidden="true" />
-                  <span className={styles.navItemBody}>
-                    <strong>{item.label || item.id}</strong>
-                    <small>{item.id} · {item.kind}</small>
-                  </span>
+          </nav>
+        )}
+      >
+        <div className={styles.detailPane}>
+          <header className={styles.detailHeader}>
+            <div className={styles.headerTitle}>
+              <Layers aria-hidden="true" size={15} />
+              <h3>{scope === 'timeline' ? props.t('stateVariables.timelineRuntime') : props.t('stateVariables.globalRuntime')}</h3>
+              <span className={styles.badge}>rev: {(currentSnapshot?.revisionId ?? '').slice(0, 8) || '-'}</span>
+            </div>
+            <div className={styles.headerActions}>
+              {props.onOpenSource && scope === 'timeline' && props.canOpenTimelineSource ? (
+                <button className={styles.iconButton} type="button" onClick={() => props.onOpenSource?.(scope)}>
+                  <Code2 aria-hidden="true" size={13} />
+                  <span>{props.t('stateVariables.openSource')}</span>
                 </button>
-              ))
+              ) : null}
+              <button className={styles.primaryActionBtn} disabled={dirtyCount === 0 || saving} type="button" onClick={() => void saveAllDirtyProperties()}>
+                <Save aria-hidden="true" size={13} />
+                <span>{props.t('stateVariables.saveChanges')}{saving ? '…' : dirtyCount > 0 ? ` (${dirtyCount})` : ''}</span>
+              </button>
+            </div>
+          </header>
+          <div className={styles.treeContainer}>
+            {scope === 'timeline' && props.timelineTarget ? <div className={styles.scopeBanner}>{props.timelineTarget.timelineId} · {props.timelineTarget.branchId}</div> : null}
+            {treeNodes.length === 0 ? (
+              <div className={styles.emptyState}><p>{props.t('stateVariables.emptyRuntime')}</p></div>
+            ) : (
+              <FileTree
+                ariaLabel={props.t('stateVariables.treeLabel')}
+                expandedIds={treeExpandedIds}
+                getDisclosureLabel={(node, expanded) => `${expanded ? props.t('stateVariables.collapse') : props.t('stateVariables.expand')} ${node.label}`}
+                getDragLabel={node => node.label}
+                getActions={getActions}
+                moreActionsLabel={props.t('stateVariables.actions')}
+                nodes={treeNodes}
+                onExpandedIdsChange={setTreeExpandedIds}
+                onSelect={() => undefined}
+                renderTrailing={renderTrailing}
+                renderExpandedRow={renderExpandedRow}
+              />
             )}
           </div>
-        </nav>
-      )}
-    >
-      <div className={styles.detailPane}>
-          {selectedTarget.kind === 'global' ? (
-            <>
-              <header className={styles.detailHeader}>
-                <div className={styles.headerTitle}>
-                  <Globe aria-hidden="true" size={16} />
-                  <h3>Workspace Global State</h3>
-                  <span className={styles.badge}>{global?.revisionId ?? '未初始化'}</span>
-                </div>
-                <div className={styles.headerActions}>
-                  <button className={styles.secondaryButton} type="button" onClick={() => formatJson(globalText, setGlobalText)}>
-                    <Wand2 aria-hidden="true" size={13} />
-                    <span>格式化</span>
-                  </button>
-                  <button className={styles.primaryButton} type="button" onClick={() => void saveSnapshot(global, globalText)}>
-                    <span>保存 Snapshot</span>
-                  </button>
-                </div>
-              </header>
-              <div className={styles.editorContainer}>
-                <textarea
-                  className={styles.rawJsonTextarea}
-                  spellCheck={false}
-                  value={globalText}
-                  onChange={event => setGlobalText(event.target.value)}
-                />
-              </div>
-            </>
-          ) : selectedTarget.kind === 'timeline' ? (
-            <>
-              <header className={styles.detailHeader}>
-                <div className={styles.headerTitle}>
-                  <GitBranch aria-hidden="true" size={16} />
-                  <h3>当前 Timeline / Branch State</h3>
-                  <span className={styles.badge}>{timeline?.revisionId ?? '未初始化'}</span>
-                </div>
-                <div className={styles.headerActions}>
-                  <button
-                    className={styles.secondaryButton}
-                    disabled={!timeline}
-                    type="button"
-                    onClick={() => formatJson(timelineText, setTimelineText)}
-                  >
-                    <Wand2 aria-hidden="true" size={13} />
-                    <span>格式化</span>
-                  </button>
-                  <button
-                    className={styles.primaryButton}
-                    disabled={!timeline}
-                    type="button"
-                    onClick={() => void saveSnapshot(timeline, timelineText)}
-                  >
-                    <span>保存 Snapshot</span>
-                  </button>
-                </div>
-              </header>
-              <div className={styles.editorContainer}>
-                {props.timelineTarget ? (
-                  <div className={styles.scopeBanner}>
-                    Timeline {props.timelineTarget.timelineId} · Branch {props.timelineTarget.branchId} · Card {props.card?.id ?? 'unknown'}
-                  </div>
-                ) : null}
-                <textarea
-                  className={styles.rawJsonTextarea}
-                  disabled={!timeline}
-                  spellCheck={false}
-                  value={timelineText}
-                  onChange={event => setTimelineText(event.target.value)}
-                />
-              </div>
-            </>
-          ) : selectedTarget.kind === 'card' ? (
-            <>
-              <header className={styles.detailHeader}>
-                <div className={styles.headerTitle}>
-                  <Database aria-hidden="true" size={16} />
-                  <h3>当前 Card Template / Binding</h3>
-                  <span className={styles.badge}>{props.card?.name ?? '未选择 Card'}</span>
-                </div>
-                <div className={styles.headerActions}>
-                  <button
-                    className={styles.secondaryButton}
-                    disabled={!props.card}
-                    type="button"
-                    onClick={() => formatJson(cardText, setCardText)}
-                  >
-                    <Wand2 aria-hidden="true" size={13} />
-                    <span>格式化</span>
-                  </button>
-                  <button
-                    className={styles.primaryButton}
-                    disabled={!props.card}
-                    type="button"
-                    onClick={() => void saveCardConfig()}
-                  >
-                    <span>保存 Card 配置</span>
-                  </button>
-                </div>
-              </header>
-              <div className={styles.editorContainer}>
-                <textarea
-                  className={styles.rawJsonTextarea}
-                  disabled={!props.card}
-                  spellCheck={false}
-                  value={cardText}
-                  onChange={event => setCardText(event.target.value)}
-                />
-              </div>
-            </>
-          ) : (
-            <>
-              <header className={styles.detailHeader}>
-                <div className={styles.headerTitle}>
-                  <FileCode aria-hidden="true" size={16} />
-                  <h3>共享 State Definition</h3>
-                  <input
-                    className={styles.definitionIdInput}
-                    placeholder="Definition ID"
-                    value={definitionId}
-                    onChange={event => {
-                      setDefinitionId(event.target.value)
-                      setSelectedTarget({ kind: 'definition', id: event.target.value })
-                    }}
-                  />
-                </div>
-                <div className={styles.headerActions}>
-                  <button
-                    className={styles.secondaryButton}
-                    type="button"
-                    onClick={() => formatJson(definitionText, setDefinitionText)}
-                  >
-                    <Wand2 aria-hidden="true" size={13} />
-                    <span>格式化</span>
-                  </button>
-                  {definitions.some(item => item.id === definitionId) ? (
-                    <button
-                      className={styles.dangerButton}
-                      type="button"
-                      onClick={() => void props.api.deleteDefinition({
-                        definitionId,
-                        expectedVersion: definitions.find(item => item.id === definitionId)?.version,
-                      }).then(refresh).catch(cause => setError(readError(cause)))}
-                    >
-                      <Trash2 aria-hidden="true" size={13} />
-                      <span>删除</span>
-                    </button>
-                  ) : null}
-                  <button
-                    className={styles.primaryButton}
-                    disabled={!definitionId.trim() || !definitionText.trim()}
-                    type="button"
-                    onClick={() => void saveDefinition()}
-                  >
-                    <span>保存 Definition</span>
-                  </button>
-                </div>
-              </header>
-              <div className={styles.editorContainer}>
-                <textarea
-                  className={styles.rawJsonTextarea}
-                  spellCheck={false}
-                  value={definitionText}
-                  onChange={event => setDefinitionText(event.target.value)}
-                />
-              </div>
-            </>
-          )}
         </div>
       </MasterDetailWorkbench>
     </section>
   )
 }
 
-function readError(value: unknown): string { return value instanceof Error ? value.message : String(value) }
-
+function readError(value: unknown): string {
+  return value instanceof Error ? value.message : String(value)
+}

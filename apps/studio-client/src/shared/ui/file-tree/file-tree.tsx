@@ -27,6 +27,8 @@ type FileTreeProps = {
   onSelect: (node: FileTreeNode) => void
   renderIcon?: (node: FileTreeNode, expanded: boolean) => ReactNode
   renderMetaLeading?: (node: FileTreeNode) => ReactNode
+  renderTrailing?: (node: FileTreeNode) => ReactNode
+  renderExpandedRow?: (node: FileTreeNode) => ReactNode
   selectedId?: string
   variant?: 'tree' | 'flat'
 }
@@ -129,6 +131,8 @@ export function FileTree(props: FileTreeProps) {
             onToggleExpand={toggleExpand}
             renderIcon={props.renderIcon}
             renderMetaLeading={props.renderMetaLeading}
+            renderTrailing={props.renderTrailing}
+            renderExpandedRow={props.renderExpandedRow}
             rovingId={rovingId}
             selectedId={props.selectedId}
             setTreeItemRef={(id, element) => {
@@ -173,6 +177,8 @@ function FileTreeRow(props: {
   onToggleExpand: (id: string) => void
   renderIcon?: (node: FileTreeNode, expanded: boolean) => ReactNode
   renderMetaLeading?: (node: FileTreeNode) => ReactNode
+  renderTrailing?: (node: FileTreeNode) => ReactNode
+  renderExpandedRow?: (node: FileTreeNode) => ReactNode
   rovingId?: string
   selectedId?: string
   setTreeItemRef: (id: string, element: HTMLDivElement | null) => void
@@ -185,6 +191,8 @@ function FileTreeRow(props: {
   const selected = props.node.id === props.selectedId
   const actions = props.getActions?.(props.node) ?? []
   const metaLeading = props.renderMetaLeading?.(props.node)
+  const trailingElement = props.renderTrailing?.(props.node)
+  const expandedRowElement = props.renderExpandedRow?.(props.node)
   const labelId = useId()
   const inputRef = useRef<HTMLInputElement>(null)
   const [draftLabel, setDraftLabel] = useState(props.node.label)
@@ -234,6 +242,7 @@ function FileTreeRow(props: {
   if (isDragging) rowClass += ` ${styles.dragging}`
   if (isOver) rowClass += ` ${styles.dragOver}`
   if (props.isMuted?.(props.node)) rowClass += ` ${styles.muted}`
+  if (!props.canDrag) rowClass += ` ${styles.noDrag}`
 
   const renderMenuContent = (Item: ElementType, CheckboxItem: ElementType, Separator: ElementType) => {
     return actions.map(action => {
@@ -363,6 +372,12 @@ function FileTreeRow(props: {
             </span>
           </div>
 
+          {trailingElement ? (
+            <div className={styles.trailing} onClick={event => event.stopPropagation()}>
+              {trailingElement}
+            </div>
+          ) : null}
+
           {actions.length > 0 ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -412,6 +427,8 @@ function FileTreeRow(props: {
       onToggleExpand={props.onToggleExpand}
       renderIcon={props.renderIcon}
       renderMetaLeading={props.renderMetaLeading}
+      renderTrailing={props.renderTrailing}
+      renderExpandedRow={props.renderExpandedRow}
       rovingId={props.rovingId}
       selectedId={props.selectedId}
       setTreeItemRef={props.setTreeItemRef}
@@ -431,6 +448,11 @@ function FileTreeRow(props: {
         data-message-block={props.node.id}
       >
         {rowElement}
+        {expandedRowElement ? (
+          <div className={styles.expandedRow} style={{ '--loom-tree-level': props.level } as CSSProperties}>
+            {expandedRowElement}
+          </div>
+        ) : null}
         {childrenElements ? (
           <div className={styles.messageBlockChildren}>
             {childrenElements}
@@ -452,7 +474,16 @@ function FileTreeRow(props: {
           <span className={styles.sectionLabel}>{props.formatLabel ? props.formatLabel(props.node) : props.node.label}</span>
           <div className={styles.sectionDivider} />
         </div>
-      ) : rowElement}
+      ) : (
+        <>
+          {rowElement}
+          {expandedRowElement ? (
+            <div className={styles.expandedRow} style={{ '--loom-tree-level': props.level } as CSSProperties}>
+              {expandedRowElement}
+            </div>
+          ) : null}
+        </>
+      )}
       {childrenElements}
     </>
   )

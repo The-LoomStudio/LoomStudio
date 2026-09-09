@@ -167,6 +167,73 @@ export function createContext(
         return registration
       },
     },
+    macros: {
+      register: provider => {
+        assertScopeActive(instance)
+        if (moduleManifest.capabilities?.['macros.provide'] !== true) {
+          throw new Error(`Extension module is not allowed to provide macros: ${moduleKey(packageManifest.id, moduleManifest.id)}`)
+        }
+        if (!provider.id.startsWith(`${packageManifest.id}.`)) {
+          throw new Error(`Extension macro provider must use package namespace: ${provider.id}`)
+        }
+        if (!options.registerMacroProvider) throw new Error('Macro providers are not available in this host')
+        const handle = options.registerMacroProvider({
+          id: provider.id,
+          name: provider.name,
+          resolve: context => instance.scope.run(() => provider.resolve(context)),
+        }, {
+          packageId: packageManifest.id,
+          moduleId: moduleManifest.id,
+          instanceId: instance.instanceId,
+        })
+        instance.scope.track(`macro-provider:${provider.id}`, handle)
+        return handle
+      },
+    },
+    state: {
+      contribute: contribution => {
+        assertScopeActive(instance)
+        if (moduleManifest.capabilities?.['state.contribute'] !== true) {
+          throw new Error(`Extension module is not allowed to contribute State: ${moduleKey(packageManifest.id, moduleManifest.id)}`)
+        }
+        if (!contribution.id.startsWith(`${packageManifest.id}.`)) {
+          throw new Error(`Extension State contribution must use package namespace: ${contribution.id}`)
+        }
+        if (!options.registerStateContribution) throw new Error('State contributions are not available in this host')
+        const handle = options.registerStateContribution(contribution, {
+          packageId: packageManifest.id,
+          moduleId: moduleManifest.id,
+          instanceId: instance.instanceId,
+          packageVersion: packageManifest.version,
+        })
+        instance.scope.track(`state-contribution:${contribution.id}`, handle)
+        return handle
+      },
+      read: target => {
+        assertScopeActive(instance)
+        if (moduleManifest.capabilities?.['state.read'] !== true) {
+          throw new Error(`Extension module is not allowed to read State: ${moduleKey(packageManifest.id, moduleManifest.id)}`)
+        }
+        if (!options.readState) throw new Error('State reads are not available in this host')
+        return instance.scope.run(() => options.readState!(target, {
+          packageId: packageManifest.id,
+          moduleId: moduleManifest.id,
+          instanceId: instance.instanceId,
+        }))
+      },
+      write: input => {
+        assertScopeActive(instance)
+        if (moduleManifest.capabilities?.['state.write'] !== true) {
+          throw new Error(`Extension module is not allowed to write State: ${moduleKey(packageManifest.id, moduleManifest.id)}`)
+        }
+        if (!options.writeState) throw new Error('State writes are not available in this host')
+        return instance.scope.run(() => options.writeState!(input, {
+          packageId: packageManifest.id,
+          moduleId: moduleManifest.id,
+          instanceId: instance.instanceId,
+        }))
+      },
+    },
     ai: {
       registerProvider: registration => {
         assertScopeActive(instance)

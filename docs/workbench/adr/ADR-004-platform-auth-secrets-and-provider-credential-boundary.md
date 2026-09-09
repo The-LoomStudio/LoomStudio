@@ -1,8 +1,9 @@
 # ADR-004: Platform Auth, Secrets, and Provider Credential Boundary
 
-> **Status**: Accepted
+> **Status**: Partially Implemented / Needs Revision
 > **Date**: 2026-05-16  
-> **Decision scope**: Post-MVP security foundation before Studio AIRP Layer and production Provider extensions
+> **Decision scope**: Platform Secret Store and Provider credential boundary
+> **Current authority**: Secret Store and Provider credential handling are implemented in the server/application path; login, workspace unlock, KDF, user grant UI/runtime enforcement and complete secret-use Audit remain open. Provider request mapping is owned by the Application Provider Adapter, not by a generic ordinary Extension.
 
 ---
 
@@ -19,7 +20,7 @@ Loom Studio MVP Stage 0-5 deliberately kept the Kernel small:
 - Trace / Audit abstractions
 - Transport-facing Kernel RPC
 
-The MVP intentionally did not implement:
+The original MVP intentionally did not implement:
 
 - user login;
 - workspace unlock;
@@ -31,7 +32,13 @@ The MVP intentionally did not implement:
 - extension signature verification;
 - complex security sandboxing.
 
-As Loom Studio moves toward Studio AIRP Layer, AIRP Runtime packages, and Provider extensions, credential handling becomes unavoidable.
+The current implementation has since added a server-owned Secret Store and controlled Provider credential path, while the broader authentication and authorization design remains incomplete.
+
+## Current implementation calibration (2026-09-09)
+
+- `@loom-studio/secret-store` provides the current Secret Store abstraction, in-memory backend, and local keyring backend. Provider profiles persist only credential status/reference data; plaintext credentials stay behind the controlled gateway path.
+- Application Provider Profiles and the AI Gateway resolve credentials through the Secret Store. The Provider Adapter maps compiled Application payloads to provider-specific requests; it is not a generic ordinary Extension contract.
+- Login, workspace unlock, password KDF selection/calibration, recovery/rotation, user-facing capability grants, runtime grant enforcement, and a complete append-only audit trail for secret use are not closed by the current implementation.
 
 There are two separate but related security needs:
 
@@ -57,7 +64,7 @@ or a platform security responsibility?
 
 Loom Studio will treat authentication, secret storage, encryption, credential redaction, and controlled secret usage as **Platform Security** responsibilities, not ordinary Extension responsibilities.
 
-Provider-specific API behavior remains an Extension responsibility.
+Provider-specific API behavior remains an Application Provider Adapter / provider integration responsibility. This is not a generic ordinary Extension contract.
 
 The boundary is:
 
@@ -66,12 +73,12 @@ Platform Security / Secrets:
   login, workspace unlock, encrypted secret storage, secretRef,
   redaction, controlled secret usage, audit facts, permission checks
 
-Provider Extension:
+Application Provider Adapter / provider integration:
   provider profile schema, request format, model listing,
   invoke / stream behavior, usage parsing, error normalization
 ```
 
-A Provider Extension must not store or encrypt raw API keys by itself. It should store only a reference:
+Provider integration must not store or encrypt raw API keys by itself. It should store only a reference:
 
 ```ts
 type SecretRef = `secret:${string}`
@@ -254,9 +261,9 @@ Rejected response shape:
 
 ---
 
-### 5. Provider Extensions use secretRef, not raw key storage
+### 5. Provider integrations use secretRef, not raw key storage
 
-A Provider Extension may define provider-specific profiles and invocation RPCs, for example:
+The provider integration may define provider-specific profiles and invocation operations, for example:
 
 ```text
 official.provider.openaiCompatible.listModels
@@ -276,7 +283,7 @@ ctx.secrets.withSecret(profile.secretRef, context, async secret => {
 })
 ```
 
-A future stricter API may avoid giving plaintext to the Provider Extension entirely:
+A future stricter API may avoid giving plaintext to the provider integration entirely:
 
 ```ts
 ctx.network.fetchWithSecret({
@@ -339,7 +346,7 @@ Audit must not record:
 
 Secret access must be capability-gated.
 
-A Provider Extension that needs credential access should declare a capability such as:
+Any future Extension that needs credential access should declare a capability such as:
 
 ```json
 {
@@ -381,7 +388,7 @@ kernel.currentProvider
 kernel.messages
 ```
 
-Provider behavior remains Extension-owned.
+Provider wire behavior remains owned by the Application Provider Adapter / provider integration layer; Kernel remains provider-neutral.
 
 The platform only provides security primitives and controlled secret usage.
 
@@ -389,7 +396,7 @@ The platform only provides security primitives and controlled secret usage.
 
 ## Rationale
 
-### Why not let each Provider Extension encrypt its own keys?
+### Why not let each provider integration encrypt its own keys?
 
 Because it would fragment security policy and make leaks likely:
 
@@ -464,7 +471,7 @@ Process isolation, worker isolation, HTTPS local transport, and end-to-end encry
 - Add platform-level auth / security / secrets packages or equivalent server-owned services.
 - Add a Secret Store abstraction before real Provider extensions become production-facing.
 - Provider profiles store `secretRef`, not raw API keys.
-- Provider Extensions use `ctx.secrets` or a future `ctx.network.fetchWithSecret` API.
+- Provider integrations use the controlled Secret Store path; a future `ctx.network.fetchWithSecret` API remains optional.
 - Secret use is capability-gated and audited.
 - Secret plaintext is excluded from Documents, Trace, Audit raw details, Diagnostics, logs, manifests, and frontend RPC responses.
 - Kernel remains provider-neutral.
@@ -488,7 +495,7 @@ Process isolation, worker isolation, HTTPS local transport, and end-to-end encry
 - Storing API keys in normal Document content.
 - Returning API keys to frontend clients.
 - Recording API keys in Trace, Audit details, Diagnostics, or logs.
-- Letting each Provider Extension invent its own encryption scheme.
+- Letting each provider integration invent its own encryption scheme.
 - Exposing a generic `ctx.crypto.decrypt(secretRef)` API to ordinary Extensions.
 - Moving Provider Gateway or Chat Runtime into Kernel.
 
@@ -513,7 +520,7 @@ Then official Provider support can be built on top:
 
 ```text
 Stage: official-provider-openai-compatible
-  - ProviderProfile Document with secretRef
+  - Provider Profile with a Secret Store reference
   - listModels
   - invoke without streaming first
   - usage / error normalization
@@ -529,7 +536,7 @@ Studio AIRP Layer:
 AIRP Runtime package:
   append user message -> compose -> loom.run -> provider.invoke -> append assistant message
 
-Provider Adapter Extension:
+Application Provider Adapter:
   compiled payload -> provider-specific request body -> provider API
 ```
 

@@ -34,7 +34,22 @@ export type {
   NarrativePage,
   NarrativeTimeline,
 } from '@loom-studio/narrative-store'
-import type { AssistantChatMessage, ChatMessage, JsonObject, JsonValue } from '@loom-studio/shared'
+import type {
+  AssistantChatMessage,
+  ChatMessage,
+  JsonObject,
+  JsonValue,
+  MacroInspection,
+  MacroSelectionMap,
+  StateArtifact,
+  StateComponentTemplate,
+  StateContribution,
+  StateEntityId,
+  StateEntityRefAnnotation,
+  StateEntityType,
+  TimelineComponentMount,
+  TimelineStateBinding,
+} from '@loom-studio/shared'
 import type { SecretRef, SecretStore } from '@loom-studio/secret-store'
 import type { StateStore } from '@loom-studio/state-store'
 import type { PresetToolMount, PromptResourceStore, SettingMount, SettingMountSource } from '@loom-studio/prompt-resource-store'
@@ -73,6 +88,8 @@ export type {
   TextTransformRuleEntry,
 } from './transforms/history-text.js'
 import type { CompiledPrompt } from './prompt/prompt-builder.js'
+import type { MacroProviderRegistry } from './prompt/macro-provider-registry.js'
+import type { StateContributionRegistry } from './state/state-contribution-registry.js'
 import type {
   CardBundleArtifact,
   ImportBundleContent,
@@ -93,6 +110,17 @@ export type {
   PromptResourceKind,
   PromptResourceNode,
 } from './cards/workspace.js'
+export type { MacroProviderRegistry } from './prompt/macro-provider-registry.js'
+export type { StateContributionRegistry } from './state/state-contribution-registry.js'
+export type {
+  StateArtifact,
+  StateContribution,
+  StateEntityId,
+  StateEntityRefAnnotation,
+  StateEntityType,
+  TimelineComponentMount,
+  TimelineStateBinding,
+} from '@loom-studio/shared'
 
 export type ApplicationRuntime = {
   initialize(): Promise<void>
@@ -160,6 +188,7 @@ export type ApplicationRuntime = {
   updateAgentSession(input: UpdateAgentSessionInput, context?: RuntimeRequestContext): Promise<UpdateAgentSessionResult>
   invokeAgentTurn(input: InvokeAgentTurnInput, context?: RuntimeRequestContext): Promise<InvokeAgentTurnResult>
   previewAgentTurn(input: PreviewAgentTurnInput, context?: RuntimeRequestContext): Promise<PreviewAgentTurnResult>
+  inspectMacros(input: InspectMacrosInput): Promise<InspectMacrosResult>
   createNarrativeTimeline(input: CreateNarrativeTimelineInput, context?: RuntimeRequestContext): Promise<CreateNarrativeTimelineResult>
   getNarrativeTimeline(input: GetNarrativeTimelineInput): Promise<GetNarrativeTimelineResult>
   listNarrativeTimelines(input?: ListNarrativeTimelinesInput): Promise<ListNarrativeTimelinesResult>
@@ -179,6 +208,7 @@ export type ApplicationRuntime = {
   importPromptResource(input: ImportPromptResourceInput, context?: RuntimeRequestContext): Promise<CreatePromptResourceResult>
   exportPromptResource(input: ExportPromptResourceInput): Promise<ExportPromptResourceResult>
   updateCardPromptResources(input: UpdateCardPromptResourcesInput, context?: RuntimeRequestContext): Promise<UpdateCardPromptResourcesResult>
+  updatePromptResourceMacros(input: UpdatePromptResourceMacrosInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceMacrosResult>
   listSettingMounts(input?: ListSettingMountsInput): Promise<ListSettingMountsResult>
   replaceSettingMounts(input: ReplaceSettingMountsInput, context?: RuntimeRequestContext): Promise<ReplaceSettingMountsResult>
   createPromptResourceAsset(input: CreatePromptResourceAssetInput, context?: RuntimeRequestContext): Promise<UpdatePromptResourceResult>
@@ -249,6 +279,8 @@ export type TimelineStateTemplateDraft = {
   templateVersion: number
   schema: JsonObject
   initial: JsonObject
+  componentKey?: string
+  targetEntityTypeIds?: string[]
   label?: string
 }
 
@@ -264,18 +296,49 @@ export type StateDefinitionEntry = StateDefinitionContent & {
   version: number
 }
 
-export type TimelineStateBinding = {
+export type CardStateTemplate = StateComponentTemplate
+
+export type StateReferenceDiagnostic = {
+  code: 'state.entity_ref_unresolved'
   path: string
-  templateId: string
-  templateVersion: number
-  initial?: JsonObject
+  reference: StateEntityId
+}
+
+export type MaterializedStateContribution = {
+  snapshot: JsonObject
+  entityTypes: StateEntityType[]
+  entities: StateEntityId[]
+  components: Array<{
+    path: string
+    schema: JsonObject
+    templateId: string
+    componentKey: string
+  }>
+  references: Array<{
+    path: string
+    annotation: StateEntityRefAnnotation
+  }>
+  referenceDiagnostics: StateReferenceDiagnostic[]
+  bindings: TimelineStateBinding[]
 }
 
 export type TimelineRuntimeContextContent = {
   timelineId: string
   sourceCardId: string
   sourceCardVersion: number
+  cardName?: string
   fallbackUserName: string
+  macros?: Record<string, string>
+  stateEntityTypes: StateEntityType[]
+  stateEntities: StateEntityId[]
+  stateComponents: MaterializedStateContribution['components']
+  stateReferences: MaterializedStateContribution['references']
+  stateContributionSources: Array<{
+    contributionId: string
+    packageId: string
+    moduleId: string
+    packageVersion: string
+  }>
   stateBindings: Array<{
     path: string
     schema: JsonObject
@@ -534,6 +597,7 @@ export type InvokeAgentTurnInput = {
     branchId?: string
     commit: boolean
   }
+  macroSelections?: MacroSelectionMap
 }
 
 export type PreviewAgentTurnInput = InvokeAgentTurnInput
@@ -546,6 +610,7 @@ export type PreviewAgentTurnResult = {
   toolExposures: CompiledToolExposure[]
   toolPromptBuildTrace: ToolPromptBuildTrace
   providerPayloadPreview?: OpenAIChatPayload
+  macroInspection: MacroInspection
 }
 
 export type InvokeAgentTurnResult = {
@@ -573,6 +638,18 @@ export type InvokeAgentTurnResult = {
   toolExposures: CompiledToolExposure[]
   toolPromptBuildTrace: ToolPromptBuildTrace
   mutation: MutationReceipt
+  macroInspection: MacroInspection
+}
+
+export type InspectMacrosInput = {
+  cardId?: string
+  presetId?: string
+  timelineTarget?: { timelineId: string; branchId?: string }
+  macroSelections?: MacroSelectionMap
+}
+
+export type InspectMacrosResult = {
+  macroInspection: MacroInspection
 }
 
 export type ApplicationRuntimeOptions = {
@@ -592,6 +669,8 @@ export type ApplicationRuntimeOptions = {
   secrets?: SecretStore
   providerAdapters?: ProviderAdapterRegistry
   aiCapabilities?: AiGatewayCapabilityRegistry
+  macroProviders?: MacroProviderRegistry
+  stateContributions?: StateContributionRegistry
 }
 
 export type MediaAssetLookup = {
@@ -718,6 +797,7 @@ export type CreateCardInput = {
   setting?: JsonObject
   settingLayer?: SettingLayerInput
   media?: CardMediaRefs
+  macros?: Record<string, string>
 }
 
 export type CreateCardResult = {
@@ -756,6 +836,7 @@ export type CardSummary = {
 
 export type UpdateCardInput = {
   cardId: string
+  expectedVersion?: number
   name?: string
   userName?: string
   description?: string
@@ -763,8 +844,14 @@ export type UpdateCardInput = {
   opening?: OpeningChatInput | string
   settingLayer?: SettingLayerInput
   media?: CardMediaRefs
+  stateTemplates?: CardStateTemplate[]
   stateDefinitionIds?: string[]
+  stateEntityTypes?: StateEntityType[]
+  timelineStateEntities?: StateEntityId[]
+  timelineComponentMounts?: TimelineComponentMount[]
+  stateContributionIds?: string[]
   timelineStateBindings?: TimelineStateBinding[]
+  macros?: Record<string, string>
 }
 
 export type UpdateCardResult = {
@@ -1146,6 +1233,17 @@ export type UpdateCardPromptResourcesResult = {
   mutation: MutationReceipt
 }
 
+export type UpdatePromptResourceMacrosInput = {
+  resourceId: string
+  expectedVersion: number
+  macros: Record<string, string>
+}
+
+export type UpdatePromptResourceMacrosResult = {
+  resource: PromptResourceContent & { id: string; version: number }
+  mutation: MutationReceipt
+}
+
 export type CreatePromptResourceAssetInput = {
   resourceId: string
   targetAssetId: string
@@ -1305,12 +1403,18 @@ export type CardSourceContent = {
   importBundleId?: string
   portableExtensionPayloadIds?: string[]
   promptResourceIds?: string[]
+  stateTemplates?: CardStateTemplate[]
   stateDefinitionIds?: string[]
+  stateEntityTypes?: StateEntityType[]
+  timelineStateEntities?: StateEntityId[]
+  timelineComponentMounts?: TimelineComponentMount[]
+  stateContributionIds?: string[]
   timelineStateBindings?: TimelineStateBinding[]
   media?: CardMediaRefs
   preset: CardPresetContent
   opening: OpeningChatContent
   settingLayer: SettingLayerContent
+  macros?: Record<string, string>
   createdAt: string
   updatedAt: string
 }
@@ -1322,10 +1426,12 @@ export type CardMediaRefs = {
 
 export type CardPresetInput = {
   system?: string
+  macros?: Record<string, string>
 }
 
 export type CardPresetContent = {
   system?: string
+  macros?: Record<string, string>
 }
 
 export type OpeningChatInput = {

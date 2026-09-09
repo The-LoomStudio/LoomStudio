@@ -68,6 +68,33 @@ describe('application state runtime', () => {
     engine.close()
   })
 
+  it('stores prototype-like Global Definition paths as own State keys', async () => {
+    const { engine, runtime } = createTestRuntime()
+    const prototype = Object.prototype as Record<string, unknown>
+    delete prototype.definitionValue
+
+    try {
+      await runtime.initialize()
+      await runtime.upsertStateDefinition({
+        definitionId: 'state.prototype-like',
+        definition: {
+          kind: 'global',
+          path: 'global.__proto__.definitionValue',
+          schema: { type: 'number' },
+          default: 7,
+        },
+      })
+
+      const value = (await runtime.getStateSnapshot({ target: { scope: 'global' } })).snapshot.value
+      expect(JSON.parse(JSON.stringify(value))).toEqual(JSON.parse('{"__proto__":{"definitionValue":7}}'))
+      expect(Object.hasOwn(value, '__proto__')).toBe(true)
+      expect(({} as Record<string, unknown>).definitionValue).toBeUndefined()
+    } finally {
+      delete prototype.definitionValue
+      engine.close()
+    }
+  })
+
   it('initializes global state and applies set, increment, and remove operations', async () => {
     const { engine, runtime } = createTestRuntime()
     await runtime.initialize()

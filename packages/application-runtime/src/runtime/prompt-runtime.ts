@@ -42,6 +42,8 @@ import type {
   TextTransformRuleContent,
   UpdatePromptResourceAssetInput,
   UpdatePromptResourceAssetsInput,
+  UpdatePromptResourceMacrosInput,
+  UpdatePromptResourceMacrosResult,
   UpdatePromptResourceResult,
 } from '../types.js'
 import {
@@ -49,6 +51,7 @@ import {
   promptResourceWriteContext,
   requireDocumentParticipant,
 } from './context.js'
+import { normalizeMacros } from '../cards/card.js'
 
 export function createPromptRuntimeMethods(ctx: ApplicationRuntimeContext) {
   return {
@@ -223,6 +226,7 @@ export function createPromptRuntimeMethods(ctx: ApplicationRuntimeContext) {
         resourceKind: input.artifact.resourceKind,
         rootNode: clonePromptResourceNode(input.artifact.rootNode, ctx.createId),
         ...(input.artifact.resourceKind === 'preset' ? { historyPolicy: 'persistent' as const } : {}),
+        ...(input.artifact.macros !== undefined ? { macros: normalizeMacros(input.artifact.macros, 'Preset') } : {}),
         createdAt: ctx.now(),
         updatedAt: ctx.now(),
       }
@@ -259,6 +263,7 @@ export function createPromptRuntimeMethods(ctx: ApplicationRuntimeContext) {
           schemaVersion: 1 as const,
           resourceKind: resource.resourceKind,
           rootNode: resource.rootNode,
+          ...(resource.macros !== undefined ? { macros: structuredClone(resource.macros) } : {}),
         },
       }
     },
@@ -323,6 +328,33 @@ export function createPromptRuntimeMethods(ctx: ApplicationRuntimeContext) {
         ...promptResourceWriteContext(requestContext), reason: 'application.deletePromptResourceAsset',
         resourceId: input.resourceId, expectedVersion: current.version,
         mutations: [{ kind: 'node.delete', nodeId: input.assetId }],
+      })
+      return { resource: fromStoredResource(result.resource), mutation: { changesetId: result.commit.changesetId } }
+    },
+
+    updatePromptResourceMacros: async (
+      input: UpdatePromptResourceMacrosInput,
+      requestContext?: RuntimeRequestContext,
+    ): Promise<UpdatePromptResourceMacrosResult> => {
+      const current = await readMappedResource(ctx.promptResources, input.resourceId)
+      if (current.resourceKind !== 'preset') throw new Error(`Macro configuration requires a Preset resource: ${input.resourceId}`)
+      const macros = normalizeMacros(input.macros, 'Preset')
+      const stored = await ctx.promptResources.getResource(input.resourceId)
+      if (!stored) throw new Error(`Prompt resource not found: ${input.resourceId}`)
+      const result = await ctx.promptResources.mutateResource({
+        ...promptResourceWriteContext(requestContext),
+        reason: 'application.updatePromptResourceMacros',
+        resourceId: input.resourceId,
+        expectedVersion: input.expectedVersion,
+        mutations: [{
+          kind: 'resource.update',
+          patch: {
+            metadata: {
+              ...stored.metadata,
+              macros,
+            },
+          },
+        }],
       })
       return { resource: fromStoredResource(result.resource), mutation: { changesetId: result.commit.changesetId } }
     },

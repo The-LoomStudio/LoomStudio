@@ -274,5 +274,118 @@ describe('official Agent context tools', () => {
       },
     }])
   })
+
+  it('supports read_state with dot-notation properties and automatic defaultTarget fallback', async () => {
+    const registry = createOfficialAgentToolRegistry()
+    const stateScope = {
+      ...scope,
+      state: {
+        defaultTarget: { scope: 'timeline' as const, timelineId: 'tl-active', branchId: 'br-active' },
+        canAccess: () => true,
+        read: async () => ({
+          revisionId: 'rev-timeline-1',
+          value: { player: { hp: 100, status: '良好' }, gold: 50 },
+        }),
+        update: async () => ({ revisionId: 'rev-timeline-2' }),
+      },
+    }
+
+    // 1. 无 target、无 properties -> 默认读全量
+    const readAll = await registry.execute({
+      id: 'inv-read-all',
+      toolId: officialReadStateTool.id,
+      arguments: {},
+      transport: 'native-function',
+    }, signal, stateScope)
+
+    expect(readAll.status).toBe('completed')
+    expect(readAll.content).toMatchObject([{
+      type: 'json',
+      value: {
+        target: { scope: 'timeline', timelineId: 'tl-active', branchId: 'br-active' },
+        revisionId: 'rev-timeline-1',
+        value: { player: { hp: 100, status: '良好' }, gold: 50 },
+      },
+    }])
+
+    // 2. 点语法读取指定 properties: ['player.hp', 'gold']
+    const readProps = await registry.execute({
+      id: 'inv-read-props',
+      toolId: officialReadStateTool.id,
+      arguments: { properties: ['player.hp', 'gold'] },
+      transport: 'native-function',
+    }, signal, stateScope)
+
+    expect(readProps.status).toBe('completed')
+    expect(readProps.content).toMatchObject([{
+      type: 'json',
+      value: {
+        target: { scope: 'timeline', timelineId: 'tl-active', branchId: 'br-active' },
+        revisionId: 'rev-timeline-1',
+        properties: {
+          'player.hp': 100,
+          gold: 50,
+        },
+      },
+    }])
+  })
+
+  it('supports update_state without target, without expectedRevisionId, and using set/increment dictionaries', async () => {
+    const registry = createOfficialAgentToolRegistry()
+    let capturedTarget: unknown
+    let capturedRevisionId: string | undefined
+    let capturedOperations: unknown
+
+    const stateScope = {
+      ...scope,
+      state: {
+        defaultTarget: { scope: 'timeline' as const, timelineId: 'tl-turn', branchId: 'br-turn' },
+        canAccess: () => true,
+        read: async () => ({ revisionId: 'head-rev-99', value: { player: { hp: 100 }, gold: 20 } }),
+        update: async (input: { target: unknown; expectedRevisionId: string; operations: unknown; idempotencyKey: string }) => {
+          capturedTarget = input.target
+          capturedRevisionId = input.expectedRevisionId
+          capturedOperations = input.operations
+          return { revisionId: 'head-rev-100' }
+        },
+      },
+    }
+
+    // 模型直接调用字典更新：无 target、无 expectedRevisionId、无斜杠路径
+    const result = await registry.execute({
+      id: 'inv-dict-update',
+      toolId: officialUpdateStateTool.id,
+      arguments: {
+        set: {
+          'player.hp': 85,
+          'player.status': '中毒',
+        },
+        increment: {
+          gold: -5,
+        },
+        remove: ['temporaryBuff'],
+      },
+      transport: 'native-function',
+    }, signal, stateScope)
+
+    expect(result.status).toBe('completed')
+    expect(capturedTarget).toEqual({ scope: 'timeline', timelineId: 'tl-turn', branchId: 'br-turn' })
+    // 自动取得最新 revision
+    expect(capturedRevisionId).toBe('head-rev-99')
+    // 自动将点语法转化为底层定位器
+    expect(capturedOperations).toEqual([
+      { op: 'set', path: '/player/hp', value: 85 },
+      { op: 'set', path: '/player/status', value: '中毒' },
+      { op: 'increment', path: '/gold', by: -5 },
+      { op: 'remove', path: '/temporaryBuff' },
+    ])
+    expect(result.content).toMatchObject([{
+      type: 'json',
+      value: {
+        revisionId: 'head-rev-100',
+        modifiedProperties: ['player.hp', 'player.status', 'gold', 'temporaryBuff'],
+      },
+    }])
+  })
 })
 

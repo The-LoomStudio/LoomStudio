@@ -7,7 +7,7 @@
 **Weave worlds, interweave stories.**  
 *编织世界，交织故事*
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Node Version](https://img.shields.io/badge/Node-%3E%3D22.18.0-339933.svg?style=flat-square&logo=node.js&logoColor=white)](package.json)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6.svg?style=flat-square&logo=typescript&logoColor=white)](tsconfig.packages.json)
 [![Architecture](https://img.shields.io/badge/Architecture-4--Layer-8A2BE2.svg?style=flat-square)](docs/architecture/)
@@ -144,7 +144,7 @@ LoomStudio/
 │   ├── images/
 │   └── videos/
 ├── apps/                   # 独立应用层
-│   ├── studio-server/      # 服务端核心网关与 RPC 服务 (Node.js/Hono)
+│   ├── studio-server/      # 服务端核心网关与 RPC 服务 (Node.js/node:http)
 │   └── studio-client/      # 前端交互工作台 (React 19 / Vite / SCSS)
 ├── packages/               # 核心领域包与基础设施层
 │   ├── core/               # @loom/core 编译内核管道
@@ -180,4 +180,4 @@ LoomStudio/
 
 ## 许可证
 
-本项目采用 [MIT License](LICENSE) 开源协议。
+本项目采用 [MIT License](https://opensource.org/licenses/MIT) 开源协议。

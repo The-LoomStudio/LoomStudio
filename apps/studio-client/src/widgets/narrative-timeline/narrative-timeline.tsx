@@ -14,6 +14,7 @@ import { ConversationMessageAction, ConversationMessageChrome, formatConversatio
 import styles from './narrative-timeline.module.scss'
 import type { ClientRendererHost } from '../../features/extension-renderers/model/client-renderer-host.js'
 import { RendererNodeMountHost } from '../../features/extension-renderers/ui/renderer-node-mount-host.js'
+import { renderTemplateMacros, type MacroRenderContext } from '../../features/state-variables/model/macro-renderer.js'
 
 const ConversationMarkdown = lazy(async () => {
   const module = await import('../../shared/ui/conversation-markdown/conversation-markdown.js')
@@ -33,6 +34,7 @@ type NarrativeTimelineProps = {
   openingDraft?: { content: string; isPlaceholder: boolean }
   getNodeLink: (nodeId: string) => string
   hasOlder: boolean
+  macroContext?: MacroRenderContext
   onEditNode: (nodeId: string, content: string) => void
   onForkNode: (node: NarrativeNodeView) => void
   onLoadOlder(): void
@@ -64,9 +66,9 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
   const navigatorItems = useMemo<NarrativeTimelineNavigatorItem[]>(() => props.timeline.map((node, index) => ({
     id: node.id,
     meta: `#${index + 1} · ${formatConversationTimestamp(node.createdAt)}`,
-    preview: node.body.raw,
+    preview: renderTemplateMacros(node.body.raw, props.macroContext),
     role: props.t(readNarrativeNodeRole(props.timeline, index) === 'user' ? 'timeline.role.user' : 'timeline.role.assistant'),
-  })), [props.t, props.timeline])
+  })), [props.macroContext, props.t, props.timeline])
   const navigatorMarkers: NarrativeTimelineMarker[] = []
 
   useEffect(() => () => {
@@ -245,7 +247,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                       enableWrap: props.t('markdown.code.enableWrap'),
                     }}
                     role="assistant"
-                    value={props.openingDraft.content}
+                    value={renderTemplateMacros(props.openingDraft.content, props.macroContext)}
                   />
                 </div>
               </article>
@@ -323,7 +325,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                             enableWrap: props.t('markdown.code.enableWrap'),
                           }}
                           role={role}
-                          value={entry.body.raw}
+                          value={renderTemplateMacros(entry.body.raw, props.macroContext)}
                         />
                       </RendererNodeMountHost>
                     ) : (
@@ -337,7 +339,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                           enableWrap: props.t('markdown.code.enableWrap'),
                         }}
                         role={role}
-                        value={entry.body.raw}
+                        value={renderTemplateMacros(entry.body.raw, props.macroContext)}
                       />
                     )
                   )}

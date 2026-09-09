@@ -1,13 +1,19 @@
 # Extension 数据与 Portable Payload 基建实施计划
 
-> **状态**：Phase 1—5 基础已实施；Renderer / Job / GC 阶段待讨论
+> **状态**：Completed / Archived；Phase 1—5 已实施
+>
+> **归档日期**：2026-09-09
+>
+> **当前权威**：Extension 数据与 Portable Payload 的稳定边界见 [`docs/architecture/application/extension/data-and-portable-payload.md`](../../architecture/application/extension/data-and-portable-payload.md)，实现与测试以当前源码为准。
+>
+> **归档说明**：本计划的 Phase 1—5 已完成并通过文中记录的验证；Renderer / Job / GC 等后续阶段仍保持开放，不属于本次归档的已实现范围。
 >
 > **日期**：2026-08-27
 >
 > **设计来源**：
-> - [`../discussion/application/extension/extension-module-scenarios-v0.md`](../discussion/application/extension/extension-module-scenarios-v0.md)
-> - [`../discussion/application/extension/card-extension-portable-payload-v0.md`](../discussion/application/extension/card-extension-portable-payload-v0.md)
-> - [`../discussion/application/asset-import-export-boundary-v0.md`](../discussion/application/asset-import-export-boundary-v0.md)
+> - [`../../workbench/discussion/application/extension/extension-module-scenarios-v0.md`](../../workbench/discussion/application/extension/extension-module-scenarios-v0.md)
+> - [`../../workbench/discussion/application/extension/card-extension-portable-payload-v0.md`](../../workbench/discussion/application/extension/card-extension-portable-payload-v0.md)
+> - [`../../workbench/discussion/application/asset-import-export-boundary-v0.md`](../../workbench/discussion/application/asset-import-export-boundary-v0.md)
 >
 > **目标**：在不确定 Renderer 挂载点之前，先完成 Extension 数据的 Scope、Changeset、实体引用和 Card Portable Payload 基础，使插件能够持久化可审计数据，并把自己理解的配置或初始内容安全地随 Card 分发。
 
@@ -166,7 +172,7 @@ Branch lineage 驱动的可见性属于 Renderer / Render Mount 阶段；Derived
 
 ## 8. 下一阶段：Renderer 与消息内 Render Mount
 
-消息内方向已在 [`../discussion/application/ui/narrative-inline-rendering-and-render-mount-v0.md`](../discussion/application/ui/narrative-inline-rendering-and-render-mount-v0.md) 收束：Extension 继续用自己的 Record 持久绑定 Node / Asset，Host 在 Display Projection 中动态生成 Render Mount 与 DisplayPart，当前不新建重复的通用 `NarrativeAttachment` Document。
+消息内方向已在 [`../../workbench/discussion/application/ui/narrative-inline-rendering-and-render-mount-v0.md`](../../workbench/discussion/application/ui/narrative-inline-rendering-and-render-mount-v0.md) 收束：Extension 继续用自己的 Record 持久绑定 Node / Asset，Host 在 Display Projection 中动态生成 Render Mount 与 DisplayPart，当前不新建重复的通用 `NarrativeAttachment` Document。
 
 后续仍需确定：
 

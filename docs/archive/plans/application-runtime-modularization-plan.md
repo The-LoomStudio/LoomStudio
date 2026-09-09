@@ -1,8 +1,11 @@
 # Application Runtime 模块化与命名边界计划
 
-> **状态**：Draft / Discussion
+> **状态**：Completed / Archived
+> **归档日期**：2026-09-09
+> **当前权威**：Runtime facade、领域 runtime modules 与当前 Application Architecture 已落地；以当前源码和 [`docs/architecture/application/README.md`](../../architecture/application/README.md) 为准。
+> **归档说明**：本计划记录的模块化边界与渐进拆分已完成到当前基线，剩余候选命名和进一步切片不再作为本计划的施工任务。
 > **目的**：在项目早期阻止 `runtime.ts` 演化为 God Object，并在拆分前先确定领域分类、文件职责和命名规则。
-> **当前阶段**：只讨论和记录边界，不实施大规模重构。
+> **当前阶段**：历史实施记录；不再从本文恢复施工。
 
 ---
 

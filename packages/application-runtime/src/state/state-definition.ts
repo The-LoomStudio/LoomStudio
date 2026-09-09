@@ -1,6 +1,7 @@
 import type { DocumentRecord } from '@loom-studio/document-store'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import type {
+  StateEntityRefAnnotation,
   StateDefinitionContent,
   StateDefinitionDraft,
   StateDefinitionEntry,
@@ -35,7 +36,7 @@ export function validateStateDefinitionDraft(definition: StateDefinitionDraft): 
 }
 
 export function validateTimelineStateBinding(binding: TimelineStateBinding): void {
-  if (!/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/.test(binding.path)) {
+  if (!/^(?:[A-Za-z0-9_$-]+|\*)(?:\.(?:[A-Za-z0-9_$-]+|\*))*$/.test(binding.path)) {
     throw new StateDefinitionError('state.binding_path_invalid', `Timeline state binding path is invalid: ${binding.path}`)
   }
   if (!binding.templateId.trim()) {
@@ -52,30 +53,114 @@ export function validateTimelineStateBinding(binding: TimelineStateBinding): voi
 export function materializeTimelineState(input: {
   bindings: TimelineStateBinding[]
   templates: Map<string, TimelineStateTemplateDraft>
+  base?: JsonObject
 }): JsonObject {
-  const result: JsonObject = {}
-  const paths = new Set<string>()
+  const result: JsonObject = structuredClone(input.base ?? {})
+  const seenBindingKeys = new Set<string>()
+
+  const exactBindings: TimelineStateBinding[] = []
+  const wildcardBindings: TimelineStateBinding[] = []
+
   for (const binding of input.bindings) {
     validateTimelineStateBinding(binding)
-    if (paths.has(binding.path)) {
+    if (seenBindingKeys.has(binding.path)) {
       throw new StateDefinitionError('state.binding_path_conflict', `Timeline state binding path is duplicated: ${binding.path}`)
     }
-    paths.add(binding.path)
-    const template = input.templates.get(binding.templateId)
-    if (!template) {
-      throw new StateDefinitionError('state.template_not_found', `Timeline state template not found: ${binding.templateId}`)
+    seenBindingKeys.add(binding.path)
+
+    if (binding.path.includes('*')) {
+      wildcardBindings.push(binding)
+    } else {
+      exactBindings.push(binding)
     }
-    if (template.templateVersion !== binding.templateVersion) {
-      throw new StateDefinitionError('state.template_version_mismatch', `Timeline state template version mismatch: ${binding.templateId}`)
-    }
-    const value = deepMerge(template.initial, binding.initial ?? {})
-    validateStateValue(value, template.schema, binding.path)
-    setObjectPath(result, binding.path.split('.'), value)
   }
+
+  for (const binding of exactBindings) {
+    applySingleBinding(result, binding, input.templates)
+  }
+
+  if (wildcardBindings.length > 0) {
+    const expanded = expandWildcards(wildcardBindings, result)
+    for (const binding of expanded) {
+      applySingleBinding(result, binding, input.templates)
+    }
+  }
+
   return result
 }
 
+function applySingleBinding(
+  target: JsonObject,
+  binding: TimelineStateBinding,
+  templates: Map<string, TimelineStateTemplateDraft>,
+): void {
+  const template = templates.get(binding.templateId)
+  if (!template) {
+    throw new StateDefinitionError('state.template_not_found', `Timeline state template not found: ${binding.templateId}`)
+  }
+  if (template.templateVersion !== binding.templateVersion) {
+    throw new StateDefinitionError('state.template_version_mismatch', `Timeline state template version mismatch: ${binding.templateId}`)
+  }
+  const value = deepMerge(template.initial, binding.initial ?? {})
+  validateStateValue(value, template.schema, binding.path)
+  setObjectPath(target, binding.path.split('.'), value)
+}
+
+function expandWildcards(bindings: TimelineStateBinding[], tree: JsonObject): TimelineStateBinding[] {
+  let currentList = bindings
+  while (currentList.some(b => b.path.includes('*'))) {
+    const nextList: TimelineStateBinding[] = []
+    for (const binding of currentList) {
+      const segments = binding.path.split('.')
+      const starIdx = segments.indexOf('*')
+      if (starIdx === -1) {
+        nextList.push(binding)
+        continue
+      }
+      const prefixSegments = segments.slice(0, starIdx)
+      const suffixSegments = segments.slice(starIdx + 1)
+      const parentObj = getObjectPath(tree, prefixSegments)
+      if (isJsonObject(parentObj)) {
+        for (const childKey of Object.keys(parentObj)) {
+          const newSegments = [...prefixSegments, childKey, ...suffixSegments]
+          nextList.push({
+            ...binding,
+            path: newSegments.join('.'),
+          })
+        }
+      }
+    }
+    currentList = nextList
+  }
+  return currentList
+}
+
+export function expandTimelineStateBindings(
+  bindings: TimelineStateBinding[],
+  tree: JsonObject,
+): TimelineStateBinding[] {
+  const exact: TimelineStateBinding[] = []
+  const wildcards: TimelineStateBinding[] = []
+  for (const b of bindings) {
+    if (b.path.includes('*')) wildcards.push(b)
+    else exact.push(b)
+  }
+  const expandedWildcards = expandWildcards(wildcards, tree)
+  return [...exact, ...expandedWildcards]
+}
+
+function getObjectPath(root: JsonObject, segments: string[]): JsonValue | undefined {
+  let current: JsonValue = root
+  for (const seg of segments) {
+    if (!isJsonObject(current)) return undefined
+    current = current[seg]
+  }
+  return current
+}
+
 export function validateStateValue(value: JsonValue, schema: JsonObject, path = '$'): void {
+  const reference = readEntityReferenceAnnotation(schema, path)
+  if (reference) validateEntityReferenceValue(value, reference, path)
   const type = schema.type
   if (typeof type === 'string' && !matchesType(value, type)) {
     throw new StateDefinitionError('state.schema_type', `Expected ${type} at ${path}`)
@@ -109,7 +194,7 @@ export function validateStateValue(value: JsonValue, schema: JsonObject, path = 
   const properties = isJsonObject(schema.properties) ? schema.properties : {}
   if (Array.isArray(schema.required)) {
     for (const key of schema.required) {
-      if (typeof key === 'string' && !(key in value)) {
+      if (typeof key === 'string' && !Object.hasOwn(value, key)) {
         throw new StateDefinitionError('state.schema_required', `Required property is missing at ${path}/${key}`)
       }
     }
@@ -178,6 +263,40 @@ function validateSchema(schema: JsonObject, path: string): void {
   if (schema.enum !== undefined && (!Array.isArray(schema.enum) || schema.enum.length === 0)) {
     throw new StateDefinitionError('state.schema_invalid', `Schema enum must be a non-empty array: ${path}`)
   }
+  readEntityReferenceAnnotation(schema, path)
+}
+
+export function readEntityReferenceAnnotation(
+  schema: JsonObject,
+  path = '$',
+): StateEntityRefAnnotation | undefined {
+  const value = schema['x-loom-entity-ref']
+  if (value === undefined) return undefined
+  if (!isJsonObject(value)
+    || !Array.isArray(value.allowedTypeIds)
+    || value.allowedTypeIds.length === 0
+    || value.allowedTypeIds.some(typeId => typeof typeId !== 'string' || typeId.trim().length === 0)
+    || new Set(value.allowedTypeIds).size !== value.allowedTypeIds.length) {
+    throw new StateDefinitionError('state.entity_ref_schema_invalid', `Entity reference annotation is invalid: ${path}`)
+  }
+  return { allowedTypeIds: [...value.allowedTypeIds] as string[] }
+}
+
+function validateEntityReferenceValue(
+  value: JsonValue,
+  annotation: StateEntityRefAnnotation,
+  path: string,
+): void {
+  if (!isJsonObject(value)
+    || typeof value.typeId !== 'string'
+    || value.typeId.trim().length === 0
+    || typeof value.entityId !== 'string'
+    || value.entityId.trim().length === 0) {
+    throw new StateDefinitionError('state.entity_ref_value_invalid', `Entity reference value is invalid at ${path}`)
+  }
+  if (!annotation.allowedTypeIds.includes(value.typeId)) {
+    throw new StateDefinitionError('state.entity_ref_type_invalid', `Entity reference type is not allowed at ${path}: ${value.typeId}`)
+  }
 }
 
 function validateOptionalLabel(value: string | undefined): void {
@@ -197,10 +316,11 @@ function matchesType(value: JsonValue, type: string): boolean {
 function deepMerge(base: JsonObject, override: JsonObject): JsonObject {
   const result = structuredClone(base)
   for (const [key, value] of Object.entries(override)) {
-    const current = result[key]
-    result[key] = isJsonObject(current) && isJsonObject(value)
+    const current = Object.hasOwn(result, key) ? result[key] : undefined
+    const next = isJsonObject(current) && isJsonObject(value)
       ? deepMerge(current, value)
       : structuredClone(value)
+    Object.defineProperty(result, key, { configurable: true, enumerable: true, writable: true, value: next })
   }
   return result
 }
@@ -208,10 +328,10 @@ function deepMerge(base: JsonObject, override: JsonObject): JsonObject {
 function setObjectPath(root: JsonObject, segments: string[], value: JsonObject): void {
   let current = root
   for (const segment of segments.slice(0, -1)) {
-    const existing = current[segment]
+    const existing = Object.hasOwn(current, segment) ? current[segment] : undefined
     if (existing === undefined) {
       const child: JsonObject = {}
-      current[segment] = child
+      Object.defineProperty(current, segment, { configurable: true, enumerable: true, writable: true, value: child })
       current = child
       continue
     }
@@ -221,10 +341,15 @@ function setObjectPath(root: JsonObject, segments: string[], value: JsonObject):
     current = existing
   }
   const key = segments.at(-1)!
-  if (key in current) {
+  const existing = Object.hasOwn(current, key) ? current[key] : undefined
+  if (existing !== undefined) {
+    if (isJsonObject(existing) && isJsonObject(value)) {
+      Object.defineProperty(current, key, { configurable: true, enumerable: true, writable: true, value: deepMerge(existing, value) })
+      return
+    }
     throw new StateDefinitionError('state.binding_path_conflict', `Timeline state binding path conflicts at: ${segments.join('.')}`)
   }
-  current[key] = structuredClone(value)
+  Object.defineProperty(current, key, { configurable: true, enumerable: true, writable: true, value: structuredClone(value) })
 }
 
 function isJsonObject(value: JsonValue | undefined): value is JsonObject {

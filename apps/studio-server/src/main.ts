@@ -4,6 +4,8 @@ import {
   createDocumentBackedAiGateway,
   createDocumentBackedProfiledAiGateway,
   createOfficialAgentToolRegistry,
+  createMacroProviderRegistry,
+  createStateContributionRegistry,
   type CardBundleArtifact,
 } from '@loom-studio/application-runtime'
 import {
@@ -109,6 +111,8 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
   const traceAudit = createInMemoryTraceAuditStore()
   const loomRunner = createLoomRunner({ traceAudit })
   const aiCapabilities = createAiGatewayCapabilityRegistry()
+  const macroProviders = createMacroProviderRegistry()
+  const stateContributions = createStateContributionRegistry()
   registerOfficialFakeAiProvider(aiCapabilities)
   const providerAdapters = createOfficialProviderAdapterRegistry({ aiCapabilities })
   const profiledAiGateway = createDocumentBackedProfiledAiGateway({
@@ -178,6 +182,8 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     secrets,
     providerAdapters,
     aiCapabilities,
+    macroProviders,
+    stateContributions,
     gateway: options.providerLogger ? withAiGatewayLogging(gateway, options.providerLogger) : gateway,
     logger: options.promptBuildLogger,
   })
@@ -269,6 +275,22 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     },
     aiCapabilities,
     aiGateway: profiledAiGateway,
+    registerMacroProvider: (provider, owner) => macroProviders.register({
+      ...provider,
+      sourceLabel: `${owner.packageId}/${owner.moduleId}`,
+    }),
+    registerStateContribution: (contribution, owner) => stateContributions.register({
+      contribution,
+      packageId: owner.packageId,
+      moduleId: owner.moduleId,
+      instanceId: owner.instanceId,
+      packageVersion: owner.packageVersion,
+    }),
+    readState: async target => (await applicationRuntime.getStateSnapshot({ target })).snapshot,
+    writeState: async (input, owner) => {
+      const result = await applicationRuntime.applyStateMutation(input, { actor: { kind: 'extension', id: owner.packageId } })
+      return { snapshot: result.snapshot, changesetId: result.mutation.changesetId }
+    },
     registerAgentToolHandler: (toolId, _ownerPackageId, _ownerModuleId, _ownerInstanceId, handler) => agentTools.registerRuntime({
       toolId,
       execute: async ({ invocation, signal }) => {
