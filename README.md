@@ -153,6 +153,7 @@ LoomStudio/
 │   ├── prompt-resource-store/# 预设与设定树存储
 │   └── document-store/     # 统一文档与状态持久化
 ├── extensions/             # 扩展插件层
+├── examples/               # 可通过正式导入路径运行的教程样本
 └── docs/                   # 完整架构设计与演进规范文档
 ```
 

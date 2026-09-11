@@ -11,19 +11,24 @@ import {
 } from '../../features/context-assets/model/projection-workbench.js'
 import { readPromptResourceWorkbenchRoot } from '../../features/context-assets/model/prompt-resource-view.js'
 import { ContextAssetEditor, ContextAssetExplorer } from '../../features/context-assets/ui/context-asset-workbench.js'
-import { ContextAssetHeader } from '../../features/context-assets/ui/context-asset-header/context-asset-header.js'
-import { findContextAssetPath, findContextAssetByVirtualPath } from '../../features/context-assets/model/context-asset-tree.js'
+import { ContextAssetHeader, type ContextAssetPathSegment } from '../../features/context-assets/ui/context-asset-header/context-asset-header.js'
+import { findContextAssetPath, findContextAssetByVirtualPath, resolveVirtualDisplayName } from '../../features/context-assets/model/context-asset-tree.js'
 import { STUDIO_PANEL_PRESENTATION } from '../../pages/studio/model/studio-panel-presentation.js'
 import { PromptResourceToolbar } from '../../features/context-assets/ui/prompt-resource-toolbar/prompt-resource-toolbar.js'
 import { Dialog } from '../../shared/ui/dialog/dialog.js'
 import { MacroAuthoringDetail, MacroAuthoringExplorer, type MacroAuthoringPanelProps, useMacroAuthoring } from '../../features/state-variables/ui/macro-authoring-panel.js'
 import type { Card, ContextAssetNode, PromptResource, SettingMount, SettingMountSource } from '../../entities/index.js'
 import type { Translator } from '../../shared/i18n/index.js'
+import type { StudioApi } from '../../shared/api/studio-api.js'
+import { TextTransformDetail, TextTransformExplorer, useTextTransformController } from '../../features/text-transforms/ui/text-transform-panel.js'
 import styles from './context-workbench.module.scss'
 
 type ContextWorkbenchProps = {
-  view: 'settings' | 'macros'
-  onViewChange: (view: 'settings' | 'macros') => void
+  view: 'settings' | 'macros' | 'text'
+  onViewChange: (view: 'settings' | 'macros' | 'text') => void
+  textTransformsApi: StudioApi['textTransforms']
+  loomScriptsApi: StudioApi['loomScripts']
+  onLoomScriptsChanged: () => void
   macroAuthoring?: MacroAuthoringPanelProps
   card?: Card
   nodes: ContextAssetNode[]
@@ -60,6 +65,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   const explorerView = explorerLayout.views[props.workspaceId] ?? DEFAULT_ASSET_VIEW_STATE
   const setExpandedIds = useStudioLayoutStore(state => state.setAssetExpandedIds)
   const setExplorerWidth = useStudioLayoutStore(state => state.setAssetExplorerWidth)
+  const setAssetPane = useStudioLayoutStore(state => state.setAssetPane)
   const openAssetDetail = useStudioLayoutStore(state => state.openAssetDetail)
   const setSelectedId = useStudioLayoutStore(state => state.setAssetSelectedId)
   const setMetadataOpen = useStudioLayoutStore(state => state.setAssetMetadataOpen)
@@ -68,8 +74,17 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   const [scope, setScope] = useState<'character' | 'global'>('character')
   const [bindingOpen, setBindingOpen] = useState(false)
   const [internalSelectedResourceId, setInternalSelectedResourceId] = useState<string>()
-  const [mobilePane, setMobilePane] = useState<'explorer' | 'detail'>('explorer')
+  const mobilePane = useStudioLayoutStore(state => state.assetPanes.resources[props.workspaceId] ?? 'explorer')
   const macroController = useMacroAuthoring(props.macroAuthoring)
+  const textController = useTextTransformController({
+    api: props.textTransformsApi,
+    loomScriptsApi: props.loomScriptsApi,
+    onRuntimeChanged: props.onLoomScriptsChanged,
+    owner: props.card ? { kind: 'card', cardId: props.card.id } : { kind: 'runtime' },
+    t: props.t,
+    mobilePane: mobilePane === 'explorer' ? 'master' : 'detail',
+    onMobilePaneChange: pane => setAssetPane('resources', props.workspaceId, pane === 'master' ? 'explorer' : 'detail'),
+  })
 
   const settingResources = useMemo(
     () => props.resources.filter(resource => resource.resourceKind === 'setting'),
@@ -113,6 +128,8 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   }, [targetResources])
 
   const selectedNode = findContextNode(workbenchNodes, selectedId)
+  const hasDetailSelection = props.view === 'text'
+    || (props.view === 'macros' ? Boolean(macroController.selectedRowId) : Boolean(selectedNode))
 
   const bindingResources = settingResources
   const boundIds = props.card?.promptResourceIds ?? []
@@ -164,18 +181,18 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   const displayNodes = workbenchNodes
 
   useEffect(() => {
-    setMobilePane('explorer')
+    setAssetPane('resources', props.workspaceId, 'explorer')
     macroController.selectRow(undefined)
   }, [props.macroAuthoring?.ownerId])
 
-  function changeView(view: 'settings' | 'macros') {
-    setMobilePane('explorer')
+  function changeView(view: 'settings' | 'macros' | 'text') {
+    setAssetPane('resources', props.workspaceId, 'explorer')
     if (view !== 'macros') macroController.selectRow(undefined)
     props.onViewChange(view)
   }
 
   function handleSelectNode(id: string) {
-    setMobilePane('detail')
+    setAssetPane('resources', props.workspaceId, 'detail')
     openAssetDetail('resources', props.workspaceId, id)
   }
 
@@ -190,18 +207,18 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
 
   function handleSelectMacro(id: string) {
     macroController.selectRow(id)
-    setMobilePane('detail')
+    setAssetPane('resources', props.workspaceId, 'detail')
   }
 
   return (
     <AssetWorkbenchLayout
       explorerWidth={explorerLayout.explorerWidth}
+      hasSelection={hasDetailSelection}
       mobilePane={mobilePane}
-      onMobilePaneChange={setMobilePane}
-      onBack={() => setMobilePane('explorer')}
+      onMobilePaneChange={pane => setAssetPane('resources', props.workspaceId, pane)}
       footer={(
-        <nav className="loom-page-tabs" role="tablist" aria-label={props.t('context.authoring.views')}>
-          {(['settings', 'macros'] as const).map(view => (
+        <nav className="loom-page-tabs loom-page-tabs-footer" role="tablist" aria-label={props.t('context.authoring.views')}>
+          {(['settings', 'macros', 'text'] as const).map(view => (
             <button
               key={view}
               id={`${viewId}-${view}`}
@@ -215,7 +232,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
               onKeyDown={event => {
                 if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
                 event.preventDefault()
-                const views = ['settings', 'macros'] as const
+                const views = ['settings', 'macros', 'text'] as const
                 const index = views.indexOf(view)
                 const next = event.key === 'Home' ? views[0] : event.key === 'End' ? views[views.length - 1]
                   : views[(index + (event.key === 'ArrowRight' ? 1 : -1) + views.length) % views.length]
@@ -223,7 +240,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
                 document.getElementById(`${viewId}-${next}`)?.focus()
               }}
             >
-              {props.t(`context.authoring.${view}`)}
+              {view === 'text' ? props.t('rail.textTransform') : props.t(`context.authoring.${view}`)}
             </button>
           ))}
         </nav>
@@ -245,9 +262,9 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
       ) : undefined}
       onExplorerWidthChange={width => setExplorerWidth('resources', width)}
       resizeLabel={props.t('context.resizeExplorer')}
-      viewMode={explorerView.viewMode}
-      explorer={props.view === 'macros' ? (
-        <MacroAuthoringExplorer controller={macroController} onAdd={() => setMobilePane('detail')} onSelect={handleSelectMacro} />
+      viewMode={props.view === 'text' ? 'master-detail' : explorerView.viewMode}
+      explorer={props.view === 'text' ? <TextTransformExplorer controller={textController} /> : props.view === 'macros' ? (
+        <MacroAuthoringExplorer controller={macroController} onAdd={() => setAssetPane('resources', props.workspaceId, 'detail')} onSelect={handleSelectMacro} />
       ) : (
         <div className={styles.resourceExplorer}>
           <button className={styles.bindResourcesButton} type="button" onClick={() => setBindingOpen(true)}>
@@ -300,6 +317,15 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
         hidden={props.view !== 'macros'}
       >
         <MacroAuthoringDetail controller={macroController} />
+      </div>
+      <div
+        className={styles.viewContent}
+        id={`${viewId}-text-content`}
+        role="tabpanel"
+        aria-labelledby={`${viewId}-text`}
+        hidden={props.view !== 'text'}
+      >
+        {props.card ? <TextTransformDetail controller={textController} /> : <p>{props.t('textTransform.noCard')}</p>}
       </div>
       <div
         className={styles.viewContent}
@@ -389,27 +415,76 @@ function ResourceBindingDialog(props: {
 }
 
 export function ContextWorkbenchHeader(props: {
+  view: 'settings' | 'macros' | 'text'
   resources: PromptResource[]
   selectedResourceId?: string
   t: Translator
   workspaceId: string
+  onViewChange: (view: 'settings' | 'macros' | 'text') => void
   onSelectResource?: (resourceId: string) => void
 }) {
   const definition = STUDIO_PANEL_PRESENTATION.resource
   const settingResources = useMemo(() => props.resources.filter(r => r.resourceKind === 'setting'), [props.resources])
   const selectedId = useStudioLayoutStore(state => state.assetLayouts.resources.views[props.workspaceId]?.selectedId)
+  const openAssetDetail = useStudioLayoutStore(state => state.openAssetDetail)
   const selectedResource = settingResources.find(r => r.id === props.selectedResourceId)
     ?? settingResources.find(resource => resource.id === selectedId || Boolean(findContextNode([resource.rootNode], selectedId)))
     ?? settingResources[0]
+  const setAssetPane = useStudioLayoutStore(state => state.setAssetPane)
+  const selectNode = (id: string) => {
+    setAssetPane('resources', props.workspaceId, 'detail')
+    openAssetDetail('resources', props.workspaceId, id)
+  }
+  const selectedPath = selectedResource && selectedId
+    ? buildContextPathSegments(
+      findContextAssetPath([readPromptResourceWorkbenchRoot(selectedResource)], selectedId),
+      selectNode,
+    )
+    : []
+  const tabOptions: Array<{ id: 'settings' | 'macros' | 'text'; label: string }> = [
+    { id: 'settings', label: props.t('context.authoring.settings') },
+    { id: 'macros', label: props.t('context.authoring.macros') },
+    { id: 'text', label: props.t('rail.textTransform') },
+  ]
+  const activeTab = tabOptions.find(tab => tab.id === props.view)
+  const breadcrumbs: ContextAssetPathSegment[] = activeTab
+    ? [{
+      id: activeTab.id,
+      label: activeTab.label,
+      options: tabOptions,
+      onSelect: id => {
+        if (id !== 'settings' && id !== 'macros' && id !== 'text') return
+        setAssetPane('resources', props.workspaceId, 'explorer')
+        props.onViewChange(id)
+      },
+    }, ...selectedPath]
+    : []
 
   return (
     <ContextAssetHeader
       Icon={definition.Icon}
       title={props.t(definition.labelKey)}
+      breadcrumbs={breadcrumbs}
       resources={settingResources}
       selectedResourceId={selectedResource?.id}
       t={props.t}
       onSelectResource={resourceId => props.onSelectResource?.(resourceId)}
     />
   )
+}
+
+function buildContextPathSegments(pathNodes: ContextAssetNode[], onSelectNode: (id: string) => void): ContextAssetPathSegment[] {
+  return pathNodes.slice(1).map((node, index) => {
+    const parent = pathNodes[index]
+    const options = (parent?.children ?? []).map(sibling => ({
+      id: sibling.id,
+      label: resolveVirtualDisplayName(sibling.label, sibling.kind),
+    }))
+    return {
+      id: node.id,
+      label: resolveVirtualDisplayName(node.label, node.kind),
+      options,
+      onSelect: onSelectNode,
+    }
+  })
 }

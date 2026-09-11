@@ -29,6 +29,7 @@ export {
   isPromptResourceArtifact,
   isCardBundleArtifact,
   normalizeCardBundleArtifact,
+  normalizePromptResourceArtifact,
   normalizePortableExtensionPayloadArtifact,
   readPromptResourceInputs,
 } from './cards/workspace.js'
@@ -46,6 +47,20 @@ export {
 export { createAgentToolRegistry } from './agents/tool-registry.js'
 export { createMacroProviderRegistry } from './prompt/macro-provider-registry.js'
 export type { MacroProviderRegistry, MacroStaticSource } from './prompt/macro-provider-registry.js'
+export type {
+  LoomScriptArtifact,
+  LoomScriptAttachmentArtifact,
+  LoomScriptContent,
+  LoomScriptContributionDefinition,
+  LoomScriptInput,
+  LoomScriptEntry,
+  LoomScriptMountContent,
+  LoomScriptMountEntry,
+  LoomScriptMountTarget,
+  LoomScriptOwner,
+  LoomScriptRendererContributionDefinition,
+} from './scripts/loom-script-contracts.js'
+export { parseLoomScriptSource, serializeLoomScriptMetadata } from './scripts/loom-script-codec.js'
 export {
   createOfficialAgentToolRegistry,
   createPromptToolExecutionScope,

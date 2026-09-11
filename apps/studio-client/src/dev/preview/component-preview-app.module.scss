@@ -1,0 +1,174 @@
+.page {
+  display: grid;
+  grid-template-rows: 42px minmax(0, 1fr);
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--loom-color-background);
+  color: var(--loom-color-text);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--loom-color-divider);
+  background: var(--loom-color-surface);
+}
+
+.toolbar nav {
+  display: flex;
+  align-self: stretch;
+  gap: 16px;
+}
+
+.toolbar button {
+  padding: 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--loom-color-text-muted);
+  cursor: pointer;
+}
+
+.toolbar button[aria-current='page'] {
+  border-bottom-color: var(--loom-color-accent);
+  color: var(--loom-color-text);
+}
+
+.workbench {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.definition,
+.trace {
+  padding: 18px 20px 24px;
+}
+
+.definition > header,
+.trace > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--loom-color-divider);
+}
+
+.definition h1,
+.trace h2 {
+  margin: 3px 0 0;
+  font-size: var(--loom-font-size-6);
+  letter-spacing: 0;
+}
+
+.definition p,
+.definition small,
+.trace small,
+.trace header span {
+  margin: 4px 0 0;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-2);
+}
+
+.definition > header > span {
+  color: var(--loom-color-success);
+  font-size: var(--loom-font-size-2);
+}
+
+.definition > header > span[data-status='conflict'],
+.definition > header > span[data-status='degraded'] {
+  color: var(--loom-color-warning);
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  padding-top: 18px;
+}
+
+.fields label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.fields label > span {
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
+}
+
+.fields input {
+  min-width: 0;
+  padding: 7px 0;
+  border: 0;
+  border-bottom: 1px solid var(--loom-color-border);
+  outline: 0;
+  background: transparent;
+  color: var(--loom-color-text);
+  font: inherit;
+}
+
+.longField {
+  grid-column: 1 / -1;
+}
+
+.fields textarea {
+  min-height: 150px;
+  resize: vertical;
+  padding: 12px;
+  border: 0;
+  border-radius: var(--loom-radius-control);
+  outline: 0;
+  background: var(--loom-color-surface-subtle);
+  color: var(--loom-color-text);
+  font-family: var(--loom-font-family-mono);
+  line-height: 1.55;
+}
+
+.trace ol {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 12px 0 0;
+  list-style: none;
+}
+
+.trace li {
+  display: grid;
+  grid-template-columns: minmax(100px, 160px) minmax(0, 1fr);
+  gap: 14px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--loom-color-divider);
+}
+
+.trace code {
+  overflow: hidden;
+  color: var(--loom-color-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty {
+  padding: 28px;
+  color: var(--loom-color-text-subtle);
+}
+
+@media (max-width: 640px) {
+  .fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .longField {
+    grid-column: auto;
+  }
+
+  .trace li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+}
+

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  createTextExtractionArtifact,
   extractHistory,
   projectHistoryEntries,
   type HistoryTextEntry,
@@ -93,6 +94,86 @@ describe('history text projection', () => {
     expect(snapshot.entries[0]?.promotedReasoning[0]?.content).toContain('name="fake"')
   })
 
+  it('marks stable UTF-16 ranges without changing text and records one-entry trace', () => {
+    const input = {
+      source,
+      phase: 'display' as const,
+      entries: [entry('answer', 1, '前缀 Alice 后缀')],
+      rules: [rule({
+        id: 'alice-mark',
+        phases: ['display'],
+        matcher: { kind: 'regex', pattern: 'Alice', flags: 'g' },
+        effect: { kind: 'mark', markerType: 'character' },
+      })],
+      traceEntryId: 'answer',
+    }
+    const first = projectHistoryEntries(input)
+    const second = projectHistoryEntries(input)
+
+    expect(first.entries[0]?.text).toBe('前缀 Alice 后缀')
+    expect(first.matches[0]).toMatchObject({
+      matchId: second.matches[0]?.matchId,
+      inputRange: { start: 3, end: 8 },
+      displayRange: { start: 3, end: 8 },
+      stepIndex: 0,
+      occurrenceIndex: 0,
+    })
+    expect(first.trace).toMatchObject({
+      entryId: 'answer',
+      canonicalText: '前缀 Alice 后缀',
+      finalText: '前缀 Alice 后缀',
+      steps: [{ matched: true, effect: 'mark' }],
+    })
+  })
+
+  it('shifts marked display ranges after earlier replacements', () => {
+    const snapshot = projectHistoryEntries({
+      source,
+      phase: 'display',
+      entries: [entry('answer', 1, 'prefix TARGET suffix')],
+      rules: [
+        rule({ id: 'mark', phases: ['display'], matcher: { kind: 'regex', pattern: 'TARGET', flags: 'g' }, effect: { kind: 'mark' } }),
+        rule({ id: 'expand-prefix', phases: ['display'], orderIndex: 1, matcher: { kind: 'regex', pattern: 'prefix', flags: 'g' }, effect: { kind: 'replace', replacement: 'long-prefix' } }),
+      ],
+    })
+
+    expect(snapshot.entries[0]?.text).toBe('long-prefix TARGET suffix')
+    expect(snapshot.matches.find(match => match.ruleId === 'mark')?.displayRange).toEqual({ start: 12, end: 18 })
+  })
+
+  it('invalidates marked display ranges after overlapping replacements', () => {
+    const snapshot = projectHistoryEntries({
+      source,
+      phase: 'display',
+      entries: [entry('answer', 1, 'prefix TARGET suffix')],
+      rules: [
+        rule({ id: 'mark', phases: ['display'], matcher: { kind: 'regex', pattern: 'TARGET', flags: 'g' }, effect: { kind: 'mark' } }),
+        rule({ id: 'replace-target', phases: ['display'], orderIndex: 1, matcher: { kind: 'regex', pattern: 'TARGET', flags: 'g' }, effect: { kind: 'replace', replacement: 'changed' } }),
+      ],
+    })
+
+    expect(snapshot.matches.find(match => match.ruleId === 'mark')?.displayRange).toBeUndefined()
+  })
+
+  it('preserves native replacement token semantics while tracking edits', () => {
+    const text = 'xABy'
+    const replacement = "[$$][$&][$1][$<word>][$`][$']"
+    const pattern = '(?<word>A)(B)'
+    const snapshot = projectHistoryEntries({
+      source,
+      phase: 'display',
+      entries: [entry('answer', 1, text)],
+      rules: [rule({
+        id: 'replacement-tokens',
+        phases: ['display'],
+        matcher: { kind: 'regex', pattern, flags: 'g' },
+        effect: { kind: 'replace', replacement },
+      })],
+    })
+
+    expect(snapshot.entries[0]?.text).toBe(text.replace(new RegExp(pattern, 'g'), replacement))
+  })
+
   it('extracts the latest valid WorldState block from transformed history', () => {
     const snapshot = projectHistoryEntries({
       source,
@@ -122,5 +203,18 @@ describe('history text projection', () => {
     expect(result.values).toEqual([{ 时间: '第1天', 地点: '酒馆' }])
     expect(result.sourceEntryIds).toEqual(['old'])
     expect(result.stale).toBe(true)
+
+    const artifact = createTextExtractionArtifact({
+      source,
+      phase: 'display',
+      extractor: { ...extractor, artifactType: 'loom/world-state' },
+      extraction: result,
+    })
+    expect(artifact).toMatchObject({
+      artifactType: 'loom/world-state',
+      extractorId: 'world-state',
+      values: [{ value: { 时间: '第1天', 地点: '酒馆' }, sourceEntryId: 'old' }],
+      stale: true,
+    })
   })
 })

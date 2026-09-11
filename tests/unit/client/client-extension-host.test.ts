@@ -1,6 +1,7 @@
 import type { ClientExtensionModule } from '@loom-studio/extension-sdk'
 import { describe, expect, it, vi } from 'vitest'
 import { createClientExtensionHost, type ClientExtensionDataApi, type ManagedClientExtensionPackage } from '../../../apps/studio-client/src/features/extension-renderers/model/client-extension-host.js'
+import { mapPackageImportState } from '../../../apps/studio-client/src/features/extension-renderers/model/use-client-extension-runtime.js'
 import { createClientRendererHost } from '../../../apps/studio-client/src/features/extension-renderers/model/client-renderer-host.js'
 
 function extensionPackage(enabled = true): ManagedClientExtensionPackage {
@@ -25,6 +26,19 @@ function extensionPackage(enabled = true): ManagedClientExtensionPackage {
 }
 
 describe('Client Extension Host', () => {
+  it('maps Package declarations to imported resource provenance without treating modules as resources', () => {
+    const [mapped] = mapPackageImportState([extensionPackage()], [
+      { origin: { kind: 'extension-package', packageId: 'example.client', contributionId: 'rule' } },
+    ], [
+      { origin: { kind: 'extension-package', packageId: 'other.client', contributionId: 'extractor' } },
+    ])
+    expect(mapped?.importedResources).toEqual({
+      transformRuleContributionIds: ['rule'],
+      textExtractorContributionIds: [],
+    })
+    expect(mapped?.modules).toEqual(extensionPackage().modules)
+  })
+
   it('activates declared Renderer contributions and disposes them when disabled', async () => {
     const rendererHost = createClientRendererHost()
     const module: ClientExtensionModule = {
@@ -160,7 +174,7 @@ describe('Client Extension Host', () => {
       }),
     })
     await host.reconcile([packageWithBackground])
-    expect(rendererHost.activeContributionKey('shell.background', 'workspace')).toBe('example.client/client/background')
+    expect(rendererHost.activeContributionKey('shell.background', 'workspace')).toBe('extension:example.client/client/background')
   })
 
   it('returns false instead of throwing when a Renderer has no active scope', async () => {

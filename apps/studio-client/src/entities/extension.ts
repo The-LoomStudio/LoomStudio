@@ -4,6 +4,8 @@ import type {
   ClientCommandDeclaration,
   ExtensionAgentToolContribution,
   ExtensionPromptResourceContribution,
+  ExtensionTextExtractorContribution,
+  ExtensionTextTransformRuleContribution,
   RendererContributionDefinition,
 } from '@loom-studio/extension-sdk'
 
@@ -38,10 +40,15 @@ export type ManagedExtensionPackage = {
   sourceKinds: string[]
   modules: ManagedExtensionModule[]
   resources?: {
-    transformRules?: Array<{ source: string }>
+    transformRules?: ExtensionTextTransformRuleContribution[]
+    textExtractors?: ExtensionTextExtractorContribution[]
     promptResources?: ExtensionPromptResourceContribution[]
     agentTools?: ExtensionAgentToolContribution[]
     [key: string]: ClientJsonValue | undefined
+  }
+  importedResources?: {
+    transformRuleContributionIds: string[]
+    textExtractorContributionIds: string[]
   }
 }
 
@@ -50,6 +57,8 @@ export type ExtensionPackageResourceImportResult = {
   version: string
   promptResources: Array<{ contributionId: string; resourceId: string; resourceKind: string }>
   agentTools: Array<{ contributionId: string; toolId: string }>
+  transformRules: Array<{ contributionId: string; ruleId: string }>
+  textExtractors: Array<{ contributionId: string; extractorId: string }>
   mutation?: { changesetId: string }
 }
 
@@ -57,6 +66,8 @@ export type ExtensionPackageResourceRemovalResult = {
   packageId: string
   promptResourceIds: string[]
   agentToolIds: string[]
+  textTransformRuleIds: string[]
+  textExtractorIds: string[]
   detachedReferences: {
     cards: number
     timelines: number

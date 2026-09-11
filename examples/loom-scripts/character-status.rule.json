@@ -1,0 +1,14 @@
+{
+  "name": "Character Status Marker",
+  "owner": { "kind": "card", "cardId": "tutorial.character.alice" },
+  "enabled": true,
+  "orderIndex": 100,
+  "matcher": {
+    "kind": "regex",
+    "pattern": "<CharacterStatus>(?<body>[\\s\\S]*?)</CharacterStatus>",
+    "flags": "g"
+  },
+  "effect": { "kind": "mark", "markerType": "character-status" },
+  "targets": ["narrative"],
+  "phases": ["display"]
+}

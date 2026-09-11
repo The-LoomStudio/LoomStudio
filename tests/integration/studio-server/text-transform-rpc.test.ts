@@ -30,4 +30,37 @@ describe('Studio Server text transform RPC', () => {
       })
     })
   })
+
+  it('round-trips one normalized Text Pipeline Override with CAS and deletion', async () => {
+    await withStudioServer(async port => {
+      const source = { kind: 'agent-session', sessionId: 'session-override', headEntryId: 'head-1' }
+      const created = await callRpc<{ override: { id: string; version: number; orderedRuleIds: string[] } }>(port, 'application.upsertTextPipelineOverride', {
+        source,
+        phase: 'display',
+        disabledRuleIds: ['rule-disabled'],
+        orderedRuleIds: ['rule-second', 'rule-first'],
+      })
+      expect(created.override).toMatchObject({ version: 1, orderedRuleIds: ['rule-second', 'rule-first'] })
+
+      await expect(callRpc(port, 'application.getTextPipelineOverride', {
+        source: { kind: 'agent-session', sessionId: 'session-override', headEntryId: 'head-2' },
+        phase: 'display',
+      })).resolves.toMatchObject({ override: { id: created.override.id, version: 1 } })
+      await expect(callRpc(port, 'application.upsertTextPipelineOverride', {
+        source,
+        phase: 'display',
+        expectedVersion: 0,
+        disabledRuleIds: [],
+        orderedRuleIds: [],
+      })).rejects.toThrow('version conflict')
+
+      await expect(callRpc(port, 'application.deleteTextPipelineOverride', {
+        source,
+        phase: 'display',
+        expectedVersion: created.override.version,
+      })).resolves.toMatchObject({ deleted: true })
+      await expect(callRpc(port, 'application.getTextPipelineOverride', { source, phase: 'display' }))
+        .resolves.toEqual({ override: null })
+    })
+  })
 })

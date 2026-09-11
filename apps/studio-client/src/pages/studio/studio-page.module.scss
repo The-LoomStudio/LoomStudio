@@ -437,7 +437,7 @@
 
 .railDivider {
   min-width: 0;
-  margin-inline: min(var(--loom-divider-inset), 12%);
+  margin-inline: var(--loom-divider-inset);
 }
 
 @container studio-rail (max-width: 100px) {
@@ -538,6 +538,42 @@
   color: var(--loom-color-text-muted);
 }
 
+.headerNavigation {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 0;
+}
+
+.headerNavigationButton {
+  width: 24px;
+  min-width: 24px;
+  height: 32px;
+  min-height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  padding: 0;
+  color: var(--loom-color-text-muted);
+  background: transparent;
+}
+
+.headerNavigationButton:hover:not(:disabled),
+.headerNavigationButton:focus-visible {
+  color: var(--loom-color-accent-strong);
+}
+
+.headerNavigationButton:disabled {
+  color: var(--loom-color-text-subtle);
+  opacity: 0.45;
+  cursor: default;
+}
+
+.headerNavigationButton svg {
+  width: 18px;
+  height: 18px;
+}
+
 .viewModeControl {
   display: flex;
   align-items: center;
@@ -583,6 +619,31 @@
   height: var(--loom-page-header-icon-size);
   color: currentColor;
   stroke-width: var(--loom-page-header-icon-stroke);
+}
+
+.viewModeIconSwap {
+  position: relative;
+  width: var(--loom-page-header-icon-size);
+  height: var(--loom-page-header-icon-size);
+  display: block;
+}
+
+.viewModeIconSwap svg {
+  position: absolute;
+  inset: 0;
+  transition:
+    opacity var(--loom-motion-duration-fast) ease,
+    transform var(--loom-motion-duration-fast) ease;
+}
+
+.viewModeIconVisible {
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
+}
+
+.viewModeIconHidden {
+  opacity: 0;
+  transform: scale(0.78) rotate(-8deg);
 }
 
 .workspaceHeaderDivider {
@@ -852,7 +913,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .floatingDock,
-  .stageHeaderButton {
+  .stageHeaderButton,
+  .viewModeIconSwap svg {
     transition: none;
   }
 }
@@ -924,5 +986,3 @@
 .stageHeaderButtonActive {
   color: var(--loom-color-accent-strong) !important;
 }
-
-

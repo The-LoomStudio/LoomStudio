@@ -1,9 +1,14 @@
 export type { JsonObject, MutationReceipt } from './common.js'
+export type { LoomScript, LoomScriptMount, LoomScriptOwner, LoomScriptRendererContribution, ResolvedLoomScriptRendererMount } from './loom-script.js'
 export type { ExtensionPackageResourceImportResult, ExtensionPackageResourceRemovalResult, ManagedClientExtensionModule, ManagedClientExtensionPackage, ManagedExtensionModule, ManagedExtensionPackage } from './extension.js'
 export type {
   HistoryProjectionSnapshot,
   HistorySource,
   RendererDefinition,
+  TextPipelineInspection,
+  TextPipelineOverride,
+  TextPipelineConsumer,
+  TextTransformPhase,
   TextExtractor,
   TextExtractorDraft,
   TextRuleOwner,

@@ -7,6 +7,8 @@ export type {
   ExtensionManifest,
   ExtensionModuleManifest,
   ExtensionPromptResourceContribution,
+  ExtensionTextExtractorContribution,
+  ExtensionTextTransformRuleContribution,
   ExtensionStorageScope,
 } from '@loom-studio/extension-sdk'
 

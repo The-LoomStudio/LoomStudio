@@ -41,7 +41,16 @@ if (!root) {
     event: 'client.root.missing',
   })
 } else {
-  void startStudioClient(root)
+  if (import.meta.env.DEV) {
+    const previewId = readDevelopmentPreviewId(window.location.pathname)
+    if (previewId) {
+      void import('./dev/preview/index.js').then(({ renderComponentPreview }) => renderComponentPreview(root, previewId))
+    } else {
+      void startStudioClient(root)
+    }
+  } else {
+    void startStudioClient(root)
+  }
 }
 
 async function startStudioClient(rootElement: HTMLElement): Promise<void> {
@@ -94,4 +103,9 @@ window.addEventListener('pagehide', () => {
 
 function shouldWriteClientConsoleLog(record: { level: string; namespace: string }): boolean {
   return record.level === 'warn' || record.level === 'error' || record.namespace === 'system'
+}
+
+function readDevelopmentPreviewId(pathname: string): string | undefined {
+  const match = /^\/dev\/preview\/([^/]+)\/?$/.exec(pathname)
+  return match?.[1] ? decodeURIComponent(match[1]) : undefined
 }

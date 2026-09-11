@@ -4,6 +4,8 @@ import type {
   ExtensionManifest,
   ExtensionModuleManifest,
   ExtensionPromptResourceContribution,
+  ExtensionTextExtractorContribution,
+  ExtensionTextTransformRuleContribution,
 } from '@loom-studio/extension-sdk'
 import {
   extensionStorageTokenPattern,
@@ -91,6 +93,8 @@ export function validateManifest(manifest: Partial<ExtensionManifest>): void {
     assertPackageJsonSource(resource.source, `Prompt Resource ${resource.id}`)
     promptResources.set(resource.id, resource)
   }
+  validateTextResourceContributions(manifest.contributes?.transformRules, 'Text Transform Rule')
+  validateTextResourceContributions(manifest.contributes?.textExtractors, 'Text Extractor')
   const agentTools = new Set<string>()
   for (const tool of manifest.contributes?.agentTools ?? []) {
     if (!tool.id.startsWith(`${manifest.id}/`) || !extensionStorageTokenPattern.test(tool.id.slice(manifest.id.length + 1))) {
@@ -223,8 +227,20 @@ export function validateManifest(manifest: Partial<ExtensionManifest>): void {
       }
     }
   }
-  for (const rule of manifest.contributes?.transformRules ?? []) {
-    assertPackageJsonSource(rule.source, 'Transform Rule')
+}
+
+function validateTextResourceContributions(
+  contributions: ExtensionTextTransformRuleContribution[] | ExtensionTextExtractorContribution[] | undefined,
+  label: string,
+): void {
+  const ids = new Set<string>()
+  for (const contribution of contributions ?? []) {
+    if (!contribution.id || !extensionStorageTokenPattern.test(contribution.id)) {
+      throw new Error(`Manifest ${label} id is invalid: ${contribution.id}`)
+    }
+    if (ids.has(contribution.id)) throw new Error(`Manifest ${label} id must be unique: ${contribution.id}`)
+    assertPackageJsonSource(contribution.source, `${label} ${contribution.id}`)
+    ids.add(contribution.id)
   }
 }
 

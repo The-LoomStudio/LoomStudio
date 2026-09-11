@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore } from '../../pages/studio/model/studio-layout-store.js'
 import { AssetWorkbenchLayout } from '../../shared/ui/asset-workbench-layout/asset-workbench-layout.js'
 import type { Translator } from '../../shared/i18n/index.js'
+import type { StudioApi } from '../../shared/api/studio-api.js'
+import { TextTransformDetail, TextTransformExplorer, useTextTransformController } from '../../features/text-transforms/ui/text-transform-panel.js'
 import {
   findContextNode,
   flattenContextNodes,
@@ -14,8 +16,8 @@ import {
   type ContextAssetUpdate,
 } from '../../features/context-assets/model/projection-workbench.js'
 import { ContextAssetEditor, ContextAssetExplorer } from '../../features/context-assets/ui/context-asset-workbench.js'
-import { ContextAssetHeader } from '../../features/context-assets/ui/context-asset-header/context-asset-header.js'
-import { findContextAssetPath, findContextAssetByVirtualPath, flattenContextAssetNodes } from '../../features/context-assets/model/context-asset-tree.js'
+import { ContextAssetHeader, type ContextAssetPathSegment } from '../../features/context-assets/ui/context-asset-header/context-asset-header.js'
+import { findContextAssetPath, findContextAssetByVirtualPath, flattenContextAssetNodes, resolveVirtualDisplayName } from '../../features/context-assets/model/context-asset-tree.js'
 import { STUDIO_PANEL_PRESENTATION } from '../../pages/studio/model/studio-panel-presentation.js'
 import { PromptResourceToolbar } from '../../features/context-assets/ui/prompt-resource-toolbar/prompt-resource-toolbar.js'
 import { resolvePresetBuildContextResources } from '../../features/context-assets/model/preset-build-context.js'
@@ -57,6 +59,9 @@ type PresetWorkbenchProps = {
   onSelectResource?: (resourceId: string) => void
   t: Translator
   workspaceId: string
+  textTransformsApi: StudioApi['textTransforms']
+  loomScriptsApi: StudioApi['loomScripts']
+  onLoomScriptsChanged: () => void
 }
 
 type PresetZone = NonNullable<NonNullable<ContextAssetNode['skeletonPatch']>['zones']>[number]
@@ -68,6 +73,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const explorerLayout = useStudioLayoutStore(state => state.assetLayouts.preset)
   const explorerView = explorerLayout.views[props.workspaceId] ?? DEFAULT_ASSET_VIEW_STATE
   const setExplorerWidth = useStudioLayoutStore(state => state.setAssetExplorerWidth)
+  const setAssetPane = useStudioLayoutStore(state => state.setAssetPane)
   const openAssetDetail = useStudioLayoutStore(state => state.openAssetDetail)
   const setAssetExpandedIds = useStudioLayoutStore(state => state.setAssetExpandedIds)
   const setActivePresetView = useStudioLayoutStore(state => state.setPresetView)
@@ -75,14 +81,23 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const setTextEditorMode = useStudioLayoutStore(state => state.setTextEditorMode)
   const presetResources = useMemo(() => props.resources.filter(resource => resource.resourceKind === 'preset'), [props.resources])
   const [internalSelectedResourceId, setInternalSelectedResourceId] = useState<string>()
-  const [mobilePane, setMobilePane] = useState<'explorer' | 'detail'>('explorer')
+  const mobilePane = useStudioLayoutStore(state => state.assetPanes.preset[props.workspaceId] ?? 'explorer')
   const selectedResourceId = props.selectedResourceId ?? internalSelectedResourceId
   const setSelectedResourceId = (id: string | undefined) => {
     setInternalSelectedResourceId(id)
-    setMobilePane('explorer')
+    setAssetPane('preset', props.workspaceId, 'explorer')
     if (id) props.onSelectResource?.(id)
   }
   const selectedResource = presetResources.find(resource => resource.id === selectedResourceId) ?? presetResources[0]
+  const textController = useTextTransformController({
+    api: props.textTransformsApi,
+    loomScriptsApi: props.loomScriptsApi,
+    onRuntimeChanged: props.onLoomScriptsChanged,
+    owner: selectedResource ? { kind: 'preset', presetId: selectedResource.id } : { kind: 'runtime' },
+    t: props.t,
+    mobilePane: mobilePane === 'explorer' ? 'master' : 'detail',
+    onMobilePaneChange: pane => setAssetPane('preset', props.workspaceId, pane === 'master' ? 'explorer' : 'detail'),
+  })
   const macroController = useMacroAuthoring(selectedResource ? {
     ownerId: selectedResource.id,
     ownerLabel: selectedResource.rootNode.label,
@@ -126,6 +141,14 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const selectedZone = presetZoneDefinitions.find(zone => zone.id === selectedZoneId)
   const compositionItems = orderNode?.skeletonPatch?.items
   const selectedCompositionItem = findCompositionItem(compositionItems ?? [], selectedCompositionId)
+  const hasDetailSelection = activePresetView === 'text'
+    || (activePresetView === 'macros'
+      ? Boolean(macroController.selectedRowId)
+      : activePresetView === 'tools'
+        ? Boolean(selectedToolId)
+        : activePresetView === 'order'
+          ? Boolean(selectedCompositionItem || selectedZone)
+          : Boolean(selectedNode))
 
   useEffect(() => {
     if (!props.routeAssetId) return
@@ -142,7 +165,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   }, [selectedResource?.id, selectedResourceId])
 
   useEffect(() => {
-    setMobilePane('explorer')
+    setAssetPane('preset', props.workspaceId, 'explorer')
     macroController.selectRow(undefined)
   }, [selectedResource?.id])
 
@@ -187,14 +210,14 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const displayNodes = mainOrderNodes
 
 
-  function changePresetView(view: 'assets' | 'order' | 'tools' | 'macros') {
-    setMobilePane('explorer')
+  function changePresetView(view: 'assets' | 'order' | 'tools' | 'macros' | 'text') {
+    setAssetPane('preset', props.workspaceId, 'explorer')
     macroController.selectRow(undefined)
     setActivePresetView(view)
   }
 
   function handleSelectNode(id: string) {
-    setMobilePane('detail')
+    setAssetPane('preset', props.workspaceId, 'detail')
     const toolId = toolProjection.toolIdByNodeId.get(id)
     if (toolId) {
       setSelectedToolId(toolId)
@@ -216,9 +239,9 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   return (
     <AssetWorkbenchLayout
       explorerWidth={explorerLayout.explorerWidth}
+      hasSelection={hasDetailSelection}
       mobilePane={mobilePane}
-      onMobilePaneChange={setMobilePane}
-      onBack={() => setMobilePane('explorer')}
+      onMobilePaneChange={pane => setAssetPane('preset', props.workspaceId, pane)}
       toolbar={(
         <PromptResourceToolbar
           hideSelect
@@ -235,7 +258,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
         />
       )}
       footer={(
-        <nav className="loom-page-tabs">
+        <nav className="loom-page-tabs loom-page-tabs-footer">
           <button
             aria-current={activePresetView === 'assets' ? 'page' : undefined}
             className={`loom-page-tab ${activePresetView === 'assets' ? 'loom-page-tab-active' : ''}`}
@@ -244,6 +267,12 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           >
             {props.t('preset.panel.assets')}
           </button>
+          <button
+            aria-current={activePresetView === 'text' ? 'page' : undefined}
+            className={`loom-page-tab ${activePresetView === 'text' ? 'loom-page-tab-active' : ''}`}
+            type="button"
+            onClick={() => changePresetView('text')}
+          >{props.t('rail.textTransform')}</button>
           <button
             aria-current={activePresetView === 'tools' ? 'page' : undefined}
             className={`loom-page-tab ${activePresetView === 'tools' ? 'loom-page-tab-active' : ''}`}
@@ -264,8 +293,8 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
       )}
       onExplorerWidthChange={width => setExplorerWidth('preset', width)}
       resizeLabel={props.t('context.resizeExplorer')}
-      viewMode={explorerView.viewMode}
-      explorer={activePresetView === 'tools' ? (
+      viewMode={activePresetView === 'text' ? 'master-detail' : explorerView.viewMode}
+      explorer={activePresetView === 'text' ? <TextTransformExplorer controller={textController} /> : activePresetView === 'tools' ? (
         <PresetToolExplorer
           selectedToolId={selectedToolId}
           t={props.t}
@@ -275,7 +304,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           onSelect={setSelectedToolId}
         />
       ) : activePresetView === 'macros' ? (
-        <MacroAuthoringExplorer controller={macroController} onAdd={() => setMobilePane('detail')} onSelect={() => setMobilePane('detail')} />
+          <MacroAuthoringExplorer controller={macroController} onAdd={() => setAssetPane('preset', props.workspaceId, 'detail')} onSelect={() => setAssetPane('preset', props.workspaceId, 'detail')} />
       ) : (
         <ContextAssetExplorer
           displayNodes={displayNodes}
@@ -306,7 +335,9 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
         />
       )}
     >
-      {activePresetView === 'tools' ? (
+      {activePresetView === 'text' ? (
+        selectedResource ? <TextTransformDetail controller={textController} /> : <p>{props.t('textTransform.noPreset')}</p>
+      ) : activePresetView === 'tools' ? (
         <PresetToolDetail
           mount={props.toolMounts.find(mount => mount.presetResourceId === selectedResource?.id && mount.toolId === selectedToolId)}
           preset={selectedResource}
@@ -873,13 +904,56 @@ export function PresetWorkbenchHeader(props: {
   onSelectResource?: (resourceId: string) => void
 }) {
   const definition = STUDIO_PANEL_PRESENTATION.preset
+  const activePresetView = useStudioLayoutStore(state => state.presetView)
+  const setActivePresetView = useStudioLayoutStore(state => state.setPresetView)
   const presetResources = useMemo(() => props.resources.filter(r => r.resourceKind === 'preset'), [props.resources])
   const selectedResource = presetResources.find(r => r.id === props.selectedResourceId) ?? presetResources[0]
+  const selectedId = useStudioLayoutStore(state => state.assetLayouts.preset.views[props.workspaceId]?.selectedId)
+  const openAssetDetail = useStudioLayoutStore(state => state.openAssetDetail)
+  const setAssetPane = useStudioLayoutStore(state => state.setAssetPane)
+  const selectedPath = selectedResource && selectedId
+    ? findContextAssetPath([readPromptResourceWorkbenchRoot(selectedResource)], selectedId)
+      .slice(1)
+      .map((node, index, pathNodes) => {
+        const parent = [readPromptResourceWorkbenchRoot(selectedResource), ...pathNodes][index]
+        return {
+          id: node.id,
+          label: resolveVirtualDisplayName(node.label, node.kind),
+          options: (parent?.children ?? []).map(sibling => ({
+            id: sibling.id,
+            label: resolveVirtualDisplayName(sibling.label, sibling.kind),
+          })),
+        }
+      })
+    : []
+  const tabOptions: Array<{ id: 'assets' | 'text' | 'tools' | 'macros'; label: string }> = [
+    { id: 'assets', label: props.t('preset.panel.assets') },
+    { id: 'text', label: props.t('rail.textTransform') },
+    { id: 'tools', label: props.t('preset.panel.tools') },
+    { id: 'macros', label: props.t('context.authoring.macros') },
+  ]
+  const activeTab = tabOptions.find(tab => tab.id === activePresetView)
+  const breadcrumbs: ContextAssetPathSegment[] = activeTab
+    ? [{
+      id: activeTab.id,
+      label: activeTab.label,
+      options: tabOptions,
+      onSelect: id => {
+        if (id !== 'assets' && id !== 'text' && id !== 'tools' && id !== 'macros') return
+        setAssetPane('preset', props.workspaceId, 'explorer')
+        setActivePresetView(id)
+      },
+    }, ...selectedPath.map(segment => ({ ...segment, onSelect: (id: string) => {
+      setAssetPane('preset', props.workspaceId, 'detail')
+      openAssetDetail('preset', props.workspaceId, id)
+    } }))]
+    : []
 
   return (
     <ContextAssetHeader
       Icon={definition.Icon}
       title={props.t(definition.labelKey)}
+      breadcrumbs={breadcrumbs}
       resources={presetResources}
       selectedResourceId={selectedResource?.id}
       t={props.t}

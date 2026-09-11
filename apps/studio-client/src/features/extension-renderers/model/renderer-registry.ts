@@ -1,12 +1,12 @@
 import type {
   RendererConflictPolicy,
   RendererContributionDefinition,
-  RendererContributionIdentity,
+  RendererContributionRef,
   RendererInstanceIdentity,
   RendererSurface,
 } from '@loom-studio/extension-sdk'
 
-export type RegisteredRendererContribution = RendererContributionIdentity & {
+export type RegisteredRendererContribution = RendererContributionRef & {
   definition: RendererContributionDefinition
 }
 
@@ -20,6 +20,8 @@ export type RendererRegistryDiagnostic = {
     | 'renderer.anchor_unresolved'
     | 'renderer.anchor_ambiguous'
     | 'renderer.anchor_overlap'
+    | 'renderer.script_export_mismatch'
+    | 'renderer.sandbox_failed'
   message: string
   contributionKey: string
 }
@@ -36,8 +38,12 @@ export const rendererSurfacePolicies: Record<RendererSurface, RendererConflictPo
   'standalone.page': 'navigation',
 }
 
-export function rendererContributionKey(identity: RendererContributionIdentity): string {
-  return `${identity.packageId}/${identity.moduleId}/${identity.contributionId}`
+export function rendererContributionKey(identity: RendererContributionRef): string {
+  const contributionId = encodeURIComponent(identity.contributionId)
+  if (identity.owner.kind === 'extension') {
+    return `extension:${encodeURIComponent(identity.owner.packageId)}/${encodeURIComponent(identity.owner.moduleId)}/${contributionId}`
+  }
+  return `script:${encodeURIComponent(identity.owner.scriptDocumentId)}@${identity.owner.documentVersion}/${contributionId}`
 }
 
 export function rendererInstanceKey(identity: RendererInstanceIdentity): string {

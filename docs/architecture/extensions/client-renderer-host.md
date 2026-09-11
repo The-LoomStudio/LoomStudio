@@ -1,8 +1,8 @@
 # Client Extension Host 与 Renderer Surface
 
-> 状态：Phase 0—6 已实现（2026-08-29）
+> 状态：Extension Host 与 Loom Script Sandbox 已实现（2026-09-11）
 
-本文记录 Studio Client 当前已经落地的 Client Extension Module、Renderer Contribution、Surface 仲裁、实例生命周期与消息内 Render Mount。它描述的是当前代码合同，不包含未来的通用样式注入、网络权限或不可信代码沙箱。
+本文记录 Studio Client 当前已经落地的 Client Extension Module、Loom Script Renderer、Surface 仲裁、实例生命周期与消息内 Render Mount。Extension Client Module 仍是受信任同源代码；不可信单文件 Renderer 使用独立 Loom Script Sandbox，详见 [`loom-script-runtime.md`](loom-script-runtime.md)。
 
 实现入口：
 
@@ -48,10 +48,16 @@ type RendererContributionDefinition = {
 }
 ```
 
-Contribution 的稳定身份为：
+Extension Contribution 的稳定身份为：
 
 ```text
 packageId / moduleId / contributionId
+```
+
+Loom Script Contribution 的稳定身份为：
+
+```text
+scriptDocumentId / documentVersion / contributionId
 ```
 
 UI Instance 再附加 `scopeKey`。注册不等于立即创建 DOM；Host 根据当前 Workspace、Timeline、Agent Session Scope、Surface 可见性和显式占用状态决定实际实例。
@@ -90,7 +96,7 @@ Navigation Surface 可以注册多个入口，但同一宿主容器只展示当�
 
 - `direct`：直接挂载到 Host-owned Root，继承 Studio CSS Token；不是样式或 DOM 隔离；
 - `shadow`：Host 创建 open Shadow Root，并注入最小 box-sizing、字体和颜色桥接；提供样式边界，不提供恶意代码隔离；
-- `sandbox-iframe`：Host 创建 `sandbox="allow-scripts"` iframe，不授予 `allow-same-origin`，通过 `postMessage` 发送 Renderer Context。
+- `sandbox-iframe`：Host 创建 `sandbox="allow-scripts"` iframe，不授予 `allow-same-origin`。Extension iframe 使用受控 frame URL；Loom Script 使用 Blob module、受限 CSP 与专用 `MessageChannel`。
 
 每个 Surface Host 建立独立 Root 和 stacking context。Extension 在 Root 外修改宿主 DOM 或注入全局 CSS 属于 Direct DOM escape hatch，不是稳定平台合同，也不享受兼容保证。
 
@@ -153,7 +159,7 @@ node.after
 node.inline + literal / match-ref / marker selector
 ```
 
-当前 Host 已实现 literal selector；`match-ref` 与 `marker` 类型已经进入 SDK，但只有调用方提供对应解析表时才能解析，现有消息宿主尚未接入正式 Match / Marker 数据源。
+Host 已实现 literal selector。Loom Script Runtime 会把 Text Pipeline 的稳定 `matchId` 与 `displayRange` 作为正式 Match 数据源，Node Host 按解析后的 UTF-16 范围插入 Renderer；范围无法映射到实际渲染文本时明确失败并报告 Diagnostic。普通 Extension `projectNode()` 仍需使用自身可解释的 Literal Anchor；Marker 尚无正式数据源。
 
 Host 对重复 Mount Key、缺失或多义 Anchor、重叠 replace、Projection 异常生成 Diagnostic。每个 Node 第一版限制为 64 个 Mount、20 万字符；超出后截断并报告。这是资源预算，不是正文大小合同。
 
@@ -179,6 +185,7 @@ Studio 的扩展面板当前展示：
 - Client、Renderer 与 Server Diagnostic；
 - Standalone Page 打开入口。
 - Manifest Command、Action Placement、Runtime Handler 注册状态与 Workbench Action 执行入口。
+- 当前 Text Pipeline Runtime 中实际注册的 Extension / Loom Script Renderer、Scope Claim 与 Diagnostic。
 
 Workbench 解释的是 Manifest declaration、Runtime registration 和当前实例状态，不把“已声明但未注册”伪装成可用能力。
 
@@ -201,6 +208,6 @@ Workbench 解释的是 Manifest declaration、Runtime registration 和当前实�
 - 第三方网络图片没有权限声明、隐私提示、加载失败或离线合同；
 - Client Module 仍是受信任同源代码；
 - Collection 用户排序尚未持久化；
-- `match-ref` / `marker` Anchor 尚未接入正式 History Match / Narrative Marker 数据源。
+- Marker Anchor 尚未接入正式 Narrative Marker 数据源；Match Anchor 已由 Loom Script Runtime 接入 Text Pipeline Match。
 
 在出现第二个真实用例前，不建立通用 CSS 注入系统、Background Stack、任意 HUD / Sidebar 或完整 UI DSL。

@@ -47,6 +47,9 @@ import type {
   ManagedExtensionModule,
   ManagedExtensionPackage,
   ListStateDefinitionsResult,
+  LoomScript,
+  LoomScriptMount,
+  LoomScriptOwner,
   MutationReceipt,
   UpdateAiCapabilityProfileResult,
   NarrativePage,
@@ -67,6 +70,7 @@ import type {
   ReplaceSettingMountsResult,
   ReplacePresetToolMountsResult,
   RegisteredAiGatewayProvider,
+  ResolvedLoomScriptRendererMount,
   SettingLayerInput,
   SettingMountSource,
   StateTarget,
@@ -83,6 +87,9 @@ import type {
   RendererDefinition,
   TextExtractor,
   TextExtractorDraft,
+  TextPipelineInspection,
+  TextPipelineOverride,
+  TextTransformPhase,
   TextTransformRule,
   TextTransformRuleDraft,
 } from '../../entities/index.js'
@@ -317,9 +324,22 @@ export type InspectMacrosInput = {
   macroSelections?: Record<string, string>
 }
 
+export type LoomScriptMountTarget = LoomScriptOwner
+
 export type StudioApi = {
   macros: {
     inspect(input: InspectMacrosInput): Promise<{ macroInspection: import('@loom-studio/shared').MacroInspection }>
+  }
+  loomScripts: {
+    import(input: { owner: LoomScriptOwner; fileName: string; source: string }): Promise<{ script: LoomScript; mutation: MutationReceipt }>
+    update(input: { scriptDocumentId: string; expectedVersion: number; fileName: string; source: string }): Promise<{ script: LoomScript; mutation: MutationReceipt }>
+    get(scriptDocumentId: string): Promise<{ script: LoomScript }>
+    list(owner?: LoomScriptOwner): Promise<{ scripts: LoomScript[] }>
+    export(scriptDocumentId: string): Promise<{ artifact: { format: 'loom.script'; schemaVersion: 1; fileName: string; source: string } }>
+    createMount(input: { target: LoomScriptMountTarget; scriptDocumentId: string; orderIndex: number; pinnedDocumentVersion?: number; origin?: Record<string, ClientJsonValue> }): Promise<{ mount: LoomScriptMount; mutation: MutationReceipt }>
+    updateMount(input: { mountId: string; expectedVersion: number; enabled: boolean; orderIndex: number; pinnedDocumentVersion?: number; grantedCapabilities: string[] }): Promise<{ mount: LoomScriptMount; mutation: MutationReceipt }>
+    listMounts(target?: LoomScriptMountTarget): Promise<{ mounts: LoomScriptMount[] }>
+    resolveRendererMounts(input?: { workspaceId?: string; timelineId?: string; presetId?: string }): Promise<{ mounts: ResolvedLoomScriptRendererMount[] }>
   }
   extensions: {
     list(): Promise<{ items: ManagedExtensionPackage[] }>
@@ -363,8 +383,12 @@ export type StudioApi = {
     getExtractor(extractorId: string): Promise<{ extractor: TextExtractor }>
     upsertExtractor(input: { extractorId: string; expectedVersion?: number; extractor: TextExtractorDraft }): Promise<{ extractor: TextExtractor; mutation: MutationReceipt }>
     deleteExtractor(input: { extractorId: string; expectedVersion?: number }): Promise<{ deleted: true; mutation: MutationReceipt }>
-    project(input: { source: HistorySource; phase: 'classify' | 'prompt' | 'display' }): Promise<{ snapshot: HistoryProjectionSnapshot }>
-    extract(input: { source: HistorySource; phase?: 'classify' | 'prompt' | 'display'; extractorId: string }): Promise<{ extraction: ClientJsonValue; snapshot: HistoryProjectionSnapshot }>
+    project(input: { source: HistorySource; phase: TextTransformPhase; consumerAgentSessionId?: string }): Promise<{ snapshot: HistoryProjectionSnapshot }>
+    getOverride(input: { source: HistorySource; phase: TextTransformPhase; consumerAgentSessionId?: string }): Promise<{ override: TextPipelineOverride | null }>
+    upsertOverride(input: { source: HistorySource; phase: TextTransformPhase; consumerAgentSessionId?: string; expectedVersion?: number; disabledRuleIds: string[]; orderedRuleIds: string[] }): Promise<{ override: TextPipelineOverride; mutation: MutationReceipt }>
+    deleteOverride(input: { source: HistorySource; phase: TextTransformPhase; consumerAgentSessionId?: string; expectedVersion?: number }): Promise<{ deleted: true; mutation: MutationReceipt }>
+    inspectTextPipeline(input: { source: HistorySource; phase: TextTransformPhase; consumerAgentSessionId?: string; traceEntryId?: string }): Promise<TextPipelineInspection>
+    extract(input: { source: HistorySource; phase?: TextTransformPhase; extractorId: string; consumerAgentSessionId?: string }): Promise<{ extraction: ClientJsonValue; snapshot: HistoryProjectionSnapshot }>
     listRenderers(): Promise<{ renderers: RendererDefinition[] }>
   }
   cards: {
@@ -518,6 +542,17 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
     macros: {
       inspect: input => bridge.call('application.inspectMacros', input as unknown as ClientJsonValue),
     },
+    loomScripts: {
+      import: input => bridge.call('application.importLoomScript', input as unknown as ClientJsonValue),
+      update: input => bridge.call('application.updateLoomScript', input as unknown as ClientJsonValue),
+      get: scriptDocumentId => bridge.call('application.getLoomScript', { scriptDocumentId }),
+      list: owner => bridge.call('application.listLoomScripts', owner ? { owner } as unknown as ClientJsonValue : {}),
+      export: scriptDocumentId => bridge.call('application.exportLoomScript', { scriptDocumentId }),
+      createMount: input => bridge.call('application.createLoomScriptMount', input as unknown as ClientJsonValue),
+      updateMount: input => bridge.call('application.updateLoomScriptMount', input as unknown as ClientJsonValue),
+      listMounts: target => bridge.call('application.listLoomScriptMounts', target ? { target } as unknown as ClientJsonValue : {}),
+      resolveRendererMounts: input => bridge.call('application.resolveLoomScriptRendererMounts', (input ?? {}) as unknown as ClientJsonValue),
+    },
     textTransforms: {
       listRules: () => bridge.call('application.listTextTransformRules', {}),
       getRule: ruleId => bridge.call('application.getTextTransformRule', { ruleId }),
@@ -527,7 +562,11 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       getExtractor: extractorId => bridge.call('application.getTextExtractor', { extractorId }),
       upsertExtractor: input => bridge.call('application.upsertTextExtractor', input as unknown as ClientJsonValue),
       deleteExtractor: input => bridge.call('application.deleteTextExtractor', input as unknown as ClientJsonValue),
+      getOverride: input => bridge.call('application.getTextPipelineOverride', input as unknown as ClientJsonValue),
+      upsertOverride: input => bridge.call('application.upsertTextPipelineOverride', input as unknown as ClientJsonValue),
+      deleteOverride: input => bridge.call('application.deleteTextPipelineOverride', input as unknown as ClientJsonValue),
       project: input => bridge.call('application.projectHistory', input as unknown as ClientJsonValue),
+      inspectTextPipeline: input => bridge.call<TextPipelineInspection>('application.inspectTextPipeline', input as unknown as ClientJsonValue),
       extract: input => bridge.call('application.extractHistory', input as unknown as ClientJsonValue),
       listRenderers: () => bridge.call('application.listRenderers', {}),
     },

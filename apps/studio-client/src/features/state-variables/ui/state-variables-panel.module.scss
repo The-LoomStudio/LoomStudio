@@ -14,12 +14,23 @@
 }
 
 .intro {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid var(--loom-color-divider);
-  padding: 12px 18px;
+  padding: 12px var(--loom-page-header-padding);
   gap: 12px;
+
+  &::after {
+    content: '';
+    position: absolute;
+    right: var(--loom-divider-inset);
+    bottom: 0;
+    left: var(--loom-divider-inset);
+    height: 1px;
+    background: var(--loom-color-divider);
+    pointer-events: none;
+  }
 
   h2 {
     margin: 0;
@@ -244,13 +255,24 @@
 }
 
 .detailHeader {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid var(--loom-color-divider);
-  padding: 10px 18px;
+  padding: 10px var(--loom-page-header-padding);
   gap: 12px;
   flex-wrap: wrap;
+
+  &::after {
+    content: '';
+    position: absolute;
+    right: var(--loom-divider-inset);
+    bottom: 0;
+    left: var(--loom-divider-inset);
+    height: 1px;
+    background: var(--loom-color-divider);
+    pointer-events: none;
+  }
 
   .headerTitle {
     display: flex;
@@ -576,6 +598,12 @@
       font: inherit;
     }
 
+    > code {
+      padding: 6px 0;
+      color: var(--loom-color-text);
+      font: 12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
     input:focus {
       outline: none;
       border-color: var(--loom-color-accent);
@@ -590,41 +618,25 @@
   }
 }
 
-.macroInspectionList {
-  display: grid;
-  align-content: start;
-  gap: 10px;
-}
-
-.macroInspectionEntry {
-  display: grid;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1px solid var(--loom-color-divider);
+.macroReadOnlyValue {
+  min-height: 68px;
+  margin: 0;
+  padding: 9px 10px;
   border-radius: var(--loom-radius-control);
   background: var(--loom-color-surface-subtle);
+  color: var(--loom-color-text);
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 
-  > header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-  }
-
-  > code {
-    overflow-wrap: anywhere;
-    color: var(--loom-color-text);
-    font: 12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  }
-
-  fieldset {
-    display: grid;
-    gap: 5px;
-    min-width: 0;
-    margin: 0;
-    padding: 8px;
-    border: 1px solid var(--loom-color-divider);
-  }
+.macroSourceList {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  margin: 14px 0 0;
+  padding: 8px;
+  border: 1px solid var(--loom-color-divider);
 
   legend {
     padding: 0 4px;
@@ -654,6 +666,12 @@
       font: 11px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     }
   }
+}
+
+.macroInspectionList {
+  display: grid;
+  align-content: start;
+  gap: 10px;
 }
 
 .statusResolved,

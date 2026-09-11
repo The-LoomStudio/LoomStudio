@@ -274,4 +274,31 @@ describe('extension manifest contract', () => {
       },
     })).toThrow('must use package namespace')
   })
+
+  it('validates Package Text Transform Rule and Text Extractor declarations', () => {
+    const base = {
+      manifestVersion: 2,
+      id: 'example.text-pipeline',
+      version: '1.0.0',
+      displayName: 'Text Pipeline',
+      engines: { studio: '^0.1.0' },
+    } as const
+    const manifest = parseExtensionManifest({
+      ...base,
+      contributes: {
+        transformRules: [{ id: 'hide-think', source: './resources/hide-think.json' }],
+        textExtractors: [{ id: 'world-state', source: './resources/world-state.json' }],
+      },
+    })
+    expect(manifest.contributes?.transformRules?.[0]?.id).toBe('hide-think')
+    expect(manifest.contributes?.textExtractors?.[0]?.id).toBe('world-state')
+    expect(() => parseExtensionManifest({
+      ...base,
+      contributes: { transformRules: [{ id: 'duplicate', source: './a.json' }, { id: 'duplicate', source: './b.json' }] },
+    })).toThrow('id must be unique')
+    expect(() => parseExtensionManifest({
+      ...base,
+      contributes: { textExtractors: [{ id: 'invalid id', source: '../extractor.json' }] },
+    })).toThrow('id is invalid')
+  })
 })

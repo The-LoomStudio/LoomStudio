@@ -57,8 +57,7 @@ export function RendererInstanceRoot(props: {
     const controller = new AbortController()
     return {
       identity: {
-        packageId: props.registration.packageId,
-        moduleId: props.registration.moduleId,
+        owner: structuredClone(props.registration.owner),
         contributionId: props.registration.contributionId,
       },
       surface: props.registration.definition.surface,
@@ -87,6 +86,16 @@ export function RendererInstanceRoot(props: {
     )
     setFailed(false)
     const adapter = props.registration.definition.adapter ?? 'direct'
+    if (props.registration.sandboxMount) {
+      handle = props.registration.sandboxMount(root, context)
+      return () => {
+        disposed = true
+        ;(context as ClientRendererContext & { controller: AbortController }).controller.abort()
+        void handle?.dispose()
+        void instanceHandle.dispose()
+        root.replaceChildren()
+      }
+    }
     if (adapter === 'sandbox-iframe') {
       const source = props.registration.frame?.src
       if (!source) {

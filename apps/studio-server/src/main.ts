@@ -129,6 +129,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
   let agents
   let narratives
   let states
+  let blobs: ReturnType<typeof createBlobStore> | undefined
   let assets: AssetStore | undefined
   let promptResources: PromptResourceStore | undefined
   try {
@@ -137,7 +138,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     narratives = dataEngine ? createNarrativeStore({ engine: dataEngine, createId, now: nowIso }) : undefined
     states = dataEngine ? createStateStore({ engine: dataEngine, createId, now: nowIso }) : undefined
     if (dataEngine) {
-      const blobs = createBlobStore({
+      blobs = createBlobStore({
         engine: dataEngine,
         rootDirectory: localPaths.blobRoot,
         createId,
@@ -158,6 +159,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     agentTools,
     dataEngine,
     documents,
+    blobs,
     narratives,
     promptResources,
     states,

@@ -1,7 +1,7 @@
 import { memo, useEffect, useState, type ReactNode } from 'react'
-import { Columns2, FilePenLine, ListTree, Maximize2, Minimize2, type LucideIcon } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Columns2, FilePenLine, Maximize2, Minimize2 } from 'lucide-react'
 import type { Translator } from '../../shared/i18n/index.js'
-import { DEFAULT_ASSET_VIEW_STATE, STUDIO_PANEL_IDS, useStudioLayoutStore, type AssetLayoutId, type AssetViewMode, type StudioPanelId } from './model/studio-layout-store.js'
+import { DEFAULT_ASSET_VIEW_STATE, STUDIO_PANEL_IDS, useStudioLayoutStore, useStudioPanelStore, type AssetLayoutId, type StudioPanelId } from './model/studio-layout-store.js'
 import { STUDIO_PANEL_PRESENTATION } from './model/studio-panel-presentation.js'
 import styles from './studio-page.module.scss'
 
@@ -15,26 +15,63 @@ type StudioPanelHostProps = {
 
 export function StudioPanelHost(props: StudioPanelHostProps) {
   const activeAssetLayoutId = readAssetLayoutId(props.activePanel)
-  const activeAssetViewModePreference = useStudioLayoutStore(state => activeAssetLayoutId === null
+  const activeAssetViewMode = useStudioLayoutStore(state => activeAssetLayoutId === null
     ? null
     : (state.assetLayouts[activeAssetLayoutId].views[props.assetWorkspaceId] ?? DEFAULT_ASSET_VIEW_STATE).viewMode)
-  const activeAssetHasSelection = useStudioLayoutStore(state => activeAssetLayoutId !== null
-    && Boolean(state.assetLayouts[activeAssetLayoutId].views[props.assetWorkspaceId]?.selectedId))
+  const activeAssetPane = useStudioLayoutStore(state => activeAssetLayoutId === null
+    ? null
+    : (state.assetPanes[activeAssetLayoutId][props.assetWorkspaceId] ?? 'explorer'))
+  const setAssetPane = useStudioLayoutStore(state => state.setAssetPane)
   const panelWindowMode = useStudioLayoutStore(state => state.panelWindowMode)
   const setAssetViewMode = useStudioLayoutStore(state => state.setAssetViewMode)
   const togglePanelWindowMode = useStudioLayoutStore(state => state.togglePanelWindowMode)
+  const canGoBackPanel = useStudioPanelStore(state => state.canGoBack)
+  const canGoForwardPanel = useStudioPanelStore(state => state.canGoForward)
+  const goBackPanel = useStudioPanelStore(state => state.goBack)
+  const goForwardPanel = useStudioPanelStore(state => state.goForward)
   const isImmersive = props.activePanel !== null && panelWindowMode === 'immersive'
   const definition = props.activePanel === null ? null : STUDIO_PANEL_PRESENTATION[props.activePanel]
   const ActivePanelIcon = definition?.Icon
   const customHeader = props.activePanel === null ? null : props.panelHeaders?.[props.activePanel]
-  const activeAssetViewMode = activeAssetViewModePreference === null
-    ? null
-    : activeAssetHasSelection ? activeAssetViewModePreference : 'explorer'
-
+  const canGoBackAsset = activeAssetLayoutId !== null && activeAssetViewMode === 'drilldown' && activeAssetPane === 'detail'
+  const canGoBack = canGoBackAsset || canGoBackPanel
   return (
     <div className={styles.dockPanelHost}>
       {definition && ActivePanelIcon ? (
-        <header className={`loom-page-header ${styles.workspaceHeader}`} data-loom-component="page-header">
+        <header
+          className={`loom-page-header ${styles.workspaceHeader}`}
+          data-asset-pane={activeAssetPane ?? undefined}
+          data-asset-view-mode={activeAssetViewMode ?? undefined}
+          data-loom-component="page-header"
+        >
+          <div className={styles.headerNavigation} data-loom-component="navigation-history">
+            <button
+              aria-label={props.t('navigation.back')}
+              className={styles.headerNavigationButton}
+              disabled={!canGoBack}
+              title={props.t('navigation.back')}
+              type="button"
+              onClick={() => {
+                if (canGoBackAsset && activeAssetLayoutId) {
+                  setAssetPane(activeAssetLayoutId, props.assetWorkspaceId, 'explorer')
+                  return
+                }
+                goBackPanel()
+              }}
+            >
+              <ArrowLeft aria-hidden="true" />
+            </button>
+            <button
+              aria-label={props.t('navigation.forward')}
+              className={styles.headerNavigationButton}
+              disabled={!canGoForwardPanel}
+              title={props.t('navigation.forward')}
+              type="button"
+              onClick={goForwardPanel}
+            >
+              <ArrowRight aria-hidden="true" />
+            </button>
+          </div>
           {customHeader ?? <><ActivePanelIcon aria-hidden="true" /><span className="loom-page-header-title">{props.t(definition.labelKey)}</span></>}
           {activeAssetLayoutId && activeAssetViewMode ? (
             <div
@@ -43,20 +80,23 @@ export function StudioPanelHost(props: StudioPanelHostProps) {
               data-loom-component="asset-view-mode-control"
               role="group"
             >
-              {VIEW_MODES.map(({ Icon, mode, titleKey }) => (
-                <button
-                  key={mode}
-                  aria-label={props.t(titleKey)}
-                  aria-pressed={activeAssetViewMode === mode}
-                  className={activeAssetViewMode === mode ? styles.viewModeButtonActive : styles.viewModeButton}
-                  disabled={mode !== 'explorer' && !activeAssetHasSelection}
-                  title={props.t(titleKey)}
-                  type="button"
-                  onClick={() => setAssetViewMode(activeAssetLayoutId, props.assetWorkspaceId, mode)}
-                >
-                  <Icon aria-hidden="true" />
-                </button>
-              ))}
+              <button
+                aria-label={props.t(activeAssetViewMode === 'master-detail' ? 'context.viewModeDrilldown' : 'context.viewModeMasterDetail')}
+                aria-pressed={activeAssetViewMode === 'drilldown'}
+                className={activeAssetViewMode === 'drilldown' ? styles.viewModeButtonActive : styles.viewModeButton}
+                title={props.t(activeAssetViewMode === 'master-detail' ? 'context.viewModeDrilldown' : 'context.viewModeMasterDetail')}
+                type="button"
+                onClick={() => setAssetViewMode(
+                  activeAssetLayoutId,
+                  props.assetWorkspaceId,
+                  activeAssetViewMode === 'master-detail' ? 'drilldown' : 'master-detail',
+                )}
+              >
+                <span aria-hidden="true" className={styles.viewModeIconSwap}>
+                  <Columns2 className={activeAssetViewMode === 'master-detail' ? styles.viewModeIconVisible : styles.viewModeIconHidden} />
+                  <FilePenLine className={activeAssetViewMode === 'drilldown' ? styles.viewModeIconVisible : styles.viewModeIconHidden} />
+                </span>
+              </button>
             </div>
           ) : null}
           <button
@@ -108,16 +148,6 @@ const StudioPanelStage = memo(function StudioPanelStage(props: {
     </div>
   )
 }, (previous, next) => previous.panel === next.panel && !previous.active && !next.active)
-
-const VIEW_MODES: Array<{
-  Icon: LucideIcon
-  mode: AssetViewMode
-  titleKey: 'context.viewModeExplorer' | 'context.viewModeSplit' | 'context.viewModeEditor'
-}> = [
-  { Icon: ListTree, mode: 'explorer', titleKey: 'context.viewModeExplorer' },
-  { Icon: Columns2, mode: 'split', titleKey: 'context.viewModeSplit' },
-  { Icon: FilePenLine, mode: 'editor', titleKey: 'context.viewModeEditor' },
-]
 
 function readAssetLayoutId(panel: StudioPanelId | null): AssetLayoutId | null {
   if (panel === 'preset') return 'preset'

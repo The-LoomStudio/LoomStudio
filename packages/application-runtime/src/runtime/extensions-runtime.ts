@@ -9,6 +9,10 @@ import { assertNonEmpty } from '../agents/agent.js'
 import { createAgentToolRegistry, type ToolDefinition } from '../agents/tool-registry.js'
 import { isPromptActivation } from '../prompt/prompt-activation.js'
 import {
+  validateTextExtractorDraft,
+  validateTextTransformRuleDraft,
+} from '../transforms/history-text.js'
+import {
   isPromptResourceArtifact,
   normalizePortableExtensionPayloadArtifact,
   type PortableExtensionPayloadArtifact,
@@ -43,6 +47,10 @@ import type {
   ReplaceCardPortableExtensionPayloadsInput,
   ReplaceCardPortableExtensionPayloadsResult,
   RuntimeRequestContext,
+  TextExtractorContent,
+  TextExtractorDraft,
+  TextTransformRuleContent,
+  TextTransformRuleDraft,
   UpdatePortableExtensionPayloadInput,
   UpdatePortableExtensionPayloadResult,
 } from '../types.js'
@@ -380,6 +388,50 @@ export function readExtensionAgentToolDefinition(packageId: string, toolId: stri
   return definition
 }
 
+export function readExtensionTextTransformRule(
+  packageId: string,
+  contributionId: string,
+  value: JsonValue,
+): TextTransformRuleDraft {
+  if (!isObject(value)) throw new Error(`Extension Text Transform Rule artifact must be an object: ${contributionId}`)
+  assertExtensionTextArtifactCannotOwnResource(value, 'Text Transform Rule', contributionId)
+  const rule = {
+    ...(structuredClone(value) as unknown as Omit<TextTransformRuleDraft, 'owner'>),
+    owner: { kind: 'extension' as const, packageId },
+  }
+  try {
+    validateTextTransformRuleDraft(rule)
+  } catch (error) {
+    throw new Error(`Extension Text Transform Rule artifact is invalid: ${contributionId}`, { cause: error })
+  }
+  return rule
+}
+
+export function readExtensionTextExtractor(
+  packageId: string,
+  contributionId: string,
+  value: JsonValue,
+): TextExtractorDraft {
+  if (!isObject(value)) throw new Error(`Extension Text Extractor artifact must be an object: ${contributionId}`)
+  assertExtensionTextArtifactCannotOwnResource(value, 'Text Extractor', contributionId)
+  const extractor = {
+    ...(structuredClone(value) as unknown as Omit<TextExtractorDraft, 'owner'>),
+    owner: { kind: 'extension' as const, packageId },
+  }
+  try {
+    validateTextExtractorDraft(extractor)
+  } catch (error) {
+    throw new Error(`Extension Text Extractor artifact is invalid: ${contributionId}`, { cause: error })
+  }
+  return extractor
+}
+
+function assertExtensionTextArtifactCannotOwnResource(value: Record<string, JsonValue>, label: string, contributionId: string): void {
+  for (const field of ['id', 'version', 'owner', 'origin', 'createdAt', 'updatedAt']) {
+    if (field in value) throw new Error(`Extension ${label} artifact cannot override ${field}: ${contributionId}`)
+  }
+}
+
 export function validateExtensionPromptNodeIds(packageId: string, node: PromptResourceArtifact['rootNode'], seen: Set<string>): void {
   if (!node.id.startsWith(`${packageId}.`)) throw new Error(`Extension Prompt Resource node id must use package namespace: ${node.id}`)
   if (seen.has(node.id)) throw new Error(`Extension Prompt Resource node id must be unique: ${node.id}`)
@@ -409,6 +461,16 @@ async function importExtensionPackageResourcesInternal(
   for (const item of input.agentTools) {
     if (agentToolDefinitions.has(item.contribution.id)) throw new Error(`Extension Agent Tool contribution is duplicated: ${item.contribution.id}`)
     agentToolDefinitions.set(item.contribution.id, readExtensionAgentToolDefinition(input.packageId, item.contribution.id, item.definition))
+  }
+  const transformRuleDrafts = new Map<string, TextTransformRuleDraft>()
+  for (const item of input.transformRules) {
+    if (transformRuleDrafts.has(item.contribution.id)) throw new Error(`Extension Text Transform Rule contribution is duplicated: ${item.contribution.id}`)
+    transformRuleDrafts.set(item.contribution.id, readExtensionTextTransformRule(input.packageId, item.contribution.id, item.artifact))
+  }
+  const textExtractorDrafts = new Map<string, TextExtractorDraft>()
+  for (const item of input.textExtractors) {
+    if (textExtractorDrafts.has(item.contribution.id)) throw new Error(`Extension Text Extractor contribution is duplicated: ${item.contribution.id}`)
+    textExtractorDrafts.set(item.contribution.id, readExtensionTextExtractor(input.packageId, item.contribution.id, item.artifact))
   }
 
   const promptArtifacts = new Map<string, PromptResourceArtifact>()
@@ -474,9 +536,39 @@ async function importExtensionPackageResourcesInternal(
     existingAgentTools.add(toolId)
   }
 
+  const transformRuleIds = new Map<string, string>()
+  const restorableTransformRuleVersions = new Map<string, number>()
+  for (const document of await listDocumentsIncludingTombstones<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule)) {
+    const resourceOrigin = document.content.origin
+    if (resourceOrigin?.kind !== 'extension-package' || resourceOrigin.packageId !== input.packageId) continue
+    if (resourceOrigin.packageVersion !== input.packageVersion) {
+      throw new Error(`Extension Text Transform Rule update requires an explicit migration: ${resourceOrigin.contributionId}`)
+    }
+    if (!transformRuleDrafts.has(resourceOrigin.contributionId)) continue
+    if (transformRuleIds.has(resourceOrigin.contributionId)) throw new Error(`Extension Text Transform Rule origin is duplicated: ${resourceOrigin.contributionId}`)
+    transformRuleIds.set(resourceOrigin.contributionId, document.id)
+    if (document.meta.tombstone) restorableTransformRuleVersions.set(resourceOrigin.contributionId, document.version)
+  }
+
+  const textExtractorIds = new Map<string, string>()
+  const restorableTextExtractorVersions = new Map<string, number>()
+  for (const document of await listDocumentsIncludingTombstones<TextExtractorContent>(ctx.documents, applicationDocumentTypes.textExtractor)) {
+    const resourceOrigin = document.content.origin
+    if (resourceOrigin?.kind !== 'extension-package' || resourceOrigin.packageId !== input.packageId) continue
+    if (resourceOrigin.packageVersion !== input.packageVersion) {
+      throw new Error(`Extension Text Extractor update requires an explicit migration: ${resourceOrigin.contributionId}`)
+    }
+    if (!textExtractorDrafts.has(resourceOrigin.contributionId)) continue
+    if (textExtractorIds.has(resourceOrigin.contributionId)) throw new Error(`Extension Text Extractor origin is duplicated: ${resourceOrigin.contributionId}`)
+    textExtractorIds.set(resourceOrigin.contributionId, document.id)
+    if (document.meta.tombstone) restorableTextExtractorVersions.set(resourceOrigin.contributionId, document.version)
+  }
+
   const missingPromptResources = input.promptResources.filter(item => !promptResourceIds.has(item.contribution.id) || restorablePromptResourceVersions.has(item.contribution.id))
   const missingAgentTools = input.agentTools.filter(item => !existingAgentTools.has(item.contribution.id))
-  if (missingPromptResources.length === 0 && missingAgentTools.length === 0) {
+  const missingTransformRules = input.transformRules.filter(item => !transformRuleIds.has(item.contribution.id) || restorableTransformRuleVersions.has(item.contribution.id))
+  const missingTextExtractors = input.textExtractors.filter(item => !textExtractorIds.has(item.contribution.id) || restorableTextExtractorVersions.has(item.contribution.id))
+  if (missingPromptResources.length === 0 && missingAgentTools.length === 0 && missingTransformRules.length === 0 && missingTextExtractors.length === 0) {
     return {
       promptResources: input.promptResources.map(item => ({
         contributionId: item.contribution.id,
@@ -484,6 +576,8 @@ async function importExtensionPackageResourcesInternal(
         resourceKind: item.contribution.resourceKind,
       })),
       agentTools: input.agentTools.map(item => ({ contributionId: item.contribution.id, toolId: item.contribution.id })),
+      transformRules: input.transformRules.map(item => ({ contributionId: item.contribution.id, ruleId: transformRuleIds.get(item.contribution.id)! })),
+      textExtractors: input.textExtractors.map(item => ({ contributionId: item.contribution.id, extractorId: textExtractorIds.get(item.contribution.id)! })),
     }
   }
 
@@ -525,6 +619,40 @@ async function importExtensionPackageResourcesInternal(
           expectedVersion: restorableAgentToolVersions.get(definition.id) ?? 'new',
         })
       }
+      for (const item of missingTransformRules) {
+        const contributionId = item.contribution.id
+        const draft = transformRuleDrafts.get(contributionId)!
+        const ruleId = transformRuleIds.get(contributionId) ?? ctx.createId('text-transform-rule')
+        await writeDocument<TextTransformRuleContent>(documents, {
+          id: ruleId,
+          type: applicationDocumentTypes.textTransformRule,
+          content: {
+            ...structuredClone(draft),
+            origin: origin(contributionId),
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          },
+          expectedVersion: restorableTransformRuleVersions.get(contributionId) ?? 'new',
+        })
+        transformRuleIds.set(contributionId, ruleId)
+      }
+      for (const item of missingTextExtractors) {
+        const contributionId = item.contribution.id
+        const draft = textExtractorDrafts.get(contributionId)!
+        const extractorId = textExtractorIds.get(contributionId) ?? ctx.createId('text-extractor')
+        await writeDocument<TextExtractorContent>(documents, {
+          id: extractorId,
+          type: applicationDocumentTypes.textExtractor,
+          content: {
+            ...structuredClone(draft),
+            origin: origin(contributionId),
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          },
+          expectedVersion: restorableTextExtractorVersions.get(contributionId) ?? 'new',
+        })
+        textExtractorIds.set(contributionId, extractorId)
+      }
       for (const item of input.promptResources) {
         if (!newlyCreatedPromptIds.has(item.contribution.id) || item.contribution.resourceKind !== 'preset') continue
         const presetResourceId = promptResourceIds.get(item.contribution.id)!
@@ -560,6 +688,8 @@ async function importExtensionPackageResourcesInternal(
       resourceKind: item.contribution.resourceKind,
     })),
     agentTools: input.agentTools.map(item => ({ contributionId: item.contribution.id, toolId: item.contribution.id })),
+    transformRules: input.transformRules.map(item => ({ contributionId: item.contribution.id, ruleId: transformRuleIds.get(item.contribution.id)! })),
+    textExtractors: input.textExtractors.map(item => ({ contributionId: item.contribution.id, extractorId: textExtractorIds.get(item.contribution.id)! })),
     mutation: { changesetId: transaction.commit.changesetId },
   }
 }
@@ -578,12 +708,20 @@ async function removeExtensionPackageResourcesInternal(
   const agentTools = (await listAgentToolEntries(ctx))
     .filter(tool => tool.origin?.kind === 'extension-package' && tool.origin.packageId === input.packageId)
   const agentToolIds = new Set(agentTools.map(tool => tool.id))
+  const transformRules = (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule))
+    .filter(rule => rule.content.origin?.kind === 'extension-package' && rule.content.origin.packageId === input.packageId)
+  const textTransformRuleIds = new Set(transformRules.map(rule => rule.id))
+  const textExtractors = (await listDocuments<TextExtractorContent>(ctx.documents, applicationDocumentTypes.textExtractor))
+    .filter(extractor => extractor.content.origin?.kind === 'extension-package' && extractor.content.origin.packageId === input.packageId)
+  const textExtractorIds = new Set(textExtractors.map(extractor => extractor.id))
 
-  if (promptResources.length === 0 && agentTools.length === 0) {
+  if (promptResources.length === 0 && agentTools.length === 0 && transformRules.length === 0 && textExtractors.length === 0) {
     return {
       packageId: input.packageId,
       promptResourceIds: [],
       agentToolIds: [],
+      textTransformRuleIds: [],
+      textExtractorIds: [],
       detachedReferences: { cards: 0, timelines: 0, agentProfiles: 0, presetToolMounts: 0 },
     }
   }
@@ -662,6 +800,8 @@ async function removeExtensionPackageResourcesInternal(
         })
       }
       for (const tool of agentTools) await documents.delete({ id: tool.id, expectedVersion: tool.version })
+      for (const rule of transformRules) await documents.delete({ id: rule.id, expectedVersion: rule.version })
+      for (const extractor of textExtractors) await documents.delete({ id: extractor.id, expectedVersion: extractor.version })
       for (const resource of promptResources) resourceTx.deleteResource({ resourceId: resource.id, expectedVersion: resource.version })
       return undefined
     }, { allowEmpty: true })
@@ -671,6 +811,8 @@ async function removeExtensionPackageResourcesInternal(
     packageId: input.packageId,
     promptResourceIds: [...promptResourceIds].sort(),
     agentToolIds: [...agentToolIds].sort(),
+    textTransformRuleIds: [...textTransformRuleIds].sort(),
+    textExtractorIds: [...textExtractorIds].sort(),
     detachedReferences: {
       cards: cards.length,
       timelines: timelineReferences.size,
@@ -679,4 +821,18 @@ async function removeExtensionPackageResourcesInternal(
     },
     mutation: { changesetId: transaction.commit.changesetId },
   }
+}
+
+async function listDocumentsIncludingTombstones<T extends JsonValue>(
+  documents: DocumentTransaction,
+  type: string,
+): Promise<Array<DocumentRecord<T>>> {
+  const items: DocumentRecord[] = []
+  let cursor: string | undefined
+  do {
+    const page = await documents.list({ type, includeTombstone: true, cursor, limit: 100 })
+    items.push(...page.items)
+    cursor = page.nextCursor
+  } while (cursor)
+  return items as Array<DocumentRecord<T>>
 }

@@ -7,6 +7,8 @@ import type {
   ExtensionModuleManifest,
   ExtensionModuleSummary,
   ExtensionPromptResourceContribution,
+  ExtensionTextExtractorContribution,
+  ExtensionTextTransformRuleContribution,
 } from '@loom-studio/extension-host'
 import type {
   ExtensionManagementService,
@@ -65,6 +67,14 @@ export function createServerExtensionManager(options: {
     agentTools: Array<{
       contribution: ExtensionAgentToolContribution
       definition: JsonValue
+    }>
+    transformRules: Array<{
+      contribution: ExtensionTextTransformRuleContribution
+      artifact: JsonValue
+    }>
+    textExtractors: Array<{
+      contribution: ExtensionTextExtractorContribution
+      artifact: JsonValue
     }>
   }): Promise<Record<string, JsonValue>>
   removePackageResources(input: { packageId: string }): Promise<Record<string, JsonValue>>
@@ -279,6 +289,14 @@ export function createServerExtensionManager(options: {
           contribution,
           definition: await readPackageJson(record, contribution.source),
         }))),
+        transformRules: await Promise.all((record.manifest.contributes?.transformRules ?? []).map(async contribution => ({
+          contribution,
+          artifact: await readPackageJson(record, contribution.source),
+        }))),
+        textExtractors: await Promise.all((record.manifest.contributes?.textExtractors ?? []).map(async contribution => ({
+          contribution,
+          artifact: await readPackageJson(record, contribution.source),
+        }))),
       })
       return { packageId, version: record.manifest.version, ...imported }
     }),
@@ -427,6 +445,7 @@ function toManagedPackage(
     )),
     resources: {
       transformRules: record.manifest.contributes?.transformRules ?? [],
+      textExtractors: record.manifest.contributes?.textExtractors ?? [],
       promptResources: record.manifest.contributes?.promptResources ?? [],
       agentTools: record.manifest.contributes?.agentTools ?? [],
     },

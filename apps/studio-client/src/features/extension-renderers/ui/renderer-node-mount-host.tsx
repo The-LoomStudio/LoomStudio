@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
+import type { ClientNodeDisplayProjectionContext } from '@loom-studio/extension-sdk'
 import type { ClientRendererHost, ClientRendererRegistration } from '../model/client-renderer-host.js'
 import {
   resolveNodeRenderMounts,
@@ -48,7 +49,7 @@ export function RendererNodeMountHost(props: RendererNodeMountHostProps) {
     let disposed = false
     void Promise.all(registrations.map(async registration => {
       try {
-        const mounts = await registration.projectNode!(props.surface === 'narrative' ? {
+        const context: ClientNodeDisplayProjectionContext = props.surface === 'narrative' ? {
           nodeId: props.nodeId,
           timelineId: props.timelineId,
           rawText: props.rawText,
@@ -62,19 +63,28 @@ export function RendererNodeMountHost(props: RendererNodeMountHostProps) {
           displayText: props.rawText,
           surface: 'agent-message',
           signal: controller.signal,
-        })
-        return mounts.map(mount => ({ registration, mount }))
+        }
+        if (registration.projectNodeWithAnchors) {
+          const projected = await registration.projectNodeWithAnchors(context)
+          return {
+            mounts: projected.mounts.map(mount => ({ registration, mount })),
+            matches: projected.matches,
+          }
+        }
+        const mounts = await registration.projectNode!(context)
+        return { mounts: mounts.map(mount => ({ registration, mount })) }
       } catch (error) {
         props.host.reportDiagnostic({
           code: 'renderer.projection_failed',
           contributionKey: rendererContributionKey(registration),
           message: error instanceof Error ? error.message : String(error),
         })
-        return []
+        return { mounts: [] }
       }
     })).then(groups => {
       if (disposed) return
-      const mounts = groups.flat()
+      const mounts = groups.flatMap(group => group.mounts)
+      const matches = new Map(groups.flatMap(group => [...(group.matches ?? new Map()).entries()]))
       if (props.rawText.length > MAX_NODE_TEXT_CHARACTERS || mounts.length > MAX_NODE_MOUNTS) {
         const registration = mounts[0]?.registration ?? registrations[0]!
         props.host.reportDiagnostic({
@@ -87,6 +97,7 @@ export function RendererNodeMountHost(props: RendererNodeMountHostProps) {
       const resolved = resolveNodeRenderMounts({
         rawText: props.rawText.slice(0, MAX_NODE_TEXT_CHARACTERS),
         mounts: mounts.slice(0, MAX_NODE_MOUNTS),
+        matches,
       })
       for (const diagnostic of resolved.diagnostics) props.host.reportDiagnostic(diagnostic)
       setProjection(resolved)
@@ -158,14 +169,12 @@ function InlineRendererPortal(props: {
   const [target, setTarget] = useState<HTMLElement>()
   useLayoutEffect(() => {
     if (!props.contentRoot || props.mount.mount.target.slot !== 'node.inline') return
-    const selector = props.mount.mount.target.selector
-    if (selector.kind !== 'literal') return
-    const anchor = insertLiteralMountAnchor(props.contentRoot, selector.value, props.mount.placement)
+    const anchor = insertRangeMountAnchor(props.contentRoot, props.mount.start, props.mount.end, props.mount.placement)
     if (!anchor) {
       props.host.reportDiagnostic({
         code: 'renderer.anchor_unresolved',
         contributionKey: rendererContributionKey(props.mount.registration),
-        message: `Rendered literal anchor was not found: ${selector.value}`,
+        message: `Rendered text range was not found: ${props.mount.start}-${props.mount.end}`,
       })
       return
     }
@@ -188,15 +197,13 @@ function InlineRendererPortal(props: {
   ), target) : null
 }
 
-function insertLiteralMountAnchor(
+function insertRangeMountAnchor(
   root: HTMLElement,
-  literal: string,
+  start: number,
+  end: number,
   placement: 'before' | 'after' | 'replace',
 ): { element: HTMLSpanElement; dispose(): void } | undefined {
-  const text = root.textContent ?? ''
-  const start = text.indexOf(literal)
-  if (start < 0 || text.indexOf(literal, start + literal.length) >= 0) return undefined
-  const boundaries = locateTextBoundaries(root, start, start + literal.length)
+  const boundaries = locateTextBoundaries(root, start, end)
   if (!boundaries) return undefined
   const range = document.createRange()
   range.setStart(boundaries.start.node, boundaries.start.offset)
@@ -239,8 +246,8 @@ function locateTextBoundaries(root: HTMLElement, start: number, end: number): {
   return startBoundary && endBoundary ? { start: startBoundary, end: endBoundary } : undefined
 }
 
-function hasNodeProjector(registration: ClientRendererRegistration): registration is ClientRendererRegistration & Required<Pick<ClientRendererRegistration, 'projectNode'>> {
-  return typeof registration.projectNode === 'function'
+function hasNodeProjector(registration: ClientRendererRegistration): boolean {
+  return typeof registration.projectNode === 'function' || typeof registration.projectNodeWithAnchors === 'function'
 }
 
 function mountIdentity(projected: ProjectedNodeRenderMount, nodeId: string): string {

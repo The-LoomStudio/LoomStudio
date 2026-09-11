@@ -117,6 +117,7 @@ async function validateInstalledPackage(directory: string, expected: ExtensionMa
   for (const entry of [
     ...(copied.modules ?? []).map(moduleManifest => moduleManifest.entry),
     ...(copied.contributes?.transformRules ?? []).map(rule => rule.source),
+    ...(copied.contributes?.textExtractors ?? []).map(extractor => extractor.source),
     ...(copied.contributes?.promptResources ?? []).map(resource => resource.source),
     ...(copied.contributes?.agentTools ?? []).map(tool => tool.source),
     ...(copied.icon ? [copied.icon] : []),

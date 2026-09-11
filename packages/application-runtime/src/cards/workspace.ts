@@ -5,7 +5,7 @@ import { createId, nowIso } from '@loom-studio/shared'
 import { normalizeOpening, normalizeOptionalString, normalizePreset, normalizeSettingLayer } from './card.js'
 import { normalizeMacros } from './card.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
-import { readDocument, toVersioned, writeDocument } from '../foundation/document-store.js'
+import { listDocuments, readDocument, toVersioned, writeDocument } from '../foundation/document-store.js'
 import { isObject } from '../foundation/json.js'
 import type {
   AgentHistoryPolicy,
@@ -26,7 +26,10 @@ import { fromStoredResource } from '../prompt/prompt-resource-mapper.js'
 import { renderVariableMacros, type VariableRenderContext } from '../prompt/variables.js'
 import { validateStateDefinitionDraft, validateTimelineStateBinding } from '../state/state-definition.js'
 import { createStateArtifact, parseStateArtifact } from '../state/state-contribution.js'
+import { parseLoomScriptSource } from '../scripts/loom-script-codec.js'
+import type { LoomScriptAttachmentArtifact, LoomScriptContent, LoomScriptMountContent } from '../scripts/loom-script-contracts.js'
 import type {
+  BlobStorage,
   StateArtifact,
   StateDefinitionContent,
   StateDefinitionDraft,
@@ -44,7 +47,7 @@ function requireSqliteDocumentParticipant(documents: DocumentStore): SqliteDocum
 }
 
 export type CardBundleArtifact = {
-  schemaVersion: 2
+  schemaVersion: 2 | 3
   artifactId: string
   displayName: string
   description?: string
@@ -72,6 +75,7 @@ export type CardBundleArtifact = {
   }>
   timelineStateBindings?: TimelineStateBinding[]
   extensionPayloads?: PortableExtensionPayloadArtifact[]
+  scriptAttachments?: LoomScriptAttachmentArtifact[]
   metadata?: JsonObject
 }
 
@@ -118,10 +122,11 @@ export type PromptResourceContent = {
 
 export type PromptResourceArtifact = {
   format: 'loom.promptResource'
-  schemaVersion: 1
+  schemaVersion: 1 | 2
   resourceKind: PromptResourceKind
   rootNode: PromptResourceNode
   macros?: Record<string, string>
+  scriptAttachments?: LoomScriptAttachmentArtifact[]
 }
 
 export type CardBundleSourceArtifactRef = {
@@ -234,6 +239,7 @@ export async function importCardBundle(input: {
   documents: DocumentStore
   promptResources: PromptResourceStore
   dataEngine: import('@loom-studio/data-engine').SqliteDataEngine
+  blobs?: BlobStorage
   now?: string
 }): Promise<{
   card: CardSourceContent & { id: string; version: number }
@@ -246,6 +252,16 @@ export async function importCardBundle(input: {
   const timestamp = input.now ?? nowIso()
   const sourceArtifactRef = createSourceArtifactRef(artifact, timestamp, input.storedSourceArtifact)
   const contextAssets = await cloneConflictingPromptNodes(input.promptResources, artifact.contextAssets)
+  const scriptAttachments = artifact.scriptAttachments ?? []
+  if (scriptAttachments.length > 0 && !input.blobs) throw new Error('Blob Store is required to import Loom Script attachments')
+  const preparedScripts = await Promise.all(scriptAttachments.map(async attachment => ({
+    attachment,
+    metadata: parseLoomScriptSource(attachment.script.source),
+    prepared: await input.blobs!.prepareWrite({
+      source: new TextEncoder().encode(attachment.script.source),
+      mediaType: 'text/javascript',
+    }),
+  })))
 
   const documentParticipant = requireSqliteDocumentParticipant(input.documents)
   const transaction = await input.dataEngine.transact({
@@ -284,6 +300,45 @@ export async function importCardBundle(input: {
         }))
       }
       const portableExtensionPayloadIds = portablePayloadDocuments.map(document => document.id)
+      const scriptDocumentIds: string[] = []
+      const scriptMountIds: string[] = []
+      for (const item of preparedScripts) {
+        const blob = input.blobs!.participateWrite(dataTx, item.prepared).blob
+        const script = await writeDocument<LoomScriptContent>(tx, {
+          id: createId('loom-script'),
+          type: applicationDocumentTypes.loomScript,
+          content: {
+            owner: { kind: 'card', cardId },
+            ...item.metadata,
+            source: {
+              blobId: blob.id,
+              mediaType: 'text/javascript',
+              fileName: item.attachment.script.fileName,
+            },
+            sourceDigest: blob.sha256,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          },
+          expectedVersion: 'new',
+        })
+        const mount = await writeDocument<LoomScriptMountContent>(tx, {
+          id: createId('loom-script-mount'),
+          type: applicationDocumentTypes.loomScriptMount,
+          content: {
+            target: { kind: 'card', cardId },
+            scriptDocumentId: script.id,
+            enabled: false,
+            orderIndex: item.attachment.orderIndex,
+            grantedCapabilities: [],
+            origin: { kind: 'card-bundle-import', artifactId: artifact.artifactId },
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          },
+          expectedVersion: 'new',
+        })
+        scriptDocumentIds.push(script.id)
+        scriptMountIds.push(mount.id)
+      }
       const stateDefinitionIds: string[] = []
       for (const template of artifactStateTemplates) {
         const definition = {
@@ -359,7 +414,7 @@ export async function importCardBundle(input: {
         type: applicationDocumentTypes.importBundle,
         content: {
           cardId: card.id,
-          documentIds: [card.id, importBundleId, ...stateDefinitionIds, ...portableExtensionPayloadIds],
+          documentIds: [card.id, importBundleId, ...stateDefinitionIds, ...portableExtensionPayloadIds, ...scriptDocumentIds, ...scriptMountIds],
           promptResourceIds: resourceIds,
           assetIds: readCardAssetIds(artifact.card.media),
           sourceArtifact: artifact,
@@ -388,10 +443,20 @@ export function isPromptResourceArtifact(value: JsonValue | undefined): value is
   }
 }
 
+export function normalizePromptResourceArtifact(artifact: PromptResourceArtifact): PromptResourceArtifact {
+  assertPromptResourceArtifact(artifact)
+  return {
+    ...structuredClone(artifact),
+    schemaVersion: 2,
+    scriptAttachments: structuredClone(artifact.scriptAttachments ?? []),
+  }
+}
+
 export async function exportCardArtifact(input: {
   cardId: string
   documents: DocumentStore
   promptResources: PromptResourceStore
+  blobs?: BlobStorage
 }): Promise<CardBundleArtifact> {
   const card = await readDocument<CardSourceContent>(input.documents, input.cardId, applicationDocumentTypes.cardSource)
   const importBundle = await readOptionalCardImportBundle(input.documents, card)
@@ -424,8 +489,39 @@ export async function exportCardArtifact(input: {
     )
     return toPortableExtensionPayloadArtifact(payload.content)
   }))
+  const mounts = (await listDocuments<LoomScriptMountContent>(input.documents, applicationDocumentTypes.loomScriptMount))
+    .filter(mount => mount.content.target.kind === 'card' && mount.content.target.cardId === input.cardId)
+    .sort((left, right) => left.content.orderIndex - right.content.orderIndex || left.id.localeCompare(right.id))
+  if (mounts.length > 0 && !input.blobs) throw new Error('Blob Store is required to export Loom Script attachments')
+  const scriptAttachments = await Promise.all(mounts.map(async mount => {
+    const script = await readLoomScriptRevision(input.documents, mount.content.scriptDocumentId, mount.content.pinnedDocumentVersion)
+    if (script.content.owner.kind !== 'card' || script.content.owner.cardId !== input.cardId) {
+      throw new Error(`Card Loom Script Mount references a non-owned Script: ${mount.id}`)
+    }
+    const bytes = await input.blobs!.read(script.content.source.blobId)
+    return {
+      script: {
+        format: 'loom.script' as const,
+        schemaVersion: 1 as const,
+        fileName: script.content.source.fileName,
+        source: new TextDecoder('utf-8', { fatal: true }).decode(bytes),
+      },
+      orderIndex: mount.content.orderIndex,
+    }
+  }))
 
-  return buildExportArtifact({ card, contextAssets, stateTemplates, extensionPayloads, importBundle })
+  return buildExportArtifact({ card, contextAssets, stateTemplates, extensionPayloads, scriptAttachments, importBundle })
+}
+
+async function readLoomScriptRevision(
+  documents: DocumentStore,
+  scriptDocumentId: string,
+  version?: number,
+): Promise<DocumentRecord<LoomScriptContent>> {
+  const script = await documents.get(scriptDocumentId, version === undefined ? undefined : { version })
+  if (!script) throw new Error(`Loom Script revision not found: ${scriptDocumentId}${version === undefined ? '' : `@${version}`}`)
+  if (script.type !== applicationDocumentTypes.loomScript) throw new Error(`Unexpected document type for ${scriptDocumentId}: ${script.type}`)
+  return script as DocumentRecord<LoomScriptContent>
 }
 
 function buildExportArtifact(input: {
@@ -433,6 +529,7 @@ function buildExportArtifact(input: {
   contextAssets: PromptResourceNode[]
   stateTemplates: NonNullable<CardBundleArtifact['stateTemplates']>
   extensionPayloads: PortableExtensionPayloadArtifact[]
+  scriptAttachments: LoomScriptAttachmentArtifact[]
   importBundle?: DocumentRecord<ImportBundleContent>
 }): CardBundleArtifact {
   const cardContent = input.card.content
@@ -444,7 +541,7 @@ function buildExportArtifact(input: {
 
   return {
     ...sourceArtifact,
-    schemaVersion: 2,
+    schemaVersion: 3,
     artifactId: sourceArtifact?.artifactId ?? input.card.id,
     displayName: sourceArtifact?.displayName ?? cardContent.name,
     description: sourceArtifact?.description ?? cardContent.description,
@@ -472,6 +569,7 @@ function buildExportArtifact(input: {
     stateTemplates: input.stateTemplates,
     timelineStateBindings: structuredClone(cardContent.timelineStateBindings ?? []),
     extensionPayloads: input.extensionPayloads.map(payload => structuredClone(payload)),
+    scriptAttachments: input.scriptAttachments.map(attachment => structuredClone(attachment)),
     metadata: {
       ...(sourceArtifact?.metadata ?? {}),
       ...(sourceArtifactRef ? { sourceArtifactRef } : {}),
@@ -590,13 +688,14 @@ export function normalizeCardBundleArtifact(artifact: CardBundleArtifact): CardB
 
   return {
     ...artifact,
-    schemaVersion: 2,
+    schemaVersion: 3,
     artifactId: artifact.artifactId,
     displayName: artifact.displayName,
     description: artifact.description,
     card: artifact.card,
     contextAssets: artifact.contextAssets ?? [],
     extensionPayloads: structuredClone(artifact.extensionPayloads ?? []),
+    scriptAttachments: structuredClone(artifact.scriptAttachments ?? []),
     metadata: artifact.metadata ?? {},
   }
 }
@@ -750,10 +849,11 @@ export function applyDefaultPromptProjection(asset: PromptResourceNode, resource
 function assertPromptResourceArtifact(value: unknown): asserts value is PromptResourceArtifact {
   if (!isObject(value)) throw new Error('Prompt Resource artifact must be an object')
   if (value.format !== 'loom.promptResource') throw new Error(`Unsupported Prompt Resource artifact format: ${String(value.format)}`)
-  if (value.schemaVersion !== 1) throw new Error(`Unsupported Prompt Resource artifact schemaVersion: ${String(value.schemaVersion)}`)
+  if (value.schemaVersion !== 1 && value.schemaVersion !== 2) throw new Error(`Unsupported Prompt Resource artifact schemaVersion: ${String(value.schemaVersion)}`)
   if (!isPromptResourceKind(value.resourceKind)) throw new Error(`Invalid Prompt Resource kind: ${String(value.resourceKind)}`)
   assertPromptResourceNode(value.rootNode, 'rootNode')
   assertUniquePromptResourceNodeIds(value.rootNode)
+  assertLoomScriptAttachments(value.scriptAttachments)
 }
 
 function isPromptResourceKind(value: unknown): value is PromptResourceKind {
@@ -776,7 +876,7 @@ export function isCardBundleArtifact(value: JsonValue | undefined): value is Car
 
 function assertCardBundleArtifact(value: unknown): asserts value is CardBundleArtifact {
   if (!isObject(value)) throw new Error('Card bundle must be an object')
-  if (value.schemaVersion !== 2) throw new Error(`Unsupported card bundle schemaVersion: ${String(value.schemaVersion)}`)
+  if (value.schemaVersion !== 2 && value.schemaVersion !== 3) throw new Error(`Unsupported card bundle schemaVersion: ${String(value.schemaVersion)}`)
   assertNonEmptyString(value.artifactId, 'Card bundle artifactId')
   assertNonEmptyString(value.displayName, 'Card bundle displayName')
   if (value.description !== undefined && typeof value.description !== 'string') throw new Error('Card bundle description must be a string')
@@ -811,7 +911,28 @@ function assertCardBundleArtifact(value: unknown): asserts value is CardBundleAr
     for (const binding of value.timelineStateBindings) validateTimelineStateBinding(binding as TimelineStateBinding)
   }
   assertPortableExtensionPayloads(value.extensionPayloads)
+  assertLoomScriptAttachments(value.scriptAttachments)
   if (value.metadata !== undefined && !isObject(value.metadata)) throw new Error('Card bundle metadata must be an object')
+}
+
+function assertLoomScriptAttachments(value: unknown): void {
+  if (value === undefined) return
+  if (!Array.isArray(value)) throw new Error('Loom Script attachments must be an array')
+  const metadataIds = new Set<string>()
+  for (const [index, attachment] of value.entries()) {
+    if (!isObject(attachment) || !Number.isSafeInteger(attachment.orderIndex)) throw new Error(`Invalid Loom Script attachment: ${index}`)
+    if (!isObject(attachment.script)
+      || attachment.script.format !== 'loom.script'
+      || attachment.script.schemaVersion !== 1
+      || typeof attachment.script.fileName !== 'string'
+      || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.loom\.js$/.test(attachment.script.fileName)
+      || typeof attachment.script.source !== 'string') {
+      throw new Error(`Invalid Loom Script attachment artifact: ${index}`)
+    }
+    const metadata = parseLoomScriptSource(attachment.script.source)
+    if (metadataIds.has(metadata.metadataId)) throw new Error(`Duplicate Loom Script Metadata id in artifact: ${metadata.metadataId}`)
+    metadataIds.add(metadata.metadataId)
+  }
 }
 
 const portablePayloadTokenPattern = /^[A-Za-z0-9][A-Za-z0-9._-]*$/

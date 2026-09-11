@@ -22,8 +22,8 @@
   --loom-color-surface-subtle: var(--loom-window-surface, #3c3d50);
   --loom-color-surface-muted: var(--loom-panel-muted, #45475a);
   --loom-color-surface-raised: var(--loom-window-raised, var(--loom-panel-muted, #45475a));
-  --loom-divider-inset: 13px;
-  --loom-divider-space: 5px;
+  --loom-divider-inset: 8px;
+  --loom-divider-space: 16px;
   --loom-page-header-height: 40px;
   --loom-page-header-padding: 8px;
   --loom-page-header-icon-size: 18px;
@@ -251,6 +251,24 @@
 
 .loom-page-tab-active {
   font-weight: var(--loom-font-weight-6);
+}
+
+.loom-page-tabs-footer {
+  width: 100%;
+  gap: 12px;
+  padding: 0 14px 10px;
+}
+
+.loom-page-tabs-footer .loom-page-tab {
+  min-height: 20px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-2);
+}
+
+.loom-page-tabs-footer .loom-page-tab:hover,
+.loom-page-tabs-footer .loom-page-tab-active {
+  color: var(--loom-color-text);
+  background: transparent;
 }
 
 html,

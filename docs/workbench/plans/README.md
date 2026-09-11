@@ -10,9 +10,12 @@
 | 路线图 / 计划                                                                                | 当前状态     | 关注点                                                                  |
 | -------------------------------------------------------------------------------------------- | ------------ | ----------------------------------------------------------------------- |
 | [`macro-value-provider-and-inspector-plan.md`](./macro-value-provider-and-inspector-plan.md) | In Progress | 作者宏 Master–Detail、动态提供者、冲突选择与构建快照已实现，自动化验证通过，等待人工验收 |
+| [`history-text-pipeline-contextual-ui-and-effective-rules-plan.md`](./history-text-pipeline-contextual-ui-and-effective-rules-plan.md) | Implemented / 待视觉验收 | Effective RuleSet、资源作者视图与当前上下文文本管线检查器 |
+| [`text-pipeline-loom-script-renderer-integration-plan.md`](./text-pipeline-loom-script-renderer-integration-plan.md) | Implemented / 待视觉验收 | 资源 Owner / Effective 双投影、Match / Artifact、Loom Script Metadata、沙箱 Renderer 与 Extension 整合 |
 | [`ui/state-authoring-runtime-separation-plan.md`](./ui/state-authoring-runtime-separation-plan.md) | Paused | 有效范围转交宏计划统一验收；不恢复 Preset State 与 Workspace 作者 CRUD |
 | [`agent-runtime-ai-sdk-foundation-plan.md`](./agent-runtime-ai-sdk-foundation-plan.md)       | Phase 5 完成 | AI SDK Gateway、canonical Tool、三类 Transport、Agent Loop 与恢复持久化 |
 | [`ai-gateway-streaming-execution-plan.md`](./ai-gateway-streaming-execution-plan.md)         | 后端基础完成 | AI Gateway 流式执行；RPC / Client 消费延期                              |
+| [`agent-session-context-and-workspace-capability-plan.md`](./agent-session-context-and-workspace-capability-plan.md) | Approved / 待实施 | Agent Session Context、PromptBuild Target、Workspace Tool / CodeAct Capability |
 | [`application-capability-cli-mcp-adapters-plan.md`](./application-capability-cli-mcp-adapters-plan.md) | 待实施提案 | Application Capability、CLI 与 MCP 适配器 |
 | [`file-backed-resource-agent-script-codeact-plan.md`](./file-backed-resource-agent-script-codeact-plan.md) | 待实施提案 | File-backed Resource、Agent Script、Sandbox 与 CodeAct |
 | [`extension-developer-experience.md`](./extension-developer-experience.md)                   | 延期规划     | Extension SDK、Host 与开发者体验路线图                                  |
@@ -23,6 +26,7 @@
 | [`workspace-dev-sync-plan.md`](./workspace-dev-sync-plan.md)                                 | 待讨论提案   | 角色卡/预设本地文件系统双向同步、MD 元数据与物理目录映射                 |
 | [`st-data-compatibility-and-anchor-system-plan.md`](./st-data-compatibility-and-anchor-system-plan.md) | 待评审提案 | SillyTavern 数据兼容导入与 Prompt Anchor 系统演进 |
 | [`ui/prompt-resource-diff-mode-v0.md`](./ui/prompt-resource-diff-mode-v0.md)                 | 延期规划     | PromptResource Revision 差异对比与 Tokenizer 合同                       |
+| [`ui/component-preview-workbench-plan.md`](./ui/component-preview-workbench-plan.md) | 方向已确认 / 待实施 | 开发专用组件预览、内存样例与定稿组件交接 |
 | [`ui/provider-account-health-plan.md`](./ui/provider-account-health-plan.md)                 | 延期规划     | Provider Account 健康检查与连接状态探测                                 |
 | [`ui/provider-model-brand-icons-plan.md`](./ui/provider-model-brand-icons-plan.md)           | 试验完成     | 正式模型品牌资产与图标合同收束                                          |
 | [`log-plan/README.md`](./log-plan/README.md)                                                 | 基础已实现   | 历史日志高级过滤、实时订阅与通知系统                                    |

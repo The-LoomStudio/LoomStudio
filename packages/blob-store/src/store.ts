@@ -1,11 +1,11 @@
-import type { SqliteDataEngine } from '@loom-studio/data-engine'
+import type { SqliteDataEngine, SqliteDataTransaction } from '@loom-studio/data-engine'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
 import { access, mkdir, rename, unlink } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
-import type { BlobRecord, BlobStore, BlobWriteInput, BlobWriteResult } from './types.js'
+import type { BlobRecord, BlobStore, BlobWriteInput, BlobWriteResult, PreparedBlobWrite } from './types.js'
 
 const migrationNamespace = 'platform.blob-store'
 const defaultMaxBytes = 256 * 1024 * 1024
@@ -34,16 +34,28 @@ export function createBlobStore(options: {
   })
   let writeQueue = Promise.resolve()
 
+  function enqueueWrite<T>(operation: () => Promise<T>): Promise<T> {
+    const queued = writeQueue.then(operation, operation)
+    writeQueue = queued.then(() => undefined, () => undefined)
+    return queued
+  }
+
   return {
-    write: input => {
+    write: input => enqueueWrite(async () => {
       // ponytail: Blob finalization is serialized per Store instance; multi-process writers rely on the SQLite unique hash constraint.
-      const operation = writeQueue.then(
-        () => writeBlob(options, input),
-        () => writeBlob(options, input),
-      )
-      writeQueue = operation.then(() => undefined, () => undefined)
-      return operation
-    },
+      const prepared = await prepareBlobWrite(options, input)
+      if (prepared.existing) return { blob: prepared.blob, created: false }
+      const result = await options.engine.transact({
+        actor: input.actor,
+        reason: input.reason ?? 'blob.write',
+        correlationId: input.correlationId,
+        callId: input.callId,
+        parentCallId: input.parentCallId,
+      }, async tx => participateBlobWrite(tx, prepared))
+      return { ...result.value, commit: result.commit }
+    }),
+    prepareWrite: input => enqueueWrite(() => prepareBlobWrite(options, input)),
+    participateWrite: (tx, prepared) => participateBlobWrite(tx, prepared),
     get: blobId => options.engine.read(database => readBlob(database, blobId)),
     getBySha256: sha256 => {
       assertSha256(sha256)
@@ -87,7 +99,7 @@ export function createBlobStore(options: {
   }
 }
 
-async function writeBlob(
+async function prepareBlobWrite(
   options: {
     engine: SqliteDataEngine
     rootDirectory: string
@@ -95,8 +107,8 @@ async function writeBlob(
     now(): string
     defaultMaxBytes?: number
   },
-  input: BlobWriteInput,
-): Promise<BlobWriteResult> {
+  input: Pick<BlobWriteInput, 'source' | 'mediaType' | 'maxBytes'>,
+): Promise<PreparedBlobWrite> {
   const maximum = input.maxBytes ?? options.defaultMaxBytes ?? defaultMaxBytes
   if (!Number.isSafeInteger(maximum) || maximum < 0) {
     throw new BlobStoreError('blob.invalid_limit', 'Blob maxBytes must be a non-negative safe integer')
@@ -124,46 +136,43 @@ async function writeBlob(
     }
 
     const existing = await options.engine.read(database => readBlobBySha256(database, measured.sha256))
-    if (existing) return { blob: existing, created: false }
+    if (existing) return { blob: existing, existing: true }
 
-    const blob: BlobRecord = {
+    return { blob: {
       id: options.createId('blob'),
       sha256: measured.sha256,
       sizeBytes: measured.sizeBytes,
       mediaType: normalizeMediaType(input.mediaType),
       createdAt: options.now(),
-    }
-    try {
-      const result = await options.engine.transact({
-        actor: input.actor,
-        reason: input.reason ?? 'blob.write',
-        correlationId: input.correlationId,
-        callId: input.callId,
-        parentCallId: input.parentCallId,
-      }, async tx => {
-        tx.database.prepare(`
-          INSERT INTO stored_blobs (id, sha256, size_bytes, media_type, created_at)
-          VALUES (?, ?, ?, ?, ?)
-        `).run(blob.id, blob.sha256, blob.sizeBytes, blob.mediaType ?? null, blob.createdAt)
-        tx.recordOperations([{
-          store: 'blobs',
-          kind: 'create',
-          entityId: blob.id,
-          entityType: 'platform.blob',
-          toVersion: 1,
-        }])
-        return blob
-      })
-      return { blob: result.value, created: true, commit: result.commit }
-    } catch (error) {
-      if (!isUniqueConstraintError(error)) throw error
-      const raced = await options.engine.read(database => readBlobBySha256(database, measured.sha256))
-      if (!raced) throw error
-      return { blob: raced, created: false }
-    }
+    }, existing: false }
   } finally {
     await unlink(temporary).catch(() => undefined)
   }
+}
+
+function participateBlobWrite(tx: SqliteDataTransaction, prepared: PreparedBlobWrite): BlobWriteResult {
+  const existing = readBlobBySha256(tx.database, prepared.blob.sha256)
+  if (existing) return { blob: existing, created: false }
+  const blob = prepared.blob
+  try {
+    tx.database.prepare(`
+      INSERT INTO stored_blobs (id, sha256, size_bytes, media_type, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(blob.id, blob.sha256, blob.sizeBytes, blob.mediaType ?? null, blob.createdAt)
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) throw error
+    const raced = readBlobBySha256(tx.database, blob.sha256)
+    if (!raced) throw error
+    return { blob: raced, created: false }
+  }
+  tx.recordOperations([{
+    store: 'blobs',
+    kind: 'create',
+    entityId: blob.id,
+    entityType: 'platform.blob',
+    toVersion: 1,
+  }])
+  return { blob, created: true }
 }
 
 async function writeStagingFile(

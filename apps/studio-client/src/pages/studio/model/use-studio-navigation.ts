@@ -12,7 +12,7 @@ export function useStudioNavigation() {
   const nodeAnchorId = readStudioNodeAnchor(location.hash)
 
   useEffect(() => {
-    useStudioPanelStore.getState().setActivePanel(route.panel)
+    useStudioPanelStore.getState().syncActivePanel(route.panel)
   }, [location.pathname, route.panel])
 
   function openNarrative(timelineId?: string, branchId?: string, replace = false) {

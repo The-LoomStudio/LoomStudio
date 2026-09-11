@@ -8,16 +8,18 @@ export const STUDIO_PANEL_IDS = ['model', 'agent', 'sessions', 'character', 'pre
 
 export type StudioPanelId = (typeof STUDIO_PANEL_IDS)[number]
 export type AssetLayoutId = 'preset' | 'resources'
-export type AssetViewMode = 'explorer' | 'split' | 'editor'
+export type AssetViewMode = 'master-detail' | 'drilldown'
 export type ContextCategory = 'setting' | 'logic' | 'runtime' | 'history'
 export type PanelWindowMode = 'reference' | 'immersive'
-export type PresetView = 'assets' | 'order' | 'tools' | 'macros'
+export type PresetView = 'assets' | 'order' | 'tools' | 'macros' | 'text'
 
 export type AssetViewState = {
   expandedIds?: string[]
   selectedId?: string
   viewMode: AssetViewMode
 }
+
+export type AssetPane = 'explorer' | 'detail'
 
 type AssetLayout = {
   explorerWidth: number
@@ -27,6 +29,7 @@ type AssetLayout = {
 type StudioLayoutData = {
   assetMetadataOpen: boolean
   assetLayouts: Record<AssetLayoutId, AssetLayout>
+  assetPanes: Record<AssetLayoutId, Record<string, AssetPane>>
   contextCategory: ContextCategory
   dockOpen: boolean
   dockPinned: boolean
@@ -45,6 +48,7 @@ type StudioLayoutStore = StudioLayoutData & {
   setAssetMetadataOpen(open: boolean): void
   setAssetExpandedIds(layoutId: AssetLayoutId, workspaceId: string, expandedIds: string[]): void
   setAssetExplorerWidth(layoutId: AssetLayoutId, width: number): void
+  setAssetPane(layoutId: AssetLayoutId, workspaceId: string, pane: AssetPane): void
   setAssetSelectedId(layoutId: AssetLayoutId, workspaceId: string, selectedId?: string): void
   setAssetViewMode(layoutId: AssetLayoutId, workspaceId: string, viewMode: AssetViewMode): void
   setContextCategory(category: ContextCategory): void
@@ -60,13 +64,18 @@ type StudioLayoutStore = StudioLayoutData & {
 
 type StudioPanelStore = {
   activePanel: StudioPanelId | null
+  canGoBack: boolean
+  canGoForward: boolean
   closePanel(): void
-  setActivePanel(panel: StudioPanelId | null): void
+  goBack(): void
+  goForward(): void
+  setActivePanel(panel: StudioPanelId | null, options?: { record?: boolean }): void
+  syncActivePanel(panel: StudioPanelId | null): void
   togglePanel(panel: StudioPanelId): void
 }
 
 const STORAGE_KEY = 'loom-studio-layout'
-const STORAGE_VERSION = 10
+const STORAGE_VERSION = 11
 const DEFAULT_EXPLORER_WIDTH = 300
 const DEFAULT_RAIL_WIDTH = 160
 const RAIL_COLLAPSED_WIDTH = 42
@@ -75,7 +84,7 @@ const RAIL_MAX_WIDTH = 320
 const UI_SCALE_DEFAULT = 100
 const UI_SCALE_MIN = 80
 const UI_SCALE_MAX = 125
-export const DEFAULT_ASSET_VIEW_STATE: AssetViewState = { viewMode: 'explorer' }
+export const DEFAULT_ASSET_VIEW_STATE: AssetViewState = { viewMode: 'master-detail' }
 
 function updateAssetView(
   state: StudioLayoutData,
@@ -108,6 +117,7 @@ export function createDefaultStudioLayout(): StudioLayoutData {
       preset: { explorerWidth: DEFAULT_EXPLORER_WIDTH, views: {} },
       resources: { explorerWidth: DEFAULT_EXPLORER_WIDTH, views: {} },
     },
+    assetPanes: { preset: {}, resources: {} },
     contextCategory: 'setting',
     dockOpen: false,
     dockPinned: true,
@@ -137,13 +147,16 @@ export function sanitizeStudioLayout(value: unknown): StudioLayoutData {
       preset: readAssetLayout(value.assetLayouts, 'preset', defaults.assetLayouts.preset),
       resources: readAssetLayout(value.assetLayouts, 'resources', defaults.assetLayouts.resources),
     },
+    assetPanes: defaults.assetPanes,
     contextCategory: isContextCategory(value.contextCategory) ? value.contextCategory : defaults.contextCategory,
     dockOpen: value.dockOpen === true || readPanelId(value.activePanel) !== null,
     dockPinned: value.dockPinned === undefined ? defaults.dockPinned : value.dockPinned === true,
     panelWindowMode,
     panelWindowModes,
     panelWindowSizes: readPanelWindowSizes(value.panelWindowSizes),
-    presetView: value.presetView === 'tools'
+    presetView: value.presetView === 'text'
+      ? 'text'
+      : value.presetView === 'tools'
       ? 'tools'
       : value.presetView === 'macros'
         ? 'macros'
@@ -156,12 +169,56 @@ export function sanitizeStudioLayout(value: unknown): StudioLayoutData {
   }
 }
 
-export const useStudioPanelStore = create<StudioPanelStore>(set => ({
-  activePanel: null,
-  closePanel: () => set({ activePanel: null }),
-  setActivePanel: activePanel => set({ activePanel }),
-  togglePanel: panel => set(state => ({ activePanel: state.activePanel === panel ? null : panel })),
-}))
+export const useStudioPanelStore = create<StudioPanelStore>((set, get) => {
+  let history: Array<StudioPanelId | null> = [null]
+  let historyIndex = 0
+
+  const recordPanel = (panel: StudioPanelId | null) => {
+    const current = history[historyIndex]
+    if (current === panel) return
+    history = [...history.slice(0, historyIndex + 1), panel]
+    historyIndex = history.length - 1
+  }
+
+  const updateNavigationState = () => ({
+    activePanel: history[historyIndex],
+    canGoBack: historyIndex > 0,
+    canGoForward: historyIndex < history.length - 1,
+  })
+
+  return {
+    activePanel: null,
+    canGoBack: false,
+    canGoForward: false,
+    closePanel: () => {
+      recordPanel(null)
+      set(updateNavigationState())
+    },
+    goBack: () => {
+      if (historyIndex === 0) return
+      historyIndex -= 1
+      set(updateNavigationState())
+    },
+    goForward: () => {
+      if (historyIndex >= history.length - 1) return
+      historyIndex += 1
+      set(updateNavigationState())
+    },
+    setActivePanel: (panel, options) => {
+      if (options?.record !== false) recordPanel(panel)
+      else history[historyIndex] = panel
+      set(updateNavigationState())
+    },
+    syncActivePanel: panel => {
+      history[historyIndex] = panel
+      set(updateNavigationState())
+    },
+    togglePanel: panel => {
+      recordPanel(get().activePanel === panel ? null : panel)
+      set(updateNavigationState())
+    },
+  }
+})
 
 export const useStudioLayoutStore = create<StudioLayoutStore>()(
   persist(
@@ -180,7 +237,6 @@ export const useStudioLayoutStore = create<StudioLayoutStore>()(
                 [workspaceId]: {
                   ...current,
                   selectedId,
-                  viewMode: current.viewMode === 'explorer' ? 'split' : current.viewMode,
                 },
               },
             },
@@ -198,6 +254,15 @@ export const useStudioLayoutStore = create<StudioLayoutStore>()(
         assetLayouts: {
           ...state.assetLayouts,
           [layoutId]: { ...state.assetLayouts[layoutId], explorerWidth },
+        },
+      })),
+      setAssetPane: (layoutId, workspaceId, pane) => set(state => ({
+        assetPanes: {
+          ...state.assetPanes,
+          [layoutId]: {
+            ...state.assetPanes[layoutId],
+            [workspaceId]: pane,
+          },
         },
       })),
       setAssetSelectedId: (layoutId, workspaceId, selectedId) => set(state => updateAssetView(state, layoutId, workspaceId, { selectedId })),
@@ -272,7 +337,9 @@ function readUiScale(value: unknown): number {
 function readAssetViews(value: unknown): Record<string, AssetViewState> {
   if (!isRecord(value)) return {}
   return Object.fromEntries(Object.entries(value).flatMap(([workspaceId, state]) => {
-    if (!workspaceId || !isRecord(state) || !isAssetViewMode(state.viewMode)) return []
+    if (!workspaceId || !isRecord(state)) return []
+    const viewMode = readAssetViewMode(state.viewMode)
+    if (!viewMode) return []
     const selectedId = typeof state.selectedId === 'string' && state.selectedId ? state.selectedId : undefined
     const expandedIds = Array.isArray(state.expandedIds)
       ? [...new Set(state.expandedIds.filter((id): id is string => typeof id === 'string' && id.length > 0))]
@@ -280,7 +347,7 @@ function readAssetViews(value: unknown): Record<string, AssetViewState> {
     return [[workspaceId, {
       ...(expandedIds ? { expandedIds } : {}),
       ...(selectedId ? { selectedId } : {}),
-      viewMode: state.viewMode,
+      viewMode,
     }]]
   }))
 }
@@ -324,7 +391,14 @@ function isContextCategory(value: unknown): value is ContextCategory {
 }
 
 function isAssetViewMode(value: unknown): value is AssetViewMode {
-  return value === 'explorer' || value === 'split' || value === 'editor'
+  return value === 'master-detail' || value === 'drilldown'
+}
+
+function readAssetViewMode(value: unknown): AssetViewMode | undefined {
+  if (isAssetViewMode(value)) return value
+  if (value === 'split') return 'master-detail'
+  if (value === 'explorer' || value === 'editor') return 'drilldown'
+  return undefined
 }
 
 function isFinitePositiveNumber(value: unknown): value is number {

@@ -8,6 +8,7 @@ import { composeStateContributions, createCardStateContribution, materializeStat
 import type { StateContributionSource } from '../state/state-contribution-registry.js'
 import { createVariableRenderContext, type VariableRenderContext } from '../prompt/variables.js'
 import { timelineRuntimeContextId } from '../narrative/timeline-runtime-context.js'
+import { snapshotLoomScriptMounts } from '../scripts/loom-script-resolution.js'
 import type { NarrativePage } from '@loom-studio/narrative-store'
 import type {
   CardSourceContent,
@@ -31,6 +32,7 @@ import type {
   SwitchNarrativeBranchInput,
   SwitchNarrativeBranchResult,
   TimelineRuntimeContextContent,
+  TextExtractorContent,
   TextTransformRuleContent,
 } from '../types.js'
 import {
@@ -279,6 +281,10 @@ export async function buildTimelineRuntimeContext(
   const textTransformRules = (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule))
     .filter(rule => rule.content.owner.kind === 'card' && rule.content.owner.cardId === input.card.id)
     .map(rule => ({ ...rule.content, id: rule.id, version: rule.version }))
+  const textExtractors = (await listDocuments<TextExtractorContent>(ctx.documents, applicationDocumentTypes.textExtractor))
+    .filter(extractor => extractor.content.owner.kind === 'card' && extractor.content.owner.cardId === input.card.id)
+    .map(extractor => ({ ...extractor.content, id: extractor.id, version: extractor.version }))
+  const loomScriptMounts = await snapshotLoomScriptMounts(ctx, { kind: 'card', cardId: input.card.id })
   return {
     timelineId: input.timelineId,
     sourceCardId: input.card.id,
@@ -302,6 +308,8 @@ export async function buildTimelineRuntimeContext(
       return { path: binding.path, schema: structuredClone(template.schema) }
     }),
     textTransformRules,
+    textExtractors,
+    loomScriptMounts,
     createdAt: ctx.now(),
   }
 }

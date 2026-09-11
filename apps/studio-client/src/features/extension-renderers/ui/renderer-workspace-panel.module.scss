@@ -8,8 +8,19 @@
 
 .intro,
 .header {
-  border-bottom: 1px solid var(--loom-color-divider);
-  padding: 16px 18px;
+  position: relative;
+  padding: 16px var(--loom-page-header-padding);
+
+  &::after {
+    content: '';
+    position: absolute;
+    right: var(--loom-divider-inset);
+    bottom: 0;
+    left: var(--loom-divider-inset);
+    height: 1px;
+    background: var(--loom-color-divider);
+    pointer-events: none;
+  }
 }
 
 .intro h2,
@@ -20,7 +31,7 @@
 
 .intro small,
 .intro p,
-.packageList small,
+.packageTree small,
 .module small,
 .contribution small {
   color: var(--loom-color-text-subtle);
@@ -60,29 +71,108 @@
   height: var(--loom-icon-size-2);
 }
 
-.packageList,
+.packageTree,
 .detail { min-height: 0; overflow: auto; }
 
-.packageList {
+.packageTree {
   padding: 10px;
 }
 
-.packageList button {
+.packageTree button {
   width: 100%;
-  display: grid;
-  gap: 3px;
   border: 0;
   border-radius: var(--loom-radius-control);
-  padding: 10px;
   color: var(--loom-color-text);
   text-align: left;
   background: transparent;
 }
 
-.packageList button:hover,
-.packageList button[aria-current='page'] { background: var(--loom-color-surface-subtle); }
+.packageTree button:hover,
+.packageTree button[aria-current='page'] { background: var(--loom-color-surface-subtle); }
+
+.treePackage + .treePackage { margin-top: 4px; }
+
+.packageItem,
+.treeItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.packageItem { padding: 10px; }
+.packageItem > span { min-width: 0; display: grid; gap: 3px; }
+
+.packageItem svg,
+.treeItem svg,
+.resourceDetail header svg {
+  width: var(--loom-icon-size-2);
+  height: var(--loom-icon-size-2);
+  flex: 0 0 auto;
+  color: var(--loom-color-text-muted);
+}
+
+.treeChildren {
+  display: grid;
+  gap: 2px;
+  margin-left: 17px;
+  padding-left: 9px;
+  border-left: 1px solid var(--loom-color-divider);
+}
+
+.treeModule > .treeChildren { margin-left: 12px; }
+
+.treeGroupLabel {
+  padding: 10px 8px 4px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
+}
+
+.treeItem { min-height: 30px; padding: 5px 8px; }
+.treeItem span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .detail { padding: 14px 16px 24px; }
+
+.resourceDetail,
+.moduleDetail { max-width: 760px; }
+
+.resourceDetail > header,
+.moduleDetail > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.resourceDetail > header { justify-content: flex-start; }
+.resourceDetail h3,
+.moduleDetail h3 { margin: 0; }
+.resourceDetail header small,
+.moduleDetail header small { color: var(--loom-color-text-subtle); }
+
+.detailFacts {
+  display: grid;
+  gap: 8px;
+  margin: 18px 0;
+}
+
+.detailFacts > div {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.24fr) minmax(0, 1fr);
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--loom-color-divider);
+}
+
+.detailFacts dt { color: var(--loom-color-text-subtle); }
+.detailFacts dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+
+.resourceDetail pre {
+  overflow: auto;
+  padding: 12px;
+  border-radius: var(--loom-radius-control);
+  background: var(--loom-color-surface-subtle);
+  white-space: pre-wrap;
+}
 
 .packageHeader,
 .module > header,
@@ -136,4 +226,3 @@
 .diagnostics pre { max-height: 240px; overflow: auto; white-space: pre-wrap; }
 .empty { margin: auto; color: var(--loom-color-text-subtle); }
 .renderer { min-height: 0; overflow: auto; }
-

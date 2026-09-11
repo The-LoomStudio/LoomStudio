@@ -32,13 +32,13 @@
 .editor[data-compact='true'] .toolbar {
   display: flex;
   margin: -10px -12px 4px;
-  padding: 10px 12px 6px;
+  padding: 10px var(--loom-divider-inset) 6px;
   top: -10px;
   background: var(--loom-color-surface);
 
   &::after {
-    left: 12px;
-    right: 12px;
+    left: var(--loom-divider-inset);
+    right: var(--loom-divider-inset);
   }
 }
 
@@ -77,7 +77,7 @@
   justify-content: space-between;
   gap: 8px;
   margin: 0 -10px 4px;
-  padding: 8px 10px 6px;
+  padding: 8px var(--loom-divider-inset) 6px;
   background: var(--loom-color-surface-subtle);
   border-radius: var(--loom-radius-surface) var(--loom-radius-surface) 0 0;
 
@@ -85,8 +85,8 @@
     content: '';
     position: absolute;
     bottom: 0;
-    left: 10px;
-    right: 10px;
+    left: var(--loom-divider-inset);
+    right: var(--loom-divider-inset);
     height: 1px;
     background: var(--loom-color-divider);
   }

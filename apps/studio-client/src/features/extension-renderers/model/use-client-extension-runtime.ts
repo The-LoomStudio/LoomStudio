@@ -42,12 +42,17 @@ export function useClientExtensionRuntime(input: {
         input.api.extensions.list(),
         input.api.extensions.diagnostics(),
       ])
-      setPackages(result.items)
+      const [rules, extractors] = await Promise.all([
+        input.api.textTransforms.listRules(),
+        input.api.textTransforms.listExtractors(),
+      ])
+      const packagesWithImportState = mapPackageImportState(result.items, rules.rules, extractors.extractors)
+      setPackages(packagesWithImportState)
       setServerDiagnostics(diagnostics.diagnostics)
-      await host.reconcile(toClientPackages(result.items), { reload })
+      await host.reconcile(toClientPackages(packagesWithImportState), { reload })
       setError(undefined)
       setRefreshSequence(sequence => sequence + 1)
-      return result.items
+      return packagesWithImportState
     } catch (reason) {
       setError(reason instanceof Error ? reason : new Error(String(reason)))
       return []
@@ -103,6 +108,24 @@ export function useClientExtensionRuntime(input: {
       return await refresh()
     },
   }
+}
+
+export function mapPackageImportState(
+  packages: readonly ManagedExtensionPackage[],
+  rules: readonly { origin?: { kind: string; packageId: string; contributionId: string } }[],
+  extractors: readonly { origin?: { kind: string; packageId: string; contributionId: string } }[],
+): ManagedExtensionPackage[] {
+  return packages.map(extensionPackage => ({
+    ...extensionPackage,
+    importedResources: {
+      transformRuleContributionIds: rules
+        .filter(rule => rule.origin?.kind === 'extension-package' && rule.origin.packageId === extensionPackage.packageId)
+        .map(rule => rule.origin!.contributionId),
+      textExtractorContributionIds: extractors
+        .filter(extractor => extractor.origin?.kind === 'extension-package' && extractor.origin.packageId === extensionPackage.packageId)
+        .map(extractor => extractor.origin!.contributionId),
+    },
+  }))
 }
 
 function toClientPackages(packages: readonly ManagedExtensionPackage[]): ManagedClientExtensionPackage[] {

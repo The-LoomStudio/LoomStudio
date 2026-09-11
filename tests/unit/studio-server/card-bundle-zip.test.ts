@@ -61,4 +61,33 @@ describe('Loom Card ZIP', () => {
   it('rejects input that is not a ZIP package', async () => {
     await expect(decodeCardBundleZip(Buffer.from('not zip'))).rejects.toThrow()
   })
+
+  it('stores Script attachments as real .loom.js ZIP entries and restores them', async () => {
+    const source = [
+      '// ==LoomScript==',
+      '// @format       1',
+      '// @id           zip.script',
+      '// @name         ZIP Script',
+      '// @version      1.0.0',
+      '// @runtime      client-sandbox',
+      '// @contribution {"kind":"renderer","id":"zip-panel","surface":"shell.workspace-panel","scope":"workspace","inputs":["artifact:zip.data"]}',
+      '// ==/LoomScript==',
+      'export const renderers = {}',
+    ].join('\n')
+    const artifact: CardBundleArtifact = {
+      schemaVersion: 3,
+      artifactId: 'script-card',
+      displayName: 'Script Card',
+      card: { name: 'Script Card' },
+      contextAssets: [],
+      scriptAttachments: [{ orderIndex: 2, script: { format: 'loom.script', schemaVersion: 1, fileName: 'zip.loom.js', source } }],
+    }
+    const archive = encodeCardBundleZip({ artifact, avatar: { bytes: Buffer.from('avatar'), mediaType: 'image/png' } })
+    const entries = unzipSync(archive)
+    expect(Object.keys(entries)).toContain('scripts/0-zip.loom.js')
+    const manifest = JSON.parse(Buffer.from(entries['manifest.json']!).toString('utf8'))
+    expect(manifest.artifact.scriptAttachments).toBeUndefined()
+    expect(manifest.scriptAttachments[0].script.path).toBe('scripts/0-zip.loom.js')
+    await expect(decodeCardBundleZip(archive)).resolves.toMatchObject({ artifact: { scriptAttachments: artifact.scriptAttachments } })
+  })
 })

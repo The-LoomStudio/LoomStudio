@@ -1,0 +1,13 @@
+{
+  "name": "Example Echo Character Status",
+  "enabled": true,
+  "orderIndex": 120,
+  "matcher": {
+    "kind": "regex",
+    "pattern": "<EchoStatus>(?<body>[\\s\\S]*?)</EchoStatus>",
+    "flags": "g"
+  },
+  "effect": { "kind": "mark", "markerType": "example-echo-status" },
+  "targets": ["narrative"],
+  "phases": ["display"]
+}

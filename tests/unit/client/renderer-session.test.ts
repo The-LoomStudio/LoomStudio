@@ -5,8 +5,7 @@ describe('Renderer Session Host', () => {
   it('creates a disconnected standalone session when no browser window is available and supports revoke', () => {
     const host = createRendererSessionHost()
     const handle = host.open({
-      packageId: 'example.page',
-      moduleId: 'client',
+      owner: { kind: 'extension', packageId: 'example.page', moduleId: 'client' },
       contributionId: 'page',
       definition: { id: 'page', name: 'Page', surface: 'standalone.page', instanceScope: 'workspace', adapter: 'sandbox-iframe' },
       frame: { src: '/extensions/example.page/1.0.0/files/page.html' },

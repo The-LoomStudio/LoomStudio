@@ -9,8 +9,7 @@ import {
 
 function contribution(packageId: string, contributionId: string, suggestedOrder = 0): RegisteredRendererContribution {
   return {
-    packageId,
-    moduleId: 'client',
+    owner: { kind: 'extension', packageId, moduleId: 'client' },
     contributionId,
     definition: {
       id: contributionId,
@@ -29,8 +28,8 @@ describe('Renderer Registry conflict model', () => {
       surface: 'narrative.timeline.tail',
     })
     expect(result.contributions.map(rendererContributionKey)).toEqual([
-      'example.a/client/tail',
-      'example.b/client/tail',
+      'extension:example.a/client/tail',
+      'extension:example.b/client/tail',
     ])
   })
 
@@ -40,11 +39,11 @@ describe('Renderer Registry conflict model', () => {
     const result = orderRendererContributions({
       contributions: [first, second, first],
       surface: 'narrative.timeline.tail',
-      userOrder: ['example.b/client/tail', 'example.a/client/tail'],
+      userOrder: ['extension:example.b/client/tail', 'extension:example.a/client/tail'],
     })
     expect(result.contributions.map(rendererContributionKey)).toEqual([
-      'example.b/client/tail',
-      'example.a/client/tail',
+      'extension:example.b/client/tail',
+      'extension:example.a/client/tail',
     ])
     expect(result.diagnostics).toEqual([expect.objectContaining({ code: 'renderer.duplicate' })])
   })
@@ -69,10 +68,9 @@ describe('Renderer Registry conflict model', () => {
 
   it('builds stable contribution and scope instance identities', () => {
     expect(rendererInstanceKey({
-      packageId: 'example.a',
-      moduleId: 'client',
+      owner: { kind: 'extension', packageId: 'example.a', moduleId: 'client' },
       contributionId: 'tail',
       scopeKey: 'timeline-1',
-    })).toBe('example.a/client/tail@timeline-1')
+    })).toBe('extension:example.a/client/tail@timeline-1')
   })
 })

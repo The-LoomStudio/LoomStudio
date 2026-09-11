@@ -13,7 +13,7 @@ Loom Studio 当前采用 **Package / Module / Instance** 三层 Extension 模型
 - [`scripts/verify-server-extension.ts`](../../../scripts/verify-server-extension.ts)
 - [`scripts/verify-server-extension-manager.ts`](../../../scripts/verify-server-extension-manager.ts)
 
-Client Renderer Host、Surface 与 UI 生命周期见 [`client-renderer-host.md`](client-renderer-host.md)。
+Client Renderer Host、Surface 与 UI 生命周期见 [`client-renderer-host.md`](client-renderer-host.md)。轻量单文件 Renderer 的 Metadata、Mount、版本冻结与 Sandbox 合同见 [`loom-script-runtime.md`](loom-script-runtime.md)。
 
 ## 1. 三层身份
 

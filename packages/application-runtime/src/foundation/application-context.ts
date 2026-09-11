@@ -9,7 +9,7 @@ import { createId as createSharedId, nowIso } from '@loom-studio/shared'
 import { createStateStore, type StateStore } from '@loom-studio/state-store'
 import { createDocumentBackedAiGateway, providerToGateway } from '../providers/gateway.js'
 import { createAgentToolRegistry, type AgentToolRegistry } from '../agents/tool-registry.js'
-import type { AiGateway, ApplicationRuntimeOptions, MediaAssetLookup, SourceArtifactStorage } from '../types.js'
+import type { AiGateway, ApplicationRuntimeOptions, BlobStorage, MediaAssetLookup, SourceArtifactStorage } from '../types.js'
 import { createMacroProviderRegistry, type MacroProviderRegistry } from '../prompt/macro-provider-registry.js'
 import { createStateContributionRegistry, type StateContributionRegistry } from '../state/state-contribution-registry.js'
 
@@ -17,6 +17,7 @@ export type ApplicationRuntimeContext = {
   agents?: AgentStore
   dataEngine: SqliteDataEngine
   documents: DocumentStore
+  blobs?: BlobStorage
   logger?: Logger
   narratives?: NarrativeStore
   promptResources: PromptResourceStore
@@ -47,6 +48,7 @@ export function createApplicationRuntimeContext(options: ApplicationRuntimeOptio
     agents: options.agents,
     dataEngine: options.dataEngine,
     documents: options.documents,
+    blobs: options.blobs,
     logger: options.logger,
     narratives: options.narratives,
     promptResources: options.promptResources,

@@ -15,6 +15,7 @@ import { buildOpenAIChatPayload, type OpenAIChatPayload } from '../providers/pro
 import { readMappedResource } from '../prompt/prompt-resource-mapper.js'
 import { isPromptActivation, type ActivationFacts } from '../prompt/prompt-activation.js'
 import { readTimelineRuntimeContext } from '../narrative/timeline-runtime-context.js'
+import { resolveEffectiveTextPipeline } from './transforms-runtime.js'
 import { getApplicationStateSnapshot, applyApplicationStateMutation } from '../state/state.js'
 import type {
   AgentProfileContent,
@@ -37,7 +38,6 @@ import type {
   GetAgentSessionInput,
   GetAgentSessionResult,
   GetAgentTranscriptPageInput,
-  HistorySource,
   InspectMacrosInput,
   InvokeAgentTurnInput,
   InvokeAgentTurnResult,
@@ -57,8 +57,6 @@ import type {
   ReplacePresetToolMountsResult,
   RuntimeRequestContext,
   StateMutationOperation,
-  TextTransformRuleContent,
-  TextTransformRuleEntry,
   UpdateAgentProfileInput,
   UpdateAgentProfileResult,
   UpdateAgentSessionInput,
@@ -254,11 +252,11 @@ export function createAgentsRuntimeMethods(ctx: ApplicationRuntimeContext) {
         runId,
         session,
       } = prepared
-      const classificationRules = await filterRulesForSource(
+      const classificationRules = (await resolveEffectiveTextPipeline(
         ctx,
         { kind: 'agent-session', sessionId: session.id },
-        (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule)).map(document => toVersioned(document)),
-      )
+        'classify',
+      )).rules
       const loop = await runNativeToolLoop({
         ctx,
         agents,
@@ -597,12 +595,19 @@ export async function prepareAgentTurn(
   })
   const inspectedVariables = variableContextFromInspection(macroInspection)
   try {
-    const textRules = (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule)).map(document => toVersioned(document))
-    const globalAndExtensionRules = textRules.filter(rule => rule.owner.kind === 'workspace' || rule.owner.kind === 'extension' || rule.owner.kind === 'user-override')
-    const presetRules = textRules.filter(rule => rule.owner.kind === 'preset' && rule.owner.presetId === preset.id)
-    const cardRules = timelineRuntimeContext?.textTransformRules ?? (narrativePage?.timeline.createdFrom?.cardId
-      ? textRules.filter(rule => rule.owner.kind === 'card' && rule.owner.cardId === narrativePage.timeline.createdFrom!.cardId)
-      : [])
+    const sessionTextPipeline = await resolveEffectiveTextPipeline(
+      ctx,
+      { kind: 'agent-session', sessionId: session.id },
+      'prompt',
+    )
+    const narrativeTextPipeline = narrativePage
+      ? await resolveEffectiveTextPipeline(
+          ctx,
+          { kind: 'narrative', timelineId: narrativePage.timeline.id, branchId: narrativePage.branch.id },
+          'prompt',
+          session.id,
+        )
+      : undefined
     compiledToolSet = await compileAgentToolSet({
       ctx,
       model: agentProfile.content.model,
@@ -626,8 +631,8 @@ export async function prepareAgentTurn(
       runId,
       agentSessionId: session.id,
       historyRules: {
-        session: [...globalAndExtensionRules, ...presetRules],
-        narrative: [...globalAndExtensionRules, ...presetRules, ...cardRules],
+        session: sessionTextPipeline.rules,
+        narrative: narrativeTextPipeline?.rules ?? [],
       },
       externalRuntime: createContentToolPromptRuntimeInputs(compiledToolSet),
     })
@@ -753,34 +758,4 @@ function readMessageEntryContent(entry: AgentTranscriptEntry, role: 'user' | 'as
 
 function readDurationMs(startedAt: number): number {
   return Math.round((performance.now() - startedAt) * 100) / 100
-}
-
-async function filterRulesForSource(
-  ctx: ApplicationRuntimeContext,
-  source: HistorySource,
-  rules: TextTransformRuleEntry[],
-): Promise<TextTransformRuleEntry[]> {
-  let presetId: string | undefined
-  let cardId: string | undefined
-  let snapshotRules: TextTransformRuleEntry[] = []
-  let hasTimelineRuntimeContext = false
-  if (source.kind === 'agent-session') {
-    const session = await ctx.agents?.getSession(source.sessionId)
-    if (!session) throw new Error(`Agent Session not found: ${source.sessionId}`)
-    const profile = await readDocument<AgentProfileContent>(ctx.documents, session.agentProfileId, applicationDocumentTypes.agentProfile)
-    presetId = profile.content.presetId
-  } else {
-    const timeline = await ctx.narratives?.getTimeline(source.timelineId)
-    if (!timeline) throw new Error(`Narrative Timeline not found: ${source.timelineId}`)
-    cardId = timeline.createdFrom?.cardId
-    const runtimeContext = await readTimelineRuntimeContext(ctx, source.timelineId)
-    hasTimelineRuntimeContext = Boolean(runtimeContext)
-    snapshotRules = runtimeContext?.textTransformRules ?? []
-  }
-  const active = rules.filter(rule => {
-    if (rule.owner.kind === 'preset') return rule.owner.presetId === presetId
-    if (rule.owner.kind === 'card') return !hasTimelineRuntimeContext && rule.owner.cardId === cardId
-    return true
-  })
-  return [...active, ...snapshotRules]
 }

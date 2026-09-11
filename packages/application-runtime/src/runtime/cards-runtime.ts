@@ -29,6 +29,7 @@ import {
 } from '../state/state-definition.js'
 import { createCardStateContribution, materializeStateContribution } from '../state/state-contribution.js'
 import { readTimelineRuntimeContext, timelineRuntimeContextId } from '../narrative/timeline-runtime-context.js'
+import { snapshotLoomScriptMounts } from '../scripts/loom-script-resolution.js'
 import type {
   CardMediaRefs,
   CardSourceContent,
@@ -50,6 +51,7 @@ import type {
   StateDefinitionContent,
   StateDefinitionDraft,
   TimelineRuntimeContextContent,
+  TextExtractorContent,
   TextTransformRuleContent,
   UpdateCardInput,
   UpdateCardPromptResourcesInput,
@@ -420,6 +422,7 @@ export function createCardsRuntimeMethods(ctx: ApplicationRuntimeContext) {
         documents: ctx.documents,
         promptResources: ctx.promptResources,
         dataEngine: ctx.dataEngine,
+        blobs: ctx.blobs,
         now: ctx.now(),
         storedSourceArtifact,
       })
@@ -431,6 +434,7 @@ export function createCardsRuntimeMethods(ctx: ApplicationRuntimeContext) {
           cardId: input.cardId,
           documents: ctx.documents,
           promptResources: ctx.promptResources,
+          blobs: ctx.blobs,
         }),
       }
     },
@@ -528,6 +532,10 @@ async function buildTimelineRuntimeContextInternal(
   const textTransformRules = (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule))
     .filter(rule => rule.content.owner.kind === 'card' && rule.content.owner.cardId === input.card.id)
     .map(rule => ({ ...rule.content, id: rule.id, version: rule.version }))
+  const textExtractors = (await listDocuments<TextExtractorContent>(ctx.documents, applicationDocumentTypes.textExtractor))
+    .filter(extractor => extractor.content.owner.kind === 'card' && extractor.content.owner.cardId === input.card.id)
+    .map(extractor => ({ ...extractor.content, id: extractor.id, version: extractor.version }))
+  const loomScriptMounts = await snapshotLoomScriptMounts(ctx, { kind: 'card', cardId: input.card.id })
   const materializedState = materializeStateContribution(createCardStateContribution(input.card.id, input.cardContent, input.templates))
   return {
     timelineId: input.timelineId,
@@ -545,6 +553,8 @@ async function buildTimelineRuntimeContextInternal(
       return { path: binding.path, schema: structuredClone(template.schema) }
     }),
     textTransformRules,
+    textExtractors,
+    loomScriptMounts,
     createdAt: ctx.now(),
   }
 }

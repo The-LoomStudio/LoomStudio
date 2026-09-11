@@ -11,13 +11,15 @@ export type {
 } from '@loom-studio/agent-store'
 import type { DocumentStore } from '@loom-studio/document-store'
 import type { AiGatewayCapabilityRegistry, ProviderAdapterRegistry } from '@loom-studio/ai-gateway'
-import type { DataActorRef, SqliteDataEngine } from '@loom-studio/data-engine'
+import type { DataActorRef, SqliteDataEngine, SqliteDataTransaction } from '@loom-studio/data-engine'
 import type {
   ExtensionAgentToolContribution,
   ExtensionEntityRef,
   ExtensionPromptResourceContribution,
   ExtensionRecordEntry,
   ExtensionStorageScope,
+  ExtensionTextExtractorContribution,
+  ExtensionTextTransformRuleContribution,
 } from '@loom-studio/extension-sdk'
 export type { ExtensionEntityRef, ExtensionRecordEntry, ExtensionStorageScope } from '@loom-studio/extension-sdk'
 import type { Logger } from '@loom-studio/logging'
@@ -65,20 +67,31 @@ import type { PromptBuildTrace } from './prompt/prompt-build-pipeline.js'
 import type {
   HistoryProjectionSnapshot,
   HistorySource,
+  InspectTextPipelineInput,
   RendererDefinition,
   TextExtractionResult,
+  TextExtractionArtifact,
+  TextExtractionArtifactValue,
   TextExtractorDraft,
   TextExtractorEntry,
   TextTransformPhase,
   TextTransformRuleDraft,
   TextTransformRuleEntry,
+  TextPipelineInspection,
+  TextPipelineConsumer,
+  TextPipelineOverrideContent,
+  TextPipelineOverrideEntry,
+  TextPipelineOverrideSource,
 } from './transforms/history-text.js'
 export type {
   HistoryProjectionSnapshot,
   HistorySource,
   HistoryTextEntry,
+  InspectTextPipelineInput,
   RendererDefinition,
   TextExtractionResult,
+  TextExtractionArtifact,
+  TextExtractionArtifactValue,
   TextExtractorContent,
   TextExtractorDraft,
   TextExtractorEntry,
@@ -86,10 +99,24 @@ export type {
   TextTransformRuleContent,
   TextTransformRuleDraft,
   TextTransformRuleEntry,
+  TextPipelineInspection,
+  TextPipelineConsumer,
+  TextPipelineOverrideContent,
+  TextPipelineOverrideEntry,
+  TextPipelineOverrideSource,
 } from './transforms/history-text.js'
 import type { CompiledPrompt } from './prompt/prompt-builder.js'
 import type { MacroProviderRegistry } from './prompt/macro-provider-registry.js'
 import type { StateContributionRegistry } from './state/state-contribution-registry.js'
+import type {
+  LoomScriptArtifact,
+  LoomScriptEntry,
+  LoomScriptMountEntry,
+  LoomScriptMountTarget,
+  LoomScriptOwner,
+  LoomScriptRuntimeMountSnapshot,
+  ResolvedLoomScriptRendererMount,
+} from './scripts/loom-script-contracts.js'
 import type {
   CardBundleArtifact,
   ImportBundleContent,
@@ -138,9 +165,22 @@ export type ApplicationRuntime = {
   getTextExtractor(input: { extractorId: string }): Promise<{ extractor: TextExtractorEntry }>
   upsertTextExtractor(input: { extractorId: string; expectedVersion?: number; extractor: TextExtractorDraft }, context?: RuntimeRequestContext): Promise<{ extractor: TextExtractorEntry; mutation: MutationReceipt }>
   deleteTextExtractor(input: { extractorId: string; expectedVersion?: number }, context?: RuntimeRequestContext): Promise<{ deleted: true; mutation: MutationReceipt }>
-  projectHistory(input: { source: HistorySource; phase: TextTransformPhase }): Promise<{ snapshot: HistoryProjectionSnapshot }>
-  extractHistory(input: { source: HistorySource; phase?: TextTransformPhase; extractorId: string }): Promise<{ extraction: TextExtractionResult; snapshot: HistoryProjectionSnapshot }>
+  getTextPipelineOverride(input: InspectTextPipelineInput): Promise<{ override: TextPipelineOverrideEntry | null }>
+  upsertTextPipelineOverride(input: InspectTextPipelineInput & { expectedVersion?: number; disabledRuleIds: string[]; orderedRuleIds: string[] }, context?: RuntimeRequestContext): Promise<{ override: TextPipelineOverrideEntry; mutation: MutationReceipt }>
+  deleteTextPipelineOverride(input: InspectTextPipelineInput & { expectedVersion?: number }, context?: RuntimeRequestContext): Promise<{ deleted: true; mutation: MutationReceipt }>
+  projectHistory(input: { source: HistorySource; phase: TextTransformPhase; consumerAgentSessionId?: string }): Promise<{ snapshot: HistoryProjectionSnapshot }>
+  extractHistory(input: { source: HistorySource; phase?: TextTransformPhase; extractorId: string; consumerAgentSessionId?: string }): Promise<{ extraction: TextExtractionResult; snapshot: HistoryProjectionSnapshot }>
+  inspectTextPipeline(input: InspectTextPipelineInput): Promise<TextPipelineInspection>
   listRenderers(): Promise<{ renderers: RendererDefinition[] }>
+  importLoomScript(input: { owner: LoomScriptOwner; fileName: string; source: string }, context?: RuntimeRequestContext): Promise<{ script: LoomScriptEntry; mutation: MutationReceipt }>
+  updateLoomScript(input: { scriptDocumentId: string; expectedVersion: number; fileName: string; source: string }, context?: RuntimeRequestContext): Promise<{ script: LoomScriptEntry; mutation: MutationReceipt }>
+  getLoomScript(input: { scriptDocumentId: string }): Promise<{ script: LoomScriptEntry }>
+  listLoomScripts(input?: { owner?: LoomScriptOwner }): Promise<{ scripts: LoomScriptEntry[] }>
+  exportLoomScript(input: { scriptDocumentId: string }): Promise<{ artifact: LoomScriptArtifact }>
+  createLoomScriptMount(input: { target: LoomScriptMountTarget; scriptDocumentId: string; orderIndex: number; pinnedDocumentVersion?: number; origin?: JsonObject }, context?: RuntimeRequestContext): Promise<{ mount: LoomScriptMountEntry; mutation: MutationReceipt }>
+  updateLoomScriptMount(input: { mountId: string; expectedVersion: number; enabled: boolean; orderIndex: number; pinnedDocumentVersion?: number; grantedCapabilities: string[] }, context?: RuntimeRequestContext): Promise<{ mount: LoomScriptMountEntry; mutation: MutationReceipt }>
+  listLoomScriptMounts(input?: { target?: LoomScriptMountTarget; scriptDocumentId?: string }): Promise<{ mounts: LoomScriptMountEntry[] }>
+  resolveLoomScriptRendererMounts(input?: { workspaceId?: string; timelineId?: string; presetId?: string }): Promise<{ mounts: ResolvedLoomScriptRendererMount[] }>
   listExtensionRecords(input: { packageId: string; scope?: ExtensionStorageScope; recordType?: string; binding?: ExtensionEntityRef }): Promise<{ records: ExtensionRecordEntry[] }>
   getExtensionRecord(input: { packageId: string; recordId: string }): Promise<{ record: ExtensionRecordEntry | null }>
   createCard(input: CreateCardInput, context?: RuntimeRequestContext): Promise<CreateCardResult>
@@ -344,6 +384,8 @@ export type TimelineRuntimeContextContent = {
     schema: JsonObject
   }>
   textTransformRules: TextTransformRuleEntry[]
+  textExtractors?: TextExtractorEntry[]
+  loomScriptMounts?: LoomScriptRuntimeMountSnapshot[]
   createdAt: string
 }
 
@@ -657,6 +699,7 @@ export type ApplicationRuntimeOptions = {
   agentTools?: AgentToolRegistry
   dataEngine?: SqliteDataEngine
   documents: DocumentStore
+  blobs?: BlobStorage
   narratives?: NarrativeStore
   promptResources: PromptResourceStore
   states?: StateStore
@@ -697,6 +740,26 @@ export type SourceArtifactStorage = {
     originalFileName?: string
     mediaType?: string
   }>
+}
+
+export type PreparedBlobStorageWrite = {
+  blob: {
+    id: string
+    sha256: string
+    sizeBytes: number
+    mediaType?: string
+    createdAt: string
+  }
+  existing: boolean
+}
+
+export type BlobStorage = {
+  prepareWrite(input: { source: Uint8Array; mediaType?: string; maxBytes?: number }): Promise<PreparedBlobStorageWrite>
+  participateWrite(tx: SqliteDataTransaction, prepared: PreparedBlobStorageWrite): {
+    blob: PreparedBlobStorageWrite['blob']
+    created: boolean
+  }
+  read(blobId: string, options?: { maxBytes?: number }): Promise<Uint8Array>
 }
 
 export type AiGateway = {
@@ -1371,11 +1434,21 @@ export type ImportExtensionPackageResourcesInput = {
     contribution: ExtensionAgentToolContribution
     definition: JsonValue
   }>
+  transformRules: Array<{
+    contribution: ExtensionTextTransformRuleContribution
+    artifact: JsonValue
+  }>
+  textExtractors: Array<{
+    contribution: ExtensionTextExtractorContribution
+    artifact: JsonValue
+  }>
 }
 
 export type ImportExtensionPackageResourcesResult = {
   promptResources: Array<{ contributionId: string; resourceId: string; resourceKind: PromptResourceKind }>
   agentTools: Array<{ contributionId: string; toolId: string }>
+  transformRules: Array<{ contributionId: string; ruleId: string }>
+  textExtractors: Array<{ contributionId: string; extractorId: string }>
   mutation?: MutationReceipt
 }
 
@@ -1387,6 +1460,8 @@ export type RemoveExtensionPackageResourcesResult = {
   packageId: string
   promptResourceIds: string[]
   agentToolIds: string[]
+  textTransformRuleIds: string[]
+  textExtractorIds: string[]
   detachedReferences: {
     cards: number
     timelines: number

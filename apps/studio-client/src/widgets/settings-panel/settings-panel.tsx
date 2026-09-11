@@ -1,18 +1,20 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Globe, Info, Network, Palette } from 'lucide-react'
-import type { NetworkSettings } from '../../shared/api/studio-api.js'
+import { ChevronLeft, Globe, Info, Network, Palette, Regex } from 'lucide-react'
+import { TextTransformDetail, TextTransformExplorer, useTextTransformController } from '../../features/text-transforms/ui/text-transform-panel.js'
+import type { NetworkSettings, StudioApi } from '../../shared/api/studio-api.js'
 import type { Locale, Translator } from '../../shared/i18n/index.js'
 import { localeLabels, supportedLocales } from '../../shared/i18n/index.js'
 import { MasterDetailWorkbench } from '../../shared/ui/master-detail-workbench/master-detail-workbench.js'
 import styles from './settings-panel.module.scss'
 
-type SettingsCategory = 'general' | 'network' | 'appearance' | 'about'
+type SettingsCategory = 'general' | 'network' | 'appearance' | 'text-pipeline' | 'about'
 
 export function SettingsPanel(props: {
   busy: boolean
   customCss: string
   locale: Locale
   networkSettings: NetworkSettings
+  textTransformsApi: StudioApi['textTransforms']
   uiScale: number
   onChangeCustomCss(value: string): void
   onChangeLocale(locale: Locale): void
@@ -24,6 +26,13 @@ export function SettingsPanel(props: {
   const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
   const [proxyMode, setProxyMode] = useState(props.networkSettings.proxyMode)
   const [proxyUrl, setProxyUrl] = useState(props.networkSettings.proxyUrl ?? '')
+  const textController = useTextTransformController({
+    api: props.textTransformsApi,
+    owner: { kind: 'workspace' },
+    t: props.t,
+    mobilePane,
+    onMobilePaneChange: setMobilePane,
+  })
 
   useEffect(() => {
     setProxyMode(props.networkSettings.proxyMode)
@@ -51,7 +60,25 @@ export function SettingsPanel(props: {
         masterWidth="minmax(220px, 260px)"
         mobilePane={mobilePane}
         onMobilePaneChange={setMobilePane}
-        master={(
+        master={category === 'text-pipeline' ? (
+          <div className={styles.masterNav}>
+            <button
+              className={styles.navItem}
+              type="button"
+              onClick={() => {
+                setCategory('general')
+                setMobilePane('master')
+              }}
+            >
+              <ChevronLeft aria-hidden="true" />
+              <span className={styles.navItemBody}>
+                <strong>{props.t('textTransform.backToSettings')}</strong>
+                <small>{props.t('textTransform.workspaceDescription')}</small>
+              </span>
+            </button>
+            <TextTransformExplorer controller={textController} />
+          </div>
+        ) : (
           <nav aria-label="Settings Navigation" className={styles.masterNav}>
             <button
               aria-current={category === 'general' ? 'page' : undefined}
@@ -102,6 +129,21 @@ export function SettingsPanel(props: {
             </button>
 
             <button
+              className={styles.navItem}
+              type="button"
+              onClick={() => {
+                setCategory('text-pipeline')
+                setMobilePane('master')
+              }}
+            >
+              <Regex aria-hidden="true" />
+              <span className={styles.navItemBody}>
+                <strong>{props.t('rail.textTransform')}</strong>
+                <small>{props.t('textTransform.workspaceDescription')}</small>
+              </span>
+            </button>
+
+            <button
               aria-current={category === 'about' ? 'page' : undefined}
               className={styles.navItem}
               type="button"
@@ -119,6 +161,11 @@ export function SettingsPanel(props: {
           </nav>
         )}
       >
+        {category === 'text-pipeline' ? (
+          <div className={styles.textPipelineDetail}>
+            <TextTransformDetail controller={textController} />
+          </div>
+        ) : (
         <div className={styles.detailPane}>
           {category === 'general' ? (
             <>
@@ -259,6 +306,7 @@ export function SettingsPanel(props: {
             </>
           )}
         </div>
+        )}
       </MasterDetailWorkbench>
     </section>
   )
@@ -275,4 +323,3 @@ function GitHubMark() {
     </svg>
   )
 }
-

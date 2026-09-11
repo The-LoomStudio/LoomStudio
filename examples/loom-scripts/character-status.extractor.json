@@ -1,0 +1,16 @@
+{
+  "name": "Character Status Artifact",
+  "owner": { "kind": "card", "cardId": "tutorial.character.alice" },
+  "enabled": true,
+  "orderIndex": 110,
+  "targets": ["narrative"],
+  "matcher": {
+    "kind": "regex",
+    "pattern": "<CharacterStatus>(?<body>[\\s\\S]*?)</CharacterStatus>",
+    "flags": "g",
+    "contentGroup": "body"
+  },
+  "strategy": "latest-valid",
+  "parser": "text",
+  "artifactType": "loom.character-status"
+}

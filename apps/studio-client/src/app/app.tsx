@@ -23,8 +23,11 @@ import { RendererWorkspacePanel } from '../features/extension-renderers/ui/rende
 import { useClientExtensionRuntime } from '../features/extension-renderers/model/use-client-extension-runtime.js'
 import { listClientActions } from '../features/extension-renderers/model/client-actions.js'
 import { ClientActionIcon } from '../features/extension-renderers/ui/client-action-icon.js'
+import { createLoomScriptRendererRuntime, type LoomScriptInputProjection, type LoomScriptRendererContribution } from '../features/loom-scripts/runtime/index.js'
+import type { ClientRendererScope } from '../features/extension-renderers/model/client-renderer-host.js'
 
 import { NotificationToaster } from '../shared/ui/notification-toaster/notification-toaster.js'
+import type { StudioApi } from '../shared/api/studio-api.js'
 import { toast } from 'sonner'
 import { hasCompleteProviderAccount } from '../features/provider-settings/model/provider-account-status.js'
 import { useStudioLayoutStore, useStudioPanelStore, type StudioPanelId } from '../pages/studio/model/studio-layout-store.js'
@@ -39,13 +42,14 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
   const state = useStudioState(props.transportLogger)
   const rendererHost = useMemo(() => createClientRendererHost(), [])
   const clientExtensions = useClientExtensionRuntime({ api: state.clientExtensionApi, rendererHost })
+  const [loomScriptRefreshToken, setLoomScriptRefreshToken] = useState(0)
   const [composerHeight, setComposerHeight] = useState(0)
   const [agentPanelOpen, setAgentPanelOpen] = useState(false)
   const [selectedPresetId, setSelectedPresetId] = useState<string>()
   const timelineRouteRequestRef = useRef(0)
   const navigation = useStudioNavigation()
   const navigate = useNavigate()
-  const [resourceView, setResourceView] = useState<'settings' | 'macros'>('settings')
+  const [resourceView, setResourceView] = useState<'settings' | 'macros' | 'text'>('settings')
   const [variableView, setVariableView] = useState<'state' | 'authoring' | 'preview' | 'build'>('state')
   const uiScale = useStudioLayoutStore(current => current.uiScale)
   const setUiScale = useStudioLayoutStore(current => current.setUiScale)
@@ -58,6 +62,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
   const providerBusy = bootstrapBusy || state.operationPending['provider-settings'].pendingCount > 0
   const agentProfileBusy = bootstrapBusy || state.operationPending['agent-profiles'].pendingCount > 0
   const activeCardId = state.narrativeTimeline?.createdFrom?.cardId ?? (state.narrativeTimeline ? state.selectedCardId : undefined)
+  const activePresetId = state.agentProfiles.find(profile => profile.id === state.selectedAgentProfileId)?.presetId
   const activeCard = activeCardId
     ? (state.cards.find(c => c.id === activeCardId) ?? (state.selectedCard?.id === activeCardId ? state.selectedCard : undefined))
     : undefined
@@ -121,6 +126,38 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
       ...(state.agentChatSession ? { agentSessionId: state.agentChatSession.id } : {}),
     })
   }, [rendererHost, state.agentChatSession?.id, state.narrativeTimeline?.id])
+
+  useEffect(() => {
+    let disposed = false
+    const runtime = createLoomScriptRendererRuntime({
+      rendererHost,
+      resolveInputs: (scope, contribution) => resolveLoomScriptInputs({
+        api: state.api,
+        scope,
+        contribution,
+        narrative: state.narrativeTimeline && state.branch ? {
+          timelineId: state.narrativeTimeline.id,
+          branchId: state.branch.id,
+          consumerAgentSessionId: state.agentChatSession?.id,
+        } : undefined,
+        agentSessionId: state.agentChatSession?.id,
+      }),
+      stateRead: async target => (await state.statesApi.get(target)).snapshot.value,
+    })
+    void state.api.loomScripts.resolveRendererMounts({
+      workspaceId: 'workspace',
+      ...(state.narrativeTimeline ? { timelineId: state.narrativeTimeline.id } : {}),
+      ...(activePresetId ? { presetId: activePresetId } : {}),
+    }).then(result => {
+      if (!disposed) runtime.reconcile(result.mounts)
+    }).catch(error => {
+      if (!disposed) toast.error(error instanceof Error ? error.message : String(error))
+    })
+    return () => {
+      disposed = true
+      runtime.dispose()
+    }
+  }, [activePresetId, loomScriptRefreshToken, rendererHost, state.agentChatSession?.id, state.api, state.branch?.id, state.narrativeTimeline?.id, state.statesApi])
 
   useEffect(() => {
     if (navigation.route.panel !== 'preset' && navigation.route.panel !== 'resource') return
@@ -305,6 +342,9 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
     preset: () => (
       <PresetWorkbench
         {...contextAssetEditorProps}
+        textTransformsApi={state.textTransformsApi}
+        loomScriptsApi={state.api.loomScripts}
+        onLoomScriptsChanged={() => setLoomScriptRefreshToken(value => value + 1)}
         onSaveMacros={state.updatePresetMacros}
         selectedResourceId={selectedPresetId}
         onSelectResource={setSelectedPresetId}
@@ -321,6 +361,9 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
     resource: () => (
       <ContextWorkbench
         {...contextAssetEditorProps}
+        textTransformsApi={state.textTransformsApi}
+        loomScriptsApi={state.api.loomScripts}
+        onLoomScriptsChanged={() => setLoomScriptRefreshToken(value => value + 1)}
         view={resourceView}
         onViewChange={setResourceView}
         macroAuthoring={state.selectedCardDetails?.id === assetWorkspaceId ? {
@@ -371,7 +414,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         t={state.t}
       />}
       </div>
-      <div className="loom-page-tabs" role="tablist">
+      <div className="loom-page-tabs loom-page-tabs-footer" role="tablist">
         {(['state', 'authoring', 'preview', 'build'] as const).map(view => (
           <button
             key={view}
@@ -388,11 +431,29 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
     'text-transform': () => (
       <TextTransformPanel
         api={state.textTransformsApi}
-        source={state.narrativeTimeline && state.branch
-          ? { kind: 'narrative', timelineId: state.narrativeTimeline.id, branchId: state.branch.id }
-          : state.agentChatSession
-            ? { kind: 'agent-session', sessionId: state.agentChatSession.id }
-            : undefined}
+        loomScriptsApi={state.api.loomScripts}
+        onRuntimeChanged={() => setLoomScriptRefreshToken(value => value + 1)}
+        rendererHost={rendererHost}
+        runtimeScriptContext={{
+          workspaceId: 'workspace',
+          ...(state.narrativeTimeline ? { timelineId: state.narrativeTimeline.id } : {}),
+          ...(activePresetId ? { presetId: activePresetId } : {}),
+        }}
+        owner={{ kind: 'runtime' }}
+        t={state.t}
+        runtimeContexts={[
+          ...(state.narrativeTimeline && state.branch ? [{
+            id: 'narrative',
+            label: state.t('textTransform.runtimeNarrative'),
+            source: { kind: 'narrative' as const, timelineId: state.narrativeTimeline.id, branchId: state.branch.id },
+            consumerAgentSessionId: state.agentChatSession?.id,
+          }] : []),
+          ...(state.agentChatSession ? [{
+            id: `agent-session:${state.agentChatSession.id}`,
+            label: state.t('textTransform.runtimeAgentSession'),
+            source: { kind: 'agent-session' as const, sessionId: state.agentChatSession.id },
+          }] : []),
+        ]}
       />
     ),
     inspector: () => (
@@ -430,6 +491,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         customCss={state.customCss}
         locale={state.locale}
         networkSettings={state.networkSettings}
+        textTransformsApi={state.textTransformsApi}
         uiScale={uiScale}
         t={state.t}
         onChangeCustomCss={state.setCustomCss}
@@ -494,8 +556,10 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         resource: (
           <ContextWorkbenchHeader
             resources={state.promptResources}
+            view={resourceView}
             t={state.t}
             workspaceId={assetWorkspaceId}
+            onViewChange={setResourceView}
             onSelectResource={resourceId => {
               const target = state.promptResources.find(r => r.id === resourceId)
               if (target) {
@@ -592,4 +656,77 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
       <NotificationToaster label={state.t('notification.label')} />
     </>
   )
+}
+
+async function resolveLoomScriptInputs(input: {
+  api: StudioApi
+  scope: ClientRendererScope
+  contribution: LoomScriptRendererContribution
+  narrative?: { timelineId: string; branchId: string; consumerAgentSessionId?: string }
+  agentSessionId?: string
+}): Promise<LoomScriptInputProjection> {
+  const source = resolveInspectionSource(input)
+  if (!source) return { matches: [], artifacts: [] }
+  const inspection = await input.api.textTransforms.inspectTextPipeline({
+    source: source.source,
+    phase: 'display',
+    ...(source.consumerAgentSessionId ? { consumerAgentSessionId: source.consumerAgentSessionId } : {}),
+  })
+  const entryId = source.entryId
+  return {
+    matches: inspection.snapshot.matches
+      .filter(match => !entryId || match.entryId === entryId)
+      .map(match => ({
+        matchId: match.matchId,
+        ruleId: match.ruleId,
+        value: {
+          entryId: match.entryId,
+          match: match.match,
+          captures: match.captures.map(capture => capture ?? null),
+          namedCaptures: Object.fromEntries(Object.entries(match.namedCaptures).map(([name, capture]) => [name, capture ?? null])),
+        },
+        ...(match.displayRange ? { displayRange: match.displayRange } : {}),
+      })),
+    artifacts: inspection.artifacts.flatMap(artifact => artifact.values
+      .filter(value => !entryId || value.sourceEntryId === entryId)
+      .map((value, index) => ({
+        id: `${artifact.artifactId}:${index}`,
+        artifactType: artifact.artifactType,
+        sourceEntryId: value.sourceEntryId,
+        value: value.value,
+      }))),
+  }
+}
+
+function resolveInspectionSource(input: {
+  scope: ClientRendererScope
+  narrative?: { timelineId: string; branchId: string; consumerAgentSessionId?: string }
+  agentSessionId?: string
+}): {
+  source: { kind: 'narrative'; timelineId: string; branchId: string } | { kind: 'agent-session'; sessionId: string }
+  entryId?: string
+  consumerAgentSessionId?: string
+} | undefined {
+  if (input.scope.entity?.kind === 'narrative-node') {
+    if (!input.narrative || input.narrative.timelineId !== input.scope.entity.timelineId) return undefined
+    return {
+      source: { kind: 'narrative', timelineId: input.narrative.timelineId, branchId: input.narrative.branchId },
+      entryId: input.scope.entity.nodeId,
+      ...(input.narrative.consumerAgentSessionId ? { consumerAgentSessionId: input.narrative.consumerAgentSessionId } : {}),
+    }
+  }
+  if (input.scope.entity?.kind === 'agent-message') {
+    if (input.agentSessionId !== input.scope.entity.agentSessionId) return undefined
+    return { source: { kind: 'agent-session', sessionId: input.scope.entity.agentSessionId }, entryId: input.scope.entity.messageId }
+  }
+  if (input.scope.kind === 'timeline' && input.narrative?.timelineId === input.scope.key) {
+    return {
+      source: { kind: 'narrative', timelineId: input.narrative.timelineId, branchId: input.narrative.branchId },
+      ...(input.narrative.consumerAgentSessionId ? { consumerAgentSessionId: input.narrative.consumerAgentSessionId } : {}),
+    }
+  }
+  if (input.scope.kind === 'agent-session' && input.agentSessionId === input.scope.key) {
+    return { source: { kind: 'agent-session', sessionId: input.agentSessionId } }
+  }
+  return undefined
 }

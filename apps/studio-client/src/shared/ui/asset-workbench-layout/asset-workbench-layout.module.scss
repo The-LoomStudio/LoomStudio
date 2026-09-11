@@ -29,36 +29,14 @@
 .floatingExplorerTabs {
   position: absolute;
   z-index: 10;
-  bottom: 10px;
-  left: 14px;
+  bottom: 0;
+  right: 0;
+  left: 0;
   display: flex;
   align-items: center;
-  gap: 12px;
   background: transparent;
   pointer-events: auto;
   white-space: nowrap;
-}
-
-.floatingExplorerTabs :global(.loom-page-tab) {
-  min-height: 20px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  font-size: var(--loom-font-size-2);
-  color: var(--loom-color-text-subtle);
-  cursor: pointer;
-  transition: color var(--loom-motion-duration-fast) ease;
-}
-
-.floatingExplorerTabs :global(.loom-page-tab:hover) {
-  color: var(--loom-color-text);
-  background: transparent;
-}
-
-.floatingExplorerTabs :global(.loom-page-tab-active) {
-  color: var(--loom-color-text);
-  font-weight: var(--loom-font-weight-6);
-  background: transparent;
 }
 
 .explorerToolbar {
@@ -99,37 +77,6 @@
   min-width: 0;
   overflow: hidden;
   position: relative;
-}
-
-.narrowBackBar {
-  display: flex;
-  align-items: center;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--loom-color-divider, var(--loom-color-border));
-  background: var(--loom-color-surface-base, var(--loom-color-surface));
-  flex-shrink: 0;
-}
-
-.narrowBackButton {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  margin: 0;
-  border: 0;
-  border-radius: var(--loom-radius-control);
-  background: transparent;
-  color: var(--loom-color-text-muted);
-  font-size: var(--loom-font-size-2);
-  font-weight: var(--loom-font-weight-5);
-  cursor: pointer;
-  transition: color var(--loom-motion-duration-fast) ease, background var(--loom-motion-duration-fast) ease;
-}
-
-.narrowBackButton:hover:not(:disabled),
-.narrowBackButton:focus-visible {
-  color: var(--loom-color-accent-strong);
-  background: var(--loom-color-surface-hover, rgba(255, 255, 255, 0.05));
 }
 
 @media (prefers-reduced-motion: reduce) {

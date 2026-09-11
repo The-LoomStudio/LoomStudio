@@ -65,6 +65,9 @@ export async function discoverExtensionSources(options: {
       for (const rule of manifest.contributes?.transformRules ?? []) {
         await assertEntryInsideDirectory(directory, rule.source)
       }
+      for (const extractor of manifest.contributes?.textExtractors ?? []) {
+        await assertEntryInsideDirectory(directory, extractor.source)
+      }
       for (const resource of manifest.contributes?.promptResources ?? []) {
         await assertEntryInsideDirectory(directory, resource.source)
       }

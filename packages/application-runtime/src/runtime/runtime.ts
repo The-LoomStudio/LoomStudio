@@ -30,6 +30,7 @@ import {
   initializeOfficialFakeProviderProfiles,
 } from './providers-runtime.js'
 import { createExtensionsRuntimeMethods } from './extensions-runtime.js'
+import { createLoomScriptsRuntimeMethods } from './loom-scripts-runtime.js'
 
 export function createApplicationRuntime(options: ApplicationRuntimeOptions): ApplicationRuntime {
   const ctx: ApplicationRuntimeContext = createApplicationRuntimeContext(options)
@@ -226,6 +227,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     ...createTransformsRuntimeMethods(ctx),
     ...createProvidersRuntimeMethods(ctx),
     ...createExtensionsRuntimeMethods(ctx),
+    ...createLoomScriptsRuntimeMethods(ctx),
   }
 }
 
@@ -252,4 +254,3 @@ function collectExistingAllNodeIds(children?: Array<{ id: string; children?: any
   if (!children) return []
   return children.flatMap(child => [child.id, ...collectExistingAllNodeIds(child.children)])
 }
-

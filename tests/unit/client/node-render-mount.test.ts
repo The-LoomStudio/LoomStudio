@@ -3,8 +3,7 @@ import type { ClientRendererRegistration } from '../../../apps/studio-client/src
 import { resolveNodeRenderMounts } from '../../../apps/studio-client/src/features/extension-renderers/model/node-render-mount.js'
 
 const registration: ClientRendererRegistration = {
-  packageId: 'example.image',
-  moduleId: 'client',
+  owner: { kind: 'extension', packageId: 'example.image', moduleId: 'client' },
   contributionId: 'inline',
   definition: { id: 'inline', name: 'Inline', surface: 'narrative.entry.inline', instanceScope: 'node' },
   mount: vi.fn(),
@@ -39,5 +38,23 @@ describe('Node Render Mount resolver', () => {
     expect(result.after).toHaveLength(1)
     expect(result.inline).toEqual([])
     expect(result.diagnostics.map(item => item.code)).toEqual(['renderer.mount_duplicate', 'renderer.anchor_ambiguous'])
+  })
+
+  it('resolves a stable match-ref from the official display range', () => {
+    const result = resolveNodeRenderMounts({
+      rawText: 'before <CharacterStatus>ready</CharacterStatus> after',
+      matches: new Map([['match-1', { start: 7, end: 47 }]]),
+      mounts: [{
+        registration,
+        mount: {
+          key: 'status',
+          target: { slot: 'node.inline', selector: { kind: 'match-ref', matchId: 'match-1' }, placement: 'replace' },
+          part: { type: 'text', content: 'status' },
+        },
+      }],
+    })
+
+    expect(result.inline).toEqual([expect.objectContaining({ start: 7, end: 47, placement: 'replace' })])
+    expect(result.diagnostics).toEqual([])
   })
 })

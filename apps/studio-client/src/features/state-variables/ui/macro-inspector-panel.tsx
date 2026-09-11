@@ -1,10 +1,9 @@
-import { Copy, RefreshCw, Search } from 'lucide-react'
+import { RefreshCw, Search } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { MacroInspection } from '@loom-studio/shared'
-import { toast } from 'sonner'
-import { tryWriteClipboardText } from '../../../shared/browser/clipboard.js'
 import { MasterDetailWorkbench } from '../../../shared/ui/master-detail-workbench/master-detail-workbench.js'
 import type { Translator } from '../../../shared/i18n/index.js'
+import { MacroEntryDetail } from './macro-entry-detail.js'
 import styles from './state-variables-panel.module.scss'
 
 export type MacroInspectorPanelProps = {
@@ -114,25 +113,15 @@ function MacroInspectionEntryDetail(props: { entry: MacroInspection['entries'][n
   const { entry, props: panel } = props
   const selected = panel.selections[entry.name] ?? entry.selectedSourceId
   const canSelectSource = !panel.readOnly && entry.candidates.length > 1
-  async function copyMacro() {
-    const copied = await tryWriteClipboardText(`{{${entry.name}}}`)
-    if (copied) toast.success(panel.t('stateVariables.copiedMacro'))
-    else toast.error(panel.t('longTextEditor.copyFailed'))
-  }
-  return (
-    <article className={styles.macroInspectionEntry}>
-      <header>
-        <strong>{entry.name}</strong>
-        <div className={styles.headerActions}>
-          <button aria-label={panel.t('stateVariables.copyMacro')} className={styles.iconButton} title={panel.t('stateVariables.copyMacro')} type="button" onClick={() => void copyMacro()}><Copy aria-hidden="true" size={14} /></button>
-          <span className={entry.status === 'resolved' ? styles.statusResolved : entry.status === 'conflict' ? styles.statusConflict : styles.statusError}>
-            {statusLabel(entry.status, panel.t)}
-          </span>
-        </div>
-      </header>
-      {entry.value !== undefined ? <code>{entry.value}</code> : null}
+  return <MacroEntryDetail
+    badge={<span className={entry.status === 'resolved' ? styles.statusResolved : entry.status === 'conflict' ? styles.statusConflict : styles.statusError}>{statusLabel(entry.status, panel.t)}</span>}
+    name={entry.name}
+    t={panel.t}
+    title={entry.name}
+    value={entry.value}
+  >
       {entry.candidates.length > 0 ? (
-        <fieldset>
+        <fieldset className={styles.macroSourceList}>
           <legend>{panel.t('macroInspector.source')}</legend>
           {entry.candidates.map(candidate => (
             <label key={candidate.sourceId}>
@@ -153,8 +142,7 @@ function MacroInspectionEntryDetail(props: { entry: MacroInspection['entries'][n
           {canSelectSource && selected ? <button className={styles.iconButton} type="button" disabled={panel.loading} onClick={() => panel.onSelectSource(entry.name, undefined)}>{panel.t('macroInspector.clearSelection')}</button> : null}
         </fieldset>
       ) : null}
-    </article>
-  )
+  </MacroEntryDetail>
 }
 
 function statusLabel(status: MacroInspection['entries'][number]['status'], t: Translator): string {

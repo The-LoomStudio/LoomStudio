@@ -391,6 +391,132 @@ describe('application agent session lifecycle', () => {
     engine.close()
   })
 
+  it('isolates Narrative prompt rules by the consuming Agent Preset', async () => {
+    const { engine, runtime } = createTestRuntime()
+    const card = await runtime.createCard({ name: 'Shared Narrative', opening: 'NARRATIVE_MARKER' })
+    const timeline = await runtime.createNarrativeTimeline({ cardId: card.card.id })
+    const first = await createProfile(runtime, 'First instructions.')
+    const second = await createProfile(runtime, 'Second instructions.')
+    await runtime.upsertTextTransformRule({
+      ruleId: 'preset-rule-first',
+      rule: {
+        name: 'First narrative projection',
+        owner: { kind: 'preset', presetId: first.preset.id },
+        enabled: true,
+        orderIndex: 0,
+        matcher: { kind: 'regex', pattern: 'NARRATIVE_MARKER', flags: 'g' },
+        effect: { kind: 'replace', replacement: 'FIRST_MARKER' },
+        targets: ['narrative'],
+        phases: ['prompt'],
+      },
+    })
+    await runtime.upsertTextTransformRule({
+      ruleId: 'preset-rule-second',
+      rule: {
+        name: 'Second narrative projection',
+        owner: { kind: 'preset', presetId: second.preset.id },
+        enabled: true,
+        orderIndex: 0,
+        matcher: { kind: 'regex', pattern: 'NARRATIVE_MARKER', flags: 'g' },
+        effect: { kind: 'replace', replacement: 'SECOND_MARKER' },
+        targets: ['narrative'],
+        phases: ['prompt'],
+      },
+    })
+    const firstSession = await runtime.createAgentSession({ agentProfileId: first.profile.id })
+    const secondSession = await runtime.createAgentSession({ agentProfileId: second.profile.id })
+
+    const firstPreview = await runtime.previewAgentTurn({
+      agentSessionId: firstSession.session.id,
+      input: 'Continue.',
+      narrativeTarget: { timelineId: timeline.timeline.id, branchId: timeline.branch.id, commit: false },
+    })
+    const secondPreview = await runtime.previewAgentTurn({
+      agentSessionId: secondSession.session.id,
+      input: 'Continue.',
+      narrativeTarget: { timelineId: timeline.timeline.id, branchId: timeline.branch.id, commit: false },
+    })
+
+    expect(JSON.stringify(firstPreview.projection.messages)).toContain('FIRST_MARKER')
+    expect(JSON.stringify(firstPreview.projection.messages)).not.toContain('SECOND_MARKER')
+    expect(JSON.stringify(secondPreview.projection.messages)).toContain('SECOND_MARKER')
+    expect(JSON.stringify(secondPreview.projection.messages)).not.toContain('FIRST_MARKER')
+    engine.close()
+  })
+
+  it('applies persisted Text Pipeline order overrides and appends new rules by default order', async () => {
+    const { engine, runtime } = createTestRuntime()
+    const { profile } = await createProfile(runtime)
+    const session = await runtime.createAgentSession({ agentProfileId: profile.id })
+    const appended = await runtime.appendAgentTranscriptEntries({
+      agentSessionId: session.session.id,
+      expectedEntryCount: 0,
+      entries: [{ runId: 'run-override', entry: { kind: 'message', role: 'assistant', content: 'A' } }],
+    })
+    const baseRule = {
+      owner: { kind: 'workspace' as const },
+      enabled: true,
+      targets: ['agent-session' as const],
+      phases: ['display' as const],
+    }
+    await runtime.upsertTextTransformRule({
+      ruleId: 'rule-a-to-b',
+      rule: { ...baseRule, name: 'A to B', orderIndex: 0, matcher: { kind: 'regex', pattern: 'A', flags: 'g' }, effect: { kind: 'replace', replacement: 'B' } },
+    })
+    await runtime.upsertTextTransformRule({
+      ruleId: 'rule-b-to-c',
+      rule: { ...baseRule, name: 'B to C', orderIndex: 1, matcher: { kind: 'regex', pattern: 'B', flags: 'g' }, effect: { kind: 'replace', replacement: 'C' } },
+    })
+    const source = { kind: 'agent-session' as const, sessionId: session.session.id }
+    const override = await runtime.upsertTextPipelineOverride({
+      source,
+      phase: 'display',
+      disabledRuleIds: [],
+      orderedRuleIds: ['rule-b-to-c', 'rule-a-to-b'],
+    })
+
+    expect((await runtime.projectHistory({ source, phase: 'display' })).snapshot.entries[0]?.text).toBe('B')
+    await runtime.upsertTextTransformRule({
+      ruleId: 'rule-b-to-d',
+      rule: { ...baseRule, name: 'B to D', orderIndex: 2, matcher: { kind: 'regex', pattern: 'B', flags: 'g' }, effect: { kind: 'replace', replacement: 'D' } },
+    })
+    expect((await runtime.projectHistory({ source, phase: 'display' })).snapshot.entries[0]?.text).toBe('D')
+    await runtime.upsertTextExtractor({
+      extractorId: 'extract-final-letter',
+      extractor: {
+        name: 'Final letter',
+        owner: { kind: 'workspace' },
+        enabled: true,
+        orderIndex: 0,
+        targets: ['agent-session'],
+        matcher: { kind: 'regex', pattern: '(D)', flags: 'g', contentGroup: 1 },
+        strategy: 'all-matches',
+        parser: 'text',
+        artifactType: 'loom/test-letter',
+      },
+    })
+    const inspection = await runtime.inspectTextPipeline({
+      source,
+      phase: 'display',
+      traceEntryId: appended.entries[0]!.id,
+    })
+    expect(inspection.snapshot.trace).toMatchObject({ entryId: appended.entries[0]!.id, finalText: 'D' })
+    expect(inspection.artifacts).toMatchObject([{
+      artifactType: 'loom/test-letter',
+      values: [{ value: 'D', sourceEntryId: appended.entries[0]!.id }],
+    }])
+
+    await runtime.upsertTextPipelineOverride({
+      source,
+      phase: 'display',
+      expectedVersion: override.override.version,
+      disabledRuleIds: ['rule-a-to-b'],
+      orderedRuleIds: ['rule-b-to-c'],
+    })
+    expect((await runtime.projectHistory({ source, phase: 'display' })).snapshot.entries[0]?.text).toBe('A')
+    engine.close()
+  })
+
   it('includes persisted Agent Session history in the next provider request', async () => {
     const calls: Array<{ messages: unknown[] }> = []
     const { engine } = createTestRuntime()

@@ -82,6 +82,23 @@ describe('BlobStore', () => {
     expect(fixture.engine.database.prepare('SELECT COUNT(*) AS count FROM stored_blobs').get()).toEqual({ count: 0 })
     fixture.engine.close()
   })
+
+  it('participates in a caller-owned transaction without exposing rolled-back metadata', async () => {
+    const fixture = await createFixture()
+    const prepared = await fixture.store.prepareWrite({ source: Buffer.from('transactional') })
+
+    await expect(fixture.engine.transact({ actor: { kind: 'system', id: 'test' } }, async tx => {
+      fixture.store.participateWrite(tx, prepared)
+      throw new Error('rollback')
+    })).rejects.toThrow('rollback')
+    expect(await fixture.store.get(prepared.blob.id)).toBeUndefined()
+
+    await fixture.engine.transact({ actor: { kind: 'system', id: 'test' } }, async tx => {
+      fixture.store.participateWrite(tx, prepared)
+    })
+    expect(Buffer.from(await fixture.store.read(prepared.blob.id)).toString()).toBe('transactional')
+    fixture.engine.close()
+  })
 })
 
 async function createFixture() {

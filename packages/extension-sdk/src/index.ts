@@ -170,13 +170,18 @@ export type RendererContributionDefinition = {
   adapter?: RendererMountAdapter
 }
 
-export type RendererContributionIdentity = {
-  packageId: string
-  moduleId: string
+export type RendererContributionOwner =
+  | { kind: 'extension'; packageId: string; moduleId: string }
+  | { kind: 'script'; scriptDocumentId: string; documentVersion: number }
+
+export type RendererContributionRef = {
+  owner: RendererContributionOwner
   contributionId: string
 }
 
-export type RendererInstanceIdentity = RendererContributionIdentity & {
+export type RendererContributionIdentity = RendererContributionRef
+
+export type RendererInstanceIdentity = RendererContributionRef & {
   scopeKey: string
 }
 
@@ -185,6 +190,92 @@ export type ClientRendererScope = {
   key: string
   entity?: ExtensionEntityRef
 }
+
+export type LoomSandboxScriptRuntime = 'client-sandbox'
+
+export type LoomSandboxRendererInput =
+  | { kind: 'match'; id: string; value: JsonValue }
+  | { kind: 'artifact'; id: string; artifactType: string; value: JsonValue }
+
+export type LoomSandboxCapability = 'state.read'
+
+export type LoomSandboxCapabilityRequest = {
+  capability: 'state.read'
+  input: { target: ClientStateTarget }
+}
+
+export type LoomSandboxRendererWireContext = {
+  identity: {
+    scriptDocumentId: string
+    documentVersion: number
+    contributionId: string
+  }
+  surface: RendererSurface
+  scope: ClientRendererScope
+  part?: ClientDisplayPart
+  inputs: LoomSandboxRendererInput[]
+  host: {
+    compact: boolean
+    prefersReducedMotion: boolean
+    theme: 'inherit'
+  }
+}
+
+export type LoomSandboxRendererContext = LoomSandboxRendererWireContext & {
+  capabilities: {
+    request(request: LoomSandboxCapabilityRequest): Promise<JsonValue>
+  }
+}
+
+export type LoomSandboxRenderer = {
+  mount(root: HTMLElement, context: LoomSandboxRendererContext): void | Promise<void>
+  update?(context: LoomSandboxRendererContext): void | Promise<void>
+  dispose?(): void | Promise<void>
+}
+
+export type LoomClientScriptModule = {
+  renderers: Record<string, LoomSandboxRenderer>
+}
+
+export type LoomSandboxHostMessage =
+  | {
+      type: 'loom.renderer.bootstrap'
+      protocolVersion: 1
+      instanceId: string
+      context: LoomSandboxRendererWireContext
+    }
+  | {
+      type: 'loom.renderer.update'
+      instanceId: string
+      context: LoomSandboxRendererWireContext
+    }
+  | {
+      type: 'loom.renderer.capability-result'
+      instanceId: string
+      requestId: string
+      result:
+        | { ok: true; value: JsonValue }
+        | { ok: false; error: { code: string; message: string } }
+    }
+  | { type: 'loom.renderer.dispose'; instanceId: string }
+
+export type LoomSandboxFrameMessage =
+  | { type: 'loom.renderer.ready'; instanceId: string }
+  | { type: 'loom.renderer.close'; instanceId: string }
+  | {
+      type: 'loom.renderer.capability-request'
+      instanceId: string
+      requestId: string
+      request: LoomSandboxCapabilityRequest
+    }
+  | {
+      type: 'loom.renderer.diagnostic'
+      instanceId: string
+      level: 'warn' | 'error'
+      code: string
+      message: string
+      data?: JsonObject
+    }
 
 export type ClientDisplayPart =
   | { type: 'text'; content: string }
@@ -223,7 +314,7 @@ export type ClientNodeDisplayProjectionContext =
     }
 
 export type ClientRendererContext = {
-  identity: RendererContributionIdentity
+  identity: RendererContributionRef
   surface: RendererSurface
   scope: ClientRendererScope
   part?: ClientDisplayPart
@@ -356,8 +447,19 @@ export type ExtensionAgentToolContribution = {
   source: string
 }
 
+export type ExtensionTextTransformRuleContribution = {
+  id: string
+  source: string
+}
+
+export type ExtensionTextExtractorContribution = {
+  id: string
+  source: string
+}
+
 export type ExtensionPackageContributions = {
-  transformRules?: Array<{ source: string }>
+  transformRules?: ExtensionTextTransformRuleContribution[]
+  textExtractors?: ExtensionTextExtractorContribution[]
   promptResources?: ExtensionPromptResourceContribution[]
   agentTools?: ExtensionAgentToolContribution[]
 }

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type { DocumentRecord } from '@loom-studio/document-store'
 import type { AgentTranscriptEntry } from '@loom-studio/agent-store'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
@@ -5,6 +6,7 @@ import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments, readDocument, toVersioned, writeDocument } from '../foundation/document-store.js'
 import { executeDocumentMutation } from '../foundation/mutation.js'
 import {
+  createTextExtractionArtifact,
   extractHistory,
   projectHistoryEntries,
   validateTextExtractorDraft,
@@ -16,6 +18,7 @@ import type {
   HistoryProjectionSnapshot,
   HistorySource,
   HistoryTextEntry,
+  InspectTextPipelineInput,
   MutationReceipt,
   RendererDefinition,
   RuntimeRequestContext,
@@ -23,6 +26,11 @@ import type {
   TextExtractorContent,
   TextExtractorDraft,
   TextExtractorEntry,
+  TextPipelineConsumer,
+  TextPipelineInspection,
+  TextPipelineOverrideContent,
+  TextPipelineOverrideEntry,
+  TextPipelineOverrideSource,
   TextTransformPhase,
   TextTransformRuleContent,
   TextTransformRuleDraft,
@@ -131,13 +139,103 @@ export function createTransformsRuntimeMethods(ctx: ApplicationRuntimeContext) {
       return { deleted: mutation.value, mutation: mutation.mutation }
     },
 
-    projectHistory: async (input: { source: HistorySource; phase: TextTransformPhase }): Promise<{ snapshot: HistoryProjectionSnapshot }> => ({
-      snapshot: await projectRuntimeHistory(ctx, input.source, input.phase),
+    getTextPipelineOverride: async (input: InspectTextPipelineInput): Promise<{ override: TextPipelineOverrideEntry | null }> => ({
+      override: await readTextPipelineOverride(ctx, input.source, input.phase, input.consumerAgentSessionId),
     }),
 
-    extractHistory: async (input: { source: HistorySource; extractorId: string; phase?: TextTransformPhase }): Promise<{ extraction: TextExtractionResult; snapshot: HistoryProjectionSnapshot }> => {
-      const extractor = toVersioned(await readDocument<TextExtractorContent>(ctx.documents, input.extractorId, applicationDocumentTypes.textExtractor))
-      const snapshot = await projectRuntimeHistory(ctx, input.source, input.phase ?? 'display')
+    upsertTextPipelineOverride: async (
+      input: InspectTextPipelineInput & {
+        expectedVersion?: number
+        disabledRuleIds: string[]
+        orderedRuleIds: string[]
+      },
+      requestContext?: RuntimeRequestContext,
+    ): Promise<{ override: TextPipelineOverrideEntry; mutation: MutationReceipt }> => {
+      validateOverrideRuleIds(input.disabledRuleIds, 'disabledRuleIds')
+      validateOverrideRuleIds(input.orderedRuleIds, 'orderedRuleIds')
+      const source = normalizeOverrideSource(input.source)
+      const documentId = textPipelineOverrideDocumentId(source, input.phase, input.consumerAgentSessionId)
+      const existing = await ctx.documents.get(documentId)
+      assertExpectedDocumentVersion(existing, input.expectedVersion, applicationDocumentTypes.textPipelineOverride, 'Text Pipeline Override', documentId)
+      const timestamp = ctx.now()
+      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.upsertTextPipelineOverride', async documents =>
+        writeDocument<TextPipelineOverrideContent>(documents, {
+          id: documentId,
+          type: applicationDocumentTypes.textPipelineOverride,
+          content: {
+            source,
+            phase: input.phase,
+            ...(input.consumerAgentSessionId ? { consumerAgentSessionId: input.consumerAgentSessionId } : {}),
+            disabledRuleIds: [...input.disabledRuleIds],
+            orderedRuleIds: [...input.orderedRuleIds],
+            createdAt: existing ? (existing.content as TextPipelineOverrideContent).createdAt : timestamp,
+            updatedAt: timestamp,
+          },
+          expectedVersion: existing ? existing.version : 'new',
+        }),
+      )
+      return { override: toVersioned(mutation.value), mutation: mutation.mutation }
+    },
+
+    deleteTextPipelineOverride: async (
+      input: InspectTextPipelineInput & { expectedVersion?: number },
+      requestContext?: RuntimeRequestContext,
+    ): Promise<{ deleted: true; mutation: MutationReceipt }> => {
+      const source = normalizeOverrideSource(input.source)
+      const documentId = textPipelineOverrideDocumentId(source, input.phase, input.consumerAgentSessionId)
+      const existing = await readDocument<TextPipelineOverrideContent>(ctx.documents, documentId, applicationDocumentTypes.textPipelineOverride)
+      if (input.expectedVersion !== undefined && input.expectedVersion !== existing.version) {
+        throw new Error(`Text Pipeline Override version conflict: ${documentId}`)
+      }
+      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.deleteTextPipelineOverride', async documents => {
+        await documents.delete({ id: documentId, expectedVersion: existing.version })
+        return true as const
+      })
+      return { deleted: mutation.value, mutation: mutation.mutation }
+    },
+
+    projectHistory: async (input: { source: HistorySource; phase: TextTransformPhase; consumerAgentSessionId?: string }): Promise<{ snapshot: HistoryProjectionSnapshot }> => ({
+      snapshot: await projectRuntimeHistory(ctx, input.source, input.phase, input.consumerAgentSessionId),
+    }),
+
+    inspectTextPipeline: async (input: InspectTextPipelineInput): Promise<TextPipelineInspection> => {
+      const effective = await resolveEffectiveTextPipeline(ctx, input.source, input.phase, input.consumerAgentSessionId)
+      const entries = await readRuntimeHistoryEntries(ctx, input.source)
+      const snapshot = projectHistoryEntries({
+        source: input.source,
+        phase: input.phase,
+        entries,
+        rules: effective.rules,
+        preserveRuleOrder: true,
+        traceEntryId: input.traceEntryId,
+      })
+      const ruleIds = new Set(snapshot.ruleIds)
+      const extractors = effective.extractors.filter(extractor => extractor.enabled && extractor.targets.includes(input.source.kind))
+      const artifacts = extractors.flatMap(extractor => {
+        if (!extractor.artifactType) return []
+        const extraction = extractHistory({ snapshot, extractor })
+        return [createTextExtractionArtifact({ source: input.source, phase: input.phase, extractor, extraction })]
+      })
+      return {
+        source: input.source,
+        phase: input.phase,
+        ...(effective.consumer ? { consumer: effective.consumer } : {}),
+        rules: effective.rules.filter(rule => ruleIds.has(rule.id)),
+        extractors,
+        artifacts,
+        snapshot,
+      }
+    },
+
+    extractHistory: async (input: { source: HistorySource; extractorId: string; phase?: TextTransformPhase; consumerAgentSessionId?: string }): Promise<{ extraction: TextExtractionResult; snapshot: HistoryProjectionSnapshot }> => {
+      const phase = input.phase ?? 'display'
+      const effective = await resolveEffectiveTextPipeline(ctx, input.source, phase, input.consumerAgentSessionId)
+      const extractor = effective.extractors.find(candidate => candidate.id === input.extractorId
+        && candidate.enabled
+        && candidate.targets.includes(input.source.kind))
+      if (!extractor) throw new Error(`Text Extractor is not effective for the current context: ${input.extractorId}`)
+      const entries = await readRuntimeHistoryEntries(ctx, input.source)
+      const snapshot = projectHistoryEntries({ source: input.source, phase, entries, rules: effective.rules, preserveRuleOrder: true })
       return { extraction: extractHistory({ snapshot, extractor }), snapshot }
     },
 
@@ -151,12 +249,137 @@ export async function projectRuntimeHistory(
   ctx: ApplicationRuntimeContext,
   source: HistorySource,
   phase: TextTransformPhase,
+  consumerAgentSessionId?: string,
 ) {
   const entries = await readRuntimeHistoryEntries(ctx, source)
-  const documents = await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule)
-  const rules = documents.map(document => toVersioned(document))
-  const activeRules = await filterRulesForSource(ctx, source, rules)
-  return projectHistoryEntries({ source, phase, entries, rules: activeRules })
+  const effective = await resolveEffectiveTextPipeline(ctx, source, phase, consumerAgentSessionId)
+  return projectHistoryEntries({ source, phase, entries, rules: effective.rules, preserveRuleOrder: true })
+}
+
+export async function resolveEffectiveTextPipeline(
+  ctx: ApplicationRuntimeContext,
+  source: HistorySource,
+  phase: TextTransformPhase,
+  consumerAgentSessionId?: string,
+): Promise<{ rules: TextTransformRuleEntry[]; extractors: TextExtractorEntry[]; consumer?: TextPipelineConsumer }> {
+  const ruleDocuments = await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule)
+  const extractorDocuments = await listDocuments<TextExtractorContent>(ctx.documents, applicationDocumentTypes.textExtractor)
+  const rules = ruleDocuments.map(document => toVersioned(document))
+  const extractors = extractorDocuments.map(document => toVersioned(document))
+  let presetId: string | undefined
+  let cardId: string | undefined
+  let consumer: TextPipelineConsumer | undefined
+  let snapshotRules: TextTransformRuleEntry[] = []
+  let snapshotExtractors: TextExtractorEntry[] = []
+  let hasTimelineRuntimeContext = false
+
+  if (source.kind === 'agent-session') {
+    const session = await ctx.agents?.getSession(source.sessionId)
+    if (!session) throw new Error(`Agent Session not found: ${source.sessionId}`)
+    const profile = await readDocument<AgentProfileContent>(ctx.documents, session.agentProfileId, applicationDocumentTypes.agentProfile)
+    presetId = profile.content.presetId
+    consumer = { agentSessionId: session.id, agentProfileId: session.agentProfileId, presetId }
+  } else {
+    if (phase === 'prompt' && !consumerAgentSessionId) throw new Error('Narrative prompt projection requires consumerAgentSessionId')
+    const timeline = await ctx.narratives?.getTimeline(source.timelineId)
+    if (!timeline) throw new Error(`Narrative Timeline not found: ${source.timelineId}`)
+    cardId = timeline.createdFrom?.cardId
+    const runtimeContext = await readTimelineRuntimeContext(ctx, source.timelineId)
+    hasTimelineRuntimeContext = Boolean(runtimeContext)
+    snapshotRules = runtimeContext?.textTransformRules ?? []
+    snapshotExtractors = runtimeContext?.textExtractors ?? []
+    if (consumerAgentSessionId) {
+      const session = await ctx.agents?.getSession(consumerAgentSessionId)
+      if (!session) throw new Error(`Agent Session not found: ${consumerAgentSessionId}`)
+      const profile = await readDocument<AgentProfileContent>(ctx.documents, session.agentProfileId, applicationDocumentTypes.agentProfile)
+      presetId = profile.content.presetId
+      consumer = { agentSessionId: session.id, agentProfileId: session.agentProfileId, presetId }
+    }
+  }
+
+  const defaultRules = [
+    ...rules.filter(rule => rule.enabled && isOwnerActive(rule.owner, presetId, cardId, hasTimelineRuntimeContext)),
+    ...snapshotRules.filter(rule => rule.enabled),
+  ].sort(compareTextEntries)
+  const override = await readTextPipelineOverride(ctx, source, phase, consumerAgentSessionId)
+  return {
+    rules: applyTextPipelineOverride(defaultRules, override),
+    extractors: [
+      ...extractors.filter(extractor => extractor.enabled && isOwnerActive(extractor.owner, presetId, cardId, hasTimelineRuntimeContext)),
+      ...snapshotExtractors.filter(extractor => extractor.enabled),
+    ].sort(compareTextEntries),
+    ...(consumer ? { consumer } : {}),
+  }
+}
+
+function normalizeOverrideSource(source: HistorySource): TextPipelineOverrideSource {
+  return source.kind === 'narrative'
+    ? { kind: 'narrative', timelineId: source.timelineId, branchId: source.branchId }
+    : { kind: 'agent-session', sessionId: source.sessionId }
+}
+
+function textPipelineOverrideDocumentId(
+  source: TextPipelineOverrideSource,
+  phase: TextTransformPhase,
+  consumerAgentSessionId?: string,
+): string {
+  const sourceKey = source.kind === 'narrative'
+    ? `narrative\u0000${source.timelineId}\u0000${source.branchId}`
+    : `agent-session\u0000${source.sessionId}`
+  const digest = createHash('sha256')
+    .update(`${sourceKey}\u0000${phase}\u0000${consumerAgentSessionId ?? ''}`)
+    .digest('hex')
+  return `text-pipeline-override:${digest}`
+}
+
+async function readTextPipelineOverride(
+  ctx: ApplicationRuntimeContext,
+  source: HistorySource,
+  phase: TextTransformPhase,
+  consumerAgentSessionId?: string,
+): Promise<TextPipelineOverrideEntry | null> {
+  const normalizedSource = normalizeOverrideSource(source)
+  const documentId = textPipelineOverrideDocumentId(normalizedSource, phase, consumerAgentSessionId)
+  const document = await ctx.documents.get(documentId)
+  if (!document) return null
+  if (document.type !== applicationDocumentTypes.textPipelineOverride) {
+    throw new Error(`Unexpected document type for ${documentId}: ${document.type}`)
+  }
+  return toVersioned(document as DocumentRecord<TextPipelineOverrideContent>)
+}
+
+function applyTextPipelineOverride(
+  rules: TextTransformRuleEntry[],
+  override: TextPipelineOverrideEntry | null,
+): TextTransformRuleEntry[] {
+  if (!override) return rules
+  const disabled = new Set(override.disabledRuleIds)
+  const activeById = new Map(rules.filter(rule => !disabled.has(rule.id)).map(rule => [rule.id, rule]))
+  const ordered: TextTransformRuleEntry[] = []
+  for (const ruleId of override.orderedRuleIds) {
+    const rule = activeById.get(ruleId)
+    if (!rule) continue
+    ordered.push(rule)
+    activeById.delete(ruleId)
+  }
+  return [...ordered, ...rules.filter(rule => activeById.delete(rule.id))]
+}
+
+function validateOverrideRuleIds(ruleIds: string[], label: string): void {
+  const normalized = ruleIds.map(ruleId => ruleId.trim())
+  if (normalized.some(ruleId => !ruleId)) throw new Error(`Text Pipeline Override ${label} cannot contain empty Rule IDs`)
+  if (normalized.some((ruleId, index) => ruleId !== ruleIds[index])) throw new Error(`Text Pipeline Override ${label} Rule IDs cannot contain surrounding whitespace`)
+  if (new Set(normalized).size !== normalized.length) throw new Error(`Text Pipeline Override ${label} cannot contain duplicate Rule IDs`)
+}
+
+function isOwnerActive(owner: { kind: string; presetId?: string; cardId?: string }, presetId: string | undefined, cardId: string | undefined, hasTimelineRuntimeContext: boolean): boolean {
+  if (owner.kind === 'preset') return owner.presetId === presetId
+  if (owner.kind === 'card') return !hasTimelineRuntimeContext && owner.cardId === cardId
+  return true
+}
+
+function compareTextEntries(left: { orderIndex: number; id: string }, right: { orderIndex: number; id: string }): number {
+  return left.orderIndex - right.orderIndex || left.id.localeCompare(right.id)
 }
 
 async function readRuntimeHistoryEntries(
@@ -193,36 +416,6 @@ async function readRuntimeHistoryEntries(
     sequence: sequence + 1,
     createdAt: node.createdAt,
   }))
-}
-
-async function filterRulesForSource(
-  ctx: ApplicationRuntimeContext,
-  source: HistorySource,
-  rules: TextTransformRuleEntry[],
-): Promise<TextTransformRuleEntry[]> {
-  let presetId: string | undefined
-  let cardId: string | undefined
-  let snapshotRules: TextTransformRuleEntry[] = []
-  let hasTimelineRuntimeContext = false
-  if (source.kind === 'agent-session') {
-    const session = await ctx.agents?.getSession(source.sessionId)
-    if (!session) throw new Error(`Agent Session not found: ${source.sessionId}`)
-    const profile = await readDocument<AgentProfileContent>(ctx.documents, session.agentProfileId, applicationDocumentTypes.agentProfile)
-    presetId = profile.content.presetId
-  } else {
-    const timeline = await ctx.narratives?.getTimeline(source.timelineId)
-    if (!timeline) throw new Error(`Narrative Timeline not found: ${source.timelineId}`)
-    cardId = timeline.createdFrom?.cardId
-    const runtimeContext = await readTimelineRuntimeContext(ctx, source.timelineId)
-    hasTimelineRuntimeContext = Boolean(runtimeContext)
-    snapshotRules = runtimeContext?.textTransformRules ?? []
-  }
-  const active = rules.filter(rule => {
-    if (rule.owner.kind === 'preset') return rule.owner.presetId === presetId
-    if (rule.owner.kind === 'card') return !hasTimelineRuntimeContext && rule.owner.cardId === cardId
-    return true
-  })
-  return [...active, ...snapshotRules]
 }
 
 function assertExpectedDocumentVersion(

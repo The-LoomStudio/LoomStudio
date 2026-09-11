@@ -12,6 +12,7 @@ import { handleProvidersRpc } from './providers.js'
 import { handleAgentsRpc } from './agents.js'
 import { handleWorkspacesRpc } from './workspaces.js'
 import { handleTimelineRpc } from './timeline.js'
+import { handleLoomScriptsRpc } from './loom-scripts.js'
 
 export async function callApplicationRpc(
   runtime: ApplicationRuntime,
@@ -30,6 +31,9 @@ export async function callApplicationRpc(
 
   const textTransformsResult = await handleTextTransformsRpc(runtime, method, params, context)
   if (textTransformsResult !== undefined) return textTransformsResult
+
+  const loomScriptsResult = await handleLoomScriptsRpc(runtime, method, params, context)
+  if (loomScriptsResult !== undefined) return loomScriptsResult
 
   const extensionRecordsResult = await handleExtensionRecordsRpc(runtime, method, params)
   if (extensionRecordsResult !== undefined) return extensionRecordsResult

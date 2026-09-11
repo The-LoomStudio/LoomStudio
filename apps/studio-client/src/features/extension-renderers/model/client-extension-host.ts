@@ -412,8 +412,11 @@ function createActivationContext(input: {
           throw new Error(`Inline Renderer ${definition.id} must provide projectNode(context)`)
         }
         const handle = input.rendererHost.register({
-          packageId: input.extensionPackage.packageId,
-          moduleId: input.module.moduleId,
+          owner: {
+            kind: 'extension',
+            packageId: input.extensionPackage.packageId,
+            moduleId: input.module.moduleId,
+          },
           definition,
           mount: renderer.mount,
           ...(renderer.update ? { update: renderer.update } : {}),
@@ -488,7 +491,14 @@ function requireOwnRenderer(
   input: Pick<Parameters<typeof createActivationContext>[0], 'extensionPackage' | 'module' | 'rendererHost'>,
   contributionId: string,
 ) {
-  const key = `${input.extensionPackage.packageId}/${input.module.moduleId}/${contributionId}`
+  const key = rendererContributionKey({
+    owner: {
+      kind: 'extension',
+      packageId: input.extensionPackage.packageId,
+      moduleId: input.module.moduleId,
+    },
+    contributionId,
+  })
   const registration = input.rendererHost.find(key)
   if (!registration) throw new Error(`Renderer contribution is not registered: ${key}`)
   return registration

@@ -1,4 +1,4 @@
-import type { DataActorRef, DataCommitFact } from '@loom-studio/data-engine'
+import type { DataActorRef, DataCommitFact, SqliteDataTransaction } from '@loom-studio/data-engine'
 import type { Readable } from 'node:stream'
 
 export type BlobRecord = {
@@ -29,8 +29,15 @@ export type BlobWriteResult = {
   commit?: DataCommitFact
 }
 
+export type PreparedBlobWrite = {
+  blob: BlobRecord
+  existing: boolean
+}
+
 export type BlobStore = {
   write(input: BlobWriteInput): Promise<BlobWriteResult>
+  prepareWrite(input: Pick<BlobWriteInput, 'source' | 'mediaType' | 'maxBytes'>): Promise<PreparedBlobWrite>
+  participateWrite(tx: SqliteDataTransaction, prepared: PreparedBlobWrite): BlobWriteResult
   get(blobId: string): Promise<BlobRecord | undefined>
   getBySha256(sha256: string): Promise<BlobRecord | undefined>
   open(blobId: string): Promise<Readable>

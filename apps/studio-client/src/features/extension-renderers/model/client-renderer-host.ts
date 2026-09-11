@@ -1,7 +1,11 @@
 import type {
+  ClientNodeDisplayProjectionContext,
+  ClientNodeRenderMount,
   ClientRenderer,
+  ClientRendererContext,
   ClientRendererScope,
   RendererContributionDefinition,
+  RendererContributionOwner,
   RendererSurface,
 } from '@loom-studio/extension-sdk'
 import {
@@ -23,7 +27,12 @@ export type ClientRendererRegistration = RegisteredRendererContribution & {
   mount: ClientRenderer['mount']
   update?: ClientRenderer['update']
   projectNode?: ClientRenderer['projectNode']
+  projectNodeWithAnchors?: (context: ClientNodeDisplayProjectionContext) => Promise<{
+    mounts: readonly ClientNodeRenderMount[]
+    matches: ReadonlyMap<string, { start: number; end: number }>
+  }>
   frame?: ClientRenderer['frame']
+  sandboxMount?: (root: HTMLElement, context: ClientRendererContext) => ClientRendererHandle
 }
 
 export type ClientRendererScopeSnapshot = {
@@ -40,13 +49,14 @@ export type ClientRendererInstanceSummary = {
 
 export type ClientRendererHost = {
   register(input: {
-    packageId: string
-    moduleId: string
+    owner: RendererContributionOwner
     definition: RendererContributionDefinition
     mount: ClientRendererRegistration['mount']
     update?: ClientRendererRegistration['update']
     projectNode?: ClientRendererRegistration['projectNode']
+    projectNodeWithAnchors?: ClientRendererRegistration['projectNodeWithAnchors']
     frame?: ClientRendererRegistration['frame']
+    sandboxMount?: ClientRendererRegistration['sandboxMount']
   }): ClientRendererHandle
   list(surface: RendererSurface): ClientRendererRegistration[]
   find(contributionKey: string): ClientRendererRegistration | undefined
@@ -100,8 +110,7 @@ export function createClientRendererHost(): ClientRendererHost {
   return {
     register: input => {
       const identity = {
-        packageId: input.packageId,
-        moduleId: input.moduleId,
+        owner: structuredClone(input.owner),
         contributionId: input.definition.id,
       }
       const key = rendererContributionKey(identity)
@@ -112,7 +121,9 @@ export function createClientRendererHost(): ClientRendererHost {
         mount: input.mount,
         ...(input.update ? { update: input.update } : {}),
         ...(input.projectNode ? { projectNode: input.projectNode } : {}),
+        ...(input.projectNodeWithAnchors ? { projectNodeWithAnchors: input.projectNodeWithAnchors } : {}),
         ...(input.frame ? { frame: input.frame } : {}),
+        ...(input.sandboxMount ? { sandboxMount: input.sandboxMount } : {}),
       }
       registrations.set(key, registration)
       emit()

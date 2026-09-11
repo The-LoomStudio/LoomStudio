@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type { RendererContributionDefinition } from '@loom-studio/extension-sdk'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 
@@ -8,6 +9,38 @@ export type HistorySource =
 export type HistoryTarget = HistorySource['kind']
 export type TextTransformPhase = 'classify' | 'prompt' | 'display'
 
+export type TextPipelineConsumer = {
+  agentSessionId: string
+  agentProfileId: string
+  presetId: string
+}
+
+export type InspectTextPipelineInput = {
+  source: HistorySource
+  phase: TextTransformPhase
+  consumerAgentSessionId?: string
+  traceEntryId?: string
+}
+
+export type TextPipelineOverrideSource =
+  | { kind: 'narrative'; timelineId: string; branchId: string }
+  | { kind: 'agent-session'; sessionId: string }
+
+export type TextPipelineOverrideContent = {
+  source: TextPipelineOverrideSource
+  phase: TextTransformPhase
+  consumerAgentSessionId?: string
+  disabledRuleIds: string[]
+  orderedRuleIds: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export type TextPipelineOverrideEntry = TextPipelineOverrideContent & {
+  id: string
+  version: number
+}
+
 export type TextRuleOwner =
   | { kind: 'workspace' }
   | { kind: 'preset'; presetId: string }
@@ -17,6 +50,7 @@ export type TextRuleOwner =
 
 export type TextTransformRuleEffect =
   | { kind: 'replace'; replacement: string }
+  | { kind: 'mark'; markerType?: string }
   | {
       kind: 'promote-reasoning'
       contentGroup?: number | string
@@ -38,6 +72,12 @@ export type TextTransformRuleDraft = {
 }
 
 export type TextTransformRuleContent = TextTransformRuleDraft & {
+  origin?: {
+    kind: 'extension-package'
+    packageId: string
+    packageVersion: string
+    contributionId: string
+  }
   createdAt: string
   updatedAt: string
 }
@@ -65,14 +105,36 @@ export type TextTransformDiagnostic = {
 }
 
 export type TextMatchRecord = {
+  matchId: string
   ruleId: string
+  ruleVersion: number
   entryId: string
   depth: number
-  start: number
-  end: number
+  stepIndex: number
+  occurrenceIndex: number
+  inputRange: { start: number; end: number }
+  displayRange?: { start: number; end: number }
   match: string
   captures: Array<string | undefined>
   namedCaptures: Record<string, string | undefined>
+}
+
+export type TextPipelineTraceStep = {
+  ruleId: string
+  ruleVersion: number
+  stepIndex: number
+  effect: TextTransformRuleEffect['kind']
+  matched: boolean
+  inputText: string
+  outputText: string
+  matchIds: string[]
+}
+
+export type TextPipelineEntryTrace = {
+  entryId: string
+  canonicalText: string
+  finalText: string
+  steps: TextPipelineTraceStep[]
 }
 
 export type PromotedReasoningPart = {
@@ -98,6 +160,7 @@ export type HistoryProjectionSnapshot = {
   matches: TextMatchRecord[]
   diagnostics: TextTransformDiagnostic[]
   ruleIds: string[]
+  trace?: TextPipelineEntryTrace
 }
 
 export type HistoryProjectionBudget = {
@@ -139,6 +202,8 @@ export function projectHistoryEntries(input: {
   phase: TextTransformPhase
   entries: HistoryTextEntry[]
   rules: TextTransformRuleEntry[]
+  preserveRuleOrder?: boolean
+  traceEntryId?: string
   budget?: Partial<HistoryProjectionBudget>
 }): HistoryProjectionSnapshot {
   const budget = { ...defaultHistoryProjectionBudget, ...input.budget }
@@ -152,7 +217,7 @@ export function projectHistoryEntries(input: {
 
   const selectedRules = input.rules
     .filter(rule => rule.enabled && rule.targets.includes(input.source.kind) && rule.phases.includes(input.phase))
-    .sort(compareRules)
+  if (!input.preserveRuleOrder) selectedRules.sort(compareRules)
   const applicableRules = selectedRules.filter(rule => {
     try {
       validateTextTransformRuleDraft(rule)
@@ -169,21 +234,56 @@ export function projectHistoryEntries(input: {
   const newestSequence = [...active].sort((left, right) => right.sequence - left.sequence)
   const depthById = new Map(newestSequence.map((entry, depth) => [entry.id, depth]))
   const matches: TextMatchRecord[] = []
+  let trace: TextPipelineEntryTrace | undefined
 
   const entries = active.map(entry => {
     const depth = depthById.get(entry.id) ?? 0
     let text = entry.text
+    const entryMatches: TextMatchRecord[] = []
     const appliedRuleIds: string[] = []
     const promotedReasoning: PromotedReasoningPart[] = []
-    for (const rule of applicableRules) {
+    const traceSteps: TextPipelineTraceStep[] = []
+    for (const [stepIndex, rule] of applicableRules.entries()) {
       if (!isDepthSelected(depth, rule.range)) continue
       const regex = createGlobalRegex(rule.matcher.pattern, rule.matcher.flags)
-      const result = applyRule({ rule, regex, entryId: entry.id, depth, text, maxMatches: budget.maxMatchesPerRulePerEntry })
+      const result = applyRule({
+        source: input.source,
+        phase: input.phase,
+        rule,
+        regex,
+        entryId: entry.id,
+        depth,
+        stepIndex,
+        text,
+        maxMatches: budget.maxMatchesPerRulePerEntry,
+      })
+      if (result.edits.length) updateDisplayRanges(entryMatches, result.edits)
+      entryMatches.push(...result.matches)
+      if (entry.id === input.traceEntryId) {
+        traceSteps.push({
+          ruleId: rule.id,
+          ruleVersion: rule.version,
+          stepIndex,
+          effect: rule.effect.kind,
+          matched: result.matched,
+          inputText: text,
+          outputText: result.text,
+          matchIds: result.matches.map(match => match.matchId),
+        })
+      }
       if (!result.matched) continue
       text = result.text
       appliedRuleIds.push(rule.id)
-      matches.push(...result.matches)
       promotedReasoning.push(...result.promotedReasoning)
+    }
+    matches.push(...entryMatches)
+    if (entry.id === input.traceEntryId) {
+      trace = {
+        entryId: entry.id,
+        canonicalText: entry.text,
+        finalText: text,
+        steps: traceSteps,
+      }
     }
     return {
       ...entry,
@@ -203,14 +303,20 @@ export function projectHistoryEntries(input: {
     matches,
     diagnostics,
     ruleIds: applicableRules.map(rule => rule.id),
+    ...(trace ? { trace } : {}),
   })
 }
 
+type TextEdit = { start: number; end: number; replacementLength: number }
+
 function applyRule(input: {
+  source: HistorySource
+  phase: TextTransformPhase
   rule: TextTransformRuleEntry
   regex: RegExp
   entryId: string
   depth: number
+  stepIndex: number
   text: string
   maxMatches: number
 }) {
@@ -221,24 +327,59 @@ function applyRule(input: {
     if (found.length > input.maxMatches) throw new Error(`Text Transform Rule match budget exceeded: ${input.rule.id}`)
     if (match[0].length === 0) input.regex.lastIndex += 1
   }
-  if (!found.length) return { matched: false, text: input.text, matches: [] as TextMatchRecord[], promotedReasoning: [] as PromotedReasoningPart[] }
-  const records = found.map(match => ({
-    ruleId: input.rule.id,
-    entryId: input.entryId,
-    depth: input.depth,
-    start: match.index,
-    end: match.index + match[0].length,
-    match: match[0],
-    captures: match.slice(1),
-    namedCaptures: { ...(match.groups ?? {}) },
-  }))
-  if (input.rule.effect.kind === 'replace') {
-    const regex = createGlobalRegex(input.rule.matcher.pattern, input.rule.matcher.flags)
+  if (!found.length) {
+    return {
+      matched: false,
+      text: input.text,
+      matches: [] as TextMatchRecord[],
+      promotedReasoning: [] as PromotedReasoningPart[],
+      edits: [] as TextEdit[],
+    }
+  }
+  const records = found.map((match, occurrenceIndex): TextMatchRecord => {
+    const inputRange = { start: match.index, end: match.index + match[0].length }
+    return {
+      matchId: createMatchId({
+        source: input.source,
+        phase: input.phase,
+        entryId: input.entryId,
+        ruleId: input.rule.id,
+        ruleVersion: input.rule.version,
+        stepIndex: input.stepIndex,
+        occurrenceIndex,
+        inputText: input.text,
+      }),
+      ruleId: input.rule.id,
+      ruleVersion: input.rule.version,
+      entryId: input.entryId,
+      depth: input.depth,
+      stepIndex: input.stepIndex,
+      occurrenceIndex,
+      inputRange,
+      ...(input.rule.effect.kind === 'mark' ? { displayRange: inputRange } : {}),
+      match: match[0],
+      captures: match.slice(1),
+      namedCaptures: { ...(match.groups ?? {}) },
+    }
+  })
+  if (input.rule.effect.kind === 'mark') {
     return {
       matched: true,
-      text: input.text.replace(regex, input.rule.effect.replacement),
+      text: input.text,
       matches: records,
       promotedReasoning: [] as PromotedReasoningPart[],
+      edits: [] as TextEdit[],
+    }
+  }
+  const replacement = input.rule.effect.kind === 'replace' ? input.rule.effect.replacement : ''
+  const replaced = replaceMatches(input.text, found, replacement)
+  if (input.rule.effect.kind === 'replace') {
+    return {
+      matched: true,
+      text: replaced.text,
+      matches: records,
+      promotedReasoning: [] as PromotedReasoningPart[],
+      edits: replaced.edits,
     }
   }
   const effect = input.rule.effect
@@ -250,8 +391,92 @@ function applyRule(input: {
     replay: effect.replay,
     ...(effect.dialect ? { dialect: effect.dialect } : {}),
   }))
-  const regex = createGlobalRegex(input.rule.matcher.pattern, input.rule.matcher.flags)
-  return { matched: true, text: input.text.replace(regex, ''), matches: records, promotedReasoning }
+  return { matched: true, text: replaced.text, matches: records, promotedReasoning, edits: replaced.edits }
+}
+
+function createMatchId(input: {
+  source: HistorySource
+  phase: TextTransformPhase
+  entryId: string
+  ruleId: string
+  ruleVersion: number
+  stepIndex: number
+  occurrenceIndex: number
+  inputText: string
+}): string {
+  const source = input.source.kind === 'narrative'
+    ? ['narrative', input.source.timelineId, input.source.branchId]
+    : ['agent-session', input.source.sessionId, input.source.headEntryId ?? '']
+  const inputDigest = createHash('sha256').update(input.inputText).digest('hex')
+  return `match:${createHash('sha256').update(JSON.stringify([
+    source,
+    input.phase,
+    input.entryId,
+    input.ruleId,
+    input.ruleVersion,
+    input.stepIndex,
+    input.occurrenceIndex,
+    inputDigest,
+  ])).digest('hex')}`
+}
+
+function replaceMatches(text: string, matches: RegExpExecArray[], replacement: string): { text: string; edits: TextEdit[] } {
+  let cursor = 0
+  let output = ''
+  const edits: TextEdit[] = []
+  for (const match of matches) {
+    const expanded = expandReplacement(replacement, match, text)
+    output += text.slice(cursor, match.index) + expanded
+    edits.push({ start: match.index, end: match.index + match[0].length, replacementLength: expanded.length })
+    cursor = match.index + match[0].length
+  }
+  return { text: output + text.slice(cursor), edits }
+}
+
+function expandReplacement(replacement: string, match: RegExpExecArray, input: string): string {
+  return replacement.replace(/\$([$&'`]|\d{1,2}|<[^>]*>)/g, (token, reference: string) => {
+    if (reference === '$') return '$'
+    if (reference === '&') return match[0]
+    if (reference === '`') return input.slice(0, match.index)
+    if (reference === "'") return input.slice(match.index + match[0].length)
+    if (reference.startsWith('<')) {
+      if (!match.groups) return token
+      return match.groups[reference.slice(1, -1)] ?? ''
+    }
+    const captureCount = match.length - 1
+    let captureIndex = Number(reference)
+    let suffix = ''
+    if (captureIndex > captureCount && reference.length === 2) {
+      captureIndex = Number(reference[0])
+      suffix = reference[1] ?? ''
+    }
+    if (captureIndex < 1 || captureIndex > captureCount) return token
+    return (match[captureIndex] ?? '') + suffix
+  })
+}
+
+function updateDisplayRanges(matches: TextMatchRecord[], edits: TextEdit[]): void {
+  for (const match of matches) {
+    if (!match.displayRange) continue
+    let shift = 0
+    let overlaps = false
+    for (const edit of edits) {
+      if (edit.end <= match.displayRange.start) {
+        shift += edit.replacementLength - (edit.end - edit.start)
+      } else if (match.displayRange.end > edit.start) {
+        overlaps = true
+        break
+      }
+    }
+    if (overlaps) {
+      delete match.displayRange
+    } else if (shift !== 0) {
+      match.displayRange = {
+        start: match.displayRange.start + shift,
+        end: match.displayRange.end + shift,
+      }
+    }
+  }
 }
 
 function readCapture(match: RegExpExecArray, group: number | string | undefined): string {
@@ -289,14 +514,35 @@ export type TextExtractorDraft = {
   matcher: { kind: 'regex'; pattern: string; flags: string; contentGroup?: number | string }
   strategy: TextExtractorStrategy
   parser: TextExtractorParser
+  artifactType?: string
   outputSchema?: JsonObject
 }
 
-export type TextExtractorContent = TextExtractorDraft & { createdAt: string; updatedAt: string }
+export type TextExtractorContent = TextExtractorDraft & {
+  origin?: {
+    kind: 'extension-package'
+    packageId: string
+    packageVersion: string
+    contributionId: string
+  }
+  createdAt: string
+  updatedAt: string
+}
 export type TextExtractorEntry = TextExtractorContent & { id: string; version: number }
+
+export type TextPipelineInspection = {
+  source: HistorySource
+  phase: TextTransformPhase
+  consumer?: TextPipelineConsumer
+  rules: TextTransformRuleEntry[]
+  extractors: TextExtractorEntry[]
+  artifacts: TextExtractionArtifact[]
+  snapshot: HistoryProjectionSnapshot
+}
 
 export function validateTextExtractorDraft(extractor: TextExtractorDraft): void {
   if (!extractor.name.trim()) throw new Error('Text Extractor name cannot be empty')
+  if (extractor.artifactType !== undefined && !extractor.artifactType.trim()) throw new Error('Text Extractor artifactType cannot be empty')
   if (!Number.isInteger(extractor.orderIndex)) throw new Error('Text Extractor orderIndex must be an integer')
   if (!extractor.targets.length) throw new Error('Text Extractor must select at least one target')
   assertSafeFlags(extractor.matcher.flags)
@@ -313,6 +559,59 @@ export type TextExtractionResult = {
   sourceEntryIds: string[]
   stale: boolean
   diagnostics: TextTransformDiagnostic[]
+}
+
+export type TextExtractionArtifactValue = {
+  value: JsonValue
+  sourceEntryId: string
+}
+
+export type TextExtractionArtifact = {
+  artifactId: string
+  artifactType: string
+  extractorId: string
+  extractorVersion: number
+  source: HistorySource
+  phase: TextTransformPhase
+  values: TextExtractionArtifactValue[]
+  stale: boolean
+  diagnostics: TextTransformDiagnostic[]
+}
+
+export function createTextExtractionArtifact(input: {
+  source: HistorySource
+  phase: TextTransformPhase
+  extractor: TextExtractorEntry
+  extraction: TextExtractionResult
+}): TextExtractionArtifact {
+  if (!input.extractor.artifactType) throw new Error(`Text Extractor does not declare artifactType: ${input.extractor.id}`)
+  const values = input.extraction.values.map((value, index) => {
+    const sourceEntryId = input.extraction.sourceEntryIds[index]
+    if (!sourceEntryId) throw new Error(`Text Extractor result is missing sourceEntryId: ${input.extractor.id}`)
+    return { value, sourceEntryId }
+  })
+  const source = input.source.kind === 'narrative'
+    ? ['narrative', input.source.timelineId, input.source.branchId]
+    : ['agent-session', input.source.sessionId, input.source.headEntryId ?? '']
+  const artifactId = `text-artifact:${createHash('sha256').update(JSON.stringify([
+    source,
+    input.phase,
+    input.extractor.id,
+    input.extractor.version,
+    values,
+    input.extraction.stale,
+  ])).digest('hex')}`
+  return {
+    artifactId,
+    artifactType: input.extractor.artifactType,
+    extractorId: input.extractor.id,
+    extractorVersion: input.extractor.version,
+    source: structuredClone(input.source),
+    phase: input.phase,
+    values,
+    stale: input.extraction.stale,
+    diagnostics: structuredClone(input.extraction.diagnostics),
+  }
 }
 
 export function extractHistory(input: { snapshot: HistoryProjectionSnapshot; extractor: TextExtractorEntry }): TextExtractionResult {

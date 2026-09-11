@@ -8,6 +8,7 @@
 相关计划：
 
 - [`agent-runtime-ai-sdk-foundation-plan.md`](./agent-runtime-ai-sdk-foundation-plan.md)
+- [`agent-session-context-and-workspace-capability-plan.md`](./agent-session-context-and-workspace-capability-plan.md)
 - [`file-backed-resource-agent-script-codeact-plan.md`](./file-backed-resource-agent-script-codeact-plan.md)
 - [`ai-gateway-streaming-execution-plan.md`](./ai-gateway-streaming-execution-plan.md)
 
@@ -32,6 +33,8 @@ MCP ────────────────┘
 5. Application Capability 接受不同调用方的 Actor / Grant / Correlation Context；
 6. 同一业务操作只有一个 canonical input、校验和执行实现；
 7. 首版只抽取真实需要跨 Adapter 复用的少量能力，不重写全部 Runtime RPC。
+
+Agent Tool 与 CodeAct 调用 Capability 时的 Workspace / Narrative Context、Session Binding、默认 Target 和跨资源访问规则由 [`agent-session-context-and-workspace-capability-plan.md`](./agent-session-context-and-workspace-capability-plan.md) 先行收束。本计划不根据 `timelineId` 是否为空推导管理员权限，也不为 Agent 另建第二套 Context 规则。
 
 CLI、MCP 与 Bash 的定位不同：
 

@@ -18,17 +18,37 @@ describe('Studio Server Extension Package resources', () => {
           { id: 'example.package-resources/echo' },
           { id: 'example.package-resources/content_echo' },
         ],
+        transformRules: [{ id: 'hide-think' }],
+        textExtractors: [{ id: 'world-state' }],
       })
 
       const imported = await callRpc<{
         promptResources: Array<{ contributionId: string; resourceId: string }>
         agentTools: Array<{ toolId: string }>
+        transformRules: Array<{ contributionId: string; ruleId: string }>
+        textExtractors: Array<{ contributionId: string; extractorId: string }>
       }>(port, 'extensions.importPackageResources', { packageId: 'example.package-resources' })
       expect(imported.promptResources).toHaveLength(2)
       expect(imported.agentTools).toEqual([
         { contributionId: 'example.package-resources/echo', toolId: 'example.package-resources/echo' },
         { contributionId: 'example.package-resources/content_echo', toolId: 'example.package-resources/content_echo' },
       ])
+      expect(imported.transformRules).toEqual([{ contributionId: 'hide-think', ruleId: expect.any(String) }])
+      expect(imported.textExtractors).toEqual([{ contributionId: 'world-state', extractorId: expect.any(String) }])
+      await expect(callRpc(port, 'application.listTextTransformRules', {})).resolves.toMatchObject({
+        rules: [expect.objectContaining({
+          id: imported.transformRules[0]!.ruleId,
+          owner: { kind: 'extension', packageId: 'example.package-resources' },
+          origin: { kind: 'extension-package', packageId: 'example.package-resources', packageVersion: '1.0.0', contributionId: 'hide-think' },
+        })],
+      })
+      await expect(callRpc(port, 'application.listTextExtractors', {})).resolves.toMatchObject({
+        extractors: [expect.objectContaining({
+          id: imported.textExtractors[0]!.extractorId,
+          owner: { kind: 'extension', packageId: 'example.package-resources' },
+          origin: { kind: 'extension-package', packageId: 'example.package-resources', packageVersion: '1.0.0', contributionId: 'world-state' },
+        })],
+      })
 
       const resources = await callRpc<{ resources: Array<{ id: string; resourceKind: string; origin?: Record<string, unknown> }> }>(
         port,
@@ -138,6 +158,8 @@ describe('Studio Server Extension Package resources', () => {
       const removed = await callRpc<{
         promptResourceIds: string[]
         agentToolIds: string[]
+        textTransformRuleIds: string[]
+        textExtractorIds: string[]
         detachedReferences: { presetToolMounts: number }
       }>(port, 'extensions.removePackageResources', { packageId: 'example.package-resources' })
       expect(removed.promptResourceIds).toHaveLength(2)
@@ -145,12 +167,16 @@ describe('Studio Server Extension Package resources', () => {
         'example.package-resources/content_echo',
         'example.package-resources/echo',
       ])
+      expect(removed.textTransformRuleIds).toHaveLength(1)
+      expect(removed.textExtractorIds).toHaveLength(1)
       expect(removed.detachedReferences.presetToolMounts).toBe(3)
 
       const resources = await callRpc<{ resources: Array<{ origin?: { packageId?: string } }> }>(port, 'application.listPromptResources', {})
       expect(resources.resources.some(resource => resource.origin?.packageId === 'example.package-resources')).toBe(false)
       const tools = await callRpc<{ tools: Array<{ id: string }> }>(port, 'application.listAgentTools', {})
       expect(tools.tools.some(tool => tool.id.startsWith('example.package-resources/'))).toBe(false)
+      await expect(callRpc(port, 'application.listTextTransformRules', {})).resolves.toEqual({ rules: [] })
+      await expect(callRpc(port, 'application.listTextExtractors', {})).resolves.toEqual({ extractors: [] })
       await expect(callRpc<{ mounts: Array<{ toolId: string }> }>(port, 'application.listPresetToolMounts', {
         presetId: localPreset.resource.id,
       })).resolves.toEqual({ mounts: [] })
@@ -233,6 +259,8 @@ async function writeCapabilityPackage(root: string): Promise<string> {
         { id: 'example.package-resources/echo', source: './resources/echo.json' },
         { id: 'example.package-resources/content_echo', source: './resources/content-echo.json' },
       ],
+      transformRules: [{ id: 'hide-think', source: './resources/hide-think.json' }],
+      textExtractors: [{ id: 'world-state', source: './resources/world-state.json' }],
     },
   }))
   await writeFile(join(directory, 'resources/setting.json'), JSON.stringify(promptResource('setting', 'setting')))
@@ -260,6 +288,17 @@ async function writeCapabilityPackage(root: string): Promise<string> {
     prompt: {
       guidance: 'Send raw text through the active Content Tool protocol.',
     },
+  }))
+  await writeFile(join(directory, 'resources/hide-think.json'), JSON.stringify({
+    name: 'Hide Think', enabled: true, orderIndex: 0,
+    matcher: { kind: 'regex', pattern: '<think>([\\s\\S]*?)</think>', flags: 'g' },
+    effect: { kind: 'promote-reasoning', contentGroup: 1, visibility: 'collapsed', replay: 'omit' },
+    targets: ['agent-session'], phases: ['classify'],
+  }))
+  await writeFile(join(directory, 'resources/world-state.json'), JSON.stringify({
+    name: 'World State', enabled: true, orderIndex: 0, targets: ['narrative'],
+    matcher: { kind: 'regex', pattern: '<WorldState>([\\s\\S]*?)</WorldState>', flags: 'g', contentGroup: 1 },
+    strategy: 'latest-valid', parser: 'key-value-lines',
   }))
   await writeFile(join(directory, 'dist/index.js'), `
 export function activate(ctx) {

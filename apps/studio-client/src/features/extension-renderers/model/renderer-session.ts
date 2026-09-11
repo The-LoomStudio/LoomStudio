@@ -33,10 +33,12 @@ export function createRendererSessionHost(): RendererSessionHost {
 
   function revoke(sessionId: string): void {
     const session = sessions.get(sessionId)
-    if (!session || session.state === 'revoked') return
+    if (!session) return
     session.channel?.postMessage({ type: 'loom:renderer-session-revoked', sessionId })
     session.channel?.close()
-    setState(sessionId, 'revoked')
+    session.window?.close()
+    sessions.delete(sessionId)
+    emit()
   }
 
   return {

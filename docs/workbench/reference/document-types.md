@@ -7,7 +7,7 @@ Loom Studio 使用统一的 Document Store 进行数据持久化。所有被存�
 以下是由 `packages/application-runtime` (AIRP) 定义的官方内置的 Document Types。
 
 > **详细的 TypeScript Schema 定义位于:**
-> `packages/application-runtime/src/types.ts` 和 `packages/application-runtime/src/document-types.ts`
+> `packages/application-runtime/src/types.ts` 和 `packages/application-runtime/src/foundation/document-types.ts`
 
 ## History Text Pipeline
 
@@ -18,6 +18,18 @@ Loom Studio 使用统一的 Document Store 进行数据持久化。所有被存�
 ### `airp.textExtractor`
 
 消费 `HistoryProjectionSnapshot` 的语义提取配置。Extractor 不直接扫描 Store、DOM 或 Provider Raw Payload。
+
+### `airp.textPipelineOverride`
+
+按 History Source、Phase 与可选 Consumer 保存 Runtime Rule 禁用集合和显式顺序；不改写作者 Rule。
+
+### `airp.loomScript`
+
+保存 Loom Script Owner、静态 Metadata、Contribution 索引、源码 Blob 引用和 digest；源码正文不内联进 Document。
+
+### `airp.loomScriptMount`
+
+保存 User / Workspace / Card / Preset 对 Script 的挂载顺序、启用状态、固定版本与用户 Grant。新 Mount 默认禁用且无 Grant。
 
 ## 1. 对话与叙事树 (Narrative Tree)
 

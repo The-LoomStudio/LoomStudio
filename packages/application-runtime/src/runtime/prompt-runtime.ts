@@ -1,4 +1,4 @@
-import type { PromptResourceMutation } from '@loom-studio/prompt-resource-store'
+import type { PromptResourceMutation, PromptResourceMutationResult } from '@loom-studio/prompt-resource-store'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments, readDocument, writeDocument } from '../foundation/document-store.js'
@@ -9,7 +9,7 @@ import {
   toStoredNodeDraft,
   toStoredResourceInput,
 } from '../prompt/prompt-resource-mapper.js'
-import { applyDefaultPromptProjection, type PromptResourceNode } from '../cards/workspace.js'
+import { applyDefaultPromptProjection, normalizePromptResourceArtifact, type PromptResourceNode } from '../cards/workspace.js'
 import { officialPromptResourceIds } from '../prompt/prompt-resource-defaults.js'
 import { revertApplicationStateChangeset } from '../state/state.js'
 import type {
@@ -52,6 +52,8 @@ import {
   requireDocumentParticipant,
 } from './context.js'
 import { normalizeMacros } from '../cards/card.js'
+import { parseLoomScriptSource } from '../scripts/loom-script-codec.js'
+import type { LoomScriptAttachmentArtifact, LoomScriptContent, LoomScriptMountContent } from '../scripts/loom-script-contracts.js'
 
 export function createPromptRuntimeMethods(ctx: ApplicationRuntimeContext) {
   return {
@@ -222,19 +224,26 @@ export function createPromptRuntimeMethods(ctx: ApplicationRuntimeContext) {
     },
 
     importPromptResource: async (input: ImportPromptResourceInput, requestContext?: RuntimeRequestContext): Promise<CreatePromptResourceResult> => {
+      const artifact = normalizePromptResourceArtifact(input.artifact)
+      if (artifact.scriptAttachments?.length && artifact.resourceKind !== 'preset') {
+        throw new Error('Only Preset Prompt Resources can import Loom Script attachments')
+      }
       const content: PromptResourceContent = {
-        resourceKind: input.artifact.resourceKind,
-        rootNode: clonePromptResourceNode(input.artifact.rootNode, ctx.createId),
-        ...(input.artifact.resourceKind === 'preset' ? { historyPolicy: 'persistent' as const } : {}),
-        ...(input.artifact.macros !== undefined ? { macros: normalizeMacros(input.artifact.macros, 'Preset') } : {}),
+        resourceKind: artifact.resourceKind,
+        rootNode: clonePromptResourceNode(artifact.rootNode, ctx.createId),
+        ...(artifact.resourceKind === 'preset' ? { historyPolicy: 'persistent' as const } : {}),
+        ...(artifact.macros !== undefined ? { macros: normalizeMacros(artifact.macros, 'Preset') } : {}),
         createdAt: ctx.now(),
         updatedAt: ctx.now(),
       }
-      const result = await ctx.promptResources.createResource({
-        ...toStoredResourceInput({ content }),
-        ...promptResourceWriteContext(requestContext),
-        reason: 'application.importPromptResource',
-      })
+      const scriptAttachments = artifact.scriptAttachments ?? []
+      const result = scriptAttachments.length > 0
+        ? await importPromptResourceWithScripts(ctx, content, scriptAttachments, requestContext)
+        : await ctx.promptResources.createResource({
+            ...toStoredResourceInput({ content }),
+            ...promptResourceWriteContext(requestContext),
+            reason: 'application.importPromptResource',
+          })
       if (content.resourceKind === 'preset') {
         const availableTools = ctx.agentTools.list()
         for (const [orderIndex, definition] of availableTools.entries()) {
@@ -257,13 +266,17 @@ export function createPromptRuntimeMethods(ctx: ApplicationRuntimeContext) {
 
     exportPromptResource: async (input: ExportPromptResourceInput): Promise<ExportPromptResourceResult> => {
       const resource = await readMappedResource(ctx.promptResources, input.resourceId)
+      const scriptAttachments = resource.resourceKind === 'preset'
+        ? await exportPresetScriptAttachments(ctx, resource.id)
+        : []
       return {
         artifact: {
           format: 'loom.promptResource' as const,
-          schemaVersion: 1 as const,
+          schemaVersion: 2 as const,
           resourceKind: resource.resourceKind,
           rootNode: resource.rootNode,
           ...(resource.macros !== undefined ? { macros: structuredClone(resource.macros) } : {}),
+          ...(scriptAttachments.length > 0 ? { scriptAttachments } : {}),
         },
       }
     },
@@ -386,6 +399,106 @@ export function createPromptRuntimeMethods(ctx: ApplicationRuntimeContext) {
       return { mutation: { changesetId: result.commit.changesetId } }
     },
   }
+}
+
+async function importPromptResourceWithScripts(
+  ctx: ApplicationRuntimeContext,
+  content: PromptResourceContent,
+  attachments: LoomScriptAttachmentArtifact[],
+  requestContext?: RuntimeRequestContext,
+): Promise<PromptResourceMutationResult> {
+  if (!ctx.blobs) throw new Error('Blob Store is required to import Loom Script attachments')
+  const prepared = await Promise.all(attachments.map(async attachment => ({
+    attachment,
+    metadata: parseLoomScriptSource(attachment.script.source),
+    blob: await ctx.blobs!.prepareWrite({
+      source: new TextEncoder().encode(attachment.script.source),
+      mediaType: 'text/javascript',
+    }),
+  })))
+  const documents = requireDocumentParticipant(ctx)
+  const transaction = await ctx.dataEngine.transact({
+    ...promptResourceWriteContext(requestContext),
+    reason: 'application.importPromptResource',
+  }, async dataTx => {
+    const resource = ctx.promptResources.transaction(dataTx).createResource(toStoredResourceInput({ content }))
+    await documents.participateTransaction(dataTx, async documentTx => {
+      for (const item of prepared) {
+        const blob = ctx.blobs!.participateWrite(dataTx, item.blob).blob
+        const script = await writeDocument<LoomScriptContent>(documentTx, {
+          id: ctx.createId('loom-script'),
+          type: applicationDocumentTypes.loomScript,
+          content: {
+            owner: { kind: 'preset', presetId: resource.id },
+            ...item.metadata,
+            source: {
+              blobId: blob.id,
+              mediaType: 'text/javascript',
+              fileName: item.attachment.script.fileName,
+            },
+            sourceDigest: blob.sha256,
+            createdAt: content.createdAt,
+            updatedAt: content.updatedAt,
+          },
+          expectedVersion: 'new',
+        })
+        await writeDocument<LoomScriptMountContent>(documentTx, {
+          id: ctx.createId('loom-script-mount'),
+          type: applicationDocumentTypes.loomScriptMount,
+          content: {
+            target: { kind: 'preset', presetId: resource.id },
+            scriptDocumentId: script.id,
+            enabled: false,
+            orderIndex: item.attachment.orderIndex,
+            grantedCapabilities: [],
+            origin: { kind: 'prompt-resource-import' },
+            createdAt: content.createdAt,
+            updatedAt: content.updatedAt,
+          },
+          expectedVersion: 'new',
+        })
+      }
+    })
+    return resource
+  })
+  return { resource: transaction.value, commit: transaction.commit }
+}
+
+async function exportPresetScriptAttachments(
+  ctx: ApplicationRuntimeContext,
+  presetId: string,
+): Promise<LoomScriptAttachmentArtifact[]> {
+  const mounts = (await listDocuments<LoomScriptMountContent>(ctx.documents, applicationDocumentTypes.loomScriptMount))
+    .filter(mount => mount.content.target.kind === 'preset' && mount.content.target.presetId === presetId)
+    .sort((left, right) => left.content.orderIndex - right.content.orderIndex || left.id.localeCompare(right.id))
+  if (mounts.length === 0) return []
+  if (!ctx.blobs) throw new Error('Blob Store is required to export Loom Script attachments')
+  return await Promise.all(mounts.map(async mount => {
+    const script = await ctx.documents.get(
+      mount.content.scriptDocumentId,
+      mount.content.pinnedDocumentVersion === undefined ? undefined : { version: mount.content.pinnedDocumentVersion },
+    )
+    if (!script) {
+      throw new Error(`Loom Script revision not found: ${mount.content.scriptDocumentId}${mount.content.pinnedDocumentVersion === undefined ? '' : `@${mount.content.pinnedDocumentVersion}`}`)
+    }
+    if (script.type !== applicationDocumentTypes.loomScript) {
+      throw new Error(`Unexpected document type for ${mount.content.scriptDocumentId}: ${script.type}`)
+    }
+    const typedScript = script as typeof script & { content: LoomScriptContent }
+    if (typedScript.content.owner.kind !== 'preset' || typedScript.content.owner.presetId !== presetId) {
+      throw new Error(`Preset Loom Script Mount references a non-owned Script: ${mount.id}`)
+    }
+    const bytes = await ctx.blobs!.read(typedScript.content.source.blobId)
+    return {
+      script: {
+        format: 'loom.script',
+        schemaVersion: 1,
+        fileName: typedScript.content.source.fileName,
+        source: new TextDecoder('utf-8', { fatal: true }).decode(bytes),
+      },
+      orderIndex: mount.content.orderIndex,
+    }
+  }))
 }
 
 export function createEmptyPromptResourceContent(

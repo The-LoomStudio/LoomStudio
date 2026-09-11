@@ -15,8 +15,24 @@ Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本列表收�
 - `application.upsertTextExtractor`
 - `application.deleteTextExtractor`
 - `application.projectHistory`
+- `application.inspectTextPipeline`
 - `application.extractHistory`
 - `application.listRenderers`
+- `application.getTextPipelineOverride`
+- `application.upsertTextPipelineOverride`
+- `application.deleteTextPipelineOverride`
+
+## Loom Script
+
+- `application.importLoomScript`
+- `application.updateLoomScript`
+- `application.getLoomScript`
+- `application.listLoomScripts`
+- `application.exportLoomScript`
+- `application.createLoomScriptMount`
+- `application.updateLoomScriptMount`
+- `application.listLoomScriptMounts`
+- `application.resolveLoomScriptRendererMounts`
 
 ## 1. Kernel RPC (内核级方法)
 
@@ -56,7 +72,7 @@ Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本列表收�
 
 ## 2. Application RPC (应用层方法)
 
-这些是由 Airp (Application Runtime) 提供的特定领域能力，定义在 `apps/studio-server/src/application-rpc.ts` 中。
+这些是由 AIRP (Application Runtime) 提供的特定领域能力，入口位于 `apps/studio-server/src/rpc/handlers/application/index.ts`，并按领域拆分到相邻 Handler。
 
 ### Provider & Model
 - **`application.createProviderProfile`** / **`getProviderProfile`** / **`listProviderProfiles`** / **`updateProviderProfile`** / **`deleteProviderProfile`**

@@ -14,6 +14,8 @@ type LoomCardPayloadManifest = Omit<PortableExtensionPayloadArtifact, 'content'>
   path: string
 }
 
+type LoomScriptAttachmentArtifact = NonNullable<CardBundleArtifact['scriptAttachments']>[number]
+
 type LoomCardManifest = {
   schema: 'loom.cardBundle.zip.v1'
   artifact: Omit<CardBundleArtifact, 'extensionPayloads'>
@@ -22,6 +24,10 @@ type LoomCardManifest = {
     background?: string
   }
   extensionPayloads?: LoomCardPayloadManifest[]
+  scriptAttachments?: Array<{
+    orderIndex: number
+    script: Omit<LoomScriptAttachmentArtifact['script'], 'source'> & { path: string }
+  }>
 }
 
 export type CardBundleMedia = {
@@ -36,8 +42,10 @@ export function encodeCardBundleZip(input: {
 }): Uint8Array {
   const artifact = normalizeCardBundleArtifact(input.artifact)
   const extensionPayloads = artifact.extensionPayloads ?? []
+  const scriptAttachments = artifact.scriptAttachments ?? []
   delete artifact.card.media
   delete artifact.extensionPayloads
+  delete artifact.scriptAttachments
   const avatarPath = `assets/avatar${extensionForMediaType(input.avatar.mediaType)}`
   const backgroundPath = input.background
     ? `assets/background${extensionForMediaType(input.background.mediaType)}`
@@ -60,16 +68,30 @@ export function encodeCardBundleZip(input: {
       ...(payload.metadata !== undefined ? { metadata: payload.metadata } : {}),
       path: portablePayloadPath(payload),
     })),
+    scriptAttachments: scriptAttachments.map((attachment, index) => ({
+      orderIndex: attachment.orderIndex,
+      script: {
+        format: attachment.script.format,
+        schemaVersion: attachment.script.schemaVersion,
+        fileName: attachment.script.fileName,
+        path: loomScriptPath(attachment, index),
+      },
+    })),
   }
   const payloadEntries = Object.fromEntries(extensionPayloads.map(payload => [
     portablePayloadPath(payload),
     Buffer.from(payload.content, 'utf8'),
+  ]))
+  const scriptEntries = Object.fromEntries(scriptAttachments.map((attachment, index) => [
+    loomScriptPath(attachment, index),
+    Buffer.from(attachment.script.source, 'utf8'),
   ]))
   return zipSync({
     [manifestPath]: Buffer.from(JSON.stringify(manifest, null, 2), 'utf8'),
     [avatarPath]: input.avatar.bytes,
     ...(backgroundPath && input.background ? { [backgroundPath]: input.background.bytes } : {}),
     ...payloadEntries,
+    ...scriptEntries,
   }, { level: 6 })
 }
 
@@ -89,11 +111,42 @@ export async function decodeCardBundleZip(source: Uint8Array): Promise<{
   const avatar = readMedia(files, manifest.media.avatar)
   const background = manifest.media.background ? readMedia(files, manifest.media.background) : undefined
   const extensionPayloads = readExtensionPayloads(files, manifest.extensionPayloads)
+  const scriptAttachments = readScriptAttachments(files, manifest.scriptAttachments)
   return {
-    artifact: normalizeCardBundleArtifact({ ...manifest.artifact, extensionPayloads }),
+    artifact: normalizeCardBundleArtifact({ ...manifest.artifact, extensionPayloads, scriptAttachments }),
     avatar,
     background,
   }
+}
+
+function readScriptAttachments(
+  files: Map<string, Uint8Array>,
+  attachments: LoomCardManifest['scriptAttachments'],
+): LoomScriptAttachmentArtifact[] {
+  if (attachments === undefined) return []
+  if (!Array.isArray(attachments)) throw new Error('Invalid Loom Card Script attachment manifest')
+  return attachments.map((attachment, index) => {
+    if (!attachment || typeof attachment !== 'object'
+      || !attachment.script || typeof attachment.script !== 'object'
+      || typeof attachment.script.path !== 'string') {
+      throw new Error(`Invalid Loom Card Script attachment manifest: ${index}`)
+    }
+    validateArchivePath(attachment.script.path)
+    if (!attachment.script.path.startsWith('scripts/') || !attachment.script.path.endsWith('.loom.js')) {
+      throw new Error(`Loom Card Script path must stay under scripts/ and end in .loom.js: ${attachment.script.path}`)
+    }
+    const bytes = files.get(attachment.script.path)
+    if (!bytes) throw new Error(`Loom Card package is missing ${attachment.script.path}`)
+    return {
+      orderIndex: attachment.orderIndex,
+      script: {
+        format: attachment.script.format,
+        schemaVersion: attachment.script.schemaVersion,
+        fileName: attachment.script.fileName,
+        source: new TextDecoder('utf-8', { fatal: true }).decode(bytes),
+      },
+    }
+  })
 }
 
 function unzipSafely(source: Uint8Array): Promise<Map<string, Uint8Array>> {
@@ -206,6 +259,10 @@ function readExtensionPayloads(
 
 function portablePayloadPath(payload: PortableExtensionPayloadArtifact): string {
   return `extensions/${payload.packageId}/${payload.id}/${payload.fileName}`
+}
+
+function loomScriptPath(attachment: LoomScriptAttachmentArtifact, index: number): string {
+  return `scripts/${index}-${attachment.script.fileName}`
 }
 
 function extensionForMediaType(mediaType: string): string {

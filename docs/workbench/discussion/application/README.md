@@ -132,6 +132,7 @@ Config / Settings / Preferences / Setting Layer 的层级、边界和持久化�
 |---|---|---|
 | [`card-model-v0.md`](card-model-v0.md) | Migrated / Open Design | Card 作为顶层内容单元的模型 |
 | [`asset-import-export-boundary-v0.md`](asset-import-export-boundary-v0.md) | Open Design / Implementation Planning | Card、Setting Layer、Workspace Artifact、导入导出与运行时 SQL 文档边界 |
+| [`file-backed-bundle-and-vfs-projection-v0.md`](file-backed-bundle-and-vfs-projection-v0.md) | Open Design / Discussion Capture | Bundle 真实文件化、Resource File Codec、Agent VFS 与 Dev Workspace 投影边界 |
 
 ### 3.3 设定层与状态
 

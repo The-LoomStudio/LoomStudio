@@ -7,10 +7,15 @@ import {
   readPromptResourceInputs,
   type CardBundleArtifact,
 } from '@loom-studio/application-runtime'
+import { isPromptResourceArtifact, normalizePromptResourceArtifact } from '../../../packages/application-runtime/src/cards/workspace.js'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
+import { createBlobStore } from '@loom-studio/blob-store'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createPromptResourceStore } from '@loom-studio/prompt-resource-store'
 import { describe, expect, it } from 'vitest'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 describe('card bundle artifact boundary', () => {
   it('imports a card, flat prompt resources, and an immutable import bundle', async () => {
@@ -214,7 +219,95 @@ describe('card bundle artifact boundary', () => {
       parentCallId: 'call-parent',
     })
   })
+
+  it('imports legacy v2 and round-trips v3 Script attachments with disabled empty-grant Mounts', async () => {
+    const fixture = createFixture()
+    const rootDirectory = await mkdtemp(join(tmpdir(), 'loom-card-script-'))
+    const blobs = createBlobStore({ engine: fixture.engine, rootDirectory, createId: prefix => `${prefix}-blob`, now: () => '2026-09-11T00:00:00.000Z' })
+    try {
+      const legacy = await importCardBundle({ artifact: createArtifact(), ...fixture })
+      expect(legacy.importBundle.sourceArtifact.schemaVersion).toBe(3)
+
+      const artifact = createArtifact()
+      artifact.schemaVersion = 3
+      artifact.scriptAttachments = [{
+        orderIndex: 7,
+        script: { format: 'loom.script', schemaVersion: 1, fileName: 'alice.loom.js', source: loomScriptSource() },
+      }]
+      const imported = await importCardBundle({ artifact, ...fixture, blobs })
+      const documents = await fixture.documents.list({ type: 'airp.loomScriptMount' })
+      const mount = documents.items.find(item => (item.content as any).target?.cardId === imported.card.id)
+      expect(mount?.content).toMatchObject({ enabled: false, grantedCapabilities: [], orderIndex: 7 })
+
+      const exported = await exportCardArtifact({ cardId: imported.card.id, documents: fixture.documents, promptResources: fixture.promptResources, blobs })
+      expect(exported.schemaVersion).toBe(3)
+      expect(exported.scriptAttachments).toEqual(artifact.scriptAttachments)
+    } finally {
+      await rm(rootDirectory, { recursive: true, force: true })
+    }
+  })
+
+  it('accepts Prompt Resource v1 and normalizes portable Script attachments to v2', () => {
+    const legacy = {
+      format: 'loom.promptResource' as const,
+      schemaVersion: 1 as const,
+      resourceKind: 'preset' as const,
+      rootNode: { id: 'preset-root', label: 'Preset', kind: 'module' as const },
+    }
+    expect(isPromptResourceArtifact(legacy)).toBe(true)
+    expect(normalizePromptResourceArtifact(legacy).schemaVersion).toBe(2)
+
+    const portable = normalizePromptResourceArtifact({
+      ...legacy,
+      schemaVersion: 2,
+      scriptAttachments: [{ orderIndex: 3, script: { format: 'loom.script', schemaVersion: 1, fileName: 'alice.loom.js', source: loomScriptSource() } }],
+    })
+    expect(portable.scriptAttachments?.[0]).toMatchObject({ orderIndex: 3, script: { fileName: 'alice.loom.js' } })
+  })
+
+  it('imports and exports Preset Script attachments through the formal Prompt Resource runtime', async () => {
+    const fixture = createFixture()
+    const rootDirectory = await mkdtemp(join(tmpdir(), 'loom-preset-script-'))
+    const blobs = createBlobStore({ engine: fixture.engine, rootDirectory, createId: prefix => `${prefix}-preset-blob`, now: () => '2026-09-11T00:00:00.000Z' })
+    try {
+      const runtime = createApplicationRuntime({ ...fixture, blobs })
+      const attachment = {
+        orderIndex: 2,
+        script: { format: 'loom.script' as const, schemaVersion: 1 as const, fileName: 'alice.loom.js', source: loomScriptSource() },
+      }
+      const imported = await runtime.importPromptResource({
+        artifact: {
+          format: 'loom.promptResource',
+          schemaVersion: 2,
+          resourceKind: 'preset',
+          rootNode: { id: 'preset-root', label: 'Preset', kind: 'module' },
+          scriptAttachments: [attachment],
+        },
+      })
+      const mounts = await runtime.listLoomScriptMounts({ target: { kind: 'preset', presetId: imported.resource.id } })
+      expect(mounts.mounts).toMatchObject([{ enabled: false, grantedCapabilities: [], orderIndex: 2 }])
+
+      const exported = await runtime.exportPromptResource({ resourceId: imported.resource.id })
+      expect(exported.artifact).toMatchObject({ schemaVersion: 2, scriptAttachments: [attachment] })
+    } finally {
+      await rm(rootDirectory, { recursive: true, force: true })
+    }
+  })
 })
+
+function loomScriptSource(): string {
+  return [
+    '// ==LoomScript==',
+    '// @format       1',
+    '// @id           alice.presentation',
+    '// @name         Alice UI',
+    '// @version      1.0.0',
+    '// @runtime      client-sandbox',
+    '// @contribution {"kind":"renderer","id":"status-panel","surface":"narrative.entry.inline","scope":"node","inputs":["match:alice.status"]}',
+    '// ==/LoomScript==',
+    'export const renderers = {}',
+  ].join('\n')
+}
 
 function createArtifact(): CardBundleArtifact {
   return {

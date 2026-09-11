@@ -8,6 +8,7 @@ import type { JsonValue } from '@loom-studio/shared'
 import {
   isRecord,
   readOptionalNumber,
+  readOptionalString,
   readString,
 } from '../../rpc-params.js'
 
@@ -56,10 +57,44 @@ export async function handleTextTransformsRpc(
         expectedVersion: readOptionalNumber(params, 'expectedVersion'),
       }, context) as unknown as JsonValue
 
+    case 'application.getTextPipelineOverride':
+      return await runtime.getTextPipelineOverride({
+        source: readHistorySource(params),
+        phase: readTextTransformPhase(params, 'phase'),
+        consumerAgentSessionId: readOptionalString(params, 'consumerAgentSessionId'),
+      }) as unknown as JsonValue
+
+    case 'application.upsertTextPipelineOverride':
+      return await runtime.upsertTextPipelineOverride({
+        source: readHistorySource(params),
+        phase: readTextTransformPhase(params, 'phase'),
+        consumerAgentSessionId: readOptionalString(params, 'consumerAgentSessionId'),
+        expectedVersion: readOptionalNumber(params, 'expectedVersion'),
+        disabledRuleIds: readRequiredStringArray(params, 'disabledRuleIds'),
+        orderedRuleIds: readRequiredStringArray(params, 'orderedRuleIds'),
+      }, context) as unknown as JsonValue
+
+    case 'application.deleteTextPipelineOverride':
+      return await runtime.deleteTextPipelineOverride({
+        source: readHistorySource(params),
+        phase: readTextTransformPhase(params, 'phase'),
+        consumerAgentSessionId: readOptionalString(params, 'consumerAgentSessionId'),
+        expectedVersion: readOptionalNumber(params, 'expectedVersion'),
+      }, context) as unknown as JsonValue
+
     case 'application.projectHistory':
       return await runtime.projectHistory({
         source: readHistorySource(params),
         phase: readTextTransformPhase(params, 'phase'),
+        consumerAgentSessionId: readOptionalString(params, 'consumerAgentSessionId'),
+      }) as unknown as JsonValue
+
+    case 'application.inspectTextPipeline':
+      return await runtime.inspectTextPipeline({
+        source: readHistorySource(params),
+        phase: readTextTransformPhase(params, 'phase'),
+        consumerAgentSessionId: readOptionalString(params, 'consumerAgentSessionId'),
+        traceEntryId: readOptionalString(params, 'traceEntryId'),
       }) as unknown as JsonValue
 
     case 'application.extractHistory':
@@ -67,6 +102,7 @@ export async function handleTextTransformsRpc(
         source: readHistorySource(params),
         phase: readOptionalTextTransformPhase(params, 'phase'),
         extractorId: readString(params, 'extractorId'),
+        consumerAgentSessionId: readOptionalString(params, 'consumerAgentSessionId'),
       }) as unknown as JsonValue
 
     case 'application.listRenderers':
@@ -80,6 +116,14 @@ export async function handleTextTransformsRpc(
 function readRequiredRecord(value: JsonValue | undefined, key: string): Record<string, JsonValue> {
   if (!isRecord(value) || !isRecord(value[key])) throw new Error(`Expected object: ${key}`)
   return value[key]
+}
+
+function readRequiredStringArray(value: JsonValue | undefined, key: string): string[] {
+  const candidate = isRecord(value) ? value[key] : undefined
+  if (!Array.isArray(candidate) || candidate.some(item => typeof item !== 'string')) {
+    throw new Error(`Expected string array: ${key}`)
+  }
+  return candidate as string[]
 }
 
 function readHistorySource(value: JsonValue | undefined) {

@@ -1,8 +1,8 @@
-import { Copy, Plus, Save, Trash2 } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { tryWriteClipboardText } from '../../../shared/browser/clipboard.js'
 import type { Translator } from '../../../shared/i18n/index.js'
+import { MacroEntryDetail } from './macro-entry-detail.js'
 import styles from './state-variables-panel.module.scss'
 
 export type MacroAuthoringPanelProps = {
@@ -167,36 +167,22 @@ export function MacroAuthoringDetail(props: { controller: MacroAuthoringControll
   const row = controller.selectedRow
   const t = input?.t
   if (!input || !t) return <div className={styles.emptyState}>{t?.('macroAuthoring.empty')}</div>
-  const translate = input.t
-  async function copyMacro() {
-    if (!row?.name.trim()) return
-    const copied = await tryWriteClipboardText(`{{${row.name.trim()}}}`)
-    if (copied) toast.success(translate('stateVariables.copiedMacro'))
-    else toast.error(translate('longTextEditor.copyFailed'))
-  }
-  return (
-    <section className={styles.macroAuthoringDetail} data-loom-component="macro-authoring-detail">
-      <header className={styles.detailHeader}>
-        <div className={styles.headerTitle}><h3>{input.ownerLabel}</h3><span className={styles.badge}>v{input.version}</span></div>
-        <div className={styles.headerActions}>
-          {row ? <button aria-label={t('stateVariables.copyMacro')} className={styles.iconButton} title={t('stateVariables.copyMacro')} type="button" disabled={!row.name.trim()} onClick={() => void copyMacro()}>
-            <Copy aria-hidden="true" size={14} />
-          </button> : null}
-          {row ? <button className={styles.dangerActionBtn} type="button" disabled={controller.saving} onClick={() => controller.removeRow(row.id)}>
-            <Trash2 aria-hidden="true" size={14} /><span>{t('macroAuthoring.delete')}</span>
-          </button> : null}
-          <button className={styles.primaryActionBtn} type="button" disabled={controller.saving || !controller.dirty} onClick={() => void controller.save()}>
-            <Save aria-hidden="true" size={14} /><span>{t('macroAuthoring.save')}</span>
-          </button>
-        </div>
-      </header>
-      {controller.error ? <div className={styles.errorBanner} role="alert">{controller.error}</div> : null}
-      {row ? <div className={styles.macroAuthoringFields}>
-        <label><span>{t('macroAuthoring.name')}</span><input aria-label={t('macroAuthoring.name')} disabled={controller.saving} value={row.name} onChange={event => controller.updateRow(row.id, { name: event.target.value })} /></label>
-        <label><span>{t('macroAuthoring.value')}</span><textarea aria-label={t('macroAuthoring.value')} disabled={controller.saving} value={row.value} onChange={event => controller.updateRow(row.id, { value: event.target.value })} /></label>
-      </div> : <div className={styles.emptyState}>{t('macroAuthoring.empty')}</div>}
-    </section>
-  )
+  return <MacroEntryDetail
+    badge={<span className={styles.badge}>v{input.version}</span>}
+    busy={controller.saving}
+    dirty={controller.dirty}
+    editable={Boolean(row)}
+    emptyLabel={t('macroAuthoring.empty')}
+    error={controller.error}
+    name={row?.name ?? ''}
+    t={t}
+    title={input.ownerLabel}
+    value={row?.value}
+    onDelete={row ? () => controller.removeRow(row.id) : undefined}
+    onNameChange={row ? value => controller.updateRow(row.id, { name: value }) : undefined}
+    onSave={() => void controller.save()}
+    onValueChange={row ? value => controller.updateRow(row.id, { value }) : undefined}
+  />
 }
 
 function toRows(macros: Record<string, string>): MacroRow[] {
