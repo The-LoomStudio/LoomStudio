@@ -1,9 +1,69 @@
 import { normalizeCardBundleArtifact, type CardBundleArtifact } from '@loom-studio/application-runtime'
+import { readFileSync } from 'node:fs'
 import { deflateSync, inflateSync } from 'node:zlib'
+import { maxBundleBytes } from './card-bundle-zip.js'
 
 const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
 const loomKeyword = Buffer.from('loom', 'latin1')
 const maxArtifactBytes = 32 * 1024 * 1024
+const bundleKeyword = 'loom.bundle'
+const maxBundleTextBytes = Math.ceil(maxBundleBytes / 3) * 4
+export const maxCardPngBytes = maxBundleTextBytes + 64 * 1024 * 1024
+
+export function encodeCardBundlePng(source: Uint8Array, archive: Uint8Array): Uint8Array {
+  if (archive.byteLength > maxBundleBytes) throw new Error(`Loom Card package exceeds ${maxBundleBytes} bytes`)
+  const data = Buffer.concat([
+    Buffer.from(bundleKeyword, 'latin1'),
+    Buffer.from([0, 0, 0, 0, 0]),
+    Buffer.from(Buffer.from(archive).toString('base64'), 'ascii'),
+  ])
+  const chunks = readPngChunks(stripLoomCardPayload(source))
+  const output = Buffer.concat([
+    pngSignature,
+    ...chunks.flatMap(chunk => chunk.type === 'IEND' ? [createChunk('iTXt', data), chunk.raw] : [chunk.raw]),
+  ])
+  if (output.byteLength > maxCardPngBytes) throw new Error(`Card PNG exceeds ${maxCardPngBytes} bytes`)
+  return output
+}
+
+export function readCardPngArchive(source: Uint8Array): Uint8Array | undefined {
+  const matches = readPngChunks(source).filter(chunk => chunk.type === 'iTXt' && readKeyword(chunk.data) === bundleKeyword)
+  if (matches.length > 1) throw new Error('Duplicate Loom Bundle PNG chunks')
+  const chunk = matches[0]
+  if (!chunk) return undefined
+  const separators = readITxtSeparators(chunk.data)
+  if (separators.compressionFlag !== 0 || separators.compressionMethod !== 0) {
+    throw new Error('Unsupported Loom Bundle PNG encoding')
+  }
+  const bytes = chunk.data.subarray(separators.textOffset)
+  if (bytes.byteLength > maxBundleTextBytes) throw new Error('Loom Bundle PNG payload exceeds the allowed size')
+  const base64 = bytes.toString('utf8')
+  const archive = Buffer.from(base64, 'base64')
+  if (!base64 || archive.toString('base64') !== base64) throw new Error('Invalid Loom Bundle PNG Base64')
+  return archive
+}
+
+export function hasLegacyCardPng(source: Uint8Array): boolean {
+  return readPngChunks(source).some(chunk => chunk.type === 'iTXt' && readKeyword(chunk.data) === 'loom')
+}
+
+export function stripLoomCardPayload(source: Uint8Array): Uint8Array {
+  return Buffer.concat([
+    pngSignature,
+    ...readPngChunks(source)
+      .filter(chunk => !['iTXt', 'tEXt', 'zTXt'].includes(chunk.type) || !['loom', bundleKeyword].includes(readKeyword(chunk.data)))
+      .map(chunk => chunk.raw),
+  ])
+}
+
+export function stripPngTextMetadata(source: Uint8Array): Uint8Array {
+  return Buffer.concat([
+    pngSignature,
+    ...readPngChunks(source)
+      .filter(chunk => !['iTXt', 'tEXt', 'zTXt'].includes(chunk.type))
+      .map(chunk => chunk.raw),
+  ])
+}
 
 export function encodeCardPng(source: Uint8Array, artifact: CardBundleArtifact): Uint8Array {
   const chunks = readPngChunks(source)
@@ -63,9 +123,8 @@ export function readPngImageBytes(source: Uint8Array): Uint8Array {
   return Buffer.from(source).subarray(0, readPngEndOffset(source))
 }
 
-export const defaultCardPng = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-  'base64',
+export const defaultCardPng = stripPngTextMetadata(
+  readFileSync(new URL('../../../../public/images/default-card.png', import.meta.url)),
 )
 
 function readPngChunks(source: Uint8Array): Array<{ type: string; data: Buffer; raw: Buffer }> {

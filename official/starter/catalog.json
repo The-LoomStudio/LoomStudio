@@ -1,0 +1,28 @@
+{
+  "id": "official.starter",
+  "version": "0.1.0",
+  "name": "Loom Studio 基础内容",
+  "resources": [
+    {
+      "id": "prompt-resource.official.loom-assistant",
+      "path": "presets/assistant.json"
+    },
+    {
+      "id": "prompt-resource.official.loom-knowledge",
+      "path": "settings/knowledge.json"
+    }
+  ],
+  "settingMounts": [
+    {
+      "presetResourceId": "prompt-resource.official.loom-assistant",
+      "settingResourceId": "prompt-resource.official.loom-knowledge"
+    }
+  ],
+  "agents": [
+    {
+      "id": "official.assistant",
+      "name": "Loom Studio 问答助手",
+      "presetId": "prompt-resource.official.loom-assistant"
+    }
+  ]
+}

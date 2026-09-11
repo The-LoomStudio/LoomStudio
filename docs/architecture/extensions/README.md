@@ -38,7 +38,7 @@ Package 内的 Module 不继承 sibling grant。当前 Server Module 与宿主�
 
 Server Extension Manager 负责：
 
-- 扫描仓库 `extensions/*`、本地 dev links 与 `installed/<package-id>/<version>`；
+- 默认扫描仓库 `official/extensions/*`、本地 dev links 与 `installed/<package-id>/<version>`；测试扩展位于 `tests/fixtures/extensions/*`，仅通过显式开发配置加载；
 - 按 `packageId` 建立 Catalog 并处理来源冲突；
 - 校验 Manifest v2、Module ID、runtime 与 entry 路径边界；
 - 发现 Client-only 和纯资源 Package，但只编排 Server Module；

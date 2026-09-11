@@ -264,7 +264,7 @@ export function useCards(input: UseCardsInput) {
       const failures: string[] = []
       for (const file of files) {
         try {
-          const loomCard = file.name.toLowerCase().endsWith('.loomcard')
+          const loomCard = /\.(?:loomcard|zip)$/i.test(file.name)
           const response = await fetch(loomCard ? '/cards/import/loomcard' : '/cards/import/png', {
             method: 'POST',
             headers: { 'content-type': loomCard ? 'application/vnd.loom.card+zip' : 'image/png' },
@@ -304,7 +304,7 @@ export function useCards(input: UseCardsInput) {
       const url = URL.createObjectURL(await response.blob())
       const anchor = document.createElement('a')
       anchor.href = url
-      const extension = format === 'loomcard' ? '.loomcard' : format === 'polyglot' ? '.polyglot.png' : '.png'
+      const extension = format === 'loomcard' ? '.loomcard.zip' : format === 'polyglot' ? '.polyglot.png' : '.png'
       anchor.download = `${sanitizeFileName(card.name) || 'loom-card'}${extension}`
       anchor.click()
       URL.revokeObjectURL(url)

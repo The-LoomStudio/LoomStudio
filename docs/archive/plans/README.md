@@ -4,6 +4,7 @@
 
 ## PromptBuild 与数据模型
 
+- [`file-backed-card-bundle-plan.md`](./file-backed-card-bundle-plan.md)
 - [`data-layer-v2-prompt-resource-node-store-plan.md`](./data-layer-v2-prompt-resource-node-store-plan.md)
 - [`prompt-build-zone-slot-entry-composition-plan.md`](./prompt-build-zone-slot-entry-composition-plan.md)
 - [`prompt-build-message-block-implementation-plan.md`](./prompt-build-message-block-implementation-plan.md)
@@ -34,6 +35,8 @@
 - [`history-text-transform-and-rendering-plan.md`](./history-text-transform-and-rendering-plan.md)
 
 ## Extension、事件与工程里程碑
+
+- [`text-pipeline-loom-script-renderer-integration-plan.md`](./text-pipeline-loom-script-renderer-integration-plan.md)
 
 - [`documentation-workflow-and-adr-refresh-plan.md`](./documentation-workflow-and-adr-refresh-plan.md)
 - [`event-system-extension-scope-plan.md`](./event-system-extension-scope-plan.md)

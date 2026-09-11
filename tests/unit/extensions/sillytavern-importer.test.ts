@@ -9,7 +9,7 @@ import {
   isPngFile,
   sniffData,
 } from '@loom-studio/sillytavern-importer'
-import type { SillyTavernPresetData } from '../../../extensions/sillytavern-importer/src/types.js'
+import type { SillyTavernPresetData } from '../../../official/extensions/st-data-compat/src/types.js'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createPromptResourceStore } from '@loom-studio/prompt-resource-store'
@@ -130,10 +130,11 @@ describe('SillyTavern Importer Extension', () => {
     expect(postHistoryAsset?.capabilities?.targetAnchorId).toBe('@chat.session.post')
     expect(postHistoryAsset?.body).toBe('Always ensure your spell incantations rhyme.')
 
-    // Portable payload check: untouched source stored
-    expect(artifact.extensionPayloads).toHaveLength(1)
-    expect(artifact.extensionPayloads?.[0]?.packageId).toBe('sillytavern.importer')
-    expect(artifact.extensionPayloads?.[0]?.format).toBe('sillytavern.character+json')
+    expect(artifact.extensionPayloads).toBeUndefined()
+    expect(artifact.card.settingLayer).toBeUndefined()
+    expect(isPngFile(conversion.avatarBytes!)).toBe(true)
+    expect(extractStCardFromPng(conversion.avatarBytes!)).toBeNull()
+    expect(conversion.avatarBytes!.byteLength).toBeLessThan(png.byteLength)
   })
 
   it('identifies and converts SillyTavern Lorebook JSON', () => {
@@ -294,7 +295,7 @@ describe('SillyTavern Importer Extension', () => {
   })
 
   it('correctly converts real character card 指针不再前进.png with embedded character_book', async () => {
-    const cardPath = join(__dirname, '../../extensions/sillytavern-importer/指针不再前进.png')
+    const cardPath = join(__dirname, '../../../official/extensions/st-data-compat/指针不再前进.png')
     if (!existsSync(cardPath)) return
 
     const bytes = readFileSync(cardPath)
@@ -343,7 +344,7 @@ describe('SillyTavern Importer Extension', () => {
     })
 
     expect(imported.card.promptResourceIds).toHaveLength(1)
-    expect(imported.card.settingLayer?.entries).toHaveLength(26)
+    expect(imported.card.settingLayer?.entries).toHaveLength(0)
     const boundResourceId = imported.card.promptResourceIds![0]!
     const boundResource = await promptResources.getResource(boundResourceId)
     expect(boundResource?.label).toBe('发条不再转动')
@@ -351,7 +352,7 @@ describe('SillyTavern Importer Extension', () => {
   })
 
   it('correctly normalizes real Xia Jin preset with prompt_order and role-based message blocks', () => {
-    const presetPath = join(__dirname, '../../extensions/sillytavern-importer/夏瑾 双鱼座 Beta 0.40.json')
+    const presetPath = join(__dirname, '../../../official/extensions/st-data-compat/夏瑾 双鱼座 Beta 0.40.json')
     if (!existsSync(presetPath)) return
 
     const rawJson = readFileSync(presetPath, 'utf8')
@@ -418,7 +419,7 @@ describe('SillyTavern Importer Extension', () => {
   })
 
   it('correctly normalizes real Rimworld lorebook with natural order and non-at_depth anchors', () => {
-    const lorebookPath = join(__dirname, '../../extensions/sillytavern-importer/-----rimworld_ 库.json')
+    const lorebookPath = join(__dirname, '../../../official/extensions/st-data-compat/-----rimworld_ 库.json')
     if (!existsSync(lorebookPath)) return
 
     const rawJson = readFileSync(lorebookPath, 'utf8')

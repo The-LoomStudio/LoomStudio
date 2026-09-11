@@ -1,0 +1,78 @@
+{
+  "format": "loom.promptResource",
+  "schemaVersion": 2,
+  "resourceKind": "preset",
+  "rootNode": {
+    "id": "official.loom-assistant.preset",
+    "label": "Loom Studio 问答助手",
+    "meta": "Official Composition Preset",
+    "category": "preset",
+    "kind": "module",
+    "body": "Loom Studio 官方问答助手的 Prompt 结构、标准 Zone 与默认排序。",
+    "children": [
+      {
+        "id": "official.loom-assistant.message-system",
+        "label": "System Message",
+        "meta": "message.system",
+        "category": "preset",
+        "kind": "message",
+        "capabilities": { "roleHint": "system" },
+        "children": [
+          {
+            "id": "official.loom-assistant.instructions",
+            "label": "助手行为",
+            "meta": "preset.system",
+            "category": "preset",
+            "kind": "entry",
+            "enabled": true,
+            "body": "你是 Loom Studio 内置问答助手。优先依据已加载的 Loom Studio 知识回答问题；表达清晰、简洁，并在知识不足时明确说明不确定之处。使用与用户相同的语言回答。",
+            "capabilities": { "targetAnchorId": "@preset.system", "localDepth": 10, "roleHint": "system" }
+          },
+          { "id": "official.loom-assistant.virtual-preset-system", "label": "@preset.system", "meta": "preset.virtual", "category": "preset", "kind": "virtual", "capabilities": { "targetAnchorId": "@preset.system" } },
+          { "id": "official.loom-assistant.virtual-setting-stable", "label": "@setting.stable", "meta": "preset.virtual", "category": "preset", "kind": "virtual", "capabilities": { "targetAnchorId": "@setting.stable" } },
+          { "id": "official.loom-assistant.virtual-tools", "label": "@chat.tools", "meta": "preset.virtual", "category": "preset", "kind": "virtual", "capabilities": { "targetAnchorId": "@chat.tools" } },
+          { "id": "official.loom-assistant.virtual-fresh-tail", "label": "@fresh.tail", "meta": "preset.virtual", "category": "preset", "kind": "virtual", "capabilities": { "targetAnchorId": "@fresh.tail" } }
+        ]
+      },
+      {
+        "id": "official.loom-assistant.message-narrative",
+        "label": "Narrative Message",
+        "meta": "message.developer",
+        "category": "preset",
+        "kind": "message",
+        "capabilities": { "roleHint": "developer" },
+        "children": [{ "id": "official.loom-assistant.virtual-narrative", "label": "@chat.narrative", "meta": "preset.virtual", "category": "preset", "kind": "virtual", "capabilities": { "targetAnchorId": "@chat.narrative" } }]
+      },
+      {
+        "id": "official.loom-assistant.message-session",
+        "label": "Session Message",
+        "meta": "message.system",
+        "category": "preset",
+        "kind": "message",
+        "capabilities": { "roleHint": "system" },
+        "children": [{ "id": "official.loom-assistant.virtual-session", "label": "@chat.session", "meta": "preset.virtual", "category": "preset", "kind": "virtual", "capabilities": { "targetAnchorId": "@chat.session" } }]
+      },
+      {
+        "id": "official.loom-assistant.message-post-session",
+        "label": "Post Session Message",
+        "meta": "message.system",
+        "category": "preset",
+        "kind": "message",
+        "capabilities": { "roleHint": "system" },
+        "children": [
+          { "id": "official.loom-assistant.virtual-setting-lower", "label": "@setting.lower", "meta": "preset.virtual", "category": "preset", "kind": "virtual", "capabilities": { "targetAnchorId": "@setting.lower" } },
+          { "id": "official.loom-assistant.virtual-post-session", "label": "@chat.session.post", "meta": "preset.virtual", "category": "preset", "kind": "virtual", "capabilities": { "targetAnchorId": "@chat.session.post" } }
+        ]
+      },
+      {
+        "id": "official.loom-assistant.message-user",
+        "label": "User Input Message",
+        "meta": "message.user",
+        "category": "preset",
+        "kind": "message",
+        "capabilities": { "roleHint": "user" },
+        "children": [{ "id": "official.loom-assistant.virtual-input", "label": "@chat.input", "meta": "preset.virtual", "category": "preset", "kind": "virtual", "capabilities": { "targetAnchorId": "@chat.input" } }]
+      }
+    ]
+  }
+}

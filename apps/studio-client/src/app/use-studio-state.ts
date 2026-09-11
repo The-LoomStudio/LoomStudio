@@ -48,6 +48,15 @@ export function useStudioState(transportLogger: Logger) {
     states: api.states,
     textTransforms: api.textTransforms,
   }), [api])
+  const officialContentApi = useMemo(() => ({
+    list: api.officialContent.list,
+    export: api.officialContent.export,
+    install: async (input: { packageId: string; digest: string }) => {
+      const result = await api.officialContent.install(input)
+      await Promise.all([refreshPromptResourceLibrary(), refreshSettingMounts(), refreshPresetToolMounts(), agentProfiles.refreshAgentProfiles()])
+      return result
+    },
+  }), [api])
   const editHistory = useEditHistory({ revertChangeset: api.history.revert })
   const [promptResources, setPromptResources] = useState<PromptResource[]>([])
   const [settingMounts, setSettingMounts] = useState<SettingMount[]>([])
@@ -441,6 +450,7 @@ export function useStudioState(transportLogger: Logger) {
     statesApi: api.states,
     textTransformsApi: api.textTransforms,
     clientExtensionApi,
+    officialContentApi,
     importExtensionPackageResources,
     removeExtensionPackageResources,
     // cards

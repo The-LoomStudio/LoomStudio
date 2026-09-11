@@ -13,12 +13,14 @@ import { handleAgentsRpc } from './agents.js'
 import { handleWorkspacesRpc } from './workspaces.js'
 import { handleTimelineRpc } from './timeline.js'
 import { handleLoomScriptsRpc } from './loom-scripts.js'
+import type { PromptResourceConverter } from '../../../extensions/import-conversion.js'
 
 export async function callApplicationRpc(
   runtime: ApplicationRuntime,
   method: string,
   params: JsonValue | undefined,
   context?: RuntimeRequestContext,
+  convertPromptResource?: PromptResourceConverter,
 ): Promise<JsonValue> {
   const cardsResult = await handleCardsRpc(runtime, method, params, context)
   if (cardsResult !== undefined) return cardsResult
@@ -44,7 +46,7 @@ export async function callApplicationRpc(
   const agentsResult = await handleAgentsRpc(runtime, method, params, context)
   if (agentsResult !== undefined) return agentsResult
 
-  const workspacesResult = await handleWorkspacesRpc(runtime, method, params, context)
+  const workspacesResult = await handleWorkspacesRpc(runtime, method, params, context, convertPromptResource)
   if (workspacesResult !== undefined) return workspacesResult
 
   const timelineResult = await handleTimelineRpc(runtime, method, params, context)

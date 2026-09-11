@@ -264,9 +264,6 @@ importers:
       '@loom-studio/shared':
         specifier: workspace:*
         version: link:../../packages/shared
-      '@loom-studio/sillytavern-importer':
-        specifier: workspace:*
-        version: link:../../extensions/sillytavern-importer
       '@loom-studio/state-store':
         specifier: workspace:*
         version: link:../../packages/state-store
@@ -280,29 +277,17 @@ importers:
         specifier: 0.8.3
         version: 0.8.3
 
-  extensions/example-echo:
-    dependencies:
-      '@loom-studio/extension-sdk':
-        specifier: workspace:*
-        version: link:../../packages/extension-sdk
-
-  extensions/sillytavern-importer:
+  official/extensions/st-data-compat:
     dependencies:
       '@loom-studio/application-runtime':
         specifier: workspace:*
-        version: link:../../packages/application-runtime
+        version: link:../../../packages/application-runtime
       '@loom-studio/extension-sdk':
         specifier: workspace:*
-        version: link:../../packages/extension-sdk
+        version: link:../../../packages/extension-sdk
       '@loom-studio/shared':
         specifier: workspace:*
-        version: link:../../packages/shared
-
-  extensions/weather-station:
-    dependencies:
-      '@loom-studio/extension-sdk':
-        specifier: workspace:*
-        version: link:../../packages/extension-sdk
+        version: link:../../../packages/shared
 
   packages/agent-store:
     dependencies:
@@ -555,6 +540,18 @@ importers:
       '@loom-studio/shared':
         specifier: workspace:*
         version: link:../shared
+
+  tests/fixtures/extensions/echo:
+    dependencies:
+      '@loom-studio/extension-sdk':
+        specifier: workspace:*
+        version: link:../../../../packages/extension-sdk
+
+  tests/fixtures/extensions/weather-station:
+    dependencies:
+      '@loom-studio/extension-sdk':
+        specifier: workspace:*
+        version: link:../../../../packages/extension-sdk
 
 packages:
 

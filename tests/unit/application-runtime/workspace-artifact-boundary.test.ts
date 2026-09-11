@@ -226,7 +226,7 @@ describe('card bundle artifact boundary', () => {
     const blobs = createBlobStore({ engine: fixture.engine, rootDirectory, createId: prefix => `${prefix}-blob`, now: () => '2026-09-11T00:00:00.000Z' })
     try {
       const legacy = await importCardBundle({ artifact: createArtifact(), ...fixture })
-      expect(legacy.importBundle.sourceArtifact.schemaVersion).toBe(3)
+      expect(legacy.importBundle.sourceArtifact.schemaVersion).toBe(4)
 
       const artifact = createArtifact()
       artifact.schemaVersion = 3
@@ -240,11 +240,44 @@ describe('card bundle artifact boundary', () => {
       expect(mount?.content).toMatchObject({ enabled: false, grantedCapabilities: [], orderIndex: 7 })
 
       const exported = await exportCardArtifact({ cardId: imported.card.id, documents: fixture.documents, promptResources: fixture.promptResources, blobs })
-      expect(exported.schemaVersion).toBe(3)
+      expect(exported.schemaVersion).toBe(4)
       expect(exported.scriptAttachments).toEqual(artifact.scriptAttachments)
     } finally {
       await rm(rootDirectory, { recursive: true, force: true })
     }
+  })
+
+  it('round-trips Card-owned text rules and extractors without restoring foreign ownership', async () => {
+    const fixture = createFixture()
+    const artifact = createArtifact()
+    artifact.schemaVersion = 4
+    artifact.textTransformRules = [{
+      name: 'Hide reasoning', enabled: true, orderIndex: 3,
+      matcher: { kind: 'regex', pattern: '<think>.*?</think>', flags: 'gs' },
+      effect: { kind: 'replace', replacement: '' }, targets: ['narrative'], phases: ['prompt'],
+    }]
+    artifact.textExtractors = [{
+      name: 'Weather', enabled: true, orderIndex: 2,
+      matcher: { kind: 'regex', pattern: '<weather>(.*?)</weather>', flags: 'gs', contentGroup: 1 },
+      targets: ['narrative'], strategy: 'latest-valid', parser: 'text', artifactType: 'weather',
+    }]
+    const first = await importCardBundle({ artifact, ...fixture })
+    const exported = await exportCardArtifact({ cardId: first.card.id, documents: fixture.documents, promptResources: fixture.promptResources })
+    expect(exported.textTransformRules).toEqual(artifact.textTransformRules)
+    expect(exported.textExtractors).toEqual(artifact.textExtractors)
+    const second = await importCardBundle({ artifact: exported, ...fixture })
+    const rules = await fixture.documents.list({ type: 'airp.textTransformRule' })
+    expect(rules.items.map(item => item.content.owner)).toEqual(expect.arrayContaining([
+      { kind: 'card', cardId: first.card.id }, { kind: 'card', cardId: second.card.id },
+    ]))
+    const extractors = await fixture.documents.list({ type: 'airp.textExtractor' })
+    expect(extractors.items.map(item => item.content.owner)).toEqual(expect.arrayContaining([
+      { kind: 'card', cardId: first.card.id }, { kind: 'card', cardId: second.card.id },
+    ]))
+    const invalid = structuredClone(artifact)
+    Object.assign(invalid.textTransformRules![0]!, { owner: { kind: 'workspace' } })
+    await expect(importCardBundle({ artifact: invalid, ...fixture })).rejects.toThrow('Invalid Card text pipeline')
+    expect((await fixture.documents.list({ type: 'airp.textTransformRule' })).items).toHaveLength(2)
   })
 
   it('accepts Prompt Resource v1 and normalizes portable Script attachments to v2', () => {

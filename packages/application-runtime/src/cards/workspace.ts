@@ -27,6 +27,11 @@ import { renderVariableMacros, type VariableRenderContext } from '../prompt/vari
 import { validateStateDefinitionDraft, validateTimelineStateBinding } from '../state/state-definition.js'
 import { createStateArtifact, parseStateArtifact } from '../state/state-contribution.js'
 import { parseLoomScriptSource } from '../scripts/loom-script-codec.js'
+import {
+  validateTextExtractorDraft, validateTextTransformRuleDraft,
+  type TextExtractorContent, type TextExtractorDraft,
+  type TextTransformRuleContent, type TextTransformRuleDraft,
+} from '../transforms/history-text.js'
 import type { LoomScriptAttachmentArtifact, LoomScriptContent, LoomScriptMountContent } from '../scripts/loom-script-contracts.js'
 import type {
   BlobStorage,
@@ -47,7 +52,7 @@ function requireSqliteDocumentParticipant(documents: DocumentStore): SqliteDocum
 }
 
 export type CardBundleArtifact = {
-  schemaVersion: 2 | 3
+  schemaVersion: 2 | 3 | 4
   artifactId: string
   displayName: string
   description?: string
@@ -76,6 +81,8 @@ export type CardBundleArtifact = {
   timelineStateBindings?: TimelineStateBinding[]
   extensionPayloads?: PortableExtensionPayloadArtifact[]
   scriptAttachments?: LoomScriptAttachmentArtifact[]
+  textTransformRules?: Array<Omit<TextTransformRuleDraft, 'owner'>>
+  textExtractors?: Array<Omit<TextExtractorDraft, 'owner'>>
   metadata?: JsonObject
 }
 
@@ -276,6 +283,25 @@ export async function importCardBundle(input: {
     return documentParticipant.participateTransaction(dataTx, async tx => {
       const cardId = createId('card')
       const importBundleId = createId('import-bundle')
+      const textPipelineDocumentIds: string[] = []
+      for (const [index, rule] of (artifact.textTransformRules ?? []).entries()) {
+        const document = await writeDocument<TextTransformRuleContent>(tx, {
+          id: `${importBundleId}.rule.${String(index).padStart(6, '0')}`,
+          type: applicationDocumentTypes.textTransformRule,
+          content: { ...structuredClone(rule), owner: { kind: 'card', cardId }, createdAt: timestamp, updatedAt: timestamp },
+          expectedVersion: 'new',
+        })
+        textPipelineDocumentIds.push(document.id)
+      }
+      for (const [index, extractor] of (artifact.textExtractors ?? []).entries()) {
+        const document = await writeDocument<TextExtractorContent>(tx, {
+          id: `${importBundleId}.extractor.${String(index).padStart(6, '0')}`,
+          type: applicationDocumentTypes.textExtractor,
+          content: { ...structuredClone(extractor), owner: { kind: 'card', cardId }, createdAt: timestamp, updatedAt: timestamp },
+          expectedVersion: 'new',
+        })
+        textPipelineDocumentIds.push(document.id)
+      }
       const storedResources = contextAssets.map(node => resourceTx.createResource({
         id: createId('prompt-resource'),
         resourceKind: node.category ?? 'prompt',
@@ -414,7 +440,7 @@ export async function importCardBundle(input: {
         type: applicationDocumentTypes.importBundle,
         content: {
           cardId: card.id,
-          documentIds: [card.id, importBundleId, ...stateDefinitionIds, ...portableExtensionPayloadIds, ...scriptDocumentIds, ...scriptMountIds],
+          documentIds: [card.id, importBundleId, ...stateDefinitionIds, ...portableExtensionPayloadIds, ...scriptDocumentIds, ...scriptMountIds, ...textPipelineDocumentIds],
           promptResourceIds: resourceIds,
           assetIds: readCardAssetIds(artifact.card.media),
           sourceArtifact: artifact,
@@ -477,6 +503,8 @@ export async function exportCardArtifact(input: {
         templateVersion: definition.content.templateVersion,
         schema: definition.content.schema,
         initial: definition.content.initial,
+        ...(definition.content.componentKey !== undefined ? { componentKey: definition.content.componentKey } : {}),
+        ...(definition.content.targetEntityTypeIds !== undefined ? { targetEntityTypeIds: [...definition.content.targetEntityTypeIds] } : {}),
         ...(definition.content.label !== undefined ? { label: definition.content.label } : {}),
       }
     }))
@@ -510,7 +538,19 @@ export async function exportCardArtifact(input: {
     }
   }))
 
-  return buildExportArtifact({ card, contextAssets, stateTemplates, extensionPayloads, scriptAttachments, importBundle })
+  const textTransformRules = (await listDocuments<TextTransformRuleContent>(input.documents, applicationDocumentTypes.textTransformRule))
+    .filter(document => document.content.owner.kind === 'card' && document.content.owner.cardId === input.cardId)
+    .sort((a, b) => a.content.orderIndex - b.content.orderIndex || a.id.localeCompare(b.id))
+    .map(({ content: { owner, origin, createdAt, updatedAt, ...rule } }) => rule)
+  const textExtractors = (await listDocuments<TextExtractorContent>(input.documents, applicationDocumentTypes.textExtractor))
+    .filter(document => document.content.owner.kind === 'card' && document.content.owner.cardId === input.cardId)
+    .sort((a, b) => a.content.orderIndex - b.content.orderIndex || a.id.localeCompare(b.id))
+    .map(({ content: { owner, origin, createdAt, updatedAt, ...extractor } }) => extractor)
+  return {
+    ...buildExportArtifact({ card, contextAssets, stateTemplates, extensionPayloads, scriptAttachments, importBundle }),
+    textTransformRules,
+    textExtractors,
+  }
 }
 
 async function readLoomScriptRevision(
@@ -541,7 +581,7 @@ function buildExportArtifact(input: {
 
   return {
     ...sourceArtifact,
-    schemaVersion: 3,
+    schemaVersion: 4,
     artifactId: sourceArtifact?.artifactId ?? input.card.id,
     displayName: sourceArtifact?.displayName ?? cardContent.name,
     description: sourceArtifact?.description ?? cardContent.description,
@@ -688,7 +728,7 @@ export function normalizeCardBundleArtifact(artifact: CardBundleArtifact): CardB
 
   return {
     ...artifact,
-    schemaVersion: 3,
+    schemaVersion: 4,
     artifactId: artifact.artifactId,
     displayName: artifact.displayName,
     description: artifact.description,
@@ -876,7 +916,7 @@ export function isCardBundleArtifact(value: JsonValue | undefined): value is Car
 
 function assertCardBundleArtifact(value: unknown): asserts value is CardBundleArtifact {
   if (!isObject(value)) throw new Error('Card bundle must be an object')
-  if (value.schemaVersion !== 2 && value.schemaVersion !== 3) throw new Error(`Unsupported card bundle schemaVersion: ${String(value.schemaVersion)}`)
+  if (value.schemaVersion !== 2 && value.schemaVersion !== 3 && value.schemaVersion !== 4) throw new Error(`Unsupported card bundle schemaVersion: ${String(value.schemaVersion)}`)
   assertNonEmptyString(value.artifactId, 'Card bundle artifactId')
   assertNonEmptyString(value.displayName, 'Card bundle displayName')
   if (value.description !== undefined && typeof value.description !== 'string') throw new Error('Card bundle description must be a string')
@@ -912,7 +952,52 @@ function assertCardBundleArtifact(value: unknown): asserts value is CardBundleAr
   }
   assertPortableExtensionPayloads(value.extensionPayloads)
   assertLoomScriptAttachments(value.scriptAttachments)
+  assertCardTextPipeline(value.textTransformRules, false)
+  assertCardTextPipeline(value.textExtractors, true)
   if (value.metadata !== undefined && !isObject(value.metadata)) throw new Error('Card bundle metadata must be an object')
+}
+
+function assertCardTextPipeline(value: unknown, extractor: boolean): void {
+  if (value === undefined) return
+  if (!Array.isArray(value)) throw new Error('Card text pipeline declarations must be an array')
+  for (const item of value) {
+    if (!isObject(item) || typeof item.name !== 'string' || typeof item.enabled !== 'boolean'
+      || !Number.isInteger(item.orderIndex) || !Array.isArray(item.targets)
+      || item.targets.some(target => target !== 'narrative' && target !== 'agent-session')
+      || !isObject(item.matcher) || item.matcher.kind !== 'regex'
+      || typeof item.matcher.pattern !== 'string' || typeof item.matcher.flags !== 'string'
+      || ['owner', 'origin', 'id', 'version', 'createdAt', 'updatedAt'].some(key => item[key] !== undefined)) {
+      throw new Error('Invalid Card text pipeline declaration')
+    }
+    const draft = { ...item, owner: { kind: 'card' as const, cardId: 'bundle' } }
+    if (extractor) {
+      if ((item.strategy !== 'latest-valid' && item.strategy !== 'all-matches')
+        || (item.parser !== 'text' && item.parser !== 'key-value-lines')
+        || (item.artifactType !== undefined && typeof item.artifactType !== 'string')
+        || (item.outputSchema !== undefined && !isObject(item.outputSchema))) {
+        throw new Error('Invalid Card text extractor')
+      }
+      validateTextExtractorDraft(draft as TextExtractorDraft)
+    } else {
+      if (!Array.isArray(item.phases) || item.phases.some(phase => !['classify', 'prompt', 'display'].includes(String(phase)))
+        || (item.range !== undefined && !isObject(item.range))
+        || !isObject(item.effect)
+        || !['replace', 'mark', 'promote-reasoning'].includes(String(item.effect.kind))
+        || (item.effect.kind === 'replace' && typeof item.effect.replacement !== 'string')
+        || (item.effect.kind === 'mark' && item.effect.markerType !== undefined && typeof item.effect.markerType !== 'string')
+        || (item.effect.kind === 'promote-reasoning'
+          && (!['collapsed', 'hidden', 'visible'].includes(String(item.effect.visibility))
+            || !['omit', 'assistant-content'].includes(String(item.effect.replay))
+            || (item.effect.dialect !== undefined && typeof item.effect.dialect !== 'string')))) {
+        throw new Error('Invalid Card text transform rule')
+      }
+      validateTextTransformRuleDraft(draft as TextTransformRuleDraft)
+    }
+    const group = extractor ? item.matcher.contentGroup : (item.effect as Record<string, unknown>).contentGroup
+    if (group !== undefined && typeof group !== 'string' && !(Number.isInteger(group) && Number(group) >= 0)) {
+      throw new Error('Invalid Card text pipeline contentGroup')
+    }
+  }
 }
 
 function assertLoomScriptAttachments(value: unknown): void {

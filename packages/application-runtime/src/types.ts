@@ -151,6 +151,7 @@ export type {
 
 export type ApplicationRuntime = {
   initialize(): Promise<void>
+  installOfficialContent(input: InstallOfficialContentInput, context?: RuntimeRequestContext): Promise<InstallOfficialContentResult>
   getStateSnapshot(input: GetStateSnapshotInput): Promise<GetStateSnapshotResult>
   applyStateMutation(input: ApplyStateMutationInput, context?: RuntimeRequestContext): Promise<ApplyStateMutationResult>
   listStateDefinitions(input?: ListStateDefinitionsInput): Promise<ListStateDefinitionsResult>
@@ -266,6 +267,18 @@ export type RuntimeRequestContext = {
   callId?: string
   parentCallId?: string
   abortSignal?: AbortSignal
+}
+
+export type InstallOfficialContentInput = {
+  packageId: string
+  packageVersion: string
+  resources: Array<{ id: string; artifact: PromptResourceArtifact }>
+  settingMounts: Array<{ presetResourceId: string; settingResourceId: string }>
+}
+
+export type InstallOfficialContentResult = {
+  resources: Array<{ id: string; created: boolean }>
+  mutation?: MutationReceipt
 }
 
 export type StateTarget =

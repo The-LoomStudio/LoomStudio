@@ -442,7 +442,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
           <div ref={characterPanelRef} className={styles.galleryPane}>
             <input
               ref={cardImportInputRef}
-              accept="image/png,.png,.loomcard,application/vnd.loom.card+zip"
+              accept="image/png,.png,.loomcard,.zip,application/zip,application/vnd.loom.card+zip"
               className={styles.mediaInput}
               multiple
               type="file"
@@ -942,7 +942,7 @@ function pageTransitionDelay(): number {
 
 function mediaUrl(card: CharacterCardSummary, target: MediaTarget): string | undefined {
   const assetId = target === 'avatar' ? card.media?.avatarAssetId : card.media?.coverAssetId
-  return assetId ? `/assets/${encodeURIComponent(assetId)}` : undefined
+  return assetId ? `/assets/${encodeURIComponent(assetId)}` : target === 'avatar' ? '/images/default-card.png' : undefined
 }
 
 function TimelineCard(props: { timeline: NarrativeTimelineView; busy: boolean; current: boolean; onOpen(): void; t: Translator }) {
@@ -996,6 +996,6 @@ function shortId(id: string): string {
 
 function remoteCardFileName(url: URL, contentType: string): string {
   const candidate = url.pathname.split('/').pop() || ''
-  if (candidate.toLowerCase().endsWith('.loomcard') || candidate.toLowerCase().endsWith('.png')) return candidate
-  return contentType === 'application/vnd.loom.card+zip' ? 'remote-card.loomcard' : 'remote-card.png'
+  if (/\.(?:loomcard|zip|png)$/i.test(candidate)) return candidate
+  return contentType === 'application/vnd.loom.card+zip' || contentType === 'application/zip' ? 'remote-card.loomcard.zip' : 'remote-card.png'
 }

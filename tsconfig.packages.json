@@ -22,6 +22,6 @@
     { "path": "./packages/trace-audit" },
     { "path": "./packages/loom-runner" },
     { "path": "./packages/kernel" },
-    { "path": "./extensions/sillytavern-importer" }
+    { "path": "./official/extensions/st-data-compat" }
   ]
 }

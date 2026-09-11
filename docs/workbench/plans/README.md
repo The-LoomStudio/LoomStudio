@@ -9,9 +9,9 @@
 
 | 路线图 / 计划                                                                                | 当前状态     | 关注点                                                                  |
 | -------------------------------------------------------------------------------------------- | ------------ | ----------------------------------------------------------------------- |
+| [`official-content-installation-and-release-plan.md`](./official-content-installation-and-release-plan.md) | In Progress / 本地安装切片完成 | 官方文件、显式安装与 ST 生命周期解耦已落地；完整样例与远程发布待接续 |
 | [`macro-value-provider-and-inspector-plan.md`](./macro-value-provider-and-inspector-plan.md) | In Progress | 作者宏 Master–Detail、动态提供者、冲突选择与构建快照已实现，自动化验证通过，等待人工验收 |
 | [`history-text-pipeline-contextual-ui-and-effective-rules-plan.md`](./history-text-pipeline-contextual-ui-and-effective-rules-plan.md) | Implemented / 待视觉验收 | Effective RuleSet、资源作者视图与当前上下文文本管线检查器 |
-| [`text-pipeline-loom-script-renderer-integration-plan.md`](./text-pipeline-loom-script-renderer-integration-plan.md) | Implemented / 待视觉验收 | 资源 Owner / Effective 双投影、Match / Artifact、Loom Script Metadata、沙箱 Renderer 与 Extension 整合 |
 | [`ui/state-authoring-runtime-separation-plan.md`](./ui/state-authoring-runtime-separation-plan.md) | Paused | 有效范围转交宏计划统一验收；不恢复 Preset State 与 Workspace 作者 CRUD |
 | [`agent-runtime-ai-sdk-foundation-plan.md`](./agent-runtime-ai-sdk-foundation-plan.md)       | Phase 5 完成 | AI SDK Gateway、canonical Tool、三类 Transport、Agent Loop 与恢复持久化 |
 | [`ai-gateway-streaming-execution-plan.md`](./ai-gateway-streaming-execution-plan.md)         | 后端基础完成 | AI Gateway 流式执行；RPC / Client 消费延期                              |
@@ -34,6 +34,10 @@
 ---
 
 ## 历史已归档计划
+
+2026-09-11：[`file-backed-card-bundle-plan.md`](../../archive/plans/file-backed-card-bundle-plan.md) 已完成并归档；文件化 ZIP、PNG Base64 ZIP 与旧容器兼容已落地，后续 CLI / Dev Workspace 复用同一编解码。
+
+2026-09-11：[`text-pipeline-loom-script-renderer-integration-plan.md`](../../archive/plans/text-pipeline-loom-script-renderer-integration-plan.md) 已归档交付基线；保留未执行验证记录，可加载的默认/开发演示数据留待后续推进。
 
 历史 Plan 统一位于 [`docs/archive/plans/`](../../archive/plans/)。其中包括已完成计划、被 Architecture 取代的实施稿，以及原基线已经冻结且剩余工作已拆分到当前 successor 的阶段记录。Archive 中出现的 Pending 不自动构成当前路线；当前施工只以本表为准。
 

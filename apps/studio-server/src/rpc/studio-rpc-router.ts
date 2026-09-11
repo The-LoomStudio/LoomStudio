@@ -7,6 +7,7 @@ import { callAiGatewayRpc } from './handlers/ai-gateway-rpc.js'
 import { callLogsRpc } from './handlers/logs-rpc.js'
 import type { NetworkSettingsStore } from '../platform/network-settings.js'
 import { callSettingsRpc } from './handlers/settings-rpc.js'
+import type { PromptResourceConverter } from '../extensions/import-conversion.js'
 
 type RpcCallContext = {
   clientId: string
@@ -30,23 +31,25 @@ export type StudioRpcRouter = {
 
 export function createStudioRpcRouter(services: {
   applicationRuntime: ApplicationRuntime
+  convertPromptResource?: PromptResourceConverter
   aiCapabilities?: AiGatewayCapabilityRegistry
   aiGateway?: ProfiledAiGateway
   kernel: KernelRpcCaller
   logs?: LogReader
   networkSettings?: NetworkSettingsStore
+  officialContent?: { call(method: string, params: JsonValue | undefined, context: RpcCallContext): Promise<JsonValue> }
   emitEvent?: (name: string, payload: JsonValue, context: RpcCallContext) => void
 }): StudioRpcRouter {
   const routes: StudioRpcRoute[] = [{
     namespace: 'application',
     call: async (method, params, context) => {
       if (method !== 'application.deleteCard' || !services.emitEvent) {
-        return await callApplicationRpc(services.applicationRuntime, method, params, context)
+        return await callApplicationRpc(services.applicationRuntime, method, params, context, services.convertPromptResource)
       }
       const cardId = readRequiredString(params, 'cardId')
       const includePlayData = readOptionalBoolean(params, 'includePlayData') ?? false
       const preview = await services.applicationRuntime.previewCardDeletion({ cardId })
-      const result = await callApplicationRpc(services.applicationRuntime, method, params, context)
+      const result = await callApplicationRpc(services.applicationRuntime, method, params, context, services.convertPromptResource)
       const changesetId = readRequiredString(result, 'mutation', 'changesetId')
       services.emitEvent('entity.lifecycle.changed', {
         operation: 'tombstoned',
@@ -61,6 +64,13 @@ export function createStudioRpcRouter(services: {
       return result
     },
   }]
+
+  if (services.officialContent) {
+    routes.push({
+      namespace: 'official',
+      call: (method, params, context) => services.officialContent!.call(method, params, context),
+    })
+  }
 
   if (services.aiCapabilities && services.aiGateway) {
     routes.push({

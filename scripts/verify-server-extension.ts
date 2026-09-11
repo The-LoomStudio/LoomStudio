@@ -68,7 +68,7 @@ kernel = createKernel({
 await kernel.start()
 kernel.getEventBus().subscribe(['example.weatherStation.*', 'docs.changed'], event => observedEvents.push(event))
 
-const extensionDirectory = resolve('extensions/weather-station')
+const extensionDirectory = resolve('tests/fixtures/extensions/weather-station')
 const discovered = await extensionHost.discover(extensionDirectory)
 assert(discovered[0]?.state === 'manifestValidated', 'extension discovery validates the manifest')
 

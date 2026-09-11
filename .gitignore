@@ -12,4 +12,5 @@ apps/studio-client/vite.config.js
 .env.*
 !.env.example
 .loomstudio-dev/
+.artifacts/
 .DS_Store

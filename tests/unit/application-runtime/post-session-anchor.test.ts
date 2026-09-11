@@ -1,11 +1,17 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import type { PromptResourceArtifact } from '@loom-studio/application-runtime'
 import { compilePromptDataModel } from '../../../packages/application-runtime/src/prompt/prompt-build-pipeline.js'
-import { createOfficialPromptResourceContents } from '../../../packages/application-runtime/src/prompt/prompt-resource-defaults.js'
+
+const officialAssistantPreset = JSON.parse(readFileSync(
+  join(process.cwd(), 'official/starter/presets/assistant.json'),
+  'utf8',
+)) as PromptResourceArtifact
 
 describe('Prompt Anchor System: @chat.session.post', () => {
   it('places @chat.session.post contributions into the post-session message when preset contains explicit anchor', () => {
-    const resources = createOfficialPromptResourceContents('2026-09-04T00:00:00Z')
-    const preset = resources.find(r => r.resourceKind === 'preset')!.rootNode
+    const preset = officialAssistantPreset.rootNode
     const sourceNodes = [
       {
         id: preset.id,
@@ -178,4 +184,3 @@ describe('Prompt Anchor System: @chat.session.post', () => {
     expect(inputPos).toBeGreaterThan(fallbackPos)
   })
 })
-

@@ -11,12 +11,10 @@ import { convertSillyTavernLorebook } from './lorebook.js'
 
 export function convertSillyTavernCard(
   source: Uint8Array | SillyTavernCard,
-  rawJsonString?: string,
 ): CardConversionResult {
   let card: SillyTavernCard
   let avatarBytes: Uint8Array | undefined
   let sourceFormat: 'st.card.v2' | 'st.card.v3'
-  let rawJson = rawJsonString
 
   if (source instanceof Uint8Array || Buffer.isBuffer(source)) {
     if (isPngFile(source)) {
@@ -26,20 +24,15 @@ export function convertSillyTavernCard(
       }
       card = extracted.card
       sourceFormat = extracted.format
-      rawJson = extracted.rawJson
       avatarBytes = extractPngImageBytes(source)
     } else {
       const text = Buffer.from(source).toString('utf8')
       card = JSON.parse(text) as SillyTavernCard
-      rawJson = text
       sourceFormat = card.spec === 'chara_card_v3' ? 'st.card.v3' : 'st.card.v2'
     }
   } else {
     card = source
     sourceFormat = card.spec === 'chara_card_v3' ? 'st.card.v3' : 'st.card.v2'
-    if (!rawJson) {
-      rawJson = JSON.stringify(card)
-    }
   }
 
   const data: SillyTavernCardV2Data = card.data ?? (card as SillyTavernCardV2Data)
@@ -54,30 +47,13 @@ export function convertSillyTavernCard(
   ].filter(Boolean).join('\n\n')
 
   const contextAssets: PromptResourceNode[] = []
-  const settingLayerEntries: NonNullable<CardBundleArtifact['card']['settingLayer']>['entries'] = []
-
-  // 1. Process embedded character_book as a standalone Setting PromptResource in contextAssets AND card.settingLayer
+  // The embedded book has one authoring source: the Setting resource tree.
   const book = data.character_book ?? (card as SillyTavernCardV2).character_book
   if (book && book.entries && (Array.isArray(book.entries) ? book.entries.length > 0 : Object.keys(book.entries).length > 0)) {
     const bookName = book.name?.trim() || `${name} 世界书`
     const lorebookConversion = convertSillyTavernLorebook(book, bookName)
     if (lorebookConversion.artifact.rootNode) {
       contextAssets.push(lorebookConversion.artifact.rootNode)
-
-      for (const child of lorebookConversion.artifact.rootNode.children ?? []) {
-        if (child.kind === 'entry' && typeof child.body === 'string') {
-          settingLayerEntries.push({
-            id: child.id,
-            title: child.label,
-            content: child.body,
-            enabled: child.enabled !== false,
-            activation: child.capabilities?.activation,
-            tags: child.capabilities?.activation?.kind === 'keyword'
-              ? child.capabilities.activation.keywords
-              : (child.label ? [child.label] : []),
-          })
-        }
-      }
     }
   }
 
@@ -135,32 +111,7 @@ export function convertSillyTavernCard(
     })
   }
 
-  // 5. Build portable payload storing the original untouched ST card
   const artifactId = `card-st-${randomUUID()}`
-  let sourceCardContent = rawJson || JSON.stringify(card)
-  if (new TextEncoder().encode(sourceCardContent).byteLength > 8 * 1024 * 1024 && data.character_book) {
-    const trimmedData = {
-      ...data,
-      character_book: {
-        ...data.character_book,
-        entries: [],
-        description: `${data.character_book.name || 'Lorebook'} (Extracted to Loom PromptResource)`,
-      },
-    }
-    const trimmedCard = { ...card, data: trimmedData }
-    sourceCardContent = JSON.stringify(trimmedCard)
-  }
-
-  const extensionPayloads = [
-    {
-      id: 'sillytavern-source-card',
-      packageId: 'sillytavern.importer',
-      fileName: 'sillytavern_card.json',
-      format: 'sillytavern.character+json',
-      mediaType: 'application/json',
-      content: sourceCardContent,
-    },
-  ]
 
   const metadata: NonNullable<CardBundleArtifact['metadata']> = {
     importer: 'sillytavern.importer',
@@ -182,10 +133,8 @@ export function convertSillyTavernCard(
       description: fullDescription || undefined,
       preset: systemPrompt ? { system: systemPrompt } : undefined,
       opening: firstMes ? { entries: [{ role: 'assistant', content: firstMes }] } : undefined,
-      settingLayer: { entries: settingLayerEntries },
     },
     contextAssets,
-    extensionPayloads,
     metadata,
   }
 

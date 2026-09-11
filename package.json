@@ -16,6 +16,7 @@
     "check:docs:links": "node scripts/check-doc-links.mjs",
     "check:docs:lifecycle": "node scripts/check-doc-lifecycle.mjs",
     "check:workspace": "node scripts/check-workspace.mjs",
+    "official:pack": "tsx scripts/pack-official-content.ts",
     "test": "vitest run",
     "test:probes": "LOOM_TEST_SCOPE=probes vitest run",
     "verify:server-extension": "pnpm --filter @loom-studio/weather-station-test-extension build && tsx scripts/verify-server-extension.ts",

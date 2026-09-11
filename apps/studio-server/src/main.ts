@@ -43,16 +43,20 @@ import {
   createPolyglotCardPng,
   decodeCardPng,
   defaultCardPng,
-  encodeCardPng,
+  encodeCardBundlePng,
+  hasLegacyCardPng,
+  readCardPngArchive,
+  stripPngTextMetadata,
   isPng,
   readPngImageBytes,
   readPolyglotArchive,
 } from './codecs/card-png.js'
 import { decodeCardBundleZip, encodeCardBundleZip, type CardBundleMedia } from './codecs/card-bundle-zip.js'
-import { convertSillyTavernCard, sniffData } from '@loom-studio/sillytavern-importer'
 import { createStudioRpcRouter } from './rpc/studio-rpc-router.js'
 import { createServerExtensionManager } from './extensions/extension-manager.js'
 import { createExtensionStateStore } from './extensions/extension-state-store.js'
+import { createExtensionImportConversions } from './extensions/import-conversion.js'
+import { createOfficialContentService } from './official/official-content.js'
 import { resolveLoomStudioLocalPaths, type LoomStudioLocalPaths } from './platform/local-paths.js'
 
 const defaultPort = 4173
@@ -75,6 +79,7 @@ export type CreateStudioServerOptions = {
   extensionLogger?: Logger
   extensionRootDirectory?: string
   extensionStateDirectory?: string
+  officialContentDirectory?: string
   secretBackend?: SecretBackend
   applicationSessionOrigins?: string[]
 }
@@ -356,7 +361,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     }),
     subscribeEvents: (patterns, handler, subscriber) => kernel.getEventBus().subscribe(patterns, handler, { subscriber }),
   })
-  const extensionRootDirectory = resolve(options.extensionRootDirectory ?? 'extensions')
+  const extensionRootDirectory = resolve(options.extensionRootDirectory ?? 'official/extensions')
   const extensionStateDirectory = resolve(options.extensionStateDirectory ?? localPaths.extensionRoot)
   const extensionManager = createServerExtensionManager({
     host: extensionHost,
@@ -384,8 +389,11 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     extensionManager,
     loomRunner,
   })
+  const importConversions = createExtensionImportConversions(kernel)
   const rpcRouter = createStudioRpcRouter({
+    convertPromptResource: importConversions.promptResource,
     applicationRuntime,
+    officialContent: createOfficialContentService(applicationRuntime, resolve(options.officialContentDirectory ?? 'official/starter')),
     aiCapabilities,
     aiGateway: profiledAiGateway,
     kernel,
@@ -405,20 +413,21 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
       if (!assetId) return undefined
       const media = await assets?.getMediaAsset(assetId)
       if (!media) return undefined
-      return {
-        bytes: await assets!.readMediaAsset(assetId, { maxBytes: 64 * 1024 * 1024 }),
-        mediaType: media.mediaType ?? 'application/octet-stream',
-      }
+      let bytes = await assets!.readMediaAsset(assetId, { maxBytes: 64 * 1024 * 1024 })
+      const mediaType = media.mediaType ?? 'application/octet-stream'
+      if (mediaType === 'image/png' && isPng(bytes)) bytes = stripPngTextMetadata(bytes)
+      return { bytes, mediaType }
     }
+    const avatar = await readMedia(artifact.card.media?.avatarAssetId) ?? { bytes: defaultCardPng, mediaType: 'image/png' }
     return {
       artifact,
-      avatar: await readMedia(artifact.card.media?.avatarAssetId) ?? { bytes: defaultCardPng, mediaType: 'image/png' },
+      avatar,
       background: await readMedia(artifact.card.media?.coverAssetId),
     }
   }
   const importCardArchive = async (input: Awaited<ReturnType<typeof decodeCardBundleZip>>, clientId: string) => {
     const createMedia = async (media: CardBundleMedia, kind: string) => (await assets!.createMediaAsset({
-      source: media.bytes,
+      source: media.mediaType === 'image/png' && isPng(media.bytes) ? stripPngTextMetadata(media.bytes) : media.bytes,
       kind,
       mediaType: media.mediaType,
       maxBytes: 64 * 1024 * 1024,
@@ -437,30 +446,26 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     assets,
     cardPng: assets ? {
       export: async cardId => {
-        const { artifact, avatar } = await readCardExport(cardId)
+        const bundle = await readCardExport(cardId)
+        const { avatar } = bundle
         // ponytail: M0 不引入图片转码依赖；非 PNG 头像暂用内置 PNG，接入图像管线后再统一转码。
-        return encodeCardPng(avatar.mediaType === 'image/png' && isPng(avatar.bytes) ? avatar.bytes : defaultCardPng, artifact)
+        return encodeCardBundlePng(avatar.mediaType === 'image/png' && isPng(avatar.bytes) ? avatar.bytes : defaultCardPng, encodeCardBundleZip(bundle))
       },
       import: async (source, session) => {
-        const archive = readPolyglotArchive(source)
+        const archive = readCardPngArchive(source) ?? readPolyglotArchive(source)
         if (archive) return await importCardArchive(await decodeCardBundleZip(archive), session.clientId)
         let artifact: CardBundleArtifact
         let avatarBytes: Uint8Array
-        try {
+        if (hasLegacyCardPng(source)) {
           artifact = decodeCardPng(source)
-          avatarBytes = readPngImageBytes(source)
-        } catch (error) {
-          const sniff = sniffData(source)
-          if (sniff.detected && sniff.format === 'st.card.png') {
-            const converted = convertSillyTavernCard(source)
-            artifact = converted.artifact
-            avatarBytes = converted.avatarBytes ?? readPngImageBytes(source)
-          } else {
-            throw error
-          }
+          avatarBytes = stripPngTextMetadata(source)
+        } else {
+          const converted = await importConversions.cardPng(source, { clientId: session.clientId })
+          artifact = converted.artifact
+          avatarBytes = converted.avatarBytes ?? readPngImageBytes(source)
         }
         const media = await assets.createMediaAsset({
-          source: avatarBytes,
+          source: stripPngTextMetadata(avatarBytes),
           kind: 'card.avatar',
           mediaType: 'image/png',
           maxBytes: 32 * 1024 * 1024,

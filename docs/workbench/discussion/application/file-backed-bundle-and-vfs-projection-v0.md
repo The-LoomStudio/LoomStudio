@@ -4,6 +4,7 @@
 > **日期**：2026-09-10  
 > **主题**：让 Card、Preset、Setting、State Definition、Transform Rule 与 Script 使用可读真实文件分发，并让 Bundle、Dev Workspace 和 Agent VFS 共用同一套领域资源投影。  
 > **事实边界**：本文记录候选方向，不是已实现 Architecture、最终文件 Schema 或实施授权。
+> **已落地切片**：Card 的文件化 ZIP v2、PNG Base64 ZIP 与文本管线携带已完成，正式合同见 [Architecture](../../../architecture/application/card-bundle-files.md)。本讨论的通用 VFS、独立 Preset / Setting Bundle 与 Dev Workspace 仍属后续，不能视为整体实现。
 >
 > **Related**:
 > - [`asset-import-export-boundary-v0.md`](asset-import-export-boundary-v0.md)

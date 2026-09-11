@@ -4,6 +4,14 @@
 
 Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本列表收录了内核层 (`kernel`) 和应用层 (`application`) 所有暴露的 RPC 方法。
 
+## 官方内容
+
+官方本地内容另提供 Server 路由 `official.listContent`、`official.installContent`、
+`official.exportContent`。安装和导出参数为 `{ packageId, digest }`，digest 来自列表中的
+原始内容摘要；安装委托 `ApplicationRuntime.installOfficialContent`，不提供客户端任意路径读取。
+当前仅支持配置目录内的官方基础包，不代表具备远程更新。详见
+[官方内容说明](../../../official/README.md)。
+
 ## History Text Pipeline
 
 - `application.listTextTransformRules`
@@ -86,7 +94,7 @@ Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本列表收�
 - **`application.importCardBundle`**: 导入自包含 Card Bundle，在同一事务中创建 Card、平铺 Prompt Resources 与 Import Bundle。
 - **`application.updateCardPromptResources`**: 以有序 `promptResourceIds` 更新 Card Manifest；拒绝重复、缺失或非 Prompt Resource 引用。
 - **`application.exportCardBundle`**: 从 Card 的有序 Prompt Resource IDs 导出当前自包含 Bundle。
-- **Card file HTTP data plane**: `GET /cards/:cardId/export.png` 输出压缩 `iTXt/loom`；`GET /cards/:cardId/export.polyglot.png` 输出头像 PNG + 完整 ZIP；`GET /cards/:cardId/export.loomcard` 输出稳定 ZIP。`POST /cards/import/png` 自动识别普通 PNG 或 Polyglot，`POST /cards/import/loomcard` 导入完整包；所有格式最终复用 `application.importCardBundle`。
+- **Card file HTTP data plane**: `GET /cards/:cardId/export.png` 输出 `iTXt/loom.bundle`，内容为文件化 ZIP 的 Base64；`GET /cards/:cardId/export.polyglot.png` 保留头像 PNG + ZIP 的旧入口；`GET /cards/:cardId/export.loomcard` 输出文件化 ZIP v2。`POST /cards/import/png` 读取新 PNG、旧压缩 JSON PNG 与 Polyglot，`POST /cards/import/loomcard` 读取 ZIP v1/v2；所有格式最终复用 `application.importCardBundle`。无 Loom 载荷的 ST PNG 需要启用 ST 扩展。文件布局见 [Card Bundle](../../architecture/application/card-bundle-files.md)。
 
 ### Agent 配置与 Session
 - Preset 生命周期统一使用 Prompt Resource RPC，不再提供第二套 AgentPreset RPC。

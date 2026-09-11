@@ -26,7 +26,7 @@
       "@loom-studio/shared": ["../packages/shared/src/index.ts"],
       "@loom-studio/trace-audit": ["../packages/trace-audit/src/index.ts"],
       "@loom-studio/transport": ["../packages/transport/src/index.ts"],
-      "@loom-studio/sillytavern-importer": ["../extensions/sillytavern-importer/src/index.ts"],
+      "@loom-studio/sillytavern-importer": ["../official/extensions/st-data-compat/src/index.ts"],
       "@loom/core": ["../packages/core/src/index.ts"]
     }
   },

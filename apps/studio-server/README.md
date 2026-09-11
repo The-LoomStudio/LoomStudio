@@ -54,6 +54,12 @@ Studio Server
 - Extension Icon
 - `GET /extensions/events`：只用于 Extension Catalog 变化的 SSE
 
+官方内容使用 `official.listContent` / `official.installContent` / `official.exportContent` RPC。
+默认读取仓库根目录下的 `official/starter`，部署时应携带该目录或设置
+`CreateStudioServerOptions.officialContentDirectory`。安装必须由用户显式请求，不在
+Application 初始化时创建或覆盖官方预设与 Setting；当前只有本地来源，不包含在线更新。
+详见 [官方内容说明](../../official/README.md)。
+
 Kernel 不依赖 HTTP、WebSocket 或 SSE。Server 负责进程、Transport、本地路径、认证和依赖组装；Card、Narrative、Agent、State、PromptBuild 等业务规则属于 Application Runtime。
 
 ## 文档入口

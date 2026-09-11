@@ -17,6 +17,7 @@
       "entry": "./dist/index.js",
       "contributes": {
         "rpc": [
+          { "name": "sillytavern.importer.convertPromptResource" },
           { "name": "sillytavern.importer.sniff" },
           { "name": "sillytavern.importer.convertCard" },
           { "name": "sillytavern.importer.convertLorebook" },

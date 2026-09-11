@@ -11,7 +11,7 @@ import type {
   SettingMountSource,
 } from '@loom-studio/application-runtime'
 import { isPromptActivation, isPromptResourceArtifact } from '@loom-studio/application-runtime'
-import { convertSillyTavernLorebook, convertSillyTavernPreset, sniffData } from '@loom-studio/sillytavern-importer'
+import type { PromptResourceConverter } from '../../../extensions/import-conversion.js'
 import type { JsonValue } from '@loom-studio/shared'
 import {
   isRecord,
@@ -26,6 +26,7 @@ export async function handleWorkspacesRpc(
   method: string,
   params: JsonValue | undefined,
   context?: RuntimeRequestContext,
+  convertPromptResource?: PromptResourceConverter,
 ): Promise<JsonValue | undefined> {
   switch (method) {
     case 'application.getPromptResource':
@@ -73,14 +74,8 @@ export async function handleWorkspacesRpc(
       if (isPromptResourceArtifact(rawArtifact)) {
         artifact = rawArtifact
       } else {
-        const sniff = sniffData(rawArtifact)
-        if (sniff.detected && sniff.format === 'st.lorebook.json') {
-          artifact = convertSillyTavernLorebook(rawArtifact as never, defaultName).artifact
-        } else if (sniff.detected && sniff.format === 'st.preset.json') {
-          artifact = convertSillyTavernPreset(rawArtifact as never, defaultName).artifact
-        } else {
-          throw new Error('Expected valid Prompt Resource artifact param: artifact')
-        }
+        if (!convertPromptResource) throw new Error('No active extension converter for this Prompt Resource format')
+        artifact = await convertPromptResource(rawArtifact, defaultName, context)
       }
       return await runtime.importPromptResource({ artifact }, context) as unknown as JsonValue
     }

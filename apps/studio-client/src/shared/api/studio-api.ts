@@ -1,4 +1,5 @@
 import type { ClientBridge, ClientJsonValue } from '@loom-studio/client-bridge'
+import type { OfficialContentPackage } from '../../entities/official-content.js'
 import type { LogLevel, LogPage } from '@loom-studio/logging'
 import type { ExtensionEntityRef, ExtensionRecordEntry, ExtensionStorageScope } from '@loom-studio/extension-sdk'
 import type {
@@ -351,6 +352,11 @@ export type StudioApi = {
     removeResources(packageId: string): Promise<ExtensionPackageResourceRemovalResult>
     diagnostics(packageId?: string, moduleId?: string): Promise<{ diagnostics: ClientJsonValue[] }>
   }
+  officialContent: {
+    list(): Promise<{ packages: OfficialContentPackage[] }>
+    install(input: { packageId: string; digest: string }): Promise<{ resources: Array<{ id: string; created: boolean }>; mutation?: MutationReceipt }>
+    export(input: { packageId: string; digest: string }): Promise<{ fileName: string; base64: string }>
+  }
   extensionRuntime: {
     listRecords(input: { packageId: string; scope?: ExtensionStorageScope; recordType?: string; binding?: ExtensionEntityRef }): Promise<{ records: ExtensionRecordEntry[] }>
     getRecord(packageId: string, recordId: string): Promise<{ record: ExtensionRecordEntry | null }>
@@ -500,6 +506,11 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
   }
 
   return {
+    officialContent: {
+      list: () => bridge.call('official.listContent', {}),
+      install: input => bridge.call('official.installContent', input),
+      export: input => bridge.call('official.exportContent', input),
+    },
     extensions: {
       list: () => bridge.call('extensions.listPackages', {}),
       enable: (packageId, moduleId) => bridge.call('extensions.enableModule', { packageId, moduleId }),

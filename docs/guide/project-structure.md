@@ -177,9 +177,11 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
 
 当前只有 `packages/loom-runner` 和 `packages/application-runtime` 可以直接依赖 `@loom/core`。前者提供平台 adapter，后者只在第一方 PromptBuild pipeline 内使用 Core public API。Kernel、Document Store、Extension Host、Client 与 Extension 不得直接依赖 Core。
 
-## 🧩 插件库: `extensions/`
+## 🧩 扩展内容
 
-- `extensions/example-echo/`: 一个示例插件，演示如何使用 `extension-sdk` 暴露 RPC 或操作文档。
+- `official/extensions/st-data-compat/`: 官方 SillyTavern 数据兼容扩展。
+- `tests/fixtures/extensions/echo/`: 测试扩展，覆盖 RPC、Macro、State、Text Pipeline 与 Renderer 贡献。
+- `tests/fixtures/extensions/weather-station/`: Server Extension 生命周期、事件与文档能力测试样本。
 
 ---
 

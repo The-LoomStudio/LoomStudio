@@ -4,11 +4,13 @@ import {
   type PortableExtensionPayloadArtifact,
 } from '@loom-studio/application-runtime'
 import { Unzip, UnzipInflate, UnzipPassThrough, zipSync } from 'fflate'
+import { projectCardFiles, restoreCardFiles, validateBundlePath, type CardFilesIndex } from './card-bundle-files.js'
 
 const manifestPath = 'manifest.json'
-const maxEntryCount = 80
+// ponytail: bounded author projects; raise with streaming/file-tree budgets if larger worlds require it.
+const maxEntryCount = 4096
 const maxEntryBytes = 64 * 1024 * 1024
-const maxBundleBytes = 128 * 1024 * 1024
+export const maxBundleBytes = 128 * 1024 * 1024
 
 type LoomCardPayloadManifest = Omit<PortableExtensionPayloadArtifact, 'content'> & {
   path: string
@@ -16,7 +18,7 @@ type LoomCardPayloadManifest = Omit<PortableExtensionPayloadArtifact, 'content'>
 
 type LoomScriptAttachmentArtifact = NonNullable<CardBundleArtifact['scriptAttachments']>[number]
 
-type LoomCardManifest = {
+type LegacyCardManifest = {
   schema: 'loom.cardBundle.zip.v1'
   artifact: Omit<CardBundleArtifact, 'extensionPayloads'>
   media?: {
@@ -30,6 +32,11 @@ type LoomCardManifest = {
   }>
 }
 
+type LoomCardManifest = Omit<LegacyCardManifest, 'schema' | 'artifact'> & {
+  schema: 'loom.cardBundle.zip.v2'
+  resources: CardFilesIndex
+}
+
 export type CardBundleMedia = {
   bytes: Uint8Array
   mediaType: string
@@ -40,7 +47,7 @@ export function encodeCardBundleZip(input: {
   avatar: CardBundleMedia
   background?: CardBundleMedia
 }): Uint8Array {
-  const artifact = normalizeCardBundleArtifact(input.artifact)
+  const artifact = structuredClone(normalizeCardBundleArtifact(input.artifact))
   const extensionPayloads = artifact.extensionPayloads ?? []
   const scriptAttachments = artifact.scriptAttachments ?? []
   delete artifact.card.media
@@ -50,9 +57,10 @@ export function encodeCardBundleZip(input: {
   const backgroundPath = input.background
     ? `assets/background${extensionForMediaType(input.background.mediaType)}`
     : undefined
+  const resourceEntries: Record<string, Uint8Array> = {}
   const manifest: LoomCardManifest = {
-    schema: 'loom.cardBundle.zip.v1',
-    artifact,
+    schema: 'loom.cardBundle.zip.v2',
+    resources: projectCardFiles(artifact, resourceEntries),
     media: {
       avatar: avatarPath,
       ...(backgroundPath ? { background: backgroundPath } : {}),
@@ -86,13 +94,25 @@ export function encodeCardBundleZip(input: {
     loomScriptPath(attachment, index),
     Buffer.from(attachment.script.source, 'utf8'),
   ]))
-  return zipSync({
+  const entries = {
     [manifestPath]: Buffer.from(JSON.stringify(manifest, null, 2), 'utf8'),
+    ...resourceEntries,
     [avatarPath]: input.avatar.bytes,
     ...(backgroundPath && input.background ? { [backgroundPath]: input.background.bytes } : {}),
     ...payloadEntries,
     ...scriptEntries,
-  }, { level: 6 })
+  }
+  let total = 0
+  if (Object.keys(entries).length > maxEntryCount) throw new Error(`Loom Card package exceeds ${maxEntryCount} entries`)
+  for (const [path, bytes] of Object.entries(entries)) {
+    validateBundlePath(path)
+    if (bytes.byteLength > maxEntryBytes) throw new Error(`Oversized ZIP entry: ${path}`)
+    total += bytes.byteLength
+  }
+  if (total > maxBundleBytes) throw new Error('Loom Card package expands beyond the allowed size')
+  const archive = zipSync(entries, { level: 6 })
+  if (archive.byteLength > maxBundleBytes) throw new Error(`Loom Card package exceeds ${maxBundleBytes} bytes`)
+  return archive
 }
 
 export async function decodeCardBundleZip(source: Uint8Array): Promise<{
@@ -104,16 +124,19 @@ export async function decodeCardBundleZip(source: Uint8Array): Promise<{
   const files = await unzipSafely(source)
   const manifestBytes = files.get(manifestPath)
   if (!manifestBytes) throw new Error('Loom Card package is missing manifest.json')
-  const manifest = JSON.parse(Buffer.from(manifestBytes).toString('utf8')) as Partial<LoomCardManifest>
-  if (manifest.schema !== 'loom.cardBundle.zip.v1' || !manifest.artifact || !manifest.media?.avatar) {
+  const manifest = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(manifestBytes)) as LegacyCardManifest | LoomCardManifest
+  if (!manifest || (manifest.schema !== 'loom.cardBundle.zip.v1' && manifest.schema !== 'loom.cardBundle.zip.v2') || !manifest.media?.avatar) {
     throw new Error('Invalid Loom Card package manifest')
   }
   const avatar = readMedia(files, manifest.media.avatar)
   const background = manifest.media.background ? readMedia(files, manifest.media.background) : undefined
   const extensionPayloads = readExtensionPayloads(files, manifest.extensionPayloads)
   const scriptAttachments = readScriptAttachments(files, manifest.scriptAttachments)
+  const artifact = manifest.schema === 'loom.cardBundle.zip.v2'
+    ? restoreCardFiles(manifest.resources, files)
+    : manifest.artifact
   return {
-    artifact: normalizeCardBundleArtifact({ ...manifest.artifact, extensionPayloads, scriptAttachments }),
+    artifact: normalizeCardBundleArtifact({ ...artifact, extensionPayloads, scriptAttachments }),
     avatar,
     background,
   }
@@ -131,7 +154,7 @@ function readScriptAttachments(
       || typeof attachment.script.path !== 'string') {
       throw new Error(`Invalid Loom Card Script attachment manifest: ${index}`)
     }
-    validateArchivePath(attachment.script.path)
+    validateBundlePath(attachment.script.path)
     if (!attachment.script.path.startsWith('scripts/') || !attachment.script.path.endsWith('.loom.js')) {
       throw new Error(`Loom Card Script path must stay under scripts/ and end in .loom.js: ${attachment.script.path}`)
     }
@@ -154,9 +177,11 @@ function unzipSafely(source: Uint8Array): Promise<Map<string, Uint8Array>> {
     const files = new Map<string, Uint8Array>()
     let entryCount = 0
     let declaredTotal = 0
+    let actualTotal = 0
     let pending = 0
     let inputComplete = false
     let settled = false
+    const seenPaths = new Set<string>()
     const fail = (error: unknown) => {
       if (settled) return
       settled = true
@@ -170,13 +195,16 @@ function unzipSafely(source: Uint8Array): Promise<Map<string, Uint8Array>> {
     }
     const unzip = new Unzip(file => {
       try {
-        validateArchivePath(file.name)
+        const directory = file.name.endsWith('/')
+        validateBundlePath(directory ? file.name.slice(0, -1) : file.name)
+        if (seenPaths.has(file.name)) throw new Error(`Duplicate ZIP entry path: ${file.name}`)
+        seenPaths.add(file.name)
         entryCount += 1
         if (entryCount > maxEntryCount) throw new Error(`Loom Card package exceeds ${maxEntryCount} entries`)
-        if (!Number.isSafeInteger(file.originalSize) || file.originalSize! < 0 || file.originalSize! > maxEntryBytes) {
+        if (file.originalSize !== undefined && (!Number.isSafeInteger(file.originalSize) || file.originalSize < 0 || file.originalSize > maxEntryBytes)) {
           throw new Error(`Invalid or oversized ZIP entry: ${file.name}`)
         }
-        declaredTotal += file.originalSize!
+        declaredTotal += file.originalSize ?? 0
         if (declaredTotal > maxBundleBytes) throw new Error('Loom Card package expands beyond the allowed size')
         const chunks: Uint8Array[] = []
         let actualSize = 0
@@ -187,13 +215,19 @@ function unzipSafely(source: Uint8Array): Promise<Map<string, Uint8Array>> {
             return
           }
           actualSize += data.byteLength
-          if (actualSize > file.originalSize! || actualSize > maxEntryBytes) {
+          actualTotal += data.byteLength
+          if ((file.originalSize !== undefined && actualSize > file.originalSize) || actualSize > maxEntryBytes
+            || actualTotal > maxBundleBytes || (directory && actualSize !== 0)) {
             fail(new Error(`ZIP entry exceeds its declared size: ${file.name}`))
             return
           }
           chunks.push(data)
           if (!final) return
-          files.set(file.name, Buffer.concat(chunks))
+          if (file.originalSize !== undefined && actualSize !== file.originalSize) {
+            fail(new Error(`ZIP entry size mismatch: ${file.name}`))
+            return
+          }
+          if (!directory) files.set(file.name, Buffer.concat(chunks))
           pending -= 1
           finish()
         }
@@ -205,7 +239,11 @@ function unzipSafely(source: Uint8Array): Promise<Map<string, Uint8Array>> {
     unzip.register(UnzipPassThrough)
     unzip.register(UnzipInflate)
     try {
-      unzip.push(source, true)
+      const chunkSize = 64 * 1024
+      for (let offset = 0; offset < source.byteLength && !settled; offset += chunkSize) {
+        unzip.push(source.subarray(offset, offset + chunkSize), offset + chunkSize >= source.byteLength)
+      }
+      if (pending > 0 && !settled) throw new Error('Truncated Loom Card ZIP entry')
       inputComplete = true
       finish()
     } catch (error) {
@@ -214,14 +252,8 @@ function unzipSafely(source: Uint8Array): Promise<Map<string, Uint8Array>> {
   })
 }
 
-function validateArchivePath(path: string): void {
-  if (!path || path.startsWith('/') || path.includes('\\') || path.split('/').includes('..')) {
-    throw new Error(`Unsafe ZIP entry path: ${path}`)
-  }
-}
-
 function readMedia(files: Map<string, Uint8Array>, path: string): CardBundleMedia {
-  validateArchivePath(path)
+  validateBundlePath(path)
   const bytes = files.get(path)
   if (!bytes) throw new Error(`Loom Card package is missing ${path}`)
   return { bytes, mediaType: mediaTypeForPath(path) }
@@ -237,7 +269,7 @@ function readExtensionPayloads(
     if (!payload || typeof payload !== 'object' || typeof payload.path !== 'string') {
       throw new Error(`Invalid Loom Card extension payload manifest: ${index}`)
     }
-    validateArchivePath(payload.path)
+    validateBundlePath(payload.path)
     if (!payload.path.startsWith('extensions/')) {
       throw new Error(`Loom Card extension payload path must stay under extensions/: ${payload.path}`)
     }

@@ -1,0 +1,45 @@
+{
+  "format": "loom.promptResource",
+  "schemaVersion": 2,
+  "resourceKind": "setting",
+  "rootNode": {
+    "id": "official.loom-knowledge.setting",
+    "label": "Loom Studio 基础知识",
+    "meta": "Official Setting Layer",
+    "category": "setting",
+    "kind": "module",
+    "body": "供官方问答助手使用的 Loom Studio 稳定基础知识。",
+    "children": [
+      {
+        "id": "official.loom-knowledge.product",
+        "label": "产品定位",
+        "meta": "setting.stable",
+        "category": "setting",
+        "kind": "entry",
+        "enabled": true,
+        "body": "Loom Studio 是面向 AI 角色扮演与交互叙事创作的平台。它把提示词资源、叙事时间线和 Agent 工作会话分开管理，再由 PromptBuild 在运行时组合为模型输入。",
+        "capabilities": { "activation": { "kind": "always" }, "targetAnchorId": "@setting.stable", "localDepth": 10, "roleHint": "system" }
+      },
+      {
+        "id": "official.loom-knowledge.resources",
+        "label": "核心资源",
+        "meta": "setting.stable",
+        "category": "setting",
+        "kind": "entry",
+        "enabled": true,
+        "body": "Card 是可分享的启动包和资源清单；Preset 定义 Prompt 的 Zone、结构与排序；Setting Layer 保存世界设定和知识条目；Narrative Timeline 保存玩家看到的叙事正文；Agent Session 保存 Agent 自己的对话与工作历史。",
+        "capabilities": { "activation": { "kind": "always" }, "targetAnchorId": "@setting.stable", "localDepth": 20, "roleHint": "system" }
+      },
+      {
+        "id": "official.loom-knowledge.workflow",
+        "label": "基础工作流",
+        "meta": "setting.stable",
+        "category": "setting",
+        "kind": "entry",
+        "enabled": true,
+        "body": "常见流程是创建或导入 Card，链接所需的 Preset 与 Setting Layer，从 Card 创建 Narrative Timeline，再选择 Agent 配置和模型开始对话。资源编辑与叙事游玩共享同一套后端数据能力。",
+        "capabilities": { "activation": { "kind": "always" }, "targetAnchorId": "@setting.stable", "localDepth": 30, "roleHint": "system" }
+      }
+    ]
+  }
+}

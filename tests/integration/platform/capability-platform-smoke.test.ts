@@ -70,7 +70,7 @@ describe('platform capability integration smoke', () => {
     const events: StudioEvent[] = []
     await kernel.start()
     kernel.getEventBus().subscribe(['docs.changed', 'diagnostics.updated'], (event: StudioEvent) => events.push(event))
-    await extensionHost.discover(join(process.cwd(), 'extensions/example-echo'))
+    await extensionHost.discover(join(process.cwd(), 'tests/fixtures/extensions/echo'))
     await extensionHost.activateAll()
     const bridge = createClientBridge({ endpoint: 'memory://kernel', fetch: createKernelFetch(kernel) })
 

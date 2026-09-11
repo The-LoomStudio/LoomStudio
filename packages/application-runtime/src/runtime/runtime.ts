@@ -2,13 +2,9 @@ import { createApplicationRuntimeContext, type ApplicationRuntimeContext } from 
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { initializeGlobalState } from '../state/state.js'
 import {
-  createOfficialPromptResourceContents,
   obsoleteBuiltinAgentToolDescriptions,
   obsoleteBuiltinAgentToolIds,
-  officialPromptResourceIds,
 } from '../prompt/prompt-resource-defaults.js'
-import { listMappedResources, toStoredResourceInput } from '../prompt/prompt-resource-mapper.js'
-import type { PromptResourceNode } from '../cards/workspace.js'
 import type {
   AgentToolContent,
   ApplicationRuntime,
@@ -31,6 +27,7 @@ import {
 } from './providers-runtime.js'
 import { createExtensionsRuntimeMethods } from './extensions-runtime.js'
 import { createLoomScriptsRuntimeMethods } from './loom-scripts-runtime.js'
+import { createOfficialContentRuntimeMethods } from './official-content-runtime.js'
 
 export function createApplicationRuntime(options: ApplicationRuntimeOptions): ApplicationRuntime {
   const ctx: ApplicationRuntimeContext = createApplicationRuntimeContext(options)
@@ -40,127 +37,6 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
       await initializeGlobalState(ctx)
       await initializeOfficialFakeProviderProfiles(ctx)
       const timestamp = ctx.now()
-      const promptContents = createOfficialPromptResourceContents(timestamp)
-      for (const [index, content] of promptContents.entries()) {
-        const id = index === 0 ? officialPromptResourceIds.assistantPreset : officialPromptResourceIds.knowledgeSetting
-        let existing = await ctx.promptResources.getResource(id, { includeTombstone: true })
-        if (existing?.tombstoned) {
-          const restored = await ctx.promptResources.restoreResource({
-            actor: applicationActor,
-            reason: 'application.restoreBuiltinPromptResources',
-            resourceId: id,
-            expectedVersion: existing.version,
-          })
-          existing = restored.resource
-        }
-        if (!existing) {
-          await ctx.promptResources.createResource({
-            ...toStoredResourceInput({ id, content }),
-            actor: applicationActor,
-            reason: 'application.initializePromptResources',
-          })
-        } else if (existing.metadata && typeof existing.metadata === 'object' && 'origin' in existing.metadata && (existing.metadata as { origin?: { kind?: string } }).origin?.kind === 'builtin') {
-          if (content.resourceKind === 'preset') {
-            const expectedFlat = collectAllPresetNodes(existing.rootNode.id, content.rootNode.children)
-            const existingChildIds = existing.rootNode.children?.map(c => c.id) ?? []
-            const currentSubtreeNodeIds = new Set(collectExistingAllNodeIds(existing.rootNode.children))
-            const expectedNodeIds = new Set(expectedFlat.map(c => c.id))
-
-            const isIdentical = expectedNodeIds.size === currentSubtreeNodeIds.size
-              && [...expectedNodeIds].every(nodeId => currentSubtreeNodeIds.has(nodeId))
-
-            if (!isIdentical) {
-              let currentVersion = existing.version
-              if (existingChildIds.length > 0) {
-                const deleteResult = await ctx.promptResources.mutateResource({
-                  actor: applicationActor,
-                  reason: 'application.upgradeBuiltinPromptResources.cleanup',
-                  resourceId: id,
-                  expectedVersion: currentVersion,
-                  mutations: existingChildIds.map(nodeId => ({ kind: 'node.delete' as const, nodeId })),
-                })
-                currentVersion = deleteResult.resource.version
-              }
-
-              const createMutations = expectedFlat.map(item => ({
-                kind: 'node.create' as const,
-                parentId: item.parentId,
-                node: {
-                  id: item.node.id,
-                  kind: item.node.kind,
-                  label: item.node.label,
-                  meta: item.node.meta,
-                  category: item.node.category,
-                  enabled: item.node.enabled,
-                  body: item.node.body,
-                  capabilities: item.node.capabilities,
-                  orderIndex: item.orderIndex,
-                },
-              }))
-
-              if (createMutations.length > 0) {
-                await ctx.promptResources.mutateResource({
-                  actor: applicationActor,
-                  reason: 'application.upgradeBuiltinPromptResources.rebuild',
-                  resourceId: id,
-                  expectedVersion: currentVersion,
-                  mutations: createMutations,
-                })
-              }
-            }
-          } else if (content.resourceKind === 'setting') {
-            const mutations: Array<{ kind: 'node.update'; nodeId: string; patch: { capabilities?: PromptResourceNode['capabilities'] } }> = []
-            for (const expected of content.rootNode.children ?? []) {
-              const current = existing.rootNode.children?.find(c => c.id === expected.id)
-              if (current && JSON.stringify(current.capabilities) !== JSON.stringify(expected.capabilities)) {
-                mutations.push({
-                  kind: 'node.update',
-                  nodeId: current.id,
-                  patch: { capabilities: expected.capabilities },
-                })
-              }
-            }
-            if (mutations.length > 0) {
-              await ctx.promptResources.mutateResource({
-                actor: applicationActor,
-                reason: 'application.upgradeBuiltinPromptResources',
-                resourceId: id,
-                expectedVersion: existing.version,
-                mutations,
-              })
-            }
-          }
-        }
-      }
-      const officialMounts = await ctx.promptResources.listSettingMounts({ source: { kind: 'manual', id: 'global' } })
-      if (!officialMounts.some(mount => mount.settingResourceId === officialPromptResourceIds.knowledgeSetting)) {
-        await ctx.promptResources.addSettingMount({
-          actor: applicationActor,
-          reason: 'application.initializePromptResources',
-          source: { kind: 'manual', id: 'global' },
-          settingResourceId: officialPromptResourceIds.knowledgeSetting,
-          orderIndex: officialMounts.length,
-          origin: { kind: 'builtin', key: 'loom-assistant-preset' },
-        })
-      }
-      const existingToolMounts = await ctx.promptResources.listPresetToolMounts({ presetResourceId: officialPromptResourceIds.assistantPreset })
-      const retainedToolMounts = existingToolMounts.filter(mount => !obsoleteBuiltinAgentToolIds.has(mount.toolId))
-      if (retainedToolMounts.length !== existingToolMounts.length) {
-        await ctx.promptResources.replacePresetToolMounts({
-          actor: applicationActor,
-          reason: 'application.removeObsoleteBuiltinAgentTools',
-          presetResourceId: officialPromptResourceIds.assistantPreset,
-          mounts: retainedToolMounts.map(mount => ({
-            toolId: mount.toolId,
-            orderIndex: mount.orderIndex,
-            defaultEnabled: mount.defaultEnabled,
-            ...(mount.activation ? { activation: structuredClone(mount.activation) } : {}),
-            ...(mount.provider ? { provider: { ...mount.provider } } : {}),
-            ...(mount.content ? { content: { ...mount.content } } : {}),
-            origin: structuredClone(mount.origin),
-          })),
-        })
-      }
       for (const toolId of obsoleteBuiltinAgentToolIds) {
         const document = await ctx.documents.get(toolId)
         if (!document) continue
@@ -197,26 +73,6 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
         })
       }
       await refreshAgentToolRegistry(ctx)
-      const presets = await listMappedResources(ctx.promptResources, 'preset')
-      const availableTools = ctx.agentTools.list()
-      for (const preset of presets) {
-        const existingMounts = await ctx.promptResources.listPresetToolMounts({ presetResourceId: preset.id })
-        for (const [orderIndex, definition] of availableTools.entries()) {
-          if (existingMounts.some(mount => mount.toolId === definition.id)) continue
-          await ctx.promptResources.addPresetToolMount({
-            actor: applicationActor,
-            reason: 'application.initializePromptResources',
-            presetResourceId: preset.id,
-            toolId: definition.id,
-            orderIndex,
-            defaultEnabled: false,
-            ...(definition.prompt?.activation ? { activation: structuredClone(definition.prompt.activation) } : {}),
-            ...(definition.prompt?.provider ? { provider: { ...definition.prompt.provider } } : {}),
-            ...(definition.prompt?.content ? { content: { ...definition.prompt.content } } : {}),
-            origin: preset.origin ?? { kind: 'manual' },
-          })
-        }
-      }
     },
 
     ...createCardsRuntimeMethods(ctx),
@@ -228,29 +84,6 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     ...createProvidersRuntimeMethods(ctx),
     ...createExtensionsRuntimeMethods(ctx),
     ...createLoomScriptsRuntimeMethods(ctx),
+    ...createOfficialContentRuntimeMethods(ctx),
   }
-}
-
-type FlatPresetNode = {
-  id: string
-  parentId: string
-  node: PromptResourceNode
-  orderIndex: number
-}
-
-function collectAllPresetNodes(parentId: string, children?: PromptResourceNode[]): FlatPresetNode[] {
-  if (!children) return []
-  const list: FlatPresetNode[] = []
-  for (const [i, child] of children.entries()) {
-    list.push({ id: child.id, parentId, node: child, orderIndex: 100 + i })
-    if (child.children?.length) {
-      list.push(...collectAllPresetNodes(child.id, child.children))
-    }
-  }
-  return list
-}
-
-function collectExistingAllNodeIds(children?: Array<{ id: string; children?: any[] }>): string[] {
-  if (!children) return []
-  return children.flatMap(child => [child.id, ...collectExistingAllNodeIds(child.children)])
 }

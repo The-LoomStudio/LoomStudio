@@ -2,9 +2,12 @@ import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import type { ClientActionPlacement, ClientCommandDeclaration, RendererContributionDefinition } from '@loom-studio/extension-sdk'
 import { ArrowDown, ArrowLeft, ArrowUp, Braces, Component, ExternalLink, FileSearch, Package, PackagePlus, Power, RefreshCw, TerminalSquare, Trash2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { useState, useSyncExternalStore } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { toast } from 'sonner'
-import type { ManagedExtensionModule, ManagedExtensionPackage } from '../../../entities/index.js'
+import type { ManagedExtensionModule, ManagedExtensionPackage, ModelProfile, ProviderModelSelection } from '../../../entities/index.js'
+import type { OfficialContentPackage } from '../../../entities/official-content.js'
+import type { StudioApi } from '../../../shared/api/studio-api.js'
+import { OfficialContentDetail } from './official-content-detail.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import type { ClientExtensionHost } from '../model/client-extension-host.js'
 import type { ClientRendererHost } from '../model/client-renderer-host.js'
@@ -19,6 +22,7 @@ import styles from './renderer-workspace-panel.module.scss'
 const WORKSPACE_SCOPE_KEY = 'workspace'
 
 type ExtensionWorkspaceSelection =
+  | { kind: 'official'; packageId: string }
   | { kind: 'package'; packageId: string }
   | { kind: 'resource'; packageId: string; resourceKind: 'prompt' | 'tool' | 'rule' | 'extractor'; id: string }
   | { kind: 'module'; packageId: string; moduleId: string }
@@ -32,6 +36,9 @@ export function RendererWorkspacePanel(props: {
   serverDiagnostics: readonly ClientJsonValue[]
   sessionHost: RendererSessionHost
   t: Translator
+  officialContent: StudioApi['officialContent']
+  models: ModelProfile[]
+  onCreateAgent(input: { name: string; presetId: string; model: ProviderModelSelection }): Promise<void>
   onDisable(packageId: string, moduleId: string): Promise<unknown>
   onEnable(packageId: string, moduleId: string): Promise<unknown>
   onImportResources(packageId: string): Promise<unknown>
@@ -45,6 +52,19 @@ export function RendererWorkspacePanel(props: {
   const [selection, setSelection] = useState<ExtensionWorkspaceSelection | undefined>(() => props.packages[0] ? { kind: 'package', packageId: props.packages[0].packageId } : undefined)
   const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
   const [busyKey, setBusyKey] = useState<string>()
+  const [officialPackages, setOfficialPackages] = useState<OfficialContentPackage[]>([])
+  const [officialError, setOfficialError] = useState<string>()
+  useEffect(() => {
+    let disposed = false
+    setOfficialPackages([])
+    setOfficialError(undefined)
+    void props.officialContent.list().then(result => {
+      if (!disposed) setOfficialPackages(result.packages)
+    }, error => {
+      if (!disposed) setOfficialError(error instanceof Error ? error.message : String(error))
+    })
+    return () => { disposed = true }
+  }, [props.officialContent])
   const registrations = props.host.list('shell.workspace-panel')
   const activeKey = props.host.activeContributionKey('shell.workspace-panel', WORKSPACE_SCOPE_KEY)
   const active = registrations.find(registration => rendererContributionKey(registration) === activeKey)
@@ -64,8 +84,9 @@ export function RendererWorkspacePanel(props: {
     )
   }
 
-  const selected = props.packages.find(item => item.packageId === selection?.packageId) ?? props.packages[0]
-  const selectedItem = selection && selected?.packageId === selection.packageId ? selection : selected ? { kind: 'package' as const, packageId: selected.packageId } : undefined
+  const selected = selection?.kind === 'official' ? undefined : props.packages.find(item => item.packageId === selection?.packageId) ?? props.packages[0]
+  const selectedItem = selection?.kind === 'official' ? selection : selection && selected?.packageId === selection.packageId ? selection : selected ? { kind: 'package' as const, packageId: selected.packageId } : undefined
+  const selectedOfficial = selectedItem?.kind === 'official' ? officialPackages.find(item => item.id === selectedItem.packageId) : undefined
   const clientSummaries = props.extensionHost.summaries()
   const rendererDiagnostics = props.host.diagnostics()
   const clientDiagnostics = props.extensionHost.diagnostics()
@@ -85,9 +106,33 @@ export function RendererWorkspacePanel(props: {
     setBusyKey(key)
     try {
       await operation()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error))
     } finally {
       setBusyKey(undefined)
     }
+  }
+
+  async function installOfficial(content: OfficialContentPackage) {
+    if (!window.confirm(props.t('official.installConfirm'))) return
+    await run(content.id, async () => {
+      const result = await props.officialContent.install({ packageId: content.id, digest: content.digest })
+      setOfficialPackages((await props.officialContent.list()).packages)
+      toast.success(props.t(result.resources.some(resource => resource.created) ? 'official.installed' : 'official.unchanged'))
+    })
+  }
+
+  async function exportOfficial(content: OfficialContentPackage) {
+    await run(content.id, async () => {
+      const result = await props.officialContent.export({ packageId: content.id, digest: content.digest })
+      const bytes = Uint8Array.from(atob(result.base64), char => char.charCodeAt(0))
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/zip' }))
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = result.fileName
+      anchor.click()
+      setTimeout(() => URL.revokeObjectURL(url), 0)
+    })
   }
 
   async function importResources(packageId: string) {
@@ -132,6 +177,14 @@ export function RendererWorkspacePanel(props: {
         onMobilePaneChange={setMobilePane}
         master={(
           <nav aria-label={props.t('renderer.packages')} className={styles.packageTree}>
+            <span className={styles.treeGroupLabel}>{props.t('official.recommended')}</span>
+            {officialError ? <p role="alert">{officialError}</p> : null}
+            {officialPackages.map(content => (
+              <button key={content.id} className={styles.packageItem} type="button" aria-current={selectedOfficial?.id === content.id ? 'page' : undefined} onClick={() => select({ kind: 'official', packageId: content.id })}>
+                <PackagePlus aria-hidden="true" /><span><strong>{content.name}</strong><small>{content.version}</small></span>
+              </button>
+            ))}
+            <span className={styles.treeGroupLabel}>{props.t('renderer.packages')}</span>
             {props.packages.length === 0 ? <p className={styles.empty}>{props.t('renderer.workspaceEmpty')}</p> : props.packages.map(extensionPackage => (
               <section className={styles.treePackage} key={extensionPackage.packageId}>
                 <button
@@ -184,6 +237,18 @@ export function RendererWorkspacePanel(props: {
         )}
       >
         <div className={styles.detail}>
+          {selectedOfficial ? (
+            <OfficialContentDetail
+              key={selectedOfficial.id}
+              content={selectedOfficial}
+              models={props.models}
+              busy={busyKey !== undefined}
+              t={props.t}
+              onInstall={() => void installOfficial(selectedOfficial)}
+              onExport={() => void exportOfficial(selectedOfficial)}
+              onCreateAgent={input => void run(selectedOfficial.id, () => props.onCreateAgent(input))}
+            />
+          ) : null}
           {selected && selectedItem?.kind === 'package' ? (
             <>
               <header className={styles.packageHeader}>
@@ -267,7 +332,7 @@ export function RendererWorkspacePanel(props: {
               />
             ) : null
           })() : null}
-          {!selected ? <p className={styles.empty}>{props.t('renderer.workspaceEmpty')}</p> : null}
+          {!selected && !selectedOfficial ? <p className={styles.empty}>{props.t('renderer.workspaceEmpty')}</p> : null}
         </div>
       </MasterDetailWorkbench>
     </section>

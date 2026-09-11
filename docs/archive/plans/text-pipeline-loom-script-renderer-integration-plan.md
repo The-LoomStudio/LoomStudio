@@ -1,9 +1,10 @@
 # Text Pipeline、Loom Script 与 Renderer 集成计划
 
-> **Status**：Implemented / Automated Verification Complete / Objective Browser Diagnostics Complete
+> **Status**：Archived / 已交付实施基线，验证边界见最终结果
 > **日期**：2026-09-11
 > **授权范围**：用户已确认资源 Owner 编辑与最终组合检查并存、组合顺序覆盖、`mark` Match、统一单文件 Loom Script Metadata、数据库索引、Mount / Grant、沙箱 Renderer、Extension 就地检查与一次性端到端实施方向。
-> **Successor of**：[`history-text-pipeline-contextual-ui-and-effective-rules-plan.md`](./history-text-pipeline-contextual-ui-and-effective-rules-plan.md)
+> **Successor of**：[`history-text-pipeline-contextual-ui-and-effective-rules-plan.md`](../../workbench/plans/history-text-pipeline-contextual-ui-and-effective-rules-plan.md)
+> **归档日期**：2026-09-11。按用户要求归档已交付范围；不将尚未执行的验证追认为通过。当前实现合同以 Architecture 中的 History Text Pipeline、Client Renderer Host 和 Loom Script Runtime 为准。可直接加载的默认/开发演示数据属于后续交付工作，不属于本计划已实现能力。
 
 ## 目标
 

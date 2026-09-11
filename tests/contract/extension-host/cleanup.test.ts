@@ -21,7 +21,7 @@ describe('extension host cleanup contract', () => {
   it('dispose cleans extension rpc registrations', async () => {
     const { kernel, extensionHost } = createExtensionHostHarness()
     await kernel.start()
-    await extensionHost.discover(join(process.cwd(), 'extensions/example-echo'))
+    await extensionHost.discover(join(process.cwd(), 'tests/fixtures/extensions/echo'))
     await extensionHost.activate('example.echo', 'server')
 
     await extensionHost.dispose('example.echo', 'server')
@@ -32,7 +32,7 @@ describe('extension host cleanup contract', () => {
   it('forget removes the discovered module and allows a later rediscovery', async () => {
     const { kernel, extensionHost } = createExtensionHostHarness()
     await kernel.start()
-    const directory = join(process.cwd(), 'extensions/example-echo')
+    const directory = join(process.cwd(), 'tests/fixtures/extensions/echo')
     await extensionHost.discover(directory)
     await extensionHost.activate('example.echo', 'server')
 

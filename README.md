@@ -152,7 +152,7 @@ LoomStudio/
 │   ├── narrative-store/    # 时间线叙事分支持久化引擎 (SQLite)
 │   ├── prompt-resource-store/# 预设与设定树存储
 │   └── document-store/     # 统一文档与状态持久化
-├── extensions/             # 扩展插件层
+├── official/               # 官方基础内容与正式扩展源码
 ├── examples/               # 可通过正式导入路径运行的教程样本
 └── docs/                   # 完整架构设计与演进规范文档
 ```

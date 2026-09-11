@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -b",
-    "verify": "tsx ../../scripts/verify-server-extension.ts"
+    "verify": "tsx ../../../../scripts/verify-server-extension.ts"
   },
   "dependencies": {
     "@loom-studio/extension-sdk": "workspace:*"

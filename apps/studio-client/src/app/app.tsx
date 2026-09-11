@@ -471,6 +471,10 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
     logs: active => <LogViewer active={active} api={state.logsApi} clientLogs={props.clientLogs} t={state.t} />,
     extensions: () => (
       <RendererWorkspacePanel
+        key={state.endpoint}
+        officialContent={state.officialContentApi}
+        models={state.modelProfiles}
+        onCreateAgent={state.createAgentProfile}
         extensionHost={clientExtensions.host}
         host={rendererHost}
         packages={clientExtensions.packages}

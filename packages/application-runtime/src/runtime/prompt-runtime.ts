@@ -10,7 +10,6 @@ import {
   toStoredResourceInput,
 } from '../prompt/prompt-resource-mapper.js'
 import { applyDefaultPromptProjection, normalizePromptResourceArtifact, type PromptResourceNode } from '../cards/workspace.js'
-import { officialPromptResourceIds } from '../prompt/prompt-resource-defaults.js'
 import { revertApplicationStateChangeset } from '../state/state.js'
 import type {
   AgentProfileContent,
@@ -135,13 +134,13 @@ export function createPromptRuntimeMethods(ctx: ApplicationRuntimeContext) {
 
     deletePromptResource: async (input: DeletePromptResourceInput, requestContext?: RuntimeRequestContext): Promise<DeletePromptResourceResult> => {
       const resource = await readMappedResource(ctx.promptResources, input.resourceId)
-      if (resource.origin?.kind === 'builtin') {
-        throw new Error(`Builtin prompt resource cannot be deleted: ${input.resourceId}`)
-      }
       const referencedProfiles = resource.resourceKind === 'preset'
         ? (await listDocuments<AgentProfileContent>(ctx.documents, applicationDocumentTypes.agentProfile))
           .filter(profile => profile.content.presetId === input.resourceId)
         : []
+      if (referencedProfiles.length > 0) {
+        throw new Error(`Prompt Resource is referenced by Agent Profiles: ${input.resourceId}`)
+      }
       const timelineReferences = await findTimelinePromptResourceReferences(ctx, input.resourceId)
       const cards = await listDocuments<CardSourceContent>(ctx.documents, applicationDocumentTypes.cardSource)
       const referencedCards = cards.filter(card => card.content.promptResourceIds?.includes(input.resourceId))
@@ -171,19 +170,6 @@ export function createPromptRuntimeMethods(ctx: ApplicationRuntimeContext) {
           })
         }
         return await documentParticipant.participateTransaction(dataTx, async documents => {
-          for (const profile of referencedProfiles) {
-            const currentProfile = await readDocument<AgentProfileContent>(documents, profile.id, applicationDocumentTypes.agentProfile)
-            await writeDocument<AgentProfileContent>(documents, {
-              id: currentProfile.id,
-              type: applicationDocumentTypes.agentProfile,
-              content: {
-                ...currentProfile.content,
-                presetId: officialPromptResourceIds.assistantPreset,
-                updatedAt: ctx.now(),
-              },
-              expectedVersion: currentProfile.version,
-            })
-          }
           for (const card of referencedCards) {
             const currentCard = await readDocument<CardSourceContent>(documents, card.id, applicationDocumentTypes.cardSource)
             await writeDocument<CardSourceContent>(documents, {

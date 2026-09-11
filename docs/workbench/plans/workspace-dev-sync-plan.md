@@ -4,6 +4,8 @@
 > **日期**：2026-09-03  
 > **前置计划**：[`docs/archive/plans/prompt-resource-ordered-tree-and-caged-slot-plan.md`](../../archive/plans/prompt-resource-ordered-tree-and-caged-slot-plan.md)  
 > **核心目标**：在已落地的 VFS 动态扩展名与强类型树结构之上，探索将角色卡、预设等提示词资源以真实本地目录与 Markdown 文件的形态导出/落盘，打通外部 IDE（VSCode / Cursor）与本地 AI Agent 的文件级共建通道。
+>
+> **当前接续边界**：Card 文件投影与 ZIP/PNG 编解码已[实施](../../architecture/application/card-bundle-files.md)，不要重复开发。后续优先显式 Checkout / Diff / Apply；下文旧路线中的自动 Watcher / 双向同步继续延期，不能作为首版默认前提。
 
 ---
 

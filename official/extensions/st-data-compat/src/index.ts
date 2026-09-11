@@ -21,6 +21,18 @@ export * from './types.js'
 
 export const activate = defineServerExtension({
   activate: ctx => {
+    ctx.rpc.register('sillytavern.importer.convertPromptResource', params => {
+      if (!isRecord(params)) throw new Error('Params must be an object')
+      const sniff = sniffData(params.source)
+      const name = typeof params.name === 'string' ? params.name : undefined
+      if (sniff.detected && sniff.format === 'st.lorebook.json') {
+        return { artifact: convertSillyTavernLorebook(params.source as SillyTavernLorebookData, name).artifact } as unknown as JsonValue
+      }
+      if (sniff.detected && sniff.format === 'st.preset.json') {
+        return { artifact: convertSillyTavernPreset(params.source as SillyTavernPresetData, name).artifact } as unknown as JsonValue
+      }
+      throw new Error('Unsupported SillyTavern Prompt Resource format')
+    })
     // 1. Sniff method
     ctx.rpc.register('sillytavern.importer.sniff', params => {
       if (!isRecord(params)) return { detected: false, format: 'unknown' }

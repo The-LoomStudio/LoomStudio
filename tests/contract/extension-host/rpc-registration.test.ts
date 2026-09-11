@@ -7,7 +7,7 @@ describe('extension host rpc registration contract', () => {
   it('activates example.echo and serves extension rpc', async () => {
     const { kernel, extensionHost } = createExtensionHostHarness()
     await kernel.start()
-    await extensionHost.discover(join(process.cwd(), 'extensions/example-echo'))
+    await extensionHost.discover(join(process.cwd(), 'tests/fixtures/extensions/echo'))
     const summary = await extensionHost.activate('example.echo', 'server')
 
     const result = await kernel.callRpc<{ packageId: string; moduleId: string; echo: JsonValue }>('example.echo.echo', { message: 'hello' })
@@ -20,7 +20,7 @@ describe('extension host rpc registration contract', () => {
   it('reports extension rpc ownership through system.introspect', async () => {
     const { kernel, extensionHost } = createExtensionHostHarness()
     await kernel.start()
-    await extensionHost.discover(join(process.cwd(), 'extensions/example-echo'))
+    await extensionHost.discover(join(process.cwd(), 'tests/fixtures/extensions/echo'))
     await extensionHost.activate('example.echo', 'server')
 
     const result = await kernel.callRpc<{ methods: Array<{ name: string; owner: string }> }>('system.introspect')

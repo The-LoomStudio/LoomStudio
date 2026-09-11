@@ -7,6 +7,7 @@ import type { AssetStore } from '@loom-studio/asset-store'
 import type { ApplicationSession, ApplicationSessionAuth } from './application-session-auth.js'
 import { sanitizeRpcParams, summarizeRpc } from '../rpc/rpc-summary.js'
 import type { StudioRpcRouter } from '../rpc/studio-rpc-router.js'
+import { maxCardPngBytes } from '../codecs/card-png.js'
 
 export function createStudioHttpServer(options: {
   auth: ApplicationSessionAuth
@@ -57,7 +58,7 @@ export function createStudioHttpServer(options: {
 
     const cardBundleExportId = readCardBundleExportId(request.url)
     if (request.method === 'GET' && cardBundleExportId && options.cardPng) {
-      await handleCardFileExport(response, () => options.cardPng!.exportBundle(cardBundleExportId), 'application/vnd.loom.card+zip', 'loom-card.loomcard')
+      await handleCardFileExport(response, () => options.cardPng!.exportBundle(cardBundleExportId), 'application/vnd.loom.card+zip', 'loom-card.loomcard.zip')
       return
     }
 
@@ -173,7 +174,7 @@ async function handleCardPngImport(
   session: ApplicationSession,
 ): Promise<void> {
   try {
-    const source = await readBinaryRequestBody(request, 32 * 1024 * 1024)
+    const source = await readBinaryRequestBody(request, maxCardPngBytes)
     writeJson(response, 201, await cards.import(source, session))
   } catch (error) {
     writeCardPngError(response, error)

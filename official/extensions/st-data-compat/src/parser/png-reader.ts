@@ -45,23 +45,12 @@ export function readPngChunks(source: Uint8Array): PngChunk[] {
 }
 
 export function extractPngImageBytes(source: Uint8Array): Uint8Array {
-  const bytes = Buffer.from(source)
-  if (!isPngFile(bytes)) {
-    throw new Error('Expected a PNG file')
-  }
-
-  let offset = pngSignature.byteLength
-  while (offset < bytes.byteLength) {
-    if (offset + 12 > bytes.byteLength) break
-    const length = bytes.readUInt32BE(offset)
-    const end = offset + 12 + length
-    if (end > bytes.byteLength) break
-    if (bytes.toString('latin1', offset + 4, offset + 8) === 'IEND') {
-      return bytes.subarray(0, end)
-    }
-    offset = end
-  }
-  return source
+  return Buffer.concat([
+    pngSignature,
+    ...readPngChunks(source)
+      .filter(chunk => !['tEXt', 'iTXt', 'zTXt'].includes(chunk.type))
+      .map(chunk => chunk.raw),
+  ])
 }
 
 export function extractStCardFromPng(source: Uint8Array): {
