@@ -43,7 +43,7 @@ Server Extension Manager 负责：
 - 校验 Manifest v2、Module ID、runtime 与 entry 路径边界；
 - 发现 Client-only 和纯资源 Package，但只编排 Server Module；
 - 按 `packageId + moduleId` 持久化 enabled、事件与 Asset capability grant；
-- 从本地目录安全安装 Package，并只卸载 installed 来源；
+- 从本地目录安全安装 Package；卸载 installed 时删除复制目录，卸载 dev-link 时只移除链接，均保留已导入资源与 Package-owned 数据；
 - 串行执行 Module enable、disable 与 reload；
 - 汇总 Package 来源、资源、Module desired state 与真实 Server runtime。
 

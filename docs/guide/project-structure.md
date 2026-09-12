@@ -1,6 +1,6 @@
 # 项目全量文件地图 (Project Structure)
 
-Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要分为三大代码区域：`packages/` (内核与领域逻辑), `apps/` (独立应用程序), `extensions/` (插件实例)。
+Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要分为三大代码区域：`packages/` (内核与领域逻辑), `apps/` (独立应用程序), `official/` 与 `tests/fixtures/extensions/`（官方内容与测试扩展）。
 
 本页提供全仓地图。开始具体任务时，先通过 [`workspace-development.md`](workspace-development.md) 进入目标 Workspace，再阅读该目录的本地 `README.md`；局部 README 负责入口和命令，本页不重复维护每个 Package 的完整文件清单。
 
@@ -82,7 +82,7 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
 | 修改 Prompt Build 展示步骤                     | `features/prompt-build/model/build-prompt-build-steps.ts`   | `widgets/prompt-build-flow/`, `widgets/inspector-panel/`                                                                                                         | `tests/unit/client/prompt-build-steps.test.ts`                                |
 | 修改 Provider Profile / 模型选择设置           | `features/provider-settings/model/use-provider-settings.ts` | `widgets/model-panel/`                                                                                                                                           | `tests/unit/client/provider-settings.test.ts`                                 |
 | 修改 Agent Profile 与当前选择                  | `features/agent-profiles/model/use-agent-profiles.ts`       | `widgets/agent-panel/`, `widgets/agent-composer/`                                                                                                                | `tests/unit/client/provider-settings.test.ts`                                 |
-| 修改 typed Studio API client                   | `shared/api/studio-api.ts`                                  | `apps/studio-server/src/application-rpc.ts`, consuming feature hooks                                                                                             | `tests/unit/client/studio-api.test.ts`                                        |
+| 修改 typed Studio API client                   | `shared/api/studio-api.ts`                                  | `apps/studio-server/src/rpc/handlers/application/index.ts`, consuming feature hooks                                                                                             | `tests/unit/client/studio-api.test.ts`                                        |
 | 修改通用文件树交互                             | `shared/ui/file-tree/file-tree-model.ts`                    | `shared/ui/file-tree/file-tree.tsx`                                                                                                                              | `tests/unit/client/file-tree.test.ts`                                         |
 | 修改页面整体排布                               | `pages/studio/studio-page.tsx`                              | `app/app.tsx`, `widgets/*`                                                                                                                                       | 先跑相关 feature test，再跑 client build                                      |
 | 新增用户可见文案                               | `shared/i18n/en-us.ts`, `shared/i18n/zh-cn.ts`              | 使用方组件或 feature                                                                                                                                             | 相关 feature test / client build                                              |
@@ -165,7 +165,7 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
   - Server/Client 共用的结构化运行日志底座，提供 Root/Child Logger、Memory/Console Sink 与查询类型；Node JSONL 持久化通过 `@loom-studio/logging/node` 子入口提供。
   - 正式架构说明：[`architecture/platform/logging.md`](../architecture/platform/logging.md)。
 - 📦 `packages/loom-runner/`
-  - 面向 Kernel/RPC 的 Core adapter，负责 JSON 输入校验、默认 PassFactory 和 Trace Audit。
+  - 面向 Kernel/RPC 的 Core adapter，负责 JSON 输入校验、注入 PassFactory 和 Trace Audit。
 - 📦 `packages/extension-sdk/`
   - 第三方 Extension 作者侧合同。局部开发入口：[`packages/extension-sdk/README.md`](../../packages/extension-sdk/README.md)。
 - 📦 `packages/extension-sdk/extension-host/`
@@ -175,7 +175,7 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
 - 📦 `packages/diagnostics/` & `packages/trace-audit/`
   - 提供系统级错误收集与运行时审计支持。
 
-当前只有 `packages/loom-runner` 和 `packages/application-runtime` 可以直接依赖 `@loom/core`。前者提供平台 adapter，后者只在第一方 PromptBuild pipeline 内使用 Core public API。Kernel、Document Store、Extension Host、Client 与 Extension 不得直接依赖 Core。
+当前只有 `packages/loom-runner` 和 `packages/application-runtime` 可以直接依赖 `@loom/core`。前者提供平台 adapter；后者保留声明依赖，但当前第一方 PromptBuild 使用本包 DFS 编译器，未调用 Core public API。Kernel、Document Store、Extension Host、Client 与 Extension 不得直接依赖 Core。
 
 ## 🧩 扩展内容
 
@@ -189,5 +189,5 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
 
 1. 当你需要理解 **Application Runtime 公共合同** 时，先看 `packages/application-runtime/README.md`，再按需进入 `src/types.ts`；持久化类型还需查看对应领域 Store。
 2. 当你需要修改 **前端 UI 界面** 时，先定位页面级 widget，再把业务状态、RPC 与领域算法放回对应 `features/`。widget 只保留布局、局部交互和 props 传递。
-3. 当你需要查看 **RPC 如何分流** 时，先看 `apps/studio-server/src/studio-rpc-router.ts`；`application.*` 的边界映射再看 `application-rpc.ts`。
+3. 当你需要查看 **RPC 如何分流** 时，先看 `apps/studio-server/src/rpc/studio-rpc-router.ts`；`application.*` 的边界映射再看 `apps/studio-server/src/rpc/handlers/application/index.ts` 及相邻领域 Handler。
 4. **绝对不要** 为了贪图便利在不合适的层级写代码（比如在 `kernel` 里写 `Prompt` 的解析）。

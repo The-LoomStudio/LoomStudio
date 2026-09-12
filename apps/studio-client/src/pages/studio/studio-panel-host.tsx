@@ -99,6 +99,7 @@ export function StudioPanelHost(props: StudioPanelHostProps) {
               </button>
             </div>
           ) : null}
+          <div className={styles.headerActions} data-loom-component="page-header-actions" id="studio-panel-header-actions" />
           <button
             aria-label={props.t(isImmersive ? 'window.exitImmersive' : 'window.enterImmersive')}
             aria-pressed={isImmersive}
@@ -115,9 +116,10 @@ export function StudioPanelHost(props: StudioPanelHostProps) {
         </header>
       ) : null}
       <div className={styles.workspaceBody}>
-        {STUDIO_PANEL_IDS.map(panel => (
-          <StudioPanelStage key={panel} active={props.activePanel === panel} panel={panel} render={props.panels[panel]} />
-        ))}
+        {STUDIO_PANEL_IDS.map(panel => {
+          if (props.activePanel === 'play' && (panel === 'character' || panel === 'sessions')) return null
+          return <StudioPanelStage key={panel} active={props.activePanel === panel} panel={panel} render={props.panels[panel]} />
+        })}
       </div>
     </div>
   )

@@ -36,6 +36,7 @@ export function toCardSummary(card: DocumentRecord<CardSourceContent>): CardSumm
     name: content.name,
     userName: content.userName,
     description: content.description,
+    openingPreview: content.opening.entries[0]?.content?.slice(0, 240),
     media: content.media,
     createdAt: content.createdAt,
     updatedAt: content.updatedAt,
@@ -56,6 +57,9 @@ export function normalizeCardContent(content: CardSourceContent): CardSourceCont
     importBundleId: normalizeOptionalString(legacyContent.importBundleId),
     portableExtensionPayloadIds: normalizeOptionalIdList(legacyContent.portableExtensionPayloadIds),
     promptResourceIds: normalizeOptionalIdList(legacyContent.promptResourceIds),
+    ...(legacyContent.externalPromptResourceIds !== undefined ? {
+      externalPromptResourceIds: legacyContent.externalPromptResourceIds.filter(id => legacyContent.promptResourceIds?.includes(id)),
+    } : {}),
     stateDefinitionIds: normalizeOptionalIdList(legacyContent.stateDefinitionIds),
     ...(Array.isArray(legacyContent.stateTemplates) ? {
       stateTemplates: structuredClone(legacyContent.stateTemplates),

@@ -2,7 +2,7 @@
 
 > **状态**：Partial / Frontend Spike Complete
 > **日期**：2026-08-05
-> **边界**：本文规划 Provider Account 与 Model Profile 的品牌图标。当前不安装依赖、不修改 Schema，也不把启发式识别结果当作模型事实。
+> **边界（2026-09-12）**：静态 SVG 与前端识别已接入；后续使用 Provider Profile 与 `providerProfileId + modelId`，不恢复独立 Model Profile 实体。`iconKey` 持久化仍待合同，不把启发式识别结果当作模型事实。
 
 ## 上游调研
 
@@ -68,7 +68,7 @@ Provider Account 使用提供商品牌图标，Model Profile 优先使用模型�
 
 ## 依赖策略
 
-实施前做一个最小构建 Spike：
+以下 Spike 已完成，结果见下一节；不重复安装 React 包或重新引入其 UI 依赖：
 
 1. 仅安装并具名导入 5 至 8 个 `@lobehub/icons` 基础 SVG 组件；
 2. 检查 pnpm peer dependency、TypeScript、Vite 产物和 gzip 增量；

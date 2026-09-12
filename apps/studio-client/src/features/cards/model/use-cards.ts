@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
@@ -19,6 +19,8 @@ type UseCardsInput = {
 }
 
 export function useCards(input: UseCardsInput) {
+  const refreshRequest = useRef(0)
+  useEffect(() => () => { refreshRequest.current += 1 }, [input.api])
   const [cards, setCards] = useState<CardSummary[]>([])
   const [selectedCardId, setSelectedCardId] = useState<string>()
   const selectedCard = cards.find(card => card.id === selectedCardId)
@@ -49,9 +51,10 @@ export function useCards(input: UseCardsInput) {
       if (current) setSelectedCardDetails(undefined)
     })
     return () => { current = false }
-  }, [input.api, selectedCardId])
+  }, [input.api, selectedCardId, selectedCard?.version])
 
   async function refreshCards() {
+    const request = ++refreshRequest.current
     const cards: CardSummary[] = []
     let cursor: string | undefined
     do {
@@ -59,6 +62,7 @@ export function useCards(input: UseCardsInput) {
       cards.push(...result.cards)
       cursor = result.nextCursor
     } while (cursor)
+    if (request !== refreshRequest.current) return cards
     setCards(cards)
     setSelectedCardId(current => {
       if (current && cards.some(card => card.id === current)) return current
@@ -293,8 +297,17 @@ export function useCards(input: UseCardsInput) {
     })
   }
 
-  async function exportCard(card: CardSummary, format: 'png' | 'polyglot' | 'loomcard') {
+  async function exportCard(card: CardSummary, format: 'png' | 'polyglot' | 'loomcard' | 'directory') {
     await input.runAction(async () => {
+      if (format === 'directory') {
+        const preview = await input.api.cards.previewDirectory(card.id)
+        if (preview.conflicts.length) {
+          throw new Error(input.t('character.directoryConflict', { count: preview.conflicts.length }))
+        }
+        const saved = await input.api.cards.saveDirectory(card.id, preview.token)
+        toast.success(input.t('character.directorySaved', { count: saved.changedFiles }), { description: saved.directory })
+        return
+      }
       const suffix = format === 'png' ? 'export.png' : format === 'polyglot' ? 'export.polyglot.png' : 'export.loomcard'
       const response = await fetch(`/cards/${encodeURIComponent(card.id)}/${suffix}`)
       if (!response.ok) {
@@ -312,6 +325,7 @@ export function useCards(input: UseCardsInput) {
   }
 
   return {
+    directoryApi: input.api.directories,
     cards,
     selectedCardId,
     setSelectedCardId,

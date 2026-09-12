@@ -68,6 +68,7 @@ export type CardBundleArtifact = {
     stateContributionIds?: string[]
   }
   contextAssets: PromptResourceNode[]
+  externalContextAssetIds?: string[]
   state?: StateArtifact
   stateTemplates?: Array<{
     id: string
@@ -98,6 +99,7 @@ export type PortableExtensionPayloadArtifact = {
   }
   metadata?: JsonObject
   content: string
+  resourceOrigin?: 'card' | 'external'
 }
 
 export type PortableExtensionPayloadContent = Omit<PortableExtensionPayloadArtifact, 'id'> & {
@@ -237,6 +239,7 @@ type PromptContributionResourceNode = PromptResourceNode & {
 }
 
 export async function importCardBundle(input: {
+  newCardId?: string
   artifact: CardBundleArtifact
   storedSourceArtifact?: Pick<
     CardBundleSourceArtifactRef,
@@ -281,7 +284,8 @@ export async function importCardBundle(input: {
   }, async dataTx => {
     const resourceTx = input.promptResources.transaction(dataTx)
     return documentParticipant.participateTransaction(dataTx, async tx => {
-      const cardId = createId('card')
+      const cardId = input.newCardId ?? createId('card')
+      if (!/^card-[A-Za-z0-9-]+$/.test(cardId)) throw new Error('Invalid new Card ID')
       const importBundleId = createId('import-bundle')
       const textPipelineDocumentIds: string[] = []
       for (const [index, rule] of (artifact.textTransformRules ?? []).entries()) {
@@ -356,7 +360,10 @@ export async function importCardBundle(input: {
             enabled: false,
             orderIndex: item.attachment.orderIndex,
             grantedCapabilities: [],
-            origin: { kind: 'card-bundle-import', artifactId: artifact.artifactId },
+            origin: {
+              kind: 'card-bundle-import', artifactId: artifact.artifactId,
+              ...(item.attachment.resourceOrigin !== undefined ? { resourceOrigin: item.attachment.resourceOrigin } : {}),
+            },
             createdAt: timestamp,
             updatedAt: timestamp,
           },
@@ -413,6 +420,10 @@ export async function importCardBundle(input: {
           importBundleId,
           portableExtensionPayloadIds,
           promptResourceIds: resourceIds,
+          ...(artifact.externalContextAssetIds !== undefined ? {
+            externalPromptResourceIds: resourceIds.filter((_, index) =>
+              artifact.externalContextAssetIds!.includes(artifact.contextAssets[index]!.id)),
+          } : {}),
           stateDefinitionIds,
           ...(stateContribution ? { stateEntityTypes: structuredClone(stateContribution.entityTypes) } : {}),
           ...(stateContribution ? { timelineStateEntities: structuredClone(stateContribution.entities) } : {}),
@@ -521,7 +532,7 @@ export async function exportCardArtifact(input: {
     .filter(mount => mount.content.target.kind === 'card' && mount.content.target.cardId === input.cardId)
     .sort((left, right) => left.content.orderIndex - right.content.orderIndex || left.id.localeCompare(right.id))
   if (mounts.length > 0 && !input.blobs) throw new Error('Blob Store is required to export Loom Script attachments')
-  const scriptAttachments = await Promise.all(mounts.map(async mount => {
+  const scriptAttachments = await Promise.all(mounts.map(async (mount): Promise<LoomScriptAttachmentArtifact> => {
     const script = await readLoomScriptRevision(input.documents, mount.content.scriptDocumentId, mount.content.pinnedDocumentVersion)
     if (script.content.owner.kind !== 'card' || script.content.owner.cardId !== input.cardId) {
       throw new Error(`Card Loom Script Mount references a non-owned Script: ${mount.id}`)
@@ -535,6 +546,8 @@ export async function exportCardArtifact(input: {
         source: new TextDecoder('utf-8', { fatal: true }).decode(bytes),
       },
       orderIndex: mount.content.orderIndex,
+      ...(mount.content.origin.resourceOrigin === 'card' || mount.content.origin.resourceOrigin === 'external'
+        ? { resourceOrigin: mount.content.origin.resourceOrigin } : {}),
     }
   }))
 
@@ -548,6 +561,10 @@ export async function exportCardArtifact(input: {
     .map(({ content: { owner, origin, createdAt, updatedAt, ...extractor } }) => extractor)
   return {
     ...buildExportArtifact({ card, contextAssets, stateTemplates, extensionPayloads, scriptAttachments, importBundle }),
+    ...(card.content.externalPromptResourceIds !== undefined ? {
+      externalContextAssetIds: contextAssets.filter((_, index) =>
+        card.content.externalPromptResourceIds!.includes(card.content.promptResourceIds![index]!)).map(node => node.id),
+    } : {}),
     textTransformRules,
     textExtractors,
   }
@@ -598,6 +615,8 @@ function buildExportArtifact(input: {
       stateContributionIds: cardContent.stateContributionIds,
     },
     contextAssets: input.contextAssets,
+    // Current Card bindings, not the import snapshot, own resource provenance.
+    externalContextAssetIds: undefined,
     state: createStateArtifact({
       id: `card:${input.card.id}`,
       entityTypes: structuredClone(cardContent.stateEntityTypes ?? []),
@@ -751,6 +770,7 @@ function toPortableExtensionPayloadArtifact(content: PortableExtensionPayloadCon
     ...(content.requirement !== undefined ? { requirement: structuredClone(content.requirement) } : {}),
     ...(content.metadata !== undefined ? { metadata: structuredClone(content.metadata) } : {}),
     content: content.content,
+    ...(content.resourceOrigin !== undefined ? { resourceOrigin: content.resourceOrigin } : {}),
   }
 }
 
@@ -926,6 +946,15 @@ function assertCardBundleArtifact(value: unknown): asserts value is CardBundleAr
     assertPromptResourceNode(node, `contextAssets[${index}]`)
     assertUniquePromptResourceNodeIds(node)
   }
+  if (value.externalContextAssetIds !== undefined) {
+    const rootIds = new Set(value.contextAssets.map(node => (node as JsonObject).id))
+    if (!Array.isArray(value.externalContextAssetIds)
+      || value.externalContextAssetIds.some(id => typeof id !== 'string'
+        || !rootIds.has(id))
+      || new Set(value.externalContextAssetIds).size !== value.externalContextAssetIds.length) {
+      throw new Error('Invalid externalContextAssetIds')
+    }
+  }
   if (value.state !== undefined) parseStateArtifact(value.state)
   if (value.stateTemplates !== undefined) {
     if (!Array.isArray(value.stateTemplates)) throw new Error('Card bundle stateTemplates must be an array')
@@ -1000,12 +1029,17 @@ function assertCardTextPipeline(value: unknown, extractor: boolean): void {
   }
 }
 
+function assertResourceOrigin(value: unknown): void {
+  if (value !== undefined && value !== 'card' && value !== 'external') throw new Error('Invalid resourceOrigin')
+}
+
 function assertLoomScriptAttachments(value: unknown): void {
   if (value === undefined) return
   if (!Array.isArray(value)) throw new Error('Loom Script attachments must be an array')
   const metadataIds = new Set<string>()
   for (const [index, attachment] of value.entries()) {
     if (!isObject(attachment) || !Number.isSafeInteger(attachment.orderIndex)) throw new Error(`Invalid Loom Script attachment: ${index}`)
+    assertResourceOrigin(attachment.resourceOrigin)
     if (!isObject(attachment.script)
       || attachment.script.format !== 'loom.script'
       || attachment.script.schemaVersion !== 1
@@ -1037,6 +1071,7 @@ function assertPortableExtensionPayloads(value: unknown): void {
   let totalBytes = 0
   for (const [index, payload] of value.entries()) {
     if (!isObject(payload)) throw new Error(`Card bundle Extension Payload must be an object: ${index}`)
+    assertResourceOrigin(payload.resourceOrigin)
     assertPortablePayloadToken(payload.id, `Card bundle Extension Payload id: ${index}`)
     if (ids.has(payload.id)) throw new Error(`Duplicate Extension Payload id: ${payload.id}`)
     ids.add(payload.id)

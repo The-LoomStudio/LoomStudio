@@ -1,6 +1,6 @@
 # Agent Run 可观测性计划
 
-> **状态**：Draft / Discussion Capture
+> **状态**：Transcript 基础已实现 / 专业 Trace 与 Inspector 待设计
 >
 > **主题**：Agent Run / Runtime 的系统日志、Runtime Transcript、Trace、Audit、前端 Inspector 与后端 TUI 边界。
 >
@@ -36,16 +36,9 @@ Agent 工作内容进入 Runtime Transcript。
 
 ## 2. 当前基础
 
-现有模型已经具备：
+2026-09-12 核对，当前已实现 [Agent Runtime 与 Session](../../../architecture/application/agent/runtime-and-session.md) 中的 canonical Transcript、Provider Observation、Tool Invocation / Result 配对、Run State 与分阶段持久化。Narrative Timeline 与 Agent Session 已是独立权威模型，不能继续按旧 RuntimeEntry Document 设计持久化。
 
-- Run status；
-- RuntimeEntry；
-- CommitCandidate；
-- Runtime Transcript / Narrative Timeline 分离方向；
-- ToolCall / ToolResult 作为 transcript 一等条目的方向；
-- commit / review / write 与 discard / retry / abort 讨论；
-- Run Changeset、Run Memo、Prompt Projection Policy 候选；
-- correlationId、callId、traceId、changesetId、auditId 的总体关联设计。
+下文 Trace、Audit、Run Memo、完整 Step 因果链及统一关联 ID 仍为候选，不因 Transcript 已落地而自动成立；跨进程 Resume 同样未完成。
 
 仍缺少：
 
@@ -102,7 +95,7 @@ commit.failed
 ```text
 runId / stepId
 sessionId / branchId
-agentRuntimeProfileId / modelProfileId
+agentProfileId / providerProfileId / modelId
 provider kind / model id
 tool name / call id
 commit candidate id
@@ -337,7 +330,7 @@ TUI 不编辑 Narrative、不承担 Commit review、不展示完整 Agent 工作
 
 ### Phase AR-3：Transcript 引用与内容策略
 
-- 稳定 RuntimeEntry 与 Step / Tool / Commit 的引用；
+- 在现有 Transcript Entry / Invocation 身份上补 Step / Tool / Commit 的 Trace 引用；
 - 大型 payload 改用 summary + reference；
 - 增加 redaction 与权限；
 - 保持 Transcript archive 与 Prompt Projection Policy 分离。
@@ -381,7 +374,7 @@ TUI 不编辑 Narrative、不承担 Commit review、不展示完整 Agent 工作
 2. discarded Run 的 Transcript 默认保留期与可见性；
 3. Provider response 哪些部分允许持久化；
 4. 大型 ToolResult 的 storage / asset reference 形式；
-5. Step identity 与 RuntimeEntry identity 的稳定关系；
+5. Step identity 与现有 Transcript Entry identity 的稳定关系；
 6. Run Trace 进入现有 TraceAuditStore，还是需要 Application 专用 Store；
 7. Run completed 的 success notification 默认是否启用；
 8. TUI 是否只查看本地 Run，还是未来支持 remote server。

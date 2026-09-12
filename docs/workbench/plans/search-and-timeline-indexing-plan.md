@@ -2,13 +2,13 @@
 
 > **状态**：Asset Search Implemented in Frontend / Timeline Search Planned
 > **日期**：2026-08-07
-> **边界**：记录资产搜索与长会话搜索的分层决策。本文的旧 `Session` / `NarrativeEntry Document` API 示例已经被 Narrative Store 数据层取代；后续 Timeline Search 必须基于新的 Timeline / Branch / Node 分页合同重新收束，不能照抄旧示例实施。
+> **边界（2026-09-12）**：资产前端搜索与 Narrative Store 分页已存在；Timeline 搜索、命中窗口与索引仍是延期方向。后续复用 Timeline / Branch / Node 合同，不恢复旧 Session / NarrativeEntry Document 链。
 
 ## 1. 决策摘要
 
 搜索按数据规模与加载边界分为两层：
 
-1. 当前角色卡或 Preset 的 Prompt Resource 可由 Card 的有序 `promptResourceIds` 与单项读取接口加载到前端，通常不超过约 800 个节点，因此使用纯前端搜索；
+1. 当前角色卡或 Preset 的 Prompt Resource 使用已加载节点进行前端搜索；不把早期样本约 800 个节点当作正式容量上限；
 2. 长会话可能超过 1000 楼和数百万字，不应为了搜索完整加载到浏览器，后续采用 Timeline 分页、后端搜索与消息窗口加载。
 
 两层可以共享搜索框、结果摘要和跳转语义，但不强求共享执行器。
@@ -28,7 +28,9 @@
 
 ## 3. 当前 Timeline 限制
 
-当前 `application.getTimeline` 返回当前 Branch 的完整路径。`readBranchPath` 会先读取 NarrativeEntry 文档集合，再在 Application Runtime 中构造路径。该实现适合当前开发规模，但不适合作为千楼会话的长期读取与搜索边界。
+当前 [Narrative Store](../../../packages/narrative-store/src/store.ts) 的 `getPage` 已支持 `timelineId`、可选 `branchId`、`cursor` 与 `limit`，沿 Branch parent chain 分页并检查 cursor 是否属于该路径。[Narrative Runtime](../../../packages/application-runtime/src/runtime/narrative-runtime.ts) 通过 `getNarrativePage` 转发这一合同。不能再把 Document 全量读取描述为当前数据层实现。
+
+分页存在不等于搜索、以命中 Node 为中心的窗口或前端虚拟化已经完成；这些仍需单独设计和验证。
 
 长会话还会放大以下成本：
 
@@ -39,25 +41,24 @@
 
 ## 4. 后续 Timeline API
 
-后续应先确定分页与定位合同，再实现搜索：
+复用已有 `getNarrativePage`，后续只补命中定位与搜索合同。以下是候选职责，不是已注册 RPC 名称或冻结 Schema：
 
 ```text
-application.getTimelinePage
-  sessionId
+现有分页：getNarrativePage
+  timelineId
   branchId
   cursor
-  direction
   limit
 
-application.getTimelineWindow
-  sessionId
+候选命中窗口
+  timelineId
   branchId
-  entryId
+  nodeId
   before
   after
 
-application.searchTimeline
-  sessionId
+候选 Timeline 搜索
+  timelineId
   branchId
   query
   filters
@@ -65,34 +66,34 @@ application.searchTimeline
   limit
 ```
 
-首次进入会话只加载最新约 50 至 100 楼。向上浏览时加载更早页面；点击搜索结果或导航刻度时，以目标 Entry 为中心加载消息窗口。
+建议首次进入会话只加载最新约 50 至 100 楼，具体数量须根据现有分页合同与 UI 负载确认。向上浏览时加载更早页面；点击搜索结果或导航刻度时，以目标 Node 为中心加载消息窗口。
 
 搜索结果只返回消息 ID、楼层或路径位置、角色、时间、命中摘要和必要的定位信息，不返回完整会话正文。
 
 ## 5. 搜索投影
 
-NarrativeEntry 是独立 Document，后续适合建立可重建的 SQLite FTS 派生投影，例如：
+Narrative Node 由独立 Narrative Store 管理。后续可评估从该 Store 构建可重建的 SQLite FTS 派生投影，候选字段如下，尚未冻结表名或 Schema：
 
 ```text
-narrative_entry_search
-- entry_id
-- session_id
+narrative_node_search
+- node_id
+- timeline_id
 - role
 - content
 - created_at
 ```
 
-FTS 投影不是权威数据源。Document Store 仍保存 NarrativeEntry 事实；搜索投影可以从现有文档重新构建。
+FTS 投影不是权威数据源。Narrative Store 保存 Node 事实；索引必须能从其权威数据重建，并处理分支路径与提交后的更新。
 
 不得直接将 `content_json LIKE '%query%'` 作为长期方案。它无法稳定提供相关性、摘要、字段约束与可扩展性能。
 
 ## 6. Branch Path 约束
 
-Fork 后的 Branch Path 可能包含由其他 Branch 创建的祖先 Entry，因此 Timeline 搜索不能简单使用 `branchId = ?` 过滤 NarrativeEntry。
+Fork 后的 Branch Path 可能包含由其他 Branch 创建的祖先 Node，因此 Timeline 搜索不能简单使用创建时 `branchId = ?` 过滤 Node。
 
 实施前必须确定以下其中一种路径成员关系：
 
-- 查询时从当前 Head 构造 Entry ID 集合，再与搜索命中相交；
+- 复用当前 Head 的 parent chain 语义，将路径成员与搜索命中相交；
 - 建立可重建的 Branch Path 投影；
 - 使用其他明确支持 Fork 祖先关系的索引结构。
 
@@ -100,7 +101,7 @@ Fork 后的 Branch Path 可能包含由其他 Branch 创建的祖先 Entry，因
 
 ## 7. 前端依赖
 
-Timeline 分页落地时，消息容器需要同步支持：
+后续搜索与窗口化接入时，消息容器需要核对并补齐：
 
 - 窗口化或虚拟化渲染；
 - 向上加载时保持视觉锚点；
@@ -114,7 +115,7 @@ Timeline 分页落地时，消息容器需要同步支持：
 
 - 后端 Timeline 搜索；
 - SQLite FTS Schema；
-- Timeline 分页 RPC；
+- 平行的 Timeline 分页 API；
 - 跨角色卡全局搜索；
 - 聊天消息虚拟化；
 - 搜索索引后台维护任务。

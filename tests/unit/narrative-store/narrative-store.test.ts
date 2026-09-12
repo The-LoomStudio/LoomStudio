@@ -46,6 +46,9 @@ describe('narrative store', () => {
       source: { runId: 'run-opening', changesetId: created.commit.changesetId },
     })
     expect(created.branch.headNodeId).toBe(created.nodes[1]?.id)
+    const listed = await store.listTimelines({ createdFromCardId: 'card-1' })
+    expect(listed.timelines[0]?.openingPreview).toBe('Opening one')
+    expect(listed.timelines[0]?.latestPreview).toBe('Opening two')
     expect(created.commit.operations.map(operation => operation.entityType)).toEqual([
       'narrative.timeline',
       'narrative.branch',

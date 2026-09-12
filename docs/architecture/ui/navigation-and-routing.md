@@ -51,6 +51,7 @@ Zustand 保存 Panel 与目录宽高、文件树展开状态、当前 Asset、�
 /studio/presets/:cardId/:assetId
 
 /studio/models
+/studio/agents
 /studio/debug
 /studio/logs
 /studio/settings

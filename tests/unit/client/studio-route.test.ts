@@ -5,6 +5,7 @@ describe('studio routes', () => {
   it('reads chat, character and asset identities from paths', () => {
     expect(readStudioRoute('/studio/resources')).toEqual({ panel: 'resource' })
     expect(readStudioRoute('/studio/agents')).toEqual({ panel: 'agent' })
+    expect(readStudioRoute('/studio/play')).toEqual({ panel: 'play' })
     expect(readStudioRoute('/studio/history')).toEqual({ panel: 'sessions' })
     expect(readStudioRoute('/studio/extensions')).toEqual({ panel: 'extensions' })
     expect(readStudioRoute('/studio/chat/timeline-1/branch/main')).toEqual({ panel: null, timelineId: 'timeline-1', branchId: 'main' })
@@ -21,6 +22,7 @@ describe('studio routes', () => {
     expect(buildStudioPanelPath('preset', { cardId: 'card one', assetId: 'asset/two' })).toBe('/studio/presets/card%20one/asset%2Ftwo')
     expect(buildStudioPanelPath('agent')).toBe('/studio/agents')
     expect(buildStudioPanelPath('sessions')).toBe('/studio/history')
+    expect(buildStudioPanelPath('play')).toBe('/studio/play')
   })
 
   it('round-trips explicit node anchors and rejects unrelated hashes', () => {

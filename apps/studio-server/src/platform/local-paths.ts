@@ -18,6 +18,7 @@ export type LoomStudioLocalPaths = {
 
 export type ResolveLoomStudioLocalPathsOptions = {
   home?: string
+  dataRoot?: string
   homeDirectory?: string
   platform?: NodeJS.Platform
   environment?: NodeJS.ProcessEnv
@@ -46,6 +47,8 @@ export function resolveLoomStudioLocalPaths(
     logRoot = roots.logRoot
   }
 
+  const overrideDataRoot = options.dataRoot ?? environment.LOOM_STUDIO_DATA_ROOT
+  if (overrideDataRoot) dataRoot = resolve(overrideDataRoot)
   const extensionRoot = join(dataRoot, 'extensions')
   return {
     dataRoot,

@@ -528,12 +528,17 @@ export async function prepareAgentTurn(
   if (!ctx.agents) throw new Error('Agent Store is not configured')
   const session = await ctx.agents.getSession(input.agentSessionId)
   if (!session) throw new Error(`Agent session not found: ${input.agentSessionId}`)
-  const narratives = input.narrativeTarget ? ctx.narratives : undefined
-  if (input.narrativeTarget && !narratives) throw new Error('Narrative Store is not configured')
-  const narrativePage = input.narrativeTarget
+  if (session.timelineId && input.narrativeTarget && session.timelineId !== input.narrativeTarget.timelineId) {
+    throw new Error('Narrative target does not match the Agent Session timeline binding')
+  }
+  const narrativeTarget: { timelineId: string; branchId?: string } | undefined = input.narrativeTarget
+    ?? (session.timelineId ? { timelineId: session.timelineId } : undefined)
+  const narratives = narrativeTarget ? ctx.narratives : undefined
+  if (narrativeTarget && !narratives) throw new Error('Narrative Store is not configured')
+  const narrativePage = narrativeTarget
     ? await narratives!.getPage({
-        timelineId: input.narrativeTarget.timelineId,
-        branchId: input.narrativeTarget.branchId,
+        timelineId: narrativeTarget.timelineId,
+        branchId: narrativeTarget.branchId,
         limit: 100,
       })
     : undefined

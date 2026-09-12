@@ -1,0 +1,7 @@
+{
+  "name": "@loom-studio/the-world",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The World 官方扩展工程骨架；迁移延期，尚无可执行模块。"
+}

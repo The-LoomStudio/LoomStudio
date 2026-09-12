@@ -16,6 +16,28 @@
   animation: dialog-backdrop-enter 140ms ease-out both;
 }
 
+.dialog.media {
+  --loom-color-text: #eee;
+  --loom-color-text-muted: #bbb;
+  --loom-color-surface-subtle: rgb(255 255 255 / 8%);
+  --loom-color-divider: rgb(255 255 255 / 20%);
+  background: #111;
+  color: #eee;
+  width: 100vw;
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  border-radius: 0;
+  box-shadow: none;
+}
+.media .frame { height: 100%; }
+.media .header { background: transparent; padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left)); }
+.media .header h2 { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.media .titleRow { flex-wrap: wrap; }
+.media .titleRow h2 { flex-basis: 160px; }
+.media .headerActions { margin-left: auto; max-width: 100%; }
+.media .body { padding: 0; overflow: hidden; position: relative; }
+
 .dialog[open] {
   animation: dialog-enter 160ms var(--loom-motion-easing-standard) both;
 }
@@ -36,6 +58,10 @@
 .header p {
   margin: 0;
 }
+
+.titleRow { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.titleRow h2 { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.headerActions { display: flex; align-items: center; flex-shrink: 0; gap: 4px; }
 
 .header h2 {
   font-size: var(--loom-font-size-5);

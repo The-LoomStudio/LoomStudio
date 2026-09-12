@@ -27,6 +27,12 @@ export async function handleTimelineRpc(
         timelineId: readString(params, 'timelineId'),
       }) as unknown as JsonValue
 
+    case 'application.exportTimelineArchive':
+      return await runtime.exportTimelineArchive({ timelineId: readString(params, 'timelineId') }) as unknown as JsonValue
+
+    case 'application.importTimelineArchive':
+      return await runtime.importTimelineArchive({ source: readString(params, 'source') }) as unknown as JsonValue
+
     case 'application.listNarrativeTimelines':
       return await runtime.listNarrativeTimelines({
         createdFromCardId: readOptionalString(params, 'createdFromCardId'),

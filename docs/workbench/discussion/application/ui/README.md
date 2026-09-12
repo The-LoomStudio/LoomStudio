@@ -39,7 +39,7 @@ apps/studio-client + docs/architecture/ui:
 | [`default-airp-layout-v0.md`](default-airp-layout-v0.md) | Partially Promoted / Open Design | Base Canvas 与浮动 Workspace 已实现；继续讨论输入舱和渲染扩展 |
 | [`ui-preflight-decisions-v0.md`](ui-preflight-decisions-v0.md) | Open Design / Initial Decisions | UI 动工前的 I18N、滚动、焦点、渲染安全和插件 slot 基础决策 |
 | [`agent-panel-rendering-v0.md`](agent-panel-rendering-v0.md) | Open Design | Agent 面板内文本、Artifact、ToolCall 和交互卡片的渲染边界 |
-| [`background-and-panel-materials-v0.md`](background-and-panel-materials-v0.md) | Open Design | 背景与透明/毛玻璃材质、采样边界，以及扩展声明式设置页与自定义 Renderer 分工 |
+| [`background-and-panel-materials-v0.md`](background-and-panel-materials-v0.md) | Promoted / 已分流 | 背景与材质晋升 UI Plan；扩展页面、声明式设置与组件使用转入 Extension DX Plan |
 | [`narrative-inline-rendering-and-render-mount-v0.md`](narrative-inline-rendering-and-render-mount-v0.md) | Partially Promoted / Core Implemented | 消息内 DisplayPart、Node Binding 与动态 Render Mount 已落地；Streaming、Marker 数据源与 Attachment 仍开放 |
 | [`../../../../archive/plans/renderer-surface-and-client-host-implementation-plan.md`](../../../../archive/plans/renderer-surface-and-client-host-implementation-plan.md) | Implemented / Audited | 非消息 Surface、冲突仲裁、Client Extension Host 与动态实例生命周期 |
 | [`custom-renderer-poc-plan-v0.md`](custom-renderer-poc-plan-v0.md) | PoC Plan | 多标签页 Custom Renderer 的隔离、状态同步、轻量 SDK、CSS/A11Y/I18N smoke |

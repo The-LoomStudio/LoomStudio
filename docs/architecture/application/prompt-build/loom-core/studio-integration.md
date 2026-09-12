@@ -1,118 +1,70 @@
 # Loom Core 与 Studio 集成
 
-本文说明 Loom Studio 如何在不污染 Core 的前提下使用 `@loom/core`。
+本文区分当前可执行调用链与依赖声明。当前 Kernel 的 `loom.run` 通过 Loom Runner 执行 Core；Agent PromptBuild 使用 Application 内部 DFS 编译器，没有调用 Core Pass Pipeline。
 
 ## 1. 两条集成路径
 
 ```text
-Application Runtime
-  -> 直接使用 @loom/core public API
-  -> 第一方 PromptBuild
+Agent Runtime
+  -> composeAgentTurnPrompt
+  -> compilePromptDataModel（Application DFS）
+  -> CompiledPrompt / Provider 输入
 
-Kernel RPC
+Kernel RPC loom.run
   -> Loom Runner
-  -> @loom/core public API
-  -> 领域无关 loom.run
+  -> @loom/core run / PassRegistry
+  -> Fragment / Trace
 ```
 
-两条路径共享 Core 执行模型，但拥有不同的输入校验、Trace 投影和业务职责。
+`application-runtime` 的 package.json 仍声明 `@loom/core` 依赖，但依赖存在不证明业务执行经过 Core。旧文档所述三段 Pass 已不符合当前源码；是否恢复集成需要独立决策，本次事实修订不重开归档迁移计划。
 
 ## 2. PromptBuild 的职责
 
-PromptBuild 在 Core 之外负责：
+PromptBuild 从领域 Store 与 Runtime 输入准备 SourceNode / PromptContribution，展开宏、计算 Activation，按 Preset 有序树及 Anchor 内部的 `localDepth` 编译消息。Card、Setting、Timeline、Agent 和 Provider 语义由 Application 拥有，不能下沉到 Core。
 
-- 从 Document Store 和 Runtime 输入读取数据；
-- 构造 SourceNode 与 PromptContribution；
-- 执行宏与领域数据准备；
-- 计算 Activation；
-- 解释 Ordered Tree、Anchor、Slot 和 Caged Depth；
-- 应用树状结构 DFS 遍历与 Anchor 局部深度聚合；
-- 生成 CompiledPrompt 与 ProviderMessage；
-- 决定 Trace 对上层暴露的内容。
+源码入口：
 
-Core 只看到 PromptBuild 创建的 Fragment、Pass 和 metadata，不理解上述概念。
+- [Agent 来源组装与 Trace](../../../../../packages/application-runtime/src/agents/agent-turn.ts)
+- [DFS 编译器](../../../../../packages/application-runtime/src/prompt/prompt-build-pipeline.ts)
+- [Composition 类型](../../../../../packages/application-runtime/src/prompt/prompt-builder.ts)
 
 ## 3. Source Adapter 边界
 
-历史设计最终收敛出的稳定边界是：
-
 ```text
-Documents / Runtime Sources
+领域 Store / Runtime Sources
   -> Application Source Preparation
-  -> prepared domain data
-  -> Application-owned Core Passes
+  -> SourceNode + PromptContribution
+  -> Application DFS 编译
 ```
 
-数据库、文件、网络与宏展开发生在 Core 外。Core 不提供 `runWithSources()`，也不把 Card、Setting Layer 或 Session 输入变成命名参数。
-
-Source Preparation 可以修改节点自己的文本内容，但不会把外部提示词资源压成供 Preset 二次展开的命名字符串。外部资源以带 Source 引用和 Composition Capability 的 Contribution 进入 Pipeline，由 Application-owned Pass 保留其 Activation、Anchor/Slot 挂载、排序和 Trace 身份；Macro 不承担结构化节点注入。
-
-当前 `composeAgentTurnPrompt()` 会在调用 Core 前异步完成：
-
-- Narrative branch 读取；
-- Workspace prompt asset 读取；
-- Card snapshot 与 macro context 准备；
-- Preset 树节点、外部 Mount 与局部深度（`local_depth`）组合。
+外部贡献保留来源身份与目标 Anchor，宏只展开宿主正文，不替代结构化挂载。数据库、网络与宏数据准备不进入 Core Pass；Core 本身不提供领域 Source Adapter。
 
 ## 4. 当前 PromptBuild Pipeline
 
-后端当前切片已经注册三个第一方 Pass：
+`composeAgentTurnPrompt()` 直接调用 `prompt/prompt-build-pipeline.ts` 的 `compilePromptDataModel()`。当前路径没有注册或执行 `prompt.materialize`、`prompt.order`、`prompt.emit`。
 
-```text
-prompt.materialize
-  -> Source Fragment 转为 Composition Fragment
-  -> 计算 Activation，并保留 active / inactive 原因
+Narrative Node 使用 `@chat.narrative`，Agent Session 历史使用 `@chat.session`，当前输入使用 `@chat.input`。实际消息位置由 Preset 树与编译器决定，不使用旧 `@history.*` 名称作为 Runtime 默认合同。
 
-prompt.order
-  -> 按 Preset 有序树物理顺序（DFS）与 Anchor 内部 local_depth 局部排序
-
-prompt.emit
-  -> 从 active Composition Fragment 生成 Message Fragment
-  -> Application 适配器构造 CompiledPrompt / ProviderMessage
-```
-
-运行配置由 Application Runtime 通过 `PassRegistry` 和 JSON-compatible `PassConfig` 提供：
-
-```ts
-run({
-  fragments: sourceFragments,
-  passes: [
-    { name: 'prompt.materialize', params: materializeParams },
-    { name: 'prompt.order', params: orderParams },
-    { name: 'prompt.emit', params: emitParams },
-  ],
-  registry,
-  trace: { mode: 'on' },
-})
-```
+Narrative Node 本身没有 Provider role；最终 role 来自包裹它的 Message 节点。当前编译器也包含旧树形态的兼容分支，不能把所有输入都描述为 Core Message Fragment。
 
 ### 4.1 当前粒度限制
 
-当前仍将 Source Preparation 保留在 Core 外，将 Activation、Composition、排序和 Emit 收束在三个第一方 Pass 中。`normalize`、`filter`、`slot fill` 等更细粒度拆分暂不提前引入，避免 Trace 和 Owner 归因膨胀。
-
-当前实现已经能够通过独立 Core Pass 展示 materialize / order / emit 的 Mutation；400～500 条目真实性能门槛、Client Inspector 消费和旧编译器删除仍属于迁移计划的后续阶段。
-
-Agent Turn 的 Runtime Source 也经过这条 Pipeline：Narrative Timeline Node 固定挂载到预设对应的 Anchor 孔位（如 `@history.narrative`），Agent Session Message 固定挂载到 `@history.session`，当前输入固定挂载到对应输入 Anchor。它们不在 Core 执行后另行拼接；Anchor 归属于预设作者的物理树排版，外部领域对象只提供来源身份与正文数据。
-
-Narrative History 是可挂载的 Context，不是自带 role 的 Message。默认 Preset 将它放入 Developer MessageBlock；其他 Preset 可以将同一个稳定 Binding 放入自己的 MessageBlock，并由该 Block 选择 Provider role。Timeline 节点只负责正文和顺序，不能直接改变最终 Message role。
+当前没有 Application Pass Mutation、Pass 耗时或 Core Replay 证据。DFS 编译结果与 Core 的 Fragment Trace 是不同合同，不能因结构中仍有 `core-compact-1` 版本字符串而混同。
 
 ## 5. 编译结果的输出方式
 
-`prompt.emit` 生成 provider-neutral Message Fragment。Application Runtime 从 Core final Fragment 读取 Message Fragment、Composition Fragment 和稳定 Source 引用，构造 `CompiledPrompt` 与 Provider Message。
-
-Core 不接收或输出 Provider request body，也不通过 closure callback 带出结构化编译结果。Replay 可以重建 final Fragment；`CompiledPrompt` 是 Application 对 final Fragment 的确定性解释，而不是 Core 的领域类型。
+DFS 编译器返回 `CompiledPrompt`，包含 `messages` 与 `editorProjection`。Agent Runtime 再将其作为 Provider 输入；Provider Adapter 负责 wire 格式转换。该结果不是从 Core final Fragment 反向解码得到的。
 
 ## 6. PromptBuild Trace 压缩
 
-Application Runtime 不直接把原始 Core Trace 全量返回给 UI，而是生成 `core-compact-1` trace：
+当前 `PromptBuildTrace` 沿用 `version: 'core-compact-1'`，但由 Agent Composer 构造最小摘要：
 
-- 保留 status、Pass 顺序、耗时和 Mutation 操作摘要；
-- 保留 Diagnostic code、severity 与关联 Fragment ID；
-- 保留 Build / Run / Agent Session / Timeline 关联 ID；
-- 不携带完整 Fragment content、Pass 参数、Secret 或 Provider headers；
-- Raw Trace 只在 Application Runtime 内部使用，Client 消费 compact Trace。
+- 编译成功后的 `status: 'ok'` 与 Build / Run / Agent Session 关联字段；
+- 输入贡献数、输出消息数；
+- 空 `diagnostics` 与空 `executions`；
+- 单独附加的变量读取记录。
 
-这是 Application 层的隐私与载荷策略，不改变 Core Trace contract。
+这些不是对真实 Core Trace 的压缩。编译抛错时也不会从该路径生成完整失败 Pass Trace。Client 可以展示这份 JSON，但不能据此获得逐 Pass 因果链、Mutation 或 Replay 能力。专业可观测性仍见 [PromptBuild 计划](../../../../workbench/plans/log-plan/prompt-build-observability.md)。
 
 ## 7. Loom Runner
 
@@ -130,7 +82,7 @@ Runner 当前：
 
 - 校验 Fragment 是对象且具有 string id/content；
 - 校验 PassConfig 具有 string name；
-- 注册默认示例 Factory 与注入 Factory；
+- 注册组合根注入的 Factory；
 - 把 Core Diagnostic 映射为 Studio Diagnostic；
 - 仅在请求 `trace.enabled` 时持久化 Trace；
 - 默认把 Trace 持久化失败降级为 Diagnostic；
@@ -177,11 +129,11 @@ PromptBuild
   -> Gateway / network
 ```
 
-Core 不认识 Provider。PromptBuild 当前产出 `ProviderMessage[]` 是 Studio Application contract，不是 `@loom/core` contract。
+Core 不认识 Provider。PromptBuild 当前产出 `CompiledPrompt.messages`，Agent Runtime 将其作为 Provider 输入；这些都是 Studio Application 合同，不是 `@loom/core` 合同。
 
 ## 11. 当前依赖规则
 
-允许：
+依赖规则允许下列 Package 声明 Core 依赖；当前实际执行者是 Loom Runner，Application 依赖声明不等于已接入：
 
 ```text
 application-runtime -> @loom/core

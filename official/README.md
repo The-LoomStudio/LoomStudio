@@ -4,6 +4,7 @@
 
 - `starter/`：官方问答预设、知识 Settings 与不含模型凭据的 Agent 模板。
 - `extensions/st-data-compat/`：ST 数据兼容源码，保留 `@loom-studio/sillytavern-importer` 包名。
+- [`extensions/the-world/`](extensions/the-world/README.md)：The World 延期迁移骨架，含包内迁移讨论；当前无可执行模块或资源贡献。
 - 接口测试扩展位于 `tests/fixtures/extensions/`，正式 Server 默认不扫描该目录。开发者通过已有 dev-link 或显式 `extensionRootDirectory` 加载。
 
 ## 当前可用流程

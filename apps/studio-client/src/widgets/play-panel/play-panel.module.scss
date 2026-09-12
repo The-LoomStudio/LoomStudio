@@ -1,0 +1,342 @@
+.panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--loom-radius-panel);
+  color: var(--loom-color-text);
+  background: var(--loom-color-surface);
+}
+
+.header {
+  flex: 0 0 auto;
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--loom-color-border-subtle);
+  background: var(--loom-color-surface);
+}
+
+.calendarToggle {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin: 0 4px 0 0;
+  border: 0;
+  border-radius: var(--loom-radius-control);
+  padding: 0;
+  background: transparent;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
+  cursor: pointer;
+}
+
+.calendarToggle:hover,
+.calendarToggleActive {
+  color: var(--loom-color-accent-strong);
+  background: var(--loom-color-surface-hover);
+}
+
+.calendarPopover {
+  position: absolute;
+  z-index: 4;
+  top: 52px;
+  right: 16px;
+  width: min(286px, calc(100% - 32px));
+  padding: 12px;
+  border: 1px solid var(--loom-color-border-subtle);
+  border-radius: var(--loom-radius-card);
+  background: var(--loom-color-surface-raised);
+  box-shadow: var(--loom-shadow-popover, 0 10px 28px rgb(0 0 0 / 16%));
+}
+
+.calendarHeader {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  margin-bottom: 10px;
+}
+
+.calendarHeader strong {
+  text-align: center;
+  font-size: var(--loom-font-size-2);
+  font-weight: 600;
+}
+
+.calendarHeader button,
+.calendarGrid button {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--loom-color-text-muted);
+  cursor: pointer;
+}
+
+.calendarHeader button {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+}
+
+.calendarHeader button:first-child {
+  left: 0;
+}
+
+.calendarHeader button:nth-of-type(2) {
+  right: 0;
+}
+
+.calendarHeader button:last-child {
+  right: 34px;
+}
+
+.calendarHeader button:hover,
+.calendarGrid button:hover {
+  background: var(--loom-color-surface-hover);
+  color: var(--loom-color-text);
+}
+
+.calendarGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+
+.calendarGrid button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 34px;
+  font-size: var(--loom-font-size-2);
+}
+
+.calendarGrid button i {
+  position: absolute;
+  bottom: 4px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--loom-color-accent);
+}
+
+.calendarGrid .calendarDayActive {
+  background: var(--loom-color-surface-hover);
+  color: var(--loom-color-accent-strong);
+  font-weight: 600;
+}
+
+.content {
+  flex: 1;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.recent {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  padding: 22px 24px 28px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.recent section {
+  min-width: 0;
+}
+
+.recent h3 {
+  margin: 0 0 12px;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
+  font-weight: 600;
+}
+
+.characterScroller {
+  display: flex;
+  gap: 18px;
+  overflow-x: auto;
+  padding: 2px 2px 10px;
+  scrollbar-width: thin;
+}
+
+.characterCard {
+  display: grid;
+  flex: 0 0 76px;
+  justify-items: center;
+  gap: 7px;
+  border: 0;
+  background: transparent;
+  color: var(--loom-color-text);
+  cursor: pointer;
+}
+
+.characterCard strong {
+  max-width: 76px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--loom-font-size-2);
+  font-weight: 600;
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  overflow: hidden;
+  border: 1px solid var(--loom-color-border-subtle);
+  border-radius: 50%;
+  background: var(--loom-color-surface-raised);
+  color: var(--loom-color-text-muted);
+  font-size: 20px;
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sessionList {
+  display: grid;
+  gap: 8px;
+  width: min(100%, 920px);
+  border-top: 1px solid var(--loom-color-divider);
+  padding-top: 14px;
+}
+
+.sectionTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sectionTitleRow h3 {
+  margin-bottom: 0;
+}
+
+.sectionToggle {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--loom-color-text-muted);
+  cursor: pointer;
+}
+
+.sectionToggle:hover {
+  background: var(--loom-color-surface-hover);
+  color: var(--loom-color-text);
+}
+
+.sessionGroup {
+  display: grid;
+  gap: 2px;
+}
+
+.sessionDate {
+  margin: 10px 2px 2px;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-1);
+  font-weight: 600;
+}
+
+.sessionRow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  border: 0;
+  border-radius: var(--loom-radius-card);
+  color: var(--loom-color-text);
+  background: transparent;
+  padding: 10px 0;
+  cursor: pointer;
+}
+
+.sessionInfo {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  justify-items: start;
+}
+
+.sessionContent {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.sessionPreview {
+  overflow: hidden;
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-1);
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessionAvatar {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  aspect-ratio: 1;
+  flex-basis: 40px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid var(--loom-color-border-subtle);
+  border-radius: 50%;
+  background: var(--loom-color-surface);
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
+  font-weight: 600;
+}
+
+.sessionAvatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.characterCard:hover,
+.sessionRow:hover {
+  background: transparent;
+}
+
+.sessionType,
+.sessionMeta {
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .sessionRow {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .sessionMeta {
+    display: none;
+  }
+}

@@ -1,6 +1,7 @@
 # File-backed Resource、Agent Script 与 CodeAct 实施计划
 
 > **状态**：提案，等待实施切片确认
+> **2026-09-12 接续边界**：已有 [Loom Script Runtime](../../architecture/extensions/loom-script-runtime.md) 实现 Renderer 专用源码 Blob、编辑 API、Mount / Grant、Card / Preset 附件和 Client Sandbox；已有 [Card Bundle 文件合同](../../architecture/application/card-bundle-files.md) 负责文件化编解码。这些不再从零建设，也不等于通用 Agent Script、Server Sandbox 或 CodeAct 已实现。新切片须先复用或明确区分现有合同，不能按下文历史草案另建平行 Script 身份。
 > **日期**：2026-08-24
 > **范围**：从非 Prompt、文件型 Workspace Resource 的持久化开始，建立 Agent Script Definition、Card / Preset / Agent Profile / Session 挂载、角色包导入导出、受控 JavaScript Runtime，以及 CodeAct inline / resource 两种执行模式。
 > **事实边界**：本文是 Workbench Plan，不是已实现 Architecture。当前已实现 Document Store、共享 SQLite Data Engine、内容寻址 Blob Store、Source Artifact、Media Asset、Agent Tool Registry、Content Tool 与 Agent Loop；通用 File-backed Resource、Agent Script、Script Mount、Sandbox Host 和 CodeAct 尚未实现。
@@ -91,9 +92,9 @@ SQL Asset / Artifact descriptor
 
 Agent Script 不建立绕过 Tool Registry 的地下 API。脚本中的领域操作最终仍进入同一批 Application-owned Tool Executor 或 Capability API。
 
-### 2.3 当前缺失
+### 2.3 首轮缺口记录（部分已被接续实现）
 
-尚未实现：
+以下是原提案的缺口清单；Renderer 专用能力已由顶部接续入口覆盖。通用文件资源、Agent Script 执行及 CodeAct 仍未实施：
 
 - 非媒体、非 Prompt 的 File-backed Resource Definition；
 - 独立脚本源码的 Blob 引用和编辑 API；

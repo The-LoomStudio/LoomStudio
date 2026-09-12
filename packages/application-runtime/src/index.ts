@@ -21,6 +21,21 @@ export {
   validateStateContribution,
 } from './state/state-contribution.js'
 export { createStateContributionRegistry } from './state/state-contribution-registry.js'
+export {
+  createTimelineArchiveParticipantRegistry,
+  parseTimelineArchive,
+  serializeTimelineArchive,
+} from './archive/timeline-archive.js'
+export type {
+  TimelineArchiveDataBlock,
+  TimelineArchive,
+  TimelineArchiveExportInput,
+  TimelineArchiveIdMap,
+  TimelineArchiveImportInput,
+  TimelineArchiveParticipant,
+  TimelineArchiveParticipantHandle,
+  TimelineArchiveParticipantRegistry,
+} from './archive/timeline-archive.js'
 export type { StateContributionRegistry, StateContributionSource } from './state/state-contribution-registry.js'
 export { composeAgentTurnPrompt } from './agents/agent-turn.js'
 export {

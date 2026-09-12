@@ -38,6 +38,7 @@ export function createStudioRpcRouter(services: {
   logs?: LogReader
   networkSettings?: NetworkSettingsStore
   officialContent?: { call(method: string, params: JsonValue | undefined, context: RpcCallContext): Promise<JsonValue> }
+  resourceDirectories?: { call(method: string, params: JsonValue | undefined, context: RpcCallContext): Promise<JsonValue> }
   emitEvent?: (name: string, payload: JsonValue, context: RpcCallContext) => void
 }): StudioRpcRouter {
   const routes: StudioRpcRoute[] = [{
@@ -79,6 +80,13 @@ export function createStudioRpcRouter(services: {
         registry: services.aiCapabilities!,
         gateway: services.aiGateway!,
       }, method, params),
+    })
+  }
+
+  if (services.resourceDirectories) {
+    routes.push({
+      namespace: 'directories',
+      call: (method, params, context) => services.resourceDirectories!.call(method, params, context),
     })
   }
 

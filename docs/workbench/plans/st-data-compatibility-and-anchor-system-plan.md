@@ -1,6 +1,6 @@
 # SillyTavern 数据兼容插件与 Prompt 锚点系统演进计划
 
-> **状态**：方案制定 / 待评审  
+> **状态**：导入与标准锚点基础已实现 / 剩余兼容范围待核对
 > **日期**：2026-09-04  
 > **关联文档**：
 > - [`ordered-file-tree-and-anchor-slot-v0.md`](../discussion/application/prompt/ordered-file-tree-and-anchor-slot-v0.md) — 有序文件树与 Anchor / Slot 架构推演
@@ -10,6 +10,13 @@
 > **目标**：以官方 Server Extension 插件形式，实现对 SillyTavern（ST）角色卡（V2/V3 PNG & JSON）、世界书（Lorebook）、预设（OpenAI Presets）的无损导入与格式归一化；同时演进 Loom Studio 的 Prompt 锚点系统，建立 `@chat.session.post` 黄金锚点与扩展声明式/自定义锚点拓扑降级机制，彻底废除无意义的 `injection_position`。
 
 ---
+
+## 当前实施边界（2026-09-12）
+
+- [官方兼容扩展](../../../official/extensions/st-data-compat/src/index.ts) 已有 PNG 解析与 Card / Lorebook / Preset normalizer；不再新增旧路径 `extensions/sillytavern-importer`。
+- [官方预设](../../../official/starter/presets/assistant.json) 已声明 `@setting.lower` 与 `@chat.session.post`；[PromptBuild Pipeline](../../../packages/application-runtime/src/prompt/prompt-build-pipeline.ts) 已有对应 fallback 展开。官方预设文件化后，不再向默认预设生成器硬编码作者内容。
+- 安装、Host 生命周期与独立发布由 [官方内容计划](official-content-installation-and-release-plan.md) 接续；本文保留转换语义和兼容验收方向。
+- 下方路线是原设计，不表示所有步骤仍待实施，也不表示完整无损转换、扩展自定义锚点拓扑、所有真实样本均已验证。后续先按现有 normalizer 与测试确定剩余缺口，再确认切片；本次不重新运行兼容测试或补认完成。
 
 ## 1. 核心洞察与第一性原理
 
@@ -418,7 +425,7 @@ ST 角色卡导入时，既要保证走主系统相同的标准卡片流程，�
 
 ---
 
-## 6. 实施路线图与验证检查点
+## 6. 原实施路线与验收要求（按当前边界核对差额）
 
 ### 6.1 Phase 1：Prompt 锚点系统升级与 `@chat.session.post`
 - **改动范围**：`packages/application-runtime` 的默认预设生成器与 `prompt-build-pipeline.ts`；

@@ -1,6 +1,8 @@
 # Application Capability、CLI 与 MCP 适配器计划
 
-> **状态**：提案，等待实施切片确认
+> **2026-09-12 范围拆分**：本计划承接从 [Data 目录与文件备份计划](./data-directory-resource-development-plan.md)移出的 CLI/MCP 工作，不再由 Data 计划实施。CLI + MCP 均连接运行中的 LS，不直接打开 SQLite 或嵌入另一套 Runtime；不另造角色打包解包实现。数据层计划完成不等于本计划已获实施授权。
+
+> **状态**：待讨论 / 未授权实施，首批范围和技术合同尚需确认
 > **日期**：2026-08-24
 > **范围**：建立 RPC、Agent Tool、CodeAct Script API、CLI 与 MCP 共享的 Application Capability 边界；实现面向用户和外部 Agent 的最小 CLI，并分阶段提供 Loom MCP Server / Client。
 > **事实边界**：本文是 Workbench Plan，不是已实现 Architecture。当前已有 Application Runtime RPC、Agent Tool Registry、Provider Tool Transport 和本地 Studio Server；Application Capability Registry、正式 CLI 与 MCP 尚未实现。
@@ -11,6 +13,15 @@
 - [`agent-session-context-and-workspace-capability-plan.md`](./agent-session-context-and-workspace-capability-plan.md)
 - [`file-backed-resource-agent-script-codeact-plan.md`](./file-backed-resource-agent-script-codeact-plan.md)
 - [`ai-gateway-streaming-execution-plan.md`](./ai-gateway-streaming-execution-plan.md)
+- [`workspace-dev-sync-plan.md`](./workspace-dev-sync-plan.md)：完整开发模式与工程编辑工作流，独立讨论，不默认作为最小 CLI 的前置条件。
+
+## 本次转交边界
+
+- 已确认约束：LS 后台必须运行；CLI/MCP 复用应用能力和同一套资源校验、身份映射、保存/Apply，不另开数据库或复制领域逻辑。
+- 待讨论候选：资源发现、读取、目录关联、差异、显式保存与 Apply。此前原 WP5 的“首批”不视为已冻结命令集；是否先做 CLI、MCP 以及各自最小范围，需用户确认。
+- 动工前需讨论：连接发现与认证、调用方权限、错误和部分成功如何表达、是否需要抽取 Capability、具体命令/API、最小验收样例与实施成本。不以已有目录 RPC 推导出工具适配仅是机械包装。
+- 不包含：完整开发模式的模式切换、编辑源协调、自动同步、通用终端、公共 UI SDK 或构建系统。官方样例可以验证未来工具链，但不是 Data 备份计划的完成条件。
+- 以下 Capability 和 Adapter 设计继续作为提案，不按既定大计划自动执行；讨论完成后再冻结最小工作包、文件边界和验证预算。
 
 ## 1. 决策摘要
 

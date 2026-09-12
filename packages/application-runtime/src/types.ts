@@ -108,6 +108,7 @@ export type {
 import type { CompiledPrompt } from './prompt/prompt-builder.js'
 import type { MacroProviderRegistry } from './prompt/macro-provider-registry.js'
 import type { StateContributionRegistry } from './state/state-contribution-registry.js'
+import type { TimelineArchive, TimelineArchiveParticipant } from './archive/timeline-archive.js'
 import type {
   LoomScriptArtifact,
   LoomScriptEntry,
@@ -150,6 +151,8 @@ export type {
 } from '@loom-studio/shared'
 
 export type ApplicationRuntime = {
+  captureCardDirectoryState(input: { cardId: string }): Promise<{ artifact: CardBundleArtifact; snapshot: JsonObject }>
+  applyCardDirectoryState(input: { cardId: string; artifact: CardBundleArtifact; snapshot: JsonObject }, context?: RuntimeRequestContext): Promise<{ mutation: { changesetId: string } }>
   initialize(): Promise<void>
   installOfficialContent(input: InstallOfficialContentInput, context?: RuntimeRequestContext): Promise<InstallOfficialContentResult>
   getStateSnapshot(input: GetStateSnapshotInput): Promise<GetStateSnapshotResult>
@@ -232,6 +235,8 @@ export type ApplicationRuntime = {
   inspectMacros(input: InspectMacrosInput): Promise<InspectMacrosResult>
   createNarrativeTimeline(input: CreateNarrativeTimelineInput, context?: RuntimeRequestContext): Promise<CreateNarrativeTimelineResult>
   getNarrativeTimeline(input: GetNarrativeTimelineInput): Promise<GetNarrativeTimelineResult>
+  exportTimelineArchive(input: { timelineId: string }): Promise<{ archive: TimelineArchive }>
+  importTimelineArchive(input: { source: string }): Promise<{ timelineId: string; idMap: import('./archive/timeline-archive.js').TimelineArchiveIdMap; unknownParticipantNamespaces: string[]; participantFailures: Array<{ namespace: string; message: string }>; mutation: MutationReceipt }>
   listNarrativeTimelines(input?: ListNarrativeTimelinesInput): Promise<ListNarrativeTimelinesResult>
   getNarrativePage(input: GetNarrativePageInput): Promise<NarrativePage>
   forkNarrativeBranch(input: ForkNarrativeBranchInput, context?: RuntimeRequestContext): Promise<ForkNarrativeBranchResult>
@@ -708,6 +713,7 @@ export type InspectMacrosResult = {
 }
 
 export type ApplicationRuntimeOptions = {
+  withCardDeletion?: (cardId: string, commit: () => Promise<DeleteCardResult>) => Promise<DeleteCardResult>
   agents?: AgentStore
   agentTools?: AgentToolRegistry
   dataEngine?: SqliteDataEngine
@@ -727,6 +733,7 @@ export type ApplicationRuntimeOptions = {
   aiCapabilities?: AiGatewayCapabilityRegistry
   macroProviders?: MacroProviderRegistry
   stateContributions?: StateContributionRegistry
+  timelineArchiveParticipants?: TimelineArchiveParticipant[]
 }
 
 export type MediaAssetLookup = {
@@ -905,6 +912,7 @@ export type CardSummary = {
   name: string
   userName?: string
   description?: string
+  openingPreview?: string
   media?: CardMediaRefs
   createdAt: string
   updatedAt: string
@@ -1214,8 +1222,8 @@ export type UpdateAgentProfileResult = CreateAgentProfileResult
 export type DeleteAgentProfileInput = { agentProfileId: string }
 export type DeleteAgentProfileResult = { deleted: true }
 
-export type ImportCardBundleInput =
-  | {
+export type ImportCardBundleInput = { newCardId?: string } & (
+  {
     artifact: CardBundleArtifact
     source?: never
   }
@@ -1225,7 +1233,7 @@ export type ImportCardBundleInput =
       text: string
       originalFileName?: string
     }
-  }
+  })
 
 export type ImportCardBundleResult = {
   card: CardSourceContent & { id: string; version: number }
@@ -1302,6 +1310,7 @@ export type ExportPromptResourceResult = {
 export type UpdateCardPromptResourcesInput = {
   cardId: string
   promptResourceIds: string[]
+  externalPromptResourceIds?: string[]
 }
 
 export type UpdateCardPromptResourcesResult = {
@@ -1491,6 +1500,7 @@ export type CardSourceContent = {
   importBundleId?: string
   portableExtensionPayloadIds?: string[]
   promptResourceIds?: string[]
+  externalPromptResourceIds?: string[]
   stateTemplates?: CardStateTemplate[]
   stateDefinitionIds?: string[]
   stateEntityTypes?: StateEntityType[]

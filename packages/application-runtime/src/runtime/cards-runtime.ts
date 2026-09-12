@@ -241,95 +241,142 @@ export function createCardsRuntimeMethods(ctx: ApplicationRuntimeContext) {
     },
 
     deleteCard: async (input: DeleteCardInput, requestContext?: RuntimeRequestContext): Promise<DeleteCardResult> => {
-      const card = await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
-      const timelines = ctx.narratives ? await listAllCardTimelines(ctx, input.cardId) : []
-      const ownedRules = (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule))
-        .filter(rule => rule.content.owner.kind === 'card' && rule.content.owner.cardId === input.cardId)
+      const commit = async (): Promise<DeleteCardResult> => {
+        let stale = false
+        const subscription = ctx.dataEngine.subscribeCommits(() => { stale = true })
+        // ponytail: reject concurrent writes during the deletion snapshot; replace with scoped revision checks if contention becomes common.
+        const assertSnapshot = () => { if (stale) throw new Error('Card deletion snapshot changed; retry deletion') }
+        try {
+          const card = await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
+          const timelines = ctx.narratives ? await listAllCardTimelines(ctx, input.cardId) : []
+          const ownedRules = (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule))
+            .filter(rule => rule.content.owner.kind === 'card' && rule.content.owner.cardId === input.cardId)
 
-      const targetResources = input.includePromptResources
-        ? (await Promise.all((card.content.promptResourceIds ?? []).map(id => ctx.promptResources.getResource(id))))
-            .filter((resource): resource is NonNullable<typeof resource> => Boolean(resource && !resource.tombstoned))
-        : []
-
-      const deleteCascadeResources = async (
-        dataTx: SqliteDataTransaction,
-        documents: DocumentTransaction,
-      ) => {
-        if (!input.includePromptResources) return
-        const resourceTx = ctx.promptResources.transaction(dataTx)
-        for (const resource of targetResources) {
-          resourceTx.deleteResource({ resourceId: resource.id, expectedVersion: resource.version })
-        }
-        for (const payloadId of card.content.portableExtensionPayloadIds ?? []) {
-          const payloadDoc = await documents.get(payloadId)
-          if (payloadDoc && !payloadDoc.meta.tombstone) {
-            await documents.delete({ id: payloadDoc.id, expectedVersion: payloadDoc.version })
-          }
-        }
-        if (card.content.importBundleId) {
-          const bundleDoc = await documents.get(card.content.importBundleId)
-          if (bundleDoc && !bundleDoc.meta.tombstone) {
-            await documents.delete({ id: bundleDoc.id, expectedVersion: bundleDoc.version })
-          }
-        }
-      }
-
-      if (input.includePlayData && timelines.length > 0) {
-        const narratives = requireNarratives(ctx)
-        const documentParticipant = requireDocumentParticipant(ctx)
-        const scopes = new Map<string, string>()
-        for (const timeline of timelines) {
-          const scope = await ctx.states.getScope({ kind: 'timeline', ownerId: timeline.id })
-          if (scope) scopes.set(timeline.id, scope.id)
-        }
-        const result = await ctx.dataEngine.transact(
-          narrativeWriteContext(requestContext, 'application.deleteCard'),
-          async dataTx => documentParticipant.participateTransaction(dataTx, async documents => {
-            const narrativeTx = narratives.transaction(dataTx)
-            const stateTx = ctx.states.transaction(dataTx)
-            for (const timeline of timelines) {
-              narrativeTx.deleteTimeline({ timelineId: timeline.id })
-              const scopeId = scopes.get(timeline.id)
-              if (scopeId) stateTx.tombstoneScope({ scopeId })
-              const runtimeContext = await documents.get(timelineRuntimeContextId(timeline.id))
-              if (runtimeContext && !runtimeContext.meta.tombstone) {
-                await documents.delete({ id: runtimeContext.id, expectedVersion: runtimeContext.version })
-              }
-              await tombstoneExtensionStorageScope(documents, { kind: 'timeline', timelineId: timeline.id })
+          const targetResources = input.includePromptResources
+            ? (await Promise.all((card.content.promptResourceIds ?? []).map(id => ctx.promptResources.getResource(id))))
+                .filter((resource): resource is NonNullable<typeof resource> => Boolean(resource && !resource.tombstoned))
+            : []
+          const retainedResources = new Set<string>()
+          if (input.includePromptResources) {
+            for (const other of await listDocuments<CardSourceContent>(ctx.documents, applicationDocumentTypes.cardSource)) {
+              if (other.id !== input.cardId) for (const id of other.content.promptResourceIds ?? []) retainedResources.add(id)
             }
-            await deleteCascadeResources(dataTx, documents)
-            const currentCard = await readDocument<CardSourceContent>(documents, input.cardId, applicationDocumentTypes.cardSource)
-            await tombstoneExtensionStorageScope(documents, { kind: 'card', cardId: input.cardId })
-            for (const rule of ownedRules) await documents.delete({ id: rule.id, expectedVersion: rule.version })
-            await documents.delete({ id: currentCard.id, expectedVersion: currentCard.version })
-            return true as const
-          }, { allowEmpty: true }),
-        )
-        return { deleted: true as const, mutation: { changesetId: result.commit.changesetId } }
-      }
-      const cardContent = normalizeCardContent(card.content)
-      const templates = new Map<string, Extract<StateDefinitionDraft, { kind: 'timeline-template' }>>()
-      for (const definitionId of cardContent.stateDefinitionIds ?? []) {
-        const definition = await readDocument<StateDefinitionContent>(ctx.documents, definitionId, applicationDocumentTypes.stateDefinition)
-        if (definition.content.kind === 'timeline-template') templates.set(definition.id, definition.content)
-      }
-      const missingRuntimeContexts = [] as TimelineRuntimeContextContent[]
-      for (const timeline of timelines) {
-        if (await readTimelineRuntimeContext(ctx, timeline.id)) continue
-        missingRuntimeContexts.push(await buildTimelineRuntimeContextInternal(ctx, {
-          timelineId: timeline.id,
-          card,
-          cardContent,
-          templates,
-        }))
-      }
+            for (const mount of await ctx.promptResources.listSettingMounts({})) retainedResources.add(mount.settingResourceId)
+            if (ctx.narratives) {
+              let cursor: string | undefined
+              do {
+                const page = await ctx.narratives.listTimelines({ cursor, limit: 100 })
+                for (const timeline of page.timelines) {
+                  if (input.includePlayData && timeline.createdFrom?.cardId === input.cardId) continue
+                  for (const id of timeline.promptResourceIds) retainedResources.add(id)
+                }
+                cursor = page.nextCursor
+              } while (cursor)
+            }
+          }
 
-      if (input.includePromptResources) {
-        const documentParticipant = requireDocumentParticipant(ctx)
-        const result = await ctx.dataEngine.transact(
-          narrativeWriteContext(requestContext, 'application.deleteCard'),
-          async dataTx => documentParticipant.participateTransaction(dataTx, async documents => {
-            await deleteCascadeResources(dataTx, documents)
+          const deleteCascadeResources = async (
+            dataTx: SqliteDataTransaction,
+            documents: DocumentTransaction,
+          ) => {
+            if (!input.includePromptResources) return
+            const resourceTx = ctx.promptResources.transaction(dataTx)
+            for (const resource of targetResources) {
+              if (retainedResources.has(resource.id)) continue
+              resourceTx.deleteResource({ resourceId: resource.id, expectedVersion: resource.version })
+            }
+            for (const payloadId of card.content.portableExtensionPayloadIds ?? []) {
+              const payloadDoc = await documents.get(payloadId)
+              if (payloadDoc && !payloadDoc.meta.tombstone) {
+                await documents.delete({ id: payloadDoc.id, expectedVersion: payloadDoc.version })
+              }
+            }
+            if (card.content.importBundleId) {
+              const bundleDoc = await documents.get(card.content.importBundleId)
+              if (bundleDoc && !bundleDoc.meta.tombstone) {
+                await documents.delete({ id: bundleDoc.id, expectedVersion: bundleDoc.version })
+              }
+            }
+          }
+
+          if (input.includePlayData && timelines.length > 0) {
+            const narratives = requireNarratives(ctx)
+            const documentParticipant = requireDocumentParticipant(ctx)
+            const scopes = new Map<string, string>()
+            for (const timeline of timelines) {
+              const scope = await ctx.states.getScope({ kind: 'timeline', ownerId: timeline.id })
+              if (scope) scopes.set(timeline.id, scope.id)
+            }
+            const result = await ctx.dataEngine.transact(
+              narrativeWriteContext(requestContext, 'application.deleteCard'),
+              async dataTx => documentParticipant.participateTransaction(dataTx, async documents => {
+                assertSnapshot()
+                const narrativeTx = narratives.transaction(dataTx)
+                const stateTx = ctx.states.transaction(dataTx)
+                for (const timeline of timelines) {
+                  narrativeTx.deleteTimeline({ timelineId: timeline.id })
+                  const scopeId = scopes.get(timeline.id)
+                  if (scopeId) stateTx.tombstoneScope({ scopeId })
+                  const runtimeContext = await documents.get(timelineRuntimeContextId(timeline.id))
+                  if (runtimeContext && !runtimeContext.meta.tombstone) {
+                    await documents.delete({ id: runtimeContext.id, expectedVersion: runtimeContext.version })
+                  }
+                  await tombstoneExtensionStorageScope(documents, { kind: 'timeline', timelineId: timeline.id })
+                }
+                await deleteCascadeResources(dataTx, documents)
+                const currentCard = await readDocument<CardSourceContent>(documents, input.cardId, applicationDocumentTypes.cardSource)
+                await tombstoneExtensionStorageScope(documents, { kind: 'card', cardId: input.cardId })
+                for (const rule of ownedRules) await documents.delete({ id: rule.id, expectedVersion: rule.version })
+                await documents.delete({ id: currentCard.id, expectedVersion: currentCard.version })
+                return true as const
+              }, { allowEmpty: true }),
+            )
+            return { deleted: true as const, mutation: { changesetId: result.commit.changesetId } }
+          }
+          const cardContent = normalizeCardContent(card.content)
+          const templates = new Map<string, Extract<StateDefinitionDraft, { kind: 'timeline-template' }>>()
+          for (const definitionId of cardContent.stateDefinitionIds ?? []) {
+            const definition = await readDocument<StateDefinitionContent>(ctx.documents, definitionId, applicationDocumentTypes.stateDefinition)
+            if (definition.content.kind === 'timeline-template') templates.set(definition.id, definition.content)
+          }
+          const missingRuntimeContexts = [] as TimelineRuntimeContextContent[]
+          for (const timeline of timelines) {
+            if (await readTimelineRuntimeContext(ctx, timeline.id)) continue
+            missingRuntimeContexts.push(await buildTimelineRuntimeContextInternal(ctx, {
+              timelineId: timeline.id,
+              card,
+              cardContent,
+              templates,
+            }))
+          }
+
+          if (input.includePromptResources) {
+            const documentParticipant = requireDocumentParticipant(ctx)
+            const result = await ctx.dataEngine.transact(
+              narrativeWriteContext(requestContext, 'application.deleteCard'),
+              async dataTx => documentParticipant.participateTransaction(dataTx, async documents => {
+                assertSnapshot()
+                await deleteCascadeResources(dataTx, documents)
+                const currentCard = await readDocument<CardSourceContent>(documents, input.cardId, applicationDocumentTypes.cardSource)
+                for (const runtimeContext of missingRuntimeContexts) {
+                  await writeDocument<TimelineRuntimeContextContent>(documents, {
+                    id: timelineRuntimeContextId(runtimeContext.timelineId),
+                    type: applicationDocumentTypes.timelineRuntimeContext,
+                    content: runtimeContext,
+                    expectedVersion: 'new',
+                  })
+                }
+                await tombstoneExtensionStorageScope(documents, { kind: 'card', cardId: input.cardId })
+                for (const rule of ownedRules) await documents.delete({ id: rule.id, expectedVersion: rule.version })
+                await documents.delete({ id: currentCard.id, expectedVersion: currentCard.version })
+                return true as const
+              }, { allowEmpty: true }),
+            )
+            return { deleted: true as const, mutation: { changesetId: result.commit.changesetId } }
+          }
+
+          const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.deleteCard', async documents => {
+            assertSnapshot()
             const currentCard = await readDocument<CardSourceContent>(documents, input.cardId, applicationDocumentTypes.cardSource)
             for (const runtimeContext of missingRuntimeContexts) {
               await writeDocument<TimelineRuntimeContextContent>(documents, {
@@ -343,28 +390,12 @@ export function createCardsRuntimeMethods(ctx: ApplicationRuntimeContext) {
             for (const rule of ownedRules) await documents.delete({ id: rule.id, expectedVersion: rule.version })
             await documents.delete({ id: currentCard.id, expectedVersion: currentCard.version })
             return true as const
-          }, { allowEmpty: true }),
-        )
-        return { deleted: true as const, mutation: { changesetId: result.commit.changesetId } }
-      }
-
-      const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.deleteCard', async documents => {
-        const currentCard = await readDocument<CardSourceContent>(documents, input.cardId, applicationDocumentTypes.cardSource)
-        for (const runtimeContext of missingRuntimeContexts) {
-          await writeDocument<TimelineRuntimeContextContent>(documents, {
-            id: timelineRuntimeContextId(runtimeContext.timelineId),
-            type: applicationDocumentTypes.timelineRuntimeContext,
-            content: runtimeContext,
-            expectedVersion: 'new',
           })
-        }
-        await tombstoneExtensionStorageScope(documents, { kind: 'card', cardId: input.cardId })
-        for (const rule of ownedRules) await documents.delete({ id: rule.id, expectedVersion: rule.version })
-        await documents.delete({ id: currentCard.id, expectedVersion: currentCard.version })
-        return true as const
-      })
 
-      return { deleted: mutation.value, mutation: mutation.mutation }
+          return { deleted: mutation.value, mutation: mutation.mutation }
+        } finally { subscription.dispose() }
+      }
+      return ctx.withCardDeletion ? ctx.withCardDeletion(input.cardId, commit) : commit()
     },
 
     updateCardPromptResources: async (
@@ -372,6 +403,11 @@ export function createCardsRuntimeMethods(ctx: ApplicationRuntimeContext) {
       requestContext?: RuntimeRequestContext,
     ): Promise<UpdateCardPromptResourcesResult> => {
       if (new Set(input.promptResourceIds).size !== input.promptResourceIds.length) throw new Error('Duplicate prompt resource id')
+      if (input.externalPromptResourceIds !== undefined
+        && (new Set(input.externalPromptResourceIds).size !== input.externalPromptResourceIds.length
+          || input.externalPromptResourceIds.some(id => !input.promptResourceIds.includes(id)))) {
+        throw new Error('External prompt resources must be unique Card resource references')
+      }
       for (const resourceId of input.promptResourceIds) {
         if (!await ctx.promptResources.getResource(resourceId)) throw new Error(`Prompt resource not found: ${resourceId}`)
       }
@@ -384,7 +420,12 @@ export function createCardsRuntimeMethods(ctx: ApplicationRuntimeContext) {
         return await writeDocument<CardSourceContent>(documents, {
           id: card.id,
           type: applicationDocumentTypes.cardSource,
-          content: normalizeCardContent({ ...card.content, promptResourceIds: [...input.promptResourceIds], updatedAt: ctx.now() }),
+          content: normalizeCardContent({
+            ...card.content,
+            promptResourceIds: [...input.promptResourceIds],
+            ...(input.externalPromptResourceIds !== undefined ? { externalPromptResourceIds: [...input.externalPromptResourceIds] } : {}),
+            updatedAt: ctx.now(),
+          }),
           expectedVersion: card.version,
         })
       }))
@@ -417,6 +458,7 @@ export function createCardsRuntimeMethods(ctx: ApplicationRuntimeContext) {
         })
         : undefined
       return await importWorkspaceCardBundle({
+        newCardId: input.newCardId,
         artifact,
         context: requestContext,
         documents: ctx.documents,

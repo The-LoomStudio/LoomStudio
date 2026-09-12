@@ -86,6 +86,7 @@ export type StateStore = {
   }): Promise<StateScope | null>
   getScopeById(id: string, options?: { includeDeleted?: boolean }): Promise<StateScope | null>
   getRevision(id: string): Promise<StateRevision | null>
+  listRevisions(scopeId: string): Promise<StateRevision[]>
   getRevisionByIdempotencyKey(scopeId: string, idempotencyKey: string): Promise<StateRevision | null>
   getGlobalSnapshot(ownerId?: string): Promise<StateSnapshot | null>
   transaction(tx: SqliteDataTransaction): StateTransaction

@@ -4,7 +4,7 @@ Studio Server 是本地路径的唯一组合根。领域 Package 不读取 Home�
 
 ## 1. 本地路径合同
 
-`resolveLoomStudioLocalPaths()` 默认使用操作系统原生用户目录：macOS 的 Application Support / Caches / Logs、Linux 的 XDG data / cache / state、Windows 的 LocalAppData。开发和测试可用唯一覆盖 `LOOM_STUDIO_HOME`，其下固定收拢为 `data/`、`cache/`、`logs/`。
+`resolveLoomStudioLocalPaths()` 默认使用操作系统原生用户目录：macOS 的 Application Support / Caches / Logs、Linux 的 XDG data / cache / state、Windows 的 LocalAppData。`LOOM_STUDIO_HOME` 将三个根收拢为其下的 `data/`、`cache/`、`logs/`；`LOOM_STUDIO_DATA_ROOT` 独立覆盖持久数据根，优先于 HOME 推导出的 data 路径，不改变 cache/log 路径。对应 options 分别优先于同名环境变量，见 [路径解析器](../../../apps/studio-server/src/platform/local-paths.ts)。
 
 ```text
 data/
@@ -26,7 +26,7 @@ logs/
 └── *.jsonl
 ```
 
-正式数据不写入源码或应用安装目录。开发命令显式把 `LOOM_STUDIO_HOME` 指向仓库 `.loomstudio-dev`；测试注入临时目录。
+正式运行默认使用用户目录。根开发命令通过 [开发路径配置](../../../scripts/development-data-paths.mjs) 将持久数据放在仓库 `data/`，cache/log 放在 `.loomstudio-dev/`；显式设置 HOME 时保留 `<HOME>/data` 语义，显式 DATA_ROOT 仍优先。旧目录存在而新目录未就绪时，启动器拒绝静默建立空库；迁移操作见 [Getting Started](../../guide/getting-started.md)。测试使用注入的临时目录。
 
 ## 2. SQLite 与 Blob 的权威边界
 

@@ -49,7 +49,9 @@ Assistant Content In-band Tool
 5. Provider 原始 Stop Reason 与 Runtime 派生状态分别保存。
 6. Session Header 只保存摘要和索引；恢复事实保存在 append-only Transcript / Step Tree 中。
 
-## 2. 当前实现事实
+## 2. 首轮实施基线（历史）
+
+以下 2.1—2.3 描述早期切入点，不是当前缺口。当前已使用 Provider-neutral Transcript、`tool-invocation` / `tool-result` 与 Native / Content Transport；以 [Agent Runtime 与 Session](../../architecture/application/agent/runtime-and-session.md) 和第 12 节阶段结果为准。Responses Custom、跨进程 Resume 与 RPC / Client Streaming 仍不能视为完成。
 
 ### 2.1 AI Gateway 已接入 AI SDK，Application 仍保留上层账户边界
 

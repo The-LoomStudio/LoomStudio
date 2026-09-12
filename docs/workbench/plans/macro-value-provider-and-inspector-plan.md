@@ -32,7 +32,9 @@
 
 保留现有宏求值核心和持久化方式，在现有 VariableSnapshot / computed 上补动态值提供入口、来源信息与前后端一致消费。作者代码通过显式接口贡献值，不直接替换正文；检查界面展示实际取值与来源，不分析脚本源码猜测变量。
 
-## 已确认事实
+## 首轮实施基线（历史）
+
+以下“未查到提供者注册接口”和前端未消费 computed 的描述是实施前状态；当前作者宏、动态提供者、冲突选择与构建快照以本文件执行合同、最终结果及 [State 与变量架构](../../architecture/application/state-and-variables.md) 为准，不重复实施首轮缺口。
 
 - [variables.ts](../../../packages/application-runtime/src/prompt/variables.ts) 已提供 `global / timeline / computed / aliases` 快照、统一标量展开、读取路径和缺失 / 非标量诊断；不是从零建立宏系统。
 - [readAgentTurnVariables](../../../packages/application-runtime/src/runtime/narrative-runtime.ts) 提供内建 computed，如时间和可选角色名。目前未查到外部宏提供者注册接口，不能把 `computed` 字段本身当作该接口。

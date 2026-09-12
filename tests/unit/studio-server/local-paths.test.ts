@@ -2,6 +2,22 @@ import { describe, expect, it } from 'vitest'
 import { resolveLoomStudioLocalPaths } from '../../../apps/studio-server/src/platform/local-paths.js'
 
 describe('resolveLoomStudioLocalPaths', () => {
+  it('overrides persistent data without moving caches or logs', () => {
+    const paths = resolveLoomStudioLocalPaths({
+      home: '/tmp/dev',
+      environment: { LOOM_STUDIO_DATA_ROOT: '/tmp/project/data' },
+    })
+    expect(paths.databaseFile).toBe('/tmp/project/data/studio.sqlite')
+    expect(paths.blobRoot).toBe('/tmp/project/data/blobs')
+    expect(paths.extensionStateFile).toBe('/tmp/project/data/extensions/state.json')
+    expect(paths.logRoot).toBe('/tmp/dev/logs')
+    expect(paths.cacheRoot).toBe('/tmp/dev/cache')
+    expect(resolveLoomStudioLocalPaths({
+      dataRoot: '/tmp/explicit',
+      environment: { LOOM_STUDIO_DATA_ROOT: '/tmp/environment' },
+    }).dataRoot).toBe('/tmp/explicit')
+  })
+
   it('collapses development paths under LOOM_STUDIO_HOME', () => {
     const paths = resolveLoomStudioLocalPaths({
       home: '/tmp/loom-home',

@@ -12,8 +12,10 @@ import { createAgentToolRegistry, type AgentToolRegistry } from '../agents/tool-
 import type { AiGateway, ApplicationRuntimeOptions, BlobStorage, MediaAssetLookup, SourceArtifactStorage } from '../types.js'
 import { createMacroProviderRegistry, type MacroProviderRegistry } from '../prompt/macro-provider-registry.js'
 import { createStateContributionRegistry, type StateContributionRegistry } from '../state/state-contribution-registry.js'
+import { createTimelineArchiveParticipantRegistry, type TimelineArchiveParticipant, type TimelineArchiveParticipantRegistry } from '../archive/timeline-archive.js'
 
 export type ApplicationRuntimeContext = {
+  withCardDeletion: ApplicationRuntimeOptions['withCardDeletion']
   agents?: AgentStore
   dataEngine: SqliteDataEngine
   documents: DocumentStore
@@ -31,6 +33,7 @@ export type ApplicationRuntimeContext = {
   agentTools: AgentToolRegistry
   macroProviders: MacroProviderRegistry
   stateContributions: StateContributionRegistry
+  timelineArchiveParticipants: TimelineArchiveParticipantRegistry
   now(): string
   createId(prefix: string): string
 }
@@ -45,6 +48,7 @@ export function createApplicationRuntimeContext(options: ApplicationRuntimeOptio
   const runtimeNow = () => nowIso(options.clock)
   const runtimeCreateId = (prefix: string) => createSharedId(prefix)
   return {
+    withCardDeletion: options.withCardDeletion,
     agents: options.agents,
     dataEngine: options.dataEngine,
     documents: options.documents,
@@ -65,6 +69,7 @@ export function createApplicationRuntimeContext(options: ApplicationRuntimeOptio
     agentTools,
     macroProviders: options.macroProviders ?? createMacroProviderRegistry(),
     stateContributions: options.stateContributions ?? createStateContributionRegistry(),
+    timelineArchiveParticipants: createTimelineArchiveParticipantRegistry(options.timelineArchiveParticipants),
     gateway: options.gateway ?? (options.provider ? providerToGateway(options.provider) : createDocumentBackedAiGateway({
       documents: options.documents,
       secrets: options.secrets,

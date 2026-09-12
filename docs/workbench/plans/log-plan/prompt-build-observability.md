@@ -1,6 +1,6 @@
 # PromptBuild 可观测性计划
 
-> **状态**：Draft / Discussion Capture
+> **状态**：摘要日志与 Trace JSON 查看已实现 / 专业解释视图待设计
 >
 > **主题**：PromptBuild 的生命周期日志、详细 Trace、前端解释视图和敏感数据边界。
 >
@@ -30,6 +30,8 @@ PromptBuild Trace 是 Application Layer 的解释模型，不应退化为 Kernel
 
 ## 2. 当前基础
 
+2026-09-12 核对：当前 Pipeline 与 Trace 以 [PromptBuild Architecture](../../../architecture/application/prompt-build/README.md) 为准；[Client Inspector](../../../../apps/studio-client/src/widgets/inspector-panel/inspector-panel.tsx) 仍提供原始 Trace JSON。下文阶段枚举是候选解释模型，旧 Zone / Slot / orderSource 示例不构成现行公开 Schema，实施时须映射当前有序树与 Anchor 合同。
+
 当前代码和文档已经存在以下基础：
 
 - Prompt Preview 可以返回 `promptBuildTrace`；
@@ -41,7 +43,7 @@ PromptBuild Trace 是 Application Layer 的解释模型，不应退化为 Kernel
 仍缺少：
 
 - 稳定的 PromptBuild Trace envelope；
-- 生命周期摘要 Log 与详细 Trace 的边界；
+- 摘要 Log 与详细 Trace 的稳定关联协议（语义职责已明确）；
 - inactive item、raw prompt、facts snapshot 的保留策略；
 - 多次 build 的 diff 与关联方式；
 - 前端正式解释 UI，而不只是原始 JSON。

@@ -399,7 +399,7 @@ function readSession(
 ): AgentSession | null {
   const row = database
     .prepare(
-      'SELECT id, agent_profile_id, title, head_entry_id, entry_count, created_at, updated_at, deleted_at FROM agent_sessions WHERE id = ?',
+      'SELECT id, agent_profile_id, timeline_id, title, head_entry_id, entry_count, created_at, updated_at, deleted_at FROM agent_sessions WHERE id = ?',
     )
     .get(id)
   if (!row) return null

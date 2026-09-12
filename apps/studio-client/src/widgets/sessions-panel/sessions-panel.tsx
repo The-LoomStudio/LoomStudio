@@ -10,6 +10,7 @@ import {
   ChevronsDown,
   ChevronsUp,
   Eye,
+  Download,
   FolderGit2,
   GitCommitHorizontal,
   History,
@@ -17,6 +18,7 @@ import {
   Pencil,
   Play,
   Trash2,
+  Upload,
   User,
   X,
 } from 'lucide-react'
@@ -30,6 +32,7 @@ import type {
   NarrativeTimeline,
 } from '../../entities/index.js'
 import type { StudioApi } from '../../shared/api/studio-api.js'
+import { cardMediaUrl, useCardMediaRevision } from '../../shared/lib/card-media.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import {
   ContextMenu,
@@ -82,9 +85,11 @@ type SessionsPanelProps = {
   onRenameTimeline?(timelineId: string, title: string): Promise<unknown> | void
   onDeleteAgentSession?(sessionId: string): Promise<unknown> | void
   onRenameAgentSession?(sessionId: string, title: string): Promise<unknown> | void
+  onArchiveImported?(timelineId: string, result: { unknownParticipantNamespaces: string[]; participantFailures: Array<{ namespace: string; message: string }> }): Promise<void> | void
 }
 
 export function SessionsPanel(props: SessionsPanelProps) {
+  const mediaRevision = useCardMediaRevision()
   const [filter, setFilter] = useState<SessionFilter>('all')
   const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
   const [searchQuery, setSearchQuery] = useState('')
@@ -591,7 +596,7 @@ export function SessionsPanel(props: SessionsPanelProps) {
                     const isExpanded = expandedTimelines.has(timeline.id)
                     const card = timeline.createdFrom?.cardId ? cardMap.get(timeline.createdFrom.cardId) : undefined
                     const avatarUrl = card?.media?.avatarAssetId
-                      ? `/assets/${encodeURIComponent(card.media.avatarAssetId)}`
+                      ? cardMediaUrl(card.id, 'avatar', card.media.avatarAssetId, mediaRevision)
                       : undefined
 
                     return (
@@ -1004,6 +1009,7 @@ export function SessionsPanel(props: SessionsPanelProps) {
               branches={props.branches}
               card={selectedTimeline.createdFrom?.cardId ? cardMap.get(selectedTimeline.createdFrom.cardId) : undefined}
               nodes={timelineNodesMap[selectedTimeline.id] ?? []}
+              api={props.api}
               profiles={props.agentProfiles}
               t={props.t}
               timeline={selectedTimeline}
@@ -1011,6 +1017,7 @@ export function SessionsPanel(props: SessionsPanelProps) {
               onOpen={() => props.onOpenTimeline(selectedTimeline)}
               onOpenSessionInSidebar={handleOpenSessionInSidebar}
               onRename={() => void handleRenameTimeline(selectedTimeline)}
+              onArchiveImported={props.onArchiveImported}
             />
           ) : selectedItem?.kind === 'session' && selectedSession ? (
             <SessionDetail
@@ -1037,6 +1044,7 @@ export function SessionsPanel(props: SessionsPanelProps) {
 function TimelineDetail(props: {
   activeBranch?: NarrativeBranch
   activeTimeline?: NarrativeTimeline
+  api?: StudioApi
   boundSessions: AgentSession[]
   branches: NarrativeBranch[]
   card?: CardSummary
@@ -1048,12 +1056,45 @@ function TimelineDetail(props: {
   onOpen(): void
   onOpenSessionInSidebar(session: AgentSession): void
   onRename?(): void
+  onArchiveImported?(timelineId: string, result: { unknownParticipantNamespaces: string[]; participantFailures: Array<{ namespace: string; message: string }> }): Promise<void> | void
 }) {
+  const mediaRevision = useCardMediaRevision()
+  const [archiveBusy, setArchiveBusy] = useState(false)
+  const [archiveError, setArchiveError] = useState<string>()
+  const [archiveNotice, setArchiveNotice] = useState<string>()
   const avatarUrl = props.card?.media?.avatarAssetId
-    ? `/assets/${encodeURIComponent(props.card.media.avatarAssetId)}`
+    ? cardMediaUrl(props.card.id, 'avatar', props.card.media.avatarAssetId, mediaRevision)
     : undefined
 
   const isActive = props.timeline.id === props.activeTimeline?.id
+
+  async function exportArchive() {
+    if (!props.api) return
+    setArchiveBusy(true); setArchiveError(undefined); setArchiveNotice(undefined)
+    try {
+      const result = await props.api.narratives.exportArchive(props.timeline.id)
+      const url = URL.createObjectURL(new Blob([JSON.stringify(result.archive, null, 2)], { type: 'application/json' }))
+      const anchor = document.createElement('a')
+      anchor.href = url; anchor.download = `${props.timeline.title || props.timeline.id}.loom-timeline.json`; anchor.click()
+      URL.revokeObjectURL(url)
+    } catch (error) { setArchiveError(error instanceof Error ? error.message : String(error)) }
+    finally { setArchiveBusy(false) }
+  }
+
+  async function importArchive(file: File) {
+    if (!props.api) return
+    setArchiveBusy(true); setArchiveError(undefined); setArchiveNotice(undefined)
+    try {
+      const result = await props.api.narratives.importArchive(await file.text())
+      await props.onArchiveImported?.(result.timelineId, result)
+      const warnings = [
+        result.unknownParticipantNamespaces.length > 0 ? `未处理的存档扩展数据：${result.unknownParticipantNamespaces.join(', ')}` : '',
+        result.participantFailures.length > 0 ? `存档扩展数据导入失败：${result.participantFailures.map(item => item.namespace).join(', ')}` : '',
+      ].filter(Boolean)
+      if (warnings.length > 0) setArchiveNotice(warnings.join('；'))
+    } catch (error) { setArchiveError(error instanceof Error ? error.message : String(error)) }
+    finally { setArchiveBusy(false) }
+  }
 
   return (
     <>
@@ -1095,12 +1136,21 @@ function TimelineDetail(props: {
               <Trash2 aria-hidden="true" size={14} />
             </button>
           ) : null}
+          {props.api ? <>
+            <button aria-label="导出 Timeline" className={styles.detailIconButton} disabled={archiveBusy} title="导出 Timeline" type="button" onClick={() => void exportArchive()}><Download aria-hidden="true" size={14} /></button>
+            <label aria-label="导入 Timeline" className={styles.detailIconButton} title="导入 Timeline">
+              <Upload aria-hidden="true" size={14} />
+              <input hidden type="file" accept="application/json,.json" disabled={archiveBusy} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void importArchive(file) }} />
+            </label>
+          </> : null}
           <button className={styles.primaryButton} type="button" onClick={props.onOpen}>
             <Play aria-hidden="true" size={14} />
             <span>{props.t('sessions.enterTimeline')}</span>
           </button>
         </div>
       </header>
+      {archiveError ? <p className={styles.emptyNotice} role="alert">{archiveError}</p> : null}
+      {archiveNotice ? <p className={styles.emptyNotice} role="status">{archiveNotice}</p> : null}
 
       <div className={styles.infoGrid}>
         <div className={styles.infoCard}>
@@ -1337,4 +1387,3 @@ function formatDate(value: string): string {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
 }
-

@@ -1,7 +1,7 @@
 # 开发环境组件预览入口
 
-> **Status**：方向已确认 / 待实施
-> **授权边界**：本轮只记录规则与计划，未实施预览路由；本文件不是自动执行授权。
+> **Status**：入口与样例已实现 / 验证记录待收口
+> **2026-09-12 核对**：开发入口已落地；下文工作包保留验收要求，不再作为从零建设的待办。此次状态核对不补认生产构建或浏览器验收通过。
 
 ## 目标
 
@@ -11,14 +11,14 @@
 
 ## 已确认事实
 
-- [Client 入口](../../../../apps/studio-client/src/main.tsx) 当前先请求 `POST /auth/session`，成功后挂载 BrowserRouter 与 App；只添加子路由不能隔离这一启动请求。
+- [Client 入口](../../../../apps/studio-client/src/main.tsx) 在 `import.meta.env.DEV` 分支内识别预览路径并动态加载预览宿主；普通入口才执行 `POST /auth/session` 后挂载 App。
 - [Client README](../../../../apps/studio-client/README.md) 定义当前启动方式、分层和数据流，预览应复用其 React/Vite、主题与基础控件。
 - 已有 [MasterDetailWorkbench](../../../../apps/studio-client/src/shared/ui/master-detail-workbench/master-detail-workbench.tsx) 和 [AssetWorkbenchLayout](../../../../apps/studio-client/src/shared/ui/asset-workbench-layout/asset-workbench-layout.tsx)，不需要另建分栏与下钻体系。
 - 当前工作区还有其他 UI 与文本管线修改；实施前核对入口现状，不覆盖并行变更。
 
 ## 决策
 
-1. 使用开发专用路由，建议路径为 `/dev/preview/:previewId`，不是现有可用地址。先核对是否已有等效入口，存在则复用。
+1. 复用已存在的 `/dev/preview/:previewId` 开发入口；当前注册 `text-pipeline` 与 `card-resources`，不另建平行宿主。
 2. 用显式组件注册表将稳定 ID 映射到本地组件和样例；未知 ID 显示预览未找到，不任意解析模块路径，不执行用户代码。
 3. 开发预览在正常认证启动前分流，只挂载所需展示环境，不初始化业务 App、RPC、事件连接或持久布局 Store；普通页面仍按原认证链启动。
 4. 生产环境不注册预览路由或导航，预览样例代码不进入生产产物；不得仅靠隐藏链接实现。
@@ -73,4 +73,4 @@
 
 ## 最终结果
 
-当前仅完成 Plan 与 Guide 记录及索引接入。`pnpm check:docs` 通过（278 份 Markdown 路径、大小写、锚点与文档生命周期检查），相关文档 `git diff --check` 通过。预览功能、Client 类型检查、生产构建和浏览器验收均未执行。
+开发入口、显式注册表、未知 ID 提示与内存样例已存在，见 [预览注册表](../../../../apps/studio-client/src/dev/preview/index.tsx)。本次只做源码状态核对；原文“仅有 Plan、尚未实现路由”已失效。后续补齐 README/Guide 的状态同步与已有验收证据，不重复建设入口。生产产物隔离、无认证/RPC/持久化副作用和主观视觉仍须按上方要求取得相应证据，不能仅凭 DEV 分支推断全部通过。

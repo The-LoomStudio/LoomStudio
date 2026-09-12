@@ -56,7 +56,7 @@ Document Store 不再自行打开第二条 SQLite connection，也不再写第�
 
 Studio Server 直接把共享 SQLite Data Engine 作为 Kernel 的 Data Commit Source。测试或外部调用如果注入非 Engine Document Store，仍可使用 `createDocumentDataCommitSource()` 兼容适配。
 
-当前 Document Store 与 Narrative Store 已接入共享 Engine。Narrative Store 使用 `application.narrative@1` migration namespace，拥有：
+当前 Document Store 与 Narrative Store 已接入共享 Engine。Narrative Store 使用 `application.narrative` migration namespace，当前版本 3，拥有：
 
 - `narrative_timelines`：Timeline 根、来源 Card、资源链接、active branch 与 tombstone；
 - `narrative_branches`：Branch head、父 Branch 与 fork 来源；
@@ -64,7 +64,7 @@ Studio Server 直接把共享 SQLite Data Engine 作为 Kernel 的 Data Commit S
 
 Narrative append 在一个 Engine transaction 中同时插入 Node、更新 Branch head 与 Timeline `updated_at`；分页沿 parent 链向历史读取，不使用 SQLite offset。
 
-State Store 使用 `application.state@1` migration namespace，拥有 `state_scopes` 与 `state_revisions`。完整合同与 Narrative Branch、Card V2、Macro、Undo、Agent Tool 的接缝见 [`../application/state-and-variables.md`](../application/state-and-variables.md)。
+State Store 使用 `application.state` migration namespace，当前支持到版本 2，拥有 `state_scopes` 与 `state_revisions`。版本以 [Store migration 注册](../../../packages/state-store/src/store.ts) 为准；完整合同与 Narrative Branch、Card、Macro、Undo、Agent Tool 的接缝见 [`../application/state-and-variables.md`](../application/state-and-variables.md)。
 
 Studio Server 已在组合根创建 Narrative Store，并注入 Application Runtime。当前新增独立 RPC：
 
@@ -79,7 +79,7 @@ Studio Server 已在组合根创建 Narrative Store，并注入 Application Runt
 
 后端旧 `Session / NarrativeEntry / submitTurn` 路径已经删除，不再公开旧 Session、Transcript、Run RPC，也不保留双轨或兼容读取。Studio Client 已切换到 Narrative Timeline、Agent Profile 与按需 Agent Session 合同。
 
-Agent Store 也已接入共享 Engine，使用 `application.agent@3` migration namespace：
+Agent Store 也已接入共享 Engine，使用 `application.agent` migration namespace，当前支持到版本 5，见 [Store migration 注册](../../../packages/agent-store/src/store.ts)：
 
 - `agent_sessions`：Agent Profile identity、标题、transcript entry head/count 与 tombstone；
 - `agent_transcript_entries`：不可变 canonical Transcript Entry、parent、sequence 与可选 runId；
@@ -115,8 +115,8 @@ Prompt Resource 不再使用 `airp.promptResource` Document 作为权威存储�
 
 旧 `airp.agentPreset` 权威类型、对应 RPC 与启动迁移均已删除；开发数据不再保留这条兼容路径。
 
-`createAgentSession` 必须引用真实 Agent Profile。`previewAgentTurn` 与 `invokeAgentTurn` 共用同一 Prompt 构建入口；后者从 Agent Session、Profile 选择的唯一 Preset、全局 Setting Mount、可选 Narrative Timeline Setting 及 Provider Model 构造 canonical Chat Message，并在 Provider 成功后持久化本轮 Message。Provider 失败不会留下半轮。Resource 工作台提供唯一的全局 Setting Mount 编辑入口；Settings 工作台的当前选中项只是编辑状态，不参与运行时绑定。
+`createAgentSession` 必须引用真实 Agent Profile。`previewAgentTurn` 与 `invokeAgentTurn` 共用同一 Prompt 构建入口；后者从 Agent Session、Profile 选择的 Preset、全局 Setting Mount、可选 Narrative Timeline Setting 及 Provider Model 准备 Provider 输入。Tool Loop 在调用 Provider 前保存用户 Message 与 running 状态，之后分阶段保存 Observation、Invocation、Result 和终态；Provider 失败仍可能保留本轮运行事实及已经完成的 Tool 副作用。Resource 工作台管理全局 Setting Mount；Settings 工作台的当前选中项只是编辑状态，不参与运行时绑定。
 
-当 `narrativeTarget.commit = true` 时，两条 Agent Message 与一条 Narrative Node 在同一 Data Engine transaction / Changeset 中提交；未指定目标或 `commit = false` 时只写 Agent Session。Narrative provenance 可以记录 Agent Session、Agent Message、runId 与 changesetId，但 Timeline 和 Agent Session 仍然互不拥有。
+当 `narrativeTarget.commit = true` 且 Agent Loop 成功后，Runtime 另开一个 Data Engine transaction，将用户与 Assistant 正文写成两条 Narrative Node。它们共享该次 Narrative Changeset，但不与已提交的 Agent Transcript 共享事务；Narrative 提交冲突不会回滚 Agent Loop 或 Tool 已完成的写入。未指定目标或 `commit = false` 时不执行这一最终 Narrative 追加，Tool 自身已授权的领域写入仍按各自 API 执行。实现见 [agents-runtime.ts](../../../packages/application-runtime/src/runtime/agents-runtime.ts) 与 [tool-loop.ts](../../../packages/application-runtime/src/agents/tool-loop.ts)。
 
-Runtime Transcript 已解除对 OpenAI Chat Message wire shape 的持久化绑定。当前只把 `message` Entry 投影进 Prompt Build；Provider Observation、ToolInvocation、ToolResult 与 Run State 作为运行事实保存，由后续 Runtime Policy 决定是否进入 Provider Replay。当前 M0 仅读取最近 100 条 Transcript Entry / Narrative Node；这是明确容量上限，后续由上下文窗口与摘要策略替换。
+Runtime Transcript 已解除对 OpenAI Chat Message wire shape 的持久化绑定。历史 Prompt 投影与同一 Run 内的 Provider Replay 是不同路径；当前 Loop 已将 Native / Content Tool Result 投影回后续 Provider Step，不能将其整体列为待实现。历史读取与恢复限制见 [Agent Runtime 与 Session](../application/agent/runtime-and-session.md)；持久化事实不等于 Server 重启后能够 Resume。

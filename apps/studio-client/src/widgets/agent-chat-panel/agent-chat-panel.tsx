@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Copy } from 'lucide-react'
+import { Check, ChevronDown, Copy, Plus, RefreshCw } from 'lucide-react'
 import {
   lazy,
   Suspense,
@@ -41,10 +41,15 @@ export type AgentChatPanelProps = {
   rendererHost?: ClientRendererHost
   selectedProfileId?: string
   session?: AgentSession
+  sessions?: AgentSession[]
+  sessionReady?: boolean
   sessionTail?: ReactNode
   t: Translator
   onChangeInput(value: string): void
   onSelectProfile(id: string): void
+  onSelectSession?(id: string): void
+  onNewSession?(): void
+  onRefreshSessions?(): void
   onSubmit(event: FormEvent): void
 }
 
@@ -81,15 +86,35 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
   return (
     <div className={styles.panel} data-loom-component="agent-chat-panel">
       <header className={styles.sessionBar}>
-        <span className={styles.sessionLabel}>{props.t('agent.session')}</span>
-        <span className={styles.sessionId}>
-          {props.session ? props.session.id.slice(0, 18) : props.t('agent.sessionPending')}
-        </span>
+        <select
+          aria-label={props.t('agent.session')}
+          className={styles.sessionSelect}
+          disabled={props.busy}
+          value={props.session?.id ?? ''}
+          onChange={event => props.onSelectSession?.(event.target.value)}
+        >
+          <option disabled value="">{props.t('agent.sessionPending')}</option>
+          {(props.sessions ?? (props.session ? [props.session] : [])).map(session => (
+            <option key={session.id} value={session.id}>
+              {session.title ?? props.t('sessions.untitledAgentSession')} · {new Date(session.updatedAt).toLocaleString()}
+            </option>
+          ))}
+        </select>
+        <button className={styles.sessionAction} type="button" disabled={props.busy}
+          title={props.t('agent.sessionNew')} aria-label={props.t('agent.sessionNew')} onClick={props.onNewSession}>
+          <Plus aria-hidden="true" />
+        </button>
+        <button className={styles.sessionAction} type="button" disabled={props.busy}
+          title={props.t('agent.sessionRefresh')} aria-label={props.t('agent.sessionRefresh')} onClick={props.onRefreshSessions}>
+          <RefreshCw aria-hidden="true" />
+        </button>
       </header>
 
       <div className={styles.conversation} ref={conversationRef}>
         <Suspense fallback={<div aria-busy="true" className={styles.loading}><SkeletonText lines={5} /></div>}>
-          {props.messages.length === 0 && !props.busy ? (
+          {!props.busy && props.sessionReady === false ? (
+            <p className={styles.empty} role="alert">{props.t('agent.sessionLoadFailed')}</p>
+          ) : props.messages.length === 0 && !props.busy ? (
             <p className={styles.empty}>{props.t('agent.sessionEmpty')}</p>
           ) : null}
 
@@ -130,7 +155,7 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
       <footer className={styles.footer}>
         <ChatComposer
           canPreviewPrompt={false}
-          canSend={Boolean(props.input.trim()) && !props.busy && Boolean(props.selectedProfileId)}
+          canSend={Boolean(props.input.trim()) && !props.busy && props.sessionReady !== false && Boolean(props.selectedProfileId)}
           input={props.input}
           moreLabel={props.t('composer.more')}
           placeholder={props.t('agent.composerPlaceholder')}

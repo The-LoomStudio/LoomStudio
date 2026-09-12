@@ -21,17 +21,18 @@ Package 只通过 [`src/index.ts`](./src/index.ts) 暴露 public API，构建产
 
 | 文件或目录                                      | 当前职责                                               |
 | ----------------------------------------------- | ------------------------------------------------------ |
-| `runtime.ts`                                    | `ApplicationRuntime` facade 与领域流程组装             |
+| `runtime/runtime.ts`、`runtime/`                | `ApplicationRuntime` facade 与领域流程组装；根 `runtime.ts` 仅重导出 |
 | `types.ts`                                      | 公共 Application 合同                                  |
-| `application-context.ts`                        | Store、Gateway、Registry、Logger、Clock 等内部基础设施 |
-| `document-types.ts`                             | 第一方 Application Document Types                      |
-| `card.ts`、`workspace.ts`                       | Card、Bundle、Artifact 和 Prompt Resource 导入导出     |
-| `prompt-builder.ts`、`prompt-build-pipeline.ts` | Composition 与 Loom Core Pipeline                      |
-| `prompt-activation.ts`、`variables.ts`          | Activation 和只读变量宏                                |
-| `agent/`、`agent-turn.ts`                       | Tool Registry、Prompt、Provider Step 与 Tool Loop      |
-| `gateway.ts`、`provider-payload.ts`             | Provider Profile、Gateway 与 wire payload adapter      |
-| `state.ts`、`state-definition.ts`               | State Mutation、Revision、Definition 与 Binding        |
-| `history-text.ts`                               | History Transform、Extractor 与 Renderer Projection    |
+| `foundation/application-context.ts`            | Store、Gateway、Registry、Logger、Clock 等内部基础设施 |
+| `foundation/document-types.ts`                 | 第一方 Application Document Types                      |
+| `cards/card.ts`、`cards/workspace.ts`           | Card、Bundle、Artifact 和 Prompt Resource 导入导出     |
+| `prompt/prompt-builder.ts`、`prompt/prompt-build-pipeline.ts` | Composition 类型与当前 DFS 编译器             |
+| `prompt/prompt-activation.ts`、`prompt/variables.ts` | Activation 和只读变量宏                            |
+| `agents/`                                     | Tool Registry、Prompt、Provider Step 与 Tool Loop      |
+| `providers/`                                  | Provider Profile、Gateway 与 wire payload adapter      |
+| `state/`                                      | State Mutation、Revision、Definition 与 Binding        |
+| `transforms/`                                 | History Transform、Extractor 与 Renderer Projection    |
+| `scripts/`                                    | Loom Script Metadata、编解码与挂载解析                 |
 
 `ApplicationRuntimeContext` 保存稳定基础设施，不保存 `sessionId`、`branchId`、`userInput` 等请求业务事实。调用相关身份和关联信息通过操作参数与 `RuntimeRequestContext` 显式传递。
 
@@ -39,7 +40,7 @@ Package 只通过 [`src/index.ts`](./src/index.ts) 暴露 public API，构建产
 
 - 领域存储：Agent、Narrative、Prompt Resource、State、Document；
 - 平台能力：Data Engine、AI Gateway、Secret Store、Logging、Shared；
-- `@loom/core`：只用于第一方 PromptBuild Pipeline；
+- `@loom/core`：保留在 Package 依赖声明中，但当前 PromptBuild 使用本包 DFS 编译器，没有调用 Core Pass Pipeline；
 - `undici`：OpenAI-compatible Gateway 的代理传输。
 
 本包不注册 HTTP/JSON-RPC 路由，不拥有 React/Zustand 状态，不提供 Kernel RPC/Event/Extension Host，也不实现各 Store 的 SQLite 内部细节。Shared Data Engine 和 Prompt Resource Store 在当前运行时是必需依赖。

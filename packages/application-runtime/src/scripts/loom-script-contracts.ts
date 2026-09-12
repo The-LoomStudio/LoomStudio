@@ -91,4 +91,5 @@ export type LoomScriptArtifact = {
 export type LoomScriptAttachmentArtifact = {
   script: LoomScriptArtifact
   orderIndex: number
+  resourceOrigin?: 'card' | 'external'
 }

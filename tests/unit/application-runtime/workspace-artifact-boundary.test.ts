@@ -18,6 +18,23 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 describe('card bundle artifact boundary', () => {
+  it('keeps shared prompt resources when a card and its private resources are deleted', async () => {
+    const fixture = createFixture()
+    const first = await importCardBundle({ artifact: createArtifact(), ...fixture })
+    const second = await importCardBundle({ artifact: createArtifact(), ...fixture })
+    const deletedIds: string[] = []
+    const runtime = createApplicationRuntime({ dataEngine: fixture.engine, documents: fixture.documents, promptResources: fixture.promptResources,
+      withCardDeletion: async (id, commit) => { deletedIds.push(id); return commit() },
+    })
+    const shared = first.card.promptResourceIds![0]!
+    const own = first.card.promptResourceIds![1]!
+    await runtime.updateCardPromptResources({ cardId: second.card.id, promptResourceIds: [shared] })
+    await runtime.deleteCard({ cardId: first.card.id, includePromptResources: true })
+    expect(deletedIds).toEqual([first.card.id])
+    expect(await fixture.promptResources.getResource(shared)).toBeTruthy()
+    expect(await fixture.promptResources.getResource(own)).toBeNull()
+  })
+
   it('imports a card, flat prompt resources, and an immutable import bundle', async () => {
     const fixture = createFixture()
     const imported = await importCardBundle({ artifact: createArtifact(), ...fixture, now: '2026-06-22T00:00:00.000Z' })
@@ -66,6 +83,7 @@ describe('card bundle artifact boundary', () => {
       requirement: { versionRange: '^1.0.0' },
       metadata: { label: 'Watercolor' },
       content: '{"artist":"example","style":"watercolor"}',
+      resourceOrigin: 'external',
     }]
 
     const imported = await importCardBundle({ artifact, ...fixture })
@@ -125,6 +143,35 @@ describe('card bundle artifact boundary', () => {
     expect(second.importBundle.documentIds).toEqual([second.card.id, second.importBundle.id])
     expect(second.card.preset).toEqual(first.card.preset)
     expect(second.card.settingLayer).toEqual(first.card.settingLayer)
+  })
+
+  it('keeps external provenance per Card through ID remapping and reference edits', async () => {
+    const fixture = createFixture()
+    const artifact = createArtifact()
+    artifact.externalContextAssetIds = [artifact.contextAssets[1]!.id]
+    const first = await importCardBundle({ artifact, ...fixture })
+    expect(first.card.externalPromptResourceIds).toEqual([first.card.promptResourceIds![1]])
+    const exportCard = (cardId: string) => exportCardArtifact({ cardId, ...fixture })
+    const exported = await exportCard(first.card.id)
+    expect(exported.externalContextAssetIds).toEqual([exported.contextAssets[1]!.id])
+    const second = await importCardBundle({ artifact: exported, ...fixture })
+    const reexported = await exportCard(second.card.id)
+    expect(reexported.contextAssets[1]!.id).not.toBe(exported.contextAssets[1]!.id)
+    expect(reexported.externalContextAssetIds).toEqual([reexported.contextAssets[1]!.id])
+
+    const runtime = createApplicationRuntime({ dataEngine: fixture.engine, documents: fixture.documents, promptResources: fixture.promptResources })
+    await expect(runtime.updateCardPromptResources({
+      cardId: first.card.id, promptResourceIds: first.card.promptResourceIds!, externalPromptResourceIds: ['missing'],
+    })).rejects.toThrow('External prompt resources')
+    await runtime.updateCardPromptResources({
+      cardId: first.card.id, promptResourceIds: first.card.promptResourceIds!, externalPromptResourceIds: [],
+    })
+    expect((await exportCard(first.card.id)).externalContextAssetIds).toEqual([])
+    expect((await exportCard(second.card.id)).externalContextAssetIds).toEqual(reexported.externalContextAssetIds)
+    await runtime.updateCardPromptResources({
+      cardId: second.card.id, promptResourceIds: [second.card.promptResourceIds![0]!],
+    })
+    expect((await exportCard(second.card.id)).externalContextAssetIds).toEqual([])
   })
 
   it('rejects malformed nested resource nodes and duplicate ids before writing', async () => {
@@ -232,6 +279,7 @@ describe('card bundle artifact boundary', () => {
       artifact.schemaVersion = 3
       artifact.scriptAttachments = [{
         orderIndex: 7,
+        resourceOrigin: 'external',
         script: { format: 'loom.script', schemaVersion: 1, fileName: 'alice.loom.js', source: loomScriptSource() },
       }]
       const imported = await importCardBundle({ artifact, ...fixture, blobs })

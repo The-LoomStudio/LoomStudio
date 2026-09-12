@@ -2,83 +2,44 @@
 
 > **状态**：Active Reference / Current Workspace Manifests Are Authority
 
-Loom Studio 严格遵循依赖单向流动（从外围应用到内核）的设计原则。不允许出现循环依赖，也不允许内部基础设施依赖具体的应用逻辑。
+下图只展示主要分层，不是全量依赖图。箭头表示使用方依赖被使用方；精确 dependencies 以各 Package 的 package.json 为准。声明依赖不代表当前某条业务路径实际调用了它。
 
-## 依赖全景图
+## 主要依赖
 
 ```mermaid
 flowchart TD
-    %% Define Styles
-    classDef app fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
-    classDef pkg fill:#f3e5f5,stroke:#4a148c,stroke-width:2px;
-    classDef ext fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px;
-
-    %% Apps
-    subgraph Apps["Applications (apps/)"]
-        Client("apps/studio-client\n(Vite/React)"):::app
-        Server("apps/studio-server\n(Node.js)"):::app
-    end
-
-    %% Extensions
-    subgraph Extensions["Extensions (extensions/)"]
-        ExampleEcho("example-echo"):::ext
-        ProviderExt("provider-*"):::ext
-    end
-
-    %% Packages
-    subgraph Packages["Core Packages (packages/)"]
-        LoomCore("core\n@loom/core"):::pkg
-        ClientBridge("client-bridge"):::pkg
-        ApplicationRuntime("application-runtime"):::pkg
-        Kernel("kernel"):::pkg
-        DocumentStore("document-store"):::pkg
-        LoomRunner("loom-runner"):::pkg
-        Transport("transport"):::pkg
-        ExtensionSdk("extension-sdk"):::pkg
-        ExtensionHost("extension-host"):::pkg
-        Shared("shared"):::pkg
-        TraceAudit("trace-audit"):::pkg
-        Diagnostics("diagnostics"):::pkg
-    end
-
-    %% Edges (Dependencies)
-    Client --> ClientBridge
-    Client --> Transport
-    Client --> Shared
-
-    Server --> Kernel
-    Server --> ApplicationRuntime
-    Server --> Transport
-    Server --> ClientBridge
-    Server --> DocumentStore
-
-    ApplicationRuntime --> DocumentStore
-    ApplicationRuntime --> Shared
-    ApplicationRuntime --> LoomCore
-
-    Kernel --> ExtensionHost
-    Kernel --> DocumentStore
-    Kernel --> LoomRunner
-    Kernel --> TraceAudit
-    Kernel --> Diagnostics
-    Kernel --> Transport
-    Kernel --> Shared
-
-    ExtensionHost --> Shared
-
-    ExtensionSdk --> Shared
-    ExtensionSdk --> ExtensionHost
-
-    LoomRunner --> LoomCore
-    LoomRunner --> Diagnostics
-    LoomRunner --> Shared
-
-    ExampleEcho --> ExtensionSdk
-    ProviderExt --> ExtensionSdk
+    Client["Studio Client"] --> Bridge["Client Bridge"]
+    Client --> Shared["Shared"]
+    Server["Studio Server"] --> Runtime["Application Runtime"]
+    Server --> Kernel["Kernel"]
+    Server --> Stores["领域 Stores / Data Engine"]
+    Runtime --> Stores
+    Runtime --> SDK["Extension SDK"]
+    Runtime --> Gateway["AI Gateway"]
+    Runtime -. 声明依赖，当前 DFS 未调用 .-> Core["@loom/core"]
+    Kernel --> Host["Extension Host"]
+    Kernel --> Runner["Loom Runner"]
+    Kernel --> Documents["Document Store / Data Commit" ]
+    Host --> SDK
+    SDK --> Transport["Transport"]
+    Transport --> Shared
+    Runner --> Core
+    Official["official/extensions/st-data-compat"] --> SDK
+    Fixtures["tests/fixtures/extensions"] --> SDK
 ```
 
-## 核心约束规则
+关键入口：
 
-1. **受控 Core 依赖**：只有 `packages/loom-runner` 与 `packages/application-runtime` 被允许导入 `@loom/core` public API。前者负责平台 adapter，后者负责第一方 PromptBuild pipeline；其余模块不得直接依赖 Core。
-2. **应用逻辑闭环**: `packages/kernel` 是一个纯粹的执行引擎，不允许导入 `packages/application-runtime`。所有的应用逻辑（如 Session, PromptBuilder 等）均在 Runtime 和 Server 层组装。
-3. **共享基础**: `packages/shared` 和 `packages/transport` 位于最底层，不允许依赖除了外部库之外的任何工作区内的包。
+- [Application Runtime manifest](../../../packages/application-runtime/package.json)
+- [Kernel manifest](../../../packages/kernel/package.json)
+- [Extension SDK manifest](../../../packages/extension-sdk/package.json)
+- [Extension Host manifest](../../../packages/extension-sdk/extension-host/package.json)
+- [Transport manifest](../../../packages/transport/package.json)
+
+## 核心约束
+
+1. Core 直接依赖只允许在 Loom Runner 与 Application Runtime 中声明。当前 Loom Runner 实际执行 Core，Agent PromptBuild 使用 Application 内部 DFS；见 [集成事实](../../architecture/application/prompt-build/loom-core/studio-integration.md)。
+2. Kernel 不依赖 Application Runtime，不拥有 Card、Agent 或 Prompt 业务语义。
+3. Host 实现依赖 SDK 作者合同，SDK 不反向依赖 Host；Host 物理目录嵌在 SDK 目录下不改变这个方向。
+4. Transport 可以依赖 Shared；共享基础设施不得反向依赖具体 Application 或 Client。
+5. 官方扩展与测试样本分别在 `official/extensions/` 和 `tests/fixtures/extensions/`，不再以根 `extensions/` 作为当前源码入口。

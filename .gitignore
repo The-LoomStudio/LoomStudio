@@ -13,4 +13,7 @@ apps/studio-client/vite.config.js
 !.env.example
 .loomstudio-dev/
 .artifacts/
+Playground/
+/data/
+/data.migrating-*/
 .DS_Store

@@ -21,19 +21,45 @@
   user-select: none;
 }
 
-.sessionLabel {
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+.sessionSelect {
+  flex: 1;
+  min-width: 0;
+  width: 0;
+  height: 28px;
+  padding: 0 4px;
+  border: 0;
+  border-bottom: 1px solid var(--loom-color-divider);
+  border-radius: 0;
+  background: transparent;
+  font: inherit;
   color: var(--loom-color-text-muted);
-}
-
-.sessionId {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--loom-font-mono, monospace);
-  color: var(--loom-color-text-subtle);
+}
+
+.sessionAction {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--loom-radius-control);
+  color: var(--loom-color-text-muted);
+  background: transparent;
+  cursor: pointer;
+
+  svg { width: var(--loom-icon-size-2); height: var(--loom-icon-size-2); }
+  &:hover:not(:disabled) { background: var(--loom-color-surface); }
+  &:disabled { opacity: 0.45; cursor: default; }
+}
+
+.sessionSelect:focus-visible,
+.sessionAction:focus-visible {
+  outline: 2px solid var(--loom-color-accent);
+  outline-offset: 2px;
 }
 
 .conversation {

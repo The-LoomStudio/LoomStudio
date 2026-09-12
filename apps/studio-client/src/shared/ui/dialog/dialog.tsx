@@ -3,7 +3,9 @@ import { isDialogBackdropPoint } from './dialog-model.js'
 import styles from './dialog.module.scss'
 
 type DialogProps = {
+  layout?: 'default' | 'media'
   actions?: ReactNode
+  headerActions?: ReactNode
   children?: ReactNode
   className?: string
   closeOnBackdrop?: boolean
@@ -45,7 +47,7 @@ export function Dialog(props: DialogProps) {
       ref={dialogRef}
       aria-describedby={props.description ? descriptionId : undefined}
       aria-labelledby={titleId}
-      className={`${styles.dialog}${props.className ? ` ${props.className}` : ''}`}
+      className={`${styles.dialog}${props.layout === 'media' ? ` ${styles.media}` : ''}${props.className ? ` ${props.className}` : ''}`}
       data-loom-component="dialog"
       role={props.role ?? 'dialog'}
       onCancel={event => {
@@ -63,7 +65,7 @@ export function Dialog(props: DialogProps) {
     >
       <div className={styles.frame}>
         <header className={styles.header}>
-          <h2 id={titleId}>{props.title}</h2>
+          {props.headerActions ? <div className={styles.titleRow}><h2 id={titleId}>{props.title}</h2><div className={styles.headerActions}>{props.headerActions}</div></div> : <h2 id={titleId}>{props.title}</h2>}
           {props.description ? <p id={descriptionId}>{props.description}</p> : null}
         </header>
         {props.children ? <div className={styles.body}>{props.children}</div> : null}

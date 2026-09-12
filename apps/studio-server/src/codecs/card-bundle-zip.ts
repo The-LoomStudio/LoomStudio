@@ -4,7 +4,7 @@ import {
   type PortableExtensionPayloadArtifact,
 } from '@loom-studio/application-runtime'
 import { Unzip, UnzipInflate, UnzipPassThrough, zipSync } from 'fflate'
-import { projectCardFiles, restoreCardFiles, validateBundlePath, type CardFilesIndex } from './card-bundle-files.js'
+import { loadCardResourceFiles, projectCardFiles, restoreCardFiles, validateBundlePath, type CardFilesIndex } from './card-bundle-files.js'
 
 const manifestPath = 'manifest.json'
 // ponytail: bounded author projects; raise with streaming/file-tree budgets if larger worlds require it.
@@ -28,6 +28,7 @@ type LegacyCardManifest = {
   extensionPayloads?: LoomCardPayloadManifest[]
   scriptAttachments?: Array<{
     orderIndex: number
+    resourceOrigin?: 'card' | 'external'
     script: Omit<LoomScriptAttachmentArtifact['script'], 'source'> & { path: string }
   }>
 }
@@ -42,11 +43,13 @@ export type CardBundleMedia = {
   mediaType: string
 }
 
-export function encodeCardBundleZip(input: {
+export type CardBundleFilesInput = {
   artifact: CardBundleArtifact
   avatar: CardBundleMedia
   background?: CardBundleMedia
-}): Uint8Array {
+}
+
+export function encodeCardBundleFiles(input: CardBundleFilesInput): Record<string, Uint8Array> {
   const artifact = structuredClone(normalizeCardBundleArtifact(input.artifact))
   const extensionPayloads = artifact.extensionPayloads ?? []
   const scriptAttachments = artifact.scriptAttachments ?? []
@@ -74,10 +77,12 @@ export function encodeCardBundleZip(input: {
       ...(payload.schemaVersion !== undefined ? { schemaVersion: payload.schemaVersion } : {}),
       ...(payload.requirement !== undefined ? { requirement: payload.requirement } : {}),
       ...(payload.metadata !== undefined ? { metadata: payload.metadata } : {}),
+      ...(payload.resourceOrigin !== undefined ? { resourceOrigin: payload.resourceOrigin } : {}),
       path: portablePayloadPath(payload),
     })),
     scriptAttachments: scriptAttachments.map((attachment, index) => ({
       orderIndex: attachment.orderIndex,
+      ...(attachment.resourceOrigin !== undefined ? { resourceOrigin: attachment.resourceOrigin } : {}),
       script: {
         format: attachment.script.format,
         schemaVersion: attachment.script.schemaVersion,
@@ -110,6 +115,11 @@ export function encodeCardBundleZip(input: {
     total += bytes.byteLength
   }
   if (total > maxBundleBytes) throw new Error('Loom Card package expands beyond the allowed size')
+  return entries
+}
+
+export function encodeCardBundleZip(input: CardBundleFilesInput): Uint8Array {
+  const entries = encodeCardBundleFiles(input)
   const archive = zipSync(entries, { level: 6 })
   if (archive.byteLength > maxBundleBytes) throw new Error(`Loom Card package exceeds ${maxBundleBytes} bytes`)
   return archive
@@ -122,6 +132,10 @@ export async function decodeCardBundleZip(source: Uint8Array): Promise<{
 }> {
   if (source.byteLength > maxBundleBytes) throw new Error(`Loom Card package exceeds ${maxBundleBytes} bytes`)
   const files = await unzipSafely(source)
+  return decodeCardBundleFiles(files)
+}
+
+export function decodeCardBundleFiles(files: Map<string, Uint8Array>): CardBundleFilesInput {
   const manifestBytes = files.get(manifestPath)
   if (!manifestBytes) throw new Error('Loom Card package is missing manifest.json')
   const manifest = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(manifestBytes)) as LegacyCardManifest | LoomCardManifest
@@ -142,6 +156,33 @@ export async function decodeCardBundleZip(source: Uint8Array): Promise<{
   }
 }
 
+export async function loadCardBundleFiles(read: (path: string) => Promise<Uint8Array>) {
+  const files = new Map<string, Uint8Array>()
+  let total = 0
+  const load = async (path: string): Promise<Uint8Array> => {
+    validateBundlePath(path)
+    const cached = files.get(path)
+    if (cached) return cached
+    if (files.size >= maxEntryCount) throw new Error(`Loom Card package exceeds ${maxEntryCount} entries`)
+    const bytes = await read(path)
+    if (bytes.byteLength > maxEntryBytes) throw new Error(`Oversized directory entry: ${path}`)
+    total += bytes.byteLength
+    if (total > maxBundleBytes) throw new Error('Loom Card package expands beyond the allowed size')
+    files.set(path, bytes)
+    return bytes
+  }
+  const manifest = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(await load(manifestPath))) as LegacyCardManifest | LoomCardManifest
+  if (!manifest || (manifest.schema !== 'loom.cardBundle.zip.v1' && manifest.schema !== 'loom.cardBundle.zip.v2') || !manifest.media?.avatar) {
+    throw new Error('Invalid Loom Card package manifest')
+  }
+  if (manifest.schema === 'loom.cardBundle.zip.v2') await loadCardResourceFiles(manifest.resources, load)
+  await load(manifest.media.avatar)
+  if (manifest.media.background !== undefined) await load(manifest.media.background)
+  for (const attachment of manifest.scriptAttachments ?? []) await load(attachment.script.path)
+  for (const payload of manifest.extensionPayloads ?? []) await load(payload.path)
+  return { bundle: decodeCardBundleFiles(files), files }
+}
+
 function readScriptAttachments(
   files: Map<string, Uint8Array>,
   attachments: LoomCardManifest['scriptAttachments'],
@@ -155,13 +196,15 @@ function readScriptAttachments(
       throw new Error(`Invalid Loom Card Script attachment manifest: ${index}`)
     }
     validateBundlePath(attachment.script.path)
-    if (!attachment.script.path.startsWith('scripts/') || !attachment.script.path.endsWith('.loom.js')) {
-      throw new Error(`Loom Card Script path must stay under scripts/ and end in .loom.js: ${attachment.script.path}`)
+    if (!(attachment.script.path.startsWith('scripts/') || attachment.script.path.startsWith('external/scripts/'))
+      || !attachment.script.path.endsWith('.loom.js')) {
+      throw new Error(`Loom Card Script path must stay under scripts/ or external/scripts/ and end in .loom.js: ${attachment.script.path}`)
     }
     const bytes = files.get(attachment.script.path)
     if (!bytes) throw new Error(`Loom Card package is missing ${attachment.script.path}`)
     return {
       orderIndex: attachment.orderIndex,
+      ...(attachment.resourceOrigin !== undefined ? { resourceOrigin: attachment.resourceOrigin } : {}),
       script: {
         format: attachment.script.format,
         schemaVersion: attachment.script.schemaVersion,
@@ -270,8 +313,8 @@ function readExtensionPayloads(
       throw new Error(`Invalid Loom Card extension payload manifest: ${index}`)
     }
     validateBundlePath(payload.path)
-    if (!payload.path.startsWith('extensions/')) {
-      throw new Error(`Loom Card extension payload path must stay under extensions/: ${payload.path}`)
+    if (!(payload.path.startsWith('extensions/') || payload.path.startsWith('external/extensions/'))) {
+      throw new Error(`Loom Card extension payload path must stay under extensions/ or external/extensions/: ${payload.path}`)
     }
     const bytes = files.get(payload.path)
     if (!bytes) throw new Error(`Loom Card package is missing ${payload.path}`)
@@ -285,16 +328,17 @@ function readExtensionPayloads(
       ...(payload.requirement !== undefined ? { requirement: payload.requirement } : {}),
       ...(payload.metadata !== undefined ? { metadata: payload.metadata } : {}),
       content: new TextDecoder('utf-8', { fatal: true }).decode(bytes),
+      ...(payload.resourceOrigin !== undefined ? { resourceOrigin: payload.resourceOrigin } : {}),
     }
   })
 }
 
 function portablePayloadPath(payload: PortableExtensionPayloadArtifact): string {
-  return `extensions/${payload.packageId}/${payload.id}/${payload.fileName}`
+  return `${payload.resourceOrigin === 'external' ? 'external/' : ''}extensions/${payload.packageId}/${payload.id}/${payload.fileName}`
 }
 
 function loomScriptPath(attachment: LoomScriptAttachmentArtifact, index: number): string {
-  return `scripts/${index}-${attachment.script.fileName}`
+  return `${attachment.resourceOrigin === 'external' ? 'external/' : ''}scripts/${index}-${attachment.script.fileName}`
 }
 
 function extensionForMediaType(mediaType: string): string {

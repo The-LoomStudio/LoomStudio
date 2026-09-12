@@ -1,4 +1,4 @@
-import { ArrowDownUp, ArrowLeft, BookOpen, Braces, Check, Circle, ChevronRight, CloudDownload, Combine, Download, FileArchive, Folder, Grid2X2, ImageDown, List, Pencil, Play, Plus, Trash2, Upload, Users, X } from 'lucide-react'
+import { ArrowDownUp, ArrowLeft, BookOpen, Braces, Check, Circle, ChevronRight, CloudDownload, Combine, Download, FileArchive, Folder, Grid2X2, ImageDown, List, Pencil, Play, Plus, RefreshCw, Trash2, Upload, Users, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent } from 'react'
 import type { MenuAction } from '../../shared/ui/menu-action.js'
 import { ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem, ContextMenuSeparator } from '../../shared/ui/context-menu/context-menu.js'
@@ -11,6 +11,9 @@ import { MasterDetailWorkbench } from '../../shared/ui/master-detail-workbench/m
 import type { PromptResource } from '../../entities/index.js'
 import { renderTemplateMacros, type MacroRenderContext } from '../../features/state-variables/model/macro-renderer.js'
 import styles from './character-panel.module.scss'
+import type { CardDirectoryCatalog } from '@loom-studio/shared'
+import { CardResourceOverview, DirectoryDiscoveryNotice, type CardDirectoryApi } from './card-resource-overview.js'
+import { cardMediaUrl, useCardMediaRevision } from '../../shared/lib/card-media.js'
 
 type CharacterCardSummary = {
   id: string
@@ -36,7 +39,9 @@ type CharacterPanelProps = {
   onChangeCardDraft(draft: { name: string; userName: string; description: string }): void
   onCreateCard(): Promise<void>
   onCreateTimelineFromCard(): Promise<void>
-  onExportCard(card: CharacterCardSummary, format: 'png' | 'polyglot' | 'loomcard'): Promise<void>
+  onExportCard(card: CharacterCardSummary, format: 'png' | 'polyglot' | 'loomcard' | 'directory'): Promise<void>
+  directoryApi?: CardDirectoryApi
+  onRefreshCards?(): Promise<unknown>
   onImportCards(files: File[]): Promise<void>
   onDeleteCards(cardIds: string[], options?: { includePlayData?: boolean; includePromptResources?: boolean }): Promise<void>
   onPreviewCardDeletion(cardId: string): Promise<{ timelines: Array<{ id: string }> }>
@@ -79,6 +84,8 @@ const MAX_REMOTE_CARD_BYTES = 128 * 1024 * 1024
 const PAGE_TRANSITION_MS = 180
 
 export function CharacterPanel(props: CharacterPanelProps) {
+  const mediaRevision = useCardMediaRevision()
+  const mediaUrl = (card: CharacterCardSummary, target: MediaTarget) => cardMediaUrl(card.id, target, target === 'avatar' ? card.media?.avatarAssetId : card.media?.coverAssetId, mediaRevision) ?? (target === 'avatar' ? '/images/default-card.png' : undefined)
   const organization = useCharacterGalleryStore()
   const [profileEditing, setProfileEditing] = useState(false)
   const [galleryMode, setGalleryMode] = useState<GalleryMode>('grid')
@@ -96,6 +103,22 @@ export function CharacterPanel(props: CharacterPanelProps) {
   const [includePromptResources, setIncludePromptResources] = useState(true)
   const [exportCard, setExportCard] = useState<CharacterCardSummary>()
   const [remoteImportOpen, setRemoteImportOpen] = useState(false)
+  const [discovered, setDiscovered] = useState<CardDirectoryCatalog>()
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshError, setRefreshError] = useState('')
+  const [profileTab, setProfileTab] = useState<'profile' | 'attachments'>('profile')
+
+  async function refreshGallery() {
+    setRefreshing(true)
+    setRefreshError('')
+    try {
+      await props.onRefreshCards?.()
+      const catalog = await props.directoryApi!.scan()
+      if (catalog.error) throw new Error(catalog.error)
+      setDiscovered(catalog.entries.some(entry => !entry.registeredCardId) ? catalog : undefined)
+    } catch (cause) { setRefreshError(cause instanceof Error ? cause.message : String(cause)) }
+    finally { setRefreshing(false) }
+  }
   const [remoteImportUrl, setRemoteImportUrl] = useState('')
   const [remoteImportError, setRemoteImportError] = useState('')
   const [remoteImportBusy, setRemoteImportBusy] = useState(false)
@@ -356,6 +379,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
 
   const overlays = (
     <>
+      {discovered && props.directoryApi ? <DirectoryDiscoveryNotice catalog={discovered} api={props.directoryApi} onRefresh={props.onRefreshCards} t={props.t} onClose={() => setDiscovered(undefined)} /> : null}
       {organization.groupsOpen ? (
         <CharacterGroupDialog
           activeGroupId={organization.activeGroupId}
@@ -385,6 +409,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
         onClose={() => setExportCard(undefined)}
       >
         <div className={styles.exportOptions}>
+          <ExportOption description={props.t('character.saveDirectoryDescription')} icon={<Folder aria-hidden="true" />} label={props.t('character.saveDirectory')} onClick={() => exportCard && exportSelectedCard(exportCard, 'directory')} />
           <ExportOption description={props.t('character.exportPngDescription')} icon={<ImageDown aria-hidden="true" />} label={props.t('character.exportPng')} onClick={() => exportCard && exportSelectedCard(exportCard, 'png')} />
           <ExportOption description={props.t('character.exportPolyglotDescription')} icon={<Combine aria-hidden="true" />} label={props.t('character.exportPolyglot')} onClick={() => exportCard && exportSelectedCard(exportCard, 'polyglot')} />
           <ExportOption description={props.t('character.exportLoomCardDescription')} icon={<FileArchive aria-hidden="true" />} label={props.t('character.exportLoomCard')} onClick={() => exportCard && exportSelectedCard(exportCard, 'loomcard')} />
@@ -466,6 +491,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
                 <>
                   <div className={styles.galleryToolbarMain}>
                     <div className={styles.galleryModes} role="group" aria-label={props.t('character.gallery')}>
+                      {props.directoryApi ? <button aria-label={props.t('directory.refresh')} className={styles.toolbarButton} disabled={refreshing || props.busy} title={props.t('directory.refresh')} type="button" onClick={() => void refreshGallery()}><RefreshCw aria-hidden="true" /></button> : null}
                       <button aria-label={props.t('character.grid')} aria-pressed={galleryMode === 'grid'} className={galleryMode === 'grid' ? styles.toolbarButtonActive : styles.toolbarButton} title={props.t('character.grid')} type="button" onClick={() => setGalleryMode('grid')}><Grid2X2 aria-hidden="true" /></button>
                       <button aria-label={props.t('character.list')} aria-pressed={galleryMode === 'list'} className={galleryMode === 'list' ? styles.toolbarButtonActive : styles.toolbarButton} title={props.t('character.list')} type="button" onClick={() => setGalleryMode('list')}><List aria-hidden="true" /></button>
                     </div>
@@ -480,6 +506,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
               )}
             </header>
 
+            {refreshError ? <p role="alert" className={styles.mediaNotice}>{refreshError}</p> : null}
             {filteredCards.length === 0 ? <p className={styles.empty}>{props.t('character.empty')}</p> : (
               <div className={galleryMode === 'grid' ? styles.grid : styles.list}>
                 {visibleCards.map(card => (
@@ -566,7 +593,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
               <span>{props.t('character.title')}</span>
               <div>
                 {selectionMode && !selectedCardIds.has(selected.id) ? <button aria-label={props.t('character.select')} className={styles.toolbarButton} title={props.t('character.select')} type="button" onClick={() => enterSelectionMode(selected.id)}><Circle aria-hidden="true" /></button> : null}
-                <button aria-label={props.t('character.edit')} aria-pressed={profileEditing} className={profileEditing ? styles.toolbarButtonActive : styles.toolbarButton} title={props.t('character.edit')} type="button" onClick={() => setProfileEditing(value => !value)}><Pencil aria-hidden="true" /></button>
+                <button aria-label={props.t('character.edit')} aria-pressed={profileEditing} className={profileEditing ? styles.toolbarButtonActive : styles.toolbarButton} title={props.t('character.edit')} type="button" onClick={() => { setProfileTab('profile'); setProfileEditing(value => !value) }}><Pencil aria-hidden="true" /></button>
                 <button aria-label={props.t('character.export')} className={styles.toolbarButton} disabled={props.busy} title={props.t('character.export')} type="button" onClick={() => setExportCard(selected)}><Download aria-hidden="true" /></button>
                 <button aria-label={props.t('character.delete')} className={`${styles.toolbarButton} ${styles.deleteButton}`} disabled={props.busy} title={props.t('character.delete')} type="button" onClick={() => setPendingDeleteIds([selected.id])}><Trash2 aria-hidden="true" /></button>
               </div>
@@ -578,6 +605,17 @@ export function CharacterPanel(props: CharacterPanelProps) {
             </section>
             {mediaNotice ? <p aria-live="polite" className={styles.mediaNotice}>{mediaNotice}</p> : null}
 
+            <div className={styles.profileTabs} role="tablist" aria-label={props.t('character.title')}>
+              {(['profile', 'attachments'] as const).map(tab => <button key={tab} id={`card-${tab}-tab`} aria-controls={`card-${tab}-panel`} type="button" role="tab" aria-selected={profileTab === tab} tabIndex={profileTab === tab ? 0 : -1} onClick={() => setProfileTab(tab)} onKeyDown={event => {
+                if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+                  event.preventDefault()
+                  const next = event.key === 'Home' ? 'profile' : event.key === 'End' ? 'attachments' : profileTab === 'profile' ? 'attachments' : 'profile'
+                  setProfileTab(next)
+                  document.getElementById(`card-${next}-tab`)?.focus()
+                }
+              }}>{props.t(tab === 'profile' ? 'character.title' : 'directory.attachments')}</button>)}
+            </div>
+            {profileTab === 'attachments' ? <div role="tabpanel" id="card-attachments-panel" aria-labelledby="card-attachments-tab">{props.directoryApi ? <CardResourceOverview key={selected.id} api={props.directoryApi} cardId={selected.id} onRefresh={props.onRefreshCards} t={props.t} /> : null}</div> : <div role="tabpanel" id="card-profile-panel" aria-labelledby="card-profile-tab">
             {profileEditing ? (
               <form className={`${styles.profileEditor} loom-underlined-fields`} onSubmit={event => void props.onUpdateCard(event).then(() => setProfileEditing(false))}>
                 <label><span>{props.t('character.name')}</span><input disabled={props.busy} value={props.cardDraft.name} onChange={event => props.onChangeCardDraft({ ...props.cardDraft, name: event.target.value })} /></label>
@@ -683,6 +721,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
                 )}
               </div>
             </section>
+            </div>}
           </div>
         ) : (
           <div className={styles.profileEmpty}>
@@ -694,7 +733,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
     </aside>
   )
 
-  function exportSelectedCard(card: CharacterCardSummary, format: 'png' | 'polyglot' | 'loomcard') {
+  function exportSelectedCard(card: CharacterCardSummary, format: 'png' | 'polyglot' | 'loomcard' | 'directory') {
     setExportCard(undefined)
     void props.onExportCard(card, format)
   }
@@ -938,11 +977,6 @@ function filterCardsByGroup(cards: CharacterCardSummary[], assignments: Record<s
 
 function pageTransitionDelay(): number {
   return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 0 : PAGE_TRANSITION_MS
-}
-
-function mediaUrl(card: CharacterCardSummary, target: MediaTarget): string | undefined {
-  const assetId = target === 'avatar' ? card.media?.avatarAssetId : card.media?.coverAssetId
-  return assetId ? `/assets/${encodeURIComponent(assetId)}` : target === 'avatar' ? '/images/default-card.png' : undefined
 }
 
 function TimelineCard(props: { timeline: NarrativeTimelineView; busy: boolean; current: boolean; onOpen(): void; t: Translator }) {

@@ -57,6 +57,11 @@ import { createServerExtensionManager } from './extensions/extension-manager.js'
 import { createExtensionStateStore } from './extensions/extension-state-store.js'
 import { createExtensionImportConversions } from './extensions/import-conversion.js'
 import { createOfficialContentService } from './official/official-content.js'
+import { createCardDirectoryService } from './resource-directories/card-directory.js'
+import { createCardDirectoryCatalog } from './resource-directories/card-directory-catalog.js'
+import { createCardDirectoryImporter } from './resource-directories/card-directory-import.js'
+import { createCardDirectoryMedia } from './resource-directories/card-directory-media.js'
+import { readString } from './rpc/rpc-params.js'
 import { resolveLoomStudioLocalPaths, type LoomStudioLocalPaths } from './platform/local-paths.js'
 
 const defaultPort = 4173
@@ -160,6 +165,10 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
   }
   const agentTools = createOfficialAgentToolRegistry()
   const applicationRuntime = createApplicationRuntime({
+    withCardDeletion: (id, commit) => {
+      if (!resourceDirectories) throw new Error('Card directory service is unavailable')
+      return resourceDirectories.deleteCard(id, commit)
+    },
     agents,
     agentTools,
     dataEngine,
@@ -390,10 +399,71 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     loomRunner,
   })
   const importConversions = createExtensionImportConversions(kernel)
+  kernel.getEventBus().registerDefinition({
+    name: 'directories.media.changed', owner: { kind: 'kernel' }, version: 1,
+    visibility: 'public', stability: 'experimental', summary: 'Card directory media changed',
+  })
+  const directoryCatalog = createCardDirectoryCatalog({
+    dataRoot: localPaths.dataRoot,
+    listCardIds: async () => {
+      const ids: string[] = []
+      let cursor: string | undefined
+      do {
+        const page = await applicationRuntime.listCards({ cursor, limit: 100 })
+        ids.push(...page.cards.map(card => card.id))
+        cursor = page.nextCursor
+      } while (cursor)
+      return ids
+    },
+  })
+  const startupDirectoryScan = directoryCatalog.scan()
+  const directoryMedia = createCardDirectoryMedia({ dataRoot: localPaths.dataRoot })
+  let mediaWatcher: { dispose(): void } | undefined
+  const resourceDirectories = assets ? createCardDirectoryService({
+    dataRoot: localPaths.dataRoot,
+    readCard: cardId => readCardExport(cardId),
+    applyCard: async (cardId, artifact, snapshot, context) => { await applicationRuntime.applyCardDirectoryState({ cardId, artifact, snapshot }, context) },
+  }) : undefined
+  const cardExists = async (id: string) => {
+    const document = await documents.get(id)
+    return Boolean(document && !document.meta.tombstone)
+  }
+  const saveImportedCard = async (id: string) => {
+    if (!resourceDirectories) throw new Error('Card directory service unavailable')
+    await resourceDirectories.recoverCard(id)
+    const preview = await resourceDirectories.previewCard(id)
+    await resourceDirectories.saveCard(id, preview.token)
+  }
+  const directoryImporter = createCardDirectoryImporter({
+    dataRoot: localPaths.dataRoot,
+    cardExists,
+    isRegistered: async directory => {
+      const catalog = await directoryCatalog.scan()
+      if (catalog.error) throw new Error(catalog.error)
+      const entry = catalog.entries.find(entry => entry.directory === directory)
+      if (entry?.error) throw new Error(entry.error)
+      return Boolean(entry?.registeredCardId)
+    },
+    importCard: async (bundle, id, clientId) => { await importCardArchive(bundle, clientId, id) },
+    normalizeCard: saveImportedCard,
+  })
   const rpcRouter = createStudioRpcRouter({
     convertPromptResource: importConversions.promptResource,
     applicationRuntime,
     officialContent: createOfficialContentService(applicationRuntime, resolve(options.officialContentDirectory ?? 'official/starter')),
+    resourceDirectories: {
+      call: async (method, params, context) => {
+        if (method === 'directories.import') {
+          const result = await directoryImporter.importDirectory(readString(params, 'directory'), readString(params, 'token'), context.clientId)
+          await directoryCatalog.scan()
+          return result
+        }
+        if (method === 'directories.list') await startupDirectoryScan
+        if (['directories.list', 'directories.scan', 'directories.open', 'directories.attachment'].includes(method)) return directoryCatalog.call(method, params)
+        if (!resourceDirectories) throw new Error('Card directory saving requires the Asset Store')
+        return resourceDirectories.call(method, params, context)
+      },
+    },
     aiCapabilities,
     aiGateway: profiledAiGateway,
     kernel,
@@ -407,25 +477,28 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
       })
     },
   })
+  const readCardMedia = async (cardId: string, kind: 'avatar' | 'background', assetId?: string): Promise<CardBundleMedia | undefined> => {
+    const directory = await directoryMedia.read(cardId, kind, assetId)
+    if (directory) return directory
+    if (!assetId) return kind === 'avatar' ? { bytes: defaultCardPng, mediaType: 'image/png' } : undefined
+    const media = await assets?.getMediaAsset(assetId)
+    if (!media) throw new Error(`Card media Asset is missing: ${assetId}`)
+    let bytes = await assets!.readMediaAsset(assetId, { maxBytes: 64 * 1024 * 1024 })
+    const mediaType = media.mediaType ?? 'application/octet-stream'
+    if (mediaType === 'image/png' && isPng(bytes)) bytes = stripPngTextMetadata(bytes)
+    return { bytes, mediaType }
+  }
   const readCardExport = async (cardId: string) => {
-    const { artifact } = await applicationRuntime.exportCardBundle({ cardId })
-    const readMedia = async (assetId: string | undefined): Promise<CardBundleMedia | undefined> => {
-      if (!assetId) return undefined
-      const media = await assets?.getMediaAsset(assetId)
-      if (!media) return undefined
-      let bytes = await assets!.readMediaAsset(assetId, { maxBytes: 64 * 1024 * 1024 })
-      const mediaType = media.mediaType ?? 'application/octet-stream'
-      if (mediaType === 'image/png' && isPng(bytes)) bytes = stripPngTextMetadata(bytes)
-      return { bytes, mediaType }
-    }
-    const avatar = await readMedia(artifact.card.media?.avatarAssetId) ?? { bytes: defaultCardPng, mediaType: 'image/png' }
+    const { artifact, snapshot } = await applicationRuntime.captureCardDirectoryState({ cardId })
+    const avatar = (await readCardMedia(cardId, 'avatar', artifact.card.media?.avatarAssetId))!
     return {
       artifact,
+      snapshot,
       avatar,
-      background: await readMedia(artifact.card.media?.coverAssetId),
+      background: await readCardMedia(cardId, 'background', artifact.card.media?.coverAssetId),
     }
   }
-  const importCardArchive = async (input: Awaited<ReturnType<typeof decodeCardBundleZip>>, clientId: string) => {
+  const importCardArchive = async (input: Awaited<ReturnType<typeof decodeCardBundleZip>>, clientId: string, newCardId?: string) => {
     const createMedia = async (media: CardBundleMedia, kind: string) => (await assets!.createMediaAsset({
       source: media.mediaType === 'image/png' && isPng(media.bytes) ? stripPngTextMetadata(media.bytes) : media.bytes,
       kind,
@@ -437,13 +510,21 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     const avatarAssetId = await createMedia(input.avatar, 'card.avatar')
     const coverAssetId = input.background ? await createMedia(input.background, 'card.background') : undefined
     input.artifact.card.media = { avatarAssetId, ...(coverAssetId ? { coverAssetId } : {}) }
-    return await applicationRuntime.importCardBundle({ artifact: input.artifact }, { clientId })
+    const result = await applicationRuntime.importCardBundle({ artifact: input.artifact, newCardId }, { clientId })
+    if (!newCardId) await saveImportedCard(result.card.id).catch(error => { throw new Error(`Card imported as ${result.card.id}, but directory save failed. Do not import again. ${error instanceof Error ? error.message : String(error)}`) })
+    return result
   }
   const server = createStudioHttpServer({
     auth: createApplicationSessionAuth({
       allowedOrigins: options.applicationSessionOrigins ?? ['http://127.0.0.1:5173'],
     }),
     assets,
+    cardMedia: {
+      read: async (cardId, kind) => {
+        const { card } = await applicationRuntime.getCard({ cardId })
+        return readCardMedia(cardId, kind, kind === 'avatar' ? card.media?.avatarAssetId : card.media?.coverAssetId)
+      },
+    },
     cardPng: assets ? {
       export: async cardId => {
         const bundle = await readCardExport(cardId)
@@ -475,7 +556,9 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
         artifact.card.media = {
           avatarAssetId: media.asset.id,
         }
-        return await applicationRuntime.importCardBundle({ artifact }, { clientId: session.clientId })
+        const result = await applicationRuntime.importCardBundle({ artifact }, { clientId: session.clientId })
+        await saveImportedCard(result.card.id).catch(error => { throw new Error(`Card imported as ${result.card.id}, but directory save failed. Do not import again. ${error instanceof Error ? error.message : String(error)}`) })
+        return result
       },
       exportBundle: async cardId => encodeCardBundleZip(await readCardExport(cardId)),
       importBundle: async (source, session) => await importCardArchive(await decodeCardBundleZip(source), session.clientId),
@@ -494,7 +577,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     extensionEvents: {
       subscribe: handler => {
         const eventBus = kernel.getEventBus()
-        const delivery = eventBus.subscribe(['extensions.changed', 'extensions.data.changed', 'entity.lifecycle.changed'], handler)
+        const delivery = eventBus.subscribe(['extensions.changed', 'extensions.data.changed', 'entity.lifecycle.changed', 'directories.media.changed'], handler)
         const data = eventBus.subscribe(['data.changed'], event => {
           const changesetId = event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload)
             && typeof event.payload.changesetId === 'string'
@@ -521,9 +604,23 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
         data: { requestedPort: port },
       })
       try {
+        await startupDirectoryScan
+        await resourceDirectories?.recoverDeletions(async id => {
+          const document = await documents.get(id)
+          return Boolean(document && !document.meta.tombstone)
+        })
+        const recoveryErrors = [
+          ...await directoryImporter.recoverImports(),
+          ...await resourceDirectories!.recoverApplies(),
+        ]
+        for (const failure of recoveryErrors) console.error(`Card ${failure.cardId} directory recovery requires attention: ${failure.error}`)
+        await directoryCatalog.scan()
         await applicationRuntime.initialize()
         await kernel.start()
         await extensionManager.initialize()
+        mediaWatcher = await directoryMedia.watch(() => {
+          kernel.getEventBus().emit('directories.media.changed', {}, { publisher: { kind: 'kernel' }, source: 'studio-server' })
+        })
         await new Promise<void>((resolve, reject) => {
           const handleError = (error: Error) => reject(error)
           server.once('error', handleError)
@@ -540,6 +637,8 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
         })
         return { port: actualPort }
       } catch (error) {
+        mediaWatcher?.dispose()
+        mediaWatcher = undefined
         logger?.error('Studio server failed to start', {
           event: 'server.start.failed',
           error,
@@ -550,6 +649,8 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     },
     close: async () => {
       logger?.info('Studio server stopping', { event: 'server.stopping' })
+      mediaWatcher?.dispose()
+      mediaWatcher = undefined
       if (server.listening) {
         const closed = new Promise<void>((resolve, reject) => {
           server.close(error => {

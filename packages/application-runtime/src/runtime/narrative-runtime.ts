@@ -10,6 +10,7 @@ import { createVariableRenderContext, type VariableRenderContext } from '../prom
 import { timelineRuntimeContextId } from '../narrative/timeline-runtime-context.js'
 import { snapshotLoomScriptMounts } from '../scripts/loom-script-resolution.js'
 import type { NarrativePage } from '@loom-studio/narrative-store'
+import { parseTimelineArchive, timelineArchivePendingId, type TimelineArchive, type TimelineArchiveIdMap, type TimelineArchivePendingContent } from '../archive/timeline-archive.js'
 import type {
   CardSourceContent,
   MaterializedStateContribution,
@@ -41,6 +42,7 @@ import {
   requireNarratives,
   tombstoneExtensionStorageScope,
 } from './context.js'
+import { executeDocumentMutation } from '../foundation/mutation.js'
 
 export function createNarrativeRuntimeMethods(ctx: ApplicationRuntimeContext) {
   return {
@@ -54,6 +56,136 @@ export function createNarrativeRuntimeMethods(ctx: ApplicationRuntimeContext) {
         timeline,
         branches: await requireNarratives(ctx).listBranches(timeline.id),
       }
+    },
+
+    exportTimelineArchive: async (input: { timelineId: string }): Promise<{ archive: TimelineArchive }> => {
+      const narratives = requireNarratives(ctx)
+      const timeline = await narratives.getTimeline(input.timelineId)
+      if (!timeline) throw new Error(`Narrative timeline not found: ${input.timelineId}`)
+      const branches = await narratives.listBranches(timeline.id)
+      const nodes = await narratives.listNodes(timeline.id)
+      const scope = await ctx.states.getScope({ kind: 'timeline', ownerId: timeline.id })
+      if (!scope) throw new Error(`Timeline State scope not found: ${timeline.id}`)
+      const revisions = await ctx.states.listRevisions(scope.id)
+      const participants = await ctx.timelineArchiveParticipants.exportParticipants({
+        timelineId: timeline.id,
+        branchIds: branches.map(branch => branch.id),
+        nodeIds: nodes.map(node => node.id),
+        stateRevisionIds: revisions.map(revision => revision.id),
+      })
+      return { archive: {
+        format: 'loom-timeline-archive.v1',
+        exportedAt: ctx.now(),
+        timeline,
+        branches,
+        nodes,
+        state: { scope, revisions },
+        participants,
+      } }
+    },
+
+    importTimelineArchive: async (input: { source: string }) => {
+      const archive = parseTimelineArchive(input.source)
+      const narratives = requireNarratives(ctx)
+      const timelineId = ctx.createId('timeline')
+      const idMap: TimelineArchiveIdMap = {
+        timelineId,
+        branchIds: Object.fromEntries(archive.branches.map(branch => [branch.id, ctx.createId('branch')])),
+        nodeIds: Object.fromEntries(archive.nodes.map(node => [node.id, ctx.createId('node')])),
+        stateRevisionIds: Object.fromEntries(archive.state.revisions.map(revision => [revision.id, ctx.createId('state-revision')])),
+      }
+      const revisions = orderArchiveItems(archive.state.revisions, item => item.parentRevisionId)
+      const branches = orderArchiveItems(archive.branches, item => item.parentBranchId)
+      const roots = branches.filter(branch => !branch.parentBranchId)
+      const root = roots[0]
+      if (!root || roots.length !== 1) throw new Error('Timeline archive must have one root branch')
+      const nodes = new Map(archive.nodes.map(node => [node.id, node]))
+      const result = await ctx.dataEngine.transact(
+        narrativeWriteContext(undefined, 'application.importTimelineArchive'),
+        async dataTx => {
+          const stateTx = ctx.states.transaction(dataTx)
+          const narrativeTx = narratives.transaction(dataTx)
+          const scope = stateTx.createScope({ kind: 'timeline', ownerId: timelineId })
+          for (const revision of revisions) stateTx.createRevision({
+            id: idMap.stateRevisionIds[revision.id], scopeId: scope.id,
+            parentRevisionId: revision.parentRevisionId ? idMap.stateRevisionIds[revision.parentRevisionId] : undefined,
+            snapshot: revision.snapshot, operations: revision.operations,
+          })
+          narrativeTx.createTimeline({
+            id: timelineId, primaryBranchId: idMap.branchIds[root.id], title: archive.timeline.title,
+            primaryBranchTitle: root.title, stateRevisionId: idMap.stateRevisionIds[root.stateHeadRevisionId]!,
+          })
+          const inserted = new Set<string>()
+          for (const branch of branches) {
+            let head = branch.forkedFromNodeId
+            if (branch.parentBranchId) {
+              if (!head) throw new Error('Timeline archive fork point is missing')
+              narrativeTx.forkBranch({ timelineId, branchId: idMap.branchIds[branch.id],
+                fromBranchId: idMap.branchIds[branch.parentBranchId]!, fromNodeId: idMap.nodeIds[head]!,
+                stateRevisionId: idMap.stateRevisionIds[branch.stateHeadRevisionId]!, title: branch.title,
+              })
+            }
+            const path = []
+            let nodeId = branch.headNodeId
+            const visited = new Set<string>()
+            while (nodeId && nodeId !== head) {
+              if (visited.has(nodeId)) throw new Error('Timeline archive node cycle')
+              visited.add(nodeId)
+              const node = nodes.get(nodeId)
+              if (!node) throw new Error('Timeline archive node parent is missing')
+              path.unshift(node)
+              nodeId = node.parentNodeId
+            }
+            if (path.length > 0 && head && nodeId !== head) throw new Error('Timeline archive fork point is outside its branch')
+            for (const node of path) {
+              if (inserted.has(node.id)) throw new Error('Timeline archive branch shares nodes beyond its fork point')
+              narrativeTx.appendNode({ timelineId, branchId: idMap.branchIds[branch.id]!,
+                expectedHeadNodeId: head ? idMap.nodeIds[head]! : null, nodeId: idMap.nodeIds[node.id],
+                body: node.body, stateRevisionId: idMap.stateRevisionIds[node.stateRevisionId]!,
+              })
+              inserted.add(node.id)
+              head = node.id
+            }
+            narrativeTx.setBranchStateHead({
+              timelineId,
+              branchId: idMap.branchIds[branch.id]!,
+              expectedStateHeadRevisionId: idMap.stateRevisionIds[path.at(-1)?.stateRevisionId ?? (branch.parentBranchId ? branch.stateHeadRevisionId : root.stateHeadRevisionId)]!,
+              stateRevisionId: idMap.stateRevisionIds[branch.stateHeadRevisionId]!,
+            })
+          }
+          if (inserted.size !== archive.nodes.length) throw new Error('Timeline archive contains unreachable nodes')
+          narrativeTx.switchBranch({ timelineId, branchId: idMap.branchIds[archive.timeline.activeBranchId]! })
+        },
+      )
+      const participantResult = await ctx.timelineArchiveParticipants.importParticipants({
+        timelineId,
+        idMap,
+        blocks: archive.participants,
+      })
+      if (participantResult.unknownNamespaces.length > 0 || participantResult.failures.length > 0) {
+        const pendingBlocks = archive.participants.filter(block => participantResult.unknownNamespaces.includes(block.namespace))
+        await executeDocumentMutation(ctx.documents, undefined, 'application.importTimelineArchive.pendingParticipants', async documents => {
+          const id = timelineArchivePendingId(timelineId)
+          const existing = await documents.get(id)
+          const timestamp = ctx.now()
+          const content: TimelineArchivePendingContent = {
+            timelineId,
+            blocks: pendingBlocks,
+            failures: participantResult.failures,
+            createdAt: existing?.content && typeof existing.content === 'object' && !Array.isArray(existing.content) && typeof (existing.content as { createdAt?: unknown }).createdAt === 'string'
+              ? (existing.content as { createdAt: string }).createdAt
+              : timestamp,
+            updatedAt: timestamp,
+          }
+          await documents.write({
+            id,
+            type: applicationDocumentTypes.timelineArchivePending,
+            content,
+            expectedVersion: existing?.version ?? 'new',
+          })
+        })
+      }
+      return { timelineId, idMap, unknownParticipantNamespaces: participantResult.unknownNamespaces, participantFailures: participantResult.failures, mutation: { changesetId: result.commit.changesetId } }
     },
 
     listNarrativeTimelines: (input?: ListNarrativeTimelinesInput): Promise<ListNarrativeTimelinesResult> =>
@@ -120,6 +252,25 @@ export function createNarrativeRuntimeMethods(ctx: ApplicationRuntimeContext) {
       return { timeline: result.timeline, mutation: { changesetId: result.commit.changesetId } }
     },
   }
+}
+
+function orderArchiveItems<T extends { id: string }>(items: T[], parentId: (item: T) => string | undefined): T[] {
+  const remaining = new Map(items.map(item => [item.id, item]))
+  if (remaining.size !== items.length) throw new Error('Timeline archive contains duplicate IDs')
+  const ordered: T[] = []
+  const known = new Set<string>()
+  while (remaining.size) {
+    const before = remaining.size
+    for (const [id, item] of remaining) {
+      const parent = parentId(item)
+      if (parent && !known.has(parent)) continue
+      ordered.push(item)
+      known.add(id)
+      remaining.delete(id)
+    }
+    if (remaining.size === before) throw new Error('Timeline archive contains a cycle or missing parent')
+  }
+  return ordered
 }
 
 export async function createTimelineFromCard(

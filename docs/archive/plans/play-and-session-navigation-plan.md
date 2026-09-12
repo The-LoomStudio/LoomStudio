@@ -1,6 +1,6 @@
 # 游玩入口与会话导航整合
 
-> **Status**：Approved / 待实施
+> **Status**：Completed / WP1-WP5 已实施，人工视觉验收完成
 > **日期**：2026-09-11
 > **授权**：用户确认合并 Character 与 Session 根入口，并确认 Timeline、Branch 与 Agent Session 的导航方向。
 
@@ -10,7 +10,7 @@
 
 本计划只调整 Studio Client 的信息架构、导航与现有数据接线。它不改变 Narrative Timeline、Narrative Branch、Agent Session 或 Card 的领域所有权，不新增数据库 Schema，不把 Agent Session 变成 Timeline 子对象。
 
-Agent Session Binding、Workspace Context、PromptBuild Target、Tool / CodeAct Capability 与解绑生命周期由 [`../agent-session-context-and-workspace-capability-plan.md`](../agent-session-context-and-workspace-capability-plan.md) 负责。本计划只消费其稳定 API 展示和切换 Session，不根据 Binding 推导权限。
+Agent Session Binding、Workspace Context、PromptBuild Target、Tool / CodeAct Capability 与解绑生命周期由 [`agent-session-context-and-workspace-capability-plan.md`](../../workbench/plans/agent-session-context-and-workspace-capability-plan.md) 负责。本计划只消费其稳定 API 展示和切换 Session，不根据 Binding 推导权限。
 
 ## 已确认事实
 
@@ -51,6 +51,8 @@ Dock 移除独立的 Character 与 Sessions 入口，合并为单一“游玩”
   [剧情] 角色名 / Timeline 标题
   [Agent] Session 标题 / Agent / Binding 摘要
 ```
+
+最近页提供一个紧凑的日历浮层作为日期筛选器。未筛选时，会话按本地日期分组并显示日期分隔标题；日历日期下显示当天存在会话的标记。筛选只改变当前列表投影，不建立独立的最近集合。
 
 - 最近角色按最近一次实际进入 Narrative 的时间排序，不以 Card 元数据更新时间代替游玩时间。
 - 最近会话可以混排 Narrative Timeline 与 Agent Session，但必须用类型图标和 Binding 摘要明确区分。
@@ -188,6 +190,21 @@ Timeline / Branch 切换允许 Narrative 数据源变化，但不能把 Characte
 
 不默认运行全仓测试或 Build。只有公共路由入口、跨包导出或构建入口发生变化时才升级验证。
 
+## 当前进度
+
+- 已新增 `play` 根 Panel，并从 Utility Rail 移除独立 Character / Sessions 入口。
+- 已接入 `最近 / 角色 / 会话` 三个底部文字 Tab；角色和会话暂时复用现有 Panel 内容，避免复制领域逻辑。
+- 最近页已接入现有 Cards、Timeline 和 Agent Session 数据；角色、剧情和 Agent 会话条目可直接打开对应运行上下文。
+- 最近角色在没有历史 Timeline 时使用显式 `cardId` 创建，避免依赖异步选中状态造成误创建。
+- 会话目录现有过滤 Tab 已按运行语义显示为“全部 / 剧情 / Agent”，继续复用 Timeline 与 Workspace Session 的同一数据投影。
+- 旧 `/studio/characters` 与 `/studio/history` 深链接暂时保留为兼容入口，但不再出现在 Rail；最终是否转发到 Play Tab 需在人工验收后收尾。
+- 已补齐 Play 路由、Panel presentation、布局类型、i18n 和窄屏可复用的基础容器。
+- Client TypeScript 与 `git diff --check` 已通过。
+- Studio route 定向测试已覆盖 `/studio/play` 的读取与生成。
+- 最近列表的真实 Timeline / Session 投影、旧深链接兼容和工作台内直接切换仍待 WP2-WP4 接续。
+- 最近页日期日历筛选、会话按日期分组和紧凑浮层已接入；人工视觉验收已完成。
+- 最近会话头像与摘要排版已调整为自然垂直居中，移除头像顶部对齐约束，避免摘要把头像区域撑高。
+
 ## 停止条件
 
 - 需要新增或迁移 Agent Session / Narrative Store Schema；
@@ -201,5 +218,12 @@ Timeline / Branch 切换允许 Narrative 数据源变化，但不能把 Characte
 ## 开放问题
 
 - 根入口最终显示名使用“游玩”还是更宽泛的“会话 / 活动”；当前按讨论暂用“游玩”。
-- Agent Session 是否需要稳定绑定具体 Narrative Branch；第一版沿用现有 `timelineId`，进入 Timeline 当前活动 Branch。
-- 切换时存在未完成 Agent Run 的产品语义：禁止切换、后台继续，还是显式中止。不得用静默取消作为默认行为。
+- Agent Session 不绑定具体 Narrative Branch；只绑定 `timelineId`，进入 Session 时使用该 Timeline 当前活动 Branch。
+- 切换时未完成 Agent Run 继续在后台运行；结果写回原 Agent Session 与其绑定 Timeline，不因为工作台切换而取消、迁移或写入新的 Narrative。
+
+## 最终结果
+
+- WP1-WP4 的导航、最近页、Timeline / Branch 树和 Agent Session 接线均已完成。
+- WP5 的清理、路由兼容和架构文档晋升已完成；旧 `/studio/characters` 与 `/studio/history` 作为兼容深链接保留，不再生成独立 Rail 入口。
+- 定向 Studio Client TypeScript 检查、Narrative Store 测试和 `git diff --check` 已通过。
+- 浏览器视觉验收由用户完成；本计划不再新增工作包，后续对游玩 UI 的局部美化另开任务处理。

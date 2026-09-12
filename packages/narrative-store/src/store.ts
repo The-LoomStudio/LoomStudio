@@ -295,6 +295,12 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
     getBranch: id => engine.read(database => readBranch(database, id)),
     listBranches: timelineId => engine.read(database => readBranches(database, timelineId)),
     getNode: id => engine.read(database => readNode(database, id)),
+    listNodes: timelineId => engine.read(database => {
+      const rows = database.prepare(`SELECT id, timeline_id, parent_node_id, state_revision_id, body_format, body_raw,
+        source_agent_session_id, source_agent_message_id, source_run_id, source_changeset_id, created_at
+        FROM narrative_nodes WHERE timeline_id = ? ORDER BY created_at ASC, id ASC`).all(timelineId)
+      return rows.map(row => nodeFromRow(row))
+    }),
     getPage: input => engine.read(database => readPage(database, input)),
     createTimeline: async input => {
       const result = await write(input, tx => tx.createTimeline(input))
@@ -504,7 +510,14 @@ function readPage(
 
 function readTimeline(database: DatabaseSync, id: string, includeDeleted = false): NarrativeTimeline | null {
   const row = database.prepare(`
-    SELECT id, title, created_from_card_id, created_from_card_version, prompt_resource_ids_json,
+    SELECT id, title,
+           (SELECT substr(body_raw, 1, 240) FROM narrative_nodes node
+            WHERE node.timeline_id = narrative_timelines.id AND node.parent_node_id IS NULL
+            ORDER BY node.created_at ASC, node.id ASC LIMIT 1) AS opening_preview,
+           (SELECT substr(body_raw, 1, 240) FROM narrative_nodes node
+            WHERE node.timeline_id = narrative_timelines.id
+            ORDER BY node.created_at DESC, node.id DESC LIMIT 1) AS latest_preview,
+           created_from_card_id, created_from_card_version, prompt_resource_ids_json,
            active_branch_id, created_at, updated_at, tombstoned, deleted_at
     FROM narrative_timelines WHERE id = ?
   `).get(id)
@@ -543,7 +556,14 @@ function readTimelines(
     params.push(cursor.updatedAt, cursor.updatedAt, cursor.id)
   }
   const rows = database.prepare(`
-    SELECT id, title, created_from_card_id, created_from_card_version, prompt_resource_ids_json,
+    SELECT id, title,
+           (SELECT substr(body_raw, 1, 240) FROM narrative_nodes node
+            WHERE node.timeline_id = narrative_timelines.id AND node.parent_node_id IS NULL
+            ORDER BY node.created_at ASC, node.id ASC LIMIT 1) AS opening_preview,
+           (SELECT substr(body_raw, 1, 240) FROM narrative_nodes node
+            WHERE node.timeline_id = narrative_timelines.id
+            ORDER BY node.created_at DESC, node.id DESC LIMIT 1) AS latest_preview,
+           created_from_card_id, created_from_card_version, prompt_resource_ids_json,
            active_branch_id, created_at, updated_at, tombstoned, deleted_at
     FROM narrative_timelines
     WHERE ${conditions.join(' AND ')}
@@ -618,6 +638,8 @@ function timelineFromRow(row: unknown): NarrativeTimeline {
   return {
     id: String(value.id),
     title: optionalString(value.title),
+    openingPreview: optionalString(value.opening_preview),
+    latestPreview: optionalString(value.latest_preview),
     createdFrom: typeof value.created_from_card_id === 'string' && typeof value.created_from_card_version === 'number'
       ? { cardId: value.created_from_card_id, cardVersion: value.created_from_card_version }
       : undefined,

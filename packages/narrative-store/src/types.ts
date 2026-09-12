@@ -19,6 +19,8 @@ export type NarrativeNodeSource = {
 export type NarrativeTimeline = {
   id: string
   title?: string
+  openingPreview?: string
+  latestPreview?: string
   createdFrom?: {
     cardId: string
     cardVersion: number
@@ -184,6 +186,7 @@ export type NarrativeStore = {
   getBranch(id: string): Promise<NarrativeBranch | null>
   listBranches(timelineId: string): Promise<NarrativeBranch[]>
   getNode(id: string): Promise<NarrativeNode | null>
+  listNodes(timelineId: string): Promise<NarrativeNode[]>
   getPage(input: { timelineId: string; branchId?: string; cursor?: string; limit?: number }): Promise<NarrativePage>
   createTimeline(input: CreateNarrativeTimelineInput): Promise<CreateNarrativeTimelineResult>
   appendNode(input: AppendNarrativeNodeInput): Promise<AppendNarrativeNodeResult>

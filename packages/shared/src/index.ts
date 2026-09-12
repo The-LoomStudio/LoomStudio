@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 export type { AssistantChatMessage, ChatMessage, ChatToolCall } from './chat.js'
+export type { CardDirectoryPreview, CardDirectorySaveResult, CardDirectoryEntry, CardDirectoryCatalog, OpenCardDirectoryResult, CardDirectoryAttachment } from './resource-directories.js'
 export type {
   StateArtifact,
   StateComponentTemplate,

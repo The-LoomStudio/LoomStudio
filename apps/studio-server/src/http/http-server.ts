@@ -8,10 +8,14 @@ import type { ApplicationSession, ApplicationSessionAuth } from './application-s
 import { sanitizeRpcParams, summarizeRpc } from '../rpc/rpc-summary.js'
 import type { StudioRpcRouter } from '../rpc/studio-rpc-router.js'
 import { maxCardPngBytes } from '../codecs/card-png.js'
+import { createHash } from 'node:crypto'
 
 export function createStudioHttpServer(options: {
   auth: ApplicationSessionAuth
   assets?: AssetStore
+  cardMedia?: {
+    read(cardId: string, kind: 'avatar' | 'background'): Promise<{ bytes: Uint8Array; mediaType: string } | undefined>
+  }
   cardPng?: {
     export(cardId: string): Promise<Uint8Array>
     import(source: Uint8Array, session: ApplicationSession): Promise<unknown>
@@ -47,6 +51,12 @@ export function createStudioHttpServer(options: {
     const session = options.auth.authenticate(request)
     if (!session) {
       writeJson(response, 401, { error: { code: 'auth.unauthorized', message: 'Application session required' } })
+      return
+    }
+
+    const cardMedia = /^\/cards\/([A-Za-z0-9._-]+)\/media\/(avatar|background)(?:\?[^#]*)?$/.exec(request.url ?? '')
+    if ((request.method === 'GET' || request.method === 'HEAD') && cardMedia && options.cardMedia) {
+      await handleCardMedia(request, response, options.cardMedia, cardMedia[1]!, cardMedia[2] as 'avatar' | 'background')
       return
     }
 
@@ -113,6 +123,37 @@ export function createStudioHttpServer(options: {
 
     await handleRpcRequest(request, response, options.rpcRouter, session, options.logger)
   })
+}
+
+async function handleCardMedia(
+  request: IncomingMessage,
+  response: ServerResponse,
+  media: NonNullable<Parameters<typeof createStudioHttpServer>[0]['cardMedia']>,
+  cardId: string,
+  kind: 'avatar' | 'background',
+): Promise<void> {
+  try {
+    const result = await media.read(cardId, kind)
+    if (!result) {
+      writeJson(response, 404, { error: { code: 'card.media_not_found', message: 'Card media not found' } })
+      return
+    }
+    const etag = `"${createHash('sha256').update(result.bytes).digest('hex')}"`
+    response.setHeader('content-type', result.mediaType)
+    response.setHeader('x-content-type-options', 'nosniff')
+    response.setHeader('cache-control', 'no-cache')
+    response.setHeader('etag', etag)
+    const matches = request.headers['if-none-match']?.split(',').some(value => value.trim().replace(/^W\//, '') === etag || value.trim() === '*')
+    if (matches) {
+      response.writeHead(304)
+      response.end()
+      return
+    }
+    response.writeHead(200, { 'content-length': result.bytes.byteLength })
+    response.end(request.method === 'HEAD' ? undefined : result.bytes)
+  } catch (error) {
+    writeJson(response, 400, { error: { code: 'card.media_invalid', message: error instanceof Error ? error.message : String(error) } })
+  }
 }
 
 async function handleCardFileExport(

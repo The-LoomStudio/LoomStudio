@@ -1,0 +1,11 @@
+.root { display: grid; gap: 6px; width: min(100%, 260px); margin: 4px 8px 0; }
+.group { display: grid; gap: 2px; }
+.date { padding: 2px 8px; color: var(--loom-color-text-subtle); font-size: 10px; }
+.item { display: flex; align-items: center; gap: 6px; width: auto; min-width: 0; border: 0; border-radius: 6px; padding: 5px 8px; background: transparent; color: var(--loom-color-text-muted); cursor: pointer; text-align: left; }
+.item:hover { background: var(--loom-color-surface-hover); color: var(--loom-color-text); }
+.avatar { display: grid; place-items: center; flex: 0 0 24px; width: 24px; height: 24px; aspect-ratio: 1; box-sizing: border-box; overflow: hidden; border-radius: 50%; background: var(--loom-color-surface-raised); font-size: 10px; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.info { display: grid; min-width: 0; gap: 1px; }
+.info strong, .info small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.info strong { font-size: 12px; }
+.info small { color: var(--loom-color-text-subtle); font-size: 10px; }

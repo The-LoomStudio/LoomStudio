@@ -141,9 +141,10 @@
   --loom-chat-width: 680px;
   --loom-canvas-width: var(--loom-chat-width);
   /* Old Custom CSS overrides flow into the new collapsed-width contract. */
-  --loom-rail-width: 42px;
+  --loom-rail-width: 48px;
   --loom-rail-collapsed-width: var(--loom-rail-width);
   --loom-rail-expanded-width: 160px;
+  --loom-window-rail-width: 200px;
   --loom-window-gap: 8px;
   --loom-window-min-width: 240px;
   --loom-window-min-height: 360px;

@@ -12,6 +12,7 @@ import type {
 } from '../types.js'
 import { applicationActor } from './context.js'
 import { createCardsRuntimeMethods } from './cards-runtime.js'
+import { createCardDirectoryRuntimeMethods } from './card-directory-sync.js'
 import { createNarrativeRuntimeMethods } from './narrative-runtime.js'
 import {
   createAgentsRuntimeMethods,
@@ -76,6 +77,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     },
 
     ...createCardsRuntimeMethods(ctx),
+    ...createCardDirectoryRuntimeMethods(ctx),
     ...createNarrativeRuntimeMethods(ctx),
     ...createAgentsRuntimeMethods(ctx),
     ...createPromptRuntimeMethods(ctx),

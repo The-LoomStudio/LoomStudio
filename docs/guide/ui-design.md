@@ -70,7 +70,7 @@ widget 不应做：
 
 ### 开发预览入口
 
-**状态：建设方向已确认，尚未实施。** 具体工作见 [组件预览入口 Plan](../workbench/plans/ui/component-preview-workbench-plan.md)；这里不声明可用 URL。
+**状态：开发入口与样例已实现。** 启动、URL 与注册方式见 [Client README](../../apps/studio-client/README.md)，实施和未完成验收见 [组件预览入口 Plan](../workbench/plans/ui/component-preview-workbench-plan.md)。
 
 - 入口仅供开发环境，显式注册可预览组件，不根据 URL 任意加载源码或执行代码。
 - 样例与必要交互使用内存数据，不读取真实业务数据或执行持久写入；不能因复用正常启动入口而触发认证或业务初始化。
@@ -81,4 +81,4 @@ widget 不应做：
 
 交接记录实际组件路径、Props、样例状态、交互约定、可自行调整项和需要重新确认的设计边界。视觉观感与手感由用户验收，类型检查不能代替设计确认；实施者发现真实业务与设计冲突时返回具体场景，不悄悄更改导航或层级。
 
-入口实现后，在 Client README 记录实际启动方式、URL 和组件注册方法；本 Guide 保留长期开发约定，Plan 记录执行结果，不重复维护三份操作手册。
+Client README 维护实际启动方式、URL 和组件注册方法；本 Guide 保留长期开发约定，Plan 记录执行结果，不重复维护三份操作手册。

@@ -91,6 +91,9 @@ export async function handleCardsRpc(
       return await runtime.updateCardPromptResources({
         cardId: readString(params, 'cardId'),
         promptResourceIds: readRequiredStringArray(params, 'promptResourceIds'),
+        ...(isRecord(params) && params.externalPromptResourceIds !== undefined ? {
+          externalPromptResourceIds: readRequiredStringArray(params, 'externalPromptResourceIds'),
+        } : {}),
       }, context) as unknown as JsonValue
 
     default:

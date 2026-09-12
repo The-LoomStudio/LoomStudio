@@ -48,7 +48,21 @@ Client 默认监听 `127.0.0.1:5173`。打开浏览器访问该地址即可；Vi
 
 两个开发命令都会先构建内部 packages，再持续监听它们的输出。修改 `packages/` 下的源码后无需手动重新构建；Server 还会在 package 产物变化时自动重启。
 
-开发脚本会把 `LOOM_STUDIO_HOME` 设置为仓库 `.loomstudio-dev`，SQLite、Blob、Extension state/cache 与 JSONL 日志都从同一本地路径合同派生。正式运行改用操作系统原生用户数据目录，不会把用户数据写进应用安装目录。
+开发脚本默认将持久数据放在仓库 `data/`，通过 `LOOM_STUDIO_DATA_ROOT` 指定；SQLite、Blob、Extension state/installed 等使用这个根目录。缓存和 JSONL 日志仍在 `.loomstudio-dev/`。`/data/` 与迁移暂存目录被主仓库 Git 忽略。角色可编辑目录保存与同步尚未完成，不能将本次路径调整当作该能力已上线。
+
+已有 `.loomstudio-dev/data/studio.sqlite` 的开发环境，需要先停止 Server 及访问该目录的其他进程，再执行：
+
+```bash
+pnpm data:migrate          # 只检查，不复制
+pnpm data:migrate --apply  # 离线复制、校验后发布到 data，保留原目录
+pnpm dev:server
+```
+
+迁移命令需要 `lsof` 来检查源文件是否仍打开。目标已存在、存在链接、数据库损坏或无法确认离线时拒绝操作，不覆盖或合并目标。旧目录保留作为回退副本，不会继续双写；切回旧目录会看到迁移时的数据，而不是新目录后续修改。
+
+暂不迁移可以显式运行 `LOOM_STUDIO_HOME=.loomstudio-dev pnpm dev:server`。显式 HOME 保留原来的 `<HOME>/data` 语义，显式 DATA_ROOT 优先覆盖持久数据位置；不要同时运行指向新旧副本的服务并把它们当作同一工作区。
+
+正式无配置运行继续使用操作系统原生用户数据目录，不会默认把用户数据写进应用安装目录。
 
 ## 4. 依赖变更约定
 

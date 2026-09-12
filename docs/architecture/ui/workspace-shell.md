@@ -55,13 +55,7 @@ immersive:
 
 所有非沉浸活动面板都可调整宽度、高度或双向尺寸；普通工具面板不因共享同一 Shell 就被强制全屏。窗口几何由 Shell 管理，内容组件只消费可用空间。
 
-资产工作台内部另有三种视图动作：
-
-- `explorer`：只显示目录；
-- `split`：目录与 Detail 并列；
-- `editor`：只显示 Detail。
-
-这些是快捷布局动作，不是永久限制。在 `explorer` 中选择条目仍会进入 `split`，中线拖拽仍可调整目录宽度。
+资产工作台内部使用 `master-detail` 与 `drilldown` 两种布局偏好，见 [AssetWorkbenchLayout](../../../apps/studio-client/src/shared/ui/asset-workbench-layout/asset-workbench-layout.tsx)。窄面板自动使用下钻导航；`mobilePane: explorer | detail` 只表示当前下钻页面，不是第三种持久布局模式。Master–Detail 的目录宽度仍由分隔条调整，旧 explorer/split/editor 三态不再是当前合同。
 
 Window 内部使用 Column Layout 表达水平并列区域。Rail、Explorer、Detail 或其他内容只作为 Column 内容参与宽度分配；Header、Bottom 和覆盖式 Sidebar 属于 Window Overlay，不进入 Column Track。Reference Window 根据 Narrative 与 Composer 的实时锚点选择并行或遮挡正文的默认 Placement。正式合同见 [`window-layout.md`](window-layout.md)。
 

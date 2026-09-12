@@ -4,7 +4,7 @@
 >
 > **当前正式架构**：[`../../../architecture/platform/logging.md`](../../../architecture/platform/logging.md)
 >
-> **范围**：只记录统一日志底座完成后的未实现工作，包括历史查询、实时交付、Client 持久化、Extension Logger、Viewer 增强、Notification 与后端 TUI。
+> **范围**：记录统一日志底座完成后的历史查询、实时交付、Client 持久化、Viewer 增强、Notification 与后端 TUI；Extension Logger 已有基础，不重复建设。
 
 ---
 
@@ -99,9 +99,9 @@ Client Root Logger
 
 ### 4.2 Extension Logger
 
-当前 `extension.loader` 只记录 Host 自身的 Extension 生命周期。Extension 作者尚未获得正式 Logger capability。
+2026-09-12 核对：[Extension SDK](../../../../packages/extension-sdk/src/index.ts) 已向 Server / Client Activation Context 提供 `logger`；[Server Host](../../../../packages/extension-sdk/extension-host/src/instance.ts) 已绑定 Package、Module 与 Instance 身份。不能再将 Extension Logger 整体列为未实现。
 
-候选方向：
+已存在的 Host 注入方向与后续持久化边界：
 
 ```text
 Server Extension
@@ -219,15 +219,15 @@ Ink 仍只是候选技术。确认 M0 交互范围前不增加依赖。
 
 PromptBuild 生命周期摘要已经进入 `prompt.build`，但完整 Trace Envelope、Build Inspector 和内容保存策略仍未完成。
 
-Provider 生命周期摘要已经进入 `runtime.provider`，但 Agent Run、Step、Tool、Commit、Transcript 和专业 Trace 继续延后到 Agent 基建稳定后讨论。
+Provider 生命周期摘要已经进入 `runtime.provider`；Agent Loop、canonical Transcript 与 Tool 配对持久化也已落地。完整 Run / Step / Tool / Commit Trace、跨视图引用与专业 Inspector 仍由专题计划接续，不能将 Transcript 本身继续列为缺失。
 
 ## 9. 建议顺序
 
 ```text
 1. 观察当前 Logs Workspace 和模块日志的实际价值
 2. 稳定 Extension Host Capability / Auth boundary
-3. 为 Server Extension 暴露受控 Logger
-4. 建立 Client Extension Host 后复用同形 Logger
+3. 复用已存在的 Server / Client Extension Logger
+4. 根据具体缺口核对 correlation 与诊断交付，不另建 Logger capability
 5. 根据真实需求选择历史 JSONL 查询或实时流的先后顺序
 6. 再实现 Notification
 7. 多进程需求出现后再启动 TUI M0

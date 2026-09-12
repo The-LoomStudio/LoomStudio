@@ -115,6 +115,7 @@ export function useStudioState(transportLogger: Logger) {
     selectedCard: cardsState.selectedCardDetails,
     selectedCardId: cardsState.selectedCardId,
     selectedAgentProfileId: agentProfiles.selectedAgentProfileId,
+    onSelectAgentProfile: agentProfiles.selectAgentProfile,
     runAgentAction: action => operations.run('agent-chat', action).then(() => undefined),
     runAction: action => operations.run('session', action).then(() => undefined),
     runLatestAction: action => operations.runLatest('session', action).then(() => undefined),
@@ -257,11 +258,13 @@ export function useStudioState(transportLogger: Logger) {
   // 派生计算
   const sessionBusy = operations.isPending('session')
   const canSend = Boolean(((narrativeRuntime.timeline && narrativeRuntime.branch) || cardsState.selectedCardId) && agentProfiles.selectedAgentProfileId)
+    && narrativeRuntime.agentSessionReady
     && !sessionBusy
     && !operations.isPending('agent-chat')
     && narrativeRuntime.input.trim().length > 0
   const canPreviewPrompt = canSend
   const canSendAgent = Boolean(selectedAgentProfile)
+    && narrativeRuntime.agentSessionReady
     && narrativeRuntime.agentInput.trim().length > 0
     && !operations.isPending('agent-chat')
     && !sessionBusy
@@ -476,6 +479,7 @@ export function useStudioState(transportLogger: Logger) {
     replaceCardPromptResources: cardsState.replaceCardPromptResources,
     importCards: cardsState.importCards,
     exportCard: cardsState.exportCard,
+    directoryApi: cardsState.directoryApi,
     // narrative
     narrativeTimeline: narrativeRuntime.timeline,
     branch: narrativeRuntime.branch,
@@ -490,6 +494,11 @@ export function useStudioState(transportLogger: Logger) {
     agentMessages: narrativeRuntime.agentMessages,
     narrativeAgentSession: narrativeRuntime.agentSession,
     agentChatSession: narrativeRuntime.agentSession,
+    agentChatSessions: narrativeRuntime.agentSessions,
+    agentChatSessionReady: narrativeRuntime.agentSessionReady,
+    agentChatSessionLoading: narrativeRuntime.agentSessionLoading,
+    newAgentSession: narrativeRuntime.newAgentSession,
+    refreshAgentSessions: narrativeRuntime.refreshAgentSessions,
     agentChatMessages: narrativeRuntime.agentMessages,
     agentChatInput: narrativeRuntime.agentInput,
     setAgentChatInput: narrativeRuntime.setAgentInput,

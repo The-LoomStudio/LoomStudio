@@ -24,6 +24,7 @@ export type CardFilesIndex = {
   metadata: Pick<CardBundleArtifact, 'schemaVersion' | 'artifactId' | 'displayName' | 'description' | 'metadata'>
   card: string
   contextAssets: string[]
+  externalContextAssetIds?: string[]
   state?: string
   stateTemplates?: string[]
   timelineStateBindings?: string
@@ -57,7 +58,7 @@ export function projectCardFiles(artifact: CardBundleArtifact, files: Record<str
     }
   }
   const contextAssets = artifact.contextAssets.map((value, index) => {
-    const directory = `prompts/${fileStem(value, index)}`
+    const directory = `${artifact.externalContextAssetIds?.includes(value.id) ? 'external/' : ''}prompts/${fileStem(value, index)}`
     return json(`${directory}/index.json`, node(value, directory))
   })
   const { description, opening, settingLayer, preset, macros, media, ...config } = artifact.card
@@ -100,6 +101,7 @@ export function projectCardFiles(artifact: CardBundleArtifact, files: Record<str
     },
     card: json('card.json', card),
     contextAssets,
+    ...(artifact.externalContextAssetIds !== undefined ? { externalContextAssetIds: [...artifact.externalContextAssetIds] } : {}),
   }
   if (artifact.state !== undefined) {
     const { contribution, ...header } = artifact.state
@@ -176,6 +178,7 @@ export function restoreCardFiles(index: CardFilesIndex, files: Map<string, Uint8
     ...index.metadata,
     card,
     contextAssets: list<FileNode>(index.contextAssets).map(value => node(value)),
+    ...(index.externalContextAssetIds !== undefined ? { externalContextAssetIds: index.externalContextAssetIds } : {}),
   }
   if (index.state !== undefined) {
     type State = NonNullable<CardBundleArtifact['state']>
@@ -205,6 +208,46 @@ export function restoreCardFiles(index: CardFilesIndex, files: Map<string, Uint8
   if (index.textTransformRules !== undefined) artifact.textTransformRules = list(index.textTransformRules)
   if (index.textExtractors !== undefined) artifact.textExtractors = list(index.textExtractors)
   return normalizeCardBundleArtifact(artifact)
+}
+
+// Load only indexed files; author projects may also contain unrelated build trees.
+export async function loadCardResourceFiles(index: CardFilesIndex, load: (path: string) => Promise<Uint8Array>): Promise<void> {
+  const json = async <T>(path: string): Promise<T> =>
+    JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(await load(path))) as T
+  const list = async (paths: string[] | undefined) => {
+    if (paths === undefined) return
+    if (!Array.isArray(paths)) throw new Error('Expected a Card file reference list')
+    for (const path of paths) await load(path)
+  }
+  const node = async (value: FileNode, depth = 0): Promise<void> => {
+    if (depth > 128) throw new Error('Card Prompt tree exceeds 128 levels')
+    if (value.body !== undefined) await load(value.body)
+    if (value.children !== undefined) {
+      for (const child of value.children) await node(child, depth + 1)
+    }
+  }
+  const card = await json<CardFile>(index.card)
+  if (card.description !== undefined) await load(card.description)
+  if (card.macros !== undefined) await load(card.macros)
+  if (card.preset?.system !== undefined) await load(card.preset.system)
+  if (card.preset?.macros !== undefined) await load(card.preset.macros)
+  if (card.opening !== undefined) {
+    if ('text' in card.opening) await load(card.opening.text)
+    else for (const entry of card.opening.entries ?? []) await load(entry.content)
+  }
+  for (const entry of card.settingLayer?.entries ?? []) await load(entry.content)
+  if (!Array.isArray(index.contextAssets)) throw new Error('Expected a Card file reference list')
+  for (const path of index.contextAssets) await node(await json<FileNode>(path))
+  if (index.state !== undefined) {
+    const state = await json<{ contribution: Record<string, string[]> }>(index.state)
+    for (const key of ['entityTypes', 'templates', 'entities', 'componentMounts', 'bindings']) {
+      await list(state.contribution[key])
+    }
+  }
+  await list(index.stateTemplates)
+  if (index.timelineStateBindings !== undefined) await load(index.timelineStateBindings)
+  await list(index.textTransformRules)
+  await list(index.textExtractors)
 }
 
 export function validateBundlePath(path: string): void {

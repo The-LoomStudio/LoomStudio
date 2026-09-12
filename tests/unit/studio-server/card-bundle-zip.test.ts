@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { CardBundleArtifact } from '@loom-studio/application-runtime'
 import { materializeStateContribution } from '@loom-studio/application-runtime'
 import { unzipSync, zipSync, Zip, ZipPassThrough } from 'fflate'
-import { decodeCardBundleZip, encodeCardBundleZip } from '../../../apps/studio-server/src/codecs/card-bundle-zip.js'
+import { decodeCardBundleZip, encodeCardBundleZip, loadCardBundleFiles } from '../../../apps/studio-server/src/codecs/card-bundle-zip.js'
 
 describe('Loom Card ZIP', () => {
   it('round-trips an Artifact with avatar and optional background', async () => {
@@ -57,6 +57,47 @@ describe('Loom Card ZIP', () => {
       } as never,
       avatar: { bytes: new Uint8Array([1]), mediaType: 'image/png' },
     })).toThrow('Unsupported card bundle schemaVersion')
+  })
+
+  it('keeps external resource copies inside the package without losing provenance or order', async () => {
+    const source = [
+      '// ==LoomScript==', '// @format 1', '// @id external.panel', '// @name Panel',
+      '// @version 1.0.0', '// @runtime client-sandbox',
+      '// @contribution {"kind":"renderer","id":"panel","surface":"shell.workspace-panel","scope":"workspace","inputs":["artifact:panel"]}',
+      '// ==/LoomScript==', 'export const renderers = {}',
+    ].join('\n')
+    const artifact: CardBundleArtifact = {
+      schemaVersion: 4, artifactId: 'alice', displayName: 'Alice', card: { name: 'Alice' },
+      contextAssets: [
+        { id: 'clothes', kind: 'module', label: 'Clothing guide', body: 'External text' },
+        { id: 'alice', kind: 'module', label: 'Alice', body: 'Own text' },
+      ],
+      externalContextAssetIds: ['clothes'],
+      scriptAttachments: [{
+        resourceOrigin: 'external', orderIndex: 2,
+        script: { format: 'loom.script', schemaVersion: 1, fileName: 'panel.loom.js', source },
+      }],
+      extensionPayloads: [{
+        resourceOrigin: 'external', id: 'data', packageId: 'example.rpg', fileName: 'data.json',
+        format: 'example.data', mediaType: 'application/json', content: '{"hp":10}',
+      }],
+    }
+    const encode = () => encodeCardBundleZip({ artifact, avatar: { bytes: Buffer.from('avatar'), mediaType: 'image/png' } })
+    const entries = unzipSync(encode())
+    expect(entries['external/prompts/0-Clothing guide/_content.md']).toBeDefined()
+    expect(entries['prompts/1-Alice/_content.md']).toBeDefined()
+    expect(entries['external/scripts/0-panel.loom.js']).toBeDefined()
+    expect(entries['external/extensions/example.rpg/data/data.json']).toBeDefined()
+    const decoded = await decodeCardBundleZip(zipSync(entries))
+    expect(decoded.artifact).toMatchObject(artifact)
+    expect(unzipSync(encodeCardBundleZip(decoded))).toEqual(entries)
+    artifact.externalContextAssetIds = ['missing']
+    expect(encode).toThrow('externalContextAssetIds')
+    artifact.externalContextAssetIds = ['clothes', 'clothes']
+    expect(encode).toThrow('externalContextAssetIds')
+    artifact.externalContextAssetIds = []
+    artifact.scriptAttachments![0]!.resourceOrigin = 'unknown' as never
+    expect(encode).toThrow('resourceOrigin')
   })
 
   it('rejects input that is not a ZIP package', async () => {
@@ -156,6 +197,14 @@ describe('Loom Card ZIP', () => {
     expect(result.artifact.state).toEqual(artifact.state)
     const materialized = materializeStateContribution(result.artifact.state!.contribution)
     expect(materialized.components).toHaveLength(60)
+    const loaded = await loadCardBundleFiles(async path => {
+      const bytes = entries[path]
+      if (!bytes) throw new Error(`Missing ${path}`)
+      return bytes
+    })
+    expect(loaded.bundle.artifact).toEqual(result.artifact)
+    expect(Buffer.from(loaded.bundle.avatar.bytes)).toEqual(Buffer.from(result.avatar.bytes))
+    expect(loaded.files.has('prompts/')).toBe(false)
   })
 
   it('continues to read legacy ZIP v1', async () => {

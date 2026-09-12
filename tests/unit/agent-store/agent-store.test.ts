@@ -19,6 +19,24 @@ function createTestContext() {
 }
 
 describe('agent store', () => {
+  it('preserves timeline binding in create, get, list, append and transcript reads', async () => {
+    const { engine, store, actor } = createTestContext()
+    try {
+      const { session } = await store.createSession({ actor, agentProfileId: 'profile', timelineId: 'timeline-a' })
+      expect(session.timelineId).toBe('timeline-a')
+      expect((await store.getSession(session.id))?.timelineId).toBe('timeline-a')
+      expect((await store.listSessions({ timelineId: 'timeline-a' })).sessions[0]?.timelineId).toBe('timeline-a')
+      const appended = await store.appendEntries({ actor, agentSessionId: session.id, expectedEntryCount: 0,
+        entries: [{ entry: { kind: 'message', role: 'user', content: 'Hello' } }],
+      })
+      expect(appended.session.timelineId).toBe('timeline-a')
+      expect((await store.getEntryPage({ agentSessionId: session.id })).session.timelineId).toBe('timeline-a')
+      expect((await store.listSessions({ standalone: true })).sessions).toEqual([])
+    } finally {
+      engine.close()
+    }
+  })
+
   it('repairs a version 3 development schema missing tool invocations', async () => {
     const engine = createSqliteDataEngine({
       filename: ':memory:',

@@ -2,7 +2,8 @@
 
 > **状态**：Draft / Roadmap
 > **目的**：规划 Loom Studio 对于第三方 Extension 开发者的体验与生态支持建设方向。
-> **适用范围**：SDK 发布规范、工具链支持、动态能力发现
+> **适用范围**：SDK 发布规范、工具链支持、动态能力发现、扩展页面与声明式设置
+> **2026-09-12 基线**：Application Runtime 领域模块化与 Server / Client Extension Logger 已有实现，不再作为本路线的前置建设任务。后续只补真实 SDK 文档缺口、能力自省与脚手架；Logger 的存在不代表 `system.introspect` 已提供完整 Schema。当前合同见 [Extension Architecture](../../architecture/extensions/README.md) 与 [Extension SDK](../../../packages/extension-sdk/src/index.ts)。
 >
 > **相关讨论**：[`../../archive/discussion/extensions/studio-extension-host-capabilities-v0.md`](../../archive/discussion/extensions/studio-extension-host-capabilities-v0.md)
 >
@@ -54,7 +55,35 @@
 
 1. **Phase 1: 静态打底 (当前期)**
    优先利用 TypeScript 机制，优化并补全 `@loom-studio/extension-sdk` 内的注释、类型导出规范与边界限制。
-2. **Phase 2: 动态骨架 (伴随 P1/P3 重构期)**
-   在进行 Application Runtime 领域切片重构时，同步完善 `system.introspect`，构建能力发现底座并实现 DevTools 的初步联动。
+2. **Phase 2: 动态能力发现（独立延期切片）**
+   不再等待已完成的 Runtime 模块化；按现有 Registry 与 RPC 元数据核对 `system.introspect` 的缺口，再确定 Schema 与 DevTools 联动范围，不因早期 P1/P3 编号直接恢复重构。
 3. **Phase 3: 繁荣生态 (内核稳定期)**
    当核心平台的 Extension 机制、依赖隔离与打包规范彻底稳定后，再着手编写并对外发布 `create-loom-extension` 官方脚手架模板。
+
+## 3. 扩展页面、声明式设置与组件使用
+
+> **状态**：方向已确认 / 具体合同待设计
+> **2026-09-12 决策**：从背景讨论稿转入本扩展计划。页面承载与作者使用组件属于 Extension UI 能力；不依赖上述三个 Phase 顺序，也不阻塞 [官方背景与面板材质](ui/background-and-panel-materials-plan.md)。本次仅归属整理，不授权代码实现。
+
+### 已确认事实与边界
+
+现有 `shell.workspace-panel`、Manifest Action / Command 和 Renderer mount / update / disposer 提供页面接入基础。官方扩展工作台已有 Master–Detail，但内部组件不等于公开组件 SDK。Client Context 当前没有直接 Config 读写；Server 已有 `storage.configs`，不能把服务端存储存在视为作者表单闭环完成。
+
+Surface 负责展示位置、导航、上下文与生命周期；组件及声明能力降低页面编写成本。优先复用现有 Surface，不因“设置页”而新增 Surface 类型。Registry 保存贡献，Host 管理实例；复杂地图或游戏面板继续由自定义 Renderer 绘制。
+
+### 已确认方向
+
+- 扩展所属工作台就地展示页面与设置，不另建独立表单资源中心；入口引用同一贡献身份，不复制实现。
+- 声明式设置由作者描述字段、默认值、选项及约束，Host 提供控件、布局、保存状态、错误反馈、无障碍与移动适配。
+- 自定义扩展页面应有更方便的组件使用路径，但不将当前内部 React 组件直接承诺为稳定 SDK，也不预设作者必须使用 React。
+- 配置复用现有 Extension Config 存储。读取、校验、保存、并发冲突和权限是完整交付范围，不新建表单专用数据库。
+
+### 工作包、验收与开放问题
+
+1. **合同收口**：从 `packages/extension-sdk/src/index.ts`、`apps/studio-client/src/features/extension-renderers/` 及 Server Config Host 实现核对入口。确定页面声明归属、Scope、默认值与未保存值语义、读写权限、版本冲突，以及组件如何加载和保持样式边界。字段清单与组件发布形式仍开放，不提前冻结完整 Schema。
+2. **代表性作者样板**：设计一个小型设置页和一个自定义页面，展示两者复用 Surface 的方式。只提供样板实际需要的字段和组件；主 Agent 负责设计与验收，具体文件在实现批准前冻结。
+3. **最小闭环**：按冻结合同接通声明、显示、校验、保存和重新读取。定向验证保存后 reload、非法输入、版本冲突及模块停用；确认自定义 Renderer 生命周期不被设置页改写。公共 SDK 变化补定向类型检查，视觉与键盘操作由人工验收。
+
+不建设通用 UI DSL、任意模板引擎或未经需求证明的全量组件库。需要新增依赖、扩大权限或改动持久化归属时停止并收口，不借本切片恢复整个 DX 路线。实现前由主 Agent 补齐精确写集、验收负责人及最小验证命令。
+
+**当前结果**：内容已从背景讨论中分流；页面贡献、字段合同、组件接入与 Client 配置闭环仍未实现，未执行运行或视觉验证。

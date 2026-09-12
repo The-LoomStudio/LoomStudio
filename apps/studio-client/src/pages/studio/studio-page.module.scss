@@ -342,6 +342,50 @@
   gap: 2px;
 }
 
+.railPlayRow {
+  display: flex;
+  align-items: center;
+}
+
+.railPlayRow > :first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.railPlayToggle {
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
+  width: 28px !important;
+  height: 32px !important;
+  min-width: 28px;
+  min-height: 32px;
+  margin: 0 8px 0 0;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 !important;
+  background: transparent;
+  color: var(--loom-color-text-muted);
+  cursor: pointer;
+  outline: none;
+}
+
+.railPlayToggle svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.85;
+}
+
+.railPlayToggle:hover {
+  background: var(--loom-color-surface-hover);
+  color: var(--loom-color-text);
+}
+
+.railPlayToggle:focus-visible {
+  outline: 1px solid var(--loom-color-accent);
+  outline-offset: -1px;
+}
+
 .railGroupLabel {
   display: flex;
   align-items: center;
@@ -532,6 +576,13 @@
     background: var(--loom-color-border);
     pointer-events: none;
   }
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
 }
 
 .workspaceHeader svg {

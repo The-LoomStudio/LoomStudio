@@ -2,66 +2,34 @@
 
 > **状态**：Active Reference / Current Source Is Authority
 
-Loom Studio 使用 TypeScript 构建。以下是最关键的接口定义概念以及它们所在的位置，方便你建立心智模型并在代码中查找源码。
+本页提供当前类型入口，不复制完整接口签名。领域 DTO、持久化类型与 Provider wire 类型分别由对应模块负责。
 
-## 1. 内核与扩展基础设施 (Kernel & Extension)
+## 内核与扩展基础设施
 
-### `Kernel` (packages/kernel/src/index.ts)
-整个 Studio 后端的单例大脑。它只对外暴露几个关键能力：
-- `registerKernelRpc` / `registerExtensionRpc`
-- `callRpc`
-- `getEventBus` / `getDocumentStore` / `getDiagnostics` / `getTraceAudit` / `getLoomRunner`
+| 类型 | 当前职责与来源 |
+|---|---|
+| Kernel / EventBus | 进程内 RPC、事件与平台服务协调；[Kernel](../../../packages/kernel/src/index.ts) |
+| DocumentStore | 版本化 typed JSON 聚合、Revision 与 Document revert；不拥有所有领域状态；[Document Store](../../../packages/document-store/src/index.ts) |
+| ExtensionHost | Server Module 加载、Scope 清理和 capability gate；[Host](../../../packages/extension-sdk/extension-host/src/index.ts) |
+| ExtensionManifest / Activation Context | Manifest v2 的 Package / Module / Instance 及作者能力合同；[SDK](../../../packages/extension-sdk/src/index.ts) |
 
-### `EventBus` (packages/kernel/src/index.ts)
-极其简单的发布/订阅总线：
-- `emit(name: string, payload: JsonValue)`
-- `subscribe(patterns: string[], handler)`
+## 应用层运行时
 
-### `DocumentStore` (packages/document-store/src/index.ts)
-所有状态持久化接口。核心返回包含：
-- `DocumentRecord`: `{ id, type, version, content: JsonValue, meta }`
+| 类型 | 当前职责与来源 |
+|---|---|
+| ApplicationRuntime | Card、Narrative Timeline、Agent Session、Prompt、State 等领域入口；[types.ts](../../../packages/application-runtime/src/types.ts) |
+| ApplicationRuntimeContext | 内部 Store / Gateway / Registry 等稳定基础设施；[Context](../../../packages/application-runtime/src/foundation/application-context.ts) |
+| AiGateway | Provider 调用与 Application 返回合同；[Gateway](../../../packages/application-runtime/src/providers/gateway.ts) |
+| CompiledPrompt | 当前 DFS 编译器的 messages 与 editorProjection；[Prompt 类型](../../../packages/application-runtime/src/prompt/prompt-builder.ts) |
 
-### `ExtensionHost` (packages/extension-host/src/index.ts)
-加载和卸载插件。
-- `ExtensionManifest`: 插件描述文件 schema (name, version, engines, contributes)。
+当前会话使用 `createNarrativeTimeline`、`createAgentSession`、`previewAgentTurn`、`invokeAgentTurn` 等领域方法，不再提供旧 `createSession / submitTurn` 主链。Narrative、Agent、Prompt Resource 与 State 的权威数据分别由独立 Store 管理，见 [Data Architecture](../../architecture/data/README.md)。
 
----
+## Client 实体层
 
-## 2. 应用层运行时 (Application Runtime)
+[entities/](../../../apps/studio-client/src/entities/) 保存 Client DTO 与领域类型：`agent.ts` 对应 Agent Profile / Session，`narrative.ts` 对应 Timeline / Branch / Node，`card.ts` 对应 Card。请求编排与派生 UI 状态由 Feature hooks 负责，不把实体类型文件描述成完整 UI 状态管理器。
 
-这些定义位于 `packages/application-runtime/src/types.ts`。
+## Loom Core
 
-### `ApplicationRuntime`
-应用层的入口点，包含所有的 `createCard`, `createSession`, `submitTurn`, `previewPrompt` 方法定义。
+[Core public API](../../../packages/core/src/index.ts) 公开 Fragment、同步 Pass / PassFactory / PassConfig、PassRegistry、Trace 与 run / runPasses。Pass 是同步 Fragment 变换，不是异步 LLM 调用入口。
 
-### `AiGateway` & `ApplicationProvider`
-处理与模型 API 的交互。
-- `invokeChat(input: GatewayInvokeChatInput): Promise<GatewayChatResult>`
-
-### `CompiledPrompt` (packages/application-runtime/src/prompt-builder.ts)
-由 `PromptBuilder` 生成的最终可以发给模型的结构化对象。包含了根据不同 Zone 拼装好的 messages 以及 tool 列表。
-
----
-
-## 3. UI 实体层 (Apps: Studio Client)
-
-这些定义位于 `apps/studio-client/src/entities/` 目录下。
-
-### `Session` & `Narrative` (entities/session.ts, entities/narrative.ts)
-前端用来展示会话时间轴的实体状态。不同于后端纯粹的 CRUD，这里会封装很多用于 UI 渲染的计算属性（例如计算一棵 `Tree` 状时间线变成线性的可滚动列表）。
-
-### `Card` (entities/card.ts)
-前端操作角色卡编辑页面的双向绑定模型。
-
----
-
-## 4. Loom Core 概念 (来自 `@loom/core`)
-
-> `@loom/core` 位于 `packages/core`。Kernel/RPC 通过 `loom-runner` 与 Core 交互；第一方 Application Runtime 的 PromptBuild pipeline 也会直接使用 Core public API。
-
-### `Fragment`
-不可变的文本块。一切提示词最终都会被扁平化或组合成 Fragment 数组。
-### `PassConfig`
-描述了一段处理管线，例如将特定标记替换，或者调用某个 LLM Provider。
-### `LoomRunner` (packages/loom-runner/src/index.ts)
-`run(input: LoomRunInput)`: 接收片段和 Pass 列表，返回处理后的片段和执行踪迹 (Trace)。
+[Loom Runner](../../../packages/loom-runner/src/index.ts) 为 Kernel 的 `loom.run` 适配 JSON 输入、Core 执行与 Trace Audit。当前 Agent PromptBuild 直接使用 Application DFS，未调用 Core；详见 [Studio 集成](../../architecture/application/prompt-build/loom-core/studio-integration.md)。

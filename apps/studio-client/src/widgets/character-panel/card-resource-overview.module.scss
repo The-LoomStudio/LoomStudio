@@ -1,0 +1,31 @@
+.overview { padding: 20px 24px; min-width: 0; }
+.header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.header h3 { font-size: var(--loom-font-size-2); font-weight: 500; margin: 0; }
+.iconButton { display: inline-grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; padding: 0; background: transparent; color: var(--loom-color-text-muted); border: 0; cursor: pointer; }
+.iconButton svg { width: 16px; height: 16px; }
+.iconButton:hover:not(:disabled) { color: var(--loom-color-accent); }
+.iconButton:disabled { opacity: 0.5; cursor: default; }
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 16px; background: var(--loom-color-surface-subtle); }
+.stats > div { display: flex; flex-direction: column; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.stats strong { font-size: 18px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.stats span, .empty, .location, .status { font-size: 12px; color: var(--loom-color-text-muted); line-height: 1.6; }
+.attachments { margin-top: 16px; display: grid; }
+.attachment { display: flex; align-items: center; gap: 12px; padding: 12px 8px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; font: inherit; }
+.attachment + .attachment { border-top: 1px solid var(--loom-color-divider); }
+.attachment:hover { background: var(--loom-color-surface-subtle); }
+.attachment svg { width: 18px; height: 18px; color: var(--loom-color-text-muted); flex-shrink: 0; }
+.attachment span { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+.attachment small { font-size: 12px; color: var(--loom-color-text-muted); }
+.location { display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 16px; min-width: 0; }
+.location span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
+.status { display: block; min-height: 20px; text-align: right; }
+.error { color: var(--loom-color-danger); overflow-wrap: anywhere; font-size: 12px; }
+.preview { max-height: 70dvh; max-width: 720px; overflow: auto; overflow-wrap: anywhere; font-size: 14px; line-height: 1.7; }
+.preview pre { overflow: auto; }
+.discovery { max-height: 55dvh; overflow: auto; }
+.discovery > div { padding: 12px 8px; border-bottom: 1px solid var(--loom-color-divider); }
+.discovery strong { display: block; font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+.discovery small { display: block; font-size: 12px; color: var(--loom-color-text-muted); margin-top: 4px; }
+.discovery > div > button, .preview > button { margin-top: 8px; padding: 6px 12px; border: 1px solid var(--loom-color-divider); border-radius: 4px; background: var(--loom-color-surface-subtle); color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
+.discovery > div > button:disabled, .preview > button:disabled { opacity: 0.5; cursor: default; }
+@media (max-width: 480px) { .overview { padding: 16px; } .stats { gap: 8px; padding: 12px; } .stats strong { font-size: 16px; } }

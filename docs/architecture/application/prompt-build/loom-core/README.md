@@ -1,6 +1,6 @@
 # Loom Core
 
-`@loom/core` 是同步、线性、可追踪、可重放的 Fragment pipeline engine。在 Loom Studio 的正式文档分类中，它位于 PromptBuild 下面，因为 PromptBuild 是当前第一方 Application 对 Core 的主要领域使用者。
+`@loom/core` 是同步、线性、可追踪、可重放的 Fragment pipeline engine。文档沿用 PromptBuild 下的分类位置；当前实际集成入口是 Kernel 的 Loom Runner，Agent PromptBuild 使用独立的 Application DFS 编译器。两条调用链见 [Studio 集成](studio-integration.md)。
 
 这只是文档归属，不改变技术边界：`packages/core` 是独立 package，public API 不包含 Card、Session、Setting Layer、Prompt、Agent 或 Provider 类型。
 
@@ -8,7 +8,7 @@
 
 ```text
 PromptBuild:
-  准备领域输入，定义具体 Pass，解释编译结果。
+  准备领域输入，执行 Application DFS，解释编译结果。
 
 Loom Core:
   Fragment[] + Pass[] -> Fragment[] + Trace
@@ -102,7 +102,7 @@ Trace
 |---|---|
 | Card、Session、Setting Layer、Agent | Studio Application |
 | Source Adapter 与多数据源合并 | PromptBuild / 调用方 |
-| Activation、过滤、排序和 Slot Fill 策略 | Application-owned Pass |
+| Activation、过滤、排序和 Slot Fill 策略 | Application 编译器；若接入 Core，再由领域 Pass 承担 |
 | 模板、宏、变量和 late binding | PromptBuild / 领域工具 |
 | Tokenizer 与预算策略 | Provider/领域工具或 Pass |
 | Provider-neutral Composition 模型 | PromptBuild |
@@ -130,7 +130,7 @@ Core 不提供 Promise/Thunk Content、Scope、Resolve Barrier、异步 Pass 或
 
 ```text
 packages/application-runtime
-  第一方 PromptBuild pipeline。
+  保留声明依赖；当前第一方 PromptBuild 没有调用 Core。
 
 packages/loom-runner
   面向 Kernel/RPC 的 JSON adapter 与 Trace Audit 集成。

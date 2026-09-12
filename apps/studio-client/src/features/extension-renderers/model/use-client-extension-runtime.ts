@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import type { ManagedClientExtensionModule, ManagedClientExtensionPackage, ManagedExtensionPackage } from '../../../entities/index.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
+import { invalidateCardMedia } from '../../../shared/lib/card-media.js'
 import { createClientExtensionHost, type ClientExtensionDataApi } from './client-extension-host.js'
 import type { ClientRendererHost } from './client-renderer-host.js'
 import { createRendererSessionHost } from './renderer-session.js'
@@ -65,6 +66,8 @@ export function useClientExtensionRuntime(input: {
     void refresh().then(() => {
       if (disposed || typeof EventSource === 'undefined') return
       events = new EventSource('/extensions/events')
+      events.addEventListener('open', invalidateCardMedia)
+      events.addEventListener('directories.media.changed', invalidateCardMedia)
       events.addEventListener('extensions.changed', event => {
         const change = readExtensionChange(event)
         const reload = change?.action === 'reloaded' && change.packageId && change.moduleId
@@ -77,6 +80,8 @@ export function useClientExtensionRuntime(input: {
     })
     return () => {
       disposed = true
+      events?.removeEventListener('open', invalidateCardMedia)
+      events?.removeEventListener('directories.media.changed', invalidateCardMedia)
       events?.close()
       void host.dispose()
       sessionHost.dispose()

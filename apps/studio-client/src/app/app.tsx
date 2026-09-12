@@ -12,6 +12,8 @@ import { InspectorPanel } from '../widgets/inspector-panel/inspector-panel.js'
 import { LogViewer } from '../widgets/log-viewer/log-viewer.js'
 import { SettingsPanel } from '../widgets/settings-panel/settings-panel.js'
 import { SessionsPanel } from '../widgets/sessions-panel/sessions-panel.js'
+import { PlayPanel } from '../widgets/play-panel/play-panel.js'
+import { RecentPlayRail } from '../widgets/play-panel/recent-play-rail.js'
 import { StateVariablesPanel } from '../features/state-variables/ui/state-variables-panel.js'
 import { StateAuthoringPanel } from '../features/state-variables/ui/state-authoring-panel.js'
 import { MacroInspectorPanel } from '../features/state-variables/ui/macro-inspector-panel.js'
@@ -28,6 +30,7 @@ import type { ClientRendererScope } from '../features/extension-renderers/model/
 
 import { NotificationToaster } from '../shared/ui/notification-toaster/notification-toaster.js'
 import type { StudioApi } from '../shared/api/studio-api.js'
+import { cardMediaUrl, useCardMediaRevision } from '../shared/lib/card-media.js'
 import { toast } from 'sonner'
 import { hasCompleteProviderAccount } from '../features/provider-settings/model/provider-account-status.js'
 import { useStudioLayoutStore, useStudioPanelStore, type StudioPanelId } from '../pages/studio/model/studio-layout-store.js'
@@ -39,6 +42,7 @@ import styles from './app.module.scss'
 import '../styles/global.css'
 
 export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger }) {
+  const mediaRevision = useCardMediaRevision()
   const state = useStudioState(props.transportLogger)
   const rendererHost = useMemo(() => createClientRendererHost(), [])
   const clientExtensions = useClientExtensionRuntime({ api: state.clientExtensionApi, rendererHost })
@@ -70,10 +74,10 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
   const sourceCardId = state.narrativeTimeline?.createdFrom?.cardId
   const canOpenTimelineSource = Boolean(sourceCardId && state.cards.some(card => card.id === sourceCardId))
   const narrativeCharacterAvatarUrl = state.narrativeTimeline && activeCard?.media?.avatarAssetId
-    ? `/assets/${encodeURIComponent(activeCard.media.avatarAssetId)}`
+    ? cardMediaUrl(activeCard.id, 'avatar', activeCard.media.avatarAssetId, mediaRevision)
     : undefined
   const sessionBusy = state.operationPending.session.pendingCount > 0
-  const agentChatBusy = state.operationPending['agent-chat'].pendingCount > 0 || sessionBusy
+  const agentChatBusy = state.operationPending['agent-chat'].pendingCount > 0 || sessionBusy || state.agentChatSessionLoading
   const mutationBusy = state.operationPending.mutation.pendingCount > 0
   const composerCommandContext = {
     sourceSurface: 'composer.quick-actions' as const,
@@ -251,6 +255,40 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         onUpdate={state.updateAgentProfile}
       />
     ),
+    play: active => active ? (
+      <PlayPanel
+        character={panels.character(true)}
+        sessions={panels.sessions(true)}
+        t={state.t}
+        cards={state.cards}
+        timelines={state.allTimelines.length > 0 ? state.allTimelines : state.cardTimelines}
+        agentSessions={state.agentChatSessions}
+        onOpenCard={card => {
+          state.setSelectedCardId(card.id)
+          void state.refreshCardTimelines(card.id).then(timelines => {
+            const latest = [...timelines].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]
+            if (latest) {
+              void state.activateTimeline(latest.id).then(branchId => {
+                if (branchId) navigation.openNarrative(latest.id, branchId)
+              })
+            } else {
+              void state.createTimelineFromCard(card.id).then(activated => {
+                if (activated) navigation.openNarrative(activated.timelineId, activated.branchId)
+              })
+            }
+          })
+        }}
+        onOpenTimeline={timeline => {
+          void state.activateTimeline(timeline.id).then(branchId => {
+            if (branchId) navigation.openNarrative(timeline.id, branchId)
+          })
+        }}
+        onOpenAgentSession={session => {
+          void state.activateAgentSession(session)
+          setAgentPanelOpen(true)
+        }}
+      />
+    ) : null,
     sessions: () => (
       <SessionsPanel
         activeBranch={state.branch}
@@ -277,6 +315,10 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         }}
         onRenameAgentSession={state.renameAgentSession}
         onRenameTimeline={state.renameTimeline}
+        onArchiveImported={async timelineId => {
+          await state.refreshAllTimelines()
+          await state.activateTimeline(timelineId)
+        }}
       />
     ),
     character: active => (
@@ -302,6 +344,8 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         onDeleteCards={state.deleteCards}
         onPreviewCardDeletion={state.previewCardDeletion}
         onExportCard={state.exportCard}
+        directoryApi={state.directoryApi}
+        onRefreshCards={state.refreshCards}
         onImportCards={state.importCards}
         onSelectCard={cardId => {
           state.setSelectedCardId(cardId)
@@ -523,6 +567,8 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
       agentChatInput={state.agentChatInput}
       agentChatMessages={state.agentChatMessages}
       agentChatSession={state.agentChatSession}
+      agentChatSessions={state.agentChatSessions}
+      agentChatSessionReady={state.agentChatSessionReady}
       agentPanelOpen={agentPanelOpen}
       agentProfiles={state.agentProfiles}
       agentSessionTail={state.agentChatSession ? (
@@ -541,6 +587,9 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         void state.redoEdit().then(focusHistoryAsset)
       }}
       onSelectAgentProfile={state.selectAgentProfile}
+      onSelectAgentSession={id => { void state.activateAgentSession(id) }}
+      onNewAgentSession={state.newAgentSession}
+      onRefreshAgentSessions={() => { void state.refreshAgentSessions() }}
       onSubmitAgentChat={state.submitAgentTurn}
       onToggleAgentPanel={() => setAgentPanelOpen(prev => !prev)}
       onUndo={() => {
@@ -573,6 +622,18 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
           />
         ),
       }}
+      recentSessions={(
+        <RecentPlayRail
+          cards={state.cards}
+          timelines={state.allTimelines.length > 0 ? state.allTimelines : state.cardTimelines}
+          t={state.t}
+          onOpenTimeline={timeline => {
+            void state.activateTimeline(timeline.id).then(branchId => {
+              if (branchId) navigation.openNarrative(timeline.id, branchId)
+            })
+          }}
+        />
+      )}
       panels={panels}
       providerAccounts={state.providerAccounts}
       rendererHost={rendererHost}

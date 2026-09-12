@@ -14,7 +14,7 @@ AgentSession.agentProfileId
 
 Agent Profile 的工具配置只是快速覆盖。实际 Tool 集合仍由 Preset Tool Mount 决定。
 
-Session Header 当前只保存 Session ID、Agent Profile ID、title、active head Entry ID、Entry count 和生命周期时间。Header 不保存完整 Loop KV，也不把 Provider message array 作为权威状态。
+Session Header 保存 Session ID、Agent Profile ID、可选 `timelineId`、title、active head Entry ID、Entry count 和生命周期时间。`timelineId` 不代表领域所有权或权限。Header 不保存完整 Loop KV，也不把 Provider message array 作为权威状态。
 
 ## 2. Canonical Transcript
 
@@ -23,12 +23,15 @@ Agent Transcript 是 append-only 运行事实序列。当前 Entry 包括：
 | Entry | 语义 |
 |---|---|
 | `message` | 用户或 Assistant 正文 |
+| `reasoning` | 带来源、可见性与 replay 策略的推理内容 |
 | `provider-observation` | Provider、Model、Call ID、Stop Reason 与 Usage |
 | `tool-invocation` | Studio Invocation ID、Tool、Transport、输入与执行状态 |
 | `tool-result` | Invocation 配对结果、内容、错误与 synthetic reason |
 | `run-state` | Run 的 created / running / suspended / terminal 状态 |
 
 Transcript 不绑定 OpenAI Chat Completions wire schema。Provider Replay 是 Runtime 根据 canonical Entry 和原始 Invocation Transport 生成的下一步输入投影。
+
+当前 Turn Preparation 分别读取最多 100 条历史 Transcript Entry 与 Narrative Node；这是当前上下文读取上限，不是完整历史、自动摘要或跨进程恢复能力。
 
 每条 Entry 保存 `parentEntryId`、`sequence` 和可选 `runId`。当前 Store 沿 active parent chain 分页，并以 `expectedEntryCount` 防止并发追加覆盖。Tool Invocation / Result 的轻量配对索引保证 Invocation ID 不重复、Result 引用已知 Invocation、Tool ID 匹配，并且一个 Invocation 只有一个 Result。
 
@@ -83,7 +86,9 @@ Agent 主动读取与 ToolResult 的生命周期由 Runtime 管理，不等于 P
 
 Agent Session 是工作树，Narrative Timeline 是故事权威树。两者互不拥有，也不因一方回滚而自动回滚另一方。
 
-Agent-only Turn 只写 Agent Session。绑定 Narrative 且显式提交时，Agent Message 与 Narrative Node 可以由 Application Runtime 放入同一个 Data Engine transaction / Changeset；这仍不把两个领域合并成同一 Session。
+Agent Loop 分阶段提交 Transcript；当提供 `narrativeTarget` 且 `commit = true` 时，Loop 成功后再用独立事务追加用户与 Assistant 两条 Narrative Node。该事务不包含已持久化的 Agent Message；Narrative Head 冲突或其他提交失败不会回滚 Agent Transcript 或已完成的 Tool 写入。没有最终 Narrative commit 不等于 Tool 没有领域副作用。
+
+这是当前实现边界，不是对跨领域原子提交的设计裁决。若要改变该语义，需要单独确定 Agent 运行事实、Tool 副作用与 Narrative 提交各自的恢复合同，不能仅通过共享 Data Engine 推断原子性。
 
 ## 7. 实现来源
 

@@ -1,3 +1,5 @@
+import { useState, type ReactNode } from 'react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { Translator } from '../../shared/i18n/index.js'
 import type { StudioPanelId } from './model/studio-layout-store.js'
 import { STUDIO_PANEL_PRESENTATION } from './model/studio-panel-presentation.js'
@@ -6,6 +8,7 @@ import styles from './studio-page.module.scss'
 type StudioRailProps = {
   activePanel: StudioPanelId | null
   modelConfigured?: boolean
+  recentSessions?: ReactNode
   t: Translator
   togglePanel(panel: StudioPanelId): void
 }
@@ -20,6 +23,7 @@ type RailTabProps = {
 }
 
 export function StudioRail(props: StudioRailProps) {
+  const [recentOpen, setRecentOpen] = useState(false)
   const modelStatus = props.modelConfigured === undefined
     ? 'unknown'
     : props.modelConfigured ? 'configured' : 'incomplete'
@@ -44,8 +48,15 @@ export function StudioRail(props: StudioRailProps) {
 
         <div className={styles.railGroup}>
           <div className={styles.railGroupLabel}>{props.t('rail.groupPlay')}</div>
-          <RailTab activePanel={props.activePanel} panel="character" t={props.t} togglePanel={props.togglePanel} />
-          <RailTab activePanel={props.activePanel} panel="sessions" t={props.t} togglePanel={props.togglePanel} />
+          <div className={styles.railPlayRow}>
+            <RailTab activePanel={props.activePanel} panel="play" t={props.t} togglePanel={props.togglePanel} />
+            {props.recentSessions && props.activePanel === null ? (
+              <button className={styles.railPlayToggle} type="button" aria-expanded={recentOpen} aria-label={recentOpen ? '收起最近会话' : '展开最近会话'} onClick={() => setRecentOpen(value => !value)}>
+                {recentOpen ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
+              </button>
+            ) : null}
+          </div>
+          {recentOpen && props.activePanel === null ? props.recentSessions : null}
         </div>
       </div>
       <div className={styles.railBottomSection}>

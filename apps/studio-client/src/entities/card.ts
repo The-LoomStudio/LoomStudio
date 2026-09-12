@@ -77,7 +77,7 @@ export type CardMedia = {
 
 export type CardSummary = Pick<Card,
   'id' | 'version' | 'name' | 'userName' | 'description' | 'media' | 'createdAt' | 'updatedAt'
->
+> & { openingPreview?: string }
 
 export type CardPresetInput = {
   system?: string

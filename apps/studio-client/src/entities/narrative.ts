@@ -3,6 +3,8 @@ import type { MutationReceipt } from './common.js'
 export type NarrativeTimeline = {
   id: string
   title?: string
+  openingPreview?: string
+  latestPreview?: string
   createdFrom?: {
     cardId: string
     cardVersion: number

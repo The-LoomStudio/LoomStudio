@@ -1,0 +1,13 @@
+.toolbar { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 2px; }
+.toolbar button { display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 0; background: transparent; color: var(--loom-color-text); cursor: pointer; border-radius: 4px; }
+.toolbar button:hover:not(:disabled) { background: var(--loom-color-surface-subtle); }
+.toolbar button:disabled { opacity: 0.35; cursor: default; }
+.toolbar svg { width: 20px; height: 20px; }
+.separator { height: 20px; width: 1px; margin: 0 6px; background: var(--loom-color-divider); }
+.scale { width: 56px; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--loom-color-text-muted); }
+.viewport { position: relative; width: 100%; height: 100%; overflow: hidden; touch-action: none; background: #111; color: #eee; user-select: none; cursor: grab; }
+.viewport:active { cursor: grabbing; }
+.viewport img { position: absolute; top: 50%; left: 50%; max-width: none; max-height: none; transform-origin: center; pointer-events: none; }
+.message { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 14px; max-width: 85%; overflow-wrap: anywhere; }
+.notice { position: absolute; bottom: max(16px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); max-width: 85%; margin: 0; padding: 8px 12px; background: #222; color: #fff; border-radius: 4px; font-size: 12px; overflow-wrap: anywhere; pointer-events: none; }
+@media (max-width: 480px) { .toolbar button { width: 36px; height: 40px; } .scale { width: 44px; } .separator { margin: 0 3px; } }

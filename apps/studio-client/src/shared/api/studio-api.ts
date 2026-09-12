@@ -1,4 +1,6 @@
 import type { ClientBridge, ClientJsonValue } from '@loom-studio/client-bridge'
+type TimelineArchiveClient = Record<string, ClientJsonValue>
+import type { CardDirectoryPreview, CardDirectorySaveResult, CardDirectoryCatalog, OpenCardDirectoryResult, CardDirectoryAttachment } from '@loom-studio/shared'
 import type { OfficialContentPackage } from '../../entities/official-content.js'
 import type { LogLevel, LogPage } from '@loom-studio/logging'
 import type { ExtensionEntityRef, ExtensionRecordEntry, ExtensionStorageScope } from '@loom-studio/extension-sdk'
@@ -397,6 +399,15 @@ export type StudioApi = {
     extract(input: { source: HistorySource; phase?: TextTransformPhase; extractorId: string; consumerAgentSessionId?: string }): Promise<{ extraction: ClientJsonValue; snapshot: HistoryProjectionSnapshot }>
     listRenderers(): Promise<{ renderers: RendererDefinition[] }>
   }
+  directories: {
+    importDirectory(directory: string, token: string): Promise<{ cardId: string }>
+    previewApply(cardId: string): Promise<CardDirectoryPreview>
+    apply(cardId: string, token: string): Promise<{ cardId: string }>
+    attachment(directory: string, path: string): Promise<CardDirectoryAttachment>
+    list(): Promise<CardDirectoryCatalog>
+    scan(): Promise<CardDirectoryCatalog>
+    open(directory: string): Promise<OpenCardDirectoryResult>
+  }
   cards: {
     get(cardId: string): Promise<GetCardResult>
     list(input?: { cursor?: string; limit?: number }): Promise<ListCardsResult>
@@ -406,6 +417,9 @@ export type StudioApi = {
     previewDeletion(cardId: string): Promise<PreviewCardDeletionResult>
     delete(cardId: string, options?: { includePlayData?: boolean; includePromptResources?: boolean }): Promise<DeleteCardResult>
     export(cardId: string): Promise<ExportCardBundleResult>
+    previewDirectory(cardId: string): Promise<CardDirectoryPreview>
+    saveDirectory(cardId: string, token: string): Promise<CardDirectorySaveResult>
+    recoverDirectory(cardId: string): Promise<{ recovered: boolean }>
   }
   agentSessions: {
     create(input: CreateAgentSessionInput): Promise<CreateAgentSessionResult>
@@ -454,6 +468,8 @@ export type StudioApi = {
     get(timelineId: string): Promise<GetNarrativeTimelineResult>
     list(input?: { createdFromCardId?: string; cursor?: string; limit?: number }): Promise<ListNarrativeTimelinesResult>
     getPage(input: { timelineId: string; branchId?: string; cursor?: string; limit?: number }): Promise<NarrativePage>
+    exportArchive(timelineId: string): Promise<{ archive: TimelineArchiveClient }>
+    importArchive(source: string): Promise<{ timelineId: string; unknownParticipantNamespaces: string[]; participantFailures: Array<{ namespace: string; message: string }> }>
     fork(input: ForkNarrativeBranchInput): Promise<ForkNarrativeBranchResult>
     switch(input: SwitchNarrativeBranchInput): Promise<SwitchNarrativeBranchResult>
     delete(timelineId: string): Promise<{ deleted: true; mutation: MutationReceipt }>
@@ -581,6 +597,15 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       extract: input => bridge.call('application.extractHistory', input as unknown as ClientJsonValue),
       listRenderers: () => bridge.call('application.listRenderers', {}),
     },
+    directories: {
+      importDirectory: (directory, token) => bridge.call<{ cardId: string }>('directories.import', { directory, token }),
+      previewApply: cardId => bridge.call<CardDirectoryPreview>('directories.previewApply', { cardId }),
+      apply: (cardId, token) => bridge.call<{ cardId: string }>('directories.apply', { cardId, token }),
+      attachment: (directory, path) => bridge.call<CardDirectoryAttachment>('directories.attachment', { directory, path }),
+      list: () => bridge.call<CardDirectoryCatalog>('directories.list'),
+      scan: () => bridge.call<CardDirectoryCatalog>('directories.scan'),
+      open: directory => bridge.call<OpenCardDirectoryResult>('directories.open', { directory }),
+    },
     cards: {
       get: cardId => bridge.call<GetCardResult>('application.getCard', { cardId }),
       list: input => bridge.call<ListCardsResult>('application.listCards', (input ?? {}) as unknown as ClientJsonValue),
@@ -594,6 +619,9 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
         ...(options?.includePromptResources ? { includePromptResources: true } : {}),
       }),
       export: cardId => bridge.call<ExportCardBundleResult>('application.exportCardBundle', { cardId }),
+      previewDirectory: cardId => bridge.call<CardDirectoryPreview>('directories.previewCard', { cardId }),
+      saveDirectory: (cardId, token) => bridge.call<CardDirectorySaveResult>('directories.saveCard', { cardId, token }),
+      recoverDirectory: cardId => bridge.call<{ recovered: boolean }>('directories.recoverCard', { cardId }),
     },
     agentSessions: {
       create: input => bridge.call<CreateAgentSessionResult>('application.createAgentSession', input as unknown as ClientJsonValue),
@@ -645,6 +673,8 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       get: timelineId => bridge.call<GetNarrativeTimelineResult>('application.getNarrativeTimeline', { timelineId }),
       list: input => bridge.call<ListNarrativeTimelinesResult>('application.listNarrativeTimelines', (input ?? {}) as unknown as ClientJsonValue),
       getPage: input => bridge.call<NarrativePage>('application.getNarrativePage', input as unknown as ClientJsonValue),
+      exportArchive: timelineId => bridge.call<{ archive: TimelineArchiveClient }>('application.exportTimelineArchive', { timelineId }),
+      importArchive: source => bridge.call<{ timelineId: string; unknownParticipantNamespaces: string[]; participantFailures: Array<{ namespace: string; message: string }> }>('application.importTimelineArchive', { source }),
       fork: input => bridge.call<ForkNarrativeBranchResult>('application.forkNarrativeBranch', input as unknown as ClientJsonValue),
       switch: input => bridge.call<SwitchNarrativeBranchResult>('application.switchNarrativeBranch', input as unknown as ClientJsonValue),
       delete: timelineId => bridge.call<{ deleted: true; mutation: MutationReceipt }>('application.deleteNarrativeTimeline', { timelineId }),

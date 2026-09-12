@@ -264,7 +264,7 @@ type LogGap = {
 
 Studio Server 默认启用 JSONL 持久化。每行是一条可独立解析的完整 `LogRecord`。
 
-目录由 Studio Server 的 `LoomStudioLocalPaths.logRoot` 注入。正式运行使用操作系统原生日志目录；开发脚本通过 `LOOM_STUDIO_HOME=.loomstudio-dev` 收拢到 `.loomstudio-dev/logs/`。Logging Package 不再读取独立 Home 环境变量。
+目录由 Studio Server 的 `LoomStudioLocalPaths.logRoot` 注入。正式运行使用操作系统原生日志目录；开发脚本默认将日志收拢到 `.loomstudio-dev/logs/`，持久数据单独位于仓库 `data/`。显式 `LOOM_STUDIO_HOME` 时日志位于其 `logs/` 子目录。Logging Package 不读取环境变量，路径由 Server 注入。
 
 文件名包含：
 
@@ -412,7 +412,7 @@ Observability UI 可以本地化导航、筛选器、字段标签和有限的稳
 - JSONL 历史分页与导出 API；
 - SSE/WebSocket 实时日志流；
 - Browser 日志持久化或 Server ingest；
-- Extension 作者可用的 `ctx.logger` / Host Logger；
+- Extension Logger 的远程采集、批处理和跨端持久化策略；Server / Client Activation Context 已提供受控 `ctx.logger`；
 - Notification 与 Sonner 协议；
 - 后端 TUI；
 - PromptBuild 专用 Trace Envelope；
@@ -434,7 +434,7 @@ Observability UI 可以本地化导航、筛选器、字段标签和有限的稳
 - 新增正式 namespace；
 - `logs.list` 开始读取历史 JSONL；
 - Browser 日志开始上传或持久化；
-- Extension Host 正式向作者暴露 Logger capability。
+- Extension Logger 的远程采集与持久化扩展。
 
 关键可执行证据：
 

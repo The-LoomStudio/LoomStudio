@@ -18,7 +18,7 @@ function createTestRuntime(agentTools = createAgentToolRegistry([])) {
   const narratives = createNarrativeStore({ engine, createId, now })
   const promptResources = createPromptResourceStore({ engine, createId, now })
   const runtime = createApplicationRuntime({ agents, agentTools, dataEngine: engine, documents, narratives, promptResources })
-  return { engine, runtime }
+  return { engine, documents, runtime }
 }
 
 async function createProfile(runtime: ReturnType<typeof createTestRuntime>['runtime'], instructions = 'Help the user.') {
@@ -52,6 +52,135 @@ async function createPreset(
 }
 
 describe('application agent session lifecycle', () => {
+  it('exports and imports a Timeline archive with State history', async () => {
+    const { engine, runtime } = createTestRuntime()
+    try {
+      const card = await runtime.createCard({ name: 'Archive Story', opening: 'Opening.' })
+      const created = await runtime.createNarrativeTimeline({ cardId: card.card.id })
+      const exportResult = await runtime.exportTimelineArchive({ timelineId: created.timeline.id })
+      expect(exportResult.archive.format).toBe('loom-timeline-archive.v1')
+      expect(exportResult.archive.branches).toHaveLength(1)
+      expect(exportResult.archive.nodes.length).toBeGreaterThan(0)
+      expect(exportResult.archive.state.revisions).toHaveLength(1)
+      const imported = await runtime.importTimelineArchive({ source: JSON.stringify(exportResult.archive) })
+      expect(imported.timelineId).not.toBe(created.timeline.id)
+      expect(imported.unknownParticipantNamespaces).toEqual([])
+      const importedPage = await runtime.getNarrativePage({ timelineId: imported.timelineId })
+      expect(importedPage.nodes.map(node => node.body.raw)).toEqual(exportResult.archive.nodes.map(node => node.body.raw))
+      expect(importedPage.branch.stateHeadRevisionId).toBe(imported.idMap.stateRevisionIds[exportResult.archive.branches[0]!.stateHeadRevisionId])
+      expect((await runtime.listNarrativeTimelines()).timelines).toHaveLength(2)
+    } finally {
+      engine.close()
+    }
+  })
+
+  it('rejects a malformed archive without creating partial Timeline data', async () => {
+    const { engine, runtime } = createTestRuntime()
+    try {
+      const card = await runtime.createCard({ name: 'Atomic Story', opening: 'Opening.' })
+      await runtime.createNarrativeTimeline({ cardId: card.card.id })
+      const before = engine.database.prepare('SELECT COUNT(*) AS count FROM narrative_timelines').get()
+      await expect(runtime.importTimelineArchive({ source: JSON.stringify({
+        format: 'loom-timeline-archive.v1',
+        exportedAt: '2026-08-12T00:00:00.000Z',
+        timeline: { id: 'bad-timeline', title: 'Bad', promptResourceIds: [], activeBranchId: 'missing', createdAt: '2026-08-12T00:00:00.000Z', updatedAt: '2026-08-12T00:00:00.000Z' },
+        branches: [],
+        nodes: [],
+        state: { scope: { id: 'bad-scope', kind: 'timeline', ownerId: 'bad-timeline', createdAt: '2026-08-12T00:00:00.000Z', updatedAt: '2026-08-12T00:00:00.000Z' }, revisions: [] },
+        participants: [],
+      }) })).rejects.toThrow()
+      expect(engine.database.prepare('SELECT COUNT(*) AS count FROM narrative_timelines').get()).toEqual(before)
+    } finally {
+      engine.close()
+    }
+  })
+
+  it('restores a forked branch and its independent active branch selection', async () => {
+    const { engine, runtime } = createTestRuntime()
+    try {
+      const card = await runtime.createCard({ name: 'Branch Story', opening: 'Opening.' })
+      const created = await runtime.createNarrativeTimeline({ cardId: card.card.id })
+      const exported = (await runtime.exportTimelineArchive({ timelineId: created.timeline.id })).archive
+      const root = exported.branches.find(branch => !branch.parentBranchId)!
+      const forkNodeId = root.headNodeId!
+      const child = {
+        ...root,
+        id: 'branch-import-child',
+        title: 'Alternative',
+        parentBranchId: root.id,
+        forkedFromNodeId: forkNodeId,
+        headNodeId: undefined,
+      }
+      const source = { ...exported, timeline: { ...exported.timeline, activeBranchId: child.id }, branches: [...exported.branches, child] }
+      const imported = await runtime.importTimelineArchive({ source: JSON.stringify(source) })
+      const result = await runtime.getNarrativeTimeline({ timelineId: imported.timelineId })
+      expect(result.branches).toHaveLength(2)
+      expect(result.timeline.activeBranchId).toBe(imported.idMap.branchIds[child.id])
+      expect(result.branches.find(branch => branch.id === imported.idMap.branchIds[child.id])?.parentBranchId)
+        .toBe(imported.idMap.branchIds[root.id])
+    } finally {
+      engine.close()
+    }
+  })
+
+  it('persists unknown participant blocks for later handling', async () => {
+    const { engine, documents, runtime } = createTestRuntime()
+    try {
+      const card = await runtime.createCard({ name: 'Participant Story', opening: 'Opening.' })
+      const created = await runtime.createNarrativeTimeline({ cardId: card.card.id })
+      const archive = (await runtime.exportTimelineArchive({ timelineId: created.timeline.id })).archive
+      archive.participants = [{ namespace: 'memory.future', version: 1, payload: { note: 'keep me' } }]
+      const imported = await runtime.importTimelineArchive({ source: JSON.stringify(archive) })
+      const pending = await documents.get(`timeline-archive-pending:${imported.timelineId}`)
+      expect(pending?.type).toBe('airp.timelineArchivePending')
+      expect((pending?.content as { blocks: Array<{ namespace: string }> }).blocks[0]?.namespace).toBe('memory.future')
+    } finally {
+      engine.close()
+    }
+  })
+
+  it('uses a bound timeline as default context without automatically committing narrative', async () => {
+    const { engine, runtime } = createTestRuntime()
+    try {
+      const card = await runtime.createCard({ name: 'Bound Story', opening: 'BOUND_OPENING' })
+      const timeline = await runtime.createNarrativeTimeline({ cardId: card.card.id })
+      const { profile } = await createProfile(runtime)
+      const { session } = await runtime.createAgentSession({ agentProfileId: profile.id, timelineId: timeline.timeline.id })
+      const preview = await runtime.previewAgentTurn({ agentSessionId: session.id, input: 'Read context.' })
+      expect(JSON.stringify(preview.projection.messages)).toContain('BOUND_OPENING')
+      const result = await runtime.invokeAgentTurn({ agentSessionId: session.id, input: 'Read context.' })
+      expect(result.narrative).toBeUndefined()
+      expect(result.agentSession.timelineId).toBe(timeline.timeline.id)
+      expect(engine.database.prepare('SELECT COUNT(*) AS count FROM narrative_nodes').get()).toEqual({ count: 1 })
+      const standalone = await runtime.createAgentSession({ agentProfileId: profile.id })
+      const workspacePreview = await runtime.previewAgentTurn({ agentSessionId: standalone.session.id, input: 'Read context.' })
+      expect(JSON.stringify(workspacePreview.projection.messages)).not.toContain('BOUND_OPENING')
+      await runtime.previewAgentTurn({ agentSessionId: standalone.session.id, input: 'Read context.',
+        narrativeTarget: { timelineId: timeline.timeline.id, commit: false },
+      })
+      expect((await runtime.getAgentSession({ agentSessionId: standalone.session.id })).session.timelineId).toBeUndefined()
+    } finally {
+      engine.close()
+    }
+  })
+
+  it('rejects a bound session targeting another timeline before writing history', async () => {
+    const { engine, runtime } = createTestRuntime()
+    try {
+      const card = await runtime.createCard({ name: 'Story', opening: 'Opening.' })
+      const first = await runtime.createNarrativeTimeline({ cardId: card.card.id })
+      const second = await runtime.createNarrativeTimeline({ cardId: card.card.id })
+      const { profile } = await createProfile(runtime)
+      const { session } = await runtime.createAgentSession({ agentProfileId: profile.id, timelineId: first.timeline.id })
+      const input = { agentSessionId: session.id, input: 'Continue.', narrativeTarget: { timelineId: second.timeline.id, commit: true } }
+      await expect(runtime.previewAgentTurn(input)).rejects.toThrow('timeline binding')
+      await expect(runtime.invokeAgentTurn(input)).rejects.toThrow('timeline binding')
+      expect((await runtime.getAgentTranscriptPage({ agentSessionId: session.id })).entries).toEqual([])
+    } finally {
+      engine.close()
+    }
+  })
+
   it('persists editable Agent Tool entries and reloads them into the registry', async () => {
     const tool: ToolDefinition = {
       id: 'official/read_context',

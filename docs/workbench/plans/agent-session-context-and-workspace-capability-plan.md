@@ -9,7 +9,7 @@
 
 - [`application-capability-cli-mcp-adapters-plan.md`](./application-capability-cli-mcp-adapters-plan.md)：提供 RPC、Agent Tool、CodeAct、CLI 与 MCP 共用的 Application Capability 执行边界；
 - [`file-backed-resource-agent-script-codeact-plan.md`](./file-backed-resource-agent-script-codeact-plan.md)：消费本计划形成的执行上下文与 Capability Grant，不另建 Script 权限体系；
-- [`ui/play-and-session-navigation-plan.md`](./ui/play-and-session-navigation-plan.md)：只实现 Session 分组、显示、跳转和唤起，不拥有授权语义；
+- [`play-and-session-navigation-plan.md`](../../archive/plans/play-and-session-navigation-plan.md)：只实现 Session 分组、显示、跳转和唤起，不拥有授权语义；
 - [`agent-runtime-ai-sdk-foundation-plan.md`](./agent-runtime-ai-sdk-foundation-plan.md)：已完成的 Agent Loop / Tool 基础，不在本计划中重新设计 Provider 或 Transcript。
 
 ## 目标
@@ -242,7 +242,7 @@ Query、可撤销局部 Command、大范围 / 不可逆 Command 与外部副作�
 - 显式解绑返回 Mutation Receipt 与失败原因；
 - Tool / Prompt Inspector 可以显示 Effective Context、Capability 与 Target。
 
-完成后由 [`ui/play-and-session-navigation-plan.md`](./ui/play-and-session-navigation-plan.md) 接线显示、跳转和唤起。
+完成后由 [`play-and-session-navigation-plan.md`](../../archive/plans/play-and-session-navigation-plan.md) 接线显示、跳转和唤起。
 
 ## 依赖与实施顺序
 
@@ -292,4 +292,3 @@ WP1 Binding 正确性
 ## 最终结果
 
 待实施后填写实际完成范围、偏差、验证结果、未验证项与剩余风险。
-

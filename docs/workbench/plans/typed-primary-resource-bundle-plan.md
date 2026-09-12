@@ -1,5 +1,7 @@
 # Typed Primary Resource Bundle 延期计划
 
+> **2026-09-12 接续入口**：[Data 目录与在线开发计划](./data-directory-resource-development-plan.md)承接 Preset / Settings 独立目录及实际附件的 ZIP 分发。下文历史候选格式不视为冻结合同；继续保持主体、附件、挂载与依赖分离，不建立通用 Package 实体。
+
 > **状态**：延期规划 / 低优先级高级功能
 >
 > **日期**：2026-08-25

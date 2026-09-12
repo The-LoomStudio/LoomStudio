@@ -1,6 +1,7 @@
 # History Text Pipeline 上下文装配与 UI
 
 > **Status**：Implemented / 自动化验证完成，等待用户视觉验收
+> **2026-09-12 接续说明**：后续 Text Pipeline / Loom Script 集成已承接本计划，当前合同见 [History Text Pipeline](../../architecture/application/history-text-pipeline.md)。Runtime Override 的 `disabledRuleIds` / `orderedRuleIds` 已实现；下文原开放问题不再表示禁用与排序能力缺失。保留原验收记录，不把后续交付等同于本计划所有人工验收通过。
 > **日期**：2026-09-10
 > **授权范围**：用户已确认文本管线的处理边界、COT 归属、上下文导航、来源展示与多 Agent 隔离，并授权写 Plan 后实施。
 

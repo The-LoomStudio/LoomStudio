@@ -1,8 +1,8 @@
-# 全量 RPC 方法速查 (RPC Methods)
+# RPC 方法导航 (RPC Methods)
 
 > **状态**：Active Reference / Current RPC Registries Are Authority
 
-Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本列表收录了内核层 (`kernel`) 和应用层 (`application`) 所有暴露的 RPC 方法。
+Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本页列出主要方法与职责，不承诺全量 Schema。Kernel/Extension 方法以 [Kernel Registry](../../../packages/kernel/src/index.ts) 与 `system.introspect` 为准；Application 等 Server 路由以 [Router](../../../apps/studio-server/src/rpc/studio-rpc-router.ts) 和 [领域 Handler](../../../apps/studio-server/src/rpc/handlers/application/index.ts) 为准，不能仅从 Kernel introspection 推断整个 Server API。
 
 ## 官方内容
 
@@ -99,9 +99,9 @@ Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本列表收�
 ### Agent 配置与 Session
 - Preset 生命周期统一使用 Prompt Resource RPC，不再提供第二套 AgentPreset RPC。
 - **`application.createAgentProfile`** / **`getAgentProfile`** / **`listAgentProfiles`** / **`updateAgentProfile`** / **`deleteAgentProfile`**
-- **`application.createAgentSession`** / **`getAgentSession`** / **`getAgentMessagePage`** / **`deleteAgentSession`**
+- **`application.createAgentSession`** / **`getAgentSession`** / **`getAgentTranscriptPage`** / **`updateAgentSession`** / **`deleteAgentSession`**
 - **`application.previewAgentTurn`**: 构造本轮 Prompt 与 Provider payload，但不持久化 Agent Message 或 Narrative Node。
-- **`application.invokeAgentTurn`**: 调用 Provider 并提交 Agent Message；可选在同一 Changeset 中提交 Narrative Node。
+- **`application.invokeAgentTurn`**: 分阶段持久化用户 Message、Run State、Provider Observation 与 Tool Invocation / Result；Loop 成功后可选用独立事务追加用户和 Assistant 两条 Narrative Node。Narrative 提交失败不回滚已提交的 Transcript 或 Tool 写入，见 [运行边界](../../architecture/application/agent/runtime-and-session.md)。
 
 ### Narrative Timeline
 - **`application.createNarrativeTimeline`**: 从 Card 当前版本创建 Timeline、初始 Branch 与 Opening Nodes。
@@ -114,7 +114,7 @@ Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本列表收�
 - **`application.createPromptResource`** / **`duplicatePromptResource`**: 创建空资源或复制现有资源；复制会重建全部内部节点 ID。
 - **`application.listSettingMounts`**: 按可选 `source` 查询 Setting Mount；当前产品入口使用 `{ kind: 'manual', id?: 'global' }`。`{ kind: 'preset', id: string }` 只保留旧数据查询兼容，不参与当前 PromptBuild。
 - **`application.replaceSettingMounts`**: 用完整有序 `settingResourceIds` 替换指定来源的 Setting Mount；引用目标必须全部是 Setting。Studio Client 只写 `manual/global` 来源。
-- **`application.deletePromptResource`**: 删除非官方 Resource，并从引用它的 Card、Preset Mount 与 Narrative Timeline 中解除绑定；仍被 Agent Profile 使用的 Preset 需要先处理 Profile，官方内置资源保持只读。
+- **`application.deletePromptResource`**: 删除 Resource 并清理其关联引用；仍被 Agent Profile 使用的 Preset 会阻止删除。当前不按官方来源一律拒绝，具体引用与事务边界以 [Prompt Runtime](../../../packages/application-runtime/src/runtime/prompt-runtime.ts) 为准。
 - **`application.importPromptResource`** / **`exportPromptResource`**: 导入、导出独立 `loom.promptResource` Artifact。
 - **`application.getPromptResource`**: 按 `resourceId` 读取一个 Prompt Resource。
 - **`application.createPromptResourceAsset`** / **`updatePromptResourceAsset`** / **`updatePromptResourceAssets`** / **`movePromptResourceAsset`** / **`deletePromptResourceAsset`**: 只修改指定 Prompt Resource；跨 Resource move / batch update 当前明确拒绝。

@@ -12,6 +12,7 @@ type StudioRoute = {
 const PANEL_PATHS: Record<StudioPanelId, string> = {
   model: 'models',
   agent: 'agents',
+  play: 'play',
   sessions: 'history',
   character: 'characters',
   preset: 'presets',
@@ -40,7 +41,7 @@ export function readStudioRoute(pathname: string): StudioRoute {
   const preset = matchPath('/studio/presets/:cardId?/:assetId?', pathname)
   if (preset) return { panel: 'preset', cardId: preset.params.cardId, assetId: preset.params.assetId }
 
-  for (const panel of ['model', 'agent', 'sessions', 'state', 'text-transform', 'inspector', 'logs', 'extensions', 'settings'] as const) {
+  for (const panel of ['model', 'agent', 'play', 'sessions', 'state', 'text-transform', 'inspector', 'logs', 'extensions', 'settings'] as const) {
     if (matchPath(`/studio/${PANEL_PATHS[panel]}`, pathname)) return { panel }
   }
 

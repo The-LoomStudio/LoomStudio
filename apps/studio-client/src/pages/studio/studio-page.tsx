@@ -20,6 +20,8 @@ type StudioPageProps = {
   agentChatInput?: string
   agentChatMessages?: AgentTranscriptEntry[]
   agentChatSession?: AgentSession
+  agentChatSessions?: AgentSession[]
+  agentChatSessionReady?: boolean
   agentPanelOpen?: boolean
   agentProfiles?: AgentProfile[]
   agentSessionTail?: ReactNode
@@ -36,6 +38,7 @@ type StudioPageProps = {
   panelHeaders?: Partial<Record<StudioPanelId, ReactNode>>
   panels: Record<StudioPanelId, (active: boolean) => ReactNode>
   providerAccounts?: ProviderAccount[]
+  recentSessions?: ReactNode
   rendererHost?: ClientRendererHost
   selectedAgentProfileId?: string
   t: Translator
@@ -43,6 +46,9 @@ type StudioPageProps = {
   onChangeAgentChatInput?(value: string): void
   onRedo(): void
   onSelectAgentProfile?(id: string): void
+  onSelectAgentSession?(id: string): void
+  onNewAgentSession?(): void
+  onRefreshAgentSessions?(): void
   onSubmitAgentChat?(event: FormEvent): void
   onToggleAgentPanel?(): void
   onUndo(): void
@@ -204,12 +210,9 @@ export function StudioPage(props: StudioPageProps) {
     : windowResize.preview?.panel === activePanel
       ? windowResize.preview.size
       : panelWindowSizes[activePanel]
-  const dockStyle = {
-    '--loom-window-rail-width': '160px',
-    ...(activePanelWindowSize && !isImmersive
-      ? { width: `${activePanelWindowSize.width}px` }
-      : {}),
-  } as CSSProperties
+  const dockStyle = activePanelWindowSize && !isImmersive
+    ? { width: `${activePanelWindowSize.width}px` } as CSSProperties
+    : undefined
   const dockSidebar = (
     <div className={styles.dockSidebar}>
       <header className={styles.dockHeader} data-loom-component="page-header">
@@ -254,6 +257,7 @@ export function StudioPage(props: StudioPageProps) {
       <StudioRail
         activePanel={activePanel}
         modelConfigured={props.modelConfigured}
+        recentSessions={props.recentSessions}
         t={props.t}
         togglePanel={panel => {
           setMobileDrawerOpen(false)
@@ -364,10 +368,15 @@ export function StudioPage(props: StudioPageProps) {
             rendererHost={props.rendererHost}
             selectedProfileId={props.selectedAgentProfileId}
             session={props.agentChatSession}
+            sessions={props.agentChatSessions}
+            sessionReady={props.agentChatSessionReady}
             sessionTail={props.agentSessionTail}
             t={props.t}
             onChangeInput={props.onChangeAgentChatInput ?? (() => {})}
             onSelectProfile={props.onSelectAgentProfile ?? (() => {})}
+            onSelectSession={props.onSelectAgentSession}
+            onNewSession={props.onNewAgentSession}
+            onRefreshSessions={props.onRefreshAgentSessions}
             onSubmit={props.onSubmitAgentChat ?? (() => {})}
           />
         </StudioPanelRight>
@@ -452,7 +461,7 @@ function WindowResizeHandle(props: {
 }
 
 function readPanelPlacement(panel: StudioPanelId): 'beside-narrative' | 'cover-narrative' {
-  if (panel === 'model' || panel === 'agent' || panel === 'sessions' || panel === 'character') return 'beside-narrative'
+  if (panel === 'model' || panel === 'agent' || panel === 'play' || panel === 'sessions' || panel === 'character') return 'beside-narrative'
   return 'cover-narrative'
 }
 

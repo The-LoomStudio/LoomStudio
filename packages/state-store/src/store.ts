@@ -136,6 +136,10 @@ export function createStateStore(options: CreateStateStoreOptions): StateStore {
     getScope: input => engine.read(database => readScope(database, input.kind, input.ownerId, input.includeDeleted)),
     getScopeById: (id, options) => engine.read(database => readScopeById(database, id, options?.includeDeleted)),
     getRevision: id => engine.read(database => readRevision(database, id, materializedRevisions)),
+    listRevisions: scopeId => engine.read(database => {
+      const rows = database.prepare('SELECT id FROM state_revisions WHERE scope_id = ? ORDER BY created_at ASC, id ASC').all(scopeId) as Array<{ id: string }>
+      return rows.map(row => readRevision(database, row.id, materializedRevisions)).filter((revision): revision is StateRevision => revision !== null)
+    }),
     getRevisionByIdempotencyKey: (scopeId, idempotencyKey) => engine.read(database => {
       validateId(scopeId, 'scopeId')
       validateId(idempotencyKey, 'idempotencyKey')
