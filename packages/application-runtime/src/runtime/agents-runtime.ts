@@ -93,6 +93,7 @@ export function createAgentsRuntimeMethods(ctx: ApplicationRuntimeContext) {
           presetId: input.presetId,
           model: input.model,
           toolOverrides,
+          delivery: input.delivery ?? 'stream',
           createdAt: timestamp,
           updatedAt: timestamp,
         },
@@ -140,6 +141,7 @@ export function createAgentsRuntimeMethods(ctx: ApplicationRuntimeContext) {
           ...(input.name !== undefined ? { name: input.name } : {}),
           ...(input.presetId !== undefined ? { presetId: input.presetId } : {}),
           ...(input.model !== undefined ? { model: input.model } : {}),
+          ...(input.delivery !== undefined ? { delivery: input.delivery } : {}),
           toolOverrides,
           updatedAt: timestamp,
         },
@@ -251,6 +253,7 @@ export function createAgentsRuntimeMethods(ctx: ApplicationRuntimeContext) {
         compiledToolSet,
         runId,
         session,
+        agentProfile,
       } = prepared
       const classificationRules = (await resolveEffectiveTextPipeline(
         ctx,
@@ -263,7 +266,7 @@ export function createAgentsRuntimeMethods(ctx: ApplicationRuntimeContext) {
         session,
         runId,
         model,
-        initialMessages: agentStepMessages,
+        initialMessages: requestContext?.agentRun?.continuation?.messages ?? agentStepMessages,
         userInput: input.input,
         compiledToolSet,
         toolExecutionScope: prompt.toolExecutionScope,
@@ -271,6 +274,13 @@ export function createAgentsRuntimeMethods(ctx: ApplicationRuntimeContext) {
         purpose: input.narrativeTarget?.commit ? 'narrative' : 'agent',
         classificationRules,
         ...(requestContext ? { requestContext } : {}),
+        delivery: agentProfile.content.delivery ?? 'stream',
+        ...(requestContext?.agentRun?.continuation?.userEntry
+          ? { resumeUserEntry: requestContext.agentRun.continuation.userEntry }
+          : {}),
+        ...(requestContext?.agentRun?.continuation?.partialEntryId
+          ? { resumeAssistantEntryId: requestContext.agentRun.continuation.partialEntryId }
+          : {}),
       })
       const narrative = narrativePage && input.narrativeTarget?.commit
         ? await ctx.dataEngine.transact(
@@ -433,6 +443,7 @@ export function toAgentProfileEntry(document: DocumentRecord<AgentProfileContent
   return {
     ...toVersioned(document),
     toolOverrides: { ...(document.content.toolOverrides ?? {}) },
+    delivery: document.content.delivery ?? 'stream',
   }
 }
 
@@ -517,6 +528,7 @@ export async function prepareAgentTurn(
   input: {
     agentSessionId: string
     input: string
+    resume?: boolean
     activationFacts?: ActivationFacts
     narrativeTarget?: { timelineId: string; branchId?: string; commit: boolean }
     macroSelections?: import('@loom-studio/shared').MacroSelectionMap
@@ -524,10 +536,12 @@ export async function prepareAgentTurn(
   mode: 'preview' | 'runtime',
   requestContext?: RuntimeRequestContext,
 ) {
-  if (input.input.trim().length === 0) throw new Error('Agent turn input cannot be empty')
+  if (input.input.trim().length === 0 && !requestContext?.agentRun?.continuation) throw new Error('Agent turn input cannot be empty')
   if (!ctx.agents) throw new Error('Agent Store is not configured')
   const session = await ctx.agents.getSession(input.agentSessionId)
   if (!session) throw new Error(`Agent session not found: ${input.agentSessionId}`)
+  // A bound session supplies its default Narrative target; explicit cross-timeline
+  // targets are rejected here so PromptBuild and Tool execution cannot diverge.
   if (session.timelineId && input.narrativeTarget && session.timelineId !== input.narrativeTarget.timelineId) {
     throw new Error('Narrative target does not match the Agent Session timeline binding')
   }
@@ -544,9 +558,10 @@ export async function prepareAgentTurn(
     : undefined
   const agentPage = await ctx.agents.getEntryPage({ agentSessionId: session.id, limit: 100 })
   const agentProfile = await readDocument<AgentProfileContent>(ctx.documents, session.agentProfileId, applicationDocumentTypes.agentProfile)
+  if (!agentProfile.content.presetId) throw new Error(`Agent Profile has no Preset Prompt Resource: ${agentProfile.id}`)
   const preset = await readPresetResource(ctx.promptResources, agentProfile.content.presetId)
   const toolMounts = await ctx.promptResources.listPresetToolMounts({ presetResourceId: preset.id })
-  const runId = ctx.createId('run')
+  const runId = requestContext?.agentRun?.runId ?? ctx.createId('run')
   const buildId = ctx.createId('build')
   const startedAt = performance.now()
   const references = {
@@ -664,6 +679,18 @@ export async function prepareAgentTurn(
         return { revisionId: result.snapshot.revisionId }
       },
     }
+    prompt.toolExecutionScope.mutatePromptResource = async resourceInput => {
+      const result = await ctx.promptResources.mutateResource({
+        ...resourceInput,
+        ...promptResourceWriteContext(requestContext),
+        reason: 'application.tool.updatePromptResource',
+      })
+      return {
+        id: result.resource.id,
+        version: result.resource.version,
+        changesetId: result.commit.changesetId,
+      }
+    }
     if (narrativePage && narratives) {
       prompt.toolExecutionScope.narrative = {
         timelineId: narrativePage.timeline.id,
@@ -742,6 +769,7 @@ export async function prepareAgentTurn(
     macroInspection,
     compiledToolSet,
     agentStepMessages: prompt.messages,
+    agentPage,
     runId,
     session,
   }

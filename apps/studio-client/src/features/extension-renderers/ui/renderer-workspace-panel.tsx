@@ -42,6 +42,7 @@ export function RendererWorkspacePanel(props: {
   onDisable(packageId: string, moduleId: string): Promise<unknown>
   onEnable(packageId: string, moduleId: string): Promise<unknown>
   onImportResources(packageId: string): Promise<unknown>
+  onInstallZip(file: File): Promise<unknown>
   onRemoveResources(packageId: string): Promise<unknown>
   onReload(packageId: string, moduleId: string): Promise<unknown>
   onUninstall(packageId: string, version?: string): Promise<unknown>
@@ -54,6 +55,12 @@ export function RendererWorkspacePanel(props: {
   const [busyKey, setBusyKey] = useState<string>()
   const [officialPackages, setOfficialPackages] = useState<OfficialContentPackage[]>([])
   const [officialError, setOfficialError] = useState<string>()
+  async function installZip(file: File) {
+    await run('install-zip', async () => {
+      await props.onInstallZip(file)
+      toast.success(props.t('renderer.installed'))
+    })
+  }
   useEffect(() => {
     let disposed = false
     setOfficialPackages([])
@@ -170,6 +177,15 @@ export function RendererWorkspacePanel(props: {
         <h2>{props.t('renderer.workspaceTitle')}</h2>
         <p>{props.t('renderer.workspaceDescription')}</p>
         <small>{props.packages.length} · {instances.length} {props.t('renderer.activeInstances')}</small>
+        <label>
+          <PackagePlus aria-hidden="true" />
+          <span>{props.t('renderer.installZip')}</span>
+          <input accept=".zip,application/zip" type="file" onChange={event => {
+            const file = event.target.files?.[0]
+            event.currentTarget.value = ''
+            if (file) void installZip(file)
+          }} />
+        </label>
       </header>
       <MasterDetailWorkbench
         masterWidth="minmax(180px, 0.34fr)"

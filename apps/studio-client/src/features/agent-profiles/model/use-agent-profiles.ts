@@ -36,7 +36,7 @@ export function useAgentProfiles(input: UseAgentProfilesInput) {
     })
   }
 
-  async function createAgentProfile(profileInput: { name: string; presetId?: string; model: ProviderModelSelection; toolOverrides?: Record<string, boolean> }) {
+  async function createAgentProfile(profileInput: { name: string; presetId?: string; model: ProviderModelSelection; toolOverrides?: Record<string, boolean>; delivery?: 'stream' | 'complete' }) {
     await input.runAction(async () => {
       const presetId = profileInput.presetId ?? await ensureDefaultPreset()
       const result = await input.api.agentProfiles.create({
@@ -44,13 +44,14 @@ export function useAgentProfiles(input: UseAgentProfilesInput) {
         presetId,
         model: profileInput.model,
         toolOverrides: profileInput.toolOverrides,
+        delivery: profileInput.delivery,
       })
       await refreshAgentProfiles()
       selectAgentProfile(result.agentProfile.id)
     })
   }
 
-  async function updateAgentProfile(agentProfileId: string, updates: { name?: string; presetId?: string; model?: ProviderModelSelection; toolOverrides?: Record<string, boolean> }) {
+  async function updateAgentProfile(agentProfileId: string, updates: { name?: string; presetId?: string; model?: ProviderModelSelection; toolOverrides?: Record<string, boolean>; delivery?: 'stream' | 'complete' }) {
     await input.runAction(async () => {
       await input.api.agentProfiles.update({
         agentProfileId,

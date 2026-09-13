@@ -1,4 +1,4 @@
-import { Copy, Download, Plus, Trash2, Upload } from 'lucide-react'
+import { Archive, Copy, Download, Plus, Trash2, Upload } from 'lucide-react'
 import { useRef, useState } from 'react'
 import type { PromptResource } from '../../../../entities/index.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
@@ -15,7 +15,9 @@ type PromptResourceToolbarProps = {
   onDelete(resourceId: string): Promise<void>
   onDuplicate(resourceId: string): Promise<string | undefined>
   onExport(resourceId: string): Promise<void>
+  onExportZip?: (resourceId: string) => Promise<void>
   onImport(file: File): Promise<string | undefined>
+  onImportZip?: (file: File) => Promise<string | undefined>
   onSelect(resourceId: string): void
 }
 
@@ -82,6 +84,17 @@ export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
         >
           <Download aria-hidden="true" />
         </button>
+        {props.onExportZip ? (
+          <button
+            aria-label={`${props.t('promptResource.export')} ZIP`}
+            disabled={!selected}
+            title={`${props.t('promptResource.export')} ZIP`}
+            type="button"
+            onClick={() => selected && void props.onExportZip?.(selected.id)}
+          >
+            <Archive aria-hidden="true" />
+          </button>
+        ) : null}
         <button
           aria-label={props.t('promptResource.delete')}
           disabled={!selected || selected.origin?.kind === 'builtin'}
@@ -94,13 +107,13 @@ export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
       </div>
       <input
         ref={importInputRef}
-        accept="application/json,.json"
+        accept="application/json,.json,application/zip,.zip"
         className={styles.fileInput}
         type="file"
         onChange={event => {
           const file = event.target.files?.[0]
           event.target.value = ''
-          if (file) void selectResult(props.onImport(file))
+          if (file) void selectResult(file.name.toLowerCase().endsWith('.zip') && props.onImportZip ? props.onImportZip(file) : props.onImport(file))
         }}
       />
       <Dialog

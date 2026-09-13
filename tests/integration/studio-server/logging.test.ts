@@ -100,10 +100,7 @@ describe('Studio Server logging', () => {
       }>(port, 'logs.list', { limit: 10, namespacePrefix: 'document.store' })
 
       const operationItems = page.items.filter(record => record.data?.reason !== 'application.initializePromptResources')
-      expect(operationItems.map(record => record.event)).toEqual([
-        'document.changeset.committed',
-        'document.operation.failed',
-      ])
+      expect(operationItems.map(record => record.event)).toEqual(['document.changeset.committed'])
       expect(operationItems[0]?.data).toMatchObject({
         reason: 'application.createCard',
         operations: [{ kind: 'create', type: 'airp.cardSource' }],
@@ -172,8 +169,9 @@ describe('Studio Server logging', () => {
       const timeline = await callRpc<{
         timeline: { id: string }
       }>(port, 'application.createNarrativeTimeline', { cardId: card.card.id })
+      const createdPreset = await callRpc<{ resource: { id: string } }>(port, 'application.createPromptResource', { resourceKind: 'preset', name: 'Prompt Logging Preset' })
       const presets = await callRpc<{ resources: Array<{ id: string }> }>(port, 'application.listPromptResources', { resourceKind: 'preset' })
-      const presetId = presets.resources[0]!.id
+      const presetId = createdPreset.resource.id
       const provider = await callRpc<{ providerProfile: { id: string } }>(port, 'application.createProviderProfile', {
         providerExtensionId: 'official.fake',
         displayName: 'Private Provider',
@@ -221,13 +219,13 @@ describe('Studio Server logging', () => {
         'prompt.build.completed',
       ])
       expect(page.items[0]?.message).toBe('preview prompt build started')
-      expect(page.items[1]?.message).toMatch(/^preview prompt build completed · 2 messages · \d+(?:\.\d+)? ms$/)
+      expect(page.items[1]?.message).toMatch(/^preview prompt build completed · 1 messages · \d+(?:\.\d+)? ms$/)
       expect(page.items[2]?.message).toBe('runtime prompt build started')
-      expect(page.items[3]?.message).toMatch(/^runtime prompt build completed · 2 messages · \d+(?:\.\d+)? ms$/)
-      expect(page.items[1]?.data).toMatchObject({ mode: 'preview', messageCount: 2 })
+      expect(page.items[3]?.message).toMatch(/^runtime prompt build completed · 1 messages · \d+(?:\.\d+)? ms$/)
+      expect(page.items[1]?.data).toMatchObject({ mode: 'preview', messageCount: 1 })
       expect(page.items[0]?.data?.buildId).toBe(page.items[1]?.data?.buildId)
       expect(page.items[0]?.correlationId).toBe(page.items[1]?.correlationId)
-      expect(page.items[3]?.data).toMatchObject({ mode: 'runtime', messageCount: 2 })
+      expect(page.items[3]?.data).toMatchObject({ mode: 'runtime', messageCount: 1 })
       expect(page.items[3]?.data?.runId).toMatch(/^run-/)
       expect(page.items[2]?.data?.buildId).toBe(page.items[3]?.data?.buildId)
       expect(JSON.stringify(page.items)).not.toContain('Private')
@@ -252,7 +250,7 @@ describe('Studio Server logging', () => {
         runId: turn.runId,
         provider: 'fake',
         model: 'fake-echo-m0',
-        messageCount: 2,
+        messageCount: 1,
       })
       expect(JSON.stringify(providerPage.items)).not.toContain('Private')
     } finally {

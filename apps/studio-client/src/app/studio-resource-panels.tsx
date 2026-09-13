@@ -37,6 +37,8 @@ export function StudioResourcePanels(props: {
     },
     onImportResource: state.importPromptResource,
     onExportResource: state.exportPromptResource,
+    onExportResourceZip: state.exportPromptResourceZip,
+    onImportResourceZip: state.importPromptResourceZip,
     t: state.t,
     workspaceId: assetWorkspaceId,
   }

@@ -94,7 +94,7 @@ describe('SillyTavern Importer Extension', () => {
 
     const conversion = convertSillyTavernCard(png)
     const artifact = conversion.artifact
-    expect(artifact.schemaVersion).toBe(2)
+    expect(artifact.schemaVersion).toBe(4)
     expect(artifact.card.name).toBe('Seraphina The Mage')
     expect(artifact.card.preset?.system).toBe('Respond with mystical arcane knowledge.')
     expect(artifact.card.opening).toEqual({
@@ -288,7 +288,7 @@ describe('SillyTavern Importer Extension', () => {
       expect(sniff.format).toBe('st.card.png')
 
       const converted = convertSillyTavernCard(bytes)
-      expect(converted.artifact.schemaVersion).toBe(2)
+      expect(converted.artifact.schemaVersion).toBe(4)
       expect(converted.artifact.card.name).toBeTruthy()
       expect(converted.avatarBytes).toBeDefined()
     }

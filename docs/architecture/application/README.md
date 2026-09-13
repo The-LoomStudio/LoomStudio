@@ -17,7 +17,7 @@ Studio Application 是 Loom Studio 第一方内建的 AIRP 领域层。它定义
 | [`state-and-variables.md`](state-and-variables.md)     | Global / Timeline State、EC 初始化、Extension Contribution、Revision、Macro 与 Undo   | State v1 核心运行链已晋升                              |
 | [`ui/`](ui/)                                           | 第一方 AIRP UI 如何使用 Studio Shell                                                  | 分类已建立，具体设计仍在 Workbench                     |
 
-Application 的其他领域文档在稳定前继续保留于 [`../../workbench/discussion/application/`](../../workbench/discussion/application/)。
+Application 的其他领域文档在稳定前继续保留于 [`../../workbench/discussion/`](../../workbench/discussion/)。
 
 ## Application Runtime Context
 
@@ -41,7 +41,7 @@ providerProfileId / modelId
 
 请求边界使用独立 `RuntimeRequestContext` 传播 actor、`clientId`、`correlationId`、`callId` 和 `parentCallId`。Document mutation、PromptBuild 和 Provider 路径可以使用这些字段建立调用关联，但不得从 Context 隐式读取业务事实。
 
-`ApplicationRuntimeContext` 不暴露给 ordinary Extension。Extension 的身份、权限、RPC、UI 和本地运行能力由独立 Extension Host Capability 负责；Server Host 基线见 [`../extensions/README.md`](../extensions/README.md)，Client Renderer Host 见 [`../extensions/client-renderer-host.md`](../extensions/client-renderer-host.md)。仍未落地的开放设计保留于 [`../../workbench/discussion/extensions/`](../../workbench/discussion/extensions/)。
+`ApplicationRuntimeContext` 不暴露给 ordinary Extension。Extension 的身份、权限、RPC、UI 和本地运行能力由独立 Extension Host Capability 负责；Server Host 基线见 [`../extensions/README.md`](../extensions/README.md)，Client Renderer Host 见 [`../extensions/client-renderer-host.md`](../../workbench/discussion/)。
 
 ## 边界
 

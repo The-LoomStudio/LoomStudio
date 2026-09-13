@@ -25,6 +25,7 @@ import { extname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { discoverExtensionSources, removeExtensionDevLink, type DiscoveredExtensionSource, type ExtensionSource } from './extension-sources.js'
 import {
   installExtensionPackageFromDirectory,
+  installExtensionPackageFromZip,
   uninstallExtensionPackageDirectory,
 } from './extension-package-installer.js'
 import type { ExtensionModuleDesiredState, ExtensionStateStore } from './extension-state-store.js'
@@ -163,6 +164,39 @@ export function createServerExtensionManager(options: {
       assertInitialized(initialized)
       const installed = await installExtensionPackageFromDirectory({
         sourceDirectory,
+        installedDirectory: options.installedDirectory,
+      })
+      try {
+        if (catalog.has(installed.manifest.id)) {
+          throw new Error(`Extension Package source already exists: ${installed.manifest.id}`)
+        }
+        await options.host.discover(installed.directory)
+        const record: PackageCatalogRecord = {
+          manifest: installed.manifest,
+          sources: [{ kind: 'installed', directory: installed.directory }],
+          directory: installed.directory,
+          available: true,
+        }
+        catalog.set(installed.manifest.id, record)
+        for (const moduleManifest of serverModules(installed.manifest)) {
+          if (!options.stateStore.get(installed.manifest.id, moduleManifest.id)?.enabled) continue
+          await options.host.activate(installed.manifest.id, moduleManifest.id)
+        }
+        const runtimeByKey = new Map(options.host.list().map(summary => [moduleKey(summary.packageId, summary.moduleId), summary]))
+        return toManagedPackage(installed.manifest.id, record, options.stateStore, runtimeByKey)
+      } catch (error) {
+        await uninstallExtensionPackageDirectory({
+          directory: installed.directory,
+          installedDirectory: options.installedDirectory,
+        }).catch(() => undefined)
+        throw error
+      }
+    }),
+
+    installPackageZip: source => serialize(async () => {
+      assertInitialized(initialized)
+      const installed = await installExtensionPackageFromZip({
+        source,
         installedDirectory: options.installedDirectory,
       })
       try {

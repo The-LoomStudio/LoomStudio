@@ -41,6 +41,7 @@ export type {
   AiGatewayError,
   AiGatewayEvent,
   AiGatewayRun,
+  AiGatewayRunState,
   AiGatewayUsage,
   ProviderAccountSchema,
   ProviderAdapterRegistry,

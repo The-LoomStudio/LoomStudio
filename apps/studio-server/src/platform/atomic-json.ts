@@ -11,6 +11,8 @@ export function writeJsonAtomicallySync(filename: string, value: unknown): void 
   mkdirSync(dirname(filename), { recursive: true })
   const temporary = temporaryFilename(filename)
   try {
+    // Rename publishes only a complete file; this does not claim power-loss durability
+    // because directory and file fsync are intentionally outside this helper's contract.
     writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
     renameSync(temporary, filename)
   } catch (error) {

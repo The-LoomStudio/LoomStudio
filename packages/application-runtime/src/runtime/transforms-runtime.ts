@@ -277,6 +277,7 @@ export async function resolveEffectiveTextPipeline(
     const session = await ctx.agents?.getSession(source.sessionId)
     if (!session) throw new Error(`Agent Session not found: ${source.sessionId}`)
     const profile = await readDocument<AgentProfileContent>(ctx.documents, session.agentProfileId, applicationDocumentTypes.agentProfile)
+    if (!profile.content.presetId) throw new Error(`Agent Profile has no Preset Prompt Resource: ${profile.id}`)
     presetId = profile.content.presetId
     consumer = { agentSessionId: session.id, agentProfileId: session.agentProfileId, presetId }
   } else {
@@ -292,6 +293,7 @@ export async function resolveEffectiveTextPipeline(
       const session = await ctx.agents?.getSession(consumerAgentSessionId)
       if (!session) throw new Error(`Agent Session not found: ${consumerAgentSessionId}`)
       const profile = await readDocument<AgentProfileContent>(ctx.documents, session.agentProfileId, applicationDocumentTypes.agentProfile)
+      if (!profile.content.presetId) throw new Error(`Agent Profile has no Preset Prompt Resource: ${profile.id}`)
       presetId = profile.content.presetId
       consumer = { agentSessionId: session.id, agentProfileId: session.agentProfileId, presetId }
     }

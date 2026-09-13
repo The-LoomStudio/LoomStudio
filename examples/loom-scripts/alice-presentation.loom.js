@@ -15,10 +15,10 @@ function values(context, kind) {
 
 function mountStatus(root, context, label, kind) {
   const items = values(context, kind)
-  const section = document.createElement('section')
-  const heading = document.createElement('strong')
+  const section = globalThis.document.createElement('section')
+  const heading = globalThis.document.createElement('strong')
   heading.textContent = label
-  const content = document.createElement('pre')
+  const content = globalThis.document.createElement('pre')
   content.textContent = items.length > 0 ? items.map(item => typeof item === 'string' ? item : JSON.stringify(item, null, 2)).join('\n') : 'No character status data is available.'
   section.append(heading, content)
   root.replaceChildren(section)

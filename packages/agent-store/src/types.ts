@@ -17,8 +17,32 @@ export type AgentSession = {
   deletedAt?: string
 }
 
+export type AgentMessageState = 'partial' | 'complete'
+
+export type AgentToolInvocationStatus =
+  | 'proposed'
+  | 'waiting-approval'
+  | 'running'
+  | 'suspended'
+  | 'completed'
+  | 'failed'
+  | 'skipped'
+
+export type AgentToolResultStatus =
+  | 'completed'
+  | 'failed'
+  | 'denied'
+  | 'aborted'
+  | 'skipped'
+
 export type AgentTranscriptEntryData =
-  | { kind: 'message'; role: 'user' | 'assistant'; content: string }
+  | {
+      kind: 'message'
+      role: 'user' | 'assistant'
+      content: string
+      state?: AgentMessageState
+      continuesEntryId?: string
+    }
   | {
       kind: 'reasoning'
       content: string
@@ -50,19 +74,13 @@ export type AgentTranscriptEntryData =
       rawInput?: string
       providerCallId?: string
       providerItemId?: string
-      status:
-        | 'proposed'
-        | 'waiting-approval'
-        | 'running'
-        | 'completed'
-        | 'failed'
-        | 'skipped'
+      status: AgentToolInvocationStatus
     }
   | {
       kind: 'tool-result'
       invocationId: string
       toolId: string
-      status: 'completed' | 'failed' | 'denied' | 'aborted' | 'skipped'
+      status: AgentToolResultStatus
       content: Array<
         | { type: 'text'; text: string }
         | { type: 'json'; value: JsonValue }
@@ -128,6 +146,7 @@ export type DeleteAgentSessionInput = AgentWriteContext & {
 export type UpdateAgentSessionInput = AgentWriteContext & {
   agentSessionId: string
   title?: string
+  timelineId?: string | null
 }
 export type AgentTranscriptPage = {
   session: AgentSession

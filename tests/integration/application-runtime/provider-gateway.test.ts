@@ -338,6 +338,7 @@ describe('application runtime Provider Profile integration', () => {
       name: 'Document-backed model',
       presetId: preset.id,
       model: { providerProfileId: profile.providerProfile.id, modelId: 'doc-model' },
+      delivery: 'complete',
     })
     const session = await fixture.runtime.createAgentSession({ agentProfileId: agentProfile.agentProfile.id })
     const turn = await fixture.runtime.invokeAgentTurn({

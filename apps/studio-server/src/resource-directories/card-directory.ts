@@ -283,6 +283,7 @@ export function createCardDirectoryService(options: {
       return result
     }),
     async recoverDeletions(cardExists: (id: string) => Promise<boolean>) {
+      try { await fs.stat(root) } catch (error) { if (isMissing(error)) return; throw error }
       const parent = await safePath(root, '.loom/card-directories')
       let entries: import('node:fs').Dirent[]
       try { entries = await fs.readdir(parent, { withFileTypes: true }) } catch (error) { if (isMissing(error)) return; throw error }

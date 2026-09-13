@@ -37,7 +37,7 @@ State 可以通过路径宏被读取，但不会因为存在于 Snapshot 中就�
 
 `application.inspectMacros` 生成当前预览；Preview / Invoke 返回实际构建使用的 `macroInspection`。检查包含快照、来源候选、选中来源、结果与诊断，不能把重新求值的预览冒充上一次构建。Client 与 Runtime 使用同一纯解析实现，浏览器从 `@loom-studio/shared/macros` 引入，避免加载 Node 专用入口。
 
-作者工作台以目录条目编辑静态声明，运行检查只读展示动态结果并选择冲突来源。选择只属于当前运行组合，不写回作者资源。Server Extension 仍是受信代码；上述只读上下文不是任意脚本沙箱。执行与验证记录见 [宏动态值与来源检查 Plan](../../../workbench/plans/macro-value-provider-and-inspector-plan.md)。
+作者工作台以目录条目编辑静态声明，运行检查只读展示动态结果并选择冲突来源。选择只属于当前运行组合，不写回作者资源。Server Extension 仍是受信代码；上述只读上下文不是任意脚本沙箱。执行与验证记录见 [宏动态值与来源检查 Plan](../../../archive/plans/macro-value-provider-and-inspector-plan.md)。
 
 ## Agent 主动读取的交界
 

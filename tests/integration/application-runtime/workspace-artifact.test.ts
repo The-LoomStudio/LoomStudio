@@ -16,6 +16,7 @@ describe('application runtime card bundle integration', () => {
     const { runtime } = createTestRuntime()
 
     await runtime.initialize()
+    await runtime.installOfficialContent(await readOfficialContentInput())
     const listed = await runtime.listPromptResources()
     const preset = listed.resources.find(resource => resource.origin?.key === 'loom-assistant-preset')
     const setting = listed.resources.find(resource => resource.origin?.key === 'loom-knowledge-setting')
@@ -25,7 +26,7 @@ describe('application runtime card bundle integration', () => {
       rootNode: { label: 'Loom Studio 问答助手' },
       historyPolicy: 'persistent',
     })
-    await expect(runtime.listSettingMounts({ source: { kind: 'manual', id: 'global' } })).resolves.toMatchObject({ mounts: [{ settingResourceId: setting!.id }] })
+    await expect(runtime.listSettingMounts({ source: { kind: 'preset', id: preset!.id } })).resolves.toMatchObject({ mounts: [{ settingResourceId: setting!.id }] })
     const collectVirtualAnchors = (nodes?: Array<{ kind?: string; capabilities?: { targetAnchorId?: string }; children?: unknown[] }>): string[] => {
       if (!nodes) return []
       return nodes.flatMap(node => [
@@ -511,6 +512,24 @@ function findNode(artifact: CardBundleArtifact, id: string): CardBundleArtifact[
     queue.push(...(node.children ?? []))
   }
   return undefined
+}
+
+async function readOfficialContentInput() {
+  const catalog = JSON.parse(await readFile(join(process.cwd(), 'official/starter/catalog.json'), 'utf8')) as {
+    id: string
+    version: string
+    resources: Array<{ id: string; path: string }>
+    settingMounts: Array<{ presetResourceId: string; settingResourceId: string }>
+  }
+  return {
+    packageId: catalog.id,
+    packageVersion: catalog.version,
+    resources: await Promise.all(catalog.resources.map(async resource => ({
+      id: resource.id,
+      artifact: JSON.parse(await readFile(join(process.cwd(), 'official/starter', resource.path), 'utf8')),
+    }))),
+    settingMounts: catalog.settingMounts,
+  }
 }
 
 function createTestRuntime(options: {

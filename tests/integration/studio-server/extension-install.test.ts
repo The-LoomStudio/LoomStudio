@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { zipSync } from 'fflate'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createStudioServer } from '../../../apps/studio-server/src/main.js'
 import { resolveLoomStudioLocalPaths } from '../../../apps/studio-server/src/platform/local-paths.js'
@@ -148,6 +149,36 @@ describe('Studio Server Extension Package install lifecycle', () => {
     await expect(readFile(localPaths.extensionStateFile, 'utf8')).resolves.not.toContain('example.installed')
     await expect(readFile(join(sourceDirectory, 'manifest.json'), 'utf8')).resolves.toContain('example.installed')
     await server.close()
+  })
+
+  it('installs a packaged ZIP through the RPC and serves its module files', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'loom-extension-zip-server-'))
+    temporaryDirectories.push(root)
+    const sourceDirectory = await writeTestPackage(root)
+    const localPaths = resolveLoomStudioLocalPaths({ home: join(root, 'home') })
+    const server = createStudioServer({ localPaths, extensionRootDirectory: join(root, 'empty-repository') })
+    const address = await server.listen(0)
+    try {
+      const archive = zipSync({
+        'manifest.json': await readFile(join(sourceDirectory, 'manifest.json')),
+        'icon.png': await readFile(join(sourceDirectory, 'icon.png')),
+        'dist/index.js': await readFile(join(sourceDirectory, 'dist/index.js')),
+        'dist/client.js': await readFile(join(sourceDirectory, 'dist/client.js')),
+        'assets/nested.txt': new TextEncoder().encode('nested asset'),
+      })
+      const installed = await callRpc<{ package: { packageId: string; version: string } }>(address.port, 'extensions.installPackageZip', {
+        base64: Buffer.from(archive).toString('base64'),
+      })
+      expect(installed.package).toMatchObject({ packageId: 'example.installed', version: '1.0.0' })
+      await expect(callRpc(address.port, 'extensions.listPackages', {})).resolves.toMatchObject({
+        items: [{ packageId: 'example.installed', version: '1.0.0' }],
+      })
+      const nested = await authenticatedFetch(address.port, '/extensions/example.installed/1.0.0/files/assets/nested.txt')
+      expect(nested.status).toBe(200)
+      await expect(nested.text()).resolves.toBe('nested asset')
+    } finally {
+      await server.close()
+    }
   })
 })
 

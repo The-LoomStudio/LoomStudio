@@ -70,7 +70,7 @@ widget 不应做：
 
 ### 开发预览入口
 
-**状态：开发入口与样例已实现。** 启动、URL 与注册方式见 [Client README](../../apps/studio-client/README.md)，实施和未完成验收见 [组件预览入口 Plan](../workbench/plans/ui/component-preview-workbench-plan.md)。
+**状态：开发入口与样例已实现。** 启动、URL 与注册方式见 [Client README](../../apps/studio-client/README.md)，实施和未完成验收见 [组件预览入口 Plan](../archive/plans/ui/component-preview-workbench-plan.md)。
 
 - 入口仅供开发环境，显式注册可预览组件，不根据 URL 任意加载源码或执行代码。
 - 样例与必要交互使用内存数据，不读取真实业务数据或执行持久写入；不能因复用正常启动入口而触发认证或业务初始化。

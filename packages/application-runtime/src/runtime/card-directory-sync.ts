@@ -17,6 +17,8 @@ const json = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 const equal = (left: unknown, right: unknown) => isDeepStrictEqual(json(left ?? null), json(right ?? null))
 
 function baseline(artifact: CardBundleArtifact): CardBundleArtifact {
+  // exportedAt describes the export event, not editable card content, so it must not
+  // create a false file conflict during a later explicit Apply.
   const result = json(artifact)
   if (result.metadata) delete result.metadata.exportedAt
   return result

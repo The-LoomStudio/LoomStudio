@@ -136,6 +136,18 @@ export function registerStageOneHandlers(
     return { package: extensionPackage }
   })
 
+  register('extensions.installPackageZip', async (params, context) => {
+    const manager = requireExtensionManager(options)
+    if (!isRecord(params) || typeof params.base64 !== 'string') throw new Error('extensions.installPackageZip requires base64')
+    const extensionPackage = await manager.installPackageZip(new Uint8Array(Buffer.from(params.base64, 'base64')))
+    eventBus.emit('extensions.changed', {
+      packageId: extensionPackage.packageId,
+      version: extensionPackage.version,
+      action: 'installed',
+    }, context)
+    return { package: extensionPackage }
+  })
+
   register('extensions.uninstallPackage', async (params, context) => {
     const manager = requireExtensionManager(options)
     const packageId = readString(params, 'packageId')

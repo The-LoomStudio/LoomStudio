@@ -33,6 +33,7 @@ export function MasterDetailWorkbench(props: MasterDetailWorkbenchProps) {
 
   const [internalMasterWidth, setInternalMasterWidth] = useState(parsedDefaultWidth)
 
+  // A supplied pane is controlled by the parent; otherwise this workbench owns mobile navigation locally.
   const mobilePane = props.mobilePane ?? internalMobilePane
   const setMobilePane = props.onMobilePaneChange ?? setInternalMobilePane
 

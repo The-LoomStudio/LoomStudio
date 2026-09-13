@@ -110,6 +110,8 @@ export async function composeAgentTurnPrompt(input: {
       prompt: resourceProjection,
       contributions,
       sourceNodes,
+      promptResources: input.promptResources,
+      workspaceResourceAccess: !input.narrative,
     }),
   }
 }

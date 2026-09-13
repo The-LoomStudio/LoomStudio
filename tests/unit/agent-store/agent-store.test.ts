@@ -205,6 +205,172 @@ describe('agent store', () => {
     engine.close()
   })
 
+  it('persists partial assistant messages and suspended run state as append-only entries', async () => {
+    const { engine, store, actor } = createTestContext()
+    const { session } = await store.createSession({
+      actor,
+      agentProfileId: 'profile-resume',
+    })
+
+    await store.appendEntries({
+      actor,
+      agentSessionId: session.id,
+      expectedEntryCount: 0,
+      entries: [
+        {
+          runId: 'run-paused',
+          entry: {
+            kind: 'message',
+            role: 'assistant',
+            content: '已经生成的部分内容',
+            state: 'partial',
+          },
+        },
+        {
+          runId: 'run-paused',
+          entry: {
+            kind: 'run-state',
+            state: 'suspended',
+            reason: 'user-request',
+          },
+        },
+      ],
+    })
+
+    const page = await store.getEntryPage({ agentSessionId: session.id })
+    expect(page.entries.map(entry => entry.entry)).toEqual([
+      {
+        kind: 'message',
+        role: 'assistant',
+        content: '已经生成的部分内容',
+        state: 'partial',
+      },
+      {
+        kind: 'run-state',
+        state: 'suspended',
+        reason: 'user-request',
+      },
+    ])
+    expect(page.session.entryCount).toBe(2)
+    engine.close()
+  })
+
+  it('associates continuation messages only with assistant partial messages in the same session', async () => {
+    const { engine, store, actor } = createTestContext()
+    const first = await store.createSession({
+      actor,
+      agentProfileId: 'profile-continuation',
+    })
+    const second = await store.createSession({
+      actor,
+      agentProfileId: 'profile-continuation',
+    })
+    const partial = await store.appendEntries({
+      actor,
+      agentSessionId: first.session.id,
+      expectedEntryCount: 0,
+      entries: [
+        {
+          entry: {
+            kind: 'message',
+            role: 'assistant',
+            content: 'Draft',
+            state: 'partial',
+          },
+        },
+      ],
+    })
+    const complete = await store.appendEntries({
+      actor,
+      agentSessionId: first.session.id,
+      expectedEntryCount: 1,
+      entries: [
+        { entry: { kind: 'message', role: 'assistant', content: 'Done' } },
+      ],
+    })
+
+    const linked = await store.appendEntries({
+      actor,
+      agentSessionId: first.session.id,
+      expectedEntryCount: 2,
+      entries: [
+        {
+          entry: {
+            kind: 'message',
+            role: 'assistant',
+            content: 'Continuation',
+            continuesEntryId: partial.entries[0]!.id,
+          },
+        },
+      ],
+    })
+    expect(linked.entries[0]?.entry).toMatchObject({
+      kind: 'message',
+      continuesEntryId: partial.entries[0]!.id,
+    })
+
+    await expect(
+      store.appendEntries({
+        actor,
+        agentSessionId: first.session.id,
+        expectedEntryCount: 3,
+        entries: [
+          {
+            entry: {
+              kind: 'message',
+              role: 'assistant',
+              content: 'Invalid complete target',
+              continuesEntryId: complete.entries[0]!.id,
+            },
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: 'agent.message_continuation_target_invalid',
+    })
+
+    await expect(
+      store.appendEntries({
+        actor,
+        agentSessionId: second.session.id,
+        expectedEntryCount: 0,
+        entries: [
+          {
+            entry: {
+              kind: 'message',
+              role: 'assistant',
+              content: 'Invalid cross-session target',
+              continuesEntryId: partial.entries[0]!.id,
+            },
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: 'agent.message_continuation_session_mismatch',
+    })
+
+    await expect(
+      store.appendEntries({
+        actor,
+        agentSessionId: first.session.id,
+        expectedEntryCount: 3,
+        entries: [
+          {
+            entry: {
+              kind: 'message',
+              role: 'user',
+              content: 'Invalid user continuation',
+              continuesEntryId: partial.entries[0]!.id,
+            },
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: 'agent.message_continuation_role_invalid',
+    })
+    engine.close()
+  })
+
   it('rejects stale appends and fully rolls back failed surrounding transactions', async () => {
     const { engine, store, actor } = createTestContext()
     const { session } = await store.createSession({
@@ -428,6 +594,47 @@ describe('agent store', () => {
 
     const fetched = await store.getSession(session.id)
     expect(fetched?.title).toBe('Renamed Session Title')
+    engine.close()
+  })
+
+  it('unbinds completed sessions but rejects rebinding and active runs', async () => {
+    const { engine, store, actor } = createTestContext()
+    const { session } = await store.createSession({
+      actor,
+      agentProfileId: 'profile-1',
+      timelineId: 'timeline-a',
+    })
+
+    await expect(store.updateSession({
+      actor,
+      agentSessionId: session.id,
+      timelineId: 'timeline-b',
+    })).rejects.toMatchObject({ code: 'agent.session_rebind_unsupported' })
+
+    await store.appendEntries({
+      actor,
+      agentSessionId: session.id,
+      expectedEntryCount: 0,
+      entries: [{ runId: 'run-1', entry: { kind: 'run-state', state: 'running' } }],
+    })
+    await expect(store.updateSession({
+      actor,
+      agentSessionId: session.id,
+      timelineId: null,
+    })).rejects.toMatchObject({ code: 'agent.session_binding_active_run' })
+
+    await store.appendEntries({
+      actor,
+      agentSessionId: session.id,
+      expectedEntryCount: 1,
+      entries: [{ runId: 'run-1', entry: { kind: 'run-state', state: 'completed' } }],
+    })
+    const updated = await store.updateSession({
+      actor,
+      agentSessionId: session.id,
+      timelineId: null,
+    })
+    expect(updated.session.timelineId).toBeUndefined()
     engine.close()
   })
 })

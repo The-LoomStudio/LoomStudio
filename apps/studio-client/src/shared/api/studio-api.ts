@@ -1,5 +1,11 @@
 import type { ClientBridge, ClientJsonValue } from '@loom-studio/client-bridge'
+import type { AiGatewayEvent, AiGatewayRunState } from '@loom-studio/ai-gateway'
 type TimelineArchiveClient = Record<string, ClientJsonValue>
+export type AgentRunEvent = {
+  type: string
+  runId: string
+  [key: string]: ClientJsonValue | undefined
+}
 import type { CardDirectoryPreview, CardDirectorySaveResult, CardDirectoryCatalog, OpenCardDirectoryResult, CardDirectoryAttachment } from '@loom-studio/shared'
 import type { OfficialContentPackage } from '../../entities/official-content.js'
 import type { LogLevel, LogPage } from '@loom-studio/logging'
@@ -216,6 +222,7 @@ export type CreateAgentProfileInput = {
   presetId: string
   model: ProviderModelSelection
   toolOverrides?: Record<string, boolean>
+  delivery?: 'stream' | 'complete'
 }
 
 export type UpdateAgentProfileInput = {
@@ -224,6 +231,7 @@ export type UpdateAgentProfileInput = {
   presetId?: string
   model?: ProviderModelSelection
   toolOverrides?: Record<string, boolean>
+  delivery?: 'stream' | 'complete'
 }
 
 // ─── Narrative DTOs ─────────────────────────────────────────────────────────
@@ -346,6 +354,7 @@ export type StudioApi = {
   }
   extensions: {
     list(): Promise<{ items: ManagedExtensionPackage[] }>
+    installZip(base64: string): Promise<{ package: ClientJsonValue }>
     enable(packageId: string, moduleId: string): Promise<{ module: ManagedExtensionModule }>
     disable(packageId: string, moduleId: string): Promise<{ module: ManagedExtensionModule }>
     reload(packageId: string, moduleId: string): Promise<{ module: ManagedExtensionModule }>
@@ -427,6 +436,12 @@ export type StudioApi = {
     get(agentSessionId: string): Promise<{ session: AgentSession }>
     getTranscript(input: { agentSessionId: string; cursor?: string; limit?: number }): Promise<AgentTranscriptPage>
     invoke(input: InvokeAgentTurnInput): Promise<InvokeAgentTurnResult>
+    createRun(input: InvokeAgentTurnInput): Promise<{ runId: string }>
+    subscribeRun(runId: string, cursor?: number): Promise<{ events: AgentRunEvent[]; nextCursor: number; done: boolean; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' }>
+    cancelRun(runId: string, reason?: string): Promise<{ runId: string; accepted: boolean; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' }>
+    pauseRun(runId: string): Promise<{ runId: string; accepted: boolean; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' }>
+    resumeRun(runId: string): Promise<{ runId: string; sourceRunId: string; accepted: boolean; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' }>
+    runState(runId: string): Promise<{ runId: string; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' }>
     preview(input: PreviewAgentTurnInput): Promise<PreviewAgentTurnResult>
     delete(agentSessionId: string): Promise<{ deleted: true; mutation: MutationReceipt }>
     update(input: { agentSessionId: string; title?: string }): Promise<{ session: AgentSession; mutation: MutationReceipt }>
@@ -452,6 +467,10 @@ export type StudioApi = {
   aiGateway: {
     listProviders(): Promise<RegisteredAiGatewayProvider[]>
     invoke(input: Omit<AiGatewayInvokeInput, 'signal' | 'caller'>): Promise<AiGatewayInvokeResult>
+    createRun(input: Omit<AiGatewayInvokeInput, 'signal' | 'caller'>): Promise<{ runId: string }>
+    subscribe(runId: string, cursor?: number): Promise<{ events: AiGatewayEvent[]; nextCursor: number; state: AiGatewayRunState }>
+    cancel(runId: string, reason?: string): Promise<{ runId: string; state: AiGatewayRunState }>
+    state(runId: string): Promise<{ runId: string; state: AiGatewayRunState }>
   }
   agentProfiles: {
     list(input?: { cursor?: string; limit?: number }): Promise<ListAgentProfilesResult>
@@ -484,6 +503,8 @@ export type StudioApi = {
     delete(resourceId: string): Promise<DeletePromptResourceResult>
     import(artifact: PromptResourceArtifact, name?: string): Promise<CreatePromptResourceResult>
     export(resourceId: string): Promise<ExportPromptResourceResult>
+    importZip(base64: string): Promise<CreatePromptResourceResult>
+    exportZip(resourceId: string): Promise<{ fileName: string; base64: string }>
     updateAsset(input: UpdatePromptResourceAssetInput): Promise<UpdatePromptResourceResult>
     updateAssets(input: UpdatePromptResourceAssetsInput): Promise<UpdatePromptResourceResult>
     listSettingMounts(source?: SettingMountSource): Promise<ListSettingMountsResult>
@@ -535,6 +556,7 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
     },
     extensions: {
       list: () => rpc.call('extensions.listPackages', {}),
+      installZip: base64 => rpc.call('extensions.installPackageZip', { base64 }),
       enable: (packageId, moduleId) => rpc.call('extensions.enableModule', { packageId, moduleId }),
       disable: (packageId, moduleId) => rpc.call('extensions.disableModule', { packageId, moduleId }),
       reload: (packageId, moduleId) => rpc.call('extensions.reloadModule', { packageId, moduleId }),
@@ -635,6 +657,12 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       get: agentSessionId => rpc.call<{ session: AgentSession }>('application.getAgentSession', { agentSessionId }),
       getTranscript: input => rpc.call<AgentTranscriptPage>('application.getAgentTranscriptPage', input),
       invoke: input => rpc.call<InvokeAgentTurnResult>('application.invokeAgentTurn', input),
+      createRun: input => rpc.call<{ runId: string }>('application.agent.run.create', input),
+      subscribeRun: (runId, cursor) => rpc.call('application.agent.run.subscribe', { runId, ...(cursor === undefined ? {} : { cursor }) }),
+      cancelRun: (runId, reason) => rpc.call('application.agent.run.cancel', { runId, ...(reason ? { reason } : {}) }),
+      pauseRun: runId => rpc.call('application.agent.run.pause', { runId }),
+      resumeRun: runId => rpc.call('application.agent.run.resume', { runId }),
+      runState: runId => rpc.call('application.agent.run.state', { runId }),
       preview: input => rpc.call<PreviewAgentTurnResult>('application.previewAgentTurn', input),
       delete: agentSessionId => rpc.call<{ deleted: true; mutation: MutationReceipt }>('application.deleteAgentSession', { agentSessionId }),
       update: input => rpc.call<{ session: AgentSession; mutation: MutationReceipt }>('application.updateAgentSession', input),
@@ -663,6 +691,10 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
         return result.providers
       },
       invoke: input => rpc.call<AiGatewayInvokeResult>('ai.invoke', input),
+      createRun: input => rpc.call<{ runId: string }>('ai.run.create', input),
+      subscribe: (runId, cursor) => rpc.call('ai.run.subscribe', { runId, ...(cursor === undefined ? {} : { cursor }) }),
+      cancel: (runId, reason) => rpc.call('ai.run.cancel', { runId, ...(reason ? { reason } : {}) }),
+      state: runId => rpc.call('ai.run.state', { runId }),
     },
     agentProfiles: {
       list: input => rpc.call<ListAgentProfilesResult>('application.listAgentProfiles', (input ?? {})),
@@ -698,6 +730,8 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
         ...(name ? { name } : {}),
       }),
       export: resourceId => rpc.call<ExportPromptResourceResult>('application.exportPromptResource', { resourceId }),
+      importZip: base64 => rpc.call<CreatePromptResourceResult>('application.importPromptResourceZip', { base64 }),
+      exportZip: resourceId => rpc.call<{ fileName: string; base64: string }>('application.exportPromptResourceZip', { resourceId }),
       createAsset: input => rpc.call<UpdatePromptResourceResult>('application.createPromptResourceAsset', input),
       updateAsset: input => rpc.call<UpdatePromptResourceResult>('application.updatePromptResourceAsset', input),
       updateAssets: input => rpc.call<UpdatePromptResourceResult>('application.updatePromptResourceAssets', input),

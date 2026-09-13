@@ -3,6 +3,7 @@ import {
   isPromptActivation,
   type PromptActivation,
 } from '../prompt/prompt-activation.js'
+import type { PromptResourceMutation, PromptResourceStore } from '@loom-studio/prompt-resource-store'
 
 export type ToolOwnerRef = {
   namespace: string
@@ -126,6 +127,13 @@ export type ToolContextItem = {
 }
 
 export type ToolExecutionScope = {
+  promptResources?: PromptResourceStore
+  workspaceResourceAccess?: boolean
+  mutatePromptResource?: (input: {
+    resourceId: string
+    expectedVersion: number
+    mutations: PromptResourceMutation[]
+  }) => Promise<{ id: string; version: number; changesetId: string }>
   context: readonly ToolContextItem[]
   state?: {
     defaultTarget?: { scope: 'global' } | { scope: 'timeline'; timelineId: string; branchId: string }

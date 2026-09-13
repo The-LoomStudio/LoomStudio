@@ -50,6 +50,8 @@ type PresetWorkbenchProps = {
   onDeleteResource: (resourceId: string) => Promise<void>
   onImportResource: (file: File) => Promise<string | undefined>
   onExportResource: (resourceId: string) => Promise<void>
+  onExportResourceZip?: (resourceId: string) => Promise<void>
+  onImportResourceZip?: (file: File) => Promise<string | undefined>
   onReplaceToolMounts: (presetId: string, mounts: PresetToolMountInput[]) => Promise<void>
   onUpdateTool: (tool: AgentToolDefinition) => Promise<void> | void
   onSaveMacros: (resourceId: string, input: { expectedVersion: number; macros: Record<string, string> }) => Promise<{ version: number; macros: Record<string, string> }>
@@ -253,7 +255,9 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           onDelete={props.onDeleteResource}
           onDuplicate={props.onDuplicateResource}
           onExport={props.onExportResource}
+          onExportZip={props.onExportResourceZip}
           onImport={props.onImportResource}
+          onImportZip={props.onImportResourceZip}
           onSelect={setSelectedResourceId}
         />
       )}

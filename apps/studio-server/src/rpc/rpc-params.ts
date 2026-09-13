@@ -22,6 +22,8 @@ export function readOptionalString(params: JsonValue | undefined, key: string): 
 }
 
 export function readNullableString(params: JsonValue | undefined, key: string): string | null {
+  // Primitive readers reject malformed wire values here; handlers remain responsible
+  // for domain rules such as whether null means unbinding or clearing a field.
   if (!isRecord(params) || params[key] === undefined || params[key] === null) return null
   if (typeof params[key] !== 'string') {
     throw new Error(`Expected nullable string param: ${key}`)

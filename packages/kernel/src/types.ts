@@ -109,6 +109,7 @@ export type RemovedExtensionPackageResources = Record<string, JsonValue> & {
 export type ExtensionManagementService = {
   listPackages(): ManagedExtensionPackage[]
   installPackage(sourceDirectory: string): Promise<ManagedExtensionPackage>
+  installPackageZip(source: Uint8Array): Promise<ManagedExtensionPackage>
   uninstallPackage(packageId: string, version?: string): Promise<RemovedExtensionPackage>
   enableModule(packageId: string, moduleId: string, grants?: ExtensionModuleCapabilityGrants): Promise<ManagedExtensionModule>
   disableModule(packageId: string, moduleId: string): Promise<ManagedExtensionModule>

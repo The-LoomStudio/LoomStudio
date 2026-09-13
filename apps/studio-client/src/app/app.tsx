@@ -167,6 +167,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
       busy={mutationBusy}
       canRedo={state.canRedoEdit}
       agentChatBusy={agentChatBusy}
+      agentActiveRun={state.agentActiveRun}
       agentChatInput={state.agentChatInput}
       agentChatMessages={state.agentChatMessages}
       agentChatSession={state.agentChatSession}
@@ -194,6 +195,9 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
       onNewAgentSession={state.newAgentSession}
       onRefreshAgentSessions={() => { void state.refreshAgentSessions() }}
       onSubmitAgentChat={state.submitAgentTurn}
+      onCancelAgentRun={() => { void state.cancelAgentRun() }}
+      onPauseAgentRun={() => { void state.pauseAgentRun() }}
+      onResumeAgentRun={() => { void state.resumeAgentRun() }}
       onToggleAgentPanel={() => uiState.setAgentPanelOpen(prev => !prev)}
       onUndo={() => {
         void state.undoEdit().then(focusHistoryAsset)

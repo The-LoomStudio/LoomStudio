@@ -48,4 +48,4 @@ Memory / Summary 先视为生成、整理、检索和消费内容的行为，不
 - [Memory / Summary v0](memory-summary-v0.md) 中“统一存入 Setting Layer”和专用写 Tool 仍是旧候选，不是已实现合同；存储选择以本次用途与生命周期原则继续讨论。
 - [Content Component / Binding v0](prompt/content-component-and-binding-v0.md) 的两层 ECS-like 候选不意味着将所有文本改造成模拟组件。
 - [File-backed Resource / CodeAct Plan](../../plans/file-backed-resource-agent-script-codeact-plan.md) 仍是提案；本讨论不否定非 Prompt 附件，但也不以该计划证明 Timeline 文件已经存在。
-- [变量作者 UI Plan](../../plans/ui/state-authoring-runtime-separation-plan.md) 暂停实施，保留已有改动；预设 State 的对称入口要求已经撤回，待宏与运行内容合同明确后再修订执行范围。
+- [变量作者 UI Plan](../../../archive/plans/ui/state-authoring-runtime-separation-plan.md) 已归档；有效范围由宏动态值与来源检查计划承接。

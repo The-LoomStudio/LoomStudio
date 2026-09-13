@@ -10,6 +10,7 @@ import type {
   SettingMountSource,
 } from '@loom-studio/application-runtime'
 import { isPromptActivation, isPromptResourceArtifact } from '@loom-studio/application-runtime'
+import { decodePromptResourceZip, encodePromptResourceZip } from '../../../codecs/prompt-resource-zip.js'
 import type { PromptResourceConverter } from '../../../extensions/import-conversion.js'
 import type { JsonValue } from '@loom-studio/shared'
 import {
@@ -84,6 +85,22 @@ export async function handleWorkspacesRpc(
       return await runtime.exportPromptResource({
         resourceId: readString(params, 'resourceId'),
       }) as unknown as JsonValue
+
+    case 'application.importPromptResourceZip': {
+      const base64 = readString(params, 'base64')
+      const artifact = decodePromptResourceZip(Buffer.from(base64, 'base64'))
+      return await runtime.importPromptResource({ artifact }, context) as unknown as JsonValue
+    }
+
+    case 'application.exportPromptResourceZip': {
+      const resourceId = readString(params, 'resourceId')
+      const exported = await runtime.exportPromptResource({ resourceId })
+      const zip = encodePromptResourceZip(exported.artifact)
+      return {
+        fileName: `${exported.artifact.resourceKind}-${resourceId}.loom-prompt.zip`,
+        base64: Buffer.from(zip).toString('base64'),
+      }
+    }
 
     case 'application.updatePromptResourceMacros':
       return await runtime.updatePromptResourceMacros({

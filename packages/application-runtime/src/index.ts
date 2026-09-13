@@ -86,6 +86,9 @@ export {
   officialUpdateStateTool,
   officialAppendNarrativeTool,
   officialEditNarrativeTool,
+  officialSearchPromptResourcesTool,
+  officialReadPromptResourceTool,
+  officialUpdatePromptResourceTool,
 } from './agents/official-tools/index.js'
 export {
   createLoomContentScannerState,

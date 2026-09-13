@@ -25,7 +25,7 @@ export function createAiGateway() {
   return {
     createRun: (input: AiGatewayRequest): AiGatewayRun => createGatewayRun(input),
     invokeChat: async (input: AiGatewayRequest): Promise<AiGatewayResult> =>
-      await createGatewayRun({ ...input, delivery: 'complete' }).result,
+      await createGatewayRun(input).result,
   }
 }
 
@@ -35,6 +35,7 @@ function createGatewayRun(input: AiGatewayRequest): AiGatewayRun {
   const controller = new AbortController()
   let cancelReason: string | undefined
   let terminal = false
+  let state: AiGatewayRun['getState'] extends () => infer T ? T : never = 'running'
   const cancel = (reason?: string) => {
     if (terminal || controller.signal.aborted) return
     cancelReason = reason
@@ -52,14 +53,17 @@ function createGatewayRun(input: AiGatewayRequest): AiGatewayRun {
         : await executeComplete(input, controller.signal)
       if (value.usage) stream.push({ type: 'usage', runId: id, usage: value.usage })
       terminal = true
+      state = 'completed'
       stream.push({ type: 'completed', runId: id, result: value })
       stream.close()
       return value
     } catch (error) {
       terminal = true
       if (controller.signal.aborted || isAbortError(error)) {
+        state = 'cancelled'
         stream.push({ type: 'cancelled', runId: id, ...(cancelReason ? { reason: cancelReason } : {}) })
       } else {
+        state = 'failed'
         stream.push({ type: 'failed', runId: id, error: toGatewayError(error) })
       }
       stream.close()
@@ -69,7 +73,7 @@ function createGatewayRun(input: AiGatewayRequest): AiGatewayRun {
     }
   })()
   result.catch(() => undefined)
-  return { id, events: stream, result, cancel }
+  return { id, events: stream, readEvents: cursor => stream.readEvents(cursor), result, getState: () => state, cancel }
 }
 
 async function executeComplete(input: AiGatewayRequest, abortSignal: AbortSignal): Promise<AiGatewayResult> {
@@ -152,7 +156,9 @@ function buildGatewayResult(input: AiGatewayRequest, result: {
     ...(result.text ? { content: result.text } : {}),
     ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
   }
-  if (!message.content && !message.tool_calls) throw new Error('Provider assistant response did not include content or tool calls')
+  if (!message.content && !message.tool_calls && result.finishReason !== 'length') {
+    throw new Error('Provider assistant response did not include content or tool calls')
+  }
   return {
     message,
     text: result.text,
@@ -200,6 +206,11 @@ class GatewayEventStream implements AsyncIterable<AiGatewayEvent> {
   close(): void {
     this.closed = true
     this.waiters.splice(0).forEach(resolve => resolve())
+  }
+
+  readEvents(cursor = 0): { events: AiGatewayEvent[]; nextCursor: number; done: boolean } {
+    if (!Number.isSafeInteger(cursor) || cursor < 0) throw new Error('Gateway event cursor must be a non-negative integer')
+    return { events: this.values.slice(cursor), nextCursor: this.values.length, done: this.closed }
   }
 
   async *[Symbol.asyncIterator](): AsyncIterator<AiGatewayEvent> {

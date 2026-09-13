@@ -1,6 +1,6 @@
 # AI 代码维护注释规范与补注计划
 
-> **状态**：Ready for execution
+> **状态**：Completed / 已归档；Batch 0—3 已完成，保留未执行的完整仓库检查记录
 > **日期**：2026-09-13
 > **目标**：为后续人类与 AI 维护者补充稳定、可核对、解释设计意图的英文代码注释，不把注释变成逐行翻译或另一套过时文档。
 
@@ -111,14 +111,14 @@ AI 生成代码尤其需要保留以下信息：为什么不能采用更简单�
 
 ## Task List
 
-- [ ] 建立候选注释清单，按 Why、Invariant、Failure semantics、Compatibility、Boundary contract、Ponytail 分类。
-- [ ] 在 `docs/guide/code-style.md` 增加简短的英文代码注释规范和反模式说明。
-- [ ] 补充 Application Runtime 与 Studio Server 的高风险边界注释。
-- [ ] 补充 Client 状态所有权、异步失败和浏览器行为注释。
-- [ ] 补充 Extension SDK 公共接口的最小 TSDoc。
-- [ ] 清理确认过时、复述代码或与实现矛盾的注释。
-- [ ] 对每个批次执行对应的定向 typecheck、lint 和高价值已有测试。
-- [ ] 更新本 Plan 的实际改动、未补注释项、验证结果和剩余风险。
+- [x] 建立候选注释清单，按 Why、Invariant、Failure semantics、Compatibility、Boundary contract、Ponytail 分类。
+- [x] 在 `docs/guide/code-style.md` 增加简短的英文代码注释规范和反模式说明。
+- [x] 补充 Application Runtime 与 Agent Store 的高风险边界注释。
+- [x] 补充 Client 状态所有权、异步失败和浏览器行为注释。
+- [x] 补充 Extension SDK 公共接口的最小 TSDoc。
+- [x] 清理确认过时、复述代码或与实现矛盾的注释。
+- [x] 对每个批次执行对应的定向 typecheck、lint 和高价值已有测试。
+- [x] 更新本 Plan 的实际改动、未补注释项、验证结果和剩余风险。
 
 ## 完成条件
 
@@ -138,3 +138,10 @@ AI 生成代码尤其需要保留以下信息：为什么不能采用更简单�
 ## 预期影响
 
 代码运行行为、RPC method、持久化格式和用户界面均不应改变。主要收益是减少后续 AI 误删关键边界、错误合并分支或重新引入已修复问题的概率；主要成本是少量维护性文本，并需要在相关实现变化时同步更新注释。
+
+## 2026-09-13 实施记录
+
+- Batch 1 已补充 Application Runtime、Agent Store、Studio Server 的持久化、解析、资源来源与 Agent Scope 边界注释；Batch 2 首轮补充 Master–Detail 受控移动 pane 与 Sessions 批量删除部分失败语义。
+- Batch 3 的 Extension SDK 核心公共类型已补充最小 TSDoc；Client API 分区和其余低收益候选暂不扩展。
+- Application Runtime、Studio Server、Extension SDK 构建及 Client TypeScript 检查通过；Agent、Prompt Resource、目录、RPC 与 Extension Host 定向测试通过。
+- 文档检查已通过；完整仓库检查未执行。剩余风险是未来修改这些边界时需同步维护注释，未发现需要改变运行时契约的注释候选。

@@ -46,6 +46,8 @@ type ContextWorkbenchProps = {
   onDeleteResource: (resourceId: string) => Promise<void>
   onImportResource: (file: File) => Promise<string | undefined>
   onExportResource: (resourceId: string) => Promise<void>
+  onExportResourceZip?: (resourceId: string) => Promise<void>
+  onImportResourceZip?: (file: File) => Promise<string | undefined>
   onReplaceSettingMounts: (source: SettingMountSource, settingResourceIds: string[]) => Promise<void>
   onReplaceCardResources: (cardId: string, resourceIds: string[]) => Promise<void>
   selectedResourceId?: string
@@ -250,7 +252,9 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
           onDelete={props.onDeleteResource}
           onDuplicate={props.onDuplicateResource}
           onExport={props.onExportResource}
+          onExportZip={props.onExportResourceZip}
           onImport={props.onImportResource}
+          onImportZip={props.onImportResourceZip}
           onSelect={handleSelectResource}
         />
       ) : undefined}

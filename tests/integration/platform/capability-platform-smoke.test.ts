@@ -19,6 +19,8 @@ function createHarness() {
   const extensionHost = createExtensionHost({
     documents,
     diagnostics,
+    registerStateContribution: () => ({ dispose() {} }),
+    registerMacroProvider: () => ({ dispose() {} }),
     callRpc: (method: string, params?: unknown, context?: unknown) => kernel.callRpc(method, params as never, context as never),
     registerRpc: (name: string, ownerPackageId: string, ownerModuleId: string, handler: (...args: unknown[]) => unknown, ownerInstanceId?: string) => {
       const handle = kernel.registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler as never, ownerInstanceId)
@@ -71,7 +73,7 @@ describe('platform capability integration smoke', () => {
     await kernel.start()
     kernel.getEventBus().subscribe(['docs.changed', 'diagnostics.updated'], (event: StudioEvent) => events.push(event))
     await extensionHost.discover(join(process.cwd(), 'tests/fixtures/extensions/echo'))
-    await extensionHost.activateAll()
+    await extensionHost.activate('example.echo', 'server')
     const bridge = createClientBridge({ endpoint: 'memory://kernel', fetch: createKernelFetch(kernel) })
 
     const introspect = await bridge.call<{ methods: Array<{ name: string; owner: string }>; events: string[] }>('system.introspect')

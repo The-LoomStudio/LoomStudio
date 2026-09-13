@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import { AlignLeft, ChevronDown, ImageOff, PanelRight, PanelRightClose } from 'lucide-react'
 import type { AgentProfile, AgentSession, AgentTranscriptEntry, ProviderAccount } from '../../entities/index.js'
+import type { ActiveAgentRun } from '../../features/narrative-runtime/model/use-narrative-runtime.js'
 import type { ClientRendererHost } from '../../features/extension-renderers/model/client-renderer-host.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import { AgentChatPanel } from '../../widgets/agent-chat-panel/agent-chat-panel.js'
@@ -17,6 +18,7 @@ import styles from './studio-page.module.scss'
 
 type StudioPageProps = {
   agentChatBusy?: boolean
+  agentActiveRun?: ActiveAgentRun
   agentChatInput?: string
   agentChatMessages?: AgentTranscriptEntry[]
   agentChatSession?: AgentSession
@@ -50,6 +52,9 @@ type StudioPageProps = {
   onNewAgentSession?(): void
   onRefreshAgentSessions?(): void
   onSubmitAgentChat?(event: FormEvent): void
+  onCancelAgentRun?(): void
+  onPauseAgentRun?(): void
+  onResumeAgentRun?(): void
   onToggleAgentPanel?(): void
   onUndo(): void
 }
@@ -361,6 +366,7 @@ export function StudioPage(props: StudioPageProps) {
         >
           <AgentChatPanel
             busy={props.agentChatBusy ?? false}
+            activeRun={props.agentActiveRun}
             input={props.agentChatInput ?? ''}
             messages={props.agentChatMessages ?? []}
             profiles={props.agentProfiles ?? []}
@@ -378,6 +384,9 @@ export function StudioPage(props: StudioPageProps) {
             onNewSession={props.onNewAgentSession}
             onRefreshSessions={props.onRefreshAgentSessions}
             onSubmit={props.onSubmitAgentChat ?? (() => {})}
+            onCancelRun={props.onCancelAgentRun}
+            onPauseRun={props.onPauseAgentRun}
+            onResumeRun={props.onResumeAgentRun}
           />
         </StudioPanelRight>
 

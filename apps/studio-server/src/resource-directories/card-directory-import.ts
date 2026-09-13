@@ -55,6 +55,7 @@ export function createCardDirectoryImporter(options: {
     },
     async recoverImports() {
       const errors: Array<{ cardId: string; error: string }> = []
+      try { await fs.stat(root) } catch (error) { if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return errors; throw error }
       const parent = await safePath(root, '.loom/card-directories')
       let entries: string[]
       try { entries = await fs.readdir(parent) } catch (error) { if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return errors; throw error }

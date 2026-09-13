@@ -207,6 +207,7 @@ Kernel 当前提供：
 ```text
 extensions.listPackages
 extensions.installPackage
+extensions.installPackageZip
 extensions.uninstallPackage
 extensions.importPackageResources
 extensions.removePackageResources
