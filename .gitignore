@@ -18,3 +18,5 @@ Playground/
 /data.migrating-*/
 .DS_Store
 /official/extensions/the-world/
+
+/official/extensions/st-data-compat/
