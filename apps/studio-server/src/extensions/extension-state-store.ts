@@ -1,7 +1,6 @@
 import type { EventCapabilityCategory, ExtensionAssetCapability } from '@loom-studio/extension-host'
-import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import { writeJsonAtomically } from '../platform/atomic-json.js'
 
 export type ExtensionModuleDesiredState = {
   enabled: boolean
@@ -160,15 +159,7 @@ function parseState(value: unknown): PersistedExtensionState {
 }
 
 async function writeState(filename: string, state: PersistedExtensionState): Promise<void> {
-  await mkdir(dirname(filename), { recursive: true })
-  const temporary = `${filename}.${process.pid}.${randomUUID()}.tmp`
-  try {
-    await writeFile(temporary, `${JSON.stringify(state, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
-    await rename(temporary, filename)
-  } catch (error) {
-    await unlink(temporary).catch(() => undefined)
-    throw error
-  }
+  await writeJsonAtomically(filename, state)
 }
 
 function emptyState(): PersistedExtensionState {

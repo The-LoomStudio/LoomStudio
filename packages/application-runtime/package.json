@@ -13,8 +13,8 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@loom-studio/ai-gateway": "workspace:*",
     "@loom-studio/agent-store": "workspace:*",
+    "@loom-studio/ai-gateway": "workspace:*",
     "@loom-studio/data-engine": "workspace:*",
     "@loom-studio/document-store": "workspace:*",
     "@loom-studio/extension-sdk": "workspace:*",
@@ -24,7 +24,6 @@
     "@loom-studio/secret-store": "workspace:*",
     "@loom-studio/shared": "workspace:*",
     "@loom-studio/state-store": "workspace:*",
-    "@loom/core": "workspace:*",
     "undici": "^7.16.0"
   }
 }

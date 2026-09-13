@@ -33,6 +33,7 @@
 | [`ui/provider-account-health-plan.md`](./ui/provider-account-health-plan.md)                 | 延期规划     | Provider Account 健康检查与连接状态探测                                 |
 | [`ui/provider-model-brand-icons-plan.md`](./ui/provider-model-brand-icons-plan.md)           | 前端 Spike 已完成 | 静态品牌资产已接入；`iconKey` 数据合同待定 |
 | [`log-plan/README.md`](./log-plan/README.md)                                                 | 基础已实现   | 历史日志高级过滤、实时订阅与通知系统                                    |
+| [`code-comment-policy-and-ai-maintenance-plan.md`](./code-comment-policy-and-ai-maintenance-plan.md) | Ready for execution | 面向 AI 维护的英文决策注释、边界合同与公共 SDK TSDoc                   |
 
 ---
 

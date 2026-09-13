@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 4,
   "artifactId": "loom-city-v0",
   "displayName": "Loom City",
   "description": "Canonical Prompt Builder demo workspace. Artifact is only a seed and distribution boundary; imported SQL workspace documents are the editable runtime state.",

@@ -47,7 +47,7 @@
 2. Card 编辑沿用现有 YAML parser 和 API；保存包含明确 `cardId` 与加载时的 `expectedVersion`，异步切换 Card 不得把草稿写入另一个 Card，版本冲突保留草稿并明确报错。可复用已有模板引用；修改 Card 内联模板不能暗中改共享 Definition。
 3. 运行态界面保留 State 树和批量修改、宏复制；移除“文本宏变量”伪分类与 Definition CRUD。不得取消现有字符串值的编辑能力。来源入口按当前 scope 分别打开来源 Card 或 Workspace Definition；Card 入口明确是来源配置，不声称修改它会更新旧 Timeline。
 4. UI 请求和业务编排放在 `features/state-variables/model`；Widget 仅组合。新增文案进中英字典；使用现有 CSS tokens、Lucide 与布局原语。
-5. 后端按现有 Timeline 的内联优先规则收集 Card 模板用于导出。卡保存时验证引用、模板身份与版本、初始值/Binding；失败不保存无效配置。保持 Bundle V2，不迁移数据、不新增依赖。
+5. 后端按现有 Timeline 的内联优先规则收集 Card 模板用于导出。卡保存时验证引用、模板身份与版本、初始值/Binding；失败不保存无效配置。保持当前 Bundle V4，不保留测试期 V2/V3 兼容路径，不新增依赖。
 
 ## 首轮工作包与文件边界（已暂停）
 

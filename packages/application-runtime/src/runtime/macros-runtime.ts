@@ -10,8 +10,6 @@ import { getApplicationStateSnapshot } from '../state/state.js'
 import type {
   CardSourceContent,
   InspectMacrosInput,
-  PromptResourceContent,
-  TimelineRuntimeContextContent,
 } from '../types.js'
 import type { MacroStaticSource } from '../prompt/macro-provider-registry.js'
 

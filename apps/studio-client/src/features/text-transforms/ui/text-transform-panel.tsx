@@ -624,7 +624,6 @@ function ownerMatches(value: TextRuleOwner, scope: OwnerScope): boolean {
 function ownerId(owner: OwnerScope): string { return owner.kind === 'runtime' ? 'runtime' : JSON.stringify(owner) }
 function toScriptOwner(owner: OwnerScope): LoomScriptOwner | undefined { if (owner.kind === 'card') return { kind: 'card', cardId: owner.cardId }; if (owner.kind === 'preset') return { kind: 'preset', presetId: owner.presetId }; if (owner.kind === 'workspace') return { kind: 'workspace', workspaceId: 'workspace' }; if (owner.kind === 'user-override') return { kind: 'user' }; return undefined }
 function scriptOwnerMatches(left: LoomScriptOwner, right: LoomScriptOwner): boolean { return JSON.stringify(left) === JSON.stringify(right) }
-function ownerScriptLabel(owner: LoomScriptOwner): string { if (owner.kind === 'workspace') return `workspace:${owner.workspaceId}`; if (owner.kind === 'card') return `card:${owner.cardId}`; if (owner.kind === 'preset') return `preset:${owner.presetId}`; return 'user' }
 export function listRuntimeRendererRegistrations(host: ClientRendererHost): Array<{
   key: string
   registration: ClientRendererRegistration

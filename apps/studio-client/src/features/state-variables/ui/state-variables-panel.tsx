@@ -188,18 +188,19 @@ export function StateVariablesPanel(props: Props) {
     }
 
     if (capabilities.type === 'boolean') {
+      const currentBoolean = currentValue === true
       return (
         <div className={styles.treeTrailingControl}>
           <button
-            aria-checked={Boolean(currentValue)}
+            aria-checked={currentBoolean}
             aria-label={capabilities.path}
             className={styles.toggleBtn}
             role="switch"
             type="button"
-            onClick={() => setProperty(capabilities.path, !Boolean(currentValue))}
+            onClick={() => setProperty(capabilities.path, !currentBoolean)}
           >
             <span className={styles.toggleTrack}><span className={styles.toggleThumb} /></span>
-            <span>{Boolean(currentValue) ? 'true' : 'false'}</span>
+            <span>{currentBoolean ? 'true' : 'false'}</span>
           </button>
         </div>
       )

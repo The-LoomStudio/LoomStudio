@@ -61,7 +61,8 @@ export function projectCardFiles(artifact: CardBundleArtifact, files: Record<str
     const directory = `${artifact.externalContextAssetIds?.includes(value.id) ? 'external/' : ''}prompts/${fileStem(value, index)}`
     return json(`${directory}/index.json`, node(value, directory))
   })
-  const { description, opening, settingLayer, preset, macros, media, ...config } = artifact.card
+  const { description, opening, settingLayer, preset, macros, ...cardFields } = artifact.card
+  const config = Object.fromEntries(Object.entries(cardFields).filter(([key]) => key !== 'media')) as CardFile['config']
   const card: CardFile = { config }
   if (description !== undefined) card.description = text('card/description.md', description)
   if (macros !== undefined) card.macros = json('macros/card.json', macros)
@@ -261,7 +262,8 @@ function fileStem(value: unknown, index: number): string {
   const item = value as { label?: unknown; name?: unknown; title?: unknown; id?: unknown; entityId?: unknown } | null
   const name = item?.label ?? item?.name ?? item?.title ?? item?.id ?? item?.entityId
   const label = typeof name === 'string'
-    ? Array.from(name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-')).slice(0, 64).join('').replace(/[. ]+$/g, '')
+    ? Array.from(name, character => character.codePointAt(0)! < 0x20 || '\\\\/:*?"<>|'.includes(character) ? '-' : character)
+      .slice(0, 64).join('').replace(/[. ]+$/g, '')
     : ''
   return `${index}${label ? `-${label}` : ''}`
 }

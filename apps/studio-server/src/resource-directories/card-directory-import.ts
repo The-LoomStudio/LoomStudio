@@ -48,7 +48,7 @@ export function createCardDirectoryImporter(options: {
         await finish(id)
         return { cardId: id }
       } catch (error) {
-        if (await options.cardExists(id)) throw new Error(`Card imported as ${id}; directory finalization requires recovery. Do not import again. ${error instanceof Error ? error.message : String(error)}`)
+        if (await options.cardExists(id)) throw new Error(`Card imported as ${id}; directory finalization requires recovery. Do not import again. ${error instanceof Error ? error.message : String(error)}`, { cause: error })
         await fs.rm(await safePath(root, metadata), { recursive: true, force: true })
         throw error
       } finally { importing.delete(selected) }

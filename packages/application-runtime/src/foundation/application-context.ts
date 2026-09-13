@@ -12,7 +12,7 @@ import { createAgentToolRegistry, type AgentToolRegistry } from '../agents/tool-
 import type { AiGateway, ApplicationRuntimeOptions, BlobStorage, MediaAssetLookup, SourceArtifactStorage } from '../types.js'
 import { createMacroProviderRegistry, type MacroProviderRegistry } from '../prompt/macro-provider-registry.js'
 import { createStateContributionRegistry, type StateContributionRegistry } from '../state/state-contribution-registry.js'
-import { createTimelineArchiveParticipantRegistry, type TimelineArchiveParticipant, type TimelineArchiveParticipantRegistry } from '../archive/timeline-archive.js'
+import { createTimelineArchiveParticipantRegistry, type TimelineArchiveParticipantRegistry } from '../archive/timeline-archive.js'
 
 export type ApplicationRuntimeContext = {
   withCardDeletion: ApplicationRuntimeOptions['withCardDeletion']

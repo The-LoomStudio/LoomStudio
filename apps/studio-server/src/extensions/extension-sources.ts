@@ -1,8 +1,7 @@
 import { parseExtensionManifest, type ExtensionManifest } from '@loom-studio/extension-host'
-import { access, mkdir, readFile, readdir, realpath, rename, unlink, writeFile } from 'node:fs/promises'
-import { randomUUID } from 'node:crypto'
-import { dirname } from 'node:path'
+import { access, readFile, readdir, realpath } from 'node:fs/promises'
 import { isAbsolute, relative, resolve } from 'node:path'
+import { writeJsonAtomically } from '../platform/atomic-json.js'
 
 export type ExtensionSourceKind = 'repository' | 'dev-link' | 'installed'
 
@@ -189,15 +188,7 @@ export async function removeExtensionDevLink(filename: string, packageId: string
     return entry.id !== packageId
   })
   if (extensions.length === value.extensions.length) return false
-  await mkdir(dirname(filename), { recursive: true })
-  const temporary = `${filename}.${process.pid}.${randomUUID()}.tmp`
-  try {
-    await writeFile(temporary, `${JSON.stringify({ extensions }, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
-    await rename(temporary, filename)
-  } catch (error) {
-    await unlink(temporary).catch(() => undefined)
-    throw error
-  }
+  await writeJsonAtomically(filename, { extensions })
   return true
 }
 

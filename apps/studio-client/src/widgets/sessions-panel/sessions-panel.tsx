@@ -3,7 +3,6 @@ import {
   ArrowDownUp,
   ArrowRight,
   Bot,
-  Check,
   CheckSquare,
   ChevronDown,
   ChevronRight,
@@ -19,7 +18,6 @@ import {
   Play,
   Trash2,
   Upload,
-  User,
   X,
 } from 'lucide-react'
 import type {
@@ -73,6 +71,7 @@ type SessionsPanelProps = {
   agentChatSession?: AgentSession
   agentProfiles: AgentProfile[]
   api?: StudioApi
+  allAgentSessions: AgentSession[]
   branches: NarrativeBranch[]
   cards?: CardSummary[]
   narrativeAgentSession?: AgentSession
@@ -81,9 +80,9 @@ type SessionsPanelProps = {
   timelines: NarrativeTimeline[]
   onOpenTimeline(timeline: NarrativeTimeline): void
   onOpenAgentSessionInSidebar?(session: AgentSession): void
-  onDeleteTimeline?(timelineId: string): Promise<unknown> | void
+  onDeleteTimeline?(timelineId: string): Promise<boolean> | void
   onRenameTimeline?(timelineId: string, title: string): Promise<unknown> | void
-  onDeleteAgentSession?(sessionId: string): Promise<unknown> | void
+  onDeleteAgentSession?(sessionId: string): Promise<boolean> | void
   onRenameAgentSession?(sessionId: string, title: string): Promise<unknown> | void
   onArchiveImported?(timelineId: string, result: { unknownParticipantNamespaces: string[]; participantFailures: Array<{ namespace: string; message: string }> }): Promise<void> | void
 }
@@ -93,7 +92,6 @@ export function SessionsPanel(props: SessionsPanelProps) {
   const [filter, setFilter] = useState<SessionFilter>('all')
   const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
   const [searchQuery, setSearchQuery] = useState('')
-  const [remoteSessions, setRemoteSessions] = useState<AgentSession[]>([])
   const [expandedTimelines, setExpandedTimelines] = useState<Set<string>>(new Set())
   const [isSelectionMode, setIsSelectionMode] = useState(false)
   const [selectedTimelineIds, setSelectedTimelineIds] = useState<Set<string>>(new Set())
@@ -111,40 +109,14 @@ export function SessionsPanel(props: SessionsPanelProps) {
   const [timelineNodesMap, setTimelineNodesMap] = useState<Record<string, NarrativeNode[]>>({})
   const [sessionTranscriptMap, setSessionTranscriptMap] = useState<Record<string, AgentTranscriptEntry[]>>({})
 
-  // 加载远程持久化的全部 Agent 会话
-  useEffect(() => {
-    if (!props.api?.agentSessions?.list) return
-    let active = true
-    void props.api.agentSessions.list({ limit: 100 }).then(result => {
-      if (active && result?.sessions) {
-        setRemoteSessions(result.sessions)
-      }
-    })
-    return () => {
-      active = false
-    }
-  }, [props.api, props.narrativeAgentSession?.id, props.agentChatSession?.id])
-
-  // 合并全部 AgentSessions
-  const allSessions = useMemo(() => {
-    const memory = [props.narrativeAgentSession, props.agentChatSession].filter(
-      (s): s is AgentSession => Boolean(s),
-    )
-    const map = new Map<string, AgentSession>()
-    for (const s of [...remoteSessions, ...memory]) {
-      map.set(s.id, s)
-    }
-    return [...map.values()]
-  }, [props.agentChatSession, props.narrativeAgentSession, remoteSessions])
-
   // 区分绑定会话与独立会话并应用排序
   const { sessionsByTimelineId, standaloneSessions } = useMemo(() => {
-    const partitioned = partitionSessions(allSessions)
+    const partitioned = partitionSessions(props.allAgentSessions)
     return {
       sessionsByTimelineId: partitioned.sessionsByTimelineId,
       standaloneSessions: sortSessions(partitioned.standaloneSessions, sortOrder),
     }
-  }, [allSessions, sortOrder])
+  }, [props.allAgentSessions, sortOrder])
 
   // 构建角色快速检索映射表
   const cardMap = useMemo(() => {
@@ -244,42 +216,57 @@ export function SessionsPanel(props: SessionsPanelProps) {
     const timelineCount = selectedTimelineIds.size
     const sessionCount = selectedSessionIds.size
 
-    let confirmMessage = ''
-    if (timelineCount > 0 && sessionCount > 0) {
-      confirmMessage = props.t('sessions.confirmBatchDelete', {
+    const confirmMessage = timelineCount > 0 && sessionCount > 0
+      ? props.t('sessions.confirmBatchDelete', {
         timelines: timelineCount,
         sessions: sessionCount,
       })
-    } else if (timelineCount > 0) {
-      confirmMessage = props.t('sessions.confirmBatchDeleteTimelines', {
+      : timelineCount > 0
+        ? props.t('sessions.confirmBatchDeleteTimelines', {
         count: timelineCount,
       })
-    } else {
-      confirmMessage = props.t('sessions.confirmBatchDeleteSessions', {
+        : props.t('sessions.confirmBatchDeleteSessions', {
         count: sessionCount,
       })
-    }
 
     if (!window.confirm(confirmMessage)) return
 
-    const timelinePromises = Array.from(selectedTimelineIds).map(id => props.onDeleteTimeline?.(id))
-    const sessionPromises = Array.from(selectedSessionIds).map(id => props.onDeleteAgentSession?.(id))
+    const timelineIds = Array.from(selectedTimelineIds)
+    const sessionIds = Array.from(selectedSessionIds)
+    const results = await Promise.all([
+      Promise.allSettled(timelineIds.map(id => props.onDeleteTimeline?.(id))),
+      Promise.allSettled(sessionIds.map(id => props.onDeleteAgentSession?.(id))),
+    ])
+    const [timelineResults, sessionResults] = results
+    const deletedTimelineIds = new Set(
+      timelineIds.filter((_, index) => timelineResults[index]?.status === 'fulfilled' && timelineResults[index]?.value === true),
+    )
+    const deletedSessionIds = new Set(
+      sessionIds.filter((_, index) => sessionResults[index]?.status === 'fulfilled' && sessionResults[index]?.value === true),
+    )
 
-    await Promise.allSettled([...timelinePromises, ...sessionPromises])
-
-    if (sessionCount > 0) {
-      setRemoteSessions(prev => prev.filter(s => !selectedSessionIds.has(s.id)))
-    }
+    setSelectedTimelineIds(prev => {
+      const next = new Set(prev)
+      deletedTimelineIds.forEach(id => next.delete(id))
+      return next
+    })
+    setSelectedSessionIds(prev => {
+      const next = new Set(prev)
+      deletedSessionIds.forEach(id => next.delete(id))
+      return next
+    })
 
     if (
       selectedItem &&
-      ((selectedItem.kind === 'timeline' && selectedTimelineIds.has(selectedItem.id)) ||
-        (selectedItem.kind === 'session' && selectedSessionIds.has(selectedItem.id)))
+      ((selectedItem.kind === 'timeline' && deletedTimelineIds.has(selectedItem.id)) ||
+        (selectedItem.kind === 'session' && deletedSessionIds.has(selectedItem.id)))
     ) {
       setSelectedItem(undefined)
     }
 
-    handleExitSelectionMode()
+    if (deletedTimelineIds.size === timelineIds.length && deletedSessionIds.size === sessionIds.length) {
+      setIsSelectionMode(false)
+    }
   }
 
   // 当前选中的 Timeline 或 Session 实体
@@ -290,8 +277,8 @@ export function SessionsPanel(props: SessionsPanelProps) {
 
   const selectedSession = useMemo(() => {
     if (selectedItem?.kind !== 'session') return undefined
-    return allSessions.find(s => s.id === selectedItem.id)
-  }, [allSessions, selectedItem])
+    return props.allAgentSessions.find(s => s.id === selectedItem.id)
+  }, [props.allAgentSessions, selectedItem])
 
   // 按需拉取选中时间线的演变节点日志
   useEffect(() => {
@@ -366,8 +353,8 @@ export function SessionsPanel(props: SessionsPanelProps) {
   const handleDeleteTimeline = async (timeline: NarrativeTimeline) => {
     const title = timeline.title || props.t('sessions.untitledTimeline')
     if (window.confirm(props.t('sessions.confirmDeleteTimeline', { title }))) {
-      await props.onDeleteTimeline?.(timeline.id)
-      if (selectedItem?.id === timeline.id) {
+      const deleted = await props.onDeleteTimeline?.(timeline.id)
+      if (deleted === true && selectedItem?.id === timeline.id) {
         setSelectedItem(undefined)
       }
     }
@@ -378,15 +365,14 @@ export function SessionsPanel(props: SessionsPanelProps) {
     const next = window.prompt(props.t('sessions.renamePrompt'), currentTitle)
     if (next !== null && next.trim() && next.trim() !== session.title) {
       await props.onRenameAgentSession?.(session.id, next.trim())
-      setRemoteSessions(prev => prev.map(s => s.id === session.id ? { ...s, title: next.trim() } : s))
     }
   }
 
   const handleDeleteSession = async (session: AgentSession) => {
     const title = session.title || props.t('sessions.untitledAgentSession')
     if (window.confirm(props.t('sessions.confirmDeleteSession', { title }))) {
-      await props.onDeleteAgentSession?.(session.id)
-      setRemoteSessions(prev => prev.filter(s => s.id !== session.id))
+      const deleted = await props.onDeleteAgentSession?.(session.id)
+      if (deleted !== true) return
       if (selectedItem?.id === session.id) {
         setSelectedItem(undefined)
       }

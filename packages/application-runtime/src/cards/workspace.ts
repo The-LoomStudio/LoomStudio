@@ -52,7 +52,7 @@ function requireSqliteDocumentParticipant(documents: DocumentStore): SqliteDocum
 }
 
 export type CardBundleArtifact = {
-  schemaVersion: 2 | 3 | 4
+  schemaVersion: 4
   artifactId: string
   displayName: string
   description?: string
@@ -554,11 +554,11 @@ export async function exportCardArtifact(input: {
   const textTransformRules = (await listDocuments<TextTransformRuleContent>(input.documents, applicationDocumentTypes.textTransformRule))
     .filter(document => document.content.owner.kind === 'card' && document.content.owner.cardId === input.cardId)
     .sort((a, b) => a.content.orderIndex - b.content.orderIndex || a.id.localeCompare(b.id))
-    .map(({ content: { owner, origin, createdAt, updatedAt, ...rule } }) => rule)
+    .map(document => stripDocumentMetadata(document.content))
   const textExtractors = (await listDocuments<TextExtractorContent>(input.documents, applicationDocumentTypes.textExtractor))
     .filter(document => document.content.owner.kind === 'card' && document.content.owner.cardId === input.cardId)
     .sort((a, b) => a.content.orderIndex - b.content.orderIndex || a.id.localeCompare(b.id))
-    .map(({ content: { owner, origin, createdAt, updatedAt, ...extractor } }) => extractor)
+    .map(document => stripDocumentMetadata(document.content))
   return {
     ...buildExportArtifact({ card, contextAssets, stateTemplates, extensionPayloads, scriptAttachments, importBundle }),
     ...(card.content.externalPromptResourceIds !== undefined ? {
@@ -936,7 +936,7 @@ export function isCardBundleArtifact(value: JsonValue | undefined): value is Car
 
 function assertCardBundleArtifact(value: unknown): asserts value is CardBundleArtifact {
   if (!isObject(value)) throw new Error('Card bundle must be an object')
-  if (value.schemaVersion !== 2 && value.schemaVersion !== 3 && value.schemaVersion !== 4) throw new Error(`Unsupported card bundle schemaVersion: ${String(value.schemaVersion)}`)
+  if (value.schemaVersion !== 4) throw new Error(`Unsupported card bundle schemaVersion: ${String(value.schemaVersion)}`)
   assertNonEmptyString(value.artifactId, 'Card bundle artifactId')
   assertNonEmptyString(value.displayName, 'Card bundle displayName')
   if (value.description !== undefined && typeof value.description !== 'string') throw new Error('Card bundle description must be a string')
@@ -1270,6 +1270,10 @@ function assertPromptResourceCapabilities(value: JsonValue | undefined, path: st
 
 function assertNonEmptyString(value: unknown, label: string): asserts value is string {
   if (typeof value !== 'string' || value.trim().length === 0) throw new Error(`${label} must be a non-empty string`)
+}
+
+function stripDocumentMetadata<T extends Record<string, unknown>>(content: T): Omit<T, 'owner' | 'origin' | 'createdAt' | 'updatedAt'> {
+  return Object.fromEntries(Object.entries(content).filter(([key]) => !['owner', 'origin', 'createdAt', 'updatedAt'].includes(key))) as Omit<T, 'owner' | 'origin' | 'createdAt' | 'updatedAt'>
 }
 
 function assertOptionalString(value: unknown, label: string): void {

@@ -2,6 +2,7 @@ import * as React from 'react'
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu'
 import { Check, ChevronRight } from 'lucide-react'
 import styles from './dropdown-menu.module.scss'
+import { menuItemClass, menuPartClass } from '../menu/menu-class-names.js'
 
 const DropdownMenu = DropdownMenuPrimitive.Root
 
@@ -15,7 +16,7 @@ const DropdownMenuContent = React.forwardRef<
     <DropdownMenuPrimitive.Content
       ref={ref}
       sideOffset={sideOffset}
-      className={`${styles.menu} ${className ?? ''}`}
+      className={menuPartClass(styles.menu, className)}
       {...props}
     />
   </DropdownMenuPrimitive.Portal>
@@ -32,7 +33,7 @@ const DropdownMenuItem = React.forwardRef<
 >(({ className, inset, tone, icon, children, ...props }, ref) => (
   <DropdownMenuPrimitive.Item
     ref={ref}
-    className={`${styles.item} ${tone === 'danger' ? styles.danger : ''} ${inset ? styles.inset : ''} ${className ?? ''}`}
+    className={menuItemClass(styles, { className, inset, tone })}
     {...props}
   >
     {icon && (
@@ -51,7 +52,7 @@ const DropdownMenuCheckboxItem = React.forwardRef<
 >(({ className, children, checked, ...props }, ref) => (
   <DropdownMenuPrimitive.CheckboxItem
     ref={ref}
-    className={`${styles.item} ${className ?? ''}`}
+    className={menuPartClass(styles.item, className)}
     checked={checked}
     {...props}
   >
@@ -71,7 +72,7 @@ const DropdownMenuSeparator = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DropdownMenuPrimitive.Separator
     ref={ref}
-    className={`${styles.separator} ${className ?? ''}`}
+      className={menuPartClass(styles.separator, className)}
     {...props}
   />
 ))
@@ -83,7 +84,7 @@ const DropdownMenuShortcut = ({
 }: React.HTMLAttributes<HTMLSpanElement>) => {
   return (
     <span
-      className={`${styles.shortcut} ${className ?? ''}`}
+      className={menuPartClass(styles.shortcut, className)}
       {...props}
     />
   )
@@ -101,7 +102,7 @@ const DropdownMenuSubTrigger = React.forwardRef<
 >(({ className, inset, icon, children, ...props }, ref) => (
   <DropdownMenuPrimitive.SubTrigger
     ref={ref}
-    className={`${styles.item} ${styles.subTrigger} ${inset ? styles.inset : ''} ${className ?? ''}`}
+    className={menuItemClass(styles, { className, inset, subTrigger: true })}
     {...props}
   >
     {icon && (
@@ -124,7 +125,7 @@ const DropdownMenuSubContent = React.forwardRef<
   <DropdownMenuPrimitive.Portal>
     <DropdownMenuPrimitive.SubContent
       ref={ref}
-      className={`${styles.menu} ${className ?? ''}`}
+      className={menuPartClass(styles.menu, className)}
       {...props}
     />
   </DropdownMenuPrimitive.Portal>

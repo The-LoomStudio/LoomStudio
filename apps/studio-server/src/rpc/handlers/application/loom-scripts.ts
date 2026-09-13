@@ -1,6 +1,15 @@
 import type { ApplicationRuntime, LoomScriptOwner, RuntimeRequestContext } from '@loom-studio/application-runtime'
-import type { JsonObject, JsonValue } from '@loom-studio/shared'
-import { isRecord, readNumber, readOptionalNumber, readString } from '../../rpc-params.js'
+import type { JsonValue } from '@loom-studio/shared'
+import {
+  isRecord,
+  readBoolean,
+  readNumber,
+  readOptionalNumber,
+  readOptionalObject,
+  readOptionalString,
+  readString,
+  readStringArray,
+} from '../../rpc-params.js'
 
 export async function handleLoomScriptsRpc(
   applicationRuntime: ApplicationRuntime,
@@ -48,30 +57,4 @@ function readOwner(value: JsonValue | undefined, key: string): LoomScriptOwner {
 
 function readOptionalOwner(value: JsonValue | undefined, key: string): LoomScriptOwner | undefined {
   return isRecord(value) && value[key] !== undefined ? readOwner(value, key) : undefined
-}
-
-function readOptionalObject(value: JsonValue | undefined, key: string): JsonObject | undefined {
-  const candidate = isRecord(value) ? value[key] : undefined
-  if (candidate === undefined) return undefined
-  if (!isRecord(candidate)) throw new Error(`Expected object: ${key}`)
-  return candidate
-}
-
-function readBoolean(value: JsonValue | undefined, key: string): boolean {
-  const candidate = isRecord(value) ? value[key] : undefined
-  if (typeof candidate !== 'boolean') throw new Error(`Expected boolean: ${key}`)
-  return candidate
-}
-
-function readStringArray(value: JsonValue | undefined, key: string): string[] {
-  const candidate = isRecord(value) ? value[key] : undefined
-  if (!Array.isArray(candidate) || candidate.some(item => typeof item !== 'string')) throw new Error(`Expected string array: ${key}`)
-  return candidate as string[]
-}
-
-function readOptionalString(value: JsonValue | undefined, key: string): string | undefined {
-  const candidate = isRecord(value) ? value[key] : undefined
-  if (candidate === undefined) return undefined
-  if (typeof candidate !== 'string') throw new Error(`Expected string: ${key}`)
-  return candidate
 }

@@ -26,7 +26,7 @@ Card / Preset 静态宏配置与 Extension 提供者进入同一来源候选组�
 
 规范交换容器为 `kind: "loom.state"`、`schemaVersion: 1` 的 JSON Artifact。纯可序列化 `StateContribution` DTO 位于 `@loom-studio/shared`；Application Runtime 保留 Artifact 校验、Contribution 组合、引用诊断和最终物化。Extension 通过 `state.contribute` capability 注册包命名空间下的 Contribution，注册 handle 随 Extension Scope 释放；`state.read` / `state.write` 只转发现有 Application State Service，不向 Extension 暴露 State Store。
 
-`loom.cardBundle` 当前接受 `schemaVersion: 2 | 3 | 4`，规范化与当前导出使用 v4；这与 ZIP 容器的 `loom.cardBundle.zip.v2` 不是同一个版本字段。State Contribution、旧模板与 Binding 的携带由 [Card Artifact 实现](../../../packages/application-runtime/src/cards/workspace.ts) 及 [文件合同](card-bundle-files.md) 负责。导出收集 Card 内联模板与未被内联覆盖的共享模板；导入时相同 ID/version/content 的模板复用，identity 冲突、缺失模板、版本不匹配与 Binding 路径错误会被拒绝，不静默覆盖工作区已有同 ID 不同内容模板。
+`loom.cardBundle` 当前只接受 `schemaVersion: 4`；这与 ZIP 容器的 `loom.cardBundle.zip.v2` 不是同一个版本字段。State Contribution、模板与 Binding 的携带由 [Card Artifact 实现](../../../packages/application-runtime/src/cards/workspace.ts) 及 [文件合同](card-bundle-files.md) 负责。导出收集 Card 内联模板与未被内联覆盖的共享模板；导入时相同 ID/version/content 的模板复用，identity 冲突、缺失模板、版本不匹配与 Binding 路径错误会被拒绝，不静默覆盖工作区已有同 ID 不同内容模板。测试期旧 Card Bundle schema v2/v3 不再兼容；外部 SillyTavern V2/V3 仍先转换为内部 V4。
 
 ## Mutation、Branch 与 Undo
 

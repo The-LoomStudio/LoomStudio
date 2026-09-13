@@ -162,7 +162,10 @@ function createRuntimePromptSources(input: {
         orderIndex: index + 1,
         kind: 'entry',
       })
-      const content = narrativeText.get(node.id) ?? node.body.raw
+      const content = narrativeText.get(node.id)
+      if (content === undefined) {
+        throw new Error(`Narrative entry is missing projected text content: ${node.id}`)
+      }
       if (content.trim().length === 0) return
       contributions.push({
         id: `runtime.narrative:${node.id}`,
@@ -231,7 +234,10 @@ function createRuntimePromptSources(input: {
       return
     }
     if (message.kind !== 'message') return
-    const content = sessionText.get(agentMessage.id) ?? message.content
+    const content = sessionText.get(agentMessage.id)
+    if (content === undefined) {
+      throw new Error(`Agent Session message is missing projected text content: ${agentMessage.id}`)
+    }
     if (!content || content.trim().length === 0) {
       throw new Error(`Agent Session message cannot enter PromptBuild without text content: ${agentMessage.id}`)
     }

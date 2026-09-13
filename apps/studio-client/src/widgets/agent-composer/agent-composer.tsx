@@ -4,7 +4,6 @@ import { ChatComposer, type ChatComposerQuickAction } from '../chat-composer/cha
 import styles from './agent-composer.module.scss'
 
 const AGENT_EXPANSION_MIN_HEIGHT = 220
-const AGENT_EXPANSION_MAX_HEIGHT = 720
 
 export type AgentComposerProps = {
   canPreviewPrompt: boolean

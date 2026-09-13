@@ -6,7 +6,7 @@ import { encodeCardBundleZip, decodeCardBundleZip } from '../../../apps/studio-s
 describe('Loom Card PNG', () => {
   it('round-trips a UTF-8 Card Artifact through compressed iTXt', () => {
     const artifact: CardBundleArtifact = {
-      schemaVersion: 2,
+      schemaVersion: 4,
       artifactId: 'card-artifact-1',
       displayName: '雾港角色',
       card: { name: '雾港角色', description: '包含中文提示词。' },
@@ -28,7 +28,7 @@ describe('Loom Card PNG', () => {
     expect(decodeCardPng(encoded)).toEqual(normalizeCardBundleArtifact(artifact))
   })
 
-  it('rejects a non-V2 Artifact at the PNG boundary', () => {
+  it('rejects a non-V4 Artifact at the PNG boundary', () => {
     expect(() => encodeCardPng(defaultCardPng, {
       schemaVersion: 1,
       artifactId: 'legacy', displayName: 'Legacy', card: { name: 'Legacy' }, contextAssets: [],

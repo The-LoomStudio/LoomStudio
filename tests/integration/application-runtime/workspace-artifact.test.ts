@@ -159,12 +159,12 @@ describe('application runtime card bundle integration', () => {
     })
   })
 
-  it('round-trips Card V2 State Templates and Bindings and rejects identity conflicts', async () => {
+  it('round-trips Card State Templates and Bindings and rejects identity conflicts', async () => {
     const { runtime, documents } = createTestRuntime()
     const artifact: CardBundleArtifact = {
-      schemaVersion: 2,
-      artifactId: 'state-card-v2',
-      displayName: 'State Card V2',
+      schemaVersion: 4,
+      artifactId: 'state-card-v4',
+      displayName: 'State Card V4',
       card: { name: 'State Card', stateContributionIds: ['example.health.character-vitals'] },
       contextAssets: [],
       stateTemplates: [{
@@ -178,7 +178,7 @@ describe('application runtime card bundle integration', () => {
     const exported = await runtime.exportCardBundle({ cardId: imported.card.id })
 
     expect(exported.artifact).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 4,
       stateTemplates: artifact.stateTemplates,
       timelineStateBindings: artifact.timelineStateBindings,
       card: { stateContributionIds: ['example.health.character-vitals'] },

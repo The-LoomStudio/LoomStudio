@@ -1,6 +1,7 @@
 import type { DocumentRecord, DocumentTransaction } from '@loom-studio/document-store'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import { isObject } from './json.js'
+import { collectPages } from './pagination.js'
 
 export async function readDocument<T extends JsonValue>(documents: DocumentTransaction, id: string, type: string): Promise<DocumentRecord<T>> {
   const document = await documents.get(id)
@@ -10,16 +11,7 @@ export async function readDocument<T extends JsonValue>(documents: DocumentTrans
 }
 
 export async function listDocuments<T extends JsonValue>(documents: DocumentTransaction, type: string): Promise<Array<DocumentRecord<T>>> {
-  const items: DocumentRecord[] = []
-  let cursor: string | undefined
-
-  do {
-    const result = await documents.list({ type, cursor, limit: 100 })
-    items.push(...result.items)
-    cursor = result.nextCursor
-  } while (cursor)
-
-  return items as Array<DocumentRecord<T>>
+  return await collectPages(cursor => documents.list({ type, cursor, limit: 100 })) as Array<DocumentRecord<T>>
 }
 
 export async function writeDocument<T extends JsonValue>(

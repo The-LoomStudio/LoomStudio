@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto'
 import type { DocumentRecord } from '@loom-studio/document-store'
-import type { AgentTranscriptEntry } from '@loom-studio/agent-store'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments, readDocument, toVersioned, writeDocument } from '../foundation/document-store.js'
+import { collectPages } from '../foundation/pagination.js'
 import { executeDocumentMutation } from '../foundation/mutation.js'
 import {
   createTextExtractionArtifact,
@@ -389,26 +389,23 @@ async function readRuntimeHistoryEntries(
   if (source.kind === 'agent-session') {
     const agents = ctx.agents
     if (!agents) throw new Error('Agent Store is not configured')
-    let cursor = source.headEntryId
-    const entries: AgentTranscriptEntry[] = []
-    do {
-      const page = await agents.getEntryPage({ agentSessionId: source.sessionId, ...(cursor ? { cursor } : {}), limit: 100 })
-      entries.unshift(...page.entries)
-      cursor = page.nextCursor
-    } while (cursor)
+    const entries = await collectPages(async cursor => {
+      const pageCursor = cursor ?? source.headEntryId
+      const page = await agents.getEntryPage({ agentSessionId: source.sessionId, ...(pageCursor ? { cursor: pageCursor } : {}), limit: 100 })
+      return { items: page.entries, nextCursor: page.nextCursor }
+    })
+    entries.reverse()
     return entries.flatMap(entry => entry.entry.kind === 'message'
       ? [{ id: entry.id, source, role: entry.entry.role, text: entry.entry.content, sequence: entry.sequence, createdAt: entry.createdAt }]
       : [])
   }
   const narratives = ctx.narratives
   if (!narratives) throw new Error('Narrative Store is not configured')
-  let cursor: string | undefined
-  const nodes: import('@loom-studio/narrative-store').NarrativeNode[] = []
-  do {
+  const nodes = await collectPages(async cursor => {
     const page = await narratives.getPage({ timelineId: source.timelineId, branchId: source.branchId, ...(cursor ? { cursor } : {}), limit: 100 })
-    nodes.unshift(...page.nodes)
-    cursor = page.nextCursor
-  } while (cursor)
+    return { items: page.nodes, nextCursor: page.nextCursor }
+  })
+  nodes.reverse()
   return nodes.map((node, sequence) => ({
     id: node.id,
     source,

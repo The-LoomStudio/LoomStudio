@@ -267,16 +267,16 @@ describe('card bundle artifact boundary', () => {
     })
   })
 
-  it('imports legacy v2 and round-trips v3 Script attachments with disabled empty-grant Mounts', async () => {
+  it('rejects legacy Card Bundle schemas and round-trips current Script attachments', async () => {
+    for (const schemaVersion of [2, 3]) {
+      expect(isCardBundleArtifact({ ...createArtifact(), schemaVersion } as never)).toBe(false)
+    }
+
     const fixture = createFixture()
     const rootDirectory = await mkdtemp(join(tmpdir(), 'loom-card-script-'))
     const blobs = createBlobStore({ engine: fixture.engine, rootDirectory, createId: prefix => `${prefix}-blob`, now: () => '2026-09-11T00:00:00.000Z' })
     try {
-      const legacy = await importCardBundle({ artifact: createArtifact(), ...fixture })
-      expect(legacy.importBundle.sourceArtifact.schemaVersion).toBe(4)
-
       const artifact = createArtifact()
-      artifact.schemaVersion = 3
       artifact.scriptAttachments = [{
         orderIndex: 7,
         resourceOrigin: 'external',
@@ -392,7 +392,7 @@ function loomScriptSource(): string {
 
 function createArtifact(): CardBundleArtifact {
   return {
-    schemaVersion: 2,
+    schemaVersion: 4,
     artifactId: 'test-card-bundle-v0',
     displayName: 'Test Card Bundle',
     card: {

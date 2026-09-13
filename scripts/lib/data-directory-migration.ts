@@ -29,7 +29,7 @@ export async function migrateDataDirectory(sourceInput: string, targetInput: str
   const before = await inventory(input.source)
   const staged = await mkdtemp(`${input.target}.migrating-`)
   try {
-    await cp(input.source, staged, { recursive: true, errorOnExist: true, force: false })
+    await cp(input.source, staged, { recursive: true, errorOnExist: false, force: false })
     assertSame(before, await inventory(staged), 'Copied bytes do not match source')
     const database = new DatabaseSync(join(staged, 'studio.sqlite'), { readOnly: true })
     try {

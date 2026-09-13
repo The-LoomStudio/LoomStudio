@@ -6,7 +6,6 @@ import type {
   PromptResourceCompositionCapabilities,
   PromptResourceKind,
   PromptResourceNode,
-  PromptSourceKind,
   RuntimeRequestContext,
   SettingMountSource,
 } from '@loom-studio/application-runtime'
@@ -19,6 +18,7 @@ import {
   readOptionalNumber,
   readOptionalString,
   readString,
+  readStringArray,
 } from '../../rpc-params.js'
 
 export async function handleWorkspacesRpc(
@@ -100,7 +100,7 @@ export async function handleWorkspacesRpc(
     case 'application.replaceSettingMounts':
       return await runtime.replaceSettingMounts({
         source: readSettingMountSource(isRecord(params) ? params.source : undefined, 'source'),
-        settingResourceIds: readRequiredStringArray(params, 'settingResourceIds'),
+        settingResourceIds: readStringArray(params, 'settingResourceIds'),
       }, context) as unknown as JsonValue
 
     case 'application.createPromptResourceAsset':
@@ -120,7 +120,7 @@ export async function handleWorkspacesRpc(
         label: readOptionalString(params, 'label'),
         meta: readOptionalString(params, 'meta'),
         enabled: readOptionalBoolean(params, 'enabled'),
-        orderList: isRecord(params) ? readStringArray(params.orderList, 'orderList') : undefined,
+        orderList: isRecord(params) ? readOptionalStringArrayValue(params.orderList, 'orderList') : undefined,
 
       }, context) as unknown as JsonValue
 
@@ -147,13 +147,6 @@ export async function handleWorkspacesRpc(
     default:
       return undefined
   }
-}
-
-function readRequiredStringArray(params: JsonValue | undefined, key: string): string[] {
-  if (!isRecord(params) || !Array.isArray(params[key]) || !params[key].every(item => typeof item === 'string')) {
-    throw new Error(`Expected string array param: ${key}`)
-  }
-  return params[key]
 }
 
 function readRequiredNumber(params: JsonValue | undefined, key: string): number {
@@ -215,7 +208,7 @@ function readPromptAssetPatches(params: JsonValue | undefined, key: string): Pro
       enabled: readOptionalBoolean(value, 'enabled'),
       label: readOptionalString(value, 'label'),
       meta: readOptionalString(value, 'meta'),
-      orderList: readStringArray(value.orderList, `${key}[${index}].orderList`),
+      orderList: readOptionalStringArrayValue(value.orderList, `${key}[${index}].orderList`),
     }
   })
 }
@@ -234,7 +227,7 @@ function readPromptResourceNodeValue(value: JsonValue | undefined, key: string):
     meta: typeof value.meta === 'string' ? value.meta : undefined,
     enabled: typeof value.enabled === 'boolean' ? value.enabled : undefined,
     configRows: readConfigRows(value.configRows, `${key}.configRows`),
-    orderList: readStringArray(value.orderList, `${key}.orderList`),
+    orderList: readOptionalStringArrayValue(value.orderList, `${key}.orderList`),
     capabilities: readPromptCapabilitiesValue(value.capabilities, `${key}.capabilities`),
     children: Array.isArray(value.children)
       ? value.children.map((child, index) => readPromptResourceNodeValue(child, `${key}.children[${index}]`))
@@ -270,7 +263,7 @@ function readConfigRows(value: JsonValue | undefined, key: string): Array<{ labe
   })
 }
 
-function readStringArray(value: JsonValue | undefined, key: string): string[] | undefined {
+function readOptionalStringArrayValue(value: JsonValue | undefined, key: string): string[] | undefined {
   if (value === undefined) return undefined
   if (!Array.isArray(value) || !value.every(item => typeof item === 'string')) throw new Error(`Expected string array: ${key}`)
   return value
@@ -305,15 +298,6 @@ function readPromptCapabilitiesValue(value: JsonValue | undefined, key: string):
   }
 
   return value as unknown as PromptResourceCompositionCapabilities
-}
-
-function isPromptSourceKind(value: JsonValue): value is PromptSourceKind {
-  return value === 'preset'
-    || value === 'settingLayer'
-    || value === 'narrativeChat'
-    || value === 'narrativeHistory'
-    || value === 'sessionHistory'
-    || value === 'runtime'
 }
 
 function isPromptProviderRole(value: JsonValue | undefined): value is PromptProviderRole {

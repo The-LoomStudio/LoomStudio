@@ -1,5 +1,5 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { readFileSync } from 'node:fs'
+import { writeJsonAtomicallySync } from './atomic-json.js'
 
 export type NetworkProxyMode = 'system' | 'direct' | 'manual'
 
@@ -58,10 +58,7 @@ function normalizeSettings(input: NetworkSettings): NetworkSettings {
 }
 
 function persistSettings(filename: string, settings: NetworkSettings): void {
-  mkdirSync(dirname(filename), { recursive: true })
-  const temporary = `${filename}.tmp`
-  writeFileSync(temporary, `${JSON.stringify(settings, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
-  renameSync(temporary, filename)
+  writeJsonAtomicallySync(filename, settings)
 }
 
 function toView(settings: NetworkSettings, systemProxyUrl: string | undefined): NetworkSettingsView {

@@ -9,7 +9,9 @@ import {
   isRecord,
   readOptionalNumber,
   readOptionalString,
+  readObject,
   readString,
+  readStringArray,
 } from '../../rpc-params.js'
 
 export async function handleTextTransformsRpc(
@@ -29,7 +31,7 @@ export async function handleTextTransformsRpc(
       return await runtime.upsertTextTransformRule({
         ruleId: readString(params, 'ruleId'),
         expectedVersion: readOptionalNumber(params, 'expectedVersion'),
-        rule: readRequiredRecord(params, 'rule') as unknown as TextTransformRuleDraft,
+        rule: readObject(params, 'rule') as unknown as TextTransformRuleDraft,
       }, context) as unknown as JsonValue
 
     case 'application.deleteTextTransformRule':
@@ -48,7 +50,7 @@ export async function handleTextTransformsRpc(
       return await runtime.upsertTextExtractor({
         extractorId: readString(params, 'extractorId'),
         expectedVersion: readOptionalNumber(params, 'expectedVersion'),
-        extractor: readRequiredRecord(params, 'extractor') as unknown as TextExtractorDraft,
+        extractor: readObject(params, 'extractor') as unknown as TextExtractorDraft,
       }, context) as unknown as JsonValue
 
     case 'application.deleteTextExtractor':
@@ -70,8 +72,8 @@ export async function handleTextTransformsRpc(
         phase: readTextTransformPhase(params, 'phase'),
         consumerAgentSessionId: readOptionalString(params, 'consumerAgentSessionId'),
         expectedVersion: readOptionalNumber(params, 'expectedVersion'),
-        disabledRuleIds: readRequiredStringArray(params, 'disabledRuleIds'),
-        orderedRuleIds: readRequiredStringArray(params, 'orderedRuleIds'),
+        disabledRuleIds: readStringArray(params, 'disabledRuleIds'),
+        orderedRuleIds: readStringArray(params, 'orderedRuleIds'),
       }, context) as unknown as JsonValue
 
     case 'application.deleteTextPipelineOverride':
@@ -113,21 +115,8 @@ export async function handleTextTransformsRpc(
   }
 }
 
-function readRequiredRecord(value: JsonValue | undefined, key: string): Record<string, JsonValue> {
-  if (!isRecord(value) || !isRecord(value[key])) throw new Error(`Expected object: ${key}`)
-  return value[key]
-}
-
-function readRequiredStringArray(value: JsonValue | undefined, key: string): string[] {
-  const candidate = isRecord(value) ? value[key] : undefined
-  if (!Array.isArray(candidate) || candidate.some(item => typeof item !== 'string')) {
-    throw new Error(`Expected string array: ${key}`)
-  }
-  return candidate as string[]
-}
-
 function readHistorySource(value: JsonValue | undefined) {
-  const source = readRequiredRecord(value, 'source')
+  const source = readObject(value, 'source')
   if (source.kind === 'narrative') {
     if (typeof source.timelineId !== 'string' || typeof source.branchId !== 'string') {
       throw new Error('Narrative History source requires timelineId and branchId')

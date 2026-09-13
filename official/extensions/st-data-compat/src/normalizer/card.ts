@@ -123,7 +123,7 @@ export function convertSillyTavernCard(
   if (data.tags && Array.isArray(data.tags)) metadata.stTags = data.tags
 
   const artifact: CardBundleArtifact = {
-    schemaVersion: 2,
+    schemaVersion: 4,
     artifactId,
     displayName: name,
     description: fullDescription || undefined,

@@ -213,7 +213,7 @@ function tableCount(engine: ReturnType<typeof createSqliteDataEngine>, table: st
 
 function createArtifact(): CardBundleArtifact {
   return {
-    schemaVersion: 2,
+    schemaVersion: 4,
     artifactId: 'atomic-card-bundle',
     displayName: 'Atomic Card Bundle',
     card: { name: 'Atomic Import' },
@@ -229,7 +229,7 @@ function createArtifact(): CardBundleArtifact {
 
 function createStatefulArtifact(): CardBundleArtifact {
   return {
-    schemaVersion: 2,
+    schemaVersion: 4,
     artifactId: 'atomic-state-card',
     displayName: 'Atomic State Card',
     card: { name: 'Atomic State' },

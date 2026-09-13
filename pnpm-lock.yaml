@@ -68,9 +68,6 @@ importers:
 
   apps/playground:
     dependencies:
-      '@loom-studio/application-runtime':
-        specifier: workspace:*
-        version: link:../../packages/application-runtime
       '@loom-studio/diagnostics':
         specifier: workspace:*
         version: link:../../packages/diagnostics
@@ -86,15 +83,9 @@ importers:
       '@loom-studio/loom-runner':
         specifier: workspace:*
         version: link:../../packages/loom-runner
-      '@loom-studio/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
       '@loom-studio/trace-audit':
         specifier: workspace:*
         version: link:../../packages/trace-audit
-      '@loom-studio/transport':
-        specifier: workspace:*
-        version: link:../../packages/transport
 
   apps/studio-client:
     dependencies:
@@ -131,9 +122,6 @@ importers:
       '@dnd-kit/core':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@dnd-kit/sortable':
-        specifier: ^10.0.0
-        version: 10.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)
       '@dnd-kit/utilities':
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.8)
@@ -167,12 +155,6 @@ importers:
       '@vitejs/plugin-react':
         specifier: 6.1.1
         version: 6.1.1(vite@8.2.2(@types/node@22.20.1)(esbuild@0.28.0)(sass@1.101.0)(tsx@4.23.13)(yaml@2.9.0))
-      clsx:
-        specifier: 2.1.1
-        version: 2.1.1
-      diff:
-        specifier: ^9.0.0
-        version: 9.0.0
       lucide-react:
         specifier: ^1.17.0
         version: 1.17.0(react@19.2.8)
@@ -194,9 +176,6 @@ importers:
       sonner:
         specifier: ^2.0.7
         version: 2.0.7(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      typescript:
-        specifier: 6.0.3
-        version: 6.0.3
       vite:
         specifier: 8.2.2
         version: 8.2.2(@types/node@22.20.1)(esbuild@0.28.0)(sass@1.101.0)(tsx@4.23.13)(yaml@2.9.0)
@@ -213,6 +192,9 @@ importers:
       sass:
         specifier: ^1.101.0
         version: 1.101.0
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
 
   apps/studio-server:
     dependencies:
@@ -359,9 +341,6 @@ importers:
       '@loom-studio/state-store':
         specifier: workspace:*
         version: link:../state-store
-      '@loom/core':
-        specifier: workspace:*
-        version: link:../core
       undici:
         specifier: ^7.16.0
         version: 7.29.0
@@ -652,12 +631,6 @@ packages:
     peerDependencies:
       react: '>=16.8.0'
       react-dom: '>=16.8.0'
-
-  '@dnd-kit/sortable@10.0.0':
-    resolution: {integrity: sha512-+xqhmIIzvAYMGfBYYnbKuNicfSsk4RksY2XdmJhT+HAC01nix6fHCztU68jooFiMUB01Ky3F0FyOvhG/BZrWkg==}
-    peerDependencies:
-      '@dnd-kit/core': ^6.3.0
-      react: '>=16.8.0'
 
   '@dnd-kit/utilities@3.2.2':
     resolution: {integrity: sha512-+MKAJEOfaBe5SmV6t34p80MMKhjvUz0vRrvVJbPT0WElzaOJ/1xs+D+KDv+tD/NE5ujfrChEcshd4fLn0wpiqg==}
@@ -1741,10 +1714,6 @@ packages:
   devlop@1.1.0:
     resolution: {integrity: sha512-RWmIqhcFf1lRYBvNmr7qTNuyCt/7/ns2jbpp1+PalgE/rDQcBT0fioSMUpJ93irlUhC5hrg4cYqe6U+0ImW0rA==}
 
-  diff@9.0.0:
-    resolution: {integrity: sha512-svtcdpS8CgJyqAjEQIXdb3OjhFVVYjzGAPO8WGCmRbrml64SPw/jJD4GoE98aR7r25A0XcgrK3F02yw9R/vhQw==}
-    engines: {node: '>=0.3.1'}
-
   es-module-lexer@2.1.0:
     resolution: {integrity: sha512-n27zTYMjYu1aj4MjCWzSP7G9r75utsaoc8m61weK+W8JMBGGQybd43GstCXZ3WNmSFtGT9wi59qQTW6mhTR5LQ==}
 
@@ -2803,13 +2772,6 @@ snapshots:
       react-dom: 19.2.8(react@19.2.8)
       tslib: 2.8.1
 
-  '@dnd-kit/sortable@10.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(react@19.2.8)':
-    dependencies:
-      '@dnd-kit/core': 6.3.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@dnd-kit/utilities': 3.2.2(react@19.2.8)
-      react: 19.2.8
-      tslib: 2.8.1
-
   '@dnd-kit/utilities@3.2.2(react@19.2.8)':
     dependencies:
       react: 19.2.8
@@ -3705,8 +3667,6 @@ snapshots:
   devlop@1.1.0:
     dependencies:
       dequal: 2.0.3
-
-  diff@9.0.0: {}
 
   es-module-lexer@2.1.0: {}
 

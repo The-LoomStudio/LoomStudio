@@ -26,7 +26,7 @@ type UseNarrativeRuntimeInput = {
   selectedAgentProfileId?: string
   onSelectAgentProfile(id: string): void
   runAgentAction: (action: () => Promise<void>) => Promise<void>
-  runAction: (action: () => Promise<void>) => Promise<void>
+  runAction: (action: () => Promise<void>) => Promise<boolean>
   runLatestAction: (action: (context: LatestOperationContext) => Promise<void>) => Promise<void>
 }
 
@@ -40,6 +40,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
   const [allTimelines, setAllTimelines] = useState<NarrativeTimeline[]>([])
   const [agentSession, setAgentSession] = useState<AgentSession>()
   const [agentSessions, setAgentSessions] = useState<AgentSession[]>([])
+  const [allAgentSessions, setAllAgentSessions] = useState<AgentSession[]>([])
   const [agentSessionReady, setAgentSessionReady] = useState(true)
   const [agentSessionLoading, setAgentSessionLoading] = useState(false)
   const [agentMessages, setAgentTranscriptEntries] = useState<AgentTranscriptEntry[]>([])
@@ -455,6 +456,8 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     setAgentSession(session)
     setAgentSessions(current => [session, ...current.filter(item => item.id !== session.id)]
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.id.localeCompare(a.id)))
+    setAllAgentSessions(current => [session, ...current.filter(item => item.id !== session.id)]
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.id.localeCompare(a.id)))
   }
 
   function markAgentSessionReady(ready: boolean) {
@@ -495,6 +498,17 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     return sessions
   }
 
+  async function listAllAgentSessions() {
+    const sessions: AgentSession[] = []
+    let cursor: string | undefined
+    do {
+      const page = await input.api.agentSessions.list({ cursor, limit: 100 })
+      sessions.push(...page.sessions)
+      cursor = page.nextCursor
+    } while (cursor)
+    return sessions
+  }
+
   async function restoreAgentSession(timelineId: string | undefined, selection: number, selectedId?: string) {
     const sessions = await listAgentSessions(timelineId)
     if (selection !== agentSelectionRef.current) return
@@ -520,6 +534,12 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
         if (selection === agentSelectionRef.current) setAgentSessionLoading(false)
       }
     })
+  }
+
+  async function refreshAllAgentSessions() {
+    const sessions = await listAllAgentSessions()
+    setAllAgentSessions(sessions)
+    return sessions
   }
 
   async function activateAgentSession(sessionOrId: AgentSession | string) {
@@ -555,8 +575,10 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
   }
 
   async function deleteTimeline(timelineId: string) {
+    let deleted = false
     await input.runAction(async () => {
       await input.api.narratives.delete(timelineId)
+      deleted = true
       if (timeline?.id === timelineId) {
         resetToDraftTimeline()
       }
@@ -565,6 +587,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
         await refreshCardTimelines(input.selectedCardId)
       }
     })
+    return deleted
   }
 
   async function renameTimeline(timelineId: string, title: string) {
@@ -584,13 +607,17 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
   }
 
   async function deleteAgentSession(agentSessionId: string) {
+    let deleted = false
     await input.runAgentAction(async () => {
       await input.api.agentSessions.delete(agentSessionId)
       setAgentSessions(current => current.filter(item => item.id !== agentSessionId))
+      setAllAgentSessions(current => current.filter(item => item.id !== agentSessionId))
       if (agentSessionRef.current?.id === agentSessionId) {
         resetAgentSession()
       }
+      deleted = true
     })
+    return deleted
   }
 
   async function renameAgentSession(agentSessionId: string, title: string) {
@@ -602,6 +629,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
         publishAgentSession(result.session)
       } else {
         setAgentSessions(current => current.map(item => item.id === agentSessionId ? result.session : item))
+        setAllAgentSessions(current => current.map(item => item.id === agentSessionId ? result.session : item))
       }
     })
     return updated
@@ -613,10 +641,12 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     agentMessages,
     agentSession,
     agentSessions,
+    allAgentSessions,
     agentSessionReady,
     agentSessionLoading,
     newAgentSession: resetAgentSession,
     refreshAgentSessions: () => refreshAgentSessions(timeline?.id),
+    refreshAllAgentSessions,
     allTimelines,
     branch,
     branches,

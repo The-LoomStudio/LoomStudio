@@ -56,6 +56,37 @@ export function compilePromptDataModel(input: {
   
   const hasMessageNodes = sourceNodes.some(node => node.kind === 'message')
 
+  function collectVirtualFragments(node: SourceNode, inheritedRole?: PromptProviderRole): PromptFragment[] {
+    const anchorId = node.capabilities?.targetAnchorId ?? node.id
+    const fragments: PromptFragment[] = []
+    const appendMounts = (mounts: PromptContribution[]) => {
+      mounts
+        .filter(m => m.content && m.content.trim().length > 0)
+        .sort((a, b) => (a.capabilities.localDepth ?? Number.MAX_SAFE_INTEGER) - (b.capabilities.localDepth ?? Number.MAX_SAFE_INTEGER))
+        .forEach(m => fragments.push({
+          id: m.id,
+          source: m.sourceRef,
+          content: m.content,
+          role: inheritedRole ?? m.capabilities.roleHint ?? 'system',
+          targetAnchorId: node.id,
+          localDepth: m.capabilities.localDepth,
+        }))
+    }
+    appendMounts(activeContributions.filter(c => c.capabilities.targetAnchorId === anchorId))
+    if (anchorId === '@chat.session') {
+      const hasExplicitAnchor = (id: string) => sourceNodes.some(
+        n => n.kind === 'virtual' && (n.capabilities?.targetAnchorId === id || n.id === id),
+      )
+      if (!hasExplicitAnchor('@setting.lower')) {
+        appendMounts(activeContributions.filter(c => c.capabilities.targetAnchorId === '@setting.lower'))
+      }
+      if (!hasExplicitAnchor('@chat.session.post')) {
+        appendMounts(activeContributions.filter(c => c.capabilities.targetAnchorId === '@chat.session.post'))
+      }
+    }
+    return fragments
+  }
+
   if (hasMessageNodes) {
     const messages: CompiledMessage[] = []
 
@@ -89,61 +120,7 @@ export function compilePromptDataModel(input: {
           })
         }
       } else if (node.kind === 'virtual') {
-        const anchorId = node.capabilities?.targetAnchorId ?? node.id
-        const mounts = activeContributions.filter(c => c.capabilities.targetAnchorId === anchorId)
-        mounts.sort((a, b) => (a.capabilities.localDepth ?? Number.MAX_SAFE_INTEGER) - (b.capabilities.localDepth ?? Number.MAX_SAFE_INTEGER))
-        for (const m of mounts) {
-          if (m.content && m.content.trim().length > 0) {
-            fragments.push({
-              id: m.id,
-              source: m.sourceRef,
-              content: m.content,
-              role: inheritedRole,
-              targetAnchorId: node.id,
-              localDepth: m.capabilities.localDepth,
-            })
-          }
-        }
-        if (anchorId === '@chat.session') {
-          const hasExplicitLowerAnchor = sourceNodes.some(
-            n => n.kind === 'virtual' && (n.capabilities?.targetAnchorId === '@setting.lower' || n.id === '@setting.lower')
-          )
-          if (!hasExplicitLowerAnchor) {
-            const fallbackLowerMounts = activeContributions.filter(c => c.capabilities.targetAnchorId === '@setting.lower')
-            fallbackLowerMounts.sort((a, b) => (a.capabilities.localDepth ?? Number.MAX_SAFE_INTEGER) - (b.capabilities.localDepth ?? Number.MAX_SAFE_INTEGER))
-            for (const m of fallbackLowerMounts) {
-              if (m.content && m.content.trim().length > 0) {
-                fragments.push({
-                  id: m.id,
-                  source: m.sourceRef,
-                  content: m.content,
-                  role: inheritedRole,
-                  targetAnchorId: node.id,
-                  localDepth: m.capabilities.localDepth,
-                })
-              }
-            }
-          }
-          const hasExplicitPostAnchor = sourceNodes.some(
-            n => n.kind === 'virtual' && (n.capabilities?.targetAnchorId === '@chat.session.post' || n.id === '@chat.session.post')
-          )
-          if (!hasExplicitPostAnchor) {
-            const fallbackMounts = activeContributions.filter(c => c.capabilities.targetAnchorId === '@chat.session.post')
-            fallbackMounts.sort((a, b) => (a.capabilities.localDepth ?? Number.MAX_SAFE_INTEGER) - (b.capabilities.localDepth ?? Number.MAX_SAFE_INTEGER))
-            for (const m of fallbackMounts) {
-              if (m.content && m.content.trim().length > 0) {
-                fragments.push({
-                  id: m.id,
-                  source: m.sourceRef,
-                  content: m.content,
-                  role: inheritedRole,
-                  targetAnchorId: node.id,
-                  localDepth: m.capabilities.localDepth,
-                })
-              }
-            }
-          }
-        }
+        fragments.push(...collectVirtualFragments(node, inheritedRole))
       }
 
       const children = childrenByParent.get(node.id) ?? []
@@ -216,61 +193,7 @@ export function compilePromptDataModel(input: {
           })
         }
       } else if (child.kind === 'virtual') {
-        const anchorId = child.capabilities?.targetAnchorId ?? child.id
-        const mounts = activeContributions.filter(c => c.capabilities.targetAnchorId === anchorId)
-        mounts.sort((a, b) => (a.capabilities.localDepth ?? Number.MAX_SAFE_INTEGER) - (b.capabilities.localDepth ?? Number.MAX_SAFE_INTEGER))
-        for (const m of mounts) {
-          if (m.content && m.content.trim().length > 0) {
-            fragments.push({
-              id: m.id,
-              source: m.sourceRef,
-              content: m.content,
-              role: m.capabilities.roleHint ?? 'system',
-              targetAnchorId: child.id,
-              localDepth: m.capabilities.localDepth,
-            })
-          }
-        }
-        if (anchorId === '@chat.session') {
-          const hasExplicitLowerAnchor = sourceNodes.some(
-            n => n.kind === 'virtual' && (n.capabilities?.targetAnchorId === '@setting.lower' || n.id === '@setting.lower')
-          )
-          if (!hasExplicitLowerAnchor) {
-            const fallbackLowerMounts = activeContributions.filter(c => c.capabilities.targetAnchorId === '@setting.lower')
-            fallbackLowerMounts.sort((a, b) => (a.capabilities.localDepth ?? Number.MAX_SAFE_INTEGER) - (b.capabilities.localDepth ?? Number.MAX_SAFE_INTEGER))
-            for (const m of fallbackLowerMounts) {
-              if (m.content && m.content.trim().length > 0) {
-                fragments.push({
-                  id: m.id,
-                  source: m.sourceRef,
-                  content: m.content,
-                  role: m.capabilities.roleHint ?? 'system',
-                  targetAnchorId: child.id,
-                  localDepth: m.capabilities.localDepth,
-                })
-              }
-            }
-          }
-          const hasExplicitPostAnchor = sourceNodes.some(
-            n => n.kind === 'virtual' && (n.capabilities?.targetAnchorId === '@chat.session.post' || n.id === '@chat.session.post')
-          )
-          if (!hasExplicitPostAnchor) {
-            const fallbackMounts = activeContributions.filter(c => c.capabilities.targetAnchorId === '@chat.session.post')
-            fallbackMounts.sort((a, b) => (a.capabilities.localDepth ?? Number.MAX_SAFE_INTEGER) - (b.capabilities.localDepth ?? Number.MAX_SAFE_INTEGER))
-            for (const m of fallbackMounts) {
-              if (m.content && m.content.trim().length > 0) {
-                fragments.push({
-                  id: m.id,
-                  source: m.sourceRef,
-                  content: m.content,
-                  role: m.capabilities.roleHint ?? 'system',
-                  targetAnchorId: child.id,
-                  localDepth: m.capabilities.localDepth,
-                })
-              }
-            }
-          }
-        }
+        fragments.push(...collectVirtualFragments(child))
       }
     }
   }

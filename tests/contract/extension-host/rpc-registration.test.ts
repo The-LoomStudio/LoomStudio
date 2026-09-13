@@ -5,11 +5,15 @@ import { createExtensionFixture, createExtensionHostHarness, manifest } from './
 
 describe('extension host rpc registration contract', () => {
   it('activates example.echo and serves extension rpc', async () => {
-    const { kernel, extensionHost } = createExtensionHostHarness()
+    const { kernel, extensionHost } = createExtensionHostHarness({
+      registerStateContribution: () => ({ dispose() {} }),
+      registerMacroProvider: () => ({ dispose() {} }),
+    })
     await kernel.start()
     await extensionHost.discover(join(process.cwd(), 'tests/fixtures/extensions/echo'))
     const summary = await extensionHost.activate('example.echo', 'server')
 
+    expect(summary.state, JSON.stringify(extensionHost.diagnostics('example.echo', 'server'))).toBe('active')
     const result = await kernel.callRpc<{ packageId: string; moduleId: string; echo: JsonValue }>('example.echo.echo', { message: 'hello' })
 
     expect(summary.state).toBe('active')
@@ -18,10 +22,14 @@ describe('extension host rpc registration contract', () => {
   })
 
   it('reports extension rpc ownership through system.introspect', async () => {
-    const { kernel, extensionHost } = createExtensionHostHarness()
+    const { kernel, extensionHost } = createExtensionHostHarness({
+      registerStateContribution: () => ({ dispose() {} }),
+      registerMacroProvider: () => ({ dispose() {} }),
+    })
     await kernel.start()
     await extensionHost.discover(join(process.cwd(), 'tests/fixtures/extensions/echo'))
-    await extensionHost.activate('example.echo', 'server')
+    const summary = await extensionHost.activate('example.echo', 'server')
+    expect(summary.state, JSON.stringify(extensionHost.diagnostics('example.echo', 'server'))).toBe('active')
 
     const result = await kernel.callRpc<{ methods: Array<{ name: string; owner: string }> }>('system.introspect')
 

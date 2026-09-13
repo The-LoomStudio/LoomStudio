@@ -1,14 +1,14 @@
 import { createStudioServer } from '../../../apps/studio-server/src/main.js'
 import { resolveLoomStudioLocalPaths } from '../../../apps/studio-server/src/platform/local-paths.js'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createMemorySecretBackend } from '../../../packages/secret-store/src/index.js'
 
 export async function withStudioServer<T>(run: (port: number, dir: string) => Promise<T>): Promise<T> {
-  const dir = await mkdtemp(join(tmpdir(), 'loom-server-'))
+  const dir = await realpath(await mkdtemp(join(tmpdir(), 'loom-server-')))
   const server = createStudioServer({
-    localPaths: resolveLoomStudioLocalPaths({ home: dir }),
+    localPaths: resolveLoomStudioLocalPaths({ home: dir, environment: {} }),
     secretBackend: createMemorySecretBackend(),
   })
 

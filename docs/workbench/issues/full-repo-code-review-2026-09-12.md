@@ -1,6 +1,6 @@
 # LoomStudio 全仓代码审阅（2026-09-12）
 
-> **状态**：Open Issues
+> **状态**：Partially Resolved
 > **审阅基线**：`main` / `e7683f1cac7bc8d9a59de724f753a765942bd3e7` + 当前未提交工作树
 > **范围**：Studio Client、Studio Server、Application Runtime、workspace manifests 与开发工具
 > **原则**：只记录有当前调用链或明确依赖证据的问题；不把防御性偏好、文件长度或测试数量本身当作缺陷
@@ -11,15 +11,15 @@
 
 | 编号 | 级别 | 结论 |
 | --- | --- | --- |
-| SEP-001 | P2 | 批量删除 Session 的部分失败会被本地状态伪装成成功 |
-| SEP-002 | P2 | Text Transform 的 Override 顺序在投影阶段被二次排序破坏 |
-| SEP-003 | P2 | Agent Narrative 工具可用节点 ID 跨 Branch 改写历史 |
-| SEP-004 | P2 | Text Transform 过滤结果可能被原始消息回退重新注入 |
-| SEP-005 | P3 | `application-runtime` 保留当前未使用的 `@loom/core` 运行时依赖 |
-| SEP-006 | P3 | Client 清单包含至少三项静态未使用依赖候选 |
-| SEP-007 | P3 | `playground` 声明了多项未被入口消费的 workspace 依赖 |
+| SEP-001 | P2 | 已修复：批量删除 Session 的部分失败会被本地状态伪装成成功 |
+| SEP-002 | P2 | 已验证：Text Transform 的 Override 顺序保留调用方顺序 |
+| SEP-003 | P2 | 已修复：Agent Narrative 工具可用节点 ID 跨 Branch 改写历史 |
+| SEP-004 | P2 | 已修复：Text Transform 过滤结果可能被原始消息回退重新注入 |
+| SEP-005 | P3 | 已修复：`application-runtime` 保留当前未使用的 `@loom/core` 运行时依赖 |
+| SEP-006 | P3 | 部分修复：Client 清单包含至少三项静态未使用依赖候选 |
+| SEP-007 | P3 | 已修复：`playground` 声明了多项未被入口消费的 workspace 依赖 |
 | SEP-008 | 优化 | Session 列表由多个状态源重复维护 |
-| SEP-009 | 优化 | Provider 刷新 API 名称与实际刷新范围不一致 |
+| SEP-009 | 优化 | 已修复：Provider 刷新 API 名称与实际刷新范围不一致 |
 
 ## 已确认问题
 
@@ -65,6 +65,8 @@
 
 最小修复方向：按入口和动态 import 复核后删去没有调用者的声明；若 playground 计划作为聚合实验入口，应拆成明确的示例入口，而不是把所有运行时包放进单一 manifest。
 
+已完成：删除 `@loom-studio/shared`、`@loom-studio/transport`、`@loom-studio/application-runtime` 及对应 project references；`playground` 类型检查和入口启动烟测通过。
+
 ## 精简候选
 
 ### SEP-008 · Session 列表由多个状态源重复维护
@@ -76,6 +78,8 @@
 ### SEP-009 · Provider 刷新 API 名称与实际刷新范围不一致
 
 `apps/studio-client/src/features/provider-settings/model/use-provider-settings.ts:46-66` 中 `refreshAiProviders` 实际调用完整的 `refreshAiGatewaySettings`，会连带刷新多个设置域，与 `refreshProviderSettings` 的职责重叠。建议按实际刷新范围拆分或重命名，减少调用者误用和重复请求。
+
+已完成：`refreshAiProviders` 现在只刷新 AI Gateway provider 列表，并删除无独立调用者的重复聚合函数；完整设置刷新仍由 `refreshProviderSettings` 负责。
 
 ## 去重与不纳入
 
@@ -89,8 +93,10 @@
 - 只读检查：项目结构、现有 Issue 台账、workspace manifests、Vitest 配置、前后端相关调用链。
 - 子代理审查：Client 与 Server/Runtime 分域静态审查，均未修改文件。
 - 依赖扫描：对 `apps/`、`packages/`、`official/extensions/` 的 TypeScript/JavaScript import 与 manifest 做候选比对。
-- 未运行全量 build、lint 或 test；本文件是代码审阅 issue，不把未执行的检查描述为通过。
+- 初审阶段未运行全量 build、lint 或 test；本文件不把未执行的检查描述为通过。
 - 工作区存在大量哥哥未提交的修改，本轮未覆盖、回滚或格式化这些文件。
+
+实施复核：Client 与 Application Runtime 定向 typecheck、相关文件 ESLint 和 `git diff --check` 通过；Extension storage lifecycle 与 RPC registration 测试 8/8 通过；Playground 类型检查、入口启动烟测和文档链接检查通过。Client 全量测试仍有 4 个未触碰的 `studio-layout-store` 既有契约失败，未归因于本轮改动。
 
 ## 可执行实施方案
 
@@ -130,13 +136,13 @@
 
 ### Task List
 
-- [ ] 修复 Agent 跨 Branch 写入边界。
-- [ ] 修复 Transform 删除/置空结果被原始消息回退的问题。
-- [ ] 保留用户指定的 Transform Override 顺序。
-- [ ] 修复批量删除的部分失败状态表达。
-- [ ] 复核并清理确认无调用者的依赖。
+- [x] 修复 Agent 跨 Branch 写入边界；`agents-runtime.ts` 在编辑前校验当前 branch 的节点归属。
+- [x] 修复 Transform 删除/置空结果被原始消息回退的问题；缺少投影内容时不再回退原始消息。
+- [x] 保留用户指定的 Transform Override 顺序；现有顺序覆盖用例通过。
+- [x] 修复批量删除的部分失败状态表达；客户端只清理成功项并保留失败选择。
+- [x] 复核并清理确认无调用者的依赖；已清理 Client `@dnd-kit/sortable`、`clsx`、`diff`，迁移 `typescript`，移除 Application Runtime 的 `@loom/core`，并删除 Playground 三项无调用者的 workspace 依赖。
 - [ ] 在行为等价前不合并 Session 或 Provider 状态源。
-- [ ] 将每项验证结果和环境阻塞分别记录。
+- [x] 将已完成验证结果和环境阻塞分别记录；全仓测试中的既有失败、Node 版本不匹配和媒体测试默认超时未冒充为本次回归。
 
 ### 停止条件
 

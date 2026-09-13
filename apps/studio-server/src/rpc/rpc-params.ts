@@ -38,6 +38,22 @@ export function readNumber(params: JsonValue | undefined, key: string): number {
   return params[key]
 }
 
+export function readObject(params: JsonValue | undefined, key: string): JsonObject {
+  if (!isRecord(params) || !isRecord(params[key])) {
+    throw new Error(`Expected object param: ${key}`)
+  }
+
+  return params[key]
+}
+
+export function readStringArray(params: JsonValue | undefined, key: string): string[] {
+  if (!isRecord(params) || !Array.isArray(params[key]) || !params[key].every(item => typeof item === 'string')) {
+    throw new Error(`Expected string array param: ${key}`)
+  }
+
+  return params[key]
+}
+
 export function readOptionalNumber(params: JsonValue | undefined, key: string): number | undefined {
   if (!isRecord(params) || params[key] === undefined) return undefined
   if (typeof params[key] !== 'number') {
@@ -83,4 +99,22 @@ export function readOptionalStringRecord(params: JsonValue | undefined, key: str
   }
 
   return Object.fromEntries(entries) as Record<string, string>
+}
+
+export function readOptionalStringArray(params: JsonValue | undefined, key: string): string[] | undefined {
+  if (!isRecord(params) || params[key] === undefined) return undefined
+  const value = params[key]
+  if (!Array.isArray(value) || !value.every(item => typeof item === 'string')) {
+    throw new Error(`Expected optional string array param: ${key}`)
+  }
+  return value
+}
+
+export function readOptionalBooleanRecord(params: JsonValue | undefined, key: string): Record<string, boolean> | undefined {
+  if (!isRecord(params) || params[key] === undefined) return undefined
+  const value = params[key]
+  if (!isRecord(value) || !Object.values(value).every(item => typeof item === 'boolean')) {
+    throw new Error(`Expected optional boolean record param: ${key}`)
+  }
+  return value as Record<string, boolean>
 }

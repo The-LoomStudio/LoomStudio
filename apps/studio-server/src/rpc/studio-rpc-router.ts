@@ -8,6 +8,7 @@ import { callLogsRpc } from './handlers/logs-rpc.js'
 import type { NetworkSettingsStore } from '../platform/network-settings.js'
 import { callSettingsRpc } from './handlers/settings-rpc.js'
 import type { PromptResourceConverter } from '../extensions/import-conversion.js'
+import { readOptionalBoolean } from './rpc-params.js'
 
 type RpcCallContext = {
   clientId: string
@@ -116,12 +117,6 @@ export function createStudioRpcRouter(services: {
 function readRpcNamespace(method: string): string {
   const separatorIndex = method.indexOf('.')
   return separatorIndex < 0 ? method : method.slice(0, separatorIndex)
-}
-
-function readOptionalBoolean(value: JsonValue | undefined, key: string): boolean | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
-  const item = value[key]
-  return typeof item === 'boolean' ? item : undefined
 }
 
 function readRequiredString(value: JsonValue | undefined, key: string, nestedKey?: string): string {

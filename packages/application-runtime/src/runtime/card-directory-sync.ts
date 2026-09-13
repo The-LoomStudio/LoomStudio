@@ -174,7 +174,7 @@ export function createCardDirectoryRuntimeMethods(ctx: ApplicationRuntimeContext
             for (const definition of current.definitions) {
               const template = templates.get(definition.id)!
               if (equal(oldTemplates.get(definition.id), template)) continue
-              const { id: _id, ...draft } = template
+              const draft = omitField(template, 'id')
               await writeDocument(documents, { id: definition.id, type: types.stateDefinition, expectedVersion: definition.version,
                 content: { ...draft, kind: 'timeline-template', createdAt: definition.content.createdAt, updatedAt: timestamp } })
             }
@@ -282,7 +282,7 @@ function updatePromptTree(tx: PromptResourceTransaction, initial: PromptResource
     if (value.parentId && next.has(value.parentId) && !next.has(id)) mutate([{ kind: 'node.delete', nodeId: id }])
   }
   for (const [id, value] of next) {
-    const { children: _children, ...node } = value.node
+    const node = omitField(value.node, 'children')
     let position = flatten(resource.rootNode).get(id)
     if (!position) {
       mutate([{ kind: 'node.create', parentId: value.parentId!, node: { ...node, orderIndex: value.orderIndex } }])
@@ -299,4 +299,10 @@ function updatePromptTree(tx: PromptResourceTransaction, initial: PromptResource
     if (Object.keys(patch).length) mutate([{ kind: 'node.update', nodeId: id, patch }])
   }
   if (resource.label !== desired.label) mutate([{ kind: 'resource.update', patch: { label: desired.label } }])
+}
+
+function omitField<T extends Record<string, unknown>, K extends keyof T>(value: T, key: K): Omit<T, K> {
+  const result = { ...value } as Partial<T>
+  delete result[key]
+  return result as Omit<T, K>
 }

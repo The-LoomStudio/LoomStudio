@@ -239,13 +239,6 @@ function compareRequestedOrder(
   return compareText(left.source.tool.id, right.source.tool.id)
 }
 
-function compareOptionalText(left: string | undefined, right: string | undefined): number {
-  if (left === undefined && right === undefined) return 0
-  if (left === undefined) return 1
-  if (right === undefined) return -1
-  return compareText(left, right)
-}
-
 function compareOptionalNumber(left: number | undefined, right: number | undefined): number {
   if (left === undefined && right === undefined) return 0
   return (left ?? Number.POSITIVE_INFINITY) - (right ?? Number.POSITIVE_INFINITY)

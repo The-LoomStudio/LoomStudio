@@ -4,7 +4,7 @@ import type { ContextAssetNode } from '../../../../entities/index.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
 import { tryWriteClipboardText } from '../../../../shared/browser/clipboard.js'
 import { Toggle } from '../../../../shared/ui/toggle/toggle.js'
-import { resolveContextAssetUri, resolveVirtualDisplayName } from '../../model/context-asset-tree.js'
+import { resolveContextAssetUri } from '../../model/context-asset-tree.js'
 import styles from './context-asset-detail-header.module.scss'
 
 type ContextAssetDetailHeaderProps = {

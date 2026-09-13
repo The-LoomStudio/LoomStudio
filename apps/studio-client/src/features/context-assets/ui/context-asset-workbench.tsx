@@ -1,4 +1,3 @@
-import { ChevronRight } from 'lucide-react'
 import { useState } from 'react'
 import type { ContextAssetNode } from '../../../entities/index.js'
 import type { Translator } from '../../../shared/i18n/index.js'

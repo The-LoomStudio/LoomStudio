@@ -26,7 +26,7 @@ export function yamlToObject(text: string, label = 'State YAML'): Record<string,
   try {
     parsed = YAML.parse(text)
   } catch (cause) {
-    throw new Error(`${label} 语法错误: ${cause instanceof Error ? cause.message : String(cause)}`)
+    throw new Error(`${label} 语法错误: ${cause instanceof Error ? cause.message : String(cause)}`, { cause })
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new Error(`${label} 必须是一个对象/映射结构`)
@@ -67,8 +67,8 @@ export function parseCardStateConfig(text: string): {
     throw new Error('Card State config stateTemplates must be an array')
   }
   const stateTemplates = Array.isArray(value.stateTemplates)
-    ? value.stateTemplates.map((tpl: any, index: number) => {
-        if (typeof tpl !== 'object' || tpl === null || typeof tpl.id !== 'string') {
+    ? value.stateTemplates.map((tpl, index) => {
+        if (!isRecord(tpl) || typeof tpl.id !== 'string') {
           throw new Error(`stateTemplates[${index}] must have a valid string id`)
         }
         if (typeof tpl.templateVersion !== 'number' || !Number.isInteger(tpl.templateVersion) || tpl.templateVersion < 1) {
@@ -151,8 +151,8 @@ export function parseCardStateConfig(text: string): {
   if (!Array.isArray(value.timelineStateBindings)) {
     throw new Error('Card State config timelineStateBindings must be an array')
   }
-  const normalizedBindings = value.timelineStateBindings.map((item: any, index: number) => {
-    if (typeof item !== 'object' || item === null || typeof item.path !== 'string' || item.path.length === 0) {
+  const normalizedBindings = value.timelineStateBindings.map((item, index) => {
+    if (!isRecord(item) || typeof item.path !== 'string' || item.path.length === 0) {
       throw new Error(`timelineStateBindings[${index}] must have a valid path`)
     }
     if (typeof item.templateId !== 'string' || item.templateId.length === 0) {

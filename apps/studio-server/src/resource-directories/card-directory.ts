@@ -243,7 +243,7 @@ export function createCardDirectoryService(options: {
         await options.applyCard(id, prepared.bundle.artifact, prepared.baseline.snapshot!, context)
       } catch (error) {
         try { await recoverApply(id) }
-        catch (recoveryError) { throw new AggregateError([error, recoveryError], 'Card Apply failed; recovery requires attention') }
+        catch (recoveryError) { throw new AggregateError([error, recoveryError], 'Card Apply failed; recovery requires attention', { cause: recoveryError }) }
         throw error
       }
       await recoverApply(id)
@@ -268,10 +268,12 @@ export function createCardDirectoryService(options: {
           let stagedExists = false
           try { stagedExists = (await fs.stat(stagedPath)).isDirectory() } catch (statError) { if (!isMissing(statError)) throw statError }
           if (stagedExists) {
-            try { await fs.lstat(source); throw new Error('A new directory conflicts with deletion rollback') } catch (statError) { if (!isMissing(statError)) throw statError }
+            let sourceReappeared = false
+            try { await fs.lstat(source); sourceReappeared = true } catch (statError) { if (!isMissing(statError)) throw statError }
+            if (sourceReappeared) throw new Error('A new directory conflicts with deletion rollback', { cause: error })
             await fs.rename(stagedPath, source)
           }
-        } catch (restoreError) { throw new AggregateError([error, restoreError], 'Card deletion failed; directory recovery required') }
+        } catch (restoreError) { throw new AggregateError([error, restoreError], 'Card deletion failed; directory recovery required', { cause: restoreError }) }
         await fs.rm(await safePath(root, marker))
         throw error
       }
@@ -378,8 +380,7 @@ export async function readCardDirectoryBinding(root: string, id: string): Promis
 
 export async function safePath(root: string, path: string) {
   validateBundlePath(path)
-  if (await fs.realpath(root) !== root) throw new Error('Data root must resolve to its configured directory')
-  let current = root
+  let current = await fs.realpath(root)
   for (const segment of path.split('/')) {
     current = join(current, segment)
     try {

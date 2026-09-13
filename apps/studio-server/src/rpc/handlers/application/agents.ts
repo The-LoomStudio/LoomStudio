@@ -12,7 +12,9 @@ import {
   readOptionalBoolean,
   readOptionalNumber,
   readOptionalObject,
+  readOptionalBooleanRecord,
   readOptionalString,
+  readOptionalStringRecord,
   readString,
 } from '../../rpc-params.js'
 
@@ -145,24 +147,6 @@ function readAgentToolDefinition(params: JsonValue | undefined): ToolDefinition 
   const definition = readOptionalObject(params, 'definition')
   if (!definition) throw new Error('Expected agent tool definition: definition')
   return definition as unknown as ToolDefinition
-}
-
-function readOptionalBooleanRecord(params: JsonValue | undefined, key: string): Record<string, boolean> | undefined {
-  if (!isRecord(params) || params[key] === undefined) return undefined
-  const value = params[key]
-  if (!isRecord(value) || !Object.values(value).every(item => typeof item === 'boolean')) {
-    throw new Error(`Expected optional boolean record param: ${key}`)
-  }
-  return value as Record<string, boolean>
-}
-
-function readOptionalStringRecord(params: JsonValue | undefined, key: string): Record<string, string> | undefined {
-  if (!isRecord(params) || params[key] === undefined) return undefined
-  const value = params[key]
-  if (!isRecord(value) || !Object.values(value).every(item => typeof item === 'string')) {
-    throw new Error(`Expected optional string record param: ${key}`)
-  }
-  return value as Record<string, string>
 }
 
 function readPresetToolMountInputs(params: JsonValue | undefined, key: string): PresetToolMountInput[] {

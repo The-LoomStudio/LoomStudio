@@ -49,7 +49,6 @@ export function MasterDetailWorkbench(props: MasterDetailWorkbenchProps) {
 
   const isNarrow = containerWidth > 0 && containerWidth < NARROW_BREAKPOINT
   const showDetailOnly = isNarrow && mobilePane === 'detail'
-  const showMasterOnly = isNarrow && !showDetailOnly
 
   const currentMasterWidth = typeof props.masterWidth === 'number'
     ? props.masterWidth

@@ -4,10 +4,10 @@ import type {
 } from '@loom-studio/application-runtime'
 import type { JsonValue } from '@loom-studio/shared'
 import {
-  isRecord,
   readOptionalNumber,
   readOptionalObject,
   readOptionalString,
+  readOptionalStringArray,
   readOptionalStringRecord,
   readString,
 } from '../../rpc-params.js'
@@ -106,15 +106,6 @@ export async function handleProvidersRpc(
     default:
       return undefined
   }
-}
-
-function readOptionalStringArray(params: JsonValue | undefined, key: string): string[] | undefined {
-  if (!isRecord(params) || params[key] === undefined) return undefined
-  const value = params[key]
-  if (!Array.isArray(value) || !value.every(item => typeof item === 'string')) {
-    throw new Error(`Expected optional string array param: ${key}`)
-  }
-  return value
 }
 
 function readRequiredStringRecord(params: JsonValue | undefined, key: string): Record<string, string> {

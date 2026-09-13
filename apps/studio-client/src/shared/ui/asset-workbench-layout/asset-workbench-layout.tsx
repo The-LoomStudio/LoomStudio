@@ -23,10 +23,7 @@ type AssetWorkbenchLayoutProps = {
 export function AssetWorkbenchLayout(props: AssetWorkbenchLayoutProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(0)
-  const [internalMobilePane, setInternalMobilePane] = useState<'explorer' | 'detail'>('explorer')
-
-  const mobilePane = props.mobilePane ?? internalMobilePane
-  const setMobilePane = props.onMobilePaneChange ?? setInternalMobilePane
+  const mobilePane = props.mobilePane ?? 'explorer'
 
   useEffect(() => {
     const el = containerRef.current

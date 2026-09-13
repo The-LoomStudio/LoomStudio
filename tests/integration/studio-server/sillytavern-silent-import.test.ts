@@ -210,7 +210,7 @@ describe('studio server SillyTavern silent import pipeline', () => {
         method: 'POST',
         headers: { 'content-type': 'image/png' },
         body: encodeCardPng(defaultCardPng, {
-          schemaVersion: 2, artifactId: 'native-card', displayName: 'Native card',
+          schemaVersion: 4, artifactId: 'native-card', displayName: 'Native card',
           card: { name: 'Native card' }, contextAssets: [],
         }),
       })

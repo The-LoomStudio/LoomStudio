@@ -690,6 +690,14 @@ export async function prepareAgentTurn(
           return result.value
         },
         editNode: async ({ nodeId, content }) => {
+          const branchPage = await narratives.getPage({
+            timelineId: narrativePage.timeline.id,
+            branchId: narrativePage.branch.id,
+            limit: 10_000,
+          })
+          if (!branchPage.nodes.some(node => node.id === nodeId)) {
+            throw new Error(`Narrative node ${nodeId} is not editable from branch ${narrativePage.branch.id}`)
+          }
           const result = await ctx.dataEngine.transact(
             narrativeWriteContext(requestContext, 'application.tool.editNarrative'),
             async dataTx => {

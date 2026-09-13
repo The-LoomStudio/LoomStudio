@@ -12,13 +12,11 @@ import { useContextAssets } from '../features/context-assets/model/use-context-a
 import { normalizeContextAssets } from '../features/context-assets/model/context-asset-normalization.js'
 import { findContextAssetNode } from '../features/context-assets/model/context-asset-tree.js'
 import { createActivationFacts, toggleActivationTag, type ActivationControlState, type ActivationTag } from '../features/prompt-build/model/activation-control.js'
-import { buildPromptBuildSteps } from '../features/prompt-build/model/build-prompt-build-steps.js'
 import { useProviderSettings } from '../features/provider-settings/model/use-provider-settings.js'
 import { useAgentProfiles } from '../features/agent-profiles/model/use-agent-profiles.js'
 import { useNarrativeRuntime } from '../features/narrative-runtime/model/use-narrative-runtime.js'
 import type { ContextAssetNode, PresetToolMount, PresetToolMountInput, PromptResource, PromptResourceArtifact, SettingMount, SettingMountSource } from '../entities/index.js'
-import { renderTemplateMacros, type MacroRenderContext } from '../features/state-variables/model/macro-renderer.js'
-import { readEmptyTimelineText } from './utils.js'
+import { useStudioDerivedValues } from './use-studio-derived-values.js'
 
 export type HistoryAssetTarget = {
   assetId: string
@@ -117,7 +115,14 @@ export function useStudioState(transportLogger: Logger) {
     selectedAgentProfileId: agentProfiles.selectedAgentProfileId,
     onSelectAgentProfile: agentProfiles.selectAgentProfile,
     runAgentAction: action => operations.run('agent-chat', action).then(() => undefined),
-    runAction: action => operations.run('session', action).then(() => undefined),
+    runAction: async action => {
+      let completed = false
+      await operations.run('session', async () => {
+        await action()
+        completed = true
+      })
+      return completed
+    },
     runLatestAction: action => operations.runLatest('session', action).then(() => undefined),
   })
 
@@ -175,7 +180,7 @@ export function useStudioState(transportLogger: Logger) {
       const selectedCardId = cards[0]?.id
 
       if (selectedCardId) cardsState.setSelectedCardId(selectedCardId)
-      await Promise.all([refreshPromptResourceLibrary(), refreshSettingMounts(), refreshPresetToolMounts()])
+      await Promise.all([refreshPromptResourceLibrary(), refreshSettingMounts(), refreshPresetToolMounts(), narrativeRuntime.refreshAllAgentSessions()])
       await providerSettings.refreshProviderSettings()
       await agentProfiles.refreshAgentProfiles()
       setNetworkSettings(await api.settings.getNetwork())
@@ -245,55 +250,33 @@ export function useStudioState(transportLogger: Logger) {
     refreshMacros()
   }
 
-  const macroContext = useMemo<MacroRenderContext>(() => ({
-    snapshot: macroPreview.key === macroKey ? macroPreview.inspection?.snapshot : undefined,
-    card: narrativeRuntime.timeline ? undefined : cardsState.selectedCardDetails ?? cardsState.selectedCard,
-  }), [macroPreview, macroKey, narrativeRuntime.timeline, cardsState.selectedCardDetails, cardsState.selectedCard])
-  const buildMacroInspection = [
-    narrativeRuntime.promptPreview?.macroInspection,
-    narrativeRuntime.lastRun?.macroInspection,
-  ].filter((inspection): inspection is MacroInspection => Boolean(inspection))
-    .sort((left, right) => right.capturedAt.localeCompare(left.capturedAt))[0]
-
-  // 派生计算
   const sessionBusy = operations.isPending('session')
-  const canSend = Boolean(((narrativeRuntime.timeline && narrativeRuntime.branch) || cardsState.selectedCardId) && agentProfiles.selectedAgentProfileId)
-    && narrativeRuntime.agentSessionReady
-    && !sessionBusy
-    && !operations.isPending('agent-chat')
-    && narrativeRuntime.input.trim().length > 0
-  const canPreviewPrompt = canSend
-  const canSendAgent = Boolean(selectedAgentProfile)
-    && narrativeRuntime.agentSessionReady
-    && narrativeRuntime.agentInput.trim().length > 0
-    && !operations.isPending('agent-chat')
-    && !sessionBusy
-  const emptyTimelineText = readEmptyTimelineText({ timeline: narrativeRuntime.timeline, branch: narrativeRuntime.branch }, t)
-  const cardOpeningEntry = cardsState.selectedCardDetails?.opening?.entries?.[0]?.content?.trim()
-  const rawOpeningContent = cardOpeningEntry && cardOpeningEntry.length > 0
-    ? cardOpeningEntry
-    : t('timeline.opening.placeholder')
-  const openingDraft = cardsState.selectedCardDetails ? {
-    content: cardOpeningEntry && cardOpeningEntry.length > 0
-      ? renderTemplateMacros(rawOpeningContent, macroContext)
-      : rawOpeningContent,
-    isPlaceholder: !cardOpeningEntry || cardOpeningEntry.length === 0,
-  } : undefined
   const promptMessages = narrativeRuntime.promptPreview?.messages
   const promptProjection = narrativeRuntime.promptPreview?.projection ?? narrativeRuntime.lastRun?.projection
   const promptBuildTrace = undefined
   const providerPayloadPreview = narrativeRuntime.promptPreview?.providerPayloadPreview
-  const promptBuildSteps = buildPromptBuildSteps({
-    card: cardsState.selectedCardDetails,
+  const derivedValues = useStudioDerivedValues({
+    t,
     timeline: narrativeRuntime.timeline,
     branch: narrativeRuntime.branch,
+    selectedCard: cardsState.selectedCardDetails,
+    selectedCardDetails: cardsState.selectedCardDetails,
     nodes: narrativeRuntime.nodes,
-    input: narrativeRuntime.input,
-    messages: promptMessages,
-    projection: promptProjection,
+    narrativeInput: narrativeRuntime.input,
+    promptMessages,
+    promptProjection,
     activationFacts,
-    promptBuildTrace,
-  }, t)
+    promptPreviewMacroInspection: narrativeRuntime.promptPreview?.macroInspection,
+    lastRunMacroInspection: narrativeRuntime.lastRun?.macroInspection,
+    sessionBusy,
+    agentSessionReady: narrativeRuntime.agentSessionReady,
+    agentInput: narrativeRuntime.agentInput,
+    selectedAgentProfile,
+    agentChatBusy: operations.isPending('agent-chat'),
+    macroPreview,
+    macroKey,
+    macroContextCard: cardsState.selectedCardDetails,
+  })
 
   function toggleRuntimeTag(tag: ActivationTag) {
     setActivationControl(current => ({
@@ -473,7 +456,6 @@ export function useStudioState(transportLogger: Logger) {
     macroInspectionError: macroPreview.key === macroKey ? macroPreview.error : undefined,
     macroSelections,
     macroTargetKey: macroKey,
-    buildMacroInspection,
     selectMacroSource,
     refreshMacros,
     replaceCardPromptResources: cardsState.replaceCardPromptResources,
@@ -495,10 +477,12 @@ export function useStudioState(transportLogger: Logger) {
     narrativeAgentSession: narrativeRuntime.agentSession,
     agentChatSession: narrativeRuntime.agentSession,
     agentChatSessions: narrativeRuntime.agentSessions,
+    allAgentSessions: narrativeRuntime.allAgentSessions,
     agentChatSessionReady: narrativeRuntime.agentSessionReady,
     agentChatSessionLoading: narrativeRuntime.agentSessionLoading,
     newAgentSession: narrativeRuntime.newAgentSession,
     refreshAgentSessions: narrativeRuntime.refreshAgentSessions,
+    refreshAllAgentSessions: narrativeRuntime.refreshAllAgentSessions,
     agentChatMessages: narrativeRuntime.agentMessages,
     agentChatInput: narrativeRuntime.agentInput,
     setAgentChatInput: narrativeRuntime.setAgentInput,
@@ -506,7 +490,7 @@ export function useStudioState(transportLogger: Logger) {
     // run
     lastRun: narrativeRuntime.lastRun,
     // prompt
-    promptPreview: narrativeRuntime.promptPreview, promptMessages, promptProjection, promptBuildSteps,
+    promptPreview: narrativeRuntime.promptPreview, promptMessages, promptProjection,
     promptBuildTrace,
     providerPayloadPreview,
     activationControl,
@@ -555,8 +539,7 @@ export function useStudioState(transportLogger: Logger) {
     replaceSettingMounts,
     replacePresetToolMounts,
     // derived
-    canSend, canSendAgent, canPreviewPrompt, emptyTimelineText, openingDraft,
-    macroContext, refreshStates,
+    ...derivedValues, refreshStates,
     // actions
     undoEdit,
     redoEdit,

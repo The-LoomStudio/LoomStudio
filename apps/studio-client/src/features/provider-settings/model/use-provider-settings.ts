@@ -59,14 +59,6 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
     setAiCapabilityProfiles((await input.api.aiCapabilityProfiles.list()).profiles)
   }
 
-  async function refreshAiGatewaySettings() {
-    await Promise.all([
-      refreshProviderAccounts(),
-      refreshAiProviders(),
-      refreshAiCapabilityProfiles(),
-    ])
-  }
-
   async function invokeAiCapability(
     request: Omit<AiGatewayInvokeInput, 'signal' | 'caller'>,
   ): Promise<AiGatewayInvokeResult> {
@@ -250,7 +242,7 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
     aiProviders,
     aiCapabilityProfiles,
     refreshProviderSettings,
-    refreshAiProviders: refreshAiGatewaySettings,
+    refreshAiProviders,
     refreshProviderAccounts,
     refreshModelProfiles,
     createProviderAccount,

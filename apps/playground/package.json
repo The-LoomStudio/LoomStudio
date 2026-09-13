@@ -7,11 +7,8 @@
     "start": "tsx src/index.ts"
   },
   "dependencies": {
-    "@loom-studio/shared": "workspace:*",
     "@loom-studio/diagnostics": "workspace:*",
-    "@loom-studio/transport": "workspace:*",
     "@loom-studio/document-store": "workspace:*",
-    "@loom-studio/application-runtime": "workspace:*",
     "@loom-studio/extension-host": "workspace:*",
     "@loom-studio/loom-runner": "workspace:*",
     "@loom-studio/trace-audit": "workspace:*",

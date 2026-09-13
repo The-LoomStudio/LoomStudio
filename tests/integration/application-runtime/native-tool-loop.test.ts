@@ -792,7 +792,7 @@ function toolCall(id: string, name: string, args: unknown) {
 
 function statefulCardArtifact() {
   return {
-    schemaVersion: 2 as const,
+    schemaVersion: 4 as const,
     artifactId: 'state-tool-card',
     displayName: 'State Tool Card',
     card: { name: 'Alice' },

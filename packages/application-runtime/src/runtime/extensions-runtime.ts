@@ -3,6 +3,7 @@ import type { JsonValue } from '@loom-studio/shared'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments, readDocument, writeDocument } from '../foundation/document-store.js'
+import { collectPages } from '../foundation/pagination.js'
 import { executeDocumentMutation } from '../foundation/mutation.js'
 import { isObject } from '../foundation/json.js'
 import { assertNonEmpty } from '../agents/agent.js'
@@ -272,24 +273,20 @@ export async function listApplicationExtensionRecords(
   documents: DocumentTransaction,
   input: { packageId: string; scope?: ExtensionStorageScope; recordType?: string; binding?: ExtensionEntityRef },
 ): Promise<ExtensionRecordEntry[]> {
-  const records: ExtensionRecordEntry[] = []
-  let cursor: string | undefined
-  do {
-    const page = await documents.list({
+  const documentsFound = await collectPages(cursor => documents.list({
       type: applicationDocumentTypes.extensionRecord,
       ownerExtensionId: input.packageId,
       cursor,
       limit: 100,
-    })
-    for (const document of page.items) {
+  }))
+  const records: ExtensionRecordEntry[] = []
+  for (const document of documentsFound) {
       const record = toApplicationExtensionRecord(input.packageId, document)
       if (input.scope && !sameExtensionStorageScope(record.scope, input.scope)) continue
       if (input.recordType && record.recordType !== input.recordType) continue
       if (input.binding && !record.bindings.some(binding => sameExtensionEntityRef(binding, input.binding!))) continue
       records.push(record)
-    }
-    cursor = page.nextCursor
-  } while (cursor)
+  }
   return records.sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id))
 }
 
@@ -454,6 +451,11 @@ async function importExtensionPackageResourcesInternal(
     packageVersion: input.packageVersion,
     contributionId,
   })
+  const assertPackageVersion = (packageVersion: string | undefined, contributionId: string, label: string) => {
+    if (packageVersion !== input.packageVersion) {
+      throw new Error(`Extension ${label} update requires an explicit migration: ${contributionId}`)
+    }
+  }
 
   const promptContributions = new Map(input.promptResources.map(item => [item.contribution.id, item]))
   if (promptContributions.size !== input.promptResources.length) throw new Error('Extension Prompt Resource contribution ids must be unique')
@@ -495,25 +497,25 @@ async function importExtensionPackageResourcesInternal(
   }
 
   const existingPromptResources = await listMappedResources(ctx.promptResources, undefined, { includeTombstone: true })
-  const promptResourceIds = new Map<string, string>()
-  const restorablePromptResourceVersions = new Map<string, number>()
-  for (const resource of existingPromptResources) {
-    const resourceOrigin = resource.origin
-    if (resourceOrigin?.kind !== 'extension-package' || resourceOrigin.packageId !== input.packageId) continue
-    if (resourceOrigin.packageVersion !== input.packageVersion) {
-      throw new Error(`Extension Prompt Resource update requires an explicit migration: ${resourceOrigin.contributionId}`)
-    }
-    if (!promptContributions.has(resourceOrigin.contributionId)) continue
-    if (promptResourceIds.has(resourceOrigin.contributionId)) throw new Error(`Extension Prompt Resource origin is duplicated: ${resourceOrigin.contributionId}`)
-    promptResourceIds.set(resourceOrigin.contributionId, resource.id)
-    if (resource.tombstoned) restorablePromptResourceVersions.set(resourceOrigin.contributionId, resource.version)
-  }
+  const promptResourceIndex = indexExtensionResourceOrigins(
+    existingPromptResources,
+    resource => ({
+      id: resource.id,
+      version: resource.version,
+      tombstoned: resource.tombstoned === true,
+      origin: resource.origin,
+    }),
+    input.packageId,
+    promptContributions,
+    'Prompt Resource',
+    assertPackageVersion,
+  )
+  const promptResourceIds = promptResourceIndex.ids
+  const restorablePromptResourceVersions = promptResourceIndex.restorableVersions
 
   for (const tool of await listAgentToolEntries(ctx)) {
     if (tool.origin?.kind !== 'extension-package' || tool.origin.packageId !== input.packageId) continue
-    if (tool.origin.packageVersion !== input.packageVersion) {
-      throw new Error(`Extension Agent Tool update requires an explicit migration: ${tool.origin.contributionId}`)
-    }
+    assertPackageVersion(tool.origin.packageVersion, tool.origin.contributionId, 'Agent Tool')
   }
 
   const existingAgentTools = new Set<string>()
@@ -526,9 +528,7 @@ async function importExtensionPackageResourcesInternal(
     if (content.origin?.kind !== 'extension-package' || content.origin.packageId !== input.packageId || content.origin.contributionId !== toolId) {
       throw new Error(`Extension Agent Tool id is already owned by another source: ${toolId}`)
     }
-    if (content.origin.packageVersion !== input.packageVersion) {
-      throw new Error(`Extension Agent Tool update requires an explicit migration: ${toolId}`)
-    }
+    assertPackageVersion(content.origin.packageVersion, toolId, 'Agent Tool')
     if (document.meta.tombstone) {
       restorableAgentToolVersions.set(toolId, document.version)
       continue
@@ -536,33 +536,37 @@ async function importExtensionPackageResourcesInternal(
     existingAgentTools.add(toolId)
   }
 
-  const transformRuleIds = new Map<string, string>()
-  const restorableTransformRuleVersions = new Map<string, number>()
-  for (const document of await listDocumentsIncludingTombstones<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule)) {
-    const resourceOrigin = document.content.origin
-    if (resourceOrigin?.kind !== 'extension-package' || resourceOrigin.packageId !== input.packageId) continue
-    if (resourceOrigin.packageVersion !== input.packageVersion) {
-      throw new Error(`Extension Text Transform Rule update requires an explicit migration: ${resourceOrigin.contributionId}`)
-    }
-    if (!transformRuleDrafts.has(resourceOrigin.contributionId)) continue
-    if (transformRuleIds.has(resourceOrigin.contributionId)) throw new Error(`Extension Text Transform Rule origin is duplicated: ${resourceOrigin.contributionId}`)
-    transformRuleIds.set(resourceOrigin.contributionId, document.id)
-    if (document.meta.tombstone) restorableTransformRuleVersions.set(resourceOrigin.contributionId, document.version)
-  }
+  const transformRuleIndex = indexExtensionResourceOrigins(
+    await listDocumentsIncludingTombstones<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule),
+    document => ({
+      id: document.id,
+      version: document.version,
+      tombstoned: Boolean(document.meta.tombstone),
+      origin: document.content.origin,
+    }),
+    input.packageId,
+    transformRuleDrafts,
+    'Text Transform Rule',
+    assertPackageVersion,
+  )
+  const transformRuleIds = transformRuleIndex.ids
+  const restorableTransformRuleVersions = transformRuleIndex.restorableVersions
 
-  const textExtractorIds = new Map<string, string>()
-  const restorableTextExtractorVersions = new Map<string, number>()
-  for (const document of await listDocumentsIncludingTombstones<TextExtractorContent>(ctx.documents, applicationDocumentTypes.textExtractor)) {
-    const resourceOrigin = document.content.origin
-    if (resourceOrigin?.kind !== 'extension-package' || resourceOrigin.packageId !== input.packageId) continue
-    if (resourceOrigin.packageVersion !== input.packageVersion) {
-      throw new Error(`Extension Text Extractor update requires an explicit migration: ${resourceOrigin.contributionId}`)
-    }
-    if (!textExtractorDrafts.has(resourceOrigin.contributionId)) continue
-    if (textExtractorIds.has(resourceOrigin.contributionId)) throw new Error(`Extension Text Extractor origin is duplicated: ${resourceOrigin.contributionId}`)
-    textExtractorIds.set(resourceOrigin.contributionId, document.id)
-    if (document.meta.tombstone) restorableTextExtractorVersions.set(resourceOrigin.contributionId, document.version)
-  }
+  const textExtractorIndex = indexExtensionResourceOrigins(
+    await listDocumentsIncludingTombstones<TextExtractorContent>(ctx.documents, applicationDocumentTypes.textExtractor),
+    document => ({
+      id: document.id,
+      version: document.version,
+      tombstoned: Boolean(document.meta.tombstone),
+      origin: document.content.origin,
+    }),
+    input.packageId,
+    textExtractorDrafts,
+    'Text Extractor',
+    assertPackageVersion,
+  )
+  const textExtractorIds = textExtractorIndex.ids
+  const restorableTextExtractorVersions = textExtractorIndex.restorableVersions
 
   const missingPromptResources = input.promptResources.filter(item => !promptResourceIds.has(item.contribution.id) || restorablePromptResourceVersions.has(item.contribution.id))
   const missingAgentTools = input.agentTools.filter(item => !existingAgentTools.has(item.contribution.id))
@@ -827,12 +831,44 @@ async function listDocumentsIncludingTombstones<T extends JsonValue>(
   documents: DocumentTransaction,
   type: string,
 ): Promise<Array<DocumentRecord<T>>> {
-  const items: DocumentRecord[] = []
-  let cursor: string | undefined
-  do {
-    const page = await documents.list({ type, includeTombstone: true, cursor, limit: 100 })
-    items.push(...page.items)
-    cursor = page.nextCursor
-  } while (cursor)
-  return items as Array<DocumentRecord<T>>
+  return await collectPages(cursor => documents.list({ type, includeTombstone: true, cursor, limit: 100 })) as Array<DocumentRecord<T>>
+}
+
+type ExtensionResourceOriginCandidate = {
+  kind?: string
+  packageId?: string
+  packageVersion?: string
+  contributionId?: string
+}
+
+type ExtensionResourceOriginRecord = {
+  id: string
+  version: number
+  tombstoned: boolean
+  origin?: ExtensionResourceOriginCandidate
+}
+
+function indexExtensionResourceOrigins<T>(
+  records: readonly T[],
+  readRecord: (record: T) => ExtensionResourceOriginRecord,
+  packageId: string,
+  contributionIds: ReadonlyMap<string, unknown>,
+  label: string,
+  assertPackageVersion: (packageVersion: string | undefined, contributionId: string, label: string) => void,
+): { ids: Map<string, string>; restorableVersions: Map<string, number> } {
+  const ids = new Map<string, string>()
+  const restorableVersions = new Map<string, number>()
+  for (const record of records) {
+    const resource = readRecord(record)
+    const resourceOrigin = resource.origin
+    if (resourceOrigin?.kind !== 'extension-package' || resourceOrigin.packageId !== packageId) continue
+    const contributionId = resourceOrigin.contributionId
+    if (!contributionId) continue
+    assertPackageVersion(resourceOrigin.packageVersion, contributionId, label)
+    if (!contributionIds.has(contributionId)) continue
+    if (ids.has(contributionId)) throw new Error(`Extension ${label} origin is duplicated: ${contributionId}`)
+    ids.set(contributionId, resource.id)
+    if (resource.tombstoned) restorableVersions.set(contributionId, resource.version)
+  }
+  return { ids, restorableVersions }
 }

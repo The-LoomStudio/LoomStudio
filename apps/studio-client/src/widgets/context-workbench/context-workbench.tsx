@@ -7,7 +7,6 @@ import {
 } from '../../features/context-assets/model/projection-order.js'
 import {
   type ContextAssetUpdate,
-  findRootContextModule,
 } from '../../features/context-assets/model/projection-workbench.js'
 import { readPromptResourceWorkbenchRoot } from '../../features/context-assets/model/prompt-resource-view.js'
 import { ContextAssetEditor, ContextAssetExplorer } from '../../features/context-assets/ui/context-asset-workbench.js'
@@ -71,7 +70,6 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   const setMetadataOpen = useStudioLayoutStore(state => state.setAssetMetadataOpen)
   const setTextEditorMode = useStudioLayoutStore(state => state.setTextEditorMode)
   const [searchQuery, setSearchQuery] = useState(props.initialSearchQuery ?? '')
-  const [scope, setScope] = useState<'character' | 'global'>('character')
   const [bindingOpen, setBindingOpen] = useState(false)
   const [internalSelectedResourceId, setInternalSelectedResourceId] = useState<string>()
   const mobilePane = useStudioLayoutStore(state => state.assetPanes.resources[props.workspaceId] ?? 'explorer')
@@ -91,10 +89,6 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
     [props.resources],
   )
   const cardResourceIds = useMemo(() => new Set(props.card?.promptResourceIds ?? []), [props.card?.promptResourceIds])
-  const globalSettingIds = useMemo(() => new Set(props.settingMounts
-    .filter(mount => mount.source.kind === 'manual')
-    .map(mount => mount.settingResourceId)), [props.settingMounts])
-
   const routeTargetResource = useMemo(() => {
     if (!props.routeAssetId) return undefined
     return settingResources.find(r => r.id === props.routeAssetId || Boolean(findContextNode([r.rootNode], props.routeAssetId)))

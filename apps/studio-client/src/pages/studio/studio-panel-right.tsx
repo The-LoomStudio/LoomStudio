@@ -23,7 +23,9 @@ export function StudioPanelRight(props: StudioPanelRightProps) {
     resizeStartWidthRef.current = currentWidth
     try {
       ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
-    } catch {}
+    } catch {
+      // Pointer capture is best effort when the native target has already changed.
+    }
   }
 
   const handleResizePointerMove = (e: React.PointerEvent) => {
@@ -38,7 +40,9 @@ export function StudioPanelRight(props: StudioPanelRightProps) {
       isResizingRef.current = false
       try {
         ;(e.target as HTMLElement).releasePointerCapture(e.pointerId)
-      } catch {}
+      } catch {
+        // Pointer capture is best effort when the native target has already changed.
+      }
     }
   }
 

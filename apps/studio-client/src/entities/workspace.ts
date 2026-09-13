@@ -4,7 +4,7 @@ import type { Card } from './card.js'
 import type { ContextAssetNode } from './context-asset.js'
 
 export type CardBundleArtifact = {
-  schemaVersion: 2
+  schemaVersion: 4
   artifactId: string
   displayName: string
   description?: string
@@ -137,9 +137,19 @@ export type ReplacePresetToolMountsResult = {
 export type PromptResourceArtifact = {
   macros?: Record<string, string>
   format: 'loom.promptResource'
-  schemaVersion: 1
+  schemaVersion: 1 | 2
   resourceKind: PromptResource['resourceKind']
   rootNode: ContextAssetNode
+  scriptAttachments?: Array<{
+    orderIndex: number
+    resourceOrigin?: 'card' | 'external'
+    script: {
+      format: 'loom.script'
+      schemaVersion: 1
+      fileName: string
+      source: string
+    }
+  }>
 }
 
 export type ImportBundle = {

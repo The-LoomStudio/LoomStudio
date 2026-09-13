@@ -283,7 +283,7 @@ describe('studio rpc router', () => {
 
     await router.call('application.importCardBundle', {
       artifact: {
-        schemaVersion: 2,
+        schemaVersion: 4,
         artifactId: 'artifact-1',
         displayName: 'Artifact',
         card: { name: 'Card' },

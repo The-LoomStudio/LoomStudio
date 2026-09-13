@@ -2,6 +2,7 @@ import * as React from 'react'
 import * as ContextMenuPrimitive from '@radix-ui/react-context-menu'
 import { Check, ChevronRight } from 'lucide-react'
 import styles from './context-menu.module.scss'
+import { menuItemClass, menuPartClass } from '../menu/menu-class-names.js'
 
 const LONG_PRESS_DELAY = 520
 const CLICK_SUPPRESSION_TIME = 800
@@ -104,7 +105,7 @@ const ContextMenuContent = React.forwardRef<
   <ContextMenuPrimitive.Portal>
     <ContextMenuPrimitive.Content
       ref={ref}
-      className={`${styles.menu} ${className ?? ''}`}
+      className={menuPartClass(styles.menu, className)}
       {...props}
     />
   </ContextMenuPrimitive.Portal>
@@ -121,7 +122,7 @@ const ContextMenuItem = React.forwardRef<
 >(({ className, inset, tone, icon, children, ...props }, ref) => (
   <ContextMenuPrimitive.Item
     ref={ref}
-    className={`${styles.item} ${tone === 'danger' ? styles.danger : ''} ${inset ? styles.inset : ''} ${className ?? ''}`}
+    className={menuItemClass(styles, { className, inset, tone })}
     {...props}
   >
     {icon && (
@@ -140,7 +141,7 @@ const ContextMenuCheckboxItem = React.forwardRef<
 >(({ className, children, checked, ...props }, ref) => (
   <ContextMenuPrimitive.CheckboxItem
     ref={ref}
-    className={`${styles.item} ${className ?? ''}`}
+    className={menuPartClass(styles.item, className)}
     checked={checked}
     {...props}
   >
@@ -160,7 +161,7 @@ const ContextMenuSeparator = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ContextMenuPrimitive.Separator
     ref={ref}
-    className={`${styles.separator} ${className ?? ''}`}
+      className={menuPartClass(styles.separator, className)}
     {...props}
   />
 ))
@@ -172,7 +173,7 @@ const ContextMenuShortcut = ({
 }: React.HTMLAttributes<HTMLSpanElement>) => {
   return (
     <span
-      className={`${styles.shortcut} ${className ?? ''}`}
+      className={menuPartClass(styles.shortcut, className)}
       {...props}
     />
   )
@@ -190,7 +191,7 @@ const ContextMenuSubTrigger = React.forwardRef<
 >(({ className, inset, icon, children, ...props }, ref) => (
   <ContextMenuPrimitive.SubTrigger
     ref={ref}
-    className={`${styles.item} ${styles.subTrigger} ${inset ? styles.inset : ''} ${className ?? ''}`}
+    className={menuItemClass(styles, { className, inset, subTrigger: true })}
     {...props}
   >
     {icon && (
@@ -213,7 +214,7 @@ const ContextMenuSubContent = React.forwardRef<
   <ContextMenuPrimitive.Portal>
     <ContextMenuPrimitive.SubContent
       ref={ref}
-      className={`${styles.menu} ${className ?? ''}`}
+      className={menuPartClass(styles.menu, className)}
       {...props}
     />
   </ContextMenuPrimitive.Portal>

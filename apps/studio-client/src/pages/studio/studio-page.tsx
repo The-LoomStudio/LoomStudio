@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
-import { AlignLeft, ChevronDown, ImageOff, PanelRight, PanelRightClose, Plus, X } from 'lucide-react'
+import { AlignLeft, ChevronDown, ImageOff, PanelRight, PanelRightClose } from 'lucide-react'
 import type { AgentProfile, AgentSession, AgentTranscriptEntry, ProviderAccount } from '../../entities/index.js'
 import type { ClientRendererHost } from '../../features/extension-renderers/model/client-renderer-host.js'
 import type { Translator } from '../../shared/i18n/index.js'

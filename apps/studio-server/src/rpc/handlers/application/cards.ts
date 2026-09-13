@@ -12,7 +12,10 @@ import {
   readOptionalNumber,
   readOptionalObject,
   readOptionalString,
+  readOptionalStringArray,
+  readOptionalStringRecord,
   readString,
+  readStringArray,
 } from '../../rpc-params.js'
 
 export async function handleCardsRpc(
@@ -90,9 +93,9 @@ export async function handleCardsRpc(
     case 'application.updateCardPromptResources':
       return await runtime.updateCardPromptResources({
         cardId: readString(params, 'cardId'),
-        promptResourceIds: readRequiredStringArray(params, 'promptResourceIds'),
+        promptResourceIds: readStringArray(params, 'promptResourceIds'),
         ...(isRecord(params) && params.externalPromptResourceIds !== undefined ? {
-          externalPromptResourceIds: readRequiredStringArray(params, 'externalPromptResourceIds'),
+          externalPromptResourceIds: readStringArray(params, 'externalPromptResourceIds'),
         } : {}),
       }, context) as unknown as JsonValue
 
@@ -174,35 +177,11 @@ function readOptionalCardMedia(params: JsonValue | undefined, key: string) {
 }
 
 
-function readOptionalStringArray(params: JsonValue | undefined, key: string): string[] | undefined {
-  if (!isRecord(params) || params[key] === undefined) return undefined
-  const value = params[key]
-  if (!Array.isArray(value) || !value.every(item => typeof item === 'string')) {
-    throw new Error(`Expected optional string array param: ${key}`)
-  }
-  return value
-}
-
-function readOptionalStringRecord(params: JsonValue | undefined, key: string): Record<string, string> | undefined {
-  if (!isRecord(params) || params[key] === undefined) return undefined
-  const value = params[key]
-  if (!isRecord(value) || !Object.values(value).every(item => typeof item === 'string')) {
-    throw new Error(`Expected optional string record param: ${key}`)
-  }
-  return value as Record<string, string>
-}
-
 function readStringRecordValue(value: JsonValue | undefined, key: string): Record<string, string> {
   if (!isRecord(value) || !Object.values(value).every(item => typeof item === 'string')) {
     throw new Error(`Expected string record param: ${key}`)
   }
   return value as Record<string, string>
-}
-
-function readRequiredStringArray(params: JsonValue | undefined, key: string): string[] {
-  const value = readOptionalStringArray(params, key)
-  if (!value) throw new Error(`Expected string array param: ${key}`)
-  return value
 }
 
 function readOptionalTimelineStateBindings(params: JsonValue | undefined, key: string) {

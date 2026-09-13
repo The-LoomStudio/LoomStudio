@@ -7,7 +7,7 @@ import { decodeCardBundleZip, encodeCardBundleZip, loadCardBundleFiles } from '.
 describe('Loom Card ZIP', () => {
   it('round-trips an Artifact with avatar and optional background', async () => {
     const artifact: CardBundleArtifact = {
-      schemaVersion: 2,
+      schemaVersion: 4,
       artifactId: 'artifact-1',
       displayName: '完整角色包',
       card: {
@@ -49,7 +49,7 @@ describe('Loom Card ZIP', () => {
     expect(manifest.extensionPayloads?.[0]?.path).toBe('extensions/example.image-generator/image-style-v1/style.json')
   })
 
-  it('rejects a non-V2 Artifact at the ZIP boundary', () => {
+  it('rejects a non-V4 Artifact at the ZIP boundary', () => {
     expect(() => encodeCardBundleZip({
       artifact: {
         schemaVersion: 1,
@@ -117,7 +117,7 @@ describe('Loom Card ZIP', () => {
       'export const renderers = {}',
     ].join('\n')
     const artifact: CardBundleArtifact = {
-      schemaVersion: 3,
+      schemaVersion: 4,
       artifactId: 'script-card',
       displayName: 'Script Card',
       card: { name: 'Script Card' },
@@ -207,7 +207,7 @@ describe('Loom Card ZIP', () => {
     expect(loaded.files.has('prompts/')).toBe(false)
   })
 
-  it('continues to read legacy ZIP v1', async () => {
+  it('rejects legacy ZIP v1 artifacts', async () => {
     const archive = zipSync({
       'manifest.json': Buffer.from(JSON.stringify({
         schema: 'loom.cardBundle.zip.v1',
@@ -216,7 +216,7 @@ describe('Loom Card ZIP', () => {
       })),
       'assets/avatar.png': Buffer.from('avatar'),
     })
-    await expect(decodeCardBundleZip(archive)).resolves.toMatchObject({ artifact: { card: { name: 'Old' }, schemaVersion: 4 } })
+    await expect(decodeCardBundleZip(archive)).rejects.toThrow('Unsupported card bundle schemaVersion')
   })
 
   it('reuses identical old inline entries without generating a legacy directory', async () => {

@@ -5,6 +5,7 @@ import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments, readDocument, writeDocument } from '../foundation/document-store.js'
+import { collectPages } from '../foundation/pagination.js'
 import { executeDocumentMutation } from '../foundation/mutation.js'
 import {
   normalizeCardContent,
@@ -263,15 +264,14 @@ export function createCardsRuntimeMethods(ctx: ApplicationRuntimeContext) {
             }
             for (const mount of await ctx.promptResources.listSettingMounts({})) retainedResources.add(mount.settingResourceId)
             if (ctx.narratives) {
-              let cursor: string | undefined
-              do {
-                const page = await ctx.narratives.listTimelines({ cursor, limit: 100 })
-                for (const timeline of page.timelines) {
-                  if (input.includePlayData && timeline.createdFrom?.cardId === input.cardId) continue
-                  for (const id of timeline.promptResourceIds) retainedResources.add(id)
-                }
-                cursor = page.nextCursor
-              } while (cursor)
+              const timelines = await collectPages(async cursor => {
+                const page = await ctx.narratives!.listTimelines({ cursor, limit: 100 })
+                return { items: page.timelines, nextCursor: page.nextCursor }
+              })
+              for (const timeline of timelines) {
+                if (input.includePlayData && timeline.createdFrom?.cardId === input.cardId) continue
+                for (const id of timeline.promptResourceIds) retainedResources.add(id)
+              }
             }
           }
 
@@ -510,14 +510,10 @@ async function listAllCardTimelines(
   ctx: ApplicationRuntimeContext,
   cardId: string,
 ): Promise<NarrativeTimeline[]> {
-  const timelines: NarrativeTimeline[] = []
-  let cursor: string | undefined
-  do {
+  return await collectPages(async cursor => {
     const page = await ctx.narratives!.listTimelines({ createdFromCardId: cardId, ...(cursor ? { cursor } : {}), limit: 100 })
-    timelines.push(...page.timelines)
-    cursor = page.nextCursor
-  } while (cursor)
-  return timelines
+    return { items: page.timelines, nextCursor: page.nextCursor }
+  })
 }
 
 

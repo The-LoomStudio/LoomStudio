@@ -1,4 +1,4 @@
-import type { DocumentRecord, DocumentTransaction } from '@loom-studio/document-store'
+import type { DocumentTransaction } from '@loom-studio/document-store'
 import type { JsonObject } from '@loom-studio/shared'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
@@ -10,9 +10,7 @@ import { readTimelineRuntimeContext } from '../narrative/timeline-runtime-contex
 import type {
   LoomScriptArtifact,
   LoomScriptContent,
-  LoomScriptEntry,
   LoomScriptMountContent,
-  LoomScriptMountEntry,
   LoomScriptMountTarget,
   LoomScriptOwner,
 } from '../scripts/loom-script-contracts.js'

@@ -94,7 +94,7 @@ describe('application narrative timeline lifecycle', () => {
   it('keeps Timeline runtime dependencies after deleting its source Card', async () => {
     const { engine, runtime } = createTestRuntime()
     const imported = await runtime.importCardBundle({ artifact: {
-      schemaVersion: 2,
+      schemaVersion: 4,
       artifactId: 'detached-card',
       displayName: 'Detached Card',
       card: { name: 'Detached Card', opening: { entries: [{ content: 'Ready.' }] } },
@@ -337,7 +337,7 @@ describe('application narrative timeline lifecycle', () => {
     const { engine, runtime } = createTestRuntime()
     const imported = await runtime.importCardBundle({
       artifact: {
-        schemaVersion: 2,
+        schemaVersion: 4,
         artifactId: 'stateful-card',
         displayName: 'Stateful Card',
         card: {
