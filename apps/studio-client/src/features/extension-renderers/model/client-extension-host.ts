@@ -16,6 +16,7 @@ import type {
   ExtensionStorageScope,
   JsonValue,
   RendererContributionDefinition,
+  RegisteredClientBackground,
 } from '@loom-studio/extension-sdk'
 import type { ManagedClientExtensionModule, ManagedClientExtensionPackage } from '../../../entities/index.js'
 import type { ClientRendererHost } from './client-renderer-host.js'
@@ -55,6 +56,7 @@ export type ClientExtensionHost = {
   }): Promise<ClientCommandExecutionResult>
   dispose(): Promise<void>
   commandRegistrations(): ClientCommandRegistrationSummary[]
+  backgrounds(): RegisteredClientBackground[]
   summaries(): ClientExtensionModuleSummary[]
   diagnostics(): readonly ClientExtensionDiagnostic[]
   subscribe(listener: () => void): () => void
@@ -112,16 +114,19 @@ export function createClientExtensionHost(options: {
   sessionHost?: RendererSessionHost
   loadModule?: (entryUrl: string, instanceId: string) => Promise<LoadedClientModule>
   logger?: ClientExtensionLogger
+  appearance?: { setBackground(background: { id: string; image: string } | null): void }
 }): ClientExtensionHost {
   const active = new Map<string, ActiveClientModule>()
   const catalog = new Map<string, { extensionPackage: ManagedClientExtensionPackage; module: ManagedClientExtensionModule }>()
   const commandHandlers = new Map<string, { handler: ClientCommandHandler; instanceId: string }>()
   const summaries = new Map<string, ClientExtensionModuleSummary>()
   const diagnostics: ClientExtensionDiagnostic[] = []
+  const backgrounds = new Map<string, RegisteredClientBackground>()
   const listeners = new Set<() => void>()
   const loadModule = options.loadModule ?? importClientModule
   const logger = options.logger ?? consoleClientExtensionLogger
   const data = options.data ?? unavailableClientExtensionDataApi
+  const appearance = options.appearance
   let currentRevision = 0
   let queue = Promise.resolve()
 
@@ -178,6 +183,9 @@ export function createClientExtensionHost(options: {
         data,
         logger,
         registerCommand,
+        backgrounds,
+        appearance,
+        emit,
       })
       const returnedHandle = await extensionModule.activate(context)
       if (returnedHandle) record.handles.push(returnedHandle)
@@ -351,6 +359,7 @@ export function createClientExtensionHost(options: {
       const [packageId = '', moduleId = '', commandId = ''] = commandKey.split('/')
       return { commandKey, packageId, moduleId, commandId, instanceId: registration.instanceId }
     }).sort((left, right) => left.commandKey.localeCompare(right.commandKey)),
+    backgrounds: () => [...backgrounds.values()].map(value => ({ ...value })),
     summaries: () => [...summaries.values()].sort((left, right) => moduleKey(left.packageId, left.moduleId).localeCompare(moduleKey(right.packageId, right.moduleId))),
     diagnostics: () => diagnostics,
     subscribe: listener => {
@@ -380,6 +389,9 @@ function createActivationContext(input: {
   data: ClientExtensionDataApi
   sessionHost?: RendererSessionHost
   logger: ClientExtensionLogger
+  backgrounds: Map<string, RegisteredClientBackground>
+  appearance?: { setBackground(background: { id: string; image: string } | null): void }
+  emit(): void
   registerCommand(
     extensionPackage: ManagedClientExtensionPackage,
     module: ManagedClientExtensionModule,
@@ -476,6 +488,37 @@ function createActivationContext(input: {
     },
     files: {
       url: path => extensionFileUrl(input.extensionPackage.packageId, input.extensionPackage.version, path),
+    },
+    backgrounds: {
+      register: background => {
+        if (input.record.abortController.signal.aborted) throw new Error('Cannot register a background from an unloaded extension')
+        for (const field of ['id', 'name', 'description', 'image'] as const) {
+          if (typeof background[field] !== 'string' || !background[field].trim()) throw new Error(`Background ${field} is required`)
+        }
+        if (!/^[a-zA-Z0-9._-]+$/.test(background.id)) throw new Error('Background id must be a local identifier')
+        if (!background.image.startsWith('/') || background.image.startsWith('//') || background.image.includes('\\')) {
+          throw new Error('Background image must use a host asset or package file URL')
+        }
+        const key = `${input.extensionPackage.packageId}/${input.module.moduleId}/${background.id}`
+        if (input.backgrounds.has(key)) throw new Error(`Background already registered: ${key}`)
+        const value = { ...background, key, packageId: input.extensionPackage.packageId, moduleId: input.module.moduleId }
+        input.backgrounds.set(key, value)
+        const handle = { dispose: () => {
+          if (input.backgrounds.get(key) !== value) return
+          input.backgrounds.delete(key)
+          input.emit()
+        } }
+        input.record.handles.push(handle)
+        input.emit()
+        return handle
+      },
+      list: () => [...input.backgrounds.values()].map(value => ({ ...value })),
+      activate: id => {
+        const value = [...input.backgrounds.values()].find(item => item.id === id || item.key === id)
+        if (!value) return false
+        input.appearance?.setBackground({ id: value.key, image: value.image })
+        return true
+      },
     },
   }
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useAppearanceStore } from '../../../widgets/settings-panel/appearance-store.js'
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import type { ManagedClientExtensionModule, ManagedClientExtensionPackage, ManagedExtensionPackage } from '../../../entities/index.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
@@ -31,7 +32,13 @@ export function useClientExtensionRuntime(input: {
     },
   }), [input.api])
   const sessionHost = useMemo(() => createRendererSessionHost(), [])
-  const host = useMemo(() => createClientExtensionHost({ rendererHost: input.rendererHost, sessionHost, data }), [data, input.rendererHost, sessionHost])
+  const setAppearanceBackground = useAppearanceStore(state => state.setBackground)
+  const host = useMemo(() => createClientExtensionHost({
+    rendererHost: input.rendererHost,
+    sessionHost,
+    data,
+    appearance: { setBackground: setAppearanceBackground },
+  }), [data, input.rendererHost, sessionHost, setAppearanceBackground])
   const [packages, setPackages] = useState<ManagedExtensionPackage[]>([])
   const [error, setError] = useState<Error>()
   const [serverDiagnostics, setServerDiagnostics] = useState<ClientJsonValue[]>([])

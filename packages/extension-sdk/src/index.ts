@@ -362,6 +362,21 @@ export type ClientExtensionLogger = {
   error(message: string, data?: JsonObject): void
 }
 
+export type ClientBackgroundDefinition = {
+  id: string
+  name: string
+  description: string
+  /** Host asset/file URL, normally returned by context.assets.url or context.files.url. */
+  image: string
+  source?: string
+}
+
+export type RegisteredClientBackground = ClientBackgroundDefinition & {
+  key: string
+  packageId: string
+  moduleId: string
+}
+
 export type ClientExtensionActivationContext = {
   extension: {
     packageId: string
@@ -400,6 +415,11 @@ export type ClientExtensionActivationContext = {
   }
   files: {
     url(path: string): string
+  }
+  backgrounds: {
+    register(background: ClientBackgroundDefinition): ExtensionRegistrationHandle
+    list(): RegisteredClientBackground[]
+    activate(id: string): boolean
   }
 }
 
