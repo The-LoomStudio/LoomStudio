@@ -8,6 +8,17 @@
   background: var(--loom-color-background);
 }
 
+:global(html[data-loom-preview-background]) .workbench {
+  background-image: var(--loom-preview-wallpaper);
+  background-position: center;
+  background-size: cover;
+}
+
+:global(html[data-loom-preview-background]) .studioStage,
+:global(html[data-loom-preview-background]) .stageBase {
+  background: transparent;
+}
+
 .studioStage {
   --loom-composer-reserve: calc(var(--loom-input-height) + 4rem);
 
@@ -73,6 +84,14 @@
     width var(--loom-motion-duration-standard) var(--loom-motion-easing-standard),
     height var(--loom-motion-duration-standard) var(--loom-motion-easing-standard),
     border-radius var(--loom-motion-duration-standard) var(--loom-motion-easing-standard);
+}
+
+:global(html[data-loom-material-preview='glass']) .floatingDock,
+:global(html[data-loom-material-preview='glass']) .panelRight {
+  background: color-mix(in srgb, var(--loom-color-surface) var(--loom-preview-opacity, 58%), transparent);
+  -webkit-backdrop-filter: blur(var(--loom-preview-blur, 18px)) saturate(135%);
+  backdrop-filter: blur(var(--loom-preview-blur, 18px)) saturate(135%);
+  border-color: color-mix(in srgb, var(--loom-color-border) 55%, transparent);
 }
 
 .floatingDockHidden {
@@ -808,6 +827,68 @@
   margin-left: auto;
 }
 
+:global(.loom-stage-extension-action) {
+  width: var(--loom-page-header-control-size);
+  height: var(--loom-page-header-control-size);
+  min-width: var(--loom-page-header-control-size);
+  min-height: var(--loom-page-header-control-size);
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  color: var(--loom-color-text);
+  background: var(--loom-color-background);
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+:global(.loom-stage-extension-action img) {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
+:global(.loom-stage-the-world-action) {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  overflow: visible;
+  position: relative;
+  border-radius: 50%;
+  background: transparent !important;
+  padding: 0;
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+:global(.loom-stage-the-world-action)::before {
+  display: none;
+}
+
+:global(.loom-stage-the-world-action:hover) {
+  transform: scale(1.08);
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 18%), 0 6px 18px rgb(0 0 0 / 28%);
+}
+
+:global(.loom-stage-the-world-action img) {
+  position: relative;
+  z-index: 1;
+  transition: transform 420ms ease;
+}
+
+:global(.loom-stage-the-world-action:hover img) {
+  transform: rotate(8deg) scale(1.06);
+}
+
+:global(html[data-loom-material-preview='glass']) .loom-stage-extension-action {
+  background: color-mix(in srgb, var(--loom-color-surface) var(--loom-preview-opacity, 42%), transparent);
+  -webkit-backdrop-filter: blur(calc(var(--loom-preview-blur, 18px) * 0.7)) saturate(130%);
+  backdrop-filter: blur(calc(var(--loom-preview-blur, 18px) * 0.7)) saturate(130%);
+  border: 1px solid color-mix(in srgb, var(--loom-color-border) 45%, transparent);
+}
+
 .stageHeaderButton {
   width: var(--loom-page-header-control-size);
   height: var(--loom-page-header-control-size);
@@ -841,6 +922,20 @@
     outline: 2px solid var(--loom-color-accent);
     outline-offset: -2px;
   }
+}
+
+:global(html[data-loom-material-preview='glass']) .stageHeaderButton,
+:global(html[data-loom-material-preview='glass']) .stageCharacterCapsule {
+  background: color-mix(in srgb, var(--loom-color-surface) var(--loom-preview-opacity, 42%), transparent);
+  -webkit-backdrop-filter: blur(calc(var(--loom-preview-blur, 18px) * 0.7)) saturate(130%);
+  backdrop-filter: blur(calc(var(--loom-preview-blur, 18px) * 0.7)) saturate(130%);
+  border: 1px solid color-mix(in srgb, var(--loom-color-border) 45%, transparent);
+}
+
+:global(html[data-loom-material-preview='glass']) .stageHeaderButton:hover:not(:disabled),
+:global(html[data-loom-material-preview='glass']) .stageHeaderButton:active:not(:disabled),
+:global(html[data-loom-material-preview='glass']) .stageCharacterCapsule:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--loom-color-surface) 54%, transparent);
 }
 
 .stageHeaderButtonIcon {

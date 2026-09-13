@@ -26,7 +26,7 @@ export const rendererSurfaces = [
 
 export const rendererScopes = ['workspace', 'timeline', 'agent-session', 'node', 'message'] as const
 
-export const clientActionSurfaces = ['composer.quick-actions', 'extension.workbench.actions'] as const
+export const clientActionSurfaces = ['composer.quick-actions', 'extension.workbench.actions', 'stage.header.actions'] as const
 
 export const clientHostIcons = ['image', 'refresh', 'settings', 'sparkles'] as const
 

@@ -129,7 +129,7 @@ export type RendererConflictPolicy = 'collection' | 'exclusive' | 'navigation' |
 export type RendererFallback = 'json' | 'text' | 'hidden'
 export type RendererMountAdapter = 'direct' | 'shadow' | 'sandbox-iframe'
 
-export type ClientActionSurface = 'composer.quick-actions' | 'extension.workbench.actions'
+export type ClientActionSurface = 'composer.quick-actions' | 'extension.workbench.actions' | 'stage.header.actions'
 
 export type ClientHostIconName = 'image' | 'refresh' | 'settings' | 'sparkles'
 

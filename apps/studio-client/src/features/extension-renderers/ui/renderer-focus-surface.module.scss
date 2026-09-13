@@ -6,10 +6,38 @@
   border: 0;
   margin: 0;
   padding: 0;
+  appearance: none;
+  overflow: visible;
   color: var(--loom-color-text);
-  background: var(--loom-color-background);
+  background: transparent;
+  z-index: 8;
+}
+
+.dialog[data-modal='false'] {
+  pointer-events: none;
+  outline: none;
 }
 
 .dialog::backdrop {
-  background: var(--loom-color-background);
+  background: color-mix(in srgb, var(--loom-color-background) 18%, transparent);
+}
+
+.dialog[data-modal='false']::backdrop {
+  background: transparent;
+}
+
+.nonModalSurface {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+  background: transparent;
+}
+
+.nonModalSurface > * {
+  pointer-events: none;
+}
+
+.nonModalSurface :global([data-renderer-state='active']) {
+  pointer-events: none;
 }

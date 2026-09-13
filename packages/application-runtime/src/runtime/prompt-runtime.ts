@@ -10,7 +10,9 @@ import {
   toStoredResourceInput,
 } from '../prompt/prompt-resource-mapper.js'
 import { applyDefaultPromptProjection, normalizePromptResourceArtifact, type PromptResourceNode } from '../cards/workspace.js'
+import { validateTextTransformRuleDraft, type TextTransformRuleDraft } from '../transforms/history-text.js'
 import { revertApplicationStateChangeset } from '../state/state.js'
+import { executeDocumentMutation } from '../foundation/mutation.js'
 import type {
   AgentProfileContent,
   CardSourceContent,
@@ -234,12 +236,31 @@ export function createPromptRuntimeMethods(ctx: ApplicationRuntimeContext) {
       }
       const scriptAttachments = artifact.scriptAttachments ?? []
       const result = scriptAttachments.length > 0
-        ? await importPromptResourceWithScripts(ctx, content, scriptAttachments, requestContext)
+        ? await importPromptResourceWithScripts(ctx, content, scriptAttachments, requestContext, artifact.textTransformRules)
         : await ctx.promptResources.createResource({
             ...toStoredResourceInput({ content }),
             ...promptResourceWriteContext(requestContext),
             reason: 'application.importPromptResource',
           })
+      if (artifact.textTransformRules?.length && content.resourceKind === 'preset' && scriptAttachments.length === 0) {
+        await executeDocumentMutation(ctx.documents, requestContext, 'application.importPromptResource.textTransformRules', async documents => {
+          for (const [index, rule] of artifact.textTransformRules!.entries()) {
+            validateTextTransformRuleDraft({ ...rule, owner: { kind: 'preset', presetId: result.resource.id } })
+            await writeDocument<TextTransformRuleContent>(documents, {
+              id: `${result.resource.id}.rule.${String(index).padStart(6, '0')}`,
+              type: applicationDocumentTypes.textTransformRule,
+              content: {
+                ...structuredClone(rule),
+                owner: { kind: 'preset', presetId: result.resource.id },
+                createdAt: content.createdAt,
+                updatedAt: content.updatedAt,
+              },
+              expectedVersion: 'new',
+            })
+          }
+          return true
+        })
+      }
       if (content.resourceKind === 'preset') {
         const availableTools = ctx.agentTools.list()
         for (const [orderIndex, definition] of availableTools.entries()) {
@@ -402,6 +423,7 @@ async function importPromptResourceWithScripts(
   content: PromptResourceContent,
   attachments: LoomScriptAttachmentArtifact[],
   requestContext?: RuntimeRequestContext,
+  textTransformRules?: Array<Omit<TextTransformRuleDraft, 'owner'>>,
 ): Promise<PromptResourceMutationResult> {
   if (!ctx.blobs) throw new Error('Blob Store is required to import Loom Script attachments')
   const prepared = await Promise.all(attachments.map(async attachment => ({
@@ -419,6 +441,20 @@ async function importPromptResourceWithScripts(
   }, async dataTx => {
     const resource = ctx.promptResources.transaction(dataTx).createResource(toStoredResourceInput({ content }))
     await documents.participateTransaction(dataTx, async documentTx => {
+      for (const [index, rule] of (textTransformRules ?? []).entries()) {
+        validateTextTransformRuleDraft({ ...rule, owner: { kind: 'preset', presetId: resource.id } })
+        await writeDocument<TextTransformRuleContent>(documentTx, {
+          id: `${resource.id}.rule.${String(index).padStart(6, '0')}`,
+          type: applicationDocumentTypes.textTransformRule,
+          content: {
+            ...structuredClone(rule),
+            owner: { kind: 'preset', presetId: resource.id },
+            createdAt: content.createdAt,
+            updatedAt: content.updatedAt,
+          },
+          expectedVersion: 'new',
+        })
+      }
       for (const item of prepared) {
         const blob = ctx.blobs!.participateWrite(dataTx, item.blob).blob
         const script = await writeDocument<LoomScriptContent>(documentTx, {

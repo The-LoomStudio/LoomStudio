@@ -126,5 +126,5 @@ Studio 中的作者面板主要服务于查看、审阅、定位诊断、少量�
 - 教程样本采用 `entities.characters.<id>.components.<component>` 作者约定：精确挂载先创建 `archive_keeper` 与 `night_conductor`，`entities.characters.*.components.vitals` 再为已有实体批量补充生命状态。真实 Snapshot 与 Example Echo 宏均已验证；该路径是推荐约定，不是底层硬编码的 Character 类型，也不代表完整 ECS 查询系统。
 - 后端首轮两个定向集成文件 23 用例通过；追加过期 Card 保存用例后 `narrative-timeline.test.ts` 10 用例通过。UI 修订后两个定向单测文件 7 用例通过；主 Agent 的 Client `tsc --noEmit` 通过。
 - 上述 UI 单测不覆盖真实异步交互；未运行浏览器诊断或人工视觉验收。预览服务 `http://127.0.0.1:5174/` HTTP 200。
-- 文档检查有既有阻塞：根 README 两处 LICENSE 链接缺失；既有 extension-dev-hot-reload issue 与 st-data-compatibility plan 索引不可达。本轮未修改这些无关文件。
+- 文档检查有既有阻塞：根 README 两处 LICENSE 链接缺失；既有 extension-dev-hot-reload issue。本轮未修改这些无关文件。
 - 未完成：作者宏数据与消费、运行内容的生命周期合同。预设 State 装配和对称页签已从默认需求中撤回，不再列为欠缺功能。

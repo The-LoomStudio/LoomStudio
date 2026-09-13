@@ -29,8 +29,37 @@ import { createStudioPanels } from './studio-panel-registry.js'
 import { useEffect, useMemo, useRef, type CSSProperties } from 'react'
 import styles from './app.module.scss'
 import '../styles/global.css'
+import { useAppearanceStore } from '../widgets/settings-panel/appearance-store.js'
+
+function initializeAppearancePreview() {
+  const root = document.documentElement
+  if (!root.dataset.loomMaterialPreview) {
+    root.dataset.loomMaterialPreview = 'glass'
+    root.style.setProperty('--loom-preview-blur', '18px')
+    root.style.setProperty('--loom-preview-opacity', '62%')
+  }
+  if (!root.dataset.loomPreviewBackground) {
+    root.dataset.loomPreviewBackground = 'harbor'
+    root.style.setProperty('--loom-preview-wallpaper', 'url("/images/banner.png")')
+  }
+}
 
 export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger }) {
+  initializeAppearancePreview()
+  const appearance = useAppearanceStore()
+  useEffect(() => {
+    const root = document.documentElement
+    root.dataset.loomMaterialPreview = appearance.material.mode
+    root.style.setProperty('--loom-preview-blur', `${appearance.material.blur}px`)
+    root.style.setProperty('--loom-preview-opacity', `${appearance.material.opacity}%`)
+    if (appearance.background) {
+      root.dataset.loomPreviewBackground = appearance.background.id
+      root.style.setProperty('--loom-preview-wallpaper', `url("${appearance.background.image}")`)
+    } else {
+      delete root.dataset.loomPreviewBackground
+      root.style.removeProperty('--loom-preview-wallpaper')
+    }
+  }, [appearance.background, appearance.material])
   const state = useStudioState(props.transportLogger)
   const rendererHost = useMemo(() => createClientRendererHost(), [])
   const clientExtensions = useClientExtensionRuntime({ api: state.clientExtensionApi, rendererHost })
@@ -68,6 +97,32 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
       })
     },
   }))
+  const headerActions = listClientActions({
+    packages: clientExtensions.packages,
+    surface: 'stage.header.actions',
+    context: composerCommandContext,
+  }).map(action => {
+    const extensionPackage = clientExtensions.packages.find(item => item.packageId === action.packageId)
+    const iconUrl = extensionIconUrl(extensionPackage)
+    return (
+      <button
+        aria-label={action.command.title}
+        className={`loom-stage-extension-action${action.packageId === 'official.the-world' ? ' loom-stage-the-world-action' : ''}`}
+        key={action.key}
+        title={action.command.title}
+        type="button"
+        onClick={() => {
+          void clientExtensions.host.executeCommand({ packageId: action.packageId, moduleId: action.moduleId, commandId: action.command.id, sourceSurface: 'stage.header.actions' }).then(result => {
+            if (result.status === 'failed') toast.error(result.message)
+          })
+        }}
+      >
+        {action.packageId === 'official.the-world'
+          ? <span data-the-world-toggle="" aria-hidden="true" />
+          : iconUrl ? <img src={iconUrl} alt="" aria-hidden="true" /> : <ClientActionIcon name={action.command.icon} />}
+      </button>
+    )
+  })
 
   function focusHistoryAsset(target: Awaited<ReturnType<typeof state.undoEdit>>) {
     if (!target) return
@@ -151,7 +206,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
     })
   }, [navigation.route.branchId, navigation.route.panel, navigation.route.timelineId, state.branch?.id, state.narrativeTimeline?.id])
   const resourcePanels = StudioResourcePanels({ state, uiState, navigation, assetWorkspaceId })
-  const panels = createStudioPanels({ state, uiState, navigation, rendererHost, clientExtensions, clientLogs: props.clientLogs, resourcePanels, assetWorkspaceId, cardsBusy, providerBusy, agentProfileBusy, activePresetId, sourceCardId, sessionBusy, openStateSource, uiScale, setUiScale })
+  const panels = createStudioPanels({ state, uiState, navigation, rendererHost, clientExtensions, clientLogs: props.clientLogs, resourcePanels, assetWorkspaceId, cardsBusy, providerBusy, agentProfileBusy, activePresetId, sourceCardId, sessionBusy, openStateSource, uiScale, setUiScale, backgrounds: clientExtensions.host.backgrounds() })
 
   const studio = (
     <StudioPage
@@ -163,6 +218,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
           surface="shell.background"
         />
       )}
+      headerActions={headerActions}
       modelConfigured={state.providerAccountsLoaded ? hasCompleteProviderAccount(state.providerAccounts) : undefined}
       busy={mutationBusy}
       canRedo={state.canRedoEdit}
@@ -328,6 +384,13 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
       <NotificationToaster label={state.t('notification.label')} />
     </>
   )
+}
+
+function extensionIconUrl(extensionPackage: { iconUrl?: string; modules: Array<{ runtimeKind: string; entryUrl?: string }> } | undefined): string | undefined {
+  if (extensionPackage?.iconUrl) return extensionPackage.iconUrl
+  const entryUrl = extensionPackage?.modules.find(module => module.runtimeKind === 'client')?.entryUrl
+  if (!entryUrl) return undefined
+  try { return new URL('../../icon.png', entryUrl).href } catch { return undefined }
 }
 
 async function resolveLoomScriptInputs(input: {

@@ -55,6 +55,11 @@
   pointer-events: none;
 }
 
+:global(html[data-loom-material-preview='glass']) .canvasStack::before,
+:global(html[data-loom-material-preview='glass']) .canvasStack::after {
+  display: none;
+}
+
 
 .canvasStack > :global([data-loom-object='narrative-timeline']),
 .canvasStack > :global([data-loom-object='agent-composer-layer']) {

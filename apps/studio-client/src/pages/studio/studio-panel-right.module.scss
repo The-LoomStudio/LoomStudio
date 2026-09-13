@@ -50,6 +50,16 @@
   }
 }
 
+:global(html[data-loom-material-preview='glass']) .panelRight::before {
+  display: none;
+}
+
+:global(html[data-loom-material-preview='glass']) .panelRight {
+  background: color-mix(in srgb, var(--loom-color-background) var(--loom-preview-opacity, 58%), transparent);
+  -webkit-backdrop-filter: blur(var(--loom-preview-blur, 18px)) saturate(135%);
+  backdrop-filter: blur(var(--loom-preview-blur, 18px)) saturate(135%);
+}
+
 @keyframes panel-right-slide-in {
   from {
     transform: translateX(100%);

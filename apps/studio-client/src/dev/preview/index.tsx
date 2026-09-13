@@ -2,11 +2,13 @@ import { createRoot } from 'react-dom/client'
 import type { ReactElement } from 'react'
 import { ComponentPreviewApp } from './component-preview-app.js'
 import { CardResourcesPreview } from './card-resources-preview.js'
+import { BackgroundMaterialsPreview } from './background-materials-preview.js'
 import '../../styles/global.css'
 
 const previews: Record<string, () => ReactElement> = {
   'text-pipeline': ComponentPreviewApp,
   'card-resources': CardResourcesPreview,
+  'background-materials': BackgroundMaterialsPreview,
 }
 
 export function renderComponentPreview(root: HTMLElement, previewId: string): void {

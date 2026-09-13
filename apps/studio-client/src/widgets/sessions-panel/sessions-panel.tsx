@@ -1083,6 +1083,25 @@ function TimelineDetail(props: {
     finally { setArchiveBusy(false) }
   }
 
+  async function importSillyTavernChat(file: File) {
+    if (!props.api || !props.card) return
+    setArchiveBusy(true); setArchiveError(undefined); setArchiveNotice(undefined)
+    try {
+      const converted = await props.api.extensionRuntime.call<{
+        title: string
+        messages: Array<{ content: string; createdAt?: string }>
+      }>('sillytavern.importer.convertChat', { jsonl: await file.text() })
+      const result = await props.api.narratives.create({
+        cardId: props.card.id,
+        title: converted.title,
+        openingNodes: converted.messages,
+      })
+      await props.onArchiveImported?.(result.timeline.id, { unknownParticipantNamespaces: [], participantFailures: [] })
+      setArchiveNotice(`已导入 ${converted.messages.length} 条 ST 消息`)
+    } catch (error) { setArchiveError(error instanceof Error ? error.message : String(error)) }
+    finally { setArchiveBusy(false) }
+  }
+
   return (
     <>
       <header className={styles.detailHeader}>
@@ -1129,6 +1148,12 @@ function TimelineDetail(props: {
               <Upload aria-hidden="true" size={14} />
               <input hidden type="file" accept="application/json,.json" disabled={archiveBusy} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void importArchive(file) }} />
             </label>
+            {props.card ? (
+              <label aria-label="导入 SillyTavern 会话" className={styles.detailIconButton} title="导入 SillyTavern 会话">
+                <MessageSquareText aria-hidden="true" size={14} />
+                <input hidden type="file" accept=".jsonl,application/x-ndjson" disabled={archiveBusy} onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void importSillyTavernChat(file) }} />
+              </label>
+            ) : null}
           </> : null}
           <button className={styles.primaryButton} type="button" onClick={props.onOpen}>
             <Play aria-hidden="true" size={14} />

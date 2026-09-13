@@ -20,6 +20,7 @@ export async function handleTimelineRpc(
       return await runtime.createNarrativeTimeline({
         cardId: readString(params, 'cardId'),
         title: readOptionalString(params, 'title'),
+        openingNodes: readOpeningNodes(params),
       }, context) as unknown as JsonValue
 
     case 'application.getNarrativeTimeline':
@@ -77,4 +78,17 @@ export async function handleTimelineRpc(
     default:
       return undefined
   }
+}
+
+function readOpeningNodes(params: JsonValue | undefined): Array<{ content: string; createdAt?: string }> | undefined {
+  if (!params || typeof params !== 'object' || Array.isArray(params)) return undefined
+  const value = (params as Record<string, unknown>).openingNodes
+  if (!Array.isArray(value)) return undefined
+  return value.flatMap(item => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return []
+    const content = (item as Record<string, unknown>).content
+    if (typeof content !== 'string') return []
+    const createdAt = (item as Record<string, unknown>).createdAt
+    return [{ content, ...(typeof createdAt === 'string' ? { createdAt } : {}) }]
+  })
 }

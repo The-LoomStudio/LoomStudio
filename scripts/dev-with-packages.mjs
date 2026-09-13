@@ -19,9 +19,19 @@ const initialBuild = spawnSync('pnpm', ['run', 'build:packages'], {
 })
 if (initialBuild.status !== 0) process.exit(initialBuild.status ?? 1)
 
+if (target === 'server') {
+  const extensionBuild = spawnSync('pnpm', ['--dir', 'official/extensions/the-world', 'run', 'build'], {
+    cwd: repositoryRoot,
+    env: developmentEnvironment,
+    stdio: 'inherit',
+  })
+  if (extensionBuild.status !== 0) process.exit(extensionBuild.status ?? 1)
+}
+
 const processes = [
   start('loom-core', ['--filter', '@loom/core', 'exec', 'tsc', '-p', 'tsconfig.build.json', '--watch', '--preserveWatchOutput']),
   start('studio-packages', ['exec', 'tsc', '-b', 'tsconfig.packages.json', '--watch', '--preserveWatchOutput']),
+  ...(target === 'server' ? [start('the-world-client', ['--dir', 'official/extensions/the-world', 'exec', 'esbuild', 'src/client/index.js', '--bundle', '--format=esm', '--platform=browser', '--target=es2022', '--outfile=dist/client.js', '--watch'])] : []),
   target === 'server'
     ? start('studio-server', ['exec', 'tsx', 'watch', '--include', 'packages/**/dist/**/*', '--include', 'official/**', '--include', 'tests/fixtures/extensions/**/dist/**/*', 'apps/studio-server/src/main.ts'])
     : start('studio-client', ['exec', 'vite', '--config', 'apps/studio-client/vite.config.ts']),

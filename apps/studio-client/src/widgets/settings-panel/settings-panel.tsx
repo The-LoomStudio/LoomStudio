@@ -1,13 +1,32 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { useAppearanceStore } from './appearance-store.js'
 import { ChevronLeft, Globe, Info, Network, Palette, Regex } from 'lucide-react'
 import { TextTransformDetail, TextTransformExplorer, useTextTransformController } from '../../features/text-transforms/ui/text-transform-panel.js'
 import type { NetworkSettings, StudioApi } from '../../shared/api/studio-api.js'
 import type { Locale, Translator } from '../../shared/i18n/index.js'
 import { localeLabels, supportedLocales } from '../../shared/i18n/index.js'
 import { MasterDetailWorkbench } from '../../shared/ui/master-detail-workbench/master-detail-workbench.js'
+import { BackgroundMaterialsView, type BackgroundOption } from './background-materials-view.js'
 import styles from './settings-panel.module.scss'
 
 type SettingsCategory = 'general' | 'network' | 'appearance' | 'text-pipeline' | 'about'
+
+export const previewBackgrounds: BackgroundOption[] = [
+  {
+    id: 'harbor',
+    name: '黄昏港口',
+    description: '适合海港、码头与临海城市场景',
+    source: '角色卡 · 四方世界',
+    image: '/images/banner.png',
+  },
+  {
+    id: 'forest',
+    name: '雾中森林',
+    description: '低对比度的林地背景',
+    source: '官方背景',
+    image: '/images/default-card.png',
+  },
+]
 
 export function SettingsPanel(props: {
   busy: boolean
@@ -15,6 +34,7 @@ export function SettingsPanel(props: {
   locale: Locale
   networkSettings: NetworkSettings
   textTransformsApi: StudioApi['textTransforms']
+  backgrounds?: readonly BackgroundOption[]
   uiScale: number
   onChangeCustomCss(value: string): void
   onChangeLocale(locale: Locale): void
@@ -26,6 +46,13 @@ export function SettingsPanel(props: {
   const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
   const [proxyMode, setProxyMode] = useState(props.networkSettings.proxyMode)
   const [proxyUrl, setProxyUrl] = useState(props.networkSettings.proxyUrl ?? '')
+  const previewBackgroundId = useAppearanceStore(state => state.background?.id ?? null)
+  const previewFollowState = useAppearanceStore(state => state.followAI)
+  const previewMaterial = useAppearanceStore(state => state.material)
+  const setPreviewBackground = useAppearanceStore(state => state.setBackground)
+  const setPreviewFollowState = useAppearanceStore(state => state.setFollowAI)
+  const setPreviewMaterial = useAppearanceStore(state => state.setMaterial)
+  const backgrounds = [...previewBackgrounds, ...(props.backgrounds ?? [])]
   const textController = useTextTransformController({
     api: props.textTransformsApi,
     owner: { kind: 'workspace' },
@@ -241,35 +268,47 @@ export function SettingsPanel(props: {
               <header className={styles.detailHeader}>
                 <h3>{props.t('settings.appearance')}</h3>
               </header>
-              <div className={styles.cardSection}>
-                <h4>界面缩放 (UI Scale)</h4>
-                <p>调整客户端整体视觉比例大小。</p>
-                <div className={styles.scaleRow}>
-                  <span>{props.t('settings.uiScale')}</span>
-                  <input
-                    aria-label={props.t('settings.uiScale')}
-                    max="125"
-                    min="80"
-                    step="5"
-                    type="range"
-                    value={props.uiScale}
-                    onChange={event => props.onChangeUiScale(Number(event.target.value))}
-                  />
-                  <output>{props.uiScale}%</output>
-                </div>
-              </div>
-
-              <div className={styles.cardSection}>
-                <h4>自定义 CSS (Custom Styles)</h4>
-                <p>注入自定义样式规则以调整界面风格。</p>
-                <textarea
-                  className={styles.customCssTextarea}
-                  placeholder={props.t('settings.customCssPlaceholder')}
-                  spellCheck={false}
-                  value={props.customCss}
-                  onChange={event => props.onChangeCustomCss(event.target.value)}
-                />
-              </div>
+              <BackgroundMaterialsView
+                backgrounds={backgrounds}
+                followState={previewFollowState}
+                material={previewMaterial}
+                selectedId={previewBackgroundId}
+                general={(
+                  <>
+                    <div className={styles.cardSection}>
+                      <h4>界面缩放 (UI Scale)</h4>
+                      <p>调整客户端整体视觉比例大小。</p>
+                      <div className={styles.scaleRow}>
+                        <span>{props.t('settings.uiScale')}</span>
+                        <input
+                          aria-label={props.t('settings.uiScale')}
+                          max="125"
+                          min="80"
+                          step="5"
+                          type="range"
+                          value={props.uiScale}
+                          onChange={event => props.onChangeUiScale(Number(event.target.value))}
+                        />
+                        <output>{props.uiScale}%</output>
+                      </div>
+                    </div>
+                    <div className={styles.cardSection}>
+                      <h4>自定义 CSS (Custom Styles)</h4>
+                      <p>注入自定义样式规则以调整界面风格。</p>
+                      <textarea
+                        className={styles.customCssTextarea}
+                        placeholder={props.t('settings.customCssPlaceholder')}
+                        spellCheck={false}
+                        value={props.customCss}
+                        onChange={event => props.onChangeCustomCss(event.target.value)}
+                      />
+                    </div>
+                  </>
+                )}
+                onFollowStateChange={setPreviewFollowState}
+                onMaterialChange={setPreviewMaterial}
+                onSelect={id => setPreviewBackground(backgrounds.find(item => item.id === id) ?? null)}
+              />
             </>
           ) : (
             <>

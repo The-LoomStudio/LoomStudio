@@ -16,6 +16,10 @@
   background: var(--loom-color-background);
 }
 
+:global(html[data-loom-material-preview='glass']) .navigator {
+  background: transparent;
+}
+
 .scale {
   position: relative;
   width: 100%;

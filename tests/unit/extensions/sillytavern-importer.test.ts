@@ -13,7 +13,8 @@ import type { SillyTavernPresetData } from '../../../official/extensions/st-data
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createPromptResourceStore } from '@loom-studio/prompt-resource-store'
-import { importCardBundle } from '@loom-studio/application-runtime'
+import { createApplicationRuntime, importCardBundle } from '@loom-studio/application-runtime'
+import { createNarrativeStore } from '@loom-studio/narrative-store'
 
 function createMockPngWithText(keyword: string, text: string): Uint8Array {
   const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
@@ -416,6 +417,44 @@ describe('SillyTavern Importer Extension', () => {
     const disabledOrderEntry = allEntries.find((e: any) => e.label.includes('短思考'))
     expect(disabledOrderEntry).toBeDefined()
     expect(disabledOrderEntry?.enabled).toBe(false)
+  })
+
+  it('reuses an embedded worldbook through an external card reference in an in-memory migration', async () => {
+    const fixtureRoot = join(__dirname, '../../../Playground/stbridge-fixture/Data')
+    const card = convertSillyTavernCard(JSON.parse(readFileSync(join(fixtureRoot, 'characters/Fixture Hero.json'), 'utf8')))
+    const world = convertSillyTavernLorebook(readFileSync(join(fixtureRoot, 'worlds/Fixture World.json'), 'utf8'))
+    let sequence = 0
+    const createId = (prefix: string) => `${prefix}-${++sequence}`
+    const now = () => '2026-09-13T00:00:00.000Z'
+    const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
+    const documents = createSqliteDocumentStore({ engine })
+    const narratives = createNarrativeStore({ engine, createId, now })
+    const promptResources = createPromptResourceStore({ engine, createId, now })
+    const runtime = createApplicationRuntime({ dataEngine: engine, documents, narratives, promptResources })
+
+    const shared = await runtime.importPromptResource({ artifact: world.artifact })
+    const cardArtifact = structuredClone(card.artifact)
+    const embedded = cardArtifact.contextAssets.find(asset => asset.category === 'setting')!
+    cardArtifact.contextAssets = cardArtifact.contextAssets.filter(asset => asset !== embedded)
+    const imported = await runtime.importCardBundle({ artifact: cardArtifact })
+    await runtime.updateCardPromptResources({
+      cardId: imported.card.id,
+      promptResourceIds: [shared.resource.id],
+      externalPromptResourceIds: [shared.resource.id],
+    })
+    const timeline = await runtime.createNarrativeTimeline({
+      cardId: imported.card.id,
+      title: 'fixture-chat',
+      openingNodes: [{ content: '第一行\n第二行' }],
+    })
+
+    expect((await promptResources.listResources()).resources).toHaveLength(1)
+    await expect(runtime.getCard({ cardId: imported.card.id })).resolves.toMatchObject({
+      card: { promptResourceIds: [shared.resource.id], externalPromptResourceIds: [shared.resource.id] },
+    })
+    expect(timeline.timeline.createdFrom?.cardId).toBe(imported.card.id)
+    expect(timeline.nodes[0]?.body.raw).toBe('第一行\n第二行')
+    engine.close()
   })
 
   it('correctly normalizes real Rimworld lorebook with natural order and non-at_depth anchors', () => {

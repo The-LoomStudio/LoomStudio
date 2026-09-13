@@ -27,6 +27,25 @@
     scroll-padding-bottom var(--loom-motion-duration-standard) var(--loom-motion-easing-standard);
 }
 
+:global(html[data-loom-material-preview='glass']) .timeline {
+  scrollbar-color: color-mix(in srgb, var(--loom-color-text-subtle) 55%, transparent) transparent;
+}
+
+:global(html[data-loom-material-preview='glass']) .timeline::-webkit-scrollbar {
+  width: 10px;
+}
+
+:global(html[data-loom-material-preview='glass']) .timeline::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:global(html[data-loom-material-preview='glass']) .timeline::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--loom-color-text-subtle) 55%, transparent);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+
 .empty {
   width: min(var(--loom-chat-width), 100%);
   padding: 24px 0;

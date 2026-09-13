@@ -135,6 +135,7 @@ export type PromptResourceArtifact = {
   resourceKind: PromptResourceKind
   rootNode: PromptResourceNode
   macros?: Record<string, string>
+  textTransformRules?: Array<Omit<TextTransformRuleDraft, 'owner'>>
   scriptAttachments?: LoomScriptAttachmentArtifact[]
 }
 
@@ -486,6 +487,7 @@ export function normalizePromptResourceArtifact(artifact: PromptResourceArtifact
     ...structuredClone(artifact),
     schemaVersion: 2,
     scriptAttachments: structuredClone(artifact.scriptAttachments ?? []),
+    ...(artifact.textTransformRules !== undefined ? { textTransformRules: structuredClone(artifact.textTransformRules) } : {}),
   }
 }
 

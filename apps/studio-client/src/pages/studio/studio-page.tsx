@@ -38,6 +38,7 @@ type StudioPageProps = {
   customCss: string
   modelConfigured?: boolean
   panelHeaders?: Partial<Record<StudioPanelId, ReactNode>>
+  headerActions?: ReactNode
   panels: Record<StudioPanelId, (active: boolean) => ReactNode>
   providerAccounts?: ProviderAccount[]
   recentSessions?: ReactNode
@@ -339,6 +340,7 @@ export function StudioPage(props: StudioPageProps) {
           </div>
 
           <div className={styles.stageHeaderRight}>
+            {props.headerActions}
             <button
               aria-label={isAgentPanelOpen ? '关闭侧边面板' : '打开侧边面板'}
               className={[

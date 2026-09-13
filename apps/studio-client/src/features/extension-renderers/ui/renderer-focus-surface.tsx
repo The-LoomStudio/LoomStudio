@@ -15,8 +15,27 @@ export function RendererFocusSurface(props: { host: ClientRendererHost; scope: C
 }
 
 function FocusDialog(props: { activeKey: string; host: ClientRendererHost; scope: ClientRendererScope }) {
-  const dialogRef = useRef<HTMLDialogElement>(null)
+  const registration = props.host.find(props.activeKey)
+  const nonModal = registration?.owner.kind === 'extension' && registration.owner.packageId === 'official.the-world'
 
+  if (nonModal) {
+    return (
+      <div className={styles.nonModalSurface} data-loom-component="renderer-focus-surface" data-modal="false">
+        <RendererSurfaceHost
+          activeContributionKey={props.activeKey}
+          host={props.host}
+          scope={props.scope}
+          surface="shell.focus-surface"
+        />
+      </div>
+    )
+  }
+
+  return <ModalDialog {...props} />
+}
+
+function ModalDialog(props: { activeKey: string; host: ClientRendererHost; scope: ClientRendererScope }) {
+  const dialogRef = useRef<HTMLDialogElement>(null)
   useEffect(() => {
     const dialog = dialogRef.current
     if (!dialog) return
@@ -32,6 +51,7 @@ function FocusDialog(props: { activeKey: string; host: ClientRendererHost; scope
     <dialog
       aria-label="Extension focus surface"
       className={styles.dialog}
+      data-modal="true"
       data-loom-component="renderer-focus-surface"
       ref={dialogRef}
       onCancel={event => {

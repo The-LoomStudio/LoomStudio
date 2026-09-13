@@ -516,6 +516,10 @@ export type MutationReceipt = {
 export type CreateNarrativeTimelineInput = {
   cardId: string
   title?: string
+  openingNodes?: Array<{
+    content: string
+    createdAt?: string
+  }>
 }
 
 export type CreateNarrativeTimelineResult = {

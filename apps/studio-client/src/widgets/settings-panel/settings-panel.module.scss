@@ -7,6 +7,20 @@
   background: var(--loom-color-surface-base);
 }
 
+:global(html[data-loom-material-preview='glass']) .settingsPanel,
+:global(html[data-loom-material-preview='glass']) .detailPane,
+:global(html[data-loom-material-preview='glass']) .textPipelineDetail {
+  background: color-mix(in srgb, var(--loom-color-surface-base) var(--loom-preview-opacity, 58%), transparent);
+  -webkit-backdrop-filter: blur(var(--loom-preview-blur, 18px)) saturate(135%);
+  backdrop-filter: blur(var(--loom-preview-blur, 18px)) saturate(135%);
+}
+
+:global(html[data-loom-material-preview='glass']) .cardSection {
+  background: color-mix(in srgb, var(--loom-color-surface-subtle) 62%, transparent);
+  -webkit-backdrop-filter: blur(calc(var(--loom-preview-blur, 18px) * 0.75)) saturate(125%);
+  backdrop-filter: blur(calc(var(--loom-preview-blur, 18px) * 0.75)) saturate(125%);
+}
+
 .intro {
   position: relative;
   display: flex;

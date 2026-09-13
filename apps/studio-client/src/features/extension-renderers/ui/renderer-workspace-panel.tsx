@@ -75,6 +75,9 @@ export function RendererWorkspacePanel(props: {
   const registrations = props.host.list('shell.workspace-panel')
   const activeKey = props.host.activeContributionKey('shell.workspace-panel', WORKSPACE_SCOPE_KEY)
   const active = registrations.find(registration => rendererContributionKey(registration) === activeKey)
+  const activeOwner = active?.owner
+  const activePackage = activeOwner?.kind === 'extension' ? props.packages.find(item => item.packageId === activeOwner.packageId) : undefined
+  const activeIconUrl = activePackage ? extensionIconUrl(activePackage) : undefined
 
   if (active) {
     return (
@@ -84,7 +87,10 @@ export function RendererWorkspacePanel(props: {
             <ArrowLeft aria-hidden="true" />
             <span>{props.t('renderer.back')}</span>
           </button>
-          <strong>{active.definition.name}</strong>
+          <strong className={styles.activeTitle}>
+            {activeIconUrl ? <img className={styles.activeIcon} src={activeIconUrl} alt="" aria-hidden="true" /> : null}
+            <span>{active.definition.name}</span>
+          </strong>
         </header>
         <RendererSurfaceHost activeContributionKey={activeKey} className={styles.renderer} host={props.host} scope={{ kind: 'workspace', key: WORKSPACE_SCOPE_KEY }} surface="shell.workspace-panel" />
       </section>
@@ -209,7 +215,7 @@ export function RendererWorkspacePanel(props: {
                   type="button"
                   onClick={() => select({ kind: 'package', packageId: extensionPackage.packageId })}
                 >
-                  <Package aria-hidden="true" />
+                  {extensionIconUrl(extensionPackage) ? <img className={styles.packageIcon} src={extensionIconUrl(extensionPackage)} alt="" aria-hidden="true" /> : <Package aria-hidden="true" />}
                   <span><strong>{extensionPackage.displayName}</strong><small>{extensionPackage.packageId} · {extensionPackage.version}</small></span>
                 </button>
                 {extensionPackage.packageId === selected?.packageId ? (
@@ -353,6 +359,13 @@ export function RendererWorkspacePanel(props: {
       </MasterDetailWorkbench>
     </section>
   )
+}
+
+function extensionIconUrl(extensionPackage: ManagedExtensionPackage): string | undefined {
+  if (extensionPackage.iconUrl) return extensionPackage.iconUrl
+  const entryUrl = extensionPackage.modules.find(module => module.runtimeKind === 'client')?.entryUrl
+  if (!entryUrl) return undefined
+  try { return new URL('../../icon.png', entryUrl).href } catch { return undefined }
 }
 
 function readServerRuntimeState(runtime: ClientJsonValue | undefined): string | undefined {

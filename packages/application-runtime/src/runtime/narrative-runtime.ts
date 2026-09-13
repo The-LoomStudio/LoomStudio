@@ -275,7 +275,7 @@ function orderArchiveItems<T extends { id: string }>(items: T[], parentId: (item
 
 export async function createTimelineFromCard(
   ctx: ApplicationRuntimeContext,
-  input: { cardId: string; title?: string },
+  input: CreateNarrativeTimelineInput,
   requestContext: RuntimeRequestContext | undefined,
   reason: string,
 ) {
@@ -341,7 +341,10 @@ export async function createTimelineFromCard(
     contributionSources,
   })
   const variables = await readAgentTurnVariables(ctx, runtimeContext.fallbackUserName, initialState, cardContent.name)
-  const openingEntries = readOpeningEntries(cardContent, variables)
+  const openingEntries = input.openingNodes?.map(entry => ({
+    content: entry.content,
+    ...(entry.createdAt ? { createdAt: entry.createdAt } : {}),
+  })) ?? readOpeningEntries(cardContent, variables)
   const transaction = await ctx.dataEngine.transact(
     narrativeWriteContext(requestContext, reason),
     async dataTx => requireDocumentParticipant(ctx).participateTransaction(dataTx, async documents => {

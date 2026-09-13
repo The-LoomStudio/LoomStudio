@@ -97,6 +97,10 @@
   white-space: pre;
 }
 
+.content p {
+  white-space: pre-wrap;
+}
+
 .codeBlock[data-wrap='true'] pre,
 .codeBlock[data-wrap='true'] code {
   white-space: pre-wrap;

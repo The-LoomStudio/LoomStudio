@@ -239,6 +239,7 @@ export type UpdateAgentProfileInput = {
 export type CreateNarrativeTimelineInput = {
   cardId: string
   title?: string
+  openingNodes?: Array<{ content: string; createdAt?: string }>
 }
 
 export type ForkNarrativeBranchInput = {

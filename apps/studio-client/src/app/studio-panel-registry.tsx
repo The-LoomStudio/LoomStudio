@@ -15,6 +15,7 @@ import { useClientExtensionRuntime } from '../features/extension-renderers/model
 import { SettingsPanel } from '../widgets/settings-panel/settings-panel.js'
 import { StudioStatePanel } from './studio-state-panel.js'
 import { toast } from 'sonner'
+import type { RegisteredClientBackground } from '@loom-studio/extension-sdk'
 import type { useStudioState } from './use-studio-state.js'
 import type { useStudioUiState } from './use-studio-ui-state.js'
 import type { useStudioNavigation } from '../pages/studio/model/use-studio-navigation.js'
@@ -42,8 +43,9 @@ export function createStudioPanels(input: {
   openStateSource: (scope: 'global' | 'timeline') => void
   uiScale: number
   setUiScale: (scale: number) => void
+  backgrounds: readonly RegisteredClientBackground[]
 }): Record<StudioPanelId, (active: boolean) => ReactNode> {
-  const { state, uiState, navigation, rendererHost, clientExtensions, clientLogs, resourcePanels, assetWorkspaceId, cardsBusy, providerBusy, agentProfileBusy, activePresetId, sourceCardId, sessionBusy, openStateSource, uiScale, setUiScale } = input
+  const { state, uiState, navigation, rendererHost, clientExtensions, clientLogs, resourcePanels, assetWorkspaceId, cardsBusy, providerBusy, agentProfileBusy, activePresetId, sourceCardId, sessionBusy, openStateSource, uiScale, setUiScale, backgrounds } = input
   const panels: Record<StudioPanelId, (active: boolean) => ReactNode> = {
     model: () => (
       <ModelPanel
@@ -307,6 +309,7 @@ export function createStudioPanels(input: {
         locale={state.locale}
         networkSettings={state.networkSettings}
         textTransformsApi={state.textTransformsApi}
+        backgrounds={backgrounds.map(item => ({ id: item.key, name: item.name, description: item.description, image: item.image, source: item.source ?? item.packageId }))}
         uiScale={uiScale}
         t={state.t}
         onChangeCustomCss={state.setCustomCss}

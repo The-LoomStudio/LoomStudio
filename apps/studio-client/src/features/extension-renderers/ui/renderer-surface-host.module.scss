@@ -2,12 +2,18 @@
   min-width: 0;
   position: relative;
   isolation: isolate;
+  pointer-events: none;
 }
 
 .instance {
   min-width: 0;
   position: relative;
   isolation: isolate;
+  pointer-events: none;
+}
+
+.instance :global([data-loom-renderer-shadow-root]) {
+  pointer-events: none;
 }
 
 .instance > iframe {
