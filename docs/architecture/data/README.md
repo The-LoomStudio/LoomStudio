@@ -10,7 +10,7 @@
 - Kernel 如何通过 RPC 暴露数据能力记录在 [`../kernel/`](../kernel/)；
 - UI Undo/Redo history 不等同于 Document Store 的持久化历史。
 
-当前数据层设计过程位于 [`../../workbench/discussion/data/`](../../workbench/discussion/data/)。具体专题在与当前实现逐项核对后再晋升，本目录暂不复制 Draft 文档。
+当前数据层设计过程位于 [`../../workbench/discussion/`](../../workbench/discussion/)。具体专题在与当前实现逐项核对后再晋升，本目录暂不复制 Draft 文档。
 
 本地路径、Blob、Source Artifact 与 Media Asset 的已实现边界见 [`local-storage-and-assets.md`](local-storage-and-assets.md)。
 

@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Copy, Plus, RefreshCw } from 'lucide-react'
+import { Check, ChevronDown, Copy, LoaderCircle, Pause, Play, Plus, RefreshCw } from 'lucide-react'
 import {
   lazy,
   Suspense,
@@ -15,6 +15,7 @@ import type {
   ProviderAccount,
 } from '../../entities/index.js'
 import type { Translator } from '../../shared/i18n/index.js'
+import type { ActiveAgentRun } from '../../features/narrative-runtime/model/use-narrative-runtime.js'
 import { tryWriteClipboardText } from '../../shared/browser/clipboard.js'
 import type { MarkdownCodeBlockLabels } from '../../shared/ui/markdown-content/markdown-code-block.js'
 import { SkeletonText } from '../../shared/ui/skeleton/skeleton.js'
@@ -34,6 +35,7 @@ const ConversationMarkdown = lazy(async () => {
 
 export type AgentChatPanelProps = {
   busy: boolean
+  activeRun?: ActiveAgentRun
   input: string
   messages: AgentTranscriptEntryEntity[]
   profiles: AgentProfile[]
@@ -51,6 +53,9 @@ export type AgentChatPanelProps = {
   onNewSession?(): void
   onRefreshSessions?(): void
   onSubmit(event: FormEvent): void
+  onCancelRun?(): void
+  onPauseRun?(): void
+  onResumeRun?(): void
 }
 
 export function AgentChatPanel(props: AgentChatPanelProps) {
@@ -141,9 +146,22 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
           })}
 
           {props.busy ? (
-            <div aria-busy="true" className={styles.loading}>
-              <SkeletonText lines={2} />
+            <div aria-busy="true" className={styles.runStatus} data-status={props.activeRun?.status ?? 'running'}>
+              {props.activeRun?.status === 'running' ? <LoaderCircle aria-hidden="true" className={styles.spin} /> : null}
+              <span>{runStatusLabel(props.t, props.activeRun?.status ?? 'running')}</span>
+              {props.activeRun?.status === 'running' ? (
+                <button type="button" className={styles.cancelRun} title={props.t('agent.run.pause')} aria-label={props.t('agent.run.pause')} onClick={props.onPauseRun}>
+                  <Pause aria-hidden="true" />
+                </button>
+              ) : <SkeletonText lines={2} />}
             </div>
+          ) : props.activeRun?.status === 'suspended' && !props.input.trim() ? (
+            <button type="button" className={styles.resumeRun} onClick={props.onResumeRun}>
+              <Play aria-hidden="true" />
+              <span>{props.t('agent.run.resume')}</span>
+            </button>
+          ) : props.activeRun && props.activeRun.status !== 'running' ? (
+            <div className={styles.runStatus} data-status={props.activeRun.status}>{runStatusLabel(props.t, props.activeRun.status)}</div>
           ) : null}
 
           {props.sessionTail ? (
@@ -181,6 +199,10 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
       </footer>
     </div>
   )
+}
+
+function runStatusLabel(t: Translator, status: ActiveAgentRun['status']) {
+  return t(`agent.run.${status}` as Parameters<Translator>[0])
 }
 
 function AgentTranscriptEntry(props: {

@@ -68,6 +68,7 @@ export type AgentProfile = {
   presetId: string
   model: ProviderModelSelection
   toolOverrides: Record<string, boolean>
+  delivery: 'stream' | 'complete'
   createdAt: string
   updatedAt: string
 }

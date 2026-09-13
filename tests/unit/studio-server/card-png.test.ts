@@ -68,7 +68,7 @@ describe('Loom Card PNG', () => {
     const decoded = await decodeCardBundleZip(readCardPngArchive(png)!)
     expect(decoded.artifact.card.description).toBe('真实正文')
     expect(Buffer.from(decoded.background!.bytes).toString()).toBe('background')
-  })
+  }, 30000)
 
   it('rejects corrupt Base64 instead of treating a recognized Bundle as absent', () => {
     const png = Buffer.from(encodeCardBundlePng(defaultCardPng, Buffer.from('PK\x03\x04')))

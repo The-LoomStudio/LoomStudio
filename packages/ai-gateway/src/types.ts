@@ -65,10 +65,14 @@ export type AiGatewayEvent =
   | { type: 'failed'; runId: string; error: AiGatewayError }
   | { type: 'cancelled'; runId: string; reason?: string }
 
+export type AiGatewayRunState = 'running' | 'completed' | 'failed' | 'cancelled'
+
 export type AiGatewayRun = {
   id: string
   events: AsyncIterable<AiGatewayEvent>
+  readEvents(cursor?: number): { events: AiGatewayEvent[]; nextCursor: number; done: boolean }
   result: Promise<AiGatewayResult>
+  getState(): AiGatewayRunState
   cancel(reason?: string): void
 }
 

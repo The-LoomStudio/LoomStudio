@@ -449,9 +449,18 @@ describe('application agent session lifecycle', () => {
 
   it('loads Settings linked by the selected Preset without a Narrative Timeline', async () => {
     const { engine, runtime } = createTestRuntime()
-    await runtime.initialize()
-    const preset = (await runtime.listPromptResources({ resourceKind: 'preset' })).resources
-      .find(resource => resource.origin?.key === 'loom-assistant-preset')!
+    const preset = await createPreset(runtime, 'Official Assistant', 'Loom Studio 是面向 AI 角色扮演的工作台。')
+    const setting = await runtime.createPromptResource({ resourceKind: 'setting', name: 'Assistant Knowledge' })
+    await runtime.createPromptResourceAsset({
+      resourceId: setting.resource.id,
+      targetAssetId: setting.resource.rootNode.id,
+      position: 'inside',
+      asset: { id: 'assistant-knowledge', label: 'Knowledge', kind: 'entry', body: 'Loom Studio 是面向 AI 角色扮演的工作台。' },
+    })
+    await runtime.replaceSettingMounts({
+      source: { kind: 'preset', id: preset.id },
+      settingResourceIds: [setting.resource.id],
+    })
     const provider = await runtime.createProviderProfile({
       providerExtensionId: 'official.fake',
       displayName: 'Official Test Provider',

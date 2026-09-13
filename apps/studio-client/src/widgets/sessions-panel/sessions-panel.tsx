@@ -264,6 +264,7 @@ export function SessionsPanel(props: SessionsPanelProps) {
       setSelectedItem(undefined)
     }
 
+    // Remove only confirmed deletions so a partial batch failure leaves failed items visible for retry.
     if (deletedTimelineIds.size === timelineIds.length && deletedSessionIds.size === sessionIds.length) {
       setIsSelectionMode(false)
     }

@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 4,
+  "artifactId": "example.character-status",
+  "displayName": "Character Status 完整样例",
+  "description": "Loom Studio 的可导入 Text Pipeline 与 Renderer 样例。",
+  "card": {
+    "name": "Character Status 完整样例",
+    "description": "一个演示 Card 自有文本管线和状态渲染器的完整样例。",
+    "opening": "欢迎来到 Character Status 样例。请在正文中加入 <CharacterStatus>...</CharacterStatus>。",
+    "macros": {
+      "sampleName": "Character Status"
+    }
+  },
+  "contextAssets": [],
+  "textTransformRules": [
+    {
+      "name": "Character Status Marker",
+      "enabled": true,
+      "orderIndex": 100,
+      "matcher": {
+        "kind": "regex",
+        "pattern": "<CharacterStatus>(?<body>[\\s\\S]*?)</CharacterStatus>",
+        "flags": "g"
+      },
+      "effect": {
+        "kind": "mark",
+        "markerType": "character-status"
+      },
+      "targets": ["narrative"],
+      "phases": ["display"]
+    }
+  ],
+  "textExtractors": [
+    {
+      "name": "Character Status Artifact",
+      "enabled": true,
+      "orderIndex": 110,
+      "targets": ["narrative"],
+      "matcher": {
+        "kind": "regex",
+        "pattern": "<CharacterStatus>(?<body>[\\s\\S]*?)</CharacterStatus>",
+        "flags": "g",
+        "contentGroup": "body"
+      },
+      "strategy": "latest-valid",
+      "parser": "text",
+      "artifactType": "loom.character-status"
+    }
+  ]
+}

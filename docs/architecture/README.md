@@ -25,9 +25,9 @@ Architecture
 
 | 分类 | 正式职责 | 对应工作台 |
 |---|---|---|
-| [`kernel/`](kernel/) | 业务无感知的 Kernel、RPC、事件和平台服务组装边界 | [`workbench/discussion/kernel/`](../workbench/discussion/kernel/) |
-| [`data/`](data/) | Document、Revision、Changeset、持久化和审计数据边界 | [`workbench/discussion/data/`](../workbench/discussion/data/) |
-| [`extensions/`](extensions/) | 平台级 Extension Host、Manifest、生命周期和 SDK 边界 | [`workbench/discussion/extensions/`](../workbench/discussion/extensions/) |
+| [`kernel/`](kernel/) | 业务无感知的 Kernel、RPC、事件和平台服务组装边界 | [`Workbench Discussion`](../workbench/discussion/) |
+| [`data/`](data/) | Document、Revision、Changeset、持久化和审计数据边界 | [`Workbench Discussion`](../workbench/discussion/) |
+| [`extensions/`](extensions/) | 平台级 Extension Host、Manifest、生命周期和 SDK 边界 | [`Workbench Discussion`](../workbench/discussion/) |
 | [`platform/`](platform/) | 不属于 Kernel、也不只属于第一方 Application 的共享平台能力 | [`workbench/discussion/platform/`](../workbench/discussion/platform/) |
 | [`application/`](application/) | Studio 第一方 AIRP 领域层，包括 PromptBuild、Agent、Runtime 和默认体验 | [`workbench/discussion/application/`](../workbench/discussion/application/) |
 | [`ui/`](ui/) | Studio Shell、通用界面容器和全局 UI 原语 | [`workbench/discussion/ui/`](../workbench/discussion/ui/) |

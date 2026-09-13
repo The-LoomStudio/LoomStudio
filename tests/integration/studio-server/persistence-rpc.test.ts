@@ -56,8 +56,9 @@ describe('studio server persistence integration', () => {
     try {
       const firstServer = createStudioServer({ sqlitePath })
       const first = await firstServer.listen(0)
+      const createdPreset = await callRpc<{ resource: { id: string } }>(first.port, 'application.createPromptResource', { resourceKind: 'preset', name: 'Persistent Preset' })
       const presets = await callRpc<{ resources: Array<{ id: string }> }>(first.port, 'application.listPromptResources', { resourceKind: 'preset' })
-      const presetId = presets.resources[0]!.id
+      const presetId = createdPreset.resource.id
       const provider = await callRpc<{ providerProfile: { id: string } }>(first.port, 'application.createProviderProfile', {
         providerExtensionId: 'official.fake',
         displayName: 'Persistent Provider',

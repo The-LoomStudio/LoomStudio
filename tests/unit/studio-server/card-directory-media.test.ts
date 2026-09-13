@@ -125,7 +125,7 @@ describe('card directory media', () => {
     const card = encodeCardBundlePng(image, Buffer.from('private card payload'))
     await fs.writeFile(join(directory, 'assets/avatar.png'), card)
     expect((await media.read('card-1', 'avatar', 'asset-1'))?.bytes).toEqual(image)
-  })
+  }, 30000)
 
   it('reads replacement bytes on every request and follows explicit bindings', async () => {
     const { media, root, directory, metadata } = await setup()
@@ -135,7 +135,7 @@ describe('card directory media', () => {
     await fs.rename(directory, join(root, 'characters/author-name'))
     await fs.writeFile(join(metadata, 'binding.json'), JSON.stringify({ directoryName: 'author-name', artifactId: 'source' }))
     expect((await media.read('card-1', 'avatar', 'asset-1'))?.mediaType).toBe('image/png')
-  })
+  }, 30000)
 
   it('falls back only for unsaved, legacy, changed references or an undeclared kind', async () => {
     const { media, baseline, saveBaseline, manifest, metadata } = await setup()

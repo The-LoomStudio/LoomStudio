@@ -731,7 +731,7 @@ async function removeExtensionPackageResourcesInternal(
   }
 
   const profiles = await listDocuments<AgentProfileContent>(ctx.documents, applicationDocumentTypes.agentProfile)
-  const blockingProfiles = profiles.filter(profile => presetResourceIds.has(profile.content.presetId))
+  const blockingProfiles = profiles.filter(profile => profile.content.presetId !== undefined && presetResourceIds.has(profile.content.presetId))
   if (blockingProfiles.length > 0) {
     throw new Error(`Extension Package resources are still referenced by Agent Profiles: ${blockingProfiles.map(profile => profile.id).join(', ')}`)
   }

@@ -113,7 +113,12 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
         let sequence = session.entryCount
         for (const item of input.entries) {
           validateOptionalId(item.runId, 'runId')
-          validateTranscriptEntry(item.entry, toolInvocations)
+          validateTranscriptEntry(
+            item.entry,
+            toolInvocations,
+            database,
+            session.id,
+          )
           sequence += 1
           const entry: AgentTranscriptEntry = {
             id: item.id ?? nextId('agent-entry'),
@@ -166,11 +171,37 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
       updateSession: (input) => {
         const session = requireSession(database, input.agentSessionId)
         validateOptionalText(input.title, 'title')
+        if (input.timelineId === null) {
+          // Binding changes are rejected while the latest persisted run state is active;
+          // an in-memory run registry cannot reliably cover restart or recovery paths.
+          const activeRun = database
+            .prepare(
+              `SELECT entry_json FROM agent_transcript_entries
+               WHERE agent_session_id = ? AND json_extract(entry_json, '$.kind') = 'run-state'
+               ORDER BY sequence DESC LIMIT 1`,
+            )
+            .get(session.id) as { entry_json?: unknown } | undefined
+          if (activeRun?.entry_json) {
+            const entry = JSON.parse(String(activeRun.entry_json)) as { state?: unknown }
+            if (entry.state === 'running' || entry.state === 'suspended') {
+              throw new AgentStoreError(
+                'agent.session_binding_active_run',
+                'Cannot unbind an agent session while its latest run is active',
+              )
+            }
+          }
+        }
+        if (input.timelineId !== undefined && input.timelineId !== null) {
+          throw new AgentStoreError(
+            'agent.session_rebind_unsupported',
+            'Existing agent sessions cannot be rebound to another timeline',
+          )
+        }
         database
           .prepare(
-            `UPDATE agent_sessions SET title = ?, updated_at = ? WHERE id = ?`,
+            `UPDATE agent_sessions SET title = ?, timeline_id = CASE WHEN ? IS NULL THEN NULL ELSE timeline_id END, updated_at = ? WHERE id = ?`,
           )
-          .run(input.title ?? null, now(), session.id)
+          .run(input.title ?? null, input.timelineId === null ? null : session.timelineId ?? null, now(), session.id)
         tx.recordOperations([operation('update', session.id, 'agent.session')])
         return requireSession(database, session.id)
       },
@@ -530,6 +561,8 @@ function entryFromRow(row: unknown): AgentTranscriptEntry {
 function validateTranscriptEntry(
   value: unknown,
   toolInvocations?: ToolInvocationState,
+  database?: DatabaseSync,
+  agentSessionId?: string,
 ): asserts value is AgentTranscriptEntryData {
   if (!isRecord(value) || typeof value.kind !== 'string')
     throw new AgentStoreError(
@@ -543,6 +576,40 @@ function validateTranscriptEntry(
         'Agent message role must be user or assistant',
       )
     validateContent(value.content)
+    if (value.continuesEntryId !== undefined) {
+      if (value.role !== 'assistant')
+        throw new AgentStoreError(
+          'agent.message_continuation_role_invalid',
+          'Only assistant messages can continue another entry',
+        )
+      validateId(value.continuesEntryId, 'continuesEntryId')
+      if (database && agentSessionId) {
+        const target = requireEntry(database, value.continuesEntryId)
+        if (target.agentSessionId !== agentSessionId)
+          throw new AgentStoreError(
+            'agent.message_continuation_session_mismatch',
+            `Continuation entry does not belong to session: ${value.continuesEntryId}`,
+          )
+        if (
+          target.entry.kind !== 'message' ||
+          target.entry.role !== 'assistant' ||
+          target.entry.state !== 'partial'
+        )
+          throw new AgentStoreError(
+            'agent.message_continuation_target_invalid',
+            'Continuation target must be an assistant partial message',
+          )
+      }
+    }
+    if (
+      value.state !== undefined &&
+      value.state !== 'partial' &&
+      value.state !== 'complete'
+    )
+      throw new AgentStoreError(
+        'agent.message_state_invalid',
+        'Agent message state must be partial or complete',
+      )
     return
   }
   if (value.kind === 'reasoning') {
@@ -603,6 +670,7 @@ function validateTranscriptEntry(
         'proposed',
         'waiting-approval',
         'running',
+        'suspended',
         'completed',
         'failed',
         'skipped',

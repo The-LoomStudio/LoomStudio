@@ -30,7 +30,7 @@ pnpm exec vitest run tests/unit/client
 
 启动 `pnpm dev:client` 后，可直接访问 `/dev/preview/text-pipeline` 或 `/dev/preview/card-resources`。入口在开发模式下先于认证启动分流，使用 [预览注册表](./src/dev/preview/index.tsx) 显式选择样例，未知 ID 显示未找到。新增样例在该注册表接入，复用领域展示组件，不动态解析用户提供的模块路径。
 
-普通应用仍走认证启动流程。预览设计与生产隔离验收要求见 [组件预览计划](../../docs/workbench/plans/ui/component-preview-workbench-plan.md)；入口存在不代表生产构建、无副作用检查或人工视觉验收已经完成。
+普通应用仍走认证启动流程。预览设计与生产隔离验收要求见 [组件预览计划](../../docs/archive/plans/ui/component-preview-workbench-plan.md)；入口存在不代表生产构建、无副作用检查或人工视觉验收已经完成。
 
 ## 入口与数据流
 

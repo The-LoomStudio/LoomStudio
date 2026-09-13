@@ -173,6 +173,15 @@ export function useStudioState(transportLogger: Logger) {
     return result
   }
 
+  async function installExtensionPackageZip(file: File) {
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    let binary = ''
+    for (let index = 0; index < bytes.length; index += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000))
+    }
+    return await api.extensions.installZip(btoa(binary))
+  }
+
   useEffect(() => {
     editHistory.clear()
     void operations.run('bootstrap', async () => {
@@ -408,6 +417,38 @@ export function useStudioState(transportLogger: Logger) {
     URL.revokeObjectURL(url)
   }
 
+  async function importPromptResourceZip(file: File): Promise<string | undefined> {
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    let binary = ''
+    for (let index = 0; index < bytes.length; index += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000))
+    }
+    let resourceId: string | undefined
+    await operations.run('mutation', async () => {
+      const result = await api.promptResources.importZip(btoa(binary))
+      resourceId = result.resource.id
+      editHistory.record({
+        label: t('history.context.create'),
+        changesetId: result.mutation.changesetId,
+        anchor: { documentId: result.resource.id, subjectId: result.resource.rootNode.id },
+      })
+      await refreshPromptResourceLibrary()
+    })
+    return resourceId
+  }
+
+  async function exportPromptResourceZip(resourceId: string): Promise<void> {
+    const result = await api.promptResources.exportZip(resourceId)
+    const binary = atob(result.base64)
+    const bytes = Uint8Array.from(binary, char => char.charCodeAt(0))
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/zip' }))
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = result.fileName
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+
   async function refreshHistoryAnchor(entry: { anchor?: { documentId: string; subjectId?: string } }): Promise<HistoryAssetTarget | undefined> {
     if (!entry.anchor) return
     if (promptResources.some(resource => resource.id === entry.anchor?.documentId)) {
@@ -439,6 +480,7 @@ export function useStudioState(transportLogger: Logger) {
     officialContentApi,
     importExtensionPackageResources,
     removeExtensionPackageResources,
+    installExtensionPackageZip,
     // cards
     cards: cardsState.cards,
     selectedCardId: cardsState.selectedCardId,
@@ -479,6 +521,10 @@ export function useStudioState(transportLogger: Logger) {
     agentChatSessions: narrativeRuntime.agentSessions,
     allAgentSessions: narrativeRuntime.allAgentSessions,
     agentChatSessionReady: narrativeRuntime.agentSessionReady,
+    agentActiveRun: narrativeRuntime.activeAgentRun,
+    cancelAgentRun: narrativeRuntime.cancelAgentRun,
+    pauseAgentRun: narrativeRuntime.pauseAgentRun,
+    resumeAgentRun: narrativeRuntime.resumeAgentRun,
     agentChatSessionLoading: narrativeRuntime.agentSessionLoading,
     newAgentSession: narrativeRuntime.newAgentSession,
     refreshAgentSessions: narrativeRuntime.refreshAgentSessions,
@@ -536,6 +582,8 @@ export function useStudioState(transportLogger: Logger) {
     deletePromptResource,
     importPromptResource,
     exportPromptResource,
+    importPromptResourceZip,
+    exportPromptResourceZip,
     replaceSettingMounts,
     replacePresetToolMounts,
     // derived

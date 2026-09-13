@@ -39,6 +39,7 @@ export function createCardDirectoryMedia(options: { dataRoot: string }) {
       return { bytes: mediaType === 'image/png' ? stripPngTextMetadata(bytes) : bytes, mediaType }
     },
     async watch(onChange: () => void): Promise<{ dispose(): void }> {
+      await fs.mkdir(root, { recursive: true })
       const characters = await safePath(root, 'characters')
       await fs.mkdir(characters, { recursive: true })
       let timer: ReturnType<typeof setTimeout> | undefined

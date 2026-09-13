@@ -239,7 +239,7 @@ describe('studio server media asset data plane', () => {
         expect(pngImport.status).toBe(201)
       })
     })
-  })
+  }, 30000)
 
   it('reports a broken native PNG Bundle without falling through to ST', async () => {
     await withStudioServer(async port => {

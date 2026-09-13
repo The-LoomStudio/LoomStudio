@@ -523,8 +523,10 @@ export type ExtensionRegistrationHandle = {
   dispose(): void | Promise<void>
 }
 
+/** RPC context is host-owned; an extension cannot widen its identity or grants through params. */
 export type ExtensionRpcHandler = (params: JsonValue | undefined, context: ExtensionRpcContext) => JsonValue | Promise<JsonValue>
 
+/** The host supplies these provenance facts for auditing and capability checks. */
 export type ExtensionRpcContext = {
   packageId: string
   moduleId: string
@@ -569,6 +571,7 @@ export type ExtensionPortablePayload = ExtensionPortablePayloadDraft & {
   updatedAt: string
 }
 
+/** Storage is namespaced to an explicit entity scope; it is not an arbitrary key-value store. */
 export type ExtensionStorageScope =
   | { kind: 'global' }
   | { kind: 'card'; cardId: string }

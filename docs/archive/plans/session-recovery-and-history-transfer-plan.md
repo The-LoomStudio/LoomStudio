@@ -19,7 +19,7 @@
 
 ## 决策
 
-1. Timeline Binding 是默认上下文，不是所有权或授权。延续 [Session Context 计划](./agent-session-context-and-workspace-capability-plan.md)，不新增分支绑定字段。
+1. Timeline Binding 是默认上下文，不是所有权或授权。延续 [Session Context 计划](../../workbench/plans/agent-session-context-and-workspace-capability-plan.md)，不新增分支绑定字段。
 2. 打开 Timeline 恢复按 `updatedAt` 排序的最近会话，并同步 Agent Profile；没有历史时不创建空 Session。新建按钮先进入草稿，发送时创建。
 3. 会话选择器只显示当前 Timeline 的会话；独立上下文只显示独立会话。打开历史会话时同步其绑定目标，不把其他 Timeline 的消息混进当前页面。
 4. 绑定 Session 未指定 Target 时，读取绑定 Timeline 的当前活动分支；默认不提交叙事。显式跨 Timeline Target 拒绝。Workspace Session 的显式 Target 不形成绑定。

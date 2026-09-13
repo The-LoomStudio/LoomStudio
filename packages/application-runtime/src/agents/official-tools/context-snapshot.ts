@@ -1,15 +1,22 @@
 import type { CompiledPrompt, PromptContribution, SourceNode } from '../../prompt/prompt-builder.js'
 import type { ToolExecutionScope } from '../tool-registry.js'
 import { resolveVirtualPath, resolveMediaType } from '../../vfs/vfs-gateway.js'
+import type { PromptResourceStore } from '@loom-studio/prompt-resource-store'
 
 export function createPromptToolExecutionScope(input: {
   prompt: CompiledPrompt
   contributions: readonly PromptContribution[]
   sourceNodes: readonly SourceNode[]
+  promptResources?: PromptResourceStore
+  workspaceResourceAccess?: boolean
+  mutatePromptResource?: ToolExecutionScope['mutatePromptResource']
 }): ToolExecutionScope {
   const sourceNodes = new Map(input.sourceNodes.map(node => [node.id, node]))
   const injectedIds = new Set(input.prompt.messages.flatMap(message => message.fragmentIds))
   return {
+    ...(input.promptResources ? { promptResources: input.promptResources } : {}),
+    ...(input.workspaceResourceAccess ? { workspaceResourceAccess: true } : {}),
+    ...(input.mutatePromptResource ? { mutatePromptResource: input.mutatePromptResource } : {}),
     context: input.contributions
       .filter(contribution => contribution.capabilities.targetAnchorId !== '@chat.tools')
       .map(contribution => {

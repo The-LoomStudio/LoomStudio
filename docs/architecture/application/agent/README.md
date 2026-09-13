@@ -42,7 +42,7 @@ Agent Profile
 - 真实领域写入 Tool 与完整 Mutation / Changeset provenance；
 - 子智能体、CodeAct、通用 Bash、CLI 和 MCP。
 
-这些未完成方向继续保留在 [`../../../workbench/plans/agent-runtime-ai-sdk-foundation-plan.md`](../../../workbench/plans/agent-runtime-ai-sdk-foundation-plan.md) 及相邻 Workbench 文档中，不属于当前 Architecture 合同。
+这些未完成方向继续保留在 [`../../../workbench/plans/agent-runtime-session-and-workspace-plan.md`](../../../workbench/plans/agent-runtime-session-and-workspace-plan.md) 及相邻 Workbench 文档中，不属于当前 Architecture 合同。
 
 ## 核心边界
 

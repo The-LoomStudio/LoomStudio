@@ -132,7 +132,7 @@ describe('studio layout store', () => {
 
     expect(useStudioLayoutStore.getState().assetLayouts.resources.views['card-a']).toEqual({
       selectedId: 'entry-a',
-      viewMode: 'split',
+      viewMode: 'master-detail',
     })
     expect(setItem.mock.calls.length - writesBefore).toBe(1)
   })
@@ -143,7 +143,7 @@ describe('studio layout store', () => {
     useStudioLayoutStore.getState().setAssetExplorerWidth('resources', 360)
     useStudioLayoutStore.getState().setAssetSelectedId('resources', 'card-a', 'resource-entry-a')
     useStudioLayoutStore.getState().setAssetExpandedIds('resources', 'card-a', ['resource-root', 'resource-folder'])
-    useStudioLayoutStore.getState().setAssetViewMode('resources', 'card-a', 'split')
+    useStudioLayoutStore.getState().setAssetViewMode('resources', 'card-a', 'master-detail')
     useStudioLayoutStore.getState().togglePanelWindowMode('character')
     useStudioLayoutStore.getState().setRailWidth(208)
     const persisted = storedValues.get('loom-studio-layout')
@@ -162,7 +162,7 @@ describe('studio layout store', () => {
             'card-a': {
               expandedIds: ['resource-root', 'resource-folder'],
               selectedId: 'resource-entry-a',
-              viewMode: 'split',
+              viewMode: 'master-detail',
             },
           },
         },
@@ -200,6 +200,7 @@ describe('sanitizeStudioLayout', () => {
   it('keeps valid preferences and rejects malformed persisted values', () => {
     expect(sanitizeStudioLayout({
       assetMetadataOpen: true,
+      assetPanes: { preset: {}, resources: {} },
       assetLayouts: {
         preset: { explorerOpen: false, explorerWidth: 280 },
         resources: { explorerOpen: 'yes', explorerWidth: -10 },
@@ -220,6 +221,7 @@ describe('sanitizeStudioLayout', () => {
       uiScale: 100,
     })).toEqual({
       assetMetadataOpen: true,
+      assetPanes: { preset: {}, resources: {} },
       assetLayouts: {
         preset: { explorerWidth: 280, views: {} },
         resources: { explorerWidth: 300, views: {} },
@@ -248,14 +250,14 @@ describe('sanitizeStudioLayout', () => {
             'card-a': {
               expandedIds: ['root', 'folder', 'root', 42],
               selectedId: 'entry-a',
-              viewMode: 'split',
+              viewMode: 'master-detail',
             },
           },
         },
         resources: {
           explorerWidth: 320,
           views: {
-            'card-b': { selectedId: '', viewMode: 'editor' },
+            'card-b': { selectedId: '', viewMode: 'drilldown' },
             broken: { viewMode: 'unknown' },
           },
         },
@@ -267,11 +269,11 @@ describe('sanitizeStudioLayout', () => {
           'card-a': {
             expandedIds: ['root', 'folder'],
             selectedId: 'entry-a',
-            viewMode: 'split',
+            viewMode: 'master-detail',
           },
         },
       },
-      resources: { explorerWidth: 320, views: { 'card-b': { viewMode: 'editor' } } },
+      resources: { explorerWidth: 320, views: { 'card-b': { viewMode: 'drilldown' } } },
     })
   })
 

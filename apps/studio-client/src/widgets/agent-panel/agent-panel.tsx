@@ -14,10 +14,10 @@ type AgentPanelProps = {
   providerAccounts: ProviderAccount[]
   selectedAgentProfileId?: string
   t: Translator
-  onCreate(input: { name: string; presetId?: string; model: ProviderModelSelection }): void
+  onCreate(input: { name: string; presetId?: string; model: ProviderModelSelection; delivery?: 'stream' | 'complete' }): void
   onDelete(id: string): void
   onSelect(id: string): void
-  onUpdate(id: string, updates: { name?: string; presetId?: string; model?: ProviderModelSelection; toolOverrides?: Record<string, boolean> }): void
+  onUpdate(id: string, updates: { name?: string; presetId?: string; model?: ProviderModelSelection; toolOverrides?: Record<string, boolean>; delivery?: 'stream' | 'complete' }): void
 }
 
 export function AgentPanel(props: AgentPanelProps) {
@@ -25,6 +25,7 @@ export function AgentPanel(props: AgentPanelProps) {
   const [name, setName] = useState('')
   const [presetId, setPresetId] = useState('')
   const [modelProfileId, setModelProfileId] = useState('')
+  const [delivery, setDelivery] = useState<'stream' | 'complete'>('stream')
   const defaultPresetId = props.presets.find(preset => preset.origin?.kind === 'builtin')?.id ?? props.presets[0]?.id ?? ''
   const selectedPresetId = presetId || defaultPresetId
   const modelOptions = useMemo(() => props.modelProfiles.map(model => ({
@@ -36,10 +37,11 @@ export function AgentPanel(props: AgentPanelProps) {
     event.preventDefault()
     const model = readModelSelection(modelProfileId, props.modelProfiles)
     if (!name.trim() || !model || !selectedPresetId) return
-    props.onCreate({ name: name.trim(), presetId: selectedPresetId, model })
+    props.onCreate({ name: name.trim(), presetId: selectedPresetId, model, delivery })
     setName('')
     setPresetId('')
     setModelProfileId('')
+    setDelivery('stream')
     setCreating(false)
   }
 
@@ -76,6 +78,13 @@ export function AgentPanel(props: AgentPanelProps) {
                 {modelOptions.map(({ model, provider }) => (
                   <option key={model.id} value={model.id}>{provider?.displayName ?? model.providerAccountId} / {model.providerModelId}</option>
                 ))}
+              </select>
+            </label>
+            <label>
+              <span>{props.t('agent.profile.delivery')}</span>
+              <select value={delivery} onChange={event => setDelivery(event.target.value as 'stream' | 'complete')}>
+                <option value="stream">{props.t('agent.profile.deliveryStream')}</option>
+                <option value="complete">{props.t('agent.profile.deliveryComplete')}</option>
               </select>
             </label>
             <div className={styles.formActions}>
@@ -120,6 +129,13 @@ export function AgentPanel(props: AgentPanelProps) {
                       {modelOptions.map(({ model, provider: optionProvider }) => (
                         <option key={model.id} value={model.id}>{optionProvider?.displayName ?? model.providerAccountId} / {model.providerModelId}</option>
                       ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>{props.t('agent.profile.delivery')}</span>
+                    <select value={profile.delivery} onChange={event => props.onUpdate(profile.id, { delivery: event.target.value as 'stream' | 'complete' })}>
+                      <option value="stream">{props.t('agent.profile.deliveryStream')}</option>
+                      <option value="complete">{props.t('agent.profile.deliveryComplete')}</option>
                     </select>
                   </label>
                   {props.tools.length ? (

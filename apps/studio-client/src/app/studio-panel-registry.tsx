@@ -295,6 +295,7 @@ export function createStudioPanels(input: {
         onEnable={clientExtensions.enable}
         onImportResources={state.importExtensionPackageResources}
         onRemoveResources={state.removeExtensionPackageResources}
+        onInstallZip={state.installExtensionPackageZip}
         onReload={clientExtensions.reload}
         onUninstall={clientExtensions.uninstall}
       />

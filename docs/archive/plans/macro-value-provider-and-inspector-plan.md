@@ -1,6 +1,7 @@
 # 宏动态值与来源检查
 
-> **Status**：Implemented / 自动化与客观浏览器验收完成，等待用户主观视觉确认
+> **Status**：Archived / 已实现，保留用户主观视觉验收未完成记录
+> **归档说明（2026-09-13）**：用户批准归档。原自动化与客观浏览器记录保留，本轮未重新执行验证；归档不代表人工视觉验收通过。
 > **日期**：2026-09-09
 > **授权范围**：用户授权实施 State 与宏的 UI 和底层改进，包含后续确认的资源静态声明、来源检查和同名选择。保留既有脏工作区。
 
@@ -117,7 +118,7 @@
 ## 关联与结果
 
 - 当前事实：[数据能力与生命周期](../../architecture/application/data-capabilities-and-lifecycle.md)、[State 与变量](../../architecture/application/state-and-variables.md)。
-- 讨论边界：[数据能力与运行内容](../discussion/application/data-capabilities-and-runtime-content.md)。
+- 讨论边界：[数据能力与运行内容](../../workbench/discussion/application/data-capabilities-and-runtime-content.md)。
 - [State 作者与运行态 UI Plan](ui/state-authoring-runtime-separation-plan.md) 的有效范围已被本轮承接；旧 Preset State、Workspace 作者管理与对称配置要求不恢复。
 - **实际结果**：Card / Preset 静态配置、CAS 与可移植数据、Timeline Card 快照、Host 注册/注销、统一解析器、冲突选择、当前预览与实际构建检查已接通。角色/预设作者宏直接使用外层目录与单项详情，运行检查使用独立 Master–Detail；均复用现有移动端下钻。State 模板/Binding 与源码编辑保留版本基线、草稿校验和运行态分离。
 - **自动化验证**：后端 variables / narrative-timeline / workspace-artifact 三组 30 项通过；macro-provider 集成与 Client macro-renderer 共 12 项通过，覆盖真实 Preview / Invoke、Timeline 快照、一次求值、冲突与安全键名；Extension Host 注册生命周期 4 项通过；Client State 编辑/面板 8 项通过。相关 SDK/Host、shared/runtime/server 和 Client 类型检查通过；Client Vite build 通过，仅余大 chunk 提示。

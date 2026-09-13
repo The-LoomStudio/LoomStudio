@@ -5,7 +5,7 @@
 
 原讨论已收口到以下计划，本页仅保留历史链接入口，不继续维护平行设计：
 
-- [官方背景与面板材质 Plan](../../../plans/ui/background-and-panel-materials-plan.md)：背景控制与毛玻璃材质共同交付，包含采样、动画、层级、恢复和验收边界。
+- [官方背景与面板材质 Plan](../../../../archive/plans/ui/background-and-panel-materials-plan.md)：背景控制与毛玻璃材质共同交付，已归档。
 - [Extension DX Plan：扩展页面、声明式设置与组件使用](../../../plans/extension-developer-experience.md#3-扩展页面声明式设置与组件使用)：承接原扩展设置页讨论，复用 Surface 并规划作者组件与配置闭环。
 
 晋升表示方向与文档归属已确认，不表示代码已经实现；具体开放问题、授权边界和验证状态以对应 Plan 为准。

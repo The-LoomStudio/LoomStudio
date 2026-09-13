@@ -60,6 +60,7 @@ Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本页列出�
 ### Extensions
 - **`extensions.listPackages`**: 返回插件管理初始快照，包括 Package 展示元数据、`tags`、受控 `iconUrl`、不泄露物理目录的 `sourceKinds`、可用性、声明式资源和各 Module 的 desired/runtime 状态。
 - **`extensions.installPackage`**: 从本地 `sourceDirectory` 安全安装 Manifest v2 Package。
+- **`extensions.installPackageZip`**: 接收 Base64 编码的 ZIP，先在临时目录执行路径、大小和文件数校验，再复用同一套 Manifest v2 安装流程。
 - **`extensions.uninstallPackage`**: 卸载指定 installed 或 dev-linked Package；释放并 forget Module、清除 enabled/grant。installed 删除复制目录，dev-link 只删除链接，二者均保留已导入资源、Document 与 Media Asset。
 - **`extensions.importPackageResources`**: 显式实例化 Package 声明的 Prompt Resource、Preset Mount 与 Agent Tool Definition。
 - **`extensions.removePackageResources`**: 按 Package provenance 删除已实例化的 Prompt Resource、Agent Tool Definition 与关联 Mount；仍被 Agent Profile 使用的 Preset 会阻止删除。

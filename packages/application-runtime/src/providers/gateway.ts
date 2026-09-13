@@ -8,6 +8,7 @@ import {
   type AiGatewayCapabilityRegistry,
   type ProfiledAiGateway,
   type ProviderAdapterRegistry,
+  type AiGatewayEvent,
 } from '@loom-studio/ai-gateway'
 import type { DocumentStore } from '@loom-studio/document-store'
 import type { SecretStore } from '@loom-studio/secret-store'
@@ -170,6 +171,8 @@ export function createDocumentBackedAiGateway(options: {
             ...(input.request.tools ? { tools: input.request.tools } : {}),
             ...(input.request.toolChoice ? { toolChoice: input.request.toolChoice } : {}),
             ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
+            ...(input.delivery ? { delivery: input.delivery } : {}),
+            ...(input.onEvent ? { onEvent: input.onEvent } : {}),
           })
         })
       }
@@ -243,17 +246,26 @@ export function createOpenAICompatibleGateway(options: OpenAICompatibleGatewayOp
           ...(input.request.tools ? { tools: input.request.tools } : {}),
           ...(input.request.toolChoice ? { toolChoice: input.request.toolChoice } : {}),
           ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
+          ...(input.delivery ? { delivery: input.delivery } : {}),
+          ...(input.onEvent ? { onEvent: input.onEvent } : {}),
       })
     },
   }
 }
 
 type PlatformGateway = ReturnType<typeof createAiGateway>
-type PlatformGatewayInput = Parameters<PlatformGateway['invokeChat']>[0]
+type PlatformGatewayInput = Parameters<PlatformGateway['invokeChat']>[0] & {
+  onEvent?: (event: AiGatewayEvent) => void
+}
 
 async function invokePlatformGateway(gateway: PlatformGateway, input: PlatformGatewayInput) {
   try {
-    return toApplicationGatewayResult(await gateway.invokeChat(input))
+    if (!input.onEvent || input.delivery !== 'stream') {
+      return toApplicationGatewayResult(await gateway.invokeChat(input))
+    }
+    const run = gateway.createRun(input)
+    for await (const event of run.events) input.onEvent(event)
+    return toApplicationGatewayResult(await run.result)
   } catch (error) {
     const providerError = readProviderHttpError(error)
     if (providerError) throw providerError

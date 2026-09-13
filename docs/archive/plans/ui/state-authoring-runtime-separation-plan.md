@@ -1,6 +1,6 @@
 # 变量作者配置与运行态分离
 
-> **Status**：Paused / 有效范围已转交宏动态值与来源检查计划，等待统一验收
+> **Status**：Archived / 有效范围已被宏动态值与来源检查计划承接
 > **日期**：2026-09-09
 > **授权**：用户确认资源工作台负责配置、变量面板负责运行态，并授权写 Plan、委派实施。
 
@@ -22,7 +22,7 @@
 
 角色列表仍是启动入口。角色资源工作台的页签放在目录底部，复用预设的纯文字 `loom-page-tabs`，不使用顶部图标按钮。角色界面只编辑角色自身贡献，不混入 Workspace 共享 Definition 管理。变量面板负责 Global / 当前 Timeline、Branch 的运行值查看与修改。宏作者入口仍待合同明确，不再要求预设对称提供 State 页面。
 
-用户在后续场景讨论中撤回了为预设建立 State 的默认前提，并要求先研究架构。当前计划暂停，不继续派发实施；已有代码保留，不自动回退。后续依据 [数据能力与运行内容](../../discussion/application/data-capabilities-and-runtime-content.md) 修订范围，不添加空页签、不实现脚本宿主或 Extension 自动挂载、不擅自修改历史文本语义。
+用户在后续场景讨论中撤回了为预设建立 State 的默认前提，并要求先研究架构。当前计划暂停，不继续派发实施；已有代码保留，不自动回退。后续依据 [数据能力与运行内容](../../../workbench/discussion/application/data-capabilities-and-runtime-content.md) 修订范围，不添加空页签、不实现脚本宿主或 Extension 自动挂载、不擅自修改历史文本语义。
 
 ## 2026-09-09 修订与当前执行边界
 
@@ -92,7 +92,7 @@
 
 > **Status**：已确认方向，未实施。本节只约束后续 Dev Workspace 接入边界，不冻结目录、后缀或源文件 Schema。
 
-State 不建立平行的文件运行时。它应接入 [`ADR-001`](../../adr/ADR-001-data-layer-workspace-sync.md) 已定义的 Dev Workspace 链路：
+State 不建立平行的文件运行时。它应接入 [`ADR-001`](../../../workbench/adr/ADR-001-data-layer-workspace-sync.md) 已定义的 Dev Workspace 链路：
 
 ```text
 State authoring files

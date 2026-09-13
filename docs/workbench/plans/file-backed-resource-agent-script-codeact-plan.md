@@ -1,9 +1,9 @@
 # File-backed Resource、Agent Script 与 CodeAct 实施计划
 
-> **状态**：提案，等待实施切片确认
+> **状态**：首阶段已确认，等待 Sandbox 合同冻结
 > **2026-09-12 接续边界**：已有 [Loom Script Runtime](../../architecture/extensions/loom-script-runtime.md) 实现 Renderer 专用源码 Blob、编辑 API、Mount / Grant、Card / Preset 附件和 Client Sandbox；已有 [Card Bundle 文件合同](../../architecture/application/card-bundle-files.md) 负责文件化编解码。这些不再从零建设，也不等于通用 Agent Script、Server Sandbox 或 CodeAct 已实现。新切片须先复用或明确区分现有合同，不能按下文历史草案另建平行 Script 身份。
 > **日期**：2026-08-24
-> **范围**：从非 Prompt、文件型 Workspace Resource 的持久化开始，建立 Agent Script Definition、Card / Preset / Agent Profile / Session 挂载、角色包导入导出、受控 JavaScript Runtime，以及 CodeAct inline / resource 两种执行模式。
+> **范围**：优先建立 CodeAct Sandbox、单一 JSON Tool 入口和特殊 Prompt Resource 描述；之后再建立持久化 Agent Script、挂载、角色包导入导出与 inline / resource 两种执行模式。
 > **事实边界**：本文是 Workbench Plan，不是已实现 Architecture。当前已实现 Document Store、共享 SQLite Data Engine、内容寻址 Blob Store、Source Artifact、Media Asset、Agent Tool Registry、Content Tool 与 Agent Loop；通用 File-backed Resource、Agent Script、Script Mount、Sandbox Host 和 CodeAct 尚未实现。
 > **2026-08-25 Bundle 边界补充**：Preset / Setting 的增强分发不建立通用 Package 领域实体或递归依赖图。未来 Bundle 必须拥有唯一主体，导入后仍回到 Preset / Setting / Card canonical state；附件关系、运行时 Mount 与外部 Requirement 保持分离。详见 [`typed-primary-resource-bundle-plan.md`](./typed-primary-resource-bundle-plan.md)。
 
@@ -32,7 +32,9 @@ Blob Store
 
 资源在底层继续按稳定 ID 平铺。Card、Preset、Agent Profile 和 Session 不复制源码，通过 SQL 关系或 Script Mount 链接资源。UI 中的角色文件夹或会话资源树只是关系投影，不是运行时权威文件目录。
 
-CodeAct 使用一套 canonical executor，但支持两种互斥调用模式：
+CodeAct 使用一套 canonical executor。对模型暴露一个 JSON Tool 入口；具体能力不通过大量工具参数展开，而是由 Preset 对应锚点注入的特殊 Prompt Resource 描述。运行时仍必须用 Capability、Target、Approval 和领域 API 强制约束，Prompt 描述不是权限本身。
+
+执行层支持两种互斥调用模式：
 
 ```ts
 type CodeActInvocation =
@@ -758,19 +760,19 @@ CodeAct / Script 需要专用卡片，至少显示：
 
 ## 13. 分阶段实施
 
-### Phase 0：Sandbox 与数据合同 Spike
+### Phase 0：CodeAct Sandbox 与 JSON Tool Spike
 
-目标：在新增正式执行依赖前验证隔离、取消和 IPC。
+目标：先验证 CodeAct 的隔离、取消、输入输出边界和单一 JSON Tool 接缝，不开放实际 Workspace 写入。
 
 任务：
 
-1. 固定 `AgentScriptContent`、`FilePayloadRef`、`CodeActInvocation` 和 `ScriptResult`；
+1. 固定 `AgentScriptContent`、`FilePayloadRef`、`CodeActInvocation`、`ScriptResult` 和 JSON Tool envelope；
 2. 用临时目录验证 Blob source 写入和精确读取；
 3. 比较 Worker / 子进程候选，验证 timeout、Abort、内存与输出上限；
 4. 验证 Host API 不能泄漏 Node object / filesystem；
-5. 不接真实 Agent Loop，不开放写 Tool。
+5. 只接入一个测试 JSON Tool，不接入真实 Workspace 写入。
 
-验证检查点：恶意无限循环、巨大输出、访问 `process/fs/fetch` 和 Host abort 均得到可归一错误，Server 主进程保持可用。
+验证检查点：恶意无限循环、巨大输出、访问 `process/fs/fetch` 和 Host abort 均得到可归一错误；单一 JSON Tool 能被 Sandbox 调用；Server 主进程保持可用。
 
 ### Phase 1：Agent Script Definition 与 Blob Source
 
@@ -804,7 +806,7 @@ CodeAct / Script 需要专用卡片，至少显示：
 
 ### Phase 3：Resource Script Runner
 
-目标：先执行持久化 Script，不做 Inline CodeAct。
+目标：执行持久化 Script；Inline CodeAct 仍复用同一 Sandbox 和 JSON Tool 入口。
 
 任务：
 

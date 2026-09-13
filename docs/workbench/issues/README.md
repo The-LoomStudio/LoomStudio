@@ -3,7 +3,6 @@
 本目录用于跟踪**当前开放或周期性滚动审查的质量发现**。
 
 - [`repository-governance-audit-2026-09-12.md`](./repository-governance-audit-2026-09-12.md) — **2026-09-12 仓库治理与生命周期审计**（2 个文档生命周期问题）。
-- [`code-slimming-audit-2026-09-12.md`](./code-slimming-audit-2026-09-12.md) — **2026-09-12 代码瘦身审计**（重复实现、公共合同、状态编排与依赖精简候选）。
 - [`full-repo-code-review-2026-09-12.md`](./full-repo-code-review-2026-09-12.md) — **2026-09-12 全仓代码审阅**（4 个 P2、3 个 P3 与 2 个精简候选）。
 - [`full-repo-code-review-2026-08-27.md`](./full-repo-code-review-2026-08-27.md) — **2026-08-27 全仓代码审阅**（2 个 P1、14 个 P2、3 个 P3 与 6 个优化候选）。
 - [`documentation-direction-and-lifecycle-follow-up-2026-08-28.md`](./documentation-direction-and-lifecycle-follow-up-2026-08-28.md) — **文档方向与生命周期复核**（2 个 P2：旧 M0 实现基线残留、归档 Plan successor 缺失）。

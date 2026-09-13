@@ -24,6 +24,48 @@ describe('studio client typed api', () => {
     ])
   })
 
+  it('maps AI Gateway run lifecycle calls without exposing provider credentials', async () => {
+    const calls: Array<{ method: string; params?: ClientJsonValue }> = []
+    const api = createStudioApi(fakeBridge(calls, {
+      'ai.run.create': { runId: 'run-1' },
+      'ai.run.subscribe': { events: [{ type: 'started', runId: 'run-1' }], nextCursor: 1, state: 'running' },
+      'ai.run.cancel': { runId: 'run-1', state: 'cancelled' },
+      'ai.run.state': { runId: 'run-1', state: 'cancelled' },
+    }))
+
+    await expect(api.aiGateway.createRun({ profileId: 'profile-1', input: { prompt: 'hello' } })).resolves.toEqual({ runId: 'run-1' })
+    await api.aiGateway.subscribe('run-1')
+    await api.aiGateway.cancel('run-1', 'user-stop')
+    await api.aiGateway.state('run-1')
+
+    expect(calls).toEqual([
+      { method: 'ai.run.create', params: { profileId: 'profile-1', input: { prompt: 'hello' } } },
+      { method: 'ai.run.subscribe', params: { runId: 'run-1' } },
+      { method: 'ai.run.cancel', params: { runId: 'run-1', reason: 'user-stop' } },
+      { method: 'ai.run.state', params: { runId: 'run-1' } },
+    ])
+    expect(JSON.stringify(calls)).not.toContain('apiKey')
+  })
+
+  it('maps Agent run pause and resume calls', async () => {
+    const calls: Array<{ method: string; params?: ClientJsonValue }> = []
+    const api = createStudioApi(fakeBridge(calls, {
+      'application.agent.run.pause': { runId: 'run-1', accepted: true, state: 'suspended' },
+      'application.agent.run.resume': { runId: 'run-2', sourceRunId: 'run-1', accepted: true, state: 'running' },
+    }))
+
+    await expect(api.agentSessions.pauseRun('run-1')).resolves.toEqual({
+      runId: 'run-1', accepted: true, state: 'suspended',
+    })
+    await expect(api.agentSessions.resumeRun('run-1')).resolves.toEqual({
+      runId: 'run-2', sourceRunId: 'run-1', accepted: true, state: 'running',
+    })
+    expect(calls).toEqual([
+      { method: 'application.agent.run.pause', params: { runId: 'run-1' } },
+      { method: 'application.agent.run.resume', params: { runId: 'run-1' } },
+    ])
+  })
+
   it('maps Extension Package import, resource removal, and uninstall', async () => {
     const calls: Array<{ method: string; params?: ClientJsonValue }> = []
     const api = createStudioApi(fakeBridge(calls, {
@@ -40,6 +82,19 @@ describe('studio client typed api', () => {
       { method: 'extensions.importPackageResources', params: { packageId: 'example.package' } },
       { method: 'extensions.removePackageResources', params: { packageId: 'example.package' } },
       { method: 'extensions.uninstallPackage', params: { packageId: 'example.package', version: '1.0.0' } },
+    ])
+  })
+
+  it('maps Extension Package ZIP installation', async () => {
+    const calls: Array<{ method: string; params?: ClientJsonValue }> = []
+    const api = createStudioApi(fakeBridge(calls, {
+      'extensions.installPackageZip': { package: { packageId: 'example.zip', version: '1.0.0' } },
+    }))
+
+    await api.extensions.installZip('UEsDBA==')
+
+    expect(calls).toEqual([
+      { method: 'extensions.installPackageZip', params: { base64: 'UEsDBA==' } },
     ])
   })
 
@@ -267,6 +322,8 @@ describe('studio client typed api', () => {
       'application.deletePromptResource': { deleted: true },
       'application.importPromptResource': { resource: { id: 'resource-4' } },
       'application.exportPromptResource': { artifact: { format: 'loom.promptResource', schemaVersion: 1 } },
+      'application.importPromptResourceZip': { resource: { id: 'resource-zip-import' } },
+      'application.exportPromptResourceZip': { fileName: 'preset-resource.zip', base64: 'UEs=' },
       'application.createPromptResourceAsset': { resource: { id: 'resource-1' } },
       'application.updatePromptResourceAsset': { resource: { id: 'resource-1' } },
       'application.updatePromptResourceAssets': { resource: { id: 'resource-1' } },
@@ -290,6 +347,8 @@ describe('studio client typed api', () => {
       rootNode: { id: 'root', label: 'Preset', kind: 'module' },
     })
     await api.promptResources.export('resource-1')
+    await api.promptResources.importZip('UEs=')
+    await api.promptResources.exportZip('resource-1')
     await api.promptResources.createAsset({ resourceId: 'resource-1', targetAssetId: 'root', position: 'inside', asset: { id: 'asset-1' } as any })
     await api.promptResources.updateAsset({ resourceId: 'resource-1', assetId: 'asset-1', body: 'updated' })
     await api.promptResources.updateAssets({ resourceId: 'resource-1', updates: [{ assetId: 'asset-1', label: 'Renamed' }] })
@@ -311,6 +370,8 @@ describe('studio client typed api', () => {
       { method: 'application.deletePromptResource', params: { resourceId: 'resource-1' } },
       { method: 'application.importPromptResource', params: { artifact: { format: 'loom.promptResource', schemaVersion: 1, resourceKind: 'preset', rootNode: { id: 'root', label: 'Preset', kind: 'module' } } } },
       { method: 'application.exportPromptResource', params: { resourceId: 'resource-1' } },
+      { method: 'application.importPromptResourceZip', params: { base64: 'UEs=' } },
+      { method: 'application.exportPromptResourceZip', params: { resourceId: 'resource-1' } },
       { method: 'application.createPromptResourceAsset', params: { resourceId: 'resource-1', targetAssetId: 'root', position: 'inside', asset: { id: 'asset-1' } } },
       { method: 'application.updatePromptResourceAsset', params: { resourceId: 'resource-1', assetId: 'asset-1', body: 'updated' } },
       { method: 'application.updatePromptResourceAssets', params: { resourceId: 'resource-1', updates: [{ assetId: 'asset-1', label: 'Renamed' }] } },

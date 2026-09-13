@@ -50,9 +50,9 @@ describe('studio server Agent Turn RPC', () => {
       await expect(callRpc(port, 'application.getPromptResource', { resourceId: preset.id })).rejects.toThrow('Prompt resource not found')
 
       // 验证 Agent Profile 依然保留，且 presetId 自动回退为官方默认预设
-      const profileAfterPresetDeletion = await callRpc<{ agentProfile: { id: string; presetId: string } }>(port, 'application.getAgentProfile', { agentProfileId: agentProfile.agentProfile.id })
+      const profileAfterPresetDeletion = await callRpc<{ agentProfile: { id: string; presetId?: string } }>(port, 'application.getAgentProfile', { agentProfileId: agentProfile.agentProfile.id })
       expect(profileAfterPresetDeletion.agentProfile.id).toBe(agentProfile.agentProfile.id)
-      expect(profileAfterPresetDeletion.agentProfile.presetId).toBe('prompt-resource.official.loom-assistant')
+      expect(profileAfterPresetDeletion.agentProfile.presetId).toBeUndefined()
 
       // 创建一个纯空预设并立即删除，验证在没有任何关联引用/规则时，Document 参与者不会因 0 变更报 Document transaction produced no changes
       const standalonePreset = await createPreset(port, 'Standalone Preset', 'Standalone prompt.')

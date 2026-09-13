@@ -1,8 +1,10 @@
 import type {
   ApplicationRuntime,
+  AgentRunEvent,
   PresetToolMountInput,
   RuntimeRequestContext,
   ToolDefinition,
+  InvokeAgentTurnInput,
 } from '@loom-studio/application-runtime'
 import { isPromptActivation } from '@loom-studio/application-runtime'
 import type { JsonValue } from '@loom-studio/shared'
@@ -13,10 +15,30 @@ import {
   readOptionalNumber,
   readOptionalObject,
   readOptionalBooleanRecord,
+  readNullableString,
   readOptionalString,
   readOptionalStringRecord,
   readString,
 } from '../../rpc-params.js'
+
+type AgentRun = {
+  id: string
+  controller: AbortController
+  events: AgentRunEvent[]
+  state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled'
+  promise: Promise<unknown>
+  request: InvokeAgentTurnInput
+  sourceRunId?: string
+  continuationRunId?: string
+  checkpoint?: {
+    sourceRunId: string
+    messages: import('@loom-studio/shared').ChatMessage[]
+    userEntry: import('@loom-studio/agent-store').AgentTranscriptEntry
+    partialEntryId?: string
+  }
+}
+
+const runStores = new WeakMap<ApplicationRuntime, Map<string, AgentRun>>()
 
 export async function handleAgentsRpc(
   runtime: ApplicationRuntime,
@@ -31,6 +53,7 @@ export async function handleAgentsRpc(
         presetId: readString(params, 'presetId'),
         model: readRequiredProviderModelSelection(params, 'model'),
         toolOverrides: readOptionalBooleanRecord(params, 'toolOverrides'),
+        delivery: readOptionalDelivery(params),
       }) as unknown as JsonValue
 
     case 'application.getAgentProfile':
@@ -46,6 +69,7 @@ export async function handleAgentsRpc(
         presetId: readOptionalString(params, 'presetId'),
         model: readOptionalProviderModelSelection(params, 'model'),
         toolOverrides: readOptionalBooleanRecord(params, 'toolOverrides'),
+        delivery: readOptionalDelivery(params),
       }) as unknown as JsonValue
 
     case 'application.deleteAgentProfile':
@@ -110,6 +134,9 @@ export async function handleAgentsRpc(
       return await runtime.updateAgentSession({
         agentSessionId: readString(params, 'agentSessionId'),
         title: readOptionalString(params, 'title'),
+        ...(isRecord(params) && params.timelineId !== undefined
+          ? { timelineId: readNullableString(params, 'timelineId') }
+          : {}),
       }, context) as unknown as JsonValue
 
     case 'application.invokeAgentTurn':
@@ -120,6 +147,62 @@ export async function handleAgentsRpc(
         narrativeTarget: readOptionalNarrativeTarget(params),
         macroSelections: readOptionalStringRecord(params, 'macroSelections'),
       }, context) as unknown as JsonValue
+
+    case 'application.agent.run.create': {
+      const runs = getRunStore(runtime)
+      const request = {
+        agentSessionId: readString(params, 'agentSessionId'),
+        input: readString(params, 'input'),
+        activationFacts: readOptionalObject(params, 'activationFacts'),
+        narrativeTarget: readOptionalNarrativeTarget(params),
+        macroSelections: readOptionalStringRecord(params, 'macroSelections'),
+      } satisfies InvokeAgentTurnInput
+      const run = startAgentRun(runtime, context, request)
+      runs.set(run.id, run)
+      return { runId: run.id }
+    }
+
+    case 'application.agent.run.subscribe': {
+      const run = requireAgentRun(getRunStore(runtime), params)
+      const cursor = readOptionalNumber(params, 'cursor') ?? 0
+      if (!Number.isSafeInteger(cursor) || cursor < 0) throw new Error('Agent run cursor must be a non-negative integer')
+      return {
+        events: run.events.slice(cursor),
+        nextCursor: run.events.length,
+        done: run.state !== 'running',
+        state: run.state,
+      } as unknown as JsonValue
+    }
+
+    case 'application.agent.run.cancel': {
+      const run = requireAgentRun(getRunStore(runtime), params)
+      if (run.state !== 'running') return { runId: run.id, accepted: false, state: run.state }
+      run.controller.abort(isRecord(params) && typeof params.reason === 'string' ? params.reason : 'cancelled')
+      return { runId: run.id, accepted: true, state: run.state }
+    }
+
+    case 'application.agent.run.pause': {
+      const run = requireAgentRun(getRunStore(runtime), params)
+      if (run.state !== 'running') return { runId: run.id, accepted: false, state: run.state }
+      run.controller.abort('user-pause')
+      return { runId: run.id, accepted: true, state: run.state }
+    }
+
+    case 'application.agent.run.resume': {
+      const source = requireAgentRun(getRunStore(runtime), params)
+      if (source.state !== 'suspended') return { runId: source.id, accepted: false, state: source.state }
+      if (!source.checkpoint) return { runId: source.id, accepted: false, state: source.state }
+      if (source.continuationRunId) return { runId: source.continuationRunId, sourceRunId: source.id, accepted: true }
+      const run = startAgentRun(runtime, context, { ...source.request, input: '' }, source.id, source.checkpoint)
+      getRunStore(runtime).set(run.id, run)
+      source.continuationRunId = run.id
+      return { runId: run.id, sourceRunId: source.id, accepted: true, state: run.state }
+    }
+
+    case 'application.agent.run.state': {
+      const run = requireAgentRun(getRunStore(runtime), params)
+      return { runId: run.id, state: run.state }
+    }
 
     case 'application.previewAgentTurn':
       return await runtime.previewAgentTurn({
@@ -141,6 +224,60 @@ export async function handleAgentsRpc(
     default:
       return undefined
   }
+}
+
+function startAgentRun(
+  runtime: ApplicationRuntime,
+  context: RuntimeRequestContext | undefined,
+  request: InvokeAgentTurnInput,
+  sourceRunId?: string,
+  continuation?: AgentRun['checkpoint'],
+): AgentRun {
+  const id = `agent-run-${crypto.randomUUID()}`
+  const controller = new AbortController()
+  const run: AgentRun = {
+    id, controller, request, sourceRunId, events: [{ type: 'started', runId: id }],
+    state: 'running', promise: Promise.resolve(),
+  }
+  run.promise = runtime.invokeAgentTurn(request, {
+    ...context,
+    abortSignal: controller.signal,
+    agentRun: {
+      runId: id,
+      onEvent: event => run.events.push(event),
+      ...(continuation ? { continuation } : {}),
+      onSuspended: checkpoint => { run.checkpoint = checkpoint },
+    },
+  }).then(result => {
+    if (controller.signal.aborted) throw new Error(String(controller.signal.reason ?? 'Agent run cancelled'))
+    run.state = 'completed'
+    run.events.push({ type: 'completed', runId: id, result })
+  }).catch(error => {
+    const suspended = controller.signal.reason === 'user-pause'
+    run.state = suspended ? 'suspended' : controller.signal.aborted ? 'cancelled' : 'failed'
+    const reason = error instanceof Error ? error.message : String(error)
+    run.events.push(suspended
+      ? { type: 'suspended', runId: id, reason }
+      : controller.signal.aborted
+        ? { type: 'cancelled', runId: id, reason }
+        : { type: 'failed', runId: id, error: { name: error instanceof Error ? error.name : 'UnknownError', message: reason } })
+  })
+  return run
+}
+
+function getRunStore(runtime: ApplicationRuntime): Map<string, AgentRun> {
+  const existing = runStores.get(runtime)
+  if (existing) return existing
+  const created = new Map<string, AgentRun>()
+  runStores.set(runtime, created)
+  return created
+}
+
+function requireAgentRun(runs: Map<string, AgentRun>, params: JsonValue | undefined): AgentRun {
+  if (!isRecord(params) || typeof params.runId !== 'string') throw new Error('Agent run is not available')
+  const run = runs.get(params.runId)
+  if (!run) throw new Error(`Agent run not found: ${params.runId}`)
+  return run
 }
 
 function readAgentToolDefinition(params: JsonValue | undefined): ToolDefinition {
@@ -196,6 +333,14 @@ function readRequiredProviderModelSelection(params: JsonValue | undefined, key: 
   const value = readOptionalProviderModelSelection(params, key)
   if (!value) throw new Error(`Expected Provider model selection param: ${key}`)
   return value
+}
+
+function readOptionalDelivery(params: JsonValue | undefined): 'stream' | 'complete' | undefined {
+  if (!isRecord(params) || params.delivery === undefined) return undefined
+  if (params.delivery !== 'stream' && params.delivery !== 'complete') {
+    throw new Error('Expected Agent Profile delivery: stream or complete')
+  }
+  return params.delivery
 }
 
 function readOptionalNarrativeTarget(params: JsonValue | undefined): {

@@ -23,6 +23,7 @@ type AssetWorkbenchLayoutProps = {
 export function AssetWorkbenchLayout(props: AssetWorkbenchLayoutProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(0)
+  // Drilldown mode and narrow containers share one-pane navigation; selection decides whether detail can replace the explorer.
   const mobilePane = props.mobilePane ?? 'explorer'
 
   useEffect(() => {

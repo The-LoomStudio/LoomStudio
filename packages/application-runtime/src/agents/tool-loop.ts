@@ -219,6 +219,9 @@ export async function runNativeToolLoop(input: {
   purpose: 'agent' | 'narrative'
   classificationRules?: TextTransformRuleEntry[]
   requestContext?: RuntimeRequestContext
+  delivery?: 'stream' | 'complete'
+  resumeUserEntry?: AgentTranscriptEntry
+  resumeAssistantEntryId?: string
 }): Promise<NativeToolLoopResult> {
   let session = input.session
   let lastChangesetId = ''
@@ -229,6 +232,8 @@ export async function runNativeToolLoop(input: {
   const contentTools = tools.filter((tool) => tool.transport === 'content')
   const providerMessages = [...input.initialMessages]
   let freshContextMessages: ChatMessage[] = []
+  let checkpointMessages = [...input.initialMessages]
+  let continuationAssistantEntryId = input.resumeAssistantEntryId
   const toolSpecs = nativeTools.map(({ exposure }) => ({
     name: exposure.name,
     description: renderNativeToolDescription(exposure),
@@ -237,18 +242,23 @@ export async function runNativeToolLoop(input: {
   const byExposedName = new Map(
     tools.map((tool) => [tool.definition.name, tool] as const),
   )
+  let streamedText = ''
+  const streamedToolInputs = new Map<string, { toolName?: string; input: string }>()
 
-  const initial = await append([
-    { kind: 'message', role: 'user', content: input.userInput },
-    { kind: 'run-state', state: 'running' },
-  ])
-  const userEntry = initial.entries[0]!
+  const initial = input.resumeUserEntry
+    ? await append([{ kind: 'run-state', state: 'running' }])
+    : await append([
+        { kind: 'message', role: 'user', content: input.userInput },
+        { kind: 'run-state', state: 'running' },
+      ])
+  const userEntry = input.resumeUserEntry ?? initial.entries[0]!
 
   try {
     for (let step = 1; step <= maximumProviderSteps; step += 1) {
       if (input.requestContext?.abortSignal?.aborted)
         throw createAbortError(input.requestContext.abortSignal.reason)
       const stepMessages = [...providerMessages, ...freshContextMessages]
+      checkpointMessages = [...stepMessages]
       freshContextMessages = []
       const providerResult = await input.ctx.gateway.invokeChat({
         request: {
@@ -271,6 +281,24 @@ export async function runNativeToolLoop(input: {
         ...(input.requestContext?.abortSignal
           ? { abortSignal: input.requestContext.abortSignal }
           : {}),
+        delivery: input.delivery ?? 'stream',
+        onEvent: event => {
+          if (event.type === 'text-delta') streamedText += event.delta
+          if (event.type === 'tool-input-delta') {
+            const existing = streamedToolInputs.get(event.toolCallId)
+            streamedToolInputs.set(event.toolCallId, {
+              toolName: event.toolName ?? existing?.toolName,
+              input: `${existing?.input ?? ''}${event.delta}`,
+            })
+          }
+          if (event.type !== 'text-delta' && event.type !== 'tool-input-delta' && event.type !== 'usage') return
+          input.requestContext?.agentRun?.onEvent({
+            ...event,
+            runId: input.requestContext.agentRun.runId,
+            providerRunId: event.runId,
+            providerStep: step,
+          })
+        },
       })
 
       const toolCalls = providerResult.message.tool_calls ?? []
@@ -329,6 +357,7 @@ export async function runNativeToolLoop(input: {
         ...nativeInvocationPairs,
         ...contentInvocationPairs,
       ]
+      checkpointMessages = [...stepMessages, providerResult.message]
 
       const stepEntries: AgentTranscriptEntryData[] = [
         providerObservation(providerResult),
@@ -349,6 +378,10 @@ export async function runNativeToolLoop(input: {
           kind: 'message',
           role: 'assistant',
           content: contentScan.text,
+          ...(continuationAssistantEntryId ? {
+            continuesEntryId: continuationAssistantEntryId,
+          } : {}),
+          ...(providerResult.finishReason === 'length' ? { state: 'partial' as const } : {}),
         })
       }
       for (const pair of invocationPairs) {
@@ -370,12 +403,20 @@ export async function runNativeToolLoop(input: {
         })
       }
       const persistedStep = await append(stepEntries)
+      streamedText = ''
+      streamedToolInputs.clear()
 
       if (invocationPairs.length === 0) {
         if (providerResult.finishReason === 'error')
           throw new Error('Provider Step finished with an error')
-        if (providerResult.finishReason === 'length')
-          throw new Error('Provider Step reached its output limit before completion')
+        if (providerResult.finishReason === 'length') {
+          const partialEntry = persistedStep.entries.find(entry =>
+            entry.entry.kind === 'message' && entry.entry.role === 'assistant',
+          )
+          if (partialEntry) continuationAssistantEntryId = partialEntry.id
+          providerMessages.push(providerResult.message)
+          continue
+        }
         if (!providerResult.message.content)
           throw new Error(
             'Provider completed without assistant text or tool calls',
@@ -410,6 +451,23 @@ export async function runNativeToolLoop(input: {
         await append([
           toTranscriptResult(result, input.requestContext?.abortSignal),
         ])
+        if (pair.transport === 'native-function') {
+          checkpointMessages.push({
+            role: 'tool',
+            tool_call_id: pair.call.id,
+            content: renderToolResult(result),
+          })
+        } else {
+          checkpointMessages.push({
+            role: 'user',
+            content: renderLoomContentToolResult({
+              invocationId: result.invocationId,
+              name: pair.exposedName,
+              status: result.status === 'completed' ? 'completed' : 'failed',
+              content: renderToolResult(result),
+            }),
+          })
+        }
         freshContextMessages.push(...renderFreshContextMounts(result))
         if (input.requestContext?.abortSignal?.aborted)
           throw createAbortError(input.requestContext.abortSignal.reason)
@@ -436,13 +494,50 @@ export async function runNativeToolLoop(input: {
       `Agent Provider step limit exceeded: ${maximumProviderSteps}`,
     )
   } catch (error) {
-    const aborted =
+      const aborted =
       input.requestContext?.abortSignal?.aborted || isAbortError(error)
+    const suspended = aborted && input.requestContext?.abortSignal?.reason === 'user-pause'
     try {
+      if (suspended) {
+        const checkpointEntries: AgentTranscriptEntryData[] = []
+        if (streamedText) checkpointEntries.push({
+          kind: 'message',
+          role: 'assistant',
+          content: streamedText,
+          state: 'partial',
+        })
+        for (const [invocationId, tool] of streamedToolInputs) {
+          checkpointEntries.push({
+            kind: 'tool-invocation',
+            invocationId,
+            toolId: byExposedName.get(tool.toolName ?? '')?.definition.id ?? `unresolved/${tool.toolName ?? 'unknown'}`,
+            exposedName: tool.toolName ?? 'unknown',
+            transport: 'native-function',
+            rawInput: tool.input,
+            status: 'suspended',
+          })
+        }
+        const checkpointAppend = checkpointEntries.length ? await append(checkpointEntries) : undefined
+        const appendedPartial = checkpointAppend?.entries.find(entry =>
+          entry.entry.kind === 'message' && entry.entry.role === 'assistant' && entry.entry.state === 'partial',
+        )
+        input.requestContext?.agentRun?.onSuspended?.({
+          sourceRunId: input.requestContext.agentRun.runId,
+          messages: [
+            ...checkpointMessages,
+            ...(streamedText ? [{
+              role: 'system' as const,
+              content: `The previous assistant response was interrupted. Continue from this partial response without repeating it:\n${streamedText}`,
+            }] : []),
+          ],
+          userEntry,
+          ...(appendedPartial ? { partialEntryId: appendedPartial.id } : {}),
+        })
+      }
       await append([
         {
           kind: 'run-state',
-          state: aborted ? 'aborted' : 'failed',
+          state: suspended ? 'suspended' : aborted ? 'aborted' : 'failed',
           reason: errorMessage(error),
         },
       ])

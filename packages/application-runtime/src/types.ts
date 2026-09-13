@@ -265,7 +265,33 @@ export type RuntimeRequestContext = {
   callId?: string
   parentCallId?: string
   abortSignal?: AbortSignal
+  agentRun?: {
+    runId: string
+    onEvent: (event: AgentRunEvent) => void
+    continuation?: {
+      sourceRunId: string
+      messages: ChatMessage[]
+      userEntry: import('@loom-studio/agent-store').AgentTranscriptEntry
+      partialEntryId?: string
+    }
+    onSuspended?: (checkpoint: {
+      sourceRunId: string
+      messages: ChatMessage[]
+      userEntry: import('@loom-studio/agent-store').AgentTranscriptEntry
+      partialEntryId?: string
+    }) => void
+  }
 }
+
+export type AgentRunEvent =
+  | { type: 'started'; runId: string }
+  | { type: 'text-delta'; runId: string; providerRunId: string; providerStep: number; delta: string }
+  | { type: 'tool-input-delta'; runId: string; providerRunId: string; providerStep: number; toolCallId: string; toolName?: string; delta: string }
+  | { type: 'usage'; runId: string; providerRunId: string; providerStep: number; usage: NonNullable<GatewayChatResult['usage']> }
+  | { type: 'completed'; runId: string; result: InvokeAgentTurnResult }
+  | { type: 'suspended'; runId: string; reason?: string }
+  | { type: 'failed'; runId: string; error: { name: string; message: string } }
+  | { type: 'cancelled'; runId: string; reason?: string }
 
 export type InstallOfficialContentInput = {
   packageId: string
@@ -644,6 +670,7 @@ export type UpdateAgentSessionResult = {
 export type InvokeAgentTurnInput = {
   agentSessionId: string
   input: string
+  resume?: boolean
   activationFacts?: ActivationFacts
   narrativeTarget?: {
     timelineId: string
@@ -823,6 +850,8 @@ export type GatewayInvokeChatInput = {
   branchId: string
   context?: RuntimeRequestContext
   abortSignal?: AbortSignal
+  delivery?: 'stream' | 'complete'
+  onEvent?: (event: import('@loom-studio/ai-gateway').AiGatewayEvent) => void
 }
 
 export type CanonicalChatRequest = {
@@ -1184,6 +1213,7 @@ export type PingProviderModelResult = {
 }
 
 export type AgentHistoryPolicy = 'persistent' | 'ephemeral'
+export type AgentDelivery = 'stream' | 'complete'
 
 export type AgentProfileEntry = AgentProfileContent & { id: string; version: number }
 export type ListAgentToolsResult = { tools: AgentToolEntry[] }
@@ -1193,6 +1223,7 @@ export type CreateAgentProfileInput = {
   presetId: string
   model: ProviderModelSelection
   toolOverrides?: Record<string, boolean>
+  delivery?: AgentDelivery
 }
 export type CreateAgentProfileResult = {
   agentProfile: AgentProfileEntry
@@ -1210,6 +1241,7 @@ export type UpdateAgentProfileInput = {
   presetId?: string
   model?: ProviderModelSelection
   toolOverrides?: Record<string, boolean>
+  delivery?: AgentDelivery
 }
 export type UpdateAgentProfileResult = CreateAgentProfileResult
 export type DeleteAgentProfileInput = { agentProfileId: string }
@@ -1401,9 +1433,10 @@ export type AiCapabilityProfileContent = {
 
 export type AgentProfileContent = {
   name: string
-  presetId: string
+  presetId?: string
   model: ProviderModelSelection
   toolOverrides: Record<string, boolean>
+  delivery?: AgentDelivery
   createdAt: string
   updatedAt: string
 }

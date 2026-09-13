@@ -138,9 +138,6 @@ export function createPromptRuntimeMethods(ctx: ApplicationRuntimeContext) {
         ? (await listDocuments<AgentProfileContent>(ctx.documents, applicationDocumentTypes.agentProfile))
           .filter(profile => profile.content.presetId === input.resourceId)
         : []
-      if (referencedProfiles.length > 0) {
-        throw new Error(`Prompt Resource is referenced by Agent Profiles: ${input.resourceId}`)
-      }
       const timelineReferences = await findTimelinePromptResourceReferences(ctx, input.resourceId)
       const cards = await listDocuments<CardSourceContent>(ctx.documents, applicationDocumentTypes.cardSource)
       const referencedCards = cards.filter(card => card.content.promptResourceIds?.includes(input.resourceId))
@@ -181,6 +178,19 @@ export function createPromptRuntimeMethods(ctx: ApplicationRuntimeContext) {
                 updatedAt: ctx.now(),
               },
               expectedVersion: currentCard.version,
+            })
+          }
+          for (const profile of referencedProfiles) {
+            const detachedContent = { ...profile.content }
+            delete detachedContent.presetId
+            await writeDocument<AgentProfileContent>(documents, {
+              id: profile.id,
+              type: applicationDocumentTypes.agentProfile,
+              content: {
+                ...detachedContent,
+                updatedAt: ctx.now(),
+              },
+              expectedVersion: profile.version,
             })
           }
           for (const rule of ownedRules) await documents.delete({ id: rule.id, expectedVersion: rule.version })
