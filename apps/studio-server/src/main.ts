@@ -305,6 +305,12 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     readState: async target => (await applicationRuntime.getStateSnapshot({ target })).snapshot,
     writeState: async (input, owner) => {
       const result = await applicationRuntime.applyStateMutation(input, { actor: { kind: 'extension', id: owner.packageId } })
+      kernel.getEventBus().emit('state.changed', {
+        target: result.snapshot.target,
+        revisionId: result.snapshot.revisionId,
+        changesetId: result.mutation.changesetId,
+        paths: input.operations.map(operation => operation.path),
+      }, { publisher: { kind: 'kernel' }, source: `extension:${owner.packageId}` })
       return { snapshot: result.snapshot, changesetId: result.mutation.changesetId }
     },
     registerAgentToolHandler: (toolId, _ownerPackageId, _ownerModuleId, _ownerInstanceId, handler) => agentTools.registerRuntime({

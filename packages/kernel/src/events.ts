@@ -105,6 +105,7 @@ export function createEventBus(options: CreateEventBusOptions = {}): EventBus {
 export function registerBuiltinEventDefinitions(eventBus: EventBus): void {
   const definitions: EventDefinition[] = [
     platformEvent('data.changed', 'Low-level platform data commit completed', 'protected', 'platform-data'),
+    platformEvent('state.changed', 'State commit completed', 'protected', 'state'),
     platformEvent('docs.changed', 'Document Store commit completed', 'protected', 'documents'),
     platformEvent('docs.rollback.completed', 'Document changeset rollback completed', 'protected', 'documents'),
     platformEvent('docs.rollback.failed', 'Document changeset rollback failed', 'protected', 'documents'),
