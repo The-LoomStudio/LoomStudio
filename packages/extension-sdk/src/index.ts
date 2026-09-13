@@ -37,6 +37,7 @@ export type EventCapabilityCategory =
   | 'agent'
   | 'diagnostics'
   | 'platform-data'
+  | 'state'
   | `extension:${string}`
 
 export type ExtensionAssetCapability = 'assets.publish' | 'assets.read'
@@ -665,6 +666,19 @@ export type ExtensionStateMutationResult = {
   changesetId: string
 }
 
+export type ExtensionStateChangeEvent = {
+  target: ExtensionStateTarget
+  revisionId: string
+  changesetId: string
+  paths: string[]
+}
+
+export type ExtensionStateSubscription = {
+  target?: ExtensionStateTarget
+  paths?: readonly string[]
+  signal?: AbortSignal
+}
+
 export type ExtensionActivationContext = {
   extension: {
     packageId: string
@@ -708,6 +722,7 @@ export type ExtensionActivationContext = {
     contribute(contribution: StateContribution): ExtensionRegistrationHandle
     read(target: ExtensionStateTarget): Promise<ExtensionStateSnapshot>
     write(input: ExtensionStateMutationInput): Promise<ExtensionStateMutationResult>
+    subscribe(input: ExtensionStateSubscription, handler: (event: ExtensionStateChangeEvent) => void | Promise<void>): ExtensionRegistrationHandle
   }
   agentTools: {
     register(toolId: string, handler: ExtensionAgentToolHandler): ExtensionRegistrationHandle

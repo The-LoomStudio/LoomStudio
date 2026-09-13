@@ -233,6 +233,23 @@ export function createContext(
           instanceId: instance.instanceId,
         }))
       },
+      subscribe: (input, handler) => {
+        assertScopeActive(instance)
+        if (!instance.grantedEventCapabilities.includes('state')) throw new Error(`Extension module is not allowed to subscribe to State changes: ${moduleKey(packageManifest.id, moduleManifest.id)}`)
+        if (!options.subscribeEvents) throw new Error('Extension event subscriptions are not available in this host')
+        const target = input?.target
+        const paths = input?.paths
+        const registration = options.subscribeEvents(['state.changed'], event => {
+          const payload = event.payload as Partial<import('@loom-studio/extension-sdk').ExtensionStateChangeEvent>
+          if (!payload || !payload.target || typeof payload.revisionId !== 'string') return
+          if (target && JSON.stringify(target) !== JSON.stringify(payload.target)) return
+          if (paths?.length && !(payload.paths ?? []).some(path => paths.some(prefix => path === prefix || path.startsWith(`${prefix}/`)))) return
+          return handler(payload as import('@loom-studio/extension-sdk').ExtensionStateChangeEvent)
+        }, subscriber)
+        instance.scope.track('state-subscription', registration)
+        input?.signal?.addEventListener('abort', () => registration.dispose(), { once: true })
+        return registration
+      },
     },
     ai: {
       registerProvider: registration => {

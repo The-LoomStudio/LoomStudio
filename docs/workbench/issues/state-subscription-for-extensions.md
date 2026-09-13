@@ -1,6 +1,6 @@
 # 扩展 State 变更订阅
 
-> 状态：待排期
+> 状态：已完成（2026-09-13）
 > 创建日期：2026-09-13
 > 关联扩展：`official.the-world`
 
@@ -81,3 +81,16 @@ Studio 或 Agent 更新 `WorldTimeComponent` 后，State Store 提交 revision�
 ### 验收重点
 
 增加 Kernel / State Service 定向测试：Timeline / Branch 隔离、提交失败不发事件、同一 changeset 不重复投递、revision 逆序丢弃、订阅句柄与 Extension Scope 清理，以及跨扩展权限拒绝。完成这些后再接 The World 的动态天色自动同步。
+
+
+## 实施结果
+
+- Kernel 注册并发布受保护的 `state.changed` 事件，仅在 State mutation 提交成功后发布。
+- 事件携带 target、revision、changeset 和 mutation 路径，不携带完整 State。
+- SDK 提供 `context.state.subscribe()`，支持目标与路径过滤、`AbortSignal` 和扩展 Scope 自动清理。
+- 事件权限使用独立的 `state` capability，未授权扩展无法订阅。
+- 已通过 Extension SDK 与 Studio Server 定向 TypeScript 检查。
+
+## 归档
+
+首版契约和宿主实现已经完成。The World 后续只需接入订阅，不再需要修改本 issue 的宿主基础设施；动态天色的具体表现属于 The World 后续工作。
