@@ -44,7 +44,11 @@ import {
 } from './context.js'
 import { executeDocumentMutation } from '../foundation/mutation.js'
 
-export function createNarrativeRuntimeMethods(ctx: ApplicationRuntimeContext) {
+type NarrativeRuntimeContext = Pick<ApplicationRuntimeContext,
+  'createId' | 'dataEngine' | 'documents' | 'narratives' | 'now' | 'stateContributions' | 'states' | 'timelineArchiveParticipants'
+>
+
+export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
   return {
     createNarrativeTimeline: (input: CreateNarrativeTimelineInput, requestContext?: RuntimeRequestContext): Promise<CreateNarrativeTimelineResult> =>
       createTimelineFromCard(ctx, input, requestContext, 'application.createNarrativeTimeline'),
@@ -273,8 +277,8 @@ function orderArchiveItems<T extends { id: string }>(items: T[], parentId: (item
   return ordered
 }
 
-export async function createTimelineFromCard(
-  ctx: ApplicationRuntimeContext,
+async function createTimelineFromCard(
+  ctx: NarrativeRuntimeContext,
   input: CreateNarrativeTimelineInput,
   requestContext: RuntimeRequestContext | undefined,
   reason: string,
@@ -383,7 +387,7 @@ export async function createTimelineFromCard(
 }
 
 export async function readAgentTurnVariables(
-  ctx: ApplicationRuntimeContext,
+  ctx: Pick<ApplicationRuntimeContext, 'now' | 'states'>,
   fallbackUserName: string | undefined,
   timeline?: JsonObject,
   characterName?: string,
@@ -413,7 +417,7 @@ export async function readAgentTurnVariables(
 }
 
 export async function readLegacyCardUserName(
-  ctx: ApplicationRuntimeContext,
+  ctx: Pick<ApplicationRuntimeContext, 'documents'>,
   cardId: string | undefined,
 ): Promise<string | undefined> {
   if (!cardId) return undefined
@@ -421,8 +425,8 @@ export async function readLegacyCardUserName(
   return card.content.userName
 }
 
-export async function buildTimelineRuntimeContext(
-  ctx: ApplicationRuntimeContext,
+async function buildTimelineRuntimeContext(
+  ctx: Pick<ApplicationRuntimeContext, 'documents' | 'now'>,
   input: {
     timelineId: string
     card: DocumentRecord<CardSourceContent>

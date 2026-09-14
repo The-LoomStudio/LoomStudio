@@ -10,27 +10,27 @@ import type { RuntimeRequestContext } from '../types.js'
 
 export const applicationActor = { kind: 'kernel', id: 'application-runtime' } as const
 
-export function requireNarratives(ctx: ApplicationRuntimeContext): NarrativeStore {
+export function requireNarratives(ctx: Pick<ApplicationRuntimeContext, 'narratives'>): NarrativeStore {
   if (!ctx.narratives) throw new Error('Narrative Store is not configured')
   return ctx.narratives
 }
 
-export function requireAgents(ctx: ApplicationRuntimeContext): AgentStore {
+export function requireAgents(ctx: Pick<ApplicationRuntimeContext, 'agents'>): AgentStore {
   if (!ctx.agents) throw new Error('Agent Store is not configured')
   return ctx.agents
 }
 
-export function requireSecrets(ctx: ApplicationRuntimeContext): SecretStore {
+export function requireSecrets(ctx: Pick<ApplicationRuntimeContext, 'secrets'>): SecretStore {
   if (!ctx.secrets) throw new Error('Secret Store is not configured')
   return ctx.secrets
 }
 
-export function requireAiCapabilities(ctx: ApplicationRuntimeContext): AiGatewayCapabilityRegistry {
+export function requireAiCapabilities(ctx: Pick<ApplicationRuntimeContext, 'aiCapabilities'>): AiGatewayCapabilityRegistry {
   if (!ctx.aiCapabilities) throw new Error('AI Gateway capabilities are not configured')
   return ctx.aiCapabilities
 }
 
-export function requireDocumentParticipant(ctx: ApplicationRuntimeContext): SqliteDocumentStore {
+export function requireDocumentParticipant(ctx: Pick<ApplicationRuntimeContext, 'documents'>): SqliteDocumentStore {
   const participant = ctx.documents as Partial<SqliteDocumentStore>
   if (typeof participant.participateTransaction !== 'function') {
     throw new Error('Shared Sqlite Document Store participant is required')
@@ -49,8 +49,6 @@ export function narrativeWriteContext(requestContext: RuntimeRequestContext | un
     parentCallId: requestContext?.parentCallId,
   }
 }
-
-export const agentWriteContext = narrativeWriteContext
 
 export function secretWriteContext(requestContext: RuntimeRequestContext | undefined, reason: string) {
   return {

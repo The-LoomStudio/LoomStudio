@@ -7,7 +7,7 @@ export function timelineRuntimeContextId(timelineId: string): string {
 }
 
 export async function readTimelineRuntimeContext(
-  ctx: ApplicationRuntimeContext,
+  ctx: Pick<ApplicationRuntimeContext, 'documents'>,
   timelineId: string,
 ): Promise<TimelineRuntimeContextContent | undefined> {
   const document = await ctx.documents.get(timelineRuntimeContextId(timelineId))

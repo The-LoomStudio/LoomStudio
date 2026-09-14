@@ -1,6 +1,6 @@
 import styles from './skeleton.module.scss'
 
-export function Skeleton(props: { className?: string; shape?: 'line' | 'block' | 'circle' }) {
+function Skeleton(props: { className?: string; shape?: 'line' | 'block' | 'circle' }) {
   return (
     <span
       aria-hidden="true"

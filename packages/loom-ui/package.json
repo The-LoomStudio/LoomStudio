@@ -7,6 +7,6 @@
   "types": "./src/index.ts",
   "dependencies": {
     "lucide-react": "^1.17.0",
-    "react": "19.2.8"
+    "react": "19.3.0"
   }
 }

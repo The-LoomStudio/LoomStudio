@@ -1,11 +1,11 @@
 import type { Logger, MemoryLogSink } from '@loom-studio/logging'
 import { useStudioState } from './use-studio-state.js'
 import { StudioPage } from '../pages/studio/studio-page.js'
-import { PresetWorkbenchHeader } from '../widgets/preset-workbench/preset-workbench.js'
-import { ContextWorkbenchHeader } from '../widgets/context-workbench/context-workbench.js'
+import { PresetWorkbenchHeader } from '../widgets/preset-workbench/preset-workbench-header.js'
+import { ContextWorkbenchHeader } from '../widgets/context-workbench/context-workbench-header.js'
 import { AgentComposer } from '../widgets/agent-composer/agent-composer.js'
 import { NarrativeTimeline } from '../widgets/narrative-timeline/narrative-timeline.js'
-import { CharacterPanelHeader } from '../widgets/character-panel/character-panel.js'
+import { CharacterPanelHeader } from '../widgets/character-panel/character-panel-header.js'
 import { RecentPlayRail } from '../widgets/play-panel/recent-play-rail.js'
 import { createClientRendererHost } from '../features/extension-renderers/model/client-renderer-host.js'
 import { RendererFocusSurface } from '../features/extension-renderers/ui/renderer-focus-surface.js'
@@ -26,6 +26,7 @@ import { useStudioUiState } from './use-studio-ui-state.js'
 import { useStudioDerivedState } from './use-studio-derived-state.js'
 import { StudioResourcePanels } from './studio-resource-panels.js'
 import { createStudioPanels } from './studio-panel-registry.js'
+import { preloadStudioPanel } from './studio-panel-modules.js'
 import { useEffect, useMemo, useRef, type CSSProperties } from 'react'
 import styles from './app.module.scss'
 import '../styles/global.css'
@@ -141,6 +142,11 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
       id: `operation-error-${state.operationError.sequence}`,
     })
   }, [state.operationError])
+
+  useEffect(() => {
+    if (!state.promptResourceError) return
+    toast.error(state.promptResourceError.message, { id: 'prompt-resource-query-error' })
+  }, [state.promptResourceError])
 
   useEffect(() => {
     rendererHost.setScopeSnapshot({
@@ -298,6 +304,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
         />
       )}
       panels={panels}
+      preloadPanel={preloadStudioPanel}
       providerAccounts={state.providerAccounts}
       rendererHost={rendererHost}
       selectedAgentProfileId={state.selectedAgentProfileId}

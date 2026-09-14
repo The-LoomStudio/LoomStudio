@@ -9,6 +9,7 @@
 
 | 路线图 / 计划                                                                                | 当前状态     | 关注点                                                                  |
 | -------------------------------------------------------------------------------------------- | ------------ | ----------------------------------------------------------------------- |
+| [`core-dependencies-performance-and-state-plan.md`](./core-dependencies-performance-and-state-plan.md) | Implemented / 浏览器验收待完成 | 服务端状态、Panel 分包、渲染与文本测量、性能基线、Shared Schema |
 | [`workspace-resource-and-distribution-plan.md`](./workspace-resource-and-distribution-plan.md) | In Progress / 本地文件与分发基础已实现 | Preset / Setting 附件、用户自定义来源、Git 更新、开发模式 |
 | [`agent-runtime-session-and-workspace-plan.md`](./agent-runtime-session-and-workspace-plan.md) | In Progress / Agent 执行与流式基础已实现 | 统一写入结果、统计组件、Workspace Tool；跨进程恢复与插件 Handler 延后 |
 | [`application-capability-cli-mcp-adapters-plan.md`](./application-capability-cli-mcp-adapters-plan.md) | 待讨论 / 未授权实施 | 承接独立 CLI/MCP；在线连接、权限、首批命令及 Capability 抽取范围待确认 |

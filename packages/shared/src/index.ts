@@ -1,6 +1,20 @@
-import { randomUUID } from 'node:crypto'
-
 export type { AssistantChatMessage, ChatMessage, ChatToolCall } from './chat.js'
+export {
+  listSettingMountsInputSchema,
+  listSettingMountsResultSchema,
+  replaceSettingMountsInputSchema,
+  replaceSettingMountsResultSchema,
+  settingMountSchema,
+  settingMountSourceSchema,
+} from './prompt-resource-contracts.js'
+export type {
+  ListSettingMountsInput,
+  ListSettingMountsResult,
+  ReplaceSettingMountsInput,
+  ReplaceSettingMountsResult,
+  SettingMount,
+  SettingMountSource,
+} from './prompt-resource-contracts.js'
 export type { CardDirectoryPreview, CardDirectorySaveResult, CardDirectoryEntry, CardDirectoryCatalog, OpenCardDirectoryResult, CardDirectoryAttachment } from './resource-directories.js'
 export type {
   StateArtifact,
@@ -65,7 +79,7 @@ export function nowIso(clock: Clock = { now: () => new Date() }): string {
 }
 
 export function createId(prefix = 'id'): string {
-  return `${prefix}-${randomUUID()}`
+  return `${prefix}-${globalThis.crypto.randomUUID()}`
 }
 
 export function serializeError(error: unknown, code = 'internal.error'): SerializedError {
@@ -88,4 +102,8 @@ export function optionalString(value: unknown): string | undefined {
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+export function isJsonObject(value: unknown): value is JsonObject {
+  return isRecord(value)
 }

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignore": [
+    "apps/studio-client/src/styles/abstracts/_index.scss",
+    "apps/studio-client/src/styles/abstracts/_mixins.scss"
+  ],
+  "ignoreDependencies": ["babel-plugin-react-compiler"],
+  "workspaces": {
+    ".": {
+      "entry": [
+        "examples/loom-scripts/*.js",
+        "tests/probes/**/*.ts"
+      ]
+    },
+    "apps/playground": {
+      "entry": ["src/index.ts", "src/codeact/*.ts"]
+    },
+    "official/extensions/st-data-compat": {
+      "entry": ["src/index.ts"],
+      "ignoreDependencies": ["@loom-studio/application-runtime"]
+    },
+    "official/extensions/the-world": {
+      "entry": ["src/client/index.js", "src/client/panel-view.tsx", "scripts/*.mjs"],
+      "project": ["src/**/*.{js,ts,tsx}", "scripts/*.mjs"]
+    },
+    "tests/fixtures/extensions/echo": {
+      "entry": ["src/index.ts", "src/client.ts"]
+    }
+  }
+}

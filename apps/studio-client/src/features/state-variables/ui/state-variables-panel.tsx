@@ -384,6 +384,7 @@ export function StateVariablesPanel(props: Props) {
                 getDisclosureLabel={(node, expanded) => `${expanded ? props.t('stateVariables.collapse') : props.t('stateVariables.expand')} ${node.label}`}
                 getDragLabel={node => node.label}
                 getActions={getActions}
+                hasActions={node => Boolean(node.capabilities)}
                 moreActionsLabel={props.t('stateVariables.actions')}
                 nodes={treeNodes}
                 onExpandedIdsChange={setTreeExpandedIds}

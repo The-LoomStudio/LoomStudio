@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, Package, Search, Wrench, X } from 'lucide-re
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore } from '../../pages/studio/model/studio-layout-store.js'
 import { AssetWorkbenchLayout } from '../../shared/ui/asset-workbench-layout/asset-workbench-layout.js'
+import { normalizeSearchText } from '../../shared/lib/text.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import type { StudioApi } from '../../shared/api/studio-api.js'
 import { TextTransformDetail, TextTransformExplorer, useTextTransformController } from '../../features/text-transforms/ui/text-transform-panel.js'
@@ -16,9 +17,7 @@ import {
   type ContextAssetUpdate,
 } from '../../features/context-assets/model/projection-workbench.js'
 import { ContextAssetEditor, ContextAssetExplorer } from '../../features/context-assets/ui/context-asset-workbench.js'
-import { ContextAssetHeader, type ContextAssetPathSegment } from '../../features/context-assets/ui/context-asset-header/context-asset-header.js'
-import { findContextAssetPath, findContextAssetByVirtualPath, flattenContextAssetNodes, resolveVirtualDisplayName } from '../../features/context-assets/model/context-asset-tree.js'
-import { STUDIO_PANEL_PRESENTATION } from '../../pages/studio/model/studio-panel-presentation.js'
+import { findContextAssetPath, findContextAssetByVirtualPath, flattenContextAssetNodes } from '../../features/context-assets/model/context-asset-tree.js'
 import { PromptResourceToolbar } from '../../features/context-assets/ui/prompt-resource-toolbar/prompt-resource-toolbar.js'
 import { resolvePresetBuildContextResources } from '../../features/context-assets/model/preset-build-context.js'
 import { buildPresetToolProjection } from '../../features/context-assets/model/preset-tool-projection.js'
@@ -314,6 +313,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           displayNodes={displayNodes}
           expandedIds={explorerView.expandedIds}
           query={searchQuery}
+          scrollKey={`preset:${props.workspaceId}`}
           selectedId={selectedId}
           t={props.t}
           workspaceId={props.workspaceId}
@@ -388,7 +388,7 @@ function PresetToolExplorer(props: {
     .filter(mount => mount.presetResourceId === props.presetId)
     .map(mount => mount.toolId)), [props.presetId, props.toolMounts])
   const toolGroups = useMemo(() => {
-    const normalizedQuery = query.trim().toLocaleLowerCase()
+    const normalizedQuery = normalizeSearchText(query)
     const groups = new Map<string, AgentToolDefinition[]>()
     for (const tool of props.tools) {
       const searchableText = [tool.name, tool.description, tool.id, tool.owner.namespace, tool.input.kind]
@@ -897,71 +897,5 @@ function CompositionItemDetail(props: {
         {sourceLabel ? <div><dt>{props.t('context.detail.source')}</dt><dd>{sourceLabel}</dd></div> : null}
       </dl>
     </section>
-  )
-}
-
-export function PresetWorkbenchHeader(props: {
-  resources: PromptResource[]
-  selectedResourceId?: string
-  t: Translator
-  workspaceId: string
-  onSelectResource?: (resourceId: string) => void
-}) {
-  const definition = STUDIO_PANEL_PRESENTATION.preset
-  const activePresetView = useStudioLayoutStore(state => state.presetView)
-  const setActivePresetView = useStudioLayoutStore(state => state.setPresetView)
-  const presetResources = useMemo(() => props.resources.filter(r => r.resourceKind === 'preset'), [props.resources])
-  const selectedResource = presetResources.find(r => r.id === props.selectedResourceId) ?? presetResources[0]
-  const selectedId = useStudioLayoutStore(state => state.assetLayouts.preset.views[props.workspaceId]?.selectedId)
-  const openAssetDetail = useStudioLayoutStore(state => state.openAssetDetail)
-  const setAssetPane = useStudioLayoutStore(state => state.setAssetPane)
-  const selectedPath = selectedResource && selectedId
-    ? findContextAssetPath([readPromptResourceWorkbenchRoot(selectedResource)], selectedId)
-      .slice(1)
-      .map((node, index, pathNodes) => {
-        const parent = [readPromptResourceWorkbenchRoot(selectedResource), ...pathNodes][index]
-        return {
-          id: node.id,
-          label: resolveVirtualDisplayName(node.label, node.kind),
-          options: (parent?.children ?? []).map(sibling => ({
-            id: sibling.id,
-            label: resolveVirtualDisplayName(sibling.label, sibling.kind),
-          })),
-        }
-      })
-    : []
-  const tabOptions: Array<{ id: 'assets' | 'text' | 'tools' | 'macros'; label: string }> = [
-    { id: 'assets', label: props.t('preset.panel.assets') },
-    { id: 'text', label: props.t('rail.textTransform') },
-    { id: 'tools', label: props.t('preset.panel.tools') },
-    { id: 'macros', label: props.t('context.authoring.macros') },
-  ]
-  const activeTab = tabOptions.find(tab => tab.id === activePresetView)
-  const breadcrumbs: ContextAssetPathSegment[] = activeTab
-    ? [{
-      id: activeTab.id,
-      label: activeTab.label,
-      options: tabOptions,
-      onSelect: id => {
-        if (id !== 'assets' && id !== 'text' && id !== 'tools' && id !== 'macros') return
-        setAssetPane('preset', props.workspaceId, 'explorer')
-        setActivePresetView(id)
-      },
-    }, ...selectedPath.map(segment => ({ ...segment, onSelect: (id: string) => {
-      setAssetPane('preset', props.workspaceId, 'detail')
-      openAssetDetail('preset', props.workspaceId, id)
-    } }))]
-    : []
-
-  return (
-    <ContextAssetHeader
-      Icon={definition.Icon}
-      title={props.t(definition.labelKey)}
-      breadcrumbs={breadcrumbs}
-      resources={presetResources}
-      selectedResourceId={selectedResource?.id}
-      t={props.t}
-      onSelectResource={resourceId => props.onSelectResource?.(resourceId)}
-    />
   )
 }

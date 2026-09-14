@@ -130,6 +130,25 @@ describe('card resource directories', () => {
     await expect(save()).resolves.toMatchObject({ changedFiles: 0 })
   })
 
+  it('stages and restores every Card directory as one batch', async () => {
+    const { root, service, save } = await setup()
+    await save()
+    await service.saveCard('card-2', (await service.previewCard('card-2')).token)
+    const firstDirectory = join(root, 'characters/card-1')
+    const secondDirectory = join(root, 'characters/card-2')
+    const firstBefore = await fileMap(firstDirectory)
+    const secondBefore = await fileMap(secondDirectory)
+
+    await expect(service.deleteCards(['card-2', 'card-1'], async () => {
+      await expect(fs.stat(firstDirectory)).rejects.toMatchObject({ code: 'ENOENT' })
+      await expect(fs.stat(secondDirectory)).rejects.toMatchObject({ code: 'ENOENT' })
+      throw new Error('database failure')
+    })).rejects.toThrow('database failure')
+
+    expect(await fileMap(firstDirectory)).toEqual(firstBefore)
+    expect(await fileMap(secondDirectory)).toEqual(secondBefore)
+  })
+
   it.each([true, false])('recovers an interrupted deletion using DB existence: %s', async exists => {
     const { root, directory, service, save } = await setup()
     await save()

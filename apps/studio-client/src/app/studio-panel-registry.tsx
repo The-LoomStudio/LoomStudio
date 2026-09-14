@@ -1,24 +1,27 @@
 import type { MemoryLogSink } from '@loom-studio/logging'
 import type { ReactNode } from 'react'
+import type { ClientRendererHost } from '../features/extension-renderers/model/client-renderer-host.js'
 import type { StudioPanelId } from '../pages/studio/model/studio-layout-store.js'
 import { useStudioLayoutStore, useStudioPanelStore } from '../pages/studio/model/studio-layout-store.js'
-import { ModelPanel } from '../widgets/model-panel/model-panel.js'
-import { AgentPanel } from '../widgets/agent-panel/agent-panel.js'
-import { InspectorPanel } from '../widgets/inspector-panel/inspector-panel.js'
-import { LogViewer } from '../widgets/log-viewer/log-viewer.js'
-import { SessionsPanel } from '../widgets/sessions-panel/sessions-panel.js'
-import { PlayPanel } from '../widgets/play-panel/play-panel.js'
-import { CharacterPanel } from '../widgets/character-panel/character-panel.js'
-import { TextTransformPanel } from '../features/text-transforms/ui/text-transform-panel.js'
-import { RendererWorkspacePanel } from '../features/extension-renderers/ui/renderer-workspace-panel.js'
 import { useClientExtensionRuntime } from '../features/extension-renderers/model/use-client-extension-runtime.js'
-import { SettingsPanel } from '../widgets/settings-panel/settings-panel.js'
-import { StudioStatePanel } from './studio-state-panel.js'
 import { toast } from 'sonner'
 import type { RegisteredClientBackground } from '@loom-studio/extension-sdk'
 import type { useStudioState } from './use-studio-state.js'
 import type { useStudioUiState } from './use-studio-ui-state.js'
 import type { useStudioNavigation } from '../pages/studio/model/use-studio-navigation.js'
+import {
+  LazyAgentPanel,
+  LazyCharacterPanel,
+  LazyInspectorPanel,
+  LazyLogViewer,
+  LazyModelPanel,
+  LazyPlayPanel,
+  LazyRendererWorkspacePanel,
+  LazySessionsPanel,
+  LazySettingsPanel,
+  LazyStudioStatePanel,
+  LazyTextTransformPanel,
+} from './studio-panel-modules.js'
 
 type StudioState = ReturnType<typeof useStudioState>
 type StudioUiState = ReturnType<typeof useStudioUiState>
@@ -28,7 +31,7 @@ export function createStudioPanels(input: {
   state: StudioState
   uiState: StudioUiState
   navigation: StudioNavigation
-  rendererHost: NonNullable<Parameters<typeof TextTransformPanel>[0]['rendererHost']>
+  rendererHost: ClientRendererHost
   clientExtensions: ReturnType<typeof useClientExtensionRuntime>
   clientLogs: MemoryLogSink
   resourcePanels: Record<'preset' | 'resource', (active: boolean) => ReactNode>
@@ -48,7 +51,7 @@ export function createStudioPanels(input: {
   const { state, uiState, navigation, rendererHost, clientExtensions, clientLogs, resourcePanels, assetWorkspaceId, cardsBusy, providerBusy, agentProfileBusy, activePresetId, sourceCardId, sessionBusy, openStateSource, uiScale, setUiScale, backgrounds } = input
   const panels: Record<StudioPanelId, (active: boolean) => ReactNode> = {
     model: () => (
-      <ModelPanel
+      <LazyModelPanel
         busy={providerBusy}
         providerAccountDraft={state.providerAccountDraft}
         modelProfiles={state.modelProfiles}
@@ -72,7 +75,7 @@ export function createStudioPanels(input: {
       />
     ),
     agent: () => (
-      <AgentPanel
+      <LazyAgentPanel
         presets={state.presets}
         agentProfiles={state.agentProfiles}
         tools={state.agentTools}
@@ -89,7 +92,7 @@ export function createStudioPanels(input: {
       />
     ),
     play: active => active ? (
-      <PlayPanel
+      <LazyPlayPanel
         character={panels.character(true)}
         sessions={panels.sessions(true)}
         t={state.t}
@@ -123,7 +126,7 @@ export function createStudioPanels(input: {
       />
     ) : null,
     sessions: () => (
-      <SessionsPanel
+      <LazySessionsPanel
         activeBranch={state.branch}
         activeTimeline={state.narrativeTimeline}
         agentChatSession={state.agentChatSession}
@@ -156,7 +159,7 @@ export function createStudioPanels(input: {
       />
     ),
     character: active => (
-      <CharacterPanel
+      <LazyCharacterPanel
         active={active}
         busy={cardsBusy || sessionBusy}
         cardDraft={state.cardDraft}
@@ -219,7 +222,7 @@ export function createStudioPanels(input: {
     ),
     preset: resourcePanels.preset,
     resource: resourcePanels.resource,
-    state: () => <StudioStatePanel
+    state: () => <LazyStudioStatePanel
       hasTimeline={Boolean(state.narrativeTimeline)}
       variableView={uiState.variableView}
       macroTargetKey={state.macroTargetKey}
@@ -241,7 +244,7 @@ export function createStudioPanels(input: {
       onRefresh={state.refreshMacros}
     />,
     'text-transform': () => (
-      <TextTransformPanel
+      <LazyTextTransformPanel
         api={state.textTransformsApi}
         loomScriptsApi={state.api.loomScripts}
         onRuntimeChanged={uiState.bumpLoomScriptRefreshToken}
@@ -269,7 +272,7 @@ export function createStudioPanels(input: {
       />
     ),
     inspector: () => (
-      <InspectorPanel
+      <LazyInspectorPanel
         agentTranscript={state.agentMessages}
         cardSnapshot={state.selectedCardDetails ?? null}
         promptBuildSteps={state.promptBuildSteps}
@@ -280,9 +283,9 @@ export function createStudioPanels(input: {
         t={state.t}
       />
     ),
-    logs: active => <LogViewer active={active} api={state.logsApi} clientLogs={clientLogs} t={state.t} />,
+    logs: active => <LazyLogViewer active={active} api={state.logsApi} clientLogs={clientLogs} t={state.t} />,
     extensions: () => (
-      <RendererWorkspacePanel
+      <LazyRendererWorkspacePanel
         key={state.endpoint}
         officialContent={state.officialContentApi}
         models={state.modelProfiles}
@@ -303,7 +306,7 @@ export function createStudioPanels(input: {
       />
     ),
     settings: () => (
-      <SettingsPanel
+      <LazySettingsPanel
         busy={state.operationPending.settings.pendingCount > 0}
         customCss={state.customCss}
         locale={state.locale}

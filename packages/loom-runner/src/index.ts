@@ -1,5 +1,5 @@
 import type { Diagnostic } from '@loom-studio/diagnostics'
-import type { JsonValue } from '@loom-studio/shared'
+import { isJsonObject, type JsonValue } from '@loom-studio/shared'
 import type { TraceAuditStore } from '@loom-studio/trace-audit'
 import { PassRegistry, run, type Diagnostic as CoreDiagnostic, type Fragment, type PassConfig, type PassFactory } from '@loom/core'
 
@@ -145,6 +145,4 @@ function toRunnerDiagnostic(code: string, error: unknown): Diagnostic {
   }
 }
 
-function isRecord(value: unknown): value is Record<string, JsonValue> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
-}
+const isRecord = isJsonObject

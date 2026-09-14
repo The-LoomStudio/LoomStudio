@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import type { ManagedExtensionModule, ManagedExtensionPackage, ModelProfile, ProviderModelSelection } from '../../../entities/index.js'
 import type { OfficialContentPackage } from '../../../entities/official-content.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
+import { downloadBase64 } from '../../../shared/browser/download.js'
 import { OfficialContentDetail } from './official-content-detail.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import type { ClientExtensionHost } from '../model/client-extension-host.js'
@@ -138,13 +139,7 @@ export function RendererWorkspacePanel(props: {
   async function exportOfficial(content: OfficialContentPackage) {
     await run(content.id, async () => {
       const result = await props.officialContent.export({ packageId: content.id, digest: content.digest })
-      const bytes = Uint8Array.from(atob(result.base64), char => char.charCodeAt(0))
-      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/zip' }))
-      const anchor = document.createElement('a')
-      anchor.href = url
-      anchor.download = result.fileName
-      anchor.click()
-      setTimeout(() => URL.revokeObjectURL(url), 0)
+      downloadBase64(result.base64, result.fileName, 'application/zip')
     })
   }
 

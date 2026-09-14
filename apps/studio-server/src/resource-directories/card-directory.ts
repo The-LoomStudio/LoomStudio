@@ -38,6 +38,25 @@ export function createCardDirectoryService(options: {
     }
   }
 
+  async function exclusiveMany<T>(cardIds: string[], action: () => Promise<T>): Promise<T> {
+    const ids = [...new Set(cardIds)].sort()
+    for (const id of ids) assertCardId(id)
+    if (ids.some(id => busy.has(id))) throw new Error('Card directory operation is already running')
+    for (const id of ids) busy.add(id)
+    try {
+      for (const id of ids) {
+        const binding = await readCardDirectoryBinding(root, id)
+        if (binding) names.set(id, binding.directoryName)
+      }
+      return await action()
+    } finally {
+      for (const id of ids) {
+        names.delete(id)
+        busy.delete(id)
+      }
+    }
+  }
+
   async function loadBaseline(id: string): Promise<Baseline | null> {
     const bytes = await readOptional(root, `${metadata(id)}/baseline.json`)
     return bytes ? parseBaseline(JSON.parse(bytes.toString('utf8')), id) : null
@@ -215,6 +234,66 @@ export function createCardDirectoryService(options: {
     return { directory: state.preview.directory, changedFiles: state.operations.length }
   }
 
+  async function deleteCards<T>(cardIds: string[], commit: () => Promise<T>): Promise<T> {
+    return exclusiveMany(cardIds, async () => {
+      const entries: Array<{
+        id: string
+        marker: string
+        source: string
+        staged: string
+        exists: boolean
+        markerWritten: boolean
+      }> = []
+      for (const id of [...new Set(cardIds)].sort()) {
+        const marker = `${metadata(id)}/delete.json`
+        const staged = `${metadata(id)}/deleted`
+        if (await readOptional(root, marker)) throw new Error('Card directory has an unfinished deletion; restart to recover')
+        const source = await safePath(root, directory(id))
+        let exists = false
+        try { exists = (await fs.stat(source)).isDirectory() } catch (error) { if (!isMissing(error)) throw error }
+        if (exists && !await loadBaseline(id)) throw new Error('Cannot delete an unregistered card directory')
+        entries.push({ id, marker, source, staged, exists, markerWritten: false })
+      }
+
+      try {
+        for (const entry of entries) {
+          await replace(root, entry.marker, json({ cardId: entry.id }))
+          entry.markerWritten = true
+          if (entry.exists) await fs.rename(entry.source, await safePath(root, entry.staged))
+        }
+        const result = await commit()
+        // The DB tombstone commits deletion. Cleanup cannot roll it back and is retried at startup.
+        for (const entry of entries) {
+          try { await fs.rm(await safePath(root, metadata(entry.id)), { recursive: true }) }
+          catch (error) { console.error(`Card ${entry.id} deleted; directory cleanup will retry at startup`, error) }
+        }
+        return result
+      } catch (error) {
+        const restoreErrors: unknown[] = []
+        for (const entry of [...entries].reverse()) {
+          try {
+            const stagedPath = await safePath(root, entry.staged)
+            let stagedExists = false
+            try { stagedExists = (await fs.stat(stagedPath)).isDirectory() } catch (statError) { if (!isMissing(statError)) throw statError }
+            if (stagedExists) {
+              let sourceReappeared = false
+              try { await fs.lstat(entry.source); sourceReappeared = true } catch (statError) { if (!isMissing(statError)) throw statError }
+              if (sourceReappeared) throw new Error('A new directory conflicts with deletion rollback', { cause: error })
+              await fs.rename(stagedPath, entry.source)
+            }
+            if (entry.markerWritten) await fs.rm(await safePath(root, entry.marker))
+          } catch (restoreError) {
+            restoreErrors.push(restoreError)
+          }
+        }
+        if (restoreErrors.length > 0) {
+          throw new AggregateError([error, ...restoreErrors], 'Card deletion failed; directory recovery required', { cause: error })
+        }
+        throw error
+      }
+    })
+  }
+
   return {
     async recoverApplies() {
       const errors: Array<{ cardId: string; error: string }> = []
@@ -249,39 +328,8 @@ export function createCardDirectoryService(options: {
       await recoverApply(id)
       return { cardId: id }
     }),
-    deleteCard: <T>(id: string, commit: () => Promise<T>) => exclusive(id, async () => {
-      const marker = `${metadata(id)}/delete.json`
-      const staged = `${metadata(id)}/deleted`
-      if (await readOptional(root, marker)) throw new Error('Card directory has an unfinished deletion; restart to recover')
-      const source = await safePath(root, directory(id))
-      let exists = false
-      try { exists = (await fs.stat(source)).isDirectory() } catch (error) { if (!isMissing(error)) throw error }
-      if (exists && !await loadBaseline(id)) throw new Error('Cannot delete an unregistered card directory')
-      await replace(root, marker, json({ cardId: id }))
-      let result: T
-      try {
-        if (exists) await fs.rename(source, await safePath(root, staged))
-        result = await commit()
-      } catch (error) {
-        try {
-          const stagedPath = await safePath(root, staged)
-          let stagedExists = false
-          try { stagedExists = (await fs.stat(stagedPath)).isDirectory() } catch (statError) { if (!isMissing(statError)) throw statError }
-          if (stagedExists) {
-            let sourceReappeared = false
-            try { await fs.lstat(source); sourceReappeared = true } catch (statError) { if (!isMissing(statError)) throw statError }
-            if (sourceReappeared) throw new Error('A new directory conflicts with deletion rollback', { cause: error })
-            await fs.rename(stagedPath, source)
-          }
-        } catch (restoreError) { throw new AggregateError([error, restoreError], 'Card deletion failed; directory recovery required', { cause: restoreError }) }
-        await fs.rm(await safePath(root, marker))
-        throw error
-      }
-      // The DB tombstone commits deletion. Cleanup cannot roll it back and is retried at startup.
-      try { await fs.rm(await safePath(root, metadata(id)), { recursive: true }) }
-      catch (error) { console.error(`Card ${id} deleted; directory cleanup will retry at startup`, error) }
-      return result
-    }),
+    deleteCard: <T>(id: string, commit: () => Promise<T>) => deleteCards([id], commit),
+    deleteCards,
     async recoverDeletions(cardExists: (id: string) => Promise<boolean>) {
       try { await fs.stat(root) } catch (error) { if (isMissing(error)) return; throw error }
       const parent = await safePath(root, '.loom/card-directories')

@@ -4,6 +4,7 @@ import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments, readDocument, writeDocument } from '../foundation/document-store.js'
 import { executeDocumentMutation } from '../foundation/mutation.js'
 import {
+  type ApplicationStateContext,
   applyApplicationStateMutation,
   applyGlobalStateDefaultInTransaction,
   getApplicationStateSnapshot,
@@ -35,7 +36,9 @@ import {
   requireDocumentParticipant,
 } from './context.js'
 
-export function createStateRuntimeMethods(ctx: ApplicationRuntimeContext) {
+type StateRuntimeContext = ApplicationStateContext & Pick<ApplicationRuntimeContext, 'now'>
+
+export function createStateRuntimeMethods(ctx: StateRuntimeContext) {
   return {
     getStateSnapshot: async (input: GetStateSnapshotInput): Promise<GetStateSnapshotResult> => ({
       snapshot: await getApplicationStateSnapshot(ctx, input.target),
@@ -145,7 +148,7 @@ export function createStateRuntimeMethods(ctx: ApplicationRuntimeContext) {
   }
 }
 
-export function readDotPath(root: JsonObject, path: string): { found: true; value: JsonValue } | { found: false } {
+function readDotPath(root: JsonObject, path: string): { found: true; value: JsonValue } | { found: false } {
   let current: JsonValue = root
   for (const segment of path.split('.')) {
     if (typeof current !== 'object' || current === null || Array.isArray(current) || !(segment in current)) {

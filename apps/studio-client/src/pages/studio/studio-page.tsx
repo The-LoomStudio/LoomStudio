@@ -40,6 +40,7 @@ type StudioPageProps = {
   panelHeaders?: Partial<Record<StudioPanelId, ReactNode>>
   headerActions?: ReactNode
   panels: Record<StudioPanelId, (active: boolean) => ReactNode>
+  preloadPanel?(panel: StudioPanelId): void
   providerAccounts?: ProviderAccount[]
   recentSessions?: ReactNode
   rendererHost?: ClientRendererHost
@@ -71,7 +72,7 @@ export function StudioPage(props: StudioPageProps) {
   const dockOpen = useStudioLayoutStore(state => state.dockOpen)
   const dockPinned = useStudioLayoutStore(state => state.dockPinned)
   const panelWindowMode = useStudioLayoutStore(state => state.panelWindowMode)
-  const panelWindowSizes = useStudioLayoutStore(state => state.panelWindowSizes)
+  const activePanelWindowSize = useStudioLayoutStore(state => activePanel === null ? undefined : state.panelWindowSizes[activePanel])
   const setPanelWindowSize = useStudioLayoutStore(state => state.setPanelWindowSize)
   const setAssetMetadataOpen = useStudioLayoutStore(state => state.setAssetMetadataOpen)
   const toggleDockPinned = useStudioLayoutStore(state => state.toggleDockPinned)
@@ -211,13 +212,11 @@ export function StudioPage(props: StudioPageProps) {
     isImmersive ? styles.floatingDockImmersive : '',
     windowResize.resizing ? styles.floatingDockResizing : '',
   ].filter(Boolean).join(' ')
-  const activePanelWindowSize = activePanel === null
-    ? undefined
-    : windowResize.preview?.panel === activePanel
-      ? windowResize.preview.size
-      : panelWindowSizes[activePanel]
-  const dockStyle = activePanelWindowSize && !isImmersive
-    ? { width: `${activePanelWindowSize.width}px` } as CSSProperties
+  const displayedPanelWindowSize = activePanel !== null && windowResize.preview?.panel === activePanel
+    ? windowResize.preview.size
+    : activePanelWindowSize
+  const dockStyle = displayedPanelWindowSize && !isImmersive
+    ? { width: `${displayedPanelWindowSize.width}px` } as CSSProperties
     : undefined
   const dockSidebar = (
     <div className={styles.dockSidebar}>
@@ -265,6 +264,7 @@ export function StudioPage(props: StudioPageProps) {
         modelConfigured={props.modelConfigured}
         recentSessions={props.recentSessions}
         t={props.t}
+        preloadPanel={props.preloadPanel}
         togglePanel={panel => {
           setMobileDrawerOpen(false)
           togglePanel(panel)
@@ -328,6 +328,9 @@ export function StudioPage(props: StudioPageProps) {
                 ].filter(Boolean).join(' ')}
                 title={`${props.characterName} (${props.t('rail.character')})`}
                 type="button"
+                onFocus={() => props.preloadPanel?.('character')}
+                onMouseEnter={() => props.preloadPanel?.('character')}
+                onPointerDown={() => props.preloadPanel?.('character')}
                 onClick={() => togglePanel('character')}
               >
                 <span aria-hidden="true" className={styles.stageCharacterCapsuleAvatar}>

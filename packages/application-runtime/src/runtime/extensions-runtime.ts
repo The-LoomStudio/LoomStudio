@@ -68,7 +68,11 @@ import {
 } from './agents-runtime.js'
 import { findTimelinePromptResourceReferences } from './prompt-runtime.js'
 
-export function createExtensionsRuntimeMethods(ctx: ApplicationRuntimeContext) {
+type ExtensionsRuntimeContext = Pick<ApplicationRuntimeContext,
+  'agentTools' | 'createId' | 'dataEngine' | 'documents' | 'narratives' | 'now' | 'promptResources'
+>
+
+export function createExtensionsRuntimeMethods(ctx: ExtensionsRuntimeContext) {
   return {
     listPortableExtensionPayloads: async (input?: ListPortableExtensionPayloadsInput): Promise<ListPortableExtensionPayloadsResult> => ({
       payloads: (await listDocuments<PortableExtensionPayloadContent>(
@@ -439,7 +443,7 @@ export function validateExtensionPromptNodeIds(packageId: string, node: PromptRe
 }
 
 async function importExtensionPackageResourcesInternal(
-  ctx: ApplicationRuntimeContext,
+  ctx: ExtensionsRuntimeContext,
   input: ImportExtensionPackageResourcesInput,
   requestContext: RuntimeRequestContext | undefined,
   documentParticipant: SqliteDocumentStore,
@@ -701,7 +705,7 @@ async function importExtensionPackageResourcesInternal(
 }
 
 async function removeExtensionPackageResourcesInternal(
-  ctx: ApplicationRuntimeContext,
+  ctx: ExtensionsRuntimeContext,
   input: RemoveExtensionPackageResourcesInput,
   requestContext: RuntimeRequestContext | undefined,
   documentParticipant: SqliteDocumentStore,

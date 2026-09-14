@@ -16,6 +16,7 @@ import { createTimelineArchiveParticipantRegistry, type TimelineArchiveParticipa
 
 export type ApplicationRuntimeContext = {
   withCardDeletion: ApplicationRuntimeOptions['withCardDeletion']
+  withCardDeletions: ApplicationRuntimeOptions['withCardDeletions']
   agents?: AgentStore
   dataEngine: SqliteDataEngine
   documents: DocumentStore
@@ -49,6 +50,7 @@ export function createApplicationRuntimeContext(options: ApplicationRuntimeOptio
   const runtimeCreateId = (prefix: string) => createSharedId(prefix)
   return {
     withCardDeletion: options.withCardDeletion,
+    withCardDeletions: options.withCardDeletions,
     agents: options.agents,
     dataEngine: options.dataEngine,
     documents: options.documents,

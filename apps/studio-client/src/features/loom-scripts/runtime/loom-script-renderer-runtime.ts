@@ -5,7 +5,7 @@ import type {
   LoomSandboxRendererInput,
   RendererContributionDefinition,
 } from '@loom-studio/extension-sdk'
-import type { JsonValue } from '@loom-studio/shared'
+import { isJsonObject, type JsonValue } from '@loom-studio/shared'
 import type { ClientRendererHost, ClientRendererHandle } from '../../extension-renderers/model/client-renderer-host.js'
 import { rendererContributionKey } from '../../extension-renderers/model/renderer-registry.js'
 import { mountLoomSandboxRenderer } from './sandbox-renderer-protocol.js'
@@ -160,9 +160,7 @@ function selectMountedInputs(
   return typeof matchId === 'string' ? inputs.filter(item => item.kind !== 'match' || item.id === matchId) : inputs
 }
 
-function isRecord(value: JsonValue): value is Record<string, JsonValue> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-}
+const isRecord = isJsonObject
 
 function canReadStateTarget(scope: ClientRendererScope, target: ClientStateTarget): boolean {
   if (target.scope === 'global') return true

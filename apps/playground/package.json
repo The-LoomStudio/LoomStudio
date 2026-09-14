@@ -4,14 +4,19 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "tsx src/index.ts"
+    "start": "tsx src/index.ts",
+    "codeact:check": "tsx src/codeact/check.ts",
+    "codeact:run": "tsx src/codeact/run.ts"
   },
   "dependencies": {
+    "@loom-studio/application-runtime": "workspace:*",
     "@loom-studio/diagnostics": "workspace:*",
     "@loom-studio/document-store": "workspace:*",
     "@loom-studio/extension-host": "workspace:*",
+    "@loom-studio/kernel": "workspace:*",
     "@loom-studio/loom-runner": "workspace:*",
+    "@loom-studio/shared": "workspace:*",
     "@loom-studio/trace-audit": "workspace:*",
-    "@loom-studio/kernel": "workspace:*"
+    "yaml": "^2.9.0"
   }
 }

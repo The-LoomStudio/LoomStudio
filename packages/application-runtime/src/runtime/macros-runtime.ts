@@ -7,14 +7,19 @@ import { createVariableRenderContext, type VariableRenderContext } from '../prom
 import { readAgentTurnVariables } from './narrative-runtime.js'
 import { readTimelineRuntimeContext } from '../narrative/timeline-runtime-context.js'
 import { getApplicationStateSnapshot } from '../state/state.js'
+import type { ApplicationStateContext } from '../state/state.js'
 import type {
   CardSourceContent,
   InspectMacrosInput,
 } from '../types.js'
 import type { MacroStaticSource } from '../prompt/macro-provider-registry.js'
 
+type MacroRuntimeContext = ApplicationStateContext & Pick<ApplicationRuntimeContext,
+  'macroProviders' | 'now' | 'promptResources'
+>
+
 export async function inspectApplicationMacros(
-  ctx: ApplicationRuntimeContext,
+  ctx: MacroRuntimeContext,
   input: InspectMacrosInput,
 ): Promise<{ macroInspection: MacroInspection }> {
   if (input.cardId && input.timelineTarget) throw new Error('Card and Timeline macro targets are mutually exclusive')
@@ -70,7 +75,7 @@ export async function inspectApplicationMacros(
 }
 
 export async function inspectPreparedMacros(input: {
-  ctx: ApplicationRuntimeContext
+  ctx: Pick<ApplicationRuntimeContext, 'macroProviders' | 'now'>
   variables: VariableRenderContext
   cardId?: string
   presetId?: string

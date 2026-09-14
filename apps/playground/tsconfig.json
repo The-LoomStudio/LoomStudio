@@ -7,6 +7,8 @@
   },
   "include": ["src/**/*.ts"],
   "references": [
+    { "path": "../../packages/shared" },
+    { "path": "../../packages/application-runtime" },
     { "path": "../../packages/diagnostics" },
     { "path": "../../packages/document-store" },
     { "path": "../../packages/extension-sdk/extension-host" },

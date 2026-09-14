@@ -11,6 +11,7 @@ import {
   extensionStorageTokenPattern,
   studioReservedNamespaces,
 } from './types.js'
+import { isRecord } from '@loom-studio/shared'
 
 export const rendererSurfaces = [
   'shell.background',
@@ -285,8 +286,4 @@ export function contributionCounts(manifest: ExtensionModuleManifest): { rpc: nu
     aiProviders: manifest.contributes?.aiProviders?.length ?? 0,
     agentToolHandlers: manifest.contributes?.agentToolHandlers?.length ?? 0,
   }
-}
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }

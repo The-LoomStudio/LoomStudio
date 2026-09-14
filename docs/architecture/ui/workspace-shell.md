@@ -87,9 +87,9 @@ Window 内部使用 Column Layout 表达水平并列区域。Rail、Explorer、D
 
 Studio 的临时异步状态按 `bootstrap`、`cards`、`resources`、`provider-settings`、`session` 和 `mutation` 分域管理。一个域的读取或写入不会锁死其他无关面板；错误也保留在发生操作的域内，再由 Shell 选择最新错误展示。
 
-可能竞态的读取使用 latest-wins：旧请求可以在 Bridge 中自然完成，但完成后不得覆盖更新的界面状态。Mutation 不采用 latest-wins，必须完整执行；Context Asset 写入继续由现有队列保证顺序。
+尚未迁移到 Query 的可能竞态读取使用 latest-wins：旧请求可以在 Bridge 中自然完成，但完成后不得覆盖更新的界面状态。Mutation 不采用 latest-wins，必须完整执行；Context Asset 写入继续由现有队列保证顺序。
 
-这些状态只描述当前页面进程内的操作，不属于领域数据，也不持久化。当前不提供请求缓存、自动重试或 `AbortSignal`；需要这些能力时应先由 Bridge 明确取消契约，而不是在 UI 中伪装 RPC 已被取消。
+Prompt Resource、Setting Mount 与 Preset Tool Mount 的缓存型远端状态由 TanStack Query 管理，负责同 key 请求去重、缓存和失效；默认关闭自动重试与窗口聚焦刷新。Query Cache 不是领域持久化，也不保存未提交草稿。其他领域仍按各自 feature 的现有读取模型工作，不能因为根应用已经提供 QueryClient 就假装所有 RPC 都支持取消或自动缓存。完整依赖所有权见 [`../platform/external-dependency-ownership.md`](../platform/external-dependency-ownership.md)。
 
 下列能力尚未实现，不属于当前 Shell contract：
 

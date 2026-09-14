@@ -42,7 +42,11 @@ function sameKeys<T, U>(before: Map<string, T>, after: Map<string, U>, subject: 
   }
 }
 
-export function createCardDirectoryRuntimeMethods(ctx: ApplicationRuntimeContext) {
+type CardDirectoryRuntimeContext = Pick<ApplicationRuntimeContext,
+  'blobs' | 'dataEngine' | 'documents' | 'narratives' | 'now' | 'promptResources'
+>
+
+export function createCardDirectoryRuntimeMethods(ctx: CardDirectoryRuntimeContext) {
   async function capture(cardId: string) {
     const card = await readDocument<CardSourceContent>(ctx.documents, cardId, types.cardSource)
     const artifact = await exportCardArtifact({ cardId, ...ctx })
@@ -238,7 +242,7 @@ function assertPrivate(shared: Set<string>, id: string): void {
   if (shared.has(id)) throw new Error(`Card directory cannot overwrite shared resource: ${id}`)
 }
 
-async function sharedReferences(ctx: ApplicationRuntimeContext, cardId: string): Promise<Set<string>> {
+async function sharedReferences(ctx: Pick<CardDirectoryRuntimeContext, 'documents' | 'narratives' | 'promptResources'>, cardId: string): Promise<Set<string>> {
   const shared = new Set<string>()
   for (const card of await listDocuments<CardSourceContent>(ctx.documents, types.cardSource)) {
     if (card.id !== cardId) for (const id of [...card.content.promptResourceIds ?? [], ...card.content.portableExtensionPayloadIds ?? [], ...card.content.stateDefinitionIds ?? []]) shared.add(id)

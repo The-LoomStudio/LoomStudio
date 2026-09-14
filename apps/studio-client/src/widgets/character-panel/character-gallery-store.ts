@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { safeLocalStorage } from '../../shared/browser/safe-local-storage.js'
+import { isRecord } from '@loom-studio/shared'
 
 type CharacterGroup = {
   id: string
@@ -27,7 +28,7 @@ type CharacterGalleryState = {
 type PersistedCharacterGalleryState = Pick<CharacterGalleryState, 'activeGroupId' | 'assignments' | 'groups'>
 
 const STORAGE_KEY = 'loom-character-gallery'
-export function createDefaultCharacterGalleryState(): PersistedCharacterGalleryState {
+function createDefaultCharacterGalleryState(): PersistedCharacterGalleryState {
   return { activeGroupId: undefined, assignments: {}, groups: [] }
 }
 
@@ -111,8 +112,4 @@ export const useCharacterGalleryStore = create<CharacterGalleryState>()(
 
 function createGroupId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `group-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

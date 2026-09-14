@@ -4,7 +4,8 @@ import type {
   SqliteDataTransaction,
   SqliteDataEngine,
 } from '@loom-studio/data-engine'
-import type { JsonObject, JsonValue } from '@loom-studio/shared'
+import type { JsonObject, JsonValue, SettingMount, SettingMountSource } from '@loom-studio/shared'
+export type { SettingMount, SettingMountSource } from '@loom-studio/shared'
 
 export type PromptResourceKind = 'preset' | 'setting' | 'logic' | 'runtime' | 'history' | 'prompt' | (string & {})
 export type PromptResourceNodeKind = 'module' | 'folder' | 'entry' | 'script' | 'virtual' | 'slot' | 'message' | (string & {})
@@ -109,19 +110,6 @@ export type ListPromptResourcesInput = {
 export type PromptResourcePage = {
   resources: PromptResource[]
   nextCursor?: string
-}
-
-export type SettingMountSource =
-  | { kind: 'manual'; id?: 'global' }
-  | { kind: 'preset'; id: string }
-
-export type SettingMount = {
-  id: string
-  settingResourceId: string
-  source: SettingMountSource
-  orderIndex: number
-  origin: JsonObject
-  createdAt: string
 }
 
 export type AddSettingMountInput = PromptResourceWriteContext & {

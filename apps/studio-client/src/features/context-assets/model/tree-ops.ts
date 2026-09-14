@@ -221,6 +221,10 @@ export function moveContextAssetNode(
   targetId: string,
   position: 'before' | 'inside' | 'after',
 ): ContextAssetNode[] {
+  const draggedInfo = findContextAssetNodeInfo(nodes, draggedId)
+  if (!draggedInfo || draggedInfo.node.kind === 'module' || draggedId === targetId) return nodes
+  if (findContextAssetNode(draggedInfo.node.children ?? [], targetId)) return nodes
+
   let draggedNode: ContextAssetNode | undefined
 
   function removeNode(currentNodes: ContextAssetNode[]): ContextAssetNode[] {

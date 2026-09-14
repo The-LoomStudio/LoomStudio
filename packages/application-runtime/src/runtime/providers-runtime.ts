@@ -45,7 +45,11 @@ import {
 import { officialFakeModelId } from '@loom-studio/ai-gateway'
 export { officialFakeModelId } from '@loom-studio/ai-gateway'
 
-export function createProvidersRuntimeMethods(ctx: ApplicationRuntimeContext) {
+type ProvidersRuntimeContext = Pick<ApplicationRuntimeContext,
+  'aiCapabilities' | 'createId' | 'documents' | 'gateway' | 'now' | 'providerAdapters' | 'secrets'
+>
+
+export function createProvidersRuntimeMethods(ctx: ProvidersRuntimeContext) {
   return {
     createProviderProfile: async (input: CreateProviderProfileInput, requestContext?: RuntimeRequestContext): Promise<CreateProviderProfileResult> => {
       assertNonEmpty(input.providerExtensionId, 'providerExtensionId')
@@ -335,24 +339,24 @@ export function createProvidersRuntimeMethods(ctx: ApplicationRuntimeContext) {
   }
 }
 
-export function normalizeModelIds(modelIds: string[] | undefined): string[] {
+function normalizeModelIds(modelIds: string[] | undefined): string[] {
   const normalized = [...new Set((modelIds ?? []).map(modelId => modelId.trim()).filter(Boolean))]
   if (normalized.length > 500) throw new Error('Provider Profile enabledModelIds exceeds 500 entries')
   return normalized
 }
 
-export function normalizeProviderModelIds(providerExtensionId: string, modelIds: string[] | undefined): string[] {
+function normalizeProviderModelIds(providerExtensionId: string, modelIds: string[] | undefined): string[] {
   return isOfficialFakeProvider(providerExtensionId)
     ? [officialFakeModelId]
     : normalizeModelIds(modelIds)
 }
 
-export function isOfficialFakeProvider(providerExtensionId: string): boolean {
+function isOfficialFakeProvider(providerExtensionId: string): boolean {
   return providerExtensionId === 'official.fake' || providerExtensionId === 'fake'
 }
 
-export async function toProviderProfileView(
-  ctx: ApplicationRuntimeContext,
+async function toProviderProfileView(
+  ctx: Pick<ApplicationRuntimeContext, 'secrets'>,
   profile: DocumentRecord<ProviderProfileContent>,
 ): Promise<ProviderProfileView> {
   const metadata = profile.content.secretRef && ctx.secrets
@@ -374,8 +378,8 @@ export async function toProviderProfileView(
   }
 }
 
-export async function toAiCapabilityProfileView(
-  ctx: ApplicationRuntimeContext,
+async function toAiCapabilityProfileView(
+  ctx: Pick<ApplicationRuntimeContext, 'aiCapabilities' | 'documents'>,
   profile: DocumentRecord<AiCapabilityProfileContent>,
 ): Promise<AiCapabilityProfileView> {
   const providerProfile = await readDocument<ProviderProfileContent>(
@@ -398,7 +402,9 @@ export async function toAiCapabilityProfileView(
   }
 }
 
-export async function initializeOfficialFakeProviderProfiles(ctx: ApplicationRuntimeContext): Promise<void> {
+export async function initializeOfficialFakeProviderProfiles(
+  ctx: Pick<ApplicationRuntimeContext, 'documents' | 'now' | 'providerAdapters'>,
+): Promise<void> {
   const profiles = await listDocuments<ProviderProfileContent>(ctx.documents, applicationDocumentTypes.providerProfile)
   const providerProfileIds = new Set<string>()
   for (const profile of profiles) {

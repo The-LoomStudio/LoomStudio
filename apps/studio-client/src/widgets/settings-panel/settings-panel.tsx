@@ -11,7 +11,7 @@ import styles from './settings-panel.module.scss'
 
 type SettingsCategory = 'general' | 'network' | 'appearance' | 'text-pipeline' | 'about'
 
-export const previewBackgrounds: BackgroundOption[] = [
+const previewBackgrounds: BackgroundOption[] = [
   {
     id: 'harbor',
     name: '黄昏港口',

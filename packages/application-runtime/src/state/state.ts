@@ -16,6 +16,8 @@ import type {
   StateDefinitionContent,
 } from '../types.js'
 
+export type ApplicationStateContext = Pick<ApplicationRuntimeContext, 'dataEngine' | 'documents' | 'narratives' | 'states'>
+
 const globalOwnerId = 'workspace'
 
 export class ApplicationStateError extends Error {
@@ -28,7 +30,7 @@ export class ApplicationStateError extends Error {
   }
 }
 
-export async function initializeGlobalState(ctx: ApplicationRuntimeContext): Promise<void> {
+export async function initializeGlobalState(ctx: ApplicationStateContext): Promise<void> {
   if (await ctx.states.getScope({ kind: 'global', ownerId: globalOwnerId })) return
   await ctx.states.createScopeWithInitialRevision({
     actor: { kind: 'kernel', id: 'application-runtime' },
@@ -43,7 +45,7 @@ export async function initializeGlobalState(ctx: ApplicationRuntimeContext): Pro
 }
 
 export async function getApplicationStateSnapshot(
-  ctx: ApplicationRuntimeContext,
+  ctx: ApplicationStateContext,
   target: StateTarget,
 ): Promise<StateSnapshotView> {
   const snapshot = await readTargetSnapshot(ctx, target)
@@ -57,7 +59,7 @@ export async function getApplicationStateSnapshot(
 }
 
 export async function applyApplicationStateMutation(
-  ctx: ApplicationRuntimeContext,
+  ctx: ApplicationStateContext,
   input: ApplyStateMutationInput,
   requestContext?: RuntimeRequestContext,
 ): Promise<ApplyStateMutationResult> {
@@ -138,7 +140,7 @@ export async function applyApplicationStateMutation(
 }
 
 export function applyGlobalStateDefaultInTransaction(
-  ctx: ApplicationRuntimeContext,
+  ctx: ApplicationStateContext,
   dataTx: SqliteDataTransaction,
   input: {
     scopeId: string
@@ -165,7 +167,7 @@ export function applyGlobalStateDefaultInTransaction(
 }
 
 export async function revertApplicationStateChangeset(
-  ctx: ApplicationRuntimeContext,
+  ctx: ApplicationStateContext,
   changesetId: string,
   requestContext?: RuntimeRequestContext,
   documents?: { participant: SqliteDocumentStore; changeset: Changeset },
@@ -323,7 +325,7 @@ function validateMutationInput(input: ApplyStateMutationInput): void {
   }
 }
 
-async function readTargetSnapshot(ctx: ApplicationRuntimeContext, target: StateTarget) {
+async function readTargetSnapshot(ctx: ApplicationStateContext, target: StateTarget) {
   if (target.scope === 'global') {
     const snapshot = await ctx.states.getGlobalSnapshot(globalOwnerId)
     if (!snapshot) throw new ApplicationStateError('state.global_not_initialized', 'Global state is not initialized')
@@ -347,7 +349,7 @@ async function readTargetSnapshot(ctx: ApplicationRuntimeContext, target: StateT
 }
 
 async function validateSnapshotAgainstDefinitions(
-  ctx: ApplicationRuntimeContext,
+  ctx: ApplicationStateContext,
   target: StateTarget,
   previous: JsonObject,
   snapshot: JsonObject,

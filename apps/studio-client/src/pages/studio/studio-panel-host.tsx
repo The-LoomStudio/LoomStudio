@@ -1,8 +1,9 @@
-import { memo, useEffect, useState, type ReactNode } from 'react'
+import { memo, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { ArrowLeft, ArrowRight, Columns2, FilePenLine, Maximize2, Minimize2 } from 'lucide-react'
 import type { Translator } from '../../shared/i18n/index.js'
 import { DEFAULT_ASSET_VIEW_STATE, STUDIO_PANEL_IDS, useStudioLayoutStore, useStudioPanelStore, type AssetLayoutId, type StudioPanelId } from './model/studio-layout-store.js'
 import { STUDIO_PANEL_PRESENTATION } from './model/studio-panel-presentation.js'
+import { SkeletonText } from '../../shared/ui/skeleton/skeleton.js'
 import styles from './studio-page.module.scss'
 
 type StudioPanelHostProps = {
@@ -146,7 +147,11 @@ const StudioPanelStage = memo(function StudioPanelStage(props: {
       data-loom-component={`overlay-${props.panel}-layer`}
       data-loom-object={`${props.panel}-panel`}
     >
-      {visited || props.active ? props.render(props.active) : null}
+      {visited || props.active ? (
+        <Suspense fallback={<div aria-busy="true" className={styles.panelLoading}><SkeletonText lines={6} /></div>}>
+          {props.render(props.active)}
+        </Suspense>
+      ) : null}
     </div>
   )
 }, (previous, next) => previous.panel === next.panel && !previous.active && !next.active)

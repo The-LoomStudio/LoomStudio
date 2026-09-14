@@ -1,6 +1,7 @@
 import { createConsoleLogSink, createMemoryLogSink, createRootLogger } from '@loom-studio/logging'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { App } from './app/app.js'
 import { AppErrorBoundary } from './app/app-error-boundary.js'
 import { NotFoundPage } from './app/not-found-page.js'
@@ -13,6 +14,15 @@ const rootLogger = createRootLogger({
   sinks: [clientLogs, createConsoleLogSink({ filter: shouldWriteClientConsoleLog })],
 })
 const systemLogger = rootLogger.child('system')
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      retry: false,
+      staleTime: 30_000,
+    },
+  },
+})
 
 window.addEventListener('error', event => {
   systemLogger.error('Unhandled browser error', {
@@ -62,7 +72,11 @@ async function startStudioClient(rootElement: HTMLElement): Promise<void> {
     if (!response.ok) throw new Error(`Application session bootstrap failed (${response.status})`)
 
     systemLogger.info('Studio client started', { event: 'client.started' })
-    const studio = <App clientLogs={clientLogs} transportLogger={rootLogger.child('transport.rpc')} />
+    const studio = (
+      <QueryClientProvider client={queryClient}>
+        <App clientLogs={clientLogs} transportLogger={rootLogger.child('transport.rpc')} />
+      </QueryClientProvider>
+    )
     createRoot(rootElement).render(
       <AppErrorBoundary onError={(error, info) => systemLogger.error('React render failed', {
         event: 'client.react.render_failed',

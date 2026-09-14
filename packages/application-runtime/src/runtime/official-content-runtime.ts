@@ -13,7 +13,9 @@ const builtinOriginKeys: Record<string, string> = {
   'prompt-resource.official.loom-knowledge': 'loom-knowledge-setting',
 }
 
-export function createOfficialContentRuntimeMethods(ctx: ApplicationRuntimeContext) {
+type OfficialContentRuntimeContext = Pick<ApplicationRuntimeContext, 'agentTools' | 'dataEngine' | 'now' | 'promptResources'>
+
+export function createOfficialContentRuntimeMethods(ctx: OfficialContentRuntimeContext) {
   return {
     installOfficialContent: async (
       input: InstallOfficialContentInput,

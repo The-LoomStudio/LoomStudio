@@ -57,7 +57,19 @@ import { normalizeMacros } from '../cards/card.js'
 import { parseLoomScriptSource } from '../scripts/loom-script-codec.js'
 import type { LoomScriptAttachmentArtifact, LoomScriptContent, LoomScriptMountContent } from '../scripts/loom-script-contracts.js'
 
-export function createPromptRuntimeMethods(ctx: ApplicationRuntimeContext) {
+type PromptRuntimeContext = Pick<ApplicationRuntimeContext,
+  | 'agentTools'
+  | 'blobs'
+  | 'createId'
+  | 'dataEngine'
+  | 'documents'
+  | 'narratives'
+  | 'now'
+  | 'promptResources'
+  | 'states'
+>
+
+export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
   return {
     getPromptResource: async (input: GetPromptResourceInput): Promise<GetPromptResourceResult> => ({
       resource: await readMappedResource(ctx.promptResources, input.resourceId),
@@ -420,7 +432,7 @@ export function createPromptRuntimeMethods(ctx: ApplicationRuntimeContext) {
 }
 
 async function importPromptResourceWithScripts(
-  ctx: ApplicationRuntimeContext,
+  ctx: PromptRuntimeContext,
   content: PromptResourceContent,
   attachments: LoomScriptAttachmentArtifact[],
   requestContext?: RuntimeRequestContext,
@@ -511,7 +523,7 @@ async function importPromptResourceWithScripts(
 }
 
 async function exportPresetScriptAttachments(
-  ctx: ApplicationRuntimeContext,
+  ctx: Pick<ApplicationRuntimeContext, 'blobs' | 'documents'>,
   presetId: string,
 ): Promise<LoomScriptAttachmentArtifact[]> {
   const mounts = (await listDocuments<LoomScriptMountContent>(ctx.documents, applicationDocumentTypes.loomScriptMount))
@@ -547,7 +559,7 @@ async function exportPresetScriptAttachments(
   }))
 }
 
-export function createEmptyPromptResourceContent(
+function createEmptyPromptResourceContent(
   createId: (prefix: string) => string,
   name: string,
   resourceKind: PromptResourceContent['resourceKind'],
@@ -580,7 +592,7 @@ export function createEmptyPromptResourceContent(
   }
 }
 
-export function clonePromptResourceContent(
+function clonePromptResourceContent(
   source: PromptResourceContent & { id: string; version: number },
   createId: (prefix: string) => string,
   name?: string,
@@ -595,7 +607,7 @@ export function clonePromptResourceContent(
   }
 }
 
-export function clonePromptResourceNode(
+function clonePromptResourceNode(
   node: PromptResourceContent['rootNode'],
   createId: (prefix: string) => string,
 ): PromptResourceContent['rootNode'] {
@@ -606,7 +618,7 @@ export function clonePromptResourceNode(
   }
 }
 
-export function findPromptNode(
+function findPromptNode(
   root: PromptResourceContent['rootNode'],
   id: string,
   parentId?: string,
@@ -620,7 +632,7 @@ export function findPromptNode(
   return undefined
 }
 
-export function resolveAssetPlacement(
+function resolveAssetPlacement(
   root: PromptResourceContent['rootNode'],
   targetId: string,
   position: 'before' | 'inside' | 'after',
@@ -635,7 +647,7 @@ export function resolveAssetPlacement(
   return { parentId: target.parentId, orderIndex: target.index + (position === 'after' ? 1 : 0) }
 }
 
-export function buildInsertionReorderMutations(
+function buildInsertionReorderMutations(
   root: PromptResourceContent['rootNode'],
   parentId: string,
   insertedIndex: number,
@@ -652,7 +664,7 @@ export function buildInsertionReorderMutations(
     }))
 }
 
-export function buildMoveMutations(
+function buildMoveMutations(
   root: PromptResourceContent['rootNode'],
   nodeId: string,
   placement: { parentId: string; orderIndex: number },
@@ -692,8 +704,8 @@ export function buildMoveMutations(
   return mutations
 }
 
-export async function updatePromptResourceAssets(input: {
-  ctx: ApplicationRuntimeContext
+async function updatePromptResourceAssets(input: {
+  ctx: Pick<ApplicationRuntimeContext, 'promptResources'>
   requestContext?: RuntimeRequestContext
   resourceId: string
   updates: Array<{
@@ -740,7 +752,7 @@ export async function updatePromptResourceAssets(input: {
 }
 
 export async function findTimelinePromptResourceReferences(
-  ctx: ApplicationRuntimeContext,
+  ctx: Pick<ApplicationRuntimeContext, 'narratives'>,
   resourceId: string,
 ): Promise<Array<{ id: string; promptResourceIds: string[] }>> {
   if (!ctx.narratives) return []

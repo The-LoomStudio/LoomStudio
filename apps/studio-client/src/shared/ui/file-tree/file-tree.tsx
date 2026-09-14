@@ -1,10 +1,10 @@
 import { ChevronDown, ChevronRight, GripVertical, MoreHorizontal } from 'lucide-react'
-import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type ElementType } from 'react'
-import { DndContext, DragOverlay, useDraggable, useDroppable, defaultDropAnimationSideEffects, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core'
+import { useVirtualizer } from '@tanstack/react-virtual'
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type ElementType } from 'react'
 import type { MenuAction } from '../menu-action.js'
 import { ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem, ContextMenuCheckboxItem, ContextMenuSeparator } from '../context-menu/context-menu.js'
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuSeparator } from '../dropdown-menu/dropdown-menu.js'
-import { findNodeById, readDropPosition, readFileTreeKeyboardTarget, readVisibleFileTreeNodes, type FileTreeNode } from './file-tree-model.js'
+import { readDropPosition, readFileTreeKeyboardTarget, readVisibleFileTreeNodes, type FileTreeNode } from './file-tree-model.js'
 import styles from './file-tree.module.scss'
 
 export type { FileTreeNode } from './file-tree-model.js'
@@ -14,9 +14,11 @@ type FileTreeProps = {
   formatLabel?: (node: FileTreeNode) => string
   getDisclosureLabel: (node: FileTreeNode, expanded: boolean) => string
   getDragLabel: (node: FileTreeNode) => string
+  getVirtualScrollElement?: () => HTMLElement | null
   editingId?: string
   expandedIds: string[]
   getActions?: (node: FileTreeNode) => MenuAction[]
+  hasActions?: (node: FileTreeNode) => boolean
   isMuted?: (node: FileTreeNode) => boolean
   moreActionsLabel: string
   nodes: FileTreeNode[]
@@ -31,11 +33,16 @@ type FileTreeProps = {
   renderExpandedRow?: (node: FileTreeNode) => ReactNode
   selectedId?: string
   variant?: 'tree' | 'flat'
+  virtualized?: boolean
 }
 
 export function FileTree(props: FileTreeProps) {
-  const [draggedNode, setDraggedNode] = useState<FileTreeNode>()
+  const [contextActions, setContextActions] = useState<MenuAction[]>([])
   const [focusedId, setFocusedId] = useState<string>()
+  const draggedIdRef = useRef<string | undefined>(undefined)
+  const draggedElementRef = useRef<HTMLElement | undefined>(undefined)
+  const dragOverElementRef = useRef<HTMLElement | undefined>(undefined)
+  const treeRef = useRef<HTMLDivElement>(null)
   const treeItemRefs = useRef(new Map<string, HTMLDivElement>())
   const expandedIds = useMemo(() => new Set(props.expandedIds), [props.expandedIds])
   const visibleNodes = useMemo(() => readVisibleFileTreeNodes(props.nodes, expandedIds), [expandedIds, props.nodes])
@@ -44,6 +51,14 @@ export function FileTree(props: FileTreeProps) {
     : visibleNodes.some(item => item.node.id === props.selectedId)
       ? props.selectedId
       : visibleNodes[0]?.node.id
+  const virtualizer = useVirtualizer({
+    count: props.virtualized ? visibleNodes.length : 0,
+    enabled: Boolean(props.virtualized),
+    estimateSize: () => 34,
+    getItemKey: index => visibleNodes[index]?.node.id ?? index,
+    getScrollElement: () => props.getVirtualScrollElement?.() ?? treeRef.current,
+    overscan: 8,
+  })
 
   useEffect(() => {
     if (focusedId && !visibleNodes.some(item => item.node.id === focusedId)) setFocusedId(rovingId)
@@ -59,6 +74,10 @@ export function FileTree(props: FileTreeProps) {
   function focusNode(id: string | undefined) {
     if (!id) return
     setFocusedId(id)
+    if (props.virtualized) {
+      const index = visibleNodes.findIndex(item => item.node.id === id)
+      if (index >= 0) virtualizer.scrollToIndex(index, { align: 'auto' })
+    }
     requestAnimationFrame(() => treeItemRefs.current.get(id)?.focus())
   }
 
@@ -75,9 +94,12 @@ export function FileTree(props: FileTreeProps) {
     else focusNode(target.focusId)
   }
 
-  function handleDragStart(event: DragStartEvent) {
-    const node = findNodeById(props.nodes, event.active.id as string)
-    setDraggedNode(node)
+  function handleDragStart(event: DragEvent<HTMLElement>, node: FileTreeNode) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', node.id)
+    draggedIdRef.current = node.id
+    draggedElementRef.current = event.currentTarget.closest<HTMLElement>('[data-file-tree-node-id]') ?? undefined
+    draggedElementRef.current?.classList.add(styles.dragging)
   }
 
   function isNodeContainer(node: FileTreeNode): boolean {
@@ -89,73 +111,139 @@ export function FileTree(props: FileTreeProps) {
       || node.kind === 'slot'
   }
 
-  function handleDragEnd(event: DragEndEvent) {
-    setDraggedNode(undefined)
-    if (!props.onMoveNode || !event.over || event.active.id === event.over.id) return
+  function handleDragOver(event: DragEvent<HTMLElement>, node: FileTreeNode) {
+    if (!draggedIdRef.current || draggedIdRef.current === node.id) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    if (dragOverElementRef.current === event.currentTarget) return
+    dragOverElementRef.current?.classList.remove(styles.dragOver)
+    dragOverElementRef.current = event.currentTarget
+    dragOverElementRef.current.classList.add(styles.dragOver)
+  }
 
-    const draggedId = event.active.id as string
-    const overId = event.over.id as string
+  function handleDrop(event: DragEvent<HTMLElement>, targetNode: FileTreeNode) {
+    event.preventDefault()
+    event.stopPropagation()
+    const sourceId = draggedIdRef.current || event.dataTransfer.getData('text/plain')
+    clearDragState()
+    if (!props.onMoveNode || !sourceId || sourceId === targetNode.id) return
 
-    const targetNode = findNodeById(props.nodes, overId)
-    if (!targetNode) return
+    const position = isNodeContainer(targetNode) ? 'inside' : readDropPosition(props.nodes, sourceId, targetNode.id)
+    props.onMoveNode(sourceId, targetNode.id, position)
+  }
 
-    const position = isNodeContainer(targetNode) ? 'inside' : readDropPosition(props.nodes, draggedId, overId)
-    props.onMoveNode(draggedId, overId, position)
+  function handleDragEnd() {
+    clearDragState()
+  }
+
+  function clearDragState() {
+    draggedElementRef.current?.classList.remove(styles.dragging)
+    dragOverElementRef.current?.classList.remove(styles.dragOver)
+    draggedIdRef.current = undefined
+    draggedElementRef.current = undefined
+    dragOverElementRef.current = undefined
+  }
+
+  function handleContextMenu(event: MouseEvent<HTMLElement>) {
+    const id = event.target instanceof Element
+      ? event.target.closest<HTMLElement>('[data-file-tree-node-id]')?.dataset.fileTreeNodeId
+      : undefined
+    const node = visibleNodes.find(item => item.node.id === id)?.node
+    const actions = node ? props.getActions?.(node) ?? [] : []
+    if (actions.length === 0) {
+      event.preventDefault()
+      return
+    }
+    setContextActions(actions)
+  }
+
+  function renderRow(node: FileTreeNode, level: number, renderChildren: boolean, key?: string) {
+    return (
+      <FileTreeRow
+        key={key}
+        editingId={props.editingId}
+        expandedIds={expandedIds}
+        canDrag={Boolean(props.onMoveNode)}
+        formatLabel={props.formatLabel}
+        getDisclosureLabel={props.getDisclosureLabel}
+        getDragLabel={props.getDragLabel}
+        getActions={props.getActions}
+        hasActions={props.hasActions?.(node) ?? Boolean(props.getActions)}
+        hasActionsForNode={props.hasActions}
+        isMuted={props.isMuted}
+        level={level}
+        moreActionsLabel={props.moreActionsLabel}
+        node={node}
+        onDragEnd={handleDragEnd}
+        onDragOver={handleDragOver}
+        onDragStart={handleDragStart}
+        onDrop={handleDrop}
+        onEditCommit={props.onEditCommit}
+        onEditCancel={props.onEditCancel}
+        onSelect={props.onSelect}
+        onToggleExpand={toggleExpand}
+        renderChildren={renderChildren}
+        renderIcon={props.renderIcon}
+        renderMetaLeading={props.renderMetaLeading}
+        renderTrailing={props.renderTrailing}
+        renderExpandedRow={props.renderExpandedRow}
+        rovingId={rovingId}
+        selectedId={props.selectedId}
+        setTreeItemRef={(id, element) => {
+          if (element) treeItemRefs.current.set(id, element)
+          else treeItemRefs.current.delete(id)
+        }}
+        variant={props.variant}
+        onFocusNode={setFocusedId}
+        onTreeItemKeyDown={handleTreeItemKeyDown}
+      />
+    )
   }
 
   return (
-    <DndContext onDragEnd={handleDragEnd} onDragStart={handleDragStart}>
-      <div
-        className={props.variant === 'flat' ? `${styles.tree} ${styles.flatTree}` : styles.tree}
-        role="tree"
-        aria-label={props.ariaLabel}
-        data-loom-component="file-tree"
-      >
-        {props.nodes.map(node => (
-          <FileTreeRow
-            editingId={props.editingId}
-            expandedIds={expandedIds}
-            canDrag={Boolean(props.onMoveNode)}
-            formatLabel={props.formatLabel}
-            getDisclosureLabel={props.getDisclosureLabel}
-            getDragLabel={props.getDragLabel}
-            getActions={props.getActions}
-            isMuted={props.isMuted}
-            key={node.id}
-            level={1}
-            moreActionsLabel={props.moreActionsLabel}
-            node={node}
-            onEditCommit={props.onEditCommit}
-            onEditCancel={props.onEditCancel}
-            onSelect={props.onSelect}
-            onToggleExpand={toggleExpand}
-            renderIcon={props.renderIcon}
-            renderMetaLeading={props.renderMetaLeading}
-            renderTrailing={props.renderTrailing}
-            renderExpandedRow={props.renderExpandedRow}
-            rovingId={rovingId}
-            selectedId={props.selectedId}
-            setTreeItemRef={(id, element) => {
-              if (element) treeItemRefs.current.set(id, element)
-              else treeItemRefs.current.delete(id)
-            }}
-            variant={props.variant}
-            onFocusNode={setFocusedId}
-            onTreeItemKeyDown={handleTreeItemKeyDown}
-          />
-        ))}
-      </div>
-      <DragOverlay dropAnimation={{ sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0.4' } } }) }}>
-        {draggedNode ? (
-          <FileTreeRowOverlay
-            formatLabel={props.formatLabel}
-            level={1}
-            node={draggedNode}
-            renderIcon={props.renderIcon}
-          />
-        ) : null}
-      </DragOverlay>
-    </DndContext>
+    <ContextMenu onOpenChange={open => {
+      if (!open) setContextActions([])
+    }}>
+      <ContextMenuTrigger asChild disabled={!props.getActions}>
+        <div
+          ref={treeRef}
+          className={[
+            styles.tree,
+            props.variant === 'flat' ? styles.flatTree : '',
+            props.virtualized ? styles.virtualTree : '',
+          ].filter(Boolean).join(' ')}
+          role="tree"
+          aria-label={props.ariaLabel}
+          data-loom-component="file-tree"
+          onContextMenu={handleContextMenu}
+        >
+          {props.virtualized ? (
+            <div className={styles.virtualContent} style={{ height: virtualizer.getTotalSize() }}>
+              {virtualizer.getVirtualItems().map(item => {
+                const visible = visibleNodes[item.index]
+                if (!visible) return null
+                return (
+                  <div
+                    className={styles.virtualRow}
+                    data-index={item.index}
+                    key={item.key}
+                    ref={virtualizer.measureElement}
+                    style={{ transform: `translateY(${item.start}px)` }}
+                  >
+                    {renderRow(visible.node, visible.level, false)}
+                  </div>
+                )
+              })}
+            </div>
+          ) : props.nodes.map(node => renderRow(node, 1, true, node.id))}
+        </div>
+      </ContextMenuTrigger>
+      {contextActions.length > 0 ? (
+        <ContextMenuContent>
+          {renderMenuContent(contextActions, ContextMenuItem, ContextMenuCheckboxItem, ContextMenuSeparator)}
+        </ContextMenuContent>
+      ) : null}
+    </ContextMenu>
   )
 }
 
@@ -167,14 +255,21 @@ function FileTreeRow(props: {
   getDisclosureLabel: (node: FileTreeNode, expanded: boolean) => string
   getDragLabel: (node: FileTreeNode) => string
   getActions?: (node: FileTreeNode) => MenuAction[]
+  hasActions: boolean
+  hasActionsForNode?: (node: FileTreeNode) => boolean
   isMuted?: (node: FileTreeNode) => boolean
   level: number
   moreActionsLabel: string
   node: FileTreeNode
+  onDragEnd: () => void
+  onDragOver: (event: DragEvent<HTMLElement>, node: FileTreeNode) => void
+  onDragStart: (event: DragEvent<HTMLElement>, node: FileTreeNode) => void
+  onDrop: (event: DragEvent<HTMLElement>, node: FileTreeNode) => void
   onEditCommit?: (id: string, newLabel: string) => void
   onEditCancel?: (id: string) => void
   onSelect: (node: FileTreeNode) => void
   onToggleExpand: (id: string) => void
+  renderChildren: boolean
   renderIcon?: (node: FileTreeNode, expanded: boolean) => ReactNode
   renderMetaLeading?: (node: FileTreeNode) => ReactNode
   renderTrailing?: (node: FileTreeNode) => ReactNode
@@ -189,7 +284,8 @@ function FileTreeRow(props: {
   const hasChildren = Boolean(props.node.children)
   const expanded = props.node.isSection || (hasChildren && props.expandedIds.has(props.node.id))
   const selected = props.node.id === props.selectedId
-  const actions = props.getActions?.(props.node) ?? []
+  const [actionsOpen, setActionsOpen] = useState(false)
+  const actions = actionsOpen ? props.getActions?.(props.node) ?? [] : []
   const metaLeading = props.renderMetaLeading?.(props.node)
   const trailingElement = props.renderTrailing?.(props.node)
   const expandedRowElement = props.renderExpandedRow?.(props.node)
@@ -220,17 +316,6 @@ function FileTreeRow(props: {
     }
   }
 
-  const { attributes, listeners, setNodeRef: setDraggableRef, isDragging } = useDraggable({
-    id: props.node.id,
-    data: props.node,
-    disabled: props.node.isSection || !props.canDrag,
-  })
-
-  const { setNodeRef: setDroppableRef, isOver } = useDroppable({
-    id: props.node.id,
-    data: props.node,
-  })
-
   const hasCount = props.level === 1 && Boolean(props.node.children && props.node.children.length > 0)
   const childCount = props.node.children?.length ?? 0
   const isMessageBlock = props.node.kind === 'message'
@@ -239,43 +324,21 @@ function FileTreeRow(props: {
   let rowClass = styles.row
   if (isMessageBlock) rowClass += ` ${styles.messageBlockRow}`
   if (selected) rowClass += ` ${styles.selected}`
-  if (isDragging) rowClass += ` ${styles.dragging}`
-  if (isOver) rowClass += ` ${styles.dragOver}`
   if (props.isMuted?.(props.node)) rowClass += ` ${styles.muted}`
   if (!props.canDrag) rowClass += ` ${styles.noDrag}`
-
-  const renderMenuContent = (Item: ElementType, CheckboxItem: ElementType, Separator: ElementType) => {
-    return actions.map(action => {
-      if (action.type === 'separator') return <Separator key={action.id} />
-      if (action.checked !== undefined) {
-        return (
-          <CheckboxItem key={action.id} checked={action.checked} onCheckedChange={() => action.onSelect()} disabled={action.disabled}>
-            {action.label}
-          </CheckboxItem>
-        )
-      }
-      return (
-        <Item key={action.id} icon={action.icon} tone={action.tone} disabled={action.disabled} onSelect={() => action.onSelect()}>
-          {action.label}
-        </Item>
-      )
-    })
-  }
 
   const iconElement = props.renderIcon?.(props.node, expanded)
 
   const rowElement = (
-    <ContextMenu>
-      <ContextMenuTrigger asChild disabled={actions.length === 0}>
-        <div
+    <div
           ref={element => {
-            setDroppableRef(element)
             props.setTreeItemRef(props.node.id, element)
           }}
           className={rowClass}
+          data-file-tree-node-id={props.node.id}
           style={{ '--loom-tree-level': props.level } as CSSProperties}
           aria-expanded={hasChildren ? expanded : undefined}
-          aria-haspopup={actions.length > 0 ? 'menu' : undefined}
+          aria-haspopup={props.hasActions ? 'menu' : undefined}
           aria-level={props.level}
           aria-labelledby={labelId}
           aria-selected={selected}
@@ -283,6 +346,8 @@ function FileTreeRow(props: {
           tabIndex={props.node.id === props.rovingId ? 0 : -1}
           onClick={() => props.onSelect(props.node)}
           onFocus={() => props.onFocusNode(props.node.id)}
+          onDragOver={event => props.onDragOver(event, props.node)}
+          onDrop={event => props.onDrop(event, props.node)}
           onKeyDown={event => {
             if (!event.defaultPrevented) props.onTreeItemKeyDown(event, props.node)
           }}
@@ -299,14 +364,14 @@ function FileTreeRow(props: {
           ) : null}
           {props.canDrag ? (
             <button
-              ref={setDraggableRef}
               className={styles.dragHandle}
+              draggable
               type="button"
-              {...attributes}
-              {...listeners}
               aria-label={props.getDragLabel(props.node)}
               tabIndex={-1}
               onClick={event => event.stopPropagation()}
+              onDragEnd={props.onDragEnd}
+              onDragStart={event => props.onDragStart(event, props.node)}
             >
               <GripVertical aria-hidden="true" />
             </button>
@@ -378,8 +443,8 @@ function FileTreeRow(props: {
             </div>
           ) : null}
 
-          {actions.length > 0 ? (
-            <DropdownMenu>
+          {props.hasActions ? (
+            <DropdownMenu open={actionsOpen} onOpenChange={setActionsOpen}>
               <DropdownMenuTrigger asChild>
                 <button
                   aria-label={props.moreActionsLabel}
@@ -392,22 +457,17 @@ function FileTreeRow(props: {
                   <MoreHorizontal aria-hidden="true" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side="bottom">
-                {renderMenuContent(DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuSeparator)}
-              </DropdownMenuContent>
+              {actionsOpen ? (
+                <DropdownMenuContent align="start" side="bottom">
+                  {renderMenuContent(actions, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuSeparator)}
+                </DropdownMenuContent>
+              ) : null}
             </DropdownMenu>
           ) : null}
         </div>
-      </ContextMenuTrigger>
-      {actions.length > 0 ? (
-        <ContextMenuContent>
-          {renderMenuContent(ContextMenuItem, ContextMenuCheckboxItem, ContextMenuSeparator)}
-        </ContextMenuContent>
-      ) : null}
-    </ContextMenu>
   )
 
-  const childrenElements = expanded && props.node.children?.length ? props.node.children.map(child => (
+  const childrenElements = props.renderChildren && expanded && props.node.children?.length ? props.node.children.map(child => (
     <FileTreeRow
       editingId={props.editingId}
       expandedIds={props.expandedIds}
@@ -416,15 +476,22 @@ function FileTreeRow(props: {
       getDisclosureLabel={props.getDisclosureLabel}
       getDragLabel={props.getDragLabel}
       getActions={props.getActions}
+      hasActions={props.hasActionsForNode?.(child) ?? Boolean(props.getActions)}
+      hasActionsForNode={props.hasActionsForNode}
       isMuted={props.isMuted}
       key={child.id}
       level={props.node.isSection ? props.level : props.level + 1}
       moreActionsLabel={props.moreActionsLabel}
       node={child}
+      onDragEnd={props.onDragEnd}
+      onDragOver={props.onDragOver}
+      onDragStart={props.onDragStart}
+      onDrop={props.onDrop}
       onEditCommit={props.onEditCommit}
       onEditCancel={props.onEditCancel}
       onSelect={props.onSelect}
       onToggleExpand={props.onToggleExpand}
+      renderChildren
       renderIcon={props.renderIcon}
       renderMetaLeading={props.renderMetaLeading}
       renderTrailing={props.renderTrailing}
@@ -466,9 +533,11 @@ function FileTreeRow(props: {
     <>
       {props.node.isSection ? (
         <div
-          ref={setDroppableRef}
           className={styles.sectionRow}
+          data-file-tree-node-id={props.node.id}
           role="presentation"
+          onDragOver={event => props.onDragOver(event, props.node)}
+          onDrop={event => props.onDrop(event, props.node)}
         >
           <div className={styles.sectionDivider} />
           <span className={styles.sectionLabel}>{props.formatLabel ? props.formatLabel(props.node) : props.node.label}</span>
@@ -489,32 +558,20 @@ function FileTreeRow(props: {
   )
 }
 
-function FileTreeRowOverlay(props: {
-  formatLabel?: (node: FileTreeNode) => string
-  level: number
-  node: FileTreeNode
-  renderIcon?: (node: FileTreeNode, expanded: boolean) => ReactNode
-}) {
-  const iconElement = props.renderIcon?.(props.node, false)
-
-  return (
-    <div
-      className={`${styles.row} ${styles.draggingOverlay}`}
-      style={{ '--loom-tree-level': props.level } as CSSProperties}
-    >
-      <span className={styles.disclosure} />
-      <div className={styles.rowContent}>
-        {iconElement ? (
-          <span className={styles.icon}>
-            {iconElement}
-          </span>
-        ) : null}
-        <span className={styles.labelBlock}>
-          <span className={styles.label}>{props.formatLabel ? props.formatLabel(props.node) : props.node.label}</span>
-          {props.node.meta ? <span className={styles.meta}>{props.node.meta}</span> : null}
-        </span>
-      </div>
-      <div className={styles.dragHandle} />
-    </div>
-  )
+function renderMenuContent(actions: MenuAction[], Item: ElementType, CheckboxItem: ElementType, Separator: ElementType) {
+  return actions.map(action => {
+    if (action.type === 'separator') return <Separator key={action.id} />
+    if (action.checked !== undefined) {
+      return (
+        <CheckboxItem key={action.id} checked={action.checked} onCheckedChange={() => action.onSelect()} disabled={action.disabled}>
+          {action.label}
+        </CheckboxItem>
+      )
+    }
+    return (
+      <Item key={action.id} icon={action.icon} tone={action.tone} disabled={action.disabled} onSelect={() => action.onSelect()}>
+        {action.label}
+      </Item>
+    )
+  })
 }

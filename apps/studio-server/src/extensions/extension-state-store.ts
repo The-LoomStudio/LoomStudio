@@ -1,4 +1,5 @@
 import type { EventCapabilityCategory, ExtensionAssetCapability } from '@loom-studio/extension-host'
+import { isRecord } from '@loom-studio/shared'
 import { readFile } from 'node:fs/promises'
 import { writeJsonAtomically } from '../platform/atomic-json.js'
 
@@ -190,10 +191,6 @@ function isEventCapabilityCategory(value: unknown): value is EventCapabilityCate
 
 function isExtensionAssetCapability(value: unknown): value is ExtensionAssetCapability {
   return value === 'assets.publish' || value === 'assets.read'
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
 function isNodeError(error: unknown, code: string): boolean {

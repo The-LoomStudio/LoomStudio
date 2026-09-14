@@ -1,7 +1,7 @@
-import type { JsonObject, JsonValue } from '@loom-studio/shared'
+import { isJsonObject, type JsonObject, type JsonValue } from '@loom-studio/shared'
 
 export function isRecord(value: JsonValue | undefined): value is JsonObject {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+  return isJsonObject(value)
 }
 
 export function readString(params: JsonValue | undefined, key: string): string {

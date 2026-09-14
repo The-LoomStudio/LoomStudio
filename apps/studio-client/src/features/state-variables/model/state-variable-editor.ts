@@ -1,5 +1,6 @@
 import YAML from 'yaml'
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
+import { isJsonObject } from '@loom-studio/shared'
 import type { Card, StateSnapshot, StateTarget } from '../../../entities/index.js'
 import type { FileTreeNode } from '../../../shared/ui/file-tree/file-tree-model.js'
 
@@ -188,9 +189,7 @@ function readArray(value: ClientJsonValue | undefined, label: string): ClientJso
   return value
 }
 
-function isRecord(value: unknown): value is Record<string, ClientJsonValue> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
+const isRecord = isJsonObject
 
 function parseJsonObject(text: string, label: string): Record<string, ClientJsonValue> {
   const value = JSON.parse(text) as ClientJsonValue

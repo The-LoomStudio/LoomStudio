@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Studio client main JavaScript",
+    "path": "apps/studio-client/dist/assets/index-*.js",
+    "gzip": true,
+    "limit": "190 kB"
+  },
+  {
+    "name": "Studio client total JavaScript",
+    "path": "apps/studio-client/dist/assets/*.js",
+    "gzip": true,
+    "limit": "652 kB"
+  },
+  {
+    "name": "Studio client total CSS",
+    "path": "apps/studio-client/dist/assets/*.css",
+    "gzip": true,
+    "limit": "52 kB"
+  }
+]

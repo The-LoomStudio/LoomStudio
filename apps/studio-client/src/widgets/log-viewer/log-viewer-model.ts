@@ -1,4 +1,5 @@
 import type { LogLevel, LogRecord } from '@loom-studio/logging'
+import { normalizeSearchText } from '../../shared/lib/text.js'
 
 type LogStreamItem = {
   kind: 'group'
@@ -12,7 +13,7 @@ type LogStreamItem = {
 }
 
 export function matchesLogSearch(record: LogRecord, query: string): boolean {
-  const normalizedQuery = query.trim().toLocaleLowerCase()
+  const normalizedQuery = normalizeSearchText(query)
   if (!normalizedQuery) return true
   return JSON.stringify(record).toLocaleLowerCase().includes(normalizedQuery)
 }

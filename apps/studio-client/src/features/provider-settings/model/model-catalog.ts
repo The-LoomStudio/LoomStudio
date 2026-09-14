@@ -3,8 +3,10 @@ type ModelCatalogItem = {
   id: string
 }
 
+import { normalizeSearchText } from '../../../shared/lib/text.js'
+
 export function mergeModelCatalog(enabledIds: string[], fetchedIds: string[], query: string): ModelCatalogItem[] {
-  const normalizedQuery = query.trim().toLocaleLowerCase()
+  const normalizedQuery = normalizeSearchText(query)
   const enabled = [...new Set(enabledIds)]
     .filter(id => id.toLocaleLowerCase().includes(normalizedQuery))
     .map(id => ({ enabled: true, id }))

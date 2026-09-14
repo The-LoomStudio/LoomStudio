@@ -55,7 +55,7 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
 
 1. **跨领域基础能力**放 `shared/`：typed API client、无业务含义的 UI、通用 hooks、i18n、纯工具。
 2. **领域类型**放 `entities/`：前端视角的业务数据结构和很薄的纯函数。
-3. **业务状态、RPC 编排、领域算法**放 `features/*/model`：例如 context tree mutation、projection order、provider config 映射、narrative runtime action。
+3. **业务状态、RPC 编排、领域算法**放 `features/*/model`：缓存型远端状态优先由 feature 内的 TanStack Query hook 管理；本地应用偏好使用 Zustand；未保存草稿和瞬时交互留在组件或 feature hook。
 4. **领域绑定 UI**放 `features/*/ui`：需要认识某个 feature 类型，但不拥有跨领域流程。
 5. **页面级组合**放 `widgets/`：组合 feature/entity UI，承载局部 UI 状态和布局，不拥有 RPC 流程或复杂领域算法。
 6. **全局组装**放 `app/`：只做 provider、page shell、facade 组合和顶层 glue。
@@ -78,7 +78,7 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
 | 修改叙事时间线、分支、Narrative Agent 调用流程 | `features/narrative-runtime/model/use-narrative-runtime.ts` | `entities/narrative.ts`, `entities/agent.ts`, `widgets/narrative-timeline/`                                                                                      | `tests/unit/client/use-narrative-runtime.test.ts`                             |
 | 修改独立 Agent Session 对话流程                | `features/agent-runtime/model/use-agent-chat-runtime.ts`    | `entities/agent.ts`, `widgets/agent-composer/`                                                                                                                   | `tests/integration/application-runtime/agent-session.test.ts` 与 client build |
 | 修改 Context Assets 树操作                     | `features/context-assets/model/tree-ops.ts`                 | `context-asset-tree.ts`, `context-asset-normalization.ts`, `widgets/context-workbench/`                                                                          | `tests/unit/client/context-assets.test.ts`                                    |
-| 修改 projection order / projection view        | `features/context-assets/model/projection-order.ts`         | `features/context-assets/model/projection-workbench.ts`, `features/context-assets/ui/projection-runlist/` | `features/context-assets/model/projection-order.test.ts`                      |
+| 修改 projection order / projection view        | `features/context-assets/model/projection-order.ts`         | `features/context-assets/model/projection-workbench.ts`, `widgets/context-workbench/`, `widgets/preset-workbench/` | `features/context-assets/model/projection-order.test.ts`                      |
 | 修改 Prompt Build 展示步骤                     | `features/prompt-build/model/build-prompt-build-steps.ts`   | `widgets/prompt-build-flow/`, `widgets/inspector-panel/`                                                                                                         | `tests/unit/client/prompt-build-steps.test.ts`                                |
 | 修改 Provider Profile / 模型选择设置           | `features/provider-settings/model/use-provider-settings.ts` | `widgets/model-panel/`                                                                                                                                           | `tests/unit/client/provider-settings.test.ts`                                 |
 | 修改 Agent Profile 与当前选择                  | `features/agent-profiles/model/use-agent-profiles.ts`       | `widgets/agent-panel/`, `widgets/agent-composer/`                                                                                                                | `tests/unit/client/provider-settings.test.ts`                                 |

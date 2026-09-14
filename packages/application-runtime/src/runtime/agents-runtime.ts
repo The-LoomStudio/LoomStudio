@@ -65,7 +65,6 @@ import type {
   UpdateAgentToolResult,
 } from '../types.js'
 import {
-  agentWriteContext,
   narrativeWriteContext,
   promptResourceWriteContext,
   requireAgents,
@@ -75,7 +74,23 @@ import {
 import { readAgentTurnVariables, readLegacyCardUserName } from './narrative-runtime.js'
 import { inspectApplicationMacros, inspectPreparedMacros, variableContextFromInspection } from './macros-runtime.js'
 
-export function createAgentsRuntimeMethods(ctx: ApplicationRuntimeContext) {
+type AgentsRuntimeContext = Pick<ApplicationRuntimeContext,
+  | 'agentTools'
+  | 'agents'
+  | 'createId'
+  | 'dataEngine'
+  | 'documents'
+  | 'gateway'
+  | 'logger'
+  | 'macroProviders'
+  | 'narratives'
+  | 'now'
+  | 'promptResources'
+  | 'providerAdapters'
+  | 'states'
+>
+
+export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
   return {
     createAgentProfile: async (input: CreateAgentProfileInput): Promise<CreateAgentProfileResult> => {
       assertNonEmpty(input.name, 'name')
@@ -162,7 +177,7 @@ export function createAgentsRuntimeMethods(ctx: ApplicationRuntimeContext) {
     createAgentSession: async (input: CreateAgentSessionInput, requestContext?: RuntimeRequestContext): Promise<CreateAgentSessionResult> => {
       await readDocument<AgentProfileContent>(ctx.documents, input.agentProfileId, applicationDocumentTypes.agentProfile)
       const result = await requireAgents(ctx).createSession({
-        ...agentWriteContext(requestContext, 'application.createAgentSession'),
+        ...narrativeWriteContext(requestContext, 'application.createAgentSession'),
         agentProfileId: input.agentProfileId,
         timelineId: input.timelineId,
         title: input.title,
@@ -186,7 +201,7 @@ export function createAgentsRuntimeMethods(ctx: ApplicationRuntimeContext) {
 
     appendAgentTranscriptEntries: async (input: AppendAgentTranscriptEntriesInput, requestContext?: RuntimeRequestContext): Promise<AppendAgentTranscriptEntriesResult> => {
       const result = await requireAgents(ctx).appendEntries({
-        ...agentWriteContext(requestContext, 'application.appendAgentTranscriptEntries'),
+        ...narrativeWriteContext(requestContext, 'application.appendAgentTranscriptEntries'),
         ...input,
       })
       return {
@@ -200,7 +215,7 @@ export function createAgentsRuntimeMethods(ctx: ApplicationRuntimeContext) {
       const agents = requireAgents(ctx)
       const documentParticipant = requireDocumentParticipant(ctx)
       const result = await ctx.dataEngine.transact(
-        agentWriteContext(requestContext, 'application.deleteAgentSession'),
+        narrativeWriteContext(requestContext, 'application.deleteAgentSession'),
         async dataTx => documentParticipant.participateTransaction(dataTx, async documents => {
           const session = agents.transaction(dataTx).deleteSession(input)
           await tombstoneExtensionStorageScope(documents, {
@@ -215,7 +230,7 @@ export function createAgentsRuntimeMethods(ctx: ApplicationRuntimeContext) {
 
     updateAgentSession: async (input: UpdateAgentSessionInput, requestContext?: RuntimeRequestContext): Promise<UpdateAgentSessionResult> => {
       const result = await requireAgents(ctx).updateSession({
-        ...agentWriteContext(requestContext, 'application.updateAgentSession'),
+        ...narrativeWriteContext(requestContext, 'application.updateAgentSession'),
         ...input,
       })
       return { session: result.session, mutation: { changesetId: result.commit.changesetId } }
@@ -415,7 +430,7 @@ export function createAgentsRuntimeMethods(ctx: ApplicationRuntimeContext) {
   }
 }
 
-export async function readPresetResource(
+async function readPresetResource(
   promptResources: ApplicationRuntimeContext['promptResources'],
   presetId: string,
 ): Promise<PromptResourceContent & { id: string; version: number }> {
@@ -424,7 +439,7 @@ export async function readPresetResource(
   return preset
 }
 
-export function normalizeToolOverrides(overrides: Record<string, boolean> | undefined): Record<string, boolean> {
+function normalizeToolOverrides(overrides: Record<string, boolean> | undefined): Record<string, boolean> {
   const normalized: Record<string, boolean> = {}
   for (const [toolId, enabled] of Object.entries(overrides ?? {})) {
     const normalizedToolId = toolId.trim()
@@ -436,12 +451,12 @@ export function normalizeToolOverrides(overrides: Record<string, boolean> | unde
   return normalized
 }
 
-export function assertResolvedTools(ctx: ApplicationRuntimeContext, toolIds: string[]): void {
+function assertResolvedTools(ctx: Pick<ApplicationRuntimeContext, 'agentTools'>, toolIds: string[]): void {
   const error = ctx.agentTools.resolve(toolIds).diagnostics.find(diagnostic => diagnostic.severity === 'error')
   if (error) throw new Error(error.message)
 }
 
-export function toAgentProfileEntry(document: DocumentRecord<AgentProfileContent>): AgentProfileEntry {
+function toAgentProfileEntry(document: DocumentRecord<AgentProfileContent>): AgentProfileEntry {
   return {
     ...toVersioned(document),
     toolOverrides: { ...(document.content.toolOverrides ?? {}) },
@@ -467,7 +482,7 @@ export function toAgentToolContent(
   }
 }
 
-export function toAgentToolEntry(document: DocumentRecord<AgentToolContent>): AgentToolEntry {
+function toAgentToolEntry(document: DocumentRecord<AgentToolContent>): AgentToolEntry {
   return {
     id: document.id,
     owner: structuredClone(document.content.owner),
@@ -487,7 +502,7 @@ export function toAgentToolEntry(document: DocumentRecord<AgentToolContent>): Ag
 }
 
 export async function listAgentToolEntries(
-  ctx: ApplicationRuntimeContext,
+  ctx: Pick<ApplicationRuntimeContext, 'agentTools' | 'documents' | 'now'>,
 ): Promise<AgentToolEntry[]> {
   const documents = await listDocuments<AgentToolContent>(
     ctx.documents,
@@ -504,7 +519,7 @@ export async function listAgentToolEntries(
 }
 
 export async function refreshAgentToolRegistry(
-  ctx: ApplicationRuntimeContext,
+  ctx: Pick<ApplicationRuntimeContext, 'agentTools' | 'documents'>,
 ): Promise<void> {
   const documents = await listDocuments<AgentToolContent>(
     ctx.documents,
@@ -525,8 +540,8 @@ export async function refreshAgentToolRegistry(
   )
 }
 
-export async function prepareAgentTurn(
-  ctx: ApplicationRuntimeContext,
+async function prepareAgentTurn(
+  ctx: AgentsRuntimeContext,
   input: {
     agentSessionId: string
     input: string
@@ -777,7 +792,7 @@ export async function prepareAgentTurn(
   }
 }
 
-export async function buildProviderPayloadPreview(input: {
+async function buildProviderPayloadPreview(input: {
   documents: DocumentStore
   messages: ProviderMessage[]
   model?: { providerProfileId: string; modelId: string }

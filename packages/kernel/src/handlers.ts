@@ -15,7 +15,7 @@ import type {
   ExtensionAssetCapability,
 } from '@loom-studio/extension-sdk'
 import type { LoomRunInput } from '@loom-studio/loom-runner'
-import type { JsonValue } from '@loom-studio/shared'
+import { isJsonObject, type JsonValue } from '@loom-studio/shared'
 import { nowIso, serializeError } from '@loom-studio/shared'
 import type {
   CreateKernelOptions,
@@ -266,7 +266,7 @@ export function readExtensionCapabilityGrants(params: JsonValue | undefined): Ex
 }
 
 export function isRecord(value: unknown): value is Record<string, JsonValue> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+  return isJsonObject(value)
 }
 
 export function readString(params: JsonValue | undefined, key: string): string {

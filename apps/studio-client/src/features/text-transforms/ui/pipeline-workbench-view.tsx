@@ -1,6 +1,7 @@
 import { Braces, Code2, Component, FileSearch, Search, Variable } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { MasterDetailWorkbench } from '../../../shared/ui/master-detail-workbench/master-detail-workbench.js'
+import { normalizeSearchText } from '../../../shared/lib/text.js'
 import styles from './pipeline-workbench-view.module.scss'
 
 export type PipelineWorkbenchItemKind = 'macro' | 'rule' | 'extractor' | 'renderer' | 'script'
@@ -40,7 +41,7 @@ export type PipelineWorkbenchViewProps = {
 }
 
 export function PipelineWorkbenchView(props: PipelineWorkbenchViewProps) {
-  const query = props.searchValue.trim().toLocaleLowerCase()
+  const query = normalizeSearchText(props.searchValue)
   const groups = props.groups.map(group => ({
     ...group,
     items: query

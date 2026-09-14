@@ -7,19 +7,22 @@ import type {
   PromptResourceKind,
   PromptResourceNode,
   RuntimeRequestContext,
-  SettingMountSource,
 } from '@loom-studio/application-runtime'
 import { isPromptActivation, isPromptResourceArtifact } from '@loom-studio/application-runtime'
 import { decodePromptResourceZip, encodePromptResourceZip } from '../../../codecs/prompt-resource-zip.js'
 import type { PromptResourceConverter } from '../../../extensions/import-conversion.js'
-import type { JsonValue } from '@loom-studio/shared'
+import {
+  listSettingMountsInputSchema,
+  replaceSettingMountsInputSchema,
+  settingMountSourceSchema,
+  type JsonValue,
+} from '@loom-studio/shared'
 import {
   isRecord,
   readOptionalBoolean,
   readOptionalNumber,
   readOptionalString,
   readString,
-  readStringArray,
 } from '../../rpc-params.js'
 
 export async function handleWorkspacesRpc(
@@ -110,15 +113,10 @@ export async function handleWorkspacesRpc(
       }, context) as unknown as JsonValue
 
     case 'application.listSettingMounts':
-      return await runtime.listSettingMounts({
-        source: readOptionalSettingMountSource(params, 'source'),
-      }) as unknown as JsonValue
+      return await runtime.listSettingMounts(readListSettingMountsInput(params)) as unknown as JsonValue
 
     case 'application.replaceSettingMounts':
-      return await runtime.replaceSettingMounts({
-        source: readSettingMountSource(isRecord(params) ? params.source : undefined, 'source'),
-        settingResourceIds: readStringArray(params, 'settingResourceIds'),
-      }, context) as unknown as JsonValue
+      return await runtime.replaceSettingMounts(readReplaceSettingMountsInput(params), context) as unknown as JsonValue
 
     case 'application.createPromptResourceAsset':
       return await runtime.createPromptResourceAsset({
@@ -178,21 +176,19 @@ function readRequiredStringRecord(params: JsonValue | undefined, key: string): R
   return value as Record<string, string>
 }
 
-function readOptionalSettingMountSource(params: JsonValue | undefined, key: string): SettingMountSource | undefined {
-  if (!isRecord(params) || params[key] === undefined) return undefined
-  return readSettingMountSource(params[key], key)
+function readListSettingMountsInput(params: JsonValue | undefined) {
+  const result = listSettingMountsInputSchema.safeParse(params ?? {})
+  if (!result.success) throw new Error('Expected Setting mount source param: source')
+  return result.data
 }
 
-function readSettingMountSource(value: JsonValue | undefined, key: string): SettingMountSource {
-  if (!isRecord(value) || (value.kind !== 'manual' && value.kind !== 'preset')) {
-    throw new Error(`Expected Setting mount source param: ${key}`)
+function readReplaceSettingMountsInput(params: JsonValue | undefined) {
+  const source = settingMountSourceSchema.safeParse(isRecord(params) ? params.source : undefined)
+  if (!source.success) throw new Error('Expected Setting mount source param: source')
+  if (!isRecord(params) || !Array.isArray(params.settingResourceIds) || !params.settingResourceIds.every(item => typeof item === 'string')) {
+    throw new Error('Expected string array param: settingResourceIds')
   }
-  if (value.kind === 'manual') {
-    if (value.id !== undefined && value.id !== 'global') throw new Error(`Expected Setting mount source param: ${key}`)
-    return value.id === undefined ? { kind: 'manual' } : { kind: 'manual', id: 'global' }
-  }
-  if (typeof value.id !== 'string') throw new Error(`Expected Setting mount source param: ${key}`)
-  return { kind: 'preset', id: value.id }
+  return replaceSettingMountsInputSchema.parse(params)
 }
 
 function readOptionalPromptResourceKind(params: JsonValue | undefined, key: string): PromptResourceKind | undefined {

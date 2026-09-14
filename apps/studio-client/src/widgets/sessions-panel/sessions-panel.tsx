@@ -31,6 +31,7 @@ import type {
 } from '../../entities/index.js'
 import type { StudioApi } from '../../shared/api/studio-api.js'
 import { cardMediaUrl, useCardMediaRevision } from '../../shared/lib/card-media.js'
+import { downloadBlob } from '../../shared/browser/download.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import {
   ContextMenu,
@@ -1060,10 +1061,10 @@ function TimelineDetail(props: {
     setArchiveBusy(true); setArchiveError(undefined); setArchiveNotice(undefined)
     try {
       const result = await props.api.narratives.exportArchive(props.timeline.id)
-      const url = URL.createObjectURL(new Blob([JSON.stringify(result.archive, null, 2)], { type: 'application/json' }))
-      const anchor = document.createElement('a')
-      anchor.href = url; anchor.download = `${props.timeline.title || props.timeline.id}.loom-timeline.json`; anchor.click()
-      URL.revokeObjectURL(url)
+      downloadBlob(
+        new Blob([JSON.stringify(result.archive, null, 2)], { type: 'application/json' }),
+        `${props.timeline.title || props.timeline.id}.loom-timeline.json`,
+      )
     } catch (error) { setArchiveError(error instanceof Error ? error.message : String(error)) }
     finally { setArchiveBusy(false) }
   }

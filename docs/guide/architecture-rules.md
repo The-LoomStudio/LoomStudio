@@ -39,8 +39,11 @@ Kernel 与 Extension RPC 必须注册到同一个 Runtime Registry，并通过 `
 
 ## 6. 第三方依赖与技术栈底线 (Dependency Strategy)
 
-我们奉行**少即是多**与**高扩展性**的基准：
-- **基础运行时**：始终保持 Node-compatible baseline。Bun 可作为可选的加速方案，但绝不是平台契约。
-- **校验库边界化**：我们使用 `zod`，但**仅限在边界使用**（如 Manifest 解析、Transport envelope、入库防线）。严禁在内部的纯函数中到处套 schema，或用 zod 替代 TypeScript 的原生类型。
-- **UI 选型红线**：严禁把 Tailwind 或重型 UI 组件库（如 antd, mui, shadcn/ui）作为全局 baseline。这会严重破坏后续的用户 CSS 覆盖以及插件的主题扩展。我们坚守 `CSS Modules + CSS Custom Properties` 作为官方契约。
-- **安全沙箱防线**：在没有真正的多进程 / VM 方案前，不要随意引入看似安全的沙箱库制造安全错觉。我们依靠 API 边界、Owner tracking 来限制越权。
+正式能力所有权见 [`Architecture / External Dependency Ownership`](../architecture/platform/external-dependency-ownership.md)。开发时默认先复用已经拥有该语义的依赖或项目 adapter，尤其不要平行重写远端缓存、路由、菜单焦点、虚拟列表、Schema parser、ZIP 和数据库事务。
+
+这不是永久白名单。现有选择无法覆盖真实语义，或其包体积、安全、宿主边界不适用时，可以使用原生能力或更小的局部实现；但不能让新旧实现长期共同拥有同一份可写状态。形成新公共基础设施或替换现有所有者时，必须把理由、迁移边界和删除旧路径的条件写入 Workbench Issue/Plan。
+
+- **基础运行时**：保持 Node-compatible baseline；其他运行时不是当前平台合同。
+- **校验库边界化**：新增跨端结构化边界且没有既有 parser 时优先评估 `zod`，不扩散到可信内部纯函数，也不机械替换现有专用 parser。
+- **UI 样式合同**：第一方 UI 使用 SCSS Modules 与 CSS Custom Properties。新增全局 CSS 框架或重型组件库属于架构变更。
+- **安全沙箱防线**：没有真正的多进程 / VM 隔离时，不引入只提供表面限制的沙箱库制造安全错觉。

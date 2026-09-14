@@ -1,6 +1,5 @@
 import { createClientBridge } from '@loom-studio/client-bridge'
 import type { Logger } from '@loom-studio/logging'
-import type { MacroInspection } from '@loom-studio/shared'
 import { useEffect, useMemo, useState } from 'react'
 import { withClientBridgeLogging } from '../shared/api/client-bridge-logging.js'
 import { createTranslator, type Locale } from '../shared/i18n/index.js'
@@ -12,10 +11,15 @@ import { useContextAssets } from '../features/context-assets/model/use-context-a
 import { normalizeContextAssets } from '../features/context-assets/model/context-asset-normalization.js'
 import { findContextAssetNode } from '../features/context-assets/model/context-asset-tree.js'
 import { createActivationFacts, toggleActivationTag, type ActivationControlState, type ActivationTag } from '../features/prompt-build/model/activation-control.js'
+import { useMacroPreview } from '../features/prompt-build/model/use-macro-preview.js'
+import { useMacroSelection } from '../features/prompt-build/model/use-macro-selection.js'
 import { useProviderSettings } from '../features/provider-settings/model/use-provider-settings.js'
 import { useAgentProfiles } from '../features/agent-profiles/model/use-agent-profiles.js'
 import { useNarrativeRuntime } from '../features/narrative-runtime/model/use-narrative-runtime.js'
-import type { ContextAssetNode, PresetToolMount, PresetToolMountInput, PromptResource, PromptResourceArtifact, SettingMount, SettingMountSource } from '../entities/index.js'
+import { useExtensionResourceCommands } from '../features/extension-renderers/model/use-extension-resource-commands.js'
+import { usePromptResourceCommands } from '../features/prompt-resources/model/use-prompt-resource-commands.js'
+import { usePromptResourceState } from '../features/prompt-resources/model/use-prompt-resource-state.js'
+import type { ContextAssetNode, PromptResource } from '../entities/index.js'
 import { useStudioDerivedValues } from './use-studio-derived-values.js'
 
 export type HistoryAssetTarget = {
@@ -46,19 +50,19 @@ export function useStudioState(transportLogger: Logger) {
     states: api.states,
     textTransforms: api.textTransforms,
   }), [api])
-  const officialContentApi = useMemo(() => ({
-    list: api.officialContent.list,
-    export: api.officialContent.export,
-    install: async (input: { packageId: string; digest: string }) => {
-      const result = await api.officialContent.install(input)
-      await Promise.all([refreshPromptResourceLibrary(), refreshSettingMounts(), refreshPresetToolMounts(), agentProfiles.refreshAgentProfiles()])
-      return result
-    },
-  }), [api])
   const editHistory = useEditHistory({ revertChangeset: api.history.revert })
-  const [promptResources, setPromptResources] = useState<PromptResource[]>([])
-  const [settingMounts, setSettingMounts] = useState<SettingMount[]>([])
-  const [presetToolMounts, setPresetToolMounts] = useState<PresetToolMount[]>([])
+  const promptResourceState = usePromptResourceState({ api, endpoint })
+  const {
+    presetToolMounts,
+    promptResources,
+    refreshPresetToolMounts,
+    refreshPromptResourceLibrary,
+    refreshSettingMounts,
+    setPresetToolMounts,
+    setPromptResources,
+    setSettingMounts,
+    settingMounts,
+  } = promptResourceState
   const cardsState = useCards({
     api,
     initialCardName: '',
@@ -82,6 +86,9 @@ export function useStudioState(transportLogger: Logger) {
     resources: promptResources,
     t,
   })
+  useEffect(() => {
+    contextAssetState.setNodes(normalizeContextAssets(promptResources.map(resource => resource.rootNode)))
+  }, [promptResources])
   const providerSettings = useProviderSettings({
     api,
     initialProviderAccountDraft: {
@@ -96,17 +103,11 @@ export function useStudioState(transportLogger: Logger) {
     runAction: action => operations.run('agent-profiles', action).then(() => undefined),
   })
   const selectedAgentProfile = agentProfiles.agentProfiles.find(profile => profile.id === agentProfiles.selectedAgentProfileId)
-  const [macroChoice, setMacroChoice] = useState<{ key: string; values: Record<string, string> }>({ key: '', values: {} })
-  function macroTargetKey(timelineId?: string, branchId?: string) {
-    return JSON.stringify([endpoint, timelineId ?? cardsState.selectedCardId, branchId, selectedAgentProfile?.presetId])
-  }
-  function getMacroSelections(timelineId?: string, branchId?: string) {
-    return macroChoice.key === macroTargetKey(timelineId, branchId) ? macroChoice.values : {}
-  }
+  const macroSelection = useMacroSelection({ endpoint, cardId: cardsState.selectedCardId, presetId: selectedAgentProfile?.presetId })
   const activationFacts = useMemo(() => createActivationFacts(activationControl), [activationControl])
   const narrativeRuntime = useNarrativeRuntime({
     activationFacts,
-    getMacroSelections,
+    getMacroSelections: macroSelection.getSelections,
     api,
     initialInput: '我看向柜台后的铃铛。',
     initialNodes: [],
@@ -127,60 +128,26 @@ export function useStudioState(transportLogger: Logger) {
   })
 
   function applyPromptResourceLibrary(resources: PromptResource[]) {
-    setPromptResources(resources)
+    setPromptResources(() => resources)
     contextAssetState.setNodes(normalizeContextAssets(resources.map(resource => resource.rootNode)))
   }
 
-  async function refreshPromptResourceLibrary(): Promise<PromptResource[]> {
-    const resources = (await api.promptResources.list()).resources
-    applyPromptResourceLibrary(resources)
-    return resources
-  }
-
-  async function refreshSettingMounts(): Promise<SettingMount[]> {
-    const mounts = (await api.promptResources.listSettingMounts()).mounts
-    setSettingMounts(mounts)
-    return mounts
-  }
-
-  async function refreshPresetToolMounts(): Promise<PresetToolMount[]> {
-    const mounts = (await api.promptResources.listPresetToolMounts()).mounts
-    setPresetToolMounts(mounts)
-    return mounts
-  }
-
-  async function importExtensionPackageResources(packageId: string) {
-    const result = await api.extensions.importResources(packageId)
+  async function refreshExtensionDependentData(): Promise<void> {
     await Promise.all([
       refreshPromptResourceLibrary(),
       refreshSettingMounts(),
       refreshPresetToolMounts(),
       agentProfiles.refreshAgentProfiles(),
     ])
-    return result
   }
 
-  async function removeExtensionPackageResources(packageId: string) {
-    const result = await api.extensions.removeResources(packageId)
-    await Promise.all([
-      refreshPromptResourceLibrary(),
-      refreshSettingMounts(),
-      refreshPresetToolMounts(),
-      agentProfiles.refreshAgentProfiles(),
-      cardsState.refreshCards(),
-      cardsState.selectedCardId ? narrativeRuntime.refreshCardTimelines(cardsState.selectedCardId) : Promise.resolve([]),
-    ])
-    return result
-  }
-
-  async function installExtensionPackageZip(file: File) {
-    const bytes = new Uint8Array(await file.arrayBuffer())
-    let binary = ''
-    for (let index = 0; index < bytes.length; index += 0x8000) {
-      binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000))
-    }
-    return await api.extensions.installZip(btoa(binary))
-  }
+  const extensionResourceCommands = useExtensionResourceCommands({
+    api,
+    refreshCards: cardsState.refreshCards,
+    refreshCardTimelines: narrativeRuntime.refreshCardTimelines,
+    refreshDependentData: refreshExtensionDependentData,
+    selectedCardId: cardsState.selectedCardId,
+  })
 
   useEffect(() => {
     editHistory.clear()
@@ -189,7 +156,7 @@ export function useStudioState(transportLogger: Logger) {
       const selectedCardId = cards[0]?.id
 
       if (selectedCardId) cardsState.setSelectedCardId(selectedCardId)
-      await Promise.all([refreshPromptResourceLibrary(), refreshSettingMounts(), refreshPresetToolMounts(), narrativeRuntime.refreshAllAgentSessions()])
+      await narrativeRuntime.refreshAllAgentSessions()
       await providerSettings.refreshProviderSettings()
       await agentProfiles.refreshAgentProfiles()
       setNetworkSettings(await api.settings.getNetwork())
@@ -201,62 +168,43 @@ export function useStudioState(transportLogger: Logger) {
     void narrativeRuntime.refreshCardTimelines(cardsState.selectedCardId)
   }, [api, cardsState.selectedCardId])
 
-  const [macroRefreshToken, setMacroRefreshToken] = useState(0)
-  const [macroPreview, setMacroPreview] = useState<{
-    key: string
-    inspection?: MacroInspection
-    error?: string
-    loading: boolean
-  }>({ key: '', loading: false })
-  const macroKey = macroTargetKey(narrativeRuntime.timeline?.id, narrativeRuntime.branch?.id)
-  const macroSelections = useMemo(
-    () => macroChoice.key === macroKey ? macroChoice.values : {},
-    [macroChoice, macroKey],
-  )
-  function refreshMacros() {
-    setMacroRefreshToken(current => current + 1)
-  }
-  function selectMacroSource(name: string, sourceId: string | undefined) {
-    setMacroChoice(current => {
-      const values = { ...(current.key === macroKey ? current.values : {}) }
-      if (sourceId === undefined) delete values[name]
-      else values[name] = sourceId
-      return { key: macroKey, values }
-    })
-  }
+  const macroKey = macroSelection.targetKey(narrativeRuntime.timeline?.id, narrativeRuntime.branch?.id)
+  const macroSelections = macroSelection.readSelections(macroKey)
   useEffect(() => {
-    setMacroChoice(current => current.key === macroKey ? current : { key: macroKey, values: {} })
+    macroSelection.activate(macroKey)
   }, [macroKey])
-  useEffect(() => {
-    let cancelled = false
-    setMacroPreview(current => ({ key: macroKey, inspection: current.key === macroKey ? current.inspection : undefined, loading: true }))
-    void api.macros.inspect({
-      ...(narrativeRuntime.timeline
-        ? { timelineTarget: { timelineId: narrativeRuntime.timeline.id, branchId: narrativeRuntime.branch?.id } }
-        : { cardId: cardsState.selectedCardId }),
-      presetId: selectedAgentProfile?.presetId,
-      macroSelections,
-    }).then(result => {
-      if (!cancelled) setMacroPreview({ key: macroKey, inspection: result.macroInspection, loading: false })
-    }, error => {
-      if (!cancelled) setMacroPreview({ key: macroKey, loading: false, error: error instanceof Error ? error.message : String(error) })
-    })
-    return () => { cancelled = true }
-  }, [api, macroKey, macroSelections, macroRefreshToken, cardsState.selectedCardDetails, promptResources, narrativeRuntime.lastRun?.runId])
+  const macroPreviewState = useMacroPreview({
+    api: api.macros,
+    branchId: narrativeRuntime.branch?.id,
+    cardId: cardsState.selectedCardId,
+    cardVersion: cardsState.selectedCardDetails?.version,
+    key: macroKey,
+    lastRunId: narrativeRuntime.lastRun?.runId,
+    presetId: selectedAgentProfile?.presetId,
+    resourceRevision: promptResources,
+    selections: macroSelections,
+    timelineId: narrativeRuntime.timeline?.id,
+  })
+  const macroPreview = macroPreviewState.preview
 
-  async function updatePresetMacros(resourceId: string, config: { expectedVersion: number; macros: Record<string, string> }) {
-    const result = await api.promptResources.updateMacros({ resourceId, ...config })
-    editHistory.record({
-      label: t('history.context.update'),
-      changesetId: result.mutation.changesetId,
-      anchor: { documentId: resourceId },
-    })
-    setPromptResources(current => current.map(resource => resource.id === result.resource.id && resource.version <= result.resource.version ? result.resource : resource))
-    return { version: result.resource.version, macros: result.resource.macros ?? {} }
-  }
+  const promptResourceCommands = usePromptResourceCommands({
+    api,
+    t,
+    runMutation: action => operations.run('mutation', action),
+    recordEdit: editHistory.record,
+    promptResources,
+    setPromptResources,
+    setSettingMounts,
+    setPresetToolMounts,
+    invalidatePromptResourceState: promptResourceState.invalidate,
+    refreshAgentProfiles: agentProfiles.refreshAgentProfiles,
+    refreshCards: cardsState.refreshCards,
+    refreshCardTimelines: narrativeRuntime.refreshCardTimelines,
+    selectedCardId: cardsState.selectedCardId,
+  })
 
   async function refreshStates() {
-    refreshMacros()
+    macroPreviewState.refresh()
   }
 
   const sessionBusy = operations.isPending('session')
@@ -315,140 +263,6 @@ export function useStudioState(transportLogger: Logger) {
     if (updated) setNetworkSettings(updated)
   }
 
-  async function createPromptResource(resourceKind: PromptResource['resourceKind']): Promise<string | undefined> {
-    let resourceId: string | undefined
-    await operations.run('mutation', async () => {
-      const result = await api.promptResources.create({
-        resourceKind,
-        name: resourceKind === 'preset' ? 'New Preset' : resourceKind === 'setting' ? 'New Setting Layer' : 'New Prompt Resource',
-      })
-      editHistory.record({
-        label: t('history.context.create'),
-        changesetId: result.mutation.changesetId,
-        anchor: { documentId: result.resource.id, subjectId: result.resource.rootNode.id },
-      })
-      resourceId = result.resource.id
-      await refreshPromptResourceLibrary()
-    })
-    return resourceId
-  }
-
-  async function duplicatePromptResource(resourceId: string): Promise<string | undefined> {
-    let duplicatedId: string | undefined
-    await operations.run('mutation', async () => {
-      const result = await api.promptResources.duplicate({ resourceId })
-      editHistory.record({
-        label: t('history.context.duplicate'),
-        changesetId: result.mutation.changesetId,
-        anchor: { documentId: result.resource.id, subjectId: result.resource.rootNode.id },
-      })
-      duplicatedId = result.resource.id
-      await Promise.all([refreshPromptResourceLibrary(), refreshSettingMounts(), refreshPresetToolMounts()])
-    })
-    return duplicatedId
-  }
-
-  async function deletePromptResource(resourceId: string): Promise<void> {
-    await operations.run('mutation', async () => {
-      await api.promptResources.delete(resourceId)
-      await Promise.all([refreshPromptResourceLibrary(), refreshSettingMounts(), refreshPresetToolMounts()])
-      await Promise.all([
-        cardsState.refreshCards(),
-        agentProfiles.refreshAgentProfiles(),
-        cardsState.selectedCardId ? narrativeRuntime.refreshCardTimelines(cardsState.selectedCardId) : Promise.resolve(),
-      ])
-    })
-  }
-
-  async function replaceSettingMounts(source: SettingMountSource, settingResourceIds: string[]): Promise<void> {
-    await operations.run('mutation', async () => {
-      const result = await api.promptResources.replaceSettingMounts({ source, settingResourceIds })
-      setSettingMounts(current => [
-        ...current.filter(mount => mount.source.kind !== source.kind || (source.kind === 'preset' ? mount.source.id !== source.id : mount.source.id !== (source.id ?? 'global'))),
-        ...result.mounts,
-      ])
-      await agentProfiles.refreshAgentProfiles()
-    })
-  }
-
-  async function replacePresetToolMounts(presetId: string, mounts: PresetToolMountInput[]): Promise<void> {
-    await operations.run('mutation', async () => {
-      const result = await api.promptResources.replacePresetToolMounts({ presetId, mounts })
-      setPresetToolMounts(current => [
-        ...current.filter(mount => mount.presetResourceId !== presetId),
-        ...result.mounts,
-      ])
-      await agentProfiles.refreshAgentProfiles()
-    })
-  }
-
-  async function importPromptResource(file: File): Promise<string | undefined> {
-    let resourceId: string | undefined
-    await operations.run('mutation', async () => {
-      let artifact: PromptResourceArtifact
-      try {
-        artifact = JSON.parse(await file.text()) as PromptResourceArtifact
-      } catch {
-        throw new Error('Prompt Resource import must be valid JSON')
-      }
-      const baseName = file.name.replace(/\.[^/.]+$/, '').trim()
-      const result = await api.promptResources.import(artifact, baseName || undefined)
-      resourceId = result.resource.id
-      editHistory.record({
-        label: t('history.context.create'),
-        changesetId: result.mutation.changesetId,
-        anchor: { documentId: result.resource.id, subjectId: result.resource.rootNode.id },
-      })
-      await refreshPromptResourceLibrary()
-    })
-    return resourceId
-  }
-
-  async function exportPromptResource(resourceId: string): Promise<void> {
-    const resource = promptResources.find(item => item.id === resourceId)
-    if (!resource) return
-    const result = await api.promptResources.export(resourceId)
-    const blob = new Blob([JSON.stringify(result.artifact, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = `${sanitizePromptResourceFileName(resource.rootNode.label)}.loomresource.json`
-    anchor.click()
-    URL.revokeObjectURL(url)
-  }
-
-  async function importPromptResourceZip(file: File): Promise<string | undefined> {
-    const bytes = new Uint8Array(await file.arrayBuffer())
-    let binary = ''
-    for (let index = 0; index < bytes.length; index += 0x8000) {
-      binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000))
-    }
-    let resourceId: string | undefined
-    await operations.run('mutation', async () => {
-      const result = await api.promptResources.importZip(btoa(binary))
-      resourceId = result.resource.id
-      editHistory.record({
-        label: t('history.context.create'),
-        changesetId: result.mutation.changesetId,
-        anchor: { documentId: result.resource.id, subjectId: result.resource.rootNode.id },
-      })
-      await refreshPromptResourceLibrary()
-    })
-    return resourceId
-  }
-
-  async function exportPromptResourceZip(resourceId: string): Promise<void> {
-    const result = await api.promptResources.exportZip(resourceId)
-    const binary = atob(result.base64)
-    const bytes = Uint8Array.from(binary, char => char.charCodeAt(0))
-    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/zip' }))
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = result.fileName
-    anchor.click()
-    URL.revokeObjectURL(url)
-  }
-
   async function refreshHistoryAnchor(entry: { anchor?: { documentId: string; subjectId?: string } }): Promise<HistoryAssetTarget | undefined> {
     if (!entry.anchor) return
     if (promptResources.some(resource => resource.id === entry.anchor?.documentId)) {
@@ -477,10 +291,7 @@ export function useStudioState(transportLogger: Logger) {
     statesApi: api.states,
     textTransformsApi: api.textTransforms,
     clientExtensionApi,
-    officialContentApi,
-    importExtensionPackageResources,
-    removeExtensionPackageResources,
-    installExtensionPackageZip,
+    ...extensionResourceCommands,
     // cards
     cards: cardsState.cards,
     selectedCardId: cardsState.selectedCardId,
@@ -492,14 +303,13 @@ export function useStudioState(transportLogger: Logger) {
     updateCardMedia: cardsState.updateCardMedia,
     updateCardStateConfig: cardsState.updateCardStateConfig,
     updateCardMacros: cardsState.updateCardMacros,
-    updatePresetMacros,
     macroInspection: macroPreview.key === macroKey ? macroPreview.inspection : undefined,
     macroInspectionLoading: macroPreview.key !== macroKey || macroPreview.loading,
     macroInspectionError: macroPreview.key === macroKey ? macroPreview.error : undefined,
     macroSelections,
     macroTargetKey: macroKey,
-    selectMacroSource,
-    refreshMacros,
+    selectMacroSource: (name: string, sourceId: string | undefined) => macroSelection.selectSource(macroKey, name, sourceId),
+    refreshMacros: macroPreviewState.refresh,
     replaceCardPromptResources: cardsState.replaceCardPromptResources,
     importCards: cardsState.importCards,
     exportCard: cardsState.exportCard,
@@ -557,6 +367,8 @@ export function useStudioState(transportLogger: Logger) {
     // state
     operationPending: operations.pending,
     operationError: operations.error,
+    promptResourceError: promptResourceState.error,
+    promptResourceLoading: promptResourceState.loading,
     canUndoEdit: editHistory.canUndo,
     canRedoEdit: editHistory.canRedo,
     // custom css
@@ -577,15 +389,7 @@ export function useStudioState(transportLogger: Logger) {
     addContextAssetInZone: contextAssetState.addContextAssetInZone,
     duplicateContextAsset: contextAssetState.duplicateContextAsset,
     deleteContextAsset: contextAssetState.deleteContextAsset,
-    createPromptResource,
-    duplicatePromptResource,
-    deletePromptResource,
-    importPromptResource,
-    exportPromptResource,
-    importPromptResourceZip,
-    exportPromptResourceZip,
-    replaceSettingMounts,
-    replacePresetToolMounts,
+    ...promptResourceCommands,
     // derived
     ...derivedValues, refreshStates,
     // actions
@@ -640,10 +444,6 @@ export function useStudioState(transportLogger: Logger) {
     updateAgentTool: agentProfiles.updateAgentTool,
     deleteAgentProfile: agentProfiles.deleteAgentProfile,
   }
-}
-
-function sanitizePromptResourceFileName(value: string): string {
-  return value.trim().replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ') || 'prompt-resource'
 }
 
 function readDefaultContextAssetId(resources: PromptResource[]): string {

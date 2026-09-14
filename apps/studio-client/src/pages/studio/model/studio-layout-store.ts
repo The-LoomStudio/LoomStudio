@@ -3,6 +3,7 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import { safeLocalStorage } from '../../../shared/browser/safe-local-storage.js'
 import type { WindowSize } from '../window-resize.js'
 import type { LongTextEditorMode } from '../../../shared/ui/long-text-editor/long-text-editor-model.js'
+import { isRecord } from '@loom-studio/shared'
 
 export const STUDIO_PANEL_IDS = ['model', 'agent', 'play', 'sessions', 'character', 'preset', 'resource', 'state', 'text-transform', 'inspector', 'logs', 'extensions', 'settings'] as const
 
@@ -403,8 +404,4 @@ function readAssetViewMode(value: unknown): AssetViewMode | undefined {
 
 function isFinitePositiveNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

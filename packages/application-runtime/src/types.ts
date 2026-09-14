@@ -41,8 +41,12 @@ import type {
   ChatMessage,
   JsonObject,
   JsonValue,
+  ListSettingMountsInput,
+  ListSettingMountsResult,
   MacroInspection,
   MacroSelectionMap,
+  ReplaceSettingMountsInput,
+  ReplaceSettingMountsResult,
   StateComponentTemplate,
   StateEntityId,
   StateEntityRefAnnotation,
@@ -50,10 +54,18 @@ import type {
   TimelineComponentMount,
   TimelineStateBinding,
 } from '@loom-studio/shared'
+export type {
+  ListSettingMountsInput,
+  ListSettingMountsResult,
+  ReplaceSettingMountsInput,
+  ReplaceSettingMountsResult,
+  SettingMount,
+  SettingMountSource,
+} from '@loom-studio/shared'
 import type { SecretRef, SecretStore } from '@loom-studio/secret-store'
 import type { StateStore } from '@loom-studio/application-data'
-import type { PresetToolMount, PromptResourceStore, SettingMount, SettingMountSource } from '@loom-studio/application-data'
-export type { PresetToolMount, SettingMount, SettingMountSource } from '@loom-studio/application-data'
+import type { PresetToolMount, PromptResourceStore } from '@loom-studio/application-data'
+export type { PresetToolMount } from '@loom-studio/application-data'
 import type { ActivationFacts, PromptActivation } from './prompt/prompt-activation.js'
 import type { AgentToolRegistry, ToolDefinition } from './agents/tool-registry.js'
 import type {
@@ -186,6 +198,7 @@ export type ApplicationRuntime = {
   updateCard(input: UpdateCardInput, context?: RuntimeRequestContext): Promise<UpdateCardResult>
   previewCardDeletion(input: PreviewCardDeletionInput): Promise<PreviewCardDeletionResult>
   deleteCard(input: DeleteCardInput, context?: RuntimeRequestContext): Promise<DeleteCardResult>
+  deleteCards(input: DeleteCardsInput, context?: RuntimeRequestContext): Promise<DeleteCardsResult>
   listPortableExtensionPayloads(input?: ListPortableExtensionPayloadsInput): Promise<ListPortableExtensionPayloadsResult>
   getPortableExtensionPayload(input: GetPortableExtensionPayloadInput): Promise<GetPortableExtensionPayloadResult>
   createPortableExtensionPayload(input: CreatePortableExtensionPayloadInput, context?: RuntimeRequestContext): Promise<CreatePortableExtensionPayloadResult>
@@ -463,24 +476,6 @@ export type DeleteStateDefinitionResult = {
   mutation: MutationReceipt
 }
 
-export type ListSettingMountsInput = {
-  source?: SettingMountSource
-}
-
-export type ListSettingMountsResult = {
-  mounts: SettingMount[]
-}
-
-export type ReplaceSettingMountsInput = {
-  source: SettingMountSource
-  settingResourceIds: string[]
-}
-
-export type ReplaceSettingMountsResult = {
-  mounts: SettingMount[]
-  mutation: MutationReceipt
-}
-
 export type ListPresetToolMountsInput = {
   presetId?: string
   toolId?: string
@@ -742,6 +737,7 @@ export type InspectMacrosResult = {
 
 export type ApplicationRuntimeOptions = {
   withCardDeletion?: (cardId: string, commit: () => Promise<DeleteCardResult>) => Promise<DeleteCardResult>
+  withCardDeletions?: (cardIds: string[], commit: () => Promise<DeleteCardsResult>) => Promise<DeleteCardsResult>
   agents?: AgentStore
   agentTools?: AgentToolRegistry
   dataEngine?: SqliteDataEngine
@@ -980,6 +976,12 @@ export type DeleteCardInput = {
   includePromptResources?: boolean
 }
 
+export type DeleteCardsInput = {
+  cardIds: string[]
+  includePlayData?: boolean
+  includePromptResources?: boolean
+}
+
 export type PreviewCardDeletionInput = {
   cardId: string
 }
@@ -997,6 +999,10 @@ export type PreviewCardDeletionResult = {
 export type DeleteCardResult = {
   deleted: true
   mutation: MutationReceipt
+}
+
+export type DeleteCardsResult = DeleteCardResult & {
+  cardIds: string[]
 }
 
 export type PortableExtensionPayloadDraft = Omit<PortableExtensionPayloadArtifact, 'id'>

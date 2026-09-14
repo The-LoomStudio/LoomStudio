@@ -1,4 +1,4 @@
-import { ArrowDownUp, ArrowLeft, BookOpen, Braces, Check, Circle, ChevronRight, CloudDownload, Combine, Download, FileArchive, Folder, Grid2X2, ImageDown, List, Pencil, Play, Plus, RefreshCw, Trash2, Upload, Users, X } from 'lucide-react'
+import { ArrowDownUp, ArrowLeft, BookOpen, Braces, Check, Circle, ChevronRight, CloudDownload, Combine, Download, FileArchive, Folder, Grid2X2, ImageDown, List, Pencil, Play, Plus, RefreshCw, Trash2, Upload, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent } from 'react'
 import type { MenuAction } from '../../shared/ui/menu-action.js'
 import { ContextMenu, ContextMenuTrigger, ContextMenuContent, ContextMenuItem, ContextMenuSeparator } from '../../shared/ui/context-menu/context-menu.js'
@@ -14,6 +14,7 @@ import styles from './character-panel.module.scss'
 import type { CardDirectoryCatalog } from '@loom-studio/shared'
 import { CardResourceOverview, DirectoryDiscoveryNotice, type CardDirectoryApi } from './card-resource-overview.js'
 import { cardMediaUrl, useCardMediaRevision } from '../../shared/lib/card-media.js'
+import { normalizeSearchText } from '../../shared/lib/text.js'
 
 type CharacterCardSummary = {
   id: string
@@ -59,23 +60,6 @@ type CharacterPanelProps = {
   timelines: NarrativeTimelineView[]
   macroContext?: MacroRenderContext
   t: Translator
-}
-
-export function CharacterPanelHeader(props: { t: Translator }) {
-  const activeGroupId = useCharacterGalleryStore(state => state.activeGroupId)
-  const groups = useCharacterGalleryStore(state => state.groups)
-  const groupsOpen = useCharacterGalleryStore(state => state.groupsOpen)
-  const setGroupsOpen = useCharacterGalleryStore(state => state.setGroupsOpen)
-  const label = activeGroupId === 'ungrouped'
-    ? props.t('character.ungrouped')
-    : groups.find(group => group.id === activeGroupId)?.name ?? props.t('rail.character')
-
-  return (
-    <button aria-expanded={groupsOpen} aria-label={props.t('character.groups')} className={styles.headerTitle} type="button" onClick={() => setGroupsOpen(true)}>
-      <Users aria-hidden="true" />
-      <span className="loom-page-header-title">{label}</span>
-    </button>
-  )
 }
 
 const GALLERY_PAGE_SIZE = 30
@@ -204,7 +188,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
 
   const groupedCards = useMemo(() => filterCardsByGroup(galleryCards, organization.assignments, organization.activeGroupId), [galleryCards, organization.activeGroupId, organization.assignments])
   const filteredCards = useMemo(() => {
-    const normalizedQuery = query.trim().toLocaleLowerCase()
+    const normalizedQuery = normalizeSearchText(query)
     if (!normalizedQuery) return groupedCards
     return groupedCards.filter(card => [card.name, card.userName, card.description].some(value => value?.toLocaleLowerCase().includes(normalizedQuery)))
   }, [groupedCards, query])

@@ -364,6 +364,25 @@ describe('application runtime card bundle integration', () => {
     })).resolves.toMatchObject({ deleted: true })
   })
 
+  it('deletes multiple Cards in one mutation and leaves all Cards intact when preflight fails', async () => {
+    const { runtime } = createTestRuntime()
+    const first = await runtime.createCard({ name: 'First Card' })
+    const second = await runtime.createCard({ name: 'Second Card' })
+
+    await expect(runtime.deleteCards({ cardIds: [first.card.id, 'missing-card'] }))
+      .rejects.toThrow('Document not found')
+    await expect(runtime.getCard({ cardId: first.card.id })).resolves.toMatchObject({ card: { name: 'First Card' } })
+
+    const deleted = await runtime.deleteCards({ cardIds: [first.card.id, second.card.id] })
+    expect(deleted).toMatchObject({
+      cardIds: [first.card.id, second.card.id],
+      deleted: true,
+      mutation: { changesetId: expect.any(String) },
+    })
+    await expect(runtime.getCard({ cardId: first.card.id })).rejects.toThrow('Document not found')
+    await expect(runtime.getCard({ cardId: second.card.id })).rejects.toThrow('Document not found')
+  })
+
   it('cascade deletes prompt resources and portable extension payloads when includePromptResources is true', async () => {
     const { runtime } = createTestRuntime()
     const resource = await runtime.createPromptResource({ resourceKind: 'setting', name: 'Card Lorebook' })

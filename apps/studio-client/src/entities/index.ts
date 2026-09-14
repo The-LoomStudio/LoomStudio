@@ -16,7 +16,7 @@ export type {
   TextTransformRule,
   TextTransformRuleDraft,
 } from './text-transform.js'
-export type { Card, CardMedia, CardPresetInput, CardSummary, CreateCardResult, DeleteCardResult, GetCardResult, ListCardsResult, OpeningChatInput, PreviewCardDeletionResult, SettingLayerInput, UpdateCardResult } from './card.js'
+export type { Card, CardMedia, CardPresetInput, CardSummary, CreateCardResult, DeleteCardResult, DeleteCardsResult, GetCardResult, ListCardsResult, OpeningChatInput, PreviewCardDeletionResult, SettingLayerInput, UpdateCardResult } from './card.js'
 export type {
   ContextAssetNode,
   ProjectionSlotRank,

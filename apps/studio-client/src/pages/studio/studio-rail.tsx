@@ -10,6 +10,7 @@ type StudioRailProps = {
   modelConfigured?: boolean
   recentSessions?: ReactNode
   t: Translator
+  preloadPanel?(panel: StudioPanelId): void
   togglePanel(panel: StudioPanelId): void
 }
 
@@ -19,6 +20,7 @@ type RailTabProps = {
   panel: StudioPanelId
   status?: 'configured' | 'incomplete' | 'unknown'
   t: Translator
+  preloadPanel?(panel: StudioPanelId): void
   togglePanel(panel: StudioPanelId): void
 }
 
@@ -34,22 +36,22 @@ export function StudioRail(props: StudioRailProps) {
       <div className={styles.railTopSection}>
         <div className={styles.railGroup}>
           <div className={styles.railGroupLabel}>{props.t('rail.groupConfig')}</div>
-          <RailTab activePanel={props.activePanel} label={modelLabel} panel="model" status={modelStatus} t={props.t} togglePanel={props.togglePanel} />
-          <RailTab activePanel={props.activePanel} panel="agent" t={props.t} togglePanel={props.togglePanel} />
+          <RailTab activePanel={props.activePanel} label={modelLabel} panel="model" preloadPanel={props.preloadPanel} status={modelStatus} t={props.t} togglePanel={props.togglePanel} />
+          <RailTab activePanel={props.activePanel} panel="agent" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
         </div>
 
         <div className={styles.railGroup}>
           <div className={styles.railGroupLabel}>{props.t('rail.groupEdit')}</div>
-          <RailTab activePanel={props.activePanel} panel="preset" t={props.t} togglePanel={props.togglePanel} />
-          <RailTab activePanel={props.activePanel} panel="resource" t={props.t} togglePanel={props.togglePanel} />
-          <RailTab activePanel={props.activePanel} panel="state" t={props.t} togglePanel={props.togglePanel} />
-          <RailTab activePanel={props.activePanel} panel="text-transform" t={props.t} togglePanel={props.togglePanel} />
+          <RailTab activePanel={props.activePanel} panel="preset" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
+          <RailTab activePanel={props.activePanel} panel="resource" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
+          <RailTab activePanel={props.activePanel} panel="state" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
+          <RailTab activePanel={props.activePanel} panel="text-transform" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
         </div>
 
         <div className={styles.railGroup}>
           <div className={styles.railGroupLabel}>{props.t('rail.groupPlay')}</div>
           <div className={styles.railPlayRow}>
-            <RailTab activePanel={props.activePanel} panel="play" t={props.t} togglePanel={props.togglePanel} />
+            <RailTab activePanel={props.activePanel} panel="play" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
             {props.recentSessions && props.activePanel === null ? (
               <button className={styles.railPlayToggle} type="button" aria-expanded={recentOpen} aria-label={recentOpen ? '收起最近会话' : '展开最近会话'} onClick={() => setRecentOpen(value => !value)}>
                 {recentOpen ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
@@ -61,10 +63,10 @@ export function StudioRail(props: StudioRailProps) {
       </div>
       <div className={styles.railBottomSection}>
         <span className={`loom-divider ${styles.railDivider}`} aria-hidden="true" />
-        <RailTab activePanel={props.activePanel} panel="inspector" t={props.t} togglePanel={props.togglePanel} />
-        <RailTab activePanel={props.activePanel} panel="logs" t={props.t} togglePanel={props.togglePanel} />
-        <RailTab activePanel={props.activePanel} panel="extensions" t={props.t} togglePanel={props.togglePanel} />
-        <RailTab activePanel={props.activePanel} panel="settings" t={props.t} togglePanel={props.togglePanel} />
+        <RailTab activePanel={props.activePanel} panel="inspector" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
+        <RailTab activePanel={props.activePanel} panel="logs" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
+        <RailTab activePanel={props.activePanel} panel="extensions" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
+        <RailTab activePanel={props.activePanel} panel="settings" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
       </div>
     </nav>
   )
@@ -90,6 +92,9 @@ function RailTab(props: RailTabProps) {
       data-status={props.status}
       title={label}
       type="button"
+      onFocus={() => props.preloadPanel?.(props.panel)}
+      onMouseEnter={() => props.preloadPanel?.(props.panel)}
+      onPointerDown={() => props.preloadPanel?.(props.panel)}
       onClick={() => props.togglePanel(props.panel)}
     >
       <Icon aria-hidden="true" />

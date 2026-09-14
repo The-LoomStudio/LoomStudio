@@ -1,6 +1,7 @@
 # Agent Tool 数据视图与交互边界 v0
 
 > **状态**：Open Design  
+> **讨论更新**：2026-09-14。读取侧方向已明确；CTX 签名、写入提交和变更消费仍未冻结。
 > **主题**：模型调用检索、读取和写入工具时，Loom Studio 应当怎样向模型呈现数据，以及模型怎样与这些数据交互。  
 > **边界**：本文讨论 Agent 面向的数据表面与交互语义，不定义最终 Store Schema、搜索引擎、文件同步实现或 Provider Tool 协议。
 
@@ -70,19 +71,21 @@ Loom Canonical Data
 
 游玩模式可以向模型呈现类似文件系统的路径、文件名和目录结构，但它是 Loom 资源的受控投影，不是 POSIX 文件系统，也不是 Prompt Resource Store 的原始结构。
 
-索引项至少可以向模型提供：
+面向模型的索引默认返回文本文件树，不把内部资源对象序列化成大型 JSON：
 
-```ts
-type AgentFileIndexItem = {
-  path: string
-  name: string
-  description?: string
-  kind: string
-  promptState: "injected" | "not-triggered" | "agent-only"
-}
+```text
+/settings/alice/
+├── README.md
+├── base.md       [injected]
+├── voice.md      [not-triggered]
+└── stages/
 ```
 
-其中 `promptState` 是当前轮次的运行时观察，不是资源持久化配置：
+根路径、目录层级和真实文件名足够模型推导可调用路径，不逐项重复 name、path 和数据库 ID。平台内部仍保留稳定资源身份与路径映射，路径不是数据库身份。
+
+LS 不返回 description 或自动摘要，也不为此新增逐条 Metadata。资源用途、阅读顺序、阶段说明和调用教程由作者集中写在普通 `README.md` / `doc` 文件中；它们按普通文件读取，不因名字自动获得注入或权限。
+
+注入标记是当前轮次的运行时观察，不是资源持久化配置：
 
 - `injected`：本轮已由常驻或 Activation 注入；
 - `not-triggered`：存在 Activation 条件，但本轮尚未命中；
@@ -130,21 +133,13 @@ Pin 的归属应按 Agent 上下文讨论，不能仅因源文本来自 Timeline
 
 ### 3.3 `ls` 的最小视图
 
-首版不需要完整 Shell。`ls` / list 工具只需要提供两种主要范围：
+首版不需要完整 Shell。以目录路径限定范围，默认只展开一层，不默认倾倒整棵资源树。大目录需要明确的截断提示与继续查看方式，具体分页参数尚未确定。
 
-```ts
-type ListAgentFilesInput = {
-  scope: "untriggered" | "all"
-  path?: string
-}
-```
+`ctx.ls("/settings/alice")` 只是调用示意，不是冻结的 API。返回只包含路径结构与必要运行时状态；普通可读项不必重复标记 available。
 
-语义：
+旧提案的 `scope: untriggered | all` 不再作为必需调用参数。后续若确有筛选需求，再确定参数；“未注入”始终不等于“未读过”。
 
-- `untriggered`：列出当前可发现、但本轮尚未由 Prompt Build 注入的资源；
-- `all`：列出当前全部可发现资源，并标记 `promptState`。
-
-`untriggered` 不是“未读取”，而是“尚未被 Prompt Build 注入”。Agent 是否曾主动读取属于 Session / Tool 调用历史，不需要成为资源 Metadata。
+Settings 在本讨论中指作品设定、提示条目及自定义注入内容，不等于应用 Preferences。Settings 读多写少，State 常见流程是读取当前值后更新。两者可以共享按路径发现和读取的体验，但不因此认定拥有相同写入参数或存储语义。
 
 ---
 
@@ -197,6 +192,21 @@ agentAccess = unlisted:
 ```
 
 搜索和目录枚举必须先执行可见性裁剪，不能先对所有资源搜索，再从结果中过滤，否则命中数量、摘要和文件名仍可能泄露隐藏内容。
+
+### 4.4 可见但上锁的条目
+
+2026-09-14 补充：需要支持“允许知道存在，但当前不允许读正文”的呈现方向：
+
+```text
+/settings/alice/stages/
+├── README.md
+├── acquaintance.md [injected]
+└── friend.md       [locked]
+```
+
+它不同于上文同时隐藏存在性的 sealed。不能为此把所有隐藏条目列成 locked；是否允许公开名字由访问策略决定。如何扩展现有访问枚举、谁解锁及是否提供单独过渡文档，尚未冻结。
+
+注入状态与读取锁是不同维度。未触发不代表上锁；已注入也不代表当前阶段或正文必然最新。不得由标记反推出运行时没有提供的业务事实。
 
 ---
 
@@ -389,5 +399,67 @@ character-li-ming/
 1. `unlisted` 的直接引用只接受稳定 Resource ID，还是同时接受规范化路径；
 2. `sealed` 的解封来自章节 Activation、用户临时授权，还是两者都支持；
 3. Session / Branch 运行时资源是否需要在分支合并时提供显式冲突策略；
-4. `ls(all)` 是否展示最近主动读取时间，还是只显示本轮 Prompt Build 状态；
+4. 是否提示自上次读取后的变化，以及读取基线、物化上下文和压缩后可见性的追踪范围；
 5. 编辑工作区首版采用一次性导出 / 导入，还是保留显式 checkout / commit Session。
+
+## 12. 通用 CodeAct 读取侧讨论收束
+
+本节记录 2026-09-14 的讨论方向，不授权实现通用 Sandbox 或更换领域存储。
+
+- 读取侧体验实验见 [Playground 冷启动实验](../../../../../apps/playground/CODEACT-EXPERIMENT.md)。使用独立子 Agent 体验多卡挂载、README 导航和动态门控；实验签名不等于正式合同。
+- CodeAct 提供统一执行入口；具体能力教程可以作为 Prompt Resource、README 或 Skill，按条件注入或由 Agent 主动读取。教程生命周期与执行权限分离，移除教程不等于撤销权限。
+- 面向模型的输出优先是文件树、路径匹配和正文；不默认输出完整内部 JSON 对象。代码内部的数据形态与最终模型输出不是同一个合同，暂不要求脚本解析树形文本来完成批处理。
+- LS 负责目录和动态状态；Search 负责定位；Read 负责正文；README 负责解释。不新增每条资源必填 description，不替作者生成强制阅读分类。
+- Search 可返回路径和行号；允许显示内容时才返回少量匹配文本。可见但锁定的文件不能通过搜索片段泄露正文。
+- Read 的必要状态提示与正文分离，不能让编辑代码误把工具文件头写回资源。返回值、显示方式及正文提取签名仍待确定。
+- 游玩读取是当前上下文的物化结果，编辑读取是作者源文件；相同源版本也可能因 State、宏或上下文变化产生不同正文。历史 ToolResult 不会自动变成最新内容，注入状态也不能仅凭 Session 是否压缩判断。
+- Agent 可从 LS 树、Search、README 引用或已有上下文获取路径，不要求每次读前机械执行 LS/Search；修改已有内容仍需有可靠读取基线。新建资源的目标发现和写入语义另行讨论。
+- 运行时负责权限、稳定 ID 映射和并发校验。不要求模型反复抄写数据库 ID；是否自动关联读取版本、基线保存多久尚未确定。
+
+此前示例中的 State set/delta 统一 write 参数、自动暂存提交、持久 JS 上下文、暂停后恢复同一执行现场，均不是本轮已确认合同。CodeAct 输入传输、执行生命周期与写入语义继续单独讨论。
+
+## 13. 变更查看：候选消费方式与现有基础
+
+### 13.1 候选交互，未冻结
+
+LS 可以附带简短修改标记，但不展开完整 Diff。独立 Status 汇总新增、修改、删除；Diff 按目标展示差异。删除项适合出现在 Status，不必作为当前文件继续挂在 LS。
+
+仅当有明确比较基准时才能标记 modified。当前写入批次、上次读取、指定历史版本是三种不同基准，不能混用；具体命令名、参数、提交时机和保存期限未定。
+
+典型消费者：
+
+- 编辑 Agent 在批量修改后核对范围及意外删除；
+- Agent 接手用户或其他执行者的修改，检查与自己旧观察的差别；
+- 游玩 Agent 排查 State 重复增减或追溯某次状态变化；
+- 用户要求对比旧版本、解释修改或回退之前，先读取有证据的历史差异。
+
+普通续写若只需当前事实，不默认读取 Diff，更不要求每轮消费完整变更历史。用户展开 Session 写入统计与 Agent 主动读 Diff 可以复用变更数据，但不是同一个调用流程。
+
+### 13.2 2026-09-14 源码核对
+
+以下仅是静态源码证据，不代表本轮运行测试或已有 CodeAct 命令：
+
+- `packages/document-store/src/sqlite-store.ts`：持久化 document_revisions，支持按版本读取与 revertChangeset；回退对混入非 Document 操作的 Changeset 有限制。
+- `packages/application-data/src/prompt-resource/schema.ts`、`mutations.ts`：保存节点和资源头的 before/after Revision，并有带版本检查的回退路径。
+- `packages/application-data/src/state/types.ts`、`store.ts`：StateRevision 包含父 Revision、snapshot、operations、changesetId；支持读取和列出 Revision。
+- `packages/application-data/src/narrative/types.ts`、`store.ts`：有分支、正文节点父链和 State Revision 指针；但 editNode 原地更新 body，仅记录更新操作，没有在该路径保存正文编辑前后的独立 Revision。因此分支不等于历史正文快照。
+- `packages/data-engine/src/sqlite.ts`：共享事务和 Changeset 记录提供提交事实；操作记录本身不保证每个领域都保存可还原的旧内容。
+
+结论：已有部分领域版本与回退基础，不是从零开始；尚不能宣称拥有统一的全工作区 Git 式存档点、任意历史文件树比较或全领域回退。通用 VFS Status/Diff 仍需连接这些能力，并明确各资源能提供的比较范围。
+
+## 14. Skills 复用预设锚点
+
+2026-09-14 确认：不另建 Skill 系统。预设作者可以提供专门的 Skills 锚点，并通过锚点周围的提示词说明这里挂载的是可按需使用的教程。
+
+- 顶层常驻的是 Skill 名称、用途说明与入口路径，不是整个教程目录的全部内容。
+- 角色自有世界书和外部世界书均可通过现有 Prompt Resource 挂载机制贡献入口；来源使用各自的 VFS 路径区分，不默认只允许一个来源。
+- 详细教程和附属资料仍是普通可读文件。Agent 根据任务读取；需要持续参照时可使用 Pin，不新增模型侧 loadSkill 工具、Skill 注册器或专用权限系统。
+- Skill 的用途说明属于常驻锚点中的提示内容，不要求所有普通资源新增 description，也不把说明搬回 LS。
+- 常驻说明可以集中在作者文档中维护；不要求同时维护另一份目录 Metadata，也不在此冻结锚点 ID、文件名或描述字段格式。
+- “有入口”“已读教程”“持续 Pin”是三件事；Pin 文件不递归加载目录，移除 Pin 也不删除历史 ToolResult。
+
+边界：专门的 Skills 锚点不是 Provider 顶层 tools，也不因名称自动获得更高指令优先级或写入权限。外部来源必须先在当前范围内获得挂载与访问资格。
+
+默认轻小说文风、战斗教程和衣物教程如何组合，先由预设与教程明确适用场景和冲突处理，不实现按读取先后自动覆盖。若以后要求确定性的文风模式切换或整组挂载生命周期，再单独讨论现有机制是否足够。
+
+深层目录优先由教程给出准确相对引用，模型换算为绝对 VFS 路径；大组件的局部读取、长图遍历、多个教程相互引用等尚未由小型 Playground 验证，不把当前例子视为复杂场景的完整验证。

@@ -1,4 +1,10 @@
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
+export type {
+  ListSettingMountsResult,
+  ReplaceSettingMountsResult,
+  SettingMount,
+  SettingMountSource,
+} from '@loom-studio/shared'
 import type { MutationReceipt } from './common.js'
 import type { Card } from './card.js'
 import type { ContextAssetNode } from './context-asset.js'
@@ -81,28 +87,6 @@ export type PromptResource = {
   sourceArtifactRef?: ClientJsonValue
   createdAt: string
   updatedAt: string
-}
-
-export type SettingMountSource =
-  | { kind: 'manual'; id?: 'global' }
-  | { kind: 'preset'; id: string }
-
-export type SettingMount = {
-  id: string
-  settingResourceId: string
-  source: SettingMountSource
-  orderIndex: number
-  origin: Record<string, ClientJsonValue>
-  createdAt: string
-}
-
-export type ListSettingMountsResult = {
-  mounts: SettingMount[]
-}
-
-export type ReplaceSettingMountsResult = {
-  mounts: SettingMount[]
-  mutation: MutationReceipt
 }
 
 export type PresetToolMount = {

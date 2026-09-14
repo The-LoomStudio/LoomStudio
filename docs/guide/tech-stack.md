@@ -1,30 +1,53 @@
-# 技术栈与外部依赖选型 (Tech Stack & NPM Dependencies)
+# 技术栈与外部依赖选型
 
-除了内部包之间的依赖关系，了解 Loom Studio 所选用的核心第三方 NPM 库同样重要。这能帮助 AI 或新加入的开发者快速熟悉开发语境，避免引入重复造轮子的库或违反架构原则的包。
+这是一份开发时的快速入口。正式能力所有权、当前例外和实现入口见
+[`Architecture / External Dependency Ownership`](../architecture/platform/external-dependency-ownership.md)。
+精确版本以消费它的 Workspace `package.json` 和根 `pnpm-lock.yaml` 为准，不在指南重复补丁版本。
 
-## 1. 前端技术栈 (Client)
+## 1. Client 默认能力
 
-- **框架基座**：当前使用 `React 19.2.8`、`Vite 8.2.2` 与 `react-router-dom` 的 SPA。
-- **状态边界**：React 组件状态处理局部渲染；Zustand 处理布局和交互状态；Server 通过 typed RPC 持有 canonical 业务状态。当前没有安装 `@tanstack/react-query`，不要按旧计划假设它已负责 Server State。
-- **CSS 方案**：SCSS Modules 配合 `--loom-*` CSS Custom Properties。项目没有 Tailwind、Styled-components、Ant Design 或 MUI；不要为局部样式建立第二套主题系统。
-- **交互基础设施**：复杂菜单优先复用当前已安装的 Radix Context Menu / Dropdown Menu，拖放使用 `dnd-kit`，通知使用 Sonner，图标使用 Lucide 与既有图标资产。
+| 任务 | 默认选择 | 不应默认做的事 |
+| --- | --- | --- |
+| 页面、深链接、History | React Router | 再建一套路由 store，或把普通选择持续写回 URL |
+| 本地布局、偏好、工作台选择 | Zustand | 把服务端资源缓存或表单正文塞入全局 store |
+| 需要缓存和失效的服务端状态 | TanStack Query | 手写 request guard、全局 loading 和多组 refresh choreography |
+| 无界列表或树 | TanStack Virtual | 数据规模可增长时一次挂载全部可见组件 |
+| Context Menu / Dropdown | Radix primitives | 重写键盘焦点、Dismiss 和 Overlay 基础行为 |
+| 瞬时通知 | Sonner | 用 toast 代替可恢复错误状态 |
+| 长文本和代码编辑 | CodeMirror | 为语法、历史、搜索和 diff 自建编辑器 |
+| Markdown / YAML | react-markdown、remark-gfm、`yaml` | 使用正则实现简化 parser |
+| 图标 | Lucide 与既有品牌资产 | 为通用操作重复维护手绘 SVG |
+| 样式 | SCSS Modules + `--loom-*` | 为局部功能引入第二套主题或全局 CSS 框架 |
 
-## 2. 后端与传输层 (Server & Transport)
+React 负责局部组件状态。TanStack Query 负责缓存型远端状态，Zustand 负责本地应用状态，
+输入草稿和拖拽预览通常留在组件或 feature hook。不要让同一份事实长期在三处双写。
 
-- **基础运行时**：固定为 Node.js 22.18.0；不把 Bun 作为平台合同。
-- **HTTP / RPC**：Studio Server 直接使用 `node:http`。主调用面是认证后的 JSON-RPC 风格 `POST /rpc`，Extension Catalog 变化使用专用 SSE。当前运行链没有通用 WebSocket Transport，也没有 Express、Fastify 或 Hono。
-- **持久化层**：共享 `@loom-studio/data-engine` 使用 Node 内置 `node:sqlite` 管理 connection、migration 与 transaction；Document、Narrative、Agent、State、Prompt Resource、Secret metadata 和 Asset metadata 由各领域 Store 在同一 Data Engine 上持久化。Blob 字节使用文件系统内容寻址存储。当前不是内存 Store，也没有 `better-sqlite3`、Prisma 或 TypeORM。
+当前 Client 没有 `dnd-kit`、Pretext 或 `proxy-memoize`。旧文档、旧 Diff 或依赖印象不能证明它们仍是项目能力。
 
-## 3. 全局工具与基础设施 (Global Infrastructure)
+## 2. Server 与跨端默认能力
 
-- **工作空间管理**：`pnpm` (Workspace)。
-- **语言**：全栈 `TypeScript`。后端脚本与临时任务使用 `tsx` 执行。
-- **数据校验**：边界优先复用现有解析器和 `zod`；不要把 schema 校验扩散到可信内部函数。
-- **测试框架**：`Vitest`（单测与集成测试）。
-- **代码格式与校验**：`eslint` Flat Config + `prettier`。
+- HTTP/RPC 使用 Node `node:http` 与现有 Transport，不为普通路由增加 Express/Fastify/Hono。
+- SQLite 使用 `node:sqlite` 和 `@loom-studio/data-engine`，领域 Store 不各自管理 connection、migration 或 transaction。
+- Provider HTTP 与代理复用 Undici；ZIP 编解码复用 fflate。
+- Zod 当前用于 AI Gateway 配置和 Shared Setting Mount RPC；新增跨端结构化边界且没有既有 parser 时优先评估，可信内部纯函数继续使用 TypeScript 类型。
+- 跨端 JSON DTO、Schema 和纯逻辑进入 `@loom-studio/shared`；Shared 不依赖 React、数据库、Node 专属 API 或 Application Runtime。
 
-## 4. 依赖引入的底线哲学
+## 3. 开发与审计工具
 
-> **"不假装安全，不为了偷懒而妥协扩展性"**
+- TypeScript 与 ESLint：类型、导入方向和静态规则。
+- Vitest：单元、契约与集成测试。
+- fast-check：树操作和状态转换等真实不变量。
+- mitata：纯 model/lib 基准，不替代浏览器性能诊断。
+- Knip：未使用文件、依赖和导出的候选清单，不自动删除。
+- Size Limit 与 Rollup Visualizer：客户端体积预算和按需分析。
+- React Compiler：当前仅使用 annotation mode 试点，不替代 selector、状态所有权和组件边界治理。
 
-如果实现新功能看起来需要安装新的 NPM 包，先确认标准库、浏览器 / Node / React 原生能力和现有依赖是否已经覆盖。新增依赖必须解决当前明确需求，并添加到实际消费它的 Workspace；不要为未来可能出现的场景预埋包。
+## 4. 新增实现前的轻量检查
+
+1. 先判断问题是否已经有上表中的能力所有者。
+2. 标准库、浏览器/Node 原生能力或现有依赖能完整覆盖时，直接复用。
+3. 现有选择不适用时，可以写更小的局部实现，但要能指出真实语义差异，不能并行建立第二套真相源。
+4. 新依赖添加到实际消费它的 Workspace，并使用显式版本；Client 运行时依赖应检查是否进入错误的首屏 chunk。
+
+只有当例外会形成跨模块基础设施、公共合同或替换现有所有者时，才需要写入 Workbench Issue/Plan。
+普通局部实现不需要为了遵守文档制造包装层或审批流程。

@@ -15,6 +15,7 @@ type ContextAssetSearchProps = {
 }
 
 export function ContextAssetSearch(props: ContextAssetSearchProps) {
+  'use memo'
   const deferredQuery = useDeferredValue(props.query)
   const index = useMemo(() => buildContextAssetSearchIndex(props.nodes), [props.nodes])
   const results = useMemo(() => searchContextAssets(index, deferredQuery), [deferredQuery, index])

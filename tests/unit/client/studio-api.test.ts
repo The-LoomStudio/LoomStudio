@@ -157,6 +157,7 @@ describe('studio client typed api', () => {
       'application.updateCardPromptResources': { card: { id: 'card-1' } },
       'application.previewCardDeletion': { cardId: 'card-1', timelines: [] },
       'application.deleteCard': { deleted: true },
+      'application.deleteCards': { cardIds: ['card-1', 'card-2'], deleted: true },
       'application.exportCardBundle': { artifact: { artifactId: 'card-1' } },
       'application.listProviderModels': { modelIds: ['model-1', 'model-2'] },
       'application.pingProviderModel': { text: 'pong' },
@@ -168,6 +169,7 @@ describe('studio client typed api', () => {
     await api.cards.updatePromptResources({ cardId: 'card-1', promptResourceIds: ['resource-1'] })
     await api.cards.previewDeletion('card-1')
     await api.cards.delete('card-1', { includePlayData: true })
+    await api.cards.deleteMany(['card-1', 'card-2'], { includePromptResources: true })
     await api.cards.export('card-1')
     const models = await api.providerModels.list('provider-1')
     const text = await api.providerModels.ping('provider-1', 'model-1')
@@ -182,6 +184,7 @@ describe('studio client typed api', () => {
       { method: 'application.updateCardPromptResources', params: { cardId: 'card-1', promptResourceIds: ['resource-1'] } },
       { method: 'application.previewCardDeletion', params: { cardId: 'card-1' } },
       { method: 'application.deleteCard', params: { cardId: 'card-1', includePlayData: true } },
+      { method: 'application.deleteCards', params: { cardIds: ['card-1', 'card-2'], includePromptResources: true } },
       { method: 'application.exportCardBundle', params: { cardId: 'card-1' } },
       { method: 'application.listProviderModels', params: { providerProfileId: 'provider-1' } },
       { method: 'application.pingProviderModel', params: { providerProfileId: 'provider-1', modelId: 'model-1' } },

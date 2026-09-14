@@ -11,7 +11,7 @@ import type {
 } from './loom-script-contracts.js'
 
 export async function snapshotLoomScriptMounts(
-  ctx: ApplicationRuntimeContext,
+  ctx: Pick<ApplicationRuntimeContext, 'documents'>,
   target: LoomScriptMountTarget,
 ): Promise<LoomScriptRuntimeMountSnapshot[]> {
   const mounts = (await listDocuments<LoomScriptMountContent>(ctx.documents, applicationDocumentTypes.loomScriptMount))
@@ -33,7 +33,7 @@ export async function snapshotLoomScriptMounts(
 }
 
 export async function resolveLoomScriptRendererMounts(
-  ctx: ApplicationRuntimeContext,
+  ctx: Pick<ApplicationRuntimeContext, 'documents' | 'blobs'>,
   input: {
     currentTargets: LoomScriptMountTarget[]
     frozenMounts: LoomScriptRuntimeMountSnapshot[]
@@ -67,7 +67,7 @@ export async function resolveLoomScriptRendererMounts(
 }
 
 async function readLoomScriptRevision(
-  ctx: ApplicationRuntimeContext,
+  ctx: Pick<ApplicationRuntimeContext, 'documents'>,
   scriptDocumentId: string,
   version?: number,
 ): Promise<DocumentRecord<LoomScriptContent>> {

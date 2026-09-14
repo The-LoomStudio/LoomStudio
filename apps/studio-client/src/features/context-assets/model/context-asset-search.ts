@@ -1,4 +1,5 @@
 import type { ContextAssetNode } from '../../../entities/index.js'
+import { normalizeSearchText } from '../../../shared/lib/text.js'
 import { resolveVirtualDisplayName } from './context-asset-tree.js'
 
 export type ContextAssetSearchRecord = {
@@ -80,8 +81,4 @@ function readSearchExcerpt(body: string, tokens: string[]): string | undefined {
   const start = Math.max(0, matchIndex - 32)
   const end = Math.min(body.length, matchIndex + 88)
   return `${start > 0 ? '…' : ''}${body.slice(start, end).replace(/\s+/g, ' ').trim()}${end < body.length ? '…' : ''}`
-}
-
-function normalizeSearchText(value: string): string {
-  return value.trim().toLocaleLowerCase()
 }

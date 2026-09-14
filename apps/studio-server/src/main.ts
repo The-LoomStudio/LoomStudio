@@ -169,6 +169,10 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
       if (!resourceDirectories) throw new Error('Card directory service is unavailable')
       return resourceDirectories.deleteCard(id, commit)
     },
+    withCardDeletions: (ids, commit) => {
+      if (!resourceDirectories) throw new Error('Card directory service is unavailable')
+      return resourceDirectories.deleteCards(ids, commit)
+    },
     agents,
     agentTools,
     dataEngine,

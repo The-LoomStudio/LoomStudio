@@ -102,7 +102,7 @@ export function canToggleContextAssetEnabled(node: ContextAssetNode | undefined)
   return node?.kind === 'entry' && !isReadOnlyContextAssetTreeNode(node)
 }
 
-function isReadOnlyContextAssetTreeNode(node: ContextAssetNode): boolean {
+export function isReadOnlyContextAssetTreeNode(node: ContextAssetNode): boolean {
   return node.readOnly === true
     || node.category === 'runtime'
     || node.category === 'history'

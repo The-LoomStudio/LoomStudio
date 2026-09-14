@@ -5,7 +5,7 @@
 - [`state-subscription-for-extensions.md`](./state-subscription-for-extensions.md) — **扩展 State 变更订阅**（已延期；不阻塞 The World 其他功能迁移）。
 - [`repository-governance-audit-2026-09-12.md`](./repository-governance-audit-2026-09-12.md) — **2026-09-12 仓库治理与生命周期审计**（2 个文档生命周期问题）。
 - [`full-repo-code-review-2026-09-12.md`](./full-repo-code-review-2026-09-12.md) — **2026-09-12 全仓代码审阅**（4 个 P2、3 个 P3 与 2 个精简候选）。
-- [`frontend-backend-architecture-and-client-duplication-audit-2026-09-14.md`](./frontend-backend-architecture-and-client-duplication-audit-2026-09-14.md) — **前后端架构与客户端重复逻辑审计**（调研中；聚焦客户端过度编排、数据模型重复和 Runtime 边界）。
+- [`frontend-backend-architecture-and-client-duplication-audit-2026-09-14.md`](./frontend-backend-architecture-and-client-duplication-audit-2026-09-14.md) — **前后端架构与客户端重复逻辑审计**（审计完成；依赖、性能与状态治理已拆分为下一项 Plan）。
 - [`full-repo-code-review-2026-08-27.md`](./full-repo-code-review-2026-08-27.md) — **2026-08-27 全仓代码审阅**（2 个 P1、14 个 P2、3 个 P3 与 6 个优化候选）。
 - [`documentation-direction-and-lifecycle-follow-up-2026-08-28.md`](./documentation-direction-and-lifecycle-follow-up-2026-08-28.md) — **文档方向与生命周期复核**（2 个 P2：旧 M0 实现基线残留、归档 Plan successor 缺失）。
 - [`extension-dev-hot-reload-enhancement.md`](./extension-dev-hot-reload-enhancement.md) — **插件开发态热重载机制增强**（待排期的低优先级开发体验改进）。

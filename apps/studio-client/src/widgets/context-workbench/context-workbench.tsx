@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useState } from 'react'
 import { Link2 } from 'lucide-react'
 import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore } from '../../pages/studio/model/studio-layout-store.js'
 import { AssetWorkbenchLayout } from '../../shared/ui/asset-workbench-layout/asset-workbench-layout.js'
+import { normalizeSearchText } from '../../shared/lib/text.js'
 import {
   findContextNode,
 } from '../../features/context-assets/model/projection-order.js'
@@ -10,9 +11,7 @@ import {
 } from '../../features/context-assets/model/projection-workbench.js'
 import { readPromptResourceWorkbenchRoot } from '../../features/context-assets/model/prompt-resource-view.js'
 import { ContextAssetEditor, ContextAssetExplorer } from '../../features/context-assets/ui/context-asset-workbench.js'
-import { ContextAssetHeader, type ContextAssetPathSegment } from '../../features/context-assets/ui/context-asset-header/context-asset-header.js'
-import { findContextAssetPath, findContextAssetByVirtualPath, resolveVirtualDisplayName } from '../../features/context-assets/model/context-asset-tree.js'
-import { STUDIO_PANEL_PRESENTATION } from '../../pages/studio/model/studio-panel-presentation.js'
+import { findContextAssetPath, findContextAssetByVirtualPath } from '../../features/context-assets/model/context-asset-tree.js'
 import { PromptResourceToolbar } from '../../features/context-assets/ui/prompt-resource-toolbar/prompt-resource-toolbar.js'
 import { Dialog } from '../../shared/ui/dialog/dialog.js'
 import { MacroAuthoringDetail, MacroAuthoringExplorer, type MacroAuthoringPanelProps, useMacroAuthoring } from '../../features/state-variables/ui/macro-authoring-panel.js'
@@ -273,8 +272,10 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
             displayNodes={displayNodes}
             expandedIds={explorerView.expandedIds}
             query={searchQuery}
+            scrollKey={`resources:${props.workspaceId}`}
             selectedId={selectedId}
             t={props.t}
+            virtualized
             workspaceId={props.workspaceId}
             onAddNode={props.onAddNode}
             onAddFolderNode={props.onAddFolderNode}
@@ -367,7 +368,7 @@ function ResourceBindingDialog(props: {
     return resource ? [resource] : []
   })
   const available = props.resources.filter(resource => !props.boundIds.includes(resource.id)
-    && `${resource.rootNode.label} ${resource.resourceKind}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
+    && normalizeSearchText(`${resource.rootNode.label} ${resource.resourceKind}`).includes(normalizeSearchText(query)))
 
   async function change(ids: string[]) {
     setPending(true)
@@ -410,79 +411,4 @@ function ResourceBindingDialog(props: {
       </div>
     </Dialog>
   )
-}
-
-export function ContextWorkbenchHeader(props: {
-  view: 'settings' | 'macros' | 'text'
-  resources: PromptResource[]
-  selectedResourceId?: string
-  t: Translator
-  workspaceId: string
-  onViewChange: (view: 'settings' | 'macros' | 'text') => void
-  onSelectResource?: (resourceId: string) => void
-}) {
-  const definition = STUDIO_PANEL_PRESENTATION.resource
-  const settingResources = useMemo(() => props.resources.filter(r => r.resourceKind === 'setting'), [props.resources])
-  const selectedId = useStudioLayoutStore(state => state.assetLayouts.resources.views[props.workspaceId]?.selectedId)
-  const openAssetDetail = useStudioLayoutStore(state => state.openAssetDetail)
-  const selectedResource = settingResources.find(r => r.id === props.selectedResourceId)
-    ?? settingResources.find(resource => resource.id === selectedId || Boolean(findContextNode([resource.rootNode], selectedId)))
-    ?? settingResources[0]
-  const setAssetPane = useStudioLayoutStore(state => state.setAssetPane)
-  const selectNode = (id: string) => {
-    setAssetPane('resources', props.workspaceId, 'detail')
-    openAssetDetail('resources', props.workspaceId, id)
-  }
-  const selectedPath = selectedResource && selectedId
-    ? buildContextPathSegments(
-      findContextAssetPath([readPromptResourceWorkbenchRoot(selectedResource)], selectedId),
-      selectNode,
-    )
-    : []
-  const tabOptions: Array<{ id: 'settings' | 'macros' | 'text'; label: string }> = [
-    { id: 'settings', label: props.t('context.authoring.settings') },
-    { id: 'macros', label: props.t('context.authoring.macros') },
-    { id: 'text', label: props.t('rail.textTransform') },
-  ]
-  const activeTab = tabOptions.find(tab => tab.id === props.view)
-  const breadcrumbs: ContextAssetPathSegment[] = activeTab
-    ? [{
-      id: activeTab.id,
-      label: activeTab.label,
-      options: tabOptions,
-      onSelect: id => {
-        if (id !== 'settings' && id !== 'macros' && id !== 'text') return
-        setAssetPane('resources', props.workspaceId, 'explorer')
-        props.onViewChange(id)
-      },
-    }, ...selectedPath]
-    : []
-
-  return (
-    <ContextAssetHeader
-      Icon={definition.Icon}
-      title={props.t(definition.labelKey)}
-      breadcrumbs={breadcrumbs}
-      resources={settingResources}
-      selectedResourceId={selectedResource?.id}
-      t={props.t}
-      onSelectResource={resourceId => props.onSelectResource?.(resourceId)}
-    />
-  )
-}
-
-function buildContextPathSegments(pathNodes: ContextAssetNode[], onSelectNode: (id: string) => void): ContextAssetPathSegment[] {
-  return pathNodes.slice(1).map((node, index) => {
-    const parent = pathNodes[index]
-    const options = (parent?.children ?? []).map(sibling => ({
-      id: sibling.id,
-      label: resolveVirtualDisplayName(sibling.label, sibling.kind),
-    }))
-    return {
-      id: node.id,
-      label: resolveVirtualDisplayName(node.label, node.kind),
-      options,
-      onSelect: onSelectNode,
-    }
-  })
 }

@@ -4,6 +4,7 @@ import { Fragment, type ReactNode, useCallback, useEffect, useLayoutEffect, useM
 import { useNavigate } from 'react-router-dom'
 import { useLogFeed, type LogSource } from '../../features/log-viewer/model/use-log-feed.js'
 import type { StudioApi } from '../../shared/api/studio-api.js'
+import { downloadBlob } from '../../shared/browser/download.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import { buildLogStream, highestLogLevel, matchesLogSearch, moreSevereLogLevel } from './log-viewer-model.js'
 import styles from './log-viewer.module.scss'
@@ -94,12 +95,7 @@ export function LogViewer(props: {
 
   const downloadVisibleLogs = () => {
     const blob = new Blob([JSON.stringify(visibleRecords, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = `loom-logs-${new Date().toISOString().replaceAll(':', '-')}.json`
-    anchor.click()
-    URL.revokeObjectURL(url)
+    downloadBlob(blob, `loom-logs-${new Date().toISOString().replaceAll(':', '-')}.json`)
   }
 
   return (

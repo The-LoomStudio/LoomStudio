@@ -1,8 +1,7 @@
-import { PresetWorkbench } from '../widgets/preset-workbench/preset-workbench.js'
-import { ContextWorkbench } from '../widgets/context-workbench/context-workbench.js'
 import type { useStudioState } from './use-studio-state.js'
 import type { useStudioUiState } from './use-studio-ui-state.js'
 import type { useStudioNavigation } from '../pages/studio/model/use-studio-navigation.js'
+import { LazyContextWorkbench, LazyPresetWorkbench } from './studio-panel-modules.js'
 
 type StudioState = ReturnType<typeof useStudioState>
 type StudioUiState = ReturnType<typeof useStudioUiState>
@@ -45,7 +44,7 @@ export function StudioResourcePanels(props: {
 
   return {
     preset: () => (
-      <PresetWorkbench
+      <LazyPresetWorkbench
         {...contextAssetEditorProps}
         textTransformsApi={state.textTransformsApi}
         loomScriptsApi={state.api.loomScripts}
@@ -64,7 +63,7 @@ export function StudioResourcePanels(props: {
       />
     ),
     resource: () => (
-      <ContextWorkbench
+      <LazyContextWorkbench
         {...contextAssetEditorProps}
         textTransformsApi={state.textTransformsApi}
         loomScriptsApi={state.api.loomScripts}

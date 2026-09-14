@@ -1,4 +1,5 @@
 import js from '@eslint/js'
+import reactHooks from 'eslint-plugin-react-hooks'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
@@ -59,5 +60,32 @@ export default tseslint.config(
         ]
       }]
     }
-  }
+  },
+  {
+    files: ['apps/studio-client/src/shared/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          { group: ['*features/*', '*widgets/*', '*pages/*', '*app/*'], message: 'FSD boundary: shared cannot depend on features, widgets, pages, or app.' },
+        ],
+      }],
+    },
+  },
+  {
+    files: ['apps/studio-client/src/entities/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          { group: ['*features/*', '*widgets/*', '*pages/*', '*app/*'], message: 'FSD boundary: entities cannot depend on features, widgets, pages, or app.' },
+        ],
+      }],
+    },
+  },
+  {
+    files: ['apps/studio-client/src/features/context-assets/ui/context-asset-search/context-asset-search.tsx'],
+    plugins: {
+      'react-hooks': reactHooks,
+    },
+    rules: reactHooks.configs.flat['recommended-latest'].rules,
+  },
 )

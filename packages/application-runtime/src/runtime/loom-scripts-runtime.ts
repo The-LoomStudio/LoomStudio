@@ -16,7 +16,9 @@ import type {
 } from '../scripts/loom-script-contracts.js'
 import type { RuntimeRequestContext } from '../types.js'
 
-export function createLoomScriptsRuntimeMethods(ctx: ApplicationRuntimeContext) {
+type LoomScriptsRuntimeContext = Pick<ApplicationRuntimeContext, 'blobs' | 'createId' | 'dataEngine' | 'documents' | 'now'>
+
+export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) {
   return {
     importLoomScript: async (input: {
       owner: LoomScriptOwner

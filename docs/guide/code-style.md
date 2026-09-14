@@ -1,6 +1,6 @@
 # 编码规范 (Code Style)
 
-Loom Studio 使用 `eslint` 和 `prettier` 强制执行绝大多数风格。
+Loom Studio 使用 `eslint` 与 TypeScript 静态检查约束可自动判断的规则。
 但是，工具无法替代良好的命名和架构直觉，以下是我们约定俗成的规则。
 
 ## 1. 命名规范

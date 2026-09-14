@@ -1,4 +1,5 @@
 import { parseExtensionManifest, type ExtensionManifest } from '@loom-studio/extension-host'
+import { isRecord } from '@loom-studio/shared'
 import { access, readFile, readdir, realpath } from 'node:fs/promises'
 import { isAbsolute, relative, resolve } from 'node:path'
 import { writeJsonAtomically } from '../platform/atomic-json.js'
@@ -207,10 +208,6 @@ function assertContained(directory: string, candidate: string, entry: string): v
   const pathFromDirectory = relative(directory, candidate)
   if (pathFromDirectory && !pathFromDirectory.startsWith('..') && !isAbsolute(pathFromDirectory)) return
   throw new Error(`Extension package path must stay inside its directory: ${entry}`)
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
 function isNodeError(error: unknown, code: string): boolean {

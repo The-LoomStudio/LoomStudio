@@ -2,6 +2,7 @@ import { RefreshCw, Search } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { MacroInspection } from '@loom-studio/shared'
 import { MasterDetailWorkbench } from '../../../shared/ui/master-detail-workbench/master-detail-workbench.js'
+import { normalizeSearchText } from '../../../shared/lib/text.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import { MacroEntryDetail } from './macro-entry-detail.js'
 import styles from './state-variables-panel.module.scss'
@@ -23,7 +24,7 @@ export function MacroInspectorPanel(props: MacroInspectorPanelProps) {
   const [query, setQuery] = useState('')
   const selectedEntry = props.inspection?.entries.find(entry => entry.name === selectedName)
   const groups = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase()
+    const normalized = normalizeSearchText(query)
     const entries = (props.inspection?.entries ?? []).filter(entry => !normalized || [
       entry.name,
       entry.value,

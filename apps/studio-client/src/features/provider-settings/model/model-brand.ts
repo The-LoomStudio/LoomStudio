@@ -1,3 +1,5 @@
+import { normalizeSearchText } from '../../../shared/lib/text.js'
+
 export type ModelBrand = 'anthropic' | 'deepseek' | 'gemini' | 'grok' | 'meta' | 'mistral' | 'ollama' | 'openai' | 'openrouter' | 'qwen'
 
 const modelBrands: Array<[ModelBrand, RegExp]> = [
@@ -14,12 +16,12 @@ const modelBrands: Array<[ModelBrand, RegExp]> = [
 ]
 
 export function resolveModelBrand(modelId: string): ModelBrand | null {
-  const normalized = modelId.trim().toLocaleLowerCase()
+  const normalized = normalizeSearchText(modelId)
   return modelBrands.find(([, pattern]) => pattern.test(normalized))?.[0] ?? null
 }
 
 export function resolveProviderBrand(...hints: string[]): ModelBrand | null {
-  const normalized = hints.join(' ').toLocaleLowerCase()
+  const normalized = normalizeSearchText(hints.join(' '))
   if (/openrouter/.test(normalized)) return 'openrouter'
   if (/anthropic|claude/.test(normalized)) return 'anthropic'
   if (/deepseek/.test(normalized)) return 'deepseek'

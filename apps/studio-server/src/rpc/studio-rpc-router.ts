@@ -8,7 +8,7 @@ import { callLogsRpc } from './handlers/logs-rpc.js'
 import type { NetworkSettingsStore } from '../platform/network-settings.js'
 import { callSettingsRpc } from './handlers/settings-rpc.js'
 import type { PromptResourceConverter } from '../extensions/import-conversion.js'
-import { readOptionalBoolean } from './rpc-params.js'
+import { readOptionalBoolean, readStringArray } from './rpc-params.js'
 
 type RpcCallContext = {
   clientId: string
@@ -45,24 +45,28 @@ export function createStudioRpcRouter(services: {
   const routes: StudioRpcRoute[] = [{
     namespace: 'application',
     call: async (method, params, context) => {
-      if (method !== 'application.deleteCard' || !services.emitEvent) {
+      if ((method !== 'application.deleteCard' && method !== 'application.deleteCards') || !services.emitEvent) {
         return await callApplicationRpc(services.applicationRuntime, method, params, context, services.convertPromptResource)
       }
-      const cardId = readRequiredString(params, 'cardId')
+      const cardIds = method === 'application.deleteCard'
+        ? [readRequiredString(params, 'cardId')]
+        : readStringArray(params, 'cardIds')
       const includePlayData = readOptionalBoolean(params, 'includePlayData') ?? false
-      const preview = await services.applicationRuntime.previewCardDeletion({ cardId })
+      const previews = await Promise.all(cardIds.map(cardId => services.applicationRuntime.previewCardDeletion({ cardId })))
       const result = await callApplicationRpc(services.applicationRuntime, method, params, context, services.convertPromptResource)
       const changesetId = readRequiredString(result, 'mutation', 'changesetId')
-      services.emitEvent('entity.lifecycle.changed', {
-        operation: 'tombstoned',
-        root: { kind: 'card', id: cardId },
-        affected: {
-          timelines: includePlayData ? preview.timelines.length : 0,
-          extensionConfigs: preview.extensionData.cardScoped.configs + (includePlayData ? preview.extensionData.timelineScoped.configs : 0),
-          extensionRecords: preview.extensionData.cardScoped.records + (includePlayData ? preview.extensionData.timelineScoped.records : 0),
-        },
-        changesetId,
-      }, context)
+      for (const preview of previews) {
+        services.emitEvent('entity.lifecycle.changed', {
+          operation: 'tombstoned',
+          root: { kind: 'card', id: preview.cardId },
+          affected: {
+            timelines: includePlayData ? preview.timelines.length : 0,
+            extensionConfigs: preview.extensionData.cardScoped.configs + (includePlayData ? preview.extensionData.timelineScoped.configs : 0),
+            extensionRecords: preview.extensionData.cardScoped.records + (includePlayData ? preview.extensionData.timelineScoped.records : 0),
+          },
+          changesetId,
+        }, context)
+      }
       return result
     },
   }]

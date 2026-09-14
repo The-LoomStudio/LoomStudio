@@ -29,6 +29,7 @@
 4. **shared 是否保持纯净**：`shared/` 不 import `features`、`widgets`、`pages`、`app`。
 5. **facade 是否继续膨胀**：`app/use-studio-state.ts` 只能组合 feature hooks。新增领域时优先新建或扩展对应 feature hook。
 6. **测试是否覆盖抽出的模型逻辑**：非平庸纯函数、排序、映射、树 mutation 至少要有一个最小 runnable check。
+7. **是否绕开已有能力所有者**：缓存型 server state 优先 TanStack Query，本地布局与偏好使用 Zustand，无界集合检查 TanStack Virtual，菜单复用 Radix；例外应能说明现有能力为何不适用。
 
 如果以上任何一项需要“先暂时这样”，必须在 `docs/workbench/issues/` 写成议题，说明限制、风险和后续关闭条件。
 
@@ -47,6 +48,7 @@
 1. 如果新增了或修改了 Kernel/Application 的 RPC，是否同步更新了 `reference/rpc-methods.md`？
 2. 如果新增了 Document Type，是否同步更新了 `reference/document-types.md`？
 3. 如果改动了 Client 分层、命名或 widget/hook 边界，是否同步更新了 `guide/` 的施工规则或 `workbench/issues/` 的议题状态？
+4. 如果新增、删除或替换了核心第三方依赖及其能力所有权，是否同步更新了 `architecture/platform/external-dependency-ownership.md` 和 `guide/tech-stack.md`？
 
 ## Git 提交规范
 

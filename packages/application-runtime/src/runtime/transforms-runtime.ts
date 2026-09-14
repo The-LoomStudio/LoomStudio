@@ -37,7 +37,7 @@ import type {
   TextTransformRuleEntry,
 } from '../types.js'
 
-export const builtInRenderers: RendererDefinition[] = [
+const builtInRenderers: RendererDefinition[] = [
   {
     id: 'official/json-artifact',
     name: 'JSON Artifact',
@@ -48,7 +48,9 @@ export const builtInRenderers: RendererDefinition[] = [
   },
 ]
 
-export function createTransformsRuntimeMethods(ctx: ApplicationRuntimeContext) {
+type TransformsRuntimeContext = Pick<ApplicationRuntimeContext, 'agents' | 'documents' | 'narratives' | 'now'>
+
+export function createTransformsRuntimeMethods(ctx: TransformsRuntimeContext) {
   return {
     listTextTransformRules: async (): Promise<{ rules: TextTransformRuleEntry[] }> => ({
       rules: (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule))
@@ -245,8 +247,8 @@ export function createTransformsRuntimeMethods(ctx: ApplicationRuntimeContext) {
   }
 }
 
-export async function projectRuntimeHistory(
-  ctx: ApplicationRuntimeContext,
+async function projectRuntimeHistory(
+  ctx: TransformsRuntimeContext,
   source: HistorySource,
   phase: TextTransformPhase,
   consumerAgentSessionId?: string,
@@ -257,7 +259,7 @@ export async function projectRuntimeHistory(
 }
 
 export async function resolveEffectiveTextPipeline(
-  ctx: ApplicationRuntimeContext,
+  ctx: TransformsRuntimeContext,
   source: HistorySource,
   phase: TextTransformPhase,
   consumerAgentSessionId?: string,
@@ -335,7 +337,7 @@ function textPipelineOverrideDocumentId(
 }
 
 async function readTextPipelineOverride(
-  ctx: ApplicationRuntimeContext,
+  ctx: Pick<ApplicationRuntimeContext, 'documents'>,
   source: HistorySource,
   phase: TextTransformPhase,
   consumerAgentSessionId?: string,
@@ -385,7 +387,7 @@ function compareTextEntries(left: { orderIndex: number; id: string }, right: { o
 }
 
 async function readRuntimeHistoryEntries(
-  ctx: ApplicationRuntimeContext,
+  ctx: Pick<ApplicationRuntimeContext, 'agents' | 'narratives'>,
   source: HistorySource,
 ): Promise<HistoryTextEntry[]> {
   if (source.kind === 'agent-session') {

@@ -1,4 +1,4 @@
-export const ASYNC_OPERATION_SCOPES = [
+const ASYNC_OPERATION_SCOPES = [
   'bootstrap',
   'cards',
   'resources',

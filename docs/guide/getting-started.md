@@ -66,6 +66,9 @@ pnpm dev:server
 
 ## 4. 依赖变更约定
 
+安装前先查看 [`tech-stack.md`](tech-stack.md) 与正式
+[`External Dependency Ownership`](../architecture/platform/external-dependency-ownership.md)，确认该问题是否已有能力所有者。已有依赖能够完整覆盖时优先复用；不要只因为不熟悉现有入口就增加平行库或手写第二套状态生命周期。
+
 新依赖必须添加到实际消费它的 workspace，并显式指定版本：
 
 ```bash

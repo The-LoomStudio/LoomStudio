@@ -1,6 +1,6 @@
 import * as React from 'react'
 import * as ContextMenuPrimitive from '@radix-ui/react-context-menu'
-import { Check, ChevronRight } from 'lucide-react'
+import { Check } from 'lucide-react'
 import styles from './context-menu.module.scss'
 import { menuItemClass, menuPartClass } from '../menu/menu-class-names.js'
 
@@ -167,60 +167,6 @@ const ContextMenuSeparator = React.forwardRef<
 ))
 ContextMenuSeparator.displayName = ContextMenuPrimitive.Separator.displayName
 
-const ContextMenuShortcut = ({
-  className,
-  ...props
-}: React.HTMLAttributes<HTMLSpanElement>) => {
-  return (
-    <span
-      className={menuPartClass(styles.shortcut, className)}
-      {...props}
-    />
-  )
-}
-ContextMenuShortcut.displayName = "ContextMenuShortcut"
-
-const ContextMenuSub = ContextMenuPrimitive.Sub
-
-const ContextMenuSubTrigger = React.forwardRef<
-  React.ElementRef<typeof ContextMenuPrimitive.SubTrigger>,
-  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.SubTrigger> & {
-    inset?: boolean
-    icon?: React.ReactNode
-  }
->(({ className, inset, icon, children, ...props }, ref) => (
-  <ContextMenuPrimitive.SubTrigger
-    ref={ref}
-    className={menuItemClass(styles, { className, inset, subTrigger: true })}
-    {...props}
-  >
-    {icon && (
-      <span className={styles.leading} aria-hidden="true">
-        {icon}
-      </span>
-    )}
-    <span className={styles.label}>{children}</span>
-    <span className={styles.trailing} aria-hidden="true">
-      <ChevronRight />
-    </span>
-  </ContextMenuPrimitive.SubTrigger>
-))
-ContextMenuSubTrigger.displayName = ContextMenuPrimitive.SubTrigger.displayName
-
-const ContextMenuSubContent = React.forwardRef<
-  React.ElementRef<typeof ContextMenuPrimitive.SubContent>,
-  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.SubContent>
->(({ className, ...props }, ref) => (
-  <ContextMenuPrimitive.Portal>
-    <ContextMenuPrimitive.SubContent
-      ref={ref}
-      className={menuPartClass(styles.menu, className)}
-      {...props}
-    />
-  </ContextMenuPrimitive.Portal>
-))
-ContextMenuSubContent.displayName = ContextMenuPrimitive.SubContent.displayName
-
 export {
   ContextMenu,
   ContextMenuTrigger,
@@ -228,8 +174,4 @@ export {
   ContextMenuItem,
   ContextMenuCheckboxItem,
   ContextMenuSeparator,
-  ContextMenuShortcut,
-  ContextMenuSub,
-  ContextMenuSubTrigger,
-  ContextMenuSubContent,
 }

@@ -6,7 +6,7 @@ export type AgentRunEvent = {
   runId: string
   [key: string]: ClientJsonValue | undefined
 }
-import type { CardDirectoryPreview, CardDirectorySaveResult, CardDirectoryCatalog, OpenCardDirectoryResult, CardDirectoryAttachment } from '@loom-studio/shared'
+import type { CardDirectoryPreview, CardDirectorySaveResult, CardDirectoryCatalog, OpenCardDirectoryResult, CardDirectoryAttachment, ReplaceSettingMountsInput } from '@loom-studio/shared'
 import type { OfficialContentPackage } from '../../entities/official-content.js'
 import type { LogLevel, LogPage } from '@loom-studio/logging'
 import type { ExtensionEntityRef, ExtensionRecordEntry, ExtensionStorageScope } from '@loom-studio/extension-sdk'
@@ -31,6 +31,7 @@ import type {
   CreateProviderProfileResult,
   DeleteAgentProfileResult,
   DeleteCardResult,
+  DeleteCardsResult,
   DeletePromptResourceResult,
   DeleteProviderProfileResult,
   ExportCardBundleResult,
@@ -426,6 +427,7 @@ export type StudioApi = {
     updatePromptResources(input: UpdateCardPromptResourcesInput): Promise<UpdateCardResult>
     previewDeletion(cardId: string): Promise<PreviewCardDeletionResult>
     delete(cardId: string, options?: { includePlayData?: boolean; includePromptResources?: boolean }): Promise<DeleteCardResult>
+    deleteMany(cardIds: string[], options?: { includePlayData?: boolean; includePromptResources?: boolean }): Promise<DeleteCardsResult>
     export(cardId: string): Promise<ExportCardBundleResult>
     previewDirectory(cardId: string): Promise<CardDirectoryPreview>
     saveDirectory(cardId: string, token: string): Promise<CardDirectorySaveResult>
@@ -509,7 +511,7 @@ export type StudioApi = {
     updateAsset(input: UpdatePromptResourceAssetInput): Promise<UpdatePromptResourceResult>
     updateAssets(input: UpdatePromptResourceAssetsInput): Promise<UpdatePromptResourceResult>
     listSettingMounts(source?: SettingMountSource): Promise<ListSettingMountsResult>
-    replaceSettingMounts(input: { source: SettingMountSource; settingResourceIds: string[] }): Promise<ReplaceSettingMountsResult>
+    replaceSettingMounts(input: ReplaceSettingMountsInput): Promise<ReplaceSettingMountsResult>
     listPresetToolMounts(input?: { presetId?: string; toolId?: string }): Promise<ListPresetToolMountsResult>
     replacePresetToolMounts(input: { presetId: string; mounts: PresetToolMountInput[] }): Promise<ReplacePresetToolMountsResult>
     createAsset(input: CreatePromptResourceAssetInput): Promise<UpdatePromptResourceResult>
@@ -644,6 +646,11 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       previewDeletion: cardId => rpc.call<PreviewCardDeletionResult>('application.previewCardDeletion', { cardId }),
       delete: (cardId, options) => rpc.call<DeleteCardResult>('application.deleteCard', {
         cardId,
+        ...(options?.includePlayData ? { includePlayData: true } : {}),
+        ...(options?.includePromptResources ? { includePromptResources: true } : {}),
+      }),
+      deleteMany: (cardIds, options) => rpc.call<DeleteCardsResult>('application.deleteCards', {
+        cardIds,
         ...(options?.includePlayData ? { includePlayData: true } : {}),
         ...(options?.includePromptResources ? { includePromptResources: true } : {}),
       }),

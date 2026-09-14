@@ -123,6 +123,10 @@ export type DeleteCardResult = {
   mutation: MutationReceipt
 }
 
+export type DeleteCardsResult = DeleteCardResult & {
+  cardIds: string[]
+}
+
 export type PreviewCardDeletionResult = {
   cardId: string
   timelines: Array<{ id: string; title?: string }>

@@ -78,6 +78,38 @@ describe('studio rpc router', () => {
     }])
   })
 
+  it('emits one lifecycle event per Card after a batch deletion commit', async () => {
+    const emitted: Array<{ name: string; payload: JsonValue; context: unknown }> = []
+    const applicationRuntime = {
+      previewCardDeletion: async ({ cardId }: { cardId: string }) => ({
+        cardId,
+        timelines: [],
+        extensionData: {
+          cardScoped: { configs: 0, records: 0 },
+          timelineScoped: { configs: 0, records: 0 },
+        },
+        textTransformRuleIds: [],
+      }),
+      deleteCards: async ({ cardIds }: { cardIds: string[] }) => ({
+        cardIds,
+        deleted: true,
+        mutation: { changesetId: 'chg-batch-delete' },
+      }),
+    } as unknown as ApplicationRuntime
+    const router = createStudioRpcRouter({
+      applicationRuntime,
+      kernel: createKernelCaller(),
+      emitEvent: (name, payload, eventContext) => emitted.push({ name, payload, context: eventContext }),
+    })
+
+    await router.call('application.deleteCards', { cardIds: ['card-1', 'card-2'] }, context)
+
+    expect(emitted.map(event => event.payload)).toEqual([
+      expect.objectContaining({ root: { kind: 'card', id: 'card-1' }, changesetId: 'chg-batch-delete' }),
+      expect.objectContaining({ root: { kind: 'card', id: 'card-2' }, changesetId: 'chg-batch-delete' }),
+    ])
+  })
+
   it('parses editable Agent Tool entries without changing their stable id', async () => {
     let receivedInput: unknown
     const applicationRuntime = {

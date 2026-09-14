@@ -4,6 +4,22 @@
   padding: 6px 0 14px;
 }
 
+.virtualTree {
+  overflow: visible;
+}
+
+.virtualContent {
+  position: relative;
+  width: 100%;
+}
+
+.virtualRow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+}
+
 .row {
   --loom-tree-base-x: 34px;
   --loom-tree-guide-x: var(--loom-tree-base-x);
@@ -26,7 +42,8 @@
   background: transparent;
   text-align: left;
   user-select: none;
-  touch-action: none; /* Required for dnd-kit touch sensors */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 30px;
 
   &.noDrag {
     --loom-tree-base-x: 18px;
@@ -89,7 +106,6 @@
   background: transparent;
   cursor: grab;
   opacity: 0;
-  touch-action: none; /* Required for dnd-kit touch sensors */
 }
 
 .dragHandle svg,
@@ -129,13 +145,6 @@
 .dragOver {
   background: color-mix(in srgb, var(--loom-color-accent) 15%, transparent);
   box-shadow: inset 2px 0 0 var(--loom-color-accent);
-}
-
-.draggingOverlay {
-  background: var(--loom-color-surface-inset);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), inset 2px 0 0 var(--loom-color-accent);
-  opacity: 0.9;
-  cursor: grabbing;
 }
 
 .row > .disclosure {
@@ -383,7 +392,3 @@
   background: color-mix(in srgb, var(--loom-color-surface) 25%, transparent);
   border-bottom: 1px solid var(--loom-color-divider, rgba(255, 255, 255, 0.05));
 }
-
-
-
-

@@ -1,4 +1,5 @@
 import type { RendererContributionDefinition, RendererInstanceScope, RendererSurface } from '@loom-studio/extension-sdk'
+import { isRecord } from '@loom-studio/shared'
 import type {
   LoomScriptContent,
   LoomScriptContributionDefinition,
@@ -164,8 +165,4 @@ function toContributionJson(contribution: LoomScriptContributionDefinition): Rec
     ...(contribution.renderer.suggestedOrder !== undefined ? { suggestedOrder: contribution.renderer.suggestedOrder } : {}),
     ...(contribution.renderer.fallback !== undefined ? { fallback: contribution.renderer.fallback } : {}),
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }

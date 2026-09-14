@@ -68,8 +68,11 @@ export type ContentToolPromptRuntimeInputs = {
   contributions: PromptContribution[]
 }
 
+type AgentToolResolutionContext = Pick<ApplicationRuntimeContext, 'agentTools' | 'documents' | 'providerAdapters'>
+type NativeToolLoopContext = Pick<ApplicationRuntimeContext, 'agentTools' | 'createId' | 'gateway'>
+
 export async function compileAgentToolSet(input: {
-  ctx: ApplicationRuntimeContext
+  ctx: AgentToolResolutionContext
   model: ProviderModelSelection
   toolMounts: PresetToolMount[]
   toolOverrides: Record<string, boolean>
@@ -198,7 +201,7 @@ export function createContentToolPromptRuntimeInputs(
   return { sourceNodes, contributions }
 }
 
-export function resolveEnabledPresetToolMounts(
+function resolveEnabledPresetToolMounts(
   mounts: readonly PresetToolMount[],
   overrides: Readonly<Record<string, boolean>>,
 ): PresetToolMount[] {
@@ -206,7 +209,7 @@ export function resolveEnabledPresetToolMounts(
 }
 
 export async function runNativeToolLoop(input: {
-  ctx: ApplicationRuntimeContext
+  ctx: NativeToolLoopContext
   agents: AgentStore
   session: AgentSession
   runId: string
@@ -567,7 +570,7 @@ export async function runNativeToolLoop(input: {
 }
 
 async function resolveTools(
-  ctx: ApplicationRuntimeContext,
+  ctx: AgentToolResolutionContext,
   model: ProviderModelSelection,
   toolIds: string[],
 ) {
@@ -726,7 +729,7 @@ function isJsonObject(value: JsonValue | undefined): value is JsonObject {
 }
 
 async function executeInvocation(
-  ctx: ApplicationRuntimeContext,
+  ctx: Pick<ApplicationRuntimeContext, 'agentTools'>,
   invocation: ToolInvocation,
   expectedTransport?: CompiledToolExposure['transport'],
   scope?: ToolExecutionScope,

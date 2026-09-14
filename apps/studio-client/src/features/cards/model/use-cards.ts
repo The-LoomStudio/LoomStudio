@@ -3,6 +3,8 @@ import { toast } from 'sonner'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import type { Card, CardMedia, CardSummary } from '../../../entities/index.js'
+import { downloadBlob } from '../../../shared/browser/download.js'
+import { sanitizeFileName } from '../../../shared/lib/text.js'
 
 type UseCardsInput = {
   api: StudioApi
@@ -156,10 +158,7 @@ export function useCards(input: UseCardsInput) {
       changesetId: result.mutation.changesetId,
       anchor: { documentId: config.cardId },
     })
-    setSelectedCardDetails(current => current?.id === result.card.id && current.version <= result.card.version ? result.card : current)
-    setCards(current => current.map(card => card.id === result.card.id && card.version <= result.card.version
-      ? { ...card, version: result.card.version, updatedAt: result.card.updatedAt }
-      : card))
+    applyUpdatedCard(result.card)
     return result.card
   }
 
@@ -180,10 +179,7 @@ export function useCards(input: UseCardsInput) {
       changesetId: result.mutation.changesetId,
       anchor: { documentId: config.cardId },
     })
-    setSelectedCardDetails(current => current?.id === result.card.id && current.version <= result.card.version ? result.card : current)
-    setCards(current => current.map(card => card.id === result.card.id && card.version <= result.card.version
-      ? { ...card, version: result.card.version, updatedAt: result.card.updatedAt }
-      : card))
+    applyUpdatedCard(result.card)
     return { version: result.card.version, macros: result.card.macros ?? {} }
   }
 
@@ -193,30 +189,20 @@ export function useCards(input: UseCardsInput) {
     const deletedNames = ids.map(id => cards.find(card => card.id === id)?.name).filter((name): name is string => Boolean(name))
 
     await input.runAction(async () => {
-      let hasDeletedCard = false
-      try {
-        // ponytail: RPC only exposes single-card deletion. Keep FIFO calls until a batch-delete mutation exists.
-        for (const cardId of ids) {
-          const deleted = await input.api.cards.delete(cardId, options)
-          hasDeletedCard = true
-          input.recordEdit({
-            label: input.t('history.card.delete'),
-            changesetId: deleted.mutation.changesetId,
-            anchor: { documentId: cardId },
-          })
-        }
-      } finally {
-        if (hasDeletedCard) {
-          await refreshCards()
-          if (options?.includePromptResources) {
-            await input.onCardsDeleted?.()
-          }
-          if (deletedNames.length === 1) {
-            toast.success(input.t('character.cardDeletedNotice', { name: deletedNames[0] }))
-          } else if (deletedNames.length > 1) {
-            toast.success(input.t('character.cardsDeletedNotice', { count: deletedNames.length }))
-          }
-        }
+      const deleted = await input.api.cards.deleteMany(ids, options)
+      input.recordEdit({
+        label: input.t('history.card.delete'),
+        changesetId: deleted.mutation.changesetId,
+        anchor: { documentId: ids[0]! },
+      })
+      await refreshCards()
+      if (options?.includePromptResources) {
+        await input.onCardsDeleted?.()
+      }
+      if (deletedNames.length === 1) {
+        toast.success(input.t('character.cardDeletedNotice', { name: deletedNames[0] }))
+      } else if (deletedNames.length > 1) {
+        toast.success(input.t('character.cardsDeletedNotice', { count: deletedNames.length }))
       }
     })
   }
@@ -314,14 +300,16 @@ export function useCards(input: UseCardsInput) {
         const result = readJsonResponse(await response.text()) as { error?: { message?: unknown } }
         throw new Error(typeof result.error?.message === 'string' ? result.error.message : `Card export failed (${response.status})`)
       }
-      const url = URL.createObjectURL(await response.blob())
-      const anchor = document.createElement('a')
-      anchor.href = url
       const extension = format === 'loomcard' ? '.loomcard.zip' : format === 'polyglot' ? '.polyglot.png' : '.png'
-      anchor.download = `${sanitizeFileName(card.name) || 'loom-card'}${extension}`
-      anchor.click()
-      URL.revokeObjectURL(url)
+      downloadBlob(await response.blob(), `${sanitizeFileName(card.name) || 'loom-card'}${extension}`)
     })
+  }
+
+  function applyUpdatedCard(card: Card): void {
+    setSelectedCardDetails(current => current?.id === card.id && current.version <= card.version ? card : current)
+    setCards(current => current.map(summary => summary.id === card.id && summary.version <= card.version
+      ? { ...summary, version: card.version, updatedAt: card.updatedAt }
+      : summary))
   }
 
   return {
@@ -356,8 +344,4 @@ function readAssetUploadResponse(value: string): { asset?: { id?: unknown }; err
 function readJsonResponse(value: string): unknown {
   if (!value) return {}
   try { return JSON.parse(value) } catch { return {} }
-}
-
-function sanitizeFileName(value: string): string {
-  return value.trim().replace(/[\\/:*?"<>|]/g, '-')
 }

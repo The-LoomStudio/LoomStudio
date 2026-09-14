@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { ContextAssetNode } from '../../../entities/index.js'
+import { useRestorableScroll } from '../../../shared/hooks/use-restorable-scroll.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import { FileTree } from '../../../shared/ui/file-tree/file-tree.js'
 import type { LongTextEditorMode } from '../../../shared/ui/long-text-editor/long-text-editor-model.js'
@@ -8,6 +9,7 @@ import { ContextAssetDetailHeader } from './context-asset-detail-header/context-
 import { ContextAssetSearch } from './context-asset-search/context-asset-search.js'
 import {
   canToggleContextAssetEnabled,
+  isReadOnlyContextAssetTreeNode,
   readContextAssetTreeActions,
   renderContextAssetLifecycleIndicator,
   renderContextAssetTreeIcon,
@@ -24,6 +26,8 @@ export function ContextAssetExplorer(props: {
   selectedId?: string
   t: Translator
   variant?: 'tree' | 'flat'
+  virtualized?: boolean
+  scrollKey: string
   workspaceId: string
   onAddNode(parentId: string): Promise<string | undefined>
   onAddFolderNode?(parentId: string): Promise<string | undefined>
@@ -40,6 +44,7 @@ export function ContextAssetExplorer(props: {
   onChangeRole?(id: string, role: 'system' | 'user' | 'assistant' | 'developer'): void
 }) {
   const [editingId, setEditingId] = useState<string>()
+  const scroll = useRestorableScroll<HTMLDivElement>(props.scrollKey)
   const selectNode = (node: ContextAssetNode) => props.onSelectId?.(node.id)
   const selectCreated = async (create: Promise<string | undefined>) => {
     const id = await create
@@ -66,15 +71,16 @@ export function ContextAssetExplorer(props: {
       onQueryChange={props.onQueryChange}
       onSelect={selectNode}
     >
-      <div className={styles.explorerContent}>
+      <div ref={scroll.ref} className={styles.explorerContent} onScroll={scroll.onScroll}>
         <FileTree
           editingId={editingId}
           onEditCommit={handleEditCommit}
           onEditCancel={handleEditCancel}
           ariaLabel={props.t('context.explorerLabel')}
-          expandedIds={props.expandedIds ?? props.displayNodes.map(item => item.id)}
+          expandedIds={props.expandedIds ?? []}
           getDisclosureLabel={(item, expanded) => props.t(expanded ? 'context.tree.collapse' : 'context.tree.expand', { label: item.label })}
           getDragLabel={item => props.t('context.tree.drag', { label: item.label })}
+          getVirtualScrollElement={() => scroll.ref.current}
           getActions={item => readContextAssetTreeActions(item as ContextAssetNode, {
             onAdd: async parentId => selectCreated(props.onAddNode(parentId)),
             onAddFolder: props.onAddFolderNode ? async parentId => selectCreated(props.onAddFolderNode!(parentId)) : undefined,
@@ -87,6 +93,7 @@ export function ContextAssetExplorer(props: {
             onChangeRole: props.onChangeRole,
             t: props.t,
           })}
+          hasActions={item => !isReadOnlyContextAssetTreeNode(item as ContextAssetNode)}
           isMuted={item => (item as ContextAssetNode).kind === 'entry' && (item as ContextAssetNode).enabled === false}
           formatLabel={node => resolveVirtualDisplayName(node.label, (node as ContextAssetNode).kind)}
           moreActionsLabel={props.t('context.actionMore')}
@@ -98,6 +105,7 @@ export function ContextAssetExplorer(props: {
           renderMetaLeading={item => renderContextAssetLifecycleIndicator(item as ContextAssetNode, props.t)}
           selectedId={props.selectedId}
           variant={props.variant}
+          virtualized={props.virtualized}
         />
       </div>
     </ContextAssetSearch>
