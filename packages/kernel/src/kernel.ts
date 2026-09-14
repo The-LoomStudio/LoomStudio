@@ -41,11 +41,12 @@ export function createKernel(options: CreateKernelOptions): Kernel {
   const protocolVersion = options.protocolVersion ?? '0.1.0'
   let active = false
   let dataCommitSubscription: DataCommitSubscription | undefined
+  let stageOneRegistrations: Array<{ dispose(): void }> = []
 
   const kernel: Kernel = {
     start: async () => {
       if (active) return
-      registerStageOneHandlers(kernel, options, eventBus, { studioVersion, kernelVersion, protocolVersion })
+      stageOneRegistrations = registerStageOneHandlers(kernel, options, eventBus, { studioVersion, kernelVersion, protocolVersion })
       dataCommitSubscription = options.dataCommits.subscribeCommits(commit => {
         const eventOptions = dataCommitEventOptions(commit)
         eventBus.emit('data.changed', summarizeDataCommit(commit), eventOptions)
@@ -65,6 +66,8 @@ export function createKernel(options: CreateKernelOptions): Kernel {
       try {
         await options.extensionHost.disposeAll()
       } finally {
+        stageOneRegistrations.forEach(registration => registration.dispose())
+        stageOneRegistrations = []
         active = false
       }
     },

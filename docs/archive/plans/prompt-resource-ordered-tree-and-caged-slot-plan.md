@@ -4,7 +4,7 @@
 > **日期**：2026-08-30 (归档于 2026-09-03)  
 > **前置讨论**：[`docs/workbench/discussion/application/prompt/ordered-file-tree-and-anchor-slot-v0.md`](../../workbench/discussion/application/prompt/ordered-file-tree-and-anchor-slot-v0.md)  
 > **取代计划**：[`docs/archive/plans/prompt-resource-projection-workbench-v0.md`](./prompt-resource-projection-workbench-v0.md)  
-> **后续计划**：原规划中的 Phase 5（本地文件双向同步）因涉及复杂的元数据组织、Anchor 物理表现形式与冲突仲裁，已拆分至独立提案 [`docs/workbench/plans/workspace-dev-sync-plan.md`](../../workbench/plans/workspace-dev-sync-plan.md)  
+> **后续计划**：原规划中的 Phase 5（本地文件双向同步）因涉及复杂的元数据组织、Anchor 物理表现形式与冲突仲裁，已拆分至独立提案 [`docs/workbench/plans/workspace-dev-sync-plan.md`](workspace-dev-sync-plan.md)
 > **核心目标**：废除臃肿的 `Zone -> InjectionGroup -> RankKey` 多层间接体系，将 PromptBuild 与资源编排收束为**“预设即有序文件树 + 笼中深度（Caged Depth）”**的极简架构，完成前后端合同闭环。
 
 ---
@@ -112,7 +112,7 @@
   -> 落地无图标 Slot、锚点专属图标、Timeline 基础图标收敛与自适应弹性树节点排版。
 ```
 
-> **注**：原规划中的 Phase 5（本地开发化同步 Workspace Dev Sync）已独立拆分为 [`docs/workbench/plans/workspace-dev-sync-plan.md`](../../workbench/plans/workspace-dev-sync-plan.md)，作为后续专属方案推进。
+> **注**：原规划中的 Phase 5（本地开发化同步 Workspace Dev Sync）已独立拆分为 [`docs/workbench/plans/workspace-dev-sync-plan.md`](workspace-dev-sync-plan.md)，作为后续专属方案推进。
 
 ---
 

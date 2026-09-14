@@ -10,7 +10,7 @@
 > - [`asset-import-export-boundary-v0.md`](asset-import-export-boundary-v0.md)
 > - [`data-capabilities-and-runtime-content.md`](data-capabilities-and-runtime-content.md)
 > - [`../../plans/file-backed-resource-agent-script-codeact-plan.md`](../../plans/file-backed-resource-agent-script-codeact-plan.md)
-> - [`../../plans/typed-primary-resource-bundle-plan.md`](../../plans/typed-primary-resource-bundle-plan.md)
+> - [`../../plans/typed-primary-resource-bundle-plan.md`](../../../archive/plans/typed-primary-resource-bundle-plan.md)
 
 ---
 

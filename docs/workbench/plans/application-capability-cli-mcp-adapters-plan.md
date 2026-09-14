@@ -1,6 +1,6 @@
 # Application Capability、CLI 与 MCP 适配器计划
 
-> **2026-09-12 范围拆分**：本计划承接从 [Data 目录与文件备份计划](./data-directory-resource-development-plan.md)移出的 CLI/MCP 工作，不再由 Data 计划实施。CLI + MCP 均连接运行中的 LS，不直接打开 SQLite 或嵌入另一套 Runtime；不另造角色打包解包实现。数据层计划完成不等于本计划已获实施授权。
+> **2026-09-12 范围拆分**：本计划承接从 [Data 目录与文件备份计划](../../archive/plans/data-directory-resource-development-plan.md)移出的 CLI/MCP 工作，不再由 Data 计划实施。CLI + MCP 均连接运行中的 LS，不直接打开 SQLite 或嵌入另一套 Runtime；不另造角色打包解包实现。数据层计划完成不等于本计划已获实施授权。
 
 > **状态**：待讨论 / 未授权实施，首批范围和技术合同尚需确认
 > **日期**：2026-08-24
@@ -9,11 +9,11 @@
 
 相关计划：
 
-- [`agent-runtime-ai-sdk-foundation-plan.md`](./agent-runtime-ai-sdk-foundation-plan.md)
-- [`agent-session-context-and-workspace-capability-plan.md`](./agent-session-context-and-workspace-capability-plan.md)
+- [`agent-runtime-ai-sdk-foundation-plan.md`](../../archive/plans/agent-runtime-ai-sdk-foundation-plan.md)
+- [`agent-session-context-and-workspace-capability-plan.md`](../../archive/plans/agent-session-context-and-workspace-capability-plan.md)
 - [`file-backed-resource-agent-script-codeact-plan.md`](./file-backed-resource-agent-script-codeact-plan.md)
-- [`ai-gateway-streaming-execution-plan.md`](./ai-gateway-streaming-execution-plan.md)
-- [`workspace-dev-sync-plan.md`](./workspace-dev-sync-plan.md)：完整开发模式与工程编辑工作流，独立讨论，不默认作为最小 CLI 的前置条件。
+- [`ai-gateway-streaming-execution-plan.md`](../../archive/plans/ai-gateway-streaming-execution-plan.md)
+- [`workspace-dev-sync-plan.md`](../../archive/plans/workspace-dev-sync-plan.md)：完整开发模式与工程编辑工作流，独立讨论，不默认作为最小 CLI 的前置条件。
 
 ## 本次转交边界
 
@@ -45,7 +45,7 @@ MCP ────────────────┘
 6. 同一业务操作只有一个 canonical input、校验和执行实现；
 7. 首版只抽取真实需要跨 Adapter 复用的少量能力，不重写全部 Runtime RPC。
 
-Agent Tool 与 CodeAct 调用 Capability 时的 Workspace / Narrative Context、Session Binding、默认 Target 和跨资源访问规则由 [`agent-session-context-and-workspace-capability-plan.md`](./agent-session-context-and-workspace-capability-plan.md) 先行收束。本计划不根据 `timelineId` 是否为空推导管理员权限，也不为 Agent 另建第二套 Context 规则。
+Agent Tool 与 CodeAct 调用 Capability 时的 Workspace / Narrative Context、Session Binding、默认 Target 和跨资源访问规则由 [`agent-session-context-and-workspace-capability-plan.md`](../../archive/plans/agent-session-context-and-workspace-capability-plan.md) 先行收束。本计划不根据 `timelineId` 是否为空推导管理员权限，也不为 Agent 另建第二套 Context 规则。
 
 CLI、MCP 与 Bash 的定位不同：
 

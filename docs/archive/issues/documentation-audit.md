@@ -31,9 +31,9 @@
 - **涉及文档：**
   - [`docs/architecture/data/README.md`](../../architecture/data/README.md) L59, L80
 - **实际代码事实：**
-  - [`packages/narrative-store/src/store.ts`](../../../packages/narrative-store/src/store.ts)：包含了版本 1 和版本 2（添加了 `idx_narrative_timelines_card_updated` 索引），实际为 **`application.narrative@2`**。
-  - [`packages/agent-store/src/store.ts`](../../../packages/agent-store/src/store.ts)：实际定义了版本 1 和版本 2（`agent_preset_id` 重命名为 `agent_profile_id`），实际为 **`application.agent@2`**。
-  - [`packages/prompt-resource-store/src/store.ts`](../../../packages/prompt-resource-store/src/store.ts)：新引入的 Prompt 资源存储为 **`application.prompt_resources@1`**。
+  - [`packages/application-data/src/narrative/store.ts`](../../../packages/application-data/src/narrative/store.ts)：包含了版本 1 和版本 2（添加了 `idx_narrative_timelines_card_updated` 索引），实际为 **`application.narrative@2`**。
+  - [`packages/application-data/src/agent/store.ts`](../../../packages/application-data/src/agent/store.ts)：实际定义了版本 1 和版本 2（`agent_preset_id` 重命名为 `agent_profile_id`），实际为 **`application.agent@2`**。
+  - [`packages/application-data/src/prompt-resource/store.ts`](../../../packages/application-data/src/prompt-resource/store.ts)：新引入的 Prompt 资源存储为 **`application.prompt_resources@1`**。
 
 ---
 

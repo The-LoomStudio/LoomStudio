@@ -1,11 +1,13 @@
 import { isDeepStrictEqual } from 'node:util'
-import type { PromptResource, PromptResourceTransaction, PromptResourceTreeNode } from '@loom-studio/prompt-resource-store'
+import type { PromptResource, PromptResourceTransaction, PromptResourceTreeNode } from '@loom-studio/application-data'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes as types } from '../foundation/document-types.js'
 import { listDocuments, readDocument, writeDocument } from '../foundation/document-store.js'
 import { normalizeCardContent, normalizeOpening, normalizePreset, normalizeSettingLayer } from '../cards/card.js'
-import { exportCardArtifact, normalizeCardBundleArtifact, type CardBundleArtifact, type PortableExtensionPayloadContent } from '../cards/workspace.js'
+import { exportCardArtifact } from '../cards/workspace.js'
+import { normalizeCardBundleArtifact } from '../cards/workspace-codec.js'
+import type { CardBundleArtifact, PortableExtensionPayloadContent } from '../cards/workspace-types.js'
 import { toStoredNode } from '../prompt/prompt-resource-mapper.js'
 import { parseLoomScriptSource } from '../scripts/loom-script-codec.js'
 import type { LoomScriptAttachmentArtifact, LoomScriptContent, LoomScriptMountContent } from '../scripts/loom-script-contracts.js'
@@ -139,6 +141,7 @@ export function createCardDirectoryRuntimeMethods(ctx: ApplicationRuntimeContext
           sourceChanged: boolean
           prepared: PreparedBlobStorageWrite | undefined
         }> = []
+        try {
         for (const [id, item] of scripts) {
           const attachment = attachments.get(id)!
           const previous = old.scriptAttachments!.find(value => parseLoomScriptSource(value.script.source).metadataId === id)!
@@ -159,7 +162,7 @@ export function createCardDirectoryRuntimeMethods(ctx: ApplicationRuntimeContext
         }
         if (artifact.card.media !== undefined && !equal(artifact.card.media, old.card.media)) throw new Error('Card directory cannot change Media Asset references')
         const participant = requireDocumentParticipant(ctx)
-        const result = await ctx.dataEngine.transact({
+          const result = await ctx.dataEngine.transact({
           actor: requestContext?.actor ?? (requestContext?.clientId ? { kind: 'client', id: requestContext.clientId } : { kind: 'kernel', id: 'application-runtime' }),
           reason: 'application.applyCardDirectoryState', correlationId: requestContext?.correlationId,
           callId: requestContext?.callId, parentCallId: requestContext?.parentCallId,
@@ -218,8 +221,14 @@ export function createCardDirectoryRuntimeMethods(ctx: ApplicationRuntimeContext
             })
             await writeDocument(documents, { id: current.card.id, type: types.cardSource, expectedVersion: current.card.version, content: next })
           })
-        })
-        return { mutation: { changesetId: result.commit.changesetId } }
+          })
+          return { mutation: { changesetId: result.commit.changesetId } }
+        } catch (error) {
+          await Promise.all(preparedScripts.map(item => item.prepared
+            ? ctx.blobs!.discardPreparedWrite(item.prepared)
+            : undefined))
+          throw error
+        }
       } finally { subscription.dispose() }
     },
   }

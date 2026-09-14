@@ -1,5 +1,5 @@
 import type { DocumentRecord, DocumentStore } from '@loom-studio/document-store'
-import type { AgentTranscriptEntry } from '@loom-studio/agent-store'
+import type { AgentTranscriptEntry } from '@loom-studio/application-data'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments, readDocument, toVersioned, writeDocument } from '../foundation/document-store.js'
@@ -337,7 +337,9 @@ export function createAgentsRuntimeMethods(ctx: ApplicationRuntimeContext) {
         promptBuildTrace: prompt.promptBuildTrace,
         toolExposures: compiledToolSet.tools.map((tool) => tool.exposure),
         toolPromptBuildTrace: loop.toolPromptBuildTrace,
-        mutation: { changesetId: narrative?.commit.changesetId ?? loop.changesetId },
+        mutation: narrative
+          ? { changesetId: narrative.commit.changesetId, scope: 'narrative-commit' as const }
+          : { changesetId: loop.changesetId, scope: 'agent-session-transcript' as const },
         macroInspection: prepared.macroInspection,
       }
     },

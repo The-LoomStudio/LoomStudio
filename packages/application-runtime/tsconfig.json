@@ -6,17 +6,14 @@
     "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
   "references": [
-    { "path": "../agent-store" },
+    { "path": "../application-data" },
     { "path": "../ai-gateway" },
     { "path": "../data-engine" },
     { "path": "../document-store" },
     { "path": "../extension-sdk" },
     { "path": "../logging" },
-    { "path": "../narrative-store" },
-    { "path": "../prompt-resource-store" },
     { "path": "../secret-store" },
     { "path": "../shared" },
-    { "path": "../state-store" }
   ],
   "include": ["src/**/*.ts"]
 }

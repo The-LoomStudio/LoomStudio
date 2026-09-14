@@ -1,4 +1,4 @@
-import type { PromptResourceNode } from '../cards/workspace.js'
+import type { PromptResourceNode } from '../cards/workspace-types.js'
 
 export function resolveVirtualPath(node: Pick<PromptResourceNode, 'label' | 'kind'>): string {
   const extension = resolveVirtualExtension(node.kind)

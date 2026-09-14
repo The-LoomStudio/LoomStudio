@@ -180,4 +180,34 @@ describe('sqlite data engine', () => {
       code: 'data.engine_closed',
     })
   })
+
+  it('drains an active operation before closing the database', async () => {
+    const engine = createTestEngine()
+    engine.migrate({
+      namespace: 'test.drain',
+      migrations: [{
+        version: 1,
+        migrate: database => database.exec('CREATE TABLE test_drain (id TEXT PRIMARY KEY)'),
+      }],
+    })
+    let release!: () => void
+    const entered = new Promise<void>(resolve => {
+      release = resolve
+    })
+    const operation = engine.read(async database => {
+      await entered
+      return database.prepare('SELECT 1 AS value').get()
+    })
+    const closing = engine.close()
+    let settled = false
+    void closing.then(() => { settled = true })
+    await Promise.resolve()
+    expect(settled).toBe(false)
+    release()
+    await expect(operation).resolves.toEqual({ value: 1 })
+    await expect(closing).resolves.toBeUndefined()
+    await expect(engine.read(() => 1)).rejects.toMatchObject<DataEngineError>({
+      code: 'data.engine_closed',
+    })
+  })
 })

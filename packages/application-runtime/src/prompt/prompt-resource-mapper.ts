@@ -3,13 +3,13 @@ import type {
   PromptResourceNodeDraft as StoredPromptResourceNodeDraft,
   PromptResourceStore,
   PromptResourceTreeNode as StoredPromptResourceTreeNode,
-} from '@loom-studio/prompt-resource-store'
+} from '@loom-studio/application-data'
 import type { JsonObject } from '@loom-studio/shared'
 import type {
   PromptResourceContent,
   PromptResourceNode,
   PromptResourceKind,
-} from '../cards/workspace.js'
+} from '../cards/workspace-types.js'
 import { normalizeMacros } from '../cards/card.js'
 
 const legacyNodeKeys = ['configRows', 'isSection', 'orderList', 'projection'] as const

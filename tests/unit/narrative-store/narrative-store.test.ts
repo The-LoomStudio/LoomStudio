@@ -1,5 +1,5 @@
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createNarrativeStore } from '@loom-studio/narrative-store'
+import { createNarrativeStore } from '@loom-studio/application-data'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

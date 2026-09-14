@@ -119,13 +119,13 @@ LoomStudio 的中心对象不是单个 Coding Session，而是可编辑、可持
 
 LoomStudio 明确把 Application Runtime 作为业务编排层，把 Agent、Narrative、Prompt Resource、Document、Asset、Blob、State 和 Secret 分到不同 package。项目地图还明确禁止 Kernel 包含 AI/业务逻辑。对 Studio 这种可视化 Application 平台，这比把大多数状态折叠进 session JSONL 更稳。
 
-证据：`docs/guide/project-structure.md:111-166`、`packages/agent-store/src/types.ts:8-165`。
+证据：`docs/guide/project-structure.md:111-166`、`packages/application-data/src/agent/types.ts:8-165`。
 
 ### 5.2 SQLite 事务、Commit Fact 与乐观并发更适合多消费者
 
 Agent Store append 要求调用者提供 `expectedEntryCount`，冲突时显式失败；同一事务更新 session head/count、写入 transcript、更新 tool invocation 配对索引并记录 commit operations。相比 OMP 文件 session 的单进程追加模型，这更适合 Server、Client、Extension 和未来后台任务共享数据。
 
-证据：`packages/agent-store/src/store.ts:83-140`、`packages/agent-store/src/types.ts:102-165`。
+证据：`packages/application-data/src/agent/store.ts:83-140`、`packages/application-data/src/agent/types.ts:102-165`。
 
 ### 5.3 PromptBuild 是一等、可检查的领域流程
 
@@ -152,7 +152,7 @@ LoomStudio 已支持：
 - transcript 中独立记录 provider observation、reasoning、invocation、result 和 run-state；
 - Provider step 上限和终态持久化。
 
-证据：`packages/application-runtime/src/agent/tool-registry.ts:20-199`、`:201-390`、`:486-745`；`packages/application-runtime/src/agent/tool-loop.ts:231-495`；`packages/agent-store/src/types.ts:19-90`。
+证据：`packages/application-runtime/src/agent/tool-registry.ts:20-199`、`:201-390`、`:486-745`；`packages/application-runtime/src/agent/tool-loop.ts:231-495`；`packages/application-data/src/agent/types.ts:19-90`。
 
 后续工作应直接审计这些现有合同，不应另建第二套 Agent Runtime。
 
@@ -240,11 +240,11 @@ LoomStudio 已经把 Narrative branch 与 Agent transcript 分开。这个差异
 
 Loom Agent Store 当前也保存 `parentEntryId` 和 `headEntryId`，但 append API 按当前 head 线性追加，并没有 OMP 那套 leaf navigation、branch summary 和 context rebuild 语义。
 
-证据：`packages/agent-store/src/types.ts:8-17`、`:92-100`；`packages/agent-store/src/store.ts:103-140`。
+证据：`packages/application-data/src/agent/types.ts:8-17`、`:92-100`；`packages/application-data/src/agent/store.ts:103-140`。
 
 当前 Runtime 每次 PromptBuild 明确只取 Narrative 与 Agent Session 最近 100 条，并在代码中用 `ponytail` 标记“更大历史需要显式 context-window policy”；这不是 Compaction，也不是完整历史投影。Client 虽能按已知 `agentSessionId` 分页读完 transcript，但 RPC/Client 没有通用 `listAgentSessions` 与历史 Session 重开入口，当前面板只展示本地已持有的两个 Session。证据：`packages/application-runtime/src/runtime.ts:1874-1882`、`:1942-1944`；`apps/studio-client/src/shared/api/studio-api.ts:321-322`、`:452-455`；`apps/studio-client/src/widgets/sessions-panel/sessions-panel.tsx:25-27`。
 
-更准确地说，Agent Store 与 Application Runtime public surface 都没有 `listSessions`；Client API 也没有 delete 投影。当前更靠前的产品断点不是 fork 算法，而是 Session discovery：需要可分页列表、按 ID 重开、删除和稳定路由，否则重启后的持久 Transcript 对普通用户不可发现。证据：`packages/agent-store/src/types.ts:144-165`、`packages/application-runtime/src/types.ts:102-105`、`apps/studio-client/src/shared/api/studio-api.ts:320-326`、`apps/studio-client/src/widgets/sessions-panel/sessions-panel.tsx:22-27`、`:114`。
+更准确地说，Agent Store 与 Application Runtime public surface 都没有 `listSessions`；Client API 也没有 delete 投影。当前更靠前的产品断点不是 fork 算法，而是 Session discovery：需要可分页列表、按 ID 重开、删除和稳定路由，否则重启后的持久 Transcript 对普通用户不可发现。证据：`packages/application-data/src/agent/types.ts:144-165`、`packages/application-runtime/src/types.ts:102-105`、`apps/studio-client/src/shared/api/studio-api.ts:320-326`、`apps/studio-client/src/widgets/sessions-panel/sessions-panel.tsx:22-27`、`:114`。
 
 OMP 的 Session Storage 还把 append 短写、atomic rewrite、late write 和 dispose/revive race 变成显式恢复语义：写入失败可进入 divergent/indeterminate，terminal seal 防止旧异步写覆盖已恢复会话。LoomStudio 使用 SQLite，不需要复制 JSONL rewrite 算法，但仍需要回答 Provider 已执行而结果未落库、进程崩溃和未知外部副作用时的状态。建议最小区分 `healthy / recoverable / repairing / indeterminate`，未知时 fail closed。证据：OMP `packages/coding-agent/src/session/session-storage.ts:15-195`、`session-manager.ts:686-1017`、`:1797-1838`、`:2454-2515`。
 
@@ -622,7 +622,7 @@ OMP 的高价值注释通常解释 abort race、provider pairing、release cance
 - Agent Prompt composition：`packages/application-runtime/src/agent-turn.ts:22-126`、`:129-332`
 - Tool definition/validation：`packages/application-runtime/src/agent/tool-registry.ts:20-199`、`:201-390`、`:486-763`
 - Tool Loop：`packages/application-runtime/src/agent/tool-loop.ts:231-495`、`:656-877`
-- Agent transcript：`packages/agent-store/src/types.ts:8-165`、`packages/agent-store/src/store.ts:38-199`、`:240-360`
+- Agent transcript：`packages/application-data/src/agent/types.ts:8-165`、`packages/application-data/src/agent/store.ts:38-199`、`:240-360`
 - Provider Gateway：`packages/ai-gateway/src/types.ts:8-102`、`packages/ai-gateway/src/gateway.ts:24-220`、`packages/ai-gateway/src/provider-registry.ts:45-129`
 - Streaming boundary：`packages/application-runtime/src/types.ts:522-526`、`packages/application-runtime/src/gateway.ts:90-110`、`packages/client-bridge/src/index.ts:18-66`
 - Extension Architecture：`docs/architecture/extensions/README.md:1-187`
@@ -631,7 +631,7 @@ OMP 的高价值注释通常解释 abort race、provider pairing、release cance
 - Secret Store：`packages/secret-store/src/store.ts:28-215`、`:244-349`
 - TraceAudit 当前边界：`packages/trace-audit/src/index.ts:17-50`、`apps/studio-server/src/main.ts:99-100`
 - Context 100 条上限：`packages/application-runtime/src/runtime.ts:1874-1882`、`:1942-1944`
-- Session discovery gap：`packages/agent-store/src/types.ts:144-165`、`packages/application-runtime/src/types.ts:102-106`、`apps/studio-client/src/shared/api/studio-api.ts:320-326`、`apps/studio-client/src/widgets/sessions-panel/sessions-panel.tsx:22-27`、`:114`
+- Session discovery gap：`packages/application-data/src/agent/types.ts:144-165`、`packages/application-runtime/src/types.ts:102-106`、`apps/studio-client/src/shared/api/studio-api.ts:320-326`、`apps/studio-client/src/widgets/sessions-panel/sessions-panel.tsx:22-27`、`:114`
 - Agent/Narrative commit contract conflict：`docs/architecture/data/README.md:118-122`、`packages/application-runtime/src/agent/tool-loop.ts:264-267`、`:395-435`、`packages/application-runtime/src/runtime.ts:1136-1165`、`:1187-1193`
 - Application Runtime modularization：`docs/guide/architecture-rules.md:34-39`、`packages/application-runtime/src/types.ts:54-126`、`packages/application-runtime/src/runtime.ts`
 

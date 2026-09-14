@@ -23,8 +23,8 @@
 ### ✅ [已解决] `readPage` (narrative) 和 `readMessagePage` (agent) 链表遍历没有上限保护与 N+1 查询
 
 **文件：**
-- [`narrative-store/store.ts`](../../../packages/narrative-store/src/store.ts)
-- [`agent-store/store.ts`](../../../packages/agent-store/src/store.ts)
+- [`narrative-store/store.ts`](../../../packages/application-data/src/narrative/store.ts)
+- [`agent-store/store.ts`](../../../packages/application-data/src/agent/store.ts)
 
 **审查结论：**
 - **已全面重构为单条 SQLite `WITH RECURSIVE` 递归 CTE 查询**，消除每次分页多达 100 次的逐条 `SELECT`（N+1 查询）。
@@ -99,7 +99,7 @@ const hasMore = rows.length === limit && database
 
 ### 🟡 [中] `narrative-store` 的 `readPage` 没有利用已建索引
 
-**文件：** [`narrative-store/store.ts` L283](../../../packages/narrative-store/src/store.ts)
+**文件：** [`narrative-store/store.ts` L283](../../../packages/application-data/src/narrative/store.ts)
 
 ```sql
 -- 已建索引

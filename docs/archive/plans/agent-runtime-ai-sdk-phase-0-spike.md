@@ -2,7 +2,7 @@
 
 > 日期：2026-08-23  
 > 状态：Archived / Complete；Phase 0 与后续 Phase 1 已完成。既定结论：**Go with Gateway wrapper**  
-> 当前路线：[`docs/workbench/plans/agent-runtime-ai-sdk-foundation-plan.md`](../../workbench/plans/agent-runtime-ai-sdk-foundation-plan.md)
+> 当前路线：[`docs/workbench/plans/agent-runtime-ai-sdk-foundation-plan.md`](agent-runtime-ai-sdk-foundation-plan.md)
 
 ## 1. 结论先行
 

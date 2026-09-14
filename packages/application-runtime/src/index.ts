@@ -41,13 +41,15 @@ export { composeAgentTurnPrompt } from './agents/agent-turn.js'
 export {
   exportCardArtifact,
   importCardBundle,
+  readPromptResourceInputs,
+} from './cards/workspace.js'
+export {
   isPromptResourceArtifact,
   isCardBundleArtifact,
   normalizeCardBundleArtifact,
   normalizePromptResourceArtifact,
   normalizePortableExtensionPayloadArtifact,
-  readPromptResourceInputs,
-} from './cards/workspace.js'
+} from './cards/workspace-codec.js'
 export {
   createDocumentBackedAiGateway,
   createDocumentBackedProfiledAiGateway,
@@ -201,4 +203,4 @@ export type {
   CardBundleSourceArtifactRef,
   CardBundleSourceBinding,
   PromptResourceCompositionCapabilities,
-} from './cards/workspace.js'
+} from './cards/workspace-types.js'

@@ -92,7 +92,7 @@ Agent Loop 分阶段提交 Transcript；当提供 `narrativeTarget` 且 `commit 
 
 ## 7. 实现来源
 
-- [`packages/agent-store/src/types.ts`](../../../../packages/agent-store/src/types.ts)
-- [`packages/agent-store/src/store.ts`](../../../../packages/agent-store/src/store.ts)
+- [`packages/application-data/src/agent/types.ts`](../../../../packages/application-data/src/agent/types.ts)
+- [`packages/application-data/src/agent/store.ts`](../../../../packages/application-data/src/agent/store.ts)
 - [`packages/application-runtime/src/agents/tool-loop.ts`](../../../../packages/application-runtime/src/agents/tool-loop.ts)
 - [`packages/application-runtime/src/agents/agent-turn.ts`](../../../../packages/application-runtime/src/agents/agent-turn.ts)

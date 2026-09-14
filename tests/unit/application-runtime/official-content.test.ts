@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { createApplicationRuntime, createOfficialAgentToolRegistry, officialPromptResourceIds, type PromptResourceArtifact } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { createPromptResourceStore } from '@loom-studio/prompt-resource-store'
+import { createPromptResourceStore } from '@loom-studio/application-data'
 import { describe, expect, it } from 'vitest'
 
 const starterDirectory = join(process.cwd(), 'official/starter')

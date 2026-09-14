@@ -1,4 +1,4 @@
-import type { PromptResourceMutation, PromptResourceMutationResult } from '@loom-studio/prompt-resource-store'
+import type { PromptResourceMutation, PromptResourceMutationResult } from '@loom-studio/application-data'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments, readDocument, writeDocument } from '../foundation/document-store.js'
@@ -9,7 +9,8 @@ import {
   toStoredNodeDraft,
   toStoredResourceInput,
 } from '../prompt/prompt-resource-mapper.js'
-import { applyDefaultPromptProjection, normalizePromptResourceArtifact, type PromptResourceNode } from '../cards/workspace.js'
+import { applyDefaultPromptProjection, normalizePromptResourceArtifact } from '../cards/workspace-codec.js'
+import type { PromptResourceNode } from '../cards/workspace-types.js'
 import { validateTextTransformRuleDraft, type TextTransformRuleDraft } from '../transforms/history-text.js'
 import { revertApplicationStateChangeset } from '../state/state.js'
 import { executeDocumentMutation } from '../foundation/mutation.js'
@@ -390,7 +391,7 @@ export function createPromptRuntimeMethods(ctx: ApplicationRuntimeContext) {
     },
 
     revertChangeset: async (input: { changesetId: string }, requestContext?: RuntimeRequestContext): Promise<{ mutation: MutationReceipt }> => {
-      const stateRevision = ctx.dataEngine.database.prepare('SELECT 1 FROM state_revisions WHERE changeset_id = ? LIMIT 1').get(input.changesetId)
+      const stateRevision = await ctx.states?.getRevisionByChangesetId(input.changesetId)
       if (stateRevision) {
         const documentChangeset = await ctx.documents.getChangeset(input.changesetId)
         const result = await revertApplicationStateChangeset(
@@ -426,7 +427,7 @@ async function importPromptResourceWithScripts(
   textTransformRules?: Array<Omit<TextTransformRuleDraft, 'owner'>>,
 ): Promise<PromptResourceMutationResult> {
   if (!ctx.blobs) throw new Error('Blob Store is required to import Loom Script attachments')
-  const prepared = await Promise.all(attachments.map(async attachment => ({
+  const preparedResults = await Promise.allSettled(attachments.map(async attachment => ({
     attachment,
     metadata: parseLoomScriptSource(attachment.script.source),
     blob: await ctx.blobs!.prepareWrite({
@@ -434,11 +435,20 @@ async function importPromptResourceWithScripts(
       mediaType: 'text/javascript',
     }),
   })))
+  const prepared = preparedResults.flatMap(result => result.status === 'fulfilled' ? [result.value] : [])
+  const failedPreparation = preparedResults.find(
+    (result): result is PromiseRejectedResult => result.status === 'rejected',
+  )
+  if (failedPreparation) {
+    await Promise.all(prepared.map(item => ctx.blobs!.discardPreparedWrite(item.blob)))
+    throw failedPreparation.reason
+  }
   const documents = requireDocumentParticipant(ctx)
-  const transaction = await ctx.dataEngine.transact({
-    ...promptResourceWriteContext(requestContext),
-    reason: 'application.importPromptResource',
-  }, async dataTx => {
+  try {
+    const transaction = await ctx.dataEngine.transact({
+      ...promptResourceWriteContext(requestContext),
+      reason: 'application.importPromptResource',
+    }, async dataTx => {
     const resource = ctx.promptResources.transaction(dataTx).createResource(toStoredResourceInput({ content }))
     await documents.participateTransaction(dataTx, async documentTx => {
       for (const [index, rule] of (textTransformRules ?? []).entries()) {
@@ -491,9 +501,13 @@ async function importPromptResourceWithScripts(
         })
       }
     })
-    return resource
-  })
-  return { resource: transaction.value, commit: transaction.commit }
+      return resource
+    })
+    return { resource: transaction.value, commit: transaction.commit }
+  } catch (error) {
+    await Promise.all(prepared.map(item => ctx.blobs!.discardPreparedWrite(item.blob)))
+    throw error
+  }
 }
 
 async function exportPresetScriptAttachments(

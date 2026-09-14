@@ -34,8 +34,8 @@
 **当前事实反证**
 
 - `docs/architecture/data/README.md:78-97` 明确记录旧 `Session / NarrativeEntry / submitTurn` 后端路径已删除，Client 已切换到 Narrative Timeline、Agent Profile 与按需 Agent Session 合同。
-- `packages/narrative-store/src/types.ts:19-53` 已定义独立的 `NarrativeTimeline`、`NarrativeBranch` 与 roleless `NarrativeNode`。
-- `packages/agent-store/src/types.ts:8-20,92-100` 已定义独立的 `AgentSession` 与 canonical `AgentTranscriptEntry`。
+- `packages/application-data/src/narrative/types.ts:19-53` 已定义独立的 `NarrativeTimeline`、`NarrativeBranch` 与 roleless `NarrativeNode`。
+- `packages/application-data/src/agent/types.ts:8-20,92-100` 已定义独立的 `AgentSession` 与 canonical `AgentTranscriptEntry`。
 
 Client 中仍存在名为 `submitTurn` 的表单 handler，但它调用的是当前 `agentSessions.invoke` 合同；这不能证明旧 Session / NarrativeEntry / 镜像 Transcript 数据模型仍然存在。问题是文档中的实现基线陈旧，不是函数名称本身。
 

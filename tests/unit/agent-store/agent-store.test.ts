@@ -1,4 +1,4 @@
-import { createAgentStore } from '@loom-studio/agent-store'
+import { createAgentStore } from '@loom-studio/application-data'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'

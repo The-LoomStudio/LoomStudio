@@ -149,8 +149,7 @@ LoomStudio/
 ├── packages/               # 核心领域包与基础设施层
 │   ├── core/               # @loom/core 编译内核管道
 │   ├── application-runtime/# 应用运行时引擎、Agent Loop 与 PromptBuild 管线
-│   ├── narrative-store/    # 时间线叙事分支持久化引擎 (SQLite)
-│   ├── prompt-resource-store/# 预设与设定树存储
+│   ├── application-data/    # Agent、Narrative、State、Prompt Resource 领域存储
 │   └── document-store/     # 统一文档与状态持久化
 ├── official/               # 官方基础内容与正式扩展源码
 ├── examples/               # 可通过正式导入路径运行的教程样本

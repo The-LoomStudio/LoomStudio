@@ -13,7 +13,7 @@ import {
   createOfficialProviderAdapterRegistry,
   registerOfficialFakeAiProvider,
 } from '@loom-studio/ai-gateway'
-import { createAgentStore } from '@loom-studio/agent-store'
+import { createAgentStore } from '@loom-studio/application-data'
 import { createAssetStore, type AssetStore } from '@loom-studio/asset-store'
 import { createBlobStore } from '@loom-studio/blob-store'
 import { createSqliteDataEngine, type SqliteDataEngine } from '@loom-studio/data-engine'
@@ -23,12 +23,12 @@ import { createExtensionHost } from '@loom-studio/extension-host'
 import { createKernel } from '@loom-studio/kernel'
 import { createConsoleLogSink, createMemoryLogSink, createRootLogger, type Logger, type LogReader, type LogRecord } from '@loom-studio/logging'
 import { createJsonlFileSink } from '@loom-studio/logging/node'
-import { createNarrativeStore } from '@loom-studio/narrative-store'
-import { createPromptResourceStore, type PromptResourceStore } from '@loom-studio/prompt-resource-store'
+import { createNarrativeStore } from '@loom-studio/application-data'
+import { createPromptResourceStore, type PromptResourceStore } from '@loom-studio/application-data'
 import { createKeyringSecretBackend, createSecretStore, type SecretBackend } from '@loom-studio/secret-store'
 import { createLoomRunner } from '@loom-studio/loom-runner'
 import { createId, nowIso, type JsonValue } from '@loom-studio/shared'
-import { createStateStore } from '@loom-studio/state-store'
+import { createStateStore } from '@loom-studio/application-data'
 import { createInMemoryTraceAuditStore } from '@loom-studio/trace-audit'
 import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -102,7 +102,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     try {
       rawDocuments = createSqliteDocumentStore({ engine: dataEngine })
     } catch (error) {
-      dataEngine.close()
+      void dataEngine.close()
       throw error
     }
   }
@@ -157,7 +157,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
       assets = createAssetStore({ engine: dataEngine, blobs, createId, now: nowIso })
     }
   } catch (error) {
-    dataEngine?.close()
+    void dataEngine?.close()
     throw error
   }
   if (!dataEngine || !promptResources) {
@@ -670,7 +670,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
       try {
         await kernel.stop()
       } finally {
-        dataEngine?.close()
+        await dataEngine?.close()
       }
       logger?.info('Studio server stopped', { event: 'server.stopped' })
     },

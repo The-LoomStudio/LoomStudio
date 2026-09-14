@@ -13,7 +13,7 @@ describe('sqlite document store', () => {
 
     try {
       const store = createSqliteDocumentStore({ filename })
-      store.close()
+      await store.close()
       const database = new DatabaseSync(filename)
       const migrations = database.prepare('SELECT namespace, version FROM schema_migrations ORDER BY namespace').all()
       const journal = database.prepare('PRAGMA journal_mode').get() as { journal_mode: string }
@@ -251,9 +251,9 @@ describe('sqlite document store', () => {
       actor: { kind: 'system', id: 'test' },
     })).rejects.toMatchObject({ code: 'document.changeset_not_revertible' })
 
-    store.close()
+    await store.close()
     await expect(engine.read(database => database.prepare('SELECT 1 AS ok').get())).resolves.toEqual({ ok: 1 })
-    engine.close()
+    await engine.close()
   })
 
   it('serializes concurrent public operations around an open transaction', async () => {
@@ -307,10 +307,30 @@ describe('sqlite document store', () => {
       await expect(transaction).resolves.toMatchObject({ changeset: { operations: [{ documentId: 'transaction-doc' }] } })
       await expect(concurrentRead).resolves.toMatchObject({ id: 'transaction-doc' })
       await expect(concurrentWrite).resolves.toMatchObject({ documents: [{ id: 'concurrent-doc' }] })
-      store.close()
+      await store.close()
     } finally {
       await rm(dir, { recursive: true, force: true })
     }
+  })
+
+  it('waits for queued work, rejects new work, and makes repeated close await the same engine shutdown', async () => {
+    const store = createSqliteDocumentStore({ filename: ':memory:' })
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const transaction = store.transact({ actor: { kind: 'system', id: 'test' } }, async tx => {
+      await gate
+      await tx.write({ id: 'drain', type: 'test', content: { ok: true }, expectedVersion: 'new' })
+      return 'done'
+    })
+    const firstClose = store.close()
+    const secondClose = store.close()
+
+    await expect(store.get('after-close-request')).rejects.toMatchObject({ code: 'data.engine_closed' })
+    release()
+    await expect(transaction).resolves.toMatchObject({ value: 'done' })
+    await expect(firstClose).resolves.toBeUndefined()
+    await expect(secondClose).resolves.toBeUndefined()
+    await expect(store.get('after-close')).rejects.toMatchObject({ code: 'data.engine_closed' })
   })
 
   it('keeps tombstoned documents out of default reads while preserving history', async () => {

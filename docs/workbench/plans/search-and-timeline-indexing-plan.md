@@ -28,7 +28,7 @@
 
 ## 3. 当前 Timeline 限制
 
-当前 [Narrative Store](../../../packages/narrative-store/src/store.ts) 的 `getPage` 已支持 `timelineId`、可选 `branchId`、`cursor` 与 `limit`，沿 Branch parent chain 分页并检查 cursor 是否属于该路径。[Narrative Runtime](../../../packages/application-runtime/src/runtime/narrative-runtime.ts) 通过 `getNarrativePage` 转发这一合同。不能再把 Document 全量读取描述为当前数据层实现。
+当前 [Narrative Store](../../../packages/application-data/src/narrative/store.ts) 的 `getPage` 已支持 `timelineId`、可选 `branchId`、`cursor` 与 `limit`，沿 Branch parent chain 分页并检查 cursor 是否属于该路径。[Narrative Runtime](../../../packages/application-runtime/src/runtime/narrative-runtime.ts) 通过 `getNarrativePage` 转发这一合同。不能再把 Document 全量读取描述为当前数据层实现。
 
 分页存在不等于搜索、以命中 Node 为中心的窗口或前端虚拟化已经完成；这些仍需单独设计和验证。
 

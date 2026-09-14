@@ -1,5 +1,5 @@
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
-import { normalizePromptResourceArtifact } from '../cards/workspace.js'
+import { normalizePromptResourceArtifact } from '../cards/workspace-codec.js'
 import { toStoredResourceInput } from '../prompt/prompt-resource-mapper.js'
 import type {
   InstallOfficialContentInput,

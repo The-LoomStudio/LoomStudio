@@ -1,10 +1,10 @@
-import { createAgentStore } from '@loom-studio/agent-store'
+import { createAgentStore } from '@loom-studio/application-data'
 import { officialFakeModelId } from '@loom-studio/ai-gateway'
 import { applicationDocumentTypes, createApplicationRuntime, createOpenAICompatibleGateway } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createMemorySecretBackend, createSecretStore } from '../../../packages/secret-store/src/index.js'
-import { createPromptResourceStore } from '../../../packages/prompt-resource-store/src/index.js'
+import { createPromptResourceStore } from '../../../packages/application-data/src/index.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 describe('application runtime Provider Profile integration', () => {

@@ -16,6 +16,10 @@
 - 暂停时保留已有正文与未完成工具状态；原生思考阶段没有正文时不写入空的正式 Message。
 - Timeline Binding 只提供默认 Narrative Context，不代表所有权或权限。
 - Workspace Context、Prompt Resource 搜索/读取/更新，以及 CAS、事务和 Changeset 边界。
+- Application Data 已统一承载 Agent、Narrative、State 与 Prompt Resource Store；Application Runtime 通过统一 package 消费这些领域 Store，但各领域 schema 与 API 仍保持独立。
+- Agent Run 与 AI Gateway RPC 的终态 Run 采用有界保留，最多保留 128 个已结束 Run；运行中的 Run 不参与淘汰。
+- `InvokeAgentTurnResult.mutation.scope` 明确返回 changeset 的实际范围；当前 Agent Turn 仍是分阶段提交，不能把最后一个 changeset 解读为整个 Turn 的原子提交。
+- State changeset 查询通过 State Store 合同完成，Runtime 不再直接读取 State 私有表；Kernel 的内建 RPC 注册也在停止时释放，支持 `start -> stop -> start`。
 
 ## 后续阶段
 
@@ -32,6 +36,7 @@
 - Session 是 Run、事件和 continuation 的归属；Timeline 不是断线重连或 Run 恢复的身份。
 - 没有新用户输入时继续属于 continuation / retry；有新输入时创建新的 User Message 和 Run。
 - 原生 Provider 思考内容不作为正文；自定义正文内思维链不由平台猜测解析。
+- Agent Run 的内存事件保留必须有明确上限，但 retention 不得淘汰仍可取消、订阅或恢复的运行中状态。
 
 ## 非目标
 
@@ -40,3 +45,7 @@
 ## 完成标准
 
 同一套 Agent Run / Session 合同覆盖流式与非流式调用；暂停、取消、继续和新消息语义可从持久化 Transcript 与 Run 状态解释；CodeAct 写入结果以条目数和可用行数呈现，Diff 组件在输入框顶部与 Agent Session 末尾使用同一事实，且不扩大平台或工具自身的领域责任。
+
+### 已实现基础设施约束
+
+后续 CodeAct、统一写入 Diff 和跨进程恢复设计必须复用上述 Run retention 与 mutation scope 合同，不新增第二套 Run 生命周期或假设整个 Agent Turn 由单一事务提交。Application Runtime 继续负责跨领域编排，Store 负责领域数据与 schema，Server / Kernel 负责进程级组合和释放。

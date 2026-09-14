@@ -3,12 +3,12 @@ import type {
   AgentTranscriptPage,
   AgentSession,
   AgentStore,
-} from '@loom-studio/agent-store'
+} from '@loom-studio/application-data'
 export type {
   AgentTranscriptEntry,
   AgentTranscriptPage,
   AgentSession,
-} from '@loom-studio/agent-store'
+} from '@loom-studio/application-data'
 import type { DocumentStore } from '@loom-studio/document-store'
 import type { AiGatewayCapabilityRegistry, ProviderAdapterRegistry } from '@loom-studio/ai-gateway'
 import type { DataActorRef, SqliteDataEngine, SqliteDataTransaction } from '@loom-studio/data-engine'
@@ -29,13 +29,13 @@ import type {
   NarrativePage,
   NarrativeStore,
   NarrativeTimeline,
-} from '@loom-studio/narrative-store'
+} from '@loom-studio/application-data'
 export type {
   NarrativeBranch,
   NarrativeNode,
   NarrativePage,
   NarrativeTimeline,
-} from '@loom-studio/narrative-store'
+} from '@loom-studio/application-data'
 import type {
   AssistantChatMessage,
   ChatMessage,
@@ -51,9 +51,9 @@ import type {
   TimelineStateBinding,
 } from '@loom-studio/shared'
 import type { SecretRef, SecretStore } from '@loom-studio/secret-store'
-import type { StateStore } from '@loom-studio/state-store'
-import type { PresetToolMount, PromptResourceStore, SettingMount, SettingMountSource } from '@loom-studio/prompt-resource-store'
-export type { PresetToolMount, SettingMount, SettingMountSource } from '@loom-studio/prompt-resource-store'
+import type { StateStore } from '@loom-studio/application-data'
+import type { PresetToolMount, PromptResourceStore, SettingMount, SettingMountSource } from '@loom-studio/application-data'
+export type { PresetToolMount, SettingMount, SettingMountSource } from '@loom-studio/application-data'
 import type { ActivationFacts, PromptActivation } from './prompt/prompt-activation.js'
 import type { AgentToolRegistry, ToolDefinition } from './agents/tool-registry.js'
 import type {
@@ -120,7 +120,7 @@ import type {
   PromptResourceContent,
   PromptResourceKind,
   PromptResourceNode,
-} from './cards/workspace.js'
+} from './cards/workspace-types.js'
 export type {
   CardBundleArtifact,
   ImportBundleContent,
@@ -130,7 +130,7 @@ export type {
   PromptResourceContent,
   PromptResourceKind,
   PromptResourceNode,
-} from './cards/workspace.js'
+} from './cards/workspace-types.js'
 export type { MacroProviderRegistry } from './prompt/macro-provider-registry.js'
 export type { StateContributionRegistry } from './state/state-contribution-registry.js'
 export type {
@@ -271,13 +271,13 @@ export type RuntimeRequestContext = {
     continuation?: {
       sourceRunId: string
       messages: ChatMessage[]
-      userEntry: import('@loom-studio/agent-store').AgentTranscriptEntry
+      userEntry: import('@loom-studio/application-data').AgentTranscriptEntry
       partialEntryId?: string
     }
     onSuspended?: (checkpoint: {
       sourceRunId: string
       messages: ChatMessage[]
-      userEntry: import('@loom-studio/agent-store').AgentTranscriptEntry
+      userEntry: import('@loom-studio/application-data').AgentTranscriptEntry
       partialEntryId?: string
     }) => void
   }
@@ -513,6 +513,10 @@ export type MutationReceipt = {
   changesetId: string
 }
 
+export type AgentTurnMutationReceipt = MutationReceipt & {
+  scope: 'agent-session-transcript' | 'narrative-commit'
+}
+
 export type CreateNarrativeTimelineInput = {
   cardId: string
   title?: string
@@ -642,7 +646,7 @@ export type AppendAgentTranscriptEntriesInput = {
   entries: Array<{
     id?: string
     runId?: string
-    entry: import('@loom-studio/agent-store').AgentTranscriptEntryData
+    entry: import('@loom-studio/application-data').AgentTranscriptEntryData
   }>
 }
 
@@ -721,7 +725,7 @@ export type InvokeAgentTurnResult = {
   promptBuildTrace: PromptBuildTrace
   toolExposures: CompiledToolExposure[]
   toolPromptBuildTrace: ToolPromptBuildTrace
-  mutation: MutationReceipt
+  mutation: AgentTurnMutationReceipt
   macroInspection: MacroInspection
 }
 
@@ -799,6 +803,7 @@ export type PreparedBlobStorageWrite = {
 
 export type BlobStorage = {
   prepareWrite(input: { source: Uint8Array; mediaType?: string; maxBytes?: number }): Promise<PreparedBlobStorageWrite>
+  discardPreparedWrite(prepared: PreparedBlobStorageWrite): Promise<void>
   participateWrite(tx: SqliteDataTransaction, prepared: PreparedBlobStorageWrite): {
     blob: PreparedBlobStorageWrite['blob']
     created: boolean

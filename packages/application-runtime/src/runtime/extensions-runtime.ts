@@ -16,10 +16,12 @@ import {
 import {
   isPromptResourceArtifact,
   normalizePortableExtensionPayloadArtifact,
-  type PortableExtensionPayloadArtifact,
-  type PortableExtensionPayloadContent,
-  type PromptResourceArtifact,
-} from '../cards/workspace.js'
+} from '../cards/workspace-codec.js'
+import type {
+  PortableExtensionPayloadArtifact,
+  PortableExtensionPayloadContent,
+  PromptResourceArtifact,
+} from '../cards/workspace-types.js'
 import { normalizeCardContent, toCardSource } from '../cards/card.js'
 import {
   listMappedResources,

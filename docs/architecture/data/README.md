@@ -64,7 +64,7 @@ Studio Server 直接把共享 SQLite Data Engine 作为 Kernel 的 Data Commit S
 
 Narrative append 在一个 Engine transaction 中同时插入 Node、更新 Branch head 与 Timeline `updated_at`；分页沿 parent 链向历史读取，不使用 SQLite offset。
 
-State Store 使用 `application.state` migration namespace，当前支持到版本 2，拥有 `state_scopes` 与 `state_revisions`。版本以 [Store migration 注册](../../../packages/state-store/src/store.ts) 为准；完整合同与 Narrative Branch、Card、Macro、Undo、Agent Tool 的接缝见 [`../application/state-and-variables.md`](../application/state-and-variables.md)。
+State Store 使用 `application.state` migration namespace，当前支持到版本 2，拥有 `state_scopes` 与 `state_revisions`。版本以 [Store migration 注册](../../../packages/application-data/src/state/store.ts) 为准；完整合同与 Narrative Branch、Card、Macro、Undo、Agent Tool 的接缝见 [`../application/state-and-variables.md`](../application/state-and-variables.md)。
 
 Studio Server 已在组合根创建 Narrative Store，并注入 Application Runtime。当前新增独立 RPC：
 
@@ -79,7 +79,7 @@ Studio Server 已在组合根创建 Narrative Store，并注入 Application Runt
 
 后端旧 `Session / NarrativeEntry / submitTurn` 路径已经删除，不再公开旧 Session、Transcript、Run RPC，也不保留双轨或兼容读取。Studio Client 已切换到 Narrative Timeline、Agent Profile 与按需 Agent Session 合同。
 
-Agent Store 也已接入共享 Engine，使用 `application.agent` migration namespace，当前支持到版本 5，见 [Store migration 注册](../../../packages/agent-store/src/store.ts)：
+Agent Store 也已接入共享 Engine，使用 `application.agent` migration namespace，当前支持到版本 5，见 [Store migration 注册](../../../packages/application-data/src/agent/store.ts)：
 
 - `agent_sessions`：Agent Profile identity、标题、transcript entry head/count 与 tombstone；
 - `agent_transcript_entries`：不可变 canonical Transcript Entry、parent、sequence 与可选 runId；

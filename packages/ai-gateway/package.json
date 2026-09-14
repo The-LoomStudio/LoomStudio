@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./dist/index.js"
+    ".": "./dist/index.js",
+    "./contracts": "./dist/contracts.js"
   },
   "types": "./dist/index.d.ts",
   "scripts": {

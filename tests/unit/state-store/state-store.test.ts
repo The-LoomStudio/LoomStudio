@@ -1,5 +1,5 @@
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createStateStore } from '@loom-studio/state-store'
+import { createStateStore } from '@loom-studio/application-data'
 import { describe, expect, it, vi } from 'vitest'
 
 function createTestContext() {

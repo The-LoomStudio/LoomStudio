@@ -1,7 +1,7 @@
 import { createApplicationRuntime, composeAgentTurnPrompt, createVariableRenderContext } from '../../../packages/application-runtime/src/index.js'
 import { createSqliteDataEngine } from '../../../packages/data-engine/src/index.js'
 import { createSqliteDocumentStore } from '../../../packages/document-store/src/index.js'
-import { createPromptResourceStore } from '../../../packages/prompt-resource-store/src/index.js'
+import { createPromptResourceStore } from '../../../packages/application-data/src/index.js'
 import { readFile } from 'node:fs/promises'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'

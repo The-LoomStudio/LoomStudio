@@ -1,6 +1,6 @@
 # Extension Package Source、Git 更新与 Host Runtime 改进计划
 
-> **状态**：延期规划 / 本地安装已实现，在线更新待实施
+> **状态**：历史快照 / 已并入 Workspace Resource 与 Distribution 主计划；本地安装已实现，在线更新待实施
 >
 > **日期**：2026-08-25
 >

@@ -174,7 +174,7 @@ export type SqliteDocumentStore = DocumentStore & {
     fn: (transaction: DocumentTransaction) => Promise<T>,
     options?: { allowEmpty?: boolean },
   ): Promise<{ value: T; changeset: Changeset }>
-  close(): void
+  close(): Promise<void>
 }
 
 export type SqliteDocumentStoreOptions =

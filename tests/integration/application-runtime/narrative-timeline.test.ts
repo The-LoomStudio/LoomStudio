@@ -1,8 +1,8 @@
 import { createApplicationRuntime, createStateContributionRegistry, type StateContributionRegistry } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { createNarrativeStore } from '@loom-studio/narrative-store'
-import { createPromptResourceStore } from '@loom-studio/prompt-resource-store'
+import { createNarrativeStore } from '@loom-studio/application-data'
+import { createPromptResourceStore } from '@loom-studio/application-data'
 import { describe, expect, it } from 'vitest'
 
 function createTestRuntime(options?: { stateContributions?: StateContributionRegistry }) {

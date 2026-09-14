@@ -273,7 +273,7 @@ Container 成员不会自动进入 Context。`list()` 只列资源，`get()` 或
 
 ### 7.3 Loom 的正确接法：Package Resource -> Contribution -> PromptBuild
 
-Loom 当前 Prompt Resource 保存版本化树、node body、enabled、capabilities 和 metadata；Setting Mount 与 Preset Tool Mount 是独立关系。证据：`packages/prompt-resource-store/src/types.ts:9-47`、`:109-176`。
+Loom 当前 Prompt Resource 保存版本化树、node body、enabled、capabilities 和 metadata；Setting Mount 与 Preset Tool Mount 是独立关系。证据：`packages/application-data/src/prompt-resource/types.ts:9-47`、`:109-176`。
 
 当前 Manifest 已支持顶层 `promptResources`、`agentTools` 与 `transformRules`。Prompt Resource / Tool Definition 通过显式 `extensions.importPackageResources` 实例化到现有 Application 权威存储；Server Module 仅通过 `agentToolHandlers + ctx.agentTools.register()` 提供生命周期绑定的执行器。安装本身不注入 Prompt，也不自动启用 Tool。运行时 Prompt Source Adapter 仍未实现。
 
@@ -729,7 +729,7 @@ Marketplace 需要单独处理：签名、provenance、版本锁、更新、兼�
 - Manifest 与 SDK：`packages/extension-sdk/src/index.ts`；
 - Host registration/grant/scope/disposal：`packages/extension-sdk/extension-host/src/index.ts`；
 - Package discovery/install/uninstall：`apps/studio-server/src/extensions/`；
-- Prompt Resource：`packages/prompt-resource-store/src/types.ts`、`store.ts`；
+- Prompt Resource：`packages/application-data/src/prompt-resource/types.ts`、`store.ts`；
 - PromptBuild authority：`docs/architecture/application/prompt-build/README.md`；
 - Prompt Source/Contribution pipeline：`packages/application-runtime/src/prompt-build-pipeline.ts`；
 - Activation：`packages/application-runtime/src/prompt-activation.ts`；

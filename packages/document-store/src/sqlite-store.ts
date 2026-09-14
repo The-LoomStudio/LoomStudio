@@ -85,7 +85,7 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
   try {
     initializeDocumentSchema(engine)
   } catch (error) {
-    if (ownsEngine) engine.close()
+    if (ownsEngine) void engine.close()
     throw error
   }
   const database = engine.database
@@ -349,7 +349,8 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
     },
 
     close: () => {
-      if (ownsEngine) engine.close()
+      if (!ownsEngine) return Promise.resolve()
+      return engine.close()
     },
 
     subscribeCommits: observer => engine.subscribeCommits(commit => {

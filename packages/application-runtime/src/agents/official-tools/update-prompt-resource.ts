@@ -1,5 +1,5 @@
 import type { JsonObject } from '@loom-studio/shared'
-import type { PromptResourceMutation } from '@loom-studio/prompt-resource-store'
+import type { PromptResourceMutation } from '@loom-studio/application-data'
 import type { ToolDefinition, ToolRuntimeRegistration } from '../tool-registry.js'
 
 export const officialUpdatePromptResourceTool: ToolDefinition = {

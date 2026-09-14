@@ -5,7 +5,7 @@ export type {
   AiGatewayInvokeInput,
   AiGatewayInvokeResult,
   RegisteredAiGatewayProvider,
-} from '@loom-studio/ai-gateway'
+} from '@loom-studio/ai-gateway/contracts'
 
 export type ProviderProfile = {
   id: string

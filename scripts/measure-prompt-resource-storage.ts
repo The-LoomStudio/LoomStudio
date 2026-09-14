@@ -9,7 +9,7 @@ import {
 import {
   createPromptResourceStore,
   type PromptResourceStore,
-} from '../packages/prompt-resource-store/src/index.js'
+} from '../packages/application-data/src/index.js'
 import { mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

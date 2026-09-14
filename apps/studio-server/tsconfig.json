@@ -7,7 +7,7 @@
   },
   "references": [
     { "path": "../../packages/ai-gateway" },
-    { "path": "../../packages/agent-store" },
+    { "path": "../../packages/application-data" },
     { "path": "../../packages/asset-store" },
     { "path": "../../packages/application-runtime" },
     { "path": "../../packages/blob-store" },
@@ -17,11 +17,8 @@
     { "path": "../../packages/extension-sdk/extension-host" },
     { "path": "../../packages/kernel" },
     { "path": "../../packages/logging" },
-    { "path": "../../packages/narrative-store" },
-    { "path": "../../packages/prompt-resource-store" },
     { "path": "../../packages/loom-runner" },
     { "path": "../../packages/shared" },
-    { "path": "../../packages/state-store" },
     { "path": "../../packages/trace-audit" },
     { "path": "../../packages/transport" }
   ],

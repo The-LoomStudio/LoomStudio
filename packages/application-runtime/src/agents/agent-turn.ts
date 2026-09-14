@@ -1,7 +1,7 @@
 import type { ChatMessage } from '@loom-studio/shared'
-import type { PromptResourceStore } from '@loom-studio/prompt-resource-store'
-import type { AgentTranscriptEntry } from '@loom-studio/agent-store'
-import type { NarrativeNode, NarrativeTimeline } from '@loom-studio/narrative-store'
+import type { PromptResourceStore } from '@loom-studio/application-data'
+import type { AgentTranscriptEntry } from '@loom-studio/application-data'
+import type { NarrativeNode, NarrativeTimeline } from '@loom-studio/application-data'
 import type {
   CompiledPrompt,
   PromptContribution,
@@ -9,7 +9,8 @@ import type {
 } from '../prompt/prompt-builder.js'
 import type { ActivationFacts } from '../prompt/prompt-activation.js'
 import { compilePromptDataModel, type PromptBuildTrace } from '../prompt/prompt-build-pipeline.js'
-import { readPromptResourceInputs, type PromptResourceContent } from '../cards/workspace.js'
+import { readPromptResourceInputs } from '../cards/workspace.js'
+import type { PromptResourceContent } from '../cards/workspace-types.js'
 import { createPromptToolExecutionScope } from './official-tools/index.js'
 import type { ToolExecutionScope } from './tool-registry.js'
 import { cloneVariableRenderTrace, createVariableRenderContext, type VariableRenderContext } from '../prompt/variables.js'

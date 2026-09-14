@@ -24,7 +24,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@loom-studio/ai-gateway': resolvePath('./packages/ai-gateway/src/index.ts'),
-      '@loom-studio/agent-store': resolvePath('./packages/agent-store/src/index.ts'),
+      '@loom-studio/ai-gateway/contracts': resolvePath('./packages/ai-gateway/src/contracts.ts'),
+      '@loom-studio/application-data': resolvePath('./packages/application-data/src/index.ts'),
       '@loom-studio/client-bridge': resolvePath('./packages/client-bridge/src/index.ts'),
       '@loom-studio/diagnostics': resolvePath('./packages/diagnostics/src/index.ts'),
       '@loom-studio/data-engine': resolvePath('./packages/data-engine/src/index.ts'),
@@ -37,9 +38,6 @@ export default defineConfig({
       '@loom-studio/kernel': resolvePath('./packages/kernel/src/index.ts'),
       '@loom-studio/logging/node': resolvePath('./packages/logging/src/node.ts'),
       '@loom-studio/logging': resolvePath('./packages/logging/src/index.ts'),
-      '@loom-studio/narrative-store': resolvePath('./packages/narrative-store/src/index.ts'),
-      '@loom-studio/state-store': resolvePath('./packages/state-store/src/index.ts'),
-      '@loom-studio/prompt-resource-store': resolvePath('./packages/prompt-resource-store/src/index.ts'),
       '@loom-studio/loom-runner': resolvePath('./packages/loom-runner/src/index.ts'),
       '@loom-studio/shared/macros': resolvePath('./packages/shared/src/macros.ts'),
       '@loom-studio/shared': resolvePath('./packages/shared/src/index.ts'),

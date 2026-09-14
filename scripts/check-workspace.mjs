@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import semver from 'semver'
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const rootPackage = readJson(resolve(repositoryRoot, 'package.json'))
@@ -10,7 +11,7 @@ const expectedNode = readFileSync(resolve(repositoryRoot, '.node-version'), 'utf
 const actualPnpm = runPnpm(['--version'])
 const failures = []
 
-check(process.versions.node === expectedNode, `Node ${expectedNode} is required; current ${process.versions.node}`)
+check(semver.gte(process.versions.node, expectedNode), `Node >=${expectedNode} is required; current ${process.versions.node}`)
 check(actualPnpm === expectedPnpm, `pnpm ${expectedPnpm} is required; current ${actualPnpm}`)
 check(readFileSync(resolve(repositoryRoot, '.nvmrc'), 'utf8').trim() === expectedNode, '.nvmrc must match .node-version')
 checkNoFloatingVersions()

@@ -3,7 +3,7 @@ import {
   isPromptActivation,
   type PromptActivation,
 } from '../prompt/prompt-activation.js'
-import type { PromptResourceMutation, PromptResourceStore } from '@loom-studio/prompt-resource-store'
+import type { PromptResourceMutation, PromptResourceStore } from '@loom-studio/application-data'
 
 export type ToolOwnerRef = {
   namespace: string

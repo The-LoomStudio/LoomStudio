@@ -1,10 +1,10 @@
-import { createAgentStore } from '@loom-studio/agent-store'
+import { createAgentStore } from '@loom-studio/application-data'
 import { officialFakeModelId } from '@loom-studio/ai-gateway'
 import { createAgentToolRegistry, createApplicationRuntime, promptSlotIds, promptZoneIds, type ToolDefinition, type ToolRuntimeRegistration } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { createNarrativeStore } from '@loom-studio/narrative-store'
-import { createPromptResourceStore } from '@loom-studio/prompt-resource-store'
+import { createNarrativeStore } from '@loom-studio/application-data'
+import { createPromptResourceStore } from '@loom-studio/application-data'
 import { describe, expect, it } from 'vitest'
 
 function createTestRuntime(agentTools = createAgentToolRegistry([])) {

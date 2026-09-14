@@ -3,6 +3,7 @@ import type { JsonValue } from '@loom-studio/shared'
 import { isRecord, readString } from '../rpc-params.js'
 
 const runStores = new WeakMap<ProfiledAiGateway, Map<string, ReturnType<ProfiledAiGateway['createRun']>>>()
+const maxRetainedRuns = 128
 
 export async function callAiGatewayRpc(
   services: { registry: AiGatewayCapabilityRegistry; gateway: ProfiledAiGateway },
@@ -26,6 +27,7 @@ export async function callAiGatewayRpc(
       const run = services.gateway.createRun({ profileId: readString(params, 'profileId'), input: params.input as JsonValue, caller: { kind: 'studio-client' } })
       const runs = getRunStore(services.gateway)
       runs.set(run.id, run)
+      void run.result.catch(() => undefined).finally(() => pruneCompletedRuns(runs))
       return { runId: run.id }
     }
     case 'ai.run.subscribe': {
@@ -48,6 +50,15 @@ export async function callAiGatewayRpc(
     }
     default:
       throw new Error(`AI Gateway RPC method not found: ${method}`)
+  }
+}
+
+function pruneCompletedRuns(runs: Map<string, ReturnType<ProfiledAiGateway['createRun']>>): void {
+  if (runs.size <= maxRetainedRuns) return
+  for (const [runId, run] of runs) {
+    if (runs.size <= maxRetainedRuns) return
+    if (run.getState() === 'running') continue
+    runs.delete(runId)
   }
 }
 

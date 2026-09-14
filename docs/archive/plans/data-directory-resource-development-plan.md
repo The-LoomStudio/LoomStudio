@@ -1,6 +1,6 @@
 # Data 目录、内部数据与文件备份计划
 
-> **Status**：In Progress / WP1 完成；WP2 核心目录闭环已实现，WP3 Prompt Resource ZIP 首切片完成；WP4 Extension ZIP 安装首切片完成；待用户交互验收与其他资源文件包。完整开发模式与 CLI/MCP 已移出本计划
+> **Status**：历史快照 / 已并入 Workspace Resource 与 Distribution 主计划；归档时 WP1 完成，WP2 核心目录闭环已实现，WP3 Prompt Resource ZIP 与 WP4 Extension ZIP 安装首切片完成；保留用户交互验收与其他资源文件包未完成记录。完整开发模式与 CLI/MCP 已移出本计划
 > **日期**：2026-09-12
 > **授权**：用户确认目录保存、根目录 data，以及角色、Preset、Settings、Extension 的共通分发边界；后续已授权实施计划，并单独批准真实数据停服迁移。2026-09-12 最新决定将本计划限定为内部数据与文件备份层，不再包含开发模式或 CLI/MCP 的实施。
 
@@ -70,7 +70,7 @@ data/
 
 - 普通游玩中 DB 是当前应用数据，Studio 修改通过显式保存回写目录，不自动覆盖原卡。目录不是运行时直接扫描 MD / JSON 的替代数据库。
 - 用户显式 Apply 时应用到原资源，不经重新导入创建重复角色。无效文件不进入数据库，冲突拒绝覆盖，文件与 DB 提交阶段分别记录和恢复，不宣称跨两者天然原子化。
-- 本计划不切换编辑源、不接管 IDE 编辑过程、不自动提交正文或代码。开发模式的编辑权归属、模式切换、草稿与连续同步转入 [Workspace Dev Sync](../../workbench/plans/workspace-dev-sync-plan.md)，讨论完成前不实施。
+- 本计划不切换编辑源、不接管 IDE 编辑过程、不自动提交正文或代码。开发模式的编辑权归属、模式切换、草稿与连续同步转入 [Workspace Dev Sync](workspace-dev-sync-plan.md)，讨论完成前不实施。
 - Timeline State 数值、会话等运行数据不回写作者模板或初始化文件。开发目录可变，不同时充当修改前的不可变检查点；现有来源与历史基线保留。
 - 文件副本不传递对数据库共享原件的修改权限；文件读取禁止路径和链接越界。保存或 Apply 脚本不等于授权执行脚本、终端命令、构建或安装依赖。内部 Agent 文件权限另由开发模式与 Agent 能力计划讨论。
 - CLI/MCP 由[现有适配器计划](../../workbench/plans/application-capability-cli-mcp-adapters-plan.md)承接，不属于本计划的工作包或验收条件。
@@ -195,7 +195,7 @@ data/
 
 ### 已移出：开发模式与 CLI/MCP
 
-- 完整开发模式及工程工作流：[Workspace Dev Sync](../../workbench/plans/workspace-dev-sync-plan.md)，待讨论，未授权实施。
+- 完整开发模式及工程工作流：[Workspace Dev Sync](workspace-dev-sync-plan.md)，待讨论，未授权实施。
 - CLI/MCP 的协议、连接、授权和首批命令：[Application Capability、CLI 与 MCP 适配器计划](../../workbench/plans/application-capability-cli-mcp-adapters-plan.md)，待讨论，未授权实施。
 - 两份计划消费本计划的文件格式、映射和显式保存/Apply 能力，不反过来阻塞数据与备份层验收。
 
@@ -225,11 +225,11 @@ data/
 
 ## 关联与取代范围
 
-- [Workspace Dev Sync](../../workbench/plans/workspace-dev-sync-plan.md)：本计划拥有文件存储、身份映射和显式保存 / Apply；该计划独立讨论完整开发模式，不再将其实施转交本计划。
+- [Workspace Dev Sync](workspace-dev-sync-plan.md)：本计划拥有文件存储、身份映射和显式保存 / Apply；该计划独立讨论完整开发模式，不再将其实施转交本计划。
 - [CLI/MCP 适配器](../../workbench/plans/application-capability-cli-mcp-adapters-plan.md)：承接原 WP5 的在线工具入口；首批范围和实施难点待讨论，不新建重复 CLI 计划。
-- [Typed Primary Resource Bundle](../../workbench/plans/typed-primary-resource-bundle-plan.md)：本计划承接 Preset / Settings 的实际附件分发，不引入通用 Package 实体。
-- [官方内容计划](../../workbench/plans/official-content-installation-and-release-plan.md)：提供真实样例及后续发行消费者；远程发布继续延期。
-- [Agent Context 计划](../../workbench/plans/agent-session-context-and-workspace-capability-plan.md)：提供内置 Agent 的 Context / Target 边界；不把整个 Agent 改造作为离线文件格式的前置条件。
+- [Typed Primary Resource Bundle](typed-primary-resource-bundle-plan.md)：本计划承接 Preset / Settings 的实际附件分发，不引入通用 Package 实体。
+- [官方内容计划](official-content-installation-and-release-plan.md)：提供真实样例及后续发行消费者；远程发布继续延期。
+- [Agent Context 计划](agent-session-context-and-workspace-capability-plan.md)：提供内置 Agent 的 Context / Target 边界；不把整个 Agent 改造作为离线文件格式的前置条件。
 - State 后续：独立 State Artifact 资源池仍需按后续 issue 核对，不能因已拆成文件就标记 CRUD / 冻结链完成。
 
 ## 最终结果

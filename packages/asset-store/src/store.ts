@@ -36,55 +36,58 @@ export function createAssetStore(options: {
       const format = normalizeToken(input.format, 'artifact format')
       const originalFileName = normalizeOptionalText(input.originalFileName, 1024)
       const importerVersion = normalizeOptionalText(input.importerVersion, 255)
-      const blobResult = await options.blobs.write({
+      const prepared = await options.blobs.prepareWrite({
         source: input.source,
         mediaType: input.mediaType,
         maxBytes: input.maxBytes,
-        actor: input.actor,
-        reason: `${input.reason ?? 'artifact.preserve'}.blob`,
-        correlationId: input.correlationId,
-        callId: input.callId,
-        parentCallId: input.parentCallId,
       })
+      const participateBlobWrite = options.blobs.participateWrite
       const artifact: SourceArtifactRecord = {
         id: options.createId('artifact'),
-        blobId: blobResult.blob.id,
+        blobId: prepared.blob.id,
         format,
         originalFileName,
-        mediaType: blobResult.blob.mediaType,
+        mediaType: prepared.blob.mediaType,
         importedAt: options.now(),
         importerVersion,
       }
-      const result = await options.engine.transact({
-        actor: input.actor,
-        reason: input.reason ?? 'artifact.preserve',
-        correlationId: input.correlationId,
-        callId: input.callId,
-        parentCallId: input.parentCallId,
-      }, async tx => {
-        tx.database.prepare(`
-          INSERT INTO source_artifacts (
-            id, blob_id, format, original_file_name, media_type, imported_at, importer_version
-          ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          artifact.id,
-          artifact.blobId,
-          artifact.format,
-          artifact.originalFileName ?? null,
-          artifact.mediaType ?? null,
-          artifact.importedAt,
-          artifact.importerVersion ?? null,
-        )
-        tx.recordOperations([{
-          store: 'artifacts',
-          kind: 'create',
-          entityId: artifact.id,
-          entityType: 'platform.source-artifact',
-          toVersion: 1,
-        }])
-        return artifact
-      })
-      return { artifact: result.value, commit: result.commit }
+      try {
+        const result = await options.engine.transact({
+          actor: input.actor,
+          reason: input.reason ?? 'artifact.preserve',
+          correlationId: input.correlationId,
+          callId: input.callId,
+          parentCallId: input.parentCallId,
+        }, async tx => {
+          const participated = participateBlobWrite(tx, prepared)
+          artifact.blobId = participated.blob.id
+          tx.database.prepare(`
+            INSERT INTO source_artifacts (
+              id, blob_id, format, original_file_name, media_type, imported_at, importer_version
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            artifact.id,
+            artifact.blobId,
+            artifact.format,
+            artifact.originalFileName ?? null,
+            artifact.mediaType ?? null,
+            artifact.importedAt,
+            artifact.importerVersion ?? null,
+          )
+          tx.recordOperations([{
+            store: 'artifacts',
+            kind: 'create',
+            entityId: artifact.id,
+            entityType: 'platform.source-artifact',
+            toVersion: 1,
+          }])
+          return artifact
+        })
+        return { artifact: result.value, commit: result.commit }
+      } catch (error) {
+        await options.blobs.discardPreparedWrite(prepared)
+        throw error
+      }
     },
     getSourceArtifact: artifactId => options.engine.read(database => readSourceArtifact(database, artifactId)),
     createMediaAsset: async input => {
@@ -100,16 +103,15 @@ export function createAssetStore(options: {
       const existingBlob = input.blobId
         ? await options.blobs.get(input.blobId)
         : undefined
-      const blob = existingBlob ?? (await options.blobs.write({
+      if (input.blobId && !existingBlob) {
+        throw new AssetStoreError('asset.blob_not_found', `Blob not found: ${input.blobId}`)
+      }
+      const prepared = existingBlob || input.blobId ? undefined : await options.blobs.prepareWrite({
         source: input.source!,
         mediaType: input.mediaType,
         maxBytes: input.maxBytes,
-        actor: input.actor,
-        reason: `${input.reason ?? 'asset.create'}.blob`,
-        correlationId: input.correlationId,
-        callId: input.callId,
-        parentCallId: input.parentCallId,
-      })).blob
+      })
+      const blob = existingBlob ?? prepared!.blob
       if (!blob) throw new AssetStoreError('asset.blob_not_found', `Blob not found: ${input.blobId}`)
       if (input.mediaType && blob.mediaType && input.mediaType.trim().toLowerCase() !== blob.mediaType) {
         throw new AssetStoreError('asset.media_type_mismatch', 'Media Asset media type does not match Blob metadata')
@@ -127,41 +129,50 @@ export function createAssetStore(options: {
         createdBy: structuredClone(input.actor),
         createdAt: options.now(),
       }
-      const result = await options.engine.transact({
-        actor: input.actor,
-        reason: input.reason ?? 'asset.create',
-        correlationId: input.correlationId,
-        callId: input.callId,
-        parentCallId: input.parentCallId,
-      }, async tx => {
-        tx.database.prepare(`
-          INSERT INTO media_assets (
-            id, blob_id, kind, label, media_type, size_bytes, width, height,
-            owner_package_id, created_by_json, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          asset.id,
-          asset.blobId,
-          asset.kind,
-          asset.label ?? null,
-          asset.mediaType ?? null,
-          asset.sizeBytes,
-          asset.width ?? null,
-          asset.height ?? null,
-          asset.ownerPackageId ?? null,
-          JSON.stringify(asset.createdBy),
-          asset.createdAt,
-        )
-        tx.recordOperations([{
-          store: 'assets',
-          kind: 'create',
-          entityId: asset.id,
-          entityType: 'platform.media-asset',
-          toVersion: 1,
-        }])
-        return asset
-      })
-      return { asset: result.value, commit: result.commit }
+      try {
+        const result = await options.engine.transact({
+          actor: input.actor,
+          reason: input.reason ?? 'asset.create',
+          correlationId: input.correlationId,
+          callId: input.callId,
+          parentCallId: input.parentCallId,
+        }, async tx => {
+          const participatedBlob = prepared ? options.blobs.participateWrite(tx, prepared).blob : blob
+          asset.blobId = participatedBlob.id
+          asset.mediaType = participatedBlob.mediaType ?? normalizeOptionalText(input.mediaType?.trim().toLowerCase(), 255)
+          asset.sizeBytes = participatedBlob.sizeBytes
+          tx.database.prepare(`
+            INSERT INTO media_assets (
+              id, blob_id, kind, label, media_type, size_bytes, width, height,
+              owner_package_id, created_by_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            asset.id,
+            asset.blobId,
+            asset.kind,
+            asset.label ?? null,
+            asset.mediaType ?? null,
+            asset.sizeBytes,
+            asset.width ?? null,
+            asset.height ?? null,
+            asset.ownerPackageId ?? null,
+            JSON.stringify(asset.createdBy),
+            asset.createdAt,
+          )
+          tx.recordOperations([{
+            store: 'assets',
+            kind: 'create',
+            entityId: asset.id,
+            entityType: 'platform.media-asset',
+            toVersion: 1,
+          }])
+          return asset
+        })
+        return { asset: result.value, commit: result.commit }
+      } catch (error) {
+        if (prepared) await options.blobs.discardPreparedWrite(prepared)
+        throw error
+      }
     },
     getMediaAsset: assetId => options.engine.read(database => readMediaAsset(database, assetId)),
     openMediaAsset: async assetId => {

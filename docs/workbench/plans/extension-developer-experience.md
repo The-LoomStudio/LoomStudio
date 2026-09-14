@@ -7,7 +7,7 @@
 >
 > **相关讨论**：[`../../archive/discussion/extensions/studio-extension-host-capabilities-v0.md`](../../archive/discussion/extensions/studio-extension-host-capabilities-v0.md)
 >
-> **相关延期计划**：[`extension-package-source-host-runtime-plan.md`](./extension-package-source-host-runtime-plan.md)
+> **相关延期计划**：[`extension-package-source-host-runtime-plan.md`](../../archive/plans/extension-package-source-host-runtime-plan.md)
 
 ---
 

@@ -12,9 +12,9 @@ import {
 import type { SillyTavernPresetData } from '../../../official/extensions/st-data-compat/src/types.js'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { createPromptResourceStore } from '@loom-studio/prompt-resource-store'
+import { createPromptResourceStore } from '@loom-studio/application-data'
 import { createApplicationRuntime, importCardBundle } from '@loom-studio/application-runtime'
-import { createNarrativeStore } from '@loom-studio/narrative-store'
+import { createNarrativeStore } from '@loom-studio/application-data'
 
 function createMockPngWithText(keyword: string, text: string): Uint8Array {
   const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])

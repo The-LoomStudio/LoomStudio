@@ -3,8 +3,8 @@ import type {
   AgentTranscriptEntry,
   AgentTranscriptEntryData,
   AgentSession,
-} from '@loom-studio/agent-store'
-import type { PresetToolMount } from '@loom-studio/prompt-resource-store'
+} from '@loom-studio/application-data'
+import type { PresetToolMount } from '@loom-studio/application-data'
 import type { ChatMessage, JsonObject, JsonValue } from '@loom-studio/shared'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import type { VariableRenderContext } from '../prompt/variables.js'

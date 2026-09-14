@@ -68,7 +68,7 @@ export type SqliteDataEngine = {
     operation: (tx: SqliteDataTransaction) => Promise<T>,
   ): Promise<{ value: T; commit: DataCommitFact }>
   subscribeCommits(observer: DataCommitObserver): DataCommitSubscription
-  close(): void
+  close(): Promise<void>
 }
 
 export function createSqliteDataEngine(options: SqliteDataEngineOptions): SqliteDataEngine {
@@ -88,9 +88,10 @@ export function createSqliteDataEngine(options: SqliteDataEngineOptions): Sqlite
   const activeTransactionContext = new AsyncLocalStorage<SqliteDataTransaction>()
   let operationQueue = Promise.resolve()
   let isClosed = false
+  let closePromise: Promise<void> | undefined
 
   function assertOpen(): void {
-    if (isClosed) {
+    if (isClosed || closePromise) {
       throw new DataEngineError('data.engine_closed', 'Data engine is closed')
     }
   }
@@ -109,7 +110,6 @@ export function createSqliteDataEngine(options: SqliteDataEngineOptions): Sqlite
     assertOpen()
     assertNonReentrant()
     const result = operationQueue.then(() => {
-      assertOpen()
       return operation()
     })
     operationQueue = result.then(() => undefined, () => undefined)
@@ -170,9 +170,12 @@ export function createSqliteDataEngine(options: SqliteDataEngineOptions): Sqlite
     }),
     subscribeCommits: observer => commitNotifier.subscribe(observer),
     close: () => {
-      if (isClosed) return
-      isClosed = true
-      database.close()
+      if (closePromise) return closePromise
+      closePromise = operationQueue.then(() => {
+        isClosed = true
+        database.close()
+      })
+      return closePromise
     },
   }
 }

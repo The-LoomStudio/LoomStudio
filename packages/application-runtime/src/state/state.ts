@@ -170,29 +170,19 @@ export async function revertApplicationStateChangeset(
   requestContext?: RuntimeRequestContext,
   documents?: { participant: SqliteDocumentStore; changeset: Changeset },
 ): Promise<{ changesetId: string }> {
-  const row = ctx.dataEngine.database.prepare(`
-    SELECT revision.id, revision.scope_id, revision.parent_revision_id, scope.kind, scope.owner_id, scope.head_revision_id
-    FROM state_revisions revision
-    JOIN state_scopes scope ON scope.id = revision.scope_id
-    WHERE revision.changeset_id = ?
-  `).get(changesetId) as {
-    id: string
-    scope_id: string
-    parent_revision_id: string | null
-    kind: 'global' | 'timeline'
-    owner_id: string
-    head_revision_id: string | null
-  } | undefined
-  if (!row) throw new ApplicationStateError('state.revert_not_found', `State Changeset not found: ${changesetId}`)
-  if (!row.parent_revision_id) throw new ApplicationStateError('state.revert_initial_forbidden', 'Initial State Revision cannot be reverted')
-  const parent = await ctx.states.getRevision(row.parent_revision_id)
-  if (!parent) throw new ApplicationStateError('state.timeline_revision_invalid', `Parent State Revision not found: ${row.parent_revision_id}`)
+  const revision = await ctx.states.getRevisionByChangesetId(changesetId)
+  if (!revision) throw new ApplicationStateError('state.revert_not_found', `State Changeset not found: ${changesetId}`)
+  if (!revision.parentRevisionId) throw new ApplicationStateError('state.revert_initial_forbidden', 'Initial State Revision cannot be reverted')
+  const scope = await ctx.states.getScopeById(revision.scopeId)
+  if (!scope) throw new ApplicationStateError('state.timeline_revision_invalid', `State Scope not found: ${revision.scopeId}`)
+  const parent = await ctx.states.getRevision(revision.parentRevisionId)
+  if (!parent) throw new ApplicationStateError('state.timeline_revision_invalid', `Parent State Revision not found: ${revision.parentRevisionId}`)
   let branchId: string | undefined
-  if (row.kind === 'global') {
-    if (row.head_revision_id !== row.id) throw new ApplicationStateError('state.revert_conflict', 'Only the current Global State head can be reverted')
+  if (scope.kind === 'global') {
+    if (scope.headRevisionId !== revision.id) throw new ApplicationStateError('state.revert_conflict', 'Only the current Global State head can be reverted')
   } else {
     if (!ctx.narratives) throw new ApplicationStateError('state.timeline_not_initialized', 'Narrative Store is not configured')
-    const branches = (await ctx.narratives.listBranches(row.owner_id)).filter(branch => branch.stateHeadRevisionId === row.id)
+    const branches = (await ctx.narratives.listBranches(scope.ownerId)).filter(branch => branch.stateHeadRevisionId === revision.id)
     if (branches.length !== 1) {
       throw new ApplicationStateError(
         branches.length === 0 ? 'state.revert_conflict' : 'state.revert_ambiguous',
@@ -216,18 +206,18 @@ export async function revertApplicationStateChangeset(
     }
     const stateTx = ctx.states.transaction(dataTx)
     const compensation = stateTx.createRevision({
-      scopeId: row.scope_id,
-      parentRevisionId: row.id,
+      scopeId: revision.scopeId,
+      parentRevisionId: revision.id,
       snapshot: parent.snapshot,
       operations: [{ op: 'compensate', revertedChangesetId: changesetId }],
     }).revision
-    if (row.kind === 'global') {
-      stateTx.setGlobalHead({ scopeId: row.scope_id, expectedRevisionId: row.id, revisionId: compensation.id })
+    if (scope.kind === 'global') {
+      stateTx.setGlobalHead({ scopeId: revision.scopeId, expectedRevisionId: revision.id, revisionId: compensation.id })
     } else {
       ctx.narratives!.transaction(dataTx).setBranchStateHead({
-        timelineId: row.owner_id,
+        timelineId: scope.ownerId,
         branchId: branchId!,
-        expectedStateHeadRevisionId: row.id,
+        expectedStateHeadRevisionId: revision.id,
         stateRevisionId: compensation.id,
       })
     }

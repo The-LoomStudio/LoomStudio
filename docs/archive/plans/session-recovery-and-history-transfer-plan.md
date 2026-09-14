@@ -10,7 +10,7 @@
 
 ## 已确认事实
 
-- `packages/agent-store/src/store.ts` 的 `readSession` 漏读 `timeline_id`，列表查询没有遗漏；列表已经按最近活动排序。
+- `packages/application-data/src/agent/store.ts` 的 `readSession` 漏读 `timeline_id`，列表查询没有遗漏；列表已经按最近活动排序。
 - `apps/studio-client/src/features/narrative-runtime/model/use-narrative-runtime.ts` 打开 Timeline 时清空 Session；发送时直接新建，不查询历史；读取失败可能保留旧消息。
 - `packages/application-runtime/src/runtime/agents-runtime.ts` 目前只从显式 `narrativeTarget` 装配上下文，不解析 Session 的默认绑定。
 - Narrative Store 和 Agent Store 只有领域读写与分页接口，没有正式历史导入导出合同。
@@ -19,7 +19,7 @@
 
 ## 决策
 
-1. Timeline Binding 是默认上下文，不是所有权或授权。延续 [Session Context 计划](../../workbench/plans/agent-session-context-and-workspace-capability-plan.md)，不新增分支绑定字段。
+1. Timeline Binding 是默认上下文，不是所有权或授权。延续 [Session Context 计划](agent-session-context-and-workspace-capability-plan.md)，不新增分支绑定字段。
 2. 打开 Timeline 恢复按 `updatedAt` 排序的最近会话，并同步 Agent Profile；没有历史时不创建空 Session。新建按钮先进入草稿，发送时创建。
 3. 会话选择器只显示当前 Timeline 的会话；独立上下文只显示独立会话。打开历史会话时同步其绑定目标，不把其他 Timeline 的消息混进当前页面。
 4. 绑定 Session 未指定 Target 时，读取绑定 Timeline 的当前活动分支；默认不提交叙事。显式跨 Timeline Target 拒绝。Workspace Session 的显式 Target 不形成绑定。
@@ -42,7 +42,7 @@
 
 主 Agent 直接实施与验收。
 
-- `packages/agent-store/src/store.ts`：修正单项 Binding 读取。
+- `packages/application-data/src/agent/store.ts`：修正单项 Binding 读取。
 - `packages/application-runtime/src/runtime/agents-runtime.ts`：统一默认上下文、显式目标冲突检查；复用已有 PromptBuild 和 Tool Scope。
 - `apps/studio-client/src/features/narrative-runtime/model/use-narrative-runtime.ts`：列表/恢复、Profile 同步、新会话草稿、首次发送绑定正确性与过期请求隔离。
 - `apps/studio-client/src/app/{app.tsx,use-studio-state.ts}`、现有布局 Props 转发、`widgets/agent-chat-panel/`：复用现有选择器和图标工具栏，不另建管理页面。

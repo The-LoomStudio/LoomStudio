@@ -1,6 +1,6 @@
 import type { DocumentRecord, DocumentStore, DocumentTransaction } from '@loom-studio/document-store'
 import type { SqliteDataTransaction } from '@loom-studio/data-engine'
-import type { NarrativeTimeline } from '@loom-studio/narrative-store'
+import type { NarrativeTimeline } from '@loom-studio/application-data'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
@@ -21,9 +21,9 @@ import {
 import {
   exportCardArtifact,
   importCardBundle as importWorkspaceCardBundle,
-  isCardBundleArtifact,
-  type CardBundleArtifact,
 } from '../cards/workspace.js'
+import { isCardBundleArtifact } from '../cards/workspace-codec.js'
+import type { CardBundleArtifact } from '../cards/workspace-types.js'
 import {
   validateStateDefinitionDraft,
   validateTimelineStateBinding,

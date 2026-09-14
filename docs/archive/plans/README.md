@@ -8,13 +8,17 @@
 
 以下细分 Plan 已并入上述两个主 Plan，原文保留在本目录用于历史回溯：
 
-- `data-directory-resource-development-plan.md`
-- `typed-primary-resource-bundle-plan.md`
-- `extension-package-source-host-runtime-plan.md`
-- `workspace-dev-sync-plan.md`
-- `agent-runtime-ai-sdk-foundation-plan.md`
-- `ai-gateway-streaming-execution-plan.md`
-- `agent-session-context-and-workspace-capability-plan.md`
+- [data-directory-resource-development-plan.md](./data-directory-resource-development-plan.md)
+- [typed-primary-resource-bundle-plan.md](./typed-primary-resource-bundle-plan.md)
+- [extension-package-source-host-runtime-plan.md](./extension-package-source-host-runtime-plan.md)
+- [workspace-dev-sync-plan.md](./workspace-dev-sync-plan.md)
+- [agent-runtime-ai-sdk-foundation-plan.md](./agent-runtime-ai-sdk-foundation-plan.md)
+- [ai-gateway-streaming-execution-plan.md](./ai-gateway-streaming-execution-plan.md)
+- [agent-session-context-and-workspace-capability-plan.md](./agent-session-context-and-workspace-capability-plan.md)
+
+## 2026-09-14
+
+- [official-content-installation-and-release-plan.md](./official-content-installation-and-release-plan.md) — 已交付本地官方内容与导出基线；远程来源、更新与发布仍延期。
 
 本目录保存已经完成、被取代，或原施工基线已经冻结且剩余事项已拆分到当前 successor 的计划。这里的文档只用于回溯实施过程，不是当前施工入口；当前路线统一从 [`docs/workbench/plans/README.md`](../../workbench/plans/README.md) 进入。
 

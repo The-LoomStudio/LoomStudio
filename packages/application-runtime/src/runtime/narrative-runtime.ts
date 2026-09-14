@@ -9,7 +9,7 @@ import type { StateContributionSource } from '../state/state-contribution-regist
 import { createVariableRenderContext, type VariableRenderContext } from '../prompt/variables.js'
 import { timelineRuntimeContextId } from '../narrative/timeline-runtime-context.js'
 import { snapshotLoomScriptMounts } from '../scripts/loom-script-resolution.js'
-import type { NarrativePage } from '@loom-studio/narrative-store'
+import type { NarrativePage } from '@loom-studio/application-data'
 import { parseTimelineArchive, timelineArchivePendingId, type TimelineArchive, type TimelineArchiveIdMap, type TimelineArchivePendingContent } from '../archive/timeline-archive.js'
 import type {
   CardSourceContent,

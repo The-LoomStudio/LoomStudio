@@ -42,7 +42,7 @@ Phase 0 至 Phase 5 完成后，后端闭环应当可用；Phase 6 补最小作�
 - `packages/application-runtime/src/agent-turn.ts` 在读取 Prompt Resource 时传递 `{ user }`，没有统一 Variable Snapshot；
 - `packages/application-runtime/src/application-context.ts` 没有 State Store；
 - `apps/studio-server/src/main.ts` 已在同一个 `SqliteDataEngine` 上装配 Agent、Narrative 和 Prompt Resource Store；
-- `packages/narrative-store/src/types.ts` 的 Branch 只有 `headNodeId`，Node 没有 State Revision Fact；
+- `packages/application-data/src/narrative/types.ts` 的 Branch 只有 `headNodeId`，Node 没有 State Revision Fact；
 - `packages/application-runtime/src/workspace.ts` 的 `CardBundleArtifact` 当前是 `schemaVersion: 1`，没有 State Template 或 Binding；
 - `packages/application-runtime/src/agent/official-tools/index.ts` 当前只注册 `search_context` 与 `read_context`；
 - Client RPC 入口集中在 `apps/studio-server/src/application-rpc.ts` 和 `apps/studio-client/src/shared/api/studio-api.ts`。
@@ -256,8 +256,8 @@ Macro Renderer 规则：
 packages/state-store/package.json
 packages/state-store/tsconfig.json
 packages/state-store/src/index.ts
-packages/state-store/src/types.ts
-packages/state-store/src/store.ts
+packages/application-data/src/state/types.ts
+packages/application-data/src/state/store.ts
 packages/state-store/src/store.test.ts
 ```
 
@@ -417,8 +417,8 @@ packages/application-runtime/src/types.ts
 packages/application-runtime/src/workspace.ts
 packages/application-runtime/src/runtime.ts
 packages/application-runtime/src/state-definition.ts
-packages/narrative-store/src/types.ts
-packages/narrative-store/src/store.ts
+packages/application-data/src/narrative/types.ts
+packages/application-data/src/narrative/store.ts
 apps/studio-server/src/application-rpc.ts
 apps/studio-client/src/shared/api/studio-api.ts
 apps/studio-server/src/card-bundle-zip.test.ts
@@ -474,8 +474,8 @@ Preset Global Variable Requirement 暂不阻塞本 Phase。等 Preset Artifact �
 主要文件：
 
 ```text
-packages/narrative-store/src/types.ts
-packages/narrative-store/src/store.ts
+packages/application-data/src/narrative/types.ts
+packages/application-data/src/narrative/store.ts
 packages/application-runtime/src/runtime.ts
 packages/application-runtime/src/state.ts
 packages/application-runtime/src/mutation.ts

@@ -13,17 +13,14 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@loom-studio/agent-store": "workspace:*",
     "@loom-studio/ai-gateway": "workspace:*",
+    "@loom-studio/application-data": "workspace:*",
     "@loom-studio/data-engine": "workspace:*",
     "@loom-studio/document-store": "workspace:*",
     "@loom-studio/extension-sdk": "workspace:*",
     "@loom-studio/logging": "workspace:*",
-    "@loom-studio/narrative-store": "workspace:*",
-    "@loom-studio/prompt-resource-store": "workspace:*",
     "@loom-studio/secret-store": "workspace:*",
     "@loom-studio/shared": "workspace:*",
-    "@loom-studio/state-store": "workspace:*",
     "undici": "^7.16.0"
   }
 }

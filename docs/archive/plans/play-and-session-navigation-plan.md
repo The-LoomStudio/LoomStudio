@@ -10,7 +10,7 @@
 
 本计划只调整 Studio Client 的信息架构、导航与现有数据接线。它不改变 Narrative Timeline、Narrative Branch、Agent Session 或 Card 的领域所有权，不新增数据库 Schema，不把 Agent Session 变成 Timeline 子对象。
 
-Agent Session Binding、Workspace Context、PromptBuild Target、Tool / CodeAct Capability 与解绑生命周期由 [`agent-session-context-and-workspace-capability-plan.md`](../../workbench/plans/agent-session-context-and-workspace-capability-plan.md) 负责。本计划只消费其稳定 API 展示和切换 Session，不根据 Binding 推导权限。
+Agent Session Binding、Workspace Context、PromptBuild Target、Tool / CodeAct Capability 与解绑生命周期由 [`agent-session-context-and-workspace-capability-plan.md`](agent-session-context-and-workspace-capability-plan.md) 负责。本计划只消费其稳定 API 展示和切换 Session，不根据 Binding 推导权限。
 
 ## 已确认事实
 

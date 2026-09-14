@@ -91,4 +91,4 @@ Content Tool Description 作为外部 Runtime Source 进入 PromptBuild。Anchor
 - [`packages/application-runtime/src/agents/content-transport.ts`](../../../../packages/application-runtime/src/agents/content-transport.ts)
 - [`packages/application-runtime/src/agents/tool-prompt-build.ts`](../../../../packages/application-runtime/src/agents/tool-prompt-build.ts)
 - [`packages/application-runtime/src/agents/tool-loop.ts`](../../../../packages/application-runtime/src/agents/tool-loop.ts)
-- [`packages/prompt-resource-store/src/types.ts`](../../../../packages/prompt-resource-store/src/types.ts)
+- [`packages/application-data/src/prompt-resource/types.ts`](../../../../packages/application-data/src/prompt-resource/types.ts)

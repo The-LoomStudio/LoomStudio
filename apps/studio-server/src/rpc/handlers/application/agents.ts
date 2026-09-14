@@ -33,12 +33,13 @@ type AgentRun = {
   checkpoint?: {
     sourceRunId: string
     messages: import('@loom-studio/shared').ChatMessage[]
-    userEntry: import('@loom-studio/agent-store').AgentTranscriptEntry
+    userEntry: import('@loom-studio/application-data').AgentTranscriptEntry
     partialEntryId?: string
   }
 }
 
 const runStores = new WeakMap<ApplicationRuntime, Map<string, AgentRun>>()
+const maxRetainedRuns = 128
 
 export async function handleAgentsRpc(
   runtime: ApplicationRuntime,
@@ -159,6 +160,7 @@ export async function handleAgentsRpc(
       } satisfies InvokeAgentTurnInput
       const run = startAgentRun(runtime, context, request)
       runs.set(run.id, run)
+      void run.promise.catch(() => undefined).finally(() => pruneCompletedRuns(runs))
       return { runId: run.id }
     }
 
@@ -194,7 +196,9 @@ export async function handleAgentsRpc(
       if (!source.checkpoint) return { runId: source.id, accepted: false, state: source.state }
       if (source.continuationRunId) return { runId: source.continuationRunId, sourceRunId: source.id, accepted: true }
       const run = startAgentRun(runtime, context, { ...source.request, input: '' }, source.id, source.checkpoint)
-      getRunStore(runtime).set(run.id, run)
+      const runs = getRunStore(runtime)
+      runs.set(run.id, run)
+      void run.promise.catch(() => undefined).finally(() => pruneCompletedRuns(runs))
       source.continuationRunId = run.id
       return { runId: run.id, sourceRunId: source.id, accepted: true, state: run.state }
     }
@@ -271,6 +275,15 @@ function getRunStore(runtime: ApplicationRuntime): Map<string, AgentRun> {
   const created = new Map<string, AgentRun>()
   runStores.set(runtime, created)
   return created
+}
+
+function pruneCompletedRuns(runs: Map<string, AgentRun>): void {
+  if (runs.size <= maxRetainedRuns) return
+  for (const [runId, run] of runs) {
+    if (runs.size <= maxRetainedRuns) return
+    if (run.state === 'running') continue
+    runs.delete(runId)
+  }
 }
 
 function requireAgentRun(runs: Map<string, AgentRun>, params: JsonValue | undefined): AgentRun {

@@ -1,5 +1,5 @@
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { createPromptResourceStore, type PromptResourceTreeNode } from '@loom-studio/prompt-resource-store'
+import { createPromptResourceStore, type PromptResourceTreeNode } from '@loom-studio/application-data'
 import { describe, expect, it } from 'vitest'
 
 const actor = { kind: 'system' as const, id: 'prompt-resource-test' }

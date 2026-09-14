@@ -167,9 +167,9 @@ tests/
 ## 相关计划
 
 - [Extension Package Source 与 Host](./extension-package-source-host-runtime-plan.md)：仅承接本计划必需的产物与来源工作；其历史“尚未实现”列表须按当前源码复核。
-- [Dev Workspace](../../workbench/plans/workspace-dev-sync-plan.md)：后续消费同一作者文件/编解码，不在本次补齐双向同步。
+- [Dev Workspace](workspace-dev-sync-plan.md)：后续消费同一作者文件/编解码，不在本次补齐双向同步。
 - [CLI / MCP 适配器](../../workbench/plans/application-capability-cli-mcp-adapters-plan.md)：正式能力的工具入口，不另造导入语义。
-- [主体资源 Bundle](../../workbench/plans/typed-primary-resource-bundle-plan.md)：先核对现有实现，避免重复格式。
+- [主体资源 Bundle](typed-primary-resource-bundle-plan.md)：先核对现有实现，避免重复格式。
 - [Text Pipeline 已归档基线](../../archive/plans/text-pipeline-loom-script-renderer-integration-plan.md)：沿用已实现能力，补充可见样例，不重启该计划。
 
 ## 最终结果

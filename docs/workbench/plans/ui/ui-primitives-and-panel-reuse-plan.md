@@ -3,7 +3,7 @@
 > **状态**：Draft / 调研已记录，待实施
 > **日期**：2026-09-13
 > **本轮授权**：只编写 Plan 和更新索引，不修改 UI、依赖、公共 SDK 或业务行为。
-> **目标**：让原生工作台和扩展管理面板复用一套小而明确的控件及组合规则，减少局部重复实现；扩展作者接入方式另行收口，不把内部组件直接升级为公共 SDK。
+> **目标**：让原生工作台和扩展管理面板复用一套小而明确的控件、图标及组合规则，减少局部重复实现；扩展作者接入方式另行收口，不把内部组件直接升级为公共 SDK。
 
 ## 1. 当前判断与依据
 
@@ -20,6 +20,7 @@
 | 预览 | `apps/studio-client/src/dev/preview/` 已有注册入口及业务样例 | 在现有入口补基础控件状态样例，不引入平行预览宿主 |
 | 扩展 | `packages/extension-sdk/src/index.ts` 和 `features/extension-renderers/ui/renderer-surface-host.tsx` 定义 surface、context 和 direct/shadow/sandbox-iframe 挂载 | 挂载协议不等于组件 SDK；同源也不意味着已支持共享 React 运行时 |
 | 主题规范 | [CSS 与主题合同](../../../architecture/ui/css-and-theming.md) 已规定 tokens、公共 CSS hook 与隔离边界 | 不能把 CSS Modules 类名作为公共 API；当前没有 iframe token 注入合同 |
+| 图标 | 主应用已使用 Lucide，但目前只在应用内部直接消费；扩展 manifest 仅允许有限的图标名 | 图标复用与控件复用属于同一公共合同，但必须提供稳定的名称导出和版本边界；不能让扩展引用主应用私有路径或复制 SVG |
 
 此前讨论中的“缺少底层基础”“必须提供 React 共享包”“所有字段都必须包装”等表述不作为已确认事实或实施要求。
 
@@ -44,9 +45,10 @@
 
 ## 3. 范围与非目标
 
-本计划承接内部小控件、必要组合模式、代表性面板迁移、使用规范和预览样例。概念上区分基础控件与组合模式，但沿用 `shared/ui/<component>/` 目录，不为层级命名先移动全部现有文件。
+本计划承接内部小控件、图标、必要组合模式、代表性面板迁移、使用规范和预览样例。概念上区分基础控件与组合模式，但沿用 `shared/ui/<component>/` 目录，不为层级命名先移动全部现有文件。
 
 - 保留 React、SCSS Modules、CSS Custom Properties、Lucide 和已有 Radix 菜单；不默认引入 Tailwind、Shadcn 安装器、Storybook 或新组件框架。
+- 将图标复用纳入同一套扩展合同：优先提供 `@loom-studio/ui/icon` 的具名导出，扩展可用普通 `import` 获取 Lucide 图标；不要求扩展自行安装或复制 `lucide-react`。天气等领域动画图标仍由 The World 自己维护。
 - 保留现有视觉合同，包括透明图标按钮、短字段下划线、长文本浅表面、主题与界面缩放；不套用外部组件库的默认外观。
 - 不新增万能表单、UI DSL、配置数据库、状态管理器或 Schema 渲染体系。
 - 不修改 RPC、业务持久化、权限、渲染器隔离和 Surface 身份；不重构业务 hook。
@@ -97,15 +99,22 @@
 
 完成条件：后续开发者可通过一个明确入口选择控件，规范与实际 API 一致；已迁移与尚未迁移区域可识别。
 
-### WP4：扩展作者复用合同收口
+### WP4：扩展作者 UI 与图标复用合同收口
 
-**状态：只读合同设计待办，未授权公共 API 实施。**
+**状态：只读合同设计待办，未授权公共 API 实施。** 本工作包同时收口基础控件和图标，不拆成两套作者接入方案。
 
 与 [Extension DX 计划](../extension-developer-experience.md) 第 3 节共同管理：本计划负责内部控件基础与复用样例，DX 计划负责页面贡献、声明式设置、Config 权限和保存闭环。不得建设两套作者表单协议。
 
 调研入口：`packages/extension-sdk/src/index.ts`、`apps/studio-client/src/features/extension-renderers/`、官方扩展的实际 client 入口，以及 [Client Renderer Host](../../../architecture/extensions/client-renderer-host.md)。
 
-交付：选择一个真实扩展，记录 adapter、依赖加载、样式继承、生命周期和现有重复控件；比较按需发布组件、CSS/DOM 样板或宿主提供控件等最小路径，提交一个有证据的推荐方案。
+交付：选择一个真实扩展，记录 adapter、依赖加载、样式继承、生命周期和现有重复控件；同时盘点其按钮、Toggle、关闭图标和 Lucide 图标需求。比较按需发布 `@loom-studio/ui` / `@loom-studio/ui/icon`、CSS/DOM 样板或宿主提供控件等最小路径，提交一个有证据的推荐方案。
+
+公共合同至少应明确：
+
+- `@loom-studio/ui`：Button、IconButton、Toggle、Field 等无领域状态控件；透传原生属性、事件和 ref，不依赖页面级 context。
+- `@loom-studio/ui/icon`：稳定的具名 Lucide 图标导出；明确图标名称、尺寸与 `currentColor` 约定，允许扩展直接 `import`，不暴露主应用内部文件路径。
+- 两者都必须有版本、构建和样式边界；Shadow DOM 可通过公开 tokens/样式入口接入，iframe 不直接取得宿主 React 实例。
+- 领域动画（例如 The World 的天气、云、雨、雪）不伪装成通用图标包能力；需要保留原始 CSS/Canvas/SVG 时由扩展自带。
 
 必须区分 direct、shadow 与 iframe：shadow 不继承普通全局选择器；iframe 不能直接取得宿主样式或 React 组件。是否同步 tokens、分发组件、共享 React、提供声明式控件，均为待确认公共合同，不在此预设答案。不改变 sandbox 权限以便利 UI 复用。
 
@@ -131,7 +140,7 @@
 ## 6. 开放问题与停止条件
 
 - 内部控件可在既定视觉和业务合同内自行确定最小 Props；若必须改变全局视觉、交互语义或新增依赖，先向哥哥说明具体证据与影响。
-- 外部组件包、React 运行时共享、iframe token 协议和声明式设置仍由哥哥确认，不因内部组件可用而自动发布。
+- 外部组件包、React 运行时共享、iframe token 协议、图标导出清单和声明式设置仍由哥哥确认，不因内部组件可用而自动发布。
 - 当前多个候选文件存在其他任务修改。实施前读取最新内容，只增量协作；发现并行修改并不构成回滚或覆盖授权。
 - 规范更新不是要求重写所有 UI；首轮收益不足的候选可以保留，记录事实理由，不制造无收益包装。
 

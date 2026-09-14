@@ -79,7 +79,7 @@ type ChatMessage =
 
 ### 2.3 Agent Store 已持久化 Tool 配对，但只支持 Function Tool
 
-当前 [`packages/agent-store/src/store.ts`](../../../packages/agent-store/src/store.ts) 会验证：
+当前 [`packages/application-data/src/agent/store.ts`](../../../packages/application-data/src/agent/store.ts) 会验证：
 
 - Assistant `tool_calls` 必须使用 `type: function`；
 - Tool Result 必须使用 `role: tool`；

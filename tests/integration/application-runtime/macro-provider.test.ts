@@ -2,12 +2,12 @@ import {
   createApplicationRuntime,
   createMacroProviderRegistry,
 } from '@loom-studio/application-runtime'
-import { createAgentStore } from '@loom-studio/agent-store'
+import { createAgentStore } from '@loom-studio/application-data'
 import { officialFakeModelId } from '@loom-studio/ai-gateway'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { createNarrativeStore } from '@loom-studio/narrative-store'
-import { createPromptResourceStore } from '@loom-studio/prompt-resource-store'
+import { createNarrativeStore } from '@loom-studio/application-data'
+import { createPromptResourceStore } from '@loom-studio/application-data'
 import { createVariableRenderContext, renderVariableMacros } from '@loom-studio/shared'
 import { describe, expect, it } from 'vitest'
 

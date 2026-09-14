@@ -2,7 +2,7 @@ import { createApplicationRuntime, type CardBundleArtifact } from '@loom-studio/
 import { createBlobStore } from '@loom-studio/blob-store'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { createPromptResourceStore } from '@loom-studio/prompt-resource-store'
+import { createPromptResourceStore } from '@loom-studio/application-data'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

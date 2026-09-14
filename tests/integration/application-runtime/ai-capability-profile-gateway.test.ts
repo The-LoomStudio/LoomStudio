@@ -9,7 +9,7 @@ import {
 } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { createPromptResourceStore } from '@loom-studio/prompt-resource-store'
+import { createPromptResourceStore } from '@loom-studio/application-data'
 import { createMemorySecretBackend, createSecretStore } from '../../../packages/secret-store/src/index.js'
 import { describe, expect, it } from 'vitest'
 

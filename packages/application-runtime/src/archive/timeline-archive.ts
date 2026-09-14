@@ -1,6 +1,6 @@
 import { isRecord, type JsonValue } from '@loom-studio/shared'
-import type { NarrativeBranch, NarrativeNode, NarrativeTimeline } from '@loom-studio/narrative-store'
-import type { StateRevision, StateScope } from '@loom-studio/state-store'
+import type { NarrativeBranch, NarrativeNode, NarrativeTimeline } from '@loom-studio/application-data'
+import type { StateRevision, StateScope } from '@loom-studio/application-data'
 
 export type TimelineArchive = {
   format: 'loom-timeline-archive.v1'

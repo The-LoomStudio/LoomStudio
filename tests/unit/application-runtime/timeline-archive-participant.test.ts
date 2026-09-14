@@ -5,8 +5,8 @@ import {
   type TimelineArchiveParticipant,
 } from '@loom-studio/application-runtime'
 import { describe, expect, it } from 'vitest'
-import type { NarrativeBranch, NarrativeNode, NarrativeTimeline } from '@loom-studio/narrative-store'
-import type { StateRevision, StateScope } from '@loom-studio/state-store'
+import type { NarrativeBranch, NarrativeNode, NarrativeTimeline } from '@loom-studio/application-data'
+import type { StateRevision, StateScope } from '@loom-studio/application-data'
 
 const input = {
   timelineId: 'timeline-new',

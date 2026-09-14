@@ -26,6 +26,7 @@ import type {
   Kernel,
   KernelRpcContext,
   KernelRpcHandler,
+  RegistrationHandle,
 } from './types.js'
 
 export function registerStageOneHandlers(
@@ -37,8 +38,12 @@ export function registerStageOneHandlers(
     kernelVersion: string
     protocolVersion: string
   },
-): void {
-  const register = (method: string, handler: KernelRpcHandler) => kernel.registerKernelRpc(method, handler)
+): RegistrationHandle[] {
+  const registrations: RegistrationHandle[] = []
+  const register = (method: string, handler: KernelRpcHandler) => {
+    const registration = kernel.registerKernelRpc(method, handler)
+    registrations.push(registration)
+  }
 
   register('system.ping', params => {
     return {
@@ -234,6 +239,8 @@ export function registerStageOneHandlers(
 
     return result as unknown as JsonValue
   })
+
+  return registrations
 }
 
 export function requireExtensionManager(options: CreateKernelOptions): ExtensionManagementService {

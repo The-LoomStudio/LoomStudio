@@ -4,8 +4,8 @@
 > **2026-09-12 接续边界**：已有 [Loom Script Runtime](../../architecture/extensions/loom-script-runtime.md) 实现 Renderer 专用源码 Blob、编辑 API、Mount / Grant、Card / Preset 附件和 Client Sandbox；已有 [Card Bundle 文件合同](../../architecture/application/card-bundle-files.md) 负责文件化编解码。这些不再从零建设，也不等于通用 Agent Script、Server Sandbox 或 CodeAct 已实现。新切片须先复用或明确区分现有合同，不能按下文历史草案另建平行 Script 身份。
 > **日期**：2026-08-24
 > **范围**：优先建立 CodeAct Sandbox、单一 JSON Tool 入口和特殊 Prompt Resource 描述；之后再建立持久化 Agent Script、挂载、角色包导入导出与 inline / resource 两种执行模式。
-> **事实边界**：本文是 Workbench Plan，不是已实现 Architecture。当前已实现 Document Store、共享 SQLite Data Engine、内容寻址 Blob Store、Source Artifact、Media Asset、Agent Tool Registry、Content Tool 与 Agent Loop；通用 File-backed Resource、Agent Script、Script Mount、Sandbox Host 和 CodeAct 尚未实现。
-> **2026-08-25 Bundle 边界补充**：Preset / Setting 的增强分发不建立通用 Package 领域实体或递归依赖图。未来 Bundle 必须拥有唯一主体，导入后仍回到 Preset / Setting / Card canonical state；附件关系、运行时 Mount 与外部 Requirement 保持分离。详见 [`typed-primary-resource-bundle-plan.md`](./typed-primary-resource-bundle-plan.md)。
+> **事实边界**：本文是 Workbench Plan，不是已实现 Architecture。当前已实现 Document Store、共享 SQLite Data Engine、内容寻址 Blob Store、Source Artifact、Media Asset、Agent Tool Registry、Content Tool 与 Agent Loop；通用 File-backed Resource、Agent Script、Script Mount、Sandbox Host 和 CodeAct 尚未实现。Blob prepared write 的正常失败清理已由现有资源导入链路提供，但不等于完成历史 orphan GC。
+> **2026-08-25 Bundle 边界补充**：Preset / Setting 的增强分发不建立通用 Package 领域实体或递归依赖图。未来 Bundle 必须拥有唯一主体，导入后仍回到 Preset / Setting / Card canonical state；附件关系、运行时 Mount 与外部 Requirement 保持分离。详见 [`typed-primary-resource-bundle-plan.md`](../../archive/plans/typed-primary-resource-bundle-plan.md)。
 
 ## 1. 决策摘要
 
@@ -60,6 +60,7 @@ type CodeActInvocation =
 - 文件系统保存载荷、SQLite 保存 Blob metadata；
 - 大小限制和受控读取；
 - 不向业务层暴露物理路径。
+- prepared write 在正常准备失败或调用方事务回滚时可被显式 discard；进程崩溃和历史遗留文件不由该合同自动清理。
 
 当前 [`packages/document-store`](../../../packages/document-store) 已实现：
 
@@ -906,7 +907,7 @@ CodeAct / Script 需要专用卡片，至少显示：
 - Script Mount 唯一性、排序和删除清理；
 - 删除 Script 时有 Mount 明确拒绝或受控拆除；
 - 导入失败不提交半套 Document / Mount；
-- Blob 字节成功但 SQL 失败只留下未引用 Blob，不留下失效引用。
+- Blob 准备或 SQL 事务失败时，调用方必须 discard 本次已准备但未提交的 Blob，不留下本次操作产生的孤儿文件或失效引用；进程崩溃后的遗留文件仍属于后续 GC / 恢复策略。
 
 ### 14.2 Runtime
 

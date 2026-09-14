@@ -37,6 +37,7 @@ export type PreparedBlobWrite = {
 export type BlobStore = {
   write(input: BlobWriteInput): Promise<BlobWriteResult>
   prepareWrite(input: Pick<BlobWriteInput, 'source' | 'mediaType' | 'maxBytes'>): Promise<PreparedBlobWrite>
+  discardPreparedWrite(prepared: PreparedBlobWrite): Promise<void>
   participateWrite(tx: SqliteDataTransaction, prepared: PreparedBlobWrite): BlobWriteResult
   get(blobId: string): Promise<BlobRecord | undefined>
   getBySha256(sha256: string): Promise<BlobRecord | undefined>

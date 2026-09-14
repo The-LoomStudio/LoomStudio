@@ -1,5 +1,5 @@
 import type { ClientBridge, ClientJsonValue } from '@loom-studio/client-bridge'
-import type { AiGatewayEvent, AiGatewayRunState } from '@loom-studio/ai-gateway'
+import type { AiGatewayEvent, AiGatewayRunState } from '@loom-studio/ai-gateway/contracts'
 type TimelineArchiveClient = Record<string, ClientJsonValue>
 export type AgentRunEvent = {
   type: string

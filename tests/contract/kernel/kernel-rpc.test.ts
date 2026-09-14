@@ -37,6 +37,19 @@ function createTestKernel() {
 }
 
 describe('kernel rpc contract', () => {
+  it('can be started, stopped, and started again without duplicating kernel handlers', async () => {
+    const { kernel } = createTestKernel()
+
+    await kernel.start()
+    const firstSurface = kernel.getPublicSurface()
+    await kernel.stop()
+    await kernel.start()
+    const secondSurface = kernel.getPublicSurface()
+
+    expect(secondSurface).toEqual(firstSurface)
+    await expect(kernel.callRpc<{ ok: true }>('system.ping', {})).resolves.toMatchObject({ ok: true })
+  })
+
   it('serves system.ping through the kernel rpc surface', async () => {
     const { kernel } = createTestKernel()
     await kernel.start()

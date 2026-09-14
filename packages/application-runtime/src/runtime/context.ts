@@ -1,6 +1,6 @@
 import type { DocumentRecord, DocumentStore, DocumentTransaction, SqliteDocumentStore } from '@loom-studio/document-store'
-import type { NarrativeStore } from '@loom-studio/narrative-store'
-import type { AgentStore } from '@loom-studio/agent-store'
+import type { NarrativeStore } from '@loom-studio/application-data'
+import type { AgentStore } from '@loom-studio/application-data'
 import type { SecretStore } from '@loom-studio/secret-store'
 import type { AiGatewayCapabilityRegistry } from '@loom-studio/ai-gateway'
 import type { JsonValue } from '@loom-studio/shared'

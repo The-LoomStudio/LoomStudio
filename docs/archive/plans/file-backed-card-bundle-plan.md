@@ -62,4 +62,4 @@
 
 实现事实已写入 [Architecture](../../architecture/application/card-bundle-files.md)。本轮没有提供 GUI 解包或 CLI 命令；作者可导出 `.loomcard`，用 ZIP 工具解压和重打包。后续 CLI / Dev Workspace 复用这些 Codec。
 
-[官方内容计划](../../workbench/plans/official-content-installation-and-release-plan.md)的完整样例仍需继续制作；其 Rule / Extractor 打包阻塞已解除，远程部分仍延期，不视为该总计划已完成。
+[官方内容计划](official-content-installation-and-release-plan.md)的完整样例仍需继续制作；其 Rule / Extractor 打包阻塞已解除，远程部分仍延期，不视为该总计划已完成。

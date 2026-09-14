@@ -2,7 +2,7 @@
 
 > **2026-09-12 范围拆分**：本计划承接从 [Data 目录与文件备份计划](./data-directory-resource-development-plan.md)移出的完整开发模式。底层文件格式、保存副本、身份映射和显式 Apply 由 Data 计划提供；开发工作流不再混入其实施或归档条件。
 
-> **状态**：待讨论 / 未授权实施；不自动启动旧双向同步路线
+> **状态**：历史快照 / 已并入 Workspace Resource 与 Distribution 主计划；原路线未授权实施，不自动启动旧双向同步路线
 > **日期**：2026-09-12
 > **前置计划**：[`docs/archive/plans/prompt-resource-ordered-tree-and-caged-slot-plan.md`](../../archive/plans/prompt-resource-ordered-tree-and-caged-slot-plan.md)  
 > **核心目标**：讨论作者在 Studio、内部 Agent 与外部 IDE 中开发资源时的编辑源、权限、草稿和提交工作流。此阶段先明确需求与成本，不把可编辑文件目录直接升级成完整 IDE。

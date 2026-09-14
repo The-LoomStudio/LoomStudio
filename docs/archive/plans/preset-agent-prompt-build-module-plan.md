@@ -6,7 +6,7 @@
 > **非目标**：本计划不实现 Tool Runtime、Mode Runtime、变量系统、流式生成、Agent Session 分支或社区依赖解析；只为这些能力保留 Preset 内部的归属边界，不提前设计完整 Schema。
 > **当前实现**：`airp.agentPreset` Schema、RPC 和 Client 实体已删除；Agent Profile 直接引用 Preset Prompt Resource；Preset 已持有 `linkedSettingIds` / `historyPolicy`，PromptBuild 会合并 Preset Setting 与可选 Timeline Setting；Preset 工作台已提供显式 Setting 关系编辑。带关联 Setting 的 Bundle 导入导出和 PromptBuild 来源诊断仍待 Phase 4。
 > **2026-08-19 Setting 绑定修订**：本文中 Preset 持有 `linkedSettingIds`、Preset 工作台专属 Setting 绑定与对应 Bundle 恢复方案已被 [`data-layer-v2-prompt-resource-node-store-plan.md`](data-layer-v2-prompt-resource-node-store-plan.md) 取代。目标模型只维护 Global Setting Mount Registry；Preset 带来或声明的 Setting 作为全局资源注册，并以 Preset 来源 Mount 参与当前 Build。
-> **当前 successor**：需要随 Preset / Setting 分发附件时，进入 [`docs/workbench/plans/typed-primary-resource-bundle-plan.md`](../../workbench/plans/typed-primary-resource-bundle-plan.md)；本文不再跟踪新的 Artifact 合同。
+> **当前 successor**：需要随 Preset / Setting 分发附件时，进入 [`docs/workbench/plans/typed-primary-resource-bundle-plan.md`](typed-primary-resource-bundle-plan.md)；本文不再跟踪新的 Artifact 合同。
 
 相关计划：
 

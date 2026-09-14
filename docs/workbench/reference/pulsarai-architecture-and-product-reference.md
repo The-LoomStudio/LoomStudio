@@ -507,7 +507,7 @@ Loom 当前 canonical transcript 已区分 provider observation、reasoning、to
 
 这不表示 Loom 的 orphan repair、stream interruption 与 crash recovery 已经闭环；这些仍以 oh-my-pi Reference 中的 Agent Turn Integrity 专项审计为准。
 
-证据：LoomStudio `packages/agent-store/src/types.ts:19-100`；`packages/application-runtime/src/agent/tool-loop.ts:356-475`。
+证据：LoomStudio `packages/application-data/src/agent/types.ts:19-100`；`packages/application-runtime/src/agent/tool-loop.ts:356-475`。
 
 因此 Loom 应借 Pulsar 的 Draft 和 Message version UX，但继续沿 oh-my-pi 对照文档中的 Agent Turn Integrity 路线补强流式半成品、orphan repair、abort race 和 Provider compatibility。
 
@@ -826,7 +826,7 @@ Pulsar 真正独有、值得单独保留强调的，是用户可编辑的显式�
 ### LoomStudio
 
 - PromptBuild：`packages/application-runtime/src/agent-turn.ts`、`docs/architecture/application/prompt-build/`
-- Agent transcript / Tool Loop：`packages/agent-store/src/types.ts`、`packages/application-runtime/src/agent/`
+- Agent transcript / Tool Loop：`packages/application-data/src/agent/types.ts`、`packages/application-runtime/src/agent/`
 - Context 临时上限：`packages/application-runtime/src/runtime.ts:1874-1886`
 - Data Engine / Commit Fact：`packages/data-engine/`、各领域 Store transaction
 - Secret：`packages/secret-store/`

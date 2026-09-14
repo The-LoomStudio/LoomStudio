@@ -37,9 +37,9 @@ Document Store 管理需要版本与 Revision 的 typed JSON 聚合，不是所�
 
 | 领域 | 权威表与入口 |
 |---|---|
-| Narrative | `narrative_timelines / narrative_branches / narrative_nodes`；[Narrative Store](../../../packages/narrative-store/src/types.ts) |
-| Agent Session / Transcript | `agent_sessions / agent_transcript_entries / agent_tool_invocations`；[Agent Store](../../../packages/agent-store/src/types.ts) |
-| Prompt Resource | 资源头、Node、Revision、Setting Mount 与 Preset Tool Mount；[Prompt Resource Store](../../../packages/prompt-resource-store/src/types.ts) |
-| State | `state_scopes / state_revisions`；[State Store](../../../packages/state-store/src/types.ts) |
+| Narrative | `narrative_timelines / narrative_branches / narrative_nodes`；[Narrative Store](../../../packages/application-data/src/narrative/types.ts) |
+| Agent Session / Transcript | `agent_sessions / agent_transcript_entries / agent_tool_invocations`；[Agent Store](../../../packages/application-data/src/agent/types.ts) |
+| Prompt Resource | 资源头、Node、Revision、Setting Mount 与 Preset Tool Mount；[Prompt Resource Store](../../../packages/application-data/src/prompt-resource/types.ts) |
+| State | `state_scopes / state_revisions`；[State Store](../../../packages/application-data/src/state/types.ts) |
 
 旧 `airp.session`、`airp.narrative_branch`、`airp.narrative_entry`、`airp.branch_state_snapshot`、`airp.run`、`airp.commit_candidate`、`airp.runtime_entry`、`airp.agent_transcript_entry` 已不在当前注册表中；`airp.promptResource` 也不再是 Prompt Resource 权威存储。不要依据历史类型创建新记录。共享事务与实际提交边界见 [Data Architecture](../../architecture/data/README.md)。

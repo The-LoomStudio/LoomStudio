@@ -65,8 +65,8 @@
 ### ✅ [已解决] 6. 链表结构在 Application 层的 N+1 次 SQL 循环拉取
 
 **文件：**
-- [`packages/narrative-store/src/store.ts`](../../../packages/narrative-store/src/store.ts)
-- [`packages/agent-store/src/store.ts`](../../../packages/agent-store/src/store.ts)
+- [`packages/application-data/src/narrative/store.ts`](../../../packages/application-data/src/narrative/store.ts)
+- [`packages/application-data/src/agent/store.ts`](../../../packages/application-data/src/agent/store.ts)
 
 **审查结论：**
 - **已重构为单条 SQLite `WITH RECURSIVE` CTE 递归查询**，内建 `depth < 10000` 安全上限保护，彻底消除了应用层 N+1 次独立 SQL 查询。

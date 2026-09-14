@@ -1,6 +1,6 @@
 # Agent Session Context 与 Workspace Capability 计划
 
-> **Status**：In Progress / WP1 部分完成，WP2 已实现，WP4 首个读写与导入导出切片完成；WP5 收窄为工具结果与写入统计
+> **Status**：历史快照 / 已并入 Agent Runtime Session 与 Workspace 主计划；归档时 WP1 部分完成，WP2 已实现，WP4 首个读写与导入导出切片完成，WP5 收窄为工具结果与写入统计
 > **日期**：2026-09-11
 > **范围**：收紧 Agent Session Context、Narrative Target、PromptBuild 资源装配、Tool / CodeAct 资源访问和 Workspace Agent 能力边界。
 > **授权**：用户确认 Binding 不是所有权或权限；Workspace Agent 通过 Agent Profile、Tool 与 Capability 获得跨资源读写能力；Workspace PromptBuild 不自动注入全部资源。
@@ -171,8 +171,8 @@ Secret 明文、任意宿主文件、任意网络和 Trusted Bash 不属于普�
 
 **主要写入**：
 
-- `packages/agent-store/src/types.ts`
-- `packages/agent-store/src/store.ts`
+- `packages/application-data/src/agent/types.ts`
+- `packages/application-data/src/agent/store.ts`
 - `packages/application-runtime/src/types.ts`
 - `packages/application-runtime/src/runtime/agents-runtime.ts`
 - Studio Server 对应 Agent Session RPC codec / handler

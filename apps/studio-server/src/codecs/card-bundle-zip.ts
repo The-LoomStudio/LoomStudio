@@ -1,8 +1,4 @@
-import {
-  normalizeCardBundleArtifact,
-  type CardBundleArtifact,
-  type PortableExtensionPayloadArtifact,
-} from '@loom-studio/application-runtime'
+import { normalizeCardBundleArtifact, type CardBundleArtifact, type PortableExtensionPayloadArtifact } from '@loom-studio/application-runtime'
 import { Unzip, UnzipInflate, UnzipPassThrough, zipSync } from 'fflate'
 import { loadCardResourceFiles, projectCardFiles, restoreCardFiles, validateBundlePath, type CardFilesIndex } from './card-bundle-files.js'
 
