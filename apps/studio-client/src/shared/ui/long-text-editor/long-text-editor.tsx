@@ -6,7 +6,7 @@ import {
   reduceLongTextEditorState,
   type LongTextEditorMode,
 } from './long-text-editor-model.js'
-import { SkeletonText } from '../skeleton/skeleton.js'
+import { SkeletonText } from '@loom-studio/ui'
 import { tryWriteClipboardText } from '../../browser/clipboard.js'
 import styles from './long-text-editor.module.scss'
 

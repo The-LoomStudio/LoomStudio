@@ -46,6 +46,19 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [{
+            name: 'shared-icons',
+            test: /lucide-react\/dist\/esm\/icons\//,
+            minShareCount: 2,
+          }],
+        },
+      },
+    },
+  },
   server: {
     host: '127.0.0.1',
     port: 5173,

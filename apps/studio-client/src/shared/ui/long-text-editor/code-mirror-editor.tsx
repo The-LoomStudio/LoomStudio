@@ -22,7 +22,7 @@ import {
 } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef } from 'react'
-import { readYamlScalarTokenClass } from '../yaml-scalar-highlight.js'
+import { readYamlScalarTokenClass } from '../../lib/yaml-scalar-highlight.js'
 import {
   buildChangedChunks,
   CHANGE_TRACKING_DIFF_CONFIG,

@@ -376,9 +376,7 @@
   gap: 4px;
 }
 
-.modelPicker > form button,
-.iconButton,
-.iconButtonDanger {
+.modelPicker > form button {
   min-width: 26px;
   min-height: 26px;
   border: 0;
@@ -387,18 +385,11 @@
   background: transparent;
 }
 
-.modelPicker > form button:hover:not(:disabled),
-.iconButton:hover:not(:disabled) {
+.modelPicker > form button:hover:not(:disabled) {
   color: var(--loom-color-accent-strong);
 }
 
-.iconButtonDanger:hover:not(:disabled) {
-  color: var(--loom-color-danger);
-}
-
 .modelPicker > form button svg,
-.iconButton svg,
-.iconButtonDanger svg,
 .deleteProvider svg {
   width: var(--loom-icon-size-3);
   height: var(--loom-icon-size-3);

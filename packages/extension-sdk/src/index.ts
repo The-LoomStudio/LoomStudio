@@ -129,6 +129,71 @@ export type RendererConflictPolicy = 'collection' | 'exclusive' | 'navigation' |
 export type RendererFallback = 'json' | 'text' | 'hidden'
 export type RendererMountAdapter = 'direct' | 'shadow' | 'sandbox-iframe'
 
+export const publicThemeTokenNames = [
+  '--loom-ui-scale',
+  '--loom-color-background',
+  '--loom-color-surface-inset',
+  '--loom-color-surface',
+  '--loom-color-surface-subtle',
+  '--loom-color-surface-emphasis',
+  '--loom-color-surface-muted',
+  '--loom-color-surface-raised',
+  '--loom-color-text',
+  '--loom-color-text-muted',
+  '--loom-color-text-subtle',
+  '--loom-color-border',
+  '--loom-color-border-strong',
+  '--loom-color-divider',
+  '--loom-color-accent',
+  '--loom-color-accent-strong',
+  '--loom-color-accent-soft',
+  '--loom-color-accent-foreground',
+  '--loom-color-danger',
+  '--loom-color-danger-foreground',
+  '--loom-color-danger-background',
+  '--loom-color-warning',
+  '--loom-color-warning-foreground',
+  '--loom-color-warning-background',
+  '--loom-color-info',
+  '--loom-color-info-background',
+  '--loom-color-success',
+  '--loom-color-success-background',
+  '--loom-color-selection-background',
+  '--loom-font-family-sans',
+  '--loom-font-family-mono',
+  '--loom-font-size-1',
+  '--loom-font-size-2',
+  '--loom-font-size-3',
+  '--loom-font-size-4',
+  '--loom-font-size-5',
+  '--loom-font-size-6',
+  '--loom-font-size-body',
+  '--loom-font-weight-4',
+  '--loom-font-weight-6',
+  '--loom-line-height-ui',
+  '--loom-line-height-body',
+  '--loom-radius-control',
+  '--loom-radius-surface',
+  '--loom-radius-card',
+  '--loom-radius-panel',
+  '--loom-motion-duration-fast',
+  '--loom-motion-duration-standard',
+  '--loom-motion-easing-standard',
+] as const
+
+export type PublicThemeTokenName = (typeof publicThemeTokenNames)[number]
+
+export type ClientThemeSnapshot = {
+  version: 1
+  colorScheme: 'light' | 'dark'
+  tokens: Record<PublicThemeTokenName, string>
+}
+
+export function applyClientThemeSnapshot(snapshot: ClientThemeSnapshot, root: HTMLElement = document.documentElement): void {
+  root.style.colorScheme = snapshot.colorScheme
+  for (const name of publicThemeTokenNames) root.style.setProperty(name, snapshot.tokens[name])
+}
+
 export type ClientActionSurface = 'composer.quick-actions' | 'extension.workbench.actions' | 'stage.header.actions'
 
 export type ClientHostIconName = 'image' | 'refresh' | 'settings' | 'sparkles'
@@ -150,6 +215,62 @@ export type ClientActionPlacement = {
   suggestedOrder?: number
   when?: ClientActionCondition
 }
+
+export type ExtensionSettingScope = ExtensionStorageScope['kind']
+
+type ExtensionSettingBase = {
+  id: string
+  label: string
+  description?: string
+  group?: string
+  suggestedOrder?: number
+  scope?: ExtensionSettingScope
+  readOnly?: boolean
+}
+
+export type ExtensionBooleanSettingContribution = ExtensionSettingBase & {
+  type: 'boolean'
+  default: boolean
+}
+
+export type ExtensionTextSettingContribution = ExtensionSettingBase & {
+  type: 'text'
+  default: string
+  placeholder?: string
+  required?: boolean
+  minLength?: number
+  maxLength?: number
+}
+
+export type ExtensionMultilineSettingContribution = Omit<ExtensionTextSettingContribution, 'type'> & {
+  type: 'multiline'
+}
+
+export type ExtensionNumberSettingContribution = ExtensionSettingBase & {
+  type: 'number'
+  default: number
+  min?: number
+  max?: number
+  step?: number
+}
+
+export type ExtensionRangeSettingContribution = Omit<ExtensionNumberSettingContribution, 'type'> & {
+  type: 'range'
+}
+
+export type ExtensionSelectSettingContribution = ExtensionSettingBase & {
+  type: 'select'
+  default: string
+  options: Array<{ value: string; label: string }>
+}
+
+export type ExtensionSettingContribution =
+  | ExtensionBooleanSettingContribution
+  | ExtensionTextSettingContribution
+  | ExtensionMultilineSettingContribution
+  | ExtensionNumberSettingContribution
+  | ExtensionRangeSettingContribution
+  | ExtensionSelectSettingContribution
 
 export type ClientCommandInvocationContext = {
   sourceSurface: ClientActionSurface
@@ -219,6 +340,7 @@ export type LoomSandboxRendererWireContext = {
     compact: boolean
     prefersReducedMotion: boolean
     theme: 'inherit'
+    themeSnapshot: ClientThemeSnapshot
   }
 }
 
@@ -323,10 +445,24 @@ export type ClientRendererContext = {
     compact: boolean
     prefersReducedMotion: boolean
     theme: 'inherit'
+    themeSnapshot: ClientThemeSnapshot
   }
   signal: AbortSignal
   close(): void
 }
+
+export type ClientRendererFrameHostMessage =
+  | {
+      type: 'loom:renderer-context'
+      identity: RendererContributionRef
+      surface: RendererSurface
+      scope: ClientRendererScope
+      part?: ClientDisplayPart
+      host: ClientRendererContext['host']
+    }
+  | { type: 'loom:renderer-theme'; theme: ClientThemeSnapshot }
+
+export type ClientRendererFrameMessage = { type: 'loom:renderer-close' }
 
 export type ClientRenderer = {
   mount(root: HTMLElement, context: ClientRendererContext): void | ExtensionRegistrationHandle | Promise<void | ExtensionRegistrationHandle>
@@ -400,6 +536,20 @@ export type ClientExtensionActivationContext = {
   records: {
     list(input?: { scope?: ExtensionStorageScope; recordType?: string; binding?: ExtensionEntityRef }): Promise<ExtensionRecordEntry[]>
     get(recordId: string): Promise<ExtensionRecordEntry | null>
+  }
+  configs: {
+    list(input?: { scope?: ExtensionStorageScope }): Promise<ExtensionConfigEntry[]>
+    get(input: { scope: ExtensionStorageScope; key: string }): Promise<ExtensionConfigEntry | null>
+    upsert(input: {
+      scope: ExtensionStorageScope
+      key: string
+      value: JsonValue
+      expectedVersion?: number
+    }): Promise<ExtensionConfigEntry>
+    subscribe(
+      input: { scope?: ExtensionStorageScope },
+      handler: (entries: ExtensionConfigEntry[]) => void | Promise<void>,
+    ): ExtensionRegistrationHandle
   }
   state: {
     get(target: ClientStateTarget): Promise<ClientStateSnapshot>
@@ -483,6 +633,7 @@ export type ExtensionPackageContributions = {
   textExtractors?: ExtensionTextExtractorContribution[]
   promptResources?: ExtensionPromptResourceContribution[]
   agentTools?: ExtensionAgentToolContribution[]
+  settings?: ExtensionSettingContribution[]
 }
 
 export type ExtensionModuleManifest = {
@@ -598,6 +749,19 @@ export type ExtensionStorageScope =
   | { kind: 'card'; cardId: string }
   | { kind: 'timeline'; timelineId: string }
   | { kind: 'agent-session'; agentSessionId: string }
+
+export const extensionStorageTokenPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
+
+export function extensionStorageScopeKey(scope: ExtensionStorageScope): string {
+  if (scope.kind === 'global') return 'global'
+  if (scope.kind === 'card') return `card:${scope.cardId}`
+  if (scope.kind === 'timeline') return `timeline:${scope.timelineId}`
+  return `agent-session:${scope.agentSessionId}`
+}
+
+export function extensionConfigDocumentId(packageId: string, scope: ExtensionStorageScope, key: string): string {
+  return `extension-config:${encodeURIComponent(packageId)}:${encodeURIComponent(extensionStorageScopeKey(scope))}:${encodeURIComponent(key)}`
+}
 
 export type ExtensionEntityRef =
   | { kind: 'narrative-node'; timelineId: string; nodeId: string }

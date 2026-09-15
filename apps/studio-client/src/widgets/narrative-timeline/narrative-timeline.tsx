@@ -9,7 +9,7 @@ import {
 } from './narrative-timeline-navigator.js'
 import type { NarrativeTimelineMarker } from './narrative-timeline-navigator-model.js'
 import { LongTextEditor } from '../../shared/ui/long-text-editor/long-text-editor.js'
-import { SkeletonText } from '../../shared/ui/skeleton/skeleton.js'
+import { SkeletonText } from '@loom-studio/ui'
 import { ConversationMessageAction, ConversationMessageChrome, formatConversationTimestamp } from '../../shared/ui/conversation-message-chrome/conversation-message-chrome.js'
 import styles from './narrative-timeline.module.scss'
 import type { ClientRendererHost } from '../../features/extension-renderers/model/client-renderer-host.js'

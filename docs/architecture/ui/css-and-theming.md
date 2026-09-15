@@ -183,6 +183,16 @@ data-loom-component="long-text-editor"
 
 主题必须检查正文、弱化文字、焦点和状态的对比度，不能只按截图近似替换颜色。
 
-## 7. 不属于当前合同的内容
+## 7. Extension Renderer 主题桥接
 
-当前没有稳定的运行时主题配置、主题包 manifest、插件 iframe token 注入或 CSS 版本协商。实现这些能力前，不应把现有 DOM 和全部变量视为永久 SDK。
+Renderer Adapter 使用同一组公共 `--loom-*` Token，但传递方式不同：
+
+- `direct` 依赖 Host DOM 的正常级联与 Custom Property 继承；
+- `shadow` 依赖 Custom Property 穿过 Shadow Root，并由 Host 安装最小字体、颜色与 box-sizing 基础样式；
+- `sandbox-iframe` 不继承父 Document。Host 从 `document.documentElement` 的 computed style 读取公共 Token 白名单，在首次 `loom:renderer-context` 中发送版本为 `1` 的完整快照，并在主题变化后发送 `loom:renderer-theme`。
+
+IFrame 只能接收 `publicThemeTokenNames` 声明的颜色、排版、圆角、动效与基础缩放 Token。Host 不发送整段 Custom CSS、壁纸 URL、页面布局变量或全部内部 `--loom-*`；Extension 可使用 `applyClientThemeSnapshot()` 将快照应用到自身 Document Root。当前快照反映主题、Custom CSS 与 UI Scale 计算后的最终值。
+
+## 8. 不属于当前合同的内容
+
+当前仍没有主题包 manifest、任意第三方主题加载或 CSS Token 跨版本协商。公共 Token Snapshot 已有版本字段，但版本 `1` 只承诺白名单中的变量，不应把现有 DOM 和全部 `--loom-*` 视为永久 SDK。

@@ -25,7 +25,7 @@ Package 只通过 [`src/index.ts`](./src/index.ts) 暴露 public API，构建产
 | `types.ts`                                      | 公共 Application 合同                                  |
 | `foundation/application-context.ts`            | Store、Gateway、Registry、Logger、Clock 等内部基础设施 |
 | `foundation/document-types.ts`                 | 第一方 Application Document Types                      |
-| `cards/card.ts`、`cards/workspace.ts`           | Card、Bundle、Artifact 和 Prompt Resource 导入导出     |
+| `cards/card.ts`、`cards/workspace.ts`、`cards/workspace-codec.ts` | Card、Bundle、Artifact 和 Prompt Resource 导入导出与编解码 |
 | `prompt/prompt-builder.ts`、`prompt/prompt-build-pipeline.ts` | Composition 类型与当前 DFS 编译器             |
 | `prompt/prompt-activation.ts`、`prompt/variables.ts` | Activation 和只读变量宏                            |
 | `agents/`                                     | Tool Registry、Prompt、Provider Step 与 Tool Loop      |
@@ -34,15 +34,16 @@ Package 只通过 [`src/index.ts`](./src/index.ts) 暴露 public API，构建产
 | `transforms/`                                 | History Transform、Extractor 与 Renderer Projection    |
 | `scripts/`                                    | Loom Script Metadata、编解码与挂载解析                 |
 
-`ApplicationRuntimeContext` 保存稳定基础设施，不保存 `sessionId`、`branchId`、`userInput` 等请求业务事实。调用相关身份和关联信息通过操作参数与 `RuntimeRequestContext` 显式传递。
+`ApplicationRuntimeContext` 只保存稳定的基础设施组件（Stores、Gateway、Registry、Logger、Clock 等），**严禁保存 `sessionId`、`branchId`、`userInput` 等具体请求的业务事实**。调用相关身份、请求载荷与关联信息必须通过具体操作参数或 `RuntimeRequestContext` 显式传递。
 
-## 依赖边界
+## 依赖边界与架构规约
 
-- 领域存储：Agent、Narrative、Prompt Resource、State、Document；
-- 平台能力：Data Engine、AI Gateway、Secret Store、Logging、Shared；
-- `undici`：OpenAI-compatible Gateway 的代理传输。
+- **领域存储依赖**：统一依赖 `@loom-studio/application-data`（内聚托管 Agent Session/Message、Narrative Timeline/Branch/Node、State 与 Prompt Resource 树）以及 `@loom-studio/document-store`（管理版本化快照文档）。
+- **平台与基础设施**：`@loom-studio/data-engine`、`@loom-studio/ai-gateway`、`@loom-studio/secret-store`、`@loom-studio/logging`、`@loom-studio/shared`、`@loom-studio/extension-sdk`。
+- **外部网络依赖**：`undici`（用于与模型服务通信及 `ProxyAgent` 代理支持）。
 
-本包不注册 HTTP/JSON-RPC 路由，不拥有 React/Zustand 状态，不提供 Kernel RPC/Event/Extension Host，也不实现各 Store 的 SQLite 内部细节。Shared Data Engine 和 Prompt Resource Store 在当前运行时是必需依赖。
+本包不注册 HTTP/JSON-RPC 路由，不拥有 React/Zustand 前端状态，不提供 Kernel 核心路由，也不直接操作 SQLite 裸连接。`DataEngine` 与 `ApplicationDataStore` 是运行时装配的必需依赖。
+
 
 ## 构建与验证
 

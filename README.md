@@ -145,12 +145,18 @@ LoomStudio/
 │   └── videos/
 ├── apps/                   # 独立应用层
 │   ├── studio-server/      # 服务端核心网关与 RPC 服务 (Node.js/node:http)
-│   └── studio-client/      # 前端交互工作台 (React 19 / Vite / SCSS)
-├── packages/               # 核心领域包与基础设施层
-│   ├── core/               # @loom/core 编译内核管道
-│   ├── application-runtime/# 应用运行时引擎、Agent Loop 与 PromptBuild 管线
-│   ├── application-data/    # Agent、Narrative、State、Prompt Resource 领域存储
-│   └── document-store/     # 统一文档与状态持久化
+│   ├── studio-client/      # 前端交互工作台 (React 19 / Vite / SCSS)
+│   └── playground/         # 本地命令行验证沙箱 (Kernel / CodeAct)
+├── packages/               # 核心领域包与基础设施层 (20 个独立 Package)
+│   ├── core/               # @loom/core 同步编译内核管道
+│   ├── application-runtime/# AIRP 领域编排、Agent Loop 与 PromptBuild 管线
+│   ├── application-data/   # Agent、Narrative、State、Prompt Resource 统一领域存储
+│   ├── data-engine/        # 统一 SQLite 事务、命名空间迁移与提交事实通道
+│   ├── ai-gateway/         # 多模型厂商调度网关、流式执行与能力画像映射
+│   ├── blob-store/ & asset-store/ # 内容寻址不可变字节与多媒体资产存储
+│   ├── kernel/ & transport/       # 平台服务组装、RPC 路由与通信信封契约
+│   └── ...                 # logging, secret-store, loom-ui, extension-sdk 等
+
 ├── official/               # 官方基础内容与正式扩展源码
 ├── examples/               # 可通过正式导入路径运行的教程样本
 └── docs/                   # 完整架构设计与演进规范文档

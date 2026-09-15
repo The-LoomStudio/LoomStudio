@@ -43,6 +43,8 @@ Record list 可以按 Scope、Record Type 和 Binding 查询。Host 强制 Packa
 
 Config 与 Record 分别保存为 `airp.extensionConfig` 和 `airp.extensionRecord` Document。它们使用 Document Revision、Tombstone 与 Changeset，不另建 Extension 数据库或通用 Graph Store。首版按 Package/Document Type 分页读取，再在内存中过滤 Scope、Record Type 与 Binding；出现实际规模压力后再增加窄索引。
 
+Studio Client Host 通过 `application.listExtensionConfigs/getExtensionConfig/upsertExtensionConfig` 管理声明式设置，Client Extension 则只获得自动绑定当前 Package 的 `ctx.configs.list/get/upsert/subscribe`。Client 更新同样要求现有 Document Version；`subscribe` 由已提交的 `extensions.data.changed` 触发重新读取并比较版本，不接收 Host 表单 draft。
+
 ### 2.2 Portable Payload
 
 ```text
@@ -94,7 +96,7 @@ Extension publishes Payload
 - Node Extension Storage Scope；
 - Branch lineage 驱动的 Renderer 可见性；
 - Narrative Attachment 与 Asset / placement 的正式关系模型；
-- Client Config mutation、Host Appearance / Style Contribution 与第三方网络权限；
+- Host Appearance / Style Contribution 与第三方网络权限；
 - Derived memory、embedding、Job queue 与 Asset GC。
 
 这些内容不得被当前文档描述为已实现能力。当前 Renderer 可以读取 Package Record、State 与 History，并把 Node-bound Record 投影为瞬时 Render Mount，但不会把 DisplayPart 或 Renderer DOM 持久化为数据。

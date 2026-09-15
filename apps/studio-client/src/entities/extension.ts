@@ -4,6 +4,7 @@ import type {
   ClientCommandDeclaration,
   ExtensionAgentToolContribution,
   ExtensionPromptResourceContribution,
+  ExtensionSettingContribution,
   ExtensionTextExtractorContribution,
   ExtensionTextTransformRuleContribution,
   RendererContributionDefinition,
@@ -44,6 +45,7 @@ export type ManagedExtensionPackage = {
     textExtractors?: ExtensionTextExtractorContribution[]
     promptResources?: ExtensionPromptResourceContribution[]
     agentTools?: ExtensionAgentToolContribution[]
+    settings?: ExtensionSettingContribution[]
     [key: string]: ClientJsonValue | undefined
   }
   importedResources?: {

@@ -482,6 +482,7 @@ function toManagedPackage(
       textExtractors: record.manifest.contributes?.textExtractors ?? [],
       promptResources: record.manifest.contributes?.promptResources ?? [],
       agentTools: record.manifest.contributes?.agentTools ?? [],
+      settings: record.manifest.contributes?.settings ?? [],
     },
   }
 }

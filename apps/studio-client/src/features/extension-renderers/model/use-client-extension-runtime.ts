@@ -13,6 +13,11 @@ export function useClientExtensionRuntime(input: {
   rendererHost: ClientRendererHost
 }) {
   const data = useMemo<ClientExtensionDataApi>(() => ({
+    configs: {
+      list: async (packageId, query) => (await input.api.extensionRuntime.listConfigs({ packageId, ...query })).configs,
+      get: async (packageId, query) => (await input.api.extensionRuntime.getConfig({ packageId, ...query })).config,
+      upsert: async (packageId, query) => (await input.api.extensionRuntime.upsertConfig({ packageId, ...query })).config,
+    },
     records: {
       list: async (packageId, query) => (await input.api.extensionRuntime.listRecords({ packageId, ...query })).records,
       get: async (packageId, recordId) => (await input.api.extensionRuntime.getRecord(packageId, recordId)).record,
@@ -43,6 +48,7 @@ export function useClientExtensionRuntime(input: {
   const [error, setError] = useState<Error>()
   const [serverDiagnostics, setServerDiagnostics] = useState<ClientJsonValue[]>([])
   const [refreshSequence, setRefreshSequence] = useState(0)
+  const [configRevision, setConfigRevision] = useState(0)
 
   const refresh = useCallback(async (reload: readonly string[] = []) => {
     try {
@@ -82,7 +88,11 @@ export function useClientExtensionRuntime(input: {
           : []
         void refresh(reload)
       })
-      events.addEventListener('extensions.data.changed', () => input.rendererHost.invalidate())
+      events.addEventListener('extensions.data.changed', () => {
+        input.rendererHost.invalidate()
+        setConfigRevision(revision => revision + 1)
+        void host.notifyConfigsChanged()
+      })
       events.onerror = () => setError(new Error('Extension event stream disconnected'))
     })
     return () => {
@@ -102,6 +112,7 @@ export function useClientExtensionRuntime(input: {
     error,
     serverDiagnostics,
     refreshSequence,
+    configRevision,
     refresh,
     enable: async (packageId: string, moduleId: string) => {
       await input.api.extensions.enable(packageId, moduleId)

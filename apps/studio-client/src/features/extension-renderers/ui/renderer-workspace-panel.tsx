@@ -1,6 +1,6 @@
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import type { ClientActionPlacement, ClientCommandDeclaration, RendererContributionDefinition } from '@loom-studio/extension-sdk'
-import { ArrowDown, ArrowLeft, ArrowUp, Braces, Component, ExternalLink, FileSearch, Package, PackagePlus, Power, RefreshCw, TerminalSquare, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowLeft, ArrowUp, Braces, Component, ExternalLink, FileSearch, Package, PackagePlus, Power, RefreshCw, SlidersHorizontal, TerminalSquare, Trash2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { toast } from 'sonner'
@@ -17,6 +17,7 @@ import { rendererContributionKey, rendererSurfacePolicies } from '../model/rende
 import { clientCommandKey, matchesClientActionCondition } from '../model/client-actions.js'
 import { ClientActionIcon } from './client-action-icon.js'
 import { RendererSurfaceHost } from './renderer-surface-host.js'
+import { ExtensionSettingsForm } from './extension-settings-form.js'
 import { MasterDetailWorkbench } from '../../../shared/ui/master-detail-workbench/master-detail-workbench.js'
 import styles from './renderer-workspace-panel.module.scss'
 
@@ -25,6 +26,7 @@ const WORKSPACE_SCOPE_KEY = 'workspace'
 type ExtensionWorkspaceSelection =
   | { kind: 'official'; packageId: string }
   | { kind: 'package'; packageId: string }
+  | { kind: 'settings'; packageId: string }
   | { kind: 'resource'; packageId: string; resourceKind: 'prompt' | 'tool' | 'rule' | 'extractor'; id: string }
   | { kind: 'module'; packageId: string; moduleId: string }
   | { kind: 'renderer'; packageId: string; moduleId: string; id: string }
@@ -38,6 +40,9 @@ export function RendererWorkspacePanel(props: {
   sessionHost: RendererSessionHost
   t: Translator
   officialContent: StudioApi['officialContent']
+  extensionRuntime: Pick<StudioApi['extensionRuntime'], 'getConfig' | 'listConfigs' | 'upsertConfig'>
+  configRevision: number
+  settingScopeContext: { cardId?: string; timelineId?: string; agentSessionId?: string }
   models: ModelProfile[]
   onCreateAgent(input: { name: string; presetId: string; model: ProviderModelSelection }): Promise<void>
   onDisable(packageId: string, moduleId: string): Promise<unknown>
@@ -232,6 +237,9 @@ export function RendererWorkspacePanel(props: {
                         ))}
                       </>
                     ) : null}
+                    {(extensionPackage.resources?.settings?.length ?? 0) > 0 ? (
+                      <TreeItem active={selectedItem?.kind === 'settings'} icon={SlidersHorizontal} label={props.t('renderer.settings')} onClick={() => select({ kind: 'settings', packageId: extensionPackage.packageId })} />
+                    ) : null}
                     {extensionPackage.modules.length > 0 ? <span className={styles.treeGroupLabel}>{props.t('renderer.modules')}</span> : null}
                     {extensionPackage.modules.map(module => (
                       <div className={styles.treeModule} key={module.moduleId}>
@@ -301,6 +309,16 @@ export function RendererWorkspacePanel(props: {
             </>
           ) : null}
           {selected && selectedItem?.kind === 'resource' ? <PackageResourceDetail extensionPackage={selected} selection={selectedItem} t={props.t} /> : null}
+          {selected && selectedItem?.kind === 'settings' ? (
+            <ExtensionSettingsForm
+              api={props.extensionRuntime}
+              configRevision={props.configRevision}
+              packageId={selected.packageId}
+              scopeContext={props.settingScopeContext}
+              settings={selected.resources?.settings ?? []}
+              t={props.t}
+            />
+          ) : null}
           {selected && selectedModule && selectedItem?.kind === 'module' ? (
             <ModuleDetail
               busyKey={busyKey}

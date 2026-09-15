@@ -96,7 +96,7 @@ Navigation Surface 可以注册多个入口，但同一宿主容器只展示当�
 
 - `direct`：直接挂载到 Host-owned Root，继承 Studio CSS Token；不是样式或 DOM 隔离；
 - `shadow`：Host 创建 open Shadow Root，并注入最小 box-sizing、字体和颜色桥接；提供样式边界，不提供恶意代码隔离；
-- `sandbox-iframe`：Host 创建 `sandbox="allow-scripts"` iframe，不授予 `allow-same-origin`。Extension iframe 使用受控 frame URL；Loom Script 使用 Blob module、受限 CSP 与专用 `MessageChannel`。
+- `sandbox-iframe`：Host 创建 `sandbox="allow-scripts"` iframe，不授予 `allow-same-origin`。Extension iframe 使用受控 frame URL；Loom Script 使用 Blob module、受限 CSP 与专用 `MessageChannel`。IFrame 不继承父 Document 的 CSS，Host 会随 Context 发送公共 Theme Token Snapshot，并在主题变化时发送 `loom:renderer-theme`。
 
 每个 Surface Host 建立独立 Root 和 stacking context。Extension 在 Root 外修改宿主 DOM 或注入全局 CSS 属于 Direct DOM escape hatch，不是稳定平台合同，也不享受兼容保证。
 
@@ -108,6 +108,7 @@ Client Module 当前可使用：
 ctx.renderers.register/open/close/openStandalone
 ctx.commands.register
 ctx.records.list/get
+ctx.configs.list/get/upsert/subscribe
 ctx.state.get
 ctx.history.project/extract
 ctx.rpc.call
@@ -123,7 +124,8 @@ ctx.logger / ctx.signal / ctx.extension
 - State 与 History 通过 Application RPC 读取，不暴露 Store；
 - Asset 和 Package File 只获得受控 URL，不获得物理路径；
 - Data commit 会产生 `extensions.data.changed` SSE，Client Host 收到后使 Renderer Projection 失效重建；
-- 当前没有 Client Config 读写、State mutation、任意 Application RPC 或通用 Event Subscription。
+- Client Config 始终绑定当前 `packageId`，更新使用 Document Version 乐观并发；订阅只在服务端提交成功并产生数据事件后读取新的权威快照；
+- 当前没有 Client State mutation、任意 Application RPC 或通用 Event Subscription。
 
 ## 6. Client Command 与 Action Placement
 

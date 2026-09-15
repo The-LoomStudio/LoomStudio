@@ -9,7 +9,7 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc -b",
-    "test": "vitest run --root ../.. tests/application-runtime-m0.test.ts --passWithNoTests",
+    "test": "vitest run --root ../.. tests/unit/application-runtime tests/integration/application-runtime",
     "lint": "eslint ."
   },
   "dependencies": {

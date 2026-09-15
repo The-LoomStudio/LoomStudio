@@ -37,7 +37,7 @@ export async function callApplicationRpc(
   const loomScriptsResult = await handleLoomScriptsRpc(runtime, method, params, context)
   if (loomScriptsResult !== undefined) return loomScriptsResult
 
-  const extensionRecordsResult = await handleExtensionRecordsRpc(runtime, method, params)
+  const extensionRecordsResult = await handleExtensionRecordsRpc(runtime, method, params, context)
   if (extensionRecordsResult !== undefined) return extensionRecordsResult
 
   const providersResult = await handleProvidersRpc(runtime, method, params, context)

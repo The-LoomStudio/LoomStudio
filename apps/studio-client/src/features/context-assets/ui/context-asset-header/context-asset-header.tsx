@@ -6,7 +6,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '../../../../shared/ui/dropdown-menu/dropdown-menu.js'
+} from '@loom-studio/ui'
 import styles from './context-asset-header.module.scss'
 
 export type ContextAssetPathSegment = {

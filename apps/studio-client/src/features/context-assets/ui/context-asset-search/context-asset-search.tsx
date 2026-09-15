@@ -1,5 +1,6 @@
-import { Book, FileText, Folder, Search, X } from 'lucide-react'
+import { Book, FileText, Folder } from 'lucide-react'
 import { useDeferredValue, useMemo, type ReactNode } from 'react'
+import { SearchField } from '@loom-studio/ui'
 import type { ContextAssetNode } from '../../../../entities/index.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
 import { buildContextAssetSearchIndex, searchContextAssets } from '../../model/context-asset-search.js'
@@ -23,21 +24,15 @@ export function ContextAssetSearch(props: ContextAssetSearchProps) {
 
   return (
     <div className={styles.explorerSearch} data-loom-component="context-asset-search">
-      <div className={styles.searchField}>
-        <Search aria-hidden="true" />
-        <input
-          aria-label={props.t('context.search.label')}
-          placeholder={props.t('context.search.placeholder')}
-          type="search"
-          value={props.query}
-          onChange={event => props.onQueryChange(event.target.value)}
-        />
-        {props.query ? (
-          <button aria-label={props.t('context.search.clear')} type="button" onClick={() => props.onQueryChange('')}>
-            <X aria-hidden="true" />
-          </button>
-        ) : null}
-      </div>
+      <SearchField
+        aria-label={props.t('context.search.label')}
+        clearLabel={props.t('context.search.clear')}
+        containerClassName={styles.searchField}
+        placeholder={props.t('context.search.placeholder')}
+        value={props.query}
+        onChange={event => props.onQueryChange(event.target.value)}
+        onClear={() => props.onQueryChange('')}
+      />
 
       <div className={styles.searchBody}>
         {searching ? (

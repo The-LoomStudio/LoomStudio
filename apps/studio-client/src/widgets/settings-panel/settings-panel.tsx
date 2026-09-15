@@ -49,9 +49,11 @@ export function SettingsPanel(props: {
   const previewBackgroundId = useAppearanceStore(state => state.background?.id ?? null)
   const previewFollowState = useAppearanceStore(state => state.followAI)
   const previewMaterial = useAppearanceStore(state => state.material)
+  const previewCanvasWidth = useAppearanceStore(state => state.canvasWidth ?? 720)
   const setPreviewBackground = useAppearanceStore(state => state.setBackground)
   const setPreviewFollowState = useAppearanceStore(state => state.setFollowAI)
   const setPreviewMaterial = useAppearanceStore(state => state.setMaterial)
+  const setPreviewCanvasWidth = useAppearanceStore(state => state.setCanvasWidth)
   const backgrounds = [...previewBackgrounds, ...(props.backgrounds ?? [])]
   const textController = useTextTransformController({
     api: props.textTransformsApi,
@@ -290,6 +292,23 @@ export function SettingsPanel(props: {
                           onChange={event => props.onChangeUiScale(Number(event.target.value))}
                         />
                         <output>{props.uiScale}%</output>
+                      </div>
+                    </div>
+                    <div className={styles.cardSection}>
+                      <h4>{props.t('settings.canvasWidth')}</h4>
+                      <p>{props.t('settings.canvasWidthDesc')}</p>
+                      <div className={styles.scaleRow}>
+                        <span>{props.t('settings.canvasWidth')}</span>
+                        <input
+                          aria-label={props.t('settings.canvasWidth')}
+                          max="1120"
+                          min="540"
+                          step="20"
+                          type="range"
+                          value={previewCanvasWidth}
+                          onChange={event => setPreviewCanvasWidth(Number(event.target.value))}
+                        />
+                        <output>{previewCanvasWidth}px</output>
                       </div>
                     </div>
                     <div className={styles.cardSection}>

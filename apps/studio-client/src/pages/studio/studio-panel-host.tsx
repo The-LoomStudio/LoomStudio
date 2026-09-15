@@ -3,7 +3,7 @@ import { ArrowLeft, ArrowRight, Columns2, FilePenLine, Maximize2, Minimize2 } fr
 import type { Translator } from '../../shared/i18n/index.js'
 import { DEFAULT_ASSET_VIEW_STATE, STUDIO_PANEL_IDS, useStudioLayoutStore, useStudioPanelStore, type AssetLayoutId, type StudioPanelId } from './model/studio-layout-store.js'
 import { STUDIO_PANEL_PRESENTATION } from './model/studio-panel-presentation.js'
-import { SkeletonText } from '../../shared/ui/skeleton/skeleton.js'
+import { SkeletonText } from '@loom-studio/ui'
 import styles from './studio-page.module.scss'
 
 type StudioPanelHostProps = {

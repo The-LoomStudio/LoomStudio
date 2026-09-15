@@ -287,6 +287,8 @@ export function createStudioPanels(input: {
     extensions: () => (
       <LazyRendererWorkspacePanel
         key={state.endpoint}
+        configRevision={clientExtensions.configRevision}
+        extensionRuntime={state.api.extensionRuntime}
         officialContent={state.officialContentApi}
         models={state.modelProfiles}
         onCreateAgent={state.createAgentProfile}
@@ -295,6 +297,11 @@ export function createStudioPanels(input: {
         packages={clientExtensions.packages}
         serverDiagnostics={clientExtensions.serverDiagnostics}
         sessionHost={clientExtensions.sessionHost}
+        settingScopeContext={{
+          ...(state.selectedCardDetails?.id ? { cardId: state.selectedCardDetails.id } : {}),
+          ...(state.narrativeTimeline?.id ? { timelineId: state.narrativeTimeline.id } : {}),
+          ...(state.agentChatSession?.id ? { agentSessionId: state.agentChatSession.id } : {}),
+        }}
         t={state.t}
         onDisable={clientExtensions.disable}
         onEnable={clientExtensions.enable}

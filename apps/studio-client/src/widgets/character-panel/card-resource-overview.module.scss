@@ -1,10 +1,6 @@
 .overview { padding: 20px 24px; min-width: 0; }
 .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .header h3 { font-size: var(--loom-font-size-2); font-weight: 500; margin: 0; }
-.iconButton { display: inline-grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; padding: 0; background: transparent; color: var(--loom-color-text-muted); border: 0; cursor: pointer; }
-.iconButton svg { width: 16px; height: 16px; }
-.iconButton:hover:not(:disabled) { color: var(--loom-color-accent); }
-.iconButton:disabled { opacity: 0.5; cursor: default; }
 .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 16px; background: var(--loom-color-surface-subtle); }
 .stats > div { display: flex; flex-direction: column; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
 .stats strong { font-size: 18px; font-weight: 500; font-variant-numeric: tabular-nums; }

@@ -9,7 +9,7 @@ export type AgentRunEvent = {
 import type { CardDirectoryPreview, CardDirectorySaveResult, CardDirectoryCatalog, OpenCardDirectoryResult, CardDirectoryAttachment, ReplaceSettingMountsInput } from '@loom-studio/shared'
 import type { OfficialContentPackage } from '../../entities/official-content.js'
 import type { LogLevel, LogPage } from '@loom-studio/logging'
-import type { ExtensionEntityRef, ExtensionRecordEntry, ExtensionStorageScope } from '@loom-studio/extension-sdk'
+import type { ExtensionConfigEntry, ExtensionEntityRef, ExtensionRecordEntry, ExtensionStorageScope } from '@loom-studio/extension-sdk'
 import type {
   AiGatewayInvokeInput,
   AiGatewayInvokeResult,
@@ -371,6 +371,9 @@ export type StudioApi = {
     export(input: { packageId: string; digest: string }): Promise<{ fileName: string; base64: string }>
   }
   extensionRuntime: {
+    listConfigs(input: { packageId: string; scope?: ExtensionStorageScope }): Promise<{ configs: ExtensionConfigEntry[] }>
+    getConfig(input: { packageId: string; scope: ExtensionStorageScope; key: string }): Promise<{ config: ExtensionConfigEntry | null }>
+    upsertConfig(input: { packageId: string; scope: ExtensionStorageScope; key: string; value: ClientJsonValue; expectedVersion?: number }): Promise<{ config: ExtensionConfigEntry; mutation: MutationReceipt }>
     listRecords(input: { packageId: string; scope?: ExtensionStorageScope; recordType?: string; binding?: ExtensionEntityRef }): Promise<{ records: ExtensionRecordEntry[] }>
     getRecord(packageId: string, recordId: string): Promise<{ record: ExtensionRecordEntry | null }>
     call<T = ClientJsonValue>(method: string, params?: ClientJsonValue): Promise<T>
@@ -572,6 +575,9 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       }),
     },
     extensionRuntime: {
+      listConfigs: input => rpc.call('application.listExtensionConfigs', input),
+      getConfig: input => rpc.call('application.getExtensionConfig', input),
+      upsertConfig: input => rpc.call('application.upsertExtensionConfig', input),
       listRecords: input => rpc.call('application.listExtensionRecords', input),
       getRecord: (packageId, recordId) => rpc.call('application.getExtensionRecord', { packageId, recordId }),
       call: (method, params) => rpc.call(method, params),

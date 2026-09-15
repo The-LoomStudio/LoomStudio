@@ -81,6 +81,7 @@ export function ComponentPreviewApp() {
           mobilePane={mobilePane}
           preview={<PipelinePreview item={item} />}
           searchPlaceholder="搜索名称、来源或能力"
+          searchClearLabel="清空搜索"
           searchValue={search}
           selectedId={item?.id}
           onMobilePaneChange={setMobilePane}
@@ -114,4 +115,3 @@ function PipelinePreview(props: { item?: PipelineWorkbenchGroup['items'][number]
     </ol>
   </div>
 }
-

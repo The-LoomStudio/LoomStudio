@@ -1,11 +1,11 @@
 import { useLayoutEffect, useRef, type FormEvent, type ReactNode } from 'react'
-import { ArrowUp, BringToFront, ChevronUp, Plus, RotateCcw } from 'lucide-react'
+import { ArrowUp, BringToFront, ChevronUp, Lock, Plus, RotateCcw, Unlock } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '../../shared/ui/dropdown-menu/dropdown-menu.js'
+} from '@loom-studio/ui'
 import styles from './chat-composer.module.scss'
 
 export type ChatComposerQuickAction = {
@@ -28,6 +28,8 @@ type ChatComposerProps = {
   quickActions?: readonly ChatComposerQuickAction[]
   onSubmit: (event: FormEvent) => void
   moreLabel: string
+  pinLabel?: string
+  pinned?: boolean
   placeholder?: string
   previewLabel: string
   retryLabel: string
@@ -40,8 +42,10 @@ type ChatComposerProps = {
   textareaDisabled: boolean
   textareaLabel: string
   toggleExpandedLabel?: string
+  unpinLabel?: string
   onTargetAction?: () => void
   onToggleExpanded?: () => void
+  onTogglePinned?: () => void
 }
 
 export function ChatComposer(props: ChatComposerProps) {
@@ -126,6 +130,22 @@ export function ChatComposer(props: ChatComposerProps) {
                 <button aria-label={props.retryLabel} className={styles.utilityButton} disabled title={props.retryLabel} type="button">
                   <RotateCcw aria-hidden="true" strokeWidth={1.7} />
                 </button>
+                {props.onTogglePinned ? (
+                  <button
+                    aria-label={props.pinned ? (props.unpinLabel ?? 'Unpin') : (props.pinLabel ?? 'Pin')}
+                    aria-pressed={props.pinned}
+                    className={`${styles.utilityButton} ${props.pinned ? styles.pinnedActive : ''}`}
+                    title={props.pinned ? (props.unpinLabel ?? 'Unpin') : (props.pinLabel ?? 'Pin')}
+                    type="button"
+                    onClick={props.onTogglePinned}
+                  >
+                    {props.pinned ? (
+                      <Lock aria-hidden="true" strokeWidth={1.7} />
+                    ) : (
+                      <Unlock aria-hidden="true" strokeWidth={1.7} />
+                    )}
+                  </button>
+                ) : null}
               </div>
               <div className={styles.composerActions}>
                 {props.targetLabel ? (

@@ -1,5 +1,6 @@
 import type { DocumentRecord, DocumentTransaction, SqliteDocumentStore } from '@loom-studio/document-store'
 import type { JsonValue } from '@loom-studio/shared'
+import { extensionConfigDocumentId, extensionStorageTokenPattern } from '@loom-studio/extension-sdk'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments, readDocument, writeDocument } from '../foundation/document-store.js'
@@ -36,6 +37,7 @@ import type {
   DeletePortableExtensionPayloadInput,
   DeletePortableExtensionPayloadResult,
   ExtensionEntityRef,
+  ExtensionConfigEntry,
   ExtensionRecordEntry,
   ExtensionStorageScope,
   GetPortableExtensionPayloadInput,
@@ -44,6 +46,7 @@ import type {
   ImportExtensionPackageResourcesResult,
   ListPortableExtensionPayloadsInput,
   ListPortableExtensionPayloadsResult,
+  MutationReceipt,
   PortableExtensionPayloadEntry,
   RemoveExtensionPackageResourcesInput,
   RemoveExtensionPackageResourcesResult,
@@ -69,7 +72,7 @@ import {
 import { findTimelinePromptResourceReferences } from './prompt-runtime.js'
 
 type ExtensionsRuntimeContext = Pick<ApplicationRuntimeContext,
-  'agentTools' | 'createId' | 'dataEngine' | 'documents' | 'narratives' | 'now' | 'promptResources'
+  'agentTools' | 'agents' | 'createId' | 'dataEngine' | 'documents' | 'narratives' | 'now' | 'promptResources'
 >
 
 export function createExtensionsRuntimeMethods(ctx: ExtensionsRuntimeContext) {
@@ -220,6 +223,58 @@ export function createExtensionsRuntimeMethods(ctx: ExtensionsRuntimeContext) {
       record: await getApplicationExtensionRecord(ctx.documents, input.packageId, input.recordId),
     }),
 
+    listExtensionConfigs: async (input: { packageId: string; scope?: ExtensionStorageScope }): Promise<{ configs: ExtensionConfigEntry[] }> => ({
+      configs: await listApplicationExtensionConfigs(ctx.documents, input),
+    }),
+
+    getExtensionConfig: async (input: { packageId: string; scope: ExtensionStorageScope; key: string }): Promise<{ config: ExtensionConfigEntry | null }> => ({
+      config: await getApplicationExtensionConfig(ctx.documents, input),
+    }),
+
+    upsertExtensionConfig: async (
+      input: { packageId: string; scope: ExtensionStorageScope; key: string; value: JsonValue; expectedVersion?: number },
+      requestContext?: RuntimeRequestContext,
+    ): Promise<{ config: ExtensionConfigEntry; mutation: MutationReceipt }> => {
+      if (!extensionStorageTokenPattern.test(input.key)) throw new Error(`Extension Config key must be a stable token: ${input.key}`)
+      await validateApplicationExtensionStorageScope(ctx, input.scope)
+      const id = extensionConfigDocumentId(input.packageId, input.scope, input.key)
+      const mutation = await executeDocumentMutation(
+        ctx.documents,
+        requestContext,
+        'application.upsertExtensionConfig',
+        async documents => {
+          const existing = await documents.get(id, { includeTombstone: true })
+          if (existing) assertApplicationExtensionConfigOwner(input.packageId, existing)
+          if (existing && !existing.meta.tombstone && input.expectedVersion === undefined) {
+            throw new Error(`expectedVersion is required when updating Extension Config: ${input.key}`)
+          }
+          const timestamp = ctx.now()
+          const createdAt = existing && !existing.meta.tombstone
+            ? toApplicationExtensionConfig(input.packageId, existing).createdAt
+            : timestamp
+          const result = await documents.write({
+            id,
+            type: applicationDocumentTypes.extensionConfig,
+            content: {
+              scope: structuredClone(input.scope),
+              key: input.key,
+              value: structuredClone(input.value),
+              createdAt,
+              updatedAt: timestamp,
+            },
+            expectedVersion: existing
+              ? existing.meta.tombstone ? existing.version : input.expectedVersion!
+              : 'new',
+            meta: { ownerExtensionId: input.packageId },
+          })
+          const document = result.documents[0]
+          if (!document) throw new Error(`Extension Config write returned no document: ${input.key}`)
+          return toApplicationExtensionConfig(input.packageId, document)
+        },
+      )
+      return { config: mutation.value, mutation: mutation.mutation }
+    },
+
     importExtensionPackageResources: (input: ImportExtensionPackageResourcesInput, requestContext?: RuntimeRequestContext): Promise<ImportExtensionPackageResourcesResult> =>
       importExtensionPackageResourcesInternal(ctx, input, requestContext, requireDocumentParticipant(ctx)),
 
@@ -273,6 +328,85 @@ type ApplicationExtensionRecordContent = {
   bindings: ExtensionEntityRef[]
   createdAt: string
   updatedAt: string
+}
+
+type ApplicationExtensionConfigContent = {
+  scope: ExtensionStorageScope
+  key: string
+  value: JsonValue
+  createdAt: string
+  updatedAt: string
+}
+
+export async function listApplicationExtensionConfigs(
+  documents: DocumentTransaction,
+  input: { packageId: string; scope?: ExtensionStorageScope },
+): Promise<ExtensionConfigEntry[]> {
+  const documentsFound = await collectPages(cursor => documents.list({
+    type: applicationDocumentTypes.extensionConfig,
+    ownerExtensionId: input.packageId,
+    cursor,
+    limit: 100,
+  }))
+  return documentsFound
+    .map(document => toApplicationExtensionConfig(input.packageId, document))
+    .filter(config => !input.scope || sameExtensionStorageScope(config.scope, input.scope))
+    .sort((left, right) => left.key.localeCompare(right.key))
+}
+
+export async function getApplicationExtensionConfig(
+  documents: DocumentTransaction,
+  input: { packageId: string; scope: ExtensionStorageScope; key: string },
+): Promise<ExtensionConfigEntry | null> {
+  if (!extensionStorageTokenPattern.test(input.key)) throw new Error(`Extension Config key must be a stable token: ${input.key}`)
+  const document = await documents.get(extensionConfigDocumentId(input.packageId, input.scope, input.key))
+  if (!document) return null
+  assertApplicationExtensionConfigOwner(input.packageId, document)
+  return toApplicationExtensionConfig(input.packageId, document)
+}
+
+export function toApplicationExtensionConfig(packageId: string, document: DocumentRecord): ExtensionConfigEntry {
+  assertApplicationExtensionConfigOwner(packageId, document)
+  if (!isObject(document.content)) throw new Error(`Extension Config content must be an object: ${document.id}`)
+  const content = document.content as unknown as Partial<ApplicationExtensionConfigContent>
+  if (!isExtensionStorageScope(content.scope) || typeof content.key !== 'string' || !extensionStorageTokenPattern.test(content.key)) {
+    throw new Error(`Extension Config content is invalid: ${document.id}`)
+  }
+  if (content.value === undefined || typeof content.createdAt !== 'string' || typeof content.updatedAt !== 'string') {
+    throw new Error(`Extension Config metadata is invalid: ${document.id}`)
+  }
+  return {
+    id: document.id,
+    packageId,
+    scope: structuredClone(content.scope),
+    key: content.key,
+    value: structuredClone(content.value),
+    version: document.version,
+    createdAt: content.createdAt,
+    updatedAt: content.updatedAt,
+  }
+}
+
+function assertApplicationExtensionConfigOwner(packageId: string, document: DocumentRecord): void {
+  if (document.type !== applicationDocumentTypes.extensionConfig || document.meta.ownerExtensionId !== packageId) {
+    throw new Error(`Extension Config is not owned by package ${packageId}: ${document.id}`)
+  }
+}
+
+async function validateApplicationExtensionStorageScope(ctx: ExtensionsRuntimeContext, scope: ExtensionStorageScope): Promise<void> {
+  if (scope.kind === 'global') return
+  if (scope.kind === 'card') {
+    const card = await ctx.documents.get(scope.cardId)
+    if (!card || card.type !== applicationDocumentTypes.cardSource || card.meta.tombstone) throw new Error(`Card not found: ${scope.cardId}`)
+    return
+  }
+  if (scope.kind === 'timeline') {
+    const timeline = await ctx.narratives?.getTimeline(scope.timelineId)
+    if (!timeline || timeline.deletedAt) throw new Error(`Narrative Timeline not found: ${scope.timelineId}`)
+    return
+  }
+  const session = await ctx.agents?.getSession(scope.agentSessionId)
+  if (!session || session.deletedAt) throw new Error(`Agent Session not found: ${scope.agentSessionId}`)
 }
 
 export async function listApplicationExtensionRecords(

@@ -1,4 +1,7 @@
+@import '@loom-studio/ui/styles.css';
+
 :root {
+  color-scheme: dark;
   color: var(--loom-color-text);
   background: var(--loom-color-background);
   font-family: var(--loom-font-family-sans);
@@ -139,7 +142,7 @@
 
   /* ── 布局尺寸 ── */
   --loom-chat-width: 680px;
-  --loom-canvas-width: var(--loom-chat-width);
+  --loom-canvas-width: 720px;
   /* Old Custom CSS overrides flow into the new collapsed-width contract. */
   --loom-rail-width: 48px;
   --loom-rail-collapsed-width: var(--loom-rail-width);

@@ -24,11 +24,22 @@ Loom Studio Client 是一个高信息密度的专业桌面级 Web 应用。
 
 ## 3. 组件划分
 
-在 `apps/studio-client/src/` 中，组件被划分为三个层级：
+组件被划分为四个明确所有者：
 
-1. **`shared/ui/`**: 绝对纯粹的无状态组件（如自定义的按钮、文件树树形控件）。它们不认识系统的任何业务模型。
-2. **`features/` & `entities/` 下的局部 UI**: 与特定领域模型紧密绑定的展示逻辑。
-3. **`widgets/`**: 页面级业务板块，负责组合 feature/entity UI、承载局部交互和布局。它们不应拥有 RPC 流程、跨领域状态或复杂领域算法；这些应放入 `features/*/model` 或 app facade。例如 `context-workbench` 导出 `ContextWorkbench`，文件名保持 kebab-case，组件标识保持 PascalCase。
+1. **`packages/loom-ui` (`@loom-studio/ui`)**：Studio 内部唯一通用 UI 所有者。Button、IconButton、Field、SearchField、Dialog、Menu、Toggle、Skeleton 等领域无关组件从这里直接导入。
+2. **Client `shared/ui/`**：只保留 Studio Shell、Translator、Clipboard、Sonner、CodeMirror 或现有分包策略绑定的适配与重型组合，不得重建 package 已有 primitive，也不得转发重导出 `@loom-studio/ui`。
+3. **`features/` & `entities/` 下的局部 UI**：与特定领域模型紧密绑定的展示逻辑。
+4. **`widgets/`**：页面级业务板块，负责组合 feature/entity UI、承载局部交互和布局。它们不应拥有 RPC 流程、跨领域状态或复杂领域算法；这些应放入 `features/*/model` 或 app facade。例如 `context-workbench` 导出 `ContextWorkbench`，文件名保持 kebab-case，组件标识保持 PascalCase。
+
+Studio Client 在全局样式入口加载 `@loom-studio/ui/styles.css`，业务模块只需直接导入组件：
+
+通用控件以资源面板的实际视觉为准：操作按钮默认无边框、透明背景，通过图标与文字高亮表达交互；短输入使用底部细线；多行 Textarea 使用浅色背景块；Checkbox 和 Toggle 使用圆形外观，但保留各自的 checkbox/switch 语义。不得用全局原生标签的旧边框样式替代这些合同，也不得在宿主表单中重新覆盖成另一套外观。
+
+```tsx
+import { Button, IconButton, SearchField } from '@loom-studio/ui'
+```
+
+特殊领域控件和只出现一次的简单原生元素可以继续使用原生 HTML。不要为了统一 import 而把业务状态、过滤算法、保存流程或页面布局塞进 UI package。
 
 ### Widget 边界
 

@@ -5,8 +5,8 @@
   display: grid;
   grid-template-rows: minmax(0, 1fr);
   overflow: visible;
-  background: color-mix(in srgb, var(--loom-color-background) 88%, transparent);
-  backdrop-filter: blur(16px);
+  background: transparent;
+  backdrop-filter: none;
 }
 
 .timeline {
@@ -18,9 +18,9 @@
   display: grid;
   align-content: start;
   justify-items: center;
-  gap: 18px;
-  padding: 50px 0 var(--loom-composer-clearance, 200px);
-  scroll-padding: 50px 0 var(--loom-composer-clearance, 200px);
+  gap: 16px;
+  padding: 32px 0 var(--loom-composer-clearance, 200px);
+  scroll-padding: 32px 0 var(--loom-composer-clearance, 200px);
   background: transparent;
   transition:
     padding-bottom var(--loom-motion-duration-standard) var(--loom-motion-easing-standard),
@@ -47,7 +47,7 @@
 }
 
 .empty {
-  width: min(var(--loom-chat-width), 100%);
+  width: 100%;
   padding: 24px 0;
   color: var(--loom-color-text-muted);
   background: transparent;
@@ -58,25 +58,46 @@
 }
 
 .renderingMessages {
-  width: min(var(--loom-chat-width), 100%);
+  width: 100%;
   min-height: 96px;
   padding: 20px 0;
 }
 
 .message {
   position: relative;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
-  width: min(var(--loom-chat-width), 100%);
-  border: 0;
-  border-radius: 0;
-  padding: 20px 0;
-  background: transparent;
-  box-shadow: none;
+  box-sizing: border-box;
+  transition: border-color var(--loom-motion-duration-fast) ease;
+}
+
+.assistant {
+  width: 100%;
+  border-radius: var(--loom-radius-message, 14px);
+  padding: 16px 20px 10px;
+  background: color-mix(in srgb, var(--loom-color-background) 82%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid color-mix(in srgb, var(--loom-color-border-subtle, var(--loom-color-divider)) 55%, transparent);
+
+  &:hover {
+    border-color: color-mix(in srgb, var(--loom-color-border-subtle, var(--loom-color-divider)) 85%, transparent);
+  }
 }
 
 .user {
-  justify-self: center;
+  justify-self: end;
+  width: fit-content;
+  max-width: min(75%, 620px);
+  margin-right: 8px;
+  margin-left: auto;
+  border-radius: var(--loom-radius-message, 14px);
+  padding: 12px 16px 8px;
+  background: var(--loom-color-surface);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid color-mix(in srgb, var(--loom-color-divider) 55%, transparent);
 }
 
 .messageSurface {
@@ -92,16 +113,16 @@
   --loom-long-text-editor-font-family: inherit;
   --loom-long-text-editor-line-height: 1.58;
 
-  width: min(72%, 620px);
-  margin-left: auto;
-  border-radius: var(--loom-radius-message);
-  padding: 12px 16px;
-  background: var(--loom-color-surface);
+  width: 100%;
+  margin-left: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
 }
 
 .assistant[data-loom-state='editing'] .messageSurface > :global([data-loom-component='long-text-editor']) {
-  width: calc(100% + 24px);
-  margin-left: -12px;
+  width: 100%;
+  margin-left: 0;
 }
 
 .user[data-loom-state='editing'] .messageSurface > :global([data-loom-component='long-text-editor']) {
@@ -143,20 +164,30 @@
 }
 
 .message :global([data-conversation-message-footer]) {
-  min-height: 24px;
-  margin-top: 7px;
+  min-height: 22px;
+  margin-top: 8px;
+}
+
+.assistant :global([data-conversation-message-footer]) {
+  padding-top: 6px;
+  border-top: 1px solid color-mix(in srgb, var(--loom-color-divider) 30%, transparent);
+  justify-content: flex-end;
+}
+
+.assistant :global([data-conversation-message-timestamp]) {
+  margin-right: auto;
 }
 
 .user :global([data-conversation-message-footer]) {
-  width: min(72%, 620px);
-  margin-left: auto;
+  width: 100%;
+  margin-top: 4px;
   justify-content: flex-end;
 }
 
 .user :global([data-conversation-message-timestamp]) {
   order: 2;
   margin-right: 0;
-  margin-left: 3px;
+  margin-left: 4px;
 }
 
 .message:hover :global([data-conversation-message-actions]),
@@ -171,7 +202,7 @@
 }
 
 .tail {
-  width: min(var(--loom-chat-width), 100%);
+  width: 100%;
   min-width: 0;
   position: relative;
   isolation: isolate;
@@ -180,21 +211,22 @@
 @media (max-width: 820px) {
   .timeline {
     padding-inline: 0;
+    gap: 12px;
   }
 
-  .message {
-    padding: 18px 16px 20px;
+  .assistant {
+    width: 100%;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    padding: 14px 16px 8px;
   }
 
   .user {
-    padding-inline: 16px;
+    max-width: 85%;
+    margin-right: 12px;
+    padding: 10px 14px 6px;
   }
-
-  .user .messageSurface,
-  .user :global([data-conversation-message-footer]) {
-    width: min(88%, 620px);
-  }
-
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,0 +1,78 @@
+.settings {
+  max-width: 680px;
+}
+
+.settings > header h3,
+.settings > header p,
+.group h4 {
+  margin: 0;
+}
+
+.settings > header p {
+  margin-top: 5px;
+  color: var(--loom-color-text-subtle);
+}
+
+.group {
+  display: grid;
+  gap: 16px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--loom-color-divider);
+}
+
+.group h4 {
+  font-size: var(--loom-font-size-4);
+}
+
+.settings :global([data-loom-field]) {
+  display: grid;
+  gap: 6px;
+}
+
+.settings :global([data-loom-field] > label) {
+  color: var(--loom-color-text);
+  font-weight: var(--loom-font-weight-6);
+}
+
+.settings :global(input:not([type='checkbox']):not([type='range']):not([data-loom-ui-text-input])),
+.settings :global(select) {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  border-bottom: 1px solid var(--loom-color-divider);
+  border-radius: 0;
+  padding: 7px 0;
+  color: var(--loom-color-text);
+  background: transparent;
+  font: inherit;
+}
+
+.settings :global(input[type='checkbox']),
+.settings :global(input[type='range']) {
+  accent-color: var(--loom-color-accent);
+}
+
+.settings :global([data-loom-field-description]),
+.status {
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-2);
+}
+
+.settings :global([data-loom-field-error]),
+.loadError {
+  color: var(--loom-color-danger);
+  font-size: var(--loom-font-size-2);
+}
+
+.range {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.range output {
+  min-width: 48px;
+  color: var(--loom-color-text-muted);
+  text-align: right;
+}

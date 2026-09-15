@@ -1,5 +1,6 @@
-import { Braces, Code2, Component, FileSearch, Search, Variable } from 'lucide-react'
+import { Braces, Code2, Component, FileSearch, Variable } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { SearchField } from '@loom-studio/ui'
 import { MasterDetailWorkbench } from '../../../shared/ui/master-detail-workbench/master-detail-workbench.js'
 import { normalizeSearchText } from '../../../shared/lib/text.js'
 import styles from './pipeline-workbench-view.module.scss'
@@ -29,6 +30,7 @@ export type PipelineWorkbenchViewProps = {
   selectedId?: string
   searchValue: string
   searchPlaceholder: string
+  searchClearLabel: string
   emptyLabel: string
   backLabel: string
   mobilePane: 'master' | 'detail'
@@ -60,16 +62,15 @@ export function PipelineWorkbenchView(props: PipelineWorkbenchViewProps) {
       onMobilePaneChange={props.onMobilePaneChange}
       master={(
         <div className={styles.master}>
-          <label className={styles.searchField}>
-            <Search aria-hidden="true" size={14} />
-            <input
-              aria-label={props.searchPlaceholder}
-              placeholder={props.searchPlaceholder}
-              type="search"
-              value={props.searchValue}
-              onChange={event => props.onSearchChange(event.target.value)}
-            />
-          </label>
+          <SearchField
+            aria-label={props.searchPlaceholder}
+            clearLabel={props.searchClearLabel}
+            containerClassName={styles.searchField}
+            placeholder={props.searchPlaceholder}
+            value={props.searchValue}
+            onChange={event => props.onSearchChange(event.target.value)}
+            onClear={() => props.onSearchChange('')}
+          />
           {props.filters ? <div className={styles.filters}>{props.filters}</div> : null}
           <nav aria-label={props.ariaLabel} className={styles.groups}>
             {groups.map(group => (

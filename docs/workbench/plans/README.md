@@ -9,14 +9,12 @@
 
 | 路线图 / 计划                                                                                | 当前状态     | 关注点                                                                  |
 | -------------------------------------------------------------------------------------------- | ------------ | ----------------------------------------------------------------------- |
-| [`core-dependencies-performance-and-state-plan.md`](./core-dependencies-performance-and-state-plan.md) | Implemented / 浏览器验收待完成 | 服务端状态、Panel 分包、渲染与文本测量、性能基线、Shared Schema |
 | [`workspace-resource-and-distribution-plan.md`](./workspace-resource-and-distribution-plan.md) | In Progress / 本地文件与分发基础已实现 | Preset / Setting 附件、用户自定义来源、Git 更新、开发模式 |
 | [`agent-runtime-session-and-workspace-plan.md`](./agent-runtime-session-and-workspace-plan.md) | In Progress / Agent 执行与流式基础已实现 | 统一写入结果、统计组件、Workspace Tool；跨进程恢复与插件 Handler 延后 |
 | [`application-capability-cli-mcp-adapters-plan.md`](./application-capability-cli-mcp-adapters-plan.md) | 待讨论 / 未授权实施 | 承接独立 CLI/MCP；在线连接、权限、首批命令及 Capability 抽取范围待确认 |
 | [`file-backed-resource-agent-script-codeact-plan.md`](./file-backed-resource-agent-script-codeact-plan.md) | 待实施提案 | File-backed Resource、Agent Script、Sandbox 与 CodeAct |
 | [`extension-developer-experience.md`](./extension-developer-experience.md)                   | Roadmap / UI 方向已确认 | SDK、工具链，以及扩展页面、声明式设置和组件使用；UI 具体合同待设计 |
 | [`search-and-timeline-indexing-plan.md`](./search-and-timeline-indexing-plan.md)             | Asset Search 已实现 / Timeline Search 延期 | 复用 Narrative Store 分页，后续补搜索、窗口与索引 |
-| [`ui/ui-primitives-and-panel-reuse-plan.md`](./ui/ui-primitives-and-panel-reuse-plan.md) | Draft / 调研已记录 | 小控件与局部样式收敛、代表性面板迁移、预览与使用规范；扩展公共合同待确认 |
 | [`background-and-panel-materials-plan.md`](../../archive/plans/ui/background-and-panel-materials-plan.md) | 已归档 | 官方背景与毛玻璃材质共同交付，后续仅保留人工验收记录 |
 | [`ui/prompt-resource-diff-mode-v0.md`](./ui/prompt-resource-diff-mode-v0.md)                 | 延期规划     | PromptResource Revision 差异对比与 Tokenizer 合同                       |
 | [`ui/provider-account-health-plan.md`](./ui/provider-account-health-plan.md)                 | 延期规划     | Provider Account 健康检查与连接状态探测                                 |
@@ -26,6 +24,12 @@
 ---
 
 ## 历史已归档计划
+
+2026-09-15：[`ui-primitives-and-panel-reuse-plan.md`](../../archive/plans/ui/ui-primitives-and-panel-reuse-plan.md) 已完成并归档；通用组件归属、真实消费者迁移与视觉返修完成，用户确认返修后的界面可接受；Extension 公共合同继续归 Extension DX。
+
+2026-09-15：[`testing-gate-and-pipeline-resilience-plan.md`](../../archive/plans/testing-gate-and-pipeline-resilience-plan.md) 已完成并归档；测试通道分级隔离（fast/server/real/stress）、卡片慢速 crc32 硬件加速修复（提速 360 倍）、AIRP 与卡片往返全链路业务实线、SQLite 50 并发事务与千节点提示词 DFS 编译硬性压测门线、fast-check 属性不变量覆盖已全部交付；全仓 172 个测试文件 25 秒稳定通过。
+
+2026-09-14：[`core-dependencies-performance-and-state-plan.md`](../../archive/plans/core-dependencies-performance-and-state-plan.md) 已完成并归档；Panel 分包、Prompt Resource Query 状态、资源树属性测试、Shared Setting Mount Schema、Knip 与体积基线已交付。Pretext 与 `proxy-memoize` 因缺少真实收益证据未引入；浏览器 Profiler 与切换手感仍保留为未验收项。
 
 2026-09-14：[`official-content-installation-and-release-plan.md`](../../archive/plans/official-content-installation-and-release-plan.md) 已完成并归档；本地官方内容、显式安装、ST 生命周期解耦、正式导出包与完整样例已交付。远程来源、在线更新与远程发布保留为延期路线。
 

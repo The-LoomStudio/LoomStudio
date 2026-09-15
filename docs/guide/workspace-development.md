@@ -26,15 +26,25 @@ docs/workbench/
 
 | 任务                                                             | 第一入口                                                                                                   | 正式架构                                                    |
 | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| Studio 页面、交互状态、typed API Client                          | [`apps/studio-client/README.md`](../../apps/studio-client/README.md)                                       | [`architecture/ui/`](../architecture/ui/)                   |
-| Server 进程、HTTP、认证、RPC 路由、依赖组装                      | [`apps/studio-server/README.md`](../../apps/studio-server/README.md)                                       | [`architecture/kernel/`](../architecture/kernel/)           |
+| Studio 页面、FSD 业务 Feature、交互状态、typed API Client         | [`apps/studio-client/README.md`](../../apps/studio-client/README.md)                                       | [`architecture/ui/`](../architecture/ui/)                   |
+| Server 进程入口、HTTP、会话认证、RPC 路由、依赖组装              | [`apps/studio-server/README.md`](../../apps/studio-server/README.md)                                       | [`architecture/kernel/`](../architecture/kernel/)           |
 | Card、Narrative、Agent、State、PromptBuild 业务流程              | [`packages/application-runtime/README.md`](../../packages/application-runtime/README.md)                   | [`architecture/application/`](../architecture/application/) |
-| Kernel RPC、Event Bus、数据提交事件与 Introspection              | [`packages/kernel/README.md`](../../packages/kernel/README.md)                                             | [`architecture/kernel/`](../architecture/kernel/)           |
+| Agent 会话/消息、时间线、状态定义与 Prompt 资源树持久化          | [`packages/application-data/README.md`](../../packages/application-data/README.md)                         | [`architecture/data/`](../architecture/data/)               |
+| Kernel RPC 注册、Event Bus、提交事实投影与 Introspection         | [`packages/kernel/README.md`](../../packages/kernel/README.md)                                             | [`architecture/kernel/`](../architecture/kernel/)           |
 | SQLite connection、Migration、Transaction、Commit Fact           | [`packages/data-engine/README.md`](../../packages/data-engine/README.md)                                   | [`architecture/data/`](../architecture/data/)               |
+| 多模型网关调度（OpenAI/Claude/Gemini）、流式执行与 Fake Provider | [`packages/ai-gateway/README.md`](../../packages/ai-gateway/README.md)                                       | [`architecture/platform/external-dependency-ownership.md`](../architecture/platform/external-dependency-ownership.md) |
+| 内容寻址二进制块存储 (SHA-256 Blob) 与原子 Finalize              | [`packages/blob-store/README.md`](../../packages/blob-store/README.md)                                     | [`architecture/data/`](../architecture/data/)               |
+| 媒体资产元数据 (Media Asset) 与原始导入产物 (Source Artifact)    | [`packages/asset-store/README.md`](../../packages/asset-store/README.md)                                     | [`architecture/data/`](../architecture/data/)               |
+| 敏感 API 凭据托管、Keyring/Memory 后端与受控使用                 | [`packages/secret-store/README.md`](../../packages/secret-store/README.md)                                 | [`architecture/data/`](../architecture/data/)               |
+| 全仓结构化日志、Console/Memory Sink 与 Node 旋转归档             | [`packages/logging/README.md`](../../packages/logging/README.md)                                           | [`architecture/platform/logging.md`](../architecture/platform/logging.md) |
+| 同步编译内核执行（Fragment / Pass / Pipeline / Trace）           | [`packages/core/README.md`](../../packages/core/README.md)                                                 | [`architecture/application/prompt-build/loom-core/`](../architecture/application/prompt-build/loom-core/) |
+| 通用 UI 原语组件（Button/Field/Input）与图标集                   | [`packages/loom-ui/README.md`](../../packages/loom-ui/README.md)                                           | [`architecture/ui/`](../architecture/ui/)                   |
 | Extension 作者侧 Manifest、Activation Context 与 Capability 类型 | [`packages/extension-sdk/README.md`](../../packages/extension-sdk/README.md)                               | [`architecture/extensions/`](../architecture/extensions/)   |
 | Server Extension 的加载、授权与 Instance 生命周期                | [`packages/extension-sdk/extension-host/README.md`](../../packages/extension-sdk/extension-host/README.md) | [`architecture/extensions/`](../architecture/extensions/)   |
+| 本地独立命令行沙箱、Kernel CRUD 与 CodeAct 快速自测              | [`apps/playground/README.md`](../../apps/playground/README.md)                                             | [`architecture/kernel/`](../architecture/kernel/)           |
 
-其他 Workspace 的职责总览暂时继续从 [`project-structure.md`](project-structure.md) 进入。本地 README 会按真实维护频率逐步补齐，不批量生成没有证据的空壳说明。
+全仓所有 Package 的完整职责定位与本地 README 请参阅 [`project-structure.md`](project-structure.md)。
+
 
 ## 开发入口
 

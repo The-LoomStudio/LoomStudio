@@ -128,52 +128,60 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
 
 ---
 
+## 🧪 实验沙箱: `apps/playground/`
+
+独立轻量命令行沙箱，用于在不启动全套 Client/Server 的情况下快速验证 Kernel 启动、Document CRUD、系统自省与 CodeAct 安全沙箱执行。
+
+局部开发入口：[`apps/playground/README.md`](../../apps/playground/README.md)。
+
+---
+
 ## 📦 核心领域包: `packages/`
 
 这些包大多是独立于运行环境的（Node / Browser 均可或有明确边界）。
 
-- 📦 `packages/core/` (`@loom/core`)
+- 📦 [`packages/core/`](../../packages/core/README.md) (`@loom/core`)
   - 同步、确定的 Fragment / Pass / Pipeline / Trace 执行层。它是只服务 Studio 的 private workspace package，并保留明确的跨 package API 边界。
   - 正式架构说明：[`architecture/application/prompt-build/loom-core/`](../architecture/application/prompt-build/loom-core/)。
-- 📦 `packages/application-runtime/` (AIRP Layer)
-  - Studio 的**业务心脏**。编排 Card、Agent、Narrative Timeline、PromptBuild、Provider Gateway 与相关 Document Types；权威 Narrative / Agent 持久化分别由专用 Store 承担。
-  - 局部开发入口：[`packages/application-runtime/README.md`](../../packages/application-runtime/README.md)。
-- 📦 `packages/kernel/`
-  - Studio 的底层发动机，管理内部的六个核心服务（RPC注册, 事件总线等）。**禁止包含任何 AI/业务（Provider/Agent）逻辑。**
-  - 局部开发入口：[`packages/kernel/README.md`](../../packages/kernel/README.md)。
+- 📦 [`packages/application-runtime/`](../../packages/application-runtime/README.md) (AIRP Layer)
+  - Studio 的**业务心脏**。编排 Card、Agent、Narrative Timeline、PromptBuild、Provider Gateway 与相关 Document Types；权威 Narrative / Agent / State / PromptResource 持久化由 `@loom-studio/application-data` 承担。
+- 📦 [`packages/application-data/`](../../packages/application-data/README.md)
+  - 核心领域持久化中枢，在共享 SQLite 中内聚管理 Agent 会话与消息、Narrative 时间线与分支、State 状态值与修订、Prompt Resource 资源树与 SettingMount 挂载关系。
+- 📦 [`packages/kernel/`](../../packages/kernel/README.md)
+  - Studio 的底层发动机，管理内部的核心服务（RPC 注册、事件总线等）。**禁止包含任何 AI/业务（Provider/Agent）逻辑。**
   - 正式架构说明：[`architecture/kernel/README.md`](../architecture/kernel/README.md)。
-- 📦 `packages/data-engine/`
-  - 共享 SQLite connection、transaction、migration、Commit Journal 与提交通知。
-  - 局部开发入口：[`packages/data-engine/README.md`](../../packages/data-engine/README.md)。
-- 📦 `packages/secret-store/`
+- 📦 [`packages/data-engine/`](../../packages/data-engine/README.md)
+  - 共享 SQLite connection、transaction、namespaced migration、Commit Journal 与提交后通知。
+  - 正式架构说明：[`architecture/data/README.md`](../architecture/data/README.md)。
+- 📦 [`packages/secret-store/`](../../packages/secret-store/README.md)
   - 平台通用 Secret metadata、受控使用边界与凭证后端接口；SQLite 不保存 Secret 明文，真实系统凭证后端由 Server 组合根注入。
-- 📦 `packages/document-store/`
-  - 保存适合版本化编辑的 Document 与 Revision，不再承载全部业务数据。
-- 📦 `packages/prompt-resource-store/`
-  - 在共享 SQLite 中持久化 Prompt Resource 树（Preset/Setting/Logic/Runtime）、细粒度节点版本与 SettingMount 挂载关系。
-- 📦 `packages/narrative-store/` / `packages/agent-store/`
-  - 分别保存 Narrative Timeline / Branch / Node 与 Agent Session / append-only Message。
-- 📦 `packages/blob-store/`
-  - 基于 SHA-256 的不可变字节存储，负责 staging、去重、原子 finalize 与受控 stream/read，不包含业务 Asset 语义。
-- 📦 `packages/asset-store/`
-  - 在共享 SQLite 中保存 Source Artifact 与 Media Asset metadata，并通过稳定 ID 关联 Blob。
-- 📦 `packages/transport/`
-  - 定义了系统内所有 RPC 消息、事件通知的格式 (Message Envelope)。
-- 📦 `packages/client-bridge/`
-  - 供前端使用的 Bridge SDK，连接到后端的 Transport 以进行远程调用。
-- 📦 `packages/logging/`
-  - Server/Client 共用的结构化运行日志底座，提供 Root/Child Logger、Memory/Console Sink 与查询类型；Node JSONL 持久化通过 `@loom-studio/logging/node` 子入口提供。
+- 📦 [`packages/document-store/`](../../packages/document-store/README.md)
+  - 保存适合版本化编辑的 Document、Revision 与 Changeset，支持乐观锁与回滚，提供 SQLite 与 In-Memory 双实现。
+- 📦 [`packages/blob-store/`](../../packages/blob-store/README.md)
+  - 基于 SHA-256 的不可变二进制字节存储，负责暂存、去重、两阶段原子 finalize 与受控流式读写，不包含业务 Asset 语义。
+- 📦 [`packages/asset-store/`](../../packages/asset-store/README.md)
+  - 在共享 SQLite 中保存 Source Artifact 与 Media Asset metadata，并通过稳定 ID 关联 Blob 存储。
+- 📦 [`packages/ai-gateway/`](../../packages/ai-gateway/README.md)
+  - 统一的多模型厂商调度网关（基于 Vercel AI SDK），支持流式执行、工具调用、能力画像映射与离线测试 Fake Provider。
+- 📦 [`packages/transport/`](../../packages/transport/README.md)
+  - 定义了系统内所有 RPC 消息与事件通知的跨端信封格式 (Message Envelope 与 JSON-RPC 2.0)。
+- 📦 [`packages/client-bridge/`](../../packages/client-bridge/README.md)
+  - 供前端使用的 typed RPC 调用桥，连接到后端的 Transport 以进行远程调用，并在 401 时自动触发会话刷新。
+- 📦 [`packages/logging/`](../../packages/logging/README.md)
+  - Server/Client 共用的结构化运行日志底座，提供 Root/Child Logger、Memory/Console Sink 与查询类型；Node JSONL 旋转持久化通过 `@loom-studio/logging/node` 子入口提供。
   - 正式架构说明：[`architecture/platform/logging.md`](../architecture/platform/logging.md)。
-- 📦 `packages/loom-runner/`
-  - 面向 Kernel/RPC 的 Core adapter，负责 JSON 输入校验、注入 PassFactory 和 Trace Audit。
-- 📦 `packages/extension-sdk/`
-  - 第三方 Extension 作者侧合同。局部开发入口：[`packages/extension-sdk/README.md`](../../packages/extension-sdk/README.md)。
-- 📦 `packages/extension-sdk/extension-host/`
-  - 物理嵌套但具有独立 Workspace identity 的 Server Extension Host。局部开发入口：[`packages/extension-sdk/extension-host/README.md`](../../packages/extension-sdk/extension-host/README.md)。
-- 📦 `packages/shared/`
-  - 通用的工具函数、通用的类型定义 (`JsonValue`, `createId`, 时间处理等)。
-- 📦 `packages/diagnostics/` & `packages/trace-audit/`
-  - 提供系统级错误收集与运行时审计支持。
+- 📦 [`packages/loom-runner/`](../../packages/loom-runner/README.md)
+  - 面向 Kernel/RPC 的 Core adapter，负责 JSON 输入校验、注入 PassFactory、对接 Diagnostics 和 Trace Audit。
+- 📦 [`packages/loom-ui/`](../../packages/loom-ui/README.md) (`@loom-studio/ui`)
+  - 领域无关的原子级 UI 设计系统组件库（Button、TextInput、Field、Radix 菜单原语等）与 SVG 图标集。
+- 📦 [`packages/extension-sdk/`](../../packages/extension-sdk/README.md)
+  - 第三方 Extension 作者侧合同（Manifest v2、Activation Context 与 Capability 类型）。
+- 📦 [`packages/extension-sdk/extension-host/`](../../packages/extension-sdk/extension-host/README.md)
+  - 物理嵌套但具有独立 Workspace identity 的 Server Extension Host，负责插件模块加载、授权与生命周期管理。
+- 📦 [`packages/shared/`](../../packages/shared/README.md)
+  - 通用的环境同构工具函数、类型定义 (`JsonValue`, `createId`, 时间处理)、变量宏渲染引擎与 SettingMount 契约。
+- 📦 [`packages/diagnostics/`](../../packages/diagnostics/README.md) & [`packages/trace-audit/`](../../packages/trace-audit/README.md)
+  - 分别提供系统级非阻塞错误/告警收集注册表与编译器运行轨迹/安全审计只增不减存储。
 
 当前只有 `packages/loom-runner` 和 `packages/application-runtime` 可以直接依赖 `@loom/core`。前者提供平台 adapter；后者保留声明依赖，但当前第一方 PromptBuild 使用本包 DFS 编译器，未调用 Core public API。Kernel、Document Store、Extension Host、Client 与 Extension 不得直接依赖 Core。
 

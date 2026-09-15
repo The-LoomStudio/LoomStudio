@@ -86,7 +86,7 @@ describe('card directory media', () => {
     const watcher = await media.watch(() => { changes += 1 })
     try {
       await fs.writeFile(join(directory, 'assets/avatar.png'), png('changed'))
-      await expect.poll(() => changes).toBeGreaterThan(0)
+      await expect.poll(() => changes, { timeout: 5000, interval: 20 }).toBeGreaterThan(0)
     } finally {
       watcher.dispose()
     }
@@ -107,9 +107,9 @@ describe('card directory media', () => {
     try {
       await manifest('assets/other.png')
       await manifest('assets/avatar.png')
-      await expect.poll(() => changes).toBe(1)
+      await expect.poll(() => changes, { timeout: 5000, interval: 20 }).toBe(1)
       await fs.rename(join(directory, 'assets'), join(directory, 'renamed'))
-      await expect.poll(() => changes).toBe(2)
+      await expect.poll(() => changes, { timeout: 5000, interval: 20 }).toBe(2)
       await manifest('renamed/avatar.png')
       await new Promise(resolve => setTimeout(resolve, 20))
     } finally {

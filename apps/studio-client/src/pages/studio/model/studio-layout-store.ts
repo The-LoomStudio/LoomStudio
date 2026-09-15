@@ -34,6 +34,7 @@ type StudioLayoutData = {
   contextCategory: ContextCategory
   dockOpen: boolean
   dockPinned: boolean
+  composerPinned: boolean
   panelWindowMode: PanelWindowMode
   panelWindowModes: Partial<Record<StudioPanelId, PanelWindowMode>>
   panelWindowSizes: Partial<Record<StudioPanelId, WindowSize>>
@@ -60,6 +61,7 @@ type StudioLayoutStore = StudioLayoutData & {
   setUiScale(scale: number): void
   toggleDock(): void
   toggleDockPinned(): void
+  toggleComposerPinned(): void
   togglePanelWindowMode(panel?: StudioPanelId): void
 }
 
@@ -122,6 +124,7 @@ export function createDefaultStudioLayout(): StudioLayoutData {
     contextCategory: 'setting',
     dockOpen: false,
     dockPinned: true,
+    composerPinned: false,
     panelWindowMode: 'reference',
     panelWindowModes: {},
     panelWindowSizes: {},
@@ -152,6 +155,7 @@ export function sanitizeStudioLayout(value: unknown): StudioLayoutData {
     contextCategory: isContextCategory(value.contextCategory) ? value.contextCategory : defaults.contextCategory,
     dockOpen: value.dockOpen === true || readPanelId(value.activePanel) !== null,
     dockPinned: value.dockPinned === undefined ? defaults.dockPinned : value.dockPinned === true,
+    composerPinned: value.composerPinned === true,
     panelWindowMode,
     panelWindowModes,
     panelWindowSizes: readPanelWindowSizes(value.panelWindowSizes),
@@ -278,6 +282,7 @@ export const useStudioLayoutStore = create<StudioLayoutStore>()(
       setUiScale: uiScale => set({ uiScale: readUiScale(uiScale) }),
       toggleDock: () => set(state => ({ dockOpen: !state.dockOpen })),
       toggleDockPinned: () => set(state => ({ dockPinned: !state.dockPinned })),
+      toggleComposerPinned: () => set(state => ({ composerPinned: !state.composerPinned })),
       togglePanelWindowMode: (panel?: StudioPanelId) => set(state => {
         const nextMode: PanelWindowMode = (state.panelWindowMode === 'immersive' || (panel && state.panelWindowModes[panel] === 'immersive'))
           ? 'reference'

@@ -3,7 +3,7 @@ import { xmlLanguage } from '@codemirror/lang-xml'
 import { yamlLanguage } from '@codemirror/lang-yaml'
 import { classHighlighter, highlightTree } from '@lezer/highlight'
 import type { ReactNode } from 'react'
-import { readYamlScalarTokenClass } from '../yaml-scalar-highlight.js'
+import { readYamlScalarTokenClass } from '../../lib/yaml-scalar-highlight.js'
 
 export function highlightCode(code: string, language?: string): ReactNode[] {
   const normalizedLanguage = language?.toLowerCase()

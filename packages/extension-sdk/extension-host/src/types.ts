@@ -24,6 +24,7 @@ import type {
   ExtensionStateTarget,
   ProfiledAiGateway,
 } from '@loom-studio/extension-sdk'
+import { extensionStorageTokenPattern } from '@loom-studio/extension-sdk'
 import type { JsonObject, JsonValue, StateContribution } from '@loom-studio/shared'
 import type { StudioEvent } from '@loom-studio/transport'
 
@@ -238,7 +239,7 @@ export const kernelNamespaces = ['system', 'events', 'docs', 'extensions', 'diag
 export const studioReservedNamespaces = [...kernelNamespaces, 'application', 'logs', 'studio']
 export const extensionConfigDocumentType = 'airp.extensionConfig'
 export const extensionRecordDocumentType = 'airp.extensionRecord'
-export const extensionStorageTokenPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
+export { extensionStorageTokenPattern }
 
 export type ExtensionConfigContent = {
   scope: ExtensionStorageScope

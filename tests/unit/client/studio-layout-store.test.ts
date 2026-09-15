@@ -229,6 +229,7 @@ describe('sanitizeStudioLayout', () => {
       contextCategory: 'history',
       dockOpen: false,
       dockPinned: true,
+      composerPinned: false,
       panelWindowMode: 'immersive',
       panelWindowModes: { preset: 'immersive' },
       panelWindowSizes: {

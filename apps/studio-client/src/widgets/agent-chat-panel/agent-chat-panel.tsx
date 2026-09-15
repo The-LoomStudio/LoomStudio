@@ -18,7 +18,7 @@ import type { Translator } from '../../shared/i18n/index.js'
 import type { ActiveAgentRun } from '../../features/narrative-runtime/model/use-narrative-runtime.js'
 import { tryWriteClipboardText } from '../../shared/browser/clipboard.js'
 import type { MarkdownCodeBlockLabels } from '../../shared/ui/markdown-content/markdown-code-block.js'
-import { SkeletonText } from '../../shared/ui/skeleton/skeleton.js'
+import { SkeletonText } from '@loom-studio/ui'
 import {
   ConversationMessageAction,
   ConversationMessageChrome,

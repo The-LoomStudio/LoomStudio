@@ -213,6 +213,35 @@ describe('extension manifest contract', () => {
     })).toThrow('placement must be unique')
   })
 
+  it('validates declarative Setting contributions', () => {
+    const base = {
+      manifestVersion: 2,
+      id: 'example.settings',
+      version: '1.0.0',
+      displayName: 'Settings',
+      engines: { studio: '^0.1.0' },
+    } as const
+    const manifest = parseExtensionManifest({
+      ...base,
+      contributes: {
+        settings: [
+          { id: 'enabled', type: 'boolean', label: 'Enabled', default: true },
+          { id: 'mode', type: 'select', label: 'Mode', default: 'quiet', options: [{ value: 'quiet', label: 'Quiet' }] },
+          { id: 'intensity', type: 'range', label: 'Intensity', default: 5, min: 0, max: 10 },
+        ],
+      },
+    })
+    expect(manifest.contributes?.settings).toHaveLength(3)
+    expect(() => parseExtensionManifest({
+      ...base,
+      contributes: { settings: [{ id: 'range', type: 'range', label: 'Range', default: 1 }] },
+    })).toThrow('requires min and max')
+    expect(() => parseExtensionManifest({
+      ...base,
+      contributes: { settings: [{ id: 'mode', type: 'select', label: 'Mode', default: 'missing', options: [{ value: 'quiet', label: 'Quiet' }] }] },
+    })).toThrow('default must reference an option')
+  })
+
   it('validates Package Prompt Resources and Agent Tool handlers', () => {
     const base = {
       manifestVersion: 2,

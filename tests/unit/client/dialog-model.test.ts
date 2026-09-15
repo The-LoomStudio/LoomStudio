@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isDialogBackdropPoint } from '../../../apps/studio-client/src/shared/ui/dialog/dialog-model.js'
+import { isDialogBackdropPoint } from '@loom-studio/ui'
 
 describe('dialog backdrop hit testing', () => {
   const rect = { top: 100, right: 500, bottom: 400, left: 200 }

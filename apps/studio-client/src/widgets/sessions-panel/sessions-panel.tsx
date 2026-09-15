@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+  Toggle,
+} from '@loom-studio/ui'
+import {
   ArrowDownUp,
   ArrowRight,
   Bot,
@@ -33,15 +41,7 @@ import type { StudioApi } from '../../shared/api/studio-api.js'
 import { cardMediaUrl, useCardMediaRevision } from '../../shared/lib/card-media.js'
 import { downloadBlob } from '../../shared/browser/download.js'
 import type { Translator } from '../../shared/i18n/index.js'
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from '../../shared/ui/context-menu/context-menu.js'
 import { MasterDetailWorkbench } from '../../shared/ui/master-detail-workbench/master-detail-workbench.js'
-import { Toggle } from '../../shared/ui/toggle/toggle.js'
 import {
   areAllExpandablesExpanded,
   areAllSelected,

@@ -1,11 +1,11 @@
 import { ChevronRight, Copy, Plus, Trash2 } from 'lucide-react'
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { ModelProfile, ProviderAccount } from '../../entities/index.js'
 import { mergeModelCatalog } from '../../features/provider-settings/model/model-catalog.js'
 import { resolveModelBrand, resolveProviderBrand } from '../../features/provider-settings/model/model-brand.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import { tryWriteClipboardText } from '../../shared/browser/clipboard.js'
-import { Toggle } from '../../shared/ui/toggle/toggle.js'
+import { IconButton, Toggle } from '@loom-studio/ui'
 import styles from './model-panel.module.scss'
 import { ModelBrandIcon } from './model-brand-icon.js'
 
@@ -172,7 +172,7 @@ function ProviderAccountItem(props: {
                 value={baseUrlDraft}
                 onChange={event => setBaseUrlDraft(event.target.value)}
               />
-              <IconButton disabled={!baseUrl} label={copied ? props.t('provider.baseUrlCopied') : props.t('provider.copyBaseUrl')} onClick={() => void copyBaseUrl()}>
+              <IconButton size="small" disabled={!baseUrl} aria-label={copied ? props.t('provider.baseUrlCopied') : props.t('provider.copyBaseUrl')} onClick={() => void copyBaseUrl()}>
                 <Copy aria-hidden="true" />
               </IconButton>
             </div>
@@ -206,7 +206,7 @@ function ProviderAccountItem(props: {
                 <ModelBrandIcon brand={resolveModelBrand(profile.providerModelId) ?? providerBrand} />
                 <span>{profile.providerModelId}</span>
                 {!fake ? (
-                  <IconButton danger disabled={props.busy} label={props.t('provider.modelDelete')} onClick={() => props.onDeleteModel(profile.id)}>
+                  <IconButton size="small" variant="danger" disabled={props.busy} aria-label={props.t('provider.modelDelete')} onClick={() => props.onDeleteModel(profile.id)}>
                     <Trash2 aria-hidden="true" />
                   </IconButton>
                 ) : null}
@@ -250,20 +250,5 @@ function ProviderAccountItem(props: {
         </button>
       </div>
     </details>
-  )
-}
-
-function IconButton(props: { children: ReactNode; danger?: boolean; disabled?: boolean; label: string; onClick(): void }) {
-  return (
-    <button
-      aria-label={props.label}
-      className={props.danger ? styles.iconButtonDanger : styles.iconButton}
-      disabled={props.disabled}
-      title={props.label}
-      type="button"
-      onClick={props.onClick}
-    >
-      {props.children}
-    </button>
   )
 }

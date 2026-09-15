@@ -1,10 +1,10 @@
 import { Check, Copy, FileDown, FileText, Image, RefreshCw, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { Dialog, IconButton } from '@loom-studio/ui'
 import type { CardDirectoryAttachment, CardDirectoryCatalog, CardDirectoryPreview, OpenCardDirectoryResult } from '@loom-studio/shared'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Translator } from '../../shared/i18n/index.js'
-import { Dialog } from '../../shared/ui/dialog/dialog.js'
 import { ImageViewer } from '../../shared/ui/media-viewer/image-viewer.js'
 import styles from './card-resource-overview.module.scss'
 
@@ -77,11 +77,11 @@ export function CardResourceOverview({ api, cardId, onRefresh, t }: { api: CardD
     return () => { current = false }
   }, [api, cardId, revision])
   return <section className={styles.overview} aria-busy={loading}>
-    <header className={styles.header}><h3>{t('directory.attachments')}</h3><div><button type="button" className={styles.iconButton} disabled={loading || busy || !overview} title={t('directory.apply')} aria-label={t('directory.apply')} onClick={() => void previewApply()}><FileDown /></button><button type="button" className={styles.iconButton} disabled={loading || busy} title={t('directory.refresh')} aria-label={t('directory.refresh')} onClick={() => setRevision(value => value + 1)}><RefreshCw /></button></div></header>
+    <header className={styles.header}><h3>{t('directory.attachments')}</h3><div><IconButton disabled={loading || busy || !overview} title={t('directory.apply')} aria-label={t('directory.apply')} onClick={() => void previewApply()}><FileDown /></IconButton><IconButton disabled={loading || busy} title={t('directory.refresh')} aria-label={t('directory.refresh')} onClick={() => setRevision(value => value + 1)}><RefreshCw /></IconButton></div></header>
     {error ? <p role="alert" className={styles.error}>{error}</p> : null}
     {actionError ? <p role="alert" className={styles.error}>{actionError}</p> : null}
     {overview ? <CardResourceSummary key={overview.directory} overview={overview} api={api} t={t} /> : loading || !error ? <p className={styles.empty}>{t(loading ? 'directory.loading' : 'directory.unsaved')}</p> : null}
-    {applyPreview ? <Dialog open title={t('directory.apply')} onClose={() => { if (!busy) setApplyPreview(undefined) }} headerActions={<button type="button" className={styles.iconButton} disabled={busy} title={t('character.cancel')} aria-label={t('character.cancel')} onClick={() => setApplyPreview(undefined)}><X /></button>}>
+    {applyPreview ? <Dialog open title={t('directory.apply')} onClose={() => { if (!busy) setApplyPreview(undefined) }} headerActions={<IconButton disabled={busy} title={t('character.cancel')} aria-label={t('character.cancel')} onClick={() => setApplyPreview(undefined)}><X /></IconButton>}>
       <div className={styles.preview}>
         <p>{applyPreview.changes.length ? t('directory.changeSummary', { added: applyPreview.changes.filter(item => item.kind === 'added').length, modified: applyPreview.changes.filter(item => item.kind === 'modified').length, deleted: applyPreview.changes.filter(item => item.kind === 'deleted').length }) : t('directory.noChanges')}</p>
         {applyPreview.conflicts.length ? <><p className={styles.error}>{t('directory.conflicts', { count: applyPreview.conflicts.length })}</p><ul>{applyPreview.conflicts.map(conflict => <li key={conflict}>{conflict}</li>)}</ul></> : null}
@@ -124,11 +124,11 @@ export function CardResourceSummary({ overview, api, t }: { overview: OpenCardDi
       {item.kind === 'image' ? <Image aria-hidden="true" /> : <FileText aria-hidden="true" />}
       <span>{item.label === 'avatar' ? t('directory.avatar') : item.label === 'background' ? t('directory.background') : item.label}</span><small>{formatSize(item.sizeBytes)}</small>
     </button>)}</div> : null}
-    <footer className={styles.location}><span title={overview.directory}>{t('directory.localProject')}</span><button type="button" className={styles.iconButton} title={t('directory.copyPath')} aria-label={t('directory.copyPath')} onClick={() => void copy()}>{copied ? <Check /> : <Copy />}</button></footer>
+    <footer className={styles.location}><span title={overview.directory}>{t('directory.localProject')}</span><IconButton title={t('directory.copyPath')} aria-label={t('directory.copyPath')} onClick={() => void copy()}>{copied ? <Check /> : <Copy />}</IconButton></footer>
     {copyError ? <p role="alert" className={styles.error}>{copyError}</p> : null}
     <span role="status" className={styles.status}>{copied ? t('directory.copied') : ''}</span>
     {selectedAttachment?.kind === 'image' ? <ImageViewer title={selectedAttachment.label === 'avatar' ? t('directory.avatar') : selectedAttachment.label === 'background' ? t('directory.background') : selectedAttachment.label} src={preview?.content} fileName={selectedAttachment.path.split('/').pop() ?? 'image.png'} error={error} onClose={() => setSelected(undefined)} t={t} /> : null}
-    {selectedAttachment?.kind === 'document' ? <Dialog open title={selectedAttachment.label} onClose={() => setSelected(undefined)} headerActions={<button type="button" className={styles.iconButton} title={t('character.cancel')} aria-label={t('character.cancel')} onClick={() => setSelected(undefined)}><X /></button>}><div className={styles.preview}>{error ? <p role="alert">{error}</p> : preview ? <Markdown remarkPlugins={[remarkGfm]} skipHtml components={{ img: ({ alt }) => <span>{alt}</span>, a: ({ href, children }) => <a href={href} target="_blank" rel="noreferrer noopener">{children}</a> }}>{preview.content}</Markdown> : <p role="status">{t('directory.loading')}</p>}</div></Dialog> : null}
+    {selectedAttachment?.kind === 'document' ? <Dialog open title={selectedAttachment.label} onClose={() => setSelected(undefined)} headerActions={<IconButton title={t('character.cancel')} aria-label={t('character.cancel')} onClick={() => setSelected(undefined)}><X /></IconButton>}><div className={styles.preview}>{error ? <p role="alert">{error}</p> : preview ? <Markdown remarkPlugins={[remarkGfm]} skipHtml components={{ img: ({ alt }) => <span>{alt}</span>, a: ({ href, children }) => <a href={href} target="_blank" rel="noreferrer noopener">{children}</a> }}>{preview.content}</Markdown> : <p role="status">{t('directory.loading')}</p>}</div></Dialog> : null}
   </>
 }
 
@@ -162,7 +162,7 @@ export function DirectoryDiscoveryNotice({ catalog, api, onRefresh, t, onClose }
     }
     finally { pending.current = false; if (active.current) setBusy(false) }
   }
-  return <Dialog open title={t('directory.found')} onClose={() => { if (!busy) onClose() }} headerActions={<button type="button" disabled={busy} className={styles.iconButton} title={t('character.cancel')} aria-label={t('character.cancel')} onClick={onClose}><X /></button>}>
+  return <Dialog open title={t('directory.found')} onClose={() => { if (!busy) onClose() }} headerActions={<IconButton disabled={busy} title={t('character.cancel')} aria-label={t('character.cancel')} onClick={onClose}><X /></IconButton>}>
     {error ? <p role="alert" className={styles.error}>{error}</p> : null}
     <div className={styles.discovery}>{catalog.entries.filter(entry => !entry.registeredCardId && !imported.includes(entry.directory)).map(entry => <div key={entry.directory}><strong>{entry.name}</strong>{entry.sameSourceCount ? <small>{t('directory.sameSource', { count: entry.sameSourceCount })}</small> : null}{entry.error ? <p className={styles.error}>{entry.error}</p> : null}<button type="button" disabled={busy || !!entry.error} onClick={() => void importDirectory(entry.directory)}>{t('directory.confirmImport')}</button></div>)}</div>
   </Dialog>

@@ -14,6 +14,7 @@ import type { AiGatewayCapabilityRegistry, ProviderAdapterRegistry } from '@loom
 import type { DataActorRef, SqliteDataEngine, SqliteDataTransaction } from '@loom-studio/data-engine'
 import type {
   ExtensionAgentToolContribution,
+  ExtensionConfigEntry,
   ExtensionEntityRef,
   ExtensionPromptResourceContribution,
   ExtensionRecordEntry,
@@ -21,7 +22,7 @@ import type {
   ExtensionTextExtractorContribution,
   ExtensionTextTransformRuleContribution,
 } from '@loom-studio/extension-sdk'
-export type { ExtensionEntityRef, ExtensionRecordEntry, ExtensionStorageScope } from '@loom-studio/extension-sdk'
+export type { ExtensionConfigEntry, ExtensionEntityRef, ExtensionRecordEntry, ExtensionStorageScope } from '@loom-studio/extension-sdk'
 import type { Logger } from '@loom-studio/logging'
 import type {
   NarrativeBranch,
@@ -192,6 +193,9 @@ export type ApplicationRuntime = {
   resolveLoomScriptRendererMounts(input?: { workspaceId?: string; timelineId?: string; presetId?: string }): Promise<{ mounts: ResolvedLoomScriptRendererMount[] }>
   listExtensionRecords(input: { packageId: string; scope?: ExtensionStorageScope; recordType?: string; binding?: ExtensionEntityRef }): Promise<{ records: ExtensionRecordEntry[] }>
   getExtensionRecord(input: { packageId: string; recordId: string }): Promise<{ record: ExtensionRecordEntry | null }>
+  listExtensionConfigs(input: { packageId: string; scope?: ExtensionStorageScope }): Promise<{ configs: ExtensionConfigEntry[] }>
+  getExtensionConfig(input: { packageId: string; scope: ExtensionStorageScope; key: string }): Promise<{ config: ExtensionConfigEntry | null }>
+  upsertExtensionConfig(input: { packageId: string; scope: ExtensionStorageScope; key: string; value: JsonValue; expectedVersion?: number }, context?: RuntimeRequestContext): Promise<{ config: ExtensionConfigEntry; mutation: MutationReceipt }>
   createCard(input: CreateCardInput, context?: RuntimeRequestContext): Promise<CreateCardResult>
   getCard(input: GetCardInput): Promise<GetCardResult>
   listCards(input?: ListCardsInput): Promise<ListCardsResult>

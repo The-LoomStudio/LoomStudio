@@ -11,24 +11,8 @@
 }
 
 .searchField {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   margin: 10px 12px 8px;
   padding: 7px 0;
-  border-bottom: 1px solid var(--loom-color-border);
-  color: var(--loom-color-text-muted);
-}
-
-.searchField input {
-  width: 100%;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--loom-color-text);
-  font: inherit;
 }
 
 .filters {

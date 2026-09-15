@@ -1,8 +1,8 @@
 .composer {
   align-self: end;
-  width: min(var(--loom-chat-width), 100%);
+  width: 100%;
   justify-self: center;
-  margin: 0 0 8px;
+  margin: 0 0 4px;
   min-height: 0;
   padding: 0;
   background: transparent;
@@ -19,7 +19,7 @@
   gap: 2px;
   border: 1px solid color-mix(in srgb, var(--loom-color-border) 74%, transparent);
   border-radius: var(--loom-radius-window);
-  padding: 6px;
+  padding: 8px 10px 6px;
   background: var(--loom-color-surface);
   box-shadow: none;
 }
@@ -75,7 +75,7 @@
   resize: none;
   border: 0;
   border-radius: 0;
-  padding: 0 2px;
+  padding: 2px 4px;
   color: var(--loom-color-text);
   font-size: var(--loom-font-size-body);
   line-height: var(--loom-line-height-body);
@@ -129,6 +129,10 @@
   padding: 0;
   color: var(--loom-color-text-muted);
   background: transparent;
+}
+
+.composer .pinnedActive {
+  color: var(--loom-color-accent);
 }
 
 .utilityButton svg,

@@ -1,7 +1,7 @@
 import { Copy, Download, Maximize, Scan, Share2, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { useEffect, useRef, useState, type PointerEvent } from 'react'
 import type { Translator } from '../../i18n/index.js'
-import { Dialog } from '../dialog/dialog.js'
+import { Dialog } from '@loom-studio/ui'
 import { constrainImage, fitImage, zoomImage, type ImageTransform, type Size } from './image-transform.js'
 import styles from './image-viewer.module.scss'
 

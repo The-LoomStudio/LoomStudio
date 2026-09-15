@@ -60,7 +60,18 @@ Studio Server
 Application 初始化时创建或覆盖官方预设与 Setting；当前只有本地来源，不包含在线更新。
 详见 [官方内容说明](../../official/README.md)。
 
-Kernel 不依赖 HTTP、WebSocket 或 SSE。Server 负责进程、Transport、本地路径、认证和依赖组装；Card、Narrative、Agent、State、PromptBuild 等业务规则属于 Application Runtime。
+---
+
+## 架构规约与外部依赖所有权 (Server Architecture Rules)
+
+根据 [`external-dependency-ownership.md`](../../docs/architecture/platform/external-dependency-ownership.md)，Server 端具备严格的技术栈选型与职责边界：
+
+1. **HTTP 服务选型**：纯原生 Node `node:http` 处理 HTTP/RPC，**严禁引入 Express、Fastify 或 Hono 等平行服务端框架**。
+2. **数据库基座**：统一通过 `@loom-studio/data-engine` 暴露的单一 SQLite connection 和事务管道运行，**严禁各领域 Store 私自建立独立的数据库连接，严禁引入 Prisma、TypeORM 或自制 ORM/Repository 层**。
+3. **压缩格式处理**：统一采用 `fflate` 进行 Card Bundle、Prompt Resource、Extension 压缩包处理，严禁私自编写第二套 ZIP 编解码器。
+4. **业务逻辑绝不上移**：Server 仅作为装配各 Store、Kernel、Host 与提供 HTTP/RPC 协议适配的组合根（Composition Root），**绝不编写 Card、Narrative、Agent、State 或 PromptBuild 的业务规则**（必须全部由 Application Runtime 承载）。
+5. **凭据安全边界**：为 `SecretStore` 注入系统 Keyring 或内存凭据后端，确保 SQLite 中仅持久化 Secret 元数据与引用，严禁明文凭据打印到日志或返回给前端。
+
 
 ## 文档入口
 

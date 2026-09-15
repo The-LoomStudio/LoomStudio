@@ -13,7 +13,7 @@ import { readPromptResourceWorkbenchRoot } from '../../features/context-assets/m
 import { ContextAssetEditor, ContextAssetExplorer } from '../../features/context-assets/ui/context-asset-workbench.js'
 import { findContextAssetPath, findContextAssetByVirtualPath } from '../../features/context-assets/model/context-asset-tree.js'
 import { PromptResourceToolbar } from '../../features/context-assets/ui/prompt-resource-toolbar/prompt-resource-toolbar.js'
-import { Dialog } from '../../shared/ui/dialog/dialog.js'
+import { Dialog } from '@loom-studio/ui'
 import { MacroAuthoringDetail, MacroAuthoringExplorer, type MacroAuthoringPanelProps, useMacroAuthoring } from '../../features/state-variables/ui/macro-authoring-panel.js'
 import type { Card, ContextAssetNode, PromptResource, SettingMount, SettingMountSource } from '../../entities/index.js'
 import type { Translator } from '../../shared/i18n/index.js'

@@ -4,6 +4,7 @@ import type {
   ExtensionManifest,
   ExtensionModuleManifest,
   ExtensionPromptResourceContribution,
+  ExtensionSettingContribution,
   ExtensionTextExtractorContribution,
   ExtensionTextTransformRuleContribution,
 } from '@loom-studio/extension-sdk'
@@ -96,6 +97,7 @@ export function validateManifest(manifest: Partial<ExtensionManifest>): void {
   }
   validateTextResourceContributions(manifest.contributes?.transformRules, 'Text Transform Rule')
   validateTextResourceContributions(manifest.contributes?.textExtractors, 'Text Extractor')
+  validateSettingContributions(manifest.contributes?.settings)
   const agentTools = new Set<string>()
   for (const tool of manifest.contributes?.agentTools ?? []) {
     if (!tool.id.startsWith(`${manifest.id}/`) || !extensionStorageTokenPattern.test(tool.id.slice(manifest.id.length + 1))) {
@@ -228,6 +230,76 @@ export function validateManifest(manifest: Partial<ExtensionManifest>): void {
       }
     }
   }
+}
+
+function validateSettingContributions(settings: ExtensionSettingContribution[] | undefined): void {
+  const ids = new Set<string>()
+  for (const setting of settings ?? []) {
+    const settingId = setting.id
+    if (!setting.id || !extensionStorageTokenPattern.test(setting.id)) throw new Error(`Manifest Setting id is invalid: ${setting.id}`)
+    if (ids.has(setting.id)) throw new Error(`Manifest Setting id must be unique: ${setting.id}`)
+    ids.add(setting.id)
+    if (typeof setting.label !== 'string') throw new Error(`Manifest Setting label is required: ${setting.id}`)
+    assertOptionalManifestText(setting.label, `Setting label (${setting.id})`, 255)
+    assertOptionalManifestText(setting.description, `Setting description (${setting.id})`, 2_048)
+    assertOptionalManifestText(setting.group, `Setting group (${setting.id})`, 255)
+    if (setting.suggestedOrder !== undefined && (!Number.isInteger(setting.suggestedOrder) || Math.abs(setting.suggestedOrder) > 1_000_000)) {
+      throw new Error(`Manifest Setting suggestedOrder is invalid: ${setting.id}`)
+    }
+    if (setting.scope !== undefined && !['global', 'card', 'timeline', 'agent-session'].includes(setting.scope)) {
+      throw new Error(`Manifest Setting scope is invalid: ${setting.id}`)
+    }
+    if (setting.readOnly !== undefined && typeof setting.readOnly !== 'boolean') throw new Error(`Manifest Setting readOnly flag is invalid: ${setting.id}`)
+    if (setting.type === 'boolean') {
+      if (typeof setting.default !== 'boolean') throw new Error(`Manifest Setting default must be boolean: ${settingId}`)
+      continue
+    }
+    if (setting.type === 'text' || setting.type === 'multiline') {
+      if (typeof setting.default !== 'string') throw new Error(`Manifest Setting default must be string: ${settingId}`)
+      if (setting.placeholder !== undefined) assertOptionalManifestText(setting.placeholder, `Setting placeholder (${setting.id})`, 1_024)
+      if (setting.required !== undefined && typeof setting.required !== 'boolean') throw new Error(`Manifest Setting required flag is invalid: ${setting.id}`)
+      assertOptionalNonNegativeInteger(setting.minLength, `Manifest Setting minLength is invalid: ${setting.id}`)
+      assertOptionalNonNegativeInteger(setting.maxLength, `Manifest Setting maxLength is invalid: ${setting.id}`)
+      if (setting.minLength !== undefined && setting.maxLength !== undefined && setting.minLength > setting.maxLength) {
+        throw new Error(`Manifest Setting length range is invalid: ${setting.id}`)
+      }
+      if (setting.default.length < (setting.minLength ?? 0) || (setting.maxLength !== undefined && setting.default.length > setting.maxLength)) {
+        throw new Error(`Manifest Setting default length is invalid: ${setting.id}`)
+      }
+      if (setting.required && !setting.default.trim()) throw new Error(`Manifest Setting default is required: ${setting.id}`)
+      continue
+    }
+    if (setting.type === 'number' || setting.type === 'range') {
+      if (!Number.isFinite(setting.default)) throw new Error(`Manifest Setting default must be finite: ${setting.id}`)
+      for (const [name, value] of [['min', setting.min], ['max', setting.max], ['step', setting.step]] as const) {
+        if (value !== undefined && !Number.isFinite(value)) throw new Error(`Manifest Setting ${name} is invalid: ${setting.id}`)
+      }
+      if (setting.min !== undefined && setting.max !== undefined && setting.min > setting.max) throw new Error(`Manifest Setting number range is invalid: ${setting.id}`)
+      if (setting.step !== undefined && setting.step <= 0) throw new Error(`Manifest Setting step is invalid: ${setting.id}`)
+      if (setting.default < (setting.min ?? -Infinity) || setting.default > (setting.max ?? Infinity)) throw new Error(`Manifest Setting default range is invalid: ${setting.id}`)
+      if (setting.type === 'range' && (setting.min === undefined || setting.max === undefined)) throw new Error(`Manifest range Setting requires min and max: ${setting.id}`)
+      continue
+    }
+    if (setting.type === 'select') {
+      if (typeof setting.default !== 'string') throw new Error(`Manifest Setting default must be string: ${settingId}`)
+      if (!Array.isArray(setting.options) || setting.options.length === 0) throw new Error(`Manifest select Setting requires options: ${setting.id}`)
+      const values = new Set<string>()
+      for (const option of setting.options) {
+        if (typeof option?.value !== 'string' || typeof option.label !== 'string') throw new Error(`Manifest Setting option is invalid: ${setting.id}`)
+        assertOptionalManifestText(option.value, `Setting option value (${setting.id})`, 255)
+        assertOptionalManifestText(option.label, `Setting option label (${setting.id})`, 255)
+        if (values.has(option.value)) throw new Error(`Manifest Setting option value must be unique: ${setting.id}`)
+        values.add(option.value)
+      }
+      if (!values.has(setting.default)) throw new Error(`Manifest Setting default must reference an option: ${setting.id}`)
+      continue
+    }
+    throw new Error(`Manifest Setting type is invalid: ${(setting as { id?: string }).id ?? 'unknown'}`)
+  }
+}
+
+function assertOptionalNonNegativeInteger(value: number | undefined, message: string): void {
+  if (value !== undefined && (!Number.isInteger(value) || value < 0)) throw new Error(message)
 }
 
 function validateTextResourceContributions(

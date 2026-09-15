@@ -8,62 +8,9 @@
 }
 
 .searchField {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) 24px;
-  align-items: center;
-  gap: 5px;
   margin: 7px 8px 5px;
   padding: 0 4px 3px;
-  border-bottom: 1px solid var(--loom-color-border);
-  color: var(--loom-color-text-subtle);
-}
-
-.searchField:focus-within {
-  border-color: var(--loom-color-text-muted);
-  color: var(--loom-color-text-muted);
-}
-
-.searchField > svg {
-  width: var(--loom-icon-size-4);
-  height: var(--loom-icon-size-4);
-}
-
-.searchField input {
-  min-width: 0;
-  height: 25px;
-  border: 0;
-  padding: 0;
-  color: var(--loom-color-text);
-  background: transparent;
   font-size: var(--loom-font-size-3);
-  box-shadow: none;
-}
-
-.searchField input:focus {
-  border: 0;
-  box-shadow: none;
-}
-
-.searchField button {
-  width: 24px;
-  min-width: 24px;
-  min-height: 24px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  padding: 0;
-  color: var(--loom-color-text-subtle);
-  background: transparent;
-}
-
-.searchField button:hover:not(:disabled) {
-  color: var(--loom-color-text);
-}
-
-.searchField button svg {
-  width: var(--loom-icon-size-3);
-  height: var(--loom-icon-size-3);
 }
 
 .searchBody,

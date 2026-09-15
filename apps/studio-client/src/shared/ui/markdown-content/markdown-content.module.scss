@@ -29,9 +29,15 @@
 .content pre,
 .content table { margin: 0.65em 0; }
 
-.content p { margin: 0.44em 0; }
+.content p {
+  margin: 0 0 10px;
+}
 
-.content p:has(> [data-loom-token='dialogue']:only-child) { margin-block: 1.15em; }
+.content br {
+  display: block;
+  content: '';
+  margin-bottom: 10px;
+}
 
 .content ul,
 .content ol { padding-left: 1.5em; }

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc -b",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --root ../.. tests/unit/studio-server tests/integration/studio-server",
     "lint": "eslint .",
     "dev": "tsx src/main.ts"
   },

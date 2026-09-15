@@ -11,6 +11,7 @@ import type {
   ClientStateSnapshot,
   ClientStateTarget,
   ExtensionEntityRef,
+  ExtensionConfigEntry,
   ExtensionRecordEntry,
   ExtensionRegistrationHandle,
   ExtensionStorageScope,
@@ -61,6 +62,7 @@ export type ClientExtensionHost = {
   diagnostics(): readonly ClientExtensionDiagnostic[]
   subscribe(listener: () => void): () => void
   revision(): number
+  notifyConfigsChanged(): Promise<void>
 }
 
 export type ClientCommandExecutionResult =
@@ -76,6 +78,11 @@ export type ClientCommandRegistrationSummary = {
 }
 
 export type ClientExtensionDataApi = {
+  configs: {
+    list(packageId: string, input?: { scope?: ExtensionStorageScope }): Promise<ExtensionConfigEntry[]>
+    get(packageId: string, input: { scope: ExtensionStorageScope; key: string }): Promise<ExtensionConfigEntry | null>
+    upsert(packageId: string, input: { scope: ExtensionStorageScope; key: string; value: JsonValue; expectedVersion?: number }): Promise<ExtensionConfigEntry>
+  }
   records: {
     list(packageId: string, input?: { scope?: ExtensionStorageScope; recordType?: string; binding?: ExtensionEntityRef }): Promise<ExtensionRecordEntry[]>
     get(packageId: string, recordId: string): Promise<ExtensionRecordEntry | null>
@@ -108,6 +115,13 @@ type ActiveClientModule = {
 
 type LoadedClientModule = Partial<ClientExtensionModule> & { default?: ClientExtensionModule }
 
+type ClientConfigSubscription = {
+  packageId: string
+  input: { scope?: ExtensionStorageScope }
+  handler(entries: ExtensionConfigEntry[]): void | Promise<void>
+  signature?: string
+}
+
 export function createClientExtensionHost(options: {
   rendererHost: ClientRendererHost
   data?: ClientExtensionDataApi
@@ -122,12 +136,14 @@ export function createClientExtensionHost(options: {
   const summaries = new Map<string, ClientExtensionModuleSummary>()
   const diagnostics: ClientExtensionDiagnostic[] = []
   const backgrounds = new Map<string, RegisteredClientBackground>()
+  const configSubscriptions = new Map<number, ClientConfigSubscription>()
   const listeners = new Set<() => void>()
   const loadModule = options.loadModule ?? importClientModule
   const logger = options.logger ?? consoleClientExtensionLogger
   const data = options.data ?? unavailableClientExtensionDataApi
   const appearance = options.appearance
   let currentRevision = 0
+  let nextConfigSubscriptionId = 1
   let queue = Promise.resolve()
 
   function emit(): void {
@@ -139,6 +155,43 @@ export function createClientExtensionHost(options: {
     const result = queue.then(operation, operation)
     queue = result.then(() => undefined, () => undefined)
     return result
+  }
+
+  function registerConfigSubscription(
+    packageId: string,
+    input: { scope?: ExtensionStorageScope },
+    handler: ClientConfigSubscription['handler'],
+  ): number {
+    const id = nextConfigSubscriptionId
+    nextConfigSubscriptionId += 1
+    configSubscriptions.set(id, {
+      packageId,
+      input: structuredClone(input),
+      handler,
+    })
+    return id
+  }
+
+  function disposeConfigSubscription(id: number): void {
+    configSubscriptions.delete(id)
+  }
+
+  async function refreshConfigSubscriptions(): Promise<void> {
+    await Promise.all([...configSubscriptions.entries()].map(async ([id, subscription]) => {
+      try {
+        const entries = await data.configs.list(subscription.packageId, subscription.input)
+        if (!configSubscriptions.has(id)) return
+        const signature = entries.map(entry => `${entry.id}:${entry.version}`).join('|')
+        if (signature === subscription.signature) return
+        subscription.signature = signature
+        await subscription.handler(entries.map(entry => structuredClone(entry)))
+      } catch (error) {
+        logger.error('Client Extension Config subscription failed', {
+          packageId: subscription.packageId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }))
   }
 
   async function stop(record: ActiveClientModule): Promise<void> {
@@ -183,6 +236,8 @@ export function createClientExtensionHost(options: {
         data,
         logger,
         registerCommand,
+        registerConfigSubscription,
+        disposeConfigSubscription,
         backgrounds,
         appearance,
         emit,
@@ -367,6 +422,7 @@ export function createClientExtensionHost(options: {
       return () => listeners.delete(listener)
     },
     revision: () => currentRevision,
+    notifyConfigsChanged: refreshConfigSubscriptions,
   }
 }
 
@@ -399,6 +455,12 @@ function createActivationContext(input: {
     commandId: string,
     handler: ClientCommandHandler,
   ): ExtensionRegistrationHandle
+  registerConfigSubscription(
+    packageId: string,
+    input: { scope?: ExtensionStorageScope },
+    handler: ClientConfigSubscription['handler'],
+  ): number
+  disposeConfigSubscription(id: number): void
 }): ClientExtensionActivationContext {
   return {
     extension: {
@@ -467,6 +529,18 @@ function createActivationContext(input: {
     records: {
       list: query => input.data.records.list(input.extensionPackage.packageId, query),
       get: recordId => input.data.records.get(input.extensionPackage.packageId, recordId),
+    },
+    configs: {
+      list: query => input.data.configs.list(input.extensionPackage.packageId, query),
+      get: query => input.data.configs.get(input.extensionPackage.packageId, query),
+      upsert: query => input.data.configs.upsert(input.extensionPackage.packageId, query),
+      subscribe: (query, handler) => {
+        if (input.record.abortController.signal.aborted) throw new Error('Cannot subscribe to Config changes from an unloaded extension')
+        const id = input.registerConfigSubscription(input.extensionPackage.packageId, query, handler)
+        const handle = { dispose: () => input.disposeConfigSubscription(id) }
+        input.record.handles.push(handle)
+        return handle
+      },
     },
     state: {
       get: target => input.data.state.get(target),
@@ -585,6 +659,11 @@ const consoleClientExtensionLogger: ClientExtensionLogger = {
 }
 
 const unavailableClientExtensionDataApi: ClientExtensionDataApi = {
+  configs: {
+    list: () => Promise.reject(new Error('Client extension Config API is unavailable')),
+    get: () => Promise.reject(new Error('Client extension Config API is unavailable')),
+    upsert: () => Promise.reject(new Error('Client extension Config API is unavailable')),
+  },
   records: {
     list: () => Promise.reject(new Error('Client extension Record API is unavailable')),
     get: () => Promise.reject(new Error('Client extension Record API is unavailable')),

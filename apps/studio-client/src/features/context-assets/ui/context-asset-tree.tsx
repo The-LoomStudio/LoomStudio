@@ -1,8 +1,7 @@
 import { Anchor, Book, Bot, Code2, Cog, Copy, FileText, Folder, FolderOpen, FolderPlus, MessageSquare, MessagesSquare, Pencil, Plus, Trash2, UserRound } from 'lucide-react'
 import type { ContextAssetNode } from '../../../entities/index.js'
 import type { Translator } from '../../../shared/i18n/index.js'
-import type { MenuAction } from '../../../shared/ui/menu-action.js'
-import { StatusIndicator } from '../../../shared/ui/status-indicator/status-indicator.js'
+import { StatusIndicator, type MenuAction } from '@loom-studio/ui'
 export { resolveVirtualDisplayName, resolveVirtualExtension, resolveVirtualPath } from '../model/context-asset-tree.js'
 
 type ContextAssetTreeActionsInput = {

@@ -120,6 +120,7 @@ describe('Client Extension Host', () => {
     const list = vi.fn(async () => [])
     const call = vi.fn(async () => ({ ok: true }))
     const data: ClientExtensionDataApi = {
+      configs: { list: async () => [], get: async () => null, upsert: async () => { throw new Error('not used') } },
       records: { list, get: async () => null },
       state: { get: async target => ({ scopeId: 'global', target, revisionId: 'rev-1', value: {}, createdAt: '2026-08-29T00:00:00.000Z' }) },
       history: { project: async () => ({}), extract: async () => ({}) },
@@ -147,6 +148,60 @@ describe('Client Extension Host', () => {
     expect(list).toHaveBeenCalledWith('example.client', { recordType: 'image' })
     expect(call).toHaveBeenCalledWith('example.client.refresh', {})
     expect(host.summaries()).toEqual([expect.objectContaining({ state: 'active' })])
+  })
+
+  it('delivers only committed Config snapshots and disposes subscriptions with the module', async () => {
+    const rendererHost = createClientRendererHost()
+    let configs = [{
+      id: 'config-1',
+      packageId: 'example.client',
+      scope: { kind: 'global' as const },
+      key: 'enabled',
+      value: true,
+      version: 1,
+      createdAt: '2026-09-14T00:00:00.000Z',
+      updatedAt: '2026-09-14T00:00:00.000Z',
+    }]
+    const listConfigs = vi.fn(async () => configs)
+    const handler = vi.fn()
+    const data: ClientExtensionDataApi = {
+      configs: { list: listConfigs, get: async () => configs[0] ?? null, upsert: async () => configs[0]! },
+      records: { list: async () => [], get: async () => null },
+      state: { get: async target => ({ scopeId: 'global', target, revisionId: 'rev-1', value: {}, createdAt: '2026-08-29T00:00:00.000Z' }) },
+      history: { project: async () => ({}), extract: async () => ({}) },
+      rpc: { call: async () => ({}) },
+      assets: { url: assetId => `/assets/${assetId}` },
+    }
+    const host = createClientExtensionHost({
+      rendererHost,
+      data,
+      loadModule: async () => ({
+        activate: context => {
+          const subscription = context.configs.subscribe({ scope: { kind: 'global' } }, handler)
+          const renderer = context.renderers.register(
+            { id: 'tail', name: 'Tail', surface: 'narrative.timeline.tail', instanceScope: 'timeline' },
+            { mount: vi.fn() },
+          )
+          return { dispose: async () => { await subscription.dispose(); await renderer.dispose() } }
+        },
+      }),
+    })
+
+    await host.reconcile([extensionPackage()])
+    await host.notifyConfigsChanged()
+    expect(handler).toHaveBeenCalledWith(configs)
+    await host.notifyConfigsChanged()
+    expect(handler).toHaveBeenCalledTimes(1)
+
+    configs = [{ ...configs[0]!, value: false, version: 2 }]
+    await host.notifyConfigsChanged()
+    expect(handler).toHaveBeenCalledTimes(2)
+    expect(handler).toHaveBeenLastCalledWith(configs)
+
+    await host.reconcile([extensionPackage(false)])
+    configs = [{ ...configs[0]!, version: 3 }]
+    await host.notifyConfigsChanged()
+    expect(handler).toHaveBeenCalledTimes(2)
   })
 
   it('lets an Extension explicitly claim the Workspace background without an active Timeline', async () => {

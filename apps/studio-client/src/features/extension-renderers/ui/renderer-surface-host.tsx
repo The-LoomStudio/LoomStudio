@@ -1,7 +1,8 @@
-import type { ClientDisplayPart, RendererSurface } from '@loom-studio/extension-sdk'
+import type { ClientDisplayPart, ClientRendererFrameHostMessage, RendererSurface } from '@loom-studio/extension-sdk'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { rendererContributionKey, rendererSurfacePolicies } from '../model/renderer-registry.js'
 import type { ClientRendererContext, ClientRendererHost, ClientRendererRegistration, ClientRendererScope } from '../model/client-renderer-host.js'
+import { readClientThemeSnapshot, subscribeClientTheme } from '../model/client-theme.js'
 import styles from './renderer-surface-host.module.scss'
 
 export function RendererSurfaceHost(props: {
@@ -67,6 +68,7 @@ export function RendererInstanceRoot(props: {
         compact: globalThis.matchMedia?.('(max-width: 820px)').matches ?? false,
         prefersReducedMotion: globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
         theme: 'inherit',
+        themeSnapshot: readClientThemeSnapshot(),
       },
       signal: controller.signal,
       close: () => props.host.release(props.registration.definition.surface, stableScope.key, contributionKey),
@@ -88,8 +90,19 @@ export function RendererInstanceRoot(props: {
     const adapter = props.registration.definition.adapter ?? 'direct'
     if (props.registration.sandboxMount) {
       handle = props.registration.sandboxMount(root, context)
+      const unsubscribeTheme = subscribeClientTheme(snapshot => {
+        context.host.themeSnapshot = snapshot
+        void Promise.resolve(props.registration.update?.(context)).catch(error => {
+          props.host.reportDiagnostic({
+            code: 'renderer.surface_mismatch',
+            message: error instanceof Error ? error.message : String(error),
+            contributionKey,
+          })
+        })
+      })
       return () => {
         disposed = true
+        unsubscribeTheme()
         ;(context as ClientRendererContext & { controller: AbortController }).controller.abort()
         void handle?.dispose()
         void instanceHandle.dispose()
@@ -118,17 +131,25 @@ export function RendererInstanceRoot(props: {
         if (event.data.type === 'loom:renderer-close') context.close()
       }
       window.addEventListener('message', handleMessage)
-      frame.addEventListener('load', () => frame.contentWindow?.postMessage({
-        type: 'loom:renderer-context',
-        identity: context.identity,
-        surface: context.surface,
-        scope: context.scope,
-        part: context.part,
-        host: context.host,
-      }, '*'))
+      frame.addEventListener('load', () => {
+        context.host.themeSnapshot = readClientThemeSnapshot()
+        frame.contentWindow?.postMessage({
+          type: 'loom:renderer-context',
+          identity: context.identity,
+          surface: context.surface,
+          scope: context.scope,
+          part: context.part,
+          host: context.host,
+        } satisfies ClientRendererFrameHostMessage, '*')
+      })
+      const unsubscribeTheme = subscribeClientTheme(snapshot => {
+        context.host.themeSnapshot = snapshot
+        frame.contentWindow?.postMessage({ type: 'loom:renderer-theme', theme: snapshot } satisfies ClientRendererFrameHostMessage, '*')
+      })
       root.replaceChildren(frame)
       return () => {
         disposed = true
+        unsubscribeTheme()
         window.removeEventListener('message', handleMessage)
         frame.src = 'about:blank'
         root.replaceChildren()
@@ -146,6 +167,17 @@ export function RendererInstanceRoot(props: {
       shadow.replaceChildren(style, mountRoot)
     }
 
+    const unsubscribeTheme = subscribeClientTheme(snapshot => {
+      context.host.themeSnapshot = snapshot
+      void Promise.resolve(props.registration.update?.(context)).catch(error => {
+        props.host.reportDiagnostic({
+          code: 'renderer.surface_mismatch',
+          message: error instanceof Error ? error.message : String(error),
+          contributionKey,
+        })
+      })
+    })
+
     void Promise.resolve().then(() => props.registration.mount(mountRoot, context)).then(result => {
       if (disposed) void result?.dispose()
       else handle = result
@@ -160,6 +192,7 @@ export function RendererInstanceRoot(props: {
     })
     return () => {
       disposed = true
+      unsubscribeTheme()
       ;(context as ClientRendererContext & { controller: AbortController }).controller.abort()
       void handle?.dispose()
       void instanceHandle.dispose()

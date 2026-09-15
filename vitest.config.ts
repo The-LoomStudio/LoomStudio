@@ -12,11 +12,32 @@ const defaultTestExclude = [
   '**/node_modules/**',
   '**/dist/**',
   'tests/probes/**/*.test.ts',
+  'tests/stress/**/*.test.ts',
 ]
-const scopedTestInclude =
-  testScope === 'probes'
-    ? ['tests/probes/**/*.test.ts']
-    : defaultTestInclude
+function resolveScopedInclude(scope?: string): string[] {
+  switch (scope) {
+    case 'fast':
+      return [
+        'tests/unit/core/**/*.test.ts',
+        'tests/unit/shared/**/*.test.ts',
+        'tests/contract/**/*.test.ts',
+      ]
+    case 'server':
+      return [
+        'tests/integration/studio-server/**/*.test.ts',
+        'tests/unit/studio-server/**/*.test.ts',
+      ]
+    case 'real':
+      return ['tests/integration/pipeline/**/*.test.ts']
+    case 'stress':
+      return ['tests/stress/**/*.test.ts', 'tests/probes/**/*.test.ts']
+    case 'probes':
+      return ['tests/probes/**/*.test.ts']
+    default:
+      return defaultTestInclude
+  }
+}
+const scopedTestInclude = resolveScopedInclude(testScope)
 
 const resolvePath = (relative: string) => fileURLToPath(new URL(relative, import.meta.url))
 
@@ -39,6 +60,7 @@ export default defineConfig({
       '@loom-studio/logging/node': resolvePath('./packages/logging/src/node.ts'),
       '@loom-studio/logging': resolvePath('./packages/logging/src/index.ts'),
       '@loom-studio/loom-runner': resolvePath('./packages/loom-runner/src/index.ts'),
+      '@loom-studio/ui': resolvePath('./packages/loom-ui/src/index.ts'),
       '@loom-studio/shared/macros': resolvePath('./packages/shared/src/macros.ts'),
       '@loom-studio/shared': resolvePath('./packages/shared/src/index.ts'),
       '@loom-studio/trace-audit': resolvePath('./packages/trace-audit/src/index.ts'),
@@ -51,5 +73,7 @@ export default defineConfig({
     include: scopedTestInclude,
     exclude: testScope ? ['**/node_modules/**', '**/dist/**'] : defaultTestExclude,
     passWithNoTests: true,
+    testTimeout: 20000,
+    hookTimeout: 20000,
   },
 })

@@ -56,7 +56,9 @@
 }
 
 :global(html[data-loom-material-preview='glass']) .canvasStack::before,
-:global(html[data-loom-material-preview='glass']) .canvasStack::after {
+:global(html[data-loom-material-preview='glass']) .canvasStack::after,
+:global(html[data-loom-preview-background]) .canvasStack::before,
+:global(html[data-loom-preview-background]) .canvasStack::after {
   display: none;
 }
 

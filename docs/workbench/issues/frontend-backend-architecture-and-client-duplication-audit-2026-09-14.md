@@ -419,7 +419,7 @@ apps/studio-server:
 ## 后续实施入口
 
 依赖、性能和状态基础设施的实施记录位于
-[核心依赖、性能与状态治理计划](../plans/core-dependencies-performance-and-state-plan.md)。该 Plan
+[核心依赖、性能与状态治理计划](../../archive/plans/core-dependencies-performance-and-state-plan.md)。该 Plan
 已完成 TanStack Query 试点、Panel 分包、Zustand 订阅治理、性能与包体积基线、React
 Compiler 注解模式试点以及 Shared Schema 版本统一；Pretext 与 `proxy-memoize` 因缺少
 符合边界的真实收益证据而未引入。本 Issue 保留审计事实和已完成修复，不再继续承载

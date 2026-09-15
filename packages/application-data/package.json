@@ -7,7 +7,7 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc -b",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --root ../.. tests/unit/agent-store tests/unit/narrative-store tests/unit/state-store tests/unit/prompt-resource-store tests/unit/application-data",
     "lint": "eslint ."
   },
   "dependencies": {

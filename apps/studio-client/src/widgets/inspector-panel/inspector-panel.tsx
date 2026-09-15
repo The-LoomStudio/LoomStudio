@@ -1,5 +1,4 @@
 import type { Translator } from '../../shared/i18n/index.js'
-import { JsonBlock } from '../../shared/ui/json-block/json-block.js'
 import type { PromptBuildStep } from '../../features/prompt-build/model/build-prompt-build-steps.js'
 import { PromptBuildFlow } from '../prompt-build-flow/prompt-build-flow.js'
 import styles from './inspector-panel.module.scss'
@@ -48,4 +47,8 @@ export function InspectorPanel(props: InspectorPanelProps) {
       </section>
     </aside>
   )
+}
+
+function JsonBlock(props: { value: unknown }) {
+  return <pre className={styles.json}>{props.value === null || props.value === undefined ? 'null' : JSON.stringify(props.value, null, 2)}</pre>
 }

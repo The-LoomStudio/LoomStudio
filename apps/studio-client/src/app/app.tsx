@@ -53,6 +53,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
     root.dataset.loomMaterialPreview = appearance.material.mode
     root.style.setProperty('--loom-preview-blur', `${appearance.material.blur}px`)
     root.style.setProperty('--loom-preview-opacity', `${appearance.material.opacity}%`)
+    root.style.setProperty('--loom-canvas-width', `${appearance.canvasWidth || 720}px`)
     if (appearance.background) {
       root.dataset.loomPreviewBackground = appearance.background.id
       root.style.setProperty('--loom-preview-wallpaper', `url("${appearance.background.image}")`)
@@ -60,7 +61,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
       delete root.dataset.loomPreviewBackground
       root.style.removeProperty('--loom-preview-wallpaper')
     }
-  }, [appearance.background, appearance.material])
+  }, [appearance.background, appearance.canvasWidth, appearance.material])
   const state = useStudioState(props.transportLogger)
   const rendererHost = useMemo(() => createClientRendererHost(), [])
   const clientExtensions = useClientExtensionRuntime({ api: state.clientExtensionApi, rendererHost })
@@ -69,6 +70,8 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
   const navigation = useStudioNavigation()
   const uiScale = useStudioLayoutStore(current => current.uiScale)
   const setUiScale = useStudioLayoutStore(current => current.setUiScale)
+  const composerPinned = useStudioLayoutStore(current => current.composerPinned)
+  const toggleComposerPinned = useStudioLayoutStore(current => current.toggleComposerPinned)
   const derived = useStudioDerivedState(state, navigation.route)
   const { assetWorkspaceId, cardsBusy, providerBusy, agentProfileBusy, activePresetId,
     narrativeCharacterName, sourceCardId, canOpenTimelineSource, narrativeCharacterAvatarUrl,
@@ -364,6 +367,8 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
             )}
             narrativeInput={state.input}
             narrativeTextareaDisabled={sessionBusy}
+            pinned={composerPinned}
+            onTogglePinned={toggleComposerPinned}
             quickActions={composerQuickActions}
             t={state.t}
             onChangeNarrativeInput={value => {

@@ -1,7 +1,7 @@
-import type { InputHTMLAttributes } from 'react'
+import { forwardRef, type InputHTMLAttributes } from 'react'
 
 export type TextInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>
 
-export function TextInput(props: TextInputProps) {
-  return <input {...props} type="text" />
-}
+export const TextInput = forwardRef<HTMLInputElement, TextInputProps>(function TextInput(props, ref) {
+  return <input ref={ref} data-loom-ui-text-input="" {...props} type="text" />
+})

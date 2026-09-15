@@ -4,7 +4,7 @@
   bottom: 0;
   right: 0;
   z-index: 15; /* 高于 stageBase (1)，但低于 stageFloatingHeader (25) 与 floatingDock (40/50) */
-  width: max(400px, calc(50vw - (var(--loom-chat-width) / 2)));
+  width: max(400px, calc(50vw - (var(--loom-canvas-width) / 2)));
   max-width: 85vw;
   min-width: 320px;
   display: flex;

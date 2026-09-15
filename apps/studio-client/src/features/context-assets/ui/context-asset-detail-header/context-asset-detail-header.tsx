@@ -3,7 +3,7 @@ import { Check, Copy, SlidersHorizontal } from 'lucide-react'
 import type { ContextAssetNode } from '../../../../entities/index.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
 import { tryWriteClipboardText } from '../../../../shared/browser/clipboard.js'
-import { Toggle } from '../../../../shared/ui/toggle/toggle.js'
+import { Toggle } from '@loom-studio/ui'
 import { resolveContextAssetUri } from '../../model/context-asset-tree.js'
 import styles from './context-asset-detail-header.module.scss'
 

@@ -2,7 +2,7 @@ import { Archive, Copy, Download, Plus, Trash2, Upload } from 'lucide-react'
 import { useRef, useState } from 'react'
 import type { PromptResource } from '../../../../entities/index.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
-import { Dialog } from '../../../../shared/ui/dialog/dialog.js'
+import { Dialog } from '@loom-studio/ui'
 import styles from './prompt-resource-toolbar.module.scss'
 
 type PromptResourceToolbarProps = {

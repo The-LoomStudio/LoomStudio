@@ -167,12 +167,9 @@ importers:
       '@loom-studio/shared':
         specifier: workspace:*
         version: link:../../packages/shared
-      '@radix-ui/react-context-menu':
-        specifier: 2.3.7
-        version: 2.3.7(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@radix-ui/react-dropdown-menu':
-        specifier: 2.1.24
-        version: 2.1.24(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@loom-studio/ui':
+        specifier: workspace:*
+        version: link:../../packages/loom-ui
       '@tanstack/react-query':
         specifier: 5.102.8
         version: 5.102.8(react@19.3.0)
@@ -500,6 +497,12 @@ importers:
 
   packages/loom-ui:
     dependencies:
+      '@radix-ui/react-context-menu':
+        specifier: 2.3.7
+        version: 2.3.7(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@radix-ui/react-dropdown-menu':
+        specifier: 2.1.24
+        version: 2.1.24(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       lucide-react:
         specifier: ^1.17.0
         version: 1.17.0(react@19.3.0)

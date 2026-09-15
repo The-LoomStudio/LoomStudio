@@ -8,6 +8,7 @@ import type {
   ExtensionRecordEntry,
   ExtensionStorageScope,
 } from '@loom-studio/extension-sdk'
+import { extensionConfigDocumentId, extensionStorageScopeKey } from '@loom-studio/extension-sdk'
 import { createId } from '@loom-studio/shared'
 import {
   extensionConfigDocumentType,
@@ -61,7 +62,7 @@ export function createExtensionStorageContext(
         assertScopeActive(instance)
         assertStorageToken(input.key, 'Extension Config key')
         await validateStorageScope(options, input.scope)
-        const document = await options.documents.get(configDocumentId(packageId, input.scope, input.key))
+        const document = await options.documents.get(extensionConfigDocumentId(packageId, input.scope, input.key))
         if (!document) return null
         assertOwnedStorageDocument(packageId, document, extensionConfigDocumentType)
         return toExtensionConfigEntry(packageId, document as DocumentRecord<ExtensionConfigContent>)
@@ -70,7 +71,7 @@ export function createExtensionStorageContext(
         assertScopeActive(instance)
         assertStorageToken(input.key, 'Extension Config key')
         await validateStorageScope(options, input.scope)
-        const id = configDocumentId(packageId, input.scope, input.key)
+        const id = extensionConfigDocumentId(packageId, input.scope, input.key)
         const existing = await options.documents.get(id, { includeTombstone: true }) as DocumentRecord<ExtensionConfigContent> | null
         if (existing) assertOwnedStorageDocument(packageId, existing, extensionConfigDocumentType)
         if (existing && !existing.meta.tombstone && input.expectedVersion === undefined) {
@@ -100,7 +101,7 @@ export function createExtensionStorageContext(
         assertScopeActive(instance)
         assertStorageToken(input.key, 'Extension Config key')
         await validateStorageScope(options, input.scope)
-        const id = configDocumentId(packageId, input.scope, input.key)
+        const id = extensionConfigDocumentId(packageId, input.scope, input.key)
         const existing = await options.documents.get(id)
         if (!existing) throw new Error(`Extension Config not found: ${input.key}`)
         assertOwnedStorageDocument(packageId, existing, extensionConfigDocumentType)
@@ -242,19 +243,8 @@ export function assertOwnedStorageDocument(packageId: string, document: Document
   }
 }
 
-export function configDocumentId(packageId: string, scope: ExtensionStorageScope, key: string): string {
-  return `extension-config:${encodeURIComponent(packageId)}:${encodeURIComponent(storageScopeKey(scope))}:${encodeURIComponent(key)}`
-}
-
-export function storageScopeKey(scope: ExtensionStorageScope): string {
-  if (scope.kind === 'global') return 'global'
-  if (scope.kind === 'card') return `card:${scope.cardId}`
-  if (scope.kind === 'timeline') return `timeline:${scope.timelineId}`
-  return `agent-session:${scope.agentSessionId}`
-}
-
 export function sameStorageScope(left: ExtensionStorageScope, right: ExtensionStorageScope): boolean {
-  return storageScopeKey(left) === storageScopeKey(right)
+  return extensionStorageScopeKey(left) === extensionStorageScopeKey(right)
 }
 
 export function sameEntityRef(left: ExtensionEntityRef, right: ExtensionEntityRef): boolean {

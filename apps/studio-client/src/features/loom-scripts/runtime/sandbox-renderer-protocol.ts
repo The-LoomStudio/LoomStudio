@@ -166,6 +166,7 @@ async function onHostMessage(event){
     else if(message.type==='loom.renderer.dispose'){await renderer.dispose?.();pending.forEach(item=>item.reject(new Error('Renderer disposed')));pending.clear();port.close();document.body.replaceChildren();}
   }catch(error){diagnostic('renderer.sandbox_failed',error instanceof Error?error.message:String(error));}
 }
-function context(value){return {...value,capabilities:{request(request){const requestId=crypto.randomUUID();return new Promise((resolve,reject)=>{pending.set(requestId,{resolve,reject});port.postMessage({type:'loom.renderer.capability-request',instanceId,requestId,request});});}}};}
+function context(value){applyTheme(value.host?.themeSnapshot);return {...value,capabilities:{request(request){const requestId=crypto.randomUUID();return new Promise((resolve,reject)=>{pending.set(requestId,{resolve,reject});port.postMessage({type:'loom.renderer.capability-request',instanceId,requestId,request});});}}};}
+function applyTheme(theme){if(!theme||theme.version!==1)return;document.documentElement.style.colorScheme=theme.colorScheme;for(const [name,value] of Object.entries(theme.tokens))document.documentElement.style.setProperty(name,value);}
 </script>`
 }
