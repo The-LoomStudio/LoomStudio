@@ -66,27 +66,21 @@
   z-index: 40;
   top: 0;
   left: 0;
-  width: var(--loom-rail-expanded-width);
+  width: var(--loom-shell-rail-preferred-width, var(--loom-rail-expanded-width));
   height: 100%;
   max-height: 100%;
   max-width: 100%;
   display: grid;
-  grid-template-columns: var(--loom-rail-expanded-width) 0 0;
   overflow: hidden;
   border: none;
   border-radius: 0;
-  background: var(--loom-color-surface);
+  background: transparent;
   box-shadow: none;
-  interpolate-size: allow-keywords;
   transition:
-    transform 280ms cubic-bezier(0.16, 1, 0.3, 1),
-    opacity 240ms ease-out,
-    width var(--loom-motion-duration-standard) var(--loom-motion-easing-standard),
-    height var(--loom-motion-duration-standard) var(--loom-motion-easing-standard),
-    border-radius var(--loom-motion-duration-standard) var(--loom-motion-easing-standard);
+    transform var(--loom-shell-motion-duration-exit) var(--loom-shell-motion-easing),
+    opacity var(--loom-shell-motion-duration-exit) var(--loom-shell-motion-easing);
 }
 
-:global(html[data-loom-material-preview='glass']) .floatingDock,
 :global(html[data-loom-material-preview='glass']) .panelRight {
   background: color-mix(in srgb, var(--loom-color-surface) var(--loom-preview-opacity, 58%), transparent);
   -webkit-backdrop-filter: blur(var(--loom-preview-blur, 18px)) saturate(135%);
@@ -104,6 +98,7 @@
   transform: translateX(0);
   opacity: 1;
   pointer-events: auto;
+  transition-duration: var(--loom-shell-motion-duration-enter);
 }
 
 .dockTriggerZone {
@@ -135,44 +130,37 @@
   min-height: 0;
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 0;
   overflow: hidden;
-  padding: 0 8px;
+  padding: 0 8px 0 5px;
   box-sizing: border-box;
-
-  /* 不贯穿的底部横向分割线：左右两端各缩进 8px */
-  &::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 8px;
-    right: 8px;
-    height: 1px;
-    background: var(--loom-color-border);
-    pointer-events: none;
-  }
 }
 
 .dockBrandIconButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  width: var(--loom-page-header-control-size);
+  height: var(--loom-page-header-control-size);
+  min-width: var(--loom-page-header-control-size);
+  min-height: var(--loom-page-header-control-size);
+  display: grid;
+  place-items: center;
   border: 0;
   padding: 0;
   background: transparent;
   cursor: pointer;
-  border-radius: var(--loom-radius-control);
+  border-radius: 50%;
   color: var(--loom-color-text);
   outline: none;
-  transition: opacity var(--loom-motion-duration-fast) ease;
+  transition:
+    color var(--loom-motion-duration-fast) ease,
+    opacity var(--loom-motion-duration-fast) ease;
 
   &:hover {
-    opacity: 0.8;
+    color: var(--loom-color-accent-strong);
   }
 
   &:focus-visible {
-    outline: 1px solid var(--loom-color-accent);
-    outline-offset: 2px;
+    outline: 2px solid var(--loom-color-accent);
+    outline-offset: -2px;
   }
 }
 
@@ -186,9 +174,11 @@
   border-radius: var(--loom-radius-control);
   color: var(--loom-color-text-muted);
   outline: none;
+  white-space: nowrap;
   transition:
     color var(--loom-motion-duration-fast) ease,
-    opacity var(--loom-motion-duration-fast) ease;
+    opacity var(--loom-shell-motion-duration-exit) var(--loom-shell-motion-easing),
+    clip-path var(--loom-shell-motion-duration-exit) var(--loom-shell-motion-easing);
 
   &:hover {
     color: var(--loom-color-accent-strong);
@@ -198,6 +188,13 @@
     outline: 1px solid var(--loom-color-accent);
     outline-offset: 2px;
   }
+}
+
+.dockBrandTextButton svg {
+  width: var(--loom-page-header-icon-size);
+  height: var(--loom-page-header-icon-size);
+  stroke-width: var(--loom-page-header-icon-stroke);
+  flex-shrink: 0;
 }
 
 .dockBrandTextButtonPinned {
@@ -232,6 +229,7 @@
   overflow: hidden;
   color: var(--loom-color-text-muted);
   background: transparent;
+  transition: opacity var(--loom-motion-duration-fast) ease;
 }
 
 .dockWorkspaceToggle:hover:not(:disabled) {
@@ -259,8 +257,7 @@
 }
 
 .floatingDockOpen {
-  width: var(--loom-window-rail-width, var(--loom-rail-expanded-width));
-  grid-template-columns: var(--loom-window-rail-width, var(--loom-rail-expanded-width)) 0 0;
+  width: var(--loom-shell-rail-preferred-width, var(--loom-rail-expanded-width));
 }
 
 .floatingDock:not(.floatingDockActive) .dockDivider,
@@ -277,6 +274,7 @@
   height: 100%;
   max-height: 100%;
   display: block;
+  transition-duration: var(--loom-shell-motion-duration-enter);
 }
 
 .floatingDockBesideNarrative {
@@ -337,7 +335,7 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 4px 8px 8px;
+  padding: 4px 0 8px;
   border: 0;
   background: transparent;
   box-sizing: border-box;
@@ -405,6 +403,25 @@
   outline-offset: -1px;
 }
 
+.railRecentDisclosure {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows var(--loom-motion-duration-standard) var(--loom-shell-motion-easing),
+    opacity var(--loom-motion-duration-fast) ease;
+
+  > div {
+    min-height: 0;
+    overflow: hidden;
+  }
+}
+
+.railRecentDisclosure[data-open='true'] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
 .railGroupLabel {
   display: flex;
   align-items: center;
@@ -416,6 +433,7 @@
   user-select: none;
   line-height: 1;
   white-space: nowrap;
+  transition: opacity var(--loom-motion-duration-fast) ease;
 }
 
 .railGroup:first-child .railGroupLabel {
@@ -440,7 +458,7 @@
   gap: 8px;
   border: 0;
   border-radius: 6px;
-  padding: 0 8px;
+  padding: 0 13px;
   color: var(--loom-color-text-muted);
   background: transparent;
   overflow: hidden;
@@ -496,68 +514,93 @@
   text-align: left;
   opacity: 1;
   transform: translateX(0);
+  transition:
+    opacity var(--loom-shell-motion-duration-exit) var(--loom-shell-motion-easing),
+    clip-path var(--loom-shell-motion-duration-exit) var(--loom-shell-motion-easing);
 }
 
-.railDivider {
-  min-width: 0;
-  margin-inline: var(--loom-divider-inset);
-}
-
-@container studio-rail (max-width: 100px) {
+.workspaceShellLayout[data-rail-compact='true'] {
   .dockWorkspaceToggle {
-    display: none;
-  }
-
-  .dockHeader {
-    padding: 0;
-    justify-content: center;
-    gap: 0;
-  }
-
-  .dockBrandIconButton {
-    width: 100%;
-    height: 100%;
-    justify-content: center;
-    padding: 0;
+    opacity: 0;
+    pointer-events: none;
   }
 
   .dockBrandTextButton {
-    display: none !important;
-  }
-
-  .studioRail {
-    padding-inline: 0;
+    opacity: 0;
+    clip-path: inset(0 100% 0 0);
+    pointer-events: none;
+    transition-duration: var(--loom-shell-motion-duration-enter);
   }
 
   .railTab {
-    justify-content: center;
-    padding: 0;
-    gap: 0;
+    justify-content: flex-start;
   }
 
   .railLabel {
-    display: none !important;
-  }
-
-  .railGroupLabel {
-    visibility: hidden;
-    overflow: hidden;
+    opacity: 0;
+    clip-path: inset(0 100% 0 0);
     pointer-events: none;
-    user-select: none;
+    transition-duration: var(--loom-shell-motion-duration-enter);
   }
 }
 
-.workspaceColumnLayout {
-  background: var(--loom-color-surface);
-}
-
-.workspaceColumnLayout .dockSidebar,
-.workspaceColumnLayout .dockPanelHost {
+.workspaceMotionClip {
+  width: 100%;
   height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  clip-path: inset(0 0 0 0);
+  transition: clip-path var(--loom-shell-motion-duration-enter) var(--loom-shell-motion-easing);
 }
 
-.workspaceColumnLayout :global([role='separator']) > span {
-  margin-block: 16px;
+.floatingDock[data-panel-motion='closing'] .workspaceMotionClip {
+  clip-path: inset(0 calc(100% - var(--loom-shell-rail-preferred-width)) 0 0);
+  transition-duration: var(--loom-shell-motion-duration-exit);
+}
+
+.floatingDockResizing .workspaceMotionClip {
+  clip-path: inset(0 0 0 0);
+  transition: none;
+}
+
+.workspaceShellLayout {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  background: transparent;
+}
+
+.workspaceRail {
+  position: absolute;
+  z-index: 2;
+  inset: 0 auto 0 0;
+  width: var(--loom-shell-rail-preferred-width, var(--loom-rail-expanded-width));
+  overflow: hidden;
+  background: var(--loom-color-surface);
+  clip-path: inset(0 0 0 0);
+  transition: clip-path var(--loom-shell-motion-duration-exit) var(--loom-shell-motion-easing);
+}
+
+.workspaceShellLayout[data-rail-compact='true'] .workspaceRail {
+  clip-path: inset(0 calc(100% - var(--loom-rail-collapsed-width)) 0 0);
+  transition-duration: var(--loom-shell-motion-duration-enter);
+}
+
+.workspacePanel {
+  position: absolute;
+  z-index: 1;
+  inset: 0 0 0 var(--loom-rail-collapsed-width);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspaceRail .dockSidebar,
+.workspacePanel .dockPanelHost {
+  height: 100%;
 }
 
 .dockPanelHost {
@@ -584,17 +627,6 @@
   padding: 0 8px !important;
   box-sizing: border-box;
   min-width: 0;
-
-  &::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 8px;
-    right: 8px;
-    height: 1px;
-    background: var(--loom-color-border);
-    pointer-events: none;
-  }
 }
 
 .headerActions {
@@ -602,6 +634,36 @@
   align-items: center;
   gap: 4px;
   margin-left: auto;
+}
+
+.headerMain {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.headerTitle {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--loom-font-size-3);
+  font-weight: var(--loom-font-weight-5);
+  color: var(--loom-color-text-muted);
+}
+
+.headerTitle svg {
+  width: var(--loom-page-header-icon-size);
+  height: var(--loom-page-header-icon-size);
+  stroke-width: var(--loom-page-header-icon-stroke);
+  flex: 0 0 auto;
+}
+
+.headerActionsPortal {
+  display: contents;
 }
 
 .workspaceHeader svg {
@@ -640,8 +702,8 @@
 }
 
 .headerNavigationButton svg {
-  width: 18px;
-  height: 18px;
+  width: var(--loom-page-header-icon-size, 16px);
+  height: var(--loom-page-header-icon-size, 16px);
 }
 
 .viewModeControl {
@@ -726,6 +788,9 @@
   min-height: 0;
   position: relative;
   overflow: hidden;
+  border-top: 1px solid var(--loom-color-border);
+  border-left: 1px solid var(--loom-color-border);
+  border-top-left-radius: var(--loom-radius-window);
 }
 
 .dockPanelHost::-webkit-scrollbar,
@@ -744,6 +809,24 @@
   &[hidden] {
     display: none !important;
   }
+}
+
+.panelStage[data-history-direction='back'] {
+  animation: panel-history-back var(--loom-motion-duration-standard) var(--loom-shell-motion-easing) both;
+}
+
+.panelStage[data-history-direction='forward'] {
+  animation: panel-history-forward var(--loom-motion-duration-standard) var(--loom-shell-motion-easing) both;
+}
+
+@keyframes panel-history-back {
+  from { opacity: 0; transform: translateX(-18px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes panel-history-forward {
+  from { opacity: 0; transform: translateX(18px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
 .panelLoading {
@@ -809,7 +892,7 @@
   background: transparent;
   pointer-events: none;
   gap: 12px;
-  padding: 0 8px;
+  padding: 0 8px 0 5px;
   box-sizing: border-box;
 }
 
@@ -820,6 +903,12 @@
   gap: 8px;
   min-width: 0;
   pointer-events: none;
+  transition: opacity var(--loom-motion-duration-fast) ease;
+
+  &[data-dock-open='true'] {
+    opacity: 0;
+    pointer-events: none;
+  }
 }
 
 .stageHeaderRight {
@@ -848,10 +937,16 @@
   cursor: pointer;
 }
 
+:global(.loom-stage-extension-action svg) {
+  width: var(--loom-page-header-icon-size);
+  height: var(--loom-page-header-icon-size);
+  stroke-width: var(--loom-page-header-icon-stroke);
+}
+
 :global(.loom-stage-extension-action img) {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: var(--loom-page-header-icon-size);
+  height: var(--loom-page-header-icon-size);
+  border-radius: 4px;
   object-fit: contain;
 }
 
@@ -951,8 +1046,8 @@
 }
 
 .stageAvatarFallbackIcon {
-  width: 14px;
-  height: 14px;
+  width: var(--loom-page-header-icon-size);
+  height: var(--loom-page-header-icon-size);
   color: var(--loom-color-text-subtle);
   stroke-width: var(--loom-page-header-icon-stroke);
   pointer-events: none;
@@ -964,6 +1059,7 @@
   height: var(--loom-page-header-control-size);
   padding: 3px 12px 3px 4px;
   gap: 8px;
+  max-width: calc(var(--loom-rail-expanded-width, 220px) - 52px);
   border: none;
   border-radius: 999px;
   background: var(--loom-color-background);
@@ -1048,7 +1144,7 @@
     top: 0 !important;
     left: 0 !important;
     right: 0 !important;
-    padding: 0 8px !important;
+    padding: 0 8px 0 5px !important;
     z-index: 25 !important;
     gap: 6px;
   }
@@ -1062,10 +1158,28 @@
   display: none;
 }
 
-@media (prefers-reduced-motion: reduce) {
+:global(html[data-loom-motion='reduce']) {
   .floatingDock,
   .stageHeaderButton,
   .viewModeIconSwap svg {
+    transition: none;
+  }
+
+  .workspaceRail,
+  .workspaceMotionClip,
+  .dockBrandTextButton,
+  .railLabel,
+  .railGroupLabel,
+  .dockWorkspaceToggle {
+    transition: none;
+  }
+
+  .railRecentDisclosure {
+    transition: none;
+  }
+
+  .panelStage {
+    animation: none !important;
     transition: none;
   }
 }

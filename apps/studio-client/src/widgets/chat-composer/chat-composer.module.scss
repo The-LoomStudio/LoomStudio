@@ -117,6 +117,32 @@
   color: var(--loom-color-accent-foreground);
   border-color: var(--loom-color-accent);
   background: var(--loom-color-text);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.45;
+  }
+
+  &[data-run='running'] {
+    background: var(--loom-color-surface-raised, #27272a);
+    color: var(--loom-color-text);
+    border: 1px solid var(--loom-color-border);
+
+    &:hover {
+      background: color-mix(in srgb, var(--loom-color-surface-raised, #27272a) 80%, white 20%);
+    }
+  }
+
+  &[data-run='suspended'] {
+    background: var(--loom-color-accent);
+    color: var(--loom-color-accent-foreground, #ffffff);
+
+    &:hover {
+      filter: brightness(1.1);
+    }
+  }
 }
 
 .composer .utilityButton {

@@ -5,10 +5,10 @@ import { fileURLToPath } from 'node:url'
 import {
   findMarkdownLinks,
   parseMarkdownTarget,
-} from './documentation-markdown.mjs'
+} from '../lib/documentation-markdown.mjs'
 
 const scriptsRoot = path.dirname(fileURLToPath(import.meta.url))
-const repositoryRoot = path.resolve(scriptsRoot, '..')
+const repositoryRoot = path.resolve(scriptsRoot, '../..')
 const docsRoot = path.join(repositoryRoot, 'docs')
 const workbenchRoot = path.join(docsRoot, 'workbench')
 const archiveRoot = path.join(docsRoot, 'archive')

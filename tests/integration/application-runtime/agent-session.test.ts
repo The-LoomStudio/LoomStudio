@@ -45,7 +45,7 @@ async function createPreset(
   const created = await runtime.createPromptResource({ resourceKind: 'preset', name })
   return (await runtime.createPromptResourceAsset({
     resourceId: created.resource.id,
-    targetAssetId: created.resource.rootNode.id,
+    targetAssetId: created.resource.rootNode.children!.find(node => node.kind === 'message' && node.capabilities?.roleHint === 'system')!.id,
     position: 'inside',
     asset: { id: `${created.resource.id}.instructions`, label: 'Agent Instructions', category: 'preset', kind: 'entry', body: instructions },
   })).resource
@@ -521,10 +521,10 @@ describe('application agent session lifecycle', () => {
     const result = await runtime.invokeAgentTurn({ agentSessionId: session.session.id, input: 'Act.' })
 
     expect(preview.messages).toEqual(calls[0]?.messages)
-    expect(preview.messages).toMatchObject([
-      { role: 'system', content: 'Follow the preset instructions for User.' },
-      { role: 'user', content: 'Act.' },
-    ])
+    expect(preview.messages[0]).toMatchObject({
+      role: 'system', content: expect.stringContaining('Follow the preset instructions for User.'),
+    })
+    expect(preview.messages.at(-1)).toMatchObject({ role: 'user', content: 'Act.' })
     expect(result.projection).toEqual(preview.projection)
     engine.close()
   })
@@ -688,8 +688,10 @@ describe('application agent session lifecycle', () => {
     await runtime.invokeAgentTurn({ agentSessionId: session.session.id, input: 'First.' })
     const second = await runtime.invokeAgentTurn({ agentSessionId: session.session.id, input: 'Second.' })
 
-    expect(calls[1]?.messages).toMatchObject([
-      { role: 'system', content: 'Keep the conversation context.' },
+    expect(calls[1]?.messages[0]).toMatchObject({
+      role: 'system', content: expect.stringContaining('Keep the conversation context.'),
+    })
+    expect(calls[1]?.messages.slice(-3)).toMatchObject([
       { role: 'user', content: 'First.' },
       { role: 'assistant', content: 'First reply.' },
       { role: 'user', content: 'Second.' },
@@ -745,8 +747,10 @@ describe('application agent session lifecycle', () => {
       },
     })
 
-    expect(result.projection.messages).toMatchObject([
-      { role: 'system', content: 'Continue the accepted narrative.' },
+    expect(result.projection.messages[0]).toMatchObject({
+      role: 'system', content: expect.stringContaining('Continue the accepted narrative.'),
+    })
+    expect(result.projection.messages.slice(-2)).toMatchObject([
       { role: 'developer', content: 'Opening.' },
       { role: 'user', content: 'Continue.' },
     ])

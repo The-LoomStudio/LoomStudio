@@ -26,6 +26,10 @@ const PANEL_PATHS: Record<StudioPanelId, string> = {
 }
 
 export function readStudioRoute(pathname: string): StudioRoute {
+  for (const [segment, panel] of [['resources', 'resource'], ['presets', 'preset']] as const) {
+    const reference = matchPath(`/studio/${segment}/reference/:resourceId/node/:nodeId`, pathname)
+    if (reference) return { panel, assetId: reference.params.nodeId }
+  }
   const chatBranch = matchPath('/studio/chat/:timelineId/branch/:branchId', pathname)
   if (chatBranch) return { panel: null, timelineId: chatBranch.params.timelineId, branchId: chatBranch.params.branchId }
 
@@ -46,6 +50,10 @@ export function readStudioRoute(pathname: string): StudioRoute {
   }
 
   return { panel: null }
+}
+
+export function buildStudioResourcePath(panel: 'resource' | 'preset', resourceId: string, nodeId: string): string {
+  return `/studio/${panel === 'preset' ? 'presets' : 'resources'}/reference/${encodeURIComponent(resourceId)}/node/${encodeURIComponent(nodeId)}`
 }
 
 export function buildStudioChatPath(timelineId?: string, branchId?: string): string {

@@ -90,11 +90,7 @@ export function MasterDetailWorkbench(props: MasterDetailWorkbenchProps) {
     </section>
   )
 
-  const columns: WindowColumnDefinition[] = isNarrow
-    ? (showDetailOnly
-        ? [{ content: detailPane, fill: true, id: 'detail', minSize: 0 }]
-        : [{ content: masterPane, fill: true, id: 'master', minSize: 0 }])
-    : [
+  const columns: WindowColumnDefinition[] = [
         {
           content: masterPane,
           id: 'master',
@@ -116,13 +112,20 @@ export function MasterDetailWorkbench(props: MasterDetailWorkbenchProps) {
       className={`${styles.container} ${isNarrow ? styles.narrow : ''} ${props.className ?? ''}`}
       data-loom-component={props.dataComponent ?? 'master-detail-workbench'}
     >
-      <WindowColumnLayout
-        className={styles.workbenchColumnLayout}
-        columns={columns}
-        onColumnSizeChange={(columnId, size) => {
-          if (columnId === 'master') handleMasterWidthChange(size)
-        }}
-      />
+      {isNarrow ? (
+        <div className={styles.narrowViewport} data-pane={showDetailOnly ? 'detail' : 'master'}>
+          <div className={styles.narrowPane} data-pane="master" inert={showDetailOnly}>{masterPane}</div>
+          <div className={styles.narrowPane} data-pane="detail" inert={!showDetailOnly}>{detailPane}</div>
+        </div>
+      ) : (
+        <WindowColumnLayout
+          className={styles.workbenchColumnLayout}
+          columns={columns}
+          onColumnSizeChange={(columnId, size) => {
+            if (columnId === 'master') handleMasterWidthChange(size)
+          }}
+        />
+      )}
     </div>
   )
 }

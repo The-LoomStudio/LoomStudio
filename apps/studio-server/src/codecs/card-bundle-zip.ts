@@ -4,6 +4,7 @@ import { loadCardResourceFiles, projectCardFiles, restoreCardFiles, validateBund
 
 const manifestPath = 'manifest.json'
 // ponytail: bounded author projects; raise with streaming/file-tree budgets if larger worlds require it.
+// Invariant: Hard ceilings on entry counts and cumulative uncompressed bytes defend against decompression bombs.
 const maxEntryCount = 4096
 const maxEntryBytes = 64 * 1024 * 1024
 export const maxBundleBytes = 128 * 1024 * 1024
@@ -45,6 +46,10 @@ export type CardBundleFilesInput = {
   background?: CardBundleMedia
 }
 
+/**
+ * Serializes a card bundle into file entries following schema v2 (decoupled resource tree).
+ * Invariant: Media assets and script attachments are projected into assets/ and scripts/ directories.
+ */
 export function encodeCardBundleFiles(input: CardBundleFilesInput): Record<string, Uint8Array> {
   const artifact = structuredClone(normalizeCardBundleArtifact(input.artifact))
   const extensionPayloads = artifact.extensionPayloads ?? []
@@ -131,6 +136,7 @@ export async function decodeCardBundleZip(source: Uint8Array): Promise<{
   return decodeCardBundleFiles(files)
 }
 
+// Compatibility: Decodes either schema v1 (monolithic JSON artifact) or v2 (projected resource tree) manifests.
 export function decodeCardBundleFiles(files: Map<string, Uint8Array>): CardBundleFilesInput {
   const manifestBytes = files.get(manifestPath)
   if (!manifestBytes) throw new Error('Loom Card package is missing manifest.json')
@@ -211,6 +217,11 @@ function readScriptAttachments(
   })
 }
 
+/**
+ * Streaming ZIP decompression with strict boundary assertions.
+ * Failure semantics: Aborts immediately if entry count, declared size, actual chunk size,
+ * or path traversal assertions fail to avoid resource exhaustion or arbitrary file writes.
+ */
 function unzipSafely(source: Uint8Array): Promise<Map<string, Uint8Array>> {
   return new Promise((resolve, reject) => {
     const files = new Map<string, Uint8Array>()

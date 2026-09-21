@@ -24,6 +24,7 @@ import type {
 } from '@loom-studio/extension-sdk'
 export type { ExtensionConfigEntry, ExtensionEntityRef, ExtensionRecordEntry, ExtensionStorageScope } from '@loom-studio/extension-sdk'
 import type { Logger } from '@loom-studio/logging'
+import type { VfsMutationDecision, VfsMutationPreview } from './vfs/types.js'
 import type {
   NarrativeBranch,
   NarrativeNode,
@@ -297,6 +298,10 @@ export type RuntimeRequestContext = {
       userEntry: import('@loom-studio/application-data').AgentTranscriptEntry
       partialEntryId?: string
     }) => void
+    onMutationApproval?: (
+      preview: VfsMutationPreview,
+      signal: AbortSignal,
+    ) => Promise<VfsMutationDecision>
   }
 }
 
@@ -304,6 +309,7 @@ export type AgentRunEvent =
   | { type: 'started'; runId: string }
   | { type: 'text-delta'; runId: string; providerRunId: string; providerStep: number; delta: string }
   | { type: 'tool-input-delta'; runId: string; providerRunId: string; providerStep: number; toolCallId: string; toolName?: string; delta: string }
+  | { type: 'mutation-approval-requested'; runId: string; requestId: string; preview: VfsMutationPreview }
   | { type: 'usage'; runId: string; providerRunId: string; providerStep: number; usage: NonNullable<GatewayChatResult['usage']> }
   | { type: 'completed'; runId: string; result: InvokeAgentTurnResult }
   | { type: 'suspended'; runId: string; reason?: string }

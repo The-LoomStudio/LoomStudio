@@ -1,0 +1,25 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--loom-color-surface);
+}
+
+.header {
+  flex: 0 0 auto;
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px 0 16px;
+  border-bottom: 1px solid var(--loom-color-border-subtle);
+  background: var(--loom-color-surface);
+}
+
+.content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}

@@ -37,7 +37,7 @@ export type AgentTranscriptEntry = {
   entry: {
     kind: string
     role?: 'user' | 'assistant'
-    content?: string
+    content?: string | ClientJsonValue
     [key: string]: ClientJsonValue | undefined
   }
   createdAt: string

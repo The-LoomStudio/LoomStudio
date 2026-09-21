@@ -67,7 +67,9 @@ export type SourceNode = {
   kind: 'module' | 'folder' | 'entry' | 'script' | 'virtual' | 'slot' | 'message' | (string & {})
   meta?: string
   body?: string
+  enabled?: boolean
   capabilities?: {
+    activation?: PromptActivation
     targetAnchorId?: string
     localDepth?: number
     roleHint?: PromptProviderRole

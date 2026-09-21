@@ -46,6 +46,56 @@ const basicSourceNodes: SourceNode[] = [
 ]
 
 describe('PromptBuildPipeline', () => {
+  it('uses only the selected skeleton and respects disabled and conditional subtrees', () => {
+    const compiled = compilePromptDataModel({
+      skeletonRootId: 'root',
+      currentInput: 'hello',
+      sourceNodes: [
+        node('root', null, 0, 'module'),
+        { ...node('before', 'root', 0, 'entry'), body: 'Before' },
+        { ...node('off', 'root', 1, 'folder'), enabled: false },
+        { ...node('hidden', 'off', 0, 'entry'), body: 'Disabled' },
+        { ...node('conditional', 'root', 2, 'entry'), body: 'Conditional',
+          capabilities: { activation: { kind: 'keyword', keywords: ['dragon'] } } },
+        node('slot', 'root', 3, 'virtual'),
+        { ...node('after', 'root', 4, 'entry'), body: 'After' },
+        { ...node('external', null, 1, 'entry'), body: 'Must not leak' },
+      ],
+      contributions: [contribution('mounted', 'external', 'Mounted once', 'slot')],
+    })
+    expect(compiled.messages.map(message => message.content)).toEqual(['Before\n\nMounted once\n\nAfter'])
+  })
+
+  it.each([false, true])('preserves Session roles and individual messages (inside MessageBlock: %s)', wrapped => {
+    const history = ['user', 'assistant', 'assistant'].map((role, index) => ({
+      ...contribution(`history-${index}`, `history-node-${index}`, `History ${index}`, '@chat.session', index, role as 'user' | 'assistant'),
+      sourceRef: { kind: 'sessionHistory' as const, sourceId: 'session', sourceNodeId: `history-node-${index}` },
+    }))
+    const compiled = compilePromptDataModel({
+      sourceNodes: [
+        node('root', null, 0, 'module'),
+        ...(wrapped ? [{ ...node('wrapper', 'root', 0, 'message'), capabilities: { roleHint: 'system' as const } }] : []),
+        { ...node('session', wrapped ? 'wrapper' : 'root', 0, 'virtual'), capabilities: { targetAnchorId: '@chat.session' } },
+      ],
+      contributions: history,
+    })
+    expect(compiled.messages).toEqual(history.map(item => ({
+      role: item.capabilities.roleHint, content: item.content, fragmentIds: [item.id],
+    })))
+  })
+
+  it('does not re-inject a disabled explicit anchor through the legacy Session fallback', () => {
+    const compiled = compilePromptDataModel({
+      sourceNodes: [
+        node('root', null, 0, 'module'),
+        { ...node('session', 'root', 0, 'virtual'), capabilities: { targetAnchorId: '@chat.session' } },
+        { ...node('lower', 'root', 1, 'virtual'), enabled: false, capabilities: { targetAnchorId: '@setting.lower' } },
+      ],
+      contributions: [contribution('dynamic', 'setting', 'Disabled context', '@setting.lower')],
+    })
+    expect(compiled.messages).toEqual([])
+  })
+
   it('filters inactive contributions', () => {
     const activation = combineActivationGates([{ kind: 'manual' }])
     const compiled = compilePromptDataModel({
@@ -191,4 +241,3 @@ describe('PromptBuildPipeline', () => {
     })
   })
 })
-

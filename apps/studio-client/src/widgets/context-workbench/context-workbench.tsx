@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useState } from 'react'
-import { Link2 } from 'lucide-react'
 import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore } from '../../pages/studio/model/studio-layout-store.js'
 import { AssetWorkbenchLayout } from '../../shared/ui/asset-workbench-layout/asset-workbench-layout.js'
+import { PanelTabs } from '../../shared/ui/panel-tabs/index.js'
 import { normalizeSearchText } from '../../shared/lib/text.js'
 import {
   findContextNode,
@@ -211,34 +211,17 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
       hasSelection={hasDetailSelection}
       mobilePane={mobilePane}
       onMobilePaneChange={pane => setAssetPane('resources', props.workspaceId, pane)}
-      footer={(
-        <nav className="loom-page-tabs loom-page-tabs-footer" role="tablist" aria-label={props.t('context.authoring.views')}>
-          {(['settings', 'macros', 'text'] as const).map(view => (
-            <button
-              key={view}
-              id={`${viewId}-${view}`}
-              className={`loom-page-tab ${props.view === view ? 'loom-page-tab-active' : ''}`}
-              role="tab"
-              type="button"
-              aria-selected={props.view === view}
-              aria-controls={`${viewId}-${view}-content`}
-              tabIndex={props.view === view ? 0 : -1}
-              onClick={() => changeView(view)}
-              onKeyDown={event => {
-                if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
-                event.preventDefault()
-                const views = ['settings', 'macros', 'text'] as const
-                const index = views.indexOf(view)
-                const next = event.key === 'Home' ? views[0] : event.key === 'End' ? views[views.length - 1]
-                  : views[(index + (event.key === 'ArrowRight' ? 1 : -1) + views.length) % views.length]
-                changeView(next)
-                document.getElementById(`${viewId}-${next}`)?.focus()
-              }}
-            >
-              {view === 'text' ? props.t('rail.textTransform') : props.t(`context.authoring.${view}`)}
-            </button>
-          ))}
-        </nav>
+      header={(
+        <PanelTabs
+          activeId={props.view}
+          ariaLabel={props.t('context.authoring.views')}
+          items={[
+            { id: 'settings', label: props.t('context.authoring.settings') },
+            { id: 'macros', label: props.t('context.authoring.macros') },
+            { id: 'text', label: props.t('rail.textTransform') },
+          ]}
+          onChange={changeView}
+        />
       )}
       toolbar={props.view === 'settings' ? (
         <PromptResourceToolbar
@@ -247,6 +230,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
           resources={settingResources}
           selectedResourceId={selectedResourceId}
           t={props.t}
+          onBindResources={() => setBindingOpen(true)}
           onCreate={props.onCreateResource}
           onDelete={props.onDeleteResource}
           onDuplicate={props.onDuplicateResource}
@@ -264,10 +248,6 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
         <MacroAuthoringExplorer controller={macroController} onAdd={() => setAssetPane('resources', props.workspaceId, 'detail')} onSelect={handleSelectMacro} />
       ) : (
         <div className={styles.resourceExplorer}>
-          <button className={styles.bindResourcesButton} type="button" onClick={() => setBindingOpen(true)}>
-            <Link2 aria-hidden="true" />
-            <span>{props.t('context.cardBindings.action')}</span>
-          </button>
           <ContextAssetExplorer
             displayNodes={displayNodes}
             expandedIds={explorerView.expandedIds}

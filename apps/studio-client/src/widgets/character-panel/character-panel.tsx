@@ -5,6 +5,7 @@ import type { Translator } from '../../shared/i18n/index.js'
 import { useCharacterGalleryStore, type CharacterGroupFilter } from './character-gallery-store.js'
 import { useCharacterProfileNavigation } from './use-character-profile-navigation.js'
 import { MasterDetailWorkbench } from '../../shared/ui/master-detail-workbench/master-detail-workbench.js'
+import { PanelTabs } from '../../shared/ui/panel-tabs/index.js'
 import type { PromptResource } from '../../entities/index.js'
 import { renderTemplateMacros, type MacroRenderContext } from '../../features/state-variables/model/macro-renderer.js'
 import styles from './character-panel.module.scss'
@@ -586,15 +587,16 @@ export function CharacterPanel(props: CharacterPanelProps) {
             </section>
             {mediaNotice ? <p aria-live="polite" className={styles.mediaNotice}>{mediaNotice}</p> : null}
 
-            <div className={styles.profileTabs} role="tablist" aria-label={props.t('character.title')}>
-              {(['profile', 'attachments'] as const).map(tab => <button key={tab} id={`card-${tab}-tab`} aria-controls={`card-${tab}-panel`} type="button" role="tab" aria-selected={profileTab === tab} tabIndex={profileTab === tab ? 0 : -1} onClick={() => setProfileTab(tab)} onKeyDown={event => {
-                if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
-                  event.preventDefault()
-                  const next = event.key === 'Home' ? 'profile' : event.key === 'End' ? 'attachments' : profileTab === 'profile' ? 'attachments' : 'profile'
-                  setProfileTab(next)
-                  document.getElementById(`card-${next}-tab`)?.focus()
-                }
-              }}>{props.t(tab === 'profile' ? 'character.title' : 'directory.attachments')}</button>)}
+            <div className={styles.profileTabs}>
+              <PanelTabs<'profile' | 'attachments'>
+                activeId={profileTab}
+                ariaLabel={props.t('character.title')}
+                items={[
+                  { id: 'profile', label: props.t('character.title') },
+                  { id: 'attachments', label: props.t('directory.attachments') },
+                ]}
+                onChange={setProfileTab}
+              />
             </div>
             {profileTab === 'attachments' ? <div role="tabpanel" id="card-attachments-panel" aria-labelledby="card-attachments-tab">{props.directoryApi ? <CardResourceOverview key={selected.id} api={props.directoryApi} cardId={selected.id} onRefresh={props.onRefreshCards} t={props.t} /> : null}</div> : <div role="tabpanel" id="card-profile-panel" aria-labelledby="card-profile-tab">
             {profileEditing ? (

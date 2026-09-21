@@ -20,6 +20,33 @@
   width: 100%;
 }
 
+.virtualRowMotion {
+  width: 100%;
+}
+
+.treeChildren {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 180ms var(--loom-shell-motion-easing),
+    opacity 120ms ease;
+
+  > div {
+    min-height: 0;
+    overflow: hidden;
+  }
+}
+
+.treeChildren[data-expanded='true'] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+:global(html[data-loom-motion='reduce']) .treeChildren {
+  transition: none;
+}
+
 .row {
   --loom-tree-base-x: 34px;
   --loom-tree-guide-x: var(--loom-tree-base-x);
@@ -279,7 +306,6 @@
   box-shadow: none;
 }
 
-.muted .icon,
 .muted .label,
 .muted .meta {
   color: var(--loom-color-text-subtle);

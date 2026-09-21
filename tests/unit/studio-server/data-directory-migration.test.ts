@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { spawnSync } from 'node:child_process'
 import { inspectDataMigration, migrateDataDirectory } from '../../../scripts/lib/data-directory-migration.js'
-import { assertDevelopmentDataReady, developmentDataEnvironment } from '../../../scripts/development-data-paths.mjs'
+import { assertDevelopmentDataReady, developmentDataEnvironment } from '../../../scripts/lib/development-data-paths.mjs'
 
 const roots: string[] = []
 afterEach(async () => {

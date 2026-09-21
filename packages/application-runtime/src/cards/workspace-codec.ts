@@ -17,13 +17,12 @@ import type {
   PortableExtensionPayloadArtifact,
   PortableExtensionPayloadContent,
   PromptResourceArtifact,
-  PromptResourceCompositionCapabilities,
   PromptResourceContent,
   PromptResourceKind,
   PromptResourceNode,
 } from './workspace-types.js'
 
-export function isPromptResourceArtifact(value: JsonValue | undefined): value is PromptResourceArtifact {
+export function isPromptResourceArtifact(value: unknown): value is PromptResourceArtifact {
   try {
     assertPromptResourceArtifact(value)
     return true
@@ -39,12 +38,6 @@ export function normalizePromptResourceArtifact(artifact: PromptResourceArtifact
     schemaVersion: 2,
     scriptAttachments: structuredClone(artifact.scriptAttachments ?? []),
     ...(artifact.textTransformRules !== undefined ? { textTransformRules: structuredClone(artifact.textTransformRules) } : {}),
-  }
-}
-type PromptContributionResourceNode = PromptResourceNode & {
-  body: string
-  capabilities: PromptResourceCompositionCapabilities & {
-    targetAnchorId: NonNullable<PromptResourceCompositionCapabilities['targetAnchorId']>
   }
 }
 export function normalizeCardBundleArtifact(artifact: CardBundleArtifact): CardBundleArtifact {
@@ -115,6 +108,11 @@ export function collectPromptInputs(input: {
     const activationGates = node.capabilities?.activation
       ? [...input.parentActivationGates, node.capabilities.activation]
       : input.parentActivationGates
+    const effectiveActivation = combineActivationGates(activationGates)
+    const inlineEntry = category === 'preset' && node.kind === 'entry' && !node.capabilities?.targetAnchorId
+    const body = effectiveEnabled && node.kind === 'entry' && typeof node.body === 'string'
+      ? renderVariableMacros(node.body, input.variables)
+      : undefined
     input.sourceNodes.push({
       id: node.id,
       sourceId,
@@ -122,13 +120,18 @@ export function collectPromptInputs(input: {
       displayName: node.label,
       orderIndex: index + 1,
       kind: node.kind,
-      ...(node.capabilities ? { capabilities: node.capabilities } : {}),
+      enabled: effectiveEnabled,
+      ...(inlineEntry && body !== undefined ? { body } : {}),
+      capabilities: {
+        ...node.capabilities,
+        ...(effectiveActivation ? { activation: effectiveActivation } : {}),
+      },
     })
 
-    if (effectiveEnabled && category && isPromptContributionNode(node)) {
+    if (effectiveEnabled && category && node.kind === 'entry' && body !== undefined
+      && (inlineEntry || node.capabilities?.targetAnchorId)) {
       const kind = readSourceKind(category)
       if (kind) {
-        const effectiveActivation = combineActivationGates(activationGates)
         input.contributions.push({
           id: `resource.${node.id}`,
           sourceRef: {
@@ -136,13 +139,13 @@ export function collectPromptInputs(input: {
             sourceId,
             sourceNodeId: node.id,
           },
-          content: renderVariableMacros(node.body, input.variables),
+          content: body,
           capabilities: {
             ...(effectiveActivation ? { activation: effectiveActivation } : {}),
-            ...(node.capabilities.targetAnchorId ? { targetAnchorId: node.capabilities.targetAnchorId } : {}),
-            ...(node.capabilities.localDepth !== undefined ? { localDepth: node.capabilities.localDepth } : {}),
-            ...(node.capabilities.roleHint ? { roleHint: node.capabilities.roleHint } : {}),
-            ...(node.capabilities.lifecycle ? { lifecycle: node.capabilities.lifecycle } : {}),
+            ...(node.capabilities?.targetAnchorId ? { targetAnchorId: node.capabilities.targetAnchorId } : {}),
+            ...(node.capabilities?.localDepth !== undefined ? { localDepth: node.capabilities.localDepth } : {}),
+            ...(node.capabilities?.roleHint ? { roleHint: node.capabilities.roleHint } : {}),
+            ...(node.capabilities?.lifecycle ? { lifecycle: node.capabilities.lifecycle } : {}),
           },
         })
       }
@@ -160,13 +163,6 @@ export function collectPromptInputs(input: {
       })
     }
   }
-}
-
-function isPromptContributionNode(node: PromptResourceNode): node is PromptContributionResourceNode {
-  return node.kind === 'entry'
-    && node.enabled !== false
-    && typeof node.body === 'string'
-    && Boolean(node.capabilities?.targetAnchorId)
 }
 
 function readSourceKind(category: PromptResourceNode['category']): PromptContribution['sourceRef']['kind'] | undefined {
@@ -188,9 +184,8 @@ export function findNodes(nodes: PromptResourceNode[], predicate: (node: PromptR
 
 export function applyDefaultPromptProjection(asset: PromptResourceNode, resource: PromptResourceContent): PromptResourceNode {
   if (asset.kind !== 'entry' || asset.capabilities?.targetAnchorId) return asset
-  if (resource.resourceKind !== 'preset' && resource.resourceKind !== 'setting') return asset
+  if (resource.resourceKind !== 'setting') return asset
 
-  const preset = resource.resourceKind === 'preset'
   const targetAnchorId = '@chat.system'
   const entryOrders = findNodes([resource.rootNode], node => node.capabilities?.targetAnchorId === targetAnchorId)
     .map(node => node.capabilities?.localDepth)
@@ -201,7 +196,7 @@ export function applyDefaultPromptProjection(asset: PromptResourceNode, resource
     ...asset,
     capabilities: {
       ...asset.capabilities,
-      ...(preset ? {} : { activation: asset.capabilities?.activation ?? { kind: 'always' as const } }),
+      activation: asset.capabilities?.activation ?? { kind: 'always' as const },
       lifecycle: asset.capabilities?.lifecycle ?? { lifecycle: 'always' },
       targetAnchorId,
       localDepth,
@@ -596,4 +591,3 @@ function isPromptResourceNodeKind(value: unknown): value is PromptResourceNode['
 function isPromptResourceNodeCategory(value: unknown): value is NonNullable<PromptResourceNode['category']> {
   return typeof value === 'string' && value.trim().length > 0
 }
-

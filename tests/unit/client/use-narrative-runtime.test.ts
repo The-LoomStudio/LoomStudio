@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { NarrativeBranch, NarrativeTimeline } from '../../../apps/studio-client/src/entities/index.js'
-import { readComposerDraftKey, resolveNarrativeBranch } from '../../../apps/studio-client/src/features/narrative-runtime/model/use-narrative-runtime.js'
+import { inspectSessionRunStatus, readComposerDraftKey, resolveNarrativeBranch } from '../../../apps/studio-client/src/features/narrative-runtime/model/use-narrative-runtime.js'
 
 describe('readComposerDraftKey', () => {
   it('isolates temporary drafts by branch and falls back to the selected card before a session exists', () => {
@@ -24,5 +24,39 @@ describe('resolveNarrativeBranch', () => {
     expect(resolveNarrativeBranch(branches, 'branch-main', 'branch-fork')?.id).toBe('branch-fork')
     expect(resolveNarrativeBranch(branches, 'branch-main', 'missing')?.id).toBe('branch-main')
     expect(resolveNarrativeBranch([], 'branch-main')).toBeUndefined()
+  })
+})
+
+describe('inspectSessionRunStatus', () => {
+  it('identifies completed turns as idle', () => {
+    const status = inspectSessionRunStatus([
+      { id: '1', agentSessionId: 's', sequence: 1, entry: { kind: 'message', role: 'user', content: 'hello' }, createdAt: '' },
+      { id: '2', agentSessionId: 's', sequence: 2, entry: { kind: 'message', role: 'assistant', content: 'world' }, createdAt: '' },
+      { id: '3', agentSessionId: 's', sequence: 3, entry: { kind: 'run-state', state: 'completed' }, createdAt: '' },
+    ] as any)
+    expect(status).toEqual({ status: 'idle' })
+  })
+
+  it('identifies suspended run-state as suspended', () => {
+    const status = inspectSessionRunStatus([
+      { id: '1', agentSessionId: 's', sequence: 1, runId: 'run-1', entry: { kind: 'message', role: 'user', content: 'hello' }, createdAt: '' },
+      { id: '2', agentSessionId: 's', sequence: 2, runId: 'run-1', entry: { kind: 'run-state', state: 'suspended' }, createdAt: '' },
+    ] as any)
+    expect(status).toEqual({ runId: 'run-1', status: 'suspended' })
+  })
+
+  it('identifies failed terminal run as suspended for resume', () => {
+    const status = inspectSessionRunStatus([
+      { id: '1', agentSessionId: 's', sequence: 1, runId: 'run-fail', entry: { kind: 'message', role: 'user', content: 'hello' }, createdAt: '' },
+      { id: '2', agentSessionId: 's', sequence: 2, runId: 'run-fail', entry: { kind: 'run-state', state: 'failed', reason: '500' }, createdAt: '' },
+    ] as any)
+    expect(status).toEqual({ runId: 'run-fail', status: 'suspended' })
+  })
+
+  it('identifies uncompleted user message without assistant reply as suspended', () => {
+    const status = inspectSessionRunStatus([
+      { id: '1', agentSessionId: 's', sequence: 1, runId: 'run-open', entry: { kind: 'message', role: 'user', content: 'hello' }, createdAt: '' },
+    ] as any)
+    expect(status).toEqual({ runId: 'run-open', status: 'suspended' })
   })
 })

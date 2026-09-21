@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
 import { AlignLeft, ChevronDown, ImageOff, PanelRight, PanelRightClose } from 'lucide-react'
 import type { AgentProfile, AgentSession, AgentTranscriptEntry, ProviderAccount } from '../../entities/index.js'
 import type { ActiveAgentRun } from '../../features/narrative-runtime/model/use-narrative-runtime.js'
@@ -6,13 +6,16 @@ import type { ClientRendererHost } from '../../features/extension-renderers/mode
 import type { Translator } from '../../shared/i18n/index.js'
 import { AgentChatPanel } from '../../widgets/agent-chat-panel/agent-chat-panel.js'
 import { StudioPanelRight } from './studio-panel-right.js'
-import { WindowColumnLayout } from '../../shared/ui/window-column-layout/window-column-layout.js'
 import { useStudioLayoutStore, useStudioPanelStore, type StudioPanelId } from './model/studio-layout-store.js'
 import { StudioPanelHost } from './studio-panel-host.js'
+import { StudioWindowHeader } from './studio-window-header.js'
+import { StudioWindowHeaderProvider } from './studio-window-header-context.js'
 import { StudioRail } from './studio-rail.js'
 import { useStudioShortcuts } from './use-studio-shortcuts.js'
 import { useStudioLayoutAnchors } from './use-studio-layout-anchors.js'
 import { useStudioWindowResize } from './use-studio-window-resize.js'
+import { useEffectiveMotion } from '../../shared/hooks/use-motion-preference.js'
+import { resolveRailPresentation } from './studio-shell-layout.js'
 import type { WindowResizeAxis } from './window-resize.js'
 import styles from './studio-page.module.scss'
 
@@ -37,7 +40,8 @@ type StudioPageProps = {
   characterName?: string
   customCss: string
   modelConfigured?: boolean
-  panelHeaders?: Partial<Record<StudioPanelId, ReactNode>>
+  panelHeaderActions?: Partial<Record<StudioPanelId, ReactNode>>
+  panelHeaderMain?: Partial<Record<StudioPanelId, ReactNode>>
   headerActions?: ReactNode
   panels: Record<StudioPanelId, (active: boolean) => ReactNode>
   preloadPanel?(panel: StudioPanelId): void
@@ -57,6 +61,7 @@ type StudioPageProps = {
   onCancelAgentRun?(): void
   onPauseAgentRun?(): void
   onResumeAgentRun?(): void
+  onApproveAgentMutation?(allow: boolean, reason?: string): void
   onToggleAgentPanel?(): void
   onUndo(): void
 }
@@ -64,31 +69,80 @@ type StudioPageProps = {
 export function StudioPage(props: StudioPageProps) {
   const stageRef = useRef<HTMLElement>(null)
   const dockRef = useRef<HTMLElement>(null)
+  const agentPanelToggleRef = useRef<HTMLButtonElement>(null)
   useStudioLayoutAnchors(stageRef)
   const activePanel = useStudioPanelStore(state => state.activePanel)
+  const effectiveMotion = useEffectiveMotion()
+  const [displayedPanel, setDisplayedPanel] = useState(activePanel)
+  const [panelMotion, setPanelMotion] = useState<'closing' | 'idle'>('idle')
+  const displayedPanelRef = useRef(activePanel)
+  const panelCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const previousDockRectRef = useRef<DOMRect | null>(null)
+  const workspaceMotionRef = useRef<HTMLDivElement>(null)
+  const workspaceAnimationRef = useRef<Animation | null>(null)
+  const historyMotionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const assetMetadataOpen = useStudioLayoutStore(state => state.assetMetadataOpen)
   const closeDock = useStudioLayoutStore(state => state.closeDock)
   const closePanel = useStudioPanelStore(state => state.closePanel)
   const dockOpen = useStudioLayoutStore(state => state.dockOpen)
   const dockPinned = useStudioLayoutStore(state => state.dockPinned)
   const panelWindowMode = useStudioLayoutStore(state => state.panelWindowMode)
-  const activePanelWindowSize = useStudioLayoutStore(state => activePanel === null ? undefined : state.panelWindowSizes[activePanel])
+  const railWidth = useStudioLayoutStore(state => state.railWidth)
+  const displayedPanelWindowSize = useStudioLayoutStore(state => displayedPanel === null ? undefined : state.panelWindowSizes[displayedPanel])
   const setPanelWindowSize = useStudioLayoutStore(state => state.setPanelWindowSize)
   const setAssetMetadataOpen = useStudioLayoutStore(state => state.setAssetMetadataOpen)
   const toggleDockPinned = useStudioLayoutStore(state => state.toggleDockPinned)
   const togglePanel = useStudioPanelStore(state => state.togglePanel)
   const togglePanelWindowMode = useStudioLayoutStore(state => state.togglePanelWindowMode)
   const isImmersive = activePanel !== null && panelWindowMode === 'immersive'
+  const isDisplayedImmersive = displayedPanel !== null && panelWindowMode === 'immersive'
   const windowResize = useStudioWindowResize({ activePanel, dockRef, setPanelWindowSize, stageRef })
 
   const [localAgentPanelOpen, setLocalAgentPanelOpen] = useState(false)
   const isAgentPanelOpen = props.agentPanelOpen !== undefined ? props.agentPanelOpen : localAgentPanelOpen
   const toggleAgentPanel = props.onToggleAgentPanel ?? (() => setLocalAgentPanelOpen(prev => !prev))
   const [agentPanelWidth, setAgentPanelWidth] = useState<number | undefined>(undefined)
+  const [headerActionsTarget, setHeaderActionsTarget] = useState<HTMLDivElement | null>(null)
+  const [historyMotion, setHistoryMotion] = useState<{ direction: 'back' | 'forward'; panel: StudioPanelId | null } | null>(null)
+
+  useEffect(() => {
+    if (isAgentPanelOpen) return
+    const panel = document.getElementById('studio-panel-right')
+    if (panel?.contains(document.activeElement)) agentPanelToggleRef.current?.focus()
+  }, [isAgentPanelOpen])
 
   const [dockHovered, setDockHovered] = useState(false)
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
   const leaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (panelCloseTimerRef.current) clearTimeout(panelCloseTimerRef.current)
+    if (activePanel !== null) {
+      displayedPanelRef.current = activePanel
+      setDisplayedPanel(activePanel)
+      setPanelMotion('idle')
+      return
+    }
+    if (displayedPanelRef.current === null || effectiveMotion === 'reduce') {
+      displayedPanelRef.current = null
+      setDisplayedPanel(null)
+      setPanelMotion('idle')
+      return
+    }
+    setPanelMotion('closing')
+    panelCloseTimerRef.current = setTimeout(() => {
+      displayedPanelRef.current = null
+      setDisplayedPanel(null)
+      setPanelMotion('idle')
+      panelCloseTimerRef.current = null
+    }, 240)
+  }, [activePanel, effectiveMotion])
+
+  useEffect(() => () => {
+    if (panelCloseTimerRef.current) clearTimeout(panelCloseTimerRef.current)
+    workspaceAnimationRef.current?.cancel()
+    if (historyMotionTimerRef.current) clearTimeout(historyMotionTimerRef.current)
+  }, [])
 
   const handleMouseEnter = () => {
     if (leaveTimerRef.current) {
@@ -206,18 +260,45 @@ export function StudioPage(props: StudioPageProps) {
     styles.floatingDock,
     dockOpen ? styles.floatingDockOpen : '',
     mobileDrawerOpen && activePanel === null ? styles.floatingDockMobileOpen : '',
-    activePanel !== null ? styles.floatingDockActive : (isDockVisible ? styles.floatingDockVisible : styles.floatingDockHidden),
-    activePanel !== null && readPanelPlacement(activePanel) === 'beside-narrative' ? styles.floatingDockBesideNarrative : '',
-    activePanel !== null && readPanelPlacement(activePanel) === 'cover-narrative' ? styles.floatingDockCoverNarrative : '',
-    isImmersive ? styles.floatingDockImmersive : '',
+    displayedPanel !== null ? styles.floatingDockActive : (isDockVisible ? styles.floatingDockVisible : styles.floatingDockHidden),
+    displayedPanel !== null && readPanelPlacement(displayedPanel) === 'beside-narrative' ? styles.floatingDockBesideNarrative : '',
+    displayedPanel !== null && readPanelPlacement(displayedPanel) === 'cover-narrative' ? styles.floatingDockCoverNarrative : '',
+    isDisplayedImmersive ? styles.floatingDockImmersive : '',
     windowResize.resizing ? styles.floatingDockResizing : '',
   ].filter(Boolean).join(' ')
-  const displayedPanelWindowSize = activePanel !== null && windowResize.preview?.panel === activePanel
+  const railPresentation = resolveRailPresentation(activePanel, railWidth)
+  const dockWindowSize = activePanel !== null && windowResize.preview?.panel === activePanel
     ? windowResize.preview.size
-    : activePanelWindowSize
-  const dockStyle = displayedPanelWindowSize && !isImmersive
-    ? { width: `${displayedPanelWindowSize.width}px` } as CSSProperties
-    : undefined
+    : displayedPanelWindowSize
+  const dockStyle = {
+    '--loom-shell-rail-preferred-width': `${railPresentation.preferredWidth}px`,
+    ...(dockWindowSize && !isDisplayedImmersive ? { width: `${dockWindowSize.width}px` } : {}),
+  } as CSSProperties
+  useLayoutEffect(() => {
+    const dock = dockRef.current
+    if (!dock) return
+    const nextRect = dock.getBoundingClientRect()
+    const previousRect = previousDockRectRef.current
+    previousDockRectRef.current = nextRect
+    const workspace = workspaceMotionRef.current
+    workspaceAnimationRef.current?.cancel()
+    workspaceAnimationRef.current = null
+    if (!workspace || !previousRect || effectiveMotion === 'reduce' || windowResize.resizing) return
+    const insets = {
+      top: Math.max(0, previousRect.top - nextRect.top),
+      right: Math.max(0, nextRect.right - previousRect.right),
+      bottom: Math.max(0, nextRect.bottom - previousRect.bottom),
+      left: Math.max(0, previousRect.left - nextRect.left),
+    }
+    if (insets.top === 0 && insets.right === 0 && insets.bottom === 0 && insets.left === 0) return
+    workspaceAnimationRef.current = workspace.animate([
+      { clipPath: `inset(${insets.top}px ${insets.right}px ${insets.bottom}px ${insets.left}px)` },
+      { clipPath: 'inset(0)' },
+    ], {
+      duration: 320,
+      easing: 'cubic-bezier(0.2, 0, 0.2, 1)',
+    })
+  }, [displayedPanel, dockWindowSize, effectiveMotion, isDisplayedImmersive, windowResize.resizing])
   const dockSidebar = (
     <div className={styles.dockSidebar}>
       <header className={styles.dockHeader} data-loom-component="page-header">
@@ -236,20 +317,18 @@ export function StudioPage(props: StudioPageProps) {
             }
           }}
         >
-          <img
-            alt="LoomStudio"
-            className={styles.dockBrandIcon}
-            src="/images/favicon.ico"
-          />
+          <AlignLeft aria-hidden="true" className={styles.stageHeaderButtonIcon} />
         </button>
         <button
           aria-label={dockPinned ? props.t('rail.unpinDock') : props.t('rail.pinDock')}
+          aria-hidden={railPresentation.compact}
           aria-pressed={dockPinned}
           className={[
             styles.dockBrandTextButton,
             dockPinned ? styles.dockBrandTextButtonPinned : '',
           ].filter(Boolean).join(' ')}
           title={dockPinned ? props.t('rail.unpinDock') : props.t('rail.pinDock')}
+          tabIndex={railPresentation.compact ? -1 : 0}
           type="button"
           onClick={() => toggleDockPinned()}
         >
@@ -272,14 +351,26 @@ export function StudioPage(props: StudioPageProps) {
       />
     </div>
   )
-  const panelHost = (
-    <StudioPanelHost
-      activePanel={activePanel}
-      assetWorkspaceId={props.assetWorkspaceId}
-      panelHeaders={props.panelHeaders}
-      panels={props.panels}
-      t={props.t}
-    />
+  const panelHost = displayedPanel === null ? null : (
+    <div className={styles.dockPanelHost}>
+      <StudioWindowHeader
+        actions={props.panelHeaderActions?.[displayedPanel]}
+        actionsTargetRef={setHeaderActionsTarget}
+        activePanel={displayedPanel}
+        assetWorkspaceId={props.assetWorkspaceId}
+        main={props.panelHeaderMain?.[displayedPanel]}
+        t={props.t}
+        onPanelHistory={(direction, panel) => {
+          if (historyMotionTimerRef.current) clearTimeout(historyMotionTimerRef.current)
+          setHistoryMotion({ direction, panel })
+          historyMotionTimerRef.current = setTimeout(() => {
+            setHistoryMotion(null)
+            historyMotionTimerRef.current = null
+          }, 240)
+        }}
+      />
+      <StudioPanelHost activePanel={displayedPanel} historyMotion={historyMotion} panels={props.panels} />
+    </div>
   )
   return (
     <main className={styles.workbench} data-loom-component="studio-workspace-shell" data-loom-object="studio-shell">
@@ -300,7 +391,7 @@ export function StudioPage(props: StudioPageProps) {
         </div>
 
         <header className={styles.stageFloatingHeader} data-loom-component="stage-floating-header">
-          <div className={styles.stageHeaderLeft}>
+          <div className={styles.stageHeaderLeft} data-dock-open={isDockVisible ? 'true' : undefined}>
             <button
               aria-label={props.t('rail.label')}
               className={styles.stageHeaderButton}
@@ -345,6 +436,7 @@ export function StudioPage(props: StudioPageProps) {
           <div className={styles.stageHeaderRight}>
             {props.headerActions}
             <button
+              ref={agentPanelToggleRef}
               aria-label={isAgentPanelOpen ? '关闭侧边面板' : '打开侧边面板'}
               className={[
                 styles.stageHeaderButton,
@@ -392,6 +484,7 @@ export function StudioPage(props: StudioPageProps) {
             onCancelRun={props.onCancelAgentRun}
             onPauseRun={props.onPauseAgentRun}
             onResumeRun={props.onResumeAgentRun}
+            onApproveMutation={props.onApproveAgentMutation}
           />
         </StudioPanelRight>
 
@@ -418,35 +511,30 @@ export function StudioPage(props: StudioPageProps) {
           />
         ) : null}
 
+        <StudioWindowHeaderProvider activePanel={activePanel} actionsTarget={headerActionsTarget}>
         <aside
           ref={dockRef}
           className={dockClassName}
           style={dockStyle}
+          aria-hidden={!isDockVisible}
           data-loom-component="floating-widget-dock"
+          data-panel-motion={panelMotion}
+          inert={!isDockVisible}
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
         >
-          {activePanel === null ? dockSidebar : (
-            <WindowColumnLayout
-              className={styles.workspaceColumnLayout}
-              columns={[
-                {
-                  content: dockSidebar,
-                  divider: true,
-                  id: 'navigation',
-                  minSize: 42,
-                  resizable: false,
-                  size: 42,
-                },
-                { content: panelHost, fill: true, id: 'panel', minSize: 320 },
-              ]}
-            />
-          )}
+          <div ref={workspaceMotionRef} className={styles.workspaceMotionClip}>
+            <div className={styles.workspaceShellLayout} data-rail-compact={railPresentation.compact}>
+              <div className={styles.workspaceRail}>{dockSidebar}</div>
+              {panelHost ? <div className={styles.workspacePanel}>{panelHost}</div> : null}
+            </div>
+          </div>
 
           {activePanel !== null && !isImmersive ? (
             <WindowResizeHandle axis="horizontal" className={styles.windowResizeRight} label={props.t('window.resizeWidth')} resize={windowResize} />
           ) : null}
         </aside>
+        </StudioWindowHeaderProvider>
 
       </section>
     </main>

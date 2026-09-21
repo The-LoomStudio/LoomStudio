@@ -30,6 +30,7 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
       for (const moduleManifest of serverModules(manifest)) {
         const key = moduleKey(manifest.id, moduleManifest.id)
         const previous = records.get(key)
+        // Invariant: Re-discovering an active extension module is forbidden to prevent tearing live runtime states.
         if (previous?.instance && isLiveInstance(previous.instance.state)) {
           throw new Error(`Cannot rediscover active extension module: ${key}`)
         }
@@ -95,6 +96,7 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
       await stopAndForgetRecord(packageId, moduleId, records, options)
     },
 
+    // Invariant: Disposes active extensions in reverse registration order; aggregates all teardown errors.
     disposeAll: async () => {
       const errors: unknown[] = []
       for (const record of [...records.values()].reverse()) {
@@ -130,6 +132,10 @@ async function stopAndForgetRecord(
   }
 }
 
+/**
+ * Activates an extension module inside an isolated AsyncLocalStorage scope.
+ * Failure semantics: On activation error, triggers disposeFailedActivation immediately to eliminate orphaned resources.
+ */
 async function activateRecord(
   packageId: string,
   moduleId: string,
@@ -168,6 +174,7 @@ async function activateRecord(
     const module = await loadServerModule(record, instanceId)
     record.state = 'loaded'
     await instance.scope.run(() => module.activate(createContext(record, instance, options)))
+    // Boundary: Compares runtime contribution registrations against manifest; degrades state on discrepancy.
     const mismatched = hasContributionMismatch(record, instance, options)
     instance.state = mismatched ? 'degraded' : 'active'
     record.state = instance.state

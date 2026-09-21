@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Anchor, Bot, Braces, Equal, Info, KeyRound, ListFilter, ListOrdered, RefreshCw, Settings2, Zap } from 'lucide-react'
 import type { ContextAssetNode } from '../../../../entities/index.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
@@ -6,6 +6,7 @@ import { LongTextEditor, type LongTextEditorHandle } from '../../../../shared/ui
 import type { LongTextEditorMode } from '../../../../shared/ui/long-text-editor/long-text-editor-model.js'
 import {
   buildActivationUpdate,
+  normalizeKeywords,
   readActivationDraft,
   updateActivationDraft,
   type ActivationConditionPreset,
@@ -16,6 +17,7 @@ import styles from './context-asset-detail.module.scss'
 
 type ContextAssetDetailProps = {
   activationEditable?: boolean
+  allowTargetAnchor?: boolean
   editorMode: LongTextEditorMode
   metadataOpen: boolean
   node: ContextAssetNode
@@ -30,9 +32,18 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
   const editorRef = useRef<LongTextEditorHandle>(null)
   const isTextLike = props.node.kind === 'entry' || props.node.kind === 'script'
   const isEntry = props.node.kind === 'entry'
+  const allowTargetAnchor = props.allowTargetAnchor ?? true
   const body = props.node.body ?? ''
   const readOnly = isReadOnlyDetailNode(props.node)
   const activationDraft = readActivationDraft(props.node)
+  const [keywordsText, setKeywordsText] = useState(activationDraft.keywords)
+  const lastNodeIdRef = useRef(props.node.id)
+
+  if (lastNodeIdRef.current !== props.node.id) {
+    lastNodeIdRef.current = props.node.id
+    setKeywordsText(activationDraft.keywords)
+  }
+
   const canShowActivation = Boolean(props.activationEditable && (props.node.kind === 'module' || props.node.kind === 'folder' || props.node.kind === 'entry'))
 
   function updateCapabilities(partial: Partial<NonNullable<ContextAssetNode['capabilities']>>, commit = false) {
@@ -124,7 +135,13 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
                 className={styles.inlineInput}
                 disabled={readOnly}
                 value={activationDraft.mode}
-                onChange={event => updateActivation({ mode: event.target.value as ActivationEditorMode }, true)}
+                onChange={event => {
+                  const mode = event.target.value as ActivationEditorMode
+                  if (mode === 'keyword') {
+                    setKeywordsText(activationDraft.keywords)
+                  }
+                  updateActivation({ mode }, true)
+                }}
               >
                 <option value="always">{props.t('context.activation.always')}</option>
                 <option value="manual">{props.t('context.activation.manual')}</option>
@@ -141,9 +158,18 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
                 <input
                   className={styles.inlineInput}
                   disabled={readOnly}
-                  value={activationDraft.keywords}
-                  onChange={event => updateActivation({ keywords: event.target.value })}
-                  onBlur={event => updateActivation({ keywords: event.target.value }, true)}
+                  value={keywordsText}
+                  onChange={event => setKeywordsText(event.target.value)}
+                  onBlur={() => {
+                    const normalized = normalizeKeywords(keywordsText)
+                    setKeywordsText(normalized.join(', '))
+                    updateActivation({ keywords: keywordsText }, true)
+                  }}
+                  onKeyDown={event => {
+                    if (event.key === 'Enter') {
+                      event.currentTarget.blur()
+                    }
+                  }}
                   placeholder={props.t('context.activation.keywordsPlaceholder')}
                 />
               </dd>
@@ -210,31 +236,33 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
 
           {isEntry ? (
             <section className={styles.configGrid} aria-label={props.t('context.configLabel')}>
-          <div>
-            <dt><Anchor aria-hidden="true" />{props.t('context.metadata.targetAnchor') || '目标锚点'}</dt>
-            <dd>
-              <input
-                className={styles.inlineInput}
-                list="builtin-anchors"
-                disabled={readOnly}
-                value={props.node.capabilities?.targetAnchorId ?? ''}
-                onChange={event => updateCapabilities({ targetAnchorId: event.target.value })}
-                onBlur={event => updateCapabilities({ targetAnchorId: event.target.value }, true)}
-                placeholder={props.t('context.metadata.targetAnchorPlaceholder') || '@setting.stable, @setting.lower, @chat.session.post…'}
-              />
-              <datalist id="builtin-anchors">
-                <option value="@preset.system" />
-                <option value="@setting.stable" />
-                <option value="@chat.tools" />
-                <option value="@chat.narrative" />
-                <option value="@chat.session" />
-                <option value="@setting.lower" />
-                <option value="@chat.session.post" />
-                <option value="@chat.input" />
-                <option value="@fresh.tail" />
-              </datalist>
-            </dd>
-          </div>
+          {allowTargetAnchor ? (
+            <div>
+              <dt><Anchor aria-hidden="true" />{props.t('context.metadata.targetAnchor') || '目标锚点'}</dt>
+              <dd>
+                <input
+                  className={styles.inlineInput}
+                  list="builtin-anchors"
+                  disabled={readOnly}
+                  value={props.node.capabilities?.targetAnchorId ?? ''}
+                  onChange={event => updateCapabilities({ targetAnchorId: event.target.value })}
+                  onBlur={event => updateCapabilities({ targetAnchorId: event.target.value }, true)}
+                  placeholder={props.t('context.metadata.targetAnchorPlaceholder') || '@setting.stable, @setting.lower, @chat.session.post…'}
+                />
+                <datalist id="builtin-anchors">
+                  <option value="@preset.system" />
+                  <option value="@setting.stable" />
+                  <option value="@chat.tools" />
+                  <option value="@chat.narrative" />
+                  <option value="@chat.session" />
+                  <option value="@setting.lower" />
+                  <option value="@chat.session.post" />
+                  <option value="@chat.input" />
+                  <option value="@fresh.tail" />
+                </datalist>
+              </dd>
+            </div>
+          ) : null}
           <div>
             <dt><ListOrdered aria-hidden="true" />{props.t('context.metadata.localDepth') || '排序深度 (Depth)'}</dt>
             <dd>

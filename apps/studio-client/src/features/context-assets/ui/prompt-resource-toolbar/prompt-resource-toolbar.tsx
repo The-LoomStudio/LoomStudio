@@ -1,4 +1,4 @@
-import { Archive, Copy, Download, Plus, Trash2, Upload } from 'lucide-react'
+import { Archive, Copy, Download, Link2, Plus, Trash2, Upload } from 'lucide-react'
 import { useRef, useState } from 'react'
 import type { PromptResource } from '../../../../entities/index.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
@@ -19,6 +19,7 @@ type PromptResourceToolbarProps = {
   onImport(file: File): Promise<string | undefined>
   onImportZip?: (file: File) => Promise<string | undefined>
   onSelect(resourceId: string): void
+  onBindResources?(): void
 }
 
 export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
@@ -93,6 +94,16 @@ export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
             onClick={() => selected && void props.onExportZip?.(selected.id)}
           >
             <Archive aria-hidden="true" />
+          </button>
+        ) : null}
+        {props.onBindResources ? (
+          <button
+            aria-label={props.t('context.cardBindings.action')}
+            title={props.t('context.cardBindings.action')}
+            type="button"
+            onClick={props.onBindResources}
+          >
+            <Link2 aria-hidden="true" />
           </button>
         ) : null}
         <button

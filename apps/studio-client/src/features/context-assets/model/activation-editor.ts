@@ -82,7 +82,7 @@ export function updateActivationDraft(
 
 export function normalizeKeywords(value: string): string[] {
   return [...new Set(value
-    .split(',')
+    .split(/[,，\n]/)
     .map(keyword => keyword.trim())
     .filter(Boolean))]
 }

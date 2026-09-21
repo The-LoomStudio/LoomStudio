@@ -26,7 +26,7 @@ logs/
 └── *.jsonl
 ```
 
-正式运行默认使用用户目录。根开发命令通过 [开发路径配置](../../../scripts/development-data-paths.mjs) 将持久数据放在仓库 `data/`，cache/log 放在 `.loomstudio-dev/`；显式设置 HOME 时保留 `<HOME>/data` 语义，显式 DATA_ROOT 仍优先。旧目录存在而新目录未就绪时，启动器拒绝静默建立空库；迁移操作见 [Getting Started](../../guide/getting-started.md)。测试使用注入的临时目录。
+正式运行默认使用用户目录。根开发命令通过 [开发路径配置](../../../scripts/lib/development-data-paths.mjs) 将持久数据放在仓库 `data/`，cache/log 放在 `.loomstudio-dev/`；显式设置 HOME 时保留 `<HOME>/data` 语义，显式 DATA_ROOT 仍优先。旧目录存在而新目录未就绪时，启动器拒绝静默建立空库；迁移操作见 [Getting Started](../../guide/getting-started.md)。测试使用注入的临时目录。
 
 ## 2. SQLite 与 Blob 的权威边界
 

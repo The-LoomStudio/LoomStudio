@@ -40,6 +40,7 @@ import {
   projectHistoryEntries,
   type TextTransformRuleEntry,
 } from '../transforms/history-text.js'
+import { codeActToolIds } from './codeact/prompts.js'
 
 const maximumProviderSteps = 8
 const toolTimeoutMs = 30_000
@@ -198,6 +199,22 @@ export function createContentToolPromptRuntimeInputs(
       },
     })
   }
+  const codeAct = toolSet.tools.find(tool => codeActToolIds.has(tool.definition.id))
+  if (codeAct) {
+    const sourceId = 'runtime.codeact.instructions'
+    sourceNodes.push({
+      id: sourceId, sourceId, parentId: null, displayName: 'CodeAct', kind: 'entry', orderIndex: 0,
+    })
+    contributions.push({
+      id: sourceId,
+      sourceRef: { kind: 'runtime', sourceId, sourceNodeId: sourceId },
+      content: codeAct.exposure.prompt.guidance ?? '',
+      capabilities: {
+        targetAnchorId: codeAct.mount.content?.targetAnchorId ?? '@chat.tools',
+        localDepth: codeAct.mount.content?.localDepth ?? 0,
+      },
+    })
+  }
   return { sourceNodes, contributions }
 }
 
@@ -333,6 +350,16 @@ export async function runNativeToolLoop(input: {
             contentTools.map((tool) => tool.definition.name),
           )
         : { text: '', invocations: [] }
+      const codeActContentNames = new Set(contentTools
+        .filter(tool => codeActToolIds.has(tool.definition.id))
+        .map(tool => tool.definition.name))
+      const rawCodeActCalls = contentScan.invocations.some(call => codeActContentNames.has(call.name))
+        ? scanContentTools(
+            providerResult.message.content ?? '',
+            contentTools.map(tool => tool.definition.name),
+          ).invocations.filter(call => codeActContentNames.has(call.name))
+        : []
+      let codeActContentIndex = 0
       if (nativeInvocationPairs.length && contentScan.invocations.length)
         throw new Error(
           'Provider emitted native and content tool calls in the same Step',
@@ -342,7 +369,10 @@ export async function runNativeToolLoop(input: {
         const invocation: ToolInvocation = {
           id: input.ctx.createId('tool-invocation'),
           toolId: resolved?.definition.id ?? `unresolved/${parsed.name}`,
-          arguments: parsed.metadata,
+          // The content envelope requires metadata even when a freeform tool has no arguments.
+          arguments: resolved?.definition.input.kind === 'freeform' && Object.keys(parsed.metadata).length === 0
+            ? undefined
+            : parsed.metadata,
           rawInput: parsed.content,
           transport: 'content',
           ...(providerResult.providerCallId
@@ -354,6 +384,8 @@ export async function runNativeToolLoop(input: {
           resolved,
           exposedName: parsed.name,
           transport: 'content' as const,
+          sourceChanged: codeActContentNames.has(parsed.name)
+            && rawCodeActCalls[codeActContentIndex++]?.content !== parsed.content,
         }
       })
       const invocationPairs = [
@@ -444,7 +476,17 @@ export async function runNativeToolLoop(input: {
 
       providerMessages.push(providerResult.message)
       for (const pair of invocationPairs) {
-        const result = await executeInvocation(
+        const incompleteCodeAct = codeActToolIds.has(pair.invocation.toolId)
+          && (providerResult.finishReason === 'length' || providerResult.finishReason === 'error')
+        const result = 'sourceChanged' in pair && pair.sourceChanged ? failedResult(
+          pair.invocation,
+          'codeact.source_transformed',
+          'CodeAct was not executed: an assistant-content transformation changed its source. Exclude tool code from the rule or choose the JSON CodeAct transport.',
+        ) : incompleteCodeAct ? failedResult(
+          pair.invocation,
+          'codeact.incomplete_step',
+          'CodeAct was not executed because the Provider response did not finish normally. Submit a complete invocation.',
+        ) : await executeInvocation(
           input.ctx,
           pair.invocation,
           pair.resolved?.transport,
@@ -499,9 +541,10 @@ export async function runNativeToolLoop(input: {
   } catch (error) {
       const aborted =
       input.requestContext?.abortSignal?.aborted || isAbortError(error)
-    const suspended = aborted && input.requestContext?.abortSignal?.reason === 'user-pause'
+    const userPaused = aborted && input.requestContext?.abortSignal?.reason === 'user-pause'
+    const suspended = userPaused
     try {
-      if (suspended) {
+      if (suspended || !aborted) {
         const checkpointEntries: AgentTranscriptEntryData[] = []
         if (streamedText) checkpointEntries.push({
           kind: 'message',
@@ -681,7 +724,8 @@ function renderContentToolInstructions(tools: CompiledToolExposure[]): string {
       return [
         `Tool: ${tool.name}`,
         tool.prompt.description,
-        ...(tool.prompt.guidance ? [tool.prompt.guidance] : []),
+        ...(tool.input.kind === 'freeform' ? ['Metadata must be {}; this tool accepts only raw content.'] : []),
+        ...(tool.prompt.guidance && !codeActToolIds.has(tool.toolId) ? [tool.prompt.guidance] : []),
         ...(metadataSchema
           ? [`Metadata JSON Schema: ${JSON.stringify(metadataSchema)}`]
           : []),
@@ -692,7 +736,7 @@ function renderContentToolInstructions(tools: CompiledToolExposure[]): string {
 }
 
 function renderNativeToolDescription(tool: CompiledToolExposure): string {
-  return [tool.prompt.description, tool.prompt.guidance]
+  return [tool.prompt.description, ...(!codeActToolIds.has(tool.toolId) ? [tool.prompt.guidance] : [])]
     .filter((value): value is string => Boolean(value))
     .join('\n\n')
 }
@@ -769,6 +813,9 @@ async function executeInvocation(
   }
   const { signal, dispose } = createToolSignal(externalSignal)
   try {
+    // CodeAct terminates its Worker and drains accepted host operations before returning an abort result.
+    if (codeActToolIds.has(invocation.toolId))
+      return await ctx.agentTools.execute(invocation, signal, scope)
     return await raceWithAbort(
       ctx.agentTools.execute(invocation, signal, scope),
       signal,

@@ -1,5 +1,5 @@
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type {
   AiGatewayInvokeInput,
@@ -30,6 +30,7 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
   const [modelProfiles, setModelProfiles] = useState<ModelProfile[]>([])
   const [aiProviders, setAiProviders] = useState<RegisteredAiGatewayProvider[]>([])
   const [aiCapabilityProfiles, setAiCapabilityProfiles] = useState<AiCapabilityProfile[]>([])
+  const modelQueueRef = useRef(Promise.resolve())
 
   async function refreshProviderAccounts() {
     const result = await input.api.providerAccounts.list()
@@ -83,6 +84,11 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
           : {}),
       })
       await refreshProviderSettings()
+      setProviderAccountDraft({
+        displayName: '',
+        baseUrl: '',
+        apiKey: '',
+      })
     })
   }
 
@@ -151,15 +157,22 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
   async function createModelProfile(providerAccountId: string, providerModelId: string) {
     const model = providerModelId.trim()
     if (!model) return
-    await input.runAction(async () => {
-      const account = providerAccounts.find(item => item.id === providerAccountId)
-      if (!account) throw new Error(`Provider Profile not found: ${providerAccountId}`)
-      await input.api.providerAccounts.update({
-        providerProfileId: providerAccountId,
-        enabledModelIds: [...new Set([...account.enabledModelIds, model])],
+    const task = modelQueueRef.current.then(async () => {
+      await input.runAction(async () => {
+        const latestResult = await input.api.providerAccounts.list()
+        const profiles = latestResult.providerProfiles ?? []
+        const account = profiles.find(item => item.id === providerAccountId)
+        if (!account) throw new Error(`Provider Profile not found: ${providerAccountId}`)
+        if (account.enabledModelIds.includes(model)) return
+        await input.api.providerAccounts.update({
+          providerProfileId: providerAccountId,
+          enabledModelIds: [...new Set([...account.enabledModelIds, model])],
+        })
+        await refreshProviderAccounts()
       })
-      await refreshProviderAccounts()
     })
+    modelQueueRef.current = task.catch(() => {})
+    await task
   }
 
   async function updateProviderAccount(providerAccountId: string, updates: { displayName?: string; config?: Record<string, ClientJsonValue> }) {

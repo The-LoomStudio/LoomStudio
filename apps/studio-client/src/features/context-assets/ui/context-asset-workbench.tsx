@@ -115,6 +115,7 @@ export function ContextAssetExplorer(props: {
 
 export function ContextAssetEditor(props: {
   activationEditable: boolean
+  allowTargetAnchor?: boolean
   editorMode: LongTextEditorMode
   metadataOpen: boolean
   node?: ContextAssetNode
@@ -156,6 +157,7 @@ export function ContextAssetEditor(props: {
       {!node ? <div className={styles.emptyState}>{props.t('context.emptyBody')}</div> : (
         <ContextAssetDetail
           activationEditable={props.activationEditable}
+          allowTargetAnchor={props.allowTargetAnchor}
           metadataOpen={props.metadataOpen}
           editorMode={props.editorMode}
           node={node}

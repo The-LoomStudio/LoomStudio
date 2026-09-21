@@ -42,6 +42,7 @@ import { cardMediaUrl, useCardMediaRevision } from '../../shared/lib/card-media.
 import { downloadBlob } from '../../shared/browser/download.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import { MasterDetailWorkbench } from '../../shared/ui/master-detail-workbench/master-detail-workbench.js'
+import { PanelTabs } from '../../shared/ui/panel-tabs/index.js'
 import {
   areAllExpandablesExpanded,
   areAllSelected,
@@ -391,41 +392,19 @@ export function SessionsPanel(props: SessionsPanelProps) {
   return (
     <div className={styles.panel} data-loom-component="sessions-panel">
       <div className={styles.filterNav}>
-        <nav className="loom-page-tabs" aria-label={props.t('sessions.views')}>
-          <button
-            aria-current={filter === 'all' ? 'page' : undefined}
-            className={`loom-page-tab ${filter === 'all' ? 'loom-page-tab-active' : ''}`}
-            type="button"
-            onClick={() => {
-              setFilter('all')
-              setMobilePane('master')
-            }}
-          >
-            {props.t('sessions.filterAll')}
-          </button>
-          <button
-            aria-current={filter === 'timelines' ? 'page' : undefined}
-            className={`loom-page-tab ${filter === 'timelines' ? 'loom-page-tab-active' : ''}`}
-            type="button"
-            onClick={() => {
-              setFilter('timelines')
-              setMobilePane('master')
-            }}
-          >
-            {props.t('sessions.filterTimelines')}
-          </button>
-          <button
-            aria-current={filter === 'standalone' ? 'page' : undefined}
-            className={`loom-page-tab ${filter === 'standalone' ? 'loom-page-tab-active' : ''}`}
-            type="button"
-            onClick={() => {
-              setFilter('standalone')
-              setMobilePane('master')
-            }}
-          >
-            {props.t('sessions.filterStandalone')}
-          </button>
-        </nav>
+        <PanelTabs<SessionFilter>
+          activeId={filter}
+          ariaLabel={props.t('sessions.views')}
+          items={[
+            { id: 'all', label: props.t('sessions.filterAll') },
+            { id: 'timelines', label: props.t('sessions.filterTimelines') },
+            { id: 'standalone', label: props.t('sessions.filterStandalone') },
+          ]}
+          onChange={nextFilter => {
+            setFilter(nextFilter)
+            setMobilePane('master')
+          }}
+        />
 
         <button
           aria-label={isSelectionMode ? props.t('sessions.exitBatchManage') : props.t('sessions.batchManage')}

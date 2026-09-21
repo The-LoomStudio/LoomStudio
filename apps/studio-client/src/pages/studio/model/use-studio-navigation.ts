@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useStudioPanelStore } from './studio-layout-store.js'
-import { buildStudioChatPath, buildStudioNodeHash, readStudioNodeAnchor, readStudioRoute } from './studio-route.js'
+import { buildStudioChatPath, buildStudioNodeHash, buildStudioResourcePath, readStudioNodeAnchor, readStudioRoute } from './studio-route.js'
 
 export function useStudioNavigation() {
   const location = useLocation()
@@ -31,6 +31,8 @@ export function useStudioNavigation() {
   }
 
   return {
+    openResource: (panel: 'resource' | 'preset', resourceId: string, nodeId: string) =>
+      navigate(buildStudioResourcePath(panel, resourceId, nodeId)),
     getNodeLink,
     nodeAnchorId,
     openNarrative,

@@ -1,0 +1,148 @@
+{
+  "format": "loom.promptResource",
+  "schemaVersion": 2,
+  "resourceKind": "preset",
+  "macros": {
+    "writing.style": "清晰自然，人物言行符合已有设定。",
+    "writing.progression": "承接当前情景适度推进，不替用户决定尚未表达的行动。",
+    "writing.output": "使用用户的语言给出正文；不要把后台操作记录混入剧情。"
+  },
+  "rootNode": {
+    "id": "default.preset",
+    "kind": "module",
+    "category": "preset",
+    "label": "Default",
+    "children": [
+      {
+        "id": "default.prefix",
+        "kind": "message",
+        "label": "身份与固定写作要求",
+        "capabilities": { "roleHint": "system" },
+        "children": [
+          {
+            "id": "default.identity",
+            "kind": "entry",
+            "label": "身份与工作原则",
+            "body": "你是协助用户创作与推进故事的助手。区分剧情资料、用户指导与工作记录；不把未发生的计划当作已发生事实。只使用实际提供的工具，不声称未成功的操作已经完成。"
+          },
+          {
+            "id": "default.writing",
+            "kind": "entry",
+            "label": "文风、推演与输出",
+            "body": "文风：{{writing.style}}\n推演：先理解场景、角色与已知事实。{{writing.progression}} 检查前后连续性再输出。\n输出：{{writing.output}}"
+          },
+          {
+            "id": "default.system",
+            "kind": "virtual",
+            "label": "基础补充",
+            "capabilities": { "targetAnchorId": "@chat.system" }
+          },
+          {
+            "id": "default.preset.extra",
+            "kind": "virtual",
+            "label": "预设补充",
+            "capabilities": { "targetAnchorId": "@preset.system" }
+          }
+        ]
+      },
+      {
+        "id": "default.tools.block",
+        "kind": "message",
+        "label": "工具与能力说明",
+        "capabilities": { "roleHint": "system" },
+        "children": [
+          { "id": "default.tools", "kind": "virtual", "label": "文本工具定义", "capabilities": { "targetAnchorId": "@chat.tools" } },
+          { "id": "default.skills", "kind": "virtual", "label": "能力入口说明", "capabilities": { "targetAnchorId": "@runtime.skills" } }
+        ]
+      },
+      {
+        "id": "default.stable.block",
+        "kind": "message",
+        "label": "常驻上下文",
+        "capabilities": { "roleHint": "system" },
+        "children": [
+          { "id": "default.stable.before", "kind": "entry", "label": "资料开始", "body": "以下是本次创作采用的常驻资料：\n<setting>" },
+          { "id": "default.stable", "kind": "virtual", "label": "常驻设定", "capabilities": { "targetAnchorId": "@setting.stable" } },
+          { "id": "default.stable.after", "kind": "entry", "label": "资料结束", "body": "</setting>" }
+        ]
+      },
+      {
+        "id": "default.narrative.block",
+        "kind": "message",
+        "label": "剧情基线",
+        "capabilities": { "roleHint": "developer" },
+        "children": [
+          { "id": "default.narrative.before", "kind": "virtual", "label": "剧情前补充", "capabilities": { "targetAnchorId": "@narrative.before" } },
+          { "id": "default.memory.narrative", "kind": "virtual", "label": "剧情记忆", "capabilities": { "targetAnchorId": "@memory.narrative" } },
+          { "id": "default.narrative", "kind": "virtual", "label": "采样后的剧情正文", "capabilities": { "targetAnchorId": "@chat.narrative" } },
+          { "id": "default.narrative.after", "kind": "virtual", "label": "剧情后补充", "capabilities": { "targetAnchorId": "@narrative.after" } }
+        ]
+      },
+      {
+        "id": "default.memo.block",
+        "kind": "message",
+        "label": "工作记忆",
+        "capabilities": { "roleHint": "system" },
+        "children": [
+          { "id": "default.memo", "kind": "virtual", "label": "Session 记忆", "capabilities": { "targetAnchorId": "@memory.session" } }
+        ]
+      },
+      {
+        "id": "default.session",
+        "kind": "virtual",
+        "label": "Session 原生消息",
+        "capabilities": { "targetAnchorId": "@chat.session" }
+      },
+      {
+        "id": "default.dynamic.block",
+        "kind": "message",
+        "label": "本次动态上下文",
+        "capabilities": { "roleHint": "system" },
+        "children": [
+          { "id": "default.lower", "kind": "virtual", "label": "条件设定", "capabilities": { "targetAnchorId": "@setting.lower" } },
+          { "id": "default.state", "kind": "virtual", "label": "状态视图", "capabilities": { "targetAnchorId": "@runtime.state" } },
+          { "id": "default.recalled", "kind": "virtual", "label": "本次记忆召回", "capabilities": { "targetAnchorId": "@memory.recalled" } },
+          { "id": "default.session.post", "kind": "virtual", "label": "交互前补充", "capabilities": { "targetAnchorId": "@chat.session.post" } },
+          { "id": "default.tools.dynamic", "kind": "virtual", "label": "动态能力说明", "capabilities": { "targetAnchorId": "@tools.dynamic" } }
+        ]
+      },
+      {
+        "id": "default.input.block",
+        "kind": "message",
+        "label": "当前输入",
+        "capabilities": { "roleHint": "user" },
+        "children": [
+          { "id": "default.input", "kind": "virtual", "label": "用户最新输入", "capabilities": { "targetAnchorId": "@chat.input" } }
+        ]
+      },
+      {
+        "id": "default.tail.block",
+        "kind": "message",
+        "label": "普通尾部补充",
+        "capabilities": { "roleHint": "system" },
+        "children": [
+          { "id": "default.tail", "kind": "virtual", "label": "尾部注入", "capabilities": { "targetAnchorId": "@prompt.tail" } },
+          { "id": "default.fresh", "kind": "virtual", "label": "新增上下文", "capabilities": { "targetAnchorId": "@fresh.tail" } }
+        ]
+      },
+      {
+        "id": "default.workspace.block",
+        "kind": "message",
+        "label": "实时工作区",
+        "capabilities": { "roleHint": "system" },
+        "children": [
+          { "id": "default.workspace", "kind": "virtual", "label": "工作区视图", "capabilities": { "targetAnchorId": "@runtime.workspace" } }
+        ]
+      },
+      {
+        "id": "default.notices.block",
+        "kind": "message",
+        "label": "运行提醒",
+        "capabilities": { "roleHint": "system" },
+        "children": [
+          { "id": "default.notices", "kind": "virtual", "label": "提醒集合", "capabilities": { "targetAnchorId": "@runtime.notices" } }
+        ]
+      }
+    ]
+  }
+}

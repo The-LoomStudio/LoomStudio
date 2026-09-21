@@ -6,6 +6,7 @@ import type { NetworkSettings, StudioApi } from '../../shared/api/studio-api.js'
 import type { Locale, Translator } from '../../shared/i18n/index.js'
 import { localeLabels, supportedLocales } from '../../shared/i18n/index.js'
 import { MasterDetailWorkbench } from '../../shared/ui/master-detail-workbench/master-detail-workbench.js'
+import { useMotionPreferenceStore, type MotionPreference } from '../../shared/hooks/use-motion-preference.js'
 import { BackgroundMaterialsView, type BackgroundOption } from './background-materials-view.js'
 import styles from './settings-panel.module.scss'
 
@@ -54,6 +55,8 @@ export function SettingsPanel(props: {
   const setPreviewFollowState = useAppearanceStore(state => state.setFollowAI)
   const setPreviewMaterial = useAppearanceStore(state => state.setMaterial)
   const setPreviewCanvasWidth = useAppearanceStore(state => state.setCanvasWidth)
+  const motionPreference = useMotionPreferenceStore(state => state.preference)
+  const setMotionPreference = useMotionPreferenceStore(state => state.setPreference)
   const backgrounds = [...previewBackgrounds, ...(props.backgrounds ?? [])]
   const textController = useTextTransformController({
     api: props.textTransformsApi,
@@ -312,6 +315,21 @@ export function SettingsPanel(props: {
                       </div>
                     </div>
                     <div className={styles.cardSection}>
+                      <h4>{props.t('settings.motion')}</h4>
+                      <p>{props.t('settings.motionDesc')}</p>
+                      <label className={styles.settingRow}>
+                        <span>{props.t('settings.motion')}</span>
+                        <select
+                          value={motionPreference}
+                          onChange={event => setMotionPreference(event.target.value as MotionPreference)}
+                        >
+                          <option value="system">{props.t('settings.motionSystem')}</option>
+                          <option value="full">{props.t('settings.motionFull')}</option>
+                          <option value="reduce">{props.t('settings.motionReduce')}</option>
+                        </select>
+                      </label>
+                    </div>
+                    <div className={styles.cardSection}>
                       <h4>自定义 CSS (Custom Styles)</h4>
                       <p>注入自定义样式规则以调整界面风格。</p>
                       <textarea
@@ -336,7 +354,7 @@ export function SettingsPanel(props: {
               </header>
               <div className={styles.cardSection}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                  <img src="/images/logo.png" alt="Loom Studio Logo" style={{ width: '38px', height: '38px', objectFit: 'contain' }} />
+                  <img src="/images/logo.svg" alt="Loom Studio Logo" style={{ width: '38px', height: '38px', objectFit: 'contain' }} />
                   <div>
                     <h4 style={{ margin: 0, fontSize: '15px' }}>Loom Studio</h4>
                     <span style={{ fontSize: '11.5px', color: 'var(--loom-muted-foreground, #888)' }}>Weave worlds, interweave stories.</span>

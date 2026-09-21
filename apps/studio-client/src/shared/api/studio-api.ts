@@ -6,6 +6,19 @@ export type AgentRunEvent = {
   runId: string
   [key: string]: ClientJsonValue | undefined
 }
+
+export type AgentMutationApproval = {
+  requestId: string
+  preview: {
+    action: 'replace' | 'patch'
+    path: string
+    kind: 'prompt-resource' | 'state'
+    before: string
+    after: string
+    target?: ClientJsonValue
+    pointer?: string
+  }
+}
 import type { CardDirectoryPreview, CardDirectorySaveResult, CardDirectoryCatalog, OpenCardDirectoryResult, CardDirectoryAttachment, ReplaceSettingMountsInput } from '@loom-studio/shared'
 import type { OfficialContentPackage } from '../../entities/official-content.js'
 import type { LogLevel, LogPage } from '@loom-studio/logging'
@@ -446,7 +459,8 @@ export type StudioApi = {
     subscribeRun(runId: string, cursor?: number): Promise<{ events: AgentRunEvent[]; nextCursor: number; done: boolean; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' }>
     cancelRun(runId: string, reason?: string): Promise<{ runId: string; accepted: boolean; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' }>
     pauseRun(runId: string): Promise<{ runId: string; accepted: boolean; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' }>
-    resumeRun(runId: string): Promise<{ runId: string; sourceRunId: string; accepted: boolean; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' }>
+    resumeRun(runIdOrOptions: string | { runId?: string; agentSessionId?: string }): Promise<{ runId: string; sourceRunId?: string; accepted: boolean; state?: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' }>
+    approveMutation(runId: string, requestId: string, allow: boolean, reason?: string): Promise<{ runId: string; requestId: string; accepted: boolean }>
     runState(runId: string): Promise<{ runId: string; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' }>
     preview(input: PreviewAgentTurnInput): Promise<PreviewAgentTurnResult>
     delete(agentSessionId: string): Promise<{ deleted: true; mutation: MutationReceipt }>
@@ -675,7 +689,10 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       subscribeRun: (runId, cursor) => rpc.call('application.agent.run.subscribe', { runId, ...(cursor === undefined ? {} : { cursor }) }),
       cancelRun: (runId, reason) => rpc.call('application.agent.run.cancel', { runId, ...(reason ? { reason } : {}) }),
       pauseRun: runId => rpc.call('application.agent.run.pause', { runId }),
-      resumeRun: runId => rpc.call('application.agent.run.resume', { runId }),
+      resumeRun: runIdOrOptions => rpc.call('application.agent.run.resume', typeof runIdOrOptions === 'string' ? { runId: runIdOrOptions } : runIdOrOptions),
+      approveMutation: (runId, requestId, allow, reason) => rpc.call('application.agent.run.mutation-approval', {
+        runId, requestId, allow, ...(reason ? { reason } : {}),
+      }),
       runState: runId => rpc.call('application.agent.run.state', { runId }),
       preview: input => rpc.call<PreviewAgentTurnResult>('application.previewAgentTurn', input),
       delete: agentSessionId => rpc.call<{ deleted: true; mutation: MutationReceipt }>('application.deleteAgentSession', { agentSessionId }),

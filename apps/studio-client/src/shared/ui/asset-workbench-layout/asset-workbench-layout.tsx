@@ -10,6 +10,7 @@ type AssetWorkbenchLayoutProps = {
   children: ReactNode
   explorer: ReactNode
   explorerWidth: number
+  header?: ReactNode
   footer?: ReactNode
   hasSelection: boolean
   onExplorerWidthChange(width: number): void
@@ -44,13 +45,15 @@ export function AssetWorkbenchLayout(props: AssetWorkbenchLayoutProps) {
 
   const explorer = (
     <aside className={styles.explorerPane} data-loom-component="asset-explorer">
+      {props.header ? (
+        <div className={styles.explorerHeader} data-loom-component="explorer-header">
+          {props.header}
+        </div>
+      ) : null}
       {props.toolbar ? (
-        <>
-          <header className={styles.explorerToolbar}>
-            <div className={styles.toolbarContent}>{props.toolbar}</div>
-          </header>
-          <span className="loom-divider" aria-hidden="true" />
-        </>
+        <header className={styles.explorerToolbar}>
+          <div className={styles.toolbarContent}>{props.toolbar}</div>
+        </header>
       ) : null}
       <div className={styles.explorerBody}>{props.explorer}</div>
       {props.footer ? (
@@ -69,11 +72,7 @@ export function AssetWorkbenchLayout(props: AssetWorkbenchLayoutProps) {
     </section>
   )
 
-  const columns: WindowColumnDefinition[] = showExplorerOnly
-    ? [{ content: explorer, fill: true, id: 'explorer', minSize: 0 }]
-    : showDetailOnly
-      ? [{ content: detail, fill: true, id: 'detail', minSize: 0 }]
-      : [
+  const columns: WindowColumnDefinition[] = [
           {
             content: explorer,
             id: 'explorer',
@@ -86,13 +85,20 @@ export function AssetWorkbenchLayout(props: AssetWorkbenchLayoutProps) {
 
   return (
     <div ref={containerRef} className={`${styles.workbenchWrapper} ${isNarrow ? styles.workbenchNarrow : ''}`}>
-      <WindowColumnLayout
-        className={`${styles.workbench} ${readViewModeClassName(props.viewMode)}`}
-        columns={columns}
-        onColumnSizeChange={(columnId, size) => {
-          if (columnId === 'explorer') props.onExplorerWidthChange(size)
-        }}
-      />
+      {isDetailNavigation ? (
+        <div className={styles.mobileViewport} data-pane={showDetailOnly ? 'detail' : 'explorer'}>
+          <div className={styles.mobilePane} data-pane="explorer" inert={showDetailOnly}>{explorer}</div>
+          <div className={styles.mobilePane} data-pane="detail" inert={showExplorerOnly}>{detail}</div>
+        </div>
+      ) : (
+        <WindowColumnLayout
+          className={`${styles.workbench} ${readViewModeClassName(props.viewMode)}`}
+          columns={columns}
+          onColumnSizeChange={(columnId, size) => {
+            if (columnId === 'explorer') props.onExplorerWidthChange(size)
+          }}
+        />
+      )}
     </div>
   )
 }

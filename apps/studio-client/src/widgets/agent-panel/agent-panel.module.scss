@@ -1,136 +1,369 @@
 .panel {
   min-width: 0;
-  min-height: 100%;
-  overflow-x: hidden;
-  padding-bottom: 32px;
+  height: 100%;
   color: var(--loom-color-text);
   background: var(--loom-color-surface);
 }
 
-.section {
-  display: grid;
-  gap: 10px;
-  padding: 14px 16px;
-}
-
-.sectionHeader {
+.masterContainer {
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  padding: 12px;
+  gap: 10px;
+}
+
+.masterHeader {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding-inline: 12px;
+  padding-inline: 4px;
+  min-height: 28px;
 }
 
-.sectionHeader h2,
-.sectionHeader p {
-  margin: 0;
+.masterTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  h2 {
+    margin: 0;
+    font-size: var(--loom-font-size-3);
+    font-weight: var(--loom-font-weight-5);
+  }
 }
 
-.sectionHeader h2 {
-  font-size: var(--loom-font-size-3);
-  font-weight: var(--loom-font-weight-5);
-}
-
-.sectionHeader p,
-.empty {
-  margin-top: 4px;
+.profileCount {
   color: var(--loom-color-text-subtle);
   font-size: var(--loom-font-size-2);
 }
 
-.addButton,
-.deleteButton,
-.formActions button {
+.newButton {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  border: 0;
-  color: var(--loom-color-text-muted);
-  background: transparent;
-}
-
-.addButton svg,
-.deleteButton svg {
-  width: var(--loom-icon-size-3);
-  height: var(--loom-icon-size-3);
-}
-
-.createForm,
-.profile,
-.profileActive {
-  display: grid;
-  gap: 12px;
-  border-radius: var(--loom-radius-card);
-  padding: 12px;
-  background: var(--loom-color-surface-subtle);
-}
-
-.createForm label,
-.profileFields label {
-  display: grid;
   gap: 4px;
+  border: 0;
+  padding: 0;
+  color: var(--loom-color-accent-strong);
+  background: transparent;
+  font-size: var(--loom-font-size-2);
+  cursor: pointer;
+
+  svg {
+    width: var(--loom-icon-size-2);
+    height: var(--loom-icon-size-2);
+  }
+}
+
+.createForm {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: var(--loom-radius-card);
+  background: var(--loom-color-surface-subtle);
+
+  label {
+    display: grid;
+    gap: 4px;
+    color: var(--loom-color-text-muted);
+    font-size: var(--loom-font-size-2);
+  }
+
+  input,
+  select {
+    width: 100%;
+    min-height: 28px;
+    font-size: var(--loom-font-size-2);
+  }
+}
+
+.toggleField {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+
+.fieldLabel {
   color: var(--loom-color-text-muted);
   font-size: var(--loom-font-size-2);
-}
-
-.createForm input,
-.createForm select,
-.profileFields input,
-.profileFields select {
-  min-width: 0;
-  width: 100%;
 }
 
 .formActions {
   display: flex;
-  gap: 12px;
+  gap: 10px;
+  margin-top: 4px;
+
+  button:first-child {
+    color: var(--loom-color-accent-strong);
+  }
+
+  button {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    font-size: var(--loom-font-size-2);
+    cursor: pointer;
+  }
 }
 
-.formActions button:first-child {
-  color: var(--loom-color-accent-strong);
+.masterList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  flex: 1;
 }
 
-.profileList {
-  display: grid;
-  gap: 8px;
-}
-
-.profileIdentity {
-  min-width: 0;
-  display: grid;
-  gap: 3px;
-  border: 0;
-  padding: 0;
-  color: var(--loom-color-text);
-  text-align: left;
-  background: transparent;
-}
-
-.profileIdentity span {
-  overflow: hidden;
+.empty {
+  margin-top: 8px;
+  padding-inline: 4px;
   color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-2);
+}
+
+.profileItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: var(--loom-radius-control);
+  background: transparent;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid transparent;
+  transition:
+    background-color var(--loom-motion-duration-fast) ease,
+    border-color var(--loom-motion-duration-fast) ease;
+
+  &:hover {
+    background: var(--loom-color-surface-subtle);
+  }
+}
+
+.profileItemActive {
+  background: var(--loom-color-surface-subtle);
+  border-color: var(--loom-color-divider);
+}
+
+.profileItemMain {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.profileItemName {
+  overflow: hidden;
+  color: var(--loom-color-text);
+  font-size: var(--loom-font-size-2);
+  font-weight: var(--loom-font-weight-5);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.profileFields {
-  display: grid;
-  gap: 10px;
+.profileItemMeta {
+  overflow: hidden;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.toolsField {
+.profileItemDelete {
+  opacity: 0;
+  transition: opacity var(--loom-motion-duration-fast) ease;
+}
+
+.profileItem:hover .profileItemDelete,
+.profileItemActive .profileItemDelete {
+  opacity: 1;
+}
+
+.detailContainer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   min-width: 0;
+  overflow: hidden;
+}
+
+.detailHeader {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--loom-color-divider);
+  flex: 0 0 auto;
+}
+
+.tabBadge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  font-size: 10px;
+  line-height: 1;
+  margin-left: 6px;
+  color: var(--loom-color-text-subtle);
+  background: var(--loom-color-surface-subtle);
+}
+
+.detailBody {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px 32px;
+}
+
+.basicForm {
   display: grid;
-  gap: 7px;
-  margin: 2px 0 0;
+  gap: 16px;
+  max-width: 520px;
+
+  label {
+    display: grid;
+    gap: 6px;
+    color: var(--loom-color-text-muted);
+    font-size: var(--loom-font-size-2);
+  }
+
+  input,
+  select {
+    width: 100%;
+    min-height: 32px;
+    font-size: var(--loom-font-size-3);
+  }
+}
+
+.deliverySection {
+  padding-top: 6px;
+}
+
+.toggleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.toggleInfo {
+  display: grid;
+  gap: 2px;
+}
+
+.toggleTitle {
+  color: var(--loom-color-text);
+  font-size: var(--loom-font-size-2);
+  font-weight: var(--loom-font-weight-5);
+}
+
+.toggleHint {
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
+}
+
+.dangerZone {
+  padding-top: 18px;
+  border-top: 1px solid var(--loom-color-divider);
+}
+
+.deleteButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   border: 0;
   padding: 0;
+  color: var(--loom-color-danger);
+  background: transparent;
+  font-size: var(--loom-font-size-2);
+  cursor: pointer;
+
+  svg {
+    width: var(--loom-icon-size-3);
+    height: var(--loom-icon-size-3);
+  }
+
+  &:hover:not(:disabled) {
+    text-decoration: underline;
+  }
 }
 
-.toolsLegend {
-  padding: 0;
-  color: var(--loom-color-text-muted);
+.toolsView {
+  display: grid;
+  gap: 14px;
+  max-width: 680px;
+}
+
+.toolsSearch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--loom-radius-control);
+  border: 1px solid var(--loom-color-border);
+  background: var(--loom-color-surface-subtle);
+
+  svg {
+    width: var(--loom-icon-size-3);
+    height: var(--loom-icon-size-3);
+    color: var(--loom-color-text-subtle);
+    flex: 0 0 auto;
+  }
+
+  input {
+    width: 100%;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--loom-color-text);
+    font-size: var(--loom-font-size-2);
+    outline: none;
+
+    &::placeholder {
+      color: var(--loom-color-text-subtle);
+    }
+  }
+
+  button {
+    border: 0;
+    padding: 0;
+    color: var(--loom-color-text-subtle);
+    background: transparent;
+    cursor: pointer;
+  }
+}
+
+.toolsEmpty {
+  color: var(--loom-color-text-subtle);
   font-size: var(--loom-font-size-2);
+  padding: 12px 4px;
+}
+
+.toolNamespaceSection {
+  display: grid;
+  gap: 6px;
+}
+
+.toolNamespaceHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px;
+}
+
+.toolNamespaceName {
+  color: var(--loom-color-text-muted);
+  font-size: var(--loom-font-size-1);
+  font-weight: var(--loom-font-weight-6);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.toolNamespaceCount {
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
 }
 
 .toolList {
@@ -138,55 +371,112 @@
   gap: 6px;
 }
 
-.toolOption {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: start;
-  gap: 8px;
+.toolItem {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
   border-radius: var(--loom-radius-control);
-  padding: 7px 8px;
   background: var(--loom-color-surface-subtle);
 }
 
-.toolOption input {
-  margin-top: 2px;
-}
-
-.toolDetails {
-  min-width: 0;
+.toolItemMain {
   display: grid;
-  gap: 2px;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
 }
 
-.toolDetails strong {
-  overflow: hidden;
+.toolTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.toolName {
   color: var(--loom-color-text);
   font-size: var(--loom-font-size-2);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-weight: var(--loom-font-weight-5);
 }
 
-.toolDetails small,
-.toolDetails em {
-  overflow: hidden;
+.toolKindBadge,
+.badgeInherited,
+.badgeOverridden,
+.badgeNotMounted {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: var(--loom-radius-control);
+  line-height: 1.2;
+}
+
+.toolKindBadge {
   color: var(--loom-color-text-subtle);
-  font-size: var(--loom-font-size-1);
-  font-style: normal;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  background: var(--loom-color-surface-inset);
 }
 
-.toolDetails button {
-  justify-self: start;
-  border: 0;
-  padding: 0;
+.badgeInherited {
+  color: var(--loom-color-text-muted);
+  background: var(--loom-color-surface-inset);
+}
+
+.badgeOverridden {
   color: var(--loom-color-accent-strong);
-  font-size: var(--loom-font-size-1);
+  background: color-mix(in srgb, var(--loom-color-accent) 15%, transparent);
+}
+
+.badgeNotMounted {
+  color: var(--loom-color-text-subtle);
   background: transparent;
 }
 
-.deleteButton {
-  justify-self: start;
-  color: var(--loom-color-danger);
+.toolDescription {
+  margin: 0;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
+  line-height: 1.35;
+}
+
+.resetButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  padding: 0;
+  color: var(--loom-color-accent-strong);
+  background: transparent;
+  font-size: var(--loom-font-size-1);
+  cursor: pointer;
+
+  svg {
+    width: 12px;
+    height: 12px;
+  }
+}
+
+.toolItemToggle {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.emptyDetail {
+  display: grid;
+  place-content: center;
+  text-align: center;
+  height: 100%;
+  padding: 24px;
+  color: var(--loom-color-text-subtle);
+
+  h3 {
+    margin: 0 0 6px;
+    color: var(--loom-color-text-muted);
+    font-size: var(--loom-font-size-3);
+    font-weight: var(--loom-font-weight-5);
+  }
+
+  p {
+    margin: 0;
+    font-size: var(--loom-font-size-2);
+  }
 }

@@ -16,19 +16,20 @@
 
 .actions {
   display: flex;
-  gap: 3px;
+  gap: 4px;
 }
 
 .actions button {
   align-items: center;
   background: transparent;
   border: 0;
-  border-radius: 7px;
+  border-radius: 8px;
   color: var(--loom-color-text-muted);
   display: inline-flex;
-  height: 30px;
+  height: 34px;
   justify-content: center;
-  width: 30px;
+  width: 34px;
+  transition: background-color var(--loom-motion-duration-fast, 120ms) ease, color var(--loom-motion-duration-fast, 120ms) ease;
 }
 
 .actions button:hover:not(:disabled) {
@@ -42,8 +43,8 @@
 }
 
 .actions svg {
-  height: 16px;
-  width: 16px;
+  height: 18.5px;
+  width: 18.5px;
 }
 
 .fileInput {

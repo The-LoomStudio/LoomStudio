@@ -19,7 +19,7 @@
   min-width: 0;
   display: grid;
   gap: 10px;
-  margin: 14px var(--loom-model-panel-gutter) 0;
+  margin: 0;
   padding: 12px var(--loom-model-card-inset);
   border-radius: var(--loom-radius-card);
   background: var(--loom-color-surface-subtle);
@@ -195,7 +195,65 @@
   font-size: var(--loom-font-size-2);
 }
 
-.createAccount,
+.stickyCreateSection {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--loom-color-surface);
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--loom-color-divider);
+}
+
+.createAccountForm {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  padding-inline: var(--loom-model-card-inset);
+
+  label {
+    display: grid;
+    gap: 4px;
+    color: var(--loom-color-text-muted);
+    font-size: var(--loom-font-size-2);
+  }
+
+  input {
+    width: 100%;
+    min-height: 30px;
+    padding: 4px 2px;
+    font-size: var(--loom-font-size-3);
+    color: inherit;
+    background: transparent;
+
+    &::placeholder {
+      color: var(--loom-color-text-subtle);
+      opacity: 0.65;
+    }
+  }
+
+  button[type='submit'] {
+    justify-self: start;
+    min-height: 28px;
+    border: 0;
+    padding-inline: 0;
+    color: var(--loom-color-accent-strong);
+    background: transparent;
+    font-size: var(--loom-font-size-3);
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      text-decoration: underline;
+    }
+
+    &:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      text-decoration: none;
+    }
+  }
+}
+
 .accountCard {
   min-width: 0;
   max-width: 100%;
@@ -205,11 +263,6 @@
   background: var(--loom-color-surface-subtle);
 }
 
-.createAccount {
-  margin-bottom: 8px;
-}
-
-.createAccount > summary,
 .accountCard > summary {
   min-height: 38px;
   display: flex;
@@ -223,12 +276,10 @@
   list-style: none;
 }
 
-.createAccount > summary::-webkit-details-marker,
 .accountCard > summary::-webkit-details-marker {
   display: none;
 }
 
-.createAccount > summary > svg:first-child,
 .accountCard > summary > svg:first-child {
   width: var(--loom-icon-size-2);
   height: var(--loom-icon-size-2);
@@ -237,24 +288,107 @@
   transition: transform var(--loom-motion-duration-fast) ease;
 }
 
-.createAccount[open] > summary > svg:first-child,
 .accountCard[open] > summary > svg:first-child {
   transform: rotate(90deg);
 }
 
-.accountCard > summary > span {
+.accountSummary {
+  user-select: none;
+}
+
+.accountDisplayName {
   min-width: 0;
-  flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.accountCard > summary > small {
+.accountModelStack {
+  display: flex;
+  align-items: center;
   flex: 0 0 auto;
+  margin-left: 6px;
+}
+
+.accountModelAvatar {
+  position: relative;
+  width: var(--loom-icon-size-4);
+  height: var(--loom-icon-size-4);
+  min-width: var(--loom-icon-size-4);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--loom-color-surface-subtle);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px var(--loom-color-surface-subtle);
+  margin-left: -5px;
+
+  &:first-child {
+    margin-left: 0;
+  }
+}
+
+.accountModelAvatarImg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.accountModelAvatarFallback {
+  width: var(--loom-icon-size-4);
+  height: var(--loom-icon-size-4);
   color: var(--loom-color-text-subtle);
-  font-size: var(--loom-font-size-1);
-  font-weight: var(--loom-font-weight-1);
+  stroke-width: 1.25;
+}
+
+.accountModelCount {
+  flex: 0 0 auto;
+  margin-left: 5px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-2);
+  font-weight: var(--loom-font-weight-4);
+  line-height: 1;
+}
+
+.accountSummaryActions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.accountSummaryDeleteButton {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--loom-radius-control);
+  padding: 0;
+  color: var(--loom-color-text-subtle);
+  background: transparent;
+  cursor: pointer;
+  outline: none;
+  transition:
+    color var(--loom-motion-duration-fast) ease,
+    background-color var(--loom-motion-duration-fast) ease;
+
+  &:hover:not(:disabled) {
+    color: var(--loom-color-danger);
+    background: var(--loom-color-surface-inset);
+  }
+
+  &:focus-visible {
+    color: var(--loom-color-danger);
+    outline: 1px solid var(--loom-color-danger);
+    outline-offset: -1px;
+  }
+
+  svg {
+    width: var(--loom-icon-size-3);
+    height: var(--loom-icon-size-3);
+    stroke-width: 1.35;
+  }
 }
 
 .brandIcon,
@@ -397,15 +531,15 @@
 }
 
 .modelMenu {
-  display: none;
+  display: grid;
+  max-height: 240px;
+  overflow-y: auto;
   margin-top: 5px;
   padding: 6px 0;
+  border: 1px solid var(--loom-color-border);
   border-radius: var(--loom-radius-popover);
   background: var(--loom-color-surface-emphasis);
-}
-
-.modelPicker:focus-within .modelMenu {
-  display: grid;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
 }
 
 .modelCatalogStatus {
@@ -418,6 +552,8 @@
 .modelRow,
 .availableModel {
   min-height: 30px;
+  display: flex;
+  align-items: center;
   gap: 8px;
   padding: 2px 8px;
   color: var(--loom-color-text);
@@ -426,6 +562,16 @@
 
 .availableModel {
   color: var(--loom-color-text-muted);
+  cursor: pointer;
+  user-select: none;
+  transition:
+    color var(--loom-motion-duration-fast) ease,
+    background-color var(--loom-motion-duration-fast) ease;
+
+  &:hover {
+    color: var(--loom-color-text);
+    background: var(--loom-color-surface-inset);
+  }
 }
 
 .modelRow > span,
@@ -447,25 +593,7 @@
   opacity: 1;
 }
 
-.deleteProvider {
-  justify-self: start;
-  min-height: 26px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  border: 0;
-  padding: 0;
-  color: var(--loom-color-text-subtle);
-  background: transparent;
-  font-size: var(--loom-font-size-2);
-}
-
-.deleteProvider:hover:not(:disabled) {
-  color: var(--loom-color-danger);
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .createAccount > summary > svg:first-child,
   .accountCard > summary > svg:first-child {
     transition: none;
   }

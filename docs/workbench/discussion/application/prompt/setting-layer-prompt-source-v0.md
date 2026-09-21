@@ -2,6 +2,7 @@
 
 > **状态**：Open Design
 > **主题**：Setting Layer 与 Prompt Builder 的关系。
+> **2026-09-20 收束**：第 7 节明确 Setting 注入与配置宏的分工，取代早期“宏查询 Binding 并生成 Fragment”的候选。配置面板与作品来源选择待实施，见 [上下文骨架 Plan](../../../plans/agent-context-skeleton-and-memory-projection-plan.md)；其他历史动态挂载方案不因本次补记自动成为实现合同。
 
 ---
 
@@ -181,30 +182,39 @@ Prompt Builder 应消费这些输入，而不是把 Chat 本体定义为 provide
 
 ---
 
-## 7. 与宏 / Binding 的关系
+## 7. Setting 与配置宏的职责
 
-宏不应成为 Setting Layer 的 canonical data model。
+已确认方向：Anchor 负责注入独立内容，配置宏负责宿主文本的候选取值与局部替换。Setting 内容和设置面板不是同一个概念。
 
-候选方向：
+选择标准是“配置选择”还是“多方汇集”：
 
-```text
-结构化 entry / component 是 canonical data。
-Binding 是可查询、可投影的引用。
-宏只是引用 binding 的一种文本语法。
-```
+- 单选或限定数量多选，选中内容构成本次配置值：使用宏。
+- 多方独立贡献需要同时表达，彼此不是替换关系：使用 Anchor。
+- 多本世界书的常驻内容、多个提醒、记忆贡献属于后者。宏也可以有多来源候选，所以来源数量不是单独的判断依据。
+- 条目 / Token 预算不属于配置选项的互斥或多选规则，不因此把 Anchor 改成宏。
 
-例如：
+| 方式 | 作者提供什么 | 构建行为 |
+| --- | --- | --- |
+| Anchor 注入 | 具有来源、激活和排序信息的 Setting / Runtime Contribution | 在预设指定位置组织多份独立内容，不替换其他 Preset Entry |
+| 配置宏 | 预设默认候选、角色卡或扩展候选，以及用户选择的来源 | 在宿主 Entry 中展开一个确定值，不生成独立节点 |
 
-```text
-{{alice.memory}}
-  -> BindingRef(alice.memory)
-  -> query Setting Layer
-  -> aggregate matching entries
-  -> render fragments
-  -> trace source entries
-```
+正文可以引用 `{{Setting.wenfeng_macro}}`，预设提供多种文风供设置面板选择；角色卡提供自己的候选时，请用户确认采用它还是保留当前选择。示例宏名不是文件路径、自动 Setting 查询语法或已定命名空间。
 
-这允许作者继续使用变量语法，同时保留目录式查看、插件贡献、activation、ordering、budget 和 trace 的细粒度能力。
+局部推演同样可以引用 `{{cot.剧情推进}}`。角色卡候选只替换该处配置文本，预设前后的固定步骤保持不变。宏值可以是长文本；需要独立启停、排序与来源身份时仍使用 Contribution，不能用宏递归生成提示词树。
+
+受限多选应先准备好选定的配置值，再按现有标量宏展开；数组宏、组合格式及设置 UI 不视为已实现。记忆来源更新自身摘要版本是生命周期行为，不是让一个记忆贡献在 Anchor 中自动覆盖其他来源。
+
+分工：
+
+- Preset 决定树、包裹、固定 Entry、开放 Anchor 和配置宏的使用位置。
+- Card / Setting 来源提供设定贡献，Card / Extension 也可以显式提供配置候选；文件夹名相同不构成自动覆盖。
+- 用户设置选择宏候选，展示有效值和来源；作品选择不修改全局预设开关或原文。
+- 宏作为平台通用配置方式可以有全局默认，但不成为所有角色卡共享写入的全局可变 KV。具体选择的持久化归属仍待生命周期讨论。
+- State 宏继续只读真实状态；文风选择不赋值到 State，状态提交也不能隐藏在宏或 Prompt 加工中。
+
+本轮不增加 Anchor 的通用替换功能。早期用宏隐式查询 Setting、聚合 Fragment 并继承其 Activation / Placement 的方案不再沿用；需要先加工 Setting 得到字符串时，由明确的来源准备过程完成。
+
+已实现的宏展开、候选选择和诊断以 [正式消费合同](../../../../architecture/application/prompt-build/injection-and-inline-expansion.md) 为准。多候选设置与角色卡覆盖确认是后续工作，不在本文冒充已实现行为。
 
 ---
 

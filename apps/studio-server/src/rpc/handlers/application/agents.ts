@@ -5,11 +5,13 @@ import type {
   RuntimeRequestContext,
   ToolDefinition,
   InvokeAgentTurnInput,
+  VfsMutationDecision,
 } from '@loom-studio/application-runtime'
 import { isPromptActivation } from '@loom-studio/application-runtime'
 import type { JsonValue } from '@loom-studio/shared'
 import {
   isRecord,
+  readBoolean,
   readNumber,
   readOptionalBoolean,
   readOptionalNumber,
@@ -36,6 +38,10 @@ type AgentRun = {
     userEntry: import('@loom-studio/application-data').AgentTranscriptEntry
     partialEntryId?: string
   }
+  mutationApprovals: Map<string, {
+    resolve: (decision: VfsMutationDecision) => void
+    reject: (error: Error) => void
+  }>
 }
 
 const runStores = new WeakMap<ApplicationRuntime, Map<string, AgentRun>>()
@@ -183,6 +189,20 @@ export async function handleAgentsRpc(
       return { runId: run.id, accepted: true, state: run.state }
     }
 
+    case 'application.agent.run.mutation-approval': {
+      const run = requireAgentRun(getRunStore(runtime), params)
+      const requestId = readString(params, 'requestId')
+      const pending = run.mutationApprovals.get(requestId)
+      if (!pending) return { runId: run.id, requestId, accepted: false }
+      const allow = readBoolean(params, 'allow')
+      const reason = readOptionalString(params, 'reason')
+      run.mutationApprovals.delete(requestId)
+      pending.resolve(allow
+        ? { decision: 'allow' }
+        : { decision: 'deny', ...(reason ? { reason } : {}) })
+      return { runId: run.id, requestId, accepted: true }
+    }
+
     case 'application.agent.run.pause': {
       const run = requireAgentRun(getRunStore(runtime), params)
       if (run.state !== 'running') return { runId: run.id, accepted: false, state: run.state }
@@ -191,16 +211,67 @@ export async function handleAgentsRpc(
     }
 
     case 'application.agent.run.resume': {
-      const source = requireAgentRun(getRunStore(runtime), params)
-      if (source.state !== 'suspended') return { runId: source.id, accepted: false, state: source.state }
-      if (!source.checkpoint) return { runId: source.id, accepted: false, state: source.state }
-      if (source.continuationRunId) return { runId: source.continuationRunId, sourceRunId: source.id, accepted: true }
-      const run = startAgentRun(runtime, context, { ...source.request, input: '' }, source.id, source.checkpoint)
       const runs = getRunStore(runtime)
-      runs.set(run.id, run)
-      void run.promise.catch(() => undefined).finally(() => pruneCompletedRuns(runs))
-      source.continuationRunId = run.id
-      return { runId: run.id, sourceRunId: source.id, accepted: true, state: run.state }
+      let source: AgentRun | undefined
+      if (isRecord(params) && typeof params.runId === 'string') {
+        source = runs.get(params.runId)
+      }
+      if (source) {
+        if (source.state === 'running') return { runId: source.id, accepted: false, state: source.state }
+        if (source.continuationRunId) return { runId: source.continuationRunId, sourceRunId: source.id, accepted: true }
+        if (source.checkpoint) {
+          const run = startAgentRun(runtime, context, { ...source.request, input: '' }, source.id, source.checkpoint)
+          runs.set(run.id, run)
+          void run.promise.catch(() => undefined).finally(() => pruneCompletedRuns(runs))
+          source.continuationRunId = run.id
+          return { runId: run.id, sourceRunId: source.id, accepted: true, state: run.state }
+        }
+      }
+
+      const sessionId = isRecord(params) && typeof params.agentSessionId === 'string'
+        ? params.agentSessionId
+        : (source ? source.request.agentSessionId : undefined)
+      if (sessionId) {
+        const transcript = await runtime.getAgentTranscriptPage({ agentSessionId: sessionId, limit: 100 })
+        const entries = transcript.entries
+        const lastUser = entries.slice().reverse().find(e => e.entry.kind === 'message' && e.entry.role === 'user')
+        if (lastUser) {
+          const userIdx = entries.indexOf(lastUser)
+          const laterEntries = entries.slice(userIdx + 1)
+          const hasCompletedReply = laterEntries.some(
+            e => e.entry.kind === 'message' && e.entry.role === 'assistant' && e.entry.state !== 'partial' && e.entry.content.trim()
+          )
+          const hasCompletedRun = laterEntries.some(
+            e => e.entry.kind === 'run-state' && e.entry.state === 'completed'
+          )
+          if (!hasCompletedReply || !hasCompletedRun) {
+            const partialAssistant = laterEntries.find(
+              e => e.entry.kind === 'message' && e.entry.role === 'assistant' && e.entry.state === 'partial'
+            )
+            const checkpoint = {
+              sourceRunId: String(lastUser.runId || lastUser.id),
+              messages: partialAssistant ? [{
+                role: 'system' as const,
+                content: `The previous assistant response was interrupted. Continue from this partial response without repeating it:\n${partialAssistant.entry.content}`,
+              }] : [],
+              userEntry: lastUser as any,
+              ...(partialAssistant ? { partialEntryId: partialAssistant.id } : {}),
+            }
+            const run = startAgentRun(
+              runtime,
+              context,
+              { agentSessionId: sessionId, input: '' },
+              String(lastUser.runId || lastUser.id),
+              checkpoint,
+            )
+            runs.set(run.id, run)
+            void run.promise.catch(() => undefined).finally(() => pruneCompletedRuns(runs))
+            return { runId: run.id, sourceRunId: String(lastUser.runId || lastUser.id), accepted: true, state: run.state }
+          }
+        }
+      }
+
+      return { runId: isRecord(params) && typeof params.runId === 'string' ? params.runId : '', accepted: false }
     }
 
     case 'application.agent.run.state': {
@@ -219,10 +290,15 @@ export async function handleAgentsRpc(
 
     case 'application.inspectMacros':
       return await runtime.inspectMacros({
-        cardId: readOptionalString(params, 'cardId'),
-        presetId: readOptionalString(params, 'presetId'),
-        timelineTarget: readOptionalMacroTimelineTarget(params),
+        agentProfileId: readString(params, 'agentProfileId'),
+        timelineId: readOptionalString(params, 'timelineId'),
+        branchId: readOptionalString(params, 'branchId'),
         macroSelections: readOptionalStringRecord(params, 'macroSelections'),
+      }) as unknown as JsonValue
+
+    case 'application.providerAccounts.inspect':
+      return await runtime.inspectProviderAccount({
+        accountId: readString(params, 'accountId'),
       }) as unknown as JsonValue
 
     default:
@@ -241,7 +317,7 @@ function startAgentRun(
   const controller = new AbortController()
   const run: AgentRun = {
     id, controller, request, sourceRunId, events: [{ type: 'started', runId: id }],
-    state: 'running', promise: Promise.resolve(),
+    state: 'running', promise: Promise.resolve(), mutationApprovals: new Map(),
   }
   run.promise = runtime.invokeAgentTurn(request, {
     ...context,
@@ -251,13 +327,34 @@ function startAgentRun(
       onEvent: event => run.events.push(event),
       ...(continuation ? { continuation } : {}),
       onSuspended: checkpoint => { run.checkpoint = checkpoint },
+      onMutationApproval: (preview, signal) => new Promise((resolve, reject) => {
+        const requestId = `mutation-approval-${crypto.randomUUID()}`
+        const abort = () => {
+          run.mutationApprovals.delete(requestId)
+          reject(new Error('Mutation approval was cancelled.'))
+        }
+        signal.addEventListener('abort', abort, { once: true })
+        run.mutationApprovals.set(requestId, {
+          resolve: decision => {
+            signal.removeEventListener('abort', abort)
+            resolve(decision)
+          },
+          reject: error => {
+            signal.removeEventListener('abort', abort)
+            reject(error)
+          },
+        })
+        run.events.push({ type: 'mutation-approval-requested', runId: id, requestId, preview })
+      }),
     },
   }).then(result => {
     if (controller.signal.aborted) throw new Error(String(controller.signal.reason ?? 'Agent run cancelled'))
     run.state = 'completed'
     run.events.push({ type: 'completed', runId: id, result })
   }).catch(error => {
-    const suspended = controller.signal.reason === 'user-pause'
+    for (const pending of run.mutationApprovals.values()) pending.reject(new Error('Agent run ended before mutation approval.'))
+    run.mutationApprovals.clear()
+    const suspended = controller.signal.reason === 'user-pause' || Boolean(run.checkpoint)
     run.state = suspended ? 'suspended' : controller.signal.aborted ? 'cancelled' : 'failed'
     const reason = error instanceof Error ? error.message : String(error)
     run.events.push(suspended

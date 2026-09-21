@@ -17,11 +17,59 @@ type ContextAssetTreeActionsInput = {
   t: Translator
 }
 
+export type ContextAssetActivationTone = 'always' | 'conditional' | 'manual'
+
+export function readContextAssetActivationTone(node: ContextAssetNode): ContextAssetActivationTone {
+  const activation = node.capabilities?.activation
+  if (activation) {
+    if (activation.kind === 'always') return 'always'
+    if (activation.kind === 'keyword' || activation.kind === 'condition' || activation.kind === 'all') {
+      return 'conditional'
+    }
+    if (activation.kind === 'manual') return 'manual'
+  }
+  const lifecycle = node.projection?.lifecycle ?? node.capabilities?.lifecycle?.lifecycle
+  if (lifecycle === 'always') return 'always'
+  if (lifecycle === 'conditional' || lifecycle === 'fresh' || lifecycle === 'current-turn') return 'conditional'
+
+  return 'manual'
+}
+
+export type ContextAssetBadgeInfo = {
+  tone: ContextAssetActivationTone
+  label: string
+}
+
+export function readContextAssetBadgeInfo(
+  node: ContextAssetNode | undefined,
+  t: Translator,
+): ContextAssetBadgeInfo | null {
+  if (!node || node.kind === 'module' || node.kind === 'slot') return null
+
+  const tone = readContextAssetActivationTone(node)
+  if (tone === 'always') {
+    return { tone, label: t('context.activation.badgeAlways') }
+  }
+
+  if (tone === 'conditional') {
+    const activation = node.capabilities?.activation
+    if (activation?.kind === 'keyword' && activation.keywords && activation.keywords.length > 0) {
+      const kw = activation.keywords[0]?.trim()
+      if (kw) {
+        const shortKw = kw.length > 8 ? `${kw.slice(0, 8)}…` : kw
+        return { tone, label: `${t('context.activation.badgeKeyword')}: ${shortKw}` }
+      }
+    }
+    return { tone, label: t('context.activation.badgeConditional') }
+  }
+
+  return { tone, label: t('context.activation.badgeAiSearch') }
+}
+
 export function renderContextAssetTreeIcon(node: ContextAssetNode, expanded: boolean) {
   if (node.kind === 'slot') return null
   if (node.kind === 'module') return <Book />
   if (node.kind === 'folder') return expanded ? <FolderOpen /> : <Folder />
-  if (node.kind === 'script') return <Code2 />
   if (node.kind === 'virtual') return <Anchor />
   if (node.kind === 'message') {
     const role = node.capabilities?.roleHint
@@ -31,13 +79,44 @@ export function renderContextAssetTreeIcon(node: ContextAssetNode, expanded: boo
     if (role === 'user') return <UserRound aria-hidden="true" />
     return <MessagesSquare aria-hidden="true" />
   }
-  return <FileText />
+
+  const tone = readContextAssetActivationTone(node)
+  const isEnabled = node.enabled !== false
+  const toneColor = tone === 'always'
+    ? 'var(--loom-color-info, #89b4fa)'
+    : tone === 'conditional'
+      ? 'var(--loom-color-success, #a6e3a1)'
+      : 'var(--loom-color-text, #ccd6f5)'
+
+  const toneStyle = {
+    color: toneColor,
+    ...(isEnabled ? {} : { opacity: 0.58 }),
+  }
+
+  const baseTitle = tone === 'always'
+    ? '常驻 (Always)'
+    : tone === 'conditional'
+      ? '条件/关键词触发 (Conditional)'
+      : '无条件/靠AI检索 (Manual / Search)'
+
+  const toneTitle = isEnabled ? baseTitle : `${baseTitle} (已禁用)`
+
+  if (node.kind === 'script') {
+    return (
+      <span style={{ display: 'inline-flex', ...toneStyle }} title={toneTitle}>
+        <Code2 />
+      </span>
+    )
+  }
+  return (
+    <span style={{ display: 'inline-flex', ...toneStyle }} title={toneTitle}>
+      <FileText />
+    </span>
+  )
 }
 
-export function renderContextAssetLifecycleIndicator(node: ContextAssetNode, t: Translator) {
-  if (node.kind === 'message') return null
-  if (node.enabled === false || node.projection?.lifecycle !== 'always') return null
-  return <StatusIndicator label={t('context.lifecycleAlwaysIndicator')} tone="info" />
+export function renderContextAssetLifecycleIndicator(_node: ContextAssetNode, _t: Translator) {
+  return null
 }
 
 export function readContextAssetTreeActions(

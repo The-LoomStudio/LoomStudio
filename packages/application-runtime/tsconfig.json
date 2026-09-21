@@ -3,6 +3,7 @@
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "dist",
+    "resolveJsonModule": true,
     "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
   "references": [
@@ -15,5 +16,5 @@
     { "path": "../secret-store" },
     { "path": "../shared" },
   ],
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.json"]
 }

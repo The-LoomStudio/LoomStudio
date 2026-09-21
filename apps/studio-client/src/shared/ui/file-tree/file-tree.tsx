@@ -1,7 +1,8 @@
 import { ChevronDown, ChevronRight, GripVertical, MoreHorizontal } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type ElementType } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type ElementType } from 'react'
 import { ContextMenu, ContextMenuCheckboxItem, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger, DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, type MenuAction } from '@loom-studio/ui'
+import { useEffectiveMotion } from '../../hooks/use-motion-preference.js'
 import { readDropPosition, readFileTreeKeyboardTarget, readVisibleFileTreeNodes, type FileTreeNode } from './file-tree-model.js'
 import styles from './file-tree.module.scss'
 
@@ -42,6 +43,12 @@ export function FileTree(props: FileTreeProps) {
   const dragOverElementRef = useRef<HTMLElement | undefined>(undefined)
   const treeRef = useRef<HTMLDivElement>(null)
   const treeItemRefs = useRef(new Map<string, HTMLDivElement>())
+  const virtualRowRefs = useRef(new Map<string, HTMLDivElement>())
+  const virtualFirstPositionsRef = useRef(new Map<string, number>())
+  const virtualAnimationsRef = useRef(new Map<string, Animation>())
+  const virtualOpeningRef = useRef(false)
+  const previousVisibleIdsRef = useRef(new Set<string>())
+  const effectiveMotion = useEffectiveMotion()
   const expandedIds = useMemo(() => new Set(props.expandedIds), [props.expandedIds])
   const visibleNodes = useMemo(() => readVisibleFileTreeNodes(props.nodes, expandedIds), [expandedIds, props.nodes])
   const rovingId = visibleNodes.some(item => item.node.id === focusedId)
@@ -62,7 +69,51 @@ export function FileTree(props: FileTreeProps) {
     if (focusedId && !visibleNodes.some(item => item.node.id === focusedId)) setFocusedId(rovingId)
   }, [focusedId, rovingId, visibleNodes])
 
+  useLayoutEffect(() => {
+    const previousIds = previousVisibleIdsRef.current
+    const currentIds = new Set(visibleNodes.map(item => item.node.id))
+    if (effectiveMotion === 'reduce') {
+      for (const animation of virtualAnimationsRef.current.values()) animation.cancel()
+      virtualAnimationsRef.current.clear()
+    }
+    if (props.virtualized && effectiveMotion === 'full') {
+      for (const [id, row] of virtualRowRefs.current) {
+        const motionLayer = row.firstElementChild as HTMLElement | null
+        if (!motionLayer) continue
+        virtualAnimationsRef.current.get(id)?.cancel()
+        const firstTop = virtualFirstPositionsRef.current.get(id)
+        const deltaY = firstTop === undefined ? 0 : firstTop - row.getBoundingClientRect().top
+        const entering = virtualOpeningRef.current && !previousIds.has(id)
+        if (deltaY === 0 && !entering) continue
+        const animation = motionLayer.animate([
+          { opacity: entering ? 0 : 1, transform: deltaY === 0 ? 'translateY(4px)' : `translateY(${deltaY}px)` },
+          { opacity: 1, transform: 'translateY(0)' },
+        ], {
+          duration: entering ? 140 : 180,
+          easing: 'cubic-bezier(0.2, 0, 0.2, 1)',
+        })
+        virtualAnimationsRef.current.set(id, animation)
+        animation.finished.finally(() => {
+          if (virtualAnimationsRef.current.get(id) === animation) virtualAnimationsRef.current.delete(id)
+        }).catch(() => {})
+      }
+    }
+    previousVisibleIdsRef.current = currentIds
+    virtualFirstPositionsRef.current.clear()
+    virtualOpeningRef.current = false
+  }, [effectiveMotion, props.virtualized, visibleNodes])
+
+  useEffect(() => () => {
+    for (const animation of virtualAnimationsRef.current.values()) animation.cancel()
+  }, [])
+
   function toggleExpand(id: string) {
+    if (props.virtualized && effectiveMotion === 'full') {
+      virtualFirstPositionsRef.current = new Map(
+        [...virtualRowRefs.current].map(([rowId, row]) => [rowId, row.getBoundingClientRect().top]),
+      )
+      virtualOpeningRef.current = !expandedIds.has(id)
+    }
     const next = new Set(expandedIds)
     if (next.has(id)) next.delete(id)
     else next.add(id)
@@ -225,10 +276,16 @@ export function FileTree(props: FileTreeProps) {
                     className={styles.virtualRow}
                     data-index={item.index}
                     key={item.key}
-                    ref={virtualizer.measureElement}
+                    ref={element => {
+                      virtualizer.measureElement(element)
+                      if (element) virtualRowRefs.current.set(visible.node.id, element)
+                      else virtualRowRefs.current.delete(visible.node.id)
+                    }}
                     style={{ transform: `translateY(${item.start}px)` }}
                   >
-                    {renderRow(visible.node, visible.level, false)}
+                    <div className={styles.virtualRowMotion}>
+                      {renderRow(visible.node, visible.level, false)}
+                    </div>
                   </div>
                 )
               })}
@@ -465,7 +522,7 @@ function FileTreeRow(props: {
         </div>
   )
 
-  const childrenElements = props.renderChildren && expanded && props.node.children?.length ? props.node.children.map(child => (
+  const childrenElements = props.renderChildren && props.node.children?.length ? props.node.children.map(child => (
     <FileTreeRow
       editingId={props.editingId}
       expandedIds={props.expandedIds}
@@ -519,8 +576,10 @@ function FileTreeRow(props: {
           </div>
         ) : null}
         {childrenElements ? (
-          <div className={styles.messageBlockChildren}>
-            {childrenElements}
+          <div className={styles.treeChildren} data-expanded={expanded} inert={!expanded}>
+            <div className={styles.messageBlockChildren}>
+              {childrenElements}
+            </div>
           </div>
         ) : null}
       </div>
@@ -551,7 +610,11 @@ function FileTreeRow(props: {
           ) : null}
         </>
       )}
-      {childrenElements}
+      {childrenElements ? (
+        <div className={styles.treeChildren} data-expanded={expanded} inert={!expanded}>
+          <div>{childrenElements}</div>
+        </div>
+      ) : null}
     </>
   )
 }

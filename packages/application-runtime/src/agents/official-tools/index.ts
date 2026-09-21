@@ -8,6 +8,7 @@ export { officialEditNarrativeTool } from './edit-narrative.js'
 export { officialSearchPromptResourcesTool } from './search-prompt-resources.js'
 export { officialReadPromptResourceTool } from './read-prompt-resource.js'
 export { officialUpdatePromptResourceTool } from './update-prompt-resource.js'
+export { officialCodeActTool, officialCodeActJsonTool } from './codeact.js'
 
 import { createAgentToolRegistry } from '../tool-registry.js'
 import { officialReadContextRegistration, officialReadContextTool } from './read-context.js'
@@ -19,6 +20,7 @@ import { officialEditNarrativeRegistration, officialEditNarrativeTool } from './
 import { officialSearchPromptResourcesRegistration, officialSearchPromptResourcesTool } from './search-prompt-resources.js'
 import { officialReadPromptResourceRegistration, officialReadPromptResourceTool } from './read-prompt-resource.js'
 import { officialUpdatePromptResourceRegistration, officialUpdatePromptResourceTool } from './update-prompt-resource.js'
+import { officialCodeActTool, officialCodeActJsonTool, officialCodeActRegistration, officialCodeActJsonRegistration } from './codeact.js'
 
 export const officialAgentToolDefinitions = [
   officialSearchContextTool,
@@ -30,6 +32,8 @@ export const officialAgentToolDefinitions = [
   officialSearchPromptResourcesTool,
   officialReadPromptResourceTool,
   officialUpdatePromptResourceTool,
+  officialCodeActTool,
+  officialCodeActJsonTool,
 ] as const
 
 export function createOfficialAgentToolRegistry() {
@@ -45,6 +49,8 @@ export function createOfficialAgentToolRegistry() {
       officialSearchPromptResourcesRegistration,
       officialReadPromptResourceRegistration,
       officialUpdatePromptResourceRegistration,
+      officialCodeActRegistration,
+      officialCodeActJsonRegistration,
     ],
   )
 }

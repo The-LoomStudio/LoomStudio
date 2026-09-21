@@ -1,6 +1,6 @@
 import type { CompiledPrompt, PromptContribution, SourceNode } from '../../prompt/prompt-builder.js'
 import type { ToolExecutionScope } from '../tool-registry.js'
-import { resolveVirtualPath, resolveMediaType } from '../../vfs/vfs-gateway.js'
+import { createPromptVfsEntries, resolveVirtualPath, resolveMediaType } from '../../vfs/vfs-gateway.js'
 import type { PromptResourceStore } from '@loom-studio/application-data'
 
 export function createPromptToolExecutionScope(input: {
@@ -14,6 +14,7 @@ export function createPromptToolExecutionScope(input: {
   const sourceNodes = new Map(input.sourceNodes.map(node => [node.id, node]))
   const injectedIds = new Set(input.prompt.messages.flatMap(message => message.fragmentIds))
   return {
+    vfs: createPromptVfsEntries(input),
     ...(input.promptResources ? { promptResources: input.promptResources } : {}),
     ...(input.workspaceResourceAccess ? { workspaceResourceAccess: true } : {}),
     ...(input.mutatePromptResource ? { mutatePromptResource: input.mutatePromptResource } : {}),

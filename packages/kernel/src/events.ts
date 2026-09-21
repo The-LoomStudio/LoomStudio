@@ -23,6 +23,7 @@ export function createEventBus(options: CreateEventBusOptions = {}): EventBus {
   }>()
 
   return {
+    // Boundary: Ensures event definition uniqueness and validates registration ownership against namespace.
     registerDefinition: (definition, registeredBy = { kind: 'platform' }) => {
       validateEventDefinition(definition, registeredBy)
       if (definitions.has(definition.name)) {
@@ -37,6 +38,11 @@ export function createEventBus(options: CreateEventBusOptions = {}): EventBus {
         },
       }
     },
+    /**
+     * Emits a typed event across the kernel bus.
+     * Invariant: Enforces publisher ownership, JSON serialization safety, and maxPayloadBytes.
+     * Failure semantics: Subscriber errors are routed to onSubscriberError and do not abort emitter execution.
+     */
     emit: (name, payload, emitOptions = {}) => {
       const registered = definitions.get(name)
       if (!registered) throw new Error(`Event definition not registered: ${name}`)
@@ -138,6 +144,10 @@ export function platformEvent(
   }
 }
 
+/**
+ * Invariant: Extension events must use their package namespace prefix and cannot declare internal visibility.
+ * Protected events require capability binding to enforce least-privilege subscription boundaries.
+ */
 export function validateEventDefinition(definition: EventDefinition, registeredBy: EventDefinitionRegistrationOwner): void {
   if (!/^[a-z][a-z0-9]*(?:[.-][A-Za-z0-9]+)+$/.test(definition.name)) {
     throw new Error(`Invalid event name: ${definition.name}`)
@@ -175,6 +185,7 @@ export function validateEventDefinition(definition: EventDefinition, registeredB
   }
 }
 
+// Boundary: Extensions can only publish events registered under their own package/module identity.
 export function assertCanPublish(registered: RegisteredEventDefinition, publisher: EventPublishIdentity): void {
   const owner = registered.definition.owner
   if (owner.kind === 'extension') {
@@ -219,6 +230,7 @@ export function assertPayloadSize(definition: EventDefinition, payload: JsonValu
   }
 }
 
+// Invariant: Traverses object graph with cycle detection to prevent prototype pollution and non-serializable values.
 export function assertJsonValue(value: unknown, message: string): asserts value is JsonValue {
   if (!isJsonValue(value, new Set())) throw new Error(message)
 }

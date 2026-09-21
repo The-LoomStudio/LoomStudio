@@ -21,6 +21,7 @@ import type { Translator } from '../../../shared/i18n/index.js'
 import type { ClientRendererHost, ClientRendererRegistration } from '../../extension-renderers/model/client-renderer-host.js'
 import { rendererContributionKey, rendererSurfacePolicies } from '../../extension-renderers/model/renderer-registry.js'
 import { MasterDetailWorkbench } from '../../../shared/ui/master-detail-workbench/master-detail-workbench.js'
+import { PanelTabs } from '../../../shared/ui/panel-tabs/index.js'
 import { PipelineWorkbenchView, type PipelineWorkbenchGroup } from './pipeline-workbench-view.js'
 import styles from './text-transform-panel.module.scss'
 
@@ -478,10 +479,25 @@ function RuntimePipelinePanel({ controller, heading }: { controller: TextTransfo
   })).filter(group => group.items.length > 0), [allGroups, effectFilter, ownerFilter, statusFilter])
   const selectedId = controller.selectedTarget.kind === 'empty' || controller.selectedTarget.kind === 'inspection' || controller.selectedTarget.kind === 'renderers' ? undefined : `${controller.selectedTarget.kind}:${controller.selectedTarget.id}`
   return <section className={styles.panel} data-loom-component="text-transform-panel">
-    <header className={styles.intro}><div><h2>{heading}</h2><p>{t('textTransform.runtimeDescription')}</p></div><div className={styles.headerActions}>
-      <select className={styles.inlineInput} value={controller.selectedRuntimeContextId} onChange={event => controller.selectRuntimeContext(event.target.value)}>{controller.runtimeContexts.map(context => <option key={context.id} value={context.id}>{context.label}</option>)}</select>
-      <select className={styles.inlineInput} value={controller.phase} onChange={event => controller.setPhase(event.target.value as TextTransformPhase)}>{phases.map(value => <option key={value} value={value}>{t(`textTransform.phase.${value}`)}</option>)}</select>
-    </div></header>
+    <header className={styles.intro}>
+      <div><h2>{heading}</h2><p>{t('textTransform.runtimeDescription')}</p></div>
+      <div className={styles.headerActions}>
+        {controller.runtimeContexts.length > 1 ? (
+          <select className={styles.inlineInput} value={controller.selectedRuntimeContextId} onChange={event => controller.selectRuntimeContext(event.target.value)}>
+            {controller.runtimeContexts.map(context => <option key={context.id} value={context.id}>{context.label}</option>)}
+          </select>
+        ) : null}
+        <PanelTabs<TextTransformPhase>
+          activeId={controller.phase}
+          ariaLabel={t('textTransform.navigation')}
+          items={phases.map(value => ({
+            id: value,
+            label: t(`textTransform.phase.${value}`),
+          }))}
+          onChange={controller.setPhase}
+        />
+      </div>
+    </header>
     {controller.error ? <div className={styles.errorBanner}>{controller.error}</div> : null}
     <PipelineWorkbenchView
       ariaLabel={t('textTransform.navigation')}
@@ -552,7 +568,29 @@ function OverrideControls({ controller, ruleId }: { controller: TextTransformCon
 function InspectionDetail({ controller }: { controller: TextTransformController }) {
   const { t } = controller
   const snapshot = controller.inspection?.snapshot
-  return <><header className={styles.detailHeader}><div className={styles.headerTitle}><Sparkles aria-hidden="true" size={16} /><h3>{t('textTransform.inspector')}</h3><select className={styles.inlineInput} value={controller.phase} onChange={event => controller.setPhase(event.target.value as TextTransformPhase)}>{phases.map(value => <option key={value} value={value}>{t(`textTransform.phase.${value}`)}</option>)}</select></div><div className={styles.headerActions}><Button size="small" variant="ghost" disabled={!controller.source || controller.busy} onClick={() => void controller.inspect()}><Play aria-hidden="true" size={13} /><span>{t('textTransform.inspect')}</span></Button></div></header><div className={styles.inspectionContainer}>{!controller.inspection ? <p className={styles.emptyState}>{controller.source ? t('textTransform.inspectionPending') : t('textTransform.noHistory')}</p> : <><section className={styles.inspectionSection}><h4>{t('textTransform.effectiveRules')}</h4>{controller.inspection.rules.map((rule, index) => <article className={styles.ruleCard} key={rule.id}><strong>{index + 1}. {rule.name}</strong><small>{ownerLabel(rule.owner, t)} · {rule.matcher.kind}: {rule.matcher.pattern}</small><small>{t('textTransform.effect')}: {rule.effect.kind}</small></article>)}{controller.inspection.rules.length === 0 ? <p className={styles.emptyState}>{t('textTransform.noEffectiveRules')}</p> : null}</section><section className={styles.inspectionSection}><h4>{t('textTransform.extractors')}</h4><p className={styles.metaLine}>{controller.inspection.extractors.map(item => `${item.name} · ${ownerLabel(item.owner, t)}`).join('；') || t('textTransform.noEffectiveExtractors')}</p></section><section className={styles.inspectionSection}><h4>{t('textTransform.matchesDiagnostics')}</h4><pre className={styles.dryRunOutput}>{JSON.stringify({ matches: snapshot?.matches ?? [], diagnostics: snapshot?.diagnostics ?? [] }, null, 2)}</pre></section><section className={styles.inspectionSection}><h4>{t('textTransform.dryRun')}</h4><pre className={styles.dryRunOutput}>{JSON.stringify(snapshot, null, 2)}</pre></section></>}</div></>
+  return <>
+    <header className={styles.detailHeader}>
+      <div className={styles.headerTitle}>
+        <Sparkles aria-hidden="true" size={16} />
+        <h3>{t('textTransform.inspector')}</h3>
+        <PanelTabs<TextTransformPhase>
+          activeId={controller.phase}
+          ariaLabel={t('textTransform.inspector')}
+          items={phases.map(value => ({
+            id: value,
+            label: t(`textTransform.phase.${value}`),
+          }))}
+          size="compact"
+          onChange={controller.setPhase}
+        />
+      </div>
+      <div className={styles.headerActions}>
+        <Button size="small" variant="ghost" disabled={!controller.source || controller.busy} onClick={() => void controller.inspect()}>
+          <Play aria-hidden="true" size={13} />
+          <span>{t('textTransform.inspect')}</span>
+        </Button>
+      </div>
+    </header><div className={styles.inspectionContainer}>{!controller.inspection ? <p className={styles.emptyState}>{controller.source ? t('textTransform.inspectionPending') : t('textTransform.noHistory')}</p> : <><section className={styles.inspectionSection}><h4>{t('textTransform.effectiveRules')}</h4>{controller.inspection.rules.map((rule, index) => <article className={styles.ruleCard} key={rule.id}><strong>{index + 1}. {rule.name}</strong><small>{ownerLabel(rule.owner, t)} · {rule.matcher.kind}: {rule.matcher.pattern}</small><small>{t('textTransform.effect')}: {rule.effect.kind}</small></article>)}{controller.inspection.rules.length === 0 ? <p className={styles.emptyState}>{t('textTransform.noEffectiveRules')}</p> : null}</section><section className={styles.inspectionSection}><h4>{t('textTransform.extractors')}</h4><p className={styles.metaLine}>{controller.inspection.extractors.map(item => `${item.name} · ${ownerLabel(item.owner, t)}`).join('；') || t('textTransform.noEffectiveExtractors')}</p></section><section className={styles.inspectionSection}><h4>{t('textTransform.matchesDiagnostics')}</h4><pre className={styles.dryRunOutput}>{JSON.stringify({ matches: snapshot?.matches ?? [], diagnostics: snapshot?.diagnostics ?? [] }, null, 2)}</pre></section><section className={styles.inspectionSection}><h4>{t('textTransform.dryRun')}</h4><pre className={styles.dryRunOutput}>{JSON.stringify(snapshot, null, 2)}</pre></section></>}</div></>
 }
 
 function PipelineRuntimePreview({ controller }: { controller: TextTransformController }) {

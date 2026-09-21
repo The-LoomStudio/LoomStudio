@@ -1,9 +1,9 @@
 import { bench, run, summary } from 'mitata'
 
-import type { ContextAssetNode } from '../apps/studio-client/src/entities/index.js'
-import { buildContextAssetSearchIndex, searchContextAssets } from '../apps/studio-client/src/features/context-assets/model/context-asset-search.js'
-import { buildProjectionWorkbenchModel } from '../apps/studio-client/src/features/context-assets/model/projection-workbench.js'
-import { moveContextAssetNode, updateContextAssetNode } from '../apps/studio-client/src/features/context-assets/model/tree-ops.js'
+import type { ContextAssetNode } from '../../apps/studio-client/src/entities/index.js'
+import { buildContextAssetSearchIndex, searchContextAssets } from '../../apps/studio-client/src/features/context-assets/model/context-asset-search.js'
+import { buildProjectionWorkbenchModel } from '../../apps/studio-client/src/features/context-assets/model/projection-workbench.js'
+import { moveContextAssetNode, updateContextAssetNode } from '../../apps/studio-client/src/features/context-assets/model/tree-ops.js'
 
 const sizes = [500, 5_000, 50_000]
 const fixtures = new Map(sizes.map(size => [size, createContextAssetFixture(size)]))

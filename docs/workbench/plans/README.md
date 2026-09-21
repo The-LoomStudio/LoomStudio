@@ -10,9 +10,12 @@
 | 路线图 / 计划                                                                                | 当前状态     | 关注点                                                                  |
 | -------------------------------------------------------------------------------------------- | ------------ | ----------------------------------------------------------------------- |
 | [`workspace-resource-and-distribution-plan.md`](./workspace-resource-and-distribution-plan.md) | In Progress / 本地文件与分发基础已实现 | Preset / Setting 附件、用户自定义来源、Git 更新、开发模式 |
-| [`agent-runtime-session-and-workspace-plan.md`](./agent-runtime-session-and-workspace-plan.md) | In Progress / Agent 执行与流式基础已实现 | 统一写入结果、统计组件、Workspace Tool；跨进程恢复与插件 Handler 延后 |
+| [`agent-runtime-session-and-workspace-plan.md`](./agent-runtime-session-and-workspace-plan.md) | In Progress / Agent 执行与流式基础已实现 | 统一写入结果、统计组件与 CodeAct 接入；工具细节归独立计划 |
+| [`codeact-vfs-tooling-plan.md`](./codeact-vfs-tooling-plan.md) | In Progress / 双通道与领域 VFS 读取已接入 | 实时源节点、State 子树、脚本 Blob、路径身份与版本；写入、Pin、Narrative 与通用资产待接续 |
+| [`agent-context-skeleton-and-memory-projection-plan.md`](./agent-context-skeleton-and-memory-projection-plan.md) | In Progress / 骨架已接线，生命周期未验收 | 投影、统一刷新与 Session 生命周期；摘要策略已拆至独立记忆 Plan |
+| [`narrative-memory-and-refresh-policy-plan.md`](./narrative-memory-and-refresh-policy-plan.md) | Open / 已确认方向，实施合同待收束 | 按剧情次数整理、Token 容量兜底、近期缓冲、记事板与 Card / Timeline 配置 |
 | [`application-capability-cli-mcp-adapters-plan.md`](./application-capability-cli-mcp-adapters-plan.md) | 待讨论 / 未授权实施 | 承接独立 CLI/MCP；在线连接、权限、首批命令及 Capability 抽取范围待确认 |
-| [`file-backed-resource-agent-script-codeact-plan.md`](./file-backed-resource-agent-script-codeact-plan.md) | 待实施提案 | File-backed Resource、Agent Script、Sandbox 与 CodeAct |
+| [`file-backed-resource-agent-script-codeact-plan.md`](./file-backed-resource-agent-script-codeact-plan.md) | 历史综合提案 / 远期脚本延期 | CodeAct 已迁至独立计划；保留旧候选，不作为平行施工入口 |
 | [`extension-developer-experience.md`](./extension-developer-experience.md)                   | Roadmap / UI 方向已确认 | SDK、工具链，以及扩展页面、声明式设置和组件使用；UI 具体合同待设计 |
 | [`search-and-timeline-indexing-plan.md`](./search-and-timeline-indexing-plan.md)             | Asset Search 已实现 / Timeline Search 延期 | 复用 Narrative Store 分页，后续补搜索、窗口与索引 |
 | [`background-and-panel-materials-plan.md`](../../archive/plans/ui/background-and-panel-materials-plan.md) | 已归档 | 官方背景与毛玻璃材质共同交付，后续仅保留人工验收记录 |

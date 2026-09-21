@@ -55,22 +55,14 @@ export function createStudioPanels(input: {
         busy={providerBusy}
         providerAccountDraft={state.providerAccountDraft}
         modelProfiles={state.modelProfiles}
-        aiProviders={state.aiProviders}
-        aiCapabilityProfiles={state.aiCapabilityProfiles}
         providerAccounts={state.providerAccounts}
         t={state.t}
         onChangeProviderAccountDraft={state.setProviderAccountDraft}
         onCreateModelProfile={state.createModelProfile}
         onCreateProviderAccount={state.createProviderAccount}
-        onCreateAiProviderAccount={state.createAiProviderAccount}
-        onCreateAiCapabilityProfile={state.createAiCapabilityProfile}
-        onUpdateAiProviderAccount={state.updateAiProviderAccount}
-        onUpdateAiCapabilityProfile={state.updateAiCapabilityProfile}
         onDeleteModelProfile={state.deleteModelProfile}
         onDeleteProviderAccount={state.deleteProviderAccount}
         onListProviderModels={state.listProviderModels}
-        onInvokeAiCapability={state.invokeAiCapability}
-        onRefreshAiProviders={state.refreshAiProviders}
         onUpdateProviderConnection={state.updateProviderConnection}
       />
     ),
@@ -280,6 +272,15 @@ export function createStudioPanels(input: {
         promptMessages={state.promptMessages ?? null}
         providerPayloadPreview={state.providerPayloadPreview ?? null}
         runDetails={state.lastRun ?? null}
+        aiProviders={state.aiProviders}
+        aiCapabilityProfiles={state.aiCapabilityProfiles}
+        providerAccounts={state.providerAccounts}
+        onCreateAiProviderAccount={state.createAiProviderAccount}
+        onCreateAiCapabilityProfile={state.createAiCapabilityProfile}
+        onUpdateAiProviderAccount={state.updateAiProviderAccount}
+        onUpdateAiCapabilityProfile={state.updateAiCapabilityProfile}
+        onInvokeAiCapability={state.invokeAiCapability}
+        onRefreshAiProviders={state.refreshAiProviders}
         t={state.t}
       />
     ),

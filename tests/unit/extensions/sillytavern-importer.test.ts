@@ -420,7 +420,7 @@ describe('SillyTavern Importer Extension', () => {
   })
 
   it('reuses an embedded worldbook through an external card reference in an in-memory migration', async () => {
-    const fixtureRoot = join(__dirname, '../../../Playground/stbridge-fixture/Data')
+    const fixtureRoot = join(__dirname, '../../../official/extensions/st-data-compat/fixtures/data')
     const card = convertSillyTavernCard(JSON.parse(readFileSync(join(fixtureRoot, 'characters/Fixture Hero.json'), 'utf8')))
     const world = convertSillyTavernLorebook(readFileSync(join(fixtureRoot, 'worlds/Fixture World.json'), 'utf8'))
     let sequence = 0

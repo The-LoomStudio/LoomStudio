@@ -10,6 +10,8 @@ import {
   officialSearchPromptResourcesTool,
   officialReadPromptResourceTool,
   officialUpdatePromptResourceTool,
+  officialCodeActTool,
+  officialCodeActJsonTool,
 } from '@loom-studio/application-runtime'
 import { describe, expect, it } from 'vitest'
 
@@ -42,6 +44,8 @@ describe('official Agent context tools', () => {
       officialSearchPromptResourcesTool,
       officialReadPromptResourceTool,
       officialUpdatePromptResourceTool,
+      officialCodeActTool,
+      officialCodeActJsonTool,
     ])
     expect(
       registry.analyze(

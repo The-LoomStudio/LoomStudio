@@ -80,6 +80,7 @@ export async function composeAgentTurnPrompt(input: {
     ...(input.externalRuntime?.contributions ?? []),
   ]
   const resourceProjection = compilePromptDataModel({
+    skeletonRootId: input.preset.rootNode.id,
     sourceNodes,
     contributions,
     currentInput: input.userInput,
@@ -107,13 +108,16 @@ export async function composeAgentTurnPrompt(input: {
       ...trace,
       variables: cloneVariableRenderTrace(variables.trace),
     },
-    toolExecutionScope: createPromptToolExecutionScope({
-      prompt: resourceProjection,
-      contributions,
-      sourceNodes,
-      promptResources: input.promptResources,
-      workspaceResourceAccess: !input.narrative,
-    }),
+    toolExecutionScope: {
+      ...createPromptToolExecutionScope({
+        prompt: resourceProjection,
+        contributions,
+        sourceNodes,
+        promptResources: input.promptResources,
+        workspaceResourceAccess: !input.narrative,
+      }),
+      vfsResourceIds: resourceIds,
+    },
   }
 }
 

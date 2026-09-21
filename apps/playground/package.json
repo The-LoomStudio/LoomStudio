@@ -17,6 +17,7 @@
     "@loom-studio/loom-runner": "workspace:*",
     "@loom-studio/shared": "workspace:*",
     "@loom-studio/trace-audit": "workspace:*",
+    "diff": "8.0.2",
     "yaml": "^2.9.0"
   }
 }

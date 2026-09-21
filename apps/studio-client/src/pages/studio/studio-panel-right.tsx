@@ -46,8 +46,6 @@ export function StudioPanelRight(props: StudioPanelRightProps) {
     }
   }
 
-  if (!props.open) return null
-
   const style: CSSProperties | undefined = props.width ? { width: `${props.width}px` } : undefined
 
   return (
@@ -55,6 +53,9 @@ export function StudioPanelRight(props: StudioPanelRightProps) {
       id={props.id ?? 'studio-panel-right'}
       className={styles.panelRight}
       data-loom-component="studio-panel-right"
+      data-open={props.open}
+      aria-hidden={!props.open}
+      inert={!props.open}
       style={style}
     >
       <div

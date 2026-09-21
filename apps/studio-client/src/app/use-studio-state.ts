@@ -92,8 +92,8 @@ export function useStudioState(transportLogger: Logger) {
   const providerSettings = useProviderSettings({
     api,
     initialProviderAccountDraft: {
-      displayName: 'OpenAI Compatible',
-      baseUrl: 'https://api.openai.com/v1',
+      displayName: '',
+      baseUrl: '',
       apiKey: '',
     },
     runAction: action => operations.run('provider-settings', action).then(() => undefined),
@@ -335,6 +335,7 @@ export function useStudioState(transportLogger: Logger) {
     cancelAgentRun: narrativeRuntime.cancelAgentRun,
     pauseAgentRun: narrativeRuntime.pauseAgentRun,
     resumeAgentRun: narrativeRuntime.resumeAgentRun,
+    approveAgentMutation: narrativeRuntime.approveAgentMutation,
     agentChatSessionLoading: narrativeRuntime.agentSessionLoading,
     newAgentSession: narrativeRuntime.newAgentSession,
     refreshAgentSessions: narrativeRuntime.refreshAgentSessions,

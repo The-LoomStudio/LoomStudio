@@ -4,6 +4,7 @@ import { ComponentPreviewApp } from './component-preview-app.js'
 import { CardResourcesPreview } from './card-resources-preview.js'
 import { BackgroundMaterialsPreview } from './background-materials-preview.js'
 import { UiPrimitivesPreview } from './ui-primitives-preview.js'
+import { ShellMotionPreview } from './shell-motion-preview.js'
 import '../../styles/global.css'
 
 const previews: Record<string, () => ReactElement> = {
@@ -11,6 +12,7 @@ const previews: Record<string, () => ReactElement> = {
   'card-resources': CardResourcesPreview,
   'background-materials': BackgroundMaterialsPreview,
   'ui-primitives': UiPrimitivesPreview,
+  'shell-motion': ShellMotionPreview,
 }
 
 export function renderComponentPreview(root: HTMLElement, previewId: string): void {

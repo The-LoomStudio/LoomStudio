@@ -5,6 +5,7 @@ import type { Translator } from '../../../../shared/i18n/index.js'
 import { tryWriteClipboardText } from '../../../../shared/browser/clipboard.js'
 import { Toggle } from '@loom-studio/ui'
 import { resolveContextAssetUri } from '../../model/context-asset-tree.js'
+import { readContextAssetBadgeInfo } from '../context-asset-tree.js'
 import styles from './context-asset-detail-header.module.scss'
 
 type ContextAssetDetailHeaderProps = {
@@ -32,6 +33,7 @@ export function ContextAssetDetailHeader(props: ContextAssetDetailHeaderProps) {
   }, [])
 
   const uri = props.node ? resolveContextAssetUri(props.node, props.pathNodes) : ''
+  const badgeInfo = readContextAssetBadgeInfo(props.node, props.t)
 
   const handleCopyUri = async () => {
     if (!uri) return
@@ -45,8 +47,7 @@ export function ContextAssetDetailHeader(props: ContextAssetDetailHeaderProps) {
 
   return (
     <header className={`${styles.header} ${muted ? styles.muted : ''}`}>
-      <p>{readKindLabel(props.node, props.t)}</p>
-      <div className={styles.titleRow}>
+      <div className={styles.kindRow}>
         {props.toggleEnabled && props.node ? (
           <Toggle
             checked={props.node.enabled !== false}
@@ -54,6 +55,21 @@ export function ContextAssetDetailHeader(props: ContextAssetDetailHeaderProps) {
             onChange={props.onEnabledChange}
           />
         ) : null}
+        <span className={styles.kindText}>{readKindLabel(props.node, props.t)}</span>
+        {badgeInfo ? (
+          <button
+            type="button"
+            className={`${styles.statusBadge} ${styles[`statusBadge_${badgeInfo.tone}`]} ${muted ? styles.statusBadgeMuted : ''}`}
+            title={props.t(props.metadataOpen ? 'context.hideMetadata' : 'context.showMetadata')}
+            onClick={() => props.onMetadataOpenChange(!props.metadataOpen)}
+            onMouseDown={event => event.preventDefault()}
+          >
+            <span className={styles.statusDot} aria-hidden="true" />
+            <span className={styles.statusLabel}>{badgeInfo.label}</span>
+          </button>
+        ) : null}
+      </div>
+      <div className={styles.titleRow}>
         {props.node ? (
           <div className={styles.titleWrapper}>
             <input

@@ -24,6 +24,8 @@ Agent Tool 使用两条构建表面：Provider-managed Tool 与 `messages[]` 平
 
 Narrative History 本身不携带 Provider role。它是可被 Preset MessageBlock 挂载的运行时 Context Slot；官方骨架默认将它包在 Developer Block 中，但 Preset 可以把该 Slot 放入任意 MessageBlock，由包裹它的 Block 决定最终的 `system`、`developer`、`user` 或 `assistant` role。
 
+新建预设采用包内 JSON Default 骨架。无显式目标的 Preset Entry 在树中原位输出，已有显式目标的 Entry 仍按锚点注入；Agent Turn 只遍历所选 Preset 的骨架，不直接输出外部资源树。Session 文本消息保留原有角色与独立边界，不继承包裹块的角色。完整顺序、已接线来源与预留位置见 [Default 预设骨架](default-preset.md)。
+
 ## 为什么采用“有序文件树 + 笼中深度”架构
 
 PromptBuild 注入的不是失去来源信息的字符串，而是携带结构化节点与出处元数据的提示词节点。早期设计尝试使用 `Zone -> InjectionGroup -> RankKey` 多层间接矩阵投影，但导致了预设包裹断裂（Wrapping Conflict）以及作者之间盲目挤压深度的军备竞赛。

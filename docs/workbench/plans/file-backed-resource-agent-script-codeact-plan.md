@@ -1,9 +1,10 @@
-# File-backed Resource、Agent Script 与 CodeAct 实施计划
+# File-backed Resource 与 Agent Script 历史综合提案
 
-> **状态**：首阶段已确认，等待 Sandbox 合同冻结
+> **状态**：Superseded for CodeAct / 持久脚本等远期内容延期
+> **2026-09-20 迁移**：CodeAct、Sandbox 接入与 VFS 工具的唯一实施入口是 [CodeAct 与 VFS 工具实施计划](./codeact-vfs-tooling-plan.md)。下文保留历史候选以供追溯，不再是当前施工合同；包含 JSON-only 入口、完整 Script 身份与旧阶段拆分的表述均不得自动继承。资源分发归 [资源与分发计划](./workspace-resource-and-distribution-plan.md)，持久 Agent Script / Script Mount 等尚未承接的远期内容延期，不视为已完成。
 > **2026-09-12 接续边界**：已有 [Loom Script Runtime](../../architecture/extensions/loom-script-runtime.md) 实现 Renderer 专用源码 Blob、编辑 API、Mount / Grant、Card / Preset 附件和 Client Sandbox；已有 [Card Bundle 文件合同](../../architecture/application/card-bundle-files.md) 负责文件化编解码。这些不再从零建设，也不等于通用 Agent Script、Server Sandbox 或 CodeAct 已实现。新切片须先复用或明确区分现有合同，不能按下文历史草案另建平行 Script 身份。
 > **日期**：2026-08-24
-> **范围**：优先建立 CodeAct Sandbox、单一 JSON Tool 入口和特殊 Prompt Resource 描述；之后再建立持久化 Agent Script、挂载、角色包导入导出与 inline / resource 两种执行模式。
+> **历史范围**：以下正文保留原先的 Sandbox、JSON Tool、持久 Agent Script 与分发综合提案；当前范围及决策以顶部 successor 为准。
 > **事实边界**：本文是 Workbench Plan，不是已实现 Architecture。当前已实现 Document Store、共享 SQLite Data Engine、内容寻址 Blob Store、Source Artifact、Media Asset、Agent Tool Registry、Content Tool 与 Agent Loop；通用 File-backed Resource、Agent Script、Script Mount、Sandbox Host 和 CodeAct 尚未实现。Blob prepared write 的正常失败清理已由现有资源导入链路提供，但不等于完成历史 orphan GC。
 > **2026-08-25 Bundle 边界补充**：Preset / Setting 的增强分发不建立通用 Package 领域实体或递归依赖图。未来 Bundle 必须拥有唯一主体，导入后仍回到 Preset / Setting / Card canonical state；附件关系、运行时 Mount 与外部 Requirement 保持分离。详见 [`typed-primary-resource-bundle-plan.md`](../../archive/plans/typed-primary-resource-bundle-plan.md)。
 

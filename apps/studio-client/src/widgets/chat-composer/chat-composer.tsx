@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, type FormEvent, type ReactNode } from 'react'
-import { ArrowUp, BringToFront, ChevronUp, Lock, Plus, RotateCcw, Unlock } from 'lucide-react'
+import { ArrowUp, BringToFront, ChevronUp, Lock, Pause, Play, Plus, RotateCcw, Unlock } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,6 +43,11 @@ type ChatComposerProps = {
   textareaLabel: string
   toggleExpandedLabel?: string
   unpinLabel?: string
+  runStatus?: 'idle' | 'running' | 'suspended'
+  onPause?: () => void
+  onResume?: () => void
+  pauseLabel?: string
+  resumeLabel?: string
   onTargetAction?: () => void
   onToggleExpanded?: () => void
   onTogglePinned?: () => void
@@ -173,9 +178,39 @@ export function ChatComposer(props: ChatComposerProps) {
                   </button>
                 )}
                 {props.sendLeadingAction}
-                <button aria-label={props.sendLabel} className={styles.sendButton} type="submit" disabled={!props.canSend} title={props.sendLabel}>
-                  <ArrowUp aria-hidden="true" absoluteStrokeWidth strokeWidth={1.7} />
-                </button>
+                {props.runStatus === 'running' ? (
+                  <button
+                    aria-label={props.pauseLabel ?? '暂停'}
+                    className={styles.sendButton}
+                    data-run="running"
+                    type="button"
+                    onClick={props.onPause}
+                    title={props.pauseLabel ?? '暂停'}
+                  >
+                    <Pause aria-hidden="true" strokeWidth={2} />
+                  </button>
+                ) : props.runStatus === 'suspended' && !props.input.trim() ? (
+                  <button
+                    aria-label={props.resumeLabel ?? '继续'}
+                    className={styles.sendButton}
+                    data-run="suspended"
+                    type="button"
+                    onClick={props.onResume}
+                    title={props.resumeLabel ?? '继续'}
+                  >
+                    <Play aria-hidden="true" strokeWidth={2} style={{ marginLeft: 2 }} />
+                  </button>
+                ) : (
+                  <button
+                    aria-label={props.sendLabel}
+                    className={styles.sendButton}
+                    type="submit"
+                    disabled={!props.canSend}
+                    title={props.sendLabel}
+                  >
+                    <ArrowUp aria-hidden="true" absoluteStrokeWidth strokeWidth={1.7} />
+                  </button>
+                )}
               </div>
             </div>
           </div>

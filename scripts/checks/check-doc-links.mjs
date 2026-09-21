@@ -6,10 +6,10 @@ import {
   findMarkdownLinks,
   maskMarkdownBlocks,
   parseMarkdownTarget,
-} from './documentation-markdown.mjs'
+} from '../lib/documentation-markdown.mjs'
 
 const scriptsRoot = path.dirname(fileURLToPath(import.meta.url))
-const repositoryRoot = path.resolve(scriptsRoot, '..')
+const repositoryRoot = path.resolve(scriptsRoot, '../..')
 const docsRoot = path.join(repositoryRoot, 'docs')
 const workspaceRoots = ['apps', 'packages', 'extensions']
   .map((directory) => path.join(repositoryRoot, directory))

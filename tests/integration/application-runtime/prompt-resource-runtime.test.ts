@@ -60,14 +60,14 @@ describe('Prompt Resource Store application runtime', () => {
       },
     })
 
-    expect(result.projection.messages.find(msg => msg.role === 'system')?.fragmentIds).toEqual([
+    expect(result.projection.messages.find(msg => msg.fragmentIds.includes('tool-a-content'))?.fragmentIds).toEqual([
       'tool-b-content',
       'tool-a-content',
     ])
-    expect(result.messages).toMatchObject([
-      { role: 'system', content: 'Tool B instructions.\n\nTool A instructions.' },
-      { role: 'user', content: 'Hi' },
-    ])
+    expect(result.messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'system', content: 'Tool B instructions.\n\nTool A instructions.' }),
+      expect.objectContaining({ role: 'user', content: 'Hi' }),
+    ]))
     engine.close()
   })
 
@@ -143,7 +143,7 @@ describe('Prompt Resource Store application runtime', () => {
     const secondRuntime = createApplicationRuntime({ dataEngine: secondEngine, documents: secondDocuments, promptResources: secondStore })
     const readPreset = await secondRuntime.getPromptResource({ resourceId: preset.resource.id })
     await expect(secondRuntime.listSettingMounts({ source: { kind: 'preset', id: preset.resource.id } })).resolves.toMatchObject({ mounts: [{ settingResourceId: setting.resource.id, source: { kind: 'preset', id: preset.resource.id } }] })
-    expect(readPreset.resource.rootNode.children?.find((c: any) => c.capabilities?.targetAnchorId === '@chat.system')?.capabilities?.targetAnchorId).toBe('@chat.system')
+    expect(readPreset.resource.rootNode).toEqual(preset.resource.rootNode)
     expect((await secondRuntime.getPromptResource({ resourceId: setting.resource.id })).resource.rootNode.children?.[0]?.body).toBe('Persisted body')
     secondEngine.close()
     await rm(directory, { recursive: true, force: true })

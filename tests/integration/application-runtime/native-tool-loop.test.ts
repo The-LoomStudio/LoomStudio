@@ -60,6 +60,44 @@ const testContentTool: ToolDefinition = {
 }
 
 describe('Native Function Tool Loop', () => {
+  it.each([
+    { metadata: '{}', status: 'completed', executions: 1 },
+    { metadata: '{"unexpected":"must not be discarded"}', status: 'failed', executions: 0 },
+  ] as const)('handles freeform Content metadata $metadata without silently dropping arguments', async ({ metadata, status, executions }) => {
+    let executed = 0
+    let steps = 0
+    const fixture = await createFixture({
+      tool: {
+        id: 'test/freeform', owner: { namespace: 'test' }, name: 'raw_text', description: 'Accept raw text.',
+        input: { kind: 'freeform', mediaType: 'text/plain' },
+      },
+      execute: ({ invocation }) => {
+        executed++
+        expect(invocation.arguments).toBeUndefined()
+        expect(invocation.rawInput).toBe('story')
+        return { invocationId: invocation.id, toolId: invocation.toolId, status: 'completed', content: [] }
+      },
+      invokeChat: async () => ({
+        provider: 'test', model: 'test-model', text: '', finishReason: 'stop',
+        message: {
+          role: 'assistant',
+          content: steps++ === 0
+            ? `<loom_tool name="raw_text"><metadata>${metadata}</metadata><content>story</content></loom_tool>`
+            : 'Done.',
+        },
+      }),
+    })
+    try {
+      await fixture.runtime.invokeAgentTurn({ agentSessionId: fixture.sessionId, input: 'Write.' })
+      const page = await fixture.runtime.getAgentTranscriptPage({ agentSessionId: fixture.sessionId })
+      expect(executed).toBe(executions)
+      expect(page.entries.filter(entry => entry.entry.kind === 'tool-result').map(entry => entry.entry))
+        .toEqual([expect.objectContaining({ status })])
+    } finally {
+      fixture.close()
+    }
+  })
+
   it('reads, updates, and reads Timeline State again across Provider steps', async () => {
     const requests: unknown[][] = []
     let target!: { scope: 'timeline'; timelineId: string; branchId: string }
@@ -508,11 +546,11 @@ describe('Native Function Tool Loop', () => {
 
     expect(requests[0]?.tools).toBeUndefined()
     expect(turn.projection.messages.some((msg: any) => msg.fragmentIds.includes('runtime.agent-tools.contribution.0'))).toBe(true)
-    expect(requests[0]?.messages[0]).toEqual(
-      expect.objectContaining({
+    expect(requests[0]?.messages).toEqual(
+      expect.arrayContaining([expect.objectContaining({
         role: 'system',
         content: expect.stringContaining('<loom_tool name="tool_name">'),
-      }),
+      })]),
     )
     expect(requests[1]?.messages).toEqual(
       expect.arrayContaining([

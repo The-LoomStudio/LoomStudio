@@ -29,8 +29,8 @@
   --loom-divider-space: 16px;
   --loom-page-header-height: 40px;
   --loom-page-header-padding: 8px;
-  --loom-page-header-icon-size: 18px;
-  --loom-page-header-control-size: 40px;
+  --loom-page-header-icon-size: 16px;
+  --loom-page-header-control-size: 32px;
   --loom-page-header-icon-stroke: 1.85;
 
   /* ── 图标：客观尺寸等级 ── */
@@ -139,6 +139,9 @@
   --loom-motion-duration-standard: 180ms;
   --loom-motion-duration-loading: 1.4s;
   --loom-motion-easing-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --loom-shell-motion-duration-enter: 320ms;
+  --loom-shell-motion-duration-exit: 240ms;
+  --loom-shell-motion-easing: cubic-bezier(0.2, 0, 0.2, 1);
 
   /* ── 布局尺寸 ── */
   --loom-chat-width: 680px;
@@ -146,7 +149,7 @@
   /* Old Custom CSS overrides flow into the new collapsed-width contract. */
   --loom-rail-width: 48px;
   --loom-rail-collapsed-width: var(--loom-rail-width);
-  --loom-rail-expanded-width: 160px;
+  --loom-rail-expanded-width: 220px;
   --loom-window-rail-width: 200px;
   --loom-window-gap: 8px;
   --loom-window-min-width: 240px;
@@ -168,6 +171,11 @@
   --loom-radius-dialog: var(--loom-radius-lg);
   --loom-radius-window: var(--loom-radius-xl);
   --loom-radius-message: 16px;
+}
+
+html[data-loom-motion='reduce'] {
+  --loom-shell-motion-duration-enter: 0ms;
+  --loom-shell-motion-duration-exit: 0ms;
 }
 
 * {
@@ -204,6 +212,7 @@
   flex: 1;
   overflow: hidden;
   font-size: var(--loom-font-size-3);
+  font-weight: var(--loom-font-weight-5);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -222,19 +231,32 @@
 }
 
 .loom-page-tab {
-  min-height: 26px;
+  position: relative;
+  min-height: 28px;
   border: 0;
-  padding: 0;
-  color: var(--loom-color-text-muted);
+  padding: 4px 2px;
+  color: var(--loom-color-text);
   background: transparent;
   font-size: var(--loom-font-size-3);
-  font-weight: var(--loom-font-weight-3);
+  font-weight: var(--loom-font-weight-4);
   white-space: nowrap;
+  cursor: pointer;
 }
 
-.loom-page-tab:hover,
-.loom-page-tab-active {
-  color: var(--loom-color-text);
+.loom-page-tab::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background-color var(--loom-motion-duration-fast) ease;
+}
+
+.loom-page-tab-active::after {
+  background: var(--loom-color-accent);
 }
 
 .loom-underlined-fields :where(input, select, textarea),
@@ -251,10 +273,6 @@
 .loom-underlined-field:focus {
   border-color: var(--loom-color-accent);
   box-shadow: none;
-}
-
-.loom-page-tab-active {
-  font-weight: var(--loom-font-weight-6);
 }
 
 .loom-page-tabs-footer {

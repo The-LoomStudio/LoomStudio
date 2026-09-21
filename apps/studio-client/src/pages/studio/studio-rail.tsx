@@ -58,11 +58,18 @@ export function StudioRail(props: StudioRailProps) {
               </button>
             ) : null}
           </div>
-          {recentOpen && props.activePanel === null ? props.recentSessions : null}
+          {props.recentSessions ? (
+            <div
+              className={styles.railRecentDisclosure}
+              data-open={recentOpen && props.activePanel === null}
+              inert={!recentOpen || props.activePanel !== null}
+            >
+              <div>{props.recentSessions}</div>
+            </div>
+          ) : null}
         </div>
       </div>
       <div className={styles.railBottomSection}>
-        <span className={`loom-divider ${styles.railDivider}`} aria-hidden="true" />
         <RailTab activePanel={props.activePanel} panel="inspector" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
         <RailTab activePanel={props.activePanel} panel="logs" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
         <RailTab activePanel={props.activePanel} panel="extensions" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />

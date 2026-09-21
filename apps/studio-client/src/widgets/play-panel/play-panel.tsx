@@ -1,10 +1,11 @@
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, X } from 'lucide-react'
-import { createPortal } from 'react-dom'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import type { Translator } from '../../shared/i18n/index.js'
 import type { AgentSession, CardSummary, NarrativeTimeline } from '../../entities/index.js'
 import { cardMediaUrl, useCardMediaRevision } from '../../shared/lib/card-media.js'
 import styles from './play-panel.module.scss'
+import { PanelHeaderActions } from '../../pages/studio/studio-window-header-context.js'
+import { PanelTabs } from '../../shared/ui/panel-tabs/index.js'
 
 type PlayTab = 'recent' | 'character' | 'sessions'
 
@@ -26,10 +27,6 @@ export function PlayPanel(props: PlayPanelProps) {
   const [recentSessionsOpen, setRecentSessionsOpen] = useState(true)
   const [selectedDate, setSelectedDate] = useState<string>()
   const [monthCursor, setMonthCursor] = useState(() => new Date())
-  const [headerActions, setHeaderActions] = useState<HTMLElement | null>(null)
-  useEffect(() => {
-    setHeaderActions(document.getElementById('studio-panel-header-actions'))
-  }, [])
   const mediaRevision = useCardMediaRevision()
   const sessions = useMemo(() => [
     ...props.timelines.map(item => {
@@ -72,24 +69,31 @@ export function PlayPanel(props: PlayPanelProps) {
   return (
     <section className={styles.panel} aria-label={props.t('rail.play')}>
       <div className={styles.header}>
-        <nav className="loom-page-tabs" aria-label={props.t('rail.play')}>
-        <button className={`loom-page-tab ${tab === 'recent' ? 'loom-page-tab-active' : ''}`} type="button" onClick={() => setTab('recent')}>{props.t('play.recent')}</button>
-        <button className={`loom-page-tab ${tab === 'character' ? 'loom-page-tab-active' : ''}`} type="button" onClick={() => setTab('character')}>{props.t('rail.character')}</button>
-        <button className={`loom-page-tab ${tab === 'sessions' ? 'loom-page-tab-active' : ''}`} type="button" onClick={() => setTab('sessions')}>{props.t('play.sessions')}</button>
-        </nav>
+        <PanelTabs<PlayTab>
+          activeId={tab}
+          ariaLabel={props.t('rail.play')}
+          items={[
+            { id: 'recent', label: props.t('play.recent') },
+            { id: 'character', label: props.t('rail.character') },
+            { id: 'sessions', label: props.t('play.sessions') },
+          ]}
+          onChange={setTab}
+        />
       </div>
-      {tab === 'recent' && headerActions ? createPortal((
-        <button
-          aria-expanded={calendarOpen}
-          aria-label={props.t('play.filterDate')}
-          className={`${styles.calendarToggle} ${calendarOpen || selectedDate ? styles.calendarToggleActive : ''}`}
-          title={props.t('play.filterDate')}
-          type="button"
-          onClick={() => setCalendarOpen(value => !value)}
-        >
-          <CalendarDays size={15} aria-hidden="true" />
-        </button>
-      ), headerActions) : null}
+      {tab === 'recent' ? (
+        <PanelHeaderActions panel="play">
+          <button
+            aria-expanded={calendarOpen}
+            aria-label={props.t('play.filterDate')}
+            className={`${styles.calendarToggle} ${calendarOpen || selectedDate ? styles.calendarToggleActive : ''}`}
+            title={props.t('play.filterDate')}
+            type="button"
+            onClick={() => setCalendarOpen(value => !value)}
+          >
+            <CalendarDays size={15} aria-hidden="true" />
+          </button>
+        </PanelHeaderActions>
+      ) : null}
       {calendarOpen && tab === 'recent' ? (
         <div className={styles.calendarPopover} role="dialog" aria-label={props.t('play.filterDate')}>
           <div className={styles.calendarHeader}>

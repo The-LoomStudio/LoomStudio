@@ -3,10 +3,14 @@ import { MacroInspectorPanel } from '../features/state-variables/ui/macro-inspec
 import { StateAuthoringPanel } from '../features/state-variables/ui/state-authoring-panel.js'
 import { StateVariablesPanel } from '../features/state-variables/ui/state-variables-panel.js'
 import type { Translator } from '../shared/i18n/index.js'
+import { PanelTabs } from '../shared/ui/panel-tabs/index.js'
+import styles from './studio-state-panel.module.scss'
+
+type VariableView = 'state' | 'authoring' | 'preview' | 'build'
 
 type StudioStatePanelProps = {
   hasTimeline: boolean
-  variableView: 'state' | 'authoring' | 'preview' | 'build'
+  variableView: VariableView
   macroTargetKey: string
   macroInspection: Parameters<typeof MacroInspectorPanel>[0]['inspection']
   buildMacroInspection: Parameters<typeof MacroInspectorPanel>[0]['inspection']
@@ -28,8 +32,21 @@ type StudioStatePanelProps = {
 
 export function StudioStatePanel(props: StudioStatePanelProps): ReactNode {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-      <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+    <div className={styles.panel}>
+      <header className={styles.header}>
+        <PanelTabs<VariableView>
+          activeId={props.variableView}
+          ariaLabel={props.t('character.stateVariables')}
+          items={[
+            { id: 'state', label: 'State' },
+            { id: 'authoring', label: props.t('stateAuthoring.tab') },
+            { id: 'preview', label: props.t('macroInspector.preview') },
+            { id: 'build', label: props.t('macroInspector.build') },
+          ]}
+          onChange={props.onViewChange}
+        />
+      </header>
+      <div className={styles.content}>
         {(props.variableView === 'state' || props.variableView === 'authoring') && !props.hasTimeline ? (
           <p>{props.t('stateVariables.noTimeline')}</p>
         ) : props.variableView === 'authoring' ? (
@@ -57,20 +74,6 @@ export function StudioStatePanel(props: StudioStatePanelProps): ReactNode {
             t={props.t}
           />
         )}
-      </div>
-      <div className="loom-page-tabs loom-page-tabs-footer" role="tablist">
-        {(['state', 'authoring', 'preview', 'build'] as const).map(view => (
-          <button
-            key={view}
-            type="button"
-            role="tab"
-            aria-selected={props.variableView === view}
-            className={`loom-page-tab${props.variableView === view ? ' loom-page-tab-active' : ''}`}
-            onClick={() => props.onViewChange(view)}
-          >
-            {view === 'state' ? 'State' : view === 'authoring' ? props.t('stateAuthoring.tab') : props.t(`macroInspector.${view}`)}
-          </button>
-        ))}
       </div>
     </div>
   )

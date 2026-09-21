@@ -10,11 +10,41 @@ import type {
   NarrativeTimeline,
   PreviewAgentTurnResult,
 } from '../../../entities/index.js'
-import type { InvokeAgentTurnInput, StudioApi } from '../../../shared/api/studio-api.js'
+import type { AgentMutationApproval, InvokeAgentTurnInput, StudioApi } from '../../../shared/api/studio-api.js'
 import type { LatestOperationContext } from '../../../shared/hooks/use-async-operations.js'
 
 export type AgentRunStatus = 'running' | 'suspended' | 'completed' | 'cancelled' | 'failed'
-export type ActiveAgentRun = { runId: string; status: AgentRunStatus }
+export type ActiveAgentRun = { runId: string; status: AgentRunStatus; approval?: AgentMutationApproval }
+
+export function inspectSessionRunStatus(entries: AgentTranscriptEntry[]): { runId?: string; status: 'idle' | 'running' | 'suspended' } {
+  if (!entries.length) return { status: 'idle' }
+  const lastRunState = entries.slice().reverse().find(e => e.entry.kind === 'run-state')
+  if (lastRunState && lastRunState.entry.kind === 'run-state') {
+    if (lastRunState.entry.state === 'suspended' || lastRunState.entry.state === 'running' || lastRunState.entry.state === 'failed') {
+      return { runId: lastRunState.runId, status: 'suspended' }
+    }
+    if (lastRunState.entry.state === 'completed' || lastRunState.entry.state === 'aborted' || lastRunState.entry.state === 'discarded') {
+      return { status: 'idle' }
+    }
+  }
+
+  const lastUser = entries.slice().reverse().find(e => e.entry.kind === 'message' && e.entry.role === 'user')
+  if (lastUser) {
+    const userIdx = entries.indexOf(lastUser)
+    const laterEntries = entries.slice(userIdx + 1)
+    const hasCompletedAssistant = laterEntries.some(
+      e => e.entry.kind === 'message' && e.entry.role === 'assistant' && e.entry.state !== 'partial' && typeof e.entry.content === 'string' && Boolean(e.entry.content.trim())
+    )
+    const hasCompletedRun = laterEntries.some(
+      e => e.entry.kind === 'run-state' && e.entry.state === 'completed'
+    )
+    if (!hasCompletedAssistant || !hasCompletedRun) {
+      return { runId: lastUser.runId, status: 'suspended' }
+    }
+  }
+
+  return { status: 'idle' }
+}
 
 type JsonObject = { [key: string]: ClientJsonValue }
 
@@ -336,36 +366,45 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
         entry: { kind: 'message', role: 'assistant', content: '' },
         createdAt: new Date().toISOString(),
       }])
-      const result = await runAgentTurn(input.api, {
-        agentSessionId: session.id,
-        input: content,
-        macroSelections: input.getMacroSelections?.(timeline?.id, branch?.id),
-      }, streamingId, setAgentTranscriptEntries, setActiveAgentRun)
-      if (!result) {
-        const transcript = await loadTranscript(input.api, session.id)
-        if (selection === agentSelectionRef.current) {
+      try {
+        const result = await runAgentTurn(input.api, {
+          agentSessionId: session.id,
+          input: content,
+          macroSelections: input.getMacroSelections?.(timeline?.id, branch?.id),
+        }, streamingId, setAgentTranscriptEntries, setActiveAgentRun)
+        if (!result) {
+          const transcript = await loadTranscript(input.api, session.id)
+          if (selection === agentSelectionRef.current) {
+            publishAgentSession(transcript.session)
+            setAgentTranscriptEntries(transcript.entries)
+          }
+          return
+        }
+
+        if (selection !== agentSelectionRef.current) return
+        publishAgentSession(result.agentSession)
+        setAgentTranscriptEntries(current => [
+          ...current.filter(entry => entry.id !== optimisticId && entry.id !== streamingId),
+          result.entries.user,
+          result.entries.assistant,
+        ])
+        setLastRun(result)
+
+        try {
+          const transcript = await loadTranscript(input.api, session.id)
+          if (selection !== agentSelectionRef.current) return
           publishAgentSession(transcript.session)
           setAgentTranscriptEntries(transcript.entries)
+        } catch {
+          // The persisted user and assistant entries above remain usable if the optional transcript refresh fails.
         }
-        return
-      }
-
-      if (selection !== agentSelectionRef.current) return
-      publishAgentSession(result.agentSession)
-      setAgentTranscriptEntries(current => [
-        ...current.filter(entry => entry.id !== optimisticId && entry.id !== streamingId),
-        result.entries.user,
-        result.entries.assistant,
-      ])
-      setLastRun(result)
-
-      try {
-        const transcript = await loadTranscript(input.api, session.id)
-        if (selection !== agentSelectionRef.current) return
-        publishAgentSession(transcript.session)
-        setAgentTranscriptEntries(transcript.entries)
       } catch {
-        // The persisted user and assistant entries above remain usable if the optional transcript refresh fails.
+        // 如果模型因 4xx/5xx 等原因在完全未输出字的情况下报错中断，不建立空楼层，而是呈现暂停状态
+        setAgentTranscriptEntries(current => current.filter(entry => entry.id !== streamingId))
+        setActiveAgentRun(current => ({
+          runId: current?.runId ?? `suspended-${Date.now()}`,
+          status: 'suspended',
+        }))
       }
     })
   }
@@ -381,36 +420,102 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     const run = activeAgentRun
     if (!run || run.status !== 'suspended') return
     const selection = agentSelectionRef.current
-    const result = await input.api.agentSessions.resumeRun(run.runId)
-    if (!result.accepted || selection !== agentSelectionRef.current) return
-    setActiveAgentRun({ runId: result.runId, status: result.state })
+    const session = agentSessionRef.current
+    if (!session) return
+
     await input.runAgentAction(async () => {
-      const partialEntryId = agentMessages.slice().reverse().find(entry =>
+      let result: { runId: string; accepted: boolean; state?: AgentRunStatus } | undefined
+      try {
+        result = await input.api.agentSessions.resumeRun({
+          runId: run.runId,
+          agentSessionId: session.id,
+        })
+      } catch {
+        result = undefined
+      }
+
+      if (!result?.accepted || selection !== agentSelectionRef.current) {
+        return
+      }
+
+      setActiveAgentRun({ runId: result.runId, status: 'running' })
+
+      let streamingId = agentMessages.slice().reverse().find(entry =>
         entry.entry.kind === 'message'
         && entry.entry.role === 'assistant'
         && entry.entry.state === 'partial',
-      )?.id ?? ''
-      const resumed = await runAgentTurn(input.api, result.runId, partialEntryId, setAgentTranscriptEntries, setActiveAgentRun, agentSession?.id)
-      if (!resumed || selection !== agentSelectionRef.current) return
-      if (resumed.narrative) {
-        setTimeline(resumed.narrative.timeline)
-        setBranch(resumed.narrative.branch)
-        setBranches(current => current.some(item => item.id === resumed.narrative!.branch.id)
-          ? current.map(item => item.id === resumed.narrative!.branch.id ? resumed.narrative!.branch : item)
-          : [...current, resumed.narrative!.branch])
-        setNodes(resumed.narrative.nodes)
-        if (resumed.narrative.timeline.createdFrom?.cardId) {
-          await refreshCardTimelines(resumed.narrative.timeline.createdFrom.cardId)
-        }
+      )?.id
+
+      if (!streamingId) {
+        streamingId = `streaming-agent-entry-${++optimisticEntryIdRef.current}`
+        setAgentTranscriptEntries(current => [...current, {
+          id: streamingId!,
+          agentSessionId: session.id,
+          sequence: (current.at(-1)?.sequence ?? 0) + 1,
+          entry: { kind: 'message', role: 'assistant', content: '' },
+          createdAt: new Date().toISOString(),
+        }])
       }
-      publishAgentSession(resumed.agentSession)
-      setAgentTranscriptEntries(current => [...current, resumed.entries.assistant])
-      setLastRun(resumed)
-      const transcript = await loadTranscript(input.api, resumed.agentSession.id)
-      if (selection !== agentSelectionRef.current) return
-      publishAgentSession(transcript.session)
-      setAgentTranscriptEntries(transcript.entries)
+
+      try {
+        const resumed = await runAgentTurn(
+          input.api,
+          result.runId,
+          streamingId,
+          setAgentTranscriptEntries,
+          setActiveAgentRun,
+          session.id,
+        )
+
+        if (!resumed || selection !== agentSelectionRef.current) return
+
+        if (resumed.narrative) {
+          setTimeline(resumed.narrative.timeline)
+          setBranch(resumed.narrative.branch)
+          setBranches(current => current.some(item => item.id === resumed.narrative!.branch.id)
+            ? current.map(item => item.id === resumed.narrative!.branch.id ? resumed.narrative!.branch : item)
+            : [...current, resumed.narrative!.branch])
+          setNodes(resumed.narrative.nodes)
+          if (resumed.narrative.timeline.createdFrom?.cardId) {
+            await refreshCardTimelines(resumed.narrative.timeline.createdFrom.cardId)
+          }
+        }
+        publishAgentSession(resumed.agentSession)
+        setAgentTranscriptEntries(current => [
+          ...current.filter(entry => entry.id !== streamingId),
+          resumed.entries.assistant,
+        ])
+        setLastRun(resumed)
+        const transcript = await loadTranscript(input.api, resumed.agentSession.id)
+        if (selection !== agentSelectionRef.current) return
+        publishAgentSession(transcript.session)
+        setAgentTranscriptEntries(transcript.entries)
+      } catch {
+        setAgentTranscriptEntries(current => {
+          const entry = current.find(e => e.id === streamingId)
+          if (entry && entry.entry.kind === 'message' && !entry.entry.content) {
+            return current.filter(e => e.id !== streamingId)
+          }
+          return current
+        })
+        setActiveAgentRun(current => ({
+          runId: current?.runId ?? result!.runId,
+          status: 'suspended',
+        }))
+      }
     })
+  }
+
+  async function approveAgentMutation(allow: boolean, reason?: string) {
+    const run = activeAgentRun
+    const approval = run?.approval
+    if (!run || !approval) return
+    const result = await input.api.agentSessions.approveMutation(run.runId, approval.requestId, allow, reason)
+    if (result.accepted) {
+      setActiveAgentRun(current => current?.approval?.requestId === approval.requestId
+        ? { ...current, approval: undefined }
+        : current)
+    }
   }
 
   async function previewPrompt() {
@@ -607,6 +712,12 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
       publishAgentSession(transcript.session)
       setAgentTranscriptEntries(transcript.entries)
       input.onSelectAgentProfile(transcript.session.agentProfileId)
+      const inspected = inspectSessionRunStatus(transcript.entries)
+      if (inspected.status === 'suspended') {
+        setActiveAgentRun({ runId: inspected.runId ?? `session-run-${selected.id}`, status: 'suspended' })
+      } else {
+        setActiveAgentRun(undefined)
+      }
     }
     markAgentSessionReady(true)
   }
@@ -652,6 +763,12 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
         publishAgentSession(transcript.session)
         setAgentTranscriptEntries(transcript.entries)
         input.onSelectAgentProfile(transcript.session.agentProfileId)
+        const inspected = inspectSessionRunStatus(transcript.entries)
+        if (inspected.status === 'suspended') {
+          setActiveAgentRun({ runId: inspected.runId ?? `session-run-${sessionId}`, status: 'suspended' })
+        } else {
+          setActiveAgentRun(undefined)
+        }
         markAgentSessionReady(true)
         activated = transcript.session
       } finally {
@@ -732,6 +849,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     agentSessionReady,
     agentSessionLoading,
     activeAgentRun,
+    approveAgentMutation,
     cancelAgentRun,
     pauseAgentRun,
     resumeAgentRun,
@@ -824,6 +942,19 @@ async function runAgentTurn(
           ? { ...entry, entry: { ...entry.entry, content: `${entry.entry.content ?? ''}${event.delta}` } }
           : entry))
       }
+      if (event.type === 'mutation-approval-requested'
+        && typeof event.requestId === 'string'
+        && event.preview
+        && typeof event.preview === 'object') {
+        updateRun({
+          runId,
+          status: 'running',
+          approval: {
+            requestId: event.requestId,
+            preview: event.preview as AgentMutationApproval['preview'],
+          },
+        })
+      }
       if (event.type === 'completed' && event.result && typeof event.result === 'object') {
         updateRun({ runId, status: 'completed' })
         return event.result as unknown as InvokeAgentTurnResult
@@ -849,7 +980,7 @@ async function runAgentTurn(
     }
     if (batch.done) {
       updateRun({ runId, status: batch.state === 'failed' ? 'failed' : batch.state === 'suspended' ? 'suspended' : 'cancelled' })
-      if (batch.state === 'cancelled') return undefined
+      if (batch.state === 'cancelled' || batch.state === 'suspended') return undefined
       throw new Error(`Agent run ended without a completed result: ${runId}`)
     }
     await new Promise(resolve => setTimeout(resolve, 100))

@@ -1,9 +1,9 @@
 import { parseArgs } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import { resolve } from 'node:path'
-import { inspectDataMigration, migrateDataDirectory } from './lib/data-directory-migration.js'
+import { inspectDataMigration, migrateDataDirectory } from '../lib/data-directory-migration.js'
 
-const root = fileURLToPath(new URL('../', import.meta.url))
+const root = fileURLToPath(new URL('../../', import.meta.url))
 const { values } = parseArgs({
   options: {
     source: { type: 'string', default: resolve(root, '.loomstudio-dev/data') },

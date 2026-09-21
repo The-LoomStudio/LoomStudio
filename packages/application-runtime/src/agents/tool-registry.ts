@@ -3,7 +3,10 @@ import {
   isPromptActivation,
   type PromptActivation,
 } from '../prompt/prompt-activation.js'
-import type { PromptResourceMutation, PromptResourceStore } from '@loom-studio/application-data'
+import type { PromptResourceMutation, PromptResourceNodePatch, PromptResourceStore } from '@loom-studio/application-data'
+import type { VfsEntry } from '../vfs/types.js'
+import type { ResourceVfs, VfsTextAttachment } from '../vfs/resource-filesystem.js'
+import type { VfsMutationDecision, VfsMutationPreview } from '../vfs/types.js'
 
 export type ToolOwnerRef = {
   namespace: string
@@ -127,6 +130,53 @@ export type ToolContextItem = {
 }
 
 export type ToolExecutionScope = {
+  vfs?: readonly VfsEntry[]
+  resourceVfs?: ResourceVfs
+  vfsResourceIds?: readonly string[]
+  vfsAttachments?: () => Promise<VfsTextAttachment[]>
+  approveMutation?: (preview: VfsMutationPreview, signal: AbortSignal) => Promise<VfsMutationDecision>
+  writePromptResource?: (input: {
+    resourceId: string
+    nodeId: string
+    expectedVersion: number
+    body: string
+  }) => Promise<{ version: number; changesetId: string }>
+  configurePromptResource?: (input: {
+    resourceId: string
+    nodeId: string
+    expectedVersion: number
+    patch: PromptResourceNodePatch
+  }) => Promise<{ version: number; changesetId: string }>
+  movePromptResource?: (input: {
+    resourceId: string
+    nodeId: string
+    parentNodeId: string
+    orderIndex: number
+    expectedVersion: number
+  }) => Promise<{ version: number; changesetId: string }>
+  deletePromptResourceNode?: (input: {
+    resourceId: string
+    nodeId: string
+    expectedVersion: number
+  }) => Promise<{ version: number; changesetId: string }>
+  createPromptResourceNode?: (input: {
+    resourceId: string
+    parentNodeId: string
+    expectedVersion: number
+    node: Omit<import('@loom-studio/application-data').PromptResourceNodeDraft, 'id'>
+  }) => Promise<{ nodeId: string; version: number; changesetId: string }>
+  copyPromptResourceNode?: (input: {
+    resourceId: string
+    sourceNodeId: string
+    parentNodeId: string
+    expectedVersion: number
+    name?: string
+  }) => Promise<{ nodeId: string; nodeCount: number; version: number; changesetId: string }>
+  duplicatePromptResource?: (input: {
+    resourceId: string
+    expectedVersion: number
+    name?: string
+  }) => Promise<{ resourceId: string; label: string; version: number; changesetId: string }>
   promptResources?: PromptResourceStore
   workspaceResourceAccess?: boolean
   mutatePromptResource?: (input: {
@@ -142,6 +192,13 @@ export type ToolExecutionScope = {
       revisionId: string
       value: JsonObject
     }>
+    write?(input: {
+      target: { scope: 'global' } | { scope: 'timeline'; timelineId: string; branchId: string }
+      pointer: string
+      expectedRevisionId: string
+      value: JsonValue
+      idempotencyKey: string
+    }): Promise<{ revisionId: string; changesetId?: string }>
     update(input: {
       target: { scope: 'global' } | { scope: 'timeline'; timelineId: string; branchId: string }
       expectedRevisionId: string

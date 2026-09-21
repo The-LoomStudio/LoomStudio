@@ -25,12 +25,14 @@ import { useStudioNavigation } from '../pages/studio/model/use-studio-navigation
 import { useStudioUiState } from './use-studio-ui-state.js'
 import { useStudioDerivedState } from './use-studio-derived-state.js'
 import { StudioResourcePanels } from './studio-resource-panels.js'
+import { ResourceReferenceDialog } from '../features/resource-references/resource-reference-dialog.js'
 import { createStudioPanels } from './studio-panel-registry.js'
 import { preloadStudioPanel } from './studio-panel-modules.js'
 import { useEffect, useMemo, useRef, type CSSProperties } from 'react'
 import styles from './app.module.scss'
 import '../styles/global.css'
 import { useAppearanceStore } from '../widgets/settings-panel/appearance-store.js'
+import { applyEffectiveMotion, initializeMotionPreference, useEffectiveMotion } from '../shared/hooks/use-motion-preference.js'
 
 function initializeAppearancePreview() {
   const root = document.documentElement
@@ -47,7 +49,10 @@ function initializeAppearancePreview() {
 
 export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger }) {
   initializeAppearancePreview()
+  initializeMotionPreference()
   const appearance = useAppearanceStore()
+  const effectiveMotion = useEffectiveMotion()
+  useEffect(() => applyEffectiveMotion(effectiveMotion), [effectiveMotion])
   useEffect(() => {
     const root = document.documentElement
     root.dataset.loomMaterialPreview = appearance.material.mode
@@ -263,11 +268,12 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
       onCancelAgentRun={() => { void state.cancelAgentRun() }}
       onPauseAgentRun={() => { void state.pauseAgentRun() }}
       onResumeAgentRun={() => { void state.resumeAgentRun() }}
+      onApproveAgentMutation={(allow, reason) => { void state.approveAgentMutation(allow, reason) }}
       onToggleAgentPanel={() => uiState.setAgentPanelOpen(prev => !prev)}
       onUndo={() => {
         void state.undoEdit().then(focusHistoryAsset)
       }}
-      panelHeaders={{
+      panelHeaderMain={{
         character: <CharacterPanelHeader t={state.t} />,
         preset: (
           <PresetWorkbenchHeader
@@ -392,6 +398,12 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
   return (
     <>
       {studio}
+      <ResourceReferenceDialog api={state.api} onOpenEditor={target => {
+        if (target.panel === 'preset') uiState.setSelectedPresetId(target.resourceId)
+        else uiState.setResourceView('settings')
+        navigation.openResource(target.panel, target.resourceId, target.nodeId)
+        useStudioLayoutStore.getState().openAssetDetail(target.panel === 'preset' ? 'preset' : 'resources', assetWorkspaceId, target.nodeId)
+      }} />
       <RendererFocusSurface host={rendererHost} scope={{ kind: 'workspace', key: 'workspace' }} />
       <NotificationToaster label={state.t('notification.label')} />
     </>

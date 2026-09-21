@@ -57,6 +57,10 @@ export function readManifest(directory: string): ExtensionManifest {
   return parseExtensionManifest(JSON.parse(readFileSync(manifestPath, 'utf8')))
 }
 
+/**
+ * Validates extension package manifest against schema version 2.
+ * Invariant: Enforces strict identifier patterns, reserved namespace protection, relative icon boundaries, and bounded tag sets.
+ */
 export function validateManifest(manifest: Partial<ExtensionManifest>): void {
   if (manifest.manifestVersion !== 2) throw new Error('manifestVersion must be 2')
   if (!manifest.id) throw new Error('Manifest id is required')
@@ -350,6 +354,10 @@ export function serverModules(manifest: ExtensionManifest): Array<ExtensionModul
   ))
 }
 
+/**
+ * Aggregates declared contribution counts across extension capabilities.
+ * Used by activation diagnostics to verify actual runtime registrations against static contracts.
+ */
 export function contributionCounts(manifest: ExtensionModuleManifest): { rpc: number; documentTypes: number; events: number; aiProviders: number; agentToolHandlers: number } {
   return {
     rpc: manifest.contributes?.rpc?.length ?? 0,

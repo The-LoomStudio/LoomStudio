@@ -1,6 +1,6 @@
 # 项目全量文件地图 (Project Structure)
 
-Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要分为三大代码区域：`packages/` (内核与领域逻辑), `apps/` (独立应用程序), `official/` 与 `tests/fixtures/extensions/`（官方内容与测试扩展）。
+Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要分为核心代码区域：`packages/` (内核与领域逻辑), `apps/` (独立应用程序), `official/` 与 `tests/fixtures/extensions/`（官方内容与测试扩展），并由 `scripts/` 提供全仓工程治理工具，由 `data/` 承载唯一持久业务数据。
 
 本页提供全仓地图。开始具体任务时，先通过 [`workspace-development.md`](workspace-development.md) 进入目标 Workspace，再阅读该目录的本地 `README.md`；局部 README 负责入口和命令，本页不重复维护每个 Package 的完整文件清单。
 
@@ -128,11 +128,21 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
 
 ---
 
-## 🧪 实验沙箱: `apps/playground/`
+## 🧪 实验沙箱: `apps/playground/` 与本地草稿区 `drafts/`
 
-独立轻量命令行沙箱，用于在不启动全套 Client/Server 的情况下快速验证 Kernel 启动、Document CRUD、系统自省与 CodeAct 安全沙箱执行。
+实验与推演逻辑严格划分为两级形态，避免临时试错污染生产代码，也避免有价值的原型资产散失：
 
-局部开发入口：[`apps/playground/README.md`](../../apps/playground/README.md)。
+1. **`apps/playground/`（受管工程化实验应用）**
+   - 具备完整的 `package.json`、TypeScript 配置与模块划分。
+   - 专用于承载具有长期工程价值与交互推演的实验，例如当前重点推进的 **CodeAct 安全执行沙箱**（`apps/playground/src/codeact/`）、脱机 Kernel 自测与控制流推演。
+   - 局部开发入口：[`apps/playground/README.md`](../../apps/playground/README.md)。
+
+2. **根目录 `drafts/`（本地极速演算草稿区 / Scratchpad）**
+   - 完全被 `.gitignore` 忽略，作为开发者的纯本地草稿纸（原 `Playground/`）。
+   - 适用于单次脚本验证、快速对比与临时转储分析。
+   - **治理生命周期底线**：
+     - **及时转正**：原型成熟后须按架构权责归位（交互实验升格入 `apps/playground/`，测试夹具沉淀至对应扩展如 `official/extensions/st-data-compat/fixtures/`，静态资源进入 `public/`，生产算法合入对应包）。
+     - **即时清理**：验证完毕或已转正的测试脚本、动辄数十兆的历史转储目录（如 `storage-*`、`diff-recovery-*`），应及时删除，不作为常态资产滞留工作区。
 
 ---
 
@@ -187,9 +197,56 @@ Loom Studio 使用 `pnpm` workspace 构建了一个 Monorepo。本项目主要�
 
 ## 🧩 扩展内容
 
-- `official/extensions/st-data-compat/`: 官方 SillyTavern 数据兼容扩展。
+- `official/extensions/st-data-compat/`: 官方 SillyTavern 数据兼容扩展（专属测试夹具位于其 `fixtures/data/` 下）。
 - `tests/fixtures/extensions/echo/`: 测试扩展，覆盖 RPC、Macro、State、Text Pipeline 与 Renderer 贡献。
 - `tests/fixtures/extensions/weather-station/`: Server Extension 生命周期、事件与文档能力测试样本。
+
+---
+
+## 🛠️ 工程脚本: `scripts/`
+
+[`scripts/`](../../scripts/) 存放面向全仓的基础设施维护、数据迁移、开发沙箱重置、官方内容打包与架构/文档核查脚本。**严禁将未成形的随手试错代码散落在该目录**。
+
+### 核心脚本分类与常用命令
+
+1. **代码重构与工程治理**
+   - `pnpm refactor:migrate-imports` (`scripts/dev/migrate-imports.ts`): 在跨包重构或别名调整时，自动化扫描并迁移源码中的模块导入路径。
+   - `pnpm audit:unused` (`knip`): 静态分析未引用的孤儿导出、文件与无用依赖。
+
+2. **数据迁移与环境管理**
+   - `pnpm data:migrate` (`scripts/data/migrate-data-directory.ts`): 离线检查并迁移旧版存储目录至 `data/`。
+   - `pnpm data:reset` (`scripts/data/reset-dev-data.ts`): 在本地开发沙箱被脏数据污染时，自动备份现有数据后安全重置 `data/`。
+
+3. **官方内容与范例打包**
+   - `pnpm official:pack` (`scripts/pack/pack-official-content.ts`): 编译并打包官方 Starter 资源与内置卡片包。
+   - `pnpm example:character-status` (`scripts/pack/pack-character-status-example.ts`): 打包 Alice 角色状态与 Presentation 脚本卡片范例。
+
+4. **架构合规与健康检查**
+   - `pnpm check:workspace` (`scripts/checks/check-workspace.mjs`): 校验跨包依赖确定性、lockfile 与产物导出。
+   - `pnpm check:docs` (`scripts/checks/check-docs.mjs`): 校验 Markdown 内部相对路径、锚点与文档生命周期。
+   - `pnpm verify:server-extension` (`scripts/dev/verify-server-extension.ts`): 对服务端扩展的生命周期与错误隔离执行冒烟检查。
+
+### 脚本开发规范
+
+- **入口显式化**：通用脚本必须挂载至根 `package.json` 的 `scripts`，并提供清晰的命令行参数与帮助说明。
+- **环境自适应**：脚本严禁硬编码本地开发绝对路径，必须通过 `developmentDataEnvironment` 或环境变量（如 `LOOM_STUDIO_DATA_ROOT`）动态感知环境。
+- **及时清理孤儿**：阶段性、一次性的迁移脚本在任务彻底验收闭环后，必须连同其 package.json 入口一并移除，禁止长期闲置陈放。
+
+---
+
+## 💾 本地数据与开发沙箱: `data/` 与 `.loomstudio-dev/`
+
+系统遵循“持久业务数据”与“临时易失诊断/缓存”彻底解耦的原则（详见 [`architecture/data/local-storage-and-assets.md`](../architecture/data/local-storage-and-assets.md)）：
+
+1. **`data/`（单一真实数据根目录 / Single Source of Truth）**
+   - 承载开发态所有真实的持久化业务资产：SQLite 核心数据库 (`studio.sqlite`)、不可变二进制块 (`blobs/`)、角色工作区 (`characters/`) 以及扩展状态 (`extensions/`)。
+   - 受 `.gitignore` 保护。开发启动器（`pnpm dev:server`）通过 `LOOM_STUDIO_DATA_ROOT` 默认指向此目录。
+   - 严禁在此目录写入临时测试垃圾或运行日志。
+
+2. **`.loomstudio-dev/`（开发态易失缓存与测试沙箱）**
+   - 受 `.gitignore` 保护，由开发启动器通过 `LOOM_STUDIO_HOME` 注入作为辅助根。
+   - 仅用于存放本地运行的 JSONL 诊断日志（`.loomstudio-dev/logs/`）以及测试期间动态生成的临时扩展沙箱（如 `test-extensions/`）。
+   - **演进边界约束**：早期位于 `.loomstudio-dev/data/` 的历史 SQLite 库与旧版 `document-store.sqlite` 已于 9 月脱机迁移至 `data/` 并彻底下线清空，不得再向 `.loomstudio-dev` 写入任何持久业务数据。
 
 ---
 

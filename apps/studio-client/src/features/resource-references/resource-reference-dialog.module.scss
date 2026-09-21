@@ -1,0 +1,24 @@
+.dialog {
+  width: min(880px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  padding: 16px;
+  border: 1px solid var(--loom-color-border, #666);
+  border-radius: 8px;
+  color: var(--loom-color-text, #eee);
+  background: var(--loom-color-surface, #222);
+  &::backdrop { background: rgb(0 0 0 / 45%); }
+  header { display: flex; align-items: center; gap: 8px; }
+  strong { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 15px; }
+  button { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; color: inherit; background: transparent; border: 0; cursor: pointer; }
+  p { font-size: 13px; overflow-wrap: anywhere; }
+}
+.body {
+  max-height: calc(100dvh - 190px);
+  overflow: auto;
+  font-size: 13px;
+  line-height: 1.7;
+  > span { display: flex; min-width: 0; }
+  [data-selected='true'] { background: rgb(100 170 130 / 22%); }
+  code { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
+}
+.number { min-width: 4em; padding-right: 12px; text-align: right; opacity: .55; user-select: none; flex-shrink: 0; }

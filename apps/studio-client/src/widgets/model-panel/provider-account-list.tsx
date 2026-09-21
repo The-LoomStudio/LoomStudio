@@ -1,8 +1,8 @@
-import { ChevronRight, Copy, Plus, Trash2 } from 'lucide-react'
+import { Bot, ChevronRight, Copy, Plus, Server, Trash2, Wrench } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { ModelProfile, ProviderAccount } from '../../entities/index.js'
 import { mergeModelCatalog } from '../../features/provider-settings/model/model-catalog.js'
-import { resolveModelBrand, resolveProviderBrand } from '../../features/provider-settings/model/model-brand.js'
+import { resolveModelBrand, resolveProviderBrand, type ModelBrand } from '../../features/provider-settings/model/model-brand.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import { tryWriteClipboardText } from '../../shared/browser/clipboard.js'
 import { IconButton, Toggle } from '@loom-studio/ui'
@@ -56,6 +56,8 @@ function ProviderAccountItem(props: {
   t: Translator
 }) {
   const [query, setQuery] = useState('')
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [pendingModelIds, setPendingModelIds] = useState<Set<string>>(() => new Set())
   const [fetchedModels, setFetchedModels] = useState<string[]>([])
   const [modelCatalogState, setModelCatalogState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle')
   const [displayNameDraft, setDisplayNameDraft] = useState(props.account.displayName)
@@ -64,6 +66,7 @@ function ProviderAccountItem(props: {
   const [copied, setCopied] = useState(false)
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const copyRequestRef = useRef(0)
+  const pickerRef = useRef<HTMLDivElement>(null)
   const mountedRef = useRef(true)
   const baseUrl = typeof props.account.config.baseUrl === 'string' ? props.account.config.baseUrl : ''
   const catalog = mergeModelCatalog(props.models.map(profile => profile.providerModelId), fetchedModels, query)
@@ -79,6 +82,26 @@ function ProviderAccountItem(props: {
   }, [])
 
   useEffect(() => {
+    if (!menuOpen) return
+    function handleClickOutside(event: MouseEvent) {
+      if (pickerRef.current && !pickerRef.current.contains(event.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [menuOpen])
+
+  useEffect(() => {
     setBaseUrlDraft(baseUrl)
   }, [baseUrl])
 
@@ -88,14 +111,26 @@ function ProviderAccountItem(props: {
 
   function addModel(event: FormEvent) {
     event.preventDefault()
-    enableModel(query)
+    if (!query.trim()) return
+    void enableModel(query.trim())
+    setQuery('')
   }
 
-  function enableModel(modelId: string) {
+  async function enableModel(modelId: string) {
     const model = modelId.trim()
-    if (!model || props.models.some(profile => profile.providerModelId === model)) return
-    props.onCreateModel(props.account.id, model)
-    setQuery('')
+    if (!model || props.models.some(profile => profile.providerModelId === model) || pendingModelIds.has(model)) return
+    setPendingModelIds(prev => new Set(prev).add(model))
+    try {
+      await props.onCreateModel(props.account.id, model)
+    } finally {
+      if (mountedRef.current) {
+        setPendingModelIds(prev => {
+          const next = new Set(prev)
+          next.delete(model)
+          return next
+        })
+      }
+    }
   }
 
   async function loadModelCatalog() {
@@ -137,13 +172,63 @@ function ProviderAccountItem(props: {
     }, 1200)
   }
 
+  const uniqueModelBrands = Array.from(
+    new Set(
+      props.models
+        .map(profile => resolveModelBrand(profile.providerModelId))
+        .filter((brand): brand is ModelBrand => brand !== null),
+    ),
+  )
+  const hasGenericModel = props.models.some(profile => resolveModelBrand(profile.providerModelId) === null)
+
   return (
     <details className={styles.accountCard}>
-      <summary>
+      <summary className={styles.accountSummary}>
         <ChevronRight aria-hidden="true" />
-        <ModelBrandIcon brand={providerBrand} />
-        <span>{props.account.displayName}</span>
-        <small>{props.models.length}</small>
+        {fake ? (
+          <Wrench aria-hidden="true" className={styles.brandIconFallback} />
+        ) : (
+          <ModelBrandIcon brand={providerBrand} fallback={<Server aria-hidden="true" className={styles.brandIconFallback} />} />
+        )}
+        <span className={styles.accountDisplayName}>{props.account.displayName}</span>
+        <div className={styles.accountModelStack}>
+          {uniqueModelBrands.map((brand, index) => (
+            <span
+              key={brand}
+              className={styles.accountModelAvatar}
+              style={{ zIndex: index + 1 }}
+            >
+              <ModelBrandIcon brand={brand} className={styles.accountModelAvatarImg} />
+            </span>
+          ))}
+          {hasGenericModel ? (
+            <span
+              className={styles.accountModelAvatar}
+              style={{ zIndex: uniqueModelBrands.length + 1 }}
+            >
+              <Bot aria-hidden="true" className={styles.accountModelAvatarFallback} />
+            </span>
+          ) : null}
+          {props.models.length > 0 ? (
+            <span className={styles.accountModelCount}>{props.models.length}</span>
+          ) : null}
+        </div>
+        <div className={styles.accountSummaryActions}>
+          <button
+            aria-label={props.t('provider.deleteAccount')}
+            className={styles.accountSummaryDeleteButton}
+            disabled={props.busy}
+            title={props.t('provider.deleteAccount')}
+            type="button"
+            onClick={event => {
+              event.preventDefault()
+              event.stopPropagation()
+              props.onDelete(props.account.id)
+            }}
+          >
+            <Trash2 aria-hidden="true" />
+          </button>
+        </div>
       </summary>
       <div className={styles.accountBody}>
         <span className={styles.extensionId}>{props.account.providerExtensionId}</span>
@@ -203,7 +288,7 @@ function ProviderAccountItem(props: {
             {props.models.map(profile => (
               <div key={profile.id} className={styles.modelRow}>
                 <Toggle checked className={styles.enabledToggle} disabled label={`${profile.providerModelId} · ${props.t('provider.modelEnabled')}`} onChange={() => {}} />
-                <ModelBrandIcon brand={resolveModelBrand(profile.providerModelId) ?? providerBrand} />
+                <ModelBrandIcon brand={resolveModelBrand(profile.providerModelId)} fallback={<Bot aria-hidden="true" className={styles.brandIconFallback} />} />
                 <span>{profile.providerModelId}</span>
                 {!fake ? (
                   <IconButton size="small" variant="danger" disabled={props.busy} aria-label={props.t('provider.modelDelete')} onClick={() => props.onDeleteModel(profile.id)}>
@@ -214,40 +299,65 @@ function ProviderAccountItem(props: {
             ))}
           </div>
 
-          {!fake ? <div className={`${styles.modelPicker} loom-underlined-fields`}>
-            <form onSubmit={addModel}>
-              <input
-                aria-label={props.t('provider.modelSearchPlaceholder')}
-                placeholder={props.t('provider.modelSearchPlaceholder')}
-                value={query}
-                onChange={event => setQuery(event.target.value)}
-                onFocus={() => void loadModelCatalog()}
-              />
-              <button aria-label={props.t('provider.modelAdd')} disabled={!query.trim() || props.busy} title={props.t('provider.modelAdd')} type="submit">
-                <Plus aria-hidden="true" />
-              </button>
-            </form>
-            <div className={styles.modelMenu}>
-              {modelCatalogState === 'loading' ? <p className={styles.modelCatalogStatus}>{props.t('provider.modelsLoading')}</p> : null}
-              {modelCatalogState === 'error' ? <p className={styles.modelCatalogStatus}>{props.t('provider.modelsLoadFailed')}</p> : null}
-              {modelCatalogState === 'loaded' && catalog.every(item => item.enabled)
-                ? <p className={styles.modelCatalogStatus}>{props.t('provider.modelsNoMatches')}</p>
-                : null}
-              {catalog.filter(item => !item.enabled).map(item => (
-                <div key={item.id} className={styles.availableModel}>
-                  <Toggle checked={false} disabled={props.busy} label={item.id} onChange={() => enableModel(item.id)} />
-                  <ModelBrandIcon brand={resolveModelBrand(item.id) ?? providerBrand} />
-                  <span>{item.id}</span>
+          {!fake ? (
+            <div ref={pickerRef} className={`${styles.modelPicker} loom-underlined-fields`}>
+              <form onSubmit={addModel}>
+                <input
+                  aria-label={props.t('provider.modelSearchPlaceholder')}
+                  placeholder={props.t('provider.modelSearchPlaceholder')}
+                  value={query}
+                  onChange={event => {
+                    setQuery(event.target.value)
+                    if (!menuOpen) setMenuOpen(true)
+                  }}
+                  onFocus={() => {
+                    setMenuOpen(true)
+                    void loadModelCatalog()
+                  }}
+                />
+                <button aria-label={props.t('provider.modelAdd')} disabled={!query.trim() || props.busy} title={props.t('provider.modelAdd')} type="submit">
+                  <Plus aria-hidden="true" />
+                </button>
+              </form>
+              {menuOpen ? (
+                <div className={styles.modelMenu}>
+                  {modelCatalogState === 'loading' ? <p className={styles.modelCatalogStatus}>{props.t('provider.modelsLoading')}</p> : null}
+                  {modelCatalogState === 'error' ? <p className={styles.modelCatalogStatus}>{props.t('provider.modelsLoadFailed')}</p> : null}
+                  {modelCatalogState === 'loaded' && catalog.every(item => item.enabled)
+                    ? <p className={styles.modelCatalogStatus}>{props.t('provider.modelsNoMatches')}</p>
+                    : null}
+                  {catalog.filter(item => !item.enabled).map(item => {
+                    const isPending = pendingModelIds.has(item.id)
+                    return (
+                      <div
+                        key={item.id}
+                        className={styles.availableModel}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => void enableModel(item.id)}
+                        onKeyDown={event => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault()
+                            void enableModel(item.id)
+                          }
+                        }}
+                      >
+                        <Toggle
+                          checked={isPending}
+                          disabled={isPending}
+                          label={item.id}
+                          onChange={() => void enableModel(item.id)}
+                        />
+                        <ModelBrandIcon brand={resolveModelBrand(item.id)} fallback={<Bot aria-hidden="true" className={styles.brandIconFallback} />} />
+                        <span>{item.id}</span>
+                      </div>
+                    )
+                  })}
                 </div>
-              ))}
+              ) : null}
             </div>
-          </div> : null}
+          ) : null}
         </section>
-
-        <button className={styles.deleteProvider} disabled={props.busy} type="button" onClick={() => props.onDelete(props.account.id)}>
-          <Trash2 aria-hidden="true" />
-          <span>{props.t('provider.deleteAccount')}</span>
-        </button>
       </div>
     </details>
   )

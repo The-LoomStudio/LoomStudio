@@ -91,6 +91,8 @@ export {
   officialSearchPromptResourcesTool,
   officialReadPromptResourceTool,
   officialUpdatePromptResourceTool,
+  officialCodeActTool,
+  officialCodeActJsonTool,
 } from './agents/official-tools/index.js'
 export {
   createLoomContentScannerState,
@@ -147,6 +149,15 @@ export type {
   ToolResultPart,
   ToolTransport,
 } from './agents/tool-registry.js'
+export type {
+  VfsBinding,
+  VfsApprovalControl,
+  VfsEntry,
+  VfsMutationDecision,
+  VfsMutationPreview,
+  VfsReadObservation,
+  VfsStateTarget,
+} from './vfs/types.js'
 export {
   combineActivationGates,
   evaluateCondition,

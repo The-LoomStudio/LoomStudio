@@ -9,7 +9,8 @@ import {
   toStoredNodeDraft,
   toStoredResourceInput,
 } from '../prompt/prompt-resource-mapper.js'
-import { applyDefaultPromptProjection, normalizePromptResourceArtifact } from '../cards/workspace-codec.js'
+import { applyDefaultPromptProjection, isPromptResourceArtifact, normalizePromptResourceArtifact } from '../cards/workspace-codec.js'
+import defaultPresetTemplate from '../prompt/default-preset.json' with { type: 'json' }
 import type { PromptResourceNode } from '../cards/workspace-types.js'
 import { validateTextTransformRuleDraft, type TextTransformRuleDraft } from '../transforms/history-text.js'
 import { revertApplicationStateChangeset } from '../state/state.js'
@@ -565,28 +566,31 @@ function createEmptyPromptResourceContent(
   resourceKind: PromptResourceContent['resourceKind'],
   timestamp: string,
 ): PromptResourceContent {
+  if (resourceKind === 'preset') {
+    if (!isPromptResourceArtifact(defaultPresetTemplate)) throw new Error('Invalid bundled default preset')
+    const template = normalizePromptResourceArtifact(defaultPresetTemplate)
+    const rootNode = clonePromptResourceNode(template.rootNode, createId)
+    rootNode.label = name.trim()
+    return {
+      resourceKind,
+      rootNode,
+      macros: template.macros,
+      historyPolicy: 'persistent',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }
+  }
   const rootNode: PromptResourceContent['rootNode'] = {
     id: createId('prompt-node'),
     label: name.trim(),
-    meta: resourceKind === 'preset' ? 'Composition Preset' : resourceKind === 'setting' ? 'Setting Layer' : 'Prompt Resource',
+    meta: resourceKind === 'setting' ? 'Setting Layer' : 'Prompt Resource',
     category: resourceKind === 'history' || resourceKind === 'runtime' || resourceKind === 'prompt' ? undefined : resourceKind,
     kind: 'module',
     body: '',
-    ...(resourceKind === 'preset' ? {
-      children: [
-        { id: createId('prompt-node'), label: 'System Context', kind: 'virtual', capabilities: { targetAnchorId: '@chat.system' } },
-        { id: createId('prompt-node'), label: 'Tools Context', kind: 'virtual', capabilities: { targetAnchorId: '@chat.tools' } },
-        { id: createId('prompt-node'), label: 'Narrative History', kind: 'virtual', capabilities: { targetAnchorId: '@chat.narrative' } },
-        { id: createId('prompt-node'), label: 'Session History', kind: 'virtual', capabilities: { targetAnchorId: '@chat.session' } },
-        { id: createId('prompt-node'), label: 'Post Session Context', kind: 'virtual', capabilities: { targetAnchorId: '@chat.session.post' } },
-        { id: createId('prompt-node'), label: 'User Input', kind: 'virtual', capabilities: { targetAnchorId: '@chat.input' } },
-      ],
-    } : {}),
   }
   return {
     resourceKind,
     rootNode,
-    ...(resourceKind === 'preset' ? { historyPolicy: 'persistent' as const } : {}),
     createdAt: timestamp,
     updatedAt: timestamp,
   }

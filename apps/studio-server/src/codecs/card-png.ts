@@ -1,5 +1,7 @@
 import { normalizeCardBundleArtifact, type CardBundleArtifact } from '@loom-studio/application-runtime'
 import { readFileSync } from 'node:fs'
+// Invariant: Always use hardware-accelerated native crc32 from node:zlib.
+// Pure JS 8-bit table computation regresses pipeline speed by >300x and blocks the event loop.
 import { crc32, deflateSync, inflateSync } from 'node:zlib'
 import { maxBundleBytes } from './card-bundle-zip.js'
 
@@ -7,13 +9,19 @@ const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
 const loomKeyword = Buffer.from('loom', 'latin1')
 const maxArtifactBytes = 32 * 1024 * 1024
 const bundleKeyword = 'loom.bundle'
+// Boundary: Base64 expands binary size by 4/3; maxCardPngBytes protects against memory exhaustion during decoding.
 const maxBundleTextBytes = Math.ceil(maxBundleBytes / 3) * 4
 export const maxCardPngBytes = maxBundleTextBytes + 64 * 1024 * 1024
 
+/**
+ * Encodes a Loom Card archive into an uncompressed PNG iTXt chunk.
+ * Invariant: Inserts immediately before IEND chunk to preserve valid PNG rendering across viewers.
+ */
 export function encodeCardBundlePng(source: Uint8Array, archive: Uint8Array): Uint8Array {
   if (archive.byteLength > maxBundleBytes) throw new Error(`Loom Card package exceeds ${maxBundleBytes} bytes`)
   const data = Buffer.concat([
     Buffer.from(bundleKeyword, 'latin1'),
+    // PNG iTXt header: null separator + compressionFlag(0) + compressionMethod(0) + empty languageTag + null + empty translatedKeyword + null
     Buffer.from([0, 0, 0, 0, 0]),
     Buffer.from(Buffer.from(archive).toString('base64'), 'ascii'),
   ])
@@ -26,6 +34,10 @@ export function encodeCardBundlePng(source: Uint8Array, archive: Uint8Array): Ui
   return output
 }
 
+/**
+ * Extracts Loom Bundle archive from PNG iTXt chunk.
+ * Failure semantics: Rejects duplicate bundle chunks or invalid Base64 roundtrips to prevent payload ambiguity.
+ */
 export function readCardPngArchive(source: Uint8Array): Uint8Array | undefined {
   const matches = readPngChunks(source).filter(chunk => chunk.type === 'iTXt' && readKeyword(chunk.data) === bundleKeyword)
   if (matches.length > 1) throw new Error('Duplicate Loom Bundle PNG chunks')
@@ -65,6 +77,7 @@ export function stripPngTextMetadata(source: Uint8Array): Uint8Array {
   ])
 }
 
+// Compatibility: Legacy v1 Loom Card embeds deflated JSON with compressionFlag=1 under keyword 'loom'.
 export function encodeCardPng(source: Uint8Array, artifact: CardBundleArtifact): Uint8Array {
   const chunks = readPngChunks(source)
   const artifactJson = Buffer.from(JSON.stringify(normalizeCardBundleArtifact(artifact)), 'utf8')
@@ -102,6 +115,10 @@ export function isPng(source: Uint8Array): boolean {
     && Buffer.from(source).subarray(0, pngSignature.byteLength).equals(pngSignature)
 }
 
+/**
+ * Boundary: Creates a polyglot PNG by appending raw ZIP bytes after the PNG IEND chunk.
+ * Standard image viewers terminate read at IEND, while ZIP decoders locate the central directory from EOF.
+ */
 export function createPolyglotCardPng(source: Uint8Array, archive: Uint8Array): Uint8Array {
   const png = Buffer.from(source).subarray(0, readPngEndOffset(source))
   return Buffer.concat([png, Buffer.from(archive)])

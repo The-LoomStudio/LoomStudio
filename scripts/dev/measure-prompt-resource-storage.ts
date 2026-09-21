@@ -1,20 +1,20 @@
 import {
   createSqliteDataEngine,
   type SqliteDataEngine,
-} from '../packages/data-engine/src/index.js'
+} from '../../packages/data-engine/src/index.js'
 import {
   createSqliteDocumentStore,
   type SqliteDocumentStore,
-} from '../packages/document-store/src/index.js'
+} from '../../packages/document-store/src/index.js'
 import {
   createPromptResourceStore,
   type PromptResourceStore,
-} from '../packages/application-data/src/index.js'
+} from '../../packages/application-data/src/index.js'
 import { mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { performance } from 'node:perf_hooks'
-import type { JsonValue } from '../packages/shared/src/index.js'
+import type { JsonValue } from '../../packages/shared/src/index.js'
 
 const SETTING_ENTRY_COUNT = 500
 const PRESET_ENTRY_COUNT = 100

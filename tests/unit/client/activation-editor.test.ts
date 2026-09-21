@@ -47,14 +47,14 @@ describe('context asset activation editor model', () => {
   it('normalizes keyword activation input', () => {
     const draft = updateActivationDraft(readActivationDraft(node('entry', 'setting')), {
       mode: 'keyword',
-      keywords: ' 雨, 镜市, 雨, ,地下 ',
+      keywords: ' 雨，镜市, 雨， ,地下 \n 暗巷 ',
     })
     const update = buildActivationUpdate({ node: node('entry', 'setting'), draft })
 
-    expect(normalizeKeywords(draft.keywords)).toEqual(['雨', '镜市', '地下'])
+    expect(normalizeKeywords(draft.keywords)).toEqual(['雨', '镜市', '地下', '暗巷'])
     expect(update.capabilities?.activation).toEqual({
       kind: 'keyword',
-      keywords: ['雨', '镜市', '地下'],
+      keywords: ['雨', '镜市', '地下', '暗巷'],
     })
     expect(update.projection?.lifecycle).toBe('keyword')
   })

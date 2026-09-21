@@ -1,15 +1,15 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
-import { assertDevelopmentDataReady, developmentDataEnvironment } from './development-data-paths.mjs'
+import { assertDevelopmentDataReady, developmentDataEnvironment } from '../lib/development-data-paths.mjs'
 
 const target = process.argv[2]
 if (target !== 'server' && target !== 'client') {
-  console.error('Usage: node scripts/dev-with-packages.mjs <server|client>')
+  console.error('Usage: node scripts/dev/dev-with-packages.mjs <server|client>')
   process.exit(1)
 }
 
-const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 if (target === 'server') assertDevelopmentDataReady(repositoryRoot)
 const developmentEnvironment = developmentDataEnvironment(repositoryRoot)
 const initialBuild = spawnSync('pnpm', ['run', 'build:packages'], {
