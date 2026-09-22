@@ -7,21 +7,21 @@ import { AgentComposer } from '../widgets/agent-composer/agent-composer.js'
 import { NarrativeTimeline } from '../widgets/narrative-timeline/narrative-timeline.js'
 import { CharacterPanelHeader } from '../widgets/character-panel/character-panel-header.js'
 import { RecentPlayRail } from '../widgets/play-panel/recent-play-rail.js'
-import { createClientRendererHost } from '../features/extension-renderers/model/client-renderer-host.js'
+import { createClientRendererHost } from '../shared/extension-renderer-runtime/client-renderer-host.js'
 import { RendererFocusSurface } from '../features/extension-renderers/ui/renderer-focus-surface.js'
 import { RendererSurfaceHost } from '../features/extension-renderers/ui/renderer-surface-host.js'
 import { useClientExtensionRuntime } from '../features/extension-renderers/model/use-client-extension-runtime.js'
 import { listClientActions } from '../features/extension-renderers/model/client-actions.js'
 import { ClientActionIcon } from '../features/extension-renderers/ui/client-action-icon.js'
 import { createLoomScriptRendererRuntime, type LoomScriptInputProjection, type LoomScriptRendererContribution } from '../features/loom-scripts/runtime/index.js'
-import type { ClientRendererScope } from '../features/extension-renderers/model/client-renderer-host.js'
+import type { ClientRendererScope } from '../shared/extension-renderer-runtime/client-renderer-host.js'
 
 import { NotificationToaster } from '../shared/ui/notification-toaster/notification-toaster.js'
 import type { StudioApi } from '../shared/api/studio-api.js'
 import { toast } from 'sonner'
 import { hasCompleteProviderAccount } from '../features/provider-settings/model/provider-account-status.js'
-import { useStudioLayoutStore, useStudioPanelStore } from '../pages/studio/model/studio-layout-store.js'
-import { useStudioNavigation } from '../pages/studio/model/use-studio-navigation.js'
+import { useStudioLayoutStore, useStudioPanelStore } from '../shared/studio-shell/studio-layout-store.js'
+import { useStudioNavigation } from '../shared/studio-shell/use-studio-navigation.js'
 import { useStudioUiState } from './use-studio-ui-state.js'
 import { useStudioDerivedState } from './use-studio-derived-state.js'
 import { StudioResourcePanels } from './studio-resource-panels.js'
@@ -31,7 +31,7 @@ import { preloadStudioPanel } from './studio-panel-modules.js'
 import { useEffect, useMemo, useRef, type CSSProperties } from 'react'
 import styles from './app.module.scss'
 import '../styles/global.css'
-import { useAppearanceStore } from '../widgets/settings-panel/appearance-store.js'
+import { useAppearanceStore } from '../shared/studio-shell/appearance-store.js'
 import { applyEffectiveMotion, initializeMotionPreference, useEffectiveMotion } from '../shared/hooks/use-motion-preference.js'
 
 function initializeAppearancePreview() {
@@ -47,7 +47,7 @@ function initializeAppearancePreview() {
   }
 }
 
-export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger }) {
+export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger; extensionLogger: Logger }) {
   initializeAppearancePreview()
   initializeMotionPreference()
   const appearance = useAppearanceStore()
@@ -69,7 +69,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger 
   }, [appearance.background, appearance.canvasWidth, appearance.material])
   const state = useStudioState(props.transportLogger)
   const rendererHost = useMemo(() => createClientRendererHost(), [])
-  const clientExtensions = useClientExtensionRuntime({ api: state.clientExtensionApi, rendererHost })
+  const clientExtensions = useClientExtensionRuntime({ api: state.clientExtensionApi, rendererHost, logger: props.extensionLogger, clientLogs: props.clientLogs })
   const uiState = useStudioUiState()
   const timelineRouteRequestRef = useRef(0)
   const navigation = useStudioNavigation()

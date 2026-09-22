@@ -2,13 +2,13 @@ import type { ReactNode } from 'react'
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import type { ClientNodeDisplayProjectionContext } from '@loom-studio/extension-sdk'
-import type { ClientRendererHost, ClientRendererRegistration } from '../model/client-renderer-host.js'
+import type { ClientRendererHost, ClientRendererRegistration } from '../../../shared/extension-renderer-runtime/client-renderer-host.js'
 import {
   resolveNodeRenderMounts,
   type ProjectedNodeRenderMount,
   type ResolvedInlineNodeRenderMount,
 } from '../model/node-render-mount.js'
-import { rendererContributionKey } from '../model/renderer-registry.js'
+import { rendererContributionKey } from '../../../shared/extension-renderer-runtime/renderer-registry.js'
 import { RendererInstanceRoot } from './renderer-surface-host.js'
 import styles from './renderer-node-mount-host.module.scss'
 

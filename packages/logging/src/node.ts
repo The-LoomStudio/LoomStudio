@@ -2,6 +2,7 @@ import { createWriteStream, type WriteStream } from 'node:fs'
 import { mkdir, readdir, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { LogRecord, LogSink } from './types.js'
+export { createJsonlLogReader } from './jsonl-reader.js'
 
 const defaultMaxFileBytes = 10 * 1024 * 1024
 const defaultMaxTotalBytes = 100 * 1024 * 1024

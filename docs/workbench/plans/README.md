@@ -22,7 +22,7 @@
 | [`ui/prompt-resource-diff-mode-v0.md`](./ui/prompt-resource-diff-mode-v0.md)                 | 延期规划     | PromptResource Revision 差异对比与 Tokenizer 合同                       |
 | [`ui/provider-account-health-plan.md`](./ui/provider-account-health-plan.md)                 | 延期规划     | Provider Account 健康检查与连接状态探测                                 |
 | [`ui/provider-model-brand-icons-plan.md`](./ui/provider-model-brand-icons-plan.md)           | 前端 Spike 已完成 | 静态品牌资产已接入；`iconKey` 数据合同待定 |
-| [`log-plan/README.md`](./log-plan/README.md)                                                 | 基础已实现   | 历史日志高级过滤、实时订阅与通知系统                                    |
+| [`log-plan/README.md`](./log-plan/README.md)                                                 | Completed / 基线 Closing | 扩展平台、历史搜索、复制和 URI 已接线；诊断助手延后为独立方向 |
 
 ---
 
@@ -61,3 +61,7 @@
 - [`application-runtime-modularization-plan.md`](../../archive/plans/application-runtime-modularization-plan.md) — Runtime facade 与领域模块边界已落地
 - [`extension-data-and-portable-payload-foundation-plan.md`](../../archive/plans/extension-data-and-portable-payload-foundation-plan.md) — Phase 1—5 完成；后续 Renderer / Job / GC 保持开放
 - [`state-entity-reference-v1-plan.md`](../../archive/plans/state-entity-reference-v1-plan.md) — State v1 核心完成并晋升 Architecture；独立 Artifact 与运行引用检查转入 Workbench Issue
+
+本次归档（2026-09-22）：
+
+- [`log-platform-consumption-plan.md`](../../archive/plans/log-platform-consumption-plan.md) — 历史 JSONL 搜索、扩展统一日志接入、一键查看、诊断复制与实体 URI 已交付；原生诊断助手 P6 延后为独立后续方向

@@ -64,6 +64,47 @@ describe('PromptResourceStore', () => {
     engine.close()
   })
 
+  it('enforces resource ownership, parent ownership, and root identity in SQLite', async () => {
+    const { engine, store } = createStore()
+    const resource = await store.createResource({ actor, resourceKind: 'setting', rootNode: createSmallTree() })
+    const other = await store.createResource({ actor, id: 'other-resource', resourceKind: 'setting', rootNode: createSmallTree('other-root', 'other') })
+    const insertNode = engine.database.prepare(`
+      INSERT INTO prompt_resource_nodes (
+        id, resource_id, parent_id, order_index, kind, label, extra_json, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+
+    expect(() => insertNode.run(
+      'orphan-node',
+      'missing-resource',
+      'missing-parent',
+      0,
+      'entry',
+      'Orphan',
+      '{}',
+      '2026-08-12T00:00:00.000Z',
+      '2026-08-12T00:00:00.000Z',
+    )).toThrow(/FOREIGN KEY constraint failed/)
+
+    expect(() => insertNode.run(
+      'foreign-parent',
+      resource.resource.id,
+      other.resource.rootNodeId,
+      0,
+      'entry',
+      'Foreign parent',
+      '{}',
+      '2026-08-12T00:00:00.000Z',
+      '2026-08-12T00:00:00.000Z',
+    )).toThrow(/FOREIGN KEY constraint failed/)
+
+    expect(() => engine.database
+      .prepare('UPDATE prompt_resources SET root_node_id = ? WHERE id = ?')
+      .run(other.resource.rootNodeId, resource.resource.id))
+      .toThrow(/FOREIGN KEY constraint failed/)
+    engine.close()
+  })
+
   it('validates ownership, root rules, cycles, and failed batches before writing', async () => {
     const { engine, store } = createStore()
     const resource = await store.createResource({ actor, resourceKind: 'setting', rootNode: createSmallTree() })

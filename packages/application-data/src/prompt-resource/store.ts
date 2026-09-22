@@ -21,6 +21,7 @@ import {
   migrateVersionTwo,
   migrateVersionThree,
   migrateVersionFour,
+  assertPromptResourceSchema,
   migrationNamespace,
 } from './schema.js'
 import {
@@ -54,6 +55,7 @@ export function createPromptResourceStore(options: PromptResourceStoreOptions): 
     ],
   })
   const database = engine.database
+  assertPromptResourceSchema(database)
 
   function transaction(tx: SqliteDataTransaction): PromptResourceTransaction {
     return {

@@ -5,7 +5,7 @@ import type {
   SqliteDocumentStore,
   WriteDocumentResult,
 } from '@loom-studio/document-store'
-import type { Logger } from '@loom-studio/logging'
+import { readLogFailure, type Logger } from '@loom-studio/logging'
 import type { JsonObject } from '@loom-studio/shared'
 
 export function withDocumentStoreLogging(documents: DocumentStore, logger: Logger): DocumentStore {
@@ -86,11 +86,14 @@ async function observe<T>(
 }
 
 function logFailed(logger: Logger, data: JsonObject, error: unknown): void {
-  logger.error('Document store operation failed', {
+  const failure = readLogFailure(error)
+  logger.error(`Document ${String(data.operation)} failed · ${failure.failureReason}`, {
     event: 'document.operation.failed',
     data: {
       ...data,
-      failureType: error instanceof Error ? error.name : 'UnknownError',
+      outcome: 'failed',
+      detail: `Document ${String(data.operation)} operation failed`,
+      ...failure,
     },
   })
 }
@@ -121,13 +124,25 @@ function logCommitted(logger: Logger, change: {
   callId?: string
   parentCallId?: string
 }): void {
-  logger.info('Document changeset committed', {
+  const operationTypes = [...new Set(change.operations.map(operation => operation.type))]
+  const operationCategories = [...new Set(change.operations
+    .map(operation => `${operation.kind} ${operation.type}`)
+  )]
+  const visibleCategories = operationCategories.slice(0, 3)
+  const remainingCategoryCount = operationCategories.length - visibleCategories.length
+  const operationDetail = visibleCategories.length === 0
+    ? 'none'
+    : `${visibleCategories.join(', ')}${remainingCategoryCount > 0 ? ` · ${remainingCategoryCount} more categories` : ''}`
+  logger.info(`Document changeset committed · ${change.operations.length} operation${change.operations.length === 1 ? '' : 's'}`, {
     event: 'document.changeset.committed',
     data: {
       changesetId: change.changesetId,
       operationCount: change.operations.length,
+      operationTypes,
+      outcome: 'completed',
+      detail: `${change.operations.length} operation${change.operations.length === 1 ? '' : 's'} · ${operationDetail}`,
       ...(change.actor ? { actor: change.actor } : {}),
-      ...(change.reason ? { reason: change.reason } : {}),
+      ...(readSafeOperationReason(change.reason) ? { reason: readSafeOperationReason(change.reason) } : {}),
       operations: change.operations.map(operation => ({
         kind: operation.kind,
         documentId: operation.documentId,
@@ -152,8 +167,85 @@ function failureData(
   return {
     operation,
     ...(actor ? { actor } : {}),
-    ...(reason ? { reason } : {}),
+    ...(readSafeOperationReason(reason) ? { reason: readSafeOperationReason(reason) } : {}),
     ...(documentId ? { documentId } : {}),
     ...(documentType ? { documentType } : {}),
   }
+}
+
+const knownApplicationOperationReasons = new Set([
+  'application.applyCardDirectoryState',
+  'application.applyStateMutation',
+  'application.appendAgentTranscriptEntries',
+  'application.codeact.configure',
+  'application.codeact.copy',
+  'application.codeact.create',
+  'application.codeact.delete',
+  'application.codeact.move',
+  'application.codeact.write',
+  'application.createCard',
+  'application.createAgentSession',
+  'application.createNarrativeTimeline',
+  'application.createLoomScriptMount',
+  'application.createPromptResource',
+  'application.createPortableExtensionPayload',
+  'application.createPromptResourceAsset',
+  'application.deleteAgentSession',
+  'application.deleteCards',
+  'application.deleteNarrativeTimeline',
+  'application.deletePromptResource',
+  'application.deletePromptResourceAsset',
+  'application.deletePortableExtensionPayload',
+  'application.deleteStateDefinition',
+  'application.deleteTextExtractor',
+  'application.deleteTextPipelineOverride',
+  'application.deleteTextTransformRule',
+  'application.duplicatePromptResource',
+  'application.forkNarrativeBranch',
+  'application.importCardBundle',
+  'application.importCardBundle.sourceArtifact',
+  'application.importCardPng.media',
+  'application.importExtensionPackageResources',
+  'application.importLoomCard.media',
+  'application.importLoomScript',
+  'application.importPromptResource',
+  'application.importPromptResource.textTransformRules',
+  'application.importTimelineArchive',
+  'application.importTimelineArchive.pendingParticipants',
+  'application.initializeGlobalState',
+  'application.initializePromptResources',
+  'application.installOfficialContent',
+  'application.invokeAgentTurn',
+  'application.invokeAgentTurn.narrative',
+  'application.movePromptResourceAsset',
+  'application.removeExtensionPackageResources',
+  'application.removeObsoleteBuiltinAgentTools',
+  'application.replaceCardPortableExtensionPayloads',
+  'application.replacePresetToolMounts',
+  'application.replaceSettingMounts',
+  'application.revertChangeset',
+  'application.revertPromptResourceChangeset',
+  'application.revertStateChangeset',
+  'application.switchNarrativeBranch',
+  'application.tool.appendNarrative',
+  'application.tool.editNarrative',
+  'application.tool.updatePromptResource',
+  'application.updateAgentSession',
+  'application.updateCard',
+  'application.updateCardPromptResources',
+  'application.updateLoomScript',
+  'application.updateLoomScriptMount',
+  'application.updateNarrativeTimeline',
+  'application.updatePortableExtensionPayload',
+  'application.updatePromptResourceAssets',
+  'application.updatePromptResourceMacros',
+  'application.upsertExtensionConfig',
+  'application.upsertStateDefinition',
+  'application.upsertTextExtractor',
+  'application.upsertTextPipelineOverride',
+  'application.upsertTextTransformRule',
+])
+
+function readSafeOperationReason(reason: string | undefined): string | undefined {
+  return reason !== undefined && knownApplicationOperationReasons.has(reason) ? reason : undefined
 }

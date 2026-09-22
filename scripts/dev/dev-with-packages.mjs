@@ -33,7 +33,7 @@ const processes = [
   start('studio-packages', ['exec', 'tsc', '-b', 'tsconfig.packages.json', '--watch', '--preserveWatchOutput']),
   ...(target === 'server' ? [start('the-world-client', ['--dir', 'official/extensions/the-world', 'exec', 'esbuild', 'src/client/index.js', '--bundle', '--format=esm', '--platform=browser', '--target=es2022', '--outfile=dist/client.js', '--watch=forever'])] : []),
   target === 'server'
-    ? start('studio-server', ['exec', 'tsx', 'watch', '--include', 'packages/**/dist/**/*', '--include', 'official/**', '--include', 'tests/fixtures/extensions/**/dist/**/*', 'apps/studio-server/src/main.ts'])
+    ? start('studio-server', ['exec', 'tsx', 'watch', '--include', 'packages/**/dist/**/*', '--include', 'official/**', '--include', 'tests/fixtures/extensions/**/dist/**/*', '--exclude', '**/*.tsbuildinfo', 'apps/studio-server/src/main.ts'])
     : start('studio-client', ['exec', 'vite', '--config', 'apps/studio-client/vite.config.ts']),
 ]
 

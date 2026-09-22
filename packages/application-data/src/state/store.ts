@@ -72,6 +72,7 @@ export function createStateStore(options: CreateStateStoreOptions): StateStore {
       { version: 2, migrate: migrateVersionTwo },
     ],
   })
+  assertStateSchema(engine.database)
 
   function transaction(tx: SqliteDataTransaction): StateTransaction {
     const { database } = tx
@@ -528,7 +529,8 @@ function migrateVersionOne(database: DatabaseSync): void {
       updated_at TEXT NOT NULL,
       deleted_at TEXT,
       UNIQUE(kind, owner_id),
-      CHECK (kind = 'global' OR head_revision_id IS NULL)
+      CHECK (kind = 'global' OR head_revision_id IS NULL),
+      FOREIGN KEY(head_revision_id) REFERENCES state_revisions(id)
     );
 
     CREATE TABLE state_revisions (
@@ -596,6 +598,21 @@ function migrateVersionTwo(database: DatabaseSync): void {
     CREATE INDEX idx_state_revisions_parent
       ON state_revisions(parent_revision_id);
   `)
+}
+
+function assertStateSchema(database: DatabaseSync): void {
+  const foreignKeys = database.prepare("PRAGMA foreign_key_list('state_scopes')").all() as Array<{ table?: string; from?: string; to?: string }>
+  const hasHeadForeignKey = foreignKeys.some(foreignKey =>
+    foreignKey.table === 'state_revisions'
+    && foreignKey.from === 'head_revision_id'
+    && foreignKey.to === 'id')
+  if (!hasHeadForeignKey) {
+    throw new StateStoreError('state.sqlite_schema_invalid', 'State SQLite schema is missing the global head foreign key')
+  }
+  const violations = database.prepare('PRAGMA foreign_key_check').all()
+  if (violations.length > 0) {
+    throw new StateStoreError('state.sqlite_schema_invalid', `State SQLite schema contains ${violations.length} foreign key violations`)
+  }
 }
 
 function validateScopeInput(input: CreateStateScopeInput): void {

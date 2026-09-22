@@ -1,5 +1,5 @@
 import { memo, Suspense, useEffect, useState, type ReactNode } from 'react'
-import { STUDIO_PANEL_IDS, type StudioPanelId } from './model/studio-layout-store.js'
+import { STUDIO_PANEL_IDS, type StudioPanelId } from '../../shared/studio-shell/studio-layout-store.js'
 import { SkeletonText } from '@loom-studio/ui'
 import styles from './studio-page.module.scss'
 

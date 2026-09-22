@@ -9,6 +9,11 @@ export type LogQuery = {
   instanceId?: string
   since?: string
   until?: string
+  text?: string
+  event?: string
+  runId?: string
+  packageId?: string
+  moduleId?: string
 }
 
 export type LogGap = {
@@ -101,7 +106,7 @@ export function createMemoryLogSink(options: { capacity: number; cursorId?: stri
       for (const entry of entries) {
         if (entry.sequence <= afterSequence) continue
         scannedSequence = entry.sequence
-        if (!matchesQuery(entry.record, input)) continue
+        if (!matchesLogQuery(entry.record, input)) continue
         items.push(structuredClone(entry.record))
         if (items.length === input.limit) break
       }
@@ -132,13 +137,18 @@ function readEntries(records: Array<MemoryEntry | undefined>, start: number, siz
   return Array.from({ length: size }, (_, index) => records[(start + index) % capacity]!)
 }
 
-function matchesQuery(record: LogRecord, query: LogQuery): boolean {
+export function matchesLogQuery(record: LogRecord, query: Omit<LogQuery, 'limit' | 'cursor'>): boolean {
   if (query.levels && !query.levels.includes(record.level)) return false
   if (query.namespacePrefix && record.namespace !== query.namespacePrefix && !record.namespace.startsWith(`${query.namespacePrefix}.`)) return false
   if (query.service && record.service !== query.service) return false
   if (query.instanceId && record.instanceId !== query.instanceId) return false
   if (query.since && record.timestamp < query.since) return false
   if (query.until && record.timestamp > query.until) return false
+  if (query.event && record.event !== query.event) return false
+  if (query.runId && record.data?.runId !== query.runId) return false
+  if (query.packageId && record.extension?.packageId !== query.packageId) return false
+  if (query.moduleId && record.extension?.moduleId !== query.moduleId) return false
+  if (query.text && !JSON.stringify(record).toLowerCase().includes(query.text.toLowerCase())) return false
   return true
 }
 

@@ -107,4 +107,4 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 export function isJsonObject(value: unknown): value is JsonObject {
   return isRecord(value)
 }
-export { formatResourceReference, parseResourceReference, type ResourceReference } from './resource-reference.js'
+export { formatResourceReference, parseResourceReference, formatEntityReference, parseEntityReference, parseResourceLink, type ResourceReference, type EntityReference } from './resource-reference.js'

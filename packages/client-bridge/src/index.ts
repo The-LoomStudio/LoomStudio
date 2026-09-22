@@ -8,7 +8,7 @@ export type ClientBridgeOptions = {
 }
 
 export type ClientBridge = {
-  call<T = ClientJsonValue>(method: string, params?: ClientJsonValue): Promise<T>
+  call<T = ClientJsonValue>(method: string, params?: ClientJsonValue, options?: { signal?: AbortSignal }): Promise<T>
 }
 
 export function createClientBridge(options: ClientBridgeOptions): ClientBridge {
@@ -20,8 +20,8 @@ export function createClientBridge(options: ClientBridgeOptions): ClientBridge {
   }
 
   return {
-    call: async <T = ClientJsonValue>(method: string, params?: ClientJsonValue) => {
-      const response = await callRpc(fetchImpl, options.endpoint, nextRpcId(nextId++), method, params)
+    call: async <T = ClientJsonValue>(method: string, params?: ClientJsonValue, requestOptions?: { signal?: AbortSignal }) => {
+      const response = await callRpc(fetchImpl, options.endpoint, nextRpcId(nextId++), method, params, requestOptions?.signal)
 
       if (response.error) {
         throw new Error(response.error.message)
@@ -32,21 +32,22 @@ export function createClientBridge(options: ClientBridgeOptions): ClientBridge {
   }
 }
 
-function callRpc(fetchImpl: typeof fetch, endpoint: string, id: RpcId, method: string, params: ClientJsonValue | undefined): Promise<RpcResponse> {
+function callRpc(fetchImpl: typeof fetch, endpoint: string, id: RpcId, method: string, params: ClientJsonValue | undefined, signal?: AbortSignal): Promise<RpcResponse> {
   return sendRequest(fetchImpl, endpoint, {
     jsonrpc: '2.0',
     id,
     method,
     params,
-  })
+  }, signal)
 }
 
-async function sendRequest(fetchImpl: typeof fetch, endpoint: string, request: RpcRequest): Promise<RpcResponse> {
+async function sendRequest(fetchImpl: typeof fetch, endpoint: string, request: RpcRequest, signal?: AbortSignal): Promise<RpcResponse> {
   let response = await fetchImpl(endpoint, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(request),
     credentials: 'same-origin',
+    signal,
   })
 
   if (response.status === 401 && typeof globalThis.window !== 'undefined') {
@@ -54,6 +55,7 @@ async function sendRequest(fetchImpl: typeof fetch, endpoint: string, request: R
       const authRes = await fetchImpl('/auth/session', {
         method: 'POST',
         credentials: 'same-origin',
+        signal,
       })
       if (authRes.ok) {
         response = await fetchImpl(endpoint, {
@@ -61,9 +63,11 @@ async function sendRequest(fetchImpl: typeof fetch, endpoint: string, request: R
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(request),
           credentials: 'same-origin',
+          signal,
         })
       }
     } catch {
+      signal?.throwIfAborted()
       // Fall through to error handling
     }
   }

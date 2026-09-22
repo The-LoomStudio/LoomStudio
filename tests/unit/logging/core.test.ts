@@ -1,6 +1,6 @@
 import type { JsonObject } from '@loom-studio/shared'
 import { describe, expect, it, vi } from 'vitest'
-import { createConsoleLogSink, createMemoryLogSink, createRootLogger, type LogRecord, type LogSink } from '@loom-studio/logging'
+import { createConsoleLogSink, createMemoryLogSink, createRootLogger, readLogFailure, readLogPresentation, type LogRecord, type LogSink } from '@loom-studio/logging'
 
 describe('logging core', () => {
   it('creates normalized records with bound service and namespace', () => {
@@ -194,7 +194,6 @@ describe('console log sink', () => {
     expect(output.warn).toHaveBeenCalledWith(
       '[2026-07-22T08:00:00.000Z] WARN studio-client/ui.viewer',
       'Viewer buffer truncated',
-      { data: { dropped: 3 } },
     )
   })
 
@@ -224,5 +223,37 @@ describe('console log sink', () => {
     expect(memory.list().map(record => record.message)).toEqual(['RPC completed', 'Server started'])
     expect(output.info).toHaveBeenCalledTimes(1)
     expect(output.info.mock.calls[0]?.[1]).toBe('Server started')
+  })
+
+  it('keeps references out of compact console output but retains explicit details', () => {
+    const output = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+    const memory = createMemoryLogSink({ capacity: 2 })
+    const root = createRootLogger({ service: 'test', instanceId: 'test', sinks: [memory, createConsoleLogSink({ console: output })] })
+    root.child('runtime.provider').info('Response completed', {
+      data: { runId: 'full-reference', durationMs: 3063.99, detail: 'Step 2 · stop', usage: { inputTokens: 455 } },
+      callId: 'call-reference',
+    })
+    expect(JSON.stringify(output.info.mock.calls)).not.toContain('reference')
+    expect(output.info.mock.calls[0]?.[1]).toContain('3.06 s')
+    expect(output.info.mock.calls[0]?.[1]).toContain('tokens in 455')
+    expect(output.info.mock.calls[0]?.[1]).not.toContain('out 0')
+    const record = memory.list()[0]!
+    expect(record.callId).toBe('call-reference')
+    createConsoleLogSink({ console: output, verbose: true }).write(record)
+    expect(output.info.mock.calls[1]?.[2]).toMatchObject({ callId: 'call-reference' })
+  })
+})
+
+describe('safe operational metadata', () => {
+  it('classifies HTTP failures without copying payloads, codes or secret error text', () => {
+    const error = Object.assign(new Error('secret response'), { statusCode: 429, code: 'secret-code', responseBody: 'secret-body' })
+    expect(readLogFailure(error)).toEqual({ failureType: 'HttpError', failureReason: 'Rate limit exceeded (HTTP 429)', statusCode: 429 })
+    expect(readLogFailure(Object.assign(new Error('secret'), { name: 'secret-name' }))).toEqual({ failureType: 'Error', failureReason: 'Operation failed' })
+  })
+
+  it('never hides warnings or errors as technical details', () => {
+    const record: LogRecord = { timestamp: '', service: 'test', instanceId: 'test', namespace: 'transport.rpc', message: 'Failure', level: 'error', data: { technical: true } }
+    expect(readLogPresentation(record).technical).toBe(false)
+    expect(readLogPresentation({ ...record, level: 'info' }).technical).toBe(true)
   })
 })

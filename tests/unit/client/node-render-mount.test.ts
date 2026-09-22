@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { ClientRendererRegistration } from '../../../apps/studio-client/src/features/extension-renderers/model/client-renderer-host.js'
+import type { ClientRendererRegistration } from '../../../apps/studio-client/src/shared/extension-renderer-runtime/client-renderer-host.js'
 import { resolveNodeRenderMounts } from '../../../apps/studio-client/src/features/extension-renderers/model/node-render-mount.js'
 
 const registration: ClientRendererRegistration = {

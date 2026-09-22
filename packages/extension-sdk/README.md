@@ -28,6 +28,19 @@ export default defineServerExtension({
 
 SDK 不读取 Manifest 文件、不动态导入模块、不创建 Host、不执行 grant/lifecycle，也不暴露 Kernel、SQL connection 或内部 Registry。Server Module 当前仍是受信任的同进程 Node.js 代码；Capability contract 不等于恶意代码安全沙箱。
 
+日志与查询使用受 Host 控制的接口：
+
+```ts
+ctx.logger.info('legacy message', { phase: 'active' })
+ctx.logger.child('sync').log('info', 'Sync completed', {
+  event: 'sync.completed',
+  data: { count: 12 },
+})
+const page = await ctx.logs.query({ limit: 50, source: 'current' })
+```
+
+旧的 `info(message, data)` 仍把第二参数作为 data；结构化 event 使用 `log`。`ctx.logs.query` 只查询当前 Host 固定归属的扩展日志，不能读取任意 package、文件路径或保留的 `logs.*` RPC。
+
 ## SDK 与 Host
 
 ```text

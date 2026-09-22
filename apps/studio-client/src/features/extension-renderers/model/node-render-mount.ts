@@ -1,7 +1,7 @@
 import type { ClientNodeRenderMount, ClientTextSelector } from '@loom-studio/extension-sdk'
-import type { ClientRendererRegistration } from './client-renderer-host.js'
-import type { RendererRegistryDiagnostic } from './renderer-registry.js'
-import { rendererContributionKey } from './renderer-registry.js'
+import type { ClientRendererRegistration } from '../../../shared/extension-renderer-runtime/client-renderer-host.js'
+import type { RendererRegistryDiagnostic } from '../../../shared/extension-renderer-runtime/renderer-registry.js'
+import { rendererContributionKey } from '../../../shared/extension-renderer-runtime/renderer-registry.js'
 
 export type ProjectedNodeRenderMount = {
   registration: ClientRendererRegistration

@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import type { StudioPanelId } from './model/studio-layout-store.js'
+import type { StudioPanelId } from '../../shared/studio-shell/studio-layout-store.js'
 
 type UseStudioShortcutsOptions = {
   activePanel: StudioPanelId | null

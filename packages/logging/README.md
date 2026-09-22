@@ -8,7 +8,7 @@
 
 在前后端协同与插件化运行时中，散落各处的 `console.log` 会造成日志无法追踪调用链路、无法根据级别过滤、且容易引发内存泄漏或敏感信息打印。
 `@loom-studio/logging` 建立结构化观测底座：
-- **层级化派生**：支持通过 `logger.child({ module: 'rpc', correlationId })` 创建子 Logger，自动继承并聚合上下文元数据；
+- **层级化派生**：通过 `logger.child('rpc')` 派生 namespace；correlationId 等调用关联在每次日志的 fields 中传入；
 - **严格日志记录 (`LogRecord`)**：统一定义时间戳（ISO）、日志级别（`debug` / `info` / `warn` / `error`）、服务名、实例 ID 与结构化键值对；
 - **环境隔离设计**：
   - `.`（通用入口）：无任何 Node.js 私有依赖，可安全在浏览器 Client 与测试环境中运行；提供 `createConsoleLogSink` 与用于内存检索的 `createMemoryLogSink`；
@@ -33,10 +33,15 @@
 - `createRootLogger(options)`：创建根日志记录器；
 - `createConsoleLogSink(options)`：控制台 Sink 工厂；
 - `createMemoryLogSink(options)`：内存环形缓冲 Sink（支持分页查询与断流检测）；
+- `readLogFailure(error)`：仅提取已知安全错误分类与数值 HTTP 状态，不复制错误正文；
+- `readLogPresentation(record)` / `formatLogDuration(ms)`：跨端安全摘要字段、技术明细分类与耗时显示；
+- `readLogQuery` / `matchesLogQuery`：统一验证与精确过滤，支持 event、runId、扩展 package/module 和字面关键词；
+- `createExtensionLogWriter` / `queryExtensionLogs`：Host 内部使用，固定扩展来源、限制写入量与大小、限定自有查询；SDK 扩展使用注入的 `ctx.logger` / `ctx.logs`，不创建自己的 Root；
 - 核心类型：`Logger`、`RootLogger`、`LogLevel`、`LogRecord`、`LogSink`。
 
 ### Node.js 专属入口 (`@loom-studio/logging/node`)
 - `createJsonlFileSink(options)`：旋转 JSONL 文件持久化 Sink（支持 `maxFileBytes`、`maxTotalBytes`、`maxAgeDays`）；
+- `createJsonlLogReader({ directory })`：流式历史分页，必填时间范围、固定读取快照、绑定过滤器的 cursor、扫描预算与缺失报告；支持 AbortSignal，不改变 Sink 保留策略；
 - 核心类型：`JsonlFileSink`、`CreateJsonlFileSinkOptions`。
 
 ---
@@ -52,6 +57,8 @@ pnpm exec vitest run tests/unit/logging
 ```
 
 ---
+
+Console 默认紧凑输出；`verbose: true` 才展示完整结构化字段。`data.detail`、`durationMs`、`usage` 和 `technical` 的生产者约定见正式架构；未知字段留在原始记录，不自动铺满控制台。
 
 ## 正式文档
 

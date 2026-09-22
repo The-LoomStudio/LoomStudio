@@ -42,7 +42,7 @@ import {
   ConversationMessageChrome,
 } from '../../shared/ui/conversation-message-chrome/conversation-message-chrome.js'
 import { ChatComposer } from '../chat-composer/chat-composer.js'
-import type { ClientRendererHost } from '../../features/extension-renderers/model/client-renderer-host.js'
+import type { ClientRendererHost } from '../../shared/extension-renderer-runtime/client-renderer-host.js'
 import { RendererNodeMountHost } from '../../features/extension-renderers/ui/renderer-node-mount-host.js'
 import { useEffectiveMotion } from '../../shared/hooks/use-motion-preference.js'
 import styles from './agent-chat-panel.module.scss'

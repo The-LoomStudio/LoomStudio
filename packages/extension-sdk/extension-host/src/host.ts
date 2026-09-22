@@ -44,12 +44,15 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
         records.set(key, record)
         summaries.push(toSummary(record))
       }
-      options.logger?.info(`${manifest.id} discovered · v${manifest.version}`, {
+      options.logger?.info(`${manifest.id} discovered`, {
         event: 'extension.discovered',
+        extension: { packageId: manifest.id, runtime: 'server' },
         data: {
           packageId: manifest.id,
           version: manifest.version,
           serverModuleCount: summaries.length,
+          outcome: 'completed',
+          detail: `v${manifest.version} · ${summaries.length} server modules`,
         },
       })
       return summaries
@@ -82,11 +85,19 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
         record.state = 'disabled'
         options.logger?.info(`${key} disposed`, {
           event: 'extension.disposed',
+          extension: {
+            packageId,
+            moduleId,
+            runtime: 'server',
+            ...(record.instance ? { instanceId: record.instance.instanceId } : {}),
+          },
           data: {
             packageId,
             moduleId,
             ...(record.instance ? { instanceId: record.instance.instanceId } : {}),
             state: record.instance?.state ?? record.state,
+            outcome: 'completed',
+            detail: `state ${record.instance?.state ?? record.state}`,
           },
         })
       }
@@ -167,7 +178,16 @@ async function activateRecord(
   instance.state = 'activating'
   options.logger?.info(`${key} activation started`, {
     event: 'extension.activation.started',
-    data: { packageId, moduleId, instanceId, version: record.packageManifest.version, state: instance.state },
+    extension: { packageId, moduleId, instanceId, runtime: 'server' },
+    data: {
+      packageId,
+      moduleId,
+      instanceId,
+      version: record.packageManifest.version,
+      state: instance.state,
+      outcome: 'running',
+      detail: `v${record.packageManifest.version}`,
+    },
   })
 
   try {
@@ -179,8 +199,9 @@ async function activateRecord(
     instance.state = mismatched ? 'degraded' : 'active'
     record.state = instance.state
     const durationMs = elapsedMs(startedAt)
-    options.logger?.info(`${key} activated · ${record.state} · ${durationMs} ms`, {
+    options.logger?.info(`${key} activation completed`, {
       event: 'extension.activation.completed',
+      extension: { packageId, moduleId, instanceId, runtime: 'server' },
       data: {
         packageId,
         moduleId,
@@ -189,6 +210,8 @@ async function activateRecord(
         state: instance.state,
         durationMs,
         contributions: contributionCounts(record.moduleManifest),
+        outcome: 'completed',
+        detail: `state ${record.state}`,
       },
     })
   } catch (error) {
@@ -202,8 +225,9 @@ async function activateRecord(
     })
     await disposeFailedActivation(record, options)
     const durationMs = elapsedMs(startedAt)
-    options.logger?.error(`${key} activation failed after ${durationMs} ms`, {
+    options.logger?.error(`${key} activation failed`, {
       event: 'extension.activation.failed',
+      extension: { packageId, moduleId, instanceId, runtime: 'server' },
       data: {
         packageId,
         moduleId,
@@ -211,8 +235,9 @@ async function activateRecord(
         version: record.packageManifest.version,
         state: instance.state,
         durationMs,
-        failureType: error instanceof Error ? error.name : typeof error,
-        ...errorCode(error),
+        outcome: 'failed',
+        detail: `state ${instance.state}`,
+        failureType: readSafeFailureType(error),
       },
     })
   }
@@ -224,10 +249,10 @@ function elapsedMs(startedAt: number): number {
   return Number((performance.now() - startedAt).toFixed(2))
 }
 
-function errorCode(error: unknown): { errorCode?: string } {
-  return error instanceof Error && 'code' in error && typeof error.code === 'string'
-    ? { errorCode: error.code }
-    : {}
+const safeFailureTypes = new Set(['Error', 'TypeError', 'RangeError', 'SyntaxError', 'AbortError', 'TimeoutError'])
+
+function readSafeFailureType(error: unknown): string {
+  return error instanceof Error && safeFailureTypes.has(error.name) ? error.name : 'Error'
 }
 
 function compareRecords(left: ExtensionModuleRecord, right: ExtensionModuleRecord): number {

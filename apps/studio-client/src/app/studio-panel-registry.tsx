@@ -1,14 +1,14 @@
 import type { MemoryLogSink } from '@loom-studio/logging'
 import type { ReactNode } from 'react'
-import type { ClientRendererHost } from '../features/extension-renderers/model/client-renderer-host.js'
-import type { StudioPanelId } from '../pages/studio/model/studio-layout-store.js'
-import { useStudioLayoutStore, useStudioPanelStore } from '../pages/studio/model/studio-layout-store.js'
+import type { ClientRendererHost } from '../shared/extension-renderer-runtime/client-renderer-host.js'
+import type { StudioPanelId } from '../shared/studio-shell/studio-layout-store.js'
+import { useStudioLayoutStore, useStudioPanelStore } from '../shared/studio-shell/studio-layout-store.js'
 import { useClientExtensionRuntime } from '../features/extension-renderers/model/use-client-extension-runtime.js'
 import { toast } from 'sonner'
 import type { RegisteredClientBackground } from '@loom-studio/extension-sdk'
 import type { useStudioState } from './use-studio-state.js'
 import type { useStudioUiState } from './use-studio-ui-state.js'
-import type { useStudioNavigation } from '../pages/studio/model/use-studio-navigation.js'
+import type { useStudioNavigation } from '../shared/studio-shell/use-studio-navigation.js'
 import {
   LazyAgentPanel,
   LazyCharacterPanel,
@@ -284,7 +284,7 @@ export function createStudioPanels(input: {
         t={state.t}
       />
     ),
-    logs: active => <LazyLogViewer active={active} api={state.logsApi} clientLogs={clientLogs} t={state.t} />,
+    logs: active => <LazyLogViewer active={active} api={state.logsApi} clientLogs={clientLogs} extensions={clientExtensions.packages} t={state.t} />,
     extensions: () => (
       <LazyRendererWorkspacePanel
         key={state.endpoint}

@@ -1,6 +1,6 @@
 import { createContext, useContext, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import type { StudioPanelId } from './model/studio-layout-store.js'
+import type { StudioPanelId } from './studio-layout-store.js'
 
 type StudioWindowHeaderContextValue = {
   activePanel: StudioPanelId | null

@@ -74,7 +74,7 @@ async function startStudioClient(rootElement: HTMLElement): Promise<void> {
     systemLogger.info('Studio client started', { event: 'client.started' })
     const studio = (
       <QueryClientProvider client={queryClient}>
-        <App clientLogs={clientLogs} transportLogger={rootLogger.child('transport.rpc')} />
+        <App clientLogs={clientLogs} transportLogger={rootLogger.child('transport.rpc')} extensionLogger={rootLogger.child('extension.loader')} />
       </QueryClientProvider>
     )
     createRoot(rootElement).render(
@@ -88,6 +88,8 @@ async function startStudioClient(rootElement: HTMLElement): Promise<void> {
             <Route path="/studio/chat/:sessionId?/branch/:branchId" element={studio} />
             <Route path="/studio/chat/:sessionId?" element={studio} />
             <Route path="/studio/characters/:cardId?" element={studio} />
+            <Route path="/studio/resources/reference/:resourceId/node/:nodeId" element={studio} />
+            <Route path="/studio/presets/reference/:resourceId/node/:nodeId" element={studio} />
             <Route path="/studio/resources/:cardId?/:assetId?" element={studio} />
             <Route path="/studio/presets/:cardId?/:assetId?" element={studio} />
             <Route path="/studio/models" element={studio} />
@@ -95,6 +97,7 @@ async function startStudioClient(rootElement: HTMLElement): Promise<void> {
             <Route path="/studio/history" element={studio} />
             <Route path="/studio/debug" element={studio} />
             <Route path="/studio/logs" element={studio} />
+            <Route path="/studio/extensions" element={studio} />
             <Route path="/studio/settings" element={studio} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>

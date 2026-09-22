@@ -111,12 +111,15 @@ describe('studio client typed api', () => {
 
     const records = logs.list()
     expect(records).toHaveLength(1)
-    expect(records[0]?.message).toMatch(/^application\.updateCard failed after \d+(?:\.\d+)? ms$/)
+    expect(records[0]?.message).toBe('application.updateCard failed · Operation failed')
     expect(records[0]?.data).toMatchObject({
       method: 'application.updateCard',
       failureType: 'Error',
+      outcome: 'failed',
       errorCode: 'RPC_FAILED',
     })
+    expect(records[0]?.data?.durationMs).toEqual(expect.any(Number))
+    expect(records[0]?.data?.detail).toBe('application.updateCard failed · Operation failed')
     expect(JSON.stringify(records)).not.toContain('Private character')
     expect(JSON.stringify(records)).not.toContain('private server failure text')
   })

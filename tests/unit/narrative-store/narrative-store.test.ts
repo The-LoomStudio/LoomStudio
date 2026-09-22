@@ -127,6 +127,34 @@ describe('narrative store', () => {
     engine.close()
   })
 
+  it('enforces branch and node identity bindings in SQLite', async () => {
+    const { engine, store, actor } = createTestContext()
+    const first = await store.createTimeline({
+      actor,
+      stateRevisionId: 'state-first',
+      openingNodes: [{ body: { format: 'loom-markdown.v1', raw: 'first' } }],
+    })
+    const second = await store.createTimeline({
+      actor,
+      stateRevisionId: 'state-second',
+      openingNodes: [{ body: { format: 'loom-markdown.v1', raw: 'second' } }],
+    })
+
+    expect(() => engine.database
+      .prepare('UPDATE narrative_timelines SET active_branch_id = ? WHERE id = ?')
+      .run(second.branch.id, first.timeline.id))
+      .toThrow(/FOREIGN KEY constraint failed/)
+    expect(() => engine.database
+      .prepare('UPDATE narrative_branches SET head_node_id = ? WHERE id = ?')
+      .run(second.nodes[0]?.id, first.branch.id))
+      .toThrow(/FOREIGN KEY constraint failed/)
+    expect(() => engine.database
+      .prepare('UPDATE narrative_nodes SET parent_node_id = ? WHERE id = ?')
+      .run(second.nodes[0]?.id, first.nodes[0]?.id))
+      .toThrow(/FOREIGN KEY constraint failed/)
+    engine.close()
+  })
+
   it('rolls back an appended node and head update when the surrounding engine transaction fails', async () => {
     const { engine, store, actor } = createTestContext()
     const created = await store.createTimeline({

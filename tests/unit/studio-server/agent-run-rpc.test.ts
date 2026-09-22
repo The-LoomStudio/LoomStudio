@@ -3,6 +3,30 @@ import { describe, expect, it } from 'vitest'
 import { handleAgentsRpc } from '../../../apps/studio-server/src/rpc/handlers/application/agents.js'
 
 describe('application Agent Run RPC', () => {
+  it('forwards the macro inspection target using the runtime contract', async () => {
+    let received: unknown
+    const runtime = {
+      inspectMacros: async (input: unknown) => {
+        received = input
+        return { macroInspection: {} }
+      },
+    } as unknown as ApplicationRuntime
+
+    await handleAgentsRpc(runtime, 'application.inspectMacros', {
+      cardId: 'card-1',
+      presetId: 'preset-1',
+      timelineTarget: { timelineId: 'timeline-1', branchId: 'branch-1' },
+      macroSelections: { greeting: 'card:card-1' },
+    })
+
+    expect(received).toEqual({
+      cardId: 'card-1',
+      presetId: 'preset-1',
+      timelineTarget: { timelineId: 'timeline-1', branchId: 'branch-1' },
+      macroSelections: { greeting: 'card:card-1' },
+    })
+  })
+
   it('pauses a Run at a mutation preview until the client allows it', async () => {
     let approved = false
     const runtime = {

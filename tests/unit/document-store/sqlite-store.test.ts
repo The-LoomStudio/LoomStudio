@@ -166,6 +166,28 @@ describe('sqlite document store', () => {
     }
   })
 
+  it('enforces the document revision owner foreign key in SQLite', async () => {
+    const engine = createSqliteDataEngine({ filename: ':memory:' })
+    const store = createSqliteDocumentStore({ engine })
+    expect(() => engine.database.prepare(`
+      INSERT INTO document_revisions (
+        document_id, version, type, content_json, meta_json,
+        changeset_id, created_at, created_by_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      'missing-document',
+      1,
+      'example.note',
+      '{}',
+      '{}',
+      'changeset',
+      '2026-08-12T00:00:00.000Z',
+      '{}',
+    )).toThrow(/FOREIGN KEY constraint failed/)
+    await store.close()
+    await engine.close()
+  })
+
   it('persists current documents and revisions across store instances', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'loom-docstore-'))
     const filename = join(dir, 'store.sqlite')

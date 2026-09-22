@@ -4,7 +4,7 @@ import {
   sanitizeStudioLayout,
   useStudioLayoutStore,
   useStudioPanelStore,
-} from '../../../apps/studio-client/src/pages/studio/model/studio-layout-store.js'
+} from '../../../apps/studio-client/src/shared/studio-shell/studio-layout-store.js'
 
 describe('studio layout store', () => {
   const storedValues = new Map<string, string>()

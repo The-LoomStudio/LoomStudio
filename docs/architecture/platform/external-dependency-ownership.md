@@ -91,7 +91,7 @@ Schema 应成为该字段的类型来源；已有 Manifest 等专用 parser 不�
 
 - Client Provider 组装：[`apps/studio-client/src/main.tsx`](../../../apps/studio-client/src/main.tsx)
 - Prompt Resource Query 所有者：[`use-prompt-resource-state.ts`](../../../apps/studio-client/src/features/prompt-resources/model/use-prompt-resource-state.ts)
-- Zustand 布局状态：[`studio-layout-store.ts`](../../../apps/studio-client/src/pages/studio/model/studio-layout-store.ts)
+- Zustand 布局状态：[`studio-layout-store.ts`](../../../apps/studio-client/src/shared/studio-shell/studio-layout-store.ts)
 - 虚拟 FileTree：[`file-tree.tsx`](../../../apps/studio-client/src/shared/ui/file-tree/file-tree.tsx)
 - Shared Setting Mount Schema：[`prompt-resource-contracts.ts`](../../../packages/shared/src/prompt-resource-contracts.ts)
 - Client 构建与 Compiler 试点：[`vite.config.ts`](../../../apps/studio-client/vite.config.ts)

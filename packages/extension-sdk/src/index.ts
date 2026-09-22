@@ -7,8 +7,17 @@ import type {
 } from '@loom-studio/ai-gateway'
 import type { DiagnosticInput } from '@loom-studio/diagnostics'
 import type { DocumentRecord, ListDocumentsInput, WriteDocumentInput, WriteDocumentResult } from '@loom-studio/document-store'
+import type { ExtensionLogAccess, ExtensionLogWriter } from '@loom-studio/logging'
 import type { JsonObject, JsonValue, StateContribution } from '@loom-studio/shared'
 import type { StudioEvent } from '@loom-studio/transport'
+
+export type {
+  ExtensionLogAccess,
+  ExtensionLogFields,
+  ExtensionLogPage,
+  ExtensionLogQuery,
+  ExtensionLogWriter,
+} from '@loom-studio/logging'
 
 export type { JsonValue } from '@loom-studio/shared'
 export type { StateContribution } from '@loom-studio/shared'
@@ -492,12 +501,7 @@ export type ClientHistorySource =
   | { kind: 'narrative'; timelineId: string; branchId: string }
   | { kind: 'agent-session'; sessionId: string; headEntryId?: string }
 
-export type ClientExtensionLogger = {
-  debug(message: string, data?: JsonObject): void
-  info(message: string, data?: JsonObject): void
-  warn(message: string, data?: JsonObject): void
-  error(message: string, data?: JsonObject): void
-}
+export type ClientExtensionLogger = ExtensionLogWriter
 
 export type ClientBackgroundDefinition = {
   id: string
@@ -524,6 +528,7 @@ export type ClientExtensionActivationContext = {
   }
   signal: AbortSignal
   logger: ClientExtensionLogger
+  logs: ExtensionLogAccess
   commands: {
     register(commandId: string, handler: ClientCommandHandler): ExtensionRegistrationHandle
   }
@@ -856,12 +861,8 @@ export type ExtensionActivationContext = {
     displayName: string
     directory: string
   }
-  logger: {
-    debug(message: string, data?: JsonObject): void
-    info(message: string, data?: JsonObject): void
-    warn(message: string, data?: JsonObject): void
-    error(message: string, data?: JsonObject): void
-  }
+  logger: ExtensionLogWriter
+  logs: ExtensionLogAccess
   permissions: {
     events: {
       subscribe: readonly EventCapabilityCategory[]

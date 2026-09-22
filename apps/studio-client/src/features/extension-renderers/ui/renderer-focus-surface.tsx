@@ -1,6 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
-import type { ClientRendererHost, ClientRendererScope } from '../model/client-renderer-host.js'
+import type { ClientRendererHost, ClientRendererScope } from '../../../shared/extension-renderer-runtime/client-renderer-host.js'
 import { RendererSurfaceHost } from './renderer-surface-host.js'
 import styles from './renderer-focus-surface.module.scss'
 

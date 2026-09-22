@@ -12,7 +12,7 @@ import { LongTextEditor } from '../../shared/ui/long-text-editor/long-text-edito
 import { SkeletonText } from '@loom-studio/ui'
 import { ConversationMessageAction, ConversationMessageChrome, formatConversationTimestamp } from '../../shared/ui/conversation-message-chrome/conversation-message-chrome.js'
 import styles from './narrative-timeline.module.scss'
-import type { ClientRendererHost } from '../../features/extension-renderers/model/client-renderer-host.js'
+import type { ClientRendererHost } from '../../shared/extension-renderer-runtime/client-renderer-host.js'
 import { RendererNodeMountHost } from '../../features/extension-renderers/ui/renderer-node-mount-host.js'
 import { renderTemplateMacros, type MacroRenderContext } from '../../features/state-variables/model/macro-renderer.js'
 

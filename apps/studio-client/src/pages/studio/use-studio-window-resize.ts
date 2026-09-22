@@ -1,5 +1,5 @@
 import { useRef, useState, type KeyboardEvent, type PointerEvent, type RefObject } from 'react'
-import type { StudioPanelId } from './model/studio-layout-store.js'
+import type { StudioPanelId } from '../../shared/studio-shell/studio-layout-store.js'
 import {
   DEFAULT_WINDOW_RESIZE_CONSTRAINTS,
   readWindowResizeBounds,
@@ -7,7 +7,7 @@ import {
   type WindowResizeAxis,
   type WindowResizeConstraints,
   type WindowSize,
-} from './window-resize.js'
+} from '../../shared/studio-shell/window-resize.js'
 
 type WindowResizeSession = {
   axis: WindowResizeAxis

@@ -3,6 +3,8 @@ import type { ClientActionPlacement, ClientCommandDeclaration, RendererContribut
 import { ArrowDown, ArrowLeft, ArrowUp, Braces, Component, ExternalLink, FileSearch, Package, PackagePlus, Power, RefreshCw, SlidersHorizontal, TerminalSquare, Trash2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { buildStudioLogPath } from '../../../shared/studio-shell/studio-route.js'
 import { toast } from 'sonner'
 import type { ManagedExtensionModule, ManagedExtensionPackage, ModelProfile, ProviderModelSelection } from '../../../entities/index.js'
 import type { OfficialContentPackage } from '../../../entities/official-content.js'
@@ -11,9 +13,9 @@ import { downloadBase64 } from '../../../shared/browser/download.js'
 import { OfficialContentDetail } from './official-content-detail.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import type { ClientExtensionHost } from '../model/client-extension-host.js'
-import type { ClientRendererHost } from '../model/client-renderer-host.js'
+import type { ClientRendererHost } from '../../../shared/extension-renderer-runtime/client-renderer-host.js'
 import type { RendererSessionHost } from '../model/renderer-session.js'
-import { rendererContributionKey, rendererSurfacePolicies } from '../model/renderer-registry.js'
+import { rendererContributionKey, rendererSurfacePolicies } from '../../../shared/extension-renderer-runtime/renderer-registry.js'
 import { clientCommandKey, matchesClientActionCondition } from '../model/client-actions.js'
 import { ClientActionIcon } from './client-action-icon.js'
 import { RendererSurfaceHost } from './renderer-surface-host.js'
@@ -56,7 +58,13 @@ export function RendererWorkspacePanel(props: {
   useSyncExternalStore(props.host.subscribe, props.host.revision, props.host.revision)
   useSyncExternalStore(props.extensionHost.subscribe, props.extensionHost.revision, props.extensionHost.revision)
   useSyncExternalStore(props.sessionHost.subscribe, () => props.sessionHost.summaries().map(item => `${item.sessionId}:${item.state}`).join('|'), () => '')
-  const [selection, setSelection] = useState<ExtensionWorkspaceSelection | undefined>(() => props.packages[0] ? { kind: 'package', packageId: props.packages[0].packageId } : undefined)
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const [selection, setSelection] = useState<ExtensionWorkspaceSelection | undefined>(() => searchParams.get('packageId') || props.packages[0] ? { kind: 'package', packageId: searchParams.get('packageId') ?? props.packages[0]!.packageId } : undefined)
+  useEffect(() => {
+    const packageId = searchParams.get('packageId')
+    if (packageId) setSelection({ kind: 'package', packageId })
+  }, [searchParams])
   const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
   const [busyKey, setBusyKey] = useState<string>()
   const [officialPackages, setOfficialPackages] = useState<OfficialContentPackage[]>([])
@@ -279,6 +287,7 @@ export function RendererWorkspacePanel(props: {
               <header className={styles.packageHeader}>
                 <div><h3>{selected.displayName}</h3><code>{selected.packageId}@{selected.version}</code></div>
                 <div className={styles.actions}>
+                  <button type="button" onClick={() => navigate(buildStudioLogPath({ packageId: selected.packageId }))}><TerminalSquare aria-hidden="true" /><span>{props.t('logs.viewExtension')}</span></button>
                   {packageResourceCount(selected) > 0 ? (
                     <>
                       <button disabled={busyKey === `${selected.packageId}/resources`} type="button" onClick={() => void run(`${selected.packageId}/resources`, () => importResources(selected.packageId))}>

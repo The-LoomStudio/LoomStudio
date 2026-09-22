@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createClientRendererHost } from '../../../apps/studio-client/src/features/extension-renderers/model/client-renderer-host.js'
+import { createClientRendererHost } from '../../../apps/studio-client/src/shared/extension-renderer-runtime/client-renderer-host.js'
 import {
   createLoomScriptRendererRuntime,
   projectLoomScriptInputs,

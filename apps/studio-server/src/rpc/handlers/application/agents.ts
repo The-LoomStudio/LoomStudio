@@ -290,9 +290,9 @@ export async function handleAgentsRpc(
 
     case 'application.inspectMacros':
       return await runtime.inspectMacros({
-        agentProfileId: readString(params, 'agentProfileId'),
-        timelineId: readOptionalString(params, 'timelineId'),
-        branchId: readOptionalString(params, 'branchId'),
+        cardId: readOptionalString(params, 'cardId'),
+        presetId: readOptionalString(params, 'presetId'),
+        timelineTarget: readOptionalMacroTimelineTarget(params),
         macroSelections: readOptionalStringRecord(params, 'macroSelections'),
       }) as unknown as JsonValue
 

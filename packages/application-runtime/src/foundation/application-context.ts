@@ -22,6 +22,7 @@ export type ApplicationRuntimeContext = {
   documents: DocumentStore
   blobs?: BlobStorage
   logger?: Logger
+  runtimeLogger?: Logger
   narratives?: NarrativeStore
   promptResources: PromptResourceStore
   states: StateStore
@@ -56,6 +57,7 @@ export function createApplicationRuntimeContext(options: ApplicationRuntimeOptio
     documents: options.documents,
     blobs: options.blobs,
     logger: options.logger,
+    runtimeLogger: options.runtimeLogger,
     narratives: options.narratives,
     promptResources: options.promptResources,
     states: options.states ?? createStateStore({

@@ -1,6 +1,6 @@
 import type { AiGatewayCapabilityRegistry, ProfiledAiGateway } from '@loom-studio/ai-gateway'
 import type { ApplicationRuntime } from '@loom-studio/application-runtime'
-import type { LogReader } from '@loom-studio/logging'
+import type { LogReader, LogHistoryReader } from '@loom-studio/logging'
 import type { JsonValue } from '@loom-studio/shared'
 import { callApplicationRpc } from './handlers/application/index.js'
 import { callAiGatewayRpc } from './handlers/ai-gateway-rpc.js'
@@ -15,6 +15,7 @@ type RpcCallContext = {
   correlationId: string
   callId: string
   parentCallId?: string
+  signal?: AbortSignal
 }
 
 type KernelRpcCaller = {
@@ -37,6 +38,7 @@ export function createStudioRpcRouter(services: {
   aiGateway?: ProfiledAiGateway
   kernel: KernelRpcCaller
   logs?: LogReader
+  logHistory?: LogHistoryReader
   networkSettings?: NetworkSettingsStore
   officialContent?: { call(method: string, params: JsonValue | undefined, context: RpcCallContext): Promise<JsonValue> }
   resourceDirectories?: { call(method: string, params: JsonValue | undefined, context: RpcCallContext): Promise<JsonValue> }
@@ -105,7 +107,7 @@ export function createStudioRpcRouter(services: {
   if (services.logs) {
     routes.push({
       namespace: 'logs',
-      call: (method, params) => callLogsRpc(services.logs!, method, params),
+      call: (method, params, context) => callLogsRpc(services.logs!, method, params, services.logHistory, context.signal),
     })
   }
 

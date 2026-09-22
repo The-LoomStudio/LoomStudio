@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from 'react'
-import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore } from '../../pages/studio/model/studio-layout-store.js'
+import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore } from '../../shared/studio-shell/studio-layout-store.js'
 import { AssetWorkbenchLayout } from '../../shared/ui/asset-workbench-layout/asset-workbench-layout.js'
 import { PanelTabs } from '../../shared/ui/panel-tabs/index.js'
 import { normalizeSearchText } from '../../shared/lib/text.js'

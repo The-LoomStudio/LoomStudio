@@ -6,8 +6,8 @@ import type {
   RendererContributionDefinition,
 } from '@loom-studio/extension-sdk'
 import { isJsonObject, type JsonValue } from '@loom-studio/shared'
-import type { ClientRendererHost, ClientRendererHandle } from '../../extension-renderers/model/client-renderer-host.js'
-import { rendererContributionKey } from '../../extension-renderers/model/renderer-registry.js'
+import type { ClientRendererHost, ClientRendererHandle } from '../../../shared/extension-renderer-runtime/client-renderer-host.js'
+import { rendererContributionKey } from '../../../shared/extension-renderer-runtime/renderer-registry.js'
 import { mountLoomSandboxRenderer } from './sandbox-renderer-protocol.js'
 
 export type LoomScriptRendererContribution = {

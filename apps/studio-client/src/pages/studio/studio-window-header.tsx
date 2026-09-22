@@ -1,8 +1,8 @@
 import { ArrowLeft, ArrowRight, Columns2, FilePenLine, Maximize2, Minimize2 } from 'lucide-react'
 import type { ReactNode, RefCallback } from 'react'
 import type { Translator } from '../../shared/i18n/index.js'
-import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore, useStudioPanelStore, type AssetLayoutId, type StudioPanelId } from './model/studio-layout-store.js'
-import { STUDIO_PANEL_PRESENTATION } from './model/studio-panel-presentation.js'
+import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore, useStudioPanelStore, type AssetLayoutId, type StudioPanelId } from '../../shared/studio-shell/studio-layout-store.js'
+import { STUDIO_PANEL_PRESENTATION } from '../../shared/studio-shell/studio-panel-presentation.js'
 import styles from './studio-page.module.scss'
 
 export function StudioWindowHeader(props: {

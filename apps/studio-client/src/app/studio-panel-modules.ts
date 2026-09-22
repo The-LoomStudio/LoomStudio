@@ -1,5 +1,5 @@
 import { lazy } from 'react'
-import type { StudioPanelId } from '../pages/studio/model/studio-layout-store.js'
+import type { StudioPanelId } from '../shared/studio-shell/studio-layout-store.js'
 
 const loadModelPanel = () => import('../widgets/model-panel/model-panel.js')
 const loadAgentPanel = () => import('../widgets/agent-panel/agent-panel.js')

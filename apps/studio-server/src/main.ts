@@ -21,8 +21,8 @@ import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
 import { createDocumentDataCommitSource, createSqliteDocumentStore, type DocumentStore } from '@loom-studio/document-store'
 import { createExtensionHost } from '@loom-studio/extension-host'
 import { createKernel } from '@loom-studio/kernel'
-import { createConsoleLogSink, createMemoryLogSink, createRootLogger, type Logger, type LogReader, type LogRecord } from '@loom-studio/logging'
-import { createJsonlFileSink } from '@loom-studio/logging/node'
+import { createConsoleLogSink, createMemoryLogSink, createRootLogger, queryExtensionLogs, readLogFailure, type Logger, type LogReader, type LogRecord, type LogHistoryReader } from '@loom-studio/logging'
+import { createJsonlFileSink, createJsonlLogReader } from '@loom-studio/logging/node'
 import { createNarrativeStore } from '@loom-studio/application-data'
 import { createPromptResourceStore, type PromptResourceStore } from '@loom-studio/application-data'
 import { createKeyringSecretBackend, createSecretStore, type SecretBackend } from '@loom-studio/secret-store'
@@ -56,7 +56,7 @@ import { createStudioRpcRouter } from './rpc/studio-rpc-router.js'
 import { createServerExtensionManager } from './extensions/extension-manager.js'
 import { createExtensionStateStore } from './extensions/extension-state-store.js'
 import { createExtensionImportConversions } from './extensions/import-conversion.js'
-import { createOfficialContentService } from './official/official-content.js'
+import { createOfficialContentService, installBuiltinStarterContent } from './official/official-content.js'
 import { createCardDirectoryService } from './resource-directories/card-directory.js'
 import { createCardDirectoryCatalog } from './resource-directories/card-directory-catalog.js'
 import { createCardDirectoryImporter } from './resource-directories/card-directory-import.js'
@@ -77,9 +77,11 @@ export type CreateStudioServerOptions = {
   sqlitePath?: string
   logger?: Logger
   logs?: LogReader
+  logHistory?: LogHistoryReader
   rpcLogger?: Logger
   documentLogger?: Logger
   promptBuildLogger?: Logger
+  runtimeLogger?: Logger
   providerLogger?: Logger
   extensionLogger?: Logger
   extensionRootDirectory?: string
@@ -206,11 +208,13 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     stateContributions,
     gateway: options.providerLogger ? withAiGatewayLogging(gateway, options.providerLogger) : gateway,
     logger: options.promptBuildLogger,
+    runtimeLogger: options.runtimeLogger,
   })
   const extensionHost = createExtensionHost({
     documents,
     diagnostics,
     logger: options.extensionLogger,
+    queryLogs: (packageId, input) => queryExtensionLogs({ current: options.logs, history: options.logHistory }, packageId, input, 'server'),
     mode: 'development',
     grantEventCapabilities: (manifest, moduleManifest) => extensionManager.getGrantedEventCapabilities(manifest.id, moduleManifest.id),
     grantAssetCapabilities: (manifest, moduleManifest) => extensionManager.getGrantedAssetCapabilities(manifest.id, moduleManifest.id),
@@ -478,6 +482,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     aiGateway: profiledAiGateway,
     kernel,
     logs: options.logs,
+    logHistory: options.logHistory,
     networkSettings,
     emitEvent: (name, payload, context) => {
       kernel.getEventBus().emit(name, payload, {
@@ -626,6 +631,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
         for (const failure of recoveryErrors) console.error(`Card ${failure.cardId} directory recovery requires attention: ${failure.error}`)
         await directoryCatalog.scan()
         await applicationRuntime.initialize()
+        await installBuiltinStarterContent(applicationRuntime, resolve(options.officialContentDirectory ?? 'official/starter'))
         await kernel.start()
         await extensionManager.initialize()
         mediaWatcher = await directoryMedia.watch(() => {
@@ -643,7 +649,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
         const actualPort = typeof address === 'object' && address ? address.port : port
         logger?.info('Studio server started', {
           event: 'server.started',
-          data: { host: '127.0.0.1', port: actualPort },
+          data: { host: '127.0.0.1', port: actualPort, detail: `http://127.0.0.1:${actualPort}` },
         })
         return { port: actualPort }
       } catch (error) {
@@ -651,8 +657,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
         mediaWatcher = undefined
         logger?.error('Studio server failed to start', {
           event: 'server.start.failed',
-          error,
-          data: { requestedPort: port },
+          data: { requestedPort: port, ...readLogFailure(error), detail: readLogFailure(error).failureReason },
         })
         throw error
       }
@@ -691,7 +696,11 @@ export async function main(): Promise<void> {
     sinks: [
       memoryLogs,
       createJsonlFileSink({ directory: localPaths.logRoot }),
-      createConsoleLogSink({ filter: shouldWriteServerConsoleLog, colorize: true }),
+      createConsoleLogSink({
+        filter: shouldWriteServerConsoleLog,
+        colorize: Boolean(process.stdout.isTTY),
+        verbose: process.env.LOOM_STUDIO_LOG_DETAILS === '1',
+      }),
     ],
   })
   const logger = rootLogger.child('system')
@@ -699,10 +708,12 @@ export async function main(): Promise<void> {
     localPaths,
     logger,
     logs: memoryLogs,
+    logHistory: createJsonlLogReader({ directory: localPaths.logRoot }),
     rpcLogger: rootLogger.child('transport.rpc'),
     documentLogger: rootLogger.child('document.store'),
     promptBuildLogger: rootLogger.child('prompt.build'),
     providerLogger: rootLogger.child('runtime.provider'),
+    runtimeLogger: rootLogger.child('runtime'),
     extensionLogger: rootLogger.child('extension.loader'),
   })
   const port = Number(process.env.PORT ?? defaultPort)
@@ -719,7 +730,7 @@ export async function main(): Promise<void> {
     } catch (error) {
       logger.error('Studio server failed to stop cleanly', {
         event: 'server.stop.failed',
-        error,
+        data: { ...readLogFailure(error), detail: readLogFailure(error).failureReason },
       })
       process.exitCode = 1
     } finally {
@@ -833,7 +844,8 @@ function shouldWriteServerConsoleLog(record: LogRecord): boolean {
   return record.level === 'warn'
     || record.level === 'error'
     || record.namespace === 'system'
-    || record.namespace === 'runtime.provider'
+    || record.namespace.startsWith('runtime.')
+    || record.namespace === 'prompt.build'
 }
 
 const isMainModule = typeof process.argv[1] === 'string' && fileURLToPath(import.meta.url) === resolve(process.argv[1])

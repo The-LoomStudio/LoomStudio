@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { Translator } from '../../shared/i18n/index.js'
-import type { StudioPanelId } from './model/studio-layout-store.js'
-import { STUDIO_PANEL_PRESENTATION } from './model/studio-panel-presentation.js'
+import type { StudioPanelId } from '../../shared/studio-shell/studio-layout-store.js'
+import { STUDIO_PANEL_PRESENTATION } from '../../shared/studio-shell/studio-panel-presentation.js'
 import styles from './studio-page.module.scss'
 
 type StudioRailProps = {

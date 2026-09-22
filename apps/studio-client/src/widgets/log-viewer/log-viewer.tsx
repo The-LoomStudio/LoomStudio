@@ -1,334 +1,267 @@
 import type { LogLevel, LogRecord, MemoryLogSink } from '@loom-studio/logging'
-import { ArrowDown, ChevronRight, Download, Layers3, RefreshCw, Search } from 'lucide-react'
-import { Fragment, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Checkbox, IconButton, SearchField } from '@loom-studio/ui'
+import { ArrowDown, Copy, Download, Filter, RefreshCw, Search, Square, X } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useLogFeed, type LogSource } from '../../features/log-viewer/model/use-log-feed.js'
+import { useLogHistory } from '../../features/log-viewer/model/use-log-history.js'
+import { formatLogReport, selectDiagnosticContext } from '../../features/log-viewer/model/log-report.js'
+import { filterLogRecords } from '../../features/log-viewer/model/log-presentation.js'
 import type { StudioApi } from '../../shared/api/studio-api.js'
 import { downloadBlob } from '../../shared/browser/download.js'
 import type { Translator } from '../../shared/i18n/index.js'
-import { buildLogStream, highestLogLevel, matchesLogSearch, moreSevereLogLevel } from './log-viewer-model.js'
+import { highestLogLevel, moreSevereLogLevel } from './log-viewer-model.js'
+import { LogEventRow } from './log-event-row.js'
 import styles from './log-viewer.module.scss'
 
-type LevelFilter = LogLevel | 'all'
-type UnreadLogs = { count: number; level?: LogLevel }
+declare const __LOOM_STUDIO_VERSION__: string
 
 export function LogViewer(props: {
   active: boolean
   api: StudioApi['logs']
   clientLogs: MemoryLogSink
   t: Translator
+  extensions?: readonly { packageId: string; displayName: string }[]
 }) {
-  const [source, setSource] = useState<LogSource>('server')
-  const [level, setLevel] = useState<LevelFilter>('all')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const sourceParam = searchParams.get('logSource')
+  const source: LogSource | 'history' = sourceParam === 'server' || sourceParam === 'client' || sourceParam === 'history' ? sourceParam : 'all'
+  const packageId = searchParams.get('logPackage') || undefined
+  const runId = searchParams.get('logRun') || undefined
+  const setRunId = (value: string | undefined) => {
+    const next = new URLSearchParams(searchParams)
+    if (value) next.set('logRun', value)
+    else next.delete('logRun')
+    setSearchParams(next)
+  }
+  const historyMode = source === 'history'
+  const [since, setSince] = useState(() => localDateTime(new Date(Date.now() - 86_400_000)))
+  const [until, setUntil] = useState(() => localDateTime(new Date()))
+  const [eventFilter, setEventFilter] = useState('')
+  const [moduleId, setModuleId] = useState('')
+  const [report, setReport] = useState<{ context: string; filtered: string }>()
+  const [reportMode, setReportMode] = useState<'context' | 'filtered'>('context')
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const dialog = useRef<HTMLDialogElement>(null)
+  const history = useLogHistory(props.api, props.active && historyMode)
+  const [level, setLevel] = useState<LogLevel | 'all'>('all')
   const [query, setQuery] = useState('')
+  const [technical, setTechnical] = useState(false)
   const [followingLatest, setFollowingLatest] = useState(true)
-  const [unread, setUnread] = useState<UnreadLogs>({ count: 0 })
+  const [unread, setUnread] = useState<{ count: number; level?: LogLevel }>({ count: 0 })
   const recordsRef = useRef<HTMLDivElement>(null)
   const latestRef = useRef<HTMLDivElement>(null)
   const followingLatestRef = useRef(true)
   const initialScrollPendingRef = useRef(true)
+  const inspectingRef = useRef(false)
+  const recordKeys = useRef(new WeakMap<LogRecord, number>())
+  const nextKey = useRef(0)
 
   const resetFollowingLatest = useCallback(() => {
     followingLatestRef.current = true
     initialScrollPendingRef.current = true
+    inspectingRef.current = false
     setFollowingLatest(true)
     setUnread({ count: 0 })
   }, [])
 
   const handleUnreadRecords = useCallback((items: LogRecord[]) => {
-    const nextLevel = highestLogLevel(items)
+    const matching = filterLogRecords(items, { query, level, technical, runId })
     setUnread(current => ({
-      count: current.count + items.length,
-      level: moreSevereLogLevel(current.level, nextLevel),
+      count: current.count + matching.length,
+      level: moreSevereLogLevel(current.level, highestLogLevel(matching)),
     }))
-  }, [])
+  }, [query, level, technical, runId])
 
-  const { records, gap, truncated, loading, error, refresh, sourceReady } = useLogFeed({
-    active: props.active,
-    source,
-    api: props.api,
-    clientLogs: props.clientLogs,
-    followingLatestRef,
-    onUnreadRecords: handleUnreadRecords,
+  const current = useLogFeed({
+    active: props.active && !historyMode, source: historyMode ? 'all' : source, api: props.api, clientLogs: props.clientLogs, packageId,
+    followingLatestRef, onUnreadRecords: handleUnreadRecords,
   })
-
-  const handleRefresh = () => {
-    resetFollowingLatest()
-    void refresh()
-  }
+  const historyMatchesScope = history.query?.packageId === packageId && history.query?.runId === runId
+  const historyDirty = Boolean(history.query && (
+    !historyMatchesScope || (history.query.text ?? '') !== query
+    || (history.query.event ?? '') !== eventFilter || (history.query.moduleId ?? '') !== moduleId
+    || (history.query.levels?.[0] ?? 'all') !== level
+    || localDateTime(new Date(history.query.since)) !== since || localDateTime(new Date(history.query.until)) !== until
+  ))
+  const records = useMemo(() => historyMode
+    ? historyMatchesScope ? [...(history.page?.items ?? [])].sort((a, b) => a.timestamp.localeCompare(b.timestamp)) : []
+    : current.records, [historyMode, historyMatchesScope, history.page, current.records])
+  const loading = historyMode ? history.loading : current.loading
+  const error = historyMode ? history.error : current.error
+  const sourceReady = historyMode ? Boolean(history.page && historyMatchesScope) : current.sourceReady
+  const truncated = historyMode ? history.page?.hasMore : current.truncated
 
   useEffect(() => {
-    if (!props.active) return
-    resetFollowingLatest()
-  }, [props.active, resetFollowingLatest, source])
+    if (props.active) resetFollowingLatest()
+  }, [props.active, source, resetFollowingLatest])
 
-  const visibleRecords = useMemo(() => records.filter(record => {
-    if (level !== 'all' && record.level !== level) return false
-    return matchesLogSearch(record, query)
-  }), [level, query, records])
-  const stream = useMemo(() => buildLogStream(visibleRecords), [visibleRecords])
+  const visibleRecords = useMemo(
+    () => filterLogRecords(records, { query: historyMode ? '' : query, level: historyMode ? 'all' : level, technical, runId })
+      .filter(record => (!packageId || record.extension?.packageId === packageId) && (historyMode || !moduleId || record.extension?.moduleId === moduleId) && (historyMode || !eventFilter || record.event === eventFilter)),
+    [records, query, level, technical, runId, packageId, moduleId, eventFilter, historyMode],
+  )
+  useEffect(() => {
+    if (report) dialog.current?.showModal()
+  }, [report])
+  // Identity survives polling and filtering; eviction cannot transfer an open row to another event.
+  const keyedRecords = useMemo(() => visibleRecords.map(record => {
+    let key = recordKeys.current.get(record)
+    if (key === undefined) {
+      key = nextKey.current++
+      recordKeys.current.set(record, key)
+    }
+    return { key, record }
+  }), [visibleRecords])
 
   useLayoutEffect(() => {
-    if (!props.active) return
-    const container = recordsRef.current
-    if (!container || (!initialScrollPendingRef.current && !followingLatestRef.current)) return
+    if (!props.active || historyMode || (!initialScrollPendingRef.current && !followingLatestRef.current)) return
     latestRef.current?.scrollIntoView({ block: 'end' })
     initialScrollPendingRef.current = false
     setUnread({ count: 0 })
-  }, [props.active, stream])
+  }, [props.active, visibleRecords, historyMode])
 
-  const handleRecordsScroll = () => {
+  function pauseForInspection() {
+    inspectingRef.current = true
+    followingLatestRef.current = false
+    initialScrollPendingRef.current = false
+    setFollowingLatest(false)
+  }
+
+  function scrollToLatest() {
+    inspectingRef.current = false
+    followingLatestRef.current = true
+    setFollowingLatest(true)
+    setUnread({ count: 0 })
+    latestRef.current?.scrollIntoView({ block: 'end' })
+  }
+
+  function handleScroll() {
     const container = recordsRef.current
-    if (!container) return
+    if (!container || inspectingRef.current) return
     const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= 32
     followingLatestRef.current = atBottom
     setFollowingLatest(atBottom)
     if (atBottom) setUnread({ count: 0 })
   }
 
-  const scrollToLatest = () => {
-    followingLatestRef.current = true
-    setFollowingLatest(true)
-    setUnread({ count: 0 })
-    latestRef.current?.scrollIntoView({ block: 'end' })
+  function changeSource(value: LogSource | 'history') {
+    const next = new URLSearchParams(searchParams)
+    next.set('logSource', value)
+    setSearchParams(next)
   }
 
-  const downloadVisibleLogs = () => {
-    const blob = new Blob([JSON.stringify(visibleRecords, null, 2)], { type: 'application/json' })
-    downloadBlob(blob, `loom-logs-${new Date().toISOString().replaceAll(':', '-')}.json`)
-  }
-
-  return (
-    <section className={styles.viewer} aria-label={props.t('logs.title')}>
-      <div className={styles.toolbar}>
-        <div aria-label={props.t('logs.source')} className={styles.sourceControl} role="group">
-          <button
-            aria-pressed={source === 'server'}
-            className={source === 'server' ? styles.sourceActive : undefined}
-            type="button"
-            onClick={() => setSource('server')}
-          >
-            {props.t('logs.source.server')}
-          </button>
-          <button
-            aria-pressed={source === 'client'}
-            className={source === 'client' ? styles.sourceActive : undefined}
-            type="button"
-            onClick={() => setSource('client')}
-          >
-            {props.t('logs.source.client')}
-          </button>
-        </div>
-
-        <select aria-label={props.t('logs.level')} value={level} onChange={event => setLevel(event.target.value as LevelFilter)}>
-          <option value="all">{props.t('logs.level.all')}</option>
-          <option value="debug">DEBUG</option>
-          <option value="info">INFO</option>
-          <option value="warn">WARN</option>
-          <option value="error">ERROR</option>
-        </select>
-
-        <label className={styles.searchField}>
-          <Search aria-hidden="true" />
-          <span className={styles.srOnly}>{props.t('logs.search')}</span>
-          <input
-            placeholder={props.t('logs.searchPlaceholder')}
-            type="search"
-            value={query}
-            onChange={event => setQuery(event.target.value)}
-          />
-        </label>
-
-        <span className={styles.count}>{props.t('logs.count', { count: visibleRecords.length })}</span>
-        <div className={styles.actions}>
-          <button aria-label={props.t('logs.refresh')} disabled={loading} title={props.t('logs.refresh')} type="button" onClick={handleRefresh}>
-            <RefreshCw aria-hidden="true" />
-          </button>
-          <button aria-label={props.t('logs.download')} disabled={!sourceReady || visibleRecords.length === 0} title={props.t('logs.download')} type="button" onClick={downloadVisibleLogs}>
-            <Download aria-hidden="true" />
-          </button>
-        </div>
-      </div>
-
-      <div className={styles.status} aria-live="polite">
-        {loading ? <p>{props.t('logs.loading')}</p> : null}
-        {error ? <p className={styles.error}>{props.t('logs.error', { message: error })}</p> : null}
-        {gap?.reason === 'evicted' ? <p className={styles.warning}>{props.t('logs.gap.evicted', { count: gap.dropped ?? 0 })}</p> : null}
-        {gap?.reason === 'reset' ? <p className={styles.warning}>{props.t('logs.gap.reset')}</p> : null}
-        {truncated ? <p className={styles.warning}>{props.t('logs.more')}</p> : null}
-      </div>
-
-      <div className={styles.recordsShell}>
-        <div className={styles.records} ref={recordsRef} onScroll={handleRecordsScroll}>
-          {!loading && stream.length === 0 ? <p className={styles.empty}>{props.t('logs.empty')}</p> : null}
-          {stream.map((item, streamIndex) => item.kind === 'record'
-            ? <LogRecordRow key={`${item.record.timestamp}-${item.record.callId ?? streamIndex}`} record={item.record} />
-            : (
-                <details className={styles.group} key={`${item.firstTimestamp}-${item.namespace}-${streamIndex}`} open>
-                  <summary className={styles.groupSummary}>
-                    <ChevronRight aria-hidden="true" className={styles.chevron} />
-                    <Layers3 aria-hidden="true" className={styles.groupIcon} />
-                    <span className={styles.groupName}>{item.namespace}</span>
-                    <span className={styles.groupCount}>{props.t('logs.count', { count: item.records.length })}</span>
-                    <span className={styles.timeRange}>{formatTime(item.firstTimestamp)} – {formatTime(item.lastTimestamp)}</span>
-                  </summary>
-                  <div className={styles.groupRecords}>
-                    {item.records.map((record, index) => (
-                      <LogRecordRow key={`${record.timestamp}-${record.callId ?? index}`} record={record} />
-                    ))}
-                  </div>
-                </details>
-              ))}
-          <div aria-hidden="true" className={styles.latestAnchor} ref={latestRef} />
-        </div>
-        {!followingLatest ? (
-          <button aria-live="polite" className={`${styles.latestIndicator} ${unread.level ? styles[`latest${capitalize(unread.level)}`] : ''}`} type="button" onClick={scrollToLatest}>
-            <ArrowDown aria-hidden="true" />
-            <span>{unread.count > 0 ? props.t('logs.newRecords', { count: unread.count }) : props.t('logs.returnLatest')}</span>
-          </button>
-        ) : null}
-      </div>
-    </section>
-  )
-}
-
-function capitalize(value: string): string {
-  return value.charAt(0).toUpperCase() + value.slice(1)
-}
-
-function LogRecordRow({ record }: { record: LogRecord }) {
-  const [expanded, setExpanded] = useState(false)
-
-  return (
-    <details className={`${styles.record} ${styles[record.level]}`} onToggle={event => setExpanded(event.currentTarget.open)}>
-      <summary>
-        <ChevronRight aria-hidden="true" className={styles.chevron} />
-        <time dateTime={record.timestamp}>{formatTime(record.timestamp)}</time>
-        <span className={styles.level}>{record.level.toUpperCase()}</span>
-        <span className={styles.namespace}>{record.namespace}</span>
-        <span className={styles.message}>{highlightMessage(record.message)}</span>
-      </summary>
-      {expanded ? <pre className={styles.json}>{renderJson(record)}</pre> : null}
-    </details>
-  )
-}
-
-function formatTime(timestamp: string): string {
-  return new Date(timestamp).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  })
-}
-
-function EntityMentionChip({ type, id, label }: { type: string; id: string; label?: string }) {
-  const navigate = useNavigate()
-
-  const handleClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
-    e.preventDefault()
-
-    if (type === 'card') {
-      navigate(`/studio/characters/${encodeURIComponent(id)}`)
-    } else if (type === 'timeline') {
-      navigate(`/studio/chat/${encodeURIComponent(id)}`)
-    } else if (type === 'resource') {
-      navigate('/studio/resources')
-    } else if (type === 'agent') {
-      navigate('/studio/agents')
-    } else if (type === 'provider' || type === 'model') {
-      navigate('/studio/models')
-    } else if (navigator.clipboard) {
-      void navigator.clipboard.writeText(id)
-    }
-  }
-
-  const displayLabel = label || id
-
-  return (
-    <span
-      className={styles.entityChip}
-      data-type={type}
-      data-id={id}
-      title={`${type}: ${id}${label ? ` (${label})` : ''} - 点击跳转`}
-      onClick={handleClick}
-      role="button"
-      tabIndex={0}
-      onKeyDown={e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          handleClick(e as unknown as React.MouseEvent)
-        }
-      }}
-    >
-      <span className={styles.chipType}>@{type}:</span>
-      <span className={styles.chipLabel}>{displayLabel}</span>
-    </span>
-  )
-}
-
-function highlightMessage(message: string): ReactNode {
-  const mentionPattern = /(<@[a-zA-Z0-9_-]+:[^>]+>)/g
-  const parts = message.split(mentionPattern)
-
-  return parts.map((part, partIndex) => {
-    const mentionMatch = /^<@([a-zA-Z0-9_-]+):([^>|]+)(?:\|([^>]+))?>$/.exec(part)
-    if (mentionMatch) {
-      const [, type, id, label] = mentionMatch
-      return <EntityMentionChip key={partIndex} type={type!} id={id!} label={label} />
-    }
-
-    const tokens = part.split(/(https?:\/\/\S+|#[\w-]+|\b[A-Z][A-Z0-9_]{2,}\b|\b(?:true|false|null|undefined)\b|\b\d+(?:\.\d+)?\b)/g)
-    return tokens.map((token, index) => {
-      let className: string | undefined
-      if (/^https?:\/\//.test(token)) className = styles.messageLink
-      else if (/^#/.test(token)) className = styles.messageProperty
-      else if (/^[A-Z][A-Z0-9_]{2,}$/.test(token)) className = styles.messageEvent
-      else if (/^(?:true|false|null|undefined)$/.test(token)) className = styles.messageConstant
-      else if (/^\d+(?:\.\d+)?$/.test(token)) className = styles.messageNumber
-      return className ? <span className={className} key={`${partIndex}-${index}`}>{token}</span> : token
+  function searchHistory() {
+    pauseForInspection()
+    void history.search({
+      limit: 200, since: new Date(since).toISOString(), until: new Date(until).toISOString(),
+      ...(query ? { text: query } : {}), ...(level !== 'all' ? { levels: [level] } : {}),
+      ...(packageId ? { packageId } : {}), ...(runId ? { runId } : {}),
+      ...(eventFilter ? { event: eventFilter } : {}), ...(moduleId ? { moduleId } : {}),
     })
-  })
-}
-
-function renderJson(value: unknown, depth = 0): ReactNode {
-  if (value === null) return <span className={styles.jsonConstant}>null</span>
-  if (typeof value === 'string') {
-    if (/<@[a-zA-Z0-9_-]+:[^>]+>/.test(value)) {
-      return <span className={styles.jsonString}>"{highlightMessage(value)}"</span>
-    }
-    return <span className={styles.jsonString}>{JSON.stringify(value)}</span>
   }
-  if (typeof value === 'number') return <span className={styles.jsonNumber}>{value}</span>
-  if (typeof value === 'boolean') return <span className={styles.jsonConstant}>{String(value)}</span>
-  if (Array.isArray(value)) return renderJsonEntries('[', ']', value.map((item, index) => [String(index), item]), depth, false)
-  if (typeof value === 'object') return renderJsonEntries('{', '}', Object.entries(value), depth, true)
-  return <span className={styles.jsonInvalid}>{String(value)}</span>
+
+  function previewReport() {
+    pauseForInspection()
+    setCopyState('idle')
+    const notices = [
+      ...(error ? [error] : []),
+      ...(!historyMode ? current.sourceIssues : []),
+      ...(truncated ? ['Search or buffer is incomplete; more records may exist.'] : []),
+      ...(packageId ? ['Extension filtering requires host-owned identity; older records without it are not matched.'] : []),
+      ...(historyMode ? (history.page?.issues ?? []).map(issue => `${issue.reason}: ${issue.count}`) : []),
+      ...(historyMode ? [`History query: ${JSON.stringify(history.query)}`] : [`View filters: ${JSON.stringify({ query, level, moduleId, eventFilter, technical })}`]),
+    ]
+    const common = { version: __LOOM_STUDIO_VERSION__, capturedAt: new Date().toISOString(), scope: `${source}; package=${packageId ?? 'all'}; run=${runId ?? 'all'}`, notices }
+    const contextRecords = records.filter(record => (!runId || record.data?.runId === runId) && (historyMode || !moduleId || record.extension?.moduleId === moduleId))
+    setReport({
+      context: formatLogReport({ ...common, scope: `${common.scope}; selection=failure context`, notices: [...notices, historyMode ? 'Context is limited to the loaded history matches.' : 'Context ignores text, level and event display filters; package, run and module scope are retained.'], records: selectDiagnosticContext(contextRecords) }),
+      filtered: formatLogReport({ ...common, scope: `${common.scope}; selection=visible results`, records: visibleRecords }),
+    })
+  }
+
+  async function copyReport() {
+    try { await navigator.clipboard.writeText(report![reportMode]); setCopyState('copied') }
+    catch { setCopyState('failed') }
+  }
+
+  function closeReport() {
+    dialog.current?.close()
+    setReport(undefined)
+  }
+
+  return <section className={styles.viewer} aria-label={props.t('logs.title')}>
+    <div className={styles.toolbar}>
+      <div className={styles.sources} role="group" aria-label={props.t('logs.source')}>
+        {(['all', 'server', 'client', 'history'] as const).map(value => <button key={value} type="button" aria-pressed={source === value} onClick={() => changeSource(value)}>{props.t(`logs.source.${value}`)}</button>)}
+      </div>
+      <SearchField containerClassName={styles.search} aria-label={props.t('logs.search')} placeholder={props.t('logs.searchPlaceholder')} clearLabel={props.t('logs.search')} value={query} onClear={() => setQuery('')} onChange={event => setQuery(event.target.value)} />
+      <select aria-label={props.t('logs.level')} value={level} onChange={event => setLevel(event.target.value as LogLevel | 'all')}>
+        <option value="all">{props.t('logs.level.all')}</option>
+        {(['debug', 'info', 'warn', 'error'] as const).map(value => <option key={value} value={value}>{value.toUpperCase()}</option>)}
+      </select>
+      <label className={styles.technical}><Checkbox checked={technical} onChange={event => setTechnical(event.target.checked)} />{props.t('logs.technical')}</label>
+      <div className={styles.actions}>
+        {!historyMode && <IconButton aria-label={props.t('logs.refresh')} disabled={loading} onClick={() => { resetFollowingLatest(); void current.refresh() }}><RefreshCw size={15} /></IconButton>}
+        <IconButton aria-label={props.t('logs.report')} disabled={!sourceReady || !records.length} onClick={previewReport}><Copy size={15} /></IconButton>
+        <IconButton aria-label={props.t('logs.download')} disabled={!sourceReady || !visibleRecords.length} onClick={() => downloadBlob(new Blob([JSON.stringify(visibleRecords, null, 2)], { type: 'application/json' }), `loom-logs-${new Date().toISOString().replaceAll(':', '-')}.json`)}><Download size={15} /></IconButton>
+      </div>
+    </div>
+    <div className={styles.filters}>
+      <select aria-label={props.t('logs.extension')} value={packageId ?? ''} onChange={event => {
+        const next = new URLSearchParams(searchParams)
+        if (event.target.value) next.set('logPackage', event.target.value)
+        else next.delete('logPackage')
+        setSearchParams(next)
+      }}>
+        <option value="">{props.t('logs.allExtensions')}</option>
+        {packageId && !props.extensions?.some(item => item.packageId === packageId) && <option value={packageId}>{packageId}</option>}
+        {props.extensions?.map(item => <option key={item.packageId} value={item.packageId}>{item.displayName}</option>)}
+      </select>
+      <input aria-label={props.t('logs.module')} placeholder={props.t('logs.module')} value={moduleId} onChange={event => setModuleId(event.target.value)} />
+      <input aria-label={props.t('logs.event')} placeholder={props.t('logs.event')} value={eventFilter} onChange={event => setEventFilter(event.target.value)} />
+    </div>
+    {historyMode && <form className={styles.filters} onSubmit={event => { event.preventDefault(); searchHistory() }}>
+      <label>{props.t('logs.since')}<input type="datetime-local" required value={since} onChange={event => setSince(event.target.value)} /></label>
+      <label>{props.t('logs.until')}<input type="datetime-local" required min={since} value={until} onChange={event => setUntil(event.target.value)} /></label>
+      <button type="submit" disabled={loading}><Search size={14} />{props.t('logs.search')}</button>
+      {loading && <IconButton aria-label={props.t('logs.cancel')} onClick={history.cancel}><Square size={13} /></IconButton>}
+    </form>}
+    {runId && <div className={styles.scope}><Filter size={13} /><span title={runId}>{props.t('logs.runScope')}</span><IconButton aria-label={props.t('logs.clearRun')} onClick={() => setRunId(undefined)}><X size={14} /></IconButton></div>}
+    <div className={styles.status} aria-live="polite">
+      {loading && <p>{props.t('logs.loading')}</p>}
+      {error && <p className={styles.error}>{props.t('logs.error', { message: error })}</p>}
+      {!historyMode && current.sourceIssues.map((issue, index) => <p key={index}>{props.t('logs.sourceGap', { detail: issue })}</p>)}
+      {historyMode && history.query && <p>{props.t('logs.searchedRange', { since: history.query.since, until: history.query.until, count: history.page?.scannedRecords ?? 0 })}</p>}
+      {historyMode && historyDirty && <p>{props.t('logs.historyDirty')}</p>}
+      {historyMode && packageId && <p>{props.t('logs.legacyOwnership')}</p>}
+      {historyMode && history.page?.issues.map((issue, index) => <p key={index}>{props.t('logs.historyIssue', { reason: issue.reason, count: issue.count })}</p>)}
+      {truncated && <p>{props.t('logs.more')}</p>}
+      {history.capped && <p>{props.t('logs.historyCap')}</p>}
+    </div>
+    <div className={styles.recordsShell}>
+      <div className={styles.records} ref={recordsRef} onScroll={handleScroll}>
+        {!loading && !visibleRecords.length && <p className={styles.empty}>{props.t('logs.empty')}</p>}
+        {keyedRecords.map(({ key, record }) => <LogEventRow key={key} record={record} t={props.t} onInspect={pauseForInspection} onFilterRun={value => { pauseForInspection(); setRunId(value) }} />)}
+        {historyMode && sourceReady && history.page?.hasMore && !history.capped && <button className={styles.loadMore} type="button" disabled={loading} onClick={history.loadMore}>{props.t('logs.loadMore')}</button>}
+        <div ref={latestRef} />
+      </div>
+      {!historyMode && !followingLatest && <button className={styles.latest} data-level={unread.level} type="button" onClick={scrollToLatest}><ArrowDown size={14} />{unread.count ? props.t('logs.newRecords', { count: unread.count }) : props.t('logs.returnLatest')}</button>}
+    </div>
+    <footer className={styles.footer}>{props.t('logs.count', { count: visibleRecords.length })} · {props.t(historyMode ? 'logs.historyAvailability' : 'logs.currentAvailability')}</footer>
+    {report && <dialog ref={dialog} className={styles.report} aria-label={props.t('logs.report')} onCancel={event => { event.preventDefault(); closeReport() }}>
+      <header><strong>{props.t('logs.report')}</strong><IconButton aria-label={props.t('logs.close')} onClick={closeReport}><X size={16} /></IconButton></header>
+      <p>{props.t('logs.reportPrivacy')}</p>
+      <select aria-label={props.t('logs.reportScope')} value={reportMode} onChange={event => { setReportMode(event.target.value as 'context' | 'filtered'); setCopyState('idle') }}>
+        <option value="context">{props.t('logs.context')}</option><option value="filtered">{props.t('logs.filtered')}</option>
+      </select>
+      <textarea readOnly value={report[reportMode]} aria-label={props.t('logs.reportPreview')} />
+      {copyState === 'failed' && <p role="alert">{props.t('logs.copyError')}</p>}
+      <footer><button type="button" onClick={() => void copyReport()}><Copy size={14} />{props.t(copyState === 'copied' ? 'logs.copied' : 'logs.reportCopy')}</button><IconButton aria-label={props.t('logs.download')} onClick={() => downloadBlob(new Blob([report[reportMode]], { type: 'text/plain;charset=utf-8' }), 'loom-diagnostic.txt')}><Download size={15} /></IconButton></footer>
+    </dialog>}
+  </section>
 }
 
-function renderJsonEntries(
-  opening: string,
-  closing: string,
-  entries: Array<[string, unknown]>,
-  depth: number,
-  showKeys: boolean,
-): ReactNode {
-  if (entries.length === 0) return <span className={styles.jsonPunctuation}>{opening}{closing}</span>
-  const indent = '  '.repeat(depth + 1)
-  const closingIndent = '  '.repeat(depth)
-
-  return (
-    <>
-      <span className={styles.jsonPunctuation}>{opening}</span>{'\n'}
-      {entries.map(([key, value], index) => (
-        <Fragment key={key}>
-          {indent}
-          {showKeys ? <><span className={styles.jsonProperty}>{JSON.stringify(key)}</span><span className={styles.jsonPunctuation}>: </span></> : null}
-          {renderJson(value, depth + 1)}
-          {index < entries.length - 1 ? <span className={styles.jsonPunctuation}>,</span> : null}
-          {'\n'}
-        </Fragment>
-      ))}
-      {closingIndent}<span className={styles.jsonPunctuation}>{closing}</span>
-    </>
-  )
+function localDateTime(date: Date): string {
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
 }

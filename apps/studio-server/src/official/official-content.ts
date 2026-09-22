@@ -128,3 +128,13 @@ export function createOfficialContentService(runtime: ApplicationRuntime, direct
     },
   }
 }
+
+export async function installBuiltinStarterContent(runtime: ApplicationRuntime, directory: string) {
+  const content = await readOfficialContent(directory)
+  return await runtime.installOfficialContent({
+    packageId: content.catalog.id,
+    packageVersion: content.catalog.version,
+    resources: content.resources,
+    settingMounts: content.catalog.settingMounts,
+  })
+}

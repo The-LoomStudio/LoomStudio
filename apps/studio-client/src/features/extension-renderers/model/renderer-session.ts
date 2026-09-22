@@ -1,6 +1,6 @@
 import type { ClientRendererScope, ClientRendererSessionHandle } from '@loom-studio/extension-sdk'
-import type { ClientRendererRegistration } from './client-renderer-host.js'
-import { rendererContributionKey } from './renderer-registry.js'
+import type { ClientRendererRegistration } from '../../../shared/extension-renderer-runtime/client-renderer-host.js'
+import { rendererContributionKey } from '../../../shared/extension-renderer-runtime/renderer-registry.js'
 
 export type RendererSessionSummary = {
   sessionId: string

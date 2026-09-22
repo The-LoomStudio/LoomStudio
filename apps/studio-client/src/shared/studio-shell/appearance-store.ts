@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
-import { safeLocalStorage } from '../../shared/browser/safe-local-storage.js'
+import { safeLocalStorage } from '../browser/safe-local-storage.js'
 
 export type AppearanceBackground = { id: string; image: string }
 export type AppearanceMaterial = { mode: 'solid' | 'translucent' | 'glass'; blur: number; opacity: number }

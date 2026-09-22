@@ -1,9 +1,9 @@
 import type { ClientBridge, ClientJsonValue } from '@loom-studio/client-bridge'
-import type { Logger } from '@loom-studio/logging'
+import { readLogFailure, type Logger } from '@loom-studio/logging'
 
 export function withClientBridgeLogging(bridge: ClientBridge, logger: Logger): ClientBridge {
   return {
-    call: <T = ClientJsonValue>(method: string, params?: ClientJsonValue) => logRpcFailure(logger, method, () => bridge.call<T>(method, params)),
+    call: <T = ClientJsonValue>(method: string, params?: ClientJsonValue, options?: { signal?: AbortSignal }) => logRpcFailure(logger, method, () => options ? bridge.call<T>(method, params, options) : bridge.call<T>(method, params)),
   }
 }
 
@@ -18,20 +18,20 @@ async function logRpcFailure<T>(logger: Logger, method: string, call: () => Prom
 }
 
 function logRpcError(logger: Logger, method: string, startedAt: number, error: unknown): void {
+  if (error instanceof Error && error.name === 'AbortError') return
   const durationMs = Number((performance.now() - startedAt).toFixed(2))
-  logger.error(`${method} failed after ${durationMs} ms`, {
+  const failure = readLogFailure(error)
+  logger.error(`${method} failed · ${failure.failureReason}`, {
     event: 'rpc.failed',
     data: {
       method,
       durationMs,
-      failureType: readFailureType(error),
+      outcome: 'failed',
+      detail: `${method} failed · ${failure.failureReason}`,
+      ...failure,
       ...readErrorCode(error),
     },
   })
-}
-
-function readFailureType(error: unknown): string {
-  return error instanceof Error ? error.name : typeof error
 }
 
 function readErrorCode(error: unknown): { errorCode?: string } {

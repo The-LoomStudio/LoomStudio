@@ -431,6 +431,9 @@ importers:
       '@loom-studio/document-store':
         specifier: workspace:*
         version: link:../document-store
+      '@loom-studio/logging':
+        specifier: workspace:*
+        version: link:../logging
       '@loom-studio/shared':
         specifier: workspace:*
         version: link:../shared
@@ -449,6 +452,9 @@ importers:
       '@loom-studio/extension-sdk':
         specifier: workspace:*
         version: link:..
+      '@loom-studio/logging':
+        specifier: workspace:*
+        version: link:../../logging
       '@loom-studio/shared':
         specifier: workspace:*
         version: link:../../shared

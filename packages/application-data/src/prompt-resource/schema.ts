@@ -16,7 +16,10 @@ export function migrateVersionOne(database: DatabaseSync): void {
       tombstoned INTEGER NOT NULL DEFAULT 0,
       deleted_at TEXT,
       deleted_by_json TEXT,
-      delete_reason TEXT
+      delete_reason TEXT,
+      FOREIGN KEY(id, root_node_id)
+        REFERENCES prompt_resource_nodes(resource_id, id)
+        DEFERRABLE INITIALLY DEFERRED
     );
 
     CREATE TABLE prompt_resource_nodes (
@@ -125,7 +128,7 @@ export function migrateVersionFour(database: DatabaseSync): void {
   database.exec(`
     CREATE TABLE prompt_resource_nodes_new (
       id TEXT PRIMARY KEY,
-      resource_id TEXT NOT NULL,
+      resource_id TEXT NOT NULL REFERENCES prompt_resources(id),
       parent_id TEXT,
       order_index INTEGER NOT NULL CHECK (order_index >= 0),
       kind TEXT NOT NULL,
@@ -138,7 +141,9 @@ export function migrateVersionFour(database: DatabaseSync): void {
       extra_json TEXT NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
-      UNIQUE(resource_id, id)
+      UNIQUE(resource_id, id),
+      FOREIGN KEY(resource_id, parent_id)
+        REFERENCES prompt_resource_nodes(resource_id, id)
     );
 
     INSERT INTO prompt_resource_nodes_new SELECT * FROM prompt_resource_nodes;
@@ -164,7 +169,10 @@ export function migrateVersionFour(database: DatabaseSync): void {
       tombstoned INTEGER NOT NULL DEFAULT 0,
       deleted_at TEXT,
       deleted_by_json TEXT,
-      delete_reason TEXT
+      delete_reason TEXT,
+      FOREIGN KEY(id, root_node_id)
+        REFERENCES prompt_resource_nodes(resource_id, id)
+        DEFERRABLE INITIALLY DEFERRED
     );
 
     INSERT INTO prompt_resources_new SELECT * FROM prompt_resources;
@@ -174,4 +182,28 @@ export function migrateVersionFour(database: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_prompt_resources_kind_label
       ON prompt_resources(resource_kind, label);
   `)
+}
+
+export function assertPromptResourceSchema(database: DatabaseSync): void {
+  const nodeForeignKeys = database.prepare("PRAGMA foreign_key_list('prompt_resource_nodes')").all() as Array<{ table?: string; from?: string; to?: string }>
+  const resourceForeignKeys = database.prepare("PRAGMA foreign_key_list('prompt_resources')").all() as Array<{ table?: string; from?: string; to?: string }>
+  const hasNodeOwnerForeignKey = nodeForeignKeys.some(foreignKey =>
+    foreignKey.table === 'prompt_resources'
+    && foreignKey.from === 'resource_id'
+    && foreignKey.to === 'id')
+  const hasNodeParentForeignKey = nodeForeignKeys.some(foreignKey =>
+    foreignKey.table === 'prompt_resource_nodes'
+    && foreignKey.from === 'parent_id'
+    && foreignKey.to === 'id')
+  const hasRootForeignKey = resourceForeignKeys.some(foreignKey =>
+    foreignKey.table === 'prompt_resource_nodes'
+    && foreignKey.from === 'root_node_id'
+    && foreignKey.to === 'id')
+  if (!hasNodeOwnerForeignKey || !hasNodeParentForeignKey || !hasRootForeignKey) {
+    throw new Error('Prompt Resource SQLite schema is missing required identity foreign keys')
+  }
+  const violations = database.prepare('PRAGMA foreign_key_check').all()
+  if (violations.length > 0) {
+    throw new Error(`Prompt Resource SQLite schema contains ${violations.length} foreign key violations`)
+  }
 }

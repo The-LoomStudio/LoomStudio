@@ -1,4 +1,5 @@
 import type { LogRecord, LogSink } from './types.js'
+import { readLogPresentation } from './presentation.js'
 
 type ConsoleOutput = Pick<Console, 'debug' | 'info' | 'warn' | 'error'>
 
@@ -6,6 +7,7 @@ export function createConsoleLogSink(options: {
   console?: ConsoleOutput
   filter?: (record: LogRecord) => boolean
   colorize?: boolean
+  verbose?: boolean
 } = {}): LogSink {
   const output = options.console ?? console
   const colorize = options.colorize ?? false
@@ -14,7 +16,15 @@ export function createConsoleLogSink(options: {
     name: 'console',
     write: record => {
       if (options.filter && !options.filter(record)) return
-      const details = readDetails(record)
+      const details = options.verbose ? readDetails(record) : undefined
+      const view = readLogPresentation(record)
+      const message = `${record.message}${view.duration ? ` · ${view.duration}` : ''}`
+      const summary = [
+        record.extension ? `${record.extension.packageId}${record.extension.moduleId ? `/${record.extension.moduleId}` : ''}` : undefined,
+        view.detail,
+        view.inputTokens === undefined ? undefined : `tokens in ${view.inputTokens}`,
+        view.outputTokens === undefined ? undefined : `out ${view.outputTokens}`,
+      ].filter(Boolean).join(' · ')
       let prefix: string
       if (colorize) {
         const dim = '\x1b[2m'
@@ -28,14 +38,14 @@ export function createConsoleLogSink(options: {
         const nsPadded = record.namespace.padEnd(16, ' ')
         prefix = `${dim}[${time}]${reset} ${levelBadge} ${namespaceColor}${nsPadded}${reset}`
         if (details) {
-          output[record.level](`${prefix} ${record.message}\n${renderTreeDetails(details)}`)
+          output[record.level](`${prefix} ${message}\n${renderTreeDetails(details)}`)
         } else {
-          output[record.level](`${prefix} ${record.message}`)
+          output[record.level](`${prefix} ${message}${summary ? `\n  ${dim}└─${reset} ${summary}` : ''}`)
         }
       } else {
         prefix = `[${record.timestamp}] ${record.level.toUpperCase()} ${record.service}/${record.namespace}`
-        if (details) output[record.level](prefix, record.message, details)
-        else output[record.level](prefix, record.message)
+        if (details) output[record.level](prefix, message, details)
+        else output[record.level](prefix, `${message}${summary ? `\n  └─ ${summary}` : ''}`)
       }
     },
   }
@@ -106,6 +116,7 @@ function renderTreeDetails(val: unknown, prefix = '  '): string {
 
 function readDetails(record: LogRecord): Record<string, unknown> | undefined {
   const details = {
+    ...(record.extension ? { extension: record.extension } : {}),
     ...(record.event ? { event: record.event } : {}),
     ...(record.data ? { data: record.data } : {}),
     ...(record.error ? { error: record.error } : {}),

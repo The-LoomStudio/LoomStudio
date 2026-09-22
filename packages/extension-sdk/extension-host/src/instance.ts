@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 import type { DiagnosticInput, DiagnosticsRegistry } from '@loom-studio/diagnostics'
 import type { ActorRef, WriteDocumentResult } from '@loom-studio/document-store'
+import { createExtensionLogWriter } from '@loom-studio/logging'
 import type {
   AiGatewayProviderRegistration,
   EventPublishIdentity,
@@ -87,6 +88,13 @@ export function createContext(
       directory: record.directory,
     },
     logger: createExtensionLogger(packageManifest.id, moduleManifest.id, instance.instanceId, options.logger),
+    logs: {
+      query: async input => {
+        assertScopeActive(instance)
+        if (!options.queryLogs) throw new Error('Extension log queries are not available in this host')
+        return options.queryLogs(packageManifest.id, input)
+      },
+    },
     permissions: {
       events: { subscribe: instance.grantedEventCapabilities },
       assets: instance.grantedAssetCapabilities,
@@ -508,22 +516,7 @@ export function createExtensionLogger(
   instanceId: string,
   logger: ExtensionHostLogger | undefined,
 ): ExtensionActivationContext['logger'] {
-  const write = (level: 'debug' | 'info' | 'warn' | 'error', message: string, data?: JsonObject) => {
-    const fields = {
-      event: 'extension.runtime.log',
-      data: { packageId, moduleId, instanceId, ...data },
-    }
-    if (level === 'debug') logger?.debug?.(message, fields)
-    else if (level === 'warn') (logger?.warn ?? logger?.info)?.(message, fields)
-    else logger?.[level](message, fields)
-  }
-
-  return {
-    debug: (message, data) => write('debug', message, data),
-    info: (message, data) => write('info', message, data),
-    warn: (message, data) => write('warn', message, data),
-    error: (message, data) => write('error', message, data),
-  }
+  return createExtensionLogWriter(logger, { packageId, moduleId, instanceId, runtime: 'server' })
 }
 
 export function hasContributionMismatch(record: ExtensionModuleRecord, instance: ExtensionInstance, options: ExtensionHostOptions): boolean {

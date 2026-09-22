@@ -32,7 +32,31 @@ docs/archive/plans/README.md:1
 
 最小修复方向：把该 Plan 加入 `docs/archive/plans/README.md`，或删除确认已无交付价值的孤儿归档文件；选择必须与实际生命周期一致。
 
-## 依赖合同检查
+### GOV-003 · P3 · 当前重构工作区留下三个归档源码断链
+
+补查日期：2026-09-22。此项依据当前未提交工作区，不指称已发布或已提交基线存在回归；前两项的历史状态未在本轮重新验证。
+
+`pnpm check:docs:links` 退出码为 1，报告：
+
+```text
+docs/archive/issues/frontend-fsd-and-architecture-review.md:66
+  ../../../apps/studio-client/src/pages/studio/model/studio-layout-store.ts
+docs/archive/plans/ui/background-and-panel-materials-plan.md:16
+  ../../../../apps/studio-client/src/features/extension-renderers/model/client-renderer-host.ts
+docs/archive/plans/ui/background-and-panel-materials-plan.md:18
+  ../../../../apps/studio-client/src/pages/studio/model/studio-layout-store.ts
+```
+
+三个目标均已不存在。当前 git 状态显示两个旧源码路径被删除，对应的新路径为：
+
+- `apps/studio-client/src/shared/studio-shell/studio-layout-store.ts`
+- `apps/studio-client/src/shared/extension-renderer-runtime/client-renderer-host.ts`
+
+检查器实际递归扫描 Archive；`docs/archive/README.md` 将归档定义为冻结的历史材料，而非现行实现保证。修复时应保留旧路径作为历史文本，并注明当前位置或使用准确的历史版本引用，不能只把链接文字替换成新路径后继续声称文件仍错置于 Page。也不应为三个路径迁移直接跳过全部归档检查。
+
+关闭条件：上述三处链接有可访问目标且不改变原历史判断的时态，文档链接命令通过；不将这个文档门禁问题扩大为运行功能故障。本轮仅登记问题，未修改历史正文、检查器或正在进行的源码重构。
+
+## 2026-09-12 依赖合同检查
 
 对 workspace manifests 执行范围扫描，未发现 `^` 或 `~` 开头的依赖版本，当前浮动范围数量为 0。因此本轮没有把“依赖版本不锁定”列为问题。客户端确实仍有未使用依赖候选，但属于代码瘦身审计中的 SEP-006，不在此重复登记。
 

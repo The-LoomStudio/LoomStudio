@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import { formatResourceReference } from '@loom-studio/shared'
 import { loadResourceReference } from '../../../apps/studio-client/src/features/resource-references/reference-model.js'
+import { loadEntityReference } from '../../../apps/studio-client/src/features/resource-references/entity-reference-model.js'
 import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
-import { buildStudioResourcePath, readStudioRoute } from '../../../apps/studio-client/src/pages/studio/model/studio-route.js'
+import { buildStudioResourcePath, readStudioRoute } from '../../../apps/studio-client/src/shared/studio-shell/studio-route.js'
 import { prepareLoomMarkdown } from '../../../apps/studio-client/src/shared/ui/markdown-content/markdown-content-model.js'
 
 function apiFixture() {
@@ -18,6 +19,14 @@ function apiFixture() {
 }
 
 describe('resource reference navigation model', () => {
+  it('resolves character identity and avatar only on demand and propagates access failures', async () => {
+    const get = vi.fn().mockResolvedValue({ card: { id: 'a/b', name: 'Private name', version: 2, media: { avatarAssetId: 'asset' } } })
+    const api = { cards: { get } } as unknown as StudioApi
+    const view = await loadEntityReference(api, { kind: 'entity', type: 'card', id: 'a/b' })
+    expect(view).toEqual({ title: 'Private name', href: '/studio/characters/a%2Fb', avatarUrl: '/cards/a%2Fb/media/avatar?asset=asset&revision=2' })
+    get.mockRejectedValue(new Error('Access denied'))
+    await expect(loadEntityReference(api, { kind: 'entity', type: 'card', id: 'a/b' })).rejects.toThrow('Access denied')
+  })
   it('fetches the exact resource ID and highlights only the matching source version', async () => {
     const { api, getResource } = apiFixture()
     const ref = { kind: 'prompt-resource' as const, resourceId: 'r', nodeId: 'n', version: 2, startLine: 2, endLine: 3 }

@@ -14,61 +14,6 @@ function createTestContext() {
 }
 
 describe('state store', () => {
-  it('migrates existing full-snapshot revisions without changing their values', async () => {
-    let nextId = 0
-    const createId = (prefix: string) => `${prefix}-${++nextId}`
-    const now = () => '2026-09-09T00:00:00.000Z'
-    const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
-    engine.database.exec(`
-      CREATE TABLE state_scopes (
-        id TEXT PRIMARY KEY,
-        kind TEXT NOT NULL CHECK (kind IN ('global', 'timeline')),
-        owner_id TEXT NOT NULL,
-        head_revision_id TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        deleted_at TEXT,
-        UNIQUE(kind, owner_id),
-        CHECK (kind = 'global' OR head_revision_id IS NULL)
-      );
-      CREATE TABLE state_revisions (
-        id TEXT PRIMARY KEY,
-        scope_id TEXT NOT NULL REFERENCES state_scopes(id),
-        parent_revision_id TEXT REFERENCES state_revisions(id),
-        changeset_id TEXT NOT NULL,
-        snapshot_json TEXT NOT NULL,
-        operations_json TEXT NOT NULL,
-        idempotency_key TEXT,
-        created_at TEXT NOT NULL
-      );
-      CREATE UNIQUE INDEX idx_state_revisions_scope_idempotency
-        ON state_revisions(scope_id, idempotency_key)
-        WHERE idempotency_key IS NOT NULL;
-      CREATE INDEX idx_state_revisions_scope_created
-        ON state_revisions(scope_id, created_at, id);
-      CREATE INDEX idx_state_revisions_parent
-        ON state_revisions(parent_revision_id);
-      INSERT INTO schema_migrations (namespace, version) VALUES ('application.state', 1);
-      INSERT INTO state_scopes (
-        id, kind, owner_id, head_revision_id, created_at, updated_at, deleted_at
-      ) VALUES ('scope-old', 'global', 'workspace', 'revision-old', '${now()}', '${now()}', NULL);
-      INSERT INTO state_revisions (
-        id, scope_id, parent_revision_id, changeset_id,
-        snapshot_json, operations_json, idempotency_key, created_at
-      ) VALUES (
-        'revision-old', 'scope-old', NULL, 'changeset-old',
-        '{"legacy":true}', '[]', NULL, '${now()}'
-      );
-    `)
-
-    const store = createStateStore({ engine, createId, now })
-    expect((await store.getRevision('revision-old'))?.snapshot).toEqual({ legacy: true })
-    const columns = engine.database.prepare('PRAGMA table_info(state_revisions)').all() as Array<{ name: string; notnull: number }>
-    expect(columns.find(column => column.name === 'snapshot_json')?.notnull).toBe(0)
-    expect(columns.some(column => column.name === 'delta_json')).toBe(true)
-    engine.close()
-  })
-
   it('creates a global scope and initial full snapshot in one commit', async () => {
     const { engine, store, actor } = createTestContext()
     const observed = vi.fn()
@@ -96,6 +41,21 @@ describe('state store', () => {
       'state.scope',
     ])
     expect(observed).toHaveBeenCalledOnce()
+    engine.close()
+  })
+
+  it('enforces the global head revision foreign key in SQLite', async () => {
+    const { engine, store, actor } = createTestContext()
+    const created = await store.createScopeWithInitialRevision({
+      actor,
+      scope: { kind: 'global', ownerId: 'workspace' },
+      revision: { snapshot: {}, operations: [] },
+    })
+
+    expect(() => engine.database
+      .prepare('UPDATE state_scopes SET head_revision_id = ? WHERE id = ?')
+      .run('missing-revision', created.snapshot.scope.id))
+      .toThrow(/FOREIGN KEY constraint failed/)
     engine.close()
   })
 

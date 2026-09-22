@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildStudioChatPath, buildStudioNodeHash, buildStudioPanelPath, readStudioNodeAnchor, readStudioRoute } from '../../../apps/studio-client/src/pages/studio/model/studio-route.js'
+import { buildStudioChatPath, buildStudioNodeHash, buildStudioPanelPath, readStudioNodeAnchor, readStudioRoute } from '../../../apps/studio-client/src/shared/studio-shell/studio-route.js'
 
 describe('studio routes', () => {
   it('reads chat, character and asset identities from paths', () => {

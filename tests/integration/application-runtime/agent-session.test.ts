@@ -5,7 +5,8 @@ import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createNarrativeStore } from '@loom-studio/application-data'
 import { createPromptResourceStore } from '@loom-studio/application-data'
-import { describe, expect, it } from 'vitest'
+import { createMemoryLogSink, createRootLogger } from '@loom-studio/logging'
+import { describe, expect, it, vi } from 'vitest'
 
 function createTestRuntime(agentTools = createAgentToolRegistry([])) {
   let nextId = 0
@@ -17,8 +18,10 @@ function createTestRuntime(agentTools = createAgentToolRegistry([])) {
   const agents = createAgentStore({ engine, createId, now })
   const narratives = createNarrativeStore({ engine, createId, now })
   const promptResources = createPromptResourceStore({ engine, createId, now })
-  const runtime = createApplicationRuntime({ agents, agentTools, dataEngine: engine, documents, narratives, promptResources })
-  return { engine, documents, runtime }
+  const logs = createMemoryLogSink({ capacity: 100 })
+  const logger = createRootLogger({ service: 'test', instanceId: 'test', sinks: [logs] })
+  const runtime = createApplicationRuntime({ agents, agentTools, dataEngine: engine, documents, narratives, promptResources, runtimeLogger: logger.child('runtime') })
+  return { engine, documents, runtime, narratives, logs }
 }
 
 async function createProfile(runtime: ReturnType<typeof createTestRuntime>['runtime'], instructions = 'Help the user.') {
@@ -52,6 +55,75 @@ async function createPreset(
 }
 
 describe('application agent session lifecycle', () => {
+  it.each(['user-cancel', 'user-pause'])('logs %s as a non-error terminal state', async reason => {
+    const { engine, runtime, logs } = createTestRuntime()
+    try {
+      const { profile } = await createProfile(runtime)
+      const { session } = await runtime.createAgentSession({ agentProfileId: profile.id })
+      const controller = new AbortController()
+      controller.abort(reason)
+      await expect(runtime.invokeAgentTurn({ agentSessionId: session.id, input: 'private-input' }, {
+        abortSignal: controller.signal,
+        agentRun: { runId: 'test-run', onEvent: () => undefined, onSuspended: () => undefined },
+      })).rejects.toThrow()
+      const outcome = reason === 'user-pause' ? 'suspended' : 'cancelled'
+      expect(logs.list().at(-1)).toMatchObject({ event: `run.${outcome}`, level: 'info', data: { runId: 'test-run', outcome } })
+      expect(logs.list().some(record => record.event === 'run.completed')).toBe(false)
+      expect(JSON.stringify(logs.list())).not.toContain('private')
+    } finally { engine.close() }
+  })
+  it('logs preparation failures before a session can be resolved', async () => {
+    const { engine, runtime, logs } = createTestRuntime()
+    try {
+      await expect(runtime.invokeAgentTurn({ agentSessionId: 'missing', input: 'private-input' })).rejects.toThrow('not found')
+      expect(logs.list().map(log => log.event)).toEqual(['run.started', 'run.failed'])
+      expect(logs.list()[1]?.data).toMatchObject({ stage: 'preparation', outcome: 'failed', providerStep: 0 })
+      expect(logs.list()[0]?.data?.runId).toBe(logs.list()[1]?.data?.runId)
+      expect(JSON.stringify(logs.list())).not.toContain('private')
+    } finally { engine.close() }
+  })
+
+  it('does not log a successful turn when the final Narrative commit fails', async () => {
+    const { engine, runtime, narratives, logs } = createTestRuntime()
+    try {
+      const { profile } = await createProfile(runtime)
+      const { session } = await runtime.createAgentSession({ agentProfileId: profile.id })
+      const card = await runtime.createCard({ name: 'private-name' })
+      const timeline = await runtime.createNarrativeTimeline({ cardId: card.card.id })
+      const transaction = vi.spyOn(narratives, 'transaction').mockImplementation(() => { throw new Error('private-commit-error') })
+      await expect(runtime.invokeAgentTurn({
+        agentSessionId: session.id, input: 'private-input', narrativeTarget: { timelineId: timeline.timeline.id, commit: true },
+      })).rejects.toThrow('private-commit-error')
+      transaction.mockRestore()
+      const events = logs.list().map(log => log.event)
+      expect(events).toContain('step.completed')
+      expect(events.slice(-3)).toEqual(['commit.started', 'commit.failed', 'run.failed'])
+      expect(events).not.toContain('run.completed')
+      expect(JSON.stringify(logs.list())).not.toContain('private')
+    } finally { engine.close() }
+  })
+
+  it('reports cancellation during commit without hiding an already committed Narrative', async () => {
+    const { engine, runtime, narratives, logs } = createTestRuntime()
+    try {
+      const { profile } = await createProfile(runtime)
+      const { session } = await runtime.createAgentSession({ agentProfileId: profile.id })
+      const card = await runtime.createCard({ name: 'test' })
+      const timeline = await runtime.createNarrativeTimeline({ cardId: card.card.id })
+      const controller = new AbortController()
+      const transaction = narratives.transaction.bind(narratives)
+      vi.spyOn(narratives, 'transaction').mockImplementation(dataTx => {
+        controller.abort('user-cancel')
+        return transaction(dataTx)
+      })
+      const result = await runtime.invokeAgentTurn({
+        agentSessionId: session.id, input: 'test', narrativeTarget: { timelineId: timeline.timeline.id, commit: true },
+      }, { abortSignal: controller.signal })
+      expect(result.narrative?.nodes).toHaveLength(2)
+      expect(logs.list().at(-1)).toMatchObject({ event: 'run.cancelled', data: { narrativeCommitted: true, outcome: 'cancelled' } })
+      expect(logs.list().some(record => record.event === 'run.completed')).toBe(false)
+    } finally { engine.close() }
+  })
   it('exports and imports a Timeline archive with State history', async () => {
     const { engine, runtime } = createTestRuntime()
     try {

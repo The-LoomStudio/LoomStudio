@@ -3,8 +3,8 @@ import type { PromptResource } from '../../entities/index.js'
 import { findContextAssetPath, resolveVirtualDisplayName } from '../../features/context-assets/model/context-asset-tree.js'
 import { readPromptResourceWorkbenchRoot } from '../../features/context-assets/model/prompt-resource-view.js'
 import { ContextAssetHeader, type ContextAssetPathSegment } from '../../features/context-assets/ui/context-asset-header/context-asset-header.js'
-import { useStudioLayoutStore } from '../../pages/studio/model/studio-layout-store.js'
-import { STUDIO_PANEL_PRESENTATION } from '../../pages/studio/model/studio-panel-presentation.js'
+import { useStudioLayoutStore } from '../../shared/studio-shell/studio-layout-store.js'
+import { STUDIO_PANEL_PRESENTATION } from '../../shared/studio-shell/studio-panel-presentation.js'
 import type { Translator } from '../../shared/i18n/index.js'
 
 export function PresetWorkbenchHeader(props: {

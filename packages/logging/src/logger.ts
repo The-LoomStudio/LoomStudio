@@ -50,11 +50,12 @@ export function createRootLogger(options: CreateRootLoggerOptions): RootLogger {
       namespace,
       message,
       ...(fields.event ? { event: fields.event } : {}),
-      ...(fields.data ? { data: normalizeData(fields.data) } : {}),
+      ...(fields.data ? { data: normalizeLogData(fields.data) } : {}),
       ...(fields.error !== undefined ? { error: normalizeError(fields.error) } : {}),
       ...(fields.correlationId ? { correlationId: fields.correlationId } : {}),
       ...(fields.callId ? { callId: fields.callId } : {}),
       ...(fields.parentCallId ? { parentCallId: fields.parentCallId } : {}),
+      ...(fields.extension ? { extension: Object.freeze({ ...fields.extension }) } : {}),
     }
 
     Object.freeze(record)
@@ -122,7 +123,7 @@ function assertName(value: string, label: string): void {
   }
 }
 
-function normalizeData(data: JsonObject): JsonObject {
+export function normalizeLogData(data: JsonObject): JsonObject {
   return normalizeObject(data, new WeakSet())
 }
 

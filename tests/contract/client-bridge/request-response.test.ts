@@ -12,6 +12,19 @@ function createFetch(response: RpcResponse): typeof fetch {
 }
 
 describe('client bridge request-response contract', () => {
+  it('forwards cancellation to the HTTP request', async () => {
+    const controller = new AbortController()
+    const bridge = createClientBridge({
+      endpoint: 'http://localhost/rpc',
+      fetch: (async (_url, init) => {
+        expect(init?.signal).toBe(controller.signal)
+        return await new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal!.reason), { once: true }))
+      }) as typeof fetch,
+    })
+    const request = bridge.call('logs.history', {}, { signal: controller.signal })
+    controller.abort()
+    await expect(request).rejects.toThrow()
+  })
   it('sends json rpc requests and returns result payloads', async () => {
     const bridge = createClientBridge({
       endpoint: 'http://localhost/rpc',

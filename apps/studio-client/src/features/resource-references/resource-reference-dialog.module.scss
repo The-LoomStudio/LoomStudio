@@ -22,3 +22,7 @@
   code { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
 }
 .number { min-width: 4em; padding-right: 12px; text-align: right; opacity: .55; user-select: none; flex-shrink: 0; }
+.entity { display: flex; align-items: center; gap: 12px; padding: 16px; }
+.entity img { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; }
+.entity > div { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.entity button { display: inline-flex; align-items: center; gap: 6px; }

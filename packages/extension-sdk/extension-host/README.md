@@ -21,11 +21,14 @@ Extension Host 是 Server Extension Module 的 Node.js 宿主实现。它位于 
 - 动态导入 Server entry；
 - 管理 Package/Module/Instance identity 与 Instance Scope；
 - 在停止时 abort、等待 in-flight callback，并按反序执行 disposer；
+- 为扩展日志写入注入固定的 Package/Module/Instance/Runtime 身份，并提供 Host 归属的只读日志查询；
 - 对 RPC、Event、Document、Asset、AI、Storage 和 Portable Payload 执行 capability gate；
 - 校验 namespace、owner、grant 和 Manifest declaration/runtime registration；
 - 记录生命周期日志和 Diagnostics。
 
 Host 不负责 Package Source、Catalog、Installer 或 desired-state orchestration；这些属于 Studio Server Extension Manager。它也不实现 Client Host、UI Runtime、通用跨端 Event Transport或恶意代码强沙箱，不保存 Extension 自己的业务状态。
+
+扩展日志通过 `ctx.logger` 写入，`ctx.logger.child(namespace)` 只能创建受限命名空间；`ctx.logs.query(input)` 由 Host 强制绑定当前 Package，查询成功不额外产生日志。扩展不能通过 `ctx.rpc.call('logs.list', ...)` 绕过该边界。
 
 ```text
 Studio Server Extension Manager

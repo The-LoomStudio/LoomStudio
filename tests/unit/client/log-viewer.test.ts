@@ -1,7 +1,10 @@
 import type { LogPage, LogRecord } from '@loom-studio/logging'
 import { describe, expect, it, vi } from 'vitest'
 import { createLatestRequestGuard, mergePolledLogRecords, readLogPages, runLatestRequest } from '../../../apps/studio-client/src/features/log-viewer/model/log-feed-model.js'
-import { buildLogStream, highestLogLevel, matchesLogSearch, moreSevereLogLevel } from '../../../apps/studio-client/src/widgets/log-viewer/log-viewer-model.js'
+import { highestLogLevel, moreSevereLogLevel } from '../../../apps/studio-client/src/widgets/log-viewer/log-viewer-model.js'
+import { filterLogRecords, logSource } from '../../../apps/studio-client/src/features/log-viewer/model/log-presentation.js'
+import { formatLogReport, selectDiagnosticContext } from '../../../apps/studio-client/src/features/log-viewer/model/log-report.js'
+import { readLogReferences } from '../../../apps/studio-client/src/features/log-viewer/model/log-references.js'
 
 const records: LogRecord[] = [
   {
@@ -41,26 +44,40 @@ const records: LogRecord[] = [
 ]
 
 describe('log viewer model', () => {
-  it('only groups adjacent records with the same namespace on the chronological timeline', () => {
-    const stream = buildLogStream([records[3]!, records[1]!, records[0]!, records[2]!])
-
-    expect(stream).toEqual([
-      { kind: 'record', record: records[0] },
-      { kind: 'record', record: records[1] },
-      {
-        kind: 'group',
-        namespace: 'runtime.provider',
-        records: [records[2], records[3]],
-        firstTimestamp: records[2]?.timestamp,
-        lastTimestamp: records[3]?.timestamp,
-      },
-    ])
+  it('copies bounded failure context with causal IDs, gaps, and no raw private payload', () => {
+    const context = selectDiagnosticContext(records)
+    expect(context).toEqual(records)
+    const withPayload = [{ ...records[1]!, data: { runId: 'run-1', prompt: 'private prompt', toolResult: 'private result' } }]
+    const report = formatLogReport({ records: withPayload, version: 'test', capturedAt: 'now', scope: 'server', notices: ['evicted: 10'] })
+    expect(report).toContain('run-1')
+    expect(report).toContain('evicted: 10')
+    expect(report).not.toContain('private prompt')
+    expect(report).not.toContain('private result')
+    withPayload[0]!.message = 'changed after preview'
+    expect(report).not.toContain('changed after preview')
   })
-
+  it('uses structured IDs for references, never private labels or message mention syntax', () => {
+    const refs = readLogReferences({ ...records[0]!, message: '<@card:untrusted>', data: { cardId: 'card-1', runId: 'run-1' } })
+    expect(refs).toHaveLength(2)
+    expect(refs[0]!.uri).toContain('type=card')
+    expect(refs.some(ref => ref.uri.includes('untrusted'))).toBe(false)
+  })
+  it('filters technical successes but keeps RPC failures visible and can isolate a real run ID', () => {
+    const input: LogRecord[] = [
+      { ...records[0]!, namespace: 'transport.rpc', data: { technical: true, runId: 'run-1' } },
+      { ...records[1]!, namespace: 'transport.rpc', data: { technical: true, runId: 'run-1' } },
+      { ...records[0]!, data: { runId: 'run-2', durationMs: 12 } },
+    ]
+    expect(filterLogRecords(input, { query: '', level: 'all', technical: false })).toEqual(input.slice(1))
+    expect(filterLogRecords(input, { query: '', level: 'all', technical: false, runId: 'run-1' })).toEqual([input[1]])
+    expect(filterLogRecords(input, { query: '', level: 'all', technical: true })).toEqual(input)
+    expect(logSource(input[1]!)).toBe('RPC')
+  })
   it('searches structured fields as well as the visible message', () => {
-    expect(matchesLogSearch(records[0]!, 'provider connected')).toBe(true)
-    expect(matchesLogSearch(records[0]!, 'gpt-test')).toBe(true)
-    expect(matchesLogSearch(records[0]!, 'missing')).toBe(false)
+    const search = (query: string) => filterLogRecords(records, { query, level: 'all', technical: true })
+    expect(search('provider connected')).toEqual([records[0]])
+    expect(search('gpt-test')).toEqual([records[0]])
+    expect(search('missing')).toEqual([])
   })
 
   it('consumes every server page so the latest logs are not hidden', async () => {

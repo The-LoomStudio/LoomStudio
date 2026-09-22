@@ -1,7 +1,7 @@
 import type { ClientDisplayPart, ClientRendererFrameHostMessage, RendererSurface } from '@loom-studio/extension-sdk'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { rendererContributionKey, rendererSurfacePolicies } from '../model/renderer-registry.js'
-import type { ClientRendererContext, ClientRendererHost, ClientRendererRegistration, ClientRendererScope } from '../model/client-renderer-host.js'
+import { rendererContributionKey, rendererSurfacePolicies } from '../../../shared/extension-renderer-runtime/renderer-registry.js'
+import type { ClientRendererContext, ClientRendererHost, ClientRendererRegistration, ClientRendererScope } from '../../../shared/extension-renderer-runtime/client-renderer-host.js'
 import { readClientThemeSnapshot, subscribeClientTheme } from '../model/client-theme.js'
 import styles from './renderer-surface-host.module.scss'
 

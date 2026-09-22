@@ -46,6 +46,7 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
       { version: 3, migrate: migrateVersionThree },
     ],
   })
+  assertNarrativeSchema(engine.database)
 
   function transaction(tx: SqliteDataTransaction): NarrativeTransaction {
     const { database } = tx
@@ -361,7 +362,10 @@ function migrateVersionOne(database: DatabaseSync): void {
       deleted_at TEXT,
       deleted_by_json TEXT,
       delete_reason TEXT,
-      CHECK (created_from_card_version IS NULL OR created_from_card_version > 0)
+      CHECK (created_from_card_version IS NULL OR created_from_card_version > 0),
+      FOREIGN KEY(id, active_branch_id)
+        REFERENCES narrative_branches(timeline_id, id)
+        DEFERRABLE INITIALLY DEFERRED
     );
 
     CREATE TABLE narrative_branches (
@@ -369,23 +373,33 @@ function migrateVersionOne(database: DatabaseSync): void {
       timeline_id TEXT NOT NULL REFERENCES narrative_timelines(id),
       title TEXT,
       head_node_id TEXT,
-      parent_branch_id TEXT REFERENCES narrative_branches(id),
+      parent_branch_id TEXT,
       forked_from_node_id TEXT,
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      UNIQUE(timeline_id, id),
+      FOREIGN KEY(timeline_id, head_node_id)
+        REFERENCES narrative_nodes(timeline_id, id),
+      FOREIGN KEY(timeline_id, parent_branch_id)
+        REFERENCES narrative_branches(timeline_id, id),
+      FOREIGN KEY(timeline_id, forked_from_node_id)
+        REFERENCES narrative_nodes(timeline_id, id)
     );
 
     CREATE TABLE narrative_nodes (
       id TEXT PRIMARY KEY,
       timeline_id TEXT NOT NULL REFERENCES narrative_timelines(id),
-      parent_node_id TEXT REFERENCES narrative_nodes(id),
+      parent_node_id TEXT,
       body_format TEXT NOT NULL CHECK (body_format = 'loom-markdown.v1'),
       body_raw TEXT NOT NULL,
       source_agent_session_id TEXT,
       source_agent_message_id TEXT,
       source_run_id TEXT,
       source_changeset_id TEXT,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      UNIQUE(timeline_id, id),
+      FOREIGN KEY(timeline_id, parent_node_id)
+        REFERENCES narrative_nodes(timeline_id, id)
     );
 
     CREATE INDEX idx_narrative_branches_timeline ON narrative_branches(timeline_id);
@@ -408,6 +422,31 @@ function migrateVersionThree(database: DatabaseSync): void {
     CREATE INDEX idx_narrative_branches_state_head ON narrative_branches(state_head_revision_id);
     CREATE INDEX idx_narrative_nodes_state_revision ON narrative_nodes(state_revision_id);
   `)
+}
+
+function assertNarrativeSchema(database: DatabaseSync): void {
+  const timelineForeignKeys = database.prepare("PRAGMA foreign_key_list('narrative_timelines')").all() as Array<{ table?: string; from?: string; to?: string }>
+  const branchForeignKeys = database.prepare("PRAGMA foreign_key_list('narrative_branches')").all() as Array<{ table?: string; from?: string; to?: string }>
+  const nodeForeignKeys = database.prepare("PRAGMA foreign_key_list('narrative_nodes')").all() as Array<{ table?: string; from?: string; to?: string }>
+  const hasActiveBranchForeignKey = timelineForeignKeys.some(foreignKey =>
+    foreignKey.table === 'narrative_branches'
+    && foreignKey.from === 'active_branch_id'
+    && foreignKey.to === 'id')
+  const hasBranchHeadForeignKey = branchForeignKeys.some(foreignKey =>
+    foreignKey.table === 'narrative_nodes'
+    && foreignKey.from === 'head_node_id'
+    && foreignKey.to === 'id')
+  const hasNodeParentForeignKey = nodeForeignKeys.some(foreignKey =>
+    foreignKey.table === 'narrative_nodes'
+    && foreignKey.from === 'parent_node_id'
+    && foreignKey.to === 'id')
+  if (!hasActiveBranchForeignKey || !hasBranchHeadForeignKey || !hasNodeParentForeignKey) {
+    throw new NarrativeStoreError('narrative.sqlite_schema_invalid', 'Narrative SQLite schema is missing required identity foreign keys')
+  }
+  const violations = database.prepare('PRAGMA foreign_key_check').all()
+  if (violations.length > 0) {
+    throw new NarrativeStoreError('narrative.sqlite_schema_invalid', `Narrative SQLite schema contains ${violations.length} foreign key violations`)
+  }
 }
 
 function insertBranch(database: DatabaseSync, branch: NarrativeBranch): void {

@@ -337,7 +337,10 @@ function readProviderHttpError(error: unknown): Error | undefined {
           // Keep the stable status-only fallback for non-JSON provider errors.
         }
       }
-      return new Error(message ? `Provider request failed (${statusCode}): ${message}` : `Provider request failed (${statusCode})`)
+      return Object.assign(
+        new Error(message ? `Provider request failed (${statusCode}): ${message}` : `Provider request failed (${statusCode})`),
+        { statusCode },
+      )
     }
     current = 'cause' in current ? Reflect.get(current, 'cause') : undefined
   }

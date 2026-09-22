@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useAppearanceStore } from '../../../widgets/settings-panel/appearance-store.js'
+import { queryExtensionLogs, type Logger, type MemoryLogSink } from '@loom-studio/logging'
+import { useAppearanceStore } from '../../../shared/studio-shell/appearance-store.js'
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import type { ManagedClientExtensionModule, ManagedClientExtensionPackage, ManagedExtensionPackage } from '../../../entities/index.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import { invalidateCardMedia } from '../../../shared/lib/card-media.js'
 import { createClientExtensionHost, type ClientExtensionDataApi } from './client-extension-host.js'
-import type { ClientRendererHost } from './client-renderer-host.js'
+import type { ClientRendererHost } from '../../../shared/extension-renderer-runtime/client-renderer-host.js'
 import { createRendererSessionHost } from './renderer-session.js'
 
 export function useClientExtensionRuntime(input: {
   api: Pick<StudioApi, 'extensions' | 'extensionRuntime' | 'states' | 'textTransforms'>
   rendererHost: ClientRendererHost
+  logger: Logger
+  clientLogs: MemoryLogSink
 }) {
   const data = useMemo<ClientExtensionDataApi>(() => ({
     configs: {
@@ -42,8 +45,10 @@ export function useClientExtensionRuntime(input: {
     rendererHost: input.rendererHost,
     sessionHost,
     data,
+    logger: input.logger,
+    queryLogs: (packageId, query) => queryExtensionLogs({ current: input.clientLogs }, packageId, query, 'client'),
     appearance: { setBackground: setAppearanceBackground },
-  }), [data, input.rendererHost, sessionHost, setAppearanceBackground])
+  }), [data, input.rendererHost, input.logger, input.clientLogs, sessionHost, setAppearanceBackground])
   const [packages, setPackages] = useState<ManagedExtensionPackage[]>([])
   const [error, setError] = useState<Error>()
   const [serverDiagnostics, setServerDiagnostics] = useState<ClientJsonValue[]>([])

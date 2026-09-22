@@ -5,6 +5,7 @@ import type {
   AgentSession,
 } from '@loom-studio/application-data'
 import type { PresetToolMount } from '@loom-studio/application-data'
+import { readLogFailure } from '@loom-studio/logging'
 import type { ChatMessage, JsonObject, JsonValue } from '@loom-studio/shared'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import type { VariableRenderContext } from '../prompt/variables.js'
@@ -44,6 +45,14 @@ import { codeActToolIds } from './codeact/prompts.js'
 
 const maximumProviderSteps = 8
 const toolTimeoutMs = 30_000
+const safeToolCodes = new Set(['tool.unknown', 'tool.transport_mismatch', 'tool.approval_failed', 'tool.denied', 'tool.timeout', 'tool.aborted', 'codeact.source_transformed', 'codeact.incomplete_step'])
+
+export type AgentRunProgress = {
+  stage: string
+  providerStep: number
+  toolCount: number
+  suspended: boolean
+}
 
 export type NativeToolLoopResult = {
   session: AgentSession
@@ -70,7 +79,7 @@ export type ContentToolPromptRuntimeInputs = {
 }
 
 type AgentToolResolutionContext = Pick<ApplicationRuntimeContext, 'agentTools' | 'documents' | 'providerAdapters'>
-type NativeToolLoopContext = Pick<ApplicationRuntimeContext, 'agentTools' | 'createId' | 'gateway'>
+type NativeToolLoopContext = Pick<ApplicationRuntimeContext, 'agentTools' | 'createId' | 'gateway' | 'runtimeLogger'>
 
 export async function compileAgentToolSet(input: {
   ctx: AgentToolResolutionContext
@@ -242,7 +251,20 @@ export async function runNativeToolLoop(input: {
   delivery?: 'stream' | 'complete'
   resumeUserEntry?: AgentTranscriptEntry
   resumeAssistantEntryId?: string
+  progress?: AgentRunProgress
 }): Promise<NativeToolLoopResult> {
+  const progress = input.progress ?? { stage: 'transcript', providerStep: 0, toolCount: 0, suspended: false }
+  progress.stage = 'transcript'
+  const stepLogger = input.ctx.runtimeLogger?.child('step')
+  const toolLogger = input.ctx.runtimeLogger?.child('tool')
+  const logContext = {
+    correlationId: input.requestContext?.correlationId,
+    callId: input.requestContext?.callId,
+    parentCallId: input.requestContext?.parentCallId,
+  }
+  const references = { runId: input.runId, sessionId: input.session.id }
+  let stepStartedAt: number | undefined
+  let activeTool: { invocationId: string; toolId: string; toolName: string; startedAt: number } | undefined
   let session = input.session
   let lastChangesetId = ''
   const tools = input.compiledToolSet.tools
@@ -275,6 +297,13 @@ export async function runNativeToolLoop(input: {
 
   try {
     for (let step = 1; step <= maximumProviderSteps; step += 1) {
+      progress.providerStep = step
+      progress.stage = 'provider'
+      stepStartedAt = performance.now()
+      stepLogger?.info(`Step ${step} started`, {
+        event: 'step.started', ...logContext,
+        data: { ...references, providerStep: step, outcome: 'running', modelId: input.model.modelId },
+      })
       if (input.requestContext?.abortSignal?.aborted)
         throw createAbortError(input.requestContext.abortSignal.reason)
       const stepMessages = [...providerMessages, ...freshContextMessages]
@@ -321,6 +350,7 @@ export async function runNativeToolLoop(input: {
         },
       })
 
+      progress.stage = 'response'
       const toolCalls = providerResult.message.tool_calls ?? []
       const nativeInvocationPairs = toolCalls.map((call) => {
         const resolved = byExposedName.get(call.function.name)
@@ -450,6 +480,7 @@ export async function runNativeToolLoop(input: {
           )
           if (partialEntry) continuationAssistantEntryId = partialEntry.id
           providerMessages.push(providerResult.message)
+          completeStep('Output limit reached · continuing')
           continue
         }
         if (!providerResult.message.content)
@@ -464,6 +495,7 @@ export async function runNativeToolLoop(input: {
         const completed = await append([
           { kind: 'run-state', state: 'completed' },
         ])
+        completeStep('Final assistant output accepted')
         return {
           session,
           userEntry,
@@ -476,6 +508,18 @@ export async function runNativeToolLoop(input: {
 
       providerMessages.push(providerResult.message)
       for (const pair of invocationPairs) {
+        progress.stage = 'tool'
+        progress.toolCount += 1
+        activeTool = {
+          invocationId: pair.invocation.id,
+          toolId: pair.resolved?.definition.id ?? 'unknown',
+          toolName: pair.resolved?.definition.name ?? 'unknown tool',
+          startedAt: performance.now(),
+        }
+        toolLogger?.info(`${activeTool.toolName} · tool started`, {
+          event: 'tool.started', ...logContext,
+          data: { ...references, invocationId: activeTool.invocationId, toolId: activeTool.toolId, providerStep: step, transport: pair.transport, outcome: 'running' },
+        })
         const incompleteCodeAct = codeActToolIds.has(pair.invocation.toolId)
           && (providerResult.finishReason === 'length' || providerResult.finishReason === 'error')
         const result = 'sourceChanged' in pair && pair.sourceChanged ? failedResult(
@@ -493,6 +537,19 @@ export async function runNativeToolLoop(input: {
           input.toolExecutionScope,
           input.requestContext?.abortSignal,
         )
+        const toolOutcome = result.status
+        const errorCode = result.error?.code && safeToolCodes.has(result.error.code) ? result.error.code : undefined
+        toolLogger?.[toolOutcome === 'completed' || (toolOutcome === 'aborted' && errorCode !== 'tool.timeout') ? 'info' : 'warn'](`${activeTool.toolName} · ${toolOutcome}${errorCode ? ` · ${errorCode}` : ''}`, {
+          event: `tool.${toolOutcome}`, ...logContext,
+          data: {
+            ...references, invocationId: activeTool.invocationId, toolId: activeTool.toolId,
+            providerStep: step, transport: pair.transport, outcome: toolOutcome,
+            durationMs: Math.round((performance.now() - activeTool.startedAt) * 100) / 100,
+            ...(errorCode ? { errorCode } : {}),
+          },
+        })
+        activeTool = undefined
+        progress.stage = 'transcript'
         await append([
           toTranscriptResult(result, input.requestContext?.abortSignal),
         ])
@@ -534,15 +591,30 @@ export async function runNativeToolLoop(input: {
           })
         }
       }
+      completeStep(`${invocationPairs.length} tools processed · continuing`)
     }
+    progress.stage = 'step-limit'
     throw new Error(
       `Agent Provider step limit exceeded: ${maximumProviderSteps}`,
     )
   } catch (error) {
-      const aborted =
+    const aborted =
       input.requestContext?.abortSignal?.aborted || isAbortError(error)
     const userPaused = aborted && input.requestContext?.abortSignal?.reason === 'user-pause'
     const suspended = userPaused
+    const failure = readLogFailure(error)
+    if (activeTool) {
+      toolLogger?.[aborted ? 'info' : 'error'](`${activeTool.toolName} · ${aborted ? 'cancelled' : failure.failureReason}`, {
+        event: aborted ? 'tool.aborted' : 'tool.failed', ...logContext,
+        data: { ...references, ...failure, invocationId: activeTool.invocationId, toolId: activeTool.toolId, providerStep: progress.providerStep, outcome: aborted ? 'aborted' : 'failed', durationMs: Math.round((performance.now() - activeTool.startedAt) * 100) / 100 },
+      })
+    }
+    if (stepStartedAt !== undefined) {
+      stepLogger?.[aborted ? 'info' : 'error'](`Step ${progress.providerStep} ${aborted ? 'cancelled' : 'failed'} · ${progress.stage}`, {
+        event: aborted ? 'step.cancelled' : 'step.failed', ...logContext,
+        data: { ...references, ...failure, providerStep: progress.providerStep, stage: progress.stage, outcome: aborted ? 'cancelled' : 'failed', detail: failure.failureReason, durationMs: Math.round((performance.now() - stepStartedAt) * 100) / 100 },
+      })
+    }
     try {
       if (suspended || !aborted) {
         const checkpointEntries: AgentTranscriptEntryData[] = []
@@ -579,6 +651,7 @@ export async function runNativeToolLoop(input: {
           userEntry,
           ...(appendedPartial ? { partialEntryId: appendedPartial.id } : {}),
         })
+        progress.suspended = Boolean(input.requestContext?.agentRun?.onSuspended)
       }
       await append([
         {
@@ -591,6 +664,14 @@ export async function runNativeToolLoop(input: {
       // Preserve the original failure if recording the terminal state also fails.
     }
     throw error
+  }
+
+  function completeStep(detail: string) {
+    stepLogger?.info(`Step ${progress.providerStep} completed`, {
+      event: 'step.completed', ...logContext,
+      data: { ...references, providerStep: progress.providerStep, outcome: 'completed', detail, durationMs: Math.round((performance.now() - stepStartedAt!) * 100) / 100 },
+    })
+    stepStartedAt = undefined
   }
 
   async function append(entries: AgentTranscriptEntryData[]) {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { canRenderPanelHeaderContribution } from '../../../apps/studio-client/src/pages/studio/studio-window-header-context.js'
+import { canRenderPanelHeaderContribution } from '../../../apps/studio-client/src/shared/studio-shell/studio-window-header-context.js'
 import { StudioWindowHeader } from '../../../apps/studio-client/src/pages/studio/studio-window-header.js'
 
 describe('studio window header contributions', () => {

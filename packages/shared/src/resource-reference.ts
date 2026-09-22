@@ -4,6 +4,37 @@ export type ResourceReference = (
   | { kind: 'script'; documentId: string; version: number }
 ) & { startLine: number; endLine: number }
 
+export type EntityReference = {
+  kind: 'entity'
+  type: 'card' | 'timeline' | 'session' | 'run' | 'resource' | 'provider' | 'extension'
+  id: string
+}
+
+export function formatEntityReference(reference: EntityReference): string {
+  const url = new URL('loom-resource://entity')
+  url.searchParams.set('type', reference.type)
+  url.searchParams.set('id', reference.id)
+  if (!parseEntityReference(url.href)) throw new Error('Invalid entity reference')
+  return url.href
+}
+
+export function parseEntityReference(uri: string): EntityReference | undefined {
+  if (uri.length > 8192) return undefined
+  try {
+    const url = new URL(uri)
+    if (url.protocol !== 'loom-resource:' || url.hostname !== 'entity' || url.username || url.password || url.port || url.pathname || url.hash) return undefined
+    const type = url.searchParams.get('type')
+    const id = url.searchParams.get('id')
+    if ([...url.searchParams.keys()].some(key => !['type', 'id'].includes(key) || url.searchParams.getAll(key).length !== 1)) return undefined
+    if (!type || !['card', 'timeline', 'session', 'run', 'resource', 'provider', 'extension'].includes(type) || !id || /[\u0000-\u001f\u007f]/.test(id)) return undefined
+    return { kind: 'entity', type: type as EntityReference['type'], id }
+  } catch { return undefined }
+}
+
+export function parseResourceLink(uri: string): ResourceReference | EntityReference | undefined {
+  return parseEntityReference(uri) ?? parseResourceReference(uri)
+}
+
 export function formatResourceReference(reference: ResourceReference): string {
   const url = new URL(`loom-resource://${reference.kind}`)
   if (reference.kind === 'prompt-resource') {

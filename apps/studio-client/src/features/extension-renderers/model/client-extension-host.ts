@@ -1,3 +1,4 @@
+import { createExtensionLogWriter, readLogFailure, type ExtensionHostLogWriter, type ExtensionLogQuery, type ExtensionLogPage } from '@loom-studio/logging'
 import type {
   ClientActionSurface,
   ClientCommandHandler,
@@ -20,9 +21,9 @@ import type {
   RegisteredClientBackground,
 } from '@loom-studio/extension-sdk'
 import type { ManagedClientExtensionModule, ManagedClientExtensionPackage } from '../../../entities/index.js'
-import type { ClientRendererHost } from './client-renderer-host.js'
+import type { ClientRendererHost } from '../../../shared/extension-renderer-runtime/client-renderer-host.js'
 import type { RendererSessionHost } from './renderer-session.js'
-import { rendererContributionKey } from './renderer-registry.js'
+import { rendererContributionKey } from '../../../shared/extension-renderer-runtime/renderer-registry.js'
 import { clientCommandKey, matchesClientActionCondition } from './client-actions.js'
 
 export type { ManagedClientExtensionModule, ManagedClientExtensionPackage } from '../../../entities/index.js'
@@ -127,7 +128,8 @@ export function createClientExtensionHost(options: {
   data?: ClientExtensionDataApi
   sessionHost?: RendererSessionHost
   loadModule?: (entryUrl: string, instanceId: string) => Promise<LoadedClientModule>
-  logger?: ClientExtensionLogger
+  logger?: ExtensionHostLogWriter
+  queryLogs?(packageId: string, input: ExtensionLogQuery): Promise<ExtensionLogPage>
   appearance?: { setBackground(background: { id: string; image: string } | null): void }
 }): ClientExtensionHost {
   const active = new Map<string, ActiveClientModule>()
@@ -187,8 +189,9 @@ export function createClientExtensionHost(options: {
         await subscription.handler(entries.map(entry => structuredClone(entry)))
       } catch (error) {
         logger.error('Client Extension Config subscription failed', {
-          packageId: subscription.packageId,
-          error: error instanceof Error ? error.message : String(error),
+          extension: { packageId: subscription.packageId, runtime: 'client' },
+          event: 'extension.config.subscription.failed',
+          data: readLogFailure(error),
         })
       }
     }))
@@ -198,6 +201,10 @@ export function createClientExtensionHost(options: {
     active.delete(record.key)
     record.abortController.abort()
     for (const handle of [...record.handles].reverse()) await handle.dispose()
+    logger.info('Client extension disposed', {
+      extension: { packageId: record.summary.packageId, moduleId: record.summary.moduleId, instanceId: record.summary.instanceId, runtime: 'client' },
+      event: 'extension.disposed',
+    })
     summaries.set(record.key, {
       packageId: record.summary.packageId,
       moduleId: record.summary.moduleId,
@@ -209,6 +216,8 @@ export function createClientExtensionHost(options: {
     const key = moduleKey(extensionPackage.packageId, module.moduleId)
     clearModuleDiagnostics(diagnostics, extensionPackage.packageId, module.moduleId)
     const instanceId = createClientInstanceId(extensionPackage.packageId, module.moduleId)
+    const extension = { packageId: extensionPackage.packageId, moduleId: module.moduleId, instanceId, runtime: 'client' as const }
+    logger.info('Client extension activation started', { extension, event: 'extension.activation.started' })
     const record: ActiveClientModule = {
       key,
       entryUrl: module.entryUrl,
@@ -234,7 +243,8 @@ export function createClientExtensionHost(options: {
         rendererHost: options.rendererHost,
         sessionHost: options.sessionHost,
         data,
-        logger,
+        logger: createExtensionLogWriter(logger, { packageId: extensionPackage.packageId, moduleId: module.moduleId, instanceId, runtime: 'client' }),
+        queryLogs: options.queryLogs,
         registerCommand,
         registerConfigSubscription,
         disposeConfigSubscription,
@@ -272,7 +282,9 @@ export function createClientExtensionHost(options: {
           : 'active',
       }
       summaries.set(key, record.summary)
+      logger.info('Client extension activation completed', { extension, event: 'extension.activation.completed', data: { outcome: record.summary.state } })
     } catch (error) {
+      logger.error('Client extension activation failed', { extension, event: 'extension.activation.failed', data: readLogFailure(error) })
       const message = error instanceof Error ? error.message : String(error)
       diagnostics.push({
         code: 'client-extension.activation_failed',
@@ -445,6 +457,7 @@ function createActivationContext(input: {
   data: ClientExtensionDataApi
   sessionHost?: RendererSessionHost
   logger: ClientExtensionLogger
+  queryLogs?(packageId: string, input: ExtensionLogQuery): Promise<ExtensionLogPage>
   backgrounds: Map<string, RegisteredClientBackground>
   appearance?: { setBackground(background: { id: string; image: string } | null): void }
   emit(): void
@@ -472,6 +485,13 @@ function createActivationContext(input: {
     },
     signal: input.record.abortController.signal,
     logger: input.logger,
+    logs: {
+      query: query => {
+        input.record.abortController.signal.throwIfAborted()
+        if (!input.queryLogs) return Promise.reject(new Error('Extension logs are not available'))
+        return input.queryLogs(input.extensionPackage.packageId, query)
+      },
+    },
     commands: {
       register: (commandId, handler) => input.registerCommand(input.extensionPackage, input.module, input.record, commandId, handler),
     },
@@ -651,7 +671,7 @@ function moduleKey(packageId: string, moduleId: string): string {
   return `${packageId}/${moduleId}`
 }
 
-const consoleClientExtensionLogger: ClientExtensionLogger = {
+const consoleClientExtensionLogger: ExtensionHostLogWriter = {
   debug: (message, data) => console.debug(message, data),
   info: (message, data) => console.info(message, data),
   warn: (message, data) => console.warn(message, data),

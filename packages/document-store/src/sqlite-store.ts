@@ -66,7 +66,8 @@ const documentMigrations = [
         changeset_id TEXT NOT NULL,
         created_at TEXT NOT NULL,
         created_by_json TEXT NOT NULL,
-        PRIMARY KEY (document_id, version)
+        PRIMARY KEY (document_id, version),
+        FOREIGN KEY (document_id) REFERENCES documents(id)
       );
 
       CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(type);
@@ -373,6 +374,7 @@ function initializeDocumentSchema(engine: SqliteDataEngine): void {
       },
     })),
   })
+  assertSqliteSchema(engine.database)
 }
 
 function assertSqliteSchema(database: DatabaseSync): void {
@@ -383,6 +385,18 @@ function assertSqliteSchema(database: DatabaseSync): void {
     if (missing.length > 0) {
       throw new StoreError('document.sqlite_schema_invalid', `SQLite table ${table} is missing required columns: ${missing.join(', ')}`)
     }
+  }
+  const foreignKeys = database.prepare("PRAGMA foreign_key_list('document_revisions')").all() as Array<{ table?: string; from?: string; to?: string }>
+  const hasDocumentForeignKey = foreignKeys.some(foreignKey =>
+    foreignKey.table === 'documents'
+    && foreignKey.from === 'document_id'
+    && foreignKey.to === 'id')
+  if (!hasDocumentForeignKey) {
+    throw new StoreError('document.sqlite_schema_invalid', 'SQLite table document_revisions is missing its document foreign key')
+  }
+  const violations = database.prepare('PRAGMA foreign_key_check').all()
+  if (violations.length > 0) {
+    throw new StoreError('document.sqlite_schema_invalid', `SQLite schema contains ${violations.length} foreign key violations`)
   }
 }
 

@@ -9,6 +9,13 @@ export type LogError = {
   stack?: string
 }
 
+export type LogExtensionIdentity = {
+  packageId: string
+  moduleId?: string
+  instanceId?: string
+  runtime: 'server' | 'client'
+}
+
 export type LogRecord = {
   timestamp: string
   level: LogLevel
@@ -22,6 +29,7 @@ export type LogRecord = {
   correlationId?: string
   callId?: string
   parentCallId?: string
+  extension?: LogExtensionIdentity
 }
 
 export type LogFields = {
@@ -31,6 +39,7 @@ export type LogFields = {
   correlationId?: string
   callId?: string
   parentCallId?: string
+  extension?: LogExtensionIdentity
 }
 
 export type LogSink = {

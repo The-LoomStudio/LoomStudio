@@ -1,4 +1,7 @@
 import { createMemoryLogSink, createRootLogger } from '@loom-studio/logging'
+import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
+import { createInMemoryDocumentStore } from '@loom-studio/document-store'
+import { createExtensionHost, type ExtensionHostOptions } from '@loom-studio/extension-host'
 import { describe, expect, it } from 'vitest'
 import { createExtensionFixture, createExtensionHostHarness, manifest } from './helpers.js'
 
@@ -25,8 +28,12 @@ describe('extension host logging contract', () => {
       'extension.activation.failed',
       'extension.disposed',
     ])
-    expect(page[0]?.message).toBe('example.loggingFailure discovered · v0.0.0')
-    expect(page[2]?.message).toMatch(/^example\.loggingFailure\/server activation failed after \d+(?:\.\d+)? ms$/)
+    expect(page[0]?.message).toBe('example.loggingFailure discovered')
+    expect(page[2]?.message).toBe('example.loggingFailure/server activation failed')
+    expect(page[0]?.extension).toEqual({ packageId: 'example.loggingFailure', runtime: 'server' })
+    expect(page[1]?.extension).toMatchObject({ packageId: 'example.loggingFailure', moduleId: 'server', runtime: 'server' })
+    expect(page[2]?.extension).toEqual({ packageId: 'example.loggingFailure', moduleId: 'server', instanceId: page[2]?.extension?.instanceId, runtime: 'server' })
+    expect(page[3]?.extension).toMatchObject({ packageId: 'example.loggingFailure', moduleId: 'server', runtime: 'server' })
     expect(JSON.stringify(page)).not.toContain(directory)
     expect(JSON.stringify(page)).not.toContain('private plugin failure text')
   })
@@ -42,7 +49,11 @@ describe('extension host logging contract', () => {
     })
     const degradedDirectory = createExtensionFixture('logging-degraded-extension', {
       manifest: manifest('example.loggingDegraded', []),
-      source: `export function activate(ctx) { ctx.rpc.register('example.loggingDegraded.echo', () => null) }`,
+      source: `export function activate(ctx) {
+        ctx.logger.info('legacy extension message', { event: 'legacy.data.event', phase: 'active' })
+        ctx.logger.child('worker').log('info', 'sync completed', { event: 'sync.completed', data: { count: 12, packageId: 'spoofed' } })
+        ctx.rpc.register('example.loggingDegraded.echo', () => null)
+      }`,
     })
 
     await extensionHost.discover(activeDirectory)
@@ -51,7 +62,56 @@ describe('extension host logging contract', () => {
 
     const completed = logs.list().filter(item => item.namespace === 'extension.loader' && item.event === 'extension.activation.completed')
     expect(completed.map(item => item.data?.state)).toEqual(['active', 'degraded'])
-    expect(completed[0]?.message).toMatch(/^example\.loggingActive\/server activated · active · \d+(?:\.\d+)? ms$/)
-    expect(completed[1]?.message).toMatch(/^example\.loggingDegraded\/server activated · degraded · \d+(?:\.\d+)? ms$/)
+    expect(completed[0]?.message).toBe('example.loggingActive/server activation completed')
+    expect(completed[1]?.message).toBe('example.loggingDegraded/server activation completed')
+    const legacy = logs.list().find(item => item.message === 'legacy extension message')
+    expect(legacy?.event).toBe('extension.runtime.log')
+    expect(legacy?.data).toMatchObject({ event: 'legacy.data.event', phase: 'active', component: '' })
+    expect(legacy?.extension).toMatchObject({ packageId: 'example.loggingDegraded', moduleId: 'server', runtime: 'server' })
+    const child = logs.list().find(item => item.event === 'extension.sync.completed')
+    expect(child?.namespace).toBe('extension.loader.worker')
+    expect(child?.data).toMatchObject({ component: 'worker', count: 12, packageId: 'spoofed' })
+    expect(child?.extension).toMatchObject({ packageId: 'example.loggingDegraded', moduleId: 'server', runtime: 'server' })
+  })
+
+  it('queries only the host-owned package logs and keeps logs RPC reserved', async () => {
+    let queryCall: { packageId: string; input: unknown } | undefined
+    const queryLogs: NonNullable<ExtensionHostOptions['queryLogs']> = async (packageId, input) => {
+      queryCall = { packageId, input }
+      return { items: [], cursor: 'memory:test:0', hasMore: false, sources: ['current'] }
+    }
+    const extensionHost = createExtensionHost({
+      documents: createInMemoryDocumentStore(),
+      diagnostics: createInMemoryDiagnosticsRegistry(),
+      queryLogs,
+      callRpc: async () => null,
+      registerRpc: (name, ownerPackageId, ownerModuleId, handler, ownerInstanceId) => ({
+        name,
+        ownerPackageId,
+        ownerModuleId,
+        ownerInstanceId,
+        handler,
+        dispose: () => undefined,
+      }),
+    })
+    const directory = createExtensionFixture('logging-query-extension', {
+      manifest: manifest('example.loggingQuery', []),
+      source: `export async function activate(ctx) {
+        await ctx.logs.query({ limit: 1 })
+        try {
+          await ctx.rpc.call('logs.list')
+        } catch (error) {
+          if (error instanceof Error && error.message.includes('reserved Studio namespace RPC')) return
+          throw error
+        }
+        throw new Error('logs RPC was not rejected')
+      }`,
+    })
+
+    await extensionHost.discover(directory)
+    const summary = await extensionHost.activate('example.loggingQuery', 'server')
+
+    expect(summary.state).toBe('active')
+    expect(queryCall).toEqual({ packageId: 'example.loggingQuery', input: { limit: 1 } })
   })
 })

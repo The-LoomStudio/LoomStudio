@@ -1,8 +1,8 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
-import { safeLocalStorage } from '../../../shared/browser/safe-local-storage.js'
-import type { WindowSize } from '../window-resize.js'
-import type { LongTextEditorMode } from '../../../shared/ui/long-text-editor/long-text-editor-model.js'
+import { safeLocalStorage } from '../browser/safe-local-storage.js'
+import type { WindowSize } from './window-resize.js'
+import type { LongTextEditorMode } from '../ui/long-text-editor/long-text-editor-model.js'
 import { isRecord } from '@loom-studio/shared'
 
 export const STUDIO_PANEL_IDS = ['model', 'agent', 'play', 'sessions', 'character', 'preset', 'resource', 'state', 'text-transform', 'inspector', 'logs', 'extensions', 'settings'] as const

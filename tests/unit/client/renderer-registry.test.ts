@@ -5,7 +5,7 @@ import {
   rendererContributionKey,
   rendererInstanceKey,
   type RegisteredRendererContribution,
-} from '../../../apps/studio-client/src/features/extension-renderers/model/renderer-registry.js'
+} from '../../../apps/studio-client/src/shared/extension-renderer-runtime/renderer-registry.js'
 
 function contribution(packageId: string, contributionId: string, suggestedOrder = 0): RegisteredRendererContribution {
   return {

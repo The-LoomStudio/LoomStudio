@@ -14,6 +14,7 @@ import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createPromptResourceStore } from '@loom-studio/application-data'
 import { createNarrativeStore } from '@loom-studio/application-data'
+import { createMemoryLogSink, createRootLogger } from '@loom-studio/logging'
 import { describe, expect, it } from 'vitest'
 
 const readContextTool: ToolDefinition = {
@@ -93,6 +94,11 @@ describe('Native Function Tool Loop', () => {
       expect(executed).toBe(executions)
       expect(page.entries.filter(entry => entry.entry.kind === 'tool-result').map(entry => entry.entry))
         .toEqual([expect.objectContaining({ status })])
+      const records = fixture.logs.list()
+      expect(records.filter(record => record.event === 'step.started').map(record => record.data?.providerStep)).toEqual([1, 2])
+      expect(records.some(record => record.event === `tool.${status}`)).toBe(true)
+      expect(records.at(-1)).toMatchObject({ event: 'run.completed', data: { providerStep: 2, toolCount: 1, narrativeCommitted: false } })
+      expect(new Set(records.map(record => record.data?.runId)).size).toBe(1)
     } finally {
       fixture.close()
     }
@@ -766,6 +772,8 @@ async function createFixture(input: {
   const agents = createAgentStore({ engine, createId, now })
   const promptResources = createPromptResourceStore({ engine, createId, now })
   const narratives = createNarrativeStore({ engine, createId, now })
+  const logs = createMemoryLogSink({ capacity: 100 })
+  const logger = createRootLogger({ service: 'test', instanceId: 'test', sinks: [logs] })
   const runtime = createApplicationRuntime({
     agents,
     agentTools: input.agentTools ?? createAgentToolRegistry(
@@ -777,6 +785,7 @@ async function createFixture(input: {
     narratives,
     promptResources,
     gateway: { invokeChat: input.invokeChat },
+    runtimeLogger: logger.child('runtime'),
   })
   const preset = await runtime.createPromptResource({
     resourceKind: 'preset',
@@ -813,6 +822,7 @@ async function createFixture(input: {
   ).session.id
   return {
     runtime,
+    logs,
     sessionId,
     close: () => engine.close(),
   }

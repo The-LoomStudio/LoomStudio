@@ -1,5 +1,6 @@
 import type { Diagnostic, DiagnosticsRegistry } from '@loom-studio/diagnostics'
 import type { DocumentStore } from '@loom-studio/document-store'
+import type { ExtensionHostLogWriter, ExtensionLogPage, ExtensionLogQuery } from '@loom-studio/logging'
 import type {
   AiGatewayCapabilityRegistry,
   EventCapabilityCategory,
@@ -92,12 +93,7 @@ export type ExtensionRpcRegistration = {
   dispose(): void
 }
 
-export type ExtensionHostLogger = {
-  debug?(message: string, fields?: { event?: string; data?: JsonObject }): void
-  info(message: string, fields?: { event?: string; data?: JsonObject }): void
-  warn?(message: string, fields?: { event?: string; data?: JsonObject }): void
-  error(message: string, fields?: { event?: string; data?: JsonObject }): void
-}
+export type ExtensionHostLogger = ExtensionHostLogWriter
 
 export type ExtensionEventRegistration = {
   dispose(): void | Promise<void>
@@ -106,7 +102,8 @@ export type ExtensionEventRegistration = {
 export type ExtensionHostOptions = {
   documents: DocumentStore
   diagnostics: DiagnosticsRegistry
-  logger?: ExtensionHostLogger
+  logger?: ExtensionHostLogWriter
+  queryLogs?(packageId: string, input: ExtensionLogQuery): Promise<ExtensionLogPage>
   mode?: 'development' | 'production' | 'test'
   grantEventCapabilities?(packageManifest: ExtensionManifest, moduleManifest: ExtensionModuleManifest): readonly EventCapabilityCategory[]
   grantAssetCapabilities?(packageManifest: ExtensionManifest, moduleManifest: ExtensionModuleManifest): readonly ExtensionAssetCapability[]

@@ -5,11 +5,14 @@ Loom Studio 使用统一的结构化运行日志记录 Server、Client、Transpo
 当前实现对应：
 
 - [`packages/logging`](../../../packages/logging/)；
+- [`packages/logging/src/jsonl-reader.ts`](../../../packages/logging/src/jsonl-reader.ts)；
+- [`packages/shared/src/resource-reference.ts`](../../../packages/shared/src/resource-reference.ts)；
 - [`apps/studio-server/src/main.ts`](../../../apps/studio-server/src/main.ts)；
 - [`apps/studio-client/src/main.tsx`](../../../apps/studio-client/src/main.tsx)；
 - [`apps/studio-server/src/rpc/handlers/logs-rpc.ts`](../../../apps/studio-server/src/rpc/handlers/logs-rpc.ts)；
 - [`apps/studio-client/src/widgets/log-viewer/`](../../../apps/studio-client/src/widgets/log-viewer/)；
 - [`tests/unit/logging/`](../../../tests/unit/logging/)；
+- [`tests/unit/client/log-viewer.test.ts`](../../../tests/unit/client/log-viewer.test.ts)；
 - [`tests/integration/studio-server/logging.test.ts`](../../../tests/integration/studio-server/logging.test.ts)。
 
 ## 1. 定位与设计目标
@@ -98,6 +101,12 @@ type LogRecord = {
   correlationId?: string
   callId?: string
   parentCallId?: string
+  extension?: {
+    packageId: string
+    moduleId?: string
+    instanceId?: string
+    runtime: 'server' | 'client'
+  }
 }
 ```
 
@@ -109,6 +118,7 @@ type LogRecord = {
 - `message` 是人类无需展开即可理解的单行摘要；
 - `event` 是可供机器查询的稳定生命周期名称；
 - `data` 保存 JSON-safe 运行元数据；
+- `extension` 是 Host 绑定的扩展归属，不从插件 data 或 message 推断；其中 instanceId 为扩展激活实例，与顶层 service instanceId 不同；
 - `error` 只在调用点确认错误正文和 stack 可以进入日志时使用；
 - correlation 字段关联一次跨模块调用，但不替代 Trace。
 
@@ -161,12 +171,14 @@ event + data
 示例：
 
 ```text
-application.getPromptResource completed in 1.37 ms
-runtime prompt build completed · 7 messages · 11.08 ms
-example.echo activated · active · 3.42 ms
+application.getPromptResource completed
+runtime prompt build completed · 7 messages
+example.echo activation completed
 ```
 
 message 不应复制参数、正文、长 ID 列表或完整 JSON。Viewer 也不能通过解析 message 完成分类和聚合。
+
+`data.detail` 保存安全单行附属摘要；`durationMs` 始终为数值毫秒，Console/Viewer 就近格式化为 ms/s；`usage.inputTokens/outputTokens` 缺失不填零。`readLogPresentation` 是两端共用的通用格式化函数，不推断 Agent 状态。`data.technical = true` 标记普通读取/轮询等技术记录；warn/error 不受默认技术降噪影响。
 
 ## 7. 规范化、错误与隐私
 
@@ -199,6 +211,8 @@ apiKey
 - 它不会自动识别角色名、会话标题或 Prompt；
 - `error.message` 和 stack 也可能包含用户内容。
 
+第一方运行错误通过 `readLogFailure` 提取已知错误类型、数值 HTTP 状态及本地固定分类，不透传未知错误正文、任意 error code、headers 或 response body。Provider HTTP 适配保留数值 `statusCode`，网络错误保留已知安全类型。未知错误仍只给安全分类及调用阶段，详细正文不属于普通日志。Client Bridge 已有正式稳定 RPC code 继续保留。
+
 普通运行日志因此采用 **metadata-only by default**：
 
 | 数据类别 | 示例 | 默认策略 |
@@ -208,7 +222,7 @@ apiKey
 | 私密正文 | 聊天、Prompt、角色正文、ToolResult、Provider payload | 禁止进入普通 Log |
 | Secret | API key、Authorization、Cookie、Token、Password | 所有可观测性出口均禁止 |
 
-资源操作优先记录稳定引用。授权 UI 未来可以临时把引用解析为名称、头像或链接，但解析结果不能写回 LogRecord、JSONL 或导出文件。
+资源操作优先记录稳定引用。授权 UI 可按需将结构化身份转换为 `loom-resource://entity` 引用，打开时解析名称、头像或目标页面；解析结果不写回 LogRecord、JSONL 或默认诊断报告。实体引用与已有版本/行号正文 URI 分开，不伪造快照定位。会话尚无直达入口，运行引用只打开相应日志筛选，不冒充 Runs Inspector。
 
 ## 8. 分发与生命周期
 
@@ -249,6 +263,11 @@ service
 instanceId
 since
 until
+text
+event
+runId
+packageId
+moduleId
 ```
 
 cursor 是不透明值。发生淘汰或 buffer generation 变化时，查询结果通过以下结构明确告知连续性中断：
@@ -310,9 +329,19 @@ Root Logger 正常关闭与 Server shutdown 绑定。当前模块 Logger 包括�
 | `document.store` | 已提交 Changeset 与 mutation 失败摘要 |
 | `prompt.build` | Preview/Runtime PromptBuild 生命周期摘要 |
 | `runtime.provider` | Provider invoke 生命周期、耗时和 usage 摘要 |
+| `runtime.run` | 整轮调用开始、完成、失败、暂停/取消及失败阶段 |
+| `runtime.step` | Provider Step 序号、开始/终态、结果处理 |
+| `runtime.tool` | 实际 Tool Invocation、结果状态、耗时；不保存参数或 ToolResult |
+| `runtime.commit` | Narrative 提交开始、真实提交成功或失败 |
 | `extension.loader` | Extension 发现、激活、降级/失败和 dispose |
 
 这些模块不记录 Prompt、请求参数、Document content、Provider response text 或插件异常正文。
+
+Runtime 的 `runtimeLogger` 与原有 PromptBuild `logger` 分别注入。调用开始前生成/继承 runId，贯穿准备、循环和提交；RPC create 成功只表示接受调用，不表示运行完成。Provider 完成不等于 Run 完成，Run completed 必须在请求的 Narrative 提交之后。用户暂停/取消不作为 ERROR；可恢复检查点导致的失败暂停仍以 WARN 保留。
+
+Provider 记录 Step、模型、消息/原生工具数量、交付模式、输出字符数、原生调用数、usage 和耗时；`firstOutputMs` 仅在实际观察到 text/tool-input delta 时产生。整轮摘要记录 Step/Tool 数量，不把最后一次 Provider usage 当作整轮 Token 合计。
+
+HTTP 成功记录不再复制 params 或资源名称，只提取数量、提交引用与明确的 Run 接受/完成摘要。已有历史 JSONL 不会被重写或清理。
 
 ### 11.2 Studio Client
 
@@ -333,8 +362,17 @@ Client 当前记录：
 - root element 缺失；
 - Window 未捕获错误和 Promise rejection 的元数据摘要；
 - Studio API 与 Renderer API 的 RPC 失败、耗时、failure type 和稳定 error code。
+- Client Extension Host 生命周期和扩展通过 `ctx.logger` 写入的运行事件。
 
 Client Transport 日志不复制请求 params 或错误正文。当前 Browser 日志不会上传 Server，也不会写入 JSONL。
+
+### 11.3 扩展日志
+
+SDK 两端使用 Host 注入的 `ctx.logger`；原 `info(message, data)` 等方法不变，结构化事件通过 `logger.child('sync').log('info', 'Sync completed', { event: 'sync.completed', data: { count: 12 } })` 写入，事件加 `extension.` 前缀。Host 固定顶层 extension 身份，插件 data 不能覆盖它。Server/Client Host 自身的生命周期也携带这一归属。
+
+Host 共用现有 Logger/Sink，不劫持 console，不暴露 Root/Sink 控制权。每个 Host Logger 下同一 package 的模块、child 和重复激活共用每分钟 200 条预算；触及限额立即警告，后续窗口写入时汇总 dropped 数。消息截到 2,000 字符；超过 16 KiB 的规范化 data 被省略并记录 originalBytes。限制不是完整审计或同进程沙箱。
+
+`ctx.logs.query` 强制当前 package，拒绝 packageId/service/instanceId 覆盖。Server 可查自身 Memory 和 JSONL；Client 仅查询本浏览器 Memory，返回实际 sources，不暗中调用全局 Server 查询。旧 data.packageId 不具有授权意义。扩展仍不能通过 `ctx.rpc.call('logs.*')` 绕过保留 namespace。
 
 ## 12. Console Sink
 
@@ -344,33 +382,45 @@ Server 默认显示：
 
 - 所有 warn/error；
 - `system`；
-- `runtime.provider`。
+- `runtime.*`；
+- `prompt.build`。
 
 Client 默认显示：
 
 - 所有 warn/error；
 - `system`。
 
-Document changeset、PromptBuild 成功和普通 RPC 成功仍存在于 Memory/JSONL/Viewer，但不会持续占用终端或 Browser Console。Console 展示结构化 details，不要求开发者阅读单行 JSON 字符串。
+Document changeset 和普通 RPC 成功仍存在于 Memory/JSONL/Viewer，但默认不占用终端。Console 默认输出摘要、就近耗时及必要 detail/Token，不自动展开 data 和关联 ID；无颜色时也采用紧凑文本。`createConsoleLogSink({ verbose: true })` 可输出完整结构化详情；Server 使用 `LOOM_STUDIO_LOG_DETAILS=1` 开启该模式，颜色依据 TTY。详细模式不改变字段准入或持久化策略。
 
 ## 13. 查询 API 与 Viewer
 
-Studio Server 暴露实验性 `logs.list` RPC。它只查询当前 Server Memory Sink：
+Studio Server 暴露 `logs.list` 与 `logs.history` RPC。前者查询当前 Server Memory，后者查询 Host 注入的 JSONL 目录：
 
 - `limit` 默认为 100，范围 1–500；
-- 支持 level、namespace prefix、service、instance 和时间过滤；
-- 支持不透明 cursor 与 gap；
-- 成功的 `logs.list` 本身不产生 `transport.rpc` INFO，避免 Viewer 刷新制造自观察噪音；
-- 失败的 `logs.list` 仍记录 Transport ERROR。
+- 支持 level、namespace prefix、service、instance、时间、字面关键词、event、runId 和扩展 package/module 精确过滤；
+- 拒绝未知参数和调用者文件路径；
+- 当前日志支持不透明 cursor 与 gap；
+- 成功的 `logs.*` 本身不产生 `transport.rpc` INFO；失败仍记录 Transport ERROR，主动取消历史读取不记业务失败。
+
+历史查询要求 since/until，单次时间范围不超过 31 天，不改变现有七天/容量保留策略。Node Reader 固定文件长度快照，不追入查询开始后的追加或新 segment；按文件确定性顺序扫描，Client 将已加载记录按时间展示，不承诺跨进程全局时间归并 cursor。
+
+分页按约 2 MiB 扫描阈值及条数上限停止，正常行可读至行末；单行超过 256 KiB 跳过并报告，跨页继续丢弃该行尾部。坏行、未完成尾行、文件删除和替换分别报告，其他 IO 失败明确失败。返回 scannedBytes/scannedRecords、issues、hasMore，不把零匹配误当作扫描完成。
+
+目录只读取符合本应用命名的常规文件，打开时拒绝符号链接并校验 inode/size 与记录所属文件。Reader 缓存最多 32 个十分钟查询快照，单快照最多 4,096 个 segment；cursor 绑定查询过滤条件，过期或改变条件时显式要求重新搜索。HTTP 断开经 AbortSignal 取消扫描，浏览器取消会中止请求；没有把整个 JSONL 装入内存。
 
 Studio Client 的 Logs Workspace 可以：
 
-- 手动刷新；
-- 在 Server 与 Client 来源之间切换；
-- 按 level 和 namespace prefix 过滤；
-- 展开结构化 data、error 和关联 ID。
+- 手动刷新、分页补读和两秒增量轮询；页面不可见时暂停轮询；
+- 当前视图合并 Server 与本浏览器来源，也可分别查看；独立保留两端 cursor、缺口和失败信息；
+- 按 level、全文和当前缓冲区中的 runId 过滤，显示/隐藏技术明细；RPC warn/error 默认可见；
+- 沿事件流原地展开多条记录，保留来源辨识色；耗时与 Token 紧跟摘要；
+- 在详情复制完整记录、二级展开原始 JSON、导出当前筛选结果；
+- 扩展管理一键进入同一日志页，URL 使用 logPackage/logRun/logSource 表达筛选；
+- 历史模式按范围搜索 JSONL、显式继续下一页，最多展示 5,000 条；修改条件后标明结果仍属于上次查询；
+- 复制诊断信息先固定预览，选择最近故障上下文或当前筛选；包含版本、范围、缺口、摘要及白名单关联字段，不带任意 data/正文或解析出的资源名称；最多 200 条、正文约 60,000 字符；
+- 检查详情时暂停追随最新，显式返回最新后恢复；记录身份不因分页淘汰或筛选下标改变而错配。
 
-当前 Viewer 没有实时订阅、历史 JSONL 查询、namespace Tree/Accordion、资源引用增强或跨来源统一 cursor。
+当前 Viewer 没有实时推送、跨来源统一 cursor 或原生诊断助手。当前与历史分开，按运行筛选仍受各自可用范围限制，不承诺完整历史。复制前提示旧日志和扩展消息可能有私密信息；不会自动发给 AI，原始 JSON 下载也不等于隐私安全保证。基础日志不是 Master–Detail Inspector，旧 DEV 样例已清理。
 
 ## 14. I18N
 
@@ -409,7 +459,8 @@ Observability UI 可以本地化导航、筛选器、字段标签和有限的稳
 
 以下能力尚未实现，不属于当前 Architecture：
 
-- JSONL 历史分页与导出 API；
+- 独立的全量历史流式导出 API（当前可下载已加载结果）；
+- 原生诊断助手的范围授权与只读工具；
 - SSE/WebSocket 实时日志流；
 - Browser 日志持久化或 Server ingest；
 - Extension Logger 的远程采集、批处理和跨端持久化策略；Server / Client Activation Context 已提供受控 `ctx.logger`；
@@ -420,7 +471,7 @@ Observability UI 可以本地化导航、筛选器、字段标签和有限的稳
 - Metric backend；
 - OTel exporter。
 
-这些方向继续保留在 [`../../workbench/plans/log-plan/`](../../workbench/plans/log-plan/) 和相关专题 Discussion 中。
+这些方向继续保留在 [`../../workbench/plans/log-plan/`](../../workbench/plans/log-plan/) 的远期路线图和相关专题 Discussion 中。已完成的历史查询、扩展日志平台与诊断复制实施记录位于归档的 [`../../archive/plans/log-platform-consumption-plan.md`](../../archive/plans/log-platform-consumption-plan.md)。
 
 ## 17. 变更纪律
 
@@ -432,15 +483,19 @@ Observability UI 可以本地化导航、筛选器、字段标签和有限的稳
 - 新增默认 Sink 或远程采集；
 - 修改 Server/Client Console 过滤；
 - 新增正式 namespace；
-- `logs.list` 开始读取历史 JSONL；
+- 新增或改变 `logs.list` 当前缓冲、`logs.history` 历史 JSONL 的查询语义；
 - Browser 日志开始上传或持久化；
-- Extension Logger 的远程采集与持久化扩展。
+- Extension Logger 的身份、限流、自有查询或远程采集与持久化语义；
+- `loom-resource://entity` 或其他日志资源引用的解析和导航语义；
+- 诊断报告的字段白名单、复制预算或 AI 外发授权语义。
 
 关键可执行证据：
 
 - [`tests/unit/logging/core.test.ts`](../../../tests/unit/logging/core.test.ts)；
+- [`tests/unit/logging/jsonl-reader.test.ts`](../../../tests/unit/logging/jsonl-reader.test.ts)；
 - [`tests/unit/logging/jsonl-file-sink.test.ts`](../../../tests/unit/logging/jsonl-file-sink.test.ts)；
 - [`tests/unit/studio-server/logs-rpc.test.ts`](../../../tests/unit/studio-server/logs-rpc.test.ts)；
 - [`tests/unit/client/studio-api.test.ts`](../../../tests/unit/client/studio-api.test.ts)；
 - [`tests/contract/extension-host/logging.test.ts`](../../../tests/contract/extension-host/logging.test.ts)；
+- [`tests/unit/client/client-extension-host.test.ts`](../../../tests/unit/client/client-extension-host.test.ts)；
 - [`tests/integration/studio-server/logging.test.ts`](../../../tests/integration/studio-server/logging.test.ts)。

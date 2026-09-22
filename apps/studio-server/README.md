@@ -14,6 +14,12 @@ pnpm dev:server
 
 该命令会先构建并监听内部 Packages，再通过 `tsx watch` 启动 Server。默认监听 `127.0.0.1:4173`，可通过 `PORT` 覆盖；持久数据默认写入仓库 `data/`，缓存和日志默认在 `.loomstudio-dev/`。`LOOM_STUDIO_DATA_ROOT` 可覆盖持久数据根；已有旧目录的迁移及显式 `LOOM_STUDIO_HOME` 行为见 [Getting Started](../../docs/guide/getting-started.md)。
 
+监听排除 `.tsbuildinfo`，避免 TypeScript 构建元数据更新引起无效重启和重复启动 banner；运行文件发生变化仍会正常重启并打印新的启动信息。修改监听参数后需重新启动 `pnpm dev:server`。
+
+终端日志默认使用紧凑摘要，显示 Run/Step/Provider/Tool/Commit 与 PromptBuild 生命周期，不展开全部 ID。设置 `LOOM_STUDIO_LOG_DETAILS=1` 可查看完整安全字段；该开关不放行请求/响应正文，也不改变 JSONL 保存策略。
+
+`logs.list` 查询当前 Memory，`logs.history` 通过 Node Reader 搜索已保存 JSONL；必填 since/until、最长 31 天查询范围、有界扫描和分页，不接受文件路径。取消 HTTP 请求会停止历史扫描。文件轮转/删除、坏行和不完整尾行通过 issues 报告，cursor 过期须重新搜索。成功的日志查询不产生自观察 INFO。
+
 定向命令：
 
 ```bash

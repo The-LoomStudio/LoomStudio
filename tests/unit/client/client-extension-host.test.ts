@@ -1,8 +1,9 @@
 import type { ClientExtensionModule } from '@loom-studio/extension-sdk'
+import { createMemoryLogSink, createRootLogger, queryExtensionLogs } from '@loom-studio/logging'
 import { describe, expect, it, vi } from 'vitest'
 import { createClientExtensionHost, type ClientExtensionDataApi, type ManagedClientExtensionPackage } from '../../../apps/studio-client/src/features/extension-renderers/model/client-extension-host.js'
 import { mapPackageImportState } from '../../../apps/studio-client/src/features/extension-renderers/model/use-client-extension-runtime.js'
-import { createClientRendererHost } from '../../../apps/studio-client/src/features/extension-renderers/model/client-renderer-host.js'
+import { createClientRendererHost } from '../../../apps/studio-client/src/shared/extension-renderer-runtime/client-renderer-host.js'
 
 function extensionPackage(enabled = true): ManagedClientExtensionPackage {
   return {
@@ -26,6 +27,28 @@ function extensionPackage(enabled = true): ManagedClientExtensionPackage {
 }
 
 describe('Client Extension Host', () => {
+  it('collects client extension events with host identity and limits queries to this host and package', async () => {
+    const memory = createMemoryLogSink({ capacity: 50 })
+    const root = createRootLogger({ service: 'studio-client', instanceId: 'client-test', sinks: [memory] })
+    let context!: Parameters<ClientExtensionModule['activate']>[0]
+    const host = createClientExtensionHost({
+      rendererHost: createClientRendererHost(),
+      logger: root.child('extension.loader'),
+      queryLogs: (packageId, input) => queryExtensionLogs({ current: memory }, packageId, input, 'client'),
+      loadModule: async () => ({ activate: value => {
+        context = value
+        value.logger.child('sync').log('info', 'sync done', { event: 'sync.completed', data: { packageId: 'forged' } })
+      } }),
+    })
+    await host.reconcile([extensionPackage()])
+    const page = await context.logs.query({ limit: 20 })
+    expect(page.sources).toEqual(['client'])
+    expect(page.items.some(record => record.message === 'sync done' && record.extension?.packageId === 'example.client')).toBe(true)
+    expect(page.items.some(record => record.event === 'extension.activation.started')).toBe(true)
+    await expect(context.logs.query({ limit: 20, packageId: 'other' } as never)).rejects.toThrow('cannot set')
+    await host.dispose()
+    expect(() => context.logs.query({ limit: 20 })).toThrow()
+  })
   it('maps Package declarations to imported resource provenance without treating modules as resources', () => {
     const [mapped] = mapPackageImportState([extensionPackage()], [
       { origin: { kind: 'extension-package', packageId: 'example.client', contributionId: 'rule' } },

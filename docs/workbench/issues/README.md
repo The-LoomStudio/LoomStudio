@@ -2,12 +2,14 @@
 
 本目录用于跟踪**当前开放或周期性滚动审查的质量发现**。
 
+- [`card-file-roundtrip-audit-2026-09-22.md`](./card-file-roundtrip-audit-2026-09-22.md) — **Card 文件往返与导入完整性审查**（2 个 P2：媒体 MIME 往返丢失、CRC 不匹配的 ZIP 正文被接受；隔离探针已复现）。
+- [`backend-lifecycle-adversarial-audit-2026-09-22.md`](./backend-lifecycle-adversarial-audit-2026-09-22.md) — **后端生命周期与失败恢复对抗性审查**（1 个 P1、6 个 P2，含已有 FR-012 的复核、Asset 下载取消及 Diagnostics 保留探针；待修复）。
+- [`extension-lifecycle-adversarial-audit-2026-09-22.md`](./extension-lifecycle-adversarial-audit-2026-09-22.md) — **扩展生命周期与清理一致性审查**（1 个 P1、4 个 P2，覆盖授权重读、卸载失败与异步回调回收）。
 - [`state-subscription-for-extensions.md`](./state-subscription-for-extensions.md) — **扩展 State 变更订阅**（已延期；不阻塞 The World 其他功能迁移）。
-- [`repository-governance-audit-2026-09-12.md`](./repository-governance-audit-2026-09-12.md) — **2026-09-12 仓库治理与生命周期审计**（2 个文档生命周期问题）。
+- [`repository-governance-audit-2026-09-12.md`](./repository-governance-audit-2026-09-12.md) — **仓库治理与生命周期审计**（2 个历史生命周期问题；2026-09-22 补查新增 1 个 P3 归档断链收尾项）。
 - [`full-repo-code-review-2026-09-12.md`](./full-repo-code-review-2026-09-12.md) — **2026-09-12 全仓代码审阅**（4 个 P2、3 个 P3 与 2 个精简候选）。
 - [`frontend-backend-architecture-and-client-duplication-audit-2026-09-14.md`](./frontend-backend-architecture-and-client-duplication-audit-2026-09-14.md) — **前后端架构与客户端重复逻辑审计**（审计完成；依赖、性能与状态治理已拆分为下一项 Plan）。
-- [`repository-structure-and-module-boundary-audit-2026-09-21.md`](./repository-structure-and-module-boundary-audit-2026-09-21.md) — **仓库结构与模块边界审计**（3 个 P2：Client 分层反向依赖、Feature 横向 deep import、Client project reference 缺失）。
-- [`backend-data-layer-schema-and-binding-audit-2026-09-21.md`](./backend-data-layer-schema-and-binding-audit-2026-09-21.md) — **后端数据层 Schema 与 ID 绑定审计**（2 个 P2：Prompt Resource 迁移丢失外键、同域权威指针缺少 SQL 绑定）。
+- [`frontend-rendering-and-state-retention-audit-2026-09-21.md`](./frontend-rendering-and-state-retention-audit-2026-09-21.md) — **前端渲染性能与状态留存专项审查**（15 项发现及文件/CSS 归属建议；含 Agent UI，不含 CodeActor 与 Agent 执行器）。
 - [`full-repo-code-review-2026-08-27.md`](./full-repo-code-review-2026-08-27.md) — **2026-08-27 全仓代码审阅**（2 个 P1、14 个 P2、3 个 P3 与 6 个优化候选）。
 - [`documentation-direction-and-lifecycle-follow-up-2026-08-28.md`](./documentation-direction-and-lifecycle-follow-up-2026-08-28.md) — **文档方向与生命周期复核**（2 个 P2：旧 M0 实现基线残留、归档 Plan successor 缺失）。
 - [`extension-dev-hot-reload-enhancement.md`](./extension-dev-hot-reload-enhancement.md) — **插件开发态热重载机制增强**（待排期的低优先级开发体验改进）。

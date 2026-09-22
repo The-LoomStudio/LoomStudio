@@ -1,5 +1,6 @@
 import { officialFakeModelId } from '@loom-studio/ai-gateway'
 import { createMemoryLogSink, createRootLogger } from '@loom-studio/logging'
+import { createJsonlFileSink, createJsonlLogReader } from '@loom-studio/logging/node'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -14,18 +15,20 @@ describe('Studio Server logging', () => {
     const root = createRootLogger({
       service: 'studio-server',
       instanceId: 'integration-test',
-      sinks: [memory],
+      sinks: [memory, createJsonlFileSink({ directory: join(directory, 'logs') })],
     })
     const server = createStudioServer({
       sqlitePath: join(directory, 'store.sqlite'),
       logger: root.child('system'),
       logs: memory,
+      logHistory: createJsonlLogReader({ directory: join(directory, 'logs') }),
       rpcLogger: root.child('transport.rpc'),
     })
 
     try {
       const { port } = await server.listen(0)
-      await callRpc(port, 'system.ping', { echo: 'logging-test' })
+      await callRpc(port, 'system.ping', { echo: 'private-input', input: 'private-prompt' })
+      expect(JSON.stringify(memory.list())).not.toContain('private')
       const page = await callRpc<{
         items: Array<{ event?: string; namespace: string }>
         cursor: string
@@ -36,6 +39,11 @@ describe('Studio Server logging', () => {
       expect(page.items.every(record => record.namespace === 'system')).toBe(true)
       expect(page.cursor).toMatch(/^memory:/)
       expect(page.hasMore).toBe(false)
+      await root.flush()
+      const history = await callRpc<{ items: Array<{ event?: string }> }>(port, 'logs.history', {
+        since: new Date(Date.now() - 60_000).toISOString(), until: new Date().toISOString(), namespacePrefix: 'system', limit: 10,
+      })
+      expect(history.items.map(record => record.event)).toEqual(['server.starting', 'server.started'])
       await expect(callRpc(port, 'logs.list', { limit: 0 })).rejects.toThrow('integer between 1 and 500')
     } finally {
       await server.close()
@@ -59,8 +67,9 @@ describe('Studio Server logging', () => {
       'system',
       'system',
     ])
-    expect(memory.list()[2]?.message).toMatch(/^system\.ping completed in \d+(?:\.\d+)? ms$/)
-    expect(memory.list()[3]?.message).toMatch(/^logs\.list failed after \d+(?:\.\d+)? ms$/)
+    expect(memory.list()[2]?.message).toBe('system.ping completed')
+    expect(memory.list()[2]?.data).toMatchObject({ technical: true, durationMs: expect.any(Number) })
+    expect(memory.list()[3]?.message).toContain('logs.list failed')
   })
 
   it('logs committed and failed resource mutations without resource content', async () => {
@@ -79,6 +88,7 @@ describe('Studio Server logging', () => {
 
     try {
       const { port } = await server.listen(0)
+      memory.clear()
       await callRpc(port, 'application.createCard', {
         name: 'Private card name',
         description: 'Private card description',
@@ -100,7 +110,7 @@ describe('Studio Server logging', () => {
       }>(port, 'logs.list', { limit: 10, namespacePrefix: 'document.store' })
 
       const operationItems = page.items.filter(record => record.data?.reason !== 'application.initializePromptResources')
-      expect(operationItems.map(record => record.event)).toEqual(['document.changeset.committed'])
+      expect(operationItems.map(record => record.event)).toEqual(['document.changeset.committed', 'document.operation.failed'])
       expect(operationItems[0]?.data).toMatchObject({
         reason: 'application.createCard',
         operations: [{ kind: 'create', type: 'airp.cardSource' }],
@@ -146,7 +156,7 @@ describe('Studio Server logging', () => {
 
   it('logs PromptBuild lifecycle summaries without prompt content', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'loom-server-prompt-logging-'))
-    const memory = createMemoryLogSink({ capacity: 20 })
+    const memory = createMemoryLogSink({ capacity: 100 })
     const root = createRootLogger({
       service: 'studio-server',
       instanceId: 'prompt-integration-test',
@@ -158,6 +168,7 @@ describe('Studio Server logging', () => {
       documentLogger: root.child('document.store'),
       promptBuildLogger: root.child('prompt.build'),
       providerLogger: root.child('runtime.provider'),
+      runtimeLogger: root.child('runtime'),
     })
 
     try {
@@ -187,12 +198,12 @@ describe('Studio Server logging', () => {
         agentProfileId: agentProfile.agentProfile.id,
       })
 
-      await callRpc(port, 'application.previewAgentTurn', {
+      const preview = await callRpc<{ messages: unknown[] }>(port, 'application.previewAgentTurn', {
         agentSessionId: created.session.id,
         input: 'Private user prompt',
         narrativeTarget: { timelineId: timeline.timeline.id, commit: false },
       })
-      const turn = await callRpc<{ runId: string }>(port, 'application.invokeAgentTurn', {
+      const turn = await callRpc<{ runId: string; projection: { messages: unknown[] } }>(port, 'application.invokeAgentTurn', {
         agentSessionId: created.session.id,
         input: 'Private runtime prompt',
         narrativeTarget: { timelineId: timeline.timeline.id, commit: true },
@@ -219,13 +230,13 @@ describe('Studio Server logging', () => {
         'prompt.build.completed',
       ])
       expect(page.items[0]?.message).toBe('preview prompt build started')
-      expect(page.items[1]?.message).toMatch(/^preview prompt build completed · 1 messages · \d+(?:\.\d+)? ms$/)
+      expect(page.items[1]?.message).toBe(`preview prompt build completed · ${preview.messages.length} messages`)
       expect(page.items[2]?.message).toBe('runtime prompt build started')
-      expect(page.items[3]?.message).toMatch(/^runtime prompt build completed · 1 messages · \d+(?:\.\d+)? ms$/)
-      expect(page.items[1]?.data).toMatchObject({ mode: 'preview', messageCount: 1 })
+      expect(page.items[3]?.message).toBe(`runtime prompt build completed · ${turn.projection.messages.length} messages`)
+      expect(page.items[1]?.data).toMatchObject({ mode: 'preview', messageCount: preview.messages.length })
       expect(page.items[0]?.data?.buildId).toBe(page.items[1]?.data?.buildId)
       expect(page.items[0]?.correlationId).toBe(page.items[1]?.correlationId)
-      expect(page.items[3]?.data).toMatchObject({ mode: 'runtime', messageCount: 1 })
+      expect(page.items[3]?.data).toMatchObject({ mode: 'runtime', messageCount: turn.projection.messages.length })
       expect(page.items[3]?.data?.runId).toMatch(/^run-/)
       expect(page.items[2]?.data?.buildId).toBe(page.items[3]?.data?.buildId)
       expect(JSON.stringify(page.items)).not.toContain('Private')
@@ -250,9 +261,15 @@ describe('Studio Server logging', () => {
         runId: turn.runId,
         provider: 'fake',
         model: 'fake-echo-m0',
-        messageCount: 1,
+        messageCount: turn.projection.messages.length,
       })
       expect(JSON.stringify(providerPage.items)).not.toContain('Private')
+      const runPage = await callRpc<{ items: Array<{ event: string; data: Record<string, unknown> }> }>(port, 'logs.list', { limit: 10, namespacePrefix: 'runtime.run' })
+      expect(runPage.items.map(record => record.event)).toEqual(['run.started', 'run.completed'])
+      expect(runPage.items[1]?.data).toMatchObject({ runId: turn.runId, providerStep: 1, toolCount: 0, narrativeCommitted: true })
+      const commits = memory.list().filter(record => record.namespace === 'runtime.commit')
+      expect(commits.map(record => record.event)).toEqual(['commit.started', 'commit.completed'])
+      expect(JSON.stringify(runPage.items)).not.toContain('Private')
     } finally {
       await server.close()
       await root.close()

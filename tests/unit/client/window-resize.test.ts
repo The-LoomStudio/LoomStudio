@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readWindowResizeBounds, resizeWindow } from '../../../apps/studio-client/src/pages/studio/window-resize.js'
+import { readWindowResizeBounds, resizeWindow } from '../../../apps/studio-client/src/shared/studio-shell/window-resize.js'
 
 describe('readWindowResizeBounds', () => {
   it('uses the stage edge and respects a finite CSS height limit', () => {

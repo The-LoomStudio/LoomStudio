@@ -757,6 +757,7 @@ export type ApplicationRuntimeOptions = {
   promptResources: PromptResourceStore
   states?: StateStore
   logger?: Logger
+  runtimeLogger?: Logger
   gateway?: AiGateway
   provider?: ApplicationProvider
   clock?: { now(): Date }

@@ -403,7 +403,7 @@ async function toAiCapabilityProfileView(
 }
 
 export async function initializeOfficialFakeProviderProfiles(
-  ctx: Pick<ApplicationRuntimeContext, 'documents' | 'now' | 'providerAdapters'>,
+  ctx: Pick<ApplicationRuntimeContext, 'createId' | 'documents' | 'now' | 'providerAdapters'>,
 ): Promise<void> {
   const profiles = await listDocuments<ProviderProfileContent>(ctx.documents, applicationDocumentTypes.providerProfile)
   const providerProfileIds = new Set<string>()
@@ -427,6 +427,25 @@ export async function initializeOfficialFakeProviderProfiles(
       },
       expectedVersion: profile.version,
     })
+  }
+
+  if (providerProfileIds.size === 0) {
+    const timestamp = ctx.now()
+    const providerProfileId = ctx.createId('provider-profile')
+    await writeDocument<ProviderProfileContent>(ctx.documents, {
+      id: providerProfileId,
+      type: applicationDocumentTypes.providerProfile,
+      content: {
+        providerExtensionId: 'official.fake',
+        displayName: 'Fake AI',
+        config: {},
+        enabledModelIds: [officialFakeModelId],
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+      expectedVersion: 'new',
+    })
+    providerProfileIds.add(providerProfileId)
   }
 
   const capabilityProfiles = await listDocuments<AiCapabilityProfileContent>(

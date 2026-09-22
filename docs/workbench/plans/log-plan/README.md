@@ -4,9 +4,17 @@
 >
 > **当前正式架构**：[`../../../architecture/platform/logging.md`](../../../architecture/platform/logging.md)
 >
-> **范围**：记录统一日志底座完成后的历史查询、实时交付、Client 持久化、Viewer 增强、Notification 与后端 TUI；Extension Logger 已有基础，不重复建设。
+> **范围**：当前接续扩展日志平台、复制诊断信息、JSONL 历史搜索、资源 URI 与受控 AI 查询；实时交付、Client 持久化、Notification 和 TUI 保留为远期方向。
 
 ---
+
+## 当前施工入口
+
+[日志平台消费、扩展接入与历史查询](../../../archive/plans/log-platform-consumption-plan.md) 已完成并归档。P1-P5 已实现：前端搜索后端 JSONL、扩展统一接入/自有查询、一键查看、诊断复制与实体 URI。保持现有保留策略。P6 原生诊断助手已明确延后为独立后续方向；验证和限制见归档执行账目。
+
+[事件日志中枢与前后端展示改进](operational-log-experience-plan.md) 已完成基础事件日志、Agent 运行闭环、紧凑 Console 与前端原地展开；主 Agent 负责中枢和渲染，一个 Luna High 完成三批模块迁移。状态为 Closing，定向验证已完成，人工视觉验收及既有检查阻塞详见执行账目。
+
+下文是领域路线图，不是平行实施合同。历史查询和扩展平台以新计划为准；实时流、Notification、交互 TUI 与专业 Inspector 不随新计划实施。Viewer 已有分页补读、两秒轮询及当前记录导出。
 
 ## 1. 当前基线
 
@@ -60,7 +68,7 @@
 
 ### 3.2 实时日志流
 
-当前 Viewer 通过手动刷新读取 Server 日志。实时交付尚未决定采用 SSE、WebSocket 还是未来统一 Transport stream。
+当前 Viewer 通过手动刷新与两秒轮询读取 Server 日志。推送交付尚未决定采用 SSE、WebSocket 还是未来统一 Transport stream，本阶段优先历史 JSONL 查询。
 
 需要先确认：
 
@@ -99,9 +107,9 @@ Client Root Logger
 
 ### 4.2 Extension Logger
 
-2026-09-12 核对：[Extension SDK](../../../../packages/extension-sdk/src/index.ts) 已向 Server / Client Activation Context 提供 `logger`；[Server Host](../../../../packages/extension-sdk/extension-host/src/instance.ts) 已绑定 Package、Module 与 Instance 身份。不能再将 Extension Logger 整体列为未实现。
+2026-09-22 核对：[Extension SDK](../../../../packages/extension-sdk/src/index.ts) 两端已有 `logger`；[Server Host](../../../../packages/extension-sdk/extension-host/src/instance.ts) 注入身份但存在调用 data 覆盖问题；Client Host 组合入口未注入统一 Logger，默认写 console。不能将接口存在描述为全端采集已经闭环。
 
-已存在的 Host 注入方向与后续持久化边界：
+目标接线如下；Server 主链已存在，Client 统一采集尚待新计划实现，optional ingest 不在本阶段：
 
 ```text
 Server Extension
@@ -120,16 +128,16 @@ Host Logger 必须自动绑定 extension identity 和 namespace，不能把内�
 
 ## 5. Workstream C：Viewer 增强
 
-当前 Logs Workspace 支持来源切换、手动刷新、level/namespace 过滤和结构化详情。后续候选能力：
+当前 Logs Workspace 支持来源切换、轮询、级别/搜索/运行过滤、事件流原地展开与结构化详情。已确认保持事件流，不改成 namespace 树或 Master-Detail；本阶段能力以新计划为准：
 
-- 按 `namespace.split('.')` 构造 Tree View / Accordion；
-- 节点展示总数、warn 和 error 数量；
+- 扩展一键查看及明确的来源/范围；
+- 复制有上下文、标明缺失的诊断信息；
 - correlationId/callId 快捷过滤；
-- 实时流与暂停滚动；
+- 复用现有轮询与暂停追随；
 - JSONL 历史分页；
 - 大量记录的窗口化；
 - 复制、导出和关联跳转；
-- Logs、Diagnostics、Trace 与 Audit 的独立标签。
+- 原生诊断助手受控消费；Diagnostics、Trace、Audit 保留独立语义，不随本阶段建设新标签。
 
 Viewer 不解析 message 完成分类。`event + data` 仍是机器查询的权威事实。
 
@@ -151,7 +159,7 @@ LogRecord resource reference
 - 优先按记录中的 document version 解析；
 - 不为每行自动产生 N+1 请求；
 - hover 信息必须同时支持 focus 或 click；
-- 解析失败时退回资源类型和短 ID；
+- 删除、无权限、版本不符时明确显示状态，不误跳转；ID 保留为次级技术信息；
 - 在出现真实高频需求前不建设通用 Resource Resolver Registry。
 
 ## 6. Workstream D：User Notification
@@ -221,17 +229,15 @@ PromptBuild 生命周期摘要已经进入 `prompt.build`，但完整 Trace Enve
 
 Provider 生命周期摘要已经进入 `runtime.provider`；Agent Loop、canonical Transcript 与 Tool 配对持久化也已落地。完整 Run / Step / Tool / Commit Trace、跨视图引用与专业 Inspector 仍由专题计划接续，不能将 Transcript 本身继续列为缺失。
 
-## 9. 建议顺序
+## 9. 实施顺序
 
 ```text
-1. 观察当前 Logs Workspace 和模块日志的实际价值
-2. 稳定 Extension Host Capability / Auth boundary
-3. 复用已存在的 Server / Client Extension Logger
-4. 根据具体缺口核对 correlation 与诊断交付，不另建 Logger capability
-5. 根据真实需求选择历史 JSONL 查询或实时流的先后顺序
-6. 再实现 Notification
-7. 多进程需求出现后再启动 TUI M0
-8. PromptBuild / Agent Run 按各自专题独立攻坚
+1. 收束当前/历史查询与扩展来源合同
+2. 补齐扩展两端采集、自有查询与 JSONL 历史读取
+3. 统一日志页的一键查看、范围筛选与复制诊断信息
+4. 资源 URI 展示与受控诊断助手
+5. 实时推送、Client 持久化、Notification、TUI 另行决定
+6. PromptBuild / Runs Inspector 按专题独立接续
 ```
 
 ## 10. 当前非目标
@@ -246,11 +252,6 @@ Provider 生命周期摘要已经进入 `runtime.provider`；Agent Loop、canoni
 
 ## 11. 待确认事项
 
-1. 历史 JSONL 查询和实时流哪一个优先；
-2. Client 日志是否默认上传，还是只在显式诊断模式上传；
-3. Client ingest 的 batch、限流和保留策略；
-4. Extension Logger 的 event prefix 与 child namespace 规则；
-5. Server Extension RPC handler 日志如何继承 correlation；
-6. Viewer namespace tree 是否先基于当前 Memory 数据实现；
-7. Notification target、权限、去重和持久化边界；
-8. TUI 是否先只连接现有 Server，还是同时作为启动器。
+已确认历史查询优先、保持现有 JSONL 保留策略、不建设 namespace 树。Extension Logger 的 child/event/关联细节由新计划实施阶段收束，不重复作为产品审批。
+
+本阶段唯一可能阻塞后续接线的产品问题是：若不存在可承载受控诊断的现有助手入口，是否另建入口。其余仍未决定的远期事项为 Client 持久化/ingest、实时推送、Notification 的交付边界及 TUI 形态，均不阻塞本阶段日志查询和复制。

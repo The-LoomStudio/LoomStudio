@@ -28,9 +28,13 @@ pnpm exec vitest run tests/unit/client
 
 ## 开发组件预览
 
-启动 `pnpm dev:client` 后，可直接访问 `/dev/preview/ui-primitives`、`/dev/preview/text-pipeline` 或 `/dev/preview/card-resources`。入口在开发模式下先于认证启动分流，使用 [预览注册表](./src/dev/preview/index.tsx) 显式选择样例，未知 ID 显示未找到。新增样例在该注册表接入，复用生产组件，不动态解析用户提供的模块路径。
+开发预览入口 `/dev/preview/:id` 保留，旧 UI 草稿已于 2026-09-22 清理，目前 [预览注册表](./src/dev/preview/index.tsx) 为空。入口在开发模式下先于认证启动分流，未知 ID 显示未找到。新增样例在该注册表接入，复用生产组件，不动态解析用户提供的模块路径。
 
 普通应用仍走认证启动流程。预览设计与生产隔离验收要求见 [组件预览计划](../../docs/archive/plans/ui/component-preview-workbench-plan.md)；入口存在不代表生产构建、无副作用检查或人工视觉验收已经完成。
+
+正式日志入口 `/studio/logs` 支持合并/分别查看 Server 与 Client 当前缓冲、增量轮询、扩展/运行筛选和 JSONL 历史搜索。扩展管理提供“查看日志”；`logPackage`、`logRun`、`logSource` 查询参数保存导航范围。复制诊断信息提供固定预览、故障上下文/筛选结果选择与隐私提示，历史查询和当前内存的完整性分开报告。
+
+历史只包含 Server 已保存文件；Browser 日志刷新后丢失，不自动上传。资源 URI 在用户打开时读取名称/角色头像，不写入日志或默认分享。Runs Inspector 和原生诊断助手尚未接入。
 
 ## 入口与数据流
 
@@ -62,6 +66,11 @@ Route / UI
 | 6. Shared | `shared/` | 跨领域共享基础设施、Studio 宿主 UI 适配、typed API Client、i18n、hooks 与工具库 | 严禁重建 `@loom-studio/ui` 已有 primitive；严禁包含业务领域语义 |
 
 ### 强制开发红线
+当前共享宿主能力的具体所有者：
+
+- `shared/studio-shell/`：布局与外观偏好、Panel 标识与展示信息、导航路径、Header Portal 和窗口尺寸计算。只拥有宿主界面状态，不读取业务数据或编排业务操作；页面和 Widget 消费同一 Store，保留既有持久化键。
+- `shared/extension-renderer-runtime/`：Extension 与 Loom Script 共用的 Renderer 注册、排序、Surface 策略和 Host。扩展加载及 UI 挂载仍由 `features/extension-renderers/` 负责。
+
 1. **命名规范**：组件文件强制使用 `kebab-case.tsx`，样式模块强制使用 `kebab-case.module.scss`，**严禁使用 `PascalCase` 文件名**。
 2. **Widget 边界**：Widget 只做排版组合，所有 RPC 流程与领域算法必须下沉到 `features/*/model/`。
 3. **样式规范**：使用 SCSS Modules 与全局 `--loom-*` CSS 自定义属性；当前没有 Tailwind 或 CSS-in-JS 合同。

@@ -1,6 +1,6 @@
 import Markdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { parseResourceReference } from '@loom-studio/shared'
+import { parseResourceLink } from '@loom-studio/shared'
 export { highlightCode } from './code-highlight.js'
 import { remarkLoomDialogue } from './dialogue-markdown.js'
 import { MarkdownCodeBlock, type MarkdownCodeBlockLabels } from './markdown-code-block.js'
@@ -16,7 +16,7 @@ export function MarkdownContent(props: { className?: string; codeBlockLabels: Ma
         components={{
           a: ({ children, href, title }) => {
             if (href?.startsWith('loom-resource:')) {
-              const reference = parseResourceReference(href)
+              const reference = parseResourceLink(href)
               if (!reference) return <span title="无效的资源引用">{children}</span>
               return <button type="button" className={`${styles.semanticToken} ${styles.assetToken}`}
                 title={href} onClick={() => window.dispatchEvent(new CustomEvent('loom:open-reference', { detail: { uri: href } }))}>

@@ -8,24 +8,39 @@
 
 ## 1. 已确认方向
 
-### 统一触发，分步处理
+### 同一节奏，两种独立总结
 
-默认写作流程采用一个上下文刷新动作，不再分别运行剧情总结和 Session 总结两个自动触发器。刷新按需包含剧情总结与会话清理两步；不要求每次刷新都调用模型生成两份摘要。
+默认写作流程使用同一套剧情节奏触发两种独立总结，但不要求它们互相等待，也不要求主 Agent 自己完成剧情总结：
 
-已确认的不对称规则：**Narrative 总结并推进 Memory 有效指针时，Session 必须同步完成工作交接与重建；Session 因容量压力单独清理时，Narrative 不必总结。** 前者不再检查 Session 是否达到独立总结阈值。这里的“推进”不是改变 Timeline Head，也不是把投影快照写入 Session。
+- Narrative Summary：由专门的记忆 / 总结 Agent 按较早边界异步处理，例如第 32 楼开始总结 1～32 楼；
+- Agent Session Summary：由 Agent Session 的工作交接机制处理，例如第 40 楼结束后总结 1～40 楼。
+
+两者的触发点和内容范围不同，结果也独立提交。Session Summary 不需要等待 Narrative Summary；Narrative Summary 也不需要进入主 Agent 的提示词或 Session 上下文中执行。这里的“推进”不是改变 Timeline Head，也不是把投影快照写入 Session。
 
 统一整理包含两个时点：
 
 - **准备点**：例如 1～32 楼完成后，记忆插件开始总结 1～32 楼，Agent 可以开始准备 Scratchpad 和工作交接；此时 Prompt、Timeline 原始 Head、Narrative 默认有效 Head 都不改变。
 - **采用点**：例如 40 楼当前工作流结束后，若摘要、Setting 变更、Scratchpad 和当前任务都准备完成，Memory 才推进默认有效 Head；下一次 PromptBuild 才注入新的 Memory 与 33～40 楼 Raw，并隐藏旧工作段的 Tool 历史投影。
 
-如果准备失败，不能先隐藏旧 Tool 历史。新写入在默认有效 Head 推进前，只通过 Session 的 Tool Call / Tool Result 存在，不进入默认 Narrative 区。
+如果 Narrative Summary 准备失败或仍在运行，不推进默认有效 Head。Session Summary 仍可以独立完成；完成后旧 Tool 历史可以从下一次 Prompt 隐藏，新写入暂时不会进入默认 Narrative 区。由此产生的短期剧情遗忘是已知代价，不伪造未完成的摘要，也不阻塞 Session Summary。
 
 剧情整理不采用“从旧工作历史逐条删除正文写入工具、保留其余碎片”的方案。交接成功后，旧工作段整段退出下一次 Prompt，由新的 Memory 贡献、指针之后的 Raw 正文投影、记事板和仍需处理的用户任务接替；同一个 Session 的原始 Transcript 继续保存。近期正文缓冲在此时投影到正文区，不再同时携带对应的全部旧写入协议记录。
 
 工作交接必须在刷新前补齐，不能只假设 Agent 平时已写好记事板。无需建立多级 Session 记忆，但不能因为 Session 较短就跳过这一步。独立的会话清理分支怎样携带尚未总结正文，仍由生命周期合同明确，不套用“剧情已经有摘要”的前提。
 
-Setting 变更和 Narrative 写入不同：Setting 数据源可以在工具成功后立即持久化，但它对 Prompt 的生效要等采用点统一进入下一次 Prompt。静态 Setting 或改变前方 Prompt 结构的动态 Setting 变更，应把本次工作标记为需要交接；纯 `@runtime.state` 的动态数值可以在下一 Provider Step 或下一次交互以 State / Notice 形式进入，不自动触发剧情总结。
+第 40 楼发生的 Setting 修改与 Agent Session Summary 属于同一工作交接边界：Setting 写入成功后，下一次 Prompt 直接使用更新后的 Setting；Session Summary 同时记录这次修改及其原因。无需等待 Narrative Summary，也不需要把 Setting 修改暂存在 Tool 历史中。
+
+纯 `@runtime.state` 的动态数值可以在下一 Provider Step 或下一次交互以 State / Notice 形式进入，不自动触发剧情总结。
+
+自动行为是可配置的，至少包括：
+
+- 是否自动启动 Narrative Summary；
+- 是否在启动前弹窗提醒；
+- 弹窗中展示摘要范围、预计影响和待处理的 Session 范围；
+- 是否允许用户在运行中取消；
+- 取消按钮必须始终可见。
+
+取消或失败只影响正在运行的总结任务；已持久化的 Narrative、Setting 和 Session 原始记录不回滚。未完成的 Narrative Summary 不推进有效 Head。
 
 剧情记忆与工作事实仍然是不同内容，统一触发不表示混成一份文本。Narrative 原节点和原始 Transcript 不因清理而删除。
 
@@ -63,8 +78,8 @@ Session 的默认记忆采用 Agent 可维护的记事板（Scratchpad），保�
 
 1. Runtime 读取本次有效策略和当前占用，统一判断是否进入刷新，不建立另一个独立 Session 总结调度器。
 2. 需要剧情总结时，记忆来源返回摘要内容、覆盖的分支 / 节点范围和版本，以及未总结的保留范围；只清理工作会话时不推进剧情覆盖进度。
-3. Memory / Sampling 准备新的摘要与 Raw 贡献，Runtime 准备已完成交接的记事板、Setting 变更和仍需处理的当前任务；全部校验后由 Memory 侧推进指针，下一次 PromptBuild 消费新组合，旧工作段同时退出，不逐条修补旧工具历史。生成成功不等于采用成功；任一步失败不得先丢弃旧上下文。
-4. 正文写入立即持久化，但本身不推动下一次 PromptBuild 使用新的 Narrative 组合。Memory 指针推进不连带修改其他 Session 的持久化状态；其他消费者可按临时参数请求自己的范围。
+3. Narrative Summary 和 Session Summary 分别准备、分别提交。Narrative Summary 成功后由 Memory 侧推进有效指针；Session Summary 成功后隐藏旧工作段并携带 Session 工作记录。两者不互相等待。
+4. 正文写入立即持久化，但本身不推进 Narrative 默认有效 Head。Memory 指针推进不连带修改其他 Session 的持久化状态；其他消费者可按临时参数请求自己的范围。
 
 这里定义职责，不提前固定公共 Schema、表结构或扩展注册 API。完整切换、恢复和多 Session 行为由配套计划实现并验收。
 
@@ -100,7 +115,7 @@ Session 的默认记忆采用 Agent 可维护的记事板（Scratchpad），保�
 - 短对话达到次数阈值，即使 Token 很少仍触发剧情整理；长篇与短对话可由 Timeline 策略选择不同参数，互不污染。
 - 未达剧情条件且工作记录膨胀时，只清理工作会话，不生成剧情摘要、不推进剧情覆盖边界。
 - 缓冲原文可追溯到正确分支和节点，历史正文不删除，摘要不被误称为语义无损压缩。
-- 摘要失败或采用失败，原始记录、旧有效版本和记事板仍可恢复；不先清空再补总结。
+- Narrative 摘要失败或仍在运行时，原始记录、旧有效 Head 和已保存的记事板仍然存在；Session 摘要可以独立完成，造成的暂时剧情遗忘由产品明确接受。
 - 剧情达到阈值而 Session 很短时，仍完成工作交接与整体重建；下一次 Prompt 不保留被剜除调用／结果后形成的旧历史碎片。
 - 实际发出的 Prompt 覆盖范围与配置一致，近期原文与完整工具协议不被错误截断；不以压缩率作为唯一验收指标。
 - 验证优先扩展现有生命周期仿真；真实模型对事实保留、叙事连贯与语感的人工验收单独记录，脚本化模型不能证明效果。
@@ -111,4 +126,4 @@ Session 的默认记忆采用 Agent 可维护的记事板（Scratchpad），保�
 
 验证记录：三份文档的 69 个相对目标路径均存在，相关 tracked Diff 的 whitespace 检查通过；未运行模型、业务测试或构建。
 
-后续讨论补记：已固化剧情刷新必带 Session 重建的不对称规则；1～100 楼的模块推演及 Anchor 选择建议见[上下文 Plan 第 14 节](./agent-context-skeleton-and-memory-projection-plan.md#14-游玩过程与模块分工推演2026-09-21)。推演参数和新接入建议不是已实现能力。
+后续讨论补记：已固化 Narrative Summary 与 Session Summary 独立运行、独立提交的规则；1～100 楼的模块推演及 Anchor 选择建议见[上下文 Plan 第 14 节](./agent-context-skeleton-and-memory-projection-plan.md#14-游玩过程与模块分工推演2026-09-21)。推演参数和新接入建议不是已实现能力。

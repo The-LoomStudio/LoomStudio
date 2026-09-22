@@ -4,7 +4,7 @@ import type { Translator } from '../../shared/i18n/index.js'
 import type { AgentSession, CardSummary, NarrativeTimeline } from '../../entities/index.js'
 import { cardMediaUrl, useCardMediaRevision } from '../../shared/lib/card-media.js'
 import styles from './play-panel.module.scss'
-import { PanelHeaderActions } from '../../pages/studio/studio-window-header-context.js'
+import { PanelHeaderActions } from '../../shared/studio-shell/studio-window-header-context.js'
 import { PanelTabs } from '../../shared/ui/panel-tabs/index.js'
 
 type PlayTab = 'recent' | 'character' | 'sessions'

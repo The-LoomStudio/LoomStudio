@@ -1,6 +1,6 @@
 import type { useStudioState } from './use-studio-state.js'
 import type { useStudioUiState } from './use-studio-ui-state.js'
-import type { useStudioNavigation } from '../pages/studio/model/use-studio-navigation.js'
+import type { useStudioNavigation } from '../shared/studio-shell/use-studio-navigation.js'
 import { LazyContextWorkbench, LazyPresetWorkbench } from './studio-panel-modules.js'
 
 type StudioState = ReturnType<typeof useStudioState>

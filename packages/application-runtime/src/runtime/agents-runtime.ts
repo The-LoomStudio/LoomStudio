@@ -1,4 +1,5 @@
 import type { DocumentRecord, DocumentStore } from '@loom-studio/document-store'
+import { readLogFailure } from '@loom-studio/logging'
 import type {
   AgentTranscriptEntry,
   PromptResourceNodeDraft,
@@ -14,6 +15,7 @@ import {
   compileAgentToolSet,
   createContentToolPromptRuntimeInputs,
   runNativeToolLoop,
+  type AgentRunProgress,
 } from '../agents/tool-loop.js'
 import { composeAgentTurnPrompt } from '../agents/agent-turn.js'
 import { assertNonEmpty, assertProviderModelExists } from '../agents/agent.js'
@@ -89,6 +91,7 @@ type AgentsRuntimeContext = Pick<ApplicationRuntimeContext,
   | 'documents'
   | 'gateway'
   | 'logger'
+  | 'runtimeLogger'
   | 'macroProviders'
   | 'narratives'
   | 'now'
@@ -264,105 +267,167 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
     },
 
     invokeAgentTurn: async (input: InvokeAgentTurnInput, requestContext?: RuntimeRequestContext): Promise<InvokeAgentTurnResult> => {
-      const agents = requireAgents(ctx)
-      const prepared = await prepareAgentTurn(ctx, input, 'runtime', requestContext)
-      const {
-        model,
-        narrativePage,
-        narratives,
-        prompt,
-        agentStepMessages,
-        compiledToolSet,
-        runId,
-        session,
-        agentProfile,
-      } = prepared
-      const classificationRules = (await resolveEffectiveTextPipeline(
-        ctx,
-        { kind: 'agent-session', sessionId: session.id },
-        'classify',
-      )).rules
-      const loop = await runNativeToolLoop({
-        ctx,
-        agents,
-        session,
-        runId,
-        model,
-        initialMessages: requestContext?.agentRun?.continuation?.messages ?? agentStepMessages,
-        userInput: input.input,
-        compiledToolSet,
-        toolExecutionScope: prompt.toolExecutionScope,
-        branchId: narrativePage?.branch.id ?? 'agent-only',
-        purpose: input.narrativeTarget?.commit ? 'narrative' : 'agent',
-        classificationRules,
-        ...(requestContext ? { requestContext } : {}),
-        delivery: agentProfile.content.delivery ?? 'stream',
-        ...(requestContext?.agentRun?.continuation?.userEntry
-          ? { resumeUserEntry: requestContext.agentRun.continuation.userEntry }
-          : {}),
-        ...(requestContext?.agentRun?.continuation?.partialEntryId
-          ? { resumeAssistantEntryId: requestContext.agentRun.continuation.partialEntryId }
-          : {}),
+      const runId = requestContext?.agentRun?.runId ?? ctx.createId('run')
+      const startedAt = performance.now()
+      const progress: AgentRunProgress = { stage: 'preparation', providerStep: 0, toolCount: 0, suspended: false }
+      const logContext = {
+        correlationId: requestContext?.correlationId,
+        callId: requestContext?.callId,
+        parentCallId: requestContext?.parentCallId,
+      }
+      const references = { runId, sessionId: input.agentSessionId }
+      const runLogger = ctx.runtimeLogger?.child('run')
+      const commitLogger = ctx.runtimeLogger?.child('commit')
+      let commitStartedAt: number | undefined
+      runLogger?.info('Agent turn started', {
+        event: 'run.started', ...logContext,
+        data: { ...references, outcome: 'running', detail: input.narrativeTarget?.commit ? 'Narrative commit requested' : 'Agent-only output' },
       })
-      const narrative = narrativePage && input.narrativeTarget?.commit
-        ? await ctx.dataEngine.transact(
-            narrativeWriteContext(requestContext, 'application.invokeAgentTurn.narrative'),
-            async dataTx => {
-              const narrativeTx = narratives!.transaction(dataTx)
-              const user = narrativeTx.appendNode({
-                timelineId: narrativePage.timeline.id,
-                branchId: narrativePage.branch.id,
-                expectedHeadNodeId: narrativePage.branch.headNodeId ?? null,
-                stateRevisionId: narrativePage.branch.stateHeadRevisionId,
-                body: { format: 'loom-markdown.v1', raw: readMessageEntryContent(loop.userEntry, 'user') },
-                source: {
-                  agentSessionId: session.id,
-                  agentMessageId: loop.userEntry.id,
-                  runId,
-                },
-              })
-              const assistant = narrativeTx.appendNode({
-                timelineId: narrativePage.timeline.id,
-                branchId: narrativePage.branch.id,
-                expectedHeadNodeId: user.node.id,
-                stateRevisionId: narrativePage.branch.stateHeadRevisionId,
-                body: { format: 'loom-markdown.v1', raw: readMessageEntryContent(loop.assistantEntry, 'assistant') },
-                source: {
-                  agentSessionId: session.id,
-                  agentMessageId: loop.assistantEntry.id,
-                  runId,
-                },
-              })
-              return {
-                timeline: assistant.timeline,
-                branch: assistant.branch,
-                node: assistant.node,
-                nodes: [user.node, assistant.node],
-              }
-            },
-          )
-        : undefined
+      try {
+        const agents = requireAgents(ctx)
+        const prepared = await prepareAgentTurn(ctx, input, 'runtime', requestContext, runId)
+        const {
+          model,
+          narrativePage,
+          narratives,
+          prompt,
+          agentStepMessages,
+          compiledToolSet,
+          session,
+          agentProfile,
+        } = prepared
+        const classificationRules = (await resolveEffectiveTextPipeline(
+          ctx,
+          { kind: 'agent-session', sessionId: session.id },
+          'classify',
+        )).rules
+        const loop = await runNativeToolLoop({
+          ctx,
+          agents,
+          session,
+          runId,
+          progress,
+          model,
+          initialMessages: requestContext?.agentRun?.continuation?.messages ?? agentStepMessages,
+          userInput: input.input,
+          compiledToolSet,
+          toolExecutionScope: prompt.toolExecutionScope,
+          branchId: narrativePage?.branch.id ?? 'agent-only',
+          purpose: input.narrativeTarget?.commit ? 'narrative' : 'agent',
+          classificationRules,
+          ...(requestContext ? { requestContext } : {}),
+          delivery: agentProfile.content.delivery ?? 'stream',
+          ...(requestContext?.agentRun?.continuation?.userEntry
+            ? { resumeUserEntry: requestContext.agentRun.continuation.userEntry }
+            : {}),
+          ...(requestContext?.agentRun?.continuation?.partialEntryId
+            ? { resumeAssistantEntryId: requestContext.agentRun.continuation.partialEntryId }
+            : {}),
+        })
+        progress.stage = 'commit'
+        if (narrativePage && input.narrativeTarget?.commit) {
+          commitStartedAt = performance.now()
+          commitLogger?.info('Narrative commit started', {
+            event: 'commit.started', ...logContext,
+            data: { ...references, outcome: 'running', timelineId: narrativePage.timeline.id, branchId: narrativePage.branch.id },
+          })
+        }
+        const narrative = narrativePage && input.narrativeTarget?.commit
+          ? await ctx.dataEngine.transact(
+              narrativeWriteContext(requestContext, 'application.invokeAgentTurn.narrative'),
+              async dataTx => {
+                const narrativeTx = narratives!.transaction(dataTx)
+                const user = narrativeTx.appendNode({
+                  timelineId: narrativePage.timeline.id,
+                  branchId: narrativePage.branch.id,
+                  expectedHeadNodeId: narrativePage.branch.headNodeId ?? null,
+                  stateRevisionId: narrativePage.branch.stateHeadRevisionId,
+                  body: { format: 'loom-markdown.v1', raw: readMessageEntryContent(loop.userEntry, 'user') },
+                  source: {
+                    agentSessionId: session.id,
+                    agentMessageId: loop.userEntry.id,
+                    runId,
+                  },
+                })
+                const assistant = narrativeTx.appendNode({
+                  timelineId: narrativePage.timeline.id,
+                  branchId: narrativePage.branch.id,
+                  expectedHeadNodeId: user.node.id,
+                  stateRevisionId: narrativePage.branch.stateHeadRevisionId,
+                  body: { format: 'loom-markdown.v1', raw: readMessageEntryContent(loop.assistantEntry, 'assistant') },
+                  source: {
+                    agentSessionId: session.id,
+                    agentMessageId: loop.assistantEntry.id,
+                    runId,
+                  },
+                })
+                return {
+                  timeline: assistant.timeline,
+                  branch: assistant.branch,
+                  node: assistant.node,
+                  nodes: [user.node, assistant.node],
+                }
+              },
+            )
+          : undefined
+        if (narrative) {
+          commitLogger?.info('Narrative committed · 2 entries', {
+            event: 'commit.completed', ...logContext,
+            data: { ...references, outcome: 'completed', entryCount: 2, changesetId: narrative.commit.changesetId, durationMs: readDurationMs(commitStartedAt!) },
+          })
+        }
+        const outcome = requestContext?.abortSignal?.aborted
+          ? requestContext.abortSignal.reason === 'user-pause' ? 'suspended' : 'cancelled'
+          : 'completed'
+        runLogger?.info(`Agent turn ${outcome}`, {
+          event: `run.${outcome}`, ...logContext,
+          data: {
+            ...references, outcome, durationMs: readDurationMs(startedAt),
+            providerStep: progress.providerStep, toolCount: progress.toolCount, narrativeCommitted: Boolean(narrative),
+            detail: `${progress.providerStep} steps · ${progress.toolCount} tools · ${narrative ? 'narrative committed' : 'no narrative commit requested'}`,
+          },
+        })
 
-      return {
-        runId,
-        agentSession: loop.session,
-        entries: { user: loop.userEntry, assistant: loop.assistantEntry },
-        ...(narrative ? { narrative: narrative.value } : {}),
-        provider: {
-          provider: loop.providerResult.provider,
-          model: loop.providerResult.model,
-          ...(loop.providerResult.finishReason ? { finishReason: loop.providerResult.finishReason } : {}),
-          ...(loop.providerResult.usage ? { usage: loop.providerResult.usage } : {}),
-          ...(loop.providerResult.providerCallId ? { providerCallId: loop.providerResult.providerCallId } : {}),
-        },
-        projection: prompt.projection,
-        promptBuildTrace: prompt.promptBuildTrace,
-        toolExposures: compiledToolSet.tools.map((tool) => tool.exposure),
-        toolPromptBuildTrace: loop.toolPromptBuildTrace,
-        mutation: narrative
-          ? { changesetId: narrative.commit.changesetId, scope: 'narrative-commit' as const }
-          : { changesetId: loop.changesetId, scope: 'agent-session-transcript' as const },
-        macroInspection: prepared.macroInspection,
+        return {
+          runId,
+          agentSession: loop.session,
+          entries: { user: loop.userEntry, assistant: loop.assistantEntry },
+          ...(narrative ? { narrative: narrative.value } : {}),
+          provider: {
+            provider: loop.providerResult.provider,
+            model: loop.providerResult.model,
+            ...(loop.providerResult.finishReason ? { finishReason: loop.providerResult.finishReason } : {}),
+            ...(loop.providerResult.usage ? { usage: loop.providerResult.usage } : {}),
+            ...(loop.providerResult.providerCallId ? { providerCallId: loop.providerResult.providerCallId } : {}),
+          },
+          projection: prompt.projection,
+          promptBuildTrace: prompt.promptBuildTrace,
+          toolExposures: compiledToolSet.tools.map((tool) => tool.exposure),
+          toolPromptBuildTrace: loop.toolPromptBuildTrace,
+          mutation: narrative
+            ? { changesetId: narrative.commit.changesetId, scope: 'narrative-commit' as const }
+            : { changesetId: loop.changesetId, scope: 'agent-session-transcript' as const },
+          macroInspection: prepared.macroInspection,
+        }
+      } catch (error) {
+        const failure = readLogFailure(error)
+        const aborted = requestContext?.abortSignal?.aborted || (error instanceof Error && error.name === 'AbortError')
+        const outcome = progress.suspended || (aborted && requestContext?.abortSignal?.reason === 'user-pause')
+          ? 'suspended' : aborted ? 'cancelled' : 'failed'
+        if (commitStartedAt !== undefined) {
+          commitLogger?.error(`Narrative commit failed · ${failure.failureReason}`, {
+            event: 'commit.failed', ...logContext,
+            data: { ...references, ...failure, outcome: 'failed', durationMs: readDurationMs(commitStartedAt) },
+          })
+        }
+        runLogger?.[outcome === 'failed' ? 'error' : !aborted && outcome === 'suspended' ? 'warn' : 'info'](`Agent turn ${outcome} · ${progress.stage}`, {
+          event: `run.${outcome}`, ...logContext,
+          data: {
+            ...references, ...failure, ...progress, outcome, durationMs: readDurationMs(startedAt),
+            detail: `${failure.failureReason} · ${progress.providerStep} steps · ${progress.toolCount} tools · narrative not committed`,
+          },
+        })
+        throw error
       }
     },
 
@@ -559,6 +624,7 @@ async function prepareAgentTurn(
   },
   mode: 'preview' | 'runtime',
   requestContext?: RuntimeRequestContext,
+  invocationRunId?: string,
 ) {
   if (input.input.trim().length === 0 && !requestContext?.agentRun?.continuation) throw new Error('Agent turn input cannot be empty')
   if (!ctx.agents) throw new Error('Agent Store is not configured')
@@ -585,7 +651,7 @@ async function prepareAgentTurn(
   if (!agentProfile.content.presetId) throw new Error(`Agent Profile has no Preset Prompt Resource: ${agentProfile.id}`)
   const preset = await readPresetResource(ctx.promptResources, agentProfile.content.presetId)
   const toolMounts = await ctx.promptResources.listPresetToolMounts({ presetResourceId: preset.id })
-  const runId = requestContext?.agentRun?.runId ?? ctx.createId('run')
+  const runId = invocationRunId ?? requestContext?.agentRun?.runId ?? ctx.createId('run')
   const buildId = ctx.createId('build')
   const startedAt = performance.now()
   const references = {
@@ -603,11 +669,6 @@ async function prepareAgentTurn(
     ...(requestContext?.callId ? { callId: requestContext.callId } : {}),
     ...(requestContext?.parentCallId ? { parentCallId: requestContext.parentCallId } : {}),
   }
-  ctx.logger?.info(`${mode} prompt build started`, {
-    event: 'prompt.build.started',
-    data: references,
-    ...logContext,
-  })
   let prompt
   let compiledToolSet
   const timelineState = narrativePage
@@ -638,6 +699,11 @@ async function prepareAgentTurn(
     macroSelections: input.macroSelections,
   })
   const inspectedVariables = variableContextFromInspection(macroInspection)
+  ctx.logger?.info(`${mode} prompt build started`, {
+    event: 'prompt.build.started',
+    data: { ...references, outcome: 'running' },
+    ...logContext,
+  })
   try {
     const sessionTextPipeline = await resolveEffectiveTextPipeline(
       ctx,
@@ -948,19 +1014,21 @@ async function prepareAgentTurn(
       }
     }
     const durationMs = readDurationMs(startedAt)
-    ctx.logger?.info(`${mode} prompt build completed · ${prompt.messages.length} messages · ${durationMs} ms`, {
+    ctx.logger?.info(`${mode} prompt build completed · ${prompt.messages.length} messages`, {
       event: 'prompt.build.completed',
-      data: { ...references, messageCount: prompt.messages.length, durationMs },
+      data: { ...references, messageCount: prompt.messages.length, durationMs, outcome: 'completed' },
       ...logContext,
     })
   } catch (error) {
     const durationMs = readDurationMs(startedAt)
-    ctx.logger?.error(`${mode} prompt build failed after ${durationMs} ms`, {
+    const failure = readLogFailure(error)
+    ctx.logger?.error(`${mode} prompt build failed · ${failure.failureReason}`, {
       event: 'prompt.build.failed',
       data: {
         ...references,
         durationMs,
-        failureType: error instanceof Error ? error.name : 'UnknownError',
+        ...failure,
+        outcome: 'failed',
       },
       ...logContext,
     })

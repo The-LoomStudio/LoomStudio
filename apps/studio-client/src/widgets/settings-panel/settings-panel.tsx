@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { useAppearanceStore } from './appearance-store.js'
+import { useAppearanceStore } from '../../shared/studio-shell/appearance-store.js'
 import { ChevronLeft, Globe, Info, Network, Palette, Regex } from 'lucide-react'
 import { TextTransformDetail, TextTransformExplorer, useTextTransformController } from '../../features/text-transforms/ui/text-transform-panel.js'
 import type { NetworkSettings, StudioApi } from '../../shared/api/studio-api.js'

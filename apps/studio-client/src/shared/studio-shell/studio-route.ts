@@ -62,6 +62,14 @@ export function buildStudioChatPath(timelineId?: string, branchId?: string): str
   return `/studio/chat/${encodeURIComponent(timelineId)}/branch/${encodeURIComponent(branchId)}`
 }
 
+export function buildStudioLogPath(input: { packageId?: string; runId?: string; source?: 'all' | 'server' | 'client' | 'history' } = {}): string {
+  const params = new URLSearchParams()
+  if (input.packageId) params.set('logPackage', input.packageId)
+  if (input.runId) params.set('logRun', input.runId)
+  params.set('logSource', input.source ?? 'all')
+  return `/studio/logs?${params}`
+}
+
 export function buildStudioNodeHash(nodeId: string): string {
   return `#node-${encodeURIComponent(nodeId)}`
 }

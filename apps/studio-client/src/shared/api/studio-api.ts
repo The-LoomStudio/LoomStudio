@@ -21,7 +21,7 @@ export type AgentMutationApproval = {
 }
 import type { CardDirectoryPreview, CardDirectorySaveResult, CardDirectoryCatalog, OpenCardDirectoryResult, CardDirectoryAttachment, ReplaceSettingMountsInput } from '@loom-studio/shared'
 import type { OfficialContentPackage } from '../../entities/official-content.js'
-import type { LogLevel, LogPage } from '@loom-studio/logging'
+import type { LogQuery, LogPage, LogHistoryQuery, LogHistoryPage } from '@loom-studio/logging'
 import type { ExtensionConfigEntry, ExtensionEntityRef, ExtensionRecordEntry, ExtensionStorageScope } from '@loom-studio/extension-sdk'
 import type {
   AiGatewayInvokeInput,
@@ -117,16 +117,7 @@ import type {
   TextTransformRuleDraft,
 } from '../../entities/index.js'
 
-export type LogsListInput = {
-  cursor?: string
-  limit?: number
-  levels?: LogLevel[]
-  namespacePrefix?: string
-  service?: string
-  instanceId?: string
-  since?: string
-  until?: string
-}
+export type LogsListInput = Omit<LogQuery, 'limit'> & { limit?: number }
 
 export type NetworkProxyMode = 'system' | 'direct' | 'manual'
 
@@ -397,6 +388,7 @@ export type StudioApi = {
   }
   logs: {
     list(input?: LogsListInput): Promise<LogPage>
+    history(input: LogHistoryQuery, signal?: AbortSignal): Promise<LogHistoryPage>
   }
   history: {
     revert(changesetId: string): Promise<MutationReceipt>
@@ -550,8 +542,8 @@ export type StudioApi = {
 
 export function createStudioApi(bridge: ClientBridge): StudioApi {
   const rpc = {
-    call<T>(method: string, params?: unknown): Promise<T> {
-      return bridge.call<T>(method, params as ClientJsonValue)
+    call<T>(method: string, params?: unknown, options?: { signal?: AbortSignal }): Promise<T> {
+      return options ? bridge.call<T>(method, params as ClientJsonValue, options) : bridge.call<T>(method, params as ClientJsonValue)
     },
   }
 
@@ -602,6 +594,7 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
     },
     logs: {
       list: input => rpc.call<LogPage>('logs.list', (input ?? {})),
+      history: (input, signal) => rpc.call<LogHistoryPage>('logs.history', input, { signal }),
     },
     history: {
       revert: async changesetId => {

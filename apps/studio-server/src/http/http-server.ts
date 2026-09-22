@@ -1,11 +1,11 @@
-import type { Logger } from '@loom-studio/logging'
+import { readLogFailure, type Logger } from '@loom-studio/logging'
 import { createId, type JsonObject, type JsonValue } from '@loom-studio/shared'
 import type { StudioEvent } from '@loom-studio/transport'
 import { createErrorResponse, createSuccessResponse, parseRpcRequest } from '@loom-studio/transport'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { AssetStore } from '@loom-studio/asset-store'
 import type { ApplicationSession, ApplicationSessionAuth } from './application-session-auth.js'
-import { sanitizeRpcParams, summarizeRpc } from '../rpc/rpc-summary.js'
+import { isTechnicalRpc, summarizeRpc } from '../rpc/rpc-summary.js'
 import type { StudioRpcRouter } from '../rpc/studio-rpc-router.js'
 import { maxCardPngBytes } from '../codecs/card-png.js'
 import { createHash } from 'node:crypto'
@@ -480,11 +480,15 @@ async function handleRpcRequest(
   const startedAt = performance.now()
   let rpcId: string | number | null = null
   let method = 'unknown'
+  const abort = new AbortController()
+  const onClose = () => { if (!response.writableEnded) abort.abort() }
+  response.once('close', onClose)
   let context: {
     clientId: string
     correlationId: string
     callId: string
     parentCallId?: string
+    signal?: AbortSignal
   } | undefined
 
   try {
@@ -497,15 +501,15 @@ async function handleRpcRequest(
       correlationId: rpcRequest.meta?.correlationId ?? createId('corr'),
       callId: createId('call'),
       parentCallId: rpcRequest.meta?.parentCallId,
+      signal: abort.signal,
     }
     const result = await rpcRouter.call(rpcRequest.method, rpcRequest.params, context)
     const durationMs = readDurationMs(startedAt)
-    if (method !== 'logs.list') {
-      const summary = summarizeRpc(method, rpcRequest.params, result)
-      const safeParams = sanitizeRpcParams(rpcRequest.params)
+    if (!method.startsWith('logs.')) {
+      const summary = summarizeRpc(method, result)
       const messageText = summary.textSuffix
-        ? `${method} completed in ${durationMs} ms -> ${summary.textSuffix}`
-        : `${method} completed in ${durationMs} ms`
+        ? `${method} · ${summary.textSuffix}`
+        : `${method} completed`
 
       logger?.info(messageText, {
         event: 'rpc.completed',
@@ -517,8 +521,8 @@ async function handleRpcRequest(
           transport: 'http',
           durationMs,
           outcome: 'success',
-          ...(safeParams !== undefined && safeParams !== null ? { params: safeParams as JsonObject } : {}),
-          ...(summary.summaryData ? { summary: summary.summaryData } : {}),
+          technical: isTechnicalRpc(method),
+          ...(summary.summaryData ?? {}),
         },
       })
     }
@@ -531,6 +535,7 @@ async function handleRpcRequest(
     }
     writeJson(response, 200, createSuccessResponse(rpcRequest.id, result, responseMeta))
   } catch (error) {
+    if (method === 'logs.history' && abort.signal.aborted) return
     const durationMs = readDurationMs(startedAt)
     const responseMeta = context ? {
       clientId: context.clientId,
@@ -540,7 +545,8 @@ async function handleRpcRequest(
       serverTime: new Date().toISOString(),
     } : undefined
 
-    logger?.error(`${method} failed after ${durationMs} ms`, {
+    const failure = readLogFailure(error)
+    logger?.error(`${method} failed · ${failure.failureReason}`, {
       event: 'rpc.failed',
       correlationId: context?.correlationId,
       callId: context?.callId,
@@ -550,19 +556,15 @@ async function handleRpcRequest(
         transport: 'http',
         durationMs,
         outcome: 'failure',
-        failureType: error instanceof Error ? error.name : 'UnknownError',
-        ...readErrorCode(error),
+        ...failure,
       },
     })
     writeJson(response, 200, createErrorResponse(rpcId, error, 'rpc.invalid_request', responseMeta))
+  } finally {
+    response.off('close', onClose)
   }
 }
 
-function readErrorCode(error: unknown): { errorCode?: string } {
-  return error instanceof Error && 'code' in error && typeof error.code === 'string'
-    ? { errorCode: error.code }
-    : {}
-}
 
 function readDurationMs(startedAt: number): number {
   return Math.round((performance.now() - startedAt) * 100) / 100

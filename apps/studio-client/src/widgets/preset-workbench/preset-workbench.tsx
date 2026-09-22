@@ -1,7 +1,7 @@
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import { ChevronDown, ChevronRight, Package, Search, Wrench, X } from 'lucide-react'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore, type PresetView } from '../../pages/studio/model/studio-layout-store.js'
+import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore, type PresetView } from '../../shared/studio-shell/studio-layout-store.js'
 import { AssetWorkbenchLayout } from '../../shared/ui/asset-workbench-layout/asset-workbench-layout.js'
 import { PanelTabs } from '../../shared/ui/panel-tabs/index.js'
 import { normalizeSearchText } from '../../shared/lib/text.js'
