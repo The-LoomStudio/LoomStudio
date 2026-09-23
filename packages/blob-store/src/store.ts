@@ -45,22 +45,19 @@ export function createBlobStore(options: {
       // ponytail: Blob finalization is serialized per Store instance; multi-process writers rely on the SQLite unique hash constraint.
       const prepared = await prepareBlobWrite(options, input)
       if (prepared.existing) return { blob: prepared.blob, created: false }
-      try {
-        const result = await options.engine.transact({
-          actor: input.actor,
-          reason: input.reason ?? 'blob.write',
-          correlationId: input.correlationId,
-          callId: input.callId,
-          parentCallId: input.parentCallId,
-        }, async tx => participateBlobWrite(tx, prepared))
-        return { ...result.value, commit: result.commit }
-      } catch (error) {
-        await discardPreparedBlobWrite(options, prepared)
-        throw error
-      }
+      const result = await options.engine.transact({
+        actor: input.actor,
+        reason: input.reason ?? 'blob.write',
+        correlationId: input.correlationId,
+        callId: input.callId,
+        parentCallId: input.parentCallId,
+      }, async tx => participateBlobWrite(tx, prepared))
+      return { ...result.value, commit: result.commit }
     }),
     prepareWrite: input => enqueueWrite(() => prepareBlobWrite(options, input)),
-    discardPreparedWrite: prepared => enqueueWrite(() => discardPreparedBlobWrite(options, prepared)),
+    discardPreparedWrite: async () => {
+      // ponytail: Finalized hash files may serve other prepared writes; retain orphan bytes until ownership-aware GC exists.
+    },
     participateWrite: (tx, prepared) => participateBlobWrite(tx, prepared),
     get: blobId => options.engine.read(database => readBlob(database, blobId)),
     getBySha256: sha256 => {
@@ -103,18 +100,6 @@ export function createBlobStore(options: {
       return Buffer.concat(chunks)
     },
   }
-}
-
-async function discardPreparedBlobWrite(
-  options: { engine: SqliteDataEngine; rootDirectory: string },
-  prepared: PreparedBlobWrite,
-): Promise<void> {
-  if (prepared.existing) return
-  const persisted = await options.engine.read(database => readBlobBySha256(database, prepared.blob.sha256))
-  if (persisted) return
-  await unlink(blobFilename(options.rootDirectory, prepared.blob.sha256)).catch(error => {
-    if (!isNodeError(error, 'ENOENT')) throw error
-  })
 }
 
 async function prepareBlobWrite(

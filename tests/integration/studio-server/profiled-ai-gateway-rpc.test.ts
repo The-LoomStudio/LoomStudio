@@ -43,6 +43,18 @@ describe('profile-backed AI Gateway RPC', () => {
         capabilityId: 'chat.completions',
         input: { messages: [{ role: 'user', content: 'bypass' }] },
       })).rejects.toThrow('profileId')
+
+      await callRpc(port, 'application.deleteProviderProfile', { providerProfileId: account.providerProfile.id })
+      await expect(callRpc(port, 'application.getAiCapabilityProfile', { profileId: created.profile.id }))
+        .resolves.toMatchObject({ profile: { available: false, unavailableReason: 'provider-profile-missing' } })
+      await expect(callRpc(port, 'ai.invoke', { profileId: created.profile.id, input: { messages: [] } }))
+        .rejects.toThrow(account.providerProfile.id)
+      const replacement = await callRpc<{ providerProfile: { id: string } }>(port, 'application.createProviderProfile', {
+        providerExtensionId: 'official.fake', displayName: 'Fake Account', config: {},
+      })
+      await expect(callRpc(port, 'application.updateAiCapabilityProfile', {
+        profileId: created.profile.id, providerProfileId: replacement.providerProfile.id,
+      })).resolves.toMatchObject({ profile: { available: true, providerProfileId: replacement.providerProfile.id } })
     })
   })
 })

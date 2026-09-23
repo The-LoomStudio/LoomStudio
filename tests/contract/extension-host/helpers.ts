@@ -48,14 +48,14 @@ export function createExtensionHostHarness(options: {
     registerStateContribution: options.registerStateContribution,
     readState: options.readState,
     writeState: options.writeState,
-    callRpc: (method: string, params?: unknown, context?: unknown) => kernel.callRpc(method, params as never, context as never),
-    registerRpc: (name: string, ownerPackageId: string, ownerModuleId: string, handler: (...args: unknown[]) => unknown, ownerInstanceId?: string) => {
-      const handle = kernel.registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler as never, ownerInstanceId)
-      return { name, ownerPackageId, ownerModuleId, ownerInstanceId, handler: handler as never, dispose: handle.dispose }
+    callRpc: (method, params, context) => kernel.callRpc(method, params, context),
+    registerRpc: (name, ownerPackageId, ownerModuleId, handler, ownerInstanceId) => {
+      const handle = kernel.registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler, ownerInstanceId)
+      return { name, ownerPackageId, ownerModuleId, ownerInstanceId, handler, dispose: handle.dispose }
     },
-    emitEvent: (name: string, payload: unknown, publisher: { kind: string; packageId?: string; moduleId?: string }) => {
-      kernel.getEventBus().emit(name, payload as never, {
-        publisher: publisher as never,
+    emitEvent: (name, payload, publisher) => {
+      return kernel.getEventBus().emit(name, payload, {
+        publisher,
         source: publisher.kind === 'extension' ? `extension:${publisher.packageId}/${publisher.moduleId}` : publisher.kind,
       })
     },

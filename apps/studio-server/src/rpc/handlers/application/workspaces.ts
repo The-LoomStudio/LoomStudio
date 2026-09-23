@@ -129,6 +129,7 @@ export async function handleWorkspacesRpc(
     case 'application.updatePromptResourceAsset':
       return await runtime.updatePromptResourceAsset({
         resourceId: readString(params, 'resourceId'),
+        expectedVersion: readOptionalNumber(params, 'expectedVersion'),
         assetId: readString(params, 'assetId'),
         body: readOptionalString(params, 'body'),
         capabilities: readOptionalPromptCapabilities(params, 'capabilities'),
@@ -142,6 +143,7 @@ export async function handleWorkspacesRpc(
     case 'application.updatePromptResourceAssets':
       return await runtime.updatePromptResourceAssets({
         resourceId: readString(params, 'resourceId'),
+        expectedVersion: readOptionalNumber(params, 'expectedVersion'),
         updates: readPromptAssetPatches(params, 'updates'),
       }, context) as unknown as JsonValue
 

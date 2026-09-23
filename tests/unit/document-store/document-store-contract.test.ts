@@ -18,6 +18,110 @@ const stores = [
 ]
 
 describe.each(stores)('$name document store contract', ({ create }) => {
+  it.each(['write', 'delete', 'transact', 'revert'] as const)('preserves a queued %s after a concurrent transaction rolls back', async operation => {
+    await withStore(create(), async store => {
+      const initial = await store.write({ id: 'kept', type: 'test.queue', content: { text: 'original' }, expectedVersion: 'new' })
+      const commits: string[] = []
+      store.subscribeCommits(commit => commits.push(commit.changeset.id))
+      let ready!: () => void
+      let release!: () => void
+      const started = new Promise<void>(resolve => { ready = resolve })
+      const gate = new Promise<void>(resolve => { release = resolve })
+      const failing = store.transact({ actor }, async tx => {
+        await tx.write({ id: 'temporary', type: 'test.queue', content: {}, expectedVersion: 'new' })
+        ready()
+        await gate
+        throw new Error('rollback only this transaction')
+      })
+      const rejected = expect(failing).rejects.toThrow('rollback only this transaction')
+      await started
+      const write = { id: 'kept', type: 'test.queue', content: { text: 'updated' }, expectedVersion: 1 } as const
+      const next = operation === 'write' ? store.write(write)
+        : operation === 'delete' ? store.delete({ id: 'kept', expectedVersion: 1 })
+          : operation === 'revert' ? store.revertChangeset({ changesetId: initial.changesetId, actor })
+            : store.transact({ actor }, tx => tx.write(write))
+      const readDuringTransaction = store.get('temporary')
+      release()
+      await rejected
+      const result = await next
+      expect(await readDuringTransaction).toBeNull()
+      expect(await store.get('temporary', { version: 1 })).toBeNull()
+      const persisted = await store.get('kept', { includeTombstone: true })
+      expect(persisted?.version).toBe(2)
+      expect(Boolean(persisted?.meta.tombstone)).toBe(operation === 'delete' || operation === 'revert')
+      expect(await store.get('kept', { version: 2, includeTombstone: true })).toEqual(persisted)
+      expect(await store.getChangeset(result.commit.changeset.id)).toEqual(result.commit.changeset)
+      expect(commits).toEqual([result.commit.changeset.id])
+    })
+  })
+
+  it('rejects outer-store reentrancy instead of deadlocking, and allows later writes', async () => {
+    await withStore(create(), async store => {
+      await expect(store.transact({ actor }, async tx => {
+        await tx.write({ id: 'temporary', type: 'test.queue', content: {}, expectedVersion: 'new' })
+        await store.get('temporary')
+      })).rejects.toMatchObject({ code: expect.stringContaining('reentrant_transaction') })
+      expect(await store.get('temporary')).toBeNull()
+      await store.write({ id: 'after', type: 'test.queue', content: {}, expectedVersion: 'new' })
+      expect((await store.get('after'))?.version).toBe(1)
+    })
+  })
+
+  it('continues after a deleted cursor row and does not revisit updated documents', async () => {
+    await withStore(create(), async store => {
+      for (const id of ['a', 'b', 'c', 'd']) {
+        await store.write({ id, type: 'test.page', content: {}, expectedVersion: 'new' })
+      }
+      const first = await store.list({ type: 'test.page', limit: 2 })
+      expect(first.items.map(item => item.id)).toEqual(['a', 'b'])
+      expect(first.nextCursor).toBeDefined()
+      await store.delete({ id: 'b', expectedVersion: 1 })
+      await store.write({ id: 'a', type: 'test.page', content: { updated: true }, expectedVersion: 1 })
+      await store.write({ id: 'e', type: 'test.page', content: {}, expectedVersion: 'new' })
+      const second = await store.list({ type: 'test.page', limit: 2, cursor: first.nextCursor })
+      expect(second.items.map(item => item.id)).toEqual(['c', 'd'])
+      const last = await store.list({ type: 'test.page', limit: 2, cursor: second.nextCursor })
+      expect(last.items.map(item => item.id)).toEqual(['e'])
+      expect(last.nextCursor).toBeUndefined()
+      expect((await store.list({ includeTombstone: true })).items.map(item => item.id)).toEqual(['a', 'b', 'c', 'd', 'e'])
+    })
+  })
+
+  it('binds cursor to filters while allowing page size changes and transaction reads', async () => {
+    await withStore(create(), async store => {
+      await store.transact({ actor }, async tx => {
+        for (const id of ['hidden', 'a', 'b', 'c']) {
+          await tx.write({
+            id, type: id === 'hidden' ? 'other' : 'test.page', content: {}, expectedVersion: 'new',
+            meta: { ownerExtensionId: 'example.owner' },
+          })
+        }
+        const first = await tx.list({ type: 'test.page', ownerExtensionId: 'example.owner', limit: 1 })
+        const second = await tx.list({ type: 'test.page', ownerExtensionId: 'example.owner', limit: 2, cursor: first.nextCursor })
+        expect(second.items.map(item => item.id)).toEqual(['b', 'c'])
+        for (const filters of [
+          { type: 'other', ownerExtensionId: 'example.owner' },
+          { type: 'test.page', ownerExtensionId: 'different' },
+          { type: 'test.page', ownerExtensionId: 'example.owner', includeTombstone: true },
+        ]) {
+          await expect(tx.list({ ...filters, cursor: first.nextCursor })).rejects.toMatchObject({ code: 'document.input_invalid' })
+        }
+      })
+    })
+  })
+
+  it.each([0, -1, 1.5, NaN, Infinity, -Infinity, 1001, Number.MAX_SAFE_INTEGER])('rejects invalid page size %s', async limit => {
+    await withStore(create(), async store => {
+      await expect(store.list({ limit })).rejects.toMatchObject({ code: 'document.input_invalid' })
+    })
+  })
+
+  it.each(['', '-1', '0', 'abc', 'null', '{}', '[0,null,null,false]', '[1,null,null,false,"extra"]'])('rejects invalid cursor %s', async cursor => {
+    await withStore(create(), async store => {
+      await expect(store.list({ cursor })).rejects.toMatchObject({ code: 'document.input_invalid' })
+    })
+  })
+
   it('groups all transaction writes into one persisted changeset', async () => {
     await withStore(create(), async store => {
       const commits: unknown[] = []

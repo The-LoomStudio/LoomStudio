@@ -52,12 +52,15 @@ export function usePromptResourceState(input: PromptResourceStateInput) {
     refreshPromptResourceLibrary: async () => readRefetchResult(await resourcesQuery.refetch()),
     refreshSettingMounts: async () => readRefetchResult(await settingMountsQuery.refetch()),
     setPresetToolMounts: (update: (current: PresetToolMount[]) => PresetToolMount[]) => {
+      void queryClient.cancelQueries({ exact: true, queryKey: presetToolMountsKey })
       queryClient.setQueryData<PresetToolMount[]>(presetToolMountsKey, current => update(current ?? []))
     },
     setPromptResources: (update: (current: PromptResource[]) => PromptResource[]) => {
+      void queryClient.cancelQueries({ exact: true, queryKey: resourcesKey })
       queryClient.setQueryData<PromptResource[]>(resourcesKey, current => update(current ?? []))
     },
     setSettingMounts: (update: (current: SettingMount[]) => SettingMount[]) => {
+      void queryClient.cancelQueries({ exact: true, queryKey: settingMountsKey })
       queryClient.setQueryData<SettingMount[]>(settingMountsKey, current => update(current ?? []))
     },
   }

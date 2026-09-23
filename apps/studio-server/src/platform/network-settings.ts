@@ -27,8 +27,9 @@ export function createNetworkSettingsStore(options: {
   return {
     get: () => toView(settings, options.resolveSystemProxyUrl()),
     update: input => {
-      settings = normalizeSettings(input)
-      persistSettings(options.filename, settings)
+      const next = normalizeSettings(input)
+      persistSettings(options.filename, next)
+      settings = next
       return toView(settings, options.resolveSystemProxyUrl())
     },
     resolveProxyUrl: () => {
@@ -40,20 +41,36 @@ export function createNetworkSettingsStore(options: {
 }
 
 function readSettings(filename: string): NetworkSettings {
+  let text: string
   try {
-    return normalizeSettings(JSON.parse(readFileSync(filename, 'utf8')) as NetworkSettings)
-  } catch {
-    return { proxyMode: 'system' }
+    text = readFileSync(filename, 'utf8')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { proxyMode: 'system' }
+    throw error
   }
+  let input: NetworkSettings
+  try {
+    input = JSON.parse(text) as NetworkSettings
+  } catch {
+    throw new Error('Invalid network settings JSON')
+  }
+  return normalizeSettings(input)
 }
 
 function normalizeSettings(input: NetworkSettings): NetworkSettings {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Invalid network settings')
   if (input.proxyMode === 'system' || input.proxyMode === 'direct') return { proxyMode: input.proxyMode }
   if (input.proxyMode !== 'manual') throw new Error('Invalid network proxy mode')
-  const proxyUrl = input.proxyUrl?.trim()
+  const proxyUrl = typeof input.proxyUrl === 'string' ? input.proxyUrl.trim() : undefined
   if (!proxyUrl) throw new Error('Manual proxy URL is required')
-  const protocol = new URL(proxyUrl).protocol
-  if (protocol !== 'http:' && protocol !== 'https:') throw new Error('Proxy URL must use http or https')
+  let url: URL
+  try {
+    url = new URL(proxyUrl)
+  } catch {
+    throw new Error('Manual proxy URL is invalid')
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('Proxy URL must use http or https')
+  if (url.username || url.password) throw new Error('Manual proxy authentication is not supported; remove the username and password')
   return { proxyMode: 'manual', proxyUrl }
 }
 

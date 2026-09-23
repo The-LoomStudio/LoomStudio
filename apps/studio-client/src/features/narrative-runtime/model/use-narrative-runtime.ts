@@ -56,6 +56,7 @@ type UseNarrativeRuntimeInput = {
   initialNodes?: NarrativeNode[]
   selectedCard?: Card
   selectedCardId?: string
+  onSelectCard(id: string): void
   selectedAgentProfileId?: string
   onSelectAgentProfile(id: string): void
   runAgentAction: (action: () => Promise<void>) => Promise<void>
@@ -64,12 +65,25 @@ type UseNarrativeRuntimeInput = {
 }
 
 export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
+  type CardSource = { api: StudioApi; cardId?: string; request?: Promise<NarrativeTimeline[]>; disposed?: boolean }
+  const cardSourceRef = useRef<CardSource>({ api: input.api, cardId: input.selectedCardId })
+  if (cardSourceRef.current.api !== input.api || cardSourceRef.current.cardId !== input.selectedCardId) {
+    cardSourceRef.current = { api: input.api, cardId: input.selectedCardId }
+  }
   const [timeline, setTimeline] = useState<NarrativeTimeline>()
   const [branch, setBranch] = useState<NarrativeBranch>()
   const [branches, setBranches] = useState<NarrativeBranch[]>([])
   const [nodes, setNodes] = useState<NarrativeNode[]>(() => input.initialNodes ?? [])
+  const displayedNarrativeRef = useRef({ timelineId: timeline?.id, branchId: branch?.id, api: input.api })
+  displayedNarrativeRef.current = { timelineId: timeline?.id, branchId: branch?.id, api: input.api }
   const [olderCursor, setOlderCursor] = useState<string>()
-  const [cardTimelines, setCardTimelines] = useState<NarrativeTimeline[]>([])
+  const olderCursorRef = useRef(olderCursor)
+  olderCursorRef.current = olderCursor
+  const olderPageRequestRef = useRef<{
+    api: StudioApi; timelineId: string; branchId: string; cursor: string; request: Promise<void>
+  } | undefined>(undefined)
+  const [cardTimelinePage, setCardTimelinePage] = useState<{ source: CardSource; timelines: NarrativeTimeline[] }>()
+  const cardTimelines = cardTimelinePage?.source === cardSourceRef.current ? cardTimelinePage.timelines : []
   const [allTimelines, setAllTimelines] = useState<NarrativeTimeline[]>([])
   const [agentSession, setAgentSession] = useState<AgentSession>()
   const [agentSessions, setAgentSessions] = useState<AgentSession[]>([])
@@ -99,7 +113,19 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     if (hadProfile && agentSessionRef.current?.agentProfileId !== input.selectedAgentProfileId) resetAgentSession()
   }, [input.selectedAgentProfileId])
 
-  useEffect(() => () => { agentSelectionRef.current++ }, [])
+  useEffect(() => () => {
+    agentSelectionRef.current++
+    cardSourceRef.current.disposed = true
+  }, [])
+
+  useEffect(() => {
+    const source = cardSourceRef.current
+    source.disposed = false
+    if (input.selectedCardId) {
+      void input.runAction(async () => { await refreshCardTimelines(input.selectedCardId!, true) })
+    }
+    return () => { source.disposed = true }
+  }, [input.api, input.selectedCardId])
 
   function setComposerDraft(value: string) {
     composerDraftsRef.current.set(readComposerDraftKey(timeline, branch, input.selectedCardId), value)
@@ -107,22 +133,63 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
   }
 
   function activateComposerDraft(nextTimeline: NarrativeTimeline | undefined, nextBranch: NarrativeBranch | undefined, fallback = '') {
-    const key = readComposerDraftKey(nextTimeline, nextBranch, input.selectedCardId)
+    const key = readComposerDraftKey(nextTimeline, nextBranch, cardSourceRef.current.cardId)
     const value = composerDraftsRef.current.get(key) ?? fallback
     composerDraftsRef.current.set(key, value)
     setComposerInput(value)
   }
 
-  async function refreshCardTimelines(cardId: string) {
-    const timelines: NarrativeTimeline[] = []
-    let cursor: string | undefined
-    do {
-      const page = await input.api.narratives.list({ createdFromCardId: cardId, cursor, limit: 100 })
-      timelines.push(...page.timelines)
-      cursor = page.nextCursor
-    } while (cursor)
-    setCardTimelines(timelines)
-    return timelines
+  function refreshCardTimelines(cardId: string, reusePending = false): Promise<NarrativeTimeline[]> {
+    const source = cardSourceRef.current
+    const belongsToSource = source.api === input.api && source.cardId === cardId
+    if (belongsToSource && reusePending && source.request) return source.request
+    const request = (async () => {
+      const timelines: NarrativeTimeline[] = []
+      let cursor: string | undefined
+      do {
+        const page = await input.api.narratives.list({ createdFromCardId: cardId, cursor, limit: 100 })
+        timelines.push(...page.timelines)
+        cursor = page.nextCursor
+      } while (cursor)
+      return timelines
+    })()
+    if (belongsToSource) source.request = request
+    return request.then(timelines => {
+      if (belongsToSource && !source.disposed && cardSourceRef.current === source && source.request === request) {
+        setCardTimelinePage({ source, timelines })
+      }
+      return timelines
+    }, error => {
+      if (source.request === request) source.request = undefined
+      throw error
+    })
+  }
+
+  async function selectCardTimeline(cardId: string, createIfMissing = false) {
+    const source: CardSource = { api: input.api, cardId }
+    cardSourceRef.current = source
+    input.onSelectCard(cardId)
+    const selection = beginAgentSelection()
+    let timelines: NarrativeTimeline[] = []
+    const loaded = await input.runAction(async () => { timelines = await refreshCardTimelines(cardId, true) })
+    if (!loaded) {
+      if (selection === agentSelectionRef.current) {
+        setAgentSessionLoading(false)
+        markAgentSessionReady(true)
+      }
+      return
+    }
+    if (source.disposed || cardSourceRef.current !== source || selection !== agentSelectionRef.current) return
+    const latest = [...timelines].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]
+    if (latest) {
+      const branchId = await activateTimeline(latest.id)
+      if (branchId && cardSourceRef.current === source && !source.disposed) return { timelineId: latest.id, branchId }
+    } else if (createIfMissing) {
+      return await createTimelineFromCard(cardId)
+    } else {
+      resetToDraftTimeline()
+      return null
+    }
   }
 
   async function refreshAllTimelines() {
@@ -146,8 +213,11 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     if (!cardId) return
 
     let activated: { branchId: string; timelineId: string } | undefined
+    const source = cardSourceRef.current
+    const selection = beginAgentSelection()
     await input.runAction(async () => {
       const result = await input.api.narratives.create({ cardId })
+      if (source.disposed || cardSourceRef.current !== source || selection !== agentSelectionRef.current) return
       setTimeline(result.timeline)
       setBranch(result.branch)
       setBranches([result.branch])
@@ -158,9 +228,16 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
       setPromptPreview(undefined)
       setLastRun(undefined)
       activateComposerDraft(result.timeline, result.branch, composerInput)
+      const activatedSelection = agentSelectionRef.current
       await refreshCardTimelines(cardId)
-      activated = { branchId: result.branch.id, timelineId: result.timeline.id }
+      if (!source.disposed && cardSourceRef.current === source && activatedSelection === agentSelectionRef.current) {
+        activated = { branchId: result.branch.id, timelineId: result.timeline.id }
+      }
     })
+    if (cardSourceRef.current === source && selection === agentSelectionRef.current) {
+      setAgentSessionLoading(false)
+      markAgentSessionReady(true)
+    }
     return activated
   }
 
@@ -174,7 +251,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
         const nextBranch = resolveNarrativeBranch(details.branches, details.timeline.activeBranchId, branchId)
         if (!nextBranch) throw new Error(`Narrative timeline ${timelineId} has no active branch`)
         const page = await input.api.narratives.getPage({ timelineId, branchId: nextBranch.id, limit: 100 })
-        if (!context.isCurrent() || selection !== agentSelectionRef.current) return
+        if (!context.isCurrent() || selection !== agentSelectionRef.current || input.api !== cardSourceRef.current.api) return
         setTimeline(page.timeline)
         setBranch(page.branch)
         setBranches(details.branches)
@@ -189,7 +266,9 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
         if (selection === agentSelectionRef.current) setAgentSessionLoading(false)
       }
     })
-    return activatedBranchId
+    return input.api === cardSourceRef.current.api && selection === agentSelectionRef.current
+      ? activatedBranchId
+      : undefined
   }
 
   function resetToDraftTimeline() {
@@ -214,7 +293,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     if (!agentSessionReadyRef.current) return undefined
 
     let resultActivated: { timelineId: string; branchId: string } | undefined
-    await input.runAction(async () => {
+    const completed = await input.runAction(async () => {
       let currentTimeline = timeline
       let currentBranch = branch
       if (!currentTimeline || !currentBranch) {
@@ -330,7 +409,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
         // The persisted user and assistant entries above remain usable if the optional transcript refresh fails.
       }
     })
-    return resultActivated
+    return completed ? resultActivated : undefined
   }
 
   async function submitAgentTurn(event: FormEvent) {
@@ -591,23 +670,50 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     })
   }
 
-  async function loadOlderNodes() {
-    if (!timeline || !branch || !olderCursor) return
-    await input.runAction(async () => {
+  function loadOlderNodes(): Promise<void> {
+    const cursor = olderCursorRef.current
+    if (!timeline || !branch || !cursor) return Promise.resolve()
+    const pending = olderPageRequestRef.current
+    if (pending?.api === input.api && pending.timelineId === timeline.id
+      && pending.branchId === branch.id && pending.cursor === cursor) return pending.request
+    const selection = agentSelectionRef.current
+    const request = input.runAction(async () => {
       const page = await input.api.narratives.getPage({
         timelineId: timeline.id,
         branchId: branch.id,
-        cursor: olderCursor,
+        cursor,
         limit: 100,
       })
+      const displayed = displayedNarrativeRef.current
+      if (displayed.api !== input.api || displayed.timelineId !== timeline.id || displayed.branchId !== branch.id
+        || selection !== agentSelectionRef.current || olderCursorRef.current !== cursor) return
+      olderCursorRef.current = page.nextCursor
       setNodes(current => [...page.nodes, ...current])
       setOlderCursor(page.nextCursor)
+    }).then(completed => {
+      if (!completed) throw new Error('Could not load older Timeline nodes')
+    }).finally(() => {
+      if (olderPageRequestRef.current?.request === request) olderPageRequestRef.current = undefined
     })
+    olderPageRequestRef.current = { api: input.api, timelineId: timeline.id, branchId: branch.id, cursor, request }
+    return request
   }
 
-  function editNarrativeNode(nodeId: string, raw: string) {
-    // ponytail: Narrative Node 是 append-only；正式编辑需要先定义 replacement/fork 语义，当前仅保留未持久化的视觉草稿能力。
-    setNodes(current => current.map(node => node.id === nodeId ? { ...node, body: { ...node.body, raw } } : node))
+  async function editNarrativeNode(nodeId: string, raw: string): Promise<void> {
+    const original = nodes.find(node => node.id === nodeId)
+    if (!timeline || !branch?.headNodeId || !original) throw new Error('Narrative editing target is unavailable')
+    const result = await input.api.narratives.editNode({
+      timelineId: timeline.id, branchId: branch.id, nodeId,
+      expectedHeadNodeId: branch.headNodeId, expectedRaw: original.body.raw, raw,
+    })
+    const displayed = displayedNarrativeRef.current
+    if (displayed.api !== input.api || displayed.timelineId !== timeline.id || displayed.branchId !== branch.id) return
+    setTimeline(current => current?.id === result.timeline.id ? result.timeline : current)
+    setBranch(current => current?.id === result.branch.id ? result.branch : current)
+    setBranches(current => current.map(item => item.id === result.branch.id ? result.branch : item))
+    const replacements = new Map(result.replacements.map(item => [item.previousNodeId, item.node]))
+    setNodes(current => current.map(node => replacements.get(node.id) ?? node))
+    setPromptPreview(undefined)
   }
 
   async function ensureAgentSession(targetTimeline = timeline): Promise<AgentSession> {
@@ -703,12 +809,12 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
 
   async function restoreAgentSession(timelineId: string | undefined, selection: number, selectedId?: string) {
     const sessions = await listAgentSessions(timelineId)
-    if (selection !== agentSelectionRef.current) return
+    if (selection !== agentSelectionRef.current || input.api !== cardSourceRef.current.api) return
     setAgentSessions(sessions)
     const selected = sessions.find(item => item.id === selectedId) ?? sessions[0]
     if (selected) {
       const transcript = await loadTranscript(input.api, selected.id)
-      if (selection !== agentSelectionRef.current) return
+      if (selection !== agentSelectionRef.current || input.api !== cardSourceRef.current.api) return
       publishAgentSession(transcript.session)
       setAgentTranscriptEntries(transcript.entries)
       input.onSelectAgentProfile(transcript.session.agentProfileId)
@@ -873,6 +979,7 @@ export function useNarrativeRuntime(input: UseNarrativeRuntimeInput) {
     setInput: setComposerDraft,
     timeline,
     activateTimeline,
+    selectCardTimeline,
     activateAgentSession,
     createTimelineFromCard,
     deleteTimeline,
@@ -905,8 +1012,7 @@ async function loadTranscript(api: StudioApi, agentSessionId: string) {
 }
 
 export function resolveNarrativeBranch(branches: NarrativeBranch[], activeBranchId: string, requestedBranchId?: string): NarrativeBranch | undefined {
-  return (requestedBranchId ? branches.find(branch => branch.id === requestedBranchId) : undefined)
-    ?? branches.find(branch => branch.id === activeBranchId)
+  return branches.find(branch => branch.id === (requestedBranchId ?? activeBranchId))
 }
 
 export function readComposerDraftKey(

@@ -1,4 +1,5 @@
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
+import { isJsonValue } from '../json.js'
 import {
   PromptResourceStoreError,
   type PromptResourceKind,
@@ -168,8 +169,7 @@ export function validateTree(resourceId: string, nodes: Map<string, StoredNode>,
   const roots = [...nodes.values()].filter(node => !node.parentId)
   if (roots.length !== 1 || roots[0]?.id !== rootId) throw new PromptResourceStoreError('prompt_resource.root_invalid', `Prompt resource must have exactly one root: ${resourceId}`)
   for (const node of nodes.values()) {
-    validateNodeShape(node)
-    validateCategory(node.category)
+    validateNodeDraft(node)
     if (node.resourceId !== resourceId) throw new PromptResourceStoreError('prompt_resource.ownership', `Node belongs to another resource: ${node.id}`)
     if (node.parentId) {
       const parent = nodes.get(node.parentId)
@@ -193,7 +193,7 @@ export function validateNodeDraft(node: PromptResourceNodeDraft): void {
   validateNodeShape({ id: node.id, kind: node.kind, label: node.label, orderIndex: node.orderIndex ?? 0 })
   validateCategory(node.category)
   if (node.extra !== undefined) validateJsonObject(node.extra, 'extra')
-  if (node.capabilities !== undefined) stringifyJson(node.capabilities, 'capabilities')
+  if (node.capabilities !== undefined) validateJsonValue(node.capabilities, 'capabilities')
 }
 
 export function assertContainer(node: StoredNode): void {
@@ -222,6 +222,13 @@ export function validateCategory(category: string | null | undefined): void {
 export function validateJsonObject(value: JsonObject | undefined, label: string): void {
   if (value === undefined || value === null || Array.isArray(value) || typeof value !== 'object') {
     throw new PromptResourceStoreError('prompt_resource.json_invalid', `${label} must be a JSON object`)
+  }
+  validateJsonValue(value, label)
+}
+
+export function validateJsonValue(value: unknown, label: string): asserts value is JsonValue {
+  if (!isJsonValue(value)) {
+    throw new PromptResourceStoreError('prompt_resource.json_invalid', `${label} must contain only JSON values`)
   }
 }
 
@@ -315,7 +322,10 @@ export function compareOrder(left: StoredNode, right: StoredNode): number {
 
 export function parseJson(value: string | undefined, label: string): JsonValue {
   if (!value) throw new PromptResourceStoreError('prompt_resource.json_invalid', `${label} is missing`)
-  try { return JSON.parse(value) as JsonValue } catch { throw new PromptResourceStoreError('prompt_resource.json_invalid', `${label} is invalid JSON`) }
+  let parsed: unknown
+  try { parsed = JSON.parse(value) } catch { throw new PromptResourceStoreError('prompt_resource.json_invalid', `${label} is invalid JSON`) }
+  validateJsonValue(parsed, label)
+  return parsed
 }
 
 export function parseObject(value: string | undefined, label: string): JsonObject {

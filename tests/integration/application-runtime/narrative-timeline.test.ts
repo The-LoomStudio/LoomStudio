@@ -505,23 +505,39 @@ describe('application narrative timeline lifecycle', () => {
     engine.close()
   })
 
-  it('detaches a deleted Prompt Resource from Cards, Presets, and Narrative Timelines', async () => {
+  it('preserves external references to a deleted Setting while cleaning a deleted Preset own mounts', async () => {
     const { engine, runtime } = createTestRuntime()
-    const resource = await runtime.createPromptResource({ resourceKind: 'setting', name: 'Temporary Setting' })
-    const card = await runtime.createCard({ name: 'Story' })
-    await runtime.updateCardPromptResources({ cardId: card.card.id, promptResourceIds: [resource.resource.id] })
-    const preset = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Test Agent' })
-    await runtime.replaceSettingMounts({ source: { kind: 'preset', id: preset.resource.id }, settingResourceIds: [resource.resource.id] })
-    const timeline = await runtime.createNarrativeTimeline({ cardId: card.card.id })
+    try {
+      const resource = await runtime.createPromptResource({ resourceKind: 'setting', name: 'Temporary Setting' })
+      const card = await runtime.createCard({ name: 'Story' })
+      await runtime.updateCardPromptResources({ cardId: card.card.id, promptResourceIds: [resource.resource.id] })
+      const preset = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Test Agent' })
+      await runtime.replaceSettingMounts({ source: { kind: 'preset', id: preset.resource.id }, settingResourceIds: [resource.resource.id] })
+      await runtime.replaceSettingMounts({ source: { kind: 'manual', id: 'global' }, settingResourceIds: [resource.resource.id] })
+      const timeline = await runtime.createNarrativeTimeline({ cardId: card.card.id })
+      const originalCard = await runtime.getCard({ cardId: card.card.id })
+      const originalTimeline = await runtime.getNarrativeTimeline({ timelineId: timeline.timeline.id })
+      const presetMounts = await runtime.listSettingMounts({ source: { kind: 'preset', id: preset.resource.id } })
+      const manualMounts = await runtime.listSettingMounts({ source: { kind: 'manual', id: 'global' } })
 
-    const deleted = await runtime.deletePromptResource({ resourceId: resource.resource.id })
+      const deleted = await runtime.deletePromptResource({ resourceId: resource.resource.id })
 
-    expect(deleted.detachedReferences).toEqual({ cards: 1, presets: 1, timelines: 1 })
-    await expect(runtime.getPromptResource({ resourceId: resource.resource.id })).rejects.toThrow('Prompt resource not found')
-    await expect(runtime.getCard({ cardId: card.card.id })).resolves.toMatchObject({ card: { promptResourceIds: [] } })
-    await expect(runtime.listSettingMounts({ source: { kind: 'preset', id: preset.resource.id } })).resolves.toEqual({ mounts: [] })
-    await expect(runtime.getNarrativeTimeline({ timelineId: timeline.timeline.id })).resolves.toMatchObject({ timeline: { promptResourceIds: [] } })
-    engine.close()
+      expect(deleted.detachedReferences).toEqual({ cards: 0, presets: 0, timelines: 0 })
+      await expect(runtime.getPromptResource({ resourceId: resource.resource.id })).rejects.toThrow('Prompt resource not found')
+      await expect(runtime.getCard({ cardId: card.card.id })).resolves.toEqual(originalCard)
+      await expect(runtime.getNarrativeTimeline({ timelineId: timeline.timeline.id })).resolves.toEqual(originalTimeline)
+      await expect(runtime.listSettingMounts({ source: { kind: 'preset', id: preset.resource.id } })).resolves.toEqual(presetMounts)
+      await expect(runtime.listSettingMounts({ source: { kind: 'manual', id: 'global' } })).resolves.toEqual(manualMounts)
+      expect(engine.database.prepare('PRAGMA foreign_key_check').all()).toEqual([])
+
+      await runtime.deletePromptResource({ resourceId: preset.resource.id })
+      expect((await runtime.listSettingMounts()).mounts.filter(mount =>
+        mount.source.kind === 'preset' && mount.source.id === preset.resource.id)).toEqual([])
+      await expect(runtime.listSettingMounts({ source: { kind: 'manual', id: 'global' } })).resolves.toEqual(manualMounts)
+      expect(engine.database.prepare('PRAGMA foreign_key_check').all()).toEqual([])
+    } finally {
+      engine.close()
+    }
   })
 
   it('requires the shared Prompt Resource Store and Data Engine', async () => {

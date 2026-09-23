@@ -19,6 +19,7 @@ import { findRootContextModule, type ContextAssetUpdate } from './projection-wor
 
 type UseContextAssetsInput = {
   api: StudioApi
+  scope: string
   onResourceChange(resource: PromptResource): void
   recordEdit(entry: {
     label: string
@@ -30,102 +31,166 @@ type UseContextAssetsInput = {
   t: Translator
 }
 
-export function useContextAssets(input: UseContextAssetsInput) {
-  const [nodes, setNodeState] = useState<ContextAssetNode[]>([])
-  const nodesRef = useRef<ContextAssetNode[]>([])
-  const persistedNodesRef = useRef<ContextAssetNode[]>([])
-  const mutationQueueRef = useRef<Promise<void>>(Promise.resolve())
+type ResourceDraft = {
+  base: PromptResource
+  edits: Map<string, Partial<ContextAssetNode>>
+  failure?: unknown
+}
 
-  function applyDraftNodes(next: ContextAssetNode[]) {
-    nodesRef.current = next
-    setNodeState(next)
+type ResourceScope = {
+  resources: PromptResource[]
+  nodes: ContextAssetNode[]
+  visible: PromptResource[]
+  drafts: Map<string, ResourceDraft>
+  queue: Promise<void>
+}
+
+export function useContextAssets(input: UseContextAssetsInput) {
+  const [, refreshView] = useState(0)
+  const scopesRef = useRef(new Map<string, ResourceScope>())
+  const activeScopeRef = useRef(input.scope)
+  activeScopeRef.current = input.scope
+  const scope = scopesRef.current.get(input.scope) ?? {
+    resources: input.resources,
+    nodes: input.resources.map(resource => resource.rootNode),
+    visible: input.resources,
+    drafts: new Map<string, ResourceDraft>(),
+    queue: Promise.resolve(),
+  }
+  scopesRef.current.set(input.scope, scope)
+  const displayedResources = scope.visible
+
+  function recordEdit(entry: Parameters<UseContextAssetsInput['recordEdit']>[0]) {
+    if (activeScopeRef.current === input.scope) input.recordEdit(entry)
   }
 
-  function setNodes(next: ContextAssetNode[]) {
-    const normalized = normalizeContextAssets(next)
-    persistedNodesRef.current = normalized
-    applyDraftNodes(normalized)
+  function publishDrafts() {
+    const visible = new Map(scope.resources.map(resource => [resource.id, resource]))
+    for (const [id, draft] of scope.drafts) {
+      let roots = [draft.base.rootNode]
+      for (const [nodeId, partial] of draft.edits) roots = updateContextAssetNode(roots, nodeId, partial)
+      visible.set(id, { ...draft.base, rootNode: normalizeContextAssets(roots)[0]! })
+    }
+    scope.visible = [...visible.values()]
+    refreshView(revision => revision + 1)
+  }
+
+  function setResources(next: PromptResource[]) {
+    const previous = new Map(scope.resources.map(resource => [resource.id, resource]))
+    scope.resources = next.map(resource => {
+      const current = previous.get(resource.id)
+      return current && current.version > resource.version ? current : resource
+    })
+    scope.nodes = scope.resources.map(resource => resource.rootNode)
+    publishDrafts()
   }
 
   function applyResource(resource: PromptResource) {
-    setNodes(persistedNodesRef.current.map(node => node.id === resource.rootNode.id ? resource.rootNode : node))
+    const draft = scope.drafts.get(resource.id)
+    const previous = scope.resources.find(current => current.id === resource.id)
+    if (draft && !draft.failure && previous?.version === draft.base.version
+      && resource.version === draft.base.version + 1
+      && [...draft.edits.keys()].every(id => findContextAssetNode([resource.rootNode], id))) {
+      draft.base = resource
+    }
+    setResources(scope.resources.map(current => current.id === resource.id ? resource : current))
     input.onResourceChange(resource)
   }
 
+  function readDraft(assetId: string) {
+    const existing = [...scope.drafts.values()].find(draft => findContextAssetNode([draft.base.rootNode], assetId))
+    if (existing) return existing
+    const resource = displayedResources.find(resource => findContextAssetNode([resource.rootNode], assetId))
+    if (!resource) throw new Error(`Prompt resource not found for asset: ${assetId}`)
+    const draft: ResourceDraft = { base: resource, edits: new Map() }
+    scope.drafts.set(resource.id, draft)
+    return draft
+  }
+
+  function discardDraft(resourceId: string) {
+    scope.drafts.delete(resourceId)
+    publishDrafts()
+  }
+
+  function retryDraft(resourceId: string): Promise<void> {
+    const draft = scope.drafts.get(resourceId)
+    if (!draft || draft.edits.size === 0) return Promise.resolve()
+    draft.failure = undefined
+    return commitEdits([...draft.edits].map(([id, partial]) => ({ id, partial })), true)
+  }
+
   function readResourceId(assetId: string): string {
-    const root = findRootContextModule(persistedNodesRef.current, assetId)
-    const resourceId = input.resources.find(resource => resource.rootNode.id === root?.id)?.id
+    const root = findRootContextModule(scope.nodes, assetId)
+    const resourceId = scope.resources.find(resource => resource.rootNode.id === root?.id)?.id
     if (!resourceId) throw new Error(`Prompt resource not found for asset: ${assetId}`)
     return resourceId
   }
 
   function enqueueMutation(action: () => Promise<void>): Promise<void> {
-    const pending = mutationQueueRef.current.then(() => input.runAction(action))
-    mutationQueueRef.current = pending.catch(() => undefined)
+    const pending = scope.queue.then(() => input.runAction(action))
+    scope.queue = pending.catch(() => undefined)
     return pending
   }
 
   function previewContextAsset(id: string, partial: Partial<ContextAssetNode>) {
-    applyDraftNodes(updateContextAssetNode(nodesRef.current, id, partial))
+    const draft = readDraft(id)
+    draft.edits.set(id, { ...draft.edits.get(id), ...partial })
+    publishDrafts()
   }
 
   function updateContextAsset(id: string, partial: Partial<ContextAssetNode>): Promise<void> {
-    return enqueueMutation(async () => {
-      const next = updateContextAssetNode(persistedNodesRef.current, id, partial)
-      const previousNode = findContextAssetNode(persistedNodesRef.current, id)
-      const nextNode = findContextAssetNode(next, id)
-      if (!previousNode || !nextNode || samePromptAssetPatch(previousNode, nextNode)) return
-      const resourceId = readResourceId(id)
-
-      try {
-        await commitContextAssetMutation({
-          mutate: () => input.api.promptResources.updateAsset({
-            resourceId,
-            ...readPromptAssetPatch(nextNode),
-          }),
-          applyResource,
-          recordEdit: input.recordEdit,
-          entry: {
-            label: input.t('history.context.update'),
-            anchor: { documentId: resourceId, subjectId: id },
-          },
-        })
-      } catch (error) {
-        applyDraftNodes(persistedNodesRef.current)
-        throw error
-      }
-    })
+    return commitEdits([{ id, partial }], false)
   }
 
   function updateContextAssets(updates: ContextAssetUpdate[]): Promise<void> {
     if (updates.length === 0) return Promise.resolve()
-    return enqueueMutation(async () => {
-      const next = updates.reduce((current, update) => updateContextAssetNode(current, update.id, update.partial), persistedNodesRef.current)
-      const changedNodes = updates.flatMap(update => {
-        const previousNode = findContextAssetNode(persistedNodesRef.current, update.id)
-        const nextNode = findContextAssetNode(next, update.id)
-        return previousNode && nextNode && !samePromptAssetPatch(previousNode, nextNode) ? [nextNode] : []
-      })
-      if (changedNodes.length === 0) return
-      const resourceIds = new Set(changedNodes.map(node => readResourceId(node.id)))
-      if (resourceIds.size !== 1) throw new Error('Cross-resource prompt asset updates are not supported')
-      const resourceId = [...resourceIds][0]!
+    return commitEdits(updates, true)
+  }
 
+  function commitEdits(updates: ContextAssetUpdate[], batch: boolean): Promise<void> {
+    const drafts = updates.map(update => readDraft(update.id))
+    const draft = drafts[0]!
+    if (drafts.some(candidate => candidate !== draft)) {
+      for (const candidate of drafts) {
+        if (candidate.edits.size === 0) scope.drafts.delete(candidate.base.id)
+      }
+      publishDrafts()
+      return enqueueMutation(async () => { throw new Error('Cross-resource prompt asset updates are not supported') })
+    }
+    for (const update of updates) previewContextAsset(update.id, update.partial)
+    const submitted = new Map(updates.map(update => [update.id, draft.edits.get(update.id)!]))
+    return enqueueMutation(async () => {
+      if (scope.drafts.get(draft.base.id) !== draft) return
       try {
-        await commitContextAssetMutation({
-          mutate: () => input.api.promptResources.updateAssets({
-            resourceId,
-            updates: changedNodes.map(node => readPromptAssetPatch(node)),
-          }),
-          applyResource,
-          recordEdit: input.recordEdit,
-          entry: {
-            label: input.t('history.context.reorder'),
-            anchor: { documentId: resourceId, subjectId: updates[0]?.id },
-          },
+        if (draft.failure) throw draft.failure
+        const current = scope.resources.find(resource => resource.id === draft.base.id)
+        if (!current || current.version !== draft.base.version) throw new Error(input.t('context.draftConflict'))
+        const patches = [...submitted].flatMap(([id, partial]) => {
+          const previousNode = findContextAssetNode([draft.base.rootNode], id)
+          const nextNode = findContextAssetNode(updateContextAssetNode([draft.base.rootNode], id, partial), id)
+          if (!previousNode || !nextNode) throw new Error(`Prompt asset not found: ${id}`)
+          return samePromptAssetPatch(previousNode, nextNode) ? [] : [readPromptAssetPatch(nextNode)]
         })
+        if (patches.length > 0) {
+          const request = { resourceId: draft.base.id, expectedVersion: draft.base.version }
+          const result = batch
+            ? await input.api.promptResources.updateAssets({ ...request, updates: patches })
+            : await input.api.promptResources.updateAsset({ ...request, ...patches[0]! })
+          draft.base = result.resource
+          recordEdit({
+            label: input.t(batch ? 'history.context.reorder' : 'history.context.update'),
+            changesetId: result.mutation.changesetId,
+            anchor: { documentId: result.resource.id, subjectId: updates[0]?.id },
+          })
+          applyResource(result.resource)
+        }
+        for (const [id, partial] of submitted) {
+          if (draft.edits.get(id) === partial) draft.edits.delete(id)
+        }
+        if (draft.edits.size === 0 && scope.drafts.get(draft.base.id) === draft) scope.drafts.delete(draft.base.id)
+        publishDrafts()
       } catch (error) {
-        applyDraftNodes(persistedNodesRef.current)
+        draft.failure = error
         throw error
       }
     })
@@ -134,7 +199,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
   async function addContextAsset(parentId: string): Promise<string | undefined> {
     let nextSelectedId: string | undefined
     await enqueueMutation(async () => {
-      const mutation = addContextAssetNode(persistedNodesRef.current, parentId)
+      const mutation = addContextAssetNode(scope.nodes, parentId)
       const asset = findContextAssetNode(mutation.nodes, mutation.selectedId)
       if (!asset || !mutation.selectedId) return
       const resourceId = readResourceId(parentId)
@@ -146,7 +211,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
       })
       applyResource(result.resource)
       nextSelectedId = mutation.selectedId
-      input.recordEdit({
+      recordEdit({
         label: input.t('history.context.create'),
         changesetId: result.mutation.changesetId,
         anchor: { documentId: resourceId, subjectId: mutation.selectedId },
@@ -158,7 +223,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
   async function addContextAssetFolder(parentId: string): Promise<string | undefined> {
     let nextSelectedId: string | undefined
     await enqueueMutation(async () => {
-      const mutation = addContextAssetFolderNode(persistedNodesRef.current, parentId)
+      const mutation = addContextAssetFolderNode(scope.nodes, parentId)
       const asset = findContextAssetNode(mutation.nodes, mutation.selectedId)
       if (!asset || !mutation.selectedId) return
       const resourceId = readResourceId(parentId)
@@ -170,7 +235,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
       })
       applyResource(result.resource)
       nextSelectedId = mutation.selectedId
-      input.recordEdit({
+      recordEdit({
         label: input.t('history.context.create'),
         changesetId: result.mutation.changesetId,
         anchor: { documentId: resourceId, subjectId: mutation.selectedId },
@@ -182,7 +247,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
   async function addContextAssetAnchor(parentId: string): Promise<string | undefined> {
     let nextSelectedId: string | undefined
     await enqueueMutation(async () => {
-      const mutation = addContextAssetAnchorNode(persistedNodesRef.current, parentId)
+      const mutation = addContextAssetAnchorNode(scope.nodes, parentId)
       const asset = findContextAssetNode(mutation.nodes, mutation.selectedId)
       if (!asset || !mutation.selectedId) return
       const resourceId = readResourceId(parentId)
@@ -194,7 +259,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
       })
       applyResource(result.resource)
       nextSelectedId = mutation.selectedId
-      input.recordEdit({
+      recordEdit({
         label: input.t('history.context.create'),
         changesetId: result.mutation.changesetId,
         anchor: { documentId: resourceId, subjectId: mutation.selectedId },
@@ -206,8 +271,8 @@ export function useContextAssets(input: UseContextAssetsInput) {
   async function addContextAssetMessageBlock(parentId: string, role: 'system' | 'user' | 'assistant' = 'system'): Promise<string | undefined> {
     let nextSelectedId: string | undefined
     await enqueueMutation(async () => {
-      const parentNode = findContextAssetNode(persistedNodesRef.current, parentId)
-      const mutation = addContextAssetMessageBlockNode(persistedNodesRef.current, parentId, role)
+      const parentNode = findContextAssetNode(scope.nodes, parentId)
+      const mutation = addContextAssetMessageBlockNode(scope.nodes, parentId, role)
       const asset = findContextAssetNode(mutation.nodes, mutation.selectedId)
       if (!asset || !mutation.selectedId) return
       const resourceId = readResourceId(parentId)
@@ -222,7 +287,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
       })
       applyResource(result.resource)
       nextSelectedId = mutation.selectedId
-      input.recordEdit({
+      recordEdit({
         label: input.t('history.context.create'),
         changesetId: result.mutation.changesetId,
         anchor: { documentId: resourceId, subjectId: mutation.selectedId },
@@ -233,8 +298,8 @@ export function useContextAssets(input: UseContextAssetsInput) {
 
   function moveContextAsset(draggedId: string, targetId: string, position: 'before' | 'inside' | 'after'): Promise<void> {
     return enqueueMutation(async () => {
-      const next = moveContextAssetNode(persistedNodesRef.current, draggedId, targetId, position)
-      if (next === persistedNodesRef.current) return
+      const next = moveContextAssetNode(scope.nodes, draggedId, targetId, position)
+      if (next === scope.nodes) return
       const resourceId = readResourceId(draggedId)
       if (readResourceId(targetId) !== resourceId) throw new Error('Cross-resource prompt asset move is not supported')
       const result = await input.api.promptResources.moveAsset({
@@ -244,7 +309,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
         position,
       })
       applyResource(result.resource)
-      input.recordEdit({
+      recordEdit({
         label: input.t('history.context.move'),
         changesetId: result.mutation.changesetId,
         anchor: { documentId: resourceId, subjectId: draggedId },
@@ -255,7 +320,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
   async function duplicateContextAsset(id: string): Promise<string | undefined> {
     let nextSelectedId: string | undefined
     await enqueueMutation(async () => {
-      const mutation = duplicateContextAssetNode(persistedNodesRef.current, id)
+      const mutation = duplicateContextAssetNode(scope.nodes, id)
       const asset = findContextAssetNode(mutation.nodes, mutation.selectedId)
       if (!asset || !mutation.selectedId) return
       const resourceId = readResourceId(id)
@@ -267,7 +332,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
       })
       applyResource(result.resource)
       nextSelectedId = mutation.selectedId
-      input.recordEdit({
+      recordEdit({
         label: input.t('history.context.duplicate'),
         changesetId: result.mutation.changesetId,
         anchor: { documentId: resourceId, subjectId: mutation.selectedId },
@@ -279,8 +344,8 @@ export function useContextAssets(input: UseContextAssetsInput) {
   async function deleteContextAsset(id: string, currentSelectedId?: string): Promise<string | undefined> {
     let nextSelectedId: string | undefined
     await enqueueMutation(async () => {
-      const mutation = deleteContextAssetNode(persistedNodesRef.current, id, currentSelectedId)
-      if (mutation.nodes === persistedNodesRef.current) return
+      const mutation = deleteContextAssetNode(scope.nodes, id, currentSelectedId)
+      if (mutation.nodes === scope.nodes) return
       const resourceId = readResourceId(id)
       const result = await input.api.promptResources.deleteAsset({
         resourceId,
@@ -288,7 +353,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
       })
       applyResource(result.resource)
       nextSelectedId = mutation.selectedId
-      input.recordEdit({
+      recordEdit({
         label: input.t('history.context.delete'),
         changesetId: result.mutation.changesetId,
         anchor: { documentId: resourceId, subjectId: id },
@@ -298,13 +363,13 @@ export function useContextAssets(input: UseContextAssetsInput) {
   }
 
   async function addContextAssetInZone(resourceId: string, zoneId: string): Promise<string | undefined> {
-    const targetResource = input.resources.find(r => r.id === resourceId || r.rootNode.id === resourceId)
+    const targetResource = scope.resources.find(r => r.id === resourceId || r.rootNode.id === resourceId)
     const targetResourceId = targetResource?.id ?? resourceId
     const targetAssetId = targetResource?.rootNode.id ?? resourceId
 
     let nextSelectedId: string | undefined
     await enqueueMutation(async () => {
-      const mutation = addContextAssetInZoneNode(persistedNodesRef.current, targetAssetId, zoneId)
+      const mutation = addContextAssetInZoneNode(scope.nodes, targetAssetId, zoneId)
       const asset = findContextAssetNode(mutation.nodes, mutation.selectedId)
       if (!asset || !mutation.selectedId) return
 
@@ -316,7 +381,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
       })
       applyResource(result.resource)
       nextSelectedId = mutation.selectedId
-      input.recordEdit({
+      recordEdit({
         label: input.t('history.context.create'),
         changesetId: result.mutation.changesetId,
         anchor: { documentId: targetResourceId, subjectId: mutation.selectedId },
@@ -326,8 +391,12 @@ export function useContextAssets(input: UseContextAssetsInput) {
   }
 
   return {
-    nodes,
-    setNodes,
+    nodes: scope.visible.map(resource => resource.rootNode),
+    resources: scope.visible,
+    draftResourceIds: [...scope.drafts.keys()],
+    discardDraft,
+    retryDraft,
+    setResources,
     previewContextAsset,
     updateContextAsset,
     updateContextAssets,

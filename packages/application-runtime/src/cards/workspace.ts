@@ -1,12 +1,10 @@
 import type { DocumentRecord, DocumentStore, DocumentTransaction, SqliteDocumentStore } from '@loom-studio/document-store'
-import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import type { PromptResourceStore } from '@loom-studio/application-data'
 import { createId, nowIso } from '@loom-studio/shared'
 import { normalizeOpening, normalizeOptionalString, normalizePreset, normalizeSettingLayer } from './card.js'
 import { normalizeMacros } from './card.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments, readDocument, toVersioned, writeDocument } from '../foundation/document-store.js'
-import { isObject } from '../foundation/json.js'
 import type {
   CardMediaRefs,
   CardSourceContent,
@@ -16,23 +14,19 @@ import type {
   PromptContribution,
   SourceNode,
 } from '../prompt/prompt-builder.js'
-import { combineActivationGates, isPromptActivation, type PromptActivation } from '../prompt/prompt-activation.js'
 import { fromStoredResource } from '../prompt/prompt-resource-mapper.js'
-import { renderVariableMacros, type VariableRenderContext } from '../prompt/variables.js'
+import type { VariableRenderContext } from '../prompt/variables.js'
 import { validateStateDefinitionDraft, validateTimelineStateBinding } from '../state/state-definition.js'
-import { createStateArtifact, parseStateArtifact } from '../state/state-contribution.js'
+import { createStateArtifact } from '../state/state-contribution.js'
 import { parseLoomScriptSource } from '../scripts/loom-script-codec.js'
-import {
-  validateTextExtractorDraft, validateTextTransformRuleDraft,
-  type TextExtractorContent, type TextExtractorDraft,
-  type TextTransformRuleContent, type TextTransformRuleDraft,
+import type {
+  TextExtractorContent,
+  TextTransformRuleContent,
 } from '../transforms/history-text.js'
 import type { LoomScriptAttachmentArtifact, LoomScriptContent, LoomScriptMountContent } from '../scripts/loom-script-contracts.js'
 import type {
   BlobStorage,
   StateDefinitionContent,
-  StateDefinitionDraft,
-  TimelineStateBinding,
 } from '../types.js'
 import type {
   CardBundleArtifact,
@@ -41,10 +35,6 @@ import type {
   ImportBundleContent,
   PortableExtensionPayloadArtifact,
   PortableExtensionPayloadContent,
-  PromptResourceArtifact,
-  PromptResourceCompositionCapabilities,
-  PromptResourceContent,
-  PromptResourceKind,
   PromptResourceNode,
 } from './workspace-types.js'
 import {
@@ -501,7 +491,7 @@ async function cloneConflictingPromptNodes(
   const existingNodeIds = new Set<string>()
   let cursor: string | undefined
   do {
-    const page = await store.listResources({ cursor, limit: 500 })
+    const page = await store.listResources({ cursor, limit: 500, order: 'id' })
     for (const resource of page.resources) {
       for (const node of findNodes([fromStoredResource(resource).rootNode], () => true)) existingNodeIds.add(node.id)
     }
@@ -539,6 +529,7 @@ export async function readPromptResourceInputs(input: {
   promptResources: PromptResourceStore
   resourceIds: string[]
   variables: VariableRenderContext
+  onMissingResource?: (resourceId: string) => void
 }): Promise<{
   sourceNodes: SourceNode[]
   contributions: PromptContribution[]
@@ -548,7 +539,11 @@ export async function readPromptResourceInputs(input: {
   const resources = []
   for (const resourceId of input.resourceIds) {
     const resource = await input.promptResources.getResource(resourceId)
-    if (!resource) throw new Error(`Prompt resource not found: ${resourceId}`)
+    if (!resource) {
+      if (!input.onMissingResource) throw new Error(`Prompt resource not found: ${resourceId}`)
+      input.onMissingResource(resourceId)
+      continue
+    }
     resources.push(fromStoredResource(resource))
   }
   return collectPromptInputsFromNodes(resources.map(resource => resource.rootNode), input.variables)
@@ -579,35 +574,6 @@ function collectPromptInputsFromNodes(
   return { sourceNodes, contributions }
 }
 
-
-
-
-function assertNonEmptyString(value: unknown, label: string): asserts value is string {
-  if (typeof value !== 'string' || value.trim().length === 0) throw new Error(`${label} must be a non-empty string`)
-}
-
 function stripDocumentMetadata<T extends Record<string, unknown>>(content: T): Omit<T, 'owner' | 'origin' | 'createdAt' | 'updatedAt'> {
   return Object.fromEntries(Object.entries(content).filter(([key]) => !['owner', 'origin', 'createdAt', 'updatedAt'].includes(key))) as Omit<T, 'owner' | 'origin' | 'createdAt' | 'updatedAt'>
-}
-
-function assertOptionalString(value: unknown, label: string): void {
-  if (value !== undefined && typeof value !== 'string') throw new Error(`${label} must be a string`)
-}
-
-function assertOptionalNumber(value: unknown, label: string): void {
-  if (value !== undefined && typeof value !== 'number') throw new Error(`${label} must be a number`)
-}
-
-function assertOptionalStringArray(value: unknown, label: string): void {
-  if (value !== undefined && (!Array.isArray(value) || !value.every(item => typeof item === 'string'))) {
-    throw new Error(`${label} must be a string array`)
-  }
-}
-
-function isPromptResourceNodeKind(value: unknown): value is PromptResourceNode['kind'] {
-  return typeof value === 'string' && value.trim().length > 0
-}
-
-function isPromptResourceNodeCategory(value: unknown): value is NonNullable<PromptResourceNode['category']> {
-  return typeof value === 'string' && value.trim().length > 0
 }

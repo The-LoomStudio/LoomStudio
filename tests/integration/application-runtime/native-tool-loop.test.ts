@@ -61,6 +61,27 @@ const testContentTool: ToolDefinition = {
 }
 
 describe('Native Function Tool Loop', () => {
+  it('skips a missing mounted tool with a warning in turn preview', async () => {
+    const registry = createAgentToolRegistry([readContextTool])
+    const fixture = await createFixture({
+      agentTools: registry,
+      invokeChat: async () => { throw new Error('Preview must not invoke the provider') },
+    })
+    try {
+      registry.replaceDefinitions([])
+      const result = await fixture.runtime.previewAgentTurn({ agentSessionId: fixture.sessionId, input: 'Hello' })
+      expect(result.toolPromptBuildTrace.diagnostics).toContainEqual(expect.objectContaining({
+        severity: 'warning', code: 'tool.missing', toolId: readContextTool.id,
+      }))
+      expect(result.toolPromptBuildTrace.effectiveOrder).toEqual([])
+      expect(result.promptBuildTrace.diagnostics).toContainEqual(expect.objectContaining({
+        severity: 'warning', code: 'tool.missing', toolId: readContextTool.id,
+      }))
+    } finally {
+      fixture.close()
+    }
+  })
+
   it.each([
     { metadata: '{}', status: 'completed', executions: 1 },
     { metadata: '{"unexpected":"must not be discarded"}', status: 'failed', executions: 0 },

@@ -10,6 +10,7 @@ export type ProviderToolSurfaceItem = {
 }
 
 export type PresetToolProjection = {
+  unavailableMounts: PresetToolMount[]
   contentNodes: ContextAssetNode[]
   providerTools: ProviderToolSurfaceItem[]
   toolIdByNodeId: Map<string, string>
@@ -84,6 +85,7 @@ export function buildPresetToolProjection(input: {
   }
 
   return {
+    unavailableMounts: input.mounts.filter(mount => mount.presetResourceId === input.presetId && !toolsById.has(mount.toolId)),
     contentNodes,
     providerTools,
     toolIdByNodeId,
@@ -96,6 +98,7 @@ export function buildPresetToolProjection(input: {
 
 function emptyProjection(): PresetToolProjection {
   return {
+    unavailableMounts: [],
     contentNodes: [],
     providerTools: [],
     toolIdByNodeId: new Map(),

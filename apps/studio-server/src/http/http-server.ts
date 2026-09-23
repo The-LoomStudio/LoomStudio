@@ -1,5 +1,5 @@
 import { readLogFailure, type Logger } from '@loom-studio/logging'
-import { createId, type JsonObject, type JsonValue } from '@loom-studio/shared'
+import { createId, type JsonValue } from '@loom-studio/shared'
 import type { StudioEvent } from '@loom-studio/transport'
 import { createErrorResponse, createSuccessResponse, parseRpcRequest } from '@loom-studio/transport'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
@@ -9,6 +9,7 @@ import { isTechnicalRpc, summarizeRpc } from '../rpc/rpc-summary.js'
 import type { StudioRpcRouter } from '../rpc/studio-rpc-router.js'
 import { maxCardPngBytes } from '../codecs/card-png.js'
 import { createHash } from 'node:crypto'
+import { pipeline } from 'node:stream/promises'
 
 export function createStudioHttpServer(options: {
   auth: ApplicationSessionAuth
@@ -34,8 +35,47 @@ export function createStudioHttpServer(options: {
   }
   logger?: Logger
   rpcRouter: StudioRpcRouter
-}): Server {
-  return createServer(async (request, response) => {
+}): Server & { shutdown(): Promise<void> } {
+  const requests = new Map<AbortController, Promise<void>>()
+  let shutdownPromise: Promise<void> | undefined
+  const server = createServer((request, response) => {
+    if (shutdownPromise) {
+      writeJson(response, 503, { error: { code: 'server.closing', message: 'Server is shutting down' } })
+      return
+    }
+    const abort = new AbortController()
+    const onClose = () => { if (!response.writableEnded) abort.abort() }
+    response.once('close', onClose)
+    const work = handleRequest(request, response, abort.signal).catch(error => {
+      options.logger?.error('HTTP request failed', {
+        event: 'http.request.failed',
+        data: readLogFailure(error),
+      })
+      response.destroy(error instanceof Error ? error : new Error(String(error)))
+    }).finally(() => {
+      response.off('close', onClose)
+      requests.delete(abort)
+    })
+    requests.set(abort, work)
+  })
+
+  return Object.assign(server, {
+    shutdown: () => shutdownPromise ??= stopAndDrain(),
+  })
+
+  async function stopAndDrain(): Promise<void> {
+    const closed = server.listening
+      ? new Promise<void>((resolve, reject) => {
+        server.close(error => error ? reject(error) : resolve())
+      })
+      : Promise.resolve()
+    for (const abort of requests.keys()) abort.abort()
+    server.closeAllConnections()
+    // ponytail: Non-cooperative handlers must finish before stores close; add cancellation at their I/O boundary instead of a forced-close timeout.
+    await Promise.all([closed, ...requests.values()])
+  }
+
+  async function handleRequest(request: IncomingMessage, response: ServerResponse, signal: AbortSignal): Promise<void> {
     if (request.method === 'GET' && request.url === '/health') {
       writeJson(response, 200, { ok: true })
       return
@@ -51,6 +91,11 @@ export function createStudioHttpServer(options: {
     const session = options.auth.authenticate(request)
     if (!session) {
       writeJson(response, 401, { error: { code: 'auth.unauthorized', message: 'Application session required' } })
+      return
+    }
+    // Native clients and image/navigation requests may omit Origin; an explicit Origin must match.
+    if (request.headers.origin !== undefined && !options.auth.hasAllowedOrigin(request)) {
+      writeJson(response, 403, { error: { code: 'auth.origin_forbidden', message: 'Request origin is not allowed' } })
       return
     }
 
@@ -89,7 +134,7 @@ export function createStudioHttpServer(options: {
     }
 
     if (request.method === 'GET' && request.url === '/extensions/events' && options.extensionEvents) {
-      handleExtensionEventStream(request, response, options.extensionEvents)
+      await handleExtensionEventStream(response, options.extensionEvents)
       return
     }
 
@@ -112,7 +157,7 @@ export function createStudioHttpServer(options: {
 
     const assetId = readAssetId(request.url)
     if (options.assets && assetId && (request.method === 'GET' || request.method === 'HEAD')) {
-      await handleAssetRead(request, response, options.assets, assetId)
+      await handleAssetRead(request, response, options.assets, assetId, signal)
       return
     }
 
@@ -121,8 +166,13 @@ export function createStudioHttpServer(options: {
       return
     }
 
-    await handleRpcRequest(request, response, options.rpcRouter, session, options.logger)
-  })
+    if (readMediaType(request.headers['content-type']) !== 'application/json') {
+      writeJson(response, 415, { error: { code: 'rpc.unsupported_media_type', message: 'RPC requires application/json' } })
+      return
+    }
+
+    await handleRpcRequest(request, response, options.rpcRouter, session, signal, options.logger)
+  }
 }
 
 async function handleCardMedia(
@@ -247,11 +297,10 @@ function writeCardPngError(response: ServerResponse, error: unknown): void {
   })
 }
 
-function handleExtensionEventStream(
-  request: IncomingMessage,
+async function handleExtensionEventStream(
   response: ServerResponse,
   events: NonNullable<Parameters<typeof createStudioHttpServer>[0]['extensionEvents']>,
-): void {
+): Promise<void> {
   response.writeHead(200, {
     'content-type': 'text/event-stream; charset=utf-8',
     'cache-control': 'no-cache, no-transform',
@@ -270,15 +319,12 @@ function handleExtensionEventStream(
   }, 15_000)
   heartbeat.unref()
 
-  let closed = false
-  const close = () => {
-    if (closed) return
-    closed = true
-    clearInterval(heartbeat)
-    void subscription.dispose()
-  }
-  request.once('close', close)
-  response.once('close', close)
+  await new Promise<void>((resolve, reject) => {
+    response.once('close', () => {
+      clearInterval(heartbeat)
+      Promise.resolve().then(() => subscription.dispose()).then(resolve, reject)
+    })
+  })
 }
 
 async function handleExtensionIcon(
@@ -395,6 +441,7 @@ async function handleAssetRead(
   response: ServerResponse,
   assets: AssetStore,
   assetId: string,
+  signal: AbortSignal,
 ): Promise<void> {
   try {
     const asset = await assets.getMediaAsset(assetId)
@@ -413,8 +460,7 @@ async function handleAssetRead(
       return
     }
     const stream = await assets.openMediaAsset(assetId)
-    stream.on('error', error => response.destroy(error))
-    stream.pipe(response)
+    await pipeline(stream, response, { signal })
   } catch (error) {
     if (!response.headersSent) writeAssetError(response, error)
     else response.destroy(error instanceof Error ? error : new Error(String(error)))
@@ -475,14 +521,12 @@ async function handleRpcRequest(
   response: ServerResponse,
   rpcRouter: StudioRpcRouter,
   session: ApplicationSession,
+  signal: AbortSignal,
   logger?: Logger,
 ): Promise<void> {
   const startedAt = performance.now()
   let rpcId: string | number | null = null
   let method = 'unknown'
-  const abort = new AbortController()
-  const onClose = () => { if (!response.writableEnded) abort.abort() }
-  response.once('close', onClose)
   let context: {
     clientId: string
     correlationId: string
@@ -493,6 +537,7 @@ async function handleRpcRequest(
 
   try {
     const body = await readRequestBody(request)
+    signal.throwIfAborted()
     const rpcRequest = parseRpcRequest(JSON.parse(body))
     rpcId = rpcRequest.id
     method = rpcRequest.method
@@ -501,7 +546,7 @@ async function handleRpcRequest(
       correlationId: rpcRequest.meta?.correlationId ?? createId('corr'),
       callId: createId('call'),
       parentCallId: rpcRequest.meta?.parentCallId,
-      signal: abort.signal,
+      signal,
     }
     const result = await rpcRouter.call(rpcRequest.method, rpcRequest.params, context)
     const durationMs = readDurationMs(startedAt)
@@ -535,7 +580,7 @@ async function handleRpcRequest(
     }
     writeJson(response, 200, createSuccessResponse(rpcRequest.id, result, responseMeta))
   } catch (error) {
-    if (method === 'logs.history' && abort.signal.aborted) return
+    if (method === 'logs.history' && signal.aborted) return
     const durationMs = readDurationMs(startedAt)
     const responseMeta = context ? {
       clientId: context.clientId,
@@ -560,8 +605,6 @@ async function handleRpcRequest(
       },
     })
     writeJson(response, 200, createErrorResponse(rpcId, error, 'rpc.invalid_request', responseMeta))
-  } finally {
-    response.off('close', onClose)
   }
 }
 

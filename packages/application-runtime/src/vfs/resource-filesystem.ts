@@ -805,8 +805,12 @@ function allocateNames(items: { id: string; label: string; extension?: string }[
 function safeSegment(value: string): string {
   if (!value) return '%00'
   if (value === '.' || value === '..') return value.replaceAll('.', '%2E')
-  return value.replace(/[%/\\@\u0000-\u001f\u007f]/g, char =>
-    `%${char.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')}`)
+  return Array.from(value, char => {
+    const code = char.charCodeAt(0)
+    return '%/\\@'.includes(char) || code < 32 || code === 127
+      ? `%${code.toString(16).toUpperCase().padStart(2, '0')}`
+      : char
+  }).join('')
 }
 
 function sameBindingVersion(

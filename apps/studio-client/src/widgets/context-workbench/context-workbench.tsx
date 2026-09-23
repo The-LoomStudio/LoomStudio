@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useState } from 'react'
+import { Trash2 } from 'lucide-react'
 import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore } from '../../shared/studio-shell/studio-layout-store.js'
 import { AssetWorkbenchLayout } from '../../shared/ui/asset-workbench-layout/asset-workbench-layout.js'
 import { PanelTabs } from '../../shared/ui/panel-tabs/index.js'
@@ -33,6 +34,10 @@ type ContextWorkbenchProps = {
   resources: PromptResource[]
   settingMounts: SettingMount[]
   onChangeNode: (id: string, partial: Partial<ContextAssetNode>) => void
+  draftResourceIds: string[]
+  onDiscardDraft(resourceId: string): void
+  onRetryDraft(resourceId: string): Promise<void>
+  onRenameNode(id: string, label: string): Promise<void>
   onCommitNode: (id: string, partial: Partial<ContextAssetNode>) => void
   onChangeNodes: (updates: ContextAssetUpdate[]) => void
   onMoveNode: (draggedId: string, targetId: string, position: 'before' | 'inside' | 'after') => void
@@ -52,7 +57,9 @@ type ContextWorkbenchProps = {
   selectedResourceId?: string
   onSelectResource?: (resourceId: string) => void
   routeAssetId?: string
-  initialSearchQuery?: string
+  routeResourceId?: string
+  searchQuery: string
+  onSearchQueryChange(value: string): void
   t: Translator
   workspaceId: string
 }
@@ -70,7 +77,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   const setSelectedId = useStudioLayoutStore(state => state.setAssetSelectedId)
   const setMetadataOpen = useStudioLayoutStore(state => state.setAssetMetadataOpen)
   const setTextEditorMode = useStudioLayoutStore(state => state.setTextEditorMode)
-  const [searchQuery, setSearchQuery] = useState(props.initialSearchQuery ?? '')
+  const searchQuery = props.searchQuery
   const [bindingOpen, setBindingOpen] = useState(false)
   const [internalSelectedResourceId, setInternalSelectedResourceId] = useState<string>()
   const mobilePane = useStudioLayoutStore(state => state.assetPanes.resources[props.workspaceId] ?? 'explorer')
@@ -90,10 +97,12 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
     [props.resources],
   )
   const cardResourceIds = useMemo(() => new Set(props.card?.promptResourceIds ?? []), [props.card?.promptResourceIds])
+  const unavailableBoundIds = [...cardResourceIds].filter(id => !props.resources.some(resource => resource.id === id))
   const routeTargetResource = useMemo(() => {
+    if (props.routeResourceId) return settingResources.find(resource => resource.id === props.routeResourceId)
     if (!props.routeAssetId) return undefined
     return settingResources.find(r => r.id === props.routeAssetId || Boolean(findContextNode([r.rootNode], props.routeAssetId)))
-  }, [props.routeAssetId, settingResources])
+  }, [props.routeResourceId, props.routeAssetId, settingResources])
 
   const selectedId = explorerView.selectedId
 
@@ -102,11 +111,11 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
     return settingResources.find(r => r.id === selectedId || Boolean(findContextNode([r.rootNode], selectedId)))
   }, [selectedId, settingResources])
 
-  const selectedResourceId = props.selectedResourceId
+  const selectedResourceId = props.routeResourceId ?? props.selectedResourceId
     ?? routeTargetResource?.id
     ?? selectedNodeResource?.id
     ?? internalSelectedResourceId
-    ?? (settingResources.find(r => cardResourceIds.has(r.id))?.id ?? settingResources[0]?.id)
+    ?? (settingResources.find(r => cardResourceIds.has(r.id))?.id ?? (unavailableBoundIds.length === 0 ? settingResources[0]?.id : undefined))
 
   const characterSettingResources = useMemo(() => {
     if (!props.card?.promptResourceIds?.length) return []
@@ -114,7 +123,9 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
     return settingResources.filter(r => ids.has(r.id))
   }, [props.card?.promptResourceIds, settingResources])
 
-  const targetResources = characterSettingResources.length > 0
+  const targetResources = props.routeResourceId
+    ? (routeTargetResource ? [routeTargetResource] : [])
+    : characterSettingResources.length > 0 || unavailableBoundIds.length > 0
     ? characterSettingResources
     : settingResources
 
@@ -126,17 +137,14 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   const hasDetailSelection = props.view === 'text'
     || (props.view === 'macros' ? Boolean(macroController.selectedRowId) : Boolean(selectedNode))
 
-  const bindingResources = settingResources
+  const bindingResources = props.resources
   const boundIds = props.card?.promptResourceIds ?? []
 
   useEffect(() => {
     if (!props.routeAssetId) return
+    if (props.routeResourceId) props.onViewChange('settings')
     openAssetDetail('resources', props.workspaceId, props.routeAssetId)
-  }, [openAssetDetail, props.routeAssetId, props.workspaceId])
-
-  useEffect(() => {
-    setSearchQuery(props.initialSearchQuery ?? '')
-  }, [props.initialSearchQuery])
+  }, [openAssetDetail, props.routeResourceId, props.routeAssetId, props.workspaceId])
 
   useEffect(() => {
     const handleNavigate = (event: Event) => {
@@ -167,18 +175,19 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   }, [workbenchNodes, explorerView.expandedIds, props.workspaceId, setExpandedIds, openAssetDetail])
 
   useEffect(() => {
+    if (props.routeResourceId) return
     if (selectedId && findContextNode(workbenchNodes, selectedId)) return
     if (workbenchNodes[0]?.id) {
       setSelectedId('resources', props.workspaceId, workbenchNodes[0].id)
     }
-  }, [props.workspaceId, selectedId, setSelectedId, workbenchNodes])
+  }, [props.routeResourceId, props.workspaceId, selectedId, setSelectedId, workbenchNodes])
 
   const displayNodes = workbenchNodes
 
   useEffect(() => {
-    setAssetPane('resources', props.workspaceId, 'explorer')
+    setAssetPane('resources', props.workspaceId, props.routeResourceId ? 'detail' : 'explorer')
     macroController.selectRow(undefined)
-  }, [props.macroAuthoring?.ownerId])
+  }, [props.routeResourceId, props.macroAuthoring?.ownerId])
 
   function changeView(view: 'settings' | 'macros' | 'text') {
     setAssetPane('resources', props.workspaceId, 'explorer')
@@ -203,6 +212,10 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   function handleSelectMacro(id: string) {
     macroController.selectRow(id)
     setAssetPane('resources', props.workspaceId, 'detail')
+  }
+
+  if (props.routeResourceId && (!routeTargetResource || (props.routeAssetId && !findContextNode([routeTargetResource.rootNode], props.routeAssetId)))) {
+    return <p role="alert">{props.t('promptResource.referenceUnavailable', { id: props.routeResourceId })}</p>
   }
 
   return (
@@ -232,6 +245,9 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
           t={props.t}
           onBindResources={() => setBindingOpen(true)}
           onCreate={props.onCreateResource}
+          draftResourceIds={props.draftResourceIds}
+          onDiscardDraft={props.onDiscardDraft}
+          onRetryDraft={props.onRetryDraft}
           onDelete={props.onDeleteResource}
           onDuplicate={props.onDuplicateResource}
           onExport={props.onExportResource}
@@ -248,6 +264,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
         <MacroAuthoringExplorer controller={macroController} onAdd={() => setAssetPane('resources', props.workspaceId, 'detail')} onSelect={handleSelectMacro} />
       ) : (
         <div className={styles.resourceExplorer}>
+          {unavailableBoundIds.map(id => <p key={id} role="status">{props.t('context.bindings.unavailable', { id })}</p>)}
           <ContextAssetExplorer
             displayNodes={displayNodes}
             expandedIds={explorerView.expandedIds}
@@ -261,11 +278,12 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
             onAddFolderNode={props.onAddFolderNode}
             onDeleteNode={props.onDeleteNode}
             onDuplicateNode={props.onDuplicateNode}
+            onRenameNode={props.onRenameNode}
             onExpandedIdsChange={expandedIds => setExpandedIds('resources', props.workspaceId, expandedIds)}
             onMoveNode={(draggedId, targetId, position) => {
               props.onMoveNode(draggedId, targetId, position)
             }}
-            onQueryChange={setSearchQuery}
+            onQueryChange={props.onSearchQueryChange}
             onSelectId={id => {
               if (id) handleSelectNode(id)
               else setSelectedId('resources', props.workspaceId, undefined)
@@ -343,18 +361,22 @@ function ResourceBindingDialog(props: {
 }) {
   const [pending, setPending] = useState(false)
   const [query, setQuery] = useState('')
-  const bound = props.boundIds.flatMap(id => {
+  const [error, setError] = useState<string>()
+  const bound = props.boundIds.map(id => {
     const resource = props.resources.find(candidate => candidate.id === id)
-    return resource ? [resource] : []
+    return { id, resource }
   })
-  const available = props.resources.filter(resource => !props.boundIds.includes(resource.id)
+  const available = props.resources.filter(resource => resource.resourceKind === 'setting' && !props.boundIds.includes(resource.id)
     && normalizeSearchText(`${resource.rootNode.label} ${resource.resourceKind}`).includes(normalizeSearchText(query)))
 
   async function change(ids: string[]) {
     setPending(true)
+    setError(undefined)
     try {
       await props.onChange(ids)
       setQuery('')
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught))
     } finally {
       setPending(false)
     }
@@ -363,14 +385,18 @@ function ResourceBindingDialog(props: {
   return (
     <Dialog closeOnBackdrop description={props.description} open={props.open} title={props.title} onClose={props.onClose}>
       <div className={styles.bindingEditor}>
+        {error ? <p role="alert">{error}</p> : null}
         <div className={styles.globalSettingOptions}>
-          {bound.map(resource => (
-            <button disabled={pending} key={resource.id} type="button" onClick={() => void change(props.boundIds.filter(id => id !== resource.id))}>
-              <span>{resource.rootNode.label}</span>
+          {bound.map(({ id, resource }) => (
+            <button aria-label={props.t('context.bindings.remove', { id })} disabled={pending} key={id} type="button" onClick={() => void change(props.boundIds.filter(candidate => candidate !== id))}>
+              <span>{resource?.rootNode.label ?? props.t('context.bindings.unavailable', { id })}</span>
               <span aria-hidden="true">×</span>
             </button>
           ))}
         </div>
+        {bound.some(item => !item.resource) ? <button disabled={pending} type="button" onClick={() => void change(bound.filter(item => item.resource).map(item => item.id))}>
+          <Trash2 aria-hidden="true" size={14} />{props.t('context.bindings.removeUnavailable')}
+        </button> : null}
         <input
           autoFocus
           aria-label={props.t('context.bindings.search')}

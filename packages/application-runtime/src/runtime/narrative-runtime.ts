@@ -103,7 +103,7 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
       const roots = branches.filter(branch => !branch.parentBranchId)
       const root = roots[0]
       if (!root || roots.length !== 1) throw new Error('Timeline archive must have one root branch')
-      const nodes = new Map(archive.nodes.map(node => [node.id, node]))
+      const nodes = orderArchiveItems(archive.nodes, node => node.parentNodeId)
       const result = await ctx.dataEngine.transact(
         narrativeWriteContext(undefined, 'application.importTimelineArchive'),
         async dataTx => {
@@ -119,45 +119,22 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
             id: timelineId, primaryBranchId: idMap.branchIds[root.id], title: archive.timeline.title,
             primaryBranchTitle: root.title, stateRevisionId: idMap.stateRevisionIds[root.stateHeadRevisionId]!,
           })
-          const inserted = new Set<string>()
-          for (const branch of branches) {
-            let head = branch.forkedFromNodeId
-            if (branch.parentBranchId) {
-              if (!head) throw new Error('Timeline archive fork point is missing')
-              narrativeTx.forkBranch({ timelineId, branchId: idMap.branchIds[branch.id],
-                fromBranchId: idMap.branchIds[branch.parentBranchId]!, fromNodeId: idMap.nodeIds[head]!,
-                stateRevisionId: idMap.stateRevisionIds[branch.stateHeadRevisionId]!, title: branch.title,
-              })
-            }
-            const path = []
-            let nodeId = branch.headNodeId
-            const visited = new Set<string>()
-            while (nodeId && nodeId !== head) {
-              if (visited.has(nodeId)) throw new Error('Timeline archive node cycle')
-              visited.add(nodeId)
-              const node = nodes.get(nodeId)
-              if (!node) throw new Error('Timeline archive node parent is missing')
-              path.unshift(node)
-              nodeId = node.parentNodeId
-            }
-            if (path.length > 0 && head && nodeId !== head) throw new Error('Timeline archive fork point is outside its branch')
-            for (const node of path) {
-              if (inserted.has(node.id)) throw new Error('Timeline archive branch shares nodes beyond its fork point')
-              narrativeTx.appendNode({ timelineId, branchId: idMap.branchIds[branch.id]!,
-                expectedHeadNodeId: head ? idMap.nodeIds[head]! : null, nodeId: idMap.nodeIds[node.id],
-                body: node.body, stateRevisionId: idMap.stateRevisionIds[node.stateRevisionId]!,
-              })
-              inserted.add(node.id)
-              head = node.id
-            }
-            narrativeTx.setBranchStateHead({
-              timelineId,
-              branchId: idMap.branchIds[branch.id]!,
-              expectedStateHeadRevisionId: idMap.stateRevisionIds[path.at(-1)?.stateRevisionId ?? (branch.parentBranchId ? branch.stateHeadRevisionId : root.stateHeadRevisionId)]!,
-              stateRevisionId: idMap.stateRevisionIds[branch.stateHeadRevisionId]!,
-            })
-          }
-          if (inserted.size !== archive.nodes.length) throw new Error('Timeline archive contains unreachable nodes')
+          narrativeTx.restoreArchivePaths({
+            timelineId,
+            nodes: nodes.map(node => ({
+              id: idMap.nodeIds[node.id]!, timelineId,
+              parentNodeId: node.parentNodeId ? idMap.nodeIds[node.parentNodeId] : undefined,
+              body: node.body, stateRevisionId: idMap.stateRevisionIds[node.stateRevisionId]!,
+              createdAt: node.createdAt,
+            })),
+            branches: branches.map(branch => ({
+              ...branch, id: idMap.branchIds[branch.id]!, timelineId,
+              headNodeId: branch.headNodeId ? idMap.nodeIds[branch.headNodeId] : undefined,
+              parentBranchId: branch.parentBranchId ? idMap.branchIds[branch.parentBranchId] : undefined,
+              forkedFromNodeId: branch.forkedFromNodeId ? idMap.nodeIds[branch.forkedFromNodeId] : undefined,
+              stateHeadRevisionId: idMap.stateRevisionIds[branch.stateHeadRevisionId]!,
+            })),
+          })
           narrativeTx.switchBranch({ timelineId, branchId: idMap.branchIds[archive.timeline.activeBranchId]! })
         },
       )
@@ -197,6 +174,17 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
 
     getNarrativePage: (input: GetNarrativePageInput): Promise<NarrativePage> =>
       requireNarratives(ctx).getPage(input),
+
+    editNarrativeNode: async (input: { timelineId: string; branchId: string; nodeId: string; expectedHeadNodeId: string; expectedRaw: string; raw: string }, requestContext?: RuntimeRequestContext) => {
+      const result = await requireNarratives(ctx).editBranchNode({
+        ...narrativeWriteContext(requestContext, 'application.editNarrativeNode'),
+        timelineId: input.timelineId, branchId: input.branchId, nodeId: input.nodeId,
+        expectedHeadNodeId: input.expectedHeadNodeId,
+        expectedBody: { format: 'loom-markdown.v1', raw: input.expectedRaw },
+        body: { format: 'loom-markdown.v1', raw: input.raw },
+      })
+      return { timeline: result.timeline, branch: result.branch, replacements: result.replacements, mutation: { changesetId: result.commit.changesetId } }
+    },
 
     forkNarrativeBranch: async (input: ForkNarrativeBranchInput, requestContext?: RuntimeRequestContext): Promise<ForkNarrativeBranchResult> => {
       const narratives = requireNarratives(ctx)

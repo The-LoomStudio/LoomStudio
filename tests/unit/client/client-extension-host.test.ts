@@ -80,6 +80,173 @@ describe('Client Extension Host', () => {
     expect(host.summaries()).toEqual([expect.objectContaining({ state: 'inactive' })])
   })
 
+  it.each(['disable', 'dispose'])('cleans every module registration despite throwing disposers during %s', async action => {
+    const rendererHost = createClientRendererHost()
+    const listConfigs = vi.fn(async () => [])
+    const configHandler = vi.fn()
+    const dispose = vi.fn((moduleId: string) => { throw new Error(`${moduleId} cleanup failed`) })
+    const data: ClientExtensionDataApi = {
+      configs: { list: listConfigs, get: async () => null, upsert: async () => { throw new Error('not used') } },
+      records: { list: async () => [], get: async () => null },
+      state: { get: async () => { throw new Error('not used') } },
+      history: { project: async () => ({}), extract: async () => ({}) },
+      rpc: { call: async () => ({}) },
+      assets: { url: assetId => `/assets/${assetId}` },
+    }
+    const packageWithModules = extensionPackage()
+    packageWithModules.modules = ['first', 'second'].map(moduleId => ({
+      ...packageWithModules.modules[0]!,
+      moduleId,
+      contributions: {
+        ...packageWithModules.modules[0]!.contributions,
+        commands: [{ id: 'ping', title: 'Ping' }],
+      },
+    }))
+    const host = createClientExtensionHost({
+      rendererHost,
+      data,
+      loadModule: async () => ({
+        activate: context => {
+          context.renderers.register(
+            { id: 'tail', name: 'Tail', surface: 'narrative.timeline.tail', instanceScope: 'timeline' },
+            { mount: vi.fn() },
+          )
+          context.commands.register('ping', vi.fn())
+          context.configs.subscribe({}, configHandler)
+          return { dispose: () => dispose(context.extension.moduleId) }
+        },
+      }),
+    })
+    await host.reconcile([packageWithModules])
+    await host.notifyConfigsChanged()
+    expect(rendererHost.list('narrative.timeline.tail')).toHaveLength(2)
+    expect(host.commandRegistrations()).toHaveLength(2)
+    expect(configHandler).toHaveBeenCalledTimes(2)
+
+    if (action === 'disable') {
+      const disabled = structuredClone(packageWithModules)
+      for (const module of disabled.modules) module.desired.enabled = false
+      await host.reconcile([disabled])
+    } else {
+      await host.dispose()
+    }
+    await host.dispose()
+    await host.notifyConfigsChanged()
+
+    expect(dispose).toHaveBeenCalledTimes(2)
+    expect(rendererHost.list('narrative.timeline.tail')).toEqual([])
+    expect(host.commandRegistrations()).toEqual([])
+    expect(listConfigs).toHaveBeenCalledTimes(2)
+    expect(configHandler).toHaveBeenCalledTimes(2)
+    expect(host.summaries()).toEqual(['first', 'second'].map(moduleId => expect.objectContaining({
+      moduleId,
+      state: 'inactive',
+      error: expect.stringContaining(`${moduleId} cleanup failed`),
+    })))
+    expect(host.diagnostics()).toEqual(expect.arrayContaining(['first', 'second'].map(moduleId => expect.objectContaining({
+      code: 'client-extension.disposal_failed',
+      moduleId,
+      message: expect.stringContaining(`${moduleId} cleanup failed`),
+    }))))
+  })
+
+  it('preserves activation failure diagnostics when cleanup also fails', async () => {
+    const rendererHost = createClientRendererHost()
+    const register = rendererHost.register
+    vi.spyOn(rendererHost, 'register').mockImplementation(input => {
+      const handle = register(input)
+      return { dispose: async () => {
+        await handle.dispose()
+        throw new Error('renderer cleanup failed')
+      } }
+    })
+    const host = createClientExtensionHost({
+      rendererHost,
+      loadModule: async () => ({
+        activate: context => {
+          context.renderers.register(
+            { id: 'tail', name: 'Tail', surface: 'narrative.timeline.tail', instanceScope: 'timeline' },
+            { mount: vi.fn() },
+          )
+          throw new Error('activation failed')
+        },
+      }),
+    })
+
+    await host.reconcile([extensionPackage()])
+    await host.dispose()
+    expect(rendererHost.list('narrative.timeline.tail')).toEqual([])
+    expect(host.summaries()).toEqual([expect.objectContaining({ state: 'degraded', error: 'activation failed' })])
+    expect(host.diagnostics()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'client-extension.activation_failed', message: 'activation failed' }),
+      expect.objectContaining({ code: 'client-extension.disposal_failed', message: expect.stringContaining('renderer cleanup failed') }),
+    ]))
+  })
+
+  it.each(['disable', 'reload', 'dispose'])('rejects Renderer registration by an in-flight Command after %s without blocking the next instance', async action => {
+    const rendererHost = createClientRendererHost()
+    let release!: () => void
+    let started!: () => void
+    const pending = new Promise<void>(resolve => { release = resolve })
+    const commandStarted = new Promise<void>(resolve => { started = resolve })
+    const contexts: Parameters<ClientExtensionModule['activate']>[0][] = []
+    const commandPackage = extensionPackage()
+    commandPackage.modules[0]!.contributions = {
+      renderers: [
+        { id: 'tail', name: 'Tail', surface: 'narrative.timeline.tail', instanceScope: 'timeline' },
+        { id: 'late', name: 'Late', surface: 'narrative.timeline.tail', instanceScope: 'timeline' },
+      ],
+      commands: [{ id: 'late', title: 'Late' }],
+      actions: [{ commandId: 'late', surface: 'extension.workbench.actions' }],
+    }
+    const lateRenderer = commandPackage.modules[0]!.contributions.renderers![1]!
+    const host = createClientExtensionHost({
+      rendererHost,
+      loadModule: async () => ({
+        activate: context => {
+          contexts.push(context)
+          context.renderers.register(commandPackage.modules[0]!.contributions.renderers![0]!, { mount: vi.fn() })
+          context.commands.register('late', async () => {
+            started()
+            await pending
+            context.renderers.register(lateRenderer, { mount: vi.fn() })
+          })
+        },
+      }),
+    })
+    await host.reconcile([commandPackage])
+    const execution = host.executeCommand({
+      packageId: 'example.client',
+      moduleId: 'client',
+      commandId: 'late',
+      sourceSurface: 'extension.workbench.actions',
+    })
+    await commandStarted
+    if (action === 'disable') {
+      const disabled = structuredClone(commandPackage)
+      disabled.modules[0]!.desired.enabled = false
+      await host.reconcile([disabled])
+    } else if (action === 'reload') {
+      await host.reconcile([commandPackage], { reload: ['example.client/client'] })
+    } else {
+      await host.dispose()
+    }
+    expect(contexts[0]!.signal.aborted).toBe(true)
+    release()
+    await expect(execution).resolves.toMatchObject({ status: 'failed', code: 'command.execution_failed' })
+    expect(rendererHost.list('narrative.timeline.tail').some(renderer => renderer.contributionId === 'late')).toBe(false)
+
+    if (action !== 'reload') await host.reconcile([commandPackage])
+    expect(contexts).toHaveLength(2)
+    expect(contexts[1]!.signal.aborted).toBe(false)
+    contexts[1]!.renderers.register(lateRenderer, { mount: vi.fn() })
+    expect(rendererHost.list('narrative.timeline.tail')).toHaveLength(2)
+    await host.dispose()
+    await host.dispose()
+    expect(rendererHost.list('narrative.timeline.tail')).toEqual([])
+    expect(host.commandRegistrations()).toEqual([])
+  })
+
   it('reloads with a new instance and does not retain duplicate registrations', async () => {
     const rendererHost = createClientRendererHost()
     const activate = vi.fn((context: Parameters<ClientExtensionModule['activate']>[0]) => context.renderers.register(

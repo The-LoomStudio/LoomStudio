@@ -281,6 +281,7 @@ export type CreatePromptResourceAssetInput = {
 
 export type UpdatePromptResourceAssetInput = {
   resourceId: string
+  expectedVersion?: number
   assetId: string
   body?: string
   capabilities?: PromptCompositionCapabilities
@@ -294,6 +295,7 @@ export type UpdatePromptResourceAssetInput = {
 
 export type UpdatePromptResourceAssetsInput = {
   resourceId: string
+  expectedVersion?: number
   updates: Array<{
     assetId: string
     body?: string
@@ -469,7 +471,7 @@ export type StudioApi = {
   aiCapabilityProfiles: {
     list(input?: { providerProfileId?: string; capabilityId?: string; cursor?: string; limit?: number }): Promise<ListAiCapabilityProfilesResult>
     create(input: { providerProfileId: string; capabilityId: string; displayName: string; config?: Record<string, ClientJsonValue> }): Promise<CreateAiCapabilityProfileResult>
-    update(input: { profileId: string; displayName?: string; config?: Record<string, ClientJsonValue> }): Promise<UpdateAiCapabilityProfileResult>
+    update(input: { profileId: string; providerProfileId?: string; displayName?: string; config?: Record<string, ClientJsonValue> }): Promise<UpdateAiCapabilityProfileResult>
     delete(profileId: string): Promise<{ deleted: true }>
   }
   providerModels: {
@@ -495,6 +497,7 @@ export type StudioApi = {
     update(input: { toolId: string; expectedVersion: number; definition: Omit<AgentToolDefinition, 'version' | 'createdAt' | 'updatedAt'> }): Promise<{ tool: AgentToolDefinition }>
   }
   narratives: {
+    editNode(input: { timelineId: string; branchId: string; nodeId: string; expectedHeadNodeId: string; expectedRaw: string; raw: string }): Promise<{ timeline: NarrativeTimeline; branch: NarrativePage['branch']; replacements: Array<{ previousNodeId: string; node: NarrativePage['nodes'][number] }>; mutation: MutationReceipt }>
     create(input: CreateNarrativeTimelineInput): Promise<CreateNarrativeTimelineResult>
     get(timelineId: string): Promise<GetNarrativeTimelineResult>
     list(input?: { createdFromCardId?: string; cursor?: string; limit?: number }): Promise<ListNarrativeTimelinesResult>
@@ -731,6 +734,7 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       update: input => rpc.call<{ tool: AgentToolDefinition }>('application.updateAgentTool', input),
     },
     narratives: {
+      editNode: input => rpc.call('application.editNarrativeNode', input),
       create: input => rpc.call<CreateNarrativeTimelineResult>('application.createNarrativeTimeline', input),
       get: timelineId => rpc.call<GetNarrativeTimelineResult>('application.getNarrativeTimeline', { timelineId }),
       list: input => rpc.call<ListNarrativeTimelinesResult>('application.listNarrativeTimelines', (input ?? {})),

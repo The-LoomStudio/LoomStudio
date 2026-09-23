@@ -34,7 +34,9 @@ export function createPromptVfsEntries(input: {
   function visit(parentId: string | null, parentPath: string) {
     const siblings = (children.get(parentId) ?? []).sort((a, b) => a.orderIndex - b.orderIndex)
     const names = siblings.map(node => {
-      const label = node.displayName.normalize('NFC').trim().replace(/[/\\\u0000-\u001f\u007f]/g, '_')
+      const label = Array.from(node.displayName.normalize('NFC').trim(), char =>
+        char === '/' || char === '\\' || char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127 ? '_' : char,
+      ).join('')
       const safe = label && label !== '.' && label !== '..' ? label : 'untitled'
       return readable.has(node.id) && !safe.endsWith('.md') ? `${safe}.md` : safe
     })

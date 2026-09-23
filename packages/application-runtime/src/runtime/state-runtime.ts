@@ -17,7 +17,6 @@ import {
 import type {
   ApplyStateMutationInput,
   ApplyStateMutationResult,
-  CardSourceContent,
   DeleteStateDefinitionInput,
   DeleteStateDefinitionResult,
   GetStateDefinitionInput,
@@ -133,11 +132,6 @@ export function createStateRuntimeMethods(ctx: StateRuntimeContext) {
       const existing = await readDocument<StateDefinitionContent>(ctx.documents, input.definitionId, applicationDocumentTypes.stateDefinition)
       if (input.expectedVersion !== undefined && input.expectedVersion !== existing.version) {
         throw new Error(`State Definition version conflict: ${input.definitionId}`)
-      }
-      const cards = await listDocuments<CardSourceContent>(ctx.documents, applicationDocumentTypes.cardSource)
-      if (cards.some(card => card.content.stateDefinitionIds?.includes(input.definitionId)
-        || card.content.timelineStateBindings?.some(binding => binding.templateId === input.definitionId))) {
-        throw new Error(`State Definition is still referenced by a Card: ${input.definitionId}`)
       }
       const mutation = await executeDocumentMutation(ctx.documents, requestContext, 'application.deleteStateDefinition', async documents => {
         await documents.delete({ id: existing.id, expectedVersion: existing.version })

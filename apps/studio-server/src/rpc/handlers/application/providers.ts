@@ -45,7 +45,7 @@ export async function handleProvidersRpc(
         displayName: readOptionalString(params, 'displayName'),
         config: readOptionalObject(params, 'config'),
         enabledModelIds: readOptionalStringArray(params, 'enabledModelIds'),
-      }) as unknown as JsonValue
+      }, context) as unknown as JsonValue
 
     case 'application.replaceProviderCredential':
       return await runtime.replaceProviderCredential({
@@ -64,7 +64,7 @@ export async function handleProvidersRpc(
         capabilityId: readString(params, 'capabilityId'),
         displayName: readString(params, 'displayName'),
         config: readOptionalObject(params, 'config'),
-      }) as unknown as JsonValue
+      }, context) as unknown as JsonValue
 
     case 'application.getAiCapabilityProfile':
       return await runtime.getAiCapabilityProfile({
@@ -82,14 +82,15 @@ export async function handleProvidersRpc(
     case 'application.updateAiCapabilityProfile':
       return await runtime.updateAiCapabilityProfile({
         profileId: readString(params, 'profileId'),
+        providerProfileId: readOptionalString(params, 'providerProfileId'),
         displayName: readOptionalString(params, 'displayName'),
         config: readOptionalObject(params, 'config'),
-      }) as unknown as JsonValue
+      }, context) as unknown as JsonValue
 
     case 'application.deleteAiCapabilityProfile':
       return await runtime.deleteAiCapabilityProfile({
         profileId: readString(params, 'profileId'),
-      }) as unknown as JsonValue
+      }, context) as unknown as JsonValue
 
     case 'application.listProviderModels':
       return await runtime.listProviderModels({

@@ -94,7 +94,7 @@ export async function compileAgentToolSet(input: {
     input.toolMounts,
     input.toolOverrides,
   )
-  const resolvedTools = await resolveTools(
+  const { tools: resolvedTools, diagnostics } = await resolveTools(
     input.ctx,
     input.model,
     enabledMounts.map(mount => mount.toolId),
@@ -145,7 +145,7 @@ export async function compileAgentToolSet(input: {
       mount: mountsByToolId.get(exposure.toolId)!,
       transport: exposure.transport,
     })),
-    trace: toolPromptBuild.trace,
+    trace: { ...toolPromptBuild.trace, diagnostics },
   }
 }
 
@@ -699,10 +699,10 @@ async function resolveTools(
   toolIds: string[],
 ) {
   const resolved = ctx.agentTools.resolve(toolIds)
-  const missing = resolved.diagnostics.find(
-    (diagnostic) => diagnostic.severity === 'error',
+  const invalid = resolved.diagnostics.find(
+    (diagnostic) => diagnostic.severity === 'error' && diagnostic.code !== 'tool.missing',
   )
-  if (missing) throw new Error(missing.message)
+  if (invalid) throw new Error(invalid.message)
   const providerProfile = await ctx.documents.get(model.providerProfileId)
   if (!providerProfile)
     throw new Error(`Provider Profile not found: ${model.providerProfileId}`)
@@ -712,7 +712,7 @@ async function resolveTools(
   const capability = ctx.providerAdapters.getCapability(
     content.providerExtensionId,
   )
-  const analysis = ctx.agentTools.analyze(toolIds, {
+  const analysis = ctx.agentTools.analyze(resolved.tools.map(tool => tool.id), {
     nativeFunction: capability.nativeFunctionTools,
     providerCustom: false,
     content: true,
@@ -740,7 +740,13 @@ async function resolveTools(
       throw new Error(`Duplicate exposed agent tool name: ${definition.name}`)
     names.add(definition.name)
   }
-  return tools
+  return {
+    tools,
+    diagnostics: resolved.diagnostics.map(diagnostic => ({
+      ...diagnostic,
+      severity: diagnostic.code === 'tool.missing' ? 'warning' as const : diagnostic.severity,
+    })),
+  }
 }
 
 function readNativeSchema(tool: CompiledToolExposure): JsonObject {

@@ -15,7 +15,7 @@ export function useAsyncOperations() {
   const sequenceRef = useRef(0)
   const latestByScopeRef = useRef(new Map<AsyncOperationScope, number>())
 
-  const run = useCallback(async <T,>(scope: AsyncOperationScope, action: () => Promise<T>): Promise<T | undefined> => {
+  const run = useCallback(async <T,>(scope: AsyncOperationScope, action: () => Promise<T>): Promise<T> => {
     const sequence = ++sequenceRef.current
     dispatch({ scope, type: 'start' })
     try {
@@ -24,9 +24,18 @@ export function useAsyncOperations() {
       return result
     } catch (caught) {
       dispatch({ scope, sequence, type: 'finish', recordError: true, error: readErrorMessage(caught) })
-      return undefined
+      throw caught
     }
   }, [])
+
+  // ponytail: Callers still using completion flags must migrate before removing this reporting-only boundary.
+  const runReported = useCallback(async <T,>(scope: AsyncOperationScope, action: () => Promise<T>): Promise<T | undefined> => {
+    try {
+      return await run(scope, action)
+    } catch {
+      return undefined
+    }
+  }, [run])
 
   const runLatest = useCallback(async <T,>(scope: AsyncOperationScope, action: (context: LatestOperationContext) => Promise<T>): Promise<T | undefined> => {
     const sequence = ++sequenceRef.current
@@ -48,6 +57,7 @@ export function useAsyncOperations() {
     isPending: (...scopes: AsyncOperationScope[]) => scopes.some(scope => pending[scope].pendingCount > 0),
     pending,
     run,
+    runReported,
     runLatest,
   }
 }

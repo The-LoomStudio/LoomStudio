@@ -5,6 +5,53 @@ import { describe, expect, it } from 'vitest'
 const actor = { kind: 'system' as const, id: 'prompt-resource-test' }
 
 describe('PromptResourceStore', () => {
+  it.each(['metadata', 'extra', 'capabilities'] as const)('rejects non-JSON %s before creation or mutation commits', async field => {
+    const { engine, store } = createStore()
+    try {
+      for (const invalid of [NaN, Infinity, -Infinity, undefined]) {
+        const value = { nested: [invalid as never] }
+        const rootNode = createSmallTree()
+        if (field !== 'metadata') rootNode.children![0]![field] = value
+        await expect(store.createResource({
+          actor, resourceKind: 'setting', rootNode,
+          ...(field === 'metadata' ? { metadata: value } : {}),
+        })).rejects.toMatchObject({ code: 'prompt_resource.json_invalid' })
+        expect((await store.listResources()).resources).toEqual([])
+      }
+
+      const created = await store.createResource({ actor, resourceKind: 'setting', rootNode: createSmallTree() })
+      for (const invalid of [NaN, Infinity, -Infinity, undefined]) {
+        const value = { nested: [invalid as never] }
+        await expect(store.mutateResource({
+          actor, resourceId: created.resource.id, expectedVersion: 1,
+          mutations: [field === 'metadata'
+            ? { kind: 'resource.update', patch: { metadata: value } }
+            : { kind: 'node.update', nodeId: 'folder-a', patch: { [field]: value } }],
+        })).rejects.toMatchObject({ code: 'prompt_resource.json_invalid' })
+        expect(await store.getResource(created.resource.id)).toEqual(created.resource)
+      }
+    } finally {
+      await engine.close()
+    }
+  })
+
+  it.each([0, false, '', null])('preserves JSON extension fields and scalar capabilities (%s)', async capabilities => {
+    const { engine, store } = createStore()
+    try {
+      const shared = { '': [null, 0, false, ''] }
+      const custom = { 'example.extension': { first: shared, second: shared } }
+      const rootNode = { ...createSmallTree(), extra: custom, capabilities }
+      const created = await store.createResource({
+        actor, resourceKind: 'setting', metadata: custom, rootNode,
+      })
+      expect(created.resource.metadata).toEqual(custom)
+      expect(created.resource.rootNode).toEqual(rootNode)
+      expect(await store.getResource(created.resource.id)).toEqual(created.resource)
+    } finally {
+      await engine.close()
+    }
+  })
+
   it('characterizes V1 nested trees through flatten/read round-trip and node revisions', async () => {
     const { engine, store } = createStore()
     const settingFixture = createV1NestedFixture('setting-root', 'setting', 500)

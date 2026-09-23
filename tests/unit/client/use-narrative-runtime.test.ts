@@ -20,9 +20,10 @@ describe('resolveNarrativeBranch', () => {
     { id: 'branch-fork' },
   ] as NarrativeBranch[]
 
-  it('uses an existing requested branch and falls back to the active branch', () => {
+  it('uses the active branch only when no explicit branch was requested', () => {
     expect(resolveNarrativeBranch(branches, 'branch-main', 'branch-fork')?.id).toBe('branch-fork')
-    expect(resolveNarrativeBranch(branches, 'branch-main', 'missing')?.id).toBe('branch-main')
+    expect(resolveNarrativeBranch(branches, 'branch-main', 'missing')).toBeUndefined()
+    expect(resolveNarrativeBranch(branches, 'branch-main')?.id).toBe('branch-main')
     expect(resolveNarrativeBranch([], 'branch-main')).toBeUndefined()
   })
 })

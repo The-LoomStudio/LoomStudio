@@ -9,7 +9,7 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc -b",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --root ../.. tests/unit/asset-store",
     "lint": "eslint ."
   },
   "dependencies": {

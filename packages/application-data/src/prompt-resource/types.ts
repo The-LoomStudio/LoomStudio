@@ -101,6 +101,7 @@ export type RestorePromptResourceInput = PromptResourceWriteContext & {
 }
 
 export type ListPromptResourcesInput = {
+  order?: 'updatedAt' | 'id'
   resourceKind?: PromptResourceKind
   includeTombstone?: boolean
   cursor?: string

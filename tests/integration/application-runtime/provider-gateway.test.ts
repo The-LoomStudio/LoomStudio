@@ -40,10 +40,9 @@ describe('application runtime Provider Profile integration', () => {
       model: { providerProfileId: created.providerProfile.id, modelId: 'model-a' },
     })
     await expect(fixture.runtime.deleteProviderProfile({ providerProfileId: created.providerProfile.id }))
-      .rejects.toThrow('still referenced')
-    await fixture.runtime.deleteAgentProfile({ agentProfileId: profile.agentProfile.id })
-    await expect(fixture.runtime.deleteProviderProfile({ providerProfileId: created.providerProfile.id }))
       .resolves.toEqual({ deleted: true, credentialCleanupPending: false })
+    await expect(fixture.runtime.getAgentProfile({ agentProfileId: profile.agentProfile.id }))
+      .resolves.toMatchObject({ agentProfile: { model: { providerProfileId: created.providerProfile.id, modelId: 'model-a' } } })
     fixture.close()
   })
 

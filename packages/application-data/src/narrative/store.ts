@@ -52,6 +52,80 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
     const { database } = tx
 
     return {
+      restoreArchivePaths: input => {
+        const timeline = requireTimeline(database, input.timelineId)
+        const existing = readBranches(database, timeline.id)
+        if (existing.length !== 1 || existing[0]!.headNodeId
+          || database.prepare('SELECT 1 FROM narrative_nodes WHERE timeline_id = ? LIMIT 1').get(timeline.id)) {
+          throw new NarrativeStoreError('narrative.archive_target_not_empty', 'Archive restoration requires an empty timeline')
+        }
+        for (const node of input.nodes) {
+          if (node.timelineId !== timeline.id) throw new NarrativeStoreError('narrative.timeline_mismatch', 'Archive node timeline mismatch')
+          validateBody(node.body)
+          insertNode(database, node)
+          tx.recordOperations([operation('create', node.id, 'narrative.node')])
+        }
+        for (const branch of input.branches) {
+          assertBranchTimeline(branch, timeline.id)
+          if (branch.id === timeline.activeBranchId) {
+            if (branch.parentBranchId || branch.forkedFromNodeId) throw new NarrativeStoreError('narrative.archive_root_invalid', 'Archive root cannot have a parent')
+            database.prepare('UPDATE narrative_branches SET head_node_id = ?, state_head_revision_id = ?, updated_at = ? WHERE id = ?')
+              .run(branch.headNodeId ?? null, branch.stateHeadRevisionId, branch.updatedAt, branch.id)
+            tx.recordOperations([operation('update', branch.id, 'narrative.branch')])
+          } else {
+            insertBranch(database, branch)
+            tx.recordOperations([operation('create', branch.id, 'narrative.branch')])
+          }
+        }
+      },
+      editBranchNode: input => {
+        validateBody(input.body)
+        validateBody(input.expectedBody)
+        const timeline = requireTimeline(database, input.timelineId)
+        const branch = requireBranch(database, input.branchId)
+        assertBranchTimeline(branch, timeline.id)
+        if (branch.headNodeId !== input.expectedHeadNodeId) {
+          throw new NarrativeStoreError('narrative.head_conflict', 'Narrative branch changed while editing')
+        }
+        const suffix: NarrativeNode[] = []
+        let cursor: string | undefined = branch.headNodeId
+        while (cursor) {
+          const node = requireNode(database, cursor)
+          suffix.push(node)
+          if (node.id === input.nodeId) break
+          cursor = node.parentNodeId
+        }
+        const target = suffix.at(-1)
+        if (!target || target.id !== input.nodeId) {
+          throw new NarrativeStoreError('narrative.node_not_in_branch', 'Edited node is not in the branch')
+        }
+        if (target.body.format !== input.expectedBody.format || target.body.raw !== input.expectedBody.raw) {
+          throw new NarrativeStoreError('narrative.body_conflict', 'Narrative text changed while editing')
+        }
+        const replacements: Array<{ previousNodeId: string; node: NarrativeNode }> = []
+        let parentNodeId = target.parentNodeId
+        // ponytail: Copying the suffix is linear in later messages; keeps branch isolation without mutable shared text.
+        for (const previous of suffix.reverse()) {
+          const node = insertNode(database, {
+            ...previous,
+            id: nextId('node'),
+            parentNodeId,
+            body: previous.id === target.id ? input.body : previous.body,
+          })
+          replacements.push({ previousNodeId: previous.id, node })
+          parentNodeId = node.id
+        }
+        const timestamp = now()
+        database.prepare('UPDATE narrative_branches SET head_node_id = ?, updated_at = ? WHERE id = ?')
+          .run(parentNodeId!, timestamp, branch.id)
+        database.prepare('UPDATE narrative_timelines SET updated_at = ? WHERE id = ?').run(timestamp, timeline.id)
+        tx.recordOperations([
+          ...replacements.map(({ node }) => operation('create', node.id, 'narrative.node')),
+          operation('update', branch.id, 'narrative.branch'),
+          operation('update', timeline.id, 'narrative.timeline'),
+        ])
+        return { timeline: requireTimeline(database, timeline.id), branch: requireBranch(database, branch.id), replacements }
+      },
       createTimeline: input => {
         const timestamp = now()
         const timelineId = input.id ?? nextId('timeline')
@@ -291,6 +365,10 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
   }
 
   return {
+    editBranchNode: async input => {
+      const result = await write(input, tx => tx.editBranchNode(input))
+      return { ...result.value, commit: result.commit }
+    },
     getTimeline: id => engine.read(database => readTimeline(database, id)),
     listTimelines: input => engine.read(database => readTimelines(database, input)),
     getBranch: id => engine.read(database => readBranch(database, id)),

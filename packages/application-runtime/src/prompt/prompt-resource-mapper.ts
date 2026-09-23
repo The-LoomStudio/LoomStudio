@@ -127,7 +127,7 @@ export async function listMappedResources(
   const resources: StoredPromptResource[] = []
   let cursor: string | undefined
   do {
-    const page = await store.listResources({ resourceKind, includeTombstone: options?.includeTombstone, cursor, limit: 500 })
+    const page = await store.listResources({ resourceKind, includeTombstone: options?.includeTombstone, cursor, limit: 500, order: 'id' })
     resources.push(...page.resources)
     cursor = page.nextCursor
   } while (cursor)

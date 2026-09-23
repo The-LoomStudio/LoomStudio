@@ -1,4 +1,4 @@
-import type { DataCommitFact, SqliteDataEngine } from '@loom-studio/data-engine'
+import type { SqliteDataEngine } from '@loom-studio/data-engine'
 import type {
   SecretBackend,
   SecretMetadata,
@@ -12,6 +12,7 @@ import type {
 
 const migrationNamespace = 'platform.secret-store'
 const maximumPlaintextBytes = 64 * 1024
+const activeWrites = new WeakMap<SqliteDataEngine, Set<string>>()
 
 type StoredSecretMetadata = SecretMetadata & { backendKey: string }
 
@@ -66,21 +67,18 @@ async function createSecret(
     backendKey,
   }
 
-  await writeBackend(options.backend, backendKey, input.plaintext)
-  try {
+  return await withPreparedBackendWrite(options, id, backendKey, input.plaintext, input, async () => {
     const result = await options.engine.transact(toTransactionInput(input, 'secret.create'), async tx => {
       tx.database.prepare(`
         INSERT INTO secret_metadata (id, owner_type, owner_id, purpose, label, backend_key, state, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?)
       `).run(id, metadata.owner.type, metadata.owner.id, metadata.purpose, metadata.label ?? null, backendKey, timestamp, timestamp)
+      tx.database.prepare('DELETE FROM secret_backend_cleanup WHERE backend_key = ?').run(backendKey)
       tx.recordOperations([{ store: 'secrets', kind: 'create', entityId: id, entityType: 'platform.secret.metadata', toVersion: 1 }])
       return toPublicMetadata(metadata)
     })
     return { metadata: result.value, commit: result.commit }
-  } catch (error) {
-    await queueOrDeleteUnreferencedBackendKey(options, id, backendKey, input)
-    throw error
-  }
+  })
 }
 
 async function replaceSecret(
@@ -91,16 +89,14 @@ async function replaceSecret(
   const existing = await requireOwnedActiveSecret(options.engine, input.ref, input.owner)
   const newBackendKey = options.createId('secret-bytes')
   const timestamp = options.now()
-  await writeBackend(options.backend, newBackendKey, input.plaintext)
-
-  let result: { value: StoredSecretMetadata | undefined; commit: DataCommitFact }
-  try {
-    result = await options.engine.transact(toTransactionInput(input, 'secret.replace'), async tx => {
+  const result = await withPreparedBackendWrite(options, secretId(input.ref), newBackendKey, input.plaintext, input, async () => {
+    return await options.engine.transact(toTransactionInput(input, 'secret.replace'), async tx => {
       const update = tx.database.prepare(`
         UPDATE secret_metadata SET backend_key = ?, updated_at = ?
         WHERE id = ? AND backend_key = ? AND state = 'active'
       `).run(newBackendKey, timestamp, secretId(input.ref), existing.backendKey)
       if (Number(update.changes) !== 1) throw new SecretStoreError('secret.concurrent_change', 'Secret changed during replacement')
+      tx.database.prepare('DELETE FROM secret_backend_cleanup WHERE backend_key = ?').run(newBackendKey)
       tx.database.prepare('INSERT OR IGNORE INTO secret_backend_cleanup (backend_key, secret_id, queued_at) VALUES (?, ?, ?)')
         .run(existing.backendKey, secretId(input.ref), timestamp)
       tx.recordOperations([{
@@ -113,10 +109,7 @@ async function replaceSecret(
       }])
       return readStoredMetadata(tx.database, input.ref)
     })
-  } catch (error) {
-    await queueOrDeleteUnreferencedBackendKey(options, secretId(input.ref), newBackendKey, input)
-    throw error
-  }
+  })
   if (!result.value) throw new SecretStoreError('secret.not_found', 'Secret metadata disappeared during replacement')
   const cleaned = await drainCleanupKey(options, existing.backendKey, input)
   return { metadata: toPublicMetadata(result.value), cleanupPending: !cleaned, commit: result.commit }
@@ -179,19 +172,19 @@ async function retryPendingCleanup(options: SecretStoreOptions, context: SecretW
 }
 
 async function drainCleanupKey(options: SecretStoreOptions, backendKey: string, context: SecretWriteContext): Promise<boolean> {
+  if (activeWrites.get(options.engine)?.has(backendKey)) return false
   try {
+    const queued = await options.engine.read(database => {
+      const active = database.prepare("SELECT id FROM secret_metadata WHERE backend_key = ? AND state = 'active'").get(backendKey)
+      if (active) return undefined
+      return database.prepare('SELECT secret_id FROM secret_backend_cleanup WHERE backend_key = ?').get(backendKey) as { secret_id: string } | undefined
+    })
+    if (!queued || activeWrites.get(options.engine)?.has(backendKey)) return false
     await options.backend.delete(backendKey)
-  } catch {
-    return false
-  }
-  const queued = await options.engine.read(database => database.prepare('SELECT secret_id FROM secret_backend_cleanup WHERE backend_key = ?').get(backendKey) as { secret_id?: string } | undefined)
-  if (!queued?.secret_id) return true
-  const queuedSecretId = queued.secret_id
-  try {
     await options.engine.transact(toTransactionInput(context, 'secret.cleanup'), async tx => {
       const pending = tx.database.prepare(`
         SELECT id FROM secret_metadata WHERE id = ? AND backend_key = ? AND state = 'pending-delete'
-      `).get(queuedSecretId, backendKey) as { id?: string } | undefined
+      `).get(queued.secret_id, backendKey) as { id?: string } | undefined
       if (pending?.id) tx.database.prepare('DELETE FROM secret_metadata WHERE id = ?').run(pending.id)
       tx.database.prepare('DELETE FROM secret_backend_cleanup WHERE backend_key = ?').run(backendKey)
       tx.recordOperations([{
@@ -205,34 +198,49 @@ async function drainCleanupKey(options: SecretStoreOptions, backendKey: string, 
     })
     return true
   } catch {
+    options.onCleanupFailure?.()
     return false
   }
 }
 
-async function queueOrDeleteUnreferencedBackendKey(
+async function withPreparedBackendWrite<T>(
   options: SecretStoreOptions,
   secretIdValue: string,
   backendKey: string,
+  plaintext: SecretPlaintext,
   context: SecretWriteContext,
-): Promise<void> {
-  try {
-    await options.backend.delete(backendKey)
-    return
-  } catch {
-    // Keep the backend identifier only; plaintext never enters SQLite or the commit payload.
+  commit: () => Promise<T>,
+): Promise<T> {
+  let writes = activeWrites.get(options.engine)
+  if (!writes) {
+    writes = new Set()
+    activeWrites.set(options.engine, writes)
   }
-  await options.engine.transact(toTransactionInput(context, 'secret.cleanup.queue'), async tx => {
-    tx.database.prepare('INSERT OR IGNORE INTO secret_backend_cleanup (backend_key, secret_id, queued_at) VALUES (?, ?, ?)')
-      .run(backendKey, secretIdValue, options.now())
-    tx.recordOperations([{
-      store: 'secret-cleanup',
-      kind: 'create',
-      entityId: backendKey,
-      entityType: 'platform.secret.backend-cleanup',
-      toVersion: 1,
-    }])
-    return undefined
-  }).then(() => undefined, () => undefined)
+  // ponytail: Shared Engine ownership protects in-process cleanup; multi-process writers need a separate lease contract.
+  writes.add(backendKey)
+  try {
+    await options.engine.transact(toTransactionInput(context, 'secret.write.prepare'), async tx => {
+      tx.database.prepare('INSERT INTO secret_backend_cleanup (backend_key, secret_id, queued_at) VALUES (?, ?, ?)')
+        .run(backendKey, secretIdValue, options.now())
+      tx.recordOperations([{
+        store: 'secret-cleanup',
+        kind: 'create',
+        entityId: backendKey,
+        entityType: 'platform.secret.backend-cleanup',
+        toVersion: 1,
+      }])
+    })
+    try {
+      await writeBackend(options.backend, backendKey, plaintext)
+      return await commit()
+    } catch (error) {
+      writes.delete(backendKey)
+      await drainCleanupKey(options, backendKey, context)
+      throw error
+    }
+  } finally {
+    writes.delete(backendKey)
+  }
 }
 
 async function requireOwnedActiveSecret(engine: SqliteDataEngine, ref: SecretRef, owner: SecretOwner): Promise<StoredSecretMetadata> {
@@ -391,4 +399,5 @@ type SecretStoreOptions = {
   createId(prefix: string): string
   now(): string
   authorizeUse(metadata: SecretMetadata, context: SecretUseContext): Promise<boolean> | boolean
+  onCleanupFailure?(): void
 }

@@ -166,6 +166,8 @@ export type EditNarrativeNodeResult = {
 }
 
 export type NarrativeTransaction = {
+  restoreArchivePaths(input: { timelineId: string; nodes: NarrativeNode[]; branches: NarrativeBranch[] }): void
+  editBranchNode(input: Omit<EditBranchNodeInput, keyof NarrativeWriteContext>): EditBranchNodeValue
   createTimeline(input: Omit<CreateNarrativeTimelineInput, keyof NarrativeWriteContext>): CreateNarrativeTimelineResultWithoutCommit
   appendNode(input: Omit<AppendNarrativeNodeInput, keyof NarrativeWriteContext>): AppendNarrativeNodeResultWithoutCommit
   editNode(input: Omit<EditNarrativeNodeInput, keyof NarrativeWriteContext>): { node: NarrativeNode; timeline: NarrativeTimeline }
@@ -181,6 +183,7 @@ export type CreateNarrativeTimelineResultWithoutCommit = Omit<CreateNarrativeTim
 export type AppendNarrativeNodeResultWithoutCommit = Omit<AppendNarrativeNodeResult, 'commit'>
 
 export type NarrativeStore = {
+  editBranchNode(input: EditBranchNodeInput): Promise<EditBranchNodeValue & { commit: DataCommitFact }>
   getTimeline(id: string): Promise<NarrativeTimeline | null>
   listTimelines(input?: { createdFromCardId?: string; cursor?: string; limit?: number }): Promise<NarrativeTimelinePage>
   getBranch(id: string): Promise<NarrativeBranch | null>
@@ -198,4 +201,19 @@ export type NarrativeStore = {
   updateTimeline(input: UpdateNarrativeTimelineInput): Promise<{ timeline: NarrativeTimeline; commit: DataCommitFact }>
   updatePromptResources(input: UpdateNarrativePromptResourcesInput): Promise<{ timeline: NarrativeTimeline; commit: DataCommitFact }>
   transaction(tx: SqliteDataTransaction): NarrativeTransaction
+}
+
+export type EditBranchNodeInput = NarrativeWriteContext & {
+  timelineId: string
+  branchId: string
+  nodeId: string
+  expectedHeadNodeId: string
+  expectedBody: NarrativeBody
+  body: NarrativeBody
+}
+
+export type EditBranchNodeValue = {
+  timeline: NarrativeTimeline
+  branch: NarrativeBranch
+  replacements: Array<{ previousNodeId: string; node: NarrativeNode }>
 }

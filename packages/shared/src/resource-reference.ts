@@ -6,14 +6,19 @@ export type ResourceReference = (
 
 export type EntityReference = {
   kind: 'entity'
-  type: 'card' | 'timeline' | 'session' | 'run' | 'resource' | 'provider' | 'extension'
   id: string
-}
+} & (
+  | { type: 'timeline'; branchId?: string; nodeId?: string }
+  | { type: 'resource'; branchId?: never; nodeId?: string }
+  | { type: 'card' | 'session' | 'run' | 'provider' | 'extension'; branchId?: never; nodeId?: never }
+)
 
 export function formatEntityReference(reference: EntityReference): string {
   const url = new URL('loom-resource://entity')
   url.searchParams.set('type', reference.type)
   url.searchParams.set('id', reference.id)
+  if (reference.branchId !== undefined) url.searchParams.set('branchId', reference.branchId)
+  if (reference.nodeId !== undefined) url.searchParams.set('nodeId', reference.nodeId)
   if (!parseEntityReference(url.href)) throw new Error('Invalid entity reference')
   return url.href
 }
@@ -25,9 +30,16 @@ export function parseEntityReference(uri: string): EntityReference | undefined {
     if (url.protocol !== 'loom-resource:' || url.hostname !== 'entity' || url.username || url.password || url.port || url.pathname || url.hash) return undefined
     const type = url.searchParams.get('type')
     const id = url.searchParams.get('id')
-    if ([...url.searchParams.keys()].some(key => !['type', 'id'].includes(key) || url.searchParams.getAll(key).length !== 1)) return undefined
+    const allowedKeys = type === 'timeline' ? ['type', 'id', 'branchId', 'nodeId']
+      : type === 'resource' ? ['type', 'id', 'nodeId'] : ['type', 'id']
+    if ([...url.searchParams.keys()].some(key => !allowedKeys.includes(key) || url.searchParams.getAll(key).length !== 1)) return undefined
     if (!type || !['card', 'timeline', 'session', 'run', 'resource', 'provider', 'extension'].includes(type) || !id || /[\u0000-\u001f\u007f]/.test(id)) return undefined
-    return { kind: 'entity', type: type as EntityReference['type'], id }
+    const branchId = url.searchParams.get('branchId')
+    const nodeId = url.searchParams.get('nodeId')
+    if ([branchId, nodeId].some(value => value !== null && (!value || /[\u0000-\u001f\u007f]/.test(value)))) return undefined
+    if (type === 'timeline') return { kind: 'entity', type, id, ...(branchId !== null ? { branchId } : {}), ...(nodeId !== null ? { nodeId } : {}) }
+    if (type === 'resource') return { kind: 'entity', type, id, ...(nodeId !== null ? { nodeId } : {}) }
+    return { kind: 'entity', type: type as Exclude<EntityReference['type'], 'timeline' | 'resource'>, id }
   } catch { return undefined }
 }
 

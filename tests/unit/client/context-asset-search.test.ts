@@ -29,4 +29,15 @@ describe('context asset search', () => {
     expect(searchContextAssets(index, '  ')).toEqual([])
     expect(searchContextAssets(index, 'clocktower')).toEqual([])
   })
+
+  it.each([
+    `${' \n\t'.repeat(100)}Target phrase and remaining text`,
+    `${'İ'.repeat(200)} Target phrase and remaining text`,
+    `${'😀'.repeat(100)} Target phrase and remaining text`,
+  ])('keeps matched text in the excerpt despite offset-changing prefixes', body => {
+    const records = buildContextAssetSearchIndex([{ id: 'text', kind: 'entry', label: 'Text', body }])
+    const result = searchContextAssets(records, 'target')[0]
+    expect(result?.excerpt).toContain('Target phrase')
+    expect(result?.excerpt).not.toContain('\n')
+  })
 })

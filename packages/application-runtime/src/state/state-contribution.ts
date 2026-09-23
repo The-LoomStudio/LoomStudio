@@ -279,7 +279,12 @@ function inspectReferenceDiagnostics(input: {
   if (!isJsonObject(input.value) || !isJsonObject(input.schema.properties)) return
   for (const [key, schema] of Object.entries(input.schema.properties)) {
     if (!isJsonObject(schema)) continue
-    inspectReferenceDiagnostics({ ...input, value: input.value[key], schema, path: `${input.path}.${key}` })
+    inspectReferenceDiagnostics({
+      ...input,
+      value: Object.hasOwn(input.value, key) ? input.value[key] : undefined,
+      schema,
+      path: `${input.path}.${key}`,
+    })
   }
 }
 
@@ -306,7 +311,7 @@ function inspectReferenceTarget(
 function setObjectAtPath(root: JsonObject, segments: string[], value: JsonObject): void {
   let current = root
   for (const segment of segments.slice(0, -1)) {
-    const existing = current[segment]
+    const existing = Object.hasOwn(current, segment) ? current[segment] : undefined
     if (existing === undefined) {
       const child: JsonObject = {}
       Object.defineProperty(current, segment, { configurable: true, enumerable: true, writable: true, value: child })

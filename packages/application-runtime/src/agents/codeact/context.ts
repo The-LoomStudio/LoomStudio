@@ -2,8 +2,9 @@ import type { VfsReadObservation } from '../../vfs/types.js'
 import { createResourceVfs } from '../../vfs/resource-filesystem.js'
 import type { ToolExecutionScope } from '../tool-registry.js'
 import type { CodeActHostMethod } from './sandbox.js'
+import type { NarrativeSampleSelection } from '../../narrative/sampling.js'
 
-export const codeActMethodNames = ['ls', 'search', 'read', 'write', 'patch', 'move', 'delete', 'create', 'copy'] as const
+export const codeActMethodNames = ['ls', 'search', 'read', 'readNarrative', 'write', 'patch', 'move', 'delete', 'create', 'copy'] as const
 
 export function createCodeActContext(scope: ToolExecutionScope | undefined, operationPrefix = 'codeact') {
   const observations: VfsReadObservation[] = []
@@ -38,7 +39,7 @@ export function createCodeActContext(scope: ToolExecutionScope | undefined, oper
     } : {}),
   })
   if (scope) scope.resourceVfs = filesystem
-  const methods: Record<typeof codeActMethodNames[number], CodeActHostMethod> = {
+  const methods: Partial<Record<typeof codeActMethodNames[number], CodeActHostMethod>> = {
     ls: (args, signal) => filesystem.ls(args, signal),
     search: (args, signal) => filesystem.search(args, signal),
     read: async (args, signal) => {
@@ -77,5 +78,30 @@ export function createCodeActContext(scope: ToolExecutionScope | undefined, oper
       return JSON.stringify(result)
     },
   }
+  methods.readNarrative = async (args, signal) => {
+    signal.throwIfAborted()
+    if (!scope?.narrative)
+      throw codeActError('codeact.narrative_unavailable', 'No Narrative Timeline is bound to this Agent scope.')
+    if (args.length !== 1 || !args[0] || typeof args[0] !== 'object' || Array.isArray(args[0])) {
+      throw codeActError('codeact.invalid_arguments', 'Use ctx.readNarrative({ selection, maxNodes?, maxCharacters? }).')
+    }
+    const request = args[0] as Record<string, unknown>
+    const selection = request.selection
+    if (!selection || typeof selection !== 'object' || Array.isArray(selection)) {
+      throw codeActError('codeact.invalid_arguments', 'Narrative selection must be an object.')
+    }
+    const result = await scope.narrative.sample({
+      selection: selection as NarrativeSampleSelection,
+      ...(request.maxNodes === undefined ? {} : { maxNodes: request.maxNodes as number }),
+      ...(request.maxCharacters === undefined ? {} : { maxCharacters: request.maxCharacters as number }),
+    })
+    return result
+  }
   return { methods, observations, writes }
+}
+
+function codeActError(code: string, message: string): Error & { code: string } {
+  const error = new Error(message) as Error & { code: string }
+  error.code = code
+  return error
 }

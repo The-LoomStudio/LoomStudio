@@ -157,7 +157,7 @@ describe('studio client context asset helpers', () => {
         ...mounts({ kind: 'preset', id: 'preset-1' }, ['setting-2', 'setting-3', 'missing']),
       ],
       timelinePromptResourceIds: ['setting-3', 'setting-1', 'logic-1', 'preset-1'],
-    }).map(resource => resource.id)).toEqual(['setting-1', 'setting-2', 'setting-3'])
+    }).resources.map(resource => resource.id)).toEqual(['setting-1', 'setting-2', 'setting-3'])
   })
 
   it('ignores legacy preset-linked settings without an active timeline', () => {
@@ -168,7 +168,7 @@ describe('studio client context asset helpers', () => {
       preset,
       resources: [preset, setting],
       settingMounts: mounts({ kind: 'preset', id: 'preset-1' }, ['setting-1']),
-    })).toEqual([])
+    })).toEqual({ resources: [], unavailableResourceIds: [] })
   })
 })
 

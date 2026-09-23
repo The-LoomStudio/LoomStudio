@@ -152,7 +152,7 @@ export function expandTimelineStateBindings(
 function getObjectPath(root: JsonObject, segments: string[]): JsonValue | undefined {
   let current: JsonValue = root
   for (const seg of segments) {
-    if (!isJsonObject(current)) return undefined
+    if (!isJsonObject(current) || !Object.hasOwn(current, seg)) return undefined
     current = current[seg]
   }
   return current
@@ -200,7 +200,7 @@ export function validateStateValue(value: JsonValue, schema: JsonObject, path = 
     }
   }
   for (const [key, child] of Object.entries(value)) {
-    const childSchema = properties[key]
+    const childSchema = Object.hasOwn(properties, key) ? properties[key] : undefined
     if (isJsonObject(childSchema)) {
       validateStateValue(child, childSchema, `${path}/${key}`)
     } else if (schema.additionalProperties === false) {

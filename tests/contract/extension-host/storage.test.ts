@@ -18,7 +18,7 @@ describe('extension host scoped storage contract', () => {
     })
     const documentEvents: JsonValue[] = []
     await kernel.start()
-    kernel.getEventBus().subscribe(['docs.changed'], event => documentEvents.push(event as unknown as JsonValue))
+    kernel.getEventBus().subscribe(['docs.changed'], event => { documentEvents.push(event as unknown as JsonValue) })
     const rpc = ['putConfig', 'getConfig', 'listConfigs', 'createRecord', 'listRecords', 'updateRecord', 'deleteRecord']
       .map(name => ({ name: `example.storage.${name}` }))
     const dir = createExtensionFixture('scoped-storage-extension', {

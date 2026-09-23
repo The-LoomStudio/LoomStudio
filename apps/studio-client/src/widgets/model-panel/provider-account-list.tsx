@@ -13,9 +13,9 @@ type ProviderAccountListProps = {
   accounts: ProviderAccount[]
   busy: boolean
   modelProfiles: ModelProfile[]
-  onCreateModel(providerAccountId: string, providerModelId: string): void
-  onDelete(id: string): void
-  onDeleteModel(id: string): void
+  onCreateModel(providerAccountId: string, providerModelId: string): Promise<void>
+  onDelete(id: string): Promise<void>
+  onDeleteModel(id: string): Promise<void>
   onListModels(providerAccountId: string): Promise<string[]>
   onUpdateConnection(providerAccountId: string, connection: { displayName: string; baseUrl: string; apiKey?: string }): Promise<boolean>
   t: Translator
@@ -48,9 +48,9 @@ function ProviderAccountItem(props: {
   account: ProviderAccount
   busy: boolean
   models: ModelProfile[]
-  onCreateModel(providerAccountId: string, providerModelId: string): void
-  onDelete(id: string): void
-  onDeleteModel(id: string): void
+  onCreateModel(providerAccountId: string, providerModelId: string): Promise<void>
+  onDelete(id: string): Promise<void>
+  onDeleteModel(id: string): Promise<void>
   onListModels(providerAccountId: string): Promise<string[]>
   onUpdateConnection(providerAccountId: string, connection: { displayName: string; baseUrl: string; apiKey?: string }): Promise<boolean>
   t: Translator
@@ -64,6 +64,7 @@ function ProviderAccountItem(props: {
   const [baseUrlDraft, setBaseUrlDraft] = useState(() => typeof props.account.config.baseUrl === 'string' ? props.account.config.baseUrl : '')
   const [apiKeyDraft, setApiKeyDraft] = useState('')
   const [copied, setCopied] = useState(false)
+  const [actionError, setActionError] = useState<string>()
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const copyRequestRef = useRef(0)
   const pickerRef = useRef<HTMLDivElement>(null)
@@ -109,19 +110,25 @@ function ProviderAccountItem(props: {
     setDisplayNameDraft(props.account.displayName)
   }, [props.account.displayName])
 
-  function addModel(event: FormEvent) {
+  async function addModel(event: FormEvent) {
     event.preventDefault()
     if (!query.trim()) return
-    void enableModel(query.trim())
-    setQuery('')
+    if (await enableModel(query.trim())) {
+      setQuery(current => current === query ? '' : current)
+    }
   }
 
   async function enableModel(modelId: string) {
     const model = modelId.trim()
-    if (!model || props.models.some(profile => profile.providerModelId === model) || pendingModelIds.has(model)) return
+    if (!model || props.models.some(profile => profile.providerModelId === model) || pendingModelIds.has(model)) return false
     setPendingModelIds(prev => new Set(prev).add(model))
+    setActionError(undefined)
     try {
       await props.onCreateModel(props.account.id, model)
+      return true
+    } catch (error) {
+      if (mountedRef.current) setActionError(error instanceof Error ? error.message : String(error))
+      return false
     } finally {
       if (mountedRef.current) {
         setPendingModelIds(prev => {
@@ -149,15 +156,20 @@ function ProviderAccountItem(props: {
   async function saveConnection(event: FormEvent) {
     event.preventDefault()
     const apiKey = apiKeyDraft.trim()
-    const succeeded = await props.onUpdateConnection(props.account.id, {
-      displayName: displayNameDraft,
-      baseUrl: baseUrlDraft,
-      ...(apiKey ? { apiKey } : {}),
-    })
-    if (!succeeded || !mountedRef.current) return
-    setApiKeyDraft('')
-    setFetchedModels([])
-    setModelCatalogState('idle')
+    setActionError(undefined)
+    try {
+      const succeeded = await props.onUpdateConnection(props.account.id, {
+        displayName: displayNameDraft,
+        baseUrl: baseUrlDraft,
+        ...(apiKey ? { apiKey } : {}),
+      })
+      if (!succeeded || !mountedRef.current) return
+      setApiKeyDraft('')
+      setFetchedModels([])
+      setModelCatalogState('idle')
+    } catch (error) {
+      if (mountedRef.current) setActionError(error instanceof Error ? error.message : String(error))
+    }
   }
 
   async function copyBaseUrl() {
@@ -223,7 +235,7 @@ function ProviderAccountItem(props: {
             onClick={event => {
               event.preventDefault()
               event.stopPropagation()
-              props.onDelete(props.account.id)
+              void props.onDelete(props.account.id).catch(() => undefined)
             }}
           >
             <Trash2 aria-hidden="true" />
@@ -232,6 +244,7 @@ function ProviderAccountItem(props: {
       </summary>
       <div className={styles.accountBody}>
         <span className={styles.extensionId}>{props.account.providerExtensionId}</span>
+        {actionError ? <p role="alert">{actionError}</p> : null}
 
         {fake ? (
           <p className={styles.modelCatalogStatus}>{props.t('provider.fakeAccountHint')}</p>
@@ -291,7 +304,7 @@ function ProviderAccountItem(props: {
                 <ModelBrandIcon brand={resolveModelBrand(profile.providerModelId)} fallback={<Bot aria-hidden="true" className={styles.brandIconFallback} />} />
                 <span>{profile.providerModelId}</span>
                 {!fake ? (
-                  <IconButton size="small" variant="danger" disabled={props.busy} aria-label={props.t('provider.modelDelete')} onClick={() => props.onDeleteModel(profile.id)}>
+                  <IconButton size="small" variant="danger" disabled={props.busy} aria-label={props.t('provider.modelDelete')} onClick={() => void props.onDeleteModel(profile.id).catch(() => undefined)}>
                     <Trash2 aria-hidden="true" />
                   </IconButton>
                 ) : null}

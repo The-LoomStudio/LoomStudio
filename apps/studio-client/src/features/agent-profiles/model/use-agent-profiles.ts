@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { AgentProfile, AgentToolDefinition, PromptResource, ProviderModelSelection } from '../../../entities/index.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import { safeLocalStorage } from '../../../shared/browser/safe-local-storage.js'
+import { collectPages } from '../../../shared/api/collect-pages.js'
 
 const selectedAgentProfileStorageKey = 'loom.studio.selectedAgentProfileId'
 
@@ -18,17 +19,20 @@ export function useAgentProfiles(input: UseAgentProfilesInput) {
 
   async function refreshAgentProfiles() {
     const [profileResult, presetResult, toolResult] = await Promise.all([
-      input.api.agentProfiles.list(),
+      collectPages(async cursor => {
+        const result = await input.api.agentProfiles.list({ cursor, limit: 100 })
+        return { items: result.agentProfiles, nextCursor: result.nextCursor }
+      }),
       input.api.promptResources.list('preset'),
       input.api.agentTools.list(),
     ])
-    setAgentProfiles(profileResult.agentProfiles)
+    setAgentProfiles(profileResult)
     setPresets(presetResult.resources)
     setTools(toolResult.tools)
     setSelectedAgentProfileId(current => {
       const selectedId = chooseAgentProfileId({
         currentId: current,
-        profiles: profileResult.agentProfiles,
+        profiles: profileResult,
         storedId: readStoredAgentProfileId(),
       })
       writeStoredAgentProfileId(selectedId)
@@ -37,18 +41,26 @@ export function useAgentProfiles(input: UseAgentProfilesInput) {
   }
 
   async function createAgentProfile(profileInput: { name: string; presetId?: string; model: ProviderModelSelection; toolOverrides?: Record<string, boolean>; delivery?: 'stream' | 'complete' }) {
-    await input.runAction(async () => {
-      const presetId = profileInput.presetId ?? await ensureDefaultPreset()
-      const result = await input.api.agentProfiles.create({
-        name: profileInput.name,
-        presetId,
-        model: profileInput.model,
-        toolOverrides: profileInput.toolOverrides,
-        delivery: profileInput.delivery,
+    let created = false
+    try {
+      await input.runAction(async () => {
+        const presetId = profileInput.presetId ?? await ensureDefaultPreset()
+        const result = await input.api.agentProfiles.create({
+          name: profileInput.name,
+          presetId,
+          model: profileInput.model,
+          toolOverrides: profileInput.toolOverrides,
+          delivery: profileInput.delivery,
+        })
+        created = true
+        selectAgentProfile(result.agentProfile.id)
+        await refreshAgentProfiles()
       })
-      await refreshAgentProfiles()
-      selectAgentProfile(result.agentProfile.id)
-    })
+    } catch (error) {
+      if (!created) throw error
+      // Creation committed; the operation reporter has already surfaced the refresh failure.
+    }
+    return created
   }
 
   async function updateAgentProfile(agentProfileId: string, updates: { name?: string; presetId?: string; model?: ProviderModelSelection; toolOverrides?: Record<string, boolean>; delivery?: 'stream' | 'complete' }) {
@@ -116,8 +128,8 @@ export function chooseAgentProfileId(input: {
   profiles: AgentProfile[]
   storedId?: string
 }): string | undefined {
-  if (input.currentId && input.profiles.some(profile => profile.id === input.currentId)) return input.currentId
-  if (input.storedId && input.profiles.some(profile => profile.id === input.storedId)) return input.storedId
+  if (input.currentId) return input.currentId
+  if (input.storedId) return input.storedId
   return input.profiles[0]?.id
 }
 

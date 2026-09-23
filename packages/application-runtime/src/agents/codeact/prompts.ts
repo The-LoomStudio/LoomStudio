@@ -35,6 +35,13 @@ const methods: Record<typeof codeActMethodNames[number], string> = {
 /attachments 是当前预设拥有并挂载的脚本附件，读取不会执行脚本。
 列表中的 disabled 表示停用注入，不等于不可读；locked 可发现但不可读取。路径中的转义字符按列表原样使用。
 不能读取宿主文件、未挂载资源、历史 Narrative 或 Session；观察到的旧路径被另一对象占用时会报错，不自动改绑。`,
+  readNarrative: `### Narrative sampling
+用途：读取当前授权 Timeline 的正文节点，使用固定分支和读取时的正文 Head。
+调用：await ctx["readNarrative"]({ selection, maxNodes?, maxCharacters? })
+选择：{ kind: "tail", count, throughNodeId? } 读取某个 Head 之前最近的节点；{ kind: "range", afterNodeId?, throughNodeId? } 读取起点之后、终点以内的节点。afterNodeId 不包含，throughNodeId 包含。
+返回：包含节点 ID、正文、分支、读取 Head、实际范围和 text 的对象；complete=false 时表示预算截断，并提供 nextBeforeNodeId。
+示例：const story = await ctx["readNarrative"]({ selection: { kind: "tail", count: 3 } }); print(story.text);
+限制：只能读取当前授权 Timeline，不能传入其他 Timeline；读取不会推进 Memory 指针、默认有效 Head 或写入 Narrative。没有权限的历史范围不会自动扩大。`,
   write: `### ctx.write
 用途：替换一个已读取且获准写入的 Prompt Resource 正文或 State 属性。
 调用：await ctx.write(path, value, { mode: "replace" })

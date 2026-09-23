@@ -3,7 +3,6 @@ import type { ClientActionPlacement, ClientCommandDeclaration, RendererContribut
 import { ArrowDown, ArrowLeft, ArrowUp, Braces, Component, ExternalLink, FileSearch, Package, PackagePlus, Power, RefreshCw, SlidersHorizontal, TerminalSquare, Trash2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
 import { buildStudioLogPath } from '../../../shared/studio-shell/studio-route.js'
 import { toast } from 'sonner'
 import type { ManagedExtensionModule, ManagedExtensionPackage, ModelProfile, ProviderModelSelection } from '../../../entities/index.js'
@@ -46,7 +45,9 @@ export function RendererWorkspacePanel(props: {
   configRevision: number
   settingScopeContext: { cardId?: string; timelineId?: string; agentSessionId?: string }
   models: ModelProfile[]
-  onCreateAgent(input: { name: string; presetId: string; model: ProviderModelSelection }): Promise<void>
+  searchParams: URLSearchParams
+  onNavigate(path: string): void
+  onCreateAgent(input: { name: string; presetId: string; model: ProviderModelSelection }): Promise<boolean>
   onDisable(packageId: string, moduleId: string): Promise<unknown>
   onEnable(packageId: string, moduleId: string): Promise<unknown>
   onImportResources(packageId: string): Promise<unknown>
@@ -58,8 +59,7 @@ export function RendererWorkspacePanel(props: {
   useSyncExternalStore(props.host.subscribe, props.host.revision, props.host.revision)
   useSyncExternalStore(props.extensionHost.subscribe, props.extensionHost.revision, props.extensionHost.revision)
   useSyncExternalStore(props.sessionHost.subscribe, () => props.sessionHost.summaries().map(item => `${item.sessionId}:${item.state}`).join('|'), () => '')
-  const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+  const { searchParams, onNavigate: navigate } = props
   const [selection, setSelection] = useState<ExtensionWorkspaceSelection | undefined>(() => searchParams.get('packageId') || props.packages[0] ? { kind: 'package', packageId: searchParams.get('packageId') ?? props.packages[0]!.packageId } : undefined)
   useEffect(() => {
     const packageId = searchParams.get('packageId')

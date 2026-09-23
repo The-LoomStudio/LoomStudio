@@ -11,7 +11,7 @@ import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createPromptResourceStore } from '@loom-studio/application-data'
 import { createMemorySecretBackend, createSecretStore } from '../../../packages/secret-store/src/index.js'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 describe('AI Capability Profile Gateway', () => {
   it('persists profiles, resolves secrets only inside the gateway, and survives provider remounts', async () => {
@@ -64,10 +64,6 @@ describe('AI Capability Profile Gateway', () => {
       capabilityId: 'text.rerank',
       available: true,
     })
-    await expect(runtime.deleteProviderProfile({
-      providerProfileId: account.providerProfile.id,
-    })).rejects.toThrow('AI Capability Profile')
-
     await expect(gateway.invoke({
       profileId: created.profile.id,
       input: { query: 'loom' },
@@ -96,6 +92,71 @@ describe('AI Capability Profile Gateway', () => {
       profileId: created.profile.id,
       input: { query: 'again' },
     })).resolves.toMatchObject({ output: { query: 'again', authorized: true } })
+
+    await expect(runtime.deleteProviderProfile({ providerProfileId: account.providerProfile.id }))
+      .resolves.toMatchObject({ deleted: true })
+    await expect(runtime.getAiCapabilityProfile({ profileId: created.profile.id }))
+      .resolves.toMatchObject({ profile: {
+        providerProfileId: account.providerProfile.id,
+        providerExtensionId: 'example.gateway.rerank',
+        config: { model: 'rerank-v1' },
+        available: false,
+        unavailableReason: 'provider-profile-missing',
+      } })
+    await expect(runtime.listAiCapabilityProfiles())
+      .resolves.toMatchObject({ profiles: [expect.objectContaining({ id: created.profile.id, available: false })] })
+    await expect(gateway.invoke({ profileId: created.profile.id, input: { query: 'after delete' } }))
+      .rejects.toThrow(account.providerProfile.id)
+    await expect(runtime.updateAiCapabilityProfile({ profileId: created.profile.id, displayName: 'Needs repair' }))
+      .resolves.toMatchObject({ profile: { displayName: 'Needs repair', available: false } })
+
+    const healthyAccount = await runtime.createProviderProfile({
+      providerExtensionId: 'example.gateway.rerank', displayName: 'Rerank Account',
+      config: { endpoint: 'https://rerank.test' },
+      credential: { apiKey: 'replacement-test-value' },
+    })
+    const healthyProfile = await runtime.createAiCapabilityProfile({
+      providerProfileId: healthyAccount.providerProfile.id, capabilityId: 'text.rerank',
+      displayName: 'Healthy profile', config: { model: 'rerank-v1' },
+    })
+    expect((await runtime.listAiCapabilityProfiles()).profiles).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: created.profile.id, available: false }),
+      expect.objectContaining({ id: healthyProfile.profile.id, available: true }),
+    ]))
+    const stored = (await documents.get(created.profile.id))!
+    await documents.write({
+      id: stored.id, type: stored.type, expectedVersion: stored.version,
+      content: { ...(stored.content as Record<string, never>), providerProfileId: 'missing-provider' },
+    })
+    const missing = (await runtime.getAiCapabilityProfile({ profileId: created.profile.id })).profile
+    expect(missing).toMatchObject({ providerProfileId: 'missing-provider', unavailableReason: 'provider-profile-missing', available: false })
+    expect(missing.providerExtensionId).toBeUndefined()
+    expect((await runtime.listAiCapabilityProfiles()).profiles).toHaveLength(2)
+    await expect(runtime.updateAiCapabilityProfile({ profileId: created.profile.id, providerProfileId: 'still-missing' }))
+      .rejects.toThrow('still-missing')
+    expect((await runtime.getAiCapabilityProfile({ profileId: created.profile.id })).profile).toEqual(missing)
+    await expect(runtime.updateAiCapabilityProfile({
+      profileId: created.profile.id, providerProfileId: healthyAccount.providerProfile.id,
+    })).resolves.toMatchObject({ profile: {
+      providerProfileId: healthyAccount.providerProfile.id,
+      config: { model: 'rerank-v1' }, available: true,
+    } })
+    await expect(gateway.invoke({ profileId: created.profile.id, input: { query: 'rebound' } }))
+      .resolves.toMatchObject({ output: { query: 'rebound', model: 'rerank-v1' } })
+
+    const write = documents.write.bind(documents)
+    const pendingCreate = vi.spyOn(documents, 'write').mockImplementationOnce(async input => {
+      await runtime.deleteProviderProfile({ providerProfileId: healthyAccount.providerProfile.id })
+      return await write(input)
+    })
+    try {
+      await expect(runtime.createAiCapabilityProfile({
+        providerProfileId: healthyAccount.providerProfile.id, capabilityId: 'text.rerank',
+        displayName: 'Created during deletion', config: { model: 'rerank-v1' },
+      })).resolves.toMatchObject({ profile: { available: false, unavailableReason: 'provider-profile-missing' } })
+    } finally {
+      pendingCreate.mockRestore()
+    }
 
     registration.dispose()
     engine.close()

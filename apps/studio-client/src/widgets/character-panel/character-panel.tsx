@@ -13,6 +13,7 @@ import type { CardDirectoryCatalog } from '@loom-studio/shared'
 import { CardResourceOverview, DirectoryDiscoveryNotice, type CardDirectoryApi } from './card-resource-overview.js'
 import { cardMediaUrl, useCardMediaRevision } from '../../shared/lib/card-media.js'
 import { normalizeSearchText } from '../../shared/lib/text.js'
+import { readBoundedResponseBlob } from '../../shared/browser/download.js'
 
 type CharacterCardSummary = {
   id: string
@@ -104,6 +105,11 @@ export function CharacterPanel(props: CharacterPanelProps) {
   const [remoteImportUrl, setRemoteImportUrl] = useState('')
   const [remoteImportError, setRemoteImportError] = useState('')
   const [remoteImportBusy, setRemoteImportBusy] = useState(false)
+  const remoteImportAbortRef = useRef<AbortController | null>(null)
+  useEffect(() => () => {
+    remoteImportAbortRef.current?.abort()
+    remoteImportAbortRef.current = null
+  }, [])
   const characterPanelRef = useRef<HTMLDivElement>(null)
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const backgroundInputRef = useRef<HTMLInputElement>(null)
@@ -427,7 +433,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
         timelineCount={deleteTimelineCount}
         t={props.t}
         onCancel={() => setPendingDeleteIds(undefined)}
-        onConfirm={() => void confirmDelete()}
+        onConfirm={() => void confirmDelete().catch(() => undefined)}
         onIncludePlayDataChange={setIncludePlayData}
         onIncludePromptResourcesChange={setIncludePromptResources}
       />
@@ -456,7 +462,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
               onChange={event => {
                 const files = Array.from(event.target.files ?? [])
                 event.target.value = ''
-                if (files.length > 0) void props.onImportCards(files)
+                if (files.length > 0) void props.onImportCards(files).catch(() => undefined)
               }}
             />
             <header className={styles.galleryToolbar}>
@@ -480,7 +486,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
                     <div className={styles.galleryActions}>
                       <button aria-label={props.t('character.import')} className={styles.toolbarButton} disabled={props.busy} title={props.t('character.import')} type="button" onClick={() => cardImportInputRef.current?.click()}><Upload aria-hidden="true" /></button>
                       <button aria-label={props.t('character.importRemote')} className={styles.toolbarButton} disabled={props.busy} title={props.t('character.importRemote')} type="button" onClick={() => setRemoteImportOpen(true)}><CloudDownload aria-hidden="true" /></button>
-                      <button disabled={props.busy} type="button" onClick={() => void props.onCreateCard()}><Plus aria-hidden="true" />{props.t('character.create')}</button>
+                      <button disabled={props.busy} type="button" onClick={() => void props.onCreateCard().catch(() => undefined)}><Plus aria-hidden="true" />{props.t('character.create')}</button>
                     </div>
                   </div>
                   <input aria-label={props.t('character.searchPlaceholder')} className={styles.gallerySearch} placeholder={props.t('character.searchPlaceholder')} type="search" value={query} onChange={event => setQuery(event.target.value)} />
@@ -600,7 +606,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
             </div>
             {profileTab === 'attachments' ? <div role="tabpanel" id="card-attachments-panel" aria-labelledby="card-attachments-tab">{props.directoryApi ? <CardResourceOverview key={selected.id} api={props.directoryApi} cardId={selected.id} onRefresh={props.onRefreshCards} t={props.t} /> : null}</div> : <div role="tabpanel" id="card-profile-panel" aria-labelledby="card-profile-tab">
             {profileEditing ? (
-              <form className={`${styles.profileEditor} loom-underlined-fields`} onSubmit={event => void props.onUpdateCard(event).then(() => setProfileEditing(false))}>
+              <form className={`${styles.profileEditor} loom-underlined-fields`} onSubmit={event => void props.onUpdateCard(event).then(() => setProfileEditing(false)).catch(() => undefined)}>
                 <label><span>{props.t('character.name')}</span><input disabled={props.busy} value={props.cardDraft.name} onChange={event => props.onChangeCardDraft({ ...props.cardDraft, name: event.target.value })} /></label>
                 <label><span>{props.t('character.author')}</span><input disabled={props.busy} value={props.cardDraft.userName} onChange={event => props.onChangeCardDraft({ ...props.cardDraft, userName: event.target.value })} /></label>
                 <label><span>{props.t('character.description')}</span><textarea disabled={props.busy} value={props.cardDraft.description} onChange={event => props.onChangeCardDraft({ ...props.cardDraft, description: event.target.value })} /></label>
@@ -718,7 +724,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
 
   function exportSelectedCard(card: CharacterCardSummary, format: 'png' | 'polyglot' | 'loomcard' | 'directory') {
     setExportCard(undefined)
-    void props.onExportCard(card, format)
+    void props.onExportCard(card, format).catch(() => undefined)
   }
 
   function closeRemoteImport() {
@@ -730,25 +736,31 @@ export function CharacterPanel(props: CharacterPanelProps) {
 
   async function importRemoteCard(event: FormEvent) {
     event.preventDefault()
+    if (remoteImportAbortRef.current) return
+    const controller = new AbortController()
+    remoteImportAbortRef.current = controller
     setRemoteImportError('')
     setRemoteImportBusy(true)
     try {
       const url = new URL(remoteImportUrl.trim())
       if (url.protocol !== 'https:') throw new Error(props.t('character.importRemoteHttpsOnly'))
-      const response = await fetch(url, { credentials: 'omit', referrerPolicy: 'no-referrer' })
+      const response = await fetch(url, { credentials: 'omit', referrerPolicy: 'no-referrer', signal: controller.signal })
       if (!response.ok) throw new Error(props.t('character.importRemoteDownloadFailed', { status: response.status }))
-      const declaredSize = Number(response.headers.get('content-length'))
-      if (Number.isFinite(declaredSize) && declaredSize > MAX_REMOTE_CARD_BYTES) throw new Error(props.t('character.importRemoteTooLarge'))
-      const blob = await response.blob()
-      if (blob.size > MAX_REMOTE_CARD_BYTES) throw new Error(props.t('character.importRemoteTooLarge'))
+      const blob = await readBoundedResponseBlob(response, MAX_REMOTE_CARD_BYTES, props.t('character.importRemoteTooLarge'))
+      controller.signal.throwIfAborted()
       const fileName = remoteCardFileName(url, blob.type)
       await props.onImportCards([new File([blob], fileName, { type: blob.type })])
+      if (controller.signal.aborted) return
       setRemoteImportOpen(false)
       setRemoteImportUrl('')
     } catch (error) {
-      setRemoteImportError(error instanceof Error ? error.message : String(error))
+      if (!controller.signal.aborted) setRemoteImportError(error instanceof Error ? error.message : String(error))
     } finally {
-      setRemoteImportBusy(false)
+      controller.abort()
+      if (remoteImportAbortRef.current === controller) {
+        remoteImportAbortRef.current = null
+        setRemoteImportBusy(false)
+      }
     }
   }
 }
@@ -836,53 +848,21 @@ function CharacterGroupDialog(props: {
   onSave(event: FormEvent): void
   onSelectFilter(groupId: CharacterGroupFilter): void
 }) {
-  const returnFocusRef = useRef<HTMLElement | null>(null)
-
-  useEffect(() => {
-    returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    return () => {
-      const returnFocus = returnFocusRef.current
-      if (returnFocus?.isConnected) queueMicrotask(() => returnFocus.focus())
-    }
-  }, [])
-
   function selectGroup(groupId: CharacterGroupFilter) {
     props.onSelectFilter(groupId)
     props.onClose()
   }
 
-  function handleDialogKeyDown(event: React.KeyboardEvent<HTMLElement>) {
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      props.onClose()
-      return
-    }
-    if (event.key !== 'Tab') return
-    const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)'))
-    if (focusable.length === 0) return
-    const currentIndex = focusable.indexOf(document.activeElement as HTMLElement)
-    const nextIndex = event.shiftKey
-      ? currentIndex <= 0 ? focusable.length - 1 : currentIndex - 1
-      : currentIndex < 0 || currentIndex === focusable.length - 1 ? 0 : currentIndex + 1
-    event.preventDefault()
-    focusable[nextIndex]?.focus()
-  }
-
   return (
-    <div className={styles.dialogBackdrop} role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) props.onClose() }}>
-      <section
-        aria-label={props.t('character.groups')}
-        className={styles.groupDialog}
-        data-loom-object="character-group-dialog"
-        role="dialog"
-        onKeyDown={handleDialogKeyDown}
-        onMouseDown={event => event.stopPropagation()}
-      >
-        <header>
-          <span>{props.t('character.groups')}</span>
-          <button aria-label={props.t('character.closeGroups')} autoFocus className={styles.toolbarButton} title={props.t('character.closeGroups')} type="button" onClick={props.onClose}><X aria-hidden="true" /></button>
-        </header>
-        <div className={styles.groupList}>
+    <Dialog
+      className={styles.groupDialog}
+      closeOnBackdrop
+      headerActions={<button aria-label={props.t('character.closeGroups')} autoFocus className={styles.toolbarButton} title={props.t('character.closeGroups')} type="button" onClick={props.onClose}><X aria-hidden="true" /></button>}
+      open
+      title={props.t('character.groups')}
+      onClose={props.onClose}
+    >
+        <div className={styles.groupList} data-loom-object="character-group-dialog">
           <button className={props.activeGroupId === undefined ? styles.groupRowActive : styles.groupRow} type="button" onClick={() => selectGroup(undefined)}>
             <span>{props.t('character.allGroups')}</span>
           </button>
@@ -904,8 +884,7 @@ function CharacterGroupDialog(props: {
           <input aria-label={props.editingGroupId ? props.t('character.renameGroup') : props.t('character.newGroup')} maxLength={40} placeholder={props.t('character.groupNamePlaceholder')} value={props.groupDraft} onChange={event => props.onGroupDraftChange(event.target.value)} />
           <button disabled={!props.groupDraft.trim()} type="submit">{props.editingGroupId ? props.t('character.save') : props.t('character.newGroup')}</button>
         </form>
-      </section>
-    </div>
+    </Dialog>
   )
 }
 

@@ -13,11 +13,23 @@
 1. 长列表、长文本和资源树是否限制了 DOM、布局读取和重复计算；
 2. 本地布局状态、编辑草稿和远端刷新之间是否保持一致。
 
-首轮记录 3 项；折叠与 CSS 补查增加 6 项；2026-09-22 数据与渲染身份链补查增加 3 项，编辑模式生命周期、引用深链接和搜索摘要补查各增加 1 项，共 15 项。性能成本、源码可确认的行为缺陷与尚待浏览器复现的视觉现象分别记录，不把静态审查当作帧率测试。
+首轮记录 3 项；折叠与 CSS 补查增加 6 项；2026-09-22 数据与渲染身份链补查增加 3 项，编辑模式生命周期、引用深链接、搜索摘要和空树控件补查各增加 1 项，共 16 项。性能成本、源码可确认的行为缺陷与尚待浏览器复现的视觉现象分别记录，不把静态审查当作帧率测试。
+
+## 编辑冲突修复口径
+
+用户已确认按[统一修复口径](./audit-remediation-decisions-and-order.md) 处理 UI 与 Agent 的并行编辑；本次只修订审查，不修改执行器或编辑实现：
+
+- 未提交前端输入不锁住资源，Agent 可以通过正式写入入口提交；“Agent 优先”不等于绕过版本检查。
+- 没有本地修改时界面跟随最新提交；发生同一编辑内容冲突时保留正式版本，也保留用户输入供恢复，暂停过期输入的自动提交。不静默抹掉任何一方内容。
+- 使用编辑者读取时的基线确认写入前提；不得由服务端临时读取最新版本后给旧正文补上该版本号，使过期写入伪装成有效更新。
+- UI、内部 Agent、资源导入/Apply 都是实际修改来源；外部 IDE 改文件需经已有接入路径才影响权威数据，不假定存在任意文件的自动同步。
+- 自动保存也有尚未确认的输入窗口。只补短期编辑基线与冲突呈现，不建设持久草稿库、全局编辑锁或多人协同；切换资源不能静默丢弃失败/冲突输入。
 
 ## FRONTEND-001：Narrative Timeline 没有对正文做窗口化渲染
 
 优先级：P2
+
+2026-09-23 实施前核对：尚未实现正文虚拟化。`RendererInstanceRoot` 在组件卸载时会 abort、dispose 并销毁 DOM/iframe，当前没有通用的扩展局部状态恢复合同。需要先确认离屏是否允许重建 Renderer，或保留已挂载的有状态扩展消息、接受其 DOM 无法严格有界；编辑中的消息必须保留。此取舍未决，不将右侧导航器窗口化或类型检查视为本项完成。
 
 `use-narrative-runtime.ts` 每次读取 100 个节点，并支持通过 `loadOlderNodes()` 持续把更早节点追加到本地数组。`narrative-timeline.tsx` 随后对 `props.timeline` 全量执行 `map`，每条消息都创建 Markdown 渲染节点；存在 Renderer Host 时还会额外挂载 `RendererNodeMountHost`。
 
@@ -65,12 +77,16 @@
 
 关闭条件：
 
-- 远端刷新不会静默覆盖未提交草稿；
-- 已提交的远端结果仍能正确替换对应资源；
-- 发生外部版本变化时，界面明确选择保留草稿、放弃草稿或展示冲突；
-- 对输入中刷新、提交中刷新和 mutation 失败分别有回归测试。
+- 远端刷新不会静默覆盖未提交输入，也不会因为本地有输入而阻拦 Agent 提交；
+- 无本地修改时跟随最新正式版本；有冲突时正式版本保留，用户输入有明确的恢复/重新应用入口；
+- 冲突输入暂停自动提交，不能在 blur 时反向覆盖已经提交的 Agent 修改；用户主动重新应用时基于新版本；
+- 对输入中刷新、提交中刷新、mutation 失败及切换资源分别验证，不把“切换即销毁”作为无条件清理策略。
+
+当前实现证据补充：标题与正文均存在 onChange 到 onBlur/onCommit 的输入窗口；正文见 `shared/ui/long-text-editor/code-mirror-editor.tsx:370-375`。这不是假设未来新增草稿系统，而是现有自动保存链需要处理的交错。
 
 ## FRONTEND-003：Composer Pin 状态没有实际持久化
+
+状态：已修复。`partialize` 补入 `composerPinned`，不新增存储版本或迁移；真实 Store 配合内存 Storage 的写入/rehydrate 测试覆盖 true/false 两种值，原文件共 15 项通过。未做浏览器重载和视觉验收。
 
 优先级：P2
 
@@ -94,6 +110,8 @@
 
 ## FRONTEND-004：工具折叠的两个 Effect 相互取消动画
 
+状态：实现已修复，待浏览器动画验收。删除双 Effect、WAAPI 高度测量和 Promise 完成状态，改为单一 CSS Grid 折叠；复用根 motion 属性即时禁用过渡。不把类型检查或元素树测试当作实际无闪烁证明。
+
 优先级：P2；源码时序缺陷，用户报告的闪烁尚未完成浏览器复现。
 
 `agent-chat-panel.tsx:864-947` 的 `FlipCollapse` 在 `useLayoutEffect` 中创建展开动画，并写入 `animationRef`；同一次 open 更新的 `useEffect` 随后调用 `animationRef.current?.cancel()`，取消的正是刚创建的动画。
@@ -104,6 +122,8 @@
 
 ## FRONTEND-005：折叠工具组会丢失子项展开状态
 
+状态：实现已修复，待真实交互验收。折叠保持子项挂载，隐藏内容使用 inert/aria-hidden；单工具与多工具使用同一组件层级和工具 ID key，组 key 固定首个工具 ID，不因后续回复到达而变化。受控元素树测试一项通过，检查身份及关闭后的挂载/可访问性属性；未实测 DOM 滚动位置或快速反向切换。
+
 优先级：P2
 
 `FlipCollapse` 收起完成后返回 null，卸载工具组内部的 `AgentToolActionItem`。子项开关仅存于组件 `useState(defaultOpen)`，再次展开外层工具组时会重新初始化，之前手动打开的详情和内部滚动位置无法留存。
@@ -113,6 +133,8 @@
 关闭条件：同一会话内，外层折叠/展开及工具追加不丢失既有子项选择；状态按工具稳定 ID 归属，不要求跨浏览器重载持久化。
 
 ## FRONTEND-006：Mock 对话与模拟计时器放进生产聊天组件
+
+状态：已修复生产/预览归属。样例数据移至 `dev/preview/agent-chat-sample.ts`，注册 `agent-chat` 开发预览，用按钮显式选择空会话、下一条或全部样例；生产面板只使用传入消息，不启动演示计时器。删除虚构时长及假产物撤销/审核控件，partial 展示使用真实消息状态。受控空会话/工具身份两项测试、Client noEmit 通过；开发预览按钮和正式空会话未做浏览器验收。
 
 优先级：P2
 
@@ -126,6 +148,8 @@
 
 优先级：P2
 
+状态：已修复。创建回调返回明确布尔结果，表单等待创建结果后才清空；拒绝和失败保留名字/预设/模型/投递模式，pending 时禁用输入及取消并用同步 ref 防止同一帧重复提交。创建 RPC 已提交但刷新失败仍返回成功，避免误导重试生成重复 Profile；刷新错误继续进入全局提示。验证记录归入[施工计划](../plans/audit-issue-remediation-plan.md)，下文保留原问题证据。
+
 `widgets/agent-panel/agent-panel.tsx:77-95` 的 `handleCreateSubmit` 调用 `props.onCreate()` 后立即清空名字、预设、模型选择并关闭创建表单。该回调被声明为 void，但 `app/studio-panel-registry.tsx:80` 实际传入异步 `state.createAgentProfile`。
 
 网络或服务端创建失败时，错误虽可由全局操作状态展示，原表单仍已被清空，用户必须重新填写。不是服务器失败本身有问题，而是 UI 在确认成功前丢弃草稿。
@@ -134,6 +158,8 @@
 
 ## FRONTEND-008：消息树行取消了键盘焦点标识
 
+状态：样式已修复，待人工视觉验收。移除消息行强制禁用 outline 的规则，所有 `.row:focus-visible` 使用现有 focus 色的 2px 内收轮廓，不改变尺寸或选中背景。已检查定向 diff；静态样式修改未新增形式主义测试。普通/虚拟树、不同主题与真实键盘焦点仍需浏览器验收。
+
 优先级：P2
 
 `shared/ui/file-tree/file-tree.tsx:376-420` 将消息节点作为可通过 roving tabIndex 聚焦的 div treeitem，并应用 `messageBlockRow`。对应 SCSS 368-383 行同时强制去掉 outline 和 box-shadow，没有替代的 focus-visible 样式。全局焦点样式只覆盖 button/input/select/textarea，不覆盖该 div。
@@ -141,6 +167,8 @@
 因此键盘移动到未选中的消息节点时，焦点与选中状态不一致，用户无法从该行视觉状态定位键盘位置。关闭条件：为 treeitem 提供独立且可见的焦点状态，保留 selected 与 focused 的区别，普通和虚拟树都验证。
 
 ## FRONTEND-009：Agent CSS 动画未遵循减少动态效果偏好
+
+状态：CSS 接线已修复，待浏览器验收。面板范围内按现有 `html[data-loom-motion='reduce']` 停止 CSS animation/transition，闪光文本改为静态文字色，不另建 system media query，以保留应用显式 full 偏好。只核对源代码和定向 diff，未宣称运行中切换或视觉已通过；FlipCollapse 的 JS 动画取消/时序问题仍由 FRONTEND-004 跟踪。
 
 优先级：P2
 
@@ -164,17 +192,23 @@
 优先级：P2  
 证据等级：当前源码端到端数据流；尚未做浏览器输入复现。
 
+修复进度：工作台现消费 Context Asset Hook 的草稿资源投影，首次编辑版本贯穿 RPC/Store；刷新/冲突保留草稿，在途新输入不随前一次保存丢失，补充显式重试和确认放弃。六项受控 Hook 测试及 Client 类型检查通过，详见施工计划。跨 endpoint 草稿隔离、节点命令终端和浏览器验收仍未收口，本项及 FRONTEND-002 不整体关闭；下文保留原证据。
+
 `app/studio-resource-panels.tsx:17-21` 同时把 `state.contextAssets` 作为 nodes、远端 `state.promptResources` 作为 resources 传给两个工作台。`onChangeNode` 只更新前者。
 
 但 `widgets/context-workbench/context-workbench.tsx:117-125` 从 resources 构建 workbenchNodes；`widgets/preset-workbench/preset-workbench.tsx:123-131` 同样从 selectedResource 构建详情树，两者没有消费传入的草稿 nodes。`readPromptResourceWorkbenchRoot()` 也只规范化传入的远端 rootNode，没有读取草稿。
 
 标题 input 的 value 是 `props.node.label`（`context-asset-detail-header.tsx:75-82`），onChange 写草稿，下一次渲染仍得到旧远端 label；元数据 input 同样如此。这使正常的受控输入链无法保留刚键入的值，blur 提交也不能弥补显示源错误。CodeMirror 的内部文档可能仍能输入，不应据此笼统断言整个编辑器无法输入。
 
-最小方向：明确远端基线与编辑草稿唯一的投影合并点，工作台详情必须消费编辑中的节点。不要在每个输入框再建一套重复状态。
+最小方向：明确远端基线与编辑草稿唯一的投影合并点，工作台详情必须消费编辑中的节点。不要在每个输入框再建一套重复状态；用户输入覆盖仅限其编辑视图，不能因此把旧草稿当作比 Agent 新提交更高优先级的持久化数据。
 
 关闭条件：标题、元数据和正文在提交前保持输入，提交成功同步远端；切换条目与刷新时遵守草稿策略。与 FRONTEND-002 联合验证，但二者分别是“没有消费草稿”和“刷新覆盖草稿”。
 
+写入链核对：`use-context-assets.ts` 的 updateAsset 请求没有携带编辑基线版本；`packages/application-runtime/src/runtime/prompt-runtime.ts` 的 `updatePromptResourceAssets()` 先读当前资源，再以 `current.version` 提交。该检查保护服务端读写间的竞争，但不证明客户端输入基于当前版本。关闭本组编辑问题必须覆盖 UI 编辑 v10、Agent 提交 v11、UI 失焦的真实请求交错，不只修显示投影。
+
 ## FRONTEND-011：在途旧查询可以覆盖已经保存的新资源缓存
+
+状态：已修复该缓存交错。资源、Setting 挂载、Tool 挂载的 cache setter 在发布 mutation 结果前取消对应 key 的旧查询，不影响其他 endpoint。真实 QueryClient/Provider 的三项测试覆盖保存、删除、旧响应晚到及后续新查询；不声称底层 HTTP 已中止或浏览器视觉已验收。详见施工计划，下文保留原证据。
 
 优先级：P2  
 证据等级：当前安装的 QueryClient 纯内存交错探针，加调用链核对。
@@ -196,7 +230,11 @@ afterOldRead: [{ id: resource-1, version: 1 }]
 
 关闭条件：旧读取晚到不会覆盖已确认的保存；新增、删除和挂载变更也有一致缓存结果。
 
+去重：与旧 FR-017 合并按当前 Query 调用链施工。本项约束的是缓存提交顺序，不代替 FRONTEND-002/010 的编辑基线检查；后端已接受旧正文时，单修 Query Cache 不能恢复被覆盖内容。
+
 ## FRONTEND-012：Markdown 重渲染会改变代码块组件身份
+
+状态：组件身份实现已修复。renderer 映射移到模块作用域，代码块文案通过本地 Context 更新，不因正文变化或新 labels 对象而创建新组件类型。身份断言与真实 Markdown SSR 单项测试、Client noEmit 通过；未执行浏览器复制状态、折叠/换行状态连续更新验收。
 
 优先级：P2  
 证据等级：当前 TSX 转译与实际 react-markdown 输出树的结构探针；未执行浏览器 DOM 验证。
@@ -214,6 +252,8 @@ afterOldRead: [{ id: resource-1, version: 1 }]
 关闭条件：相同正文的父级更新不重挂载代码块，换行开关和复制反馈保持；正文实际变化时高亮仍正确更新。
 
 ## FRONTEND-013：正文切换预览后丢失编辑撤销历史
+
+状态：预览切换卸载路径已修复，真实编辑器交互待验收。LongTextEditor 初次访问源码后保留该文档的 CodeMirror 子树，预览时通过 hidden 隐藏；未访问源码的预览不加载编辑器，文档组件卸载时仍销毁实例。恢复显示时请求布局测量。两项组件树检查验证稳定位置/类型与新文档挂载隔离，Client noEmit 通过；没有模拟真实 EditorView 的多步撤销、重做、IME 或焦点。上游 ContextAssetDetail 已按 node.id 设置 key，失败草稿仍由既有草稿层负责。
 
 优先级：P2  
 证据等级：当前组件生命周期调用链及已安装 CodeMirror 的内存状态探针；未执行浏览器模式切换。
@@ -238,9 +278,11 @@ afterOldRead: [{ id: resource-1, version: 1 }]
 
 最小方向：预览切换不应结束同一文档的编辑会话。保留该文档的 EditorState，或在适当生命周期保持编辑实例；选择时同时考虑不可见实例的资源成本，不在持久化布局 Store 中复制整个编辑器状态。
 
-关闭条件：编辑多步后往返预览仍可逐步撤销和重做；切换到另一文档不继承前一文档的历史；关闭编辑会话后相关实例正常释放。
+关闭条件：编辑多步后往返预览仍可逐步撤销和重做；切换到另一文档不继承前一文档的历史；未保存、失败或冲突输入先明确处理，不能仅因切换或卸载消失。编辑会话真正结束后释放相关实例，不把保留历史扩展为无限缓存所有文档。
 
 ## FRONTEND-014：Preset 编辑器深链接丢失资源身份
+
+状态：实现已修复，浏览器验收待完成。路由保留 resourceId，Preset/Setting 工作台优先按该 ID 选择资源，缺失资源或节点明确提示而不回退首项。引用入口切到资源编辑视图；工具栏切换资源同步引用 URL，后续节点选择仍使用工作台状态，不被初始 URL 锁死。路由及资源引用测试共 12 项通过，Client noEmit 通过；未验证真实浏览器刷新、前进后退与窄屏详情展示。
 
 优先级：P2  
 证据等级：当前路由函数探针及应用选择状态调用链；未执行浏览器刷新。
@@ -272,6 +314,8 @@ afterOldRead: [{ id: resource-1, version: 1 }]
 
 ## FRONTEND-015：搜索摘要使用了归一化前后不同的字符偏移
 
+状态：已修复原首尾空白偏移问题。摘要统一使用 trim 后正文，并将大小写转换后的命中偏移映射回原字符位置，保留原始大小写。搜索单文件 5 项通过，新增大段前置空白、U+0130 大小写展开与 emoji 前缀用例。未做浏览器搜索交互验收。
+
 优先级：P3  
 证据等级：当前搜索函数的纯内存探针。
 
@@ -290,6 +334,41 @@ afterOldRead: [{ id: resource-1, version: 1 }]
 最小方向：正文匹配定位与截取使用一致的字符坐标；查询字符串的 trim 可以保留，不能把归一化文本的索引无条件视为原文索引。字符大小写转换也可能改变长度，实施时需明确支持范围，不直接把这一处改成另一个不保留偏移的转换。
 
 关闭条件：包含前导空白的正文命中后，摘要包含命中内容；空白正文仍不产生伪结果；当前节点 ID、排序和原文不受摘要修复影响。
+
+## FRONTEND-016：空文件夹的鼠标展开与键盘展开判定不一致
+
+状态：已修复。方向键按 `children` 是否存在判断容器，与现有鼠标 disclosure / aria-expanded 一致；空数组仍可展开收起，普通叶子不切换展开状态。键盘模型单文件四项通过，未做浏览器或辅助技术验收。
+
+优先级：P3
+证据等级：当前 FileTree 调用链 + 纯内存探针。
+
+`apps/studio-client/src/features/context-assets/model/tree-ops.ts:64-70` 创建新 Folder 时明确写入 `children: []`；Message Block 在 `:116-123` 也使用同样形状。`shared/ui/file-tree/file-tree.tsx:339-340` 却用 `Boolean(props.node.children)` 判断是否存在子节点，因此空数组会被当成可展开节点。相邻的树模型 `file-tree-model.ts:82` 使用 `node.children?.length`，两处契约已经不一致。
+
+结果是空文件夹会显示 disclosure button，点击后 `expandedIds` 会改变、箭头会从右变下，但 `readVisibleFileTreeNodes()` 不会增加任何子节点。键盘 Right/Left 逻辑同样依据 `children?.length`，因此鼠标和键盘对同一个空节点给出不同的展开语义。
+
+当前调用链探针结果：
+
+```json
+{
+  "collapsedIds": ["root", "empty"],
+  "expandedIds": ["root", "empty"],
+  "rightOnCollapsed": {"focusId": "empty"},
+  "leftOnExpanded": {"focusId": "root"}
+}
+```
+
+补测展开了父节点，确保目标空文件夹真实位于可见树中。首个探针没有展开父节点，输出仅含 root，不能证明目标行为，已用上面的结果替换。模型探针未挂载 DOM；鼠标可切换来自 disclosure 的 onClick 调用链，键盘结果来自当前模型函数。
+
+空文件夹显示箭头本身可以是产品选择，并不能仅据此判为缺陷。本项只记录输入方式不一致：鼠标可以把同一节点设为 expanded，Right 无法执行等价操作，而 Left 在 expanded 状态下直接跳父节点而不是收起。
+
+最小方向：统一 disclosure 和键盘的可展开判定。可以隐藏空容器箭头，也可以允许键盘切换空容器；不在审查阶段强制选择产品行为。
+
+关闭条件：
+
+- 新建空 Folder/Message Block 的鼠标和键盘使用一致的可展开判定；
+- 添加第一个子项后，鼠标和键盘都能正常展开；
+- 空容器仍保留创建、拖放和选中等必要能力；
+- `aria-expanded` 与实际支持的展开状态一致。
 
 ## 证据边界与待核对项
 
@@ -323,6 +402,8 @@ afterOldRead: [{ id: resource-1, version: 1 }]
 ```
 
 断言通过、退出码为 0。此项补足“Markdown 字符串保留不等于渲染后链接可用”的证据缺口：合法资源 URI 确实进入按钮分支，无效 URI 进入无效引用文本分支；另一个测试样本没有输出 javascript href。它不证明按钮的浏览器事件派发、弹窗加载及所有 URL 输入的安全性，也未验证高亮视觉效果。没有新增确认缺陷。
+
+布局状态补查运行 `pnpm exec vitest run tests/unit/client/studio-layout-store.test.ts`，结果为 1 个文件、14 项通过，退出码为 0。覆盖窗口/资源布局重载、旧面板 ID 迁移、损坏持久化值降级及布局隔离。`assetPanes` 当前作为临时下钻状态由清洗逻辑回到默认值；没有正式合同要求它跨刷新持久化，因此不新增“状态丢失”问题。Node 运行时输出了 localStorage experimental warning，但未导致测试失败。
 
 ## 2026-09-22 补查：正文取消与失焦提交
 

@@ -22,6 +22,19 @@ describe('studio layout store', () => {
 
   afterEach(() => vi.unstubAllGlobals())
 
+  it('persists and rehydrates both Composer pin states', async () => {
+    const key = useStudioLayoutStore.persist.getOptions().name
+    for (const pinned of [true, false]) {
+      useStudioLayoutStore.setState({ composerPinned: pinned })
+      const saved = storedValues.get(key)!
+      expect(JSON.parse(saved).state.composerPinned).toBe(pinned)
+      useStudioLayoutStore.setState({ composerPinned: !pinned })
+      storedValues.set(key, saved)
+      await useStudioLayoutStore.persist.rehydrate()
+      expect(useStudioLayoutStore.getState().composerPinned).toBe(pinned)
+    }
+  })
+
   it('keeps the Sidebar visibility independent from routed panels', () => {
     useStudioLayoutStore.getState().toggleDock()
 
@@ -51,13 +64,13 @@ describe('studio layout store', () => {
     layout.togglePanelWindowMode()
     expect(useStudioLayoutStore.getState().panelWindowMode).toBe('immersive')
 
-    panels.togglePanel('agent')
+    panels.syncActivePanel('agent')
     expect(useStudioLayoutStore.getState().panelWindowMode).toBe('immersive')
 
-    panels.togglePanel('character')
+    panels.syncActivePanel('character')
     expect(useStudioLayoutStore.getState().panelWindowMode).toBe('immersive')
 
-    panels.togglePanel('sessions')
+    panels.syncActivePanel('sessions')
     expect(useStudioLayoutStore.getState().panelWindowMode).toBe('immersive')
 
     useStudioLayoutStore.getState().togglePanelWindowMode()
@@ -68,13 +81,13 @@ describe('studio layout store', () => {
     const writesBefore = vi.mocked(localStorage.setItem).mock.calls.length
     const store = useStudioPanelStore.getState()
 
-    store.togglePanel('character')
+    store.syncActivePanel('character')
     expect(useStudioPanelStore.getState().activePanel).toBe('character')
 
-    store.togglePanel('resource')
+    store.syncActivePanel('resource')
     expect(useStudioPanelStore.getState().activePanel).toBe('resource')
 
-    store.closePanel()
+    store.syncActivePanel(null)
     expect(useStudioPanelStore.getState().activePanel).toBeNull()
     expect(vi.mocked(localStorage.setItem).mock.calls.length).toBe(writesBefore)
   })

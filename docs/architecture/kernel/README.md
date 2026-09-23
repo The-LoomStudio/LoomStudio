@@ -63,7 +63,16 @@ createKernel(options)
        标记 inactive
 ```
 
-`start()` 与 `stop()` 当前都是幂等操作。内建 RPC 在首次启动时注册；重复启动不会重复注册相同方法。Extension 清理失败会从 `stop()` 返回错误，但 Kernel 仍在 `finally` 中收束为 inactive。
+`start()` 与 `stop()` 当前都是幂等操作。内建 RPC 在首次启动时注册；重复启动不会重复注册相同方法。
+
+### 优雅停机与资源释放顺序
+
+服务关闭遵循“先停止接纳，再等待在途业务与清理依赖”的阶段化原则：
+1. 组合根（Studio Server）标记 `closing` 并停止接收新网络连接；
+2. Kernel 发布 `system.stopping` 事件，触发在途业务与 SSE 连接的 `AbortSignal` 取消通知；
+3. 等待在途 RPC、下载流或业务 Promise 安全完成或收敛为可恢复错误；
+4. Kernel 释放所有活动 Extension Scope；Extension 清理失败会记录错误，但 Kernel 仍在 `finally` 中收束为 inactive；
+5. 在退出进程与关闭数据库前，调度清理 Secret Store 中的未完成删除与积压凭据，最后关闭 SQLite Data Engine。
 
 ## 4. RPC 注册面
 
@@ -154,7 +163,7 @@ Kernel 从 `clientId` 推导 Document actor，并忽略请求中伪造的 actor 
 - 订阅返回可 `dispose()` 的 handle；
 - `public`、`protected`、`internal` 会产生真实发现/订阅权限差异；
 - 发布时验证 owner、JSON payload、parser 和 `maxPayloadBytes`；
-- 单个订阅者同步异常或 async rejection 不会阻断其他订阅者，并写入 Diagnostics；
+- 单个订阅者同步异常或 async rejection 不会阻断其他订阅者，并写入 Diagnostics；平台诊断最多保留 1,000 条（单来源最多 100 条），基于事件与订阅稳定身份聚合统计出现次数与最新上下文；
 - `eventNames()` 与 `definitions()` 返回 Runtime Definition Registry 当前事实。
 
 `data.changed` payload 只携带 Changeset ID 与领域无关 operation summaries，不携带 Document content、Prompt、Message 或其他正文。`docs.changed` 保持原有 Document operation / summary 兼容形状。

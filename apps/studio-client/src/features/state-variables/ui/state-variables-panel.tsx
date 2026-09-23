@@ -22,6 +22,7 @@ type Props = {
 }
 
 type RuntimeScope = 'global' | 'timeline'
+type SnapshotSource = { api: Props['api']; key: string }
 
 export function StateVariablesPanel(props: Props) {
   const [globalSnapshot, setGlobalSnapshot] = useState<StateSnapshot>()
@@ -30,23 +31,29 @@ export function StateVariablesPanel(props: Props) {
   const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
   const [editedProperties, setEditedProperties] = useState<Record<string, unknown>>({})
   const [draftContextKey, setDraftContextKey] = useState('')
-  const [snapshotKey, setSnapshotKey] = useState('')
+  const [snapshotSource, setSnapshotSource] = useState<SnapshotSource>()
   const [treeExpandedIds, setTreeExpandedIds] = useState<string[]>([])
   const [expandedLongTextPaths, setExpandedLongTextPaths] = useState<Set<string>>(new Set())
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const requestIdRef = useRef(0)
+  const saveRequestRef = useRef<symbol | undefined>(undefined)
   const mountedRef = useRef(true)
-  const targetKey = `${props.timelineTarget?.timelineId ?? 'none'}:${props.timelineTarget?.branchId ?? 'none'}:${props.refreshToken ?? ''}`
-  const targetKeyRef = useRef(targetKey)
-  targetKeyRef.current = targetKey
+  const targetKey = JSON.stringify([props.timelineTarget?.timelineId, props.timelineTarget?.branchId, props.refreshToken])
+  const sourceRef = useRef<SnapshotSource>({ api: props.api, key: targetKey })
+  if (sourceRef.current.api !== props.api || sourceRef.current.key !== targetKey) {
+    sourceRef.current = { api: props.api, key: targetKey }
+  }
+  const source = sourceRef.current
 
-  const currentSnapshot = snapshotKey === targetKey
+  const currentSnapshot = snapshotSource === source
     ? (scope === 'timeline' ? timelineSnapshot : globalSnapshot)
     : undefined
   const editContextKey = currentSnapshot
     ? `${targetKey}:${scope}:${currentSnapshot.revisionId}`
     : `${targetKey}:${scope}:loading`
+  const editContextRef = useRef(editContextKey)
+  editContextRef.current = editContextKey
   const treeNodes = useMemo(
     () => stateSnapshotToTreeNodes(currentSnapshot?.value),
     [currentSnapshot?.value],
@@ -66,9 +73,11 @@ export function StateVariablesPanel(props: Props) {
   }, [props.timelineTarget])
 
   useEffect(() => {
+    saveRequestRef.current = undefined
+    setSaving(false)
     setDraftContextKey(editContextKey)
     setEditedProperties({})
-  }, [editContextKey])
+  }, [source, editContextKey])
 
   useEffect(() => {
     if (treeNodes.length > 0 && treeExpandedIds.length === 0) {
@@ -78,52 +87,64 @@ export function StateVariablesPanel(props: Props) {
 
   async function refresh() {
     const requestId = ++requestIdRef.current
-    const requestKey = targetKeyRef.current
     const target = props.timelineTarget
     try {
       const [globalResult, timelineResult] = await Promise.all([
         props.api.get({ scope: 'global' }),
         target ? props.api.get(target) : Promise.resolve(undefined),
       ])
-      if (!mountedRef.current || requestId !== requestIdRef.current || targetKeyRef.current !== requestKey) return
+      if (!mountedRef.current || requestId !== requestIdRef.current || sourceRef.current !== source) return
       setGlobalSnapshot(globalResult.snapshot)
       setTimelineSnapshot(timelineResult?.snapshot)
-      setSnapshotKey(requestKey)
+      setSnapshotSource(source)
       setError('')
     } catch (cause) {
-      if (mountedRef.current && requestId === requestIdRef.current && targetKeyRef.current === requestKey) {
+      if (mountedRef.current && requestId === requestIdRef.current && sourceRef.current === source) {
         setError(readError(cause))
       }
     }
   }
 
   useEffect(() => {
-    setSnapshotKey('')
+    setSnapshotSource(undefined)
     setGlobalSnapshot(undefined)
     setTimelineSnapshot(undefined)
     setDraftContextKey('')
     setEditedProperties({})
+    setError('')
     void refresh()
-  }, [targetKey])
+  }, [source])
 
   async function saveAllDirtyProperties() {
     const snapshot = currentSnapshot
     const saveContextKey = draftContextKey
-    const saveTargetKey = targetKeyRef.current
     const changes = editedProperties as Record<string, ClientJsonValue>
-    if (!snapshot || dirtyCount === 0 || saving) return
+    if (!snapshot || dirtyCount === 0 || saveRequestRef.current || sourceRef.current !== source
+      || saveContextKey !== editContextRef.current) return
+    const expectedTarget: StateTarget | undefined = scope === 'global' ? { scope: 'global' } : props.timelineTarget
+    if (!expectedTarget || snapshot.target.scope !== expectedTarget.scope
+      || (snapshot.target.scope === 'timeline' && expectedTarget.scope === 'timeline'
+        && (snapshot.target.timelineId !== expectedTarget.timelineId || snapshot.target.branchId !== expectedTarget.branchId))) {
+      setError(props.t('stateVariables.targetMismatch'))
+      return
+    }
+    const request = Symbol()
+    saveRequestRef.current = request
     setSaving(true)
     try {
       await props.api.apply(createBatchSetStatePropertiesInput(snapshot.target, snapshot.revisionId, changes))
-      if (!mountedRef.current || targetKeyRef.current !== saveTargetKey || draftContextKey !== saveContextKey) return
+      if (!mountedRef.current || sourceRef.current !== source || saveRequestRef.current !== request || editContextRef.current !== saveContextKey) return
       setEditedProperties({})
       toast.success(`${props.t('stateVariables.savedProperties')} ${Object.keys(changes).length}`)
       await refresh()
-      if (mountedRef.current && targetKeyRef.current === saveTargetKey) void props.onStateMutated?.()
+      if (mountedRef.current && sourceRef.current === source) void props.onStateMutated?.()
     } catch (cause) {
-      if (mountedRef.current && targetKeyRef.current === saveTargetKey) setError(readError(cause))
+      if (mountedRef.current && sourceRef.current === source && saveRequestRef.current === request) setError(readError(cause))
     } finally {
-      if (mountedRef.current && targetKeyRef.current === saveTargetKey) setSaving(false)
+      if (mountedRef.current && sourceRef.current === source && saveRequestRef.current === request) {
+        saveRequestRef.current = undefined
+        setSaving(false)
+      }
     }
   }
 
@@ -143,6 +164,7 @@ export function StateVariablesPanel(props: Props) {
   }
 
   function setProperty(path: string, value: unknown) {
+    if (saveRequestRef.current || sourceRef.current !== source || editContextRef.current !== editContextKey) return
     setEditedProperties(previous => ({ ...previous, [path]: value }))
   }
 
@@ -310,13 +332,15 @@ export function StateVariablesPanel(props: Props) {
     <section className={styles.panel} data-loom-component="state-variables-panel">
       <header className={styles.intro}>
         <h2>{props.t('stateVariables.title')}</h2>
-        <button aria-label={props.t('stateVariables.refresh')} className={styles.iconButton} type="button" onClick={() => void refresh()}>
+        <button aria-label={props.t('stateVariables.refresh')} className={styles.iconButton} disabled={saving} type="button" onClick={() => void refresh()}>
           <RefreshCw aria-hidden="true" size={13} />
           <span>{props.t('stateVariables.refresh')}</span>
         </button>
       </header>
-      {error ? <div className={styles.errorBanner}>{error}</div> : null}
+      {error ? <div className={styles.errorBanner} role="alert">{error}</div> : null}
       <MasterDetailWorkbench
+        backLabel={props.t('stateAuthoring.backToList')}
+        resizeLabel={props.t('stateVariables.resizeSidebar')}
         className={styles.panelBody}
         mobilePane={mobilePane}
         onMobilePaneChange={setMobilePane}
@@ -358,7 +382,7 @@ export function StateVariablesPanel(props: Props) {
             <div className={styles.headerTitle}>
               <Layers aria-hidden="true" size={15} />
               <h3>{scope === 'timeline' ? props.t('stateVariables.timelineRuntime') : props.t('stateVariables.globalRuntime')}</h3>
-              <span className={styles.badge}>rev: {(currentSnapshot?.revisionId ?? '').slice(0, 8) || '-'}</span>
+              <span className={styles.badge}>{props.t('stateVariables.revision')}: {(currentSnapshot?.revisionId ?? '').slice(0, 8) || '-'}</span>
             </div>
             <div className={styles.headerActions}>
               {props.onOpenSource && scope === 'timeline' && props.canOpenTimelineSource ? (
@@ -367,13 +391,13 @@ export function StateVariablesPanel(props: Props) {
                   <span>{props.t('stateVariables.openSource')}</span>
                 </button>
               ) : null}
-              <button className={styles.primaryActionBtn} disabled={dirtyCount === 0 || saving} type="button" onClick={() => void saveAllDirtyProperties()}>
+              <button className={styles.primaryActionBtn} disabled={!currentSnapshot || draftContextKey !== editContextKey || dirtyCount === 0 || saving} type="button" onClick={() => void saveAllDirtyProperties()}>
                 <Save aria-hidden="true" size={13} />
                 <span>{props.t('stateVariables.saveChanges')}{saving ? '…' : dirtyCount > 0 ? ` (${dirtyCount})` : ''}</span>
               </button>
             </div>
           </header>
-          <div className={styles.treeContainer}>
+          <div className={styles.treeContainer} inert={saving} aria-busy={saving}>
             {scope === 'timeline' && props.timelineTarget ? <div className={styles.scopeBanner}>{props.timelineTarget.timelineId} · {props.timelineTarget.branchId}</div> : null}
             {treeNodes.length === 0 ? (
               <div className={styles.emptyState}><p>{props.t('stateVariables.emptyRuntime')}</p></div>

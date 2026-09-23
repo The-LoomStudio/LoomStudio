@@ -9,7 +9,7 @@ export function readLogReferences(record: LogRecord): { uri: string; type: Entit
   ]
   for (const [key, type] of fields) {
     const id = record.data?.[key]
-    if (typeof id === 'string' && id && !/[\u0000-\u001f\u007f]/.test(id) && id.length < 1024)
+    if (typeof id === 'string' && id && !Array.from(id).some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) && id.length < 1024)
       refs.push({ uri: formatEntityReference({ kind: 'entity', type, id }), type })
   }
   if (record.extension) refs.push({ uri: formatEntityReference({ kind: 'entity', type: 'extension', id: record.extension.packageId }), type: 'extension' })

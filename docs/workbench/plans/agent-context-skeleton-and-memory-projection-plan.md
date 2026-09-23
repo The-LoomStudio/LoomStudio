@@ -11,6 +11,7 @@
 > **职责拆分**：2026-09-21，记忆策略移至[剧情记忆与统一刷新策略计划](./narrative-memory-and-refresh-policy-plan.md)。本 Plan 保留投影、Session 生命周期和统一刷新执行；后述“两种记忆”指内容职责，不再指两套独立自动总结触发器。保留原文件名以避免破坏已有链接。
 > **投影责任修正**：2026-09-21，确认当前不为 Agent Session 保存 Narrative 投影快照；Memory 指针与消费者采样参数由 Memory / Sampling 侧管理，PromptBuild 只消费贡献。后续三个生命周期问题见第 15 节。
 > **采样传参已确认**：采样参数与请求时机归消费者自己的生命周期，直接请求 Narrative 模块；Anchor 只接收结果并定位，不承载采样参数。具体分工和验收例见 6.6；本轮仅记录设计，不启动代码实施。
+> **CodeAct 采样切片**：2026-09-22，已实现只读 Narrative 采样器与 CodeAct `readNarrative` 入口，支持固定分支的最近 N 个节点、节点区间、读取 Head、来源节点和预算续读信息。默认 Prompt 的有效 Head、Memory 贡献、正文加工和完整生命周期仍未完成。
 
 ## 1. 背景
 
@@ -281,13 +282,14 @@ Agent 经 CodeAct 调用 --+     |
 
 | 能力 | 已有基础与限制 | 来源 |
 | --- | --- | --- |
-| 分支读取 | `getPage` 接收分支、节点游标与数量，沿父链读取并校验游标归属；没有完整起止范围、缓冲边界和楼层定位合同 | [Narrative Store](../../../packages/application-data/src/narrative/store.ts) |
+| 分支读取 | `getPage` 接收分支、节点游标与数量，沿父链读取并校验游标归属；共用采样器已在其上实现固定终点、最近 N 个节点和 `afterNodeId`～`throughNodeId` 区间，仍没有 Memory 默认有效 Head 合同 | [Narrative Store](../../../packages/application-data/src/narrative/store.ts)、[Narrative Sampling](../../../packages/application-runtime/src/narrative/sampling.ts) |
 | Agent 输入准备 | `prepareAgentTurn` 固定读取最近 100 个 Narrative 节点；未接收本次采样范围 | [Agents Runtime](../../../packages/application-runtime/src/runtime/agents-runtime.ts) |
 | 历史投影入口 | `readRuntimeHistoryEntries` 收集分支全部分页；`projectHistory` 未提供范围参数 | [Transforms Runtime](../../../packages/application-runtime/src/runtime/transforms-runtime.ts) |
 | 正文加工 | `projectHistoryEntries` 已提供正则、phase、规则顺序、来源和变换记录；depth 相对传入窗口计算，不是绝对楼层 | [History Text](../../../packages/application-runtime/src/transforms/history-text.ts) |
 | 消费者耦合 | Narrative 的 prompt 向规则解析要求 `consumerAgentSessionId`，借 Session 解析 Profile / Preset；单次调用不能自然复用这条完整入口 | [规则解析](../../../packages/application-runtime/src/runtime/transforms-runtime.ts) |
 | Anchor 注入 | `composeAgentTurnPrompt` 将加工后的 Narrative 转为 Contribution，挂到 `@chat.narrative` | [Agent Turn](../../../packages/application-runtime/src/agents/agent-turn.ts) |
-| 单次调用 | 扩展已有受能力声明约束的 `ctx.ai.invoke`，不要求创建 Agent Session；不等同于已经支持无 Session 的完整 Preset 构建 | [Extension Host](../../../packages/extension-sdk/extension-host/src/instance.ts) |
+| CodeAct 主动读取 | 当前 Agent Session 的 CodeAct Scope 暴露 `ctx["readNarrative"]`，绑定当前 Timeline / Branch，只读返回正文节点和范围元数据；未接入摘要 Memory、历史权限分层和正文加工 | [CodeAct Context](../../../packages/application-runtime/src/agents/codeact/context.ts)、[Narrative Sampling](../../../packages/application-runtime/src/narrative/sampling.ts) |
+| 单次调用 | 扩展已有受能力声明约束的 `ctx.ai.invoke`，不要求创建 Agent Session；共用采样器可独立使用，但完整无 Session Prompt 加工合同仍未完成 | [Extension Host](../../../packages/extension-sdk/extension-host/src/instance.ts) |
 | Token 基础 | Gateway 返回 Provider usage；本轮检查的构建与历史加工路径未发现可复用的发送前模型 Token 估算能力，文本预算目前为字符数 / 条目数 | [Gateway](../../../packages/ai-gateway/src/gateway.ts)、[Token 讨论](../discussion/application/prompt/token-estimation-and-audit-v0.md) |
 
 上述结论来自静态源码读取，不是运行、顺序正确性或性能验收。
@@ -343,7 +345,7 @@ Agent 经 CodeAct 调用 --+     |
 
 Narrative 使用普通 Anchor 定位，不因采样引入带参数的特殊锚点类型。默认正文和专项采样可以安排在不同位置，但具体新增 Anchor ID 尚未定稿，也不要求两个位置同时启用。Narrative 的来源、范围与加工信息仍由投影结果保留；Session 的角色和工具消息结构另由消息投影处理，不把两类载荷强行统一成纯文本。
 
-本次不新增公共 Schema、通用策略引擎或插件指针存储。后续最小验证应覆盖：生图任务最近 3 个节点与 Memory 指针区间均可直接请求 Narrative 模块；请求不依赖 Anchor 参数；同一请求经被动注入和主动读取获得一致的节点范围、顺序与加工结果；读取不推进记忆指针或默认有效 Head。
+第一阶段已实现只读采样器和 CodeAct 接入口；仍不新增公共策略引擎或插件指针存储。当前实现的请求不依赖 Anchor 参数，读取不推进记忆指针或默认有效 Head。后续最小验证还应覆盖：生图任务最近 3 个节点与 Memory 指针区间均可直接请求 Narrative 模块；同一请求经被动注入和主动读取获得一致的节点范围、顺序与加工结果；摘要与 Raw 的默认组合不越过权限边界。
 
 ## 7. 非目标
 
@@ -373,6 +375,7 @@ Narrative 使用普通 Anchor 定位，不因采样引入带参数的特殊锚�
    - 解除 prompt 向加工对持久 Agent Session 的不必要依赖；
    - 服务被动 Prompt 输入和 CodeAct 主动读取，不重复实现采样器；
    - 确认分支、节点边界、顺序、加工规则与预算报告。
+   - **已完成首个子切片**：`createNarrativeSampler` 支持固定分支终点、tail / range 选择、字符与节点预算、`nextBeforeNodeId` 续读信息；绑定 Timeline 的 CodeAct Scope 提供只读 `ctx["readNarrative"]`。尚未把该采样结果接入默认 Prompt 的 `@chat.narrative`，也尚未接入 Memory 摘要和历史正文加工规则。
 
 3. **统一整理与记事板携带**
    - 接收有效策略，在安全边界完成工作交接；Memory 侧推进指针后，下一次 PromptBuild 获取新的摘要与 Raw；

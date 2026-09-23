@@ -8,6 +8,7 @@ import {
   type SandboxMessage,
   type SandboxReply,
 } from './protocol.js'
+import type { JsonValue } from '@loom-studio/shared'
 
 export type CodeActHostControl = {
   waitForUser<T>(operation: () => Promise<T>): Promise<T>
@@ -17,7 +18,7 @@ export type CodeActHostMethod = (
   args: unknown[],
   signal: AbortSignal,
   control?: CodeActHostControl,
-) => string | Promise<string>
+) => JsonValue | Promise<JsonValue>
 
 export async function runCodeActSandbox(input: {
   source: string

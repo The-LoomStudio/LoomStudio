@@ -1,7 +1,7 @@
 import type { PromptResourceMutation, PromptResourceMutationResult } from '@loom-studio/application-data'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
-import { listDocuments, readDocument, writeDocument } from '../foundation/document-store.js'
+import { listDocuments, writeDocument } from '../foundation/document-store.js'
 import {
   fromStoredResource,
   listMappedResources,
@@ -16,8 +16,6 @@ import { validateTextTransformRuleDraft, type TextTransformRuleDraft } from '../
 import { revertApplicationStateChangeset } from '../state/state.js'
 import { executeDocumentMutation } from '../foundation/mutation.js'
 import type {
-  AgentProfileContent,
-  CardSourceContent,
   CreatePromptResourceAssetInput,
   CreatePromptResourceInput,
   CreatePromptResourceResult,
@@ -150,65 +148,30 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
 
     deletePromptResource: async (input: DeletePromptResourceInput, requestContext?: RuntimeRequestContext): Promise<DeletePromptResourceResult> => {
       const resource = await readMappedResource(ctx.promptResources, input.resourceId)
-      const referencedProfiles = resource.resourceKind === 'preset'
-        ? (await listDocuments<AgentProfileContent>(ctx.documents, applicationDocumentTypes.agentProfile))
-          .filter(profile => profile.content.presetId === input.resourceId)
-        : []
-      const timelineReferences = await findTimelinePromptResourceReferences(ctx, input.resourceId)
-      const cards = await listDocuments<CardSourceContent>(ctx.documents, applicationDocumentTypes.cardSource)
-      const referencedCards = cards.filter(card => card.content.promptResourceIds?.includes(input.resourceId))
+      if (resource.resourceKind === 'setting') {
+        const result = await ctx.promptResources.deleteResource({
+          ...promptResourceWriteContext(requestContext),
+          reason: 'application.deletePromptResource',
+          resourceId: resource.id,
+          expectedVersion: resource.version,
+        })
+        return {
+          deleted: true as const,
+          detachedReferences: { presets: 0, cards: 0, timelines: 0 },
+          mutation: { changesetId: result.commit.changesetId },
+        }
+      }
       const ownedRules = resource.resourceKind === 'preset'
         ? (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule))
           .filter(rule => rule.content.owner.kind === 'preset' && rule.content.owner.presetId === input.resourceId)
         : []
-      const settingMounts = resource.resourceKind === 'setting'
-        ? await ctx.promptResources.listSettingMounts({ settingResourceId: input.resourceId })
-        : []
-      const presetCount = new Set(settingMounts
-        .filter(mount => mount.source.kind === 'preset')
-        .map(mount => mount.source.id))
-        .size
       const documentParticipant = requireDocumentParticipant(ctx)
       const transaction = await ctx.dataEngine.transact({
         ...promptResourceWriteContext(requestContext),
         reason: 'application.deletePromptResource',
       }, async dataTx => {
         const resourceTx = ctx.promptResources.transaction(dataTx)
-        const narrativeTx = ctx.narratives?.transaction(dataTx)
-        for (const timeline of timelineReferences) {
-          narrativeTx?.updatePromptResources({
-            timelineId: timeline.id,
-            promptResourceIds: timeline.promptResourceIds.filter(id => id !== input.resourceId),
-            expectedPromptResourceIds: timeline.promptResourceIds,
-          })
-        }
         return await documentParticipant.participateTransaction(dataTx, async documents => {
-          for (const card of referencedCards) {
-            const currentCard = await readDocument<CardSourceContent>(documents, card.id, applicationDocumentTypes.cardSource)
-            await writeDocument<CardSourceContent>(documents, {
-              id: currentCard.id,
-              type: applicationDocumentTypes.cardSource,
-              content: {
-                ...currentCard.content,
-                promptResourceIds: currentCard.content.promptResourceIds?.filter(id => id !== input.resourceId),
-                updatedAt: ctx.now(),
-              },
-              expectedVersion: currentCard.version,
-            })
-          }
-          for (const profile of referencedProfiles) {
-            const detachedContent = { ...profile.content }
-            delete detachedContent.presetId
-            await writeDocument<AgentProfileContent>(documents, {
-              id: profile.id,
-              type: applicationDocumentTypes.agentProfile,
-              content: {
-                ...detachedContent,
-                updatedAt: ctx.now(),
-              },
-              expectedVersion: profile.version,
-            })
-          }
           for (const rule of ownedRules) await documents.delete({ id: rule.id, expectedVersion: rule.version })
           return { deleted: resourceTx.deleteResource({ resourceId: input.resourceId, expectedVersion: resource.version }) }
         }, { allowEmpty: true })
@@ -216,10 +179,10 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
       return {
         deleted: true as const,
         detachedReferences: {
-          presets: presetCount,
-          cards: referencedCards.length,
-          timelines: timelineReferences.length,
-          ...(referencedProfiles.length > 0 ? { agentProfiles: referencedProfiles.length } : {}),
+          presets: 0,
+          cards: 0,
+          timelines: 0,
+          agentProfiles: 0,
         },
         mutation: { changesetId: transaction.commit.changesetId },
       }
@@ -346,11 +309,11 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
     },
 
     updatePromptResourceAsset: async (input: UpdatePromptResourceAssetInput, requestContext?: RuntimeRequestContext): Promise<UpdatePromptResourceResult> => {
-      return updatePromptResourceAssets({ resourceId: input.resourceId, updates: [{ ...input, assetId: input.assetId }], requestContext, ctx })
+      return updatePromptResourceAssets({ resourceId: input.resourceId, expectedVersion: input.expectedVersion, updates: [{ ...input, assetId: input.assetId }], requestContext, ctx })
     },
 
     updatePromptResourceAssets: async (input: UpdatePromptResourceAssetsInput, requestContext?: RuntimeRequestContext): Promise<UpdatePromptResourceResult> => {
-      return updatePromptResourceAssets({ resourceId: input.resourceId, updates: input.updates, requestContext, ctx })
+      return updatePromptResourceAssets({ resourceId: input.resourceId, expectedVersion: input.expectedVersion, updates: input.updates, requestContext, ctx })
     },
 
     movePromptResourceAsset: async (input: MovePromptResourceAssetInput, requestContext?: RuntimeRequestContext): Promise<UpdatePromptResourceResult> => {
@@ -712,6 +675,7 @@ async function updatePromptResourceAssets(input: {
   ctx: Pick<ApplicationRuntimeContext, 'promptResources'>
   requestContext?: RuntimeRequestContext
   resourceId: string
+  expectedVersion?: number
   updates: Array<{
     assetId: string
     body?: string
@@ -746,28 +710,11 @@ async function updatePromptResourceAssets(input: {
     ...promptResourceWriteContext(input.requestContext),
     reason: 'application.updatePromptResourceAssets',
     resourceId: input.resourceId,
-    expectedVersion: current.version,
+    expectedVersion: input.expectedVersion ?? current.version,
     mutations,
   })
   return {
     resource: fromStoredResource(result.resource),
     mutation: { changesetId: result.commit.changesetId },
   }
-}
-
-export async function findTimelinePromptResourceReferences(
-  ctx: Pick<ApplicationRuntimeContext, 'narratives'>,
-  resourceId: string,
-): Promise<Array<{ id: string; promptResourceIds: string[] }>> {
-  if (!ctx.narratives) return []
-  const references: Array<{ id: string; promptResourceIds: string[] }> = []
-  let cursor: string | undefined
-  do {
-    const page = await ctx.narratives.listTimelines({ cursor, limit: 100 })
-    references.push(...page.timelines
-      .filter(item => item.promptResourceIds.includes(resourceId))
-      .map(item => ({ id: item.id, promptResourceIds: item.promptResourceIds })))
-    cursor = page.nextCursor
-  } while (cursor)
-  return references
 }

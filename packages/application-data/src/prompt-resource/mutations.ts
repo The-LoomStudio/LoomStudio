@@ -35,6 +35,7 @@ import {
   validateCategory,
   validateId,
   validateJsonObject,
+  validateJsonValue,
   validateNodeDraft,
   validateOrderIndex,
   validateResourceKind,
@@ -137,7 +138,7 @@ export function applyMutateResource(
       if (patch.label !== undefined && (typeof patch.label !== 'string' || !patch.label.trim())) throw new PromptResourceStoreError('prompt_resource.label_invalid', 'Prompt resource node label must be a non-empty string')
       validateCategory(patch.category)
       if (patch.extra !== undefined && patch.extra !== null) validateJsonObject(patch.extra, 'extra')
-      if (patch.capabilities !== undefined && patch.capabilities !== null) stringifyJson(patch.capabilities, 'capabilities')
+      if (patch.capabilities !== undefined && patch.capabilities !== null) validateJsonValue(patch.capabilities, 'capabilities')
       const candidate = applyNodePatch(node, patch)
       if (!sameNodeValue(node, candidate)) after.set(node.id, { ...candidate, updatedAt: now() })
     } else if (mutation.kind === 'node.move') {
@@ -204,10 +205,7 @@ export function applyDeleteResource(
   if (input.expectedVersion !== undefined) assertExpectedVersion(row, input.expectedVersion)
   const timestamp = now()
   const version = row.version + 1
-  if (row.resource_kind === 'setting') {
-    recordDeletedMountOperations(database, tx, 'setting_resource_id = ?', input.resourceId)
-    database.prepare('DELETE FROM global_setting_mounts WHERE setting_resource_id = ?').run(input.resourceId)
-  } else if (row.resource_kind === 'preset') {
+  if (row.resource_kind === 'preset') {
     recordDeletedMountOperations(database, tx, 'source_kind = ? AND source_id = ?', 'preset', input.resourceId)
     database.prepare('DELETE FROM global_setting_mounts WHERE source_kind = ? AND source_id = ?').run('preset', input.resourceId)
     recordDeletedPresetToolMountOperations(database, tx, input.resourceId)
@@ -426,7 +424,7 @@ export function insertNode(database: DatabaseSync, node: StoredNode): void {
   `).run(
     node.id, node.resourceId, node.parentId ?? null, node.orderIndex, node.kind, node.category ?? null, node.label,
     node.meta ?? null, node.enabled === undefined ? null : (node.enabled ? 1 : 0), node.body ?? null,
-    node.capabilities ? stringifyJson(node.capabilities, 'capabilities') : null, stringifyJson(node.extra ?? {}, 'extra'), node.createdAt, node.updatedAt,
+    node.capabilities === undefined ? null : stringifyJson(node.capabilities, 'capabilities'), stringifyJson(node.extra ?? {}, 'extra'), node.createdAt, node.updatedAt,
   )
 }
 
@@ -439,7 +437,7 @@ export function updateNode(database: DatabaseSync, node: StoredNode): void {
   `).run(
     node.parentId ?? null, node.orderIndex, node.kind, node.category ?? null, node.label, node.meta ?? null,
     node.enabled === undefined ? null : (node.enabled ? 1 : 0), node.body ?? null,
-    node.capabilities ? stringifyJson(node.capabilities, 'capabilities') : null, stringifyJson(node.extra ?? {}, 'extra'), node.updatedAt,
+    node.capabilities === undefined ? null : stringifyJson(node.capabilities, 'capabilities'), stringifyJson(node.extra ?? {}, 'extra'), node.updatedAt,
     node.id, node.resourceId,
   )
 }

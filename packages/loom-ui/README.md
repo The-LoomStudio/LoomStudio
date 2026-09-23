@@ -8,9 +8,9 @@
 
 为了避免在前端各个 Widget 与 Feature 中出现重复实现、视觉不统一的按钮、输入框、弹出层或内联 SVG 图标，本包建立了全仓共享的设计系统基础：
 - **通用 UI 原语**：
-  - 表单控件：`Button`、`IconButton`、`TextInput`、`Field`、`Checkbox`、`SearchField`、`Toggle`；
+  - 表单控件：`Button`、`IconButton`、`TextInput`、`Field`、`Checkbox`、`SearchField`、`Toggle`、`LongTextSurface`；
   - 结构与反馈原语：`Dialog`、`SkeletonText`、`StatusIndicator`，以及基于 Radix primitives 的上下文菜单与下拉菜单；
-- **图标边界**：组件内部使用 Lucide；本包当前不重导出整套图标，也不承诺公共图标子路径；
+- **图标原语（`src/icon`）**：合并了原 `loom-icons` 基础图标原语（如应用 Logo、工作区图标等），组件内部通用操作图标结合 Lucide；
 - **设计 Token 驱动**：组件样式严格消费全局 `--loom-*` CSS 变量（颜色、圆角、阴影、层级）。
 
 ---
@@ -31,7 +31,7 @@
 
 Package 主入口为 [`src/index.ts`](./src/index.ts)：
 
-- 基础组件导出：`Button`、`IconButton`、`TextInput`、`Checkbox`、`Field`、`SearchField`、`Toggle`、`Dialog`、Menu、Skeleton 与状态指示器；
+- 基础组件导出：`Button`、`IconButton`、`TextInput`、`Checkbox`、`Field`、`SearchField`、`Toggle`、`LongTextSurface`、`Dialog`、Menu、Skeleton、状态指示器及基础图标原语；
 - 样式入口：`@loom-studio/ui/styles.css`；
 - 核心类型：各组件对应的 `*Props` 类型契约。
 

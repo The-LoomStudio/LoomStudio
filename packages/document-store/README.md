@@ -35,6 +35,10 @@ Package 主入口为 [`src/index.ts`](./src/index.ts)：
 - `createDocumentDataCommitSource(documents)`：连接 Document 变更与 Data Engine 提交事件源的适配器；
 - 核心类型：`DocumentStore`、`DocumentRecord`、`RevisionRecord`、`ChangesetRecord`、`DocumentStoreError`。
 
+`list()` 按首次插入序号分页，更新、tombstone 和恢复保留行身份；SQLite 使用 UPSERT 而非 REPLACE，内存实现保留 Map 插入位置。默认页长 100，允许 1～1000 的安全整数。cursor 是绑定 type、ownerExtensionId、includeTombstone 的不透明边界，调用者只回传，不解析为 OFFSET；无效 cursor 或改变筛选会得到 `document.input_invalid`。
+
+这是动态集合遍历，不是跨请求快照：后插入项可在后续页出现，已越过边界的条目即使恢复或改为匹配筛选也不会重新返回。需要一致集合的导出、初始化与破坏性操作必须保留其事务/版本保护。游标不承诺跨数据库重建、离线 VACUUM 等维护操作继续有效。
+
 ---
 
 ## 构建与验证

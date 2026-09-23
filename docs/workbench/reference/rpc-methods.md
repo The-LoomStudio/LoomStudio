@@ -87,6 +87,9 @@ Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本页列出�
 - **`application.createProviderProfile`** / **`getProviderProfile`** / **`listProviderProfiles`** / **`updateProviderProfile`** / **`deleteProviderProfile`**
 - **`application.replaceProviderCredential`**: 整体替换 Provider 的受控凭据；响应不返回明文或 `secretRef`。
 - **`application.pingProviderModel`**: 使用 `providerProfileId + modelId` 测试已启用模型。
+- **`application.deleteProviderProfile`**: 不因 Agent/Capability Profile 引用而拒绝，不自动解绑或切换引用者；仍删除受控凭据，清理未完成由既有状态/诊断表达。
+- **`application.getAiCapabilityProfile`** / **`listAiCapabilityProfiles`**: 缺失 Provider 账号、扩展或 Capability 时返回 `available: false` 与 `unavailableReason`，保留原引用和配置；完全缺少 Provider 记录时 `providerExtensionId` 可省略，不伪造默认值。实际 `ai.invoke` 仍因依赖缺失失败。
+- **`application.updateAiCapabilityProfile`**: 可显式传入 `providerProfileId` 重新绑定；校验新目标提供原 Capability 且接受当前或传入的 `config`。失败不提交，成功保留 Profile 身份；不会按同名账号自动匹配。
 
 ### Card 与导入导出
 - **`application.createCard`** / **`getCard`** / **`listCards`** / **`updateCard`**
@@ -115,10 +118,13 @@ Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本页列出�
 - **`application.createPromptResource`** / **`duplicatePromptResource`**: 创建空资源或复制现有资源；复制会重建全部内部节点 ID。
 - **`application.listSettingMounts`**: 按可选 `source` 查询 Setting Mount；当前产品入口使用 `{ kind: 'manual', id?: 'global' }`。`{ kind: 'preset', id: string }` 只保留旧数据查询兼容，不参与当前 PromptBuild。
 - **`application.replaceSettingMounts`**: 用完整有序 `settingResourceIds` 替换指定来源的 Setting Mount；引用目标必须全部是 Setting。Studio Client 只写 `manual/global` 来源。
-- **`application.deletePromptResource`**: 删除 Resource 并清理其关联引用；仍被 Agent Profile 使用的 Preset 会阻止删除。当前不按官方来源一律拒绝，具体引用与事务边界以 [Prompt Runtime](../../../packages/application-runtime/src/runtime/prompt-runtime.ts) 为准。
+- **`application.deletePromptResource`**: 墓碑化 Resource，保留外部 Card、Timeline、Agent Profile 及 Setting 挂载中的引用，不因被引用而阻止删除，解绑计数为零。删除 Preset 仍清理其自身拥有的挂载和 Text Transform Rule；具体事务边界以 [Prompt Runtime](../../../packages/application-runtime/src/runtime/prompt-runtime.ts) 为准。
 - **`application.importPromptResource`** / **`exportPromptResource`**: 导入、导出独立 `loom.promptResource` Artifact。
 - **`application.getPromptResource`**: 按 `resourceId` 读取一个 Prompt Resource。
 - **`application.createPromptResourceAsset`** / **`updatePromptResourceAsset`** / **`updatePromptResourceAssets`** / **`movePromptResourceAsset`** / **`deletePromptResourceAsset`**: 只修改指定 Prompt Resource；跨 Resource move / batch update 当前明确拒绝。
+  两个 update 方法接收可选 `expectedVersion`，表示调用方读取资源时的版本；传入后由 Store 在写入时原子校验，过期版本返回 `prompt_resource.conflict`，非正整数返回 `prompt_resource.expected_version_invalid`。未传入的现有调用仍使用服务端本次读取的版本，只保护服务端读写窗口，不提供客户端编辑基线保护。
+
+- **`application.editNarrativeNode`**：接收 `timelineId`、`branchId`、`nodeId`、`expectedHeadNodeId`、`expectedRaw`、`raw`。在指定分支中持久化正文修改，不更改其他分支、后续正文或 State；返回 `timeline`、`branch`、`replacements: [{ previousNodeId, node }]` 与 mutation。新路径节点使用新 ID，客户端按映射更新已加载消息。Head 或原文不匹配返回 `narrative.head_conflict` / `narrative.body_conflict`，目标不在分支路径则返回 `narrative.node_not_in_branch`。
 
 ## 3. Media Asset HTTP 数据面
 

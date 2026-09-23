@@ -444,29 +444,8 @@
   font-size: var(--loom-font-size-1);
 }
 
-.dialogBackdrop {
-  position: absolute;
-  z-index: 50;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 16px;
-  background: rgb(11 11 18 / 44%);
-}
-
 .groupDialog {
   width: min(32rem, calc(100% - 24px));
-  max-height: min(76%, 32rem);
-  display: grid;
-  gap: 10px;
-  overflow: auto;
-  border: 0;
-  border-radius: var(--loom-radius-dialog);
-  padding: 12px;
-  color: var(--loom-color-text);
-  background: var(--loom-color-surface-raised);
-  box-shadow: 0 16px 40px rgb(0 0 0 / 34%);
-  animation: sheet-enter 160ms ease-out both;
 }
 
 .deletePlayDataOption {
@@ -480,19 +459,12 @@
   margin-top: 2px;
 }
 
-.groupDialog > header,
 .groupRowWrap,
 .groupRow,
 .groupAssign,
 .groupForm {
   display: flex;
   align-items: center;
-}
-
-.groupDialog > header {
-  justify-content: space-between;
-  color: var(--loom-color-text-muted);
-  font-size: var(--loom-font-size-2);
 }
 
 .groupList {
@@ -564,11 +536,6 @@
   min-height: 28px;
   padding: 3px 2px;
   font-size: var(--loom-font-size-2);
-}
-
-@keyframes sheet-enter {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
 }
 
 .profileHero {
@@ -1187,8 +1154,7 @@
 
   .galleryEntering,
   .profileEntering,
-  .profileLeaving,
-  .groupDialog { animation: none; }
+  .profileLeaving { animation: none; }
 }
 
 @container studio-panel (max-width: 360px) {

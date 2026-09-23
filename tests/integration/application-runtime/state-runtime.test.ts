@@ -17,6 +17,24 @@ function createTestRuntime() {
 }
 
 describe('application state runtime', () => {
+  it('rejects non-finite set operations without changing the committed snapshot', async () => {
+    const { engine, runtime } = createTestRuntime()
+    try {
+      await runtime.initialize()
+      const before = await runtime.getStateSnapshot({ target: { scope: 'global' } })
+      for (const value of [NaN, Infinity, -Infinity]) {
+        await expect(runtime.applyStateMutation({
+          target: { scope: 'global' },
+          expectedRevisionId: before.snapshot.revisionId,
+          operations: [{ op: 'set', path: '/external', value: { nested: [value] } }],
+        })).rejects.toMatchObject({ code: 'state.snapshot_invalid' })
+        expect(await runtime.getStateSnapshot({ target: { scope: 'global' } })).toEqual(before)
+      }
+    } finally {
+      await engine.close()
+    }
+  })
+
   it('reverts a mixed Global Definition default Changeset atomically', async () => {
     const { engine, runtime } = createTestRuntime()
     await runtime.initialize()

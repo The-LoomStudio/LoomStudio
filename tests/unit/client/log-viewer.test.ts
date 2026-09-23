@@ -73,6 +73,17 @@ describe('log viewer model', () => {
     expect(filterLogRecords(input, { query: '', level: 'all', technical: true })).toEqual(input)
     expect(logSource(input[1]!)).toBe('RPC')
   })
+  it('preserves reference ID control-character and Unicode boundaries', () => {
+    const references = (cardId: string) => readLogReferences({ ...records[0]!, data: { cardId } })
+    for (const code of [...Array.from({ length: 32 }, (_, index) => index), 127]) {
+      expect(references(`card${String.fromCharCode(code)}id`)).toEqual([])
+    }
+    for (const id of [' ', '~', '\u0080', '\u009f', '\u2028', '角色😀', 'a'.repeat(1023)]) {
+      expect(references(id)).toHaveLength(1)
+    }
+    expect(references('')).toEqual([])
+    expect(references('a'.repeat(1024))).toEqual([])
+  })
   it('searches structured fields as well as the visible message', () => {
     const search = (query: string) => filterLogRecords(records, { query, level: 'all', technical: true })
     expect(search('provider connected')).toEqual([records[0]])

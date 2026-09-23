@@ -1,5 +1,6 @@
 import { Braces, Code2, Component, FileSearch, Variable } from 'lucide-react'
 import type { ReactNode } from 'react'
+import type { Translator } from '../../../shared/i18n/index.js'
 import { SearchField } from '@loom-studio/ui'
 import { MasterDetailWorkbench } from '../../../shared/ui/master-detail-workbench/master-detail-workbench.js'
 import { normalizeSearchText } from '../../../shared/lib/text.js'
@@ -25,6 +26,7 @@ export type PipelineWorkbenchGroup = {
 }
 
 export type PipelineWorkbenchViewProps = {
+  t: Translator
   ariaLabel: string
   groups: PipelineWorkbenchGroup[]
   selectedId?: string
@@ -53,6 +55,7 @@ export function PipelineWorkbenchView(props: PipelineWorkbenchViewProps) {
 
   return (
     <MasterDetailWorkbench
+      resizeLabel={props.t('stateVariables.resizeSidebar')}
       backLabel={props.backLabel}
       dataComponent="pipeline-workbench-view"
       defaultMasterWidth={272}
@@ -94,7 +97,7 @@ export function PipelineWorkbenchView(props: PipelineWorkbenchViewProps) {
                       <span>{item.owner}</span>
                     </span>
                     {item.order !== undefined ? <span className={styles.order}>{item.order}</span> : null}
-                    {item.status ? <span className={styles.status} data-status={item.status}>{item.status}</span> : null}
+                    {item.status ? <span className={styles.status} data-status={item.status}>{props.t(`textTransform.status.${item.status}`)}</span> : null}
                   </button>
                 ))}
               </section>

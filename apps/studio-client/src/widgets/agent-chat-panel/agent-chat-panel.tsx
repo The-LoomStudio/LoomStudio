@@ -10,7 +10,6 @@ import {
   Globe,
   Plus,
   RefreshCw,
-  RotateCcw,
   Search,
   Terminal,
   X,
@@ -19,7 +18,6 @@ import {
   lazy,
   Suspense,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -44,242 +42,12 @@ import {
 import { ChatComposer } from '../chat-composer/chat-composer.js'
 import type { ClientRendererHost } from '../../shared/extension-renderer-runtime/client-renderer-host.js'
 import { RendererNodeMountHost } from '../../features/extension-renderers/ui/renderer-node-mount-host.js'
-import { useEffectiveMotion } from '../../shared/hooks/use-motion-preference.js'
 import styles from './agent-chat-panel.module.scss'
 
 const ConversationMarkdown = lazy(async () => {
   const module = await import('../../shared/ui/conversation-markdown/conversation-markdown.js')
   return { default: module.ConversationMarkdown }
 })
-
-// ponytail: [临时 Mock 测试数据，精准模拟多层各自成块：执行块 -> AI思考 -> 正文 -> 工具 -> AI思考 -> 工具 -> 正文]
-const MOCK_AGENT_ENTRIES: AgentTranscriptEntryEntity[] = [
-  {
-    id: 'mock-msg-user-1',
-    agentSessionId: 'mock-session',
-    sequence: 1,
-    createdAt: new Date(Date.now() - 60000).toISOString(),
-    entry: {
-      kind: 'message',
-      role: 'user',
-      content: '帮我检查当前夜之城的世界观设定，并将治安官阵营的好感度重置为初始状态。',
-    },
-  },
-  {
-    id: 'mock-tool-inv-1',
-    agentSessionId: 'mock-session',
-    sequence: 2,
-    createdAt: new Date(Date.now() - 52000).toISOString(),
-    entry: {
-      kind: 'tool-invocation',
-      invocationId: 'call_read_wb_01',
-      toolId: 'read_worldbook_entry',
-      exposedName: '读取世界书条目 夜之城世界观条目',
-      status: 'completed',
-      arguments: {
-        entryTitle: '夜之城世界观条目',
-        keys: ['夜之城', '治安官', '新都'],
-      },
-    },
-  },
-  {
-    id: 'mock-tool-res-1',
-    agentSessionId: 'mock-session',
-    sequence: 3,
-    createdAt: new Date(Date.now() - 50000).toISOString(),
-    entry: {
-      kind: 'tool-result',
-      invocationId: 'call_read_wb_01',
-      toolId: 'read_worldbook_entry',
-      status: 'success',
-      content: [
-        {
-          type: 'text',
-          text: '$ 读取世界书条目 夜之城世界观条目 (read_worldbook_entry)\n{\n  "entryTitle": "夜之城世界观条目",\n  "keys": ["夜之城", "治安官", "新都"],\n  "status": "active"\n}\n已命中词条：阵营市政安全防卫部，基准好感度：50。',
-        },
-      ],
-    },
-  },
-  {
-    id: 'mock-tool-inv-2',
-    agentSessionId: 'mock-session',
-    sequence: 4,
-    createdAt: new Date(Date.now() - 48000).toISOString(),
-    entry: {
-      kind: 'tool-invocation',
-      invocationId: 'call_search_char_02',
-      toolId: 'search_character_entities',
-      exposedName: '在工作区搜索“治安官雷恩”',
-      status: 'completed',
-      arguments: {
-        query: '治安官雷恩',
-        scope: 'workspace',
-      },
-    },
-  },
-  {
-    id: 'mock-tool-res-2',
-    agentSessionId: 'mock-session',
-    sequence: 5,
-    createdAt: new Date(Date.now() - 46000).toISOString(),
-    entry: {
-      kind: 'tool-result',
-      invocationId: 'call_search_char_02',
-      toolId: 'search_character_entities',
-      status: 'success',
-      content: [
-        {
-          type: 'text',
-          text: '$ search_character_entities\n{\n  "character": "char-sheriff-09",\n  "name": "治安官雷恩",\n  "boundVariable": "sheriff_affinity"\n}',
-        },
-      ],
-    },
-  },
-  {
-    id: 'mock-reasoning-1',
-    agentSessionId: 'mock-session',
-    sequence: 6,
-    createdAt: new Date(Date.now() - 40000).toISOString(),
-    entry: {
-      kind: 'reasoning',
-      content: '哥哥，我先检查是不是世界观冲突把治安官好感度拉低了。基准设定应该被尊重，只有明确配置或剧本冲突时才允许动态覆盖。',
-    },
-  },
-  {
-    id: 'mock-msg-assistant-interim',
-    agentSessionId: 'mock-session',
-    sequence: 7,
-    createdAt: new Date(Date.now() - 35000).toISOString(),
-    entry: {
-      kind: 'message',
-      role: 'assistant',
-      content: '已检索到角色【治安官雷恩】（阵营：市政安全防卫部）。正在核查其在运行时的变量状态...',
-    },
-  },
-  {
-    id: 'mock-tool-inv-3',
-    agentSessionId: 'mock-session',
-    sequence: 8,
-    createdAt: new Date(Date.now() - 30000).toISOString(),
-    entry: {
-      kind: 'tool-invocation',
-      invocationId: 'call_run_script_03',
-      toolId: 'run_runtime_check',
-      exposedName: '运行校验脚本 check_runtime_affinity.js',
-      status: 'completed',
-      arguments: {
-        script: 'check_runtime_affinity.js',
-        target: 'sheriff_affinity',
-      },
-    },
-  },
-  {
-    id: 'mock-tool-res-3',
-    agentSessionId: 'mock-session',
-    sequence: 9,
-    createdAt: new Date(Date.now() - 28000).toISOString(),
-    entry: {
-      kind: 'tool-result',
-      invocationId: 'call_run_script_03',
-      toolId: 'run_runtime_check',
-      status: 'success',
-      content: [
-        {
-          type: 'text',
-          text: '$ node check_affinity.js\n{\n  "pid": 32129,\n  "variable": "sheriff_affinity",\n  "current": 12,\n  "base": 50,\n  "status": "conflict"\n}',
-        },
-      ],
-    },
-  },
-  {
-    id: 'mock-reasoning-2',
-    agentSessionId: 'mock-session',
-    sequence: 10,
-    createdAt: new Date(Date.now() - 20000).toISOString(),
-    entry: {
-      kind: 'reasoning',
-      content: '没有找到要求好感度常驻为 12 的配置，但历史会话中存在冲突覆盖。我会重置为基准值 50，并在更新后同步状态。',
-    },
-  },
-  {
-    id: 'mock-tool-inv-4',
-    agentSessionId: 'mock-session',
-    sequence: 11,
-    createdAt: new Date(Date.now() - 15000).toISOString(),
-    entry: {
-      kind: 'tool-invocation',
-      invocationId: 'call_patch_vars_04',
-      toolId: 'patch_runtime_variables',
-      exposedName: '修改运行时变量 sheriff_affinity 从 12 重置为 50',
-      status: 'completed',
-      arguments: {
-        scope: 'global',
-        patches: [
-          {
-            key: 'sheriff_affinity',
-            from: 12,
-            to: 50,
-            reason: '重置至基准好感度',
-          },
-        ],
-      },
-    },
-  },
-  {
-    id: 'mock-tool-res-4',
-    agentSessionId: 'mock-session',
-    sequence: 12,
-    createdAt: new Date(Date.now() - 12000).toISOString(),
-    entry: {
-      kind: 'tool-result',
-      invocationId: 'call_patch_vars_04',
-      toolId: 'patch_runtime_variables',
-      status: 'success',
-      content: [
-        {
-          type: 'text',
-          text: '$ patch_runtime_variables\n{\n  "key": "sheriff_affinity",\n  "old": 12,\n  "new": 50,\n  "status": "applied"\n}',
-        },
-      ],
-    },
-  },
-  {
-    id: 'mock-msg-assistant-1',
-    agentSessionId: 'mock-session',
-    sequence: 13,
-    createdAt: new Date(Date.now() - 10000).toISOString(),
-    entry: {
-      kind: 'message',
-      role: 'assistant',
-      content: `已为你检查夜之城世界观并完成变量重置：
-
-### 1. 实体与词条核验
-- **世界书词条**：\`夜之城世界观条目\`（已命中关键词：\`夜之城\`、\`治安官\`）
-- **目标角色**：**治安官雷恩**（阵营：*市政安全防卫部*）
-- **基准设定**：基准好感度常驻设定值为 \`50\`
-
-### 2. 状态修补与同步代码
-通过运行时补丁，已纠正历史会话遗留的冲突覆盖：
-
-\`\`\`typescript
-// 校验并同步治安官好感度设定
-await runtime.patchVariables({
-  scope: 'global',
-  patches: [{
-    key: 'sheriff_affinity',
-    from: 12,
-    to: 50,
-    reason: 'reset_to_worldbook_base',
-  }],
-})
-\`\`\`
-
-> **提示**：全局变量 \`sheriff_affinity\` 现已成功恢复为 \`50\`。你可以在左侧工作台直接查看变动，或者随时告诉我接下来的剧本走向。`,
-    },
-  },
-]
-
-export const FINAL_ASSISTANT_CONTENT = (MOCK_AGENT_ENTRIES[12].entry as { content: string }).content
 
 /**
  * 健壮补全未闭合的 Markdown 代码块标签，提前撑开 UI 骨架，杜绝布局跳动 (Layout Shift)
@@ -313,11 +81,6 @@ type RenderItem =
       index: number
       showChrome?: boolean
       isStreaming?: boolean
-      artifactCard?: {
-        title: string
-        adds?: number
-        removes?: number
-      }
     }
   | {
       kind: 'tool-group'
@@ -333,22 +96,12 @@ type RenderItem =
       isThinking?: boolean
     }
 
-function buildRenderItems(
-  entries: AgentTranscriptEntryEntity[],
-  options?: {
-    showFinalArtifact?: boolean
-    isTypingFinal?: boolean
-    activeReasoningId?: string
-  },
-): RenderItem[] {
-  const showFinalArtifact = options?.showFinalArtifact ?? true
-  const isTypingFinal = options?.isTypingFinal ?? false
-  const activeReasoningId = options?.activeReasoningId
+function buildRenderItems(entries: AgentTranscriptEntryEntity[]): RenderItem[] {
 
-  const toolResultsByInvocationId = new Map<string, Record<string, unknown>>()
+  const toolResultsByInvocationId = new Map<string, AgentTranscriptEntryEntity['entry']>()
   for (const msg of entries) {
     if (msg.entry.kind === 'tool-result' && msg.entry.invocationId) {
-      toolResultsByInvocationId.set(String(msg.entry.invocationId), msg.entry as Record<string, unknown>)
+      toolResultsByInvocationId.set(String(msg.entry.invocationId), msg.entry)
     }
   }
 
@@ -356,13 +109,13 @@ function buildRenderItems(
   let pendingTools: StepToolItem[] = []
   let messageIndex = 0
 
-  const flushTools = (keyId: string) => {
+  const flushTools = () => {
     if (pendingTools.length === 0) return
     const toolCount = pendingTools.length
     const label = toolCount === 1 ? pendingTools[0].label : `已执行 ${toolCount} 个操作`
     items.push({
       kind: 'tool-group',
-      id: `tool-group-${keyId}`,
+      id: `tool-group-${pendingTools[0].id}`,
       label,
       tools: [...pendingTools],
     })
@@ -399,7 +152,7 @@ function buildRenderItems(
         const resText = typeof pairedResult.content === 'string'
           ? pairedResult.content
           : Array.isArray(pairedResult.content)
-            ? pairedResult.content.map((c: any) => c?.text || JSON.stringify(c)).join('\n')
+            ? pairedResult.content.map(c => (c && typeof c === 'object' && 'text' in c && c.text) || JSON.stringify(c)).join('\n')
             : JSON.stringify(pairedResult.content || pairedResult, null, 2)
         detailContent = resText
       } else if (entry.arguments) {
@@ -415,33 +168,24 @@ function buildRenderItems(
         status: pairedResult?.status === 'error' ? 'error' : 'success',
       })
     } else if (entry.kind === 'reasoning' && typeof entry.content === 'string') {
-      flushTools(msg.id)
+      flushTools()
       items.push({
         kind: 'reasoning',
         id: msg.id,
-        duration: msg.id.includes('2') ? 'Thought for 9s' : 'Thought for 4s',
+        duration: '',
         content: entry.content,
-        isThinking: activeReasoningId === msg.id,
+        isThinking: false,
       })
     } else if (entry.kind === 'message' && typeof entry.content === 'string') {
       const isAssistant = entry.role === 'assistant'
-      const isFinalAssistant = msg.id === 'mock-msg-assistant-1'
-      const isInterim = msg.id === 'mock-msg-assistant-interim'
-      const isStreamingFinal = isFinalAssistant && isTypingFinal
-      const artifactCard = (isFinalAssistant && showFinalArtifact)
-        ? {
-            title: '已更新变量 sheriff_affinity',
-            adds: 1,
-            removes: 1,
-          }
-        : undefined
+      const isStreamingFinal = entry.state === 'partial'
 
       // 如果是 Assistant 消息，但内容纯空、非流式中且无产物卡片，说明是无输出中断，不建立空楼层
-      if (isAssistant && !entry.content.trim() && !isStreamingFinal && !artifactCard) {
+      if (isAssistant && !entry.content.trim() && !isStreamingFinal) {
         continue
       }
 
-      flushTools(msg.id)
+      flushTools()
       items.push({
         kind: 'message',
         id: msg.id,
@@ -449,16 +193,15 @@ function buildRenderItems(
         role: isAssistant ? 'assistant' : 'user',
         content: entry.content,
         index: messageIndex++,
-        showChrome: !isInterim && (!isFinalAssistant || !isTypingFinal),
+        showChrome: !isStreamingFinal,
         isStreaming: isStreamingFinal,
-        artifactCard,
       })
     } else if (entry.kind === 'tool-result') {
       // 聚合至 tool-invocation
     }
   }
 
-  flushTools('final')
+  flushTools()
   return items
 }
 
@@ -495,156 +238,8 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
   const [copyState, setCopyState] = useState<{ id: string; copied: boolean }>()
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
-  // ponytail: [流式模拟状态机：放慢节奏、真实秒数思考计时、高频字符平滑流式输出]
-  const [mockVisibleIndex, setMockVisibleIndex] = useState(1)
-  const [activeReasoningId, setActiveReasoningId] = useState<string | undefined>(undefined)
-  const [thinkingSeconds, setThinkingSeconds] = useState(1)
-  const [streamCharLength, setStreamCharLength] = useState(0)
-  const isMockActive = props.messages.length === 0
-
-  useEffect(() => {
-    if (!isMockActive) return
-
-    let cancelled = false
-    const timerList: Array<ReturnType<typeof setTimeout> | ReturnType<typeof setInterval>> = []
-
-    const wait = (ms: number) => new Promise<void>(resolve => {
-      const id = setTimeout(() => resolve(), ms)
-      timerList.push(id)
-    })
-
-    const runSimulation = async () => {
-      // 0. 初始停顿，展现响应开始
-      await wait(600)
-      if (cancelled) return
-
-      // 1. 工具组 1 (读取世界书 + 搜索角色)
-      setMockVisibleIndex(5)
-      await wait(900)
-      if (cancelled) return
-
-      // 2. 思维链 1 启动：Thought for Xs 并开始秒数递增
-      setMockVisibleIndex(6)
-      setActiveReasoningId('mock-reasoning-1')
-      setThinkingSeconds(1)
-
-      const thinkTimer1 = setInterval(() => {
-        setThinkingSeconds(s => s + 1)
-      }, 950)
-      timerList.push(thinkTimer1)
-
-      // 持续沉静思考 3 秒
-      await wait(3000)
-      clearInterval(thinkTimer1)
-      if (cancelled) return
-
-      // 思维链 1 完成，就地收拢
-      setActiveReasoningId(undefined)
-      await wait(450)
-      if (cancelled) return
-
-      // 3. 中间正文汇报淡入
-      setMockVisibleIndex(7)
-      await wait(1000)
-      if (cancelled) return
-
-      // 4. 脚本校验工具 2 运行完成
-      setMockVisibleIndex(9)
-      await wait(900)
-      if (cancelled) return
-
-      // 5. 思维链 2 启动：Thought for Xs 并计时
-      setMockVisibleIndex(10)
-      setActiveReasoningId('mock-reasoning-2')
-      setThinkingSeconds(1)
-
-      const thinkTimer2 = setInterval(() => {
-        setThinkingSeconds(s => s + 1)
-      }, 950)
-      timerList.push(thinkTimer2)
-
-      // 思考持续 3 秒
-      await wait(3000)
-      clearInterval(thinkTimer2)
-      if (cancelled) return
-
-      // 思维链 2 完成，就地收拢
-      setActiveReasoningId(undefined)
-      await wait(450)
-      if (cancelled) return
-
-      // 6. 变量重置工具 3 运行完成
-      setMockVisibleIndex(12)
-      await wait(850)
-      if (cancelled) return
-
-      // 7. 最终正文汇报：高频微步流式出字（平滑如流水，绝无段落跳跃卡顿）
-      setMockVisibleIndex(13)
-      setStreamCharLength(0)
-
-      let charIdx = 0
-      const totalLen = FINAL_ASSISTANT_CONTENT.length
-
-      await new Promise<void>(resolve => {
-        const streamInterval = setInterval(() => {
-          if (cancelled) {
-            clearInterval(streamInterval)
-            resolve()
-            return
-          }
-          if (charIdx >= totalLen) {
-            clearInterval(streamInterval)
-            setStreamCharLength(totalLen)
-            resolve()
-            return
-          }
-          // 自然节奏推进 1~3 字符
-          const step = charIdx < 20 ? 1 : Math.random() > 0.45 ? 3 : 2
-          charIdx = Math.min(totalLen, charIdx + step)
-          setStreamCharLength(charIdx)
-        }, 28)
-        timerList.push(streamInterval)
-      })
-    }
-
-    void runSimulation()
-
-    return () => {
-      cancelled = true
-      timerList.forEach(t => clearTimeout(t))
-    }
-  }, [isMockActive])
-
-  const effectiveMessages = useMemo(() => {
-    if (!isMockActive) return props.messages
-
-    const sliced = MOCK_AGENT_ENTRIES.slice(0, mockVisibleIndex)
-    if (mockVisibleIndex >= 13) {
-      const finalMsg = MOCK_AGENT_ENTRIES[12]
-      if (finalMsg && finalMsg.entry.kind === 'message') {
-        const currentLen = streamCharLength > 0 ? streamCharLength : FINAL_ASSISTANT_CONTENT.length
-        const currentText = FINAL_ASSISTANT_CONTENT.slice(0, currentLen)
-        const updatedFinal: AgentTranscriptEntryEntity = {
-          ...finalMsg,
-          entry: {
-            ...finalMsg.entry,
-            content: currentText,
-          },
-        }
-        return [...sliced.slice(0, 12), updatedFinal]
-      }
-    }
-    return sliced
-  }, [isMockActive, mockVisibleIndex, streamCharLength, props.messages])
-
-  const isFinalDone = !isMockActive || streamCharLength >= FINAL_ASSISTANT_CONTENT.length
-  const isTypingFinal = isMockActive && mockVisibleIndex >= 13 && !isFinalDone
-
-  const renderItems = buildRenderItems(effectiveMessages, {
-    showFinalArtifact: isFinalDone,
-    isTypingFinal,
-    activeReasoningId,
-  })
+  const effectiveMessages = props.messages
+  const renderItems = buildRenderItems(effectiveMessages)
 
   useEffect(() => () => {
     if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
@@ -655,7 +250,7 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
     if (conversation) {
       conversation.scrollTop = conversation.scrollHeight
     }
-  }, [effectiveMessages.length, streamCharLength])
+  }, [effectiveMessages])
 
   async function copyMessage(message: AgentTranscriptEntryEntity, content: string) {
     setCopyState({ id: message.id, copied: await tryWriteClipboardText(content) })
@@ -713,7 +308,6 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
                   key={item.id}
                   label={item.label}
                   tools={item.tools}
-                  defaultOpen={item.id.includes('call_read_wb_01') || item.id.includes('mock-tool-inv-1')}
                 />
               )
             }
@@ -723,8 +317,8 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
                   key={item.id}
                   duration={item.duration}
                   content={item.content}
+                  label={props.t('agent.reasoning')}
                   isThinking={item.isThinking}
-                  elapsedSeconds={item.isThinking ? thinkingSeconds : undefined}
                 />
               )
             }
@@ -743,7 +337,6 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
                   showChrome={item.showChrome}
                   isStreaming={item.isStreaming}
                   t={props.t}
-                  artifactCard={item.artifactCard}
                   onCopy={() => void copyMessage(item.message, item.content)}
                 />
               )
@@ -861,90 +454,19 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
  * 统一 FLIP 展开收起容器组件
  * 遵循项目动画规范：cubic-bezier(0.2, 0, 0.2, 1)，优雅支持平滑展开与收起
  */
-function FlipCollapse(props: {
+function ToolCollapse(props: {
   open: boolean
   className?: string
   children: ReactNode
 }) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [rendered, setRendered] = useState(props.open)
-  const effectiveMotion = useEffectiveMotion()
-  const animationRef = useRef<Animation | null>(null)
-  const isInitialMount = useRef(true)
-
-  useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false
-      return
-    }
-
-    const el = containerRef.current
-    if (!el || effectiveMotion === 'reduce') {
-      setRendered(props.open)
-      return
-    }
-
-    animationRef.current?.cancel()
-
-    if (props.open) {
-      setRendered(true)
-    } else {
-      const currentHeight = el.getBoundingClientRect().height
-      const anim = el.animate(
-        [
-          { height: `${currentHeight}px`, opacity: 1, overflow: 'hidden' },
-          { height: '0px', opacity: 0, overflow: 'hidden' },
-        ],
-        {
-          duration: 180,
-          easing: 'cubic-bezier(0.2, 0, 0.2, 1)',
-        },
-      )
-      animationRef.current = anim
-      anim.finished
-        .then(() => {
-          if (animationRef.current === anim) {
-            setRendered(false)
-          }
-        })
-        .catch(() => {})
-    }
-  }, [props.open, effectiveMotion])
-
-  useLayoutEffect(() => {
-    if (isInitialMount.current || !props.open) return
-    const el = containerRef.current
-    if (!el || effectiveMotion === 'reduce') return
-
-    const targetHeight = el.scrollHeight
-    const anim = el.animate(
-      [
-        { height: '0px', opacity: 0, overflow: 'hidden' },
-        { height: `${targetHeight}px`, opacity: 1, overflow: 'hidden' },
-      ],
-      {
-        duration: 220,
-        easing: 'cubic-bezier(0.2, 0, 0.2, 1)',
-      },
-    )
-    animationRef.current = anim
-    anim.finished
-      .then(() => {
-        if (animationRef.current === anim) {
-          el.style.height = ''
-          el.style.overflow = ''
-        }
-      })
-      .catch(() => {})
-  }, [props.open, rendered, effectiveMotion])
-
-  if (!rendered && !props.open) {
-    return null
-  }
-
   return (
-    <div ref={containerRef} className={props.className}>
-      {props.children}
+    <div
+      className={`${styles.toolCollapse} ${props.className ?? ''}`}
+      data-open={props.open}
+      aria-hidden={!props.open}
+      inert={!props.open}
+    >
+      <div className={styles.toolCollapseInner}>{props.children}</div>
     </div>
   )
 }
@@ -954,6 +476,7 @@ function FlipCollapse(props: {
  * 思考时实时展开、秒数计时并展现微光 Shimmer；思考完成后自动收拢折叠进 summary
  */
 function AgentReasoningBlock(props: {
+  label: string
   duration?: string
   content: string
   defaultOpen?: boolean
@@ -979,7 +502,7 @@ function AgentReasoningBlock(props: {
         aria-expanded={expanded}
       >
         <span className={isThinking ? styles.shimmer : styles.reasoningLabel}>
-          Thought for {isThinking ? `${props.elapsedSeconds ? `${props.elapsedSeconds}s` : '1s'}` : (props.duration ? props.duration.replace(/^Thought\s+(for\s+)?/i, '') : '4s')}
+          {props.label}
         </span>
         {!isThinking && (
           <ChevronDown
@@ -1046,7 +569,7 @@ function AgentToolActionItem(props: StepToolItem & { defaultOpen?: boolean }) {
         )}
       </button>
 
-      <FlipCollapse open={open}>
+      <ToolCollapse open={open}>
         <div className={styles.toolDetailCard}>
           <span className={styles.toolDetailTag}>{props.detailTag || 'Shell'}</span>
           <pre className={styles.toolDetailCode}>{props.detailContent}</pre>
@@ -1067,7 +590,7 @@ function AgentToolActionItem(props: StepToolItem & { defaultOpen?: boolean }) {
             )}
           </div>
         </div>
-      </FlipCollapse>
+      </ToolCollapse>
     </div>
   )
 }
@@ -1084,17 +607,9 @@ function AgentToolGroupBlock(props: {
 }) {
   const [open, setOpen] = useState(props.defaultOpen ?? false)
 
-  if (props.tools.length === 1) {
-    return (
-      <div className={styles.toolGroupBlock}>
-        <AgentToolActionItem {...props.tools[0]} defaultOpen={props.defaultOpen} />
-      </div>
-    )
-  }
-
   return (
     <div className={styles.toolGroupBlock}>
-      <button
+      {props.tools.length > 1 ? <button
         type="button"
         className={styles.toolGroupHeader}
         onClick={() => setOpen(prev => !prev)}
@@ -1109,9 +624,9 @@ function AgentToolGroupBlock(props: {
         ) : (
           <ChevronRight className={styles.toolGroupChevron} aria-hidden="true" />
         )}
-      </button>
+      </button> : null}
 
-      <FlipCollapse open={open}>
+      <ToolCollapse open={props.tools.length === 1 || open}>
         <div className={styles.toolGroupViewport}>
           {props.tools.map((tool, index) => (
             <AgentToolActionItem
@@ -1121,58 +636,7 @@ function AgentToolGroupBlock(props: {
             />
           ))}
         </div>
-      </FlipCollapse>
-    </div>
-  )
-}
-
-function AgentArtifactSummaryCard(props: {
-  title: string
-  adds?: number
-  removes?: number
-  onUndo?: () => void
-  onReview?: () => void
-}) {
-  const [status, setStatus] = useState<'idle' | 'undone' | 'reviewed'>('idle')
-
-  return (
-    <div className={styles.artifactSummaryCard}>
-      <div className={styles.artifactInfo}>
-        <div className={styles.artifactIconBox}>
-          <FileCode aria-hidden="true" />
-        </div>
-        <div className={styles.artifactMeta}>
-          <span className={styles.artifactTitle}>{props.title}</span>
-          <div className={styles.artifactDiff}>
-            {props.adds !== undefined && <span className={styles.diffAdd}>+{props.adds}</span>}
-            {props.removes !== undefined && <span className={styles.diffRemove}>-{props.removes}</span>}
-          </div>
-        </div>
-      </div>
-      <div className={styles.artifactActions}>
-        <button
-          type="button"
-          className={styles.artifactBtnUndo}
-          onClick={() => {
-            setStatus('undone')
-            props.onUndo?.()
-          }}
-          disabled={status === 'undone'}
-        >
-          <RotateCcw aria-hidden="true" />
-          <span>{status === 'undone' ? '已撤销' : '撤销'}</span>
-        </button>
-        <button
-          type="button"
-          className={styles.artifactBtnReview}
-          onClick={() => {
-            setStatus('reviewed')
-            props.onReview?.()
-          }}
-        >
-          {status === 'reviewed' ? '已审核' : '审核'}
-        </button>
-      </div>
+      </ToolCollapse>
     </div>
   )
 }
@@ -1189,11 +653,6 @@ function AgentTranscriptEntry(props: {
   role: 'user' | 'assistant'
   showChrome?: boolean
   t: Translator
-  artifactCard?: {
-    title: string
-    adds?: number
-    removes?: number
-  }
   onCopy(): void
 }) {
   const displayContent = props.isStreaming
@@ -1224,13 +683,6 @@ function AgentTranscriptEntry(props: {
             codeBlockLabels={props.codeBlockLabels}
             role={props.role}
             value={displayContent}
-          />
-        )}
-        {props.role === 'assistant' && props.artifactCard && (
-          <AgentArtifactSummaryCard
-            title={props.artifactCard.title}
-            adds={props.artifactCard.adds}
-            removes={props.artifactCard.removes}
           />
         )}
       </div>

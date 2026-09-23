@@ -12,7 +12,7 @@ Studio Server 是本地 Node.js 进程的 Composition Root 与 Transport Adapter
 pnpm dev:server
 ```
 
-该命令会先构建并监听内部 Packages，再通过 `tsx watch` 启动 Server。默认监听 `127.0.0.1:4173`，可通过 `PORT` 覆盖；持久数据默认写入仓库 `data/`，缓存和日志默认在 `.loomstudio-dev/`。`LOOM_STUDIO_DATA_ROOT` 可覆盖持久数据根；已有旧目录的迁移及显式 `LOOM_STUDIO_HOME` 行为见 [Getting Started](../../docs/guide/getting-started.md)。
+该命令会先构建内部 Packages 和 `official/extensions/the-world`，持续监听 Packages 与该扩展的 Client bundle，再通过 `tsx watch` 启动 Server。默认监听 `127.0.0.1:4173`，可通过 `PORT` 覆盖；持久数据默认写入仓库 `data/`，缓存和日志默认在 `.loomstudio-dev/`。`LOOM_STUDIO_DATA_ROOT` 可覆盖持久数据根；已有旧目录的迁移及显式 `LOOM_STUDIO_HOME` 行为见 [Getting Started](../../docs/guide/getting-started.md)。
 
 监听排除 `.tsbuildinfo`，避免 TypeScript 构建元数据更新引起无效重启和重复启动 banner；运行文件发生变化仍会正常重启并打印新的启动信息。修改监听参数后需重新启动 `pnpm dev:server`。
 
@@ -29,7 +29,7 @@ pnpm --filter @loom-studio/studio-server lint
 pnpm exec vitest run tests/unit/studio-server tests/integration/studio-server
 ```
 
-直接运行 Package `dev` 依赖当前 Workspace 的 `dist` 已经是最新版本；正常联调优先使用根命令。
+直接运行 Package `dev` 仅执行 `tsx src/main.ts`，不启用 watch，且依赖当前 Workspace 的 `dist` 已经是最新版本；正常联调优先使用根命令。上述命令均从仓库根目录执行。
 
 ## 入口与组成
 
@@ -77,6 +77,9 @@ Application 初始化时创建或覆盖官方预设与 Setting；当前只有本
 3. **压缩格式处理**：统一采用 `fflate` 进行 Card Bundle、Prompt Resource、Extension 压缩包处理，严禁私自编写第二套 ZIP 编解码器。
 4. **业务逻辑绝不上移**：Server 仅作为装配各 Store、Kernel、Host 与提供 HTTP/RPC 协议适配的组合根（Composition Root），**绝不编写 Card、Narrative、Agent、State 或 PromptBuild 的业务规则**（必须全部由 Application Runtime 承载）。
 5. **凭据安全边界**：为 `SecretStore` 注入系统 Keyring 或内存凭据后端，确保 SQLite 中仅持久化 Secret 元数据与引用，严禁明文凭据打印到日志或返回给前端。
+6. **优雅停机流程 (Graceful Shutdown)**：停机遵循分阶段原则：停止接纳新连接并置 `closing` 状态，向在途业务与长连接传递 `AbortSignal`；等待在途请求与文件流释放；清理未决凭据后安全关闭 SQLite Data Engine。
+7. **Card 打包完整性与解压安全**：采用增量流式解压与原生 CRC32 校验，严格防御目录越界（zip-slip）与超限解压炸弹（单包 128 MiB / 单文件 64 MiB 预算），损坏包在入库前明确拒绝。
+8. **扩展卸载一致性**：扩展卸载采用“持久化禁用 → 尽力清理”策略，异常时保留状态并支持重试恢复，不损坏全局 Catalog。
 
 
 ## 文档入口

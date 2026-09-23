@@ -43,6 +43,7 @@ type InspectorPanelProps = {
   }): Promise<void>
   onUpdateAiCapabilityProfile?(input: {
     profileId: string
+    providerProfileId?: string
     displayName: string
     config: Record<string, ClientJsonValue>
   }): Promise<void>

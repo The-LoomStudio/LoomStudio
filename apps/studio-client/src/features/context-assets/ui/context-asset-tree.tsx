@@ -1,7 +1,7 @@
 import { Anchor, Book, Bot, Code2, Cog, Copy, FileText, Folder, FolderOpen, FolderPlus, MessageSquare, MessagesSquare, Pencil, Plus, Trash2, UserRound } from 'lucide-react'
 import type { ContextAssetNode } from '../../../entities/index.js'
 import type { Translator } from '../../../shared/i18n/index.js'
-import { StatusIndicator, type MenuAction } from '@loom-studio/ui'
+import type { MenuAction } from '@loom-studio/ui'
 export { resolveVirtualDisplayName, resolveVirtualExtension, resolveVirtualPath } from '../model/context-asset-tree.js'
 
 type ContextAssetTreeActionsInput = {
@@ -115,9 +115,7 @@ export function renderContextAssetTreeIcon(node: ContextAssetNode, expanded: boo
   )
 }
 
-export function renderContextAssetLifecycleIndicator(_node: ContextAssetNode, _t: Translator) {
-  return null
-}
+export const renderContextAssetLifecycleIndicator: (node: ContextAssetNode, t: Translator) => null = () => null
 
 export function readContextAssetTreeActions(
   node: ContextAssetNode,

@@ -5,6 +5,8 @@
 > **审阅方式**：3 个 `gpt-5.6-luna / high` 子智能体分域初审与第二轮去重增量审计，主智能体按当前源码、正式架构文档、生产调用链、反证与定向检查复核
 > **修改边界**：本轮只新增本 Issue 并更新 Issues 索引；不修改源码、测试、配置、依赖或已有未提交工作
 
+修复口径修订：本文保留 2026-08-27 的审查证据与统计，不代表所有问题仍在当前工作区成立。后续施工按[已确认修复口径与新顺序](./audit-remediation-decisions-and-order.md) 复核；FR-012 已从禁止悬空引用改为失效引用消费，FR-017/O-003 与后续专项去重。本次文档修订未修复代码。
+
 ## 结论摘要
 
 本轮覆盖 Studio Client、Studio Server、Application Runtime、Kernel、数据与持久化 Store、Extension Host、导入导出、认证/RPC、测试与构建门禁、依赖和文档一致性。两轮去重审阅最终纳入 **2 个 P1、14 个 P2、3 个 P3、6 个优化候选**；未发现 P0。
@@ -12,28 +14,32 @@
 | 编号 | 级别 | 结论 |
 | --- | --- | --- |
 | FR-001 | P1 | Client 统一异步封装吞掉异常，使失败 mutation 被调用方当成成功 |
-| FR-002 | P2 | Panel 与搜索条件只单向读取 URL，Router/Zustand 形成双源状态 |
-| FR-003 | P2 | 快速切换 Card 时旧 Timeline 请求可覆盖新 Card 状态 |
-| FR-004 | P2 | Provider / Agent Profile 与 Agent Tool 写操作丢失 RPC 调用上下文 |
+| FR-002 | P2 | 按新合同修复：工作区历史、恢复与 URI 入口分离 |
+| FR-003 | P2 | 已修复：快速切换 Card 时旧 Timeline 请求可覆盖新 Card 状态 |
+| FR-004 | P2 | 已修复：Provider / Agent Profile 与 Agent Tool 写操作丢失 RPC 调用上下文 |
 | FR-005 | P2 | `/rpc` JSON 请求体没有累计大小上限 |
 | FR-006 | P2 | 测试与质量门禁存在假绿和契约漂移，当前根检查也未收口 |
-| FR-007 | P2 | 新 State / Text Transform UI 未完成 i18n 与 accessible-name 合同 |
-| FR-008 | P1 | State 路径与 Binding 可污染进程级 `Object.prototype` |
-| FR-009 | P2 | 受保护 HTTP 入口缺少 Origin 校验，可被 loopback 跨端口同站 CSRF |
-| FR-010 | P2 | 手动代理 URL 的 userinfo 凭据被明文持久化、回显并写入日志 |
+| FR-007 | P2 | 实现已修复，人工验收待完成：State/Text Transform 与 Group Dialog 可访问性 |
+| FR-008 | P1 | 实现已修复：服务端及前端预览 State 原型污染 |
+| FR-009 | P2 | 已修复：受保护 HTTP Origin 校验及 RPC Content-Type 边界 |
+| FR-010 | P2 | 已修复：不支持认证代理，拒绝 userinfo 并保留失败时原配置 |
 | FR-011 | P2 | Agent Transcript 与 Narrative 提交不满足同 Changeset 原子性合同 |
-| FR-012 | P2 | 跨 Store 引用检查与写入存在 TOCTOU，可产生悬空引用 |
-| FR-013 | P2 | Extension Document ownership 检查与条件写入非原子 |
-| FR-014 | P2 | State / Text Transform 面板缺少 source-scoped 请求代际守卫 |
-| FR-015 | P2 | Context Asset 串行队列仍会用旧完整快照覆盖连续成功编辑 |
-| FR-016 | P2 | 远程 Card 导入在无可信长度时先完整消费响应体 |
+| FR-012 | P2 | 修复目标已调整：允许删除后引用失效，补齐读取、提醒与执行边界 |
+| FR-013 | P2 | 已修复：Extension Document ownership 检查与写入在同一事务内 |
+| FR-014 | P2 | 已修复：State / Text Transform 面板缺少 source-scoped 请求代际守卫 |
+| FR-015 | P2 | 旧复现入口已移除：Context Asset 旧完整数组覆盖 |
+| FR-016 | P2 | 已修复：远程 Card 导入在无可信长度时先完整消费响应体 |
 | FR-017 | P3 | Prompt Resource 旧列表响应可覆盖 mutation 后的新列表 |
 | FR-018 | P3 | Provider / Agent Profile 客户端丢弃 100 条后的分页结果 |
-| FR-019 | P3 | InMemory DocumentStore 失败回滚可抹掉并发成功写入 |
+| FR-019 | P3 | 已修复：InMemory DocumentStore 失败回滚可抹掉并发成功写入 |
 
 ## 已确认问题
 
 ### FR-001 · P1 · Client 异步封装吞掉异常，失败 mutation 被当成成功
+
+2026-09-23 补充：首次 Narrative 提交创建 Timeline 后，Session 创建失败仍可能返回成功导航目标。现按 runAction 的布尔完成结果决定是否返回导航；保留输入与已创建 Timeline，重试不重复创建。新增受控 Hook 测试 2 项通过（失败与成功 control），主代理核对实际两行行为修改；未验证浏览器，也未覆盖 Agent Run 开始后的输入恢复，本项整体仍未关闭。
+
+进度：部分修复，未关闭。`useAsyncOperations.run()` 现记录全局错误后重新抛出原异常；Card、Agent Profile/Tool、Provider/Capability 及 Prompt Resource 命令已接入，最终 UI 事件接住已上报的 rejection，保存/远程导入只有成功才关闭，媒体和 Tool 编辑器能收到局部错误。创建已提交而刷新失败保留已创建身份，避免重复创建；模型添加失败保留搜索输入，连接保存失败保留凭据草稿，资源删除失败保留确认框。其余旧调用明确使用临时 `runReported()`，包括 Context Asset 和 Narrative；不能据本批关闭这些链路。验证与未覆盖范围见[施工计划](../plans/audit-issue-remediation-plan.md)。下文保留原审查证据。
 
 **证据位置**
 
@@ -65,7 +71,11 @@ RPC / mutation reject → `operations.run()` 捕获并返回 `undefined` → 调
 
 **关闭条件**：所有依赖成功/失败分支的调用方都能收到真实结果，且至少覆盖 Card 保存与 Context Asset rollback 两条失败路径。
 
-### FR-002 · P2 · Panel 与搜索条件没有真正由 URL 驱动
+### FR-002 · P2 · 工作区导航与入口状态归属不一致
+
+状态：2026-09-23 经用户重新确认合同后修复。撤销“所有 Panel 必须改 Path”的方向：普通入口 /studio，History State 保存面板/Timeline/Branch/资源位置，本地按 endpoint 恢复最后工作区；明确 URI 深链优先。面板/独立资源选择同 URL Push，搜索/筛选 Replace；引用查看器受控，窗口标题和正文选择统一；关闭面板保留 Timeline 与已访问宿主。入口表补全 state/play/text-transforms，显式失效 Branch 不自动换绑。资源和消息提供统一入口链接；较早消息按分页定位，旧来源返回不污染新页。
+
+实施与验证见 [导航计划](../plans/studio-navigation-and-workspace.md)：当前 Client 类型检查通过，实际浏览器确认变量/游玩入口、同 URL 前进后退、刷新/普通入口恢复、Timeline 深链优先和无效 URI 明确报错。未将自动化/客观诊断当成人工动画、焦点和视觉验收。以下为原发现的历史证据，原 URL 全驱动合同已被正式文档中的新合同替代。
 
 **证据位置**
 
@@ -89,6 +99,8 @@ RPC / mutation reject → `operations.run()` 捕获并返回 `undefined` → 调
 
 ### FR-003 · P2 · 快速切换 Card 时旧 Timeline 请求可覆盖新 Card
 
+状态：实现已修复。Card 选择/Play 打开统一调用 Narrative Hook 的 selectCardTimeline；列表按 API 与 Card 来源隔离，选择与 Effect 复用请求，mutation 后显式刷新可以替换旧请求。删除 facade 的重复刷新 Effect；旧列表、详情、创建完成不能发布或返回可导航结果。普通 Card 选择不创建，Play 无历史时仍创建；已发出的创建不取消持久化，只抑制过期结果抢占界面。8 项受控 Hook 异步测试通过，覆盖 A→B 乱序、创建/详情晚返回、相同 Card 的 API 切换、同源新刷新、启动默认 Card 不取消显式 Timeline 导航及失败退出加载。Client noEmit 通过，未做浏览器点击/URL 历史验收。
+
 **证据位置**
 
 - `apps/studio-client/src/features/narrative-runtime/model/use-narrative-runtime.ts:66-75`：`refreshCardTimelines(cardId)` 完成后无条件 `setCardTimelines()`，没有 latest-wins 或当前 Card 校验。
@@ -110,6 +122,8 @@ B Card 界面可能短暂展示 A 的会话列表，甚至打开错误 Card 的 
 **关闭条件**：A→B 快速切换且 A 最后返回时，UI 仍只保留 B 的 Timeline，且不会激活 A 的会话。
 
 ### FR-004 · P2 · Provider / Agent 写操作丢失 RPC 调用上下文
+
+状态：已修复。Provider/Capability Profile、Agent Profile 和 Tool mutation handler 与 Runtime 传递请求 context；公共 writeDocument 接收并转发 actor、reason 和调用链字段，删除路径同样传递。真实 HTTP 集成用临时 SQLite 与内存 Secret Backend，逐笔核对 Changeset、data.changed、docs.changed 的客户端与 correlation/call/parent metadata；覆盖 create/update/delete、Credential 首次绑定/替换、带凭据创建及注入文档失败后的凭据补偿。单项集成通过，Server 引用图类型构建通过。未访问真实 Provider 或系统钥匙串。测试首轮按顶层读取事件 metadata、并少计 Secret 持久化准备/清理步骤，核对当前契约后修正测试并通过。
 
 **证据位置**
 
@@ -154,6 +168,12 @@ HTTP RPC 已生成真实调用上下文 → RPC 或 Runtime 写路径丢弃上�
 
 ### FR-006 · P2 · 测试与质量门禁存在假绿和契约漂移
 
+测试桥接增量：Extension Host helper、ClientBridge data-flow 和平台 smoke 改用当前接口推导参数，emitEvent 返回真实事件；订阅回调不再返回 push 的数字。相关四文件运行时 31 项通过。阶段性 tsc 仍失败（174 条/63 文件），之后仅补平台 smoke 的同类回调返回值，不将未重跑后的诊断数量作推算结论。
+
+2026-09-23 类型检查现状刷新：`tests/tsconfig.json` 补齐 Ai Gateway 根入口/contracts 源映射，并复用 Client 现有 vite-env.d.ts，未添加 any 或忽略规则。实际 tsc 诊断从 118 文件/283 条降至 67 文件/189 条，前后均退出 2；剩余测试 fixture/公共契约及类型环境错误仍待处理，不能沿用下文历史 60 条作为当前基线。
+
+状态：包级空跑与根零测试成功入口已修复；测试类型、lint、全库测试与 CI 门禁仍未完成。当前 Application Runtime/Application Data/Server 已有有效 root/filter，本轮修正剩余 17 个脚本（含 Core 失效目录和嵌套 Extension Host 的三级 root），不增加运行框架。结构化核对 20 个已有测试命令，root 均正确、目标路径均存在，无剩余 passWithNoTests；真实 `pnpm --filter @loom-studio/asset-store test` 执行 3 项通过，`pnpm --filter @loom/core test` 执行 31 项通过，根故意无匹配过滤返回退出码 1（预期拒绝）。其余脚本未逐个执行，不能据路径存在断言测试全绿。当前 Ai Gateway/Secret Store 源别名已存在，本轮仅使 contracts 子路径先于 Ai Gateway 通配前缀；未借此宣称所有来源解析和测试类型已验收。
+
 **已复现事实**
 
 - `packages/application-runtime/package.json:10-13` 指向不存在的 `tests/application-runtime-m0.test.ts`，并使用 `--passWithNoTests`。
@@ -187,6 +207,10 @@ HTTP RPC 已生成真实调用上下文 → RPC 或 Runtime 写路径丢弃上�
 
 ### FR-007 · P2 · 新 State / Text Transform UI 未完成 i18n 与可访问性合同
 
+状态：State/Text Transform 与 Character Group Dialog 的实现均已修复，人工键盘/读屏验收仍未关闭。并行 B 补齐 State 配置、规则/提取器 JSON、脚本文件名/源码、上下文选择和导入按钮的名称，以及预览错误、状态、修订、返回和缩放双语文案；用户数据、源码和协议字段不翻译。新增 SSR/i18n 测试与既有面板/source 测试共 4 文件/37 项通过，Client 定向类型检查与 diff 检查通过。主代理核对交付及测试范围，没有重复跑测；SSR 属性断言不等于真实读屏器验收。
+
+Character Group 补包：A 将自定义容器/焦点循环替换为既有公共 Dialog，模态与背景隔离复用其原生 showModal 生命周期，删除失去消费者的遮罩样式。分组操作与父级关闭清空草稿回调不变，未改共享 Dialog 或 FR-016 下载逻辑。真实公共 Dialog 的 SSR 标题关联、控件名称和关闭卸载两项测试通过；主代理定向核对组件与测试，无重复跑测，浏览器键盘/焦点恢复/背景隔离仍需人工验收。
+
 **证据位置**
 
 - `apps/studio-client/src/features/text-transforms/ui/text-transform-panel.tsx:103-125`：标题、说明、状态、按钮和 option 混用硬编码中英文；`select`、Document ID input 和 JSON textarea 没有 `label`、`aria-label` 或 `aria-labelledby`。
@@ -208,6 +232,12 @@ HTTP RPC 已生成真实调用上下文 → RPC 或 Runtime 写路径丢弃上�
 **关闭条件**：双语切换无硬编码泄漏；自动化可查询所有表单控件的 accessible name；键盘与读屏器人工验收通过。
 
 ### FR-008 · P1 · State 路径与 Binding 可污染进程级 `Object.prototype`
+
+状态：服务端与后续发现的前端预览遗漏均已修复。现有 Pointer、deepMerge、Binding 写入和 Delta 已使用 own-property/defineProperty 边界；并行工作包 B 补上 Contribution collection 路径、通配 Binding 读取、Schema properties 与引用诊断中的继承读取。保留合法 own `__proto__`、`constructor` 等 JSON 数据键，不再要求笼统禁止这些字符串；安全边界是不得沿原型链读写。B 的 6 文件/43 项定向测试通过，包含修前可复现的 Collection 污染、空键/null/扩展字段与 SQLite Delta 重放；主代理核对了实际 diff 与证据，未重复运行。没有完整 HTTP RPC/Agent Tool 端到端验证，不将底层测试冒充入口级证明。
+
+前端补充证据：`features/state-variables/ui/state-authoring-panel.tsx` 的 `buildAssemblyPreview -> setPreviewPath` 直接读取 `current[segment]` 后写入，可被 `collectionPath: "__proto__"` + 自定义 entityId 或同类 Binding 路径污染浏览器 Object.prototype；源码编辑触发本地预览即达，无需保存。`deepMerge` 对 own `__proto__` 普通赋值则会改变结果实例原型并丢失序列化数据。B 在独立内存探针确认两者并清理测试污染，未操作用户浏览器；已获授权只修当前预览与最小回归。
+
+前端修复验收：setPreviewPath 与 deepMerge 同样只读 own 属性并使用 defineProperty 写入，空键不再被无意义丢弃。B 的 `state-preview-prototype.test.ts` 与既有 State 面板测试共 2 文件/15 项通过，覆盖实际配置解析器和组件 SSR 的 Entity/Binding 输入、实例/全局原型不变、特殊键序列化及普通预览。主代理核对实际实现及回归证据，无重复测试；未执行用户浏览器输入验收。
 
 **证据位置**
 
@@ -235,11 +265,13 @@ materializeTimelineState(binding.path = '__proto__.loomTimelinePolluted')
 
 **最小修复方向**
 
-统一拒绝 `__proto__`、`prototype`、`constructor` 危险 segment；所有路径读取改用 `Object.hasOwn()`；State 组合过程优先使用 null-prototype object，并审查 `deepMerge()`、点路径、JSON Pointer 与 Binding materialization 的同类赋值。补 RPC、Agent Tool、Global Definition 和 Timeline Binding 四条危险路径测试。
+所有对象路径读取只接受 own property，写入通过安全 own-property 定义而非原型 setter；覆盖 `deepMerge()`、点路径、JSON Pointer、Binding materialization 与 Delta 重放。合法 JSON 对象可以拥有 `__proto__`、`prototype`、`constructor` 字段，不能为修安全问题额外收紧扩展数据 Schema。RPC 与 Agent Tool 的完整端到端回归仍应与底层边界验证区分记录。
 
 **关闭条件**：所有 State 入口都不能改变 `Object.prototype` 或读取继承属性；恶意路径返回稳定输入错误，正常 JSON Pointer / Binding 行为保持兼容。
 
 ### FR-009 · P2 · 受保护 HTTP 入口缺少 Origin 校验，可被 loopback 跨端口同站 CSRF
+
+状态：实现已修复。受保护入口携带显式 Origin 时必须通过精确白名单校验，错误 Origin 在业务处理前返回 403；RPC 非 application/json 返回 415。保留合法开发来源、无 Origin 的原生调用及图片读取。子代理实际 HTTP 测试 27 项、现有认证测试 4 项通过；主代理补齐停机测试的 JSON 请求头后，生命周期测试 5 项通过。未做真实浏览器 CSRF 验收；本项不包含 FR-005 请求体大小限制。
 
 **证据位置**
 
@@ -266,6 +298,10 @@ Studio 页面已建立会话 → 用户访问另一个 loopback 端口上的恶�
 
 ### FR-010 · P2 · 手动代理 URL 的 userinfo 凭据被明文持久化、回显并写入日志
 
+状态：按用户“不需要认证代理、不单独建设”决定完成最小修复。manual HTTP/HTTPS 拒绝 userinfo，不新增 SecretStore 系统；旧带凭据配置启动明确失败，不默默改走 system，也不改写用户文件。仅缺失配置使用默认；无效 JSON/URL 错误不包含原始秘密。更新先持久化再发布内存，写入失败不造成双份配置不一致。子代理真实临时文件 17 项通过；主代理核对当前实现，未访问真实配置/Keychain，未改 Provider API Key 或普通/system/direct 代理路径。下列未决状态是修复前记录。
+
+2026-09-23 当前边界核对：`platform/network-settings.ts` 仍只校验协议，userinfo 可进入普通 network.json 和 get/update DTO；此部分未修。当前 HTTP 成功日志只接收 `summarizeRpc` 的计数/标识摘要，不再记录原始 params，下面旧 sanitizer 的成功日志复现不能直接代表现状。不据此宣称所有错误日志已完成秘密审查。彻底关闭仍需要确认认证代理是否受支持：拒绝 userinfo 或移入 Secret Store 会改变产品/存储合同，待用户决定，未擅自选择。
+
 **证据位置**
 
 - `apps/studio-server/src/network-settings.ts:50-64`：只验证 `http:` / `https:`，接受 `http://alice:password@proxy/...`，并把完整 URL 以 `0600` 写入 `network.json`。
@@ -287,6 +323,8 @@ Studio 页面已建立会话 → 用户访问另一个 loopback 端口上的恶�
 
 ### FR-011 · P2 · Agent Transcript 与 Narrative 提交不满足同 Changeset 原子性合同
 
+施工提示：以下引用的是原审阅基线的合同。当前 Architecture 已说明 Transcript 分阶段提交、最终 Narrative 另开事务；本项不再作为恢复“整轮同 Changeset”的实施指令。剩余失败表达与重复提交风险需由正在进行的 Agent 工作核对，本轮不修改执行器，也不据文档演进宣布这些风险已经消失。
+
 **证据位置**
 
 - 正式合同：`docs/architecture/data/README.md:118-120` 与 `docs/workbench/reference/rpc-methods.md:75-76` 规定 `narrativeTarget.commit = true` 时 Agent Message 与 Narrative Node 同一 Data Engine transaction / Changeset 提交。
@@ -307,9 +345,25 @@ Provider 和 Transcript 已成功完成 → Narrative 在提交时发生 head co
 
 **关闭条件**：失败响应不会留下未声明的 completed split-brain；重试不会重复 Turn，且文档、RPC receipt 与实际 Changeset 模型一致。
 
-### FR-012 · P2 · 跨 Store 引用检查与写入存在 TOCTOU，可产生悬空引用
+### FR-012 · P2 · 删除后失效引用的读取、提醒与执行边界
 
-**最强复现链**
+StateDefinition/PortablePayload 增量：仅移除跨 Card 拒删，保留条件版本校验与引用。State 的真实 Runtime/SQLite 三项证明已有 Timeline 正文及冻结 State/Schema 可继续读取和校验，新建缺模板明确失败且不创建 Timeline，有内联模板的路径正常。Payload 三项证明两个 Card 不变、读取/Bundle/Directory 导出明确报缺失、CAS 仍拒绝冲突、同名不替代、显式解绑后恢复导出。主代理另更新 workspace-artifact 的旧拒删断言，定向 1 项通过/14 项跳过；核对删除实现，未重复执行子代理测试。未验证遗留库或浏览器，不等同所有编辑面板缺失状态均验收。
+
+Setting/Tool 展示增量：Preset 工作台保留缺失 ID 和不可用提醒，工具列表/详情保留失效挂载与选择；可显式移除全部不可用 Tool 挂载，失败保留原项。Card Setting 绑定弹窗保留缺失项，允许显式移除和沿用现有重新绑定入口；不误删仍有效的非 Setting 引用。Preset Setting 预览只提醒，未新增编辑系统。子代理三个定向文件 19 项通过，Client noEmit 通过，主代理核对投影与移除逻辑；未做浏览器视觉/焦点验收，不据此宣称所有领域引用消费已穷尽。
+
+Preset/扩展删除增量：不再拒绝被 Profile 引用的 Preset，也不清理外部 Card/Timeline/Profile 引用、其他 Preset 的 Tool mounts 或 Profile overrides；解绑计数为零。被删 Preset 自有挂载及已归属附属资源仍删除。子代理真实本地 HTTP RPC + 临时 SQLite 两文件 5 项通过，验证外部引用不变、自有资源清理及主 Preset 缺失后预览/执行失败；主代理核对实现并同步 RPC 参考与正式契约，不重复跑测。无迁移、无执行器修改，未做真实 Provider/浏览器验收。
+
+2026-09-23 前端选择补充：Profile 列表刷新保留原 current/stored ID，即使目标已删除；仅无既有选择时选首项。Agent 面板不再回退展示另一份 Profile，而是显示带原 ID 的不可用提醒，等待用户手动选择。两个定向测试文件 6 项通过，覆盖选择规则、不可用视图不展示其他 Profile 编辑表单、既有创建流程；未做真实浏览器与 Session 联动端到端验证。
+
+AgentProfile CRUD 子链：删除移除 Session 存在性拒绝，不改历史或引用；普通编辑不重验未提交的旧 Tool overrides，显式提交仍校验。子代理真实 Runtime + 内存 SQLite 定向 3 项通过、同文件范围另 22 项未执行，覆盖删除后 Session/Transcript 保留、实际 preview/invoke/createSession 明确失败、失效 Tool 下无关编辑及显式引用校验。主代理核对 CRUD 实现和定向断言，未重复跑测；未涉及执行器实现或真实 Provider。
+
+Setting 删除子链：Runtime 直接删除仅墓碑化 Setting，解绑计数为零；底层保留其入向挂载，Card/Timeline 的 IDs 不清空。共用语义同时适用于扩展资源移除，无迁移或兼容开关；Preset 自身拥有的出向挂载清理保持不变。子代理在 Narrative、PromptBuild 与扩展资源 RPC 三文件中定向 3 项通过、18 项跳过，覆盖真实删除后警告/跳过、主 Preset 与存储失败 control、扩展删除仍保留外部 Setting 挂载；主代理核对 Runtime/底层实现。未修改扩展层其他显式清理，Setting/Tool UI 缺失条目提示仍待处理。
+
+**修复目标修订**
+
+用户已确认允许业务引用在目标删除后失效，不因存在引用就阻止删除，也不做跨领域自动清空或重绑。原“任何并发顺序都不得留下悬空引用”的修复要求撤销；下列交错记录保留为历史证据，不再单凭产生失效 ID 认定数据损坏。
+
+**原审查最强复现链**
 
 - `packages/application-runtime/src/runtime.ts:1028-1034`：`deleteAgentProfile()` 先查询 `hasSessionForProfile()`，再单独删除 Profile Document。
 - `packages/application-runtime/src/runtime.ts:1037-1044`：`createAgentSession()` 先读取 Profile Document，再在 Agent Store 的另一条 transaction 创建 Session。
@@ -321,11 +375,15 @@ Provider 和 Transcript 已成功完成 → Narrative 在提交时发生 head co
 
 **最小修复方向**
 
-将引用存在性检查与目标写入/删除放进同一个共享 Data Engine transaction，并在 transaction 内重新读取权威关系；无法建立 SQL FK 的 Document 关系需要条件写入或显式 relation table。优先补 AgentProfile↔Session 与 StateDefinition↔Card 的 deferred 并发测试。
+按消费者收口失效行为：列表、编辑页和历史查看保留原引用并显示不可用原因，允许用户重新绑定；Provider/Model 等必要执行依赖只在实际调用时明确失败。Prompt Build 的可跳过贡献与未展开宏采用提醒而非统一阻断。不建立全局 relation table、反向引用扫描或级联清空系统。
 
-**关闭条件**：任何允许的并发顺序都不能提交悬空引用；冲突方收到稳定 conflict，不会把损坏状态留给后续请求发现。
+Provider 子链已完成：投影容忍缺失并保留原引用，删除不再被业务引用阻拦，手动重绑校验新目标，实际调用仍失败。BACKEND-ADV-005 的证据归入[实施计划](../plans/audit-issue-remediation-plan.md)，其独立后端报告已删除。AgentProfile、Setting/Preset、扩展资源、Tool/Setting 提醒以及 StateDefinition/PortablePayload 的具体完成证据见本节顶部。其余 Prompt Build 消费及各编辑面板缺失提示、浏览器验收未穷尽，整体 FR-012 暂不关闭。
+
+**关闭条件**：顺序与并发删除后配置和历史仍可查看、失效项可修复；必要执行依赖缺失明确报错，宽松构建产生可定位提醒；不自动清空运行配置、切换默认目标或掩盖已提交事实。Blob 字节、Secret 恢复、Extension ownership 和同一事务正确性不适用这一宽松规则。
 
 ### FR-013 · P2 · Extension Document ownership 检查与条件写入非原子
+
+状态：已修复。当前 `extension-host/src/instance.ts` 将 owner/type 检查与 write/delete 放入同一 DocumentStore transaction，检查包含 tombstone；新建使用 `expectedVersion: 'new'`，已有同 owner/type 文档仍允许省略版本，不新增 SDK 公共版本要求。子代理在真实 InMemory、SQLite Store 上的 16 项定向测试通过，覆盖竞争创建、类型变更、空 ID、tombstone、排队期间输入变化及删除交错。主代理核对实际事务实现；未运行该文件另 3 项既有测试，也未做动态扩展加载或 Kernel RPC 端到端验证。
 
 **证据位置**
 
@@ -340,11 +398,15 @@ Package A、B 同时以相同显式 ID 创建各自已声明类型 → 两次 ow
 
 **最小修复方向**
 
-显式 ID 的创建必须传 `expectedVersion: 'new'`；更新必须要求 numeric version。更稳妥的是把 owner、type、version 检查和写入合并为一个底层条件 transaction，不能依赖事务外 preflight。
+显式 ID 的创建使用 `expectedVersion: 'new'`；将 owner/type 检查和写入合并为同一 transaction，不能依赖事务外 preflight。已采用事务方案，因此不要求同 owner/type 的普通更新新增 numeric version 公共约束。
 
 **关闭条件**：两个 Package 竞争同一 ID 时只有一个 create 成功，另一方稳定 conflict；任何路径都不能改变已有 Document 的 owner/type。
 
 ### FR-014 · P2 · State / Text Transform 面板缺少 source-scoped 请求代际守卫
+
+状态：两侧实现已修复，浏览器交互仍待验收。当前 State 面板已有部分 target/request 守卫，本轮补上 API 身份，立即隐藏旧 source 快照；保存前验证 target、草稿上下文和同步提交锁，保存完成后以当前 ref 而非闭包自比较判断是否可发布。切换来源/作用域释放旧保存状态，旧完成/失败不影响新草稿；保存期间编辑区 inert，失败保留草稿与原 revision。4 项受控组件异步测试通过，Client noEmit 通过；覆盖目标乱序、同 target 换 API、重复提交、失败重试和错误 target 拒写。未做浏览器焦点/IME 验收，未改切换 source 时现有的草稿清空策略。
+
+Text Transform 补充：inspection 作用域包含 API、owner、来源、phase、consumer Agent Session；首段、自动 trace 请求和 override 请求每次返回均校验当前作用域/序号，结果及 override 配置同批发布，切换时立即隐藏旧结果/版本。旧错误、busy 完成和 override 保存回调不能污染新来源，重复保存受同步锁约束；目录刷新也增加 API/owner 请求守卫。6 项受控 Hook 测试与 Client noEmit 通过，不冒充真实浏览器性能或焦点验收。此次未重构 Script/Rule/Extractor authoring 的完整编辑生命周期。
 
 **证据位置**
 
@@ -367,6 +429,8 @@ A source 请求未返回 → 用户切换到 B → B 请求先返回 → A 晚�
 
 ### FR-015 · P2 · Context Asset 串行队列仍会用旧完整快照覆盖连续成功编辑
 
+当前核对：原 Add Zone 与 Composition items/zones 全数组 mutation 生产入口已不在当前 PresetWorkbench；当前 Zone/Composition 只读详情不构造这些补丁。对 Context/ Preset UI 和 context-assets UI 的 `skeletonPatch` 写入核对没有发现对应替代入口；onChangeNodes 只剩 Props/装配传递，未在这两个工作台内消费。因此原确定性 UI 复现不再适用，本轮不新建 updater/operation 框架来服务已移除入口。当前 commitEdits 已先发布统一 draft、串行使用版本基线，已有待保存输入与连续自身成功基线测试记录于施工计划。此判断是对原消费链的 no_change 归档，不承诺任意未来调用者提交两个旧完整数组时系统能推断并合并用户意图。
+
 **证据位置**
 
 - `apps/studio-client/src/features/context-assets/model/use-context-assets.ts:62-102`：队列执行时会基于最新 `persistedNodesRef` 应用传入 partial，但 partial 本身可能包含调用时生成的完整旧数组。
@@ -385,6 +449,8 @@ A source 请求未返回 → 用户切换到 B → B 请求先返回 → A 晚�
 
 ### FR-016 · P2 · 远程 Card 导入在无可信长度时先完整消费响应体
 
+状态：已修复。远程导入改为 readBoundedResponseBlob，按 chunk.byteLength 累计，首个超限块不入缓存，立即 cancel，不再读后续块或创建超限 Blob/File；声明长度仅提前拒绝并取消 body。保存原始二进制/MIME、恰好 128 MiB 的允许边界及现有文件名/PNG/ZIP 分流。组件卸载 abort 下载，结束时释放 fetch，重复提交有同步锁。Client noEmit 通过；限量下载与现有导入失败测试共 14 项通过，含不可信长度、UTF-8 字节计数、取消失败、读取失败、精确边界、空 body 和本地 HTTP fetch abort。独立只读调查/候选审查未发现具体剩余绕过或回归。未进行浏览器完整文件导入或实际卸载竞态验收；累计字节上限不等于浏览器峰值内存上限。
+
 `apps/studio-client/src/widgets/character-panel/character-panel.tsx:496-510` 只在可信 `Content-Length` 大于 128 MiB 时提前拒绝；Header 缺失或伪造时，`await response.blob()` 会先完整下载/消费响应体，之后才检查 `blob.size`。
 
 攻击者控制且允许 CORS 的 HTTPS URL 可以造成远超限制的客户端下载和临时分配，极端情况下使页面失去响应或被浏览器终止。`https:`、`credentials: omit`、CORS 和 Server 后续 128 MiB 限制能降低其他风险，但不能保护 Client 消费阶段。
@@ -395,6 +461,10 @@ A source 请求未返回 → 用户切换到 B → B 请求先返回 → A 晚�
 
 ### FR-017 · P3 · Prompt Resource 旧列表响应可覆盖 mutation 后的新列表
 
+状态：当前 QueryClient 实现的同根因已随 FRONTEND-011 修复。三个 cache setter 在发布写入结果前取消精确 key 的旧查询，真实 QueryClient 交错测试三项通过；记录集中于施工计划。下文保留历史实现证据。
+
+去重：本项旧 refresh 实现与 [FRONTEND-011](./frontend-rendering-and-state-retention-audit-2026-09-21.md) 的 Query 缓存交错属于同一条修复链。实施以当前源码为准，不同时建设两套请求/缓存状态管理。
+
 - `apps/studio-client/src/app/use-studio-state.ts:93-102` 对任何 list 结果都直接覆盖 library，并同步重置 Context Asset nodes。
 - 同文件 `116-127` 的 Bootstrap list 与 `214-228` 的 Create 后 list 可并发；`features/context-assets/ui/prompt-resource-toolbar/prompt-resource-toolbar.tsx:51-58` 在 Bootstrap / mutation 期间仍允许 Create。
 - 两次独立 HTTP 响应若按“旧快照 A 最后到达”排序，新 Resource 会从 UI 消失，当前 Context Asset draft 也可能被旧树重置。Server 权威数据仍存在，刷新可恢复，因此定为 P3。
@@ -402,6 +472,8 @@ A source 请求未返回 → 用户切换到 B → B 请求先返回 → A 晚�
 **最小修复方向**：Prompt Resource refresh 使用统一 latest-wins 序号，或串行化 Bootstrap/mutation refresh；覆盖 library 前确认 response generation。补 A 旧、B 新、A 最后返回的测试。
 
 ### FR-018 · P3 · Provider / Agent Profile 客户端丢弃 100 条后的分页结果
+
+修复状态：已修复。Provider、Capability Profile 与 Agent Profile 的 Hook 完整收集各页后更新列表，创建模型前的 Provider 重读也按相同方式处理；101 条消费与后页失败回归通过，详见[实施计划](../plans/audit-issue-remediation-plan.md)。下文保留原发现基线。
 
 - `packages/application-runtime/src/runtime.ts:793-804,836-847` 正确返回 `nextCursor`，底层默认页大小为 100。
 - `apps/studio-client/src/features/provider-settings/model/use-provider-settings.ts:25-31` 与 `features/agent-profiles/model/use-agent-profiles.ts:19-37` 只请求一次并丢弃 cursor。
@@ -412,6 +484,8 @@ A source 请求未返回 → 用户切换到 B → B 请求先返回 → A 晚�
 **最小修复方向**：像 Cards 一样按 cursor 聚合全部页，或把 UI 改成明确分页/虚拟列表。关闭条件为 101 条实体的客户端测试全部可达。
 
 ### FR-019 · P3 · InMemory DocumentStore 失败回滚可抹掉并发成功写入
+
+状态：已修复。外层 get/list/getChangeset 与所有写入、回滚操作使用同一 FIFO，transaction callback 使用直连事务实例。AsyncLocalStorage 检测外层 Store 重入并明确拒绝，避免队列死锁。失败不会阻断后续操作。DocumentStore 契约测试共 62 项通过，新增两种 Store 各 5 项，覆盖失败事务之后的 write/delete/transact/revert、历史版本与 Changeset 保留、读隔离和重入失败后的继续写入。只使用内存数据库，无用户数据修改。
 
 `packages/document-store/src/in-memory-store.ts:193-207,255-286` 在 transaction callback 前复制整个 Store snapshot，但没有串行队列；callback 跨 `await` 期间其他 write 可以成功，随后失败 transaction 的 `restoreState()` 会整体恢复旧 snapshot。
 
@@ -439,11 +513,17 @@ A source 请求未返回 → 用户切换到 B → B 请求先返回 → A 晚�
 
 `packages/document-store/src/sqlite-store.ts:107-138` 与 `in-memory-store.ts:44-59` 直接消费 `limit` / `cursor`，Kernel `docs.list` 没有统一的范围校验。建议复用一个最小 guard，统一非负 cursor、正整数 limit 和合理上限，保证 SQLite / InMemory 行为一致。
 
+修复状态：与 DOCUMENT-DATA-003 共同关闭。两种 Store 使用相同页长/游标校验和筛选绑定，keyset 不再使用数字 OFFSET；验证证据见[实施计划](../plans/audit-issue-remediation-plan.md)，不重复计为另一项交付。
+
 ### O-004 · Card Bundle ZIP 拒绝重复 entry
+
+状态：已随 CARD-FILE-002/CRC 子链修复，无需重复实施。当前 `codecs/card-bundle-zip.ts` 在解压入口以 seenPaths 拒绝重复文件或目录名，且要求本地条目与中央目录一致；`card-bundle-zip.test.ts` 已构造两个 manifest.json 验证拒绝。此前已登记的 Card ZIP/PNG/Asset HTTP 41 项包含重复路径与数量预算；本轮只核对当前实现和测试，未重复跑测。
 
 `apps/studio-server/src/card-bundle-zip.ts:99-145` 用 `Map` 收集 entry，重复路径由后项覆盖前项。当前没有签名或哈希验证合同，尚不足以认定安全绕过；建议把重复 entry 视为格式错误，为未来签名、审计和跨实现兼容消除歧义。
 
 ### O-005 · 启动与测试文档对齐当前实现
+
+状态：本项已修复。并行 A 按当前工具链版本文件、开发脚本、Vite/Vitest 配置及 HTTP 入口更新根/Server/Client README、getting-started 与 project-structure；区分固定开发版本与最低要求、双终端启动、package watch、HTTP RPC/SSE、代理端口及默认测试范围。A 定向核对 74 个相对链接目标、13 处测试路径引用和 diff 通过，主代理核对交付范围；未启动服务、未执行测试/构建，也未检查外链和锚点。FR-006 的零测试成功与全仓质量门禁问题不因文档说明而关闭。
 
 - `README.md:17-19` 写 Node `>=20` / pnpm `>=8`，实际 `package.json`、`.node-version` 与 `.nvmrc` 固定 Node `22.18.0` / pnpm `9.15.0`。
 - `docs/guide/getting-started.md:31-36` 声称 Server 启动 WebSocket 与 HTTP；当前实现是 HTTP RPC 和 Extension SSE，没有 WebSocket Server 构造路径。
@@ -520,8 +600,9 @@ pnpm audit --prod --audit-level low
 
 ## 建议处理顺序
 
-1. **立即处理 FR-008**：先封堵所有 State / Binding 入口的原型污染，并按关闭条件覆盖 RPC、Agent Tool、Definition 与 Timeline 四条链。
-2. **随后收口高影响完整性与边界问题**：FR-001、FR-009、FR-011、FR-012、FR-013。它们分别影响失败语义、会话授权边界、跨领域提交和持久化引用完整性。
-3. **再处理 Client 写错目标或丢编辑问题**：FR-003、FR-014、FR-015、FR-016、FR-017；其中 FR-014/015 应使用 deferred response / deferred RPC 测试验证真实乱序。
-4. **并行修复其余 P2 与质量门禁**：FR-002、FR-004、FR-005、FR-006、FR-007、FR-010。FR-006 应先恢复现有红灯，再新增门禁。
-5. **最后处理 P3 与优化项**：FR-018、FR-019、O-001～O-006；O-001/O-002 与 FR-007 的性能、滚动、键盘和读屏效果仍需要人工验收。
+后续由[统一施工顺序](./audit-remediation-decisions-and-order.md) 接管，不再按本文件旧基线直接施工。
+
+1. 先复核当前源码、并行修改归属与实际消费链；若 FR-008/009/010/013 等高影响边界问题仍成立，优先处理，不因为行号已迁移就忽略。
+2. FR-001/003/014/015/017 与前端专项合并施工，公共失败语义先于表单状态与编辑冲突；FR-018 与底层分页链联合验证。
+3. FR-012 按允许失效引用的新目标处理，不新增强引用管理器；FR-011 交由当前 Agent 工作核对，不恢复旧合同。
+4. FR-005/006/007/016/019 与剩余质量、交互项按实际风险和依赖进入相关批次；不将原审阅的检查结果当作当前红灯或通过证据。

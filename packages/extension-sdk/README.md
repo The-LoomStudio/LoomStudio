@@ -41,6 +41,11 @@ const page = await ctx.logs.query({ limit: 50, source: 'current' })
 
 旧的 `info(message, data)` 仍把第二参数作为 data；结构化 event 使用 `log`。`ctx.logs.query` 只查询当前 Host 固定归属的扩展日志，不能读取任意 package、文件路径或保留的 `logs.*` RPC。
 
+### 状态订阅与清理保证
+
+- 订阅安全：`ctx.state.subscribe` 等事件与状态监听通过受控 `AbortSignal` 协调；预取消的 Signal 绝不会创建有效订阅，正常取消与重复 `dispose()` 保持完全幂等；
+- 资源释放：扩展在收到 `dispose` 通知时必须清理自身句柄；Host 保证单模块清理异常被隔离并记录，不会造成 sibling 模块或宿主环境级联崩溃。
+
 ## SDK 与 Host
 
 ```text

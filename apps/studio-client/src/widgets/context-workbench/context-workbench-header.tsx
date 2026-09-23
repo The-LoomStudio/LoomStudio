@@ -21,9 +21,10 @@ export function ContextWorkbenchHeader(props: {
   const settingResources = useMemo(() => props.resources.filter(r => r.resourceKind === 'setting'), [props.resources])
   const selectedId = useStudioLayoutStore(state => state.assetLayouts.resources.views[props.workspaceId]?.selectedId)
   const openAssetDetail = useStudioLayoutStore(state => state.openAssetDetail)
-  const selectedResource = settingResources.find(r => r.id === props.selectedResourceId)
-    ?? settingResources.find(resource => resource.id === selectedId || Boolean(findContextNode([resource.rootNode], selectedId)))
-    ?? settingResources[0]
+  const selectedResource = props.selectedResourceId
+    ? settingResources.find(r => r.id === props.selectedResourceId)
+    : settingResources.find(resource => resource.id === selectedId || Boolean(findContextNode([resource.rootNode], selectedId)))
+      ?? settingResources[0]
   const setAssetPane = useStudioLayoutStore(state => state.setAssetPane)
   const selectNode = (id: string) => {
     setAssetPane('resources', props.workspaceId, 'detail')
@@ -60,7 +61,7 @@ export function ContextWorkbenchHeader(props: {
       title={props.t(definition.labelKey)}
       breadcrumbs={breadcrumbs}
       resources={settingResources}
-      selectedResourceId={selectedResource?.id}
+      selectedResourceId={props.selectedResourceId ?? selectedResource?.id}
       t={props.t}
       onSelectResource={resourceId => props.onSelectResource?.(resourceId)}
     />

@@ -119,6 +119,17 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     createId,
     now: nowIso,
     authorizeUse: (_metadata, context) => context.caller === 'application.ai-gateway',
+    onCleanupFailure: () => {
+      diagnostics.add({
+        severity: 'warning',
+        source: 'secret-store',
+        code: 'secret.cleanup_pending',
+        message: 'Credential cleanup is incomplete; its durable record is retained for retry.',
+      })
+      logger?.warn('Credential cleanup is incomplete; queued for retry', {
+        event: 'secret.cleanup_pending',
+      })
+    },
   }) : undefined
   const traceAudit = createInMemoryTraceAuditStore()
   const loomRunner = createLoomRunner({ traceAudit })
@@ -492,8 +503,8 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
       })
     },
   })
-  const readCardMedia = async (cardId: string, kind: 'avatar' | 'background', assetId?: string): Promise<CardBundleMedia | undefined> => {
-    const directory = await directoryMedia.read(cardId, kind, assetId)
+  const readCardMedia = async (cardId: string, kind: 'avatar' | 'background', assetId?: string, forExport = false): Promise<CardBundleMedia | undefined> => {
+    const directory = await directoryMedia.read(cardId, kind, assetId, forExport)
     if (directory) return directory
     if (!assetId) return kind === 'avatar' ? { bytes: defaultCardPng, mediaType: 'image/png' } : undefined
     const media = await assets?.getMediaAsset(assetId)
@@ -505,12 +516,12 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
   }
   const readCardExport = async (cardId: string) => {
     const { artifact, snapshot } = await applicationRuntime.captureCardDirectoryState({ cardId })
-    const avatar = (await readCardMedia(cardId, 'avatar', artifact.card.media?.avatarAssetId))!
+    const avatar = (await readCardMedia(cardId, 'avatar', artifact.card.media?.avatarAssetId, true))!
     return {
       artifact,
       snapshot,
       avatar,
-      background: await readCardMedia(cardId, 'background', artifact.card.media?.coverAssetId),
+      background: await readCardMedia(cardId, 'background', artifact.card.media?.coverAssetId, true),
     }
   }
   const importCardArchive = async (input: Awaited<ReturnType<typeof decodeCardBundleZip>>, clientId: string, newCardId?: string) => {
@@ -619,6 +630,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
         data: { requestedPort: port },
       })
       try {
+        await secrets?.retryPendingCleanup({ actor: { kind: 'system', id: 'studio-server' }, reason: 'server.start.secret-cleanup' })
         await startupDirectoryScan
         await resourceDirectories?.recoverDeletions(async id => {
           const document = await documents.get(id)
@@ -666,20 +678,15 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
       logger?.info('Studio server stopping', { event: 'server.stopping' })
       mediaWatcher?.dispose()
       mediaWatcher = undefined
-      if (server.listening) {
-        const closed = new Promise<void>((resolve, reject) => {
-          server.close(error => {
-            if (error) reject(error)
-            else resolve()
-          })
-        })
-        server.closeAllConnections()
-        await closed
-      }
+      await server.shutdown()
       try {
         await kernel.stop()
       } finally {
-        await dataEngine?.close()
+        try {
+          await secrets?.retryPendingCleanup({ actor: { kind: 'system', id: 'studio-server' }, reason: 'server.stop.secret-cleanup' })
+        } finally {
+          await dataEngine?.close()
+        }
       }
       logger?.info('Studio server stopped', { event: 'server.stopped' })
     },

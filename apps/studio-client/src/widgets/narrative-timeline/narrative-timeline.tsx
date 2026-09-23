@@ -15,6 +15,7 @@ import styles from './narrative-timeline.module.scss'
 import type { ClientRendererHost } from '../../shared/extension-renderer-runtime/client-renderer-host.js'
 import { RendererNodeMountHost } from '../../features/extension-renderers/ui/renderer-node-mount-host.js'
 import { renderTemplateMacros, type MacroRenderContext } from '../../features/state-variables/model/macro-renderer.js'
+import { useNarrativeAnchorNavigation } from './use-narrative-anchor-navigation.js'
 
 const ConversationMarkdown = lazy(async () => {
   const module = await import('../../shared/ui/conversation-markdown/conversation-markdown.js')
@@ -35,9 +36,9 @@ type NarrativeTimelineProps = {
   getNodeLink: (nodeId: string) => string
   hasOlder: boolean
   macroContext?: MacroRenderContext
-  onEditNode: (nodeId: string, content: string) => void
+  onEditNode: (nodeId: string, content: string) => Promise<void>
   onForkNode: (node: NarrativeNodeView) => void
-  onLoadOlder(): void
+  onLoadOlder(): Promise<void>
   onNodeAnchorChange: (nodeId: string) => void
   rendererHost?: ClientRendererHost
   tail?: ReactNode
@@ -53,14 +54,14 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
   const [messageMotion, setMessageMotion] = useState<{ id: string; direction: 'to-edit' | 'to-read' }>()
   const [copyState, setCopyState] = useState<{ id: string; status: 'copied' | 'failed' }>()
   const [linkCopyState, setLinkCopyState] = useState<{ id: string; status: 'copied' | 'failed' }>()
-  const [activeEntryId, setActiveEntryId] = useState(props.timeline[0]?.id)
+  const [activeEntryId, setActiveEntryId] = useState(props.anchorNodeId ? undefined : props.timeline[0]?.id)
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const linkCopyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const handledAnchorRef = useRef<string | undefined>(undefined)
   const activeEntryFrameRef = useRef<number | undefined>(undefined)
   const composerMotionActiveRef = useRef(false)
   const composerMotionFrameRef = useRef<number | undefined>(undefined)
   const followsComposerRef = useRef(true)
+  const pendingAnchorScrollRef = useRef<{ timelineId?: string; nodeId: string } | undefined>(undefined)
   const messageSurfaceRefs = useRef(new Map<string, HTMLDivElement>())
   const timelineRef = useRef<HTMLDivElement>(null)
   const navigatorItems = useMemo<NarrativeTimelineNavigatorItem[]>(() => props.timeline.map((node, index) => ({
@@ -70,6 +71,26 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
     role: props.t(readNarrativeNodeRole(props.timeline, index) === 'user' ? 'timeline.role.user' : 'timeline.role.assistant'),
   })), [props.macroContext, props.t, props.timeline])
   const navigatorMarkers: NarrativeTimelineMarker[] = []
+  const anchorStatus = useNarrativeAnchorNavigation({
+    timelineId: props.timelineId,
+    nodeId: props.anchorNodeId,
+    nodes: props.timeline,
+    hasOlder: props.hasOlder,
+    busy: props.busy,
+    onLoadOlder: props.onLoadOlder,
+    onLocate: nodeId => {
+      followsComposerRef.current = false
+      if (activeEntryFrameRef.current) cancelAnimationFrame(activeEntryFrameRef.current)
+      activeEntryFrameRef.current = undefined
+      setActiveEntryId(nodeId)
+      pendingAnchorScrollRef.current = { timelineId: props.timelineId, nodeId }
+      const surface = messageSurfaceRefs.current.get(nodeId)
+      if (surface) {
+        surface.scrollIntoView({ block: 'center' })
+        pendingAnchorScrollRef.current = undefined
+      }
+    },
+  })
 
   useEffect(() => () => {
     if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
@@ -79,9 +100,13 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
   }, [])
 
   useEffect(() => {
+    if (props.anchorNodeId) {
+      if (anchorStatus !== 'located') setActiveEntryId(undefined)
+      return
+    }
     if (activeEntryId && props.timeline.some(entry => entry.id === activeEntryId)) return
     setActiveEntryId(props.timeline[0]?.id)
-  }, [activeEntryId, props.timeline])
+  }, [activeEntryId, props.timeline, props.anchorNodeId, anchorStatus])
 
   useLayoutEffect(() => {
     const timeline = timelineRef.current
@@ -118,18 +143,10 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
     }
   }, [props.composerExpanded])
 
-  useLayoutEffect(() => {
-    if (!props.anchorNodeId) {
-      handledAnchorRef.current = undefined
-      return
-    }
-    if (handledAnchorRef.current === props.anchorNodeId || !props.timeline.some(node => node.id === props.anchorNodeId)) return
-    handledAnchorRef.current = props.anchorNodeId
-    setActiveEntryId(props.anchorNodeId)
-    messageSurfaceRefs.current.get(props.anchorNodeId)?.scrollIntoView({ block: 'center' })
-  }, [props.anchorNodeId, props.timeline])
-
   function beginEdit(node: NarrativeNodeView) {
+    if (savingRef.current) return
+    saveCallbackRef.current = props.onEditNode
+    setSaveError(undefined)
     const messageBody = messageSurfaceRefs.current
       .get(node.id)
       ?.querySelector<HTMLElement>('[data-loom-component="markdown-content"]')
@@ -140,20 +157,36 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
   }
 
   function cancelEdit() {
+    if (savingRef.current) return
     if (editingId) setMessageMotion({ id: editingId, direction: 'to-read' })
     setEditingId(undefined)
     setDraft('')
   }
 
+  const saveCallbackRef = useRef(props.onEditNode)
+  const savingRef = useRef(false)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string>()
+
   function saveEdit() {
-    saveValue(draft)
+    void saveValue(draft)
   }
 
-  function saveValue(rawValue: string) {
-    const value = rawValue.trim()
-    if (!editingId || !value) return
-    props.onEditNode(editingId, value)
-    cancelEdit()
+  async function saveValue(rawValue: string) {
+    if (!editingId || !rawValue.trim() || savingRef.current) return
+    savingRef.current = true
+    setSaving(true)
+    setSaveError(undefined)
+    try {
+      await saveCallbackRef.current(editingId, rawValue)
+      savingRef.current = false
+      cancelEdit()
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error))
+    } finally {
+      savingRef.current = false
+      setSaving(false)
+    }
   }
 
   async function copyEntry(node: NarrativeNodeView) {
@@ -171,6 +204,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
   }
 
   function scheduleActiveEntryUpdate() {
+    if (props.anchorNodeId && anchorStatus !== 'located') return
     if (composerMotionActiveRef.current) return
     const timelineElement = timelineRef.current
     if (timelineElement) followsComposerRef.current = isTimelineNearBottom(timelineElement)
@@ -220,6 +254,8 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
         ref={timelineRef}
         onScroll={scheduleActiveEntryUpdate}
       >
+        {anchorStatus === 'unavailable' ? <p role="status">{props.t('timeline.anchorUnavailable')}</p> : null}
+        {anchorStatus === 'failed' ? <p role="alert">{props.t('timeline.anchorLoadFailed')}</p> : null}
         {props.timeline.length === 0 ? (
           props.openingDraft ? (
             <Suspense fallback={(
@@ -261,7 +297,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
               <SkeletonText lines={6} />
             </div>
           )}>
-            {props.hasOlder ? <button disabled={props.busy} type="button" onClick={props.onLoadOlder}>{props.t('timeline.loadOlder')}</button> : null}
+            {props.hasOlder ? <button disabled={props.busy || anchorStatus === 'loading'} type="button" onClick={() => void props.onLoadOlder().catch(() => undefined)}>{props.t('timeline.loadOlder')}</button> : null}
             {props.timeline.map((entry, index) => {
               const role = readNarrativeNodeRole(props.timeline, index)
               return (
@@ -278,7 +314,14 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                   className={styles.messageSurface}
                   data-loom-slot="message-content"
                   ref={element => {
-                    if (element) messageSurfaceRefs.current.set(entry.id, element)
+                    if (element) {
+                      messageSurfaceRefs.current.set(entry.id, element)
+                      const pending = pendingAnchorScrollRef.current
+                      if (pending?.timelineId === props.timelineId && pending?.nodeId === entry.id && props.anchorNodeId === entry.id) {
+                        element.scrollIntoView({ block: 'center' })
+                        pendingAnchorScrollRef.current = undefined
+                      }
+                    }
                     else messageSurfaceRefs.current.delete(entry.id)
                   }}
                 >
@@ -292,6 +335,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                       copyFailedLabel={props.t('longTextEditor.copyFailed')}
                       copyLabel={props.t('longTextEditor.copy')}
                       label={props.t('timeline.editLocal')}
+                      disabled={saving}
                       minHeight={editorMinHeight || undefined}
                       mode="source"
                       restoreInitialLabel={props.t('longTextEditor.restoreInitial')}
@@ -302,8 +346,8 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                       undoLabel={props.t('longTextEditor.undoClear')}
                       value={draft}
                       onCancel={cancelEdit}
-                      onChange={setDraft}
-                      onCommit={setDraft}
+                      onChange={value => { if (!savingRef.current) setDraft(value) }}
+                      onCommit={value => { if (!savingRef.current) setDraft(value) }}
                       onSubmit={saveValue}
                     />
                   ) : (
@@ -349,8 +393,9 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                   index={index}
                   actions={editingId === entry.id ? (
                     <>
-                      <ConversationMessageAction label={props.t('timeline.cancelEdit')} onClick={cancelEdit}><X aria-hidden="true" /></ConversationMessageAction>
-                      <ConversationMessageAction disabled={!draft.trim()} label={props.t('timeline.saveEdit')} onClick={saveEdit}><Check aria-hidden="true" /></ConversationMessageAction>
+                      {saveError ? <span role="alert">{saveError}</span> : null}
+                      <ConversationMessageAction disabled={saving} label={props.t('timeline.cancelEdit')} onClick={cancelEdit}><X aria-hidden="true" /></ConversationMessageAction>
+                      <ConversationMessageAction disabled={saving || !draft.trim()} label={props.t('timeline.saveEdit')} onClick={saveEdit}><Check aria-hidden="true" /></ConversationMessageAction>
                     </>
                   ) : (
                     <>

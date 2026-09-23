@@ -15,7 +15,7 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --root ../.. tests/unit/logging",
     "lint": "eslint ."
   },
   "dependencies": {

@@ -37,6 +37,32 @@ function createTestKernel() {
 }
 
 describe('kernel rpc contract', () => {
+  it('aggregates repeated subscriber failures without merging separate subscriptions', async () => {
+    const { kernel, diagnostics } = createTestKernel()
+    await kernel.start()
+    const events = kernel.getEventBus()
+    const first = events.subscribe(['extensions.changed'], () => { throw new Error('first subscriber') })
+    const second = events.subscribe(['extensions.changed'], () => { throw new Error('second subscriber') })
+    let delivered = 0
+    const healthy = events.subscribe(['extensions.changed'], () => { delivered++ })
+    try {
+      for (let index = 0; index < 1000; index++) events.emit('extensions.changed', {})
+      expect(delivered).toBe(1000)
+      const result = await kernel.callRpc<{ items: { code: string; occurrences: number; details: { subscriptionId: string } }[] }>(
+        'diagnostics.list', { source: 'event-hub' },
+      )
+      expect(result.items).toHaveLength(2)
+      expect(result.items.every(item => item.code === 'event.subscriber_failed' && item.occurrences === 1000)).toBe(true)
+      expect(new Set(result.items.map(item => item.details.subscriptionId)).size).toBe(2)
+      expect(diagnostics.list()).toHaveLength(2)
+    } finally {
+      first.dispose()
+      second.dispose()
+      healthy.dispose()
+      await kernel.stop()
+    }
+  })
+
   it('can be started, stopped, and started again without duplicating kernel handlers', async () => {
     const { kernel } = createTestKernel()
 
@@ -106,7 +132,7 @@ describe('kernel rpc contract', () => {
     const { kernel } = createTestKernel()
     const events: Array<{ name: string; payload: { changesetId: string; documents: Array<{ tombstoned: boolean }> } }> = []
     await kernel.start()
-    kernel.getEventBus().subscribe(['docs.changed'], event => events.push(event as never))
+    kernel.getEventBus().subscribe(['docs.changed'], event => { events.push(event as never) })
 
     await kernel.callRpc('docs.write', {
       id: 'example.doc:2',
@@ -130,7 +156,7 @@ describe('kernel rpc contract', () => {
     const { kernel } = createTestKernel()
     const events: Array<{ name: string; payload: { changesetId: string; operations: Array<Record<string, unknown>> } }> = []
     await kernel.start()
-    kernel.getEventBus().subscribe(['data.changed', 'docs.changed'], event => events.push(event as never))
+    kernel.getEventBus().subscribe(['data.changed', 'docs.changed'], event => { events.push(event as never) })
 
     await kernel.callRpc('docs.write', {
       id: 'example.doc:data-commit',
@@ -161,7 +187,7 @@ describe('kernel rpc contract', () => {
     kernel.getEventBus().subscribe(['docs.changed'], () => {
       throw new Error('broken subscriber')
     })
-    kernel.getEventBus().subscribe(['docs.changed'], event => events.push(event.name))
+    kernel.getEventBus().subscribe(['docs.changed'], event => { events.push(event.name) })
 
     await expect(kernel.callRpc('docs.write', {
       id: 'example.doc:isolated-subscriber',
@@ -177,7 +203,7 @@ describe('kernel rpc contract', () => {
     const { kernel } = createTestKernel()
     const events: Array<{ payload: { documents: Array<{ tombstoned: boolean }> }; meta: { correlationId?: string; callId?: string } }> = []
     await kernel.start()
-    kernel.getEventBus().subscribe(['docs.changed'], event => events.push(event as never))
+    kernel.getEventBus().subscribe(['docs.changed'], event => { events.push(event as never) })
 
     await kernel.callRpc('docs.write', {
       id: 'example.doc:3',
@@ -214,7 +240,7 @@ describe('kernel rpc contract', () => {
     const read = await kernel.callRpc<{
       changeset: { id: string; createdBy: { kind: string; id: string }; correlationId?: string }
     }>('docs.getChangeset', { changesetId: created.changesetId })
-    kernel.getEventBus().subscribe(['docs.*'], event => events.push(event as never))
+    kernel.getEventBus().subscribe(['docs.*'], event => { events.push(event as never) })
 
     const reverted = await kernel.callRpc<{ changesetId: string }>('docs.revertChangeset', {
       changesetId: created.changesetId,
@@ -267,7 +293,7 @@ describe('kernel rpc contract', () => {
       content: { value: 2 },
       expectedVersion: 1,
     })
-    kernel.getEventBus().subscribe(['docs.*'], event => events.push(event as never))
+    kernel.getEventBus().subscribe(['docs.*'], event => { events.push(event as never) })
 
     let failure: unknown
     try {

@@ -82,7 +82,17 @@ Preset 挂载与预览是构建表面的静态投影：
 
 每个 Provider Step 保存 Provider、Model、Provider Call ID、raw / normalized stop reason 和 usage。Provider Observation 是外部事实，Run State 是 Runtime 判断。`stop` 不必然表示 Agent 完成，`tool_call` 也不直接等同于整个 Run 的状态。
 
-## 7. 明确不属于当前合同
+## 7. 失效业务引用与宽松构建契约
+
+用户已确立业务资源之间的宽松引用与非严格构建原则：
+
+- **删除不破坏业务引用**：删除 Provider、Model 或 Profile 等业务配置时，不因存在下游引用而强制阻断删除，也不自动级联解绑。原有引用关系完整保留，等待用户显式切换或重新绑定。
+- **配置展示容错与按需报错**：列表、详情与历史面板能正常承受失效引用，并将目标标记为不可用（Missing / Unresolvable），同时提供定位警告与重绑入口；仅在真正发起 LLM 请求解析到不可用 Provider 时才明确失败。
+- **宽松 Prompt 构建门禁**：PromptBuild 不作为严格的阻断性门禁。缺失的可跳过条目自动跳过，无法展开的变量宏保留原文并通过平台诊断（Diagnostics）记录警告，绝不因单点资源缺失直接导致整个 Prompt 编译崩溃。
+
+宽松跳过仅适用于可选贡献：Session 指向的 Agent Profile、Profile 指向的主 Preset 及实际调用的必要依赖缺失时，仍明确失败，不替换为默认资源。删除 Preset 或扩展导入资源保留外部业务引用，但仍清理被删资源自身拥有的附属资源；这与跨领域自动解绑不同。
+
+## 8. 明确不属于当前合同
 
 - Provider 内部如何排列 System Message 与 Tool Description；
 - OpenAI Responses Custom Tool 的正式 wire adapter；
@@ -90,7 +100,7 @@ Preset 挂载与预览是构建表面的静态投影：
 - Provider SDK message 类型直接进入 Agent Store；
 - 在 PromptBuild 完成后由 Runtime 临时拼接 Content Tool 字符串。
 
-## 8. 实现来源
+## 9. 实现来源
 
 - [`packages/ai-gateway/src/types.ts`](../../../../packages/ai-gateway/src/types.ts)
 - [`packages/ai-gateway/src/gateway.ts`](../../../../packages/ai-gateway/src/gateway.ts)

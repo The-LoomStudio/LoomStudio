@@ -36,6 +36,34 @@ function createMockPngWithText(keyword: string, text: string): Uint8Array {
 }
 
 describe('studio server SillyTavern silent import pipeline', () => {
+  it('scans a Data parent directory through its default-user child', async () => {
+    await withStudioServer(async port => {
+      const dataDirectory = await mkdtemp(join(tmpdir(), 'loom-st-parent-scan-'))
+      await mkdir(join(dataDirectory, 'default-user', 'characters'), { recursive: true })
+      await writeFile(join(dataDirectory, 'default-user', 'characters', 'Hero.json'), JSON.stringify({
+        name: 'Hero',
+        description: 'A test character.',
+      }))
+
+      try {
+        await callRpc(port, 'extensions.enableModule', { packageId: 'sillytavern.importer', moduleId: 'server' })
+        const started = await callRpc<{ sessionId: string }>(port, 'sillytavern.importer.migration.start', { directory: dataDirectory })
+        let report: { files: number; scan: { status: string; processed: number; total: number } } | undefined
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          report = await callRpc(port, 'sillytavern.importer.migration.inspect', { sessionId: started.sessionId })
+          if (report.scan.status !== 'scanning') break
+          await new Promise(resolve => setTimeout(resolve, 10))
+        }
+        expect(report?.scan.status).toBe('completed')
+        expect(report?.files).toBe(1)
+        expect(report?.scan.processed).toBe(1)
+        await callRpc(port, 'sillytavern.importer.migration.cancel', { sessionId: started.sessionId })
+      } finally {
+        await rm(dataDirectory, { recursive: true, force: true })
+      }
+    })
+  })
+
   it('seamlessly imports SillyTavern PNG Card via /cards/import/png endpoint', async () => {
     await withStudioServer(async port => {
       await callRpc(port, 'extensions.enableModule', { packageId: 'sillytavern.importer', moduleId: 'server' })

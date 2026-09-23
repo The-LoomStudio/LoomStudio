@@ -8,6 +8,35 @@ import { decodeCardBundleZip } from '../../../apps/studio-server/src/codecs/card
 import { authenticatedFetch, callRpc, withStudioServer } from './helpers.js'
 
 describe('studio server media asset data plane', () => {
+  it('reimports SVG media in the same database and exports the saved directory again', async () => {
+    await withStudioServer(async port => {
+      const bytes = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>')
+      const upload = await authenticatedFetch(port, '/assets', {
+        method: 'POST', headers: { 'content-type': 'image/svg+xml', 'x-loom-asset-kind': 'card.avatar' }, body: bytes,
+      })
+      expect(upload.status).toBe(201)
+      const media = await upload.json() as { asset: { id: string } }
+      const created = await callRpc<{ card: { id: string } }>(port, 'application.createCard', { name: 'SVG Card' })
+      await callRpc(port, 'application.updateCard', { cardId: created.card.id, media: { avatarAssetId: media.asset.id, coverAssetId: media.asset.id } })
+      for (const format of ['png', 'loomcard']) {
+        const exported = await authenticatedFetch(port, `/cards/${created.card.id}/export.${format}`)
+        expect(exported.status).toBe(200)
+        const source = new Uint8Array(await exported.arrayBuffer())
+        const decoded = await decodeCardBundleZip(format === 'png' ? readCardPngArchive(source)! : source)
+        expect(decoded.avatar.mediaType).toBe('image/svg+xml')
+        expect(Buffer.from(decoded.avatar.bytes)).toEqual(bytes)
+        const imported = await authenticatedFetch(port, `/cards/import/${format}`, { method: 'POST', body: source })
+        expect(imported.status).toBe(201)
+        const result = await imported.json() as { card: { id: string } }
+        const reexported = await authenticatedFetch(port, `/cards/${result.card.id}/export.loomcard`)
+        expect(reexported.status).toBe(200)
+        const roundtrip = await decodeCardBundleZip(new Uint8Array(await reexported.arrayBuffer()))
+        expect(roundtrip.background?.mediaType).toBe('image/svg+xml')
+        expect(Buffer.from(roundtrip.background!.bytes)).toEqual(bytes)
+      }
+    })
+  })
+
   it('uploads immutable bytes and reads them by assetId', async () => {
     await withStudioServer(async port => {
       const bytes = Buffer.from('fake png bytes')

@@ -27,7 +27,7 @@ describe('studio server Agent Turn RPC', () => {
         model: { providerProfileId: profile.providerProfile.id, modelId: officialFakeModelId },
       })
 
-      const toolMounts = await callRpc<{ mounts: Array<{ toolId: string }> }>(port, 'application.listPresetToolMounts', { presetResourceId: preset.id })
+      const toolMounts = await callRpc<{ mounts: Array<{ toolId: string }> }>(port, 'application.listPresetToolMounts', { presetId: preset.id })
       expect(toolMounts.mounts.length).toBeGreaterThan(0)
       expect(toolMounts.mounts.map(m => m.toolId)).toContain('official/search_context')
 
@@ -43,16 +43,42 @@ describe('studio server Agent Turn RPC', () => {
       expect(presets.resources.map(item => item.id)).toContain(preset.id)
       expect(profiles.agentProfiles.map(item => item.id)).toContain(agentProfile.agentProfile.id)
 
-      // 直接删除被 Agent Profile 引用的预设，验证无需手动解绑，且不会抛出阻断错误或 empty transaction 错误
+      const card = await callRpc<{ card: { id: string } }>(port, 'application.createCard', { name: 'External references' })
+      await callRpc(port, 'application.updateCardPromptResources', { cardId: card.card.id, promptResourceIds: [preset.id] })
+      const timeline = await callRpc<{ timeline: { id: string } }>(port, 'application.createNarrativeTimeline', { cardId: card.card.id })
+      const cardBefore = await callRpc(port, 'application.getCard', { cardId: card.card.id })
+      const timelineBefore = await callRpc(port, 'application.getNarrativeTimeline', { timelineId: timeline.timeline.id })
+      const profileBefore = await callRpc(port, 'application.getAgentProfile', { agentProfileId: agentProfile.agentProfile.id })
+      expect(cardBefore).toMatchObject({ card: { promptResourceIds: [preset.id] } })
+      expect(timelineBefore).toMatchObject({ timeline: { promptResourceIds: [preset.id] } })
+      expect(profileBefore).toMatchObject({ agentProfile: { presetId: preset.id } })
+      const session = await callRpc<{ session: { id: string } }>(port, 'application.createAgentSession', { agentProfileId: agentProfile.agentProfile.id })
+      await callRpc(port, 'application.upsertTextTransformRule', {
+        ruleId: 'owned-preset-rule',
+        rule: {
+          name: 'Owned rule', owner: { kind: 'preset', presetId: preset.id }, enabled: true, orderIndex: 0,
+          matcher: { kind: 'regex', pattern: 'a', flags: 'g' }, effect: { kind: 'replace', replacement: 'b' },
+          targets: ['agent-session'], phases: ['display'],
+        },
+      })
+
       const deletePresetResult = await callRpc<{ deleted: boolean; detachedReferences: { agentProfiles?: number } }>(port, 'application.deletePromptResource', { resourceId: preset.id })
       expect(deletePresetResult.deleted).toBe(true)
-      expect(deletePresetResult.detachedReferences.agentProfiles).toBe(1)
+      expect(deletePresetResult.detachedReferences).toEqual({ presets: 0, cards: 0, timelines: 0, agentProfiles: 0 })
       await expect(callRpc(port, 'application.getPromptResource', { resourceId: preset.id })).rejects.toThrow('Prompt resource not found')
-
-      // 验证 Agent Profile 依然保留，且 presetId 自动回退为官方默认预设
-      const profileAfterPresetDeletion = await callRpc<{ agentProfile: { id: string; presetId?: string } }>(port, 'application.getAgentProfile', { agentProfileId: agentProfile.agentProfile.id })
-      expect(profileAfterPresetDeletion.agentProfile.id).toBe(agentProfile.agentProfile.id)
-      expect(profileAfterPresetDeletion.agentProfile.presetId).toBeUndefined()
+      await expect(callRpc(port, 'application.getAgentProfile', { agentProfileId: agentProfile.agentProfile.id })).resolves.toEqual(profileBefore)
+      await expect(callRpc(port, 'application.getCard', { cardId: card.card.id })).resolves.toEqual(cardBefore)
+      await expect(callRpc(port, 'application.getNarrativeTimeline', { timelineId: timeline.timeline.id })).resolves.toEqual(timelineBefore)
+      const remainingSettingMounts = await callRpc<{ mounts: Array<{ source: { kind: string; id: string } }> }>(port, 'application.listSettingMounts', {})
+      expect(remainingSettingMounts.mounts.filter(mount => mount.source.kind === 'preset' && mount.source.id === preset.id)).toEqual([])
+      await expect(callRpc(port, 'application.listPresetToolMounts', { presetId: preset.id })).resolves.toEqual({ mounts: [] })
+      await expect(callRpc(port, 'application.listTextTransformRules', {})).resolves.toEqual({ rules: [] })
+      await expect(callRpc(port, 'application.getPromptResource', { resourceId: setting.resource.id })).resolves.toMatchObject({ resource: { id: setting.resource.id } })
+      for (const method of ['application.previewAgentTurn', 'application.invokeAgentTurn']) {
+        await expect(callRpc(port, method, { agentSessionId: session.session.id, input: 'Continue.' }))
+          .rejects.toThrow('Prompt resource not found')
+      }
+      await expect(callRpc(port, 'application.getAgentTranscriptPage', { agentSessionId: session.session.id })).resolves.toMatchObject({ entries: [] })
 
       // 创建一个纯空预设并立即删除，验证在没有任何关联引用/规则时，Document 参与者不会因 0 变更报 Document transaction produced no changes
       const standalonePreset = await createPreset(port, 'Standalone Preset', 'Standalone prompt.')

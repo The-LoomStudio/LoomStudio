@@ -21,6 +21,24 @@ const nodes: FileTreeNode[] = [
 ]
 
 describe('file tree keyboard model', () => {
+  it('lets empty containers expand and collapse like their mouse disclosure, without toggling leaves', () => {
+    const tree = [{ id: 'root', label: 'Root', children: [
+      { id: 'empty', label: 'Empty', children: [] },
+      { id: 'leaf', label: 'Leaf' },
+    ] }]
+    const collapsed = new Set(['root'])
+    const expanded = new Set(['root', 'empty'])
+    const target = (key: string, nodeId: string, expandedIds: Set<string>) => readFileTreeKeyboardTarget({
+      key, nodeId, expandedIds, visibleNodes: readVisibleFileTreeNodes(tree, expandedIds),
+    })
+    expect(target('ArrowRight', 'empty', collapsed)).toEqual({ toggleId: 'empty' })
+    expect(target('ArrowRight', 'empty', expanded)).toEqual({ focusId: 'empty' })
+    expect(target('ArrowLeft', 'empty', expanded)).toEqual({ toggleId: 'empty' })
+    expect(target('ArrowLeft', 'empty', collapsed)).toEqual({ focusId: 'root' })
+    expect(target('ArrowRight', 'leaf', expanded)).toEqual({ focusId: 'leaf' })
+    expect(target('ArrowLeft', 'leaf', expanded)).toEqual({ focusId: 'root' })
+  })
+
   it('flattens only visible treeitems and keeps visual sections outside the treeitem order', () => {
     expect(readVisibleFileTreeNodes(nodes, new Set()).map(item => [item.node.id, item.level, item.parentId])).toEqual([
       ['parent', 1, undefined],

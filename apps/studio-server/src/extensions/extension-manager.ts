@@ -235,7 +235,28 @@ export function createServerExtensionManager(options: {
       if (record.sources.length !== 1 || !['installed', 'dev-link'].includes(record.sources[0]?.kind ?? '')) {
         throw new Error(`Only an installed or dev-linked Extension Package can be uninstalled: ${packageId}`)
       }
-      for (const moduleManifest of serverModules(record.manifest)) {
+      for (const moduleManifest of record.manifest.modules ?? []) {
+        const desired = readDesiredState(options.stateStore, packageId, moduleManifest.id)
+        if (!desired.enabled) continue
+        await options.stateStore.set(packageId, moduleManifest.id, {
+          enabled: false,
+          grantedEventCapabilities: desired.grantedEventCapabilities,
+          grantedAssetCapabilities: desired.grantedAssetCapabilities,
+        })
+      }
+      const modules = serverModules(record.manifest)
+      const errors: unknown[] = []
+      for (const moduleManifest of modules) {
+        try {
+          await options.host.dispose(packageId, moduleManifest.id)
+        } catch (error) {
+          errors.push(error)
+        }
+      }
+      if (errors.length > 0) {
+        throw new AggregateError(errors, `Extension Package uninstall incomplete: ${packageId}; modules disabled, package retained. Retry uninstall to finish.`)
+      }
+      for (const moduleManifest of modules) {
         await options.host.forget(packageId, moduleManifest.id)
       }
       await options.stateStore.deletePackage(packageId)

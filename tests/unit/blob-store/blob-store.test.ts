@@ -1,6 +1,6 @@
 import { createBlobStore, BlobStoreError } from '@loom-studio/blob-store'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -50,6 +50,50 @@ describe('BlobStore', () => {
     expect(first.blob.id).toBe(second.blob.id)
     expect(fixture.engine.database.prepare('SELECT COUNT(*) AS count FROM stored_blobs').get()).toEqual({ count: 1 })
     fixture.engine.close()
+  })
+
+  it.each([false, true])('preserves another prepared write after rollback and discard (separate store: %s)', async separateStore => {
+    const fixture = await createFixture()
+    try {
+      const otherStore = separateStore ? createStore(fixture.engine, fixture.blobRoot) : fixture.store
+      const first = await fixture.store.prepareWrite({ source: Buffer.from('shared prepared bytes') })
+      const second = await otherStore.prepareWrite({ source: Buffer.from('shared prepared bytes') })
+      expect(first.existing).toBe(false)
+      expect(second.existing).toBe(false)
+
+      await expect(fixture.engine.transact({ actor: { kind: 'system', id: 'test' } }, async tx => {
+        fixture.store.participateWrite(tx, first)
+        throw new Error('rollback')
+      })).rejects.toThrow('rollback')
+      await fixture.store.discardPreparedWrite(first)
+      await fixture.store.discardPreparedWrite(first)
+      expect(await fixture.store.getBySha256(first.blob.sha256)).toBeUndefined()
+
+      const committed = await fixture.engine.transact({ actor: { kind: 'system', id: 'test' } }, async tx =>
+        otherStore.participateWrite(tx, second))
+      await otherStore.discardPreparedWrite(second)
+
+      expect(Buffer.from(await otherStore.read(committed.value.blob.id)).toString()).toBe('shared prepared bytes')
+      expect(fixture.engine.database.prepare('SELECT COUNT(*) AS count FROM stored_blobs').get()).toEqual({ count: 1 })
+    } finally {
+      await fixture.engine.close()
+    }
+  })
+
+  it('retains unreferenced finalized bytes without metadata when a prepared write is discarded', async () => {
+    const fixture = await createFixture()
+    try {
+      const prepared = await fixture.store.prepareWrite({ source: Buffer.from('unreferenced bytes') })
+      await fixture.store.discardPreparedWrite(prepared)
+
+      expect(await fixture.store.getBySha256(prepared.blob.sha256)).toBeUndefined()
+      expect(await readdir(join(fixture.blobRoot, 'staging'))).toEqual([])
+      const hash = prepared.blob.sha256
+      expect(await readFile(join(fixture.blobRoot, 'sha256', hash.slice(0, 2), hash.slice(2, 4), hash), 'utf8'))
+        .toBe('unreferenced bytes')
+    } finally {
+      await fixture.engine.close()
+    }
   })
 
   it('survives reopening the shared SQLite engine', async () => {

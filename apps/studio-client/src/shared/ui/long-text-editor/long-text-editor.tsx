@@ -1,5 +1,5 @@
 import { Check, Code2, Copy, Eye, History, RotateCcw, Trash2, Undo2, X } from 'lucide-react'
-import { forwardRef, lazy, Suspense, useEffect, useId, useImperativeHandle, useReducer, useRef, type CSSProperties } from 'react'
+import { forwardRef, lazy, Suspense, useEffect, useId, useImperativeHandle, useReducer, useRef, useState, type CSSProperties } from 'react'
 import type { CodeMirrorEditorHandle } from './code-mirror-editor.js'
 import {
   INITIAL_LONG_TEXT_EDITOR_STATE,
@@ -64,8 +64,13 @@ export const LongTextEditor = forwardRef<LongTextEditorHandle, LongTextEditorPro
   const labelId = useId()
   const codeEditorRef = useRef<CodeMirrorEditorHandle>(null)
   const initialValueRef = useRef(props.value)
+  const [hasOpenedSource, setHasOpenedSource] = useState(props.mode === 'source')
   const [state, dispatch] = useReducer(reduceLongTextEditorState, INITIAL_LONG_TEXT_EDITOR_STATE)
   const hasChanges = props.value !== initialValueRef.current
+
+  useEffect(() => {
+    if (props.mode === 'source') setHasOpenedSource(true)
+  }, [props.mode])
 
   useImperativeHandle(ref, () => ({
     focus: () => codeEditorRef.current?.focus(),
@@ -215,15 +220,17 @@ export const LongTextEditor = forwardRef<LongTextEditorHandle, LongTextEditorPro
           )}
         </div>
       </header>
-      {props.mode === 'source' ? (
+      {/* ponytail: Retain one visited editor per mounted document; release it with the document, not on preview toggles. */}
+      {props.mode === 'source' || hasOpenedSource ? (
         <Suspense fallback={(
-          <div aria-busy="true" className={styles.editorHost} data-loom-component="code-editor-loading">
+          <div hidden={props.mode !== 'source'} aria-busy="true" className={styles.editorHost} data-loom-component="code-editor-loading">
             <SkeletonText className={styles.editorSkeleton} lines={8} />
           </div>
         )}>
           <CodeMirrorEditor
             ref={codeEditorRef}
             autoFocus={props.autoFocus}
+            hidden={props.mode !== 'source'}
             disabled={props.disabled}
             labelledBy={labelId}
             placeholder={props.placeholder}
@@ -239,7 +246,8 @@ export const LongTextEditor = forwardRef<LongTextEditorHandle, LongTextEditorPro
             onSubmit={props.onSubmit}
           />
         </Suspense>
-      ) : !props.sourceOnly ? (
+      ) : null}
+      {props.mode === 'preview' && !props.sourceOnly ? (
         <Suspense fallback={(
           <div aria-busy="true" className={styles.preview} data-loom-component="markdown-preview-loading">
             <SkeletonText className={styles.previewSkeleton} lines={5} />

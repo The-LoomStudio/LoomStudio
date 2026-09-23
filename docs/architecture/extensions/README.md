@@ -51,6 +51,12 @@ Server Extension Manager 负责：
 
 Client Module 由 Studio Client 根据 Catalog 与 desired state 独立编排。Server Manager 不伪造 Client Instance；Client Host 在 enabled、disabled、reloaded、版本或 Entry 变化后 reconcile 当前 Module，并负责 abort、dispose 与重新加载。
 
+### 生命周期与异常恢复保证
+
+- **卸载容错与重试（Uninstallation Resilience）**：Server 卸载扩展时，先持久化将其标记为禁用，再尽力 `dispose()` 所有关联模块。若过程中发生异常，保留包来源记录、授权声明与 Catalog 状态，明确未完成状态并通过平台诊断暴露，允许调用方重试卸载或重建恢复，绝不损坏全局状态一致性。
+- **状态订阅安全（State Subscription Safety）**：`packages/extension-sdk/extension-host` 保证预先已处于 Abort 状态的 Signal 绝不会创建有效订阅；正常取消订阅与重复调用 `dispose()` 完全幂等。
+- **客户端实例隔离与清理**：Client Extension Host 在模块卸载或清理发生异常时，严格隔离故障，绝不影响其他正常注册的扩展；失效实例立即失去资源访问权，且旧 Catalog 异步回调绝不会复活已卸载的实例。
+
 ## 3. Manifest v2
 
 ```json

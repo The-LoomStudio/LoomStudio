@@ -6,6 +6,7 @@ import {
 import type { PromptResourceMutation, PromptResourceNodePatch, PromptResourceStore } from '@loom-studio/application-data'
 import type { VfsEntry } from '../vfs/types.js'
 import type { ResourceVfs, VfsTextAttachment } from '../vfs/resource-filesystem.js'
+import type { NarrativeSampleRequest, NarrativeSampleResult } from '../narrative/sampling.js'
 import type { VfsMutationDecision, VfsMutationPreview } from '../vfs/types.js'
 
 export type ToolOwnerRef = {
@@ -209,6 +210,7 @@ export type ToolExecutionScope = {
   narrative?: {
     timelineId: string
     branchId: string
+    sample(input: Omit<NarrativeSampleRequest, 'timelineId' | 'branchId'>): Promise<NarrativeSampleResult>
     appendNode(input: { content: string }): Promise<{ nodeId: string }>
     editNode(input: { nodeId: string; content: string }): Promise<{ nodeId: string }>
   }

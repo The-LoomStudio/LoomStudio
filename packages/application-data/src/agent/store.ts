@@ -224,17 +224,6 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
     getEntry: (id) => engine.read((database) => readEntry(database, id)),
     getEntryPage: (input) =>
       engine.read((database) => readEntryPage(database, input)),
-    hasSessionForProfile: (agentProfileId) =>
-      engine.read((database) => {
-        validateId(agentProfileId, 'agentProfileId')
-        return Boolean(
-          database
-            .prepare(
-              'SELECT 1 FROM agent_sessions WHERE agent_profile_id = ? AND tombstoned = 0 LIMIT 1',
-            )
-            .get(agentProfileId),
-        )
-      }),
     createSession: async (input) => {
       const result = await write(input, (tx) => tx.createSession(input))
       return { session: result.value, commit: result.commit }

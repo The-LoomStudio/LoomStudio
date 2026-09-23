@@ -38,6 +38,7 @@ export type CodeMirrorEditorHandle = {
 
 type CodeMirrorEditorProps = {
   autoFocus?: boolean
+  hidden?: boolean
   disabled?: boolean
   labelledBy: string
   onCancel?(): void
@@ -379,12 +380,17 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
     })
 
     viewRef.current = view
-    if (props.autoFocus) view.focus()
     return () => {
       view.destroy()
       viewRef.current = null
     }
   }, [])
+
+  useEffect(() => {
+    if (props.hidden) return
+    viewRef.current?.requestMeasure()
+    if (props.autoFocus) viewRef.current?.focus()
+  }, [props.hidden, props.autoFocus])
 
   useEffect(() => {
     const view = viewRef.current
@@ -419,5 +425,5 @@ export const CodeMirrorEditor = forwardRef<CodeMirrorEditorHandle, CodeMirrorEdi
     })
   }, [props.labelledBy, props.spellCheck])
 
-  return <div className={styles.editorHost} data-loom-component="code-editor" ref={hostRef} />
+  return <div hidden={props.hidden} className={styles.editorHost} data-loom-component="code-editor" ref={hostRef} />
 })

@@ -1,10 +1,160 @@
 import { describe, expect, it } from 'vitest'
 import type { CardBundleArtifact } from '@loom-studio/application-runtime'
 import { materializeStateContribution } from '@loom-studio/application-runtime'
-import { unzipSync, zipSync, Zip, ZipPassThrough } from 'fflate'
+import { unzipSync, zipSync, Zip, ZipPassThrough, ZipDeflate } from 'fflate'
+import { crc32, deflateSync } from 'node:zlib'
 import { decodeCardBundleZip, encodeCardBundleZip, loadCardBundleFiles } from '../../../apps/studio-server/src/codecs/card-bundle-zip.js'
+import { defaultCardPng, encodeCardBundlePng, readCardPngArchive } from '../../../apps/studio-server/src/codecs/card-png.js'
 
 describe('Loom Card ZIP', () => {
+  it.each([0, 6] as const)('rejects mismatched checksum metadata for compression level %s', async level => {
+    const entries = unzipSync(encodeCardBundleZip({
+      artifact: { schemaVersion: 4, artifactId: 'crc', displayName: 'CRC', card: { name: 'CRC', description: 'original-description' }, contextAssets: [] },
+      avatar: { bytes: Buffer.from('avatar'), mediaType: 'image/png' },
+    }))
+    const archive = Buffer.from(zipSync(entries, { level }))
+    const central = archive.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]))
+    expect(central).toBeGreaterThan(0)
+    archive[central + 16]! ^= 1
+    await expect(decodeCardBundleZip(archive)).rejects.toThrow(/checksum.*manifest\.json/)
+  })
+
+  it('rejects same-length body corruption inside ZIP and PNG before returning an Artifact', async () => {
+    const source = unzipSync(encodeCardBundleZip({
+      artifact: { schemaVersion: 4, artifactId: 'crc', displayName: 'CRC', card: { name: 'CRC', description: 'original-description' }, contextAssets: [] },
+      avatar: { bytes: Buffer.from('avatar'), mediaType: 'image/png' },
+    }))
+    const archive = Buffer.from(zipSync(source, { level: 0 }))
+    const body = archive.indexOf(Buffer.from('original-description'))
+    expect(body).toBeGreaterThan(0)
+    archive[body] = 'X'.charCodeAt(0)
+    await expect(decodeCardBundleZip(archive)).rejects.toThrow('ZIP checksum mismatch: card/description.md')
+    await expect(decodeCardBundleZip(readCardPngArchive(encodeCardBundlePng(defaultCardPng, archive))!))
+      .rejects.toThrow('ZIP checksum mismatch: card/description.md')
+  })
+
+  it.each([ZipPassThrough, ZipDeflate])('accepts a valid streaming ZIP with data descriptors (%s)', async Encoder => {
+    const entries = unzipSync(encodeCardBundleZip({
+      artifact: { schemaVersion: 4, artifactId: 'stream', displayName: 'Stream', card: { name: 'Stream', description: 'streamed description' }, contextAssets: [] },
+      avatar: { bytes: Buffer.from('avatar'), mediaType: 'image/png' },
+    }))
+    const chunks: Uint8Array[] = []
+    const archive = new Zip((error, data) => {
+      if (error) throw error
+      chunks.push(data)
+    })
+    for (const [path, bytes] of Object.entries(entries)) {
+      const file = new Encoder(path)
+      archive.add(file)
+      file.push(bytes, true)
+    }
+    archive.end()
+    const bytes = Buffer.concat(chunks)
+    await expect(decodeCardBundleZip(bytes))
+      .resolves.toMatchObject({ artifact: { card: { description: 'streamed description' } } })
+    const descriptor = bytes.indexOf(Buffer.from([0x50, 0x4b, 0x07, 0x08]))
+    expect(descriptor).toBeGreaterThan(0)
+    bytes[descriptor + 4]! ^= 1
+    await expect(decodeCardBundleZip(bytes)).rejects.toThrow('ZIP checksum descriptor mismatch: manifest.json')
+  })
+
+  it('accepts ZIP64 end records for a bounded small package', async () => {
+    const archive = Buffer.from(encodeCardBundleZip({
+      artifact: { schemaVersion: 4, artifactId: 'zip64', displayName: 'ZIP64', card: { name: 'ZIP64' }, contextAssets: [] },
+      avatar: { bytes: Buffer.from('avatar'), mediaType: 'image/png' },
+    }))
+    const end = archive.length - 22
+    const record = Buffer.alloc(56)
+    record.writeUInt32LE(0x06064b50)
+    record.writeBigUInt64LE(44n, 4)
+    record.writeUInt16LE(45, 12)
+    record.writeUInt16LE(45, 14)
+    record.writeBigUInt64LE(BigInt(archive.readUInt16LE(end + 8)), 24)
+    record.writeBigUInt64LE(BigInt(archive.readUInt16LE(end + 10)), 32)
+    record.writeBigUInt64LE(BigInt(archive.readUInt32LE(end + 12)), 40)
+    record.writeBigUInt64LE(BigInt(archive.readUInt32LE(end + 16)), 48)
+    const locator = Buffer.alloc(20)
+    locator.writeUInt32LE(0x07064b50)
+    locator.writeBigUInt64LE(BigInt(end), 8)
+    locator.writeUInt32LE(1, 16)
+    const ending = Buffer.from(archive.subarray(end))
+    ending.writeUInt16LE(0xffff, 8)
+    ending.writeUInt16LE(0xffff, 10)
+    ending.writeUInt32LE(0xffffffff, 12)
+    ending.writeUInt32LE(0xffffffff, 16)
+    await expect(decodeCardBundleZip(Buffer.concat([archive.subarray(0, end), record, locator, ending])))
+      .resolves.toMatchObject({ artifact: { card: { name: 'ZIP64' } } })
+  })
+
+  it.each([
+    'image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml',
+    'image/avif', 'video/mp4', 'video/webm', 'image/x-example',
+  ])('preserves %s bytes and MIME through ZIP, PNG container and directory loading', async mediaType => {
+    const media = { bytes: Buffer.from(`opaque ${mediaType} test bytes`), mediaType }
+    const archive = encodeCardBundleZip({
+      artifact: { schemaVersion: 4, artifactId: 'media', displayName: 'Media', card: { name: 'Media' }, contextAssets: [] },
+      avatar: media, background: media,
+    })
+    const entries = unzipSync(archive)
+    const manifest = JSON.parse(Buffer.from(entries['manifest.json']!).toString('utf8'))
+    expect(manifest.mediaTypes[manifest.media.avatar]).toBe(mediaType)
+    if (mediaType === 'image/x-example') expect(manifest.media.avatar).toBe('assets/avatar.bin')
+    if (mediaType === 'image/svg+xml') expect(manifest.media.avatar).toBe('assets/avatar.svg')
+    const embedded = readCardPngArchive(encodeCardBundlePng(defaultCardPng, archive))!
+    for (const source of [archive, embedded]) {
+      const decoded = await decodeCardBundleZip(source)
+      expect(decoded.avatar.mediaType).toBe(mediaType)
+      expect(Buffer.from(decoded.avatar.bytes)).toEqual(media.bytes)
+      expect(decoded.background?.mediaType).toBe(mediaType)
+      expect(Buffer.from(decoded.background!.bytes)).toEqual(media.bytes)
+    }
+    const directory = await loadCardBundleFiles(async path => entries[path]!)
+    expect(directory.bundle.avatar.mediaType).toBe(mediaType)
+    expect(Buffer.from(directory.bundle.avatar.bytes)).toEqual(media.bytes)
+  })
+
+  it.each(['image/png', 'image/apng'])('preserves a two-frame APNG asset as %s', async mediaType => {
+    const chunk = (name: string, data: Buffer) => {
+      const type = Buffer.from(name)
+      const header = Buffer.alloc(4)
+      header.writeUInt32BE(data.length)
+      const checksum = Buffer.alloc(4)
+      checksum.writeUInt32BE(crc32(Buffer.concat([type, data])))
+      return Buffer.concat([header, type, data, checksum])
+    }
+    const header = Buffer.alloc(13)
+    header.writeUInt32BE(1, 0)
+    header.writeUInt32BE(1, 4)
+    header[8] = 8
+    header[9] = 6
+    const control = Buffer.alloc(8)
+    control.writeUInt32BE(2)
+    const frame = (sequence: number) => {
+      const data = Buffer.alloc(26)
+      data.writeUInt32BE(sequence, 0)
+      data.writeUInt32BE(1, 4)
+      data.writeUInt32BE(1, 8)
+      data.writeUInt16BE(1, 20)
+      data.writeUInt16BE(10, 22)
+      return chunk('fcTL', data)
+    }
+    const sequence = Buffer.alloc(4)
+    sequence.writeUInt32BE(2)
+    const bytes = Buffer.concat([
+      defaultCardPng.subarray(0, 8), chunk('IHDR', header), chunk('acTL', control), frame(0),
+      chunk('IDAT', deflateSync(Buffer.from([0, 255, 0, 0, 255]))), frame(1),
+      chunk('fdAT', Buffer.concat([sequence, deflateSync(Buffer.from([0, 0, 0, 255, 255]))])),
+      chunk('IEND', Buffer.alloc(0)),
+    ])
+    const archive = encodeCardBundleZip({
+      artifact: { schemaVersion: 4, artifactId: 'animation', displayName: 'Animation', card: { name: 'Animation' }, contextAssets: [] },
+      avatar: { bytes, mediaType },
+    })
+    const decoded = await decodeCardBundleZip(readCardPngArchive(encodeCardBundlePng(bytes, archive))!)
+    expect(decoded.avatar.mediaType).toBe(mediaType)
+    expect(Buffer.from(decoded.avatar.bytes)).toEqual(bytes)
+  })
+
   it('round-trips an Artifact with avatar and optional background', async () => {
     const artifact: CardBundleArtifact = {
       schemaVersion: 4,

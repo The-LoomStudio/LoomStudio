@@ -1,7 +1,7 @@
 import { ArrowLeft, ArrowRight, Columns2, FilePenLine, Maximize2, Minimize2 } from 'lucide-react'
 import type { ReactNode, RefCallback } from 'react'
 import type { Translator } from '../../shared/i18n/index.js'
-import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore, useStudioPanelStore, type AssetLayoutId, type StudioPanelId } from '../../shared/studio-shell/studio-layout-store.js'
+import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore, type AssetLayoutId, type StudioPanelId } from '../../shared/studio-shell/studio-layout-store.js'
 import { STUDIO_PANEL_PRESENTATION } from '../../shared/studio-shell/studio-panel-presentation.js'
 import styles from './studio-page.module.scss'
 
@@ -11,7 +11,7 @@ export function StudioWindowHeader(props: {
   actionsTargetRef: RefCallback<HTMLDivElement>
   assetWorkspaceId: string
   main?: ReactNode
-  onPanelHistory(direction: 'back' | 'forward', panel: StudioPanelId | null): void
+  onPanelHistory(direction: 'back' | 'forward'): void
   t: Translator
 }) {
   const activeAssetLayoutId = readAssetLayoutId(props.activePanel)
@@ -25,10 +25,6 @@ export function StudioWindowHeader(props: {
   const setAssetPane = useStudioLayoutStore(state => state.setAssetPane)
   const setAssetViewMode = useStudioLayoutStore(state => state.setAssetViewMode)
   const togglePanelWindowMode = useStudioLayoutStore(state => state.togglePanelWindowMode)
-  const canGoBackPanel = useStudioPanelStore(state => state.canGoBack)
-  const canGoForwardPanel = useStudioPanelStore(state => state.canGoForward)
-  const goBackPanel = useStudioPanelStore(state => state.goBack)
-  const goForwardPanel = useStudioPanelStore(state => state.goForward)
   const definition = STUDIO_PANEL_PRESENTATION[props.activePanel]
   const ActivePanelIcon = definition.Icon
   const canGoBackAsset = activeAssetLayoutId !== null && activeAssetViewMode === 'drilldown' && activeAssetPane === 'detail'
@@ -45,7 +41,6 @@ export function StudioWindowHeader(props: {
         <button
           aria-label={props.t('navigation.back')}
           className={styles.headerNavigationButton}
-          disabled={!canGoBackAsset && !canGoBackPanel}
           title={props.t('navigation.back')}
           type="button"
           onClick={() => {
@@ -53,8 +48,7 @@ export function StudioWindowHeader(props: {
               setAssetPane(activeAssetLayoutId, props.assetWorkspaceId, 'explorer')
               return
             }
-            goBackPanel()
-            props.onPanelHistory('back', useStudioPanelStore.getState().activePanel)
+            props.onPanelHistory('back')
           }}
         >
           <ArrowLeft aria-hidden="true" />
@@ -62,12 +56,10 @@ export function StudioWindowHeader(props: {
         <button
           aria-label={props.t('navigation.forward')}
           className={styles.headerNavigationButton}
-          disabled={!canGoForwardPanel}
           title={props.t('navigation.forward')}
           type="button"
           onClick={() => {
-            goForwardPanel()
-            props.onPanelHistory('forward', useStudioPanelStore.getState().activePanel)
+            props.onPanelHistory('forward')
           }}
         >
           <ArrowRight aria-hidden="true" />

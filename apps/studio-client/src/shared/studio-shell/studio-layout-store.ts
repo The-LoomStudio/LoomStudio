@@ -67,14 +67,7 @@ type StudioLayoutStore = StudioLayoutData & {
 
 type StudioPanelStore = {
   activePanel: StudioPanelId | null
-  canGoBack: boolean
-  canGoForward: boolean
-  closePanel(): void
-  goBack(): void
-  goForward(): void
-  setActivePanel(panel: StudioPanelId | null, options?: { record?: boolean }): void
   syncActivePanel(panel: StudioPanelId | null): void
-  togglePanel(panel: StudioPanelId): void
 }
 
 const STORAGE_KEY = 'loom-studio-layout'
@@ -174,56 +167,10 @@ export function sanitizeStudioLayout(value: unknown): StudioLayoutData {
   }
 }
 
-export const useStudioPanelStore = create<StudioPanelStore>((set, get) => {
-  let history: Array<StudioPanelId | null> = [null]
-  let historyIndex = 0
-
-  const recordPanel = (panel: StudioPanelId | null) => {
-    const current = history[historyIndex]
-    if (current === panel) return
-    history = [...history.slice(0, historyIndex + 1), panel]
-    historyIndex = history.length - 1
-  }
-
-  const updateNavigationState = () => ({
-    activePanel: history[historyIndex],
-    canGoBack: historyIndex > 0,
-    canGoForward: historyIndex < history.length - 1,
-  })
-
-  return {
-    activePanel: null,
-    canGoBack: false,
-    canGoForward: false,
-    closePanel: () => {
-      recordPanel(null)
-      set(updateNavigationState())
-    },
-    goBack: () => {
-      if (historyIndex === 0) return
-      historyIndex -= 1
-      set(updateNavigationState())
-    },
-    goForward: () => {
-      if (historyIndex >= history.length - 1) return
-      historyIndex += 1
-      set(updateNavigationState())
-    },
-    setActivePanel: (panel, options) => {
-      if (options?.record !== false) recordPanel(panel)
-      else history[historyIndex] = panel
-      set(updateNavigationState())
-    },
-    syncActivePanel: panel => {
-      history[historyIndex] = panel
-      set(updateNavigationState())
-    },
-    togglePanel: panel => {
-      recordPanel(get().activePanel === panel ? null : panel)
-      set(updateNavigationState())
-    },
-  }
-})
+export const useStudioPanelStore = create<StudioPanelStore>(set => ({
+  activePanel: null,
+  syncActivePanel: activePanel => set({ activePanel }),
+}))
 
 export const useStudioLayoutStore = create<StudioLayoutStore>()(
   persist(
@@ -306,6 +253,7 @@ export const useStudioLayoutStore = create<StudioLayoutStore>()(
         assetMetadataOpen: state.assetMetadataOpen,
         assetLayouts: state.assetLayouts,
         contextCategory: state.contextCategory,
+        composerPinned: state.composerPinned,
         dockOpen: state.dockOpen,
         dockPinned: state.dockPinned,
         panelWindowMode: state.panelWindowMode,

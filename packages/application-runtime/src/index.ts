@@ -38,6 +38,13 @@ export type {
 } from './archive/timeline-archive.js'
 export type { StateContributionRegistry, StateContributionSource } from './state/state-contribution-registry.js'
 export { composeAgentTurnPrompt } from './agents/agent-turn.js'
+export { createNarrativeSampler } from './narrative/sampling.js'
+export type {
+  NarrativeSampleRequest,
+  NarrativeSampleResult,
+  NarrativeSampleSelection,
+  NarrativeSampler,
+} from './narrative/sampling.js'
 export {
   exportCardArtifact,
   importCardBundle,

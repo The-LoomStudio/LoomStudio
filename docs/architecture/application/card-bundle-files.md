@@ -49,6 +49,7 @@ assets/background.webp
 ```
 
 - `manifest.json` 使用 `schema: "loom.cardBundle.zip.v2"`；`resources` 索引 Card 与领域文件，`media`、`scriptAttachments`、`extensionPayloads` 继续索引独立载荷。所有文件引用相对于包根目录。
+- `mediaTypes` 按媒体相对路径记录原 MIME。已知媒体使用对应后缀，未知 MIME 使用 `.bin` 而不是伪装成 PNG；未声明 MIME 的已有标准图片路径仍可按后缀读取。GIF、APNG、SVG 和视频等内部素材不改变 ZIP/PNG 外层协议，保存媒体不等于已提供播放器或允许执行内容。
 - `resources.metadata` 保存 Artifact 版本、身份和包说明，不嵌入 Card 主体或正文树。
 - `card.json` 的 `config` 保存名字、用户名字和其他 Card 配置；description、宏、preset system、opening 与旧 settingLayer 正文保存文件引用。
 - 每个 Prompt 根拥有一个 `index.json`。节点的 `metadata` 保存原有 ID、kind、label、capabilities、orderList 等；`body` 为 Markdown 路径，`children` 数组保留树结构与顺序。普通条目直接生成 `<名称>.md`；真正的 module / folder / 非空子树才使用目录，其自有正文为 `_content.md`。空正文与缺失正文区分，虚拟节点不强制生成正文文件。旧 `body.md` 路径仍按索引读取。
@@ -70,6 +71,10 @@ PNG 的 ZIP 提取与包装已在同一 Codec 提供；用户级解包/重打包
 
 ZIP 最多 4096 项，每个文件最多 64 MiB，压缩包与累计解压内容最多 128 MiB。输入按块解压，已知大小预检与实际解压计数同时生效。路径越界、重复路径、非空目录项、缺失引用、非法 UTF-8 / JSON、非法领域声明与超限内容会被拒绝。
 
+fflate 继续负责解压；单独的完整性元数据读取核对中央目录、本地头或数据描述符中的 CRC，Node 原生 CRC32 对实际解压数据增量计算。同长度正文损坏、CRC 不一致和不完整中央目录会在领域导入前失败；合法存储、deflate、流式数据描述符和预算内 ZIP64 仍可读取。CRC 只检测损坏，不构成签名、可信来源或恶意篡改认证。
+
+目录导出按媒体声明读取原始素材；目录 HTTP 预览仍限制为经过签名检查的栅格图片，不因 MIME 往返修复放开 SVG/视频内容执行。APNG 是 PNG 图像字节路径，不进行转码；动画视觉效果仍需客户端验收。
+
 PNG 外层上限包含 128 MiB ZIP 对应的 Base64 和 64 MiB 封面预算。导入与导出头像/背景时通用移除 PNG 的 tEXt/iTXt/zTXt 文本块与 IEND 后尾部，避免把原卡元数据当成图片再次装包；保留色彩与 APNG 动画块，不做有损转码。PNG 外层和完整 ZIP 内仍各含一份封面，大动画封面会因此明显增大；当前不使用外部封面引用协议。没有签名或远程来源认证合同。
 
 ST 扩展导入时只将世界书写入 Prompt Resource，不再复制进内联 settingLayer，也不再把完整 ST JSON 生成 Portable Payload。包内 `extensions/` 仅来自 Card 的显式 Portable Payload 绑定，不会扫描或打包当前启用的全局扩展。旧导入产生的源卡附件仍是已有用户记录，不能由核心按 ST 特判删除；需通过正式 API 显式解绑，不能删除其他扩展的合法载荷。
@@ -81,5 +86,6 @@ ST 扩展导入时只将世界书写入 Prompt Resource，不再复制进内联 
 - [Card Artifact 与导入导出](../../../packages/application-runtime/src/cards/workspace.ts)
 - [Card 文件投影](../../../apps/studio-server/src/codecs/card-bundle-files.ts)
 - [ZIP 容器](../../../apps/studio-server/src/codecs/card-bundle-zip.ts)
+- [ZIP 完整性元数据](../../../apps/studio-server/src/codecs/zip-checksums.ts)
 - [PNG 容器](../../../apps/studio-server/src/codecs/card-png.ts)
 - [Server 接线](../../../apps/studio-server/src/main.ts)

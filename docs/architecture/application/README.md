@@ -41,7 +41,7 @@ providerProfileId / modelId
 
 请求边界使用独立 `RuntimeRequestContext` 传播 actor、`clientId`、`correlationId`、`callId` 和 `parentCallId`。Document mutation、PromptBuild 和 Provider 路径可以使用这些字段建立调用关联，但不得从 Context 隐式读取业务事实。
 
-`ApplicationRuntimeContext` 不暴露给 ordinary Extension。Extension 的身份、权限、RPC、UI 和本地运行能力由独立 Extension Host Capability 负责；Server Host 基线见 [`../extensions/README.md`](../extensions/README.md)，Client Renderer Host 见 [`../extensions/client-renderer-host.md`](../../workbench/discussion/)。
+`ApplicationRuntimeContext` 不暴露给 ordinary Extension。Extension 的身份、权限、RPC、UI 和本地运行能力由独立 Extension Host Capability 负责；Server Host 基线见 [`../extensions/README.md`](../extensions/README.md)，Client Renderer Host 见 [`../extensions/client-renderer-host.md`](../extensions/client-renderer-host.md)。
 
 ## 边界
 

@@ -4,7 +4,7 @@ import { isAbsolute, join, relative, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 import type { DiagnosticInput, DiagnosticsRegistry } from '@loom-studio/diagnostics'
-import type { ActorRef, WriteDocumentResult } from '@loom-studio/document-store'
+import { DocumentStoreError, type ActorRef, type WriteDocumentResult } from '@loom-studio/document-store'
 import { createExtensionLogWriter } from '@loom-studio/logging'
 import type {
   AiGatewayProviderRegistration,
@@ -245,6 +245,7 @@ export function createContext(
         assertScopeActive(instance)
         if (!instance.grantedEventCapabilities.includes('state')) throw new Error(`Extension module is not allowed to subscribe to State changes: ${moduleKey(packageManifest.id, moduleManifest.id)}`)
         if (!options.subscribeEvents) throw new Error('Extension event subscriptions are not available in this host')
+        if (input?.signal?.aborted) return { dispose() {} }
         const target = input?.target
         const paths = input?.paths
         const registration = options.subscribeEvents(['state.changed'], event => {
@@ -364,33 +365,42 @@ export function createContext(
       },
       write: async (input: ExtensionDocumentWriteInput): Promise<WriteDocumentResult> => {
         assertScopeActive(instance)
-        assertDeclaredDocumentType(record, input.type)
-        if (input.id) {
-          const existing = await options.documents.get(input.id, { includeTombstone: true })
-          if (existing) assertDocumentAccess(record, existing, 'write')
-        }
-        const result = await options.documents.write({
+        const write = {
           ...input,
           meta: {
             ...input.meta,
             ownerExtensionId: packageManifest.id,
           },
           actor: extensionActor,
+        }
+        assertDeclaredDocumentType(record, write.type)
+        const result = await options.documents.transact({ actor: extensionActor, reason: write.reason }, async tx => {
+          const existing = write.id !== undefined ? await tx.get(write.id, { includeTombstone: true }) : null
+          if (existing && (existing.meta.ownerExtensionId !== packageManifest.id || existing.type !== write.type)) {
+            throw new DocumentStoreError('document.conflict', `Document ownership or type conflict: ${write.id}`)
+          }
+          return tx.write({
+            ...write,
+            expectedVersion: write.expectedVersion ?? (existing ? undefined : 'new'),
+          })
         })
-        return result
+        return result.value
       },
       delete: async (id, deleteOptions) => {
         assertScopeActive(instance)
-        const existing = await options.documents.get(id, { includeTombstone: true })
-        if (!existing) throw new Error(`Extension document not found: ${id}`)
-        assertDocumentAccess(record, existing, 'delete')
-        const result = await options.documents.delete({
-          id,
-          expectedVersion: deleteOptions?.expectedVersion,
-          reason: deleteOptions?.reason,
-          actor: extensionActor,
+        const { expectedVersion, reason } = deleteOptions ?? {}
+        const result = await options.documents.transact({ actor: extensionActor, reason }, async tx => {
+          const existing = await tx.get(id, { includeTombstone: true })
+          if (!existing) throw new Error(`Extension document not found: ${id}`)
+          assertDocumentAccess(record, existing, 'delete')
+          return tx.delete({
+            id,
+            expectedVersion: expectedVersion ?? existing.version,
+            reason,
+            actor: extensionActor,
+          })
         })
-        return result
+        return result.value
       },
     },
     portablePayloads: {

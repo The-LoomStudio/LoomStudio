@@ -16,11 +16,22 @@ export function StudioResourcePanels(props: {
   const { state, uiState, navigation, assetWorkspaceId } = props
   const contextAssetEditorProps = {
     nodes: state.contextAssets,
-    resources: state.promptResources,
+    resources: state.promptResourceDrafts,
+    draftResourceIds: state.draftResourceIds,
+    onDiscardDraft: state.discardContextAssetDraft,
+    onRetryDraft: state.retryContextAssetDraft,
     onChangeNode: state.previewContextAsset,
-    onCommitNode: state.updateContextAsset,
-    onChangeNodes: state.updateContextAssets,
-    onMoveNode: state.moveContextAsset,
+    // Terminal editor events rely on the operation reporter; selection-changing commands retain rejection.
+    onCommitNode: (...args: Parameters<StudioState['updateContextAsset']>) => {
+      void state.updateContextAsset(...args).catch(() => undefined)
+    },
+    onChangeNodes: (...args: Parameters<StudioState['updateContextAssets']>) => {
+      void state.updateContextAssets(...args).catch(() => undefined)
+    },
+    onMoveNode: (...args: Parameters<StudioState['moveContextAsset']>) => {
+      void state.moveContextAsset(...args).catch(() => undefined)
+    },
+    onRenameNode: (id: string, label: string) => state.updateContextAsset(id, { label }),
     onAddNode: state.addContextAsset,
     onAddFolderNode: state.addContextAssetFolder,
     onAddAnchorNode: state.addContextAssetAnchor,
@@ -39,19 +50,25 @@ export function StudioResourcePanels(props: {
     onExportResourceZip: state.exportPromptResourceZip,
     onImportResourceZip: state.importPromptResourceZip,
     t: state.t,
-    workspaceId: assetWorkspaceId,
+    workspaceId: JSON.stringify([state.endpoint, assetWorkspaceId]),
   }
 
   return {
     preset: () => (
       <LazyPresetWorkbench
+        key={state.endpoint}
         {...contextAssetEditorProps}
         textTransformsApi={state.textTransformsApi}
         loomScriptsApi={state.api.loomScripts}
         onLoomScriptsChanged={uiState.bumpLoomScriptRefreshToken}
         onSaveMacros={state.updatePresetMacros}
         selectedResourceId={uiState.selectedPresetId}
-        onSelectResource={uiState.setSelectedPresetId}
+        onSelectResource={id => {
+          uiState.setSelectedPresetId(id)
+          const resource = state.promptResourceDrafts.find(item => item.id === id)
+          if (resource) navigation.openResource('preset', id, resource.rootNode.id)
+        }}
+        routeResourceId={navigation.route.panel === 'preset' ? navigation.route.resourceId : undefined}
         timelinePromptResourceIds={state.narrativeTimeline?.promptResourceIds}
         settingMounts={state.settingMounts}
         tools={state.agentTools}
@@ -59,12 +76,19 @@ export function StudioResourcePanels(props: {
         onReplaceToolMounts={state.replacePresetToolMounts}
         onUpdateTool={state.updateAgentTool}
         routeAssetId={navigation.route.panel === 'preset' ? navigation.route.assetId : undefined}
-        initialSearchQuery={navigation.route.panel === 'preset' ? navigation.searchQuery : ''}
+        searchQuery={navigation.route.panel === 'preset' ? navigation.searchQuery : ''}
+        onSearchQueryChange={navigation.setSearchQuery}
       />
     ),
     resource: () => (
       <LazyContextWorkbench
+        key={state.endpoint}
         {...contextAssetEditorProps}
+        routeResourceId={navigation.route.panel === 'resource' ? navigation.route.resourceId : undefined}
+        onSelectResource={id => {
+          const resource = state.promptResourceDrafts.find(item => item.id === id)
+          if (resource) navigation.openResource('resource', id, resource.rootNode.id)
+        }}
         textTransformsApi={state.textTransformsApi}
         loomScriptsApi={state.api.loomScripts}
         onLoomScriptsChanged={uiState.bumpLoomScriptRefreshToken}
@@ -83,7 +107,8 @@ export function StudioResourcePanels(props: {
         onReplaceSettingMounts={state.replaceSettingMounts}
         onReplaceCardResources={state.replaceCardPromptResources}
         routeAssetId={navigation.route.panel === 'resource' ? navigation.route.assetId : undefined}
-        initialSearchQuery={navigation.route.panel === 'resource' ? navigation.searchQuery : ''}
+        searchQuery={navigation.route.panel === 'resource' ? navigation.searchQuery : ''}
+        onSearchQueryChange={navigation.setSearchQuery}
       />
     ),
   }

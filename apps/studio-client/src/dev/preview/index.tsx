@@ -1,8 +1,9 @@
 import { createRoot } from 'react-dom/client'
 import type { ReactElement } from 'react'
 import '../../styles/global.css'
+import { AgentChatPreview } from './agent-chat-preview.js'
 
-const previews: Record<string, () => ReactElement> = {}
+const previews: Record<string, () => ReactElement> = { 'agent-chat': AgentChatPreview }
 
 export function renderComponentPreview(root: HTMLElement, previewId: string): void {
   const Preview = previews[previewId]

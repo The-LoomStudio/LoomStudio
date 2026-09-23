@@ -28,11 +28,12 @@ export type AiCapabilityProfile = {
   id: string
   version: number
   providerProfileId: string
-  providerExtensionId: string
+  providerExtensionId?: string
   capabilityId: string
   displayName: string
   config: JsonObject
   available: boolean
+  unavailableReason?: 'provider-profile-missing' | 'provider-unavailable' | 'capability-unavailable'
   createdAt: string
   updatedAt: string
 }

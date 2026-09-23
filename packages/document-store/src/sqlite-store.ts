@@ -36,6 +36,7 @@ import type {
   WriteDocumentResult,
 } from './types.js'
 import { DocumentStoreError as StoreError } from './types.js'
+import { readDocumentPage } from './pagination.js'
 
 const requiredSqliteColumns = {
   documents: ['id', 'type', 'version', 'content_json', 'meta_json', 'owner_extension_id', 'tombstoned', 'updated_at'],
@@ -106,10 +107,9 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
     },
 
     list: async input => {
-      const offset = input?.cursor ? Number(input.cursor) : 0
-      const limit = input?.limit ?? 100
-      const clauses: string[] = []
-      const values: Array<string | number> = []
+      const page = readDocumentPage(input)
+      const clauses: string[] = ['rowid > ?']
+      const values: Array<string | number> = [page.after]
 
       if (input?.type) {
         clauses.push('type = ?')
@@ -127,15 +127,13 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
 
       const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''
       const rows = database
-        .prepare(`SELECT id, type, version, content_json, meta_json FROM documents ${where} ORDER BY rowid LIMIT ? OFFSET ?`)
-        .all(...values, limit + 1, offset)
-      const items = rows.slice(0, limit).map(rowToDocument)
-      const hasMore = rows.length > limit
-      const nextOffset = offset + limit
+        .prepare(`SELECT rowid AS position, id, type, version, content_json, meta_json FROM documents ${where} ORDER BY rowid LIMIT ?`)
+        .all(...values, page.limit + 1)
+      const items = rows.slice(0, page.limit).map(rowToDocument)
 
       return {
         items,
-        nextCursor: hasMore ? String(nextOffset) : undefined,
+        nextCursor: rows.length > page.limit ? page.cursor(Number(rows[page.limit - 1]!.position)) : undefined,
       }
     },
   }
@@ -402,7 +400,14 @@ function assertSqliteSchema(database: DatabaseSync): void {
 
 function writeDocumentRevision(database: DatabaseSync, document: DocumentRecord, changesetId: string): void {
   database
-    .prepare('INSERT OR REPLACE INTO documents (id, type, version, content_json, meta_json, owner_extension_id, tombstoned, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .prepare(`
+      INSERT INTO documents (id, type, version, content_json, meta_json, owner_extension_id, tombstoned, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        type = excluded.type, version = excluded.version, content_json = excluded.content_json,
+        meta_json = excluded.meta_json, owner_extension_id = excluded.owner_extension_id,
+        tombstoned = excluded.tombstoned, updated_at = excluded.updated_at
+    `)
     .run(
       document.id,
       document.type,

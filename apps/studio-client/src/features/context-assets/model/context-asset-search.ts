@@ -70,15 +70,25 @@ function readSearchRank(record: ContextAssetSearchRecord, query: string): number
 }
 
 function readSearchExcerpt(body: string, tokens: string[]): string | undefined {
-  if (!body) return undefined
-  const normalizedBody = normalizeSearchText(body)
+  const text = body.trim()
+  if (!text) return undefined
+  const normalizedBody = normalizeSearchText(text)
   const matchIndex = tokens.reduce((nearest, token) => {
     const index = normalizedBody.indexOf(token)
     return index < 0 ? nearest : Math.min(nearest, index)
   }, Number.POSITIVE_INFINITY)
   if (!Number.isFinite(matchIndex)) return undefined
 
-  const start = Math.max(0, matchIndex - 32)
-  const end = Math.min(body.length, matchIndex + 88)
-  return `${start > 0 ? '…' : ''}${body.slice(start, end).replace(/\s+/g, ' ').trim()}${end < body.length ? '…' : ''}`
+  // Case folding can expand a character (for example, U+0130).
+  let normalizedOffset = 0
+  let textOffset = 0
+  for (const character of text) {
+    const length = character.toLocaleLowerCase().length
+    if (normalizedOffset + length > matchIndex) break
+    normalizedOffset += length
+    textOffset += character.length
+  }
+  const start = Math.max(0, textOffset - 32)
+  const end = Math.min(text.length, textOffset + 88)
+  return `${start > 0 ? '…' : ''}${text.slice(start, end).replace(/\s+/g, ' ').trim()}${end < text.length ? '…' : ''}`
 }

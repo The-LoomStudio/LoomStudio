@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { createId, nowIso } from '@loom-studio/shared'
 import {
   assertExpectedVersion,
@@ -22,12 +23,24 @@ import type {
   WriteDocumentResult,
 } from './types.js'
 import { DocumentStoreError as StoreError } from './types.js'
+import { readDocumentPage } from './pagination.js'
 
 export function createInMemoryDocumentStore(): DocumentStore {
   const current = new Map<string, DocumentRecord>()
   const revisions = new Map<string, DocumentRecord[]>()
   const changesets = new Map<string, Changeset>()
   const commitNotifier = createCommitNotifier()
+  const transactionContext = new AsyncLocalStorage<boolean>()
+  let operationQueue = Promise.resolve()
+
+  async function serialize<T>(operation: () => T | Promise<T>): Promise<T> {
+    if (transactionContext.getStore()) {
+      throw new StoreError('document.reentrant_transaction', 'Use the transaction instance instead of the outer document store inside a transaction.')
+    }
+    const result = operationQueue.then(operation)
+    operationQueue = result.then(() => undefined, () => undefined)
+    return result
+  }
 
   const read: Pick<DocumentTransaction, 'get' | 'list'> = {
     get: async (id, options) => {
@@ -42,20 +55,19 @@ export function createInMemoryDocumentStore(): DocumentStore {
     },
 
     list: async input => {
-      const offset = input?.cursor ? Number(input.cursor) : 0
-      const limit = input?.limit ?? 100
-      const filtered = [...current.values()].filter(document => {
+      const page = readDocumentPage(input)
+      const filtered = [...current.values()].map((document, index) => ({ document, position: index + 1 })).filter(({ document, position }) => {
+        if (position <= page.after) return false
         if (input?.type && document.type !== input.type) return false
         if (!input?.includeTombstone && document.meta.tombstone) return false
         if (input?.ownerExtensionId && document.meta.ownerExtensionId !== input.ownerExtensionId) return false
         return true
       })
-      const items = filtered.slice(offset, offset + limit).map(cloneDocument)
-      const nextOffset = offset + limit
+      const items = filtered.slice(0, page.limit).map(({ document }) => cloneDocument(document))
 
       return {
         items,
-        nextCursor: nextOffset < filtered.length ? String(nextOffset) : undefined,
+        nextCursor: filtered.length > page.limit ? page.cursor(filtered[page.limit - 1]!.position) : undefined,
       }
     },
   }
@@ -170,32 +182,33 @@ export function createInMemoryDocumentStore(): DocumentStore {
   }
 
   const store: DocumentStore = {
-    ...read,
+    get: (id, options) => serialize(() => read.get(id, options)),
+    list: input => serialize(() => read.list(input)),
 
-    write: async input => {
+    write: input => serialize(() => {
       const pending = createPendingChangeset(input)
       const result = applyWrite(input, pending)
       const commit = finalizeCommitFact(pending)
       changesets.set(commit.changeset.id, cloneChangeset(commit.changeset))
       commitNotifier.notify(commit)
       return { ...result, operations: commit.changeset.operations, commit }
-    },
+    }),
 
-    delete: async input => {
+    delete: input => serialize(() => {
       const pending = createPendingChangeset(input)
       const result = applyDelete(input, pending)
       const commit = finalizeCommitFact(pending)
       changesets.set(commit.changeset.id, cloneChangeset(commit.changeset))
       commitNotifier.notify(commit)
       return { ...result, operations: commit.changeset.operations, commit }
-    },
+    }),
 
-    transact: async (input, fn) => {
+    transact: (input, fn) => serialize(async () => {
       const snapshot = snapshotState(current, revisions, changesets)
       const pending = createPendingChangeset(input)
 
       try {
-        const value = await fn(createTransaction(pending))
+        const value = await transactionContext.run(true, () => fn(createTransaction(pending)))
         const commit = finalizeCommitFact(pending)
         changesets.set(commit.changeset.id, cloneChangeset(commit.changeset))
         commitNotifier.notify(commit)
@@ -204,14 +217,14 @@ export function createInMemoryDocumentStore(): DocumentStore {
         restoreState(current, revisions, changesets, snapshot)
         throw error
       }
-    },
+    }),
 
-    getChangeset: async id => {
+    getChangeset: id => serialize(() => {
       const changeset = changesets.get(id)
       return changeset ? cloneChangeset(changeset) : null
-    },
+    }),
 
-    revertChangeset: async input => {
+    revertChangeset: input => serialize(() => {
       const snapshot = snapshotState(current, revisions, changesets)
       const target = changesets.get(input.changesetId)
       if (!target) throw new StoreError('document.changeset_not_found', `Changeset not found: ${input.changesetId}`)
@@ -244,7 +257,7 @@ export function createInMemoryDocumentStore(): DocumentStore {
         restoreState(current, revisions, changesets, snapshot)
         throw error
       }
-    },
+    }),
 
     subscribeCommits: observer => commitNotifier.subscribe(observer),
   }

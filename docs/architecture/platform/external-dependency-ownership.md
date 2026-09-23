@@ -45,6 +45,8 @@ Streaming domain lifecycle   -> owning Agent / Narrative feature
 | Provider HTTP 与代理 | Undici | Application Runtime 的 Provider 请求和 `ProxyAgent`。普通 Server 路由优先使用平台现有 HTTP 能力。 |
 | ZIP 编解码 | fflate | Card、Prompt Resource、Extension Package 和官方内容压缩。不得为单个资源格式再写 ZIP parser。 |
 | 边界 Schema | Zod | 当前用于 AI Gateway Provider 配置和 Shared Setting Mount RPC Schema。新增跨端结构化边界且没有既有 parser 时优先复用；可信内部纯函数不重复 parse。 |
+| 系统凭据与敏感密钥托管 | `@napi-rs/keyring` + `@loom-studio/secret-store` | 操作系统安全凭据链（Keychain/SecretService）与 SQLite 元数据双层物理隔离；受控闭包临时借用、写入意图防丢失持久化与生命周期清理队列，绝不向数据库或日志写入明文。 |
+| 沙箱代码隔离执行 | `quickjs-emscripten` / `node:vm` | CodeAct 与命令行沙箱的隔离执行环境；提供确定性内存/时间预算，杜绝未经授权的宿主文件、网络或进程访问。 |
 | 跨端纯契约 | `@loom-studio/shared` | JSON DTO、Schema 和浏览器/Node 都可执行的纯逻辑。不得依赖 React、数据库、Node 专属 API 或 Application Runtime。 |
 
 TypeScript 类型不替代运行时信任边界校验，Zod 也不替代内部类型系统。某个跨端领域采用 Zod 后，

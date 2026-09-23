@@ -1,5 +1,5 @@
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
-import { ChevronDown, ChevronRight, Package, Search, Wrench, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, Package, Search, Trash2, Wrench, X } from 'lucide-react'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore, type PresetView } from '../../shared/studio-shell/studio-layout-store.js'
 import { AssetWorkbenchLayout } from '../../shared/ui/asset-workbench-layout/asset-workbench-layout.js'
@@ -35,6 +35,10 @@ type PresetWorkbenchProps = {
   toolMounts: PresetToolMount[]
   timelinePromptResourceIds?: string[]
   onChangeNode: (id: string, partial: Partial<ContextAssetNode>) => void
+  draftResourceIds: string[]
+  onDiscardDraft(resourceId: string): void
+  onRetryDraft(resourceId: string): Promise<void>
+  onRenameNode(id: string, label: string): Promise<void>
   onCommitNode: (id: string, partial: Partial<ContextAssetNode>) => void
   onChangeNodes: (updates: ContextAssetUpdate[]) => void
   onMoveNode: (draggedId: string, targetId: string, position: 'before' | 'inside' | 'after') => void
@@ -56,7 +60,9 @@ type PresetWorkbenchProps = {
   onUpdateTool: (tool: AgentToolDefinition) => Promise<void> | void
   onSaveMacros: (resourceId: string, input: { expectedVersion: number; macros: Record<string, string> }) => Promise<{ version: number; macros: Record<string, string> }>
   routeAssetId?: string
-  initialSearchQuery?: string
+  routeResourceId?: string
+  searchQuery: string
+  onSearchQueryChange(value: string): void
   selectedResourceId?: string
   onSelectResource?: (resourceId: string) => void
   t: Translator
@@ -84,13 +90,14 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const presetResources = useMemo(() => props.resources.filter(resource => resource.resourceKind === 'preset'), [props.resources])
   const [internalSelectedResourceId, setInternalSelectedResourceId] = useState<string>()
   const mobilePane = useStudioLayoutStore(state => state.assetPanes.preset[props.workspaceId] ?? 'explorer')
-  const selectedResourceId = props.selectedResourceId ?? internalSelectedResourceId
+  const selectedResourceId = props.routeResourceId ?? props.selectedResourceId ?? internalSelectedResourceId
   const setSelectedResourceId = (id: string | undefined) => {
     setInternalSelectedResourceId(id)
     setAssetPane('preset', props.workspaceId, 'explorer')
     if (id) props.onSelectResource?.(id)
   }
-  const selectedResource = presetResources.find(resource => resource.id === selectedResourceId) ?? presetResources[0]
+  const selectedResource = presetResources.find(resource => resource.id === selectedResourceId)
+    ?? (props.routeResourceId ? undefined : presetResources[0])
   const textController = useTextTransformController({
     api: props.textTransformsApi,
     loomScriptsApi: props.loomScriptsApi,
@@ -123,7 +130,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const mainOrderNodes = useMemo(() => {
     if (!selectedResource) return []
     const presetRoot = readPromptResourceWorkbenchRoot(selectedResource)
-    return [injectContextNodesIntoPresetTree(presetRoot, contextResources, toolProjection.contentNodes)]
+    return [injectContextNodesIntoPresetTree(presetRoot, contextResources.resources, toolProjection.contentNodes)]
   }, [contextResources, selectedResource, toolProjection.contentNodes])
   const workbenchNodes = mainOrderNodes
   const selectedId = explorerView.selectedId
@@ -131,7 +138,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const detailNode = selectedNode
   const projectionModel = useMemo(() => buildProjectionWorkbenchModel(workbenchNodes), [workbenchNodes])
   const { orderNode } = projectionModel
-  const [searchQuery, setSearchQuery] = useState(props.initialSearchQuery ?? '')
+  const searchQuery = props.searchQuery
   const [selectedZoneId, setSelectedZoneId] = useState<string>()
   const [selectedCompositionId, setSelectedCompositionId] = useState<string>()
   const [selectedToolId, setSelectedToolId] = useState<string>()
@@ -154,30 +161,27 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
 
   useEffect(() => {
     if (!props.routeAssetId) return
+    if (props.routeResourceId) setActivePresetView('assets')
     openAssetDetail('preset', props.workspaceId, props.routeAssetId)
-  }, [openAssetDetail, props.routeAssetId, props.workspaceId])
+  }, [openAssetDetail, setActivePresetView, props.routeResourceId, props.routeAssetId, props.workspaceId])
 
   useEffect(() => {
-    setSearchQuery(props.initialSearchQuery ?? '')
-  }, [props.initialSearchQuery])
-
-  useEffect(() => {
+    if (props.routeResourceId) return
     if (!selectedResource) setSelectedResourceId(undefined)
     else if (selectedResource.id !== selectedResourceId) setSelectedResourceId(selectedResource.id)
-  }, [selectedResource?.id, selectedResourceId])
+  }, [props.routeResourceId, selectedResource?.id, selectedResourceId])
 
   useEffect(() => {
-    setAssetPane('preset', props.workspaceId, 'explorer')
+    setAssetPane('preset', props.workspaceId, props.routeResourceId ? 'detail' : 'explorer')
     macroController.selectRow(undefined)
-  }, [selectedResource?.id])
+  }, [props.routeResourceId, selectedResource?.id])
 
   useEffect(() => {
     if (selectedZoneId && !displayZoneDefinitions.some(zone => zone.id === selectedZoneId)) setSelectedZoneId(undefined)
   }, [selectedZoneId, displayZoneDefinitions])
 
   useEffect(() => {
-    if (!props.tools.length) setSelectedToolId(undefined)
-    else if (!selectedToolId || !props.tools.some(tool => tool.id === selectedToolId)) setSelectedToolId(props.tools[0]?.id)
+    if (!selectedToolId) setSelectedToolId(props.tools[0]?.id)
   }, [props.tools, selectedToolId])
 
   useEffect(() => {
@@ -238,6 +242,10 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
     openAssetDetail('preset', props.workspaceId, id)
   }
 
+  if (props.routeResourceId && (!selectedResource || (props.routeAssetId && !findContextNode([selectedResource.rootNode], props.routeAssetId)))) {
+    return <p role="alert">{props.t('promptResource.referenceUnavailable', { id: props.routeResourceId })}</p>
+  }
+
   return (
     <AssetWorkbenchLayout
       explorerWidth={explorerLayout.explorerWidth}
@@ -252,6 +260,9 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           selectedResourceId={selectedResource?.id}
           t={props.t}
           onCreate={props.onCreateResource}
+          draftResourceIds={props.draftResourceIds}
+          onDiscardDraft={props.onDiscardDraft}
+          onRetryDraft={props.onRetryDraft}
           onDelete={props.onDeleteResource}
           onDuplicate={props.onDuplicateResource}
           onExport={props.onExportResource}
@@ -262,6 +273,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
         />
       )}
       header={(
+        <>
         <PanelTabs<PresetView>
           activeId={activePresetView}
           ariaLabel={props.t('preset.panel.assets')}
@@ -273,6 +285,9 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           ]}
           onChange={changePresetView}
         />
+        {contextResources.unavailableResourceIds.map(id => <p key={`setting:${id}`} role="status">{props.t('context.bindings.unavailable', { id })}</p>)}
+        {toolProjection.unavailableMounts.map(mount => <p key={`tool:${mount.id}`} role="status">{props.t('preset.tools.unavailable', { id: mount.toolId })}</p>)}
+        </>
       )}
       onExplorerWidthChange={width => setExplorerWidth('preset', width)}
       resizeLabel={props.t('context.resizeExplorer')}
@@ -282,6 +297,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           selectedToolId={selectedToolId}
           t={props.t}
           toolMounts={props.toolMounts}
+          unavailableMounts={toolProjection.unavailableMounts}
           tools={props.tools}
           presetId={selectedResource?.id}
           onSelect={setSelectedToolId}
@@ -303,9 +319,10 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           onAddMessageBlockNode={props.onAddMessageBlockNode}
           onDeleteNode={props.onDeleteNode}
           onDuplicateNode={props.onDuplicateNode}
+          onRenameNode={props.onRenameNode}
           onExpandedIdsChange={expandedIds => setAssetExpandedIds('preset', props.workspaceId, expandedIds)}
           onMoveNode={props.onMoveNode}
-          onQueryChange={setSearchQuery}
+          onQueryChange={props.onSearchQueryChange}
           onSelectId={handleSelectNode}
           onToggleEnabled={(id, enabled) => {
             props.onChangeNode(id, { enabled })
@@ -326,6 +343,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           mount={props.toolMounts.find(mount => mount.presetResourceId === selectedResource?.id && mount.toolId === selectedToolId)}
           preset={selectedResource}
           presetMounts={props.toolMounts.filter(mount => mount.presetResourceId === selectedResource?.id)}
+          unavailableMounts={toolProjection.unavailableMounts}
           t={props.t}
           tool={props.tools.find(tool => tool.id === selectedToolId)}
           onReplaceMounts={props.onReplaceToolMounts}
@@ -361,10 +379,12 @@ function PresetToolExplorer(props: {
   t: Translator
   tools: AgentToolDefinition[]
   toolMounts: PresetToolMount[]
+  unavailableMounts: PresetToolMount[]
   onSelect(toolId: string): void
 }) {
   const [query, setQuery] = useState('')
   const [collapsedNamespaces, setCollapsedNamespaces] = useState<Set<string>>(() => new Set())
+  const unavailableMounts = props.unavailableMounts.filter(mount => normalizeSearchText(mount.toolId).includes(normalizeSearchText(query)))
   const mountedIds = useMemo(() => new Set(props.toolMounts
     .filter(mount => mount.presetResourceId === props.presetId)
     .map(mount => mount.toolId)), [props.presetId, props.toolMounts])
@@ -418,6 +438,18 @@ function PresetToolExplorer(props: {
         ) : null}
       </div>
       <div className={styles.toolGroups}>
+        {unavailableMounts.length > 0 ? <section className={styles.toolGroup}>
+          <h3>{props.t('preset.tools.unavailableGroup')}</h3>
+          {unavailableMounts.map(mount => <button
+            className={mount.toolId === props.selectedToolId ? styles.toolExplorerActive : styles.toolExplorerItem}
+            key={mount.id}
+            type="button"
+            onClick={() => props.onSelect(mount.toolId)}
+          >
+            <Wrench aria-hidden="true" />
+            <span className={styles.toolExplorerText}>{props.t('preset.tools.unavailable', { id: mount.toolId })}</span>
+          </button>)}
+        </section> : null}
         {toolGroups.length ? toolGroups.map(group => {
           const collapsed = collapsedNamespaces.has(group.namespace)
           const groupId = `tool-group-${group.namespace.replace(/[^a-zA-Z0-9_-]/g, '-')}`
@@ -457,7 +489,7 @@ function PresetToolExplorer(props: {
               ) : null}
             </section>
           )
-        }) : <div className={styles.toolSearchEmpty}>{props.t('preset.tools.searchEmpty')}</div>}
+        }) : unavailableMounts.length === 0 ? <div className={styles.toolSearchEmpty}>{props.t('preset.tools.searchEmpty')}</div> : null}
       </div>
     </div>
   )
@@ -468,10 +500,22 @@ function PresetToolDetail(props: {
   tool?: AgentToolDefinition
   mount?: PresetToolMount
   presetMounts: PresetToolMount[]
+  unavailableMounts: PresetToolMount[]
   t: Translator
   onReplaceMounts(presetId: string, mounts: PresetToolMountInput[]): Promise<void>
   onUpdateTool(tool: AgentToolDefinition): Promise<void> | void
 }) {
+  if (props.preset && !props.tool && props.mount) {
+    return <UnavailableToolDetail
+      key={`${props.preset.id}:${props.mount.toolId}`}
+      presetId={props.preset.id}
+      mount={props.mount}
+      presetMounts={props.presetMounts}
+      unavailableMounts={props.unavailableMounts}
+      t={props.t}
+      onReplaceMounts={props.onReplaceMounts}
+    />
+  }
   if (!props.preset || !props.tool) {
     return <div className={styles.toolEmpty}>{props.t('preset.tools.selectEmpty')}</div>
   }
@@ -496,6 +540,39 @@ function PresetToolDetail(props: {
       <ToolEntryEditor t={props.t} tool={props.tool} onSave={props.onUpdateTool} />
     </div>
   )
+}
+
+function UnavailableToolDetail(props: {
+  presetId: string
+  mount: PresetToolMount
+  presetMounts: PresetToolMount[]
+  unavailableMounts: PresetToolMount[]
+  t: Translator
+  onReplaceMounts(presetId: string, mounts: PresetToolMountInput[]): Promise<void>
+}) {
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string>()
+  async function removeUnavailable() {
+    setPending(true)
+    setError(undefined)
+    const ids = new Set(props.unavailableMounts.map(mount => mount.toolId))
+    try {
+      await props.onReplaceMounts(props.presetId, props.presetMounts
+        .filter(mount => !ids.has(mount.toolId)).map(toPresetToolMountInput))
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught))
+    } finally {
+      setPending(false)
+    }
+  }
+  return <div className={styles.toolDetail}>
+    <header className={styles.toolDetailHeader}><p role="status">{props.t('preset.tools.unavailable', { id: props.mount.toolId })}</p></header>
+    <pre>{JSON.stringify(toPresetToolMountInput(props.mount), null, 2)}</pre>
+    {error ? <p className={styles.toolError} role="alert">{error}</p> : null}
+    <button disabled={pending} type="button" onClick={() => void removeUnavailable()}>
+      <Trash2 aria-hidden="true" size={14} />{props.t('preset.tools.removeUnavailable')}
+    </button>
+  </div>
 }
 
 function ToolMountEditor(props: {

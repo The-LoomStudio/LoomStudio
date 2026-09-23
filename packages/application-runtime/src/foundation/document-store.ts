@@ -1,4 +1,4 @@
-import type { DocumentRecord, DocumentTransaction } from '@loom-studio/document-store'
+import type { DocumentRecord, DocumentTransaction, WriteDocumentInput } from '@loom-studio/document-store'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
 import { isObject } from './json.js'
 import { collectPages } from './pagination.js'
@@ -16,7 +16,7 @@ export async function listDocuments<T extends JsonValue>(documents: DocumentTran
 
 export async function writeDocument<T extends JsonValue>(
   documents: DocumentTransaction,
-  input: {
+  input: Pick<WriteDocumentInput, 'actor' | 'reason' | 'correlationId' | 'callId' | 'parentCallId'> & {
     id: string
     type: string
     content: T
@@ -24,10 +24,7 @@ export async function writeDocument<T extends JsonValue>(
   },
 ): Promise<DocumentRecord<T>> {
   const result = await documents.write({
-    id: input.id,
-    type: input.type,
-    content: input.content,
-    expectedVersion: input.expectedVersion,
+    ...input,
   })
   const document = result.documents[0]
   if (!document) throw new Error(`Document write returned no document: ${input.id}`)

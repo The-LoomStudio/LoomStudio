@@ -32,7 +32,7 @@ logs/
 
 SQLite 保存需要查询、关联、事务和业务修改的结构化状态。Blob Store 保存原始且不可变的字节。判断依据不是文本或二进制：原始 JSON 也可以是 Blob，解析后的 Card / Prompt Resource 则是 SQL canonical state。
 
-Blob 写入使用 Node stream、staging file、同步计算 SHA-256、按 hash 原子 finalize，再提交 `stored_blobs` metadata。相同内容复用同一 Blob；公开 API 只接受 `blobId`，不返回物理路径。文件成功但 SQL 失败时允许留下未引用文件，SQL 不会提交指向缺失字节的新引用。
+Blob 写入使用 Node stream、staging file、同步计算 SHA-256、按 hash 原子 finalize，再在调用者事务中提交 `stored_blobs` metadata。同 hash 的两个 prepared 写入中，一方失败/丢弃绝不删除另一方已提交或共用的 finalized 字节。公开 API 只接受 `blobId`，不返回物理路径。当前允许暂留无引用的孤儿文件，不实现全量物理 GC。
 
 ```text
 stored_blobs
@@ -55,11 +55,14 @@ Source Artifact 保存一次外部输入的原始字节和来源 metadata。Card
 
 Card Bundle 导出以当前 canonical 字段覆盖原值，同时透传导入对象中未识别的顶层、Card 和 metadata 字段。Source Artifact Store 本身不限定 JSON，可 byte-perfect 保存 PNG 等格式；具体第三方 Card PNG 解析器不属于本地存储层。
 
-## 4. Media Asset 数据面
+## 4. Media Asset 数据面与容器解耦
 
 正式媒体使用稳定 `assetId`。`POST /assets` 接受 raw HTTP body，创建 Blob 与 Media Asset；`GET /assets/:assetId` 和 `HEAD /assets/:assetId` 返回正确 MIME、长度、immutable cache 与 `nosniff`。大型媒体不经过 JSON-RPC base64。
 
-Card 当前通过 `media.avatarAssetId` / `media.coverAssetId` 引用媒体。自动 Thumbnail 尚未实现；前端直接使用原图缩放，作者显式提供的封面仍是正式 Media Asset。
+Card 资产模型已将**容器与内部素材解耦**：
+- 媒体素材不限于静态头像或封面，支持保存 GIF、APNG、WebP、音频与视频等测试/业务素材；
+- 存储与打包严格保留原始字节与 MIME 声明，未知格式采用 `.bin` 保持中立，绝不将非 PNG 素材篡改或伪装成 PNG；
+- 静态 PNG 外层封面仅用于平台可读展示，包内完整保留原始媒体与 APNG 动画块。当前自动缩略图生成与客户端视频播放器单独演进。
 
 ## 5. Extension 文件边界
 

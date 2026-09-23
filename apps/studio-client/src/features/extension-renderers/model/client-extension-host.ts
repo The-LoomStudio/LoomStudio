@@ -31,6 +31,7 @@ export type { ManagedClientExtensionModule, ManagedClientExtensionPackage } from
 export type ClientExtensionDiagnostic = {
   code:
     | 'client-extension.activation_failed'
+    | 'client-extension.disposal_failed'
     | 'client-extension.renderer_not_registered'
     | 'client-extension.command_not_registered'
     | 'client-extension.command_execution_failed'
@@ -198,18 +199,39 @@ export function createClientExtensionHost(options: {
   }
 
   async function stop(record: ActiveClientModule): Promise<void> {
-    active.delete(record.key)
     record.abortController.abort()
-    for (const handle of [...record.handles].reverse()) await handle.dispose()
-    logger.info('Client extension disposed', {
-      extension: { packageId: record.summary.packageId, moduleId: record.summary.moduleId, instanceId: record.summary.instanceId, runtime: 'client' },
-      event: 'extension.disposed',
-    })
+    const errors: unknown[] = []
+    for (const handle of record.handles.splice(0).reverse()) {
+      try {
+        await handle.dispose()
+      } catch (error) {
+        errors.push(error)
+      }
+    }
+    active.delete(record.key)
+    const extension = { packageId: record.summary.packageId, moduleId: record.summary.moduleId, instanceId: record.summary.instanceId, runtime: 'client' as const }
+    const message = errors.length ? errors.map(error => error instanceof Error ? error.message : String(error)).join('; ') : undefined
     summaries.set(record.key, {
       packageId: record.summary.packageId,
       moduleId: record.summary.moduleId,
       state: 'inactive',
+      ...(message !== undefined ? { error: message } : {}),
     })
+    if (message !== undefined) {
+      diagnostics.push({
+        code: 'client-extension.disposal_failed',
+        message,
+        packageId: record.summary.packageId,
+        moduleId: record.summary.moduleId,
+      })
+      logger.error('Client extension disposal failed', {
+        extension,
+        event: 'extension.disposal.failed',
+        data: readLogFailure(new AggregateError(errors, message)),
+      })
+    } else {
+      logger.info('Client extension disposed', { extension, event: 'extension.disposed' })
+    }
   }
 
   async function activate(extensionPackage: ManagedClientExtensionPackage, module: ManagedClientExtensionModule): Promise<void> {
@@ -497,6 +519,7 @@ function createActivationContext(input: {
     },
     renderers: {
       register: (definition: RendererContributionDefinition, renderer: ClientRenderer) => {
+        input.record.abortController.signal.throwIfAborted()
         const declared = input.module.contributions.renderers?.find(candidate => candidate.id === definition.id)
         if (!declared) throw new Error(`Renderer ${definition.id} is not declared in manifest contributes.renderers`)
         if (declared.surface !== definition.surface || declared.instanceScope !== definition.instanceScope || declared.adapter !== definition.adapter) {

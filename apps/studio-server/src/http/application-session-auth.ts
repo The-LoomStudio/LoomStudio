@@ -11,6 +11,7 @@ export type ApplicationSession = {
 export type ApplicationSessionAuth = {
   authenticate(request: IncomingMessage): ApplicationSession | undefined
   bootstrap(request: IncomingMessage, response: ServerResponse): boolean
+  hasAllowedOrigin(request: IncomingMessage): boolean
 }
 
 export function createApplicationSessionAuth(options: { allowedOrigins?: string[] } = {}): ApplicationSessionAuth {
@@ -23,6 +24,7 @@ export function createApplicationSessionAuth(options: { allowedOrigins?: string[
   }
 
   return {
+    hasAllowedOrigin: request => hasAllowedOrigin(request, allowedOrigins),
     authenticate: request => {
       const candidate = readCookie(request, cookieName)
       return candidate && safeEqual(candidate, token) ? session : undefined
@@ -46,7 +48,8 @@ function hasAllowedOrigin(request: IncomingMessage, allowedOrigins: ReadonlySet<
   if (!origin || Array.isArray(origin) || !host) return false
   try {
     const parsed = new URL(origin)
-    return (parsed.protocol === 'http:' || parsed.protocol === 'https:')
+    return parsed.origin === origin
+      && (parsed.protocol === 'http:' || parsed.protocol === 'https:')
       && isLoopbackHostname(parsed.hostname)
       && (parsed.host === host || allowedOrigins.has(parsed.origin))
   } catch {

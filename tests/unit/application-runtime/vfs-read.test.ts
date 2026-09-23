@@ -88,6 +88,14 @@ describe('CodeAct read-only VFS', () => {
     allowed = false
     await expect(ctx.methods.read!(['/state/current.yaml'], signal)).rejects.toThrow(/Path unavailable/)
     expect(reads).toBe(1)
-    expect(Object.keys(ctx.methods)).toEqual(['ls', 'search', 'read'])
+    expect(Object.keys(ctx.methods)).toEqual([
+      'ls', 'search', 'read', 'write', 'patch', 'move', 'delete', 'create', 'copy', 'readNarrative',
+    ])
+    allowed = true
+    await expect(ctx.methods.write!(['/state/current.yaml', '{}'], signal))
+      .rejects.toMatchObject({ code: 'vfs.write_unsupported' })
+    await expect(ctx.methods.readNarrative!([
+      { selection: { kind: 'tail', count: 1 } },
+    ], signal)).rejects.toMatchObject({ code: 'codeact.narrative_unavailable' })
   })
 })

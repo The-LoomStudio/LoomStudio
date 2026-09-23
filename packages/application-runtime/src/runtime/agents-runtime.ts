@@ -23,6 +23,7 @@ import { buildOpenAIChatPayload, type OpenAIChatPayload } from '../providers/pro
 import { readMappedResource } from '../prompt/prompt-resource-mapper.js'
 import { isPromptActivation, type ActivationFacts } from '../prompt/prompt-activation.js'
 import { readTimelineRuntimeContext } from '../narrative/timeline-runtime-context.js'
+import { createNarrativeSampler } from '../narrative/sampling.js'
 import { resolveEffectiveTextPipeline } from './transforms-runtime.js'
 import { createPromptRuntimeMethods } from './prompt-runtime.js'
 import { getApplicationStateSnapshot, applyApplicationStateMutation } from '../state/state.js'
@@ -102,7 +103,7 @@ type AgentsRuntimeContext = Pick<ApplicationRuntimeContext,
 
 export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
   return {
-    createAgentProfile: async (input: CreateAgentProfileInput): Promise<CreateAgentProfileResult> => {
+    createAgentProfile: async (input: CreateAgentProfileInput, requestContext?: RuntimeRequestContext): Promise<CreateAgentProfileResult> => {
       assertNonEmpty(input.name, 'name')
       await readPresetResource(ctx.promptResources, input.presetId)
       await assertProviderModelExists(ctx.documents, input.model)
@@ -111,6 +112,8 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
 
       const timestamp = ctx.now()
       const agentProfile = await writeDocument<AgentProfileContent>(ctx.documents, {
+        ...promptResourceWriteContext(requestContext),
+        reason: 'application.createAgentProfile',
         id: ctx.createId('agent-profile'),
         type: applicationDocumentTypes.agentProfile,
         content: {
@@ -146,7 +149,7 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
       }
     },
 
-    updateAgentProfile: async (input: UpdateAgentProfileInput): Promise<UpdateAgentProfileResult> => {
+    updateAgentProfile: async (input: UpdateAgentProfileInput, requestContext?: RuntimeRequestContext): Promise<UpdateAgentProfileResult> => {
       const existing = await readDocument<AgentProfileContent>(ctx.documents, input.agentProfileId, applicationDocumentTypes.agentProfile)
       if (input.name !== undefined) assertNonEmpty(input.name, 'name')
       if (input.presetId !== undefined) {
@@ -156,9 +159,11 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
       const toolOverrides = input.toolOverrides === undefined
         ? existing.content.toolOverrides ?? {}
         : normalizeToolOverrides(input.toolOverrides)
-      assertResolvedTools(ctx, Object.keys(toolOverrides))
+      if (input.toolOverrides !== undefined) assertResolvedTools(ctx, Object.keys(toolOverrides))
       const timestamp = ctx.now()
       const updated = await writeDocument<AgentProfileContent>(ctx.documents, {
+        ...promptResourceWriteContext(requestContext),
+        reason: 'application.updateAgentProfile',
         id: existing.id,
         type: applicationDocumentTypes.agentProfile,
         content: {
@@ -175,12 +180,13 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
       return { agentProfile: toAgentProfileEntry(updated) }
     },
 
-    deleteAgentProfile: async (input: DeleteAgentProfileInput): Promise<DeleteAgentProfileResult> => {
+    deleteAgentProfile: async (input: DeleteAgentProfileInput, requestContext?: RuntimeRequestContext): Promise<DeleteAgentProfileResult> => {
       await readDocument<AgentProfileContent>(ctx.documents, input.agentProfileId, applicationDocumentTypes.agentProfile)
-      if (await requireAgents(ctx).hasSessionForProfile(input.agentProfileId)) {
-        throw new Error(`Agent Profile is still referenced by an Agent Session: ${input.agentProfileId}`)
-      }
-      await ctx.documents.delete({ id: input.agentProfileId })
+      await ctx.documents.delete({
+        ...promptResourceWriteContext(requestContext),
+        reason: 'application.deleteAgentProfile',
+        id: input.agentProfileId,
+      })
       return { deleted: true as const }
     },
 
@@ -435,7 +441,7 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
 
     listAgentTools: async (): Promise<ListAgentToolsResult> => ({ tools: await listAgentToolEntries(ctx) }),
 
-    updateAgentTool: async (input: UpdateAgentToolInput): Promise<UpdateAgentToolResult> => {
+    updateAgentTool: async (input: UpdateAgentToolInput, requestContext?: RuntimeRequestContext): Promise<UpdateAgentToolResult> => {
       const existing = await readDocument<AgentToolContent>(
         ctx.documents,
         input.toolId,
@@ -447,6 +453,8 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
         throw new Error('Agent tool definition id cannot change')
       createAgentToolRegistry([input.definition])
       const updated = await writeDocument<AgentToolContent>(ctx.documents, {
+        ...promptResourceWriteContext(requestContext),
+        reason: 'application.updateAgentTool',
         id: existing.id,
         type: applicationDocumentTypes.agentTool,
         content: {
@@ -746,6 +754,7 @@ async function prepareAgentTurn(
       },
       externalRuntime: createContentToolPromptRuntimeInputs(compiledToolSet),
     })
+    prompt.promptBuildTrace.diagnostics.push(...(compiledToolSet.trace.diagnostics ?? []))
     if (compiledToolSet.tools.some(tool => tool.definition.id === 'official/codeact' || tool.definition.id === 'official/codeact_json')
       && !prompt.projection.messages.some(message => message.fragmentIds.includes('runtime.codeact.instructions'))) {
       prompt.promptBuildTrace.diagnostics.push({
@@ -969,9 +978,15 @@ async function prepareAgentTurn(
       }
     }
     if (narrativePage && narratives) {
+      const narrativeSampler = createNarrativeSampler(narratives)
       prompt.toolExecutionScope.narrative = {
         timelineId: narrativePage.timeline.id,
         branchId: narrativePage.branch.id,
+        sample: input => narrativeSampler.sample({
+          ...input,
+          timelineId: narrativePage.timeline.id,
+          branchId: narrativePage.branch.id,
+        }),
         appendNode: async ({ content }) => {
           const currentBranch = await narratives.getBranch(narrativePage.branch.id)
           if (!currentBranch) throw new Error(`Narrative branch not found: ${narrativePage.branch.id}`)

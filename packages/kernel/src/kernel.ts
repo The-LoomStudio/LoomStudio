@@ -22,6 +22,7 @@ export function createKernel(options: CreateKernelOptions): Kernel {
   const eventBus = createEventBus({
     onSubscriberError: ({ event, subscriptionId, error }) => {
       options.diagnostics.add({
+        id: `event-subscriber:${subscriptionId}:${event.name}`,
         severity: 'error',
         code: 'event.subscriber_failed',
         message: `Event subscriber failed: ${event.name}`,

@@ -53,12 +53,12 @@ export function readFileTreeKeyboardTarget(input: {
   if (input.key === 'ArrowDown') return { focusId: input.visibleNodes[index + 1]?.node.id ?? current.node.id }
   if (input.key === 'ArrowUp') return { focusId: input.visibleNodes[index - 1]?.node.id ?? current.node.id }
   if (input.key === 'ArrowRight') {
-    if (current.node.children?.length && !input.expandedIds.has(current.node.id)) return { toggleId: current.node.id }
+    if (current.node.children && !input.expandedIds.has(current.node.id)) return { toggleId: current.node.id }
     const child = input.visibleNodes[index + 1]
     return { focusId: child?.parentId === current.node.id ? child.node.id : current.node.id }
   }
   if (input.key === 'ArrowLeft') {
-    if (current.node.children?.length && input.expandedIds.has(current.node.id)) return { toggleId: current.node.id }
+    if (current.node.children && input.expandedIds.has(current.node.id)) return { toggleId: current.node.id }
     return { focusId: current.parentId ?? current.node.id }
   }
   return {}

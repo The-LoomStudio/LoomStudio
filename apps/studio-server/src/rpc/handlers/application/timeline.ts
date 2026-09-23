@@ -16,6 +16,15 @@ export async function handleTimelineRpc(
   context?: RuntimeRequestContext,
 ): Promise<JsonValue | undefined> {
   switch (method) {
+    case 'application.editNarrativeNode':
+      return await runtime.editNarrativeNode({
+        timelineId: readString(params, 'timelineId'),
+        branchId: readString(params, 'branchId'),
+        nodeId: readString(params, 'nodeId'),
+        expectedHeadNodeId: readString(params, 'expectedHeadNodeId'),
+        expectedRaw: readString(params, 'expectedRaw'),
+        raw: readString(params, 'raw'),
+      }, context) as unknown as JsonValue
     case 'application.createNarrativeTimeline':
       return await runtime.createNarrativeTimeline({
         cardId: readString(params, 'cardId'),

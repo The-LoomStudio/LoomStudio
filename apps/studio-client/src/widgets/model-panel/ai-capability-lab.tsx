@@ -36,6 +36,7 @@ type AiCapabilityLabProps = {
   }): Promise<void>
   onUpdateProfile(input: {
     profileId: string
+    providerProfileId?: string
     displayName: string
     config: Record<string, ClientJsonValue>
   }): Promise<void>
@@ -80,7 +81,56 @@ export function AiCapabilityLab(props: AiCapabilityLabProps) {
     if (!profiles.some(profile => profile.id === profileId)) setProfileId(profiles[0]?.id ?? '')
   }, [profileId, profiles])
 
-  if (!provider || !capability) return <p className={styles.empty}>{props.t('provider.aiLabEmpty')}</p>
+  const unavailable = props.profiles.filter(profile => !profile.available)
+  const unavailableProfiles = unavailable.length > 0 ? (
+    <aside aria-label={props.t('provider.aiLabUnavailableProfiles')}>
+      <h3>{props.t('provider.aiLabUnavailableProfiles')}</h3>
+      {unavailable.map(profile => (
+        <div key={profile.id}>
+          <p className={styles.aiLabError}>
+            <strong>{profile.displayName}</strong>{': '}
+            {props.t(profile.unavailableReason === 'provider-profile-missing'
+              ? 'provider.aiLabMissingAccount'
+              : profile.unavailableReason === 'capability-unavailable'
+                ? 'provider.aiLabMissingCapability' : 'provider.aiLabMissingProvider')}
+          </p>
+          <small>{profile.id} · {profile.providerProfileId} · {profile.capabilityId}</small>
+          {profile.unavailableReason === 'provider-profile-missing' ? (
+            <SelectField
+              label={props.t('provider.aiLabRebindAccount')}
+              value=""
+              options={[
+                { value: '', label: props.t('provider.aiLabChooseAccount') },
+                ...props.providerAccounts.filter(account => props.providers.some(registered => (
+                  registered.id === account.providerExtensionId
+                  && registered.capabilities.some(item => item.id === profile.capabilityId)
+                ))).map(account => ({ value: account.id, label: account.displayName })),
+              ]}
+              onChange={providerProfileId => {
+                if (!providerProfileId) return
+                setRefreshError(undefined)
+                void props.onUpdateProfile({
+                  profileId: profile.id, providerProfileId,
+                  displayName: profile.displayName, config: profile.config,
+                }).then(() => props.onRefresh())
+                  .catch(error => setRefreshError(error instanceof Error ? error.message : String(error)))
+              }}
+            />
+          ) : null}
+          <details>
+            <summary>{props.t('provider.aiLabProfileConfig')}</summary>
+            <pre>{JSON.stringify(profile.config, null, 2)}</pre>
+          </details>
+        </div>
+      ))}
+    </aside>
+  ) : null
+
+  if (!provider || !capability) return <>
+    {refreshError ? <p className={styles.aiLabError}>{refreshError}</p> : null}
+    {unavailableProfiles}
+    <p className={styles.empty}>{props.t('provider.aiLabEmpty')}</p>
+  </>
 
   return (
     <section className={styles.aiLab}>
@@ -104,6 +154,7 @@ export function AiCapabilityLab(props: AiCapabilityLabProps) {
         </div>
       </header>
       {refreshError ? <p className={styles.aiLabError}>{refreshError}</p> : null}
+      {unavailableProfiles}
       <div className={styles.aiLabSelectors}>
         <SelectField
           label={props.t('provider.aiLabProvider')}

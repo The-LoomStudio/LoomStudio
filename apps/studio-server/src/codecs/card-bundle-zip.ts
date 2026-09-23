@@ -1,5 +1,7 @@
 import { normalizeCardBundleArtifact, type CardBundleArtifact, type PortableExtensionPayloadArtifact } from '@loom-studio/application-runtime'
 import { Unzip, UnzipInflate, UnzipPassThrough, zipSync } from 'fflate'
+import { crc32 } from 'node:zlib'
+import { readZipChecksums } from './zip-checksums.js'
 import { loadCardResourceFiles, projectCardFiles, restoreCardFiles, validateBundlePath, type CardFilesIndex } from './card-bundle-files.js'
 
 const manifestPath = 'manifest.json'
@@ -22,6 +24,7 @@ type LegacyCardManifest = {
     avatar?: string
     background?: string
   }
+  mediaTypes?: Record<string, string>
   extensionPayloads?: LoomCardPayloadManifest[]
   scriptAttachments?: Array<{
     orderIndex: number
@@ -68,6 +71,10 @@ export function encodeCardBundleFiles(input: CardBundleFilesInput): Record<strin
     media: {
       avatar: avatarPath,
       ...(backgroundPath ? { background: backgroundPath } : {}),
+    },
+    mediaTypes: {
+      [avatarPath]: readCardMediaType(avatarPath, input.avatar.mediaType),
+      ...(backgroundPath && input.background ? { [backgroundPath]: readCardMediaType(backgroundPath, input.background.mediaType) } : {}),
     },
     extensionPayloads: extensionPayloads.map(payload => ({
       id: payload.id,
@@ -144,8 +151,8 @@ export function decodeCardBundleFiles(files: Map<string, Uint8Array>): CardBundl
   if (!manifest || (manifest.schema !== 'loom.cardBundle.zip.v1' && manifest.schema !== 'loom.cardBundle.zip.v2') || !manifest.media?.avatar) {
     throw new Error('Invalid Loom Card package manifest')
   }
-  const avatar = readMedia(files, manifest.media.avatar)
-  const background = manifest.media.background ? readMedia(files, manifest.media.background) : undefined
+  const avatar = readMedia(files, manifest.media.avatar, manifest.mediaTypes?.[manifest.media.avatar])
+  const background = manifest.media.background ? readMedia(files, manifest.media.background, manifest.mediaTypes?.[manifest.media.background]) : undefined
   const extensionPayloads = readExtensionPayloads(files, manifest.extensionPayloads)
   const scriptAttachments = readScriptAttachments(files, manifest.scriptAttachments)
   const artifact = manifest.schema === 'loom.cardBundle.zip.v2'
@@ -224,6 +231,7 @@ function readScriptAttachments(
  */
 function unzipSafely(source: Uint8Array): Promise<Map<string, Uint8Array>> {
   return new Promise((resolve, reject) => {
+    const checksums = readZipChecksums(source, maxEntryCount)
     const files = new Map<string, Uint8Array>()
     let entryCount = 0
     let declaredTotal = 0
@@ -239,6 +247,10 @@ function unzipSafely(source: Uint8Array): Promise<Map<string, Uint8Array>> {
     }
     const finish = () => {
       if (!settled && inputComplete && pending === 0) {
+        if (seenPaths.size !== checksums.size) {
+          fail(new Error('ZIP local entries do not match the central directory'))
+          return
+        }
         settled = true
         resolve(files)
       }
@@ -247,6 +259,7 @@ function unzipSafely(source: Uint8Array): Promise<Map<string, Uint8Array>> {
       try {
         const directory = file.name.endsWith('/')
         validateBundlePath(directory ? file.name.slice(0, -1) : file.name)
+        if (!checksums.has(file.name)) throw new Error(`ZIP entry is missing from the central directory: ${file.name}`)
         if (seenPaths.has(file.name)) throw new Error(`Duplicate ZIP entry path: ${file.name}`)
         seenPaths.add(file.name)
         entryCount += 1
@@ -258,8 +271,10 @@ function unzipSafely(source: Uint8Array): Promise<Map<string, Uint8Array>> {
         if (declaredTotal > maxBundleBytes) throw new Error('Loom Card package expands beyond the allowed size')
         const chunks: Uint8Array[] = []
         let actualSize = 0
+        let checksum = 0
         pending += 1
         file.ondata = (error, data, final) => {
+          if (settled) return
           if (error) {
             fail(error)
             return
@@ -272,7 +287,12 @@ function unzipSafely(source: Uint8Array): Promise<Map<string, Uint8Array>> {
             return
           }
           chunks.push(data)
+          checksum = crc32(data, checksum)
           if (!final) return
+          if (checksum !== checksums.get(file.name)) {
+            fail(new Error(`ZIP checksum mismatch: ${file.name}`))
+            return
+          }
           if (file.originalSize !== undefined && actualSize !== file.originalSize) {
             fail(new Error(`ZIP entry size mismatch: ${file.name}`))
             return
@@ -302,11 +322,11 @@ function unzipSafely(source: Uint8Array): Promise<Map<string, Uint8Array>> {
   })
 }
 
-function readMedia(files: Map<string, Uint8Array>, path: string): CardBundleMedia {
+function readMedia(files: Map<string, Uint8Array>, path: string, mediaType?: unknown): CardBundleMedia {
   validateBundlePath(path)
   const bytes = files.get(path)
   if (!bytes) throw new Error(`Loom Card package is missing ${path}`)
-  return { bytes, mediaType: mediaTypeForPath(path) }
+  return { bytes, mediaType: readCardMediaType(path, mediaType) }
 }
 
 function readExtensionPayloads(
@@ -350,16 +370,33 @@ function loomScriptPath(attachment: LoomScriptAttachmentArtifact, index: number)
 
 function extensionForMediaType(mediaType: string): string {
   switch (mediaType.toLowerCase()) {
+    case 'image/png': return '.png'
+    case 'image/apng': return '.apng'
+    case 'image/svg+xml': return '.svg'
+    case 'image/avif': return '.avif'
+    case 'video/mp4': return '.mp4'
+    case 'video/webm': return '.webm'
     case 'image/jpeg': return '.jpg'
     case 'image/webp': return '.webp'
     case 'image/gif': return '.gif'
-    default: return '.png'
+    default: return '.bin'
   }
 }
 
-function mediaTypeForPath(path: string): string {
+export function readCardMediaType(path: string, declared?: unknown): string {
+  if (declared !== undefined) {
+    if (typeof declared !== 'string' || !/^[a-z0-9!#$%&'*+.^_`|~-]+\/[a-z0-9!#$%&'*+.^_`|~-]+$/i.test(declared)) {
+      throw new Error(`Invalid Card media type: ${path}`)
+    }
+    return declared
+  }
   const extension = path.slice(path.lastIndexOf('.')).toLowerCase()
   switch (extension) {
+    case '.apng': return 'image/apng'
+    case '.svg': return 'image/svg+xml'
+    case '.avif': return 'image/avif'
+    case '.mp4': return 'video/mp4'
+    case '.webm': return 'video/webm'
     case '.jpg':
     case '.jpeg': return 'image/jpeg'
     case '.webp': return 'image/webp'

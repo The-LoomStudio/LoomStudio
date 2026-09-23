@@ -23,10 +23,10 @@ export type ModelPanelProps = {
   providerAccountDraft: ProviderAccountDraft
   modelProfiles: ModelProfile[]
   onChangeProviderAccountDraft(value: ProviderAccountDraft): void
-  onCreateModelProfile(providerAccountId: string, providerModelId: string): void
-  onCreateProviderAccount(event: FormEvent): void
-  onDeleteModelProfile(id: string): void
-  onDeleteProviderAccount(id: string): void
+  onCreateModelProfile(providerAccountId: string, providerModelId: string): Promise<void>
+  onCreateProviderAccount(event: FormEvent): Promise<void>
+  onDeleteModelProfile(id: string): Promise<void>
+  onDeleteProviderAccount(id: string): Promise<void>
   onListProviderModels(providerAccountId: string): Promise<string[]>
   onUpdateProviderConnection(providerAccountId: string, connection: { displayName: string; baseUrl: string; apiKey?: string }): Promise<boolean>
   providerAccounts: ProviderAccount[]
@@ -46,12 +46,13 @@ export function ModelPanel(props: ModelPanelProps) {
             <h2>{props.t('provider.title')}</h2>
             <span>{chatProviderAccounts.length}</span>
           </header>
-          <form autoComplete="off" className={`${styles.createAccountForm} loom-underlined-fields`} onSubmit={props.onCreateProviderAccount}>
+          <form autoComplete="off" className={`${styles.createAccountForm} loom-underlined-fields`} onSubmit={event => void props.onCreateProviderAccount(event).catch(() => undefined)}>
             <label>
               <span>{props.t('provider.name')}</span>
               <input
                 autoComplete="off"
                 name="loom-provider-display-name"
+                disabled={props.busy}
                 required
                 placeholder={props.t('provider.namePlaceholder')}
                 value={props.providerAccountDraft.displayName}
@@ -63,6 +64,7 @@ export function ModelPanel(props: ModelPanelProps) {
               <input
                 autoComplete="off"
                 name="loom-provider-base-url"
+                disabled={props.busy}
                 placeholder={props.t('provider.baseUrlPlaceholder')}
                 required
                 value={props.providerAccountDraft.baseUrl}
@@ -85,6 +87,7 @@ export function ModelPanel(props: ModelPanelProps) {
               <input
                 autoComplete="new-password"
                 name="loom-provider-api-key"
+                disabled={props.busy}
                 placeholder={props.t('provider.apiKeyPlaceholder')}
                 type="password"
                 value={props.providerAccountDraft.apiKey}

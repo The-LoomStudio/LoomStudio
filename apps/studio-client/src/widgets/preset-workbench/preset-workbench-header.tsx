@@ -18,7 +18,9 @@ export function PresetWorkbenchHeader(props: {
   const activePresetView = useStudioLayoutStore(state => state.presetView)
   const setActivePresetView = useStudioLayoutStore(state => state.setPresetView)
   const presetResources = useMemo(() => props.resources.filter(r => r.resourceKind === 'preset'), [props.resources])
-  const selectedResource = presetResources.find(r => r.id === props.selectedResourceId) ?? presetResources[0]
+  const selectedResource = props.selectedResourceId
+    ? presetResources.find(r => r.id === props.selectedResourceId)
+    : presetResources[0]
   const selectedId = useStudioLayoutStore(state => state.assetLayouts.preset.views[props.workspaceId]?.selectedId)
   const openAssetDetail = useStudioLayoutStore(state => state.openAssetDetail)
   const setAssetPane = useStudioLayoutStore(state => state.setAssetPane)
@@ -66,7 +68,7 @@ export function PresetWorkbenchHeader(props: {
       title={props.t(definition.labelKey)}
       breadcrumbs={breadcrumbs}
       resources={presetResources}
-      selectedResourceId={selectedResource?.id}
+      selectedResourceId={props.selectedResourceId ?? selectedResource?.id}
       t={props.t}
       onSelectResource={resourceId => props.onSelectResource?.(resourceId)}
     />

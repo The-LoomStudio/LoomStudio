@@ -6,7 +6,8 @@ import type { ClientRendererHost } from '../../shared/extension-renderer-runtime
 import type { Translator } from '../../shared/i18n/index.js'
 import { AgentChatPanel } from '../../widgets/agent-chat-panel/agent-chat-panel.js'
 import { StudioPanelRight } from './studio-panel-right.js'
-import { useStudioLayoutStore, useStudioPanelStore, type StudioPanelId } from '../../shared/studio-shell/studio-layout-store.js'
+import { useStudioLayoutStore, type StudioPanelId } from '../../shared/studio-shell/studio-layout-store.js'
+import type { useStudioNavigation } from '../../shared/studio-shell/use-studio-navigation.js'
 import { StudioPanelHost } from './studio-panel-host.js'
 import { StudioWindowHeader } from './studio-window-header.js'
 import { StudioWindowHeaderProvider } from '../../shared/studio-shell/studio-window-header-context.js'
@@ -20,6 +21,7 @@ import type { WindowResizeAxis } from '../../shared/studio-shell/window-resize.j
 import styles from './studio-page.module.scss'
 
 type StudioPageProps = {
+  navigation: ReturnType<typeof useStudioNavigation>
   agentChatBusy?: boolean
   agentActiveRun?: ActiveAgentRun
   agentChatInput?: string
@@ -71,7 +73,7 @@ export function StudioPage(props: StudioPageProps) {
   const dockRef = useRef<HTMLElement>(null)
   const agentPanelToggleRef = useRef<HTMLButtonElement>(null)
   useStudioLayoutAnchors(stageRef)
-  const activePanel = useStudioPanelStore(state => state.activePanel)
+  const activePanel = props.navigation.route.panel
   const effectiveMotion = useEffectiveMotion()
   const [displayedPanel, setDisplayedPanel] = useState(activePanel)
   const [panelMotion, setPanelMotion] = useState<'closing' | 'idle'>('idle')
@@ -81,9 +83,10 @@ export function StudioPage(props: StudioPageProps) {
   const workspaceMotionRef = useRef<HTMLDivElement>(null)
   const workspaceAnimationRef = useRef<Animation | null>(null)
   const historyMotionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const requestedHistoryDirection = useRef<'back' | 'forward' | undefined>(undefined)
   const assetMetadataOpen = useStudioLayoutStore(state => state.assetMetadataOpen)
   const closeDock = useStudioLayoutStore(state => state.closeDock)
-  const closePanel = useStudioPanelStore(state => state.closePanel)
+  const closePanel = props.navigation.closePanel
   const dockOpen = useStudioLayoutStore(state => state.dockOpen)
   const dockPinned = useStudioLayoutStore(state => state.dockPinned)
   const panelWindowMode = useStudioLayoutStore(state => state.panelWindowMode)
@@ -92,7 +95,7 @@ export function StudioPage(props: StudioPageProps) {
   const setPanelWindowSize = useStudioLayoutStore(state => state.setPanelWindowSize)
   const setAssetMetadataOpen = useStudioLayoutStore(state => state.setAssetMetadataOpen)
   const toggleDockPinned = useStudioLayoutStore(state => state.toggleDockPinned)
-  const togglePanel = useStudioPanelStore(state => state.togglePanel)
+  const togglePanel = props.navigation.togglePanel
   const togglePanelWindowMode = useStudioLayoutStore(state => state.togglePanelWindowMode)
   const isImmersive = activePanel !== null && panelWindowMode === 'immersive'
   const isDisplayedImmersive = displayedPanel !== null && panelWindowMode === 'immersive'
@@ -104,6 +107,17 @@ export function StudioPage(props: StudioPageProps) {
   const [agentPanelWidth, setAgentPanelWidth] = useState<number | undefined>(undefined)
   const [headerActionsTarget, setHeaderActionsTarget] = useState<HTMLDivElement | null>(null)
   const [historyMotion, setHistoryMotion] = useState<{ direction: 'back' | 'forward'; panel: StudioPanelId | null } | null>(null)
+  useEffect(() => {
+    const direction = requestedHistoryDirection.current
+    requestedHistoryDirection.current = undefined
+    if (!direction || props.navigation.historyAction !== 'POP') return
+    if (historyMotionTimerRef.current) clearTimeout(historyMotionTimerRef.current)
+    setHistoryMotion({ direction, panel: activePanel })
+    historyMotionTimerRef.current = setTimeout(() => {
+      setHistoryMotion(null)
+      historyMotionTimerRef.current = null
+    }, 240)
+  }, [props.navigation.locationKey, props.navigation.historyAction, activePanel])
 
   useEffect(() => {
     if (isAgentPanelOpen) return
@@ -351,24 +365,21 @@ export function StudioPage(props: StudioPageProps) {
       />
     </div>
   )
-  const panelHost = displayedPanel === null ? null : (
+  const panelHost = (
     <div className={styles.dockPanelHost}>
-      <StudioWindowHeader
+      {displayedPanel !== null ? <StudioWindowHeader
         actions={props.panelHeaderActions?.[displayedPanel]}
         actionsTargetRef={setHeaderActionsTarget}
         activePanel={displayedPanel}
         assetWorkspaceId={props.assetWorkspaceId}
         main={props.panelHeaderMain?.[displayedPanel]}
         t={props.t}
-        onPanelHistory={(direction, panel) => {
-          if (historyMotionTimerRef.current) clearTimeout(historyMotionTimerRef.current)
-          setHistoryMotion({ direction, panel })
-          historyMotionTimerRef.current = setTimeout(() => {
-            setHistoryMotion(null)
-            historyMotionTimerRef.current = null
-          }, 240)
+        onPanelHistory={direction => {
+          requestedHistoryDirection.current = direction
+          if (direction === 'back') void props.navigation.goBack()
+          else void props.navigation.goForward()
         }}
-      />
+      /> : null}
       <StudioPanelHost activePanel={displayedPanel} historyMotion={historyMotion} panels={props.panels} />
     </div>
   )
@@ -526,7 +537,8 @@ export function StudioPage(props: StudioPageProps) {
           <div ref={workspaceMotionRef} className={styles.workspaceMotionClip}>
             <div className={styles.workspaceShellLayout} data-rail-compact={railPresentation.compact}>
               <div className={styles.workspaceRail}>{dockSidebar}</div>
-              {panelHost ? <div className={styles.workspacePanel}>{panelHost}</div> : null}
+              <div className={styles.workspacePanel} hidden={displayedPanel === null}
+                style={displayedPanel === null ? { display: 'none' } : undefined}>{panelHost}</div>
             </div>
           </div>
 

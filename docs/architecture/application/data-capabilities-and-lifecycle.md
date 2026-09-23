@@ -52,6 +52,10 @@ Document、Prompt Resource、State、Narrative 等 Store 共享 SQLite Data Engi
 | State | 不可变 Snapshot Revision、Parent、幂等键与 Head CAS；State Undo 生成补偿 Revision |
 | Narrative | 不可变 Node 与 Branch Head；Fork 引用既有 Node 和对应 State Revision，不是通用对象 revert |
 
+Timeline UI 正文编辑属于当前分支：以开始编辑时的 Branch Head 和原正文作为并发基线，在同一 Changeset 中复制目标节点至末节点的路径，仅替换目标正文，并切换该分支 Head。后续正文、节点 State Revision、分支 State Head 和来源信息保持不变；其他分支继续引用原路径。不触发回滚、生成或 State 重算。被替换路径使用新节点 ID，原 ID 保留用于历史引用；不是删除或修改历史字节。
+
+归档恢复按节点父链与分支记录分别恢复拓扑。`forkedFromNodeId` 是历史分叉来源，不保证仍处于父分支当前路径；正文编辑保留下来的历史节点允许一同归档。UI 保存失败保留草稿，分支 Head 或原文变化时拒绝旧保存，不自动强制覆盖。
+
 Changeset 是提交事实，不是能够恢复任意领域对象的完整快照。跨 Store 的原子提交需要领域流程显式组合；共享 Changeset ID 不能代替各 Store 的恢复数据和冲突检查。基础合同见 [Data Architecture](../data/README.md)。
 
 ## 来源、引用与运行归属

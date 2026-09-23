@@ -38,6 +38,17 @@ async function setup() {
 }
 
 describe('card directory media', () => {
+  it('exports original non-raster MIME and bytes without expanding HTTP preview permissions', async () => {
+    const { media, directory, manifest } = await setup()
+    const bytes = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>')
+    await manifest('assets/avatar.svg')
+    await fs.writeFile(join(directory, 'assets/avatar.svg'), bytes)
+    await expect(media.read('card-1', 'avatar', 'asset-1')).rejects.toThrow('raster image')
+    const exported = await media.read('card-1', 'avatar', 'asset-1', true)
+    expect(exported?.mediaType).toBe('image/svg+xml')
+    expect(exported?.bytes).toEqual(bytes)
+  })
+
   it('serves authenticated GET/HEAD with content-based revalidation and explicit failures', async () => {
     let bytes = png('first')
     const server = createStudioHttpServer({

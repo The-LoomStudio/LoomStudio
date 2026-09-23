@@ -41,15 +41,27 @@ export async function composeAgentTurnPrompt(input: {
   }
 }): Promise<{ messages: ChatMessage[]; projection: CompiledPrompt; promptBuildTrace: PromptBuildTrace; toolExecutionScope: ToolExecutionScope }> {
   const variables = input.variables ?? createVariableRenderContext()
+  const diagnostics: PromptBuildTrace['diagnostics'] = []
+  const missingResourceIds = new Set<string>()
+  const warnMissingResource = (resourceId: string) => {
+    if (resourceId === input.preset.id) throw new Error(`Prompt resource not found: ${resourceId}`)
+    if (missingResourceIds.has(resourceId)) return
+    missingResourceIds.add(resourceId)
+    diagnostics.push({
+      severity: 'warning',
+      code: 'prompt.resource_missing',
+      resourceId,
+      message: `Skipped missing optional Prompt resource: ${resourceId}`,
+    })
+  }
   const manualMounts = await input.promptResources.listSettingMounts({ source: { kind: 'manual', id: 'global' } })
   const timelineSettingIds = input.narrative
     ? (await Promise.all(input.narrative.timeline.promptResourceIds.map(async resourceId => {
         const resource = await input.promptResources.getResource(resourceId)
-        if (!resource) throw new Error(`Prompt resource not found: ${resourceId}`)
+        if (!resource) warnMissingResource(resourceId)
         return resource
       })))
-      .filter(resource => resource.resourceKind === 'setting')
-      .map(resource => resource.id)
+      .flatMap(resource => resource?.resourceKind === 'setting' ? [resource.id] : [])
     : []
   const resourceIds = [...new Set([
     input.preset.id,
@@ -61,6 +73,7 @@ export async function composeAgentTurnPrompt(input: {
         promptResources: input.promptResources,
         resourceIds,
         variables,
+        onMissingResource: warnMissingResource,
       })
     : undefined
   const runtimeInputs = createRuntimePromptSources({
@@ -97,7 +110,7 @@ export async function composeAgentTurnPrompt(input: {
     initialFragmentCount: contributions.length,
     finalFragmentCount: resourceProjection.messages.length,
     messageFragmentCount: resourceProjection.messages.length,
-    diagnostics: [],
+    diagnostics,
     executions: []
   }
 
@@ -116,7 +129,7 @@ export async function composeAgentTurnPrompt(input: {
         promptResources: input.promptResources,
         workspaceResourceAccess: !input.narrative,
       }),
-      vfsResourceIds: resourceIds,
+      vfsResourceIds: resourceIds.filter(id => !missingResourceIds.has(id)),
     },
   }
 }

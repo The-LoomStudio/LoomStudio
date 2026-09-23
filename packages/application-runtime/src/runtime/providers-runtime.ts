@@ -4,7 +4,6 @@ import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments, readDocument, writeDocument } from '../foundation/document-store.js'
 import { assertNonEmpty, assertProviderModelExists } from '../agents/agent.js'
 import type {
-  AgentProfileContent,
   AiCapabilityProfileContent,
   AiCapabilityProfileView,
   CreateAiCapabilityProfileInput,
@@ -38,6 +37,7 @@ import type {
   UpdateProviderProfileResult,
 } from '../types.js'
 import {
+  promptResourceWriteContext,
   requireAiCapabilities,
   requireSecrets,
   secretWriteContext,
@@ -73,6 +73,8 @@ export function createProvidersRuntimeMethods(ctx: ProvidersRuntimeContext) {
       let providerProfile
       try {
         providerProfile = await writeDocument<ProviderProfileContent>(ctx.documents, {
+          ...promptResourceWriteContext(requestContext),
+          reason: 'application.createProviderProfile',
           id,
           type: applicationDocumentTypes.providerProfile,
           content: {
@@ -118,7 +120,7 @@ export function createProvidersRuntimeMethods(ctx: ProvidersRuntimeContext) {
       }
     },
 
-    updateProviderProfile: async (input: UpdateProviderProfileInput): Promise<UpdateProviderProfileResult> => {
+    updateProviderProfile: async (input: UpdateProviderProfileInput, requestContext?: RuntimeRequestContext): Promise<UpdateProviderProfileResult> => {
       const existing = await readDocument<ProviderProfileContent>(ctx.documents, input.providerProfileId, applicationDocumentTypes.providerProfile)
       if (input.displayName !== undefined) assertNonEmpty(input.displayName, 'displayName')
       const providerConfig = input.config === undefined
@@ -126,6 +128,8 @@ export function createProvidersRuntimeMethods(ctx: ProvidersRuntimeContext) {
         : ctx.providerAdapters.validateAccountConfig(existing.content.providerExtensionId, input.config)
       const timestamp = ctx.now()
       const updated = await writeDocument<ProviderProfileContent>(ctx.documents, {
+        ...promptResourceWriteContext(requestContext),
+        reason: 'application.updateProviderProfile',
         id: existing.id,
         type: applicationDocumentTypes.providerProfile,
         content: {
@@ -165,6 +169,8 @@ export function createProvidersRuntimeMethods(ctx: ProvidersRuntimeContext) {
       })
       try {
         await writeDocument<ProviderProfileContent>(ctx.documents, {
+          ...promptResourceWriteContext(requestContext),
+          reason: 'application.replaceProviderCredential',
           id: existing.id,
           type: applicationDocumentTypes.providerProfile,
           content: { ...existing.content, secretRef: created.metadata.ref, updatedAt: ctx.now() },
@@ -183,18 +189,11 @@ export function createProvidersRuntimeMethods(ctx: ProvidersRuntimeContext) {
 
     deleteProviderProfile: async (input: DeleteProviderProfileInput, requestContext?: RuntimeRequestContext): Promise<DeleteProviderProfileResult> => {
       const existing = await readDocument<ProviderProfileContent>(ctx.documents, input.providerProfileId, applicationDocumentTypes.providerProfile)
-      const profiles = await listDocuments<AgentProfileContent>(ctx.documents, applicationDocumentTypes.agentProfile)
-      if (profiles.some(profile => profile.content.model.providerProfileId === existing.id)) {
-        throw new Error(`Provider Profile is still referenced by an Agent Profile: ${existing.id}`)
-      }
-      const capabilityProfiles = await listDocuments<AiCapabilityProfileContent>(
-        ctx.documents,
-        applicationDocumentTypes.aiCapabilityProfile,
-      )
-      if (capabilityProfiles.some(profile => profile.content.providerProfileId === existing.id)) {
-        throw new Error(`Provider Profile is still referenced by an AI Capability Profile: ${existing.id}`)
-      }
-      await ctx.documents.delete({ id: existing.id, expectedVersion: existing.version })
+      await ctx.documents.delete({
+        ...promptResourceWriteContext(requestContext),
+        reason: 'application.deleteProviderProfile',
+        id: existing.id, expectedVersion: existing.version,
+      })
       let credentialCleanupPending = false
       if (existing.content.secretRef) {
         const deleted = await requireSecrets(ctx).delete({
@@ -207,7 +206,7 @@ export function createProvidersRuntimeMethods(ctx: ProvidersRuntimeContext) {
       return { deleted: true as const, credentialCleanupPending }
     },
 
-    createAiCapabilityProfile: async (input: CreateAiCapabilityProfileInput): Promise<CreateAiCapabilityProfileResult> => {
+    createAiCapabilityProfile: async (input: CreateAiCapabilityProfileInput, requestContext?: RuntimeRequestContext): Promise<CreateAiCapabilityProfileResult> => {
       assertNonEmpty(input.providerProfileId, 'providerProfileId')
       assertNonEmpty(input.capabilityId, 'capabilityId')
       assertNonEmpty(input.displayName, 'displayName')
@@ -223,6 +222,8 @@ export function createProvidersRuntimeMethods(ctx: ProvidersRuntimeContext) {
       )
       const timestamp = ctx.now()
       const profile = await writeDocument<AiCapabilityProfileContent>(ctx.documents, {
+        ...promptResourceWriteContext(requestContext),
+        reason: 'application.createAiCapabilityProfile',
         id: ctx.createId('ai-capability-profile'),
         type: applicationDocumentTypes.aiCapabilityProfile,
         content: {
@@ -264,31 +265,36 @@ export function createProvidersRuntimeMethods(ctx: ProvidersRuntimeContext) {
       }
     },
 
-    updateAiCapabilityProfile: async (input: UpdateAiCapabilityProfileInput): Promise<UpdateAiCapabilityProfileResult> => {
+    updateAiCapabilityProfile: async (input: UpdateAiCapabilityProfileInput, requestContext?: RuntimeRequestContext): Promise<UpdateAiCapabilityProfileResult> => {
       const existing = await readDocument<AiCapabilityProfileContent>(
         ctx.documents,
         input.profileId,
         applicationDocumentTypes.aiCapabilityProfile,
       )
       if (input.displayName !== undefined) assertNonEmpty(input.displayName, 'displayName')
+      if (input.providerProfileId !== undefined) assertNonEmpty(input.providerProfileId, 'providerProfileId')
+      const providerProfileId = input.providerProfileId ?? existing.content.providerProfileId
       let config = existing.content.config
-      if (input.config !== undefined) {
+      if (input.config !== undefined || input.providerProfileId !== undefined) {
         const providerProfile = await readDocument<ProviderProfileContent>(
           ctx.documents,
-          existing.content.providerProfileId,
+          providerProfileId,
           applicationDocumentTypes.providerProfile,
         )
         config = requireAiCapabilities(ctx).validateProfileConfig(
           providerProfile.content.providerExtensionId,
           existing.content.capabilityId,
-          input.config,
+          input.config ?? existing.content.config,
         )
       }
       const updated = await writeDocument<AiCapabilityProfileContent>(ctx.documents, {
+        ...promptResourceWriteContext(requestContext),
+        reason: 'application.updateAiCapabilityProfile',
         id: existing.id,
         type: applicationDocumentTypes.aiCapabilityProfile,
         content: {
           ...existing.content,
+          providerProfileId,
           ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
           config,
           updatedAt: ctx.now(),
@@ -298,13 +304,17 @@ export function createProvidersRuntimeMethods(ctx: ProvidersRuntimeContext) {
       return { profile: await toAiCapabilityProfileView(ctx, updated) }
     },
 
-    deleteAiCapabilityProfile: async (input: DeleteAiCapabilityProfileInput): Promise<DeleteAiCapabilityProfileResult> => {
+    deleteAiCapabilityProfile: async (input: DeleteAiCapabilityProfileInput, requestContext?: RuntimeRequestContext): Promise<DeleteAiCapabilityProfileResult> => {
       const existing = await readDocument<AiCapabilityProfileContent>(
         ctx.documents,
         input.profileId,
         applicationDocumentTypes.aiCapabilityProfile,
       )
-      await ctx.documents.delete({ id: existing.id, expectedVersion: existing.version })
+      await ctx.documents.delete({
+        ...promptResourceWriteContext(requestContext),
+        reason: 'application.deleteAiCapabilityProfile',
+        id: existing.id, expectedVersion: existing.version,
+      })
       return { deleted: true as const }
     },
 
@@ -382,21 +392,28 @@ async function toAiCapabilityProfileView(
   ctx: Pick<ApplicationRuntimeContext, 'aiCapabilities' | 'documents'>,
   profile: DocumentRecord<AiCapabilityProfileContent>,
 ): Promise<AiCapabilityProfileView> {
-  const providerProfile = await readDocument<ProviderProfileContent>(
-    ctx.documents,
-    profile.content.providerProfileId,
-    applicationDocumentTypes.providerProfile,
-  )
-  const provider = ctx.aiCapabilities?.get(providerProfile.content.providerExtensionId)
+  const document = await ctx.documents.get(profile.content.providerProfileId, { includeTombstone: true })
+  if (document && document.type !== applicationDocumentTypes.providerProfile) {
+    throw new Error(`Document type mismatch for Provider Profile: ${document.id}`)
+  }
+  const providerProfile = document as DocumentRecord<ProviderProfileContent> | null
+  const providerExtensionId = providerProfile?.content.providerExtensionId
+  const provider = providerExtensionId ? ctx.aiCapabilities?.get(providerExtensionId) : undefined
+  const unavailableReason = !providerProfile || providerProfile.meta.tombstone
+    ? 'provider-profile-missing' as const
+    : !provider ? 'provider-unavailable' as const
+      : !provider.capabilities.some(capability => capability.id === profile.content.capabilityId)
+        ? 'capability-unavailable' as const : undefined
   return {
     id: profile.id,
     version: profile.version,
-    providerProfileId: providerProfile.id,
-    providerExtensionId: providerProfile.content.providerExtensionId,
+    providerProfileId: profile.content.providerProfileId,
+    ...(providerExtensionId ? { providerExtensionId } : {}),
     capabilityId: profile.content.capabilityId,
     displayName: profile.content.displayName,
     config: profile.content.config,
-    available: provider?.capabilities.some(capability => capability.id === profile.content.capabilityId) ?? false,
+    available: unavailableReason === undefined,
+    ...(unavailableReason ? { unavailableReason } : {}),
     createdAt: profile.content.createdAt,
     updatedAt: profile.content.updatedAt,
   }

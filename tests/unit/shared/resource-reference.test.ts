@@ -1,7 +1,41 @@
 import { describe, expect, it } from 'vitest'
-import { formatResourceReference, parseResourceReference, formatEntityReference, parseEntityReference, parseResourceLink, type ResourceReference } from '../../../packages/shared/src/resource-reference.js'
+import { formatResourceReference, parseResourceReference, formatEntityReference, parseEntityReference, parseResourceLink, type ResourceReference, type EntityReference } from '../../../packages/shared/src/resource-reference.js'
 
 describe('resource reference URI', () => {
+  it.each<EntityReference>([
+    { kind: 'entity', type: 'timeline', id: 't /?&#', branchId: 'b /?&#', nodeId: 'n /?&#' },
+    { kind: 'entity', type: 'timeline', id: 't', branchId: 'b' },
+    { kind: 'entity', type: 'timeline', id: 't', nodeId: 'n' },
+    { kind: 'entity', type: 'resource', id: 'r', nodeId: 'nested' },
+  ])('round trips scoped entity targets: $type', reference => {
+    const uri = formatEntityReference(reference)
+    expect(parseEntityReference(uri)).toEqual(reference)
+    expect(parseResourceLink(uri)).toEqual(reference)
+    expect(parseResourceReference(uri)).toBeUndefined()
+  })
+
+  it.each([
+    'type=timeline&id=t&branchId=',
+    'type=timeline&id=t&nodeId=',
+    'type=timeline&id=t&branchId=%00',
+    'type=timeline&id=t&nodeId=%7f',
+    'type=timeline&id=t&branchId=a&branchId=b',
+    'type=resource&id=r&nodeId=a&nodeId=b',
+    'type=resource&id=r&branchId=b',
+    'type=timeline&id=t&version=1',
+    'type=timeline&id=t&branch=b',
+    'type=resource&id=r&range=L1-L2',
+    ...['card', 'session', 'run', 'provider', 'extension'].flatMap(type => [
+      `type=${type}&id=x&branchId=b`, `type=${type}&id=x&nodeId=n`,
+    ]),
+  ])('rejects parameters outside the entity contract: %s', query => {
+    expect(parseEntityReference(`loom-resource://entity?${query}`)).toBeUndefined()
+  })
+
+  it('rejects invalid optional identifiers during formatting rather than dropping them', () => {
+    expect(() => formatEntityReference({ kind: 'entity', type: 'timeline', id: 't', branchId: '' })).toThrow('Invalid entity reference')
+    expect(() => formatEntityReference({ kind: 'entity', type: 'resource', id: 'r', nodeId: '\0' })).toThrow('Invalid entity reference')
+  })
   it('round trips entity identity without inventing a document version or line range', () => {
     const reference = { kind: 'entity' as const, type: 'card' as const, id: '角色 / ? # & name' }
     const uri = formatEntityReference(reference)

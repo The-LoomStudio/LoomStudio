@@ -5,6 +5,8 @@
     "noEmit": true,
     "types": ["node"],
     "paths": {
+      "@loom-studio/ai-gateway": ["../packages/ai-gateway/src/index.ts"],
+      "@loom-studio/ai-gateway/contracts": ["../packages/ai-gateway/src/contracts.ts"],
       "@loom-studio/application-data": ["../packages/application-data/src/index.ts"],
       "@loom-studio/asset-store": ["../packages/asset-store/src/index.ts"],
       "@loom-studio/blob-store": ["../packages/blob-store/src/index.ts"],
@@ -28,6 +30,7 @@
     }
   },
   "include": [
+    "../apps/studio-client/src/vite-env.d.ts",
     "**/*.ts",
     "**/*.tsx"
   ]

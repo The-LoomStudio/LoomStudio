@@ -59,7 +59,7 @@ export function StateAuthoringPanel(props: StateAuthoringPanelProps) {
     setMobilePane('master')
   }, [props.card])
 
-  const preview = useMemo(() => buildAssemblyPreview(config), [config])
+  const preview = useMemo(() => buildAssemblyPreview(config, props.t), [config, props.t])
   const previewNodes = useMemo(() => stateSnapshotToTreeNodes(preview.snapshot), [preview.snapshot])
   const dirty = sourceText !== baselineRef.current
 
@@ -131,6 +131,7 @@ export function StateAuthoringPanel(props: StateAuthoringPanelProps) {
       <div className={styles.stateAuthoringBody}>
         <MasterDetailWorkbench
           backLabel={props.t('stateAuthoring.backToList')}
+          resizeLabel={props.t('stateVariables.resizeSidebar')}
           dataComponent="state-authoring-workbench"
           defaultMasterWidth={250}
           detailMinWidth={320}
@@ -220,7 +221,7 @@ function NavItem(props: { active: boolean; icon: ReactNode; label: string; meta:
 
 function AuthoringDetail(props: { config: DraftConfig; selection: Selection; commit(config: DraftConfig): void; sourceText: string; sourceError: string; updateSource(text: string): void; t: Translator }) {
   const { config, selection, commit, t } = props
-  if (selection.kind === 'source') return <div className={styles.stateAuthoringSource}><h3>{t('stateAuthoring.source')}</h3><textarea className={styles.yamlTextarea} value={props.sourceText} onChange={event => props.updateSource(event.target.value)} />{props.sourceError ? <div className={styles.fieldError}>{props.sourceError}</div> : null}</div>
+  if (selection.kind === 'source') return <div className={styles.stateAuthoringSource}><h3>{t('stateAuthoring.source')}</h3><textarea aria-label={t('stateAuthoring.cardConfig')} className={styles.yamlTextarea} value={props.sourceText} onChange={event => props.updateSource(event.target.value)} />{props.sourceError ? <div className={styles.fieldError}>{props.sourceError}</div> : null}</div>
   const list = selection.kind === 'entity-type' ? config.stateEntityTypes : selection.kind === 'entity' ? config.timelineStateEntities : selection.kind === 'component' ? config.stateTemplates : selection.kind === 'mount' ? config.timelineComponentMounts : selection.kind === 'contribution' ? config.stateContributionIds : config.timelineStateBindings
   if (!list[selection.index]) return <div className={styles.emptyState}>{t('stateAuthoring.unassigned')}</div>
   const remove = () => {
@@ -317,7 +318,7 @@ function updateComponentTemplate(config: DraftConfig, index: number, patch: Part
 function splitEntityKey(value: string): [string, string] { const index = value.indexOf(':'); return index < 0 ? ['', value] : [value.slice(0, index), value.slice(index + 1)] }
 function formatMountTarget(mount: NonNullable<Card['timelineComponentMounts']>[number]) { return mount.target.kind === 'entity' ? `${mount.target.entity.typeId}:${mount.target.entity.entityId}` : `${mount.target.typeId}:*` }
 
-function buildAssemblyPreview(config: DraftConfig) {
+function buildAssemblyPreview(config: DraftConfig, t: Translator) {
   const snapshot: JsonObject = {}
   const issues: string[] = []
   const rules: string[] = []
@@ -325,48 +326,52 @@ function buildAssemblyPreview(config: DraftConfig) {
   const templates = new Map(config.stateTemplates.map(template => [template.id, template]))
   for (const entity of config.timelineStateEntities) {
     const type = types.get(entity.typeId)
-    if (!type) { issues.push(`Entity ${entity.entityId}: unknown type ${entity.typeId}`); continue }
-    setPreviewPath(snapshot, [...type.collectionPath.split('.'), entity.entityId], { components: {} }, issues)
+    if (!type) { issues.push(t('stateAuthoring.unknownEntityType', { entity: entity.entityId, type: entity.typeId })); continue }
+    setPreviewPath(snapshot, [...type.collectionPath.split('.'), entity.entityId], { components: {} }, issues, t)
   }
   for (const mount of config.timelineComponentMounts) {
     const template = templates.get(mount.templateId)
-    if (!template) { issues.push(`Mount ${mount.componentKey}: unknown component ${mount.templateId}`); continue }
+    if (!template) { issues.push(t('stateAuthoring.unknownMountComponent', { mount: mount.componentKey, component: mount.templateId })); continue }
     const targetTypeId = mount.target.kind === 'entity-type' ? mount.target.typeId : undefined
     const targets = mount.target.kind === 'entity' ? [mount.target.entity] : config.timelineStateEntities.filter(entity => entity.typeId === targetTypeId)
     rules.push(`${mount.componentKey} → ${formatMountTarget(mount)} (${targets.length})`)
     for (const target of targets) {
       const type = types.get(target.typeId)
       if (!type) continue
-      setPreviewPath(snapshot, [...type.collectionPath.split('.'), target.entityId, 'components', mount.componentKey], deepMerge(template.initial, mount.initial ?? {}), issues)
+      setPreviewPath(snapshot, [...type.collectionPath.split('.'), target.entityId, 'components', mount.componentKey], deepMerge(template.initial, mount.initial ?? {}), issues, t)
     }
   }
   for (const binding of config.timelineStateBindings) {
     if (binding.path.includes('*')) { rules.push(`${binding.templateId} → ${binding.path}`); continue }
     const template = templates.get(binding.templateId)
-    if (!template) { issues.push(`Path ${binding.path}: unknown component ${binding.templateId}`); continue }
-    setPreviewPath(snapshot, binding.path.split('.'), deepMerge(template.initial, binding.initial ?? {}), issues)
+    if (!template) { issues.push(t('stateAuthoring.unknownPathComponent', { path: binding.path, component: binding.templateId })); continue }
+    setPreviewPath(snapshot, binding.path.split('.'), deepMerge(template.initial, binding.initial ?? {}), issues, t)
     rules.push(`${binding.templateId} → ${binding.path}`)
   }
   return { snapshot, issues, rules }
 }
 
-function setPreviewPath(root: JsonObject, path: string[], value: JsonObject, issues: string[]) {
+function setPreviewPath(root: JsonObject, path: string[], value: JsonObject, issues: string[], t: Translator) {
   let current = root
   for (const segment of path.slice(0, -1)) {
-    const existing = current[segment]
+    const existing = Object.hasOwn(current, segment) ? current[segment] : undefined
     if (existing === undefined) { const child = {}; Object.defineProperty(current, segment, { value: child, enumerable: true, configurable: true, writable: true }); current = child; continue }
-    if (!isObject(existing)) { issues.push(`Path conflict: ${path.join('.')}`); return }
+    if (!isObject(existing)) { issues.push(t('stateAuthoring.pathConflict', { path: path.join('.') })); return }
     current = existing
   }
   const key = path.at(-1)
-  if (!key) return
-  if (Object.hasOwn(current, key)) { issues.push(`Duplicate path: ${path.join('.')}`); return }
+  if (key === undefined) return
+  if (Object.hasOwn(current, key)) { issues.push(t('stateAuthoring.duplicatePath', { path: path.join('.') })); return }
   Object.defineProperty(current, key, { value, enumerable: true, configurable: true, writable: true })
 }
 
 function deepMerge(base: JsonObject, override: JsonObject): JsonObject {
   const result = structuredClone(base)
-  for (const [key, value] of Object.entries(override)) result[key] = isObject(result[key]) && isObject(value) ? deepMerge(result[key], value) : structuredClone(value)
+  for (const [key, value] of Object.entries(override)) {
+    const current = Object.hasOwn(result, key) ? result[key] : undefined
+    const next = isObject(current) && isObject(value) ? deepMerge(current, value) : structuredClone(value)
+    Object.defineProperty(result, key, { value: next, enumerable: true, configurable: true, writable: true })
+  }
   return result
 }
 function isObject(value: unknown): value is JsonObject { return typeof value === 'object' && value !== null && !Array.isArray(value) }

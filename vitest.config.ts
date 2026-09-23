@@ -44,14 +44,15 @@ const resolvePath = (relative: string) => fileURLToPath(new URL(relative, import
 export default defineConfig({
   resolve: {
     alias: {
-      '@loom-studio/ai-gateway': resolvePath('./packages/ai-gateway/src/index.ts'),
       '@loom-studio/ai-gateway/contracts': resolvePath('./packages/ai-gateway/src/contracts.ts'),
+      '@loom-studio/ai-gateway': resolvePath('./packages/ai-gateway/src/index.ts'),
       '@loom-studio/application-data': resolvePath('./packages/application-data/src/index.ts'),
       '@loom-studio/client-bridge': resolvePath('./packages/client-bridge/src/index.ts'),
       '@loom-studio/diagnostics': resolvePath('./packages/diagnostics/src/index.ts'),
       '@loom-studio/data-engine': resolvePath('./packages/data-engine/src/index.ts'),
       '@loom-studio/blob-store': resolvePath('./packages/blob-store/src/index.ts'),
       '@loom-studio/asset-store': resolvePath('./packages/asset-store/src/index.ts'),
+      '@loom-studio/secret-store': resolvePath('./packages/secret-store/src/index.ts'),
       '@loom-studio/document-store': resolvePath('./packages/document-store/src/index.ts'),
       '@loom-studio/application-runtime': resolvePath('./packages/application-runtime/src/index.ts'),
       '@loom-studio/extension-host': resolvePath('./packages/extension-sdk/extension-host/src/index.ts'),
@@ -72,7 +73,7 @@ export default defineConfig({
   test: {
     include: scopedTestInclude,
     exclude: testScope ? ['**/node_modules/**', '**/dist/**'] : defaultTestExclude,
-    passWithNoTests: true,
+    passWithNoTests: false,
     testTimeout: 20000,
     hookTimeout: 20000,
   },

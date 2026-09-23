@@ -28,7 +28,9 @@ type ContextAssetHeaderProps = {
 
 export function ContextAssetHeader(props: ContextAssetHeaderProps) {
   const Icon = props.Icon
-  const selectedResource = props.resources.find(r => r.id === props.selectedResourceId) ?? props.resources[0]
+  const selectedResource = props.selectedResourceId
+    ? props.resources.find(r => r.id === props.selectedResourceId)
+    : props.resources[0]
 
   return (
     <div className={styles.headerWrapper} data-loom-component="context-asset-header">

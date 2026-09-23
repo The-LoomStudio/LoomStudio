@@ -61,7 +61,7 @@ export async function handleAgentsRpc(
         model: readRequiredProviderModelSelection(params, 'model'),
         toolOverrides: readOptionalBooleanRecord(params, 'toolOverrides'),
         delivery: readOptionalDelivery(params),
-      }) as unknown as JsonValue
+      }, context) as unknown as JsonValue
 
     case 'application.getAgentProfile':
       return await runtime.getAgentProfile({ agentProfileId: readString(params, 'agentProfileId') }) as unknown as JsonValue
@@ -77,10 +77,10 @@ export async function handleAgentsRpc(
         model: readOptionalProviderModelSelection(params, 'model'),
         toolOverrides: readOptionalBooleanRecord(params, 'toolOverrides'),
         delivery: readOptionalDelivery(params),
-      }) as unknown as JsonValue
+      }, context) as unknown as JsonValue
 
     case 'application.deleteAgentProfile':
-      return await runtime.deleteAgentProfile({ agentProfileId: readString(params, 'agentProfileId') }) as unknown as JsonValue
+      return await runtime.deleteAgentProfile({ agentProfileId: readString(params, 'agentProfileId') }, context) as unknown as JsonValue
 
     case 'application.listAgentTools':
       return await runtime.listAgentTools() as unknown as JsonValue
@@ -90,7 +90,7 @@ export async function handleAgentsRpc(
         toolId: readString(params, 'toolId'),
         expectedVersion: readNumber(params, 'expectedVersion'),
         definition: readAgentToolDefinition(params),
-      }) as unknown as JsonValue
+      }, context) as unknown as JsonValue
 
     case 'application.listPresetToolMounts':
       return await runtime.listPresetToolMounts({
@@ -250,11 +250,11 @@ export async function handleAgentsRpc(
             )
             const checkpoint = {
               sourceRunId: String(lastUser.runId || lastUser.id),
-              messages: partialAssistant ? [{
+              messages: partialAssistant?.entry.kind === 'message' ? [{
                 role: 'system' as const,
                 content: `The previous assistant response was interrupted. Continue from this partial response without repeating it:\n${partialAssistant.entry.content}`,
               }] : [],
-              userEntry: lastUser as any,
+              userEntry: lastUser,
               ...(partialAssistant ? { partialEntryId: partialAssistant.id } : {}),
             }
             const run = startAgentRun(
@@ -294,11 +294,6 @@ export async function handleAgentsRpc(
         presetId: readOptionalString(params, 'presetId'),
         timelineTarget: readOptionalMacroTimelineTarget(params),
         macroSelections: readOptionalStringRecord(params, 'macroSelections'),
-      }) as unknown as JsonValue
-
-    case 'application.providerAccounts.inspect':
-      return await runtime.inspectProviderAccount({
-        accountId: readString(params, 'accountId'),
       }) as unknown as JsonValue
 
     default:

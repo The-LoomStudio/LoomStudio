@@ -488,9 +488,9 @@ describe('application agent session lifecycle', () => {
       call_id: 'call-1',
     })
 
-    await expect(runtime.deleteAgentProfile({ agentProfileId: profile.id })).rejects.toThrow('still referenced')
-    await runtime.deleteAgentSession({ agentSessionId: created.session.id })
     await expect(runtime.deleteAgentProfile({ agentProfileId: profile.id })).resolves.toEqual({ deleted: true })
+    expect((await runtime.getAgentTranscriptPage({ agentSessionId: created.session.id })).entries).toEqual(page.entries)
+    await runtime.deleteAgentSession({ agentSessionId: created.session.id })
     await expect(runtime.getAgentSession({ agentSessionId: created.session.id })).rejects.toThrow('Agent session not found')
     engine.close()
   })

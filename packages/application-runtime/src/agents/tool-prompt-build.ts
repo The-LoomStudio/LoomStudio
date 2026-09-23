@@ -9,6 +9,7 @@ import type {
   ToolDefinition,
   ToolInputDefinition,
   ToolTransport,
+  ToolDiagnostic,
 } from './tool-registry.js'
 
 export type ToolPromptTemplate = {
@@ -70,6 +71,7 @@ export type ToolPromptOrderTrace = {
 }
 
 export type ToolPromptBuildTrace = {
+  diagnostics?: ToolDiagnostic[]
   sourceCount: number
   activeCount: number
   requestedOrder: string[]

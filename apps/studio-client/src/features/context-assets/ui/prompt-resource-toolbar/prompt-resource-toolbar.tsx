@@ -1,8 +1,11 @@
-import { Archive, Copy, Download, Link2, Plus, Trash2, Upload } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { Archive, Copy, Download, Link2, Plus, RotateCcw, Save, Trash2, Upload } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import type { PromptResource } from '../../../../entities/index.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
 import { Dialog } from '@loom-studio/ui'
+import { formatEntityReference } from '@loom-studio/shared'
+import { buildStudioTargetLink } from '../../../../shared/studio-shell/studio-target.js'
+import { tryWriteClipboardText } from '../../../../shared/browser/clipboard.js'
 import styles from './prompt-resource-toolbar.module.scss'
 
 type PromptResourceToolbarProps = {
@@ -10,6 +13,9 @@ type PromptResourceToolbarProps = {
   resourceKind: PromptResource['resourceKind']
   resources: PromptResource[]
   selectedResourceId?: string
+  draftResourceIds: string[]
+  onDiscardDraft(resourceId: string): void
+  onRetryDraft(resourceId: string): Promise<void>
   t: Translator
   onCreate(resourceKind: PromptResource['resourceKind']): Promise<string | undefined>
   onDelete(resourceId: string): Promise<void>
@@ -24,17 +30,32 @@ type PromptResourceToolbarProps = {
 
 export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
   const importInputRef = useRef<HTMLInputElement>(null)
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
   const [pendingDelete, setPendingDelete] = useState<PromptResource>()
   const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState<string>()
+  const [savingDraft, setSavingDraft] = useState(false)
+  const [copiedResourceId, setCopiedResourceId] = useState<string>()
   const selected = props.resources.find(resource => resource.id === props.selectedResourceId)
 
   const selectResult = async (action: Promise<string | undefined>) => {
-    const resourceId = await action
-    if (resourceId) props.onSelect(resourceId)
+    setError(undefined)
+    try {
+      const resourceId = await action
+      if (resourceId && mountedRef.current) props.onSelect(resourceId)
+    } catch (caught) {
+      reportError(caught)
+    }
   }
+  const reportError = (caught: unknown) => setError(caught instanceof Error ? caught.message : String(caught))
 
   return (
     <div className={styles.toolbar}>
+      {error && !pendingDelete ? <p role="alert">{error}</p> : null}
       {!props.hideSelect ? (
         <select
           aria-label={props.t('promptResource.select')}
@@ -51,6 +72,46 @@ export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
         </select>
       ) : null}
       <div className={styles.actions}>
+        <button type="button" disabled={!selected}
+          title={props.t('navigation.copyResourceLink')} aria-label={props.t('navigation.copyResourceLink')}
+          onClick={() => {
+            if (!selected) return
+            const uri = formatEntityReference({ kind: 'entity', type: 'resource', id: selected.id })
+            void tryWriteClipboardText(new URL(buildStudioTargetLink(uri), window.location.origin).href).then(copied => {
+              if (!mountedRef.current) return
+              if (copied) { setCopiedResourceId(selected.id); setError(undefined) }
+              else setError(props.t('navigation.copyFailed'))
+            })
+          }}><Link2 aria-hidden="true" /></button>
+        {selected && copiedResourceId === selected.id ? <span role="status">{props.t('navigation.linkCopied')}</span> : null}
+        {selected && props.draftResourceIds.includes(selected.id) ? (
+          <>
+          <button
+            aria-label={props.t('context.retryDraft')}
+            title={props.t('context.retryDraft')}
+            disabled={savingDraft}
+            type="button"
+            onClick={() => {
+              setSavingDraft(true)
+              setError(undefined)
+              void props.onRetryDraft(selected.id).catch(reportError).finally(() => setSavingDraft(false))
+            }}
+          >
+            <Save aria-hidden="true" />
+          </button>
+          <button
+            aria-label={props.t('context.discardDraft')}
+            title={props.t('context.discardDraft')}
+            type="button"
+            disabled={savingDraft}
+            onClick={() => {
+              if (window.confirm(props.t('context.discardDraftConfirm'))) props.onDiscardDraft(selected.id)
+            }}
+          >
+            <RotateCcw aria-hidden="true" />
+          </button>
+          </>
+        ) : null}
         <button
           aria-label={props.t('promptResource.create')}
           title={props.t('promptResource.create')}
@@ -81,7 +142,7 @@ export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
           disabled={!selected}
           title={props.t('promptResource.export')}
           type="button"
-          onClick={() => selected && void props.onExport(selected.id)}
+          onClick={() => selected && void props.onExport(selected.id).then(() => setError(undefined)).catch(reportError)}
         >
           <Download aria-hidden="true" />
         </button>
@@ -91,7 +152,7 @@ export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
             disabled={!selected}
             title={`${props.t('promptResource.export')} ZIP`}
             type="button"
-            onClick={() => selected && void props.onExportZip?.(selected.id)}
+            onClick={() => selected && void props.onExportZip?.(selected.id).then(() => setError(undefined)).catch(reportError)}
           >
             <Archive aria-hidden="true" />
           </button>
@@ -111,7 +172,10 @@ export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
           disabled={!selected || selected.origin?.kind === 'builtin'}
           title={props.t(selected?.origin?.kind === 'builtin' ? 'promptResource.builtinReadOnly' : 'promptResource.delete')}
           type="button"
-          onClick={() => selected && setPendingDelete(selected)}
+          onClick={() => {
+            setError(undefined)
+            if (selected) setPendingDelete(selected)
+          }}
         >
           <Trash2 aria-hidden="true" />
         </button>
@@ -140,8 +204,10 @@ export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
               onClick={() => {
                 if (!pendingDelete) return
                 setDeleting(true)
+                setError(undefined)
                 void props.onDelete(pendingDelete.id)
                   .then(() => setPendingDelete(undefined))
+                  .catch(reportError)
                   .finally(() => setDeleting(false))
               }}
             >
@@ -156,7 +222,9 @@ export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
         role="alertdialog"
         title={props.t('promptResource.deleteConfirmTitle')}
         onClose={() => setPendingDelete(undefined)}
-      />
+      >
+        {error ? <p role="alert">{error}</p> : null}
+      </Dialog>
     </div>
   )
 }

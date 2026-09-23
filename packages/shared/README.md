@@ -9,6 +9,7 @@
 为了确保业务类型与算法在 Node.js 服务端与浏览器 Web 端之间能够无缝复用与序列化，本包承担全仓公共基础契约：
 - **基础原语**：严格定义 `JsonValue`、`JsonObject`、`createId()`、`nowIso()` 与跨端标准化的 `serializeError()`；
 - **变量宏渲染引擎 (`src/macros.ts`)**：提供模板中的只读变量替换、宏别名解析与渲染追踪；
+- **资源引用解析 (`src/resource-reference.ts`)**：统一跨领域资源引用标识（`ResourceReference`）、解析与展示模型（`ResourceReferencePresentation`）；
 - **Prompt Resource 挂载契约 (`src/prompt-resource-contracts.ts`)**：提供预设与设定挂载（`SettingMount`）的标准 Zod 校验 Schema；
 - **状态与资源目录类型**：定义卡片目录格式（`resource-directories.ts`）与状态贡献契约（`state-contribution.ts`）。
 
@@ -30,8 +31,9 @@ Package 主入口为 [`src/index.ts`](./src/index.ts)：
 
 - 原语工具：`createId()`、`nowIso()`、`serializeError()`、`isRecord()`、`isJsonObject()`；
 - 宏工具：`renderVariableMacros()`、`createVariableRenderContext()`、`canonicalMacroName()`；
+- 资源引用：`parseResourceReference()`、`formatResourceReference()`、`formatResourceReferenceText()`；
 - 挂载 Schema：`settingMountSchema`、`listSettingMountsInputSchema`、`replaceSettingMountsInputSchema`；
-- 核心类型：`JsonValue`、`SerializedError`、`ChatMessage`、`SettingMount`、`CardDirectoryCatalog` 等。
+- 核心类型：`JsonValue`、`SerializedError`、`ChatMessage`、`ResourceReference`、`SettingMount`、`CardDirectoryCatalog` 等。
 
 ---
 

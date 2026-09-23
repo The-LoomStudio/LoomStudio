@@ -46,6 +46,22 @@ Document Store 只拥有 Document 领域表与行为：
 
 Document Store 不再自行打开第二条 SQLite connection，也不再写第二份 Changeset。它把 Document operation 交给 Engine transaction collector，由共享 `changesets` 表记录提交事实。使用 `{ filename }` 创建仍是兼容便利入口；Studio Server 使用 `{ engine }` 共享平台 Engine，外部 Engine 的关闭责任仍属于组合根。
 
+## 统一分页契约（Keyset Pagination）
+
+数据层全量弃用不可靠的无状态数字 OFFSET 分页，统一采用基于游标的 Keyset 遍历契约：
+
+- **Document 首次插入顺序**：`DocumentStore.list` 按首次插入序号遍历，更新、tombstone 和恢复保留原行身份；SQLite 采用 UPSERT 保持物理稳定性。游标是不透明的边界令牌，严格绑定所属 `type`、`ownerExtensionId` 与 `includeTombstone` 等筛选条件；篡改游标或更换筛选条件时返回 `document.input_invalid`。默认页长 100，允许范围 1～1000。
+- **Prompt Resource 双模游标**：`listResources` 默认按更新时间降序（`updated_at DESC, id DESC`），游标记录读取时的时间与 ID 边界；同时支持按稳定 ID 降序（`order: 'id'`），供 Runtime 全量加载、导出与导入冲突扫描使用。
+- **动态集合与一致性边界**：Keyset 游标属于动态集合遍历，不是跨请求只读快照。条目在请求间更新可能越过游标边界；需要全局一致集合的导出、初始化检测与级联清理，必须依赖领域事务、版本校验或提交事实保护。客户端（Client）消费分页列表时统一采用完整收集（`collectPages`）后再行发布。
+
+## 数据保真底线（JSON Fidelity）
+
+数据持久化与序列化严格恪守数据保真底线：
+
+- **拒绝非有限数值**：在写入 SQLite 与跨进程传输边界，显式拒绝 `NaN`、`Infinity` 与 `-Infinity`，严禁将其静默洗成 `null`；
+- **保留结构合法值**：保留合法的 `null`、布尔值 `false`、数值 `0`、空字符串对象键以及扩展槽中的合法自定义属性，不通过私自白名单收紧领域演进空间；
+- **State Delta 空键重放**：状态变更增量（Delta）对合法空字符串键与嵌套路径提供完整保真支持，确保重放与合并不会造成状态损坏。
+
 ## 当前 Data Commit Contract
 
 平台已经定义领域无关的 `DataCommitFact` 与 `DataCommitSource`。当前 Engine 在 SQLite commit 成功后生成 Commit Fact，其中包含：

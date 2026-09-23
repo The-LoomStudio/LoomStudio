@@ -1,4 +1,4 @@
-import type { AiGatewayCapabilityRegistry, AiGatewayRunState, ProfiledAiGateway } from '@loom-studio/ai-gateway'
+import type { AiGatewayCapabilityRegistry, ProfiledAiGateway } from '@loom-studio/ai-gateway'
 import type { JsonValue } from '@loom-studio/shared'
 import { isRecord, readString } from '../rpc-params.js'
 

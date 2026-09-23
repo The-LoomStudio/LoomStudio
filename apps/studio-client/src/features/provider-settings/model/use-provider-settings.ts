@@ -10,6 +10,7 @@ import type {
   RegisteredAiGatewayProvider,
 } from '../../../entities/index.js'
 import { normalizeOpenAICompatibleBaseUrl } from './provider-base-url.js'
+import { collectPages } from '../../../shared/api/collect-pages.js'
 
 export type ProviderAccountDraft = {
   displayName: string
@@ -33,11 +34,17 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
   const modelQueueRef = useRef(Promise.resolve())
 
   async function refreshProviderAccounts() {
-    const result = await input.api.providerAccounts.list()
-    const profiles = result.providerProfiles ?? []
+    const profiles = await readProviderAccounts()
     setProviderAccounts(profiles)
     setModelProfiles(projectModelProfiles(profiles))
     setProviderAccountsLoaded(true)
+  }
+
+  async function readProviderAccounts() {
+    return await collectPages(async cursor => {
+      const result = await input.api.providerAccounts.list({ cursor, limit: 100 })
+      return { items: result.providerProfiles, nextCursor: result.nextCursor }
+    })
   }
 
   async function refreshModelProfiles() {
@@ -57,7 +64,10 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
   }
 
   async function refreshAiCapabilityProfiles() {
-    setAiCapabilityProfiles((await input.api.aiCapabilityProfiles.list()).profiles)
+    setAiCapabilityProfiles(await collectPages(async cursor => {
+      const result = await input.api.aiCapabilityProfiles.list({ cursor, limit: 100 })
+      return { items: result.profiles, nextCursor: result.nextCursor }
+    }))
   }
 
   async function invokeAiCapability(
@@ -83,12 +93,12 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
           ? { credential: { apiKey: providerAccountDraft.apiKey.trim() } }
           : {}),
       })
-      await refreshProviderSettings()
       setProviderAccountDraft({
         displayName: '',
         baseUrl: '',
         apiKey: '',
       })
+      await refreshProviderSettings()
     })
   }
 
@@ -99,13 +109,18 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
     credential?: Record<string, string>
   }): Promise<string | undefined> {
     let providerProfileId: string | undefined
-    await input.runAction(async () => {
-      const result = await input.api.providerAccounts.create({
-        ...request,
+    try {
+      await input.runAction(async () => {
+        const result = await input.api.providerAccounts.create({
+          ...request,
+        })
+        providerProfileId = result.providerProfile.id
+        await refreshProviderAccounts()
       })
-      providerProfileId = result.providerProfile.id
-      await refreshProviderAccounts()
-    })
+    } catch (error) {
+      // A refresh failure is already reported and must not invite duplicate creation.
+      if (!providerProfileId) throw error
+    }
     return providerProfileId
   }
 
@@ -116,11 +131,15 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
     config: Record<string, ClientJsonValue>
   }): Promise<string | undefined> {
     let profileId: string | undefined
-    await input.runAction(async () => {
-      const result = await input.api.aiCapabilityProfiles.create(request)
-      profileId = result.profile.id
-      await refreshAiCapabilityProfiles()
-    })
+    try {
+      await input.runAction(async () => {
+        const result = await input.api.aiCapabilityProfiles.create(request)
+        profileId = result.profile.id
+        await refreshAiCapabilityProfiles()
+      })
+    } catch (error) {
+      if (!profileId) throw error
+    }
     return profileId
   }
 
@@ -145,6 +164,7 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
 
   async function updateAiCapabilityProfile(request: {
     profileId: string
+    providerProfileId?: string
     displayName: string
     config: Record<string, ClientJsonValue>
   }): Promise<void> {
@@ -159,8 +179,7 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
     if (!model) return
     const task = modelQueueRef.current.then(async () => {
       await input.runAction(async () => {
-        const latestResult = await input.api.providerAccounts.list()
-        const profiles = latestResult.providerProfiles ?? []
+        const profiles = await readProviderAccounts()
         const account = profiles.find(item => item.id === providerAccountId)
         if (!account) throw new Error(`Provider Profile not found: ${providerAccountId}`)
         if (account.enabledModelIds.includes(model)) return

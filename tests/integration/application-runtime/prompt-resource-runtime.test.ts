@@ -6,7 +6,7 @@ import { readFile } from 'node:fs/promises'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { CardBundleArtifact } from '../../../packages/application-runtime/src/cards/workspace.js'
 
 function createIds() {
@@ -15,6 +15,37 @@ function createIds() {
 }
 
 describe('Prompt Resource Store application runtime', () => {
+  it('warns for a deleted optional setting without hiding preset or storage failures', async () => {
+    const createId = createIds()
+    const now = () => '2026-09-23T00:00:00.000Z'
+    const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
+    try {
+      const documents = createSqliteDocumentStore({ engine })
+      const promptResources = createPromptResourceStore({ engine, createId, now })
+      const runtime = createApplicationRuntime({ dataEngine: engine, documents, promptResources })
+      const { resource: preset } = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Preset' })
+      const { resource: setting } = await runtime.createPromptResource({ resourceKind: 'setting', name: 'Setting' })
+      await runtime.replaceSettingMounts({ source: { kind: 'manual', id: 'global' }, settingResourceIds: [setting.id] })
+      const mounts = await promptResources.listSettingMounts()
+      await runtime.deletePromptResource({ resourceId: setting.id })
+      expect(await promptResources.getResource(setting.id)).toBeNull()
+      const input = { promptResources, preset, agentMessages: [], userInput: 'Hi' }
+      const result = await composeAgentTurnPrompt(input)
+      expect(result.messages).toContainEqual(expect.objectContaining({ role: 'user', content: 'Hi' }))
+      expect(result.promptBuildTrace.diagnostics).toContainEqual(expect.objectContaining({
+        severity: 'warning', code: 'prompt.resource_missing', resourceId: setting.id,
+      }))
+      expect(result.toolExecutionScope.vfsResourceIds).not.toContain(setting.id)
+      expect(await promptResources.listSettingMounts()).toEqual(mounts)
+      await runtime.deletePromptResource({ resourceId: preset.id })
+      await expect(composeAgentTurnPrompt(input)).rejects.toThrow(`Prompt resource not found: ${preset.id}`)
+      vi.spyOn(promptResources, 'getResource').mockRejectedValue(new Error('storage unavailable'))
+      await expect(composeAgentTurnPrompt(input)).rejects.toThrow('storage unavailable')
+    } finally {
+      engine.close()
+    }
+  })
+
   it('projects external Content Tool slots through Prompt Build ordering', async () => {
     const createId = createIds()
     const now = () => '2026-08-24T00:00:00.000Z'

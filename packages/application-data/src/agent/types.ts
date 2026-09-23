@@ -192,7 +192,6 @@ export type AgentStore = {
     cursor?: string
     limit?: number
   }): Promise<AgentTranscriptPage>
-  hasSessionForProfile(agentProfileId: string): Promise<boolean>
   createSession(
     input: CreateAgentSessionInput,
   ): Promise<{ session: AgentSession; commit: DataCommitFact }>

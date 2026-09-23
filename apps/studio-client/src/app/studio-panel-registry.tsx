@@ -2,7 +2,7 @@ import type { MemoryLogSink } from '@loom-studio/logging'
 import type { ReactNode } from 'react'
 import type { ClientRendererHost } from '../shared/extension-renderer-runtime/client-renderer-host.js'
 import type { StudioPanelId } from '../shared/studio-shell/studio-layout-store.js'
-import { useStudioLayoutStore, useStudioPanelStore } from '../shared/studio-shell/studio-layout-store.js'
+import { useStudioLayoutStore } from '../shared/studio-shell/studio-layout-store.js'
 import { useClientExtensionRuntime } from '../features/extension-renderers/model/use-client-extension-runtime.js'
 import { toast } from 'sonner'
 import type { RegisteredClientBackground } from '@loom-studio/extension-sdk'
@@ -92,18 +92,8 @@ export function createStudioPanels(input: {
         timelines={state.allTimelines.length > 0 ? state.allTimelines : state.cardTimelines}
         agentSessions={state.agentChatSessions}
         onOpenCard={card => {
-          state.setSelectedCardId(card.id)
-          void state.refreshCardTimelines(card.id).then(timelines => {
-            const latest = [...timelines].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]
-            if (latest) {
-              void state.activateTimeline(latest.id).then(branchId => {
-                if (branchId) navigation.openNarrative(latest.id, branchId)
-              })
-            } else {
-              void state.createTimelineFromCard(card.id).then(activated => {
-                if (activated) navigation.openNarrative(activated.timelineId, activated.branchId)
-              })
-            }
+          void state.selectCardTimeline(card.id, true).then(activated => {
+            if (activated) navigation.openNarrative(activated.timelineId, activated.branchId)
           })
         }}
         onOpenTimeline={timeline => {
@@ -177,15 +167,7 @@ export function createStudioPanels(input: {
         onRefreshCards={state.refreshCards}
         onImportCards={state.importCards}
         onSelectCard={cardId => {
-          state.setSelectedCardId(cardId)
-          void state.refreshCardTimelines(cardId).then(timelines => {
-            const latest = [...timelines].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]
-            if (latest) {
-              void state.activateTimeline(latest.id)
-            } else {
-              state.resetToDraftTimeline()
-            }
-          })
+          void navigation.selectCard(cardId, () => state.selectCardTimeline(cardId))
         }}
         onOpenTimeline={timeline => {
           void state.activateTimeline(timeline.id).then(branchId => {
@@ -198,10 +180,10 @@ export function createStudioPanels(input: {
             return
           }
           uiState.setVariableView('authoring')
-          useStudioPanelStore.getState().setActivePanel('state')
+          navigation.openPanel('state')
         }}
         onOpenResourcePanel={resourceId => {
-          useStudioPanelStore.getState().setActivePanel('resource')
+          navigation.openPanel('resource')
           if (resourceId) {
             useStudioLayoutStore.getState().openAssetDetail('resources', assetWorkspaceId, resourceId)
           }
@@ -284,10 +266,13 @@ export function createStudioPanels(input: {
         t={state.t}
       />
     ),
-    logs: active => <LazyLogViewer active={active} api={state.logsApi} clientLogs={clientLogs} extensions={clientExtensions.packages} t={state.t} />,
+    logs: active => <LazyLogViewer active={active} api={state.logsApi} clientLogs={clientLogs} extensions={clientExtensions.packages} t={state.t}
+      searchParams={navigation.searchParams} onSearchParamsChange={params => { void navigation.setSearchParams(params) }} />,
     extensions: () => (
       <LazyRendererWorkspacePanel
         key={state.endpoint}
+        searchParams={navigation.searchParams}
+        onNavigate={path => { void navigation.openPath(path) }}
         configRevision={clientExtensions.configRevision}
         extensionRuntime={state.api.extensionRuntime}
         officialContent={state.officialContentApi}

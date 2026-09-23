@@ -318,7 +318,9 @@ describe('application runtime card bundle integration', () => {
     await expect(runtime.deletePortableExtensionPayload({
       payloadId: updated.payload.id,
       expectedVersion: updated.payload.version,
-    })).rejects.toThrow('still bound to Card')
+    })).resolves.toMatchObject({ deleted: true })
+    expect((await runtime.getCard({ cardId: card.card.id })).card).toEqual(bound.card)
+    await expect(runtime.exportCardBundle({ cardId: card.card.id })).rejects.toThrow(updated.payload.id)
 
     const unbound = await runtime.replaceCardPortableExtensionPayloads({
       cardId: card.card.id,
@@ -326,10 +328,7 @@ describe('application runtime card bundle integration', () => {
       payloadIds: [],
     })
     expect(unbound.card.portableExtensionPayloadIds).toEqual([])
-    await expect(runtime.deletePortableExtensionPayload({
-      payloadId: updated.payload.id,
-      expectedVersion: updated.payload.version,
-    })).resolves.toMatchObject({ deleted: true })
+    expect((await runtime.exportCardBundle({ cardId: card.card.id })).artifact.extensionPayloads ?? []).toEqual([])
     await expect(runtime.deletePortableExtensionPayload({
       payloadId: duplicateArtifactPayload.payload.id,
       expectedVersion: duplicateArtifactPayload.payload.version,

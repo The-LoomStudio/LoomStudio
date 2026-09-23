@@ -8,7 +8,6 @@ import { useAsyncOperations } from '../shared/hooks/use-async-operations.js'
 import { useCards } from '../features/cards/model/use-cards.js'
 import { useEditHistory } from '../features/edit-history/model/use-edit-history.js'
 import { useContextAssets } from '../features/context-assets/model/use-context-assets.js'
-import { normalizeContextAssets } from '../features/context-assets/model/context-asset-normalization.js'
 import { findContextAssetNode } from '../features/context-assets/model/context-asset-tree.js'
 import { createActivationFacts, toggleActivationTag, type ActivationControlState, type ActivationTag } from '../features/prompt-build/model/activation-control.js'
 import { useMacroPreview } from '../features/prompt-build/model/use-macro-preview.js'
@@ -44,6 +43,7 @@ export function useStudioState(transportLogger: Logger) {
   const bridge = useMemo(() => createClientBridge({ endpoint }), [endpoint])
   const observedBridge = useMemo(() => withClientBridgeLogging(bridge, transportLogger), [bridge, transportLogger])
   const api = useMemo(() => createStudioApi(observedBridge), [observedBridge])
+  const [bootstrappedApi, setBootstrappedApi] = useState<typeof api>()
   const clientExtensionApi = useMemo(() => ({
     extensions: api.extensions,
     extensionRuntime: api.extensionRuntime,
@@ -78,8 +78,9 @@ export function useStudioState(transportLogger: Logger) {
   })
   const contextAssetState = useContextAssets({
     api,
+    scope: endpoint,
     onResourceChange: resource => {
-      setPromptResources(current => current.map(item => item.id === resource.id ? resource : item))
+      setPromptResources(current => current.map(item => item.id === resource.id && item.version <= resource.version ? resource : item))
     },
     recordEdit: editHistory.record,
     runAction: action => operations.run('mutation', action).then(() => undefined),
@@ -87,8 +88,8 @@ export function useStudioState(transportLogger: Logger) {
     t,
   })
   useEffect(() => {
-    contextAssetState.setNodes(normalizeContextAssets(promptResources.map(resource => resource.rootNode)))
-  }, [promptResources])
+    contextAssetState.setResources(promptResources)
+  }, [endpoint, promptResources])
   const providerSettings = useProviderSettings({
     api,
     initialProviderAccountDraft: {
@@ -113,12 +114,13 @@ export function useStudioState(transportLogger: Logger) {
     initialNodes: [],
     selectedCard: cardsState.selectedCardDetails,
     selectedCardId: cardsState.selectedCardId,
+    onSelectCard: cardsState.setSelectedCardId,
     selectedAgentProfileId: agentProfiles.selectedAgentProfileId,
     onSelectAgentProfile: agentProfiles.selectAgentProfile,
-    runAgentAction: action => operations.run('agent-chat', action).then(() => undefined),
+    runAgentAction: action => operations.runReported('agent-chat', action).then(() => undefined),
     runAction: async action => {
       let completed = false
-      await operations.run('session', async () => {
+      await operations.runReported('session', async () => {
         await action()
         completed = true
       })
@@ -129,7 +131,7 @@ export function useStudioState(transportLogger: Logger) {
 
   function applyPromptResourceLibrary(resources: PromptResource[]) {
     setPromptResources(() => resources)
-    contextAssetState.setNodes(normalizeContextAssets(resources.map(resource => resource.rootNode)))
+    contextAssetState.setResources(resources)
   }
 
   async function refreshExtensionDependentData(): Promise<void> {
@@ -150,8 +152,9 @@ export function useStudioState(transportLogger: Logger) {
   })
 
   useEffect(() => {
+    let active = true
     editHistory.clear()
-    void operations.run('bootstrap', async () => {
+    void operations.runReported('bootstrap', async () => {
       const cards = await cardsState.refreshCards()
       const selectedCardId = cards[0]?.id
 
@@ -160,13 +163,10 @@ export function useStudioState(transportLogger: Logger) {
       await providerSettings.refreshProviderSettings()
       await agentProfiles.refreshAgentProfiles()
       setNetworkSettings(await api.settings.getNetwork())
+      if (active) setBootstrappedApi(api)
     })
+    return () => { active = false }
   }, [observedBridge])
-
-  useEffect(() => {
-    if (!cardsState.selectedCardId) return
-    void narrativeRuntime.refreshCardTimelines(cardsState.selectedCardId)
-  }, [api, cardsState.selectedCardId])
 
   const macroKey = macroSelection.targetKey(narrativeRuntime.timeline?.id, narrativeRuntime.branch?.id)
   const macroSelections = macroSelection.readSelections(macroKey)
@@ -243,7 +243,7 @@ export function useStudioState(transportLogger: Logger) {
   }
 
   async function undoEdit() {
-    return operations.run('mutation', async () => {
+    return operations.runReported('mutation', async () => {
       const entry = await editHistory.undo()
       if (!entry) return
       return refreshHistoryAnchor(entry)
@@ -251,7 +251,7 @@ export function useStudioState(transportLogger: Logger) {
   }
 
   async function redoEdit() {
-    return operations.run('mutation', async () => {
+    return operations.runReported('mutation', async () => {
       const entry = await editHistory.redo()
       if (!entry) return
       return refreshHistoryAnchor(entry)
@@ -259,7 +259,7 @@ export function useStudioState(transportLogger: Logger) {
   }
 
   async function updateNetworkSettings(next: { proxyMode: NetworkSettings['proxyMode']; proxyUrl?: string }) {
-    const updated = await operations.run('settings', () => api.settings.updateNetwork(next))
+    const updated = await operations.runReported('settings', () => api.settings.updateNetwork(next))
     if (updated) setNetworkSettings(updated)
   }
 
@@ -281,6 +281,7 @@ export function useStudioState(transportLogger: Logger) {
   }
 
   return {
+    bootstrapReady: bootstrappedApi === api,
     // i18n
     locale, setLocale, t,
     networkSettings,
@@ -378,7 +379,11 @@ export function useStudioState(transportLogger: Logger) {
     promptResources,
     settingMounts,
     presetToolMounts,
-    contextAssets: contextAssetState.nodes, setContextAssets: contextAssetState.setNodes,
+    contextAssets: contextAssetState.nodes,
+    promptResourceDrafts: contextAssetState.resources,
+    draftResourceIds: contextAssetState.draftResourceIds,
+    discardContextAssetDraft: contextAssetState.discardDraft,
+    retryContextAssetDraft: contextAssetState.retryDraft,
     previewContextAsset: contextAssetState.previewContextAsset,
     updateContextAsset: contextAssetState.updateContextAsset,
     updateContextAssets: contextAssetState.updateContextAssets,
@@ -410,6 +415,7 @@ export function useStudioState(transportLogger: Logger) {
     createTimelineFromCard: narrativeRuntime.createTimelineFromCard,
     resetToDraftTimeline: narrativeRuntime.resetToDraftTimeline,
     activateTimeline: narrativeRuntime.activateTimeline,
+    selectCardTimeline: narrativeRuntime.selectCardTimeline,
     activateAgentSession: narrativeRuntime.activateAgentSession,
     deleteTimeline: narrativeRuntime.deleteTimeline,
     renameTimeline: narrativeRuntime.renameTimeline,

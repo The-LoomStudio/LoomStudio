@@ -213,27 +213,27 @@ export type ApplicationRuntime = {
   createProviderProfile(input: CreateProviderProfileInput, context?: RuntimeRequestContext): Promise<CreateProviderProfileResult>
   getProviderProfile(input: GetProviderProfileInput): Promise<GetProviderProfileResult>
   listProviderProfiles(input?: ListProviderProfilesInput): Promise<ListProviderProfilesResult>
-  updateProviderProfile(input: UpdateProviderProfileInput): Promise<UpdateProviderProfileResult>
+  updateProviderProfile(input: UpdateProviderProfileInput, context?: RuntimeRequestContext): Promise<UpdateProviderProfileResult>
   replaceProviderCredential(input: ReplaceProviderCredentialInput, context?: RuntimeRequestContext): Promise<ReplaceProviderCredentialResult>
   deleteProviderProfile(input: DeleteProviderProfileInput, context?: RuntimeRequestContext): Promise<DeleteProviderProfileResult>
-  createAiCapabilityProfile(input: CreateAiCapabilityProfileInput): Promise<CreateAiCapabilityProfileResult>
+  createAiCapabilityProfile(input: CreateAiCapabilityProfileInput, context?: RuntimeRequestContext): Promise<CreateAiCapabilityProfileResult>
   getAiCapabilityProfile(input: GetAiCapabilityProfileInput): Promise<GetAiCapabilityProfileResult>
   listAiCapabilityProfiles(input?: ListAiCapabilityProfilesInput): Promise<ListAiCapabilityProfilesResult>
-  updateAiCapabilityProfile(input: UpdateAiCapabilityProfileInput): Promise<UpdateAiCapabilityProfileResult>
-  deleteAiCapabilityProfile(input: DeleteAiCapabilityProfileInput): Promise<DeleteAiCapabilityProfileResult>
+  updateAiCapabilityProfile(input: UpdateAiCapabilityProfileInput, context?: RuntimeRequestContext): Promise<UpdateAiCapabilityProfileResult>
+  deleteAiCapabilityProfile(input: DeleteAiCapabilityProfileInput, context?: RuntimeRequestContext): Promise<DeleteAiCapabilityProfileResult>
   listProviderModels(input: ListProviderModelsInput, context?: RuntimeRequestContext): Promise<ListProviderModelsResult>
   pingProviderModel(input: PingProviderModelInput, context?: RuntimeRequestContext): Promise<PingProviderModelResult>
   listAgentTools(): Promise<{ tools: AgentToolEntry[] }>
   importExtensionPackageResources(input: ImportExtensionPackageResourcesInput, context?: RuntimeRequestContext): Promise<ImportExtensionPackageResourcesResult>
   removeExtensionPackageResources(input: RemoveExtensionPackageResourcesInput, context?: RuntimeRequestContext): Promise<RemoveExtensionPackageResourcesResult>
-  updateAgentTool(input: UpdateAgentToolInput): Promise<UpdateAgentToolResult>
+  updateAgentTool(input: UpdateAgentToolInput, context?: RuntimeRequestContext): Promise<UpdateAgentToolResult>
   listPresetToolMounts(input?: ListPresetToolMountsInput): Promise<ListPresetToolMountsResult>
   replacePresetToolMounts(input: ReplacePresetToolMountsInput, context?: RuntimeRequestContext): Promise<ReplacePresetToolMountsResult>
-  createAgentProfile(input: CreateAgentProfileInput): Promise<CreateAgentProfileResult>
+  createAgentProfile(input: CreateAgentProfileInput, context?: RuntimeRequestContext): Promise<CreateAgentProfileResult>
   getAgentProfile(input: GetAgentProfileInput): Promise<GetAgentProfileResult>
   listAgentProfiles(input?: ListAgentProfilesInput): Promise<ListAgentProfilesResult>
-  updateAgentProfile(input: UpdateAgentProfileInput): Promise<UpdateAgentProfileResult>
-  deleteAgentProfile(input: DeleteAgentProfileInput): Promise<DeleteAgentProfileResult>
+  updateAgentProfile(input: UpdateAgentProfileInput, context?: RuntimeRequestContext): Promise<UpdateAgentProfileResult>
+  deleteAgentProfile(input: DeleteAgentProfileInput, context?: RuntimeRequestContext): Promise<DeleteAgentProfileResult>
   createAgentSession(input: CreateAgentSessionInput, context?: RuntimeRequestContext): Promise<CreateAgentSessionResult>
   listAgentSessions(input?: ListAgentSessionsInput): Promise<ListAgentSessionsResult>
   getAgentSession(input: GetAgentSessionInput): Promise<GetAgentSessionResult>
@@ -250,6 +250,7 @@ export type ApplicationRuntime = {
   importTimelineArchive(input: { source: string }): Promise<{ timelineId: string; idMap: import('./archive/timeline-archive.js').TimelineArchiveIdMap; unknownParticipantNamespaces: string[]; participantFailures: Array<{ namespace: string; message: string }>; mutation: MutationReceipt }>
   listNarrativeTimelines(input?: ListNarrativeTimelinesInput): Promise<ListNarrativeTimelinesResult>
   getNarrativePage(input: GetNarrativePageInput): Promise<NarrativePage>
+  editNarrativeNode(input: { timelineId: string; branchId: string; nodeId: string; expectedHeadNodeId: string; expectedRaw: string; raw: string }, context?: RuntimeRequestContext): Promise<{ timeline: NarrativeTimeline; branch: NarrativeBranch; replacements: Array<{ previousNodeId: string; node: NarrativeNode }>; mutation: MutationReceipt }>
   forkNarrativeBranch(input: ForkNarrativeBranchInput, context?: RuntimeRequestContext): Promise<ForkNarrativeBranchResult>
   switchNarrativeBranch(input: SwitchNarrativeBranchInput, context?: RuntimeRequestContext): Promise<SwitchNarrativeBranchResult>
   deleteNarrativeTimeline(input: DeleteNarrativeTimelineInput, context?: RuntimeRequestContext): Promise<DeleteNarrativeTimelineResult>
@@ -1161,11 +1162,12 @@ export type AiCapabilityProfileView = {
   id: string
   version: number
   providerProfileId: string
-  providerExtensionId: string
+  providerExtensionId?: string
   capabilityId: string
   displayName: string
   config: JsonObject
   available: boolean
+  unavailableReason?: 'provider-profile-missing' | 'provider-unavailable' | 'capability-unavailable'
   createdAt: string
   updatedAt: string
 }
@@ -1203,6 +1205,7 @@ export type ListAiCapabilityProfilesResult = {
 
 export type UpdateAiCapabilityProfileInput = {
   profileId: string
+  providerProfileId?: string
   displayName?: string
   config?: JsonObject
 }
@@ -1389,6 +1392,7 @@ export type CreatePromptResourceAssetInput = {
 
 export type UpdatePromptResourceAssetInput = {
   resourceId: string
+  expectedVersion?: number
   assetId: string
   body?: string
   capabilities?: PromptResourceCompositionCapabilities
@@ -1400,6 +1404,7 @@ export type UpdatePromptResourceAssetInput = {
 
 export type UpdatePromptResourceAssetsInput = {
   resourceId: string
+  expectedVersion?: number
   updates: PromptAssetPatch[]
 }
 

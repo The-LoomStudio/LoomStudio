@@ -9,7 +9,7 @@ export function vfsError(code: string, message: string): Error & { code: string 
 
 export function vfsPath(value: unknown): string {
   if (typeof value !== 'string' || !value.startsWith('/') || value.includes('\\')
-    || /[\u0000-\u001f\u007f]/.test(value) || value.includes('//')
+    || Array.from(value).some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) || value.includes('//')
     || value.split('/').some(part => part === '.' || part === '..')) {
     throw vfsError('vfs.invalid_path', 'Use an absolute virtual path returned by ctx.ls or ctx.search; traversal is not supported.')
   }

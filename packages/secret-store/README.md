@@ -31,6 +31,10 @@
    - 严禁将明文 Secret 通过 RPC 或 HTTP 接口直接返回给前端 Web Client；
 3. **两阶段删除与清理重试**：
    - 删除凭据时采用先标记 `pending-delete`，再清理系统 Keyring，最后确认持久化事实的机制，防止外部 Keyring 状态不一致。
+   - 创建/替换先在现有 cleanup 表登记新 backend key，再写外部后端；metadata 提交与移除新 key 意图同属一个事务。写入中断后，重开 Store 可以清理尚未生效的 key，表中不保存明文。
+   - 同一 Engine 的多个 Store 共享在途 key 保护；cleanup 不删除在途或 active metadata 引用的 key。此机制不提供多进程共享数据库的租约保证。
+   - Studio Server 在开始接纳请求前、在途业务停止且 Kernel 退出后分别重试积压。失败通过 `onCleanupFailure` 接入现有 Diagnostics/Logger，并保留队列，不能将无法确认的删除当作成功。
+   - Keyring 依赖固定为 `@napi-rs/keyring` 2.1.0：缺失条目是幂等删除结果，其他原生错误向上传播；不更换 service 身份或凭据格式。
 
 ---
 

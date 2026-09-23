@@ -1,90 +1,56 @@
 # Navigation and Routing
 
-Loom Studio 使用 URL 表达可恢复、可分享且适合浏览器前进后退的页面导航。Router 负责页面身份和显式深链接；Zustand 保存工作台内部选择与本机 UI 偏好，两者不得持续双向同步同一份事实。
+Loom Studio 将应用内导航、资源身份和外部入口分开：导航负责去哪里，资源 URI 负责目标是谁，URL 负责从应用外进入。普通面板操作不再用 Path 替换 Timeline 上下文。
 
 ## 状态归属
 
-### Path
+### URL 与 URI
 
-Path 保存页面与实体身份：
+`/` 和 `/studio` 为统一入口。可分享的实体链接使用 `/studio?target=<编码后的 loom-resource URI>`，正文快照引用仍沿用原有带版本、行范围的引用查看器，不伪装成编辑目标。
 
-- 当前工作区 Panel；
-- Character Gallery 与 Character Profile；
-- Card、Session 与 Branch 标识；
-- 仅在显式深链接中出现的 Asset 标识；
-- Logs、Debug、Models 与 Settings 页面。
-
-### Query Parameters
-
-Query 保存可分享的查看条件，例如搜索词 `q`、资源筛选以及后续 Diff 或 Revision 查看参数。
-
-搜索从空变为非空时创建一个 History Entry；后续逐字输入使用 Replace。这样返回一次即可退出整次搜索，不会逐字回退。
-
-### Hash
-
-Hash 只用于消息、Agent 执行节点或文档内部锚点，例如 `#entry-<id>`。它不保存业务正文，也不表示当前滚动位置。
-
-锚点是显式定位协议：复制节点链接、点击对话刻度、从搜索结果或日志跳转时可以写入；普通滚动、自动回底、虚拟列表更新和流式输出不得修改 URL。渲染层只依赖统一节点 ID，不根据剧情消息、Agent 步骤或工具调用类型建立不同路由。
+现有显式 `/studio/chat/...`、资源和 Panel 路径仍可作为入口，接收后统一解析并 Replace 到 `/studio`。入口列表和 Panel 路径集中定义，不再维护互相遗漏的两份表。
 
 ### History State
 
-History State 保存无需分享、但应由返回关闭的临时导航层级，例如移动端抽屉或模态页。Hover 状态不得进入 History。
+浏览器 History State 保存当前位置，包括 Timeline、Branch、Panel、选中资源、显式节点和查看条件。面板切换与资源选择 Push 到同一个 `/studio` URL；返回/前进恢复该位置。关闭面板只清理面板定位，不清空当前 Timeline/Branch。
+
+搜索输入和筛选 Replace 当前位置，不逐字创建历史。编辑正文、Hover、拖动尺寸、手风琴与普通滚动不进入导航历史，编辑撤销仍归编辑器负责。
+
+### 工作区恢复
+
+最后工作区位置按 API endpoint 保存在本地；不保存业务正文、凭据或待解析的外部目标。布局和编辑状态仍使用各自已有所有者。
+
+优先级为：显式深链 > 当前标签页有效 History State > 上次持久化工作区 > 默认界面。基础数据就绪后再加载恢复目标；不存在的 Timeline/Branch 显示不可用，不切换到其他分支。启动恢复不是业务数据恢复，也不是浏览器历史的跨重启完整存档。
 
 ### Zustand
 
-Zustand 保存 Panel 与目录宽高、文件树展开状态、当前 Asset、编辑器偏好和其他本机布局选择。普通目录点击只更新这份本地选择，不执行 Router navigation。输入草稿、API Key、长正文和秘密信息不得写入 URL。
+Zustand 保存 Panel 与目录宽高、文件树展开状态、当前 Asset、编辑器偏好和其他本机布局选择。普通目录节点点击保留局部编辑器选择；明确的资源选择与引用跳转进入导航。Panel Store 仅供布局读取当前 Panel 的单向投影，不再拥有独立历史栈。
 
-## 路由表
+## 定位示例
 
 ```text
-/studio/chat
-/studio/chat/:sessionId
-/studio/chat/:sessionId/branch/:branchId
-
-/studio/characters
-/studio/characters/:cardId
-
-/studio/resources/:cardId?
-/studio/resources/:cardId/:assetId
-
-/studio/presets/:cardId?
-/studio/presets/:cardId/:assetId
-
-/studio/models
-/studio/agents
-/studio/debug
-/studio/logs
-/studio/settings
+普通启动：/studio
+资源身份：loom-resource://entity?type=resource&id=<resource-id>
+资源节点：loom-resource://entity?type=resource&id=<resource-id>&nodeId=<node-id>
+剧情节点：loom-resource://entity?type=timeline&id=<timeline-id>&branchId=<branch-id>&nodeId=<node-id>
+外部链接：/studio?target=<URLSearchParams 编码的资源 URI>
 ```
 
-工作区在桌面端可以表现为 Chat 上方的浮动 Panel，在移动端可以表现为全屏页面，但二者使用同一路由和返回语义。
+URI 按 ID 解析，不按名称或文件路径猜测替代对象。资源链接不会把资源内容传给其他实例，也不会绕过访问权限。Session 暂无直接定位入口；Provider 引用只打开模型管理，并不声称定位到具体行。
 
 ## History 规则
 
-- 从 Chat 打开 Panel：Push；
-- 普通 Asset 选择：不写 History；
-- 从外部链接、日志或 Agent 定位 Asset：使用显式深链接；
-- Gallery 进入 Character Profile：Push；
-- 搜索首次产生查询：Push；
-- 修改现有查询、筛选或 Tab：Replace；
+- 从 Chat 打开或切换 Panel、选择独立资源：同 URL Push；
+- 普通 Asset 节点选择：局部状态；明确的节点引用通过导航定位；
+- 外部 URI：解析后 Replace 入口，不留下临时解析页；
+- 搜索和筛选：Replace；
 - Hover Sidebar、拖动尺寸和展开目录：不写 History。
 
 ## 可引用资源
 
-URL 同时是用户与 Agent 共用的资源引用格式。Agent 报告修改结果时应返回已有的 canonical URL，而不是再定义一套前端定位对象：
+引用查看器由导航传入 URI 和回调，不自行修改地址栏。复制资源/消息链接生成统一入口 URL，不改变当前工作区。正文快照引用打开编辑器时转为明确资源位置，不把历史行号当成当前版本精确位置。
 
-```text
-/studio/resources/<cardId>/<assetId>
-/studio/presets/<cardId>/<assetId>
-/studio/characters/<cardId>
-/studio/chat/<sessionId>/branch/<branchId>#entry-<entryId>
-```
-
-复制 Asset 链接不要求先改变当前 URL。收到带 Asset ID 的地址后，工作台用它初始化本地选择；后续普通点击不继续改写 URL。收到带 Entry Hash 的地址后，聊天容器在对应 Timeline 加载完成时执行一次定位；此后滚动仍由容器自身管理。
-
-Session 路径中的 Branch 不存在时规范化到该 Session 的 active branch；Session 本身不存在或无法加载时回退到 `/studio/chat`，并通过既有错误状态保留失败原因。
-
-显式 URL 在首次定位时优先于持久化选择，但它不是工作台内部选择的持续受控值。应用不得在每次本地选择后把 Asset ID 反向写回 URL。
+已访问的面板宿主关闭后隐藏，避免普通切换卸载编辑器；不等于所有面板都启动加载，也不等于隐藏组件不需要管理订阅与异步请求。
 
 ## 托管要求
 

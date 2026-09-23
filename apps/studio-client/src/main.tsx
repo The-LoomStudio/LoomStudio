@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { App } from './app/app.js'
 import { AppErrorBoundary } from './app/app-error-boundary.js'
 import { NotFoundPage } from './app/not-found-page.js'
+import { STUDIO_ENTRY_PATHS } from './shared/studio-shell/studio-route.js'
 
 const root = document.getElementById('root')
 const clientLogs = createMemoryLogSink({ capacity: 1_000 })
@@ -85,20 +86,7 @@ async function startStudioClient(rootElement: HTMLElement): Promise<void> {
       })}>
         <BrowserRouter>
           <Routes>
-            <Route path="/studio/chat/:sessionId?/branch/:branchId" element={studio} />
-            <Route path="/studio/chat/:sessionId?" element={studio} />
-            <Route path="/studio/characters/:cardId?" element={studio} />
-            <Route path="/studio/resources/reference/:resourceId/node/:nodeId" element={studio} />
-            <Route path="/studio/presets/reference/:resourceId/node/:nodeId" element={studio} />
-            <Route path="/studio/resources/:cardId?/:assetId?" element={studio} />
-            <Route path="/studio/presets/:cardId?/:assetId?" element={studio} />
-            <Route path="/studio/models" element={studio} />
-            <Route path="/studio/agents" element={studio} />
-            <Route path="/studio/history" element={studio} />
-            <Route path="/studio/debug" element={studio} />
-            <Route path="/studio/logs" element={studio} />
-            <Route path="/studio/extensions" element={studio} />
-            <Route path="/studio/settings" element={studio} />
+            {STUDIO_ENTRY_PATHS.map(path => <Route key={path} path={path} element={studio} />)}
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </BrowserRouter>

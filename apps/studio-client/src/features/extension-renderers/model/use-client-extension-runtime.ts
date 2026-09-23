@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { queryExtensionLogs, type Logger, type MemoryLogSink } from '@loom-studio/logging'
 import { useAppearanceStore } from '../../../shared/studio-shell/appearance-store.js'
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
@@ -54,35 +54,43 @@ export function useClientExtensionRuntime(input: {
   const [serverDiagnostics, setServerDiagnostics] = useState<ClientJsonValue[]>([])
   const [refreshSequence, setRefreshSequence] = useState(0)
   const [configRevision, setConfigRevision] = useState(0)
+  const lifecycle = useRef<{ host: typeof host; signal: AbortSignal } | null>(null)
 
   const refresh = useCallback(async (reload: readonly string[] = []) => {
+    const signal = lifecycle.current?.host === host ? lifecycle.current.signal : undefined
+    if (!signal || signal.aborted) return []
     try {
       const [result, diagnostics] = await Promise.all([
         input.api.extensions.list(),
         input.api.extensions.diagnostics(),
       ])
+      if (signal.aborted) return []
       const [rules, extractors] = await Promise.all([
         input.api.textTransforms.listRules(),
         input.api.textTransforms.listExtractors(),
       ])
+      if (signal.aborted) return []
       const packagesWithImportState = mapPackageImportState(result.items, rules.rules, extractors.extractors)
       setPackages(packagesWithImportState)
       setServerDiagnostics(diagnostics.diagnostics)
       await host.reconcile(toClientPackages(packagesWithImportState), { reload })
+      if (signal.aborted) return []
       setError(undefined)
       setRefreshSequence(sequence => sequence + 1)
       return packagesWithImportState
     } catch (reason) {
+      if (signal.aborted) return []
       setError(reason instanceof Error ? reason : new Error(String(reason)))
       return []
     }
-  }, [host, input.api.extensions])
+  }, [host, input.api.extensions, input.api.textTransforms])
 
   useEffect(() => {
-    let disposed = false
+    const controller = new AbortController()
+    lifecycle.current = { host, signal: controller.signal }
     let events: EventSource | undefined
     void refresh().then(() => {
-      if (disposed || typeof EventSource === 'undefined') return
+      if (controller.signal.aborted || typeof EventSource === 'undefined') return
       events = new EventSource('/extensions/events')
       events.addEventListener('open', invalidateCardMedia)
       events.addEventListener('directories.media.changed', invalidateCardMedia)
@@ -101,7 +109,7 @@ export function useClientExtensionRuntime(input: {
       events.onerror = () => setError(new Error('Extension event stream disconnected'))
     })
     return () => {
-      disposed = true
+      controller.abort()
       events?.removeEventListener('open', invalidateCardMedia)
       events?.removeEventListener('directories.media.changed', invalidateCardMedia)
       events?.close()

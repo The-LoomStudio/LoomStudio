@@ -96,8 +96,10 @@
 
 ### 环境准备
 
-- **Node.js**: `>= 22.18.0`
-- **pnpm**: `>= 9.15.0`
+- **Node.js**: 开发工具链固定 `22.18.0`（`.node-version` / `.nvmrc`）
+- **pnpm**: 开发工具链固定 `9.15.0`（`package.json` 的 `packageManager`）
+
+根 `package.json` 的最低运行要求为 Node `>=22.18.0`、pnpm `>=9.0.0`；开发环境按上述固定版本对齐。
 
 ### 1. 安装依赖
 
@@ -107,7 +109,7 @@ pnpm install --frozen-lockfile
 
 ### 2. 启动开发环境
 
-我们提供了并行启动客户端与服务端的一键开发命令：
+在两个独立终端分别启动服务端与客户端；两个命令均会先构建并监听内部 Packages：
 
 ```bash
 # 启动后端核心服务 (端口 4173)
@@ -122,7 +124,7 @@ pnpm dev:client
 ### 3. 运行自动化检查与测试
 
 ```bash
-# 运行单元测试
+# 运行默认测试集（unit、contract、integration、regression；不含 probes / stress）
 pnpm test
 
 # 运行集成测试套件
@@ -147,7 +149,7 @@ LoomStudio/
 │   ├── studio-server/      # 服务端核心网关与 RPC 服务 (Node.js/node:http)
 │   ├── studio-client/      # 前端交互工作台 (React 19 / Vite / SCSS)
 │   └── playground/         # 本地命令行验证沙箱 (Kernel / CodeAct)
-├── packages/               # 核心领域包与基础设施层 (20 个独立 Package)
+├── packages/               # 核心领域包与基础设施层 (19 个独立 Package)
 │   ├── core/               # @loom/core 同步编译内核管道
 │   ├── application-runtime/# AIRP 领域编排、Agent Loop 与 PromptBuild 管线
 │   ├── application-data/   # Agent、Narrative、State、Prompt Resource 统一领域存储
@@ -155,7 +157,10 @@ LoomStudio/
 │   ├── ai-gateway/         # 多模型厂商调度网关、流式执行与能力画像映射
 │   ├── blob-store/ & asset-store/ # 内容寻址不可变字节与多媒体资产存储
 │   ├── kernel/ & transport/       # 平台服务组装、RPC 路由与通信信封契约
-│   └── ...                 # logging, secret-store, loom-ui, extension-sdk 等
+│   ├── extension-sdk/      # 平台扩展 SDK 与独立 Extension Host
+│   ├── secret-store/       # 敏感凭据安全隔离与操作系统 Keyring 托管
+│   ├── diagnostics/ & logging/    # 有界运行时诊断注册表与跨端结构化日志
+│   └── loom-ui/ & shared/  # 共享设计系统组件、图标原语与跨端同构基础
 
 ├── official/               # 官方基础内容与正式扩展源码
 ├── examples/               # 可通过正式导入路径运行的教程样本

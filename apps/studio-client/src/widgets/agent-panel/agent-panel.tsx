@@ -1,5 +1,5 @@
 import { Plus, RotateCcw, Search, Trash2, X } from 'lucide-react'
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useMemo, useRef, useState, type FormEvent } from 'react'
 import type { AgentProfile, AgentToolDefinition, ModelProfile, PresetToolMount, PromptResource, ProviderAccount, ProviderModelSelection } from '../../entities/index.js'
 import { MasterDetailWorkbench } from '../../shared/ui/master-detail-workbench/master-detail-workbench.js'
 import { PanelTabs } from '../../shared/ui/panel-tabs/index.js'
@@ -18,10 +18,10 @@ type AgentPanelProps = {
   providerAccounts: ProviderAccount[]
   selectedAgentProfileId?: string
   t: Translator
-  onCreate(input: { name: string; presetId?: string; model: ProviderModelSelection; delivery?: 'stream' | 'complete' }): void
-  onDelete(id: string): void
+  onCreate(input: { name: string; presetId?: string; model: ProviderModelSelection; delivery?: 'stream' | 'complete' }): Promise<boolean>
+  onDelete(id: string): Promise<void>
   onSelect(id: string): void
-  onUpdate(id: string, updates: { name?: string; presetId?: string; model?: ProviderModelSelection; toolOverrides?: Record<string, boolean>; delivery?: 'stream' | 'complete' }): void
+  onUpdate(id: string, updates: { name?: string; presetId?: string; model?: ProviderModelSelection; toolOverrides?: Record<string, boolean>; delivery?: 'stream' | 'complete' }): Promise<void>
 }
 
 type DetailTab = 'basic' | 'tools'
@@ -37,6 +37,9 @@ export function AgentPanel(props: AgentPanelProps) {
   const [newPresetId, setNewPresetId] = useState('')
   const [newModelProfileId, setNewModelProfileId] = useState('')
   const [newDelivery, setNewDelivery] = useState<'stream' | 'complete'>('stream')
+  const createPendingRef = useRef(false)
+  const [createPending, setCreatePending] = useState(false)
+  const [createError, setCreateError] = useState<string>()
 
   const defaultPresetId = props.presets.find(preset => preset.origin?.kind === 'builtin')?.id ?? props.presets[0]?.id ?? ''
   const activeProfileId = props.selectedAgentProfileId || props.agentProfiles[0]?.id
@@ -47,7 +50,7 @@ export function AgentPanel(props: AgentPanelProps) {
   })), [props.modelProfiles, props.providerAccounts])
 
   const currentProfile = useMemo(() => {
-    return props.agentProfiles.find(profile => profile.id === activeProfileId) ?? props.agentProfiles[0]
+    return props.agentProfiles.find(profile => profile.id === activeProfileId)
   }, [props.agentProfiles, activeProfileId])
 
   // Group and filter tools for the selected profile
@@ -74,25 +77,36 @@ export function AgentPanel(props: AgentPanelProps) {
       .sort((a, b) => a.namespace.localeCompare(b.namespace))
   }, [props.tools, toolsQuery])
 
-  function handleCreateSubmit(event: FormEvent) {
+  async function handleCreateSubmit(event: FormEvent) {
     event.preventDefault()
+    if (createPendingRef.current || props.busy) return
     const model = readModelSelection(newModelProfileId, props.modelProfiles)
     const effectivePresetId = newPresetId || defaultPresetId
     if (!newName.trim() || !model || !effectivePresetId) return
 
-    props.onCreate({
-      name: newName.trim(),
-      presetId: effectivePresetId,
-      model,
-      delivery: newDelivery,
-    })
-
-    setNewName('')
-    setNewPresetId('')
-    setNewModelProfileId('')
-    setNewDelivery('stream')
-    setCreating(false)
-    setMobilePane('detail')
+    createPendingRef.current = true
+    setCreatePending(true)
+    setCreateError(undefined)
+    try {
+      const completed = await props.onCreate({
+        name: newName.trim(),
+        presetId: effectivePresetId,
+        model,
+        delivery: newDelivery,
+      })
+      if (!completed) return
+      setNewName('')
+      setNewPresetId('')
+      setNewModelProfileId('')
+      setNewDelivery('stream')
+      setCreating(false)
+      setMobilePane('detail')
+    } catch (error) {
+      setCreateError(error instanceof Error ? error.message : String(error))
+    } finally {
+      createPendingRef.current = false
+      setCreatePending(false)
+    }
   }
 
   const currentModelProfile = currentProfile
@@ -100,10 +114,6 @@ export function AgentPanel(props: AgentPanelProps) {
         model.providerAccountId === currentProfile.model.providerProfileId &&
         model.providerModelId === currentProfile.model.modelId,
       )
-    : undefined
-
-  const currentPreset = currentProfile
-    ? props.presets.find(preset => preset.id === currentProfile.presetId)
     : undefined
 
   // Number of tools mounted by the current preset
@@ -128,6 +138,7 @@ export function AgentPanel(props: AgentPanelProps) {
               <button
                 className={styles.newButton}
                 type="button"
+                disabled={createPending}
                 onClick={() => {
                   setCreating(prev => !prev)
                   if (!creating) setMobilePane('master')
@@ -140,10 +151,12 @@ export function AgentPanel(props: AgentPanelProps) {
 
             {creating ? (
               <form className={`${styles.createForm} loom-underlined-fields`} onSubmit={handleCreateSubmit}>
+                {createError ? <p role="alert">{createError}</p> : null}
                 <label>
                   <span>{props.t('agent.profile.name')}</span>
                   <input
                     autoFocus
+                    disabled={createPending}
                     required
                     placeholder={props.t('agent.profile.name')}
                     value={newName}
@@ -153,6 +166,7 @@ export function AgentPanel(props: AgentPanelProps) {
                 <label>
                   <span>{props.t('agent.profile.preset')}</span>
                   <select
+                    disabled={createPending}
                     required
                     value={newPresetId || defaultPresetId}
                     onChange={event => setNewPresetId(event.target.value)}
@@ -166,6 +180,7 @@ export function AgentPanel(props: AgentPanelProps) {
                 <label>
                   <span>{props.t('agent.profile.model')}</span>
                   <select
+                    disabled={createPending}
                     required
                     value={newModelProfileId}
                     onChange={event => setNewModelProfileId(event.target.value)}
@@ -181,6 +196,7 @@ export function AgentPanel(props: AgentPanelProps) {
                 <div className={styles.toggleField}>
                   <span className={styles.fieldLabel}>{props.t('agent.profile.deliveryStream')}</span>
                   <Toggle
+                    disabled={createPending}
                     checked={newDelivery === 'stream'}
                     label={props.t('agent.profile.deliveryStream')}
                     onChange={checked => setNewDelivery(checked ? 'stream' : 'complete')}
@@ -188,12 +204,12 @@ export function AgentPanel(props: AgentPanelProps) {
                 </div>
                 <div className={styles.formActions}>
                   <button
-                    disabled={props.busy || !newName.trim() || !newModelProfileId || !(newPresetId || defaultPresetId)}
+                    disabled={createPending || props.busy || !newName.trim() || !newModelProfileId || !(newPresetId || defaultPresetId)}
                     type="submit"
                   >
                     {props.t('agent.profile.save')}
                   </button>
-                  <button type="button" onClick={() => setCreating(false)}>
+                  <button disabled={createPending} type="button" onClick={() => setCreating(false)}>
                     {props.t('agent.profile.cancel')}
                   </button>
                 </div>
@@ -242,7 +258,7 @@ export function AgentPanel(props: AgentPanelProps) {
                       variant="danger"
                       onClick={event => {
                         event.stopPropagation()
-                        props.onDelete(profile.id)
+                        void props.onDelete(profile.id).catch(() => undefined)
                       }}
                     >
                       <Trash2 aria-hidden="true" />
@@ -283,7 +299,7 @@ export function AgentPanel(props: AgentPanelProps) {
                       onBlur={event => {
                         const next = event.target.value.trim()
                         if (next && next !== currentProfile.name) {
-                          props.onUpdate(currentProfile.id, { name: next })
+                          void props.onUpdate(currentProfile.id, { name: next }).catch(() => undefined)
                         }
                       }}
                     />
@@ -293,7 +309,7 @@ export function AgentPanel(props: AgentPanelProps) {
                     <span>{props.t('agent.profile.preset')}</span>
                     <select
                       value={currentProfile.presetId}
-                      onChange={event => props.onUpdate(currentProfile.id, { presetId: event.target.value })}
+                      onChange={event => void props.onUpdate(currentProfile.id, { presetId: event.target.value }).catch(() => undefined)}
                     >
                       {props.presets.map(preset => (
                         <option key={preset.id} value={preset.id}>
@@ -309,7 +325,7 @@ export function AgentPanel(props: AgentPanelProps) {
                       value={currentModelProfile?.id ?? ''}
                       onChange={event => {
                         const model = readModelSelection(event.target.value, props.modelProfiles)
-                        if (model) props.onUpdate(currentProfile.id, { model })
+                        if (model) void props.onUpdate(currentProfile.id, { model }).catch(() => undefined)
                       }}
                     >
                       <option disabled value="">{props.t('agent.profile.selectModel')}</option>
@@ -332,7 +348,7 @@ export function AgentPanel(props: AgentPanelProps) {
                         disabled={props.busy}
                         label={props.t('agent.profile.deliveryStream')}
                         onChange={checked => {
-                          props.onUpdate(currentProfile.id, { delivery: checked ? 'stream' : 'complete' })
+                          void props.onUpdate(currentProfile.id, { delivery: checked ? 'stream' : 'complete' }).catch(() => undefined)
                         }}
                       />
                     </div>
@@ -343,7 +359,7 @@ export function AgentPanel(props: AgentPanelProps) {
                       className={styles.deleteButton}
                       disabled={props.busy}
                       type="button"
-                      onClick={() => props.onDelete(currentProfile.id)}
+                      onClick={() => void props.onDelete(currentProfile.id).catch(() => undefined)}
                     >
                       <Trash2 aria-hidden="true" />
                       {props.t('agent.profile.delete')}
@@ -414,9 +430,9 @@ export function AgentPanel(props: AgentPanelProps) {
                                     className={styles.resetButton}
                                     type="button"
                                     onClick={() => {
-                                      props.onUpdate(currentProfile.id, {
+                                      void props.onUpdate(currentProfile.id, {
                                         toolOverrides: omitToolOverride(currentProfile.toolOverrides, tool.id),
-                                      })
+                                      }).catch(() => undefined)
                                     }}
                                   >
                                     <RotateCcw aria-hidden="true" />
@@ -431,12 +447,12 @@ export function AgentPanel(props: AgentPanelProps) {
                                   disabled={props.busy || !mount}
                                   label={`${tool.name} enabled`}
                                   onChange={checked => {
-                                    props.onUpdate(currentProfile.id, {
+                                    void props.onUpdate(currentProfile.id, {
                                       toolOverrides: {
                                         ...currentProfile.toolOverrides,
                                         [tool.id]: checked,
                                       },
-                                    })
+                                    }).catch(() => undefined)
                                   }}
                                 />
                               </div>
@@ -453,7 +469,9 @@ export function AgentPanel(props: AgentPanelProps) {
         ) : (
           <div className={styles.emptyDetail}>
             <h3>{props.t('agent.profile.noSelectionTitle')}</h3>
-            <p>{props.t('agent.profile.noSelectionBody')}</p>
+            <p role={activeProfileId ? 'alert' : undefined}>{activeProfileId
+              ? props.t('agent.profile.unavailable', { id: activeProfileId })
+              : props.t('agent.profile.noSelectionBody')}</p>
           </div>
         )}
       </MasterDetailWorkbench>

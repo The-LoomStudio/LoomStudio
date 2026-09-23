@@ -50,9 +50,16 @@ import {
 ```
 
 - [`src/agent/`](./src/agent/)：导出 `createAgentStore` 及会话与消息类型；
-- [`src/narrative/`](./src/narrative/)：导出 `createNarrativeStore` 及时间线/分支类型；
-- [`src/state/`](./src/state/)：导出 `createStateStore` 及状态变更类型；
-- [`src/prompt-resource/`](./src/prompt-resource/)：导出 `createPromptResourceStore` 及资源树操作类型。
+- [`src/narrative/`](./src/narrative/)：导出 `createNarrativeStore` 及时间线/分支类型（沿 parent 链游标读取，为 Narrative Sampling 提供底层支撑）；
+- [`src/state/`](./src/state/)：导出 `createStateStore` 及状态变更类型（State Delta 支持合法空键重放与合并保真）；
+- [`src/prompt-resource/`](./src/prompt-resource/)：导出 `createPromptResourceStore` 及资源树操作类型；
+- [`src/json.ts`](./src/json.ts)：数据持久化 JSON 保真断言，显式拒绝 `NaN`、`Infinity` 等非有限数字，保护合法空键、`null`、`0` 与 `false`。
+
+### 统一游标分页与数据保真底线
+
+- **Prompt Resource Keyset 分页**：`listResources()` 默认按 `updated_at DESC, id DESC`，cursor 保存读取时边界；`order: 'id'` 按稳定 ID 降序，供 Runtime 全量收集与导入冲突扫描使用。cursor 绑定排序、resourceKind 与 includeTombstone，不能当数字 OFFSET 或换筛选复用。默认页长 100，上限 500。
+- **并发与一致性**：更新时间排序允许更新跨越边界；稳定 ID 遍历不会因更新时间变动重复或跳过已有身份，但新建 ID 在已读边界之前时不会补读。需要一致集合的写入、删除、Apply 继续依赖其事务、版本与提交事实保护。
+- **持久化 JSON 保真**：在入库与变更边界严格校验 JSON，杜绝把不可序列化数字洗成 `null`，确保领域扩展属性和空键原样往返。
 
 ---
 

@@ -6,7 +6,7 @@ Studio Client 是 React/Vite Web Client，负责页面组合、交互状态和 t
 
 ## 开发入口
 
-正常开发从仓库根目录分别启动 Server 与 Client：
+正常开发从仓库根目录，在两个独立终端分别启动 Server 与 Client：
 
 ```bash
 pnpm dev:server
@@ -14,6 +14,8 @@ pnpm dev:client
 ```
 
 `dev:client` 会先构建并监听内部 Packages，再启动 `127.0.0.1:5173`。Vite 将 `/auth`、`/assets`、`/cards`、`/extensions` 和 `/rpc` 代理到 `STUDIO_SERVER_URL`，默认是 `http://127.0.0.1:4173`。
+
+若 Server 通过 `PORT` 改用其他端口，启动 Client 时也需设置对应的 `STUDIO_SERVER_URL`。RPC 使用 HTTP `POST /rpc`；Extension Catalog 变化使用 `/extensions/events` SSE。
 
 定向命令：
 
@@ -24,7 +26,7 @@ pnpm --filter @loom-studio/studio-client lint
 pnpm exec vitest run tests/unit/client
 ```
 
-直接运行 Package `dev` 不会替你监听其他 Workspace 的构建产物；日常联调优先使用根命令。
+直接运行 Package `dev` 不会替你监听其他 Workspace 的构建产物；日常联调优先使用根命令。上述测试命令从仓库根目录执行，使用根 Vitest 配置收集 `tests/unit/client/` 用例；不能把 Package `test` 的 `--passWithNoTests` 成功退出当作这些用例已执行。
 
 ## 开发组件预览
 
@@ -97,6 +99,8 @@ URL / History 路由导航       -> React Router
 - **Markdown 展示**：必须走 `react-markdown` + `remark-gfm` 渲染管线，**严禁手写正则 parser 或注入 `innerHTML`**。
 - **菜单与弹层**：上下文菜单与下拉菜单必须基于 Radix primitives，不手写底层 focus/dismiss 机制；轻量反馈使用 Sonner。
 - **图标**：通用操作图标必须优先使用 Lucide 图标，品牌图标使用已有静态资产，不私自手绘重复 SVG。
+- **分页消费完整性（`collectPages`）**：消费 Provider、Capability Profile 与 Agent Profile 等后端分页时，统一通过 `collectPages` 收集完整列表后再发布，避免半列表暴露。
+- **失效引用容错呈现**：业务依赖（如绑定的 Provider 账号被删除）缺失时，UI 宽容呈现为不可用警告并提供显式重新绑定入口，严禁因坏引用阻断列表或白屏崩溃。
 
 ---
 

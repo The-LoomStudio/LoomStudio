@@ -1,19 +1,117 @@
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createStateStore } from '@loom-studio/application-data'
+import type { JsonObject } from '@loom-studio/shared'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 
-function createTestContext() {
+function createTestContext(filename = ':memory:') {
   let nextId = 0
   let nextTime = 0
   const createId = (prefix: string) => `${prefix}-${++nextId}`
   const now = () => `2026-08-25T00:00:${String(nextTime++).padStart(2, '0')}.000Z`
-  const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
+  const engine = createSqliteDataEngine({ filename, createId, now })
   const store = createStateStore({ engine, createId, now })
   const actor = { kind: 'system' as const, id: 'test' }
   return { engine, store, actor }
 }
 
 describe('state store', () => {
+  it.each([NaN, Infinity, -Infinity, undefined])('rejects non-JSON revision values without committing (%s)', async value => {
+    const { engine, store, actor } = createTestContext()
+    try {
+      for (const field of ['snapshot', 'operations'] as const) {
+        await expect(store.createScopeWithInitialRevision({
+          actor,
+          scope: { kind: 'global', ownerId: 'workspace' },
+          revision: {
+            snapshot: field === 'snapshot' ? { nested: [value as never] } : {},
+            operations: field === 'operations' ? [{ op: 'set', path: '/nested', value: value as never }] : [],
+          },
+        })).rejects.toMatchObject({ code: field === 'snapshot' ? 'state.snapshot_invalid' : 'state.operations_invalid' })
+        expect(await store.getGlobalSnapshot()).toBeNull()
+        expect(engine.database.prepare('SELECT COUNT(*) AS count FROM state_revisions').get()).toEqual({ count: 0 })
+      }
+    } finally {
+      await engine.close()
+    }
+  })
+
+  it('preserves JSON extension fields, shared values, nulls and empty keys', async () => {
+    const { engine, store, actor } = createTestContext()
+    try {
+      const shared = { custom: [null, false, 0, '', { '': 'value' }] }
+      const snapshot = { '': null, 'example.extension': { first: shared, second: shared } }
+      const created = await store.createScopeWithInitialRevision({
+        actor,
+        scope: { kind: 'global', ownerId: 'workspace' },
+        revision: { snapshot, operations: [] },
+      })
+      expect(created.snapshot.revision.snapshot).toEqual(snapshot)
+      expect((await store.getGlobalSnapshot())?.revision.snapshot).toEqual(snapshot)
+    } finally {
+      await engine.close()
+    }
+  })
+
+  it('replays root and nested empty-key deltas after reopening SQLite', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'loom-state-empty-key-'))
+    const filename = join(directory, 'state.sqlite')
+    const { engine, store, actor } = createTestContext(filename)
+    const snapshots: JsonObject[] = [
+      { padding: 'x'.repeat(1024), '': { '': 0 }, nested: {} },
+      { padding: 'x'.repeat(1024), '': { '': 1 }, nested: { '': null } },
+      { padding: 'x'.repeat(1024), nested: {} },
+      { padding: 'x'.repeat(1024), '': { '': 2 }, nested: { '': 3 } },
+    ]
+    const revisions: string[] = []
+    try {
+      try {
+        const created = await store.createScopeWithInitialRevision({
+          actor,
+          scope: { kind: 'global', ownerId: 'workspace' },
+          revision: { snapshot: snapshots[0]!, operations: [] },
+        })
+        revisions.push(created.snapshot.revision.id)
+        for (const snapshot of snapshots.slice(1)) {
+          const previousId = revisions.at(-1)!
+          const result = await engine.transact({ actor }, async dataTx => {
+            const state = store.transaction(dataTx)
+            const { revision } = state.createRevision({
+              scopeId: created.snapshot.scope.id,
+              parentRevisionId: previousId,
+              snapshot,
+              operations: [],
+            })
+            state.setGlobalHead({
+              scopeId: created.snapshot.scope.id,
+              expectedRevisionId: previousId,
+              revisionId: revision.id,
+            })
+            return revision.id
+          })
+          revisions.push(result.value)
+          expect(engine.database.prepare('SELECT snapshot_json FROM state_revisions WHERE id = ?').get(result.value))
+            .toEqual({ snapshot_json: null })
+        }
+      } finally {
+        await engine.close()
+      }
+      const reopened = createTestContext(filename)
+      try {
+        for (const [index, revisionId] of revisions.entries()) {
+          expect((await reopened.store.getRevision(revisionId))?.snapshot).toEqual(snapshots[index])
+        }
+        expect((await reopened.store.getGlobalSnapshot())?.revision.snapshot).toEqual(snapshots.at(-1))
+      } finally {
+        await reopened.engine.close()
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
   it('creates a global scope and initial full snapshot in one commit', async () => {
     const { engine, store, actor } = createTestContext()
     const observed = vi.fn()

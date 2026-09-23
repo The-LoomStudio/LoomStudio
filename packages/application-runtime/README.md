@@ -25,11 +25,14 @@ Package 只通过 [`src/index.ts`](./src/index.ts) 暴露 public API，构建产
 | `types.ts`                                      | 公共 Application 合同                                  |
 | `foundation/application-context.ts`            | Store、Gateway、Registry、Logger、Clock 等内部基础设施 |
 | `foundation/document-types.ts`                 | 第一方 Application Document Types                      |
-| `cards/card.ts`、`cards/workspace.ts`、`cards/workspace-codec.ts` | Card、Bundle、Artifact 和 Prompt Resource 导入导出与编解码 |
-| `prompt/prompt-builder.ts`、`prompt/prompt-build-pipeline.ts` | Composition 类型与当前 DFS 编译器             |
+| `cards/card.ts`、`cards/workspace.ts`、`cards/workspace-codec.ts` | Card、Bundle、Artifact 和 Prompt Resource 导入导出、编解码与 SillyTavern 兼容转换 |
+| `prompt/prompt-builder.ts`、`prompt/prompt-build-pipeline.ts` | Composition 类型与宽松 DFS 编译器（缺失项跳过、宏保留警告不阻断） |
 | `prompt/prompt-activation.ts`、`prompt/variables.ts` | Activation 和只读变量宏                            |
+| `narrative/sampling.ts`                        | Narrative 历史采样器（支持 tail / range 截取与节点/字符预算控制） |
 | `agents/`                                     | Tool Registry、Prompt、Provider Step 与 Tool Loop      |
-| `providers/`                                  | Provider Profile、Gateway 与 wire payload adapter      |
+| `agents/codeact/`                              | 官方 CodeAct 沙箱环境（基于 QuickJS）、VFS 操作与 `readNarrative` |
+| `vfs/`                                        | 面向智能体的虚拟文件系统映射与网关                     |
+| `providers/`                                  | Provider Profile、Gateway、wire payload adapter 与软引用容错 |
 | `state/`                                      | State Mutation、Revision、Definition 与 Binding        |
 | `transforms/`                                 | History Transform、Extractor 与 Renderer Projection    |
 | `scripts/`                                    | Loom Script Metadata、编解码与挂载解析                 |
@@ -40,7 +43,8 @@ Package 只通过 [`src/index.ts`](./src/index.ts) 暴露 public API，构建产
 
 - **领域存储依赖**：统一依赖 `@loom-studio/application-data`（内聚托管 Agent Session/Message、Narrative Timeline/Branch/Node、State 与 Prompt Resource 树）以及 `@loom-studio/document-store`（管理版本化快照文档）。
 - **平台与基础设施**：`@loom-studio/data-engine`、`@loom-studio/ai-gateway`、`@loom-studio/secret-store`、`@loom-studio/logging`、`@loom-studio/shared`、`@loom-studio/extension-sdk`。
-- **外部网络依赖**：`undici`（用于与模型服务通信及 `ProxyAgent` 代理支持）。
+- **外部网络与执行依赖**：`undici`（用于与模型服务通信及 `ProxyAgent` 代理支持）、`quickjs-emscripten`（用于 CodeAct 沙箱隔离执行）。
+- **宽松引用与容错构建**：删除 Provider/Model 等资源保留下游引用，运行时解析不到报错，不级联解绑；PromptBuild 遇到可跳过项跳过、宏未展开保留原文，不作为硬门禁阻断编译。
 
 本包不注册 HTTP/JSON-RPC 路由，不拥有 React/Zustand 前端状态，不提供 Kernel 核心路由，也不直接操作 SQLite 裸连接。`DataEngine` 与 `ApplicationDataStore` 是运行时装配的必需依赖。
 
@@ -51,8 +55,6 @@ Package 只通过 [`src/index.ts`](./src/index.ts) 暴露 public API，构建产
 pnpm --filter @loom-studio/application-runtime build
 pnpm exec vitest run tests/unit/application-runtime tests/integration/application-runtime
 ```
-
-当前 Package `test` 脚本仍指向已不存在的旧测试入口；验证 Runtime 合同时使用上面的根目录命令。
 
 ## 正式文档
 

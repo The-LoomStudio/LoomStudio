@@ -13,7 +13,6 @@ export function StudioPanelHost(props: StudioPanelHostProps) {
   return (
     <div className={styles.workspaceBody}>
         {STUDIO_PANEL_IDS.map(panel => {
-          if (props.activePanel === 'play' && (panel === 'character' || panel === 'sessions')) return null
           return <StudioPanelStage
             key={panel}
             active={props.activePanel === panel}

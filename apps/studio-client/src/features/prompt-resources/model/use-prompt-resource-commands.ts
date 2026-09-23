@@ -7,7 +7,7 @@ import type { PresetToolMount, PresetToolMountInput, PromptResource, PromptResou
 type UsePromptResourceCommandsInput = {
   api: StudioApi
   t: Translator
-  runMutation<T>(action: () => Promise<T>): Promise<T | undefined>
+  runMutation<T>(action: () => Promise<T>): Promise<T>
   recordEdit(entry: {
     label: string
     changesetId: string
@@ -53,16 +53,19 @@ export function usePromptResourceCommands(input: UsePromptResourceCommandsInput)
         resourceKind,
         name: resourceKind === 'preset' ? 'New Preset' : resourceKind === 'setting' ? 'New Setting Layer' : 'New Prompt Resource',
       })
+      resourceId = result.resource.id
+      setPromptResources(current => [...current, result.resource])
       recordEdit({
         label: t('history.context.create'),
         changesetId: result.mutation.changesetId,
         anchor: { documentId: result.resource.id, subjectId: result.resource.rootNode.id },
       })
-      resourceId = result.resource.id
       await invalidatePromptResourceState({
         resources: true,
         presetToolMounts: resourceKind === 'preset',
       })
+    }).catch(error => {
+      if (!resourceId) throw error
     })
     return resourceId
   }
@@ -71,30 +74,38 @@ export function usePromptResourceCommands(input: UsePromptResourceCommandsInput)
     let duplicatedId: string | undefined
     await runMutation(async () => {
       const result = await api.promptResources.duplicate({ resourceId })
+      duplicatedId = result.resource.id
+      setPromptResources(current => [...current, result.resource])
       recordEdit({
         label: t('history.context.duplicate'),
         changesetId: result.mutation.changesetId,
         anchor: { documentId: result.resource.id, subjectId: result.resource.rootNode.id },
       })
-      duplicatedId = result.resource.id
       await invalidatePromptResourceState({
         resources: true,
         settingMounts: result.resource.resourceKind === 'preset',
         presetToolMounts: result.resource.resourceKind === 'preset',
       })
+    }).catch(error => {
+      if (!duplicatedId) throw error
     })
     return duplicatedId
   }
 
   async function deletePromptResource(resourceId: string): Promise<void> {
+    let deleted = false
     await runMutation(async () => {
       await api.promptResources.delete(resourceId)
+      deleted = true
+      setPromptResources(current => current.filter(resource => resource.id !== resourceId))
       await invalidatePromptResourceState({ resources: true, settingMounts: true, presetToolMounts: true })
       await Promise.all([
         refreshCards(),
         refreshAgentProfiles(),
         selectedCardId ? refreshCardTimelines(selectedCardId) : Promise.resolve(),
       ])
+    }).catch(error => {
+      if (!deleted) throw error
     })
   }
 
@@ -132,12 +143,15 @@ export function usePromptResourceCommands(input: UsePromptResourceCommandsInput)
       const baseName = file.name.replace(/\.[^/.]+$/, '').trim()
       const result = await api.promptResources.import(artifact, baseName || undefined)
       resourceId = result.resource.id
+      setPromptResources(current => [...current, result.resource])
       recordEdit({
         label: t('history.context.create'),
         changesetId: result.mutation.changesetId,
         anchor: { documentId: result.resource.id, subjectId: result.resource.rootNode.id },
       })
       await invalidatePromptResourceState({ resources: true })
+    }).catch(error => {
+      if (!resourceId) throw error
     })
     return resourceId
   }
@@ -157,12 +171,15 @@ export function usePromptResourceCommands(input: UsePromptResourceCommandsInput)
     await runMutation(async () => {
       const result = await api.promptResources.importZip(encodeBase64(new Uint8Array(await file.arrayBuffer())))
       resourceId = result.resource.id
+      setPromptResources(current => [...current, result.resource])
       recordEdit({
         label: t('history.context.create'),
         changesetId: result.mutation.changesetId,
         anchor: { documentId: result.resource.id, subjectId: result.resource.rootNode.id },
       })
       await invalidatePromptResourceState({ resources: true })
+    }).catch(error => {
+      if (!resourceId) throw error
     })
     return resourceId
   }

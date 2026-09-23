@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ContextAssetNode } from '../../../entities/index.js'
 import { useRestorableScroll } from '../../../shared/hooks/use-restorable-scroll.js'
 import type { Translator } from '../../../shared/i18n/index.js'
@@ -44,19 +44,42 @@ export function ContextAssetExplorer(props: {
   onChangeRole?(id: string, role: 'system' | 'user' | 'assistant' | 'developer'): void
 }) {
   const [editingId, setEditingId] = useState<string>()
+  const [error, setError] = useState<string>()
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
   const scroll = useRestorableScroll<HTMLDivElement>(props.scrollKey)
   const selectNode = (node: ContextAssetNode) => props.onSelectId?.(node.id)
   const selectCreated = async (create: Promise<string | undefined>) => {
-    const id = await create
-    if (id) {
-      props.onSelectId(id)
-      setEditingId(id)
+    setError(undefined)
+    try {
+      const id = await create
+      if (id && mountedRef.current) {
+        props.onSelectId(id)
+        setEditingId(id)
+      }
+    } catch (caught) {
+      if (mountedRef.current) setError(caught instanceof Error ? caught.message : String(caught))
+    }
+  }
+  const deleteNode = async (id: string) => {
+    setError(undefined)
+    try {
+      const selectedId = await props.onDeleteNode(id, props.selectedId)
+      if (mountedRef.current) props.onSelectId(selectedId)
+    } catch (caught) {
+      if (mountedRef.current) setError(caught instanceof Error ? caught.message : String(caught))
     }
   }
   const handleEditCommit = async (id: string, newLabel: string) => {
-    setEditingId(undefined)
-    if (props.onRenameNode) {
-      await props.onRenameNode(id, newLabel)
+    setError(undefined)
+    try {
+      await props.onRenameNode?.(id, newLabel)
+      if (mountedRef.current) setEditingId(current => current === id ? undefined : current)
+    } catch (caught) {
+      if (mountedRef.current) setError(caught instanceof Error ? caught.message : String(caught))
     }
   }
   const handleEditCancel = () => {
@@ -72,6 +95,7 @@ export function ContextAssetExplorer(props: {
       onSelect={selectNode}
     >
       <div ref={scroll.ref} className={styles.explorerContent} onScroll={scroll.onScroll}>
+        {error ? <p role="alert">{error}</p> : null}
         <FileTree
           editingId={editingId}
           onEditCommit={handleEditCommit}
@@ -86,7 +110,7 @@ export function ContextAssetExplorer(props: {
             onAddFolder: props.onAddFolderNode ? async parentId => selectCreated(props.onAddFolderNode!(parentId)) : undefined,
             onAddAnchor: props.onAddAnchorNode ? async parentId => selectCreated(props.onAddAnchorNode!(parentId)) : undefined,
             onAddMessageBlock: props.onAddMessageBlockNode ? async parentId => selectCreated(props.onAddMessageBlockNode!(parentId)) : undefined,
-            onDelete: async id => props.onSelectId(await props.onDeleteNode(id, props.selectedId)),
+            onDelete: deleteNode,
             onDuplicate: async id => selectCreated(props.onDuplicateNode(id)),
             onRename: id => setEditingId(id),
             onToggleEnabled: props.onToggleEnabled,

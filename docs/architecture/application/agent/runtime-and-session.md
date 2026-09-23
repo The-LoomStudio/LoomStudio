@@ -88,11 +88,18 @@ Agent Session 是工作树，Narrative Timeline 是故事权威树。两者互�
 
 Agent Loop 分阶段提交 Transcript；当提供 `narrativeTarget` 且 `commit = true` 时，Loop 成功后再用独立事务追加用户与 Assistant 两条 Narrative Node。该事务不包含已持久化的 Agent Message；Narrative Head 冲突或其他提交失败不会回滚 Agent Transcript 或已完成的 Tool 写入。没有最终 Narrative commit 不等于 Tool 没有领域副作用。
 
-这是当前实现边界，不是对跨领域原子提交的设计裁决。若要改变该语义，需要单独确定 Agent 运行事实、Tool 副作用与 Narrative 提交各自的恢复合同，不能仅通过共享 Data Engine 推断原子性。
+## 7. Narrative Sampling（叙事采样读取）
 
-## 7. 实现来源
+在双向交互与智能体自主编排场景中，Agent 能够通过 `NarrativeSampler`（`packages/application-runtime/src/narrative/sampling.ts`）在受控范围内主动采样读取当前授权 Timeline 的历史正文：
+
+- **选择模式**：支持 `tail`（从指定 Head 向前读取最近 N 个节点）与 `range`（指定 `afterNodeId` 到 `throughNodeId` 开闭区间的节点范围）；
+- **有界预算控制**：单次采样严格限制上限（默认最大 1,000 节点、2,000,000 字符），超出预算时安全截断正文，返回 `complete: false` 与 `nextBeforeNodeId` 供后续续读；
+- **只读非阻塞**：采样仅基于已提交的节点只读展开，不修改 Timeline 的 Branch Head，不推进 Memory 指针，也不触发任何 Narrative 追加。
+
+## 8. 实现来源
 
 - [`packages/application-data/src/agent/types.ts`](../../../../packages/application-data/src/agent/types.ts)
 - [`packages/application-data/src/agent/store.ts`](../../../../packages/application-data/src/agent/store.ts)
+- [`packages/application-runtime/src/narrative/sampling.ts`](../../../../packages/application-runtime/src/narrative/sampling.ts)
 - [`packages/application-runtime/src/agents/tool-loop.ts`](../../../../packages/application-runtime/src/agents/tool-loop.ts)
 - [`packages/application-runtime/src/agents/agent-turn.ts`](../../../../packages/application-runtime/src/agents/agent-turn.ts)

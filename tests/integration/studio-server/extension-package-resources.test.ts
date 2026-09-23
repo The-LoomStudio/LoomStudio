@@ -125,10 +125,6 @@ describe('Studio Server Extension Package resources', () => {
           messages: expect.any(Array),
         },
       })
-      await expect(callRpc(port, 'extensions.removePackageResources', {
-        packageId: 'example.package-resources',
-      })).rejects.toThrow('still referenced by Agent Profiles')
-
       await callRpc(port, 'extensions.disableModule', { packageId: 'example.package-resources', moduleId: 'server' })
       await callRpc(port, 'extensions.enableModule', { packageId: 'example.package-resources', moduleId: 'server' })
       const importedAgain = await callRpc<typeof imported>(port, 'extensions.importPackageResources', { packageId: 'example.package-resources' })
@@ -136,15 +132,26 @@ describe('Studio Server Extension Package resources', () => {
     })
   })
 
-  it('removes imported resources, Tool Definitions, and cross-Preset Tool Mounts', async () => {
+  it('removes owned resources while retaining external Preset, Tool, Card and Timeline references', async () => {
     await withStudioServer(async (port, root) => {
       const sourceDirectory = await writeCapabilityPackage(root)
       await callRpc(port, 'extensions.installPackage', { sourceDirectory })
-      await callRpc(port, 'extensions.importPackageResources', { packageId: 'example.package-resources' })
+      const imported = await callRpc<{
+        promptResources: Array<{ contributionId: string; resourceId: string }>
+      }>(port, 'extensions.importPackageResources', { packageId: 'example.package-resources' })
       const localPreset = await callRpc<{ resource: { id: string } }>(port, 'application.createPromptResource', {
         resourceKind: 'preset',
         name: 'Local Preset',
       })
+      const settingId = imported.promptResources.find(resource => resource.contributionId === 'setting')!.resourceId
+      const packagePresetId = imported.promptResources.find(resource => resource.contributionId === 'preset')!.resourceId
+      const manualSource = { kind: 'manual', id: 'global' }
+      const localSource = { kind: 'preset', id: localPreset.resource.id }
+      for (const source of [manualSource, localSource]) {
+        await callRpc(port, 'application.replaceSettingMounts', { source, settingResourceIds: [settingId] })
+      }
+      const manualMounts = await callRpc(port, 'application.listSettingMounts', { source: manualSource })
+      const localMounts = await callRpc(port, 'application.listSettingMounts', { source: localSource })
       await callRpc(port, 'application.replacePresetToolMounts', {
         presetId: localPreset.resource.id,
         mounts: [{
@@ -153,6 +160,30 @@ describe('Studio Server Extension Package resources', () => {
           defaultEnabled: true,
           content: { targetAnchorId: '@chat.tools', localDepth: 0 },
         }],
+      })
+      const localToolMounts = await callRpc(port, 'application.listPresetToolMounts', { presetId: localPreset.resource.id })
+      const provider = await callRpc<{ providerProfile: { id: string } }>(port, 'application.createProviderProfile', {
+        providerExtensionId: 'official.fake', displayName: 'Test Provider', config: {},
+        enabledModelIds: [officialFakeModelId],
+      })
+      const profile = await callRpc<{ agentProfile: { id: string } }>(port, 'application.createAgentProfile', {
+        name: 'External Profile', presetId: packagePresetId,
+        model: { providerProfileId: provider.providerProfile.id, modelId: officialFakeModelId },
+        toolOverrides: { 'example.package-resources/content_echo': true },
+      })
+      const profileBefore = await callRpc(port, 'application.getAgentProfile', { agentProfileId: profile.agentProfile.id })
+      const session = await callRpc<{ session: { id: string } }>(port, 'application.createAgentSession', { agentProfileId: profile.agentProfile.id })
+      const card = await callRpc<{ card: { id: string } }>(port, 'application.createCard', { name: 'External Card' })
+      await callRpc(port, 'application.updateCardPromptResources', {
+        cardId: card.card.id, promptResourceIds: [settingId, packagePresetId],
+      })
+      const timeline = await callRpc<{ timeline: { id: string } }>(port, 'application.createNarrativeTimeline', { cardId: card.card.id })
+      const cardBefore = await callRpc(port, 'application.getCard', { cardId: card.card.id })
+      const timelineBefore = await callRpc(port, 'application.getNarrativeTimeline', { timelineId: timeline.timeline.id })
+      expect(cardBefore).toMatchObject({ card: { promptResourceIds: [settingId, packagePresetId] } })
+      expect(timelineBefore).toMatchObject({ timeline: { promptResourceIds: [settingId, packagePresetId] } })
+      expect(profileBefore).toMatchObject({
+        agentProfile: { presetId: packagePresetId, toolOverrides: { 'example.package-resources/content_echo': true } },
       })
 
       const removed = await callRpc<{
@@ -169,7 +200,14 @@ describe('Studio Server Extension Package resources', () => {
       ])
       expect(removed.textTransformRuleIds).toHaveLength(1)
       expect(removed.textExtractorIds).toHaveLength(1)
-      expect(removed.detachedReferences.presetToolMounts).toBe(3)
+      expect(removed.detachedReferences).toEqual({ cards: 0, timelines: 0, agentProfiles: 0, presetToolMounts: 0 })
+      await expect(callRpc(port, 'application.getAgentProfile', { agentProfileId: profile.agentProfile.id })).resolves.toEqual(profileBefore)
+      await expect(callRpc(port, 'application.getCard', { cardId: card.card.id })).resolves.toEqual(cardBefore)
+      await expect(callRpc(port, 'application.getNarrativeTimeline', { timelineId: timeline.timeline.id })).resolves.toEqual(timelineBefore)
+      for (const method of ['application.previewAgentTurn', 'application.invokeAgentTurn']) {
+        await expect(callRpc(port, method, { agentSessionId: session.session.id, input: 'Continue.' }))
+          .rejects.toThrow('Prompt resource not found')
+      }
 
       const resources = await callRpc<{ resources: Array<{ origin?: { packageId?: string } }> }>(port, 'application.listPromptResources', {})
       expect(resources.resources.some(resource => resource.origin?.packageId === 'example.package-resources')).toBe(false)
@@ -179,7 +217,15 @@ describe('Studio Server Extension Package resources', () => {
       await expect(callRpc(port, 'application.listTextExtractors', {})).resolves.toEqual({ extractors: [] })
       await expect(callRpc<{ mounts: Array<{ toolId: string }> }>(port, 'application.listPresetToolMounts', {
         presetId: localPreset.resource.id,
-      })).resolves.toEqual({ mounts: [] })
+      })).resolves.toEqual(localToolMounts)
+      await expect(callRpc(port, 'application.listPresetToolMounts', { presetId: packagePresetId })).resolves.toEqual({ mounts: [] })
+      await expect(callRpc(port, 'application.listSettingMounts', { source: manualSource })).resolves.toEqual(manualMounts)
+      await expect(callRpc(port, 'application.listSettingMounts', { source: localSource })).resolves.toEqual(localMounts)
+      const remainingMounts = await callRpc<{ mounts: Array<{ source: { kind: string; id: string } }> }>(
+        port, 'application.listSettingMounts', {},
+      )
+      expect(remainingMounts.mounts.filter(mount =>
+        mount.source.kind === 'preset' && mount.source.id === packagePresetId)).toEqual([])
 
       await expect(callRpc(port, 'extensions.removePackageResources', {
         packageId: 'example.package-resources',

@@ -1,7 +1,7 @@
 # CodeAct 与 VFS 工具实施计划
 
-> **状态**：In Progress / 双通道、领域 VFS 读取、引用跳转、replace、Prompt Resource Patch、节点 Metadata、同资源 move/delete/create/copy 与整份 Prompt Resource copy 已接入；Pin、Narrative 范围与通用资产挂载待接续
-> **更新**：2026-09-21
+> **状态**：In Progress / 双通道、领域 VFS 读取、引用跳转、replace、Prompt Resource Patch、节点 Metadata、同资源 move/delete/create/copy 与整份 Prompt Resource copy、绑定 Timeline 的 Narrative 只读采样已接入；Pin、Narrative 历史权限与通用资产挂载待接续
+> **更新**：2026-09-22
 > **归属**：CodeAct 执行与 VFS 工具的唯一实施入口。2026-09-21 用户已授权正式接入，明确要求 Content/freeform 与 JSON 两种入口；按第 6 节实施，不重新开放已经确认的产品方向。
 > **来源**：[读取与交互 Discussion](../discussion/application/agent/tool-data-view-interaction-v0.md)、[Playground 记录](../../../apps/playground/CODEACT-EXPERIMENT.md)、[旧综合提案](./file-backed-resource-agent-script-codeact-plan.md)。
 
@@ -517,7 +517,14 @@ P3 负责入口与教程 Contribution 的接线，P5 负责默认教程内容和
 
 验证：`resource-vfs.test.ts` 7 项、`vfs-script-attachments.test.ts` 1 项、CodeAct 双通道集成 11 项、既有 VFS 读取 5 项，共 24 项通过；相关 Runtime build 通过。SQLite 验证实时更新、版本、路径替换、同名挂载、隐藏与锁定；真实临时 Blob 验证延迟读取、版本固定与所有权过滤。未运行全仓测试。
 
-剩余依赖保持不变：Narrative 由上下文采样模块供给允许范围；通用附件需所属资源索引与权限合同；跨角色需要显式挂载授权；写入仍需操作级授权、读取基线校验与领域 Mutation。当前不宣称整个资源生态或写入 Plan 已完成。
+### 2026-09-22 Narrative 只读采样接入
+
+- 上下文计划新增共用 `NarrativeSampler`，支持绑定分支的最近 N 个节点和 `afterNodeId`（不包含）至 `throughNodeId`（包含）区间。
+- 当前 Agent Session 的 CodeAct Scope 暴露 `ctx["readNarrative"]({ selection, maxNodes?, maxCharacters? })`；Timeline 和 Branch 由宿主绑定，脚本不能传入其他目标。
+- 返回正文、节点来源、读取时的 Timeline Head、实际终点、完整性和 `nextBeforeNodeId`；预算截断不会伪装成完整读取，也不会推进 Memory 指针或默认有效 Head。
+- 定向验证：Narrative 采样与 CodeAct 真实 Sandbox 单测、既有 CodeAct 工具循环及 VFS 方法面共 26 项通过；覆盖对象返回（`story.text`）、无 Narrative 绑定时的指导性错误、范围预算与续读信息。Application Runtime build、Studio Client TypeScript 与 `git diff --check` 通过。
+
+剩余依赖：默认 Prompt 的有效 Narrative 组合、Memory 摘要贡献、历史正文加工和历史追溯权限仍由上下文计划提供；通用附件需所属资源索引与权限合同；跨角色需要显式挂载授权；写入仍需操作级授权、读取基线校验与领域 Mutation。当前不宣称整个资源生态或写入 Plan 已完成。
 
 ### 2026-09-21 引用与跳转接入
 

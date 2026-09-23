@@ -186,6 +186,7 @@ function isEventCapabilityCategory(value: unknown): value is EventCapabilityCate
     || value === 'agent'
     || value === 'diagnostics'
     || value === 'platform-data'
+    || value === 'state'
     || (typeof value === 'string' && /^extension:[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value))
 }
 

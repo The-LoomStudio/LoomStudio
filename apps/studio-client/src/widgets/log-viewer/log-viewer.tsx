@@ -2,7 +2,6 @@ import type { LogLevel, LogRecord, MemoryLogSink } from '@loom-studio/logging'
 import { Checkbox, IconButton, SearchField } from '@loom-studio/ui'
 import { ArrowDown, Copy, Download, Filter, RefreshCw, Search, Square, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
 import { useLogFeed, type LogSource } from '../../features/log-viewer/model/use-log-feed.js'
 import { useLogHistory } from '../../features/log-viewer/model/use-log-history.js'
 import { formatLogReport, selectDiagnosticContext } from '../../features/log-viewer/model/log-report.js'
@@ -22,8 +21,10 @@ export function LogViewer(props: {
   clientLogs: MemoryLogSink
   t: Translator
   extensions?: readonly { packageId: string; displayName: string }[]
+  searchParams: URLSearchParams
+  onSearchParamsChange(params: URLSearchParams): void
 }) {
-  const [searchParams, setSearchParams] = useSearchParams()
+  const { searchParams, onSearchParamsChange: setSearchParams } = props
   const sourceParam = searchParams.get('logSource')
   const source: LogSource | 'history' = sourceParam === 'server' || sourceParam === 'client' || sourceParam === 'history' ? sourceParam : 'all'
   const packageId = searchParams.get('logPackage') || undefined

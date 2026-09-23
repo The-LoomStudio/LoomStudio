@@ -21,14 +21,14 @@ function createHarness() {
     diagnostics,
     registerStateContribution: () => ({ dispose() {} }),
     registerMacroProvider: () => ({ dispose() {} }),
-    callRpc: (method: string, params?: unknown, context?: unknown) => kernel.callRpc(method, params as never, context as never),
-    registerRpc: (name: string, ownerPackageId: string, ownerModuleId: string, handler: (...args: unknown[]) => unknown, ownerInstanceId?: string) => {
-      const handle = kernel.registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler as never, ownerInstanceId)
-      return { name, ownerPackageId, ownerModuleId, ownerInstanceId, handler: handler as never, dispose: handle.dispose }
+    callRpc: (method, params, context) => kernel.callRpc(method, params, context),
+    registerRpc: (name, ownerPackageId, ownerModuleId, handler, ownerInstanceId) => {
+      const handle = kernel.registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler, ownerInstanceId)
+      return { name, ownerPackageId, ownerModuleId, ownerInstanceId, handler, dispose: handle.dispose }
     },
-    emitEvent: (name: string, payload: unknown, publisher: { kind: string; packageId?: string; moduleId?: string }) => {
-      kernel.getEventBus().emit(name, payload as never, {
-        publisher: publisher as never,
+    emitEvent: (name, payload, publisher) => {
+      return kernel.getEventBus().emit(name, payload, {
+        publisher,
         source: publisher.kind === 'extension' ? `extension:${publisher.packageId}/${publisher.moduleId}` : publisher.kind,
       })
     },
@@ -71,7 +71,7 @@ describe('platform capability integration smoke', () => {
     const { kernel, extensionHost, traceAudit } = createHarness()
     const events: StudioEvent[] = []
     await kernel.start()
-    kernel.getEventBus().subscribe(['docs.changed', 'diagnostics.updated'], (event: StudioEvent) => events.push(event))
+    kernel.getEventBus().subscribe(['docs.changed', 'diagnostics.updated'], (event: StudioEvent) => { events.push(event) })
     await extensionHost.discover(join(process.cwd(), 'tests/fixtures/extensions/echo'))
     await extensionHost.activate('example.echo', 'server')
     const bridge = createClientBridge({ endpoint: 'memory://kernel', fetch: createKernelFetch(kernel) })

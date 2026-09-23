@@ -123,6 +123,8 @@ Content 原文保留 JS 换行、引号与反斜杠，但仍受 `loom-content-v1
 - `ctx.ls(path?, { offset?, limit? }?)`：一层文本目录与状态，默认 50 项。
 - `ctx.search({ path?, terms, match?, limit? })`：同一文件内 all/any 字面匹配，返回路径、行范围和少量原文。
 - `ctx.read(path, { startLine?, endLine? }?)`：纯正文字符串，每次最多 16384 字符；读取路径/行范围另外显示在结果中。
+- `ctx.readNarrative({ selection, maxNodes?, maxCharacters? })`：采样读取当前授权 Timeline 的历史节点，返回结构化 JSON 对象（节点列表、拼接正文与截断标记），受节点上限和字符预算保护。
+- 宿主方法返回值支持结构化 `JsonValue`，不强制将对象转换为扁平字符串。其余写方法（`write`, `patch`, `create`, `delete` 等）按授权受控提供。
 - `ctx.write(path, value, { mode: "replace" })`：必须先完整读取同一路径；当前只允许 Prompt Resource 正文和 State 属性替换，使用读取到的资源版本或 State Revision 做冲突检查。
 - `ctx.patch(path, unifiedDiff)`：必须先读取覆盖所有修改上下文的正文范围；当前只允许 Prompt Resource 单文件 unified diff，按唯一旧文本上下文定位，不依赖行号，不支持模糊匹配、创建、删除或移动。
 

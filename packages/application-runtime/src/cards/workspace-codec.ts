@@ -7,13 +7,10 @@ import { validateStateDefinitionDraft, validateTimelineStateBinding } from '../s
 import { parseStateArtifact } from '../state/state-contribution.js'
 import { parseLoomScriptSource } from '../scripts/loom-script-codec.js'
 import { validateTextExtractorDraft, validateTextTransformRuleDraft, type TextExtractorDraft, type TextTransformRuleDraft } from '../transforms/history-text.js'
-import type { LoomScriptAttachmentArtifact } from '../scripts/loom-script-contracts.js'
 import type { StateDefinitionDraft, TimelineStateBinding } from '../types.js'
 import type {
   CardBundleArtifact,
-  CardBundleImportManifest,
   CardBundleSourceArtifactRef,
-  ImportBundleContent,
   PortableExtensionPayloadArtifact,
   PortableExtensionPayloadContent,
   PromptResourceArtifact,

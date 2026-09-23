@@ -20,7 +20,7 @@ import { NotificationToaster } from '../shared/ui/notification-toaster/notificat
 import type { StudioApi } from '../shared/api/studio-api.js'
 import { toast } from 'sonner'
 import { hasCompleteProviderAccount } from '../features/provider-settings/model/provider-account-status.js'
-import { useStudioLayoutStore, useStudioPanelStore } from '../shared/studio-shell/studio-layout-store.js'
+import { useStudioLayoutStore } from '../shared/studio-shell/studio-layout-store.js'
 import { useStudioNavigation } from '../shared/studio-shell/use-studio-navigation.js'
 import { useStudioUiState } from './use-studio-ui-state.js'
 import { useStudioDerivedState } from './use-studio-derived-state.js'
@@ -28,7 +28,7 @@ import { StudioResourcePanels } from './studio-resource-panels.js'
 import { ResourceReferenceDialog } from '../features/resource-references/resource-reference-dialog.js'
 import { createStudioPanels } from './studio-panel-registry.js'
 import { preloadStudioPanel } from './studio-panel-modules.js'
-import { useEffect, useMemo, useRef, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import styles from './app.module.scss'
 import '../styles/global.css'
 import { useAppearanceStore } from '../shared/studio-shell/appearance-store.js'
@@ -72,7 +72,9 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
   const clientExtensions = useClientExtensionRuntime({ api: state.clientExtensionApi, rendererHost, logger: props.extensionLogger, clientLogs: props.clientLogs })
   const uiState = useStudioUiState()
   const timelineRouteRequestRef = useRef(0)
-  const navigation = useStudioNavigation()
+  const navigation = useStudioNavigation({ endpoint: state.endpoint, api: state.api })
+  const [navigationFailure, setNavigationFailure] = useState<{ target: string; message: string }>()
+  const narrativeTarget = JSON.stringify([state.endpoint, navigation.route.timelineId, navigation.route.branchId])
   const uiScale = useStudioLayoutStore(current => current.uiScale)
   const setUiScale = useStudioLayoutStore(current => current.setUiScale)
   const composerPinned = useStudioLayoutStore(current => current.composerPinned)
@@ -81,6 +83,10 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
   const { assetWorkspaceId, cardsBusy, providerBusy, agentProfileBusy, activePresetId,
     narrativeCharacterName, sourceCardId, canOpenTimelineSource, narrativeCharacterAvatarUrl,
     sessionBusy, agentChatBusy, mutationBusy } = derived
+  const contextWorkspaceId = JSON.stringify([state.endpoint, assetWorkspaceId])
+  const narrativeNavigating = !state.bootstrapReady || navigation.targetPending
+    || navigation.route.timelineId !== state.narrativeTimeline?.id
+    || Boolean(navigation.route.branchId && navigation.route.branchId !== state.branch?.id)
   const composerCommandContext = {
     sourceSurface: 'composer.quick-actions' as const,
     workspaceId: 'workspace',
@@ -141,7 +147,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
   function openStateSource(scope: 'global' | 'timeline') {
     if (scope !== 'timeline' || !canOpenTimelineSource) return
     uiState.setVariableView('authoring')
-    useStudioPanelStore.getState().setActivePanel('state')
+    navigation.openPanel('state')
   }
 
   useEffect(() => {
@@ -197,34 +203,40 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
   }, [activePresetId, uiState.loomScriptRefreshToken, rendererHost, state.agentChatSession?.id, state.api, state.branch?.id, state.narrativeTimeline?.id, state.statesApi])
 
   useEffect(() => {
-    if (navigation.route.panel !== 'preset' && navigation.route.panel !== 'resource') return
+    if (!state.bootstrapReady) return
     if (navigation.route.cardId) {
       if (navigation.route.cardId !== state.selectedCardId) state.setSelectedCardId(navigation.route.cardId)
     }
-  }, [navigation.route.cardId, navigation.route.panel, state.selectedCardId])
+  }, [navigation.route.cardId, state.bootstrapReady])
 
   useEffect(() => {
-    const cardId = navigation.route.panel === 'character' ? navigation.route.cardId : undefined
-    if (cardId && cardId !== state.selectedCardId) state.setSelectedCardId(cardId)
-  }, [navigation.route.cardId, navigation.route.panel, state.selectedCardId, state.setSelectedCardId])
+    if (navigation.route.panel === 'resource' && navigation.route.resourceId) uiState.setResourceView('settings')
+  }, [navigation.route.panel, navigation.route.resourceId])
 
   useEffect(() => {
-    if (navigation.route.panel !== null || !navigation.route.timelineId) return
+    if (!state.bootstrapReady || navigation.route.targetUri !== undefined) return
+    setNavigationFailure(undefined)
+    const requestId = ++timelineRouteRequestRef.current
+    if (!navigation.route.timelineId) {
+      if (state.narrativeTimeline) state.resetToDraftTimeline()
+      return
+    }
     if (navigation.route.timelineId === state.narrativeTimeline?.id && (!navigation.route.branchId || navigation.route.branchId === state.branch?.id)) return
 
-    const requestId = ++timelineRouteRequestRef.current
     void state.activateTimeline(navigation.route.timelineId, navigation.route.branchId).then(branchId => {
       if (requestId !== timelineRouteRequestRef.current) return
-      if (!branchId) navigation.openNarrative(undefined, undefined, true)
-      else if (branchId !== navigation.route.branchId) navigation.openNarrative(navigation.route.timelineId, branchId, true)
+      if (!branchId) setNavigationFailure({ target: narrativeTarget, message: state.t('navigation.targetUnavailable') })
+      else if (branchId !== navigation.route.branchId) navigation.updateNarrativeContext(navigation.route.timelineId!, branchId)
     })
-  }, [navigation.route.branchId, navigation.route.panel, navigation.route.timelineId, state.branch?.id, state.narrativeTimeline?.id])
+    return () => { timelineRouteRequestRef.current++ }
+  }, [narrativeTarget, state.bootstrapReady, navigation.route.targetUri])
   const resourcePanels = StudioResourcePanels({ state, uiState, navigation, assetWorkspaceId })
   const panels = createStudioPanels({ state, uiState, navigation, rendererHost, clientExtensions, clientLogs: props.clientLogs, resourcePanels, assetWorkspaceId, cardsBusy, providerBusy, agentProfileBusy, activePresetId, sourceCardId, sessionBusy, openStateSource, uiScale, setUiScale, backgrounds: clientExtensions.host.backgrounds() })
 
   const studio = (
     <StudioPage
-      assetWorkspaceId={assetWorkspaceId}
+      navigation={navigation}
+      assetWorkspaceId={contextWorkspaceId}
       background={(
         <RendererSurfaceHost
           host={rendererHost}
@@ -278,23 +290,29 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
         preset: (
           <PresetWorkbenchHeader
             resources={state.promptResources}
-            selectedResourceId={uiState.selectedPresetId}
-            onSelectResource={uiState.setSelectedPresetId}
+            selectedResourceId={navigation.route.panel === 'preset' ? navigation.route.resourceId ?? uiState.selectedPresetId : uiState.selectedPresetId}
+            onSelectResource={resourceId => {
+              uiState.setSelectedPresetId(resourceId)
+              const resource = state.promptResources.find(item => item.id === resourceId)
+              if (resource) void navigation.openResource('preset', resourceId, resource.rootNode.id)
+            }}
             t={state.t}
-            workspaceId={assetWorkspaceId}
+            workspaceId={contextWorkspaceId}
           />
         ),
         resource: (
           <ContextWorkbenchHeader
             resources={state.promptResources}
+            selectedResourceId={navigation.route.panel === 'resource' ? navigation.route.resourceId : undefined}
             view={uiState.resourceView}
             t={state.t}
-            workspaceId={assetWorkspaceId}
+            workspaceId={contextWorkspaceId}
             onViewChange={uiState.setResourceView}
             onSelectResource={resourceId => {
               const target = state.promptResources.find(r => r.id === resourceId)
               if (target) {
-                useStudioLayoutStore.getState().openAssetDetail('resources', assetWorkspaceId, target.rootNode.id)
+                void navigation.openResource('resource', target.id, target.rootNode.id)
+                useStudioLayoutStore.getState().openAssetDetail('resources', contextWorkspaceId, target.rootNode.id)
               }
             }}
           />
@@ -328,15 +346,16 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
           } as CSSProperties}
         >
           <NarrativeTimeline
+            key={JSON.stringify([state.endpoint, state.narrativeTimeline?.id, state.branch?.id])}
             anchorNodeId={navigation.nodeAnchorId}
-            busy={sessionBusy}
+            busy={sessionBusy || narrativeNavigating}
             composerHeight={uiState.composerHeight}
             emptyTimelineText={state.emptyTimelineText}
             openingDraft={state.openingDraft}
             getNodeLink={navigation.getNodeLink}
             hasOlder={state.hasOlderNarrativeNodes}
             onEditNode={state.editNarrativeNode}
-            onLoadOlder={() => void state.loadOlderNodes()}
+            onLoadOlder={state.loadOlderNodes}
             onNodeAnchorChange={navigation.setNodeAnchor}
             onForkNode={node => {
               void state.forkFromNode(node).then(activated => {
@@ -359,7 +378,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
           <AgentComposer
             agentPanelOpen={uiState.agentPanelOpen}
             canPreviewPrompt={state.canPreviewPrompt}
-            canSendNarrative={state.canSend}
+            canSendNarrative={state.canSend && !narrativeNavigating}
             composerSheet={(
               <RendererSurfaceHost
                 host={rendererHost}
@@ -397,12 +416,23 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
 
   return (
     <>
-      {studio}
-      <ResourceReferenceDialog api={state.api} onOpenEditor={target => {
+      {navigation.targetError || navigationFailure?.target === narrativeTarget ? (
+        <section role="alert">
+          <p>{navigation.targetError ?? navigationFailure?.message}</p>
+          <button type="button" onClick={() => {
+            setNavigationFailure(undefined)
+            void navigation.openNarrative()
+          }}>{state.t('navigation.returnToWorkspace')}</button>
+        </section>
+      ) : studio}
+      <ResourceReferenceDialog api={state.api} uri={navigation.referenceUri}
+        onClose={() => { void navigation.closeReference() }}
+        onNavigate={uri => { void navigation.openUri(uri) }}
+        onOpenEditor={target => {
         if (target.panel === 'preset') uiState.setSelectedPresetId(target.resourceId)
         else uiState.setResourceView('settings')
         navigation.openResource(target.panel, target.resourceId, target.nodeId)
-        useStudioLayoutStore.getState().openAssetDetail(target.panel === 'preset' ? 'preset' : 'resources', assetWorkspaceId, target.nodeId)
+        useStudioLayoutStore.getState().openAssetDetail(target.panel === 'preset' ? 'preset' : 'resources', contextWorkspaceId, target.nodeId)
       }} />
       <RendererFocusSurface host={rendererHost} scope={{ kind: 'workspace', key: 'workspace' }} />
       <NotificationToaster label={state.t('notification.label')} />

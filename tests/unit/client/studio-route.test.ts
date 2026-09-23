@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildStudioChatPath, buildStudioNodeHash, buildStudioPanelPath, readStudioNodeAnchor, readStudioRoute } from '../../../apps/studio-client/src/shared/studio-shell/studio-route.js'
+import { readStudioNodeAnchor, readStudioRoute } from '../../../apps/studio-client/src/shared/studio-shell/studio-route.js'
 
 describe('studio routes', () => {
   it('reads chat, character and asset identities from paths', () => {
@@ -17,16 +17,7 @@ describe('studio routes', () => {
     expect(readStudioRoute('/studio/unknown')).toEqual({ panel: null })
   })
 
-  it('builds encoded canonical paths', () => {
-    expect(buildStudioChatPath('timeline one', 'main/branch')).toBe('/studio/chat/timeline%20one/branch/main%2Fbranch')
-    expect(buildStudioPanelPath('preset', { cardId: 'card one', assetId: 'asset/two' })).toBe('/studio/presets/card%20one/asset%2Ftwo')
-    expect(buildStudioPanelPath('agent')).toBe('/studio/agents')
-    expect(buildStudioPanelPath('sessions')).toBe('/studio/history')
-    expect(buildStudioPanelPath('play')).toBe('/studio/play')
-  })
-
-  it('round-trips explicit node anchors and rejects unrelated hashes', () => {
-    expect(buildStudioNodeHash('node/一')).toBe('#node-node%2F%E4%B8%80')
+  it('reads explicit node anchors and rejects unrelated hashes', () => {
     expect(readStudioNodeAnchor('#node-node%2F%E4%B8%80')).toBe('node/一')
     expect(readStudioNodeAnchor('#section-settings')).toBeUndefined()
     expect(readStudioNodeAnchor('#node-%E0%A4%A')).toBeUndefined()

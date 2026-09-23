@@ -29,7 +29,6 @@ import {
   toStoredResourceInput,
 } from '../prompt/prompt-resource-mapper.js'
 import type {
-  AgentProfileContent,
   AgentToolContent,
   CardSourceContent,
   CreatePortableExtensionPayloadInput,
@@ -69,7 +68,6 @@ import {
   refreshAgentToolRegistry,
   toAgentToolContent,
 } from './agents-runtime.js'
-import { findTimelinePromptResourceReferences } from './prompt-runtime.js'
 
 type ExtensionsRuntimeContext = Pick<ApplicationRuntimeContext,
   'agentTools' | 'agents' | 'createId' | 'dataEngine' | 'documents' | 'narratives' | 'now' | 'promptResources'
@@ -154,11 +152,6 @@ export function createExtensionsRuntimeMethods(ctx: ExtensionsRuntimeContext) {
     },
 
     deletePortableExtensionPayload: async (input: DeletePortableExtensionPayloadInput, requestContext?: RuntimeRequestContext): Promise<DeletePortableExtensionPayloadResult> => {
-      const cards = await listDocuments<CardSourceContent>(ctx.documents, applicationDocumentTypes.cardSource)
-      const referencingCard = cards.find(card => card.content.portableExtensionPayloadIds?.includes(input.payloadId))
-      if (referencingCard) {
-        throw new Error(`Portable Extension Payload is still bound to Card: ${referencingCard.id}`)
-      }
       const existing = await readDocument<PortableExtensionPayloadContent>(
         ctx.documents,
         input.payloadId,
@@ -848,7 +841,6 @@ async function removeExtensionPackageResourcesInternal(
   const promptResources = (await listMappedResources(ctx.promptResources))
     .filter(resource => resource.origin?.kind === 'extension-package' && resource.origin.packageId === input.packageId)
   const promptResourceIds = new Set(promptResources.map(resource => resource.id))
-  const presetResourceIds = new Set(promptResources.filter(resource => resource.resourceKind === 'preset').map(resource => resource.id))
   const agentTools = (await listAgentToolEntries(ctx))
     .filter(tool => tool.origin?.kind === 'extension-package' && tool.origin.packageId === input.packageId)
   const agentToolIds = new Set(agentTools.map(tool => tool.id))
@@ -870,79 +862,12 @@ async function removeExtensionPackageResourcesInternal(
     }
   }
 
-  const profiles = await listDocuments<AgentProfileContent>(ctx.documents, applicationDocumentTypes.agentProfile)
-  const blockingProfiles = profiles.filter(profile => profile.content.presetId !== undefined && presetResourceIds.has(profile.content.presetId))
-  if (blockingProfiles.length > 0) {
-    throw new Error(`Extension Package resources are still referenced by Agent Profiles: ${blockingProfiles.map(profile => profile.id).join(', ')}`)
-  }
-  const profilesWithToolOverrides = profiles.filter(profile => Object.keys(profile.content.toolOverrides ?? {}).some(toolId => agentToolIds.has(toolId)))
-  const cards = (await listDocuments<CardSourceContent>(ctx.documents, applicationDocumentTypes.cardSource))
-    .filter(card => card.content.promptResourceIds?.some(resourceId => promptResourceIds.has(resourceId)))
-  const timelineReferences = new Map<string, { id: string; promptResourceIds: string[] }>()
-  for (const resourceId of promptResourceIds) {
-    for (const timeline of await findTimelinePromptResourceReferences(ctx, resourceId)) timelineReferences.set(timeline.id, timeline)
-  }
-
-  const toolMounts = await ctx.promptResources.listPresetToolMounts()
-  const removedToolMounts = toolMounts.filter(mount => presetResourceIds.has(mount.presetResourceId) || agentToolIds.has(mount.toolId))
-  const affectedPresetIds = new Set(removedToolMounts
-    .filter(mount => !presetResourceIds.has(mount.presetResourceId))
-    .map(mount => mount.presetResourceId))
-
   const transaction = await ctx.dataEngine.transact({
     ...promptResourceWriteContext(requestContext),
     reason: 'application.removeExtensionPackageResources',
   }, async dataTx => {
     const resourceTx = ctx.promptResources.transaction(dataTx)
-    const narrativeTx = ctx.narratives?.transaction(dataTx)
-    for (const timeline of timelineReferences.values()) {
-      narrativeTx?.updatePromptResources({
-        timelineId: timeline.id,
-        promptResourceIds: timeline.promptResourceIds.filter(resourceId => !promptResourceIds.has(resourceId)),
-        expectedPromptResourceIds: timeline.promptResourceIds,
-      })
-    }
-    for (const presetResourceId of affectedPresetIds) {
-      resourceTx.replacePresetToolMounts({
-        presetResourceId,
-        mounts: toolMounts
-          .filter(mount => mount.presetResourceId === presetResourceId && !agentToolIds.has(mount.toolId))
-          .map(mount => ({
-            toolId: mount.toolId,
-            orderIndex: mount.orderIndex,
-            defaultEnabled: mount.defaultEnabled,
-            ...(mount.activation ? { activation: structuredClone(mount.activation) } : {}),
-            ...(mount.provider ? { provider: { ...mount.provider } } : {}),
-            ...(mount.content ? { content: { ...mount.content } } : {}),
-            origin: structuredClone(mount.origin),
-          })),
-      })
-    }
     return documentParticipant.participateTransaction(dataTx, async documents => {
-      for (const card of cards) {
-        await writeDocument<CardSourceContent>(documents, {
-          id: card.id,
-          type: applicationDocumentTypes.cardSource,
-          content: {
-            ...card.content,
-            promptResourceIds: card.content.promptResourceIds?.filter(resourceId => !promptResourceIds.has(resourceId)),
-            updatedAt: ctx.now(),
-          },
-          expectedVersion: card.version,
-        })
-      }
-      for (const profile of profilesWithToolOverrides) {
-        await writeDocument<AgentProfileContent>(documents, {
-          id: profile.id,
-          type: applicationDocumentTypes.agentProfile,
-          content: {
-            ...profile.content,
-            toolOverrides: Object.fromEntries(Object.entries(profile.content.toolOverrides ?? {}).filter(([toolId]) => !agentToolIds.has(toolId))),
-            updatedAt: ctx.now(),
-          },
-          expectedVersion: profile.version,
-        })
-      }
       for (const tool of agentTools) await documents.delete({ id: tool.id, expectedVersion: tool.version })
       for (const rule of transformRules) await documents.delete({ id: rule.id, expectedVersion: rule.version })
       for (const extractor of textExtractors) await documents.delete({ id: extractor.id, expectedVersion: extractor.version })
@@ -958,10 +883,10 @@ async function removeExtensionPackageResourcesInternal(
     textTransformRuleIds: [...textTransformRuleIds].sort(),
     textExtractorIds: [...textExtractorIds].sort(),
     detachedReferences: {
-      cards: cards.length,
-      timelines: timelineReferences.size,
-      agentProfiles: profilesWithToolOverrides.length,
-      presetToolMounts: removedToolMounts.length,
+      cards: 0,
+      timelines: 0,
+      agentProfiles: 0,
+      presetToolMounts: 0,
     },
     mutation: { changesetId: transaction.commit.changesetId },
   }

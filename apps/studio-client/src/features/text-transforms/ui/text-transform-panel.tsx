@@ -59,16 +59,16 @@ export function useTextTransformController(props: TextTransformProps) {
   const [rules, setRules] = useState<TextTransformRule[]>([])
   const [extractors, setExtractors] = useState<TextExtractor[]>([])
   const [renderers, setRenderers] = useState<RendererDefinition[]>([])
-  const [inspection, setInspection] = useState<TextPipelineInspection>()
+  const [inspectionResult, setInspection] = useState<TextPipelineInspection>()
   const [scripts, setScripts] = useState<LoomScript[]>([])
   const [mounts, setMounts] = useState<LoomScriptMount[]>([])
   const [resolvedMounts, setResolvedMounts] = useState<ResolvedLoomScriptRendererMount[]>([])
   const [rendererRevision, setRendererRevision] = useState(0)
   const [scriptSource, setScriptSource] = useState('')
   const [scriptFileName, setScriptFileName] = useState('script.loom.js')
-  const [overrideVersion, setOverrideVersion] = useState<number>()
-  const [disabledRuleIds, setDisabledRuleIds] = useState<string[]>([])
-  const [orderedRuleIds, setOrderedRuleIds] = useState<string[]>([])
+  const [storedOverrideVersion, setOverrideVersion] = useState<number>()
+  const [storedDisabledRuleIds, setDisabledRuleIds] = useState<string[]>([])
+  const [storedOrderedRuleIds, setOrderedRuleIds] = useState<string[]>([])
   const [traceEntryId, setTraceEntryId] = useState('')
   const [searchValue, setSearchValue] = useState('')
   const [selectedTarget, setSelectedTarget] = useState<SelectedTarget>(authoring ? { kind: 'empty' } : { kind: 'inspection' })
@@ -90,10 +90,26 @@ export function useTextTransformController(props: TextTransformProps) {
   const [ruleText, setRuleText] = useState(defaultRuleText)
   const [extractorText, setExtractorText] = useState(defaultExtractorText)
   const [phase, setPhase] = useState<TextTransformPhase>('display')
-  const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const inspectionRequest = useRef(0)
+  const refreshRequest = useRef(0)
+  const mountedRef = useRef(true)
   const sourceKey = JSON.stringify({ source, phase, consumerAgentSessionId })
+  const catalogScope = useMemo(() => ({ api: props.api, loomScriptsApi: props.loomScriptsApi, ownerKey, runtimeScriptContextKey }), [props.api, props.loomScriptsApi, ownerKey, runtimeScriptContextKey])
+  const catalogScopeRef = useRef(catalogScope)
+  catalogScopeRef.current = catalogScope
+  const inspectionScope = useMemo(() => ({ catalogScope, sourceKey }), [catalogScope, sourceKey])
+  const inspectionScopeRef = useRef(inspectionScope)
+  inspectionScopeRef.current = inspectionScope
+  const [errorState, setErrorState] = useState<{ scope: typeof inspectionScope; message: string }>()
+  const error = errorState?.scope === inspectionScope ? errorState.message : ''
+  const [resultScope, setResultScope] = useState<typeof inspectionScope>()
+  const [inspectionTask, setInspectionTask] = useState<typeof inspectionScope>()
+  const overrideSaveRef = useRef<typeof inspectionScope | undefined>(undefined)
+  const inspection = resultScope === inspectionScope ? inspectionResult : undefined
+  const overrideVersion = resultScope === inspectionScope ? storedOverrideVersion : undefined
+  const disabledRuleIds = resultScope === inspectionScope ? storedDisabledRuleIds : []
+  const orderedRuleIds = resultScope === inspectionScope ? storedOrderedRuleIds : []
   const mobilePane = props.mobilePane ?? internalMobilePane
   const setMobilePane = props.onMobilePaneChange ?? setInternalMobilePane
   const visibleRules = useMemo(() => rules.filter(rule => ownerMatches(rule.owner, owner)), [owner, rules])
@@ -106,7 +122,32 @@ export function useTextTransformController(props: TextTransformProps) {
 
   useEffect(() => props.rendererHost?.subscribe(() => setRendererRevision(props.rendererHost?.revision() ?? 0)), [props.rendererHost])
 
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      inspectionRequest.current++
+      refreshRequest.current++
+    }
+  }, [])
+
+  function isCurrentCatalog() {
+    return mountedRef.current && catalogScopeRef.current === catalogScope
+  }
+
+  function isCurrentInspection(requestId: number) {
+    return mountedRef.current && inspectionScopeRef.current === inspectionScope && inspectionRequest.current === requestId
+  }
+
+  function setError(message: string) {
+    if (mountedRef.current && inspectionScopeRef.current === inspectionScope) {
+      setErrorState({ scope: inspectionScope, message })
+    }
+  }
+
   async function refresh() {
+    if (!isCurrentCatalog()) return
+    const requestId = ++refreshRequest.current
     try {
       setBusy(true)
       const [ruleResult, extractorResult, rendererResult, scriptResult, mountResult, resolvedResult] = await Promise.all([
@@ -115,6 +156,7 @@ export function useTextTransformController(props: TextTransformProps) {
         authoring ? (props.loomScriptsApi?.listMounts(scriptOwner) ?? Promise.resolve({ mounts: [] })) : Promise.resolve({ mounts: [] }),
         !authoring && props.loomScriptsApi ? props.loomScriptsApi.resolveRendererMounts(props.runtimeScriptContext) : Promise.resolve({ mounts: [] }),
       ])
+      if (!isCurrentCatalog() || requestId !== refreshRequest.current) return
       setRules(ruleResult.rules)
       setExtractors(extractorResult.extractors)
       setRenderers(rendererResult.renderers)
@@ -123,9 +165,9 @@ export function useTextTransformController(props: TextTransformProps) {
       setResolvedMounts(resolvedResult.mounts)
       setError('')
     } catch (cause) {
-      setError(readError(cause))
+      if (isCurrentCatalog() && requestId === refreshRequest.current) setError(readError(cause))
     } finally {
-      setBusy(false)
+      if (isCurrentCatalog() && requestId === refreshRequest.current) setBusy(false)
     }
   }
 
@@ -139,41 +181,52 @@ export function useTextTransformController(props: TextTransformProps) {
     setTraceEntryId('')
     inspectionRequest.current += 1
     void refresh()
-  }, [ownerKey, runtimeScriptContextKey])
+  }, [catalogScope])
   useEffect(() => {
     setSelectedRuntimeContextId(current => runtimeContexts.some(context => context.id === current) ? current : (runtimeContexts[0]?.id ?? ''))
   }, [runtimeContextsKey])
-  useEffect(() => { setInspection(undefined); setTraceEntryId(''); inspectionRequest.current += 1 }, [sourceKey])
+  useEffect(() => {
+    setInspection(undefined)
+    setResultScope(undefined)
+    setInspectionTask(undefined)
+    setTraceEntryId('')
+    setError('')
+    inspectionRequest.current += 1
+  }, [inspectionScope])
 
-  async function inspect(requestedTraceEntryId = traceEntryId) {
-    if (!source) return
+  async function inspect(requestedTraceEntryId = resultScope === inspectionScope ? traceEntryId : '') {
+    if (!source || !mountedRef.current || inspectionScopeRef.current !== inspectionScope || overrideSaveRef.current === inspectionScope) return
     const requestId = inspectionRequest.current + 1
-    const requestedKey = sourceKey
     inspectionRequest.current = requestId
     setInspection(undefined)
+    setResultScope(undefined)
     try {
-      setBusy(true)
+      setInspectionTask(inspectionScope)
       let result = await props.api.inspectTextPipeline({ source, phase, ...(consumerAgentSessionId ? { consumerAgentSessionId } : {}), ...(requestedTraceEntryId ? { traceEntryId: requestedTraceEntryId } : {}) })
+      if (!isCurrentInspection(requestId)) return
       if (!requestedTraceEntryId) {
         const defaultTraceEntryId = result.snapshot.entries.at(-1)?.id
         if (defaultTraceEntryId) {
           result = await props.api.inspectTextPipeline({ source, phase, ...(consumerAgentSessionId ? { consumerAgentSessionId } : {}), traceEntryId: defaultTraceEntryId })
+          if (!isCurrentInspection(requestId)) return
           requestedTraceEntryId = defaultTraceEntryId
         }
       }
-      if (inspectionRequest.current === requestId && requestedKey === sourceKey) {
+      if (isCurrentInspection(requestId)) {
+        const overrideResult = await props.api.getOverride({ source, phase, ...(consumerAgentSessionId ? { consumerAgentSessionId } : {}) })
+        if (!isCurrentInspection(requestId)) return
         setInspection(result)
         setTraceEntryId(requestedTraceEntryId)
-        const overrideResult = await props.api.getOverride({ source, phase, ...(consumerAgentSessionId ? { consumerAgentSessionId } : {}) })
         setOverrideVersion(overrideResult.override?.version)
         setDisabledRuleIds(overrideResult.override?.disabledRuleIds ?? [])
         setOrderedRuleIds(overrideResult.override?.orderedRuleIds ?? result.rules.map(rule => rule.id))
+        setResultScope(inspectionScope)
         setError('')
       }
     } catch (cause) {
-      if (inspectionRequest.current === requestId && requestedKey === sourceKey) setError(readError(cause))
+      if (isCurrentInspection(requestId)) setError(readError(cause))
     } finally {
-      if (inspectionRequest.current === requestId) setBusy(false)
+      if (isCurrentInspection(requestId)) setInspectionTask(undefined)
     }
   }
 
@@ -232,15 +285,24 @@ export function useTextTransformController(props: TextTransformProps) {
   }
 
   async function saveOverride(nextDisabled = disabledRuleIds, nextOrder = orderedRuleIds) {
-    if (!source) return
+    if (!source || !inspection || !mountedRef.current || inspectionScopeRef.current !== inspectionScope || overrideSaveRef.current === inspectionScope) return
+    overrideSaveRef.current = inspectionScope
+    const requestId = ++inspectionRequest.current
     try {
-      setBusy(true)
+      setInspectionTask(inspectionScope)
       const result = await props.api.upsertOverride({ source, phase, ...(consumerAgentSessionId ? { consumerAgentSessionId } : {}), ...(overrideVersion !== undefined ? { expectedVersion: overrideVersion } : {}), disabledRuleIds: nextDisabled, orderedRuleIds: nextOrder })
+      if (!isCurrentInspection(requestId)) return
       setOverrideVersion(result.override.version)
       setDisabledRuleIds(result.override.disabledRuleIds)
       setOrderedRuleIds(result.override.orderedRuleIds)
+      overrideSaveRef.current = undefined
       await inspect()
-    } catch (cause) { setError(readError(cause)) } finally { setBusy(false) }
+    } catch (cause) {
+      if (isCurrentInspection(requestId)) setError(readError(cause))
+    } finally {
+      if (overrideSaveRef.current === inspectionScope) overrideSaveRef.current = undefined
+      if (isCurrentInspection(requestId)) setInspectionTask(undefined)
+    }
   }
 
   function selectRule(id: string) {
@@ -333,14 +395,14 @@ export function useTextTransformController(props: TextTransformProps) {
     extractorText,
     phase,
     error,
-    busy,
+    busy: busy || inspectionTask === inspectionScope,
     visibleRules,
     visibleExtractors,
     visibleScripts,
     resolvedMounts,
     runtimeRenderers,
     rendererRevision,
-    traceEntryId,
+    traceEntryId: resultScope === inspectionScope ? traceEntryId : '',
     finalOrder,
     refresh,
     inspect,
@@ -386,6 +448,8 @@ export function TextTransformPanel(props: TextTransformProps) {
     </header>
     {controller.error ? <div className={styles.errorBanner}>{controller.error}</div> : null}
     <MasterDetailWorkbench
+      backLabel={props.t('textTransform.backToSettings')}
+      resizeLabel={props.t('stateVariables.resizeSidebar')}
       dataComponent="text-transform-workbench"
       masterWidth="minmax(240px, 300px)"
       mobilePane={controller.mobilePane}
@@ -399,6 +463,7 @@ export function TextTransformPanel(props: TextTransformProps) {
 
 export function TextTransformExplorer({ controller }: { controller: TextTransformController }) {
   const { t } = controller
+  const scriptInputRef = useRef<HTMLInputElement>(null)
   return <nav aria-label={t('textTransform.navigation')} className={styles.masterNav}>
     {controller.authoring ? <>
       <div className={styles.navGroup}>
@@ -412,7 +477,7 @@ export function TextTransformExplorer({ controller }: { controller: TextTransfor
         {controller.visibleExtractors.length === 0 ? <button className={styles.navItem} type="button" onClick={controller.startNewExtractor}><Plus aria-hidden="true" /><span className={styles.navItemBody}><strong>{t('textTransform.newExtractor')}</strong><small>{t('textTransform.ownerExtractorsEmpty')}</small></span></button> : null}
       </div>
       {controller.loomScriptsApi ? <div className={styles.navGroup}>
-        <header><span>{t('textTransform.ownerScripts')}</span><label className={styles.navAddBtn} title={t('textTransform.importScript')}><Plus aria-hidden="true" size={14} /><input accept=".loom.js,text/javascript" hidden type="file" onChange={event => { const file = event.target.files?.[0]; if (file) void controller.importScript(file); event.currentTarget.value = '' }} /></label></header>
+        <header><span>{t('textTransform.ownerScripts')}</span><button aria-label={t('textTransform.importScript')} className={styles.navAddBtn} title={t('textTransform.importScript')} type="button" onClick={() => scriptInputRef.current?.click()}><Plus aria-hidden="true" size={14} /></button><input aria-label={t('textTransform.importScript')} ref={scriptInputRef} accept=".loom.js,text/javascript" hidden type="file" onChange={event => { const file = event.target.files?.[0]; if (file) void controller.importScript(file); event.currentTarget.value = '' }} /></header>
         {controller.visibleScripts.sort((a, b) => a.mount.orderIndex - b.mount.orderIndex).map(({ script, mount }) => <button key={mount.id} aria-current={controller.selectedTarget.kind === 'script' && controller.selectedTarget.id === script.id ? 'page' : undefined} className={styles.navItem} type="button" onClick={() => void controller.selectScript(script.id)}><Code2 aria-hidden="true" /><span className={styles.navItemBody}><strong>{script.name}</strong><small>{script.metadataId} · {mount.enabled ? t('textTransform.enabled') : t('textTransform.disabled')}</small></span><span className={styles.orderBadge}>{mount.orderIndex}</span></button>)}
         {controller.visibleScripts.length === 0 ? <p className={styles.emptyState}>{t('textTransform.ownerScriptsEmpty')}</p> : null}
       </div> : null}
@@ -451,7 +516,7 @@ export function TextTransformDetail({ controller }: { controller: TextTransformC
 
 function EditorDetail(props: { controller: TextTransformController; icon: ReactNode; title: string; id: string; text: string; setText(value: string): void; onFormat(): void; onSave(): void; onDelete?: () => void; readOnly?: boolean }) {
   const { t } = props.controller
-  return <><header className={styles.detailHeader}><div className={styles.headerTitle}>{props.icon}<h3>{props.title}</h3><input className={styles.inlineInput} aria-label={t('textTransform.documentId')} value={props.id} readOnly /></div>{!props.readOnly ? <div className={styles.headerActions}><Button size="small" variant="secondary" onClick={props.onFormat}><Wand2 aria-hidden="true" size={13} /><span>{t('textTransform.format')}</span></Button>{props.onDelete ? <Button size="small" variant="danger" onClick={props.onDelete}><Trash2 aria-hidden="true" size={13} /><span>{t('textTransform.delete')}</span></Button> : null}<Button size="small" variant="ghost" disabled={!props.id.trim()} onClick={props.onSave}>{t('textTransform.save')}</Button></div> : null}</header><div className={styles.editorContainer}><textarea className={styles.rawJsonTextarea} readOnly={props.readOnly} spellCheck={false} value={props.text} onChange={event => props.setText(event.target.value)} /></div></>
+  return <><header className={styles.detailHeader}><div className={styles.headerTitle}>{props.icon}<h3>{props.title}</h3><input className={styles.inlineInput} aria-label={t('textTransform.documentId')} value={props.id} readOnly /></div>{!props.readOnly ? <div className={styles.headerActions}><Button size="small" variant="secondary" onClick={props.onFormat}><Wand2 aria-hidden="true" size={13} /><span>{t('textTransform.format')}</span></Button>{props.onDelete ? <Button size="small" variant="danger" onClick={props.onDelete}><Trash2 aria-hidden="true" size={13} /><span>{t('textTransform.delete')}</span></Button> : null}<Button size="small" variant="ghost" disabled={!props.id.trim()} onClick={props.onSave}>{t('textTransform.save')}</Button></div> : null}</header><div className={styles.editorContainer}><textarea aria-label={t('textTransform.jsonEditor', { title: props.title })} className={styles.rawJsonTextarea} readOnly={props.readOnly} spellCheck={false} value={props.text} onChange={event => props.setText(event.target.value)} /></div></>
 }
 
 function RuntimePipelinePanel({ controller, heading }: { controller: TextTransformController; heading: string }) {
@@ -483,7 +548,7 @@ function RuntimePipelinePanel({ controller, heading }: { controller: TextTransfo
       <div><h2>{heading}</h2><p>{t('textTransform.runtimeDescription')}</p></div>
       <div className={styles.headerActions}>
         {controller.runtimeContexts.length > 1 ? (
-          <select className={styles.inlineInput} value={controller.selectedRuntimeContextId} onChange={event => controller.selectRuntimeContext(event.target.value)}>
+          <select aria-label={t('textTransform.currentContext')} className={styles.inlineInput} value={controller.selectedRuntimeContextId} onChange={event => controller.selectRuntimeContext(event.target.value)}>
             {controller.runtimeContexts.map(context => <option key={context.id} value={context.id}>{context.label}</option>)}
           </select>
         ) : null}
@@ -500,6 +565,7 @@ function RuntimePipelinePanel({ controller, heading }: { controller: TextTransfo
     </header>
     {controller.error ? <div className={styles.errorBanner}>{controller.error}</div> : null}
     <PipelineWorkbenchView
+      t={t}
       ariaLabel={t('textTransform.navigation')}
       backLabel={t('textTransform.backToSettings')}
       detail={<TextTransformDetail controller={controller} />}
@@ -507,7 +573,7 @@ function RuntimePipelinePanel({ controller, heading }: { controller: TextTransfo
       filters={<>
         <select aria-label={t('textTransform.filterOwner')} value={ownerFilter} onChange={event => setOwnerFilter(event.target.value)}><option value="">{t('textTransform.filterAllOwners')}</option>{ownerOptions.map(value => <option key={value} value={value}>{value}</option>)}</select>
         <select aria-label={t('textTransform.filterEffect')} value={effectFilter} onChange={event => setEffectFilter(event.target.value)}><option value="">{t('textTransform.filterAllEffects')}</option>{effectOptions.map(value => <option key={value} value={value}>{value}</option>)}</select>
-        <select aria-label={t('textTransform.filterStatus')} value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="">{t('textTransform.filterAllStatuses')}</option>{['active', 'disabled', 'degraded', 'conflict'].map(value => <option key={value} value={value}>{value}</option>)}</select>
+        <select aria-label={t('textTransform.filterStatus')} value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="">{t('textTransform.filterAllStatuses')}</option>{(['active', 'disabled', 'degraded', 'conflict'] as const).map(value => <option key={value} value={value}>{t(`textTransform.status.${value}`)}</option>)}</select>
       </>}
       groups={groups}
       mobilePane={controller.mobilePane}
@@ -535,20 +601,20 @@ function ScriptDetail({ controller }: { controller: TextTransformController }) {
   const selectedScriptId = controller.selectedTarget.kind === 'script' ? controller.selectedTarget.id : undefined
   const resolved = selectedScriptId ? controller.resolvedMounts.find(item => item.script.id === selectedScriptId) : undefined
   const selected = selectedScriptId ? controller.visibleScripts.find(item => item.script.id === selectedScriptId) : undefined
-  if (resolved) return <><header className={styles.detailHeader}><div className={styles.headerTitle}><Code2 aria-hidden="true" size={16} /><h3>{resolved.script.name}</h3><small>{resolved.script.metadataId} · v{resolved.script.version}</small></div></header><div className={styles.inspectionContainer}><section className={styles.inspectionSection}><h4>{t('textTransform.metadata')}</h4><pre className={styles.dryRunOutput}>{JSON.stringify({ mountId: resolved.mountId, enabled: resolved.enabled, orderIndex: resolved.orderIndex, grantedCapabilities: resolved.grantedCapabilities, scriptVersion: resolved.script.scriptVersion, requestedCapabilities: resolved.script.requestedCapabilities, contributions: resolved.script.contributions }, null, 2)}</pre></section><section className={styles.inspectionSection}><h4>{t('textTransform.source')}</h4><textarea className={styles.rawJsonTextarea} readOnly spellCheck={false} value={resolved.source} /></section></div></>
+  if (resolved) return <><header className={styles.detailHeader}><div className={styles.headerTitle}><Code2 aria-hidden="true" size={16} /><h3>{resolved.script.name}</h3><small>{resolved.script.metadataId} · v{resolved.script.version}</small></div></header><div className={styles.inspectionContainer}><section className={styles.inspectionSection}><h4>{t('textTransform.metadata')}</h4><pre className={styles.dryRunOutput}>{JSON.stringify({ mountId: resolved.mountId, enabled: resolved.enabled, orderIndex: resolved.orderIndex, grantedCapabilities: resolved.grantedCapabilities, scriptVersion: resolved.script.scriptVersion, requestedCapabilities: resolved.script.requestedCapabilities, contributions: resolved.script.contributions }, null, 2)}</pre></section><section className={styles.inspectionSection}><h4>{t('textTransform.source')}</h4><textarea aria-label={t('textTransform.source')} className={styles.rawJsonTextarea} readOnly spellCheck={false} value={resolved.source} /></section></div></>
   if (!selected) return <div className={styles.editorContainer}><p className={styles.emptyState}>{t('textTransform.ownerScriptsEmpty')}</p></div>
   const { script, mount } = selected
   return <><header className={styles.detailHeader}><div className={styles.headerTitle}><Code2 aria-hidden="true" size={16} /><h3>{script.name}</h3><small>{script.metadataId} · v{script.version}</small></div><div className={styles.headerActions}><label><input checked={mount.enabled} type="checkbox" onChange={event => void controller.updateScriptMount(mount, { enabled: event.target.checked })} /> {t('textTransform.enabled')}</label><input aria-label={t('textTransform.order')} className={styles.inlineInput} type="number" value={mount.orderIndex} onChange={event => void controller.updateScriptMount(mount, { orderIndex: Number(event.target.value) })} /><Button size="small" variant="ghost" disabled={controller.busy} onClick={() => void controller.saveScript()}>{t('textTransform.save')}</Button></div></header><div className={styles.inspectionContainer}>
     <section className={styles.inspectionSection}><h4>{t('textTransform.metadata')}</h4><pre className={styles.dryRunOutput}>{JSON.stringify({ owner: script.owner, scriptVersion: script.scriptVersion, runtime: script.runtime, requestedCapabilities: script.requestedCapabilities, contributions: script.contributions }, null, 2)}</pre></section>
     <section className={styles.inspectionSection}><h4>{t('textTransform.grants')}</h4>{script.requestedCapabilities.length === 0 ? <p className={styles.emptyState}>{t('textTransform.noGrants')}</p> : script.requestedCapabilities.map(capability => <label key={capability}><input checked={mount.grantedCapabilities.includes(capability)} type="checkbox" onChange={event => void controller.updateScriptMount(mount, { grantedCapabilities: event.target.checked ? [...mount.grantedCapabilities, capability] : mount.grantedCapabilities.filter(value => value !== capability) })} /> {capability}</label>)}</section>
-    <section className={styles.inspectionSection}><h4>{t('textTransform.source')}</h4><input className={styles.inlineInput} value={controller.scriptFileName} onChange={event => controller.setScriptFileName(event.target.value)} /><textarea className={styles.rawJsonTextarea} spellCheck={false} value={controller.scriptSource} onChange={event => controller.setScriptSource(event.target.value)} /></section>
+    <section className={styles.inspectionSection}><h4>{t('textTransform.source')}</h4><input aria-label={t('textTransform.scriptFileName')} className={styles.inlineInput} value={controller.scriptFileName} onChange={event => controller.setScriptFileName(event.target.value)} /><textarea aria-label={t('textTransform.source')} className={styles.rawJsonTextarea} spellCheck={false} value={controller.scriptSource} onChange={event => controller.setScriptSource(event.target.value)} /></section>
   </div></>
 }
 
 function RuntimeItemDetail({ controller }: { controller: TextTransformController }) {
   const target = controller.selectedTarget
   const value = target.kind === 'match' ? controller.inspection?.snapshot.matches.find(item => item.matchId === target.id) : target.kind === 'artifact' ? controller.inspection?.artifacts.find(item => item.artifactId === target.id) : undefined
-  return <><header className={styles.detailHeader}><div className={styles.headerTitle}><Layers aria-hidden="true" size={16} /><h3>{target.kind}</h3></div></header><div className={styles.editorContainer}><pre className={styles.dryRunOutput}>{JSON.stringify(value, null, 2)}</pre></div></>
+  return <><header className={styles.detailHeader}><div className={styles.headerTitle}><Layers aria-hidden="true" size={16} /><h3>{controller.t(target.kind === 'match' ? 'textTransform.matchTitle' : 'textTransform.artifactTitle')}</h3></div></header><div className={styles.editorContainer}><pre className={styles.dryRunOutput}>{JSON.stringify(value, null, 2)}</pre></div></>
 }
 
 function OverrideControls({ controller, ruleId }: { controller: TextTransformController; ruleId: string }) {

@@ -5,6 +5,7 @@ import type {
 } from '@loom-studio/data-engine'
 import { createId, nowIso, type JsonObject, type JsonValue } from '@loom-studio/shared'
 import type { DatabaseSync } from 'node:sqlite'
+import { isJsonValue } from '../json.js'
 import type {
   CreateStateRevisionInput,
   CreateStateRevisionResult,
@@ -421,7 +422,7 @@ function applyStateDelta(snapshot: JsonObject, operations: StateDeltaOperation[]
   const next = structuredClone(snapshot)
   for (const operation of operations) {
     const key = operation.path.at(-1)
-    if (!key) throw new StateStoreError('state.data_invalid', 'State delta path cannot be empty')
+    if (key === undefined) throw new StateStoreError('state.data_invalid', 'State delta path cannot be empty')
     let parent = next
     for (const segment of operation.path.slice(0, -1)) {
       if (!Object.hasOwn(parent, segment)) {
@@ -628,19 +629,14 @@ function validateScopeKind(value: unknown): asserts value is StateScopeKind {
 }
 
 function validateOperations(value: unknown): asserts value is JsonObject[] {
-  if (!Array.isArray(value) || value.some(item => !isJsonObject(item))) {
+  if (!Array.isArray(value) || !isJsonValue(value) || value.some(item => !isJsonObject(item))) {
     throw new StateStoreError('state.operations_invalid', 'State operations must be an array of JSON objects')
   }
 }
 
 function validateJsonObject(value: unknown, field: string): asserts value is JsonObject {
-  if (!isJsonObject(value)) {
+  if (!isJsonObject(value) || !isJsonValue(value)) {
     throw new StateStoreError('state.snapshot_invalid', `State ${field} must be a JSON object`)
-  }
-  try {
-    JSON.stringify(value)
-  } catch {
-    throw new StateStoreError('state.snapshot_invalid', `State ${field} must be JSON serializable`)
   }
 }
 

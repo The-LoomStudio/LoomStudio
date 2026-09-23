@@ -95,6 +95,7 @@ function validateTimelineArchive(value: unknown): asserts value is TimelineArchi
   for (const branch of archive.branches) {
     if (branch.timelineId !== archive.timeline.id) throw new Error('Timeline archive branch belongs to another timeline')
     if (branch.headNodeId && !nodeIds.has(branch.headNodeId)) throw new Error('Timeline archive branch head is missing')
+    if (branch.forkedFromNodeId && !nodeIds.has(branch.forkedFromNodeId)) throw new Error('Timeline archive fork point is missing')
     if (branch.parentBranchId && (!branchIds.has(branch.parentBranchId) || !branch.forkedFromNodeId)) throw new Error('Timeline archive branch parent is missing')
     if (!branch.parentBranchId && branch.forkedFromNodeId) throw new Error('Timeline archive root branch cannot have a fork point')
   }

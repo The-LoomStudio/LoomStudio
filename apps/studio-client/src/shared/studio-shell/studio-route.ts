@@ -1,12 +1,15 @@
 import { matchPath } from 'react-router-dom'
 import type { StudioPanelId } from './studio-layout-store.js'
 
-type StudioRoute = {
+export type StudioRoute = {
   assetId?: string
+  resourceId?: string
   branchId?: string
   cardId?: string
   panel: StudioPanelId | null
   timelineId?: string
+  nodeId?: string
+  search?: string
 }
 
 const PANEL_PATHS: Record<StudioPanelId, string> = {
@@ -25,10 +28,18 @@ const PANEL_PATHS: Record<StudioPanelId, string> = {
   settings: 'settings',
 }
 
+export const STUDIO_ENTRY_PATHS = [
+  '/', '/studio', '/studio/chat/:timelineId?/branch/:branchId', '/studio/chat/:timelineId?',
+  '/studio/characters/:cardId?', '/studio/resources/reference/:resourceId/node/:nodeId',
+  '/studio/presets/reference/:resourceId/node/:nodeId',
+  '/studio/resources/:cardId?/:assetId?', '/studio/presets/:cardId?/:assetId?',
+  ...Object.values(PANEL_PATHS).map(segment => `/studio/${segment}`),
+]
+
 export function readStudioRoute(pathname: string): StudioRoute {
   for (const [segment, panel] of [['resources', 'resource'], ['presets', 'preset']] as const) {
     const reference = matchPath(`/studio/${segment}/reference/:resourceId/node/:nodeId`, pathname)
-    if (reference) return { panel, assetId: reference.params.nodeId }
+    if (reference) return { panel, resourceId: reference.params.resourceId, assetId: reference.params.nodeId }
   }
   const chatBranch = matchPath('/studio/chat/:timelineId/branch/:branchId', pathname)
   if (chatBranch) return { panel: null, timelineId: chatBranch.params.timelineId, branchId: chatBranch.params.branchId }
@@ -52,26 +63,12 @@ export function readStudioRoute(pathname: string): StudioRoute {
   return { panel: null }
 }
 
-export function buildStudioResourcePath(panel: 'resource' | 'preset', resourceId: string, nodeId: string): string {
-  return `/studio/${panel === 'preset' ? 'presets' : 'resources'}/reference/${encodeURIComponent(resourceId)}/node/${encodeURIComponent(nodeId)}`
-}
-
-export function buildStudioChatPath(timelineId?: string, branchId?: string): string {
-  if (!timelineId) return '/studio/chat'
-  if (!branchId) return `/studio/chat/${encodeURIComponent(timelineId)}`
-  return `/studio/chat/${encodeURIComponent(timelineId)}/branch/${encodeURIComponent(branchId)}`
-}
-
 export function buildStudioLogPath(input: { packageId?: string; runId?: string; source?: 'all' | 'server' | 'client' | 'history' } = {}): string {
   const params = new URLSearchParams()
   if (input.packageId) params.set('logPackage', input.packageId)
   if (input.runId) params.set('logRun', input.runId)
   params.set('logSource', input.source ?? 'all')
   return `/studio/logs?${params}`
-}
-
-export function buildStudioNodeHash(nodeId: string): string {
-  return `#node-${encodeURIComponent(nodeId)}`
 }
 
 export function readStudioNodeAnchor(hash: string): string | undefined {
@@ -81,13 +78,4 @@ export function readStudioNodeAnchor(hash: string): string | undefined {
   } catch {
     return undefined
   }
-}
-
-export function buildStudioPanelPath(panel: StudioPanelId, input: { assetId?: string; cardId?: string } = {}): string {
-  const base = `/studio/${PANEL_PATHS[panel]}`
-  if (panel === 'character') return input.cardId ? `${base}/${encodeURIComponent(input.cardId)}` : base
-  if (panel !== 'resource' && panel !== 'preset') return base
-  if (!input.cardId) return base
-  const cardPath = `${base}/${encodeURIComponent(input.cardId)}`
-  return input.assetId ? `${cardPath}/${encodeURIComponent(input.assetId)}` : cardPath
 }
