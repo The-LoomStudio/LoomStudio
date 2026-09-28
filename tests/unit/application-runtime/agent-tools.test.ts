@@ -258,12 +258,15 @@ describe('Agent Tool Foundation', () => {
             invocation.id === 'denied'
               ? { decision: 'deny', reason: 'read access denied' }
               : { decision: 'allow' },
-          execute: ({ invocation, tool, signal }) => ({
-            invocationId: invocation.id,
-            toolId: tool.id,
-            status: signal.aborted ? 'aborted' : 'completed',
-            content: [{ type: 'json', value: { query: invocation.arguments } }],
-          }),
+          execute: ({ invocation, tool, signal }) => {
+            expect(invocation.arguments).toBeDefined()
+            return {
+              invocationId: invocation.id,
+              toolId: tool.id,
+              status: signal.aborted ? 'aborted' : 'completed',
+              content: [{ type: 'json', value: { query: invocation.arguments! } }],
+            }
+          },
         },
       ],
     )
@@ -314,12 +317,15 @@ describe('Agent Tool Foundation', () => {
     const registry = createAgentToolRegistry([])
     const handle = registry.registerRuntime({
       toolId: structuredTool.id,
-      execute: ({ invocation }) => ({
-        invocationId: invocation.id,
-        toolId: invocation.toolId,
-        status: 'completed',
-        content: [{ type: 'json', value: { echoed: invocation.arguments } }],
-      }),
+      execute: ({ invocation }) => {
+        expect(invocation.arguments).toBeDefined()
+        return {
+          invocationId: invocation.id,
+          toolId: invocation.toolId,
+          status: 'completed',
+          content: [{ type: 'json', value: { echoed: invocation.arguments! } }],
+        }
+      },
     })
     registry.replaceDefinitions([structuredTool])
     const invocation = { id: 'dynamic', toolId: structuredTool.id, arguments: { query: 'hello' } }

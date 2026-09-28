@@ -147,13 +147,17 @@ describe('kernel loom.run rpc contract', () => {
     const { kernel, diagnostics } = createTestKernel()
     await kernel.start()
 
-    const result = await kernel.callRpc<{ fragments: Array<{ content: string }>; diagnostics: unknown[] }>('loom.run', {
+    const result = await kernel.callRpc<{ fragments: Array<{ content: string }>; diagnostics: ReturnType<typeof diagnostics.list> }>('loom.run', {
       fragments: [{ id: 'f1', content: 'hello', meta: {} }],
       passes: [{ name: 'uppercase' }],
     })
 
     expect(result.fragments[0]?.content).toBe('HELLO')
-    expect(diagnostics.list()).toEqual(result.diagnostics)
+    expect(diagnostics.list()).toEqual(result.diagnostics.map(diagnostic => ({
+      ...diagnostic,
+      occurrences: 1,
+      lastSeenAt: expect.any(String),
+    })))
   })
 
   it('rejects forbidden runtime/provider fields', async () => {

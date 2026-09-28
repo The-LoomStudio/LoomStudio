@@ -41,13 +41,22 @@ Package 只通过 [`src/index.ts`](./src/index.ts) 暴露 public API，构建产
 
 ## 依赖边界与架构规约
 
-- **领域存储依赖**：统一依赖 `@loom-studio/application-data`（内聚托管 Agent Session/Message、Narrative Timeline/Branch/Node、State 与 Prompt Resource 树）以及 `@loom-studio/document-store`（管理版本化快照文档）。
+- **领域存储依赖**：统一依赖 `@loom-studio/application-data`（内聚托管 Agent Session/Transcript、Narrative Timeline/Branch/Node、State 与 Prompt Resource 树）以及 `@loom-studio/document-store`（管理版本化快照文档）。
 - **平台与基础设施**：`@loom-studio/data-engine`、`@loom-studio/ai-gateway`、`@loom-studio/secret-store`、`@loom-studio/logging`、`@loom-studio/shared`、`@loom-studio/extension-sdk`。
 - **外部网络与执行依赖**：`undici`（用于与模型服务通信及 `ProxyAgent` 代理支持）、`quickjs-emscripten`（用于 CodeAct 沙箱隔离执行）。
-- **宽松引用与容错构建**：删除 Provider/Model 等资源保留下游引用，运行时解析不到报错，不级联解绑；PromptBuild 遇到可跳过项跳过、宏未展开保留原文，不作为硬门禁阻断编译。
+- **宽松引用与容错构建**：删除 Provider/Model、Agent Profile 或被引用的 Setting 保留下游软引用，不自动改绑；必要 Profile/Preset/Model 缺失时执行失败。PromptBuild 对可跳过的缺失 Setting/Tool 发出警告并跳过，未解析宏保留原文；这不意味着必要资源缺失或存储失败也可以忽略。
 
-本包不注册 HTTP/JSON-RPC 路由，不拥有 React/Zustand 前端状态，不提供 Kernel 核心路由，也不直接操作 SQLite 裸连接。`DataEngine` 与 `ApplicationDataStore` 是运行时装配的必需依赖。
+本包不注册 HTTP/JSON-RPC 路由，不拥有 React/Zustand 前端状态，不提供 Kernel 核心路由，也不直接操作 SQLite 裸连接。装配接收独立 Store，而不是 `ApplicationDataStore` 聚合对象：`dataEngine`、`documents`、`promptResources` 必需；`states` 可基于同一 Engine 创建，Agent/Narrative 操作要求对应的 `agents` / `narratives` 已注入，见 [`application-context.ts`](./src/foundation/application-context.ts)。
 
+## 提交与消费合同
+
+- **用户正文先落库**：调用方先通过 [`appendNarrativeInput()`](./src/runtime/narrative-runtime.ts) 调用 Store `appendInput()`，成功后再单独投递 Agent Session；append 本身不启动 Agent。`invokeAgentTurn.narrativeTarget.inputNodeId` 必须指向目标分支已有节点；[`prepareAgentTurn()`](./src/runtime/agents-runtime.ts) 从节点 `body.raw` 读取输入，不使用调用方重复携带的文本。投递失败保留已提交节点；换 Session 重投递复用该节点。
+- **Agent 正文只走工具**：Assistant 最终回复只保存在 Transcript，不自动追加 Narrative。未提供 `inputNodeId` 的调用也不自动写入用户正文。已注册工具执行中的非取消异常（包括正文写入冲突）由 [`tool-registry.ts`](./src/agents/tool-registry.ts) 转为 failed Tool Result，再由 [`tool-loop.ts`](./src/agents/tool-loop.ts) 保存并返回后续 Provider Step。
+- **分阶段提交**：Transcript 与工具副作用各按自己的事务提交；Provider 或后续步骤失败不回滚先前提交。返回的 `mutation.scope: 'agent-session-transcript'` 及 Changeset 不是整轮 Tool Loop 的原子回滚凭证。消费者应保留已提交身份，将刷新失败与写入失败分开处理。
+- **Prompt 资源 CAS**：资源更新沿用调用方 `expectedVersion`，冲突不自动覆盖。编辑消费者保留草稿及原基线；只有用户显式重新应用时才读取最新资源、合并已编辑字段并按最新版本再次 CAS，不复活远端已删除节点。该消费边界见 [草稿回归用例](../../tests/unit/client/context-asset-drafts.test.ts)。
+- **分页必须完整消费**：Profile 等列表返回 `nextCursor`，不能把首个 100 条当作全量。全量读取沿 cursor 收集后发布；Runtime 的 Document 收集与 Prompt Resource 稳定 ID 扫描见 [`foundation/document-store.ts`](./src/foundation/document-store.ts)、[`cards/workspace.ts`](./src/cards/workspace.ts)。Keyset 仍是动态遍历，不提供跨请求快照。
+
+CodeAct 的 QuickJS/VFS 与 `readNarrative` 只代表当前已接入的执行和读取能力，不代表完整 Memory/Session 生命周期已完成。未装配 Narrative Context Provider 时，被动 Prompt 构建仍有 recent-100 回退及诊断，它不是冻结的 Memory 基线；主动工具读取不继承这一回退，见[默认剧情上下文来源](../../docs/architecture/application/extension/narrative-context.md)与 [`agents-runtime.ts`](./src/runtime/agents-runtime.ts)。
 
 ## 构建与验证
 

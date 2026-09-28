@@ -7,7 +7,7 @@ import {
 
 describe('Card polyglot package roundtrip real pipeline', () => {
   it('exports a full Card with media asset to Polyglot PNG and re-imports into a clean workspace without data loss', async () => {
-    let exportedPngBytes: Uint8Array
+    let exportedPngBytes: Uint8Array<ArrayBuffer>
 
     // 1. 在第一个独立工作区中构建完整 Card 并导出
     await withStudioServer(async port => {

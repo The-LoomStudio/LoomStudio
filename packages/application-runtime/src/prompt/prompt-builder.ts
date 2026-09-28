@@ -1,8 +1,8 @@
 import type { PromptActivation } from './prompt-activation.js'
+import type { ChatMessage } from '@loom-studio/shared'
 
 export type PromptProviderRole = 'system' | 'developer' | 'assistant' | 'user'
 export type PromptSourceKind = 'preset' | 'settingLayer' | 'narrativeChat' | 'narrativeHistory' | 'sessionHistory' | 'runtime'
-export type PromptLifecycle = 'always' | 'conditional' | 'fresh'
 
 export type PromptCompositionCapabilities = {
   activation?: PromptActivation
@@ -19,6 +19,7 @@ export type PromptContribution = {
     sourceNodeId: string
   }
   content: string
+  messages?: ChatMessage[]
   capabilities: PromptCompositionCapabilities
 }
 
@@ -26,13 +27,13 @@ export type PromptFragment = {
   id: string
   source: PromptContribution['sourceRef']
   content: string
+  messages?: ChatMessage[]
   role: PromptProviderRole
   targetAnchorId?: string
   localDepth?: number
 }
 
-export type CompiledMessage = {
-  role: PromptProviderRole
+export type CompiledMessage = ChatMessage & {
   content: string
   fragmentIds: string[]
 }
@@ -75,8 +76,4 @@ export type SourceNode = {
     roleHint?: PromptProviderRole
     [key: string]: unknown
   }
-}
-
-export function compilePromptDataModel(): CompiledPrompt {
-  return { messages: [], editorProjection: { sourceRows: [], promptRows: [] } }
 }

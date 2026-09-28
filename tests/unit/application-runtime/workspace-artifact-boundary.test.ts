@@ -315,13 +315,13 @@ describe('card bundle artifact boundary', () => {
     expect(exported.textExtractors).toEqual(artifact.textExtractors)
     const second = await importCardBundle({ artifact: exported, ...fixture })
     const rules = await fixture.documents.list({ type: 'airp.textTransformRule' })
-    expect(rules.items.map(item => item.content.owner)).toEqual(expect.arrayContaining([
-      { kind: 'card', cardId: first.card.id }, { kind: 'card', cardId: second.card.id },
-    ]))
+    expect(rules.items).toEqual(expect.arrayContaining([first.card.id, second.card.id].map(cardId =>
+      expect.objectContaining({ content: expect.objectContaining({ owner: { kind: 'card', cardId } }) }),
+    )))
     const extractors = await fixture.documents.list({ type: 'airp.textExtractor' })
-    expect(extractors.items.map(item => item.content.owner)).toEqual(expect.arrayContaining([
-      { kind: 'card', cardId: first.card.id }, { kind: 'card', cardId: second.card.id },
-    ]))
+    expect(extractors.items).toEqual(expect.arrayContaining([first.card.id, second.card.id].map(cardId =>
+      expect.objectContaining({ content: expect.objectContaining({ owner: { kind: 'card', cardId } }) }),
+    )))
     const invalid = structuredClone(artifact)
     Object.assign(invalid.textTransformRules![0]!, { owner: { kind: 'workspace' } })
     await expect(importCardBundle({ artifact: invalid, ...fixture })).rejects.toThrow('Invalid Card text pipeline')
@@ -346,7 +346,7 @@ describe('card bundle artifact boundary', () => {
     expect(portable.scriptAttachments?.[0]).toMatchObject({ orderIndex: 3, script: { fileName: 'alice.loom.js' } })
   })
 
-  it('imports and exports Preset Script attachments through the formal Prompt Resource runtime', async () => {
+  it('retains legacy Preset attachments on import but exports only the prompt resource', async () => {
     const fixture = createFixture()
     const rootDirectory = await mkdtemp(join(tmpdir(), 'loom-preset-script-'))
     const blobs = createBlobStore({ engine: fixture.engine, rootDirectory, createId: prefix => `${prefix}-preset-blob`, now: () => '2026-09-11T00:00:00.000Z' })
@@ -368,8 +368,13 @@ describe('card bundle artifact boundary', () => {
       const mounts = await runtime.listLoomScriptMounts({ target: { kind: 'preset', presetId: imported.resource.id } })
       expect(mounts.mounts).toMatchObject([{ enabled: false, grantedCapabilities: [], orderIndex: 2 }])
 
-      const exported = await runtime.exportPromptResource({ resourceId: imported.resource.id })
-      expect(exported.artifact).toMatchObject({ schemaVersion: 2, scriptAttachments: [attachment] })
+      const withoutBlobs = createApplicationRuntime({ ...fixture })
+      const exported = await withoutBlobs.exportPromptResource({ resourceId: imported.resource.id })
+      expect(exported.artifact).toEqual({
+        format: 'loom.promptResource', schemaVersion: 2, resourceKind: 'preset',
+        rootNode: imported.resource.rootNode,
+      })
+      expect(await runtime.listLoomScriptMounts({ target: { kind: 'preset', presetId: imported.resource.id } })).toEqual(mounts)
     } finally {
       await rm(rootDirectory, { recursive: true, force: true })
     }

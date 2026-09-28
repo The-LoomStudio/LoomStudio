@@ -35,7 +35,7 @@ describe('prompt resource commands', () => {
         },
       } as unknown as StudioApi,
       invalidate: async () => { events.push('invalidate') },
-      refreshAgentProfiles: async () => { events.push('agents') },
+      refreshAgentPresets: async () => { events.push('agents') },
       refreshCards: async () => { events.push('cards') },
       refreshCardTimelines: async () => { events.push('timelines') },
       selectedCardId: 'card-1',
@@ -51,7 +51,7 @@ describe('prompt resource commands', () => {
 function commandInput(overrides: {
   api: StudioApi
   invalidate: (areas: { presetToolMounts?: boolean; resources?: boolean; settingMounts?: boolean }) => Promise<void>
-  refreshAgentProfiles?: () => Promise<unknown>
+  refreshAgentPresets?: () => Promise<unknown>
   refreshCards?: () => Promise<unknown>
   refreshCardTimelines?: (cardId: string) => Promise<unknown>
   selectedCardId?: string
@@ -66,7 +66,7 @@ function commandInput(overrides: {
     setSettingMounts: () => undefined,
     setPresetToolMounts: () => undefined,
     invalidatePromptResourceState: overrides.invalidate,
-    refreshAgentProfiles: overrides.refreshAgentProfiles ?? (async () => undefined),
+    refreshAgentPresets: overrides.refreshAgentPresets ?? (async () => undefined),
     refreshCards: overrides.refreshCards ?? (async () => undefined),
     refreshCardTimelines: overrides.refreshCardTimelines ?? (async () => undefined),
     selectedCardId: overrides.selectedCardId,

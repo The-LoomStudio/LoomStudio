@@ -1,14 +1,18 @@
 import { Archive, Copy, Download, Link2, Plus, RotateCcw, Save, Trash2, Upload } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import type { PromptResource } from '../../../../entities/index.js'
+import type { ListExtensionInstallationsResult, PromptResource } from '../../../../entities/index.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
 import { Dialog } from '@loom-studio/ui'
 import { formatEntityReference } from '@loom-studio/shared'
 import { buildStudioTargetLink } from '../../../../shared/studio-shell/studio-target.js'
 import { tryWriteClipboardText } from '../../../../shared/browser/clipboard.js'
 import styles from './prompt-resource-toolbar.module.scss'
+import { ResourceBindings, type ResourceBindingsSource } from './resource-bindings.js'
 
 type PromptResourceToolbarProps = {
+  resourceBindings?: ResourceBindingsSource
+  bindingResources?: PromptResource[]
+  extensionInstallations?: ListExtensionInstallationsResult['installations']
   hideSelect?: boolean
   resourceKind: PromptResource['resourceKind']
   resources: PromptResource[]
@@ -41,6 +45,10 @@ export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
   const [savingDraft, setSavingDraft] = useState(false)
   const [copiedResourceId, setCopiedResourceId] = useState<string>()
   const selected = props.resources.find(resource => resource.id === props.selectedResourceId)
+  const origin = selected?.origin
+  const installation = origin?.kind === 'extension-package'
+    ? props.extensionInstallations?.find(item => item.id === origin.installationId && item.packageId === origin.packageId)
+    : undefined
 
   const selectResult = async (action: Promise<string | undefined>) => {
     setError(undefined)
@@ -55,6 +63,26 @@ export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
 
   return (
     <div className={styles.toolbar}>
+      {origin?.kind === 'extension-package' ? (
+        <span className={styles.origin} title={origin.contributionId}>
+          {origin.packageId} · {origin.packageVersion} · {
+            installation?.target.kind === 'card'
+              ? props.t('promptResource.cardInstallation', { id: installation.target.cardId })
+              : installation?.target.kind === 'global' || !origin.installationId
+                ? props.t('promptResource.globalInstallation')
+                : props.t('promptResource.unresolvedInstallation')
+          }
+        </span>
+      ) : null}
+      {selected && props.resourceBindings ? (
+        <ResourceBindings
+          key={JSON.stringify([props.resourceBindings.endpoint, selected.id])}
+          {...props.resourceBindings}
+          resourceId={selected.id}
+          resources={props.bindingResources ?? props.resources}
+          t={props.t}
+        />
+      ) : null}
       {error && !pendingDelete ? <p role="alert">{error}</p> : null}
       {!props.hideSelect ? (
         <select

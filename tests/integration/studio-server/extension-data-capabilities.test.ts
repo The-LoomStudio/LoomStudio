@@ -5,6 +5,73 @@ import { officialFakeModelId } from '@loom-studio/ai-gateway'
 import { authenticatedFetch, callRpc, withStudioServer } from './helpers.js'
 
 describe('Studio Server Extension data capabilities', () => {
+  it('checks real Timeline ownership for scoped Client State and History reads', async () => {
+    await withStudioServer(async port => {
+      const timelines = []
+      for (const name of ['A', 'B']) {
+        const { card } = await callRpc<{ card: { id: string } }>(port, 'application.createCard', { name })
+        const created = await callRpc<{ timeline: { id: string }; branch: { id: string } }>(port, 'application.createNarrativeTimeline', { cardId: card.id })
+        timelines.push({ ...created, cardId: card.id })
+      }
+      const [a, b] = timelines
+      const extensionTarget = { kind: 'card', cardId: a!.cardId }
+      await expect(callRpc(port, 'application.getStateSnapshot', {
+        extensionTarget, target: { scope: 'timeline', timelineId: a!.timeline.id, branchId: a!.branch.id },
+      })).resolves.toHaveProperty('snapshot')
+      for (const target of [{ scope: 'global' }, { scope: 'timeline', timelineId: b!.timeline.id, branchId: b!.branch.id }]) {
+        await expect(callRpc(port, 'application.getStateSnapshot', { extensionTarget, target })).rejects.toThrow('outside this Card')
+      }
+      const ownSource = { kind: 'narrative', timelineId: a!.timeline.id, branchId: a!.branch.id }
+      const otherSource = { kind: 'narrative', timelineId: b!.timeline.id, branchId: b!.branch.id }
+      await expect(callRpc(port, 'application.projectHistory', { extensionTarget, source: ownSource, phase: 'display' })).resolves.toHaveProperty('snapshot')
+      for (const method of ['application.projectHistory', 'application.extractHistory']) {
+        await expect(callRpc(port, method, {
+          extensionTarget, source: otherSource, phase: 'display', extractorId: 'irrelevant',
+        })).rejects.toThrow('outside this Card')
+      }
+      const { agentPreset } = await callRpc<{ agentPreset: { id: string } }>(port, 'application.createAgentPreset', { name: 'History' })
+      const { session } = await callRpc<{ session: { id: string } }>(port, 'application.createAgentSession', { agentPresetId: agentPreset.id, timelineId: b!.timeline.id })
+      await expect(callRpc(port, 'application.projectHistory', {
+        extensionTarget, source: { kind: 'agent-session', sessionId: session.id }, phase: 'display',
+      })).rejects.toThrow('outside this Card')
+      await expect(callRpc(port, 'application.projectHistory', {
+        extensionTarget, source: ownSource, consumerAgentSessionId: session.id, phase: 'display',
+      })).rejects.toThrow('outside this Card')
+    })
+  })
+
+  it('routes Client configuration RPCs to their installation without leaking global or other Card configs', async () => {
+    await withStudioServer(async port => {
+      const a = (await callRpc<{ card: { id: string } }>(port, 'application.createCard', { name: 'A' })).card
+      const b = (await callRpc<{ card: { id: string } }>(port, 'application.createCard', { name: 'B' })).card
+      const packageId = 'example.settings'
+      const scope = { kind: 'card', cardId: a.id }
+      const global = await callRpc<{ config: { id: string; version: number } }>(port, 'application.upsertExtensionConfig', {
+        packageId, scope, key: 'theme', value: 'global-install',
+      })
+      const privateConfig = await callRpc<{ config: { id: string; version: number } }>(port, 'application.upsertExtensionConfig', {
+        packageId, target: scope, scope, key: 'theme', value: 'card-install',
+      })
+      expect(privateConfig.config.id).not.toBe(global.config.id)
+      await expect(callRpc(port, 'application.listExtensionConfigs', { packageId }))
+        .resolves.toMatchObject({ configs: [{ id: global.config.id, value: 'global-install' }] })
+      await expect(callRpc(port, 'application.listExtensionConfigs', { packageId, target: scope }))
+        .resolves.toMatchObject({ configs: [{ id: privateConfig.config.id, value: 'card-install' }] })
+      await expect(callRpc(port, 'application.listExtensionConfigs', { packageId, target: { kind: 'card', cardId: b.id } }))
+        .resolves.toEqual({ configs: [] })
+      await expect(callRpc(port, 'application.getExtensionConfig', { packageId, target: scope, scope, key: 'theme' }))
+        .resolves.toMatchObject({ config: { id: privateConfig.config.id, value: 'card-install' } })
+      for (const forbidden of [{ kind: 'global' }, { kind: 'card', cardId: b.id }]) {
+        await expect(callRpc(port, 'application.upsertExtensionConfig', {
+          packageId, target: scope, scope: forbidden, key: 'theme', value: 'forbidden',
+        })).rejects.toThrow('outside this Card')
+      }
+      await expect(callRpc(port, 'application.upsertExtensionConfig', {
+        packageId, target: scope, scope, key: 'theme', value: 'updated', expectedVersion: privateConfig.config.version,
+      })).resolves.toMatchObject({ config: { id: privateConfig.config.id, value: 'updated' } })
+    })
+  })
+
   it('connects Package-owned Payload and scoped storage capabilities to Application Runtime', async () => {
     await withStudioServer(async (port, root) => {
       const sourceDirectory = await writeExtensionPackage(root)
@@ -110,13 +177,13 @@ describe('Studio Server Extension data capabilities', () => {
         resourceKind: 'preset',
         name: 'Extension Data Test Preset',
       })
-      const profile = await callRpc<{ agentProfile: { id: string } }>(port, 'application.createAgentProfile', {
+      const profile = await callRpc<{ agentPreset: { id: string } }>(port, 'application.updateAgentPreset', {
         name: 'Extension Data Test Agent',
-        presetId: preset.resource.id,
+        agentPresetId: preset.resource.id, expectedVersion: (await callRpc<{ resource: { version: number } }>(port, 'application.getPromptResource', { resourceId: preset.resource.id })).resource.version,
         model: { providerProfileId: provider.providerProfile.id, modelId: officialFakeModelId },
       })
       const agentSession = await callRpc<{ session: { id: string } }>(port, 'application.createAgentSession', {
-        agentProfileId: profile.agentProfile.id,
+        agentPresetId: profile.agentPreset.id,
       })
       const turn = await callRpc<{ entries: { user: { id: string } } }>(port, 'application.invokeAgentTurn', {
         agentSessionId: agentSession.session.id,

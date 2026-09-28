@@ -6,20 +6,24 @@ import type {
   MacroProviderContext,
   MacroProviderDefinition,
   MacroSelectionMap,
+  MacroSelection,
+  MacroOptions,
   MacroSourceKind,
   VariableSnapshot,
 } from '@loom-studio/shared'
-import { canonicalMacroName, isReservedMacroName, isValidMacroName } from '@loom-studio/shared'
+import { canonicalMacroName, isReservedMacroName, isValidMacroName, macroSelectionMatches } from '@loom-studio/shared'
+import type { ExtensionInstallationTarget } from '@loom-studio/extension-sdk'
 
 export type MacroStaticSource = {
   sourceId: string
   sourceKind: Exclude<MacroSourceKind, 'provider' | 'state' | 'builtin'>
   sourceLabel: string
   macros: Record<string, string>
+  macroOptions?: MacroOptions
 }
 
 export type MacroProviderRegistry = {
-  register(provider: MacroProviderDefinition): { dispose(): void }
+  register(provider: MacroProviderDefinition, target?: ExtensionInstallationTarget): { dispose(): void }
   inspect(input: {
     snapshot: VariableSnapshot
     context: MacroProviderContext
@@ -29,17 +33,17 @@ export type MacroProviderRegistry = {
   }): Promise<MacroInspection>
 }
 
-type RegisteredProvider = MacroProviderDefinition & { order: number }
+type RegisteredProvider = MacroProviderDefinition & { order: number; target: ExtensionInstallationTarget }
 
 export function createMacroProviderRegistry(): MacroProviderRegistry {
   const providers = new Map<string, RegisteredProvider>()
   let order = 0
 
   return {
-    register(provider) {
+    register(provider, target = { kind: 'global' }) {
       validateProvider(provider)
       if (providers.has(provider.id)) throw new Error(`Macro provider id is already registered: ${provider.id}`)
-      const registered = { ...provider, order: order++ }
+      const registered = { ...provider, order: order++, target: structuredClone(target) }
       providers.set(provider.id, registered)
       return {
         dispose() {
@@ -53,7 +57,7 @@ export function createMacroProviderRegistry(): MacroProviderRegistry {
       const add = (name: string, candidate: MacroCandidate) => {
         const canonicalName = canonicalMacroName(name)
         const existing = candidates.get(canonicalName) ?? { name, candidates: [] }
-        if (!existing.candidates.some(item => item.sourceId === candidate.sourceId)) existing.candidates.push(candidate)
+        if (!existing.candidates.some(item => item.sourceId === candidate.sourceId && item.optionId === candidate.optionId)) existing.candidates.push(candidate)
         candidates.set(canonicalName, existing)
       }
 
@@ -68,13 +72,29 @@ export function createMacroProviderRegistry(): MacroProviderRegistry {
             value,
           })
         }
+        for (const [name, options] of Object.entries(source.macroOptions ?? {})) {
+          assertWritableMacroName(name, 'static macro')
+          for (const option of options) add(name, {
+            sourceId: source.sourceId,
+            sourceKind: source.sourceKind,
+            sourceLabel: source.sourceLabel,
+            optionId: option.id,
+            optionLabel: option.label,
+            value: option.value,
+          })
+        }
       }
 
       const providerContext = freezeContext(input.context)
+      let cardProviderContext: MacroProviderContext | undefined
       for (const provider of [...providers.values()].sort((left, right) => left.order - right.order)) {
+        if (provider.target.kind === 'card' && provider.target.cardId !== providerContext.cardId) continue
         assertWritableMacroName(provider.name, 'macro provider')
         try {
-          const value = await provider.resolve(providerContext)
+          const context = provider.target.kind === 'global'
+            ? providerContext
+            : (cardProviderContext ??= freezeContext({ ...providerContext, global: {} }))
+          const value = await provider.resolve(context)
           if (typeof value !== 'string') throw new Error('Macro provider must return a string')
           add(provider.name, {
             sourceId: provider.id,
@@ -93,6 +113,10 @@ export function createMacroProviderRegistry(): MacroProviderRegistry {
       }
 
       const entries: MacroInspectionEntry[] = []
+      for (const name of Object.keys(input.macroSelections ?? {})) {
+        const key = canonicalMacroName(name)
+        if (!candidates.has(key)) candidates.set(key, { name, candidates: [] })
+      }
       const computed = structuredClone(input.snapshot.computed)
       const macroDiagnostics: Record<string, 'macro.conflict' | 'macro.error'> = {}
       for (const [name, code] of Object.entries(input.snapshot.macroDiagnostics ?? {})) {
@@ -102,16 +126,11 @@ export function createMacroProviderRegistry(): MacroProviderRegistry {
         const group = candidates.get(canonicalName)!
         const name = group.name
         const allCandidates = group.candidates
-        const selectedSourceId = readSelection(input.macroSelections, canonicalName)
-        const selected = allCandidates.length === 1
-          ? allCandidates[0]
-          : selectedSourceId
-            ? allCandidates.find(candidate => candidate.sourceId === selectedSourceId)
-            : undefined
-        const hasConflict = allCandidates.length > 1 && selectedSourceId === undefined
-        const invalidSelection = allCandidates.length > 1 && selectedSourceId !== undefined && !selected
-        const errorCandidate = selected?.error ?? (allCandidates.length === 1 ? allCandidates[0]?.error : undefined)
-        const status = hasConflict || invalidSelection ? 'conflict' : errorCandidate ? 'error' : selected ? 'resolved' : 'conflict'
+        const selection = readSelection(input.macroSelections, canonicalName)
+        const presetDefault = allCandidates.find(candidate => candidate.sourceKind === 'preset' && candidate.optionId === undefined)
+        const defaultCandidate = presetDefault ?? (allCandidates.length === 1 ? allCandidates[0] : undefined)
+        const selected = selection === undefined ? defaultCandidate : allCandidates.find(candidate => macroSelectionMatches(selection, candidate))
+        const status = selection !== undefined && !selected ? 'error' : selected?.error ? 'error' : selected ? 'resolved' : 'conflict'
         if (status === 'conflict') defineOwn(macroDiagnostics, canonicalName, 'macro.conflict')
         else if (status === 'error') defineOwn(macroDiagnostics, canonicalName, 'macro.error')
         else delete macroDiagnostics[canonicalName]
@@ -119,6 +138,8 @@ export function createMacroProviderRegistry(): MacroProviderRegistry {
           name,
           candidates: structuredClone(allCandidates),
           ...(selected ? { selectedSourceId: selected.sourceId } : {}),
+          ...(selected?.optionId ? { selectedOptionId: selected.optionId } : {}),
+          ...(defaultCandidate ? { defaultSelection: { sourceId: defaultCandidate.sourceId, ...(defaultCandidate.optionId ? { optionId: defaultCandidate.optionId } : {}) } } : {}),
           ...(selected?.value !== undefined ? { value: selected.value } : {}),
           status,
         }
@@ -228,7 +249,7 @@ function defineOwn<T extends object, K extends string, V>(root: T, name: K, valu
   })
 }
 
-function readSelection(selections: MacroSelectionMap | undefined, canonicalName: string): string | undefined {
+function readSelection(selections: MacroSelectionMap | undefined, canonicalName: string): MacroSelection | undefined {
   if (!selections) return undefined
   const exact = Object.entries(selections).find(([name]) => canonicalMacroName(name) === canonicalName)
   return exact?.[1]

@@ -1,4 +1,5 @@
-import type { ExtensionMediaAsset } from '@loom-studio/extension-host'
+import type { ExtensionMediaAsset } from '@loom-studio/extension-sdk'
+import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import { access, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -50,6 +51,7 @@ function createAssetHarness(grants: readonly ('assets.publish' | 'assets.read')[
           width: input.width,
           height: input.height,
           ownerPackageId: input.ownerPackageId,
+          ownerInstallationId: input.ownerInstallationId,
           createdAt: '2026-08-15T00:00:00.000Z',
           bytes: new Uint8Array(input.bytes),
         }
@@ -81,6 +83,30 @@ export function activate(ctx) {
 `
 
 describe('extension host Media Asset contract', () => {
+  it('does not treat another installation of the same Package as an owned Asset', async () => {
+    const scratch = await mkdtemp(join(tmpdir(), 'loom-private-assets-'))
+    const { kernel, extensionHost } = createAssetHarness(['assets.publish', 'assets.read'], scratch)
+    try {
+      await kernel.start()
+      const packageId = 'example.privateAssets'
+      const directory = createExtensionFixture('asset-private', { manifest: assetManifest(packageId), source })
+      const a = { kind: 'card' as const, cardId: 'a' }
+      const b = { kind: 'card' as const, cardId: 'b' }
+      for (const target of [a, b]) {
+        await extensionHost.discover(directory, target)
+        await extensionHost.activate(packageId, 'server', target)
+      }
+      const asset = await kernel.callRpc<ExtensionMediaAsset>(`${packageId}.publish`, {}, { extensionTarget: a })
+      expect(asset.ownerInstallationId).toBe(extensionInstallationId(packageId, a))
+      await expect(kernel.callRpc(`${packageId}.read`, { assetId: asset.id }, { extensionTarget: a })).resolves.toMatchObject({ bytes: [1, 2, 3] })
+      await expect(kernel.callRpc(`${packageId}.read`, { assetId: asset.id }, { extensionTarget: b })).rejects.toThrow('outside this Card')
+      await expect(kernel.callRpc(`${packageId}.materialize`, { assetId: asset.id }, { extensionTarget: b })).rejects.toThrow('outside this Card')
+    } finally {
+      await kernel.stop()
+      await rm(scratch, { recursive: true, force: true })
+    }
+  })
+
   it('denies publishing without assets.publish', async () => {
     const { kernel, extensionHost } = createAssetHarness([])
     await kernel.start()
@@ -147,7 +173,8 @@ describe('extension host Media Asset contract', () => {
 
   it('invalidates the old Asset context after reload', async () => {
     const globalState = globalThis as typeof globalThis & { __loomAssetTestContexts?: Array<{ assets: { publish(input: unknown): Promise<unknown> } }> }
-    delete globalState.__loomAssetTestContexts
+    const contexts: NonNullable<typeof globalState.__loomAssetTestContexts> = []
+    globalState.__loomAssetTestContexts = contexts
     const { kernel, extensionHost } = createAssetHarness(['assets.publish'])
     await kernel.start()
     const directory = createExtensionFixture('asset-reload', {
@@ -156,10 +183,11 @@ describe('extension host Media Asset contract', () => {
     })
     await extensionHost.discover(directory)
     await extensionHost.activate('example.assetReload', 'server')
-    const oldContext = globalState.__loomAssetTestContexts?.[0]
+    const oldContext = contexts[0]
+    if (!oldContext) throw new Error('Extension activation did not capture its Asset context')
     await extensionHost.reload('example.assetReload', 'server')
 
-    await expect(oldContext?.assets.publish({ bytes: new Uint8Array([1]), kind: 'image' })).rejects.toThrow(/stopping|no longer active/)
+    await expect(oldContext.assets.publish({ bytes: new Uint8Array([1]), kind: 'image' })).rejects.toThrow(/stopping|no longer active/)
     delete globalState.__loomAssetTestContexts
   })
 

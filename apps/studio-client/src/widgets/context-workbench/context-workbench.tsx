@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Library, Trash2 } from 'lucide-react'
 import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore } from '../../shared/studio-shell/studio-layout-store.js'
 import { AssetWorkbenchLayout } from '../../shared/ui/asset-workbench-layout/asset-workbench-layout.js'
 import { PanelTabs } from '../../shared/ui/panel-tabs/index.js'
@@ -21,8 +21,13 @@ import type { Translator } from '../../shared/i18n/index.js'
 import type { StudioApi } from '../../shared/api/studio-api.js'
 import { TextTransformDetail, TextTransformExplorer, useTextTransformController } from '../../features/text-transforms/ui/text-transform-panel.js'
 import styles from './context-workbench.module.scss'
+import { OfficialContentDialog } from '../../features/official-content/ui/official-content-dialog.js'
 
 type ContextWorkbenchProps = {
+  resourceBindings?: import('../../features/context-assets/ui/prompt-resource-toolbar/resource-bindings.js').ResourceBindingsSource
+  extensionInstallations?: import('../../entities/index.js').ListExtensionInstallationsResult['installations']
+  officialContentApi: StudioApi['officialContent']
+  onOfficialContentInstalled(): Promise<void>
   view: 'settings' | 'macros' | 'text'
   onViewChange: (view: 'settings' | 'macros' | 'text') => void
   textTransformsApi: StudioApi['textTransforms']
@@ -79,6 +84,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   const setTextEditorMode = useStudioLayoutStore(state => state.setTextEditorMode)
   const searchQuery = props.searchQuery
   const [bindingOpen, setBindingOpen] = useState(false)
+  const [officialContentOpen, setOfficialContentOpen] = useState(false)
   const [internalSelectedResourceId, setInternalSelectedResourceId] = useState<string>()
   const mobilePane = useStudioLayoutStore(state => state.assetPanes.resources[props.workspaceId] ?? 'explorer')
   const macroController = useMacroAuthoring(props.macroAuthoring)
@@ -225,6 +231,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
       mobilePane={mobilePane}
       onMobilePaneChange={pane => setAssetPane('resources', props.workspaceId, pane)}
       header={(
+        <div className={styles.header}>
         <PanelTabs
           activeId={props.view}
           ariaLabel={props.t('context.authoring.views')}
@@ -235,9 +242,17 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
           ]}
           onChange={changeView}
         />
+        <button aria-label={props.t('official.builtin')} title={props.t('official.builtin')} type="button" onClick={() => setOfficialContentOpen(true)}>
+          <Library aria-hidden="true" size={16} />
+        </button>
+        {officialContentOpen ? <OfficialContentDialog api={props.officialContentApi} onInstalled={props.onOfficialContentInstalled} onClose={() => setOfficialContentOpen(false)} t={props.t} /> : null}
+        </div>
       )}
       toolbar={props.view === 'settings' ? (
         <PromptResourceToolbar
+          resourceBindings={props.resourceBindings}
+          bindingResources={props.resources}
+          extensionInstallations={props.extensionInstallations}
           hideSelect
           resourceKind="setting"
           resources={settingResources}

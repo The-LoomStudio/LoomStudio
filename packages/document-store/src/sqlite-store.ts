@@ -124,6 +124,12 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
         clauses.push('owner_extension_id = ?')
         values.push(input.ownerExtensionId)
       }
+      if (input?.ownerInstallationId === null) {
+        clauses.push("json_extract(meta_json, '$.ownerInstallationId') IS NULL")
+      } else if (input?.ownerInstallationId !== undefined) {
+        clauses.push("json_extract(meta_json, '$.ownerInstallationId') = ?")
+        values.push(input.ownerInstallationId)
+      }
 
       const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''
       const rows = database
@@ -156,6 +162,7 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
         createdBy: existing?.meta.createdBy ?? input.meta?.createdBy ?? actor,
         updatedBy: actor,
         ownerExtensionId: input.meta?.ownerExtensionId ?? existing?.meta.ownerExtensionId,
+        ownerInstallationId: input.meta?.ownerInstallationId ?? existing?.meta.ownerInstallationId,
         source: input.meta?.source ?? existing?.meta.source,
       },
     }

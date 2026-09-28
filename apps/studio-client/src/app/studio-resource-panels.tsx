@@ -17,6 +17,8 @@ export function StudioResourcePanels(props: {
   const contextAssetEditorProps = {
     nodes: state.contextAssets,
     resources: state.promptResourceDrafts,
+    extensionInstallations: state.extensionInstallations,
+    resourceBindings: { api: state.api.promptResources, endpoint: state.endpoint },
     draftResourceIds: state.draftResourceIds,
     onDiscardDraft: state.discardContextAssetDraft,
     onRetryDraft: state.retryContextAssetDraft,
@@ -62,21 +64,24 @@ export function StudioResourcePanels(props: {
         loomScriptsApi={state.api.loomScripts}
         onLoomScriptsChanged={uiState.bumpLoomScriptRefreshToken}
         onSaveMacros={state.updatePresetMacros}
+        modelProfiles={state.modelProfiles}
+        providerAccounts={state.providerAccounts}
+        onSaveModel={state.updatePresetModel}
         selectedResourceId={uiState.selectedPresetId}
         onSelectResource={id => {
           uiState.setSelectedPresetId(id)
           const resource = state.promptResourceDrafts.find(item => item.id === id)
           if (resource) navigation.openResource('preset', id, resource.rootNode.id)
         }}
-        routeResourceId={navigation.route.panel === 'preset' ? navigation.route.resourceId : undefined}
+        routeResourceId={navigation.route.panel === 'agent' ? navigation.route.resourceId : undefined}
         timelinePromptResourceIds={state.narrativeTimeline?.promptResourceIds}
         settingMounts={state.settingMounts}
         tools={state.agentTools}
         toolMounts={state.presetToolMounts}
         onReplaceToolMounts={state.replacePresetToolMounts}
         onUpdateTool={state.updateAgentTool}
-        routeAssetId={navigation.route.panel === 'preset' ? navigation.route.assetId : undefined}
-        searchQuery={navigation.route.panel === 'preset' ? navigation.searchQuery : ''}
+        routeAssetId={navigation.route.panel === 'agent' ? navigation.route.assetId : undefined}
+        searchQuery={navigation.route.panel === 'agent' ? navigation.searchQuery : ''}
         onSearchQueryChange={navigation.setSearchQuery}
       />
     ),
@@ -84,6 +89,8 @@ export function StudioResourcePanels(props: {
       <LazyContextWorkbench
         key={state.endpoint}
         {...contextAssetEditorProps}
+        officialContentApi={state.api.officialContent}
+        onOfficialContentInstalled={state.refreshResourceConsumers}
         routeResourceId={navigation.route.panel === 'resource' ? navigation.route.resourceId : undefined}
         onSelectResource={id => {
           const resource = state.promptResourceDrafts.find(item => item.id === id)
@@ -99,6 +106,7 @@ export function StudioResourcePanels(props: {
           ownerLabel: state.selectedCardDetails.name,
           version: state.selectedCardDetails.version,
           macros: state.selectedCardDetails.macros ?? {},
+          macroOptions: state.selectedCardDetails.macroOptions,
           onSave: config => state.updateCardMacros({ cardId: assetWorkspaceId, ...config }),
           t: state.t,
         } : undefined}

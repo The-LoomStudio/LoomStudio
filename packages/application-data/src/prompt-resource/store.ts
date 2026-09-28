@@ -39,6 +39,7 @@ import {
   applyRestoreResource,
   applyRevert,
   readResource,
+  readResourceMetadataAtVersion,
 } from './mutations.js'
 
 export function createPromptResourceStore(options: PromptResourceStoreOptions): PromptResourceStore {
@@ -79,6 +80,7 @@ export function createPromptResourceStore(options: PromptResourceStoreOptions): 
 
   return {
     getResource: (id, readOptions) => engine.read(database => readResource(database, id, readOptions?.includeTombstone ?? false)),
+    getResourceMetadataAtVersion: (id, version) => engine.read(database => readResourceMetadataAtVersion(database, id, version)),
     listResources: input => engine.read(database => listResources(database, input)),
     listSettingMounts: input => engine.read(database => listMounts(database, input)),
     listPresetToolMounts: input => engine.read(database => listPresetToolMounts(database, input)),
@@ -122,7 +124,7 @@ export function createPromptResourceStore(options: PromptResourceStoreOptions): 
   }
 }
 
-export function listResources(database: DatabaseSync, input: ListPromptResourcesInput = {}): PromptResourcePage {
+function listResources(database: DatabaseSync, input: ListPromptResourcesInput = {}): PromptResourcePage {
   const limit = input.limit ?? defaultPageLimit
   if (!Number.isInteger(limit) || limit < 1 || limit > maximumPageLimit) throw new PromptResourceStoreError('prompt_resource.limit_invalid', `Prompt resource list limit must be between 1 and ${maximumPageLimit}`)
   const order = input.order ?? 'updatedAt'

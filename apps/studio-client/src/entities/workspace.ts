@@ -16,6 +16,7 @@ export type CardBundleArtifact = {
   description?: string
   card: {
     macros?: Record<string, string>
+    macroOptions?: import("@loom-studio/shared").MacroOptions
     name: string
     userName?: string
     description?: string
@@ -41,7 +42,7 @@ export type CardBundleArtifact = {
   metadata?: Record<string, ClientJsonValue>
 }
 
-export type PortableExtensionPayloadArtifact = {
+type PortableExtensionPayloadArtifact = {
   id: string
   packageId: string
   fileName: string
@@ -55,7 +56,7 @@ export type PortableExtensionPayloadArtifact = {
 
 export type PortableExtensionPayloadDraft = Omit<PortableExtensionPayloadArtifact, 'id'>
 
-export type PortableExtensionPayload = PortableExtensionPayloadDraft & {
+type PortableExtensionPayload = PortableExtensionPayloadDraft & {
   id: string
   artifactPayloadId: string
   version: number
@@ -78,12 +79,15 @@ export type MutatePortableExtensionPayloadResult = {
 
 export type PromptResource = {
   macros?: Record<string, string>
+  macroOptions?: import("@loom-studio/shared").MacroOptions
   id: string
   version: number
   resourceKind: 'preset' | 'setting' | 'logic' | 'runtime' | 'history' | 'prompt'
   rootNode: ContextAssetNode
   historyPolicy?: 'persistent' | 'ephemeral'
-  origin?: { kind: 'builtin'; key: string }
+  model?: import('./provider.js').ProviderModelSelection
+  delivery?: 'stream' | 'complete'
+  origin?: { kind: 'builtin'; key: string } | import('./extension.js').ExtensionPackageResourceOrigin
   sourceArtifactRef?: ClientJsonValue
   createdAt: string
   updatedAt: string
@@ -120,6 +124,7 @@ export type ReplacePresetToolMountsResult = {
 
 export type PromptResourceArtifact = {
   macros?: Record<string, string>
+  macroOptions?: import("@loom-studio/shared").MacroOptions
   format: 'loom.promptResource'
   schemaVersion: 1 | 2
   resourceKind: PromptResource['resourceKind']
@@ -136,7 +141,7 @@ export type PromptResourceArtifact = {
   }>
 }
 
-export type ImportBundle = {
+type ImportBundle = {
   id: string
   version: number
   cardId: string
@@ -153,6 +158,12 @@ export type GetPromptResourceResult = {
 
 export type ListPromptResourcesResult = {
   resources: PromptResource[]
+}
+
+export type GetPromptResourceBindingsResult = {
+  resourceId: string
+  cards: Array<{ id: string; name: string }>
+  settingMounts: import('@loom-studio/shared').SettingMount[]
 }
 
 export type CreatePromptResourceResult = {

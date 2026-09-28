@@ -29,20 +29,20 @@ describe('application runtime Provider Profile integration', () => {
     const stored = await fixture.documents.get(created.providerProfile.id)
     expect(JSON.stringify(stored)).not.toContain('secret-value')
     const preset = await createPreset(fixture.runtime)
-    await expect(fixture.runtime.createAgentProfile({
+    await expect(fixture.runtime.updateAgentPreset({
       name: 'Invalid model',
-      presetId: preset.id,
+      agentPresetId: preset.id, expectedVersion: (await fixture.runtime.getPromptResource({ resourceId: preset.id })).resource.version,
       model: { providerProfileId: created.providerProfile.id, modelId: 'disabled-model' },
     })).rejects.toThrow('Provider model is not enabled')
-    const profile = await fixture.runtime.createAgentProfile({
+    const profile = await fixture.runtime.updateAgentPreset({
       name: 'Valid model',
-      presetId: preset.id,
+      agentPresetId: preset.id, expectedVersion: (await fixture.runtime.getPromptResource({ resourceId: preset.id })).resource.version,
       model: { providerProfileId: created.providerProfile.id, modelId: 'model-a' },
     })
     await expect(fixture.runtime.deleteProviderProfile({ providerProfileId: created.providerProfile.id }))
       .resolves.toEqual({ deleted: true, credentialCleanupPending: false })
-    await expect(fixture.runtime.getAgentProfile({ agentProfileId: profile.agentProfile.id }))
-      .resolves.toMatchObject({ agentProfile: { model: { providerProfileId: created.providerProfile.id, modelId: 'model-a' } } })
+    await expect(fixture.runtime.getAgentPreset({ agentPresetId: profile.agentPreset.id }))
+      .resolves.toMatchObject({ agentPreset: { model: { providerProfileId: created.providerProfile.id, modelId: 'model-a' } } })
     fixture.close()
   })
 
@@ -96,12 +96,12 @@ describe('application runtime Provider Profile integration', () => {
     })
 
     const preset = await createPreset(fixture.runtime)
-    await expect(fixture.runtime.createAgentProfile({
+    await expect(fixture.runtime.updateAgentPreset({
       name: 'Fake Agent',
-      presetId: preset.id,
+      agentPresetId: preset.id, expectedVersion: (await fixture.runtime.getPromptResource({ resourceId: preset.id })).resource.version,
       model: { providerProfileId: created.providerProfile.id, modelId: officialFakeModelId },
     })).resolves.toMatchObject({
-      agentProfile: { model: { providerProfileId: created.providerProfile.id, modelId: officialFakeModelId } },
+      agentPreset: { model: { providerProfileId: created.providerProfile.id, modelId: officialFakeModelId } },
     })
     fixture.close()
   })
@@ -246,7 +246,7 @@ describe('application runtime Provider Profile integration', () => {
       },
       modelId: 'test-model',
       apiKey: 'test-key',
-    } as const
+    }
     const input = {
       request: { messages: [{ role: 'user' as const, content: 'hello' }] },
       runId: 'run-1',
@@ -333,13 +333,13 @@ describe('application runtime Provider Profile integration', () => {
       credential: { apiKey: ' document-secret ' },
     })
     const preset = await createPreset(fixture.runtime)
-    const agentProfile = await fixture.runtime.createAgentProfile({
+    const agentPreset = await fixture.runtime.updateAgentPreset({
       name: 'Document-backed model',
-      presetId: preset.id,
+      agentPresetId: preset.id, expectedVersion: (await fixture.runtime.getPromptResource({ resourceId: preset.id })).resource.version,
       model: { providerProfileId: profile.providerProfile.id, modelId: 'doc-model' },
       delivery: 'complete',
     })
-    const session = await fixture.runtime.createAgentSession({ agentProfileId: agentProfile.agentProfile.id })
+    const session = await fixture.runtime.createAgentSession({ agentPresetId: agentPreset.agentPreset.id })
     const turn = await fixture.runtime.invokeAgentTurn({
       agentSessionId: session.session.id,
       input: '走默认 document-backed gateway。',

@@ -1,5 +1,6 @@
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
+import { createId, nowIso } from '@loom-studio/shared'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
@@ -167,7 +168,7 @@ describe('sqlite document store', () => {
   })
 
   it('enforces the document revision owner foreign key in SQLite', async () => {
-    const engine = createSqliteDataEngine({ filename: ':memory:' })
+    const engine = createSqliteDataEngine({ filename: ':memory:', createId, now: nowIso })
     const store = createSqliteDocumentStore({ engine })
     expect(() => engine.database.prepare(`
       INSERT INTO document_revisions (

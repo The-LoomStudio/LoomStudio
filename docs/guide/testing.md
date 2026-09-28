@@ -13,6 +13,7 @@ tests/
   ├── integration/   # 集成测试：跨包的端到端调用（不含 UI）
   ├── regression/    # 回归测试：专门针对已发现的具体 bug，确保不重犯
   ├── probes/        # 探针：性能测量、容量测试（不参与默认 CI）
+  ├── extensions/    # 独立发布扩展的测试，不属于主应用 CI
   └── archive/       # 归档：历史的白皮书论证、MVP 过渡测试
 ```
 
@@ -21,6 +22,12 @@ tests/
 默认的 `pnpm test` 只会运行 `unit`, `contract`, `integration`, 和 `regression`。
 
 `probes/` 和 `archive/` 默认不运行。
+
+`pnpm test:typecheck` 独立检查主应用测试及其引用源码的类型契约，包含探针和压力测试，不包含 `extensions/`；Vitest 的运行时通过不替代此检查。测试类型环境按项目 Node 最低版本提供 ES2024 API，浏览器测试同时保留 DOM 类型；内部包通过源码映射解析，不以旧构建产物代替。
+
+The World 与 ST Data Compat 独立发布。检出对应扩展源码后，可用 `pnpm test:extensions` 和 `pnpm test:extensions:typecheck` 运行本仓库保留的扩展验证；只运行某个扩展时，在前者后附 `tests/extensions/the-world` 或 `tests/extensions/st-data-compat`。这些命令不是主应用门禁，不会自动下载扩展。主应用仍验证 Extension Host 和扩展安装、重载、卸载契约，使用自身维护的测试夹具。
+
+主应用的 [GitHub Actions 配置](../../.github/workflows/ci.yml) 在 push、pull request 或手动触发时依次运行 `check:workspace`、`build`、`lint`、`test:typecheck` 和 `test`。工作流只读仓库，不运行独立扩展测试或执行发布；Node 和 pnpm 版本分别来自 `.node-version` 与 `package.json`。
 
 ## 3. 什么是好的测试？
 

@@ -113,7 +113,7 @@ export function StudioWindowHeader(props: {
 }
 
 function readAssetLayoutId(panel: StudioPanelId): AssetLayoutId | null {
-  if (panel === 'preset') return 'preset'
+  if (panel === 'preset' || panel === 'agent') return 'preset'
   if (panel === 'resource') return 'resources'
   return null
 }

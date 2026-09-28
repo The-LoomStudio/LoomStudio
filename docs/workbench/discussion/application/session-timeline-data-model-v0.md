@@ -3,7 +3,7 @@
 > **状态**：Open Design
 > **主题**：Narrative Timeline、Agent Session、Agent Run、Step 与 Changeset 的数据边界。
 > **迁移说明**：旧稿使用 `Session` 同时表示游玩实例和 Agent 工作会话，现已不再作为默认前提。
-> **事实边界**：本文描述目标方向；当前 M0 Document Types 仍保留旧 Session 与镜像 Transcript 实现。
+> **事实边界**：本文保留目标方向；Narrative Timeline 与 Agent Session 已分离持久化，旧 Session / NarrativeEntry / 镜像 Transcript 不再是实现基线。当前合同见[数据架构](../../../architecture/data/README.md)。
 > **正文 Schema**：Narrative Node 的 raw source、Semantic Part 与派生 Projection 已在 [`narrative-timeline-content-schema-v0.md`](narrative-timeline-content-schema-v0.md) 固化；本文不再另行定义正文格式。
 
 ---
@@ -266,23 +266,24 @@ Agent Session 分支用于从旧 Step 重新尝试编辑路径。它不自动撤
 
 ---
 
-## 10. 当前实现与迁移边界
+## 10. 当前实现与设计边界
 
-当前 M0 仍存在：
+已经实现的基座：
 
-- `Session` 作为剧情运行实例；
-- `NarrativeEntryContent` 的 `user | assistant` 角色；
-- `AgentTranscriptEntry` 对 Narrative 的镜像记录；
-- `submitTurn` 自动把 Provider 输出 accepted 到 Narrative。
+- `NarrativeTimeline` / `NarrativeBranch` / roleless `NarrativeNode` 保存故事正文；Node 使用 `body.format` 与 `body.raw`，不再使用 `NarrativeEntryContent.role`。
+- 独立 `AgentSession` 引用 `agentProfileId`，canonical Transcript 保存消息、工具调用/结果及运行事实，不是 Narrative 的镜像。
+- 两类 Store 接入共享 Data Engine，但共享 Engine 不意味着一次 Run 的全部写入属于同一事务。
 
-这些是当前代码事实，不是本文目标模型已经落地的证据。迁移前不得提前修改 Architecture 或 Reference 文档中的实现描述。
+字段以 [Narrative 类型](../../../../packages/application-data/src/narrative/types.ts)和 [Agent 类型](../../../../packages/application-data/src/agent/types.ts)为准；运行和提交边界见 [Agent Runtime 与 Session](../../../architecture/application/agent/runtime-and-session.md)。旧聚合模型的拆分不再是待办，也不需要为本文重建兼容读取或迁移链。
+
+本文的通用 Step、完整 Agent 工作树与跨领域撤销设想不能据此视为全部落地。下面保留独立设计问题，不以目标模型覆盖正式实现合同。
 
 ---
 
 ## 11. 开放问题
 
-1. Narrative 世界线对象最终就叫 `NarrativeTimeline`，还是仍需要更高层的游玩实例对象？
-2. Agent Session Tree 的节点是统一 Step，还是 Step 与 Message 分离？
+1. 如需高于 `NarrativeTimeline` 的游玩容器，其独立职责是什么？当前世界线对象已经确定为 `NarrativeTimeline`，不再等待命名或旧 Session 替换。
+2. 当前 canonical Transcript Entry 已包含消息和运行事实；未来完整 Agent 工作树是否还需要独立 Step 对象？
 3. Narrative checkpoint 应关联哪些 State / Asset 版本？
 4. Changeset undo 是生成逆向 Changeset，还是移动版本 head？
 5. 跨多个 Document 的 Changeset 如何表达部分不可逆副作用？

@@ -2,6 +2,7 @@ export { applicationDocumentTypes } from './foundation/document-types.js'
 export { officialPromptResourceIds } from './prompt/prompt-resource-defaults.js'
 export * from './transforms/history-text.js'
 export { createApplicationRuntime } from './runtime/runtime.js'
+export { extensionInstallationId } from '@loom-studio/extension-sdk'
 export {
   expandTimelineStateBindings,
   materializeTimelineState,
@@ -39,11 +40,18 @@ export type {
 export type { StateContributionRegistry, StateContributionSource } from './state/state-contribution-registry.js'
 export { composeAgentTurnPrompt } from './agents/agent-turn.js'
 export { createNarrativeSampler } from './narrative/sampling.js'
+export { createNarrativeReader } from './narrative/access.js'
+export type { NarrativeHistoryReadApproval, ApproveNarrativeHistory } from './narrative/access.js'
+export { createNarrativeContextRegistry } from './narrative/context-provider.js'
+export type { NarrativeContextRegistry, ResolvedNarrativeContext } from './narrative/context-provider.js'
+export type { NarrativeContextProjection, NarrativeContextProvider } from '@loom-studio/extension-sdk'
+export { projectNarrativeNodes, projectNarrativeSample } from './narrative/projection.js'
 export type {
   NarrativeSampleRequest,
   NarrativeSampleResult,
   NarrativeSampleSelection,
   NarrativeSampler,
+  NarrativeReadRange,
 } from './narrative/sampling.js'
 export {
   exportCardArtifact,
@@ -70,6 +78,7 @@ export {
 } from './providers/provider-payload.js'
 export { createAgentToolRegistry } from './agents/tool-registry.js'
 export { createMacroProviderRegistry } from './prompt/macro-provider-registry.js'
+export type { TimelinePresetConfig } from './prompt/timeline-preset-config.js'
 export type { MacroProviderRegistry, MacroStaticSource } from './prompt/macro-provider-registry.js'
 export type {
   LoomScriptArtifact,

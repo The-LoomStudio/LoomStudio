@@ -1,0 +1,49 @@
+.page { max-width: 940px; margin: 0 auto; padding: 24px; min-width: 0; }
+.toolbar, .actions, .meta, .messageHeader { display: flex; align-items: center; gap: 12px; }
+.toolbar {
+  flex-wrap: wrap;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--loom-color-border);
+  strong { font-size: 16px; }
+  select {
+    min-width: 0; max-width: 100%; font: inherit; font-size: 13px; padding: 7px 10px;
+    color: var(--loom-color-text); background: var(--loom-color-surface-inset);
+    border: 1px solid var(--loom-color-border); border-radius: 4px;
+  }
+}
+.actions {
+  margin-left: auto; gap: 6px;
+  button {
+    width: 34px; height: 34px; display: grid; place-items: center; padding: 0;
+    color: var(--loom-color-text); background: transparent;
+    border: 1px solid var(--loom-color-border); border-radius: 4px; cursor: pointer;
+    &:hover, &[aria-pressed="true"] { background: var(--loom-color-surface-subtle); }
+    &:disabled { opacity: .5; cursor: default; }
+  }
+}
+.width { display: flex; gap: 4px; align-items: center; font-size: 12px; margin-left: 8px; }
+.meta { justify-content: space-between; flex-wrap: wrap; font-size: 12px; color: var(--loom-color-text-muted); padding: 12px 0; }
+.progress { display: block; width: 100%; height: 3px; accent-color: #6dba97; }
+.stage { max-width: 720px; margin: 32px auto; min-width: 0; }
+.narrow { max-width: 360px; }
+.messageHeader {
+  margin-bottom: 20px;
+  strong { display: block; font-size: 13px; }
+  small { display: block; font-size: 11px; color: var(--loom-color-text-muted); margin-top: 3px; }
+}
+.avatar { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 auto; background: #284b40; color: #d5f0e0; border-radius: 6px; font-size: 14px; }
+.source {
+  margin-top: 16px; font-size: 13px;
+  pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+  textarea {
+    box-sizing: border-box; width: 100%; min-height: 180px; resize: vertical; font: 12px/1.6 monospace;
+    color: var(--loom-color-text); background: var(--loom-color-surface-inset);
+    border: 1px solid var(--loom-color-border); border-radius: 4px; padding: 12px;
+  }
+}
+@media (max-width: 540px) {
+  .page { padding: 14px; }
+  .toolbar { gap: 10px; }
+  .actions { margin-left: 0; }
+  .stage { margin-top: 24px; }
+}

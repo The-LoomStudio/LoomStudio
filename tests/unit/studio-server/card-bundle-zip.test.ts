@@ -7,6 +7,28 @@ import { decodeCardBundleZip, encodeCardBundleZip, loadCardBundleFiles } from '.
 import { defaultCardPng, encodeCardBundlePng, readCardPngArchive } from '../../../apps/studio-server/src/codecs/card-png.js'
 
 describe('Loom Card ZIP', () => {
+  it('carries embedded extension archives as binary files without extracting them', async () => {
+    const archive = zipSync({
+      'manifest.json': Buffer.from(JSON.stringify({ id: 'example.offline', version: '1.0.0' })),
+      'image.bin': new Uint8Array([0, 255, 128, 1]),
+    })
+    const artifact: CardBundleArtifact = {
+      schemaVersion: 4, artifactId: 'offline', displayName: 'Offline', card: { name: 'Offline' }, contextAssets: [],
+      extensionPackages: [{ packageId: 'example.offline', version: '1.0.0', archiveBase64: Buffer.from(archive).toString('base64') }],
+    }
+    const encoded = encodeCardBundleZip({ artifact, avatar: { bytes: Buffer.from('avatar'), mediaType: 'image/png' } })
+    const files = unzipSync(encoded)
+    expect(files['extension-packages/0.zip']).toEqual(archive)
+    expect(files['image.bin']).toBeUndefined()
+    expect((await decodeCardBundleZip(encoded)).artifact.extensionPackages).toEqual(artifact.extensionPackages)
+    const loaded = await loadCardBundleFiles(async path => {
+      const bytes = files[path]
+      if (!bytes) throw new Error(`Missing ${path}`)
+      return bytes
+    })
+    expect(loaded.bundle.artifact.extensionPackages).toEqual(artifact.extensionPackages)
+  })
+
   it.each([0, 6] as const)('rejects mismatched checksum metadata for compression level %s', async level => {
     const entries = unzipSync(encodeCardBundleZip({
       artifact: { schemaVersion: 4, artifactId: 'crc', displayName: 'CRC', card: { name: 'CRC', description: 'original-description' }, contextAssets: [] },

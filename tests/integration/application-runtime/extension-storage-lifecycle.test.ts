@@ -21,21 +21,8 @@ describe('application Extension Storage lifecycle', () => {
 
     const card = await runtime.createCard({ name: 'Lifecycle Card' })
     const timeline = await runtime.createNarrativeTimeline({ cardId: card.card.id })
-    await documents.write({
-      id: 'profile-1',
-      type: 'airp.agentProfile',
-      content: {
-        name: 'Lifecycle Agent',
-        presetId: 'unused-in-this-test',
-        model: { providerProfileId: 'provider-1', modelId: 'model-1' },
-        toolOverrides: {},
-        createdAt: now(),
-        updatedAt: now(),
-      },
-      expectedVersion: 'new',
-      actor: { kind: 'kernel', id: 'test' },
-    })
-    const session = await runtime.createAgentSession({ agentProfileId: 'profile-1' })
+    const { agentPreset } = await runtime.createAgentPreset({ name: 'Lifecycle Agent' })
+    const session = await runtime.createAgentSession({ agentPresetId: agentPreset.id })
 
     await writeStorageDocument(documents, 'card-config', 'airp.extensionConfig', {
       scope: { kind: 'card', cardId: card.card.id },

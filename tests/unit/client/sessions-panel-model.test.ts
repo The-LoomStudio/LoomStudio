@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { AgentProfile, AgentSession, CardSummary, NarrativeTimeline } from '../../../apps/studio-client/src/entities/index.js'
+import type { AgentPreset, AgentSession, CardSummary, NarrativeTimeline } from '../../../apps/studio-client/src/entities/index.js'
 import {
   areAllExpandablesExpanded,
   areAllSelected,
@@ -33,10 +33,10 @@ describe('sessions-panel-model', () => {
 
   it('partitions sessions into bound and standalone groups', () => {
     const sessions: AgentSession[] = [
-      { id: 's1', agentProfileId: 'p1', timelineId: 't1', entryCount: 2, createdAt: '', updatedAt: '' },
-      { id: 's2', agentProfileId: 'p1', entryCount: 0, createdAt: '', updatedAt: '' },
-      { id: 's3', agentProfileId: 'p2', timelineId: 't1', entryCount: 5, createdAt: '', updatedAt: '' },
-      { id: 's4', agentProfileId: 'p2', entryCount: 1, createdAt: '', updatedAt: '' },
+      { id: 's1', agentPresetId: 'p1', timelineId: 't1', entryCount: 2, createdAt: '', updatedAt: '' },
+      { id: 's2', agentPresetId: 'p1', entryCount: 0, createdAt: '', updatedAt: '' },
+      { id: 's3', agentPresetId: 'p2', timelineId: 't1', entryCount: 5, createdAt: '', updatedAt: '' },
+      { id: 's4', agentPresetId: 'p2', entryCount: 1, createdAt: '', updatedAt: '' },
     ]
 
     const { sessionsByTimelineId, standaloneSessions } = partitionSessions(sessions)
@@ -66,14 +66,14 @@ describe('sessions-panel-model', () => {
   })
 
   it('filters standalone sessions by title, profile name, or session ID', () => {
-    const profiles: AgentProfile[] = [
-      { id: 'prof-story', name: 'Story Weaver', createdAt: '', updatedAt: '' },
-      { id: 'prof-helper', name: 'Code Assistant', createdAt: '', updatedAt: '' },
+    const profiles: AgentPreset[] = [
+      { id: 'prof-story', version: 1, resourceKind: 'preset', rootNode: { id: 'story-root', kind: 'module', label: 'Story Weaver' }, model: { providerProfileId: 'provider', modelId: 'model' }, delivery: 'stream', createdAt: '', updatedAt: '' },
+      { id: 'prof-helper', version: 1, resourceKind: 'preset', rootNode: { id: 'helper-root', kind: 'module', label: 'Code Assistant' }, model: { providerProfileId: 'provider', modelId: 'model' }, delivery: 'stream', createdAt: '', updatedAt: '' },
     ]
 
     const sessions: AgentSession[] = [
-      { id: 'session-alpha', agentProfileId: 'prof-story', title: 'Chapter Draft', entryCount: 1, createdAt: '', updatedAt: '' },
-      { id: 'session-beta', agentProfileId: 'prof-helper', title: 'Debug Session', entryCount: 3, createdAt: '', updatedAt: '' },
+      { id: 'session-alpha', agentPresetId: 'prof-story', title: 'Chapter Draft', entryCount: 1, createdAt: '', updatedAt: '' },
+      { id: 'session-beta', agentPresetId: 'prof-helper', title: 'Debug Session', entryCount: 3, createdAt: '', updatedAt: '' },
     ]
 
     expect(filterStandaloneSessions(sessions, profiles, '')).toHaveLength(2)
@@ -184,6 +184,4 @@ describe('sessions-panel-model', () => {
     expect(Array.from(collapsedAll)).toEqual([])
   })
 })
-
-
 

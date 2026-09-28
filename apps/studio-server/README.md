@@ -56,14 +56,19 @@ Studio Server
 - `POST /auth/session`
 - 认证后的 `POST /rpc`
 - Asset 上传与读取
-- Card PNG、`.loomcard` 和 Polyglot PNG 导入导出
+- Card ZIP（下载为 `.loomcard.zip`）与承载同一 ZIP 的 PNG 导入导出；保留的旧入口及 Polyglot 行为见[Card 容器合同](../../docs/architecture/application/card-bundle-files.md)
 - Extension Icon
 - `GET /extensions/events`：只用于 Extension Catalog 变化的 SSE
 
+`POST /rpc` 的完整 JSON 请求体上限为 384 MiB，按传输字节累计。声明或实际大小超限时，
+在 JSON 解析和业务调用前返回 HTTP 413 / `rpc.request_too_large`，停止累积并关闭该连接。
+Card、Asset 的独立二进制入口保持各自上限；此请求预算不是进程峰值内存保证。
+
 官方内容使用 `official.listContent` / `official.installContent` / `official.exportContent` RPC。
 默认读取仓库根目录下的 `official/starter`，部署时应携带该目录或设置
-`CreateStudioServerOptions.officialContentDirectory`。安装必须由用户显式请求，不在
-Application 初始化时创建或覆盖官方预设与 Setting；当前只有本地来源，不包含在线更新。
+`CreateStudioServerOptions.officialContentDirectory`。Server 启动时自动安装缺失的默认预设与
+Setting；保留已有内容、挂载和删除记录，不覆盖用户修改。此步骤由 Server 组合根执行，
+Application 初始化本身不安装内容；当前只有本地来源，不包含在线更新。
 详见 [官方内容说明](../../official/README.md)。
 
 ---
@@ -77,9 +82,11 @@ Application 初始化时创建或覆盖官方预设与 Setting；当前只有本
 3. **压缩格式处理**：统一采用 `fflate` 进行 Card Bundle、Prompt Resource、Extension 压缩包处理，严禁私自编写第二套 ZIP 编解码器。
 4. **业务逻辑绝不上移**：Server 仅作为装配各 Store、Kernel、Host 与提供 HTTP/RPC 协议适配的组合根（Composition Root），**绝不编写 Card、Narrative、Agent、State 或 PromptBuild 的业务规则**（必须全部由 Application Runtime 承载）。
 5. **凭据安全边界**：为 `SecretStore` 注入系统 Keyring 或内存凭据后端，确保 SQLite 中仅持久化 Secret 元数据与引用，严禁明文凭据打印到日志或返回给前端。
-6. **优雅停机流程 (Graceful Shutdown)**：停机遵循分阶段原则：停止接纳新连接并置 `closing` 状态，向在途业务与长连接传递 `AbortSignal`；等待在途请求与文件流释放；清理未决凭据后安全关闭 SQLite Data Engine。
+6. **优雅停机流程 (Graceful Shutdown)**：先停止媒体监听和 HTTP 接纳，向在途业务与长连接传递 `AbortSignal` 并等待请求/流收敛；再停止 Kernel、释放扩展，最后重试未决凭据清理并关闭 SQLite Data Engine。传递取消不等于业务已结束，不在仍使用数据库时抢先关闭它。
 7. **Card 打包完整性与解压安全**：采用增量流式解压与原生 CRC32 校验，严格防御目录越界（zip-slip）与超限解压炸弹（单包 128 MiB / 单文件 64 MiB 预算），损坏包在入库前明确拒绝。
 8. **扩展卸载一致性**：扩展卸载采用“持久化禁用 → 尽力清理”策略，异常时保留状态并支持重试恢复，不损坏全局 Catalog。
+
+Timeline 用户输入经 `application.appendNarrativeInput` 先写入 Narrative Store，再由 Client 投递 Session；`application.editNarrativeNode` 是带分支并发基线的正文编辑，不是运行结束后的自动追加。RPC 层只解析请求并传播可信调用上下文，不补造旧输入的最新版本，也不将整轮 Agent/工具执行包装成一个数据库事务。具体写入合同见[Agent Runtime](../../docs/architecture/application/agent/runtime-and-session.md#6-narrative-边界)。
 
 
 ## 文档入口

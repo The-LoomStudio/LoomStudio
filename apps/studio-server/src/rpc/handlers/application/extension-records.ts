@@ -6,6 +6,7 @@ import type { ExtensionEntityRef, ExtensionStorageScope } from '@loom-studio/ext
 import type { JsonValue } from '@loom-studio/shared'
 import {
   isRecord,
+  readOptionalInstallationTarget as readInstallationTarget,
   readOptionalNumber,
   readOptionalString,
   readString,
@@ -20,6 +21,7 @@ export async function handleExtensionRecordsRpc(
   switch (method) {
     case 'application.listExtensionRecords':
       return await runtime.listExtensionRecords({
+        target: readInstallationTarget(params),
         packageId: readString(params, 'packageId'),
         scope: readOptionalExtensionStorageScope(params, 'scope'),
         recordType: readOptionalString(params, 'recordType'),
@@ -28,18 +30,21 @@ export async function handleExtensionRecordsRpc(
 
     case 'application.getExtensionRecord':
       return await runtime.getExtensionRecord({
+        target: readInstallationTarget(params),
         packageId: readString(params, 'packageId'),
         recordId: readString(params, 'recordId'),
       }) as unknown as JsonValue
 
     case 'application.listExtensionConfigs':
       return await runtime.listExtensionConfigs({
+        target: readInstallationTarget(params),
         packageId: readString(params, 'packageId'),
         scope: readOptionalExtensionStorageScope(params, 'scope'),
       }) as unknown as JsonValue
 
     case 'application.getExtensionConfig':
       return await runtime.getExtensionConfig({
+        target: readInstallationTarget(params),
         packageId: readString(params, 'packageId'),
         scope: readRequiredExtensionStorageScope(params, 'scope'),
         key: readString(params, 'key'),
@@ -48,6 +53,7 @@ export async function handleExtensionRecordsRpc(
     case 'application.upsertExtensionConfig':
       if (!isRecord(params) || !Object.hasOwn(params, 'value')) throw new Error('Expected Extension Config value')
       return await runtime.upsertExtensionConfig({
+        target: readInstallationTarget(params),
         packageId: readString(params, 'packageId'),
         scope: readRequiredExtensionStorageScope(params, 'scope'),
         key: readString(params, 'key'),

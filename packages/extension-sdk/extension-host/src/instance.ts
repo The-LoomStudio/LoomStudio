@@ -6,16 +6,18 @@ import { pathToFileURL } from 'node:url'
 import type { DiagnosticInput, DiagnosticsRegistry } from '@loom-studio/diagnostics'
 import { DocumentStoreError, type ActorRef, type WriteDocumentResult } from '@loom-studio/document-store'
 import { createExtensionLogWriter } from '@loom-studio/logging'
+import { extensionInstallationId, installedExtensionContributionId } from '@loom-studio/extension-sdk'
 import type {
   AiGatewayProviderRegistration,
   EventPublishIdentity,
   EventSubscriberIdentity,
   ExtensionActivationContext,
   ExtensionDocumentWriteInput,
+  ExtensionMediaAsset,
   ExtensionRpcHandler,
   ServerExtensionModule,
 } from '@loom-studio/extension-sdk'
-import type { JsonObject, JsonValue } from '@loom-studio/shared'
+import type { JsonValue } from '@loom-studio/shared'
 import { serializeError } from '@loom-studio/shared'
 import {
   kernelNamespaces,
@@ -38,6 +40,7 @@ import {
   createExtensionStorageContext,
   moduleKey,
   requirePortablePayloads,
+  storageInstallationId,
 } from './storage.js'
 
 export async function loadServerModule(record: ExtensionModuleRecord, instanceId: string): Promise<ServerExtensionModule> {
@@ -67,15 +70,50 @@ export function createContext(
     packageId: packageManifest.id,
     moduleId: moduleManifest.id,
     instanceId: instance.instanceId,
+    target: structuredClone(record.target),
   }
   const subscriber: EventSubscriberIdentity = {
     kind: 'extension',
     packageId: packageManifest.id,
     moduleId: moduleManifest.id,
     instanceId: instance.instanceId,
+    target: structuredClone(record.target),
     capabilities: instance.grantedEventCapabilities,
   }
   let scratchTracked = false
+  const assertAssetAccess = async (asset: ExtensionMediaAsset): Promise<void> => {
+    const ownerInstallationId = record.target.kind === 'card' ? extensionInstallationId(packageManifest.id, record.target) : undefined
+    if (asset.ownerPackageId === packageManifest.id && asset.ownerInstallationId === ownerInstallationId) return
+    assertAssetCapability(instance, 'assets.read')
+    if (record.target.kind === 'card' && asset.ownerInstallationId) {
+      if (!options.canAccessAsset || !await options.canAccessAsset(asset, structuredClone(record.target))) {
+        throw new Error('Media Asset is outside this Card installation scope')
+      }
+      assertScopeActive(instance)
+    }
+  }
+  const canAccessState = async (target: import('@loom-studio/extension-sdk').ExtensionStateTarget): Promise<boolean> => {
+    if (record.target.kind === 'global') return true
+    if (target.scope === 'global') return false
+    if (!options.canAccessState) throw new Error('Card State access validation is not available in this host')
+    return options.canAccessState(target, structuredClone(record.target))
+  }
+  const subscribeEvents = (patterns: string[], handler: (event: import('@loom-studio/transport').StudioEvent) => void | Promise<void>) => {
+    if (!options.subscribeEvents) throw new Error('Extension event subscriptions are not available in this host')
+    let active = true
+    const registration = options.subscribeEvents(patterns, event => {
+      if (!active || !instance.scope.active) return
+      if (record.target.kind === 'card' && event.name === 'state.changed') {
+        const payload = event.payload as Partial<import('@loom-studio/extension-sdk').ExtensionStateChangeEvent>
+        if (!payload?.target) return
+        return canAccessState(payload.target).then(allowed => {
+          if (allowed && active && instance.scope.active) return handler(event)
+        })
+      }
+      return handler(event)
+    }, subscriber)
+    return { dispose: () => { active = false; return registration.dispose() } }
+  }
 
   return {
     extension: {
@@ -87,12 +125,14 @@ export function createContext(
       displayName: packageManifest.displayName,
       directory: record.directory,
     },
-    logger: createExtensionLogger(packageManifest.id, moduleManifest.id, instance.instanceId, options.logger),
+    logger: createExtensionLogger(packageManifest.id, moduleManifest.id, instance.instanceId, options.logger,
+      record.target.kind === 'card' ? extensionInstallationId(packageManifest.id, record.target) : undefined),
     logs: {
       query: async input => {
         assertScopeActive(instance)
         if (!options.queryLogs) throw new Error('Extension log queries are not available in this host')
-        return options.queryLogs(packageManifest.id, input)
+        return options.queryLogs(packageManifest.id, input,
+          record.target.kind === 'card' ? extensionInstallationId(packageManifest.id, record.target) : undefined)
       },
     },
     permissions: {
@@ -106,7 +146,7 @@ export function createContext(
         if (isStudioReservedNamespace(name)) throw new Error(`Extension cannot register reserved Studio namespace RPC: ${name}`)
         if (!name.startsWith(`${packageManifest.id}.`)) throw new Error(`Extension RPC must use package namespace: ${name}`)
         const wrapped: ExtensionRpcHandler = (params, context) => instance.scope.run(() => handler(params, context))
-        const registration = options.registerRpc(name, packageManifest.id, moduleManifest.id, wrapped, instance.instanceId)
+        const registration = options.registerRpc(name, packageManifest.id, moduleManifest.id, wrapped, instance.instanceId, structuredClone(record.target))
         instance.scope.track(`rpc:${name}`, registration)
         instance.registeredRpcNames.add(name)
         if (!moduleManifest.contributes?.rpc?.some(rpc => rpc.name === name)) {
@@ -120,14 +160,18 @@ export function createContext(
         }
         return registration
       },
-      call: async <T = JsonValue>(method: string, params?: JsonValue) => {
+      call: async <T = JsonValue>(method: string, params?: JsonValue, callOptions?: { scope?: 'installation' | 'global' }) => {
         assertScopeActive(instance)
+        if (callOptions?.scope !== undefined && callOptions.scope !== 'installation' && callOptions.scope !== 'global') {
+          throw new Error('Extension RPC scope must be installation or global')
+        }
         if (isKernelNamespace(method)) throw new Error(`Extension cannot call Kernel namespace RPC through ctx.rpc: ${method}`)
         if (isStudioReservedNamespace(method)) throw new Error(`Extension cannot call reserved Studio namespace RPC through ctx.rpc: ${method}`)
         return options.callRpc(method, params, {
           packageId: packageManifest.id,
           moduleId: moduleManifest.id,
           instanceId: instance.instanceId,
+          extensionTarget: callOptions?.scope === 'global' ? { kind: 'global' } : structuredClone(record.target),
         }) as Promise<T>
       },
     },
@@ -157,6 +201,7 @@ export function createContext(
           packageId: packageManifest.id,
           moduleId: moduleManifest.id,
           instanceId: instance.instanceId,
+          target: structuredClone(record.target),
         })
         instance.scope.track(`event-definition:${definition.name}`, registration)
         instance.registeredEventNames.add(definition.name)
@@ -169,8 +214,7 @@ export function createContext(
       },
       subscribe: (patterns, handler) => {
         assertScopeActive(instance)
-        if (!options.subscribeEvents) throw new Error('Extension event subscriptions are not available in this host')
-        const registration = options.subscribeEvents(patterns, event => instance.scope.run(() => handler(event)), subscriber)
+        const registration = subscribeEvents(patterns, event => instance.scope.run(() => handler(event)))
         instance.scope.track(`event-subscription:${patterns.join(',')}`, registration)
         return registration
       },
@@ -186,15 +230,40 @@ export function createContext(
         }
         if (!options.registerMacroProvider) throw new Error('Macro providers are not available in this host')
         const handle = options.registerMacroProvider({
-          id: provider.id,
+          id: installedExtensionContributionId(packageManifest.id, record.target, provider.id),
           name: provider.name,
           resolve: context => instance.scope.run(() => provider.resolve(context)),
         }, {
           packageId: packageManifest.id,
           moduleId: moduleManifest.id,
           instanceId: instance.instanceId,
+          target: structuredClone(record.target),
         })
         instance.scope.track(`macro-provider:${provider.id}`, handle)
+        return handle
+      },
+    },
+    narrativeContext: {
+      register: provider => {
+        assertScopeActive(instance)
+        if (moduleManifest.capabilities?.['narrative.context.provide'] !== true) {
+          throw new Error(`Extension module is not allowed to provide Narrative context: ${moduleKey(packageManifest.id, moduleManifest.id)}`)
+        }
+        if (!provider.id.startsWith(`${packageManifest.id}.`)) {
+          throw new Error(`Narrative context provider must use package namespace: ${provider.id}`)
+        }
+        if (!options.registerNarrativeContextProvider) throw new Error('Narrative context providers are not available in this host')
+        const handle = options.registerNarrativeContextProvider({
+          id: installedExtensionContributionId(packageManifest.id, record.target, provider.id),
+          resolve: context => instance.scope.run(() => provider.resolve(context)),
+          ...(provider.onSessionHandoff ? {
+            onSessionHandoff: context => instance.scope.run(() => provider.onSessionHandoff!(context)),
+          } : {}),
+        }, {
+          packageId: packageManifest.id, moduleId: moduleManifest.id, instanceId: instance.instanceId,
+          target: structuredClone(record.target),
+        })
+        instance.scope.track(`narrative-context:${provider.id}`, handle)
         return handle
       },
     },
@@ -213,6 +282,7 @@ export function createContext(
           moduleId: moduleManifest.id,
           instanceId: instance.instanceId,
           packageVersion: packageManifest.version,
+          target: structuredClone(record.target),
         })
         instance.scope.track(`state-contribution:${contribution.id}`, handle)
         return handle
@@ -223,11 +293,15 @@ export function createContext(
           throw new Error(`Extension module is not allowed to read State: ${moduleKey(packageManifest.id, moduleManifest.id)}`)
         }
         if (!options.readState) throw new Error('State reads are not available in this host')
-        return instance.scope.run(() => options.readState!(target, {
-          packageId: packageManifest.id,
-          moduleId: moduleManifest.id,
-          instanceId: instance.instanceId,
-        }))
+        const requestedTarget = structuredClone(target)
+        return instance.scope.run(async () => {
+          if (!await canAccessState(requestedTarget)) throw new Error('State target is outside the extension Card installation')
+          return options.readState!(requestedTarget, {
+            packageId: packageManifest.id,
+            moduleId: moduleManifest.id,
+            instanceId: instance.instanceId,
+          })
+        })
       },
       write: input => {
         assertScopeActive(instance)
@@ -235,11 +309,15 @@ export function createContext(
           throw new Error(`Extension module is not allowed to write State: ${moduleKey(packageManifest.id, moduleManifest.id)}`)
         }
         if (!options.writeState) throw new Error('State writes are not available in this host')
-        return instance.scope.run(() => options.writeState!(input, {
-          packageId: packageManifest.id,
-          moduleId: moduleManifest.id,
-          instanceId: instance.instanceId,
-        }))
+        const request = structuredClone(input)
+        return instance.scope.run(async () => {
+          if (!await canAccessState(request.target)) throw new Error('State target is outside the extension Card installation')
+          return options.writeState!(request, {
+            packageId: packageManifest.id,
+            moduleId: moduleManifest.id,
+            instanceId: instance.instanceId,
+          })
+        })
       },
       subscribe: (input, handler) => {
         assertScopeActive(instance)
@@ -248,16 +326,26 @@ export function createContext(
         if (input?.signal?.aborted) return { dispose() {} }
         const target = input?.target
         const paths = input?.paths
-        const registration = options.subscribeEvents(['state.changed'], event => {
+        const registration = subscribeEvents(['state.changed'], event => {
           const payload = event.payload as Partial<import('@loom-studio/extension-sdk').ExtensionStateChangeEvent>
           if (!payload || !payload.target || typeof payload.revisionId !== 'string') return
-          if (target && JSON.stringify(target) !== JSON.stringify(payload.target)) return
-          if (paths?.length && !(payload.paths ?? []).some(path => paths.some(prefix => path === prefix || path.startsWith(`${prefix}/`)))) return
+          if (target && (target.scope !== payload.target.scope
+            || (target.scope === 'timeline' && payload.target.scope === 'timeline'
+              && (target.timelineId !== payload.target.timelineId || target.branchId !== payload.target.branchId)))) return
+          if (paths?.length && !(payload.paths ?? []).some(path => paths.some(prefix =>
+            path === '' || prefix === '' || path === prefix || path.startsWith(`${prefix}/`) || prefix.startsWith(`${path}/`)))) return
           return handler(payload as import('@loom-studio/extension-sdk').ExtensionStateChangeEvent)
-        }, subscriber)
-        instance.scope.track('state-subscription', registration)
-        input?.signal?.addEventListener('abort', () => registration.dispose(), { once: true })
-        return registration
+        })
+        const onAbort = () => { void handle.dispose() }
+        const handle = {
+          dispose: () => {
+            input?.signal?.removeEventListener('abort', onAbort)
+            return registration.dispose()
+          },
+        }
+        instance.scope.track('state-subscription', handle)
+        input?.signal?.addEventListener('abort', onAbort, { once: true })
+        return handle
       },
     },
     ai: {
@@ -334,7 +422,7 @@ export function createContext(
         }
         if (!options.registerAgentToolHandler) throw new Error('Agent Tool Handler registration is not available in this host')
         const registration = options.registerAgentToolHandler(
-          toolId,
+          installedExtensionContributionId(packageManifest.id, record.target, toolId),
           packageManifest.id,
           moduleManifest.id,
           instance.instanceId,
@@ -361,6 +449,7 @@ export function createContext(
           ...query,
           type: query.type,
           ownerExtensionId: packageManifest.id,
+          ownerInstallationId: storageInstallationId(record) ?? null,
         })).items
       },
       write: async (input: ExtensionDocumentWriteInput): Promise<WriteDocumentResult> => {
@@ -370,6 +459,7 @@ export function createContext(
           meta: {
             ...input.meta,
             ownerExtensionId: packageManifest.id,
+            ownerInstallationId: storageInstallationId(record),
           },
           actor: extensionActor,
         }
@@ -379,6 +469,7 @@ export function createContext(
           if (existing && (existing.meta.ownerExtensionId !== packageManifest.id || existing.type !== write.type)) {
             throw new DocumentStoreError('document.conflict', `Document ownership or type conflict: ${write.id}`)
           }
+          if (existing) assertDocumentAccess(record, existing, 'write')
           return tx.write({
             ...write,
             expectedVersion: write.expectedVersion ?? (existing ? undefined : 'new'),
@@ -405,9 +496,11 @@ export function createContext(
     },
     portablePayloads: {
       publish: async input => {
+        input = structuredClone(input)
         assertScopeActive(instance)
         const portablePayloads = requirePortablePayloads(options)
         return await portablePayloads.create({
+          ownerInstallationId: storageInstallationId(record),
           packageId: packageManifest.id,
           artifactPayloadId: input.artifactPayloadId,
           payload: input.payload,
@@ -415,18 +508,19 @@ export function createContext(
       },
       listOwn: async () => {
         assertScopeActive(instance)
-        return await requirePortablePayloads(options).list(packageManifest.id)
+        return await requirePortablePayloads(options).list(packageManifest.id, storageInstallationId(record))
       },
       readOwn: async payloadId => {
         assertScopeActive(instance)
         const payload = await requirePortablePayloads(options).get(payloadId)
-        assertPortablePayloadOwner(packageManifest.id, payload)
+        assertPortablePayloadOwner(packageManifest.id, payload, storageInstallationId(record))
         return payload
       },
       updateOwn: async input => {
+        input = structuredClone(input)
         assertScopeActive(instance)
         const portablePayloads = requirePortablePayloads(options)
-        assertPortablePayloadOwner(packageManifest.id, await portablePayloads.get(input.payloadId))
+        assertPortablePayloadOwner(packageManifest.id, await portablePayloads.get(input.payloadId), storageInstallationId(record))
         return await portablePayloads.update({
           packageId: packageManifest.id,
           payloadId: input.payloadId,
@@ -435,9 +529,10 @@ export function createContext(
         })
       },
       deleteOwn: async input => {
+        input = structuredClone(input)
         assertScopeActive(instance)
         const portablePayloads = requirePortablePayloads(options)
-        assertPortablePayloadOwner(packageManifest.id, await portablePayloads.get(input.payloadId))
+        assertPortablePayloadOwner(packageManifest.id, await portablePayloads.get(input.payloadId), storageInstallationId(record))
         await portablePayloads.delete({
           packageId: packageManifest.id,
           payloadId: input.payloadId,
@@ -445,12 +540,15 @@ export function createContext(
         })
       },
       replaceOwnCardBindings: async input => {
+        input = structuredClone(input)
         assertScopeActive(instance)
+        if (record.target.kind === 'card' && input.cardId !== record.target.cardId) throw new Error('Portable Payload bindings are outside this Card installation scope')
         const portablePayloads = requirePortablePayloads(options)
         for (const payloadId of input.payloadIds) {
-          assertPortablePayloadOwner(packageManifest.id, await portablePayloads.get(payloadId))
+          assertPortablePayloadOwner(packageManifest.id, await portablePayloads.get(payloadId), storageInstallationId(record))
         }
         return await portablePayloads.replaceCardBindings({
+          ownerInstallationId: storageInstallationId(record),
           packageId: packageManifest.id,
           cardId: input.cardId,
           expectedVersion: input.expectedVersion,
@@ -468,6 +566,7 @@ export function createContext(
           ...input,
           bytes: new Uint8Array(input.bytes),
           ownerPackageId: packageManifest.id,
+          ownerInstallationId: record.target.kind === 'card' ? extensionInstallationId(packageManifest.id, record.target) : undefined,
           actor: { kind: 'extension', id: packageManifest.id },
         })
       },
@@ -476,7 +575,7 @@ export function createContext(
         if (!options.assets) throw new Error('Extension Media Assets are not available in this host')
         const asset = await options.assets.get(assetId)
         if (!asset) throw new Error(`Media Asset not found: ${assetId}`)
-        if (asset.ownerPackageId !== packageManifest.id) assertAssetCapability(instance, 'assets.read')
+        await assertAssetAccess(asset)
         return {
           asset,
           bytes: new Uint8Array(await options.assets.read(assetId, readOptions)),
@@ -487,7 +586,7 @@ export function createContext(
         if (!options.assets || !options.assetScratchRoot) throw new Error('Extension Asset materialization is not available in this host')
         const asset = await options.assets.get(assetId)
         if (!asset) throw new Error(`Media Asset not found: ${assetId}`)
-        if (asset.ownerPackageId !== packageManifest.id) assertAssetCapability(instance, 'assets.read')
+        await assertAssetAccess(asset)
         const fileExtension = materializeOptions?.fileExtension ?? ''
         if (fileExtension && !/^\.[A-Za-z0-9]{1,16}$/.test(fileExtension)) {
           throw new Error('Materialized Asset fileExtension must be a short dot-prefixed alphanumeric extension')
@@ -520,13 +619,14 @@ export function createContext(
   }
 }
 
-export function createExtensionLogger(
+function createExtensionLogger(
   packageId: string,
   moduleId: string,
   instanceId: string,
   logger: ExtensionHostLogger | undefined,
+  installationId?: string,
 ): ExtensionActivationContext['logger'] {
-  return createExtensionLogWriter(logger, { packageId, moduleId, instanceId, runtime: 'server' })
+  return createExtensionLogWriter(logger, { packageId, moduleId, instanceId, runtime: 'server', ...(installationId ? { installationId } : {}) })
 }
 
 export function hasContributionMismatch(record: ExtensionModuleRecord, instance: ExtensionInstance, options: ExtensionHostOptions): boolean {
@@ -703,6 +803,8 @@ export function isLiveInstance(state: ExtensionInstanceState): boolean {
 
 export function toSummary(record: ExtensionModuleRecord): ExtensionModuleSummary {
   return {
+    installationId: extensionInstallationId(record.packageManifest.id, record.target),
+    target: structuredClone(record.target),
     packageId: record.packageManifest.id,
     moduleId: record.moduleManifest.id,
     runtime: 'server',
@@ -736,10 +838,10 @@ export function reportDiagnostic(
   })
 }
 
-export function isKernelNamespace(name: string): boolean {
+function isKernelNamespace(name: string): boolean {
   return kernelNamespaces.includes(name.split('.')[0] ?? '')
 }
 
-export function isStudioReservedNamespace(name: string): boolean {
+function isStudioReservedNamespace(name: string): boolean {
   return studioReservedNamespaces.includes(name.split('.')[0] ?? '')
 }

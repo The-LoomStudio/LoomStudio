@@ -19,7 +19,6 @@
     { "path": "./packages/client-bridge" },
     { "path": "./packages/trace-audit" },
     { "path": "./packages/loom-runner" },
-    { "path": "./packages/kernel" },
-    { "path": "./official/extensions/st-data-compat" }
+    { "path": "./packages/kernel" }
   ]
 }

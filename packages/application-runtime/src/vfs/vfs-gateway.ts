@@ -77,7 +77,7 @@ export function resolveVirtualPath(node: Pick<PromptResourceNode, 'label' | 'kin
   return `/${safeName}`
 }
 
-export function resolveVirtualExtension(kind: PromptResourceNode['kind']): string | undefined {
+function resolveVirtualExtension(kind: PromptResourceNode['kind']): string | undefined {
   switch (kind) {
     case 'entry':
       return '.md'

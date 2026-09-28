@@ -1,6 +1,6 @@
 # Client Extension Host 与 Renderer Surface
 
-> 状态：Extension Host 与 Loom Script Sandbox 已实现（2026-09-11）
+> 状态：Extension Host 与 Loom Script Sandbox 已实现；2026-09-24 补充共享 iframe 基建与受控通知桥。
 
 本文记录 Studio Client 当前已经落地的 Client Extension Module、Loom Script Renderer、Surface 仲裁、实例生命周期与消息内 Render Mount。Extension Client Module 仍是受信任同源代码；不可信单文件 Renderer 使用独立 Loom Script Sandbox，详见 [`loom-script-runtime.md`](loom-script-runtime.md)。
 
@@ -23,7 +23,7 @@ Extension Package
                  -> Renderer UI Instance @ Scope
 ```
 
-Server Catalog 为已发现的 Client Module 返回受控 `entryUrl`。浏览器从同源 Extension File Route 加载模块，动态导入时附加 Instance cache-buster；Extension disable、reload、版本或 Entry 变化会先 abort 并按注册反序 dispose 旧实例，再按当前权威 Catalog 重建。
+Server Catalog 为已发现的 Client Module 返回受控 `entryUrl`。浏览器从同源 Extension File Route 加载模块，动态导入时附加 Instance cache-buster；Extension disable、reload、版本、Entry 或 UI 权限声明／授权变化会先 abort 并按注册反序 dispose 旧实例，再按当前权威 Catalog 重建。
 
 Client Module 必须导出 `activate(ctx)`。Manifest 中声明的 Renderer 必须在激活期间通过 `ctx.renderers.register()` 注册；Manifest Command 则通过 `ctx.commands.register(commandId, handler)` 绑定执行实现。未声明注册、声明与运行时合同不一致、激活异常都会使该 Module 降级并产生 Diagnostic，而不会阻塞 Studio Shell。
 
@@ -70,6 +70,8 @@ Renderer 实例获得：
 - 可选 `DisplayPart`；
 - `mount(root, context)`、可选 `update(context)` 与 disposer。
 
+消息内 `narrative.entry.inline` Renderer 是轻量、可重建的节点视图。正文虚拟化允许消息离屏后卸载，此时 abort signal、执行 disposer，并销毁该实例的 DOM/iframe；重新进入挂载范围时重新投影和 mount，不承诺保留表单输入或媒体播放进度。复杂、长期存活的界面应选择独立 Surface，不能把节点视图作为通用界面容器。编辑中的正文暂时保留挂载；Timeline tail 不属于正文虚拟窗口。正文上下缓冲消息数是客户端外观设置，不等于扩展“仅渲染最近几层”的业务规则。
+
 ## 3. Surface 与冲突策略
 
 | Surface | Scope | 冲突策略 | 当前宿主位置 |
@@ -96,7 +98,9 @@ Navigation Surface 可以注册多个入口，但同一宿主容器只展示当�
 
 - `direct`：直接挂载到 Host-owned Root，继承 Studio CSS Token；不是样式或 DOM 隔离；
 - `shadow`：Host 创建 open Shadow Root，并注入最小 box-sizing、字体和颜色桥接；提供样式边界，不提供恶意代码隔离；
-- `sandbox-iframe`：Host 创建 `sandbox="allow-scripts"` iframe，不授予 `allow-same-origin`。Extension iframe 使用受控 frame URL；Loom Script 使用 Blob module、受限 CSP 与专用 `MessageChannel`。IFrame 不继承父 Document 的 CSS，Host 会随 Context 发送公共 Theme Token Snapshot，并在主题变化时发送 `loom:renderer-theme`。
+- `sandbox-iframe`：Host 创建 `sandbox="allow-scripts"` iframe，不授予 `allow-same-origin`。Extension iframe 使用受信任 Client Module 提供的 frame URL；Loom Script 在 srcdoc 内创建 Blob module，使用受限 CSP 与专用 `MessageChannel`。IFrame 不继承父 Document 的 CSS，Host 会随 Context 发送公共 Theme Token Snapshot，并在主题变化时发送 `loom:renderer-theme`。
+
+三条 iframe 渲染路径复用 [`iframe-runtime`](../ui/iframe-runtime.md) 的生命周期、通信或尺寸模块。Extension iframe 后续导航会撤销通道，不重新发送 Context。Loom Script update 绑定到实际 UI Instance；不能把注册级 update 当作 sandbox 实例更新。
 
 每个 Surface Host 建立独立 Root 和 stacking context。Extension 在 Root 外修改宿主 DOM 或注入全局 CSS 属于 Direct DOM escape hatch，不是稳定平台合同，也不享受兼容保证。
 
@@ -114,6 +118,7 @@ ctx.history.project/extract
 ctx.rpc.call
 ctx.assets.url
 ctx.files.url
+ctx.notifications.show
 ctx.logger / ctx.signal / ctx.extension
 ```
 
@@ -126,6 +131,7 @@ ctx.logger / ctx.signal / ctx.extension
 - Data commit 会产生 `extensions.data.changed` SSE，Client Host 收到后使 Renderer Projection 失效重建；
 - Client Config 始终绑定当前 `packageId`，更新使用 Document Version 乐观并发；订阅只在服务端提交成功并产生数据事件后读取新的权威快照；
 - 当前没有 Client State mutation、任意 Application RPC 或通用 Event Subscription。
+- `notifications.show` 需要 `ui.notify` 声明与用户授权，只允许有限流的站内纯文本；iframe 使用 `connectIframeContext()`，不会直接获得整个 Client Context。普通消息 HTML 不接入这条业务桥。
 
 ## 6. Client Command 与 Action Placement
 

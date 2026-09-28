@@ -3,6 +3,9 @@
 > **状态**：Open / 已确认方向，实施合同待收束
 > **更新**：2026-09-21
 > **目标**：整理分散的剧情交互并保持事实连续，以业务节奏触发总结，而不只追求 Token 压缩。
+
+> **提供者补充（2026-09-24）**：官方记忆插件默认自带、允许替换；上下文接收端按该基础能力存在设计，不以无插件初始化策略阻塞实施。自由文档式记忆可经 Setting 注入记忆锚点，Agent 自行更新 Raw 范围属于后续兜底，当前不实现。
+> **接收接线**：Runtime / SDK 已提供默认剧情来源与显式 Session 交接入口，见[正式合同](../../architecture/application/extension/narrative-context.md)。此交付不包含本 Plan 的摘要算法、自动调度、官方插件安装或自动生成交接文本。
 > **授权范围**：本轮建立独立 Plan、同步职责和索引；不因此启动记忆系统代码实施。
 > **配套计划**：[Agent 上下文骨架与 Session 生命周期](./agent-context-skeleton-and-memory-projection-plan.md)。
 
@@ -78,12 +81,12 @@ Session 的默认记忆采用 Agent 可维护的记事板（Scratchpad），保�
 
 1. Runtime 读取本次有效策略和当前占用，统一判断是否进入刷新，不建立另一个独立 Session 总结调度器。
 2. 需要剧情总结时，记忆来源返回摘要内容、覆盖的分支 / 节点范围和版本，以及未总结的保留范围；只清理工作会话时不推进剧情覆盖进度。
-3. Narrative Summary 和 Session Summary 分别准备、分别提交。Narrative Summary 成功后由 Memory 侧推进有效指针；Session Summary 成功后隐藏旧工作段并携带 Session 工作记录。两者不互相等待。
+3. Narrative Summary 和 Session Summary 分别准备、分别提交。Narrative Summary 成功只产生可采用结果；在 Session 总结采用边界，Memory 侧才推进已经准备好的有效指针。Session Summary 成功后隐藏旧工作段并携带 Session 工作记录，不等待尚未完成的 Narrative Summary。提前或迟到的剧情摘要都不自行改写正在使用的 Prompt 前缀。
 4. 正文写入立即持久化，但本身不推进 Narrative 默认有效 Head。Memory 指针推进不连带修改其他 Session 的持久化状态；其他消费者可按临时参数请求自己的范围。
 
 这里定义职责，不提前固定公共 Schema、表结构或扩展注册 API。完整切换、恢复和多 Session 行为由配套计划实现并验收。
 
-当前不新增 `SessionProjectionSnapshot`、长期 `RefreshState` 或 PromptBuild 专用的复杂投影对象。“刷新”仅指总结与工作交接的协调动作，不是第三套持久化系统。必须区分 Timeline 原始 Head 与 Narrative 默认有效 Head：前者随每次正文写入推进，后者只有总结插件完成总结并推进指针后才变化。有效 Head 未变化时，新正文只存在于 Session 的 Tool Call / Tool Result 历史，不进入默认 Narrative 区。
+当前不新增 `SessionProjectionSnapshot`、长期 `RefreshState` 或 PromptBuild 专用的复杂投影对象。“刷新”仅指总结与工作交接的协调动作，不是第三套持久化系统。必须区分 Timeline 原始 Head 与 Narrative 默认有效 Head：前者随每次正文写入推进，后者只有准备好的总结在 Session 总结边界被正式采用后才变化。有效 Head 未变化时，新正文已经持久化，但在默认 Prompt 中只通过 Session 的 Tool Call / Tool Result 历史出现，不进入默认 Narrative 区。
 
 ## 3. 已有基础
 

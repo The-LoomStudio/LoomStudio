@@ -373,7 +373,7 @@ character-li-ming/
 - [`retrieval-search-v0.md`](retrieval-search-v0.md) 定义 Retrieval / Search 是 Tool / Capability 的子能力；本文进一步定义搜索前的可见性裁剪、读取内容形态和 `ls` 视图。
 - [`tool-capability-v0.md`](tool-capability-v0.md) 定义 ToolCall / ToolResult 与受控 Mutation；本文收束资源读取和运行时写入时的数据契约。
 - [`permission-consent-v0.md`](permission-consent-v0.md) 定义权限和确认边界；本文补充 `listed / unlisted / sealed` 三种 Agent 读取语义。
-- [`../../../plans/file-backed-resource-agent-script-codeact-plan.md`](../../../plans/file-backed-resource-agent-script-codeact-plan.md) 讨论文件型资源、Agent Script 和 CodeAct 的持久化与执行；本文只讨论这些资源在模型面前怎样呈现和交互。
+- [File-backed Resource 历史综合提案](../../../../archive/plans/file-backed-resource-agent-script-codeact-plan.md) 讨论文件型资源、Agent Script 和 CodeAct 的持久化与执行；本文只讨论这些资源在模型面前怎样呈现和交互。
 
 如与早期 Retrieval 讨论中“搜索结果再由 Runtime 决定是否投影”存在表述差异，以本文的主动读取闭环为当前讨论结论：成功的读取结果作为 ToolResult 进入当前 Agent Session，并供后续模型调用消费。
 

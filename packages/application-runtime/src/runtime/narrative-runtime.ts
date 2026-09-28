@@ -8,10 +8,13 @@ import { composeStateContributions, createCardStateContribution, materializeStat
 import type { StateContributionSource } from '../state/state-contribution-registry.js'
 import { createVariableRenderContext, type VariableRenderContext } from '../prompt/variables.js'
 import { timelineRuntimeContextId } from '../narrative/timeline-runtime-context.js'
-import { snapshotLoomScriptMounts } from '../scripts/loom-script-resolution.js'
+import { deleteTimelinePresetConfigs, listTimelinePresetConfigs, timelinePresetConfigId } from '../prompt/timeline-preset-config.js'
+import { normalizeMacroSelections } from '@loom-studio/shared'
 import type { NarrativePage } from '@loom-studio/application-data'
 import { parseTimelineArchive, timelineArchivePendingId, type TimelineArchive, type TimelineArchiveIdMap, type TimelineArchivePendingContent } from '../archive/timeline-archive.js'
 import type {
+  AppendNarrativeInput,
+  AppendNarrativeInputResult,
   CardSourceContent,
   MaterializedStateContribution,
   CreateNarrativeTimelineInput,
@@ -33,8 +36,6 @@ import type {
   SwitchNarrativeBranchInput,
   SwitchNarrativeBranchResult,
   TimelineRuntimeContextContent,
-  TextExtractorContent,
-  TextTransformRuleContent,
 } from '../types.js'
 import {
   narrativeWriteContext,
@@ -85,6 +86,9 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
         nodes,
         state: { scope, revisions },
         participants,
+        macroConfigurations: (await listTimelinePresetConfigs(ctx.documents, timeline.id)).map(record => ({
+          presetId: record.content.presetId, macroSelections: record.content.macroSelections,
+        })),
       } }
     },
 
@@ -106,7 +110,7 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
       const nodes = orderArchiveItems(archive.nodes, node => node.parentNodeId)
       const result = await ctx.dataEngine.transact(
         narrativeWriteContext(undefined, 'application.importTimelineArchive'),
-        async dataTx => {
+        async dataTx => requireDocumentParticipant(ctx).participateTransaction(dataTx, async documents => {
           const stateTx = ctx.states.transaction(dataTx)
           const narrativeTx = narratives.transaction(dataTx)
           const scope = stateTx.createScope({ kind: 'timeline', ownerId: timelineId })
@@ -136,7 +140,15 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
             })),
           })
           narrativeTx.switchBranch({ timelineId, branchId: idMap.branchIds[archive.timeline.activeBranchId]! })
-        },
+          for (const config of archive.macroConfigurations ?? []) {
+            await documents.write({
+              id: timelinePresetConfigId(timelineId, config.presetId),
+              type: applicationDocumentTypes.timelinePresetConfig,
+              content: { timelineId, presetId: config.presetId, macroSelections: normalizeMacroSelections(config.macroSelections) },
+              expectedVersion: 'new',
+            })
+          }
+        }, { allowEmpty: true }),
       )
       const participantResult = await ctx.timelineArchiveParticipants.importParticipants({
         timelineId,
@@ -174,6 +186,19 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
 
     getNarrativePage: (input: GetNarrativePageInput): Promise<NarrativePage> =>
       requireNarratives(ctx).getPage(input),
+
+    appendNarrativeInput: async (input: AppendNarrativeInput, requestContext?: RuntimeRequestContext): Promise<AppendNarrativeInputResult> => {
+      if (!input.content.trim()) throw new Error('Narrative input content cannot be empty')
+      const result = await requireNarratives(ctx).appendInput({
+        ...narrativeWriteContext(requestContext, 'application.appendNarrativeInput'),
+        timelineId: input.timelineId,
+        branchId: input.branchId,
+        nodeId: input.nodeId,
+        expectedHeadNodeId: input.expectedHeadNodeId,
+        body: { format: 'loom-markdown.v1', raw: input.content },
+      })
+      return { timeline: result.timeline, branch: result.branch, node: result.node, mutation: { changesetId: result.commit.changesetId } }
+    },
 
     editNarrativeNode: async (input: { timelineId: string; branchId: string; nodeId: string; expectedHeadNodeId: string; expectedRaw: string; raw: string }, requestContext?: RuntimeRequestContext) => {
       const result = await requireNarratives(ctx).editBranchNode({
@@ -226,6 +251,7 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
           if (runtimeContext && !runtimeContext.meta.tombstone) {
             await documents.delete({ id: runtimeContext.id, expectedVersion: runtimeContext.version })
           }
+          await deleteTimelinePresetConfigs(documents, input.timelineId)
           await tombstoneExtensionStorageScope(documents, {
             kind: 'timeline',
             timelineId: input.timelineId,
@@ -300,6 +326,9 @@ async function createTimelineFromCard(
   const contributionSources = (cardContent.stateContributionIds ?? []).map(contributionId => {
     const source = ctx.stateContributions.get(contributionId)
     if (!source) throw new Error(`Card State contribution is not registered: ${contributionId}`)
+    if (source.target.kind === 'card' && source.target.cardId !== card.id) {
+      throw new Error(`State contribution is not available for this Card: ${contributionId}`)
+    }
     return source
   })
   const composedContribution = composeStateContributions(`timeline:${card.id}`, [
@@ -404,15 +433,6 @@ export async function readAgentTurnVariables(
   })
 }
 
-export async function readLegacyCardUserName(
-  ctx: Pick<ApplicationRuntimeContext, 'documents'>,
-  cardId: string | undefined,
-): Promise<string | undefined> {
-  if (!cardId) return undefined
-  const card = await readDocument<CardSourceContent>(ctx.documents, cardId, applicationDocumentTypes.cardSource)
-  return card.content.userName
-}
-
 async function buildTimelineRuntimeContext(
   ctx: Pick<ApplicationRuntimeContext, 'documents' | 'now'>,
   input: {
@@ -424,20 +444,12 @@ async function buildTimelineRuntimeContext(
     contributionSources: StateContributionSource[]
   },
 ): Promise<TimelineRuntimeContextContent> {
-  const textTransformRules = (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule))
-    .filter(rule => rule.content.owner.kind === 'card' && rule.content.owner.cardId === input.card.id)
-    .map(rule => ({ ...rule.content, id: rule.id, version: rule.version }))
-  const textExtractors = (await listDocuments<TextExtractorContent>(ctx.documents, applicationDocumentTypes.textExtractor))
-    .filter(extractor => extractor.content.owner.kind === 'card' && extractor.content.owner.cardId === input.card.id)
-    .map(extractor => ({ ...extractor.content, id: extractor.id, version: extractor.version }))
-  const loomScriptMounts = await snapshotLoomScriptMounts(ctx, { kind: 'card', cardId: input.card.id })
   return {
     timelineId: input.timelineId,
     sourceCardId: input.card.id,
     sourceCardVersion: input.card.version,
     cardName: input.cardContent.name,
     fallbackUserName: input.cardContent.userName?.trim() || 'User',
-    ...(input.cardContent.macros !== undefined ? { macros: structuredClone(input.cardContent.macros) } : {}),
     stateEntityTypes: structuredClone(input.materializedState.entityTypes),
     stateEntities: structuredClone(input.materializedState.entities),
     stateComponents: structuredClone(input.materializedState.components),
@@ -453,9 +465,6 @@ async function buildTimelineRuntimeContext(
       if (!template) throw new Error(`Timeline State template not found: ${binding.templateId}`)
       return { path: binding.path, schema: structuredClone(template.schema) }
     }),
-    textTransformRules,
-    textExtractors,
-    loomScriptMounts,
     createdAt: ctx.now(),
   }
 }

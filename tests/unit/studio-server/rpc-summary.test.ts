@@ -3,7 +3,7 @@ import { isTechnicalRpc, summarizeRpc } from '../../../apps/studio-server/src/rp
 
 describe('metadata-only RPC summaries', () => {
   it('keeps entity names and content out of list summaries', () => {
-    expect(summarizeRpc('application.listAgentProfiles', { agentProfiles: [{ id: 'private-id', name: 'private name' }] }))
+    expect(summarizeRpc('application.listAgentPresets', { agentPresets: [{ id: 'private-id', name: 'private name' }] }))
       .toEqual({ textSuffix: '1 entries', summaryData: { itemCount: 1 } })
     expect(summarizeRpc('application.createCard', { card: { name: 'private', content: 'private' }, mutation: { changesetId: 'changeset-1' } }))
       .toEqual({ textSuffix: 'changes committed', summaryData: { changesetId: 'changeset-1' } })

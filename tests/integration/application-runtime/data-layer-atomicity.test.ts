@@ -8,6 +8,36 @@ import { withDocumentStoreLogging } from '../../../apps/studio-server/src/loggin
 import { describe, expect, it } from 'vitest'
 
 describe('Data Layer shared transaction atomicity', () => {
+  it('commits only one competing Card edit from the same version', async () => {
+    const fixture = createFixture()
+    const runtime = createApplicationRuntime({
+      dataEngine: fixture.engine,
+      documents: fixture.documents,
+      promptResources: fixture.promptResources,
+    })
+    try {
+      const { card } = await runtime.createCard({ name: 'Original' })
+      const beforeChangesets = changesetCount(fixture.engine)
+      const beforeRevisions = tableCount(fixture.engine, 'document_revisions')
+      const results = await Promise.allSettled([
+        runtime.updateCard({ cardId: card.id, expectedVersion: card.version, name: 'Editor A' }),
+        runtime.updateCard({ cardId: card.id, expectedVersion: card.version, name: 'Editor B' }),
+      ])
+      const accepted = results.flatMap(result => result.status === 'fulfilled' ? [result.value] : [])
+      expect(accepted).toHaveLength(1)
+      expect(results.filter(result => result.status === 'rejected')).toEqual([
+        expect.objectContaining({ reason: expect.objectContaining({ code: 'document.conflict' }) }),
+      ])
+      const saved = accepted[0]!.card
+      expect(saved.version).toBe(card.version + 1)
+      expect((await runtime.getCard({ cardId: card.id })).card).toEqual(saved)
+      expect(changesetCount(fixture.engine)).toBe(beforeChangesets + 1)
+      expect(tableCount(fixture.engine, 'document_revisions')).toBe(beforeRevisions + 1)
+    } finally {
+      await fixture.engine.close()
+    }
+  })
+
   it('rolls back Card bundle import when a Document write fails', async () => {
     const fixture = createFixture()
     const documents = withFailingDocumentWrites(fixture.documents)
@@ -24,49 +54,54 @@ describe('Data Layer shared transaction atomicity', () => {
     expect(changesetCount(fixture.engine)).toBe(0)
   })
 
-  it('rolls back Resource, Card, Timeline, and Mount changes when Card update fails', async () => {
-    const fixture = await createDeleteFixture()
-    const memory = createMemoryLogSink({ capacity: 20 })
-    const root = createRootLogger({
-      service: 'application-runtime-atomicity-test',
-      instanceId: 'document-transaction-failure',
-      sinks: [memory],
-    })
-    const runtime = createApplicationRuntime({
-      dataEngine: fixture.engine,
-      documents: withDocumentStoreLogging(
-        withFailingDocumentWrites(fixture.documents),
-        root.child('document.store'),
-      ),
-      promptResources: fixture.promptResources,
-      narratives: fixture.narratives,
-    })
-    const beforeChangesets = changesetCount(fixture.engine)
-
-    try {
-      await expect(runtime.deletePromptResource({ resourceId: fixture.settingId })).rejects.toThrow('injected document write failure')
-      await assertDeleteState(fixture)
-      expect(changesetCount(fixture.engine)).toBe(beforeChangesets)
-      expect(memory.list().some(record => record.event === 'document.operation.failed')).toBe(true)
-      expect(memory.list().some(record => record.event === 'document.changeset.committed')).toBe(false)
-    } finally {
-      await root.close()
-    }
-  })
-
-  it('rolls back Resource, Card, Timeline, and Mount changes when Narrative update fails', async () => {
+  it('rolls back resource deletion when its header revision cannot be stored', async () => {
     const fixture = await createDeleteFixture()
     const runtime = createApplicationRuntime({
       dataEngine: fixture.engine,
       documents: fixture.documents,
       promptResources: fixture.promptResources,
+      narratives: fixture.narratives,
+    })
+    const beforeChangesets = changesetCount(fixture.engine)
+    const beforeRevisions = tableCount(fixture.engine, 'prompt_resource_header_revisions')
+    fixture.engine.database.exec(`
+      CREATE TRIGGER reject_header_revision AFTER INSERT ON prompt_resource_header_revisions
+      BEGIN SELECT RAISE(ABORT, 'injected resource revision failure'); END;
+    `)
+    try {
+      await expect(runtime.deletePromptResource({ resourceId: fixture.settingId })).rejects.toThrow('injected resource revision failure')
+      await assertDeleteState(fixture)
+      expect(changesetCount(fixture.engine)).toBe(beforeChangesets)
+      expect(tableCount(fixture.engine, 'prompt_resource_header_revisions')).toBe(beforeRevisions)
+    } finally {
+      await fixture.engine.close()
+    }
+  })
+
+  it('deletes a referenced Setting without attempting Card or Timeline writes', async () => {
+    const fixture = await createDeleteFixture()
+    const runtime = createApplicationRuntime({
+      dataEngine: fixture.engine,
+      documents: withFailingDocumentWrites(fixture.documents),
+      promptResources: fixture.promptResources,
       narratives: withFailingNarrativeUpdate(fixture.narratives),
     })
     const beforeChangesets = changesetCount(fixture.engine)
-
-    await expect(runtime.deletePromptResource({ resourceId: fixture.settingId })).rejects.toThrow('injected narrative update failure')
-    await assertDeleteState(fixture)
-    expect(changesetCount(fixture.engine)).toBe(beforeChangesets)
+    const beforeCard = await fixture.documents.get(fixture.cardId)
+    const beforeTimeline = await fixture.narratives.getTimeline(fixture.timelineId)
+    const beforeMounts = await fixture.promptResources.listSettingMounts({ settingResourceId: fixture.settingId })
+    try {
+      await expect(runtime.deletePromptResource({ resourceId: fixture.settingId })).resolves.toMatchObject({
+        deleted: true, detachedReferences: { cards: 0, timelines: 0, presets: 0 },
+      })
+      await expect(fixture.promptResources.getResource(fixture.settingId)).resolves.toBeNull()
+      await expect(fixture.documents.get(fixture.cardId)).resolves.toEqual(beforeCard)
+      await expect(fixture.narratives.getTimeline(fixture.timelineId)).resolves.toEqual(beforeTimeline)
+      await expect(fixture.promptResources.listSettingMounts({ settingResourceId: fixture.settingId })).resolves.toEqual(beforeMounts)
+      expect(changesetCount(fixture.engine)).toBe(beforeChangesets + 1)
+    } finally {
+      await fixture.engine.close()
+    }
   })
 
   it('rolls back Timeline State Scope and Revision when Narrative creation fails', async () => {

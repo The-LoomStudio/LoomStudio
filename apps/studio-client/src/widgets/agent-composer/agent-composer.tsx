@@ -2,12 +2,15 @@ import { useRef, useState, type FormEvent, type ReactNode } from 'react'
 import type { Translator } from '../../shared/i18n/index.js'
 import { ChatComposer, type ChatComposerQuickAction } from '../chat-composer/chat-composer.js'
 import styles from './agent-composer.module.scss'
+import { RunRecoveryControls, type RunRecoveryControlsProps } from '../../features/narrative-runtime/ui/run-recovery-controls.js'
 
 const AGENT_EXPANSION_MIN_HEIGHT = 220
 
-export type AgentComposerProps = {
+export type AgentComposerProps = RunRecoveryControlsProps & {
   canPreviewPrompt: boolean
   canSendNarrative: boolean
+  canRetryNarrativeInput?: boolean
+  onRetryNarrativeInput?(): void
   composerSheet?: ReactNode
   narrativeInput: string
   narrativeTextareaDisabled: boolean
@@ -43,7 +46,9 @@ export function AgentComposer(props: AgentComposerProps) {
   }
 
   const hasContent = Boolean(props.narrativeInput?.trim())
-  const isActive = Boolean(props.pinned || hovered || hasContent || props.agentPanelOpen)
+  const recovery = props.runRecovery?.target === 'narrative' ? props.runRecovery : undefined
+  const disconnected = props.runRecovery?.status === 'disconnected'
+  const isActive = Boolean(props.pinned || hovered || hasContent || props.agentPanelOpen || recovery)
 
   return (
     <>
@@ -67,7 +72,7 @@ export function AgentComposer(props: AgentComposerProps) {
       >
       <ChatComposer
         canPreviewPrompt={props.canPreviewPrompt}
-        canSend={props.canSendNarrative}
+        canSend={props.canSendNarrative && !disconnected && !props.runRecoveryBusy}
         expanded={props.agentPanelOpen}
         input={props.narrativeInput}
         moreLabel={props.t('composer.more')}
@@ -75,17 +80,22 @@ export function AgentComposer(props: AgentComposerProps) {
         pinned={props.pinned}
         previewLabel={props.t('composer.preview')}
         quickActions={props.quickActions}
-        retryLabel={props.t('composer.retry')}
-        sheet={props.composerSheet}
+        retryLabel={props.t('composer.resendNarrativeInput')}
+        canRetry={props.canRetryNarrativeInput && !disconnected && !props.runRecoveryBusy}
+        onRetry={props.onRetryNarrativeInput}
+        sheet={recovery ? <><RunRecoveryControls {...props} runRecovery={recovery} />{props.composerSheet}</> : props.composerSheet}
         sendLabel={props.t('composer.send')}
-        textareaDisabled={props.narrativeTextareaDisabled}
+        textareaDisabled={!disconnected && props.narrativeTextareaDisabled}
         textareaLabel={props.t('composer.inputLabel')}
         toggleExpandedLabel={props.agentPanelOpen ? props.t('agent.hide') : props.t('agent.open')}
         unpinLabel={props.t('composer.unpin')}
         onChangeInput={props.onChangeNarrativeInput}
         onHeightChange={props.onHeightChange}
         onPreviewPrompt={props.onPreviewPrompt}
-        onSubmit={props.onSubmitNarrative}
+        onSubmit={event => {
+          if (disconnected || props.runRecoveryBusy) { event.preventDefault(); return }
+          props.onSubmitNarrative(event)
+        }}
         onToggleExpanded={props.onToggleAgentPanel}
         onTogglePinned={props.onTogglePinned}
       />

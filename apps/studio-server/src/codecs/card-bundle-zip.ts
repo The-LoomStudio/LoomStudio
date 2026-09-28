@@ -26,6 +26,7 @@ type LegacyCardManifest = {
   }
   mediaTypes?: Record<string, string>
   extensionPayloads?: LoomCardPayloadManifest[]
+  extensionPackages?: Array<{ packageId: string; version: string; path: string }>
   scriptAttachments?: Array<{
     orderIndex: number
     resourceOrigin?: 'card' | 'external'
@@ -56,9 +57,11 @@ export type CardBundleFilesInput = {
 export function encodeCardBundleFiles(input: CardBundleFilesInput): Record<string, Uint8Array> {
   const artifact = structuredClone(normalizeCardBundleArtifact(input.artifact))
   const extensionPayloads = artifact.extensionPayloads ?? []
+  const extensionPackages = artifact.extensionPackages ?? []
   const scriptAttachments = artifact.scriptAttachments ?? []
   delete artifact.card.media
   delete artifact.extensionPayloads
+  delete artifact.extensionPackages
   delete artifact.scriptAttachments
   const avatarPath = `assets/avatar${extensionForMediaType(input.avatar.mediaType)}`
   const backgroundPath = input.background
@@ -67,6 +70,9 @@ export function encodeCardBundleFiles(input: CardBundleFilesInput): Record<strin
   const resourceEntries: Record<string, Uint8Array> = {}
   const manifest: LoomCardManifest = {
     schema: 'loom.cardBundle.zip.v2',
+    extensionPackages: extensionPackages.map((archive, index) => ({
+      packageId: archive.packageId, version: archive.version, path: `extension-packages/${index}.zip`,
+    })),
     resources: projectCardFiles(artifact, resourceEntries),
     media: {
       avatar: avatarPath,
@@ -113,6 +119,9 @@ export function encodeCardBundleFiles(input: CardBundleFilesInput): Record<strin
     [avatarPath]: input.avatar.bytes,
     ...(backgroundPath && input.background ? { [backgroundPath]: input.background.bytes } : {}),
     ...payloadEntries,
+    ...Object.fromEntries(extensionPackages.map((archive, index) => [
+      `extension-packages/${index}.zip`, Buffer.from(archive.archiveBase64, 'base64'),
+    ])),
     ...scriptEntries,
   }
   let total = 0
@@ -154,12 +163,13 @@ export function decodeCardBundleFiles(files: Map<string, Uint8Array>): CardBundl
   const avatar = readMedia(files, manifest.media.avatar, manifest.mediaTypes?.[manifest.media.avatar])
   const background = manifest.media.background ? readMedia(files, manifest.media.background, manifest.mediaTypes?.[manifest.media.background]) : undefined
   const extensionPayloads = readExtensionPayloads(files, manifest.extensionPayloads)
+  const extensionPackages = readExtensionPackages(files, manifest.extensionPackages)
   const scriptAttachments = readScriptAttachments(files, manifest.scriptAttachments)
   const artifact = manifest.schema === 'loom.cardBundle.zip.v2'
     ? restoreCardFiles(manifest.resources, files)
     : manifest.artifact
   return {
-    artifact: normalizeCardBundleArtifact({ ...artifact, extensionPayloads, scriptAttachments }),
+    artifact: normalizeCardBundleArtifact({ ...artifact, extensionPayloads, extensionPackages, scriptAttachments }),
     avatar,
     background,
   }
@@ -189,6 +199,7 @@ export async function loadCardBundleFiles(read: (path: string) => Promise<Uint8A
   if (manifest.media.background !== undefined) await load(manifest.media.background)
   for (const attachment of manifest.scriptAttachments ?? []) await load(attachment.script.path)
   for (const payload of manifest.extensionPayloads ?? []) await load(payload.path)
+  for (const archive of manifest.extensionPackages ?? []) await load(archive.path)
   return { bundle: decodeCardBundleFiles(files), files }
 }
 
@@ -327,6 +338,22 @@ function readMedia(files: Map<string, Uint8Array>, path: string, mediaType?: unk
   const bytes = files.get(path)
   if (!bytes) throw new Error(`Loom Card package is missing ${path}`)
   return { bytes, mediaType: readCardMediaType(path, mediaType) }
+}
+
+function readExtensionPackages(
+  files: Map<string, Uint8Array>,
+  archives: LegacyCardManifest['extensionPackages'],
+): NonNullable<CardBundleArtifact['extensionPackages']> {
+  if (archives === undefined) return []
+  if (!Array.isArray(archives) || archives.length > 32) throw new Error('Invalid embedded extension package manifest')
+  return archives.map((archive, index) => {
+    if (!archive || typeof archive !== 'object' || typeof archive.path !== 'string') throw new Error('Invalid embedded extension package entry')
+    validateBundlePath(archive.path)
+    if (archive.path !== `extension-packages/${index}.zip`) throw new Error('Invalid embedded extension package path')
+    const bytes = files.get(archive.path)
+    if (!bytes) throw new Error(`Loom Card package is missing ${archive.path}`)
+    return { packageId: archive.packageId, version: archive.version, archiveBase64: Buffer.from(bytes).toString('base64') }
+  })
 }
 
 function readExtensionPayloads(

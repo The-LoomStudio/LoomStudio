@@ -1,4 +1,5 @@
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
+import { normalizeMacroOptions } from '@loom-studio/shared'
 import type { PromptContribution, SourceNode } from '../prompt/prompt-builder.js'
 import { combineActivationGates, isPromptActivation, type PromptActivation } from '../prompt/prompt-activation.js'
 import { renderVariableMacros, type VariableRenderContext } from '../prompt/variables.js'
@@ -49,6 +50,7 @@ export function normalizeCardBundleArtifact(artifact: CardBundleArtifact): CardB
     card: artifact.card,
     contextAssets: artifact.contextAssets ?? [],
     extensionPayloads: structuredClone(artifact.extensionPayloads ?? []),
+    extensionPackages: structuredClone(artifact.extensionPackages ?? []),
     scriptAttachments: structuredClone(artifact.scriptAttachments ?? []),
     metadata: artifact.metadata ?? {},
   }
@@ -208,9 +210,11 @@ function assertPromptResourceArtifact(value: unknown): asserts value is PromptRe
   if (value.format !== 'loom.promptResource') throw new Error(`Unsupported Prompt Resource artifact format: ${String(value.format)}`)
   if (value.schemaVersion !== 1 && value.schemaVersion !== 2) throw new Error(`Unsupported Prompt Resource artifact schemaVersion: ${String(value.schemaVersion)}`)
   if (!isPromptResourceKind(value.resourceKind)) throw new Error(`Invalid Prompt Resource kind: ${String(value.resourceKind)}`)
+  if (value.macroOptions !== undefined) normalizeMacroOptions(value.macroOptions)
   assertPromptResourceNode(value.rootNode, 'rootNode')
   assertUniquePromptResourceNodeIds(value.rootNode)
   assertLoomScriptAttachments(value.scriptAttachments)
+  assertCardTextPipeline(value.textTransformRules, false)
 }
 
 function isPromptResourceKind(value: unknown): value is PromptResourceKind {
@@ -277,10 +281,32 @@ function assertCardBundleArtifact(value: unknown): asserts value is CardBundleAr
     for (const binding of value.timelineStateBindings) validateTimelineStateBinding(binding as TimelineStateBinding)
   }
   assertPortableExtensionPayloads(value.extensionPayloads)
+  assertEmbeddedExtensionPackages(value.extensionPackages)
   assertLoomScriptAttachments(value.scriptAttachments)
   assertCardTextPipeline(value.textTransformRules, false)
   assertCardTextPipeline(value.textExtractors, true)
   if (value.metadata !== undefined && !isObject(value.metadata)) throw new Error('Card bundle metadata must be an object')
+}
+
+export const maxEmbeddedExtensionArchiveBase64Bytes = 64 * 1024 * 1024
+
+export function assertEmbeddedExtensionPackages(value: unknown): asserts value is CardBundleArtifact['extensionPackages'] {
+  if (value !== undefined) {
+    // ponytail: bound embedded archives independently of their eventual installer extraction budgets.
+    if (!Array.isArray(value) || value.length > 32) throw new Error('Card extensionPackages must contain at most 32 archives')
+    const packageIds = new Set<string>()
+    let bytes = 0
+    for (const item of value) {
+      if (!isObject(item) || typeof item.packageId !== 'string' || !item.packageId.trim()
+        || typeof item.version !== 'string' || !item.version.trim()
+        || typeof item.archiveBase64 !== 'string' || !item.archiveBase64.length) throw new Error('Invalid embedded extension package')
+      if (packageIds.has(item.packageId)) throw new Error(`Duplicate embedded extension package: ${item.packageId}`)
+      packageIds.add(item.packageId)
+      bytes += item.archiveBase64.length
+      if (bytes > maxEmbeddedExtensionArchiveBase64Bytes) throw new Error('Embedded extension archives exceed the Card bundle budget')
+      if (Buffer.from(item.archiveBase64, 'base64').toString('base64') !== item.archiveBase64) throw new Error('Embedded extension archive must be canonical base64')
+    }
+  }
 }
 
 function assertCardTextPipeline(value: unknown, extractor: boolean): void {
@@ -443,6 +469,7 @@ function assertCardBundleCard(value: unknown): asserts value is CardBundleArtifa
   assertOptionalString(value.userName, 'Card bundle card.userName')
   assertOptionalString(value.description, 'Card bundle card.description')
   if (value.macros !== undefined) validateBundleMacros(value.macros)
+  if (value.macroOptions !== undefined) normalizeMacroOptions(value.macroOptions)
   if (value.stateContributionIds !== undefined
     && (!Array.isArray(value.stateContributionIds) || !value.stateContributionIds.every(id => typeof id === 'string' && id.trim().length > 0))) {
     throw new Error('Card bundle card.stateContributionIds must be non-empty strings')
@@ -452,6 +479,7 @@ function assertCardBundleCard(value: unknown): asserts value is CardBundleArtifa
     if (!isObject(value.preset)) throw new Error('Card bundle card.preset must be an object')
     assertOptionalString(value.preset.system, 'Card bundle card.preset.system')
     if (value.preset.macros !== undefined) validateBundleMacros(value.preset.macros)
+    if (value.preset.macroOptions !== undefined) normalizeMacroOptions(value.preset.macroOptions)
   }
 
   if (value.opening !== undefined && typeof value.opening !== 'string') {

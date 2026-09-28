@@ -19,13 +19,14 @@ type RendererNodeMountHostProps = {
   children: ReactNode
   host: ClientRendererHost
   rawText: string
+  displayText?: string
 } & (
   | { surface: 'narrative'; nodeId: string; timelineId: string }
   | { surface: 'agent-message'; messageId: string; agentSessionId: string }
 )
 
 export function RendererNodeMountHost(props: RendererNodeMountHostProps) {
-  const revision = useSyncExternalStore(props.host.subscribe, props.host.revision, props.host.revision)
+  const revision = useSyncExternalStore(props.host.subscribe, props.host.renderRevision, props.host.renderRevision)
   const contentRef = useRef<HTMLDivElement>(null)
   const entryId = props.surface === 'narrative' ? props.nodeId : props.messageId
   const ownerId = props.surface === 'narrative' ? props.timelineId : props.agentSessionId
@@ -53,14 +54,14 @@ export function RendererNodeMountHost(props: RendererNodeMountHostProps) {
           nodeId: props.nodeId,
           timelineId: props.timelineId,
           rawText: props.rawText,
-          displayText: props.rawText,
+          displayText: props.displayText ?? props.rawText,
           surface: 'narrative',
           signal: controller.signal,
         } : {
           messageId: props.messageId,
           agentSessionId: props.agentSessionId,
           rawText: props.rawText,
-          displayText: props.rawText,
+          displayText: props.displayText ?? props.rawText,
           surface: 'agent-message',
           signal: controller.signal,
         }
@@ -95,7 +96,7 @@ export function RendererNodeMountHost(props: RendererNodeMountHostProps) {
       }
       // ponytail: v0 对单 Node 限制 64 个 Mount 和 20 万字符；真实内容证明不足后再改成可配置预算。
       const resolved = resolveNodeRenderMounts({
-        rawText: props.rawText.slice(0, MAX_NODE_TEXT_CHARACTERS),
+        rawText: (props.displayText ?? props.rawText).slice(0, MAX_NODE_TEXT_CHARACTERS),
         mounts: mounts.slice(0, MAX_NODE_MOUNTS),
         matches,
       })
@@ -106,7 +107,7 @@ export function RendererNodeMountHost(props: RendererNodeMountHostProps) {
       disposed = true
       controller.abort()
     }
-  }, [entryId, ownerId, props.host, props.rawText, props.surface, rendererSurface, revision])
+  }, [entryId, ownerId, props.host, props.rawText, props.displayText, props.surface, rendererSurface, revision])
 
   const scope = props.surface === 'narrative' ? {
     kind: 'node' as const,
@@ -203,6 +204,8 @@ function insertRangeMountAnchor(
   end: number,
   placement: 'before' | 'after' | 'replace',
 ): { element: HTMLSpanElement; dispose(): void } | undefined {
+  // HTML source offsets cannot address rendered DOM text or an isolated document.
+  if (root.querySelector('[data-loom-html-preview], [data-loom-safe-html], [data-loom-html-pending]')) return undefined
   const boundaries = locateTextBoundaries(root, start, end)
   if (!boundaries) return undefined
   const range = document.createRange()

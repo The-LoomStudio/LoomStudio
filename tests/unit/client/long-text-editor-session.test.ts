@@ -26,14 +26,14 @@ vi.mock('react', async importOriginal => ({
 }))
 
 type Element = ReactElement<Record<string, unknown>>
-const props: ComponentProps<typeof LongTextEditor> = {
+const props = {
   mode: 'preview', value: 'Original',
   clearLabel: '', clearedLabel: '', copiedLabel: '', copyFailedLabel: '', copyLabel: '',
   label: '', restoreInitialLabel: '', undoEditLabel: '', undoLabel: '',
   disableCodeWrapLabel: '', enableCodeWrapLabel: '', previewEmptyLabel: '',
   previewModeLabel: '', sourceModeLabel: '',
   onChange: vi.fn(), onCommit: vi.fn(), onModeChange: vi.fn(),
-}
+} satisfies ComponentProps<typeof LongTextEditor>
 
 function render(mode: 'source' | 'preview', value = 'Original') {
   hooks.cursor = 0

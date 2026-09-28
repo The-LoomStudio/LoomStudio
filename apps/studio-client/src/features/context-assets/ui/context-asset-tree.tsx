@@ -2,7 +2,7 @@ import { Anchor, Book, Bot, Code2, Cog, Copy, FileText, Folder, FolderOpen, Fold
 import type { ContextAssetNode } from '../../../entities/index.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import type { MenuAction } from '@loom-studio/ui'
-export { resolveVirtualDisplayName, resolveVirtualExtension, resolveVirtualPath } from '../model/context-asset-tree.js'
+export { resolveVirtualDisplayName } from '../model/context-asset-tree.js'
 
 type ContextAssetTreeActionsInput = {
   onAdd(parentId: string): void
@@ -19,7 +19,7 @@ type ContextAssetTreeActionsInput = {
 
 export type ContextAssetActivationTone = 'always' | 'conditional' | 'manual'
 
-export function readContextAssetActivationTone(node: ContextAssetNode): ContextAssetActivationTone {
+function readContextAssetActivationTone(node: ContextAssetNode): ContextAssetActivationTone {
   const activation = node.capabilities?.activation
   if (activation) {
     if (activation.kind === 'always') return 'always'

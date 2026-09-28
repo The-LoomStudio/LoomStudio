@@ -19,10 +19,35 @@ function createTestContext() {
 }
 
 describe('agent store', () => {
+  it('renames the version 5 Agent reference column without rebinding or rewriting history', async () => {
+    const { engine, store, actor } = createTestContext()
+    try {
+      const { session } = await store.createSession({
+        actor, agentPresetId: 'legacy-profile', timelineId: 'timeline-a', title: 'Saved work',
+      })
+      await store.appendEntries({
+        actor, agentSessionId: session.id, expectedEntryCount: 0,
+        entries: [{ runId: 'old-run', entry: { kind: 'message', role: 'user', content: 'Keep history' } }],
+      })
+      const before = await store.getEntryPage({ agentSessionId: session.id })
+      engine.database.exec(`
+        ALTER TABLE agent_sessions RENAME COLUMN agent_preset_id TO agent_profile_id;
+        UPDATE schema_migrations SET version = 5 WHERE namespace = 'application.agent';
+      `)
+      const reopened = createAgentStore({ engine })
+      expect(await reopened.getEntryPage({ agentSessionId: session.id })).toEqual(before)
+      expect((await reopened.getSession(session.id))?.agentPresetId).toBe('legacy-profile')
+      expect(engine.database.prepare('SELECT agent_preset_id FROM agent_sessions WHERE id = ?').get(session.id))
+        .toEqual({ agent_preset_id: 'legacy-profile' })
+    } finally {
+      await engine.close()
+    }
+  })
+
   it('preserves timeline binding in create, get, list, append and transcript reads', async () => {
     const { engine, store, actor } = createTestContext()
     try {
-      const { session } = await store.createSession({ actor, agentProfileId: 'profile', timelineId: 'timeline-a' })
+      const { session } = await store.createSession({ actor, agentPresetId: 'profile', timelineId: 'timeline-a' })
       expect(session.timelineId).toBe('timeline-a')
       expect((await store.getSession(session.id))?.timelineId).toBe('timeline-a')
       expect((await store.listSessions({ timelineId: 'timeline-a' })).sessions[0]?.timelineId).toBe('timeline-a')
@@ -60,7 +85,7 @@ describe('agent store', () => {
       engine.database
         .prepare("SELECT version FROM schema_migrations WHERE namespace = 'application.agent'")
         .get(),
-    ).toEqual({ version: 5 })
+    ).toEqual({ version: 6 })
     engine.close()
   })
 
@@ -68,7 +93,7 @@ describe('agent store', () => {
     const { engine, store, actor } = createTestContext()
     const created = await store.createSession({
       actor,
-      agentProfileId: 'profile-guide',
+      agentPresetId: 'profile-guide',
       title: 'Guide',
     })
     const appended = await store.appendEntries({
@@ -124,7 +149,7 @@ describe('agent store', () => {
     const { engine, store, actor } = createTestContext()
     const { session } = await store.createSession({
       actor,
-      agentProfileId: 'profile-tools',
+      agentPresetId: 'profile-tools',
     })
     const call = await store.appendEntries({
       actor,
@@ -209,7 +234,7 @@ describe('agent store', () => {
     const { engine, store, actor } = createTestContext()
     const { session } = await store.createSession({
       actor,
-      agentProfileId: 'profile-resume',
+      agentPresetId: 'profile-resume',
     })
 
     await store.appendEntries({
@@ -259,11 +284,11 @@ describe('agent store', () => {
     const { engine, store, actor } = createTestContext()
     const first = await store.createSession({
       actor,
-      agentProfileId: 'profile-continuation',
+      agentPresetId: 'profile-continuation',
     })
     const second = await store.createSession({
       actor,
-      agentProfileId: 'profile-continuation',
+      agentPresetId: 'profile-continuation',
     })
     const partial = await store.appendEntries({
       actor,
@@ -375,7 +400,7 @@ describe('agent store', () => {
     const { engine, store, actor } = createTestContext()
     const { session } = await store.createSession({
       actor,
-      agentProfileId: 'profile-1',
+      agentPresetId: 'profile-1',
     })
     await store.appendEntries({
       actor,
@@ -432,7 +457,7 @@ describe('agent store', () => {
     const { engine, store, actor } = createTestContext()
     const { session } = await store.createSession({
       actor,
-      agentProfileId: 'profile-1',
+      agentPresetId: 'profile-1',
     })
     await store.appendEntries({
       actor,
@@ -483,19 +508,19 @@ describe('agent store', () => {
     const { engine, store, actor } = createTestContext()
     const sessionTimeline1 = await store.createSession({
       actor,
-      agentProfileId: 'profile-1',
+      agentPresetId: 'profile-1',
       timelineId: 'timeline-a',
       title: 'Session Timeline A',
     })
     const sessionTimeline2 = await store.createSession({
       actor,
-      agentProfileId: 'profile-2',
+      agentPresetId: 'profile-2',
       timelineId: 'timeline-a',
       title: 'Session Timeline A-2',
     })
     const sessionStandalone = await store.createSession({
       actor,
-      agentProfileId: 'profile-1',
+      agentPresetId: 'profile-1',
       title: 'Session Standalone',
     })
 
@@ -535,7 +560,7 @@ describe('agent store', () => {
       })
       const { session } = await firstStore.createSession({
         actor: { kind: 'system', id: 'test' },
-        agentProfileId: 'profile-persist',
+        agentPresetId: 'profile-persist',
       })
       await firstStore.appendEntries({
         actor: { kind: 'system', id: 'test' },
@@ -567,7 +592,7 @@ describe('agent store', () => {
         .prepare('SELECT version FROM schema_migrations WHERE namespace = ?')
         .get('application.agent')
       database.close()
-      expect(migration).toEqual({ version: 5 })
+      expect(migration).toEqual({ version: 6 })
     } finally {
       await rm(directory, { recursive: true, force: true })
     }
@@ -577,7 +602,7 @@ describe('agent store', () => {
     const { engine, store, actor } = createTestContext()
     const { session } = await store.createSession({
       actor,
-      agentProfileId: 'profile-1',
+      agentPresetId: 'profile-1',
       title: 'Initial Session Title',
     })
 
@@ -601,7 +626,7 @@ describe('agent store', () => {
     const { engine, store, actor } = createTestContext()
     const { session } = await store.createSession({
       actor,
-      agentProfileId: 'profile-1',
+      agentPresetId: 'profile-1',
       timelineId: 'timeline-a',
     })
 

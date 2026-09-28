@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ExtensionHostOptions } from '@loom-studio/extension-host'
+import { createMacroProviderRegistry } from '@loom-studio/application-runtime'
+import { installedExtensionContributionId } from '@loom-studio/extension-sdk'
 import { createExtensionFixture, createExtensionHostHarness } from './helpers.js'
 
 function fixture(name: string, capability: boolean, providerId = `${name}.tone`, fail = false) {
@@ -25,6 +27,61 @@ function fixture(name: string, capability: boolean, providerId = `${name}.tone`,
 }
 
 describe('Extension macro registration', () => {
+  it('isolates installed provider invocation and keeps global State out of private provider context', async () => {
+    const registry = createMacroProviderRegistry()
+    const resolvers = new Map<string, ReturnType<typeof vi.fn>>()
+    const packageId = 'example.installedMacros'
+    const authoredId = `${packageId}.tone`
+    const { extensionHost } = createExtensionHostHarness({
+      registerMacroProvider: (provider, owner) => {
+        const resolve = vi.fn(provider.resolve)
+        resolvers.set(provider.id, resolve)
+        return registry.register({ ...provider, sourceLabel: owner.packageId, resolve }, owner.target)
+      },
+    })
+    const directory = createExtensionFixture('installed-macro-context', {
+      manifest: {
+        manifestVersion: 2, id: packageId, version: '1.0.0', displayName: 'Macros', engines: { studio: '^0.1.0' },
+        modules: [{ id: 'server', runtime: 'server', entry: './dist/index.js', capabilities: { 'macros.provide': true } }],
+      },
+      source: `export function activate(ctx) {
+        ctx.macros.register({ id: '${authoredId}', name: 'tone', resolve: context => JSON.stringify(context) })
+      }`,
+    })
+    const targets = [{ kind: 'global' as const }, { kind: 'card' as const, cardId: 'A' }, { kind: 'card' as const, cardId: 'B' }]
+    const ids = targets.map(target => installedExtensionContributionId(packageId, target, authoredId))
+    try {
+      for (const target of targets) {
+        await extensionHost.discover(directory, target)
+        expect((await extensionHost.activate(packageId, 'server', target)).state).toBe('active')
+      }
+      for (const [index, cardId] of [undefined, 'A', 'B'].entries()) {
+        for (const resolve of resolvers.values()) resolve.mockClear()
+        const context = { global: { secret: 'host' }, ...(cardId ? { cardId, timeline: { own: cardId } } : {}) }
+        const result = await registry.inspect({
+          snapshot: { ...context, computed: {}, aliases: {} }, context, capturedAt: 'now',
+          macroSelections: { tone: ids[index]! },
+        })
+        const entry = result.entries.find(item => item.name === 'tone')!
+        expect(entry.candidates.map(candidate => candidate.sourceId)).toEqual(index === 0 ? [ids[0]] : [ids[0], ids[index]])
+        expect(entry.status).toBe('resolved')
+        expect(JSON.parse(entry.value!)).toEqual(index === 0 ? context : { ...context, global: {} })
+        expect(resolvers.get(ids[0]!)!).toHaveBeenCalledOnce()
+        for (const privateIndex of [1, 2]) {
+          expect(resolvers.get(ids[privateIndex]!)!).toHaveBeenCalledTimes(index === privateIndex ? 1 : 0)
+        }
+      }
+      await extensionHost.dispose(packageId, 'server', targets[1])
+      const removed = await registry.inspect({
+        snapshot: { global: {}, computed: {}, aliases: {} }, context: { global: {}, cardId: 'A' },
+        macroSelections: { tone: ids[1]! }, capturedAt: 'now',
+      })
+      expect(removed.entries.find(entry => entry.name === 'tone')).toMatchObject({ status: 'error' })
+    } finally {
+      await extensionHost.disposeAll()
+    }
+  })
+
   it('attributes registration to the host owner and releases it on disable', async () => {
     const dispose = vi.fn()
     const registerMacroProvider = vi.fn<NonNullable<ExtensionHostOptions['registerMacroProvider']>>(() => ({ dispose }))

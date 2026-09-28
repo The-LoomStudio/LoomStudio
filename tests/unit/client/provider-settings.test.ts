@@ -1,6 +1,6 @@
 import { isLikelyProviderEndpoint, normalizeOpenAICompatibleBaseUrl, readChatCompletionsEndpoint } from '../../../apps/studio-client/src/features/provider-settings/model/provider-base-url.js'
-import { chooseAgentProfileId } from '../../../apps/studio-client/src/features/agent-profiles/model/use-agent-profiles.js'
-import type { AgentProfile } from '../../../apps/studio-client/src/entities/index.js'
+import { chooseAgentPresetId } from '../../../apps/studio-client/src/features/agent-presets/model/use-agent-presets.js'
+import type { AgentPreset } from '../../../apps/studio-client/src/entities/index.js'
 import { describe, expect, it } from 'vitest'
 
 describe('provider settings model', () => {
@@ -12,44 +12,45 @@ describe('provider settings model', () => {
     expect(isLikelyProviderEndpoint('https://api.openai.com/v1/chat/completions')).toBe(true)
   })
 
-  it('keeps or restores selected Agent Profile after refresh', () => {
+  it('keeps or restores selected Agent Preset after refresh', () => {
     const profiles = [
-      agentProfile('agent-a'),
-      agentProfile('agent-b'),
+      agentPreset('agent-a'),
+      agentPreset('agent-b'),
     ]
 
-    expect(chooseAgentProfileId({
+    expect(chooseAgentPresetId({
       currentId: 'agent-b',
       profiles,
       storedId: 'agent-a',
     })).toBe('agent-b')
-    expect(chooseAgentProfileId({
+    expect(chooseAgentPresetId({
       currentId: 'deleted-agent',
       profiles,
       storedId: 'agent-a',
     })).toBe('deleted-agent')
-    expect(chooseAgentProfileId({
+    expect(chooseAgentPresetId({
       profiles,
     })).toBe('agent-a')
-    expect(chooseAgentProfileId({
+    expect(chooseAgentPresetId({
       currentId: 'deleted-agent',
       profiles: [],
       storedId: 'agent-a',
     })).toBe('deleted-agent')
-    expect(chooseAgentProfileId({
+    expect(chooseAgentPresetId({
       profiles,
       storedId: 'deleted-agent',
     })).toBe('deleted-agent')
   })
 })
 
-function agentProfile(id: string): AgentProfile {
+function agentPreset(id: string): AgentPreset {
   return {
     id,
     version: 1,
-    name: id,
-    presetId: 'preset-1',
+    resourceKind: 'preset',
+    rootNode: { id: `${id}-root`, kind: 'module', label: id },
     model: { providerProfileId: 'provider-1', modelId: 'model-1' },
+    delivery: 'stream',
     createdAt: '2026-06-22T00:00:00.000Z',
     updatedAt: '2026-06-22T00:00:00.000Z',
   }

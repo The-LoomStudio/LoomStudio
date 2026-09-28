@@ -1,8 +1,11 @@
 import type { ClientDisplayPart, ClientRendererFrameHostMessage, RendererSurface } from '@loom-studio/extension-sdk'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { rendererContributionKey, rendererSurfacePolicies } from '../../../shared/extension-renderer-runtime/renderer-registry.js'
-import type { ClientRendererContext, ClientRendererHost, ClientRendererRegistration, ClientRendererScope } from '../../../shared/extension-renderer-runtime/client-renderer-host.js'
+import type { ClientRendererContext, ClientRendererHost, ClientRendererRegistration, ClientRendererScope, ClientRendererInstanceHandle } from '../../../shared/extension-renderer-runtime/client-renderer-host.js'
 import { readClientThemeSnapshot, subscribeClientTheme } from '../model/client-theme.js'
+import { mountIsolatedFrame } from '../../../shared/iframe-runtime/frame-lifecycle.js'
+import { isFrameRecord } from '../../../shared/iframe-runtime/frame-channel.js'
+import { serveIframeContext } from '../model/iframe-ctx-bridge.js'
 import styles from './renderer-surface-host.module.scss'
 
 export function RendererSurfaceHost(props: {
@@ -12,7 +15,7 @@ export function RendererSurfaceHost(props: {
   activeContributionKey?: string
   className?: string
 }) {
-  const revision = useSyncExternalStore(props.host.subscribe, props.host.revision, props.host.revision)
+  const revision = useSyncExternalStore(props.host.subscribe, props.host.renderRevision, props.host.renderRevision)
   const registrations = props.host.list(props.surface).filter(registration => registration.definition.instanceScope === props.scope.kind)
   const policy = rendererSurfacePolicies[props.surface]
   const activeKey = props.activeContributionKey ?? props.host.activeContributionKey(props.surface, props.scope.key)
@@ -50,6 +53,7 @@ export function RendererInstanceRoot(props: {
   scope: ClientRendererScope
 }) {
   const rootRef = useRef<HTMLElement>(null)
+  const sandboxRef = useRef<ClientRendererInstanceHandle | undefined>(undefined)
   const [failed, setFailed] = useState(false)
   const contributionKey = rendererContributionKey(props.registration)
   const scopeSignature = JSON.stringify(props.scope)
@@ -81,6 +85,18 @@ export function RendererInstanceRoot(props: {
     if (!root) return
     let disposed = false
     let handle: void | { dispose(): void | Promise<void> }
+    function disposeRenderer(renderer: typeof handle) {
+      const report = (error: unknown) => props.host.reportDiagnostic({
+        code: 'renderer.dispose_failed',
+        message: error instanceof Error ? error.message : String(error),
+        contributionKey,
+      })
+      try {
+        void Promise.resolve(renderer?.dispose()).catch(report)
+      } catch (error) {
+        report(error)
+      }
+    }
     const instanceHandle = props.host.trackInstance(
       props.registration.definition.surface,
       stableScope,
@@ -89,10 +105,15 @@ export function RendererInstanceRoot(props: {
     setFailed(false)
     const adapter = props.registration.definition.adapter ?? 'direct'
     if (props.registration.sandboxMount) {
-      handle = props.registration.sandboxMount(root, context)
+      const sandbox = props.registration.sandboxMount(root, context)
+      handle = sandbox
+      sandboxRef.current = sandbox
       const unsubscribeTheme = subscribeClientTheme(snapshot => {
         context.host.themeSnapshot = snapshot
-        void Promise.resolve(props.registration.update?.(context)).catch(error => {
+        void Promise.resolve().then(() => {
+          if (!disposed) return sandbox.update?.(context)
+        }).catch(error => {
+          if (disposed) return
           props.host.reportDiagnostic({
             code: 'renderer.surface_mismatch',
             message: error instanceof Error ? error.message : String(error),
@@ -102,9 +123,10 @@ export function RendererInstanceRoot(props: {
       })
       return () => {
         disposed = true
+        sandboxRef.current = undefined
         unsubscribeTheme()
         ;(context as ClientRendererContext & { controller: AbortController }).controller.abort()
-        void handle?.dispose()
+        disposeRenderer(handle)
         void instanceHandle.dispose()
         root.replaceChildren()
       }
@@ -120,39 +142,65 @@ export function RendererInstanceRoot(props: {
         })
         return () => { void instanceHandle.dispose() }
       }
-      const frame = document.createElement('iframe')
-      frame.title = props.registration.frame?.title ?? props.registration.definition.name
-      frame.sandbox.add('allow-scripts')
-      frame.referrerPolicy = 'no-referrer'
-      frame.src = source
-      frame.dataset.loomRendererFrame = contributionKey
-      const handleMessage = (event: MessageEvent) => {
-        if (event.source !== frame.contentWindow || !event.data || typeof event.data !== 'object') return
-        if (event.data.type === 'loom:renderer-close') context.close()
-      }
-      window.addEventListener('message', handleMessage)
-      frame.addEventListener('load', () => {
-        context.host.themeSnapshot = readClientThemeSnapshot()
-        frame.contentWindow?.postMessage({
-          type: 'loom:renderer-context',
-          identity: context.identity,
-          surface: context.surface,
-          scope: context.scope,
-          part: context.part,
-          host: context.host,
-        } satisfies ClientRendererFrameHostMessage, '*')
+      const channel = new MessageChannel()
+      const instanceId = crypto.randomUUID()
+      const requests = serveIframeContext(channel.port1, props.registration.frameNotifications, () => {
+        props.host.reportDiagnostic({ code: 'renderer.sandbox_failed', message: 'Invalid iframe request envelope', contributionKey })
       })
+      channel.port1.addEventListener('message', event => {
+        if (!disposed && isFrameRecord(event.data) && event.data.type === 'loom:ctx.close') context.close()
+      })
+      const revoke = () => {
+        if (disposed) return
+        disposed = true
+        requests.dispose()
+        channel.port1.postMessage({ type: 'loom:ctx.disposed' })
+        channel.port1.close()
+        channel.port2.close()
+        ;(context as ClientRendererContext & { controller: AbortController }).controller.abort()
+      }
+      const instance = mountIsolatedFrame(root, {
+        title: props.registration.frame?.title ?? props.registration.definition.name,
+        source: { url: source },
+        onMessage: data => {
+          if (!disposed && isFrameRecord(data) && data.type === 'loom:renderer-close') context.close()
+        },
+        onLoad: ({ frame, markReady }) => {
+          markReady()
+          context.host.themeSnapshot = readClientThemeSnapshot()
+          frame.contentWindow?.postMessage({
+            type: 'loom:ctx.connect', protocolVersion: 1, instanceId,
+          }, '*', [channel.port2])
+          frame.contentWindow?.postMessage({
+            type: 'loom:renderer-context',
+            identity: context.identity,
+            surface: context.surface,
+            scope: context.scope,
+            part: context.part,
+            host: context.host,
+          } satisfies ClientRendererFrameHostMessage, '*')
+        },
+        onFailure: message => {
+          revoke()
+          setFailed(true)
+          props.host.reportDiagnostic({ code: 'renderer.sandbox_failed', message, contributionKey })
+        },
+      })
+      const frame = instance.frame
+      frame.dataset.loomRendererFrame = contributionKey
+      const abort = () => { revoke(); instance.dispose() }
+      props.registration.frameNotifications?.signal.addEventListener('abort', abort, { once: true })
+      if (props.registration.frameNotifications?.signal.aborted) abort()
       const unsubscribeTheme = subscribeClientTheme(snapshot => {
+        if (disposed) return
         context.host.themeSnapshot = snapshot
         frame.contentWindow?.postMessage({ type: 'loom:renderer-theme', theme: snapshot } satisfies ClientRendererFrameHostMessage, '*')
       })
-      root.replaceChildren(frame)
       return () => {
-        disposed = true
+        revoke()
         unsubscribeTheme()
-        window.removeEventListener('message', handleMessage)
-        frame.src = 'about:blank'
-        root.replaceChildren()
+        props.registration.frameNotifications?.signal.removeEventListener('abort', abort)
+        instance.dispose()
         void instanceHandle.dispose()
       }
     }
@@ -169,7 +217,10 @@ export function RendererInstanceRoot(props: {
 
     const unsubscribeTheme = subscribeClientTheme(snapshot => {
       context.host.themeSnapshot = snapshot
-      void Promise.resolve(props.registration.update?.(context)).catch(error => {
+      void Promise.resolve().then(() => {
+        if (!disposed) return props.registration.update?.(context)
+      }).catch(error => {
+        if (disposed) return
         props.host.reportDiagnostic({
           code: 'renderer.surface_mismatch',
           message: error instanceof Error ? error.message : String(error),
@@ -178,8 +229,10 @@ export function RendererInstanceRoot(props: {
       })
     })
 
-    void Promise.resolve().then(() => props.registration.mount(mountRoot, context)).then(result => {
-      if (disposed) void result?.dispose()
+    void Promise.resolve().then(() => {
+      if (!disposed) return props.registration.mount(mountRoot, context)
+    }).then(result => {
+      if (disposed) disposeRenderer(result)
       else handle = result
     }).catch(error => {
       if (disposed) return
@@ -194,7 +247,7 @@ export function RendererInstanceRoot(props: {
       disposed = true
       unsubscribeTheme()
       ;(context as ClientRendererContext & { controller: AbortController }).controller.abort()
-      void handle?.dispose()
+      disposeRenderer(handle)
       void instanceHandle.dispose()
       if (root.shadowRoot) root.shadowRoot.replaceChildren()
       else root.replaceChildren()
@@ -202,14 +255,20 @@ export function RendererInstanceRoot(props: {
   }, [context, contributionKey, props.host, props.registration])
 
   useEffect(() => {
-    if (!props.registration.update) return
-    void Promise.resolve(props.registration.update(context)).catch(error => {
+    const update = props.registration.sandboxMount ? sandboxRef.current?.update : props.registration.update
+    if (!update) return
+    let disposed = false
+    void Promise.resolve().then(() => {
+      if (!disposed) return update(context)
+    }).catch(error => {
+      if (disposed) return
       props.host.reportDiagnostic({
         code: 'renderer.surface_mismatch',
         message: error instanceof Error ? error.message : String(error),
         contributionKey,
       })
     })
+    return () => { disposed = true }
   }, [context, contributionKey, props.host, props.registration, props.revision])
 
   const rootProps = {

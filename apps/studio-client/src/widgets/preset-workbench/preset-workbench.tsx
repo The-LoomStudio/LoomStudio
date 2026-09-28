@@ -26,8 +26,15 @@ import { findCompositionItem } from '../../features/context-assets/model/composi
 import { MacroAuthoringDetail, MacroAuthoringExplorer, type MacroAuthoringPanelProps, useMacroAuthoring } from '../../features/state-variables/ui/macro-authoring-panel.js'
 import type { AgentToolDefinition, ContextAssetNode, PresetToolMount, PresetToolMountInput, PromptCompositionItem, PromptResource, SettingMount } from '../../entities/index.js'
 import styles from './preset-workbench.module.scss'
+import { AgentModelEditor } from '../agent-panel/agent-model-editor.js'
+import type { ModelProfile, ProviderAccount } from '../../entities/index.js'
 
 type PresetWorkbenchProps = {
+  modelProfiles: ModelProfile[]
+  providerAccounts: ProviderAccount[]
+  onSaveModel(input: Parameters<StudioApi['agentPresets']['update']>[0]): Promise<PromptResource>
+  resourceBindings?: import('../../features/context-assets/ui/prompt-resource-toolbar/resource-bindings.js').ResourceBindingsSource
+  extensionInstallations?: import('../../entities/index.js').ListExtensionInstallationsResult['installations']
   nodes: ContextAssetNode[]
   resources: PromptResource[]
   settingMounts: SettingMount[]
@@ -58,7 +65,7 @@ type PresetWorkbenchProps = {
   onImportResourceZip?: (file: File) => Promise<string | undefined>
   onReplaceToolMounts: (presetId: string, mounts: PresetToolMountInput[]) => Promise<void>
   onUpdateTool: (tool: AgentToolDefinition) => Promise<void> | void
-  onSaveMacros: (resourceId: string, input: { expectedVersion: number; macros: Record<string, string> }) => Promise<{ version: number; macros: Record<string, string> }>
+  onSaveMacros: (resourceId: string, input: Parameters<MacroAuthoringPanelProps['onSave']>[0]) => ReturnType<MacroAuthoringPanelProps['onSave']>
   routeAssetId?: string
   routeResourceId?: string
   searchQuery: string
@@ -90,14 +97,17 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const presetResources = useMemo(() => props.resources.filter(resource => resource.resourceKind === 'preset'), [props.resources])
   const [internalSelectedResourceId, setInternalSelectedResourceId] = useState<string>()
   const mobilePane = useStudioLayoutStore(state => state.assetPanes.preset[props.workspaceId] ?? 'explorer')
-  const selectedResourceId = props.routeResourceId ?? props.selectedResourceId ?? internalSelectedResourceId
+  const legacyResource = props.routeAssetId && !props.routeResourceId
+    ? presetResources.find(resource => findContextNode([resource.rootNode], props.routeAssetId))
+    : undefined
+  const selectedResourceId = props.routeResourceId ?? legacyResource?.id ?? props.selectedResourceId ?? internalSelectedResourceId
   const setSelectedResourceId = (id: string | undefined) => {
     setInternalSelectedResourceId(id)
     setAssetPane('preset', props.workspaceId, 'explorer')
     if (id) props.onSelectResource?.(id)
   }
   const selectedResource = presetResources.find(resource => resource.id === selectedResourceId)
-    ?? (props.routeResourceId ? undefined : presetResources[0])
+    ?? (selectedResourceId || props.routeAssetId ? undefined : presetResources[0])
   const textController = useTextTransformController({
     api: props.textTransformsApi,
     loomScriptsApi: props.loomScriptsApi,
@@ -112,6 +122,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
     ownerLabel: selectedResource.rootNode.label,
     version: selectedResource.version,
     macros: selectedResource.macros ?? {},
+    macroOptions: selectedResource.macroOptions,
     onSave: input => props.onSaveMacros(selectedResource.id, input),
     t: props.t,
   } satisfies MacroAuthoringPanelProps : undefined)
@@ -150,7 +161,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const selectedZone = presetZoneDefinitions.find(zone => zone.id === selectedZoneId)
   const compositionItems = orderNode?.skeletonPatch?.items
   const selectedCompositionItem = findCompositionItem(compositionItems ?? [], selectedCompositionId)
-  const hasDetailSelection = activePresetView === 'text'
+  const hasDetailSelection = activePresetView === 'model' || activePresetView === 'text'
     || (activePresetView === 'macros'
       ? Boolean(macroController.selectedRowId)
       : activePresetView === 'tools'
@@ -167,8 +178,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
 
   useEffect(() => {
     if (props.routeResourceId) return
-    if (!selectedResource) setSelectedResourceId(undefined)
-    else if (selectedResource.id !== selectedResourceId) setSelectedResourceId(selectedResource.id)
+    if (selectedResource && selectedResource.id !== selectedResourceId) setSelectedResourceId(selectedResource.id)
   }, [props.routeResourceId, selectedResource?.id, selectedResourceId])
 
   useEffect(() => {
@@ -216,7 +226,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   const displayNodes = mainOrderNodes
 
 
-  function changePresetView(view: 'assets' | 'order' | 'tools' | 'macros' | 'text') {
+  function changePresetView(view: PresetView) {
     setAssetPane('preset', props.workspaceId, 'explorer')
     macroController.selectRow(undefined)
     setActivePresetView(view)
@@ -242,8 +252,8 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
     openAssetDetail('preset', props.workspaceId, id)
   }
 
-  if (props.routeResourceId && (!selectedResource || (props.routeAssetId && !findContextNode([selectedResource.rootNode], props.routeAssetId)))) {
-    return <p role="alert">{props.t('promptResource.referenceUnavailable', { id: props.routeResourceId })}</p>
+  if ((selectedResourceId || props.routeAssetId) && (!selectedResource || (props.routeAssetId && !findContextNode([selectedResource.rootNode], props.routeAssetId)))) {
+    return <p role="alert">{props.t('promptResource.referenceUnavailable', { id: props.routeResourceId ?? props.routeAssetId ?? selectedResourceId! })}</p>
   }
 
   return (
@@ -254,6 +264,9 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
       onMobilePaneChange={pane => setAssetPane('preset', props.workspaceId, pane)}
       toolbar={(
         <PromptResourceToolbar
+          resourceBindings={props.resourceBindings}
+          bindingResources={props.resources}
+          extensionInstallations={props.extensionInstallations}
           hideSelect
           resourceKind="preset"
           resources={presetResources}
@@ -274,11 +287,14 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
       )}
       header={(
         <>
+        <AgentSourceDirectory resources={presetResources} installations={props.extensionInstallations}
+          selectedResourceId={selectedResource?.id} onSelect={setSelectedResourceId} t={props.t} />
         <PanelTabs<PresetView>
           activeId={activePresetView}
           ariaLabel={props.t('preset.panel.assets')}
           items={[
             { id: 'assets', label: props.t('preset.panel.assets') },
+            { id: 'model', label: props.t('agent.profile.model') },
             { id: 'text', label: props.t('rail.textTransform') },
             { id: 'tools', label: props.t('preset.panel.tools') },
             { id: 'macros', label: props.t('context.authoring.macros') },
@@ -292,7 +308,11 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
       onExplorerWidthChange={width => setExplorerWidth('preset', width)}
       resizeLabel={props.t('context.resizeExplorer')}
       viewMode={activePresetView === 'text' ? 'master-detail' : explorerView.viewMode}
-      explorer={activePresetView === 'text' ? <TextTransformExplorer controller={textController} /> : activePresetView === 'tools' ? (
+      explorer={activePresetView === 'model' ? (
+        <button type="button" onClick={() => setAssetPane('preset', props.workspaceId, 'detail')}>
+          {props.t('agent.profile.model')}
+        </button>
+      ) : activePresetView === 'text' ? <TextTransformExplorer controller={textController} /> : activePresetView === 'tools' ? (
         <PresetToolExplorer
           selectedToolId={selectedToolId}
           t={props.t}
@@ -336,7 +356,11 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
         />
       )}
     >
-      {activePresetView === 'text' ? (
+      {selectedResource ? <div hidden={activePresetView !== 'model'} className={styles.modelDetail}>
+        <AgentModelEditor key={selectedResource.id} preset={selectedResource} modelProfiles={props.modelProfiles}
+          providerAccounts={props.providerAccounts} onSave={props.onSaveModel} t={props.t} />
+      </div> : null}
+      {activePresetView === 'model' ? null : activePresetView === 'text' ? (
         selectedResource ? <TextTransformDetail controller={textController} /> : <p>{props.t('textTransform.noPreset')}</p>
       ) : activePresetView === 'tools' ? (
         <PresetToolDetail
@@ -371,6 +395,43 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
       </div>}
     </AssetWorkbenchLayout>
   )
+}
+
+function AgentSourceDirectory(props: {
+  resources: PromptResource[]
+  installations: PresetWorkbenchProps['extensionInstallations']
+  selectedResourceId?: string
+  onSelect(id: string): void
+  t: Translator
+}) {
+  const groups = new Map<string, { label: string; resources: PromptResource[] }>()
+  for (const resource of props.resources) {
+    const origin = resource.origin
+    const installation = origin?.kind === 'extension-package'
+      ? props.installations?.find(item => item.id === origin.installationId && item.packageId === origin.packageId)
+      : undefined
+    const key = origin?.kind === 'extension-package'
+      ? JSON.stringify([origin.packageId, origin.installationId])
+      : origin?.kind ?? 'workspace'
+    const label = origin?.kind === 'extension-package'
+      ? `${origin.packageId} · ${installation?.target.kind === 'card'
+          ? props.t('promptResource.cardInstallation', { id: installation.target.cardId })
+          : installation?.target.kind === 'global' || !origin.installationId
+            ? props.t('promptResource.globalInstallation')
+            : props.t('promptResource.unresolvedInstallation')}`
+      : props.t(origin?.kind === 'builtin' ? 'promptResource.official' : 'agent.sources.workspace')
+    const group = groups.get(key) ?? { label, resources: [] }
+    group.resources.push(resource)
+    groups.set(key, group)
+  }
+  return <nav className={styles.sourceDirectory} aria-label={props.t('agent.sources.title')}>
+    {[...groups].map(([key, group]) => <details key={key} open>
+      <summary title={group.label}>{group.label}</summary>
+      {group.resources.map(resource => <button key={resource.id} type="button"
+        aria-current={resource.id === props.selectedResourceId ? 'page' : undefined}
+        onClick={() => props.onSelect(resource.id)}>{resource.rootNode.label}</button>)}
+    </details>)}
+  </nav>
 }
 
 function PresetToolExplorer(props: {
@@ -530,6 +591,7 @@ function PresetToolDetail(props: {
         <code>{props.tool.id}</code>
       </header>
       <ToolMountEditor
+        key={`${props.preset.id}:${props.tool.id}`}
         mount={props.mount}
         preset={props.preset}
         presetMounts={props.presetMounts}

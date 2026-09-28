@@ -6,12 +6,10 @@ describe('prompt build steps model', () => {
   it('derives setting activation counts outside widget code', () => {
     const steps = buildPromptBuildSteps({
       input: 'rain at the counter',
-      timeline: [],
+      nodes: [],
       session: {
-        id: 'session-alpha-001',
-        version: 1,
-        cardSourceVersionId: 'card@1',
         cardSnapshot: {
+          id: 'card', version: 1, opening: { entries: [] }, createdAt: '', updatedAt: '',
           name: 'Rain Card',
           settingLayer: {
             entries: [
@@ -21,9 +19,6 @@ describe('prompt build steps model', () => {
             ],
           },
         },
-        activeBranchId: 'branch-alpha-001',
-        createdAt: '2026-06-22T00:00:00.000Z',
-        updatedAt: '2026-06-22T00:00:00.000Z',
       },
     }, createTranslator('en-US'))
 
@@ -36,7 +31,7 @@ describe('prompt build steps model', () => {
   it('summarizes runtime facts and inactive activation reasons from projection rows', () => {
     const steps = buildPromptBuildSteps({
       input: 'finalize',
-      timeline: [],
+      nodes: [],
       activationFacts: {
         'agent.mode': 'finalize',
         tags: ['scene:combat'],
@@ -70,7 +65,7 @@ describe('prompt build steps model', () => {
   it('surfaces real core trace status and pass order in the final payload step', () => {
     const steps = buildPromptBuildSteps({
       input: 'hello',
-      timeline: [],
+      nodes: [],
       promptBuildTrace: {
         status: 'ok',
         executions: [

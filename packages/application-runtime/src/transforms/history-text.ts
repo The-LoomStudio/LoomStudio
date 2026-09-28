@@ -7,11 +7,13 @@ export type HistorySource =
   | { kind: 'agent-session'; sessionId: string; headEntryId?: string }
 
 export type HistoryTarget = HistorySource['kind']
+export type CardOpeningSource = { kind: 'card-opening'; cardId: string }
+type TextProjectionSource = HistorySource | CardOpeningSource
 export type TextTransformPhase = 'classify' | 'prompt' | 'display'
 
 export type TextPipelineConsumer = {
   agentSessionId: string
-  agentProfileId: string
+  agentPresetId: string
   presetId: string
 }
 
@@ -87,9 +89,9 @@ export type TextTransformRuleEntry = TextTransformRuleContent & {
   version: number
 }
 
-export type HistoryTextEntry = {
+export type HistoryTextEntry<Source extends TextProjectionSource = HistorySource> = {
   id: string
-  source: HistorySource
+  source: Source
   role?: 'user' | 'assistant'
   text: string
   sequence: number
@@ -146,17 +148,17 @@ export type PromotedReasoningPart = {
   dialect?: string
 }
 
-export type TransformedHistoryEntry = HistoryTextEntry & {
+export type TransformedHistoryEntry<Source extends TextProjectionSource = HistorySource> = HistoryTextEntry<Source> & {
   depth: number
   originalText: string
   appliedRuleIds: string[]
   promotedReasoning: PromotedReasoningPart[]
 }
 
-export type HistoryProjectionSnapshot = {
-  source: HistorySource
+export type HistoryProjectionSnapshot<Source extends TextProjectionSource = HistorySource> = {
+  source: Source
   phase: TextTransformPhase
-  entries: TransformedHistoryEntry[]
+  entries: TransformedHistoryEntry<Source>[]
   matches: TextMatchRecord[]
   diagnostics: TextTransformDiagnostic[]
   ruleIds: string[]
@@ -197,15 +199,15 @@ export function validateTextTransformRuleDraft(rule: TextTransformRuleDraft): vo
   }
 }
 
-export function projectHistoryEntries(input: {
-  source: HistorySource
+export function projectHistoryEntries<Source extends TextProjectionSource>(input: {
+  source: Source
   phase: TextTransformPhase
-  entries: HistoryTextEntry[]
+  entries: HistoryTextEntry<Source>[]
   rules: TextTransformRuleEntry[]
   preserveRuleOrder?: boolean
   traceEntryId?: string
   budget?: Partial<HistoryProjectionBudget>
-}): HistoryProjectionSnapshot {
+}): HistoryProjectionSnapshot<Source> {
   const budget = { ...defaultHistoryProjectionBudget, ...input.budget }
   const diagnostics: TextTransformDiagnostic[] = []
   const active = input.entries
@@ -215,8 +217,9 @@ export function projectHistoryEntries(input: {
   const inputCharacters = active.reduce((total, entry) => total + entry.text.length, 0)
   if (inputCharacters > budget.maxInputCharacters) throw new Error(`History projection input budget exceeded: ${inputCharacters}`)
 
+  const target = input.source.kind === 'card-opening' ? 'narrative' : input.source.kind
   const selectedRules = input.rules
-    .filter(rule => rule.enabled && rule.targets.includes(input.source.kind) && rule.phases.includes(input.phase))
+    .filter(rule => rule.enabled && rule.targets.includes(target) && rule.phases.includes(input.phase))
   if (!input.preserveRuleOrder) selectedRules.sort(compareRules)
   const applicableRules = selectedRules.filter(rule => {
     try {
@@ -310,7 +313,7 @@ export function projectHistoryEntries(input: {
 type TextEdit = { start: number; end: number; replacementLength: number }
 
 function applyRule(input: {
-  source: HistorySource
+  source: TextProjectionSource
   phase: TextTransformPhase
   rule: TextTransformRuleEntry
   regex: RegExp
@@ -395,7 +398,7 @@ function applyRule(input: {
 }
 
 function createMatchId(input: {
-  source: HistorySource
+  source: TextProjectionSource
   phase: TextTransformPhase
   entryId: string
   ruleId: string
@@ -406,6 +409,7 @@ function createMatchId(input: {
 }): string {
   const source = input.source.kind === 'narrative'
     ? ['narrative', input.source.timelineId, input.source.branchId]
+    : input.source.kind === 'card-opening' ? ['card-opening', input.source.cardId]
     : ['agent-session', input.source.sessionId, input.source.headEntryId ?? '']
   const inputDigest = createHash('sha256').update(input.inputText).digest('hex')
   return `match:${createHash('sha256').update(JSON.stringify([

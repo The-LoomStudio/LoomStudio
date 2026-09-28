@@ -1,4 +1,4 @@
-import { createBlobStore, BlobStoreError } from '@loom-studio/blob-store'
+import { createBlobStore } from '@loom-studio/blob-store'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -122,7 +122,7 @@ describe('BlobStore', () => {
       source: Buffer.from('too large'),
       maxBytes: 3,
       actor: { kind: 'system', id: 'test' },
-    })).rejects.toMatchObject<Partial<BlobStoreError>>({ code: 'blob.too_large' })
+    })).rejects.toMatchObject({ code: 'blob.too_large' })
     expect(fixture.engine.database.prepare('SELECT COUNT(*) AS count FROM stored_blobs').get()).toEqual({ count: 0 })
     fixture.engine.close()
   })

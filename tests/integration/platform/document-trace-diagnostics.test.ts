@@ -1,6 +1,8 @@
 import { createClientBridge, type ClientBridge } from '@loom-studio/client-bridge'
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
 import { createApplicationRuntime } from '@loom-studio/application-runtime'
+import { createPromptResourceStore } from '@loom-studio/application-data'
+import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createDocumentDataCommitSource, createInMemoryDocumentStore } from '@loom-studio/document-store'
 import { createExtensionHost } from '@loom-studio/extension-host'
 import { createKernel, type Kernel } from '@loom-studio/kernel'
@@ -19,14 +21,14 @@ function createHarness() {
   const extensionHost = createExtensionHost({
     documents,
     diagnostics,
-    callRpc: (method: string, params?: unknown, context?: unknown) => kernel.callRpc(method, params as never, context as never),
-    registerRpc: (name: string, ownerPackageId: string, ownerModuleId: string, handler: (...args: unknown[]) => unknown, ownerInstanceId?: string) => {
-      const handle = kernel.registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler as never, ownerInstanceId)
-      return { name, ownerPackageId, ownerModuleId, ownerInstanceId, handler: handler as never, dispose: handle.dispose }
+    callRpc: (method, params, context) => kernel.callRpc(method, params, context),
+    registerRpc: (name, ownerPackageId, ownerModuleId, handler, ownerInstanceId) => {
+      const handle = kernel.registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler, ownerInstanceId)
+      return { name, ownerPackageId, ownerModuleId, ownerInstanceId, handler, dispose: handle.dispose }
     },
-    emitEvent: (name: string, payload: unknown, publisher: { kind: string; packageId?: string; moduleId?: string }) => {
-      kernel.getEventBus().emit(name, payload as never, {
-        publisher: publisher as never,
+    emitEvent: (name, payload, publisher) => {
+      return kernel.getEventBus().emit(name, payload, {
+        publisher,
         source: publisher.kind === 'extension' ? `extension:${publisher.packageId}/${publisher.moduleId}` : publisher.kind,
       })
     },
@@ -73,7 +75,7 @@ describe('document, trace, and diagnostics integration', () => {
     const { kernel } = createHarness()
     const events: StudioEvent[] = []
     await kernel.start()
-    kernel.getEventBus().subscribe(['docs.changed'], (event: StudioEvent) => events.push(event))
+    kernel.getEventBus().subscribe(['docs.changed'], event => { events.push(event) })
     const bridge = createBridge(kernel)
 
     await bridge.call('docs.write', {
@@ -103,7 +105,14 @@ describe('document, trace, and diagnostics integration', () => {
 
   it('requires a shared SQLite Data Engine for Application Runtime', async () => {
     const { documents } = createHarness()
-    expect(() => createApplicationRuntime({ documents })).toThrow('Prompt Resource Store is required')
+    const now = () => new Date().toISOString()
+    const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
+    try {
+      const promptResources = createPromptResourceStore({ engine, createId, now })
+      expect(() => createApplicationRuntime({ documents, promptResources })).toThrow('Shared Data Engine is required')
+    } finally {
+      engine.close()
+    }
   })
 
   it('rejects stale document writes and preserves the current document', async () => {
@@ -133,7 +142,7 @@ describe('document, trace, and diagnostics integration', () => {
     const { kernel } = createHarness()
     const events: StudioEvent[] = []
     await kernel.start()
-    kernel.getEventBus().subscribe(['docs.*'], (event: StudioEvent) => events.push(event))
+    kernel.getEventBus().subscribe(['docs.*'], event => { events.push(event) })
     const bridge = createBridge(kernel)
     const created = await bridge.call<{ changesetId: string }>('docs.write', {
       id: 'doc-scenario:undo',
@@ -214,7 +223,7 @@ describe('document, trace, and diagnostics integration', () => {
     const { kernel } = createHarness()
     const events: StudioEvent[] = []
     await kernel.start()
-    kernel.getEventBus().subscribe(['diagnostics.updated'], (event: StudioEvent) => events.push(event))
+    kernel.getEventBus().subscribe(['diagnostics.updated'], event => { events.push(event) })
     const bridge = createBridge(kernel)
 
     await bridge.call('loom.run', {

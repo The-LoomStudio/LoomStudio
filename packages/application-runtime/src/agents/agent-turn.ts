@@ -15,16 +15,23 @@ import { createPromptToolExecutionScope } from './official-tools/index.js'
 import type { ToolExecutionScope } from './tool-registry.js'
 import { cloneVariableRenderTrace, createVariableRenderContext, type VariableRenderContext } from '../prompt/variables.js'
 import { projectHistoryEntries, type TextTransformRuleEntry } from '../transforms/history-text.js'
+import { projectNarrativeNodes } from '../narrative/projection.js'
+import { projectSessionHistory } from './session-history.js'
+import type { ResolvedNarrativeContext } from '../narrative/context-provider.js'
+import { isExtensionResourceAvailable } from '../runtime/extension-resource-access.js'
 
 export async function composeAgentTurnPrompt(input: {
   activationFacts?: ActivationFacts
   variables?: VariableRenderContext
   agentMessages: AgentTranscriptEntry[]
   promptResources: PromptResourceStore
+  contextResourceIds: readonly string[]
+  availableExtensionInstallations?: ReadonlyMap<string, string>
   narrative?: {
     timeline: NarrativeTimeline
     nodes: NarrativeNode[]
     branchId: string
+    context?: ResolvedNarrativeContext
   }
   preset: PromptResourceContent & { id: string }
   userInput: string
@@ -43,6 +50,7 @@ export async function composeAgentTurnPrompt(input: {
   const variables = input.variables ?? createVariableRenderContext()
   const diagnostics: PromptBuildTrace['diagnostics'] = []
   const missingResourceIds = new Set<string>()
+  const readableResourceIds = new Set<string>()
   const warnMissingResource = (resourceId: string) => {
     if (resourceId === input.preset.id) throw new Error(`Prompt resource not found: ${resourceId}`)
     if (missingResourceIds.has(resourceId)) return
@@ -55,18 +63,15 @@ export async function composeAgentTurnPrompt(input: {
     })
   }
   const manualMounts = await input.promptResources.listSettingMounts({ source: { kind: 'manual', id: 'global' } })
-  const timelineSettingIds = input.narrative
-    ? (await Promise.all(input.narrative.timeline.promptResourceIds.map(async resourceId => {
-        const resource = await input.promptResources.getResource(resourceId)
-        if (!resource) warnMissingResource(resourceId)
-        return resource
-      })))
-      .flatMap(resource => resource?.resourceKind === 'setting' ? [resource.id] : [])
-    : []
+  const contextSettingIds = (await Promise.all(input.contextResourceIds.map(async resourceId => {
+    const resource = await input.promptResources.getResource(resourceId)
+    if (!resource) warnMissingResource(resourceId)
+    return resource
+  }))).flatMap(resource => resource?.resourceKind === 'setting' ? [resource.id] : [])
   const resourceIds = [...new Set([
     input.preset.id,
     ...manualMounts.map(mount => mount.settingResourceId),
-    ...timelineSettingIds,
+    ...contextSettingIds,
   ])]
   const resourceInputs = resourceIds.length
     ? await readPromptResourceInputs({
@@ -74,6 +79,18 @@ export async function composeAgentTurnPrompt(input: {
         resourceIds,
         variables,
         onMissingResource: warnMissingResource,
+        canReadResource: resource => {
+          if (!isExtensionResourceAvailable(resource.origin, input.availableExtensionInstallations)) {
+            if (resource.id === input.preset.id) throw new Error(`Agent Preset is not available in this context: ${resource.id}`)
+            diagnostics.push({
+              severity: 'warning', code: 'prompt.resource_unavailable', resourceId: resource.id,
+              message: `Skipped Prompt resource outside the current installation context: ${resource.id}`,
+            })
+            return false
+          }
+          readableResourceIds.add(resource.id)
+          return true
+        },
       })
     : undefined
   const runtimeInputs = createRuntimePromptSources({
@@ -111,6 +128,14 @@ export async function composeAgentTurnPrompt(input: {
     finalFragmentCount: resourceProjection.messages.length,
     messageFragmentCount: resourceProjection.messages.length,
     diagnostics,
+    ...(input.narrative?.context ? {
+      narrativeContext: {
+        sourceId: input.narrative.context.sourceId,
+        version: input.narrative.context.version,
+        coveredThroughNodeId: input.narrative.context.memory?.coveredThroughNodeId ?? null,
+        rawThroughNodeId: input.narrative.context.rawThroughNodeId,
+      },
+    } : {}),
     executions: []
   }
 
@@ -128,8 +153,9 @@ export async function composeAgentTurnPrompt(input: {
         sourceNodes,
         promptResources: input.promptResources,
         workspaceResourceAccess: !input.narrative,
+        availableExtensionInstallations: input.availableExtensionInstallations,
       }),
-      vfsResourceIds: resourceIds.filter(id => !missingResourceIds.has(id)),
+      vfsResourceIds: [...readableResourceIds],
     },
   }
 }
@@ -140,6 +166,7 @@ function createRuntimePromptSources(input: {
     timeline: NarrativeTimeline
     nodes: NarrativeNode[]
     branchId: string
+    context?: ResolvedNarrativeContext
   }
   userInput: string
   historyRules?: {
@@ -149,8 +176,41 @@ function createRuntimePromptSources(input: {
 }): { sourceNodes: SourceNode[]; contributions: PromptContribution[] } {
   const sourceNodes: SourceNode[] = []
   const contributions: PromptContribution[] = []
+  const summary = [...input.agentMessages].reverse().find(entry => entry.entry.kind === 'work-summary')
+  if (summary?.entry.kind === 'work-summary') {
+    input = { ...input, agentMessages: input.agentMessages.filter(entry => entry.sequence > summary.sequence) }
+    const id = `runtime.session.summary:${summary.id}`
+    sourceNodes.push({
+      id, sourceId: summary.agentSessionId, parentId: null,
+      displayName: 'Session Work Summary', orderIndex: 0, kind: 'virtual',
+    })
+    contributions.push({
+      id,
+      sourceRef: { kind: 'runtime', sourceId: summary.agentSessionId, sourceNodeId: id },
+      content: summary.entry.content,
+      capabilities: { targetAnchorId: '@memory.session', localDepth: 0 },
+    })
+  }
 
   if (input.narrative) {
+    const context = input.narrative.context
+    for (const [index, memory] of (context?.memory?.entries ?? []).entries()) {
+      const id = `runtime.memory:${JSON.stringify([context!.sourceId, memory.id])}`
+      sourceNodes.push({
+        id,
+        sourceId: context!.sourceId,
+        parentId: null,
+        displayName: memory.id,
+        orderIndex: index,
+        kind: 'virtual',
+      })
+      contributions.push({
+        id,
+        sourceRef: { kind: 'runtime', sourceId: context!.sourceId, sourceNodeId: id },
+        content: memory.content,
+        capabilities: { targetAnchorId: '@memory.narrative', localDepth: index },
+      })
+    }
     const rootId = `runtime.timeline:${input.narrative.timeline.id}`
     sourceNodes.push({
       id: rootId,
@@ -159,16 +219,12 @@ function createRuntimePromptSources(input: {
       displayName: input.narrative.timeline.title ?? 'Narrative Timeline',
       orderIndex: 0, kind: 'folder',
     })
-    const projectedNarrative = projectHistoryEntries({
-      source: { kind: 'narrative', timelineId: input.narrative.timeline.id, branchId: input.narrative.branchId },
+    const projectedNarrative = projectNarrativeNodes({
+      timelineId: input.narrative.timeline.id,
+      branchId: input.narrative.branchId,
+      nodes: input.narrative.nodes,
+    }, {
       phase: 'prompt',
-      entries: input.narrative.nodes.map((node, index) => ({
-        id: node.id,
-        source: { kind: 'narrative' as const, timelineId: input.narrative!.timeline.id, branchId: input.narrative!.branchId },
-        text: node.body.raw,
-        sequence: index + 1,
-        createdAt: node.createdAt,
-      })),
       rules: input.historyRules?.narrative ?? [],
     })
     const narrativeText = new Map(projectedNarrative.entries.map(entry => [entry.id, entry.text]))
@@ -226,42 +282,11 @@ function createRuntimePromptSources(input: {
         }]
       : []),
     rules: input.historyRules?.session ?? [],
+    preserveRuleOrder: true,
   })
   const sessionText = new Map(projectedSession.entries.map(entry => [entry.id, entry.text]))
-  input.agentMessages.forEach(agentMessage => {
-    const message = agentMessage.entry
-    if (message.kind === 'reasoning') {
-      if (message.replay !== 'assistant-content' || !message.content.trim()) return
-      const sourceNodeId = `runtime.session.reasoning:${agentMessage.id}`
-      sourceNodes.push({
-        id: sourceNodeId,
-        sourceId: agentMessage.agentSessionId,
-        parentId: sessionRootId,
-        displayName: `Reasoning ${agentMessage.sequence}`,
-        orderIndex: agentMessage.sequence,
-        kind: 'entry',
-      })
-      contributions.push({
-        id: `runtime.session.reasoning:${agentMessage.id}`,
-        sourceRef: { kind: 'sessionHistory', sourceId: agentMessage.agentSessionId, sourceNodeId },
-        content: renderReasoningReplay(message.content, message.dialect),
-        capabilities: {
-          targetAnchorId: '@chat.session',
-          localDepth: agentMessage.sequence,
-          roleHint: 'assistant',
-        },
-      })
-      return
-    }
-    if (message.kind !== 'message') return
-    const content = sessionText.get(agentMessage.id)
-    if (content === undefined) {
-      throw new Error(`Agent Session message is missing projected text content: ${agentMessage.id}`)
-    }
-    if (!content || content.trim().length === 0) {
-      throw new Error(`Agent Session message cannot enter PromptBuild without text content: ${agentMessage.id}`)
-    }
-    const sourceNodeId = `runtime.session.message:${agentMessage.id}`
+  projectSessionHistory(input.agentMessages, sessionText).forEach(({ entry: agentMessage, messages }) => {
+    const sourceNodeId = `runtime.session.${agentMessage.entry.kind}:${agentMessage.id}`
     sourceNodes.push({
       id: sourceNodeId,
       sourceId: agentMessage.agentSessionId,
@@ -277,11 +302,12 @@ function createRuntimePromptSources(input: {
         sourceId: agentMessage.agentSessionId,
         sourceNodeId,
       },
-      content,
+      content: messages.map(message => message.content ?? '').join('\n'),
+      messages,
       capabilities: {
         targetAnchorId: '@chat.session',
         localDepth: agentMessage.sequence,
-        roleHint: message.role,
+        roleHint: messages[0]?.role === 'user' ? 'user' : 'assistant',
       },
     })
   })
@@ -320,10 +346,4 @@ function createRuntimePromptSources(input: {
   })
 
   return { sourceNodes, contributions }
-}
-
-function renderReasoningReplay(content: string, dialect: string | undefined): string {
-  if (!dialect) return content
-  const safeDialect = /^[A-Za-z][A-Za-z0-9_.-]*$/.test(dialect) ? dialect : 'reasoning'
-  return `<${safeDialect}>${content}</${safeDialect}>`
 }

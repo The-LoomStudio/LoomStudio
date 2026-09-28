@@ -2,6 +2,7 @@ import type { RendererContributionDefinition } from '@loom-studio/extension-sdk'
 import type { JsonObject } from '@loom-studio/shared'
 
 export type LoomScriptOwner =
+  | { kind: 'extension'; packageId: string; installationId: string }
   | { kind: 'workspace'; workspaceId: string }
   | { kind: 'card'; cardId: string }
   | { kind: 'preset'; presetId: string }

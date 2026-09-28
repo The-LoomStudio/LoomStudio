@@ -16,10 +16,8 @@ import {
   readOptionalBoolean,
   readOptionalNumber,
   readOptionalObject,
-  readOptionalBooleanRecord,
   readNullableString,
   readOptionalString,
-  readOptionalStringRecord,
   readString,
 } from '../../rpc-params.js'
 
@@ -39,6 +37,7 @@ type AgentRun = {
     partialEntryId?: string
   }
   mutationApprovals: Map<string, {
+    kind: 'mutation' | 'history-read'
     resolve: (decision: VfsMutationDecision) => void
     reject: (error: Error) => void
   }>
@@ -54,33 +53,34 @@ export async function handleAgentsRpc(
   context?: RuntimeRequestContext,
 ): Promise<JsonValue | undefined> {
   switch (method) {
-    case 'application.createAgentProfile':
-      return await runtime.createAgentProfile({
+    case 'application.createAgentPreset':
+      return await runtime.createAgentPreset({
         name: readString(params, 'name'),
-        presetId: readString(params, 'presetId'),
-        model: readRequiredProviderModelSelection(params, 'model'),
-        toolOverrides: readOptionalBooleanRecord(params, 'toolOverrides'),
-        delivery: readOptionalDelivery(params),
-      }, context) as unknown as JsonValue
-
-    case 'application.getAgentProfile':
-      return await runtime.getAgentProfile({ agentProfileId: readString(params, 'agentProfileId') }) as unknown as JsonValue
-
-    case 'application.listAgentProfiles':
-      return await runtime.listAgentProfiles({ cursor: readOptionalString(params, 'cursor'), limit: readOptionalNumber(params, 'limit') }) as unknown as JsonValue
-
-    case 'application.updateAgentProfile':
-      return await runtime.updateAgentProfile({
-        agentProfileId: readString(params, 'agentProfileId'),
-        name: readOptionalString(params, 'name'),
-        presetId: readOptionalString(params, 'presetId'),
         model: readOptionalProviderModelSelection(params, 'model'),
-        toolOverrides: readOptionalBooleanRecord(params, 'toolOverrides'),
         delivery: readOptionalDelivery(params),
+        historyPolicy: readOptionalHistoryPolicy(params),
       }, context) as unknown as JsonValue
 
-    case 'application.deleteAgentProfile':
-      return await runtime.deleteAgentProfile({ agentProfileId: readString(params, 'agentProfileId') }, context) as unknown as JsonValue
+    case 'application.getAgentPreset':
+      return await runtime.getAgentPreset({ agentPresetId: readString(params, 'agentPresetId') }) as unknown as JsonValue
+
+    case 'application.listAgentPresets':
+      return await runtime.listAgentPresets({
+        cursor: readOptionalString(params, 'cursor'), limit: readOptionalNumber(params, 'limit'),
+      }) as unknown as JsonValue
+
+    case 'application.updateAgentPreset':
+      return await runtime.updateAgentPreset({
+        agentPresetId: readString(params, 'agentPresetId'),
+        expectedVersion: readNumber(params, 'expectedVersion'),
+        name: readOptionalString(params, 'name'),
+        model: isRecord(params) && params.model === null ? null : readOptionalProviderModelSelection(params, 'model'),
+        delivery: readOptionalDelivery(params),
+        historyPolicy: readOptionalHistoryPolicy(params),
+      }, context) as unknown as JsonValue
+
+    case 'application.deleteAgentPreset':
+      return await runtime.deleteAgentPreset({ agentPresetId: readString(params, 'agentPresetId') }, context) as unknown as JsonValue
 
     case 'application.listAgentTools':
       return await runtime.listAgentTools() as unknown as JsonValue
@@ -106,14 +106,14 @@ export async function handleAgentsRpc(
 
     case 'application.createAgentSession':
       return await runtime.createAgentSession({
-        agentProfileId: readString(params, 'agentProfileId'),
+        agentPresetId: readString(params, 'agentPresetId'),
         timelineId: readOptionalString(params, 'timelineId'),
         title: readOptionalString(params, 'title'),
       }, context) as unknown as JsonValue
 
     case 'application.listAgentSessions':
       return await runtime.listAgentSessions({
-        agentProfileId: readOptionalString(params, 'agentProfileId'),
+        agentPresetId: readOptionalString(params, 'agentPresetId'),
         timelineId: readOptionalString(params, 'timelineId'),
         standalone: readOptionalBoolean(params, 'standalone'),
         cursor: readOptionalString(params, 'cursor'),
@@ -137,6 +137,14 @@ export async function handleAgentsRpc(
         agentSessionId: readString(params, 'agentSessionId'),
       }, context) as unknown as JsonValue
 
+    case 'application.completeAgentSessionHandoff':
+      return await runtime.completeAgentSessionHandoff({
+        agentSessionId: readString(params, 'agentSessionId'),
+        expectedEntryCount: readNumber(params, 'expectedEntryCount'),
+        summary: readString(params, 'summary'),
+        branchId: readOptionalString(params, 'branchId'),
+      }, context) as unknown as JsonValue
+
     case 'application.updateAgentSession':
       return await runtime.updateAgentSession({
         agentSessionId: readString(params, 'agentSessionId'),
@@ -152,7 +160,7 @@ export async function handleAgentsRpc(
         input: readString(params, 'input'),
         activationFacts: readOptionalObject(params, 'activationFacts'),
         narrativeTarget: readOptionalNarrativeTarget(params),
-        macroSelections: readOptionalStringRecord(params, 'macroSelections'),
+        macroSelections: readOptionalObject(params, 'macroSelections') as import('@loom-studio/shared').MacroSelectionMap | undefined,
       }, context) as unknown as JsonValue
 
     case 'application.agent.run.create': {
@@ -162,7 +170,7 @@ export async function handleAgentsRpc(
         input: readString(params, 'input'),
         activationFacts: readOptionalObject(params, 'activationFacts'),
         narrativeTarget: readOptionalNarrativeTarget(params),
-        macroSelections: readOptionalStringRecord(params, 'macroSelections'),
+        macroSelections: readOptionalObject(params, 'macroSelections') as import('@loom-studio/shared').MacroSelectionMap | undefined,
       } satisfies InvokeAgentTurnInput
       const run = startAgentRun(runtime, context, request)
       runs.set(run.id, run)
@@ -189,11 +197,14 @@ export async function handleAgentsRpc(
       return { runId: run.id, accepted: true, state: run.state }
     }
 
+    case 'application.agent.run.history-read-approval':
     case 'application.agent.run.mutation-approval': {
       const run = requireAgentRun(getRunStore(runtime), params)
       const requestId = readString(params, 'requestId')
       const pending = run.mutationApprovals.get(requestId)
       if (!pending) return { runId: run.id, requestId, accepted: false }
+      if (pending.kind !== (method === 'application.agent.run.history-read-approval' ? 'history-read' : 'mutation'))
+        return { runId: run.id, requestId, accepted: false }
       const allow = readBoolean(params, 'allow')
       const reason = readOptionalString(params, 'reason')
       run.mutationApprovals.delete(requestId)
@@ -233,7 +244,10 @@ export async function handleAgentsRpc(
         : (source ? source.request.agentSessionId : undefined)
       if (sessionId) {
         const transcript = await runtime.getAgentTranscriptPage({ agentSessionId: sessionId, limit: 100 })
-        const entries = transcript.entries
+        const summary = [...transcript.entries].reverse().find(entry => entry.entry.kind === 'work-summary')
+        const entries = summary
+          ? transcript.entries.filter(entry => entry.sequence > summary.sequence)
+          : transcript.entries
         const lastUser = entries.slice().reverse().find(e => e.entry.kind === 'message' && e.entry.role === 'user')
         if (lastUser) {
           const userIdx = entries.indexOf(lastUser)
@@ -285,7 +299,7 @@ export async function handleAgentsRpc(
         input: readString(params, 'input'),
         activationFacts: readOptionalObject(params, 'activationFacts'),
         narrativeTarget: readOptionalNarrativeTarget(params),
-        macroSelections: readOptionalStringRecord(params, 'macroSelections'),
+        macroSelections: readOptionalObject(params, 'macroSelections') as import('@loom-studio/shared').MacroSelectionMap | undefined,
       }, context) as unknown as JsonValue
 
     case 'application.inspectMacros':
@@ -293,8 +307,22 @@ export async function handleAgentsRpc(
         cardId: readOptionalString(params, 'cardId'),
         presetId: readOptionalString(params, 'presetId'),
         timelineTarget: readOptionalMacroTimelineTarget(params),
-        macroSelections: readOptionalStringRecord(params, 'macroSelections'),
+        macroSelections: readOptionalObject(params, 'macroSelections') as import('@loom-studio/shared').MacroSelectionMap | undefined,
       }) as unknown as JsonValue
+
+    case 'application.getTimelinePresetConfig':
+      return await runtime.getTimelinePresetConfig({
+        timelineId: readString(params, 'timelineId'),
+        presetId: readString(params, 'presetId'),
+      }) as unknown as JsonValue
+
+    case 'application.updateTimelinePresetConfig':
+      return await runtime.updateTimelinePresetConfig({
+        timelineId: readString(params, 'timelineId'),
+        presetId: readString(params, 'presetId'),
+        expectedVersion: readNumber(params, 'expectedVersion'),
+        macroSelections: readOptionalObject(params, 'macroSelections') as import('@loom-studio/shared').MacroSelectionMap,
+      }, context) as unknown as JsonValue
 
     default:
       return undefined
@@ -322,6 +350,28 @@ function startAgentRun(
       onEvent: event => run.events.push(event),
       ...(continuation ? { continuation } : {}),
       onSuspended: checkpoint => { run.checkpoint = checkpoint },
+      onHistoryReadApproval: (action, signal) => new Promise((resolve, reject) => {
+        const approvalSignal = signal ?? controller.signal
+        approvalSignal.throwIfAborted()
+        const requestId = `history-read-approval-${crypto.randomUUID()}`
+        const abort = () => {
+          run.mutationApprovals.delete(requestId)
+          reject(new Error('History read approval was cancelled.'))
+        }
+        approvalSignal.addEventListener('abort', abort, { once: true })
+        run.mutationApprovals.set(requestId, {
+          kind: 'history-read',
+          resolve: decision => {
+            approvalSignal.removeEventListener('abort', abort)
+            resolve(decision)
+          },
+          reject: error => {
+            approvalSignal.removeEventListener('abort', abort)
+            reject(error)
+          },
+        })
+        run.events.push({ type: 'history-read-approval-requested', runId: id, requestId, action })
+      }),
       onMutationApproval: (preview, signal) => new Promise((resolve, reject) => {
         const requestId = `mutation-approval-${crypto.randomUUID()}`
         const abort = () => {
@@ -330,6 +380,7 @@ function startAgentRun(
         }
         signal.addEventListener('abort', abort, { once: true })
         run.mutationApprovals.set(requestId, {
+          kind: 'mutation',
           resolve: decision => {
             signal.removeEventListener('abort', abort)
             resolve(decision)
@@ -434,24 +485,26 @@ function readOptionalProviderModelSelection(params: JsonValue | undefined, key: 
   return { providerProfileId: value.providerProfileId, modelId: value.modelId }
 }
 
-function readRequiredProviderModelSelection(params: JsonValue | undefined, key: string) {
-  const value = readOptionalProviderModelSelection(params, key)
-  if (!value) throw new Error(`Expected Provider model selection param: ${key}`)
-  return value
-}
-
 function readOptionalDelivery(params: JsonValue | undefined): 'stream' | 'complete' | undefined {
   if (!isRecord(params) || params.delivery === undefined) return undefined
   if (params.delivery !== 'stream' && params.delivery !== 'complete') {
-    throw new Error('Expected Agent Profile delivery: stream or complete')
+    throw new Error('Expected Agent delivery: stream or complete')
   }
   return params.delivery
+}
+
+function readOptionalHistoryPolicy(params: JsonValue | undefined): 'persistent' | 'ephemeral' | undefined {
+  if (!isRecord(params) || params.historyPolicy === undefined) return undefined
+  if (params.historyPolicy !== 'persistent' && params.historyPolicy !== 'ephemeral') {
+    throw new Error('Expected Agent historyPolicy: persistent or ephemeral')
+  }
+  return params.historyPolicy
 }
 
 function readOptionalNarrativeTarget(params: JsonValue | undefined): {
   timelineId: string
   branchId?: string
-  commit: boolean
+  inputNodeId?: string
 } | undefined {
   const value = readOptionalObject(params, 'narrativeTarget')
   if (value === undefined) return undefined
@@ -459,11 +512,13 @@ function readOptionalNarrativeTarget(params: JsonValue | undefined): {
   if (value.branchId !== undefined && typeof value.branchId !== 'string') {
     throw new Error('Expected optional string param: narrativeTarget.branchId')
   }
-  if (typeof value.commit !== 'boolean') throw new Error('Expected boolean param: narrativeTarget.commit')
+  if (value.inputNodeId !== undefined && typeof value.inputNodeId !== 'string') {
+    throw new Error('Expected optional string param: narrativeTarget.inputNodeId')
+  }
   return {
     timelineId: value.timelineId,
     ...(typeof value.branchId === 'string' ? { branchId: value.branchId } : {}),
-    commit: value.commit,
+    ...(typeof value.inputNodeId === 'string' ? { inputNodeId: value.inputNodeId } : {}),
   }
 }
 

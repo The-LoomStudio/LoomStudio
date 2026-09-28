@@ -91,7 +91,7 @@ export function CardResourceOverview({ api, cardId, onRefresh, t }: { api: CardD
   </section>
 }
 
-export function CardResourceSummary({ overview, api, t }: { overview: OpenCardDirectoryResult; api: Pick<CardDirectoryApi, 'attachment'>; t: Translator }) {
+function CardResourceSummary({ overview, api, t }: { overview: OpenCardDirectoryResult; api: Pick<CardDirectoryApi, 'attachment'>; t: Translator }) {
   const [copied, setCopied] = useState(false)
   const [copyError, setCopyError] = useState('')
   const [selected, setSelected] = useState<string>()

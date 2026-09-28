@@ -35,7 +35,9 @@ export function SettingsPanel(props: {
   locale: Locale
   networkSettings: NetworkSettings
   textTransformsApi: StudioApi['textTransforms']
+  onTextTransformsChanged?(): void
   backgrounds?: readonly BackgroundOption[]
+  backgroundCardId?: string
   uiScale: number
   onChangeCustomCss(value: string): void
   onChangeLocale(locale: Locale): void
@@ -47,19 +49,24 @@ export function SettingsPanel(props: {
   const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
   const [proxyMode, setProxyMode] = useState(props.networkSettings.proxyMode)
   const [proxyUrl, setProxyUrl] = useState(props.networkSettings.proxyUrl ?? '')
-  const previewBackgroundId = useAppearanceStore(state => state.background?.id ?? null)
+  const previewBackgroundId = useAppearanceStore(state => state.scopedBackground && state.scopedBackground.cardId === props.backgroundCardId
+    ? state.scopedBackground.id : state.background?.id ?? null)
   const previewFollowState = useAppearanceStore(state => state.followAI)
   const previewMaterial = useAppearanceStore(state => state.material)
   const previewCanvasWidth = useAppearanceStore(state => state.canvasWidth ?? 720)
   const setPreviewBackground = useAppearanceStore(state => state.setBackground)
+  const setScopedBackground = useAppearanceStore(state => state.setScopedBackground)
   const setPreviewFollowState = useAppearanceStore(state => state.setFollowAI)
   const setPreviewMaterial = useAppearanceStore(state => state.setMaterial)
   const setPreviewCanvasWidth = useAppearanceStore(state => state.setCanvasWidth)
+  const narrativeOverscan = useAppearanceStore(state => state.narrativeOverscan)
+  const setNarrativeOverscan = useAppearanceStore(state => state.setNarrativeOverscan)
   const motionPreference = useMotionPreferenceStore(state => state.preference)
   const setMotionPreference = useMotionPreferenceStore(state => state.setPreference)
   const backgrounds = [...previewBackgrounds, ...(props.backgrounds ?? [])]
   const textController = useTextTransformController({
     api: props.textTransformsApi,
+    onRuntimeChanged: props.onTextTransformsChanged,
     owner: { kind: 'workspace' },
     t: props.t,
     mobilePane,
@@ -232,6 +239,7 @@ export function SettingsPanel(props: {
                 <label className={styles.settingRow}>
                   <span>{props.t('settings.proxyMode')}</span>
                   <select
+                    disabled={props.busy}
                     value={proxyMode}
                     onChange={event => setProxyMode(event.target.value as NetworkSettings['proxyMode'])}
                   >
@@ -245,6 +253,7 @@ export function SettingsPanel(props: {
                   <label className={styles.settingRow}>
                     <span>{props.t('settings.proxyUrl')}</span>
                     <input
+                      disabled={props.busy}
                       required
                       placeholder="http://127.0.0.1:7890"
                       value={proxyUrl}
@@ -315,6 +324,20 @@ export function SettingsPanel(props: {
                       </div>
                     </div>
                     <div className={styles.cardSection}>
+                      <label>
+                        {props.t('settings.narrativeOverscan')}
+                        <input
+                          type="range"
+                          min={0}
+                          max={50}
+                          step={1}
+                          value={narrativeOverscan}
+                          onChange={event => setNarrativeOverscan(Number(event.target.value))}
+                        />
+                        <output>{narrativeOverscan}</output>
+                      </label>
+                    </div>
+                    <div className={styles.cardSection}>
                       <h4>{props.t('settings.motion')}</h4>
                       <p>{props.t('settings.motionDesc')}</p>
                       <label className={styles.settingRow}>
@@ -344,7 +367,14 @@ export function SettingsPanel(props: {
                 )}
                 onFollowStateChange={setPreviewFollowState}
                 onMaterialChange={setPreviewMaterial}
-                onSelect={id => setPreviewBackground(backgrounds.find(item => item.id === id) ?? null)}
+                onSelect={id => {
+                  const background = backgrounds.find(item => item.id === id)
+                  if (background?.scope) {
+                    setScopedBackground({ id: background.id, image: background.image, ...background.scope })
+                  } else {
+                    setPreviewBackground(background ?? null)
+                  }
+                }}
               />
             </>
           ) : (

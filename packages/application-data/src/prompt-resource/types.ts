@@ -78,6 +78,7 @@ export type PromptResourceNodePatch = {
 }
 
 export type PromptResourceMutation =
+  | { kind: 'tree.replace'; rootNode: PromptResourceTreeNode }
   | { kind: 'node.create'; parentId: string; node: PromptResourceNodeDraft }
   | { kind: 'node.update'; nodeId: string; patch: PromptResourceNodePatch }
   | { kind: 'node.move'; nodeId: string; parentId: string; orderIndex: number }
@@ -200,6 +201,7 @@ export type PromptResourceTransaction = {
 
 export type PromptResourceStore = {
   getResource(id: string, options?: { includeTombstone?: boolean }): Promise<PromptResource | null>
+  getResourceMetadataAtVersion(id: string, version: number): Promise<JsonObject | null>
   listResources(input?: ListPromptResourcesInput): Promise<PromptResourcePage>
   listSettingMounts(input?: ListSettingMountsInput): Promise<SettingMount[]>
   listPresetToolMounts(input?: ListPresetToolMountsInput): Promise<PresetToolMount[]>

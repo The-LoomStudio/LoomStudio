@@ -22,6 +22,7 @@ export type MediaAssetRecord = {
   width?: number
   height?: number
   ownerPackageId?: string
+  ownerInstallationId?: string
   createdBy: DataActorRef
   createdAt: string
 }
@@ -52,6 +53,7 @@ export type CreateMediaAssetInput = AssetWriteContext & {
   width?: number
   height?: number
   ownerPackageId?: string
+  ownerInstallationId?: string
   maxBytes?: number
 }
 

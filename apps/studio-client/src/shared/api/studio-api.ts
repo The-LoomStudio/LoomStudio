@@ -1,7 +1,7 @@
 import type { ClientBridge, ClientJsonValue } from '@loom-studio/client-bridge'
 import type { AiGatewayEvent, AiGatewayRunState } from '@loom-studio/ai-gateway/contracts'
 type TimelineArchiveClient = Record<string, ClientJsonValue>
-export type AgentRunEvent = {
+type AgentRunEvent = {
   type: string
   runId: string
   [key: string]: ClientJsonValue | undefined
@@ -9,6 +9,7 @@ export type AgentRunEvent = {
 
 export type AgentMutationApproval = {
   requestId: string
+  action?: never
   preview: {
     action: 'replace' | 'patch'
     path: string
@@ -18,11 +19,22 @@ export type AgentMutationApproval = {
     target?: ClientJsonValue
     pointer?: string
   }
+} | {
+  requestId: string
+  preview?: never
+  action: {
+    kind: 'narrative-history-read'
+    timelineId: string
+    branchId: string
+    selection: { kind: 'tail'; count: number; throughNodeId?: string } | { kind: 'range'; afterNodeId?: string; throughNodeId?: string }
+    maxNodes: number
+    maxCharacters: number
+  }
 }
 import type { CardDirectoryPreview, CardDirectorySaveResult, CardDirectoryCatalog, OpenCardDirectoryResult, CardDirectoryAttachment, ReplaceSettingMountsInput } from '@loom-studio/shared'
 import type { OfficialContentPackage } from '../../entities/official-content.js'
 import type { LogQuery, LogPage, LogHistoryQuery, LogHistoryPage } from '@loom-studio/logging'
-import type { ExtensionConfigEntry, ExtensionEntityRef, ExtensionRecordEntry, ExtensionStorageScope } from '@loom-studio/extension-sdk'
+import type { ExtensionConfigEntry, ExtensionEntityRef, ExtensionInstallationTarget, ExtensionRecordEntry, ExtensionStorageScope } from '@loom-studio/extension-sdk'
 import type {
   AiGatewayInvokeInput,
   AiGatewayInvokeResult,
@@ -35,14 +47,14 @@ import type {
   CardMedia,
   CardPresetInput,
   ContextAssetNode,
-  CreateAgentProfileResult,
+  CreateAgentPresetResult,
   CreateAiCapabilityProfileResult,
   CreateAgentSessionResult,
   CreateCardResult,
   CreateNarrativeTimelineResult,
   CreatePromptResourceResult,
   CreateProviderProfileResult,
-  DeleteAgentProfileResult,
+  DeleteAgentPresetResult,
   DeleteCardResult,
   DeleteCardsResult,
   DeletePromptResourceResult,
@@ -59,7 +71,7 @@ import type {
   GetStateDefinitionResult,
   ImportCardBundleResult,
   InvokeAgentTurnResult,
-  ListAgentProfilesResult,
+  ListAgentPresetsResult,
   ListAiCapabilityProfilesResult,
   ListCardsResult,
   ListNarrativeTimelinesResult,
@@ -86,6 +98,8 @@ import type {
   PromptResourceArtifact,
   PortableExtensionPayloadDraft,
   ListPortableExtensionPayloadsResult,
+  ListExtensionInstallationsResult,
+  GetPromptResourceBindingsResult,
   GetPortableExtensionPayloadResult,
   MutatePortableExtensionPayloadResult,
   PresetToolMountInput,
@@ -101,7 +115,7 @@ import type {
   UpsertStateDefinitionResult,
   DeleteStateDefinitionResult,
   SwitchNarrativeBranchResult,
-  UpdateAgentProfileResult,
+  UpdateAgentPresetResult,
   UpdateCardResult,
   UpdatePromptResourceResult,
   UpdateProviderProfileResult,
@@ -117,9 +131,9 @@ import type {
   TextTransformRuleDraft,
 } from '../../entities/index.js'
 
-export type LogsListInput = Omit<LogQuery, 'limit'> & { limit?: number }
+type LogsListInput = Omit<LogQuery, 'limit'> & { limit?: number }
 
-export type NetworkProxyMode = 'system' | 'direct' | 'manual'
+type NetworkProxyMode = 'system' | 'direct' | 'manual'
 
 export type NetworkSettings = {
   proxyMode: NetworkProxyMode
@@ -129,8 +143,9 @@ export type NetworkSettings = {
 
 // ─── Card DTOs ──────────────────────────────────────────────────────────────
 
-export type CreateCardInput = {
+type CreateCardInput = {
   macros?: Record<string, string>
+  macroOptions?: import("@loom-studio/shared").MacroOptions
   name: string
   userName?: string
   description?: string
@@ -141,8 +156,9 @@ export type CreateCardInput = {
   promptResourceIds?: string[]
 }
 
-export type UpdateCardInput = {
+type UpdateCardInput = {
   macros?: Record<string, string>
+  macroOptions?: import("@loom-studio/shared").MacroOptions
   cardId: string
   expectedVersion?: number
   name?: string
@@ -178,36 +194,36 @@ export type UpdateCardInput = {
   timelineStateBindings?: Array<{ path: string; templateId: string; templateVersion: number; initial?: Record<string, ClientJsonValue> }>
 }
 
-export type UpdateCardPromptResourcesInput = {
+type UpdateCardPromptResourcesInput = {
   cardId: string
   promptResourceIds: string[]
 }
 
 // ─── Agent Session DTOs ─────────────────────────────────────────────────────
 
-export type CreateAgentSessionInput = {
-  agentProfileId: string
+type CreateAgentSessionInput = {
+  agentPresetId: string
   title?: string
   timelineId?: string
 }
 
-export type InvokeAgentTurnInput = {
-  macroSelections?: Record<string, string>
+type InvokeAgentTurnInput = {
+  macroSelections?: import('@loom-studio/shared').MacroSelectionMap
   agentSessionId: string
   input: string
   activationFacts?: Record<string, unknown>
   narrativeTarget?: {
     timelineId: string
     branchId?: string
-    commit: boolean
+    inputNodeId?: string
   }
 }
 
-export type PreviewAgentTurnInput = InvokeAgentTurnInput
+type PreviewAgentTurnInput = InvokeAgentTurnInput
 
-// ─── Provider & Agent Profile DTOs ──────────────────────────────────────────
+// ─── Provider & Agent Preset DTOs ──────────────────────────────────────────
 
-export type CreateProviderProfileInput = {
+type CreateProviderProfileInput = {
   providerExtensionId: string
   displayName: string
   config?: Record<string, unknown>
@@ -215,46 +231,43 @@ export type CreateProviderProfileInput = {
   credential?: Record<string, string>
 }
 
-export type UpdateProviderProfileInput = {
+type UpdateProviderProfileInput = {
   providerProfileId: string
   displayName?: string
   config?: Record<string, unknown>
   enabledModelIds?: string[]
 }
 
-export type CreateAgentProfileInput = {
+type CreateAgentPresetInput = {
   name: string
-  presetId: string
-  model: ProviderModelSelection
-  toolOverrides?: Record<string, boolean>
+  model?: ProviderModelSelection
   delivery?: 'stream' | 'complete'
 }
 
-export type UpdateAgentProfileInput = {
-  agentProfileId: string
+type UpdateAgentPresetInput = {
+  agentPresetId: string
+  expectedVersion: number
   name?: string
-  presetId?: string
-  model?: ProviderModelSelection
-  toolOverrides?: Record<string, boolean>
+  model?: ProviderModelSelection | null
   delivery?: 'stream' | 'complete'
 }
 
 // ─── Narrative DTOs ─────────────────────────────────────────────────────────
 
-export type CreateNarrativeTimelineInput = {
+type CreateNarrativeTimelineInput = {
   cardId: string
   title?: string
   openingNodes?: Array<{ content: string; createdAt?: string }>
 }
 
-export type ForkNarrativeBranchInput = {
+type ForkNarrativeBranchInput = {
   timelineId: string
   fromBranchId: string
   fromNodeId: string
   title?: string
 }
 
-export type SwitchNarrativeBranchInput = {
+type SwitchNarrativeBranchInput = {
   timelineId: string
   branchId: string
   expectedActiveBranchId?: string
@@ -262,24 +275,24 @@ export type SwitchNarrativeBranchInput = {
 
 // ─── Prompt Resource DTOs ───────────────────────────────────────────────────
 
-export type CreatePromptResourceInput = {
+type CreatePromptResourceInput = {
   resourceKind: PromptResource['resourceKind']
   name: string
 }
 
-export type DuplicatePromptResourceInput = {
+type DuplicatePromptResourceInput = {
   resourceId: string
   name?: string
 }
 
-export type CreatePromptResourceAssetInput = {
+type CreatePromptResourceAssetInput = {
   resourceId: string
   targetAssetId?: string
   position?: 'before' | 'after' | 'inside'
   asset: ContextAssetNode
 }
 
-export type UpdatePromptResourceAssetInput = {
+type UpdatePromptResourceAssetInput = {
   resourceId: string
   expectedVersion?: number
   assetId: string
@@ -293,7 +306,7 @@ export type UpdatePromptResourceAssetInput = {
   slotRanks?: ProjectionSlotRank[]
 }
 
-export type UpdatePromptResourceAssetsInput = {
+type UpdatePromptResourceAssetsInput = {
   resourceId: string
   expectedVersion?: number
   updates: Array<{
@@ -309,21 +322,21 @@ export type UpdatePromptResourceAssetsInput = {
   }>
 }
 
-export type MovePromptResourceAssetInput = {
+type MovePromptResourceAssetInput = {
   resourceId: string
   assetId: string
   targetAssetId: string
   position: 'before' | 'after' | 'inside'
 }
 
-export type DeletePromptResourceAssetInput = {
+type DeletePromptResourceAssetInput = {
   resourceId: string
   assetId: string
 }
 
 // ─── Card Bundle DTOs ───────────────────────────────────────────────────────
 
-export type ImportCardBundleInput = {
+type ImportCardBundleInput = {
   sourceArtifact?: {
     format: string
     originalFileName?: string
@@ -336,18 +349,20 @@ export type ImportCardBundleInput = {
 
 // ─── Studio API Interface ───────────────────────────────────────────────────
 
-export type InspectMacrosInput = {
+type InspectMacrosInput = {
   cardId?: string
   presetId?: string
   timelineTarget?: { timelineId: string; branchId?: string }
-  macroSelections?: Record<string, string>
+  macroSelections?: import('@loom-studio/shared').MacroSelectionMap
 }
 
-export type LoomScriptMountTarget = LoomScriptOwner
+type LoomScriptMountTarget = LoomScriptOwner
 
 export type StudioApi = {
   macros: {
     inspect(input: InspectMacrosInput): Promise<{ macroInspection: import('@loom-studio/shared').MacroInspection }>
+    getConfig(input: { timelineId: string; presetId: string }): Promise<{ config: { timelineId: string; presetId: string; version: number; macroSelections: import('@loom-studio/shared').MacroSelectionMap } }>
+    updateConfig(input: { timelineId: string; presetId: string; expectedVersion: number; macroSelections: import('@loom-studio/shared').MacroSelectionMap }): Promise<{ config: { timelineId: string; presetId: string; version: number; macroSelections: import('@loom-studio/shared').MacroSelectionMap }; mutation: MutationReceipt }>
   }
   loomScripts: {
     import(input: { owner: LoomScriptOwner; fileName: string; source: string }): Promise<{ script: LoomScript; mutation: MutationReceipt }>
@@ -361,13 +376,21 @@ export type StudioApi = {
     resolveRendererMounts(input?: { workspaceId?: string; timelineId?: string; presetId?: string }): Promise<{ mounts: ResolvedLoomScriptRendererMount[] }>
   }
   extensions: {
-    list(): Promise<{ items: ManagedExtensionPackage[] }>
+    list(target?: ExtensionInstallationTarget): Promise<{ items: ManagedExtensionPackage[] }>
+    installCard(input: { cardId: string; packageId: string; expectedCardVersion: number }): Promise<{ package: ManagedExtensionPackage }>
+    updateCard(input: { cardId: string; packageId: string; expectedCardVersion: number; packageVersion: string; expectedInstallationVersion: number }): Promise<{ package: ManagedExtensionPackage }>
+    uninstallCard(input: { cardId: string; packageId: string; expectedInstallationVersion: number }): Promise<{ package: ClientJsonValue }>
     installZip(base64: string): Promise<{ package: ClientJsonValue }>
-    enable(packageId: string, moduleId: string): Promise<{ module: ManagedExtensionModule }>
-    disable(packageId: string, moduleId: string): Promise<{ module: ManagedExtensionModule }>
-    reload(packageId: string, moduleId: string): Promise<{ module: ManagedExtensionModule }>
+    enable(packageId: string, moduleId: string, grants?: { ui?: Array<'ui.notify'>; 'events.subscribe'?: import('@loom-studio/extension-sdk').EventCapabilityCategory[]; assets?: Array<'assets.read' | 'assets.publish'> }, target?: ExtensionInstallationTarget): Promise<{ module: ManagedExtensionModule }>
+    disable(packageId: string, moduleId: string, target?: ExtensionInstallationTarget): Promise<{ module: ManagedExtensionModule }>
+    reload(packageId: string, moduleId: string, target?: ExtensionInstallationTarget): Promise<{ module: ManagedExtensionModule }>
     uninstall(packageId: string, version?: string): Promise<{ package: ClientJsonValue }>
     importResources(packageId: string): Promise<ExtensionPackageResourceImportResult>
+    exportPackage(input: { packageId: string; version: string }): Promise<{ packageId: string; version: string; archiveBase64: string }>
+    importCardResources(input: { cardId: string; packageId: string; expectedCardVersion: number }): Promise<ExtensionPackageResourceImportResult>
+    updateCardResources(input: { cardId: string; packageId: string; expectedCardVersion: number; packageVersion: string; expectedInstallationVersion: number }): Promise<ExtensionPackageResourceImportResult>
+    removeCardResources(input: { cardId: string; packageId: string; expectedInstallationVersion: number }): Promise<ExtensionPackageResourceRemovalResult>
+    updateResources(input: { packageId: string; packageVersion: string; expectedInstallationVersion: number }): Promise<ExtensionPackageResourceImportResult>
     removeResources(packageId: string): Promise<ExtensionPackageResourceRemovalResult>
     diagnostics(packageId?: string, moduleId?: string): Promise<{ diagnostics: ClientJsonValue[] }>
   }
@@ -377,12 +400,13 @@ export type StudioApi = {
     export(input: { packageId: string; digest: string }): Promise<{ fileName: string; base64: string }>
   }
   extensionRuntime: {
-    listConfigs(input: { packageId: string; scope?: ExtensionStorageScope }): Promise<{ configs: ExtensionConfigEntry[] }>
-    getConfig(input: { packageId: string; scope: ExtensionStorageScope; key: string }): Promise<{ config: ExtensionConfigEntry | null }>
-    upsertConfig(input: { packageId: string; scope: ExtensionStorageScope; key: string; value: ClientJsonValue; expectedVersion?: number }): Promise<{ config: ExtensionConfigEntry; mutation: MutationReceipt }>
-    listRecords(input: { packageId: string; scope?: ExtensionStorageScope; recordType?: string; binding?: ExtensionEntityRef }): Promise<{ records: ExtensionRecordEntry[] }>
-    getRecord(packageId: string, recordId: string): Promise<{ record: ExtensionRecordEntry | null }>
+    listConfigs(input: { packageId: string; target?: ExtensionInstallationTarget; scope?: ExtensionStorageScope }): Promise<{ configs: ExtensionConfigEntry[] }>
+    getConfig(input: { packageId: string; target?: ExtensionInstallationTarget; scope: ExtensionStorageScope; key: string }): Promise<{ config: ExtensionConfigEntry | null }>
+    upsertConfig(input: { packageId: string; target?: ExtensionInstallationTarget; scope: ExtensionStorageScope; key: string; value: ClientJsonValue; expectedVersion?: number }): Promise<{ config: ExtensionConfigEntry; mutation: MutationReceipt }>
+    listRecords(input: { packageId: string; target?: ExtensionInstallationTarget; scope?: ExtensionStorageScope; recordType?: string; binding?: ExtensionEntityRef }): Promise<{ records: ExtensionRecordEntry[] }>
+    getRecord(packageId: string, recordId: string, target?: ExtensionInstallationTarget): Promise<{ record: ExtensionRecordEntry | null }>
     call<T = ClientJsonValue>(method: string, params?: ClientJsonValue): Promise<T>
+    callInstalled(input: { packageId: string; target: ExtensionInstallationTarget; method: string; params?: ClientJsonValue }): Promise<ClientJsonValue>
   }
   settings: {
     getNetwork(): Promise<NetworkSettings>
@@ -396,7 +420,7 @@ export type StudioApi = {
     revert(changesetId: string): Promise<MutationReceipt>
   }
   states: {
-    get(target: StateTarget): Promise<GetStateSnapshotResult>
+    get(target: StateTarget, extensionTarget?: ExtensionInstallationTarget): Promise<GetStateSnapshotResult>
     apply(input: ApplyStateMutationInput): Promise<ApplyStateMutationResult>
     listDefinitions(kind?: StateDefinitionDraft['kind']): Promise<ListStateDefinitionsResult>
     getDefinition(definitionId: string): Promise<GetStateDefinitionResult>
@@ -404,6 +428,7 @@ export type StudioApi = {
     deleteDefinition(input: { definitionId: string; expectedVersion?: number }): Promise<DeleteStateDefinitionResult>
   }
   textTransforms: {
+    previewCardOpening(input: { cardId: string; presetId?: string; text: string }): Promise<{ text: string; originalText: string; diagnostics: Array<{ code: string; message: string }> }>
     listRules(): Promise<{ rules: TextTransformRule[] }>
     getRule(ruleId: string): Promise<{ rule: TextTransformRule }>
     upsertRule(input: { ruleId: string; expectedVersion?: number; rule: TextTransformRuleDraft }): Promise<{ rule: TextTransformRule; mutation: MutationReceipt }>
@@ -412,12 +437,12 @@ export type StudioApi = {
     getExtractor(extractorId: string): Promise<{ extractor: TextExtractor }>
     upsertExtractor(input: { extractorId: string; expectedVersion?: number; extractor: TextExtractorDraft }): Promise<{ extractor: TextExtractor; mutation: MutationReceipt }>
     deleteExtractor(input: { extractorId: string; expectedVersion?: number }): Promise<{ deleted: true; mutation: MutationReceipt }>
-    project(input: { source: HistorySource; phase: TextTransformPhase; consumerAgentSessionId?: string }): Promise<{ snapshot: HistoryProjectionSnapshot }>
+    project(input: { source: HistorySource; phase: TextTransformPhase; consumerAgentSessionId?: string; extensionTarget?: ExtensionInstallationTarget }): Promise<{ snapshot: HistoryProjectionSnapshot }>
     getOverride(input: { source: HistorySource; phase: TextTransformPhase; consumerAgentSessionId?: string }): Promise<{ override: TextPipelineOverride | null }>
     upsertOverride(input: { source: HistorySource; phase: TextTransformPhase; consumerAgentSessionId?: string; expectedVersion?: number; disabledRuleIds: string[]; orderedRuleIds: string[] }): Promise<{ override: TextPipelineOverride; mutation: MutationReceipt }>
     deleteOverride(input: { source: HistorySource; phase: TextTransformPhase; consumerAgentSessionId?: string; expectedVersion?: number }): Promise<{ deleted: true; mutation: MutationReceipt }>
     inspectTextPipeline(input: { source: HistorySource; phase: TextTransformPhase; consumerAgentSessionId?: string; traceEntryId?: string }): Promise<TextPipelineInspection>
-    extract(input: { source: HistorySource; phase?: TextTransformPhase; extractorId: string; consumerAgentSessionId?: string }): Promise<{ extraction: ClientJsonValue; snapshot: HistoryProjectionSnapshot }>
+    extract(input: { source: HistorySource; phase?: TextTransformPhase; extractorId: string; consumerAgentSessionId?: string; extensionTarget?: ExtensionInstallationTarget }): Promise<{ extraction: ClientJsonValue; snapshot: HistoryProjectionSnapshot }>
     listRenderers(): Promise<{ renderers: RendererDefinition[] }>
   }
   directories: {
@@ -435,6 +460,8 @@ export type StudioApi = {
     create(input: CreateCardInput): Promise<CreateCardResult>
     update(input: UpdateCardInput): Promise<UpdateCardResult>
     updatePromptResources(input: UpdateCardPromptResourcesInput): Promise<UpdateCardResult>
+    attachExtensionPackage(input: { cardId: string; expectedVersion: number; archive: { packageId: string; version: string; archiveBase64: string } }): Promise<UpdateCardResult>
+    detachExtensionPackage(input: { cardId: string; expectedVersion: number; packageId: string }): Promise<UpdateCardResult>
     previewDeletion(cardId: string): Promise<PreviewCardDeletionResult>
     delete(cardId: string, options?: { includePlayData?: boolean; includePromptResources?: boolean }): Promise<DeleteCardResult>
     deleteMany(cardIds: string[], options?: { includePlayData?: boolean; includePromptResources?: boolean }): Promise<DeleteCardsResult>
@@ -445,7 +472,7 @@ export type StudioApi = {
   }
   agentSessions: {
     create(input: CreateAgentSessionInput): Promise<CreateAgentSessionResult>
-    list(input?: { agentProfileId?: string; timelineId?: string; standalone?: boolean; cursor?: string; limit?: number }): Promise<{ sessions: AgentSession[]; nextCursor?: string }>
+    list(input?: { agentPresetId?: string; timelineId?: string; standalone?: boolean; cursor?: string; limit?: number }): Promise<{ sessions: AgentSession[]; nextCursor?: string }>
     get(agentSessionId: string): Promise<{ session: AgentSession }>
     getTranscript(input: { agentSessionId: string; cursor?: string; limit?: number }): Promise<AgentTranscriptPage>
     invoke(input: InvokeAgentTurnInput): Promise<InvokeAgentTurnResult>
@@ -455,6 +482,7 @@ export type StudioApi = {
     pauseRun(runId: string): Promise<{ runId: string; accepted: boolean; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' }>
     resumeRun(runIdOrOptions: string | { runId?: string; agentSessionId?: string }): Promise<{ runId: string; sourceRunId?: string; accepted: boolean; state?: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' }>
     approveMutation(runId: string, requestId: string, allow: boolean, reason?: string): Promise<{ runId: string; requestId: string; accepted: boolean }>
+    approveHistoryRead(runId: string, requestId: string, allow: boolean, reason?: string): Promise<{ runId: string; requestId: string; accepted: boolean }>
     runState(runId: string): Promise<{ runId: string; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' }>
     preview(input: PreviewAgentTurnInput): Promise<PreviewAgentTurnResult>
     delete(agentSessionId: string): Promise<{ deleted: true; mutation: MutationReceipt }>
@@ -486,17 +514,18 @@ export type StudioApi = {
     cancel(runId: string, reason?: string): Promise<{ runId: string; state: AiGatewayRunState }>
     state(runId: string): Promise<{ runId: string; state: AiGatewayRunState }>
   }
-  agentProfiles: {
-    list(input?: { cursor?: string; limit?: number }): Promise<ListAgentProfilesResult>
-    create(input: CreateAgentProfileInput): Promise<CreateAgentProfileResult>
-    update(input: UpdateAgentProfileInput): Promise<UpdateAgentProfileResult>
-    delete(agentProfileId: string): Promise<DeleteAgentProfileResult>
+  agentPresets: {
+    list(input?: { cursor?: string; limit?: number }): Promise<ListAgentPresetsResult>
+    create(input: CreateAgentPresetInput): Promise<CreateAgentPresetResult>
+    update(input: UpdateAgentPresetInput): Promise<UpdateAgentPresetResult>
+    delete(agentPresetId: string): Promise<DeleteAgentPresetResult>
   }
   agentTools: {
     list(): Promise<{ tools: AgentToolDefinition[] }>
     update(input: { toolId: string; expectedVersion: number; definition: Omit<AgentToolDefinition, 'version' | 'createdAt' | 'updatedAt'> }): Promise<{ tool: AgentToolDefinition }>
   }
   narratives: {
+    appendInput(input: { timelineId: string; branchId: string; nodeId: string; expectedHeadNodeId: string | null; content: string }): Promise<{ timeline: NarrativeTimeline; branch: NarrativePage['branch']; node: NarrativePage['nodes'][number]; mutation: MutationReceipt }>
     editNode(input: { timelineId: string; branchId: string; nodeId: string; expectedHeadNodeId: string; expectedRaw: string; raw: string }): Promise<{ timeline: NarrativeTimeline; branch: NarrativePage['branch']; replacements: Array<{ previousNodeId: string; node: NarrativePage['nodes'][number] }>; mutation: MutationReceipt }>
     create(input: CreateNarrativeTimelineInput): Promise<CreateNarrativeTimelineResult>
     get(timelineId: string): Promise<GetNarrativeTimelineResult>
@@ -510,7 +539,8 @@ export type StudioApi = {
     update(input: { timelineId: string; title?: string }): Promise<{ timeline: NarrativeTimeline; mutation: MutationReceipt }>
   }
   promptResources: {
-    updateMacros(input: { resourceId: string; expectedVersion: number; macros: Record<string, string> }): Promise<UpdatePromptResourceResult>
+    getBindings(resourceId: string): Promise<GetPromptResourceBindingsResult>
+    updateMacros(input: { resourceId: string; expectedVersion: number; macros: Record<string, string>; macroOptions?: import('@loom-studio/shared').MacroOptions }): Promise<UpdatePromptResourceResult>
     get(resourceId: string): Promise<GetPromptResourceResult>
     list(resourceKind?: 'preset' | 'setting'): Promise<ListPromptResourcesResult>
     create(input: CreatePromptResourceInput): Promise<CreatePromptResourceResult>
@@ -532,6 +562,9 @@ export type StudioApi = {
   }
   cardBundles: {
     import(input: ImportCardBundleInput): Promise<ImportCardBundleResult>
+  }
+  extensionInstallations: {
+    list(): Promise<ListExtensionInstallationsResult>
   }
   portableExtensionPayloads: {
     list(packageId?: string): Promise<ListPortableExtensionPayloadsResult>
@@ -570,13 +603,21 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       export: input => rpc.call('official.exportContent', input),
     },
     extensions: {
-      list: () => rpc.call('extensions.listPackages', {}),
+      list: target => rpc.call('extensions.listPackages', target ? { target } : {}),
+      installCard: input => rpc.call('extensions.installCardPackage', input),
+      updateCard: input => rpc.call('extensions.updateCardPackage', input),
+      uninstallCard: input => rpc.call('extensions.uninstallCardPackage', input),
       installZip: base64 => rpc.call('extensions.installPackageZip', { base64 }),
-      enable: (packageId, moduleId) => rpc.call('extensions.enableModule', { packageId, moduleId }),
-      disable: (packageId, moduleId) => rpc.call('extensions.disableModule', { packageId, moduleId }),
-      reload: (packageId, moduleId) => rpc.call('extensions.reloadModule', { packageId, moduleId }),
+      enable: (packageId, moduleId, grants, target) => rpc.call('extensions.enableModule', { packageId, moduleId, ...(grants ? { grants } : {}), ...(target ? { target } : {}) }),
+      disable: (packageId, moduleId, target) => rpc.call('extensions.disableModule', { packageId, moduleId, ...(target ? { target } : {}) }),
+      reload: (packageId, moduleId, target) => rpc.call('extensions.reloadModule', { packageId, moduleId, ...(target ? { target } : {}) }),
       uninstall: (packageId, version) => rpc.call('extensions.uninstallPackage', { packageId, ...(version ? { version } : {}) }),
       importResources: packageId => rpc.call('extensions.importPackageResources', { packageId }),
+      exportPackage: input => rpc.call('extensions.exportPackage', input),
+      importCardResources: input => rpc.call('extensions.importCardPackageResources', input),
+      updateCardResources: input => rpc.call('extensions.updateCardPackageResources', input),
+      removeCardResources: input => rpc.call('extensions.removeCardPackageResources', input),
+      updateResources: input => rpc.call('extensions.updatePackageResources', input),
       removeResources: packageId => rpc.call('extensions.removePackageResources', { packageId }),
       diagnostics: (packageId, moduleId) => rpc.call('extensions.getDiagnostics', {
         ...(packageId ? { packageId } : {}),
@@ -588,8 +629,9 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       getConfig: input => rpc.call('application.getExtensionConfig', input),
       upsertConfig: input => rpc.call('application.upsertExtensionConfig', input),
       listRecords: input => rpc.call('application.listExtensionRecords', input),
-      getRecord: (packageId, recordId) => rpc.call('application.getExtensionRecord', { packageId, recordId }),
+      getRecord: (packageId, recordId, target) => rpc.call('application.getExtensionRecord', { packageId, recordId, ...(target ? { target } : {}) }),
       call: (method, params) => rpc.call(method, params),
+      callInstalled: input => rpc.call('extensions.callPackageRpc', input),
     },
     settings: {
       getNetwork: () => rpc.call<NetworkSettings>('settings.network.get', {}),
@@ -606,7 +648,7 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       },
     },
     states: {
-      get: target => rpc.call<GetStateSnapshotResult>('application.getStateSnapshot', { target }),
+      get: (target, extensionTarget) => rpc.call<GetStateSnapshotResult>('application.getStateSnapshot', { target, ...(extensionTarget ? { extensionTarget } : {}) }),
       apply: input => rpc.call<ApplyStateMutationResult>('application.applyStateMutation', input),
       listDefinitions: kind => rpc.call<ListStateDefinitionsResult>('application.listStateDefinitions', kind ? { kind } : {}),
       getDefinition: definitionId => rpc.call<GetStateDefinitionResult>('application.getStateDefinition', { definitionId }),
@@ -615,6 +657,8 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
     },
     macros: {
       inspect: input => rpc.call('application.inspectMacros', input),
+      getConfig: input => rpc.call('application.getTimelinePresetConfig', input),
+      updateConfig: input => rpc.call('application.updateTimelinePresetConfig', input),
     },
     loomScripts: {
       import: input => rpc.call('application.importLoomScript', input),
@@ -628,6 +672,7 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       resolveRendererMounts: input => rpc.call('application.resolveLoomScriptRendererMounts', (input ?? {})),
     },
     textTransforms: {
+      previewCardOpening: input => rpc.call('application.previewCardOpeningDisplay', input),
       listRules: () => rpc.call('application.listTextTransformRules', {}),
       getRule: ruleId => rpc.call('application.getTextTransformRule', { ruleId }),
       upsertRule: input => rpc.call('application.upsertTextTransformRule', input),
@@ -659,6 +704,8 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       create: input => rpc.call<CreateCardResult>('application.createCard', input),
       update: input => rpc.call<UpdateCardResult>('application.updateCard', input),
       updatePromptResources: input => rpc.call<UpdateCardResult>('application.updateCardPromptResources', input),
+      attachExtensionPackage: input => rpc.call<UpdateCardResult>('application.attachCardExtensionPackage', input),
+      detachExtensionPackage: input => rpc.call<UpdateCardResult>('application.detachCardExtensionPackage', input),
       previewDeletion: cardId => rpc.call<PreviewCardDeletionResult>('application.previewCardDeletion', { cardId }),
       delete: (cardId, options) => rpc.call<DeleteCardResult>('application.deleteCard', {
         cardId,
@@ -686,6 +733,9 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       cancelRun: (runId, reason) => rpc.call('application.agent.run.cancel', { runId, ...(reason ? { reason } : {}) }),
       pauseRun: runId => rpc.call('application.agent.run.pause', { runId }),
       resumeRun: runIdOrOptions => rpc.call('application.agent.run.resume', typeof runIdOrOptions === 'string' ? { runId: runIdOrOptions } : runIdOrOptions),
+      approveHistoryRead: (runId, requestId, allow, reason) => rpc.call('application.agent.run.history-read-approval', {
+        runId, requestId, allow, ...(reason ? { reason } : {}),
+      }),
       approveMutation: (runId, requestId, allow, reason) => rpc.call('application.agent.run.mutation-approval', {
         runId, requestId, allow, ...(reason ? { reason } : {}),
       }),
@@ -723,17 +773,18 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       cancel: (runId, reason) => rpc.call('ai.run.cancel', { runId, ...(reason ? { reason } : {}) }),
       state: runId => rpc.call('ai.run.state', { runId }),
     },
-    agentProfiles: {
-      list: input => rpc.call<ListAgentProfilesResult>('application.listAgentProfiles', (input ?? {})),
-      create: input => rpc.call<CreateAgentProfileResult>('application.createAgentProfile', input),
-      update: input => rpc.call<UpdateAgentProfileResult>('application.updateAgentProfile', input),
-      delete: agentProfileId => rpc.call<DeleteAgentProfileResult>('application.deleteAgentProfile', { agentProfileId }),
+    agentPresets: {
+      list: input => rpc.call<ListAgentPresetsResult>('application.listAgentPresets', (input ?? {})),
+      create: input => rpc.call<CreateAgentPresetResult>('application.createAgentPreset', input),
+      update: input => rpc.call<UpdateAgentPresetResult>('application.updateAgentPreset', input),
+      delete: agentPresetId => rpc.call<DeleteAgentPresetResult>('application.deleteAgentPreset', { agentPresetId }),
     },
     agentTools: {
       list: () => rpc.call<{ tools: AgentToolDefinition[] }>('application.listAgentTools', {}),
       update: input => rpc.call<{ tool: AgentToolDefinition }>('application.updateAgentTool', input),
     },
     narratives: {
+      appendInput: input => rpc.call('application.appendNarrativeInput', input),
       editNode: input => rpc.call('application.editNarrativeNode', input),
       create: input => rpc.call<CreateNarrativeTimelineResult>('application.createNarrativeTimeline', input),
       get: timelineId => rpc.call<GetNarrativeTimelineResult>('application.getNarrativeTimeline', { timelineId }),
@@ -747,6 +798,7 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       update: input => rpc.call<{ timeline: NarrativeTimeline; mutation: MutationReceipt }>('application.updateNarrativeTimeline', input),
     },
     promptResources: {
+      getBindings: resourceId => rpc.call<GetPromptResourceBindingsResult>('application.getPromptResourceBindings', { resourceId }),
       updateMacros: input => rpc.call<UpdatePromptResourceResult>('application.updatePromptResourceMacros', input),
       get: resourceId => rpc.call<GetPromptResourceResult>('application.getPromptResource', { resourceId }),
       list: resourceKind => rpc.call<ListPromptResourcesResult>('application.listPromptResources', resourceKind ? { resourceKind } : {}),
@@ -772,6 +824,9 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
     },
     cardBundles: {
       import: input => rpc.call<ImportCardBundleResult>('application.importCardBundle', input),
+    },
+    extensionInstallations: {
+      list: () => rpc.call<ListExtensionInstallationsResult>('application.listExtensionInstallations', {}),
     },
     portableExtensionPayloads: {
       list: packageId => rpc.call<ListPortableExtensionPayloadsResult>('application.listPortableExtensionPayloads', packageId ? { packageId } : {}),

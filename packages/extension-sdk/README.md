@@ -6,7 +6,7 @@ Extension SDK 定义 Extension 作者侧的 TypeScript 合同。它描述 Manife
 
 ## 公共入口
 
-唯一入口是 [`src/index.ts`](./src/index.ts)。当前运行时代码主要只有 `defineServerExtension(module)` identity helper，其余导出以类型合同为主：
+唯一入口是 [`src/index.ts`](./src/index.ts)。除 `defineServerExtension(module)` identity helper 外，也提供 iframe 作者侧连接代理；其余导出以类型合同为主：
 
 - Manifest v2 与 Package/Module/Instance identity；
 - RPC、Event、Document、Asset 与 AI Gateway capability；
@@ -27,6 +27,19 @@ export default defineServerExtension({
 ```
 
 SDK 不读取 Manifest 文件、不动态导入模块、不创建 Host、不执行 grant/lifecycle，也不暴露 Kernel、SQL connection 或内部 Registry。Server Module 当前仍是受信任的同进程 Node.js 代码；Capability contract 不等于恶意代码安全沙箱。
+
+### Client iframe 通知
+
+```ts
+import { connectIframeContext } from '@loom-studio/extension-sdk'
+
+const ctx = await connectIframeContext()
+await ctx.notifications.show({ message: '完成', level: 'success' })
+// 自己的页面不再使用连接时：
+ctx.dispose()
+```
+
+Client Module 必须声明 `capabilities: { "ui.notify": true }` 并获得用户授权；Loom Script 使用 Metadata 请求与 Mount Grant。Client Module／Loom Script 原生 ctx 也提供 `notifications.show()`。连接代理只开放已实现的固定方法，不复制整个宿主 ctx；普通消息 HTML 没有业务桥。通知只接受有限流的站内纯文本，详见 [iframe 基础设施](../../docs/architecture/ui/iframe-runtime.md)。
 
 日志与查询使用受 Host 控制的接口：
 
@@ -65,7 +78,7 @@ pnpm --filter @loom-studio/extension-sdk build
 pnpm exec vitest run tests/contract/extension-host
 ```
 
-SDK 当前没有独立的有效运行时测试入口；真实合同主要由示例 Extension 构建和 Extension Host contract tests 覆盖。
+Server 合同主要由示例 Extension 构建和 Extension Host contract tests 覆盖。iframe 代理与通知的可执行验证见 `tests/unit/client/iframe-channel.test.ts` 和 `tests/probes/client/iframe-runtime.md`。
 
 ## 正式文档
 

@@ -112,7 +112,7 @@ function baseTree(): ContextAssetNode[] {
       label: 'Order',
       kind: 'order',
       orderList: ['entry-a', 'entry-b'],
-      slotRanks: [{ slotKey: 'slot-a', rank: 10 }, { slotKey: 'slot-b', rank: 20 }],
+      slotRanks: [{ zoneId: 'setting.stable', slotKey: 'slot-a', rankKey: 'a0' }, { zoneId: 'setting.stable', slotKey: 'slot-b', rankKey: 'a1' }],
     }],
   }]
 }
@@ -126,6 +126,7 @@ function entry(id: string, slotKey: string, entryOrder: number): ContextAssetNod
     body: '',
     projection: {
       zoneId: 'setting.stable',
+      lifecycle: 'always',
       slotKey,
       entryOrder,
       order: `entry: ${entryOrder}`,

@@ -2,10 +2,10 @@
 
 ## 1. Provider Account 与 AI Gateway
 
-Provider Account 是 Application 层的用户配置，保存 Provider Extension ID、非敏感 config、Secret 引用和启用模型。Agent Profile 只引用 Provider Model Selection，不直接保存 API Key。
+Provider Account 是 Application 层的用户配置，保存 Provider Extension ID、非敏感 config、Secret 引用和启用模型。Agent Preset 只保存可空的 Provider Model Selection，不直接保存 API Key。
 
 ```text
-Agent Profile model selection
+Agent Preset model selection
   -> Provider Profile / Account
   -> Provider Adapter Registry
   -> resolved provider config + credential
@@ -86,11 +86,11 @@ Preset 挂载与预览是构建表面的静态投影：
 
 用户已确立业务资源之间的宽松引用与非严格构建原则：
 
-- **删除不破坏业务引用**：删除 Provider、Model 或 Profile 等业务配置时，不因存在下游引用而强制阻断删除，也不自动级联解绑。原有引用关系完整保留，等待用户显式切换或重新绑定。
-- **配置展示容错与按需报错**：列表、详情与历史面板能正常承受失效引用，并将目标标记为不可用（Missing / Unresolvable），同时提供定位警告与重绑入口；仅在真正发起 LLM 请求解析到不可用 Provider 时才明确失败。
-- **宽松 Prompt 构建门禁**：PromptBuild 不作为严格的阻断性门禁。缺失的可跳过条目自动跳过，无法展开的变量宏保留原文并通过平台诊断（Diagnostics）记录警告，绝不因单点资源缺失直接导致整个 Prompt 编译崩溃。
+- **删除不破坏业务引用**：删除 Provider、Model 或 Agent Preset 等业务配置时，不因存在下游引用而强制阻断删除，也不自动级联解绑。原有引用关系完整保留，等待用户显式切换或重新绑定。
+- **配置展示容错与按需报错**：列表、详情与历史面板保留失效引用身份并呈现不可用状态，等待用户显式切换。执行或预览需要的 Agent Preset、Provider/Model 等依赖在解析时明确失败，不必等到发出网络请求，也不自动选择默认替代项。
+- **宽松 Prompt 构建门禁**：可选 Setting/Tool 贡献缺失时跳过并记录构建诊断，无法展开的变量宏保留原文和警告。存储错误、越权、非法输入及必要依赖缺失不属于可跳过情形，不能统一吞错后继续构建。
 
-宽松跳过仅适用于可选贡献：Session 指向的 Agent Profile、Profile 指向的主 Preset 及实际调用的必要依赖缺失时，仍明确失败，不替换为默认资源。删除 Preset 或扩展导入资源保留外部业务引用，但仍清理被删资源自身拥有的附属资源；这与跨领域自动解绑不同。
+宽松跳过仅适用于可选贡献：Session 指向的 Agent Preset 及实际调用的必要依赖缺失时，仍明确失败，不替换为默认资源。删除 Preset 或扩展导入资源保留外部业务引用，但仍清理被删资源自身拥有的附属资源；这与跨领域自动解绑不同。
 
 ## 8. 明确不属于当前合同
 

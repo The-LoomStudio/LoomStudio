@@ -1,3 +1,8 @@
+.content {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .content :global(.tok-keyword) { color: var(--loom-color-syntax-keyword); }
 .content :global(.tok-atom),
 .content :global(.tok-bool),
@@ -95,6 +100,9 @@
 }
 
 .content .codeBlock pre {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
   max-width: 100%;
   overflow: auto;
   border: var(--loom-markdown-code-block-border, 0);

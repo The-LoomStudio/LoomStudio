@@ -46,12 +46,12 @@ describe('inspectSessionRunStatus', () => {
     expect(status).toEqual({ runId: 'run-1', status: 'suspended' })
   })
 
-  it('identifies failed terminal run as suspended for resume', () => {
+  it('does not offer execution resume for a failed terminal run', () => {
     const status = inspectSessionRunStatus([
       { id: '1', agentSessionId: 's', sequence: 1, runId: 'run-fail', entry: { kind: 'message', role: 'user', content: 'hello' }, createdAt: '' },
       { id: '2', agentSessionId: 's', sequence: 2, runId: 'run-fail', entry: { kind: 'run-state', state: 'failed', reason: '500' }, createdAt: '' },
     ] as any)
-    expect(status).toEqual({ runId: 'run-fail', status: 'suspended' })
+    expect(status).toEqual({ status: 'idle' })
   })
 
   it('identifies uncompleted user message without assistant reply as suspended', () => {

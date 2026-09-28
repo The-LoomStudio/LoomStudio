@@ -22,6 +22,12 @@ export type PromptBuildTrace = {
   diagnostics: unknown[]
   executions: unknown[]
   variables?: Record<string, unknown>
+  narrativeContext?: {
+    sourceId: string
+    version: string
+    coveredThroughNodeId: string | null
+    rawThroughNodeId: string | null
+  }
 }
 
 export function compilePromptDataModel(input: {
@@ -85,12 +91,13 @@ export function compilePromptDataModel(input: {
     const fragments: PromptFragment[] = []
     const appendMounts = (mounts: PromptContribution[]) => {
       mounts
-        .filter(m => m.content && m.content.trim().length > 0)
+        .filter(m => m.messages?.length || m.content && m.content.trim().length > 0)
         .sort((a, b) => (a.capabilities.localDepth ?? Number.MAX_SAFE_INTEGER) - (b.capabilities.localDepth ?? Number.MAX_SAFE_INTEGER))
         .forEach(m => fragments.push({
           id: m.id,
           source: m.sourceRef,
           content: m.content,
+          ...(m.messages ? { messages: m.messages } : {}),
           role: m.sourceRef.kind === 'sessionHistory'
             ? m.capabilities.roleHint ?? 'system'
             : inheritedRole ?? m.capabilities.roleHint ?? 'system',
@@ -117,6 +124,14 @@ export function compilePromptDataModel(input: {
     let previousWasSession = false
     for (const fragment of fragments) {
       const session = fragment.source.kind === 'sessionHistory'
+      if (fragment.messages) {
+        if (!session) throw new Error('Native Prompt messages must come from Session history')
+        messages.push(...fragment.messages.map(message => ({
+          ...structuredClone(message), content: message.content ?? '', fragmentIds: [fragment.id],
+        })))
+        previousWasSession = true
+        continue
+      }
       const previous = messages[messages.length - 1]
       if (previous && previous.role === fragment.role && !session && !previousWasSession) {
         previous.content += '\n\n' + fragment.content

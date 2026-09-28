@@ -29,15 +29,26 @@ Contribution 的原始数据可能来自角色、Setting 或运行记录。注�
 - 宏不承担赋值或 State Mutation；展开输出不递归执行其中的宏。
 - 对象不是隐式 JSON 文本；当前非标量读取产生诊断，不自动展开整个实体。
 - 展开结果跟随宿主贡献参与编排，不把被读取对象的 Metadata、Activation 或 Placement 一并导入。
-- 内建别名和 Global / Timeline 路径保留；Card、Preset 与代码提供者的公共名按大小写不敏感规则收集候选。同名多来源不按加载顺序覆盖，调用者通过 `macroSelections` 选择来源；未解决冲突或求值失败保留 token 并产生诊断，不回落到同名 State。
-- Card 的 `macros` 使用现有文档配置与版本 CAS，创建 Timeline 时复制进 Runtime Context。Preset 的 `macros` 存于 PromptResource metadata，并由 mapper 暴露；资源复制、导入和导出携带配置。不存在独立宏 KV Store。
+- 内建别名和 Global / Timeline 路径保留；Card、Preset 与代码提供者的公共名按大小写不敏感规则收集候选。同名多来源不按加载顺序覆盖：有显式 `macroSelections` 时选对应来源 / 候选，否则优先使用 Preset 的标量默认值；没有预设默认时，单候选可直接解析，多候选仍是冲突。Card 不因载入而自动覆盖 Preset。
+- Card 的 `macros` 使用现有文档配置与版本 CAS；已有 Timeline 的检查与构建读取关联 Card 的当前配置，不从 Runtime Context 的旧快照恢复。Preset 的 `macros` 存于 PromptResource metadata，并由 mapper 暴露；两种资源可另用 `macroOptions` 声明同名候选数组，每个候选包含稳定 `id`、`label` 与 `value`。资源复制、导入和导出携带这些作者内容，不建立独立宏正文 KV Store。
 - Server Extension 声明 `macros.provide` 后，通过 `ctx.macros.register({id,name,resolve})` 注册提供者。Host 约束包名前缀并托管注销；构建收集提供者并各求值一次，传入复制并冻结的只读数据上下文，字符串结果进入本次 computed，不写回 State。
 
 State 可以通过路径宏被读取，但不会因为存在于 Snapshot 中就自动全量进入提示词，也不会自动拥有一个预设 Anchor。若需要筛选、格式化并独立编排一份状态视图，应由领域消费代码产出 Contribution；纯文本结果也可以作为宏值使用。这不授权在投影期间修改 State。
 
 `application.inspectMacros` 生成当前预览；Preview / Invoke 返回实际构建使用的 `macroInspection`。检查包含快照、来源候选、选中来源、结果与诊断，不能把重新求值的预览冒充上一次构建。Client 与 Runtime 使用同一纯解析实现，浏览器从 `@loom-studio/shared/macros` 引入，避免加载 Node 专用入口。
 
-作者工作台以目录条目编辑静态声明，运行检查只读展示动态结果并选择冲突来源。选择只属于当前运行组合，不写回作者资源。Server Extension 仍是受信代码；上述只读上下文不是任意脚本沙箱。执行与验证记录见 [宏动态值与来源检查 Plan](../../../archive/plans/macro-value-provider-and-inspector-plan.md)。
+作者工作台以目录条目编辑默认值与额外候选，运行检查展示有效值、来源与候选选择。Server Extension 仍是受信代码；上述只读上下文不是任意脚本沙箱。基础解析的执行记录见 [宏动态值与来源检查 Plan](../../../archive/plans/macro-value-provider-and-inspector-plan.md)，持久选择交付见 [Context Plan 第 20 节](../../../workbench/plans/agent-context-skeleton-and-memory-projection-plan.md#20-配置宏选择持久化2026-09-24)。
+
+### 作品选择的持久化
+
+- 作用域为 `Timeline + Preset`，同一局的不同 Session / Branch 共用，其他 Timeline 独立。DocumentStore 每组合一份 `airp.timelinePresetConfig` 文档，保存宏名到 `{ sourceId, optionId? }` 的引用，不复制候选正文，也不写入剧情 State 或作者资源。
+- `application.getTimelinePresetConfig` 返回当前配置与版本；未保存时为版本 0。`application.updateTimelinePresetConfig` 校验来源与候选、使用 `expectedVersion` CAS，并在事务内重新确认 Timeline 存在。删除 Timeline 时一起删除配置。
+- 宏面板选择即保存，失败保留已提交选择并显示错误，不自动重试写入。前端服务端缓存归 TanStack Query，按 endpoint / Timeline / Preset 隔离。恢复默认删除该宏的显式引用，不把默认正文复制进配置。
+- Timeline Preview 与 Invoke 未传 `macroSelections` 时读取同一持久配置；显式传入的映射只用于本次构建，`{}` 表示本次使用默认解析。独立 Card 预览仍是临时选择，不冒充一局游戏的持久配置。既有单字符串 source ID 入参继续接受，持久写入规范化为结构化引用。
+- 正常候选编辑沿用同一引用，下一次构建读取新值；已开始的 Run 不因此重新构建前缀。Card 来源同样读取当前值；移除已选候选后显式报告失效，不回退到旧值或其他来源，不修改已有 State。
+- 所选来源 / 候选消失或求值失败时，Preview 保留 token 并报告错误；正式 Invoke 拒绝带失效显式选择的请求，不静默改选 Preset、其他来源或 State。没有明确选择的普通宏冲突继续保留原有诊断语义。
+
+Timeline 存档保存选择引用，恢复时只改为新 Timeline ID，保留 Preset / source / option ID，不猜测同名资源映射。**这不是完整的资源迁移**：现有 Timeline 归档导入不会自动重新绑定来源 Card，也不打包所有 Prompt Resources。因此即使配置引用恢复成功，Card 来源或外部资源仍可能缺失；此时明确报错，用户可重新配置或恢复默认，不静默降级。跨工作区资源打包与引用重映射不在本轮交付范围。
 
 ## Agent 主动读取的交界
 

@@ -1,0 +1,17 @@
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  color: var(--loom-color-text);
+  background: var(--loom-color-surface);
+}
+
+.message {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}

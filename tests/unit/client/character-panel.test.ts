@@ -71,13 +71,17 @@ describe('CharacterPanel MasterDetail', () => {
     const dummyResources = [
       {
         id: 'res-world-1',
+        version: 1,
+        createdAt: '',
+        updatedAt: '',
         resourceKind: 'setting' as const,
         rootNode: {
           id: 'node-root-1',
+          kind: 'module',
           label: '奇境世界书',
           category: 'module' as const,
           children: [
-            { id: 'node-1', label: '疯帽子茶会', category: 'setting' as const },
+            { id: 'node-1', kind: 'entry', label: '疯帽子茶会', category: 'setting' as const },
           ],
         },
       },

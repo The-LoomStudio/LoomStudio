@@ -3,12 +3,12 @@ import { writeJsonAtomicallySync } from './atomic-json.js'
 
 export type NetworkProxyMode = 'system' | 'direct' | 'manual'
 
-export type NetworkSettings = {
+type NetworkSettings = {
   proxyMode: NetworkProxyMode
   proxyUrl?: string
 }
 
-export type NetworkSettingsView = NetworkSettings & {
+type NetworkSettingsView = NetworkSettings & {
   systemProxyDetected: boolean
 }
 

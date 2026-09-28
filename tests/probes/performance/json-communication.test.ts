@@ -33,7 +33,7 @@ function createHarness() {
       return { name, ownerPackageId, ownerModuleId, ownerInstanceId, handler, dispose: handle.dispose }
     },
     emitEvent: (name, payload, publisher) => {
-      kernel.getEventBus().emit(name, payload, {
+      return kernel.getEventBus().emit(name, payload, {
         publisher,
         source: publisher.kind === 'extension' ? `extension:${publisher.packageId}/${publisher.moduleId}` : publisher.kind,
       })

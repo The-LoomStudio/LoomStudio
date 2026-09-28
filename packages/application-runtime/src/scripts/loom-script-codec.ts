@@ -72,7 +72,7 @@ export function parseLoomScriptSource(source: string): ParsedLoomScriptMetadata 
     contributionIds.add(contribution.renderer.id)
   }
   const requestedCapabilities = values.get('capability') ?? []
-  if (requestedCapabilities.some(capability => capability !== 'state.read')) {
+  if (requestedCapabilities.some(capability => capability !== 'state.read' && capability !== 'ui.notify')) {
     throw new Error('Unsupported Loom Script capability')
   }
   if (new Set(requestedCapabilities).size !== requestedCapabilities.length) {

@@ -105,10 +105,11 @@ Loom Studio 使用统一的 JSON-RPC-like 协议跨进程通讯。本页列出�
 - **`application.createAgentProfile`** / **`getAgentProfile`** / **`listAgentProfiles`** / **`updateAgentProfile`** / **`deleteAgentProfile`**
 - **`application.createAgentSession`** / **`getAgentSession`** / **`getAgentTranscriptPage`** / **`updateAgentSession`** / **`deleteAgentSession`**
 - **`application.previewAgentTurn`**: 构造本轮 Prompt 与 Provider payload，但不持久化 Agent Message 或 Narrative Node。
-- **`application.invokeAgentTurn`**: 分阶段持久化用户 Message、Run State、Provider Observation 与 Tool Invocation / Result；Loop 成功后可选用独立事务追加用户和 Assistant 两条 Narrative Node。Narrative 提交失败不回滚已提交的 Transcript 或 Tool 写入，见 [运行边界](../../architecture/application/agent/runtime-and-session.md)。
+- **`application.invokeAgentTurn`**: 分阶段持久化用户 Message、Run State、Provider Observation 与 Tool Invocation / Result，不在 Loop 结束后自动追加正文。`narrativeTarget` 接收 `timelineId`、可选 `branchId` 和可选 `inputNodeId`；提供 inputNodeId 时读取目标分支上已持久化的节点正文作为输入。旧 commit 字段不再属于合同。正文由工具显式写入，失败返回 Tool Result；结果 mutation scope 为 `agent-session-transcript`，见 [运行边界](../../architecture/application/agent/runtime-and-session.md)。
 
 ### Narrative Timeline
 - **`application.createNarrativeTimeline`**: 从 Card 当前版本创建 Timeline、初始 Branch 与 Opening Nodes。
+- **`application.appendNarrativeInput`**: 接收 `timelineId`、`branchId`、固定 `nodeId`、`expectedHeadNodeId: string | null` 和 `content`，返回 `timeline`、`branch`、`node`、`mutation`。先写用户正文，再由调用方投递 Session；匹配的同 ID 重试返回原节点/Changeset，不重复写入。冲突明确失败，不投递 Session。该方法本身不运行 Agent。
 - **`application.getNarrativeTimeline`** / **`getNarrativePage`**
 - **`application.forkNarrativeBranch`** / **`switchNarrativeBranch`** / **`deleteNarrativeTimeline`**
 

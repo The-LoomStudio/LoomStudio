@@ -39,7 +39,7 @@ export type SqliteMigrationSet = {
   migrations: SqliteMigration[]
 }
 
-export type DataTransactionInput = {
+type DataTransactionInput = {
   actor: DataActorRef
   reason?: string
   correlationId?: string

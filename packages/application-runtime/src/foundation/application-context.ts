@@ -13,8 +13,10 @@ import type { AiGateway, ApplicationRuntimeOptions, BlobStorage, MediaAssetLooku
 import { createMacroProviderRegistry, type MacroProviderRegistry } from '../prompt/macro-provider-registry.js'
 import { createStateContributionRegistry, type StateContributionRegistry } from '../state/state-contribution-registry.js'
 import { createTimelineArchiveParticipantRegistry, type TimelineArchiveParticipantRegistry } from '../archive/timeline-archive.js'
+import { createNarrativeContextRegistry, type NarrativeContextRegistry } from '../narrative/context-provider.js'
 
 export type ApplicationRuntimeContext = {
+  onStateChanged?: ApplicationRuntimeOptions['onStateChanged']
   withCardDeletion: ApplicationRuntimeOptions['withCardDeletion']
   withCardDeletions: ApplicationRuntimeOptions['withCardDeletions']
   agents?: AgentStore
@@ -24,6 +26,7 @@ export type ApplicationRuntimeContext = {
   logger?: Logger
   runtimeLogger?: Logger
   narratives?: NarrativeStore
+  narrativeContext: NarrativeContextRegistry
   promptResources: PromptResourceStore
   states: StateStore
   sourceArtifacts?: SourceArtifactStorage
@@ -50,6 +53,7 @@ export function createApplicationRuntimeContext(options: ApplicationRuntimeOptio
   const runtimeNow = () => nowIso(options.clock)
   const runtimeCreateId = (prefix: string) => createSharedId(prefix)
   return {
+    onStateChanged: options.onStateChanged,
     withCardDeletion: options.withCardDeletion,
     withCardDeletions: options.withCardDeletions,
     agents: options.agents,
@@ -59,6 +63,7 @@ export function createApplicationRuntimeContext(options: ApplicationRuntimeOptio
     logger: options.logger,
     runtimeLogger: options.runtimeLogger,
     narratives: options.narratives,
+    narrativeContext: options.narrativeContext ?? createNarrativeContextRegistry(),
     promptResources: options.promptResources,
     states: options.states ?? createStateStore({
       engine: options.dataEngine,

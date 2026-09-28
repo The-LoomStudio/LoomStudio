@@ -1,7 +1,7 @@
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
 import { createInMemoryDocumentStore } from '@loom-studio/document-store'
 import type { EventCapabilityCategory, ExtensionHostOptions } from '@loom-studio/extension-host'
-import type { ExtensionStateChangeEvent } from '@loom-studio/extension-sdk'
+import type { ExtensionInstallationTarget, ExtensionStateChangeEvent } from '@loom-studio/extension-sdk'
 import { createEventBus } from '@loom-studio/kernel'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createContext, createExtensionScope } from '../../../packages/extension-sdk/extension-host/src/instance.js'
@@ -20,7 +20,10 @@ afterEach(async () => {
   await Promise.all(scopes.splice(0).map(scope => scope.dispose()))
 })
 
-function createHarness(grantedEventCapabilities: EventCapabilityCategory[] = ['state']) {
+function createHarness(
+  grantedEventCapabilities: EventCapabilityCategory[] = ['state'],
+  access?: { target: ExtensionInstallationTarget; canAccessState: NonNullable<ExtensionHostOptions['canAccessState']> },
+) {
   const events = createEventBus()
   registerBuiltinEventDefinitions(events)
   const subscribeEvents = vi.fn<NonNullable<ExtensionHostOptions['subscribeEvents']>>(
@@ -35,6 +38,7 @@ function createHarness(grantedEventCapabilities: EventCapabilityCategory[] = ['s
     capabilities: { 'events.subscribe': ['state'] },
   }
   const context = createContext({
+    target: access?.target ?? { kind: 'global' },
     directory: '/unused/state-subscription',
     packageManifest: {
       manifestVersion: 2,
@@ -62,12 +66,65 @@ function createHarness(grantedEventCapabilities: EventCapabilityCategory[] = ['s
     callRpc: vi.fn(),
     registerRpc: vi.fn(),
     subscribeEvents,
+    canAccessState: access?.canAccessState,
   })
 
   return { context, scope, events, subscribeEvents }
 }
 
 describe('Extension State subscription cancellation contract', () => {
+  it.each(['handle', 'scope'] as const)('does not deliver a pending Card event after %s cancellation', async owner => {
+    let allow!: (value: boolean) => void
+    const check = new Promise<boolean>(resolve => { allow = resolve })
+    const { context, scope, events } = createHarness(['state'], {
+      target: { kind: 'card', cardId: 'A' }, canAccessState: () => check,
+    })
+    const handler = vi.fn()
+    const subscription = context.state.subscribe({}, handler)
+    events.emit('state.changed', { ...change, target: { scope: 'timeline', timelineId: 'A-timeline', branchId: 'main' } })
+    if (owner === 'handle') subscription.dispose()
+    else await scope.dispose()
+    allow(true)
+    await new Promise(resolve => setImmediate(resolve))
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  it.each(['handle', 'scope'] as const)('removes the abort listener when the %s is disposed', async owner => {
+    const { context, scope } = createHarness()
+    const controller = new AbortController()
+    const add = vi.spyOn(controller.signal, 'addEventListener')
+    const remove = vi.spyOn(controller.signal, 'removeEventListener')
+    const registration = context.state.subscribe({ signal: controller.signal }, vi.fn())
+    const listener = add.mock.calls.find(([type]) => type === 'abort')![1]
+    if (owner === 'handle') await registration.dispose()
+    else await scope.dispose()
+    expect(remove).toHaveBeenCalledWith('abort', listener)
+  })
+
+  it('matches semantic targets regardless of property order and isolates other branches', () => {
+    const { context, events } = createHarness()
+    const handler = vi.fn()
+    context.state.subscribe({ target: { branchId: 'branch', timelineId: 'timeline', scope: 'timeline' } }, handler)
+    const matching = { ...change, target: { scope: 'timeline' as const, timelineId: 'timeline', branchId: 'branch' } }
+    events.emit('state.changed', matching)
+    events.emit('state.changed', { ...matching, target: { ...matching.target, branchId: 'other' } })
+    events.emit('state.changed', { ...matching, target: { ...matching.target, timelineId: 'other' } })
+    events.emit('state.changed', change)
+    expect(handler).toHaveBeenCalledExactlyOnceWith(matching)
+  })
+
+  it('notifies a watched subtree when its ancestor changes without matching sibling prefixes', () => {
+    const { context, events } = createHarness()
+    const handler = vi.fn()
+    context.state.subscribe({ paths: ['/world/time'] }, handler)
+    for (const path of ['/world', '/world/time', '/world/time/hour', '', '/world/timeline', '/world/weather']) {
+      events.emit('state.changed', { ...change, paths: [path] })
+    }
+    expect(handler.mock.calls.map(([event]) => event.paths)).toEqual([
+      ['/world'], ['/world/time'], ['/world/time/hour'], [''],
+    ])
+  })
+
   it('does not register or deliver for an already aborted signal and returns a disposable handle', async () => {
     const { context, scope, events, subscribeEvents } = createHarness()
     const controller = new AbortController()

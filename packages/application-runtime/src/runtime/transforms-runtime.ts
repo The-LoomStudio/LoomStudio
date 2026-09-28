@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto'
 import type { DocumentRecord } from '@loom-studio/document-store'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
+import type { ExtensionInstallationTarget } from '../types.js'
+import { assertExtensionTimelineAccess } from './extension-resource-access.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments, readDocument, toVersioned, writeDocument } from '../foundation/document-store.js'
 import { collectPages } from '../foundation/pagination.js'
@@ -12,9 +14,10 @@ import {
   validateTextExtractorDraft,
   validateTextTransformRuleDraft,
 } from '../transforms/history-text.js'
-import { readTimelineRuntimeContext } from '../narrative/timeline-runtime-context.js'
+import { createNarrativeSampler, type NarrativeSampleRequest, type NarrativeSampleResult } from '../narrative/sampling.js'
+import { projectNarrativeSample } from '../narrative/projection.js'
+import { isExtensionResourceAvailable, readAvailableExtensionInstallations } from './extension-resource-access.js'
 import type {
-  AgentProfileContent,
   HistoryProjectionSnapshot,
   HistorySource,
   HistoryTextEntry,
@@ -48,10 +51,41 @@ const builtInRenderers: RendererDefinition[] = [
   },
 ]
 
-type TransformsRuntimeContext = Pick<ApplicationRuntimeContext, 'agents' | 'documents' | 'narratives' | 'now'>
+export type SampleNarrativeInput = NarrativeSampleRequest & {
+  processing?: {
+    phase: TextTransformPhase
+    presetId?: string
+    consumerAgentSessionId?: string
+  }
+}
+
+export async function sampleRuntimeNarrative(
+  ctx: TransformsRuntimeContext,
+  input: SampleNarrativeInput,
+  signal?: AbortSignal,
+): Promise<NarrativeSampleResult> {
+  if (!ctx.narratives) throw new Error('Narrative Store is not configured')
+  if (input.processing && !['prompt', 'display', 'classify'].includes(input.processing.phase)) {
+    throw new Error('Unsupported Narrative processing phase')
+  }
+  const sample = await createNarrativeSampler(ctx.narratives).sample(input, signal)
+  if (!input.processing) return sample
+  const effective = await resolveEffectiveTextPipeline(
+    ctx, { kind: 'narrative', timelineId: sample.timelineId, branchId: sample.branchId },
+    input.processing.phase, input.processing.consumerAgentSessionId, input.processing.presetId,
+  )
+  signal?.throwIfAborted()
+  return projectNarrativeSample(sample, {
+    phase: input.processing.phase, rules: effective.rules,
+    maxNodes: input.maxNodes, maxCharacters: input.maxCharacters,
+  })
+}
+
+type TransformsRuntimeContext = Pick<ApplicationRuntimeContext, 'agents' | 'documents' | 'narratives' | 'now' | 'promptResources'>
 
 export function createTransformsRuntimeMethods(ctx: TransformsRuntimeContext) {
   return {
+    sampleNarrative: (input: SampleNarrativeInput, signal?: AbortSignal) => sampleRuntimeNarrative(ctx, input, signal),
     listTextTransformRules: async (): Promise<{ rules: TextTransformRuleEntry[] }> => ({
       rules: (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule))
         .map(document => toVersioned(document)),
@@ -196,9 +230,29 @@ export function createTransformsRuntimeMethods(ctx: TransformsRuntimeContext) {
       return { deleted: mutation.value, mutation: mutation.mutation }
     },
 
-    projectHistory: async (input: { source: HistorySource; phase: TextTransformPhase; consumerAgentSessionId?: string }): Promise<{ snapshot: HistoryProjectionSnapshot }> => ({
-      snapshot: await projectRuntimeHistory(ctx, input.source, input.phase, input.consumerAgentSessionId),
-    }),
+    projectHistory: async (input: { source: HistorySource; phase: TextTransformPhase; consumerAgentSessionId?: string; extensionTarget?: ExtensionInstallationTarget }): Promise<{ snapshot: HistoryProjectionSnapshot }> => {
+      input = structuredClone(input)
+      await assertHistoryInstallationAccess(ctx, input)
+      return { snapshot: await projectRuntimeHistory(ctx, input.source, input.phase, input.consumerAgentSessionId) }
+    },
+
+    previewCardOpeningDisplay: async (input: { cardId: string; presetId?: string; text: string }) => {
+      await readDocument(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
+      if (input.presetId !== undefined) {
+        const preset = await ctx.promptResources.getResource(input.presetId)
+        if (!preset || preset.tombstoned || preset.resourceKind !== 'preset') throw new Error(`Preset not found: ${input.presetId}`)
+      }
+      const documents = await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule)
+      const rules = documents.map(document => toVersioned(document))
+        .filter(rule => isOwnerActive(rule.owner, input.presetId, input.cardId))
+        .sort(compareTextEntries)
+      const source = { kind: 'card-opening' as const, cardId: input.cardId }
+      const snapshot = projectHistoryEntries({
+        source, phase: 'display', rules, preserveRuleOrder: true,
+        entries: [{ id: 'opening', source, role: 'assistant', text: input.text, sequence: 0 }],
+      })
+      return { text: snapshot.entries[0]!.text, originalText: input.text, diagnostics: snapshot.diagnostics }
+    },
 
     inspectTextPipeline: async (input: InspectTextPipelineInput): Promise<TextPipelineInspection> => {
       const effective = await resolveEffectiveTextPipeline(ctx, input.source, input.phase, input.consumerAgentSessionId)
@@ -229,7 +283,9 @@ export function createTransformsRuntimeMethods(ctx: TransformsRuntimeContext) {
       }
     },
 
-    extractHistory: async (input: { source: HistorySource; extractorId: string; phase?: TextTransformPhase; consumerAgentSessionId?: string }): Promise<{ extraction: TextExtractionResult; snapshot: HistoryProjectionSnapshot }> => {
+    extractHistory: async (input: { source: HistorySource; extractorId: string; phase?: TextTransformPhase; consumerAgentSessionId?: string; extensionTarget?: ExtensionInstallationTarget }): Promise<{ extraction: TextExtractionResult; snapshot: HistoryProjectionSnapshot }> => {
+      input = structuredClone(input)
+      await assertHistoryInstallationAccess(ctx, input)
       const phase = input.phase ?? 'display'
       const effective = await resolveEffectiveTextPipeline(ctx, input.source, phase, input.consumerAgentSessionId)
       const extractor = effective.extractors.find(candidate => candidate.id === input.extractorId
@@ -263,55 +319,62 @@ export async function resolveEffectiveTextPipeline(
   source: HistorySource,
   phase: TextTransformPhase,
   consumerAgentSessionId?: string,
+  consumerPresetId?: string,
 ): Promise<{ rules: TextTransformRuleEntry[]; extractors: TextExtractorEntry[]; consumer?: TextPipelineConsumer }> {
+  if (consumerPresetId !== undefined) {
+    if (source.kind !== 'narrative' || consumerAgentSessionId !== undefined) {
+      throw new Error('Explicit Narrative Preset and Session consumer are mutually exclusive')
+    }
+    const preset = await ctx.promptResources.getResource(consumerPresetId)
+    if (!preset || preset.tombstoned || preset.resourceKind !== 'preset') {
+      throw new Error(`Narrative consumer Preset not found: ${consumerPresetId}`)
+    }
+  }
   const ruleDocuments = await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule)
   const extractorDocuments = await listDocuments<TextExtractorContent>(ctx.documents, applicationDocumentTypes.textExtractor)
   const rules = ruleDocuments.map(document => toVersioned(document))
   const extractors = extractorDocuments.map(document => toVersioned(document))
-  let presetId: string | undefined
+  let presetId = consumerPresetId
   let cardId: string | undefined
   let consumer: TextPipelineConsumer | undefined
-  let snapshotRules: TextTransformRuleEntry[] = []
-  let snapshotExtractors: TextExtractorEntry[] = []
-  let hasTimelineRuntimeContext = false
 
   if (source.kind === 'agent-session') {
     const session = await ctx.agents?.getSession(source.sessionId)
     if (!session) throw new Error(`Agent Session not found: ${source.sessionId}`)
-    const profile = await readDocument<AgentProfileContent>(ctx.documents, session.agentProfileId, applicationDocumentTypes.agentProfile)
-    if (!profile.content.presetId) throw new Error(`Agent Profile has no Preset Prompt Resource: ${profile.id}`)
-    presetId = profile.content.presetId
-    consumer = { agentSessionId: session.id, agentProfileId: session.agentProfileId, presetId }
+    presetId = session.agentPresetId
+    if (session.timelineId) {
+      const timeline = await ctx.narratives?.getTimeline(session.timelineId)
+      if (!timeline) throw new Error(`Narrative Timeline not found: ${session.timelineId}`)
+      cardId = timeline.createdFrom?.cardId
+    }
+    consumer = { agentSessionId: session.id, agentPresetId: session.agentPresetId, presetId }
   } else {
-    if (phase === 'prompt' && !consumerAgentSessionId) throw new Error('Narrative prompt projection requires consumerAgentSessionId')
+    if (phase === 'prompt' && !consumerAgentSessionId && !consumerPresetId) {
+      throw new Error('Narrative prompt projection requires consumerAgentSessionId or presetId')
+    }
     const timeline = await ctx.narratives?.getTimeline(source.timelineId)
     if (!timeline) throw new Error(`Narrative Timeline not found: ${source.timelineId}`)
     cardId = timeline.createdFrom?.cardId
-    const runtimeContext = await readTimelineRuntimeContext(ctx, source.timelineId)
-    hasTimelineRuntimeContext = Boolean(runtimeContext)
-    snapshotRules = runtimeContext?.textTransformRules ?? []
-    snapshotExtractors = runtimeContext?.textExtractors ?? []
     if (consumerAgentSessionId) {
       const session = await ctx.agents?.getSession(consumerAgentSessionId)
       if (!session) throw new Error(`Agent Session not found: ${consumerAgentSessionId}`)
-      const profile = await readDocument<AgentProfileContent>(ctx.documents, session.agentProfileId, applicationDocumentTypes.agentProfile)
-      if (!profile.content.presetId) throw new Error(`Agent Profile has no Preset Prompt Resource: ${profile.id}`)
-      presetId = profile.content.presetId
-      consumer = { agentSessionId: session.id, agentProfileId: session.agentProfileId, presetId }
+      presetId = session.agentPresetId
+      consumer = { agentSessionId: session.id, agentPresetId: session.agentPresetId, presetId }
     }
   }
 
-  const defaultRules = [
-    ...rules.filter(rule => rule.enabled && isOwnerActive(rule.owner, presetId, cardId, hasTimelineRuntimeContext)),
-    ...snapshotRules.filter(rule => rule.enabled),
-  ].sort(compareTextEntries)
+  const availableInstallations = await readAvailableExtensionInstallations(ctx.documents, cardId)
+  const defaultRules = rules
+    .filter(rule => rule.enabled && isOwnerActive(rule.owner, presetId, cardId)
+      && isExtensionResourceAvailable(rule.origin, availableInstallations))
+    .sort(compareTextEntries)
   const override = await readTextPipelineOverride(ctx, source, phase, consumerAgentSessionId)
   return {
     rules: applyTextPipelineOverride(defaultRules, override),
-    extractors: [
-      ...extractors.filter(extractor => extractor.enabled && isOwnerActive(extractor.owner, presetId, cardId, hasTimelineRuntimeContext)),
-      ...snapshotExtractors.filter(extractor => extractor.enabled),
-    ].sort(compareTextEntries),
+    extractors: extractors
+      .filter(extractor => extractor.enabled && isOwnerActive(extractor.owner, presetId, cardId)
+        && isExtensionResourceAvailable(extractor.origin, availableInstallations))
+      .sort(compareTextEntries),
     ...(consumer ? { consumer } : {}),
   }
 }
@@ -376,14 +439,30 @@ function validateOverrideRuleIds(ruleIds: string[], label: string): void {
   if (new Set(normalized).size !== normalized.length) throw new Error(`Text Pipeline Override ${label} cannot contain duplicate Rule IDs`)
 }
 
-function isOwnerActive(owner: { kind: string; presetId?: string; cardId?: string }, presetId: string | undefined, cardId: string | undefined, hasTimelineRuntimeContext: boolean): boolean {
+function isOwnerActive(owner: { kind: string; presetId?: string; cardId?: string }, presetId: string | undefined, cardId: string | undefined): boolean {
   if (owner.kind === 'preset') return owner.presetId === presetId
-  if (owner.kind === 'card') return !hasTimelineRuntimeContext && owner.cardId === cardId
+  if (owner.kind === 'card') return owner.cardId === cardId
   return true
 }
 
 function compareTextEntries(left: { orderIndex: number; id: string }, right: { orderIndex: number; id: string }): number {
   return left.orderIndex - right.orderIndex || left.id.localeCompare(right.id)
+}
+
+async function assertHistoryInstallationAccess(
+  ctx: Pick<ApplicationRuntimeContext, 'agents' | 'narratives'>,
+  input: { source: HistorySource; consumerAgentSessionId?: string; extensionTarget?: ExtensionInstallationTarget },
+): Promise<void> {
+  if (input.extensionTarget?.kind !== 'card') return
+  if (input.source.kind === 'narrative') await assertExtensionTimelineAccess(ctx.narratives, input.extensionTarget, input.source.timelineId)
+  const sessionIds = [
+    ...(input.source.kind === 'agent-session' ? [input.source.sessionId] : []),
+    ...(input.consumerAgentSessionId ? [input.consumerAgentSessionId] : []),
+  ]
+  for (const id of sessionIds) {
+    const session = await ctx.agents?.getSession(id)
+    await assertExtensionTimelineAccess(ctx.narratives, input.extensionTarget, session?.deletedAt ? undefined : session?.timelineId)
+  }
 }
 
 async function readRuntimeHistoryEntries(
@@ -407,7 +486,7 @@ async function readRuntimeHistoryEntries(
   if (!narratives) throw new Error('Narrative Store is not configured')
   const nodes = await collectPages(async cursor => {
     const page = await narratives.getPage({ timelineId: source.timelineId, branchId: source.branchId, ...(cursor ? { cursor } : {}), limit: 100 })
-    return { items: page.nodes, nextCursor: page.nextCursor }
+    return { items: [...page.nodes].reverse(), nextCursor: page.nextCursor }
   })
   nodes.reverse()
   return nodes.map((node, sequence) => ({

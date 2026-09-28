@@ -1,6 +1,9 @@
 import type { JsonObject, StateArtifact, TimelineStateBinding } from '@loom-studio/shared'
 import type {
+  AgentDelivery,
   AgentHistoryPolicy,
+  ProviderModelSelection,
+  ExtensionPackageResourceOrigin,
   CardPresetInput,
   CardMediaRefs,
   OpeningChatInput,
@@ -25,6 +28,7 @@ export type CardBundleArtifact = {
     settingLayer?: SettingLayerInput
     media?: CardMediaRefs
     macros?: Record<string, string>
+    macroOptions?: import("@loom-studio/shared").MacroOptions
     stateContributionIds?: string[]
   }
   contextAssets: PromptResourceNode[]
@@ -41,6 +45,7 @@ export type CardBundleArtifact = {
   }>
   timelineStateBindings?: TimelineStateBinding[]
   extensionPayloads?: PortableExtensionPayloadArtifact[]
+  extensionPackages?: Array<{ packageId: string; version: string; archiveBase64: string }>
   scriptAttachments?: LoomScriptAttachmentArtifact[]
   textTransformRules?: Array<Omit<TextTransformRuleDraft, 'owner'>>
   textExtractors?: Array<Omit<TextExtractorDraft, 'owner'>>
@@ -63,6 +68,7 @@ export type PortableExtensionPayloadArtifact = {
 }
 
 export type PortableExtensionPayloadContent = Omit<PortableExtensionPayloadArtifact, 'id'> & {
+  ownerInstallationId?: string
   artifactPayloadId: string
   createdAt: string
   updatedAt: string
@@ -74,17 +80,15 @@ export type PromptResourceContent = {
   resourceKind: PromptResourceKind
   rootNode: PromptResourceNode
   historyPolicy?: AgentHistoryPolicy
+  model?: ProviderModelSelection
+  delivery?: AgentDelivery
   origin?: {
     kind: 'builtin'
     key: string
-  } | {
-    kind: 'extension-package'
-    packageId: string
-    packageVersion: string
-    contributionId: string
-  }
+  } | ExtensionPackageResourceOrigin
   sourceArtifactRef?: CardBundleSourceArtifactRef
   macros?: Record<string, string>
+  macroOptions?: import("@loom-studio/shared").MacroOptions
   createdAt: string
   updatedAt: string
 }
@@ -95,6 +99,7 @@ export type PromptResourceArtifact = {
   resourceKind: PromptResourceKind
   rootNode: PromptResourceNode
   macros?: Record<string, string>
+  macroOptions?: import("@loom-studio/shared").MacroOptions
   textTransformRules?: Array<Omit<TextTransformRuleDraft, 'owner'>>
   scriptAttachments?: LoomScriptAttachmentArtifact[]
 }

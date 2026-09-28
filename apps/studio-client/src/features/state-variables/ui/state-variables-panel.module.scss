@@ -7,6 +7,18 @@
   background: var(--loom-color-surface-base);
 }
 
+.macroOption {
+  min-width: 0;
+  margin: 0;
+  padding: 8px 0;
+  border: 0;
+
+  > legend {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+}
+
 .panelBody {
   flex: 1 1 0;
   min-height: 0;

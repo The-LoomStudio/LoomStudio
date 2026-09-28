@@ -5,7 +5,7 @@ export const officialEditNarrativeTool: ToolDefinition = {
   id: 'official/edit_narrative',
   owner: { namespace: 'official' },
   name: 'edit_narrative',
-  description: 'Edit the raw markdown content of an existing narrative node in the current timeline.',
+  description: 'Edit the raw markdown content of a node in the current narrative branch without changing other branches. Use the returned nodeId for subsequent edits.',
   input: {
     kind: 'structured',
     schema: {

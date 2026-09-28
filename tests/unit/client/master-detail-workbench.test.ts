@@ -11,8 +11,8 @@ describe('MasterDetailWorkbench', () => {
         {
           master: createElement('div', { id: 'test-master' }, 'Master List'),
           dataComponent: 'test-workbench',
+          children: createElement('div', { id: 'test-detail' }, 'Detail Content'),
         },
-        createElement('div', { id: 'test-detail' }, 'Detail Content'),
       ),
     )
 

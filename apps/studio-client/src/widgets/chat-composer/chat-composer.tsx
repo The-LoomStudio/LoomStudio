@@ -33,6 +33,8 @@ type ChatComposerProps = {
   placeholder?: string
   previewLabel: string
   retryLabel: string
+  onRetry?(): void
+  canRetry?: boolean
   sheet?: ReactNode
   sendLabel: string
   sendLeadingAction?: ReactNode
@@ -132,7 +134,7 @@ export function ChatComposer(props: ChatComposerProps) {
                     <Plus aria-hidden="true" strokeWidth={1.7} />
                   </button>
                 )}
-                <button aria-label={props.retryLabel} className={styles.utilityButton} disabled title={props.retryLabel} type="button">
+                <button aria-label={props.retryLabel} className={styles.utilityButton} disabled={!props.canRetry || !props.onRetry} onClick={props.onRetry} title={props.retryLabel} type="button">
                   <RotateCcw aria-hidden="true" strokeWidth={1.7} />
                 </button>
                 {props.onTogglePinned ? (

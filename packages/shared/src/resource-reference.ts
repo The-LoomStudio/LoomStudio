@@ -13,6 +13,14 @@ export type EntityReference = {
   | { type: 'card' | 'session' | 'run' | 'provider' | 'extension'; branchId?: never; nodeId?: never }
 )
 
+function hasControlCharacter(value: string): boolean {
+  for (const character of value) {
+    const code = character.charCodeAt(0)
+    if (code < 32 || code === 127) return true
+  }
+  return false
+}
+
 export function formatEntityReference(reference: EntityReference): string {
   const url = new URL('loom-resource://entity')
   url.searchParams.set('type', reference.type)
@@ -33,10 +41,10 @@ export function parseEntityReference(uri: string): EntityReference | undefined {
     const allowedKeys = type === 'timeline' ? ['type', 'id', 'branchId', 'nodeId']
       : type === 'resource' ? ['type', 'id', 'nodeId'] : ['type', 'id']
     if ([...url.searchParams.keys()].some(key => !allowedKeys.includes(key) || url.searchParams.getAll(key).length !== 1)) return undefined
-    if (!type || !['card', 'timeline', 'session', 'run', 'resource', 'provider', 'extension'].includes(type) || !id || /[\u0000-\u001f\u007f]/.test(id)) return undefined
+    if (!type || !['card', 'timeline', 'session', 'run', 'resource', 'provider', 'extension'].includes(type) || !id || hasControlCharacter(id)) return undefined
     const branchId = url.searchParams.get('branchId')
     const nodeId = url.searchParams.get('nodeId')
-    if ([branchId, nodeId].some(value => value !== null && (!value || /[\u0000-\u001f\u007f]/.test(value)))) return undefined
+    if ([branchId, nodeId].some(value => value !== null && (!value || hasControlCharacter(value)))) return undefined
     if (type === 'timeline') return { kind: 'entity', type, id, ...(branchId !== null ? { branchId } : {}), ...(nodeId !== null ? { nodeId } : {}) }
     if (type === 'resource') return { kind: 'entity', type, id, ...(nodeId !== null ? { nodeId } : {}) }
     return { kind: 'entity', type: type as Exclude<EntityReference['type'], 'timeline' | 'resource'>, id }
@@ -84,7 +92,7 @@ export function parseResourceReference(uri: string): ResourceReference | undefin
     const params = url.searchParams
     const text = (key: string) => {
       const value = params.get(key)
-      return value && !/[\u0000-\u001f\u007f]/.test(value) ? value : undefined
+      return value && !hasControlCharacter(value) ? value : undefined
     }
     const only = (keys: string[]) => [...params.keys()].every(key => keys.includes(key) && params.getAll(key).length === 1)
     const version = Number(params.get('version'))
@@ -96,7 +104,7 @@ export function parseResourceReference(uri: string): ResourceReference | undefin
       return { kind: 'script', documentId: text('document')!, version, ...range }
     if (url.hostname === 'state' && only(['scope', 'timeline', 'branch', 'revision', 'pointer']) && text('revision')) {
       const pointer = params.get('pointer')
-      if (pointer === null || (pointer !== '' && !pointer.startsWith('/')) || /~(?![01])|[\u0000-\u001f\u007f]/.test(pointer)) return undefined
+      if (pointer === null || (pointer !== '' && !pointer.startsWith('/')) || /~(?![01])/.test(pointer) || hasControlCharacter(pointer)) return undefined
       if (params.get('scope') === 'global' && !params.has('timeline') && !params.has('branch'))
         return { kind: 'state', target: { scope: 'global' }, revisionId: text('revision')!, pointer, ...range }
       if (params.get('scope') === 'timeline' && text('timeline') && text('branch'))

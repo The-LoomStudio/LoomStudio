@@ -2,13 +2,13 @@ import { createApplicationRuntime } from '@loom-studio/application-runtime'
 import { createBlobStore } from '@loom-studio/blob-store'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
-import { createPromptResourceStore } from '@loom-studio/application-data'
+import { createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { parseLoomScriptSource, serializeLoomScriptMetadata } from '../../../packages/application-runtime/src/scripts/loom-script-codec.js'
-import { resolveLoomScriptRendererMounts, snapshotLoomScriptMounts } from '../../../packages/application-runtime/src/scripts/loom-script-resolution.js'
+import { snapshotLoomScriptMounts } from '../../../packages/application-runtime/src/scripts/loom-script-resolution.js'
 
 const roots: string[] = []
 
@@ -21,6 +21,37 @@ describe('Loom Script codec and store', () => {
     const metadata = parseLoomScriptSource(source())
     expect(metadata.contributions.map(item => item.renderer.id)).toEqual(['status-panel', 'status-tail'])
     expect(parseLoomScriptSource(`${serializeLoomScriptMetadata(metadata)}\nexport const renderers = {}`)).toEqual(metadata)
+  })
+
+  it('keeps installed scripts sandboxed and resolves private sources only for their actual Card', async () => {
+    const fixture = await createFixture()
+    const runtime = createApplicationRuntime(fixture)
+    try {
+      const a = (await runtime.createCard({ name: 'A' })).card
+      const b = (await runtime.createCard({ name: 'B' })).card
+      const timelineA = (await runtime.createNarrativeTimeline({ cardId: a.id })).timeline
+      const timelineB = (await runtime.createNarrativeTimeline({ cardId: b.id })).timeline
+      const installed = await runtime.importExtensionPackageResources({
+        packageId: 'example.scripts', packageVersion: '1.0.0', target: { kind: 'card', cardId: a.id },
+        promptResources: [], agentTools: [], transformRules: [], textExtractors: [],
+      })
+      const owner = { kind: 'extension' as const, packageId: 'example.scripts', installationId: installed.installationId }
+      await expect(runtime.importLoomScript({
+        owner: { ...owner, packageId: 'other.package' }, fileName: 'alice.loom.js', source: source(),
+      })).rejects.toThrow('owner does not match')
+      expect((await runtime.listLoomScripts()).scripts).toEqual([])
+      const { script } = await runtime.importLoomScript({ owner, fileName: 'alice.loom.js', source: source() })
+      expect(script.runtime).toBe('client-sandbox')
+      const { mount } = await runtime.createLoomScriptMount({ target: { kind: 'user' }, scriptDocumentId: script.id, orderIndex: 0 })
+      await runtime.updateLoomScriptMount({
+        mountId: mount.id, expectedVersion: mount.version, enabled: true, orderIndex: 0, grantedCapabilities: ['state.read'],
+      })
+      expect((await runtime.resolveLoomScriptRendererMounts({ timelineId: timelineA.id })).mounts).toHaveLength(1)
+      expect((await runtime.resolveLoomScriptRendererMounts({ timelineId: timelineB.id })).mounts).toEqual([])
+      expect((await runtime.resolveLoomScriptRendererMounts()).mounts).toEqual([])
+    } finally {
+      await fixture.dataEngine.close()
+    }
   })
 
   it.each([
@@ -85,39 +116,53 @@ describe('Loom Script codec and store', () => {
     })).resolves.toBeTruthy()
   })
 
-  it('resolves a Timeline snapshot from the frozen Script revision after the author updates the Card Script', async () => {
+  it('uses current Card Script mounts in existing Timelines and does not revive removed mounts', async () => {
     const fixture = await createFixture()
-    const runtime = createApplicationRuntime(fixture) as any
+    const runtime = createApplicationRuntime(fixture)
+    const { card } = await runtime.createCard({ name: 'Script card' })
     const imported = await runtime.importLoomScript({
-      owner: { kind: 'card', cardId: 'card-1' },
+      owner: { kind: 'card', cardId: card.id },
       fileName: 'alice.loom.js',
       source: source(),
     })
     const createdMount = await runtime.createLoomScriptMount({
-      target: { kind: 'card', cardId: 'card-1' },
+      target: { kind: 'card', cardId: card.id },
       scriptDocumentId: imported.script.id,
       orderIndex: 0,
     })
-    await runtime.updateLoomScriptMount({
+    const enabled = await runtime.updateLoomScriptMount({
       mountId: createdMount.mount.id,
       expectedVersion: createdMount.mount.version,
       enabled: true,
       orderIndex: 0,
       grantedCapabilities: ['state.read'],
     })
-    const frozen = await snapshotLoomScriptMounts(fixture, { kind: 'card', cardId: 'card-1' })
+    const { timeline, branch } = await runtime.createNarrativeTimeline({ cardId: card.id })
+    const context = (await fixture.documents.get(`timeline-runtime-context:${timeline.id}`))!
+    await fixture.documents.write({
+      id: context.id, type: context.type, expectedVersion: context.version,
+      content: { ...context.content, loomScriptMounts: await snapshotLoomScriptMounts(fixture, { kind: 'card', cardId: card.id }) },
+    })
+    const target = { scope: 'timeline' as const, timelineId: timeline.id, branchId: branch.id }
+    const state = await runtime.getStateSnapshot({ target })
+    const before = await runtime.resolveLoomScriptRendererMounts({ timelineId: timeline.id })
+    expect(before.mounts[0]?.source).toContain('export const value = 1')
 
-    await runtime.updateLoomScript({
+    const updated = await runtime.updateLoomScript({
       scriptDocumentId: imported.script.id,
       expectedVersion: imported.script.version,
       fileName: 'alice.loom.js',
       source: source().replace('export const value = 1', 'export const value = 2'),
     })
 
-    const resolved = await resolveLoomScriptRendererMounts(fixture, { currentTargets: [], frozenMounts: frozen })
-    expect(resolved).toHaveLength(1)
-    expect(resolved[0]).toMatchObject({ enabled: true, script: { version: imported.script.version } })
-    expect(resolved[0]?.source).toContain('export const value = 1')
+    const { mounts } = await runtime.resolveLoomScriptRendererMounts({ timelineId: timeline.id })
+    expect(mounts).toHaveLength(1)
+    expect(mounts[0]).toMatchObject({ enabled: true, grantedCapabilities: ['state.read'], script: { version: updated.script.version } })
+    expect(mounts[0]?.source).toContain('export const value = 2')
+    await fixture.documents.delete({ id: enabled.mount.id, expectedVersion: enabled.mount.version })
+    expect((await runtime.resolveLoomScriptRendererMounts({ timelineId: timeline.id })).mounts).toEqual([])
+    expect(await runtime.getStateSnapshot({ target })).toEqual(state)
+    await fixture.dataEngine.close()
   })
 })
 
@@ -149,6 +194,7 @@ async function createFixture() {
     dataEngine: engine,
     documents: createSqliteDocumentStore({ engine }),
     promptResources: createPromptResourceStore({ engine, createId, now }),
+    narratives: createNarrativeStore({ engine, createId, now }),
     blobs: createBlobStore({ engine, rootDirectory, createId, now }),
   }
 }

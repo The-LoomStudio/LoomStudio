@@ -1,13 +1,17 @@
 import {
   applicationDocumentTypes,
+  extensionInstallationId,
   createApplicationRuntime,
   createDocumentBackedAiGateway,
   createDocumentBackedProfiledAiGateway,
   createOfficialAgentToolRegistry,
   createMacroProviderRegistry,
+  createNarrativeContextRegistry,
   createStateContributionRegistry,
   type CardBundleArtifact,
+  type ExtensionInstallationContent,
 } from '@loom-studio/application-runtime'
+import { canAccessExtensionAsset } from './extensions/extension-asset-access.js'
 import {
   createAiGatewayCapabilityRegistry,
   createOfficialProviderAdapterRegistry,
@@ -55,6 +59,8 @@ import { decodeCardBundleZip, encodeCardBundleZip, type CardBundleMedia } from '
 import { createStudioRpcRouter } from './rpc/studio-rpc-router.js'
 import { createServerExtensionManager } from './extensions/extension-manager.js'
 import { createExtensionStateStore } from './extensions/extension-state-store.js'
+import { canAccessExtensionState } from './extensions/extension-state-access.js'
+import { projectExtensionEvent } from './extensions/extension-event-projection.js'
 import { createExtensionImportConversions } from './extensions/import-conversion.js'
 import { createOfficialContentService, installBuiltinStarterContent } from './official/official-content.js'
 import { createCardDirectoryService } from './resource-directories/card-directory.js'
@@ -135,6 +141,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
   const loomRunner = createLoomRunner({ traceAudit })
   const aiCapabilities = createAiGatewayCapabilityRegistry()
   const macroProviders = createMacroProviderRegistry()
+  const narrativeContext = createNarrativeContextRegistry()
   const stateContributions = createStateContributionRegistry()
   registerOfficialFakeAiProvider(aiCapabilities)
   const providerAdapters = createOfficialProviderAdapterRegistry({ aiCapabilities })
@@ -178,13 +185,14 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
   }
   const agentTools = createOfficialAgentToolRegistry()
   const applicationRuntime = createApplicationRuntime({
+    onStateChanged: event => kernel.getEventBus().emit('state.changed', event, { publisher: { kind: 'kernel' }, source: 'application-state' }),
     withCardDeletion: (id, commit) => {
       if (!resourceDirectories) throw new Error('Card directory service is unavailable')
-      return resourceDirectories.deleteCard(id, commit)
+      return extensionManager.withCardDeletions([id], () => resourceDirectories!.deleteCard(id, commit))
     },
     withCardDeletions: (ids, commit) => {
       if (!resourceDirectories) throw new Error('Card directory service is unavailable')
-      return resourceDirectories.deleteCards(ids, commit)
+      return extensionManager.withCardDeletions(ids, () => resourceDirectories!.deleteCards(ids, commit))
     },
     agents,
     agentTools,
@@ -216,6 +224,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     providerAdapters,
     aiCapabilities,
     macroProviders,
+    narrativeContext,
     stateContributions,
     gateway: options.providerLogger ? withAiGatewayLogging(gateway, options.providerLogger) : gateway,
     logger: options.promptBuildLogger,
@@ -225,11 +234,12 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     documents,
     diagnostics,
     logger: options.extensionLogger,
-    queryLogs: (packageId, input) => queryExtensionLogs({ current: options.logs, history: options.logHistory }, packageId, input, 'server'),
+    queryLogs: (packageId, input, installationId) => queryExtensionLogs({ current: options.logs, history: options.logHistory }, packageId, input, 'server', installationId),
     mode: 'development',
-    grantEventCapabilities: (manifest, moduleManifest) => extensionManager.getGrantedEventCapabilities(manifest.id, moduleManifest.id),
-    grantAssetCapabilities: (manifest, moduleManifest) => extensionManager.getGrantedAssetCapabilities(manifest.id, moduleManifest.id),
+    grantEventCapabilities: (manifest, moduleManifest, target) => extensionManager.getGrantedEventCapabilities(manifest.id, moduleManifest.id, target),
+    grantAssetCapabilities: (manifest, moduleManifest, target) => extensionManager.getGrantedAssetCapabilities(manifest.id, moduleManifest.id, target),
     assetScratchRoot: localPaths.extensionCacheRoot,
+    canAccessAsset: (asset, target) => canAccessExtensionAsset(documents, asset, target),
     assets: assets
       ? {
           publish: async input => {
@@ -241,6 +251,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
               width: input.width,
               height: input.height,
               ownerPackageId: input.ownerPackageId,
+              ownerInstallationId: input.ownerInstallationId,
               actor: input.actor,
               reason: 'extension.asset.publish',
             })
@@ -253,6 +264,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
               width: result.asset.width,
               height: result.asset.height,
               ownerPackageId: result.asset.ownerPackageId,
+              ownerInstallationId: result.asset.ownerInstallationId,
               createdAt: result.asset.createdAt,
             }
           },
@@ -268,6 +280,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
                   width: asset.width,
                   height: asset.height,
                   ownerPackageId: asset.ownerPackageId,
+                  ownerInstallationId: asset.ownerInstallationId,
                   createdAt: asset.createdAt,
                 }
               : undefined
@@ -277,10 +290,11 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
       : undefined,
     portablePayloads: {
       create: async input => (await applicationRuntime.createPortableExtensionPayload({
+        ownerInstallationId: input.ownerInstallationId,
         artifactPayloadId: input.artifactPayloadId,
         payload: { ...input.payload, packageId: input.packageId },
       }, { actor: { kind: 'extension', id: input.packageId } })).payload,
-      list: async packageId => (await applicationRuntime.listPortableExtensionPayloads({ packageId })).payloads,
+      list: async (packageId, ownerInstallationId) => (await applicationRuntime.listPortableExtensionPayloads({ packageId, ownerInstallationId: ownerInstallationId ?? null })).payloads,
       get: async payloadId => (await applicationRuntime.getPortableExtensionPayload({ payloadId })).payload,
       update: async input => (await applicationRuntime.updatePortableExtensionPayload({
         payloadId: input.payloadId,
@@ -296,7 +310,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
       replaceCardBindings: async input => {
         const [{ card }, { payloads }] = await Promise.all([
           applicationRuntime.getCard({ cardId: input.cardId }),
-          applicationRuntime.listPortableExtensionPayloads({ packageId: input.packageId }),
+          applicationRuntime.listPortableExtensionPayloads({ packageId: input.packageId, ownerInstallationId: input.ownerInstallationId ?? null }),
         ])
         const ownPayloadIds = new Set(payloads.map(payload => payload.id))
         const otherPayloadIds = (card.portableExtensionPayloadIds ?? []).filter(payloadId => !ownPayloadIds.has(payloadId))
@@ -313,23 +327,20 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     registerMacroProvider: (provider, owner) => macroProviders.register({
       ...provider,
       sourceLabel: `${owner.packageId}/${owner.moduleId}`,
-    }),
+    }, owner.target),
+    registerNarrativeContextProvider: (provider, owner) => narrativeContext.register(provider, owner.target),
     registerStateContribution: (contribution, owner) => stateContributions.register({
       contribution,
       packageId: owner.packageId,
       moduleId: owner.moduleId,
       instanceId: owner.instanceId,
       packageVersion: owner.packageVersion,
+      target: owner.target,
     }),
     readState: async target => (await applicationRuntime.getStateSnapshot({ target })).snapshot,
+    canAccessState: (target, installation) => canAccessExtensionState(narratives, installation, target),
     writeState: async (input, owner) => {
       const result = await applicationRuntime.applyStateMutation(input, { actor: { kind: 'extension', id: owner.packageId } })
-      kernel.getEventBus().emit('state.changed', {
-        target: result.snapshot.target,
-        revisionId: result.snapshot.revisionId,
-        changesetId: result.mutation.changesetId,
-        paths: input.operations.map(operation => operation.path),
-      }, { publisher: { kind: 'kernel' }, source: `extension:${owner.packageId}` })
       return { snapshot: result.snapshot, changesetId: result.mutation.changesetId }
     },
     registerAgentToolHandler: (toolId, _ownerPackageId, _ownerModuleId, _ownerInstanceId, handler) => agentTools.registerRuntime({
@@ -350,7 +361,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
         }
       },
     }),
-    validateStorageScope: async scope => {
+    validateStorageScope: async (scope, target) => {
       if (scope.kind === 'global') return
       if (scope.kind === 'card') {
         const card = await documents.get(scope.cardId)
@@ -360,12 +371,30 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
       if (scope.kind === 'timeline') {
         const timeline = await narratives?.getTimeline(scope.timelineId)
         if (!timeline || timeline.deletedAt) throw new Error(`Narrative Timeline not found: ${scope.timelineId}`)
+        if (target.kind === 'card' && timeline.createdFrom?.cardId !== target.cardId) {
+          throw new Error('Narrative Timeline is outside the extension Card installation')
+        }
         return
       }
       const session = await agents?.getSession(scope.agentSessionId)
       if (!session || session.deletedAt) throw new Error(`Agent Session not found: ${scope.agentSessionId}`)
+      if (target.kind === 'card') {
+        const timeline = session.timelineId ? await narratives?.getTimeline(session.timelineId) : undefined
+        if (!timeline || timeline.deletedAt || timeline.createdFrom?.cardId !== target.cardId) {
+          throw new Error('Agent Session is outside the extension Card installation')
+        }
+      }
     },
-    validateEntityRef: async ref => {
+    validateEntityRef: async (ref, target) => {
+      if (target.kind === 'card' && ref.kind !== 'asset') {
+        const timelineId = ref.kind === 'agent-message'
+          ? (await agents?.getSession(ref.agentSessionId))?.timelineId
+          : ref.timelineId
+        const timeline = timelineId ? await narratives?.getTimeline(timelineId) : undefined
+        if (!timeline || timeline.deletedAt || timeline.createdFrom?.cardId !== target.cardId) {
+          throw new Error('Entity reference is outside the extension Card installation')
+        }
+      }
       if (ref.kind === 'narrative-node') {
         const node = await narratives?.getNode(ref.nodeId)
         if (!node || node.timelineId !== ref.timelineId) throw new Error(`Narrative Node not found in Timeline: ${ref.nodeId}`)
@@ -384,8 +413,8 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
       if (!timeline || timeline.deletedAt) throw new Error(`Narrative Timeline not found: ${ref.timelineId}`)
     },
     callRpc: (method, params, context) => kernel.callRpc(method, params, context),
-    registerRpc: (name, ownerPackageId, ownerModuleId, handler, ownerInstanceId) => {
-      const handle = kernel.registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler, ownerInstanceId)
+    registerRpc: (name, ownerPackageId, ownerModuleId, handler, ownerInstanceId, target) => {
+      const handle = kernel.registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler, ownerInstanceId, target)
       return { name, ownerPackageId, ownerModuleId, ownerInstanceId, handler, dispose: handle.dispose }
     },
     registerEventDefinition: (definition, registeredBy) => kernel.getEventBus().registerDefinition(definition, registeredBy),
@@ -393,7 +422,15 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
       publisher,
       source: publisher.kind === 'extension' ? `extension:${publisher.packageId}/${publisher.moduleId}` : publisher.kind,
     }),
-    subscribeEvents: (patterns, handler, subscriber) => kernel.getEventBus().subscribe(patterns, handler, { subscriber }),
+    subscribeEvents: (patterns, handler, subscriber) => kernel.getEventBus().subscribe(
+      patterns,
+      subscriber.kind === 'extension' && subscriber.target?.kind === 'card'
+        ? async event => {
+          const projected = await projectExtensionEvent({ documents, narratives, states, promptResources }, event, subscriber)
+          if (projected) await handler(projected)
+        } : handler,
+      { subscriber },
+    ),
   })
   const extensionRootDirectory = resolve(options.extensionRootDirectory ?? 'official/extensions')
   const extensionStateDirectory = resolve(options.extensionStateDirectory ?? localPaths.extensionRoot)
@@ -407,6 +444,8 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     repositoryDirectory: extensionRootDirectory,
     installedDirectory: options.extensionStateDirectory ? join(extensionStateDirectory, 'installed') : localPaths.extensionInstalledRoot,
     devLinksFile: options.extensionStateDirectory ? join(extensionStateDirectory, 'dev-links.json') : localPaths.extensionDevLinksFile,
+    readCardPackage: input => applicationRuntime.getCardExtensionPackage(input),
+    listInstallations: () => applicationRuntime.listExtensionInstallations(),
     importPackageResources: input => applicationRuntime.importExtensionPackageResources(input, {
       actor: { kind: 'extension', id: input.packageId },
     }) as Promise<Record<string, JsonValue>>,
@@ -545,6 +584,20 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
       allowedOrigins: options.applicationSessionOrigins ?? ['http://127.0.0.1:5173'],
     }),
     assets,
+    canReadCardExtensionAsset: async input => {
+      const target = { kind: 'card' as const, cardId: input.cardId }
+      const installationId = extensionInstallationId(input.packageId, target)
+      const [installation, asset, card] = await Promise.all([
+        documents.get(installationId), assets?.getMediaAsset(input.assetId), documents.get(input.cardId),
+      ])
+      if (!asset || !installation || installation.type !== applicationDocumentTypes.extensionInstallation
+        || !card || card.type !== applicationDocumentTypes.cardSource) return false
+      const content = installation.content as ExtensionInstallationContent
+      if (content.packageId !== input.packageId || content.target.kind !== 'card' || content.target.cardId !== input.cardId) return false
+      if (asset.ownerPackageId === input.packageId && asset.ownerInstallationId === installationId) return true
+      return extensionManager.getGrantedAssetCapabilities(input.packageId, input.moduleId, target).includes('assets.read')
+        && await canAccessExtensionAsset(documents, asset, target)
+    },
     cardMedia: {
       read: async (cardId, kind) => {
         const { card } = await applicationRuntime.getCard({ cardId })
@@ -598,7 +651,9 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
       read: (packageId, version) => extensionManager.readPackageIcon(packageId, version),
     },
     extensionFiles: {
-      read: (packageId, version, path) => extensionManager.readPackageFile(packageId, version, path),
+      read: (packageId, version, path, installation) => installation
+        ? extensionManager.readCardPackageFile(installation.cardId, packageId, version, installation.archiveDigest, path)
+        : extensionManager.readPackageFile(packageId, version, path),
     },
     extensionEvents: {
       subscribe: handler => {

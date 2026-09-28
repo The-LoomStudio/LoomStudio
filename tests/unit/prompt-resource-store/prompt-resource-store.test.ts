@@ -5,6 +5,43 @@ import { describe, expect, it } from 'vitest'
 const actor = { kind: 'system' as const, id: 'prompt-resource-test' }
 
 describe('PromptResourceStore', () => {
+  it('replaces an authored tree without changing resource identity and can revert its root change', async () => {
+    const { engine, store } = createStore()
+    try {
+      const original = await store.createResource({
+        actor, id: 'installed-setting', resourceKind: 'setting', rootNode: createSmallTree(),
+        metadata: { model: { providerId: 'local' } },
+      })
+      const rootNode: PromptResourceTreeNode = {
+        id: 'updated-root', kind: 'module', label: 'Updated',
+        children: [{ id: 'new-entry', kind: 'entry', label: 'New', body: 'New content' }],
+      }
+      const updated = await store.mutateResource({
+        actor, resourceId: original.resource.id, expectedVersion: original.resource.version,
+        mutations: [{ kind: 'tree.replace', rootNode }],
+      })
+      expect(updated.resource).toMatchObject({
+        id: original.resource.id, version: 2, rootNodeId: 'updated-root',
+        metadata: original.resource.metadata, rootNode,
+      })
+      await expect(store.mutateResource({
+        actor, resourceId: original.resource.id, expectedVersion: 1,
+        mutations: [{ kind: 'tree.replace', rootNode: createSmallTree() }],
+      })).rejects.toMatchObject({ code: 'prompt_resource.conflict' })
+      await expect(store.mutateResource({
+        actor, resourceId: original.resource.id, expectedVersion: 2,
+        mutations: [{ kind: 'tree.replace', rootNode: { ...rootNode, kind: 'entry' } }],
+      })).rejects.toMatchObject({ code: 'prompt_resource.root_invalid' })
+      expect(await store.getResource(original.resource.id)).toEqual(updated.resource)
+      const reverted = await store.revertChangeset({ actor, changesetId: updated.commit.changesetId, expectedVersion: 2 })
+      expect(reverted.resource.rootNode).toEqual(original.resource.rootNode)
+      expect(reverted.resource.rootNodeId).toBe(original.resource.rootNodeId)
+      expect(reverted.resource.metadata).toEqual(original.resource.metadata)
+    } finally {
+      await engine.close()
+    }
+  })
+
   it.each(['metadata', 'extra', 'capabilities'] as const)('rejects non-JSON %s before creation or mutation commits', async field => {
     const { engine, store } = createStore()
     try {
@@ -343,7 +380,7 @@ describe('PromptResourceStore', () => {
     const mount = await store.addSettingMount({ actor, settingResourceId: setting.resource.id, source: { kind: 'manual' }, orderIndex: 0 })
     await expect(store.revertChangeset({ actor, changesetId: mount.commit.changesetId })).rejects.toMatchObject({ code: 'prompt_resource.mixed_changeset' })
 
-    const mixed = await engine.transact({ actor }, tx => {
+    const mixed = await engine.transact({ actor }, async tx => {
       const transaction = store.transaction(tx)
       const resource = transaction.mutateResource({ resourceId: preset.resource.id, expectedVersion: 1, mutations: [{ kind: 'node.update', nodeId: 'mixed-preset-entry-a', patch: { body: 'changed' } }] })
       transaction.addSettingMount({ settingResourceId: setting.resource.id, source: { kind: 'preset', id: preset.resource.id }, orderIndex: 1 })
@@ -374,15 +411,15 @@ describe('PromptResourceStore', () => {
     await expect(store.getResource(first.resource.id)).resolves.toBeNull()
     await expect(store.getResource(first.resource.id, { includeTombstone: true })).resolves.toMatchObject({ tombstoned: true, version: 2 })
     expect(deleted.commit.operations).toEqual([
-      { store: 'prompt-resources', kind: 'delete', entityId: firstMount.mounts[0]!.id, entityType: 'prompt-resource.mount' },
       { store: 'prompt-resources', kind: 'delete', entityId: first.resource.id, entityType: 'prompt-resource', fromVersion: 1, toVersion: 2 },
     ])
+    expect(await store.listSettingMounts({ settingResourceId: first.resource.id })).toEqual(firstMount.mounts)
     const restored = await store.restoreResource({ actor, resourceId: first.resource.id, expectedVersion: 2 })
     expect(restored.resource).toMatchObject({ id: first.resource.id, version: 3 })
     expect(restored.commit.operations).toEqual([
       { store: 'prompt-resources', kind: 'restore', entityId: first.resource.id, entityType: 'prompt-resource', fromVersion: 2, toVersion: 3 },
     ])
-    expect(await store.listSettingMounts({ settingResourceId: first.resource.id })).toEqual([])
+    expect(await store.listSettingMounts({ settingResourceId: first.resource.id })).toEqual(firstMount.mounts)
     engine.close()
   })
 

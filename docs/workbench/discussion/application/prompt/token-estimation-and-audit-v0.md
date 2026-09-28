@@ -3,6 +3,7 @@
 > **状态**：Open Design / Research Capture
 > **主题**：Message、Prompt Resource、Setting Entry、Tool Schema 与最终 Provider Payload 的 Token 估算、缓存、持久化和审计边界。
 > **证据快照**：LoomStudio `7e69867978b1543e0ddea51ecc22b5cb542ab9d7`、oh-my-pi `37eee71978951fccf66b21f7e3e2b74596ac9d74`、PulsarAI `45c7ddaa5069f8dce3cdb62e8e77b6ab041870a4`。
+> **后续计划（2026-09-27）**：[Token 计数与运行测量计划](../../../plans/token-counting-and-measurement-plan.md)按当前源码收束单一 tokenizer + 系数、客户端草稿统计和逐 Step 持久化；具体配置与新事实合同仍待确认。本文保留历史研究，不把旧路径、候选 Trace Schema 或多 tokenizer 方向当作当前实施要求。
 
 ---
 

@@ -1,5 +1,5 @@
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type {
   AiCapabilityProfile,
   AiGatewayCapabilityDefinition,
@@ -126,33 +126,40 @@ export function AiCapabilityLab(props: AiCapabilityLabProps) {
     </aside>
   ) : null
 
-  if (!provider || !capability) return <>
-    {refreshError ? <p className={styles.aiLabError}>{refreshError}</p> : null}
-    {unavailableProfiles}
-    <p className={styles.empty}>{props.t('provider.aiLabEmpty')}</p>
-  </>
+  const header = (
+    <header className={styles.sectionHeader}>
+      <h2>{props.t('provider.aiLabTitle')}</h2>
+      <div className={styles.aiLabHeaderMeta}>
+        <span>{props.providers.length}</span>
+        <button
+          disabled={refreshing}
+          type="button"
+          onClick={() => {
+            setRefreshing(true)
+            setRefreshError(undefined)
+            void props.onRefresh()
+              .catch(error => setRefreshError(error instanceof Error ? error.message : String(error)))
+              .finally(() => setRefreshing(false))
+          }}
+        >
+          {refreshing ? props.t('provider.aiLabRefreshing') : props.t('provider.aiLabRefresh')}
+        </button>
+      </div>
+    </header>
+  )
+
+  if (!provider || !capability) return (
+    <section className={styles.aiLab}>
+      {header}
+      {refreshError ? <p className={styles.aiLabError}>{refreshError}</p> : null}
+      {unavailableProfiles}
+      <p className={styles.empty}>{props.t('provider.aiLabEmpty')}</p>
+    </section>
+  )
 
   return (
     <section className={styles.aiLab}>
-      <header className={styles.sectionHeader}>
-        <h2>{props.t('provider.aiLabTitle')}</h2>
-        <div className={styles.aiLabHeaderMeta}>
-          <span>{props.providers.length}</span>
-          <button
-            disabled={refreshing}
-            type="button"
-            onClick={() => {
-              setRefreshing(true)
-              setRefreshError(undefined)
-              void props.onRefresh()
-                .catch(error => setRefreshError(error instanceof Error ? error.message : String(error)))
-                .finally(() => setRefreshing(false))
-            }}
-          >
-            {refreshing ? props.t('provider.aiLabRefreshing') : props.t('provider.aiLabRefresh')}
-          </button>
-        </div>
-      </header>
+      {header}
       {refreshError ? <p className={styles.aiLabError}>{refreshError}</p> : null}
       {unavailableProfiles}
       <div className={styles.aiLabSelectors}>
@@ -265,11 +272,19 @@ function CreateAccountForm(props: {
   const [rawCredential, setRawCredential] = useState('{}')
   const [error, setError] = useState<string>()
   const [creating, setCreating] = useState(false)
+  const submitting = useRef(false)
   const credentialRequired = (props.provider.credentialFields ?? []).some(field => field.required)
     || (Array.isArray(props.provider.credentialSchema?.required) && props.provider.credentialSchema.required.length > 0)
+  const active = useRef(true)
+  useEffect(() => {
+    active.current = true
+    return () => { active.current = false }
+  }, [])
 
   async function submit(event: FormEvent) {
     event.preventDefault()
+    if (submitting.current) return
+    submitting.current = true
     setCreating(true)
     setError(undefined)
     try {
@@ -285,7 +300,7 @@ function CreateAccountForm(props: {
         setRawCredential('{}')
       } else {
         const id = await props.onCreate({ providerExtensionId: props.provider.id, ...values })
-        if (id) {
+        if (id && active.current) {
           setCredential(createDraft(props.provider.credentialFields ?? []))
           setRawCredential('{}')
           props.onCreated?.(id)
@@ -294,6 +309,7 @@ function CreateAccountForm(props: {
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : String(createError))
     } finally {
+      submitting.current = false
       setCreating(false)
     }
   }
@@ -301,7 +317,7 @@ function CreateAccountForm(props: {
   return (
     <details className={styles.createAccount}>
       <summary>{props.t(props.account ? 'provider.aiLabConfigureAccount' : 'provider.aiLabCreateAccount')}</summary>
-      <form className={styles.aiLabForm} onSubmit={submit}>
+      <form className={styles.aiLabForm} inert={creating} onSubmit={submit}>
         <label>
           <span>{props.t('provider.name')}</span>
           <input required value={displayName} onChange={event => setDisplayName(event.target.value)} />
@@ -348,9 +364,17 @@ function CreateProfileForm(props: {
   const [rawConfig, setRawConfig] = useState(() => JSON.stringify(props.profile?.config ?? {}, null, 2))
   const [error, setError] = useState<string>()
   const [creating, setCreating] = useState(false)
+  const submitting = useRef(false)
+  const active = useRef(true)
+  useEffect(() => {
+    active.current = true
+    return () => { active.current = false }
+  }, [])
 
   async function submit(event: FormEvent) {
     event.preventDefault()
+    if (submitting.current) return
+    submitting.current = true
     setCreating(true)
     setError(undefined)
     try {
@@ -366,11 +390,12 @@ function CreateProfileForm(props: {
           capabilityId: props.capability.id,
           ...values,
         })
-        if (id) props.onCreated?.(id)
+        if (id && active.current) props.onCreated?.(id)
       }
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : String(createError))
     } finally {
+      submitting.current = false
       setCreating(false)
     }
   }
@@ -378,7 +403,7 @@ function CreateProfileForm(props: {
   return (
     <details className={styles.createAccount}>
       <summary>{props.t(props.profile ? 'provider.aiLabConfigureProfile' : 'provider.aiLabCreateProfile')}</summary>
-      <form className={styles.aiLabForm} onSubmit={submit}>
+      <form className={styles.aiLabForm} inert={creating} onSubmit={submit}>
         <label>
           <span>{props.t('provider.name')}</span>
           <input required value={displayName} onChange={event => setDisplayName(event.target.value)} />
@@ -412,9 +437,12 @@ function InvocationForm(props: {
   const [output, setOutput] = useState<AiGatewayInvokeResult>()
   const [error, setError] = useState<string>()
   const [running, setRunning] = useState(false)
+  const submitting = useRef(false)
 
   async function invoke(event: FormEvent) {
     event.preventDefault()
+    if (submitting.current) return
+    submitting.current = true
     setRunning(true)
     setError(undefined)
     try {
@@ -426,12 +454,13 @@ function InvocationForm(props: {
       setOutput(undefined)
       setError(invokeError instanceof Error ? invokeError.message : String(invokeError))
     } finally {
+      submitting.current = false
       setRunning(false)
     }
   }
 
   return (
-    <form className={styles.aiLabForm} onSubmit={invoke}>
+    <form className={styles.aiLabForm} inert={running} onSubmit={invoke}>
       <ConfigEditor
         fields={props.capability.inputFields ?? []}
         schema={props.capability.inputSchema}

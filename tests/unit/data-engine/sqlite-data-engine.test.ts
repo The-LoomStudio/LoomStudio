@@ -1,4 +1,4 @@
-import { createSqliteDataEngine, DataEngineError } from '@loom-studio/data-engine'
+import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { describe, expect, it, vi } from 'vitest'
 
 function createTestEngine() {
@@ -71,7 +71,7 @@ describe('sqlite data engine', () => {
 
     await expect(engine.transact({ actor: { kind: 'system', id: 'test' } }, async tx => {
       tx.database.prepare('INSERT INTO test_notes (id) VALUES (?)').run('empty')
-    })).rejects.toMatchObject<DataEngineError>({ code: 'data.transaction_empty' })
+    })).rejects.toMatchObject({ code: 'data.transaction_empty' })
 
     expect(engine.database.prepare('SELECT id FROM test_notes').all()).toEqual([])
     expect(engine.database.prepare('SELECT id FROM changesets').all()).toEqual([])
@@ -156,12 +156,12 @@ describe('sqlite data engine', () => {
     await expect(engine.transact({ actor: { kind: 'system', id: 'test' } }, async () => {
       await engine.read(database => database.prepare('SELECT 1').get())
       return 'done'
-    })).rejects.toMatchObject<DataEngineError>({ code: 'data.reentrant_transaction' })
+    })).rejects.toMatchObject({ code: 'data.reentrant_transaction' })
 
     await expect(engine.transact({ actor: { kind: 'system', id: 'test' } }, async () => {
       await engine.transact({ actor: { kind: 'system', id: 'test' } }, async () => 'nested')
       return 'done'
-    })).rejects.toMatchObject<DataEngineError>({ code: 'data.reentrant_transaction' })
+    })).rejects.toMatchObject({ code: 'data.reentrant_transaction' })
 
     engine.close()
   })
@@ -173,10 +173,10 @@ describe('sqlite data engine', () => {
     expect(() => engine.migrate({ namespace: 'test.closed', migrations: [] })).toThrowError(
       expect.objectContaining({ code: 'data.engine_closed' }),
     )
-    await expect(engine.read(database => database.prepare('SELECT 1').get())).rejects.toMatchObject<DataEngineError>({
+    await expect(engine.read(database => database.prepare('SELECT 1').get())).rejects.toMatchObject({
       code: 'data.engine_closed',
     })
-    await expect(engine.transact({ actor: { kind: 'system', id: 'test' } }, async () => 'test')).rejects.toMatchObject<DataEngineError>({
+    await expect(engine.transact({ actor: { kind: 'system', id: 'test' } }, async () => 'test')).rejects.toMatchObject({
       code: 'data.engine_closed',
     })
   })
@@ -206,7 +206,7 @@ describe('sqlite data engine', () => {
     release()
     await expect(operation).resolves.toEqual({ value: 1 })
     await expect(closing).resolves.toBeUndefined()
-    await expect(engine.read(() => 1)).rejects.toMatchObject<DataEngineError>({
+    await expect(engine.read(() => 1)).rejects.toMatchObject({
       code: 'data.engine_closed',
     })
   })

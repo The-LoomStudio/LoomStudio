@@ -3,6 +3,7 @@ import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createPromptResourceStore } from '@loom-studio/application-data'
 import { describe, expect, it, vi } from 'vitest'
+import { extensionInstallationId } from '@loom-studio/extension-sdk'
 
 function fixture() {
   let nextId = 0
@@ -11,7 +12,7 @@ function fixture() {
   const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
   const documents = createSqliteDocumentStore({ engine })
   const promptResources = createPromptResourceStore({ engine, createId, now })
-  const runtime = createApplicationRuntime({ dataEngine: engine, documents, promptResources, createId, now })
+  const runtime = createApplicationRuntime({ dataEngine: engine, documents, promptResources })
   return { engine, documents, runtime }
 }
 
@@ -21,6 +22,31 @@ const payload = {
 }
 
 describe('Portable Payload dangling references', () => {
+  it('rebinds imported payload ownership to the new Card without exporting installation identity', async () => {
+    const { engine, runtime } = fixture()
+    try {
+      const artifact = {
+        schemaVersion: 4 as const, artifactId: 'payload-card', displayName: 'Payload Card',
+        card: { name: 'Payload Card' }, contextAssets: [], extensionPayloads: [{ id: 'config', ...payload }],
+      }
+      const first = await runtime.importCardBundle({ artifact })
+      const exported = await runtime.exportCardBundle({ cardId: first.card.id })
+      expect(exported.artifact.extensionPayloads).toEqual(artifact.extensionPayloads)
+      const second = await runtime.importCardBundle({ artifact: exported.artifact })
+      for (const card of [first.card, second.card]) {
+        const ownerInstallationId = extensionInstallationId(payload.packageId, { kind: 'card', cardId: card.id })
+        const listed = await runtime.listPortableExtensionPayloads({ packageId: payload.packageId, ownerInstallationId })
+        expect(listed.payloads.map(item => item.id)).toEqual(card.portableExtensionPayloadIds)
+        const current = listed.payloads[0]!
+        const changed = await runtime.updatePortableExtensionPayload({ payloadId: current.id, expectedVersion: current.version, payload: { ...payload, content: '{"new":true}' } })
+        expect(changed.payload.ownerInstallationId).toBe(ownerInstallationId)
+      }
+      expect((await runtime.listPortableExtensionPayloads({ packageId: payload.packageId, ownerInstallationId: null })).payloads).toEqual([])
+    } finally {
+      await engine.close()
+    }
+  })
+
   it('keeps bound Cards unchanged and fails reads and exports explicitly after deletion', async () => {
     const { engine, runtime, documents } = fixture()
     try {

@@ -1,8 +1,10 @@
 import type { DocumentRecord, DocumentStore, DocumentTransaction, SqliteDocumentStore } from '@loom-studio/document-store'
 import type { PromptResourceStore } from '@loom-studio/application-data'
 import { createId, nowIso } from '@loom-studio/shared'
+import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import { normalizeOpening, normalizeOptionalString, normalizePreset, normalizeSettingLayer } from './card.js'
 import { normalizeMacros } from './card.js'
+import { normalizeMacroOptions } from '@loom-studio/shared'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments, readDocument, toVersioned, writeDocument } from '../foundation/document-store.js'
 import type {
@@ -35,6 +37,7 @@ import type {
   ImportBundleContent,
   PortableExtensionPayloadArtifact,
   PortableExtensionPayloadContent,
+  PromptResourceContent,
   PromptResourceNode,
 } from './workspace-types.js'
 import {
@@ -47,11 +50,7 @@ import {
 } from './workspace-codec.js'
 
 export {
-  applyDefaultPromptProjection,
-  isCardBundleArtifact,
   isPromptResourceArtifact,
-  normalizeCardBundleArtifact,
-  normalizePortableExtensionPayloadArtifact,
   normalizePromptResourceArtifact,
 } from './workspace-codec.js'
 
@@ -92,7 +91,9 @@ export async function importCardBundle(input: {
   const sourceArtifactRef = createSourceArtifactRef(artifact, timestamp, input.storedSourceArtifact)
   const contextAssets = await cloneConflictingPromptNodes(input.promptResources, artifact.contextAssets)
   const scriptAttachments = artifact.scriptAttachments ?? []
-  if (scriptAttachments.length > 0 && !input.blobs) throw new Error('Blob Store is required to import Loom Script attachments')
+  const documentParticipant = requireSqliteDocumentParticipant(input.documents)
+  const extensionPackages = artifact.extensionPackages ?? []
+  if ((scriptAttachments.length > 0 || extensionPackages.length > 0) && !input.blobs) throw new Error('Blob Store is required to import Card attachments')
   const preparedScriptResults = await Promise.allSettled(scriptAttachments.map(async attachment => ({
     attachment,
     metadata: parseLoomScriptSource(attachment.script.source),
@@ -109,8 +110,19 @@ export async function importCardBundle(input: {
     await Promise.all(preparedScripts.map(item => input.blobs!.discardPreparedWrite(item.prepared)))
     throw failedPreparation.reason
   }
+  const preparedPackageResults = await Promise.allSettled(extensionPackages.map(async archive => ({
+    archive,
+    prepared: await input.blobs!.prepareWrite({
+      source: Buffer.from(archive.archiveBase64, 'base64'), mediaType: 'application/zip',
+    }),
+  })))
+  const preparedPackages = preparedPackageResults.flatMap(result => result.status === 'fulfilled' ? [result.value] : [])
+  const failedPackagePreparation = preparedPackageResults.find((result): result is PromiseRejectedResult => result.status === 'rejected')
+  if (failedPackagePreparation) {
+    await Promise.all([...preparedScripts, ...preparedPackages].map(item => input.blobs!.discardPreparedWrite(item.prepared)))
+    throw failedPackagePreparation.reason
+  }
 
-  const documentParticipant = requireSqliteDocumentParticipant(input.documents)
   let transaction: {
     value: { value: { card: DocumentRecord<CardSourceContent>; importBundle: DocumentRecord<ImportBundleContent> } }
   } | undefined
@@ -163,6 +175,7 @@ export async function importCardBundle(input: {
           type: applicationDocumentTypes.portableExtensionPayload,
           content: {
             ...structuredClone(portablePayload),
+            ownerInstallationId: extensionInstallationId(portablePayload.packageId, { kind: 'card', cardId }),
             artifactPayloadId,
             createdAt: timestamp,
             updatedAt: timestamp,
@@ -260,6 +273,11 @@ export async function importCardBundle(input: {
           media: artifact.card.media,
           importBundleId,
           portableExtensionPayloadIds,
+          extensionPackages: preparedPackages.map(item => ({
+            packageId: item.archive.packageId,
+            version: item.archive.version,
+            blobId: input.blobs!.participateWrite(dataTx, item.prepared).blob.id,
+          })),
           promptResourceIds: resourceIds,
           ...(artifact.externalContextAssetIds !== undefined ? {
             externalPromptResourceIds: resourceIds.filter((_, index) =>
@@ -274,6 +292,7 @@ export async function importCardBundle(input: {
           opening: normalizeOpening(artifact.card.opening),
           settingLayer: normalizeSettingLayer(artifact.card.settingLayer, undefined),
           ...(artifact.card.macros !== undefined ? { macros: normalizeMacros(artifact.card.macros, 'Card') } : {}),
+          ...(artifact.card.macroOptions !== undefined ? { macroOptions: normalizeMacroOptions(artifact.card.macroOptions) } : {}),
           ...(artifact.card.stateContributionIds !== undefined ? { stateContributionIds: [...artifact.card.stateContributionIds] } : {}),
           createdAt: timestamp,
           updatedAt: timestamp,
@@ -306,7 +325,7 @@ export async function importCardBundle(input: {
     })
     })
   } catch (error) {
-    await Promise.all(preparedScripts.map(item => input.blobs?.discardPreparedWrite(item.prepared)))
+    await Promise.all([...preparedScripts, ...preparedPackages].map(item => input.blobs?.discardPreparedWrite(item.prepared)))
     throw error
   }
 
@@ -388,6 +407,13 @@ export async function exportCardArtifact(input: {
     .map(document => stripDocumentMetadata(document.content))
   return {
     ...buildExportArtifact({ card, contextAssets, stateTemplates, extensionPayloads, scriptAttachments, importBundle }),
+    extensionPackages: await Promise.all((card.content.extensionPackages ?? []).map(async archive => {
+      if (!input.blobs) throw new Error('Blob Store is required to export embedded extension packages')
+      return {
+        packageId: archive.packageId, version: archive.version,
+        archiveBase64: Buffer.from(await input.blobs.read(archive.blobId)).toString('base64'),
+      }
+    })),
     ...(card.content.externalPromptResourceIds !== undefined ? {
       externalContextAssetIds: contextAssets.filter((_, index) =>
         card.content.externalPromptResourceIds!.includes(card.content.promptResourceIds![index]!)).map(node => node.id),
@@ -439,6 +465,7 @@ function buildExportArtifact(input: {
       settingLayer: cardContent.settingLayer,
       media: cardContent.media,
       macros: cardContent.macros,
+      macroOptions: cardContent.macroOptions,
       stateContributionIds: cardContent.stateContributionIds,
     },
     contextAssets: input.contextAssets,
@@ -530,6 +557,7 @@ export async function readPromptResourceInputs(input: {
   resourceIds: string[]
   variables: VariableRenderContext
   onMissingResource?: (resourceId: string) => void
+  canReadResource?: (resource: PromptResourceContent & { id: string; version: number }) => boolean
 }): Promise<{
   sourceNodes: SourceNode[]
   contributions: PromptContribution[]
@@ -544,7 +572,9 @@ export async function readPromptResourceInputs(input: {
       input.onMissingResource(resourceId)
       continue
     }
-    resources.push(fromStoredResource(resource))
+    const mapped = fromStoredResource(resource)
+    if (input.canReadResource && !input.canReadResource(mapped)) continue
+    resources.push(mapped)
   }
   return collectPromptInputsFromNodes(resources.map(resource => resource.rootNode), input.variables)
 }

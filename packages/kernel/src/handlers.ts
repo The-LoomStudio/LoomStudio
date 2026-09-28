@@ -13,6 +13,7 @@ import type {
 import type {
   EventCapabilityCategory,
   ExtensionAssetCapability,
+  ExtensionInstallationTarget,
 } from '@loom-studio/extension-sdk'
 import type { LoomRunInput } from '@loom-studio/loom-runner'
 import { isJsonObject, type JsonValue } from '@loom-studio/shared'
@@ -123,10 +124,56 @@ export function registerStageOneHandlers(
     }
   })
 
-  register('extensions.listPackages', () => {
+  register('extensions.listPackages', params => {
+    const target = readOptionalExtensionTarget(params)
     return {
-      items: options.extensionManager?.listPackages() ?? options.extensionHost.list(),
+      items: target ? requireExtensionManager(options).listPackages(target)
+        : options.extensionManager?.listPackages() ?? options.extensionHost.list(),
     } as unknown as JsonValue
+  })
+
+  register('extensions.installCardPackage', async (params, context) => {
+    const version = isRecord(params) ? params.expectedCardVersion : undefined
+    if (typeof version !== 'number' || !Number.isSafeInteger(version) || version < 1) throw new Error('expectedCardVersion must be a positive integer')
+    const cardId = readString(params, 'cardId')
+    const extensionPackage = await requireExtensionManager(options).installCardPackage({
+      cardId, packageId: readString(params, 'packageId'), expectedCardVersion: version,
+    })
+    eventBus.emit('extensions.changed', {
+      packageId: extensionPackage.packageId, target: { kind: 'card', cardId }, action: 'installed',
+    }, context)
+    return { package: extensionPackage }
+  })
+
+  register('extensions.uninstallCardPackage', async (params, context) => {
+    const version = isRecord(params) ? params.expectedInstallationVersion : undefined
+    if (typeof version !== 'number' || !Number.isSafeInteger(version) || version < 1) throw new Error('expectedInstallationVersion must be a positive integer')
+    const cardId = readString(params, 'cardId')
+    const extensionPackage = await requireExtensionManager(options).uninstallCardPackage({
+      cardId, packageId: readString(params, 'packageId'), expectedInstallationVersion: version,
+    })
+    eventBus.emit('extensions.changed', {
+      packageId: extensionPackage.packageId, target: { kind: 'card', cardId }, action: 'uninstalled',
+    }, context)
+    return { package: extensionPackage }
+  })
+
+  register('extensions.updateCardPackage', async (params, context) => {
+    const cardVersion = isRecord(params) ? params.expectedCardVersion : undefined
+    const installationVersion = isRecord(params) ? params.expectedInstallationVersion : undefined
+    if (typeof cardVersion !== 'number' || !Number.isSafeInteger(cardVersion) || cardVersion < 1
+      || typeof installationVersion !== 'number' || !Number.isSafeInteger(installationVersion) || installationVersion < 1) {
+      throw new Error('Card and installation versions must be positive integers')
+    }
+    const cardId = readString(params, 'cardId')
+    const extensionPackage = await requireExtensionManager(options).updateCardPackage({
+      cardId, packageId: readString(params, 'packageId'), packageVersion: readString(params, 'packageVersion'),
+      expectedCardVersion: cardVersion, expectedInstallationVersion: installationVersion,
+    })
+    eventBus.emit('extensions.changed', {
+      packageId: extensionPackage.packageId, target: { kind: 'card', cardId }, action: 'updated',
+    }, context)
+    return { package: extensionPackage }
   })
 
   register('extensions.installPackage', async (params, context) => {
@@ -154,6 +201,7 @@ export function registerStageOneHandlers(
   })
 
   register('extensions.uninstallPackage', async (params, context) => {
+    if (readOptionalExtensionTarget(params)?.kind === 'card') throw new Error('Use extensions.uninstallCardPackage for a Card installation')
     const manager = requireExtensionManager(options)
     const packageId = readString(params, 'packageId')
     const version = isRecord(params) && typeof params.version === 'string' ? params.version : undefined
@@ -171,8 +219,9 @@ export function registerStageOneHandlers(
     const packageId = readString(params, 'packageId')
     const moduleId = readString(params, 'moduleId')
     const grants = readExtensionCapabilityGrants(params)
-    const module = await manager.enableModule(packageId, moduleId, grants)
-    eventBus.emit('extensions.changed', { packageId, moduleId, action: 'enabled' }, context)
+    const target = readOptionalExtensionTarget(params)
+    const module = await manager.enableModule(packageId, moduleId, grants, target)
+    eventBus.emit('extensions.changed', { packageId, moduleId, ...(target ? { target } : {}), action: 'enabled' }, context)
     return { module }
   })
 
@@ -180,8 +229,9 @@ export function registerStageOneHandlers(
     const manager = requireExtensionManager(options)
     const packageId = readString(params, 'packageId')
     const moduleId = readString(params, 'moduleId')
-    const module = await manager.disableModule(packageId, moduleId)
-    eventBus.emit('extensions.changed', { packageId, moduleId, action: 'disabled' }, context)
+    const target = readOptionalExtensionTarget(params)
+    const module = await manager.disableModule(packageId, moduleId, target)
+    eventBus.emit('extensions.changed', { packageId, moduleId, ...(target ? { target } : {}), action: 'disabled' }, context)
     return { module }
   })
 
@@ -189,19 +239,84 @@ export function registerStageOneHandlers(
     const manager = requireExtensionManager(options)
     const packageId = readString(params, 'packageId')
     const moduleId = readString(params, 'moduleId')
-    const module = await manager.reloadModule(packageId, moduleId)
-    eventBus.emit('extensions.changed', { packageId, moduleId, action: 'reloaded' }, context)
+    const target = readOptionalExtensionTarget(params)
+    const module = await manager.reloadModule(packageId, moduleId, target)
+    eventBus.emit('extensions.changed', { packageId, moduleId, ...(target ? { target } : {}), action: 'reloaded' }, context)
     return { module }
   })
 
+  // ponytail: Expose targets after Manager grants and runtime consumers use installation identity.
   register('extensions.importPackageResources', async params => {
+    if (isRecord(params) && params.target !== undefined) throw new Error('Extension installation targets are not exposed by this endpoint yet')
     const manager = requireExtensionManager(options)
     return await manager.importPackageResources(readString(params, 'packageId'))
   })
 
   register('extensions.removePackageResources', async params => {
+    if (isRecord(params) && params.target !== undefined) throw new Error('Extension installation targets are not exposed by this endpoint yet')
     const manager = requireExtensionManager(options)
     return await manager.removePackageResources(readString(params, 'packageId'))
+  })
+
+  register('extensions.updatePackageResources', async params => {
+    if (isRecord(params) && params.target !== undefined) throw new Error('Extension installation targets are not exposed by this endpoint yet')
+    const expectedInstallationVersion = isRecord(params) ? params.expectedInstallationVersion : undefined
+    if (typeof expectedInstallationVersion !== 'number' || !Number.isSafeInteger(expectedInstallationVersion) || expectedInstallationVersion < 1) {
+      throw new Error('expectedInstallationVersion must be a positive integer')
+    }
+    return await requireExtensionManager(options).updatePackageResources({
+      packageId: readString(params, 'packageId'),
+      packageVersion: readString(params, 'packageVersion'),
+      expectedInstallationVersion,
+    })
+  })
+
+  register('extensions.exportPackage', async params => {
+    return await requireExtensionManager(options).exportPackage({
+      packageId: readString(params, 'packageId'),
+      version: readString(params, 'version'),
+    })
+  })
+
+  register('extensions.callPackageRpc', async (params, context) => {
+    const packageId = readString(params, 'packageId')
+    const method = readString(params, 'method')
+    if (!method.startsWith(`${packageId}.`)) throw new Error('Client extension RPC must use its package namespace')
+    const target = readOptionalExtensionTarget(params)
+    if (!target) throw new Error('Invalid Extension installation target')
+    return await kernel.callRpc(method, isRecord(params) ? params.params : undefined, {
+      ...context, callId: undefined, parentCallId: context.callId,
+      extensionTarget: target, expectedExtensionPackageId: packageId,
+    })
+  })
+
+  register('extensions.importCardPackageResources', async params => {
+    const version = isRecord(params) ? params.expectedCardVersion : undefined
+    if (typeof version !== 'number' || !Number.isSafeInteger(version) || version < 1) throw new Error('expectedCardVersion must be a positive integer')
+    return await requireExtensionManager(options).importCardPackageResources({
+      cardId: readString(params, 'cardId'), packageId: readString(params, 'packageId'), expectedCardVersion: version,
+    })
+  })
+
+  register('extensions.updateCardPackageResources', async params => {
+    const cardVersion = isRecord(params) ? params.expectedCardVersion : undefined
+    const installationVersion = isRecord(params) ? params.expectedInstallationVersion : undefined
+    if (typeof cardVersion !== 'number' || !Number.isSafeInteger(cardVersion) || cardVersion < 1
+      || typeof installationVersion !== 'number' || !Number.isSafeInteger(installationVersion) || installationVersion < 1) {
+      throw new Error('Card and installation versions must be positive integers')
+    }
+    return await requireExtensionManager(options).importCardPackageResources({
+      cardId: readString(params, 'cardId'), packageId: readString(params, 'packageId'), expectedCardVersion: cardVersion,
+      update: { packageVersion: readString(params, 'packageVersion'), expectedInstallationVersion: installationVersion },
+    })
+  })
+
+  register('extensions.removeCardPackageResources', async params => {
+    const version = isRecord(params) ? params.expectedInstallationVersion : undefined
+    if (typeof version !== 'number' || !Number.isSafeInteger(version) || version < 1) throw new Error('expectedInstallationVersion must be a positive integer')
+    return await requireExtensionManager(options).removeCardPackageResources({
+      cardId: readString(params, 'cardId'), packageId: readString(params, 'packageId'), expectedInstallationVersion: version,
+    })
   })
 
   register('extensions.getDiagnostics', params => {
@@ -243,12 +358,22 @@ export function registerStageOneHandlers(
   return registrations
 }
 
-export function requireExtensionManager(options: CreateKernelOptions): ExtensionManagementService {
+function requireExtensionManager(options: CreateKernelOptions): ExtensionManagementService {
   if (!options.extensionManager) throw new Error('Extension management is not configured')
   return options.extensionManager
 }
 
-export function readExtensionCapabilityGrants(params: JsonValue | undefined): ExtensionModuleCapabilityGrants | undefined {
+function readOptionalExtensionTarget(params: JsonValue | undefined): ExtensionInstallationTarget | undefined {
+  const value = isRecord(params) ? params.target : undefined
+  if (value === undefined) return undefined
+  if (isRecord(value) && value.kind === 'global') return { kind: 'global' }
+  if (isRecord(value) && value.kind === 'card' && typeof value.cardId === 'string' && value.cardId.trim()) {
+    return { kind: 'card', cardId: value.cardId }
+  }
+  throw new Error('Invalid Extension installation target')
+}
+
+function readExtensionCapabilityGrants(params: JsonValue | undefined): ExtensionModuleCapabilityGrants | undefined {
   if (!isRecord(params) || params.grants === undefined) return undefined
   if (!isRecord(params.grants)) throw new Error('extensions.enableModule grants must be an object')
   const subscriptions = params.grants['events.subscribe']
@@ -259,17 +384,22 @@ export function readExtensionCapabilityGrants(params: JsonValue | undefined): Ex
   if (assets !== undefined && (!Array.isArray(assets) || !assets.every(value => value === 'assets.publish' || value === 'assets.read'))) {
     throw new Error('extensions.enableModule grants.assets must contain assets.publish/assets.read')
   }
+  const ui = params.grants.ui
+  if (ui !== undefined && (!Array.isArray(ui) || !ui.every(value => value === 'ui.notify'))) {
+    throw new Error('extensions.enableModule grants.ui must contain ui.notify')
+  }
   return {
+    uiCapabilities: ui as Array<'ui.notify'> | undefined,
     eventCapabilities: subscriptions as EventCapabilityCategory[] | undefined,
     assetCapabilities: assets as ExtensionAssetCapability[] | undefined,
   }
 }
 
-export function isRecord(value: unknown): value is Record<string, JsonValue> {
+function isRecord(value: unknown): value is Record<string, JsonValue> {
   return isJsonObject(value)
 }
 
-export function readString(params: JsonValue | undefined, key: string): string {
+function readString(params: JsonValue | undefined, key: string): string {
   if (!isRecord(params) || typeof params[key] !== 'string') {
     throw new Error(`Expected string param: ${key}`)
   }
@@ -277,7 +407,7 @@ export function readString(params: JsonValue | undefined, key: string): string {
   return params[key]
 }
 
-export function toWriteDocumentInput(params: Record<string, JsonValue>, context: KernelRpcContext): WriteDocumentInput {
+function toWriteDocumentInput(params: Record<string, JsonValue>, context: KernelRpcContext): WriteDocumentInput {
   return {
     id: typeof params.id === 'string' ? params.id : undefined,
     type: readString(params, 'type'),
@@ -292,7 +422,7 @@ export function toWriteDocumentInput(params: Record<string, JsonValue>, context:
   }
 }
 
-export function toDeleteDocumentInput(params: Record<string, JsonValue>, context: KernelRpcContext): DeleteDocumentInput {
+function toDeleteDocumentInput(params: Record<string, JsonValue>, context: KernelRpcContext): DeleteDocumentInput {
   return {
     id: readString(params, 'id'),
     expectedVersion: typeof params.expectedVersion === 'number' ? params.expectedVersion : undefined,
@@ -304,7 +434,7 @@ export function toDeleteDocumentInput(params: Record<string, JsonValue>, context
   }
 }
 
-export function toRevertChangesetInput(params: Record<string, JsonValue>, context: KernelRpcContext): RevertChangesetInput {
+function toRevertChangesetInput(params: Record<string, JsonValue>, context: KernelRpcContext): RevertChangesetInput {
   return {
     changesetId: readString(params, 'changesetId'),
     reason: typeof params.reason === 'string' ? params.reason : undefined,
@@ -315,22 +445,22 @@ export function toRevertChangesetInput(params: Record<string, JsonValue>, contex
   }
 }
 
-export function actorFromContext(context: KernelRpcContext): ActorRef {
+function actorFromContext(context: KernelRpcContext): ActorRef {
   return context.clientId ? { kind: 'client', id: context.clientId } : { kind: 'kernel', id: 'kernel' }
 }
 
-export function readSafeDocumentMeta(params: Record<string, JsonValue>): WriteDocumentInput['meta'] {
+function readSafeDocumentMeta(params: Record<string, JsonValue>): WriteDocumentInput['meta'] {
   if (!isRecord(params.meta)) return undefined
   if (!isRecord(params.meta.source) || typeof params.meta.source.kind !== 'string') return undefined
   return { source: params.meta.source as DocumentSourceRef }
 }
 
-export function readExpectedVersion(params: Record<string, JsonValue>): WriteDocumentInput['expectedVersion'] {
+function readExpectedVersion(params: Record<string, JsonValue>): WriteDocumentInput['expectedVersion'] {
   if (params.expectedVersion === 'new' || typeof params.expectedVersion === 'number') return params.expectedVersion
   return undefined
 }
 
-export function rejectForbiddenLoomRunFields(params: Record<string, JsonValue>): void {
+function rejectForbiddenLoomRunFields(params: Record<string, JsonValue>): void {
   const forbidden = ['messages', 'model', 'temperature', 'tools', 'toolChoice', 'chatId', 'sessionId', 'provider']
   const found = forbidden.filter(field => field in params)
   if (found.length > 0) {
@@ -338,7 +468,7 @@ export function rejectForbiddenLoomRunFields(params: Record<string, JsonValue>):
   }
 }
 
-export function toLoomRunInput(params: Record<string, JsonValue>): LoomRunInput {
+function toLoomRunInput(params: Record<string, JsonValue>): LoomRunInput {
   if (!Array.isArray(params.fragments)) throw new Error('loom.run fragments must be an array')
   if (!Array.isArray(params.passes)) throw new Error('loom.run passes must be an array')
   return {
@@ -349,7 +479,7 @@ export function toLoomRunInput(params: Record<string, JsonValue>): LoomRunInput 
   }
 }
 
-export function readTraceOptions(value: JsonValue | undefined): LoomRunInput['trace'] {
+function readTraceOptions(value: JsonValue | undefined): LoomRunInput['trace'] {
   if (!isRecord(value)) return undefined
   return {
     enabled: typeof value.enabled === 'boolean' ? value.enabled : undefined,
@@ -383,12 +513,13 @@ export function summarizeDocumentCommit(commit: DataCommitFact, operations = rea
   }
 }
 
-export function summarizeDataOperation(operation: DataCommitOperation): JsonValue {
+function summarizeDataOperation(operation: DataCommitOperation): JsonValue {
   return {
     store: operation.store,
     kind: operation.kind,
     entityId: operation.entityId,
     entityType: operation.entityType,
+    ...(operation.scope ? { scope: operation.scope } : {}),
     ...(operation.fromVersion !== undefined ? { fromVersion: operation.fromVersion } : {}),
     ...(operation.toVersion !== undefined ? { toVersion: operation.toVersion } : {}),
   }
@@ -409,7 +540,7 @@ export function readDocumentOperations(commit: DataCommitFact): DataCommitOperat
   return commit.operations.filter(operation => operation.store === 'documents')
 }
 
-export function summarizeDocumentRollback(targetChangesetId: string, result: { commit: DataCommitFact }): JsonValue {
+function summarizeDocumentRollback(targetChangesetId: string, result: { commit: DataCommitFact }): JsonValue {
   return {
     targetChangesetId,
     ...summarizeDocumentCommit(result.commit) as Record<string, JsonValue>,

@@ -169,8 +169,15 @@ describe('Prompt Anchor System: @chat.session.post', () => {
     ]
 
     const result = compilePromptDataModel({ sourceNodes, contributions: activeContributions })
-    expect(result.messages.length).toBe(1)
-    const content = result.messages[0].content
+    expect(result.messages).toEqual([
+      { role: 'user', content: 'Historical dialogue', fragmentIds: ['session-content'] },
+      {
+        role: 'system',
+        content: 'Triggered dynamic lower setting entry\n\nJailbreak post-session instruction\n\nCurrent input',
+        fragmentIds: ['lower-setting-content', 'post-session-fallback', 'user-input'],
+      },
+    ])
+    const content = result.messages.map(message => message.content).join('\n')
 
     // In old preset fallback: Historical dialogue -> Triggered dynamic lower setting entry -> Jailbreak post-session instruction -> Current input
     const historyPos = content.indexOf('Historical dialogue')

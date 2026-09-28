@@ -1,6 +1,5 @@
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import type { RendererContributionDefinition } from '@loom-studio/extension-sdk'
-import type { MutationReceipt } from './common.js'
 
 export type HistorySource =
   | { kind: 'narrative'; timelineId: string; branchId: string }
@@ -8,9 +7,9 @@ export type HistorySource =
 
 export type TextTransformPhase = 'classify' | 'prompt' | 'display'
 
-export type TextPipelineConsumer = {
+type TextPipelineConsumer = {
   agentSessionId: string
-  agentProfileId: string
+  agentPresetId: string
   presetId: string
 }
 
@@ -55,7 +54,7 @@ export type TextTransformRule = TextTransformRuleDraft & { id: string; version: 
 
 // Runtime inspection entries share the persisted CRUD shape, but are kept as
 // explicit aliases so the client does not assemble an effective rule set.
-export type TextTransformRuleEntry = TextTransformRule
+type TextTransformRuleEntry = TextTransformRule
 
 export type TextExtractorDraft = {
   name: string
@@ -73,14 +72,14 @@ export type TextExtractorDraft = {
 export type TextExtractor = TextExtractorDraft & { id: string; version: number; createdAt: string; updatedAt: string }
   & { origin?: ExtensionPackageResourceOrigin }
 
-export type ExtensionPackageResourceOrigin = {
+type ExtensionPackageResourceOrigin = {
   kind: 'extension-package'
   packageId: string
   packageVersion: string
   contributionId: string
 }
 
-export type TextExtractorEntry = TextExtractor
+type TextExtractorEntry = TextExtractor
 
 export type HistoryProjectionSnapshot = {
   source: HistorySource
@@ -147,5 +146,3 @@ export type TextPipelineInspection = {
   }>
   snapshot: HistoryProjectionSnapshot
 }
-
-export type TextTransformMutationResult<T> = { mutation: MutationReceipt } & T

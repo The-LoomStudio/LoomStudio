@@ -66,7 +66,7 @@ describe('Prompt Resource keyset pagination', () => {
         const writer = store.transaction(tx)
         for (let index = 0; index < 501; index++) {
           const id = `resource-${String(index).padStart(3, '0')}`
-          writer.createResource({ actor, id, resourceKind: 'setting', rootNode: { id: `${id}-root`, label: id, kind: 'module', category: 'setting' } })
+          writer.createResource({ id, resourceKind: 'setting', rootNode: { id: `${id}-root`, label: id, kind: 'module', category: 'setting' } })
         }
       })
       let pages = 0

@@ -10,6 +10,7 @@ export type LogError = {
 }
 
 export type LogExtensionIdentity = {
+  installationId?: string
   packageId: string
   moduleId?: string
   instanceId?: string

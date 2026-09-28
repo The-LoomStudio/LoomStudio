@@ -1,12 +1,12 @@
 import { createAgentStore } from '@loom-studio/application-data'
 import { officialFakeModelId } from '@loom-studio/ai-gateway'
-import { createAgentToolRegistry, createApplicationRuntime, promptSlotIds, promptZoneIds, type ToolDefinition, type ToolRuntimeRegistration } from '@loom-studio/application-runtime'
+import { createAgentToolRegistry, createApplicationRuntime, type ToolDefinition, type ToolRuntimeRegistration } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createNarrativeStore } from '@loom-studio/application-data'
 import { createPromptResourceStore } from '@loom-studio/application-data'
 import { createMemoryLogSink, createRootLogger } from '@loom-studio/logging'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 function createTestRuntime(agentTools = createAgentToolRegistry([])) {
   let nextId = 0
@@ -32,11 +32,11 @@ async function createProfile(runtime: ReturnType<typeof createTestRuntime>['runt
     enabledModelIds: [officialFakeModelId],
   })
   const preset = await createPreset(runtime, 'Test Agent', instructions)
-  const profile = (await runtime.createAgentProfile({
-    name: 'Test Agent Profile',
-    presetId: preset.id,
+  const profile = (await runtime.updateAgentPreset({
+    name: 'Test Agent Preset',
+    agentPresetId: preset.id, expectedVersion: (await runtime.getPromptResource({ resourceId: preset.id })).resource.version,
     model: { providerProfileId: provider.providerProfile.id, modelId: officialFakeModelId },
-  })).agentProfile
+  })).agentPreset
   return { preset, profile }
 }
 
@@ -59,7 +59,7 @@ describe('application agent session lifecycle', () => {
     const { engine, runtime, logs } = createTestRuntime()
     try {
       const { profile } = await createProfile(runtime)
-      const { session } = await runtime.createAgentSession({ agentProfileId: profile.id })
+      const { session } = await runtime.createAgentSession({ agentPresetId: profile.id })
       const controller = new AbortController()
       controller.abort(reason)
       await expect(runtime.invokeAgentTurn({ agentSessionId: session.id, input: 'private-input' }, {
@@ -83,46 +83,75 @@ describe('application agent session lifecycle', () => {
     } finally { engine.close() }
   })
 
-  it('does not log a successful turn when the final Narrative commit fails', async () => {
+  it('does not create Session input when the initial Narrative append fails', async () => {
     const { engine, runtime, narratives, logs } = createTestRuntime()
     try {
       const { profile } = await createProfile(runtime)
-      const { session } = await runtime.createAgentSession({ agentProfileId: profile.id })
+      const { session } = await runtime.createAgentSession({ agentPresetId: profile.id })
       const card = await runtime.createCard({ name: 'private-name' })
       const timeline = await runtime.createNarrativeTimeline({ cardId: card.card.id })
-      const transaction = vi.spyOn(narratives, 'transaction').mockImplementation(() => { throw new Error('private-commit-error') })
-      await expect(runtime.invokeAgentTurn({
-        agentSessionId: session.id, input: 'private-input', narrativeTarget: { timelineId: timeline.timeline.id, commit: true },
+      const before = engine.database.prepare('SELECT COUNT(*) AS count FROM changesets').get()
+      engine.database.exec(`CREATE TRIGGER fail_input_append BEFORE INSERT ON narrative_nodes
+        BEGIN SELECT RAISE(ABORT, 'private-commit-error'); END`)
+      await expect(runtime.appendNarrativeInput({
+        timelineId: timeline.timeline.id, branchId: timeline.branch.id,
+        nodeId: 'failed-input', expectedHeadNodeId: timeline.branch.headNodeId ?? null, content: 'private-input',
       })).rejects.toThrow('private-commit-error')
-      transaction.mockRestore()
-      const events = logs.list().map(log => log.event)
-      expect(events).toContain('step.completed')
-      expect(events.slice(-3)).toEqual(['commit.started', 'commit.failed', 'run.failed'])
-      expect(events).not.toContain('run.completed')
+      expect(engine.database.prepare('SELECT COUNT(*) AS count FROM changesets').get()).toEqual(before)
+      expect((await runtime.getAgentTranscriptPage({ agentSessionId: session.id })).entries).toEqual([])
+      expect(await narratives.getNode('failed-input')).toBeNull()
+      expect(logs.list().some(log => log.event === 'run.started')).toBe(false)
       expect(JSON.stringify(logs.list())).not.toContain('private')
     } finally { engine.close() }
   })
 
-  it('reports cancellation during commit without hiding an already committed Narrative', async () => {
-    const { engine, runtime, narratives, logs } = createTestRuntime()
+  it('returns the original append receipt on concurrent and later explicit retries', async () => {
+    const { engine, runtime } = createTestRuntime()
     try {
-      const { profile } = await createProfile(runtime)
-      const { session } = await runtime.createAgentSession({ agentProfileId: profile.id })
       const card = await runtime.createCard({ name: 'test' })
       const timeline = await runtime.createNarrativeTimeline({ cardId: card.card.id })
-      const controller = new AbortController()
-      const transaction = narratives.transaction.bind(narratives)
-      vi.spyOn(narratives, 'transaction').mockImplementation(dataTx => {
-        controller.abort('user-cancel')
-        return transaction(dataTx)
+      const input = {
+        timelineId: timeline.timeline.id, branchId: timeline.branch.id,
+        nodeId: 'stable-input', expectedHeadNodeId: null, content: 'test',
+      }
+      const commits: string[] = []
+      const subscription = engine.subscribeCommits(commit => commits.push(commit.changesetId))
+      const [first, second] = await Promise.all([runtime.appendNarrativeInput(input), runtime.appendNarrativeInput(input)])
+      expect(second).toEqual(first)
+      expect(commits).toEqual([first.mutation.changesetId])
+      await runtime.appendNarrativeInput({ ...input, nodeId: 'later-input', expectedHeadNodeId: first.node.id, content: 'later' })
+      const count = engine.database.prepare('SELECT COUNT(*) AS count FROM changesets').get()
+      expect((await runtime.appendNarrativeInput(input)).mutation).toEqual(first.mutation)
+      expect(engine.database.prepare('SELECT COUNT(*) AS count FROM changesets').get()).toEqual(count)
+      expect((await runtime.getNarrativePage({ timelineId: timeline.timeline.id })).nodes.map(node => node.id)).toEqual(['stable-input', 'later-input'])
+      await runtime.editNarrativeNode({
+        timelineId: input.timelineId, branchId: input.branchId, nodeId: input.nodeId,
+        expectedHeadNodeId: 'later-input', expectedRaw: 'test', raw: 'edited branch copy',
       })
-      const result = await runtime.invokeAgentTurn({
-        agentSessionId: session.id, input: 'test', narrativeTarget: { timelineId: timeline.timeline.id, commit: true },
-      }, { abortSignal: controller.signal })
-      expect(result.narrative?.nodes).toHaveLength(2)
-      expect(logs.list().at(-1)).toMatchObject({ event: 'run.cancelled', data: { narrativeCommitted: true, outcome: 'cancelled' } })
-      expect(logs.list().some(record => record.event === 'run.completed')).toBe(false)
+      const afterEdit = engine.database.prepare('SELECT COUNT(*) AS count FROM changesets').get()
+      const retried = await runtime.appendNarrativeInput(input)
+      expect(retried.node).toEqual(first.node)
+      expect(retried.mutation).toEqual(first.mutation)
+      expect(engine.database.prepare('SELECT COUNT(*) AS count FROM changesets').get()).toEqual(afterEdit)
+      subscription.dispose()
     } finally { engine.close() }
+  })
+
+  it('rejects conflicting IDs, parents, branches and stale heads without writing', async () => {
+    const { engine, runtime } = createTestRuntime()
+    try {
+      const card = await runtime.createCard({ name: 'Conflict' })
+      const timeline = await runtime.createNarrativeTimeline({ cardId: card.card.id })
+      const input = { timelineId: timeline.timeline.id, branchId: timeline.branch.id, nodeId: 'input', expectedHeadNodeId: null, content: 'original' }
+      await runtime.appendNarrativeInput(input)
+      const fork = await runtime.forkNarrativeBranch({ timelineId: timeline.timeline.id, fromBranchId: timeline.branch.id, fromNodeId: input.nodeId })
+      const count = engine.database.prepare('SELECT COUNT(*) AS count FROM changesets').get()
+      for (const change of [{ content: 'different' }, { expectedHeadNodeId: 'different' }, { branchId: fork.branch.id }, { timelineId: 'other' }]) {
+        await expect(runtime.appendNarrativeInput({ ...input, ...change })).rejects.toMatchObject({ code: 'narrative.input_conflict' })
+      }
+      await expect(runtime.appendNarrativeInput({ ...input, nodeId: 'stale-head' })).rejects.toMatchObject({ code: 'narrative.head_conflict' })
+      expect(engine.database.prepare('SELECT COUNT(*) AS count FROM changesets').get()).toEqual(count)
+    } finally { await engine.close() }
   })
   it('exports and imports a Timeline archive with State history', async () => {
     const { engine, runtime } = createTestRuntime()
@@ -217,18 +246,18 @@ describe('application agent session lifecycle', () => {
       const card = await runtime.createCard({ name: 'Bound Story', opening: 'BOUND_OPENING' })
       const timeline = await runtime.createNarrativeTimeline({ cardId: card.card.id })
       const { profile } = await createProfile(runtime)
-      const { session } = await runtime.createAgentSession({ agentProfileId: profile.id, timelineId: timeline.timeline.id })
+      const { session } = await runtime.createAgentSession({ agentPresetId: profile.id, timelineId: timeline.timeline.id })
       const preview = await runtime.previewAgentTurn({ agentSessionId: session.id, input: 'Read context.' })
       expect(JSON.stringify(preview.projection.messages)).toContain('BOUND_OPENING')
       const result = await runtime.invokeAgentTurn({ agentSessionId: session.id, input: 'Read context.' })
-      expect(result.narrative).toBeUndefined()
+      expect(result).not.toHaveProperty('narrative')
       expect(result.agentSession.timelineId).toBe(timeline.timeline.id)
       expect(engine.database.prepare('SELECT COUNT(*) AS count FROM narrative_nodes').get()).toEqual({ count: 1 })
-      const standalone = await runtime.createAgentSession({ agentProfileId: profile.id })
+      const standalone = await runtime.createAgentSession({ agentPresetId: profile.id })
       const workspacePreview = await runtime.previewAgentTurn({ agentSessionId: standalone.session.id, input: 'Read context.' })
       expect(JSON.stringify(workspacePreview.projection.messages)).not.toContain('BOUND_OPENING')
       await runtime.previewAgentTurn({ agentSessionId: standalone.session.id, input: 'Read context.',
-        narrativeTarget: { timelineId: timeline.timeline.id, commit: false },
+        narrativeTarget: { timelineId: timeline.timeline.id },
       })
       expect((await runtime.getAgentSession({ agentSessionId: standalone.session.id })).session.timelineId).toBeUndefined()
     } finally {
@@ -243,8 +272,8 @@ describe('application agent session lifecycle', () => {
       const first = await runtime.createNarrativeTimeline({ cardId: card.card.id })
       const second = await runtime.createNarrativeTimeline({ cardId: card.card.id })
       const { profile } = await createProfile(runtime)
-      const { session } = await runtime.createAgentSession({ agentProfileId: profile.id, timelineId: first.timeline.id })
-      const input = { agentSessionId: session.id, input: 'Continue.', narrativeTarget: { timelineId: second.timeline.id, commit: true } }
+      const { session } = await runtime.createAgentSession({ agentPresetId: profile.id, timelineId: first.timeline.id })
+      const input = { agentSessionId: session.id, input: 'Continue.', narrativeTarget: { timelineId: second.timeline.id } }
       await expect(runtime.previewAgentTurn(input)).rejects.toThrow('timeline binding')
       await expect(runtime.invokeAgentTurn(input)).rejects.toThrow('timeline binding')
       expect((await runtime.getAgentTranscriptPage({ agentSessionId: session.id })).entries).toEqual([])
@@ -340,16 +369,16 @@ describe('application agent session lifecycle', () => {
       presetId: preset.id,
       mounts: [{ toolId: tool.id, orderIndex: 0, defaultEnabled: true, provider: { order: 3 } }],
     })
-    const profile = await firstRuntime.createAgentProfile({
+    const profile = await firstRuntime.updateAgentPreset({
       name: 'Tool Agent',
-      presetId: preset.id,
+      agentPresetId: preset.id, expectedVersion: (await firstRuntime.getPromptResource({ resourceId: preset.id })).resource.version,
       model: {
         providerProfileId: provider.providerProfile.id,
         modelId: officialFakeModelId,
       },
     })
     const session = await firstRuntime.createAgentSession({
-      agentProfileId: profile.agentProfile.id,
+      agentPresetId: profile.agentPreset.id,
     })
     const turn = await firstRuntime.invokeAgentTurn({
       agentSessionId: session.session.id,
@@ -394,7 +423,7 @@ describe('application agent session lifecycle', () => {
     engine.close()
   })
 
-  it('stores Agent Profile tool selection and previews active tools without executing them', async () => {
+  it('stores Agent Preset tool selection and previews active tools without executing them', async () => {
     const tool: ToolDefinition = {
       id: 'official/read_context',
       owner: { namespace: 'official' },
@@ -425,28 +454,29 @@ describe('application agent session lifecycle', () => {
       mounts: [{
         toolId: tool.id,
         orderIndex: 0,
-        defaultEnabled: false,
+        defaultEnabled: true,
         activation: { kind: 'keyword', keywords: ['context'] },
         content: { targetAnchorId: '@chat.tools', localDepth: 5 },
       }],
     })
-    const profile = (await runtime.createAgentProfile({
-      name: 'Tool Agent', presetId: preset.id,
+    const profile = (await runtime.updateAgentPreset({
+      name: 'Tool Agent', agentPresetId: preset.id, expectedVersion: (await runtime.getPromptResource({ resourceId: preset.id })).resource.version,
       model: { providerProfileId: provider.providerProfile.id, modelId: officialFakeModelId },
-      toolOverrides: { [tool.id]: true },
-    })).agentProfile
+    })).agentPreset
 
-    expect(profile.toolOverrides).toEqual({ [tool.id]: true })
+    expect((await runtime.listPresetToolMounts({ presetId: profile.id })).mounts[0]?.defaultEnabled).toBe(true)
     expect((await runtime.listAgentTools()).tools).toEqual([
       expect.objectContaining(tool),
     ])
-    const session = await runtime.createAgentSession({ agentProfileId: profile.id })
+    const session = await runtime.createAgentSession({ agentPresetId: profile.id })
     const inactive = await runtime.previewAgentTurn({ agentSessionId: session.session.id, input: 'Hello.' })
     const active = await runtime.previewAgentTurn({ agentSessionId: session.session.id, input: 'Read context.' })
     expect(inactive.toolExposures).toEqual([])
     expect(active.toolExposures).toEqual([expect.objectContaining({ toolId: tool.id, transport: 'content' })])
     expect(active.projection.messages.some((msg: any) => msg.fragmentIds.some((id: string) => id.includes('agent-tools')))).toBe(true)
-    await expect(runtime.updateAgentProfile({ agentProfileId: profile.id, toolOverrides: { 'missing/tool': true } }))
+    await expect(runtime.replacePresetToolMounts({
+      presetId: profile.id, mounts: [{ toolId: 'missing/tool', orderIndex: 0, defaultEnabled: true }],
+    }))
       .rejects.toThrow('not registered')
     engine.close()
   })
@@ -455,7 +485,7 @@ describe('application agent session lifecycle', () => {
     const { engine, runtime } = createTestRuntime()
     const { profile } = await createProfile(runtime)
     const created = await runtime.createAgentSession({
-      agentProfileId: profile.id,
+      agentPresetId: profile.id,
       title: 'Guide',
     }, {
       clientId: 'client-1',
@@ -475,7 +505,7 @@ describe('application agent session lifecycle', () => {
       .get(created.mutation.changesetId)
 
     expect(await runtime.getAgentSession({ agentSessionId: created.session.id })).toMatchObject({
-      session: { agentProfileId: profile.id, entryCount: 2 },
+      session: { agentPresetId: profile.id, entryCount: 2 },
     })
     expect(appended.entries.map(entry => entry.entry)).toEqual([
       { kind: 'message', role: 'user', content: 'Help me' },
@@ -488,7 +518,7 @@ describe('application agent session lifecycle', () => {
       call_id: 'call-1',
     })
 
-    await expect(runtime.deleteAgentProfile({ agentProfileId: profile.id })).resolves.toEqual({ deleted: true })
+    await expect(runtime.deleteAgentPreset({ agentPresetId: profile.id })).resolves.toMatchObject({ deleted: true })
     expect((await runtime.getAgentTranscriptPage({ agentSessionId: created.session.id })).entries).toEqual(page.entries)
     await runtime.deleteAgentSession({ agentSessionId: created.session.id })
     await expect(runtime.getAgentSession({ agentSessionId: created.session.id })).rejects.toThrow('Agent session not found')
@@ -497,13 +527,13 @@ describe('application agent session lifecycle', () => {
 
   it('requires the shared Prompt Resource Store and Data Engine', async () => {
     const { createInMemoryDocumentStore } = await import('@loom-studio/document-store')
-    expect(() => createApplicationRuntime({ documents: createInMemoryDocumentStore() })).toThrow('Prompt Resource Store is required')
+    expect(() => Reflect.apply(createApplicationRuntime, undefined, [{ documents: createInMemoryDocumentStore() }])).toThrow('Prompt Resource Store is required')
   })
 
   it('runs an Agent-only turn without creating Narrative data', async () => {
     const { engine, runtime } = createTestRuntime()
     const { profile } = await createProfile(runtime, 'Discuss without committing narrative.')
-    const created = await runtime.createAgentSession({ agentProfileId: profile.id })
+    const created = await runtime.createAgentSession({ agentPresetId: profile.id })
     const result = await runtime.invokeAgentTurn({
       agentSessionId: created.session.id,
       input: 'Discuss the next scene without writing it.',
@@ -513,7 +543,7 @@ describe('application agent session lifecycle', () => {
       user: { entry: { kind: 'message', role: 'user', content: 'Discuss the next scene without writing it.' } },
       assistant: { entry: { kind: 'message', role: 'assistant', content: 'Agent draft: Discuss the next scene without writing it.' } },
     })
-    expect(result.narrative).toBeUndefined()
+    expect(result).not.toHaveProperty('narrative')
     expect((await runtime.getAgentTranscriptPage({ agentSessionId: created.session.id })).entries).toHaveLength(5)
     expect(engine.database.prepare('SELECT COUNT(*) AS count FROM narrative_nodes').get()).toEqual({ count: 0 })
     engine.close()
@@ -539,15 +569,15 @@ describe('application agent session lifecycle', () => {
       config: {},
       enabledModelIds: [officialFakeModelId],
     })
-    const profile = await runtime.createAgentProfile({
+    const profile = await runtime.updateAgentPreset({
       name: 'Official Assistant',
-      presetId: preset.id,
+      agentPresetId: preset.id, expectedVersion: (await runtime.getPromptResource({ resourceId: preset.id })).resource.version,
       model: { providerProfileId: provider.providerProfile.id, modelId: officialFakeModelId },
     })
-    const session = await runtime.createAgentSession({ agentProfileId: profile.agentProfile.id })
+    const session = await runtime.createAgentSession({ agentPresetId: profile.agentPreset.id })
     const preview = await runtime.previewAgentTurn({ agentSessionId: session.session.id, input: 'What is Loom Studio?' })
 
-    expect(preview.messages.some(message => 'content' in message && message.content.includes('Loom Studio 是面向 AI 角色扮演'))).toBe(true)
+    expect(preview.messages.some(message => typeof message.content === 'string' && message.content.includes('Loom Studio 是面向 AI 角色扮演'))).toBe(true)
     expect(engine.database.prepare('SELECT COUNT(*) AS count FROM narrative_timelines').get()).toEqual({ count: 0 })
     engine.close()
   })
@@ -583,12 +613,12 @@ describe('application agent session lifecycle', () => {
       config: {},
       enabledModelIds: [officialFakeModelId],
     })
-    const profile = await runtime.createAgentProfile({
+    const profile = await runtime.updateAgentPreset({
       name: 'Projection Profile',
-      presetId: preset.id,
+      agentPresetId: preset.id, expectedVersion: (await runtime.getPromptResource({ resourceId: preset.id })).resource.version,
       model: { providerProfileId: provider.providerProfile.id, modelId: officialFakeModelId },
     })
-    const session = await runtime.createAgentSession({ agentProfileId: profile.agentProfile.id })
+    const session = await runtime.createAgentSession({ agentPresetId: profile.agentPreset.id })
     const preview = await runtime.previewAgentTurn({ agentSessionId: session.session.id, input: 'Act.' })
     const result = await runtime.invokeAgentTurn({ agentSessionId: session.session.id, input: 'Act.' })
 
@@ -633,18 +663,18 @@ describe('application agent session lifecycle', () => {
         phases: ['prompt'],
       },
     })
-    const firstSession = await runtime.createAgentSession({ agentProfileId: first.profile.id })
-    const secondSession = await runtime.createAgentSession({ agentProfileId: second.profile.id })
+    const firstSession = await runtime.createAgentSession({ agentPresetId: first.profile.id })
+    const secondSession = await runtime.createAgentSession({ agentPresetId: second.profile.id })
 
     const firstPreview = await runtime.previewAgentTurn({
       agentSessionId: firstSession.session.id,
       input: 'Continue.',
-      narrativeTarget: { timelineId: timeline.timeline.id, branchId: timeline.branch.id, commit: false },
+      narrativeTarget: { timelineId: timeline.timeline.id, branchId: timeline.branch.id },
     })
     const secondPreview = await runtime.previewAgentTurn({
       agentSessionId: secondSession.session.id,
       input: 'Continue.',
-      narrativeTarget: { timelineId: timeline.timeline.id, branchId: timeline.branch.id, commit: false },
+      narrativeTarget: { timelineId: timeline.timeline.id, branchId: timeline.branch.id },
     })
 
     expect(JSON.stringify(firstPreview.projection.messages)).toContain('FIRST_MARKER')
@@ -657,7 +687,7 @@ describe('application agent session lifecycle', () => {
   it('applies persisted Text Pipeline order overrides and appends new rules by default order', async () => {
     const { engine, runtime } = createTestRuntime()
     const { profile } = await createProfile(runtime)
-    const session = await runtime.createAgentSession({ agentProfileId: profile.id })
+    const session = await runtime.createAgentSession({ agentPresetId: profile.id })
     const appended = await runtime.appendAgentTranscriptEntries({
       agentSessionId: session.session.id,
       expectedEntryCount: 0,
@@ -755,7 +785,7 @@ describe('application agent session lifecycle', () => {
       },
     })
     const { profile } = await createProfile(runtime, 'Keep the conversation context.')
-    const session = await runtime.createAgentSession({ agentProfileId: profile.id })
+    const session = await runtime.createAgentSession({ agentPresetId: profile.id })
 
     await runtime.invokeAgentTurn({ agentSessionId: session.session.id, input: 'First.' })
     const second = await runtime.invokeAgentTurn({ agentSessionId: session.session.id, input: 'Second.' })
@@ -773,68 +803,73 @@ describe('application agent session lifecycle', () => {
     engine.close()
   })
 
-  it('commits the user input and final assistant output to an explicitly targeted Narrative branch', async () => {
+  it('delivers committed raw input to new Sessions without automatically appending assistant output', async () => {
     const { engine, runtime } = createTestRuntime()
     const card = await runtime.createCard({ name: 'Story', opening: 'Opening.' })
     const timeline = await runtime.createNarrativeTimeline({ cardId: card.card.id })
     const { profile } = await createProfile(runtime, 'Continue the accepted narrative.')
-    const agent = await runtime.createAgentSession({ agentProfileId: profile.id })
+    const agent = await runtime.createAgentSession({ agentPresetId: profile.id })
+    const appended = await runtime.appendNarrativeInput({
+      timelineId: timeline.timeline.id, branchId: timeline.branch.id, nodeId: 'accepted-input',
+      expectedHeadNodeId: timeline.branch.headNodeId!, content: 'Continue.',
+    })
+    const target = { timelineId: timeline.timeline.id, branchId: timeline.branch.id, inputNodeId: appended.node.id }
+    const preview = await runtime.previewAgentTurn({
+      agentSessionId: agent.session.id, input: 'Untrusted duplicate.', narrativeTarget: target,
+    })
+    expect(preview.messages.at(-1)).toMatchObject({ role: 'user', content: 'Continue.' })
+    expect((await runtime.getAgentTranscriptPage({ agentSessionId: agent.session.id })).entries).toEqual([])
+    expect((await runtime.getNarrativePage({ timelineId: timeline.timeline.id })).nodes).toHaveLength(2)
     const result = await runtime.invokeAgentTurn({
       agentSessionId: agent.session.id,
-      input: 'Continue.',
-      narrativeTarget: { timelineId: timeline.timeline.id, commit: true },
+      input: 'Untrusted duplicate.',
+      narrativeTarget: target,
     })
     const commit = engine.database.prepare('SELECT operations_json FROM changesets WHERE id = ?')
       .get(result.mutation.changesetId) as { operations_json: string }
 
-    expect(result.narrative).toMatchObject({
-      nodes: [
-        {
-          body: { raw: 'Continue.' },
-          source: {
-            agentSessionId: agent.session.id,
-            agentMessageId: result.entries.user.id,
-            runId: result.runId,
-            changesetId: result.mutation.changesetId,
-          },
-        },
-        {
-          body: { raw: 'Agent draft: Continue.' },
-          source: {
-            agentSessionId: agent.session.id,
-            agentMessageId: result.entries.assistant.id,
-            runId: result.runId,
-            changesetId: result.mutation.changesetId,
-          },
-        },
-      ],
-      node: {
-        body: { raw: 'Agent draft: Continue.' },
-        source: {
-          agentSessionId: agent.session.id,
-          agentMessageId: result.entries.assistant.id,
-          runId: result.runId,
-          changesetId: result.mutation.changesetId,
-        },
-      },
-    })
+    expect(result).not.toHaveProperty('narrative')
+    expect(result.entries.user.entry).toMatchObject({ kind: 'message', role: 'user', content: 'Continue.' })
+    expect(result.mutation.scope).toBe('agent-session-transcript')
 
     expect(result.projection.messages[0]).toMatchObject({
       role: 'system', content: expect.stringContaining('Continue the accepted narrative.'),
     })
-    expect(result.projection.messages.slice(-2)).toMatchObject([
-      { role: 'developer', content: 'Opening.' },
-      { role: 'user', content: 'Continue.' },
-    ])
-    expect(JSON.parse(commit.operations_json).map((operation: { entityType: string }) => operation.entityType)).toEqual([
-      'narrative.node',
-      'narrative.branch',
-      'narrative.timeline',
-      'narrative.node',
-      'narrative.branch',
-      'narrative.timeline',
-    ])
+    expect(result.projection.messages.at(-1)).toMatchObject({ role: 'user', content: 'Continue.' })
+    expect(JSON.parse(commit.operations_json).some((operation: { entityType: string }) => operation.entityType.startsWith('narrative.'))).toBe(false)
+    const nextSession = await runtime.createAgentSession({ agentPresetId: profile.id })
+    const redelivered = await runtime.invokeAgentTurn({ agentSessionId: nextSession.session.id, input: '', narrativeTarget: target })
+    expect(redelivered.entries.user.entry).toMatchObject({ content: 'Continue.' })
+    expect((await runtime.getNarrativePage({ timelineId: timeline.timeline.id })).nodes.map(node => node.body.raw)).toEqual(['Opening.', 'Continue.'])
     engine.close()
+  })
+
+  it('rejects missing and off-path inputs before Session preparation and retains input after delivery failure', async () => {
+    const { engine, runtime } = createTestRuntime()
+    try {
+      const card = await runtime.createCard({ name: 'Story', opening: 'Opening.' })
+      const timeline = await runtime.createNarrativeTimeline({ cardId: card.card.id })
+      const { profile, preset } = await createProfile(runtime)
+      const agent = await runtime.createAgentSession({ agentPresetId: profile.id })
+      const fork = await runtime.forkNarrativeBranch({ timelineId: timeline.timeline.id, fromBranchId: timeline.branch.id, fromNodeId: timeline.nodes[0]!.id })
+      const appended = await runtime.appendNarrativeInput({
+        timelineId: timeline.timeline.id, branchId: timeline.branch.id, nodeId: 'main-input',
+        expectedHeadNodeId: timeline.branch.headNodeId!, content: 'Persisted.',
+      })
+      for (const inputNodeId of ['missing', appended.node.id]) {
+        await expect(runtime.invokeAgentTurn({
+          agentSessionId: agent.session.id, input: 'forged',
+          narrativeTarget: { timelineId: timeline.timeline.id, branchId: fork.branch.id, inputNodeId },
+        })).rejects.toThrow()
+      }
+      await runtime.deletePromptResource({ resourceId: preset.id })
+      await expect(runtime.invokeAgentTurn({
+        agentSessionId: agent.session.id, input: 'forged',
+        narrativeTarget: { timelineId: timeline.timeline.id, branchId: timeline.branch.id, inputNodeId: appended.node.id },
+      })).rejects.toThrow('Prompt resource not found')
+      expect((await runtime.getAgentTranscriptPage({ agentSessionId: agent.session.id })).entries).toEqual([])
+      expect((await runtime.getNarrativePage({ timelineId: timeline.timeline.id })).nodes.at(-1)).toEqual(appended.node)
+    } finally { await engine.close() }
   })
 
   it('persists a failed Run boundary when the provider fails', async () => {
@@ -857,12 +892,12 @@ describe('application agent session lifecycle', () => {
       config: {},
       enabledModelIds: [officialFakeModelId],
     })
-    const profile = await runtime.createAgentProfile({
+    const profile = await runtime.updateAgentPreset({
       name: 'Failure Profile',
-      presetId: preset.id,
+      agentPresetId: preset.id, expectedVersion: (await runtime.getPromptResource({ resourceId: preset.id })).resource.version,
       model: { providerProfileId: provider.providerProfile.id, modelId: officialFakeModelId },
     })
-    const session = await runtime.createAgentSession({ agentProfileId: profile.agentProfile.id })
+    const session = await runtime.createAgentSession({ agentPresetId: profile.agentPreset.id })
 
     await expect(runtime.invokeAgentTurn({
       agentSessionId: session.session.id,

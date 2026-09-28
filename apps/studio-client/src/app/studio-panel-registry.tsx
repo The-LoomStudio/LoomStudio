@@ -6,11 +6,11 @@ import { useStudioLayoutStore } from '../shared/studio-shell/studio-layout-store
 import { useClientExtensionRuntime } from '../features/extension-renderers/model/use-client-extension-runtime.js'
 import { toast } from 'sonner'
 import type { RegisteredClientBackground } from '@loom-studio/extension-sdk'
+import { clientModuleKey } from '../features/extension-renderers/model/client-actions.js'
 import type { useStudioState } from './use-studio-state.js'
 import type { useStudioUiState } from './use-studio-ui-state.js'
 import type { useStudioNavigation } from '../shared/studio-shell/use-studio-navigation.js'
 import {
-  LazyAgentPanel,
   LazyCharacterPanel,
   LazyInspectorPanel,
   LazyLogViewer,
@@ -38,7 +38,7 @@ export function createStudioPanels(input: {
   assetWorkspaceId: string
   cardsBusy: boolean
   providerBusy: boolean
-  agentProfileBusy: boolean
+  agentPresetBusy: boolean
   activePresetId: string | undefined
   narrativeCharacterName?: string
   sourceCardId?: string
@@ -48,7 +48,7 @@ export function createStudioPanels(input: {
   setUiScale: (scale: number) => void
   backgrounds: readonly RegisteredClientBackground[]
 }): Record<StudioPanelId, (active: boolean) => ReactNode> {
-  const { state, uiState, navigation, rendererHost, clientExtensions, clientLogs, resourcePanels, assetWorkspaceId, cardsBusy, providerBusy, agentProfileBusy, activePresetId, sourceCardId, sessionBusy, openStateSource, uiScale, setUiScale, backgrounds } = input
+  const { state, uiState, navigation, rendererHost, clientExtensions, clientLogs, resourcePanels, assetWorkspaceId, cardsBusy, providerBusy, activePresetId, sourceCardId, sessionBusy, openStateSource, uiScale, setUiScale, backgrounds } = input
   const panels: Record<StudioPanelId, (active: boolean) => ReactNode> = {
     model: () => (
       <LazyModelPanel
@@ -66,23 +66,7 @@ export function createStudioPanels(input: {
         onUpdateProviderConnection={state.updateProviderConnection}
       />
     ),
-    agent: () => (
-      <LazyAgentPanel
-        presets={state.presets}
-        agentProfiles={state.agentProfiles}
-        tools={state.agentTools}
-        toolMounts={state.presetToolMounts}
-        busy={agentProfileBusy}
-        modelProfiles={state.modelProfiles}
-        providerAccounts={state.providerAccounts}
-        selectedAgentProfileId={state.selectedAgentProfileId}
-        t={state.t}
-        onCreate={state.createAgentProfile}
-        onDelete={state.deleteAgentProfile}
-        onSelect={state.selectAgentProfile}
-        onUpdate={state.updateAgentProfile}
-      />
-    ),
+    agent: resourcePanels.preset,
     play: active => active ? (
       <LazyPlayPanel
         character={panels.character(true)}
@@ -113,7 +97,7 @@ export function createStudioPanels(input: {
         activeTimeline={state.narrativeTimeline}
         agentChatSession={state.agentChatSession}
         allAgentSessions={state.allAgentSessions}
-        agentProfiles={state.agentProfiles}
+        agentPresets={state.agentPresets}
         api={state.api}
         branches={state.branches}
         cards={state.cards}
@@ -183,6 +167,11 @@ export function createStudioPanels(input: {
           navigation.openPanel('state')
         }}
         onOpenResourcePanel={resourceId => {
+          const resource = state.promptResources.find(item => item.id === resourceId)
+          if (resource) {
+            void navigation.openResource(resource.resourceKind === 'preset' ? 'agent' : 'resource', resource.id, resource.rootNode.id)
+            return
+          }
           navigation.openPanel('resource')
           if (resourceId) {
             useStudioLayoutStore.getState().openAssetDetail('resources', assetWorkspaceId, resourceId)
@@ -194,7 +183,7 @@ export function createStudioPanels(input: {
         routeCardId={navigation.route.panel === 'character' ? navigation.route.cardId : undefined}
       />
     ),
-    preset: resourcePanels.preset,
+    preset: () => null,
     resource: resourcePanels.resource,
     state: () => <LazyStudioStatePanel
       hasTimeline={Boolean(state.narrativeTimeline)}
@@ -275,12 +264,10 @@ export function createStudioPanels(input: {
         onNavigate={path => { void navigation.openPath(path) }}
         configRevision={clientExtensions.configRevision}
         extensionRuntime={state.api.extensionRuntime}
-        officialContent={state.officialContentApi}
-        models={state.modelProfiles}
-        onCreateAgent={state.createAgentProfile}
         extensionHost={clientExtensions.host}
         host={rendererHost}
         packages={clientExtensions.packages}
+        cardPackages={clientExtensions.cardPackages}
         serverDiagnostics={clientExtensions.serverDiagnostics}
         sessionHost={clientExtensions.sessionHost}
         settingScopeContext={{
@@ -292,6 +279,19 @@ export function createStudioPanels(input: {
         onDisable={clientExtensions.disable}
         onEnable={clientExtensions.enable}
         onImportResources={state.importExtensionPackageResources}
+        onAttachPackage={state.attachCardExtensionPackage}
+        embeddedPackageCard={state.selectedCardDetails}
+        onDetachPackage={state.detachCardExtensionPackage}
+        onInstallCardPackage={state.installCardPackage}
+        onUpdateCardPackage={state.updateCardPackage}
+        onUninstallCardPackage={state.uninstallCardPackage}
+        onRemoveCardResources={state.removeCardPackageResources}
+        installations={state.extensionInstallations}
+        promptResources={state.promptResources}
+        onOpenPromptResource={resource => {
+          void navigation.openResource(resource.resourceKind === 'preset' ? 'agent' : 'resource', resource.id, resource.rootNode.id)
+        }}
+        onUpdateResources={state.updateExtensionPackageResources}
         onRemoveResources={state.removeExtensionPackageResources}
         onInstallZip={state.installExtensionPackageZip}
         onReload={clientExtensions.reload}
@@ -305,7 +305,12 @@ export function createStudioPanels(input: {
         locale={state.locale}
         networkSettings={state.networkSettings}
         textTransformsApi={state.textTransformsApi}
-        backgrounds={backgrounds.map(item => ({ id: item.key, name: item.name, description: item.description, image: item.image, source: item.source ?? item.packageId }))}
+        onTextTransformsChanged={uiState.bumpLoomScriptRefreshToken}
+        backgroundCardId={state.narrativeTimeline?.createdFrom?.cardId ?? state.selectedCardId}
+        backgrounds={backgrounds.map(item => ({
+          id: item.key, name: item.name, description: item.description, image: item.image, source: item.source ?? item.packageId,
+          ...(item.target?.kind === 'card' ? { scope: { cardId: item.target.cardId, ownerKey: clientModuleKey(item.packageId, item.moduleId, item.target) } } : {}),
+        }))}
         uiScale={uiScale}
         t={state.t}
         onChangeCustomCss={state.setCustomCss}

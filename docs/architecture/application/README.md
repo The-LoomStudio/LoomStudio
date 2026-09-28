@@ -15,7 +15,7 @@ Studio Application 是 Loom Studio 第一方内建的 AIRP 领域层。它定义
 | [`history-text-pipeline.md`](history-text-pipeline.md) | Narrative / Session History 的 Regex、Reasoning Promotion、Extractor 与 Renderer Slot | Phase 0—5 基础闭环已实现                               |
 | [`extension/`](extension/)                             | Extension Scoped Storage、Card Portable Payload 与领域贡献协议                        | 数据、分发与 Client Renderer 主链已晋升                |
 | [`state-and-variables.md`](state-and-variables.md)     | Global / Timeline State、EC 初始化、Extension Contribution、Revision、Macro 与 Undo   | State v1 核心运行链已晋升                              |
-| [`ui/`](ui/)                                           | 第一方 AIRP UI 如何使用 Studio Shell                                                  | 分类已建立，具体设计仍在 Workbench                     |
+| [`ui/`](ui/) | 第一方 AIRP 的草稿/冲突、Timeline 提交与正文窗口生命周期 | 已实现合同；其他页面设计仍在 Workbench |
 
 Application 的其他领域文档在稳定前继续保留于 [`../../workbench/discussion/`](../../workbench/discussion/)。
 

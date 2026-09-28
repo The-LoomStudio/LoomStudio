@@ -42,7 +42,7 @@
 
 Package 主入口为 [`src/index.ts`](./src/index.ts)：
 
-- `createSecretStore(options)`：创建 Secret 存储实例（注入 `dataEngine` 与 `backend`）；
+- `createSecretStore(options)`：创建 Secret 存储实例（注入 `engine`、`backend`、`createId`、`now` 与借用授权函数 `authorizeUse`，见 [`store.ts`](./src/store.ts)）；
 - `createKeyringSecretBackend()`：操作系统安全凭据后端工厂；
 - `createMemorySecretBackend()`：内存凭据后端工厂；
 - 核心类型：`SecretStore`、`SecretBackend`、`SecretMetadata`、`SecretPlaintext`、`SecretRef`、`SecretStoreError`。

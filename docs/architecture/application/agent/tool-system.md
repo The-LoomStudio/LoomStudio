@@ -29,19 +29,18 @@ Tool Prompt 中允许宏展开的字段只有 description、parameter descriptio
 
 `preset_tool_mounts` 是 Preset 到 Tool Definition 的权威关系，保存 `defaultEnabled`、Activation、Provider Tool order、Content zone / slot / rank / order hint、origin 和 Mount order。
 
-Agent Profile 只保存 `toolOverrides: Record<toolId, boolean>`。有效候选集合先按以下规则计算：
+Agent Preset 使用这一份挂载配置，不再叠加 Profile `toolOverrides`。候选集合按以下规则计算：
 
 ```text
 Preset 已挂载
-  && (Agent override ?? Preset defaultEnabled)
+  && Mount.defaultEnabled
 ```
 
-随后 Tool Prompt Build 再计算 Activation。未挂载 Tool 不能由 Agent Profile 单独开启。
+随后 Tool Prompt Build 再计算 Activation。Agent 面板与预设资源视图修改同一挂载集合；未挂载 Tool 不进入候选集合。
 
-三个状态必须区分：
+持久开关与运行结果必须区分：
 
-- `enabled`：Preset / Profile 的持久配置；
-- `effectiveEnabled`：合并 Preset 与 Agent override 后的候选状态；
+- `defaultEnabled`：Agent Preset 的持久配置，字段名沿用既有 Mount 合同，不表示另有 Profile 覆盖层；
 - `active`：本次 Prompt Build 根据输入与 Facts 得出的结果。
 
 ## 4. Transport

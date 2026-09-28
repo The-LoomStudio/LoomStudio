@@ -33,6 +33,8 @@ function resolveScopedInclude(scope?: string): string[] {
       return ['tests/stress/**/*.test.ts', 'tests/probes/**/*.test.ts']
     case 'probes':
       return ['tests/probes/**/*.test.ts']
+    case 'extensions':
+      return ['tests/extensions/**/*.test.ts']
     default:
       return defaultTestInclude
   }

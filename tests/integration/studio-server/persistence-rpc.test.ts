@@ -65,13 +65,13 @@ describe('studio server persistence integration', () => {
         config: { baseUrl: 'https://example.test/v1' },
         enabledModelIds: [officialFakeModelId],
       })
-      const agentProfile = await callRpc<{ agentProfile: { id: string } }>(first.port, 'application.createAgentProfile', {
-        name: 'Persistent Agent Profile',
+      const agentPreset = await callRpc<{ agentPreset: { id: string } }>(first.port, 'application.createAgentPreset', {
+        name: 'Persistent Agent Preset',
         presetId,
         model: { providerProfileId: provider.providerProfile.id, modelId: officialFakeModelId },
       })
       const created = await callRpc<{ session: { id: string } }>(first.port, 'application.createAgentSession', {
-        agentProfileId: agentProfile.agentProfile.id,
+        agentPresetId: agentPreset.agentPreset.id,
         title: 'Persistent Agent',
       })
       await callRpc(first.port, 'application.invokeAgentTurn', {
@@ -82,7 +82,7 @@ describe('studio server persistence integration', () => {
 
       const secondServer = createStudioServer({ sqlitePath })
       const second = await secondServer.listen(0)
-      const read = await callRpc<{ session: { agentProfileId: string; title: string } }>(second.port, 'application.getAgentSession', {
+      const read = await callRpc<{ session: { agentPresetId: string; title: string } }>(second.port, 'application.getAgentSession', {
         agentSessionId: created.session.id,
       })
       const page = await callRpc<{ entries: unknown[] }>(second.port, 'application.getAgentTranscriptPage', {
@@ -90,7 +90,7 @@ describe('studio server persistence integration', () => {
       })
       await secondServer.close()
 
-      expect(read.session).toMatchObject({ agentProfileId: agentProfile.agentProfile.id, title: 'Persistent Agent' })
+      expect(read.session).toMatchObject({ agentPresetId: agentPreset.agentPreset.id, title: 'Persistent Agent' })
       expect(page.entries).toMatchObject([
         { entry: { kind: 'message', role: 'user', content: 'Remember this turn.' } },
         { entry: { kind: 'run-state', state: 'running' } },

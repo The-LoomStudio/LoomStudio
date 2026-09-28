@@ -32,12 +32,13 @@ export const STUDIO_ENTRY_PATHS = [
   '/', '/studio', '/studio/chat/:timelineId?/branch/:branchId', '/studio/chat/:timelineId?',
   '/studio/characters/:cardId?', '/studio/resources/reference/:resourceId/node/:nodeId',
   '/studio/presets/reference/:resourceId/node/:nodeId',
+  '/studio/agents/reference/:resourceId/node/:nodeId',
   '/studio/resources/:cardId?/:assetId?', '/studio/presets/:cardId?/:assetId?',
   ...Object.values(PANEL_PATHS).map(segment => `/studio/${segment}`),
 ]
 
 export function readStudioRoute(pathname: string): StudioRoute {
-  for (const [segment, panel] of [['resources', 'resource'], ['presets', 'preset']] as const) {
+  for (const [segment, panel] of [['resources', 'resource'], ['presets', 'agent'], ['agents', 'agent']] as const) {
     const reference = matchPath(`/studio/${segment}/reference/:resourceId/node/:nodeId`, pathname)
     if (reference) return { panel, resourceId: reference.params.resourceId, assetId: reference.params.nodeId }
   }
@@ -54,7 +55,7 @@ export function readStudioRoute(pathname: string): StudioRoute {
   if (resource) return { panel: 'resource', cardId: resource.params.cardId, assetId: resource.params.assetId }
 
   const preset = matchPath('/studio/presets/:cardId?/:assetId?', pathname)
-  if (preset) return { panel: 'preset', cardId: preset.params.cardId, assetId: preset.params.assetId }
+  if (preset) return { panel: 'agent', cardId: preset.params.cardId, assetId: preset.params.assetId }
 
   for (const panel of ['model', 'agent', 'play', 'sessions', 'state', 'text-transform', 'inspector', 'logs', 'extensions', 'settings'] as const) {
     if (matchPath(`/studio/${PANEL_PATHS[panel]}`, pathname)) return { panel }

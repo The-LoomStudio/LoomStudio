@@ -1,4 +1,4 @@
-import type { ApplicationRuntime, LoomScriptOwner, RuntimeRequestContext } from '@loom-studio/application-runtime'
+import type { ApplicationRuntime, LoomScriptMountTarget, LoomScriptOwner, RuntimeRequestContext } from '@loom-studio/application-runtime'
 import type { JsonValue } from '@loom-studio/shared'
 import {
   isRecord,
@@ -29,11 +29,11 @@ export async function handleLoomScriptsRpc(
     case 'application.exportLoomScript':
       return await applicationRuntime.exportLoomScript({ scriptDocumentId: readString(params, 'scriptDocumentId') }) as unknown as JsonValue
     case 'application.createLoomScriptMount':
-      return await applicationRuntime.createLoomScriptMount({ target: readOwner(params, 'target'), scriptDocumentId: readString(params, 'scriptDocumentId'), orderIndex: readNumber(params, 'orderIndex'), pinnedDocumentVersion: readOptionalNumber(params, 'pinnedDocumentVersion'), origin: readOptionalObject(params, 'origin') }, context) as unknown as JsonValue
+      return await applicationRuntime.createLoomScriptMount({ target: readTarget(params), scriptDocumentId: readString(params, 'scriptDocumentId'), orderIndex: readNumber(params, 'orderIndex'), pinnedDocumentVersion: readOptionalNumber(params, 'pinnedDocumentVersion'), origin: readOptionalObject(params, 'origin') }, context) as unknown as JsonValue
     case 'application.updateLoomScriptMount':
       return await applicationRuntime.updateLoomScriptMount({ mountId: readString(params, 'mountId'), expectedVersion: readNumber(params, 'expectedVersion'), enabled: readBoolean(params, 'enabled'), orderIndex: readNumber(params, 'orderIndex'), pinnedDocumentVersion: readOptionalNumber(params, 'pinnedDocumentVersion'), grantedCapabilities: readStringArray(params, 'grantedCapabilities') }, context) as unknown as JsonValue
     case 'application.listLoomScriptMounts':
-      return await applicationRuntime.listLoomScriptMounts({ target: readOptionalOwner(params, 'target'), scriptDocumentId: readOptionalString(params, 'scriptDocumentId') }) as unknown as JsonValue
+      return await applicationRuntime.listLoomScriptMounts({ target: isRecord(params) && params.target !== undefined ? readTarget(params) : undefined, scriptDocumentId: readOptionalString(params, 'scriptDocumentId') }) as unknown as JsonValue
     case 'application.resolveLoomScriptRendererMounts':
       return await applicationRuntime.resolveLoomScriptRendererMounts({
         workspaceId: readOptionalString(params, 'workspaceId'),
@@ -48,6 +48,10 @@ export async function handleLoomScriptsRpc(
 function readOwner(value: JsonValue | undefined, key: string): LoomScriptOwner {
   const owner = isRecord(value) && isRecord(value[key]) ? value[key] : undefined
   if (!owner) throw new Error(`Expected Loom Script owner: ${key}`)
+  if (owner.kind === 'extension' && typeof owner.packageId === 'string' && owner.packageId.trim()
+    && typeof owner.installationId === 'string' && owner.installationId.trim()) {
+    return { kind: 'extension', packageId: owner.packageId, installationId: owner.installationId }
+  }
   if (owner.kind === 'user') return { kind: 'user' }
   if (owner.kind === 'workspace' && typeof owner.workspaceId === 'string') return { kind: 'workspace', workspaceId: owner.workspaceId }
   if (owner.kind === 'card' && typeof owner.cardId === 'string') return { kind: 'card', cardId: owner.cardId }
@@ -57,4 +61,10 @@ function readOwner(value: JsonValue | undefined, key: string): LoomScriptOwner {
 
 function readOptionalOwner(value: JsonValue | undefined, key: string): LoomScriptOwner | undefined {
   return isRecord(value) && value[key] !== undefined ? readOwner(value, key) : undefined
+}
+
+function readTarget(value: JsonValue | undefined): LoomScriptMountTarget {
+  const target = readOwner(value, 'target')
+  if (target.kind === 'extension') throw new Error('Extension ownership is not a Loom Script mount target')
+  return target
 }

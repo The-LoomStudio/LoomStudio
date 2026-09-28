@@ -2,12 +2,13 @@ import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import type { RendererContributionDefinition } from '@loom-studio/extension-sdk'
 
 export type LoomScriptOwner =
+  | { kind: 'extension'; packageId: string; installationId: string }
   | { kind: 'workspace'; workspaceId: string }
   | { kind: 'card'; cardId: string }
   | { kind: 'preset'; presetId: string }
   | { kind: 'user' }
 
-export type LoomScriptRendererContribution = {
+type LoomScriptRendererContribution = {
   kind: 'renderer'
   renderer: Omit<RendererContributionDefinition, 'adapter' | 'artifactType'>
   inputs: Array<{ kind: 'match'; ruleId: string } | { kind: 'artifact'; artifactType: string }>
@@ -33,7 +34,7 @@ export type LoomScript = {
 export type LoomScriptMount = {
   id: string
   version: number
-  target: LoomScriptOwner
+  target: Exclude<LoomScriptOwner, { kind: 'extension' }>
   scriptDocumentId: string
   enabled: boolean
   orderIndex: number

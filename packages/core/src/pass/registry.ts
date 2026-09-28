@@ -1,14 +1,14 @@
 import type { Diagnostic } from '../diagnostic/types.js'
 import type { Pass, PassConfig, PassFactory } from './types.js'
 
-export class PassFactoryMissingError extends Error {
+class PassFactoryMissingError extends Error {
   constructor(public readonly factoryName: string) {
     super(`No PassFactory registered for "${factoryName}"`)
     this.name = 'PassFactoryMissingError'
   }
 }
 
-export class PassFactoryCreateError extends Error {
+class PassFactoryCreateError extends Error {
   constructor(
     public readonly factoryName: string,
     public readonly passIndex: number | undefined,

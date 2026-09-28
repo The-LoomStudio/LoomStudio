@@ -35,6 +35,9 @@ export type {
   MacroRenderContext,
   MacroRenderTrace,
   MacroSelectionMap,
+  MacroSelection,
+  MacroOption,
+  MacroOptions,
   MacroSourceKind,
   VariableDiagnostic,
   VariableRenderContext,
@@ -53,6 +56,9 @@ export {
   isValidMacroName,
   isReservedMacroName,
   macroNamePattern,
+  macroSelectionMatches,
+  normalizeMacroOptions,
+  normalizeMacroSelections,
   renderVariableMacros,
 } from './macros.js'
 

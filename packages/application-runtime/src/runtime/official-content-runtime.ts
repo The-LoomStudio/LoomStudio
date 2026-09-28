@@ -69,8 +69,9 @@ export function createOfficialContentRuntimeMethods(ctx: OfficialContentRuntimeC
             content: {
               resourceKind: artifact.resourceKind,
               rootNode: structuredClone(artifact.rootNode),
-              ...(artifact.resourceKind === 'preset' ? { historyPolicy: 'persistent' as const } : {}),
+              ...(artifact.resourceKind === 'preset' ? { historyPolicy: 'persistent' as const, delivery: 'stream' as const } : {}),
               ...(artifact.macros !== undefined ? { macros: structuredClone(artifact.macros) } : {}),
+              ...(artifact.macroOptions !== undefined ? { macroOptions: structuredClone(artifact.macroOptions) } : {}),
               origin: { kind: 'builtin', key: builtinOriginKeys[item.id] ?? `${input.packageId}:${item.id}` },
               createdAt: timestamp,
               updatedAt: timestamp,

@@ -1,5 +1,5 @@
 import { parseExtensionManifest, type ExtensionManifest } from '@loom-studio/extension-host'
-import { unzipSync } from 'fflate'
+import { unzipSync, zipSync } from 'fflate'
 import { randomUUID } from 'node:crypto'
 import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, rmdir, writeFile } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
@@ -39,7 +39,15 @@ export async function installExtensionPackageFromDirectory(options: {
 
   try {
     const budget = { files: 0, bytes: 0 }
-    await copyPackageDirectory(sourceDirectory, stagingDirectory, budget)
+    await visitPackageFiles(sourceDirectory, budget, async (source, path, directory) => {
+      const target = join(stagingDirectory, path)
+      if (directory) {
+        await mkdir(target, { recursive: true, mode: 0o700 })
+        return
+      }
+      await mkdir(dirname(target), { recursive: true, mode: 0o700 })
+      await copyFile(source, target)
+    })
     await writeFile(join(stagingDirectory, 'manifest.json'), manifestBytes, { mode: 0o600 })
     await validateInstalledPackage(stagingDirectory, manifest)
     await rename(stagingDirectory, targetDirectory)
@@ -132,20 +140,56 @@ export async function uninstallExtensionPackageDirectory(options: {
   })
 }
 
-async function copyPackageDirectory(
+export async function exportExtensionPackageZip(directory: string, expected: ExtensionManifest): Promise<Uint8Array> {
+  const root = await lstat(directory)
+  if (!root.isDirectory() || root.isSymbolicLink()) throw new Error('Extension Package source must be a real directory')
+  const files: Record<string, Uint8Array> = Object.create(null)
+  let bytes = 0
+  let entries = 0
+  await visitPackageFiles(directory, { files: 0, bytes: 0 }, async (source, path, isDirectory) => {
+    if (++entries > maxPackageFiles) throw new Error('Extension Package exceeds the local install size limit')
+    if (isDirectory) {
+      files[`${path}/`] = new Uint8Array()
+      return
+    }
+    const content = await readFile(source)
+    bytes += content.byteLength
+    if (bytes > maxPackageBytes) throw new Error('Extension Package exceeds the local install size limit')
+    files[path] = content
+  })
+  const manifestBytes = files['manifest.json']
+  if (!manifestBytes) throw new Error('Extension Package is missing manifest.json')
+  const manifest = parseExtensionManifest(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(manifestBytes)))
+  if (manifest.id !== expected.id || manifest.version !== expected.version) throw new Error('Extension Package changed before export')
+  for (const entry of [
+    ...(manifest.modules ?? []).map(module => module.entry),
+    ...(manifest.contributes?.promptResources ?? []).map(resource => resource.source),
+    ...(manifest.contributes?.agentTools ?? []).map(tool => tool.source),
+    ...(manifest.contributes?.transformRules ?? []).map(rule => rule.source),
+    ...(manifest.contributes?.textExtractors ?? []).map(extractor => extractor.source),
+    ...(manifest.icon ? [manifest.icon] : []),
+  ]) {
+    if (!files[entry.replace(/^\.\//, '')]) throw new Error(`Extension Package entry is missing: ${entry}`)
+  }
+  return zipSync(files)
+}
+
+async function visitPackageFiles(
   sourceDirectory: string,
-  targetDirectory: string,
   budget: { files: number; bytes: number },
+  visit: (source: string, path: string, directory: boolean) => Promise<void>,
+  prefix = '',
 ): Promise<void> {
   const entries = await readdir(sourceDirectory, { withFileTypes: true })
   for (const entry of entries) {
     const source = join(sourceDirectory, entry.name)
-    const target = join(targetDirectory, entry.name)
+    const path = `${prefix}${entry.name}`
+    assertSafeZipEntryName(path)
     const stat = await lstat(source)
     if (stat.isSymbolicLink()) throw new Error(`Extension Package cannot contain symbolic links: ${entry.name}`)
     if (stat.isDirectory()) {
-      await mkdir(target, { recursive: false, mode: 0o700 })
-      await copyPackageDirectory(source, target, budget)
+      await visit(source, path, true)
+      await visitPackageFiles(source, budget, visit, `${path}/`)
       continue
     }
     if (!stat.isFile()) throw new Error(`Extension Package contains an unsupported file type: ${entry.name}`)
@@ -156,7 +200,7 @@ async function copyPackageDirectory(
     if (budget.files > maxPackageFiles || budget.bytes > maxPackageBytes) {
       throw new Error('Extension Package exceeds the local install size limit')
     }
-    await copyFile(source, target)
+    await visit(source, path, false)
   }
 }
 
@@ -171,6 +215,7 @@ async function validateInstalledPackage(directory: string, expected: ExtensionMa
     ...(copied.contributes?.textExtractors ?? []).map(extractor => extractor.source),
     ...(copied.contributes?.promptResources ?? []).map(resource => resource.source),
     ...(copied.contributes?.agentTools ?? []).map(tool => tool.source),
+    ...(copied.contributes?.loomScripts ?? []).map(script => script.source),
     ...(copied.icon ? [copied.icon] : []),
   ]) {
     const candidate = resolve(directory, entry)

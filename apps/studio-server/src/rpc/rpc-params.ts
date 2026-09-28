@@ -1,4 +1,13 @@
 import { isJsonObject, type JsonObject, type JsonValue } from '@loom-studio/shared'
+import type { ExtensionInstallationTarget } from '@loom-studio/application-runtime'
+
+export function readOptionalInstallationTarget(params: JsonValue | undefined, key = 'target'): ExtensionInstallationTarget | undefined {
+  if (!isRecord(params) || params[key] === undefined) return undefined
+  const target = params[key]
+  if (isRecord(target) && target.kind === 'global') return { kind: 'global' }
+  if (isRecord(target) && target.kind === 'card' && typeof target.cardId === 'string' && target.cardId.trim()) return { kind: 'card', cardId: target.cardId }
+  throw new Error('Invalid Extension installation target')
+}
 
 export function isRecord(value: JsonValue | undefined): value is JsonObject {
   return isJsonObject(value)

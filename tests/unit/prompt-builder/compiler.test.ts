@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { compilePromptDataModel } from '../../../packages/application-runtime/src/prompt/prompt-build-pipeline.js'
 import type { PromptContribution, SourceNode } from '../../../packages/application-runtime/src/prompt/prompt-builder.js'
-import { combineActivationGates } from '../../../packages/application-runtime/src/prompt/prompt-activation.js'
+import { combineActivationGates, type PromptActivation } from '../../../packages/application-runtime/src/prompt/prompt-activation.js'
 
 function node(id: string, parentId: string | null, orderIndex: number, kind: SourceNode['kind']): SourceNode {
   return {
@@ -21,7 +21,7 @@ function contribution(
   targetAnchorId?: string,
   localDepth?: number,
   roleHint: 'system' | 'user' | 'assistant' | 'developer' = 'system',
-  activation?: any
+  activation?: PromptActivation
 ): PromptContribution {
   return {
     id,
@@ -104,7 +104,6 @@ describe('PromptBuildPipeline', () => {
         contribution('c1', 'entry1', 'Active Content', 'anchor1'),
         contribution('c2', 'entry2', 'Inactive Content', 'anchor1', undefined, 'system', activation),
       ],
-      activationFacts: { manualOverrides: new Set() },
     })
 
     expect(compiled.messages.length).toBe(1)
@@ -170,6 +169,7 @@ describe('PromptBuildPipeline', () => {
         node('root', null, 0, 'module'),
         {
           id: 'msg1',
+          displayName: 'Message 1',
           sourceId: 'preset',
           parentId: 'root',
           orderIndex: 0,
@@ -178,6 +178,7 @@ describe('PromptBuildPipeline', () => {
         },
         {
           id: 'entry1',
+          displayName: 'Entry 1',
           sourceId: 'preset',
           parentId: 'msg1',
           orderIndex: 0,
@@ -186,6 +187,7 @@ describe('PromptBuildPipeline', () => {
         },
         {
           id: 'msg2',
+          displayName: 'Message 2',
           sourceId: 'preset',
           parentId: 'root',
           orderIndex: 1,
@@ -194,6 +196,7 @@ describe('PromptBuildPipeline', () => {
         },
         {
           id: 'anchor2',
+          displayName: 'Setting',
           sourceId: 'preset',
           parentId: 'msg2',
           orderIndex: 0,
@@ -202,6 +205,7 @@ describe('PromptBuildPipeline', () => {
         },
         {
           id: 'msg3',
+          displayName: 'Message 3',
           sourceId: 'preset',
           parentId: 'root',
           orderIndex: 2,
@@ -210,6 +214,7 @@ describe('PromptBuildPipeline', () => {
         },
         {
           id: 'anchor3',
+          displayName: 'Input',
           sourceId: 'preset',
           parentId: 'msg3',
           orderIndex: 0,

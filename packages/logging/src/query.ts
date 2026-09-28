@@ -3,7 +3,7 @@ import type { LogHistoryReader } from './history-types.js'
 import type { ExtensionLogQuery, ExtensionLogPage } from './extension-logger.js'
 
 const stringKeys = ['cursor', 'namespacePrefix', 'service', 'instanceId', 'text', 'event', 'runId', 'packageId', 'moduleId'] as const
-const allowedKeys = new Set<string>([...stringKeys, 'limit', 'levels', 'since', 'until'])
+const allowedKeys = new Set<string>([...stringKeys, 'limit', 'levels', 'since', 'until', 'installationId'])
 
 export function readLogQuery(value: unknown): LogQuery {
   if (value === undefined) return { limit: 100 }
@@ -13,6 +13,10 @@ export function readLogQuery(value: unknown): LogQuery {
   const limit = input.limit ?? 100
   if (typeof limit !== 'number' || !Number.isInteger(limit) || limit <= 0 || limit > 500) throw new Error('Log query limit must be an integer between 1 and 500')
   const query: LogQuery = { limit }
+  if (input.installationId !== undefined) {
+    if (input.installationId !== null && (typeof input.installationId !== 'string' || !input.installationId || input.installationId.length > 2048)) throw new Error('Invalid log query installationId')
+    query.installationId = input.installationId
+  }
   for (const key of stringKeys) {
     const item = input[key]
     if (item === undefined) continue
@@ -37,11 +41,12 @@ export async function queryExtensionLogs(
   packageId: string,
   input: ExtensionLogQuery,
   sourceName: string,
+  installationId?: string,
 ): Promise<ExtensionLogPage> {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Log query must be an object')
-  for (const key of ['packageId', 'service', 'instanceId']) if (Object.hasOwn(input, key)) throw new Error(`Extension cannot set log ${key}`)
+  for (const key of ['packageId', 'service', 'instanceId', 'installationId']) if (Object.hasOwn(input, key)) throw new Error(`Extension cannot set log ${key}`)
   const { source = 'current', ...fields } = input
-  const query = readLogQuery({ ...fields, packageId })
+  const query = readLogQuery({ ...fields, packageId, installationId: installationId ?? null })
   if (source === 'history') {
     if (!readers.history) throw new Error('History logs are not available in this host')
     if (!query.since || !query.until) throw new Error('History queries require since and until')

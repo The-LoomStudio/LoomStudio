@@ -7,6 +7,7 @@ import {
 import { describe, expect, it } from 'vitest'
 import type { NarrativeBranch, NarrativeNode, NarrativeTimeline } from '@loom-studio/application-data'
 import type { StateRevision, StateScope } from '@loom-studio/application-data'
+import type { JsonValue } from '@loom-studio/shared'
 
 const input = {
   timelineId: 'timeline-new',
@@ -66,7 +67,7 @@ describe('Timeline archive participants', () => {
 function participant(
   namespace: string,
   version: number,
-  exportValue: (input: { timelineId: string }) => unknown = input => input,
+  exportValue: (input: { timelineId: string }) => JsonValue = input => input,
   importValue: (input: unknown) => void = () => {},
 ): TimelineArchiveParticipant {
   return {

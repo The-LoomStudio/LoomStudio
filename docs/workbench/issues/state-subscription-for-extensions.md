@@ -1,10 +1,24 @@
 # 扩展 State 变更订阅
 
-> 状态：已完成（2026-09-13）
+> 状态：Partially Resolved / 主平台正式写入通知已修复，独立扩展接入仍未验收
 > 创建日期：2026-09-13
 > 关联扩展：`official.the-world`
 
 ## 问题
+
+当前复核：SDK/Host 已有 state.subscribe，不能再沿用下文“没有订阅 API”的历史结论。两处过滤缺陷已修复：target 直接比较 scope/Timeline/Branch 字段，不依赖 JSON 对象字段顺序；路径匹配覆盖父级替换、同路径、子级写入与根路径，同时排除相邻名称。两条回归修复前失败，修复后现有契约文件6项通过（含取消、释放及能力授权）。这是实际 EventBus/Host 测试，不是 The World 视觉验收。
+
+取消清理补修：此前只解除 EventBus 订阅，手动 dispose 或 Extension Scope 卸载后仍在外部 AbortSignal 上保留监听器与订阅闭包。现手动释放、Scope 清理和 abort 共用同一释放句柄，解除信号监听后释放底层注册；两条先失败回归修复后，该契约文件8项通过。
+
+主平台发布修复：通知现由 State 领域在普通 mutation、补偿回滚和 Global Definition 默认值事务成功后发出，Server 桥接到受保护 EventBus，扩展适配器不再重复 emit。真实 SQLite 验证默认值/普通写入/回滚事件、幂等重放与冲突不发新事件、事务中已创建 revision 后的回滚不通知，以及观察者抛错不影响已提交数据。真实 HTTP 加载临时扩展验证 UI Global/Timeline 写入可被订阅、扩展幂等重放仅通知一次，原重启授权恢复仍通过；三文件20项通过，Server project build 与主测试类型检查通过。首轮测试扩展未声明 state.write 被正确拒绝，补夹具声明后通过，没有放宽权限。
+
+Agent 工具入口补验：`native-tool-loop.test.ts` 使用确定性 Provider 夹具执行真实 Runtime、官方 State 工具与 SQLite，三项定向测试通过（其余13项未执行）。显式目标、从 Narrative 上下文推导目标的点路径写入、提交后后续 Provider 步骤失败，均只通知一次，目标、最终 revision 和标准化路径一致；读取不增加通知。未修改执行器，也未调用外部模型。
+
+剩余边界：未执行外部 Provider 端到端测试。The World 当前源码未找到 state.subscribe/state.changed 消费，动态天色仍未验收，独立扩展接入不纳入主应用 CI。当前事件为进程内提交后提示，不保证进程崩溃/重启后的补发；初始化及选择分支不是本事件的 State Mutation。revisionId 是不透明标识，消费者不能按其字典序判断先后，异步重读需防止晚结果覆盖。
+
+历史发布链定位：普通 UI/Agent/扩展写入共同进入 `applyApplicationStateMutation`，幂等命中在事务前返回旧 revision/changeset；旧 Server 扩展适配器无条件 emit，导致 UI/Agent 漏报和扩展重放重复通知。本轮已覆盖这条路径、`revertApplicationStateChangeset` 补偿 revision，以及 `upsertStateDefinition` 中的默认值事务出口。未改 Data Engine 提交结构，未从“最新 Head”反推历史事件，也未增加持久事件队列。
+
+以下问题描述与方案为原审计基线：
 
 扩展目前只能通过 `context.state.get(target)` 主动读取指定 State。Studio 内部发生 State 写入后，没有向扩展推送变更的正式契约，因此 The World 无法在世界时间、天气或背景组件变化后立即驱动动态天色和其他表现更新。
 
@@ -24,7 +38,7 @@ Studio 或 Agent 更新 `WorldTimeComponent` 后，State Store 提交 revision�
 
 ## 当前决策
 
-该项已明确延期，**不阻塞 The World 的其他迁移工作**。在该能力完成前，调试台通过显式读取刷新；继续实现日历检查、导入预览与提交、资源诊断等不依赖订阅的能力。扩展订阅应由宿主变更通知驱动，不要求每个扩展自行持续轮询。
+原先延期不再表示主平台没有订阅实现，正式 State 写入通知已有集成验证；**不阻塞 The World 的其他迁移工作**。独立扩展接入仍可按自身发布节奏安排，未接入前调试台通过显式读取刷新。扩展订阅应由宿主变更通知驱动，不要求每个扩展自行持续轮询。
 
 ## 验收标准
 
@@ -91,6 +105,6 @@ Studio 或 Agent 更新 `WorldTimeComponent` 后，State Store 提交 revision�
 - 事件权限使用独立的 `state` capability，未授权扩展无法订阅。
 - 已通过 Extension SDK 与 Studio Server 定向 TypeScript 检查。
 
-## 归档
+## 历史完成声明的修订
 
-首版契约和宿主实现已经完成。The World 后续只需接入订阅，不再需要修改本 issue 的宿主基础设施；动态天色的具体表现属于 The World 后续工作。
+SDK、订阅过滤/清理及上述正式 State 写入通知已有验证；没有承诺任意底层数据库操作都产生通知。The World 动态天色接入与视觉验收仍单独保留，本 Issue 暂不归档或删除。

@@ -112,26 +112,7 @@ export function resolveTarget(
   return { scope: 'global' }
 }
 
-export function readTarget(
-  value: JsonValue | undefined,
-  defaultTarget?: { scope: 'global' } | { scope: 'timeline'; timelineId: string; branchId: string },
-): { scope: 'global' } | { scope: 'timeline'; timelineId: string; branchId: string } {
-  if (value === undefined) {
-    if (defaultTarget) return defaultTarget
-    return { scope: 'global' }
-  }
-  if (!isObject(value)) throw new Error('State target must be an object')
-  if (value.scope === 'global') return { scope: 'global' }
-  if (value.scope === 'timeline') {
-    if (typeof value.timelineId === 'string' && typeof value.branchId === 'string') {
-      return { scope: 'timeline', timelineId: value.timelineId, branchId: value.branchId }
-    }
-    if (defaultTarget?.scope === 'timeline') return defaultTarget
-  }
-  throw new Error('State target is invalid')
-}
-
-export function readPointer(root: JsonObject, path: string): JsonValue {
+function readPointer(root: JsonObject, path: string): JsonValue {
   if (path === '') return root
   if (!path.startsWith('/')) throw new Error(`State path must be an RFC 6901 JSON Pointer: ${path}`)
   let current: JsonValue = root

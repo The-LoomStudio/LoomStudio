@@ -5,11 +5,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createMemorySecretBackend } from '../../../packages/secret-store/src/index.js'
 
-export async function withStudioServer<T>(run: (port: number, dir: string) => Promise<T>): Promise<T> {
+export async function withStudioServer<T>(run: (port: number, dir: string) => Promise<T>, extensionRootDirectory?: string): Promise<T> {
   const dir = await realpath(await mkdtemp(join(tmpdir(), 'loom-server-')))
   const server = createStudioServer({
     localPaths: resolveLoomStudioLocalPaths({ home: dir, environment: {} }),
     secretBackend: createMemorySecretBackend(),
+    extensionRootDirectory: extensionRootDirectory ?? join(dir, 'empty-repository'),
   })
 
   try {

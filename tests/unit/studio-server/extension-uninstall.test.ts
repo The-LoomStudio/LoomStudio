@@ -81,6 +81,8 @@ function createRuntime(paths: Awaited<ReturnType<typeof createFixture>>) {
     repositoryDirectory: join(paths.root, 'empty-repository'),
     installedDirectory: join(paths.root, 'installed'),
     devLinksFile: paths.devLinksFile,
+    readCardPackage: async () => { throw new Error('No Card packages in this fixture') },
+    listInstallations: async () => ({ installations: [] }),
     importPackageResources: async () => ({}),
     removePackageResources: async () => ({}),
   })
@@ -117,7 +119,7 @@ describe('Extension Package uninstall failure recovery', () => {
         moduleId,
         desired: expect.objectContaining({
           enabled: false,
-          grants: { 'events.subscribe': ['state'], assets: ['assets.read'] },
+          grants: { 'events.subscribe': ['state'], assets: ['assets.read'], ui: [] },
         }),
         runtime: expect.objectContaining({
           state: 'disabled',
@@ -155,7 +157,9 @@ describe('Extension Package uninstall failure recovery', () => {
       expect(runtime.registrations.size).toBe(0)
       expect(runtime.host.list()).toHaveLength(2)
       expect(runtime.host.list().every(module => module.instance === undefined)).toBe(true)
-      expect(runtime.manager.listPackages()[0]!.modules.every(module => !module.desired.enabled)).toBe(true)
+      expect(runtime.manager.listPackages()).toMatchObject([{
+        modules: moduleIds.map(moduleId => ({ moduleId, desired: { enabled: false } })),
+      }])
     }
     await expect(runtime.manager.uninstallPackage(packageId, '1.0.0')).resolves.toEqual({
       packageId, version: '1.0.0', removed: true,
@@ -164,7 +168,7 @@ describe('Extension Package uninstall failure recovery', () => {
     expect(runtime.host.list()).toEqual([])
     expect(runtime.registrations.size).toBe(0)
     expect(JSON.parse(await readFile(paths.devLinksFile, 'utf8'))).toEqual({ extensions: [] })
-    expect(JSON.parse(await readFile(paths.stateFile, 'utf8'))).toEqual({ version: 3, packages: {} })
+    expect(JSON.parse(await readFile(paths.stateFile, 'utf8'))).toEqual({ version: 4, installations: {} })
     await expect(readFile(join(paths.sourceDirectory, 'manifest.json'), 'utf8')).resolves.toContain(packageId)
 
     const restarted = createRuntime(paths)

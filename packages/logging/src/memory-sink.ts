@@ -1,6 +1,7 @@
 import type { LogLevel, LogRecord, LogSink } from './types.js'
 
 export type LogQuery = {
+  installationId?: string | null
   cursor?: string
   limit: number
   levels?: LogLevel[]
@@ -147,6 +148,7 @@ export function matchesLogQuery(record: LogRecord, query: Omit<LogQuery, 'limit'
   if (query.event && record.event !== query.event) return false
   if (query.runId && record.data?.runId !== query.runId) return false
   if (query.packageId && record.extension?.packageId !== query.packageId) return false
+  if (query.installationId !== undefined && (record.extension?.installationId ?? null) !== query.installationId) return false
   if (query.moduleId && record.extension?.moduleId !== query.moduleId) return false
   if (query.text && !JSON.stringify(record).toLowerCase().includes(query.text.toLowerCase())) return false
   return true

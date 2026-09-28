@@ -2,7 +2,7 @@
 
 > **状态**：Active Package Guide / Current Source Is Authority
 
-`@loom-studio/loom-runner` 是面向 Kernel RPC 与外部调用的 `@loom/core` 运行适配器。它负责序列化 JSON 输入校验、Pass 工厂注入、诊断（Diagnostics）格式转换与运行轨迹（Trace）的持久化对接。
+`@loom-studio/loom-runner` 是面向 Kernel RPC 与外部调用的 `@loom/core` 运行适配器。它负责序列化 JSON 输入校验、Pass 工厂注入、诊断（Diagnostics）格式转换与运行轨迹（Trace）的存储对接。
 
 ## 业务使命与适配器定位
 
@@ -11,7 +11,7 @@
 - **边界输入校验**：严格校验传入的 `fragments` 与 `passes` 的 JSON 形状；
 - **PassRegistry 组装**：允许注入扩展提供的自定义 Pass 工厂；
 - **平台诊断桥接**：将 Core 输出的诊断信息规范化为平台标准的 `Diagnostic` 实体并分派错误码；
-- **Trace 审计转存**：在开启 `trace` 选项时，将 Core 生成的完整 AST/执行快照写入 `@loom-studio/trace-audit`。
+- **Trace 转存**：`trace.enabled` 为 true 且注入 `traceAudit` 时，将 Core Trace 交给 `appendTrace()`；当前 Store 是内存实现，不保证重启恢复。追加失败默认返回 `loom.trace_persist_failed` 诊断，`trace.strictPersist` 为 true 时才抛错；它不会强制要求注入 Store，见 [`src/index.ts`](./src/index.ts)。
 
 ---
 

@@ -197,11 +197,6 @@
   white-space: pre-wrap;
 }
 
-.officialAgents { margin-top: 20px; }
-.officialAgents h4 { margin: 0 0 12px; }
-.officialAgents label { display: grid; gap: 6px; }
-.officialAgents select { width: 100%; min-width: 0; }
-.officialAgent { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 12px 0; }
 .resourceDetail h3 { overflow-wrap: anywhere; }
 .resourceDetail > header { flex-wrap: wrap; }
 
@@ -257,3 +252,23 @@
 .diagnostics pre { max-height: 240px; overflow: auto; white-space: pre-wrap; }
 .empty { margin: auto; color: var(--loom-color-text-subtle); }
 .renderer { min-height: 0; overflow: auto; }
+.embeddedPackages {
+  border-top: 1px solid var(--loom-color-border);
+  margin-top: 12px;
+  padding-top: 12px;
+  overflow-wrap: anywhere;
+
+  summary { cursor: pointer; }
+}
+
+.embeddedPackage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-block: 8px;
+
+  > span { flex-basis: 100%; min-width: 0; }
+  small { display: block; color: var(--loom-color-text-muted); }
+  button { flex-shrink: 0; }
+}

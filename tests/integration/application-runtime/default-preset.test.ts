@@ -4,6 +4,7 @@ import { createAgentToolRegistry, createApplicationRuntime, composeAgentTurnProm
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import type { PromptResourceNode } from '../../../packages/application-runtime/src/cards/workspace-types.js'
+import type { PromptActivation } from '../../../packages/application-runtime/src/prompt/prompt-activation.js'
 import { describe, expect, it } from 'vitest'
 
 function createFixture(tools: ToolDefinition[] = []) {
@@ -43,6 +44,60 @@ function flatten(node: PromptResourceNode): PromptResourceNode[] {
 }
 
 describe('bundled default preset', () => {
+  it.each(['ordered', 'empty'] as const)('uses effective history transforms in provider requests (%s)', async mode => {
+    const { engine, runtime, calls } = createFixture()
+    try {
+      const { resource: preset } = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Transforms' })
+      const { card } = await runtime.createCard({ name: 'Story', opening: 'HISTORY_RAW' })
+      const { timeline } = await runtime.createNarrativeTimeline({ cardId: card.id })
+      const { providerProfile } = await runtime.createProviderProfile({
+        providerExtensionId: 'official.openai-compatible', displayName: 'Test', config: {}, enabledModelIds: ['test-model'],
+      })
+      const { agentPreset } = await runtime.updateAgentPreset({
+        name: 'Writer', agentPresetId: preset.id, expectedVersion: (await runtime.getPromptResource({ resourceId: preset.id })).resource.version,
+        model: { providerProfileId: providerProfile.id, modelId: 'test-model' },
+      })
+      const { session } = await runtime.createAgentSession({ agentPresetId: agentPreset.id, timelineId: timeline.id })
+      await runtime.invokeAgentTurn({ agentSessionId: session.id, input: 'HISTORY_RAW' })
+      for (const [ruleId, orderIndex, pattern, replacement] of [
+        ['finish', 0, 'HISTORY_INTERMEDIATE', mode === 'empty' ? '' : 'HISTORY_FINAL'],
+        ['start', 1, 'HISTORY_RAW', 'HISTORY_INTERMEDIATE'],
+      ] as const) {
+        await runtime.upsertTextTransformRule({
+          ruleId,
+          rule: {
+            name: ruleId, owner: { kind: 'preset', presetId: preset.id }, enabled: true, orderIndex,
+            matcher: { kind: 'regex', pattern, flags: 'g' },
+            effect: { kind: 'replace', replacement },
+            targets: ['narrative', 'agent-session'], phases: ['prompt'],
+          },
+        })
+      }
+      const page = await runtime.getNarrativePage({ timelineId: timeline.id })
+      for (const source of [
+        { kind: 'agent-session' as const, sessionId: session.id },
+        { kind: 'narrative' as const, timelineId: timeline.id, branchId: page.branch.id },
+      ]) {
+        await runtime.upsertTextPipelineOverride({
+          source, phase: 'prompt',
+          consumerAgentSessionId: source.kind === 'narrative' ? session.id : undefined,
+          disabledRuleIds: [], orderedRuleIds: ['start', 'finish'],
+        })
+      }
+      const preview = await runtime.previewAgentTurn({ agentSessionId: session.id, input: 'CURRENT_INPUT' })
+      await runtime.invokeAgentTurn({ agentSessionId: session.id, input: 'CURRENT_INPUT' })
+      expect(calls[1]!.messages).toEqual(preview.messages)
+      const contents = preview.messages.map(message => message.content)
+      expect(contents.filter(content => content === 'HISTORY_FINAL')).toHaveLength(mode === 'ordered' ? 2 : 0)
+      expect(JSON.stringify(contents)).not.toMatch(/HISTORY_RAW|HISTORY_INTERMEDIATE/)
+      expect(contents).toContain('SESSION_REPLY')
+      expect(contents).toContain('CURRENT_INPUT')
+      expect((await runtime.getNarrativePage({ timelineId: timeline.id })).nodes[0]!.body.raw).toBe('HISTORY_RAW')
+    } finally {
+      engine.close()
+    }
+  })
+
   it('connects native sources to the final provider request without merging Session messages', async () => {
     const tools: ToolDefinition[] = [
       {
@@ -67,7 +122,7 @@ describe('bundled default preset', () => {
       for (const [id, anchor, activation] of [
         ['STABLE_SETTING', '@setting.stable', { kind: 'always' as const }],
         ['DYNAMIC_SETTING', '@setting.lower', { kind: 'keyword' as const, keywords: ['CURRENT_INPUT'] }],
-      ] as const) {
+      ] satisfies Array<[string, string, PromptActivation]>) {
         await runtime.createPromptResourceAsset({
           resourceId: setting.id, targetAssetId: setting.rootNode.id, position: 'inside',
           asset: { id, kind: 'entry', label: id, body: id, capabilities: { targetAnchorId: anchor, activation } },
@@ -88,11 +143,11 @@ describe('bundled default preset', () => {
       const { providerProfile } = await runtime.createProviderProfile({
         providerExtensionId: 'official.openai-compatible', displayName: 'Test', config: {}, enabledModelIds: ['test-model'],
       })
-      const { agentProfile } = await runtime.createAgentProfile({
-        name: 'Writer', presetId: preset.id,
+      const { agentPreset } = await runtime.updateAgentPreset({
+        name: 'Writer', agentPresetId: preset.id, expectedVersion: (await runtime.getPromptResource({ resourceId: preset.id })).resource.version,
         model: { providerProfileId: providerProfile.id, modelId: 'test-model' },
       })
-      const { session } = await runtime.createAgentSession({ agentProfileId: agentProfile.id, timelineId: timeline.id })
+      const { session } = await runtime.createAgentSession({ agentPresetId: agentPreset.id, timelineId: timeline.id })
       await runtime.invokeAgentTurn({ agentSessionId: session.id, input: 'PREVIOUS_USER' })
       const preview = await runtime.previewAgentTurn({ agentSessionId: session.id, input: 'CURRENT_INPUT' })
       await runtime.invokeAgentTurn({ agentSessionId: session.id, input: 'CURRENT_INPUT' })
@@ -153,7 +208,7 @@ describe('bundled default preset', () => {
         '@tools.dynamic', '@prompt.tail', '@fresh.tail', '@runtime.workspace', '@runtime.notices',
       ]
       const result = await composeAgentTurnPrompt({
-        preset, promptResources, agentMessages: [], userInput: 'LATEST_INPUT',
+        preset, promptResources, contextResourceIds: [], agentMessages: [], userInput: 'LATEST_INPUT',
         externalRuntime: {
           sourceNodes: [],
           contributions: anchors.map(anchor => ({
@@ -166,7 +221,7 @@ describe('bundled default preset', () => {
         '@memory.narrative', '@memory.session', '@runtime.state\n\n@memory.recalled\n\n@tools.dynamic',
         'LATEST_INPUT', '@prompt.tail\n\n@fresh.tail', '@runtime.workspace', '@runtime.notices',
       ])
-      const empty = await composeAgentTurnPrompt({ preset, promptResources, agentMessages: [], userInput: 'LATEST_INPUT' })
+      const empty = await composeAgentTurnPrompt({ preset, promptResources, contextResourceIds: [], agentMessages: [], userInput: 'LATEST_INPUT' })
       expect(empty.messages).toHaveLength(3)
     } finally {
       engine.close()
@@ -184,7 +239,7 @@ describe('bundled default preset', () => {
       })
       const compile = async (userInput: string) => composeAgentTurnPrompt({
         preset: (await runtime.getPromptResource({ resourceId: preset.id })).resource,
-        promptResources, agentMessages: [], userInput,
+        promptResources, contextResourceIds: [], agentMessages: [], userInput,
       })
       expect(flatten(inserted.resource.rootNode).find(node => node.body === 'INLINE_AFTER_INPUT')?.capabilities?.targetAnchorId)
         .toBeUndefined()

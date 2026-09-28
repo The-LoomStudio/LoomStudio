@@ -14,9 +14,10 @@ import type {
   StateSnapshotView,
   StateTarget,
   StateDefinitionContent,
+  StateChangeEvent,
 } from '../types.js'
 
-export type ApplicationStateContext = Pick<ApplicationRuntimeContext, 'dataEngine' | 'documents' | 'narratives' | 'states'>
+export type ApplicationStateContext = Pick<ApplicationRuntimeContext, 'dataEngine' | 'documents' | 'narratives' | 'states' | 'onStateChanged' | 'logger'>
 
 const globalOwnerId = 'workspace'
 
@@ -127,6 +128,12 @@ export async function applyApplicationStateMutation(
     }
     return created.revision
   })
+  notifyStateChange(ctx, {
+    target: input.target,
+    revisionId: result.value.id,
+    changesetId: result.commit.changesetId,
+    paths: input.operations.map(operation => operation.path),
+  })
   return {
     snapshot: {
       scopeId: current.scope.id,
@@ -149,7 +156,7 @@ export function applyGlobalStateDefaultInTransaction(
     path: string
     value: JsonValue
   },
-): void {
+): StateChangeEvent {
   const nextSnapshot = structuredClone(input.snapshot)
   setDotPath(nextSnapshot, input.path, structuredClone(input.value))
   const stateTx = ctx.states.transaction(dataTx)
@@ -164,6 +171,12 @@ export function applyGlobalStateDefaultInTransaction(
     expectedRevisionId: input.parentRevisionId,
     revisionId: created.revision.id,
   })
+  return {
+    target: { scope: 'global' },
+    revisionId: created.revision.id,
+    changesetId: dataTx.changesetId,
+    paths: [`/${input.path.split('.').join('/')}`],
+  }
 }
 
 export async function revertApplicationStateChangeset(
@@ -225,7 +238,25 @@ export async function revertApplicationStateChangeset(
     }
     return compensation
   })
+  notifyStateChange(ctx, {
+    target: scope.kind === 'global' ? { scope: 'global' } : { scope: 'timeline', timelineId: scope.ownerId, branchId: branchId! },
+    revisionId: result.value.id,
+    changesetId: result.commit.changesetId,
+    paths: [''],
+  })
   return { changesetId: result.commit.changesetId }
+}
+
+export function notifyStateChange(ctx: Pick<ApplicationStateContext, 'onStateChanged' | 'logger'>, event: StateChangeEvent): void {
+  try {
+    ctx.onStateChanged?.(structuredClone(event))
+  } catch (error) {
+    // Notification failure cannot turn an already committed write into a failed mutation.
+    ctx.logger?.error('State change notification failed', {
+      event: 'state.notification_failed',
+      data: { message: error instanceof Error ? error.message : String(error), changesetId: event.changesetId },
+    })
+  }
 }
 
 async function revertDocumentsInTransaction(

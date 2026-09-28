@@ -61,6 +61,7 @@ export function createInMemoryDocumentStore(): DocumentStore {
         if (input?.type && document.type !== input.type) return false
         if (!input?.includeTombstone && document.meta.tombstone) return false
         if (input?.ownerExtensionId && document.meta.ownerExtensionId !== input.ownerExtensionId) return false
+        if (input?.ownerInstallationId !== undefined && (document.meta.ownerInstallationId ?? null) !== input.ownerInstallationId) return false
         return true
       })
       const items = filtered.slice(0, page.limit).map(({ document }) => cloneDocument(document))
@@ -96,6 +97,7 @@ export function createInMemoryDocumentStore(): DocumentStore {
         createdBy: existing?.meta.createdBy ?? input.meta?.createdBy ?? actor,
         updatedBy: actor,
         ownerExtensionId: input.meta?.ownerExtensionId ?? existing?.meta.ownerExtensionId,
+        ownerInstallationId: input.meta?.ownerInstallationId ?? existing?.meta.ownerInstallationId,
         source: input.meta?.source ?? existing?.meta.source,
       },
     }

@@ -4,6 +4,60 @@ import { describe, expect, it } from 'vitest'
 import { createExtensionFixture, createExtensionHostHarness, manifest } from './helpers.js'
 
 describe('extension host rpc registration contract', () => {
+  it('routes same-name RPCs by Card installation without fallback and allows explicit global service calls', async () => {
+    const { kernel, extensionHost } = createExtensionHostHarness()
+    await kernel.start()
+    const packageId = 'example.installedRpc'
+    const names = ['identity', 'relay', 'globalRelay', 'missingLocal']
+    const directory = createExtensionFixture('installed-rpc', {
+      manifest: manifest(packageId, names.map(name => ({ name: `${packageId}.${name}` }))),
+      source: `
+export function activate(ctx) {
+  ctx.rpc.register('example.installedRpc.identity', () => ctx.extension.instanceId)
+  ctx.rpc.register('example.installedRpc.relay', () => ctx.rpc.call('example.installedRpc.identity'))
+  ctx.rpc.register('example.installedRpc.globalRelay', () => ctx.rpc.call('example.installedRpc.identity', {}, { scope: 'global' }))
+  ctx.rpc.register('example.installedRpc.missingLocal', () => ctx.rpc.call('example.installedRpc.globalOnly'))
+}
+`,
+    })
+    const targets = [{ kind: 'global' as const }, { kind: 'card' as const, cardId: 'A' }, { kind: 'card' as const, cardId: 'B' }]
+    try {
+      const instances = []
+      for (const target of targets) {
+        await extensionHost.discover(directory, target)
+        const summary = await extensionHost.activate(packageId, 'server', target)
+        expect(summary.state).toBe('active')
+        instances.push(summary.instance!.instanceId)
+      }
+      kernel.registerExtensionRpc(`${packageId}.globalOnly`, packageId, 'server', () => 'global only', 'global-service')
+      for (const [index, target] of targets.entries()) {
+        expect(await kernel.callRpc('extensions.callPackageRpc', {
+          packageId, target, method: `${packageId}.identity`, params: { extensionTarget: targets[2] },
+        })).toBe(instances[index])
+        expect(await kernel.callRpc(`${packageId}.identity`, {}, { extensionTarget: target })).toBe(instances[index])
+        expect(await kernel.callRpc(`${packageId}.relay`, { extensionTarget: targets[2] }, { extensionTarget: target })).toBe(instances[index])
+        expect(await kernel.callRpc(`${packageId}.globalRelay`, {}, { extensionTarget: target })).toBe(instances[0])
+      }
+      await expect(kernel.callRpc('extensions.callPackageRpc', {
+        packageId, target: targets[1], method: `${packageId}.globalOnly`,
+      })).rejects.toThrow('method not found')
+      await expect(kernel.callRpc('extensions.callPackageRpc', {
+        packageId: 'system', target: targets[0], method: 'system.ping',
+      })).rejects.toThrow('not owned by extension')
+      await expect(kernel.callRpc('extensions.callPackageRpc', {
+        packageId, target: targets[0], method: 'system.ping',
+      })).rejects.toThrow('package namespace')
+      await expect(kernel.callRpc(`${packageId}.missingLocal`, {}, { extensionTarget: targets[1] })).rejects.toThrow('method not found')
+      expect(kernel.getPublicSurface().methods.filter(method => method.name.startsWith(packageId))).toHaveLength(5)
+      await extensionHost.dispose(packageId, 'server', targets[1])
+      await expect(kernel.callRpc(`${packageId}.identity`, {}, { extensionTarget: targets[1] })).rejects.toThrow('method not found')
+      expect(await kernel.callRpc(`${packageId}.identity`)).toBe(instances[0])
+      expect(await kernel.callRpc(`${packageId}.identity`, {}, { extensionTarget: targets[2] })).toBe(instances[2])
+    } finally {
+      await kernel.stop()
+    }
+  })
+
   it('activates example.echo and serves extension rpc', async () => {
     const { kernel, extensionHost } = createExtensionHostHarness({
       registerStateContribution: () => ({ dispose() {} }),

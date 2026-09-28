@@ -10,18 +10,18 @@ export type CardStateTemplate = {
   label?: string
 }
 
-export type StateEntityType = {
+type StateEntityType = {
   id: string
   collectionPath: string
   label?: string
 }
 
-export type StateEntityId = {
+type StateEntityId = {
   typeId: string
   entityId: string
 }
 
-export type TimelineComponentMount = {
+type TimelineComponentMount = {
   templateId: string
   templateVersion: number
   componentKey: string
@@ -33,6 +33,7 @@ export type TimelineComponentMount = {
 
 export type Card = {
   macros?: Record<string, string>
+  macroOptions?: import("@loom-studio/shared").MacroOptions
   id: string
   version: number
   name: string
@@ -40,6 +41,7 @@ export type Card = {
   description?: string
   importBundleId?: string
   portableExtensionPayloadIds?: string[]
+  extensionPackages?: Array<{ packageId: string; version: string; blobId: string }>
   promptResourceIds?: string[]
   stateTemplates?: CardStateTemplate[]
   stateDefinitionIds?: string[]

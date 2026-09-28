@@ -8,6 +8,7 @@ import type {
 import type { JsonValue } from '@loom-studio/shared'
 import {
   isRecord,
+  readOptionalInstallationTarget,
   readOptionalNumber,
   readOptionalObject,
   readOptionalString,
@@ -23,6 +24,7 @@ export async function handleStatesRpc(
   switch (method) {
     case 'application.getStateSnapshot':
       return await runtime.getStateSnapshot({
+        extensionTarget: readOptionalInstallationTarget(params, 'extensionTarget'),
         target: readStateTarget(params),
       }) as unknown as JsonValue
 

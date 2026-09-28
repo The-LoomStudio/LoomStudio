@@ -6,6 +6,7 @@ import {
   validateStateDefinitionDraft,
   validateStateValue,
 } from '@loom-studio/application-runtime'
+import type { StateContribution, TimelineStateBinding, TimelineStateTemplateDraft } from '@loom-studio/application-runtime'
 import { describe, expect, it } from 'vitest'
 
 describe('state definitions', () => {
@@ -64,7 +65,7 @@ describe('state definitions', () => {
   })
 
   it('supports multi-component assembly on the same entity and wildcard injection', () => {
-    const templates = new Map([
+    const templates = new Map<string, TimelineStateTemplateDraft>([
       ['core_stats', {
         kind: 'timeline-template' as const,
         templateVersion: 1,
@@ -103,7 +104,7 @@ describe('state definitions', () => {
       }],
     ])
 
-    const bindings = [
+    const bindings: TimelineStateBinding[] = [
       // 1. 世界级环境组件
       { path: 'world.weather', templateId: 'weather', templateVersion: 1 },
       // 2. 精确挂载创建 Alice / Bob Entity 的 core-stats 组件
@@ -141,7 +142,7 @@ describe('state definitions', () => {
   })
 
   it('materializes explicit entities, component mounts, and soft entity references from one contribution', () => {
-    const contribution = {
+    const contribution: StateContribution = {
       id: 'card:ec-example',
       entityTypes: [
         { id: 'character', collectionPath: 'entities.characters', label: '角色' },

@@ -63,6 +63,20 @@ describe.each(['en-US', 'zh-CN'] as const)('State/Text accessibility (%s)', loca
     expect(html).toContain(t('stateAuthoring.unknownPathComponent', { path: 'user.path', component: 'missing' }))
   })
 
+  it('keeps a missing entity type selected instead of displaying another option', () => {
+    const html = renderToStaticMarkup(createElement(StateAuthoringPanel, {
+      t,
+      card: {
+        ...card,
+        timelineStateEntities: [{ typeId: 'deleted-type', entityId: 'kept-entity' }],
+      },
+      onSaveCard: async () => { throw new Error('Rendering must not save') },
+    }))
+    expect(html).toMatch(/<option[^>]*value="deleted-type"[^>]*selected=""[^>]*>deleted-type<\/option>/)
+    expect(html).toMatch(/<option[^>]*disabled=""[^>]*value="deleted-type"/)
+    expect(html).toContain(t('stateAuthoring.unknownEntityType', { entity: 'kept-entity', type: 'deleted-type' }))
+  })
+
   it.each(['rule', 'extractor'] as const)('names the %s JSON editor and document ID', kind => {
     const title = t(kind === 'rule' ? 'textTransform.ruleTitle' : 'textTransform.extractorTitle')
     const html = renderDetail({
@@ -97,10 +111,16 @@ describe.each(['en-US', 'zh-CN'] as const)('State/Text accessibility (%s)', loca
       visibleScripts: [{
         script: {
           id: 'script-1', version: 1, name: 'USER SCRIPT', metadataId: 'user-script',
+          owner: { kind: 'user' }, formatVersion: 1, scriptVersion: '1.0.0', runtime: 'client-sandbox',
+          source: { blobId: 'blob-1', mediaType: 'text/javascript', fileName: 'user.loom.js' },
+          sourceDigest: 'digest', createdAt: '', updatedAt: '',
           requestedCapabilities: [], contributions: [],
         },
-        mount: { enabled: true, orderIndex: 0, grantedCapabilities: [] },
-      }] as TextTransformController['visibleScripts'],
+        mount: {
+          id: 'mount-1', version: 1, target: { kind: 'user' }, scriptDocumentId: 'script-1',
+          enabled: true, orderIndex: 0, grantedCapabilities: [], origin: {}, createdAt: '', updatedAt: '',
+        },
+      }],
       scriptFileName: 'user.loom.js', scriptSource: '// USER SOURCE',
     })
     expect(html).toContain(`aria-label="${t('textTransform.scriptFileName')}"`)
@@ -139,7 +159,7 @@ describe.each(['en-US', 'zh-CN'] as const)('State/Text accessibility (%s)', loca
     const html = renderToStaticMarkup(createElement(PipelineWorkbenchView, {
       t, ariaLabel: 'Pipeline', groups: [{
         id: 'rules', label: 'USER GROUP', items: statuses.map(status => ({
-          id: status, kind: 'rule', label: 'USER RULE', description: 'regex', owner: 'user', status,
+          id: status, kind: 'rule' as const, label: 'USER RULE', description: 'regex', owner: 'user', status,
         })),
       }],
       searchValue: '', searchPlaceholder: t('textTransform.search'), searchClearLabel: t('textTransform.clearSearch'),

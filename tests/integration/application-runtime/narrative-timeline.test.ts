@@ -4,6 +4,7 @@ import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createNarrativeStore } from '@loom-studio/application-data'
 import { createPromptResourceStore } from '@loom-studio/application-data'
 import { describe, expect, it } from 'vitest'
+import { installedExtensionContributionId } from '@loom-studio/extension-sdk'
 
 function createTestRuntime(options?: { stateContributions?: StateContributionRegistry }) {
   let nextId = 0
@@ -19,6 +20,58 @@ function createTestRuntime(options?: { stateContributions?: StateContributionReg
 }
 
 describe('application narrative timeline lifecycle', () => {
+  it('resolves installed State contributions without sharing registrations or reinitializing existing State', async () => {
+    const registry = createStateContributionRegistry()
+    const { engine, runtime } = createTestRuntime({ stateContributions: registry })
+    try {
+      const { card: a } = await runtime.createCard({ name: 'A' })
+      const { card: b } = await runtime.createCard({ name: 'B' })
+      const packageId = 'example.health'
+      const authoredId = `${packageId}.status`
+      const targets = [{ kind: 'global' as const }, { kind: 'card' as const, cardId: a.id }, { kind: 'card' as const, cardId: b.id }]
+      const registrations = targets.map((target, index) => registry.register({
+        target, packageId, packageVersion: '1.0.0', moduleId: 'server', instanceId: `instance-${index}`,
+        contribution: {
+          id: authoredId, entityTypes: [], entities: [], componentMounts: [],
+          templates: [{
+            id: authoredId, templateVersion: 1, schema: { type: 'object', properties: { hp: { type: 'number' } } },
+            initial: { hp: 100 + index },
+          }],
+          bindings: [{ path: 'stats', templateId: authoredId, templateVersion: 1 }],
+        },
+      }))
+      const ids = targets.map(target => installedExtensionContributionId(packageId, target, authoredId))
+      expect(registry.list().map(source => source.contributionId)).toEqual(ids)
+      const timelines = []
+      for (const [card, index] of [[a, 1], [b, 2]] as const) {
+        await runtime.updateCard({ cardId: card.id, stateContributionIds: [ids[index]!] })
+        const timeline = await runtime.createNarrativeTimeline({ cardId: card.id, openingNodes: [] })
+        timelines.push(timeline)
+        expect((await runtime.getStateSnapshot({
+          target: { scope: 'timeline', timelineId: timeline.timeline.id, branchId: timeline.branch.id },
+        })).snapshot.value).toMatchObject({ stats: { hp: 100 + index } })
+      }
+      await runtime.updateCard({ cardId: b.id, stateContributionIds: [ids[1]!] })
+      const before = await runtime.listNarrativeTimelines()
+      await expect(runtime.createNarrativeTimeline({ cardId: b.id })).rejects.toThrow('not available for this Card')
+      expect(await runtime.listNarrativeTimelines()).toEqual(before)
+      const existing = timelines[0]!
+      const stateTarget = { scope: 'timeline' as const, timelineId: existing.timeline.id, branchId: existing.branch.id }
+      const snapshot = (await runtime.getStateSnapshot({ target: stateTarget })).snapshot
+      await runtime.applyStateMutation({
+        target: stateTarget, expectedRevisionId: snapshot.revisionId, operations: [{ op: 'set', path: '/stats/hp', value: 45 }],
+      })
+      registrations[1]!.dispose()
+      expect(registry.get(ids[1]!)).toBeUndefined()
+      expect(registry.get(ids[0]!)).toBeDefined()
+      expect(registry.get(ids[2]!)).toBeDefined()
+      expect((await runtime.getStateSnapshot({ target: stateTarget })).snapshot.value).toMatchObject({ stats: { hp: 45 } })
+      await expect(runtime.createNarrativeTimeline({ cardId: a.id })).rejects.toThrow('State contribution is not registered')
+    } finally {
+      await engine.close()
+    }
+  })
+
   it('applies only selected Extension State contributions and freezes them into a new Timeline', async () => {
     const stateContributions = createStateContributionRegistry()
     const registration = stateContributions.register({
@@ -542,6 +595,6 @@ describe('application narrative timeline lifecycle', () => {
 
   it('requires the shared Prompt Resource Store and Data Engine', async () => {
     const { createInMemoryDocumentStore } = await import('@loom-studio/document-store')
-    expect(() => createApplicationRuntime({ documents: createInMemoryDocumentStore() })).toThrow('Prompt Resource Store is required')
+    expect(() => Reflect.apply(createApplicationRuntime, undefined, [{ documents: createInMemoryDocumentStore() }])).toThrow('Prompt Resource Store is required')
   })
 })

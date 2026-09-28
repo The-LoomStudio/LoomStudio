@@ -4,7 +4,7 @@ import { isJsonObject } from '@loom-studio/shared'
 import type { Card, StateSnapshot, StateTarget } from '../../../entities/index.js'
 import type { FileTreeNode } from '../../../shared/ui/file-tree/file-tree-model.js'
 
-export type StatePropertyType = 'number' | 'string' | 'boolean' | 'null' | 'other'
+type StatePropertyType = 'number' | 'string' | 'boolean' | 'null' | 'other'
 
 function getPropertyType(value: unknown): StatePropertyType {
   if (typeof value === 'number') return 'number'

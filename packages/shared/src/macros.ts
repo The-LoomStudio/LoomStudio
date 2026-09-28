@@ -4,6 +4,8 @@ export type MacroSourceKind = 'card' | 'preset' | 'provider' | 'builtin' | 'stat
 
 export type MacroCandidate = {
   sourceId: string
+  optionId?: string
+  optionLabel?: string
   sourceKind: MacroSourceKind
   sourceLabel: string
   value?: string
@@ -14,6 +16,8 @@ export type MacroInspectionEntry = {
   name: string
   candidates: MacroCandidate[]
   selectedSourceId?: string
+  selectedOptionId?: string
+  defaultSelection?: MacroSelection
   value?: string
   status: 'resolved' | 'conflict' | 'error'
 }
@@ -161,7 +165,55 @@ export type MacroProviderDefinition = {
   resolve(context: MacroProviderContext): string | Promise<string>
 }
 
-export type MacroSelectionMap = Record<string, string>
+export type MacroOption = { id: string; label: string; value: string }
+export type MacroOptions = Record<string, MacroOption[]>
+export type MacroSelection = string | { sourceId: string; optionId?: string }
+export type MacroSelectionMap = Record<string, MacroSelection>
+
+export function macroSelectionMatches(selection: MacroSelection | undefined, candidate: { sourceId: string; optionId?: string }): boolean {
+  if (selection === undefined) return false
+  const ref = typeof selection === 'string' ? { sourceId: selection } : selection
+  return ref.sourceId === candidate.sourceId && ref.optionId === candidate.optionId
+}
+
+export function normalizeMacroSelections(input: unknown): MacroSelectionMap {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Macro selections must be an object')
+  const entries: Array<[string, { sourceId: string; optionId?: string }]> = []
+  const names = new Set<string>()
+  for (const [name, value] of Object.entries(input)) {
+    const key = canonicalMacroName(name)
+    if (!isValidMacroName(name) || isReservedMacroName(name) || names.has(key)) throw new Error(`Invalid or duplicate configuration macro: ${name}`)
+    names.add(key)
+    const ref = typeof value === 'string' ? { sourceId: value } : value
+    if (!ref || typeof ref !== 'object' || Array.isArray(ref)
+      || typeof ref.sourceId !== 'string' || !ref.sourceId.trim()
+      || (ref.optionId !== undefined && (typeof ref.optionId !== 'string' || !ref.optionId.trim()))) {
+      throw new Error(`Invalid macro selection: ${name}`)
+    }
+    entries.push([key, { sourceId: ref.sourceId, ...(ref.optionId === undefined ? {} : { optionId: ref.optionId }) }])
+  }
+  return Object.fromEntries(entries)
+}
+
+export function normalizeMacroOptions(input: unknown): MacroOptions {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Macro options must be an object')
+  const names = new Set<string>()
+  return Object.fromEntries(Object.entries(input).map(([name, choices]) => {
+    const key = canonicalMacroName(name)
+    if (!isValidMacroName(name) || isReservedMacroName(name) || names.has(key)) throw new Error(`Invalid or duplicate configuration macro: ${name}`)
+    names.add(key)
+    if (!Array.isArray(choices)) throw new Error(`Macro options must be an array: ${name}`)
+    const ids = new Set<string>()
+    return [name, choices.map(choice => {
+      if (!choice || typeof choice !== 'object' || typeof choice.id !== 'string' || !choice.id.trim()
+        || typeof choice.label !== 'string' || !choice.label.trim() || typeof choice.value !== 'string' || ids.has(choice.id)) {
+        throw new Error(`Invalid or duplicate macro option: ${name}`)
+      }
+      ids.add(choice.id)
+      return { id: choice.id, label: choice.label, value: choice.value }
+    })]
+  }))
+}
 
 export function isJsonScalar(value: JsonValue): value is null | boolean | number | string {
   return value === null || typeof value === 'boolean' || typeof value === 'number' || typeof value === 'string'

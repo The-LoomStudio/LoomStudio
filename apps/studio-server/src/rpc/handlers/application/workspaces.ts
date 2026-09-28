@@ -21,6 +21,7 @@ import {
   isRecord,
   readOptionalBoolean,
   readOptionalNumber,
+  readOptionalObject,
   readOptionalString,
   readString,
 } from '../../rpc-params.js'
@@ -33,6 +34,9 @@ export async function handleWorkspacesRpc(
   convertPromptResource?: PromptResourceConverter,
 ): Promise<JsonValue | undefined> {
   switch (method) {
+    case 'application.listExtensionInstallations':
+      return await runtime.listExtensionInstallations() as unknown as JsonValue
+
     case 'application.getPromptResource':
       return await runtime.getPromptResource({
         resourceId: readString(params, 'resourceId'),
@@ -41,6 +45,11 @@ export async function handleWorkspacesRpc(
     case 'application.listPromptResources':
       return await runtime.listPromptResources({
         resourceKind: readOptionalPromptResourceKind(params, 'resourceKind'),
+      }) as unknown as JsonValue
+
+    case 'application.getPromptResourceBindings':
+      return await runtime.getPromptResourceBindings({
+        resourceId: readString(params, 'resourceId'),
       }) as unknown as JsonValue
 
     case 'application.createPromptResource':
@@ -110,6 +119,7 @@ export async function handleWorkspacesRpc(
         resourceId: readString(params, 'resourceId'),
         expectedVersion: readRequiredNumber(params, 'expectedVersion'),
         macros: readRequiredStringRecord(params, 'macros'),
+        macroOptions: readOptionalObject(params, 'macroOptions') as import('@loom-studio/shared').MacroOptions | undefined,
       }, context) as unknown as JsonValue
 
     case 'application.listSettingMounts':

@@ -7,14 +7,12 @@ import type { ApplicationRuntime, PromptResourceArtifact, RuntimeRequestContext 
 import type { JsonValue } from '@loom-studio/shared'
 import { isRecord, readString } from '../rpc/rpc-params.js'
 
-type AgentTemplate = { id: string; name: string; presetId: string }
 type ContentCatalog = {
   id: string
   version: string
   name: string
   resources: Array<{ id: string; path: string }>
   settingMounts: Array<{ presetResourceId: string; settingResourceId: string }>
-  agents: AgentTemplate[]
 }
 
 export async function readOfficialContent(directory: string) {
@@ -52,9 +50,6 @@ export async function readOfficialContent(directory: string) {
       throw new Error('Official content has an unresolved Setting mount')
     }
   }
-  for (const agent of catalog.agents) {
-    if (resourceKinds.get(agent.presetId) !== 'preset') throw new Error(`Agent template preset is missing: ${agent.id}`)
-  }
   const hash = createHash('sha256')
   for (const path of Object.keys(files).sort()) {
     const bytes = files[path]!
@@ -64,7 +59,7 @@ export async function readOfficialContent(directory: string) {
 }
 
 function parseCatalog(value: JsonValue): ContentCatalog {
-  if (!isRecord(value) || !Array.isArray(value.resources) || !Array.isArray(value.settingMounts) || !Array.isArray(value.agents)) {
+  if (!isRecord(value) || !Array.isArray(value.resources) || !Array.isArray(value.settingMounts)) {
     throw new Error('Invalid official content catalog')
   }
   const catalog = {
@@ -76,13 +71,11 @@ function parseCatalog(value: JsonValue): ContentCatalog {
       presetResourceId: readString(item, 'presetResourceId'),
       settingResourceId: readString(item, 'settingResourceId'),
     })),
-    agents: value.agents.map(item => ({ id: readString(item, 'id'), name: readString(item, 'name'), presetId: readString(item, 'presetId') })),
   }
   if (!/^[a-zA-Z0-9._-]+$/.test(catalog.id) || !/^\d+\.\d+\.\d+$/.test(catalog.version)) throw new Error('Invalid official package identity or version')
   if (catalog.resources.length === 0 || new Set(catalog.resources.map(item => item.id)).size !== catalog.resources.length) {
     throw new Error('Official content resource IDs must be nonempty and unique')
   }
-  if (new Set(catalog.agents.map(item => item.id)).size !== catalog.agents.length) throw new Error('Official Agent template IDs must be unique')
   return catalog
 }
 
@@ -105,7 +98,6 @@ export function createOfficialContentService(runtime: ApplicationRuntime, direct
               resourceKind: resource.artifact.resourceKind,
               available: existingIds.has(resource.id),
             })),
-            agents: content.catalog.agents,
           }],
         }
       }

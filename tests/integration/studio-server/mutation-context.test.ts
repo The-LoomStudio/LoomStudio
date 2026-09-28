@@ -18,7 +18,7 @@ vi.mock('@loom-studio/kernel', async importOriginal => {
     ...original,
     createKernel: (...args: Parameters<typeof original.createKernel>) => {
       const kernel = original.createKernel(...args)
-      kernel.getEventBus().subscribe(['data.changed', 'docs.changed'], event => captured.events.push(event))
+      kernel.getEventBus().subscribe(['data.changed', 'docs.changed'], event => { captured.events.push(event) })
       return kernel
     },
   }
@@ -83,14 +83,13 @@ describe('Application mutation request context', () => {
       await checked('application.updateAiCapabilityProfile', { profileId: capability.profile.id, displayName: 'Updated Capability' })
       await checked('application.deleteAiCapabilityProfile', { profileId: capability.profile.id })
 
-      const preset = await callRpc<{ resource: { id: string } }>(port, 'application.createPromptResource', {
-        resourceKind: 'preset', name: 'Context Preset',
+      const profile = await checked<{ agentPreset: { id: string; version: number } }>('application.createAgentPreset', {
+        name: 'Context Agent', model: { providerProfileId, modelId: officialFakeModelId },
       })
-      const profile = await checked<{ agentProfile: { id: string } }>('application.createAgentProfile', {
-        name: 'Context Agent', presetId: preset.resource.id, model: { providerProfileId, modelId: officialFakeModelId },
+      await checked('application.updateAgentPreset', {
+        agentPresetId: profile.agentPreset.id, expectedVersion: profile.agentPreset.version, name: 'Updated Agent',
       })
-      await checked('application.updateAgentProfile', { agentProfileId: profile.agentProfile.id, name: 'Updated Agent' })
-      await checked('application.deleteAgentProfile', { agentProfileId: profile.agentProfile.id })
+      await checked('application.deleteAgentPreset', { agentPresetId: profile.agentPreset.id }, ['application.deletePromptResource'])
       const { tools } = await callRpc<{ tools: AgentToolEntry[] }>(port, 'application.listAgentTools', {})
       expect(tools.length).toBeGreaterThan(0)
       const tool = tools[0]!

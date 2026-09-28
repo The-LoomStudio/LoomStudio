@@ -77,7 +77,7 @@ describe('AIRP real-line pipeline integration', () => {
       })
       expect(personaAsset.resource.version).toBeGreaterThanOrEqual(1)
 
-      // 3. 配置 Provider Profile 与 Agent Profile
+      // 3. 配置 Provider Profile 与 Agent Preset
       const provider = await runtime.createProviderProfile({
         providerExtensionId: 'official.fake',
         displayName: 'Mock AI Gateway',
@@ -85,22 +85,30 @@ describe('AIRP real-line pipeline integration', () => {
         enabledModelIds: [officialFakeModelId],
       })
 
-      const profileResult = await runtime.createAgentProfile({
+      const profileResult = await runtime.updateAgentPreset({
         name: '守望者 Agent',
-        presetId: presetResource.resource.id,
+        agentPresetId: presetResource.resource.id, expectedVersion: (await runtime.getPromptResource({ resourceId: presetResource.resource.id })).resource.version,
         model: {
           providerProfileId: provider.providerProfile.id,
           modelId: officialFakeModelId,
         },
       })
-      const profileId = profileResult.agentProfile.id
+      const profileId = profileResult.agentPreset.id
 
       // 4. 创建 Narrative 时间线会话
       const timelineResult = await runtime.createNarrativeTimeline({ cardId })
       const timelineId = timelineResult.timeline.id
+      const openingCount = timelineResult.nodes.length
+      const userNode = await runtime.appendNarrativeInput({
+        timelineId,
+        branchId: timelineResult.branch.id,
+        nodeId: 'user-input-1',
+        expectedHeadNodeId: timelineResult.branch.headNodeId ?? null,
+        content: '你好，请问灯塔几点熄灯？',
+      })
 
       const sessionResult = await runtime.createAgentSession({
-        agentProfileId: profileId,
+        agentPresetId: profileId,
         timelineId,
       })
       const sessionId = sessionResult.session.id
@@ -119,27 +127,25 @@ describe('AIRP real-line pipeline integration', () => {
       // 必须包含用户输入的 query
       expect(promptSerialized).toContain('你好，请问灯塔几点熄灯？')
 
-      // 6. 执行真实的 Agent Turn（模拟端到端调用并落库时间线）
+      // 用户正文已落库；未调用写入工具的回复只进入 Session。
       const turnResult = await runtime.invokeAgentTurn({
         agentSessionId: sessionId,
         input: '你好，请问灯塔几点熄灯？',
         narrativeTarget: {
           timelineId,
-          commit: true,
+          branchId: timelineResult.branch.id,
+          inputNodeId: userNode.node.id,
         },
       })
 
       expect(turnResult.agentSession.id).toBe(sessionId)
-      // 校验提交产生的 Narrative 节点
-      expect(turnResult.narrative).toBeDefined()
-      expect(turnResult.narrative?.nodes.length).toBeGreaterThan(0)
+      expect(turnResult.mutation.scope).toBe('agent-session-transcript')
 
       // 7. 直接下潜到 SQLite 数据库层，验证持久化 Fact 与节点行
       const timelineNodes = engine.database.prepare(
         'SELECT COUNT(*) as count FROM narrative_nodes WHERE timeline_id = ?',
       ).get(timelineId) as { count: number }
-      // 开场白节点 + 用户输入节点 + 助手回复节点 >= 2
-      expect(timelineNodes.count).toBeGreaterThanOrEqual(2)
+      expect(timelineNodes.count).toBe(openingCount + 1)
 
       // 8. 验证状态迁移与会话持久性
       const timelineAfter = await runtime.getNarrativeTimeline({ timelineId })

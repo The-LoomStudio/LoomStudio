@@ -9,6 +9,7 @@ export function createPromptToolExecutionScope(input: {
   sourceNodes: readonly SourceNode[]
   promptResources?: PromptResourceStore
   workspaceResourceAccess?: boolean
+  availableExtensionInstallations?: ReadonlyMap<string, string>
   mutatePromptResource?: ToolExecutionScope['mutatePromptResource']
 }): ToolExecutionScope {
   const sourceNodes = new Map(input.sourceNodes.map(node => [node.id, node]))
@@ -17,6 +18,7 @@ export function createPromptToolExecutionScope(input: {
     vfs: createPromptVfsEntries(input),
     ...(input.promptResources ? { promptResources: input.promptResources } : {}),
     ...(input.workspaceResourceAccess ? { workspaceResourceAccess: true } : {}),
+    availableExtensionInstallations: input.availableExtensionInstallations,
     ...(input.mutatePromptResource ? { mutatePromptResource: input.mutatePromptResource } : {}),
     context: input.contributions
       .filter(contribution => contribution.capabilities.targetAnchorId !== '@chat.tools')

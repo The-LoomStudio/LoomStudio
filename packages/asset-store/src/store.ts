@@ -27,7 +27,10 @@ export function createAssetStore(options: {
 }): AssetStore {
   options.engine.migrate({
     namespace: migrationNamespace,
-    migrations: [{ version: 1, migrate: migrateVersionOne }],
+    migrations: [
+      { version: 1, migrate: migrateVersionOne },
+      { version: 2, migrate: database => { database.exec('ALTER TABLE media_assets ADD COLUMN owner_installation_id TEXT') } },
+    ],
   })
 
   return {
@@ -99,6 +102,7 @@ export function createAssetStore(options: {
       const width = normalizeDimension(input.width, 'width')
       const height = normalizeDimension(input.height, 'height')
       const ownerPackageId = normalizeOptionalText(input.ownerPackageId, 255)
+      const ownerInstallationId = normalizeOptionalText(input.ownerInstallationId, 2048)
 
       const existingBlob = input.blobId
         ? await options.blobs.get(input.blobId)
@@ -126,6 +130,7 @@ export function createAssetStore(options: {
         width,
         height,
         ownerPackageId,
+        ownerInstallationId,
         createdBy: structuredClone(input.actor),
         createdAt: options.now(),
       }
@@ -144,8 +149,8 @@ export function createAssetStore(options: {
           tx.database.prepare(`
             INSERT INTO media_assets (
               id, blob_id, kind, label, media_type, size_bytes, width, height,
-              owner_package_id, created_by_json, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              owner_package_id, owner_installation_id, created_by_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
             asset.id,
             asset.blobId,
@@ -156,6 +161,7 @@ export function createAssetStore(options: {
             asset.width ?? null,
             asset.height ?? null,
             asset.ownerPackageId ?? null,
+            asset.ownerInstallationId ?? null,
             JSON.stringify(asset.createdBy),
             asset.createdAt,
           )
@@ -240,7 +246,7 @@ function readSourceArtifact(database: DatabaseSync, artifactId: string): SourceA
 function readMediaAsset(database: DatabaseSync, assetId: string): MediaAssetRecord | undefined {
   const row = database.prepare(`
     SELECT id, blob_id, kind, label, media_type, size_bytes, width, height,
-      owner_package_id, created_by_json, created_at
+      owner_package_id, owner_installation_id, created_by_json, created_at
     FROM media_assets WHERE id = ?
   `).get(assetId) as Record<string, unknown> | undefined
   if (!row) return undefined
@@ -256,6 +262,7 @@ function readMediaAsset(database: DatabaseSync, assetId: string): MediaAssetReco
     width: readOptionalNumber(row, 'width'),
     height: readOptionalNumber(row, 'height'),
     ownerPackageId: readOptionalString(row, 'owner_package_id'),
+    ownerInstallationId: readOptionalString(row, 'owner_installation_id'),
     createdBy,
     createdAt: readString(row, 'created_at'),
   }

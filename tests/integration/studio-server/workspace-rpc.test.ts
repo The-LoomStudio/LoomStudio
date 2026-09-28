@@ -2,9 +2,34 @@ import type { CardBundleArtifact } from '@loom-studio/application-runtime'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { zipSync } from 'fflate'
 import { callRpc, withStudioServer } from './helpers.js'
 
 describe('studio server card bundle rpc integration', () => {
+  it('persists embedded extension files in Blobs and exports them without installing code', async () => {
+    await withStudioServer(async port => {
+      const archive = zipSync({
+        'manifest.json': Buffer.from(JSON.stringify({ id: 'example.offline', version: '1.0.0' })),
+        'server.js': Buffer.from('throw new Error("must not execute during import")'),
+        'image.bin': new Uint8Array([0, 128, 255]),
+      })
+      const extensionPackages = [{ packageId: 'example.offline', version: '1.0.0', archiveBase64: Buffer.from(archive).toString('base64') }]
+      const artifact: CardBundleArtifact = {
+        schemaVersion: 4, artifactId: 'offline', displayName: 'Offline', card: { name: 'Offline' }, contextAssets: [],
+        extensionPackages,
+      }
+      const { card } = await callRpc<{ card: { id: string; extensionPackages: Array<{ packageId: string; blobId: string }> } }>(
+        port, 'application.importCardBundle', { artifact },
+      )
+      expect(card.extensionPackages).toEqual([{ packageId: 'example.offline', version: '1.0.0', blobId: expect.any(String) }])
+      const result = await callRpc<{ artifact: CardBundleArtifact }>(port, 'application.exportCardBundle', { cardId: card.id })
+      expect(result.artifact.extensionPackages).toEqual(extensionPackages)
+      expect((await callRpc<{ installations: unknown[] }>(port, 'application.listExtensionInstallations', {})).installations).toEqual([])
+      const packages = await callRpc<{ items: Array<{ packageId: string }> }>(port, 'extensions.listPackages', {})
+      expect(packages.items.some(item => item.packageId === 'example.offline')).toBe(false)
+    })
+  })
+
   it('imports a bundle and exposes its card resources and import metadata', async () => {
     await withStudioServer(async port => {
       const imported = await callRpc<{

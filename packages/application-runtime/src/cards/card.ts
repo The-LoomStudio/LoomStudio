@@ -1,6 +1,6 @@
 import type { DocumentRecord } from '@loom-studio/document-store'
-import type { JsonObject, JsonValue } from '@loom-studio/shared'
-import { createId, nowIso } from '@loom-studio/shared'
+import type { JsonObject } from '@loom-studio/shared'
+import { createId, nowIso, normalizeMacroOptions } from '@loom-studio/shared'
 import { isObject } from '../foundation/json.js'
 import { isPromptActivation } from '../prompt/prompt-activation.js'
 import { createVariableRenderContext, renderVariableMacros } from '../prompt/variables.js'
@@ -14,8 +14,6 @@ import type {
   OpeningChatContent,
   OpeningChatEntryContent,
   OpeningChatInput,
-  SettingActivation,
-  SettingEntryContent,
   SettingLayerContent,
   SettingLayerInput,
 } from '../types.js'
@@ -56,6 +54,7 @@ export function normalizeCardContent(content: CardSourceContent): CardSourceCont
     description: typeof legacyContent.description === 'string' ? legacyContent.description : undefined,
     importBundleId: normalizeOptionalString(legacyContent.importBundleId),
     portableExtensionPayloadIds: normalizeOptionalIdList(legacyContent.portableExtensionPayloadIds),
+    ...(legacyContent.extensionPackages !== undefined ? { extensionPackages: structuredClone(legacyContent.extensionPackages) } : {}),
     promptResourceIds: normalizeOptionalIdList(legacyContent.promptResourceIds),
     ...(legacyContent.externalPromptResourceIds !== undefined ? {
       externalPromptResourceIds: legacyContent.externalPromptResourceIds.filter(id => legacyContent.promptResourceIds?.includes(id)),
@@ -80,6 +79,7 @@ export function normalizeCardContent(content: CardSourceContent): CardSourceCont
     opening: normalizeOpening(legacyContent.opening),
     settingLayer: normalizeSettingLayer(legacyContent.settingLayer, legacyContent.setting),
     ...(legacyContent.macros !== undefined ? { macros: normalizeMacros(legacyContent.macros, 'Card') } : {}),
+    ...(legacyContent.macroOptions !== undefined ? { macroOptions: normalizeMacroOptions(legacyContent.macroOptions) } : {}),
     createdAt: typeof legacyContent.createdAt === 'string' ? legacyContent.createdAt : nowIso(),
     updatedAt: typeof legacyContent.updatedAt === 'string' ? legacyContent.updatedAt : nowIso(),
   }
@@ -107,6 +107,7 @@ export function normalizePreset(input: CardPresetInput | undefined): CardPresetC
   return {
     system: normalizeOptionalString(input.system),
     ...(input.macros !== undefined ? { macros: normalizeMacros(input.macros, 'Preset') } : {}),
+    ...(input.macroOptions !== undefined ? { macroOptions: normalizeMacroOptions(input.macroOptions) } : {}),
   }
 }
 
@@ -156,7 +157,7 @@ export function normalizeSettingLayer(input: SettingLayerInput | undefined, lega
           title: typeof entry.title === 'string' ? entry.title : undefined,
           content: entry.content,
           enabled: typeof entry.enabled === 'boolean' ? entry.enabled : true,
-          activation: isActivation(entry.activation) ? entry.activation : { kind: 'always' },
+          activation: isPromptActivation(entry.activation) ? entry.activation : { kind: 'always' },
           tags: Array.isArray(entry.tags) && entry.tags.every(tag => typeof tag === 'string') ? entry.tags : [],
         })),
     }
@@ -201,22 +202,4 @@ export function readOpeningEntries(
     role: entry.role,
     content: renderVariableMacros(entry.content, renderContext),
   }))
-}
-
-export function isOpeningEntry(value: JsonValue): value is OpeningChatEntryContent {
-  return isObject(value) && (value.role === 'user' || value.role === 'assistant') && typeof value.content === 'string'
-}
-
-export function isSettingEntry(value: JsonValue): value is SettingEntryContent {
-  return isObject(value)
-    && typeof value.id === 'string'
-    && typeof value.content === 'string'
-    && typeof value.enabled === 'boolean'
-    && isActivation(value.activation)
-    && Array.isArray(value.tags)
-    && value.tags.every(tag => typeof tag === 'string')
-}
-
-export function isActivation(value: JsonValue | undefined): value is SettingActivation {
-  return isPromptActivation(value)
 }

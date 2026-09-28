@@ -7,7 +7,7 @@ import type { JsonObject, JsonValue } from '@loom-studio/shared'
 
 export type AgentSession = {
   id: string
-  agentProfileId: string
+  agentPresetId: string
   timelineId?: string
   title?: string
   headEntryId?: string
@@ -36,6 +36,11 @@ export type AgentToolResultStatus =
   | 'skipped'
 
 export type AgentTranscriptEntryData =
+  | {
+      /** Saved handoff; preceding entries remain stored but leave the active Prompt. */
+      kind: 'work-summary'
+      content: string
+    }
   | {
       kind: 'message'
       role: 'user' | 'assistant'
@@ -127,7 +132,7 @@ export type AgentWriteContext = {
 }
 export type CreateAgentSessionInput = AgentWriteContext & {
   id?: string
-  agentProfileId: string
+  agentPresetId: string
   timelineId?: string
   title?: string
 }
@@ -155,7 +160,7 @@ export type AgentTranscriptPage = {
 }
 
 export type ListAgentSessionsInput = {
-  agentProfileId?: string
+  agentPresetId?: string
   timelineId?: string
   standalone?: boolean
   cursor?: string
@@ -187,6 +192,7 @@ export type AgentStore = {
   getSession(id: string): Promise<AgentSession | null>
   listSessions(input?: ListAgentSessionsInput): Promise<AgentSessionPage>
   getEntry(id: string): Promise<AgentTranscriptEntry | null>
+  getLatestWorkSummary(agentSessionId: string): Promise<AgentTranscriptEntry | null>
   getEntryPage(input: {
     agentSessionId: string
     cursor?: string

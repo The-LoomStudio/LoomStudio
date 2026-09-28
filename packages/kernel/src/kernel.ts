@@ -1,5 +1,6 @@
 import type { DataCommitSubscription } from '@loom-studio/data-engine'
 import type { JsonValue } from '@loom-studio/shared'
+import type { ExtensionInstallationTarget } from '@loom-studio/extension-sdk'
 import { createId, serializeError } from '@loom-studio/shared'
 import { createEventBus, registerBuiltinEventDefinitions } from './events.js'
 import {
@@ -19,6 +20,7 @@ import {
 
 export function createKernel(options: CreateKernelOptions): Kernel {
   const handlers = new Map<string, RpcRegistryEntry>()
+  const privateHandlers = new Map<string, RpcRegistryEntry>()
   const eventBus = createEventBus({
     onSubscriberError: ({ event, subscriptionId, error }) => {
       options.diagnostics.add({
@@ -87,12 +89,14 @@ export function createKernel(options: CreateKernelOptions): Kernel {
         },
       }
     },
-    registerExtensionRpc: (method, ownerPackageId, ownerModuleId, handler, instanceId) => {
+    registerExtensionRpc: (method, ownerPackageId, ownerModuleId, handler, instanceId, target = { kind: 'global' }) => {
       if (isKernelNamespace(method)) {
         throw new Error(`Extension cannot register Kernel namespace RPC: ${method}`)
       }
 
-      if (handlers.has(method)) {
+      const registry = target.kind === 'global' ? handlers : privateHandlers
+      const key = extensionRpcKey(method, target)
+      if (registry.has(key)) {
         throw new Error(`RPC already registered: ${method}`)
       }
 
@@ -105,19 +109,25 @@ export function createKernel(options: CreateKernelOptions): Kernel {
         }),
         owner: `extension:${ownerPackageId}/${ownerModuleId}`,
       }
-      handlers.set(method, entry)
+      registry.set(key, entry)
 
       return {
         dispose: () => {
-          if (handlers.get(method) === entry) handlers.delete(method)
+          if (registry.get(key) === entry) registry.delete(key)
         },
       }
     },
     callRpc: async (method, params, context = {}) => {
-      const entry = handlers.get(method)
+      const target = context.extensionTarget ?? { kind: 'global' }
+      const entry = target.kind === 'global'
+        ? handlers.get(method)
+        : privateHandlers.get(extensionRpcKey(method, target))
 
       if (!entry) {
         throw new Error(`RPC method not found: ${method}`)
+      }
+      if (context.expectedExtensionPackageId && !entry.owner.startsWith(`extension:${context.expectedExtensionPackageId}/`)) {
+        throw new Error(`RPC is not owned by extension package ${context.expectedExtensionPackageId}: ${method}`)
       }
 
       const rpcContext = normalizeContext(context)
@@ -140,7 +150,11 @@ export function createKernel(options: CreateKernelOptions): Kernel {
   return kernel
 }
 
-export function normalizeContext(context: KernelRpcContext): Required<Pick<KernelRpcContext, 'correlationId' | 'callId'>> & KernelRpcContext {
+function extensionRpcKey(method: string, target: ExtensionInstallationTarget): string {
+  return target.kind === 'global' ? method : JSON.stringify([target.cardId, method])
+}
+
+function normalizeContext(context: KernelRpcContext): Required<Pick<KernelRpcContext, 'correlationId' | 'callId'>> & KernelRpcContext {
   return {
     ...context,
     correlationId: context.correlationId ?? createId('corr'),
@@ -148,12 +162,12 @@ export function normalizeContext(context: KernelRpcContext): Required<Pick<Kerne
   }
 }
 
-export function assertKernelNamespace(method: string): void {
+function assertKernelNamespace(method: string): void {
   if (!isKernelNamespace(method)) {
     throw new Error(`Not a Kernel namespace: ${method}`)
   }
 }
 
-export function isKernelNamespace(method: string): boolean {
+function isKernelNamespace(method: string): boolean {
   return kernelNamespaces.includes(method.split('.')[0] ?? '')
 }

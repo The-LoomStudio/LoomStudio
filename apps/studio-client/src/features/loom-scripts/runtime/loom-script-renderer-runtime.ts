@@ -1,5 +1,6 @@
 import type {
   ClientRendererContext,
+  ClientNotification,
   ClientRendererScope,
   ClientStateTarget,
   LoomSandboxRendererInput,
@@ -16,7 +17,7 @@ export type LoomScriptRendererContribution = {
   inputs: Array<{ kind: 'match'; ruleId: string } | { kind: 'artifact'; artifactType: string }>
 }
 
-export type ResolvedLoomScriptMount = {
+type ResolvedLoomScriptMount = {
   mountId: string
   enabled: boolean
   orderIndex: number
@@ -54,13 +55,15 @@ export function createLoomScriptRendererRuntime(input: {
   rendererHost: ClientRendererHost
   resolveInputs(scope: ClientRendererScope, contribution: LoomScriptRendererContribution): LoomScriptInputProjection | Promise<LoomScriptInputProjection>
   stateRead(target: { scope: 'global' } | { scope: 'timeline'; timelineId: string; branchId: string }): Promise<JsonValue>
+  notify?(owner: string, input: ClientNotification): void
 }): LoomScriptRendererRuntime {
-  const active = new Map<string, { fingerprint: string; handles: ClientRendererHandle[] }>()
+  const active = new Map<string, { fingerprint: string; handles: ClientRendererHandle[]; instances: Set<() => void> }>()
 
   function disposeMount(mountId: string): void {
     const current = active.get(mountId)
     if (!current) return
     active.delete(mountId)
+    for (const dispose of current.instances) dispose()
     for (const handle of current.handles.reverse()) void handle.dispose()
   }
 
@@ -71,11 +74,12 @@ export function createLoomScriptRendererRuntime(input: {
 
       for (const mount of [...mounts].sort((left, right) => left.orderIndex - right.orderIndex || left.mountId.localeCompare(right.mountId))) {
         if (!mount.enabled) continue
-        const fingerprint = `${mount.script.id}@${mount.script.version}:${mount.source}:${mount.grantedCapabilities.join(',')}`
+        const fingerprint = `${mount.script.id}@${mount.script.version}:${mount.source}:${mount.grantedCapabilities.join(',')}:${mount.script.requestedCapabilities.join(',')}`
         if (active.get(mount.mountId)?.fingerprint === fingerprint) continue
         disposeMount(mount.mountId)
         const declaredContributionIds = mount.script.contributions.map(item => item.renderer.id)
         const handles: ClientRendererHandle[] = []
+        const instances = new Set<() => void>()
         for (const contribution of mount.script.contributions) {
           const owner = { kind: 'script' as const, scriptDocumentId: mount.script.id, documentVersion: mount.script.version }
           const contributionKey = rendererContributionKey({ owner, contributionId: contribution.renderer.id })
@@ -104,45 +108,69 @@ export function createLoomScriptRendererRuntime(input: {
             } : {}),
             sandboxMount: (root, context) => {
               let disposed = false
+              let generation = 0
+              let currentContext = context
               let sandbox: ReturnType<typeof mountLoomSandboxRenderer> | undefined
-              void Promise.resolve(input.resolveInputs(context.scope, contribution)).then(projection => {
+              function dispose() {
                 if (disposed) return
-                sandbox = mountLoomSandboxRenderer(root, context, {
-                  contributionId: contribution.renderer.id,
-                  declaredContributionIds,
-                  grantedCapabilities: effectiveCapabilities,
-                  inputs: selectMountedInputs(projectLoomScriptInputs(contribution, projection), context.part),
-                  scriptDocumentId: mount.script.id,
-                  documentVersion: mount.script.version,
-                  source: mount.source,
-                  stateRead: target => {
-                    if (!canReadStateTarget(context.scope, target)) {
-                      return Promise.reject(new Error('Loom Script state.read target is outside the Renderer scope'))
-                    }
-                    return input.stateRead(target)
-                  },
-                  onClose: context.close,
-                  onDiagnostic: diagnostic => input.rendererHost.reportDiagnostic({
-                    code: diagnostic.code === 'renderer.script_export_mismatch' ? 'renderer.script_export_mismatch' : 'renderer.sandbox_failed',
+                disposed = true
+                instances.delete(dispose)
+                sandbox?.dispose()
+              }
+              instances.add(dispose)
+              function update(nextContext: ClientRendererContext) {
+                currentContext = nextContext
+                const request = ++generation
+                void Promise.resolve().then(async () => {
+                  if (disposed || request !== generation) return
+                  const projection = await input.resolveInputs(nextContext.scope, contribution)
+                  if (disposed || request !== generation) return
+                  const inputs = selectMountedInputs(projectLoomScriptInputs(contribution, projection), nextContext.part)
+                  if (sandbox) { sandbox.update(nextContext, inputs); return }
+                  sandbox = mountLoomSandboxRenderer(root, nextContext, {
+                    contributionId: contribution.renderer.id,
+                    declaredContributionIds,
+                    grantedCapabilities: effectiveCapabilities,
+                    inputs,
+                    scriptDocumentId: mount.script.id,
+                    documentVersion: mount.script.version,
+                    source: mount.source,
+                    stateRead: target => {
+                      if (disposed || !canReadStateTarget(currentContext.scope, target)) {
+                        return Promise.reject(new Error('Loom Script state.read target is outside the Renderer scope'))
+                      }
+                      return input.stateRead(target)
+                    },
+                    notify: notification => {
+                      if (disposed) throw new Error('Renderer is disposed')
+                      if (!input.notify) throw new Error('Notification host is unavailable')
+                      input.notify(`script:${mount.script.id}`, notification)
+                    },
+                    onClose: () => currentContext.close(),
+                    onDiagnostic: diagnostic => input.rendererHost.reportDiagnostic({
+                      code: diagnostic.code === 'renderer.script_export_mismatch' ? 'renderer.script_export_mismatch' : 'renderer.sandbox_failed',
+                      contributionKey,
+                      message: diagnostic.message,
+                    }),
+                  })
+                }).catch(error => {
+                  if (disposed || request !== generation) return
+                  input.rendererHost.reportDiagnostic({
+                    code: 'renderer.projection_failed',
                     contributionKey,
-                    message: diagnostic.message,
-                  }),
+                    message: error instanceof Error ? error.message : String(error),
+                  })
                 })
-              }).catch(error => input.rendererHost.reportDiagnostic({
-                code: 'renderer.projection_failed',
-                contributionKey,
-                message: error instanceof Error ? error.message : String(error),
-              }))
+              }
+              update(context)
               return {
-                dispose: () => {
-                  disposed = true
-                  sandbox?.dispose()
-                },
+                update,
+                dispose,
               }
             },
           }))
         }
-        active.set(mount.mountId, { fingerprint, handles })
+        active.set(mount.mountId, { fingerprint, handles, instances })
       }
     },
     dispose: () => {

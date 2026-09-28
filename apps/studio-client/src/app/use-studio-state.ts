@@ -13,7 +13,7 @@ import { createActivationFacts, toggleActivationTag, type ActivationControlState
 import { useMacroPreview } from '../features/prompt-build/model/use-macro-preview.js'
 import { useMacroSelection } from '../features/prompt-build/model/use-macro-selection.js'
 import { useProviderSettings } from '../features/provider-settings/model/use-provider-settings.js'
-import { useAgentProfiles } from '../features/agent-profiles/model/use-agent-profiles.js'
+import { useAgentPresets } from '../features/agent-presets/model/use-agent-presets.js'
 import { useNarrativeRuntime } from '../features/narrative-runtime/model/use-narrative-runtime.js'
 import { useExtensionResourceCommands } from '../features/extension-renderers/model/use-extension-resource-commands.js'
 import { usePromptResourceCommands } from '../features/prompt-resources/model/use-prompt-resource-commands.js'
@@ -57,6 +57,7 @@ export function useStudioState(transportLogger: Logger) {
     promptResources,
     refreshPresetToolMounts,
     refreshPromptResourceLibrary,
+    refreshPromptResource,
     refreshSettingMounts,
     setPresetToolMounts,
     setPromptResources,
@@ -99,24 +100,26 @@ export function useStudioState(transportLogger: Logger) {
     },
     runAction: action => operations.run('provider-settings', action).then(() => undefined),
   })
-  const agentProfiles = useAgentProfiles({
+  const agentPresets = useAgentPresets({
     api,
-    runAction: action => operations.run('agent-profiles', action).then(() => undefined),
+    refreshResources: async () => {
+      await Promise.all([refreshPromptResourceLibrary(), refreshPresetToolMounts(), refreshSettingMounts()])
+    },
+    runAction: action => operations.run('agent-presets', action).then(() => undefined),
   })
-  const selectedAgentProfile = agentProfiles.agentProfiles.find(profile => profile.id === agentProfiles.selectedAgentProfileId)
-  const macroSelection = useMacroSelection({ endpoint, cardId: cardsState.selectedCardId, presetId: selectedAgentProfile?.presetId })
+  const selectedAgentPreset = agentPresets.agentPresets.find(profile => profile.id === agentPresets.selectedAgentPresetId)
   const activationFacts = useMemo(() => createActivationFacts(activationControl), [activationControl])
   const narrativeRuntime = useNarrativeRuntime({
     activationFacts,
-    getMacroSelections: macroSelection.getSelections,
+    getMacroSelections: (timelineId, branchId) => macroSelection.getSelections(timelineId, branchId),
     api,
     initialInput: '我看向柜台后的铃铛。',
     initialNodes: [],
     selectedCard: cardsState.selectedCardDetails,
     selectedCardId: cardsState.selectedCardId,
     onSelectCard: cardsState.setSelectedCardId,
-    selectedAgentProfileId: agentProfiles.selectedAgentProfileId,
-    onSelectAgentProfile: agentProfiles.selectAgentProfile,
+    selectedAgentPresetId: agentPresets.selectedAgentPresetId,
+    onSelectAgentPreset: agentPresets.selectAgentPreset,
     runAgentAction: action => operations.runReported('agent-chat', action).then(() => undefined),
     runAction: async action => {
       let completed = false
@@ -129,17 +132,12 @@ export function useStudioState(transportLogger: Logger) {
     runLatestAction: action => operations.runLatest('session', action).then(() => undefined),
   })
 
-  function applyPromptResourceLibrary(resources: PromptResource[]) {
-    setPromptResources(() => resources)
-    contextAssetState.setResources(resources)
-  }
-
-  async function refreshExtensionDependentData(): Promise<void> {
+  async function refreshResourceConsumers(): Promise<void> {
     await Promise.all([
       refreshPromptResourceLibrary(),
       refreshSettingMounts(),
       refreshPresetToolMounts(),
-      agentProfiles.refreshAgentProfiles(),
+      agentPresets.refreshAgentPresets(),
     ])
   }
 
@@ -147,7 +145,7 @@ export function useStudioState(transportLogger: Logger) {
     api,
     refreshCards: cardsState.refreshCards,
     refreshCardTimelines: narrativeRuntime.refreshCardTimelines,
-    refreshDependentData: refreshExtensionDependentData,
+    refreshDependentData: refreshResourceConsumers,
     selectedCardId: cardsState.selectedCardId,
   })
 
@@ -161,18 +159,19 @@ export function useStudioState(transportLogger: Logger) {
       if (selectedCardId) cardsState.setSelectedCardId(selectedCardId)
       await narrativeRuntime.refreshAllAgentSessions()
       await providerSettings.refreshProviderSettings()
-      await agentProfiles.refreshAgentProfiles()
+      await agentPresets.refreshAgentPresets()
       setNetworkSettings(await api.settings.getNetwork())
       if (active) setBootstrappedApi(api)
     })
     return () => { active = false }
   }, [observedBridge])
 
+  const macroSelection = useMacroSelection({
+    api: api.macros, endpoint, cardId: cardsState.selectedCardId,
+    presetId: selectedAgentPreset?.id, timelineId: narrativeRuntime.timeline?.id,
+  })
   const macroKey = macroSelection.targetKey(narrativeRuntime.timeline?.id, narrativeRuntime.branch?.id)
   const macroSelections = macroSelection.readSelections(macroKey)
-  useEffect(() => {
-    macroSelection.activate(macroKey)
-  }, [macroKey])
   const macroPreviewState = useMacroPreview({
     api: api.macros,
     branchId: narrativeRuntime.branch?.id,
@@ -180,7 +179,7 @@ export function useStudioState(transportLogger: Logger) {
     cardVersion: cardsState.selectedCardDetails?.version,
     key: macroKey,
     lastRunId: narrativeRuntime.lastRun?.runId,
-    presetId: selectedAgentProfile?.presetId,
+    presetId: selectedAgentPreset?.id,
     resourceRevision: promptResources,
     selections: macroSelections,
     timelineId: narrativeRuntime.timeline?.id,
@@ -197,7 +196,7 @@ export function useStudioState(transportLogger: Logger) {
     setSettingMounts,
     setPresetToolMounts,
     invalidatePromptResourceState: promptResourceState.invalidate,
-    refreshAgentProfiles: agentProfiles.refreshAgentProfiles,
+    refreshAgentPresets: agentPresets.refreshAgentPresets,
     refreshCards: cardsState.refreshCards,
     refreshCardTimelines: narrativeRuntime.refreshCardTimelines,
     selectedCardId: cardsState.selectedCardId,
@@ -210,7 +209,7 @@ export function useStudioState(transportLogger: Logger) {
   const sessionBusy = operations.isPending('session')
   const promptMessages = narrativeRuntime.promptPreview?.messages
   const promptProjection = narrativeRuntime.promptPreview?.projection ?? narrativeRuntime.lastRun?.projection
-  const promptBuildTrace = undefined
+  const promptBuildTrace = narrativeRuntime.promptPreview?.promptBuildTrace ?? narrativeRuntime.lastRun?.promptBuildTrace
   const providerPayloadPreview = narrativeRuntime.promptPreview?.providerPayloadPreview
   const derivedValues = useStudioDerivedValues({
     t,
@@ -228,7 +227,7 @@ export function useStudioState(transportLogger: Logger) {
     sessionBusy,
     agentSessionReady: narrativeRuntime.agentSessionReady,
     agentInput: narrativeRuntime.agentInput,
-    selectedAgentProfile,
+    selectedAgentPreset,
     agentChatBusy: operations.isPending('agent-chat'),
     macroPreview,
     macroKey,
@@ -242,19 +241,19 @@ export function useStudioState(transportLogger: Logger) {
     }))
   }
 
-  async function undoEdit() {
+  async function undoEdit(canNavigate: () => boolean) {
     return operations.runReported('mutation', async () => {
       const entry = await editHistory.undo()
       if (!entry) return
-      return refreshHistoryAnchor(entry)
+      return refreshHistoryAnchor(entry, canNavigate)
     })
   }
 
-  async function redoEdit() {
+  async function redoEdit(canNavigate: () => boolean) {
     return operations.runReported('mutation', async () => {
       const entry = await editHistory.redo()
       if (!entry) return
-      return refreshHistoryAnchor(entry)
+      return refreshHistoryAnchor(entry, canNavigate)
     })
   }
 
@@ -263,19 +262,19 @@ export function useStudioState(transportLogger: Logger) {
     if (updated) setNetworkSettings(updated)
   }
 
-  async function refreshHistoryAnchor(entry: { anchor?: { documentId: string; subjectId?: string } }): Promise<HistoryAssetTarget | undefined> {
+  async function refreshHistoryAnchor(entry: { anchor?: { documentId: string; subjectId?: string } }, canNavigate: () => boolean): Promise<HistoryAssetTarget | undefined> {
     if (!entry.anchor) return
     if (promptResources.some(resource => resource.id === entry.anchor?.documentId)) {
-      const result = await api.promptResources.get(entry.anchor.documentId)
-      const resources = promptResources.map(resource => resource.id === result.resource.id ? result.resource : resource)
-      applyPromptResourceLibrary(resources)
+      const resource = await refreshPromptResource(entry.anchor.documentId)
+      if (!resource || !canNavigate()) return
+      const resources = [resource]
       const subjectId = entry.anchor.subjectId
       const contextAssets = resources.map(resource => resource.rootNode)
       return readHistoryAssetTarget(contextAssets, subjectId, readDefaultContextAssetId(resources))
     }
 
     const cards = await cardsState.refreshCards()
-    if (cards.some(card => card.id === entry.anchor?.documentId)) {
+    if (canNavigate() && cards.some(card => card.id === entry.anchor?.documentId)) {
       cardsState.setSelectedCardId(entry.anchor.documentId)
     }
   }
@@ -293,6 +292,7 @@ export function useStudioState(transportLogger: Logger) {
     textTransformsApi: api.textTransforms,
     clientExtensionApi,
     ...extensionResourceCommands,
+    refreshResourceConsumers,
     // cards
     cards: cardsState.cards,
     selectedCardId: cardsState.selectedCardId,
@@ -305,13 +305,18 @@ export function useStudioState(transportLogger: Logger) {
     updateCardStateConfig: cardsState.updateCardStateConfig,
     updateCardMacros: cardsState.updateCardMacros,
     macroInspection: macroPreview.key === macroKey ? macroPreview.inspection : undefined,
-    macroInspectionLoading: macroPreview.key !== macroKey || macroPreview.loading,
-    macroInspectionError: macroPreview.key === macroKey ? macroPreview.error : undefined,
+    macroInspectionLoading: macroPreview.key !== macroKey || macroPreview.loading || macroSelection.loading,
+    macroInspectionError: macroSelection.readError(macroKey) ?? (macroPreview.key === macroKey ? macroPreview.error : undefined),
     macroSelections,
     macroTargetKey: macroKey,
-    selectMacroSource: (name: string, sourceId: string | undefined) => macroSelection.selectSource(macroKey, name, sourceId),
-    refreshMacros: macroPreviewState.refresh,
-    replaceCardPromptResources: cardsState.replaceCardPromptResources,
+    selectMacroSource: (name: string, sourceId: import('@loom-studio/shared').MacroSelection | undefined) => { void macroSelection.selectSource(macroKey, name, sourceId) },
+    refreshMacros: () => { void macroSelection.refresh().then(macroPreviewState.refresh) },
+    replaceCardPromptResources: async (cardId: string, resourceIds: string[]) => {
+      await cardsState.replaceCardPromptResources(cardId, resourceIds)
+      await promptResourceState.invalidate({ bindings: true })
+    },
+    attachCardExtensionPackage: cardsState.attachExtensionPackage,
+    detachCardExtensionPackage: cardsState.detachExtensionPackage,
     importCards: cardsState.importCards,
     exportCard: cardsState.exportCard,
     directoryApi: cardsState.directoryApi,
@@ -333,6 +338,13 @@ export function useStudioState(transportLogger: Logger) {
     allAgentSessions: narrativeRuntime.allAgentSessions,
     agentChatSessionReady: narrativeRuntime.agentSessionReady,
     agentActiveRun: narrativeRuntime.activeAgentRun,
+    runRecovery: narrativeRuntime.runRecovery,
+    runRecoveryBusy: narrativeRuntime.runRecoveryBusy,
+    canRestoreRunInput: narrativeRuntime.canRestoreRunInput,
+    reconnectAgentRun: narrativeRuntime.reconnectAgentRun,
+    restoreRunInput: narrativeRuntime.restoreRunInput,
+    retryNarrativeInput: narrativeRuntime.retryNarrativeInput,
+    canRetryNarrativeInput: narrativeRuntime.canRetryNarrativeInput,
     cancelAgentRun: narrativeRuntime.cancelAgentRun,
     pauseAgentRun: narrativeRuntime.pauseAgentRun,
     resumeAgentRun: narrativeRuntime.resumeAgentRun,
@@ -360,8 +372,8 @@ export function useStudioState(transportLogger: Logger) {
     aiProviders: providerSettings.aiProviders,
     aiCapabilityProfiles: providerSettings.aiCapabilityProfiles,
     setProviderAccountDraft: providerSettings.setProviderAccountDraft,
-    selectedAgentProfileId: agentProfiles.selectedAgentProfileId,
-    selectAgentProfile: agentProfiles.selectAgentProfile,
+    selectedAgentPresetId: agentPresets.selectedAgentPresetId,
+    selectAgentPreset: agentPresets.selectAgentPreset,
     // input
     input: narrativeRuntime.input, setInput: narrativeRuntime.setInput,
     // api & runtime
@@ -381,6 +393,7 @@ export function useStudioState(transportLogger: Logger) {
     presetToolMounts,
     contextAssets: contextAssetState.nodes,
     promptResourceDrafts: contextAssetState.resources,
+    extensionInstallations: promptResourceState.extensionInstallations,
     draftResourceIds: contextAssetState.draftResourceIds,
     discardContextAssetDraft: contextAssetState.discardDraft,
     retryContextAssetDraft: contextAssetState.retryDraft,
@@ -432,9 +445,9 @@ export function useStudioState(transportLogger: Logger) {
     providerAccounts: providerSettings.providerAccounts,
     providerAccountsLoaded: providerSettings.providerAccountsLoaded,
     modelProfiles: providerSettings.modelProfiles,
-    agentProfiles: agentProfiles.agentProfiles,
-    agentTools: agentProfiles.tools,
-    presets: agentProfiles.presets,
+    agentPresets: agentPresets.agentPresets,
+    agentTools: agentPresets.tools,
+    presets: agentPresets.agentPresets,
     refreshProviderAccounts: providerSettings.refreshProviderAccounts,
     refreshAiProviders: providerSettings.refreshAiProviders,
     refreshModelProfiles: providerSettings.refreshModelProfiles,
@@ -446,10 +459,10 @@ export function useStudioState(transportLogger: Logger) {
     listProviderModels: providerSettings.listProviderModels,
     invokeAiCapability: providerSettings.invokeAiCapability,
     pingModelProfile: providerSettings.pingModelProfile,
-    createAgentProfile: agentProfiles.createAgentProfile,
-    updateAgentProfile: agentProfiles.updateAgentProfile,
-    updateAgentTool: agentProfiles.updateAgentTool,
-    deleteAgentProfile: agentProfiles.deleteAgentProfile,
+    createAgentPreset: agentPresets.createAgentPreset,
+    updateAgentPreset: agentPresets.updateAgentPreset,
+    updateAgentTool: agentPresets.updateAgentTool,
+    deleteAgentPreset: agentPresets.deleteAgentPreset,
   }
 }
 

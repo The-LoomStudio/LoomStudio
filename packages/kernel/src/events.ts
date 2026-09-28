@@ -5,6 +5,7 @@ import type {
   EventSubscriberIdentity,
   RegisteredEventDefinition,
 } from '@loom-studio/extension-sdk'
+import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import type { JsonValue } from '@loom-studio/shared'
 import { createId, nowIso } from '@loom-studio/shared'
 import type { StudioEvent } from '@loom-studio/transport'
@@ -26,15 +27,16 @@ export function createEventBus(options: CreateEventBusOptions = {}): EventBus {
     // Boundary: Ensures event definition uniqueness and validates registration ownership against namespace.
     registerDefinition: (definition, registeredBy = { kind: 'platform' }) => {
       validateEventDefinition(definition, registeredBy)
-      if (definitions.has(definition.name)) {
+      const key = eventKey(definition.name, registeredBy)
+      if (definitions.has(key)) {
         throw new Error(`Event definition already registered: ${definition.name}`)
       }
       const registered = { definition, registeredBy } satisfies RegisteredEventDefinition
-      definitions.set(definition.name, registered)
+      definitions.set(key, registered)
 
       return {
         dispose: () => {
-          if (definitions.get(definition.name) === registered) definitions.delete(definition.name)
+          if (definitions.get(key) === registered) definitions.delete(key)
         },
       }
     },
@@ -44,9 +46,10 @@ export function createEventBus(options: CreateEventBusOptions = {}): EventBus {
      * Failure semantics: Subscriber errors are routed to onSubscriberError and do not abort emitter execution.
      */
     emit: (name, payload, emitOptions = {}) => {
-      const registered = definitions.get(name)
+      const publisher = emitOptions.publisher ?? { kind: 'kernel' as const }
+      const registered = definitions.get(eventKey(name, publisher))
       if (!registered) throw new Error(`Event definition not registered: ${name}`)
-      assertCanPublish(registered, emitOptions.publisher ?? { kind: 'kernel' })
+      assertCanPublish(registered, publisher)
       const parsedPayload = registered.definition.parse?.(payload) ?? payload
       assertJsonValue(parsedPayload, `Event payload must be JSON-compatible: ${name}`)
       assertPayloadSize(registered.definition, parsedPayload)
@@ -54,6 +57,8 @@ export function createEventBus(options: CreateEventBusOptions = {}): EventBus {
         name,
         payload: parsedPayload,
         meta: {
+          ...(publisher.kind === 'extension' && publisher.target?.kind === 'card'
+            ? { installationId: extensionInstallationId(publisher.packageId, publisher.target) } : {}),
           eventId: createId('evt'),
           definitionVersion: registered.definition.version,
           emittedAt: nowIso(),
@@ -67,9 +72,9 @@ export function createEventBus(options: CreateEventBusOptions = {}): EventBus {
 
       for (const [subscriptionId, subscription] of subscriptions.entries()) {
         if (!subscription.patterns.some(pattern => matchesEventPattern(pattern, name))) continue
-        if (!canSubscribe(registered.definition, subscription.subscriber)) continue
+        if (!canSubscribe(registered, subscription.subscriber)) continue
         try {
-          const result = subscription.handler(event)
+          const result = subscription.handler(structuredClone(event))
           if (isPromiseLike(result)) {
             void result.catch(error => options.onSubscriberError?.({
               event,
@@ -104,7 +109,7 @@ export function createEventBus(options: CreateEventBusOptions = {}): EventBus {
     },
     unsubscribe: subscriptionId => subscriptions.delete(subscriptionId),
     definitions: () => [...definitions.values()].sort((left, right) => left.definition.name.localeCompare(right.definition.name)),
-    eventNames: () => [...definitions.keys()].sort(),
+    eventNames: () => [...new Set([...definitions.values()].map(item => item.definition.name))].sort(),
   }
 }
 
@@ -126,7 +131,7 @@ export function registerBuiltinEventDefinitions(eventBus: EventBus): void {
   for (const definition of definitions) eventBus.registerDefinition(definition)
 }
 
-export function platformEvent(
+function platformEvent(
   name: string,
   summary: string,
   visibility: EventDefinition['visibility'],
@@ -148,7 +153,7 @@ export function platformEvent(
  * Invariant: Extension events must use their package namespace prefix and cannot declare internal visibility.
  * Protected events require capability binding to enforce least-privilege subscription boundaries.
  */
-export function validateEventDefinition(definition: EventDefinition, registeredBy: EventDefinitionRegistrationOwner): void {
+function validateEventDefinition(definition: EventDefinition, registeredBy: EventDefinitionRegistrationOwner): void {
   if (!/^[a-z][a-z0-9]*(?:[.-][A-Za-z0-9]+)+$/.test(definition.name)) {
     throw new Error(`Invalid event name: ${definition.name}`)
   }
@@ -186,7 +191,7 @@ export function validateEventDefinition(definition: EventDefinition, registeredB
 }
 
 // Boundary: Extensions can only publish events registered under their own package/module identity.
-export function assertCanPublish(registered: RegisteredEventDefinition, publisher: EventPublishIdentity): void {
+function assertCanPublish(registered: RegisteredEventDefinition, publisher: EventPublishIdentity): void {
   const owner = registered.definition.owner
   if (owner.kind === 'extension') {
     if (
@@ -201,7 +206,7 @@ export function assertCanPublish(registered: RegisteredEventDefinition, publishe
   }
 }
 
-export function assertCanSubscribePatterns(
+function assertCanSubscribePatterns(
   patterns: string[],
   definitions: Map<string, RegisteredEventDefinition>,
   subscriber: EventSubscriberIdentity,
@@ -209,20 +214,37 @@ export function assertCanSubscribePatterns(
   if (subscriber.kind === 'platform') return
   for (const registered of definitions.values()) {
     if (!patterns.some(pattern => matchesEventPattern(pattern, registered.definition.name))) continue
-    if (!canSubscribe(registered.definition, subscriber)) {
+    if (!sameEventScope(registered, subscriber)) continue
+    if (!canSubscribe(registered, subscriber)) {
       throw new Error(`Extension is not allowed to subscribe to event: ${registered.definition.name}`)
     }
   }
 }
 
-export function canSubscribe(definition: EventDefinition, subscriber: EventSubscriberIdentity): boolean {
+function canSubscribe(registered: RegisteredEventDefinition, subscriber: EventSubscriberIdentity): boolean {
   if (subscriber.kind === 'platform') return true
+  if (!sameEventScope(registered, subscriber)) return false
+  const definition = registered.definition
   if (definition.visibility === 'internal') return false
   if (definition.visibility === 'public') return true
   return Boolean(definition.capability && subscriber.capabilities.includes(definition.capability))
 }
 
-export function assertPayloadSize(definition: EventDefinition, payload: JsonValue): void {
+function eventKey(name: string, identity: EventDefinitionRegistrationOwner | EventPublishIdentity): string {
+  return identity.kind === 'extension' && identity.target?.kind === 'card'
+    ? JSON.stringify([identity.target.cardId, name]) : name
+}
+
+function sameEventScope(registered: RegisteredEventDefinition, subscriber: EventSubscriberIdentity): boolean {
+  if (subscriber.kind === 'platform' || registered.definition.owner.kind !== 'extension') return true
+  const ownerTarget = registered.registeredBy.kind === 'extension' ? registered.registeredBy.target : undefined
+  const subscriberTarget = subscriber.target
+  return ownerTarget?.kind === 'card'
+    ? subscriberTarget?.kind === 'card' && subscriberTarget.cardId === ownerTarget.cardId
+    : subscriberTarget?.kind !== 'card'
+}
+
+function assertPayloadSize(definition: EventDefinition, payload: JsonValue): void {
   if (!definition.maxPayloadBytes) return
   const size = Buffer.byteLength(JSON.stringify(payload), 'utf8')
   if (size > definition.maxPayloadBytes) {
@@ -231,11 +253,11 @@ export function assertPayloadSize(definition: EventDefinition, payload: JsonValu
 }
 
 // Invariant: Traverses object graph with cycle detection to prevent prototype pollution and non-serializable values.
-export function assertJsonValue(value: unknown, message: string): asserts value is JsonValue {
+function assertJsonValue(value: unknown, message: string): asserts value is JsonValue {
   if (!isJsonValue(value, new Set())) throw new Error(message)
 }
 
-export function isJsonValue(value: unknown, ancestors: Set<object>): value is JsonValue {
+function isJsonValue(value: unknown, ancestors: Set<object>): value is JsonValue {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return true
   if (typeof value === 'number') return Number.isFinite(value)
   if (typeof value !== 'object') return false
@@ -250,11 +272,11 @@ export function isJsonValue(value: unknown, ancestors: Set<object>): value is Js
   return valid
 }
 
-export function isPromiseLike(value: unknown): value is Promise<void> {
+function isPromiseLike(value: unknown): value is Promise<void> {
   return value !== null && typeof value === 'object' && 'then' in value && typeof value.then === 'function'
 }
 
-export function matchesEventPattern(pattern: string, name: string): boolean {
+function matchesEventPattern(pattern: string, name: string): boolean {
   if (pattern.endsWith('.*')) {
     return name.startsWith(pattern.slice(0, -1))
   }

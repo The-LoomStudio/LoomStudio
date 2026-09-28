@@ -1,9 +1,19 @@
 # CodeAct 与 VFS 工具实施计划
 
+> **2026-09-24 接续**：Narrative 宿主已提供有效范围、加工及历史单次授权合同；本轮补齐官方 CodeAct 历史读取 Yes/No 接线和审批等待超时预算。下方早期“历史权限未实施”的记录保留为历史，不代表当前状态。完整 Plan 仍不归档。
+
+### 历史读取审批接续验收
+
+- 复用 `ToolRuntimeRegistration.approve` 与宿主有界 reader；不改 Memory 指针、采样范围或正文加工实现。
+- 历史读取使用独立 Run 事件与 RPC 答复；修改审批不能放行历史读取。弹窗展示目标、范围和字符/节点预算，支持允许、拒绝及可选拒绝原因，不返回未批准正文。
+- 官方 Content/JSON 两种 CodeAct 均经宿主处理器授权；无处理器默认拒绝。审批等待通过现有 `waitForUser` 暂停墙钟预算，取消清理待审批请求，不生成永久 grant。
+- 验证：`codeact-history-approval.test.ts`、`agent-run-rpc.test.ts`、`narrative-read-access.test.ts` 共 17 项通过；Application Runtime build、Studio Client / Server TypeScript 检查通过。
+- 未验证：真实 Provider 交互、弹窗人工视觉与交互验收。保留另一任务的 `codeact-tool-loop.test.ts` 加工夹具，未修改采样与投影模块。
+
 > **状态**：In Progress / 双通道、领域 VFS 读取、引用跳转、replace、Prompt Resource Patch、节点 Metadata、同资源 move/delete/create/copy 与整份 Prompt Resource copy、绑定 Timeline 的 Narrative 只读采样已接入；Pin、Narrative 历史权限与通用资产挂载待接续
 > **更新**：2026-09-22
 > **归属**：CodeAct 执行与 VFS 工具的唯一实施入口。2026-09-21 用户已授权正式接入，明确要求 Content/freeform 与 JSON 两种入口；按第 6 节实施，不重新开放已经确认的产品方向。
-> **来源**：[读取与交互 Discussion](../discussion/application/agent/tool-data-view-interaction-v0.md)、[Playground 记录](../../../apps/playground/CODEACT-EXPERIMENT.md)、[旧综合提案](./file-backed-resource-agent-script-codeact-plan.md)。
+> **来源**：[读取与交互 Discussion](../discussion/application/agent/tool-data-view-interaction-v0.md)、[Playground 记录](../../../apps/playground/CODEACT-EXPERIMENT.md)、[旧综合提案](../../archive/plans/file-backed-resource-agent-script-codeact-plan.md)。
 
 ## 1. 目标与归属
 
@@ -558,3 +568,11 @@ P3 负责入口与教程 Contribution 的接线，P5 负责默认教程内容和
 - 审批传递 AbortSignal，审批后取消检查阻止新写入；真正落盘仍使用原版本 CAS，等待期间用户修改导致冲突，不覆盖新内容。
 - Run 级事件、RPC 答复和 Agent Panel 弹窗已经接入：`mutation-approval-requested` 携带预览，客户端回传 allow/deny/reason，CodeAct 在原调用点等待；不引入持久化草稿或新的提交层。未提供 Run 回调的直接 Runtime 调用仍保持默认放行，这是无 UI 宿主的明确行为。
 - 定向验证：VFS/CodeAct 结构操作接入后的相关测试共 58 项通过，Runtime build 与 Studio Client TypeScript 通过；覆盖允许/拒绝、State 预览、Metadata YAML、replace/patch、同资源 move/delete/create、Metadata Patch 拒绝、等待期间取消和审批期间用户编辑。没有完成浏览器人工视觉验收、真实 Provider 验收；Studio Server 全量 build 被工作区既有三个无关类型错误阻塞。
+
+### 2026-09-24 共用 Narrative 加工接线
+
+- `ctx.readNarrative` 增加可选 `view: 'raw' | 'prompt'`，默认 raw。prompt 使用宿主当前有效规则，不接受脚本自行指定 Timeline、Branch、Preset 或规则。读取期间取消传入共用采样器。
+- `nodes[].body.raw` 始终是原文，`nodes[].text` / `text` 是所选视图；processing 附带规则版本与诊断。原文引用与加工后文本的行号不可混用；本轮没有新增 Narrative 可点击引用或编辑授权。
+- 默认 Prompt、Runtime 单次消费者和 CodeAct 复用 Narrative 采样 / 正则能力。固定 Head、范围及续读语义详见[Context Plan 第 16 节](./agent-context-skeleton-and-memory-projection-plan.md#16-共用采样与正文加工交付2026-09-24)。
+- 36 项定向测试及 Runtime build 通过，包括真实 SQLite 分页和 Content / JSON 两种 Sandbox 工具循环。未验证真实 Provider、完整 Session 生命周期或前端视觉。
+- 历史访问政策仍未实施：当前工具只有 Timeline / Branch 绑定，合法的同分支历史范围也可读取。此前“没有权限的历史不会扩大”的目标说明不构成实现证据；本轮没有自行扩大或收紧授权，默认视图 / 历史追溯的宿主授权边界仍须接续。

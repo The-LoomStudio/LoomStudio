@@ -7,6 +7,7 @@ import type {
 import type { JsonValue } from '@loom-studio/shared'
 import {
   isRecord,
+  readOptionalInstallationTarget,
   readOptionalNumber,
   readOptionalString,
   readObject,
@@ -86,9 +87,17 @@ export async function handleTextTransformsRpc(
 
     case 'application.projectHistory':
       return await runtime.projectHistory({
+        extensionTarget: readOptionalInstallationTarget(params, 'extensionTarget'),
         source: readHistorySource(params),
         phase: readTextTransformPhase(params, 'phase'),
         consumerAgentSessionId: readOptionalString(params, 'consumerAgentSessionId'),
+      }) as unknown as JsonValue
+
+    case 'application.previewCardOpeningDisplay':
+      return await runtime.previewCardOpeningDisplay({
+        cardId: readString(params, 'cardId'),
+        presetId: readOptionalString(params, 'presetId'),
+        text: readString(params, 'text'),
       }) as unknown as JsonValue
 
     case 'application.inspectTextPipeline':
@@ -101,6 +110,7 @@ export async function handleTextTransformsRpc(
 
     case 'application.extractHistory':
       return await runtime.extractHistory({
+        extensionTarget: readOptionalInstallationTarget(params, 'extensionTarget'),
         source: readHistorySource(params),
         phase: readOptionalTextTransformPhase(params, 'phase'),
         extractorId: readString(params, 'extractorId'),

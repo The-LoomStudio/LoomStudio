@@ -64,9 +64,9 @@ export type PromptCompositionCapabilities = {
   }
 }
 
-export type PromptProviderRole = 'system' | 'developer' | 'assistant' | 'user'
+type PromptProviderRole = 'system' | 'developer' | 'assistant' | 'user'
 
-export type PromptCompositionItemBase = {
+type PromptCompositionItemBase = {
   id: string
   orderIndex: number
   displayName: string
@@ -84,7 +84,7 @@ export type PromptCompositionZone = PromptCompositionItemBase & {
   accepts?: Array<'preset' | 'settingLayer' | 'narrativeChat' | 'narrativeHistory' | 'sessionHistory' | 'runtime'>
 }
 
-export type PromptCompositionSlot = PromptCompositionItemBase & {
+type PromptCompositionSlot = PromptCompositionItemBase & {
   kind: 'slot'
   bindingId: string
   zoneId?: string
@@ -107,7 +107,7 @@ export type PromptMessageBlock = PromptCompositionItemBase & {
 
 export type PromptCompositionItem = PromptMessageBlock | PromptCompositionZone | PromptCompositionSlot | PromptCompositionEntry
 
-export type PromptActivationCapability = {
+type PromptActivationCapability = {
   activations?: PromptActivationCapability[]
   conditions?: Array<{ fact: string; equals?: string | number | boolean; includes?: string }>
   kind: string

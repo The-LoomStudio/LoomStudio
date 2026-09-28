@@ -1,4 +1,3 @@
-import { useMemo } from 'react'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import { encodeBase64 } from '../../../shared/browser/download.js'
 
@@ -11,18 +10,38 @@ type UseExtensionResourceCommandsInput = {
 }
 
 export function useExtensionResourceCommands(input: UseExtensionResourceCommandsInput) {
-  const officialContentApi = useMemo(() => ({
-    list: input.api.officialContent.list,
-    export: input.api.officialContent.export,
-    install: async (installInput: { packageId: string; digest: string }) => {
-      const result = await input.api.officialContent.install(installInput)
-      await input.refreshDependentData()
-      return result
-    },
-  }), [input.api, input.refreshDependentData])
+  async function installCardPackage(installation: Parameters<StudioApi['extensions']['installCard']>[0]) {
+    const result = await input.api.extensions.installCard(installation)
+    await input.refreshDependentData()
+    return result
+  }
+
+  async function updateCardPackage(update: Parameters<StudioApi['extensions']['updateCard']>[0]) {
+    const result = await input.api.extensions.updateCard(update)
+    await input.refreshDependentData()
+    return result
+  }
+
+  async function uninstallCardPackage(removal: Parameters<StudioApi['extensions']['uninstallCard']>[0]) {
+    const result = await input.api.extensions.uninstallCard(removal)
+    await input.refreshDependentData()
+    return result
+  }
 
   async function importExtensionPackageResources(packageId: string) {
     const result = await input.api.extensions.importResources(packageId)
+    await input.refreshDependentData()
+    return result
+  }
+
+  async function removeCardPackageResources(removal: Parameters<StudioApi['extensions']['removeCardResources']>[0]) {
+    const result = await input.api.extensions.removeCardResources(removal)
+    await input.refreshDependentData()
+    return result
+  }
+
+  async function updateExtensionPackageResources(update: Parameters<StudioApi['extensions']['updateResources']>[0]) {
+    const result = await input.api.extensions.updateResources(update)
     await input.refreshDependentData()
     return result
   }
@@ -42,8 +61,12 @@ export function useExtensionResourceCommands(input: UseExtensionResourceCommands
   }
 
   return {
-    officialContentApi,
+    installCardPackage,
+    updateCardPackage,
+    uninstallCardPackage,
     importExtensionPackageResources,
+    removeCardPackageResources,
+    updateExtensionPackageResources,
     removeExtensionPackageResources,
     installExtensionPackageZip,
   }

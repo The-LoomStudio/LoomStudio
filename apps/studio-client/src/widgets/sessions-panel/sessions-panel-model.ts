@@ -1,4 +1,4 @@
-import type { AgentProfile, AgentSession, CardSummary, NarrativeTimeline } from '../../entities/index.js'
+import type { AgentPreset, AgentSession, CardSummary, NarrativeTimeline } from '../../entities/index.js'
 
 export function sortTimelinesByUpdated(timelines: NarrativeTimeline[]): NarrativeTimeline[] {
   return [...timelines].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
@@ -42,15 +42,15 @@ export function filterTimelines(
 
 export function filterStandaloneSessions(
   sessions: AgentSession[],
-  profiles: AgentProfile[],
+  profiles: AgentPreset[],
   query: string,
 ): AgentSession[] {
   const normalized = query.trim().toLowerCase()
   if (!normalized) return sessions
   return sessions.filter(s => {
-    const profile = profiles.find(p => p.id === s.agentProfileId)
+    const profile = profiles.find(p => p.id === s.agentPresetId)
     const titleMatch = (s.title || '').toLowerCase().includes(normalized)
-    const profileMatch = profile?.name?.toLowerCase().includes(normalized)
+    const profileMatch = profile?.rootNode.label?.toLowerCase().includes(normalized)
     const idMatch = s.id.toLowerCase().includes(normalized)
     return Boolean(titleMatch || profileMatch || idMatch)
   })

@@ -201,13 +201,13 @@ Prompt Builder 不推进 Agent 状态机，Provider Adapter 不决定 Narrative 
 
 ---
 
-## 11. 当前 M0 差异
+## 11. 当前实现与设计边界
 
-当前 M0 `submitTurn` 仍近似单次生成流程，并在一次事务中写入 user / assistant Narrative entries、镜像 Transcript、Run 和 State Snapshot。
+旧 M0 的 Session / NarrativeEntry / 镜像 Transcript 与后端 `submitTurn` 已删除。当前 Narrative Timeline 和 Agent Session 分别持有正文与 canonical 运行事实；两类 Store 共用 Data Engine，但不能据此宣称整个 Run、Narrative 和 State 在一次事务中提交。
 
-当前 `AgentRuntimeProfile` 也更接近本地 Preset / Model Binding 占位，而不是正式可分发 Agent Preset。
+当前 Session 通过 `agentProfileId` 引用 Agent Profile，由 Profile 引用 Preset 和 Provider Model；这不等于本文讨论的可分发 Agent Preset 已全部落地。实现边界以[数据架构](../../../architecture/data/README.md)和 [Agent Runtime 与 Session](../../../architecture/application/agent/runtime-and-session.md)为准。
 
-这些属于已实现过渡态。本文不授权在没有迁移计划时直接替换 Document Types 或存量数据。
+本文保留 Runtime、Step 与工作树的目标设计，不再把旧 M0 聚合列为当前过渡态，也不授权重新建立旧数据兼容或替换现有持久化合同。
 
 ---
 

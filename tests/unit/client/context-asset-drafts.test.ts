@@ -32,17 +32,18 @@ function resource(version = 1, body = 'Saved'): PromptResource {
 function fixture(updateAsset = vi.fn()) {
   let upstream = [resource()]
   const updateAssets = vi.fn()
+  const get = vi.fn(async () => ({ resource: upstream[0]! }))
   const render = () => {
     hooks.cursor = 0
     return useContextAssets({
       scope: '/rpc',
-      resources: upstream, api: { promptResources: { updateAsset, updateAssets } } as unknown as StudioApi,
+      resources: upstream, api: { promptResources: { get, updateAsset, updateAssets } } as unknown as StudioApi,
       onResourceChange: changed => { upstream = [changed] },
       recordEdit: vi.fn(), runAction: action => action(), t: createTranslator('en-US'),
     })
   }
   return {
-    render, updateAsset, updateAssets,
+    render, get, updateAsset, updateAssets,
     refresh: (next: PromptResource[]) => {
       upstream = next
       render().setResources(next)
@@ -105,12 +106,61 @@ describe('Context Asset editing drafts', () => {
     await expect(state.render().updateContextAsset('entry', { body: 'User draft' })).rejects.toThrow('changed elsewhere')
     await expect(state.render().updateContextAsset('entry', { body: 'Continued draft' })).rejects.toThrow('changed elsewhere')
     expect(state.updateAsset).not.toHaveBeenCalled()
-    await expect(state.render().retryDraft('resource')).rejects.toThrow('changed elsewhere')
-    expect(state.updateAssets).not.toHaveBeenCalled()
     expect(state.render().nodes[0]?.children?.[0]?.body).toBe('Continued draft')
+    state.updateAssets.mockResolvedValue({ resource: resource(3, 'Continued draft'), mutation: { changesetId: 'reapply' } })
+    await state.render().retryDraft('resource')
+    expect(state.get).toHaveBeenCalledExactlyOnceWith('resource')
+    expect(state.updateAssets).toHaveBeenCalledWith(expect.objectContaining({ expectedVersion: 2 }))
+    expect(state.render().resources[0]?.version).toBe(3)
+    expect(state.render().nodes[0]?.children?.[0]?.body).toBe('Continued draft')
+  })
+
+  it('reapplies only edited fields to the latest remote node and retains input typed during the read', async () => {
+    const state = fixture()
+    state.render().previewContextAsset('entry', { label: 'Local label' })
+    let resolve!: (value: { resource: PromptResource }) => void
+    state.get.mockImplementationOnce(() => new Promise(accept => { resolve = accept }))
+    const saved = resource(3, 'Remote body')
+    saved.rootNode.children![0]!.label = 'Local label'
+    state.updateAssets.mockResolvedValue({ resource: saved, mutation: { changesetId: 'reapply' } })
+    const pending = state.render().retryDraft('resource')
+    await vi.waitFor(() => expect(state.get).toHaveBeenCalledOnce())
+    state.render().previewContextAsset('entry', { label: 'Later input' })
+    resolve({ resource: resource(2, 'Remote body') })
+    await pending
+    expect(state.updateAssets).toHaveBeenCalledWith(expect.objectContaining({
+      expectedVersion: 2,
+      updates: [expect.objectContaining({ label: 'Local label', body: 'Remote body' })],
+    }))
+    expect(state.render().nodes[0]?.children?.[0]?.label).toBe('Later input')
+    expect(state.render().nodes[0]?.children?.[0]?.body).toBe('Remote body')
+    expect(state.render().draftResourceIds).toEqual(['resource'])
+  })
+
+  it('does not resurrect a remotely deleted node while reapplying its draft', async () => {
+    const state = fixture()
+    state.render().previewContextAsset('entry', { body: 'Kept draft' })
+    const latest = resource(2)
+    latest.rootNode.children = []
+    state.get.mockResolvedValueOnce({ resource: latest })
+    await expect(state.render().retryDraft('resource')).rejects.toThrow('Prompt asset not found: entry')
+    expect(state.updateAssets).not.toHaveBeenCalled()
+    expect(state.render().nodes[0]?.children?.[0]?.body).toBe('Kept draft')
+  })
+
+  it('does not write a discarded draft after its latest-version read completes', async () => {
+    const state = fixture()
+    state.render().previewContextAsset('entry', { body: 'Discarded draft' })
+    let resolve!: (value: { resource: PromptResource }) => void
+    state.get.mockImplementationOnce(() => new Promise(accept => { resolve = accept }))
+    const pending = state.render().retryDraft('resource')
+    await vi.waitFor(() => expect(state.get).toHaveBeenCalledOnce())
     state.render().discardDraft('resource')
-    expect(state.render().resources[0]?.version).toBe(2)
-    expect(state.render().nodes[0]?.children?.[0]?.body).toBe('Agent saved')
+    resolve({ resource: resource(2, 'Remote body') })
+    await pending
+    expect(state.updateAssets).not.toHaveBeenCalled()
+    expect(state.render().draftResourceIds).toEqual([])
+    expect(state.render().nodes[0]?.children?.[0]?.body).toBe('Saved')
   })
 
   it('keeps a draft when the server rejects a baseline not yet refreshed by the client', async () => {

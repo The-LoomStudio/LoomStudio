@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import { isValidElement, type ReactElement } from 'react'
 import { AgentChatPanel, type AgentChatPanelProps } from '../../../apps/studio-client/src/widgets/agent-chat-panel/agent-chat-panel.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
@@ -20,33 +21,35 @@ function render(element: Element): Element {
   return (element.type as (props: Record<string, unknown>) => Element)(element.props)
 }
 function panelElements(count: number, reply: boolean) {
-  const messages = Array.from({ length: count }, (_, i) => ({
+  const messages: AgentChatPanelProps['messages'] = Array.from({ length: count }, (_, i) => ({
     id: `tool-${i}`, agentSessionId: 'session', sequence: i, createdAt: '',
     entry: { kind: 'tool-invocation', toolId: 'read', invocationId: `call-${i}`, exposedName: 'read', arguments: {} },
   }))
-  const props = {
+  const props: AgentChatPanelProps = {
+    runRecoveryBusy: false, canRestoreRunInput: false, reconnectAgentRun: vi.fn(async () => {}), restoreRunInput: vi.fn(),
     busy: false, input: '', profiles: [], providerAccounts: [],
     messages: [...messages, ...(reply ? [{
       id: 'answer', agentSessionId: 'session', sequence: count, createdAt: '',
-      entry: { kind: 'message', role: 'assistant', content: 'Done' },
+      entry: { kind: 'message', role: 'assistant' as const, content: 'Done' },
     }] : [])],
     t: createTranslator('en-US'), onChangeInput: vi.fn(), onSelectProfile: vi.fn(), onSubmit: vi.fn(),
-  } as AgentChatPanelProps
+  }
   return elements(AgentChatPanel(props))
 }
 const panel = (count: number, reply: boolean) => panelElements(count, reply).find(element => Array.isArray(element.props.tools))!
 
 describe('Agent tool group identity and collapse', () => {
   it('renders text and JSON tool result parts without losing falsy or Unicode values', () => {
-    const content = [{ text: 'result😀' }, { text: '' }, { text: 0 }, null, false, 0, 'plain', ['nested'], { value: 1 }]
+    const content: ClientJsonValue[] = [{ text: 'result😀' }, { text: '' }, { text: 0 }, null, false, 0, 'plain', ['nested'], { value: 1 }]
     const tree = elements(AgentChatPanel({
+      runRecoveryBusy: false, canRestoreRunInput: false, reconnectAgentRun: vi.fn(async () => {}), restoreRunInput: vi.fn(),
       busy: false, input: '', profiles: [], providerAccounts: [],
       messages: [
         { id: 'call', agentSessionId: 'session', sequence: 0, createdAt: '', entry: { kind: 'tool-invocation', toolId: 'read', invocationId: 'call-1' } },
         { id: 'result', agentSessionId: 'session', sequence: 1, createdAt: '', entry: { kind: 'tool-result', invocationId: 'call-1', content } },
       ],
       t: createTranslator('en-US'), onChangeInput: vi.fn(), onSelectProfile: vi.fn(), onSubmit: vi.fn(),
-    } as AgentChatPanelProps))
+    }))
     const group = tree.find(element => Array.isArray(element.props.tools))!
     expect(group.props.tools).toMatchObject([{
       detailContent: 'result😀\n{"text":""}\n{"text":0}\nnull\nfalse\n0\n"plain"\n["nested"]\n{"value":1}',

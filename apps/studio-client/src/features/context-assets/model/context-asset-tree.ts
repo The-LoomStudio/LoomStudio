@@ -75,7 +75,7 @@ export function resolveVirtualDisplayName(label: string, kind: ContextAssetNode[
   return `${label}${extension}`
 }
 
-export function resolveVirtualPath(node: Pick<ContextAssetNode, 'label' | 'kind'>): string {
+function resolveVirtualPath(node: Pick<ContextAssetNode, 'label' | 'kind'>): string {
   const extension = resolveVirtualExtension(node.kind)
   const safeName = node.label.replace(/[^a-zA-Z0-9_.\-\u4e00-\u9fa5]/g, '_')
   

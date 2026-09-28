@@ -40,7 +40,7 @@ describe('SQLite concurrent transaction stress and SLA gate', () => {
     const tasks = Array.from({ length: concurrency }, async (_, workerId) => {
       return engine.transact(
         {
-          actor: { kind: 'system' },
+          actor: { kind: 'system', id: `worker-${workerId}` },
           reason: `stress worker ${workerId}`,
         },
         async tx => {
@@ -53,9 +53,10 @@ describe('SQLite concurrent transaction stress and SLA gate', () => {
 
           tx.recordOperations([
             {
-              type: 'document.create',
+              store: 'test.stress',
+              kind: 'create',
               entityId: id,
-              payload: { workerId },
+              entityType: 'stress-record',
             },
           ])
 

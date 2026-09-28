@@ -10,10 +10,12 @@ import type { StudioRpcRouter } from '../rpc/studio-rpc-router.js'
 import { maxCardPngBytes } from '../codecs/card-png.js'
 import { createHash } from 'node:crypto'
 import { pipeline } from 'node:stream/promises'
+import { maxRpcRequestBodyBytes, readRpcRequestBody, RpcRequestBodyTooLargeError } from './rpc-request-body.js'
 
 export function createStudioHttpServer(options: {
   auth: ApplicationSessionAuth
   assets?: AssetStore
+  canReadCardExtensionAsset?(input: { packageId: string; moduleId: string; cardId: string; assetId: string }): Promise<boolean>
   cardMedia?: {
     read(cardId: string, kind: 'avatar' | 'background'): Promise<{ bytes: Uint8Array; mediaType: string } | undefined>
   }
@@ -28,7 +30,7 @@ export function createStudioHttpServer(options: {
     read(packageId: string, version: string): Promise<{ bytes: Uint8Array; mediaType: string } | undefined>
   }
   extensionFiles?: {
-    read(packageId: string, version: string, path: string): Promise<{ bytes: Uint8Array; mediaType: string }>
+    read(packageId: string, version: string, path: string, installation?: { cardId: string; archiveDigest: string }): Promise<{ bytes: Uint8Array; mediaType: string }>
   }
   extensionEvents?: {
     subscribe(handler: (event: StudioEvent) => void): { dispose(): void | Promise<void> }
@@ -158,6 +160,29 @@ export function createStudioHttpServer(options: {
     const assetId = readAssetId(request.url)
     if (options.assets && assetId && (request.method === 'GET' || request.method === 'HEAD')) {
       await handleAssetRead(request, response, options.assets, assetId, signal)
+      return
+    }
+
+    if (options.assets && request.url?.startsWith('/extension-assets/') && (request.method === 'GET' || request.method === 'HEAD')) {
+      const parts = request.url.split('/')
+      let identity: { packageId: string; moduleId: string; cardId: string; assetId: string } | undefined
+      try {
+        if (parts.length === 6) {
+          const [packageId, moduleId, cardId, id] = parts.slice(2).map(decodeURIComponent)
+          if (packageId && moduleId && cardId && id && readAssetId(`/assets/${id}`)) identity = { packageId, moduleId, cardId, assetId: id }
+        }
+      } catch {
+        // Malformed URL components are not asset identities.
+      }
+      if (!identity) {
+        writeJson(response, 400, { error: { code: 'asset.invalid_scope', message: 'Invalid extension asset URL' } })
+        return
+      }
+      if (!options.canReadCardExtensionAsset || !await options.canReadCardExtensionAsset(identity)) {
+        writeJson(response, 403, { error: { code: 'asset.scope_denied', message: 'Asset is not available to this Card installation' } })
+        return
+      }
+      await handleAssetRead(request, response, options.assets, identity.assetId, signal)
       return
     }
 
@@ -364,10 +389,10 @@ function readExtensionIconRequest(requestUrl: string | undefined): { packageId: 
 async function handleExtensionFile(
   response: ServerResponse,
   files: NonNullable<Parameters<typeof createStudioHttpServer>[0]['extensionFiles']>,
-  input: { packageId: string; version: string; path: string },
+  input: { packageId: string; version: string; path: string; installation?: { cardId: string; archiveDigest: string } },
 ): Promise<void> {
   try {
-    const file = await files.read(input.packageId, input.version, input.path)
+    const file = await files.read(input.packageId, input.version, input.path, input.installation)
     response.writeHead(200, {
       'content-type': file.mediaType,
       'content-length': file.bytes.byteLength,
@@ -385,13 +410,24 @@ async function handleExtensionFile(
   }
 }
 
-function readExtensionFileRequest(requestUrl: string | undefined): { packageId: string; version: string; path: string } | undefined {
+function readExtensionFileRequest(requestUrl: string | undefined): { packageId: string; version: string; path: string; installation?: { cardId: string; archiveDigest: string } } | undefined {
   if (!requestUrl) return undefined
   let pathname: string
   try {
     pathname = new URL(requestUrl, 'http://localhost').pathname
   } catch {
     return undefined
+  }
+  const privateMatch = /^\/card-extensions\/([^/]+)\/([A-Za-z0-9._-]+)\/([A-Za-z0-9._+-]+)\/([a-f0-9]{64})\/files\/(.+)$/.exec(pathname)
+  if (privateMatch) {
+    try {
+      return {
+        installation: { cardId: decodeURIComponent(privateMatch[1]!), archiveDigest: privateMatch[4]! },
+        packageId: privateMatch[2]!, version: privateMatch[3]!, path: decodeURIComponent(privateMatch[5]!),
+      }
+    } catch {
+      return undefined
+    }
   }
   const match = /^\/extensions\/([A-Za-z0-9._-]+)\/([A-Za-z0-9._+-]+)\/files\/(.+)$/.exec(pathname)
   if (!match) return undefined
@@ -536,7 +572,7 @@ async function handleRpcRequest(
   } | undefined
 
   try {
-    const body = await readRequestBody(request)
+    const body = await readRpcRequestBody(request, signal, maxRpcRequestBodyBytes)
     signal.throwIfAborted()
     const rpcRequest = parseRpcRequest(JSON.parse(body))
     rpcId = rpcRequest.id
@@ -604,25 +640,16 @@ async function handleRpcRequest(
         ...failure,
       },
     })
-    writeJson(response, 200, createErrorResponse(rpcId, error, 'rpc.invalid_request', responseMeta))
+    const status = error instanceof RpcRequestBodyTooLargeError ? 413 : 200
+    // Let HTTP flush the rejection before closing the unread request's connection.
+    if (status === 413) response.setHeader('connection', 'close')
+    writeJson(response, status, createErrorResponse(rpcId, error, 'rpc.invalid_request', responseMeta))
   }
 }
 
 
 function readDurationMs(startedAt: number): number {
   return Math.round((performance.now() - startedAt) * 100) / 100
-}
-
-function readRequestBody(request: IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let body = ''
-    request.setEncoding('utf8')
-    request.on('data', chunk => {
-      body += chunk
-    })
-    request.on('end', () => resolve(body))
-    request.on('error', reject)
-  })
 }
 
 function readBinaryRequestBody(request: IncomingMessage, maxBytes: number): Promise<Buffer> {

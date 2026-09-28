@@ -85,6 +85,7 @@ export type StateStore = {
     includeDeleted?: boolean
   }): Promise<StateScope | null>
   getScopeById(id: string, options?: { includeDeleted?: boolean }): Promise<StateScope | null>
+  getScopeForRevision(id: string, options?: { includeDeleted?: boolean }): Promise<StateScope | null>
   getRevision(id: string): Promise<StateRevision | null>
   getRevisionByChangesetId(changesetId: string): Promise<StateRevision | null>
   listRevisions(scopeId: string): Promise<StateRevision[]>

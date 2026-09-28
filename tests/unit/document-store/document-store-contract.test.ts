@@ -18,6 +18,31 @@ const stores = [
 ]
 
 describe.each(stores)('$name document store contract', ({ create }) => {
+  it('persists installation ownership and binds pagination to the installation filter', async () => {
+    await withStore(create(), async store => {
+      for (const [id, ownerInstallationId] of [
+        ['global', undefined], ['A1', 'installation-A'], ['B', 'installation-B'], ['A2', 'installation-A'],
+      ] as const) {
+        await store.write({
+          id, type: 'test.installed', content: {}, expectedVersion: 'new',
+          meta: { ownerExtensionId: 'example.package', ownerInstallationId },
+        })
+      }
+      const query = { type: 'test.installed', ownerExtensionId: 'example.package', ownerInstallationId: 'installation-A', limit: 1 }
+      const first = await store.list(query)
+      expect(first.items.map(item => item.id)).toEqual(['A1'])
+      expect(first.nextCursor).toBeDefined()
+      expect((await store.list({ ...query, cursor: first.nextCursor })).items.map(item => item.id)).toEqual(['A2'])
+      await expect(store.list({ ...query, ownerInstallationId: 'installation-B', cursor: first.nextCursor })).rejects.toThrow()
+      expect((await store.list({ ownerInstallationId: null })).items.map(item => item.id)).toEqual(['global'])
+      expect((await store.list()).items).toHaveLength(4)
+      const written = await store.write({ id: 'A1', type: 'test.installed', content: { changed: true }, expectedVersion: 1 })
+      expect((await store.get('A1'))?.meta.ownerInstallationId).toBe('installation-A')
+      await store.revertChangeset({ changesetId: written.changesetId, actor })
+      expect((await store.get('A1'))?.meta.ownerInstallationId).toBe('installation-A')
+    })
+  })
+
   it.each(['write', 'delete', 'transact', 'revert'] as const)('preserves a queued %s after a concurrent transaction rolls back', async operation => {
     await withStore(create(), async store => {
       const initial = await store.write({ id: 'kept', type: 'test.queue', content: { text: 'original' }, expectedVersion: 'new' })

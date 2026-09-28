@@ -16,7 +16,7 @@ import type {
   WriteDocumentResult,
 } from './types.js'
 
-export type PendingDocumentChange = {
+type PendingDocumentChange = {
   documentId: string
   type: string
   fromVersion?: number
@@ -29,7 +29,7 @@ export type PendingChangeset = Omit<Changeset, 'operations'> & {
   changes: Map<string, PendingDocumentChange>
 }
 
-export const kernelActor: ActorRef = {
+const kernelActor: ActorRef = {
   kind: 'kernel',
   id: 'kernel',
 }

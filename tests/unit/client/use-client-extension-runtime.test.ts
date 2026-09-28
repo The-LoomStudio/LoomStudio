@@ -109,6 +109,45 @@ afterEach(() => {
 })
 
 describe('Client Extension Runtime Effect lifecycle', () => {
+  it('loads only the current Card catalog and ignores late responses without restarting global modules', async () => {
+    const { runtime, rendererHost, list, setup } = createHarness()
+    const a = deferred<{ items: ManagedClientExtensionPackage[] }>()
+    const privatePackage = (cardId: string): ManagedClientExtensionPackage => ({
+      ...extensionPackage, target: { kind: 'card', cardId },
+      modules: extensionPackage.modules.map(module => ({ ...module, desired: { enabled: false } })),
+    })
+    list.mockImplementation(async (...args: unknown[]) => {
+      const target = args[0] as { cardId: string } | undefined
+      if (target?.cardId === 'a') return a.promise
+      if (target?.cardId === 'c') throw new Error('Card catalog unavailable')
+      return { items: target ? [privatePackage(target.cardId)] : [extensionPackage] }
+    })
+    const cleanup = setup() as () => void
+    try {
+      await drainTasks()
+      const globalInstance = runtime.host.summaries()[0]?.instanceId
+      rendererHost.setScopeSnapshot({ workspace: 'workspace', cardId: 'a' })
+      await drainTasks()
+      rendererHost.setScopeSnapshot({ workspace: 'workspace', cardId: 'b' })
+      await drainTasks()
+      a.resolve({ items: [privatePackage('a')] })
+      await drainTasks()
+      expect(list).toHaveBeenCalledWith({ kind: 'card', cardId: 'b' })
+      expect(runtime.host.summaries()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ instanceId: globalInstance, state: 'active' }),
+        expect.objectContaining({ target: { kind: 'card', cardId: 'b' }, state: 'inactive' }),
+      ]))
+      expect(runtime.host.summaries()).toHaveLength(2)
+      expect(hooks.loadModule).toHaveBeenCalledOnce()
+      rendererHost.setScopeSnapshot({ workspace: 'workspace', cardId: 'c' })
+      await drainTasks()
+      expect(runtime.host.summaries()).toEqual([expect.objectContaining({ instanceId: globalInstance, state: 'active' })])
+    } finally {
+      cleanup()
+      await runtime.host.dispose()
+    }
+  })
+
   it.each(['catalog', 'import state'])('does not reconcile a late %s response after cleanup', async phase => {
     const { runtime, rendererHost, list, listRules, setup } = createHarness()
     const catalog = deferred<{ items: ManagedClientExtensionPackage[] }>()

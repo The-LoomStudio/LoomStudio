@@ -42,6 +42,10 @@ import {
   type TextTransformRuleEntry,
 } from '../transforms/history-text.js'
 import { codeActToolIds } from './codeact/prompts.js'
+import { renderToolResult } from './tool-result-text.js'
+import { applicationDocumentTypes } from '../foundation/document-types.js'
+import { isExtensionResourceAvailable } from '../runtime/extension-resource-access.js'
+import type { AgentToolContent } from '../types.js'
 
 const maximumProviderSteps = 8
 const toolTimeoutMs = 30_000
@@ -85,15 +89,19 @@ export async function compileAgentToolSet(input: {
   ctx: AgentToolResolutionContext
   model: ProviderModelSelection
   toolMounts: PresetToolMount[]
-  toolOverrides: Record<string, boolean>
+  availableExtensionInstallations?: ReadonlyMap<string, string>
   variables: VariableRenderContext
   currentInput: string
   activationFacts?: ActivationFacts
 }): Promise<CompiledAgentToolSet> {
-  const enabledMounts = resolveEnabledPresetToolMounts(
-    input.toolMounts,
-    input.toolOverrides,
-  )
+  const enabledMounts = input.toolMounts.filter(mount => mount.defaultEnabled)
+  for (const mount of enabledMounts) {
+    const document = await input.ctx.documents.get(mount.toolId)
+    if (document?.type === applicationDocumentTypes.agentTool
+      && !isExtensionResourceAvailable((document.content as AgentToolContent).origin, input.availableExtensionInstallations)) {
+      throw new Error(`Agent Tool is not available in this context: ${mount.toolId}`)
+    }
+  }
   const { tools: resolvedTools, diagnostics } = await resolveTools(
     input.ctx,
     input.model,
@@ -225,13 +233,6 @@ export function createContentToolPromptRuntimeInputs(
     })
   }
   return { sourceNodes, contributions }
-}
-
-function resolveEnabledPresetToolMounts(
-  mounts: readonly PresetToolMount[],
-  overrides: Readonly<Record<string, boolean>>,
-): PresetToolMount[] {
-  return mounts.filter(mount => overrides[mount.toolId] ?? mount.defaultEnabled)
 }
 
 export async function runNativeToolLoop(input: {
@@ -1006,19 +1007,6 @@ function toTranscriptResult(
         }
       : {}),
   }
-}
-
-function renderToolResult(result: ToolResult): string {
-  const content = result.content
-    .map((part) =>
-      part.type === 'text'
-        ? part.text
-        : part.type === 'json'
-          ? JSON.stringify(part.value)
-          : `[artifact:${part.artifactId}]`,
-    )
-    .join('\n')
-  return content || result.error?.message || result.status
 }
 
 function renderFreshContextMounts(result: ToolResult): ChatMessage[] {

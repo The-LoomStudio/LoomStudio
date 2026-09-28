@@ -15,13 +15,15 @@ Active lineage
 
 ## Rule 与来源
 
-Rule 使用 `airp.textTransformRule` Document 持久化，来源可以是 Workspace、Preset、Card、Extension 或 User Override。创建 Timeline 时会固化来源 Card 的 Rule；Runtime 按当前 Agent Profile 的 Preset、Timeline Runtime Context，以及全局来源解析有效 RuleSet。旧 Timeline 没有 Runtime Context 时才回退读取来源 Card。排序只使用 `orderIndex` 与稳定 ID。
+Rule 使用 `airp.textTransformRule` Document 持久化，来源可以是 Workspace、Preset、Card、Extension 或 User Override。Runtime 按 Session 直接引用的 Agent Preset、Timeline 关联 Card 的当前规则，以及全局来源解析有效 RuleSet；不再把创建 Timeline 时的规则快照作为运行来源。排序只使用 `orderIndex` 与稳定 ID。Agent 已采用单一预设身份；包归属与安装范围改造仍由底层计划推进。
 
 Owner 只表示声明来源与 provenance，不等于运行作用域。Workspace / User Override 是跨上下文默认来源；Preset 只对使用该 Preset 的 Agent 生效；Card 只对对应 Timeline 生效；Extension 表示 Package / Module 贡献来源。Runtime 通过唯一的 Effective Pipeline 解析路径组合 Rule 与 Extractor，PromptBuild、History Projection 与 Inspector 不分别维护来源筛选逻辑。
 
-Narrative `display` 可以独立于 Agent 解析。Narrative `prompt` 必须声明消费它的 Agent Session，以该 Session 的 Agent Profile / Preset 组合规则；因此两个使用不同 Preset 的 Agent 可以对同一 Narrative 获得隔离的 Prompt 投影。Agent Session Source 直接使用自身 Profile / Preset。
+Narrative `display` 可以独立于 Agent 解析。Narrative `prompt` 使用明确的消费 Agent Session 或预设身份组合规则；因此不同 Agent Preset 可以对同一 Narrative 获得隔离的 Prompt 投影。Agent Session Source 直接使用自身 `agentPresetId`。
 
 Rule 支持 `replace`、`mark` 与 `promote-reasoning`。`mark` 不修改文本，只产生稳定 `matchId`、UTF-16 输入范围、可映射的 Display Range 与单 Entry Trace。Depth 只计算有效文本 Entry，Provider Observation、Tool Invocation、Tool Result 与 Run State 不计入 Agent Session Depth。
+
+Narrative 的 `display`、`prompt`、`classify` 均使用关联角色卡的当前规则。保存、新增、禁用或删除后，下次投影使用新规则，不回退到旧快照；仍应用当前 Source／Phase 的 Override，不重写 canonical 正文、已提交分类事实或 State。Preset／Workspace 等其他规则来源保持原有解析语义。
 
 ## Assistant Content 分类顺序
 
@@ -40,7 +42,7 @@ Provider typed parts
 
 Extractor 使用 `airp.textExtractor` Document 持久化，只消费官方 Projection Snapshot。第一版支持 `latest-valid`、`all-matches`、原始文本和 `key-value-lines` parser。较新的候选解析失败时，`latest-valid` 可以返回较旧有效值并标记 `stale`。
 
-Card-owned Extractor 与 Card Rule 一样在 Timeline Runtime Context 中冻结。Preset / Workspace / Extension / User Override Extractor 按当前消费上下文解析。`extractHistory` 只能执行当前上下文中有效、启用且 Target 匹配的 Extractor，不能拿其他 Card 或 Preset 的 ID 旁路读取当前 History。
+Card-owned Extractor 读取来源角色的当前定义，更新与移除后不从 Timeline 快照恢复。Preset / Workspace / Extension / User Override Extractor 按当前消费上下文解析。`extractHistory` 只能执行当前上下文中有效、启用且 Target 匹配的 Extractor，不能拿其他 Card 或 Preset 的 ID 旁路读取当前 History。
 
 Extractor 可以把结果固化为带 `artifactType`、Extractor Version、`sourceEntryId`、stale 与 Diagnostic 的 Artifact。History Text API 的内置 Renderer Catalog 当前只保留官方 JSON Artifact 兼容投影；Client Extension 与 Loom Script Renderer 的实际注册、Surface 仲裁与实例生命周期由 Studio Client Host 管理。完整合同见 [`../extensions/client-renderer-host.md`](../extensions/client-renderer-host.md) 与 [`../extensions/loom-script-runtime.md`](../extensions/loom-script-runtime.md)。
 

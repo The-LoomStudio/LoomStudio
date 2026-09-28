@@ -21,6 +21,8 @@ const scope = {
     {
       id: 'fragment:knowledge',
       name: 'Knowledge',
+      virtualPath: '/context/Knowledge.md',
+      mediaType: 'text/plain',
       zoneId: 'setting.stable',
       slotKey: 'setting:knowledge',
       sourceKind: 'settingLayer',
@@ -176,14 +178,12 @@ describe('official Agent context tools', () => {
   it('includes non-triggered resources and excludes tool instructions', () => {
     const result = createPromptToolExecutionScope({
       prompt: {
-        zones: [],
         messages: [],
-        messageBlocks: [],
         editorProjection: { sourceRows: [], promptRows: [] },
       },
       sourceNodes: [
-        { id: 'tools-node', sourceId: 'tools', parentId: null, displayName: 'Tools', orderIndex: 1 },
-        { id: 'knowledge-node', sourceId: 'knowledge', parentId: null, displayName: 'Hidden Knowledge', orderIndex: 2 },
+        { id: 'tools-node', sourceId: 'tools', parentId: null, displayName: 'Tools', orderIndex: 1, kind: 'entry' },
+        { id: 'knowledge-node', sourceId: 'knowledge', parentId: null, displayName: 'Hidden Knowledge', orderIndex: 2, kind: 'entry' },
       ],
       contributions: [
         {
@@ -216,6 +216,7 @@ describe('official Agent context tools', () => {
       narrative: {
         timelineId: 'timeline-1',
         branchId: 'branch-1',
+        sample: async () => { throw new Error('Not used') },
         appendNode: async ({ content }: { content: string }) => {
           appendedContent = content
           return { nodeId: 'node-new-1' }
@@ -254,6 +255,7 @@ describe('official Agent context tools', () => {
       narrative: {
         timelineId: 'timeline-1',
         branchId: 'branch-1',
+        sample: async () => { throw new Error('Not used') },
         appendNode: async () => {
           throw new Error('Not used')
         },

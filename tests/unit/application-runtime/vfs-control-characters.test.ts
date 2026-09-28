@@ -52,7 +52,7 @@ describe('VFS control character boundaries', () => {
       const fs = createResourceVfs({
         projections: [],
         attachments: async () => [{
-          identity: 'attachment', name, binding: { kind: 'script', documentId: 'script', version: 1 },
+          identity: 'attachment', name, binding: { kind: 'script', documentId: 'script', version: 1, blobId: 'blob', mountId: 'mount' },
           read: async () => 'Exact attachment body',
         }],
       })

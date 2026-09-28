@@ -121,7 +121,7 @@ describe('Tool Prompt Compiler', () => {
   it('sorts provider tools by providerOrder and traces the provider projection', () => {
     const first = source(structuredTool, {
       providerOrder: 8,
-      contentPlacement: { zone: 'tools', slot: 'ignored-content-slot' },
+      contentPlacement: { targetAnchorId: 'ignored-content-anchor', localDepth: 0 },
     })
     const second = source({ ...structuredTool, id: 'official/search', name: 'search' }, {
       providerOrder: 1,

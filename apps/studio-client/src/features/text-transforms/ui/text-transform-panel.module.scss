@@ -205,6 +205,10 @@
     display: flex;
     align-items: center;
     gap: 10px;
+    min-width: 0;
+    flex-wrap: wrap;
+
+    > small { overflow-wrap: anywhere; min-width: 0; }
 
     h3 {
       margin: 0;
@@ -267,6 +271,67 @@
     outline: 1px solid var(--loom-color-primary, #3b82f6);
     outline-offset: 1px;
   }
+}
+
+.sourceToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--loom-color-divider);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--loom-color-text);
+  cursor: pointer;
+
+  &[aria-pressed='true'] { background: var(--loom-color-surface-subtle); }
+}
+
+.ruleFields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 12px;
+  color: var(--loom-color-text);
+
+  label { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  input:not([type='checkbox']), textarea, select {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    padding: 8px 10px;
+    border: 1px solid var(--loom-color-divider);
+    border-radius: 4px;
+    background: var(--loom-color-surface-subtle);
+    color: inherit;
+    font: inherit;
+  }
+  textarea { resize: vertical; font-family: ui-monospace, monospace; line-height: 1.6; }
+  .replacementInput { min-height: 280px; }
+  .checkField { flex-direction: row; align-items: center; }
+}
+
+.fieldRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  > label { flex: 1 1 120px; }
+}
+
+.optionFields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  legend { padding: 0 0 8px; }
 }
 
 .dryRunOutput {

@@ -10,23 +10,26 @@ import { createMemorySecretBackend } from '../../../packages/secret-store/src/in
 import { callRpc, withStudioServer } from './helpers.js'
 
 type PackageListing = {
-  packages: Array<{ id: string; digest: string; resources: Array<{ id: string; available: boolean }>; agents: Array<{ presetId: string }> }>
+  packages: Array<{ id: string; digest: string; resources: Array<{ id: string; resourceKind: string; available: boolean }> }>
 }
 
 describe('official content installation', () => {
-  it('starts empty, installs on confirmation, exports original files, and preserves user edits on reinstall', async () => {
+  it('installs on startup, exports original files, and preserves user edits on idempotent manual reinstall', async () => {
     await withStudioServer(async port => {
-      const before = await callRpc<{ resources: unknown[] }>(port, 'application.listPromptResources', {})
-      expect(before.resources).toEqual([])
+      const before = await callRpc<{ resources: Array<{ id: string }> }>(port, 'application.listPromptResources', {})
       const extensions = await callRpc<{ items: Array<{ packageId: string }> }>(port, 'extensions.listPackages', {})
       expect(extensions.items.some(item => item.packageId === 'example.echo' || item.packageId === 'example.weatherStation')).toBe(false)
       const { packages: [content] } = await callRpc<PackageListing>(port, 'official.listContent', {})
-      expect(content!.resources.every(resource => !resource.available)).toBe(true)
+      expect(content!.resources.length).toBeGreaterThan(0)
+      expect(content!.resources.every(resource => resource.available)).toBe(true)
+      expect(before.resources.map(resource => resource.id).sort()).toEqual(content!.resources.map(resource => resource.id).sort())
       const input = { packageId: content!.id, digest: content!.digest }
       await expect(callRpc(port, 'official.installContent', { ...input, digest: 'stale' })).rejects.toThrow('refresh and confirm')
-      const installed = await callRpc<{ resources: Array<{ id: string; created: boolean }> }>(port, 'official.installContent', input)
-      expect(installed.resources.every(resource => resource.created)).toBe(true)
-      const presetId = content!.agents[0]!.presetId
+      const installed = await callRpc<{ resources: Array<{ id: string; created: boolean }>; mutation?: unknown }>(port, 'official.installContent', input)
+      expect(installed.resources).toEqual(content!.resources.map(resource => ({ id: resource.id, created: false })))
+      expect(installed.mutation).toBeUndefined()
+      await expect(callRpc(port, 'application.listPromptResources', {})).resolves.toEqual(before)
+      const presetId = content!.resources.find(resource => resource.resourceKind === 'preset')!.id
       await expect(callRpc(port, 'application.listSettingMounts', { source: { kind: 'preset', id: presetId } })).resolves.toMatchObject({
         mounts: [{ settingResourceId: 'prompt-resource.official.loom-knowledge' }],
       })
@@ -34,7 +37,7 @@ describe('official content installation', () => {
       await callRpc(port, 'application.updatePromptResourceMacros', { resourceId: presetId, expectedVersion: preset.resource.version, macros: { difficulty: 'custom' } })
       const afterEdit = await callRpc<{ resource: { version: number; macros: Record<string, string> } }>(port, 'application.getPromptResource', { resourceId: presetId })
       const repeated = await callRpc<{ resources: Array<{ created: boolean }>; mutation?: unknown }>(port, 'official.installContent', input)
-      expect(repeated.resources.every(resource => !resource.created)).toBe(true)
+      expect(repeated.resources).toEqual(installed.resources)
       expect(repeated.mutation).toBeUndefined()
       await expect(callRpc(port, 'application.getPromptResource', { resourceId: presetId })).resolves.toEqual(afterEdit)
       const exported = await callRpc<{ base64: string; fileName: string }>(port, 'official.exportContent', input)
@@ -56,9 +59,12 @@ describe('official content installation', () => {
         })
         try {
           const fresh = await freshServer.listen(0)
-          await expect(callRpc(fresh.port, 'application.listPromptResources', {})).resolves.toEqual({ resources: [] })
-          const reinstalled = await callRpc<{ resources: Array<{ id: string; created: boolean }> }>(fresh.port, 'official.installContent', input)
+          const freshResources = await callRpc<{ resources: Array<{ id: string }> }>(fresh.port, 'application.listPromptResources', {})
+          expect(freshResources.resources.map(resource => resource.id).sort()).toEqual(content!.resources.map(resource => resource.id).sort())
+          const reinstalled = await callRpc<{ resources: Array<{ id: string; created: boolean }>; mutation?: unknown }>(fresh.port, 'official.installContent', input)
           expect(reinstalled.resources).toEqual(installed.resources)
+          expect(reinstalled.mutation).toBeUndefined()
+          await expect(callRpc(fresh.port, 'application.listPromptResources', {})).resolves.toEqual(freshResources)
         } finally {
           await freshServer.close()
         }

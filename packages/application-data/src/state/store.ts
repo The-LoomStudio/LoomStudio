@@ -137,6 +137,10 @@ export function createStateStore(options: CreateStateStoreOptions): StateStore {
   return {
     getScope: input => engine.read(database => readScope(database, input.kind, input.ownerId, input.includeDeleted)),
     getScopeById: (id, options) => engine.read(database => readScopeById(database, id, options?.includeDeleted)),
+    getScopeForRevision: (id, options) => engine.read(database => {
+      const row = database.prepare('SELECT scope_id FROM state_revisions WHERE id = ?').get(id) as { scope_id: string } | undefined
+      return row ? readScopeById(database, row.scope_id, options?.includeDeleted) : null
+    }),
     getRevision: id => engine.read(database => readRevision(database, id, materializedRevisions)),
     getRevisionByChangesetId: changesetId => engine.read(database => {
       validateId(changesetId, 'changesetId')

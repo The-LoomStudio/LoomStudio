@@ -36,12 +36,32 @@ export async function handleCardsRpc(
         settingLayer: readOptionalSettingLayer(params, 'settingLayer'),
         media: readOptionalCardMedia(params, 'media'),
         macros: readOptionalStringRecord(params, 'macros'),
+        macroOptions: readOptionalObject(params, 'macroOptions') as import('@loom-studio/shared').MacroOptions | undefined,
       }, context) as unknown as JsonValue
 
     case 'application.getCard':
       return await runtime.getCard({
         cardId: readString(params, 'cardId'),
       }) as unknown as JsonValue
+
+    case 'application.attachCardExtensionPackage': {
+      const expectedVersion = readOptionalNumber(params, 'expectedVersion')
+      if (!Number.isSafeInteger(expectedVersion) || expectedVersion! < 1) throw new Error('expectedVersion must be a positive integer')
+      const archive = readOptionalObject(params, 'archive')
+      if (!archive) throw new Error('archive is required')
+      return await runtime.attachCardExtensionPackage({
+        cardId: readString(params, 'cardId'), expectedVersion: expectedVersion!,
+        archive: archive as unknown as import('@loom-studio/application-runtime').AttachCardExtensionPackageInput['archive'],
+      }, context) as unknown as JsonValue
+    }
+
+    case 'application.detachCardExtensionPackage': {
+      const expectedVersion = readOptionalNumber(params, 'expectedVersion')
+      if (typeof expectedVersion !== 'number' || !Number.isSafeInteger(expectedVersion) || expectedVersion < 1) throw new Error('expectedVersion must be a positive integer')
+      return await runtime.detachCardExtensionPackage({
+        cardId: readString(params, 'cardId'), expectedVersion, packageId: readString(params, 'packageId'),
+      }, context) as unknown as JsonValue
+    }
 
     case 'application.listCards':
       return await runtime.listCards({
@@ -68,6 +88,7 @@ export async function handleCardsRpc(
         stateContributionIds: readOptionalStringArray(params, 'stateContributionIds'),
         timelineStateBindings: readOptionalTimelineStateBindings(params, 'timelineStateBindings'),
         macros: readOptionalStringRecord(params, 'macros'),
+        macroOptions: readOptionalObject(params, 'macroOptions') as import('@loom-studio/shared').MacroOptions | undefined,
       }, context) as unknown as JsonValue
 
     case 'application.deleteCard':
@@ -111,13 +132,14 @@ export async function handleCardsRpc(
   }
 }
 
-function readOptionalPreset(params: JsonValue | undefined, key: string): { system?: string; macros?: Record<string, string> } | undefined {
+function readOptionalPreset(params: JsonValue | undefined, key: string): { system?: string; macros?: Record<string, string>; macroOptions?: import('@loom-studio/shared').MacroOptions } | undefined {
   if (!isRecord(params) || params[key] === undefined) return undefined
   const value = params[key]
   if (!isRecord(value)) throw new Error(`Expected preset param: ${key}`)
 
   return {
     system: typeof value.system === 'string' ? value.system : undefined,
+    macroOptions: value.macroOptions as import('@loom-studio/shared').MacroOptions | undefined,
     macros: value.macros !== undefined
       ? readStringRecordValue(value.macros, `${key}.macros`)
       : undefined,

@@ -1,4 +1,4 @@
-export type ActivationMode = 'draft' | 'finalize'
+type ActivationMode = 'draft' | 'finalize'
 export type ActivationTag = 'scene:combat' | 'style:cinematic'
 
 export type ActivationControlState = {

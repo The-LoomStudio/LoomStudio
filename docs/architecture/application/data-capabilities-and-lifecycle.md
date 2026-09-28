@@ -41,6 +41,10 @@ State 的区别不是“数字比文本变化快”，而是它有结构化操�
 
 模板装配发生在创建 Timeline 时。运行中的规则执行由调用者发起 State Mutation；当前没有新实体出现时自动重新挂载所有通配模板的机制。Schema、初始值与 Binding 的实现见 [state-definition.ts](../../../packages/application-runtime/src/state/state-definition.ts)，组件装配示例见 [定向测试](../../../tests/unit/application-runtime/state-definition.test.ts)。
 
+State Mutation、补偿回滚及 Global Definition 默认值写入在各自事务成功后通知 Server，由 Server 发布受保护的 `state.changed`。UI、Agent 工具与扩展的普通写入使用同一领域入口；幂等重放不重复通知，事务失败不通知。事件仅含 target、revisionId、changesetId 和路径，不广播完整快照；补偿回滚以空字符串路径表示根变化。初始化、读取和单纯选择分支不由该通知代表。
+
+此事件是当前进程内的提交后提示，不是持久消息队列，不承诺重启补发或跨进程恰好一次。订阅者应按明确 target 重读 State；revisionId 是不透明身份，不可按字典序判断新旧。异步读取的晚响应仍需由消费者按请求代际处理。订阅 target 按字段匹配，路径按祖先/自身/后代重叠匹配，权限使用 `state` 事件能力。观察者异常不能把已提交写入变成失败；当前 Runtime 将其交给配置的 Logger。
+
 ## 共享事务不等于相同回滚
 
 Document、Prompt Resource、State、Narrative 等 Store 共享 SQLite Data Engine 的事务、Changeset、提交身份与通知基础。各 Store 仍拥有自己的版本模型和合法修改规则：
@@ -63,7 +67,8 @@ Changeset 是提交事实，不是能够恢复任意领域对象的完整快照�
 以下机制在当前系统中不同，不能用“绑定后生命周期一致”概括：
 
 - Card 模板在创建 Timeline 时物化为初始 State；Schema 等运行依赖写入 Timeline Runtime Context。后续 Card 模板修改不重写既有 Timeline State。
-- Timeline 保存 Prompt Resource ID 列表；后续 Agent Turn 按 ID 读取当前资源。它没有同时冻结这些资源的正文版本。
+- Timeline 创建时保存的 Prompt Resource ID 列表仍可作为历史记录；后续 Agent Turn 以关联 Card 的当前 Prompt Resource IDs 加全局 Mount 读取 Settings，不再由创建时清单决定当前注入。移除挂载或删除资源后不回退旧清单；主 Preset 缺失仍明确失败，可选 Setting 缺失保留诊断。
+- Card 作者宏、规则/提取器与脚本 Mount 同样读取当前定义，不再从 Timeline Runtime Context 的旧动态资源快照恢复。State 约束与既有 Revision 保持原生命周期，不因更新作者资源自动重置。
 - Opening 在创建时渲染并保存成 Narrative Node；Branch Fork 保留既有 Node，而不是重新渲染来源 Card 的 Opening。
 - Extension Record 的绑定目标不等于其存储 Scope，也不意味着绑定对象的所有行为自动传播给 Record。
 
@@ -71,6 +76,8 @@ Changeset 是提交事实，不是能够恢复任意领域对象的完整快照�
 
 ## 当前能力边界
 
-当前没有独立的 Timeline 文件权威模型、通用 Agent 虚拟文件写入合同或已落地的 Memory / Summary 存储机制。复用文本能力不等于这些生命周期已经存在，也不能把 Agent Session 的历史记录直接当成 Timeline 文件。
+当前没有独立的 Timeline 文件权威模型。Agent 已有受控领域工具与 CodeAct 读写入口，不等于可以任意写宿主文件；具体能力以[工具系统](agent/tool-system.md)及各领域 API 为准。
+
+Session 已能显式持久化 `work-summary` 并用它建立后续工作段，不应继续笼统描述为“没有 Summary 存储”。它不负责自动生成摘要，也不等于完整的 Narrative Memory 整理、Token 预算或 Server 重启恢复。已实现的交接及来源边界见[Agent Runtime](agent/runtime-and-session.md)；Session 历史仍不能直接当作 Timeline 文件。
 
 运行文本、记忆、作者宏和跨类型版本协调的后续原则保留在 [数据能力与运行内容讨论](../../workbench/discussion/application/data-capabilities-and-runtime-content.md)，不以新建通用 Data / Binding / Lifecycle Manager 的方式提前实现。

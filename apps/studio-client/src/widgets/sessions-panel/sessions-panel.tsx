@@ -29,7 +29,7 @@ import {
   X,
 } from 'lucide-react'
 import type {
-  AgentProfile,
+  AgentPreset,
   AgentSession,
   AgentTranscriptEntry,
   CardSummary,
@@ -71,7 +71,7 @@ type SessionsPanelProps = {
   activeBranch?: NarrativeBranch
   activeTimeline?: NarrativeTimeline
   agentChatSession?: AgentSession
-  agentProfiles: AgentProfile[]
+  agentPresets: AgentPreset[]
   api?: StudioApi
   allAgentSessions: AgentSession[]
   branches: NarrativeBranch[]
@@ -108,8 +108,13 @@ export function SessionsPanel(props: SessionsPanelProps) {
     initialSelectedId ? { kind: 'timeline', id: initialSelectedId } : undefined,
   )
 
-  const [timelineNodesMap, setTimelineNodesMap] = useState<Record<string, NarrativeNode[]>>({})
-  const [sessionTranscriptMap, setSessionTranscriptMap] = useState<Record<string, AgentTranscriptEntry[]>>({})
+  const [previews, setPreviews] = useState<{
+    api?: StudioApi
+    timelineNodes: Record<string, NarrativeNode[]>
+    sessionTranscripts: Record<string, AgentTranscriptEntry[]>
+  }>({ api: props.api, timelineNodes: {}, sessionTranscripts: {} })
+  const timelineNodesMap = previews.api === props.api ? previews.timelineNodes : undefined
+  const sessionTranscriptMap = previews.api === props.api ? previews.sessionTranscripts : undefined
 
   // 区分绑定会话与独立会话并应用排序
   const { sessionsByTimelineId, standaloneSessions } = useMemo(() => {
@@ -133,8 +138,8 @@ export function SessionsPanel(props: SessionsPanelProps) {
 
   const filteredStandaloneSessions = useMemo(() => {
     if (filter === 'timelines') return []
-    return filterStandaloneSessions(standaloneSessions, props.agentProfiles, searchQuery)
-  }, [filter, searchQuery, standaloneSessions, props.agentProfiles])
+    return filterStandaloneSessions(standaloneSessions, props.agentPresets, searchQuery)
+  }, [filter, searchQuery, standaloneSessions, props.agentPresets])
 
   const expandableTimelineIds = useMemo(() => {
     return getExpandableTimelineIds(filteredTimelines.map(t => t.id), sessionsByTimelineId)
@@ -285,16 +290,21 @@ export function SessionsPanel(props: SessionsPanelProps) {
 
   // 按需拉取选中时间线的演变节点日志
   useEffect(() => {
-    if (!selectedTimeline || !props.api?.narratives?.getPage) return
+    const api = props.api
+    if (!selectedTimeline || !api?.narratives?.getPage) return
     const timelineId = selectedTimeline.id
-    if (timelineNodesMap[timelineId]) return
+    if (timelineNodesMap?.[timelineId]) return
 
     let active = true
-    void props.api.narratives
+    void api.narratives
       .getPage({ timelineId, limit: 20 })
       .then(page => {
         if (active && page?.nodes) {
-          setTimelineNodesMap(prev => ({ ...prev, [timelineId]: page.nodes }))
+          setPreviews(prev => ({
+            api,
+            timelineNodes: { ...(prev.api === api ? prev.timelineNodes : {}), [timelineId]: page.nodes },
+            sessionTranscripts: prev.api === api ? prev.sessionTranscripts : {},
+          }))
         }
       })
       .catch(() => undefined)
@@ -305,16 +315,21 @@ export function SessionsPanel(props: SessionsPanelProps) {
 
   // 按需拉取选中会话的转录缩略预览
   useEffect(() => {
-    if (!selectedSession || !props.api?.agentSessions?.getTranscript) return
+    const api = props.api
+    if (!selectedSession || !api?.agentSessions?.getTranscript) return
     const sessionId = selectedSession.id
-    if (sessionTranscriptMap[sessionId]) return
+    if (sessionTranscriptMap?.[sessionId]) return
 
     let active = true
-    void props.api.agentSessions
+    void api.agentSessions
       .getTranscript({ agentSessionId: sessionId, limit: 12 })
       .then(page => {
         if (active && page?.entries) {
-          setSessionTranscriptMap(prev => ({ ...prev, [sessionId]: page.entries }))
+          setPreviews(prev => ({
+            api,
+            timelineNodes: prev.api === api ? prev.timelineNodes : {},
+            sessionTranscripts: { ...(prev.api === api ? prev.sessionTranscripts : {}), [sessionId]: page.entries },
+          }))
         }
       })
       .catch(() => undefined)
@@ -718,7 +733,7 @@ export function SessionsPanel(props: SessionsPanelProps) {
                             {boundSessions.map(session => {
                               const isSessionSelected = selectedItem?.kind === 'session' && selectedItem.id === session.id
                               const isSessionChecked = selectedSessionIds.has(session.id)
-                              const profile = props.agentProfiles.find(p => p.id === session.agentProfileId)
+                              const profile = props.agentPresets.find(p => p.id === session.agentPresetId)
                               return (
                                 <ContextMenu key={session.id}>
                                   <ContextMenuTrigger asChild>
@@ -742,14 +757,14 @@ export function SessionsPanel(props: SessionsPanelProps) {
                                         <div className={styles.selectionToggleWrapper}>
                                           <Toggle
                                             checked={isSessionChecked}
-                                            label={`选择会话 ${session.title || profile?.name || ''}`}
+                                            label={`选择会话 ${session.title || profile?.rootNode.label || ''}`}
                                             onChange={() => {}}
                                           />
                                         </div>
                                       ) : null}
                                       <MessageSquareText aria-hidden="true" />
                                       <span className={styles.childItemBody}>
-                                        <strong>{session.title || profile?.name || props.t('sessions.untitledAgentSession')}</strong>
+                                        <strong>{session.title || profile?.rootNode.label || props.t('sessions.untitledAgentSession')}</strong>
                                         <small>{formatDate(session.updatedAt)}</small>
                                       </span>
                                       <span className={styles.count}>{session.entryCount}</span>
@@ -856,7 +871,7 @@ export function SessionsPanel(props: SessionsPanelProps) {
                   {filteredStandaloneSessions.map(session => {
                     const isSessionSelected = selectedItem?.kind === 'session' && selectedItem.id === session.id
                     const isSessionChecked = selectedSessionIds.has(session.id)
-                    const profile = props.agentProfiles.find(p => p.id === session.agentProfileId)
+                    const profile = props.agentPresets.find(p => p.id === session.agentPresetId)
                     return (
                       <ContextMenu key={session.id}>
                         <ContextMenuTrigger asChild>
@@ -873,7 +888,7 @@ export function SessionsPanel(props: SessionsPanelProps) {
                               <div className={styles.selectionToggleWrapper}>
                                 <Toggle
                                   checked={isSessionChecked}
-                                  label={`选择会话 ${session.title || profile?.name || ''}`}
+                                  label={`选择会话 ${session.title || profile?.rootNode.label || ''}`}
                                   onChange={() => {}}
                                 />
                               </div>
@@ -896,8 +911,8 @@ export function SessionsPanel(props: SessionsPanelProps) {
                                 <Bot aria-hidden="true" />
                               </div>
                               <span className={styles.itemBody}>
-                                <strong>{session.title || profile?.name || props.t('sessions.untitledAgentSession')}</strong>
-                                <small>{profile?.name ?? session.agentProfileId} · {formatDate(session.updatedAt)}</small>
+                                <strong>{session.title || profile?.rootNode.label || props.t('sessions.untitledAgentSession')}</strong>
+                                <small>{profile?.rootNode.label ?? session.agentPresetId} · {formatDate(session.updatedAt)}</small>
                               </span>
                             </button>
                             <span className={styles.count}>{session.entryCount}</span>
@@ -975,9 +990,9 @@ export function SessionsPanel(props: SessionsPanelProps) {
               boundSessions={sessionsByTimelineId.get(selectedTimeline.id) ?? []}
               branches={props.branches}
               card={selectedTimeline.createdFrom?.cardId ? cardMap.get(selectedTimeline.createdFrom.cardId) : undefined}
-              nodes={timelineNodesMap[selectedTimeline.id] ?? []}
+              nodes={timelineNodesMap?.[selectedTimeline.id] ?? []}
               api={props.api}
-              profiles={props.agentProfiles}
+              profiles={props.agentPresets}
               t={props.t}
               timeline={selectedTimeline}
               onDelete={() => void handleDeleteTimeline(selectedTimeline)}
@@ -988,8 +1003,8 @@ export function SessionsPanel(props: SessionsPanelProps) {
             />
           ) : selectedItem?.kind === 'session' && selectedSession ? (
             <SessionDetail
-              entries={sessionTranscriptMap[selectedSession.id] ?? []}
-              profiles={props.agentProfiles}
+              entries={sessionTranscriptMap?.[selectedSession.id] ?? []}
+              profiles={props.agentPresets}
               session={selectedSession}
               t={props.t}
               onDelete={() => void handleDeleteSession(selectedSession)}
@@ -1016,7 +1031,7 @@ function TimelineDetail(props: {
   branches: NarrativeBranch[]
   card?: CardSummary
   nodes: NarrativeNode[]
-  profiles: AgentProfile[]
+  profiles: AgentPreset[]
   t: Translator
   timeline: NarrativeTimeline
   onDelete?(): void
@@ -1199,13 +1214,13 @@ function TimelineDetail(props: {
         ) : (
           <div className={styles.boundSessionsList}>
             {props.boundSessions.map(session => {
-              const profile = props.profiles.find(p => p.id === session.agentProfileId)
+              const profile = props.profiles.find(p => p.id === session.agentPresetId)
               return (
                 <div key={session.id} className={styles.boundSessionCard}>
                   <div className={styles.boundSessionInfo}>
                     <div className={styles.boundSessionTitleRow}>
-                      <strong>{session.title || profile?.name || props.t('sessions.untitledAgentSession')}</strong>
-                      {profile?.name ? <span className={styles.profileBadge}>{profile.name}</span> : null}
+                      <strong>{session.title || profile?.rootNode.label || props.t('sessions.untitledAgentSession')}</strong>
+                      {profile?.rootNode.label ? <span className={styles.profileBadge}>{profile.rootNode.label}</span> : null}
                     </div>
                     <div className={styles.boundSessionMeta}>
                       <span>{props.t('sessions.messageCount', { count: session.entryCount })}</span>
@@ -1262,14 +1277,14 @@ function TimelineDetail(props: {
 
 function SessionDetail(props: {
   entries: AgentTranscriptEntry[]
-  profiles: AgentProfile[]
+  profiles: AgentPreset[]
   session: AgentSession
   t: Translator
   onDelete?(): void
   onOpenSidebar(): void
   onRename?(): void
 }) {
-  const profile = props.profiles.find(p => p.id === props.session.agentProfileId)
+  const profile = props.profiles.find(p => p.id === props.session.agentPresetId)
 
   return (
     <>
@@ -1279,8 +1294,8 @@ function SessionDetail(props: {
             <Bot aria-hidden="true" />
           </div>
           <div className={styles.detailTitleMeta}>
-            <h3>{props.session.title || profile?.name || 'Agent Session'}</h3>
-            <span>{profile?.name ?? props.session.agentProfileId} · {props.session.id}</span>
+            <h3>{props.session.title || profile?.rootNode.label || 'Agent Session'}</h3>
+            <span>{profile?.rootNode.label ?? props.session.agentPresetId} · {props.session.id}</span>
           </div>
         </div>
 
@@ -1316,8 +1331,8 @@ function SessionDetail(props: {
 
       <div className={styles.infoGrid}>
         <div className={styles.infoCard}>
-          <span>Agent Profile</span>
-          <strong>{profile?.name ?? props.session.agentProfileId}</strong>
+          <span>Agent Preset</span>
+          <strong>{profile?.rootNode.label ?? props.session.agentPresetId}</strong>
         </div>
         <div className={styles.infoCard}>
           <span>消息条数</span>

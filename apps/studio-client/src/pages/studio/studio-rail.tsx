@@ -42,7 +42,6 @@ export function StudioRail(props: StudioRailProps) {
 
         <div className={styles.railGroup}>
           <div className={styles.railGroupLabel}>{props.t('rail.groupEdit')}</div>
-          <RailTab activePanel={props.activePanel} panel="preset" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
           <RailTab activePanel={props.activePanel} panel="resource" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
           <RailTab activePanel={props.activePanel} panel="state" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
           <RailTab activePanel={props.activePanel} panel="text-transform" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />

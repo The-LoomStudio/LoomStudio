@@ -7,7 +7,7 @@ export type {
   RegisteredAiGatewayProvider,
 } from '@loom-studio/ai-gateway/contracts'
 
-export type ProviderProfile = {
+type ProviderProfile = {
   id: string
   version: number
   providerExtensionId: string
@@ -62,24 +62,10 @@ export type ProviderModelSelection = {
   modelId: string
 }
 
-export type AgentProfile = {
-  id: string
-  version: number
-  name: string
-  presetId: string
-  model: ProviderModelSelection
-  toolOverrides: Record<string, boolean>
-  delivery: 'stream' | 'complete'
-  createdAt: string
-  updatedAt: string
-}
+export type AgentPreset = import('./workspace.js').PromptResource
 
 export type CreateProviderProfileResult = {
   providerProfile: ProviderProfile
-}
-
-export type CreateProviderAccountResult = CreateProviderProfileResult & {
-  providerAccount: ProviderAccount
 }
 
 export type ListProviderProfilesResult = {
@@ -87,16 +73,8 @@ export type ListProviderProfilesResult = {
   nextCursor?: string
 }
 
-export type ListProviderAccountsResult = ListProviderProfilesResult & {
-  providerAccounts: ProviderAccount[]
-}
-
 export type UpdateProviderProfileResult = {
   providerProfile: ProviderProfile
-}
-
-export type UpdateProviderAccountResult = UpdateProviderProfileResult & {
-  providerAccount: ProviderAccount
 }
 
 export type DeleteProviderProfileResult = {
@@ -104,21 +82,19 @@ export type DeleteProviderProfileResult = {
   deletedProviderProfileId?: string
 }
 
-export type DeleteProviderAccountResult = DeleteProviderProfileResult
-
-export type CreateAgentProfileResult = {
-  agentProfile: AgentProfile
+export type CreateAgentPresetResult = {
+  agentPreset: AgentPreset
 }
 
-export type ListAgentProfilesResult = {
-  agentProfiles: AgentProfile[]
+export type ListAgentPresetsResult = {
+  agentPresets: AgentPreset[]
   nextCursor?: string
 }
 
-export type UpdateAgentProfileResult = {
-  agentProfile: AgentProfile
+export type UpdateAgentPresetResult = {
+  agentPreset: AgentPreset
 }
 
-export type DeleteAgentProfileResult = {
+export type DeleteAgentPresetResult = {
   deleted: true
 }

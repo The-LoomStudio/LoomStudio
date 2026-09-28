@@ -11,10 +11,10 @@ Loom Studio 选择第三方依赖时，不只记录“安装了什么”，还�
 | 问题 | 当前选择 | 所有权边界 |
 | --- | --- | --- |
 | 组件与渲染生命周期 | React / React DOM | 第一方 Client UI 的渲染基座。普通界面不建立平行的手工 DOM 组件系统；Extension Renderer adapter 除外。 |
-| 页面身份与深链接 | React Router | Path、Query、Hash 与 History 的唯一导航所有者。普通工作台选择和拖拽状态不反向制造第二套路由。 |
-| 本地应用与布局状态 | Zustand | Panel 尺寸、目录展开、当前本地选择、外观和其他可持久化 UI 偏好。新增启动恢复状态应进入所属 store，而不是由组件平行读写 `localStorage`；它不保存服务端 canonical resource cache。 |
+| 页面身份与深链接 | React Router | 普通入口归一化到 `/studio`，面板与明确资源位置由 History State 保存，URI负责外部定位。按 endpoint 的最后位置由 Shell 的 `studio-workspace` helper 持久化；不再建第二个可写导航 Store。 |
+| 本地应用与布局状态 | Zustand | Panel 尺寸、目录展开、当前局部选择、外观等 UI 偏好。它不保存服务端 canonical resource cache，也不取代上述 History State 的导航权威。 |
 | 缓存型服务端状态 | TanStack Query | Query key、请求去重、缓存、失效和远端错误状态。当前 Prompt Resource、Setting Mount 和 Preset Tool Mount 已迁移；其他领域迁移前仍以当前实现为事实。 |
-| 无界集合渲染窗口 | TanStack Virtual | FileTree 等可能随数据增长的可见行窗口。是否虚拟化由集合上界和实际渲染成本决定，不为固定小列表机械接入。 |
+| 无界集合渲染窗口 | TanStack Virtual | FileTree、Narrative 正文和导航刻度等可见行窗口；正文支持动态高度及编辑节点保留。窗口化约束DOM挂载数量，不自动限制已加载数据缓存，不为固定小列表机械接入。 |
 | Context Menu / Dropdown | Radix primitives | 键盘导航、焦点、Dismiss 和 Overlay 基础语义。业务层组合项目内容，不重复实现菜单基础设施。 |
 | 瞬时通知 | Sonner | 成功、失败和短时反馈。可恢复错误和持久状态仍由对应 feature 或页面拥有。 |
 | 长文本与代码编辑 | CodeMirror / Lezer | 需要语法、搜索、历史、差异或结构化高亮的编辑器。普通短字段继续使用原生 input/textarea。 |
@@ -43,7 +43,7 @@ Streaming domain lifecycle   -> owning Agent / Narrative feature
 | Server HTTP | Node `node:http` | Studio Server 的 HTTP/RPC 入口。当前没有 Express、Fastify 或 Hono 平行层。 |
 | SQLite | Node `node:sqlite` + `@loom-studio/data-engine` | Connection、migration 和 transaction 的统一入口。领域 Store 不各自创建数据库基础设施。 |
 | Provider HTTP 与代理 | Undici | Application Runtime 的 Provider 请求和 `ProxyAgent`。普通 Server 路由优先使用平台现有 HTTP 能力。 |
-| ZIP 编解码 | fflate | Card、Prompt Resource、Extension Package 和官方内容压缩。不得为单个资源格式再写 ZIP parser。 |
+| ZIP 编解码 | fflate | Card、Prompt Resource、Extension Package 和官方内容压缩/解压。Card 另用现有 `zip-checksums.ts` 读取完整性元数据、配合 Node CRC32 验证实际数据；这不是第二套解压器，不另建重复编解码。 |
 | 边界 Schema | Zod | 当前用于 AI Gateway Provider 配置和 Shared Setting Mount RPC Schema。新增跨端结构化边界且没有既有 parser 时优先复用；可信内部纯函数不重复 parse。 |
 | 系统凭据与敏感密钥托管 | `@napi-rs/keyring` + `@loom-studio/secret-store` | 操作系统安全凭据链（Keychain/SecretService）与 SQLite 元数据双层物理隔离；受控闭包临时借用、写入意图防丢失持久化与生命周期清理队列，绝不向数据库或日志写入明文。 |
 | 沙箱代码隔离执行 | `quickjs-emscripten` / `node:vm` | CodeAct 与命令行沙箱的隔离执行环境；提供确定性内存/时间预算，杜绝未经授权的宿主文件、网络或进程访问。 |
@@ -95,6 +95,8 @@ Schema 应成为该字段的类型来源；已有 Manifest 等专用 parser 不�
 - Prompt Resource Query 所有者：[`use-prompt-resource-state.ts`](../../../apps/studio-client/src/features/prompt-resources/model/use-prompt-resource-state.ts)
 - Zustand 布局状态：[`studio-layout-store.ts`](../../../apps/studio-client/src/shared/studio-shell/studio-layout-store.ts)
 - 虚拟 FileTree：[`file-tree.tsx`](../../../apps/studio-client/src/shared/ui/file-tree/file-tree.tsx)
+- 正文窗口与编辑生命周期：[`NarrativeTimeline`](../../../apps/studio-client/src/widgets/narrative-timeline/narrative-timeline.tsx)
+- 工作区导航持久化：[`studio-workspace.ts`](../../../apps/studio-client/src/shared/studio-shell/studio-workspace.ts)
 - Shared Setting Mount Schema：[`prompt-resource-contracts.ts`](../../../packages/shared/src/prompt-resource-contracts.ts)
 - Client 构建与 Compiler 试点：[`vite.config.ts`](../../../apps/studio-client/vite.config.ts)
 - 审计和体积命令：[`package.json`](../../../package.json)

@@ -106,7 +106,8 @@ describe('HTTP request lifecycle', () => {
       : new Readable({ read() {} })
     if (source instanceof ReadStream) {
       if (source.pending) await once(source, 'open')
-      expect(source.fd).not.toBeNull()
+      if (!('fd' in source)) throw new Error('ReadStream does not expose its file descriptor')
+      expect(source.fd).toEqual(expect.any(Number))
     }
     const opening = Promise.withResolvers<void>()
     const release = Promise.withResolvers<void>()
@@ -142,7 +143,10 @@ describe('HTTP request lifecycle', () => {
       release.resolve()
       await expect.poll(() => source.destroyed).toBe(true)
       await expect.poll(() => source.closed).toBe(true)
-      if (source instanceof ReadStream) expect(source.fd).toBeNull()
+      if (source instanceof ReadStream) {
+        if (!('fd' in source)) throw new Error('ReadStream does not expose its file descriptor')
+        expect(source.fd).toBeNull()
+      }
     } finally {
       controller.abort()
       release.resolve()

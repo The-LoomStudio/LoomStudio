@@ -66,11 +66,14 @@ describe('AssetStore', () => {
     const second = await fixture.assets.createMediaAsset({
       blobId: blob.blob.id,
       kind: 'card.cover',
+      ownerPackageId: 'example.assets',
+      ownerInstallationId: 'extension-installation:["card","a","example.assets"]',
       actor: { kind: 'client', id: 'test' },
     })
 
     expect(first.asset.id).not.toBe(second.asset.id)
     expect(first.asset.blobId).toBe(second.asset.blobId)
+    expect((await fixture.assets.getMediaAsset(second.asset.id))?.ownerInstallationId).toBe(second.asset.ownerInstallationId)
     expect(Buffer.from(await fixture.assets.readMediaAsset(first.asset.id)).toString()).toBe('image bytes')
     fixture.engine.close()
   })

@@ -37,6 +37,37 @@
 - 原生 Provider 思考内容不作为正文；自定义正文内思维链不由平台猜测解析。
 - Agent Run 的内存事件保留必须有明确上限，但 retention 不得淘汰仍可取消、订阅或恢复的运行中状态。
 
+<a id="fr011-failure-recovery"></a>
+
+## FR-011 顺序提交
+
+状态：2026-09-24 已实现并完成定向验证，FR-011 关闭；本计划其他阶段不随之完成。来源为[全仓审查 FR-011](../../archive/issues/full-repo-code-review-2026-08-27.md#fr011)。没有新增另一套 Run 或跨进程恢复机制。
+
+实施前基线（已由下述目标替代）：
+
+- 旧 Runtime 分阶段写 Transcript，回合结束后再自动追加两条 Narrative 节点；成功结果曾区分 `narrative-commit` / `agent-session-transcript`。
+- 原最终提交失败日志测试只验证日志，不证明工具结果或重试安全；该失效路径已删除，对应测试改为用户写入与工具提交的实际失败场景，不恢复“整轮同 Changeset”。
+
+已确认目标：
+
+1. 游玩用户提交先写入正式 Timeline 用户正文节点；确认成功后，再把该输入复制到指定 Agent Session，开始 Agent 处理。两步有顺序，不并发，不以乐观节点代替落库成功。
+2. Agent 的 Assistant 最后一条消息不自动成为正文。删除回合结束后将用户输入和 Assistant 回复一起追加到 Timeline 的旧路径；Agent 正文只经已授权的写入工具提交。
+3. 换 Session 后使用重试/重新投递，把同一已提交用户节点的输入复制到新 Session，不再向 Timeline 重复追加用户节点。这不是复制旧 Session 的完整历史。
+4. Agent 工具写入 Timeline 失败（包括分支冲突）必须形成失败 Tool Result，告知 Agent，并向用户呈现失败；未写入不能报告成功。已成功的其他工具修改不因后续失败被伪称回滚。
+5. 初始用户正文写入是工具执行前的用户操作：失败时不创建对应 Session 输入/Run，保留输入并向用户报告；不虚构一个从未发生的工具调用或 Tool Result。用户正文已提交而 Session 投递失败时，保留已提交节点，重试仅补投递。
+
+实际实现：Client submitTurn 先调用 `application.appendNarrativeInput` 再创建/选择 Session 和 createRun；固定用户 nodeId 用于响应丢失后的显式重试。幂等写入与原收据读取归 `packages/application-data/src/narrative/store.ts` 的 appendInput，Runtime 不读取领域私有表。invoke 接收 inputNodeId，验证分支路径并采用落库 raw；旧 commit 字段、自动追加及 result.narrative 已移除。已有重试按钮连接当前页最近投递记录，换 Session 可重投递，不清掉期间的新草稿；成功后的 Timeline 刷新读取工具真实写入，无工具写入的回合也允许正常结束。
+
+初次创建 Timeline 后的导航依据已持久化 Timeline 身份，不以 Session 投递成功为前提；投递错误仍报告并保留输入。完成回合后的读取失败单独标记 refresh-failed，只刷新结果，不重跑 Provider/Tool。没有修改 Tool Loop、CodeAct 或 Preset 设计。
+
+验收：验证用户节点持久化早于 Session 投递；初始写入失败不投递；投递失败后或换 Session 后重试不重复创建用户正文节点；无工具写入的 Assistant 回复不产生正文；工具追加成功有真实节点/Changeset，分支冲突及存储失败返回失败 Result，Agent 与用户均可观察。旧“回合结束后提交失败”的用例必须随失效入口删除或改成当前链条的等价失败验证，不能仅改期望值掩盖缺陷。
+
+原待决定的“最终追加失败是否单独重试”已失效，不再建设该恢复机制。工具历史回放及 Narrative 基线冻结分别归[上下文计划第17节及第13节](./agent-context-skeleton-and-memory-projection-plan.md)，不是本项是否完成的替代证据。
+
+验证：后端 agent-session、native-tool-loop、macro-provider、codeact-tool-loop、agent-turn-rpc、logging 六个文件73项通过；将私有 SQL 移入 Store 后，仅重跑追加/HTTP四项通过、24项非目标未执行。主 Agent 的 Client 提交/重试/选择最终三文件59项通过，另一个四文件43项批次覆盖重试控件、RPC 路由和真实 SQLite 生命周期（部分用例与前批重叠，不相加为唯一用例数）。Application Data/Runtime 编译、Server/Client noEmit 及后端相关测试类型检查通过。
+
+主测试类型检查仍失败，仅有并行消息渲染工作 `tests/unit/client/display-projection.test.ts:50,55,65` 的 QueryOptions/QueryObserverOptions 三条诊断，未修改对方文件或声称全仓绿灯。浏览器工具认证故障仍在，未做实际浏览器点击/视觉验收；当前页重试记录不是跨刷新持久的 attempt tree，已有节点和 Session/Transcript 本身按原 Store 持久化。
+
 ## 游玩分支与 Session 生命周期
 
 2026-09-21 用户收束方向：废弃剧情不应继续进入游玩 Agent 的工作上下文。首版从历史节点新开剧情分支时，创建新的空白 Agent Session，不复制旧 Transcript、工具观察、工作摘要或运行态 Pin。原 Session 保留供用户查看，不由 Agent 回滚或删除。

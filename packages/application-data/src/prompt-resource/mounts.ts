@@ -22,12 +22,13 @@ import {
 } from './tree.js'
 import {
   operation,
+  resourceScope,
   requireResourceRow,
   recordDeletedMountOperations,
   recordDeletedPresetToolMountOperations,
 } from './mutations.js'
 
-export function mountFromRow(row: Record<string, unknown>): SettingMount {
+function mountFromRow(row: Record<string, unknown>): SettingMount {
   const sourceKind = row.source_kind
   const sourceId = row.source_id
   if ((sourceKind !== 'manual' && sourceKind !== 'preset') || typeof sourceId !== 'string') throw new PromptResourceStoreError('prompt_resource.mount_invalid', 'Invalid setting mount row')
@@ -41,7 +42,7 @@ export function mountFromRow(row: Record<string, unknown>): SettingMount {
   }
 }
 
-export function presetToolMountFromRow(row: Record<string, unknown>): PresetToolMount {
+function presetToolMountFromRow(row: Record<string, unknown>): PresetToolMount {
   const activation = row.activation_json === null ? undefined : parseObject(String(row.activation_json), 'tool mount activation')
   const providerOrder = row.provider_order === null ? undefined : Number(row.provider_order)
   const targetAnchorId = row.target_anchor_id === null ? undefined : String(row.target_anchor_id)
@@ -64,7 +65,7 @@ export function presetToolMountFromRow(row: Record<string, unknown>): PresetTool
   }
 }
 
-export function validateMountSource(database: DatabaseSync, source: SettingMountSource, requireTarget = true): void {
+function validateMountSource(database: DatabaseSync, source: SettingMountSource, requireTarget = true): void {
   if (source.kind === 'manual') {
     if (source.id !== undefined && source.id !== 'global') throw new PromptResourceStoreError('prompt_resource.mount_source_invalid', 'Manual Setting mount source id must be global')
     return
@@ -75,17 +76,17 @@ export function validateMountSource(database: DatabaseSync, source: SettingMount
   if (!requireTarget) return
 }
 
-export function requireSetting(database: DatabaseSync, id: string): void {
+function requireSetting(database: DatabaseSync, id: string): void {
   const row = requireResourceRow(database, id)
   if (row.resource_kind !== 'setting' || row.tombstoned) throw new PromptResourceStoreError('prompt_resource.setting_invalid', `Mount target is not an active Setting: ${id}`)
 }
 
-export function requirePreset(database: DatabaseSync, id: string): void {
+function requirePreset(database: DatabaseSync, id: string): void {
   const row = requireResourceRow(database, id)
   if (row.resource_kind !== 'preset' || row.tombstoned) throw new PromptResourceStoreError('prompt_resource.preset_invalid', `Tool mount source is not an active Preset: ${id}`)
 }
 
-export function validatePresetToolMountFields(input: Pick<AddPresetToolMountInput, 'defaultEnabled' | 'activation' | 'provider' | 'content' | 'origin'>): void {
+function validatePresetToolMountFields(input: Pick<AddPresetToolMountInput, 'defaultEnabled' | 'activation' | 'provider' | 'content' | 'origin'>): void {
   if (typeof input.defaultEnabled !== 'boolean') throw new PromptResourceStoreError('prompt_resource.tool_mount_enabled_invalid', 'Tool mount defaultEnabled must be a boolean')
   if (input.activation !== undefined) validateJsonObject(input.activation, 'tool mount activation')
   if (input.origin !== undefined) validateJsonObject(input.origin, 'tool mount origin')
@@ -102,11 +103,11 @@ export function validatePresetToolMountFields(input: Pick<AddPresetToolMountInpu
   }
 }
 
-export function isMountUniqueConstraint(error: unknown): boolean {
+function isMountUniqueConstraint(error: unknown): boolean {
   return error instanceof Error && error.message.includes('UNIQUE constraint failed: global_setting_mounts.')
 }
 
-export function isPresetToolMountUniqueConstraint(error: unknown): boolean {
+function isPresetToolMountUniqueConstraint(error: unknown): boolean {
   return error instanceof Error && error.message.includes('UNIQUE constraint failed: preset_tool_mounts.')
 }
 
@@ -150,7 +151,10 @@ export function applyAddSettingMount(
     }
     throw error
   }
-  tx.recordOperations([operation('create', mount.id, 'prompt-resource.mount')])
+  tx.recordOperations([{
+    ...operation('create', mount.id, 'prompt-resource.mount'),
+    ...(mount.source.kind === 'preset' ? { scope: resourceScope(database, mount.source.id) } : {}),
+  }])
   return mount
 }
 
@@ -230,7 +234,9 @@ export function applyAddPresetToolMount(
     }
     throw error
   }
-  tx.recordOperations([operation('create', mount.id, 'prompt-resource.tool-mount')])
+  tx.recordOperations([{
+    ...operation('create', mount.id, 'prompt-resource.tool-mount'), scope: resourceScope(database, mount.presetResourceId),
+  }])
   return mount
 }
 

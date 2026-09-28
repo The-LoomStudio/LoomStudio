@@ -14,7 +14,7 @@ const storageKey = (endpoint: string) => `loom-studio-workspace:${endpoint}`
 
 export function readStudioWorkspace(value: unknown): StudioWorkspace | undefined {
   if (!isRecord(value) || (value.panel !== null && !STUDIO_PANEL_IDS.includes(value.panel as never))) return
-  const result: StudioWorkspace = { panel: value.panel as StudioRoute['panel'], search: '' }
+  const result: StudioWorkspace = { panel: value.panel === 'preset' ? 'agent' : value.panel as StudioRoute['panel'], search: '' }
   for (const key of ['timelineId', 'branchId', 'cardId', 'resourceId', 'assetId', 'nodeId', 'referenceUri', 'targetUri'] as const) {
     if (value[key] === undefined) continue
     if (typeof value[key] !== 'string' || (!value[key] && key !== 'targetUri') || value[key].length > 8192) return

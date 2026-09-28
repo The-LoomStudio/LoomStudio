@@ -12,9 +12,11 @@ import type {
   ExtensionEntityRef,
   ExtensionEventDefinition,
   ExtensionManifest,
+  ExtensionInstallationTarget,
   ExtensionMediaAsset,
   ExtensionModuleManifest,
   ExtensionMacroProvider,
+  NarrativeContextProvider,
   ExtensionPortablePayload,
   ExtensionPortablePayloadDraft,
   ExtensionRpcHandler,
@@ -26,20 +28,8 @@ import type {
   ProfiledAiGateway,
 } from '@loom-studio/extension-sdk'
 import { extensionStorageTokenPattern } from '@loom-studio/extension-sdk'
-import type { JsonObject, JsonValue, StateContribution } from '@loom-studio/shared'
+import type { JsonValue, StateContribution } from '@loom-studio/shared'
 import type { StudioEvent } from '@loom-studio/transport'
-
-export type { ExtensionRpcHandler } from '@loom-studio/extension-sdk'
-export type {
-  EventCapabilityCategory,
-  ExtensionAgentToolContribution,
-  ExtensionAssetCapability,
-  ExtensionEntityRef,
-  ExtensionManifest,
-  ExtensionModuleManifest,
-  ExtensionPromptResourceContribution,
-  ExtensionStorageScope,
-} from '@loom-studio/extension-sdk'
 
 export type ExtensionState = 'discovered' | 'manifestLoaded' | 'manifestValidated' | 'loaded' | 'activating' | 'active' | 'degraded' | 'disabled'
 
@@ -54,6 +44,8 @@ export type ExtensionInstanceState =
   | 'dispose_failed'
 
 export type ExtensionModuleSummary = {
+  installationId: string
+  target: ExtensionInstallationTarget
   packageId: string
   moduleId: string
   runtime: 'server'
@@ -75,6 +67,7 @@ export type ExtensionModuleSummary = {
 }
 
 export type ExtensionRpcContext = {
+  extensionTarget?: ExtensionInstallationTarget
   packageId: string
   moduleId: string
   instanceId: string
@@ -103,10 +96,11 @@ export type ExtensionHostOptions = {
   documents: DocumentStore
   diagnostics: DiagnosticsRegistry
   logger?: ExtensionHostLogWriter
-  queryLogs?(packageId: string, input: ExtensionLogQuery): Promise<ExtensionLogPage>
+  queryLogs?(packageId: string, input: ExtensionLogQuery, installationId?: string): Promise<ExtensionLogPage>
   mode?: 'development' | 'production' | 'test'
-  grantEventCapabilities?(packageManifest: ExtensionManifest, moduleManifest: ExtensionModuleManifest): readonly EventCapabilityCategory[]
-  grantAssetCapabilities?(packageManifest: ExtensionManifest, moduleManifest: ExtensionModuleManifest): readonly ExtensionAssetCapability[]
+  grantEventCapabilities?(packageManifest: ExtensionManifest, moduleManifest: ExtensionModuleManifest, target: ExtensionInstallationTarget): readonly EventCapabilityCategory[]
+  grantAssetCapabilities?(packageManifest: ExtensionManifest, moduleManifest: ExtensionModuleManifest, target: ExtensionInstallationTarget): readonly ExtensionAssetCapability[]
+  canAccessAsset?(asset: ExtensionMediaAsset, target: ExtensionInstallationTarget): boolean | Promise<boolean>
   assets?: {
     publish(input: {
       bytes: Uint8Array
@@ -116,6 +110,7 @@ export type ExtensionHostOptions = {
       width?: number
       height?: number
       ownerPackageId: string
+      ownerInstallationId?: string
       actor: { kind: 'extension'; id: string }
     }): Promise<ExtensionMediaAsset>
     get(assetId: string): Promise<ExtensionMediaAsset | undefined>
@@ -123,11 +118,12 @@ export type ExtensionHostOptions = {
   }
   portablePayloads?: {
     create(input: {
+      ownerInstallationId?: string
       packageId: string
       artifactPayloadId?: string
       payload: ExtensionPortablePayloadDraft
     }): Promise<ExtensionPortablePayload>
-    list(packageId: string): Promise<ExtensionPortablePayload[]>
+    list(packageId: string, ownerInstallationId?: string): Promise<ExtensionPortablePayload[]>
     get(payloadId: string): Promise<ExtensionPortablePayload>
     update(input: {
       packageId: string
@@ -137,6 +133,7 @@ export type ExtensionHostOptions = {
     }): Promise<ExtensionPortablePayload>
     delete(input: { packageId: string; payloadId: string; expectedVersion: number }): Promise<void>
     replaceCardBindings(input: {
+      ownerInstallationId?: string
       packageId: string
       cardId: string
       expectedVersion: number
@@ -149,15 +146,24 @@ export type ExtensionHostOptions = {
     packageId: string
     moduleId: string
     instanceId: string
+    target: ExtensionInstallationTarget
+  }): Disposable
+  registerNarrativeContextProvider?(provider: NarrativeContextProvider, owner: {
+    packageId: string
+    moduleId: string
+    instanceId: string
+    target: ExtensionInstallationTarget
   }): Disposable
   registerStateContribution?(contribution: StateContribution, owner: {
     packageId: string
     moduleId: string
     instanceId: string
     packageVersion: string
+    target: ExtensionInstallationTarget
   }): Disposable
   readState?(target: ExtensionStateTarget, owner: { packageId: string; moduleId: string; instanceId: string }): Promise<ExtensionStateSnapshot>
   writeState?(input: ExtensionStateMutationInput, owner: { packageId: string; moduleId: string; instanceId: string }): Promise<ExtensionStateMutationResult>
+  canAccessState?(target: ExtensionStateTarget, installation: ExtensionInstallationTarget): Promise<boolean>
   registerAgentToolHandler?(
     toolId: string,
     ownerPackageId: string,
@@ -165,11 +171,11 @@ export type ExtensionHostOptions = {
     ownerInstanceId: string,
     handler: ExtensionAgentToolHandler,
   ): Disposable
-  validateStorageScope?(scope: ExtensionStorageScope): Promise<void>
-  validateEntityRef?(ref: ExtensionEntityRef): Promise<void>
+  validateStorageScope?(scope: ExtensionStorageScope, target: ExtensionInstallationTarget): Promise<void>
+  validateEntityRef?(ref: ExtensionEntityRef, target: ExtensionInstallationTarget): Promise<void>
   assetScratchRoot?: string
   callRpc(method: string, params?: JsonValue, context?: ExtensionRpcContext): Promise<JsonValue>
-  registerRpc(name: string, ownerPackageId: string, ownerModuleId: string, handler: ExtensionRpcHandler, ownerInstanceId: string): ExtensionRpcRegistration
+  registerRpc(name: string, ownerPackageId: string, ownerModuleId: string, handler: ExtensionRpcHandler, ownerInstanceId: string, target: ExtensionInstallationTarget): ExtensionRpcRegistration
   registerEventDefinition?(definition: ExtensionEventDefinition & {
     owner: { kind: 'extension'; packageId: string; moduleId: string }
     capability?: `extension:${string}`
@@ -183,18 +189,18 @@ export type ExtensionHostOptions = {
 }
 
 export type ExtensionHost = {
-  discover(directory: string): Promise<ExtensionModuleSummary[]>
-  activate(packageId: string, moduleId: string): Promise<ExtensionModuleSummary>
+  discover(directory: string, target?: ExtensionInstallationTarget): Promise<ExtensionModuleSummary[]>
+  activate(packageId: string, moduleId: string, target?: ExtensionInstallationTarget): Promise<ExtensionModuleSummary>
   activateAll(): Promise<ExtensionModuleSummary[]>
-  reload(packageId: string, moduleId: string): Promise<ExtensionModuleSummary>
-  dispose(packageId: string, moduleId: string): Promise<void>
-  forget(packageId: string, moduleId: string): Promise<void>
+  reload(packageId: string, moduleId: string, target?: ExtensionInstallationTarget): Promise<ExtensionModuleSummary>
+  dispose(packageId: string, moduleId: string, target?: ExtensionInstallationTarget): Promise<void>
+  forget(packageId: string, moduleId: string, target?: ExtensionInstallationTarget): Promise<void>
   disposeAll(): Promise<void>
   list(): ExtensionModuleSummary[]
   diagnostics(packageId?: string, moduleId?: string): Diagnostic[]
 }
 
-export type Disposable = {
+type Disposable = {
   dispose(): void | Promise<void>
 }
 
@@ -225,6 +231,7 @@ export type ExtensionInstance = {
 }
 
 export type ExtensionModuleRecord = {
+  target: ExtensionInstallationTarget
   directory: string
   packageManifest: ExtensionManifest
   moduleManifest: ExtensionModuleManifest & { runtime: 'server' }

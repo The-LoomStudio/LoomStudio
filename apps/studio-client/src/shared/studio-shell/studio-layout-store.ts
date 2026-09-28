@@ -9,10 +9,10 @@ export const STUDIO_PANEL_IDS = ['model', 'agent', 'play', 'sessions', 'characte
 
 export type StudioPanelId = (typeof STUDIO_PANEL_IDS)[number]
 export type AssetLayoutId = 'preset' | 'resources'
-export type AssetViewMode = 'master-detail' | 'drilldown'
-export type ContextCategory = 'setting' | 'logic' | 'runtime' | 'history'
-export type PanelWindowMode = 'reference' | 'immersive'
-export type PresetView = 'assets' | 'order' | 'tools' | 'macros' | 'text'
+type AssetViewMode = 'master-detail' | 'drilldown'
+type ContextCategory = 'setting' | 'logic' | 'runtime' | 'history'
+type PanelWindowMode = 'reference' | 'immersive'
+export type PresetView = 'assets' | 'order' | 'tools' | 'macros' | 'text' | 'model'
 
 export type AssetViewState = {
   expandedIds?: string[]
@@ -20,7 +20,7 @@ export type AssetViewState = {
   viewMode: AssetViewMode
 }
 
-export type AssetPane = 'explorer' | 'detail'
+type AssetPane = 'explorer' | 'detail'
 
 type AssetLayout = {
   explorerWidth: number
@@ -152,7 +152,7 @@ export function sanitizeStudioLayout(value: unknown): StudioLayoutData {
     panelWindowMode,
     panelWindowModes,
     panelWindowSizes: readPanelWindowSizes(value.panelWindowSizes),
-    presetView: value.presetView === 'text'
+    presetView: value.presetView === 'model' ? 'model' : value.presetView === 'text'
       ? 'text'
       : value.presetView === 'tools'
       ? 'tools'

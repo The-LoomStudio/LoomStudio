@@ -30,6 +30,21 @@ describe('context asset search', () => {
     expect(searchContextAssets(index, 'clocktower')).toEqual([])
   })
 
+  it('does not invent body matches for whitespace or change source identity and text', () => {
+    const source: ContextAssetNode[] = [
+      { id: 'empty', kind: 'entry', label: 'Empty', body: ' \n\t ' },
+      { id: 'hit', kind: 'entry', label: 'Match', body: '\n\nNeedle remains intact' },
+    ]
+    const before = structuredClone(source)
+    const records = buildContextAssetSearchIndex(source)
+    expect(searchContextAssets(records, 'empty')[0]?.excerpt).toBeUndefined()
+    const results = searchContextAssets(records, 'needle')
+    expect(results.map(result => result.id)).toEqual(['hit'])
+    expect(results[0]?.node).toBe(source[1])
+    expect(results[0]?.excerpt).toContain('Needle')
+    expect(source).toEqual(before)
+  })
+
   it.each([
     `${' \n\t'.repeat(100)}Target phrase and remaining text`,
     `${'İ'.repeat(200)} Target phrase and remaining text`,

@@ -1,5 +1,6 @@
 import type { JsonObject } from '@loom-studio/shared'
 import type { ToolDefinition, ToolRuntimeRegistration } from '../tool-registry.js'
+import { isExtensionResourceAvailable } from '../../runtime/extension-resource-access.js'
 
 export const officialReadPromptResourceTool: ToolDefinition = {
   id: 'official/read_prompt_resource',
@@ -24,6 +25,9 @@ export const officialReadPromptResourceRegistration: ToolRuntimeRegistration = {
     const resourceId = String(invocation.arguments?.resourceId ?? '')
     const resource = await scope.promptResources.getResource(resourceId)
     if (!resource) throw new Error(`Prompt Resource not found: ${resourceId}`)
+    if (!isExtensionResourceAvailable(resource.metadata.origin, scope.availableExtensionInstallations)) {
+      throw new Error(`Prompt Resource is not available in this context: ${resourceId}`)
+    }
     return {
       invocationId: invocation.id, toolId: invocation.toolId, status: 'completed',
       content: [{ type: 'json', value: {

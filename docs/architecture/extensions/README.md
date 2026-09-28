@@ -139,7 +139,7 @@ Manifest declaration 是静态合同，Runtime registration 是当前事实。�
 - Agent Tool Definition 保存为可编辑的 `airp.agentTool` Document，并进入现有 Tool Prompt Build；
 - 重复导入同一 Package 版本保持幂等，不覆盖用户编辑；跨版本更新当前明确要求后续迁移合同；
 - Package 文件卸载不自动删除已实例化资源；`extensions.removePackageResources` 可按 provenance 显式移除该 Package 的 Prompt Resource、Tool Definition 与关联 Mount；
-- 资源移除会同步解除 Card、Timeline 与 Agent Profile Tool Override 引用；若待删 Preset 仍被 Agent Profile 使用，则整次操作拒绝，避免留下失效 Profile。
+- 资源移除保留外部 Card、Timeline、Session 与其他预设的引用，只清理被删资源自身拥有的挂载；缺失必要资源时执行明确失败。Agent Preset 直接承载配置，不再存在 Profile Tool Override 或阻止删除的 Profile 引用。
 
 Tool Definition 与执行器分离。Server Module 在 `modules[*].contributes.agentToolHandlers` 声明 Handler，并通过 `ctx.agentTools.register(toolId, handler)` 注册执行逻辑。Module disable/reload 会释放旧 Handler，但不会删除 Definition 或 Preset Mount；Handler 缺失时 Agent Tool Loop 返回明确的未注册执行器错误。
 
@@ -170,6 +170,10 @@ Client Module 通过 `activate(ctx)` 获得 Renderer 注册与打开、Manifest 
 
 `ctx.rpc.call()` 只用于调用 Extension RPC。它拒绝 `system.*`、`docs.*`、`extensions.*`、`application.*` 等 Studio 保留 namespace，插件不能借通用 RPC 绕过 Host capability。Application 领域能力通过明确的 typed capability 开放；当前包括 Scoped Storage 与 Portable Payload，不把全部 Studio RPC 默认交给插件。
 
+Server RPC 默认在当前安装目标内解析：`ctx.rpc.call(method, params)` 不会在角色安装缺失方法时自动回退全局。同名方法可以分别注册在全局与不同 Card；调用已启用的全局扩展服务使用 `ctx.rpc.call(method, params, { scope: 'global' })`。模块不能通过此选项指定另一 Card。安装目标来自 Host，不从业务 params 推断；无目标的普通 Kernel 调用和公开 introspect 仍只访问全局方法。
+
+上述安装级路由及工具执行器 ID 映射已接入 Host 内部，但公开 Card 代码安装/启用尚未开放；Event、其他 Provider 与 Client 路由仍在迁移，不能将 RPC 隔离当作完整的角色代码执行隔离。
+
 实例 Scope 的清理顺序是：停止接收新调用并 abort、等待已进入 callback、按注册反序执行 disposer、汇总清理错误。旧实例 handle 只能删除自己注册的资源，因此 reload 一个 Module 不会误删 sibling 或新实例的 RPC/Event。
 
 ## 5. 归属与公开能力
@@ -184,6 +188,12 @@ Client Module 通过 `activate(ctx)` 获得 Renderer 注册与打开、Manifest 
 公开 RPC/Event 继续使用 `<packageId>.*` namespace，不强制重复 Module ID。Kernel Registry 与 `system.introspect` 记录实际 owner 为 `extension:<packageId>/<moduleId>`；同包 Module 注册同名能力时按普通冲突拒绝。
 
 Extension Event 的 definition、publisher 与 subscriber 都携带 Package、Module、Instance identity。Module 自己的 protected event 使用 `extension:<packageId>` capability；跨 Module 协作应走 Host RPC/Event，而不是获取 sibling 实例对象。
+
+Server 自定义事件还携带 Host 提供的安装目标：同名定义按 Global/Card 分开注册，发布与扩展订阅只在相同安装目标内匹配，权限检查不因目标隔离而省略。Card 自定义事件的 `meta.installationId` 标识来源；平台观察者仍可跨安装观察。此处不代表平台事件已按 Card 完整过滤，平台事件需要由其具体事实来源解析目标，相关迁移仍在进行。
+
+Server Card 安装的 State read/write 只允许所属 Card 的现存 Timeline，不允许 Global State、其他 Card 或未知 Timeline；归属由 Server 查询 Narrative Store，不能从调用参数声明中采信。`ctx.state.subscribe` 和通用 `ctx.events.subscribe(['state.changed'])` 共用同一检查，模块或订阅已停止时不交付迟到的归属查询结果。State 读写请求在异步校验前复制，事件订阅者各自获得副本。全局安装保留已有的 State 能力范围，Manifest/Grant 检查仍适用。
+
+State 贡献与 Macro Provider 使用安装级本地 ID，作者声明的 ID 仍保留。角色选择私有 State 贡献后，创建 Timeline 必须验证所属 Card；移除贡献不重置已有实际 State。私有 Macro Provider 只在所属 Card 上下文参与解析，其 `context.global` 为空对象，不能借 Provider 上下文绕过 Global State 访问限制；全局 Provider 的上下文不变。显式选择的宏来源失效时报告错误，不替换为同名全局来源。
 
 Event 只广播已经发生的事实，不提供返回值，也不改变发布者业务结果。完整数据通过 ID 和 typed RPC 查询，不通过 event payload 广播正文、Prompt 或 Secret。
 

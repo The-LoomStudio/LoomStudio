@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<title>Iframe Runtime Probe</title>
+<body>
+<div id="root"></div>
+<script type="module">
+import { injectIntoGlobalHook } from '/@react-refresh';
+injectIntoGlobalHook(window);
+window.$RefreshReg$ = () => {};
+window.$RefreshSig$ = () => type => type;
+</script>
+<script type="module" src="./iframe-runtime.browser.tsx"></script>
+</body>
+</html>

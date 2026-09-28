@@ -3,7 +3,7 @@ const ASYNC_OPERATION_SCOPES = [
   'cards',
   'resources',
   'provider-settings',
-  'agent-profiles',
+  'agent-presets',
   'agent-chat',
   'settings',
   'session',

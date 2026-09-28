@@ -3,10 +3,13 @@ import type {
   ClientActionSurface,
   ClientCommandDeclaration,
   ClientCommandInvocationContext,
+  ExtensionInstallationTarget,
 } from '@loom-studio/extension-sdk'
+import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import type { ManagedExtensionPackage } from '../../../entities/index.js'
 
 export type ResolvedClientAction = {
+  target?: ExtensionInstallationTarget
   key: string
   packageId: string
   moduleId: string
@@ -14,8 +17,14 @@ export type ResolvedClientAction = {
   placement: ClientActionPlacement
 }
 
-export function clientCommandKey(packageId: string, moduleId: string, commandId: string): string {
-  return `${packageId}/${moduleId}/${commandId}`
+export function clientModuleKey(packageId: string, moduleId: string, target?: ExtensionInstallationTarget): string {
+  return target?.kind === 'card'
+    ? JSON.stringify([extensionInstallationId(packageId, target), moduleId])
+    : `${packageId}/${moduleId}`
+}
+
+export function clientCommandKey(packageId: string, moduleId: string, commandId: string, target?: ExtensionInstallationTarget): string {
+  return `${clientModuleKey(packageId, moduleId, target)}/${commandId}`
 }
 
 export function listClientActions(input: {
@@ -25,6 +34,7 @@ export function listClientActions(input: {
 }): ResolvedClientAction[] {
   const actions: ResolvedClientAction[] = []
   for (const extensionPackage of input.packages) {
+    if (extensionPackage.target?.kind === 'card' && extensionPackage.target.cardId !== input.context.cardId) continue
     for (const module of extensionPackage.modules) {
       if (module.runtimeKind !== 'client' || !module.desired.enabled) continue
       const commands = new Map((module.contributions.commands ?? []).map(command => [command.id, command]))
@@ -33,8 +43,9 @@ export function listClientActions(input: {
         const command = commands.get(placement.commandId)
         if (!command) continue
         actions.push({
-          key: `${clientCommandKey(extensionPackage.packageId, module.moduleId, command.id)}@${placement.surface}@${placement.group ?? ''}`,
+          key: `${clientCommandKey(extensionPackage.packageId, module.moduleId, command.id, extensionPackage.target)}@${placement.surface}@${placement.group ?? ''}`,
           packageId: extensionPackage.packageId,
+          ...(extensionPackage.target ? { target: structuredClone(extensionPackage.target) } : {}),
           moduleId: module.moduleId,
           command,
           placement,

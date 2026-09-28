@@ -9,19 +9,24 @@
     ".": {
       "entry": [
         "examples/loom-scripts/*.js",
-        "tests/probes/**/*.ts"
+        "tests/probes/**/*.ts",
+        "tests/extensions/**/*.test.ts",
+        "tests/stress/**/*.test.ts"
       ]
     },
     "apps/playground": {
       "entry": ["src/index.ts", "src/codeact/*.ts"]
     },
+    "packages/application-runtime": {
+      "entry": ["src/index.ts", "src/agents/codeact/sandbox-worker.ts"]
+    },
     "official/extensions/st-data-compat": {
-      "entry": ["src/index.ts"],
+      "entry": ["src/index.ts", "src/client/index.ts"],
       "ignoreDependencies": ["@loom-studio/application-runtime"]
     },
     "official/extensions/the-world": {
-      "entry": ["src/client/index.js", "src/client/panel-view.tsx", "scripts/*.mjs"],
-      "project": ["src/**/*.{js,ts,tsx}", "scripts/*.mjs"]
+      "entry": ["src/client/index.js", "src/client/panel-view.tsx", "src/server/index.js", "scripts/*.{mjs,ts}"],
+      "project": ["src/**/*.{js,ts,tsx}", "scripts/*.{mjs,ts}"]
     },
     "tests/fixtures/extensions/echo": {
       "entry": ["src/index.ts", "src/client.ts"]

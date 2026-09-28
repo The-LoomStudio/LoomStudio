@@ -1,10 +1,10 @@
 import type { DocumentRecord, DocumentStore } from '@loom-studio/document-store'
 import { readLogFailure } from '@loom-studio/logging'
 import type {
-  AgentTranscriptEntry,
   PromptResourceNodeDraft,
   PromptResourceNodePatch,
   PromptResourceTreeNode,
+  PromptResourceMutation,
 } from '@loom-studio/application-data'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
@@ -18,41 +18,44 @@ import {
   type AgentRunProgress,
 } from '../agents/tool-loop.js'
 import { composeAgentTurnPrompt } from '../agents/agent-turn.js'
+import { readSessionHistory } from '../agents/session-history.js'
 import { assertNonEmpty, assertProviderModelExists } from '../agents/agent.js'
 import { buildOpenAIChatPayload, type OpenAIChatPayload } from '../providers/provider-payload.js'
-import { readMappedResource } from '../prompt/prompt-resource-mapper.js'
+import { fromStoredResource, readMappedResource, toStoredResourceInput } from '../prompt/prompt-resource-mapper.js'
 import { isPromptActivation, type ActivationFacts } from '../prompt/prompt-activation.js'
 import { readTimelineRuntimeContext } from '../narrative/timeline-runtime-context.js'
+import { projectNarrativeSample } from '../narrative/projection.js'
 import { createNarrativeSampler } from '../narrative/sampling.js'
+import { readNarrativeContext } from '../narrative/context-provider.js'
+import { createNarrativeReader } from '../narrative/access.js'
+import { readTimelinePresetConfig } from '../prompt/timeline-preset-config.js'
+import { normalizeMacroSelections } from '@loom-studio/shared'
 import { resolveEffectiveTextPipeline } from './transforms-runtime.js'
-import { createPromptRuntimeMethods } from './prompt-runtime.js'
+import { isExtensionResourceAvailable, readAvailableExtensionInstallations } from './extension-resource-access.js'
+import { createEmptyPromptResourceContent, createPromptRuntimeMethods } from './prompt-runtime.js'
 import { getApplicationStateSnapshot, applyApplicationStateMutation } from '../state/state.js'
 import type {
-  AgentProfileContent,
-  AgentProfileEntry,
+  AgentPresetResult,
+  CreateAgentPresetInput,
+  UpdateAgentPresetInput,
   AgentToolContent,
   AgentToolEntry,
   AgentTranscriptPage,
   AppendAgentTranscriptEntriesInput,
   AppendAgentTranscriptEntriesResult,
-  CreateAgentProfileInput,
-  CreateAgentProfileResult,
+  CardSourceContent,
   CreateAgentSessionInput,
   CreateAgentSessionResult,
-  DeleteAgentProfileInput,
-  DeleteAgentProfileResult,
+  CompleteAgentSessionHandoffInput,
+  CompleteAgentSessionHandoffResult,
   DeleteAgentSessionInput,
   DeleteAgentSessionResult,
-  GetAgentProfileInput,
-  GetAgentProfileResult,
   GetAgentSessionInput,
   GetAgentSessionResult,
   GetAgentTranscriptPageInput,
   InspectMacrosInput,
   InvokeAgentTurnInput,
   InvokeAgentTurnResult,
-  ListAgentProfilesInput,
-  ListAgentProfilesResult,
   ListAgentSessionsInput,
   ListAgentSessionsResult,
   ListAgentToolsResult,
@@ -67,8 +70,6 @@ import type {
   ReplacePresetToolMountsResult,
   RuntimeRequestContext,
   StateMutationOperation,
-  UpdateAgentProfileInput,
-  UpdateAgentProfileResult,
   UpdateAgentSessionInput,
   UpdateAgentSessionResult,
   UpdateAgentToolInput,
@@ -81,7 +82,7 @@ import {
   requireDocumentParticipant,
   tombstoneExtensionStorageScope,
 } from './context.js'
-import { readAgentTurnVariables, readLegacyCardUserName } from './narrative-runtime.js'
+import { readAgentTurnVariables } from './narrative-runtime.js'
 import { inspectApplicationMacros, inspectPreparedMacros, variableContextFromInspection } from './macros-runtime.js'
 
 type AgentsRuntimeContext = Pick<ApplicationRuntimeContext,
@@ -95,6 +96,7 @@ type AgentsRuntimeContext = Pick<ApplicationRuntimeContext,
   | 'runtimeLogger'
   | 'macroProviders'
   | 'narratives'
+  | 'narrativeContext'
   | 'now'
   | 'promptResources'
   | 'providerAdapters'
@@ -103,98 +105,81 @@ type AgentsRuntimeContext = Pick<ApplicationRuntimeContext,
 
 export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
   return {
-    createAgentProfile: async (input: CreateAgentProfileInput, requestContext?: RuntimeRequestContext): Promise<CreateAgentProfileResult> => {
+    createAgentPreset: async (input: CreateAgentPresetInput, requestContext?: RuntimeRequestContext): Promise<AgentPresetResult> => {
       assertNonEmpty(input.name, 'name')
-      await readPresetResource(ctx.promptResources, input.presetId)
-      await assertProviderModelExists(ctx.documents, input.model)
-      const toolOverrides = normalizeToolOverrides(input.toolOverrides)
-      assertResolvedTools(ctx, Object.keys(toolOverrides))
-
-      const timestamp = ctx.now()
-      const agentProfile = await writeDocument<AgentProfileContent>(ctx.documents, {
-        ...promptResourceWriteContext(requestContext),
-        reason: 'application.createAgentProfile',
-        id: ctx.createId('agent-profile'),
-        type: applicationDocumentTypes.agentProfile,
-        content: {
-          name: input.name,
-          presetId: input.presetId,
-          model: input.model,
-          toolOverrides,
-          delivery: input.delivery ?? 'stream',
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        },
-        expectedVersion: 'new',
-      })
-
-      return { agentProfile: toAgentProfileEntry(agentProfile) }
-    },
-
-    getAgentProfile: async (input: GetAgentProfileInput): Promise<GetAgentProfileResult> => {
-      const agentProfile = await readDocument<AgentProfileContent>(ctx.documents, input.agentProfileId, applicationDocumentTypes.agentProfile)
-      return { agentProfile: toAgentProfileEntry(agentProfile) }
-    },
-
-    listAgentProfiles: async (input?: ListAgentProfilesInput): Promise<ListAgentProfilesResult> => {
-      const result = await ctx.documents.list({
-        type: applicationDocumentTypes.agentProfile,
-        cursor: input?.cursor,
-        limit: input?.limit,
-      })
-
-      return {
-        agentProfiles: result.items.map(agentProfile => toAgentProfileEntry(agentProfile as DocumentRecord<AgentProfileContent>)),
-        nextCursor: result.nextCursor,
-      }
-    },
-
-    updateAgentProfile: async (input: UpdateAgentProfileInput, requestContext?: RuntimeRequestContext): Promise<UpdateAgentProfileResult> => {
-      const existing = await readDocument<AgentProfileContent>(ctx.documents, input.agentProfileId, applicationDocumentTypes.agentProfile)
-      if (input.name !== undefined) assertNonEmpty(input.name, 'name')
-      if (input.presetId !== undefined) {
-        await readPresetResource(ctx.promptResources, input.presetId)
-      }
       if (input.model !== undefined) await assertProviderModelExists(ctx.documents, input.model)
-      const toolOverrides = input.toolOverrides === undefined
-        ? existing.content.toolOverrides ?? {}
-        : normalizeToolOverrides(input.toolOverrides)
-      if (input.toolOverrides !== undefined) assertResolvedTools(ctx, Object.keys(toolOverrides))
-      const timestamp = ctx.now()
-      const updated = await writeDocument<AgentProfileContent>(ctx.documents, {
+      const content = createEmptyPromptResourceContent(ctx.createId, input.name, 'preset', ctx.now())
+      content.model = input.model
+      content.delivery = input.delivery ?? 'stream'
+      content.historyPolicy = input.historyPolicy ?? 'persistent'
+      const result = await ctx.dataEngine.transact({
         ...promptResourceWriteContext(requestContext),
-        reason: 'application.updateAgentProfile',
-        id: existing.id,
-        type: applicationDocumentTypes.agentProfile,
-        content: {
-          ...existing.content,
-          ...(input.name !== undefined ? { name: input.name } : {}),
-          ...(input.presetId !== undefined ? { presetId: input.presetId } : {}),
-          ...(input.model !== undefined ? { model: input.model } : {}),
-          ...(input.delivery !== undefined ? { delivery: input.delivery } : {}),
-          toolOverrides,
-          updatedAt: timestamp,
-        },
-        expectedVersion: existing.version,
+        reason: 'application.createAgentPreset',
+      }, async dataTx => {
+        const resources = ctx.promptResources.transaction(dataTx)
+        const resource = resources.createResource(toStoredResourceInput({ content }))
+        for (const [orderIndex, definition] of ctx.agentTools.list().entries()) {
+          resources.addPresetToolMount({
+            presetResourceId: resource.id,
+            toolId: definition.id,
+            orderIndex,
+            defaultEnabled: false,
+            ...(definition.prompt?.activation ? { activation: structuredClone(definition.prompt.activation) } : {}),
+            ...(definition.prompt?.provider ? { provider: { ...definition.prompt.provider } } : {}),
+            ...(definition.prompt?.content ? { content: { ...definition.prompt.content } } : {}),
+          })
+        }
+        return fromStoredResource(resource)
       })
-      return { agentProfile: toAgentProfileEntry(updated) }
+      return { agentPreset: result.value, mutation: { changesetId: result.commit.changesetId } }
     },
 
-    deleteAgentProfile: async (input: DeleteAgentProfileInput, requestContext?: RuntimeRequestContext): Promise<DeleteAgentProfileResult> => {
-      await readDocument<AgentProfileContent>(ctx.documents, input.agentProfileId, applicationDocumentTypes.agentProfile)
-      await ctx.documents.delete({
-        ...promptResourceWriteContext(requestContext),
-        reason: 'application.deleteAgentProfile',
-        id: input.agentProfileId,
+    getAgentPreset: async (input: { agentPresetId: string }) => ({
+      agentPreset: await readPresetResource(ctx.promptResources, input.agentPresetId),
+    }),
+
+    listAgentPresets: async (input?: { limit?: number; cursor?: string }) => {
+      const page = await ctx.promptResources.listResources({ ...input, resourceKind: 'preset' })
+      return { agentPresets: page.resources.map(fromStoredResource), nextCursor: page.nextCursor }
+    },
+
+    updateAgentPreset: async (input: UpdateAgentPresetInput, requestContext?: RuntimeRequestContext): Promise<AgentPresetResult> => {
+      if (input.name !== undefined) assertNonEmpty(input.name, 'name')
+      if (input.model !== undefined && input.model !== null) await assertProviderModelExists(ctx.documents, input.model)
+      const current = await ctx.promptResources.getResource(input.agentPresetId)
+      if (!current || current.resourceKind !== 'preset') throw new Error(`Agent Preset not found: ${input.agentPresetId}`)
+      const metadata = { ...current.metadata }
+      if (input.model === null) delete metadata.model
+      else if (input.model !== undefined) metadata.model = input.model
+      if (input.delivery !== undefined) metadata.delivery = input.delivery
+      if (input.historyPolicy !== undefined) metadata.historyPolicy = input.historyPolicy
+      const mutations: PromptResourceMutation[] = [{
+        kind: 'resource.update',
+        patch: { metadata, ...(input.name !== undefined ? { label: input.name.trim() } : {}) },
+      }]
+      if (input.name !== undefined) mutations.push({
+        kind: 'node.update', nodeId: current.rootNode.id, patch: { label: input.name.trim() },
       })
-      return { deleted: true as const }
+      const result = await ctx.promptResources.mutateResource({
+        ...promptResourceWriteContext(requestContext),
+        reason: 'application.updateAgentPreset',
+        resourceId: current.id,
+        expectedVersion: input.expectedVersion,
+        mutations,
+      })
+      return { agentPreset: fromStoredResource(result.resource), mutation: { changesetId: result.commit.changesetId } }
+    },
+
+    deleteAgentPreset: async (input: { agentPresetId: string }, requestContext?: RuntimeRequestContext) => {
+      await readPresetResource(ctx.promptResources, input.agentPresetId)
+      return createPromptRuntimeMethods(ctx).deletePromptResource({ resourceId: input.agentPresetId }, requestContext)
     },
 
     createAgentSession: async (input: CreateAgentSessionInput, requestContext?: RuntimeRequestContext): Promise<CreateAgentSessionResult> => {
-      await readDocument<AgentProfileContent>(ctx.documents, input.agentProfileId, applicationDocumentTypes.agentProfile)
+      await readPresetResource(ctx.promptResources, input.agentPresetId)
       const result = await requireAgents(ctx).createSession({
         ...narrativeWriteContext(requestContext, 'application.createAgentSession'),
-        agentProfileId: input.agentProfileId,
+        agentPresetId: input.agentPresetId,
         timelineId: input.timelineId,
         title: input.title,
       })
@@ -224,6 +209,44 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
         session: result.session,
         entries: result.entries,
         mutation: { changesetId: result.commit.changesetId },
+      }
+    },
+
+    completeAgentSessionHandoff: async (input: CompleteAgentSessionHandoffInput, requestContext?: RuntimeRequestContext): Promise<CompleteAgentSessionHandoffResult> => {
+      const agents = requireAgents(ctx)
+      const session = await agents.getSession(input.agentSessionId)
+      if (!session) throw new Error(`Agent session not found: ${input.agentSessionId}`)
+      if (input.branchId && !session.timelineId) throw new Error('A standalone Session has no Narrative branch')
+      if (session.timelineId && !ctx.narratives) throw new Error('Narrative Store is not configured')
+      const page = session.timelineId
+        ? await ctx.narratives!.getPage({ timelineId: session.timelineId, branchId: input.branchId, limit: 1 })
+        : undefined
+      requestContext?.abortSignal?.throwIfAborted()
+      const result = await agents.appendEntries({
+        ...narrativeWriteContext(requestContext, 'application.completeAgentSessionHandoff'),
+        agentSessionId: session.id,
+        expectedEntryCount: input.expectedEntryCount,
+        entries: [{ entry: { kind: 'work-summary', content: input.summary } }],
+      })
+      let memoryNotification: CompleteAgentSessionHandoffResult['memoryNotification'] = { status: 'not-configured' }
+      if (page) {
+        try {
+          const status = await ctx.narrativeContext.notifySessionHandoff({
+            timelineId: page.timeline.id, branchId: page.branch.id,
+            cardId: page.timeline.createdFrom?.cardId,
+            agentSessionId: session.id, summaryEntryId: result.entries[0]!.id,
+            rawHeadNodeId: page.branch.headNodeId ?? null,
+          })
+          memoryNotification = { status }
+        } catch (error) {
+          // The summary is committed. Report the separate source failure without pretending rollback.
+          memoryNotification = { status: 'failed', error: error instanceof Error ? error.message : String(error) }
+        }
+      }
+      return {
+        session: result.session, entries: result.entries,
+        mutation: { changesetId: result.commit.changesetId },
+        memoryNotification,
       }
     },
 
@@ -283,11 +306,9 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
       }
       const references = { runId, sessionId: input.agentSessionId }
       const runLogger = ctx.runtimeLogger?.child('run')
-      const commitLogger = ctx.runtimeLogger?.child('commit')
-      let commitStartedAt: number | undefined
       runLogger?.info('Agent turn started', {
         event: 'run.started', ...logContext,
-        data: { ...references, outcome: 'running', detail: input.narrativeTarget?.commit ? 'Narrative commit requested' : 'Agent-only output' },
+        data: { ...references, outcome: 'running', detail: 'Agent Session transcript' },
       })
       try {
         const agents = requireAgents(ctx)
@@ -295,12 +316,11 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
         const {
           model,
           narrativePage,
-          narratives,
           prompt,
           agentStepMessages,
           compiledToolSet,
           session,
-          agentProfile,
+          preset,
         } = prepared
         const classificationRules = (await resolveEffectiveTextPipeline(
           ctx,
@@ -315,14 +335,14 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
           progress,
           model,
           initialMessages: requestContext?.agentRun?.continuation?.messages ?? agentStepMessages,
-          userInput: input.input,
+          userInput: prepared.userInput,
           compiledToolSet,
           toolExecutionScope: prompt.toolExecutionScope,
           branchId: narrativePage?.branch.id ?? 'agent-only',
-          purpose: input.narrativeTarget?.commit ? 'narrative' : 'agent',
+          purpose: input.narrativeTarget?.inputNodeId ? 'narrative' : 'agent',
           classificationRules,
           ...(requestContext ? { requestContext } : {}),
-          delivery: agentProfile.content.delivery ?? 'stream',
+          delivery: preset.delivery ?? 'stream',
           ...(requestContext?.agentRun?.continuation?.userEntry
             ? { resumeUserEntry: requestContext.agentRun.continuation.userEntry }
             : {}),
@@ -330,58 +350,6 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
             ? { resumeAssistantEntryId: requestContext.agentRun.continuation.partialEntryId }
             : {}),
         })
-        progress.stage = 'commit'
-        if (narrativePage && input.narrativeTarget?.commit) {
-          commitStartedAt = performance.now()
-          commitLogger?.info('Narrative commit started', {
-            event: 'commit.started', ...logContext,
-            data: { ...references, outcome: 'running', timelineId: narrativePage.timeline.id, branchId: narrativePage.branch.id },
-          })
-        }
-        const narrative = narrativePage && input.narrativeTarget?.commit
-          ? await ctx.dataEngine.transact(
-              narrativeWriteContext(requestContext, 'application.invokeAgentTurn.narrative'),
-              async dataTx => {
-                const narrativeTx = narratives!.transaction(dataTx)
-                const user = narrativeTx.appendNode({
-                  timelineId: narrativePage.timeline.id,
-                  branchId: narrativePage.branch.id,
-                  expectedHeadNodeId: narrativePage.branch.headNodeId ?? null,
-                  stateRevisionId: narrativePage.branch.stateHeadRevisionId,
-                  body: { format: 'loom-markdown.v1', raw: readMessageEntryContent(loop.userEntry, 'user') },
-                  source: {
-                    agentSessionId: session.id,
-                    agentMessageId: loop.userEntry.id,
-                    runId,
-                  },
-                })
-                const assistant = narrativeTx.appendNode({
-                  timelineId: narrativePage.timeline.id,
-                  branchId: narrativePage.branch.id,
-                  expectedHeadNodeId: user.node.id,
-                  stateRevisionId: narrativePage.branch.stateHeadRevisionId,
-                  body: { format: 'loom-markdown.v1', raw: readMessageEntryContent(loop.assistantEntry, 'assistant') },
-                  source: {
-                    agentSessionId: session.id,
-                    agentMessageId: loop.assistantEntry.id,
-                    runId,
-                  },
-                })
-                return {
-                  timeline: assistant.timeline,
-                  branch: assistant.branch,
-                  node: assistant.node,
-                  nodes: [user.node, assistant.node],
-                }
-              },
-            )
-          : undefined
-        if (narrative) {
-          commitLogger?.info('Narrative committed · 2 entries', {
-            event: 'commit.completed', ...logContext,
-            data: { ...references, outcome: 'completed', entryCount: 2, changesetId: narrative.commit.changesetId, durationMs: readDurationMs(commitStartedAt!) },
-          })
-        }
         const outcome = requestContext?.abortSignal?.aborted
           ? requestContext.abortSignal.reason === 'user-pause' ? 'suspended' : 'cancelled'
           : 'completed'
@@ -389,8 +357,8 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
           event: `run.${outcome}`, ...logContext,
           data: {
             ...references, outcome, durationMs: readDurationMs(startedAt),
-            providerStep: progress.providerStep, toolCount: progress.toolCount, narrativeCommitted: Boolean(narrative),
-            detail: `${progress.providerStep} steps · ${progress.toolCount} tools · ${narrative ? 'narrative committed' : 'no narrative commit requested'}`,
+            providerStep: progress.providerStep, toolCount: progress.toolCount,
+            detail: `${progress.providerStep} steps · ${progress.toolCount} tools`,
           },
         })
 
@@ -398,7 +366,6 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
           runId,
           agentSession: loop.session,
           entries: { user: loop.userEntry, assistant: loop.assistantEntry },
-          ...(narrative ? { narrative: narrative.value } : {}),
           provider: {
             provider: loop.providerResult.provider,
             model: loop.providerResult.model,
@@ -410,9 +377,7 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
           promptBuildTrace: prompt.promptBuildTrace,
           toolExposures: compiledToolSet.tools.map((tool) => tool.exposure),
           toolPromptBuildTrace: loop.toolPromptBuildTrace,
-          mutation: narrative
-            ? { changesetId: narrative.commit.changesetId, scope: 'narrative-commit' as const }
-            : { changesetId: loop.changesetId, scope: 'agent-session-transcript' as const },
+          mutation: { changesetId: loop.changesetId, scope: 'agent-session-transcript' as const },
           macroInspection: prepared.macroInspection,
         }
       } catch (error) {
@@ -420,17 +385,11 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
         const aborted = requestContext?.abortSignal?.aborted || (error instanceof Error && error.name === 'AbortError')
         const outcome = progress.suspended || (aborted && requestContext?.abortSignal?.reason === 'user-pause')
           ? 'suspended' : aborted ? 'cancelled' : 'failed'
-        if (commitStartedAt !== undefined) {
-          commitLogger?.error(`Narrative commit failed · ${failure.failureReason}`, {
-            event: 'commit.failed', ...logContext,
-            data: { ...references, ...failure, outcome: 'failed', durationMs: readDurationMs(commitStartedAt) },
-          })
-        }
         runLogger?.[outcome === 'failed' ? 'error' : !aborted && outcome === 'suspended' ? 'warn' : 'info'](`Agent turn ${outcome} · ${progress.stage}`, {
           event: `run.${outcome}`, ...logContext,
           data: {
             ...references, ...failure, ...progress, outcome, durationMs: readDurationMs(startedAt),
-            detail: `${failure.failureReason} · ${progress.providerStep} steps · ${progress.toolCount} tools · narrative not committed`,
+            detail: `${failure.failureReason} · ${progress.providerStep} steps · ${progress.toolCount} tools`,
           },
         })
         throw error
@@ -519,29 +478,9 @@ async function readPresetResource(
   return preset
 }
 
-function normalizeToolOverrides(overrides: Record<string, boolean> | undefined): Record<string, boolean> {
-  const normalized: Record<string, boolean> = {}
-  for (const [toolId, enabled] of Object.entries(overrides ?? {})) {
-    const normalizedToolId = toolId.trim()
-    if (!normalizedToolId) throw new Error('Agent Profile Tool override id cannot be empty')
-    if (typeof enabled !== 'boolean') throw new Error(`Agent Profile Tool override must be boolean: ${normalizedToolId}`)
-    normalized[normalizedToolId] = enabled
-  }
-  if (Object.keys(normalized).length > 200) throw new Error('Agent Profile toolOverrides exceeds 200 entries')
-  return normalized
-}
-
 function assertResolvedTools(ctx: Pick<ApplicationRuntimeContext, 'agentTools'>, toolIds: string[]): void {
   const error = ctx.agentTools.resolve(toolIds).diagnostics.find(diagnostic => diagnostic.severity === 'error')
   if (error) throw new Error(error.message)
-}
-
-function toAgentProfileEntry(document: DocumentRecord<AgentProfileContent>): AgentProfileEntry {
-  return {
-    ...toVersioned(document),
-    toolOverrides: { ...(document.content.toolOverrides ?? {}) },
-    delivery: document.content.delivery ?? 'stream',
-  }
 }
 
 export function toAgentToolContent(
@@ -627,14 +566,13 @@ async function prepareAgentTurn(
     input: string
     resume?: boolean
     activationFacts?: ActivationFacts
-    narrativeTarget?: { timelineId: string; branchId?: string; commit: boolean }
+    narrativeTarget?: InvokeAgentTurnInput['narrativeTarget']
     macroSelections?: import('@loom-studio/shared').MacroSelectionMap
   },
   mode: 'preview' | 'runtime',
   requestContext?: RuntimeRequestContext,
   invocationRunId?: string,
 ) {
-  if (input.input.trim().length === 0 && !requestContext?.agentRun?.continuation) throw new Error('Agent turn input cannot be empty')
   if (!ctx.agents) throw new Error('Agent Store is not configured')
   const session = await ctx.agents.getSession(input.agentSessionId)
   if (!session) throw new Error(`Agent session not found: ${input.agentSessionId}`)
@@ -651,13 +589,50 @@ async function prepareAgentTurn(
     ? await narratives!.getPage({
         timelineId: narrativeTarget.timelineId,
         branchId: narrativeTarget.branchId,
-        limit: 100,
+        limit: 1,
       })
     : undefined
-  const agentPage = await ctx.agents.getEntryPage({ agentSessionId: session.id, limit: 100 })
-  const agentProfile = await readDocument<AgentProfileContent>(ctx.documents, session.agentProfileId, applicationDocumentTypes.agentProfile)
-  if (!agentProfile.content.presetId) throw new Error(`Agent Profile has no Preset Prompt Resource: ${agentProfile.id}`)
-  const preset = await readPresetResource(ctx.promptResources, agentProfile.content.presetId)
+  const inputNodeId = input.narrativeTarget?.inputNodeId
+  const inputPage = inputNodeId !== undefined && narrativePage
+    ? await narratives!.getPage({
+        timelineId: narrativePage.timeline.id,
+        branchId: narrativePage.branch.id,
+        cursor: inputNodeId,
+        limit: 1,
+      })
+    : undefined
+  if (inputNodeId !== undefined && inputPage?.nodes[0]?.id !== inputNodeId) {
+    throw new Error(`Narrative input node not found on branch: ${inputNodeId}`)
+  }
+  const userInput = inputPage ? inputPage.nodes[0]!.body.raw : input.input
+  if (userInput.trim().length === 0 && !requestContext?.agentRun?.continuation) throw new Error('Agent turn input cannot be empty')
+  const narrativeContext = narrativePage
+    ? await ctx.narrativeContext.resolve({
+      timelineId: narrativePage.timeline.id, branchId: narrativePage.branch.id,
+      cardId: narrativePage.timeline.createdFrom?.cardId,
+    })
+    : undefined
+  // ponytail: Unmigrated hosts still use recent-100 until the official memory provider is installed.
+  const narrativeSample = !narrativeContext && narrativePage?.branch.headNodeId && narratives
+    ? await createNarrativeSampler(narratives).sample({
+        timelineId: narrativePage.timeline.id,
+        branchId: narrativePage.branch.id,
+        selection: { kind: 'tail', count: 100, throughNodeId: narrativePage.branch.headNodeId },
+      })
+    : undefined
+  if (narrativeSample && !narrativeSample.complete) {
+    throw new Error('Default Narrative window exceeds the sample budget; an explicit smaller range is required')
+  }
+  const narrativeNodes = narrativeContext && narrativePage && narratives
+    ? await readNarrativeContext(narratives, { timelineId: narrativePage.timeline.id, branchId: narrativePage.branch.id }, narrativeContext)
+    : narrativeSample?.nodes ?? []
+  const agentPage = await readSessionHistory(ctx.agents, session.id)
+  const preset = await readPresetResource(ctx.promptResources, session.agentPresetId)
+  const availableInstallations = await readAvailableExtensionInstallations(ctx.documents, narrativePage?.timeline.createdFrom?.cardId)
+  if (!isExtensionResourceAvailable(preset.origin, availableInstallations)) {
+    throw new Error(`Agent Preset is not available in this context: ${preset.id}`)
+  }
+  if (!preset.model) throw new Error(`Agent Preset has no model binding: ${preset.id}`)
   const toolMounts = await ctx.promptResources.listPresetToolMounts({ presetResourceId: preset.id })
   const runId = invocationRunId ?? requestContext?.agentRun?.runId ?? ctx.createId('run')
   const buildId = ctx.createId('build')
@@ -689,23 +664,36 @@ async function prepareAgentTurn(
   const timelineRuntimeContext = narrativePage
     ? await readTimelineRuntimeContext(ctx, narrativePage.timeline.id)
     : undefined
+  const cardId = narrativePage?.timeline.createdFrom?.cardId
+  const cardDocument = cardId ? await ctx.documents.get(cardId) : null
+  if (cardDocument && cardDocument.type !== applicationDocumentTypes.cardSource) throw new Error(`Unexpected Card document type: ${cardId}`)
+  const card = cardDocument?.content as CardSourceContent | undefined
   const variables = await readAgentTurnVariables(
     ctx,
-    timelineRuntimeContext?.fallbackUserName
-      ?? await readLegacyCardUserName(ctx, narrativePage?.timeline.createdFrom?.cardId),
+    card ? card.userName : timelineRuntimeContext?.fallbackUserName,
     timelineState?.value,
-    timelineRuntimeContext?.cardName,
+    card?.name ?? timelineRuntimeContext?.cardName,
   )
+  const macroSelections = input.macroSelections !== undefined
+    ? normalizeMacroSelections(input.macroSelections)
+    : narrativePage ? (await readTimelinePresetConfig(ctx.documents, narrativePage.timeline.id, preset.id)).macroSelections : undefined
   const macroInspection = await inspectPreparedMacros({
     ctx,
     variables,
-    cardId: timelineRuntimeContext?.sourceCardId,
+    cardId,
     presetId: preset.id,
     timeline: timelineState?.value,
-    cardMacros: timelineRuntimeContext?.macros,
+    cardMacros: card?.macros,
     presetMacros: preset.macros,
-    macroSelections: input.macroSelections,
+    cardMacroOptions: card?.macroOptions,
+    presetMacroOptions: preset.macroOptions,
+    macroSelections,
   })
+  if (mode === 'runtime') {
+    const unavailable = macroInspection.entries.find(entry =>
+      macroSelections && Object.hasOwn(macroSelections, entry.name.toLowerCase()) && entry.status === 'error')
+    if (unavailable) throw new Error(`Selected macro is unavailable: ${unavailable.name}`)
+  }
   const inspectedVariables = variableContextFromInspection(macroInspection)
   ctx.logger?.info(`${mode} prompt build started`, {
     event: 'prompt.build.started',
@@ -727,24 +715,31 @@ async function prepareAgentTurn(
         )
       : undefined
     compiledToolSet = await compileAgentToolSet({
+      availableExtensionInstallations: availableInstallations,
       ctx,
-      model: agentProfile.content.model,
+      model: preset.model,
       toolMounts,
-      toolOverrides: agentProfile.content.toolOverrides ?? {},
       variables: inspectedVariables,
-      currentInput: input.input,
+      currentInput: userInput,
       activationFacts: input.activationFacts,
     })
     prompt = await composeAgentTurnPrompt({
+      availableExtensionInstallations: availableInstallations,
       activationFacts: input.activationFacts,
       variables: inspectedVariables,
       agentMessages: (preset.historyPolicy ?? 'persistent') === 'persistent'
         ? agentPage.entries
         : [],
       promptResources: ctx.promptResources,
-      narrative: narrativePage ? { nodes: narrativePage.nodes, timeline: narrativePage.timeline, branchId: narrativePage.branch.id } : undefined,
+      contextResourceIds: card?.promptResourceIds ?? [],
+      narrative: narrativePage ? {
+        nodes: narrativeNodes,
+        timeline: narrativePage.timeline,
+        branchId: narrativePage.branch.id,
+        context: narrativeContext,
+      } : undefined,
       preset,
-      userInput: input.input,
+      userInput,
       buildId,
       runId,
       agentSessionId: session.id,
@@ -755,6 +750,13 @@ async function prepareAgentTurn(
       externalRuntime: createContentToolPromptRuntimeInputs(compiledToolSet),
     })
     prompt.promptBuildTrace.diagnostics.push(...(compiledToolSet.trace.diagnostics ?? []))
+    if (narrativePage && !narrativeContext) {
+      prompt.promptBuildTrace.diagnostics.push({
+        severity: 'warning',
+        code: 'narrative.context_unconfigured',
+        message: 'No memory context source is configured. The legacy latest-100 view is not a frozen Narrative baseline.',
+      })
+    }
     if (compiledToolSet.tools.some(tool => tool.definition.id === 'official/codeact' || tool.definition.id === 'official/codeact_json')
       && !prompt.projection.messages.some(message => message.fragmentIds.includes('runtime.codeact.instructions'))) {
       prompt.promptBuildTrace.diagnostics.push({
@@ -766,6 +768,8 @@ async function prepareAgentTurn(
     prompt.toolExecutionScope.vfsAttachments = () => listPresetScriptAttachments(ctx, preset.id)
     if (requestContext?.agentRun?.onMutationApproval)
       prompt.toolExecutionScope.approveMutation = requestContext.agentRun.onMutationApproval
+    if (requestContext?.agentRun?.onHistoryReadApproval)
+      prompt.toolExecutionScope.requestHistoryApproval = requestContext.agentRun.onHistoryReadApproval
     const allowedTimelineTarget = narrativePage
       ? { scope: 'timeline' as const, timelineId: narrativePage.timeline.id, branchId: narrativePage.branch.id }
       : undefined
@@ -804,6 +808,11 @@ async function prepareAgentTurn(
       },
     }
     prompt.toolExecutionScope.mutatePromptResource = async resourceInput => {
+      const resource = await ctx.promptResources.getResource(resourceInput.resourceId)
+      if (!resource) throw new Error(`Prompt Resource not found: ${resourceInput.resourceId}`)
+      if (!isExtensionResourceAvailable(resource.metadata.origin, availableInstallations)) {
+        throw new Error(`Prompt Resource is not available in this context: ${resourceInput.resourceId}`)
+      }
       const result = await ctx.promptResources.mutateResource({
         ...resourceInput,
         ...promptResourceWriteContext(requestContext),
@@ -978,15 +987,21 @@ async function prepareAgentTurn(
       }
     }
     if (narrativePage && narratives) {
-      const narrativeSampler = createNarrativeSampler(narratives)
+      const narrativeReader = createNarrativeReader({
+        store: narratives, context: ctx.narrativeContext,
+        timelineId: narrativePage.timeline.id, branchId: narrativePage.branch.id,
+      })
       prompt.toolExecutionScope.narrative = {
         timelineId: narrativePage.timeline.id,
         branchId: narrativePage.branch.id,
-        sample: input => narrativeSampler.sample({
-          ...input,
-          timelineId: narrativePage.timeline.id,
-          branchId: narrativePage.branch.id,
-        }),
+        sample: async (input, signal, approveHistory) => {
+          const sample = await narrativeReader.sample(input, signal, approveHistory)
+          if (input.view !== 'prompt') return sample
+          return projectNarrativeSample(sample, {
+            phase: 'prompt', rules: narrativeTextPipeline!.rules,
+            maxNodes: input.maxNodes, maxCharacters: input.maxCharacters,
+          })
+        },
         appendNode: async ({ content }) => {
           const currentBranch = await narratives.getBranch(narrativePage.branch.id)
           if (!currentBranch) throw new Error(`Narrative branch not found: ${narrativePage.branch.id}`)
@@ -1005,23 +1020,24 @@ async function prepareAgentTurn(
           return { nodeId: result.node.id }
         },
         editNode: async ({ nodeId, content }) => {
-          const branchPage = await narratives.getPage({
-            timelineId: narrativePage.timeline.id,
-            branchId: narrativePage.branch.id,
-            limit: 10_000,
-          })
-          if (!branchPage.nodes.some(node => node.id === nodeId)) {
+          const branch = await narratives.getBranch(narrativePage.branch.id)
+          const target = await narratives.getNode(nodeId)
+          if (!branch?.headNodeId || !target || target.timelineId !== narrativePage.timeline.id) {
             throw new Error(`Narrative node ${nodeId} is not editable from branch ${narrativePage.branch.id}`)
           }
+          const expectedHeadNodeId = branch.headNodeId
           const result = await ctx.dataEngine.transact(
             narrativeWriteContext(requestContext, 'application.tool.editNarrative'),
             async dataTx => {
-              const edited = narratives.transaction(dataTx).editNode({
+              const edited = narratives.transaction(dataTx).editBranchNode({
                 timelineId: narrativePage.timeline.id,
+                branchId: narrativePage.branch.id,
                 nodeId,
+                expectedHeadNodeId,
+                expectedBody: target.body,
                 body: { format: 'loom-markdown.v1', raw: content },
               })
-              return { nodeId: edited.node.id }
+              return { nodeId: edited.replacements[0]!.node.id }
             },
           )
           return result.value
@@ -1050,8 +1066,9 @@ async function prepareAgentTurn(
     throw error
   }
   return {
-    agentProfile,
-    model: agentProfile.content.model,
+    userInput,
+    preset,
+    model: preset.model,
     narrativePage,
     narratives,
     prompt,
@@ -1080,13 +1097,6 @@ async function buildProviderPayloadPreview(input: {
   })
 }
 
-
-function readMessageEntryContent(entry: AgentTranscriptEntry, role: 'user' | 'assistant'): string {
-  if (entry.entry.kind !== 'message' || entry.entry.role !== role) {
-    throw new Error(`Expected ${role} message entry: ${entry.id}`)
-  }
-  return entry.entry.content
-}
 
 function readDurationMs(startedAt: number): number {
   return Math.round((performance.now() - startedAt) * 100) / 100

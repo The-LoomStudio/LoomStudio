@@ -1,4 +1,3 @@
-import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import type { ChatMessage } from './agent.js'
 
 export type ProviderMessage = ChatMessage
@@ -32,7 +31,7 @@ export type PromptProjection = {
   }
 }
 
-export type PromptProjectionZone = {
+type PromptProjectionZone = {
   zoneId: string
   displayName: string
   slots: Array<{
@@ -52,11 +51,4 @@ export type PromptProjectionZone = {
       }
     }>
   }>
-}
-
-export type PromptPreview = {
-  runId: string
-  messages: ProviderMessage[]
-  providerPayloadPreview?: ClientJsonValue
-  projection: PromptProjection
 }

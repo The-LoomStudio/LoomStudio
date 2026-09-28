@@ -17,12 +17,5 @@
       "presetResourceId": "prompt-resource.official.loom-assistant",
       "settingResourceId": "prompt-resource.official.loom-knowledge"
     }
-  ],
-  "agents": [
-    {
-      "id": "official.assistant",
-      "name": "Loom Studio 问答助手",
-      "presetId": "prompt-resource.official.loom-assistant"
-    }
   ]
 }

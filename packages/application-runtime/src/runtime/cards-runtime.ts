@@ -1,6 +1,8 @@
 import type { DocumentRecord, DocumentStore, DocumentTransaction } from '@loom-studio/document-store'
 import type { NarrativeTimeline } from '@loom-studio/application-data'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
+import { normalizeMacroOptions } from '@loom-studio/shared'
+import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments, readDocument, writeDocument } from '../foundation/document-store.js'
@@ -21,7 +23,7 @@ import {
   exportCardArtifact,
   importCardBundle as importWorkspaceCardBundle,
 } from '../cards/workspace.js'
-import { isCardBundleArtifact } from '../cards/workspace-codec.js'
+import { assertEmbeddedExtensionPackages, isCardBundleArtifact, maxEmbeddedExtensionArchiveBase64Bytes } from '../cards/workspace-codec.js'
 import type { CardBundleArtifact } from '../cards/workspace-types.js'
 import {
   validateStateDefinitionDraft,
@@ -29,8 +31,9 @@ import {
 } from '../state/state-definition.js'
 import { createCardStateContribution, materializeStateContribution } from '../state/state-contribution.js'
 import { readTimelineRuntimeContext, timelineRuntimeContextId } from '../narrative/timeline-runtime-context.js'
-import { snapshotLoomScriptMounts } from '../scripts/loom-script-resolution.js'
+import { deleteTimelinePresetConfigs } from '../prompt/timeline-preset-config.js'
 import type {
+  AttachCardExtensionPackageInput,
   CardMediaRefs,
   CardSourceContent,
   CreateCardInput,
@@ -41,6 +44,7 @@ import type {
   DeleteCardsResult,
   ExportCardBundleInput,
   ExportCardBundleResult,
+  ExtensionInstallationContent,
   GetCardInput,
   GetCardResult,
   ImportCardBundleInput,
@@ -53,7 +57,6 @@ import type {
   StateDefinitionContent,
   StateDefinitionDraft,
   TimelineRuntimeContextContent,
-  TextExtractorContent,
   TextTransformRuleContent,
   UpdateCardInput,
   UpdateCardPromptResourcesInput,
@@ -200,6 +203,7 @@ async function deleteCards(
                   await documents.delete({ id: runtimeContext.id, expectedVersion: runtimeContext.version })
                 }
                 await tombstoneExtensionStorageScope(documents, { kind: 'timeline', timelineId: timeline.id })
+                await deleteTimelinePresetConfigs(documents, timeline.id)
               }
             }
           }
@@ -223,6 +227,11 @@ async function deleteCards(
                   await documents.delete({ id: bundleDoc.id, expectedVersion: bundleDoc.version })
                 }
               }
+            }
+          }
+          for (const installation of await listDocuments<ExtensionInstallationContent>(documents, applicationDocumentTypes.extensionInstallation)) {
+            if (installation.content.target.kind === 'card' && deletedCardIds.has(installation.content.target.cardId)) {
+              await documents.delete({ id: installation.id, expectedVersion: installation.version })
             }
           }
           for (const card of cards) {
@@ -277,6 +286,7 @@ export function createCardsRuntimeMethods(ctx: CardsRuntimeContext) {
             opening: normalizeOpening(input.opening),
             settingLayer: normalizeSettingLayer(input.settingLayer, input.setting),
             ...(input.macros !== undefined ? { macros: normalizeMacros(input.macros, 'Card') } : {}),
+            ...(input.macroOptions !== undefined ? { macroOptions: normalizeMacroOptions(input.macroOptions) } : {}),
             createdAt: timestamp,
             updatedAt: timestamp,
           },
@@ -297,6 +307,87 @@ export function createCardsRuntimeMethods(ctx: CardsRuntimeContext) {
       return {
         card: toCardSource(card),
       }
+    },
+
+    attachCardExtensionPackage: async (input: AttachCardExtensionPackageInput, requestContext?: RuntimeRequestContext): Promise<UpdateCardResult> => {
+      assertEmbeddedExtensionPackages([input.archive])
+      const card = await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
+      if (card.version !== input.expectedVersion) throw new Error('Card changed before attaching the extension package')
+      const archives = (card.content.extensionPackages ?? []).filter(item => item.packageId !== input.archive.packageId)
+      if (archives.length >= 32) throw new Error('Card extensionPackages must contain at most 32 archives')
+      const documents = requireDocumentParticipant(ctx)
+      if (!ctx.blobs) throw new Error('Blob Store is required to attach extension packages')
+      let encodedBytes = input.archive.archiveBase64.length
+      for (const archive of archives) {
+        const bytes = await ctx.blobs.read(archive.blobId, { maxBytes: maxEmbeddedExtensionArchiveBase64Bytes })
+        encodedBytes += Math.ceil(bytes.byteLength / 3) * 4
+        if (encodedBytes > maxEmbeddedExtensionArchiveBase64Bytes) throw new Error('Embedded extension archives exceed the Card bundle budget')
+      }
+      const prepared = await ctx.blobs.prepareWrite({
+        source: Buffer.from(input.archive.archiveBase64, 'base64'), mediaType: 'application/zip',
+      })
+      try {
+        const result = await ctx.dataEngine.transact({
+          ...promptResourceWriteContext(requestContext), reason: 'application.attachCardExtensionPackage',
+        }, async dataTx => documents.participateTransaction(dataTx, async tx => {
+          const blob = ctx.blobs!.participateWrite(dataTx, prepared).blob
+          return await writeDocument<CardSourceContent>(tx, {
+            id: card.id, type: applicationDocumentTypes.cardSource, expectedVersion: input.expectedVersion,
+            content: {
+              ...card.content,
+              extensionPackages: [...archives, { packageId: input.archive.packageId, version: input.archive.version, blobId: blob.id }],
+              updatedAt: ctx.now(),
+            },
+          })
+        }))
+        return { card: toCardSource(result.value.value), mutation: { changesetId: result.commit.changesetId } }
+      } catch (error) {
+        await ctx.blobs.discardPreparedWrite(prepared)
+        throw error
+      }
+    },
+
+    getCardExtensionPackage: async (input: { cardId: string; packageId: string; source?: 'installed' }) => {
+      const card = await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
+      let archive = card.content.extensionPackages?.find(item => item.packageId === input.packageId)
+      if (input.source === 'installed') {
+        const installation = await readDocument<ExtensionInstallationContent>(
+          ctx.documents, extensionInstallationId(input.packageId, { kind: 'card', cardId: input.cardId }),
+          applicationDocumentTypes.extensionInstallation,
+        )
+        if (!installation.content.archiveBlobId) throw new Error('Installed extension archive is not recorded; import the Card package first')
+        archive = {
+          packageId: installation.content.packageId, version: installation.content.packageVersion,
+          blobId: installation.content.archiveBlobId,
+        }
+      }
+      if (!archive) throw new Error('Embedded extension package not found')
+      if (!ctx.blobs) throw new Error('Blob Store is required to read embedded extension packages')
+      return {
+        cardVersion: card.version,
+        archive: {
+          packageId: archive.packageId, version: archive.version,
+          archiveBase64: Buffer.from(await ctx.blobs.read(archive.blobId, { maxBytes: maxEmbeddedExtensionArchiveBase64Bytes })).toString('base64'),
+        },
+      }
+    },
+
+    detachCardExtensionPackage: async (input: { cardId: string; expectedVersion: number; packageId: string }, requestContext?: RuntimeRequestContext): Promise<UpdateCardResult> => {
+      const result = await executeDocumentMutation(ctx.documents, requestContext, 'application.detachCardExtensionPackage', async documents => {
+        const card = await readDocument<CardSourceContent>(documents, input.cardId, applicationDocumentTypes.cardSource)
+        if (card.version !== input.expectedVersion) throw new Error('Card changed before detaching the extension package')
+        if (!card.content.extensionPackages?.some(item => item.packageId === input.packageId)) throw new Error('Embedded extension package not found')
+        const updated = await writeDocument<CardSourceContent>(documents, {
+          id: card.id, type: applicationDocumentTypes.cardSource, expectedVersion: input.expectedVersion,
+          content: {
+            ...card.content,
+            extensionPackages: card.content.extensionPackages.filter(item => item.packageId !== input.packageId),
+            updatedAt: ctx.now(),
+          },
+        })
+        return toCardSource(updated)
+      })
+      return { card: result.value, mutation: result.mutation }
     },
 
     listCards: async (input?: ListCardsInput): Promise<ListCardsResult> => {
@@ -397,6 +488,7 @@ export function createCardsRuntimeMethods(ctx: CardsRuntimeContext) {
             ...(input.stateContributionIds !== undefined ? { stateContributionIds: [...input.stateContributionIds] } : {}),
             ...(input.timelineStateBindings !== undefined ? { timelineStateBindings: structuredClone(input.timelineStateBindings) } : {}),
             ...(input.macros !== undefined ? { macros: normalizeMacros(input.macros, 'Card') } : {}),
+            ...(input.macroOptions !== undefined ? { macroOptions: normalizeMacroOptions(input.macroOptions) } : {}),
             updatedAt: ctx.now(),
           }),
           expectedVersion: input.expectedVersion ?? existing.version,
@@ -611,13 +703,6 @@ async function buildTimelineRuntimeContextInternal(
     templates: Map<string, Extract<StateDefinitionDraft, { kind: 'timeline-template' }>>
   },
 ): Promise<TimelineRuntimeContextContent> {
-  const textTransformRules = (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule))
-    .filter(rule => rule.content.owner.kind === 'card' && rule.content.owner.cardId === input.card.id)
-    .map(rule => ({ ...rule.content, id: rule.id, version: rule.version }))
-  const textExtractors = (await listDocuments<TextExtractorContent>(ctx.documents, applicationDocumentTypes.textExtractor))
-    .filter(extractor => extractor.content.owner.kind === 'card' && extractor.content.owner.cardId === input.card.id)
-    .map(extractor => ({ ...extractor.content, id: extractor.id, version: extractor.version }))
-  const loomScriptMounts = await snapshotLoomScriptMounts(ctx, { kind: 'card', cardId: input.card.id })
   const materializedState = materializeStateContribution(createCardStateContribution(input.card.id, input.cardContent, input.templates))
   return {
     timelineId: input.timelineId,
@@ -634,9 +719,6 @@ async function buildTimelineRuntimeContextInternal(
       if (!template) throw new Error(`Timeline State template not found: ${binding.templateId}`)
       return { path: binding.path, schema: structuredClone(template.schema) }
     }),
-    textTransformRules,
-    textExtractors,
-    loomScriptMounts,
     createdAt: ctx.now(),
   }
 }

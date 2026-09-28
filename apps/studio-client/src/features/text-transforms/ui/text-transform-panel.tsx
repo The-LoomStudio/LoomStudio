@@ -23,6 +23,7 @@ import { rendererContributionKey, rendererSurfacePolicies } from '../../../share
 import { MasterDetailWorkbench } from '../../../shared/ui/master-detail-workbench/master-detail-workbench.js'
 import { PanelTabs } from '../../../shared/ui/panel-tabs/index.js'
 import { PipelineWorkbenchView, type PipelineWorkbenchGroup } from './pipeline-workbench-view.js'
+import { RuleEditorFields, readRuleEditorValue } from './rule-editor-fields.js'
 import styles from './text-transform-panel.module.scss'
 
 export type OwnerScope = TextRuleOwner | { kind: 'runtime' }
@@ -98,6 +99,9 @@ export function useTextTransformController(props: TextTransformProps) {
   const catalogScope = useMemo(() => ({ api: props.api, loomScriptsApi: props.loomScriptsApi, ownerKey, runtimeScriptContextKey }), [props.api, props.loomScriptsApi, ownerKey, runtimeScriptContextKey])
   const catalogScopeRef = useRef(catalogScope)
   catalogScopeRef.current = catalogScope
+  const ruleWriteRef = useRef<{ scope: typeof catalogScope; id: string } | undefined>(undefined)
+  const [ruleWrite, setRuleWrite] = useState<{ scope: typeof catalogScope; id: string }>()
+  const [savedRule, setSavedRule] = useState<{ scope: typeof catalogScope; id: string; text: string }>()
   const inspectionScope = useMemo(() => ({ catalogScope, sourceKey }), [catalogScope, sourceKey])
   const inspectionScopeRef = useRef(inspectionScope)
   inspectionScopeRef.current = inspectionScope
@@ -291,6 +295,7 @@ export function useTextTransformController(props: TextTransformProps) {
     try {
       setInspectionTask(inspectionScope)
       const result = await props.api.upsertOverride({ source, phase, ...(consumerAgentSessionId ? { consumerAgentSessionId } : {}), ...(overrideVersion !== undefined ? { expectedVersion: overrideVersion } : {}), disabledRuleIds: nextDisabled, orderedRuleIds: nextOrder })
+      props.onRuntimeChanged?.()
       if (!isCurrentInspection(requestId)) return
       setOverrideVersion(result.override.version)
       setDisabledRuleIds(result.override.disabledRuleIds)
@@ -338,10 +343,33 @@ export function useTextTransformController(props: TextTransformProps) {
   }
 
   async function saveRule() {
+    if (!isCurrentCatalog() || ruleWriteRef.current?.scope === catalogScope) return
+    const task = { scope: catalogScope, id: selectedRuleId }
+    ruleWriteRef.current = task
+    setRuleWrite(task)
+    setSavedRule(undefined)
+    setError('')
     try {
       const existing = rules.find(rule => rule.id === selectedRuleId)
       const draft = { ...(JSON.parse(ruleText) as TextTransformRuleDraft), owner: existing?.owner ?? editingOwner }
-      await props.api.upsertRule({ ruleId: selectedRuleId, ...(existing ? { expectedVersion: existing.version } : {}), rule: draft })
+      const result = await props.api.upsertRule({ ruleId: selectedRuleId, ...(existing ? { expectedVersion: existing.version } : {}), rule: draft })
+      props.onRuntimeChanged?.()
+      if (!isCurrentCatalog()) return
+      setRules(current => [...current.filter(rule => rule.id !== result.rule.id), result.rule])
+      setSavedRule({ scope: catalogScope, id: selectedRuleId, text: ruleText })
+      await refresh()
+    } catch (cause) { setError(readError(cause)) }
+    finally {
+      if (ruleWriteRef.current === task) ruleWriteRef.current = undefined
+      if (isCurrentCatalog()) setRuleWrite(undefined)
+    }
+  }
+
+  async function deleteRule() {
+    try {
+      const existing = rules.find(rule => rule.id === selectedRuleId)
+      await props.api.deleteRule({ ruleId: selectedRuleId, expectedVersion: existing?.version })
+      props.onRuntimeChanged?.()
       await refresh()
     } catch (cause) { setError(readError(cause)) }
   }
@@ -390,8 +418,12 @@ export function useTextTransformController(props: TextTransformProps) {
     selectedTarget,
     mobilePane,
     selectedRuleId,
+    deleteRule,
     selectedExtractorId,
     ruleText,
+    unsavedNewRule: selectedTarget.kind === 'rule' && Boolean(selectedRuleId) && !rules.some(rule => rule.id === selectedRuleId),
+    ruleSaving: ruleWrite?.scope === catalogScope,
+    ruleSaved: savedRule?.scope === catalogScope && savedRule.id === selectedRuleId && savedRule.text === ruleText,
     extractorText,
     phase,
     error,
@@ -446,7 +478,6 @@ export function TextTransformPanel(props: TextTransformProps) {
       <div><h2>{heading}</h2><p>{controller.owner.kind === 'runtime' ? props.t('textTransform.runtimeDescription') : props.t('textTransform.ownerDescription', { owner: ownerLabel(controller.owner, props.t) })}</p></div>
       <button className={styles.refreshButton} disabled={controller.busy} type="button" onClick={() => void controller.refresh()}><RefreshCw aria-hidden="true" size={14} /><span>{props.t('textTransform.refresh')}</span></button>
     </header>
-    {controller.error ? <div className={styles.errorBanner}>{controller.error}</div> : null}
     <MasterDetailWorkbench
       backLabel={props.t('textTransform.backToSettings')}
       resizeLabel={props.t('stateVariables.resizeSidebar')}
@@ -469,7 +500,8 @@ export function TextTransformExplorer({ controller }: { controller: TextTransfor
       <div className={styles.navGroup}>
         <header><span>{t('textTransform.ownerRules')}</span><button className={styles.navAddBtn} title={t('textTransform.newRule')} type="button" onClick={controller.startNewRule}><Plus aria-hidden="true" size={14} /></button></header>
         {controller.finalOrder.map(rule => <button key={rule.id} aria-current={controller.selectedTarget.kind === 'rule' && controller.selectedTarget.id === rule.id ? 'page' : undefined} className={styles.navItem} type="button" onClick={() => controller.selectRule(rule.id)}><Scissors aria-hidden="true" /><span className={styles.navItemBody}><strong>{rule.name}</strong><small>{ownerLabel(rule.owner, t)} · {rule.enabled ? t('textTransform.enabled') : t('textTransform.disabled')}</small></span><span className={styles.orderBadge}>{rule.orderIndex}</span></button>)}
-        {controller.finalOrder.length === 0 ? <button className={styles.navItem} type="button" onClick={controller.startNewRule}><Plus aria-hidden="true" /><span className={styles.navItemBody}><strong>{t('textTransform.newRule')}</strong><small>{t('textTransform.ownerRulesEmpty')}</small></span></button> : null}
+        {controller.unsavedNewRule ? <div className={styles.navItem} aria-current="page"><Scissors aria-hidden="true" /><span className={styles.navItemBody}><strong>{t('textTransform.newRule')}</strong><small>{t('textTransform.unsaved')}</small></span></div> : null}
+        {controller.finalOrder.length === 0 && !controller.unsavedNewRule ? <button className={styles.navItem} type="button" onClick={controller.startNewRule}><Plus aria-hidden="true" /><span className={styles.navItemBody}><strong>{t('textTransform.newRule')}</strong><small>{t('textTransform.ownerRulesEmpty')}</small></span></button> : null}
       </div>
       <div className={styles.navGroup}>
         <header><span>{t('textTransform.ownerExtractors')}</span><button className={styles.navAddBtn} title={t('textTransform.newExtractor')} type="button" onClick={controller.startNewExtractor}><Plus aria-hidden="true" size={14} /></button></header>
@@ -495,11 +527,15 @@ export function TextTransformExplorer({ controller }: { controller: TextTransfor
 }
 
 export function TextTransformDetail({ controller }: { controller: TextTransformController }) {
+  return <>{controller.error ? <div className={styles.errorBanner} role="alert">{controller.error}</div> : null}<TextTransformDetailContent controller={controller} /></>
+}
+
+function TextTransformDetailContent({ controller }: { controller: TextTransformController }) {
   const { t } = controller
   if (controller.selectedTarget.kind === 'rule') {
     const selectedRule = controller.rules.find(item => item.id === controller.selectedRuleId)
     const readOnly = !controller.authoring && selectedRule?.owner.kind !== 'workspace' && selectedRule?.owner.kind !== 'preset'
-    return <>{!controller.authoring ? <OverrideControls controller={controller} ruleId={controller.selectedRuleId} /> : null}<EditorDetail controller={controller} icon={<Scissors aria-hidden="true" size={16} />} title={t('textTransform.ruleTitle')} id={controller.selectedRuleId} text={controller.ruleText} setText={controller.setRuleText} onFormat={() => controller.formatJson(controller.ruleText, controller.setRuleText)} onSave={() => void controller.saveRule()} readOnly={readOnly} onDelete={controller.authoring && controller.visibleRules.some(item => item.id === controller.selectedRuleId) ? () => void controller.api.deleteRule({ ruleId: controller.selectedRuleId, expectedVersion: controller.visibleRules.find(item => item.id === controller.selectedRuleId)?.version }).then(controller.refresh).catch(cause => controller.setError(readError(cause))) : undefined} /></>
+    return <>{!controller.authoring ? <OverrideControls controller={controller} ruleId={controller.selectedRuleId} /> : null}<RuleEditorDetail key={controller.selectedRuleId} controller={controller} readOnly={readOnly} /></>
   }
   if (controller.selectedTarget.kind === 'extractor') {
     const selectedExtractor = controller.extractors.find(item => item.id === controller.selectedExtractorId)
@@ -512,6 +548,40 @@ export function TextTransformDetail({ controller }: { controller: TextTransformC
   if (controller.selectedTarget.kind === 'renderers') return <RendererDetail controller={controller} />
   if (controller.selectedTarget.kind === 'empty') return <div className={styles.editorContainer}><p className={styles.emptyState}>{t('textTransform.selectAuthoringItem')}</p></div>
   return <InspectionDetail controller={controller} />
+}
+
+function RuleEditorDetail({ controller, readOnly }: { controller: TextTransformController; readOnly: boolean }) {
+  const { t } = controller
+  const [sourceMode, setSourceMode] = useState(false)
+  let draft: ReturnType<typeof readRuleEditorValue> | undefined
+  let parseError = ''
+  try { draft = readRuleEditorValue(controller.ruleText) }
+  catch (error) { parseError = readError(error) }
+  const showSource = sourceMode || !draft
+  return <>
+    <header className={styles.detailHeader}>
+      <div className={styles.headerTitle}><Scissors aria-hidden="true" size={16} /><h3>{t('textTransform.ruleTitle')}</h3><small>{controller.selectedRuleId}</small></div>
+      <div className={styles.headerActions}>
+        {controller.ruleSaved ? <small role="status">{t('textTransform.saved')}</small> : null}
+        <button type="button" title={t('textTransform.sourceMode')} aria-label={t('textTransform.sourceMode')} aria-pressed={showSource}
+          className={styles.sourceToggle} disabled={!draft} onClick={() => setSourceMode(value => !value)}><Code2 size={16} aria-hidden="true" /></button>
+        {!readOnly ? <>
+          {showSource ? <Button size="small" variant="secondary" disabled={controller.ruleSaving} onClick={() => controller.formatJson(controller.ruleText, controller.setRuleText)}><Wand2 size={13} aria-hidden="true" />{t('textTransform.format')}</Button> : null}
+          {controller.authoring && controller.visibleRules.some(rule => rule.id === controller.selectedRuleId)
+            ? <Button size="small" variant="danger" disabled={controller.busy || controller.ruleSaving} onClick={() => void controller.deleteRule()}><Trash2 size={13} aria-hidden="true" />{t('textTransform.delete')}</Button> : null}
+          <Button size="small" variant="ghost" disabled={!controller.selectedRuleId || controller.busy || controller.ruleSaving}
+            onClick={() => void controller.saveRule()}>{t(controller.ruleSaving ? 'textTransform.saving' : 'textTransform.save')}</Button>
+        </> : null}
+      </div>
+    </header>
+    <div className={styles.editorContainer}>
+      {parseError ? <p role="alert">{t('textTransform.invalidJson', { error: parseError })}</p> : null}
+      {showSource ? <textarea aria-label={t('textTransform.jsonEditor', { title: t('textTransform.ruleTitle') })} className={styles.rawJsonTextarea}
+        readOnly={readOnly || controller.ruleSaving} spellCheck={false} value={controller.ruleText} onChange={event => controller.setRuleText(event.target.value)} />
+        : <RuleEditorFields value={draft!} disabled={readOnly || controller.ruleSaving} t={t}
+          onChange={value => controller.setRuleText(JSON.stringify(value, null, 2))} />}
+    </div>
+  </>
 }
 
 function EditorDetail(props: { controller: TextTransformController; icon: ReactNode; title: string; id: string; text: string; setText(value: string): void; onFormat(): void; onSave(): void; onDelete?: () => void; readOnly?: boolean }) {
@@ -563,7 +633,6 @@ function RuntimePipelinePanel({ controller, heading }: { controller: TextTransfo
         />
       </div>
     </header>
-    {controller.error ? <div className={styles.errorBanner}>{controller.error}</div> : null}
     <PipelineWorkbenchView
       t={t}
       ariaLabel={t('textTransform.navigation')}

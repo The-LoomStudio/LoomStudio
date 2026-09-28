@@ -262,15 +262,16 @@ Loom 不把 YAML 定义为 Preset、Setting Layer、Card、Manifest、SQL Docume
 
 ## 8. 当前实现差异
 
-当前 M0 仍使用：
+当前 [Narrative 类型](../../../../packages/application-data/src/narrative/types.ts)已经定义：
 
-- `SessionContent`；
-- `NarrativeBranchContent.sessionId`；
-- `NarrativeEntryContent.role`；
-- `NarrativeEntryContent.content: string`；
-- `submitTurn` 自动写入 user / assistant Narrative Entry。
+- `NarrativeTimeline`，包括来源 Card ID/版本及 active Branch；
+- 使用 `timelineId` 的 `NarrativeBranch`；
+- 不含 role 的 `NarrativeNode`，正文保存为 `body: { format: 'loom-markdown.v1', raw: string }`；
+- Node 的 `stateRevisionId`、Branch 的 `stateHeadRevisionId` 与可选来源引用。
 
-这些是过渡实现，不代表本文目标 Schema 已经落地。迁移应与 Agent Session / Chat Message 基座分阶段进行。
+旧 `SessionContent`、`NarrativeEntryContent` 与后端 `submitTurn` 不再是当前基线；独立 Agent Session / canonical Transcript 已实现，见[数据架构](../../../architecture/data/README.md)。第 2 节候选结构是设计示意，不替代当前类型。
+
+这些事实证明正文基座已落地，不证明本文所有 Semantic Part、编译缓存和多目标 Projection 设想均已实现。相关设计继续按独立消费链验收，不再以旧 Session 迁移作为前置条件。
 
 ---
 

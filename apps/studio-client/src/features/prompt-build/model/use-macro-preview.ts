@@ -11,7 +11,7 @@ type UseMacroPreviewInput = {
   lastRunId?: string
   presetId?: string
   resourceRevision: unknown
-  selections: Record<string, string>
+  selections: import('@loom-studio/shared').MacroSelectionMap
   timelineId?: string
 }
 
@@ -32,7 +32,7 @@ export function useMacroPreview(input: UseMacroPreviewInput) {
         ? { timelineTarget: { timelineId: input.timelineId, branchId: input.branchId } }
         : { cardId: input.cardId }),
       presetId: input.presetId,
-      macroSelections: input.selections,
+      ...(input.timelineId ? {} : { macroSelections: input.selections }),
     }).then(result => {
       if (!cancelled) setPreview({ key: input.key, inspection: result.macroInspection, loading: false })
     }, error => {

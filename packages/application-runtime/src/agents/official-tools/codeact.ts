@@ -31,9 +31,14 @@ export const officialCodeActJsonTool: ToolDefinition = {
 export const officialCodeActRegistration: ToolRuntimeRegistration = {
   toolId: officialCodeActTool.id,
   execute: executeCodeAct,
+  approve: context => context.action
+    ? context.requestHistoryApproval?.(context.action, context.signal)
+      ?? { decision: 'deny', reason: 'Narrative history approval is unavailable in this host.' }
+    : { decision: 'allow' },
 }
 
 export const officialCodeActJsonRegistration: ToolRuntimeRegistration = {
   toolId: officialCodeActJsonTool.id,
   execute: executeCodeAct,
+  approve: officialCodeActRegistration.approve,
 }

@@ -7,6 +7,38 @@
   width: 100%;
 }
 
+.sourceDirectory {
+  max-height: 180px;
+  overflow: auto;
+  padding: 8px;
+
+  summary {
+    cursor: pointer;
+    overflow-wrap: anywhere;
+    color: var(--loom-color-text-subtle);
+    font-size: var(--loom-font-size-2);
+  }
+
+  button {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    text-align: left;
+    overflow-wrap: anywhere;
+    border: 0;
+    background: transparent;
+  }
+
+  button[aria-current='page'] {
+    background: var(--loom-color-surface-subtle);
+  }
+}
+
+.modelDetail:not([hidden]) {
+  height: 100%;
+  overflow: auto;
+}
+
 .zoneDetail {
   height: 100%;
   overflow: auto;

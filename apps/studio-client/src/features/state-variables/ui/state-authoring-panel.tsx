@@ -273,7 +273,12 @@ function renderFields(config: DraftConfig, selection: Exclude<Selection, { kind:
 
 function TextField(props: { label: string; value: string; onChange(value: string): void }) { return <label><span>{props.label}</span><input value={props.value} onChange={event => props.onChange(event.target.value)} /></label> }
 function NumberField(props: { label: string; value: number; onChange(value: number): void }) { return <label><span>{props.label}</span><input min={1} type="number" value={props.value} onChange={event => props.onChange(Number(event.target.value))} /></label> }
-function SelectField(props: { label: string; value: string; options: Array<{ value: string; label: string }>; onChange(value: string): void }) { return <label><span>{props.label}</span><select value={props.value} onChange={event => props.onChange(event.target.value)}>{props.options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label> }
+function SelectField(props: { label: string; value: string; options: Array<{ value: string; label: string }>; onChange(value: string): void }) {
+  return <label><span>{props.label}</span><select value={props.value} onChange={event => props.onChange(event.target.value)}>
+    {!props.options.some(option => option.value === props.value) && <option disabled value={props.value}>{props.value}</option>}
+    {props.options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+  </select></label>
+}
 function CheckboxField(props: { label: string; options: NonNullable<Card['stateEntityTypes']>; selected: string[]; onChange(value: string[]): void }) { return <fieldset className={styles.checkboxField}><legend>{props.label}</legend>{props.options.map(option => <label key={option.id}><input type="checkbox" checked={props.selected.includes(option.id)} onChange={event => props.onChange(event.target.checked ? [...props.selected, option.id] : props.selected.filter(id => id !== option.id))} /><span>{option.label || option.id}</span></label>)}</fieldset> }
 function YamlField(props: { label: string; value: JsonObject; onChange(value: JsonObject): void }) { const [error, setError] = useState(''); return <label><span>{props.label}</span><textarea key={objectToYaml(props.value)} defaultValue={objectToYaml(props.value)} onBlur={event => { try { props.onChange(yamlToObject(event.target.value)); setError('') } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)) } }} />{error ? <small className={styles.fieldError}>{error}</small> : null}</label> }
 

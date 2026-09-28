@@ -65,6 +65,7 @@ export function useStudioNavigation(input: { endpoint: string; api: StudioApi })
   }, [openReference])
 
   const openPanel = useCallback((panel: StudioPanelId, target: { cardId?: string; assetId?: string } = {}) => {
+    if (panel === 'preset') panel = 'agent'
     const previous = current.current
     return publish({
       ...previous, panel, ...target, targetUri: undefined, referenceUri: undefined,
@@ -116,8 +117,8 @@ export function useStudioNavigation(input: { endpoint: string; api: StudioApi })
         ...before, cardId, timelineId: activated?.timelineId, branchId: activated?.branchId, nodeId: undefined,
       })
     },
-    openResource: (panel: 'resource' | 'preset', resourceId: string, nodeId: string) => publish({
-      ...current.current, panel, resourceId, assetId: nodeId, referenceUri: undefined, targetUri: undefined,
+    openResource: (panel: 'resource' | 'preset' | 'agent', resourceId: string, nodeId: string) => publish({
+      ...current.current, panel: panel === 'preset' ? 'agent' : panel, resourceId, assetId: nodeId, referenceUri: undefined, targetUri: undefined,
     }),
     searchQuery: new URLSearchParams(workspace.search).get('q') ?? '',
     searchParams: new URLSearchParams(workspace.search),

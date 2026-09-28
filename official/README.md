@@ -2,7 +2,7 @@
 
 本目录保存正式官方内容的作者源文件。Official 是维护来源，不是权限或自动启用资格。
 
-- `starter/`：官方问答预设、知识 Settings 与不含模型凭据的 Agent 模板。
+- `starter/`：官方问答 Agent 预设与知识 Settings，不含模型凭据。
 - `extensions/st-data-compat/`：ST 数据兼容源码，保留 `@loom-studio/sillytavern-importer` 包名。
 - [`extensions/the-world/`](extensions/the-world/README.md)：The World 延期迁移骨架，含包内迁移讨论；当前无可执行模块或资源贡献。
 - 接口测试扩展位于 `tests/fixtures/extensions/`，正式 Server 默认不扫描该目录。开发者通过已有 dev-link 或显式 `extensionRootDirectory` 加载。
@@ -15,15 +15,15 @@
 pnpm official:pack official/starter /tmp/official.starter-0.1.0.zip
 ```
 
-Studio 的扩展工作台左侧提供「官方推荐」，选择基础内容后可确认安装、导出官方原始资源包，并选择已有模型创建 Agent。导出的是磁盘上的原始发行内容，不是用户修改过的作者资源；用户资源仍通过原有导出入口导出。
+Studio 的扩展工作台左侧提供「官方推荐」，选择基础内容后可确认安装、导出官方原始资源包；安装后的预设直接出现在 Agent 预设列表，绑定模型后即可使用。导出的是磁盘上的原始发行内容，不是用户修改过的作者资源；用户资源仍通过原有导出入口导出。
 
-包内 `catalog.json` 保存包身份、版本、文件引用、Preset 对 Setting 的挂载和 Agent 模板。资源文件沿用 `loom.promptResource` Artifact；Agent 模板只含名称和 preset 引用，不保存 Provider、凭据或会话。目录/ZIP 中的源文件可由 Git 和外部编辑器维护，目前没有自动双向同步。
+包内 `catalog.json` 保存包身份、版本、文件引用及 Agent 预设对 Setting 的挂载，不再另建 Agent 模板别名。资源文件沿用 `loom.promptResource` Artifact；安装后同一资源承载编排与本地 Agent 配置，发行文件不保存 Provider、凭据或会话。目录/ZIP 中的源文件可由 Git 和外部编辑器维护，目前没有自动双向同步。
 
 Server 默认从仓库根的 `official/starter` 读取内容。部署时须携带该目录，或通过 `CreateStudioServerOptions.officialContentDirectory` 指向解包后的目录；不能只复制 Server `dist` 并假定资源会存在。当前 ZIP 是交付产物，尚未提供 UI 中上传 ZIP 的安装入口。
 
 ## 数据边界
 
-启动不会创建、恢复或重写官方预设/Setting，也不会补回它们的挂载。显式安装只创建缺失身份，保留用户已有内容与 tombstone；不会静默恢复删除。已有资源并不代表与最新发行内容相同，UI 的「已有资源」不是版本一致性证明。
+Server 启动时自动安装缺失的默认预设/Setting；这属于内置基础内容，不需要先确认安装插件。启动安装与显式安装均只创建缺失身份，保留用户已有内容与 tombstone，不重写已有资源或补回被移除的挂载，也不会静默恢复删除。已有资源并不代表与最新发行内容相同，UI 的「已有资源」不是版本一致性证明。
 
 安装是一个正式 Application 事务，非法 Artifact/挂载不能留下部分资源。首次创建的官方预设只挂载包内可用知识 Setting，不自动建立全局知识挂载；创建的 Tool 挂载默认关闭。
 

@@ -3,7 +3,7 @@
 > **状态**：In Progress / 骨架已接线，生命周期未验收
 > **主题**：Agent Prompt 的默认动态骨架、Narrative / Agent Session 记忆投影、被动上下文与实时工作区边界。
 > **范围**：先收束跨 PromptBuild、Agent Runtime、Narrative Timeline 和记忆扩展的上下文合同，再拆分可实施切片。
-> **当前阶段**：默认骨架与原生输入接线已实施；完整记忆系统、生命周期与 Provider 缓存验证仍未完成。
+> **当前阶段**：默认骨架、采样加工、Session 工具回放、可替换记忆接收、显式工作交接、配置宏持久化与主动读取范围约束已实施；官方来源安装 / 自动调度、动态上下文生命周期与读取授权 UI 仍未完成。完整记忆算法归独立 Plan，不是本 Plan 的归档前置。
 > **更新**：2026-09-17，补充共用采样能力的调研与边界。本文是讨论承载稿，不因补写 Plan 自动启动代码实施；默认 Anchor、生命周期和记忆合同仍待逐项收束。
 > **决策补充**：2026-09-20，确认 Anchor 负责独立注入，配置宏负责候选选择和局部文本替换；本轮不为 Anchor 增加通用替换机制。设置分工见 2.5～2.6；骨架仍为待讨论候选。
 > **实施切片**：2026-09-21，用户授权默认 JSON 骨架及原生输入接线，见第 12 节；其他开放设计不随本切片自动实施。
@@ -12,6 +12,9 @@
 > **投影责任修正**：2026-09-21，确认当前不为 Agent Session 保存 Narrative 投影快照；Memory 指针与消费者采样参数由 Memory / Sampling 侧管理，PromptBuild 只消费贡献。后续三个生命周期问题见第 15 节。
 > **采样传参已确认**：采样参数与请求时机归消费者自己的生命周期，直接请求 Narrative 模块；Anchor 只接收结果并定位，不承载采样参数。具体分工和验收例见 6.6；本轮仅记录设计，不启动代码实施。
 > **CodeAct 采样切片**：2026-09-22，已实现只读 Narrative 采样器与 CodeAct `readNarrative` 入口，支持固定分支的最近 N 个节点、节点区间、读取 Head、来源节点和预算续读信息。默认 Prompt 的有效 Head、Memory 贡献、正文加工和完整生命周期仍未完成。
+> **共用正文加工**：2026-09-24，补齐 Runtime 无 Session 采样、CodeAct raw / prompt 视图和默认 Prompt 的共用采样 / 正则接线，修复续读与历史分页顺序。36 项定向测试及 Runtime build 通过，见第 16 节；默认有效 Head、Memory 和 Session 生命周期仍未完成。
+> **Session 回放修复**：2026-09-24，Native / Content 工具批次及结果已跨交互、跨 SQLite 重开投影；最近 100 条窗口按需补齐最早批次。第 13 节两条预期失败中的工具回放已修复，Narrative 基线采用仍未修复。见第 17 节。
+> **接收与交接补齐**：2026-09-24，记忆来源发布固定 Memory + Raw、Session 保存交接后通知采用；工作历史按交接边界读取，100 条只作分页。已配置来源的基线冻结目标转为正常通过，原 1～40 楼模型已有真实工具 / SQLite 仿真；自动调度与官方生产者仍非本次交付。见第 19 节。
 
 ## 1. 背景
 
@@ -125,9 +128,9 @@ Session 记忆不能替代 Narrative 记忆；Narrative 摘要也不应携带某
 3. 选择作用于当前作品 / 运行组合，不更改预设保存的默认原文。记住选择，避免每次 Provider 调用重复询问；可查看来源并恢复默认。
 4. 多个未选择的候选不按加载顺序、文本位置或深度决定胜出。明确选中的来源失效时应暴露问题，不以静默替换掩盖。
 
-“全局性”指宏可作为共享的配置引用方式，并可提供全局默认选择；不意味着所有角色卡写入同一个可变 KV。当前作品的选择不能污染另一个作品。全局默认的持久化位置、作品选择应归 Timeline 还是 Session，以及来源版本变化后何时重新确认，仍待设置生命周期讨论，不在本节假定新增配置层或存储表。
+“全局性”指宏可作为共享的配置引用方式，并可提供全局默认选择；不意味着所有角色卡写入同一个可变 KV。2026-09-24 用户确认：作品选择按 `Timeline + Preset` 持久化，换 Session、切分支沿用，另一局独立。复用 DocumentStore，每组合一份引用配置，不改剧情 State 或源资源。正常候选正文更新沿用引用，所选来源 / 候选失效时报错，不静默替换；运行中的 Run 不变，下一次构建采用新选择。全局默认选择的独立配置 UI 不在此轮新增。
 
-现有基础：[宏消费合同](../../architecture/application/prompt-build/injection-and-inline-expansion.md) 已有多来源候选、`macroSelections` 和来源检查；[当前解析器](../../../packages/application-runtime/src/prompt/macro-provider-registry.ts) 不按加载顺序覆盖。预设内多个候选选项、作品覆盖确认与选择持久化尚未作为本计划交付，实施时需复用已有能力并核对差异。
+现有基础：[宏消费合同](../../architecture/application/prompt-build/injection-and-inline-expansion.md) 与第 20 节已接通同预设多个候选、持久引用、默认恢复和正式调用。作品候选通过现有宏面板供用户明确选择，没有新增自动弹窗或静默“卡优先”规则。Card 内容仍遵守创建 Timeline 时的快照语义；存档来源完整性限制见第 20 节，不能把引用保存等同于资源全部可迁移。
 
 ## 3. 默认 Prompt 骨架
 
@@ -222,7 +225,7 @@ list / search
 
 ## 5. Narrative / Session 记忆投影
 
-剧情记忆与工作记事板保留不同语义，但采用一个统一的上下文刷新动作；不再分别设定 Narrative / Session 两套独立总结触发器：
+剧情记忆与工作记事板保留不同语义，以同一套业务节奏协调准备与采用；可以在不同时间启动总结，例如第 32 楼准备剧情摘要、第 40 楼完成 Session 工作交接。这里不建立互不协调、各自改写 Prompt 前缀的两套刷新机制：
 
 | 投影 | 内容 | 典型范围 |
 | --- | --- | --- |
@@ -235,7 +238,7 @@ Narrative 新节点立即持久化，但不必立即进入 Prompt 前方的 Narr
 
 默认写作流程由统一刷新动作按需请求剧情总结并清理会话。常规按剧情次数触发；未达剧情条件的预算兜底只清理工作会话，不自动生成剧情摘要或推进覆盖范围。具体策略由独立记忆 Plan 定义。
 
-本 Plan 负责安全交互边界、工作交接与 Prompt 输入段的重建。这里不再定义独立的 Session Narrative 快照或长期 `RefreshState`。Narrative Summary 和 Session Summary 是两项独立工作：Narrative Summary 完成后由 Memory 侧推进有效指针；Session Summary 完成后隐藏旧工作段并携带 Session 工作记录。两者不互相等待。
+本 Plan 负责安全交互边界、工作交接与 Prompt 输入段的重建。这里不再定义独立的 Session Narrative 快照或长期 `RefreshState`。Narrative Summary 和 Session Summary 是两项独立工作：Narrative Summary 完成只产生可采用结果，不立即推进默认有效指针；到 Session 总结采用边界，Memory 侧才发布已经准备好的摘要与 Raw 范围。Session Summary 完成后隐藏旧工作段并携带 Session 工作记录，不等待尚未完成的 Narrative Summary。
 
 已确认：第 40 楼工作流结束时，Session 无论 Narrative Summary 是否完成，都可以完成自己的工作交接与工作段重建；不逐条挖掉旧正文工具记录再拼接剩余历史。原始 Transcript 保留。若 Narrative Summary 尚未完成，下一次 Prompt 暂时没有新的默认 Narrative Raw 投影，模型可能遗忘 33～40 楼，这是已接受的失败代价。一次需要剧情总结的上下文整理示例：
 
@@ -283,12 +286,12 @@ Agent 经 CodeAct 调用 --+     |
 | 能力 | 已有基础与限制 | 来源 |
 | --- | --- | --- |
 | 分支读取 | `getPage` 接收分支、节点游标与数量，沿父链读取并校验游标归属；共用采样器已在其上实现固定终点、最近 N 个节点和 `afterNodeId`～`throughNodeId` 区间，仍没有 Memory 默认有效 Head 合同 | [Narrative Store](../../../packages/application-data/src/narrative/store.ts)、[Narrative Sampling](../../../packages/application-runtime/src/narrative/sampling.ts) |
-| Agent 输入准备 | `prepareAgentTurn` 固定读取最近 100 个 Narrative 节点；未接收本次采样范围 | [Agents Runtime](../../../packages/application-runtime/src/runtime/agents-runtime.ts) |
+| Agent 输入准备 | `prepareAgentTurn` 已复用共用采样器和固定读取终点；默认仍为最近 100 节点，未实现 Memory 的有效范围策略 | [Agents Runtime](../../../packages/application-runtime/src/runtime/agents-runtime.ts) |
 | 历史投影入口 | `readRuntimeHistoryEntries` 收集分支全部分页；`projectHistory` 未提供范围参数 | [Transforms Runtime](../../../packages/application-runtime/src/runtime/transforms-runtime.ts) |
 | 正文加工 | `projectHistoryEntries` 已提供正则、phase、规则顺序、来源和变换记录；depth 相对传入窗口计算，不是绝对楼层 | [History Text](../../../packages/application-runtime/src/transforms/history-text.ts) |
-| 消费者耦合 | Narrative 的 prompt 向规则解析要求 `consumerAgentSessionId`，借 Session 解析 Profile / Preset；单次调用不能自然复用这条完整入口 | [规则解析](../../../packages/application-runtime/src/runtime/transforms-runtime.ts) |
+| 消费者耦合 | 新增 `runtime.sampleNarrative`：prompt 加工可显式指定 `presetId`，或借 `consumerAgentSessionId` 解析 Preset 和 Session 规则覆盖，不要求单次调用创建 Session | [规则解析](../../../packages/application-runtime/src/runtime/transforms-runtime.ts) |
 | Anchor 注入 | `composeAgentTurnPrompt` 将加工后的 Narrative 转为 Contribution，挂到 `@chat.narrative` | [Agent Turn](../../../packages/application-runtime/src/agents/agent-turn.ts) |
-| CodeAct 主动读取 | 当前 Agent Session 的 CodeAct Scope 暴露 `ctx["readNarrative"]`，绑定当前 Timeline / Branch，只读返回正文节点和范围元数据；未接入摘要 Memory、历史权限分层和正文加工 | [CodeAct Context](../../../packages/application-runtime/src/agents/codeact/context.ts)、[Narrative Sampling](../../../packages/application-runtime/src/narrative/sampling.ts) |
+| CodeAct 主动读取 | `ctx.readNarrative` 绑定当前 Timeline / Branch；默认 raw，显式 prompt 使用宿主当前规则。未接入 Memory 和历史权限分层，不能把目标绑定当成默认 / 历史范围授权已实现 | [CodeAct Context](../../../packages/application-runtime/src/agents/codeact/context.ts)、[Narrative Sampling](../../../packages/application-runtime/src/narrative/sampling.ts) |
 | 单次调用 | 扩展已有受能力声明约束的 `ctx.ai.invoke`，不要求创建 Agent Session；共用采样器可独立使用，但完整无 Session Prompt 加工合同仍未完成 | [Extension Host](../../../packages/extension-sdk/extension-host/src/instance.ts) |
 | Token 基础 | Gateway 返回 Provider usage；本轮检查的构建与历史加工路径未发现可复用的发送前模型 Token 估算能力，文本预算目前为字符数 / 条目数 | [Gateway](../../../packages/ai-gateway/src/gateway.ts)、[Token 讨论](../discussion/application/prompt/token-estimation-and-audit-v0.md) |
 
@@ -314,7 +317,7 @@ Agent 经 CodeAct 调用 --+     |
 
 记忆插件保存自己的摘要、处理进度和**默认有效 Head**；Memory / Sampling 侧据此准备主 Agent 默认有效范围。Timeline 的原始 Head 每次写入都会推进，但不等于默认有效 Head 被推进。专项消费者传临时参数，不要求逐节点增加 `is_hidden`，不新增 Session Narrative 快照。
 
-因此，只有总结插件完成一轮总结并推进默认有效 Head 时，新的 Raw 节点才会进入默认 `@chat.narrative` 投影。有效 Head 未变化期间，新写入只会通过当前 Agent Session 的 Tool Call / Tool Result 历史存在，不会自动进入前方 Narrative 区。Memory / Sampling 必须区分原始 Timeline Head 与默认有效 Head；不能每轮用最新原始 Head 代替有效 Head。
+因此，只有总结插件将准备好的结果在 Session 总结边界正式采用并推进默认有效 Head 时，新的 Raw 节点才会进入默认 `@chat.narrative` 投影。有效 Head 未变化期间，新写入只会通过当前 Agent Session 的 Tool Call / Tool Result 历史存在，不会自动进入前方 Narrative 区。Memory / Sampling 必须区分原始 Timeline Head 与默认有效 Head；不能每轮用最新原始 Head 代替有效 Head。
 
 分支归属、范围更新权限以及摘要可用性与范围推进的一致性仍待确认。Timeline Head 是原始数据头，不因总结移动；Memory 插件推进自己的 `coveredThroughNodeId` 或等价指针。修改有效范围不自动改写已经发出的 Provider 请求，下一次 PromptBuild 才消费新组合。
 
@@ -349,6 +352,17 @@ Narrative 使用普通 Anchor 定位，不因采样引入带参数的特殊锚�
 
 ## 7. 非目标
 
+### 本轮执行切片：共用正文加工（2026-09-24）
+
+用户已授权继续不涉及新产品决策的实施。本轮目标是让已确认的范围请求复用同一正文加工路径，不把整个生命周期标为完成。
+
+- 采样模块：修复完整性、预算续读、空分支非法起点与分页顺序；限定保留的正文大小，并支持取消。固定 Head 只固定节点路径终点，不宣称现有可编辑节点具有跨分页的版本快照。
+- Runtime：提供不要求创建 Session 的 `sampleNarrative` 调用；显式选择 raw 或使用指定 Preset / 现有 Session 的 prompt 规则。复用已有规则顺序、覆盖和诊断，不增加宏历史求值策略。
+- Prompt / CodeAct：复用同一 Narrative 文本加工函数；CodeAct 的 prompt 视图使用宿主选定的规则，不能由脚本指定其他 Preset。保持默认 raw，保持当前默认 Prompt 窗口，不偷偷实施有效 Head 策略。
+- 写集：`narrative/sampling.ts`、新的正文加工 helper、`runtime/transforms-runtime.ts`、`agents/agent-turn.ts`、`runtime/agents-runtime.ts`、CodeAct Context / 教程、Runtime 导出类型及定向测试。
+- 主要验证：真实 Store 的跨页次序、区间边界、预算续读、读取间新增节点和取消；无 Session 加工、规则覆盖、原文不变；两种 CodeAct 传输下 raw / prompt 与被动 Prompt 内容一致。公共接口变化补 Runtime build，不跑全仓验收。
+- 停止边界：Memory 默认范围的持久化与采用、历史权限分层、引用展开、Session 总结与消息回放不在本轮自行定案。正文不增加宏求值层，见第 16 节后续澄清；Setting 的重新渲染仍遵循其上下文生命周期。当前 Timeline / Branch 绑定不是历史分层授权已经完成的证明。
+
 本计划暂不：
 
 - 设计完整的记忆插件算法或 LV1 / LV2 / LV3 Schema；
@@ -375,7 +389,7 @@ Narrative 使用普通 Anchor 定位，不因采样引入带参数的特殊锚�
    - 解除 prompt 向加工对持久 Agent Session 的不必要依赖；
    - 服务被动 Prompt 输入和 CodeAct 主动读取，不重复实现采样器；
    - 确认分支、节点边界、顺序、加工规则与预算报告。
-   - **已完成首个子切片**：`createNarrativeSampler` 支持固定分支终点、tail / range 选择、字符与节点预算、`nextBeforeNodeId` 续读信息；绑定 Timeline 的 CodeAct Scope 提供只读 `ctx["readNarrative"]`。尚未把该采样结果接入默认 Prompt 的 `@chat.narrative`，也尚未接入 Memory 摘要和历史正文加工规则。
+   - **已完成采样与正文加工子切片**：固定分支终点、tail / range、预算续读与取消；Runtime 显式消费者规则加工；CodeAct raw / prompt 和默认 Prompt 共用读取 / 正则基础。Memory 默认范围与生命周期仍未完成；正文宏求值不是待补能力，见第 16 节。
 
 3. **统一整理与记事板携带**
    - 接收有效策略，在安全边界完成工作交接；Memory 侧推进指针后，下一次 PromptBuild 获取新的摘要与 Raw；
@@ -492,12 +506,12 @@ Narrative 使用普通 Anchor 定位，不因采样引入带参数的特殊锚�
 - **Narrative 追加工具事务重入**：原实现从 Data Engine 事务内调用普通 Store 读取。改为先取分支快照，再用 Narrative Store 原生追加事务，保留 expectedHeadNodeId 并发校验；跨故障持久化由上述真实写入场景验证。
 - 现有 Content Tool 测试中“工具描述必在第一条消息”的旧假设已更新；描述物理顺序由完整骨架仿真约束。
 
-### 仍失败的目标合同
+### 目标合同与后续修复
 
-1. **跨交互 / 重启的工具历史回放**：已持久化的 Native 调用与结果、Content 调用与结果没有进入下一轮 Session Prompt；故障前已经提交的工具行动也会缺少工作记录。
-2. **Narrative 基线采用时点**：没有显式总结或基线重建，新一轮 Invoke 就重新读取最新窗口，把刚写入正文移入前方 Narrative 块。当前仅 Run 内前缀固定，不满足之前约定的跨交互冻结基线。
+1. **跨交互 / 重启的工具历史回放（2026-09-24 已修复，见第 17 节）**：原有缺口为已持久化的 Native 调用与结果、Content 调用与结果没有进入下一轮 Session Prompt；现已恢复，原目标测试转为普通通过用例。
+2. **Narrative 基线采用时点（2026-09-24 已接通记忆来源，见第 19 节）**：原缺口是每轮读取最新窗口，追加后立即改变前部。当前测试以持久化已发布范围作为输入，Preview / Invoke 均读取同一范围，基线冻结转为普通通过。未注册来源的旧宿主仍待迁移，不冒充该合同已在默认生产安装中启用。
 
-这两项使用显式 `it.fails('KNOWN GAP: ...')` 保存目标断言。它们是已复现的缺口，不是正常功能通过；修复后必须移除预期失败标记并按普通测试验收。它们需要后续 Session 投影 / 生命周期切片，不能用只调整测试预期掩盖。
+最初这两项使用显式 `it.fails('KNOWN GAP: ...')` 保存目标断言；两项现已在已配置来源的仿真路径成为正常通过。原始下列数字保留其历史验证范围，不当作当前完整验收。
 
 ### 本轮验证
 
@@ -595,9 +609,9 @@ Narrative 使用普通 Anchor 定位，不因采样引入带参数的特殊锚�
   新工作段的必要消息
 ```
 
-以 1～40 楼、保留 8 楼为例：第 32 楼结束时只是准备点，Memory 开始总结 1～32，Prompt 不变；33～40 楼继续通过 Tool Call / Tool Result 存在。第 40 楼当前工作流结束后，Session Summary 可以独立完成并隐藏旧工作段；Narrative Summary 完成时才推进默认有效 Head、注入 Memory 与 33～40 Raw。Narrative Summary 失败不会阻塞 Session Summary，但可能造成暂时的剧情遗忘。
+以 1～40 楼、保留 8 楼为例：第 32 楼结束时只是准备点，Memory 开始总结 1～32，Prompt 不变；33～40 楼继续通过 Tool Call / Tool Result 存在。第 40 楼当前工作流结束后，Session Summary 可以独立完成并隐藏旧工作段；若 Narrative Summary 已准备好，才在这个采用边界推进默认有效 Head，注入 Memory 与 33～40 Raw。摘要提前完成不提前采用；失败或仍在运行不会阻塞 Session Summary，但可能造成暂时的剧情遗忘。迟到摘要不会自行改写正在使用的前缀。
 
-不能把旧工作段中的单条 Tool Call 或 Result 拆开删除。至少要以完整交互组、已完成 Run 或明确的 Session 工作边界为单位退出 Prompt。跨 Run 的 Tool Call / Result 回放必须有明确的事实投影规则；当前实现仍未完成。
+不能把旧工作段中的单条 Tool Call 或 Result 拆开删除。至少要以完整交互组、已完成 Run 或明确的 Session 工作边界为单位退出 Prompt。跨 Run 的 Tool Call / Result 事实回放已由第 17 节实现；工作交接后的整段退出、记事板携带尚未实现，不能由回放测试推定完成。
 
 Session 单独因为容量压力整理时，不自动推进 Memory 指针。此时它只能：
 
@@ -673,3 +687,179 @@ Narrative 默认有效 Head
 - PromptBuild 如何报告贡献范围和估算成本，让 Runtime 知道清理后是否真的可发送。
 
 本节不把字符数、Token 和剧情楼层混成一个指标。楼层 / 交互次数表达剧情整理节奏；预算表达能否继续发送；Session 工作段规模表达是否需要工作交接。
+
+## 16. 共用采样与正文加工交付（2026-09-24）
+
+### 已实现的调用合同
+
+可信 Runtime 调用方可以直接请求范围，省略 `processing` 即为原文，不需要 Session：
+
+```ts
+const story = await runtime.sampleNarrative({
+  timelineId,
+  branchId,
+  selection: { kind: 'range', afterNodeId, throughNodeId },
+  processing: { phase: 'prompt', presetId },
+}, signal)
+```
+
+`afterNodeId` 不包含，`throughNodeId` 包含；`tail` 请求使用 `count` 和可选 `throughNodeId`。消费者可用 `consumerAgentSessionId` 代替 `presetId`，沿用该 Session 的规则覆盖，两者不能同时指定。此入口未另行接入 RPC / Extension SDK；宿主可直接使用，工具侧已有以下受绑定入口：
+
+```js
+const story = await ctx.readNarrative({
+  selection: { kind: 'tail', count: 3 },
+  view: 'prompt'
+})
+print(story.text)
+```
+
+CodeAct 默认 `view: 'raw'`；选择 `prompt` 时使用宿主准备本轮 Prompt 时选定的规则，不允许脚本更换 Timeline、Branch、Preset 或传入任意规则。`nodes[].body.raw` 保留原文，`nodes[].text` 和总 `text` 为所选视图，`processing` 记录 phase、规则版本与诊断。宏与链接仍按原文本保留，不因这次接线而递归展开。
+
+### State 宏的职责澄清（2026-09-24，已确认）
+
+State 宏主要用于 Setting 等提示词资源及 UI 的变量展示，不把模型生成的 Narrative 正文视为待执行宏的模板。默认生成链路中，Setting 的宏先展开为具体文本，再注入给模型；例如好感度由 20 变成 80，变化的是后续被采用的 Setting 投影和 UI 状态展示，不是回头重新解释第 10 楼正文。
+
+因此撤销“正文宏应读取历史 State 还是最新 State”的待决问题，不为这一假设增加历史宏快照、正文模板标记或第二次宏求值。正文仍可按所选正则规则加工，但字面出现的 `{{...}}` 不自动当作 State 引用执行。
+
+该结论不等于模型在任何工具路径下都不可能看见宏源码：显式读取作者原文、源码编辑或调试路径应保留源码与渲染视图的区别，也不在本轮新增开关。Setting 何时采用更新、UI 如何展示变量仍归各自生命周期，不因 State 变化就自动重建整个 Narrative 前缀。
+
+### 修复与边界
+
+- 分页输出保留剧情正序；旧历史加工路径整体倒序导致页内顺序反转的问题已修复。
+- 完整结果不再给出越过本次请求起点的续读游标。预算不足只保留连续尾段；下一次将 `nextBeforeNodeId` 作为包含式 `throughNodeId`，range 保留原起点，tail 扣除已返回节点数量。
+- 单次上限沿用正文管线的 1000 节点 / 2000000 字符量级；预算可以调低，较大请求显式续读。只保留预算内文本和一页工作数据，不再把全部历史正文积在内存后裁剪；为校验区间起点仍可能遍历多页。
+- 单节点超过字符预算明确失败；不返回一个没有正文、也没有进展依据的空成功。加工后膨胀也校验输出预算，不静默丢内容；CodeAct 桥接 / print 限额仍独立生效。
+- 固定 Head 保证追加节点不会混入本次读取，固定 Branch 保证切换活动分支不会串读；这不是可编辑正文的数据库版本快照。读取期间旧节点被编辑的一致版本需求未实现。
+- 正则沿用有效规则顺序与覆盖。`position` 和 depth 都相对于本次返回窗口，不是绝对楼层；各页独立加工不能冒充整段加工后分页。
+- 默认 Prompt 改为复用采样器，但仍明确保留最近 100 节点旧策略。没有默认有效 Head 时不虚构记忆范围，也没有提前启用摘要更新、Session 快照或新权限开关。
+
+### 验证与剩余工作
+
+- `narrative-sampling.test.ts`、`narrative-projection.test.ts`、`codeact-tool-loop.test.ts`、`default-preset.test.ts` 共 **36 项通过**；Runtime build 通过。
+- 使用真实临时 SQLite，覆盖 105 / 205 节点分页、起止包含关系、错误分支、空分支非法指针、续读无重漏、读取间追加和分支切换、取消、无 Session 的 Preset 加工、规则隔离与覆盖顺序、输出膨胀失败。
+- Content 与 JSON 两种 CodeAct 传输经过真实 Sandbox 和工具循环；加工结果与被动 Prompt 一致，原文与宏源码未被改写。Gateway 为测试替身，不宣称真实模型表现或 Provider 缓存命中。
+- 本轮未执行全仓测试或完整生命周期仿真；第 13 节的工具回放和基线采用缺口不因这 36 项通过而消失。没有前端视觉改动。
+- 剩余设计边界：引用展开、Memory 有效范围持久化与采用、历史授权分层。正文宏求值已按上文职责澄清排除，不再作为 Projection 的实施阻塞。当前同分支任意合法范围仍可经工具采样；绑定 Timeline / Branch 不能冒充已经落实第 6.4 节或 CodeAct Plan 的历史访问政策，不能据此宣布整个 Plan 可归档。
+
+## 17. Session 工具历史回放切片（2026-09-24）
+
+**本切片已完成，整个 Plan 仍 In Progress**：修复第 13 节的跨交互工具历史回放，不修改 Memory 范围、总结策略、工具权限或当前 Run 的执行流程。
+
+- Session 投影复用持久 Transcript，保留 Native 调用 / Tool Result、Content 调用 / 返回的完整批次及原参数、正文和结果。编译器仅对 Session 来源承接原生消息载荷，不把工具记录降成普通 system 文本，也不让正则修改工具代码。
+- 原有最近 100 条窗口若从批次中间开始，向前补齐至该 Provider Step 的边界；不将 100 条称为 100 轮，也不以此替代后续 Session 总结。
+- 未记录结果的调用、没有可恢复 Native 协议的残缺记录作为历史事实说明，明确结果未知，不编造成功回执或自动重试副作用。该说明只属于 Prompt 投影，不回写 Transcript。
+- 写集：Session 投影 helper、Prompt 载荷 / 编译器、Agent Turn 接线、历史窗口读取、共用工具结果文本格式与定向测试。
+- 验证：磁盘 SQLite 重开后的原生命周期仿真；Native 批量调用、Content 原文、失败 / 拒绝 / 中断、缺失结果、跨页边界、原生块不可被外层 role 改写。相关 Runtime 类型 / 构建检查；Narrative 基线冻结仍保留未通过状态。
+
+### 实际交付与验证
+
+- `agents/session-history.ts` 从已有 Transcript 生成 Session 消息批次；Native 保留 `tool_calls` / `tool_call_id`，Content 重建调用块与结果块。调用批次保持完整，模型复用的 Native Call ID 在历史中做局部消歧，匹配结果同时更新；不修改持久记录。
+- Prompt Contribution 可携带 Session 原生消息；编译器不按外层 MessageBlock 重写这些角色，不合并 / 拆散批次。其他来源不能借该字段伪造 Session 原生载荷。普通 Session 文本继续使用现有正则，工具参数、代码、结果不经过文本宏或正则重写。
+- 共用 `tool-result-text.ts` 保持当前 Tool Loop 和历史回放的结果文本一致。回放不调用 Registry，不重新批准或执行工具；取消仍由原 Tool Loop 记录，不增加另一套取消路径。
+- `readSessionHistory` 以最近 100 条为起点，只向前补齐最早被截断的 Provider Step，不无限扩成完整 Session。该窗口策略不是自动总结，不解决更早工作段被截断的问题。
+- 最小验证命令覆盖 `session-history.test.ts`、`default-preset-lifecycle.test.ts`、`compiler.test.ts`、`default-preset.test.ts`、`native-tool-loop.test.ts`：**42 项正常通过，1 项已知预期失败**。Application Runtime build 通过。未运行全仓或真实 Provider 验收。
+- 原生命周期仿真现在验证：同 Run 工具调用；第二轮保留先前工具写入；Provider 报错前已提交的正文与工具结果保留；SQLite 重开后第三轮继续回放；新 Session 不继承旧 Session 工具事实；没有因 Preview / 回放增加执行次数。
+- 保留限制：历史 Provider 消息由结构化 Transcript 重建，不承诺与当时响应字节完全一致或缓存命中；原生参数的 JSON 空白、Content 包裹及其与普通 assistant 文本的分段不作为归档原始响应。Fresh Context 临时挂载仍未持久回放，Narrative 默认基线仍会每轮更新；它们不是本次测试已证明完成的部分。
+
+## 18. 整体归档核对（2026-09-24）
+
+**结论：不可归档。** 本轮按当前源码核对第 8～9 节，而非把已交付切片当作整个计划完成。继续执行已获授权；涉及尚未确认的默认行为、持久化归属和权限时仍需先收束决策。
+
+| 验收项 | 当前证据与剩余工作 |
+| --- | --- |
+| 默认骨架与原生消息 | 模板和原生接线已交付；Session 原生工具协议已有定向测试。占位 Anchor 存在不代表对应生命周期已实现。 |
+| 共用正文采样与加工 | 已复用范围读取和正则加工，不增加 Narrative State 宏求值。第 21 节已增加宿主区间约束与逐次 Tools 审批；旧历史默认拒绝，审批 UI 接线由 Tools 任务继续。 |
+| 默认 Memory + Raw | 第 19 节已接通注册来源，校验明确范围并注入 Memory / Raw。官方默认生产者尚未安装接线；无来源旧路径保留迁移诊断，不是无插件兜底。 |
+| Session 工作交接 | 已有持久化 `work-summary`、工作段退出、记事文本携带及重开恢复；保留全部原始 Transcript。自动生成交接文本、触发与确认 UI 尚未完成。 |
+| 失败与多 Session | 真实工具 / SQLite 仿真覆盖 32 楼准备、40 楼交接通知发布、41 楼保持范围、新 Session 共用剧情但不继承工作记录，以及发布失败的独立收据；后台自动调度和真实模型效果仍未验证。 |
+| 动态 Setting / Notice | 已有激活求值与临时 Fresh Context；状态变化提醒、停用残留、交互快照和临时挂载的跨轮行为尚未整体交付。 |
+| 配置宏设置 | 第 20 节已交付候选编辑、显式选择、默认恢复、Timeline + Preset 引用持久化及 Preview / Invoke 共用解析。19 项定向测试通过；没有自动确认弹窗，UI 视觉待用户验收，存档缺少 Card 快照等来源的限制明确保留。 |
+
+下一实施入口是默认有效范围的生产与消费接线。已确认它不归每个 Session 保存，也不由 PromptBuild 猜测。2026-09-24 用户补充：官方记忆插件默认自带且可替换，因此默认范围提供者按基础能力存在来设计；没有安装记忆插件的自动兜底不是本轮前置。不创建独立的无插件基线或 Session 投影快照。
+
+首次归档核对只修正文档中“摘要完成即采用”的过时表述；随后已按用户补充完成第 19 节实现，本表同步更新。第 16～17 节测试记录保留其原验证范围；真实 Provider 缓存效果仍未验证。完整记忆算法继续由独立记忆 Plan 承担，不通过扩大前置任务或删除本表剩余项来宣称可归档。
+
+## 19. 可替换记忆来源接线（2026-09-24）
+
+**目标**：让记忆插件发布的 Memory 与固定 Raw 范围实际进入默认 Prompt；普通正文追加不能扩大该范围。官方专用记忆插件与未来自由文档式记忆使用同一个接收边界，不建立两套投影系统。
+
+已确认：官方插件负责默认能力和自身持久化；自由记忆可以用 Setting 注入记忆锚点，但仅有记忆文本不自动改变 Raw 范围。Agent 主动更新范围属于后续兜底，不是当前实施前置。
+
+最小实施设计：
+
+- SDK 声明只读的默认剧情上下文来源；沿现有扩展注册、能力声明与释放机制接入。来源自行判断是否服务某个 Timeline / Branch；同一分支有多个默认范围来源同时生效时明确报冲突，不按注册顺序抢占。
+- Runtime 接收来源版本、记忆条目及其覆盖节点、固定 Raw 起止节点。`null` 明确表示空 Raw，不以省略终点隐式追随最新 Head。来源只返回已采用结果，准备中的摘要保留在插件自身。
+- 共用采样器校验分支路径和范围，读取 Raw 后复用现有正则加工；记忆文本进入 `@memory.narrative`，不执行宏或伪造 Session 消息。Preset 仍决定外层 role。
+- 接收路径完成后，继续实现同一 Plan 已确认的显式 Session 工作交接与采用通知，不实现摘要算法、自动触发器或跨扩展历史授权。现有未接来源的宿主调用是待迁移旧路径，不把它包装成产品兜底或宣称官方插件已经交付。
+
+写集：SDK / Extension Host 注册接缝、Runtime 来源读取与 Agent Turn 接线、Studio Server 注册桥、定向集成测试及正式合同文档。
+
+主要验证：真实 SQLite 的 1～40 楼，固定前缀、已准备但未采用的摘要、显式发布后的 Memory + Raw、重开数据库与新 Session、错误分支与多来源冲突；扩展卸载后释放来源。Provider 使用测试替身，不把内容一致性等同于真实缓存命中。
+
+### 实际交付
+
+- SDK / Extension Host / Server 注册已贯通，能力名为 `narrative.context.provide`。来源按分支返回已发布 Memory 和 Raw 终点；默认 Memory 声明连续前缀覆盖，Raw 从其后开始。专项任意范围仍走采样接口。
+- Runtime 的 `completeAgentSessionHandoff` 及同名 RPC 保存已生成的工作摘要。新增 canonical `work-summary` Entry，不增加表或 Session Narrative 副本；Store 以计数 CAS、安全 Run 状态及完整工具组约束提交。
+- 工作段按页读至上次交接，不再丢弃第 100 条以前尚未总结的工具事实。最新交接文本进入 `@memory.session`，旧段只退出 Prompt，原记录不删；旧失败任务不再被 resume 复活。
+- 提交交接后通知来源的可选 `onSessionHandoff`。插件只采用已准备结果，未就绪则保持原发布状态；回调失败单独返回 `memoryNotification`，保留 Session 成功收据。不宣称插件写入与 Session 交接是一个原子事务。
+- 正式合同见 [默认剧情上下文来源](../../architecture/application/extension/narrative-context.md)。自动运行总结 Agent、次数 / Token 触发、官方插件安装、版本编辑失效和前端确认流程均未由这个 API 自动实现。
+
+### 验证与归档边界
+
+五个定向测试文件：`narrative-context.test.ts`（Runtime）、`session-history.test.ts`、`default-preset-lifecycle.test.ts`、Extension Host 的 `narrative-context.test.ts`、`session-handoff-rpc.test.ts`，共 **19 项正常通过，没有预期失败**。覆盖真实持久化、实际工具循环、共享 / 隔离范围、完整工作段、两步交接与独立失败收据。后续为 Host 增补了采用通知断言，同文件 4 项复跑通过，不重复累加测试数。
+
+Studio Server build（含本次跨包依赖）通过。测试首次定向类型检查发现夹具错误使用了 `documents.get<T>`；已改为真实 Store 调用并在夹具边界标注已知内容类型，五个测试文件的定向类型检查最终为 0 条诊断，相关 Diff 检查通过。没有全仓测试、真实模型或 UI 视觉验收。
+
+**整个 Plan 仍不可归档**。剩余项继续保留在第 18 节；本节交付时未决的宏候选作用域与引用更新策略，已于第 20 节获用户确认并实施，不再用临时 React 状态代替持久配置。
+
+## 20. 配置宏选择持久化（2026-09-24）
+
+第 2.6 节的作品作用域和引用更新策略已获用户确认，继续实施，不再把它列作阻塞。
+
+1. 保留资源 `macros` 的标量默认值，用同资源的 `macroOptions` 保存额外候选的稳定 ID、名称和正文；选项引用不复制正文。
+2. DocumentStore 保存每个 `Timeline + Preset` 的选择映射，按版本 CAS 更新。预览与真实调用共用读取；单次显式参数只覆盖当次，不污染持久选择。
+3. 用户在现有宏面板明确选择卡 / 预设候选、保留预设或恢复默认；切换自动保存，失败保留当前目标与错误，不偷偷重试冲突。独立卡预览不冒充游玩持久配置。
+4. 配置随 Timeline 删除；存档导出 / 恢复保留引用并绑定恢复后的 Timeline，不把 Preset / Card 原文复制到配置记录。缺失来源仍可诊断，不自动重绑定同名资源。
+5. 主要验证：真实 SQLite 重开、换 Session / 分支共享与另一局隔离、同预设候选切换、来源失效、预览 / 调用一致、版本冲突、存档恢复；前端目标隔离与保存失败使用现有 Hook 测试。实际视觉由用户验收。
+
+### 实际交付与验证
+
+- Shared 定义候选及结构化引用；Card / Preset 的读取、编辑、复制与导入导出携带 `macroOptions`。既有 `macros` 保持默认文本语义，不迁移或复制长文本进选择记录。未显式选择时使用 Preset 标量默认；没有默认且多候选时继续报冲突。
+- 新增 DocumentStore 配置类型与 get / update RPC，校验候选、版本及事务内 Timeline 存在性。删除局或随卡删除游玩数据时清理配置；存档保留引用、恢复后绑定新 Timeline。没有新表、第二套宏存储或新增依赖。
+- 前端复用作者宏编辑器和来源面板；持久选择使用 TanStack Query，保存成功才发布新值，取消旧查询再更新对应目标的缓存。读写失败、版本冲突不自动重试，旧 endpoint / Timeline 的异步结果不覆盖新目标。独立 Card 预览仍只保留局部草稿。
+- Timeline Preview 与 Invoke 默认从后端读取配置；单次显式入参不污染持久状态。所选候选删除后 Preview 可诊断，正式调用在发送模型请求前拒绝，不偷偷切回默认；恢复默认是显式删除选择。
+- 6 个定向测试文件共 **19 项通过**：`macro-configuration.test.ts`、`macro-provider.test.ts`、`macro-selection.test.ts`、`macro-configuration-rpc.test.ts`、`timeline-archive-participant.test.ts`、`state-variables-panel.test.ts`。覆盖真实磁盘 SQLite 重开、跨 Session / Branch 共用、另一 Timeline / Preset 隔离、候选更新 / 删除、临时覆盖、真实 HTTP RPC、存档及并发删除、Query 保存失败与迟到响应隔离。
+- Studio Server build（含跨包依赖）、Client TypeScript 检查通过。定向测试类型检查首次因遗漏 Client 的 Vite SCSS 类型声明失败，补入现有 `vite-env.d.ts` 后为 **0 条诊断**；不是业务代码或构建通过后的隐匿错误。未执行全仓、真实模型或浏览器验收。
+
+### 保留边界
+
+- Card 宏候选跟随已有 Timeline Runtime Context 快照，不因编辑全局 Card 自动改变旧局。Preset 候选编辑则由下一次构建读取；不新增快照更新策略。
+- 现有 Timeline 存档没有完整保存 Card Runtime Context，也不携带 / 重映射全部 Prompt Resources。本次只保证配置引用往返；恢复的 Card 候选可能缺失，即使全局 Card 仍存在，也不会擅自拿其当前版本代替旧局快照。定向测试证明这种情况会报错且可显式恢复默认，不能据此声称完整资源迁移已经完成。
+- 没有新增作品候选自动弹窗、全局默认选择面板或多选宏组合。当前通过来源面板明确选用作品 / 预设候选，符合单值配置的最小交互；UI 视觉与手感仍由用户验收。
+- 第 18 节其他 Context 生命周期缺口继续有效，本切片完成不意味着整个 Plan 可以归档。
+
+## 21. Narrative 主动读取权限（2026-09-24）
+
+用户已确认：摘要覆盖 1～32、默认有效 Head 为 40、最新正文为 45 时，被动 Raw 为 33～40；主 Agent 默认可主动读取 33～45。旧正文经 Tools 的显式审批才可读取。不引入四级权限、Session 投影副本或永久授权状态。
+
+- `narrative/sampling.ts`：增加宿主限定区间，固定 Timeline / Branch 与包含式终点、排除式起点；Agent 的节点 ID、count 和续读只能缩小区间。底层无约束采样保留给可信 Runtime，不直接暴露给 Agent。
+- `narrative/access.ts` 与 `runtime/agents-runtime.ts`：每次主动读取取得已采用的覆盖边界与当前原始 Head，校验上下文来源；主动读取不推进被动基线。缺失来源明确失败，不用最新历史猜测授权。
+- `agents/tool-registry.ts`：沿既有 ToolApprovalHandler 增加有界历史读取 action。原工具获准执行不等于旧历史获准；未配置处理器、拒绝或取消均不返回旧正文，每次越界请求单独审批。
+- 不修改 CodeAct 方法、Sandbox 或教程。当前 UI 审批预览仅支持 VFS 修改，历史读取的弹窗适配由 Tools 任务接续；本轮交付真实审批回调与默认拒绝，不能宣称弹窗已完成。
+- 验证：真实 SQLite 的 1～45 楼与跨页历史；固定有效 Head、来源更新、上下界与分支隔离、尾部数量裁剪、连续续读、允许 / 拒绝 / 缺处理器 / 取消、主动被动加工一致。仅运行相关定向测试及公共接口类型 / 构建检查。
+
+### 实际接口与交接
+
+- `createNarrativeSampler(store, allowedRange)` 固定宿主范围，参数不属于 Agent 请求；tail 只在授权区间内取最多 N 条，显式越界端点拒绝，返回的续读不跨下界。范围证明使用分页遍历，保留有限正文；后续可由 Store 的索引化区间查询优化，不增加权限缓存。
+- `createNarrativeReader({ store, context, timelineId, branchId }).sample(...)` 每次取得已采用的覆盖边界与当前正文 Head。没有默认来源时明确失败；不沿用被动旧路径的最近 100 节点回退。主动补读与被动基线推进相互独立。
+- Run 的 `ToolExecutionScope.narrative.sample` 已接有界 reader，原 `view: raw / prompt` 保持不变；CodeAct 接口 / Sandbox / 教程未修改。既有 CodeAct 加工测试补入了明确的模拟记忆来源，不冒充默认官方插件。
+- Tool Registry 执行时绑定该工具自己的 `approve`。额外 `action.kind = narrative-history-read` 带目标、固定终点、selection 与预算；未配置 handler 默认拒绝。有 handler 必须检查 action，批准仅对本次读取有效，不能由脚本自带放行函数。取消后不返回旧正文，也不把审批等待期间的新正文算进该次授权。
+- 原文 / 正则投影与默认边界读取的调用例、模块责任、错误语义见 [正式消费合同](../../architecture/application/extension/narrative-context.md#消费接口)。现有 `NarrativeContextRegistry.resolve` 已能取得来源边界，没有新增第二套拼接或 Memory 状态。
+- Tools 任务仍需把 action 接到现有 Yes/No 交互并处理等待预算；当前 UI 类型只有 VFS 修改预览，不能宣称历史读取弹窗可用。无需新增产品决策或等待完整 Session 生命周期。
+
+### 验证结果
+
+- `narrative-read-access.test.ts`、`narrative-sampling.test.ts`、`narrative-context.test.ts`、`narrative-projection.test.ts`、`codeact-tool-loop.test.ts` 共 **39 项通过**。新用例既验证 Store 区间，也验证 Tool Registry 的实际处理器绑定及 Content / JSON 两种真实 CodeAct Sandbox 工具循环。
+- 新生产链夹具最初直接创建底层 Timeline，缺少正式 Runtime 初始化的 State，导致两项用例失败；已改用真实 Card / Timeline 创建入口，复跑正常。不是给生产代码增加默认 State 来掩盖失败。
+- Runtime build 在本次代码接线完成时通过；最终定向测试类型检查仍有 **1 条并行修改引入的诊断**：`runtime/transforms-runtime.ts:237` 的新 `previewCardOpeningDisplay` 引用了不存在的 `applicationDocumentTypes.card`。本任务未修改该方法，不把当前工作区类型检查报告为通过。
+- 相关 Diff 检查通过。未运行全仓、真实 Provider 或 UI 验收；模拟记忆来源不代表总结算法已交付。读取授权 UI 与等待预算明确交接给 Tools 任务，整个 Context Plan 保持 In Progress。

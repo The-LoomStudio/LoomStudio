@@ -7,12 +7,14 @@ export function ConversationMarkdown(props: {
   codeBlockLabels: MarkdownCodeBlockLabels
   role: 'user' | 'assistant'
   value: string
+  safeHtml?: boolean
 }) {
   return (
     <MarkdownContent
       className={`${styles.content} ${styles[props.role]} ${props.className ?? ''}`}
       codeBlockLabels={props.codeBlockLabels}
       value={props.value}
+      safeHtml={props.safeHtml}
     />
   )
 }

@@ -1,5 +1,6 @@
 import type {
   ClientNodeDisplayProjectionContext,
+  ClientNotification,
   ClientNodeRenderMount,
   ClientRenderer,
   ClientRendererContext,
@@ -23,6 +24,10 @@ export type ClientRendererHandle = {
   dispose(): void | Promise<void>
 }
 
+export type ClientRendererInstanceHandle = ClientRendererHandle & {
+  update?(context: ClientRendererContext): void | Promise<void>
+}
+
 export type ClientRendererRegistration = RegisteredRendererContribution & {
   mount: ClientRenderer['mount']
   update?: ClientRenderer['update']
@@ -32,16 +37,18 @@ export type ClientRendererRegistration = RegisteredRendererContribution & {
     matches: ReadonlyMap<string, { start: number; end: number }>
   }>
   frame?: ClientRenderer['frame']
-  sandboxMount?: (root: HTMLElement, context: ClientRendererContext) => ClientRendererHandle
+  frameNotifications?: { show(input: ClientNotification): Promise<void>; signal: AbortSignal }
+  sandboxMount?: (root: HTMLElement, context: ClientRendererContext) => ClientRendererInstanceHandle
 }
 
-export type ClientRendererScopeSnapshot = {
+type ClientRendererScopeSnapshot = {
   workspace: string
+  cardId?: string
   timelineId?: string
   agentSessionId?: string
 }
 
-export type ClientRendererInstanceSummary = {
+type ClientRendererInstanceSummary = {
   contributionKey: string
   surface: RendererSurface
   scope: ClientRendererScope
@@ -56,10 +63,12 @@ export type ClientRendererHost = {
     projectNode?: ClientRendererRegistration['projectNode']
     projectNodeWithAnchors?: ClientRendererRegistration['projectNodeWithAnchors']
     frame?: ClientRendererRegistration['frame']
+    frameNotifications?: ClientRendererRegistration['frameNotifications']
     sandboxMount?: ClientRendererRegistration['sandboxMount']
   }): ClientRendererHandle
   list(surface: RendererSurface): ClientRendererRegistration[]
   find(contributionKey: string): ClientRendererRegistration | undefined
+  canUse(contributionKey: string, scope: ClientRendererScope): boolean
   setScopeSnapshot(snapshot: ClientRendererScopeSnapshot): void
   scopeSnapshot(): ClientRendererScopeSnapshot
   setUserOrder(surface: RendererSurface, contributionKeys: readonly string[]): void
@@ -74,6 +83,7 @@ export type ClientRendererHost = {
   diagnostics(): readonly RendererRegistryDiagnostic[]
   subscribe(listener: () => void): () => void
   revision(): number
+  renderRevision(): number
 }
 
 export function createClientRendererHost(): ClientRendererHost {
@@ -84,11 +94,35 @@ export function createClientRendererHost(): ClientRendererHost {
   const mountedInstances = new Map<string, ClientRendererInstanceSummary>()
   const listeners = new Set<() => void>()
   let currentRevision = 0
+  let currentRenderRevision = 0
   let currentScopes: ClientRendererScopeSnapshot = { workspace: 'workspace' }
 
-  function emit(): void {
+  function emit(renderChanged = true): void {
     currentRevision += 1
+    if (renderChanged) currentRenderRevision += 1
     for (const listener of listeners) listener()
+  }
+
+  function isAvailable(registration: ClientRendererRegistration): boolean {
+    const owner = registration.owner
+    return owner.kind !== 'extension' || owner.target?.kind !== 'card' || owner.target.cardId === currentScopes.cardId
+  }
+
+  function scopeAvailable(registration: ClientRendererRegistration, scope: ClientRendererScope): boolean {
+    if (registration.owner.kind !== 'extension' || registration.owner.target?.kind !== 'card') return true
+    let matches: boolean
+    switch (scope.kind) {
+      case 'workspace': matches = scope.key === currentScopes.workspace; break
+      case 'timeline': matches = scope.key === currentScopes.timelineId; break
+      case 'agent-session': matches = scope.key === currentScopes.agentSessionId; break
+      case 'node':
+        matches = scope.entity?.kind === 'narrative-node' && scope.entity.timelineId === currentScopes.timelineId && scope.entity.nodeId === scope.key
+        break
+      case 'message':
+        matches = scope.entity?.kind === 'agent-message' && scope.entity.agentSessionId === currentScopes.agentSessionId && scope.entity.messageId === scope.key
+        break
+    }
+    return isAvailable(registration) && scope.kind === registration.definition.instanceScope && matches
   }
 
   function releaseContributionClaims(contributionKey: string): void {
@@ -123,6 +157,7 @@ export function createClientRendererHost(): ClientRendererHost {
         ...(input.projectNode ? { projectNode: input.projectNode } : {}),
         ...(input.projectNodeWithAnchors ? { projectNodeWithAnchors: input.projectNodeWithAnchors } : {}),
         ...(input.frame ? { frame: input.frame } : {}),
+        ...(input.frameNotifications ? { frameNotifications: input.frameNotifications } : {}),
         ...(input.sandboxMount ? { sandboxMount: input.sandboxMount } : {}),
       }
       registrations.set(key, registration)
@@ -138,7 +173,14 @@ export function createClientRendererHost(): ClientRendererHost {
         },
       }
     },
-    find: contributionKey => registrations.get(contributionKey),
+    find: contributionKey => {
+      const registration = registrations.get(contributionKey)
+      return registration && isAvailable(registration) ? registration : undefined
+    },
+    canUse: (contributionKey, scope) => {
+      const registration = registrations.get(contributionKey)
+      return Boolean(registration && scopeAvailable(registration, scope))
+    },
     setScopeSnapshot: snapshot => {
       if (JSON.stringify(currentScopes) === JSON.stringify(snapshot)) return
       if (currentScopes.timelineId && currentScopes.timelineId !== snapshot.timelineId) {
@@ -148,11 +190,18 @@ export function createClientRendererHost(): ClientRendererHost {
         releaseScopeClaims('agent-session', currentScopes.agentSessionId)
       }
       currentScopes = { ...snapshot }
+      for (const [key, registration] of registrations) {
+        if (!isAvailable(registration)) releaseContributionClaims(key)
+      }
+      for (const [key, instance] of mountedInstances) {
+        const registration = registrations.get(instance.contributionKey)
+        if (registration && !scopeAvailable(registration, instance.scope)) mountedInstances.delete(key)
+      }
       emit()
     },
     scopeSnapshot: () => ({ ...currentScopes }),
     list: surface => orderRendererContributions({
-      contributions: [...registrations.values()],
+      contributions: [...registrations.values()].filter(isAvailable),
       surface,
       userOrder: userOrders.get(surface),
     }).contributions.map(contribution => registrations.get(rendererContributionKey(contribution))!),
@@ -161,7 +210,9 @@ export function createClientRendererHost(): ClientRendererHost {
       emit()
     },
     claim: (surface, scopeKey, contributionKey, options) => {
-      if (!registrations.has(contributionKey)) throw new Error(`Renderer contribution is not registered: ${contributionKey}`)
+      const registration = registrations.get(contributionKey)
+      if (!registration) throw new Error(`Renderer contribution is not registered: ${contributionKey}`)
+      if (!scopeAvailable(registration, { kind: registration.definition.instanceScope, key: scopeKey })) throw new Error('Renderer is outside this Card installation scope')
       const claimKey = managedClaimKey(surface, scopeKey)
       const result = claimExclusiveRenderer({
         surface,
@@ -193,16 +244,18 @@ export function createClientRendererHost(): ClientRendererHost {
       }
     }),
     trackInstance: (surface, scope, contributionKey) => {
+      const registration = registrations.get(contributionKey)
+      if (registration && !scopeAvailable(registration, scope)) throw new Error('Renderer is outside this Card installation scope')
       const key = `${contributionKey}@${scope.key}`
       mountedInstances.set(key, { contributionKey, surface, scope: structuredClone(scope) })
-      emit()
+      emit(false)
       let disposed = false
       return {
         dispose: () => {
           if (disposed) return
           disposed = true
           mountedInstances.delete(key)
-          emit()
+          emit(false)
         },
       }
     },
@@ -212,7 +265,7 @@ export function createClientRendererHost(): ClientRendererHost {
         && current.contributionKey === diagnostic.contributionKey
         && current.message === diagnostic.message)) return
       reportedDiagnostics.push(diagnostic)
-      emit()
+      emit(false)
     },
     invalidate: emit,
     diagnostics: () => reportedDiagnostics,
@@ -221,6 +274,7 @@ export function createClientRendererHost(): ClientRendererHost {
       return () => listeners.delete(listener)
     },
     revision: () => currentRevision,
+    renderRevision: () => currentRenderRevision,
   }
 }
 

@@ -189,24 +189,24 @@ describe('Studio Server logging', () => {
         config: { baseUrl: 'https://example.test/v1' },
         enabledModelIds: [officialFakeModelId],
       })
-      const agentProfile = await callRpc<{ agentProfile: { id: string } }>(port, 'application.createAgentProfile', {
-        name: 'Private Agent Profile',
+      const agentPreset = await callRpc<{ agentPreset: { id: string } }>(port, 'application.createAgentPreset', {
+        name: 'Private Agent Preset',
         presetId,
         model: { providerProfileId: provider.providerProfile.id, modelId: officialFakeModelId },
       })
       const created = await callRpc<{ session: { id: string } }>(port, 'application.createAgentSession', {
-        agentProfileId: agentProfile.agentProfile.id,
+        agentPresetId: agentPreset.agentPreset.id,
       })
 
       const preview = await callRpc<{ messages: unknown[] }>(port, 'application.previewAgentTurn', {
         agentSessionId: created.session.id,
         input: 'Private user prompt',
-        narrativeTarget: { timelineId: timeline.timeline.id, commit: false },
+        narrativeTarget: { timelineId: timeline.timeline.id },
       })
       const turn = await callRpc<{ runId: string; projection: { messages: unknown[] } }>(port, 'application.invokeAgentTurn', {
         agentSessionId: created.session.id,
         input: 'Private runtime prompt',
-        narrativeTarget: { timelineId: timeline.timeline.id, commit: true },
+        narrativeTarget: { timelineId: timeline.timeline.id },
       })
       const page = await callRpc<{
         items: Array<{
@@ -266,9 +266,9 @@ describe('Studio Server logging', () => {
       expect(JSON.stringify(providerPage.items)).not.toContain('Private')
       const runPage = await callRpc<{ items: Array<{ event: string; data: Record<string, unknown> }> }>(port, 'logs.list', { limit: 10, namespacePrefix: 'runtime.run' })
       expect(runPage.items.map(record => record.event)).toEqual(['run.started', 'run.completed'])
-      expect(runPage.items[1]?.data).toMatchObject({ runId: turn.runId, providerStep: 1, toolCount: 0, narrativeCommitted: true })
+      expect(runPage.items[1]?.data).toMatchObject({ runId: turn.runId, providerStep: 1, toolCount: 0 })
       const commits = memory.list().filter(record => record.namespace === 'runtime.commit')
-      expect(commits.map(record => record.event)).toEqual(['commit.started', 'commit.completed'])
+      expect(commits).toEqual([])
       expect(JSON.stringify(runPage.items)).not.toContain('Private')
     } finally {
       await server.close()

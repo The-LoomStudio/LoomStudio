@@ -49,7 +49,7 @@ pnpm --filter @loom-studio/kernel build
 pnpm exec vitest run tests/contract/kernel/kernel-rpc.test.ts
 ```
 
-Package 自带测试脚本可能因 `--passWithNoTests` 空跑成功；Kernel 合同使用上面的根目录测试验证。
+Package 的 `test` 脚本定位根目录 `tests/contract/kernel`；上面的命令只验证 Kernel RPC 对应的单个文件。
 
 ## 正式文档
 

@@ -2,6 +2,7 @@ import type { DataCommitOperation, SqliteDataEngine, SqliteDataTransaction } fro
 import { createId, nowIso, optionalString } from '@loom-studio/shared'
 import type { DatabaseSync } from 'node:sqlite'
 import type {
+  AppendNarrativeUserInputResult,
   CreateNarrativeTimelineInput,
   NarrativeBody,
   NarrativeBranch,
@@ -52,6 +53,7 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
     const { database } = tx
 
     return {
+      getTimeline: id => readTimeline(database, id),
       restoreArchivePaths: input => {
         const timeline = requireTimeline(database, input.timelineId)
         const existing = readBranches(database, timeline.id)
@@ -369,11 +371,11 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
       const result = await write(input, tx => tx.editBranchNode(input))
       return { ...result.value, commit: result.commit }
     },
-    getTimeline: id => engine.read(database => readTimeline(database, id)),
+    getTimeline: (id, options) => engine.read(database => readTimeline(database, id, options?.includeDeleted)),
     listTimelines: input => engine.read(database => readTimelines(database, input)),
-    getBranch: id => engine.read(database => readBranch(database, id)),
+    getBranch: (id, options) => engine.read(database => readBranch(database, id, options?.includeDeleted)),
     listBranches: timelineId => engine.read(database => readBranches(database, timelineId)),
-    getNode: id => engine.read(database => readNode(database, id)),
+    getNode: (id, options) => engine.read(database => readNode(database, id, options?.includeDeleted)),
     listNodes: timelineId => engine.read(database => {
       const rows = database.prepare(`SELECT id, timeline_id, parent_node_id, state_revision_id, body_format, body_raw,
         source_agent_session_id, source_agent_message_id, source_run_id, source_changeset_id, created_at
@@ -388,6 +390,51 @@ export function createNarrativeStore(options: CreateNarrativeStoreOptions): Narr
     appendNode: async input => {
       const result = await write(input, tx => tx.appendNode(input))
       return { ...result.value, commit: result.commit }
+    },
+    appendInput: async input => {
+      validateId(input.nodeId, 'nodeId')
+      validateBody(input.body)
+      const alreadyCommitted = new Error('Narrative input already committed')
+      let replay: AppendNarrativeUserInputResult | undefined
+      try {
+        const result = await engine.transact(input, async dataTx => {
+          const { database } = dataTx
+          const node = readNode(database, input.nodeId)
+          if (node) {
+            const receipt = database.prepare('SELECT id, reason, operations_json FROM changesets WHERE id = ?')
+              .get(node.source?.changesetId ?? null)
+            const operations = receipt ? JSON.parse(String(receipt.operations_json)) as DataCommitOperation[] : []
+            if (node.timelineId !== input.timelineId
+              || (node.parentNodeId ?? null) !== input.expectedHeadNodeId
+              || node.body.format !== input.body.format
+              || node.body.raw !== input.body.raw
+              || !receipt
+              || (receipt.reason ?? undefined) !== input.reason
+              || !operations.some(item => item.store === 'narrative' && item.kind === 'create'
+                && item.entityType === 'narrative.node' && item.entityId === node.id)
+              || !operations.some(item => item.store === 'narrative' && item.kind === 'update'
+                && item.entityType === 'narrative.branch' && item.entityId === input.branchId)) {
+              throw new NarrativeStoreError('narrative.input_conflict', `Narrative input node conflict: ${input.nodeId}`)
+            }
+            const timeline = requireTimeline(database, input.timelineId)
+            const branch = requireBranch(database, input.branchId)
+            assertBranchTimeline(branch, timeline.id)
+            replay = { timeline, branch, node, commit: { changesetId: String(receipt.id) } }
+            // The Engine rejects empty commits; roll back this read-only attempt
+            // and return the original receipt without emitting a new Changeset.
+            throw alreadyCommitted
+          }
+          const branch = requireBranch(database, input.branchId)
+          return transaction(dataTx).appendNode({
+            ...input,
+            stateRevisionId: branch.stateHeadRevisionId,
+          })
+        })
+        return { ...result.value, commit: { changesetId: result.commit.changesetId } }
+      } catch (error) {
+        if (error !== alreadyCommitted) throw error
+        return replay!
+      }
     },
     editNode: async input => {
       const result = await write(input, tx => tx.editNode(input))
@@ -712,14 +759,14 @@ function requireTimeline(database: DatabaseSync, id: string, includeDeleted = fa
   return timeline
 }
 
-function readBranch(database: DatabaseSync, id: string): NarrativeBranch | null {
+function readBranch(database: DatabaseSync, id: string, includeDeleted = false): NarrativeBranch | null {
   const row = database.prepare(`
     SELECT branch.id, branch.timeline_id, branch.title, branch.head_node_id, branch.state_head_revision_id,
            branch.parent_branch_id, branch.forked_from_node_id, branch.created_at, branch.updated_at
     FROM narrative_branches branch
     JOIN narrative_timelines timeline ON timeline.id = branch.timeline_id
-    WHERE branch.id = ? AND timeline.tombstoned = 0
-  `).get(id)
+    WHERE branch.id = ? AND (? = 1 OR timeline.tombstoned = 0)
+  `).get(id, includeDeleted ? 1 : 0)
   return row ? branchFromRow(row) : null
 }
 
@@ -729,15 +776,15 @@ function requireBranch(database: DatabaseSync, id: string): NarrativeBranch {
   return branch
 }
 
-function readNode(database: DatabaseSync, id: string): NarrativeNode | null {
+function readNode(database: DatabaseSync, id: string, includeDeleted = false): NarrativeNode | null {
   const row = database.prepare(`
     SELECT node.id, node.timeline_id, node.parent_node_id, node.state_revision_id, node.body_format, node.body_raw,
            node.source_agent_session_id, node.source_agent_message_id, node.source_run_id,
            node.source_changeset_id, node.created_at
     FROM narrative_nodes node
     JOIN narrative_timelines timeline ON timeline.id = node.timeline_id
-    WHERE node.id = ? AND timeline.tombstoned = 0
-  `).get(id)
+    WHERE node.id = ? AND (? = 1 OR timeline.tombstoned = 0)
+  `).get(id, includeDeleted ? 1 : 0)
   return row ? nodeFromRow(row) : null
 }
 

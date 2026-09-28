@@ -1,4 +1,5 @@
-import { Plus } from 'lucide-react'
+import { Plus, Trash2 } from 'lucide-react'
+import type { MacroOption, MacroOptions } from '@loom-studio/shared'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import type { Translator } from '../../../shared/i18n/index.js'
@@ -10,11 +11,12 @@ export type MacroAuthoringPanelProps = {
   ownerLabel: string
   version: number
   macros: Record<string, string>
-  onSave(input: { expectedVersion: number; macros: Record<string, string> }): Promise<{ version: number; macros: Record<string, string> }>
+  macroOptions?: MacroOptions
+  onSave(input: { expectedVersion: number; macros: Record<string, string>; macroOptions?: MacroOptions }): Promise<{ version: number; macros: Record<string, string>; macroOptions?: MacroOptions }>
   t: Translator
 }
 
-type MacroRow = { id: string; name: string; value: string }
+type MacroRow = { id: string; name: string; value?: string; options: MacroOption[] }
 
 export type MacroAuthoringController = {
   input?: MacroAuthoringPanelProps
@@ -26,23 +28,23 @@ export type MacroAuthoringController = {
   error: string
   selectRow(id?: string): void
   addRow(): void
-  updateRow(id: string, update: Partial<Pick<MacroRow, 'name' | 'value'>>): void
+  updateRow(id: string, update: Partial<Pick<MacroRow, 'name' | 'value' | 'options'>>): void
   removeRow(id: string): void
   save(): Promise<void>
 }
 
 export function useMacroAuthoring(input?: MacroAuthoringPanelProps): MacroAuthoringController {
-  const [rows, setRows] = useState<MacroRow[]>(() => toRows(input?.macros ?? {}))
+  const [rows, setRows] = useState<MacroRow[]>(() => toRows(input?.macros ?? {}, input?.macroOptions))
   const [selectedRowId, setSelectedRowId] = useState<string>()
   const [draftVersion, setDraftVersion] = useState(input?.version ?? 0)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const ownerRef = useRef(input?.ownerId)
   const mountedRef = useRef(false)
-  const baselineRef = useRef(JSON.stringify(input?.macros ?? {}))
+  const baselineRef = useRef(draftKey(toRows(input?.macros ?? {}, input?.macroOptions)))
   const nextRowIdRef = useRef(0)
-  const draftChanged = useMemo(() => JSON.stringify(toMacros(rows)) !== baselineRef.current, [rows])
-  const inputMacrosKey = JSON.stringify(input?.macros ?? {})
+  const draftChanged = useMemo(() => draftKey(rows) !== baselineRef.current, [rows])
+  const inputMacrosKey = JSON.stringify([input?.macros, input?.macroOptions])
 
   useEffect(() => {
     mountedRef.current = true
@@ -52,8 +54,8 @@ export function useMacroAuthoring(input?: MacroAuthoringPanelProps): MacroAuthor
   useEffect(() => {
     if (ownerRef.current !== input?.ownerId) {
       ownerRef.current = input?.ownerId
-      const nextRows = toRows(input?.macros ?? {})
-      baselineRef.current = JSON.stringify(input?.macros ?? {})
+      const nextRows = toRows(input?.macros ?? {}, input?.macroOptions)
+      baselineRef.current = draftKey(nextRows)
       setRows(nextRows)
       setSelectedRowId(undefined)
       setDraftVersion(input?.version ?? 0)
@@ -62,8 +64,8 @@ export function useMacroAuthoring(input?: MacroAuthoringPanelProps): MacroAuthor
       return
     }
     if (!draftChanged && input && input.version >= draftVersion) {
-      baselineRef.current = JSON.stringify(input.macros)
-      setRows(toRows(input.macros))
+      baselineRef.current = draftKey(toRows(input.macros, input.macroOptions))
+      setRows(toRows(input.macros, input.macroOptions))
       setDraftVersion(input.version)
     }
   }, [draftChanged, draftVersion, input?.ownerId, input?.version, inputMacrosKey])
@@ -82,12 +84,12 @@ export function useMacroAuthoring(input?: MacroAuthoringPanelProps): MacroAuthor
     const names = new Set(rows.map(row => row.name))
     let index = rows.length + 1
     while (names.has(`macro_${index}`)) index += 1
-    const row = { id: `new-${nextRowIdRef.current++}`, name: `macro_${index}`, value: '' }
+    const row = { id: `new-${nextRowIdRef.current++}`, name: `macro_${index}`, value: '', options: [] }
     setRows([...rows, row])
     setSelectedRowId(row.id)
   }
 
-  function updateRow(id: string, update: Partial<Pick<MacroRow, 'name' | 'value'>>) {
+  function updateRow(id: string, update: Partial<Pick<MacroRow, 'name' | 'value' | 'options'>>) {
     setRows(previous => previous.map(row => row.id === id ? { ...row, ...update } : row))
   }
 
@@ -98,17 +100,17 @@ export function useMacroAuthoring(input?: MacroAuthoringPanelProps): MacroAuthor
   async function save() {
     if (!input || saving) return
     const macros = toMacros(rows)
-    if (Object.keys(macros).length !== rows.length || rows.some(row => !row.name.trim())) {
+    if (new Set(rows.map(row => row.name.trim().toLowerCase())).size !== rows.length || rows.some(row => !row.name.trim())) {
       setError(input.t('macroAuthoring.invalid'))
       return
     }
     const ownerId = input.ownerId
     setSaving(true)
     try {
-      const result = await input.onSave({ expectedVersion: draftVersion, macros })
+      const result = await input.onSave({ expectedVersion: draftVersion, macros, macroOptions: toMacroOptions(rows) })
       if (!mountedRef.current || ownerRef.current !== ownerId) return
-      baselineRef.current = JSON.stringify(result.macros)
-      setRows(toRows(result.macros))
+      baselineRef.current = draftKey(toRows(result.macros, result.macroOptions))
+      setRows(toRows(result.macros, result.macroOptions))
       setDraftVersion(result.version)
       setError('')
       toast.success(input.t('macroAuthoring.saved'))
@@ -182,16 +184,49 @@ export function MacroAuthoringDetail(props: { controller: MacroAuthoringControll
     onNameChange={row ? value => controller.updateRow(row.id, { name: value }) : undefined}
     onSave={() => void controller.save()}
     onValueChange={row ? value => controller.updateRow(row.id, { value }) : undefined}
-  />
+  >
+    {row ? <section className={styles.macroAuthoringFields}>
+      <header className={styles.stateAuthoringSectionHeader}>
+        <span>{t('macroAuthoring.options')}</span>
+        <button className={styles.iconButton} type="button" disabled={controller.saving} title={t('macroAuthoring.addOption')} aria-label={t('macroAuthoring.addOption')}
+          onClick={() => controller.updateRow(row.id, { options: [...row.options, { id: crypto.randomUUID(), label: t('macroAuthoring.optionName'), value: '' }] })}>
+          <Plus size={14} aria-hidden="true" />
+        </button>
+      </header>
+      {row.options.map(option => <fieldset key={option.id} className={`${styles.macroAuthoringFields} ${styles.macroOption}`} disabled={controller.saving}>
+        <legend>{option.label}</legend>
+        <label><span>{t('macroAuthoring.optionName')}</span><input value={option.label} onChange={event => controller.updateRow(row.id, { options: row.options.map(item => item.id === option.id ? { ...item, label: event.target.value } : item) })} /></label>
+        <label><span>{t('macroAuthoring.value')}</span><textarea value={option.value} onChange={event => controller.updateRow(row.id, { options: row.options.map(item => item.id === option.id ? { ...item, value: event.target.value } : item) })} /></label>
+        <button className={styles.iconButton} type="button" title={t('macroAuthoring.deleteOption')} aria-label={t('macroAuthoring.deleteOption')}
+          onClick={() => controller.updateRow(row.id, { options: row.options.filter(item => item.id !== option.id) })}><Trash2 size={14} aria-hidden="true" /></button>
+      </fieldset>)}
+    </section> : null}
+  </MacroEntryDetail>
 }
 
-function toRows(macros: Record<string, string>): MacroRow[] {
-  return Object.entries(macros).map(([name, value], index) => ({ id: `loaded-${index}-${name}`, name, value }))
+function toRows(macros: Record<string, string>, options: MacroOptions = {}): MacroRow[] {
+  const rows: MacroRow[] = Object.entries(macros).map(([name, value], index) => ({
+    id: `loaded-${index}-${name}`, name, value, options: [],
+  }))
+  for (const [name, candidates] of Object.entries(options)) {
+    const row = rows.find(item => item.name.toLowerCase() === name.toLowerCase())
+    if (row) row.options = candidates
+    else rows.push({ id: `loaded-${rows.length}-${name}`, name, options: candidates })
+  }
+  return rows
 }
 
 function toMacros(rows: MacroRow[]): Record<string, string> {
   return Object.fromEntries(rows.flatMap(row => {
     const name = row.name.trim()
-    return name ? [[name, row.value]] : []
+    return name && row.value !== undefined ? [[name, row.value]] : []
   }))
+}
+
+function toMacroOptions(rows: MacroRow[]): MacroOptions {
+  return Object.fromEntries(rows.filter(row => row.options.length > 0).map(row => [row.name.trim(), row.options]))
+}
+
+function draftKey(rows: MacroRow[]): string {
+  return JSON.stringify([toMacros(rows), toMacroOptions(rows)])
 }

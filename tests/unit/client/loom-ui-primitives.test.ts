@@ -8,7 +8,7 @@ describe('@loom-studio/ui primitives', () => {
     const html = renderToStaticMarkup(createElement('div', null,
       createElement(Button, null, 'Default'),
       createElement(Button, { disabled: true, type: 'submit' }, 'Submit'),
-      createElement(IconButton, { 'aria-label': 'Refresh' }, 'R'),
+      createElement(IconButton, { 'aria-label': 'Refresh', children: 'R' }),
     ))
 
     expect(html).toContain('data-loom-ui-button=""')

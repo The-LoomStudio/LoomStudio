@@ -9,7 +9,7 @@
 在浏览器端，前端组件与 Feature 逻辑需要调用后端的大量 RPC 方法（如 `application.*`、`docs.*`、`system.*`）。
 `@loom-studio/client-bridge` 解决底层传输与鉴权痛点：
 - **自动封装 JSON-RPC 2.0**：自动分配客户端调用 ID，统一序列化请求体与反序列化响应；
-- **401 无感静默重连**：当检测到 HTTP 401 认证失败时，自动尝试调用 `/auth/session` 重新握手并重试当前请求，避免因会话过期造成页面闪退或数据提交丢失；
+- **401 会话刷新**：仅浏览器环境收到 HTTP 401 时，尝试一次 `POST /auth/session`；握手成功后用相同 ID 重发一次请求。非 401、网络异常或 RPC 业务错误不会自动重试；这不是业务提交幂等或防丢失保证；
 - **环境适配**：默认使用宿主 `globalThis.fetch`，同时也支持在测试中显式注入自定义 Mock `fetch`。
 
 ---
@@ -29,7 +29,7 @@
 Package 主入口为 [`src/index.ts`](./src/index.ts)：
 
 - `createClientBridge(options)`：创建客户端调用桥实例；
-- 核心方法：`bridge.call<T>(method, params)`；
+- 核心方法：`bridge.call<T>(method, params, { signal })`，可选 `AbortSignal` 贯穿请求、会话刷新与重发；
 - 核心类型：`ClientBridge`、`ClientBridgeOptions`、`ClientJsonValue`。
 
 ---

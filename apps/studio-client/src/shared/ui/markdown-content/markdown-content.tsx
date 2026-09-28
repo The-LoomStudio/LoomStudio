@@ -1,5 +1,5 @@
 import Markdown, { defaultUrlTransform, type Components } from 'react-markdown'
-import { createContext, useContext } from 'react'
+import { createContext, useContext, useMemo } from 'react'
 import remarkGfm from 'remark-gfm'
 import { parseResourceLink } from '@loom-studio/shared'
 export { highlightCode } from './code-highlight.js'
@@ -7,6 +7,7 @@ import { remarkLoomDialogue } from './dialogue-markdown.js'
 import { MarkdownCodeBlock, type MarkdownCodeBlockLabels } from './markdown-code-block.js'
 import { prepareLoomMarkdown, readLoomToken } from './markdown-content-model.js'
 import styles from './markdown-content.module.scss'
+import { safeHtmlPlugins } from './safe-html.js'
 
 const CodeBlockLabelsContext = createContext<MarkdownCodeBlockLabels | null>(null)
 const markdownComponents: Components = {
@@ -57,17 +58,21 @@ const markdownComponents: Components = {
   pre: ({ children }) => <>{children}</>,
 }
 
-export function MarkdownContent(props: { className?: string; codeBlockLabels: MarkdownCodeBlockLabels; value: string }) {
+export function MarkdownContent(props: { className?: string; codeBlockLabels: MarkdownCodeBlockLabels; value: string; safeHtml?: boolean }) {
+  const body = useMemo(() => (
+    <Markdown
+      remarkPlugins={[remarkGfm, remarkLoomDialogue]}
+      rehypePlugins={props.safeHtml ? safeHtmlPlugins : undefined}
+      urlTransform={url => url.startsWith('loom-') ? url : defaultUrlTransform(url)}
+      components={markdownComponents}
+    >
+      {props.safeHtml ? props.value : prepareLoomMarkdown(props.value)}
+    </Markdown>
+  ), [props.value, props.safeHtml])
   return (
     <CodeBlockLabelsContext.Provider value={props.codeBlockLabels}>
-      <div className={`${styles.content} ${props.className ?? ''}`} data-loom-component="markdown-content">
-        <Markdown
-          remarkPlugins={[remarkGfm, remarkLoomDialogue]}
-          urlTransform={url => url.startsWith('loom-') ? url : defaultUrlTransform(url)}
-          components={markdownComponents}
-        >
-          {prepareLoomMarkdown(props.value)}
-        </Markdown>
+      <div className={`${styles.content} ${props.className ?? ''}`} data-loom-component="markdown-content" data-loom-safe-html={props.safeHtml ? '' : undefined}>
+        {body}
       </div>
     </CodeBlockLabelsContext.Provider>
   )

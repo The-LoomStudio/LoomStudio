@@ -60,6 +60,7 @@ export type RevisionRow = {
 }
 
 export type HeaderState = {
+  rootNodeId?: string
   label: string
   metadata: JsonObject
   tombstoned: boolean
@@ -180,7 +181,7 @@ export function validateTree(resourceId: string, nodes: Map<string, StoredNode>,
   }
 }
 
-export function validateNodeShape(node: Pick<PromptResourceNode, 'id' | 'kind' | 'label' | 'orderIndex'>): void {
+function validateNodeShape(node: Pick<PromptResourceNode, 'id' | 'kind' | 'label' | 'orderIndex'>): void {
   validateId(node.id, 'nodeId')
   if (typeof node.kind !== 'string' || !node.kind || node.kind.trim() !== node.kind) {
     throw new PromptResourceStoreError('prompt_resource.kind_invalid', `Prompt resource node kind is invalid: ${node.kind}`)
@@ -237,7 +238,7 @@ export function readResourceKind(kind: string): PromptResourceKind {
   return kind
 }
 
-export function readNodeKind(kind: string): PromptResourceNodeKind {
+function readNodeKind(kind: string): PromptResourceNodeKind {
   if (typeof kind !== 'string' || !kind || kind.trim() !== kind) {
     throw new PromptResourceStoreError('prompt_resource.kind_invalid', `Prompt resource node kind is invalid: ${kind}`)
   }
@@ -297,7 +298,7 @@ export function sameJson(left: unknown, right: unknown): boolean {
   }
 }
 
-export function canonicalJson(value: unknown, seen = new Set<unknown>()): unknown {
+function canonicalJson(value: unknown, seen = new Set<unknown>()): unknown {
   if (!value || typeof value !== 'object') return value
   if (seen.has(value)) throw new Error('cyclic JSON')
   seen.add(value)
@@ -316,7 +317,7 @@ export function sameNodeValue(left: StoredNode, right: StoredNode): boolean {
   return sameJson(left, right)
 }
 
-export function compareOrder(left: StoredNode, right: StoredNode): number {
+function compareOrder(left: StoredNode, right: StoredNode): number {
   return left.orderIndex - right.orderIndex || left.id.localeCompare(right.id)
 }
 

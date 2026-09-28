@@ -49,10 +49,17 @@ const a = { scope: 'timeline', timelineId: 'a', branchId: 'branch' } as const
 const b = { scope: 'timeline', timelineId: 'b', branchId: 'branch' } as const
 const t = createTranslator('en-US')
 function fixture() {
-  const apply = vi.fn().mockResolvedValue({})
+  const apply = vi.fn<ComponentProps<typeof StateVariablesPanel>['api']['apply']>()
+    .mockResolvedValue({ ...snapshot(a, 1), mutation: { changesetId: 'change' } })
   const get = vi.fn(async (target: StateTarget) => snapshot(target, 1))
   const props: ComponentProps<typeof StateVariablesPanel> = {
-    api: { get, apply } as unknown as ComponentProps<typeof StateVariablesPanel>['api'],
+    api: {
+      get, apply,
+      listDefinitions: async () => ({ definitions: [] }),
+      getDefinition: async () => { throw new Error('Unexpected definition read') },
+      upsertDefinition: async () => { throw new Error('Unexpected definition write') },
+      deleteDefinition: async () => { throw new Error('Unexpected definition deletion') },
+    },
     timelineTarget: a, t, onStateMutated: vi.fn(),
   }
   function render() {
@@ -110,7 +117,7 @@ describe('State panel source isolation', () => {
     await f.settle()
     f.controls().edit(4)
     const oldControls = f.controls()
-    const pending = deferred<unknown>()
+    const pending = deferred<Awaited<ReturnType<typeof f.apply>>>()
     f.apply.mockReturnValueOnce(pending.promise)
     oldControls.submit()
     oldControls.submit()
@@ -118,13 +125,13 @@ describe('State panel source isolation', () => {
     oldControls.edit(99)
     expect(f.controls().input.props.value).toBe(4)
     const applyNew = vi.fn()
-    f.props.api = { get: async target => snapshot(target, 8), apply: applyNew } as typeof f.props.api
+    f.props.api = { ...f.props.api, get: async target => snapshot(target, 8), apply: applyNew }
     expect(elements(f.render()).some(item => item.props.renderTrailing)).toBe(false)
     await f.settle()
     oldControls.submit()
     expect(f.apply).toHaveBeenCalledTimes(1)
     f.controls().edit(9)
-    pending.resolve({})
+    pending.resolve({ ...snapshot(a, 4), mutation: { changesetId: 'old-change' } })
     await f.settle()
     expect(f.controls().input.props.value).toBe(9)
     expect(f.controls().save.props.disabled).toBe(false)

@@ -15,8 +15,8 @@ describe('edit history model', () => {
       changesetId: 'change-update',
       anchor: { documentId: 'card-1' },
     })
-    const undone = completeUndo(recorded, 'change-undo')
-    const redone = completeRedo(undone, 'change-redo')
+    const undone = completeUndo(recorded, readUndoEntry(recorded)!, 'change-undo')
+    const redone = completeRedo(undone, readRedoEntry(undone)!, 'change-redo')
 
     expect(readUndoEntry(recorded)?.changesetId).toBe('change-update')
     expect(readRedoEntry(undone)).toMatchObject({
@@ -30,7 +30,7 @@ describe('edit history model', () => {
 
   it('clears redo when a new edit is recorded after undo', () => {
     const first = recordEdit(createEditHistoryState(), { label: 'First', changesetId: 'change-1' })
-    const undone = completeUndo(first, 'change-undo-1')
+    const undone = completeUndo(first, readUndoEntry(first)!, 'change-undo-1')
     const second = recordEdit(undone, { label: 'Second', changesetId: 'change-2' })
 
     expect(second.undoStack.map(entry => entry.changesetId)).toEqual(['change-2'])
@@ -43,7 +43,7 @@ describe('edit history model', () => {
       changesetId: 'change-sort',
       anchor: { documentId: 'setting-1', subjectId: 'entry-b' },
     })
-    const undone = completeUndo(sorted, 'change-sort-undo')
+    const undone = completeUndo(sorted, readUndoEntry(sorted)!, 'change-sort-undo')
 
     expect(readRedoEntry(undone)).toEqual({
       label: 'Reorder Entries',

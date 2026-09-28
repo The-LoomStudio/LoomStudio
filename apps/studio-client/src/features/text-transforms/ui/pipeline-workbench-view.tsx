@@ -6,9 +6,9 @@ import { MasterDetailWorkbench } from '../../../shared/ui/master-detail-workbenc
 import { normalizeSearchText } from '../../../shared/lib/text.js'
 import styles from './pipeline-workbench-view.module.scss'
 
-export type PipelineWorkbenchItemKind = 'macro' | 'rule' | 'extractor' | 'renderer' | 'script'
+type PipelineWorkbenchItemKind = 'macro' | 'rule' | 'extractor' | 'renderer' | 'script'
 
-export type PipelineWorkbenchItem = {
+type PipelineWorkbenchItem = {
   id: string
   kind: PipelineWorkbenchItemKind
   label: string

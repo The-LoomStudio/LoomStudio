@@ -84,7 +84,7 @@ export function applyCreateResource(
     ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, 0, NULL, NULL, NULL)
   `).run(resource.id, resource.resourceKind, resource.rootNodeId, resource.label, stringifyJson(resource.metadata, 'metadata'), timestamp, timestamp)
   for (const node of flat.values()) insertNode(database, node)
-  insertHeaderRevision(database, tx, resource.id, resource.version, undefined, headerStateFromValues(resource.label, resource.metadata))
+  insertHeaderRevision(database, tx, resource.id, resource.version, undefined, headerStateFromValues(resource.label, resource.metadata, root.id))
   for (const node of flat.values()) insertRevision(database, tx, resource, node.id, 'create', undefined, node)
   tx.recordOperations([operation('create', resource.id, 'prompt-resource', undefined, resource.version)])
   return resource
@@ -102,12 +102,18 @@ export function applyMutateResource(
   if (input.mutations.length === 0) throw new PromptResourceStoreError('prompt_resource.mutations_empty', 'Prompt resource mutation requires at least one operation')
 
   const before = readNodeMap(database, row.id)
-  const after = cloneNodeMap(before)
+  let after = cloneNodeMap(before)
   const touched = new Set<string>()
-  const header = { label: row.label, metadata: parseObject(row.metadata_json, 'metadata') }
-  const originalHeader = { label: row.label, metadata: parseObject(row.metadata_json, 'metadata') }
+  const header = { rootNodeId: row.root_node_id, label: row.label, metadata: parseObject(row.metadata_json, 'metadata') }
+  const originalHeader = { ...header }
 
   for (const mutation of input.mutations) {
+    if (mutation.kind === 'tree.replace') {
+      after = flattenTree(mutation.rootNode, row.id, now())
+      header.rootNodeId = mutation.rootNode.id
+      if (mutation.rootNode.kind !== 'module') throw new PromptResourceStoreError('prompt_resource.root_invalid', 'Prompt resource root must be a module')
+      continue
+    }
     if (mutation.kind === 'resource.update') {
       if (mutation.patch.label !== undefined) {
         if (typeof mutation.patch.label !== 'string') throw new PromptResourceStoreError('prompt_resource.label_invalid', 'Prompt resource label must be a string')
@@ -158,8 +164,8 @@ export function applyMutateResource(
     }
   }
 
-  validateTree(row.id, after, row.root_node_id)
-  const headerChanged = header.label !== originalHeader.label || !sameJson(header.metadata, originalHeader.metadata)
+  validateTree(row.id, after, header.rootNodeId)
+  const headerChanged = header.rootNodeId !== originalHeader.rootNodeId || header.label !== originalHeader.label || !sameJson(header.metadata, originalHeader.metadata)
   const changedIds = new Set<string>()
   for (const id of new Set([...before.keys(), ...after.keys()])) {
     if (!sameJson(before.get(id), after.get(id))) changedIds.add(id)
@@ -167,8 +173,8 @@ export function applyMutateResource(
   if (changedIds.size === 0 && !headerChanged) throw new PromptResourceStoreError('prompt_resource.noop', 'Prompt resource mutation does not change anything')
   const timestamp = now()
   const version = row.version + 1
-  database.prepare('UPDATE prompt_resources SET label = ?, metadata_json = ?, version = ?, updated_at = ? WHERE id = ?')
-    .run(header.label, stringifyJson(header.metadata, 'metadata'), version, timestamp, row.id)
+  database.prepare('UPDATE prompt_resources SET root_node_id = ?, label = ?, metadata_json = ?, version = ?, updated_at = ? WHERE id = ?')
+    .run(header.rootNodeId, header.label, stringifyJson(header.metadata, 'metadata'), version, timestamp, row.id)
 
   for (const id of [...changedIds].filter(id => before.has(id) && !after.has(id)).sort((left, right) => nodeDepth(before, right) - nodeDepth(before, left))) {
     const previous = before.get(id)
@@ -184,7 +190,7 @@ export function applyMutateResource(
   }
   const resource = readResource(database, row.id, true)
   if (!resource) throw new PromptResourceStoreError('prompt_resource.not_found', `Prompt resource not found: ${row.id}`)
-  insertHeaderRevision(database, tx, row.id, version, headerStateFromRow(row), headerStateFromValues(header.label, header.metadata))
+  insertHeaderRevision(database, tx, row.id, version, headerStateFromRow(row), headerStateFromValues(header.label, header.metadata, header.rootNodeId))
   for (const id of changedIds) {
     const previous = before.get(id)
     const current = after.get(id)
@@ -301,7 +307,7 @@ export function applyRevert(
     if (original) after.set(original.id, original)
     else after.delete(revision.node_id)
   }
-  validateTree(resourceId, after, resource.root_node_id)
+  validateTree(resourceId, after, targetHeader.rootNodeId ?? resource.root_node_id)
   const version = resource.version + 1
   const timestamp = now()
   const changedIds = new Set<string>()
@@ -354,12 +360,13 @@ export function readResource(database: DatabaseSync, id: string, includeTombston
   }
 }
 
-export function readResourceRow(database: DatabaseSync, id: string): ResourceRow | undefined {
+function readResourceRow(database: DatabaseSync, id: string): ResourceRow | undefined {
   return database.prepare('SELECT * FROM prompt_resources WHERE id = ?').get(id) as ResourceRow | undefined
 }
 
-export function headerStateFromRow(row: ResourceRow): HeaderState {
+function headerStateFromRow(row: ResourceRow): HeaderState {
   return {
+    rootNodeId: row.root_node_id,
     label: row.label,
     metadata: parseObject(row.metadata_json, 'metadata'),
     tombstoned: row.tombstoned === 1,
@@ -369,13 +376,14 @@ export function headerStateFromRow(row: ResourceRow): HeaderState {
   }
 }
 
-export function headerStateFromValues(label: string, metadata: JsonObject): HeaderState {
-  return { label, metadata: structuredClone(metadata), tombstoned: false }
+function headerStateFromValues(label: string, metadata: JsonObject, rootNodeId: string): HeaderState {
+  return { rootNodeId, label, metadata: structuredClone(metadata), tombstoned: false }
 }
 
-export function parseHeaderState(value: string): HeaderState {
+function parseHeaderState(value: string): HeaderState {
   const parsed = parseObject(value, 'header revision')
   return {
+    rootNodeId: typeof parsed.rootNodeId === 'string' ? parsed.rootNodeId : undefined,
     label: typeof parsed.label === 'string' ? parsed.label : '',
     metadata: parseObject(stringifyJson(parsed.metadata, 'metadata'), 'metadata'),
     tombstoned: Boolean(parsed.tombstoned),
@@ -385,13 +393,20 @@ export function parseHeaderState(value: string): HeaderState {
   }
 }
 
-export function updateResourceHeader(database: DatabaseSync, resourceId: string, version: number, timestamp: string, header: HeaderState): void {
+export function readResourceMetadataAtVersion(database: DatabaseSync, id: string, version: number): JsonObject | null {
+  const row = database.prepare('SELECT after_json FROM prompt_resource_header_revisions WHERE resource_id = ? AND resource_version = ?')
+    .get(id, version) as { after_json: string } | undefined
+  return row ? parseHeaderState(row.after_json).metadata : null
+}
+
+function updateResourceHeader(database: DatabaseSync, resourceId: string, version: number, timestamp: string, header: HeaderState): void {
   database.prepare(`
     UPDATE prompt_resources
-    SET label = ?, metadata_json = ?, version = ?, updated_at = ?,
+    SET root_node_id = COALESCE(?, root_node_id), label = ?, metadata_json = ?, version = ?, updated_at = ?,
         tombstoned = ?, deleted_at = ?, deleted_by_json = ?, delete_reason = ?
     WHERE id = ?
   `).run(
+    header.rootNodeId ?? null,
     header.label,
     stringifyJson(header.metadata, 'metadata'),
     version,
@@ -410,12 +425,12 @@ export function requireResourceRow(database: DatabaseSync, id: string): Resource
   return row
 }
 
-export function readNodeMap(database: DatabaseSync, resourceId: string): Map<string, StoredNode> {
+function readNodeMap(database: DatabaseSync, resourceId: string): Map<string, StoredNode> {
   const rows = database.prepare('SELECT * FROM prompt_resource_nodes WHERE resource_id = ? ORDER BY parent_id ASC, order_index ASC, id ASC').all(resourceId) as unknown as NodeRow[]
   return new Map(rows.map(row => [row.id, nodeFromRow(row)]))
 }
 
-export function insertNode(database: DatabaseSync, node: StoredNode): void {
+function insertNode(database: DatabaseSync, node: StoredNode): void {
   database.prepare(`
     INSERT INTO prompt_resource_nodes (
       id, resource_id, parent_id, order_index, kind, category, label, meta, enabled,
@@ -428,7 +443,7 @@ export function insertNode(database: DatabaseSync, node: StoredNode): void {
   )
 }
 
-export function updateNode(database: DatabaseSync, node: StoredNode): void {
+function updateNode(database: DatabaseSync, node: StoredNode): void {
   database.prepare(`
     UPDATE prompt_resource_nodes
     SET parent_id = ?, order_index = ?, kind = ?, category = ?, label = ?, meta = ?, enabled = ?,
@@ -442,11 +457,11 @@ export function updateNode(database: DatabaseSync, node: StoredNode): void {
   )
 }
 
-export function deleteNode(database: DatabaseSync, id: string): void {
+function deleteNode(database: DatabaseSync, id: string): void {
   database.prepare('DELETE FROM prompt_resource_nodes WHERE id = ?').run(id)
 }
 
-export function insertRevision(database: DatabaseSync, tx: SqliteDataTransaction, resource: PromptResource, nodeId: string, operationKind: 'create' | 'update' | 'move' | 'delete', before: StoredNode | undefined, after: StoredNode | undefined): void {
+function insertRevision(database: DatabaseSync, tx: SqliteDataTransaction, resource: PromptResource, nodeId: string, operationKind: 'create' | 'update' | 'move' | 'delete', before: StoredNode | undefined, after: StoredNode | undefined): void {
   database.prepare(`
     INSERT INTO prompt_resource_node_revisions (
       resource_id, resource_version, node_id, operation, before_json, after_json, changeset_id, created_at, created_by_json
@@ -457,7 +472,7 @@ export function insertRevision(database: DatabaseSync, tx: SqliteDataTransaction
   )
 }
 
-export function insertHeaderRevision(
+function insertHeaderRevision(
   database: DatabaseSync,
   tx: SqliteDataTransaction,
   resourceId: string,
@@ -487,21 +502,32 @@ export function operation(kind: DataCommitOperation['kind'], entityId: string, e
 }
 
 export function recordDeletedMountOperations(database: DatabaseSync, tx: SqliteDataTransaction, where: string, ...values: string[]): void {
-  const rows = database.prepare(`SELECT id FROM global_setting_mounts WHERE ${where} ORDER BY id ASC`).all(...values) as Array<{ id: string }>
-  if (rows.length > 0) tx.recordOperations(rows.map(row => operation('delete', row.id, 'prompt-resource.mount')))
+  const rows = database.prepare(`SELECT id, source_kind, source_id FROM global_setting_mounts WHERE ${where} ORDER BY id ASC`)
+    .all(...values) as Array<{ id: string; source_kind: string; source_id: string }>
+  if (rows.length > 0) tx.recordOperations(rows.map(row => ({
+    ...operation('delete', row.id, 'prompt-resource.mount'),
+    ...(row.source_kind === 'preset' ? { scope: resourceScope(database, row.source_id) } : {}),
+  })))
 }
 
 export function recordDeletedPresetToolMountOperations(database: DatabaseSync, tx: SqliteDataTransaction, presetResourceId: string): void {
   const rows = database.prepare('SELECT id FROM preset_tool_mounts WHERE preset_resource_id = ? ORDER BY id ASC').all(presetResourceId) as Array<{ id: string }>
-  if (rows.length > 0) tx.recordOperations(rows.map(row => operation('delete', row.id, 'prompt-resource.tool-mount')))
+  if (rows.length > 0) tx.recordOperations(rows.map(row => ({
+    ...operation('delete', row.id, 'prompt-resource.tool-mount'), scope: resourceScope(database, presetResourceId),
+  })))
 }
 
-export function assertExpectedVersion(row: ResourceRow, expectedVersion: number): void {
+export function resourceScope(database: DatabaseSync, resourceId: string): NonNullable<DataCommitOperation['scope']> {
+  const resource = requireResourceRow(database, resourceId)
+  return { store: 'prompt-resources', entityType: 'prompt-resource', entityId: resourceId, version: resource.version }
+}
+
+function assertExpectedVersion(row: ResourceRow, expectedVersion: number): void {
   if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new PromptResourceStoreError('prompt_resource.expected_version_invalid', 'Expected resource version must be a positive integer')
   if (row.version !== expectedVersion) throw new PromptResourceStoreError('prompt_resource.conflict', `Prompt resource version conflict: ${row.id}`)
 }
 
-export function revisionOperation(before: StoredNode | undefined, after: StoredNode | undefined): 'create' | 'update' | 'move' | 'delete' {
+function revisionOperation(before: StoredNode | undefined, after: StoredNode | undefined): 'create' | 'update' | 'move' | 'delete' {
   if (!before && after) return 'create'
   if (before && !after) return 'delete'
   if (!before || !after) throw new PromptResourceStoreError('prompt_resource.revision_invalid', 'Revision must have a before or after node')

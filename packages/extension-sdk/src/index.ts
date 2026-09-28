@@ -10,6 +10,8 @@ import type { DocumentRecord, ListDocumentsInput, WriteDocumentInput, WriteDocum
 import type { ExtensionLogAccess, ExtensionLogWriter } from '@loom-studio/logging'
 import type { JsonObject, JsonValue, StateContribution } from '@loom-studio/shared'
 import type { StudioEvent } from '@loom-studio/transport'
+import { extensionInstallationId, type ExtensionInstallationTarget } from './installation.js'
+export { extensionInstallationId, installedExtensionContributionId, type ExtensionInstallationTarget } from './installation.js'
 
 export type {
   ExtensionLogAccess,
@@ -60,6 +62,7 @@ export type ExtensionMediaAsset = {
   width?: number
   height?: number
   ownerPackageId?: string
+  ownerInstallationId?: string
   createdAt: string
 }
 
@@ -91,6 +94,7 @@ export type EventDefinitionRegistrationOwner =
       packageId: string
       moduleId: string
       instanceId: string
+      target?: ExtensionInstallationTarget
     }
 
 export type RegisteredEventDefinition = {
@@ -105,6 +109,7 @@ export type EventSubscriberIdentity =
       packageId: string
       moduleId: string
       instanceId: string
+      target?: ExtensionInstallationTarget
       capabilities: readonly EventCapabilityCategory[]
     }
 
@@ -116,6 +121,7 @@ export type EventPublishIdentity =
       packageId: string
       moduleId: string
       instanceId: string
+      target?: ExtensionInstallationTarget
     }
 
 export type ExtensionModuleRuntime = 'server' | 'client'
@@ -136,6 +142,9 @@ export type RendererInstanceScope = 'workspace' | 'timeline' | 'agent-session' |
 export type RendererConflictPolicy = 'collection' | 'exclusive' | 'navigation' | 'anchored-projection'
 
 export type RendererFallback = 'json' | 'text' | 'hidden'
+export { connectIframeContext, createFrameRequestClient } from './iframe-context.js'
+export type { ClientNotification, IframeContext, IframeRequestResult } from './iframe-context.js'
+
 export type RendererMountAdapter = 'direct' | 'shadow' | 'sandbox-iframe'
 
 export const publicThemeTokenNames = [
@@ -282,6 +291,7 @@ export type ExtensionSettingContribution =
   | ExtensionSelectSettingContribution
 
 export type ClientCommandInvocationContext = {
+  cardId?: string
   sourceSurface: ClientActionSurface
   workspaceId: string
   timelineId?: string
@@ -302,7 +312,7 @@ export type RendererContributionDefinition = {
 }
 
 export type RendererContributionOwner =
-  | { kind: 'extension'; packageId: string; moduleId: string }
+  | { kind: 'extension'; packageId: string; moduleId: string; target?: ExtensionInstallationTarget }
   | { kind: 'script'; scriptDocumentId: string; documentVersion: number }
 
 export type RendererContributionRef = {
@@ -328,12 +338,12 @@ export type LoomSandboxRendererInput =
   | { kind: 'match'; id: string; value: JsonValue }
   | { kind: 'artifact'; id: string; artifactType: string; value: JsonValue }
 
-export type LoomSandboxCapability = 'state.read'
+export type LoomSandboxCapability = 'state.read' | 'ui.notify'
 
 export type LoomSandboxCapabilityRequest = {
   capability: 'state.read'
   input: { target: ClientStateTarget }
-}
+} | { capability: 'ui.notify'; input: import('./iframe-context.js').ClientNotification }
 
 export type LoomSandboxRendererWireContext = {
   identity: {
@@ -354,6 +364,8 @@ export type LoomSandboxRendererWireContext = {
 }
 
 export type LoomSandboxRendererContext = LoomSandboxRendererWireContext & {
+  close(): void
+  notifications: { show(input: import('./iframe-context.js').ClientNotification): Promise<void> }
   capabilities: {
     request(request: LoomSandboxCapabilityRequest): Promise<JsonValue>
   }
@@ -394,6 +406,7 @@ export type LoomSandboxHostMessage =
 export type LoomSandboxFrameMessage =
   | { type: 'loom.renderer.ready'; instanceId: string }
   | { type: 'loom.renderer.close'; instanceId: string }
+  | { type: 'loom.renderer.resize'; instanceId: string; height: number }
   | {
       type: 'loom.renderer.capability-request'
       instanceId: string
@@ -513,12 +526,14 @@ export type ClientBackgroundDefinition = {
 }
 
 export type RegisteredClientBackground = ClientBackgroundDefinition & {
+  target?: ExtensionInstallationTarget
   key: string
   packageId: string
   moduleId: string
 }
 
 export type ClientExtensionActivationContext = {
+  notifications: { show(input: import('./iframe-context.js').ClientNotification): Promise<void> }
   extension: {
     packageId: string
     moduleId: string
@@ -604,6 +619,7 @@ export type ExtensionPromptResourceContribution = {
   id: string
   resourceKind: ExtensionPromptResourceKind
   source: string
+  scriptMounts?: Array<{ scriptId: string; orderIndex?: number }>
   settingMounts?: Array<{
     resourceId: string
     orderIndex?: number
@@ -634,6 +650,7 @@ export type ExtensionTextExtractorContribution = {
 }
 
 export type ExtensionPackageContributions = {
+  loomScripts?: Array<{ id: string; source: string }>
   transformRules?: ExtensionTextTransformRuleContribution[]
   textExtractors?: ExtensionTextExtractorContribution[]
   promptResources?: ExtensionPromptResourceContribution[]
@@ -651,9 +668,11 @@ export type ExtensionModuleManifest = {
     'assets.read'?: boolean
     'ai.invoke'?: boolean
     'macros.provide'?: boolean
+    'narrative.context.provide'?: boolean
     'state.contribute'?: boolean
     'state.read'?: boolean
     'state.write'?: boolean
+    'ui.notify'?: boolean
     [key: string]: JsonValue | undefined
   }
   contributes?: ExtensionRuntimeContributions
@@ -714,7 +733,7 @@ export type ExtensionRpcContext = {
   parentCallId?: string
 }
 
-export type ExtensionDocumentListInput = Omit<ListDocumentsInput, 'ownerExtensionId' | 'type'> & {
+export type ExtensionDocumentListInput = Omit<ListDocumentsInput, 'ownerExtensionId' | 'ownerInstallationId' | 'type'> & {
   type: string
 }
 
@@ -723,7 +742,7 @@ export type ExtensionDocumentWriteInput = Omit<
   'actor' | 'correlationId' | 'callId' | 'parentCallId' | 'meta'
 > & {
   meta?: Omit<NonNullable<WriteDocumentInput['meta']>,
-    'ownerExtensionId' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy' | 'tombstone'
+    'ownerExtensionId' | 'ownerInstallationId' | 'createdAt' | 'updatedAt' | 'createdBy' | 'updatedBy' | 'tombstone'
   >
 }
 
@@ -740,6 +759,7 @@ export type ExtensionPortablePayloadDraft = {
 }
 
 export type ExtensionPortablePayload = ExtensionPortablePayloadDraft & {
+  ownerInstallationId?: string
   id: string
   artifactPayloadId: string
   packageId: string
@@ -764,8 +784,9 @@ export function extensionStorageScopeKey(scope: ExtensionStorageScope): string {
   return `agent-session:${scope.agentSessionId}`
 }
 
-export function extensionConfigDocumentId(packageId: string, scope: ExtensionStorageScope, key: string): string {
-  return `extension-config:${encodeURIComponent(packageId)}:${encodeURIComponent(extensionStorageScopeKey(scope))}:${encodeURIComponent(key)}`
+export function extensionConfigDocumentId(packageId: string, scope: ExtensionStorageScope, key: string, target: ExtensionInstallationTarget = { kind: 'global' }): string {
+  const owner = target.kind === 'global' ? packageId : extensionInstallationId(packageId, target)
+  return `extension-config:${encodeURIComponent(owner)}:${encodeURIComponent(extensionStorageScopeKey(scope))}:${encodeURIComponent(key)}`
 }
 
 export type ExtensionEntityRef =
@@ -810,6 +831,31 @@ export type ExtensionMacroProvider = {
   resolve(context: ExtensionMacroContext): string | Promise<string>
 }
 
+/** A published default view, not a pending summary or the current append Head. */
+export type NarrativeContextProjection = {
+  version: string
+  memory: {
+    coveredThroughNodeId: string
+    entries: Array<{ id: string; content: string }>
+  } | null
+  /** Raw starts after memory coverage (or at the root); null means no Raw. */
+  rawThroughNodeId: string | null
+}
+
+export type NarrativeContextProvider = {
+  id: string
+  /** Read-only. Return undefined when this source is not selected for the branch. */
+  resolve(context: Readonly<{ timelineId: string; branchId: string }>): Promise<NarrativeContextProjection | undefined>
+  /** Publish only an already prepared result. Do not wait for an in-flight summarizer. */
+  onSessionHandoff?(context: Readonly<{
+    timelineId: string
+    branchId: string
+    agentSessionId: string
+    summaryEntryId: string
+    rawHeadNodeId: string | null
+  }>): Promise<void>
+}
+
 export type ExtensionStateTarget =
   | { scope: 'global' }
   | { scope: 'timeline'; timelineId: string; branchId: string }
@@ -847,6 +893,7 @@ export type ExtensionStateChangeEvent = {
 
 export type ExtensionStateSubscription = {
   target?: ExtensionStateTarget
+  /** Notify when a changed path equals, contains, or is contained by a watched path. The empty path watches the root. */
   paths?: readonly string[]
   signal?: AbortSignal
 }
@@ -871,7 +918,7 @@ export type ExtensionActivationContext = {
   }
   rpc: {
     register(name: string, handler: ExtensionRpcHandler): ExtensionRegistrationHandle
-    call<T = JsonValue>(method: string, params?: JsonValue): Promise<T>
+    call<T = JsonValue>(method: string, params?: JsonValue, options?: { scope?: 'installation' | 'global' }): Promise<T>
   }
   events: {
     define<TPayload extends JsonValue = JsonValue>(definition: ExtensionEventDefinition<TPayload>): ExtensionRegistrationHandle
@@ -885,6 +932,9 @@ export type ExtensionActivationContext = {
   }
   macros: {
     register(provider: ExtensionMacroProvider): ExtensionRegistrationHandle
+  }
+  narrativeContext: {
+    register(provider: NarrativeContextProvider): ExtensionRegistrationHandle
   }
   state: {
     contribute(contribution: StateContribution): ExtensionRegistrationHandle

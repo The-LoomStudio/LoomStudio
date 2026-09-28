@@ -30,7 +30,7 @@ export async function resolveStudioTarget(api: StudioApi, uri: string): Promise<
     const nodeId = reference.nodeId ?? resource.rootNode.id
     if (!findNodeById([resource.rootNode], nodeId)) throw new Error(`Resource node not found: ${nodeId}`)
     return {
-      panel: resource.resourceKind === 'preset' ? 'preset' : 'resource',
+      panel: resource.resourceKind === 'preset' ? 'agent' : 'resource',
       resourceId: resource.id, assetId: nodeId,
     }
   }

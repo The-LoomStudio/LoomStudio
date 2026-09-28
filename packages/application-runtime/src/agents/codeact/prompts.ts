@@ -37,11 +37,13 @@ const methods: Record<typeof codeActMethodNames[number], string> = {
 不能读取宿主文件、未挂载资源、历史 Narrative 或 Session；观察到的旧路径被另一对象占用时会报错，不自动改绑。`,
   readNarrative: `### Narrative sampling
 用途：读取当前授权 Timeline 的正文节点，使用固定分支和读取时的正文 Head。
-调用：await ctx["readNarrative"]({ selection, maxNodes?, maxCharacters? })
+调用：await ctx["readNarrative"]({ selection, maxNodes?, maxCharacters?, view? })
 选择：{ kind: "tail", count, throughNodeId? } 读取某个 Head 之前最近的节点；{ kind: "range", afterNodeId?, throughNodeId? } 读取起点之后、终点以内的节点。afterNodeId 不包含，throughNodeId 包含。
-返回：包含节点 ID、正文、分支、读取 Head、实际范围和 text 的对象；complete=false 时表示预算截断，并提供 nextBeforeNodeId。
+返回：包含节点 ID、正文、分支、读取 Head、实际范围和 text 的对象。view 默认为 raw；prompt 使用宿主本次选定的正则规则，nodes[].text 与 text 是加工文本，nodes[].body.raw 始终是原文。processing 记录规则版本和诊断，不展开正文宏或链接。
+complete=false 表示仅返回请求范围的尾段；把 nextBeforeNodeId 作为下一次 throughNodeId 继续读取，range 保留原 afterNodeId，tail 的 count 减去本次 nodes.length。position 从 1 开始，仅为本次返回窗口内的位置，不是绝对楼层。正则 depth 也相对于本次窗口，不宣称分页分别加工等于整段加工。
+每次最多 1000 个节点、2000000 个原文字符；CodeAct 桥接和 print 的输出限制另行生效，大段正文应缩小范围，不把字符预算当成 Token 预算。
 示例：const story = await ctx["readNarrative"]({ selection: { kind: "tail", count: 3 } }); print(story.text);
-限制：只能读取当前授权 Timeline，不能传入其他 Timeline；读取不会推进 Memory 指针、默认有效 Head 或写入 Narrative。没有权限的历史范围不会自动扩大。`,
+限制：只能读取当前授权 Timeline，不能传入其他 Timeline；读取不会推进 Memory 指针、默认有效 Head 或写入 Narrative。读取已总结的历史原文需要单次 Yes/No 授权；没有交互处理器时拒绝。批准只覆盖当前固定范围和预算，后续请求或续读需重新授权；等待用户期间暂停执行计时，取消后不返回旧正文。`,
   write: `### ctx.write
 用途：替换一个已读取且获准写入的 Prompt Resource 正文或 State 属性。
 调用：await ctx.write(path, value, { mode: "replace" })

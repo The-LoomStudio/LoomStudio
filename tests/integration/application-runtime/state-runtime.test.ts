@@ -1,10 +1,10 @@
-import { createApplicationRuntime } from '@loom-studio/application-runtime'
+import { createApplicationRuntime, type ApplicationRuntimeOptions, type StateChangeEvent } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createPromptResourceStore } from '@loom-studio/application-data'
 import { describe, expect, it } from 'vitest'
 
-function createTestRuntime() {
+function createTestRuntime(onStateChanged?: ApplicationRuntimeOptions['onStateChanged']) {
   let nextId = 0
   let nextTime = 0
   const createId = (prefix: string) => `${prefix}-${++nextId}`
@@ -12,11 +12,90 @@ function createTestRuntime() {
   const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
   const documents = createSqliteDocumentStore({ engine })
   const promptResources = createPromptResourceStore({ engine, createId, now })
-  const runtime = createApplicationRuntime({ dataEngine: engine, documents, promptResources })
+  const runtime = createApplicationRuntime({ dataEngine: engine, documents, promptResources, onStateChanged })
   return { engine, runtime }
 }
 
 describe('application state runtime', () => {
+  it('notifies only committed changes, including defaults and compensation but excluding replay and conflicts', async () => {
+    const events: StateChangeEvent[] = []
+    const { engine, runtime } = createTestRuntime(event => {
+      expect(engine.database.prepare('SELECT id FROM changesets WHERE id = ?').get(event.changesetId)).toBeTruthy()
+      events.push(event)
+    })
+    try {
+      await runtime.initialize()
+      const definition = await runtime.upsertStateDefinition({
+        definitionId: 'state.counter',
+        definition: { kind: 'global', path: 'global.counter', schema: { type: 'number' }, default: 0 },
+      })
+      const initial = await runtime.getStateSnapshot({ target: { scope: 'global' } })
+      expect(events).toEqual([{
+        target: { scope: 'global' }, revisionId: initial.snapshot.revisionId,
+        changesetId: definition.mutation.changesetId, paths: ['/counter'],
+      }])
+      const input = {
+        target: { scope: 'global' as const }, expectedRevisionId: initial.snapshot.revisionId,
+        operations: [{ op: 'set' as const, path: '/counter', value: 1 }], idempotencyKey: 'once',
+      }
+      const changed = await runtime.applyStateMutation(input, { clientId: 'ui' })
+      await runtime.applyStateMutation(input, { actor: { kind: 'extension', id: 'example' } })
+      await expect(runtime.applyStateMutation({ ...input, idempotencyKey: undefined })).rejects.toMatchObject({ code: 'state.head_conflict' })
+      expect(events).toHaveLength(2)
+      expect(events[1]).toEqual({
+        target: input.target, revisionId: changed.snapshot.revisionId,
+        changesetId: changed.mutation.changesetId, paths: ['/counter'],
+      })
+      const reverted = await runtime.revertChangeset({ changesetId: changed.mutation.changesetId })
+      const snapshot = await runtime.getStateSnapshot({ target: input.target })
+      expect(events[2]).toEqual({
+        target: input.target, revisionId: snapshot.snapshot.revisionId,
+        changesetId: reverted.mutation.changesetId, paths: [''],
+      })
+      expect(snapshot.snapshot.value).toEqual({ counter: 0 })
+    } finally {
+      engine.close()
+    }
+  })
+
+  it('does not undo a committed write when its notification observer throws', async () => {
+    const { engine, runtime } = createTestRuntime(() => { throw new Error('Observer failed') })
+    try {
+      await runtime.initialize()
+      const initial = await runtime.getStateSnapshot({ target: { scope: 'global' } })
+      const changed = await runtime.applyStateMutation({
+        target: initial.snapshot.target, expectedRevisionId: initial.snapshot.revisionId,
+        operations: [{ op: 'set', path: '/value', value: 1 }],
+      })
+      expect((await runtime.getStateSnapshot({ target: initial.snapshot.target })).snapshot).toEqual(changed.snapshot)
+    } finally {
+      engine.close()
+    }
+  })
+
+  it('does not notify when the transaction rolls back after creating a revision', async () => {
+    const events: StateChangeEvent[] = []
+    const { engine, runtime } = createTestRuntime(event => { events.push(event) })
+    try {
+      await runtime.initialize()
+      const before = await runtime.getStateSnapshot({ target: { scope: 'global' } })
+      const count = countChangesets(engine)
+      engine.database.exec(`
+        CREATE TRIGGER reject_state_head BEFORE UPDATE OF head_revision_id ON state_scopes
+        BEGIN SELECT RAISE(ABORT, 'head update rejected'); END;
+      `)
+      await expect(runtime.applyStateMutation({
+        target: before.snapshot.target, expectedRevisionId: before.snapshot.revisionId,
+        operations: [{ op: 'set', path: '/value', value: 1 }],
+      })).rejects.toThrow('head update rejected')
+      expect(events).toEqual([])
+      expect(await runtime.getStateSnapshot({ target: before.snapshot.target })).toEqual(before)
+      expect(countChangesets(engine)).toBe(count)
+    } finally {
+      engine.close()
+    }
+  })
+
   it('rejects non-finite set operations without changing the committed snapshot', async () => {
     const { engine, runtime } = createTestRuntime()
     try {

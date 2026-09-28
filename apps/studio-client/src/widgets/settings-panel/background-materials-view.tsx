@@ -3,6 +3,7 @@ import { Check, Image as ImageIcon, SlidersHorizontal } from 'lucide-react'
 import styles from './background-materials-view.module.scss'
 
 export type BackgroundOption = {
+  scope?: { cardId: string; ownerKey: string }
   id: string
   name: string
   description: string

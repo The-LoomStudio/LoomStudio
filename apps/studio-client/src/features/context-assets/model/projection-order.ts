@@ -12,7 +12,7 @@ export type ProjectionOrderEntry = {
   zoneOrder: number
 }
 
-export type ProjectionOrderRow = {
+type ProjectionOrderRow = {
   entries: ProjectionOrderEntry[]
   id: string
   label: string
@@ -94,7 +94,7 @@ export function readProjectionOrderIds(entries: ProjectionOrderEntry[], orderNod
     .map(entry => entry.node.id)
 }
 
-export function buildProjectionRows(entries: ProjectionOrderEntry[]): ProjectionOrderRow[] {
+function buildProjectionRows(entries: ProjectionOrderEntry[]): ProjectionOrderRow[] {
   const rows: ProjectionOrderRow[] = []
   const settingLayerEntries = new Map<string, ProjectionOrderEntry[]>()
 

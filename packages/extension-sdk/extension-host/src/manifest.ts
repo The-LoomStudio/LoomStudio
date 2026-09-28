@@ -14,7 +14,7 @@ import {
 } from './types.js'
 import { isRecord } from '@loom-studio/shared'
 
-export const rendererSurfaces = [
+const rendererSurfaces = [
   'shell.background',
   'narrative.entry.inline',
   'narrative.timeline.tail',
@@ -26,13 +26,13 @@ export const rendererSurfaces = [
   'standalone.page',
 ] as const
 
-export const rendererScopes = ['workspace', 'timeline', 'agent-session', 'node', 'message'] as const
+const rendererScopes = ['workspace', 'timeline', 'agent-session', 'node', 'message'] as const
 
-export const clientActionSurfaces = ['composer.quick-actions', 'extension.workbench.actions', 'stage.header.actions'] as const
+const clientActionSurfaces = ['composer.quick-actions', 'extension.workbench.actions', 'stage.header.actions'] as const
 
-export const clientHostIcons = ['image', 'refresh', 'settings', 'sparkles'] as const
+const clientHostIcons = ['image', 'refresh', 'settings', 'sparkles'] as const
 
-export const rendererSurfaceScopes: Record<(typeof rendererSurfaces)[number], readonly (typeof rendererScopes)[number][]> = {
+const rendererSurfaceScopes: Record<(typeof rendererSurfaces)[number], readonly (typeof rendererScopes)[number][]> = {
   'shell.background': ['workspace'],
   'narrative.entry.inline': ['node'],
   'narrative.timeline.tail': ['timeline'],
@@ -61,7 +61,7 @@ export function readManifest(directory: string): ExtensionManifest {
  * Validates extension package manifest against schema version 2.
  * Invariant: Enforces strict identifier patterns, reserved namespace protection, relative icon boundaries, and bounded tag sets.
  */
-export function validateManifest(manifest: Partial<ExtensionManifest>): void {
+function validateManifest(manifest: Partial<ExtensionManifest>): void {
   if (manifest.manifestVersion !== 2) throw new Error('manifestVersion must be 2')
   if (!manifest.id) throw new Error('Manifest id is required')
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(manifest.id)) throw new Error('Manifest id is invalid')
@@ -102,6 +102,15 @@ export function validateManifest(manifest: Partial<ExtensionManifest>): void {
   validateTextResourceContributions(manifest.contributes?.transformRules, 'Text Transform Rule')
   validateTextResourceContributions(manifest.contributes?.textExtractors, 'Text Extractor')
   validateSettingContributions(manifest.contributes?.settings)
+  const scripts = new Set<string>()
+  for (const script of manifest.contributes?.loomScripts ?? []) {
+    if (!script.id || !extensionStorageTokenPattern.test(script.id) || scripts.has(script.id)) throw new Error(`Manifest Loom Script id is invalid or duplicated: ${script.id}`)
+    if (typeof script.source !== 'string' || !script.source.trim() || script.source !== script.source.trim()
+      || script.source.includes('\0') || isAbsolute(script.source) || !script.source.endsWith('.loom.js')) {
+      throw new Error(`Manifest Loom Script source must be a relative .loom.js file: ${script.id}`)
+    }
+    scripts.add(script.id)
+  }
   const agentTools = new Set<string>()
   for (const tool of manifest.contributes?.agentTools ?? []) {
     if (!tool.id.startsWith(`${manifest.id}/`) || !extensionStorageTokenPattern.test(tool.id.slice(manifest.id.length + 1))) {
@@ -112,8 +121,14 @@ export function validateManifest(manifest: Partial<ExtensionManifest>): void {
     agentTools.add(tool.id)
   }
   for (const resource of promptResources.values()) {
-    if ((resource.settingMounts?.length || resource.toolMounts?.length) && resource.resourceKind !== 'preset') {
+    if ((resource.settingMounts?.length || resource.toolMounts?.length || resource.scriptMounts?.length) && resource.resourceKind !== 'preset') {
       throw new Error(`Manifest Prompt Resource mounts require a Preset: ${resource.id}`)
+    }
+    const mountedScripts = new Set<string>()
+    for (const mount of resource.scriptMounts ?? []) {
+      if (!scripts.has(mount.scriptId) || mountedScripts.has(mount.scriptId)) throw new Error(`Manifest Preset Script mount is unresolved or duplicated: ${mount.scriptId}`)
+      if (mount.orderIndex !== undefined && (!Number.isInteger(mount.orderIndex) || mount.orderIndex < 0)) throw new Error(`Manifest Preset Script order is invalid: ${mount.scriptId}`)
+      mountedScripts.add(mount.scriptId)
     }
     const settingMounts = new Set<string>()
     for (const mount of resource.settingMounts ?? []) {
@@ -227,7 +242,7 @@ export function validateManifest(manifest: Partial<ExtensionManifest>): void {
     if (eventCapabilities !== undefined && (!Array.isArray(eventCapabilities) || !eventCapabilities.every(value => typeof value === 'string'))) {
       throw new Error(`Module capabilities.events.subscribe must be a string array: ${moduleManifest.id}`)
     }
-    for (const capability of ['assets.publish', 'assets.read', 'ai.invoke', 'macros.provide', 'state.contribute', 'state.read', 'state.write'] as const) {
+    for (const capability of ['assets.publish', 'assets.read', 'ai.invoke', 'macros.provide', 'narrative.context.provide', 'state.contribute', 'state.read', 'state.write', 'ui.notify'] as const) {
       const requested = moduleManifest.capabilities?.[capability]
       if (requested !== undefined && typeof requested !== 'boolean') {
         throw new Error(`Module capabilities.${capability} must be a boolean: ${moduleManifest.id}`)
@@ -321,20 +336,20 @@ function validateTextResourceContributions(
   }
 }
 
-export function assertPackageJsonSource(source: unknown, label: string): asserts source is string {
+function assertPackageJsonSource(source: unknown, label: string): asserts source is string {
   if (typeof source !== 'string' || !source.trim() || source !== source.trim() || source.includes('\0') || isAbsolute(source) || !source.toLowerCase().endsWith('.json')) {
     throw new Error(`Manifest ${label} source must be a relative JSON file`)
   }
 }
 
-export function assertOptionalManifestText(value: unknown, field: string, maxLength: number): void {
+function assertOptionalManifestText(value: unknown, field: string, maxLength: number): void {
   if (value === undefined) return
   if (typeof value !== 'string' || !value.trim() || value !== value.trim() || value.length > maxLength || value.includes('\0')) {
     throw new Error(`Manifest ${field} is invalid`)
   }
 }
 
-export function assertOptionalManifestUrl(value: unknown, field: string): void {
+function assertOptionalManifestUrl(value: unknown, field: string): void {
   if (value === undefined) return
   assertOptionalManifestText(value, field, 2_048)
   let parsed: URL

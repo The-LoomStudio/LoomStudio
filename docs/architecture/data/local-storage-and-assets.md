@@ -61,7 +61,7 @@ Card Bundle 导出以当前 canonical 字段覆盖原值，同时透传导入对
 
 Card 资产模型已将**容器与内部素材解耦**：
 - 媒体素材不限于静态头像或封面，支持保存 GIF、APNG、WebP、音频与视频等测试/业务素材；
-- 存储与打包严格保留原始字节与 MIME 声明，未知格式采用 `.bin` 保持中立，绝不将非 PNG 素材篡改或伪装成 PNG；
+- Blob Store 保存收到的原始字节，Card 打包保留媒体类型、未知 MIME 使用 `.bin` 而不伪装为 PNG；Card 导入/导出的 PNG 素材会按[容器规则](../application/card-bundle-files.md#校验与限制)移除文本元数据和 IEND 后尾部，避免嵌套携带旧角色包。这是明确的 PNG 容器处理，不是 Blob Store 转码或对所有素材作任意清洗；
 - 静态 PNG 外层封面仅用于平台可读展示，包内完整保留原始媒体与 APNG 动画块。当前自动缩略图生成与客户端视频播放器单独演进。
 
 ## 5. Extension 文件边界

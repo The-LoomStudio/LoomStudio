@@ -21,7 +21,9 @@ export function createExtensionHostHarness(options: {
   aiCapabilities?: AiGatewayCapabilityRegistry
   aiGateway?: ProfiledAiGateway
   registerMacroProvider?: ExtensionHostOptions['registerMacroProvider']
+  registerNarrativeContextProvider?: ExtensionHostOptions['registerNarrativeContextProvider']
   registerStateContribution?: ExtensionHostOptions['registerStateContribution']
+  registerAgentToolHandler?: ExtensionHostOptions['registerAgentToolHandler']
   readState?: ExtensionHostOptions['readState']
   writeState?: ExtensionHostOptions['writeState']
 } = {}) {
@@ -45,14 +47,18 @@ export function createExtensionHostHarness(options: {
     aiCapabilities: options.aiCapabilities,
     aiGateway: options.aiGateway,
     registerMacroProvider: options.registerMacroProvider,
+    registerNarrativeContextProvider: options.registerNarrativeContextProvider,
     registerStateContribution: options.registerStateContribution,
+    registerAgentToolHandler: options.registerAgentToolHandler,
     readState: options.readState,
     writeState: options.writeState,
     callRpc: (method, params, context) => kernel.callRpc(method, params, context),
-    registerRpc: (name, ownerPackageId, ownerModuleId, handler, ownerInstanceId) => {
-      const handle = kernel.registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler, ownerInstanceId)
+    registerRpc: (name, ownerPackageId, ownerModuleId, handler, ownerInstanceId, target) => {
+      const handle = kernel.registerExtensionRpc(name, ownerPackageId, ownerModuleId, handler, ownerInstanceId, target)
       return { name, ownerPackageId, ownerModuleId, ownerInstanceId, handler, dispose: handle.dispose }
     },
+    registerEventDefinition: (definition, registeredBy) => kernel.getEventBus().registerDefinition(definition, registeredBy),
+    subscribeEvents: (patterns, handler, subscriber) => kernel.getEventBus().subscribe(patterns, handler, { subscriber }),
     emitEvent: (name, payload, publisher) => {
       return kernel.getEventBus().emit(name, payload, {
         publisher,

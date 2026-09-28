@@ -33,22 +33,16 @@ export function readRedoEntry(state: EditHistoryState): HistoryEntry | undefined
   return state.redoStack.at(-1)
 }
 
-export function completeUndo(state: EditHistoryState, revertedChangesetId: string): EditHistoryState {
-  const entry = readUndoEntry(state)
-  if (!entry) return state
-
+export function completeUndo(state: EditHistoryState, entry: HistoryEntry, revertedChangesetId: string): EditHistoryState {
   return {
-    undoStack: state.undoStack.slice(0, -1),
+    undoStack: state.undoStack.filter(item => item.changesetId !== entry.changesetId),
     redoStack: [...state.redoStack, { ...entry, changesetId: revertedChangesetId }],
   }
 }
 
-export function completeRedo(state: EditHistoryState, revertedChangesetId: string): EditHistoryState {
-  const entry = readRedoEntry(state)
-  if (!entry) return state
-
+export function completeRedo(state: EditHistoryState, entry: HistoryEntry, revertedChangesetId: string): EditHistoryState {
   return {
     undoStack: [...state.undoStack, { ...entry, changesetId: revertedChangesetId }],
-    redoStack: state.redoStack.slice(0, -1),
+    redoStack: state.redoStack.filter(item => item.changesetId !== entry.changesetId),
   }
 }

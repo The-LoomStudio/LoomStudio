@@ -76,7 +76,7 @@ describe('Context Asset explorer action outcomes', () => {
   it('does not select a created node after its source workspace unmounts', async () => {
     const state = fixture()
     let resolve!: (id: string) => void
-    state.props.onAddNode = vi.fn(() => new Promise(accept => { resolve = accept }))
+    state.props.onAddNode = vi.fn(() => new Promise<string>(accept => { resolve = accept }))
     const pending = state.action('add')
     hooks.cleanups.forEach(cleanup => cleanup())
     resolve('created')

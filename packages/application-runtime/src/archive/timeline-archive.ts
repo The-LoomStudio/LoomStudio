@@ -1,4 +1,4 @@
-import { isRecord, type JsonValue } from '@loom-studio/shared'
+import { isRecord, normalizeMacroSelections, type JsonValue, type MacroSelectionMap } from '@loom-studio/shared'
 import type { NarrativeBranch, NarrativeNode, NarrativeTimeline } from '@loom-studio/application-data'
 import type { StateRevision, StateScope } from '@loom-studio/application-data'
 
@@ -13,6 +13,7 @@ export type TimelineArchive = {
     revisions: StateRevision[]
   }
   participants: TimelineArchiveDataBlock[]
+  macroConfigurations?: Array<{ presetId: string; macroSelections: MacroSelectionMap }>
 }
 
 export function serializeTimelineArchive(archive: TimelineArchive): string {
@@ -85,6 +86,17 @@ function validateTimelineArchive(value: unknown): asserts value is TimelineArchi
     }
   }
   const archive = value as unknown as TimelineArchive
+  if (value.macroConfigurations !== undefined) {
+    if (!Array.isArray(value.macroConfigurations)) throw new Error('Invalid archived macro configurations')
+    const presets = new Set<string>()
+    for (const config of value.macroConfigurations) {
+      if (!isRecord(config)) throw new Error('Invalid archived macro configuration')
+      identifier(config.presetId)
+      if (presets.has(config.presetId)) throw new Error('Duplicate archived macro configuration')
+      presets.add(config.presetId)
+      normalizeMacroSelections(config.macroSelections)
+    }
+  }
   const branchIds = new Set(archive.branches.map(branch => branch.id))
   if (branchIds.size !== archive.branches.length) throw new Error('Timeline archive contains duplicate branch IDs')
   if (!branchIds.has(archive.timeline.activeBranchId)) {

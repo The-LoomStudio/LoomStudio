@@ -8,7 +8,7 @@
 
 为了保证 Client、Server 以及 Extension 之间的通信具备强类型保障与全链路追踪能力，本包固化了标准的消息通信规范：
 - **JSON-RPC 2.0 信封**：
-  - `RpcRequest`：包含 `jsonrpc: '2.0'`、递增 `id`、`method`、`params` 以及链路追踪元数据（`correlationId`、`parentCallId`）；
+  - `RpcRequest`：包含 `jsonrpc: '2.0'`、`id: string | number | null`、`method`，以及可选 `params` 与链路追踪元数据（`correlationId`、`parentCallId`）；ID 生成策略属于调用方，不要求递增；
   - `RpcResponse`：包含成功结果（`result`）或标准化序列化错误（`error`），以及响应耗时统计元数据；
 - **标准化事件信封 (`StudioEvent`)**：
   - 定义统一的 `name`、`payload`、`eventId`、版本号与发射来源元数据，用于事件总线广播与 SSE 订阅。

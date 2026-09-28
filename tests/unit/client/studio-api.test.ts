@@ -254,8 +254,8 @@ describe('studio client typed api', () => {
     await api.narratives.create({ cardId: 'card-1' })
     await api.narratives.fork({ timelineId: 'timeline-1', fromBranchId: 'branch-1', fromNodeId: 'node-1' })
     await api.narratives.switch({ timelineId: 'timeline-1', branchId: 'branch-2' })
-    await api.agentProfiles.list()
-    await api.agentSessions.create({ agentProfileId: 'profile-1' })
+    await api.agentPresets.list()
+    await api.agentSessions.create({ agentPresetId: 'profile-1' })
     await api.agentSessions.invoke({ agentSessionId: 'agent-session-1', input: 'continue' })
     await api.agentSessions.preview({ agentSessionId: 'agent-session-1', input: 'preview' })
 
@@ -267,8 +267,8 @@ describe('studio client typed api', () => {
       { method: 'application.createNarrativeTimeline', params: { cardId: 'card-1' } },
       { method: 'application.forkNarrativeBranch', params: { timelineId: 'timeline-1', fromBranchId: 'branch-1', fromNodeId: 'node-1' } },
       { method: 'application.switchNarrativeBranch', params: { timelineId: 'timeline-1', branchId: 'branch-2' } },
-      { method: 'application.listAgentProfiles', params: {} },
-      { method: 'application.createAgentSession', params: { agentProfileId: 'profile-1' } },
+      { method: 'application.listAgentPresets', params: {} },
+      { method: 'application.createAgentSession', params: { agentPresetId: 'profile-1' } },
       { method: 'application.invokeAgentTurn', params: { agentSessionId: 'agent-session-1', input: 'continue' } },
       { method: 'application.previewAgentTurn', params: { agentSessionId: 'agent-session-1', input: 'preview' } },
     ])

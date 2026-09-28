@@ -19,6 +19,7 @@ import type { ClientRendererScope } from '../shared/extension-renderer-runtime/c
 import { NotificationToaster } from '../shared/ui/notification-toaster/notification-toaster.js'
 import type { StudioApi } from '../shared/api/studio-api.js'
 import { toast } from 'sonner'
+import { createRendererNotifications } from '../shared/extension-renderer-runtime/renderer-notifications.js'
 import { hasCompleteProviderAccount } from '../features/provider-settings/model/provider-account-status.js'
 import { useStudioLayoutStore } from '../shared/studio-shell/studio-layout-store.js'
 import { useStudioNavigation } from '../shared/studio-shell/use-studio-navigation.js'
@@ -29,6 +30,7 @@ import { ResourceReferenceDialog } from '../features/resource-references/resourc
 import { createStudioPanels } from './studio-panel-registry.js'
 import { preloadStudioPanel } from './studio-panel-modules.js'
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useDisplayProjection, useOpeningDisplayProjection } from '../features/message-content/model/use-display-projection.js'
 import styles from './app.module.scss'
 import '../styles/global.css'
 import { useAppearanceStore } from '../shared/studio-shell/appearance-store.js'
@@ -51,6 +53,10 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
   initializeAppearancePreview()
   initializeMotionPreference()
   const appearance = useAppearanceStore()
+  const state = useStudioState(props.transportLogger)
+  const appearanceCardId = state.narrativeTimeline?.createdFrom?.cardId ?? state.selectedCardId
+  const appearanceBackground = appearance.scopedBackground && appearance.scopedBackground.cardId === appearanceCardId
+    ? appearance.scopedBackground : appearance.background
   const effectiveMotion = useEffectiveMotion()
   useEffect(() => applyEffectiveMotion(effectiveMotion), [effectiveMotion])
   useEffect(() => {
@@ -59,17 +65,19 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
     root.style.setProperty('--loom-preview-blur', `${appearance.material.blur}px`)
     root.style.setProperty('--loom-preview-opacity', `${appearance.material.opacity}%`)
     root.style.setProperty('--loom-canvas-width', `${appearance.canvasWidth || 720}px`)
-    if (appearance.background) {
-      root.dataset.loomPreviewBackground = appearance.background.id
-      root.style.setProperty('--loom-preview-wallpaper', `url("${appearance.background.image}")`)
+    if (appearanceBackground) {
+      root.dataset.loomPreviewBackground = appearanceBackground.id
+      root.style.setProperty('--loom-preview-wallpaper', `url("${appearanceBackground.image}")`)
     } else {
       delete root.dataset.loomPreviewBackground
       root.style.removeProperty('--loom-preview-wallpaper')
     }
-  }, [appearance.background, appearance.canvasWidth, appearance.material])
-  const state = useStudioState(props.transportLogger)
+  }, [appearanceBackground, appearance.canvasWidth, appearance.material])
   const rendererHost = useMemo(() => createClientRendererHost(), [])
-  const clientExtensions = useClientExtensionRuntime({ api: state.clientExtensionApi, rendererHost, logger: props.extensionLogger, clientLogs: props.clientLogs })
+  const notifications = useMemo(() => createRendererNotifications((owner, input) => {
+    toast[input.level ?? 'info'](input.message, { description: owner, duration: 4000 })
+  }), [])
+  const clientExtensions = useClientExtensionRuntime({ api: state.clientExtensionApi, rendererHost, logger: props.extensionLogger, clientLogs: props.clientLogs, notify: notifications.show })
   const uiState = useStudioUiState()
   const timelineRouteRequestRef = useRef(0)
   const navigation = useStudioNavigation({ endpoint: state.endpoint, api: state.api })
@@ -80,21 +88,51 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
   const composerPinned = useStudioLayoutStore(current => current.composerPinned)
   const toggleComposerPinned = useStudioLayoutStore(current => current.toggleComposerPinned)
   const derived = useStudioDerivedState(state, navigation.route)
-  const { assetWorkspaceId, cardsBusy, providerBusy, agentProfileBusy, activePresetId,
+  const { assetWorkspaceId, cardsBusy, providerBusy, agentPresetBusy, activePresetId,
     narrativeCharacterName, sourceCardId, canOpenTimelineSource, narrativeCharacterAvatarUrl,
     sessionBusy, agentChatBusy, mutationBusy } = derived
   const contextWorkspaceId = JSON.stringify([state.endpoint, assetWorkspaceId])
+  const openingDisplay = useOpeningDisplayProjection({
+    api: state.textTransformsApi,
+    endpoint: state.endpoint,
+    opening: !state.narrativeTimeline && state.selectedCardDetails?.id === state.selectedCardId
+      && state.selectedCardId && state.openingDraft && !state.openingDraft.isPlaceholder
+      ? { cardId: state.selectedCardId, presetId: activePresetId, text: state.openingDraft.content }
+      : undefined,
+    refreshToken: uiState.loomScriptRefreshToken,
+  })
+  const narrativeDisplay = useDisplayProjection({
+    api: state.textTransformsApi,
+    endpoint: state.endpoint,
+    source: state.narrativeTimeline && state.branch ? { kind: 'narrative', timelineId: state.narrativeTimeline.id, branchId: state.branch.id } : undefined,
+    consumerAgentSessionId: state.agentChatSession?.id,
+    entries: state.narrativeNodes.map(node => ({ id: node.id, text: node.body.raw })),
+    revision: activePresetId,
+    refreshToken: uiState.loomScriptRefreshToken,
+  })
+  const agentDisplay = useDisplayProjection({
+    api: state.textTransformsApi,
+    endpoint: state.endpoint,
+    source: state.agentChatSession ? { kind: 'agent-session', sessionId: state.agentChatSession.id } : undefined,
+    entries: state.agentChatMessages.flatMap(message => message.entry.kind === 'message' && typeof message.entry.content === 'string' && message.entry.state !== 'partial'
+      ? [{ id: message.id, text: message.entry.content }] : []),
+    revision: activePresetId,
+    refreshToken: uiState.loomScriptRefreshToken,
+  })
+  const historyNavigationContext = useRef('')
+  historyNavigationContext.current = JSON.stringify([state.endpoint, navigation.locationKey, assetWorkspaceId, state.selectedCardId])
   const narrativeNavigating = !state.bootstrapReady || navigation.targetPending
     || navigation.route.timelineId !== state.narrativeTimeline?.id
     || Boolean(navigation.route.branchId && navigation.route.branchId !== state.branch?.id)
   const composerCommandContext = {
     sourceSurface: 'composer.quick-actions' as const,
     workspaceId: 'workspace',
+    ...(appearanceCardId ? { cardId: appearanceCardId } : {}),
     ...(state.narrativeTimeline ? { timelineId: state.narrativeTimeline.id } : {}),
     ...(state.agentChatSession ? { agentSessionId: state.agentChatSession.id } : {}),
   }
   const composerQuickActions = listClientActions({
-    packages: clientExtensions.packages,
+    packages: [...clientExtensions.packages, ...clientExtensions.cardPackages],
     surface: 'composer.quick-actions',
     context: composerCommandContext,
   }).map(action => ({
@@ -106,6 +144,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
         packageId: action.packageId,
         moduleId: action.moduleId,
         commandId: action.command.id,
+        target: action.target,
         sourceSurface: 'composer.quick-actions',
       }).then(result => {
         if (result.status === 'failed') toast.error(result.message)
@@ -113,7 +152,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
     },
   }))
   const headerActions = listClientActions({
-    packages: clientExtensions.packages,
+    packages: [...clientExtensions.packages, ...clientExtensions.cardPackages],
     surface: 'stage.header.actions',
     context: composerCommandContext,
   }).map(action => {
@@ -127,7 +166,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
         title={action.command.title}
         type="button"
         onClick={() => {
-          void clientExtensions.host.executeCommand({ packageId: action.packageId, moduleId: action.moduleId, commandId: action.command.id, sourceSurface: 'stage.header.actions' }).then(result => {
+          void clientExtensions.host.executeCommand({ packageId: action.packageId, moduleId: action.moduleId, commandId: action.command.id, target: action.target, sourceSurface: 'stage.header.actions' }).then(result => {
             if (result.status === 'failed') toast.error(result.message)
           })
         }}
@@ -142,6 +181,15 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
   function focusHistoryAsset(target: Awaited<ReturnType<typeof state.undoEdit>>) {
     if (!target) return
     useStudioLayoutStore.getState().openAssetDetail(target.layoutId, assetWorkspaceId, target.assetId)
+  }
+
+  async function applyHistoryAction(action: typeof state.undoEdit) {
+    const context = historyNavigationContext.current
+    const layouts = useStudioLayoutStore.getState().assetLayouts
+    const canNavigate = () => context === historyNavigationContext.current
+      && layouts === useStudioLayoutStore.getState().assetLayouts
+    const target = await action(canNavigate)
+    if (canNavigate()) focusHistoryAsset(target)
   }
 
   function openStateSource(scope: 'global' | 'timeline') {
@@ -165,10 +213,11 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
   useEffect(() => {
     rendererHost.setScopeSnapshot({
       workspace: 'workspace',
+      cardId: state.narrativeTimeline?.createdFrom?.cardId ?? state.selectedCardId,
       ...(state.narrativeTimeline ? { timelineId: state.narrativeTimeline.id } : {}),
       ...(state.agentChatSession ? { agentSessionId: state.agentChatSession.id } : {}),
     })
-  }, [rendererHost, state.agentChatSession?.id, state.narrativeTimeline?.id])
+  }, [rendererHost, state.agentChatSession?.id, state.narrativeTimeline?.id, state.narrativeTimeline?.createdFrom?.cardId, state.selectedCardId])
 
   useEffect(() => {
     let disposed = false
@@ -186,6 +235,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
         agentSessionId: state.agentChatSession?.id,
       }),
       stateRead: async target => (await state.statesApi.get(target)).snapshot.value,
+      notify: notifications.show,
     })
     void state.api.loomScripts.resolveRendererMounts({
       workspaceId: 'workspace',
@@ -200,7 +250,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
       disposed = true
       runtime.dispose()
     }
-  }, [activePresetId, uiState.loomScriptRefreshToken, rendererHost, state.agentChatSession?.id, state.api, state.branch?.id, state.narrativeTimeline?.id, state.statesApi])
+  }, [activePresetId, uiState.loomScriptRefreshToken, rendererHost, notifications, state.agentChatSession?.id, state.api, state.branch?.id, state.narrativeTimeline?.id, state.statesApi])
 
   useEffect(() => {
     if (!state.bootstrapReady) return
@@ -231,7 +281,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
     return () => { timelineRouteRequestRef.current++ }
   }, [narrativeTarget, state.bootstrapReady, navigation.route.targetUri])
   const resourcePanels = StudioResourcePanels({ state, uiState, navigation, assetWorkspaceId })
-  const panels = createStudioPanels({ state, uiState, navigation, rendererHost, clientExtensions, clientLogs: props.clientLogs, resourcePanels, assetWorkspaceId, cardsBusy, providerBusy, agentProfileBusy, activePresetId, sourceCardId, sessionBusy, openStateSource, uiScale, setUiScale, backgrounds: clientExtensions.host.backgrounds() })
+  const panels = createStudioPanels({ state, uiState, navigation, rendererHost, clientExtensions, clientLogs: props.clientLogs, resourcePanels, assetWorkspaceId, cardsBusy, providerBusy, agentPresetBusy, activePresetId, sourceCardId, sessionBusy, openStateSource, uiScale, setUiScale, backgrounds: clientExtensions.host.backgrounds() })
 
   const studio = (
     <StudioPage
@@ -250,13 +300,19 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
       canRedo={state.canRedoEdit}
       agentChatBusy={agentChatBusy}
       agentActiveRun={state.agentActiveRun}
+      runRecovery={state.runRecovery}
+      runRecoveryBusy={state.runRecoveryBusy}
+      canRestoreRunInput={state.canRestoreRunInput}
+      reconnectAgentRun={state.reconnectAgentRun}
+      restoreRunInput={state.restoreRunInput}
       agentChatInput={state.agentChatInput}
       agentChatMessages={state.agentChatMessages}
+      agentDisplay={agentDisplay}
       agentChatSession={state.agentChatSession}
       agentChatSessions={state.agentChatSessions}
       agentChatSessionReady={state.agentChatSessionReady}
       agentPanelOpen={uiState.agentPanelOpen}
-      agentProfiles={state.agentProfiles}
+      agentPresets={state.agentPresets}
       agentSessionTail={state.agentChatSession ? (
         <RendererSurfaceHost
           host={rendererHost}
@@ -270,9 +326,9 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
       customCss={state.customCss}
       onChangeAgentChatInput={state.setAgentChatInput}
       onRedo={() => {
-        void state.redoEdit().then(focusHistoryAsset)
+        void applyHistoryAction(state.redoEdit)
       }}
-      onSelectAgentProfile={state.selectAgentProfile}
+      onSelectAgentPreset={state.selectAgentPreset}
       onSelectAgentSession={id => { void state.activateAgentSession(id) }}
       onNewAgentSession={state.newAgentSession}
       onRefreshAgentSessions={() => { void state.refreshAgentSessions() }}
@@ -283,14 +339,14 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
       onApproveAgentMutation={(allow, reason) => { void state.approveAgentMutation(allow, reason) }}
       onToggleAgentPanel={() => uiState.setAgentPanelOpen(prev => !prev)}
       onUndo={() => {
-        void state.undoEdit().then(focusHistoryAsset)
+        void applyHistoryAction(state.undoEdit)
       }}
       panelHeaderMain={{
         character: <CharacterPanelHeader t={state.t} />,
-        preset: (
+        agent: (
           <PresetWorkbenchHeader
             resources={state.promptResources}
-            selectedResourceId={navigation.route.panel === 'preset' ? navigation.route.resourceId ?? uiState.selectedPresetId : uiState.selectedPresetId}
+            selectedResourceId={navigation.route.panel === 'agent' ? navigation.route.resourceId ?? uiState.selectedPresetId : uiState.selectedPresetId}
             onSelectResource={resourceId => {
               uiState.setSelectedPresetId(resourceId)
               const resource = state.promptResources.find(item => item.id === resourceId)
@@ -334,7 +390,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
       preloadPanel={preloadStudioPanel}
       providerAccounts={state.providerAccounts}
       rendererHost={rendererHost}
-      selectedAgentProfileId={state.selectedAgentProfileId}
+      selectedAgentPresetId={state.selectedAgentPresetId}
       t={state.t}
       uiScale={uiScale}
       canvas={(
@@ -346,12 +402,14 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
           } as CSSProperties}
         >
           <NarrativeTimeline
+            displayProjection={narrativeDisplay}
             key={JSON.stringify([state.endpoint, state.narrativeTimeline?.id, state.branch?.id])}
             anchorNodeId={navigation.nodeAnchorId}
             busy={sessionBusy || narrativeNavigating}
             composerHeight={uiState.composerHeight}
             emptyTimelineText={state.emptyTimelineText}
-            openingDraft={state.openingDraft}
+            openingDraft={state.selectedCardDetails?.id === state.selectedCardId ? state.openingDraft : undefined}
+            openingDisplay={openingDisplay}
             getNodeLink={navigation.getNodeLink}
             hasOlder={state.hasOlderNarrativeNodes}
             onEditNode={state.editNarrativeNode}
@@ -376,6 +434,13 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
             ) : undefined}
           />
           <AgentComposer
+            canRetryNarrativeInput={state.canRetryNarrativeInput && !narrativeNavigating}
+            onRetryNarrativeInput={() => { void state.retryNarrativeInput() }}
+            runRecovery={state.runRecovery}
+            runRecoveryBusy={state.runRecoveryBusy}
+            canRestoreRunInput={state.canRestoreRunInput}
+            reconnectAgentRun={state.reconnectAgentRun}
+            restoreRunInput={state.restoreRunInput}
             agentPanelOpen={uiState.agentPanelOpen}
             canPreviewPrompt={state.canPreviewPrompt}
             canSendNarrative={state.canSend && !narrativeNavigating}

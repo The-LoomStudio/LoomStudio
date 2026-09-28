@@ -63,7 +63,7 @@ describe('official content installation', () => {
     await fixture.runtime.installOfficialContent(input)
     const setting = await fixture.runtime.getPromptResource({ resourceId: officialPromptResourceIds.knowledgeSetting })
 
-    await fixture.runtime.deletePromptResource({ resourceId: setting.resource.id, expectedVersion: setting.resource.version })
+    await fixture.runtime.deletePromptResource({ resourceId: setting.resource.id })
     await fixture.runtime.initialize()
     const result = await fixture.runtime.installOfficialContent(input)
 

@@ -2,6 +2,17 @@ import { describe, expect, it } from 'vitest'
 import { formatResourceReference, parseResourceReference, formatEntityReference, parseEntityReference, parseResourceLink, type ResourceReference, type EntityReference } from '../../../packages/shared/src/resource-reference.js'
 
 describe('resource reference URI', () => {
+  it('rejects every C0 and DEL character after URI decoding while preserving Unicode', () => {
+    for (const code of [...Array.from({ length: 32 }, (_, index) => index), 127]) {
+      const value = encodeURIComponent(`a${String.fromCharCode(code)}b`)
+      expect(parseEntityReference(`loom-resource://entity?type=card&id=${value}`)).toBeUndefined()
+      expect(parseResourceReference(`loom-resource://script?document=${value}&version=1#L1-L1`)).toBeUndefined()
+      expect(parseResourceReference(`loom-resource://state?scope=global&revision=r&pointer=%2F${value}#L1-L1`)).toBeUndefined()
+    }
+    const reference: EntityReference = { kind: 'entity', type: 'card', id: '角色😀\u0080' }
+    expect(parseEntityReference(formatEntityReference(reference))).toEqual(reference)
+  })
+
   it.each<EntityReference>([
     { kind: 'entity', type: 'timeline', id: 't /?&#', branchId: 'b /?&#', nodeId: 'n /?&#' },
     { kind: 'entity', type: 'timeline', id: 't', branchId: 'b' },

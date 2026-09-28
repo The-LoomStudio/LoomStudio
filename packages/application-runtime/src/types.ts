@@ -113,6 +113,10 @@ export type {
   TextPipelineOverrideSource,
 } from './transforms/history-text.js'
 import type { CompiledPrompt } from './prompt/prompt-builder.js'
+import type { SampleNarrativeInput } from './runtime/transforms-runtime.js'
+import type { NarrativeSampleResult } from './narrative/sampling.js'
+import type { NarrativeContextRegistry } from './narrative/context-provider.js'
+export type { SampleNarrativeInput } from './runtime/transforms-runtime.js'
 import type { MacroProviderRegistry } from './prompt/macro-provider-registry.js'
 import type { StateContributionRegistry } from './state/state-contribution-registry.js'
 import type { TimelineArchive, TimelineArchiveParticipant } from './archive/timeline-archive.js'
@@ -122,7 +126,6 @@ import type {
   LoomScriptMountEntry,
   LoomScriptMountTarget,
   LoomScriptOwner,
-  LoomScriptRuntimeMountSnapshot,
   ResolvedLoomScriptRendererMount,
 } from './scripts/loom-script-contracts.js'
 import type {
@@ -158,6 +161,9 @@ export type {
 } from '@loom-studio/shared'
 
 export type ApplicationRuntime = {
+  getTimelinePresetConfig(input: { timelineId: string; presetId: string }): Promise<{ config: import('./prompt/timeline-preset-config.js').TimelinePresetConfig }>
+  updateTimelinePresetConfig(input: { timelineId: string; presetId: string; expectedVersion: number; macroSelections: MacroSelectionMap }, context?: RuntimeRequestContext): Promise<{ config: import('./prompt/timeline-preset-config.js').TimelinePresetConfig; mutation: MutationReceipt }>
+  sampleNarrative(input: SampleNarrativeInput, signal?: AbortSignal): Promise<NarrativeSampleResult>
   captureCardDirectoryState(input: { cardId: string }): Promise<{ artifact: CardBundleArtifact; snapshot: JsonObject }>
   applyCardDirectoryState(input: { cardId: string; artifact: CardBundleArtifact; snapshot: JsonObject }, context?: RuntimeRequestContext): Promise<{ mutation: { changesetId: string } }>
   initialize(): Promise<void>
@@ -179,8 +185,9 @@ export type ApplicationRuntime = {
   getTextPipelineOverride(input: InspectTextPipelineInput): Promise<{ override: TextPipelineOverrideEntry | null }>
   upsertTextPipelineOverride(input: InspectTextPipelineInput & { expectedVersion?: number; disabledRuleIds: string[]; orderedRuleIds: string[] }, context?: RuntimeRequestContext): Promise<{ override: TextPipelineOverrideEntry; mutation: MutationReceipt }>
   deleteTextPipelineOverride(input: InspectTextPipelineInput & { expectedVersion?: number }, context?: RuntimeRequestContext): Promise<{ deleted: true; mutation: MutationReceipt }>
-  projectHistory(input: { source: HistorySource; phase: TextTransformPhase; consumerAgentSessionId?: string }): Promise<{ snapshot: HistoryProjectionSnapshot }>
-  extractHistory(input: { source: HistorySource; phase?: TextTransformPhase; extractorId: string; consumerAgentSessionId?: string }): Promise<{ extraction: TextExtractionResult; snapshot: HistoryProjectionSnapshot }>
+  projectHistory(input: { source: HistorySource; phase: TextTransformPhase; consumerAgentSessionId?: string; extensionTarget?: ExtensionInstallationTarget }): Promise<{ snapshot: HistoryProjectionSnapshot }>
+  previewCardOpeningDisplay(input: { cardId: string; presetId?: string; text: string }): Promise<{ text: string; originalText: string; diagnostics: Array<{ code: string; message: string }> }>
+  extractHistory(input: { source: HistorySource; phase?: TextTransformPhase; extractorId: string; consumerAgentSessionId?: string; extensionTarget?: ExtensionInstallationTarget }): Promise<{ extraction: TextExtractionResult; snapshot: HistoryProjectionSnapshot }>
   inspectTextPipeline(input: InspectTextPipelineInput): Promise<TextPipelineInspection>
   listRenderers(): Promise<{ renderers: RendererDefinition[] }>
   importLoomScript(input: { owner: LoomScriptOwner; fileName: string; source: string }, context?: RuntimeRequestContext): Promise<{ script: LoomScriptEntry; mutation: MutationReceipt }>
@@ -192,18 +199,22 @@ export type ApplicationRuntime = {
   updateLoomScriptMount(input: { mountId: string; expectedVersion: number; enabled: boolean; orderIndex: number; pinnedDocumentVersion?: number; grantedCapabilities: string[] }, context?: RuntimeRequestContext): Promise<{ mount: LoomScriptMountEntry; mutation: MutationReceipt }>
   listLoomScriptMounts(input?: { target?: LoomScriptMountTarget; scriptDocumentId?: string }): Promise<{ mounts: LoomScriptMountEntry[] }>
   resolveLoomScriptRendererMounts(input?: { workspaceId?: string; timelineId?: string; presetId?: string }): Promise<{ mounts: ResolvedLoomScriptRendererMount[] }>
-  listExtensionRecords(input: { packageId: string; scope?: ExtensionStorageScope; recordType?: string; binding?: ExtensionEntityRef }): Promise<{ records: ExtensionRecordEntry[] }>
-  getExtensionRecord(input: { packageId: string; recordId: string }): Promise<{ record: ExtensionRecordEntry | null }>
-  listExtensionConfigs(input: { packageId: string; scope?: ExtensionStorageScope }): Promise<{ configs: ExtensionConfigEntry[] }>
-  getExtensionConfig(input: { packageId: string; scope: ExtensionStorageScope; key: string }): Promise<{ config: ExtensionConfigEntry | null }>
-  upsertExtensionConfig(input: { packageId: string; scope: ExtensionStorageScope; key: string; value: JsonValue; expectedVersion?: number }, context?: RuntimeRequestContext): Promise<{ config: ExtensionConfigEntry; mutation: MutationReceipt }>
+  listExtensionRecords(input: { packageId: string; target?: ExtensionInstallationTarget; scope?: ExtensionStorageScope; recordType?: string; binding?: ExtensionEntityRef }): Promise<{ records: ExtensionRecordEntry[] }>
+  getExtensionRecord(input: { packageId: string; target?: ExtensionInstallationTarget; recordId: string }): Promise<{ record: ExtensionRecordEntry | null }>
+  listExtensionConfigs(input: { packageId: string; target?: ExtensionInstallationTarget; scope?: ExtensionStorageScope }): Promise<{ configs: ExtensionConfigEntry[] }>
+  getExtensionConfig(input: { packageId: string; target?: ExtensionInstallationTarget; scope: ExtensionStorageScope; key: string }): Promise<{ config: ExtensionConfigEntry | null }>
+  upsertExtensionConfig(input: { packageId: string; target?: ExtensionInstallationTarget; scope: ExtensionStorageScope; key: string; value: JsonValue; expectedVersion?: number }, context?: RuntimeRequestContext): Promise<{ config: ExtensionConfigEntry; mutation: MutationReceipt }>
   createCard(input: CreateCardInput, context?: RuntimeRequestContext): Promise<CreateCardResult>
   getCard(input: GetCardInput): Promise<GetCardResult>
   listCards(input?: ListCardsInput): Promise<ListCardsResult>
   updateCard(input: UpdateCardInput, context?: RuntimeRequestContext): Promise<UpdateCardResult>
+  attachCardExtensionPackage(input: AttachCardExtensionPackageInput, context?: RuntimeRequestContext): Promise<UpdateCardResult>
+  getCardExtensionPackage(input: { cardId: string; packageId: string; source?: 'installed' }): Promise<{ archive: AttachCardExtensionPackageInput['archive']; cardVersion: number }>
+  detachCardExtensionPackage(input: { cardId: string; expectedVersion: number; packageId: string }, context?: RuntimeRequestContext): Promise<UpdateCardResult>
   previewCardDeletion(input: PreviewCardDeletionInput): Promise<PreviewCardDeletionResult>
   deleteCard(input: DeleteCardInput, context?: RuntimeRequestContext): Promise<DeleteCardResult>
   deleteCards(input: DeleteCardsInput, context?: RuntimeRequestContext): Promise<DeleteCardsResult>
+  listExtensionInstallations(): Promise<ListExtensionInstallationsResult>
   listPortableExtensionPayloads(input?: ListPortableExtensionPayloadsInput): Promise<ListPortableExtensionPayloadsResult>
   getPortableExtensionPayload(input: GetPortableExtensionPayloadInput): Promise<GetPortableExtensionPayloadResult>
   createPortableExtensionPayload(input: CreatePortableExtensionPayloadInput, context?: RuntimeRequestContext): Promise<CreatePortableExtensionPayloadResult>
@@ -229,16 +240,17 @@ export type ApplicationRuntime = {
   updateAgentTool(input: UpdateAgentToolInput, context?: RuntimeRequestContext): Promise<UpdateAgentToolResult>
   listPresetToolMounts(input?: ListPresetToolMountsInput): Promise<ListPresetToolMountsResult>
   replacePresetToolMounts(input: ReplacePresetToolMountsInput, context?: RuntimeRequestContext): Promise<ReplacePresetToolMountsResult>
-  createAgentProfile(input: CreateAgentProfileInput, context?: RuntimeRequestContext): Promise<CreateAgentProfileResult>
-  getAgentProfile(input: GetAgentProfileInput): Promise<GetAgentProfileResult>
-  listAgentProfiles(input?: ListAgentProfilesInput): Promise<ListAgentProfilesResult>
-  updateAgentProfile(input: UpdateAgentProfileInput, context?: RuntimeRequestContext): Promise<UpdateAgentProfileResult>
-  deleteAgentProfile(input: DeleteAgentProfileInput, context?: RuntimeRequestContext): Promise<DeleteAgentProfileResult>
+  createAgentPreset(input: CreateAgentPresetInput, context?: RuntimeRequestContext): Promise<AgentPresetResult>
+  getAgentPreset(input: { agentPresetId: string }): Promise<{ agentPreset: AgentPresetEntry }>
+  listAgentPresets(input?: { limit?: number; cursor?: string }): Promise<{ agentPresets: AgentPresetEntry[]; nextCursor?: string }>
+  updateAgentPreset(input: UpdateAgentPresetInput, context?: RuntimeRequestContext): Promise<AgentPresetResult>
+  deleteAgentPreset(input: { agentPresetId: string }, context?: RuntimeRequestContext): Promise<DeletePromptResourceResult>
   createAgentSession(input: CreateAgentSessionInput, context?: RuntimeRequestContext): Promise<CreateAgentSessionResult>
   listAgentSessions(input?: ListAgentSessionsInput): Promise<ListAgentSessionsResult>
   getAgentSession(input: GetAgentSessionInput): Promise<GetAgentSessionResult>
   getAgentTranscriptPage(input: GetAgentTranscriptPageInput): Promise<AgentTranscriptPage>
   appendAgentTranscriptEntries(input: AppendAgentTranscriptEntriesInput, context?: RuntimeRequestContext): Promise<AppendAgentTranscriptEntriesResult>
+  completeAgentSessionHandoff(input: CompleteAgentSessionHandoffInput, context?: RuntimeRequestContext): Promise<CompleteAgentSessionHandoffResult>
   deleteAgentSession(input: DeleteAgentSessionInput, context?: RuntimeRequestContext): Promise<DeleteAgentSessionResult>
   updateAgentSession(input: UpdateAgentSessionInput, context?: RuntimeRequestContext): Promise<UpdateAgentSessionResult>
   invokeAgentTurn(input: InvokeAgentTurnInput, context?: RuntimeRequestContext): Promise<InvokeAgentTurnResult>
@@ -250,6 +262,7 @@ export type ApplicationRuntime = {
   importTimelineArchive(input: { source: string }): Promise<{ timelineId: string; idMap: import('./archive/timeline-archive.js').TimelineArchiveIdMap; unknownParticipantNamespaces: string[]; participantFailures: Array<{ namespace: string; message: string }>; mutation: MutationReceipt }>
   listNarrativeTimelines(input?: ListNarrativeTimelinesInput): Promise<ListNarrativeTimelinesResult>
   getNarrativePage(input: GetNarrativePageInput): Promise<NarrativePage>
+  appendNarrativeInput(input: AppendNarrativeInput, context?: RuntimeRequestContext): Promise<AppendNarrativeInputResult>
   editNarrativeNode(input: { timelineId: string; branchId: string; nodeId: string; expectedHeadNodeId: string; expectedRaw: string; raw: string }, context?: RuntimeRequestContext): Promise<{ timeline: NarrativeTimeline; branch: NarrativeBranch; replacements: Array<{ previousNodeId: string; node: NarrativeNode }>; mutation: MutationReceipt }>
   forkNarrativeBranch(input: ForkNarrativeBranchInput, context?: RuntimeRequestContext): Promise<ForkNarrativeBranchResult>
   switchNarrativeBranch(input: SwitchNarrativeBranchInput, context?: RuntimeRequestContext): Promise<SwitchNarrativeBranchResult>
@@ -258,6 +271,7 @@ export type ApplicationRuntime = {
   importCardBundle(input: ImportCardBundleInput, context?: RuntimeRequestContext): Promise<ImportCardBundleResult>
   getPromptResource(input: GetPromptResourceInput): Promise<GetPromptResourceResult>
   listPromptResources(input?: ListPromptResourcesInput): Promise<ListPromptResourcesResult>
+  getPromptResourceBindings(input: GetPromptResourceInput): Promise<GetPromptResourceBindingsResult>
   createPromptResource(input: CreatePromptResourceInput, context?: RuntimeRequestContext): Promise<CreatePromptResourceResult>
   duplicatePromptResource(input: DuplicatePromptResourceInput, context?: RuntimeRequestContext): Promise<CreatePromptResourceResult>
   deletePromptResource(input: DeletePromptResourceInput, context?: RuntimeRequestContext): Promise<DeletePromptResourceResult>
@@ -303,6 +317,7 @@ export type RuntimeRequestContext = {
       preview: VfsMutationPreview,
       signal: AbortSignal,
     ) => Promise<VfsMutationDecision>
+    onHistoryReadApproval?: import('./narrative/access.js').ApproveNarrativeHistory
   }
 }
 
@@ -311,6 +326,7 @@ export type AgentRunEvent =
   | { type: 'text-delta'; runId: string; providerRunId: string; providerStep: number; delta: string }
   | { type: 'tool-input-delta'; runId: string; providerRunId: string; providerStep: number; toolCallId: string; toolName?: string; delta: string }
   | { type: 'mutation-approval-requested'; runId: string; requestId: string; preview: VfsMutationPreview }
+  | { type: 'history-read-approval-requested'; runId: string; requestId: string; action: import('./narrative/access.js').NarrativeHistoryReadApproval }
   | { type: 'usage'; runId: string; providerRunId: string; providerStep: number; usage: NonNullable<GatewayChatResult['usage']> }
   | { type: 'completed'; runId: string; result: InvokeAgentTurnResult }
   | { type: 'suspended'; runId: string; reason?: string }
@@ -347,6 +363,7 @@ export type StateSnapshotView = {
 }
 
 export type GetStateSnapshotInput = {
+  extensionTarget?: ExtensionInstallationTarget
   target: StateTarget
 }
 
@@ -429,7 +446,6 @@ export type TimelineRuntimeContextContent = {
   sourceCardVersion: number
   cardName?: string
   fallbackUserName: string
-  macros?: Record<string, string>
   stateEntityTypes: StateEntityType[]
   stateEntities: StateEntityId[]
   stateComponents: MaterializedStateContribution['components']
@@ -444,9 +460,6 @@ export type TimelineRuntimeContextContent = {
     path: string
     schema: JsonObject
   }>
-  textTransformRules: TextTransformRuleEntry[]
-  textExtractors?: TextExtractorEntry[]
-  loomScriptMounts?: LoomScriptRuntimeMountSnapshot[]
   createdAt: string
 }
 
@@ -520,7 +533,22 @@ export type MutationReceipt = {
 }
 
 export type AgentTurnMutationReceipt = MutationReceipt & {
-  scope: 'agent-session-transcript' | 'narrative-commit'
+  scope: 'agent-session-transcript'
+}
+
+export type AppendNarrativeInput = {
+  timelineId: string
+  branchId: string
+  nodeId: string
+  expectedHeadNodeId: string | null
+  content: string
+}
+
+export type AppendNarrativeInputResult = {
+  timeline: NarrativeTimeline
+  branch: NarrativeBranch
+  node: NarrativeNode
+  mutation: MutationReceipt
 }
 
 export type CreateNarrativeTimelineInput = {
@@ -609,7 +637,7 @@ export type UpdateNarrativeTimelineResult = {
 }
 
 export type CreateAgentSessionInput = {
-  agentProfileId: string
+  agentPresetId: string
   title?: string
   timelineId?: string
 }
@@ -628,7 +656,7 @@ export type GetAgentSessionResult = {
 }
 
 export type ListAgentSessionsInput = {
-  agentProfileId?: string
+  agentPresetId?: string
   timelineId?: string
   standalone?: boolean
   cursor?: string
@@ -662,6 +690,17 @@ export type AppendAgentTranscriptEntriesResult = {
   mutation: MutationReceipt
 }
 
+export type CompleteAgentSessionHandoffInput = {
+  agentSessionId: string
+  expectedEntryCount: number
+  summary: string
+  branchId?: string
+}
+
+export type CompleteAgentSessionHandoffResult = AppendAgentTranscriptEntriesResult & {
+  memoryNotification: { status: 'notified' | 'not-configured' | 'failed'; error?: string }
+}
+
 export type DeleteAgentSessionInput = {
   agentSessionId: string
 }
@@ -689,7 +728,7 @@ export type InvokeAgentTurnInput = {
   narrativeTarget?: {
     timelineId: string
     branchId?: string
-    commit: boolean
+    inputNodeId?: string
   }
   macroSelections?: MacroSelectionMap
 }
@@ -713,12 +752,6 @@ export type InvokeAgentTurnResult = {
   entries: {
     user: AgentTranscriptEntry
     assistant: AgentTranscriptEntry
-  }
-  narrative?: {
-    timeline: NarrativeTimeline
-    branch: NarrativeBranch
-    nodes: NarrativeNode[]
-    node: NarrativeNode
   }
   provider: {
     provider: string
@@ -747,6 +780,7 @@ export type InspectMacrosResult = {
 }
 
 export type ApplicationRuntimeOptions = {
+  onStateChanged?: (event: StateChangeEvent) => void
   withCardDeletion?: (cardId: string, commit: () => Promise<DeleteCardResult>) => Promise<DeleteCardResult>
   withCardDeletions?: (cardIds: string[], commit: () => Promise<DeleteCardsResult>) => Promise<DeleteCardsResult>
   agents?: AgentStore
@@ -768,8 +802,16 @@ export type ApplicationRuntimeOptions = {
   providerAdapters?: ProviderAdapterRegistry
   aiCapabilities?: AiGatewayCapabilityRegistry
   macroProviders?: MacroProviderRegistry
+  narrativeContext?: NarrativeContextRegistry
   stateContributions?: StateContributionRegistry
   timelineArchiveParticipants?: TimelineArchiveParticipant[]
+}
+
+export type StateChangeEvent = {
+  target: StateTarget
+  revisionId: string
+  changesetId: string
+  paths: string[]
 }
 
 export type MediaAssetLookup = {
@@ -920,6 +962,7 @@ export type CreateCardInput = {
   settingLayer?: SettingLayerInput
   media?: CardMediaRefs
   macros?: Record<string, string>
+  macroOptions?: import("@loom-studio/shared").MacroOptions
 }
 
 export type CreateCardResult = {
@@ -975,6 +1018,7 @@ export type UpdateCardInput = {
   stateContributionIds?: string[]
   timelineStateBindings?: TimelineStateBinding[]
   macros?: Record<string, string>
+  macroOptions?: import("@loom-studio/shared").MacroOptions
 }
 
 export type UpdateCardResult = {
@@ -1020,6 +1064,7 @@ export type DeleteCardsResult = DeleteCardResult & {
 export type PortableExtensionPayloadDraft = Omit<PortableExtensionPayloadArtifact, 'id'>
 
 export type PortableExtensionPayloadEntry = PortableExtensionPayloadDraft & {
+  ownerInstallationId?: string
   id: string
   artifactPayloadId: string
   version: number
@@ -1028,6 +1073,7 @@ export type PortableExtensionPayloadEntry = PortableExtensionPayloadDraft & {
 }
 
 export type ListPortableExtensionPayloadsInput = {
+  ownerInstallationId?: string | null
   packageId?: string
 }
 
@@ -1044,6 +1090,7 @@ export type GetPortableExtensionPayloadResult = {
 }
 
 export type CreatePortableExtensionPayloadInput = {
+  ownerInstallationId?: string
   artifactPayloadId?: string
   payload: PortableExtensionPayloadDraft
 }
@@ -1244,37 +1291,27 @@ export type PingProviderModelResult = {
 export type AgentHistoryPolicy = 'persistent' | 'ephemeral'
 export type AgentDelivery = 'stream' | 'complete'
 
-export type AgentProfileEntry = AgentProfileContent & { id: string; version: number }
-export type ListAgentToolsResult = { tools: AgentToolEntry[] }
-
-export type CreateAgentProfileInput = {
+export type AgentPresetEntry = PromptResourceContent & { id: string; version: number }
+export type CreateAgentPresetInput = {
   name: string
-  presetId: string
-  model: ProviderModelSelection
-  toolOverrides?: Record<string, boolean>
-  delivery?: AgentDelivery
-}
-export type CreateAgentProfileResult = {
-  agentProfile: AgentProfileEntry
-}
-export type GetAgentProfileInput = { agentProfileId: string }
-export type GetAgentProfileResult = CreateAgentProfileResult
-export type ListAgentProfilesInput = { limit?: number; cursor?: string }
-export type ListAgentProfilesResult = {
-  agentProfiles: AgentProfileEntry[]
-  nextCursor?: string
-}
-export type UpdateAgentProfileInput = {
-  agentProfileId: string
-  name?: string
-  presetId?: string
   model?: ProviderModelSelection
-  toolOverrides?: Record<string, boolean>
   delivery?: AgentDelivery
+  historyPolicy?: AgentHistoryPolicy
 }
-export type UpdateAgentProfileResult = CreateAgentProfileResult
-export type DeleteAgentProfileInput = { agentProfileId: string }
-export type DeleteAgentProfileResult = { deleted: true }
+export type AgentPresetResult = {
+  agentPreset: AgentPresetEntry
+  mutation: MutationReceipt
+}
+export type UpdateAgentPresetInput = {
+  agentPresetId: string
+  expectedVersion: number
+  name?: string
+  model?: ProviderModelSelection | null
+  delivery?: AgentDelivery
+  historyPolicy?: AgentHistoryPolicy
+}
+
+export type ListAgentToolsResult = { tools: AgentToolEntry[] }
 
 export type ImportCardBundleInput = { newCardId?: string } & (
   {
@@ -1310,6 +1347,12 @@ export type ListPromptResourcesResult = {
   resources: Array<PromptResourceContent & { id: string; version: number }>
 }
 
+export type GetPromptResourceBindingsResult = {
+  resourceId: string
+  cards: Array<{ id: string; name: string }>
+  settingMounts: ListSettingMountsResult['mounts']
+}
+
 export type CreatePromptResourceInput = {
   resourceKind: PromptResourceKind
   name: string
@@ -1335,7 +1378,6 @@ export type DeletePromptResourceResult = {
     presets: number
     cards: number
     timelines: number
-    agentProfiles?: number
   }
   mutation: MutationReceipt
 }
@@ -1376,6 +1418,7 @@ export type UpdatePromptResourceMacrosInput = {
   resourceId: string
   expectedVersion: number
   macros: Record<string, string>
+  macroOptions?: import("@loom-studio/shared").MacroOptions
 }
 
 export type UpdatePromptResourceMacrosResult = {
@@ -1462,16 +1505,6 @@ export type AiCapabilityProfileContent = {
   updatedAt: string
 }
 
-export type AgentProfileContent = {
-  name: string
-  presetId?: string
-  model: ProviderModelSelection
-  toolOverrides: Record<string, boolean>
-  delivery?: AgentDelivery
-  createdAt: string
-  updatedAt: string
-}
-
 export type AgentToolContent = Omit<ToolDefinition, 'id'> & {
   origin?: ExtensionPackageResourceOrigin
   createdAt: string
@@ -1500,11 +1533,31 @@ export type ExtensionPackageResourceOrigin = {
   packageId: string
   packageVersion: string
   contributionId: string
+  installationId?: string
+}
+
+export type ExtensionInstallationTarget = import('@loom-studio/extension-sdk').ExtensionInstallationTarget
+
+export type ExtensionInstallationContent = {
+  packageId: string
+  packageVersion: string
+  target: ExtensionInstallationTarget
+  archiveBlobId?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type ListExtensionInstallationsResult = {
+  installations: Array<ExtensionInstallationContent & { id: string; version: number }>
 }
 
 export type ImportExtensionPackageResourcesInput = {
+  loomScripts?: Array<{ contribution: { id: string; source: string }; source: string }>
+  expectedCardVersion?: number
+  update?: { expectedInstallationVersion: number }
   packageId: string
   packageVersion: string
+  target?: ExtensionInstallationTarget
   promptResources: Array<{
     contribution: ExtensionPromptResourceContribution
     artifact: JsonValue
@@ -1524,6 +1577,8 @@ export type ImportExtensionPackageResourcesInput = {
 }
 
 export type ImportExtensionPackageResourcesResult = {
+  loomScripts?: Array<{ contributionId: string; scriptId: string }>
+  installationId: string
   promptResources: Array<{ contributionId: string; resourceId: string; resourceKind: PromptResourceKind }>
   agentTools: Array<{ contributionId: string; toolId: string }>
   transformRules: Array<{ contributionId: string; ruleId: string }>
@@ -1532,10 +1587,15 @@ export type ImportExtensionPackageResourcesResult = {
 }
 
 export type RemoveExtensionPackageResourcesInput = {
+  uninstall?: true
+  expectedInstallationVersion?: number
   packageId: string
+  target?: ExtensionInstallationTarget
 }
 
 export type RemoveExtensionPackageResourcesResult = {
+  loomScriptIds?: string[]
+  loomScriptMountIds?: string[]
   packageId: string
   promptResourceIds: string[]
   agentToolIds: string[]
@@ -1544,7 +1604,6 @@ export type RemoveExtensionPackageResourcesResult = {
   detachedReferences: {
     cards: number
     timelines: number
-    agentProfiles: number
     presetToolMounts: number
   }
   mutation?: MutationReceipt
@@ -1556,6 +1615,7 @@ export type CardSourceContent = {
   description?: string
   importBundleId?: string
   portableExtensionPayloadIds?: string[]
+  extensionPackages?: Array<{ packageId: string; version: string; blobId: string }>
   promptResourceIds?: string[]
   externalPromptResourceIds?: string[]
   stateTemplates?: CardStateTemplate[]
@@ -1570,8 +1630,15 @@ export type CardSourceContent = {
   opening: OpeningChatContent
   settingLayer: SettingLayerContent
   macros?: Record<string, string>
+  macroOptions?: import("@loom-studio/shared").MacroOptions
   createdAt: string
   updatedAt: string
+}
+
+export type AttachCardExtensionPackageInput = {
+  cardId: string
+  expectedVersion: number
+  archive: NonNullable<CardBundleArtifact['extensionPackages']>[number]
 }
 
 export type CardMediaRefs = {
@@ -1582,11 +1649,13 @@ export type CardMediaRefs = {
 export type CardPresetInput = {
   system?: string
   macros?: Record<string, string>
+  macroOptions?: import("@loom-studio/shared").MacroOptions
 }
 
 export type CardPresetContent = {
   system?: string
   macros?: Record<string, string>
+  macroOptions?: import("@loom-studio/shared").MacroOptions
 }
 
 export type OpeningChatInput = {

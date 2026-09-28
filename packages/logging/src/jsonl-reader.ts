@@ -182,7 +182,7 @@ function isLogRecord(value: unknown): value is LogRecord {
   if (record.extension !== undefined) {
     const identity = record.extension as Record<string, unknown>
     if (!identity || typeof identity !== 'object' || Array.isArray(identity) || typeof identity.packageId !== 'string' || !identity.packageId || !['server', 'client'].includes(identity.runtime as string)) return false
-    for (const key of ['moduleId', 'instanceId']) if (identity[key] !== undefined && typeof identity[key] !== 'string') return false
+    for (const key of ['moduleId', 'instanceId', 'installationId']) if (identity[key] !== undefined && typeof identity[key] !== 'string') return false
   }
   return true
 }

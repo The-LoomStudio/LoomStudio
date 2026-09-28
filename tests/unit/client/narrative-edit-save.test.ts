@@ -4,10 +4,14 @@ import { NarrativeTimeline } from '../../../apps/studio-client/src/widgets/narra
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 
 const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as unknown[] }))
+vi.mock('../../../apps/studio-client/src/shared/studio-shell/appearance-store.js', () => ({
+  useAppearanceStore: (selector: (state: { narrativeOverscan: number }) => unknown) => selector({ narrativeOverscan: 5 }),
+}))
 vi.mock('react', async importOriginal => ({
   ...await importOriginal<typeof import('react')>(),
   useEffect: () => undefined, useLayoutEffect: () => undefined,
   useMemo: (factory: () => unknown) => factory(),
+  useCallback: (callback: unknown) => callback,
   useState: (initial: unknown) => {
     const index = hooks.cursor++
     if (!(index in hooks.values)) hooks.values[index] = initial
@@ -20,6 +24,15 @@ vi.mock('react', async importOriginal => ({
     if (!(index in hooks.values)) hooks.values[index] = { current: initial }
     return hooks.values[index]
   },
+}))
+vi.mock('../../../apps/studio-client/node_modules/@tanstack/react-virtual/dist/esm/index.js', () => ({
+  defaultRangeExtractor: () => [0],
+  useVirtualizer: () => ({
+    getVirtualItems: () => [{ index: 0, start: 0 }],
+    getTotalSize: () => 280,
+    measureElement: () => undefined,
+    scrollToIndex: () => undefined,
+  }),
 }))
 beforeEach(() => { hooks.cursor = 0; hooks.values = [] })
 type Element = ReactElement<Record<string, unknown>>
@@ -40,7 +53,7 @@ describe('Narrative正文保存', () => {
       getNodeLink: () => '', onEditNode: save, onForkNode: vi.fn(), onLoadOlder: vi.fn(),
       onNodeAnchorChange: vi.fn(), t, timelineId: 'timeline',
       timeline: [{
-        id: 'node', timelineId: 'timeline', stateRevisionId: 'state',
+        id: 'node', timelineId: 'timeline',
         body: { format: 'loom-markdown.v1', raw: 'Original' }, createdAt: '2026-09-23T00:00:00Z',
       }],
     }

@@ -13,6 +13,7 @@ import type {
   EventPublishIdentity,
   EventSubscriberIdentity,
   ExtensionAssetCapability,
+  ExtensionInstallationTarget,
   RegisteredEventDefinition,
 } from '@loom-studio/extension-sdk'
 import type { LoomRunner } from '@loom-studio/loom-runner'
@@ -21,6 +22,8 @@ import type { TraceAuditStore } from '@loom-studio/trace-audit'
 import type { StudioEvent } from '@loom-studio/transport'
 
 export type KernelRpcContext = {
+  expectedExtensionPackageId?: string
+  extensionTarget?: ExtensionInstallationTarget
   correlationId?: string
   callId?: string
   parentCallId?: string
@@ -61,7 +64,7 @@ export type Kernel = {
   start(): Promise<void>
   stop(): Promise<void>
   registerKernelRpc(method: string, handler: KernelRpcHandler): RegistrationHandle
-  registerExtensionRpc(method: string, ownerPackageId: string, ownerModuleId: string, handler: ExtensionRpcHandler, instanceId: string): RegistrationHandle
+  registerExtensionRpc(method: string, ownerPackageId: string, ownerModuleId: string, handler: ExtensionRpcHandler, instanceId: string, target?: ExtensionInstallationTarget): RegistrationHandle
   callRpc<T = JsonValue>(method: string, params?: JsonValue, context?: KernelRpcContext): Promise<T>
   getPublicSurface(): KernelPublicSurface
   getDocumentStore(): DocumentStore
@@ -107,18 +110,26 @@ export type RemovedExtensionPackageResources = Record<string, JsonValue> & {
 }
 
 export type ExtensionManagementService = {
-  listPackages(): ManagedExtensionPackage[]
+  listPackages(target?: ExtensionInstallationTarget): ManagedExtensionPackage[]
+  installCardPackage(input: { cardId: string; packageId: string; expectedCardVersion: number }): Promise<ManagedExtensionPackage>
+  updateCardPackage(input: { cardId: string; packageId: string; expectedCardVersion: number; packageVersion: string; expectedInstallationVersion: number }): Promise<ManagedExtensionPackage>
+  uninstallCardPackage(input: { cardId: string; packageId: string; expectedInstallationVersion: number }): Promise<RemovedExtensionPackage>
   installPackage(sourceDirectory: string): Promise<ManagedExtensionPackage>
   installPackageZip(source: Uint8Array): Promise<ManagedExtensionPackage>
   uninstallPackage(packageId: string, version?: string): Promise<RemovedExtensionPackage>
-  enableModule(packageId: string, moduleId: string, grants?: ExtensionModuleCapabilityGrants): Promise<ManagedExtensionModule>
-  disableModule(packageId: string, moduleId: string): Promise<ManagedExtensionModule>
-  reloadModule(packageId: string, moduleId: string): Promise<ManagedExtensionModule>
+  enableModule(packageId: string, moduleId: string, grants?: ExtensionModuleCapabilityGrants, target?: ExtensionInstallationTarget): Promise<ManagedExtensionModule>
+  disableModule(packageId: string, moduleId: string, target?: ExtensionInstallationTarget): Promise<ManagedExtensionModule>
+  reloadModule(packageId: string, moduleId: string, target?: ExtensionInstallationTarget): Promise<ManagedExtensionModule>
   importPackageResources(packageId: string): Promise<ImportedExtensionPackageResources>
+  exportPackage(input: { packageId: string; version: string }): Promise<{ packageId: string; version: string; archiveBase64: string }>
+  importCardPackageResources(input: { cardId: string; packageId: string; expectedCardVersion: number; update?: { packageVersion: string; expectedInstallationVersion: number } }): Promise<ImportedExtensionPackageResources>
+  removeCardPackageResources(input: { cardId: string; packageId: string; expectedInstallationVersion: number }): Promise<RemovedExtensionPackageResources>
+  updatePackageResources(input: { packageId: string; packageVersion: string; expectedInstallationVersion: number }): Promise<ImportedExtensionPackageResources>
   removePackageResources(packageId: string): Promise<RemovedExtensionPackageResources>
 }
 
 export type ExtensionModuleCapabilityGrants = {
+  uiCapabilities?: Array<'ui.notify'>
   eventCapabilities?: EventCapabilityCategory[]
   assetCapabilities?: ExtensionAssetCapability[]
 }

@@ -18,8 +18,8 @@ describe('application runtime card bundle integration', () => {
     await runtime.initialize()
     await runtime.installOfficialContent(await readOfficialContentInput())
     const listed = await runtime.listPromptResources()
-    const preset = listed.resources.find(resource => resource.origin?.key === 'loom-assistant-preset')
-    const setting = listed.resources.find(resource => resource.origin?.key === 'loom-knowledge-setting')
+    const preset = listed.resources.find(resource => resource.origin?.kind === 'builtin' && resource.origin.key === 'loom-assistant-preset')
+    const setting = listed.resources.find(resource => resource.origin?.kind === 'builtin' && resource.origin.key === 'loom-knowledge-setting')
 
     expect(preset).toMatchObject({
       resourceKind: 'preset',
@@ -92,7 +92,7 @@ describe('application runtime card bundle integration', () => {
     })).rejects.toThrow('can only link Setting resources')
   })
 
-  it('applies Folder effective enabled and preserves Entry lifecycle', async () => {
+  it('applies Folder effective enabled and preserves Entry activation', async () => {
     const { runtime, promptResources } = createTestRuntime()
     const created = await runtime.createPromptResource({ resourceKind: 'setting', name: 'Conditional Knowledge' })
     const withFolder = await runtime.createPromptResourceAsset({
@@ -110,7 +110,7 @@ describe('application runtime card bundle integration', () => {
         label: 'Fresh Entry',
         kind: 'entry',
         body: 'Only when the folder is enabled.',
-        capabilities: { lifecycle: { lifecycle: 'fresh' } },
+        capabilities: { activation: { kind: 'keyword', keywords: ['weather'] } },
       },
     })
 
@@ -126,7 +126,7 @@ describe('application runtime card bundle integration', () => {
       resourceIds: [created.resource.id],
       variables: createVariableRenderContext(),
     })
-    expect(enabled.contributions[0]?.capabilities.lifecycle).toEqual({ lifecycle: 'fresh' })
+    expect(enabled.contributions[0]?.capabilities.activation).toEqual({ kind: 'keyword', keywords: ['weather'] })
   })
 
   it('preserves exact raw JSON through the Source Artifact capability', async () => {
@@ -441,7 +441,8 @@ describe('application runtime card bundle integration', () => {
   it('edits a resource directly and exports the current card bundle', async () => {
     const { runtime } = createTestRuntime()
     const imported = await runtime.importCardBundle({ artifact: await readLoomCityArtifact() })
-    const resources = await Promise.all(imported.card.promptResourceIds.map(async resourceId => (
+    expect(imported.card.promptResourceIds).toBeDefined()
+    const resources = await Promise.all(imported.card.promptResourceIds!.map(async resourceId => (
       await runtime.getPromptResource({ resourceId })
     ).resource))
     const preset = resources.find(resource => resource.rootNode.id === 'preset-default-airp')

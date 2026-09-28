@@ -26,7 +26,7 @@ import {
 } from 'react'
 import type {
   AgentTranscriptEntry as AgentTranscriptEntryEntity,
-  AgentProfile,
+  AgentPreset,
   AgentSession,
   ProviderAccount,
 } from '../../entities/index.js'
@@ -40,29 +40,18 @@ import {
   ConversationMessageChrome,
 } from '../../shared/ui/conversation-message-chrome/conversation-message-chrome.js'
 import { ChatComposer } from '../chat-composer/chat-composer.js'
+import { RunRecoveryControls, type RunRecoveryControlsProps } from '../../features/narrative-runtime/ui/run-recovery-controls.js'
 import type { ClientRendererHost } from '../../shared/extension-renderer-runtime/client-renderer-host.js'
 import { RendererNodeMountHost } from '../../features/extension-renderers/ui/renderer-node-mount-host.js'
 import styles from './agent-chat-panel.module.scss'
+import { displayText, type DisplayProjection } from '../../features/message-content/model/use-display-projection.js'
 
 const ConversationMarkdown = lazy(async () => {
-  const module = await import('../../shared/ui/conversation-markdown/conversation-markdown.js')
-  return { default: module.ConversationMarkdown }
+  const module = await import('../../features/message-content/ui/message-content.js')
+  return { default: module.MessageContent }
 })
 
-/**
- * 健壮补全未闭合的 Markdown 代码块标签，提前撑开 UI 骨架，杜绝布局跳动 (Layout Shift)
- */
-export function patchIncompleteMarkdown(rawText: string): string {
-  if (!rawText) return rawText
-  let textToParse = rawText
-  const codeBlockMatches = textToParse.match(/```/g) || []
-  if (codeBlockMatches.length % 2 !== 0) {
-    textToParse += '\n```'
-  }
-  return textToParse
-}
-
-export type StepToolItem = {
+type StepToolItem = {
   id: string
   iconType: 'file' | 'search' | 'web' | 'terminal' | 'edit'
   label: string
@@ -205,12 +194,13 @@ function buildRenderItems(entries: AgentTranscriptEntryEntity[]): RenderItem[] {
   return items
 }
 
-export type AgentChatPanelProps = {
+export type AgentChatPanelProps = RunRecoveryControlsProps & {
+  displayProjection?: DisplayProjection
   busy: boolean
   activeRun?: ActiveAgentRun
   input: string
   messages: AgentTranscriptEntryEntity[]
-  profiles: AgentProfile[]
+  profiles: AgentPreset[]
   providerAccounts: ProviderAccount[]
   rendererHost?: ClientRendererHost
   selectedProfileId?: string
@@ -232,6 +222,8 @@ export type AgentChatPanelProps = {
 }
 
 export function AgentChatPanel(props: AgentChatPanelProps) {
+  const recovery = props.runRecovery?.target === 'agent' ? props.runRecovery : undefined
+  const disconnected = props.runRecovery?.status === 'disconnected'
   const conversationRef = useRef<HTMLDivElement>(null)
   const [approvalReason, setApprovalReason] = useState('')
   const approval = props.activeRun?.approval
@@ -293,7 +285,13 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
         </button>
       </header>
 
-      <div className={styles.conversation} ref={conversationRef}>
+      <div className={styles.conversation} ref={conversationRef} aria-busy={props.displayProjection?.refreshing}>
+        {props.displayProjection?.warning ? <p role="status">Display: {props.displayProjection.warning}</p> : null}
+        {props.displayProjection?.error ? <div role="alert">
+          <span>Display: {props.displayProjection.error}</span>
+          <button type="button" disabled={props.displayProjection.refreshing} onClick={props.displayProjection.retry}
+            title={props.t('textTransform.refresh')} aria-label={props.t('textTransform.refresh')}><RefreshCw size={16} aria-hidden="true" /></button>
+        </div> : null}
         <Suspense fallback={<div aria-busy="true" className={styles.loading}><SkeletonText lines={5} /></div>}>
           {!props.busy && props.sessionReady === false ? (
             <p className={styles.empty} role="alert">{props.t('agent.sessionLoadFailed')}</p>
@@ -328,6 +326,7 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
                   agentSessionId={props.session?.id}
                   codeBlockLabels={codeBlockLabels}
                   content={item.content}
+                  displayContent={displayText(props.displayProjection, item.id, item.content, item.isStreaming)}
                   copyState={copyState?.id === item.id ? copyState.copied : undefined}
                   index={item.index}
                   key={item.id}
@@ -352,14 +351,14 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
 
       {approval ? (
         <div className={styles.mutationApprovalBackdrop} role="presentation">
-          <section aria-label="确认资源修改" className={styles.mutationApproval} role="dialog" aria-modal="true">
+          <section aria-label={approval.action ? '允许读取历史正文' : '确认资源修改'} className={styles.mutationApproval} role="dialog" aria-modal="true">
             <header className={styles.mutationApprovalHeader}>
               <div>
-                <strong>确认资源修改</strong>
-                <span>{approval.preview.action === 'patch' ? '局部 Patch' : '完整替换'} · {approval.preview.path}</span>
+                <strong>{approval.action ? '允许读取历史正文' : '确认资源修改'}</strong>
+                <span>{approval.action ? '仅授权本次请求，不修改剧情或记忆范围' : `${approval.preview.action} · ${approval.preview.path}`}</span>
               </div>
               <button
-                aria-label="拒绝修改"
+                aria-label="拒绝请求"
                 className={styles.iconButton}
                 type="button"
                 onClick={() => {
@@ -370,7 +369,22 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
                 <X aria-hidden="true" />
               </button>
             </header>
-            <div className={styles.mutationApprovalDiff}>
+            {approval.action ? (
+              <div className={styles.mutationApprovalDiff}>
+                <div>
+                  <span>读取范围</span>
+                  <pre>{[
+                    `Timeline: ${approval.action.timelineId}`,
+                    `Branch: ${approval.action.branchId}`,
+                    approval.action.selection.kind === 'tail'
+                      ? `最近 ${approval.action.selection.count} 个节点`
+                      : `起点（不含）: ${approval.action.selection.afterNodeId ?? '分支开头'}`,
+                    `终点（包含）: ${approval.action.selection.throughNodeId ?? '请求时固定的 Head'}`,
+                    `最多 ${approval.action.maxNodes} 个节点，${approval.action.maxCharacters} 个字符`,
+                  ].join('\n')}</pre>
+                </div>
+              </div>
+            ) : <div className={styles.mutationApprovalDiff}>
               <div>
                 <span>修改前</span>
                 <pre>{approval.preview.before}</pre>
@@ -379,8 +393,8 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
                 <span>修改后</span>
                 <pre>{approval.preview.after}</pre>
               </div>
-            </div>
-            {approval.preview.kind === 'state' && approval.preview.pointer ? (
+            </div>}
+            {approval.preview?.kind === 'state' && approval.preview.pointer ? (
               <code className={styles.mutationApprovalPointer}>{approval.preview.pointer}</code>
             ) : null}
             <input
@@ -417,7 +431,8 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
       <footer className={styles.footer}>
         <ChatComposer
           canPreviewPrompt={false}
-          canSend={Boolean(props.input.trim()) && !props.busy && props.sessionReady !== false && Boolean(props.selectedProfileId)}
+          canSend={Boolean(props.input.trim()) && !props.busy && !disconnected && !props.runRecoveryBusy && props.sessionReady !== false && Boolean(props.selectedProfileId)}
+          sheet={recovery ? <RunRecoveryControls {...props} runRecovery={recovery} /> : undefined}
           input={props.input}
           moreLabel={props.t('composer.more')}
           placeholder={props.t('agent.composerPlaceholder')}
@@ -426,11 +441,11 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
           sendLabel={props.t('agent.send')}
           pauseLabel={props.t('agent.run.pause')}
           resumeLabel={props.t('agent.run.resume')}
-          runStatus={props.busy || props.activeRun?.status === 'running' ? 'running' : props.activeRun?.status === 'suspended' ? 'suspended' : 'idle'}
+          runStatus={disconnected ? 'idle' : props.busy || props.activeRun?.status === 'running' ? 'running' : props.activeRun?.status === 'suspended' ? 'suspended' : 'idle'}
           onPause={props.onPauseRun}
           onResume={props.onResumeRun}
           sendLeadingAction={(
-            <AgentProfilePicker
+            <AgentPresetPicker
               disabled={props.busy}
               profiles={props.profiles}
               providers={props.providerAccounts}
@@ -439,11 +454,14 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
               onSelect={props.onSelectProfile}
             />
           )}
-          textareaDisabled={props.busy || !props.selectedProfileId}
+          textareaDisabled={(!disconnected && props.busy) || !props.selectedProfileId}
           textareaLabel={props.t('agent.composerLabel')}
           onChangeInput={props.onChangeInput}
           onPreviewPrompt={() => {}}
-          onSubmit={props.onSubmit}
+          onSubmit={event => {
+            if (disconnected || props.runRecoveryBusy) { event.preventDefault(); return }
+            props.onSubmit(event)
+          }}
         />
       </footer>
     </div>
@@ -513,7 +531,11 @@ function AgentReasoningBlock(props: {
         )}
       </button>
 
-      <div className={`${styles.trCollapsible} ${expanded ? '' : styles.isCollapsed}`}>
+      <div
+        className={`${styles.trCollapsible} ${expanded ? '' : styles.isCollapsed}`}
+        aria-hidden={!expanded}
+        inert={!expanded}
+      >
         <div className={styles.trInner}>
           <div className={styles.reasoningViewport}>
             {sentences.map((line, idx) => (
@@ -645,6 +667,7 @@ function AgentTranscriptEntry(props: {
   agentSessionId?: string
   codeBlockLabels: MarkdownCodeBlockLabels
   content: string
+  displayContent?: string
   copyState?: boolean
   index: number
   isStreaming?: boolean
@@ -655,19 +678,18 @@ function AgentTranscriptEntry(props: {
   t: Translator
   onCopy(): void
 }) {
-  const displayContent = props.isStreaming
-    ? patchIncompleteMarkdown(props.content)
-    : props.content
+  const displayContent = props.displayContent ?? ''
 
   return (
-    <article className={`${styles.message} ${styles[props.role]}`}>
+    <article aria-busy={props.displayContent === undefined} className={`${styles.message} ${styles[props.role]}`}>
       <div className={styles.messageSurface}>
         {props.rendererHost && props.agentSessionId ? (
           <RendererNodeMountHost
             agentSessionId={props.agentSessionId}
             host={props.rendererHost}
             messageId={props.message.id}
-            rawText={displayContent}
+            rawText={props.content}
+            displayText={displayContent}
             surface="agent-message"
           >
             <ConversationMarkdown
@@ -675,6 +697,7 @@ function AgentTranscriptEntry(props: {
               codeBlockLabels={props.codeBlockLabels}
               role={props.role}
               value={displayContent}
+              streaming={props.isStreaming}
             />
           </RendererNodeMountHost>
         ) : (
@@ -683,6 +706,7 @@ function AgentTranscriptEntry(props: {
             codeBlockLabels={props.codeBlockLabels}
             role={props.role}
             value={displayContent}
+            streaming={props.isStreaming}
           />
         )}
       </div>
@@ -710,9 +734,9 @@ function AgentTranscriptEntry(props: {
   )
 }
 
-function AgentProfilePicker(props: {
+function AgentPresetPicker(props: {
   disabled: boolean
-  profiles: AgentProfile[]
+  profiles: AgentPreset[]
   providers: ProviderAccount[]
   selectedId?: string
   t: Translator
@@ -720,7 +744,7 @@ function AgentProfilePicker(props: {
 }) {
   const detailsRef = useRef<HTMLDetailsElement>(null)
   const selected = props.profiles.find(profile => profile.id === props.selectedId)
-  const selectedProvider = selected && props.providers.find(provider => provider.id === selected.model.providerProfileId)
+  const selectedProvider = selected && props.providers.find(provider => provider.id === selected.model?.providerProfileId)
 
   return (
     <details className={styles.profilePicker} ref={detailsRef}>
@@ -731,21 +755,21 @@ function AgentProfilePicker(props: {
           if (props.disabled) event.preventDefault()
         }}
       >
-        <span>{selected?.name ?? props.t('agent.profile.unselected')}</span>
+        <span>{selected?.rootNode.label ?? props.t('agent.profile.unselected')}</span>
         <ChevronDown aria-hidden="true" />
       </summary>
       <div className={styles.profileMenu}>
         {selected ? (
           <div className={styles.profileCurrent}>
-            <strong>{selectedProvider?.displayName ?? selected.model.providerProfileId}</strong>
-            <span>{selected.model.modelId}</span>
+            <strong>{selectedProvider?.displayName ?? selected.model?.providerProfileId}</strong>
+            <span>{selected.model?.modelId}</span>
           </div>
         ) : null}
         {props.profiles.length === 0 ? (
           <p>{props.t('agent.profile.configureFirst')}</p>
         ) : (
           props.profiles.map(profile => {
-            const provider = props.providers.find(item => item.id === profile.model.providerProfileId)
+            const provider = props.providers.find(item => item.id === profile.model?.providerProfileId)
             return (
               <button
                 aria-pressed={profile.id === props.selectedId}
@@ -757,9 +781,9 @@ function AgentProfilePicker(props: {
                   if (detailsRef.current) detailsRef.current.open = false
                 }}
               >
-                <strong>{profile.name}</strong>
+                <strong>{profile.rootNode.label}</strong>
                 <span>
-                  {provider?.displayName ?? profile.model.providerProfileId} · {profile.model.modelId}
+                  {provider?.displayName ?? profile.model?.providerProfileId} · {profile.model?.modelId}
                 </span>
               </button>
             )

@@ -2,7 +2,6 @@ export const applicationDocumentTypes = {
   cardSource: 'airp.cardSource',
   providerProfile: 'airp.providerProfile',
   aiCapabilityProfile: 'airp.aiCapabilityProfile',
-  agentProfile: 'airp.agentProfile',
   agentTool: 'airp.agentTool',
   stateDefinition: 'airp.stateDefinition',
   textTransformRule: 'airp.textTransformRule',
@@ -13,7 +12,9 @@ export const applicationDocumentTypes = {
   portableExtensionPayload: 'airp.portableExtensionPayload',
   extensionConfig: 'airp.extensionConfig',
   extensionRecord: 'airp.extensionRecord',
+  extensionInstallation: 'airp.extensionInstallation',
   importBundle: 'airp.importBundle',
   timelineRuntimeContext: 'airp.timelineRuntimeContext',
+  timelinePresetConfig: 'airp.timelinePresetConfig',
   timelineArchivePending: 'airp.timelineArchivePending',
 } as const

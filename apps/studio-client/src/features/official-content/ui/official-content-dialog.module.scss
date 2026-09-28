@@ -1,0 +1,65 @@
+.content {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.toolbar,
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.toolbar {
+  justify-content: flex-end;
+}
+
+.content button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  min-width: 32px;
+}
+
+.package {
+  padding-block: 16px;
+  border-bottom: 1px solid var(--loom-color-border);
+}
+
+.package header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.package h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.package small,
+.package dd {
+  color: var(--loom-color-text-subtle);
+}
+
+.package dl {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 0;
+}
+
+.package dl > div {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.package dd {
+  margin: 0;
+}

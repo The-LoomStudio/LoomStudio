@@ -213,7 +213,7 @@ describe('studio rpc router', () => {
       narrativeTarget: {
         timelineId: 'timeline-1',
         branchId: 'branch-1',
-        commit: true,
+        inputNodeId: 'user-node-1',
       },
     }, context)
 
@@ -223,7 +223,7 @@ describe('studio rpc router', () => {
       narrativeTarget: {
         timelineId: 'timeline-1',
         branchId: 'branch-1',
-        commit: true,
+        inputNodeId: 'user-node-1',
       },
     })
     expect(receivedContext).toEqual(context)
@@ -283,7 +283,7 @@ describe('studio rpc router', () => {
     } as unknown as ApplicationRuntime
     const router = createStudioRpcRouter({ applicationRuntime, kernel: createKernelCaller() })
 
-    await router.call('application.createAgentSession', { agentProfileId: 'profile-1' }, context)
+    await router.call('application.createAgentSession', { agentPresetId: 'profile-1' }, context)
 
     expect(receivedContext).toEqual(context)
   })
@@ -421,7 +421,7 @@ describe('studio rpc router', () => {
 })
 
 function createKernelCaller(): {
-  callRpc(method: string, params: JsonValue | undefined, context: typeof context): Promise<JsonValue>
+  callRpc(method: string, params: JsonValue | undefined, callContext: typeof context): Promise<JsonValue>
 } {
   return {
     callRpc: async (method, params, callContext) => ({

@@ -78,23 +78,35 @@ export function createCodeActContext(scope: ToolExecutionScope | undefined, oper
       return JSON.stringify(result)
     },
   }
-  methods.readNarrative = async (args, signal) => {
+  methods.readNarrative = async (args, signal, control) => {
     signal.throwIfAborted()
     if (!scope?.narrative)
       throw codeActError('codeact.narrative_unavailable', 'No Narrative Timeline is bound to this Agent scope.')
     if (args.length !== 1 || !args[0] || typeof args[0] !== 'object' || Array.isArray(args[0])) {
-      throw codeActError('codeact.invalid_arguments', 'Use ctx.readNarrative({ selection, maxNodes?, maxCharacters? }).')
+      throw codeActError('codeact.invalid_arguments', 'Use ctx.readNarrative({ selection, maxNodes?, maxCharacters?, view? }).')
     }
     const request = args[0] as Record<string, unknown>
+    if (Object.keys(request).some(key => !['selection', 'maxNodes', 'maxCharacters', 'view'].includes(key))) {
+      throw codeActError('codeact.invalid_arguments', 'Narrative target and processing rules are supplied by the host.')
+    }
+    if (request.view !== undefined && request.view !== 'raw' && request.view !== 'prompt') {
+      throw codeActError('codeact.invalid_arguments', 'Narrative view must be raw or prompt.')
+    }
     const selection = request.selection
     if (!selection || typeof selection !== 'object' || Array.isArray(selection)) {
       throw codeActError('codeact.invalid_arguments', 'Narrative selection must be an object.')
+    }
+    const selector = selection as Record<string, unknown>
+    const keys = selector.kind === 'tail' ? ['kind', 'count', 'throughNodeId'] : ['kind', 'afterNodeId', 'throughNodeId']
+    if (Object.keys(selector).some(key => !keys.includes(key))) {
+      throw codeActError('codeact.invalid_arguments', 'Unsupported Narrative selection field.')
     }
     const result = await scope.narrative.sample({
       selection: selection as NarrativeSampleSelection,
       ...(request.maxNodes === undefined ? {} : { maxNodes: request.maxNodes as number }),
       ...(request.maxCharacters === undefined ? {} : { maxCharacters: request.maxCharacters as number }),
-    })
+      ...(request.view === undefined ? {} : { view: request.view }),
+    }, signal, undefined, control)
     return result
   }
   return { methods, observations, writes }

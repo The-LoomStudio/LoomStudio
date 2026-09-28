@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
 import type { AiGatewayRequest, AiGatewayResult } from '@loom-studio/ai-gateway'
-import { createAgentToolRegistry, createApplicationRuntime, type ToolDefinition } from '@loom-studio/application-runtime'
+import { createAgentToolRegistry, createApplicationRuntime, createNarrativeContextRegistry, type NarrativeContextProjection, type ToolDefinition } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import type { ChatMessage } from '@loom-studio/shared'
@@ -50,9 +50,18 @@ async function simulateLifecycle() {
     const narratives = createNarrativeStore({ engine, ...options })
     const agents = createAgentStore({ engine, ...options })
     const promptResources = createPromptResourceStore({ engine, ...options })
+    const documents = createSqliteDocumentStore({ engine })
+    const narrativeContext = createNarrativeContextRegistry()
+    narrativeContext.register({
+      id: 'test.memory',
+      resolve: async scope => {
+        const record = await documents.get(`memory:${scope.branchId}`)
+        if (!record) throw new Error('Missing published memory context')
+        return record.content as NarrativeContextProjection
+      },
+    })
     const runtime = createApplicationRuntime({
-      dataEngine: engine, agents, narratives, promptResources,
-      documents: createSqliteDocumentStore({ engine }),
+      dataEngine: engine, agents, narratives, promptResources, documents, narrativeContext,
       agentTools: createAgentToolRegistry(tools, tools.map(tool => ({
         toolId: tool.id,
         execute: async ({ invocation, scope }) => {
@@ -84,7 +93,7 @@ async function simulateLifecycle() {
         },
       },
     })
-    return { engine, runtime, narratives, agents }
+    return { engine, runtime, narratives, agents, documents }
   }
   let fixture = open()
   try {
@@ -113,7 +122,6 @@ async function simulateLifecycle() {
       { body: 'STABLE_A', anchor: '@setting.stable', depth: 20, source: 0 },
       { body: 'STABLE_B', anchor: '@setting.stable', depth: 10, source: 1 },
       { body: '<history>', anchor: '@narrative.before', source: 1 },
-      { body: 'MEMORY:EARLIER_EVENTS', anchor: '@memory.narrative', source: 1 },
       { body: '</history>', anchor: '@narrative.after', source: 1 },
       { body: 'MEMO:WORK_FACTS', anchor: '@memory.session', source: 1 },
       { body: 'CONDITIONAL:RUN_ONE', anchor: '@setting.lower', source: 0, keyword: 'INPUT_ONE' },
@@ -164,6 +172,16 @@ async function simulateLifecycle() {
       })
       head = appended.node.id
     }
+    for (const [branchId, rawThroughNodeId] of [[created.branch.id, mainNodes[104]!.id], [fork.id, head]]) {
+      await fixture.documents.write({
+        id: `memory:${branchId}`, type: 'test.memory', expectedVersion: 'new', actor,
+        content: {
+          version: 'initial',
+          memory: { coveredThroughNodeId: mainNodes[4]!.id, entries: [{ id: 'earlier', content: 'MEMORY:EARLIER_EVENTS' }] },
+          rawThroughNodeId: rawThroughNodeId!,
+        },
+      })
+    }
     await runtime.upsertTextTransformRule({
       ruleId: 'lifecycle-projection',
       rule: {
@@ -176,10 +194,10 @@ async function simulateLifecycle() {
       providerExtensionId: 'official.openai-compatible', displayName: 'Simulation',
       config: {}, enabledModelIds: ['test-model'],
     })
-    const { agentProfile } = await runtime.createAgentProfile({
-      name: 'Writer', presetId: preset.id, model: { providerProfileId: providerProfile.id, modelId: 'test-model' },
+    const { agentPreset } = await runtime.updateAgentPreset({
+      name: 'Writer', agentPresetId: preset.id, expectedVersion: (await runtime.getPromptResource({ resourceId: preset.id })).resource.version, model: { providerProfileId: providerProfile.id, modelId: 'test-model' },
     })
-    const { session } = await runtime.createAgentSession({ agentProfileId: agentProfile.id, timelineId: created.timeline.id })
+    const { session } = await runtime.createAgentSession({ agentPresetId: agentPreset.id, timelineId: created.timeline.id })
     const preview = await runtime.previewAgentTurn({ agentSessionId: session.id, input: 'INPUT_ONE' })
     expect((await agents.getEntryPage({ agentSessionId: session.id })).entries).toEqual([])
     expect(toolEvents).toEqual([])
@@ -209,7 +227,7 @@ async function simulateLifecycle() {
     await expect(restarted.invokeAgentTurn({ agentSessionId: session.id, input: 'INPUT_CANCELLED' }, { abortSignal: abort.signal }))
       .rejects.toMatchObject({ name: 'AbortError' })
     const abortedTranscript = await fixture.agents.getEntryPage({ agentSessionId: session.id, limit: 100 })
-    const { session: isolated } = await restarted.createAgentSession({ agentProfileId: agentProfile.id, timelineId: created.timeline.id })
+    const { session: isolated } = await restarted.createAgentSession({ agentPresetId: agentPreset.id, timelineId: created.timeline.id })
     const isolatedPreview = await restarted.previewAgentTurn({ agentSessionId: isolated.id, input: 'ISOLATED_INPUT' })
     await restarted.switchNarrativeBranch({ timelineId: created.timeline.id, branchId: created.branch.id })
     const mainPreview = await restarted.previewAgentTurn({ agentSessionId: isolated.id, input: 'MAIN_INPUT' })
@@ -310,28 +328,27 @@ describe('Default preset: simulated Agent lifecycle', () => {
     expect(toolEvents).toHaveLength(4)
   })
 
-  it('places old text messages in Session and each latest input exactly once; isolates a new Session and the active Narrative branch', () => {
+  it('replays Session messages and tool facts before the latest input; isolates Sessions and branches', () => {
     const { requests, isolatedPreview, mainPreview, mainPage } = scenario
     const second = requests[4]!.messages
     const third = requests[6]!.messages
-    const currentNarrative = (nodes: typeof scenario.afterOne.nodes) => ({
-      role: 'developer',
-      content: ['<history>', 'MEMORY:EARLIER_EVENTS', ...nodes.map(node => project(node.body.raw)), '</history>'].join('\n\n'),
-    })
-    const priorText = [
+    const adoptedNarrative = visible(requests[0]!.messages.slice(3, 4))[0]!
+    const priorHistory = [
       { role: 'system', content: 'MEMO:WORK_FACTS' },
       { role: 'user', content: 'INPUT_ONE' },
+      ...visible(requests[3]!.messages.slice(requests[0]!.messages.length)),
       { role: 'assistant', content: 'RUN_ONE_DONE' },
     ]
     const tail = visible(requests[0]!.messages.slice(-3))
-    // Characterize today's text-only projection; the two target contracts below remain expected failures.
     expect(visible(second)).toEqual([
-      ...visible(requests[0]!.messages.slice(0, 3)), currentNarrative(scenario.afterOne.nodes),
-      ...priorText, { role: 'user', content: 'INPUT_TWO' }, ...tail,
+      ...visible(requests[0]!.messages.slice(0, 3)), adoptedNarrative,
+      ...priorHistory, { role: 'user', content: 'INPUT_TWO' }, ...tail,
     ])
     expect(visible(third)).toEqual([
-      ...visible(requests[0]!.messages.slice(0, 3)), currentNarrative(scenario.afterFailure.nodes),
-      ...priorText, { role: 'user', content: 'INPUT_TWO' }, { role: 'user', content: 'INPUT_THREE' }, ...tail,
+      ...visible(requests[0]!.messages.slice(0, 3)), adoptedNarrative,
+      ...priorHistory, { role: 'user', content: 'INPUT_TWO' },
+      ...visible(requests[5]!.messages.slice(requests[4]!.messages.length)),
+      { role: 'user', content: 'INPUT_THREE' }, ...tail,
     ])
     for (const [messages, input] of [[second, 'INPUT_TWO'], [third, 'INPUT_THREE']] as const) {
       expect(messages.filter(message => message.role === 'user' && message.content === input)).toHaveLength(1)
@@ -344,14 +361,14 @@ describe('Default preset: simulated Agent lifecycle', () => {
         .toBeLessThan(messages.findIndex(message => message.content === input))
     }
     expect(JSON.stringify(isolatedPreview.messages)).not.toMatch(/INPUT_ONE|INPUT_TWO|RUN_ONE_DONE|RECOVERED_AFTER_RESTART/)
-    expect(isolatedPreview.messages.find(message => message.role === 'developer')?.content).toContain('PROMPT:COMMITTED_BEFORE_FAILURE')
+    expect(isolatedPreview.messages.find(message => message.role === 'developer')?.content).not.toContain('PROMPT:COMMITTED_BEFORE_FAILURE')
     expect(mainPage.nodes.at(-1)?.body.raw).toBe('RAW:N105')
     expect(mainPreview.messages.find(message => message.role === 'developer')?.content)
       .toBe(['<history>', 'MEMORY:EARLIER_EVENTS', ...mainPage.nodes.map(node => project(node.body.raw)), '</history>'].join('\n\n'))
     expect(JSON.stringify(mainPreview.messages)).not.toMatch(/ALT104|ALT105|WRITTEN_IN_RUN_ONE|COMMITTED_BEFORE_FAILURE/)
   })
 
-  it.fails('KNOWN GAP: next interaction must retain completed tool actions and results in Session', () => {
+  it('retains completed tool actions and results across interactions and a database restart', () => {
     const messages = scenario.requests[4]!.messages
     expect([
       messages.some(message => message.role === 'tool' && message.tool_call_id === 'read-before-write'),
@@ -361,7 +378,7 @@ describe('Default preset: simulated Agent lifecycle', () => {
     ]).toEqual([true, true, true])
   })
 
-  it.fails('KNOWN GAP: Narrative writes must not change the adopted baseline before an explicit rebuild boundary', () => {
+  it('keeps the published Narrative baseline unchanged across writes and subsequent interactions', () => {
     const narrative = (index: number) => scenario.requests[index]!.messages.find(message => message.role === 'developer')!.content
     expect(narrative(4)).toBe(narrative(0))
   })

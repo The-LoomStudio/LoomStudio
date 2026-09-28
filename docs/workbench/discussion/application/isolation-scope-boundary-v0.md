@@ -191,24 +191,20 @@ Application Runtime 负责：
 
 ---
 
-## 11. 当前实现与迁移边界
+## 11. 当前实现与设计边界
 
-当前代码仍将旧 Session 作为多领域聚合点。本文只记录目标所有权，不授权立即重命名 Schema 或迁移存量数据。
+旧 Session 多领域聚合已经拆分：`NarrativeTimeline` 拥有故事树，`AgentSession` 拥有 canonical Transcript，并可通过 `timelineId` 关联目标。该关联不是所有权或权限委托，详见 [Agent Runtime 与 Session](../../../architecture/application/agent/runtime-and-session.md)。
 
-迁移前需要先确认：
+当前 [Narrative 类型](../../../../packages/application-data/src/narrative/types.ts)已保存 Card 来源版本、Node State Revision 与 Branch State Head；[数据架构](../../../architecture/data/README.md)已明确共享 Engine / Data Commit Fact。旧 Session 替换、独立 Transcript 持久化及旧 RPC 删除不再是待确认迁移项。
 
-- Narrative Timeline 是否完全取代旧游玩 Session；
-- 哪些状态真正属于世界线；
-- Agent Session Tree 的最小持久化模型；
-- Changeset 与现有 Document version / transaction 的映射；
-- RPC 和 Client 当前依赖的旧 Session 语义。
+本文剩余问题应围绕尚未确定的跨目标工作上下文、共享状态及并发权限展开，不从已有基础关联推导完整工作树或跨领域原子性已经实现，也不授权变更当前 Schema 或存量数据。
 
 ---
 
 ## 12. 开放问题
 
 1. Workspace 是否需要拥有跨 Timeline 的共享慢变量？
-2. Narrative Timeline 初始化时如何引用 Card Source 版本？
+2. Timeline 已通过 `createdFrom` 保存初始化 Card ID/版本；未来是否需要显式升级来源的用户操作，属于另行设计，不改变当前冻结来源语义。
 3. Agent Session 同时绑定多个目标时如何表达 active target？
 4. 多 Agent Session 并发修改同一目标时使用乐观版本还是串行队列？
 5. Changeset undo 如何处理已经被后续 Narrative checkpoint 引用的状态？

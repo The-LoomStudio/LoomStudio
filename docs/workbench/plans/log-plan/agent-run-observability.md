@@ -6,7 +6,7 @@
 >
 > **依赖**：[日志与可观测性总计划](README.md)
 
-2026-09-22：本篇 AR-1 的基础运行日志由[事件日志中枢与前后端展示改进](operational-log-experience-plan.md) 承接，不再按本篇候选命名重复实施。Run Trace、Message/PromptBuild 快照与专业 Inspector 仍保留在本篇后续范围；基础 Logs 已确认使用事件流和原地展开，未来 Inspector 才使用 Master–Detail。
+2026-09-22：本篇 AR-1 的基础运行日志由[事件日志中枢与前后端展示改进](../../../archive/plans/log-plan/operational-log-experience-plan.md) 承接，不再按本篇候选命名重复实施。Run Trace、Message/PromptBuild 快照与专业 Inspector 仍保留在本篇后续范围；基础 Logs 已确认使用事件流和原地展开，未来 Inspector 才使用 Master–Detail。
 
 ---
 

@@ -11,7 +11,7 @@
 
 - [`agent-runtime-ai-sdk-foundation-plan.md`](../../archive/plans/agent-runtime-ai-sdk-foundation-plan.md)
 - [`agent-session-context-and-workspace-capability-plan.md`](../../archive/plans/agent-session-context-and-workspace-capability-plan.md)
-- [`file-backed-resource-agent-script-codeact-plan.md`](./file-backed-resource-agent-script-codeact-plan.md)
+- [`file-backed-resource-agent-script-codeact-plan.md`](../../archive/plans/file-backed-resource-agent-script-codeact-plan.md)
 - [`ai-gateway-streaming-execution-plan.md`](../../archive/plans/ai-gateway-streaming-execution-plan.md)
 - [`workspace-dev-sync-plan.md`](../../archive/plans/workspace-dev-sync-plan.md)：完整开发模式与工程编辑工作流，独立讨论，不默认作为最小 CLI 的前置条件。
 

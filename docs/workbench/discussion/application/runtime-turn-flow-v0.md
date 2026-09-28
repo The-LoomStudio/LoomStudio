@@ -2,7 +2,7 @@
 
 > **状态**：Open Design
 > **主题**：用户输入、Agent Session、Agent Run、Step、Changeset 与 Narrative 提交的完整路径。
-> **事实边界**：本文描述目标方向，不代表当前 `submitTurn` 已经按此实现。
+> **事实边界**：本文描述目标方向，当前运行合同见 [Agent Runtime 与 Session](../../../architecture/application/agent/runtime-and-session.md)；Client 同名 `submitTurn` 是表单编排函数，不是旧后端数据模型。
 
 ---
 
@@ -175,18 +175,11 @@ Narrative checkpoint 的自然候选时机是正文提交成功后。它可以�
 
 ## 10. 当前实现差异
 
-当前 `submitTurn` 仍将一次用户输入、一次 Provider 调用、Narrative 写入和镜像 Transcript 写入绑定成固定流程。这是 M0 实现事实。
+旧后端 `submitTurn`、旧 Session 和镜像 Transcript 路径已经删除。当前 Agent Session 与 Narrative Timeline 分别持久化，Transcript 记录 canonical 运行事实；Client 表单通过 `agentSessions.createRun` 发起执行，不能从 `submitTurn` 这个局部函数名推导旧合同仍存在。
 
-目标模型需要后续拆分：
+独立 Store、Tool loop、Narrative 写入与 Data Commit Fact 已有实现，不能继续整体列为未来拆分任务。字段与事务边界见[数据架构](../../../architecture/data/README.md)及 [Agent Runtime 与 Session](../../../architecture/application/agent/runtime-and-session.md)。
 
-- Agent Session / Step 持久化；
-- 多步 Run；
-- 受控 Tool loop；
-- Narrative commit；
-- Changeset 与版本关联；
-- 独立的两棵树及其 binding。
-
-本文不构成直接迁移计划。
+本文目标中的统一 Mutation Candidate、完整 Step 工作树及跨领域撤销编排不因上述基座存在就视为完成。它们仍需各自的实现证据与执行计划；本文不重新授权旧模型迁移，也不修改正在演进的执行器合同。
 
 ---
 

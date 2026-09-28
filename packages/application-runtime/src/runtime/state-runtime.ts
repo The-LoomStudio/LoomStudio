@@ -1,4 +1,5 @@
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
+import { assertExtensionTimelineAccess } from './extension-resource-access.js'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments, readDocument, writeDocument } from '../foundation/document-store.js'
@@ -8,6 +9,7 @@ import {
   applyApplicationStateMutation,
   applyGlobalStateDefaultInTransaction,
   getApplicationStateSnapshot,
+  notifyStateChange,
 } from '../state/state.js'
 import {
   toStateDefinitionEntry,
@@ -27,6 +29,7 @@ import type {
   ListStateDefinitionsResult,
   RuntimeRequestContext,
   StateDefinitionContent,
+  StateChangeEvent,
   UpsertStateDefinitionInput,
   UpsertStateDefinitionResult,
 } from '../types.js'
@@ -39,9 +42,11 @@ type StateRuntimeContext = ApplicationStateContext & Pick<ApplicationRuntimeCont
 
 export function createStateRuntimeMethods(ctx: StateRuntimeContext) {
   return {
-    getStateSnapshot: async (input: GetStateSnapshotInput): Promise<GetStateSnapshotResult> => ({
-      snapshot: await getApplicationStateSnapshot(ctx, input.target),
-    }),
+    getStateSnapshot: async (input: GetStateSnapshotInput): Promise<GetStateSnapshotResult> => {
+      input = structuredClone(input)
+      await assertExtensionTimelineAccess(ctx.narratives, input.extensionTarget, input.target.scope === 'timeline' ? input.target.timelineId : undefined)
+      return { snapshot: await getApplicationStateSnapshot(ctx, input.target) }
+    },
 
     applyStateMutation: (input: ApplyStateMutationInput, requestContext?: RuntimeRequestContext): Promise<ApplyStateMutationResult> =>
       applyApplicationStateMutation(ctx, input, requestContext),
@@ -102,6 +107,7 @@ export function createStateRuntimeMethods(ctx: StateRuntimeContext) {
         && !currentValue.found
         && globalDefinition.default !== undefined
       const documentParticipant = requireDocumentParticipant(ctx)
+      let stateChange: StateChangeEvent | undefined
       const transaction = await ctx.dataEngine.transact({
         ...narrativeWriteContext(requestContext, 'application.upsertStateDefinition'),
       }, async dataTx => documentParticipant.participateTransaction(dataTx, async documents => {
@@ -112,7 +118,7 @@ export function createStateRuntimeMethods(ctx: StateRuntimeContext) {
           expectedVersion: existing ? existing.version : 'new',
         })
         if (shouldCreateDefault) {
-          applyGlobalStateDefaultInTransaction(ctx, dataTx, {
+          stateChange = applyGlobalStateDefaultInTransaction(ctx, dataTx, {
             scopeId: globalSnapshot!.scope.id,
             parentRevisionId: globalSnapshot!.revision.id,
             snapshot: globalSnapshot!.revision.snapshot,
@@ -122,6 +128,7 @@ export function createStateRuntimeMethods(ctx: StateRuntimeContext) {
         }
         return written
       }))
+      if (stateChange) notifyStateChange(ctx, stateChange)
       return {
         definition: toStateDefinitionEntry(transaction.value.value),
         mutation: { changesetId: transaction.commit.changesetId },

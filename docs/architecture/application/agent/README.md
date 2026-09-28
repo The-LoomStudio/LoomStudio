@@ -5,8 +5,8 @@ Studio Application 的 Agent 子系统负责组织模型调用、PromptBuild、T
 当前稳定主链：
 
 ```text
-Agent Profile
-  -> Preset + Provider Model + Tool Overrides
+Agent Preset
+  -> Prompt Resource 树 + 本地 Provider Model 绑定 + Tool Mount
   -> PromptBuild + Tool Prompt Build
   -> AI Gateway Provider Step
   -> Tool Invocation / Result Loop
@@ -23,14 +23,14 @@ Agent Profile
 
 当前已经跑通：
 
-- Agent Profile 绑定唯一 Preset 与 Provider Model；
+- Agent Preset 复用同一 Prompt Resource 身份，保存编排、可空模型绑定及调用配置；
 - canonical Transcript 与 Agent Store 持久化；
 - OpenAI、Anthropic、Google 和 OpenAI-compatible Gateway adapter；
 - 完整响应与 Streaming Gateway contract；
 - Native Function Tool 与 Content Tool；
 - Tool Validation、Approval、Execution 和 Result Replay；
 - 多 Provider Step Agent Loop；
-- Preset Tool Mount、Agent Profile 快速开关和 Tool Activation；
+- 单层 Preset Tool Mount 开关和 Tool Activation；
 - Tool Prompt 宏、Provider Tool Order、Content Anchor / Slot；
 - Provider Observation、Run State、Tool Invocation 和 Tool Result 的会话检查。
 

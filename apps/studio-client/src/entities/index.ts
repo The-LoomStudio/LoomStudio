@@ -1,5 +1,7 @@
 export type { JsonObject, MutationReceipt } from './common.js'
-export type { LoomScript, LoomScriptMount, LoomScriptOwner, LoomScriptRendererContribution, ResolvedLoomScriptRendererMount } from './loom-script.js'
+export type { GetPromptResourceBindingsResult } from './workspace.js'
+export type { ListExtensionInstallationsResult } from './extension.js'
+export type { LoomScript, LoomScriptMount, LoomScriptOwner, ResolvedLoomScriptRendererMount } from './loom-script.js'
 export type { ExtensionPackageResourceImportResult, ExtensionPackageResourceRemovalResult, ManagedClientExtensionModule, ManagedClientExtensionPackage, ManagedExtensionModule, ManagedExtensionPackage } from './extension.js'
 export type {
   HistoryProjectionSnapshot,
@@ -7,12 +9,10 @@ export type {
   RendererDefinition,
   TextPipelineInspection,
   TextPipelineOverride,
-  TextPipelineConsumer,
   TextTransformPhase,
   TextExtractor,
   TextExtractorDraft,
   TextRuleOwner,
-  TextTransformMutationResult,
   TextTransformRule,
   TextTransformRuleDraft,
 } from './text-transform.js'
@@ -23,11 +23,8 @@ export type {
   PromptCompositionCapabilities,
   PromptCompositionEntry,
   PromptCompositionItem,
-  PromptCompositionItemBase,
-  PromptCompositionSlot,
   PromptCompositionZone,
   PromptMessageBlock,
-  PromptProviderRole,
 } from './context-asset.js'
 export type {
   CreateNarrativeTimelineResult,
@@ -45,28 +42,23 @@ export type {
   AgentTranscriptPage,
   AgentToolDefinition,
   AgentSession,
-  ChatMessage,
   CreateAgentSessionResult,
   InvokeAgentTurnResult,
   PreviewAgentTurnResult,
-  ToolExposure,
 } from './agent.js'
-export type { Run, RunDetails, RuntimeEntry, CommitCandidate } from './run.js'
 export type {
   ApplyStateMutationInput,
   ApplyStateMutationResult,
   GetStateSnapshotResult,
   GetStateDefinitionResult,
   ListStateDefinitionsResult,
-  StateDefinition,
   StateDefinitionDraft,
-  StateMutationOperation,
   StateSnapshot,
   StateTarget,
   UpsertStateDefinitionResult,
   DeleteStateDefinitionResult,
 } from './state.js'
-export type { PromptProjection, PromptProjectionZone, ProviderMessage, PromptPreview } from './prompt.js'
+export type { PromptProjection, ProviderMessage } from './prompt.js'
 export type {
   CreatePromptResourceResult,
   DeletePromptResourceResult,
@@ -74,14 +66,11 @@ export type {
   ExportPromptResourceResult,
   GetPromptResourceResult,
   ImportCardBundleResult,
-  ImportBundle,
   ListPromptResourcesResult,
   ListPresetToolMountsResult,
   ListSettingMountsResult,
   PromptResource,
   PromptResourceArtifact,
-  PortableExtensionPayload,
-  PortableExtensionPayloadArtifact,
   PortableExtensionPayloadDraft,
   ListPortableExtensionPayloadsResult,
   GetPortableExtensionPayloadResult,
@@ -96,20 +85,15 @@ export type {
   SettingMountSource,
 } from './workspace.js'
 export type {
-  ProviderProfile,
   ProviderAccount,
   AiCapabilityProfile,
   ModelProfile,
   ProviderModelSelection,
-  AgentProfile,
+  AgentPreset,
   CreateProviderProfileResult,
-  CreateProviderAccountResult,
   ListProviderProfilesResult,
-  ListProviderAccountsResult,
   UpdateProviderProfileResult,
-  UpdateProviderAccountResult,
   DeleteProviderProfileResult,
-  DeleteProviderAccountResult,
   ListAiCapabilityProfilesResult,
   CreateAiCapabilityProfileResult,
   UpdateAiCapabilityProfileResult,
@@ -118,8 +102,8 @@ export type {
   AiGatewayInvokeInput,
   AiGatewayInvokeResult,
   RegisteredAiGatewayProvider,
-  CreateAgentProfileResult,
-  ListAgentProfilesResult,
-  UpdateAgentProfileResult,
-  DeleteAgentProfileResult,
+  CreateAgentPresetResult,
+  ListAgentPresetsResult,
+  UpdateAgentPresetResult,
+  DeleteAgentPresetResult,
 } from './provider.js'

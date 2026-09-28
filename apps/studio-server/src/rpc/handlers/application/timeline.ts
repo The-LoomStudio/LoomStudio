@@ -4,6 +4,7 @@ import type {
 } from '@loom-studio/application-runtime'
 import type { JsonValue } from '@loom-studio/shared'
 import {
+  readNullableString,
   readOptionalNumber,
   readOptionalString,
   readString,
@@ -16,6 +17,14 @@ export async function handleTimelineRpc(
   context?: RuntimeRequestContext,
 ): Promise<JsonValue | undefined> {
   switch (method) {
+    case 'application.appendNarrativeInput':
+      return await runtime.appendNarrativeInput({
+        timelineId: readString(params, 'timelineId'),
+        branchId: readString(params, 'branchId'),
+        nodeId: readString(params, 'nodeId'),
+        expectedHeadNodeId: readNullableString(params, 'expectedHeadNodeId'),
+        content: readString(params, 'content'),
+      }, context) as unknown as JsonValue
     case 'application.editNarrativeNode':
       return await runtime.editNarrativeNode({
         timelineId: readString(params, 'timelineId'),

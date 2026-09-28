@@ -32,7 +32,7 @@ export function summarizeRpc(method: string, result: unknown): RpcSummary {
   }
 
   // Lists report counts, never entity names or full result/parameter objects.
-  for (const key of ['profiles', 'agentProfiles', 'cards', 'resources', 'timelines', 'providerProfiles', 'modelIds', 'nodes', 'items', 'entries', 'events']) {
+  for (const key of ['profiles', 'agentPresets', 'cards', 'resources', 'timelines', 'providerProfiles', 'modelIds', 'nodes', 'items', 'entries', 'events']) {
     if (!Array.isArray(res[key])) continue
     const itemCount = res[key].length
     return { textSuffix: `${itemCount} entries`, summaryData: { itemCount } }

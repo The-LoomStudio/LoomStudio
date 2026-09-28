@@ -63,7 +63,7 @@ describe('application macro provider integration', () => {
       presetId: preset.resource.id,
     })
     expect(frozen).toBe(true)
-    expect(inspection.macroInspection.entries.find(entry => entry.name === 'greeting')).toMatchObject({ status: 'conflict' })
+    expect(inspection.macroInspection.entries.find(entry => entry.name === 'greeting')).toMatchObject({ status: 'resolved', value: 'preset' })
     expect(inspection.macroInspection.entries.find(entry => entry.name === 'dynamic')).toMatchObject({ value: 'resolved', status: 'resolved' })
     expect(inspection.macroInspection.entries.find(entry => entry.name === 'broken')).toMatchObject({ status: 'error' })
     expect(inspection.macroInspection.entries.find(entry => entry.name === 'Tone')).toMatchObject({ status: 'conflict' })
@@ -120,7 +120,7 @@ describe('application macro provider integration', () => {
     engine.close()
   })
 
-  it('uses frozen Timeline Card macros and one provider result in Preview and Invoke', async () => {
+  it('uses current Card macros and one provider result in Preview and Invoke', async () => {
     let nextId = 0
     let nextTime = 0
     const createId = (prefix: string) => `${prefix}-${++nextId}`
@@ -156,7 +156,7 @@ describe('application macro provider integration', () => {
         }),
       },
     })
-    const card = await runtime.createCard({ name: 'Frozen Card', macros: { greeting: 'card-v1' } })
+    const card = await runtime.createCard({ name: 'Live Card', macros: { greeting: 'card-v1' } })
     const timeline = await runtime.createNarrativeTimeline({ cardId: card.card.id })
     const preset = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Macro Prompt' })
     const presetWithBody = await runtime.createPromptResourceAsset({
@@ -177,38 +177,48 @@ describe('application macro provider integration', () => {
       config: {},
       enabledModelIds: [officialFakeModelId],
     })
-    const profile = await runtime.createAgentProfile({
+    const profile = await runtime.updateAgentPreset({
       name: 'Macro Profile',
-      presetId: presetWithBody.resource.id,
+      agentPresetId: presetWithBody.resource.id, expectedVersion: (await runtime.getPromptResource({ resourceId: presetWithBody.resource.id })).resource.version,
       model: { providerProfileId: provider.providerProfile.id, modelId: officialFakeModelId },
     })
-    const session = await runtime.createAgentSession({ agentProfileId: profile.agentProfile.id, timelineId: timeline.timeline.id })
+    const session = await runtime.createAgentSession({ agentPresetId: profile.agentPreset.id, timelineId: timeline.timeline.id })
     const selection = { greeting: `card:${card.card.id}` }
     const conflictPreview = await runtime.previewAgentTurn({
       agentSessionId: session.session.id,
       input: 'Conflict',
-      narrativeTarget: { timelineId: timeline.timeline.id, branchId: timeline.branch.id, commit: false },
+      narrativeTarget: { timelineId: timeline.timeline.id, branchId: timeline.branch.id },
     })
     expect(providerCalls).toBe(1)
-    expect(conflictPreview.messages).toContainEqual(expect.objectContaining({ role: 'system', content: 'Card={{greeting}} Dynamic=dynamic-1' }))
-    expect(conflictPreview.macroInspection.entries.find(entry => entry.name === 'greeting')).toMatchObject({ status: 'conflict' })
+    expect(conflictPreview.messages).toContainEqual(expect.objectContaining({ role: 'system', content: 'Card=preset-v1 Dynamic=dynamic-1' }))
+    expect(conflictPreview.macroInspection.entries.find(entry => entry.name === 'greeting')).toMatchObject({ status: 'resolved', value: 'preset-v1' })
     const preview = await runtime.previewAgentTurn({
       agentSessionId: session.session.id,
       input: 'Preview',
       macroSelections: selection,
-      narrativeTarget: { timelineId: timeline.timeline.id, branchId: timeline.branch.id, commit: false },
+      narrativeTarget: { timelineId: timeline.timeline.id, branchId: timeline.branch.id },
     })
     expect(providerCalls).toBe(2)
-    expect(preview.messages).toContainEqual(expect.objectContaining({ role: 'system', content: 'Card=card-v1 Dynamic=dynamic-2' }))
-    expect(preview.macroInspection.entries.find(entry => entry.name === 'greeting')).toMatchObject({ value: 'card-v1', selectedSourceId: `card:${card.card.id}`, status: 'resolved' })
+    expect(preview.messages).toContainEqual(expect.objectContaining({ role: 'system', content: 'Card=card-v2 Dynamic=dynamic-2' }))
+    expect(preview.macroInspection.entries.find(entry => entry.name === 'greeting')).toMatchObject({ value: 'card-v2', selectedSourceId: `card:${card.card.id}`, status: 'resolved' })
     const invoked = await runtime.invokeAgentTurn({
       agentSessionId: session.session.id,
       input: 'Invoke',
       macroSelections: selection,
-      narrativeTarget: { timelineId: timeline.timeline.id, branchId: timeline.branch.id, commit: false },
+      narrativeTarget: { timelineId: timeline.timeline.id, branchId: timeline.branch.id },
     })
     expect(providerCalls).toBe(3)
     expect(invoked.macroInspection.entries.find(entry => entry.name === 'dynamic')).toMatchObject({ value: 'dynamic-3', status: 'resolved' })
+    expect(invoked.macroInspection.entries.find(entry => entry.name === 'greeting')).toMatchObject({ value: 'card-v2', status: 'resolved' })
+    const inspected = await runtime.inspectMacros({ timelineTarget: { timelineId: timeline.timeline.id }, presetId: presetWithBody.resource.id, macroSelections: selection })
+    expect(inspected.macroInspection.entries.find(entry => entry.name === 'greeting')).toMatchObject({ value: 'card-v2', status: 'resolved' })
+    await runtime.updateCard({ cardId: card.card.id, macros: {} })
+    const missing = await runtime.inspectMacros({ timelineTarget: { timelineId: timeline.timeline.id }, presetId: presetWithBody.resource.id, macroSelections: selection })
+    expect(missing.macroInspection.entries.find(entry => entry.name === 'greeting')).toMatchObject({ status: 'error' })
+    await expect(runtime.invokeAgentTurn({
+      agentSessionId: session.session.id, input: 'Missing', macroSelections: selection,
+      narrativeTarget: { timelineId: timeline.timeline.id, branchId: timeline.branch.id },
+    })).rejects.toThrow('Selected macro is unavailable')
     engine.close()
   })
 })

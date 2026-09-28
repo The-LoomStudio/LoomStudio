@@ -2,7 +2,7 @@ import type { Diagnostic } from '../diagnostic/types.js'
 import type { Fragment } from '../fragment/types.js'
 import { deepEqual } from '../utils/deep-equal.js'
 
-export type OwnerMeta = Record<string, unknown> & { __owner?: string }
+type OwnerMeta = Record<string, unknown> & { __owner?: string }
 
 function asMetaRecord(meta: unknown): OwnerMeta {
   if (meta && typeof meta === 'object' && !Array.isArray(meta)) {

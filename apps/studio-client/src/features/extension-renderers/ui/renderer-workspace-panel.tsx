@@ -1,21 +1,18 @@
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
-import type { ClientActionPlacement, ClientCommandDeclaration, RendererContributionDefinition } from '@loom-studio/extension-sdk'
-import { ArrowDown, ArrowLeft, ArrowUp, Braces, Component, ExternalLink, FileSearch, Package, PackagePlus, Power, RefreshCw, SlidersHorizontal, TerminalSquare, Trash2 } from 'lucide-react'
+import type { ClientActionPlacement, ClientCommandDeclaration, ExtensionInstallationTarget, RendererContributionDefinition } from '@loom-studio/extension-sdk'
+import { ArrowDown, ArrowLeft, ArrowUp, Braces, Component, ExternalLink, FileSearch, Package, PackageMinus, PackagePlus, Power, RefreshCw, SlidersHorizontal, TerminalSquare, Trash2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { buildStudioLogPath } from '../../../shared/studio-shell/studio-route.js'
 import { toast } from 'sonner'
-import type { ManagedExtensionModule, ManagedExtensionPackage, ModelProfile, ProviderModelSelection } from '../../../entities/index.js'
-import type { OfficialContentPackage } from '../../../entities/official-content.js'
+import type { Card, ListExtensionInstallationsResult, ManagedExtensionModule, ManagedExtensionPackage, PromptResource } from '../../../entities/index.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
-import { downloadBase64 } from '../../../shared/browser/download.js'
-import { OfficialContentDetail } from './official-content-detail.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import type { ClientExtensionHost } from '../model/client-extension-host.js'
 import type { ClientRendererHost } from '../../../shared/extension-renderer-runtime/client-renderer-host.js'
 import type { RendererSessionHost } from '../model/renderer-session.js'
 import { rendererContributionKey, rendererSurfacePolicies } from '../../../shared/extension-renderer-runtime/renderer-registry.js'
-import { clientCommandKey, matchesClientActionCondition } from '../model/client-actions.js'
+import { clientCommandKey, clientModuleKey, matchesClientActionCondition } from '../model/client-actions.js'
 import { ClientActionIcon } from './client-action-icon.js'
 import { RendererSurfaceHost } from './renderer-surface-host.js'
 import { ExtensionSettingsForm } from './extension-settings-form.js'
@@ -25,7 +22,7 @@ import styles from './renderer-workspace-panel.module.scss'
 const WORKSPACE_SCOPE_KEY = 'workspace'
 
 type ExtensionWorkspaceSelection =
-  | { kind: 'official'; packageId: string }
+  | { kind: 'card-module'; packageId: string; moduleId: string; cardId: string }
   | { kind: 'package'; packageId: string }
   | { kind: 'settings'; packageId: string }
   | { kind: 'resource'; packageId: string; resourceKind: 'prompt' | 'tool' | 'rule' | 'extractor'; id: string }
@@ -37,23 +34,32 @@ export function RendererWorkspacePanel(props: {
   extensionHost: ClientExtensionHost
   host: ClientRendererHost
   packages: readonly ManagedExtensionPackage[]
+  cardPackages: readonly ManagedExtensionPackage[]
   serverDiagnostics: readonly ClientJsonValue[]
   sessionHost: RendererSessionHost
   t: Translator
-  officialContent: StudioApi['officialContent']
   extensionRuntime: Pick<StudioApi['extensionRuntime'], 'getConfig' | 'listConfigs' | 'upsertConfig'>
   configRevision: number
   settingScopeContext: { cardId?: string; timelineId?: string; agentSessionId?: string }
-  models: ModelProfile[]
   searchParams: URLSearchParams
   onNavigate(path: string): void
-  onCreateAgent(input: { name: string; presetId: string; model: ProviderModelSelection }): Promise<boolean>
-  onDisable(packageId: string, moduleId: string): Promise<unknown>
-  onEnable(packageId: string, moduleId: string): Promise<unknown>
+  onDisable(packageId: string, moduleId: string, target?: ExtensionInstallationTarget): Promise<unknown>
+  onEnable(packageId: string, moduleId: string, grants?: Parameters<StudioApi['extensions']['enable']>[2], target?: ExtensionInstallationTarget): Promise<unknown>
   onImportResources(packageId: string): Promise<unknown>
+  onAttachPackage(cardId: string, packageId: string, version: string): Promise<unknown>
+  embeddedPackageCard?: Pick<Card, 'id' | 'version' | 'name' | 'extensionPackages'>
+  onDetachPackage(cardId: string, expectedVersion: number, packageId: string): Promise<unknown>
+  onInstallCardPackage(input: Parameters<StudioApi['extensions']['installCard']>[0]): Promise<unknown>
+  onUpdateCardPackage(input: Parameters<StudioApi['extensions']['updateCard']>[0]): Promise<unknown>
+  onUninstallCardPackage(input: Parameters<StudioApi['extensions']['uninstallCard']>[0]): Promise<unknown>
+  onRemoveCardResources(input: Parameters<StudioApi['extensions']['removeCardResources']>[0]): Promise<unknown>
+  installations: ListExtensionInstallationsResult['installations']
+  promptResources: PromptResource[]
+  onOpenPromptResource(resource: PromptResource): void
+  onUpdateResources(input: Parameters<StudioApi['extensions']['updateResources']>[0]): Promise<unknown>
   onInstallZip(file: File): Promise<unknown>
   onRemoveResources(packageId: string): Promise<unknown>
-  onReload(packageId: string, moduleId: string): Promise<unknown>
+  onReload(packageId: string, moduleId: string, target?: ExtensionInstallationTarget): Promise<unknown>
   onUninstall(packageId: string, version?: string): Promise<unknown>
 }) {
   useSyncExternalStore(props.host.subscribe, props.host.revision, props.host.revision)
@@ -67,25 +73,12 @@ export function RendererWorkspacePanel(props: {
   }, [searchParams])
   const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
   const [busyKey, setBusyKey] = useState<string>()
-  const [officialPackages, setOfficialPackages] = useState<OfficialContentPackage[]>([])
-  const [officialError, setOfficialError] = useState<string>()
   async function installZip(file: File) {
     await run('install-zip', async () => {
       await props.onInstallZip(file)
       toast.success(props.t('renderer.installed'))
     })
   }
-  useEffect(() => {
-    let disposed = false
-    setOfficialPackages([])
-    setOfficialError(undefined)
-    void props.officialContent.list().then(result => {
-      if (!disposed) setOfficialPackages(result.packages)
-    }, error => {
-      if (!disposed) setOfficialError(error instanceof Error ? error.message : String(error))
-    })
-    return () => { disposed = true }
-  }, [props.officialContent])
   const registrations = props.host.list('shell.workspace-panel')
   const activeKey = props.host.activeContributionKey('shell.workspace-panel', WORKSPACE_SCOPE_KEY)
   const active = registrations.find(registration => rendererContributionKey(registration) === activeKey)
@@ -111,15 +104,19 @@ export function RendererWorkspacePanel(props: {
     )
   }
 
-  const selected = selection?.kind === 'official' ? undefined : props.packages.find(item => item.packageId === selection?.packageId) ?? props.packages[0]
-  const selectedItem = selection?.kind === 'official' ? selection : selection && selected?.packageId === selection.packageId ? selection : selected ? { kind: 'package' as const, packageId: selected.packageId } : undefined
-  const selectedOfficial = selectedItem?.kind === 'official' ? officialPackages.find(item => item.id === selectedItem.packageId) : undefined
+  const selected = props.packages.find(item => item.packageId === selection?.packageId) ?? props.packages[0]
+  const installation = props.installations.find(item => item.packageId === selected?.packageId && item.target.kind === 'global')
+  const selectedItem = selection && selected?.packageId === selection.packageId ? selection : selected ? { kind: 'package' as const, packageId: selected.packageId } : undefined
   const clientSummaries = props.extensionHost.summaries()
   const rendererDiagnostics = props.host.diagnostics()
   const clientDiagnostics = props.extensionHost.diagnostics()
   const instances = props.host.instances()
   const claims = props.host.activeClaims()
   const commandRegistrations = props.extensionHost.commandRegistrations()
+  const cardSelection = selection?.kind === 'card-module' ? selection : undefined
+  const cardPackage = cardSelection && props.cardPackages.find(item => item.packageId === cardSelection.packageId
+    && item.target?.kind === 'card' && item.target.cardId === cardSelection.cardId)
+  const cardModule = cardPackage?.modules.find(item => item.moduleId === cardSelection?.moduleId)
   const selectedModule = selectedItem && 'moduleId' in selectedItem
     ? selected?.modules.find(module => module.moduleId === selectedItem.moduleId)
     : undefined
@@ -138,22 +135,6 @@ export function RendererWorkspacePanel(props: {
     } finally {
       setBusyKey(undefined)
     }
-  }
-
-  async function installOfficial(content: OfficialContentPackage) {
-    if (!window.confirm(props.t('official.installConfirm'))) return
-    await run(content.id, async () => {
-      const result = await props.officialContent.install({ packageId: content.id, digest: content.digest })
-      setOfficialPackages((await props.officialContent.list()).packages)
-      toast.success(props.t(result.resources.some(resource => resource.created) ? 'official.installed' : 'official.unchanged'))
-    })
-  }
-
-  async function exportOfficial(content: OfficialContentPackage) {
-    await run(content.id, async () => {
-      const result = await props.officialContent.export({ packageId: content.id, digest: content.digest })
-      downloadBase64(result.base64, result.fileName, 'application/zip')
-    })
   }
 
   async function importResources(packageId: string) {
@@ -207,13 +188,6 @@ export function RendererWorkspacePanel(props: {
         onMobilePaneChange={setMobilePane}
         master={(
           <nav aria-label={props.t('renderer.packages')} className={styles.packageTree}>
-            <span className={styles.treeGroupLabel}>{props.t('official.recommended')}</span>
-            {officialError ? <p role="alert">{officialError}</p> : null}
-            {officialPackages.map(content => (
-              <button key={content.id} className={styles.packageItem} type="button" aria-current={selectedOfficial?.id === content.id ? 'page' : undefined} onClick={() => select({ kind: 'official', packageId: content.id })}>
-                <PackagePlus aria-hidden="true" /><span><strong>{content.name}</strong><small>{content.version}</small></span>
-              </button>
-            ))}
             <span className={styles.treeGroupLabel}>{props.t('renderer.packages')}</span>
             {props.packages.length === 0 ? <p className={styles.empty}>{props.t('renderer.workspaceEmpty')}</p> : props.packages.map(extensionPackage => (
               <section className={styles.treePackage} key={extensionPackage.packageId}>
@@ -228,6 +202,13 @@ export function RendererWorkspacePanel(props: {
                 </button>
                 {extensionPackage.packageId === selected?.packageId ? (
                   <div className={styles.treeChildren}>
+                    {props.promptResources.filter(resource => {
+                      const origin = resource.origin
+                      if (origin?.kind !== 'extension-package' || origin.packageId !== extensionPackage.packageId) return false
+                      const installed = props.installations.find(item => item.id === origin.installationId)
+                      return installed?.target.kind === 'global' || !origin.installationId
+                    }).map(resource => <TreeItem key={`installed:${resource.id}`} active={false} icon={Braces}
+                      label={resource.rootNode.label} onClick={() => props.onOpenPromptResource(resource)} />)}
                     {packageResourceCount(extensionPackage) > 0 ? (
                       <>
                         <span className={styles.treeGroupLabel}>{props.t('renderer.packageResources')}</span>
@@ -266,28 +247,158 @@ export function RendererWorkspacePanel(props: {
                 ) : null}
               </section>
             ))}
+            {props.embeddedPackageCard ? (
+              <details className={styles.embeddedPackages} key={props.embeddedPackageCard.id}>
+                <summary>{props.t('renderer.embeddedPackages', { name: props.embeddedPackageCard.name })}</summary>
+                {(props.embeddedPackageCard.extensionPackages ?? []).map(archive => {
+                  const card = props.embeddedPackageCard!
+                  const installed = props.installations.find(item => item.packageId === archive.packageId && item.target.kind === 'card' && item.target.cardId === card.id)
+                  return (
+                  <div className={styles.embeddedPackage} key={archive.packageId}>
+                    <span>{archive.packageId}<small>{archive.version}</small></span>
+                    <button
+                      type="button"
+                      title={props.t('renderer.installCardPackage')}
+                      aria-label={props.t('renderer.installCardPackage')}
+                      disabled={Boolean(busyKey)}
+                      onClick={() => {
+                        const card = props.embeddedPackageCard!
+                        void run(`${card.id}/${archive.packageId}/import`, async () => {
+                          await props.onInstallCardPackage({ cardId: card.id, expectedCardVersion: card.version, packageId: archive.packageId })
+                          toast.success(props.t('renderer.installed'))
+                        })
+                      }}
+                    ><PackagePlus aria-hidden="true" size={16} /></button>
+                    {installed ? <>
+                      <button
+                        type="button" disabled={Boolean(busyKey)}
+                        title={props.t('renderer.updateCardPackage')} aria-label={props.t('renderer.updateCardPackage')}
+                        onClick={() => {
+                          if (!window.confirm(props.t('renderer.updateCardPackageConfirm', { name: archive.packageId, from: installed.packageVersion, to: archive.version }))) return
+                          void run(`${card.id}/${archive.packageId}/update`, () => props.onUpdateCardPackage({
+                            cardId: card.id, packageId: archive.packageId, expectedCardVersion: card.version,
+                            packageVersion: archive.version, expectedInstallationVersion: installed.version,
+                          }))
+                        }}
+                      ><RefreshCw aria-hidden="true" size={16} /></button>
+                      <button
+                        type="button" disabled={Boolean(busyKey)}
+                        title={props.t('renderer.removeCardResources')} aria-label={props.t('renderer.removeCardResources')}
+                        onClick={() => {
+                          if (!window.confirm(props.t('renderer.removeCardResourcesConfirm', { name: archive.packageId }))) return
+                          void run(`${card.id}/${archive.packageId}/remove`, () => props.onRemoveCardResources({
+                            cardId: card.id, packageId: archive.packageId, expectedInstallationVersion: installed.version,
+                          }))
+                        }}
+                      ><PackageMinus aria-hidden="true" size={16} /></button>
+                    </> : null}
+                    <button
+                      type="button"
+                      title={props.t('renderer.detachPackage')}
+                      aria-label={props.t('renderer.detachPackage')}
+                      disabled={Boolean(busyKey)}
+                      onClick={() => {
+                        const card = props.embeddedPackageCard!
+                        if (!window.confirm(props.t('renderer.detachPackageConfirm', { name: archive.packageId }))) return
+                        void run(`${card.id}/${archive.packageId}/detach`, () => props.onDetachPackage(card.id, card.version, archive.packageId))
+                      }}
+                    ><Trash2 aria-hidden="true" size={16} /></button>
+                  </div>
+                )})}
+                {!props.embeddedPackageCard.extensionPackages?.length ? <p className={styles.empty}>{props.t('renderer.noEmbeddedPackages')}</p> : null}
+              </details>
+            ) : null}
+            {props.cardPackages.length > 0 ? (
+              <details className={styles.embeddedPackages} open>
+                <summary>{props.t('renderer.cardInstallations')}</summary>
+                {props.cardPackages.map(extensionPackage => {
+                  const target = extensionPackage.target
+                  if (target?.kind !== 'card') return null
+                  const installed = props.installations.find(item => item.packageId === extensionPackage.packageId
+                    && item.target.kind === 'card' && item.target.cardId === target.cardId)
+                  return (
+                    <section className={styles.treePackage} key={`${target.cardId}/${extensionPackage.packageId}`}>
+                      <div className={styles.embeddedPackage}>
+                        <span>{extensionPackage.displayName}<small>{extensionPackage.version}</small></span>
+                        <button type="button" disabled={Boolean(busyKey) || !installed} title={props.t('renderer.uninstall')} aria-label={props.t('renderer.uninstall')}
+                          onClick={() => {
+                            if (!installed || !window.confirm(props.t('renderer.uninstallCardConfirm', { name: extensionPackage.displayName }))) return
+                            void run(`${target.cardId}/${extensionPackage.packageId}/uninstall`, () => props.onUninstallCardPackage({
+                              cardId: target.cardId, packageId: extensionPackage.packageId, expectedInstallationVersion: installed.version,
+                            }))
+                          }}><Trash2 aria-hidden="true" size={16} /></button>
+                      </div>
+                      <div className={styles.treeChildren}>
+                        {props.promptResources.filter(resource => resource.origin?.kind === 'extension-package'
+                          && resource.origin.packageId === extensionPackage.packageId
+                          && installed && resource.origin.installationId === installed.id
+                        ).map(resource => <TreeItem key={resource.id} active={false} icon={Braces}
+                          label={resource.rootNode.label} onClick={() => props.onOpenPromptResource(resource)} />)}
+                        {extensionPackage.modules.map(module => (
+                          <TreeItem key={module.moduleId} icon={Component} label={`${module.moduleId} · ${module.runtimeKind}`}
+                            active={cardSelection?.cardId === target.cardId && cardSelection.packageId === extensionPackage.packageId && cardSelection.moduleId === module.moduleId}
+                            onClick={() => select({ kind: 'card-module', packageId: extensionPackage.packageId, moduleId: module.moduleId, cardId: target.cardId })} />
+                        ))}
+                      </div>
+                    </section>
+                  )
+                })}
+              </details>
+            ) : null}
           </nav>
         )}
       >
         <div className={styles.detail}>
-          {selectedOfficial ? (
-            <OfficialContentDetail
-              key={selectedOfficial.id}
-              content={selectedOfficial}
-              models={props.models}
-              busy={busyKey !== undefined}
-              t={props.t}
-              onInstall={() => void installOfficial(selectedOfficial)}
-              onExport={() => void exportOfficial(selectedOfficial)}
-              onCreateAgent={input => void run(selectedOfficial.id, () => props.onCreateAgent(input))}
-            />
-          ) : null}
+          {cardSelection ? (
+            cardPackage && cardModule ? <ModuleDetail busyKey={busyKey} clientSummaries={clientSummaries}
+              extensionPackage={cardPackage} module={cardModule} onDisable={props.onDisable} onEnable={props.onEnable}
+              onReload={props.onReload} run={run} t={props.t} /> : <p className={styles.empty}>{props.t('renderer.moduleUnavailable')}</p>
+          ) : <>
           {selected && selectedItem?.kind === 'package' ? (
             <>
               <header className={styles.packageHeader}>
                 <div><h3>{selected.displayName}</h3><code>{selected.packageId}@{selected.version}</code></div>
                 <div className={styles.actions}>
                   <button type="button" onClick={() => navigate(buildStudioLogPath({ packageId: selected.packageId }))}><TerminalSquare aria-hidden="true" /><span>{props.t('logs.viewExtension')}</span></button>
+                  {props.settingScopeContext.cardId ? (
+                    <button
+                      disabled={Boolean(busyKey) || !selected.available}
+                      type="button"
+                      onClick={() => {
+                        const cardId = props.settingScopeContext.cardId
+                        if (!cardId || !window.confirm(props.t('renderer.attachPackageConfirm', { name: selected.displayName }))) return
+                        void run(`${selected.packageId}/attach`, async () => {
+                          await props.onAttachPackage(cardId, selected.packageId, selected.version)
+                          toast.success(props.t('renderer.packageAttached'))
+                        })
+                      }}
+                    >
+                      <PackagePlus aria-hidden="true" />
+                      <span>{props.t('renderer.attachPackage')}</span>
+                    </button>
+                  ) : null}
+                  {installation ? (
+                    <button
+                      disabled={Boolean(busyKey) || !selected.available}
+                      type="button"
+                      onClick={() => {
+                        if (!window.confirm(props.t('renderer.updateResourcesConfirm', {
+                          name: selected.displayName, from: installation.packageVersion, to: selected.version,
+                        }))) return
+                        void run(`${selected.packageId}/resources`, async () => {
+                          await props.onUpdateResources({
+                            packageId: selected.packageId,
+                            packageVersion: selected.version,
+                            expectedInstallationVersion: installation.version,
+                          })
+                          toast.success(props.t('renderer.resourcesUpdated'))
+                        })
+                      }}
+                    >
+                      <RefreshCw aria-hidden="true" />
+                      <span>{props.t('renderer.updateResources')}</span>
+                    </button>
+                  ) : null}
                   {packageResourceCount(selected) > 0 ? (
                     <>
                       <button disabled={busyKey === `${selected.packageId}/resources`} type="button" onClick={() => void run(`${selected.packageId}/resources`, () => importResources(selected.packageId))}>
@@ -359,24 +470,26 @@ export function RendererWorkspacePanel(props: {
           })() : null}
           {selected && selectedModule && selectedItem?.kind === 'command' ? (() => {
             const command = (selectedModule.contributions.commands ?? []).find(item => item.id === selectedItem.id)
-            const moduleKey = `${selected.packageId}/${selectedModule.moduleId}`
+            const moduleKey = clientModuleKey(selected.packageId, selectedModule.moduleId, selected.target)
             return command ? (
               <ClientCommandRow
                 actions={(selectedModule.contributions.actions ?? []).filter(action => action.commandId === command.id)}
                 busy={busyKey === `${moduleKey}/${command.id}`}
                 command={command}
-                diagnostics={clientDiagnostics.filter(item => item.packageId === selected.packageId && item.moduleId === selectedModule.moduleId && (item.commandId === command.id || item.code === 'client-extension.activation_failed'))}
+                diagnostics={clientDiagnostics.filter(item => clientModuleKey(item.packageId, item.moduleId, item.target) === moduleKey && (item.commandId === command.id || item.code === 'client-extension.activation_failed'))}
                 extensionHost={props.extensionHost}
                 host={props.host}
                 module={selectedModule}
                 packageId={selected.packageId}
-                registered={commandRegistrations.some(registration => registration.commandKey === clientCommandKey(selected.packageId, selectedModule.moduleId, command.id))}
+                target={selected.target}
+                registered={commandRegistrations.some(registration => registration.commandKey === clientCommandKey(selected.packageId, selectedModule.moduleId, command.id, selected.target))}
                 t={props.t}
                 onBusyChange={busy => setBusyKey(busy ? `${moduleKey}/${command.id}` : undefined)}
               />
             ) : null
           })() : null}
-          {!selected && !selectedOfficial ? <p className={styles.empty}>{props.t('renderer.workspaceEmpty')}</p> : null}
+          {!selected ? <p className={styles.empty}>{props.t('renderer.workspaceEmpty')}</p> : null}
+          </>}
         </div>
       </MasterDetailWorkbench>
     </section>
@@ -465,36 +578,85 @@ function ModuleDetail(props: {
   clientSummaries: ReturnType<ClientExtensionHost['summaries']>
   extensionPackage: ManagedExtensionPackage
   module: ManagedExtensionModule
-  onDisable(packageId: string, moduleId: string): Promise<unknown>
-  onEnable(packageId: string, moduleId: string): Promise<unknown>
-  onReload(packageId: string, moduleId: string): Promise<unknown>
+  onDisable(packageId: string, moduleId: string, target?: ExtensionInstallationTarget): Promise<unknown>
+  onEnable(packageId: string, moduleId: string, grants?: Parameters<StudioApi['extensions']['enable']>[2], target?: ExtensionInstallationTarget): Promise<unknown>
+  onReload(packageId: string, moduleId: string, target?: ExtensionInstallationTarget): Promise<unknown>
   run(key: string, operation: () => Promise<unknown>): Promise<void>
   t: Translator
 }) {
-  const moduleKey = `${props.extensionPackage.packageId}/${props.module.moduleId}`
-  const summary = props.clientSummaries.find(item => item.packageId === props.extensionPackage.packageId && item.moduleId === props.module.moduleId)
-  const running = summary?.state === 'active' || summary?.state === 'degraded' || readServerRuntimeState(props.module.runtime) === 'active' || readServerRuntimeState(props.module.runtime) === 'degraded'
+  const target = props.extensionPackage.target
+  const moduleKey = clientModuleKey(props.extensionPackage.packageId, props.module.moduleId, target)
+  const summary = props.clientSummaries.find(item => clientModuleKey(item.packageId, item.moduleId, item.target) === moduleKey)
+  const running = Boolean(summary?.instanceId && (summary.state === 'active' || summary.state === 'degraded'))
+    || readServerRuntimeState(props.module.runtime) === 'active' || readServerRuntimeState(props.module.runtime) === 'degraded'
+  const enable = (grants?: Parameters<StudioApi['extensions']['enable']>[2]) => props.onEnable(props.extensionPackage.packageId, props.module.moduleId, grants, target)
+  const busy = Boolean(props.busyKey)
 
   return (
     <article className={styles.moduleDetail}>
       <header>
         <div><h3>{props.module.moduleId}</h3><small>{props.module.runtimeKind} · {running ? props.t('renderer.moduleRunning') : props.t('renderer.moduleNotRunning')}</small></div>
         <div className={styles.actions}>
-          <button disabled={props.busyKey === moduleKey} title={props.module.desired.enabled ? props.t('renderer.disable') : props.t('renderer.enable')} type="button" onClick={() => void props.run(moduleKey, () => props.module.desired.enabled ? props.onDisable(props.extensionPackage.packageId, props.module.moduleId) : props.onEnable(props.extensionPackage.packageId, props.module.moduleId))}><Power aria-hidden="true" /></button>
-          <button disabled={!props.module.desired.enabled || props.busyKey === moduleKey} title={props.t('renderer.reload')} type="button" onClick={() => void props.run(moduleKey, () => props.onReload(props.extensionPackage.packageId, props.module.moduleId))}><RefreshCw aria-hidden="true" /></button>
+          <button disabled={busy} title={props.module.desired.enabled ? props.t('renderer.disable') : props.t('renderer.enable')} type="button" onClick={() => {
+            if (!props.module.desired.enabled && target?.kind === 'card'
+              && !window.confirm(props.t('renderer.enableCardModuleConfirm', { name: props.module.moduleId, capabilities: JSON.stringify(props.module.requestedCapabilities ?? {}, null, 2) }))) return
+            void props.run(moduleKey, () => props.module.desired.enabled ? props.onDisable(props.extensionPackage.packageId, props.module.moduleId, target) : enable())
+          }}><Power aria-hidden="true" /></button>
+          <button disabled={!props.module.desired.enabled || busy} title={props.t('renderer.reload')} type="button" onClick={() => void props.run(moduleKey, () => props.onReload(props.extensionPackage.packageId, props.module.moduleId, target))}><RefreshCw aria-hidden="true" /></button>
         </div>
       </header>
       <dl className={styles.detailFacts}>
         <div><dt>{props.t('renderer.owner')}</dt><dd><code>{props.extensionPackage.packageId}</code></dd></div>
+        {target?.kind === 'card' ? <div><dt>{props.t('renderer.cardInstallations')}</dt><dd><code>{target.cardId}</code></dd></div> : null}
         <div><dt>{props.t('renderer.runtime')}</dt><dd>{props.module.runtimeKind}</dd></div>
         <div><dt>{props.t('renderer.status')}</dt><dd>{props.module.desired.enabled ? props.t('renderer.enabled') : props.t('renderer.disabled')} · {running ? props.t('renderer.moduleRunning') : props.t('renderer.moduleNotRunning')}</dd></div>
       </dl>
+      {summary?.error ? <p role="alert">{summary.error}</p> : null}
+      {props.module.runtimeKind === 'client' && props.module.requestedUiCapabilities?.includes('ui.notify') ? (
+        <label>
+          <input
+            type="checkbox"
+            checked={props.module.desired.grants?.ui?.includes('ui.notify') ?? false}
+            disabled={!props.module.desired.enabled || busy}
+            onChange={event => {
+              const ui: Array<'ui.notify'> = event.currentTarget.checked ? ['ui.notify'] : []
+              void props.run(moduleKey, () => enable({ ui }))
+            }}
+          />
+          {props.t('renderer.allowNotifications')}
+        </label>
+      ) : null}
+      {(props.module.requestedEventCapabilities ?? []).map(capability => (
+        <label key={`event:${capability}`}>
+          <input type="checkbox" disabled={!props.module.desired.enabled || busy}
+            checked={props.module.desired.grants?.['events.subscribe']?.includes(capability) ?? false}
+            onChange={event => {
+              const previous = props.module.desired.grants?.['events.subscribe'] ?? []
+              const grants = event.currentTarget.checked ? [...previous, capability] : previous.filter(item => item !== capability)
+              void props.run(moduleKey, () => enable({ 'events.subscribe': grants }))
+            }} />
+          <code>events.subscribe: {capability}</code>
+        </label>
+      ))}
+      {(props.module.requestedAssetCapabilities ?? []).map(capability => (
+        <label key={capability}>
+          <input type="checkbox" disabled={!props.module.desired.enabled || busy}
+            checked={props.module.desired.grants?.assets?.includes(capability) ?? false}
+            onChange={event => {
+              const previous = props.module.desired.grants?.assets ?? []
+              const grants = event.currentTarget.checked ? [...previous, capability] : previous.filter(item => item !== capability)
+              void props.run(moduleKey, () => enable({ assets: grants }))
+            }} />
+          <code>{capability}</code>
+        </label>
+      ))}
       {(props.module.contributions.renderers ?? []).length === 0 && (props.module.contributions.commands ?? []).length === 0 ? <p>{props.t('renderer.noContributions')}</p> : null}
     </article>
   )
 }
 
 function ClientCommandRow(props: {
+  target?: ExtensionInstallationTarget
   actions: readonly ClientActionPlacement[]
   busy: boolean
   command: ClientCommandDeclaration
@@ -511,6 +673,7 @@ function ClientCommandRow(props: {
   const invocationContext = {
     sourceSurface: 'extension.workbench.actions' as const,
     workspaceId: scopes.workspace,
+    ...(scopes.cardId ? { cardId: scopes.cardId } : {}),
     ...(scopes.timelineId ? { timelineId: scopes.timelineId } : {}),
     ...(scopes.agentSessionId ? { agentSessionId: scopes.agentSessionId } : {}),
   }
@@ -524,6 +687,7 @@ function ClientCommandRow(props: {
         packageId: props.packageId,
         moduleId: props.module.moduleId,
         commandId: props.command.id,
+        target: props.target,
         sourceSurface: 'extension.workbench.actions',
       })
       if (result.status === 'failed') toast.error(result.message)

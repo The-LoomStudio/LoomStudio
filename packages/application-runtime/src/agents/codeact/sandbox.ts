@@ -10,7 +10,7 @@ import {
 } from './protocol.js'
 import type { JsonValue } from '@loom-studio/shared'
 
-export type CodeActHostControl = {
+type CodeActHostControl = {
   waitForUser<T>(operation: () => Promise<T>): Promise<T>
 }
 

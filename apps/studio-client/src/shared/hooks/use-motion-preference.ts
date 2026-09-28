@@ -27,7 +27,7 @@ export function resolveEffectiveMotion(preference: MotionPreference, systemReduc
   return preference
 }
 
-export function readEffectiveMotion(preference = useMotionPreferenceStore.getState().preference): EffectiveMotion {
+function readEffectiveMotion(preference = useMotionPreferenceStore.getState().preference): EffectiveMotion {
   return resolveEffectiveMotion(preference, globalThis.matchMedia?.(REDUCED_MOTION_QUERY).matches ?? false)
 }
 

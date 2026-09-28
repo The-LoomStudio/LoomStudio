@@ -3,25 +3,25 @@ import { act, createElement, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { FormEvent } from 'react'
 import type { AgentSession, AgentTranscriptEntry, NarrativeTimeline, NarrativeBranch } from '../../../apps/studio-client/src/entities/index.js'
-import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
+import { createStudioApi, type StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
 import { useNarrativeRuntime } from '../../../apps/studio-client/src/features/narrative-runtime/model/use-narrative-runtime.js'
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 const timestamp = '2026-09-12T00:00:00.000Z'
-const session = (id: string, timelineId?: string, agentProfileId = 'profile-a'): AgentSession => ({
-  id, timelineId, agentProfileId, title: id, entryCount: 1, createdAt: timestamp, updatedAt: timestamp,
+const session = (id: string, timelineId?: string, agentPresetId = 'profile-a'): AgentSession => ({
+  id, timelineId, agentPresetId, title: id, entryCount: 1, createdAt: timestamp, updatedAt: timestamp,
 })
-const message = (owner: AgentSession, suffix = ''): AgentTranscriptEntry => ({
+const message = (owner: AgentSession, suffix = '', role: 'user' | 'assistant' = 'user') => ({
   id: `${owner.id}${suffix}`, agentSessionId: owner.id, sequence: 1, createdAt: timestamp,
-  entry: { kind: 'message', role: 'user', content: owner.id + suffix },
-})
+  entry: { kind: 'message', role, content: owner.id + suffix },
+} satisfies AgentTranscriptEntry)
 function deferred() {
   let resolve!: () => void
   const promise = new Promise<void>(done => { resolve = done })
   return { promise, resolve }
 }
-function assert(condition: unknown, message: string): asserts condition {
+function assert(condition: unknown, message: string): void {
   if (!condition) throw new Error(message)
 }
 
@@ -29,8 +29,9 @@ async function runChecks() {
   const results: string[] = []
   const errors: unknown[] = []
   const sessions = [session('a-new', 'a', 'profile-b'), session('a-old', 'a'), session('b', 'b'), session('standalone')]
-  const createInputs: Array<{ timelineId?: string; agentProfileId: string }> = []
-  const invokeInputs: Array<{ agentSessionId: string; narrativeTarget?: { timelineId: string }; macroSelections?: Record<string, string> }> = []
+  const createInputs: Array<{ timelineId?: string; agentPresetId: string }> = []
+  const invokeInputs: Parameters<StudioApi['agentSessions']['createRun']>[0][] = []
+  const runs = new Map<string, typeof invokeInputs[number]>()
   const delayed = new Map<string, ReturnType<typeof deferred>>()
   let transcriptFailure: string | undefined
   let creationDelay: ReturnType<typeof deferred> | undefined
@@ -43,15 +44,19 @@ async function runChecks() {
   })
   const branch = (id: string): NarrativeBranch => ({ id: `${id}-main`, timelineId: id, createdAt: timestamp, updatedAt: timestamp })
   const page = (id: string) => ({ timeline: timeline(id), branch: branch(id), nodes: [] })
-  const api = {
+  const baseApi = createStudioApi({ call: async method => { throw new Error(`Unexpected probe RPC: ${method}`) } })
+  const api: StudioApi = {
+    ...baseApi,
     narratives: {
+      ...baseApi.narratives,
       list: async () => ({ timelines: [] }),
       get: async (id: string) => ({ timeline: timeline(id), branches: [branch(id)] }),
       getPage: async ({ timelineId }: { timelineId: string }) => page(timelineId),
-      create: async () => page(`created-${++createdTimelines}`),
+      create: async () => ({ ...page(`created-${++createdTimelines}`), mutation: { changesetId: 'create-timeline' } }),
     },
     agentSessions: {
-      list: async ({ timelineId, standalone }: { timelineId?: string; standalone?: boolean }) => ({
+      ...baseApi.agentSessions,
+      list: async ({ timelineId, standalone } = {}) => ({
         sessions: sessions.filter(item => standalone ? !item.timelineId : item.timelineId === timelineId),
       }),
       getTranscript: async ({ agentSessionId, cursor }: { agentSessionId: string; cursor?: string }) => {
@@ -61,32 +66,47 @@ async function runChecks() {
         if (agentSessionId === 'a-new' && !cursor) return { session: owner, entries: [message(owner, '-latest')], nextCursor: 'older' }
         return { session: owner, entries: [message(owner)] }
       },
-      create: async (input: { timelineId?: string; agentProfileId: string }) => {
+      create: async (input: { timelineId?: string; agentPresetId: string }) => {
         createInputs.push(input)
-        const created = session(`created-session-${createInputs.length}`, input.timelineId, input.agentProfileId)
+        const created = session(`created-session-${createInputs.length}`, input.timelineId, input.agentPresetId)
         sessions.unshift(created)
         await creationDelay?.promise
-        return { session: created }
+        return { session: created, mutation: { changesetId: 'create-session' } }
       },
-      invoke: async (input: typeof invokeInputs[number]) => {
+      createRun: async input => {
         invokeInputs.push(input)
+        const runId = `run-${invokeInputs.length}`
+        runs.set(runId, input)
+        return { runId }
+      },
+      subscribeRun: async runId => {
         await invokeDelay?.promise
+        const input = runs.get(runId)!
         const owner = sessions.find(item => item.id === input.agentSessionId)!
         return {
-          agentSession: owner, entries: { user: message(owner, '-u'), assistant: message(owner, '-a') },
-          ...(input.narrativeTarget ? { narrative: page(input.narrativeTarget.timelineId) } : {}),
+          events: [{
+            type: 'completed', runId, result: {
+              agentSession: owner, entries: { user: message(owner, '-u'), assistant: message(owner, '-a', 'assistant') },
+              ...(input.narrativeTarget ? { narrative: page(input.narrativeTarget.timelineId) } : {}),
+            },
+          }],
+          nextCursor: 1, done: true, state: 'completed',
         }
       },
     },
-  } as unknown as StudioApi
-  const runAction = async (action: () => Promise<void>) => { try { await action() } catch (error) { errors.push(error) } }
+  }
+  const runAction = async (action: () => Promise<void>) => {
+    try { await action(); return true } catch (error) { errors.push(error); return false }
+  }
   function Harness() {
     const [profileId, setProfileId] = useState('profile-a')
     selectedProfile = profileId
     current = useNarrativeRuntime({
-      api, initialInput: '', selectedCardId: 'card', selectedAgentProfileId: profileId,
-      onSelectAgentProfile: setProfileId, runAction, runAgentAction: runAction,
-      runLatestAction: action => runAction(() => action({ isCurrent: () => true })),
+      api, initialInput: '', selectedCardId: 'card', selectedAgentPresetId: profileId,
+      onSelectCard: () => undefined,
+      onSelectAgentPreset: setProfileId, runAction,
+      runAgentAction: async action => { await runAction(action) },
+      runLatestAction: async action => { await runAction(() => action({ isCurrent: () => true })) },
       getMacroSelections: (timelineId, branchId) => ({ context: `${timelineId}:${branchId}` }),
     })
     return null

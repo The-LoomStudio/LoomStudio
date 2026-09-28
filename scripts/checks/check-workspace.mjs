@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { dirname, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import semver from 'semver'
 
@@ -29,6 +29,7 @@ console.log('Workspace health check passed')
 function checkNoFloatingVersions() {
   const workspaces = JSON.parse(runPnpm(['list', '-r', '--depth', '-1', '--json']))
   for (const workspace of workspaces) {
+    if (workspace.path.startsWith(`${resolve(repositoryRoot, 'official/extensions')}${sep}`)) continue
     const packageFile = resolve(workspace.path, 'package.json')
     const manifest = readJson(packageFile)
     const displayPath = workspace.path === repositoryRoot

@@ -203,6 +203,27 @@ describe('missing context projections', () => {
     expect(props.toolMounts).toHaveLength(3)
   })
 
+  it('opens built-in content from the resource workbench without replacing the editor', () => {
+    const props = {
+      ...common(), view: 'settings', onViewChange: vi.fn(),
+      officialContentApi: { list: vi.fn(), install: vi.fn(), export: vi.fn() },
+      onOfficialContentInstalled: vi.fn(),
+    } as unknown as ComponentProps<typeof ContextWorkbench>
+    const render = instance(() => ContextWorkbench(props))
+    const button = elements(render()).find(element => element.props['aria-label'] === t('official.builtin'))!
+    expect(button).toBeDefined()
+    const onClick = button.props.onClick as () => void
+    onClick()
+    const tree = render()
+    const dialog = child(tree, 'OfficialContentDialog')
+    expect(dialog.props.api).toBe(props.officialContentApi)
+    expect(dialog.props.onInstalled).toBe(props.onOfficialContentInstalled)
+    expect(child(tree, 'ContextAssetEditor')).toBeDefined()
+    const close = dialog.props.onClose as () => void
+    close()
+    expect(child(render(), 'OfficialContentDialog')).toBeUndefined()
+  })
+
   it('keeps missing Card bindings visible and does not substitute the resource library', async () => {
     const props = {
       ...common(), view: 'settings', onViewChange: vi.fn(),

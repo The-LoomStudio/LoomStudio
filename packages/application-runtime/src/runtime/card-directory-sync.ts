@@ -103,7 +103,7 @@ export function createCardDirectoryRuntimeMethods(ctx: CardDirectoryRuntimeConte
         if (!equal(input.snapshot, current.snapshot)) throw new Error('Card directory version conflict; save or recapture before Apply')
         const artifact = normalizeCardBundleArtifact(input.artifact)
         const old = current.artifact
-        for (const key of ['artifactId', 'displayName', 'description', 'textTransformRules', 'textExtractors', 'metadata'] as const) {
+        for (const key of ['artifactId', 'displayName', 'description', 'textTransformRules', 'textExtractors', 'extensionPackages', 'metadata'] as const) {
           if (!equal(baseline(artifact)[key], baseline(old)[key])) throw new Error(`Card directory does not support changing ${key}`)
         }
         const prompts = keyed(current.prompts, item => item.rootNodeId)
@@ -192,7 +192,7 @@ export function createCardDirectoryRuntimeMethods(ctx: CardDirectoryRuntimeConte
               if (equal(old.extensionPayloads?.find(item => item.id === id), desired)) continue
               const { id: artifactPayloadId, ...fields } = desired
               await writeDocument(documents, { id: payload.id, type: types.portableExtensionPayload, expectedVersion: payload.version,
-                content: { ...fields, artifactPayloadId, createdAt: payload.content.createdAt, updatedAt: timestamp } })
+                content: { ...fields, ownerInstallationId: payload.content.ownerInstallationId, artifactPayloadId, createdAt: payload.content.createdAt, updatedAt: timestamp } })
             }
             for (const item of preparedScripts) {
               if (item.prepared) {
@@ -246,9 +246,6 @@ async function sharedReferences(ctx: Pick<CardDirectoryRuntimeContext, 'document
   const shared = new Set<string>()
   for (const card of await listDocuments<CardSourceContent>(ctx.documents, types.cardSource)) {
     if (card.id !== cardId) for (const id of [...card.content.promptResourceIds ?? [], ...card.content.portableExtensionPayloadIds ?? [], ...card.content.stateDefinitionIds ?? []]) shared.add(id)
-  }
-  for (const profile of await listDocuments<{ presetId?: string }>(ctx.documents, types.agentProfile)) {
-    if (profile.content.presetId) shared.add(profile.content.presetId)
   }
   for (const mount of await ctx.promptResources.listSettingMounts({})) {
     shared.add(mount.settingResourceId)

@@ -1,0 +1,16 @@
+<!doctype html>
+<meta charset="utf-8">
+<p id="status">connecting</p>
+<button id="notify">扩展通知</button>
+<button id="navigate">测试自身导航</button>
+<script src="./.generated/iframe-sdk.generated.js"></script>
+<script>
+LoomIframe.connectIframeContext().then(ctx => {
+  document.getElementById('status').textContent = 'SDK connected'
+  document.getElementById('notify').onclick = async () => {
+    try { await ctx.notifications.show({ message: 'extension-notice' }) }
+    catch (error) { document.getElementById('status').textContent = error.message }
+  }
+  document.getElementById('navigate').onclick = () => { location.href = 'about:blank' }
+}).catch(error => { document.getElementById('status').textContent = error.message })
+</script>

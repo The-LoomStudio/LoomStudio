@@ -5,6 +5,7 @@ import type {
   RendererInstanceIdentity,
   RendererSurface,
 } from '@loom-studio/extension-sdk'
+import { extensionInstallationId } from '@loom-studio/extension-sdk'
 
 export type RegisteredRendererContribution = RendererContributionRef & {
   definition: RendererContributionDefinition
@@ -16,6 +17,7 @@ export type RendererRegistryDiagnostic = {
     | 'renderer.surface_mismatch'
     | 'renderer.exclusive_occupied'
     | 'renderer.projection_failed'
+    | 'renderer.dispose_failed'
     | 'renderer.mount_duplicate'
     | 'renderer.anchor_unresolved'
     | 'renderer.anchor_ambiguous'
@@ -41,7 +43,10 @@ export const rendererSurfacePolicies: Record<RendererSurface, RendererConflictPo
 export function rendererContributionKey(identity: RendererContributionRef): string {
   const contributionId = encodeURIComponent(identity.contributionId)
   if (identity.owner.kind === 'extension') {
-    return `extension:${encodeURIComponent(identity.owner.packageId)}/${encodeURIComponent(identity.owner.moduleId)}/${contributionId}`
+    const ownerId = identity.owner.target?.kind === 'card'
+      ? extensionInstallationId(identity.owner.packageId, identity.owner.target)
+      : identity.owner.packageId
+    return `extension:${encodeURIComponent(ownerId)}/${encodeURIComponent(identity.owner.moduleId)}/${contributionId}`
   }
   return `script:${encodeURIComponent(identity.owner.scriptDocumentId)}@${identity.owner.documentVersion}/${contributionId}`
 }

@@ -567,7 +567,9 @@ describe('domain-backed resource VFS', () => {
     const f = await fixture()
     try {
       const scope: ToolExecutionScope = { context: [], resourceVfs: f.fs }
-      await createCodeActContext(scope).methods.read(['/resources/爱丽丝/人设.md'], signal)
+      const read = createCodeActContext(scope).methods.read
+      expect(read).toBeTypeOf('function')
+      await read!(['/resources/爱丽丝/人设.md'], signal)
       createCodeActContext(scope)
       expect(scope.resourceVfs?.observation('/resources/爱丽丝/人设.md')?.binding)
         .toMatchObject({ kind: 'prompt-resource', nodeId: 'personality' })

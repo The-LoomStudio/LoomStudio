@@ -17,9 +17,9 @@
 | 稳定前缀 | 身份 Entry、写作宏；`@chat.system`、`@preset.system` | 模板正文；显式指向该位置的资源贡献 |
 | 稳定工具说明 | `@chat.tools`、`@runtime.skills` | Content Tool 编译结果；Skills 自动生产尚未接入 |
 | 常驻资料 | 包裹 Entry、`@setting.stable` | 指向该位置的 Setting Entry |
-| 剧情基线 | `@narrative.before`、`@memory.narrative`、`@chat.narrative`、`@narrative.after` | Narrative 投影已接入；记忆及前后补充只留位置 |
-| 工作记忆 | `@memory.session` | 只留位置 |
-| Session 原生消息 | `@chat.session` | 持久化 Session 的文本消息及显式允许回放的 reasoning |
+| 剧情基线 | `@narrative.before`、`@memory.narrative`、`@chat.narrative`、`@narrative.after` | 已注册记忆来源的摘要与固定 Raw 范围；前后补充为显式资源贡献 |
+| 工作记忆 | `@memory.session` | 当前 Session 最新已保存的工作交接文本 |
+| Session 原生消息 | `@chat.session` | 上次交接之后的文本、允许回放的 reasoning、Native / Content 工具事实 |
 | 本次动态上下文 | `@setting.lower`、`@runtime.state`、`@memory.recalled`、`@chat.session.post`、`@tools.dynamic` | 条件 Setting 与显式贡献；State、召回、动态工具自动生产尚未接入 |
 | 最新输入 | `@chat.input` | 当前调用输入，单独 user 消息 |
 | 普通尾部 | `@prompt.tail`、`@fresh.tail` | 只留位置 |
@@ -34,8 +34,10 @@
 
 ```text
 Preset 有序树 + 已挂载 Setting + 宏检查结果
-Narrative 当前分支窗口 -> 既有 prompt 阶段文本变换 -> @chat.narrative
-Session 文本投影 -> @chat.session
+Narrative 共用采样器 -> 共用 prompt 阶段文本变换 -> @chat.narrative
+已发布记忆来源 -> @memory.narrative + 固定 Narrative 采样范围
+最新 Session 工作交接 -> @memory.session
+交接后的 Session 消息 / 工具投影 -> @chat.session
 当前调用输入 -> @chat.input
 已启用 Content Tools -> @chat.tools 或挂载指定位置
   -> SourceNode / PromptContribution
@@ -50,12 +52,14 @@ Session 文本投影 -> @chat.session
 
 MessageBlock 决定普通文本的 role。Session 来源例外：保留各条消息原有角色和边界，不因外层包裹而全部变成 system，也不合并相邻的同角色历史消息。当前输入在默认模板里只有一个位置，不另外重复到 Session 尾部。
 
+Session Contribution 可携带原生消息批次：Native 调用与 `tool` 结果、Content 调用块与返回块按已有 Transcript 重建。工具批次不经过正文宏或正则处理，不受外层 role 覆盖，也不会因投影而重新执行工具。未记录结果的调用只说明“执行结果未知”，不补造成功回执。该载荷仅允许 Session 来源使用。
+
 ## 当前限制
 
-- Narrative 仍使用现有分支最近 100 节点窗口，经已有 Text Pipeline 处理；不是新的范围采样器，也没有 Token 驱动预算。
-- Session 仍读取最近 100 个 Transcript Entry，再投影文本消息；这不等于 100 轮。跨 Run 的历史 tool-invocation / tool-result 完整协议回放尚未补齐。本切片只修复已有文本投影的角色与边界。
+- Narrative 已消费记忆来源的明确范围，普通追加不改变该基线；未注册来源的旧宿主仍用最近 100 节点并报告诊断。这不是官方记忆插件已经安装的证明。接收接口、采用与迁移限制见 [默认剧情上下文来源](../extension/narrative-context.md)。
+- Session 按 100 条分页读取上次工作交接后的整个工作段，并携带最新交接文本；页大小不再充当保留上限。交接必须显式提交，尚无自动 Token 触发或预算兜底。跨 Run 的 Native / Content 调用及结果由结构化 Transcript 重建，不承诺原始响应字节一致或缓存命中。
 - 当前 Run 内后续工具调用与结果由原生 Tool Loop 追加，未改它的传输、权限或返回协议。现有 Fresh Context 也是 Tool Loop 的 Step 临时挂载，不宣称已经接入本模板 `@fresh.tail`。
-- 新 Preview / Invoke 仍按现有流程重新准备上下文；跨交互冻结 Narrative 基线、Session Memo、摘要版本切换与 Workspace / Notice 刷新留待生命周期切片。稳定前缀排序不等于已验证 Provider 缓存命中。
+- 新 Preview / Invoke 重新读取已发布剧情视图与 Session 工作段；自动交接生成、官方记忆调度及 Workspace / Notice 刷新仍未完成。稳定内容一致不等于已验证 Provider 缓存命中。
 - 只有默认模板采用这里的排列。作者可以重排自己的树；位置名本身不强制角色、缓存行为或工具权限。
 
 ## 验证入口
@@ -64,4 +68,4 @@ MessageBlock 决定普通文本的 role。Session 来源例外：保留各条消
 
 [`compiler.test.ts`](../../../../tests/unit/prompt-builder/compiler.test.ts) 验证骨架隔离、节点开关 / Activation、Session 边界和禁用显式锚点不被旧 fallback 重新注入。自动化验证不代替真实模型的写作效果与缓存测量。
 
-[`default-preset-lifecycle.test.ts`](../../../../tests/integration/application-runtime/default-preset-lifecycle.test.ts) 进一步使用磁盘临时 SQLite 与脚本化模型模拟 105 节点分支剧情、三轮用户交互、七次 Provider 请求、工具实际读写、写后故障、数据库重开、调用前取消及独立 Session。该测试明确保留两条预期失败合同：跨轮工具事实回放、跨交互 Narrative 基线冻结。不能把测试命令退出成功解释成整个生命周期已经正确；详情见 [Plan 第 13 节](../../../workbench/plans/agent-context-skeleton-and-memory-projection-plan.md#13-多轮-agent-生命周期仿真验收2026-09-21)。
+[`default-preset-lifecycle.test.ts`](../../../../tests/integration/application-runtime/default-preset-lifecycle.test.ts) 使用磁盘临时 SQLite 与脚本化模型模拟 105 节点分支剧情、三轮用户交互、七次 Provider 请求、工具实际读写、写后故障、数据库重开、调用前取消及独立 Session。当前使用持久化记忆来源夹具，工具回放和跨轮基线冻结均为普通通过测试；未注册来源的生产迁移路径不由此宣称正确。1～40 楼交接验证另见 `narrative-context.test.ts`，完整自动调度尚未交付。

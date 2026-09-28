@@ -4,7 +4,7 @@ import { access, readFile, readdir, realpath } from 'node:fs/promises'
 import { isAbsolute, relative, resolve } from 'node:path'
 import { writeJsonAtomically } from '../platform/atomic-json.js'
 
-export type ExtensionSourceKind = 'repository' | 'dev-link' | 'installed'
+type ExtensionSourceKind = 'repository' | 'dev-link' | 'installed'
 
 export type ExtensionSource = {
   kind: ExtensionSourceKind

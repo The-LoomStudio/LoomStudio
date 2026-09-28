@@ -38,7 +38,7 @@ export function useStudioShortcuts(options: UseStudioShortcutsOptions) {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.defaultPrevented) return
       if (event.key === 'Escape' && isEditableTarget(event.target)) return
-      if (event.key === 'Escape' && assetMetadataOpen && (activePanel === 'resource' || activePanel === 'preset')) {
+      if (event.key === 'Escape' && assetMetadataOpen && (activePanel === 'resource' || activePanel === 'preset' || activePanel === 'agent')) {
         event.preventDefault()
         setAssetMetadataOpen(false)
         return

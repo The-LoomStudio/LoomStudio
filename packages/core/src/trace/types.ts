@@ -4,9 +4,9 @@ import type { Mutation } from '../mutation/types.js'
 import type { PassConfig } from '../pass/types.js'
 import type { SerializedError } from '../pipeline/errors.js'
 
-export type TraceMode = 'on' | 'off'
-export type SnapshotMode = 'off' | 'boundaries' | 'after-only'
-export type TraceStatus = 'ok' | 'error'
+type TraceMode = 'on' | 'off'
+type SnapshotMode = 'off' | 'boundaries' | 'after-only'
+type TraceStatus = 'ok' | 'error'
 
 export interface TraceOptions {
   readonly mode?: TraceMode

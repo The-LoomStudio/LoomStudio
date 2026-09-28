@@ -115,8 +115,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
   function retryDraft(resourceId: string): Promise<void> {
     const draft = scope.drafts.get(resourceId)
     if (!draft || draft.edits.size === 0) return Promise.resolve()
-    draft.failure = undefined
-    return commitEdits([...draft.edits].map(([id, partial]) => ({ id, partial })), true)
+    return commitEdits([...draft.edits].map(([id, partial]) => ({ id, partial })), true, true)
   }
 
   function readResourceId(assetId: string): string {
@@ -147,7 +146,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
     return commitEdits(updates, true)
   }
 
-  function commitEdits(updates: ContextAssetUpdate[], batch: boolean): Promise<void> {
+  function commitEdits(updates: ContextAssetUpdate[], batch: boolean, reapply = false): Promise<void> {
     const drafts = updates.map(update => readDraft(update.id))
     const draft = drafts[0]!
     if (drafts.some(candidate => candidate !== draft)) {
@@ -162,6 +161,16 @@ export function useContextAssets(input: UseContextAssetsInput) {
     return enqueueMutation(async () => {
       if (scope.drafts.get(draft.base.id) !== draft) return
       try {
+        if (reapply) {
+          const { resource } = await input.api.promptResources.get(draft.base.id)
+          if (scope.drafts.get(draft.base.id) !== draft || activeScopeRef.current !== input.scope) return
+          for (const id of submitted.keys()) {
+            if (!findContextAssetNode([resource.rootNode], id)) throw new Error(`Prompt asset not found: ${id}`)
+          }
+          draft.base = resource
+          draft.failure = undefined
+          applyResource(resource)
+        }
         if (draft.failure) throw draft.failure
         const current = scope.resources.find(resource => resource.id === draft.base.id)
         if (!current || current.version !== draft.base.version) throw new Error(input.t('context.draftConflict'))

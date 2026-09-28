@@ -1,10 +1,17 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { mountLoomSandboxRenderer } from '../../../apps/studio-client/src/features/loom-scripts/runtime/sandbox-renderer-protocol.js'
 import { createClientRendererHost } from '../../../apps/studio-client/src/shared/extension-renderer-runtime/client-renderer-host.js'
+import type { ClientRendererContext } from '../../../apps/studio-client/src/shared/extension-renderer-runtime/client-renderer-host.js'
 import {
   createLoomScriptRendererRuntime,
   projectLoomScriptInputs,
   type LoomScriptRendererContribution,
 } from '../../../apps/studio-client/src/features/loom-scripts/runtime/loom-script-renderer-runtime.js'
+
+vi.mock('../../../apps/studio-client/src/features/loom-scripts/runtime/sandbox-renderer-protocol.js', () => ({
+  mountLoomSandboxRenderer: vi.fn(() => ({ update: vi.fn(), dispose: vi.fn() })),
+}))
+beforeEach(() => vi.clearAllMocks())
 
 const contribution: LoomScriptRendererContribution = {
   kind: 'renderer',
@@ -12,7 +19,84 @@ const contribution: LoomScriptRendererContribution = {
   inputs: [{ kind: 'match', ruleId: 'status-rule' }, { kind: 'artifact', artifactType: 'status' }],
 }
 
+function sandboxFixture(resolveInputs: Parameters<typeof createLoomScriptRendererRuntime>[0]['resolveInputs']) {
+  const rendererHost = createClientRendererHost()
+  const runtime = createLoomScriptRendererRuntime({ rendererHost, resolveInputs, stateRead: vi.fn() })
+  runtime.reconcile([{
+    mountId: 'mount', enabled: true, orderIndex: 0, grantedCapabilities: [], source: 'export const renderers = {}',
+    script: { id: 'script', version: 1, requestedCapabilities: [], contributions: [contribution] },
+  }])
+  const registration = rendererHost.list('narrative.timeline.tail')[0]!
+  const context = { scope: { kind: 'timeline', key: 'timeline' } } as ClientRendererContext
+  return {
+    rendererHost,
+    mount: () => registration.sandboxMount!({} as HTMLElement, context),
+    runtime,
+  }
+}
+
 describe('Loom Script Renderer Runtime', () => {
+  it('keeps instances separate, ignores superseded input results and revokes mounted instances on disposal', async () => {
+    const slow = Promise.withResolvers<{ matches: []; artifacts: [] }>()
+    const resolveInputs = vi.fn().mockReturnValueOnce(slow.promise).mockResolvedValue({ matches: [], artifacts: [] })
+    const f = sandboxFixture(resolveInputs)
+    const first = f.mount()
+    await vi.waitFor(() => expect(resolveInputs).toHaveBeenCalledOnce())
+    const newer = { scope: { kind: 'timeline', key: 'newer' } } as ClientRendererContext
+    first.update!(newer)
+    const second = f.mount()
+    await vi.waitFor(() => expect(mountLoomSandboxRenderer).toHaveBeenCalledTimes(2))
+    slow.resolve({ matches: [], artifacts: [] })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(mountLoomSandboxRenderer).toHaveBeenCalledTimes(2)
+    const handles = vi.mocked(mountLoomSandboxRenderer).mock.results.map(result => result.value)
+    first.update!(newer)
+    await vi.waitFor(() => expect(handles[0].update).toHaveBeenCalledOnce())
+    expect(handles[1].update).not.toHaveBeenCalled()
+    f.runtime.dispose()
+    expect(handles[0].dispose).toHaveBeenCalledOnce()
+    expect(handles[1].dispose).toHaveBeenCalledOnce()
+    first.dispose(); second.dispose()
+    expect(handles[0].dispose).toHaveBeenCalledOnce()
+  })
+  it('returns a cleanup handle and reports synchronous input failures', async () => {
+    const f = sandboxFixture(() => { throw new Error('Input failed') })
+    let handle: ReturnType<typeof f.mount> | undefined
+    expect(() => { handle = f.mount() }).not.toThrow()
+    expect(handle?.dispose).toBeTypeOf('function')
+    await vi.waitFor(() => expect(f.rendererHost.diagnostics()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'renderer.projection_failed', message: 'Input failed' }),
+    ])))
+    await handle!.dispose()
+    f.runtime.dispose()
+  })
+
+  it('does not resolve inputs for a sandbox already disposed before initialization', async () => {
+    const resolveInputs = vi.fn(() => { throw new Error('Must not run') })
+    const f = sandboxFixture(resolveInputs)
+    await f.mount().dispose()
+    await Promise.resolve()
+    expect(resolveInputs).not.toHaveBeenCalled()
+    expect(f.rendererHost.diagnostics()).toEqual([])
+    f.runtime.dispose()
+  })
+
+  it('ignores a late input rejection after the sandbox is disposed', async () => {
+    const pending = Promise.withResolvers<never>()
+    const resolveInputs = vi.fn(() => pending.promise)
+    const f = sandboxFixture(resolveInputs)
+    const handle = f.mount()
+    await vi.waitFor(() => expect(resolveInputs).toHaveBeenCalledOnce())
+    await handle.dispose()
+    pending.reject(new Error('Late failure'))
+    await pending.promise.catch(() => undefined)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(f.rendererHost.diagnostics()).toEqual([])
+    f.runtime.dispose()
+  })
+
   it('registers only enabled mounts and replaces pinned versions without key collisions', () => {
     const rendererHost = createClientRendererHost()
     rendererHost.register({

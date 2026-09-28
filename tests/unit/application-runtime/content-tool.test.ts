@@ -4,6 +4,7 @@ import {
   finishLoomContentScan,
   pushLoomContentChunk,
   renderLoomContentToolResult,
+  type LoomContentScannerOptions,
 } from '../../../packages/application-runtime/src/agents/content-transport.js'
 
 const scannerOptions = {
@@ -216,7 +217,7 @@ describe('loom-content-v1 content tool scanner', () => {
   })
 })
 
-function scan(input: string, options = scannerOptions) {
+function scan(input: string, options: LoomContentScannerOptions = scannerOptions) {
   const pushed = pushLoomContentChunk(
     createLoomContentScannerState(),
     input,

@@ -76,17 +76,22 @@ describe('CodeAct isolated executor', () => {
   })
 
   it('pauses the wall-clock budget while a host approval waits', async () => {
+    const timeoutMs = 2000
+    let approvals = 0
     const result = await runCodeActSandbox({
       source: 'await ctx.write("resource", "next"); print("after approval");',
       methods: {
         write: async (_args, _signal, control) => control!.waitForUser(async () => {
-          await new Promise(resolve => setTimeout(resolve, 150))
+          approvals++
+          // Allow cold worker startup, but make approval alone exceed the entire execution budget.
+          await new Promise(resolve => setTimeout(resolve, timeoutMs + 100))
           return 'approved'
         }),
       },
       signal: new AbortController().signal,
-      limits: { ...codeActLimits, timeoutMs: 100 },
+      limits: { ...codeActLimits, timeoutMs },
     })
+    expect(approvals).toBe(1)
     expect(result).toEqual({ status: 'completed', output: 'after approval' })
   })
 })

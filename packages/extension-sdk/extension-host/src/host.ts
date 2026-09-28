@@ -1,4 +1,5 @@
 import { createId } from '@loom-studio/shared'
+import { extensionInstallationId, type ExtensionInstallationTarget } from '@loom-studio/extension-sdk'
 import {
   type ExtensionHost,
   type ExtensionHostOptions,
@@ -24,17 +25,18 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
   const records = new Map<string, ExtensionModuleRecord>()
 
   return {
-    discover: async directory => {
+    discover: async (directory, target = { kind: 'global' }) => {
       const manifest = readManifest(directory)
       const summaries: ExtensionModuleSummary[] = []
       for (const moduleManifest of serverModules(manifest)) {
-        const key = moduleKey(manifest.id, moduleManifest.id)
+        const key = installedModuleKey(manifest.id, moduleManifest.id, target)
         const previous = records.get(key)
         // Invariant: Re-discovering an active extension module is forbidden to prevent tearing live runtime states.
         if (previous?.instance && isLiveInstance(previous.instance.state)) {
           throw new Error(`Cannot rediscover active extension module: ${key}`)
         }
         const record: ExtensionModuleRecord = {
+          target: structuredClone(target),
           directory,
           packageManifest: manifest,
           moduleManifest,
@@ -46,7 +48,7 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
       }
       options.logger?.info(`${manifest.id} discovered`, {
         event: 'extension.discovered',
-        extension: { packageId: manifest.id, runtime: 'server' },
+        extension: { packageId: manifest.id, runtime: 'server', ...(target.kind === 'card' ? { installationId: extensionInstallationId(manifest.id, target) } : {}) },
         data: {
           packageId: manifest.id,
           version: manifest.version,
@@ -58,26 +60,26 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
       return summaries
     },
 
-    activate: (packageId, moduleId) => activateRecord(packageId, moduleId, records, options),
+    activate: (packageId, moduleId, target = { kind: 'global' }) => activateRecord(packageId, moduleId, records, options, target),
 
     activateAll: async () => {
       const summaries: ExtensionModuleSummary[] = []
       for (const record of [...records.values()].sort(compareRecords)) {
-        summaries.push(await activateRecord(record.packageManifest.id, record.moduleManifest.id, records, options))
+        summaries.push(await activateRecord(record.packageManifest.id, record.moduleManifest.id, records, options, record.target))
       }
       return summaries
     },
 
-    reload: async (packageId, moduleId) => {
-      const record = records.get(moduleKey(packageId, moduleId))
+    reload: async (packageId, moduleId, target = { kind: 'global' }) => {
+      const record = records.get(installedModuleKey(packageId, moduleId, target))
       if (!record) throw new Error(`Extension module not found: ${moduleKey(packageId, moduleId)}`)
       await stopInstance(record, options)
-      return activateRecord(packageId, moduleId, records, options)
+      return activateRecord(packageId, moduleId, records, options, target)
     },
 
-    dispose: async (packageId, moduleId) => {
+    dispose: async (packageId, moduleId, target = { kind: 'global' }) => {
       const key = moduleKey(packageId, moduleId)
-      const record = records.get(key)
+      const record = records.get(installedModuleKey(packageId, moduleId, target))
       if (!record) return
       try {
         await stopInstance(record, options)
@@ -89,6 +91,7 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
             packageId,
             moduleId,
             runtime: 'server',
+            ...(target.kind === 'card' ? { installationId: extensionInstallationId(packageId, target) } : {}),
             ...(record.instance ? { instanceId: record.instance.instanceId } : {}),
           },
           data: {
@@ -103,8 +106,8 @@ export function createExtensionHost(options: ExtensionHostOptions): ExtensionHos
       }
     },
 
-    forget: async (packageId, moduleId) => {
-      await stopAndForgetRecord(packageId, moduleId, records, options)
+    forget: async (packageId, moduleId, target = { kind: 'global' }) => {
+      await stopAndForgetRecord(packageId, moduleId, records, options, target)
     },
 
     // Invariant: Disposes active extensions in reverse registration order; aggregates all teardown errors.
@@ -132,8 +135,9 @@ async function stopAndForgetRecord(
   moduleId: string,
   records: Map<string, ExtensionModuleRecord>,
   options: ExtensionHostOptions,
+  target: ExtensionInstallationTarget,
 ): Promise<void> {
-  const key = moduleKey(packageId, moduleId)
+  const key = installedModuleKey(packageId, moduleId, target)
   const record = records.get(key)
   if (!record) return
   try {
@@ -152,9 +156,10 @@ async function activateRecord(
   moduleId: string,
   records: Map<string, ExtensionModuleRecord>,
   options: ExtensionHostOptions,
+  target: ExtensionInstallationTarget,
 ): Promise<ExtensionModuleSummary> {
   const key = moduleKey(packageId, moduleId)
-  const record = records.get(key)
+  const record = records.get(installedModuleKey(packageId, moduleId, target))
   if (!record) throw new Error(`Extension module not found: ${key}`)
   if (record.instance && isLiveInstance(record.instance.state)) {
     throw new Error(`Extension module already active: ${key}`)
@@ -162,6 +167,8 @@ async function activateRecord(
 
   const startedAt = performance.now()
   const instanceId = createId('extinst')
+  const extension = { packageId, moduleId, instanceId, runtime: 'server' as const,
+    ...(target.kind === 'card' ? { installationId: extensionInstallationId(packageId, target) } : {}) }
   const instance: ExtensionInstance = {
     instanceId,
     state: 'created',
@@ -170,15 +177,15 @@ async function activateRecord(
     registeredEventNames: new Set(),
     registeredAiProviderIds: new Set(),
     registeredAgentToolIds: new Set(),
-    grantedEventCapabilities: [...new Set(options.grantEventCapabilities?.(record.packageManifest, record.moduleManifest) ?? [])],
-    grantedAssetCapabilities: [...new Set(options.grantAssetCapabilities?.(record.packageManifest, record.moduleManifest) ?? [])],
+    grantedEventCapabilities: [...new Set(options.grantEventCapabilities?.(record.packageManifest, record.moduleManifest, structuredClone(record.target)) ?? [])],
+    grantedAssetCapabilities: [...new Set(options.grantAssetCapabilities?.(record.packageManifest, record.moduleManifest, structuredClone(record.target)) ?? [])],
   }
   record.instance = instance
   record.state = 'activating'
   instance.state = 'activating'
   options.logger?.info(`${key} activation started`, {
     event: 'extension.activation.started',
-    extension: { packageId, moduleId, instanceId, runtime: 'server' },
+    extension,
     data: {
       packageId,
       moduleId,
@@ -201,7 +208,7 @@ async function activateRecord(
     const durationMs = elapsedMs(startedAt)
     options.logger?.info(`${key} activation completed`, {
       event: 'extension.activation.completed',
-      extension: { packageId, moduleId, instanceId, runtime: 'server' },
+      extension,
       data: {
         packageId,
         moduleId,
@@ -227,7 +234,7 @@ async function activateRecord(
     const durationMs = elapsedMs(startedAt)
     options.logger?.error(`${key} activation failed`, {
       event: 'extension.activation.failed',
-      extension: { packageId, moduleId, instanceId, runtime: 'server' },
+      extension,
       data: {
         packageId,
         moduleId,
@@ -256,6 +263,10 @@ function readSafeFailureType(error: unknown): string {
 }
 
 function compareRecords(left: ExtensionModuleRecord, right: ExtensionModuleRecord): number {
-  return moduleKey(left.packageManifest.id, left.moduleManifest.id)
-    .localeCompare(moduleKey(right.packageManifest.id, right.moduleManifest.id))
+  return installedModuleKey(left.packageManifest.id, left.moduleManifest.id, left.target)
+    .localeCompare(installedModuleKey(right.packageManifest.id, right.moduleManifest.id, right.target))
+}
+
+function installedModuleKey(packageId: string, moduleId: string, target: ExtensionInstallationTarget): string {
+  return JSON.stringify([extensionInstallationId(packageId, target), moduleId])
 }

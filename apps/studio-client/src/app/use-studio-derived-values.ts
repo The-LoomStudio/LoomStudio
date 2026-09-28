@@ -24,7 +24,7 @@ export function useStudioDerivedValues(input: {
   sessionBusy: boolean
   agentSessionReady: boolean
   agentInput: string
-  selectedAgentProfile?: object
+  selectedAgentPreset?: object
   agentChatBusy: boolean
   macroPreview: { key: string; inspection?: MacroInspection }
   macroKey: string
@@ -46,12 +46,12 @@ export function useStudioDerivedValues(input: {
     isPlaceholder: !cardOpeningEntry || cardOpeningEntry.length === 0,
   } : undefined
 
-  const canSend = Boolean(((input.timeline && input.branch) || input.selectedCardDetails) && input.selectedAgentProfile)
+  const canSend = Boolean(((input.timeline && input.branch) || input.selectedCardDetails) && input.selectedAgentPreset)
     && input.agentSessionReady
     && !input.sessionBusy
     && !input.agentChatBusy
     && input.narrativeInput.trim().length > 0
-  const canSendAgent = Boolean(input.selectedAgentProfile)
+  const canSendAgent = Boolean(input.selectedAgentPreset)
     && input.agentSessionReady
     && input.agentInput.trim().length > 0
     && !input.agentChatBusy

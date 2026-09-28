@@ -3,11 +3,10 @@ import { describe, expect, it } from 'vitest'
 import {
   flattenTree,
   toTree,
-  type PromptResourceTreeNode,
-  type PromptResourceNodeKind,
   containerNodeKinds,
   nonContainerNodeKinds,
 } from '../../../packages/application-data/src/prompt-resource/tree.js'
+import type { PromptResourceTreeNode, PromptResourceNodeKind } from '../../../packages/application-data/src/prompt-resource/types.js'
 
 const validKinds: PromptResourceNodeKind[] = [
   'module',

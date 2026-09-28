@@ -1,6 +1,6 @@
-import { RefreshCw, Search } from 'lucide-react'
+import { RefreshCw, Search, RotateCcw } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import type { MacroInspection } from '@loom-studio/shared'
+import { canonicalMacroName, macroSelectionMatches, type MacroInspection, type MacroSelection, type MacroSelectionMap } from '@loom-studio/shared'
 import { MasterDetailWorkbench } from '../../../shared/ui/master-detail-workbench/master-detail-workbench.js'
 import { normalizeSearchText } from '../../../shared/lib/text.js'
 import type { Translator } from '../../../shared/i18n/index.js'
@@ -12,8 +12,8 @@ export type MacroInspectorPanelProps = {
   loading: boolean
   error?: string
   readOnly?: boolean
-  selections: Record<string, string>
-  onSelectSource(name: string, sourceId: string | undefined): void
+  selections: MacroSelectionMap
+  onSelectSource(name: string, selection: MacroSelection | undefined): void
   onRefresh(): void
   t: Translator
 }
@@ -93,7 +93,7 @@ export function MacroInspectorPanel(props: MacroInspectorPanelProps) {
                         onClick={() => { setSelectedName(entry.name); setMobilePane('detail') }}
                       >
                         <strong>{entry.name}</strong>
-                        <span>{entry.candidates.find(candidate => candidate.sourceId === entry.selectedSourceId)?.sourceLabel ?? entry.candidates[0]?.sourceLabel ?? statusLabel(entry.status, props.t)}</span>
+                      <span>{entry.candidates.find(candidate => candidate.sourceId === entry.selectedSourceId && candidate.optionId === entry.selectedOptionId)?.sourceLabel ?? statusLabel(entry.status, props.t)}</span>
                       </button>
                     ))}
                   </section>
@@ -112,8 +112,11 @@ export function MacroInspectorPanel(props: MacroInspectorPanelProps) {
 
 function MacroInspectionEntryDetail(props: { entry: MacroInspection['entries'][number]; props: MacroInspectorPanelProps }) {
   const { entry, props: panel } = props
-  const selected = panel.selections[entry.name] ?? entry.selectedSourceId
-  const canSelectSource = !panel.readOnly && entry.candidates.length > 1
+  const saved = Object.hasOwn(panel.selections, canonicalMacroName(entry.name)) ? panel.selections[canonicalMacroName(entry.name)] : undefined
+  const selected = saved ?? (entry.selectedSourceId
+    ? { sourceId: entry.selectedSourceId, ...(entry.selectedOptionId ? { optionId: entry.selectedOptionId } : {}) } : undefined)
+  const canSelectSource = !panel.readOnly && (entry.candidates.some(candidate => candidate.sourceKind === 'card' || candidate.sourceKind === 'preset' || candidate.sourceKind === 'provider')
+    || saved !== undefined)
   return <MacroEntryDetail
     badge={<span className={entry.status === 'resolved' ? styles.statusResolved : entry.status === 'conflict' ? styles.statusConflict : styles.statusError}>{statusLabel(entry.status, panel.t)}</span>}
     name={entry.name}
@@ -121,26 +124,26 @@ function MacroInspectionEntryDetail(props: { entry: MacroInspection['entries'][n
     title={entry.name}
     value={entry.value}
   >
-      {entry.candidates.length > 0 ? (
+      {entry.candidates.length > 0 || selected !== undefined ? (
         <fieldset className={styles.macroSourceList}>
           <legend>{panel.t('macroInspector.source')}</legend>
           {entry.candidates.map(candidate => (
-            <label key={candidate.sourceId}>
+            <label key={JSON.stringify([candidate.sourceId, candidate.optionId])}>
               {canSelectSource ? <input
                 aria-label={panel.t('macroInspector.selectSource', { name: entry.name })}
-                checked={selected === candidate.sourceId}
+                checked={macroSelectionMatches(selected, candidate)}
                 name={`macro-source-${entry.name}`}
                 disabled={panel.loading}
                 type="radio"
-                onChange={() => panel.onSelectSource(entry.name, candidate.sourceId)}
-              /> : <span aria-hidden="true" className={styles.sourceMarker}>{selected === candidate.sourceId ? '●' : '○'}</span>}
-              <span>{candidate.sourceLabel}</span>
+                onChange={() => panel.onSelectSource(entry.name, { sourceId: candidate.sourceId, ...(candidate.optionId ? { optionId: candidate.optionId } : {}) })}
+              /> : <span aria-hidden="true" className={styles.sourceMarker}>{macroSelectionMatches(selected, candidate) ? '●' : '○'}</span>}
+              <span>{candidate.optionLabel ?? candidate.sourceLabel}</span>
               <small>{candidate.sourceKind}</small>
               {candidate.value !== undefined ? <code>{candidate.value}</code> : null}
               {candidate.error ? <em>{candidate.error}</em> : null}
             </label>
           ))}
-          {canSelectSource && selected ? <button className={styles.iconButton} type="button" disabled={panel.loading} onClick={() => panel.onSelectSource(entry.name, undefined)}>{panel.t('macroInspector.clearSelection')}</button> : null}
+          {canSelectSource && selected ? <button className={styles.iconButton} type="button" title={panel.t('macroInspector.clearSelection')} aria-label={panel.t('macroInspector.clearSelection')} disabled={panel.loading} onClick={() => panel.onSelectSource(entry.name, undefined)}><RotateCcw aria-hidden="true" size={14} /></button> : null}
         </fieldset>
       ) : null}
   </MacroEntryDetail>

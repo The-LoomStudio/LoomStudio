@@ -3,6 +3,50 @@ import { describe, expect, it } from 'vitest'
 import { handleAgentsRpc } from '../../../apps/studio-server/src/rpc/handlers/application/agents.js'
 
 describe('application Agent Run RPC', () => {
+  it.each(['allow', 'deny', 'cancel'] as const)('handles history read %s separately from mutation approval', async outcome => {
+    let decision: unknown
+    const runtime = {
+      invokeAgentTurn: async (_input: unknown, context: RuntimeRequestContext) => {
+        decision = await context.agentRun!.onHistoryReadApproval!({
+          kind: 'narrative-history-read', timelineId: 't', branchId: 'b',
+          selection: { kind: 'tail', count: 1, throughNodeId: 'old' },
+          maxNodes: 1, maxCharacters: 100,
+        }, context.abortSignal)
+        return { runId: context.agentRun!.runId, entries: {}, mutation: {} } as never
+      },
+    } as unknown as ApplicationRuntime
+    const created = await handleAgentsRpc(runtime, 'application.agent.run.create', {
+      agentSessionId: 'history', input: 'Read history',
+    }) as { runId: string }
+    const { runId } = created
+    const batch = await handleAgentsRpc(runtime, 'application.agent.run.subscribe', { runId, cursor: 0 }) as {
+      events: Array<{ type: string; requestId?: string; action?: unknown; preview?: unknown }>
+    }
+    const event = batch.events.find(item => item.type === 'history-read-approval-requested')!
+    expect(event.action).toMatchObject({ kind: 'narrative-history-read' })
+    expect(event.preview).toBeUndefined()
+    const requestId = event.requestId!
+    expect(await handleAgentsRpc(runtime, 'application.agent.run.mutation-approval', {
+      runId, requestId, allow: true,
+    })).toMatchObject({ accepted: false })
+    if (outcome === 'cancel') {
+      await handleAgentsRpc(runtime, 'application.agent.run.cancel', { runId })
+      expect(await handleAgentsRpc(runtime, 'application.agent.run.history-read-approval', {
+        runId, requestId, allow: true,
+      })).toMatchObject({ accepted: false })
+      expect(decision).toBeUndefined()
+    } else {
+      expect(await handleAgentsRpc(runtime, 'application.agent.run.history-read-approval', {
+        runId, requestId, allow: outcome === 'allow', reason: 'user choice',
+      })).toMatchObject({ accepted: true })
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(decision).toMatchObject({ decision: outcome })
+      expect(await handleAgentsRpc(runtime, 'application.agent.run.history-read-approval', {
+        runId, requestId, allow: true,
+      })).toMatchObject({ accepted: false })
+    }
+  })
+
   it('forwards the macro inspection target using the runtime contract', async () => {
     let received: unknown
     const runtime = {

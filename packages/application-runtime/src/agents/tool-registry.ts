@@ -7,6 +7,7 @@ import type { PromptResourceMutation, PromptResourceNodePatch, PromptResourceSto
 import type { VfsEntry } from '../vfs/types.js'
 import type { ResourceVfs, VfsTextAttachment } from '../vfs/resource-filesystem.js'
 import type { NarrativeSampleRequest, NarrativeSampleResult } from '../narrative/sampling.js'
+import type { ApproveNarrativeHistory, NarrativeHistoryReadApproval } from '../narrative/access.js'
 import type { VfsMutationDecision, VfsMutationPreview } from '../vfs/types.js'
 
 export type ToolOwnerRef = {
@@ -114,6 +115,9 @@ export type ToolInvocationValidation = {
 export type ToolApprovalContext = {
   tool: ToolDefinition
   invocation: ToolInvocation
+  action?: NarrativeHistoryReadApproval
+  signal?: AbortSignal
+  requestHistoryApproval?: ApproveNarrativeHistory
 }
 
 export type ToolApprovalDecision =
@@ -131,6 +135,7 @@ export type ToolContextItem = {
 }
 
 export type ToolExecutionScope = {
+  requestHistoryApproval?: ApproveNarrativeHistory
   vfs?: readonly VfsEntry[]
   resourceVfs?: ResourceVfs
   vfsResourceIds?: readonly string[]
@@ -180,6 +185,7 @@ export type ToolExecutionScope = {
   }) => Promise<{ resourceId: string; label: string; version: number; changesetId: string }>
   promptResources?: PromptResourceStore
   workspaceResourceAccess?: boolean
+  availableExtensionInstallations?: ReadonlyMap<string, string>
   mutatePromptResource?: (input: {
     resourceId: string
     expectedVersion: number
@@ -210,7 +216,7 @@ export type ToolExecutionScope = {
   narrative?: {
     timelineId: string
     branchId: string
-    sample(input: Omit<NarrativeSampleRequest, 'timelineId' | 'branchId'>): Promise<NarrativeSampleResult>
+    sample(input: Omit<NarrativeSampleRequest, 'timelineId' | 'branchId'> & { view?: 'raw' | 'prompt' }, signal?: AbortSignal, approveHistory?: ApproveNarrativeHistory, approvalControl?: import('../vfs/types.js').VfsApprovalControl): Promise<NarrativeSampleResult>
     appendNode(input: { content: string }): Promise<{ nodeId: string }>
     editNode(input: { nodeId: string; content: string }): Promise<{ nodeId: string }>
   }
@@ -353,18 +359,28 @@ async function approveInvocation(
   invocation: ToolInvocation,
   byId: ReadonlyMap<string, ToolDefinition>,
   registrations: ReadonlyMap<string, ToolRuntimeRegistration>,
+  action?: NarrativeHistoryReadApproval,
+  signal?: AbortSignal,
+  requestHistoryApproval?: ApproveNarrativeHistory,
 ): Promise<ToolApprovalDecision> {
   const validation = validateInvocation(invocation, byId)
   if (!validation.valid || !validation.tool)
     throw invalidInvocationError(invocation, validation)
 
   const approval = registrations.get(invocation.toolId)?.approve
-  if (!approval) return { decision: 'allow' }
+  if (!approval) return action
+    ? { decision: 'deny', reason: 'Reading old Narrative requires an explicit Tools approval handler' }
+    : { decision: 'allow' }
 
+  signal?.throwIfAborted()
   const decision = await approval({
     tool: validation.tool,
     invocation,
+    ...(action ? { action } : {}),
+    ...(signal ? { signal } : {}),
+    ...(requestHistoryApproval ? { requestHistoryApproval } : {}),
   })
+  signal?.throwIfAborted()
   if (decision?.decision !== 'allow' && decision?.decision !== 'deny') {
     throw new Error(
       `Agent tool approval handler returned an invalid decision: ${invocation.toolId}`,
@@ -394,11 +410,25 @@ async function executeInvocation(
 
   let result: ToolResult
   try {
+    const narrative = scope?.narrative
+    const executionScope = scope && narrative ? {
+      ...scope,
+      narrative: {
+        ...narrative,
+        sample: (input: Parameters<typeof narrative.sample>[0], readSignal?: AbortSignal, _approve?: ApproveNarrativeHistory, control?: import('../vfs/types.js').VfsApprovalControl) => narrative.sample(
+          input, readSignal ?? signal,
+          (action, approvalSignal) => {
+            const approve = () => approveInvocation(invocation, byId, registrations, action, approvalSignal, scope.requestHistoryApproval)
+            return control ? control.waitForUser(approve) : approve()
+          },
+        ),
+      },
+    } : scope
     result = await registration.execute({
       tool: validation.tool,
       invocation,
       signal,
-      scope,
+      scope: executionScope,
     })
   } catch (error) {
     if (signal.aborted) return createAbortedResult(invocation)

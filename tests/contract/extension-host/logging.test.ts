@@ -1,4 +1,5 @@
-import { createMemoryLogSink, createRootLogger } from '@loom-studio/logging'
+import { createMemoryLogSink, createRootLogger, queryExtensionLogs, type ExtensionLogPage } from '@loom-studio/logging'
+import { extensionInstallationId } from '@loom-studio/extension-sdk'
 import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
 import { createInMemoryDocumentStore } from '@loom-studio/document-store'
 import { createExtensionHost, type ExtensionHostOptions } from '@loom-studio/extension-host'
@@ -6,6 +7,45 @@ import { describe, expect, it } from 'vitest'
 import { createExtensionFixture, createExtensionHostHarness, manifest } from './helpers.js'
 
 describe('extension host logging contract', () => {
+  it('binds private module writes, lifecycle logs and queries to the installation', async () => {
+    const logs = createMemoryLogSink({ capacity: 100 })
+    const logger = createRootLogger({ service: 'test', instanceId: 'scoped', sinks: [logs] })
+    const pages = new Map<string, ExtensionLogPage>()
+    const host = createExtensionHost({
+      documents: createInMemoryDocumentStore(), diagnostics: createInMemoryDiagnosticsRegistry(), logger: logger.child('extension'),
+      callRpc: async () => null,
+      registerRpc: () => { throw new Error('No RPC contributions') },
+      queryLogs: async (packageId, input, installationId) => {
+        const page = await queryExtensionLogs({ current: logs }, packageId, input, 'server', installationId)
+        pages.set(installationId ?? 'global', page)
+        return page
+      },
+    })
+    const packageId = 'example.privateLogs'
+    const directory = createExtensionFixture('private-logs', {
+      manifest: manifest(packageId, []),
+      source: `export async function activate(ctx) {
+        ctx.logger.info('own message')
+        await ctx.logs.query({ limit: 100 })
+      }`,
+    })
+    try {
+      for (const target of [{ kind: 'global' }, { kind: 'card', cardId: 'a' }, { kind: 'card', cardId: 'b' }] as const) {
+        await host.discover(directory, target)
+        expect((await host.activate(packageId, 'server', target)).state).toBe('active')
+        const id = target.kind === 'card' ? extensionInstallationId(packageId, target) : undefined
+        expect(pages.get(id ?? 'global')!.items.some(item => item.message === 'own message')).toBe(true)
+        expect(pages.get(id ?? 'global')!.items.every(item => item.extension?.installationId === id)).toBe(true)
+      }
+    } finally {
+      await host.disposeAll()
+    }
+    const a = extensionInstallationId(packageId, { kind: 'card', cardId: 'a' })
+    const page = await queryExtensionLogs({ current: logs }, packageId, { limit: 100 }, 'server', a)
+    expect(page.items.some(item => item.event === 'extension.activation.completed')).toBe(true)
+    expect(page.items.every(item => item.extension?.installationId === a)).toBe(true)
+  })
+
   it('records lifecycle summaries without plugin paths or failure messages', async () => {
     const logs = createMemoryLogSink({ capacity: 20 })
     const root = createRootLogger({ service: 'test', instanceId: 'test-1', sinks: [logs] })

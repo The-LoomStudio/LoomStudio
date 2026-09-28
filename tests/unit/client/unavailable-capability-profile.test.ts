@@ -24,5 +24,6 @@ describe('unavailable capability profile visibility', () => {
     for (const text of ['Saved profile', 'profile-kept', 'deleted-account', 'text.rerank', 'kept-model', 'provider.aiLabMissingAccount']) {
       expect(html).toContain(text)
     }
+    expect(html).toMatch(/<button[^>]*>provider\.aiLabRefresh<\/button>/)
   })
 })

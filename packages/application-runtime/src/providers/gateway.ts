@@ -3,7 +3,6 @@ import {
   createOfficialFakeChatCompletion,
   createOfficialProviderAdapterRegistry,
   createProfiledAiGateway,
-  listOpenAICompatibleModels as listPlatformModels,
   officialFakeModelId,
   type AiGatewayCapabilityRegistry,
   type ProfiledAiGateway,
@@ -200,23 +199,6 @@ async function invokeFakeChat(
     usage: { inputTokens: 0, outputTokens: 0 },
     providerCallId,
     raw: completion,
-  }
-}
-
-export async function listOpenAICompatibleModels(options: {
-  baseUrl?: JsonValue
-  apiKey: string
-  fetch?: typeof fetch
-}): Promise<string[]> {
-  try {
-    return await listPlatformModels({
-      ...(typeof options.baseUrl === 'string' ? { baseUrl: options.baseUrl } : {}),
-      apiKey: options.apiKey,
-      ...(options.fetch ? { fetch: options.fetch } : {}),
-    })
-  } catch (error) {
-    if (!isProviderNetworkFailure(error)) throw error
-    throw normalizeProviderNetworkError(error)
   }
 }
 

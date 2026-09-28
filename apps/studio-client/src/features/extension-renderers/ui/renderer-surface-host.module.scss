@@ -17,6 +17,7 @@
 }
 
 .instance > iframe {
+  pointer-events: auto;
   width: 100%;
   min-height: 180px;
   border: 0;

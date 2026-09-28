@@ -8,7 +8,7 @@ export type ChatMessage =
   | { role: 'assistant'; content?: string; tool_calls?: ChatToolCall[] }
   | { role: 'tool'; tool_call_id: string; content: string }
 
-export type ChatToolCall = {
+type ChatToolCall = {
   id: string
   type: 'function'
   function: {
@@ -19,7 +19,7 @@ export type ChatToolCall = {
 
 export type AgentSession = {
   id: string
-  agentProfileId: string
+  agentPresetId: string
   title?: string
   timelineId?: string
   headEntryId?: string
@@ -80,7 +80,7 @@ export type AgentToolDefinition = {
   updatedAt: string
 }
 
-export type ToolExposure = {
+type ToolExposure = {
   toolId: string
   exposed: boolean
   transport?: 'native-function' | 'provider-custom' | 'content'
@@ -89,6 +89,7 @@ export type ToolExposure = {
 }
 
 export type PreviewAgentTurnResult = {
+  promptBuildTrace?: ClientJsonValue
   macroInspection?: MacroInspection
   runId: string
   messages: ChatMessage[]
@@ -99,18 +100,13 @@ export type PreviewAgentTurnResult = {
 }
 
 export type InvokeAgentTurnResult = {
+  promptBuildTrace?: ClientJsonValue
   macroInspection?: MacroInspection
   runId: string
   agentSession: AgentSession
   entries: {
     user: AgentTranscriptEntry
     assistant: AgentTranscriptEntry
-  }
-  narrative?: {
-    timeline: import('./narrative.js').NarrativeTimeline
-    branch: import('./narrative.js').NarrativeBranch
-    nodes: import('./narrative.js').NarrativeNode[]
-    node: import('./narrative.js').NarrativeNode
   }
   provider: {
     provider: string

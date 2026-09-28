@@ -2,7 +2,6 @@ import { lazy } from 'react'
 import type { StudioPanelId } from '../shared/studio-shell/studio-layout-store.js'
 
 const loadModelPanel = () => import('../widgets/model-panel/model-panel.js')
-const loadAgentPanel = () => import('../widgets/agent-panel/agent-panel.js')
 const loadPlayPanel = () => import('../widgets/play-panel/play-panel.js')
 const loadSessionsPanel = () => import('../widgets/sessions-panel/sessions-panel.js')
 const loadCharacterPanel = () => import('../widgets/character-panel/character-panel.js')
@@ -16,7 +15,6 @@ const loadRendererWorkspacePanel = () => import('../features/extension-renderers
 const loadSettingsPanel = () => import('../widgets/settings-panel/settings-panel.js')
 
 export const LazyModelPanel = lazy(async () => ({ default: (await loadModelPanel()).ModelPanel }))
-export const LazyAgentPanel = lazy(async () => ({ default: (await loadAgentPanel()).AgentPanel }))
 export const LazyPlayPanel = lazy(async () => ({ default: (await loadPlayPanel()).PlayPanel }))
 export const LazySessionsPanel = lazy(async () => ({ default: (await loadSessionsPanel()).SessionsPanel }))
 export const LazyCharacterPanel = lazy(async () => ({ default: (await loadCharacterPanel()).CharacterPanel }))
@@ -31,7 +29,7 @@ export const LazySettingsPanel = lazy(async () => ({ default: (await loadSetting
 
 const panelLoaders: Record<StudioPanelId, () => Promise<unknown>> = {
   model: loadModelPanel,
-  agent: loadAgentPanel,
+  agent: loadPresetWorkbench,
   play: () => Promise.all([loadPlayPanel(), loadCharacterPanel(), loadSessionsPanel()]),
   sessions: loadSessionsPanel,
   character: loadCharacterPanel,

@@ -5,6 +5,7 @@ import type {
   PromptResourceTreeNode as StoredPromptResourceTreeNode,
 } from '@loom-studio/application-data'
 import type { JsonObject } from '@loom-studio/shared'
+import { normalizeMacroOptions } from '@loom-studio/shared'
 import type {
   PromptResourceContent,
   PromptResourceNode,
@@ -16,9 +17,12 @@ const legacyNodeKeys = ['configRows', 'isSection', 'orderList', 'projection'] as
 
 type PromptResourceMetadata = JsonObject & {
   historyPolicy?: PromptResourceContent['historyPolicy']
+  model?: PromptResourceContent['model']
+  delivery?: PromptResourceContent['delivery']
   origin?: PromptResourceContent['origin']
   sourceArtifactRef?: PromptResourceContent['sourceArtifactRef']
   macros?: Record<string, string>
+  macroOptions?: import("@loom-studio/shared").MacroOptions
 }
 
 export function toStoredResourceInput(input: {
@@ -33,9 +37,14 @@ export function toStoredResourceInput(input: {
 } {
   const metadata: PromptResourceMetadata = {}
   if (input.content.historyPolicy !== undefined) metadata.historyPolicy = input.content.historyPolicy
+  if (input.content.resourceKind === 'preset') {
+    if (input.content.model !== undefined) metadata.model = input.content.model
+    if (input.content.delivery !== undefined) metadata.delivery = input.content.delivery
+  }
   if (input.content.origin !== undefined) metadata.origin = input.content.origin
   if (input.content.sourceArtifactRef !== undefined) metadata.sourceArtifactRef = input.content.sourceArtifactRef
   if (input.content.macros !== undefined) metadata.macros = normalizeMacros(input.content.macros, 'Preset')
+  if (input.content.macroOptions !== undefined) metadata.macroOptions = normalizeMacroOptions(input.content.macroOptions)
   return {
     ...(input.id ? { id: input.id } : {}),
     resourceKind: input.content.resourceKind,
@@ -71,9 +80,12 @@ export function fromStoredResource(resource: StoredPromptResource): PromptResour
     resourceKind: resource.resourceKind,
     rootNode: fromStoredNode(resource.rootNode),
     ...(resource.resourceKind === 'preset' ? { historyPolicy: metadata.historyPolicy ?? 'persistent' } : {}),
+    ...(resource.resourceKind === 'preset' && metadata.model !== undefined ? { model: metadata.model } : {}),
+    ...(resource.resourceKind === 'preset' && metadata.delivery !== undefined ? { delivery: metadata.delivery } : {}),
     ...(metadata.origin ? { origin: metadata.origin } : {}),
     ...(metadata.sourceArtifactRef ? { sourceArtifactRef: metadata.sourceArtifactRef } : {}),
     ...(metadata.macros ? { macros: normalizeMacros(metadata.macros, 'Preset') } : {}),
+    ...(metadata.macroOptions ? { macroOptions: normalizeMacroOptions(metadata.macroOptions) } : {}),
     createdAt: resource.createdAt,
     updatedAt: resource.updatedAt,
     id: resource.id,
@@ -82,7 +94,7 @@ export function fromStoredResource(resource: StoredPromptResource): PromptResour
   }
 }
 
-export function fromStoredNode(node: StoredPromptResourceTreeNode): PromptResourceNode {
+function fromStoredNode(node: StoredPromptResourceTreeNode): PromptResourceNode {
   const extra = node.extra ?? {}
   const known = new Set<string>(legacyNodeKeys)
   const unknownExtra = Object.fromEntries(Object.entries(extra).filter(([key]) => !known.has(key))) as JsonObject

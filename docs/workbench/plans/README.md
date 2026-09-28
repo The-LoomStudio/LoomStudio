@@ -9,25 +9,33 @@
 
 | 路线图 / 计划                                                                                | 当前状态     | 关注点                                                                  |
 | -------------------------------------------------------------------------------------------- | ------------ | ----------------------------------------------------------------------- |
-| [`audit-issue-remediation-plan.md`](./audit-issue-remediation-plan.md) | In Progress / 首批数据与启动修复 | 按已确认审查口径逐批修复；Blob 回滚、State 授权及 JSON/Delta 起步 |
-| [`workspace-resource-and-distribution-plan.md`](./workspace-resource-and-distribution-plan.md) | In Progress / 本地文件与分发基础已实现 | Preset / Setting 附件、用户自定义来源、Git 更新、开发模式 |
+| [审查归档后续](../issues/audit-follow-ups.md) | Deferred / Backlog | 仅保留远端 CI 和旧计划接续去向，完整修复账目已移出活跃目录 |
+| [`ui/README.md`](./ui/README.md) | UI 计划子索引 | Shell 动画、资源 Diff 与 Provider 展示等实施及延期入口 |
+| [`card-opening-display-and-html-layout.md`](./card-opening-display-and-html-layout.md) | 修补已实施 / Text 包裹待原文确认 | 开场白只读 Display、HTML 限高与间距、长代码宽度；保留实际消息输入的诊断缺口 |
+| [`resource-packages-and-agent-presets-backend-plan.md`](./resource-packages-and-agent-presets-backend-plan.md) | 实施中 / Q2 当前资源解析已接通 | 47 项定向测试通过；包安装、Agent 合并待续；Q4 按能力关联处理，Q3 待收口 |
+| [`ui/resource-workbench-and-agent-presets-plan.md`](./ui/resource-workbench-and-agent-presets-plan.md) | 调研完成 / Shell 草稿与底层契约待接续 | 资源双入口、Agent 目录、外部包预览与运行检查；不直接照搬草稿 |
+| [`workspace-resource-and-distribution-plan.md`](./workspace-resource-and-distribution-plan.md) | In Progress / 本地分发已实现，资源包改造转独立计划 | 用户自定义来源、Git 更新、开发模式；单资源附件旧方向已被替代 |
 | [`agent-runtime-session-and-workspace-plan.md`](./agent-runtime-session-and-workspace-plan.md) | In Progress / Agent 执行与流式基础已实现 | 统一写入结果、统计组件与 CodeAct 接入；工具细节归独立计划 |
 | [`codeact-vfs-tooling-plan.md`](./codeact-vfs-tooling-plan.md) | In Progress / 双通道与领域 VFS 读取已接入 | 实时源节点、State 子树、脚本 Blob、路径身份与版本；写入、Pin、Narrative 与通用资产待接续 |
 | [`agent-context-skeleton-and-memory-projection-plan.md`](./agent-context-skeleton-and-memory-projection-plan.md) | In Progress / 骨架已接线，生命周期未验收 | 投影、统一刷新与 Session 生命周期；摘要策略已拆至独立记忆 Plan |
 | [`narrative-memory-and-refresh-policy-plan.md`](./narrative-memory-and-refresh-policy-plan.md) | Open / 已确认方向，实施合同待收束 | 按剧情次数整理、Token 容量兜底、近期缓冲、记事板与 Card / Timeline 配置 |
+| [`token-counting-and-measurement-plan.md`](./token-counting-and-measurement-plan.md) | Draft / 调研完成，合同待确认 | 单一 tokenizer + 系数、客户端草稿统计、逐 Step 测量与 usage；配置归属及持久化门禁待确认 |
 | [`application-capability-cli-mcp-adapters-plan.md`](./application-capability-cli-mcp-adapters-plan.md) | 待讨论 / 未授权实施 | 承接独立 CLI/MCP；在线连接、权限、首批命令及 Capability 抽取范围待确认 |
-| [`file-backed-resource-agent-script-codeact-plan.md`](./file-backed-resource-agent-script-codeact-plan.md) | 历史综合提案 / 远期脚本延期 | CodeAct 已迁至独立计划；保留旧候选，不作为平行施工入口 |
+| [持久 Agent Script / Script Mount 历史候选](../../archive/plans/file-backed-resource-agent-script-codeact-plan.md) | 延期 / 未授权实施 | 仅保留远期事项可发现入口；旧综合方案已归档，CodeAct 以独立计划为准 |
 | [`extension-developer-experience.md`](./extension-developer-experience.md)                   | Roadmap / UI 方向已确认 | SDK、工具链，以及扩展页面、声明式设置和组件使用；UI 具体合同待设计 |
 | [`search-and-timeline-indexing-plan.md`](./search-and-timeline-indexing-plan.md)             | Asset Search 已实现 / Timeline Search 延期 | 复用 Narrative Store 分页，后续补搜索、窗口与索引 |
-| [`background-and-panel-materials-plan.md`](../../archive/plans/ui/background-and-panel-materials-plan.md) | 已归档 | 官方背景与毛玻璃材质共同交付，后续仅保留人工验收记录 |
 | [`ui/prompt-resource-diff-mode-v0.md`](./ui/prompt-resource-diff-mode-v0.md)                 | 延期规划     | PromptResource Revision 差异对比与 Tokenizer 合同                       |
 | [`ui/provider-account-health-plan.md`](./ui/provider-account-health-plan.md)                 | 延期规划     | Provider Account 健康检查与连接状态探测                                 |
 | [`ui/provider-model-brand-icons-plan.md`](./ui/provider-model-brand-icons-plan.md)           | 前端 Spike 已完成 | 静态品牌资产已接入；`iconKey` 数据合同待定 |
-| [`log-plan/README.md`](./log-plan/README.md)                                                 | Completed / 基线 Closing | 扩展平台、历史搜索、复制和 URI 已接线；诊断助手延后为独立方向 |
+| [`log-plan/README.md`](./log-plan/README.md) | 后续路线 / 部分待设计 | 日志中枢与平台实施记录已归档；专业 Inspector、实时交付等仍是独立后续 |
 
 ---
 
 ## 历史已归档计划
+
+2026-09-24：已实际移动[审查修复实施记录](../../archive/plans/audit-issue-remediation-plan.md)、[工作区导航](../../archive/plans/studio-navigation-and-workspace.md)和[事件日志中枢](../../archive/plans/log-plan/operational-log-experience-plan.md)，不再保留在活跃目录。人工观感限制保留于原记录；延期CI及旧计划后续由上方短清单承接，不假称全部远期能力完成。
+
+2026-09-24：[`native-message-html-plan.md`](../../archive/plans/ui/native-message-html-plan.md) 已实施并归档；消息 HTML 渲染、共享 iframe 基建、实例更新与通知授权桥已交付，定向测试、类型检查、打包和客观浏览器证据见原 Plan。归档不代表剩余人工验收或 ST 生态兼容已完成。
 
 2026-09-15：[`ui-primitives-and-panel-reuse-plan.md`](../../archive/plans/ui/ui-primitives-and-panel-reuse-plan.md) 已完成并归档；通用组件归属、真实消费者迁移与视觉返修完成，用户确认返修后的界面可接受；Extension 公共合同继续归 Extension DX。
 

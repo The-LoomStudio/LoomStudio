@@ -5,8 +5,8 @@ import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { listDocuments, readDocument, toVersioned, writeDocument } from '../foundation/document-store.js'
 import { executeBlobDocumentMutation, executeDocumentMutation } from '../foundation/mutation.js'
 import { parseLoomScriptSource } from '../scripts/loom-script-codec.js'
-import { resolveLoomScriptRendererMounts } from '../scripts/loom-script-resolution.js'
-import { readTimelineRuntimeContext } from '../narrative/timeline-runtime-context.js'
+import { readLoomScriptInstallation, resolveLoomScriptRendererMounts } from '../scripts/loom-script-resolution.js'
+import { requireNarratives } from './context.js'
 import type {
   LoomScriptArtifact,
   LoomScriptContent,
@@ -16,7 +16,7 @@ import type {
 } from '../scripts/loom-script-contracts.js'
 import type { RuntimeRequestContext } from '../types.js'
 
-type LoomScriptsRuntimeContext = Pick<ApplicationRuntimeContext, 'blobs' | 'createId' | 'dataEngine' | 'documents' | 'now'>
+type LoomScriptsRuntimeContext = Pick<ApplicationRuntimeContext, 'blobs' | 'createId' | 'dataEngine' | 'documents' | 'narratives' | 'now'>
 
 export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) {
   return {
@@ -34,6 +34,7 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
         'application.importLoomScript',
         { bytes: new TextEncoder().encode(input.source), mediaType: 'text/javascript' },
         async (documents, blob) => {
+          if (input.owner.kind === 'extension') await readLoomScriptInstallation(documents, input.owner)
           await assertMetadataIdentityAvailable(documents, input.owner, metadata.metadataId, blob.sha256)
           const document = await writeDocument<LoomScriptContent>(documents, {
             id: ctx.createId('loom-script'),
@@ -46,6 +47,9 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
               createdAt: timestamp,
               updatedAt: timestamp,
             },
+            ...(input.owner.kind === 'extension' ? {
+              meta: { ownerExtensionId: input.owner.packageId, ownerInstallationId: input.owner.installationId },
+            } : {}),
             expectedVersion: 'new',
           })
           return toVersioned(document)
@@ -70,6 +74,7 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
         { bytes: new TextEncoder().encode(input.source), mediaType: 'text/javascript' },
         async (documents, blob) => {
           const existing = await readDocument<LoomScriptContent>(documents, input.scriptDocumentId, applicationDocumentTypes.loomScript)
+          if (existing.content.owner.kind === 'extension') await readLoomScriptInstallation(documents, existing.content.owner)
           await assertMetadataIdentityAvailable(documents, existing.content.owner, metadata.metadataId, blob.sha256, existing.id)
           const document = await writeDocument<LoomScriptContent>(documents, {
             id: existing.id,
@@ -121,7 +126,8 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
       origin?: JsonObject
     }, requestContext?: RuntimeRequestContext) => {
       const result = await executeDocumentMutation(ctx.documents, requestContext, 'application.createLoomScriptMount', async documents => {
-        await readDocument<LoomScriptContent>(documents, input.scriptDocumentId, applicationDocumentTypes.loomScript)
+        const script = await readDocument<LoomScriptContent>(documents, input.scriptDocumentId, applicationDocumentTypes.loomScript)
+        if (script.content.owner.kind === 'extension' && input.pinnedDocumentVersion !== undefined) throw new Error('Installed Loom Scripts follow package updates and cannot pin an old revision')
         const timestamp = ctx.now()
         const mount = await writeDocument<LoomScriptMountContent>(documents, {
           id: ctx.createId('loom-script-mount'),
@@ -155,6 +161,7 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
       const result = await executeDocumentMutation(ctx.documents, requestContext, 'application.updateLoomScriptMount', async documents => {
         const existing = await readDocument<LoomScriptMountContent>(documents, input.mountId, applicationDocumentTypes.loomScriptMount)
         const script = await readDocument<LoomScriptContent>(documents, existing.content.scriptDocumentId, applicationDocumentTypes.loomScript)
+        if (script.content.owner.kind === 'extension' && input.pinnedDocumentVersion !== undefined) throw new Error('Installed Loom Scripts follow package updates and cannot pin an old revision')
         const requested = new Set(script.content.requestedCapabilities)
         if (new Set(input.grantedCapabilities).size !== input.grantedCapabilities.length
           || input.grantedCapabilities.some(capability => !requested.has(capability))) {
@@ -189,15 +196,18 @@ export function createLoomScriptsRuntimeMethods(ctx: LoomScriptsRuntimeContext) 
     },
 
     resolveLoomScriptRendererMounts: async (input?: { workspaceId?: string; timelineId?: string; presetId?: string }) => {
-      const runtimeContext = input?.timelineId ? await readTimelineRuntimeContext(ctx, input.timelineId) : undefined
+      const timeline = input?.timelineId ? await requireNarratives(ctx).getTimeline(input.timelineId) : undefined
+      if (input?.timelineId && !timeline) throw new Error(`Narrative timeline not found: ${input.timelineId}`)
+      const cardId = timeline?.createdFrom?.cardId
       return {
         mounts: await resolveLoomScriptRendererMounts(ctx, {
+          cardId,
           currentTargets: [
             { kind: 'user' },
             ...(input?.workspaceId ? [{ kind: 'workspace' as const, workspaceId: input.workspaceId }] : []),
             ...(input?.presetId ? [{ kind: 'preset' as const, presetId: input.presetId }] : []),
+            ...(cardId ? [{ kind: 'card' as const, cardId }] : []),
           ],
-          frozenMounts: runtimeContext?.loomScriptMounts ?? [],
         }),
       }
     },

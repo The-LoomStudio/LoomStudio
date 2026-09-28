@@ -127,6 +127,7 @@ describe.each(['memory', 'sqlite'] as const)('atomic document ownership (%s)', b
       contributes: { documentTypes: [{ type: `${packageId}.note` }, { type: `${packageId}.other` }] },
     }
     return createContext({
+      target: { kind: 'global' },
       directory: '/unused/document-ownership',
       packageManifest: {
         manifestVersion: 2, id: packageId, version: '1.0.0', displayName: packageId,

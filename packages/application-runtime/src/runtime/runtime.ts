@@ -29,6 +29,7 @@ import {
 import { createExtensionsRuntimeMethods } from './extensions-runtime.js'
 import { createLoomScriptsRuntimeMethods } from './loom-scripts-runtime.js'
 import { createOfficialContentRuntimeMethods } from './official-content-runtime.js'
+import { createMacroConfigurationRuntimeMethods } from './macros-runtime.js'
 
 export function createApplicationRuntime(options: ApplicationRuntimeOptions): ApplicationRuntime {
   const ctx: ApplicationRuntimeContext = createApplicationRuntimeContext(options)
@@ -80,6 +81,7 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     ...createCardDirectoryRuntimeMethods(ctx),
     ...createNarrativeRuntimeMethods(ctx),
     ...createAgentsRuntimeMethods(ctx),
+    ...createMacroConfigurationRuntimeMethods(ctx),
     ...createPromptRuntimeMethods(ctx),
     ...createStateRuntimeMethods(ctx),
     ...createTransformsRuntimeMethods(ctx),

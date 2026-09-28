@@ -24,6 +24,7 @@ describe('studio layout store', () => {
 
   it('persists and rehydrates both Composer pin states', async () => {
     const key = useStudioLayoutStore.persist.getOptions().name
+    if (!key) throw new Error('Layout persistence requires a storage key')
     for (const pinned of [true, false]) {
       useStudioLayoutStore.setState({ composerPinned: pinned })
       const saved = storedValues.get(key)!
@@ -100,9 +101,9 @@ describe('studio layout store', () => {
     store.togglePanelWindowMode('preset')
     store.setAssetExplorerWidth('preset', 260)
     store.setAssetExplorerWidth('resources', 340)
-    store.setAssetViewMode('preset', 'card-a', 'editor')
-    store.setAssetViewMode('resources', 'card-a', 'split')
-    store.setAssetViewMode('preset', 'card-b', 'explorer')
+    store.setAssetViewMode('preset', 'card-a', 'master-detail')
+    store.setAssetViewMode('resources', 'card-a', 'drilldown')
+    store.setAssetViewMode('preset', 'card-b', 'drilldown')
     store.setAssetSelectedId('preset', 'card-a', 'preset-entry-a')
     store.setAssetExpandedIds('preset', 'card-a', ['preset-root', 'preset-folder'])
 
@@ -114,12 +115,12 @@ describe('studio layout store', () => {
             'card-a': {
               expandedIds: ['preset-root', 'preset-folder'],
               selectedId: 'preset-entry-a',
-              viewMode: 'editor',
+              viewMode: 'master-detail',
             },
-            'card-b': { viewMode: 'explorer' },
+            'card-b': { viewMode: 'drilldown' },
           },
         },
-        resources: { explorerWidth: 340, views: { 'card-a': { viewMode: 'split' } } },
+        resources: { explorerWidth: 340, views: { 'card-a': { viewMode: 'drilldown' } } },
       },
       panelWindowSizes: {
         preset: { width: 920, height: 700 },

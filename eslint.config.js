@@ -4,7 +4,45 @@ import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/*.d.ts', '**/*.d.ts.map', 'coverage/**', 'node_modules/**', '.loomstudio-dev/**', '**/*.config.*', 'tests/**', 'scripts/**'],
+    ignores: ['**/dist/**', '**/*.d.ts', '**/*.d.ts.map', 'coverage/**', 'node_modules/**', '.loomstudio-dev/**', '**/*.config.*', 'tests/**', 'scripts/**', 'drafts/**'],
+  },
+  {
+    files: ['official/extensions/*/src/client/**/*.{js,mjs}'],
+    languageOptions: {
+      globals: {
+        Audio: 'readonly',
+        MutationObserver: 'readonly',
+        URL: 'readonly',
+        cancelAnimationFrame: 'readonly',
+        clearInterval: 'readonly',
+        clearTimeout: 'readonly',
+        console: 'readonly',
+        document: 'readonly',
+        fetch: 'readonly',
+        innerHeight: 'readonly',
+        innerWidth: 'readonly',
+        requestAnimationFrame: 'readonly',
+        setInterval: 'readonly',
+        setTimeout: 'readonly',
+        window: 'readonly',
+      },
+    },
+  },
+  {
+    files: ['official/extensions/*/src/server/**/*.{js,mjs}'],
+    languageOptions: {
+      globals: {
+        Buffer: 'readonly',
+        clearInterval: 'readonly',
+        clearTimeout: 'readonly',
+        console: 'readonly',
+        fetch: 'readonly',
+        process: 'readonly',
+        setInterval: 'readonly',
+        setTimeout: 'readonly',
+        structuredClone: 'readonly',
+      },
+    },
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -12,7 +50,7 @@ export default tseslint.config(
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
       parserOptions: {
-        projectService: true,
+        projectService: { allowDefaultProject: ['official/extensions/the-world/scripts/smoke.ts'] },
         tsconfigRootDir: import.meta.dirname,
       },
       globals: {

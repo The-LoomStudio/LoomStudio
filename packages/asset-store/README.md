@@ -25,6 +25,7 @@
    - **所有实际二进制字节必须通过 `this.blobs`（即 `@loom-studio/blob-store`）进行内容寻址持久化**，严禁在 SQLite 字段中存储 `Buffer` 或 Base64 字符串。
 2. **事务级提交事实（Commit Facts）**：
    - 资产记录的创建与导入属于正式数据事务，必须生成 `DataCommitFact`，确保可追溯性。
+   - 新字节先经 Blob Store prepare/finalize，再在同一 Engine 事务内登记 Blob metadata 与 Asset/Artifact，二者共享 Changeset。事务失败回滚 metadata，但不删除已 finalize 的共享文件；文件写入与 SQLite 不是同一个原子事务，见 [`store.ts`](./src/store.ts)。
 
 ---
 
@@ -32,7 +33,7 @@
 
 Package 主入口为 [`src/index.ts`](./src/index.ts)：
 
-- `createAssetStore(options)`：创建资产管理实例（需注入 `dataEngine` 与 `blobs`）；
+- `createAssetStore(options)`：创建资产管理实例（需注入 `engine`、`blobs`、`createId` 与 `now`）；
 - 核心操作方法：
   - `preserveSourceArtifact()`、`getSourceArtifact()`；
   - `createMediaAsset()`、`getMediaAsset()`、`openMediaAsset()`、`readMediaAsset()`；

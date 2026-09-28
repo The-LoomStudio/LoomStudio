@@ -1,16 +1,7 @@
 import type {
-  ContextAssetNode,
-  PromptCompositionEntry,
   PromptCompositionItem,
-  PromptCompositionSlot,
-  PromptCompositionZone,
   PromptMessageBlock,
-  PromptProviderRole,
 } from '../../../entities/index.js'
-
-export function readCompositionItems(orderNode: ContextAssetNode | undefined): PromptCompositionItem[] {
-  return orderNode?.skeletonPatch?.items ?? []
-}
 
 export function findCompositionItem(items: PromptCompositionItem[], id: string | undefined): PromptCompositionItem | undefined {
   if (!id) return undefined
@@ -22,64 +13,6 @@ export function findCompositionItem(items: PromptCompositionItem[], id: string |
     }
   }
   return undefined
-}
-
-export function createMessageBlock(
-  items: PromptCompositionItem[],
-  role: PromptProviderRole = 'system',
-): PromptMessageBlock {
-  return {
-    id: createCompositionId('message'),
-    kind: 'message',
-    displayName: role === 'developer' ? 'Developer' : role[0]!.toUpperCase() + role.slice(1),
-    orderIndex: nextOrderIndex(items),
-    role,
-    items: [],
-  }
-}
-
-export function createCompositionZone(
-  items: PromptCompositionItem[],
-  displayName = 'New Zone',
-): PromptCompositionZone {
-  return {
-    id: createCompositionId('zone'),
-    kind: 'zone',
-    displayName,
-    parentId: 'zone.root',
-    band: 'current-turn',
-    orderIndex: nextOrderIndex(items),
-  }
-}
-
-export function createCompositionSlot(
-  items: PromptCompositionItem[],
-  zoneId?: string,
-): PromptCompositionSlot {
-  const id = createCompositionId('slot')
-  return {
-    id,
-    kind: 'slot',
-    displayName: 'New Context Slot',
-    bindingId: `custom.${id}`,
-    ...(zoneId ? { zoneId } : {}),
-    messageMode: 'context',
-    slotKey: id,
-    orderIndex: nextOrderIndex(items),
-  }
-}
-
-export function createCompositionEntry(
-  items: PromptCompositionItem[],
-  nodeId: string,
-): PromptCompositionEntry {
-  return {
-    id: createCompositionId('entry'),
-    kind: 'entry',
-    displayName: 'Direct Entry',
-    orderIndex: nextOrderIndex(items),
-    source: { kind: 'preset', nodeId },
-  }
 }
 
 export function appendCompositionItem(
@@ -174,12 +107,8 @@ export function moveCompositionItemTo(
   return normalizeCompositionOrder(next)
 }
 
-export function createCompositionId(kind: string): string {
+function createCompositionId(kind: string): string {
   return `composition.${kind}.${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 7)}`
-}
-
-function nextOrderIndex(items: PromptCompositionItem[]): number {
-  return Math.max(0, ...items.map(item => item.orderIndex)) + 10
 }
 
 function findCompositionItemLocation(items: PromptCompositionItem[], id: string): {

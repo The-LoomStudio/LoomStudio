@@ -49,6 +49,7 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
       { version: 3, migrate: migrateVersionThree },
       { version: 4, migrate: migrateVersionFour },
       { version: 5, migrate: migrateVersionFive },
+      { version: 6, migrate: migrateVersionSix },
     ],
   })
 
@@ -56,13 +57,13 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
     const { database } = tx
     return {
       createSession: (input) => {
-        validateId(input.agentProfileId, 'agentProfileId')
+        validateId(input.agentPresetId, 'agentPresetId')
         validateOptionalText(input.title, 'title')
         validateOptionalId(input.timelineId, 'timelineId')
         const timestamp = now()
         const session: AgentSession = {
           id: input.id ?? nextId('agent-session'),
-          agentProfileId: input.agentProfileId,
+          agentPresetId: input.agentPresetId,
           timelineId: input.timelineId,
           title: input.title,
           entryCount: 0,
@@ -72,18 +73,18 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
         database
           .prepare(
             `INSERT INTO agent_sessions (
-          id, agent_profile_id, timeline_id, title, head_entry_id, entry_count, created_at, updated_at, tombstoned
+          id, agent_preset_id, timeline_id, title, head_entry_id, entry_count, created_at, updated_at, tombstoned
         ) VALUES (?, ?, ?, ?, NULL, 0, ?, ?, 0)`,
           )
           .run(
             session.id,
-            session.agentProfileId,
+            session.agentPresetId,
             session.timelineId ?? null,
             session.title ?? null,
             timestamp,
             timestamp,
           )
-        tx.recordOperations([operation('create', session.id, 'agent.session')])
+        tx.recordOperations([operation('create', session.id, 'agent.session', session.timelineId)])
         return session
       },
       listSessions: (input) => readSessions(database, input),
@@ -113,6 +114,25 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
         let sequence = session.entryCount
         for (const item of input.entries) {
           validateOptionalId(item.runId, 'runId')
+          if (item.entry.kind === 'work-summary') {
+            if (input.entries.length !== 1 || item.runId !== undefined) {
+              throw new AgentStoreError('agent.summary_boundary_invalid', 'A work summary must be committed separately after a Run')
+            }
+            const activeRun = database.prepare(`
+              SELECT 1 FROM agent_transcript_entries e
+              WHERE e.agent_session_id = ? AND json_extract(e.entry_json, '$.kind') = 'run-state'
+                AND json_extract(e.entry_json, '$.state') IN ('created', 'running', 'suspended')
+                AND NOT EXISTS (
+                  SELECT 1 FROM agent_transcript_entries later
+                  WHERE later.agent_session_id = e.agent_session_id AND later.run_id IS e.run_id
+                    AND later.sequence > e.sequence AND json_extract(later.entry_json, '$.kind') = 'run-state'
+                )
+              LIMIT 1
+            `).get(session.id)
+            if (activeRun || [...toolInvocations.values()].some(call => !call.hasResult)) {
+              throw new AgentStoreError('agent.summary_boundary_invalid', 'Cannot summarize an active Run or an unfinished tool call')
+            }
+          }
           validateTranscriptEntry(
             item.entry,
             toolInvocations,
@@ -142,9 +162,9 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
           .run(parentEntryId ?? null, sequence, updatedAt, session.id)
         tx.recordOperations([
           ...appended.map((entry) =>
-            operation('create', entry.id, 'agent.transcript-entry'),
+            operation('create', entry.id, 'agent.transcript-entry', session.timelineId),
           ),
-          operation('update', session.id, 'agent.session'),
+          operation('update', session.id, 'agent.session', session.timelineId),
         ])
         return {
           session: requireSession(database, session.id),
@@ -165,7 +185,7 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
             deletedAt,
             session.id,
           )
-        tx.recordOperations([operation('delete', session.id, 'agent.session')])
+        tx.recordOperations([operation('delete', session.id, 'agent.session', session.timelineId)])
         return requireSession(database, session.id, true)
       },
       updateSession: (input) => {
@@ -202,7 +222,7 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
             `UPDATE agent_sessions SET title = ?, timeline_id = CASE WHEN ? IS NULL THEN NULL ELSE timeline_id END, updated_at = ? WHERE id = ?`,
           )
           .run(input.title ?? null, input.timelineId === null ? null : session.timelineId ?? null, now(), session.id)
-        tx.recordOperations([operation('update', session.id, 'agent.session')])
+        tx.recordOperations([operation('update', session.id, 'agent.session', session.timelineId)])
         return requireSession(database, session.id)
       },
     }
@@ -222,6 +242,15 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
     listSessions: (input) =>
       engine.read((database) => readSessions(database, input)),
     getEntry: (id) => engine.read((database) => readEntry(database, id)),
+    getLatestWorkSummary: (agentSessionId) => engine.read((database) => {
+      requireSession(database, agentSessionId)
+      const row = database.prepare(`
+        SELECT * FROM agent_transcript_entries
+        WHERE agent_session_id = ? AND json_extract(entry_json, '$.kind') = 'work-summary'
+        ORDER BY sequence DESC LIMIT 1
+      `).get(agentSessionId)
+      return row ? entryFromRow(row) : null
+    }),
     getEntryPage: (input) =>
       engine.read((database) => readEntryPage(database, input)),
     createSession: async (input) => {
@@ -287,6 +316,10 @@ function migrateVersionFive(database: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_agent_sessions_timeline ON agent_sessions(timeline_id);
     CREATE INDEX IF NOT EXISTS idx_agent_sessions_updated ON agent_sessions(updated_at);
   `)
+}
+
+function migrateVersionSix(database: DatabaseSync): void {
+  database.exec('ALTER TABLE agent_sessions RENAME COLUMN agent_profile_id TO agent_preset_id')
 }
 
 function insertEntry(
@@ -419,7 +452,7 @@ function readSession(
 ): AgentSession | null {
   const row = database
     .prepare(
-      'SELECT id, agent_profile_id, timeline_id, title, head_entry_id, entry_count, created_at, updated_at, deleted_at FROM agent_sessions WHERE id = ?',
+      'SELECT id, agent_preset_id, timeline_id, title, head_entry_id, entry_count, created_at, updated_at, deleted_at FROM agent_sessions WHERE id = ?',
     )
     .get(id)
   if (!row) return null
@@ -466,7 +499,7 @@ function sessionFromRow(row: unknown): AgentSession {
   const value = row as Record<string, unknown>
   return {
     id: String(value.id),
-    agentProfileId: String(value.agent_profile_id),
+    agentPresetId: String(value.agent_preset_id),
     timelineId: optionalString(value.timeline_id),
     title: optionalString(value.title),
     headEntryId: optionalString(value.head_entry_id),
@@ -488,7 +521,7 @@ function readSessions(
       `Agent session list limit must be between 1 and ${maximumPageLimit}`,
     )
   }
-  validateOptionalId(input.agentProfileId, 'agentProfileId')
+  validateOptionalId(input.agentPresetId, 'agentPresetId')
   validateOptionalId(input.timelineId, 'timelineId')
   validateOptionalId(input.cursor, 'cursor')
 
@@ -503,9 +536,9 @@ function readSessions(
   const conditions = ['tombstoned = 0']
   const params: Array<string | number> = []
 
-  if (input.agentProfileId) {
-    conditions.push('agent_profile_id = ?')
-    params.push(input.agentProfileId)
+  if (input.agentPresetId) {
+    conditions.push('agent_preset_id = ?')
+    params.push(input.agentPresetId)
   }
   if (input.timelineId) {
     conditions.push('timeline_id = ?')
@@ -520,7 +553,7 @@ function readSessions(
 
   const rows = database
     .prepare(
-      `SELECT id, agent_profile_id, timeline_id, title, head_entry_id, entry_count, created_at, updated_at, deleted_at
+      `SELECT id, agent_preset_id, timeline_id, title, head_entry_id, entry_count, created_at, updated_at, deleted_at
        FROM agent_sessions
        WHERE ${conditions.join(' AND ')}
        ORDER BY updated_at DESC, id DESC
@@ -558,6 +591,10 @@ function validateTranscriptEntry(
       'agent.entry_invalid',
       'Agent transcript entry must have a kind',
     )
+  if (value.kind === 'work-summary') {
+    validateContent(value.content)
+    return
+  }
   if (value.kind === 'message') {
     if (value.role !== 'user' && value.role !== 'assistant')
       throw new AgentStoreError(
@@ -784,6 +821,10 @@ function operation(
   kind: DataCommitOperation['kind'],
   entityId: string,
   entityType: string,
+  timelineId?: string,
 ): DataCommitOperation {
-  return { store: 'agent', kind, entityId, entityType }
+  return {
+    store: 'agent', kind, entityId, entityType,
+    ...(timelineId ? { scope: { store: 'narrative', entityType: 'narrative.timeline', entityId: timelineId } } : {}),
+  }
 }

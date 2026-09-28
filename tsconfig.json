@@ -22,7 +22,6 @@
     { "path": "./packages/kernel" },
     { "path": "./tests/fixtures/extensions/echo" },
     { "path": "./tests/fixtures/extensions/weather-station" },
-    { "path": "./official/extensions/st-data-compat" },
     { "path": "./apps/playground" }
   ]
 }

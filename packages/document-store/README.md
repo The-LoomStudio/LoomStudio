@@ -18,8 +18,8 @@
 ## 架构规约与边界红线 (Rules & Boundaries)
 
 1. **乐观并发与因果保障**：
-   - 每次写入必须显式携带 `expectedVersion: 'new' | number`，版本冲突时必须原子回滚并拒绝写入；
-   - 写入操作自动生成全局递增的 `changesetId` 与 Commit Fact，保障事件总线能够向外投影事实变更。
+   - `write()` 接受 `expectedVersion: 'new' | number`，`delete()` 接受数值版本；参数在 API 中可选，省略时不做版本比较。需要并发保护的消费者必须显式传入基线，冲突返回 `document.conflict` 并回滚所在事务；
+   - 成功事务生成 Changeset ID 与 Commit Fact；ID 是不透明标识，不是全局递增序号，不能据此推断提交顺序。
 2. **拒绝全量业务数据泛滥（Scope Limitation）**：
    - **本包不承载全部业务数据**。高频的 Narrative 时间线、Agent 会话与 Prompt Resource 树均由 `@loom-studio/application-data` 专职处理；
    - 严禁将非版本化、超大二进制或高频纯瞬时状态存入本包。
@@ -33,7 +33,11 @@ Package 主入口为 [`src/index.ts`](./src/index.ts)：
 - `createSqliteDocumentStore(options)`：生产 SQLite 文档存储工厂；
 - `createInMemoryDocumentStore()`：测试与 Playground 沙箱专用内存工厂；
 - `createDocumentDataCommitSource(documents)`：连接 Document 变更与 Data Engine 提交事件源的适配器；
-- 核心类型：`DocumentStore`、`DocumentRecord`、`RevisionRecord`、`ChangesetRecord`、`DocumentStoreError`。
+- 核心类型：`DocumentStore`、`SqliteDocumentStore`、`DocumentRecord`、`Changeset`、`DocumentStoreError`；历史版本通过 `get(id, { version })` 返回 `DocumentRecord`。
+
+SQLite 实现通过 `{ engine }` 共享连接与提交日志，或通过 `{ filename }` 自建 Engine；外部注入的 Engine 由组合根关闭。跨 Store 写入使用 `participateTransaction(dataTx, callback)` 加入已有 Engine 事务，不再另开事务或另写提交日志，见 [`sqlite-store.ts`](./src/sqlite-store.ts)。
+
+`revertChangeset()` 只撤销纯 Document Changeset，并校验当前版本后产生新的版本和 Changeset；包含其他 Store operation 的提交返回 `document.changeset_not_revertible`。它不是 Narrative、State、Prompt Resource、文件或外部副作用的通用撤销器。
 
 `list()` 按首次插入序号分页，更新、tombstone 和恢复保留行身份；SQLite 使用 UPSERT 而非 REPLACE，内存实现保留 Map 插入位置。默认页长 100，允许 1～1000 的安全整数。cursor 是绑定 type、ownerExtensionId、includeTombstone 的不透明边界，调用者只回传，不解析为 OFFSET；无效 cursor 或改变筛选会得到 `document.input_invalid`。
 

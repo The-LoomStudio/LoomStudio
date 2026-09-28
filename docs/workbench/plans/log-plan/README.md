@@ -12,7 +12,7 @@
 
 [日志平台消费、扩展接入与历史查询](../../../archive/plans/log-platform-consumption-plan.md) 已完成并归档。P1-P5 已实现：前端搜索后端 JSONL、扩展统一接入/自有查询、一键查看、诊断复制与实体 URI。保持现有保留策略。P6 原生诊断助手已明确延后为独立后续方向；验证和限制见归档执行账目。
 
-[事件日志中枢与前后端展示改进](operational-log-experience-plan.md) 已完成基础事件日志、Agent 运行闭环、紧凑 Console 与前端原地展开；主 Agent 负责中枢和渲染，一个 Luna High 完成三批模块迁移。状态为 Closing，定向验证已完成，人工视觉验收及既有检查阻塞详见执行账目。
+[事件日志中枢与前后端展示改进](../../../archive/plans/log-plan/operational-log-experience-plan.md) 的基础事件日志、Agent 运行闭环、紧凑 Console 与前端原地展开已交付，实施正文于2026-09-24移入Archive。定向验证、未执行的人工视觉验收及当时检查阻塞均保留在原账目，不继续列为活跃施工计划。
 
 下文是领域路线图，不是平行实施合同。历史查询和扩展平台以新计划为准；实时流、Notification、交互 TUI 与专业 Inspector 不随新计划实施。Viewer 已有分页补读、两秒轮询及当前记录导出。
 

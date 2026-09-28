@@ -1,7 +1,7 @@
 import type { AgentToolDefinition, ContextAssetNode, PresetToolMount } from '../../../entities/index.js'
 import type { ProjectionZoneDefinition } from './projection-order.js'
 
-export type ProviderToolSurfaceItem = {
+type ProviderToolSurfaceItem = {
   description: string
   inputKind: AgentToolDefinition['input']['kind']
   name: string

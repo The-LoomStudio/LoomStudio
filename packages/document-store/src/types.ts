@@ -38,6 +38,7 @@ export type DocumentMeta = {
   createdBy: ActorRef
   updatedBy: ActorRef
   ownerExtensionId?: string
+  ownerInstallationId?: string
   source?: DocumentSourceRef
   tombstone?: TombstoneMeta
 }
@@ -112,6 +113,8 @@ export type ListDocumentsInput = {
   type?: string
   includeTombstone?: boolean
   ownerExtensionId?: string
+  /** null selects legacy/global ownership; omitted leaves installation ownership unrestricted. */
+  ownerInstallationId?: string | null
   limit?: number
   cursor?: string
 }

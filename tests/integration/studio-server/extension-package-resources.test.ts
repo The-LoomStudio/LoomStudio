@@ -1,10 +1,239 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { officialFakeModelId } from '@loom-studio/ai-gateway'
-import { callRpc, withStudioServer } from './helpers.js'
+import { unzipSync, zipSync } from 'fflate'
+import { authenticatedFetch, callRpc, withStudioServer } from './helpers.js'
 
 describe('Studio Server Extension Package resources', () => {
+  it('installs and updates sandbox script resources without enabling them or mixing Card installations', async () => {
+    await withStudioServer(async port => {
+      const packageId = 'example.sandbox-resources'
+      const source = [
+        '// ==LoomScript==', '// @format 1', '// @id example.scene', '// @name Scene',
+        '// @version 1.0.0', '// @runtime client-sandbox', '// @capability state.read',
+        '// @contribution {"kind":"renderer","id":"scene","surface":"narrative.timeline.tail","scope":"timeline","inputs":["match:rule"]}',
+        '// ==/LoomScript==', 'export const value = 1',
+      ].join('\n')
+      const archive = (version: string, scriptSource?: string) => ({
+        packageId, version,
+        archiveBase64: Buffer.from(zipSync({
+          'manifest.json': new TextEncoder().encode(JSON.stringify({
+            manifestVersion: 2, id: packageId, version, displayName: 'Sandbox resources', engines: { studio: '^0.1.0' },
+            contributes: {
+              loomScripts: scriptSource ? [{ id: 'scene', source: './scene.loom.js' }] : [],
+              promptResources: [{
+                id: 'writer', resourceKind: 'preset', source: './writer.json',
+                scriptMounts: scriptSource ? [{ scriptId: 'scene' }] : [],
+              }],
+              transformRules: [{ id: 'rule', source: './rule.json' }],
+            },
+          })),
+          'writer.json': new TextEncoder().encode(JSON.stringify(promptResource('preset', 'writer', packageId))),
+          'rule.json': new TextEncoder().encode(JSON.stringify({
+            name: 'Rule', enabled: true, orderIndex: 0, matcher: { kind: 'regex', pattern: '(x)', flags: 'g' },
+            effect: { kind: 'promote-reasoning', contentGroup: 1, visibility: 'collapsed', replay: 'omit' },
+            targets: ['agent-session'], phases: ['classify'],
+          })),
+          ...(scriptSource ? { 'scene.loom.js': new TextEncoder().encode(scriptSource) } : {}),
+        })).toString('base64'),
+      })
+      const cards: Array<{ id: string; version: number; presetId: string; timelineId: string; scriptId: string }> = []
+      for (const name of ['A', 'B']) {
+        const { card } = await callRpc<{ card: { id: string; version: number } }>(port, 'application.importCardBundle', {
+          artifact: { schemaVersion: 4, artifactId: name, displayName: name, card: { name }, contextAssets: [], extensionPackages: [archive('1.0.0', source)] },
+        })
+        const imported = await callRpc<{ promptResources: Array<{ resourceId: string }>; loomScripts: Array<{ scriptId: string }> }>(
+          port, 'extensions.importCardPackageResources', { cardId: card.id, packageId, expectedCardVersion: card.version },
+        )
+        const { timeline } = await callRpc<{ timeline: { id: string } }>(port, 'application.createNarrativeTimeline', { cardId: card.id })
+        const presetId = imported.promptResources[0]!.resourceId
+        cards.push({ ...card, presetId, timelineId: timeline.id, scriptId: imported.loomScripts[0]!.scriptId })
+        const { mounts } = await callRpc<{ mounts: Array<{ enabled: boolean; grantedCapabilities: string[] }> }>(
+          port, 'application.listLoomScriptMounts', { target: { kind: 'preset', presetId } },
+        )
+        expect(mounts).toHaveLength(1)
+        expect(mounts[0]).toMatchObject({ enabled: false, grantedCapabilities: [] })
+      }
+      expect(cards[0]!.scriptId).not.toBe(cards[1]!.scriptId)
+      const a = cards[0]!
+      const { mounts } = await callRpc<{ mounts: Array<{ id: string; version: number }> }>(port, 'application.listLoomScriptMounts', {
+        target: { kind: 'preset', presetId: a.presetId },
+      })
+      const mount = mounts[0]!
+      await expect(callRpc(port, 'application.updateLoomScriptMount', {
+        mountId: mount.id, expectedVersion: mount.version, enabled: true, orderIndex: 0, grantedCapabilities: [], pinnedDocumentVersion: 1,
+      })).rejects.toThrow('cannot pin')
+      await callRpc(port, 'application.updateLoomScriptMount', {
+        mountId: mount.id, expectedVersion: mount.version, enabled: true, orderIndex: 0, grantedCapabilities: ['state.read'],
+      })
+      const resolve = (card: typeof a) => callRpc<{ mounts: Array<{ source: string; enabled: boolean; grantedCapabilities: string[]; script: { contributions: Array<{ inputs: Array<{ ruleId: string }> }> } }> }>(
+        port, 'application.resolveLoomScriptRendererMounts', { timelineId: card.timelineId, presetId: card.presetId },
+      )
+      const first = await resolve(a)
+      expect(first.mounts[0]!.script.contributions[0]!.inputs[0]!.ruleId).not.toBe('rule')
+      const update = async (version: string, scriptSource?: string) => {
+        const { installations } = await callRpc<{ installations: Array<{ version: number; target: { cardId: string } }> }>(port, 'application.listExtensionInstallations', {})
+        const current = await callRpc<{ card: { version: number } }>(port, 'application.getCard', { cardId: a.id })
+        const attached = await callRpc<{ card: { version: number } }>(port, 'application.attachCardExtensionPackage', {
+          cardId: a.id, expectedVersion: current.card.version, archive: archive(version, scriptSource),
+        })
+        await callRpc(port, 'extensions.updateCardPackage', {
+          cardId: a.id, packageId, packageVersion: version, expectedCardVersion: attached.card.version,
+          expectedInstallationVersion: installations.find(item => item.target.cardId === a.id)!.version,
+        })
+      }
+      await update('2.0.0', source.replace('value = 1', 'value = 2'))
+      expect((await resolve(a)).mounts[0]).toMatchObject({ enabled: true, grantedCapabilities: ['state.read'], source: expect.stringContaining('value = 2') })
+      expect((await resolve(cards[1]!)).mounts[0]).toMatchObject({ enabled: false, source: expect.stringContaining('value = 1') })
+      await update('3.0.0')
+      expect((await resolve(a)).mounts).toEqual([])
+      await expect(callRpc(port, 'application.getLoomScript', { scriptDocumentId: a.scriptId })).rejects.toThrow('not found')
+      expect((await resolve(cards[1]!)).mounts).toHaveLength(1)
+      await update('4.0.0', source)
+      expect((await resolve(a)).mounts[0]).toMatchObject({ enabled: false, grantedCapabilities: [] })
+    })
+  })
+
+  it('installs an offline resource-only archive separately for two Cards without a global package', async () => {
+    await withStudioServer(async (port, root) => {
+      const directory = await writeVersionedResourcePackage(root, '1.0.0', 'clothes')
+      const packageId = 'example.package-versioned-resources'
+      const archiveBase64 = Buffer.from(zipSync({
+        'manifest.json': await readFile(join(directory, 'manifest.json')),
+        'resources/clothes.json': await readFile(join(directory, 'resources/clothes.json')),
+      })).toString('base64')
+      const digest = createHash('sha256').update(Buffer.from(archiveBase64, 'base64')).digest('hex')
+      const importedIds: string[] = []
+      for (const name of ['A', 'B']) {
+        const { card } = await callRpc<{ card: { id: string; version: number } }>(port, 'application.importCardBundle', {
+          artifact: {
+            schemaVersion: 4, artifactId: name, displayName: name, card: { name }, contextAssets: [],
+            extensionPackages: [{ packageId, version: '1.0.0', archiveBase64 }],
+          },
+        })
+        const fileUrl = `/card-extensions/${encodeURIComponent(card.id)}/${packageId}/1.0.0/${digest}/files/resources/clothes.json`
+        expect((await authenticatedFetch(port, fileUrl)).status).toBe(404)
+        await expect(callRpc(port, 'extensions.importCardPackageResources', {
+          cardId: card.id, expectedCardVersion: card.version + 1, packageId,
+        })).rejects.toThrow('Card archive changed')
+        const result = await callRpc<{ promptResources: Array<{ resourceId: string }> }>(port, 'extensions.importCardPackageResources', {
+          cardId: card.id, expectedCardVersion: card.version, packageId,
+        })
+        importedIds.push(result.promptResources[0]!.resourceId)
+        const file = await authenticatedFetch(port, fileUrl)
+        expect(file.status).toBe(200)
+        expect(await file.json()).toEqual(promptResource('setting', 'clothes', packageId))
+        expect((await authenticatedFetch(port, fileUrl.replace('/1.0.0/', '/9.0.0/'))).status).toBe(404)
+        expect((await authenticatedFetch(port, fileUrl.replace('resources/clothes.json', '%2e%2e%2fmanifest.json'))).status).toBe(404)
+      }
+      expect(new Set(importedIds).size).toBe(2)
+      const { installations } = await callRpc<{ installations: Array<{ version: number; target: { kind: string; cardId: string } }> }>(
+        port, 'application.listExtensionInstallations', {},
+      )
+      expect(installations).toHaveLength(2)
+      expect(installations.every(item => item.target.kind === 'card')).toBe(true)
+      expect(new Set(installations.map(item => item.target.cardId)).size).toBe(2)
+      const packages = await callRpc<{ items: Array<{ packageId: string }> }>(port, 'extensions.listPackages', {})
+      expect(packages.items.some(item => item.packageId === packageId)).toBe(false)
+      const a = installations[0]!
+      const { card } = await callRpc<{ card: { id: string; version: number } }>(port, 'application.getCard', { cardId: a.target.cardId })
+      await writeVersionedResourcePackage(root, '2.0.0', 'new-clothes')
+      const nextArchive = {
+        packageId, version: '2.0.0',
+        archiveBase64: Buffer.from(zipSync({
+          'manifest.json': await readFile(join(directory, 'manifest.json')),
+          'resources/new-clothes.json': await readFile(join(directory, 'resources/new-clothes.json')),
+        })).toString('base64'),
+      }
+      const attached = await callRpc<{ card: { version: number } }>(port, 'application.attachCardExtensionPackage', {
+        cardId: card.id, expectedVersion: card.version, archive: nextArchive,
+      })
+      const nextDigest = createHash('sha256').update(Buffer.from(nextArchive.archiveBase64, 'base64')).digest('hex')
+      const oldFileUrl = `/card-extensions/${encodeURIComponent(card.id)}/${packageId}/1.0.0/${digest}/files/resources/clothes.json`
+      const newFileUrl = `/card-extensions/${encodeURIComponent(card.id)}/${packageId}/2.0.0/${nextDigest}/files/resources/new-clothes.json`
+      expect((await authenticatedFetch(port, oldFileUrl)).status).toBe(200)
+      expect((await authenticatedFetch(port, newFileUrl)).status).toBe(404)
+      const updated = await callRpc<{ promptResources: Array<{ resourceId: string }> }>(port, 'extensions.updateCardPackageResources', {
+        cardId: card.id, packageId, expectedCardVersion: attached.card.version,
+        packageVersion: '2.0.0', expectedInstallationVersion: a.version,
+      })
+      expect((await authenticatedFetch(port, oldFileUrl)).status).toBe(404)
+      expect(await (await authenticatedFetch(port, newFileUrl)).json()).toEqual(promptResource('setting', 'new-clothes', packageId))
+      const replaced = await callRpc<{ card: { version: number } }>(port, 'application.attachCardExtensionPackage', {
+        cardId: card.id, expectedVersion: attached.card.version,
+        archive: {
+          ...nextArchive,
+          archiveBase64: Buffer.from(zipSync({
+            ...unzipSync(Buffer.from(nextArchive.archiveBase64, 'base64')),
+            'replacement.txt': new TextEncoder().encode('same-version replacement'),
+          })).toString('base64'),
+        },
+      })
+      await expect(callRpc(port, 'extensions.importCardPackageResources', {
+        cardId: card.id, expectedCardVersion: replaced.card.version, packageId,
+      })).rejects.toThrow('explicit package update')
+      expect((await authenticatedFetch(port, newFileUrl.replace('resources/new-clothes.json', 'replacement.txt'))).status).toBe(404)
+      await callRpc(port, 'application.detachCardExtensionPackage', {
+        cardId: card.id, expectedVersion: replaced.card.version, packageId,
+      })
+      expect((await authenticatedFetch(port, newFileUrl)).status).toBe(200)
+      await expect(callRpc(port, 'extensions.removeCardPackageResources', {
+        cardId: card.id, packageId, expectedInstallationVersion: a.version,
+      })).rejects.toThrow('installation changed')
+      const current = await callRpc<{ installations: Array<{ version: number; target: { cardId: string } }> }>(port, 'application.listExtensionInstallations', {})
+      await callRpc(port, 'extensions.removeCardPackageResources', {
+        cardId: card.id, packageId, expectedInstallationVersion: current.installations.find(item => item.target.cardId === card.id)!.version,
+      })
+      await expect(callRpc(port, 'application.getPromptResource', { resourceId: updated.promptResources[0]!.resourceId })).rejects.toThrow('not found')
+      const remaining = await callRpc<{ resources: Array<{ origin?: { packageId: string; packageVersion: string } }> }>(port, 'application.listPromptResources', {})
+      expect(remaining.resources.filter(item => item.origin?.packageId === packageId)).toHaveLength(1)
+      expect(remaining.resources.find(item => item.origin?.packageId === packageId)?.origin?.packageVersion).toBe('1.0.0')
+    })
+  })
+
+  it('exports discovered package files for offline Card distribution without activating modules', async () => {
+    await withStudioServer(async (port, root) => {
+      const sourceDirectory = await writeCapabilityPackage(root)
+      await writeFile(join(sourceDirectory, 'binary.dat'), new Uint8Array([0, 128, 255]))
+      await mkdir(join(sourceDirectory, 'empty'))
+      await callRpc(port, 'extensions.installPackage', { sourceDirectory })
+      await expect(callRpc(port, 'extensions.exportPackage', { packageId: 'example.package-resources', version: '0.0.0' }))
+        .rejects.toThrow('review the export again')
+      const archive = await callRpc<{ packageId: string; version: string; archiveBase64: string }>(port, 'extensions.exportPackage', {
+        packageId: 'example.package-resources', version: '1.0.0',
+      })
+      const files = unzipSync(Buffer.from(archive.archiveBase64, 'base64'))
+      expect(files['binary.dat']).toEqual(new Uint8Array([0, 128, 255]))
+      expect(files['empty/']).toEqual(new Uint8Array())
+      expect(JSON.parse(new TextDecoder().decode(files['manifest.json']))).toMatchObject({ id: archive.packageId, version: archive.version })
+      const imported = await callRpc<{ card: { id: string; version: number } }>(port, 'application.createCard', { name: 'Offline' })
+      const attached = await callRpc<{ card: { version: number } }>(port, 'application.attachCardExtensionPackage', {
+        cardId: imported.card.id, expectedVersion: imported.card.version, archive,
+      })
+      await expect(callRpc(port, 'application.attachCardExtensionPackage', {
+        cardId: imported.card.id, expectedVersion: imported.card.version, archive,
+      })).rejects.toThrow('Card changed')
+      const exported = await callRpc<{ artifact: { extensionPackages: unknown[] } }>(port, 'application.exportCardBundle', { cardId: imported.card.id })
+      expect(exported.artifact.extensionPackages).toEqual([archive])
+      await expect(callRpc(port, 'extensions.importCardPackageResources', {
+        cardId: imported.card.id, expectedCardVersion: attached.card.version, packageId: archive.packageId,
+      })).rejects.toThrow('only resource-only packages')
+      await expect(callRpc(port, 'application.detachCardExtensionPackage', {
+        cardId: imported.card.id, expectedVersion: imported.card.version, packageId: archive.packageId,
+      })).rejects.toThrow('Card changed')
+      await callRpc(port, 'application.detachCardExtensionPackage', {
+        cardId: imported.card.id, expectedVersion: attached.card.version, packageId: archive.packageId,
+      })
+      expect((await callRpc<{ artifact: { extensionPackages: unknown[] } }>(
+        port, 'application.exportCardBundle', { cardId: imported.card.id },
+      )).artifact.extensionPackages).toEqual([])
+      const packages = await callRpc<{ items: Array<{ packageId: string; modules: Array<{ desired: { enabled: boolean } }> }> }>(port, 'extensions.listPackages', {})
+      expect(packages.items.find(item => item.packageId === archive.packageId)?.modules.every(module => !module.desired.enabled)).toBe(true)
+    })
+  })
+
   it('imports declared Preset, Setting, and Agent Tools while keeping handlers lifecycle-bound', async () => {
     await withStudioServer(async (port, root) => {
       const sourceDirectory = await writeCapabilityPackage(root)
@@ -22,13 +251,20 @@ describe('Studio Server Extension Package resources', () => {
         textExtractors: [{ id: 'world-state' }],
       })
 
+      await expect(callRpc(port, 'extensions.importPackageResources', {
+        packageId: 'example.package-resources', target: { kind: 'card', cardId: 'not-a-global-install' },
+      })).rejects.toThrow('targets are not exposed')
       const imported = await callRpc<{
+        installationId: string
         promptResources: Array<{ contributionId: string; resourceId: string }>
         agentTools: Array<{ toolId: string }>
         transformRules: Array<{ contributionId: string; ruleId: string }>
         textExtractors: Array<{ contributionId: string; extractorId: string }>
       }>(port, 'extensions.importPackageResources', { packageId: 'example.package-resources' })
       expect(imported.promptResources).toHaveLength(2)
+      await expect(callRpc(port, 'extensions.removePackageResources', {
+        packageId: 'example.package-resources', target: { kind: 'card', cardId: 'not-a-global-install' },
+      })).rejects.toThrow('targets are not exposed')
       expect(imported.agentTools).toEqual([
         { contributionId: 'example.package-resources/echo', toolId: 'example.package-resources/echo' },
         { contributionId: 'example.package-resources/content_echo', toolId: 'example.package-resources/content_echo' },
@@ -39,14 +275,14 @@ describe('Studio Server Extension Package resources', () => {
         rules: [expect.objectContaining({
           id: imported.transformRules[0]!.ruleId,
           owner: { kind: 'extension', packageId: 'example.package-resources' },
-          origin: { kind: 'extension-package', packageId: 'example.package-resources', packageVersion: '1.0.0', contributionId: 'hide-think' },
+          origin: { kind: 'extension-package', packageId: 'example.package-resources', packageVersion: '1.0.0', contributionId: 'hide-think', installationId: imported.installationId },
         })],
       })
       await expect(callRpc(port, 'application.listTextExtractors', {})).resolves.toMatchObject({
         extractors: [expect.objectContaining({
           id: imported.textExtractors[0]!.extractorId,
           owner: { kind: 'extension', packageId: 'example.package-resources' },
-          origin: { kind: 'extension-package', packageId: 'example.package-resources', packageVersion: '1.0.0', contributionId: 'world-state' },
+          origin: { kind: 'extension-package', packageId: 'example.package-resources', packageVersion: '1.0.0', contributionId: 'world-state', installationId: imported.installationId },
         })],
       })
 
@@ -105,13 +341,13 @@ describe('Studio Server Extension Package resources', () => {
         config: { baseUrl: 'https://example.test/v1' },
         enabledModelIds: [officialFakeModelId],
       })
-      const profile = await callRpc<{ agentProfile: { id: string } }>(port, 'application.createAgentProfile', {
+      const profile = await callRpc<{ agentPreset: { id: string } }>(port, 'application.updateAgentPreset', {
         name: 'Extension Package Resource Test Agent',
-        presetId: preset.id,
+        agentPresetId: preset.id, expectedVersion: (await callRpc<{ resource: { version: number } }>(port, 'application.getPromptResource', { resourceId: preset.id })).resource.version,
         model: { providerProfileId: provider.providerProfile.id, modelId: officialFakeModelId },
       })
       const session = await callRpc<{ session: { id: string } }>(port, 'application.createAgentSession', {
-        agentProfileId: profile.agentProfile.id,
+        agentPresetId: profile.agentPreset.id,
       })
       await expect(callRpc<{
         toolExposures: Array<{ toolId: string; transport: string }>
@@ -166,13 +402,12 @@ describe('Studio Server Extension Package resources', () => {
         providerExtensionId: 'official.fake', displayName: 'Test Provider', config: {},
         enabledModelIds: [officialFakeModelId],
       })
-      const profile = await callRpc<{ agentProfile: { id: string } }>(port, 'application.createAgentProfile', {
-        name: 'External Profile', presetId: packagePresetId,
+      const profile = await callRpc<{ agentPreset: { id: string } }>(port, 'application.updateAgentPreset', {
+        name: 'External Profile', agentPresetId: packagePresetId, expectedVersion: (await callRpc<{ resource: { version: number } }>(port, 'application.getPromptResource', { resourceId: packagePresetId })).resource.version,
         model: { providerProfileId: provider.providerProfile.id, modelId: officialFakeModelId },
-        toolOverrides: { 'example.package-resources/content_echo': true },
       })
-      const profileBefore = await callRpc(port, 'application.getAgentProfile', { agentProfileId: profile.agentProfile.id })
-      const session = await callRpc<{ session: { id: string } }>(port, 'application.createAgentSession', { agentProfileId: profile.agentProfile.id })
+      const profileBefore = await callRpc(port, 'application.getAgentPreset', { agentPresetId: profile.agentPreset.id })
+      const session = await callRpc<{ session: { id: string } }>(port, 'application.createAgentSession', { agentPresetId: profile.agentPreset.id })
       const card = await callRpc<{ card: { id: string } }>(port, 'application.createCard', { name: 'External Card' })
       await callRpc(port, 'application.updateCardPromptResources', {
         cardId: card.card.id, promptResourceIds: [settingId, packagePresetId],
@@ -183,7 +418,7 @@ describe('Studio Server Extension Package resources', () => {
       expect(cardBefore).toMatchObject({ card: { promptResourceIds: [settingId, packagePresetId] } })
       expect(timelineBefore).toMatchObject({ timeline: { promptResourceIds: [settingId, packagePresetId] } })
       expect(profileBefore).toMatchObject({
-        agentProfile: { presetId: packagePresetId, toolOverrides: { 'example.package-resources/content_echo': true } },
+        agentPreset: { id: packagePresetId },
       })
 
       const removed = await callRpc<{
@@ -200,8 +435,8 @@ describe('Studio Server Extension Package resources', () => {
       ])
       expect(removed.textTransformRuleIds).toHaveLength(1)
       expect(removed.textExtractorIds).toHaveLength(1)
-      expect(removed.detachedReferences).toEqual({ cards: 0, timelines: 0, agentProfiles: 0, presetToolMounts: 0 })
-      await expect(callRpc(port, 'application.getAgentProfile', { agentProfileId: profile.agentProfile.id })).resolves.toEqual(profileBefore)
+      expect(removed.detachedReferences).toEqual({ cards: 0, timelines: 0, presetToolMounts: 0 })
+      await expect(callRpc(port, 'application.getAgentPreset', { agentPresetId: profile.agentPreset.id })).rejects.toThrow('Prompt resource not found')
       await expect(callRpc(port, 'application.getCard', { cardId: card.card.id })).resolves.toEqual(cardBefore)
       await expect(callRpc(port, 'application.getNarrativeTimeline', { timelineId: timeline.timeline.id })).resolves.toEqual(timelineBefore)
       for (const method of ['application.previewAgentTurn', 'application.invokeAgentTurn']) {
@@ -243,7 +478,7 @@ describe('Studio Server Extension Package resources', () => {
     })
   })
 
-  it('requires an explicit migration before importing a different Package version', async () => {
+  it('requires an explicit version-checked update before replacing Package resources', async () => {
     await withStudioServer(async (port, root) => {
       const sourceDirectory = await writeVersionedResourcePackage(root, '1.0.0', 'old-setting')
       await callRpc(port, 'extensions.installPackage', { sourceDirectory })
@@ -258,6 +493,26 @@ describe('Studio Server Extension Package resources', () => {
       await expect(callRpc(port, 'extensions.importPackageResources', {
         packageId: 'example.package-versioned-resources',
       })).rejects.toThrow('explicit migration')
+      const { installations } = await callRpc<{ installations: Array<{ packageId: string; version: number }> }>(
+        port, 'application.listExtensionInstallations', {},
+      )
+      const installation = installations.find(item => item.packageId === 'example.package-versioned-resources')!
+      const update = {
+        packageId: installation.packageId, packageVersion: '2.0.0',
+        expectedInstallationVersion: installation.version,
+      }
+      await expect(callRpc(port, 'extensions.updatePackageResources', { ...update, packageVersion: '1.0.0' }))
+        .rejects.toThrow('review the update again')
+      await expect(callRpc(port, 'extensions.updatePackageResources', { ...update, expectedInstallationVersion: 0 }))
+        .rejects.toThrow('positive integer')
+      await expect(callRpc(port, 'extensions.updatePackageResources', update))
+        .resolves.toMatchObject({ version: '2.0.0', promptResources: [{ contributionId: 'new-setting' }] })
+      const { resources } = await callRpc<{ resources: Array<{ origin?: { packageId: string; contributionId: string } }> }>(
+        port, 'application.listPromptResources', {},
+      )
+      expect(resources.filter(resource => resource.origin?.packageId === update.packageId).map(resource => resource.origin?.contributionId))
+        .toEqual(['new-setting'])
+      await expect(callRpc(port, 'extensions.updatePackageResources', update)).rejects.toThrow('changed before update')
     })
   })
 })

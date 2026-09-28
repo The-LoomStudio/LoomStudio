@@ -1,5 +1,6 @@
-import { Check, Copy, GitBranch, Link, Pencil, Trash2, X } from 'lucide-react'
-import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Check, Copy, GitBranch, Link, Pencil, RefreshCw, Trash2, X } from 'lucide-react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual'
 import type { Translator } from '../../shared/i18n/index.js'
 import type { NarrativeNode } from '../../entities/index.js'
 import { tryWriteClipboardText } from '../../shared/browser/clipboard.js'
@@ -16,10 +17,12 @@ import type { ClientRendererHost } from '../../shared/extension-renderer-runtime
 import { RendererNodeMountHost } from '../../features/extension-renderers/ui/renderer-node-mount-host.js'
 import { renderTemplateMacros, type MacroRenderContext } from '../../features/state-variables/model/macro-renderer.js'
 import { useNarrativeAnchorNavigation } from './use-narrative-anchor-navigation.js'
+import { useAppearanceStore } from '../../shared/studio-shell/appearance-store.js'
+import { displayText, type DisplayProjection, type OpeningDisplayProjection } from '../../features/message-content/model/use-display-projection.js'
 
 const ConversationMarkdown = lazy(async () => {
-  const module = await import('../../shared/ui/conversation-markdown/conversation-markdown.js')
-  return { default: module.ConversationMarkdown }
+  const module = await import('../../features/message-content/ui/message-content.js')
+  return { default: module.MessageContent }
 })
 
 const MESSAGE_EDITOR_MIN_HEIGHT = 132
@@ -27,12 +30,14 @@ const MESSAGE_EDITOR_MIN_HEIGHT = 132
 type NarrativeNodeView = NarrativeNode
 
 type NarrativeTimelineProps = {
+  displayProjection?: DisplayProjection
   anchorNodeId?: string
   busy: boolean
   composerExpanded?: boolean
   composerHeight: number
   emptyTimelineText: string
   openingDraft?: { content: string; isPlaceholder: boolean }
+  openingDisplay?: OpeningDisplayProjection
   getNodeLink: (nodeId: string) => string
   hasOlder: boolean
   macroContext?: MacroRenderContext
@@ -45,9 +50,11 @@ type NarrativeTimelineProps = {
   t: Translator
   timeline: NarrativeNodeView[]
   timelineId?: string
+  overscan?: number
 }
 
 export function NarrativeTimeline(props: NarrativeTimelineProps) {
+  const storedOverscan = useAppearanceStore(state => state.narrativeOverscan)
   const [editingId, setEditingId] = useState<string>()
   const [draft, setDraft] = useState('')
   const [editorMinHeight, setEditorMinHeight] = useState(0)
@@ -64,6 +71,34 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
   const pendingAnchorScrollRef = useRef<{ timelineId?: string; nodeId: string } | undefined>(undefined)
   const messageSurfaceRefs = useRef(new Map<string, HTMLDivElement>())
   const timelineRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
+  const headerRef = useRef<HTMLDivElement>(null)
+  const [scrollMargin, setScrollMargin] = useState(32)
+  const editingIndex = props.timeline.findIndex(entry => entry.id === editingId)
+  const virtualizer = useVirtualizer({
+    count: props.timeline.length,
+    getScrollElement: () => timelineRef.current,
+    getItemKey: useCallback((index: number) => props.timeline[index].id, [props.timeline]),
+    estimateSize: () => 280,
+    overscan: props.overscan ?? (Number.isInteger(storedOverscan) && storedOverscan >= 0 && storedOverscan <= 50 ? storedOverscan : 5),
+    scrollMargin,
+    anchorTo: 'end',
+    // Anchor navigation can scroll during a layout effect.
+    useFlushSync: false,
+    rangeExtractor: useCallback(range => {
+      const indices = defaultRangeExtractor(range)
+      if (editingIndex >= 0 && !indices.includes(editingIndex)) indices.push(editingIndex)
+      return indices.sort((a, b) => a - b)
+    }, [editingIndex]),
+  })
+  useLayoutEffect(() => {
+    const update = () => setScrollMargin(listRef.current?.offsetTop ?? 32)
+    update()
+    const observer = new ResizeObserver(update)
+    if (headerRef.current) observer.observe(headerRef.current)
+    if (timelineRef.current) observer.observe(timelineRef.current)
+    return () => observer.disconnect()
+  }, [props.hasOlder, props.timeline.length > 0])
   const navigatorItems = useMemo<NarrativeTimelineNavigatorItem[]>(() => props.timeline.map((node, index) => ({
     id: node.id,
     meta: `#${index + 1} · ${formatConversationTimestamp(node.createdAt)}`,
@@ -84,6 +119,8 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
       activeEntryFrameRef.current = undefined
       setActiveEntryId(nodeId)
       pendingAnchorScrollRef.current = { timelineId: props.timelineId, nodeId }
+      const index = props.timeline.findIndex(entry => entry.id === nodeId)
+      virtualizer.scrollToIndex(index, { align: 'center' })
       const surface = messageSurfaceRefs.current.get(nodeId)
       if (surface) {
         surface.scrollIntoView({ block: 'center' })
@@ -218,8 +255,8 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
       let nearestEntryId = props.timeline[0]?.id
       let nearestDistance = Number.POSITIVE_INFINITY
 
-      // ponytail: 当前开发规模按百楼会话线性扫描；接入消息虚拟化后改由虚拟列表直接提供可见索引。
-      for (const entry of props.timeline) {
+      for (const item of virtualizer.getVirtualItems()) {
+        const entry = props.timeline[item.index]
         const surface = messageSurfaceRefs.current.get(entry.id)
         if (!surface) continue
         const bounds = surface.getBoundingClientRect()
@@ -234,12 +271,11 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
   }
 
   function navigateToEntry(entryId: string) {
+    followsComposerRef.current = false
     setActiveEntryId(entryId)
     props.onNodeAnchorChange(entryId)
-    messageSurfaceRefs.current.get(entryId)?.scrollIntoView({
-      behavior: globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-      block: 'center',
-    })
+    const index = props.timeline.findIndex(entry => entry.id === entryId)
+    if (index >= 0) virtualizer.scrollToIndex(index, { align: 'center' })
   }
 
   return (
@@ -247,6 +283,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
       className={styles.timelinePane}
       data-loom-component="narrative-canvas"
       data-loom-object="narrative-timeline"
+      aria-busy={props.displayProjection?.refreshing}
     >
       <div
         className={styles.timeline}
@@ -254,8 +291,17 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
         ref={timelineRef}
         onScroll={scheduleActiveEntryUpdate}
       >
-        {anchorStatus === 'unavailable' ? <p role="status">{props.t('timeline.anchorUnavailable')}</p> : null}
-        {anchorStatus === 'failed' ? <p role="alert">{props.t('timeline.anchorLoadFailed')}</p> : null}
+        <div ref={headerRef} className={styles.timelineHeader}>
+          {props.displayProjection?.warning ? <p role="status">Display: {props.displayProjection.warning}</p> : null}
+          {props.displayProjection?.error ? <div role="alert">
+            <span>Display: {props.displayProjection.error}</span>
+            <button type="button" disabled={props.displayProjection.refreshing} onClick={props.displayProjection.retry}
+              title={props.t('textTransform.refresh')} aria-label={props.t('textTransform.refresh')}><RefreshCw size={16} aria-hidden="true" /></button>
+          </div> : null}
+          {anchorStatus === 'unavailable' ? <p role="status">{props.t('timeline.anchorUnavailable')}</p> : null}
+          {anchorStatus === 'failed' ? <p role="alert">{props.t('timeline.anchorLoadFailed')}</p> : null}
+          {props.hasOlder ? <button disabled={props.busy || anchorStatus === 'loading'} type="button" onClick={() => void props.onLoadOlder().catch(() => undefined)}>{props.t('timeline.loadOlder')}</button> : null}
+        </div>
         {props.timeline.length === 0 ? (
           props.openingDraft ? (
             <Suspense fallback={(
@@ -273,6 +319,12 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                   className={styles.messageSurface}
                   data-loom-slot="message-content"
                 >
+                  {props.openingDisplay?.pending ? <div aria-busy="true"><SkeletonText lines={4} /></div>
+                    : props.openingDisplay?.error ? <div role="alert">
+                      <span>Display: {props.openingDisplay.error}</span>
+                      <button type="button" onClick={props.openingDisplay.retry} title={props.t('textTransform.refresh')} aria-label={props.t('textTransform.refresh')}><RefreshCw aria-hidden="true" /></button>
+                    </div> : <>
+                  {props.openingDisplay?.warning ? <p role="status">Display: {props.openingDisplay.warning}</p> : null}
                   <ConversationMarkdown
                     className={`${styles.messageBody} ${props.openingDraft.isPlaceholder ? styles.placeholderBody : ''}`}
                     codeBlockLabels={{
@@ -283,8 +335,10 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                       enableWrap: props.t('markdown.code.enableWrap'),
                     }}
                     role="assistant"
-                    value={renderTemplateMacros(props.openingDraft.content, props.macroContext)}
+                          value={props.openingDisplay?.text ?? props.openingDraft.content}
+                          macroContext={props.macroContext}
                   />
+                  </>}
                 </div>
               </article>
             </Suspense>
@@ -292,15 +346,20 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
             <div className={styles.empty}>{props.emptyTimelineText}</div>
           )
         ) : (
-          <Suspense fallback={(
-            <div aria-busy="true" className={styles.renderingMessages}>
-              <SkeletonText lines={6} />
-            </div>
-          )}>
-            {props.hasOlder ? <button disabled={props.busy || anchorStatus === 'loading'} type="button" onClick={() => void props.onLoadOlder().catch(() => undefined)}>{props.t('timeline.loadOlder')}</button> : null}
-            {props.timeline.map((entry, index) => {
+          <div ref={listRef} className={styles.virtualList} style={{ height: virtualizer.getTotalSize() }}>
+            {virtualizer.getVirtualItems().map(item => {
+              const index = item.index
+              const entry = props.timeline[index]
               const role = readNarrativeNodeRole(props.timeline, index)
               return (
+                <div
+                  key={entry.id}
+                  data-index={index}
+                  ref={virtualizer.measureElement}
+                  className={styles.virtualRow}
+                  style={{ transform: `translateY(${item.start - scrollMargin}px)` }}
+                >
+                <Suspense fallback={<div aria-busy="true"><SkeletonText lines={6} /></div>}>
                 <article
                 className={`${styles.message} ${styles[role]}`}
                 data-loom-component="chat-message"
@@ -356,6 +415,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                         host={props.rendererHost}
                         nodeId={entry.id}
                         rawText={entry.body.raw}
+                        displayText={displayText(props.displayProjection, entry.id, entry.body.raw) ?? ''}
                         surface="narrative"
                         timelineId={props.timelineId}
                       >
@@ -369,7 +429,8 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                             enableWrap: props.t('markdown.code.enableWrap'),
                           }}
                           role={role}
-                          value={renderTemplateMacros(entry.body.raw, props.macroContext)}
+                          macroContext={props.macroContext}
+                          value={displayText(props.displayProjection, entry.id, entry.body.raw) ?? ''}
                         />
                       </RendererNodeMountHost>
                     ) : (
@@ -383,7 +444,8 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                           enableWrap: props.t('markdown.code.enableWrap'),
                         }}
                         role={role}
-                        value={renderTemplateMacros(entry.body.raw, props.macroContext)}
+                        macroContext={props.macroContext}
+                        value={displayText(props.displayProjection, entry.id, entry.body.raw) ?? ''}
                       />
                     )
                   )}
@@ -422,9 +484,11 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                   )}
                 />
                 </article>
+                </Suspense>
+                </div>
               )
             })}
-          </Suspense>
+          </div>
         )}
         {props.tail ? <div className={styles.tail} data-loom-surface="narrative.timeline.tail">{props.tail}</div> : null}
       </div>

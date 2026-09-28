@@ -1,5 +1,5 @@
 import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
-import { createApplicationRuntime, createOfficialAgentToolRegistry } from '@loom-studio/application-runtime'
+import { createApplicationRuntime, createNarrativeContextRegistry, createOfficialAgentToolRegistry } from '@loom-studio/application-runtime'
 import type { GatewayChatResult } from '@loom-studio/application-runtime'
 import type { AiGatewayRequest } from '@loom-studio/ai-gateway'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
@@ -15,9 +15,10 @@ async function fixture(mode: 'content' | 'json', finishReason: GatewayChatResult
   const calls: Array<Pick<AiGatewayRequest, 'messages' | 'tools'>> = []
   const toolId = mode === 'content' ? 'official/codeact' : 'official/codeact_json'
   const source = code ?? 'const result = await ctx.search({path:"/context", terms:["KEY_SENTINEL"]}); print(result);'
+  const narrativeContext = createNarrativeContextRegistry()
   const runtime = createApplicationRuntime({
     dataEngine: engine, documents: createSqliteDocumentStore({ engine }),
-    agents, narratives: createNarrativeStore({ engine, createId, now }),
+    agents, narratives: createNarrativeStore({ engine, createId, now }), narrativeContext,
     promptResources: createPromptResourceStore({ engine, createId, now }),
     agentTools: createOfficialAgentToolRegistry(),
     gateway: {
@@ -55,14 +56,53 @@ async function fixture(mode: 'content' | 'json', finishReason: GatewayChatResult
   const { providerProfile } = await runtime.createProviderProfile({
     providerExtensionId: 'official.openai-compatible', displayName: 'Test', config: {}, enabledModelIds: ['test'],
   })
-  const { agentProfile } = await runtime.createAgentProfile({
-    name: 'Writer', presetId: preset.id, model: { providerProfileId: providerProfile.id, modelId: 'test' },
+  const { agentPreset } = await runtime.updateAgentPreset({
+    name: 'Writer', agentPresetId: preset.id, expectedVersion: (await runtime.getPromptResource({ resourceId: preset.id })).resource.version, model: { providerProfileId: providerProfile.id, modelId: 'test' },
   })
-  const { session } = await runtime.createAgentSession({ agentProfileId: agentProfile.id })
-  return { runtime, engine, calls, agents, session, toolId, preset, setting }
+  const { session } = await runtime.createAgentSession({ agentPresetId: agentPreset.id })
+  return { runtime, engine, calls, agents, session, toolId, preset, setting, narrativeContext }
 }
 
 describe('CodeAct production tool loop', () => {
+  it.each(['content', 'json'] as const)('shares host-selected Narrative processing with %s tools', async mode => {
+    const f = await fixture(mode, 'stop', `
+const raw = await ctx.readNarrative({ selection: { kind: "tail", count: 1 } });
+const prompt = await ctx.readNarrative({ selection: { kind: "tail", count: 1 }, view: "prompt" });
+print(raw.text);
+print(prompt.text);
+print(prompt.nodes[0].body.raw);
+`);
+    try {
+      const { card } = await f.runtime.createCard({ name: 'Story', opening: 'RAW_STORY {{name}}' })
+      const { timeline } = await f.runtime.createNarrativeTimeline({ cardId: card.id })
+      const page = await f.runtime.getNarrativePage({ timelineId: timeline.id })
+      // Explicit test producer, not the official memory plugin.
+      f.narrativeContext.register({ id: 'test.memory', resolve: async () => ({
+        version: 'initial', memory: null, rawThroughNodeId: page.branch.headNodeId!,
+      }) })
+      await f.runtime.upsertTextTransformRule({
+        ruleId: 'story-transform',
+        rule: {
+          name: 'story', owner: { kind: 'preset', presetId: f.preset.id }, enabled: true, orderIndex: 0,
+          matcher: { kind: 'regex', pattern: 'RAW_STORY', flags: 'g' },
+          effect: { kind: 'replace', replacement: 'PROMPT_STORY' },
+          targets: ['narrative'], phases: ['prompt'],
+        },
+      })
+      await f.runtime.invokeAgentTurn({
+        agentSessionId: f.session.id, input: 'Read story', narrativeTarget: { timelineId: timeline.id },
+      })
+      const { entries } = await f.agents.getEntryPage({ agentSessionId: f.session.id, limit: 100 })
+      const result = entries.find(entry => entry.entry.kind === 'tool-result')!.entry
+      expect(result).toMatchObject({
+        status: 'completed',
+        content: [{ type: 'text', text: 'RAW_STORY {{name}}\nPROMPT_STORY {{name}}\nRAW_STORY {{name}}' }],
+      })
+      expect(f.calls[0]!.messages.some(message => message.content?.includes('PROMPT_STORY {{name}}'))).toBe(true)
+      expect((await f.runtime.getNarrativePage({ timelineId: timeline.id })).nodes[0]!.body.raw).toBe('RAW_STORY {{name}}')
+    } finally { f.engine.close() }
+  })
+
   it.each(['content', 'json'] as const)('connects the real resource mount to %s without exposing node IDs', async mode => {
     const f = await fixture(mode, 'stop', 'print(await ctx.read("/resources/World/Key.md"));')
     try {

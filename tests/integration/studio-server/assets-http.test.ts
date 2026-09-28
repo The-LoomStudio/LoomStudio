@@ -62,6 +62,9 @@ describe('studio server media asset data plane', () => {
 
       const read = await authenticatedFetch(port, created.url)
       expect(read.status).toBe(200)
+      const denied = await authenticatedFetch(port, `/extension-assets/example.client/client/missing-card/${created.asset.id}`)
+      expect(denied.status).toBe(403)
+      expect(await denied.json()).toMatchObject({ error: { code: 'asset.scope_denied' } })
       expect(read.headers.get('content-type')).toBe('image/png')
       expect(read.headers.get('x-content-type-options')).toBe('nosniff')
       expect(Buffer.from(await read.arrayBuffer())).toEqual(bytes)
@@ -222,7 +225,7 @@ describe('studio server media asset data plane', () => {
       const created = await callRpc<{ card: { id: string } }>(port, 'application.importCardBundle', { artifact })
       const backgroundUpload = await authenticatedFetch(port, '/assets', {
         method: 'POST', headers: { 'content-type': 'image/png', 'x-loom-asset-kind': 'card.background' },
-        body: defaultCardPng,
+        body: new Uint8Array(defaultCardPng),
       })
       expect(backgroundUpload.status).toBe(201)
       const background = await backgroundUpload.json() as { asset: { id: string } }
@@ -263,7 +266,7 @@ describe('studio server media asset data plane', () => {
         expect(Buffer.from(restoredBundle.avatar.bytes)).toEqual(defaultCardPng)
         expect(Buffer.from(restoredBundle.background!.bytes)).toEqual(defaultCardPng)
         const pngImport = await authenticatedFetch(port, '/cards/import/png', {
-          method: 'POST', body: encodeCardBundlePng(defaultCardPng, reexportArchive),
+          method: 'POST', body: new Uint8Array(encodeCardBundlePng(defaultCardPng, reexportArchive)),
         })
         expect(pngImport.status).toBe(201)
       })
@@ -273,7 +276,7 @@ describe('studio server media asset data plane', () => {
   it('reports a broken native PNG Bundle without falling through to ST', async () => {
     await withStudioServer(async port => {
       const response = await authenticatedFetch(port, '/cards/import/png', {
-        method: 'POST', body: encodeCardBundlePng(defaultCardPng, Buffer.from('not a ZIP')),
+        method: 'POST', body: new Uint8Array(encodeCardBundlePng(defaultCardPng, Buffer.from('not a ZIP'))),
       })
       expect(response.ok).toBe(false)
       const body = await response.text()

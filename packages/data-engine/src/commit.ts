@@ -8,6 +8,7 @@ export type DataCommitOperation = {
   kind: 'create' | 'update' | 'delete' | 'restore'
   entityId: string
   entityType: string
+  scope?: { store: string; entityId: string; entityType: string; version?: number }
   fromVersion?: number
   toVersion?: number
 }

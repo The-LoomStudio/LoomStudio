@@ -1,9 +1,10 @@
-import type { ClientExtensionModule } from '@loom-studio/extension-sdk'
+import { extensionInstallationId, type ClientExtensionModule } from '@loom-studio/extension-sdk'
 import { createMemoryLogSink, createRootLogger, queryExtensionLogs } from '@loom-studio/logging'
 import { describe, expect, it, vi } from 'vitest'
 import { createClientExtensionHost, type ClientExtensionDataApi, type ManagedClientExtensionPackage } from '../../../apps/studio-client/src/features/extension-renderers/model/client-extension-host.js'
-import { mapPackageImportState } from '../../../apps/studio-client/src/features/extension-renderers/model/use-client-extension-runtime.js'
+import { createClientExtensionDataApi, mapPackageImportState } from '../../../apps/studio-client/src/features/extension-renderers/model/use-client-extension-runtime.js'
 import { createClientRendererHost } from '../../../apps/studio-client/src/shared/extension-renderer-runtime/client-renderer-host.js'
+import { useAppearanceStore } from '../../../apps/studio-client/src/shared/studio-shell/appearance-store.js'
 
 function extensionPackage(enabled = true): ManagedClientExtensionPackage {
   return {
@@ -27,6 +28,131 @@ function extensionPackage(enabled = true): ManagedClientExtensionPackage {
 }
 
 describe('Client Extension Host', () => {
+  it('fixes Config and Record request ownership to the host installation', async () => {
+    const listConfigs = vi.fn(async () => ({ configs: [] }))
+    const listRecords = vi.fn(async () => ({ records: [] }))
+    const data = createClientExtensionDataApi({
+      extensionRuntime: { listConfigs, listRecords },
+    } as unknown as Parameters<typeof createClientExtensionDataApi>[0])
+    const target = { kind: 'card' as const, cardId: 'a' }
+    const query = { packageId: 'forged', target: { kind: 'card', cardId: 'b' } }
+    await data.configs.list('example.client', query as never, target)
+    await data.records.list('example.client', query as never, target)
+    expect(listConfigs).toHaveBeenLastCalledWith({ packageId: 'example.client', target })
+    expect(listRecords).toHaveBeenLastCalledWith({ packageId: 'example.client', target })
+    await data.configs.list('example.client', query as never)
+    expect(listConfigs).toHaveBeenLastCalledWith({ packageId: 'example.client', target: { kind: 'global' } })
+    expect(data.assets.url('asset-1', { packageId: 'example.client', moduleId: 'client', target }))
+      .toBe('/extension-assets/example.client/client/a/asset-1')
+    expect(data.assets.url('asset-1')).toBe('/assets/asset-1')
+  })
+  it('loads only the current Card and releases its commands and background without changing global preferences', async () => {
+    const contexts = new Map<string, Parameters<ClientExtensionModule['activate']>[0]>()
+    const loadModule = vi.fn(async () => ({
+      activate: (context: Parameters<ClientExtensionModule['activate']>[0]) => {
+        contexts.set(context.files.url('wallpaper.png'), context)
+        context.renderers.register({
+          id: 'tail', name: 'Tail', surface: 'narrative.timeline.tail', instanceScope: 'timeline',
+        }, { mount: () => ({ dispose() {} }) })
+        context.backgrounds.register({ id: 'scene', name: 'Scene', description: 'Scene', image: context.files.url('wallpaper.png') })
+        context.commands.register('ping', vi.fn())
+      },
+    }))
+    const rendererHost = createClientRendererHost()
+    rendererHost.setScopeSnapshot({ workspace: 'workspace', cardId: 'a' })
+    const originalBackground = useAppearanceStore.getState().background
+    const configList = vi.fn(async () => [])
+    const host = createClientExtensionHost({
+      rendererHost, loadModule,
+      data: { configs: { list: configList } } as unknown as ClientExtensionDataApi,
+      appearance: {
+        setBackground: useAppearanceStore.getState().setBackground,
+        scoped: { set: useAppearanceStore.getState().setScopedBackground, clear: useAppearanceStore.getState().clearScopedBackground },
+      },
+    })
+    const global = extensionPackage()
+    global.modules[0]!.contributions.commands = [{ id: 'ping', title: 'Ping' }]
+    global.modules[0]!.contributions.actions = [{ commandId: 'ping', surface: 'composer.quick-actions' }]
+    const a = { ...global, archiveDigest: 'a'.repeat(64), target: { kind: 'card' as const, cardId: 'a' } }
+    const b = { ...global, archiveDigest: 'b'.repeat(64), target: { kind: 'card' as const, cardId: 'b' } }
+    try {
+      await host.reconcile([global, a, b])
+      expect(loadModule).toHaveBeenCalledTimes(2)
+      expect(host.summaries()).toHaveLength(2)
+      expect(host.summaries().find(item => !item.target)?.state).toBe('active')
+      expect(host.summaries().filter(item => item.target?.kind === 'card')).toEqual([
+        expect.objectContaining({ state: 'active', target: a.target }),
+      ])
+      const aUrl = `/card-extensions/a/example.client/1.0.0/${a.archiveDigest}/files/wallpaper.png`
+      const aContext = contexts.get(aUrl)!
+      await aContext.configs.list({ scope: { kind: 'card', cardId: 'a' } })
+      expect(configList).toHaveBeenCalledWith('example.client', { scope: { kind: 'card', cardId: 'a' } }, a.target)
+      expect(aContext.backgrounds.activate('scene')).toBe(true)
+      expect(useAppearanceStore.getState().scopedBackground).toMatchObject({ cardId: 'a', image: aUrl })
+      expect(useAppearanceStore.getState().background).toEqual(originalBackground)
+      expect(host.commandRegistrations()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ packageId: 'example.client', moduleId: 'client', commandId: 'ping', target: a.target }),
+      ]))
+      rendererHost.setScopeSnapshot({ workspace: 'workspace', cardId: 'b' })
+      expect(aContext.backgrounds.activate('scene')).toBe(false)
+      await expect(host.executeCommand({ packageId: 'example.client', moduleId: 'client', commandId: 'ping', sourceSurface: 'composer.quick-actions', target: a.target }))
+        .resolves.toMatchObject({ status: 'failed', code: 'command.disabled' })
+      await host.reconcile([global, b])
+      expect(loadModule).toHaveBeenCalledTimes(3)
+      expect(host.summaries()).toHaveLength(2)
+      expect(host.summaries().find(item => !item.target)?.state).toBe('active')
+      expect(useAppearanceStore.getState().scopedBackground).toBeNull()
+      expect(useAppearanceStore.getState().background).toEqual(originalBackground)
+      expect(host.backgrounds().every(item => item.target?.kind !== 'card' || item.target.cardId === 'b')).toBe(true)
+      expect(() => aContext.backgrounds.activate('scene')).toThrow()
+    } finally {
+      await host.dispose()
+      useAppearanceStore.setState({ background: originalBackground, scopedBackground: null })
+    }
+  })
+
+  it('starts an enabled background-only Card module without requiring a dummy renderer', async () => {
+    const rendererHost = createClientRendererHost()
+    rendererHost.setScopeSnapshot({ workspace: 'workspace', cardId: 'a' })
+    const installed = { ...extensionPackage(), target: { kind: 'card' as const, cardId: 'a' }, archiveDigest: 'a'.repeat(64) }
+    installed.modules[0]!.contributions = {}
+    const host = createClientExtensionHost({
+      rendererHost,
+      loadModule: async () => ({ activate: context => context.backgrounds.register({
+        id: 'scene', name: 'Scene', description: 'Scene', image: context.files.url('scene.png'),
+      }) }),
+    })
+    await host.reconcile([installed])
+    expect(host.summaries()[0]?.state).toBe('active')
+    expect(host.backgrounds()).toHaveLength(1)
+    await host.dispose()
+    expect(host.backgrounds()).toEqual([])
+  })
+
+  it('requires declaration and grant, and revokes captured notification contexts on grant changes', async () => {
+    const notify = vi.fn()
+    const contexts: Parameters<ClientExtensionModule['activate']>[0][] = []
+    const host = createClientExtensionHost({
+      rendererHost: createClientRendererHost(),
+      notify,
+      loadModule: async () => ({ activate: context => { contexts.push(context) } }),
+    })
+    const pkg = extensionPackage()
+    await host.reconcile([pkg])
+    await expect(contexts[0]!.notifications.show({ message: 'Denied' })).rejects.toMatchObject({ code: 'capability.denied' })
+    pkg.modules[0]!.requestedUiCapabilities = ['ui.notify']
+    pkg.modules[0]!.desired.grants = { ui: ['ui.notify'] }
+    await host.reconcile([pkg])
+    const granted = contexts.at(-1)!
+    await granted.notifications.show({ message: 'Ready' })
+    expect(notify).toHaveBeenCalledWith('extension:example.client/client', { message: 'Ready' })
+    pkg.modules[0]!.desired.grants = { ui: [] }
+    await host.reconcile([pkg])
+    await expect(granted.notifications.show({ message: 'Stale' })).rejects.toThrow()
+    await expect(contexts.at(-1)!.notifications.show({ message: 'Denied' })).rejects.toMatchObject({ code: 'capability.denied' })
+    expect(notify).toHaveBeenCalledOnce()
+    await host.dispose()
+  })
   it('collects client extension events with host identity and limits queries to this host and package', async () => {
     const memory = createMemoryLogSink({ capacity: 50 })
     const root = createRootLogger({ service: 'studio-client', instanceId: 'client-test', sinks: [memory] })
@@ -50,8 +176,11 @@ describe('Client Extension Host', () => {
     expect(() => context.logs.query({ limit: 20 })).toThrow()
   })
   it('maps Package declarations to imported resource provenance without treating modules as resources', () => {
-    const [mapped] = mapPackageImportState([extensionPackage()], [
+    const target = { kind: 'card' as const, cardId: 'a' }
+    const [mapped, privateMapped] = mapPackageImportState([extensionPackage(), { ...extensionPackage(), target }], [
       { origin: { kind: 'extension-package', packageId: 'example.client', contributionId: 'rule' } },
+      { origin: { kind: 'extension-package', packageId: 'example.client', contributionId: 'private-rule',
+        installationId: extensionInstallationId('example.client', target) } },
     ], [
       { origin: { kind: 'extension-package', packageId: 'other.client', contributionId: 'extractor' } },
     ])
@@ -60,6 +189,7 @@ describe('Client Extension Host', () => {
       textExtractorContributionIds: [],
     })
     expect(mapped?.modules).toEqual(extensionPackage().modules)
+    expect(privateMapped?.importedResources).toEqual({ transformRuleContributionIds: ['private-rule'], textExtractorContributionIds: [] })
   })
 
   it('activates declared Renderer contributions and disposes them when disabled', async () => {
@@ -335,8 +465,8 @@ describe('Client Extension Host', () => {
     })
 
     await host.reconcile([extensionPackage()])
-    expect(list).toHaveBeenCalledWith('example.client', { recordType: 'image' })
-    expect(call).toHaveBeenCalledWith('example.client.refresh', {})
+    expect(list).toHaveBeenCalledWith('example.client', { recordType: 'image' }, { kind: 'global' })
+    expect(call).toHaveBeenCalledWith('example.client.refresh', {}, { packageId: 'example.client', target: { kind: 'global' } })
     expect(host.summaries()).toEqual([expect.objectContaining({ state: 'active' })])
   })
 

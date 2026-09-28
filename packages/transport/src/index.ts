@@ -34,6 +34,7 @@ export type RpcResponseMeta = {
 }
 
 export type EventMeta = {
+  installationId?: string
   eventId: string
   definitionVersion: number
   clientId?: string

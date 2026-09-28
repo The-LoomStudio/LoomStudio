@@ -1,6 +1,6 @@
-import { createMemoryRouter, matchRoutes } from '../../../apps/studio-client/node_modules/react-router-dom/dist/index.mjs'
+import { createMemoryRouter, matchRoutes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { STUDIO_ENTRY_PATHS } from '../../../apps/studio-client/src/shared/studio-shell/studio-route.js'
+import { readStudioRoute, STUDIO_ENTRY_PATHS } from '../../../apps/studio-client/src/shared/studio-shell/studio-route.js'
 import {
   persistStudioWorkspace, readStudioWorkspace, resolveStudioWorkspace, restoreStudioWorkspace, studioHistoryState,
   type StudioWorkspace,
@@ -15,6 +15,14 @@ const position: StudioWorkspace = {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('Studio workspace navigation', () => {
+  it('maps legacy preset links and restored positions to the same Agent editor', () => {
+    expect(readStudioRoute('/studio/presets/reference/preset-2/node/node-2'))
+      .toEqual(readStudioRoute('/studio/agents/reference/preset-2/node/node-2'))
+    expect(readStudioRoute('/studio/presets/card-2/node-2'))
+      .toEqual({ panel: 'agent', cardId: 'card-2', assetId: 'node-2' })
+    expect(readStudioWorkspace({ ...position, panel: 'preset', resourceId: 'preset-2' }))
+      .toEqual({ ...position, panel: 'agent', resourceId: 'preset-2' })
+  })
   it('restores same-URL history positions without losing Timeline/Branch', async () => {
     const router = createMemoryRouter([{ path: '*', Component: () => null }], {
       initialEntries: [{ pathname: '/studio', state: studioHistoryState('/rpc', { panel: null, timelineId: 'timeline', branchId: 'branch', search: '' }) }],

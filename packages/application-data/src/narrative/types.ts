@@ -104,6 +104,21 @@ export type AppendNarrativeNodeResult = {
   commit: DataCommitFact
 }
 
+export type AppendNarrativeUserInput = NarrativeWriteContext & {
+  timelineId: string
+  branchId: string
+  nodeId: string
+  expectedHeadNodeId: string | null
+  body: NarrativeBody
+}
+
+export type AppendNarrativeUserInputResult = {
+  timeline: NarrativeTimeline
+  branch: NarrativeBranch
+  node: NarrativeNode
+  commit: Pick<DataCommitFact, 'changesetId'>
+}
+
 export type ForkNarrativeBranchInput = NarrativeWriteContext & {
   timelineId: string
   fromBranchId: string
@@ -166,6 +181,7 @@ export type EditNarrativeNodeResult = {
 }
 
 export type NarrativeTransaction = {
+  getTimeline(id: string): NarrativeTimeline | null
   restoreArchivePaths(input: { timelineId: string; nodes: NarrativeNode[]; branches: NarrativeBranch[] }): void
   editBranchNode(input: Omit<EditBranchNodeInput, keyof NarrativeWriteContext>): EditBranchNodeValue
   createTimeline(input: Omit<CreateNarrativeTimelineInput, keyof NarrativeWriteContext>): CreateNarrativeTimelineResultWithoutCommit
@@ -184,15 +200,16 @@ export type AppendNarrativeNodeResultWithoutCommit = Omit<AppendNarrativeNodeRes
 
 export type NarrativeStore = {
   editBranchNode(input: EditBranchNodeInput): Promise<EditBranchNodeValue & { commit: DataCommitFact }>
-  getTimeline(id: string): Promise<NarrativeTimeline | null>
+  getTimeline(id: string, options?: { includeDeleted?: boolean }): Promise<NarrativeTimeline | null>
   listTimelines(input?: { createdFromCardId?: string; cursor?: string; limit?: number }): Promise<NarrativeTimelinePage>
-  getBranch(id: string): Promise<NarrativeBranch | null>
+  getBranch(id: string, options?: { includeDeleted?: boolean }): Promise<NarrativeBranch | null>
   listBranches(timelineId: string): Promise<NarrativeBranch[]>
-  getNode(id: string): Promise<NarrativeNode | null>
+  getNode(id: string, options?: { includeDeleted?: boolean }): Promise<NarrativeNode | null>
   listNodes(timelineId: string): Promise<NarrativeNode[]>
   getPage(input: { timelineId: string; branchId?: string; cursor?: string; limit?: number }): Promise<NarrativePage>
   createTimeline(input: CreateNarrativeTimelineInput): Promise<CreateNarrativeTimelineResult>
   appendNode(input: AppendNarrativeNodeInput): Promise<AppendNarrativeNodeResult>
+  appendInput(input: AppendNarrativeUserInput): Promise<AppendNarrativeUserInputResult>
   editNode(input: EditNarrativeNodeInput): Promise<EditNarrativeNodeResult>
   forkBranch(input: ForkNarrativeBranchInput): Promise<{ branch: NarrativeBranch; commit: DataCommitFact }>
   setBranchStateHead(input: SetNarrativeBranchStateHeadInput): Promise<{ branch: NarrativeBranch; commit: DataCommitFact }>
