@@ -20,11 +20,11 @@
 
 ## 后续阶段
 
-1. 资源本体导出与包分发分离，转入 [资源包与 Agent 预设底层计划](resource-packages-and-agent-presets-backend-plan.md)。不再按“Preset / Setting 独立携带完整附件包”方向续建。
+1. 资源本体导出与包分发分离，转入 [资源包与 Agent 预设底层计划](../../archive/plans/resource-packages-and-agent-presets-backend-plan.md)。不再按“Preset / Setting 独立携带完整附件包”方向续建。
 2. 完成角色卡包与扩展包的外部资源链接、用户自定义更新来源、Git 更新和非 Git 版本替换；后续支持自动检测新版，不仅检测角色依赖的扩展。
 3. 讨论并实现 Workspace 开发模式：编辑源、草稿、显式 Apply 与权限边界。
 
-2026-09-27：角色卡包与扩展包保留为包身份，扩展允许纯资源；Agent 预设与 Setting 是可独立导出的资源。现有带附件 artifact 的读取和无损迁移由上述底层计划负责，本说明不表示已改变现有导出格式。相关工作台改进见 [独立 UI 计划](ui/resource-workbench-and-agent-presets-plan.md)。
+2026-09-27：角色卡包与扩展包保留为包身份，扩展允许纯资源；Agent 预设与 Setting 是可独立导出的资源。现有带附件 artifact 的读取和无损迁移由上述底层计划负责，本说明不表示已改变现有导出格式。相关工作台改进见 [独立 UI 计划](../../archive/plans/ui/resource-workbench-and-agent-presets-plan.md)。
 
 ## 已确认边界
 

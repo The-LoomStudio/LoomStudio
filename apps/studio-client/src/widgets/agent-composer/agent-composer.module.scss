@@ -30,7 +30,6 @@
     &:hover,
     &:focus-within,
     &[data-has-content='true'],
-    &[data-expanded='true'],
     &[data-pinned='true'] {
       transform: translateY(0);
       opacity: 1;

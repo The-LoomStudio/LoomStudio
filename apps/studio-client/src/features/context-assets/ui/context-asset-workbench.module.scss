@@ -25,3 +25,24 @@
   height: 100%;
   overflow: auto;
 }
+
+.treeToggle {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--loom-color-text-subtle);
+  cursor: pointer;
+}
+
+.treeToggle[aria-pressed='true'] {
+  color: var(--loom-color-accent);
+}
+
+.treeToggle svg {
+  width: 18px;
+  height: 18px;
+}

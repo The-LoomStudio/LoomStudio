@@ -1,10 +1,10 @@
-import { Box, Boxes, Braces, Component, FileCode2, Link2, Plus, Save, Trash2 } from 'lucide-react'
+import { Box, Boxes, Braces, Component, FileCode2, Folder, FolderOpen, Link2, Plus, Save, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import type { Card, CardStateTemplate } from '../../../entities/card.js'
 import type { JsonObject } from '../../../entities/common.js'
 import type { Translator } from '../../../shared/i18n/index.js'
-import { FileTree } from '../../../shared/ui/file-tree/file-tree.js'
+import { FileTree, type FileTreeNode } from '../../../shared/ui/file-tree/file-tree.js'
 import { MasterDetailWorkbench } from '../../../shared/ui/master-detail-workbench/master-detail-workbench.js'
 import { objectToYaml, parseCardStateConfig, stateSnapshotToTreeNodes, yamlToObject } from '../model/state-variable-editor.js'
 import styles from './state-variables-panel.module.scss'
@@ -168,55 +168,181 @@ export function StateAuthoringPanel(props: StateAuthoringPanelProps) {
 
 function AuthoringMaster(props: { config: DraftConfig; selection: Selection; select(selection: Selection): void; commit(config: DraftConfig): void; t: Translator }) {
   const { config, selection, select, commit, t } = props
-  const group = (title: string, count: number, addLabel: string, onAdd: () => void, children: ReactNode) => (
-    <section className={styles.navGroup}>
-      <header><span>{title}</span><small>{count}</small><button aria-label={addLabel} className={styles.navAddBtn} type="button" onClick={onAdd}><Plus aria-hidden="true" size={14} /></button></header>
-      {children}
-    </section>
-  )
-  return <nav className={styles.masterNav} aria-label={t('stateAuthoring.title')}>
-    {group(t('stateAuthoring.entityTypes'), config.stateEntityTypes.length, t('stateAuthoring.addEntityType'), () => {
+  const [expandedIds, setExpandedIds] = useState<string[]>([
+    'group:entity-type', 'group:entity', 'group:component', 'group:mount', 'group:contribution', 'group:binding',
+  ])
+
+  const selectedNodeId = selection.kind === 'source' ? 'source' : `${selection.kind}:${selection.index}`
+
+  const nodes: FileTreeNode[] = useMemo(() => [
+    {
+      id: 'group:entity-type',
+      label: t('stateAuthoring.entityTypes'),
+      kind: 'folder',
+      meta: String(config.stateEntityTypes.length),
+      children: config.stateEntityTypes.map((item, index) => ({
+        id: `entity-type:${index}`,
+        label: item.label || item.id,
+        kind: 'entry',
+        meta: item.collectionPath,
+      })),
+    },
+    {
+      id: 'group:entity',
+      label: t('stateAuthoring.entities'),
+      kind: 'folder',
+      meta: String(config.timelineStateEntities.length),
+      children: config.timelineStateEntities.map((item, index) => ({
+        id: `entity:${index}`,
+        label: item.entityId,
+        kind: 'entry',
+        meta: item.typeId,
+      })),
+    },
+    {
+      id: 'group:component',
+      label: t('stateAuthoring.templates'),
+      kind: 'folder',
+      meta: String(config.stateTemplates.length),
+      children: config.stateTemplates.map((item, index) => ({
+        id: `component:${index}`,
+        label: item.label || item.componentKey || item.id,
+        kind: 'entry',
+        meta: `${item.id} · v${item.templateVersion}`,
+      })),
+    },
+    {
+      id: 'group:mount',
+      label: t('stateAuthoring.mounts'),
+      kind: 'folder',
+      meta: String(config.timelineComponentMounts.length),
+      children: config.timelineComponentMounts.map((item, index) => ({
+        id: `mount:${index}`,
+        label: item.componentKey,
+        kind: 'entry',
+        meta: formatMountTarget(item),
+      })),
+    },
+    {
+      id: 'group:contribution',
+      label: t('stateAuthoring.contributions'),
+      kind: 'folder',
+      meta: String(config.stateContributionIds.length),
+      children: config.stateContributionIds.map((id, index) => ({
+        id: `contribution:${index}`,
+        label: id,
+        kind: 'entry',
+        meta: t('stateAuthoring.extensionSource'),
+      })),
+    },
+    {
+      id: 'group:binding',
+      label: t('stateAuthoring.rawBindings'),
+      kind: 'folder',
+      meta: String(config.timelineStateBindings.length),
+      children: config.timelineStateBindings.map((item, index) => ({
+        id: `binding:${index}`,
+        label: item.path,
+        kind: 'entry',
+        meta: `${item.templateId} · v${item.templateVersion}`,
+      })),
+    },
+    {
+      id: 'source',
+      label: t('stateAuthoring.source'),
+      kind: 'entry',
+      meta: 'YAML',
+    },
+  ], [config, t])
+
+  const handleAdd = (groupId: string, event: React.MouseEvent) => {
+    event.stopPropagation()
+    if (groupId === 'group:entity-type') {
       const index = config.stateEntityTypes.length
       commit({ ...config, stateEntityTypes: [...config.stateEntityTypes, { id: `entity-type-${index + 1}`, collectionPath: `entities.type_${index + 1}` }] })
       select({ kind: 'entity-type', index })
-    }, config.stateEntityTypes.map((item, index) => <NavItem key={`${item.id}:${index}`} active={selection.kind === 'entity-type' && selection.index === index} icon={<Boxes size={15} />} label={item.label || item.id} meta={item.collectionPath} onClick={() => select({ kind: 'entity-type', index })} />))}
-    {group(t('stateAuthoring.entities'), config.timelineStateEntities.length, t('stateAuthoring.addEntity'), () => {
+    } else if (groupId === 'group:entity') {
       if (!config.stateEntityTypes.length) return
       const index = config.timelineStateEntities.length
       commit({ ...config, timelineStateEntities: [...config.timelineStateEntities, { typeId: config.stateEntityTypes[0]!.id, entityId: `entity-${index + 1}` }] })
       select({ kind: 'entity', index })
-    }, config.timelineStateEntities.map((item, index) => <NavItem key={`${item.typeId}:${item.entityId}:${index}`} active={selection.kind === 'entity' && selection.index === index} icon={<Box size={15} />} label={item.entityId} meta={item.typeId} onClick={() => select({ kind: 'entity', index })} />))}
-    {group(t('stateAuthoring.templates'), config.stateTemplates.length, t('stateAuthoring.addTemplate'), () => {
+    } else if (groupId === 'group:component') {
       const index = config.stateTemplates.length
       const id = uniqueTemplateId(config.stateTemplates, index + 1)
       commit({ ...config, stateTemplates: [...config.stateTemplates, { id, templateVersion: 1, schema: { type: 'object' }, initial: {}, componentKey: `component_${index + 1}`, targetEntityTypeIds: [] }], stateDefinitionIds: [...config.stateDefinitionIds, id] })
       select({ kind: 'component', index })
-    }, config.stateTemplates.map((item, index) => <NavItem key={`${item.id}:${index}`} active={selection.kind === 'component' && selection.index === index} icon={<Component size={15} />} label={item.label || item.componentKey || item.id} meta={`${item.id} · v${item.templateVersion}`} onClick={() => select({ kind: 'component', index })} />))}
-    {group(t('stateAuthoring.mounts'), config.timelineComponentMounts.length, t('stateAuthoring.addMount'), () => {
+    } else if (groupId === 'group:mount') {
       const template = config.stateTemplates[0]
       if (!template || !config.stateEntityTypes.length) return
       const index = config.timelineComponentMounts.length
       commit({ ...config, timelineComponentMounts: [...config.timelineComponentMounts, { templateId: template.id, templateVersion: template.templateVersion, componentKey: template.componentKey || template.id, target: { kind: 'entity-type', typeId: config.stateEntityTypes[0]!.id }, initial: {} }] })
       select({ kind: 'mount', index })
-    }, config.timelineComponentMounts.map((item, index) => <NavItem key={`${item.templateId}:${index}`} active={selection.kind === 'mount' && selection.index === index} icon={<Link2 size={15} />} label={item.componentKey} meta={formatMountTarget(item)} onClick={() => select({ kind: 'mount', index })} />))}
-    {group(t('stateAuthoring.contributions'), config.stateContributionIds.length, t('stateAuthoring.addContribution'), () => {
+    } else if (groupId === 'group:contribution') {
       const index = config.stateContributionIds.length
       commit({ ...config, stateContributionIds: [...config.stateContributionIds, `extension.package.contribution-${index + 1}`] })
       select({ kind: 'contribution', index })
-    }, config.stateContributionIds.map((id, index) => <NavItem key={`${id}:${index}`} active={selection.kind === 'contribution' && selection.index === index} icon={<Link2 size={15} />} label={id} meta={t('stateAuthoring.extensionSource')} onClick={() => select({ kind: 'contribution', index })} />))}
-    {group(t('stateAuthoring.rawBindings'), config.timelineStateBindings.length, t('stateAuthoring.addRawBinding'), () => {
+    } else if (groupId === 'group:binding') {
       const template = config.stateTemplates[0]
       if (!template) return
       const index = config.timelineStateBindings.length
       commit({ ...config, timelineStateBindings: [...config.timelineStateBindings, { path: 'state.path', templateId: template.id, templateVersion: template.templateVersion, initial: {} }] })
       select({ kind: 'binding', index })
-    }, config.timelineStateBindings.map((item, index) => <NavItem key={`${item.path}:${index}`} active={selection.kind === 'binding' && selection.index === index} icon={<Braces size={15} />} label={item.path} meta={`${item.templateId} · v${item.templateVersion}`} onClick={() => select({ kind: 'binding', index })} />))}
-    <section className={styles.navGroup}><header><span>{t('stateAuthoring.source')}</span></header><NavItem active={selection.kind === 'source'} icon={<FileCode2 size={15} />} label={t('stateAuthoring.cardConfig')} meta="YAML" onClick={() => select({ kind: 'source' })} /></section>
-  </nav>
-}
+    }
+  }
 
-function NavItem(props: { active: boolean; icon: ReactNode; label: string; meta: string; onClick(): void }) {
-  return <button aria-current={props.active ? 'page' : undefined} className={styles.navItem} type="button" onClick={props.onClick}>{props.icon}<span className={styles.navItemBody}><strong>{props.label}</strong><small>{props.meta}</small></span></button>
+  return (
+    <div className={styles.treeContainer}>
+      <FileTree
+        ariaLabel={t('stateAuthoring.title')}
+        nodes={nodes}
+        selectedId={selectedNodeId}
+        expandedIds={expandedIds}
+        onExpandedIdsChange={setExpandedIds}
+        onSelect={node => {
+          if (node.id === 'source') {
+            select({ kind: 'source' })
+          } else if (node.kind === 'folder') {
+            setExpandedIds(prev => prev.includes(node.id) ? prev.filter(id => id !== node.id) : [...prev, node.id])
+          } else {
+            const [kind, indexStr] = node.id.split(':')
+            if (kind && indexStr !== undefined) {
+              select({ kind: kind as any, index: Number(indexStr) })
+            }
+          }
+        }}
+        renderIcon={(node, expanded) => {
+          if (node.kind === 'folder') {
+            return expanded ? <FolderOpen size={16} /> : <Folder size={16} />
+          }
+          if (node.id === 'source') return <FileCode2 size={16} />
+          if (node.id.startsWith('entity-type:')) return <Boxes size={16} />
+          if (node.id.startsWith('entity:')) return <Box size={16} />
+          if (node.id.startsWith('component:')) return <Component size={16} />
+          if (node.id.startsWith('mount:') || node.id.startsWith('contribution:')) return <Link2 size={16} />
+          if (node.id.startsWith('binding:')) return <Braces size={16} />
+          return null
+        }}
+        renderTrailing={node => {
+          if (node.kind === 'folder') {
+            return (
+              <button
+                aria-label={`添加 ${node.label}`}
+                className={styles.navAddBtn}
+                type="button"
+                onClick={event => handleAdd(node.id, event)}
+              >
+                <Plus aria-hidden="true" size={13} />
+              </button>
+            )
+          }
+          return null
+        }}
+        getDisclosureLabel={(node, expanded) => `${expanded ? '折叠' : '展开'} ${node.label}`}
+        getDragLabel={node => `移动 ${node.label}`}
+        moreActionsLabel="更多操作"
+      />
+    </div>
+  )
 }
 
 function AuthoringDetail(props: { config: DraftConfig; selection: Selection; commit(config: DraftConfig): void; sourceText: string; sourceError: string; updateSource(text: string): void; t: Translator }) {

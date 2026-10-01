@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from 'react'
-import { Library, Trash2 } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore } from '../../shared/studio-shell/studio-layout-store.js'
 import { AssetWorkbenchLayout } from '../../shared/ui/asset-workbench-layout/asset-workbench-layout.js'
 import { PanelTabs } from '../../shared/ui/panel-tabs/index.js'
@@ -14,26 +14,18 @@ import { readPromptResourceWorkbenchRoot } from '../../features/context-assets/m
 import { ContextAssetEditor, ContextAssetExplorer } from '../../features/context-assets/ui/context-asset-workbench.js'
 import { findContextAssetPath, findContextAssetByVirtualPath } from '../../features/context-assets/model/context-asset-tree.js'
 import { PromptResourceToolbar } from '../../features/context-assets/ui/prompt-resource-toolbar/prompt-resource-toolbar.js'
+import { useResourceTokenSnapshot } from '../../features/context-assets/model/use-resource-token-snapshot.js'
 import { Dialog } from '@loom-studio/ui'
-import { MacroAuthoringDetail, MacroAuthoringExplorer, type MacroAuthoringPanelProps, useMacroAuthoring } from '../../features/state-variables/ui/macro-authoring-panel.js'
 import type { Card, ContextAssetNode, PromptResource, SettingMount, SettingMountSource } from '../../entities/index.js'
 import type { Translator } from '../../shared/i18n/index.js'
-import type { StudioApi } from '../../shared/api/studio-api.js'
-import { TextTransformDetail, TextTransformExplorer, useTextTransformController } from '../../features/text-transforms/ui/text-transform-panel.js'
 import styles from './context-workbench.module.scss'
-import { OfficialContentDialog } from '../../features/official-content/ui/official-content-dialog.js'
+import { readSettingTreeMeta, resolveSettingScope, resolveSettingTarget } from './setting-target.js'
 
 type ContextWorkbenchProps = {
   resourceBindings?: import('../../features/context-assets/ui/prompt-resource-toolbar/resource-bindings.js').ResourceBindingsSource
   extensionInstallations?: import('../../entities/index.js').ListExtensionInstallationsResult['installations']
-  officialContentApi: StudioApi['officialContent']
-  onOfficialContentInstalled(): Promise<void>
-  view: 'settings' | 'macros' | 'text'
-  onViewChange: (view: 'settings' | 'macros' | 'text') => void
-  textTransformsApi: StudioApi['textTransforms']
-  loomScriptsApi: StudioApi['loomScripts']
-  onLoomScriptsChanged: () => void
-  macroAuthoring?: MacroAuthoringPanelProps
+  view?: 'settings' | 'macros' | 'text'
+  onViewChange?: (view: 'settings' | 'macros' | 'text') => void
   card?: Card
   nodes: ContextAssetNode[]
   resources: PromptResource[]
@@ -60,7 +52,7 @@ type ContextWorkbenchProps = {
   onReplaceSettingMounts: (source: SettingMountSource, settingResourceIds: string[]) => Promise<void>
   onReplaceCardResources: (cardId: string, resourceIds: string[]) => Promise<void>
   selectedResourceId?: string
-  onSelectResource?: (resourceId: string) => void
+  onSelectResource?: (resourceId: string, replace?: boolean) => void
   routeAssetId?: string
   routeResourceId?: string
   searchQuery: string
@@ -84,19 +76,10 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   const setTextEditorMode = useStudioLayoutStore(state => state.setTextEditorMode)
   const searchQuery = props.searchQuery
   const [bindingOpen, setBindingOpen] = useState(false)
-  const [officialContentOpen, setOfficialContentOpen] = useState(false)
   const [internalSelectedResourceId, setInternalSelectedResourceId] = useState<string>()
+  const [temporarySelection, setTemporarySelection] = useState<{ resourceId: string; nodeId: string }>()
+  const [temporaryExpandedIds, setTemporaryExpandedIds] = useState<string[]>([])
   const mobilePane = useStudioLayoutStore(state => state.assetPanes.resources[props.workspaceId] ?? 'explorer')
-  const macroController = useMacroAuthoring(props.macroAuthoring)
-  const textController = useTextTransformController({
-    api: props.textTransformsApi,
-    loomScriptsApi: props.loomScriptsApi,
-    onRuntimeChanged: props.onLoomScriptsChanged,
-    owner: props.card ? { kind: 'card', cardId: props.card.id } : { kind: 'runtime' },
-    t: props.t,
-    mobilePane: mobilePane === 'explorer' ? 'master' : 'detail',
-    onMobilePaneChange: pane => setAssetPane('resources', props.workspaceId, pane === 'master' ? 'explorer' : 'detail'),
-  })
 
   const settingResources = useMemo(
     () => props.resources.filter(resource => resource.resourceKind === 'setting'),
@@ -110,47 +93,80 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
     return settingResources.find(r => r.id === props.routeAssetId || Boolean(findContextNode([r.rootNode], props.routeAssetId)))
   }, [props.routeResourceId, props.routeAssetId, settingResources])
 
-  const selectedId = explorerView.selectedId
+  const [scopeFilter, setScopeFilter] = useState<'current' | 'global'>('current')
 
-  const selectedNodeResource = useMemo(() => {
-    if (!selectedId) return undefined
-    return settingResources.find(r => r.id === selectedId || Boolean(findContextNode([r.rootNode], selectedId)))
-  }, [selectedId, settingResources])
+  const globalMountIds = useMemo(() => new Set(
+    props.settingMounts
+      .filter(m => m.source.id === 'global')
+      .map(m => m.settingResourceId)
+  ), [props.settingMounts])
 
+  const collection = useMemo(() => resolveSettingScope(
+    settingResources, globalMountIds, cardResourceIds, props.extensionInstallations ?? [], scopeFilter,
+  ), [settingResources, globalMountIds, cardResourceIds, props.extensionInstallations, scopeFilter])
+  const target = resolveSettingTarget(collection, settingResources, props.routeResourceId)
+  const targetResources = target.resources
+  const temporaryOrigin = target.target?.origin?.kind === 'extension-package'
+    ? `${props.t('directory.extensionContribution')} · ${target.target.origin.packageId}`
+    : target.target?.origin?.kind === 'builtin' ? props.t('directory.builtinResource')
+      : target.target?.sourceArtifactRef ? props.t('directory.cardResource') : props.t('directory.userResource')
+  const selectedId = target.temporary
+    ? (temporarySelection?.resourceId === props.routeResourceId ? temporarySelection?.nodeId : props.routeAssetId ?? target.target!.rootNode.id)
+    : explorerView.selectedId
+  const selectedNodeResource = selectedId ? settingResources.find(r => r.id === selectedId || Boolean(findContextNode([r.rootNode], selectedId))) : undefined
   const selectedResourceId = props.routeResourceId ?? props.selectedResourceId
-    ?? routeTargetResource?.id
-    ?? selectedNodeResource?.id
-    ?? internalSelectedResourceId
+    ?? routeTargetResource?.id ?? selectedNodeResource?.id ?? internalSelectedResourceId
     ?? (settingResources.find(r => cardResourceIds.has(r.id))?.id ?? (unavailableBoundIds.length === 0 ? settingResources[0]?.id : undefined))
+  const tokenResource = targetResources.find(resource => resource.id === selectedResourceId)
+  const tokenSnapshot = useResourceTokenSnapshot(tokenResource ? [tokenResource.rootNode] : [], `${props.workspaceId}:${selectedResourceId ?? ''}`)
 
-  const characterSettingResources = useMemo(() => {
-    if (!props.card?.promptResourceIds?.length) return []
-    const ids = new Set(props.card.promptResourceIds)
-    return settingResources.filter(r => ids.has(r.id))
-  }, [props.card?.promptResourceIds, settingResources])
+  const displayNodes: ContextAssetNode[] = useMemo(() => {
+    return targetResources.map(resource => {
+      const origin = resource.origin
+      const isBuiltin = origin?.kind === 'builtin'
+      const isExtension = origin?.kind === 'extension-package'
+      const installation = isExtension
+        ? props.extensionInstallations?.find(inst => inst.id === origin.installationId && inst.packageId === origin.packageId)
+        : undefined
+      const originLabel = isBuiltin
+        ? props.t('promptResource.official')
+        : isExtension
+          ? (installation?.packageId ?? origin.packageId)
+          : props.t('agent.sources.workspace')
 
-  const targetResources = props.routeResourceId
-    ? (routeTargetResource ? [routeTargetResource] : [])
-    : characterSettingResources.length > 0 || unavailableBoundIds.length > 0
-    ? characterSettingResources
-    : settingResources
+      const isGlobal = globalMountIds.has(resource.id)
+      const isCurrent = cardResourceIds.has(resource.id)
+      const scopeBadge = isGlobal && isCurrent ? '全局 · 当前' : isGlobal ? '全局默认' : isCurrent ? '当前卡片' : undefined
+      const meta = [scopeBadge, originLabel].filter(Boolean).join(' · ')
 
-  const workbenchNodes = useMemo(() => {
-    return targetResources.map(readPromptResourceWorkbenchRoot)
-  }, [targetResources])
+      const root = readPromptResourceWorkbenchRoot(resource)
+      const children = (root.children ?? []) as ContextAssetNode[]
 
+      return {
+        ...root,
+        id: resource.rootNode.id,
+        label: resource.rootNode.label,
+        kind: 'folder',
+        category: 'setting-root',
+        meta,
+        children,
+      }
+    })
+  }, [targetResources, globalMountIds, cardResourceIds, props.extensionInstallations, props.t])
+
+  const workbenchNodes = displayNodes
   const selectedNode = findContextNode(workbenchNodes, selectedId)
-  const hasDetailSelection = props.view === 'text'
-    || (props.view === 'macros' ? Boolean(macroController.selectedRowId) : Boolean(selectedNode))
+  const selectedSettingResource = targetResources.find(r => r.id === selectedId)
+  const hasDetailSelection = Boolean(selectedNode || selectedSettingResource)
 
   const bindingResources = props.resources
-  const boundIds = props.card?.promptResourceIds ?? []
+  const boundIds = scopeFilter === 'global' ? [...globalMountIds] : props.card?.promptResourceIds ?? []
 
   useEffect(() => {
-    if (!props.routeAssetId) return
-    if (props.routeResourceId) props.onViewChange('settings')
+    if (!props.routeAssetId || target.temporary) return
+    if (props.routeResourceId) props.onViewChange?.('settings')
     openAssetDetail('resources', props.workspaceId, props.routeAssetId)
-  }, [openAssetDetail, props.routeResourceId, props.routeAssetId, props.workspaceId])
+  }, [openAssetDetail, props.routeResourceId, props.routeAssetId, target.temporary, props.workspaceId, props.onViewChange])
 
   useEffect(() => {
     const handleNavigate = (event: Event) => {
@@ -181,46 +197,43 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
   }, [workbenchNodes, explorerView.expandedIds, props.workspaceId, setExpandedIds, openAssetDetail])
 
   useEffect(() => {
-    if (props.routeResourceId) return
+    if (target.temporary || target.unavailable) return
     if (selectedId && findContextNode(workbenchNodes, selectedId)) return
     if (workbenchNodes[0]?.id) {
       setSelectedId('resources', props.workspaceId, workbenchNodes[0].id)
     }
-  }, [props.routeResourceId, props.workspaceId, selectedId, setSelectedId, workbenchNodes])
-
-  const displayNodes = workbenchNodes
+  }, [target.temporary, target.unavailable, props.workspaceId, selectedId, setSelectedId, workbenchNodes])
 
   useEffect(() => {
-    setAssetPane('resources', props.workspaceId, props.routeResourceId ? 'detail' : 'explorer')
-    macroController.selectRow(undefined)
-  }, [props.routeResourceId, props.macroAuthoring?.ownerId])
+    if (!target.temporary) return
+    const previous = useStudioLayoutStore.getState().assetPanes.resources[props.workspaceId] ?? 'explorer'
+    setAssetPane('resources', props.workspaceId, 'detail')
+    return () => setAssetPane('resources', props.workspaceId, previous)
+  }, [target.temporary, props.workspaceId, setAssetPane])
 
-  function changeView(view: 'settings' | 'macros' | 'text') {
-    setAssetPane('resources', props.workspaceId, 'explorer')
-    if (view !== 'macros') macroController.selectRow(undefined)
-    props.onViewChange(view)
-  }
+  useEffect(() => {
+    if (target.temporary) setTemporaryExpandedIds([])
+  }, [target.temporary, props.routeResourceId])
 
   function handleSelectNode(id: string) {
     setAssetPane('resources', props.workspaceId, 'detail')
-    openAssetDetail('resources', props.workspaceId, id)
+    if (target.temporary) setTemporarySelection({ resourceId: props.routeResourceId!, nodeId: id })
+    else openAssetDetail('resources', props.workspaceId, id)
   }
 
   function handleSelectResource(resourceId: string) {
     setInternalSelectedResourceId(resourceId)
-    props.onSelectResource?.(resourceId)
+    if (props.onSelectResource) {
+      props.onSelectResource(resourceId, target.temporary)
+      return
+    }
     const resource = settingResources.find(r => r.id === resourceId)
     if (resource) {
       handleSelectNode(resource.rootNode.id)
     }
   }
 
-  function handleSelectMacro(id: string) {
-    macroController.selectRow(id)
-    setAssetPane('resources', props.workspaceId, 'detail')
-  }
-
-  if (props.routeResourceId && (!routeTargetResource || (props.routeAssetId && !findContextNode([routeTargetResource.rootNode], props.routeAssetId)))) {
+  if (props.routeResourceId && (target.unavailable || (props.routeAssetId && !findContextNode([routeTargetResource!.rootNode], props.routeAssetId)))) {
     return <p role="alert">{props.t('promptResource.referenceUnavailable', { id: props.routeResourceId })}</p>
   }
 
@@ -232,33 +245,35 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
       onMobilePaneChange={pane => setAssetPane('resources', props.workspaceId, pane)}
       header={(
         <div className={styles.header}>
+        {target.temporary ? <>
+          <span>{props.t('promptResource.temporaryOpen')} · {temporaryOrigin}</span>
+        </> : null}
         <PanelTabs
-          activeId={props.view}
+          activeId={scopeFilter}
           ariaLabel={props.t('context.authoring.views')}
           items={[
-            { id: 'settings', label: props.t('context.authoring.settings') },
-            { id: 'macros', label: props.t('context.authoring.macros') },
-            { id: 'text', label: props.t('rail.textTransform') },
+            { id: 'current', label: '当前角色' },
+            { id: 'global', label: '全局' },
           ]}
-          onChange={changeView}
+          onChange={id => {
+            setBindingOpen(false)
+            setScopeFilter(id as 'current' | 'global')
+          }}
         />
-        <button aria-label={props.t('official.builtin')} title={props.t('official.builtin')} type="button" onClick={() => setOfficialContentOpen(true)}>
-          <Library aria-hidden="true" size={16} />
-        </button>
-        {officialContentOpen ? <OfficialContentDialog api={props.officialContentApi} onInstalled={props.onOfficialContentInstalled} onClose={() => setOfficialContentOpen(false)} t={props.t} /> : null}
         </div>
       )}
-      toolbar={props.view === 'settings' ? (
+      toolbar={(
         <PromptResourceToolbar
-          resourceBindings={props.resourceBindings}
-          bindingResources={props.resources}
+          tokenSnapshot={tokenSnapshot}
           extensionInstallations={props.extensionInstallations}
           hideSelect
+          hideSingleResourceActions
           resourceKind="setting"
           resources={settingResources}
           selectedResourceId={selectedResourceId}
           t={props.t}
-          onBindResources={() => setBindingOpen(true)}
+          bindResourcesLabel={props.t(scopeFilter === 'global' ? 'context.globalBindings.action' : 'context.cardBindings.action')}
+          onBindResources={scopeFilter === 'global' || props.card ? () => setBindingOpen(true) : undefined}
           onCreate={props.onCreateResource}
           draftResourceIds={props.draftResourceIds}
           onDiscardDraft={props.onDiscardDraft}
@@ -271,20 +286,21 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
           onImportZip={props.onImportResourceZip}
           onSelect={handleSelectResource}
         />
-      ) : undefined}
+      )}
       onExplorerWidthChange={width => setExplorerWidth('resources', width)}
       resizeLabel={props.t('context.resizeExplorer')}
-      viewMode={props.view === 'text' ? 'master-detail' : explorerView.viewMode}
-      explorer={props.view === 'text' ? <TextTransformExplorer controller={textController} /> : props.view === 'macros' ? (
-        <MacroAuthoringExplorer controller={macroController} onAdd={() => setAssetPane('resources', props.workspaceId, 'detail')} onSelect={handleSelectMacro} />
-      ) : (
+      viewMode={explorerView.viewMode}
+      explorer={(
         <div className={styles.resourceExplorer}>
           {unavailableBoundIds.map(id => <p key={id} role="status">{props.t('context.bindings.unavailable', { id })}</p>)}
           <ContextAssetExplorer
+            tokenSnapshot={tokenSnapshot}
+            formatMeta={readSettingTreeMeta}
+            key={target.temporary ? `temporary:${props.routeResourceId}` : 'collection'}
             displayNodes={displayNodes}
-            expandedIds={explorerView.expandedIds}
+            expandedIds={target.temporary ? temporaryExpandedIds : explorerView.expandedIds}
             query={searchQuery}
-            scrollKey={`resources:${props.workspaceId}`}
+            scrollKey={`resources:${props.workspaceId}:${target.temporary ? props.routeResourceId : 'collection'}`}
             selectedId={selectedId}
             t={props.t}
             virtualized
@@ -294,7 +310,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
             onDeleteNode={props.onDeleteNode}
             onDuplicateNode={props.onDuplicateNode}
             onRenameNode={props.onRenameNode}
-            onExpandedIdsChange={expandedIds => setExpandedIds('resources', props.workspaceId, expandedIds)}
+            onExpandedIdsChange={expandedIds => target.temporary ? setTemporaryExpandedIds(expandedIds) : setExpandedIds('resources', props.workspaceId, expandedIds)}
             onMoveNode={(draggedId, targetId, position) => {
               props.onMoveNode(draggedId, targetId, position)
             }}
@@ -310,12 +326,14 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
           />
           <ResourceBindingDialog
             boundIds={boundIds}
-            description={props.t('context.cardBindings.description')}
+            description={props.t(scopeFilter === 'global' ? 'context.globalBindings.description' : 'context.cardBindings.description')}
             open={bindingOpen}
             resources={bindingResources}
             t={props.t}
-            title={props.t('context.cardBindings.title')}
-            onChange={resourceIds => props.card ? props.onReplaceCardResources(props.card.id, resourceIds) : Promise.resolve()}
+            title={props.t(scopeFilter === 'global' ? 'context.globalBindings.title' : 'context.cardBindings.title')}
+            onChange={resourceIds => scopeFilter === 'global'
+              ? props.onReplaceSettingMounts({ kind: 'manual', id: 'global' }, resourceIds)
+              : props.onReplaceCardResources(props.card!.id, resourceIds)}
             onClose={() => setBindingOpen(false)}
           />
         </div>
@@ -323,31 +341,16 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
     >
       <div
         className={styles.viewContent}
-        id={`${viewId}-macros-content`}
-        role="tabpanel"
-        aria-labelledby={`${viewId}-macros`}
-        hidden={props.view !== 'macros'}
-      >
-        <MacroAuthoringDetail controller={macroController} />
-      </div>
-      <div
-        className={styles.viewContent}
-        id={`${viewId}-text-content`}
-        role="tabpanel"
-        aria-labelledby={`${viewId}-text`}
-        hidden={props.view !== 'text'}
-      >
-        {props.card ? <TextTransformDetail controller={textController} /> : <p>{props.t('textTransform.noCard')}</p>}
-      </div>
-      <div
-        className={styles.viewContent}
         id={`${viewId}-settings-content`}
         role="tabpanel"
         aria-labelledby={`${viewId}-settings`}
-        hidden={props.view !== 'settings'}
       >
-      <ContextAssetEditor
+        {target.temporary ? <div className={styles.temporaryDetailHeader}>
+          <span>{props.t('promptResource.temporaryOpen')} · {temporaryOrigin} · {target.target?.rootNode.label}</span>
+        </div> : null}
+        <ContextAssetEditor
           activationEditable={selectedNode?.category === 'setting'}
+          presets={props.resources.filter(resource => resource.resourceKind === 'preset')}
           editorMode={textEditorMode}
           metadataOpen={metadataOpen}
           node={selectedNode}
@@ -358,7 +361,7 @@ export function ContextWorkbench(props: ContextWorkbenchProps) {
           onEditorModeChange={setTextEditorMode}
           onMetadataOpenChange={setMetadataOpen}
           onSelectNodeId={handleSelectNode}
-      />
+        />
       </div>
     </AssetWorkbenchLayout>
   )

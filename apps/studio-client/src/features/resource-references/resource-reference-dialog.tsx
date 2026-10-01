@@ -44,32 +44,37 @@ export function ResourceReferenceDialog(props: {
   if (!uri) return null
   return (
     <dialog ref={dialog} className={styles.dialog} aria-label="资源引用" onCancel={event => { event.preventDefault(); props.onClose() }}>
-      <header>
-        <strong>{current?.entity?.title ?? view?.title ?? '资源引用'}</strong>
-        {view?.editor ? <button type="button" title="打开编辑器" aria-label="打开编辑器" onClick={() => {
-          props.onOpenEditor(view.editor!)
-        }}><ExternalLink size={16} /></button> : null}
-        <button type="button" title="关闭" aria-label="关闭" onClick={props.onClose}><X size={18} /></button>
+      <header className={styles.header}>
+        <div className={styles.heading}>
+          <h2>{current?.entity?.title ?? view?.title ?? '资源引用'}</h2>
+          {view?.path ? <div className={styles.path} title={view.path}>{view.path}</div> : null}
+          {view ? <div className={styles.status}>{!view.exact
+            ? '资源版本已变化 · 显示当前内容'
+            : view.range ? `第 ${view.range.startLine}–${view.range.endLine} 行 · 引用版本一致`
+              : '引用行范围无效 · 未定位'}</div> : null}
+        </div>
+        <div className={styles.actions}>
+          {view?.editor ? <button type="button" title="打开编辑器" aria-label="打开编辑器" onClick={() => {
+            props.onOpenEditor(view.editor!)
+          }}><ExternalLink size={16} /></button> : null}
+          <button type="button" title="关闭" aria-label="关闭" onClick={props.onClose}><X size={18} /></button>
+        </div>
       </header>
-      {!current ? <p role="status">正在读取…</p> : current.error ? <p role="alert">{current.error}</p> : null}
-      {current?.entity && <div className={styles.entity}>
-        {current.entity.avatarUrl && <img src={current.entity.avatarUrl} alt="" />}
-        <div><strong>{current.entity.title}</strong>{current.entity.note && <p>{current.entity.note}</p>}</div>
-        {current.entity.uri && <button type="button" onClick={() => props.onNavigate(current.entity!.uri!)}><ExternalLink size={16} />打开</button>}
-      </div>}
-      {view ? <>
-        <p role="status">{!view.exact
-          ? '资源版本已变化。以下为当前内容，未按旧行号定位。'
-          : view.range ? `第 ${view.range.startLine}–${view.range.endLine} 行 · 引用版本一致`
-            : '引用行范围无效，已打开资源，未定位。'}</p>
-        <div className={styles.body} tabIndex={0}>
+      <div className={styles.content}>
+        {!current ? <p role="status">正在读取…</p> : current.error ? <p role="alert">{current.error}</p> : null}
+        {current?.entity && <div className={styles.entity}>
+          {current.entity.avatarUrl && <img src={current.entity.avatarUrl} alt="" />}
+          <div><strong>{current.entity.title}</strong>{current.entity.note && <p>{current.entity.note}</p>}</div>
+          {current.entity.uri && <button type="button" onClick={() => props.onNavigate(current.entity!.uri!)}><ExternalLink size={16} />打开</button>}
+        </div>}
+        {view ? <div className={styles.body} tabIndex={0}>
           {view.body.split('\n').map((line, index) => <span
             key={index}
             ref={view.range?.startLine === index + 1 ? selected : undefined}
             data-selected={Boolean(view.range && index + 1 >= view.range.startLine && index + 1 <= view.range.endLine)}
           ><span className={styles.number} aria-hidden="true">{index + 1}</span><code>{line || '\u00a0'}</code></span>)}
-        </div>
-      </> : null}
+        </div> : null}
+      </div>
     </dialog>
   )
 }

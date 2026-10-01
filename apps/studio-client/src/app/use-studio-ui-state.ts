@@ -5,8 +5,7 @@ export function useStudioUiState() {
   const [composerHeight, setComposerHeight] = useState(0)
   const [agentPanelOpen, setAgentPanelOpen] = useState(false)
   const [selectedPresetId, setSelectedPresetId] = useState<string>()
-  const [resourceView, setResourceView] = useState<'settings' | 'macros' | 'text'>('settings')
-  const [variableView, setVariableView] = useState<'state' | 'authoring' | 'preview' | 'build'>('state')
+  const [variableView, setVariableView] = useState<'state' | 'authoring'>('authoring')
 
   return {
     loomScriptRefreshToken,
@@ -17,8 +16,6 @@ export function useStudioUiState() {
     setAgentPanelOpen,
     selectedPresetId,
     setSelectedPresetId,
-    resourceView,
-    setResourceView,
     variableView,
     setVariableView,
   }

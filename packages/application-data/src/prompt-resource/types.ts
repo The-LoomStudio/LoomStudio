@@ -115,7 +115,8 @@ export type PromptResourcePage = {
 }
 
 export type AddSettingMountInput = PromptResourceWriteContext & {
-  settingResourceId: string
+  settingResourceId: string | null
+  reference?: SettingMount['reference']
   source: SettingMountSource
   orderIndex: number
   origin?: JsonObject
@@ -123,7 +124,7 @@ export type AddSettingMountInput = PromptResourceWriteContext & {
 
 export type ReplaceSettingMountsInput = PromptResourceWriteContext & {
   source: SettingMountSource
-  mounts: Array<Pick<AddSettingMountInput, 'settingResourceId' | 'orderIndex' | 'origin'>>
+  mounts: Array<Pick<AddSettingMountInput, 'settingResourceId' | 'reference' | 'orderIndex' | 'origin'>>
 }
 
 export type ListSettingMountsInput = {

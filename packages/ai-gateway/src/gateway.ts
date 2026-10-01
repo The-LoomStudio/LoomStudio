@@ -142,7 +142,11 @@ function buildGatewayResult(input: AiGatewayRequest, result: {
   toolCalls: Array<{ toolCallId: string; toolName: string; input: unknown }>
   finishReason: string
   rawFinishReason?: string
-  usage: { inputTokens?: number; outputTokens?: number }
+  usage: {
+    inputTokens?: number; outputTokens?: number; totalTokens?: number
+    inputTokenDetails?: { cacheReadTokens?: number; cacheWriteTokens?: number }
+    outputTokenDetails?: { reasoningTokens?: number }
+  }
   response: { id?: string; modelId?: string; headers?: Record<string, string> }
   raw: JsonValue
 }): AiGatewayResult {
@@ -166,9 +170,15 @@ function buildGatewayResult(input: AiGatewayRequest, result: {
     model: result.response.modelId ?? input.modelId,
     finishReason: normalizeFinishReason(result.finishReason),
     ...(result.rawFinishReason ? { rawFinishReason: result.rawFinishReason } : {}),
-    ...((typeof result.usage.inputTokens === 'number' || typeof result.usage.outputTokens === 'number') ? { usage: {
+    ...(([result.usage.inputTokens, result.usage.outputTokens, result.usage.totalTokens,
+      result.usage.inputTokenDetails?.cacheReadTokens, result.usage.inputTokenDetails?.cacheWriteTokens,
+      result.usage.outputTokenDetails?.reasoningTokens].some(value => typeof value === 'number')) ? { usage: {
       ...(typeof result.usage.inputTokens === 'number' ? { inputTokens: result.usage.inputTokens } : {}),
       ...(typeof result.usage.outputTokens === 'number' ? { outputTokens: result.usage.outputTokens } : {}),
+      ...(result.usage.totalTokens !== undefined ? { totalTokens: result.usage.totalTokens } : {}),
+      ...(result.usage.inputTokenDetails?.cacheReadTokens !== undefined ? { cacheReadTokens: result.usage.inputTokenDetails.cacheReadTokens } : {}),
+      ...(result.usage.inputTokenDetails?.cacheWriteTokens !== undefined ? { cacheWriteTokens: result.usage.inputTokenDetails.cacheWriteTokens } : {}),
+      ...(result.usage.outputTokenDetails?.reasoningTokens !== undefined ? { reasoningTokens: result.usage.outputTokenDetails.reasoningTokens } : {}),
     } } : {}),
     ...(result.response.id ? { providerCallId: result.response.id } : {}),
     ...(readRequestId(result.response.headers) ? { requestId: readRequestId(result.response.headers) } : {}),

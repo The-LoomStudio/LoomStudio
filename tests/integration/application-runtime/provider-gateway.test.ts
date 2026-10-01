@@ -10,6 +10,25 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 describe('application runtime Provider Profile integration', () => {
   afterEach(() => vi.unstubAllGlobals())
 
+  it('stores per-model multipliers outside connection config and rejects stale or invalid updates', async () => {
+    const fixture = createRuntimeFixture()
+    try {
+      const { providerProfile } = await fixture.runtime.createProviderProfile({
+        providerExtensionId: 'official.openai-compatible', displayName: 'Estimate',
+        config: {}, enabledModelIds: ['a', 'b'],
+      })
+      const input = { providerProfileId: providerProfile.id, expectedVersion: providerProfile.version, tokenMultipliers: { a: 0.6 } }
+      const { providerProfile: updated } = await fixture.runtime.updateProviderProfile(input)
+      expect(updated.tokenMultipliers).toEqual({ a: 0.6 })
+      expect(updated.config).toEqual({})
+      expect((await fixture.documents.get(providerProfile.id))?.content).toMatchObject({ tokenMultipliers: { a: 0.6 } })
+      await expect(fixture.runtime.updateProviderProfile(input)).rejects.toThrow()
+      await expect(fixture.runtime.updateProviderProfile({ ...input, expectedVersion: updated.version, tokenMultipliers: { a: 0 } })).rejects.toThrow('positive')
+      await expect(fixture.runtime.updateProviderProfile({ providerProfileId: providerProfile.id, tokenMultipliers: { b: 1 } })).rejects.toThrow('expectedVersion')
+      expect((await fixture.runtime.getProviderProfile({ providerProfileId: providerProfile.id })).providerProfile.tokenMultipliers).toEqual({ a: 0.6 })
+    } finally { fixture.close() }
+  })
+
   it('stores enabled models in the Provider Profile and exposes only credential status', async () => {
     const fixture = createRuntimeFixture()
     const created = await fixture.runtime.createProviderProfile({

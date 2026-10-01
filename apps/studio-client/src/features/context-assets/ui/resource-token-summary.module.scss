@@ -1,0 +1,10 @@
+.summary {
+  align-items: center;
+  color: var(--loom-color-text-muted);
+  display: inline-flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

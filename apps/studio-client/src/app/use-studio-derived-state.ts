@@ -8,8 +8,7 @@ export function useStudioDerivedState(
     selectedCardDetails?: { id: string; name: string; media?: { avatarAssetId?: string } }
     narrativeTimeline?: { createdFrom?: { cardId?: string } }
     cards: Array<{ id: string; name: string; media?: { avatarAssetId?: string } }>
-    agentPresets: Array<{ id: string }>
-    selectedAgentPresetId?: string
+    narrativeAgentSession?: { agentPresetId: string }
     operationPending: Record<string, { pendingCount: number }>
     providerAccountsLoaded: boolean
     agentChatSessionLoading: boolean
@@ -36,7 +35,7 @@ export function useStudioDerivedState(
       agentPresetBusy: bootstrapBusy || state.operationPending['agent-presets'].pendingCount > 0,
       sessionBusy: state.operationPending.session.pendingCount > 0,
       mutationBusy: state.operationPending.mutation.pendingCount > 0,
-      activePresetId: state.agentPresets.find(profile => profile.id === state.selectedAgentPresetId)?.id,
+      activePresetId: state.narrativeAgentSession?.agentPresetId,
       narrativeCharacterName: state.narrativeTimeline ? activeCard?.name : undefined,
       sourceCardId: state.narrativeTimeline?.createdFrom?.cardId,
       canOpenTimelineSource: Boolean(state.narrativeTimeline?.createdFrom?.cardId

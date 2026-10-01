@@ -1,3 +1,5 @@
+import type { TokenUsage } from '@loom-studio/tokenizer/contracts'
+import type { RequestTokenEstimate } from '@loom-studio/ai-gateway'
 import type {
   AgentTranscriptEntry,
   AgentTranscriptPage,
@@ -14,6 +16,7 @@ import type { AiGatewayCapabilityRegistry, ProviderAdapterRegistry } from '@loom
 import type { DataActorRef, SqliteDataEngine, SqliteDataTransaction } from '@loom-studio/data-engine'
 import type {
   ExtensionAgentToolContribution,
+  ExtensionPromptAddition,
   ExtensionConfigEntry,
   ExtensionEntityRef,
   ExtensionPromptResourceContribution,
@@ -164,6 +167,17 @@ export type ApplicationRuntime = {
   getTimelinePresetConfig(input: { timelineId: string; presetId: string }): Promise<{ config: import('./prompt/timeline-preset-config.js').TimelinePresetConfig }>
   updateTimelinePresetConfig(input: { timelineId: string; presetId: string; expectedVersion: number; macroSelections: MacroSelectionMap }, context?: RuntimeRequestContext): Promise<{ config: import('./prompt/timeline-preset-config.js').TimelinePresetConfig; mutation: MutationReceipt }>
   sampleNarrative(input: SampleNarrativeInput, signal?: AbortSignal): Promise<NarrativeSampleResult>
+  getEffectiveNarrativePreview(input: { timelineId: string; branchId: string }): Promise<{
+    timelineId: string
+    branchId: string
+    sourceId: string
+    version?: string
+    coveredThroughNodeId: string | null
+    rawThroughNodeId: string | null
+    memory: Array<{ id: string; content: string }>
+    nodes: Array<{ id: string; text: string }>
+    complete: boolean
+  }>
   captureCardDirectoryState(input: { cardId: string }): Promise<{ artifact: CardBundleArtifact; snapshot: JsonObject }>
   applyCardDirectoryState(input: { cardId: string; artifact: CardBundleArtifact; snapshot: JsonObject }, context?: RuntimeRequestContext): Promise<{ mutation: { changesetId: string } }>
   initialize(): Promise<void>
@@ -255,6 +269,7 @@ export type ApplicationRuntime = {
   updateAgentSession(input: UpdateAgentSessionInput, context?: RuntimeRequestContext): Promise<UpdateAgentSessionResult>
   invokeAgentTurn(input: InvokeAgentTurnInput, context?: RuntimeRequestContext): Promise<InvokeAgentTurnResult>
   previewAgentTurn(input: PreviewAgentTurnInput, context?: RuntimeRequestContext): Promise<PreviewAgentTurnResult>
+  buildExtensionPrompt(input: import('@loom-studio/extension-sdk').ExtensionPromptBuildInput, target: import('@loom-studio/extension-sdk').ExtensionInstallationTarget, packageId: string): Promise<import('@loom-studio/extension-sdk').ExtensionPromptBuildResult>
   inspectMacros(input: InspectMacrosInput): Promise<InspectMacrosResult>
   createNarrativeTimeline(input: CreateNarrativeTimelineInput, context?: RuntimeRequestContext): Promise<CreateNarrativeTimelineResult>
   getNarrativeTimeline(input: GetNarrativeTimelineInput): Promise<GetNarrativeTimelineResult>
@@ -323,6 +338,7 @@ export type RuntimeRequestContext = {
 
 export type AgentRunEvent =
   | { type: 'started'; runId: string }
+  | { type: 'transcript-appended'; runId: string; entries: AgentTranscriptEntry[] }
   | { type: 'text-delta'; runId: string; providerRunId: string; providerStep: number; delta: string }
   | { type: 'tool-input-delta'; runId: string; providerRunId: string; providerStep: number; toolCallId: string; toolName?: string; delta: string }
   | { type: 'mutation-approval-requested'; runId: string; requestId: string; preview: VfsMutationPreview }
@@ -731,11 +747,13 @@ export type InvokeAgentTurnInput = {
     inputNodeId?: string
   }
   macroSelections?: MacroSelectionMap
+  promptAddition?: ExtensionPromptAddition
 }
 
 export type PreviewAgentTurnInput = InvokeAgentTurnInput
 
 export type PreviewAgentTurnResult = {
+  tokenEstimate: RequestTokenEstimate
   runId: string
   messages: ChatMessage[]
   projection: CompiledPrompt
@@ -918,6 +936,7 @@ export type CanonicalChatRequest = {
   tools?: Array<{ name: string; description?: string; inputSchema: JsonObject }>
   toolChoice?: 'auto' | 'none' | 'required' | { type: 'tool'; toolName: string }
   metadata?: JsonObject
+  providerOptions?: JsonObject
 }
 
 export type GatewayChatResult = {
@@ -927,10 +946,7 @@ export type GatewayChatResult = {
   provider: string
   finishReason?: 'stop' | 'length' | 'tool_call' | 'error'
   rawStopReason?: string
-  usage?: {
-    inputTokens?: number
-    outputTokens?: number
-  }
+  usage?: TokenUsage
   providerCallId?: string
   raw?: JsonValue
 }
@@ -1135,6 +1151,7 @@ export type ProviderCredentialStatus = {
 }
 
 export type ProviderProfileView = {
+  tokenMultipliers?: Record<string, number>
   id: string
   version: number
   providerExtensionId: string
@@ -1177,6 +1194,8 @@ export type ListProviderProfilesResult = {
 }
 
 export type UpdateProviderProfileInput = {
+  tokenMultipliers?: Record<string, number>
+  expectedVersion?: number
   providerProfileId: string
   displayName?: string
   config?: JsonObject
@@ -1309,6 +1328,8 @@ export type UpdateAgentPresetInput = {
   model?: ProviderModelSelection | null
   delivery?: AgentDelivery
   historyPolicy?: AgentHistoryPolicy
+  useCardSettings?: boolean
+  textUses?: Array<{ id: string; kind: 'rule' | 'extractor'; enabled: boolean; orderIndex?: number }>
 }
 
 export type ListAgentToolsResult = { tools: AgentToolEntry[] }
@@ -1487,6 +1508,7 @@ export type ExportCardBundleResult = {
 }
 
 export type ProviderProfileContent = {
+  tokenMultipliers?: Record<string, number>
   providerExtensionId: string
   displayName: string
   config: JsonObject

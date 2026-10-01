@@ -218,7 +218,7 @@ export type ToolExecutionScope = {
     branchId: string
     sample(input: Omit<NarrativeSampleRequest, 'timelineId' | 'branchId'> & { view?: 'raw' | 'prompt' }, signal?: AbortSignal, approveHistory?: ApproveNarrativeHistory, approvalControl?: import('../vfs/types.js').VfsApprovalControl): Promise<NarrativeSampleResult>
     appendNode(input: { content: string }): Promise<{ nodeId: string }>
-    editNode(input: { nodeId: string; content: string }): Promise<{ nodeId: string }>
+    editNode(input: { nodeId: string; content: string; expectedRaw?: string }): Promise<{ nodeId: string }>
   }
 }
 

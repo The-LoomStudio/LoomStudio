@@ -132,11 +132,34 @@ function validateManifest(manifest: Partial<ExtensionManifest>): void {
     }
     const settingMounts = new Set<string>()
     for (const mount of resource.settingMounts ?? []) {
-      const setting = promptResources.get(mount.resourceId)
-      if (!setting || setting.resourceKind !== 'setting') throw new Error(`Manifest Preset references an undeclared Setting: ${mount.resourceId}`)
-      if (settingMounts.has(mount.resourceId)) throw new Error(`Manifest Preset Setting mount must be unique: ${mount.resourceId}`)
+      const reference = mount.reference ?? { kind: 'package' as const, contributionId: mount.resourceId }
+      if (!isRecord(reference) || (mount.reference !== undefined && mount.resourceId !== undefined)) {
+        throw new Error('Manifest Preset Setting reference is invalid')
+      }
+      let referenceKey: string
+      if (reference.kind === 'package') {
+        if (typeof reference.contributionId !== 'string') throw new Error('Manifest Preset Setting reference is invalid')
+        const setting = promptResources.get(reference.contributionId)
+        if (!setting || setting.resourceKind !== 'setting') throw new Error(`Manifest Preset references an undeclared Setting: ${reference.contributionId}`)
+        referenceKey = JSON.stringify(['package', reference.contributionId])
+      } else if (reference.kind === 'external') {
+        if (typeof reference.resourceId !== 'string' || !reference.resourceId.trim()) {
+          throw new Error('Manifest external Setting resource ID is invalid')
+        }
+        const source = reference.origin
+        if (source !== undefined && (!isRecord(source)
+          || typeof source.packageId !== 'string' || !source.packageId.trim()
+          || typeof source.contributionId !== 'string' || !source.contributionId.trim()
+          || (source.target !== 'global' && source.target !== 'card'))) {
+          throw new Error('Manifest external Setting origin is invalid')
+        }
+        referenceKey = JSON.stringify(['external', reference.resourceId, source?.packageId, source?.contributionId, source?.target])
+      } else {
+        throw new Error('Manifest Preset Setting reference is invalid')
+      }
+      if (settingMounts.has(referenceKey)) throw new Error('Manifest Preset Setting mount must be unique')
       if (mount.orderIndex !== undefined && (!Number.isInteger(mount.orderIndex) || mount.orderIndex < 0)) throw new Error(`Manifest Preset Setting order is invalid: ${mount.resourceId}`)
-      settingMounts.add(mount.resourceId)
+      settingMounts.add(referenceKey)
     }
     const toolMounts = new Set<string>()
     for (const mount of resource.toolMounts ?? []) {

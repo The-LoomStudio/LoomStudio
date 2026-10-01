@@ -1,0 +1,16 @@
+{
+  "name": "Loom Assistant Note",
+  "enabled": false,
+  "orderIndex": 90,
+  "matcher": {
+    "kind": "regex",
+    "pattern": "<LoomNote>([\\s\\S]*?)</LoomNote>",
+    "flags": "g"
+  },
+  "effect": {
+    "kind": "replace",
+    "replacement": "\n\n**助手提示**\n\n$1\n\n"
+  },
+  "targets": ["agent-session"],
+  "phases": ["display"]
+}

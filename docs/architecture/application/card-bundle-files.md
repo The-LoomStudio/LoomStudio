@@ -2,6 +2,8 @@
 
 Card 的作者文件、ZIP 包与 PNG 分发共用同一套编解码。SQLite 仍是应用的权威存储；目录和 ZIP 不是新的运行数据库。此次只实现 Card Bundle，不代表独立 Preset / Setting Bundle、通用 VFS 或 Dev Workspace 同步已经完成。
 
+Card Bundle 可携带 `extensionPackages` 中的 Extension Package 归档，与扩展 Portable Payload 分开索引。导入归档不会自动激活其中代码。角色安装的 Client 文件通过带 Card ID、包版本及归档 SHA-256 的私有 URL 提供，读取时校验该 Card 当前安装归档，不以同名全局包回退。安装记录、资源导入、模块启用和授权是分开的生命周期操作。
+
 ## 内容与容器
 
 ```text
@@ -58,6 +60,7 @@ assets/background.webp
 - 有统一 State Contribution 时不重复导出旧 `stateTemplates` / `timelineStateBindings` 副本；旧 Card 只有这些字段时仍能单独分文件恢复。运行 State、Revision 与 Timeline 快照不导出。
 - Card 自有 Rule / Extractor 保存为独立 JSON，只携带声明字段；不携带 owner、数据库 ID、时间戳、origin 或运行覆盖。导入时在同一业务事务中创建新记录并绑定新 Card，相同 orderIndex 的数组顺序保留。
 - `.loom.js` 保留原始 UTF-8 源码，包括换行。导入的脚本 Mount 仍为关闭、空授权，不因文件存在就执行代码。
+- Card Bundle 附带的扩展程序归档写入独立 `extension-packages/` 条目；Portable Payload 只承载扩展私有数据，不承载可执行扩展包。
 
 ## 编辑与往返
 
@@ -81,6 +84,8 @@ ST 扩展导入时只将世界书写入 Prompt Resource，不再复制进内联 
 
 文件解析与领域声明校验在进入应用导入前完成。资源、脚本和文本管线记录复用现有导入事务；媒体 Asset 创建仍先于领域事务，不宣称所有 Asset 与领域写入已具备跨存储原子性。
 
+单独导出的 Prompt Resource 是白名单 Artifact，不递归携带脚本、规则、模型绑定、工具实现或关联 Settings。旧 Artifact reader 仍接受历史附件字段，但旧附件迁移为 Extension Package 或并列资源的完整、无损转换流程尚未完成。
+
 ## 实现位置
 
 - [Card Artifact 与导入导出](../../../packages/application-runtime/src/cards/workspace.ts)
@@ -89,3 +94,4 @@ ST 扩展导入时只将世界书写入 Prompt Resource，不再复制进内联 
 - [ZIP 完整性元数据](../../../apps/studio-server/src/codecs/zip-checksums.ts)
 - [PNG 容器](../../../apps/studio-server/src/codecs/card-png.ts)
 - [Server 接线](../../../apps/studio-server/src/main.ts)
+- [角色扩展安装与私有文件路由](../../../apps/studio-server/src/extensions/extension-manager.ts)

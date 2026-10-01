@@ -28,6 +28,8 @@ Extension Host 是 Server Extension Module 的 Node.js 宿主实现。它位于 
 
 Host 不负责 Package Source、Catalog、Installer 或 desired-state orchestration；这些属于 Studio Server Extension Manager。它也不实现 Client Host、UI Runtime、通用跨端 Event Transport或恶意代码强沙箱，不保存 Extension 自己的业务状态。
 
+安装 target 可以是 Global 或 Card；同一 Package 在不同 target 下的 Instance、启用状态和 capability grants 分开识别。Card target 的 API 访问受宿主授权与归属校验约束，但 Server Module 与宿主同进程运行，不构成恶意代码的强安全沙箱。
+
 扩展日志通过 `ctx.logger` 写入，`ctx.logger.child(namespace)` 只能创建受限命名空间；`ctx.logs.query(input)` 由 Host 强制绑定当前 Package，查询成功不额外产生日志。扩展不能通过 `ctx.rpc.call('logs.list', ...)` 绕过该边界。
 
 ```text

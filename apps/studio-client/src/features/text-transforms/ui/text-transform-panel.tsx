@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Code2, Filter, Layers, Play, Plus, RefreshCw, Scissors, Sparkles, Trash2, Wand2 } from 'lucide-react'
+import { Braces, Code2, FileSearch, Filter, Folder, FolderOpen, Layers, Play, Plus, RefreshCw, Scissors, Sparkles, ToggleLeft, ToggleRight, Trash2, Wand2 } from 'lucide-react'
 import { Button } from '@loom-studio/ui'
 import type {
   HistorySource,
@@ -22,11 +22,13 @@ import type { ClientRendererHost, ClientRendererRegistration } from '../../../sh
 import { rendererContributionKey, rendererSurfacePolicies } from '../../../shared/extension-renderer-runtime/renderer-registry.js'
 import { MasterDetailWorkbench } from '../../../shared/ui/master-detail-workbench/master-detail-workbench.js'
 import { PanelTabs } from '../../../shared/ui/panel-tabs/index.js'
+import { FileTree, type FileTreeNode } from '../../../shared/ui/file-tree/file-tree.js'
 import { PipelineWorkbenchView, type PipelineWorkbenchGroup } from './pipeline-workbench-view.js'
 import { RuleEditorFields, readRuleEditorValue } from './rule-editor-fields.js'
+import { LoomScriptSourceFields } from './loom-script-source-fields.js'
 import styles from './text-transform-panel.module.scss'
 
-export type OwnerScope = TextRuleOwner | { kind: 'runtime' }
+export type OwnerScope = TextRuleOwner | { kind: 'runtime' } | { kind: 'catalog' }
 export type TextTransformRuntimeContext = {
   id: string
   label: string
@@ -34,6 +36,9 @@ export type TextTransformRuntimeContext = {
   consumerAgentSessionId?: string
 }
 export type TextTransformProps = {
+  initialRuleId?: string
+  initialExtractorId?: string
+  temporaryTarget?: boolean
   api: StudioApi['textTransforms']
   loomScriptsApi?: StudioApi['loomScripts']
   onRuntimeChanged?: () => void
@@ -44,9 +49,12 @@ export type TextTransformProps = {
   consumerAgentSessionId?: string
   runtimeContexts?: TextTransformRuntimeContext[]
   owner?: OwnerScope
+  ownerOptions?: { owner: OwnerScope; label: string; id: string }[]
+  onOwnerChange?: (owner: OwnerScope) => void
   title?: string
   mobilePane?: 'master' | 'detail'
   onMobilePaneChange?: (pane: 'master' | 'detail') => void
+  getOwnerName?: (owner: TextRuleOwner | OwnerScope) => string | undefined
 }
 type SelectedTarget = { kind: 'empty' } | { kind: 'rule'; id: string } | { kind: 'extractor'; id: string } | { kind: 'script'; id: string } | { kind: 'match'; id: string } | { kind: 'artifact'; id: string } | { kind: 'renderer'; id: string } | { kind: 'inspection' } | { kind: 'renderers' }
 export type TextTransformController = ReturnType<typeof useTextTransformController>
@@ -56,7 +64,7 @@ export function useTextTransformController(props: TextTransformProps) {
   const owner = props.owner ?? { kind: 'workspace' as const }
   const ownerKey = ownerId(owner)
   const authoring = owner.kind !== 'runtime'
-  const editingOwner: TextRuleOwner = owner.kind === 'runtime' ? { kind: 'workspace' } : owner
+  const editingOwner: TextRuleOwner = owner.kind === 'runtime' || owner.kind === 'catalog' ? { kind: 'workspace' } : owner
   const [rules, setRules] = useState<TextTransformRule[]>([])
   const [extractors, setExtractors] = useState<TextExtractor[]>([])
   const [renderers, setRenderers] = useState<RendererDefinition[]>([])
@@ -116,8 +124,16 @@ export function useTextTransformController(props: TextTransformProps) {
   const orderedRuleIds = resultScope === inspectionScope ? storedOrderedRuleIds : []
   const mobilePane = props.mobilePane ?? internalMobilePane
   const setMobilePane = props.onMobilePaneChange ?? setInternalMobilePane
-  const visibleRules = useMemo(() => rules.filter(rule => ownerMatches(rule.owner, owner)), [owner, rules])
-  const visibleExtractors = useMemo(() => extractors.filter(item => ownerMatches(item.owner, owner)), [extractors, owner])
+  const temporaryRule = rules.find(rule => rule.id === props.initialRuleId
+    && (props.temporaryTarget || !ownerMatches(rule.owner, owner)))
+  const temporaryExtractor = extractors.find(item => item.id === props.initialExtractorId
+    && (props.temporaryTarget || !ownerMatches(item.owner, owner)))
+  const visibleRules = useMemo(() => temporaryRule || temporaryExtractor
+    ? temporaryRule ? [temporaryRule] : []
+    : rules.filter(rule => ownerMatches(rule.owner, owner)), [owner, rules, temporaryRule, temporaryExtractor])
+  const visibleExtractors = useMemo(() => temporaryRule || temporaryExtractor
+    ? temporaryExtractor ? [temporaryExtractor] : []
+    : extractors.filter(item => ownerMatches(item.owner, owner)), [extractors, owner, temporaryRule, temporaryExtractor])
   const finalOrder = useMemo(() => [...visibleRules].sort((a, b) => a.orderIndex - b.orderIndex || a.id.localeCompare(b.id)), [visibleRules])
   const scriptOwner = toScriptOwner(owner)
   const visibleMounts = scriptOwner ? mounts.filter(mount => scriptOwnerMatches(mount.target, scriptOwner)) : mounts
@@ -288,6 +304,50 @@ export function useTextTransformController(props: TextTransformProps) {
     } catch (cause) { setError(readError(cause)) } finally { setBusy(false) }
   }
 
+  async function updateRule(rule: TextTransformRule, patch: Partial<Pick<TextTransformRuleDraft, 'enabled' | 'orderIndex'>>) {
+    try {
+      setBusy(true)
+      await props.api.upsertRule({
+        ruleId: rule.id,
+        expectedVersion: rule.version,
+        rule: { ...toRuleDraft(rule), ...patch },
+      })
+      await refresh()
+      props.onRuntimeChanged?.()
+    } catch (cause) { setError(readError(cause)) } finally { setBusy(false) }
+  }
+
+  async function moveAuthorRule(draggedNodeId: string, targetNodeId: string, position: 'before' | 'inside' | 'after') {
+    if (position === 'inside' || !draggedNodeId.startsWith('rule:') || !targetNodeId.startsWith('rule:')) return
+    const draggedId = draggedNodeId.slice(5)
+    const targetId = targetNodeId.slice(5)
+    const dragged = finalOrder.find(rule => rule.id === draggedId)
+    const target = finalOrder.find(rule => rule.id === targetId)
+    if (!dragged || !target || ownerId(dragged.owner) !== ownerId(target.owner)) return
+
+    const ownerRules = finalOrder.filter(rule => ownerId(rule.owner) === ownerId(dragged.owner))
+    const next = ownerRules.filter(rule => rule.id !== draggedId)
+    const targetIndex = next.findIndex(rule => rule.id === targetId)
+    next.splice(targetIndex + (position === 'after' ? 1 : 0), 0, dragged)
+    const changed = next.filter((rule, index) => rule.orderIndex !== index)
+    if (changed.length === 0) return
+
+    try {
+      setBusy(true)
+      await Promise.all(changed.map(rule => props.api.upsertRule({
+        ruleId: rule.id,
+        expectedVersion: rule.version,
+        rule: { ...toRuleDraft(rule), orderIndex: next.indexOf(rule) },
+      })))
+      await refresh()
+      props.onRuntimeChanged?.()
+    } catch (cause) {
+      const message = readError(cause)
+      await refresh()
+      setError(message)
+    } finally { setBusy(false) }
+  }
+
   async function saveOverride(nextDisabled = disabledRuleIds, nextOrder = orderedRuleIds) {
     if (!source || !inspection || !mountedRef.current || inspectionScopeRef.current !== inspectionScope || overrideSaveRef.current === inspectionScope) return
     overrideSaveRef.current = inspectionScope
@@ -317,6 +377,21 @@ export function useTextTransformController(props: TextTransformProps) {
     const item = rules.find(rule => rule.id === id)
     setRuleText(item ? JSON.stringify(toRuleDraft(item), null, 2) : defaultRuleText)
   }
+
+  const openedRuleRef = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!props.initialRuleId || openedRuleRef.current === props.initialRuleId) return
+    if (!rules.some(rule => rule.id === props.initialRuleId)) return
+    openedRuleRef.current = props.initialRuleId
+    selectRule(props.initialRuleId)
+  }, [props.initialRuleId, rules, owner])
+  const openedExtractorRef = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!props.initialExtractorId || openedExtractorRef.current === props.initialExtractorId) return
+    if (!extractors.some(item => item.id === props.initialExtractorId)) return
+    openedExtractorRef.current = props.initialExtractorId
+    selectExtractor(props.initialExtractorId)
+  }, [props.initialExtractorId, extractors])
 
   function startNewRule() {
     const id = `rule-${Date.now().toString(36)}`
@@ -445,6 +520,8 @@ export function useTextTransformController(props: TextTransformProps) {
     importScript,
     saveScript,
     updateScriptMount,
+    updateRule,
+    moveAuthorRule,
     saveOverride,
     startNewExtractor,
     saveRule,
@@ -466,6 +543,7 @@ export function useTextTransformController(props: TextTransformProps) {
     setScriptFileName,
     setSearchValue,
     setError,
+    editingOwner,
   }
 }
 
@@ -475,8 +553,24 @@ export function TextTransformPanel(props: TextTransformProps) {
   if (!controller.authoring) return <RuntimePipelinePanel controller={controller} heading={heading} />
   return <section className={styles.panel} data-loom-component="text-transform-panel">
     <header className={styles.intro}>
-      <div><h2>{heading}</h2><p>{controller.owner.kind === 'runtime' ? props.t('textTransform.runtimeDescription') : props.t('textTransform.ownerDescription', { owner: ownerLabel(controller.owner, props.t) })}</p></div>
-      <button className={styles.refreshButton} disabled={controller.busy} type="button" onClick={() => void controller.refresh()}><RefreshCw aria-hidden="true" size={14} /><span>{props.t('textTransform.refresh')}</span></button>
+      <div><h2>{heading}</h2><p>{controller.owner.kind === 'runtime' ? props.t('textTransform.runtimeDescription') : props.t('textTransform.ownerDescription', { owner: ownerLabel(controller.owner, props.t, props.getOwnerName) })}</p></div>
+      <div className={styles.headerActions}>
+        {props.ownerOptions && props.ownerOptions.length > 1 && props.onOwnerChange ? (
+          <PanelTabs
+            activeId={props.ownerOptions.find(opt =>
+              (opt.owner.kind === controller.owner.kind) &&
+              (opt.owner.kind === 'card' ? opt.owner.cardId === (controller.owner as any).cardId : true)
+            )?.id ?? props.ownerOptions[0]!.id}
+            ariaLabel={props.t('textTransform.ownerDescription', { owner: '' })}
+            items={props.ownerOptions.map(opt => ({ id: opt.id, label: opt.label }))}
+            onChange={id => {
+              const match = props.ownerOptions?.find(opt => opt.id === id)
+              if (match && props.onOwnerChange) props.onOwnerChange(match.owner)
+            }}
+          />
+        ) : null}
+        <button className={styles.refreshButton} disabled={controller.busy} type="button" onClick={() => void controller.refresh()}><RefreshCw aria-hidden="true" size={14} /><span>{props.t('textTransform.refresh')}</span></button>
+      </div>
     </header>
     <MasterDetailWorkbench
       backLabel={props.t('textTransform.backToSettings')}
@@ -495,35 +589,180 @@ export function TextTransformPanel(props: TextTransformProps) {
 export function TextTransformExplorer({ controller }: { controller: TextTransformController }) {
   const { t } = controller
   const scriptInputRef = useRef<HTMLInputElement>(null)
+  const [expandedIds, setExpandedIds] = useState<string[]>(() => ['group:rules', 'group:extractors', 'group:scripts', 'group:contexts', 'group:extensions'])
+
+  const selectedId = useMemo(() => {
+    const target = controller.selectedTarget
+    if (target.kind === 'rule') return `rule:${target.id}`
+    if (target.kind === 'extractor') return `extractor:${target.id}`
+    if (target.kind === 'script') return `script:${target.id}`
+    if (target.kind === 'renderers') return 'renderers'
+    if (target.kind === 'inspection') return `context:${controller.selectedRuntimeContextId}`
+    return undefined
+  }, [controller.selectedTarget, controller.selectedRuntimeContextId])
+
+  const nodes: FileTreeNode[] = useMemo(() => {
+    if (controller.authoring) {
+      const itemsByOwner = new Map<string, FileTreeNode[]>()
+      const addNode = (ownerStr: string, node: FileTreeNode) => {
+        if (!itemsByOwner.has(ownerStr)) itemsByOwner.set(ownerStr, [])
+        itemsByOwner.get(ownerStr)!.push(node)
+      }
+
+      for (const rule of controller.finalOrder) {
+        addNode(ownerLabel(rule.owner, t, controller.getOwnerName), {
+          id: `rule:${rule.id}`,
+          label: rule.name,
+          kind: 'entry' as const,
+          meta: rule.enabled ? String(rule.orderIndex) : t('textTransform.disabled'),
+        })
+      }
+
+      if (controller.unsavedNewRule) {
+        addNode(ownerLabel(controller.editingOwner, t, controller.getOwnerName), {
+          id: `rule:${controller.selectedRuleId}`,
+          label: t('textTransform.newRule'),
+          kind: 'entry' as const,
+          meta: t('textTransform.unsaved'),
+        })
+      }
+
+      for (const item of controller.visibleExtractors) {
+        addNode(ownerLabel(item.owner, t, controller.getOwnerName), {
+          id: `extractor:${item.id}`,
+          label: item.name,
+          kind: 'entry' as const,
+          meta: item.strategy,
+        })
+      }
+
+      if (controller.loomScriptsApi) {
+        const sortedScripts = [...controller.visibleScripts].sort((a, b) => a.mount.orderIndex - b.mount.orderIndex)
+        for (const { script, mount } of sortedScripts) {
+          const ownerStr = script.owner.kind === 'extension' ? t('textTransform.ownerExtensionNamed', { name: script.owner.packageId }) : t('textTransform.ownerRuntime')
+          addNode(ownerStr, {
+            id: `script:${script.id}`,
+            label: script.name,
+            kind: 'entry' as const,
+            meta: mount.enabled ? String(mount.orderIndex) : t('textTransform.disabled'),
+          })
+        }
+      }
+
+      if (itemsByOwner.size === 0) {
+        // Ensure at least the editing owner is present so we can show the + buttons
+        itemsByOwner.set(ownerLabel(controller.editingOwner, t, controller.getOwnerName), [])
+      }
+
+      return Array.from(itemsByOwner.entries())
+        .sort(([ownerA], [ownerB]) => ownerA.localeCompare(ownerB))
+        .map(([ownerStr, children]) => ({
+          id: `owner:${ownerStr}`,
+          label: ownerStr,
+          kind: 'folder' as const,
+          meta: String(children.length),
+          children,
+        }))
+    }
+    // runtime mode
+    return [
+      { id: 'group:contexts', label: t('textTransform.currentContext'), kind: 'folder', children: controller.runtimeContexts.map(context => ({
+        id: `context:${context.id}`,
+        label: context.label,
+        kind: 'entry' as const,
+        meta: sourceLabel(context.source, t),
+      })) },
+      { id: 'group:extensions', label: t('textTransform.extensionCapabilities'), kind: 'folder', children: [
+        { id: 'renderers', label: t('textTransform.renderers'), kind: 'entry', meta: `${controller.renderers.length}` },
+      ] },
+    ]
+  }, [controller.authoring, controller.finalOrder, controller.unsavedNewRule, controller.selectedRuleId, controller.visibleExtractors, controller.visibleScripts, controller.runtimeContexts, controller.renderers.length, controller.loomScriptsApi, t])
+
   return <nav aria-label={t('textTransform.navigation')} className={styles.masterNav}>
-    {controller.authoring ? <>
-      <div className={styles.navGroup}>
-        <header><span>{t('textTransform.ownerRules')}</span><button className={styles.navAddBtn} title={t('textTransform.newRule')} type="button" onClick={controller.startNewRule}><Plus aria-hidden="true" size={14} /></button></header>
-        {controller.finalOrder.map(rule => <button key={rule.id} aria-current={controller.selectedTarget.kind === 'rule' && controller.selectedTarget.id === rule.id ? 'page' : undefined} className={styles.navItem} type="button" onClick={() => controller.selectRule(rule.id)}><Scissors aria-hidden="true" /><span className={styles.navItemBody}><strong>{rule.name}</strong><small>{ownerLabel(rule.owner, t)} · {rule.enabled ? t('textTransform.enabled') : t('textTransform.disabled')}</small></span><span className={styles.orderBadge}>{rule.orderIndex}</span></button>)}
-        {controller.unsavedNewRule ? <div className={styles.navItem} aria-current="page"><Scissors aria-hidden="true" /><span className={styles.navItemBody}><strong>{t('textTransform.newRule')}</strong><small>{t('textTransform.unsaved')}</small></span></div> : null}
-        {controller.finalOrder.length === 0 && !controller.unsavedNewRule ? <button className={styles.navItem} type="button" onClick={controller.startNewRule}><Plus aria-hidden="true" /><span className={styles.navItemBody}><strong>{t('textTransform.newRule')}</strong><small>{t('textTransform.ownerRulesEmpty')}</small></span></button> : null}
-      </div>
-      <div className={styles.navGroup}>
-        <header><span>{t('textTransform.ownerExtractors')}</span><button className={styles.navAddBtn} title={t('textTransform.newExtractor')} type="button" onClick={controller.startNewExtractor}><Plus aria-hidden="true" size={14} /></button></header>
-        {controller.visibleExtractors.map(item => <button key={item.id} aria-current={controller.selectedTarget.kind === 'extractor' && controller.selectedTarget.id === item.id ? 'page' : undefined} className={styles.navItem} type="button" onClick={() => controller.selectExtractor(item.id)}><Filter aria-hidden="true" /><span className={styles.navItemBody}><strong>{item.name}</strong><small>{ownerLabel(item.owner, t)} · {item.strategy}</small></span></button>)}
-        {controller.visibleExtractors.length === 0 ? <button className={styles.navItem} type="button" onClick={controller.startNewExtractor}><Plus aria-hidden="true" /><span className={styles.navItemBody}><strong>{t('textTransform.newExtractor')}</strong><small>{t('textTransform.ownerExtractorsEmpty')}</small></span></button> : null}
-      </div>
-      {controller.loomScriptsApi ? <div className={styles.navGroup}>
-        <header><span>{t('textTransform.ownerScripts')}</span><button aria-label={t('textTransform.importScript')} className={styles.navAddBtn} title={t('textTransform.importScript')} type="button" onClick={() => scriptInputRef.current?.click()}><Plus aria-hidden="true" size={14} /></button><input aria-label={t('textTransform.importScript')} ref={scriptInputRef} accept=".loom.js,text/javascript" hidden type="file" onChange={event => { const file = event.target.files?.[0]; if (file) void controller.importScript(file); event.currentTarget.value = '' }} /></header>
-        {controller.visibleScripts.sort((a, b) => a.mount.orderIndex - b.mount.orderIndex).map(({ script, mount }) => <button key={mount.id} aria-current={controller.selectedTarget.kind === 'script' && controller.selectedTarget.id === script.id ? 'page' : undefined} className={styles.navItem} type="button" onClick={() => void controller.selectScript(script.id)}><Code2 aria-hidden="true" /><span className={styles.navItemBody}><strong>{script.name}</strong><small>{script.metadataId} · {mount.enabled ? t('textTransform.enabled') : t('textTransform.disabled')}</small></span><span className={styles.orderBadge}>{mount.orderIndex}</span></button>)}
-        {controller.visibleScripts.length === 0 ? <p className={styles.emptyState}>{t('textTransform.ownerScriptsEmpty')}</p> : null}
-      </div> : null}
-    </> : <>
-      <div className={styles.navGroup}>
-        <header><span>{t('textTransform.currentContext')}</span></header>
-        {controller.runtimeContexts.map(context => <button key={context.id} aria-current={controller.selectedRuntimeContextId === context.id && controller.selectedTarget.kind === 'inspection' ? 'page' : undefined} className={styles.navItem} type="button" onClick={() => controller.selectRuntimeContext(context.id)}>
-          <Sparkles aria-hidden="true" /><span className={styles.navItemBody}><strong>{context.label}</strong><small>{sourceLabel(context.source, t)}</small></span>
-        </button>)}
-        {controller.runtimeContexts.length === 0 ? <p className={styles.emptyState}>{t('textTransform.noHistory')}</p> : null}
-      </div>
-      <div className={styles.navGroup}><header><span>{t('textTransform.extensionCapabilities')}</span></header><button aria-current={controller.selectedTarget.kind === 'renderers' ? 'page' : undefined} className={styles.navItem} type="button" onClick={() => { controller.setSelectedTarget({ kind: 'renderers' }); controller.setMobilePane('detail') }}><Layers aria-hidden="true" /><span className={styles.navItemBody}><strong>{t('textTransform.renderers')}</strong><small>{controller.renderers.length} {t('textTransform.rendererCount')}</small></span></button></div>
-    </>}
+    <FileTree
+      ariaLabel={t('textTransform.navigation')}
+      nodes={nodes}
+      selectedId={selectedId}
+      expandedIds={expandedIds}
+      onExpandedIdsChange={setExpandedIds}
+      canDrag={node => node.id.startsWith('rule:') && controller.finalOrder.some(rule => `rule:${rule.id}` === node.id)}
+      onMoveNode={(draggedId, targetId, position) => void controller.moveAuthorRule(draggedId, targetId, position)}
+      onSelect={node => {
+        if (node.kind === 'folder') {
+          setExpandedIds(prev => prev.includes(node.id) ? prev.filter(id => id !== node.id) : [...prev, node.id])
+          return
+        }
+        const id = node.id
+        if (id.startsWith('rule:')) controller.selectRule(id.slice(5))
+        else if (id.startsWith('extractor:')) controller.selectExtractor(id.slice(10))
+        else if (id.startsWith('script:')) void controller.selectScript(id.slice(7))
+        else if (id.startsWith('context:')) controller.selectRuntimeContext(id.slice(8))
+        else if (id === 'renderers') { controller.setSelectedTarget({ kind: 'renderers' }); controller.setMobilePane('detail') }
+      }}
+      renderIcon={(node, expanded) => {
+        if (node.kind === 'folder') return expanded ? <FolderOpen size={15} /> : <Folder size={15} />
+        const id = node.id
+        if (id.startsWith('rule:')) return <Scissors size={15} />
+        if (id.startsWith('extractor:')) return <Filter size={15} />
+        if (id.startsWith('script:')) return <Code2 size={15} />
+        if (id.startsWith('context:')) return <Sparkles size={15} />
+        return <Layers size={15} />
+      }}
+      renderTrailing={node => {
+        if (node.kind === 'folder' && node.id === `owner:${ownerLabel(controller.editingOwner, t, controller.getOwnerName)}` && controller.authoring) {
+          return (
+            <div style={{ display: 'flex', gap: 2 }}>
+              <button className={styles.navAddBtn} title={t('textTransform.newRule')} type="button" onClick={event => { event.stopPropagation(); controller.startNewRule() }}><Plus aria-hidden="true" size={14} /></button>
+              <button className={styles.navAddBtn} title={t('textTransform.newExtractor')} type="button" onClick={event => { event.stopPropagation(); controller.startNewExtractor() }}><FileSearch aria-hidden="true" size={14} /></button>
+              {controller.loomScriptsApi ? (
+                <>
+                  <button aria-label={t('textTransform.importScript')} className={styles.navAddBtn} title={t('textTransform.importScript')} type="button" onClick={event => { event.stopPropagation(); scriptInputRef.current?.click() }}><Code2 aria-hidden="true" size={14} /></button>
+                  <input aria-label={t('textTransform.importScript')} ref={scriptInputRef} accept=".loom.js,text/javascript" hidden type="file" onChange={event => { const file = event.target.files?.[0]; if (file) void controller.importScript(file); event.currentTarget.value = '' }} />
+                </>
+              ) : null}
+            </div>
+          )
+        }
+        if (node.id.startsWith('rule:')) {
+          const rule = controller.finalOrder.find(item => `rule:${item.id}` === node.id)
+          if (!rule) return null
+          return <TreeToggle actionLabel={t(rule.enabled ? 'context.actionDisable' : 'context.actionEnable')} enabled={rule.enabled} label={rule.name} onToggle={() => void controller.updateRule(rule, { enabled: !rule.enabled })} />
+        }
+        if (node.id.startsWith('script:')) {
+          const item = controller.visibleScripts.find(candidate => `script:${candidate.script.id}` === node.id)
+          if (!item) return null
+          return <TreeToggle actionLabel={t(item.mount.enabled ? 'context.actionDisable' : 'context.actionEnable')} enabled={item.mount.enabled} label={item.script.name} onToggle={() => void controller.updateScriptMount(item.mount, { enabled: !item.mount.enabled })} />
+        }
+        return null
+      }}
+      getDisclosureLabel={(node, expanded) => `${expanded ? t('textTransform.collapse') : t('textTransform.expand')} ${node.label}`}
+      getDragLabel={node => node.label}
+      moreActionsLabel={t('textTransform.moreActions')}
+      variant="flat"
+    />
+    {controller.authoring && controller.finalOrder.length === 0 && !controller.unsavedNewRule ? (
+      <p className={styles.emptyState}>{t('textTransform.ownerRulesEmpty')}</p>
+    ) : null}
+    {!controller.authoring && controller.runtimeContexts.length === 0 ? (
+      <p className={styles.emptyState}>{t('textTransform.noHistory')}</p>
+    ) : null}
   </nav>
+}
+
+function TreeToggle(props: { actionLabel: string; enabled: boolean; label: string; onToggle(): void }) {
+  return <button
+    aria-label={`${props.actionLabel} ${props.label}`}
+    aria-pressed={props.enabled}
+    className={styles.treeToggle}
+    title={props.actionLabel}
+    type="button"
+    onClick={event => {
+      event.stopPropagation()
+      props.onToggle()
+    }}
+  >
+    {props.enabled ? <ToggleRight aria-hidden="true" /> : <ToggleLeft aria-hidden="true" />}
+  </button>
 }
 
 export function TextTransformDetail({ controller }: { controller: TextTransformController }) {
@@ -598,8 +837,8 @@ function RuntimePipelinePanel({ controller, heading }: { controller: TextTransfo
     const inspection = controller.inspection
     if (!inspection) return []
     return [
-      { id: 'rules', label: t('textTransform.effectiveRules'), items: inspection.rules.map((rule, index) => ({ id: `rule:${rule.id}`, kind: 'rule', label: rule.name, description: `${rule.matcher.pattern} · v${rule.version}`, owner: ownerLabel(rule.owner, t), effect: rule.effect.kind, order: index + 1, status: controller.disabledRuleIds.includes(rule.id) ? 'disabled' : 'active' })) },
-      { id: 'extractors', label: t('textTransform.extractors'), items: inspection.extractors.map(item => ({ id: `extractor:${item.id}`, kind: 'extractor', label: item.name, description: `${item.strategy} · v${item.version}`, owner: ownerLabel(item.owner, t), effect: 'extractor', status: item.enabled ? 'active' : 'disabled' })) },
+      { id: 'rules', label: t('textTransform.effectiveRules'), items: inspection.rules.map((rule, index) => ({ id: `rule:${rule.id}`, kind: 'rule', label: rule.name, description: `${rule.matcher.pattern} · v${rule.version}`, owner: ownerLabel(rule.owner, t, controller.getOwnerName), effect: rule.effect.kind, order: index + 1, status: controller.disabledRuleIds.includes(rule.id) ? 'disabled' : 'active' })) },
+      { id: 'extractors', label: t('textTransform.extractors'), items: inspection.extractors.map(item => ({ id: `extractor:${item.id}`, kind: 'extractor', label: item.name, description: `${item.strategy} · v${item.version}`, owner: ownerLabel(item.owner, t, controller.getOwnerName), effect: 'extractor', status: item.enabled ? 'active' : 'disabled' })) },
       { id: 'matches', label: t('textTransform.matchesDiagnostics'), items: inspection.snapshot.matches.map(item => ({ id: `match:${item.matchId}`, kind: 'renderer', label: item.match || item.matchId, description: `${item.entryId} · ${item.inputRange.start}-${item.inputRange.end}`, owner: `${item.ruleId}@${item.ruleVersion}`, effect: 'match', status: item.displayRange ? 'active' : 'degraded' })) },
       { id: 'artifacts', label: t('textTransform.artifacts'), items: inspection.artifacts.map(item => ({ id: `artifact:${item.artifactId}`, kind: 'renderer', label: item.artifactType, description: `${item.values.length} · v${item.extractorVersion}`, owner: item.extractorId, effect: 'artifact', status: item.stale ? 'degraded' : 'active' })) },
       { id: 'renderers', label: t('textTransform.renderers'), items: controller.runtimeRenderers.map(item => ({ id: `renderer:${item.key}`, kind: 'renderer', label: item.registration.definition.name, description: `${item.registration.definition.surface} · ${item.registration.definition.instanceScope}${item.claims.length ? ` · claim:${item.claims.map(claim => claim.scopeKey).join(',')}` : ''}${item.diagnostics.length ? ` · ${item.diagnostics.map(diagnostic => diagnostic.code).join(',')}` : ''}`, owner: item.registration.owner.kind === 'extension' ? `extension:${item.registration.owner.packageId}/${item.registration.owner.moduleId}` : `script:${item.registration.owner.scriptDocumentId}@${item.registration.owner.documentVersion}`, effect: 'renderer', status: item.diagnostics.length ? 'degraded' : 'active' })) },
@@ -608,10 +847,19 @@ function RuntimePipelinePanel({ controller, heading }: { controller: TextTransfo
   }, [controller.disabledRuleIds, controller.inspection, controller.rendererRevision, controller.resolvedMounts, controller.runtimeRenderers, t])
   const ownerOptions = useMemo(() => [...new Set(allGroups.flatMap(group => group.items.map(item => item.owner)))].sort(), [allGroups])
   const effectOptions = useMemo(() => [...new Set(allGroups.flatMap(group => group.items.map(item => item.effect).filter((value): value is string => Boolean(value))))].sort(), [allGroups])
-  const groups = useMemo(() => allGroups.map(group => ({
-    ...group,
-    items: group.items.filter(item => (!ownerFilter || item.owner === ownerFilter) && (!effectFilter || item.effect === effectFilter) && (!statusFilter || item.status === statusFilter)),
-  })).filter(group => group.items.length > 0), [allGroups, effectFilter, ownerFilter, statusFilter])
+  const groups = useMemo(() => {
+    const filteredItems = allGroups.flatMap(group => group.items).filter(item => (!ownerFilter || item.owner === ownerFilter) && (!effectFilter || item.effect === effectFilter) && (!statusFilter || item.status === statusFilter))
+    const ownerGroups = new Map<string, PipelineWorkbenchGroup['items']>()
+    for (const item of filteredItems) {
+      if (!ownerGroups.has(item.owner)) ownerGroups.set(item.owner, [])
+      ownerGroups.get(item.owner)!.push(item)
+    }
+    return Array.from(ownerGroups.entries()).map(([owner, items]) => ({
+      id: `owner:${owner}`,
+      label: owner,
+      items,
+    })).sort((a, b) => a.label.localeCompare(b.label))
+  }, [allGroups, effectFilter, ownerFilter, statusFilter])
   const selectedId = controller.selectedTarget.kind === 'empty' || controller.selectedTarget.kind === 'inspection' || controller.selectedTarget.kind === 'renderers' ? undefined : `${controller.selectedTarget.kind}:${controller.selectedTarget.id}`
   return <section className={styles.panel} data-loom-component="text-transform-panel">
     <header className={styles.intro}>
@@ -676,7 +924,8 @@ function ScriptDetail({ controller }: { controller: TextTransformController }) {
   return <><header className={styles.detailHeader}><div className={styles.headerTitle}><Code2 aria-hidden="true" size={16} /><h3>{script.name}</h3><small>{script.metadataId} · v{script.version}</small></div><div className={styles.headerActions}><label><input checked={mount.enabled} type="checkbox" onChange={event => void controller.updateScriptMount(mount, { enabled: event.target.checked })} /> {t('textTransform.enabled')}</label><input aria-label={t('textTransform.order')} className={styles.inlineInput} type="number" value={mount.orderIndex} onChange={event => void controller.updateScriptMount(mount, { orderIndex: Number(event.target.value) })} /><Button size="small" variant="ghost" disabled={controller.busy} onClick={() => void controller.saveScript()}>{t('textTransform.save')}</Button></div></header><div className={styles.inspectionContainer}>
     <section className={styles.inspectionSection}><h4>{t('textTransform.metadata')}</h4><pre className={styles.dryRunOutput}>{JSON.stringify({ owner: script.owner, scriptVersion: script.scriptVersion, runtime: script.runtime, requestedCapabilities: script.requestedCapabilities, contributions: script.contributions }, null, 2)}</pre></section>
     <section className={styles.inspectionSection}><h4>{t('textTransform.grants')}</h4>{script.requestedCapabilities.length === 0 ? <p className={styles.emptyState}>{t('textTransform.noGrants')}</p> : script.requestedCapabilities.map(capability => <label key={capability}><input checked={mount.grantedCapabilities.includes(capability)} type="checkbox" onChange={event => void controller.updateScriptMount(mount, { grantedCapabilities: event.target.checked ? [...mount.grantedCapabilities, capability] : mount.grantedCapabilities.filter(value => value !== capability) })} /> {capability}</label>)}</section>
-    <section className={styles.inspectionSection}><h4>{t('textTransform.source')}</h4><input aria-label={t('textTransform.scriptFileName')} className={styles.inlineInput} value={controller.scriptFileName} onChange={event => controller.setScriptFileName(event.target.value)} /><textarea aria-label={t('textTransform.source')} className={styles.rawJsonTextarea} spellCheck={false} value={controller.scriptSource} onChange={event => controller.setScriptSource(event.target.value)} /></section>
+    <LoomScriptSourceFields fileName={controller.scriptFileName} source={controller.scriptSource}
+      onFileNameChange={controller.setScriptFileName} onSourceChange={controller.setScriptSource} t={t} />
   </div></>
 }
 
@@ -788,6 +1037,7 @@ function RendererDetail({ controller }: { controller: TextTransformController })
 }
 
 function ownerMatches(value: TextRuleOwner, scope: OwnerScope): boolean {
+  if (scope.kind === 'catalog') return true
   if (scope.kind === 'runtime') return false
   if (scope.kind === 'workspace') return value.kind === 'workspace' || value.kind === 'user-override'
   if (scope.kind === 'card') return value.kind === 'card' && value.cardId === scope.cardId
@@ -796,7 +1046,7 @@ function ownerMatches(value: TextRuleOwner, scope: OwnerScope): boolean {
   return value.kind === 'user-override'
 }
 
-function ownerId(owner: OwnerScope): string { return owner.kind === 'runtime' ? 'runtime' : JSON.stringify(owner) }
+function ownerId(owner: OwnerScope): string { return owner.kind === 'runtime' ? 'runtime' : owner.kind === 'catalog' ? 'catalog' : JSON.stringify(owner) }
 function toScriptOwner(owner: OwnerScope): LoomScriptOwner | undefined { if (owner.kind === 'card') return { kind: 'card', cardId: owner.cardId }; if (owner.kind === 'preset') return { kind: 'preset', presetId: owner.presetId }; if (owner.kind === 'workspace') return { kind: 'workspace', workspaceId: 'workspace' }; if (owner.kind === 'user-override') return { kind: 'user' }; return undefined }
 function scriptOwnerMatches(left: LoomScriptOwner, right: LoomScriptOwner): boolean { return JSON.stringify(left) === JSON.stringify(right) }
 export function listRuntimeRendererRegistrations(host: ClientRendererHost): Array<{
@@ -831,7 +1081,15 @@ export function listRuntimeScriptItems(mounts: readonly ResolvedLoomScriptRender
     status: 'active',
   }))
 }
-function ownerLabel(owner: TextRuleOwner | OwnerScope, t: Translator): string { if (owner.kind === 'workspace') return t('textTransform.ownerWorkspace'); if (owner.kind === 'user-override') return t('textTransform.ownerUserOverride'); if (owner.kind === 'card') return t('textTransform.ownerCard', { id: owner.cardId }); if (owner.kind === 'preset') return t('textTransform.ownerPreset', { id: owner.presetId }); if (owner.kind === 'extension') return t('textTransform.ownerExtension', { id: owner.packageId }); return t('textTransform.ownerRuntime') }
+function ownerLabel(owner: TextRuleOwner | OwnerScope, t: Translator, getName?: (owner: TextRuleOwner | OwnerScope) => string | undefined): string {
+  const name = getName?.(owner);
+  if (owner.kind === 'workspace' || owner.kind === 'catalog') return t('textTransform.ownerWorkspace');
+  if (owner.kind === 'user-override') return t('textTransform.ownerUserOverride');
+  if (owner.kind === 'card') return name ? t('textTransform.ownerCardNamed', { name }) : t('textTransform.ownerCard', { id: owner.cardId });
+  if (owner.kind === 'preset') return name ? t('textTransform.ownerPresetNamed', { name }) : t('textTransform.ownerPreset', { id: owner.presetId });
+  if (owner.kind === 'extension') return name ? t('textTransform.ownerExtensionNamed', { name }) : t('textTransform.ownerExtension', { id: owner.packageId });
+  return t('textTransform.ownerRuntime')
+}
 function sourceLabel(source: HistorySource, t: Translator): string { return source.kind === 'narrative' ? t('textTransform.narrativeSource', { id: source.timelineId }) : t('textTransform.agentSessionSource', { id: source.sessionId }) }
 function sourceId(source: HistorySource): string { return source.kind === 'narrative' ? `narrative:${source.timelineId}:${source.branchId}` : `agent-session:${source.sessionId}` }
 function toRuleDraft(rule: TextTransformRule): TextTransformRuleDraft { const draft = { ...rule } as Record<string, unknown>; delete draft.id; delete draft.version; delete draft.createdAt; delete draft.updatedAt; return draft as TextTransformRuleDraft }

@@ -86,7 +86,7 @@ Content Tool Description 作为外部 Runtime Source 进入 PromptBuild。Anchor
 
 ## 8. CodeAct 双入口
 
-2026-09-21 已接入官方 CodeAct，当前只读，不代表 CodeAct/VFS 总计划已完成：
+官方 CodeAct 已接入受控读写与宿主绑定的 Narrative 追加，不代表 CodeAct/VFS 总计划已完成：
 
 | Tool ID / 模型名 | 传输 | 输入 |
 | --- | --- | --- |
@@ -123,11 +123,14 @@ Content 原文保留 JS 换行、引号与反斜杠，但仍受 `loom-content-v1
 - `ctx.search({ path?, terms, match?, limit? })`：同一文件内 all/any 字面匹配，返回路径、行范围和少量原文。
 - `ctx.read(path, { startLine?, endLine? }?)`：纯正文字符串，每次最多 16384 字符；读取路径/行范围另外显示在结果中。
 - `ctx.readNarrative({ selection, maxNodes?, maxCharacters? })`：采样读取当前授权 Timeline 的历史节点，返回结构化 JSON 对象（节点列表、拼接正文与截断标记），受节点上限和字符预算保护。
+- `ctx.appendNarrative({ content })`：向当前绑定的 Timeline/Branch 追加非空剧情正文；不能传目标 ID，返回 `{ path }`。路径可用于 `ctx.read`，完整读取后可用 `ctx.write` 替换，替换成功返回新节点路径。无绑定或非法参数明确失败。追加不推进默认投影 Head；即使后续脚本失败或取消，结果仍保留已提交路径，不能盲目重试。
 - 宿主方法返回值支持结构化 `JsonValue`，不强制将对象转换为扁平字符串。其余写方法（`write`, `patch`, `create`, `delete` 等）按授权受控提供。
-- `ctx.write(path, value, { mode: "replace" })`：必须先完整读取同一路径；当前只允许 Prompt Resource 正文和 State 属性替换，使用读取到的资源版本或 State Revision 做冲突检查。
+- `ctx.write(path, value, { mode: "replace" })`：必须先完整读取同一路径；支持作者模式下的 Prompt Resource、State 属性及 Narrative 节点正文替换。使用资源版本、State Revision 或正文读取基线做冲突检查。
 - `ctx.patch(path, unifiedDiff)`：必须先读取覆盖所有修改上下文的正文范围；当前只允许 Prompt Resource 单文件 unified diff，按唯一旧文本上下文定位，不依赖行号，不支持模糊匹配、创建、删除或移动。
 
 写入支持宿主 `approveMutation(preview, signal)` 回调：预览提供前后文本，State 使用 YAML 并附带目标与 Pointer；只返回 allow 或 deny/reason。审批期间取消不再写入，通过后仍由领域 CAS 拒绝过期版本。Agent Run 已将预览转为等待事件，Studio Agent Panel 提供允许/拒绝弹窗并回传决定；未提供 Run 回调的直接 Runtime 调用仍沿用此前直接写入行为。
+
+Narrative 追加复用 `ToolExecutionScope.narrative.appendNode`，与官方 `append_narrative` 共用当前 Run 的宿主目标绑定和 Head CAS；不经过 VFS 的资源/State 变更审批，也不新增单独的追加审批。工具本身仍须经现有挂载、调用验证与 Registry 审批。`/resources/.../@body.md` 是世界书节点正文，不是剧情；`/state` 是结构化状态，不能通过 `ctx.write` 代替剧情追加。
 
 VFS 的权威来源与投影视图分开：
 
@@ -143,11 +146,21 @@ VFS 的权威来源与投影视图分开：
 
 `ResourceVfs` 独立于 JavaScript Sandbox，在本次 ToolExecutionScope 内保留读取版本和路径身份。用户编辑后重新读取能得到新版本；观察过的路径被另一个节点占用时返回 `vfs.path_rebound`，不静默换目标。版本记录不作为模型正文输出，也不是现已实现的写入授权。
 
-只遍历显式挂载的 resource IDs，不枚举整个 Workspace。资源树顺序遵从作者顺序，同名挂载消歧；有正文又有子节点的节点用 `@body.md` 表示自身正文。`disabled` 仅表示停用注入，不等于禁止源文件读取。宿主可将节点标为 locked 或 hidden，LS/Search/Read 使用同一访问规则；当前正式接线只为本次已选资源供给读取，不据此宣称通用权限 UI 已完成。
+只遍历显式挂载的 resource IDs，不枚举整个 Workspace。资源树顺序遵从作者顺序，同名挂载消歧；有正文又有子节点的节点用 `@body.md` 表示自身正文。disabled 源文件只在已授权作者视图中可读。宿主可将节点标为 locked 或 hidden，LS/Search/Read 使用同一访问规则；当前正式接线只为本次已选资源供给读取，不据此宣称通用权限 UI 已完成。
+
+### 游玩与作者视图（2026-09-30）
+
+CodeAct 默认使用游玩视图：`/resources` 不显示、搜索或读取 disabled 节点及其子树，不暴露 Metadata 文件，不允许设定资源修改。未满足激活条件不等于 disabled，仍允许主动查阅宿主可读的正文。
+
+`ctx.setAuthorMode(true)` 使用现有审批请求通道，以独立 `author-mode` 动作申请本轮 Run 的作者视图；无交互处理器默认拒绝。批准后可读取已挂载资源的 disabled 和 Metadata，修改仍需逐项审批。模式不绕过宿主 locked/hidden，不扩大挂载，不产生持久 grant。`false` 恢复游玩视图并清除读取基线，但不能抹去 Transcript 中已披露的信息。
+
+`/narrative/<节点标识>.md` 由宿主生成，采样返回的每个节点也附带 `path`。VFS 精确路径读取与目录发现复用有界 Narrative sampler，旧历史仍要求单次授权，审批等待沿用暂停预算。目录超过采样预算时明确失败，可改用小范围 `readNarrative` 发现路径。替换复用分支编辑和旧正文校验，不把旧路径重绑到替代节点。当前 `patch` 仍只支持作者模式中的 Prompt Resource。
+
+追加结果只展示简短已保存路径；脚本原样打印 `{ path }` 时不重复展示。后续失败或取消仍保留已完成记录。Narrative VFS 依赖现有默认上下文来源；未配置来源时明确失败，不因此绕过历史权限。
 
 脚本目录列表不读 Blob 字节，文本读取上限为 1 MiB；深度 128、视图 20000 项、搜索源文本 2 Mi 字符是当前显式预算，超限要求缩小范围，不伪装成完整结果。
 
-尚不支持 Narrative/Session 搜索、历史追溯、任意通用附件/图片索引、多角色挂载管理 UI、创建/删除/移动资源、Metadata 结构修改、Pin 或世界回滚。已有 Blob 桥不等于所有资产的所属关系和授权已经接通；未实现方法不在 ctx 中暴露。
+尚不支持 Session 搜索、任意通用附件/图片索引、多角色挂载管理 UI、Pin 或世界回滚。Narrative 的 VFS 搜索限于授权采样窗口，历史追溯另经审批；作者视图支持已实现的资源节点结构操作与 Metadata 修改。已有 Blob 桥不等于所有资产的所属关系和授权已经接通；未实现方法不在 ctx 中暴露。
 
 ### 引用与 UI 跳转
 
@@ -163,7 +176,7 @@ VFS 的权威来源与投影视图分开：
 - `state`：State 目标、Revision、JSON Pointer 和 YAML 行范围；
 - `script`：脚本文档和版本；
 
-CodeAct 的 `read` 和 `search` 结果在有真实绑定时附带 `Reference: [打开引用](...)`。稳定教程要求 Agent 直接复用这个 Markdown 链接，不自行编造 URI、内部 ID 或行号；`/context` 投影没有源正文引用，应先读取 `/resources`。
+CodeAct 面向模型的读取和搜索结果只保留 VFS 路径、实际行范围与正文或命中片段，不再拼接长 `loom-resource:` URI；资源、State 与脚本搜索遵循相同规则。源正文里作者原有的链接保持原样，不进行字符串清洗。稳定教程要求引用路径与必要行范围，不要求模型构造内部身份链接。已有 URI 查看器继续支持既有消息，但 VFS 路径本身不承诺自动变成可点击的版本化引用。
 
 Studio 将 URI 渲染为可点击引用查看器。查看器按 URI 中的身份和目标读取，不按当前路径或同名节点重新猜测；资源版本或 State Revision 已变化时展示当前内容，但取消旧行号高亮。正文资源可以从查看器进入编辑器；State 引用只读取目标分支，不执行分支切换或写入。URI 只能定位资源，不能绕过 VFS 权限。
 

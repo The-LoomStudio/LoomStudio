@@ -48,6 +48,7 @@ Streaming domain lifecycle   -> owning Agent / Narrative feature
 | 系统凭据与敏感密钥托管 | `@napi-rs/keyring` + `@loom-studio/secret-store` | 操作系统安全凭据链（Keychain/SecretService）与 SQLite 元数据双层物理隔离；受控闭包临时借用、写入意图防丢失持久化与生命周期清理队列，绝不向数据库或日志写入明文。 |
 | 沙箱代码隔离执行 | `quickjs-emscripten` / `node:vm` | CodeAct 与命令行沙箱的隔离执行环境；提供确定性内存/时间预算，杜绝未经授权的宿主文件、网络或进程访问。 |
 | 跨端纯契约 | `@loom-studio/shared` | JSON DTO、Schema 和浏览器/Node 都可执行的纯逻辑。不得依赖 React、数据库、Node 专属 API 或 Application Runtime。 |
+| 基础文本 Token 计数 | `gpt-tokenizer` / `@loom-studio/tokenizer` | 固定 `o200k_base`，按字面计数；目标模型系数是估算，不替代 Provider usage。词表由独立包拥有，Client 仅在共享 Worker 加载；派生资源计数不写数据库。 |
 
 TypeScript 类型不替代运行时信任边界校验，Zod 也不替代内部类型系统。某个跨端领域采用 Zod 后，
 Schema 应成为该字段的类型来源；已有 Manifest 等专用 parser 不因本规则被机械重写。

@@ -11,9 +11,9 @@ export type AgentMutationApproval = {
   requestId: string
   action?: never
   preview: {
-    action: 'replace' | 'patch'
+    action: 'replace' | 'patch' | 'move' | 'delete' | 'create' | 'copy' | 'author-mode'
     path: string
-    kind: 'prompt-resource' | 'state'
+    kind: 'prompt-resource' | 'state' | 'narrative'
     before: string
     after: string
     target?: ClientJsonValue
@@ -232,6 +232,8 @@ type CreateProviderProfileInput = {
 }
 
 type UpdateProviderProfileInput = {
+  tokenMultipliers?: Record<string, number>
+  expectedVersion?: number
   providerProfileId: string
   displayName?: string
   config?: Record<string, unknown>
@@ -250,6 +252,8 @@ type UpdateAgentPresetInput = {
   name?: string
   model?: ProviderModelSelection | null
   delivery?: 'stream' | 'complete'
+  useCardSettings?: boolean
+  textUses?: Array<{ id: string; kind: 'rule' | 'extractor'; enabled: boolean; orderIndex?: number }>
 }
 
 // ─── Narrative DTOs ─────────────────────────────────────────────────────────
@@ -479,6 +483,7 @@ export type StudioApi = {
     createRun(input: InvokeAgentTurnInput): Promise<{ runId: string }>
     subscribeRun(runId: string, cursor?: number): Promise<{ events: AgentRunEvent[]; nextCursor: number; done: boolean; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' }>
     cancelRun(runId: string, reason?: string): Promise<{ runId: string; accepted: boolean; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' }>
+    abandonRun(runId: string): Promise<{ runId: string; accepted: boolean; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' }>
     pauseRun(runId: string): Promise<{ runId: string; accepted: boolean; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' }>
     resumeRun(runIdOrOptions: string | { runId?: string; agentSessionId?: string }): Promise<{ runId: string; sourceRunId?: string; accepted: boolean; state?: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' }>
     approveMutation(runId: string, requestId: string, allow: boolean, reason?: string): Promise<{ runId: string; requestId: string; accepted: boolean }>
@@ -525,6 +530,17 @@ export type StudioApi = {
     update(input: { toolId: string; expectedVersion: number; definition: Omit<AgentToolDefinition, 'version' | 'createdAt' | 'updatedAt'> }): Promise<{ tool: AgentToolDefinition }>
   }
   narratives: {
+    getEffectivePreview(input: { timelineId: string; branchId: string }): Promise<{
+      timelineId: string
+      branchId: string
+      sourceId: string
+      version?: string
+      coveredThroughNodeId: string | null
+      rawThroughNodeId: string | null
+      memory: Array<{ id: string; content: string }>
+      nodes: Array<{ id: string; text: string }>
+      complete: boolean
+    }>
     appendInput(input: { timelineId: string; branchId: string; nodeId: string; expectedHeadNodeId: string | null; content: string }): Promise<{ timeline: NarrativeTimeline; branch: NarrativePage['branch']; node: NarrativePage['nodes'][number]; mutation: MutationReceipt }>
     editNode(input: { timelineId: string; branchId: string; nodeId: string; expectedHeadNodeId: string; expectedRaw: string; raw: string }): Promise<{ timeline: NarrativeTimeline; branch: NarrativePage['branch']; replacements: Array<{ previousNodeId: string; node: NarrativePage['nodes'][number] }>; mutation: MutationReceipt }>
     create(input: CreateNarrativeTimelineInput): Promise<CreateNarrativeTimelineResult>
@@ -731,6 +747,7 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       createRun: input => rpc.call<{ runId: string }>('application.agent.run.create', input),
       subscribeRun: (runId, cursor) => rpc.call('application.agent.run.subscribe', { runId, ...(cursor === undefined ? {} : { cursor }) }),
       cancelRun: (runId, reason) => rpc.call('application.agent.run.cancel', { runId, ...(reason ? { reason } : {}) }),
+      abandonRun: runId => rpc.call('application.agent.run.abandon', { runId }),
       pauseRun: runId => rpc.call('application.agent.run.pause', { runId }),
       resumeRun: runIdOrOptions => rpc.call('application.agent.run.resume', typeof runIdOrOptions === 'string' ? { runId: runIdOrOptions } : runIdOrOptions),
       approveHistoryRead: (runId, requestId, allow, reason) => rpc.call('application.agent.run.history-read-approval', {
@@ -784,6 +801,7 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       update: input => rpc.call<{ tool: AgentToolDefinition }>('application.updateAgentTool', input),
     },
     narratives: {
+      getEffectivePreview: input => rpc.call('application.getEffectiveNarrativePreview', input),
       appendInput: input => rpc.call('application.appendNarrativeInput', input),
       editNode: input => rpc.call('application.editNarrativeNode', input),
       create: input => rpc.call<CreateNarrativeTimelineResult>('application.createNarrativeTimeline', input),

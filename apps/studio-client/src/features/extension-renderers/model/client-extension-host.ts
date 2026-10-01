@@ -1,4 +1,5 @@
 import { createExtensionLogWriter, readLogFailure, type ExtensionHostLogWriter, type ExtensionLogQuery, type ExtensionLogPage } from '@loom-studio/logging'
+import { countText } from '../../../shared/tokenizer/client.js'
 import type {
   ClientActionSurface,
   ClientCommandHandler,
@@ -575,6 +576,7 @@ function createActivationContext(input: {
       displayName: input.extensionPackage.displayName,
     },
     signal: input.record.abortController.signal,
+    tokens: { countText: value => countText(value, input.record.abortController.signal) },
     logger: input.logger,
     logs: {
       query: query => {

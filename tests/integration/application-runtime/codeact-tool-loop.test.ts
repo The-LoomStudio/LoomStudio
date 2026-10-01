@@ -5,8 +5,16 @@ import type { AiGatewayRequest } from '@loom-studio/ai-gateway'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { describe, expect, it } from 'vitest'
+import type { VfsMutationPreview } from '../../../packages/application-runtime/src/vfs/types.js'
 
-async function fixture(mode: 'content' | 'json', finishReason: GatewayChatResult['finishReason'] = 'tool_call', code?: string) {
+function authorContext() {
+  return { agentRun: {
+    runId: 'author-test-run', onEvent: () => {},
+    onMutationApproval: async (_preview: VfsMutationPreview) => ({ decision: 'allow' as const }),
+  } }
+}
+
+async function fixture(mode: 'content' | 'json', finishReason: GatewayChatResult['finishReason'] = 'tool_call', code?: string, cancelAfterAppend?: AbortController) {
   let sequence = 0
   const createId = (prefix: string) => `${prefix}-${++sequence}`
   const now = () => '2026-09-21T00:00:00.000Z'
@@ -16,9 +24,17 @@ async function fixture(mode: 'content' | 'json', finishReason: GatewayChatResult
   const toolId = mode === 'content' ? 'official/codeact' : 'official/codeact_json'
   const source = code ?? 'const result = await ctx.search({path:"/context", terms:["KEY_SENTINEL"]}); print(result);'
   const narrativeContext = createNarrativeContextRegistry()
+  const narratives = createNarrativeStore({ engine, createId, now })
   const runtime = createApplicationRuntime({
     dataEngine: engine, documents: createSqliteDocumentStore({ engine }),
-    agents, narratives: createNarrativeStore({ engine, createId, now }), narrativeContext,
+    agents, narratives: cancelAfterAppend ? {
+      ...narratives,
+      appendNode: async (input) => {
+        const result = await narratives.appendNode(input)
+        if (input.body.raw === 'CANCELLED_STORY') cancelAfterAppend.abort('user-cancel')
+        return result
+      },
+    } : narratives, narrativeContext,
     promptResources: createPromptResourceStore({ engine, createId, now }),
     agentTools: createOfficialAgentToolRegistry(),
     gateway: {
@@ -64,6 +80,228 @@ async function fixture(mode: 'content' | 'json', finishReason: GatewayChatResult
 }
 
 describe('CodeAct production tool loop', () => {
+  it('returns a corrective error for JSON-wrapped Freeform code and continues the Run', async () => {
+    const f = await fixture('content', 'stop', JSON.stringify({ code: 'throw new Error("MUST_NOT_EXECUTE")' }))
+    try {
+      await f.runtime.invokeAgentTurn({ agentSessionId: f.session.id, input: 'Use CodeAct.' })
+      const { entries } = await f.agents.getEntryPage({ agentSessionId: f.session.id, limit: 100 })
+      const result = entries.find(entry => entry.entry.kind === 'tool-result')!.entry
+      expect(result).toMatchObject({ status: 'failed', error: { code: 'codeact.json_envelope' } })
+      expect(f.calls).toHaveLength(2)
+      expect(JSON.stringify(f.calls[1]!.messages)).toContain('Nothing was executed')
+      expect(entries.some(entry => entry.entry.kind === 'run-state' && entry.entry.state === 'suspended')).toBe(false)
+      expect(entries.at(-1)!.entry).toMatchObject({ kind: 'run-state', state: 'completed' })
+    } finally { f.engine.close() }
+  })
+
+  it.each(['content', 'json'] as const)('requires approval before exposing author metadata through %s', async mode => {
+    const f = await fixture(mode, 'stop', `
+print(await ctx.ls("/resources/World"));
+try { await ctx.read("/resources/World/@meta.yaml"); } catch (e) { print(e.code); }
+await ctx.setAuthorMode(true);
+print(await ctx.read("/resources/World/@meta.yaml"));
+`)
+    try {
+      const previews: string[] = []
+      const context = authorContext()
+      context.agentRun.onMutationApproval = async preview => {
+        previews.push(preview.action)
+        return { decision: 'allow' }
+      }
+      await f.runtime.invokeAgentTurn({ agentSessionId: f.session.id, input: 'Edit resources.' }, context)
+      const { entries } = await f.agents.getEntryPage({ agentSessionId: f.session.id, limit: 100 })
+      const result = entries.find(entry => entry.entry.kind === 'tool-result')!.entry
+      expect(result).toMatchObject({ status: 'completed' })
+      expect(previews).toEqual(['author-mode'])
+      expect(JSON.stringify(result)).toContain('vfs.not_found')
+      expect(JSON.stringify(result)).toContain('label: World')
+    } finally { f.engine.close() }
+  })
+
+  it.each(['content', 'json'] as const)('reads and edits an appended Narrative via its VFS path through %s', async mode => {
+    const f = await fixture(mode, 'stop', `
+const result = await ctx.appendNarrative({ content: "PATH_STORY" });
+print(await ctx.read(result.path));
+print(await ctx.write(result.path, "EDITED_STORY"));
+`)
+    try {
+      const { card } = await f.runtime.createCard({ name: 'Story', opening: 'OPENING' })
+      const { timeline } = await f.runtime.createNarrativeTimeline({ cardId: card.id })
+      const before = await f.runtime.getNarrativePage({ timelineId: timeline.id })
+      f.narrativeContext.register({ id: 'test.memory', resolve: async () => ({
+        version: 'initial', memory: null, rawThroughNodeId: before.branch.headNodeId!,
+      }) })
+      await f.runtime.invokeAgentTurn({
+        agentSessionId: f.session.id, input: 'Write and edit.', narrativeTarget: { timelineId: timeline.id },
+      }, authorContext())
+      const page = await f.runtime.getNarrativePage({ timelineId: timeline.id })
+      expect(page.nodes.map(node => node.body.raw)).toEqual(['OPENING', 'EDITED_STORY'])
+      const { entries } = await f.agents.getEntryPage({ agentSessionId: f.session.id, limit: 100 })
+      const result = entries.find(entry => entry.entry.kind === 'tool-result')!.entry
+      expect(result).toMatchObject({ status: 'completed' })
+      expect(JSON.stringify(result)).toContain(`/narrative/${page.nodes.at(-1)!.id}.md`)
+    } finally { f.engine.close() }
+  })
+
+  it('does not overwrite a Narrative changed by the user during approval', async () => {
+    const f = await fixture('json', 'stop', `
+const node = await ctx.appendNarrative({ content: "ORIGINAL" });
+await ctx.read(node.path);
+await ctx.write(node.path, "STALE_AGENT_EDIT");
+`)
+    try {
+      const { card } = await f.runtime.createCard({ name: 'Story', opening: 'OPENING' })
+      const { timeline } = await f.runtime.createNarrativeTimeline({ cardId: card.id })
+      const before = await f.runtime.getNarrativePage({ timelineId: timeline.id })
+      f.narrativeContext.register({ id: 'test.memory', resolve: async () => ({
+        version: 'initial', memory: null, rawThroughNodeId: before.branch.headNodeId!,
+      }) })
+      const context = authorContext()
+      context.agentRun.onMutationApproval = async () => {
+        const current = await f.runtime.getNarrativePage({ timelineId: timeline.id })
+        const node = current.nodes.at(-1)!
+        await f.runtime.editNarrativeNode({
+          timelineId: timeline.id, branchId: current.branch.id, nodeId: node.id,
+          expectedHeadNodeId: current.branch.headNodeId!, expectedRaw: node.body.raw, raw: 'USER_EDIT',
+        })
+        return { decision: 'allow' }
+      }
+      await f.runtime.invokeAgentTurn({
+        agentSessionId: f.session.id, input: 'Edit.', narrativeTarget: { timelineId: timeline.id },
+      }, context)
+      expect((await f.runtime.getNarrativePage({ timelineId: timeline.id })).nodes.at(-1)!.body.raw).toBe('USER_EDIT')
+      const { entries } = await f.agents.getEntryPage({ agentSessionId: f.session.id, limit: 100 })
+      expect(entries.find(entry => entry.entry.kind === 'tool-result')!.entry).toMatchObject({ status: 'failed' })
+    } finally { f.engine.close() }
+  })
+
+  it('does not bypass old-history authorization through an exact VFS path', async () => {
+    const f = await fixture('json', 'stop', `
+const old = await ctx.read("/narrative/node-secret.md");
+print(old);
+`)
+    try {
+      const { card } = await f.runtime.createCard({ name: 'Story' })
+      const { timeline } = await f.runtime.createNarrativeTimeline({ cardId: card.id })
+      await f.runtime.appendNarrativeInput({
+        timelineId: timeline.id, branchId: timeline.activeBranchId,
+        nodeId: 'node-secret', expectedHeadNodeId: null, content: 'SECRET_OLD_TEXT',
+      })
+      f.narrativeContext.register({ id: 'test.memory', resolve: async () => ({
+        version: 'covered', memory: { coveredThroughNodeId: 'node-secret', entries: [{ id: 'summary', content: 'Summary' }] },
+        rawThroughNodeId: 'node-secret',
+      }) })
+      await f.runtime.invokeAgentTurn({
+        agentSessionId: f.session.id, input: 'Read.', narrativeTarget: { timelineId: timeline.id },
+      })
+      const { entries } = await f.agents.getEntryPage({ agentSessionId: f.session.id, limit: 100 })
+      const result = entries.find(entry => entry.entry.kind === 'tool-result')!.entry
+      expect(result).toMatchObject({ status: 'failed' })
+      expect(JSON.stringify(result)).not.toContain('SECRET_OLD_TEXT')
+    } finally { f.engine.close() }
+  })
+
+  it.each(['content', 'json'] as const)('retains a committed Narrative receipt after %s is cancelled', async mode => {
+    const controller = new AbortController()
+    const f = await fixture(mode, 'stop', `
+await ctx.appendNarrative({ content: "CANCELLED_STORY" });
+await ctx.appendNarrative({ content: "MUST_NOT_APPEND" });
+`, controller)
+    try {
+      const { card } = await f.runtime.createCard({ name: 'Story', opening: 'OPENING' })
+      const { timeline } = await f.runtime.createNarrativeTimeline({ cardId: card.id })
+      const before = await f.runtime.getNarrativePage({ timelineId: timeline.id })
+      await expect(f.runtime.invokeAgentTurn({
+        agentSessionId: f.session.id, input: 'Write.', narrativeTarget: { timelineId: timeline.id },
+      }, { abortSignal: controller.signal })).rejects.toThrow()
+      expect(controller.signal.aborted).toBe(true)
+      const page = await f.runtime.getNarrativePage({ timelineId: timeline.id })
+      expect(page.nodes).toHaveLength(before.nodes.length + 1)
+      const node = page.nodes.at(-1)!
+      expect(node.body.raw).toBe('CANCELLED_STORY')
+      const { entries } = await f.agents.getEntryPage({ agentSessionId: f.session.id, limit: 100 })
+      const results = entries.filter(entry => entry.entry.kind === 'tool-result')
+      expect(results).toHaveLength(1)
+      expect(results[0]!.entry).toMatchObject({ status: 'aborted' })
+      const text = JSON.stringify(results[0]!.entry)
+      expect(text).toContain(node.id)
+      expect(text).toContain(`/narrative/${node.id}.md`)
+      expect(text).not.toContain('MUST_NOT_APPEND')
+      expect(f.calls).toHaveLength(1)
+    } finally { f.engine.close() }
+  })
+
+  it.each(['content', 'json'] as const)('appends one host-bound Narrative node through %s without changing resources', async mode => {
+    const f = await fixture(mode, 'stop', 'print(await ctx.appendNarrative({ content: "NEW_STORY" }));')
+    try {
+      const { card } = await f.runtime.createCard({ name: 'Story', opening: 'OPENING' })
+      const { timeline } = await f.runtime.createNarrativeTimeline({ cardId: card.id })
+      const before = await f.runtime.getNarrativePage({ timelineId: timeline.id })
+      await f.runtime.invokeAgentTurn({
+        agentSessionId: f.session.id, input: 'Write the next paragraph.', narrativeTarget: { timelineId: timeline.id },
+      })
+      const after = await f.runtime.getNarrativePage({ timelineId: timeline.id })
+      expect(after.nodes).toHaveLength(before.nodes.length + 1)
+      expect(after.nodes.at(-1)!.body.raw).toBe('NEW_STORY')
+      const { entries } = await f.agents.getEntryPage({ agentSessionId: f.session.id, limit: 100 })
+      expect(entries.find(entry => entry.entry.kind === 'tool-result')!.entry).toMatchObject({ status: 'completed' })
+      expect(JSON.stringify(entries)).toContain(after.nodes.at(-1)!.id)
+      const resultText = JSON.stringify(entries.find(entry => entry.entry.kind === 'tool-result')!.entry)
+      expect(resultText.split(`/narrative/${after.nodes.at(-1)!.id}.md`)).toHaveLength(2)
+      await expect(f.runtime.getPromptResource({ resourceId: f.setting.id }))
+        .resolves.toMatchObject({ resource: { rootNode: { children: [{ body: 'KEY_SENTINEL belongs to C.' }] } } })
+    } finally { f.engine.close() }
+  })
+
+  it.each(['content', 'json'] as const)('reports committed Narrative IDs when %s fails afterward', async mode => {
+    const f = await fixture(mode, 'stop', 'await ctx.appendNarrative({ content: "COMMITTED_STORY" }); throw new Error("later failure");')
+    try {
+      const { card } = await f.runtime.createCard({ name: 'Story', opening: 'OPENING' })
+      const { timeline } = await f.runtime.createNarrativeTimeline({ cardId: card.id })
+      await f.runtime.invokeAgentTurn({
+        agentSessionId: f.session.id, input: 'Write.', narrativeTarget: { timelineId: timeline.id },
+      })
+      const page = await f.runtime.getNarrativePage({ timelineId: timeline.id })
+      const node = page.nodes.at(-1)!
+      expect(node.body.raw).toBe('COMMITTED_STORY')
+      const { entries } = await f.agents.getEntryPage({ agentSessionId: f.session.id, limit: 100 })
+      const result = entries.find(entry => entry.entry.kind === 'tool-result')!.entry
+      expect(result).toMatchObject({ status: 'failed' })
+      expect(JSON.stringify(result)).toContain(node.id)
+      expect(JSON.stringify(result)).toContain(`/narrative/${node.id}.md`)
+    } finally { f.engine.close() }
+  })
+
+  it.each(['content', 'json'] as const)('rejects %s Narrative append without a bound Timeline', async mode => {
+    const f = await fixture(mode, 'stop', 'await ctx.appendNarrative({ content: "NOT_WRITTEN" });')
+    try {
+      await f.runtime.invokeAgentTurn({ agentSessionId: f.session.id, input: 'Write.' })
+      const { entries } = await f.agents.getEntryPage({ agentSessionId: f.session.id, limit: 100 })
+      expect(entries.find(entry => entry.entry.kind === 'tool-result')!.entry)
+        .toMatchObject({ status: 'failed', error: { code: 'codeact.narrative_unavailable' } })
+    } finally { f.engine.close() }
+  })
+
+  it.each(['content', 'json'] as const)('rejects %s target injection and empty content', async mode => {
+    const f = await fixture(mode, 'stop', `
+for (const input of [{ content: "NO", timelineId: "other" }, { content: " " }]) {
+  try { await ctx.appendNarrative(input); } catch (error) { print(error.code); }
+}`)
+    try {
+      const { card } = await f.runtime.createCard({ name: 'Story', opening: 'OPENING' })
+      const { timeline } = await f.runtime.createNarrativeTimeline({ cardId: card.id })
+      const before = await f.runtime.getNarrativePage({ timelineId: timeline.id })
+      await f.runtime.invokeAgentTurn({
+        agentSessionId: f.session.id, input: 'Write.', narrativeTarget: { timelineId: timeline.id },
+      })
+      const after = await f.runtime.getNarrativePage({ timelineId: timeline.id })
+      expect(after.nodes).toHaveLength(before.nodes.length)
+      const { entries } = await f.agents.getEntryPage({ agentSessionId: f.session.id, limit: 100 })
+      expect(entries.find(entry => entry.entry.kind === 'tool-result')!.entry)
+        .toMatchObject({ status: 'completed', content: [{ type: 'text', text: 'codeact.invalid_arguments\ncodeact.invalid_arguments' }] })
+    } finally { f.engine.close() }
+  })
+
   it.each(['content', 'json'] as const)('shares host-selected Narrative processing with %s tools', async mode => {
     const f = await fixture(mode, 'stop', `
 const raw = await ctx.readNarrative({ selection: { kind: "tail", count: 1 } });
@@ -111,16 +349,17 @@ print(prompt.nodes[0].body.raw);
       const result = entries.find(entry => entry.entry.kind === 'tool-result')!.entry
       expect(result).toMatchObject({ status: 'completed' })
       expect(JSON.stringify(result)).toContain('KEY_SENTINEL belongs to C.')
-      expect(JSON.stringify(result)).toContain('loom-resource://prompt-resource')
+      expect(JSON.stringify(result)).not.toContain('loom-resource://')
+      expect(JSON.stringify(result)).toContain('/resources/World/Key.md')
     } finally {
       f.engine.close()
     }
   })
 
   it.each(['content', 'json'] as const)('writes a fully read Prompt Resource through %s', async mode => {
-    const f = await fixture(mode, 'stop', 'await ctx.read("/resources/World/Key.md"); print(await ctx.write("/resources/World/Key.md", "KEY_UPDATED"));')
+    const f = await fixture(mode, 'stop', 'await ctx.setAuthorMode(true); await ctx.read("/resources/World/Key.md"); print(await ctx.write("/resources/World/Key.md", "KEY_UPDATED"));')
     try {
-      await f.runtime.invokeAgentTurn({ agentSessionId: f.session.id, input: 'Update the key note.' })
+      await f.runtime.invokeAgentTurn({ agentSessionId: f.session.id, input: 'Update the key note.' }, authorContext())
       const { entries } = await f.agents.getEntryPage({ agentSessionId: f.session.id, limit: 100 })
       const result = entries.find(entry => entry.entry.kind === 'tool-result')!.entry
       expect(result).toMatchObject({ status: 'completed' })
@@ -134,9 +373,9 @@ print(prompt.nodes[0].body.raw);
 
   it.each(['content', 'json'] as const)('writes node Metadata through %s', async mode => {
     const path = '/resources/World/Key.md.meta.yaml'
-    const f = await fixture(mode, 'stop', `await ctx.read(${JSON.stringify(path)}); print(await ctx.write(${JSON.stringify(path)}, "label: Key Note\\nmeta: owned by A\\n"));`)
+    const f = await fixture(mode, 'stop', `await ctx.setAuthorMode(true); await ctx.read(${JSON.stringify(path)}); print(await ctx.write(${JSON.stringify(path)}, "label: Key Note\\nmeta: owned by A\\n"));`)
     try {
-      await f.runtime.invokeAgentTurn({ agentSessionId: f.session.id, input: 'Update the key note metadata.' })
+      await f.runtime.invokeAgentTurn({ agentSessionId: f.session.id, input: 'Update the key note metadata.' }, authorContext())
       const { entries } = await f.agents.getEntryPage({ agentSessionId: f.session.id, limit: 100 })
       expect(entries.find(entry => entry.entry.kind === 'tool-result')!.entry).toMatchObject({ status: 'completed' })
       await expect(f.runtime.getPromptResource({ resourceId: f.setting.id }))
@@ -149,9 +388,9 @@ print(prompt.nodes[0].body.raw);
   it.each(['content', 'json'] as const)('patches source through %s and preserves it after a later failure', async mode => {
     const path = '/resources/World/Key.md'
     const diff = `--- ${path}\n+++ ${path}\n@@ -20 +20 @@\n-KEY_SENTINEL belongs to C.\n+KEY_SENTINEL belongs to A.\n`
-    const f = await fixture(mode, 'stop', `await ctx.read(${JSON.stringify(path)}); await ctx.patch(${JSON.stringify(path)}, ${JSON.stringify(diff)}); await ctx.read("/not-mounted");`)
+    const f = await fixture(mode, 'stop', `await ctx.setAuthorMode(true); await ctx.read(${JSON.stringify(path)}); await ctx.patch(${JSON.stringify(path)}, ${JSON.stringify(diff)}); await ctx.read("/not-mounted");`)
     try {
-      await f.runtime.invokeAgentTurn({ agentSessionId: f.session.id, input: 'Transfer the key.' })
+      await f.runtime.invokeAgentTurn({ agentSessionId: f.session.id, input: 'Transfer the key.' }, authorContext())
       const { entries } = await f.agents.getEntryPage({ agentSessionId: f.session.id, limit: 100 })
       const result = entries.find(entry => entry.entry.kind === 'tool-result')!.entry
       expect(result).toMatchObject({ status: 'failed', error: { code: 'vfs.not_found' } })
@@ -247,7 +486,7 @@ print(text);`
     }
   })
 
-  it('preserves edited guidance and existing mounts on reinitialization; new mounts stay disabled', async () => {
+  it('refreshes official CodeAct guidance on reinitialization without changing preset mounts', async () => {
     const f = await fixture('json')
     try {
       const tool = (await f.runtime.listAgentTools()).tools.find(tool => tool.id === f.toolId)!
@@ -261,10 +500,13 @@ print(text);`
       const before = await f.runtime.listPresetToolMounts({ presetId: f.preset.id })
       await f.runtime.initialize()
       expect(await f.runtime.listPresetToolMounts({ presetId: f.preset.id })).toEqual(before)
+      const updated = (await f.runtime.listAgentTools()).tools.find(item => item.id === f.toolId)!
+      expect(updated.prompt?.guidance).toContain('### ctx.appendNarrative')
+      expect(updated.description).toContain('Narrative append')
       const preview = await f.runtime.previewAgentTurn({ agentSessionId: f.session.id, input: 'Inspect.' })
       const text = preview.messages.map(message => message.content).join('\n')
-      expect(text.match(/CUSTOM_CODEACT_GUIDE/g)).toHaveLength(1)
-      expect(text).not.toContain('### ctx.read')
+      expect(text).not.toContain('CUSTOM_CODEACT_GUIDE')
+      expect(text.match(/### ctx.appendNarrative/g)).toHaveLength(1)
       const { resource } = await f.runtime.createPromptResource({ resourceKind: 'preset', name: 'New' })
       const { mounts } = await f.runtime.listPresetToolMounts({ presetId: resource.id })
       expect(mounts.filter(mount => mount.toolId.startsWith('official/codeact'))).toHaveLength(2)

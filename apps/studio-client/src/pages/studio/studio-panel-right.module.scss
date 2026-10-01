@@ -47,28 +47,6 @@
     pointer-events: none;
   }
 
-  /* 桌面端不贯穿的左侧垂直分割线：上下各留出 16px 留白 */
-  &::after {
-    content: '';
-    position: absolute;
-    top: 16px;
-    bottom: 16px;
-    left: 0;
-    width: 1px;
-    background: var(--loom-color-border);
-    pointer-events: none;
-    z-index: 1;
-  }
-}
-
-:global(html[data-loom-material-preview='glass']) .panelRight::before {
-  display: none;
-}
-
-:global(html[data-loom-material-preview='glass']) .panelRight {
-  background: color-mix(in srgb, var(--loom-color-background) var(--loom-preview-opacity, 58%), transparent);
-  -webkit-backdrop-filter: blur(var(--loom-preview-blur, 18px)) saturate(135%);
-  backdrop-filter: blur(var(--loom-preview-blur, 18px)) saturate(135%);
 }
 
 .resizeHandle {
@@ -125,10 +103,6 @@
     padding-top: var(--loom-page-header-height, 40px) !important;
     border-radius: 0 !important;
 
-    /* 移动端全屏不需要左侧垂直分割线 */
-    &::after {
-      display: none !important;
-    }
   }
 
   .resizeHandle {

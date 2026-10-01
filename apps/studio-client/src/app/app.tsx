@@ -1,16 +1,17 @@
 import type { Logger, MemoryLogSink } from '@loom-studio/logging'
 import { useStudioState } from './use-studio-state.js'
 import { StudioPage } from '../pages/studio/studio-page.js'
+import { RecentPlayRail } from '../widgets/play-panel/recent-play-rail.js'
 import { PresetWorkbenchHeader } from '../widgets/preset-workbench/preset-workbench-header.js'
 import { ContextWorkbenchHeader } from '../widgets/context-workbench/context-workbench-header.js'
 import { AgentComposer } from '../widgets/agent-composer/agent-composer.js'
 import { NarrativeTimeline } from '../widgets/narrative-timeline/narrative-timeline.js'
 import { CharacterPanelHeader } from '../widgets/character-panel/character-panel-header.js'
-import { RecentPlayRail } from '../widgets/play-panel/recent-play-rail.js'
 import { createClientRendererHost } from '../shared/extension-renderer-runtime/client-renderer-host.js'
 import { RendererFocusSurface } from '../features/extension-renderers/ui/renderer-focus-surface.js'
 import { RendererSurfaceHost } from '../features/extension-renderers/ui/renderer-surface-host.js'
 import { useClientExtensionRuntime } from '../features/extension-renderers/model/use-client-extension-runtime.js'
+import { resolveBackground } from '../features/extension-renderers/model/resolve-background.js'
 import { listClientActions } from '../features/extension-renderers/model/client-actions.js'
 import { ClientActionIcon } from '../features/extension-renderers/ui/client-action-icon.js'
 import { createLoomScriptRendererRuntime, type LoomScriptInputProjection, type LoomScriptRendererContribution } from '../features/loom-scripts/runtime/index.js'
@@ -30,7 +31,7 @@ import { ResourceReferenceDialog } from '../features/resource-references/resourc
 import { createStudioPanels } from './studio-panel-registry.js'
 import { preloadStudioPanel } from './studio-panel-modules.js'
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { useDisplayProjection, useOpeningDisplayProjection } from '../features/message-content/model/use-display-projection.js'
+import { isTransientAgentEntryId, useDisplayProjection, useOpeningDisplayProjection } from '../features/message-content/model/use-display-projection.js'
 import styles from './app.module.scss'
 import '../styles/global.css'
 import { useAppearanceStore } from '../shared/studio-shell/appearance-store.js'
@@ -43,10 +44,6 @@ function initializeAppearancePreview() {
     root.style.setProperty('--loom-preview-blur', '18px')
     root.style.setProperty('--loom-preview-opacity', '62%')
   }
-  if (!root.dataset.loomPreviewBackground) {
-    root.dataset.loomPreviewBackground = 'harbor'
-    root.style.setProperty('--loom-preview-wallpaper', 'url("/images/banner.png")')
-  }
 }
 
 export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger; extensionLogger: Logger }) {
@@ -55,10 +52,19 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
   const appearance = useAppearanceStore()
   const state = useStudioState(props.transportLogger)
   const appearanceCardId = state.narrativeTimeline?.createdFrom?.cardId ?? state.selectedCardId
-  const appearanceBackground = appearance.scopedBackground && appearance.scopedBackground.cardId === appearanceCardId
-    ? appearance.scopedBackground : appearance.background
   const effectiveMotion = useEffectiveMotion()
   useEffect(() => applyEffectiveMotion(effectiveMotion), [effectiveMotion])
+  const rendererHost = useMemo(() => createClientRendererHost(), [])
+  const notifications = useMemo(() => createRendererNotifications((owner, input) => {
+    toast[input.level ?? 'info'](input.message, { description: owner, duration: 4000 })
+  }), [])
+  const clientExtensions = useClientExtensionRuntime({ api: state.clientExtensionApi, rendererHost, logger: props.extensionLogger, clientLogs: props.clientLogs, notify: notifications.show })
+  const appearanceBackground = resolveBackground(
+    appearance.scopedBackground && appearance.scopedBackground.cardId === appearanceCardId
+      ? appearance.scopedBackground : appearance.background,
+    clientExtensions.host.backgrounds(),
+    appearanceCardId,
+  )
   useEffect(() => {
     const root = document.documentElement
     root.dataset.loomMaterialPreview = appearance.material.mode
@@ -66,18 +72,13 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
     root.style.setProperty('--loom-preview-opacity', `${appearance.material.opacity}%`)
     root.style.setProperty('--loom-canvas-width', `${appearance.canvasWidth || 720}px`)
     if (appearanceBackground) {
-      root.dataset.loomPreviewBackground = appearanceBackground.id
-      root.style.setProperty('--loom-preview-wallpaper', `url("${appearanceBackground.image}")`)
+      root.dataset.loomPreviewBackground = appearanceBackground.key
+      root.style.setProperty('--loom-preview-wallpaper', `url(${JSON.stringify(appearanceBackground.image)})`)
     } else {
       delete root.dataset.loomPreviewBackground
       root.style.removeProperty('--loom-preview-wallpaper')
     }
   }, [appearanceBackground, appearance.canvasWidth, appearance.material])
-  const rendererHost = useMemo(() => createClientRendererHost(), [])
-  const notifications = useMemo(() => createRendererNotifications((owner, input) => {
-    toast[input.level ?? 'info'](input.message, { description: owner, duration: 4000 })
-  }), [])
-  const clientExtensions = useClientExtensionRuntime({ api: state.clientExtensionApi, rendererHost, logger: props.extensionLogger, clientLogs: props.clientLogs, notify: notifications.show })
   const uiState = useStudioUiState()
   const timelineRouteRequestRef = useRef(0)
   const navigation = useStudioNavigation({ endpoint: state.endpoint, api: state.api })
@@ -114,7 +115,8 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
     api: state.textTransformsApi,
     endpoint: state.endpoint,
     source: state.agentChatSession ? { kind: 'agent-session', sessionId: state.agentChatSession.id } : undefined,
-    entries: state.agentChatMessages.flatMap(message => message.entry.kind === 'message' && typeof message.entry.content === 'string' && message.entry.state !== 'partial'
+    entries: state.agentChatMessages.flatMap(message => !isTransientAgentEntryId(message.id)
+      && message.entry.kind === 'message' && typeof message.entry.content === 'string' && message.entry.state !== 'partial'
       ? [{ id: message.id, text: message.entry.content }] : []),
     revision: activePresetId,
     refreshToken: uiState.loomScriptRefreshToken,
@@ -253,17 +255,6 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
   }, [activePresetId, uiState.loomScriptRefreshToken, rendererHost, notifications, state.agentChatSession?.id, state.api, state.branch?.id, state.narrativeTimeline?.id, state.statesApi])
 
   useEffect(() => {
-    if (!state.bootstrapReady) return
-    if (navigation.route.cardId) {
-      if (navigation.route.cardId !== state.selectedCardId) state.setSelectedCardId(navigation.route.cardId)
-    }
-  }, [navigation.route.cardId, state.bootstrapReady])
-
-  useEffect(() => {
-    if (navigation.route.panel === 'resource' && navigation.route.resourceId) uiState.setResourceView('settings')
-  }, [navigation.route.panel, navigation.route.resourceId])
-
-  useEffect(() => {
     if (!state.bootstrapReady || navigation.route.targetUri !== undefined) return
     setNavigationFailure(undefined)
     const requestId = ++timelineRouteRequestRef.current
@@ -331,7 +322,7 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
       onSelectAgentPreset={state.selectAgentPreset}
       onSelectAgentSession={id => { void state.activateAgentSession(id) }}
       onNewAgentSession={state.newAgentSession}
-      onRefreshAgentSessions={() => { void state.refreshAgentSessions() }}
+      onDeleteAgentSession={id => { void state.deleteAgentSession(id) }}
       onSubmitAgentChat={state.submitAgentTurn}
       onCancelAgentRun={() => { void state.cancelAgentRun() }}
       onPauseAgentRun={() => { void state.pauseAgentRun() }}
@@ -360,15 +351,12 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
           <ContextWorkbenchHeader
             resources={state.promptResources}
             selectedResourceId={navigation.route.panel === 'resource' ? navigation.route.resourceId : undefined}
-            view={uiState.resourceView}
             t={state.t}
             workspaceId={contextWorkspaceId}
-            onViewChange={uiState.setResourceView}
             onSelectResource={resourceId => {
               const target = state.promptResources.find(r => r.id === resourceId)
               if (target) {
                 void navigation.openResource('resource', target.id, target.rootNode.id)
-                useStudioLayoutStore.getState().openAssetDetail('resources', contextWorkspaceId, target.rootNode.id)
               }
             }}
           />
@@ -495,9 +483,8 @@ export function App(props: { clientLogs: MemoryLogSink; transportLogger: Logger;
         onNavigate={uri => { void navigation.openUri(uri) }}
         onOpenEditor={target => {
         if (target.panel === 'preset') uiState.setSelectedPresetId(target.resourceId)
-        else uiState.setResourceView('settings')
         navigation.openResource(target.panel, target.resourceId, target.nodeId)
-        useStudioLayoutStore.getState().openAssetDetail(target.panel === 'preset' ? 'preset' : 'resources', contextWorkspaceId, target.nodeId)
+        if (target.panel === 'preset') useStudioLayoutStore.getState().openAssetDetail('preset', contextWorkspaceId, target.nodeId)
       }} />
       <RendererFocusSurface host={rendererHost} scope={{ kind: 'workspace', key: 'workspace' }} />
       <NotificationToaster label={state.t('notification.label')} />

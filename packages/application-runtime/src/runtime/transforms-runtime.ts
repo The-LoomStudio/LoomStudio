@@ -265,6 +265,7 @@ export function createTransformsRuntimeMethods(ctx: TransformsRuntimeContext) {
         preserveRuleOrder: true,
         traceEntryId: input.traceEntryId,
       })
+      snapshot.diagnostics.push(...effective.diagnostics)
       const ruleIds = new Set(snapshot.ruleIds)
       const extractors = effective.extractors.filter(extractor => extractor.enabled && extractor.targets.includes(input.source.kind))
       const artifacts = extractors.flatMap(extractor => {
@@ -320,7 +321,7 @@ export async function resolveEffectiveTextPipeline(
   phase: TextTransformPhase,
   consumerAgentSessionId?: string,
   consumerPresetId?: string,
-): Promise<{ rules: TextTransformRuleEntry[]; extractors: TextExtractorEntry[]; consumer?: TextPipelineConsumer }> {
+): Promise<{ rules: TextTransformRuleEntry[]; extractors: TextExtractorEntry[]; consumer?: TextPipelineConsumer; diagnostics: Array<{ code: string; message: string; ruleId?: string }> }> {
   if (consumerPresetId !== undefined) {
     if (source.kind !== 'narrative' || consumerAgentSessionId !== undefined) {
       throw new Error('Explicit Narrative Preset and Session consumer are mutually exclusive')
@@ -364,17 +365,48 @@ export async function resolveEffectiveTextPipeline(
   }
 
   const availableInstallations = await readAvailableExtensionInstallations(ctx.documents, cardId)
+  const preset = presetId ? await ctx.promptResources.getResource(presetId) : null
+  const uses = Array.isArray(preset?.metadata.textUses)
+    ? preset.metadata.textUses as Array<{ id: string; kind: 'rule' | 'extractor'; enabled: boolean; orderIndex?: number; reference?: { kind: string; origin?: { packageId: string; contributionId: string } } }>
+    : []
+  const presetOrigin = preset?.metadata.origin as { kind?: string; packageId?: string } | undefined
+  const usable = (use: typeof uses[number], item: TextTransformRuleEntry | TextExtractorEntry) =>
+    use.reference?.kind === 'package'
+      ? Boolean(presetOrigin?.kind === 'extension-package'
+        && item.origin?.packageId === presetOrigin.packageId
+        && item.origin?.contributionId === (use.reference as { contributionId?: string }).contributionId)
+      : use.reference?.kind !== 'external' || Boolean(use.reference.origin
+        && item.origin?.packageId === use.reference.origin.packageId
+        && item.origin.contributionId === use.reference.origin.contributionId)
+  const configured = (kind: 'rule' | 'extractor', item: TextTransformRuleEntry | TextExtractorEntry) =>
+    uses.find(use => use.kind === kind && use.id === item.id && usable(use, item))
+  const diagnostics = uses.filter(use => !(use.kind === 'rule' ? rules : extractors).some(item =>
+    item.id === use.id && usable(use, item) && isExtensionResourceAvailable(item.origin, availableInstallations)
+    && (item.owner.kind !== 'card' && item.owner.kind !== 'preset' || isOwnerActive(item.owner, presetId, cardId))))
+    .map(use => ({
+      code: 'text.use_unresolved',
+      message: `Preset ${use.kind} reference is unavailable: ${use.id}`,
+      ...(use.kind === 'rule' ? { ruleId: use.id } : {}),
+    }))
   const defaultRules = rules
-    .filter(rule => rule.enabled && isOwnerActive(rule.owner, presetId, cardId)
+    .filter(rule => (rule.owner.kind !== 'card' && rule.owner.kind !== 'preset' || isOwnerActive(rule.owner, presetId, cardId))
+      && (configured('rule', rule)?.enabled ?? rule.enabled)
       && isExtensionResourceAvailable(rule.origin, availableInstallations))
-    .sort(compareTextEntries)
+    .map(rule => configured('rule', rule)?.enabled === true && !rule.enabled ? { ...rule, enabled: true } : rule)
+    .sort((left, right) => (configured('rule', left)?.orderIndex ?? left.orderIndex)
+      - (configured('rule', right)?.orderIndex ?? right.orderIndex) || left.id.localeCompare(right.id))
   const override = await readTextPipelineOverride(ctx, source, phase, consumerAgentSessionId)
   return {
+    diagnostics,
     rules: applyTextPipelineOverride(defaultRules, override),
     extractors: extractors
-      .filter(extractor => extractor.enabled && isOwnerActive(extractor.owner, presetId, cardId)
+      .filter(extractor => (extractor.owner.kind !== 'card' && extractor.owner.kind !== 'preset' || isOwnerActive(extractor.owner, presetId, cardId))
+        && (configured('extractor', extractor)?.enabled ?? extractor.enabled)
         && isExtensionResourceAvailable(extractor.origin, availableInstallations))
-      .sort(compareTextEntries),
+      .map(extractor => configured('extractor', extractor)?.enabled === true && !extractor.enabled
+        ? { ...extractor, enabled: true } : extractor)
+      .sort((left, right) => (configured('extractor', left)?.orderIndex ?? left.orderIndex)
+        - (configured('extractor', right)?.orderIndex ?? right.orderIndex) || left.id.localeCompare(right.id)),
     ...(consumer ? { consumer } : {}),
   }
 }

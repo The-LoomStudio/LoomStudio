@@ -1,4 +1,25 @@
 .overview { padding: 20px 24px; min-width: 0; }
+.directory { padding: 16px 24px; min-width: 0; }
+.breadcrumbs { display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; margin-bottom: 12px; }
+.breadcrumbs button { display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; color: inherit; cursor: pointer; font: inherit; white-space: nowrap; }
+.breadcrumbs button:disabled { opacity: .4; cursor: default; }
+.breadcrumbs span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.directoryList { max-height: 58dvh; overflow: auto; }
+.directoryDetail { min-width: 0; }
+.readOnlyOrigin { color: var(--loom-color-text-muted); font-size: 12px; overflow-wrap: anywhere; }
+.packageDetails { display: grid; gap: 8px; overflow-wrap: anywhere; }
+.packageDetails h3, .packageDetails p { margin: 0; }
+.packageDetails pre { max-height: 50dvh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.directoryDetail > button { display: block; margin: 12px 0 0 auto; padding: 6px 14px; }
+.directoryEditor { display: grid; gap: 12px; }
+.directoryEditor > button { justify-self: end; padding: 6px 14px; }
+.stateDefinitionEditor { display: grid; gap: 12px; min-width: 0; }
+.stateDefinitionEditor h3 { margin: 0; font-size: 14px; }
+.stateDefinitionEditor label { display: grid; gap: 4px; font-size: 13px; }
+.stateDefinitionEditor input, .stateDefinitionEditor textarea { box-sizing: border-box; width: 100%; padding: 8px; color: inherit; background: var(--loom-color-surface-subtle); border: 1px solid var(--loom-color-divider); font: inherit; }
+.stateDefinitionEditor textarea { min-height: 120px; resize: vertical; }
+.stateDefinitionEditor button { justify-self: end; padding: 6px 14px; }
+.cardImage { display: block; max-width: 100%; max-height: 62dvh; object-fit: contain; }
 .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .header h3 { font-size: var(--loom-font-size-2); font-weight: 500; margin: 0; }
 .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 16px; background: var(--loom-color-surface-subtle); }

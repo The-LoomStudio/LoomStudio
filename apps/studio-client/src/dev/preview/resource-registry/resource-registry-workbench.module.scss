@@ -47,6 +47,41 @@
   border-top: 1px solid var(--loom-color-divider);
 }
 
+.mainPreset { display: inline-flex; align-items: center; gap: 6px; }
+.conversationBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--loom-color-divider);
+  label, button { display: inline-flex; align-items: center; gap: 8px; }
+  label { flex-wrap: wrap; min-width: 0; }
+  > span { color: var(--loom-color-text-subtle); font-size: var(--loom-font-size-1); }
+}
+.conversationBar select {
+  min-width: 0;
+  max-width: 100%;
+  padding: 6px;
+  color: var(--loom-color-text);
+  background: var(--loom-color-surface-inset);
+  border: 1px solid var(--loom-color-divider);
+  border-radius: 4px;
+}
+.presetActions {
+  padding: 16px 0;
+  border-top: 1px solid var(--loom-color-divider);
+  h2 { font-size: var(--loom-font-size-2); margin: 20px 0 8px; }
+  > p { margin-top: 12px; color: var(--loom-color-text-subtle); }
+}
+.resourceLinks {
+  display: grid;
+  gap: 4px;
+  button { display: flex; gap: 8px; align-items: center; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+  svg { flex-shrink: 0; }
+  small { margin-left: auto; white-space: nowrap; color: var(--loom-color-text-subtle); }
+}
+
 .actionButtons {
   display: flex;
   flex-wrap: wrap;

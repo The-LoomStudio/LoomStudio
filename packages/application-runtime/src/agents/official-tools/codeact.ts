@@ -6,7 +6,7 @@ export const officialCodeActTool: ToolDefinition = {
   id: 'official/codeact',
   owner: { namespace: 'official' },
   name: 'codeact',
-  description: 'Execute JavaScript with the documented ctx methods, including guarded replace, patch, move, delete, create and copy writes. Send raw source using the Content Tool protocol; metadata must be {}.',
+  description: 'FREEFORM JavaScript, NOT a JSON tool. Never call codeact through native tool_calls or wrap its source in {"code":"..."}. Emit <loom_tool name="codeact"><metadata>{}</metadata><content>RAW JAVASCRIPT</content></loom_tool> in assistant content. Supports documented ctx methods for Narrative and guarded resource/State writes.',
   input: { kind: 'freeform', mediaType: 'application/javascript' },
   prompt: { guidance: renderCodeActTutorial(), content: { targetAnchorId: '@chat.tools' } },
 }
@@ -15,7 +15,7 @@ export const officialCodeActJsonTool: ToolDefinition = {
   id: 'official/codeact_json',
   owner: { namespace: 'official' },
   name: 'codeact_json',
-  description: 'Execute JavaScript with the documented ctx methods, including guarded replace, patch, move, delete, create and copy writes. Read the CodeAct tutorial in the stable tool instructions.',
+  description: 'JSON alternative to Freeform codeact. Call codeact_json through native tool_calls with {"code":"JavaScript source"}. Do not use this JSON envelope with the separate Freeform codeact tool. Supports the same documented ctx methods.',
   input: {
     kind: 'structured',
     schema: {

@@ -105,3 +105,7 @@ export function displayText(projection: DisplayProjection | undefined, id: strin
   // A stale response must not overwrite edited text, even if the entry ID survived.
   return entry?.originalText === raw ? entry.text : undefined
 }
+
+export function isTransientAgentEntryId(id: string): boolean {
+  return id.startsWith('optimistic-agent-entry-') || id.startsWith('streaming-agent-entry-')
+}

@@ -10,6 +10,7 @@ import styles from './model-panel.module.scss'
 import { ModelBrandIcon } from './model-brand-icon.js'
 
 type ProviderAccountListProps = {
+  onUpdateTokenMultiplier?(modelProfileId: string, multiplier: number): Promise<void>
   accounts: ProviderAccount[]
   busy: boolean
   modelProfiles: ModelProfile[]
@@ -37,6 +38,7 @@ export function ProviderAccountList(props: ProviderAccountListProps) {
               onDeleteModel={props.onDeleteModel}
               onListModels={props.onListModels}
               onUpdateConnection={props.onUpdateConnection}
+              onUpdateTokenMultiplier={props.onUpdateTokenMultiplier}
               t={props.t}
             />
           ))}
@@ -45,6 +47,7 @@ export function ProviderAccountList(props: ProviderAccountListProps) {
 }
 
 function ProviderAccountItem(props: {
+  onUpdateTokenMultiplier?(modelProfileId: string, multiplier: number): Promise<void>
   account: ProviderAccount
   busy: boolean
   models: ModelProfile[]
@@ -303,6 +306,19 @@ function ProviderAccountItem(props: {
                 <Toggle checked className={styles.enabledToggle} disabled label={`${profile.providerModelId} · ${props.t('provider.modelEnabled')}`} onChange={() => {}} />
                 <ModelBrandIcon brand={resolveModelBrand(profile.providerModelId)} fallback={<Bot aria-hidden="true" className={styles.brandIconFallback} />} />
                 <span>{profile.providerModelId}</span>
+                {props.onUpdateTokenMultiplier ? <label title="o200k_base 基础计数的估算系数">
+                  Token × <input key={`${profile.id}:${profile.version}`} aria-label={`${profile.providerModelId} Token 估算系数`}
+                    type="number" min="0.01" step="0.05" defaultValue={profile.tokenMultiplier ?? 1}
+                    style={{ width: 64 }} disabled={props.busy} onBlur={event => {
+                      const value = event.currentTarget.valueAsNumber
+                      if (!Number.isFinite(value) || value <= 0) {
+                        setActionError('Token 系数必须为正数')
+                        return
+                      }
+                      if (value !== (profile.tokenMultiplier ?? 1)) void props.onUpdateTokenMultiplier!(profile.id, value)
+                        .catch(error => setActionError(String(error)))
+                    }} />
+                </label> : null}
                 {!fake ? (
                   <IconButton size="small" variant="danger" disabled={props.busy} aria-label={props.t('provider.modelDelete')} onClick={() => void props.onDeleteModel(profile.id).catch(() => undefined)}>
                     <Trash2 aria-hidden="true" />

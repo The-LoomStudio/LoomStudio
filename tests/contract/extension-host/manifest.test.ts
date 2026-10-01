@@ -330,4 +330,63 @@ describe('extension manifest contract', () => {
       contributes: { textExtractors: [{ id: 'invalid id', source: '../extractor.json' }] },
     })).toThrow('id is invalid')
   })
+
+  describe('Preset Setting references', () => {
+    const parseMounts = (settingMounts: unknown[]) => parseExtensionManifest({
+      manifestVersion: 2,
+      id: 'example.references',
+      version: '0.1.0',
+      displayName: 'References',
+      engines: { studio: '^0.1.0' },
+      contributes: {
+        promptResources: [
+          { id: 'setting', resourceKind: 'setting', source: './setting.json' },
+          { id: 'preset', resourceKind: 'preset', source: './preset.json', settingMounts },
+        ],
+      },
+    })
+
+    it.each([
+      { resourceId: 'setting' },
+      { reference: { kind: 'package', contributionId: 'setting' } },
+      { reference: { kind: 'external', resourceId: 'missing-on-this-device' } },
+      { reference: { kind: 'external', resourceId: 'external-setting', origin: {
+        packageId: 'other.package', contributionId: 'knowledge', target: 'card',
+      } } },
+    ])('accepts supported references without requiring external resources in the package: %j', mount => {
+      expect(() => parseMounts([mount])).not.toThrow()
+    })
+
+    it.each([
+      {},
+      { reference: null },
+      { resourceId: 'setting', reference: { kind: 'package', contributionId: 'setting' } },
+      { reference: { kind: 'unknown', resourceId: 'setting' } },
+      { reference: { kind: 'package', contributionId: 'missing' } },
+      { reference: { kind: 'package', contributionId: 'preset' } },
+      { reference: { kind: 'external', resourceId: '' } },
+      { reference: { kind: 'external', resourceId: 'external', origin: null } },
+      { reference: { kind: 'external', resourceId: 'external', origin: {
+        packageId: '', contributionId: 'knowledge', target: 'global',
+      } } },
+      { reference: { kind: 'external', resourceId: 'external', origin: {
+        packageId: 'other.package', contributionId: 'knowledge', target: 'other',
+      } } },
+    ])('rejects malformed or unresolved package references: %j', mount => {
+      expect(() => parseMounts([mount])).toThrow()
+    })
+
+    it('rejects duplicate package references across the legacy and current forms', () => {
+      expect(() => parseMounts([
+        { resourceId: 'setting' },
+        { reference: { kind: 'package', contributionId: 'setting' } },
+      ])).toThrow('must be unique')
+    })
+
+    it('rejects duplicate external references without conflating them with package IDs', () => {
+      const external = { reference: { kind: 'external', resourceId: 'setting' } }
+      expect(() => parseMounts([{ resourceId: 'setting' }, external])).not.toThrow()
+      expect(() => parseMounts([external, external])).toThrow('must be unique')
+    })
+  })
 })

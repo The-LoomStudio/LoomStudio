@@ -40,7 +40,7 @@ export function filterTimelines(
   })
 }
 
-export function filterStandaloneSessions(
+export function filterAgentSessions(
   sessions: AgentSession[],
   profiles: AgentPreset[],
   query: string,
@@ -206,5 +206,4 @@ export function toggleExpandAll(
   }
   return next
 }
-
 

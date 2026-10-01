@@ -12,12 +12,14 @@ import {
   RefreshCw,
   Search,
   Terminal,
+  Trash2,
   X,
 } from 'lucide-react'
 import {
   lazy,
   Suspense,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -34,7 +36,13 @@ import type { Translator } from '../../shared/i18n/index.js'
 import type { ActiveAgentRun } from '../../features/narrative-runtime/model/use-narrative-runtime.js'
 import { tryWriteClipboardText } from '../../shared/browser/clipboard.js'
 import type { MarkdownCodeBlockLabels } from '../../shared/ui/markdown-content/markdown-code-block.js'
-import { SkeletonText } from '@loom-studio/ui'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  SkeletonText,
+} from '@loom-studio/ui'
 import {
   ConversationMessageAction,
   ConversationMessageChrome,
@@ -44,7 +52,7 @@ import { RunRecoveryControls, type RunRecoveryControlsProps } from '../../featur
 import type { ClientRendererHost } from '../../shared/extension-renderer-runtime/client-renderer-host.js'
 import { RendererNodeMountHost } from '../../features/extension-renderers/ui/renderer-node-mount-host.js'
 import styles from './agent-chat-panel.module.scss'
-import { displayText, type DisplayProjection } from '../../features/message-content/model/use-display-projection.js'
+import { displayText, isTransientAgentEntryId, type DisplayProjection } from '../../features/message-content/model/use-display-projection.js'
 
 const ConversationMarkdown = lazy(async () => {
   const module = await import('../../features/message-content/ui/message-content.js')
@@ -55,8 +63,9 @@ type StepToolItem = {
   id: string
   iconType: 'file' | 'search' | 'web' | 'terminal' | 'edit'
   label: string
-  detailTag?: string
-  detailContent?: string
+  inputs: Array<{ label: string; content: string }>
+  resultContent?: string
+  errorContent?: string
   status?: 'success' | 'error' | 'running'
 }
 
@@ -85,7 +94,7 @@ type RenderItem =
       isThinking?: boolean
     }
 
-function buildRenderItems(entries: AgentTranscriptEntryEntity[]): RenderItem[] {
+export function buildRenderItems(entries: AgentTranscriptEntryEntity[]): RenderItem[] {
 
   const toolResultsByInvocationId = new Map<string, AgentTranscriptEntryEntity['entry']>()
   for (const msg of entries) {
@@ -101,7 +110,8 @@ function buildRenderItems(entries: AgentTranscriptEntryEntity[]): RenderItem[] {
   const flushTools = () => {
     if (pendingTools.length === 0) return
     const toolCount = pendingTools.length
-    const label = toolCount === 1 ? pendingTools[0].label : `已执行 ${toolCount} 个操作`
+    const label = toolCount === 1 ? pendingTools[0].label
+      : pendingTools.some(tool => tool.status === 'running') ? `正在执行 ${toolCount} 个操作` : `已执行 ${toolCount} 个操作`
     items.push({
       kind: 'tool-group',
       id: `tool-group-${pendingTools[0].id}`,
@@ -115,7 +125,7 @@ function buildRenderItems(entries: AgentTranscriptEntryEntity[]): RenderItem[] {
     const entry = msg.entry
 
     // 过滤底层遥测与内部运行状态流转事件（provider-observation, run-state），既不打断连续工具链，也不在时间线展示多余胶囊
-    if (entry.kind === 'provider-observation' || entry.kind === 'run-state') {
+    if (entry.kind === 'provider-observation' || entry.kind === 'request-measurement' || entry.kind === 'run-state') {
       continue
     }
 
@@ -136,25 +146,39 @@ function buildRenderItems(entries: AgentTranscriptEntryEntity[]): RenderItem[] {
         iconType = 'edit'
       }
 
-      let detailContent = ''
+      const inputs: StepToolItem['inputs'] = []
+      if (entry.arguments !== undefined) {
+        inputs.push({ label: '参数', content: JSON.stringify(entry.arguments, null, 2) })
+      }
+      if (typeof entry.rawInput === 'string') {
+        inputs.push({
+          label: toolId.includes('codeact') ? '代码' : '输入',
+          content: entry.rawInput,
+        })
+      }
+      if (!inputs.length) inputs.push({ label: '调用', content: '未记录调用内容' })
+
+      let resultContent: string | undefined
       if (pairedResult) {
-        const resText = typeof pairedResult.content === 'string'
+        resultContent = typeof pairedResult.content === 'string'
           ? pairedResult.content
           : Array.isArray(pairedResult.content)
             ? pairedResult.content.map(c => (c && typeof c === 'object' && 'text' in c && c.text) || JSON.stringify(c)).join('\n')
-            : JSON.stringify(pairedResult.content || pairedResult, null, 2)
-        detailContent = resText
-      } else if (entry.arguments) {
-        detailContent = `$ ${exposedName} (${toolId})\n${JSON.stringify(entry.arguments, null, 2)}`
+            : pairedResult.content === undefined ? undefined : JSON.stringify(pairedResult.content, null, 2)
       }
+      const error = pairedResult?.error
+      const errorContent = error && typeof error === 'object' && !Array.isArray(error)
+        ? [typeof error.code === 'string' ? error.code : '', typeof error.message === 'string' ? error.message : ''].filter(Boolean).join(': ')
+        : undefined
 
       pendingTools.push({
         id: msg.id,
         iconType,
-        label: exposedName.startsWith('已') ? exposedName : `已${exposedName}`,
-        detailTag: iconType === 'terminal' ? 'Shell' : exposedName,
-        detailContent: detailContent || `$ ${toolId}`,
-        status: pairedResult?.status === 'error' ? 'error' : 'success',
+        label: pairedResult && !exposedName.startsWith('已') ? `已${exposedName}` : exposedName,
+        inputs,
+        resultContent,
+        errorContent: errorContent || undefined,
+        status: !pairedResult ? 'running' : pairedResult.status === 'completed' ? 'success' : 'error',
       })
     } else if (entry.kind === 'reasoning' && typeof entry.content === 'string') {
       flushTools()
@@ -213,7 +237,7 @@ export type AgentChatPanelProps = RunRecoveryControlsProps & {
   onSelectProfile(id: string): void
   onSelectSession?(id: string): void
   onNewSession?(): void
-  onRefreshSessions?(): void
+  onDeleteSession?(id: string): void
   onSubmit(event: FormEvent): void
   onCancelRun?(): void
   onPauseRun?(): void
@@ -225,6 +249,8 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
   const recovery = props.runRecovery?.target === 'agent' ? props.runRecovery : undefined
   const disconnected = props.runRecovery?.status === 'disconnected'
   const conversationRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const followBottomRef = useRef(true)
   const [approvalReason, setApprovalReason] = useState('')
   const approval = props.activeRun?.approval
   const [copyState, setCopyState] = useState<{ id: string; copied: boolean }>()
@@ -237,12 +263,27 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
     if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
   }, [])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    followBottomRef.current = true
     const conversation = conversationRef.current
-    if (conversation) {
-      conversation.scrollTop = conversation.scrollHeight
-    }
+    if (conversation) conversation.scrollTop = conversation.scrollHeight
+  }, [props.session?.id])
+
+  useLayoutEffect(() => {
+    const conversation = conversationRef.current
+    if (conversation && followBottomRef.current) conversation.scrollTop = conversation.scrollHeight
   }, [effectiveMessages])
+
+  useEffect(() => {
+    const content = contentRef.current
+    if (!content) return
+    const observer = new ResizeObserver(() => {
+      const conversation = conversationRef.current
+      if (conversation && followBottomRef.current) conversation.scrollTop = conversation.scrollHeight
+    })
+    observer.observe(content)
+    return () => observer.disconnect()
+  }, [])
 
   async function copyMessage(message: AgentTranscriptEntryEntity, content: string) {
     setCopyState({ id: message.id, copied: await tryWriteClipboardText(content) })
@@ -279,13 +320,27 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
           title={props.t('agent.sessionNew')} aria-label={props.t('agent.sessionNew')} onClick={props.onNewSession}>
           <Plus aria-hidden="true" />
         </button>
-        <button className={styles.sessionAction} type="button" disabled={props.busy}
-          title={props.t('agent.sessionRefresh')} aria-label={props.t('agent.sessionRefresh')} onClick={props.onRefreshSessions}>
-          <RefreshCw aria-hidden="true" />
+        <button className={styles.sessionAction} type="button"
+          disabled={props.busy || !props.session || !props.onDeleteSession || props.sessionReady === false
+            || props.activeRun?.status === 'running' || props.activeRun?.status === 'suspended'}
+          title={props.t('sessions.delete')} aria-label={props.t('sessions.delete')}
+          onClick={() => {
+            if (props.session && window.confirm(props.t('sessions.confirmDeleteSession', {
+              title: props.session.title ?? props.t('sessions.untitledAgentSession'),
+            }))) {
+              props.onDeleteSession?.(props.session.id)
+            }
+          }}>
+          <Trash2 aria-hidden="true" />
         </button>
       </header>
 
-      <div className={styles.conversation} ref={conversationRef} aria-busy={props.displayProjection?.refreshing}>
+      <div className={styles.conversation} ref={conversationRef} aria-busy={props.displayProjection?.refreshing}
+        onScroll={event => {
+          const element = event.currentTarget
+          followBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight <= 48
+        }}>
+        <div className={styles.conversationContent} ref={contentRef}>
         {props.displayProjection?.warning ? <p role="status">Display: {props.displayProjection.warning}</p> : null}
         {props.displayProjection?.error ? <div role="alert">
           <span>Display: {props.displayProjection.error}</span>
@@ -326,7 +381,7 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
                   agentSessionId={props.session?.id}
                   codeBlockLabels={codeBlockLabels}
                   content={item.content}
-                  displayContent={displayText(props.displayProjection, item.id, item.content, item.isStreaming)}
+                  displayContent={displayText(props.displayProjection, item.id, item.content, item.isStreaming || isTransientAgentEntryId(item.id))}
                   copyState={copyState?.id === item.id ? copyState.copied : undefined}
                   index={item.index}
                   key={item.id}
@@ -347,14 +402,15 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
             <div data-loom-surface="agent.session.tail">{props.sessionTail}</div>
           ) : null}
         </Suspense>
+        </div>
       </div>
 
       {approval ? (
         <div className={styles.mutationApprovalBackdrop} role="presentation">
-          <section aria-label={approval.action ? '允许读取历史正文' : '确认资源修改'} className={styles.mutationApproval} role="dialog" aria-modal="true">
+          <section aria-label={approval.action ? '允许读取历史正文' : approval.preview.action === 'author-mode' ? '允许作者视图' : '确认资源修改'} className={styles.mutationApproval} role="dialog" aria-modal="true">
             <header className={styles.mutationApprovalHeader}>
               <div>
-                <strong>{approval.action ? '允许读取历史正文' : '确认资源修改'}</strong>
+                <strong>{approval.action ? '允许读取历史正文' : approval.preview.action === 'author-mode' ? '允许作者视图' : '确认资源修改'}</strong>
                 <span>{approval.action ? '仅授权本次请求，不修改剧情或记忆范围' : `${approval.preview.action} · ${approval.preview.path}`}</span>
               </div>
               <button
@@ -386,11 +442,11 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
               </div>
             ) : <div className={styles.mutationApprovalDiff}>
               <div>
-                <span>修改前</span>
+                <span>{approval.preview.action === 'author-mode' ? '当前可见范围' : '修改前'}</span>
                 <pre>{approval.preview.before}</pre>
               </div>
               <div>
-                <span>修改后</span>
+                <span>{approval.preview.action === 'author-mode' ? '请求开放范围' : '修改后'}</span>
                 <pre>{approval.preview.after}</pre>
               </div>
             </div>}
@@ -446,7 +502,7 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
           onResume={props.onResumeRun}
           sendLeadingAction={(
             <AgentPresetPicker
-              disabled={props.busy}
+              disabled={props.busy || props.sessionReady === false || props.activeRun?.status === 'suspended'}
               profiles={props.profiles}
               providers={props.providerAccounts}
               selectedId={props.selectedProfileId}
@@ -457,7 +513,6 @@ export function AgentChatPanel(props: AgentChatPanelProps) {
           textareaDisabled={(!disconnected && props.busy) || !props.selectedProfileId}
           textareaLabel={props.t('agent.composerLabel')}
           onChangeInput={props.onChangeInput}
-          onPreviewPrompt={() => {}}
           onSubmit={event => {
             if (disconnected || props.runRecoveryBusy) { event.preventDefault(); return }
             props.onSubmit(event)
@@ -593,16 +648,37 @@ function AgentToolActionItem(props: StepToolItem & { defaultOpen?: boolean }) {
 
       <ToolCollapse open={open}>
         <div className={styles.toolDetailCard}>
-          <span className={styles.toolDetailTag}>{props.detailTag || 'Shell'}</span>
-          <pre className={styles.toolDetailCode}>{props.detailContent}</pre>
+          {props.inputs.map((input, index) => (
+            <div className={styles.toolDetailSection} key={`${input.label}-${index}`}>
+              <span className={styles.toolDetailTag}>{input.label}</span>
+              <pre className={styles.toolDetailCode}>{input.content}</pre>
+            </div>
+          ))}
+          {props.errorContent ? (
+            <div className={styles.toolDetailSection}>
+              <span className={styles.toolDetailTag}>错误</span>
+              <pre className={`${styles.toolDetailCode} ${styles.toolDetailError}`}>{props.errorContent}</pre>
+            </div>
+          ) : null}
+          {props.resultContent !== undefined && (props.resultContent || !props.errorContent) ? (
+            <div className={styles.toolDetailSection}>
+              <span className={styles.toolDetailTag}>结果</span>
+              <pre className={styles.toolDetailCode}>{props.resultContent || '无输出'}</pre>
+            </div>
+          ) : null}
           <div
             className={styles.toolDetailFooter}
-            data-status={props.status === 'error' ? 'error' : 'success'}
+            data-status={props.status ?? 'running'}
           >
             {props.status === 'error' ? (
               <>
                 <AlertCircle aria-hidden="true" />
                 <span>失败</span>
+              </>
+            ) : props.status === 'running' ? (
+              <>
+                <RefreshCw aria-hidden="true" />
+                <span>执行中</span>
               </>
             ) : (
               <>
@@ -622,7 +698,7 @@ function AgentToolActionItem(props: StepToolItem & { defaultOpen?: boolean }) {
  * 只要有工具连在一起，就是一个单独的滚动区间 (上限 260px)
  * 若仅有单工具，直接展示单工具项，避免形式主义套壳
  */
-function AgentToolGroupBlock(props: {
+export function AgentToolGroupBlock(props: {
   label: string
   tools: StepToolItem[]
   defaultOpen?: boolean
@@ -742,23 +818,20 @@ function AgentPresetPicker(props: {
   t: Translator
   onSelect(id: string): void
 }) {
-  const detailsRef = useRef<HTMLDetailsElement>(null)
   const selected = props.profiles.find(profile => profile.id === props.selectedId)
   const selectedProvider = selected && props.providers.find(provider => provider.id === selected.model?.providerProfileId)
 
   return (
-    <details className={styles.profilePicker} ref={detailsRef}>
-      <summary
-        aria-disabled={props.disabled}
-        title={props.t('agent.profile.choose')}
-        onClick={event => {
-          if (props.disabled) event.preventDefault()
-        }}
-      >
-        <span>{selected?.rootNode.label ?? props.t('agent.profile.unselected')}</span>
-        <ChevronDown aria-hidden="true" />
-      </summary>
-      <div className={styles.profileMenu}>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button className={styles.profilePicker} type="button" disabled={props.disabled}
+          title={props.t('agent.profile.choose')}>
+          <span>{selected?.rootNode.label ?? props.t('agent.profile.unselected')}</span>
+          <ChevronDown aria-hidden="true" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className={styles.profileMenu} align="end" side="top"
+        sideOffset={8} collisionPadding={12}>
         {selected ? (
           <div className={styles.profileCurrent}>
             <strong>{selectedProvider?.displayName ?? selected.model?.providerProfileId}</strong>
@@ -771,25 +844,23 @@ function AgentPresetPicker(props: {
           props.profiles.map(profile => {
             const provider = props.providers.find(item => item.id === profile.model?.providerProfileId)
             return (
-              <button
-                aria-pressed={profile.id === props.selectedId}
+              <DropdownMenuItem
+                className={styles.profileOption}
+                icon={<Check aria-hidden="true" />}
+                data-selected={profile.id === props.selectedId || undefined}
                 disabled={props.disabled}
                 key={profile.id}
-                type="button"
-                onClick={() => {
-                  props.onSelect(profile.id)
-                  if (detailsRef.current) detailsRef.current.open = false
-                }}
+                onSelect={() => props.onSelect(profile.id)}
               >
                 <strong>{profile.rootNode.label}</strong>
                 <span>
                   {provider?.displayName ?? profile.model?.providerProfileId} · {profile.model?.modelId}
                 </span>
-              </button>
+              </DropdownMenuItem>
             )
           })
         )}
-      </div>
-    </details>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

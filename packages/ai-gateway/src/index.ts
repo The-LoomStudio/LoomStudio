@@ -48,3 +48,4 @@ export type {
   ProviderModelCapability,
   ResolvedProviderAdapter,
 } from './types.js'
+export { estimateRequestTokens, type RequestTokenEstimate } from './token-estimate.js'

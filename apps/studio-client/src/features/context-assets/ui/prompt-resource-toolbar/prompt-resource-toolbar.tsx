@@ -8,12 +8,17 @@ import { buildStudioTargetLink } from '../../../../shared/studio-shell/studio-ta
 import { tryWriteClipboardText } from '../../../../shared/browser/clipboard.js'
 import styles from './prompt-resource-toolbar.module.scss'
 import { ResourceBindings, type ResourceBindingsSource } from './resource-bindings.js'
+import { TokenSnapshotControl, TokenSnapshotSummary } from '../resource-token-summary.js'
+import type { ResourceTokenSnapshot } from '../../model/use-resource-token-snapshot.js'
 
 type PromptResourceToolbarProps = {
+  tokenSnapshot?: ResourceTokenSnapshot
+  tokenSnapshotIncomplete?: boolean
   resourceBindings?: ResourceBindingsSource
   bindingResources?: PromptResource[]
   extensionInstallations?: ListExtensionInstallationsResult['installations']
   hideSelect?: boolean
+  hideSingleResourceActions?: boolean
   resourceKind: PromptResource['resourceKind']
   resources: PromptResource[]
   selectedResourceId?: string
@@ -30,6 +35,7 @@ type PromptResourceToolbarProps = {
   onImportZip?: (file: File) => Promise<string | undefined>
   onSelect(resourceId: string): void
   onBindResources?(): void
+  bindResourcesLabel?: string
 }
 
 export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
@@ -74,7 +80,7 @@ export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
           }
         </span>
       ) : null}
-      {selected && props.resourceBindings ? (
+      {selected && props.resourceBindings && !props.hideSingleResourceActions ? (
         <ResourceBindings
           key={JSON.stringify([props.resourceBindings.endpoint, selected.id])}
           {...props.resourceBindings}
@@ -100,7 +106,9 @@ export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
         </select>
       ) : null}
       <div className={styles.actions}>
-        <button type="button" disabled={!selected}
+        {props.tokenSnapshot ? <TokenSnapshotControl snapshot={props.tokenSnapshot} t={props.t}
+          incomplete={props.tokenSnapshotIncomplete} disabled={!selected} /> : null}
+        {!props.hideSingleResourceActions ? <button type="button" disabled={!selected}
           title={props.t('navigation.copyResourceLink')} aria-label={props.t('navigation.copyResourceLink')}
           onClick={() => {
             if (!selected) return
@@ -110,8 +118,8 @@ export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
               if (copied) { setCopiedResourceId(selected.id); setError(undefined) }
               else setError(props.t('navigation.copyFailed'))
             })
-          }}><Link2 aria-hidden="true" /></button>
-        {selected && copiedResourceId === selected.id ? <span role="status">{props.t('navigation.linkCopied')}</span> : null}
+          }}><Link2 aria-hidden="true" /></button> : null}
+        {!props.hideSingleResourceActions && selected && copiedResourceId === selected.id ? <span role="status">{props.t('navigation.linkCopied')}</span> : null}
         {selected && props.draftResourceIds.includes(selected.id) ? (
           <>
           <button
@@ -165,7 +173,7 @@ export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
         >
           <Upload aria-hidden="true" />
         </button>
-        <button
+        {!props.hideSingleResourceActions ? <button
           aria-label={props.t('promptResource.export')}
           disabled={!selected}
           title={props.t('promptResource.export')}
@@ -173,8 +181,8 @@ export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
           onClick={() => selected && void props.onExport(selected.id).then(() => setError(undefined)).catch(reportError)}
         >
           <Download aria-hidden="true" />
-        </button>
-        {props.onExportZip ? (
+        </button> : null}
+        {!props.hideSingleResourceActions && props.onExportZip ? (
           <button
             aria-label={`${props.t('promptResource.export')} ZIP`}
             disabled={!selected}
@@ -187,8 +195,8 @@ export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
         ) : null}
         {props.onBindResources ? (
           <button
-            aria-label={props.t('context.cardBindings.action')}
-            title={props.t('context.cardBindings.action')}
+            aria-label={props.bindResourcesLabel ?? props.t('context.cardBindings.action')}
+            title={props.bindResourcesLabel ?? props.t('context.cardBindings.action')}
             type="button"
             onClick={props.onBindResources}
           >
@@ -208,6 +216,10 @@ export function PromptResourceToolbar(props: PromptResourceToolbarProps) {
           <Trash2 aria-hidden="true" />
         </button>
       </div>
+      {props.tokenSnapshot && (props.tokenSnapshot.summary || props.tokenSnapshot.pending || props.tokenSnapshot.error)
+        ? <div className={styles.tokenResults}>
+          <TokenSnapshotSummary snapshot={props.tokenSnapshot} t={props.t} incomplete={props.tokenSnapshotIncomplete} />
+        </div> : null}
       <input
         ref={importInputRef}
         accept="application/json,.json,application/zip,.zip"

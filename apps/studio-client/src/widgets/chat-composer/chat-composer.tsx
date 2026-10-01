@@ -24,7 +24,7 @@ type ChatComposerProps = {
   input: string
   onChangeInput: (value: string) => void
   onHeightChange?: (height: number) => void
-  onPreviewPrompt: () => void
+  onPreviewPrompt?: () => void
   quickActions?: readonly ChatComposerQuickAction[]
   onSubmit: (event: FormEvent) => void
   moreLabel: string
@@ -169,7 +169,7 @@ export function ChatComposer(props: ChatComposerProps) {
                       <BringToFront aria-hidden="true" />
                     </button>
                   ) : <span className={styles.targetLabel}>{props.targetLabel}</span>
-                ) : (
+                ) : props.onPreviewPrompt ? (
                   <button
                     className={styles.previewButton}
                     onClick={props.onPreviewPrompt}
@@ -178,7 +178,7 @@ export function ChatComposer(props: ChatComposerProps) {
                   >
                     {props.previewLabel}
                   </button>
-                )}
+                ) : null}
                 {props.sendLeadingAction}
                 {props.runStatus === 'running' ? (
                   <button

@@ -10,6 +10,7 @@ export type VfsBinding =
   | { kind: 'prompt-resource'; resourceId: string; nodeId: string; version: number; field: 'body' | 'metadata' }
   | { kind: 'state'; target: VfsStateTarget; revisionId: string; pointer: string }
   | { kind: 'script'; documentId: string; version: number; blobId: string; mountId: string }
+  | { kind: 'narrative'; nodeId: string; timelineId: string; branchId: string; raw: string }
 
 export type VfsStateTarget = { scope: 'global' } | { scope: 'timeline'; timelineId: string; branchId: string }
 
@@ -22,9 +23,9 @@ export type VfsReadObservation = {
 }
 
 export type VfsMutationPreview = {
-  action: 'replace' | 'patch' | 'move' | 'delete' | 'create' | 'copy'
+  action: 'replace' | 'patch' | 'move' | 'delete' | 'create' | 'copy' | 'author-mode'
   path: string
-  kind: 'prompt-resource' | 'state'
+  kind: 'prompt-resource' | 'state' | 'narrative'
   before: string
   after: string
   target?: VfsStateTarget

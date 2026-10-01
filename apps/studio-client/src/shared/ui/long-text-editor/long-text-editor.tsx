@@ -1,5 +1,5 @@
 import { Check, Code2, Copy, Eye, History, RotateCcw, Trash2, Undo2, X } from 'lucide-react'
-import { forwardRef, lazy, Suspense, useEffect, useId, useImperativeHandle, useReducer, useRef, useState, type CSSProperties } from 'react'
+import { forwardRef, lazy, Suspense, useEffect, useId, useImperativeHandle, useReducer, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { CodeMirrorEditorHandle } from './code-mirror-editor.js'
 import {
   INITIAL_LONG_TEXT_EDITOR_STATE,
@@ -21,6 +21,7 @@ const MarkdownPreview = lazy(async () => {
 })
 
 type LongTextEditorBaseProps = {
+  headerExtra?: ReactNode
   clearLabel: string
   clearedLabel: string
   copiedLabel: string
@@ -144,7 +145,10 @@ export const LongTextEditor = forwardRef<LongTextEditorHandle, LongTextEditorPro
       style={editorStyle}
     >
       <header className={styles.toolbar}>
-        <span className={styles.label} id={labelId}>{props.label}</span>
+        <div className={styles.heading}>
+          <span className={styles.label} id={labelId}>{props.label}</span>
+          {props.headerExtra}
+        </div>
         <div className={styles.actions}>
           {props.sourceOnly ? null : (
             <button

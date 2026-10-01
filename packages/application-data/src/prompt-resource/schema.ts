@@ -184,6 +184,30 @@ export function migrateVersionFour(database: DatabaseSync): void {
   `)
 }
 
+export function migrateVersionFive(database: DatabaseSync): void {
+  database.exec(`
+    CREATE TABLE global_setting_mounts_new (
+      id TEXT PRIMARY KEY,
+      setting_resource_id TEXT REFERENCES prompt_resources(id),
+      reference_json TEXT,
+      source_kind TEXT NOT NULL CHECK (source_kind IN ('manual', 'preset')),
+      source_id TEXT NOT NULL,
+      order_index INTEGER NOT NULL CHECK (order_index >= 0),
+      origin_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      CHECK (setting_resource_id IS NOT NULL OR reference_json IS NOT NULL),
+      UNIQUE(setting_resource_id, source_kind, source_id)
+    );
+    INSERT INTO global_setting_mounts_new
+      (id, setting_resource_id, reference_json, source_kind, source_id, order_index, origin_json, created_at)
+      SELECT id, setting_resource_id, NULL, source_kind, source_id, order_index, origin_json, created_at FROM global_setting_mounts;
+    DROP TABLE global_setting_mounts;
+    ALTER TABLE global_setting_mounts_new RENAME TO global_setting_mounts;
+    CREATE INDEX idx_global_setting_mounts_source ON global_setting_mounts(source_kind, source_id, order_index, id);
+    CREATE INDEX idx_global_setting_mounts_setting ON global_setting_mounts(setting_resource_id);
+  `)
+}
+
 export function assertPromptResourceSchema(database: DatabaseSync): void {
   const nodeForeignKeys = database.prepare("PRAGMA foreign_key_list('prompt_resource_nodes')").all() as Array<{ table?: string; from?: string; to?: string }>
   const resourceForeignKeys = database.prepare("PRAGMA foreign_key_list('prompt_resources')").all() as Array<{ table?: string; from?: string; to?: string }>

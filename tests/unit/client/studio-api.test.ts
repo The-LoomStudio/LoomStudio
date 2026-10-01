@@ -251,6 +251,7 @@ describe('studio client typed api', () => {
     await api.narratives.list({ createdFromCardId: 'card-1', limit: 25 })
     await api.narratives.get('timeline-1')
     await api.narratives.getPage({ timelineId: 'timeline-1', branchId: 'branch-1' })
+    await api.narratives.getEffectivePreview({ timelineId: 'timeline-1', branchId: 'branch-1' })
     await api.narratives.create({ cardId: 'card-1' })
     await api.narratives.fork({ timelineId: 'timeline-1', fromBranchId: 'branch-1', fromNodeId: 'node-1' })
     await api.narratives.switch({ timelineId: 'timeline-1', branchId: 'branch-2' })
@@ -264,6 +265,7 @@ describe('studio client typed api', () => {
       { method: 'application.listNarrativeTimelines', params: { createdFromCardId: 'card-1', limit: 25 } },
       { method: 'application.getNarrativeTimeline', params: { timelineId: 'timeline-1' } },
       { method: 'application.getNarrativePage', params: { timelineId: 'timeline-1', branchId: 'branch-1' } },
+      { method: 'application.getEffectiveNarrativePreview', params: { timelineId: 'timeline-1', branchId: 'branch-1' } },
       { method: 'application.createNarrativeTimeline', params: { cardId: 'card-1' } },
       { method: 'application.forkNarrativeBranch', params: { timelineId: 'timeline-1', fromBranchId: 'branch-1', fromNodeId: 'node-1' } },
       { method: 'application.switchNarrativeBranch', params: { timelineId: 'timeline-1', branchId: 'branch-2' } },

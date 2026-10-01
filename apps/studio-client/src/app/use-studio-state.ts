@@ -113,7 +113,8 @@ export function useStudioState(transportLogger: Logger) {
     activationFacts,
     getMacroSelections: (timelineId, branchId) => macroSelection.getSelections(timelineId, branchId),
     api,
-    initialInput: '我看向柜台后的铃铛。',
+    storageScope: endpoint,
+    initialInput: '',
     initialNodes: [],
     selectedCard: cardsState.selectedCardDetails,
     selectedCardId: cardsState.selectedCardId,
@@ -168,7 +169,7 @@ export function useStudioState(transportLogger: Logger) {
 
   const macroSelection = useMacroSelection({
     api: api.macros, endpoint, cardId: cardsState.selectedCardId,
-    presetId: selectedAgentPreset?.id, timelineId: narrativeRuntime.timeline?.id,
+    presetId: narrativeRuntime.primarySession?.agentPresetId, timelineId: narrativeRuntime.timeline?.id,
   })
   const macroKey = macroSelection.targetKey(narrativeRuntime.timeline?.id, narrativeRuntime.branch?.id)
   const macroSelections = macroSelection.readSelections(macroKey)
@@ -179,7 +180,7 @@ export function useStudioState(transportLogger: Logger) {
     cardVersion: cardsState.selectedCardDetails?.version,
     key: macroKey,
     lastRunId: narrativeRuntime.lastRun?.runId,
-    presetId: selectedAgentPreset?.id,
+    presetId: narrativeRuntime.primarySession?.agentPresetId,
     resourceRevision: promptResources,
     selections: macroSelections,
     timelineId: narrativeRuntime.timeline?.id,
@@ -222,8 +223,6 @@ export function useStudioState(transportLogger: Logger) {
     promptMessages,
     promptProjection,
     activationFacts,
-    promptPreviewMacroInspection: narrativeRuntime.promptPreview?.macroInspection,
-    lastRunMacroInspection: narrativeRuntime.lastRun?.macroInspection,
     sessionBusy,
     agentSessionReady: narrativeRuntime.agentSessionReady,
     agentInput: narrativeRuntime.agentInput,
@@ -302,6 +301,7 @@ export function useStudioState(transportLogger: Logger) {
     selectedCard: cardsState.selectedCard,
     selectedCardDetails: cardsState.selectedCardDetails,
     updateCardMedia: cardsState.updateCardMedia,
+    updateCardProfile: cardsState.updateCardProfile,
     updateCardStateConfig: cardsState.updateCardStateConfig,
     updateCardMacros: cardsState.updateCardMacros,
     macroInspection: macroPreview.key === macroKey ? macroPreview.inspection : undefined,
@@ -332,7 +332,7 @@ export function useStudioState(transportLogger: Logger) {
     hasOlderNarrativeNodes: Boolean(narrativeRuntime.olderCursor),
     // agent
     agentMessages: narrativeRuntime.agentMessages,
-    narrativeAgentSession: narrativeRuntime.agentSession,
+    narrativeAgentSession: narrativeRuntime.primarySession,
     agentChatSession: narrativeRuntime.agentSession,
     agentChatSessions: narrativeRuntime.agentSessions,
     allAgentSessions: narrativeRuntime.allAgentSessions,
@@ -351,6 +351,8 @@ export function useStudioState(transportLogger: Logger) {
     approveAgentMutation: narrativeRuntime.approveAgentMutation,
     agentChatSessionLoading: narrativeRuntime.agentSessionLoading,
     newAgentSession: narrativeRuntime.newAgentSession,
+    createAgentSession: narrativeRuntime.createAgentSession,
+    setPrimaryAgentSession: narrativeRuntime.setPrimaryAgentSession,
     refreshAgentSessions: narrativeRuntime.refreshAgentSessions,
     refreshAllAgentSessions: narrativeRuntime.refreshAllAgentSessions,
     agentChatMessages: narrativeRuntime.agentMessages,
@@ -363,6 +365,7 @@ export function useStudioState(transportLogger: Logger) {
     promptPreview: narrativeRuntime.promptPreview, promptMessages, promptProjection,
     promptBuildTrace,
     providerPayloadPreview,
+    tokenEstimate: narrativeRuntime.promptPreview?.tokenEstimate,
     activationControl,
     activationFacts,
     setActivationMode: (mode: ActivationControlState['mode']) => setActivationControl(current => ({ ...current, mode })),
@@ -372,8 +375,8 @@ export function useStudioState(transportLogger: Logger) {
     aiProviders: providerSettings.aiProviders,
     aiCapabilityProfiles: providerSettings.aiCapabilityProfiles,
     setProviderAccountDraft: providerSettings.setProviderAccountDraft,
-    selectedAgentPresetId: agentPresets.selectedAgentPresetId,
-    selectAgentPreset: agentPresets.selectAgentPreset,
+    selectedAgentPresetId: narrativeRuntime.agentSession?.agentPresetId ?? agentPresets.selectedAgentPresetId,
+    selectAgentPreset: narrativeRuntime.selectAgentPreset,
     // input
     input: narrativeRuntime.input, setInput: narrativeRuntime.setInput,
     // api & runtime

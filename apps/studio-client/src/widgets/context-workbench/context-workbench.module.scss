@@ -74,6 +74,16 @@
   min-width: 0;
   overflow: hidden;
 }
+.temporaryDetailHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--loom-color-divider);
+  color: var(--loom-color-text-subtle);
+  overflow-wrap: anywhere;
+
+}
 .header {
   display: flex;
   align-items: center;
@@ -82,12 +92,4 @@
   min-width: 0;
   flex-wrap: wrap;
 
-  > button {
-    flex: 0 0 auto;
-    width: 32px;
-    height: 32px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
 }

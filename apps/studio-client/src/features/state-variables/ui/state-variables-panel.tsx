@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronDown, ChevronUp, Clock, Code2, Copy, FileText, Globe, Layers, Maximize2, Minus, Plus, RefreshCw, Save } from 'lucide-react'
+import { ChevronDown, ChevronUp, Clock, Code2, Copy, FileText, Folder, FolderOpen, Globe, Layers, Maximize2, Minus, Plus, RefreshCw, Save } from 'lucide-react'
 import { toast } from 'sonner'
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import type { StateSnapshot, StateTarget } from '../../../entities/index.js'
@@ -328,6 +328,31 @@ export function StateVariablesPanel(props: Props) {
     return actions
   }
 
+  const runtimeScopeNodes: FileTreeNode[] = useMemo(() => [
+    {
+      id: 'runtime-group',
+      label: props.t('stateVariables.runtimeGroup'),
+      kind: 'folder',
+      children: [
+        {
+          id: 'timeline',
+          label: props.t('stateVariables.timelineState'),
+          kind: 'entry',
+          meta: props.timelineTarget ? `${props.timelineTarget.timelineId} · ${props.timelineTarget.branchId}` : props.t('stateVariables.noTimeline'),
+          disabled: !props.timelineTarget,
+        },
+        {
+          id: 'global',
+          label: props.t('stateVariables.globalState'),
+          kind: 'entry',
+          meta: props.t('stateVariables.globalDescription'),
+        },
+      ],
+    },
+  ], [props.t, props.timelineTarget])
+
+  const [runtimeExpandedIds, setRuntimeExpandedIds] = useState<string[]>(['runtime-group'])
+
   return (
     <section className={styles.panel} data-loom-component="state-variables-panel">
       <header className={styles.intro}>
@@ -345,36 +370,35 @@ export function StateVariablesPanel(props: Props) {
         mobilePane={mobilePane}
         onMobilePaneChange={setMobilePane}
         master={(
-          <nav aria-label={props.t('stateVariables.navigation')} className={styles.masterNav}>
-            <div className={styles.navGroup}>
-              <header>{props.t('stateVariables.runtimeGroup')}</header>
-              <button
-                aria-current={scope === 'timeline' ? 'page' : undefined}
-                className={styles.navItem}
-                disabled={!props.timelineTarget}
-                type="button"
-                onClick={() => { setScope('timeline'); setMobilePane('detail') }}
-              >
-                <Clock aria-hidden="true" size={14} />
-                <span className={styles.navItemBody}>
-                  <strong>{props.t('stateVariables.timelineState')}</strong>
-                  <small>{props.timelineTarget ? `${props.timelineTarget.timelineId} · ${props.timelineTarget.branchId}` : props.t('stateVariables.noTimeline')}</small>
-                </span>
-              </button>
-              <button
-                aria-current={scope === 'global' ? 'page' : undefined}
-                className={styles.navItem}
-                type="button"
-                onClick={() => { setScope('global'); setMobilePane('detail') }}
-              >
-                <Globe aria-hidden="true" size={14} />
-                <span className={styles.navItemBody}>
-                  <strong>{props.t('stateVariables.globalState')}</strong>
-                  <small>{props.t('stateVariables.globalDescription')}</small>
-                </span>
-              </button>
-            </div>
-          </nav>
+          <div className={styles.treeContainer}>
+            <FileTree
+              ariaLabel={props.t('stateVariables.navigation')}
+              expandedIds={runtimeExpandedIds}
+              getDisclosureLabel={(node, expanded) => `${expanded ? props.t('stateVariables.collapse') : props.t('stateVariables.expand')} ${node.label}`}
+              getDragLabel={node => node.label}
+              moreActionsLabel={props.t('stateVariables.actions')}
+              nodes={runtimeScopeNodes}
+              onExpandedIdsChange={setRuntimeExpandedIds}
+              onSelect={node => {
+                if (node.id === 'timeline' && props.timelineTarget) {
+                  setScope('timeline')
+                  setMobilePane('detail')
+                } else if (node.id === 'global') {
+                  setScope('global')
+                  setMobilePane('detail')
+                } else if (node.id === 'runtime-group') {
+                  setRuntimeExpandedIds(prev => prev.includes('runtime-group') ? [] : ['runtime-group'])
+                }
+              }}
+              renderIcon={(node, expanded) => {
+                if (node.id === 'runtime-group') return expanded ? <FolderOpen size={16} /> : <Folder size={16} />
+                if (node.id === 'timeline') return <Clock size={16} />
+                if (node.id === 'global') return <Globe size={16} />
+                return null
+              }}
+              selectedId={scope}
+            />
+          </div>
         )}
       >
         <div className={styles.detailPane}>

@@ -9,25 +9,9 @@ import { MasterDetailWorkbench } from '../../shared/ui/master-detail-workbench/m
 import { useMotionPreferenceStore, type MotionPreference } from '../../shared/hooks/use-motion-preference.js'
 import { BackgroundMaterialsView, type BackgroundOption } from './background-materials-view.js'
 import styles from './settings-panel.module.scss'
+import { useTokenDisplaySettings } from '../../shared/tokenizer/settings.js'
 
 type SettingsCategory = 'general' | 'network' | 'appearance' | 'text-pipeline' | 'about'
-
-const previewBackgrounds: BackgroundOption[] = [
-  {
-    id: 'harbor',
-    name: '黄昏港口',
-    description: '适合海港、码头与临海城市场景',
-    source: '角色卡 · 四方世界',
-    image: '/images/banner.png',
-  },
-  {
-    id: 'forest',
-    name: '雾中森林',
-    description: '低对比度的林地背景',
-    source: '官方背景',
-    image: '/images/default-card.png',
-  },
-]
 
 export function SettingsPanel(props: {
   busy: boolean
@@ -46,6 +30,8 @@ export function SettingsPanel(props: {
   t: Translator
 }) {
   const [category, setCategory] = useState<SettingsCategory>('general')
+  const tokenMultiplier = useTokenDisplaySettings(state => state.multiplier)
+  const setTokenMultiplier = useTokenDisplaySettings(state => state.setMultiplier)
   const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
   const [proxyMode, setProxyMode] = useState(props.networkSettings.proxyMode)
   const [proxyUrl, setProxyUrl] = useState(props.networkSettings.proxyUrl ?? '')
@@ -63,7 +49,7 @@ export function SettingsPanel(props: {
   const setNarrativeOverscan = useAppearanceStore(state => state.setNarrativeOverscan)
   const motionPreference = useMotionPreferenceStore(state => state.preference)
   const setMotionPreference = useMotionPreferenceStore(state => state.setPreference)
-  const backgrounds = [...previewBackgrounds, ...(props.backgrounds ?? [])]
+  const backgrounds = props.backgrounds ?? []
   const textController = useTextTransformController({
     api: props.textTransformsApi,
     onRuntimeChanged: props.onTextTransformsChanged,
@@ -224,6 +210,16 @@ export function SettingsPanel(props: {
                       <option key={locale} value={locale}>{localeLabels[locale]}</option>
                     ))}
                   </select>
+                </label>
+              </div>
+              <div className={styles.cardSection}>
+                <label className={styles.settingRow} title="o200k_base · 仅用于资源原文展示，不修改模型运行系数">
+                  <span>{props.t('tokens.displayMultiplier')}</span>
+                  <input aria-label={props.t('tokens.displayMultiplier')} type="number" min="0.01" step="0.05"
+                    value={tokenMultiplier} onChange={event => {
+                      const value = event.currentTarget.valueAsNumber
+                      if (Number.isFinite(value) && value > 0) setTokenMultiplier(value)
+                    }} />
                 </label>
               </div>
             </>

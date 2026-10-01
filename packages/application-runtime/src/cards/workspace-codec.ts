@@ -211,6 +211,24 @@ function assertPromptResourceArtifact(value: unknown): asserts value is PromptRe
   if (value.schemaVersion !== 1 && value.schemaVersion !== 2) throw new Error(`Unsupported Prompt Resource artifact schemaVersion: ${String(value.schemaVersion)}`)
   if (!isPromptResourceKind(value.resourceKind)) throw new Error(`Invalid Prompt Resource kind: ${String(value.resourceKind)}`)
   if (value.macroOptions !== undefined) normalizeMacroOptions(value.macroOptions)
+  if (value.useCardSettings !== undefined && typeof value.useCardSettings !== 'boolean') throw new Error('Invalid Preset card Setting selection')
+  if (value.settingMounts !== undefined && (!Array.isArray(value.settingMounts) || value.resourceKind !== 'preset'
+    || value.settingMounts.some(reference => !isObject(reference)
+      || (reference.kind !== 'package' && reference.kind !== 'external')
+      || (reference.kind === 'package' && (typeof reference.contributionId !== 'string' || !reference.contributionId.trim()))
+      || (reference.kind === 'external' && (typeof reference.resourceId !== 'string' || !reference.resourceId.trim()))))) {
+    throw new Error('Invalid Preset Setting references')
+  }
+  if (value.textUses !== undefined && (!Array.isArray(value.textUses) || value.textUses.some(use =>
+    !isObject(use) || typeof use.id !== 'string' || !use.id.trim()
+    || (use.kind !== 'rule' && use.kind !== 'extractor') || typeof use.enabled !== 'boolean'
+    || (use.orderIndex !== undefined && (!Number.isSafeInteger(use.orderIndex) || Number(use.orderIndex) < 0))
+    || (use.reference !== undefined && (!isObject(use.reference)
+      || (use.reference.kind !== 'package' && use.reference.kind !== 'external')
+      || (use.reference.kind === 'package' && (typeof use.reference.contributionId !== 'string' || !use.reference.contributionId.trim()))
+      || (use.reference.kind === 'external' && (typeof use.reference.resourceId !== 'string' || !use.reference.resourceId.trim()))))))) {
+    throw new Error('Invalid Preset Text use references')
+  }
   assertPromptResourceNode(value.rootNode, 'rootNode')
   assertUniquePromptResourceNodeIds(value.rootNode)
   assertLoomScriptAttachments(value.scriptAttachments)

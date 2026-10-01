@@ -49,6 +49,8 @@ pnpm exec vitest run tests/unit/client
 
 普通面板切换使用同一 `/studio` 的 History State，显式 URI 负责资源身份与外部跳转，不能重新用每个面板的 Path 覆盖 Timeline 上下文。恢复优先级和来源隔离见[导航架构](../../docs/architecture/ui/navigation-and-routing.md)。
 
+资源浏览按归属进入角色或扩展面板；浏览角色不切换当前游玩角色。临时按原 ID 打开单项资源只改变查看/编辑目标，不改变归属、安装或挂载。复杂 Settings 由专用面板承载；当前不维护独立工作区包成员清单。目录或 Manifest 静态声明不等于某轮运行的实际激活结果。
+
 ```text
 Route / UI
   -> Feature hook / useStudioState

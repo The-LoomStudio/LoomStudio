@@ -43,6 +43,7 @@ export type Card = {
   portableExtensionPayloadIds?: string[]
   extensionPackages?: Array<{ packageId: string; version: string; blobId: string }>
   promptResourceIds?: string[]
+  externalPromptResourceIds?: string[]
   stateTemplates?: CardStateTemplate[]
   stateDefinitionIds?: string[]
   stateEntityTypes?: StateEntityType[]

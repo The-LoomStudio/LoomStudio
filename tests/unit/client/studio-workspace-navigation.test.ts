@@ -41,6 +41,22 @@ describe('Studio workspace navigation', () => {
     } finally { router.dispose() }
   })
 
+  it('replaces a second temporary Setting in history and returns to the original collection', async () => {
+    const origin: StudioWorkspace = { panel: 'character', cardId: 'package-card', search: 'characterView=attachments&cardResourceExpanded=settings&cardResourceNode=settings%3Asetting%3Aroot' }
+    const first: StudioWorkspace = { ...origin, panel: 'resource', resourceId: 'external-a', assetId: 'a-root' }
+    const second: StudioWorkspace = { ...first, resourceId: 'external-b', assetId: 'b-root' }
+    const router = createMemoryRouter([{ path: '*', Component: () => null }], {
+      initialEntries: [{ pathname: '/studio', state: studioHistoryState('/rpc', origin) }],
+    })
+    try {
+      await router.navigate('/studio', { state: studioHistoryState('/rpc', first) })
+      await router.navigate('/studio', { replace: true, state: studioHistoryState('/rpc', second) })
+      expect(resolveStudioWorkspace(router.state.location, '/rpc')).toEqual(second)
+      await router.navigate(-1)
+      expect(resolveStudioWorkspace(router.state.location, '/rpc')).toEqual(origin)
+    } finally { router.dispose() }
+  })
+
   it('gives explicit links precedence over history and persisted workspace', () => {
     const uri = 'loom-resource://entity?type=resource&id=explicit'
     expect(resolveStudioWorkspace({
@@ -79,7 +95,7 @@ describe('Studio workspace navigation', () => {
 
   it('registers every panel entry including play, state and text transforms', () => {
     const routes = STUDIO_ENTRY_PATHS.map(path => ({ path }))
-    for (const path of ['/', '/studio', '/studio/play', '/studio/state', '/studio/text-transforms']) {
+    for (const path of ['/', '/studio', '/studio/play', '/studio/recent', '/studio/state', '/studio/text-transforms']) {
       expect(matchRoutes(routes, path), path).not.toBeNull()
     }
     expect(matchRoutes(routes, '/studio/not-a-panel')).toBeNull()

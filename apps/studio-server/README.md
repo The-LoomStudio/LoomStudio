@@ -6,6 +6,10 @@ Studio Server 是本地 Node.js 进程的 Composition Root 与 Transport Adapter
 
 ## 开发入口
 
+正式 Beta 入口由根目录启动脚本提供：前端预构建后由同一 Node HTTP 服务托管，
+不需要 Vite。发行资源按安装位置解析，正式入口不扫描仓库开发扩展，
+并使用生产 Extension 合同与同源会话。准备与限制见 [Beta 发布](../../docs/guide/beta-release.md)。
+
 正常开发从仓库根目录运行：
 
 ```bash
@@ -58,6 +62,7 @@ Studio Server
 - Asset 上传与读取
 - Card ZIP（下载为 `.loomcard.zip`）与承载同一 ZIP 的 PNG 导入导出；保留的旧入口及 Polyglot 行为见[Card 容器合同](../../docs/architecture/application/card-bundle-files.md)
 - Extension Icon
+- 全局 Extension 文件与按 Card 安装归档摘要校验的私有扩展文件读取入口
 - `GET /extensions/events`：只用于 Extension Catalog 变化的 SSE
 
 `POST /rpc` 的完整 JSON 请求体上限为 384 MiB，按传输字节累计。声明或实际大小超限时，

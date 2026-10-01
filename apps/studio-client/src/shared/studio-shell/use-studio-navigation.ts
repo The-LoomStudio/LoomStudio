@@ -108,6 +108,13 @@ export function useStudioNavigation(input: { endpoint: string; api: StudioApi })
     updateNarrativeContext: (timelineId: string, branchId: string, cardId?: string) => publish({
       ...current.current, timelineId, branchId, cardId: cardId ?? current.current.cardId,
     }, true),
+    clearDeletedTimeline: (timelineId: string, cardId?: string) => {
+      if (current.current.timelineId !== timelineId || current.current.targetUri !== undefined) return
+      return publish({
+        ...current.current, timelineId: undefined, branchId: undefined, nodeId: undefined,
+        cardId: cardId ?? current.current.cardId,
+      }, true)
+    },
     selectCard: async (cardId: string, activate: () => Promise<{ timelineId: string; branchId: string } | null | undefined>) => {
       const request = ++cardSelection.current
       const before = current.current
@@ -117,9 +124,9 @@ export function useStudioNavigation(input: { endpoint: string; api: StudioApi })
         ...before, cardId, timelineId: activated?.timelineId, branchId: activated?.branchId, nodeId: undefined,
       })
     },
-    openResource: (panel: 'resource' | 'preset' | 'agent', resourceId: string, nodeId: string) => publish({
+    openResource: (panel: 'resource' | 'preset' | 'agent', resourceId: string, nodeId: string, replace = false) => publish({
       ...current.current, panel: panel === 'preset' ? 'agent' : panel, resourceId, assetId: nodeId, referenceUri: undefined, targetUri: undefined,
-    }),
+    }, replace),
     searchQuery: new URLSearchParams(workspace.search).get('q') ?? '',
     searchParams: new URLSearchParams(workspace.search),
     setSearchParams: (params: URLSearchParams) => publish({ ...current.current, search: params.toString() }, true),

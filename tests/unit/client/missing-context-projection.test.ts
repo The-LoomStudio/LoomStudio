@@ -28,11 +28,13 @@ vi.mock('react', async original => ({
 }))
 vi.mock('../../../apps/studio-client/src/shared/studio-shell/studio-layout-store.js', async original => {
   const actual = await original<typeof import('../../../apps/studio-client/src/shared/studio-shell/studio-layout-store.js')>()
-  return { ...actual, useStudioLayoutStore: (selector: (state: unknown) => unknown) =>
-    selector({ ...actual.useStudioLayoutStore.getState(), presetView: 'tools' }) }
+  return { ...actual, useStudioLayoutStore: Object.assign(
+    (selector: (state: unknown) => unknown) => selector({ ...actual.useStudioLayoutStore.getState(), presetView: 'tools' }),
+    { getState: actual.useStudioLayoutStore.getState },
+  ) }
 })
 vi.mock('../../../apps/studio-client/src/features/state-variables/ui/macro-authoring-panel.js', () => ({
-  useMacroAuthoring: () => ({ selectRow: () => undefined }),
+  useMacroAuthoring: () => ({ selectRow: () => undefined, selectNode: () => undefined }),
   MacroAuthoringDetail: () => null,
   MacroAuthoringExplorer: () => null,
 }))
@@ -222,6 +224,38 @@ describe('missing context projections', () => {
     const close = dialog.props.onClose as () => void
     close()
     expect(child(render(), 'OfficialContentDialog')).toBeUndefined()
+  })
+
+  it('keeps an in-collection Setting in its tree, replaces external targets, and restores the collection', () => {
+    const sibling = { ...setting, id: 'sibling', rootNode: { ...setting.rootNode, id: 'sibling-root', label: 'SIBLING' } }
+    const outside = { ...setting, id: 'outside', rootNode: { ...setting.rootNode, id: 'outside-root', label: 'OUTSIDE' } }
+    const second = { ...setting, id: 'second', rootNode: { ...setting.rootNode, id: 'second-root', label: 'SECOND' } }
+    const onReturn = vi.fn()
+    const onSelectResource = vi.fn()
+    const props = {
+      ...common(), resources: [preset, setting, sibling, outside, second],
+      card: { id: 'card', promptResourceIds: ['setting', 'sibling'] }, routeResourceId: 'setting', routeAssetId: 'setting-root',
+      onReturn, onSelectResource, officialContentApi: { list: vi.fn(), install: vi.fn(), export: vi.fn() },
+      onOfficialContentInstalled: vi.fn(),
+    } as unknown as ComponentProps<typeof ContextWorkbench>
+    const root = instance(() => ContextWorkbench(props))
+    const ids = () => (child(root(), 'ContextAssetExplorer').props.displayNodes as Array<{ id: string }>).map(item => item.id)
+    expect(ids()).toEqual(['setting-root', 'sibling-root'])
+    expect(text(root())).not.toContain(t('promptResource.temporaryOpen'))
+    props.routeResourceId = 'outside'
+    props.routeAssetId = 'outside-root'
+    expect(ids()).toEqual(['outside-root'])
+    ;(child(root(), 'PromptResourceToolbar').props.onSelect as (id: string) => void)('second')
+    expect(onSelectResource).toHaveBeenCalledExactlyOnceWith('second', true)
+    click(root(), t('promptResource.returnToCollection'))
+    expect(onReturn).toHaveBeenCalledOnce()
+    props.routeResourceId = 'second'
+    props.routeAssetId = 'second-root'
+    expect(ids()).toEqual(['second-root'])
+    props.routeResourceId = undefined
+    props.routeAssetId = undefined
+    expect(ids()).toEqual(['setting-root', 'sibling-root'])
+    expect(props.card?.promptResourceIds).toEqual(['setting', 'sibling'])
   })
 
   it('keeps missing Card bindings visible and does not substitute the resource library', async () => {

@@ -19,6 +19,7 @@ type ProviderAccountDraft = {
 }
 
 export type ModelPanelProps = {
+  onUpdateTokenMultiplier?(modelProfileId: string, multiplier: number): Promise<void>
   busy: boolean
   providerAccountDraft: ProviderAccountDraft
   modelProfiles: ModelProfile[]
@@ -111,6 +112,7 @@ export function ModelPanel(props: ModelPanelProps) {
           onDeleteModel={props.onDeleteModelProfile}
           onListModels={props.onListProviderModels}
           onUpdateConnection={props.onUpdateProviderConnection}
+          onUpdateTokenMultiplier={props.onUpdateTokenMultiplier}
           t={props.t}
         />
       </section>

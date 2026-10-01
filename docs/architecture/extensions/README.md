@@ -2,6 +2,8 @@
 
 Loom Studio 当前采用 **Package / Module / Instance** 三层 Extension 模型。Package 是分发、来源与持久资源归属边界；Module 是入口、runtime、启用状态、权限与贡献合同边界；Instance 是一次实际激活及其临时注册资源的生命周期边界。
 
+Extension Package 允许零 Module，仅携带声明式资源。静态贡献声明不是已导入资源、已授予能力或实际激活实例的证明；资源型 Extension 不要求空脚本或虚构运行实例。
+
 当前已实现 Server Module Host、Package Catalog、Client Module Host、Renderer Surface、Manifest Command / Action Placement 与 Extension Catalog / Data SSE。Client Module 可以被发现、保存 desired state、从同源受控 URL 加载，并通过正式 Context 注册 Renderer Contribution 与 Command Handler。通用跨端 Event Transport 与不可信代码沙箱尚未实现。
 
 本文对应当前实现与可执行验证：
@@ -33,6 +35,8 @@ Extension Package
 Module ID 只需在 Package 内唯一。内部使用结构化 `packageId`、`moduleId`；日志和 Registry owner 可显示为 `<packageId>/<moduleId>`，公开 RPC/Event 名称仍使用 Package namespace。
 
 Package 内的 Module 不继承 sibling grant。当前 Server Module 与宿主同进程运行，因此这种边界是 Host capability、审计和产品授权边界，不是强安全沙箱。
+
+Card Package 可携带 Extension Package 实际归档。安装身份由 `packageId` 与 Global/Card target 确定，各安装的启用状态和能力授权独立保存；Card 私有包文件使用归档摘要校验的 URL。该身份隔离约束正式 Host API，不是对任意同进程代码的安全隔离保证。
 
 ## 2. Package Catalog 与 Server Manager
 
@@ -150,6 +154,8 @@ Package 展示元数据保持为一组轻量可选字段：`description`、`icon
 每个 Server Module 独立 discover、load、activate、reload、dispose 与 forget，当前最多一个活动实例。重复 activation 被拒绝；reload 先释放旧实例，再加载并激活新实例，生成新的 `instanceId`；forget 在释放实例后移除 Host discovery record，供 Package 卸载后安全重发现同 ID Module。
 
 Server Module 通过 `activate(ctx)` 获得当前实例绑定的 capability facade：
+
+`ctx.prompt.build` 是只读的独立 Prompt 编译入口，可传本安装拥有的 Preset/Setting 引用或逐次 Anchor 内容；`ctx.ai.invokeModel` 在 `ai.invoke` 权限下以显式 Provider Profile/Model 引用调用普通模型，支持真实流事件与实例取消。两者不要求 Agent Session，不改变全局 Setting Mount；原有 `ctx.ai.invoke` capability-profile 路径保持不变。无独立 Prompt Resource 读取授权时，不可通过 build 按 ID 读取其他来源资源。
 
 - `ctx.extension.packageId/moduleId/runtime/instanceId`；
 - scoped Logger 和 Diagnostics；

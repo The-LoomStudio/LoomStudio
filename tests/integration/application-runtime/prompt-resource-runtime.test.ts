@@ -17,6 +17,35 @@ function createIds() {
 }
 
 describe('Prompt Resource Store application runtime', () => {
+  it('persists newly created children before the first preset or setting sibling', async () => {
+    const createId = createIds()
+    const now = () => '2026-09-29T00:00:00.000Z'
+    const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
+    try {
+      const promptResources = createPromptResourceStore({ engine, createId, now })
+      const runtime = createApplicationRuntime({
+        dataEngine: engine, documents: createSqliteDocumentStore({ engine }), promptResources,
+      })
+      for (const resourceKind of ['preset', 'setting'] as const) {
+        const { resource } = await runtime.createPromptResource({ resourceKind, name: resourceKind })
+        const first = resource.rootNode.children?.[0]
+          ?? (await runtime.createPromptResourceAsset({
+            resourceId: resource.id, targetAssetId: resource.rootNode.id, position: 'inside',
+            asset: { id: `${resourceKind}-first`, kind: 'entry', label: 'First' },
+          })).resource.rootNode.children![0]!
+        await runtime.createPromptResourceAsset({
+          resourceId: resource.id, targetAssetId: first.id, position: 'before',
+          asset: { id: `${resourceKind}-new-folder`, kind: 'folder', label: 'New Folder', children: [] },
+        })
+        const reloaded = await runtime.getPromptResource({ resourceId: resource.id })
+        expect(reloaded.resource.rootNode.children?.slice(0, 2).map(node => node.id))
+          .toEqual([`${resourceKind}-new-folder`, first.id])
+      }
+    } finally {
+      await engine.close()
+    }
+  })
+
   it('imports a preset and its tool mounts atomically without leaving a resource after mount failure', async () => {
     const createId = createIds()
     const now = () => '2026-09-27T00:00:00.000Z'
@@ -195,7 +224,7 @@ describe('Prompt Resource Store application runtime', () => {
       const runtime = createApplicationRuntime({ dataEngine: engine, documents, promptResources })
       const { resource: preset } = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Preset' })
       const { resource: setting } = await runtime.createPromptResource({ resourceKind: 'setting', name: 'Setting' })
-      await runtime.replaceSettingMounts({ source: { kind: 'manual', id: 'global' }, settingResourceIds: [setting.id] })
+      await runtime.replaceSettingMounts({ source: { kind: 'preset', id: preset.id }, settingResourceIds: [setting.id] })
       const mounts = await promptResources.listSettingMounts()
       await runtime.deletePromptResource({ resourceId: setting.id })
       expect(await promptResources.getResource(setting.id)).toBeNull()
@@ -350,7 +379,7 @@ describe('Prompt Resource Store application runtime', () => {
     await rm(directory, { recursive: true, force: true })
   })
 
-  it('resolves global mounts and ignores legacy preset mounts', async () => {
+  it('uses explicit preset mounts without automatically including global mounts', async () => {
     const createId = createIds()
     const now = () => '2026-08-19T00:00:00.000Z'
     const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
@@ -373,11 +402,50 @@ describe('Prompt Resource Store application runtime', () => {
     await runtime.replaceSettingMounts({ source: { kind: 'preset', id: presetB.resource.id }, settingResourceIds: [settingB.resource.id] })
     const promptA = await composeAgentTurnPrompt({ promptResources, contextResourceIds: [], preset: (await runtime.getPromptResource({ resourceId: presetA.resource.id })).resource, agentMessages: [], userInput: 'Hi' })
     const promptB = await composeAgentTurnPrompt({ promptResources, contextResourceIds: [], preset: (await runtime.getPromptResource({ resourceId: presetB.resource.id })).resource, agentMessages: [], userInput: 'Hi' })
-    expect(promptA.messages.some(message => typeof message.content === 'string' && message.content.includes('A only'))).toBe(true)
+    expect(promptA.messages.some(message => typeof message.content === 'string' && message.content.includes('A only'))).toBe(false)
     expect(promptA.messages.some(message => typeof message.content === 'string' && message.content.includes('B only'))).toBe(false)
-    expect(promptB.messages.some(message => typeof message.content === 'string' && message.content.includes('A only'))).toBe(true)
-    expect(promptB.messages.some(message => typeof message.content === 'string' && message.content.includes('B only'))).toBe(false)
+    expect(promptB.messages.some(message => typeof message.content === 'string' && message.content.includes('A only'))).toBe(false)
+    expect(promptB.messages.some(message => typeof message.content === 'string' && message.content.includes('B only'))).toBe(true)
     engine.close()
+  })
+
+  it('can exclude default card Settings while keeping an explicit preset mount', async () => {
+    const createId = createIds()
+    const now = () => '2026-08-19T00:00:00.000Z'
+    const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
+    try {
+      const documents = createSqliteDocumentStore({ engine })
+      const promptResources = createPromptResourceStore({ engine, createId, now })
+      const runtime = createApplicationRuntime({
+        dataEngine: engine, documents, promptResources,
+        agents: createAgentStore({ engine, createId, now }),
+        narratives: createNarrativeStore({ engine, createId, now }),
+      })
+      const preset = await runtime.createPromptResource({ resourceKind: 'preset', name: 'Preset' })
+      const setting = await runtime.createPromptResource({ resourceKind: 'setting', name: 'Setting' })
+      const cardSetting = await runtime.createPromptResource({ resourceKind: 'setting', name: 'Card Setting' })
+      await runtime.createPromptResourceAsset({
+        resourceId: cardSetting.resource.id, targetAssetId: cardSetting.resource.rootNode.id, position: 'inside',
+        asset: { id: 'card-setting-entry', kind: 'entry', label: 'Card Setting', body: 'CARD_DEFAULT_MARKER', capabilities: { targetAnchorId: '@chat.system' } },
+      })
+      const { card } = await runtime.createCard({ name: 'Role' })
+      await runtime.updateCardPromptResources({ cardId: card.id, promptResourceIds: [cardSetting.resource.id] })
+      const { timeline } = await runtime.createNarrativeTimeline({ cardId: card.id })
+      const { providerProfile } = await runtime.createProviderProfile({
+        providerExtensionId: 'official.fake', displayName: 'Test', config: {}, enabledModelIds: [officialFakeModelId],
+      })
+      await runtime.replaceSettingMounts({ source: { kind: 'preset', id: preset.resource.id }, settingResourceIds: [setting.resource.id] })
+      const current = (await runtime.getAgentPreset({ agentPresetId: preset.resource.id })).agentPreset
+      await runtime.updateAgentPreset({
+        agentPresetId: current.id, expectedVersion: current.version, useCardSettings: false,
+        model: { providerProfileId: providerProfile.id, modelId: officialFakeModelId },
+      })
+      expect((await runtime.getAgentPreset({ agentPresetId: current.id })).agentPreset.useCardSettings).toBe(false)
+      expect((await promptResources.listSettingMounts({ source: { kind: 'preset', id: current.id } })).map(mount => mount.settingResourceId)).toEqual([setting.resource.id])
+      const { session } = await runtime.createAgentSession({ agentPresetId: current.id, timelineId: timeline.id })
+      expect(JSON.stringify((await runtime.previewAgentTurn({ agentSessionId: session.id, input: 'Hi' })).messages))
+        .not.toContain('CARD_DEFAULT_MARKER')
+    } finally { engine.close() }
   })
 
   it('imports and exports resources and Card bundles without writing Resource Documents', async () => {

@@ -28,6 +28,40 @@ function extensionPackage(enabled = true): ManagedClientExtensionPackage {
 }
 
 describe('Client Extension Host', () => {
+  it('provides local token counting and rejects captured contexts after disposal', async () => {
+    let context!: Parameters<ClientExtensionModule['activate']>[0]
+    const instances: Array<{
+      onmessage?: (event: { data: { id: number; counts: number[] } }) => void
+      message?: { id: number; texts: string[] }
+    }> = []
+    class WorkerFixture {
+      onmessage?: (event: { data: { id: number; counts: number[] } }) => void
+      message?: { id: number; texts: string[] }
+      constructor() { instances.push(this) }
+      postMessage(message: { id: number; texts: string[] }) { this.message = message }
+    }
+    vi.stubGlobal('Worker', WorkerFixture)
+    const host = createClientExtensionHost({
+      rendererHost: createClientRendererHost(),
+      loadModule: async () => ({ activate: ctx => { context = ctx } }),
+    })
+    try {
+      await host.reconcile([extensionPackage()])
+      const count = context.tokens.countText({ text: 'arbitrary text', multiplier: 0.6 })
+      expect(instances[0]?.message?.texts).toEqual(['arbitrary text'])
+      instances[0]!.onmessage?.({ data: { id: instances[0]!.message!.id, counts: [3] } })
+      expect(await count).toMatchObject({ baseTokens: 3, estimatedTokens: 2 })
+      const pending = context.tokens.countText({ text: 'queued' })
+      const rejected = expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+      await host.dispose()
+      await rejected
+      instances[0]!.onmessage?.({ data: { id: instances[0]!.message!.id, counts: [1] } })
+      await expect(context.tokens.countText({ text: 'disposed' })).rejects.toMatchObject({ name: 'AbortError' })
+    } finally {
+      await host.dispose()
+      vi.unstubAllGlobals()
+    }
+  })
   it('fixes Config and Record request ownership to the host installation', async () => {
     const listConfigs = vi.fn(async () => ({ configs: [] }))
     const listRecords = vi.fn(async () => ({ records: [] }))

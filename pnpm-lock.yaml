@@ -176,6 +176,9 @@ importers:
       '@loom-studio/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@loom-studio/tokenizer':
+        specifier: workspace:*
+        version: link:../../packages/tokenizer
       '@loom-studio/ui':
         specifier: workspace:*
         version: link:../../packages/loom-ui
@@ -304,6 +307,8 @@ importers:
         specifier: 0.8.3
         version: 0.8.3
 
+  official/extensions/loom-assistant: {}
+
   official/extensions/st-data-compat:
     dependencies:
       '@loom-studio/application-runtime':
@@ -352,6 +357,9 @@ importers:
       '@loom-studio/shared':
         specifier: workspace:*
         version: link:../shared
+      '@loom-studio/tokenizer':
+        specifier: workspace:*
+        version: link:../tokenizer
       ai:
         specifier: 7.0.77
         version: 7.0.77(zod@4.5.4)
@@ -367,6 +375,9 @@ importers:
       '@loom-studio/shared':
         specifier: workspace:*
         version: link:../shared
+      '@loom-studio/tokenizer':
+        specifier: workspace:*
+        version: link:../tokenizer
 
   packages/application-runtime:
     dependencies:
@@ -394,6 +405,9 @@ importers:
       '@loom-studio/shared':
         specifier: workspace:*
         version: link:../shared
+      '@loom-studio/tokenizer':
+        specifier: workspace:*
+        version: link:../tokenizer
       diff:
         specifier: 8.0.2
         version: 8.0.2
@@ -464,6 +478,9 @@ importers:
       '@loom-studio/shared':
         specifier: workspace:*
         version: link:../shared
+      '@loom-studio/tokenizer':
+        specifier: workspace:*
+        version: link:../tokenizer
       '@loom-studio/transport':
         specifier: workspace:*
         version: link:../transport
@@ -485,6 +502,9 @@ importers:
       '@loom-studio/shared':
         specifier: workspace:*
         version: link:../../shared
+      '@loom-studio/tokenizer':
+        specifier: workspace:*
+        version: link:../../tokenizer
       '@loom-studio/transport':
         specifier: workspace:*
         version: link:../../transport
@@ -569,6 +589,12 @@ importers:
       zod:
         specifier: 4.5.4
         version: 4.5.4
+
+  packages/tokenizer:
+    dependencies:
+      gpt-tokenizer:
+        specifier: 4.0.0
+        version: 4.0.0
 
   packages/trace-audit:
     dependencies:
@@ -2417,6 +2443,9 @@ packages:
   glob-parent@6.0.2:
     resolution: {integrity: sha512-XxwI8EOhVQgWp6iDL+3b0r86f4d6AX6zSU55HfB4ydCEuXLXc5FcYeOu+nnGftS4TEju/11rt4KJPTMgbfmv4A==}
     engines: {node: '>=10.13.0'}
+
+  gpt-tokenizer@4.0.0:
+    resolution: {integrity: sha512-YAWIyzvuVUHEfW7tFfFAxH8qQb+Q3RU9nYOTy7skMNX5qzU6Q8jxTHZLyO56ug1vYvCR7wndzpd3jwD86/mhjQ==}
 
   hast-util-from-parse5@8.0.3:
     resolution: {integrity: sha512-3kxEVkEKt0zvcZ3hCRYI8rqrgwtlIOFMWkbclACvjlDw8Li9S2hk/d51OI0nr/gIpdMHNepwgOKqZ/sy0Clpyg==}
@@ -5109,6 +5138,8 @@ snapshots:
   glob-parent@6.0.2:
     dependencies:
       is-glob: 4.0.3
+
+  gpt-tokenizer@4.0.0: {}
 
   hast-util-from-parse5@8.0.3:
     dependencies:

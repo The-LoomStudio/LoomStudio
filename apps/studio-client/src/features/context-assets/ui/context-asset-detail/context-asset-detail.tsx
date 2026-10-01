@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react'
-import { Anchor, Bot, Braces, Equal, Info, KeyRound, ListFilter, ListOrdered, RefreshCw, Settings2, Zap } from 'lucide-react'
-import type { ContextAssetNode } from '../../../../entities/index.js'
+import { useRef, useState, type ReactNode } from 'react'
+import { Anchor, Bot, Braces, ChevronDown, Equal, Info, KeyRound, ListFilter, ListOrdered, RefreshCw, Settings2, Zap } from 'lucide-react'
+import type { ContextAssetNode, PromptResource } from '../../../../entities/index.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
 import { LongTextEditor, type LongTextEditorHandle } from '../../../../shared/ui/long-text-editor/long-text-editor.js'
 import type { LongTextEditorMode } from '../../../../shared/ui/long-text-editor/long-text-editor-model.js'
@@ -14,13 +14,17 @@ import {
   type ActivationEditorMode,
 } from '../../model/activation-editor.js'
 import styles from './context-asset-detail.module.scss'
+import { PresetAnchorPicker } from './preset-anchor-picker.js'
 
 type ContextAssetDetailProps = {
+  headerExtra?: ReactNode
   activationEditable?: boolean
   allowTargetAnchor?: boolean
+  compactVirtualNotes?: boolean
   editorMode: LongTextEditorMode
   metadataOpen: boolean
   node: ContextAssetNode
+  presets?: PromptResource[]
   onChangeNode: (partial: Partial<ContextAssetNode>) => void
   onCommitNode: (partial: Partial<ContextAssetNode>) => void
   onEditorModeChange(mode: LongTextEditorMode): void
@@ -37,6 +41,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
   const readOnly = isReadOnlyDetailNode(props.node)
   const activationDraft = readActivationDraft(props.node)
   const [keywordsText, setKeywordsText] = useState(activationDraft.keywords)
+  const [anchorPickerOpen, setAnchorPickerOpen] = useState(false)
   const lastNodeIdRef = useRef(props.node.id)
 
   if (lastNodeIdRef.current !== props.node.id) {
@@ -61,9 +66,9 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
 
   return (
     <div
-      className={`${styles.detailBody} ${isEntry && props.node.enabled === false ? styles.detailBodyMuted : ''}`}
+      className={`${styles.detailBody} ${isEntry && props.node.enabled === false ? styles.detailBodyMuted : ''} ${props.compactVirtualNotes && props.node.kind === 'virtual' ? styles.compactNotes : ''}`}
       onKeyDownCapture={event => {
-        if (event.key !== 'Escape' || !props.metadataOpen) return
+        if (event.key !== 'Escape' || !props.metadataOpen || anchorPickerOpen) return
         event.preventDefault()
         event.stopPropagation()
         props.onMetadataOpenChange(false)
@@ -240,26 +245,16 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
             <div>
               <dt><Anchor aria-hidden="true" />{props.t('context.metadata.targetAnchor') || '目标锚点'}</dt>
               <dd>
-                <input
-                  className={styles.inlineInput}
-                  list="builtin-anchors"
+                <button
+                  type="button"
+                  className={styles.anchorTrigger}
+                  aria-haspopup="dialog"
                   disabled={readOnly}
-                  value={props.node.capabilities?.targetAnchorId ?? ''}
-                  onChange={event => updateCapabilities({ targetAnchorId: event.target.value })}
-                  onBlur={event => updateCapabilities({ targetAnchorId: event.target.value }, true)}
-                  placeholder={props.t('context.metadata.targetAnchorPlaceholder') || '@setting.stable, @setting.lower, @chat.session.post…'}
-                />
-                <datalist id="builtin-anchors">
-                  <option value="@preset.system" />
-                  <option value="@setting.stable" />
-                  <option value="@chat.tools" />
-                  <option value="@chat.narrative" />
-                  <option value="@chat.session" />
-                  <option value="@setting.lower" />
-                  <option value="@chat.session.post" />
-                  <option value="@chat.input" />
-                  <option value="@fresh.tail" />
-                </datalist>
+                  onClick={() => setAnchorPickerOpen(true)}
+                >
+                  <span>{props.node.capabilities?.targetAnchorId || props.t('context.anchorPicker.unselected')}</span>
+                  <ChevronDown aria-hidden="true" />
+                </button>
               </dd>
             </div>
           ) : null}
@@ -295,9 +290,29 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
           ) : null}
         </div>
       </div>
+      {anchorPickerOpen ? <PresetAnchorPicker
+        key={props.node.id}
+        presets={props.presets ?? []}
+        selectedAnchorId={props.node.capabilities?.targetAnchorId}
+        t={props.t}
+        onClose={() => setAnchorPickerOpen(false)}
+        onSelect={id => {
+          updateCapabilities({ targetAnchorId: id }, true)
+          setAnchorPickerOpen(false)
+        }}
+      /> : null}
 
       <div className={`${styles.editorScroller} ${props.metadataOpen ? styles.editorScrollerMetadataOpen : ''}`}>
-        <LongTextEditor
+        {props.compactVirtualNotes && props.node.kind === 'virtual' ? (
+          <>
+          {props.headerExtra}
+          <input className={`${styles.inlineInput} loom-underlined-field`} aria-label={props.t('context.notesLabel')}
+            value={body} disabled={readOnly} placeholder={props.t('context.notesPlaceholder')}
+            onChange={event => props.onChangeNode({ body: event.target.value })}
+            onBlur={event => props.onCommitNode({ body: event.target.value })} />
+          </>
+        ) : <LongTextEditor
+          headerExtra={props.headerExtra}
           key={props.node.id}
           ref={editorRef}
           clearLabel={props.t('longTextEditor.clear')}
@@ -322,7 +337,7 @@ export function ContextAssetDetail(props: ContextAssetDetailProps) {
           onChange={value => props.onChangeNode({ body: value })}
           onCommit={value => props.onCommitNode({ body: value })}
           onModeChange={props.onEditorModeChange}
-        />
+        />}
       </div>
     </div>
   )

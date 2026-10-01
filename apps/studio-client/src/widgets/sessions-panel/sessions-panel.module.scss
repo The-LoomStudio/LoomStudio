@@ -404,7 +404,6 @@
   gap: 2px;
   margin-left: 22px;
   padding-left: 10px;
-  border-left: 1px dashed var(--loom-color-divider);
 }
 
 .childItemRow {
@@ -775,10 +774,23 @@
   margin: 0;
   line-height: 1.45;
   color: var(--loom-color-text);
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 4;
-  -webkit-box-orient: vertical;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.transcriptReasoning {
+  padding: 6px 10px;
+  color: var(--loom-color-text-subtle);
+  font-size: 12px;
+
+  summary {
+    width: fit-content;
+    cursor: pointer;
+  }
+
+  .transcriptEntryContent {
+    margin-top: 8px;
+  }
 }
 
 .empty {

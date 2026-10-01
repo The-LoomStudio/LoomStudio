@@ -1,14 +1,14 @@
 # Token 计数与运行测量计划
 
-> **状态**：Draft / 调研完成，配置归属与持久化合同待确认
-> **更新**：2026-09-27
-> **授权范围**：本轮只调研、形成 Plan 和更新文档入口，不实施代码、安装依赖或迁移数据。
+> **状态**：Implemented / 已实施，保留人工验收与既有类型错误限制
+> **更新**：2026-10-01
+> **授权范围**：已批准 T1-T5；模型系数归属 Provider Profile，调用前测量持久化失败时不发送请求。
 > **目标**：用单一基础 tokenizer 与系数估算，提供通用文本计数、编辑期逐级统计，以及可追溯的逐次模型调用测量。
 > **背景**：[Token 估算调研](../discussion/application/prompt/token-estimation-and-audit-v0.md)、[PromptBuild 正式边界](../../architecture/application/prompt-build/README.md)。
 
 ## 1. 对话收束与非目标
 
-本轮设计沿用对话中收束的方向；下文具体包名、配置字段、SDK 接口与 Transcript 类型仍是提案，不因写入 Plan 自动成为已批准公共合同。
+本轮设计沿用对话中收束并于 2026-10-01 批准的方向。
 
 - 第一版只使用一个基础 tokenizer；其他模型用显式系数做近似，不同时接入多套词表。
 - 编辑器对已加载正文和未保存草稿在客户端计算，不为每次编辑请求后端计数。
@@ -52,11 +52,11 @@
 - 同一组输入和基准，浏览器与 Node 的结果必须一致。
 - `contracts` 子入口只导出轻量 DTO，供 Application Data、Runtime、SDK 进行 type-only 引用；不从根入口向 UI 主包或 Store 意外加载词表。
 
-库能力只完成官方 README 核对，尚未验证锁定版本、特殊 token 选项、中文长文性能或包体积；这些是工作包 T1 的准入检查，不声称已有基准结果。
+已锁定 gpt-tokenizer 4.0.0，完成字面特殊标记与中英混排测试、Node/浏览器样例一致性检查；Worker 产物约 2,036 kB。单机合成样例 220,000 UTF-16 字符得到 75,000 Tokens，耗时约 114 ms，不作为通用性能保证。
 
 ### 3.2 系数与选择位置
 
-**配置归属提案，待确认：**
+**已批准的配置归属：**
 
 - 正式运行的自定义系数按 `providerProfileId + modelId` 保存，复用 Provider Profile Document，在 `config` 之外增加模型估算覆盖字段。`config` 是 Provider Adapter 校验并消费的连接参数，不混入本地估算设置。
 - 不建立独立 Model Store、不把系数复制进每个 Setting/Preset、不创建用户预设 CRUD 系统。官方预设是静态数据，应用到某个模型时保存实际数值与来源版本。
@@ -103,17 +103,18 @@ Query 已加载资源 + useContextAssets 草稿覆盖
 - 结果关联 endpoint、资源/节点身份、草稿代次与测量基准。防抖等待期保留旧数并标记待更新；错误、尚未加载和真正的 0 分开。
 - 单条修改只重新分词该正文；树级汇总可用一次廉价遍历，不为 O(height) 更新再维护可写祖先索引。移动、启停、系数修改不触发正文重新分词。
 - 显式刷新本地统计可 flush 当前草稿；后端 Build Preview 当前只消费已保存资源，不能通过自动保存草稿来伪装“草稿构建预览”。
-- IME 组合状态需从 CodeMirror 向计数消费者暴露最小可选通知；不改变已有 onChange/onCommit 语义，不把整套编辑状态搬出编辑器。
+- 详情计数监听 document compositionstart/end，组合输入期间暂停并在结束后恢复防抖；不改变编辑器 onChange/onCommit。真实 IME 输入仍待人工验收。
 
 ### 4.2 统计口径与 UI
 
 | 视图 | 输入与显示口径 |
 | --- | --- |
-| 任意文本 / 单条详情 | countText 接受当前正文；不要求文本来自 Prompt Resource |
-| Setting/Preset 自身 | 仅遍历选中资源原始 rootNode 的 Entry 正文，显示原文合计与已启用原文合计；原文宏按字面计算 |
+| 任意文本 / 单条详情 | countText 接受当前正文，只显示一个 Tokens 数字，不显示系数、不分常驻/非常驻；不要求文本来自 Prompt Resource |
+| Setting/Preset 自身 | 仅遍历选中资源原始 rootNode 的 Entry 正文；汇总分常驻、非常驻两类，禁用内容不计，宏按字面计算 |
 | 文件夹/MessageBlock | 汇总其 Entry 后代；不把容器备注当成注入正文；启用小计继承祖先 enabled，不求运行时 Activation |
 | Script 等非 Prompt 正文 | 单独文本计数可以显示，但不混入提示词 Entry 总量；脚本产出以实际构建为准 |
 | Preset 主树中的外部 Setting/Tool | 标明外部来源，不累加进 Preset 自身计数；不把同一贡献的多处 UI 镜像重复统计 |
+| 锚点 | 列表不显示计数；只在锚点详情投影可解析挂载正文，分常驻/非常驻，不并入 Preset 汇总；动态或缺失来源标记不完整 |
 | 实际 Build Preview | 后端有效消息与 Native Tool Spec 的估算；不使用前端静态启用结果代替运行时 Activation |
 
 所有树级合计从未乘系数的基础整数求和，再乘一次系数并向上取整。不能把每行已取整展示值再累加；各行独立取整造成的小差异应在统计口径说明中明确，不分摊成虚假 Token。
@@ -121,6 +122,15 @@ Query 已加载资源 + useContextAssets 草稿覆盖
 原文合计是“独立 Entry 计数之和”，不是拼接后请求的精确分词。资源名称、标签、meta、未展开宏字典、未启用工具注册表不进入正文总量。
 
 UI 复用现有 `PromptResourceToolbar`、`ContextAssetExplorer`、`ContextAssetDetailHeader` 和 Inspector。提供资源总量、文件夹小计、单条正文计数及可查看的基准；不增加独立 Dashboard 或分词页面。按需显示明细，不让每个隐藏面板订阅并计算所有资源。
+
+### 4.3 API、懒加载与角色资源
+
+- Get/List 不增加 token KV；前端使用已加载的正文与草稿，本地异步产生派生统计。
+- 现有完整树与 UI 虚拟滚动不是数据分页：只挂载部分行不会限制整个资源的统计。未来若真的按需加载正文，局部结果必须标记不完整；届时再增加按需后端摘要查询，不在首版预建路由。
+- Setting/Preset 和角色列表默认不计数，点击工具栏计算按钮才产生或刷新整数快照；编辑正文不持续更新列表计数。汇总独占工具栏下方一行，不挤占按钮布局。
+- 角色资源目录按需统计绑定的 Setting（含外部引用、已解析扩展资源）及角色内联设定，按资源 ID 去重，不声称是整个实际请求。
+- 单条详情自动进行 300 ms 防抖计数，数字在大文本输入框“内容”标题旁；展示系数在设置中编辑并本地保存，与后端模型系数独立。计数标签不显示 `× 系数`，列表汇总显示 Tokens 总量、常驻和非常驻。
+- 未解析引用显示不完整，不按零处理。可替代 Preset、开场、脚本、状态与附件不合并为同时输入；Preset 自身统计独立，实际上下文使用 Build Preview。
 
 ## 5. PromptBuild、请求估算与持久化
 
@@ -145,7 +155,7 @@ UI 复用现有 `PromptResourceToolbar`、`ContextAssetExplorer`、`ContextAsset
 
 ### 5.2 历史测量
 
-**新增 Transcript 事实的提案，待确认：**
+**已批准的 Transcript 事实：**
 
 调用前 append 一个本地 `request-measurement` 事实，记录唯一 `measurementId`、runId/可用 buildId、providerStep、请求的 Provider/Model 选择、冻结的计数基准、请求内容 digest、基础数与估算数及未覆盖项。`runId` 沿用外层 Transcript 字段，不在内外层重复保存。
 
@@ -166,13 +176,13 @@ Gateway/Runtime/Store 的统一 usage DTO 增补当前 SDK 已提供且确有审
 
 ## 6. 工作包、写集与验收
 
-当前全部为未实施。默认单 Agent 按依赖执行，不因表格分包就创建多 Agent。配置与历史事实合同确认后再开始触及 T2/T4。
+默认单 Agent 按依赖执行，不因表格分包就创建多 Agent。实施进度和未验证项在第 8 节逐包记录。
 
 | 包 | 限定写集与工作 | 最小验收证据 |
 | --- | --- | --- |
 | T1 基础能力 | 新增 `packages/tokenizer/{package.json,tsconfig.json,README.md,src/}`；必要的根 TS references、workspace 配置和 lockfile；增加依赖所有权记录 | `tests/unit/tokenizer/tokenizer.test.ts`：中英混排、代码、空串、特殊标记字面量、系数与取整；锁定库版本并验证 Node/浏览器一致性；记录代表性长文耗时与 Worker 产物大小 |
 | T2 配置 | `application-runtime/src/{types.ts,runtime/providers-runtime.ts}`、相关 Document Schema/RPC parser、Client `entities/provider.ts`、`features/provider-settings/model/use-provider-settings.ts`、`widgets/model-panel/` 与 typed API | 仅更新一个模型覆盖；数据库重开可读；旧配置缺字段默认基准；冲突不覆盖草稿；连接 config/凭据不混入系数；新配置不作用于进行中的 Run |
-| T3 编辑统计 | 新增 Client `shared/tokenizer/`、`features/context-assets/model/use-resource-token-counts.ts`；连接 Context Asset toolbar/tree/detail 与 Preset/Setting Workbench；LongTextEditor/CodeMirror 最小 IME 通知；对应 i18n/SCSS | `tests/unit/client/token-counting.test.ts`：防抖、旧结果拒绝、系数仅换算、移动/启停不分词、草稿冲突/endpoint 隔离、外部投影不重复、未加载不报零；浏览器探针验证没有计数 HTTP、Worker 实际执行与 IME |
+| T3 编辑统计 | 新增 Client `shared/tokenizer/`、`features/context-assets/model/use-resource-token-counts.ts`；连接 Context Asset toolbar/tree/detail 与 Preset/Setting Workbench、角色资源目录；LongTextEditor/CodeMirror 最小 IME 通知；对应 i18n/SCSS | `tests/unit/client/token-counting.test.ts`：防抖、旧结果拒绝、系数仅换算、移动/启停不分词、草稿冲突/endpoint 隔离、外部投影不重复、未加载不报零、角色引用去重；浏览器探针验证没有计数 HTTP、Worker 实际执行与 IME |
 | T4 请求与历史 | `ai-gateway/src/{types.ts,gateway.ts,index.ts}`及新的请求计量 helper；`application-runtime/src/{types.ts,runtime/agents-runtime.ts,agents/tool-loop.ts}`与最小 Tool Spec helper；`application-data/src/agent/{types.ts,store.ts}`；必要的归档/回放消费者、Inspector | 扩展 `tests/integration/application-runtime/default-preset-lifecycle.test.ts` 或独立 `token-measurement.test.ts`，用真实 Runtime + SQLite + 脚本 Gateway 覆盖多 Step、Fresh Context、Native/Content Tool、响应后解析失败、网络失败、取消、续接与数据库重开；检查每次测量与 observation 关联 |
 | T5 SDK | `extension-sdk/src/index.ts`、Server Host `extension-host/src/instance.ts`及 options 装配、Client `features/extension-renderers/model/client-extension-host.ts`与已有 Host 组装调用点 | `tests/contract/extension-host/token-counting.test.ts` 加 Client Host 定向测试：任意文本一致、非法系数拒绝、生命周期释放、输入/队列限额、无 Provider HTTP/无资源代读；不顺手开放 iframe/CodeAct |
 
@@ -184,8 +194,7 @@ Gateway/Runtime/Store 的统一 usage DTO 增补当前 SDK 已提供且确有审
 
 ## 7. 待确认项与停止条件
 
-1. **系数归属**：推荐 Provider Profile 下按 modelId 保存，资源编辑器仅临时选用；是否接受？它使同模型跨 Preset 共用配置，不随 Preset 导出。若要求随 Preset 分发，应先改变合同，不由实施者偷偷增加两级覆盖。
-2. **持久化门禁**：是否接受新增本地 request-measurement Transcript 事实，以及“该事实写入失败就不发送”的行为？只在成功 observation 附带估算更省事，但不满足失败/取消路径的审计目标，因此不作为等价实现。
+2026-10-01 已批准系数归属与持久化门禁。若要求系数随 Preset 分发或持久化失败仍发送请求，应先重新确认合同，不由实施者静默改变。
 
 其余可在既定边界内选择：具体文件拆分、Worker 有界缓存规模、300ms 防抖微调、静态预设命名、UI 文案。SDK 输入/队列限额须在 T5 用代表性负载确定并记录；如果需要进程隔离、额外运行时或不同权限模型，暂停而非自行扩建。
 
@@ -195,6 +204,11 @@ Gateway/Runtime/Store 的统一 usage DTO 增补当前 SDK 已提供且确有审
 
 - 已完成：数据层、Provider 配置、PromptBuild/Step、前端草稿/投影、SDK 宿主入口的只读核对；形成本文。
 - 已完成：在 Plans 索引和旧 Token 调研稿添加接续入口。
-- 未实施：T1-T5、任何依赖安装、数据/Schema 变更、计数界面、官方系数发布。
+- 已实施：T1-T5，包括基础包、模型系数 CAS 更新、客户端 Worker 与手动列表快照、逐 Step 测量持久化和客户端/服务端 SDK 计数。默认系数 1.0，不发布未经校准的厂商系数。
+- 实际调整：资源/角色列表不自动计数；详情实时防抖；Preset 仅计自身，锚点只在详情独立统计；单条正文不分类；系数移至设置，计数标签显示总数而非系数。
 - 文档验证：`pnpm check:docs` 通过，333 份 Markdown 的内部路径/大小写/锚点有效，Plan 索引与生命周期检查通过；两份既有文档的定向 `git diff --check` 通过。既有 Plans 索引包含其他未提交修改，本轮只新增本计划的一行，不将整个文件 Diff 算作本轮成果。
-- 未验证：实际分词性能、跨端一致性、模型误差、Worker 浏览器行为、人工视觉。未调用模型，也未运行业务测试或构建。
+- 自动化验证：基础 tokenizer、树汇总/锚点投影、Worker 队列取消、SDK 宿主、模型系数更新、逐 Step 测量与失败/取消持久化的定向测试通过；相关 Runtime/SDK/Server 类型构建及 Client Vite 构建通过。词表独立于 Client 主入口。
+- 客观浏览器检查：Node 与浏览器混排样例均为 9 Tokens，系数 0.6 显示 6。最新标签与布局调整未作浏览器验收。
+- 既有阻塞：Client 类型检查存在 MacroAuthoringSource/unknown 回调及 preset.panel.views 的既有错误；默认 Preset 生命周期全文件测试有一项既有提示词快照差异，测量定向用例通过。本轮未修改这些无关行为。
+- 未验证：真实 IME、角色/锚点实际页面交互、人工视觉与模型误差；未调用真实模型或使用凭据。有限合成性能样例不代表完整性能验收。
+- 2026-10-01 后续：已接入 Narrative 节点计数，并按最新要求改为默认自动计算，不提供单次刷新按钮。列表复用自动计数 hook，对已加载节点统一防抖、批量交给 Worker，避免每行独立任务挤满队列；数字置于节点元信息，分页与正文变化自动更新，节点 ID 序列纳入 scope，避免分页后旧数对应错行。Worker 缓存复用基础整数，不展示 Narrative 总量。节点编辑器同样复用实时防抖正文计数，只计 `body.raw`，不计 Display/宏渲染结果，不新增 API 或持久化字段；Preset/Settings 的手动统计及 Agent Session 不在此次调整范围。实际页面交互、IME 与人工视觉未验收。

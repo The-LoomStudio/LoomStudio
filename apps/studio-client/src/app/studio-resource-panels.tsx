@@ -56,11 +56,13 @@ export function StudioResourcePanels(props: {
   }
 
   return {
-    preset: () => (
+    preset: (active: boolean) => (
       <LazyPresetWorkbench
+        active={active}
         key={state.endpoint}
         {...contextAssetEditorProps}
         textTransformsApi={state.textTransformsApi}
+        onOpenTextUse={(kind, id) => navigation.openPath(`/studio/text-transforms?${kind === 'rule' ? 'ruleId' : 'extractorId'}=${encodeURIComponent(id)}&temporary=1`)}
         loomScriptsApi={state.api.loomScripts}
         onLoomScriptsChanged={uiState.bumpLoomScriptRefreshToken}
         onSaveMacros={state.updatePresetMacros}
@@ -73,12 +75,18 @@ export function StudioResourcePanels(props: {
           const resource = state.promptResourceDrafts.find(item => item.id === id)
           if (resource) navigation.openResource('preset', id, resource.rootNode.id)
         }}
+        onOpenSetting={(resourceId, nodeId) => navigation.openResource('resource', resourceId, nodeId)}
+        previewApi={state.api.narratives}
+        previewTimelineId={state.narrativeTimeline?.id}
+        previewBranchId={state.branch?.id}
         routeResourceId={navigation.route.panel === 'agent' ? navigation.route.resourceId : undefined}
         timelinePromptResourceIds={state.narrativeTimeline?.promptResourceIds}
+        card={state.selectedCardDetails}
         settingMounts={state.settingMounts}
         tools={state.agentTools}
         toolMounts={state.presetToolMounts}
         onReplaceToolMounts={state.replacePresetToolMounts}
+        onReplaceSettingMounts={(source, mounts) => state.replaceSettingMounts(source, mounts, 'mounts')}
         onUpdateTool={state.updateAgentTool}
         routeAssetId={navigation.route.panel === 'agent' ? navigation.route.assetId : undefined}
         searchQuery={navigation.route.panel === 'agent' ? navigation.searchQuery : ''}
@@ -89,27 +97,11 @@ export function StudioResourcePanels(props: {
       <LazyContextWorkbench
         key={state.endpoint}
         {...contextAssetEditorProps}
-        officialContentApi={state.api.officialContent}
-        onOfficialContentInstalled={state.refreshResourceConsumers}
         routeResourceId={navigation.route.panel === 'resource' ? navigation.route.resourceId : undefined}
-        onSelectResource={id => {
+        onSelectResource={(id, replace) => {
           const resource = state.promptResourceDrafts.find(item => item.id === id)
-          if (resource) navigation.openResource('resource', id, resource.rootNode.id)
+          if (resource) navigation.openResource('resource', id, resource.rootNode.id, replace)
         }}
-        textTransformsApi={state.textTransformsApi}
-        loomScriptsApi={state.api.loomScripts}
-        onLoomScriptsChanged={uiState.bumpLoomScriptRefreshToken}
-        view={uiState.resourceView}
-        onViewChange={uiState.setResourceView}
-        macroAuthoring={state.selectedCardDetails?.id === assetWorkspaceId ? {
-          ownerId: assetWorkspaceId,
-          ownerLabel: state.selectedCardDetails.name,
-          version: state.selectedCardDetails.version,
-          macros: state.selectedCardDetails.macros ?? {},
-          macroOptions: state.selectedCardDetails.macroOptions,
-          onSave: config => state.updateCardMacros({ cardId: assetWorkspaceId, ...config }),
-          t: state.t,
-        } : undefined}
         card={state.selectedCardDetails}
         settingMounts={state.settingMounts}
         onReplaceSettingMounts={state.replaceSettingMounts}

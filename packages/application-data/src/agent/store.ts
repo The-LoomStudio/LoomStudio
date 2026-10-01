@@ -190,6 +190,9 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
       },
       updateSession: (input) => {
         const session = requireSession(database, input.agentSessionId)
+        if ('agentPresetId' in input) {
+          throw new AgentStoreError('agent.session_preset_immutable', 'Agent Session preset binding is immutable')
+        }
         validateOptionalText(input.title, 'title')
         if (input.timelineId === null) {
           // Binding changes are rejected while the latest persisted run state is active;
@@ -206,7 +209,7 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
             if (entry.state === 'running' || entry.state === 'suspended') {
               throw new AgentStoreError(
                 'agent.session_binding_active_run',
-                'Cannot unbind an agent session while its latest run is active',
+                'Cannot change agent session bindings while its latest run is active',
               )
             }
           }
@@ -221,7 +224,7 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
           .prepare(
             `UPDATE agent_sessions SET title = ?, timeline_id = CASE WHEN ? IS NULL THEN NULL ELSE timeline_id END, updated_at = ? WHERE id = ?`,
           )
-          .run(input.title ?? null, input.timelineId === null ? null : session.timelineId ?? null, now(), session.id)
+          .run(input.title === undefined ? session.title ?? null : input.title, input.timelineId === null ? null : session.timelineId ?? null, now(), session.id)
         tx.recordOperations([operation('update', session.id, 'agent.session', session.timelineId)])
         return requireSession(database, session.id)
       },
@@ -650,6 +653,7 @@ function validateTranscriptEntry(
     return
   }
   if (value.kind === 'provider-observation') {
+    validateOptionalId(value.measurementId as string | undefined, 'measurementId')
     validateId(value.provider, 'provider')
     validateId(value.model, 'model')
     validateOptionalId(
@@ -661,6 +665,31 @@ function validateTranscriptEntry(
         'agent.provider_usage_invalid',
         'Provider usage must be an object',
       )
+    if (isRecord(value.usage)) {
+      for (const key of ['inputTokens', 'outputTokens', 'totalTokens', 'cacheReadTokens', 'cacheWriteTokens', 'reasoningTokens']) {
+        const count = value.usage[key]
+        if (count !== undefined && (!Number.isSafeInteger(count) || Number(count) < 0)) {
+          throw new AgentStoreError('agent.provider_usage_invalid', `Invalid Provider usage: ${key}`)
+        }
+      }
+    }
+    return
+  }
+  if (value.kind === 'request-measurement') {
+    for (const key of ['measurementId', 'providerProfileId', 'modelId', 'requestDigest']) validateId(value[key], key)
+    if (!Number.isSafeInteger(value.providerStep) || Number(value.providerStep) < 1
+      || value.scope !== 'canonical-content-v1' || !isRecord(value.count)
+      || !Number.isSafeInteger(value.count.baseTokens) || Number(value.count.baseTokens) < 0
+      || !Number.isSafeInteger(value.count.estimatedTokens) || Number(value.count.estimatedTokens) < 0
+      || !isRecord(value.count.basis) || value.count.basis.encoding !== 'o200k_base'
+      || value.count.basis.implementation !== 'gpt-tokenizer' || typeof value.count.basis.implementationVersion !== 'string'
+      || value.count.basis.algorithm !== 'literal-text-v1'
+      || typeof value.count.basis.multiplier !== 'number' || !Number.isFinite(value.count.basis.multiplier)
+      || value.count.basis.multiplier <= 0
+      || value.count.estimatedTokens !== Math.ceil(Number(value.count.baseTokens) * value.count.basis.multiplier)
+      || !Array.isArray(value.uncounted) || !value.uncounted.every(item => typeof item === 'string')) {
+      throw new AgentStoreError('agent.request_measurement_invalid', 'Invalid request token measurement')
+    }
     return
   }
   if (value.kind === 'tool-invocation') {

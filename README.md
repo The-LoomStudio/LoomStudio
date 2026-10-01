@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="public/images/banner.png" alt="Loom Studio Banner" width="460" />
+<img src="public/images/nom-banner-015.png" alt="Loom Studio 与看板娘诺姆" width="960" />
 
 # Loom Studio
 
@@ -11,7 +11,9 @@
 [![Node Version](https://img.shields.io/badge/Node-%3E%3D22.18.0-339933.svg?style=flat-square&logo=node.js&logoColor=white)](package.json)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6.svg?style=flat-square&logo=typescript&logoColor=white)](tsconfig.packages.json)
 [![Architecture](https://img.shields.io/badge/Architecture-4--Layer-8A2BE2.svg?style=flat-square)](docs/architecture/)
-[![Build Status](https://img.shields.io/badge/Build-Passing-brightgreen.svg?style=flat-square)](package.json)
+[![Beta](https://img.shields.io/badge/status-Beta-e6ac35?style=flat-square)](docs/guide/beta-release.md)
+[![Build Status](https://github.com/The-LoomStudio/LoomStudio/actions/workflows/ci.yml/badge.svg)](https://github.com/The-LoomStudio/LoomStudio/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/The-LoomStudio/LoomStudio?include_prereleases&style=flat-square)](https://github.com/The-LoomStudio/LoomStudio/releases)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-orange.svg?style=flat-square)](docs/guide/)
 
 <p align="center">
@@ -22,6 +24,10 @@
   <a href="#文档导航">文档体系</a>
 </p>
 
+[下载 Beta](https://github.com/The-LoomStudio/LoomStudio/releases) ·
+[安装指南](docs/guide/beta-release.md) ·
+[反馈问题](https://github.com/The-LoomStudio/LoomStudio/issues)
+
 </div>
 
 ---
@@ -30,7 +36,9 @@
 
 **Loom Studio** 是专为 AI Native 时代设计的现代交互叙事与智能体编排工作台。
 
-不同于传统简单的聊天工具，Loom Studio 原生集成 **Loom Core** 编译核心，将提示词编排（PromptBuild）、非线性时间线分支（Narrative Timeline）、模块化设定层（Setting Layer）与自主 Agent 工具链深度融合，为创作者与玩家提供工业级的上下文控制力与沉浸式叙事体验。
+Loom Studio 集成 **Loom Core** 编译核心，将提示词编排（PromptBuild）、非线性时间线分支（Narrative Timeline）、设定资源与 Agent 工具链放在同一个工作台中，为创作者与玩家提供可组织、可追溯的叙事上下文。
+
+> 当前为 Beta，不是稳定版。不承诺自动更新、数据恢复或降级兼容；升级前请自行备份。
 
 ---
 
@@ -63,36 +71,72 @@
 
 ## 编译与执行数据流
 
-```text
-       ┌──────────────────┐      ┌──────────────────┐
-       │   Card Bundle    │      │  Setting Layers  │
-       └────────┬─────────┘      └────────┬─────────┘
-                │                         │
-                └───────────┬─────────────┘
-                            ▼
-           ┌────────────────────────────────┐
-           │   PromptBuild DFS Pipeline     │
-           │  (Ordered Tree & Caged Slots)  │
-           └────────────────┬───────────────┘
-                            ▼
-           ┌────────────────────────────────┐
-           │      Compiled Messages[]       │
-           │  (First-Class Message Blocks)  │
-           └────────────────┬───────────────┘
-                            ▼
-                 Provider Gateway & LLM
-                            │
-               ┌────────────┴────────────┐
-               ▼                         ▼
-      [Text Output Stream]     [Tool Execution Loop]
-               │                         │
-               ▼                         ▼
-      Timeline Append/Edit      State Mutation & Update
+```mermaid
+flowchart TD
+    card["Card Bundle<br/>角色资源"] --> prompt
+    settings["Setting Layers<br/>设定资源"] --> prompt
+    prompt["PromptBuild DFS Pipeline<br/>有序树与局部 Slot"] --> messages
+    messages["Compiled Messages[]<br/>独立 Message 块"] --> provider
+    provider["Provider Gateway & LLM"] --> output
+    provider --> tools
+    output["Text Output Stream<br/>文本输出流"] --> timeline
+    tools["Tool Execution Loop<br/>工具执行循环"] --> state
+    timeline["Timeline Append / Edit<br/>叙事写入与编辑"]
+    state["State Mutation & Update<br/>状态变更"]
 ```
 
 ---
 
 ## 快速上手
+
+### 下载与游玩
+
+先安装 **Node.js 22.18.0 或更新版本**，确保当前账户可以使用 `node` 和 `npm`。
+程序不携带 Node.js 或依赖，首次启动需要联网。
+
+从 [Releases](https://github.com/The-LoomStudio/LoomStudio/releases) 下载已发布的 Beta 成品包并解压。
+若尚无发行包，可使用下方源码路径；GitHub 自动生成的 Source code 压缩包属于源码，不是预构建成品。
+
+| 系统 | 启动入口 |
+| --- | --- |
+| Windows | `start.bat` |
+| macOS | `start.command` |
+| Linux | `./start.sh` |
+| 通用命令 | 在程序目录运行 `npm start` |
+
+首次启动会安装依赖，之后直接启动。macOS 执行权限或安全提示需按本机设置处理；
+Linux 双击行为取决于文件管理器，目前未进行 Linux 实机人工验收。
+
+打开服务窗口显示的地址，默认是 **http://127.0.0.1:4173**，运行期间保持服务窗口开启。
+端口占用时停止其他实例，或通过 `PORT` 环境变量指定端口。
+前端已由 Node.js 服务托管，玩家无需分别启动前后端。
+
+### 从源码游玩
+
+```sh
+git clone https://github.com/The-LoomStudio/LoomStudio.git
+cd LoomStudio
+npm start
+```
+
+也可以使用相同的启动脚本。首次启动会通过 npm 调用固定版本 pnpm 安装依赖，
+在缺少构建产物时构建应用。更新源码后需主动运行 `pnpm build:app`；
+启动脚本不会检测源码是否变化。
+
+开始对话前，还需要在应用中配置账户、API 凭据、模型并绑定预设；
+基础内容不提供 API Key 或模型绑定。服务仅供本机使用，不承诺局域网、公网或移动端访问。
+用户数据与程序文件分开保存，路径和系统凭据限制见 [Beta 安装与发布指南](docs/guide/beta-release.md)。
+
+### 官方扩展
+
+官方扩展也是独立、可选的扩展，不随主程序自动安装或授权。
+ST 格式导入由兼容扩展提供，是过渡能力，不是原生能力；
+The World 同样独立发行，不是主程序启动前提。
+
+远程链接安装仍未实现，当前保留的本地导入入口不代表远程安装流程已完成。
+可执行 Server 扩展是可信同进程代码，**不是安全沙箱**；安装前确认来源和权限。
+
+## 开发环境
 
 ### 环境准备
 
@@ -132,6 +176,9 @@ pnpm exec vitest run tests/integration
 
 # 编译检查所有 packages
 pnpm build:packages
+
+# 构建完整主应用（Packages、Server 与 Client）
+pnpm build:app
 ```
 
 ---
@@ -174,6 +221,7 @@ LoomStudio/
 开始修改代码或了解深层设计之前，请查阅完整文档体系 [`docs/README.md`](docs/README.md)：
 
 - **[`docs/guide/workspace-development.md`](docs/guide/workspace-development.md)** — 全仓开发规范、共同契约与任务路线
+- **[`docs/guide/beta-release.md`](docs/guide/beta-release.md)** — 玩家安装、数据目录、发行命令与 Beta 限制
 - **[`docs/architecture/`](docs/architecture/)** — 核心领域稳定架构合同（PromptBuild、Timeline、Agent、State）
 - **[`docs/workbench/`](docs/workbench/)** — 演进中的设计提案与讨论
 - **[`docs/archive/`](docs/archive/)** — 已落地完成的历史实施计划与归档总结
@@ -182,10 +230,30 @@ LoomStudio/
 
 ## 参与贡献
 
+问题反馈请附上系统、Node.js 版本、启动方式和相关日志，不要上传 API Key 或其他私密数据。
+
 欢迎提交 Issue 和 Pull Request。在开始贡献前，请确保：
 1. 恪守 KISS 原则与极简主义，杜绝过度工程；
 2. 保持测试覆盖，提交前执行 `pnpm build:packages` 与相关定向测试；
 3. 遵循现有的代码风格与命名契约。
+
+<div align="center">
+
+### 项目活动
+
+![Repobeats 项目活动看板](https://repobeats.axiom.co/api/embed/b45b36c376b32dccef9d2efee5e871c2827709cf.svg "Repobeats analytics image")
+
+[![贡献者](https://contrib.rocks/image?repo=The-LoomStudio/LoomStudio)](https://github.com/The-LoomStudio/LoomStudio/graphs/contributors)
+
+### 一起编织下一段故事
+
+[![Star History](https://api.star-history.com/svg?repos=The-LoomStudio/LoomStudio&type=Date)](https://www.star-history.com/#The-LoomStudio/LoomStudio&Date)
+
+<img src="public/images/nom-expression-001.png" alt="抱着故事书的诺姆" width="160" />
+
+感谢每一位参与创作、测试和贡献的伙伴。
+
+</div>
 
 ---
 

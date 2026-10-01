@@ -4,6 +4,7 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -38,9 +39,43 @@ jobs:
         run: pnpm check:workspace
       - name: Build
         run: pnpm build
+      - name: Build Browser Client
+        run: pnpm --filter @loom-studio/studio-client build
       - name: Lint
         run: pnpm lint
       - name: Check Test Types
         run: pnpm test:typecheck
       - name: Test
         run: pnpm test
+
+  release-smoke:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14, windows-2022]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set Up pnpm
+        uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          run_install: false
+      - name: Set Up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build Application
+        run: pnpm build:app
+      - name: Check Static Files and Authentication
+        run: pnpm exec vitest run tests/unit/studio-server/client-files.test.ts tests/integration/studio-server/application-session-auth.test.ts
+      - name: Prepare Release Directory
+        run: pnpm release:prepare
+      - name: Smoke Test Independent Release
+        run: pnpm release:smoke

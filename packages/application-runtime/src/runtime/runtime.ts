@@ -1,10 +1,9 @@
 import { createApplicationRuntimeContext, type ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
 import { initializeGlobalState } from '../state/state.js'
-import {
-  obsoleteBuiltinAgentToolDescriptions,
-  obsoleteBuiltinAgentToolIds,
-} from '../prompt/prompt-resource-defaults.js'
+import { obsoleteBuiltinAgentToolIds } from '../prompt/prompt-resource-defaults.js'
+import { isDeepStrictEqual } from 'node:util'
+import { officialAgentToolDefinitions } from '../agents/official-tools/index.js'
 import type {
   AgentToolContent,
   ApplicationRuntime,
@@ -30,6 +29,9 @@ import { createExtensionsRuntimeMethods } from './extensions-runtime.js'
 import { createLoomScriptsRuntimeMethods } from './loom-scripts-runtime.js'
 import { createOfficialContentRuntimeMethods } from './official-content-runtime.js'
 import { createMacroConfigurationRuntimeMethods } from './macros-runtime.js'
+import { buildExtensionPrompt } from '../prompt/extension-prompt.js'
+import { readAvailableExtensionInstallations } from './extension-resource-access.js'
+import { extensionInstallationId } from '@loom-studio/extension-sdk'
 
 export function createApplicationRuntime(options: ApplicationRuntimeOptions): ApplicationRuntime {
   const ctx: ApplicationRuntimeContext = createApplicationRuntimeContext(options)
@@ -49,11 +51,17 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
           reason: 'application.removeObsoleteBuiltinAgentTools',
         })
       }
-      for (const definition of ctx.agentTools.list()) {
+      for (const definition of ctx.agentTools.list().map(tool =>
+        officialAgentToolDefinitions.find(official => official.id === tool.id) ?? tool
+      )) {
         const existing = await ctx.documents.get(definition.id)
         if (existing) {
           const content = existing.content as AgentToolContent
-          if (content.description === obsoleteBuiltinAgentToolDescriptions.get(definition.id)) {
+          if (definition.owner.namespace === 'official' && content.owner.namespace === 'official'
+            && !content.origin && !isDeepStrictEqual({
+              owner: content.owner, name: content.name, description: content.description,
+              input: content.input, ...(content.prompt ? { prompt: content.prompt } : {}),
+            }, definition)) {
             await ctx.documents.write({
               id: definition.id,
               type: applicationDocumentTypes.agentTool,
@@ -81,6 +89,14 @@ export function createApplicationRuntime(options: ApplicationRuntimeOptions): Ap
     ...createCardDirectoryRuntimeMethods(ctx),
     ...createNarrativeRuntimeMethods(ctx),
     ...createAgentsRuntimeMethods(ctx),
+    buildExtensionPrompt: async (input, target, packageId) => ({
+      messages: (await buildExtensionPrompt({
+        build: input,
+        promptResources: ctx.promptResources,
+        installations: await readAvailableExtensionInstallations(ctx.documents, target.kind === 'card' ? target.cardId : undefined),
+        owner: { installationId: extensionInstallationId(packageId, target), packageId },
+      })).messages,
+    }),
     ...createMacroConfigurationRuntimeMethods(ctx),
     ...createPromptRuntimeMethods(ctx),
     ...createStateRuntimeMethods(ctx),

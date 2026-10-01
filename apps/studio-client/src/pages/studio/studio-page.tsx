@@ -58,10 +58,10 @@ type StudioPageProps = RunRecoveryControlsProps & {
   uiScale: number
   onChangeAgentChatInput?(value: string): void
   onRedo(): void
-  onSelectAgentPreset?(id: string): void
+  onSelectAgentPreset?(id: string, keepSession?: boolean): void
   onSelectAgentSession?(id: string): void
   onNewAgentSession?(): void
-  onRefreshAgentSessions?(): void
+  onDeleteAgentSession?(id: string): void
   onSubmitAgentChat?(event: FormEvent): void
   onCancelAgentRun?(): void
   onPauseAgentRun?(): void
@@ -499,7 +499,7 @@ export function StudioPage(props: StudioPageProps) {
             onSelectProfile={props.onSelectAgentPreset ?? (() => {})}
             onSelectSession={props.onSelectAgentSession}
             onNewSession={props.onNewAgentSession}
-            onRefreshSessions={props.onRefreshAgentSessions}
+            onDeleteSession={props.onDeleteAgentSession}
             onSubmit={props.onSubmitAgentChat ?? (() => {})}
             onCancelRun={props.onCancelAgentRun}
             onPauseRun={props.onPauseAgentRun}
@@ -584,7 +584,7 @@ function WindowResizeHandle(props: {
 }
 
 function readPanelPlacement(panel: StudioPanelId): 'beside-narrative' | 'cover-narrative' {
-  if (panel === 'model' || panel === 'agent' || panel === 'play' || panel === 'sessions' || panel === 'character') return 'beside-narrative'
+  if (panel === 'model' || panel === 'agent' || panel === 'play' || panel === 'recent' || panel === 'sessions' || panel === 'character') return 'beside-narrative'
   return 'cover-narrative'
 }
 

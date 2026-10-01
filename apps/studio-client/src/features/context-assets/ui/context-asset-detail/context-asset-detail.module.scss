@@ -21,6 +21,37 @@
   padding-bottom: 300px;
 }
 
+.compactNotes .editorScroller {
+  height: auto;
+  padding: 0;
+  overflow: visible;
+}
+
+.compactNotes .editorScroller > .inlineInput {
+  margin-top: 14px;
+}
+
+.compactNotes {
+  display: flex;
+  flex-direction: column;
+}
+
+.compactNotes .metadataPanel {
+  display: none;
+}
+
+.compactNotes .metadataPanelOpen {
+  position: relative;
+  left: auto;
+  bottom: auto;
+  order: 1;
+  display: grid;
+  width: 100%;
+  max-height: 280px;
+  margin-top: 14px;
+  transform: none;
+}
+
 .metadataPanel {
   position: absolute;
   z-index: 3;
@@ -121,6 +152,185 @@
   cursor: not-allowed;
 }
 
+.anchorTrigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 28px;
+  min-width: 0;
+  padding: 3px 0 5px;
+  border: 0;
+  border-bottom: 1px solid var(--loom-color-divider);
+  border-radius: 0;
+  color: var(--loom-color-text);
+  background: transparent;
+  text-align: left;
+}
+
+.anchorTrigger span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.anchorTrigger svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.anchorTrigger:focus-visible {
+  outline: none;
+  border-bottom-color: var(--loom-color-accent);
+}
+
+.anchorTrigger:disabled {
+  color: var(--loom-color-text-subtle);
+  cursor: not-allowed;
+}
+
+.anchorDialog[data-loom-ui-dialog] {
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(80dvh, 640px);
+}
+
+.anchorDialog [data-loom-ui-dialog-body] {
+  overflow: hidden;
+  padding: 0;
+}
+
+.anchorPicker {
+  display: grid;
+  grid-template-columns: minmax(170px, 35%) minmax(0, 1fr);
+  height: min(58dvh, 500px);
+  min-height: 0;
+}
+
+.anchorPresets,
+.anchorResults,
+.anchorList {
+  min-height: 0;
+  min-width: 0;
+}
+
+.anchorPresets {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: auto;
+  padding: 14px 10px;
+  border-right: 1px solid var(--loom-color-divider);
+}
+
+.anchorSectionTitle,
+.anchorList h3 {
+  margin: 0;
+  padding: 6px 10px;
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-1);
+  font-weight: var(--loom-font-weight-6);
+}
+
+.anchorPresets button,
+.anchorList button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  border-radius: var(--loom-radius-card);
+  padding: 8px 10px;
+  color: var(--loom-color-text);
+  background: transparent;
+  text-align: left;
+}
+
+.anchorPresets button:hover,
+.anchorList button:hover,
+.anchorPresetSelected {
+  background: var(--loom-color-surface-subtle) !important;
+}
+
+.anchorPresets button span,
+.anchorList button span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.anchorPresets button small {
+  margin-left: auto;
+  color: var(--loom-color-text-subtle);
+}
+
+.anchorResults {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.anchorSearch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 16px 4px;
+  border-bottom: 1px solid var(--loom-color-divider);
+  color: var(--loom-color-text-subtle);
+}
+
+.anchorSearch svg,
+.anchorList button > svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.anchorSearch input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  padding: 7px 0;
+  color: var(--loom-color-text);
+  background: transparent;
+}
+
+.anchorSearch:focus-within {
+  border-bottom-color: var(--loom-color-accent);
+}
+
+.anchorList {
+  overflow: auto;
+  padding: 8px 12px 16px;
+}
+
+.anchorList section + section {
+  margin-top: 12px;
+}
+
+.anchorList button span {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+}
+
+.anchorList button strong {
+  font-size: var(--loom-font-size-3);
+  font-weight: var(--loom-font-weight-5);
+}
+
+.anchorList button small {
+  color: var(--loom-color-text-subtle);
+  font-size: var(--loom-font-size-2);
+}
+
+.anchorEmpty {
+  margin: 12px;
+  color: var(--loom-color-text-subtle);
+}
+
 .detailBodyMuted .configGrid dt,
 .detailBodyMuted .configGrid dd,
 .detailBodyMuted .inlineInput {
@@ -140,6 +350,24 @@
 
   .configGrid {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .anchorDialog[data-loom-ui-dialog] {
+    width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+
+  .anchorDialog [data-loom-ui-dialog-frame],
+  .anchorPicker {
+    height: 100%;
+  }
+
+  .anchorPicker {
+    grid-template-columns: minmax(112px, 34%) minmax(0, 1fr);
   }
 }
 

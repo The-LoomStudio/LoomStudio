@@ -21,6 +21,7 @@
     "@loom-studio/logging": "workspace:*",
     "@loom-studio/secret-store": "workspace:*",
     "@loom-studio/shared": "workspace:*",
+    "@loom-studio/tokenizer": "workspace:*",
     "diff": "8.0.2",
     "quickjs-emscripten": "0.32.0",
     "undici": "^7.16.0",

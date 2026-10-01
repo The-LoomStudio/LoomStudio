@@ -34,6 +34,15 @@ export function readDropPosition(nodes: FileTreeNode[], draggedId: string, overI
   return draggedIndex > overIndex ? 'before' : 'after'
 }
 
+export function readDragTopScrollSpeed(
+  clientX: number,
+  clientY: number,
+  rect: Pick<DOMRect, 'left' | 'right' | 'top'>,
+): number {
+  if (clientX < rect.left || clientX > rect.right || clientY < rect.top - 96 || clientY > rect.top + 40) return 0
+  return Math.min(16, Math.max(6, Math.ceil((rect.top + 40 - clientY) / 6)))
+}
+
 export function readVisibleFileTreeNodes(nodes: FileTreeNode[], expandedIds: Set<string>): VisibleFileTreeNode[] {
   return nodes.flatMap(node => readVisibleNode(node, expandedIds, 1))
 }

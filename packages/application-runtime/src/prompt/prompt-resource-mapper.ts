@@ -23,6 +23,8 @@ type PromptResourceMetadata = JsonObject & {
   sourceArtifactRef?: PromptResourceContent['sourceArtifactRef']
   macros?: Record<string, string>
   macroOptions?: import("@loom-studio/shared").MacroOptions
+  useCardSettings?: boolean
+  textUses?: PromptResourceContent['textUses']
 }
 
 export function toStoredResourceInput(input: {
@@ -37,6 +39,8 @@ export function toStoredResourceInput(input: {
 } {
   const metadata: PromptResourceMetadata = {}
   if (input.content.historyPolicy !== undefined) metadata.historyPolicy = input.content.historyPolicy
+  if (input.content.useCardSettings !== undefined) metadata.useCardSettings = input.content.useCardSettings
+  if (input.content.textUses !== undefined) metadata.textUses = input.content.textUses
   if (input.content.resourceKind === 'preset') {
     if (input.content.model !== undefined) metadata.model = input.content.model
     if (input.content.delivery !== undefined) metadata.delivery = input.content.delivery
@@ -82,6 +86,8 @@ export function fromStoredResource(resource: StoredPromptResource): PromptResour
     ...(resource.resourceKind === 'preset' ? { historyPolicy: metadata.historyPolicy ?? 'persistent' } : {}),
     ...(resource.resourceKind === 'preset' && metadata.model !== undefined ? { model: metadata.model } : {}),
     ...(resource.resourceKind === 'preset' && metadata.delivery !== undefined ? { delivery: metadata.delivery } : {}),
+    ...(resource.resourceKind === 'preset' && metadata.useCardSettings !== undefined ? { useCardSettings: metadata.useCardSettings } : {}),
+    ...(resource.resourceKind === 'preset' && metadata.textUses !== undefined ? { textUses: metadata.textUses } : {}),
     ...(metadata.origin ? { origin: metadata.origin } : {}),
     ...(metadata.sourceArtifactRef ? { sourceArtifactRef: metadata.sourceArtifactRef } : {}),
     ...(metadata.macros ? { macros: normalizeMacros(metadata.macros, 'Preset') } : {}),

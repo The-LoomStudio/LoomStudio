@@ -4,6 +4,7 @@ import type {
   SqliteDataTransaction,
 } from '@loom-studio/data-engine'
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
+import type { TokenCount, TokenUsage } from '@loom-studio/tokenizer/contracts'
 
 export type AgentSession = {
   id: string
@@ -59,6 +60,17 @@ export type AgentTranscriptEntryData =
       replay: 'omit' | 'assistant-content'
     }
   | {
+      kind: 'request-measurement'
+      measurementId: string
+      providerStep: number
+      providerProfileId: string
+      modelId: string
+      requestDigest: string
+      scope: 'canonical-content-v1'
+      count: TokenCount
+      uncounted: string[]
+    }
+  | {
       kind: 'provider-observation'
       provider: string
       model: string
@@ -66,7 +78,9 @@ export type AgentTranscriptEntryData =
       rawStopReason?: string
       normalizedStopReason?:
         'stop' | 'length' | 'tool-call' | 'error' | 'cancelled'
-      usage?: { inputTokens?: number; outputTokens?: number }
+      usage?: TokenUsage
+      measurementId?: string
+      providerStep?: number
       rawRef?: string
     }
   | {
@@ -111,6 +125,7 @@ export type AgentTranscriptEntryData =
         | 'aborted'
         | 'discarded'
       reason?: string
+      measurementId?: string
     }
 
 export type AgentTranscriptEntry = {

@@ -3,6 +3,73 @@ import { describe, expect, it } from 'vitest'
 import { handleAgentsRpc } from '../../../apps/studio-server/src/rpc/handlers/application/agents.js'
 
 describe('application Agent Run RPC', () => {
+  it('discards a paused run so neither its checkpoint nor transcript can resume', async () => {
+    const entries: Array<{ id: string; sequence: number; runId: string; entry: { kind: string; state?: string; role?: string; content?: string } }> = [
+      { id: 'user', sequence: 1, runId: 'old', entry: { kind: 'message', role: 'user', content: 'Write' } },
+    ]
+    let invocations = 0
+    const runtime = {
+      invokeAgentTurn: (_input: unknown, context: RuntimeRequestContext) => {
+        invocations++
+        return new Promise((_resolve, reject) => {
+          context.abortSignal!.addEventListener('abort', () => {
+            context.agentRun?.onSuspended?.({
+              sourceRunId: context.agentRun.runId, messages: [],
+              userEntry: { id: 'user', agentSessionId: 'session', sequence: 1, runId: 'old', entry: entries[0]!.entry },
+            } as never)
+            reject(new Error('paused'))
+          }, { once: true })
+        })
+      },
+      getAgentTranscriptPage: async () => ({ session: { entryCount: entries.length }, entries }),
+      appendAgentTranscriptEntries: async (input: { expectedEntryCount: number; entries: Array<{ runId: string; entry: { kind: string; state: string } }> }) => {
+        expect(input.expectedEntryCount).toBe(entries.length)
+        entries.push({ id: 'discarded', sequence: entries.length + 1, ...input.entries[0]! })
+      },
+    } as unknown as ApplicationRuntime
+    const { runId } = await handleAgentsRpc(runtime, 'application.agent.run.create', { agentSessionId: 'session', input: 'Write' }) as { runId: string }
+    await handleAgentsRpc(runtime, 'application.agent.run.pause', { runId })
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const state = await handleAgentsRpc(runtime, 'application.agent.run.state', { runId }) as { state: string }
+      if (state.state === 'suspended') break
+      await new Promise(resolve => setTimeout(resolve, 0))
+    }
+    expect(await handleAgentsRpc(runtime, 'application.agent.run.abandon', { runId })).toMatchObject({ accepted: true })
+    expect(await handleAgentsRpc(runtime, 'application.agent.run.resume', { runId })).toMatchObject({ accepted: false })
+    expect(await handleAgentsRpc(runtime, 'application.agent.run.resume', { agentSessionId: 'session' })).toMatchObject({ accepted: false })
+    expect(invocations).toBe(1)
+  })
+
+  it('subscribes to committed transcript entries before the Run finishes', async () => {
+    let release!: () => void
+    const pending = new Promise<void>(resolve => { release = resolve })
+    const entry = {
+      id: 'invocation-1', agentSessionId: 'session-live', sequence: 3, runId: 'run-live',
+      entry: { kind: 'tool-invocation', invocationId: 'call-1', toolId: 'official/read', exposedName: 'read', transport: 'native-function', status: 'proposed' },
+      createdAt: '2026-09-30T00:00:00.000Z',
+    }
+    const runtime = {
+      invokeAgentTurn: async (_input: unknown, context: RuntimeRequestContext) => {
+        context.agentRun!.onEvent({ type: 'transcript-appended', runId: context.agentRun!.runId, entries: [entry] as never })
+        await pending
+        return { runId: context.agentRun!.runId, entries: {}, mutation: {} } as never
+      },
+    } as unknown as ApplicationRuntime
+    const { runId } = await handleAgentsRpc(runtime, 'application.agent.run.create', {
+      agentSessionId: 'session-live', input: 'Read',
+    }) as { runId: string }
+
+    const batch = await handleAgentsRpc(runtime, 'application.agent.run.subscribe', { runId, cursor: 0 }) as {
+      events: Array<{ type: string; entries?: unknown[] }>; nextCursor: number; done: boolean
+    }
+    expect(batch.done).toBe(false)
+    expect(batch.events).toContainEqual({ type: 'transcript-appended', runId, entries: [entry] })
+    expect(await handleAgentsRpc(runtime, 'application.agent.run.subscribe', {
+      runId, cursor: batch.nextCursor,
+    })).toMatchObject({ events: [], done: false })
+    release()
+  })
+
   it.each(['allow', 'deny', 'cancel'] as const)('handles history read %s separately from mutation approval', async outcome => {
     let decision: unknown
     const runtime = {

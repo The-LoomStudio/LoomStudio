@@ -19,6 +19,8 @@ import { projectNarrativeNodes } from '../narrative/projection.js'
 import { projectSessionHistory } from './session-history.js'
 import type { ResolvedNarrativeContext } from '../narrative/context-provider.js'
 import { isExtensionResourceAvailable } from '../runtime/extension-resource-access.js'
+import { readExtensionPromptInputs } from '../prompt/extension-prompt.js'
+import type { ExtensionPromptAddition } from '@loom-studio/extension-sdk'
 
 export async function composeAgentTurnPrompt(input: {
   activationFacts?: ActivationFacts
@@ -46,6 +48,7 @@ export async function composeAgentTurnPrompt(input: {
     sourceNodes: SourceNode[]
     contributions: PromptContribution[]
   }
+  promptAddition?: ExtensionPromptAddition
 }): Promise<{ messages: ChatMessage[]; projection: CompiledPrompt; promptBuildTrace: PromptBuildTrace; toolExecutionScope: ToolExecutionScope }> {
   const variables = input.variables ?? createVariableRenderContext()
   const diagnostics: PromptBuildTrace['diagnostics'] = []
@@ -62,7 +65,14 @@ export async function composeAgentTurnPrompt(input: {
       message: `Skipped missing optional Prompt resource: ${resourceId}`,
     })
   }
-  const manualMounts = await input.promptResources.listSettingMounts({ source: { kind: 'manual', id: 'global' } })
+  const presetMounts = await input.promptResources.listSettingMounts({ source: { kind: 'preset', id: input.preset.id } })
+  for (const mount of presetMounts) {
+    if (mount.resolvedSettingResourceId !== null) continue
+    diagnostics.push({
+      severity: 'warning', code: 'prompt.setting_reference_unresolved',
+      message: `Skipped unresolved Setting reference: ${mount.reference?.kind === 'external' ? mount.reference.resourceId : mount.reference?.contributionId}`,
+    })
+  }
   const contextSettingIds = (await Promise.all(input.contextResourceIds.map(async resourceId => {
     const resource = await input.promptResources.getResource(resourceId)
     if (!resource) warnMissingResource(resourceId)
@@ -70,7 +80,8 @@ export async function composeAgentTurnPrompt(input: {
   }))).flatMap(resource => resource?.resourceKind === 'setting' ? [resource.id] : [])
   const resourceIds = [...new Set([
     input.preset.id,
-    ...manualMounts.map(mount => mount.settingResourceId),
+    ...presetMounts.flatMap(mount => mount.resolvedSettingResourceId === null
+      ? [] : [mount.resolvedSettingResourceId ?? mount.settingResourceId]),
     ...contextSettingIds,
   ])]
   const resourceInputs = resourceIds.length
@@ -99,15 +110,26 @@ export async function composeAgentTurnPrompt(input: {
     userInput: input.userInput,
     historyRules: input.historyRules,
   })
+  const additionalInputs = input.promptAddition
+    ? await readExtensionPromptInputs({
+        addition: input.promptAddition,
+        promptResources: input.promptResources,
+        installations: input.availableExtensionInstallations ?? new Map(),
+        variables,
+        sourceId: 'runtime.prompt-addition',
+      })
+    : undefined
   const sourceNodes = [
     ...(resourceInputs?.sourceNodes ?? []),
     ...runtimeInputs.sourceNodes,
     ...(input.externalRuntime?.sourceNodes ?? []),
+    ...(additionalInputs?.sourceNodes ?? []),
   ]
   const contributions = [
     ...(resourceInputs?.contributions ?? []),
     ...runtimeInputs.contributions,
     ...(input.externalRuntime?.contributions ?? []),
+    ...(additionalInputs?.contributions ?? []),
   ]
   const resourceProjection = compilePromptDataModel({
     skeletonRootId: input.preset.rootNode.id,

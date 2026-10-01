@@ -64,9 +64,7 @@ export type VariableRenderTrace = MacroRenderTrace
 export const macroNamePattern = /^[\p{L}\p{N}_$]+(?:\.[\p{L}\p{N}_$]+)*$/u
 
 export const builtinMacroAliases: Record<string, string> = {
-  User: 'global.user.name', user: 'global.user.name', USER: 'global.user.name',
-  'user.name': 'global.user.name', 'User.name': 'global.user.name', user_name: 'global.user.name',
-  'user.description': 'global.user.description', 'User.description': 'global.user.description', user_description: 'global.user.description', user_desc: 'global.user.description',
+  user: 'global.user.name',
   char: 'computed.char.name', Char: 'computed.char.name', CHAR: 'computed.char.name', 'char.name': 'computed.char.name', char_name: 'computed.char.name',
   'char.description': 'computed.char.description', char_description: 'computed.char.description', char_desc: 'computed.char.description',
   bot: 'computed.bot.name', Bot: 'computed.bot.name', BOT: 'computed.bot.name', 'bot.name': 'computed.bot.name',

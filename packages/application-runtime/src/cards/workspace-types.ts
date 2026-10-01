@@ -79,12 +79,16 @@ export type PromptResourceKind = 'preset' | 'setting' | 'logic' | 'runtime' | 'h
 export type PromptResourceContent = {
   resourceKind: PromptResourceKind
   rootNode: PromptResourceNode
+  useCardSettings?: boolean
+  textUses?: Array<{ id: string; kind: 'rule' | 'extractor'; enabled: boolean; orderIndex?: number; reference?: NonNullable<import('@loom-studio/extension-sdk').ExtensionPromptResourceContribution['textUses']>[number]['reference'] }>
   historyPolicy?: AgentHistoryPolicy
   model?: ProviderModelSelection
   delivery?: AgentDelivery
   origin?: {
     kind: 'builtin'
     key: string
+    packageVersion?: string
+    sourceDigest?: string
   } | ExtensionPackageResourceOrigin
   sourceArtifactRef?: CardBundleSourceArtifactRef
   macros?: Record<string, string>
@@ -100,6 +104,9 @@ export type PromptResourceArtifact = {
   rootNode: PromptResourceNode
   macros?: Record<string, string>
   macroOptions?: import("@loom-studio/shared").MacroOptions
+  useCardSettings?: boolean
+  textUses?: PromptResourceContent['textUses']
+  settingMounts?: Array<NonNullable<import('@loom-studio/shared').SettingMount['reference']>>
   textTransformRules?: Array<Omit<TextTransformRuleDraft, 'owner'>>
   scriptAttachments?: LoomScriptAttachmentArtifact[]
 }

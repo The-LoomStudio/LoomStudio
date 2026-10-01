@@ -1,4 +1,4 @@
-import { ArrowDownUp, ArrowLeft, BookOpen, Braces, Check, Circle, ChevronRight, CloudDownload, Combine, Download, FileArchive, Folder, Grid2X2, ImageDown, List, Pencil, Play, Plus, RefreshCw, Trash2, Upload, X } from 'lucide-react'
+import { ArrowDownUp, ArrowLeft, BookOpen, Check, Circle, ChevronRight, CloudDownload, Combine, Download, FileArchive, Folder, Grid2X2, ImageDown, List, Pencil, Play, Plus, RefreshCw, Trash2, Upload, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent } from 'react'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger, Dialog, Toggle, type MenuAction } from '@loom-studio/ui'
 import type { Translator } from '../../shared/i18n/index.js'
@@ -10,10 +10,12 @@ import type { PromptResource } from '../../entities/index.js'
 import { renderTemplateMacros, type MacroRenderContext } from '../../features/state-variables/model/macro-renderer.js'
 import styles from './character-panel.module.scss'
 import type { CardDirectoryCatalog } from '@loom-studio/shared'
-import { CardResourceOverview, DirectoryDiscoveryNotice, type CardDirectoryApi } from './card-resource-overview.js'
+import { DirectoryDiscoveryNotice, type CardDirectoryApi } from './card-resource-overview.js'
+import { CardResourceDirectory } from './card-resource-directory.js'
 import { cardMediaUrl, useCardMediaRevision } from '../../shared/lib/card-media.js'
 import { normalizeSearchText } from '../../shared/lib/text.js'
 import { readBoundedResponseBlob } from '../../shared/browser/download.js'
+import { useQuery } from '@tanstack/react-query'
 
 type CharacterCardSummary = {
   id: string
@@ -34,29 +36,34 @@ type MediaTarget = 'avatar' | 'background'
 type CharacterPanelProps = {
   active: boolean
   busy: boolean
-  cardDraft: { name: string; userName: string; description: string }
   cards: CharacterCardSummary[]
-  onChangeCardDraft(draft: { name: string; userName: string; description: string }): void
   onCreateCard(): Promise<void>
-  onCreateTimelineFromCard(): Promise<void>
+  onCreateTimelineFromCard(cardId: string): Promise<void>
   onExportCard(card: CharacterCardSummary, format: 'png' | 'polyglot' | 'loomcard' | 'directory'): Promise<void>
   directoryApi?: CardDirectoryApi
+  resourceApi: Pick<import('../../shared/api/studio-api.js').StudioApi, 'cards' | 'narratives' | 'textTransforms' | 'loomScripts' | 'states' | 'extensions' | 'extensionRuntime' | 'portableExtensionPayloads'>
+  endpoint: string
+  onChangeResourceNode(id: string, partial: Partial<import('../../entities/index.js').ContextAssetNode>): void
+  onCommitResourceNode(id: string, partial: Partial<import('../../entities/index.js').ContextAssetNode>): void
+  onOpenSetting?(resource: PromptResource, nodeId: string): void
+  resourceDirectorySelectedId?: string
+  resourceDirectoryExpandedIds?: string[]
+  onResourceDirectoryStateChange?(selectedId: string | undefined, expandedIds: string[]): void
+  resourceDirectoryOpen?: boolean
+  onResourceDirectoryOpenChange?(open: boolean): void
   onRefreshCards?(): Promise<unknown>
   onImportCards(files: File[]): Promise<void>
   onDeleteCards(cardIds: string[], options?: { includePlayData?: boolean; includePromptResources?: boolean }): Promise<void>
   onPreviewCardDeletion(cardId: string): Promise<{ timelines: Array<{ id: string }> }>
   onSelectCard(cardId: string): void
-  onOpenTimeline(timeline: NarrativeTimelineView): void
-  onOpenStatePanel(cardId: string): void
-  onOpenResourcePanel?: (resourceId?: string) => void
+  onOpenTimeline(timeline: NarrativeTimelineView, cardId: string): void
   resources?: PromptResource[]
   onUpdateCardMedia(cardId: string, target: MediaTarget, file: File): Promise<void>
-  onUpdateCard(event: FormEvent): Promise<void>
+  onUpdateCardProfile(patch: { cardId: string; expectedVersion: number; name: string; userName: string; description: string }): Promise<unknown>
   selectedCard?: CharacterCardSummary
   selectedCardId?: string
   routeCardId?: string
   timeline?: NarrativeTimelineView
-  timelines: NarrativeTimelineView[]
   macroContext?: MacroRenderContext
   t: Translator
 }
@@ -65,6 +72,42 @@ const GALLERY_PAGE_SIZE = 30
 const MAX_MEDIA_BYTES = 10 * 1024 * 1024
 const MAX_REMOTE_CARD_BYTES = 128 * 1024 * 1024
 const PAGE_TRANSITION_MS = 180
+
+function CharacterProfileEditor(props: {
+  card: CharacterCardSummary
+  onSave: CharacterPanelProps['onUpdateCardProfile']
+  busy: boolean
+  t: Translator
+  onSaved(): Promise<void>
+}) {
+  const [baseline] = useState(props.card)
+  const [draft, setDraft] = useState({
+    name: baseline.name, userName: baseline.userName ?? '', description: baseline.description ?? '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  async function save(event: FormEvent) {
+    event.preventDefault()
+    if (saving) return
+    setSaving(true)
+    setError('')
+    try {
+      await props.onSave({ cardId: baseline.id, expectedVersion: baseline.version, ...draft })
+      await props.onSaved()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setSaving(false)
+    }
+  }
+  return <form className={`${styles.profileEditor} loom-underlined-fields`} onSubmit={event => void save(event)}>
+    <label><span>{props.t('character.name')}</span><input disabled={props.busy || saving} value={draft.name} onChange={event => setDraft({ ...draft, name: event.target.value })} /></label>
+    <label><span>{props.t('character.author')}</span><input disabled={props.busy || saving} value={draft.userName} onChange={event => setDraft({ ...draft, userName: event.target.value })} /></label>
+    <label><span>{props.t('character.description')}</span><textarea disabled={props.busy || saving} value={draft.description} onChange={event => setDraft({ ...draft, description: event.target.value })} /></label>
+    {error ? <p role="alert">{error}</p> : null}
+    <div className={styles.editorActions}><button disabled={props.busy || saving || !draft.name.trim()} type="submit">{props.t('character.save')}</button></div>
+  </form>
+}
 
 export function CharacterPanel(props: CharacterPanelProps) {
   const mediaRevision = useCardMediaRevision()
@@ -89,7 +132,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
   const [discovered, setDiscovered] = useState<CardDirectoryCatalog>()
   const [refreshing, setRefreshing] = useState(false)
   const [refreshError, setRefreshError] = useState('')
-  const [profileTab, setProfileTab] = useState<'profile' | 'attachments'>('profile')
+  const [profileTab, setProfileTab] = useState<'profile' | 'attachments'>(() => props.resourceDirectoryOpen ? 'attachments' : 'profile')
 
   async function refreshGallery() {
     setRefreshing(true)
@@ -128,12 +171,6 @@ export function CharacterPanel(props: CharacterPanelProps) {
   }, [profileCardId])
 
   useEffect(() => {
-    if (props.selectedCardId) {
-      setActiveCardId(props.selectedCardId)
-    }
-  }, [props.selectedCardId])
-
-  useEffect(() => {
     if (props.routeCardId) {
       setActiveCardId(props.routeCardId)
       setMobilePane('detail')
@@ -141,8 +178,23 @@ export function CharacterPanel(props: CharacterPanelProps) {
   }, [props.routeCardId])
 
   const targetCardId = activeCardId ?? props.selectedCard?.id ?? galleryCards[0]?.id
+  const detail = useQuery({
+    queryKey: ['character-browser', props.endpoint, targetCardId],
+    enabled: props.active && Boolean(targetCardId),
+    queryFn: async () => {
+      const { card } = await props.resourceApi.cards.get(targetCardId!)
+      const timelines: NarrativeTimelineView[] = []
+      let cursor: string | undefined
+      do {
+        const page = await props.resourceApi.narratives.list({ createdFromCardId: card.id, cursor, limit: 100 })
+        timelines.push(...page.timelines)
+        cursor = page.nextCursor
+      } while (cursor)
+      return { card, timelines }
+    },
+  })
   const selected = targetCardId
-    ? (props.selectedCard?.id === targetCardId ? props.selectedCard : undefined) ?? galleryCards.find(card => card.id === targetCardId)
+    ? detail.data?.card ?? galleryCards.find(card => card.id === targetCardId)
     : undefined
   const [openingExpanded, setOpeningExpanded] = useState(false)
 
@@ -150,45 +202,14 @@ export function CharacterPanel(props: CharacterPanelProps) {
     setOpeningExpanded(false)
   }, [selected?.id])
 
-  const boundResources = useMemo(() => {
-    if (!selected?.promptResourceIds?.length || !props.resources) return []
-    const resourceMap = new Map(props.resources.map(r => [r.id, r]))
-    return selected.promptResourceIds
-      .map(id => resourceMap.get(id))
-      .filter(Boolean) as PromptResource[]
-  }, [selected?.promptResourceIds, props.resources])
-
-  const worldBookSummary = useMemo(() => {
-    if (boundResources.length > 0) {
-      const names = boundResources.map(r => r.rootNode.label).join('、')
-      const totalEntries = boundResources.reduce((acc, r) => acc + (r.rootNode.children?.length ?? 0), 0)
-      return {
-        name: props.t('character.worldBook'),
-        meta: boundResources.length === 1
-          ? `${names} · ${props.t('character.worldBookCount', { count: totalEntries })}`
-          : `${names} (${props.t('character.worldBookCount', { count: totalEntries })})`,
-      }
-    }
-    if (selected?.settingLayer?.entries?.length) {
-      return {
-        name: props.t('character.worldBook'),
-        meta: props.t('character.worldBookCount', { count: selected.settingLayer.entries.length }),
-      }
-    }
-    return {
-      name: props.t('character.worldBook'),
-      meta: props.t('character.noWorldBook'),
-    }
-  }, [boundResources, selected?.settingLayer?.entries?.length, props.t])
-
   const [timelineSortOrder, setTimelineSortOrder] = useState<'desc' | 'asc'>('desc')
 
   const sortedTimelines = useMemo(() => {
-    return [...props.timelines].sort((left, right) => {
+    return [...(detail.data?.timelines ?? [])].sort((left, right) => {
       const comparison = right.updatedAt.localeCompare(left.updatedAt)
       return timelineSortOrder === 'desc' ? comparison : -comparison
     })
-  }, [props.timelines, timelineSortOrder])
+  }, [detail.data?.timelines, timelineSortOrder])
 
   const groupedCards = useMemo(() => filterCardsByGroup(galleryCards, organization.assignments, organization.activeGroupId), [galleryCards, organization.activeGroupId, organization.assignments])
   const filteredCards = useMemo(() => {
@@ -589,7 +610,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
 
             <section className={styles.profileIdentity}>
               <div><h2>{selected.name}</h2><p>{selected.userName || props.t('character.authorUnknown')}</p></div>
-              <button disabled={props.busy} type="button" onClick={() => void props.onCreateTimelineFromCard()}>{props.t('character.startSession')}</button>
+              <button disabled={props.busy} type="button" onClick={() => void props.onCreateTimelineFromCard(selected.id)}>{props.t('character.startSession')}</button>
             </section>
             {mediaNotice ? <p aria-live="polite" className={styles.mediaNotice}>{mediaNotice}</p> : null}
 
@@ -601,19 +622,20 @@ export function CharacterPanel(props: CharacterPanelProps) {
                   { id: 'profile', label: props.t('character.title') },
                   { id: 'attachments', label: props.t('directory.attachments') },
                 ]}
-                onChange={setProfileTab}
+                onChange={tab => {
+                  setProfileTab(tab)
+                  props.onResourceDirectoryOpenChange?.(tab === 'attachments')
+                }}
               />
             </div>
-            {profileTab === 'attachments' ? <div role="tabpanel" id="card-attachments-panel" aria-labelledby="card-attachments-tab">{props.directoryApi ? <CardResourceOverview key={selected.id} api={props.directoryApi} cardId={selected.id} onRefresh={props.onRefreshCards} t={props.t} /> : null}</div> : <div role="tabpanel" id="card-profile-panel" aria-labelledby="card-profile-tab">
+            {profileTab === 'attachments' ? <div role="tabpanel" id="card-attachments-panel" aria-labelledby="card-attachments-tab"><CardResourceDirectory key={selected.id} api={props.resourceApi} endpoint={props.endpoint} directoryApi={props.directoryApi} cardId={selected.id} resources={props.resources ?? []} onChangeNode={props.onChangeResourceNode} onCommitNode={props.onCommitResourceNode} onRefreshCards={props.onRefreshCards} onOpenSetting={props.onOpenSetting} selectedTreeId={props.resourceDirectorySelectedId} expandedTreeIds={props.resourceDirectoryExpandedIds} onTreeStateChange={props.onResourceDirectoryStateChange} t={props.t} /></div> : <div role="tabpanel" id="card-profile-panel" aria-labelledby="card-profile-tab">
             {profileEditing ? (
-              <form className={`${styles.profileEditor} loom-underlined-fields`} onSubmit={event => void props.onUpdateCard(event).then(() => setProfileEditing(false)).catch(() => undefined)}>
-                <label><span>{props.t('character.name')}</span><input disabled={props.busy} value={props.cardDraft.name} onChange={event => props.onChangeCardDraft({ ...props.cardDraft, name: event.target.value })} /></label>
-                <label><span>{props.t('character.author')}</span><input disabled={props.busy} value={props.cardDraft.userName} onChange={event => props.onChangeCardDraft({ ...props.cardDraft, userName: event.target.value })} /></label>
-                <label><span>{props.t('character.description')}</span><textarea disabled={props.busy} value={props.cardDraft.description} onChange={event => props.onChangeCardDraft({ ...props.cardDraft, description: event.target.value })} /></label>
-                <div className={styles.editorActions}>
-                  <button disabled={props.busy || !props.cardDraft.name.trim()} type="submit">{props.t('character.save')}</button>
-                </div>
-              </form>
+              <CharacterProfileEditor key={selected.id} card={selected} onSave={props.onUpdateCardProfile} busy={props.busy}
+                t={props.t} onSaved={async () => {
+                  setProfileEditing(false)
+                  await detail.refetch()
+                  await props.onRefreshCards?.()
+                }} />
             ) : (
               <section className={styles.profileContent}>
                 <div><h3>{props.t('character.description')}</h3><p>{selected.description || props.t('character.descriptionEmpty')}</p></div>
@@ -621,37 +643,11 @@ export function CharacterPanel(props: CharacterPanelProps) {
                   <header className={styles.sectionHeader}>
                     <h3>{props.t('character.resources')}</h3>
                   </header>
-                  <div className={styles.resourceCardsGrid}>
-                    <button
-                      className={styles.resourceCard}
-                      type="button"
-                      onClick={() => props.onOpenResourcePanel?.()}
-                    >
-                      <div className={styles.resourceCardIcon}>
-                        <BookOpen aria-hidden="true" />
-                      </div>
-                      <div className={styles.resourceCardInfo}>
-                        <span className={styles.resourceCardName}>{worldBookSummary.name}</span>
-                        <span className={styles.resourceCardMeta}>{worldBookSummary.meta}</span>
-                      </div>
-                      <ChevronRight aria-hidden="true" className={styles.resourceCardArrow} />
-                    </button>
-
-                    <button
-                      className={styles.resourceCard}
-                      type="button"
-                      onClick={() => targetCardId && props.onOpenStatePanel(targetCardId)}
-                    >
-                      <div className={styles.resourceCardIcon}>
-                        <Braces aria-hidden="true" />
-                      </div>
-                      <div className={styles.resourceCardInfo}>
-                        <span className={styles.resourceCardName}>{props.t('character.stateVariables')}</span>
-                        <span className={styles.resourceCardMeta}>{props.t('rail.state')}</span>
-                      </div>
-                      <ChevronRight aria-hidden="true" className={styles.resourceCardArrow} />
-                    </button>
-                  </div>
+                  <button className={styles.resourceCard} type="button" onClick={() => setProfileTab('attachments')}>
+                    <span className={styles.resourceCardIcon}><BookOpen aria-hidden="true" /></span>
+                    <span className={styles.resourceCardInfo}><span className={styles.resourceCardName}>{props.t('directory.attachments')}</span></span>
+                    <ChevronRight aria-hidden="true" className={styles.resourceCardArrow} />
+                  </button>
                 </div>
 
                 {selected.opening?.entries?.[0]?.content ? (
@@ -681,7 +677,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
             <section className={styles.sessions}>
               <header className={styles.sessionsHeader}>
                 <h3>{props.t('character.sessions')}</h3>
-                {props.timelines.length > 1 ? (
+                {sortedTimelines.length > 1 ? (
                   <button
                     className={styles.sortToggleButton}
                     type="button"
@@ -694,6 +690,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
                 ) : null}
               </header>
               <div className={styles.sessionList}>
+                {detail.error ? <p role="alert">{detail.error.message}</p> : null}
                 {sortedTimelines.length === 0 ? (
                   <p>{props.t('branch.noBranches')}</p>
                 ) : (
@@ -703,7 +700,7 @@ export function CharacterPanel(props: CharacterPanelProps) {
                       timeline={timeline}
                       busy={props.busy}
                       current={timeline.id === props.timeline?.id}
-                      onOpen={() => props.onOpenTimeline(timeline)}
+                      onOpen={() => props.onOpenTimeline(timeline, selected.id)}
                       t={props.t}
                     />
                   ))

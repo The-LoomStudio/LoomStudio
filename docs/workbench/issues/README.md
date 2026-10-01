@@ -2,6 +2,10 @@
 
 本目录用于跟踪**当前开放或周期性滚动审查的质量发现**。
 
+- [`client-server-api-audit-2026-10-02.md`](./client-server-api-audit-2026-10-02.md) — **前后端 API/IPC 专题**（4 项读取/通知范围优化候选；完整历史投影、引用查询、Card 子集与 Session 通知）。
+- [`memory-retention-audit-2026-10-02.md`](./memory-retention-audit-2026-10-02.md) — **内存专题**（3 项预算候选；SSE 背压、Run 重放缓存、Tokenizer 批量输入；未测真实堆峰值）。
+- [`ui-component-reuse-audit-2026-10-02.md`](./ui-component-reuse-audit-2026-10-02.md) — **UI 组件与 SCSS 复用专题**（4 家族、17 个源码候选实例；区分现有 API 可承载与交互差异，不是原生标签问题总数）。
+- [`full-repo-code-review-2026-10-02.md`](./full-repo-code-review-2026-10-02.md) — **本轮全仓审查**（1 个 P1、9 个 P2 确认发现，2 个待验证候选；只读审查，未实施修复）。
 - [`audit-follow-ups.md`](./audit-follow-ups.md) — **审查归档后续**（延期的远端 CI 与旧计划接续去向；已完成的修复账目不再留在 Workbench）。
 - [`state-subscription-for-extensions.md`](./state-subscription-for-extensions.md) — **扩展 State 变更订阅**（正式写入、回滚、默认值的通知及订阅过滤/清理已修复；The World 接入独立安排）。
 - [`extension-dev-hot-reload-enhancement.md`](./extension-dev-hot-reload-enhancement.md) — **插件开发态热重载机制增强**（待排期的低优先级开发体验改进）。

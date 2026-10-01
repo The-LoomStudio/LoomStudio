@@ -5,6 +5,7 @@
 日常开发先看本目录。`workbench/` 记录讨论、议题和历史决策，不作为当前施工规则的第一入口；当 Guide 与 workbench 历史草案冲突时，以 Guide 为准，再回到 workbench 更新对应议题。
 
 - [`getting-started.md`](getting-started.md) — 如何启动项目、跑通第一遍
+- [`beta-release.md`](beta-release.md) — Beta 下载、便捷启动、发行产物与支持边界
 - [`workspace-development.md`](workspace-development.md) — **开发代码第一入口**：任务到 Workspace README / Architecture 的路由
 - [`project-structure.md`](project-structure.md) — 核心：**项目全量文件地图与任务路由表**（AI探索必备）
 - [`tech-stack.md`](tech-stack.md) — **必读**：NPM 依赖清单与技术栈选型底线

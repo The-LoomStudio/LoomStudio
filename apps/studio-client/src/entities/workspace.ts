@@ -87,6 +87,8 @@ export type PromptResource = {
   historyPolicy?: 'persistent' | 'ephemeral'
   model?: import('./provider.js').ProviderModelSelection
   delivery?: 'stream' | 'complete'
+  useCardSettings?: boolean
+  textUses?: Array<{ id: string; kind: 'rule' | 'extractor'; enabled: boolean; orderIndex?: number }>
   origin?: { kind: 'builtin'; key: string } | import('./extension.js').ExtensionPackageResourceOrigin
   sourceArtifactRef?: ClientJsonValue
   createdAt: string

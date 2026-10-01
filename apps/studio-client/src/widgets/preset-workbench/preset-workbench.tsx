@@ -1,13 +1,13 @@
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
-import { ChevronDown, ChevronRight, Package, Search, Trash2, Wrench, X } from 'lucide-react'
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore, type PresetView } from '../../shared/studio-shell/studio-layout-store.js'
+import { BookOpen, Braces, ChevronDown, ChevronRight, Copy, Download, Folder, FolderOpen, Package, Regex, Search, Star, ToggleLeft, ToggleRight, Trash2, Wrench, X } from 'lucide-react'
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { Button, IconButton, SearchField } from '@loom-studio/ui'
+import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore } from '../../shared/studio-shell/studio-layout-store.js'
 import { AssetWorkbenchLayout } from '../../shared/ui/asset-workbench-layout/asset-workbench-layout.js'
 import { PanelTabs } from '../../shared/ui/panel-tabs/index.js'
 import { normalizeSearchText } from '../../shared/lib/text.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import type { StudioApi } from '../../shared/api/studio-api.js'
-import { TextTransformDetail, TextTransformExplorer, useTextTransformController } from '../../features/text-transforms/ui/text-transform-panel.js'
 import {
   findContextNode,
   flattenContextNodes,
@@ -18,18 +18,50 @@ import {
   type ContextAssetUpdate,
 } from '../../features/context-assets/model/projection-workbench.js'
 import { ContextAssetEditor, ContextAssetExplorer } from '../../features/context-assets/ui/context-asset-workbench.js'
-import { findContextAssetPath, findContextAssetByVirtualPath, flattenContextAssetNodes } from '../../features/context-assets/model/context-asset-tree.js'
+import { readContextAssetBadgeInfo, renderContextAssetTreeIcon } from '../../features/context-assets/ui/context-asset-tree.js'
+import { findContextAssetPath, findContextAssetByVirtualPath } from '../../features/context-assets/model/context-asset-tree.js'
 import { PromptResourceToolbar } from '../../features/context-assets/ui/prompt-resource-toolbar/prompt-resource-toolbar.js'
-import { resolvePresetBuildContextResources } from '../../features/context-assets/model/preset-build-context.js'
+import { buildPresetTokenProjection } from '../../features/context-assets/model/preset-token-projection.js'
+import { useResourceTokenSnapshot } from '../../features/context-assets/model/use-resource-token-snapshot.js'
+import { presetAnchorDeclarations } from '../../features/context-assets/model/preset-declarations.js'
+import { createDefaultPresetToolMountInput, toPresetToolMountInput, togglePresetToolMount, validPresetToolMounts } from '../../features/context-assets/model/preset-tool-mounts.js'
+import { FileTree, type FileTreeNode } from '../../shared/ui/file-tree/file-tree.js'
 import { buildPresetToolProjection } from '../../features/context-assets/model/preset-tool-projection.js'
 import { findCompositionItem } from '../../features/context-assets/model/composition-items.js'
-import { MacroAuthoringDetail, MacroAuthoringExplorer, type MacroAuthoringPanelProps, useMacroAuthoring } from '../../features/state-variables/ui/macro-authoring-panel.js'
-import type { AgentToolDefinition, ContextAssetNode, PresetToolMount, PresetToolMountInput, PromptCompositionItem, PromptResource, SettingMount } from '../../entities/index.js'
+import type { AgentToolDefinition, Card, ContextAssetNode, PresetToolMount, PresetToolMountInput, PromptCompositionItem, PromptResource, SettingMount, TextExtractor, TextTransformRule } from '../../entities/index.js'
 import styles from './preset-workbench.module.scss'
 import { AgentModelEditor } from '../agent-panel/agent-model-editor.js'
+import type { MacroAuthoringSource } from '../../features/state-variables/ui/macro-authoring-panel.js'
+import { NarrativeRangePreview } from './narrative-range-preview.js'
 import type { ModelProfile, ProviderAccount } from '../../entities/index.js'
 
+function toolDisplayGroup(tool: AgentToolDefinition): string {
+  if (tool.id === 'official/codeact' || tool.id === 'official/codeact_json') return 'official.codeact'
+  return tool.owner.namespace === 'official' ? 'official.fixed' : tool.owner.namespace || 'default'
+}
+
+function usageSource(origin: PromptResource['origin'], imported = false): string {
+  if (origin?.kind === 'extension-package') return `扩展 · ${origin.packageId}`
+  if (origin?.kind === 'builtin') return '官方资源'
+  return imported ? '导入资源' : '我的资源'
+}
+
+function usageFolders(entries: Array<{ source: string; node: FileTreeNode }>, query: string): FileTreeNode[] {
+  const search = normalizeSearchText(query)
+  const groups = new Map<string, FileTreeNode[]>()
+  for (const { source, node } of entries) {
+    if (!normalizeSearchText(`${source} ${node.label} ${node.meta ?? ''}`).includes(search)) continue
+    const children = groups.get(source) ?? []
+    children.push(node)
+    groups.set(source, children)
+  }
+  return [...groups].map(([source, children]) => ({
+    id: `source:${source}`, label: source, kind: 'folder', meta: `${children.length} 项`, children,
+  }))
+}
+
 type PresetWorkbenchProps = {
+  active: boolean
   modelProfiles: ModelProfile[]
   providerAccounts: ProviderAccount[]
   onSaveModel(input: Parameters<StudioApi['agentPresets']['update']>[0]): Promise<PromptResource>
@@ -41,6 +73,7 @@ type PresetWorkbenchProps = {
   tools: AgentToolDefinition[]
   toolMounts: PresetToolMount[]
   timelinePromptResourceIds?: string[]
+  card?: Card
   onChangeNode: (id: string, partial: Partial<ContextAssetNode>) => void
   draftResourceIds: string[]
   onDiscardDraft(resourceId: string): void
@@ -64,17 +97,23 @@ type PresetWorkbenchProps = {
   onExportResourceZip?: (resourceId: string) => Promise<void>
   onImportResourceZip?: (file: File) => Promise<string | undefined>
   onReplaceToolMounts: (presetId: string, mounts: PresetToolMountInput[]) => Promise<void>
+  onReplaceSettingMounts: (source: { kind: 'preset'; id: string }, mounts: Array<{ id: string } | { settingResourceId: string }>) => Promise<void>
   onUpdateTool: (tool: AgentToolDefinition) => Promise<void> | void
-  onSaveMacros: (resourceId: string, input: Parameters<MacroAuthoringPanelProps['onSave']>[0]) => ReturnType<MacroAuthoringPanelProps['onSave']>
+  onSaveMacros: (resourceId: string, input: Parameters<MacroAuthoringSource['onSave']>[0]) => ReturnType<MacroAuthoringSource['onSave']>
   routeAssetId?: string
   routeResourceId?: string
   searchQuery: string
   onSearchQueryChange(value: string): void
   selectedResourceId?: string
   onSelectResource?: (resourceId: string) => void
+  onOpenSetting?: (resourceId: string, nodeId: string) => void
+  previewApi: StudioApi['narratives']
+  previewTimelineId?: string
+  previewBranchId?: string
   t: Translator
   workspaceId: string
   textTransformsApi: StudioApi['textTransforms']
+  onOpenTextUse?: (kind: 'rule' | 'extractor', id: string) => void
   loomScriptsApi: StudioApi['loomScripts']
   onLoomScriptsChanged: () => void
 }
@@ -108,67 +147,45 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   }
   const selectedResource = presetResources.find(resource => resource.id === selectedResourceId)
     ?? (selectedResourceId || props.routeAssetId ? undefined : presetResources[0])
-  const textController = useTextTransformController({
-    api: props.textTransformsApi,
-    loomScriptsApi: props.loomScriptsApi,
-    onRuntimeChanged: props.onLoomScriptsChanged,
-    owner: selectedResource ? { kind: 'preset', presetId: selectedResource.id } : { kind: 'runtime' },
-    t: props.t,
-    mobilePane: mobilePane === 'explorer' ? 'master' : 'detail',
-    onMobilePaneChange: pane => setAssetPane('preset', props.workspaceId, pane === 'master' ? 'explorer' : 'detail'),
-  })
-  const macroController = useMacroAuthoring(selectedResource ? {
-    ownerId: selectedResource.id,
-    ownerLabel: selectedResource.rootNode.label,
-    version: selectedResource.version,
-    macros: selectedResource.macros ?? {},
-    macroOptions: selectedResource.macroOptions,
-    onSave: input => props.onSaveMacros(selectedResource.id, input),
-    t: props.t,
-  } satisfies MacroAuthoringPanelProps : undefined)
   const toolProjection = useMemo(() => buildPresetToolProjection({
     mounts: props.toolMounts,
     presetId: selectedResource?.id,
     tools: props.tools,
   }), [props.toolMounts, props.tools, selectedResource?.id])
-  const contextResources = useMemo(() => resolvePresetBuildContextResources({
-    preset: selectedResource,
-    resources: props.resources,
-    settingMounts: props.settingMounts,
-    timelinePromptResourceIds: props.timelinePromptResourceIds,
-  }), [props.resources, props.settingMounts, props.timelinePromptResourceIds, selectedResource])
-
-  const mainOrderNodes = useMemo(() => {
-    if (!selectedResource) return []
-    const presetRoot = readPromptResourceWorkbenchRoot(selectedResource)
-    return [injectContextNodesIntoPresetTree(presetRoot, contextResources.resources, toolProjection.contentNodes)]
-  }, [contextResources, selectedResource, toolProjection.contentNodes])
+  const replaceToolMounts = (presetId: string, mounts: PresetToolMountInput[]) => {
+    return props.onReplaceToolMounts(presetId, validPresetToolMounts(mounts, props.tools))
+  }
+  const mainOrderNodes = useMemo(() => selectedResource
+    ? [readPromptResourceWorkbenchRoot(selectedResource)] : [], [selectedResource])
   const workbenchNodes = mainOrderNodes
   const selectedId = explorerView.selectedId
+  const tokenSnapshot = useResourceTokenSnapshot(selectedResource ? [selectedResource.rootNode] : [], `${props.workspaceId}:${selectedResource?.id ?? ''}`)
   const selectedNode = findContextNode(workbenchNodes, selectedId)
   const detailNode = selectedNode
-  const projectionModel = useMemo(() => buildProjectionWorkbenchModel(workbenchNodes), [workbenchNodes])
-  const { orderNode } = projectionModel
+  const tokenProjection = useMemo(() => detailNode?.kind === 'virtual' && selectedResource ? buildPresetTokenProjection({
+    preset: selectedResource, resources: props.resources, settingMounts: props.settingMounts,
+    timelinePromptResourceIds: props.timelinePromptResourceIds,
+  }) : undefined, [detailNode?.kind, selectedResource, props.resources, props.settingMounts, props.timelinePromptResourceIds])
+  const declarations = useMemo(() => detailNode?.kind === 'virtual' && selectedResource
+    ? presetAnchorDeclarations({
+      anchor: detailNode, presetId: selectedResource.id, resources: props.resources,
+      settingMounts: props.settingMounts, timelinePromptResourceIds: props.timelinePromptResourceIds,
+    }) : undefined, [detailNode, selectedResource?.id, props.resources, props.settingMounts, props.timelinePromptResourceIds])
+  const declarationNodes = useMemo(() => declarations?.nodes.map(node => ({
+    ...node,
+    label: ({
+      timeline: '当前 Timeline 引用',
+      global: '全局挂载',
+      extension: '扩展',
+      builtin: '官方',
+    } as Record<string, string>)[node.label] ?? node.label,
+  })) ?? [], [declarations])
+  const [declarationExpandedIds, setDeclarationExpandedIds] = useState<string[]>([])
   const searchQuery = props.searchQuery
-  const [selectedZoneId, setSelectedZoneId] = useState<string>()
-  const [selectedCompositionId, setSelectedCompositionId] = useState<string>()
   const [selectedToolId, setSelectedToolId] = useState<string>()
-  const presetZoneDefinitions = useMemo(() => orderNode?.skeletonPatch?.zones ?? [], [orderNode?.skeletonPatch?.zones])
-  const displayZoneDefinitions = useMemo(() => {
-    const ids = new Set(presetZoneDefinitions.map(zone => zone.id))
-    return [...presetZoneDefinitions, ...toolProjection.zoneDefinitions.filter(zone => !ids.has(zone.id))]
-  }, [orderNode?.skeletonPatch?.zones, toolProjection.zoneDefinitions])
-  const selectedZone = presetZoneDefinitions.find(zone => zone.id === selectedZoneId)
-  const compositionItems = orderNode?.skeletonPatch?.items
-  const selectedCompositionItem = findCompositionItem(compositionItems ?? [], selectedCompositionId)
-  const hasDetailSelection = activePresetView === 'model' || activePresetView === 'text'
-    || (activePresetView === 'macros'
-      ? Boolean(macroController.selectedRowId)
-      : activePresetView === 'tools'
-        ? Boolean(selectedToolId)
-        : activePresetView === 'order'
-          ? Boolean(selectedCompositionItem || selectedZone)
-          : Boolean(selectedNode))
+  const hasDetailSelection = activePresetView === 'tools'
+    ? Boolean(selectedToolId)
+    : Boolean(selectedNode)
 
   useEffect(() => {
     if (!props.routeAssetId) return
@@ -183,12 +200,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
 
   useEffect(() => {
     setAssetPane('preset', props.workspaceId, props.routeResourceId ? 'detail' : 'explorer')
-    macroController.selectRow(undefined)
   }, [props.routeResourceId, selectedResource?.id])
-
-  useEffect(() => {
-    if (selectedZoneId && !displayZoneDefinitions.some(zone => zone.id === selectedZoneId)) setSelectedZoneId(undefined)
-  }, [selectedZoneId, displayZoneDefinitions])
 
   useEffect(() => {
     if (!selectedToolId) setSelectedToolId(props.tools[0]?.id)
@@ -223,32 +235,58 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
     return () => window.removeEventListener('loom:navigate', handleNavigate)
   }, [workbenchNodes, explorerView.expandedIds, props.workspaceId, setAssetExpandedIds, openAssetDetail, setActivePresetView])
 
-  const displayNodes = mainOrderNodes
+  const [isOverviewSelected, setIsOverviewSelected] = useState(true)
 
+  const displayNodes: ContextAssetNode[] = useMemo(() => {
+    return presetResources.map(preset => {
+      const isSelected = preset.id === selectedResource?.id
+      const origin = preset.origin
+      const isBuiltin = origin?.kind === 'builtin'
+      const isExtension = origin?.kind === 'extension-package'
+      const installation = isExtension
+        ? props.extensionInstallations?.find(inst => inst.id === origin.installationId && inst.packageId === origin.packageId)
+        : undefined
+      const originLabel = isBuiltin
+        ? props.t('promptResource.official')
+        : isExtension
+          ? (installation?.packageId ?? origin.packageId)
+          : props.t('agent.sources.workspace')
+      const modelLabel = preset.model?.modelId ?? props.t('agent.model.unbound')
 
-  function changePresetView(view: PresetView) {
-    setAssetPane('preset', props.workspaceId, 'explorer')
-    macroController.selectRow(undefined)
-    setActivePresetView(view)
-  }
+      const promptChildren: ContextAssetNode[] = (isSelected && mainOrderNodes[0]?.children
+        ? mainOrderNodes[0].children
+        : preset.rootNode.children ?? []) as ContextAssetNode[]
 
-  function handleSelectNode(id: string) {
+      return {
+        id: preset.id,
+        label: preset.rootNode.label,
+        kind: 'folder',
+        category: 'preset-root',
+        meta: `${originLabel} · ${modelLabel}`,
+        children: promptChildren,
+      }
+    })
+  }, [presetResources, selectedResource?.id, mainOrderNodes, props.t, props.extensionInstallations])
+
+  function handleSelectNode(id?: string) {
+    if (!id) return
     setAssetPane('preset', props.workspaceId, 'detail')
-    const toolId = toolProjection.toolIdByNodeId.get(id)
-    if (toolId) {
-      setSelectedToolId(toolId)
-      setSelectedCompositionId(undefined)
-      setSelectedZoneId(undefined)
+
+    const clickedPreset = presetResources.find(p => p.id === id)
+    if (clickedPreset) {
+      setSelectedResourceId(clickedPreset.id)
+      setIsOverviewSelected(true)
+      setActivePresetView('assets')
       return
     }
-    const compositionItem = findCompositionItem(compositionItems ?? [], id)
-    if (compositionItem) {
-      setSelectedCompositionId(id)
-      setSelectedZoneId(compositionItem.kind === 'zone' ? compositionItem.id : undefined)
-      return
+
+    const matchedPreset = presetResources.find(p => findContextNode([p.rootNode], id))
+    if (matchedPreset && matchedPreset.id !== selectedResourceId) {
+      setSelectedResourceId(matchedPreset.id)
     }
-    setSelectedCompositionId(undefined)
-    setSelectedZoneId(undefined)
+    setIsOverviewSelected(false)
+    setActivePresetView('assets')
+
     openAssetDetail('preset', props.workspaceId, id)
   }
 
@@ -259,15 +297,17 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
   return (
     <AssetWorkbenchLayout
       explorerWidth={explorerLayout.explorerWidth}
-      hasSelection={hasDetailSelection}
+      hasSelection={hasDetailSelection || isOverviewSelected}
       mobilePane={mobilePane}
       onMobilePaneChange={pane => setAssetPane('preset', props.workspaceId, pane)}
-      toolbar={(
+      toolbar={activePresetView === 'assets' ? (
         <PromptResourceToolbar
+          tokenSnapshot={tokenSnapshot}
           resourceBindings={props.resourceBindings}
           bindingResources={props.resources}
           extensionInstallations={props.extensionInstallations}
           hideSelect
+          hideSingleResourceActions
           resourceKind="preset"
           resources={presetResources}
           selectedResourceId={selectedResource?.id}
@@ -284,54 +324,52 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           onImportZip={props.onImportResourceZip}
           onSelect={setSelectedResourceId}
         />
-      )}
+      ) : undefined}
       header={(
-        <>
-        <AgentSourceDirectory resources={presetResources} installations={props.extensionInstallations}
-          selectedResourceId={selectedResource?.id} onSelect={setSelectedResourceId} t={props.t} />
-        <PanelTabs<PresetView>
-          activeId={activePresetView}
-          ariaLabel={props.t('preset.panel.assets')}
-          items={[
-            { id: 'assets', label: props.t('preset.panel.assets') },
-            { id: 'model', label: props.t('agent.profile.model') },
-            { id: 'text', label: props.t('rail.textTransform') },
-            { id: 'tools', label: props.t('preset.panel.tools') },
-            { id: 'macros', label: props.t('context.authoring.macros') },
-          ]}
-          onChange={changePresetView}
-        />
-        {contextResources.unavailableResourceIds.map(id => <p key={`setting:${id}`} role="status">{props.t('context.bindings.unavailable', { id })}</p>)}
-        {toolProjection.unavailableMounts.map(mount => <p key={`tool:${mount.id}`} role="status">{props.t('preset.tools.unavailable', { id: mount.toolId })}</p>)}
-        </>
+        <div>
+          <PanelTabs
+            activeId={activePresetView}
+            ariaLabel={props.t('preset.panel.views')}
+            items={[
+              { id: 'assets' as const, label: props.t('preset.panel.assets') },
+              { id: 'tools' as const, label: props.t('preset.panel.tools') },
+            ]}
+            onChange={setActivePresetView}
+          />
+          {activePresetView === 'assets' && toolProjection.unavailableMounts.length > 0 ? (
+            <div className={styles.statusMessages}>
+              {toolProjection.unavailableMounts.map(mount => <p key={`tool:${mount.id}`} role="status">{props.t('preset.tools.unavailable', { id: mount.toolId })}</p>)}
+            </div>
+          ) : null}
+        </div>
       )}
       onExplorerWidthChange={width => setExplorerWidth('preset', width)}
       resizeLabel={props.t('context.resizeExplorer')}
-      viewMode={activePresetView === 'text' ? 'master-detail' : explorerView.viewMode}
-      explorer={activePresetView === 'model' ? (
-        <button type="button" onClick={() => setAssetPane('preset', props.workspaceId, 'detail')}>
-          {props.t('agent.profile.model')}
-        </button>
-      ) : activePresetView === 'text' ? <TextTransformExplorer controller={textController} /> : activePresetView === 'tools' ? (
-        <PresetToolExplorer
-          selectedToolId={selectedToolId}
-          t={props.t}
-          toolMounts={props.toolMounts}
-          unavailableMounts={toolProjection.unavailableMounts}
-          tools={props.tools}
-          presetId={selectedResource?.id}
-          onSelect={setSelectedToolId}
-        />
-      ) : activePresetView === 'macros' ? (
-          <MacroAuthoringExplorer controller={macroController} onAdd={() => setAssetPane('preset', props.workspaceId, 'detail')} onSelect={() => setAssetPane('preset', props.workspaceId, 'detail')} />
+      viewMode={explorerView.viewMode}
+      explorer={activePresetView === 'tools' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <PresetToolExplorer
+            selectedToolId={selectedToolId}
+            t={props.t}
+            toolMounts={props.toolMounts}
+            unavailableMounts={toolProjection.unavailableMounts}
+            tools={props.tools}
+            presetId={selectedResource?.id}
+            onSelect={setSelectedToolId}
+          />
+        </div>
       ) : (
         <ContextAssetExplorer
+          tokenSnapshot={tokenSnapshot}
+          active={props.active}
+          highlightMessages
           displayNodes={displayNodes}
           expandedIds={explorerView.expandedIds}
           query={searchQuery}
           scrollKey={`preset:${props.workspaceId}`}
           selectedId={selectedId}
           t={props.t}
+          virtualized
           workspaceId={props.workspaceId}
           onAddNode={props.onAddNode}
           onAddFolderNode={props.onAddFolderNode}
@@ -356,13 +394,7 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
         />
       )}
     >
-      {selectedResource ? <div hidden={activePresetView !== 'model'} className={styles.modelDetail}>
-        <AgentModelEditor key={selectedResource.id} preset={selectedResource} modelProfiles={props.modelProfiles}
-          providerAccounts={props.providerAccounts} onSave={props.onSaveModel} t={props.t} />
-      </div> : null}
-      {activePresetView === 'model' ? null : activePresetView === 'text' ? (
-        selectedResource ? <TextTransformDetail controller={textController} /> : <p>{props.t('textTransform.noPreset')}</p>
-      ) : activePresetView === 'tools' ? (
+      {activePresetView === 'tools' ? (
         <PresetToolDetail
           mount={props.toolMounts.find(mount => mount.presetResourceId === selectedResource?.id && mount.toolId === selectedToolId)}
           preset={selectedResource}
@@ -370,68 +402,560 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           unavailableMounts={toolProjection.unavailableMounts}
           t={props.t}
           tool={props.tools.find(tool => tool.id === selectedToolId)}
-          onReplaceMounts={props.onReplaceToolMounts}
+          onReplaceMounts={replaceToolMounts}
           onUpdateTool={props.onUpdateTool}
         />
-      ) : <div className={styles.detailStack}>
-        {activePresetView === 'macros' ? (
-          <MacroAuthoringDetail controller={macroController} />
-        ) : selectedCompositionItem ? <CompositionItemDetail item={selectedCompositionItem} nodes={workbenchNodes} t={props.t} /> : selectedZone ? <ZoneDetail zone={selectedZone} t={props.t} /> : (
-          <ContextAssetEditor
-            activationEditable
-            allowTargetAnchor={false}
-            editorMode={textEditorMode}
-            metadataOpen={metadataOpen}
-            node={detailNode}
-            pathNodes={findContextAssetPath(workbenchNodes, detailNode?.id)}
-            t={props.t}
-            onChangeNode={props.onChangeNode}
-            onCommitNode={props.onCommitNode}
-            onEditorModeChange={setTextEditorMode}
-            onMetadataOpenChange={setMetadataOpen}
-            onSelectNodeId={handleSelectNode}
-          />
-        )}
-      </div>}
+      ) : isOverviewSelected && selectedResource ? (
+        <AgentPresetOverview
+          key={selectedResource.id}
+          preset={selectedResource}
+          textTransformsApi={props.textTransformsApi}
+          onOpenTextUse={props.onOpenTextUse}
+          installations={props.extensionInstallations}
+          modelProfiles={props.modelProfiles}
+          providerAccounts={props.providerAccounts}
+          tools={props.tools}
+          toolMounts={props.toolMounts}
+          settingMounts={props.settingMounts}
+          card={props.card}
+          resources={props.resources}
+          unavailableMounts={toolProjection.unavailableMounts}
+          t={props.t}
+          onSaveModel={props.onSaveModel}
+          onReplaceMounts={replaceToolMounts}
+          onReplaceSettingMounts={props.onReplaceSettingMounts}
+          onDuplicate={() => props.onDuplicateResource(selectedResource.id).then(() => {})}
+          onDelete={() => props.onDeleteResource(selectedResource.id)}
+          onExport={() => props.onExportResource(selectedResource.id)}
+          onOpenSetting={props.onOpenSetting}
+        />
+      ) : (
+        <div className={styles.detailStack}>
+          <div className={`${styles.authorDetail} ${detailNode?.kind === 'virtual' ? styles.anchorDetail : ''}`}>
+            <ContextAssetEditor
+              activationEditable
+              allowTargetAnchor={false}
+              compactVirtualNotes
+              editorMode={textEditorMode}
+              metadataOpen={metadataOpen}
+              node={detailNode}
+              tokenNode={detailNode?.kind === 'virtual' && tokenProjection ? findContextNode([tokenProjection.root], detailNode.id) : undefined}
+              tokenIncomplete={detailNode?.kind === 'virtual' ? tokenProjection?.incompleteIds.has(detailNode.id) : undefined}
+              pathNodes={findContextAssetPath(workbenchNodes, detailNode?.id)}
+              t={props.t}
+              onChangeNode={props.onChangeNode}
+              onCommitNode={props.onCommitNode}
+              onEditorModeChange={setTextEditorMode}
+              onMetadataOpenChange={setMetadataOpen}
+              onSelectNodeId={handleSelectNode}
+            />
+            {declarations ? <section className={styles.declarations}>
+              <h3>声明注入此处的资源</h3>
+              <p>静态候选；本轮是否触发由运行时决定。</p>
+              {detailNode?.label === '@chat.tools' ? <p>工具内容由运行时及当前工具挂载决定；这里不展示实际激活结果。</p> : null}
+              <FileTree ariaLabel="声明注入此处的资源" nodes={declarationNodes}
+                expandedIds={declarationExpandedIds} onExpandedIdsChange={setDeclarationExpandedIds}
+                getDisclosureLabel={item => item.label} getDragLabel={item => item.label}
+                moreActionsLabel={props.t('context.actionMore')}
+                renderMetaLeading={item => {
+                  const target = declarations.targets.get(item.id)
+                  const badge = target && readContextAssetBadgeInfo(target.node, props.t)
+                  return badge ? <span title={badge.label}>{badge.label}</span> : null
+                }}
+                isMuted={item => declarations.targets.get(item.id)?.enabled === false}
+                renderTrailing={item => {
+                  const target = declarations.targets.get(item.id)
+                  if (!target || target.node.readOnly) return null
+                  const enabled = target.node.enabled !== false
+                  const label = props.t(enabled ? 'context.actionDisable' : 'context.actionEnable')
+                  return <button type="button" className={styles.declarationToggle} title={label}
+                    aria-label={`${label} ${target.node.label}`} aria-pressed={enabled}
+                    onClick={event => {
+                      event.stopPropagation()
+                      props.onChangeNode(target.node.id, { enabled: !enabled })
+                      props.onCommitNode(target.node.id, { enabled: !enabled })
+                    }}>{enabled ? <ToggleRight aria-hidden="true" /> : <ToggleLeft aria-hidden="true" />}</button>
+                }}
+                onSelect={item => {
+                  const target = declarations.targets.get(item.id)
+                  if (target) props.onOpenSetting?.(target.resource.id, target.node.id)
+                  else setDeclarationExpandedIds(current => current.includes(item.id)
+                    ? current.filter(id => id !== item.id) : [...current, item.id])
+                }}
+                renderIcon={(item, expanded) => {
+                  const target = declarations.targets.get(item.id)
+                  return target ? renderContextAssetTreeIcon(target.node, expanded) : expanded ? <FolderOpen size={16} /> : <Folder size={16} />
+                }}
+              />
+            </section> : null}
+            {detailNode?.kind === 'virtual'
+              && (detailNode.capabilities?.targetAnchorId === '@chat.narrative'
+                || detailNode.capabilities?.targetAnchorId === '@memory.narrative')
+              ? <NarrativeRangePreview key={detailNode.id} api={props.previewApi}
+                  timelineId={props.previewTimelineId} branchId={props.previewBranchId} />
+              : null}
+          </div>
+        </div>
+      )}
     </AssetWorkbenchLayout>
   )
 }
 
-function AgentSourceDirectory(props: {
+export function AgentPresetOverview(props: {
+  preset: PromptResource
+  textTransformsApi: StudioApi['textTransforms']
+  onOpenTextUse?: (kind: 'rule' | 'extractor', id: string) => void
+  installations?: PresetWorkbenchProps['extensionInstallations']
+  modelProfiles: ModelProfile[]
+  providerAccounts: ProviderAccount[]
+  tools: AgentToolDefinition[]
+  toolMounts: PresetToolMount[]
+  settingMounts: SettingMount[]
+  card?: Card
   resources: PromptResource[]
-  installations: PresetWorkbenchProps['extensionInstallations']
-  selectedResourceId?: string
-  onSelect(id: string): void
+  unavailableMounts: PresetToolMount[]
   t: Translator
+  onSaveModel(input: Parameters<StudioApi['agentPresets']['update']>[0]): Promise<PromptResource>
+  onReplaceMounts(presetId: string, mounts: PresetToolMountInput[]): Promise<void>
+  onReplaceSettingMounts(source: { kind: 'preset'; id: string }, mounts: Array<{ id: string } | { settingResourceId: string }>): Promise<void>
+  onDuplicate(): Promise<void>
+  onDelete(): Promise<void>
+  onExport(): Promise<void>
+  onOpenSetting?: (resourceId: string, nodeId: string) => void
 }) {
-  const groups = new Map<string, { label: string; resources: PromptResource[] }>()
-  for (const resource of props.resources) {
-    const origin = resource.origin
-    const installation = origin?.kind === 'extension-package'
-      ? props.installations?.find(item => item.id === origin.installationId && item.packageId === origin.packageId)
-      : undefined
-    const key = origin?.kind === 'extension-package'
-      ? JSON.stringify([origin.packageId, origin.installationId])
-      : origin?.kind ?? 'workspace'
-    const label = origin?.kind === 'extension-package'
+  const origin = props.preset.origin
+  const isBuiltin = origin?.kind === 'builtin'
+  const isExtension = origin?.kind === 'extension-package'
+  const installation = isExtension
+    ? props.installations?.find(item => item.id === origin.installationId && item.packageId === origin.packageId)
+    : undefined
+  const originLabel = isBuiltin
+    ? props.t('promptResource.official')
+    : isExtension
       ? `${origin.packageId} · ${installation?.target.kind === 'card'
           ? props.t('promptResource.cardInstallation', { id: installation.target.cardId })
           : installation?.target.kind === 'global' || !origin.installationId
             ? props.t('promptResource.globalInstallation')
             : props.t('promptResource.unresolvedInstallation')}`
-      : props.t(origin?.kind === 'builtin' ? 'promptResource.official' : 'agent.sources.workspace')
-    const group = groups.get(key) ?? { label, resources: [] }
-    group.resources.push(resource)
-    groups.set(key, group)
+      : props.t('agent.sources.workspace')
+
+  const presetMounts = useMemo(() =>
+    props.toolMounts.filter(m => m.presetResourceId === props.preset.id),
+    [props.toolMounts, props.preset.id]
+  )
+  const usedSettings = props.settingMounts
+    .filter(mount => mount.source.kind === 'preset' && mount.source.id === props.preset.id)
+    .sort((a, b) => a.orderIndex - b.orderIndex)
+  const mountedToolMap = useMemo(() =>
+    new Map(presetMounts.map(m => [m.toolId, m])),
+    [presetMounts]
+  )
+
+  const toolGroups = useMemo(() => {
+    const groups = new Map<string, AgentToolDefinition[]>()
+    for (const tool of props.tools) {
+      const ns = toolDisplayGroup(tool)
+      const list = groups.get(ns) ?? []
+      list.push(tool)
+      groups.set(ns, list)
+    }
+    return [...groups.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([namespace, tools]) => ({
+        namespace,
+        tools: tools.sort((a, b) => a.name.localeCompare(b.name)),
+      }))
+  }, [props.tools])
+
+  const [collapsedToolSources, setCollapsedToolSources] = useState<string[]>([])
+  const [expandedToolDetails, setExpandedToolDetails] = useState<string[]>([])
+  const [toolQuery, setToolQuery] = useState('')
+  const [pendingToolId, setPendingToolId] = useState<string>()
+  const [toolError, setToolError] = useState<string>()
+  const [settingBusy, setSettingBusy] = useState(false)
+  const [settingError, setSettingError] = useState<string>()
+  const [settingQuery, setSettingQuery] = useState('')
+  const [collapsedSettingSources, setCollapsedSettingSources] = useState<string[]>([])
+  const settingRows = [
+    ...usedSettings.map(mount => {
+      const resourceId = mount.resolvedSettingResourceId === null ? undefined
+        : mount.resolvedSettingResourceId ?? mount.settingResourceId
+      const resource = props.resources.find(item => item.id === resourceId && item.resourceKind === 'setting')
+      return { id: `mount:${mount.id}`, mount, resource }
+    }),
+    ...props.resources.filter(item => item.resourceKind === 'setting'
+      && !usedSettings.some(mount => (mount.resolvedSettingResourceId ?? mount.settingResourceId) === item.id))
+      .map(resource => ({ id: `resource:${resource.id}`, mount: undefined, resource })),
+  ]
+  const settingRowsById = new Map(settingRows.map(row => [row.id, row]))
+  const cardSettingIds = new Set(props.card?.promptResourceIds ?? [])
+  const isCardSetting = (nodeId: string) => {
+    const resource = settingRowsById.get(nodeId)?.resource
+    return Boolean(resource && cardSettingIds.has(resource.id))
   }
-  return <nav className={styles.sourceDirectory} aria-label={props.t('agent.sources.title')}>
-    {[...groups].map(([key, group]) => <details key={key} open>
-      <summary title={group.label}>{group.label}</summary>
-      {group.resources.map(resource => <button key={resource.id} type="button"
-        aria-current={resource.id === props.selectedResourceId ? 'page' : undefined}
-        onClick={() => props.onSelect(resource.id)}>{resource.rootNode.label}</button>)}
-    </details>)}
-  </nav>
+  const settingNodes = (useCardSettings: boolean) => usageFolders(
+    [...settingRows.filter(row => isCardSetting(row.id)), ...settingRows.filter(row => !isCardSetting(row.id))].map(row => ({
+    source: isCardSetting(row.id) ? `当前角色 · ${props.card!.name}`
+      : row.resource ? usageSource(row.resource.origin, Boolean(row.resource.sourceArtifactRef)) : '不可用引用',
+    node: {
+      id: row.id, label: row.resource?.rootNode.label ?? `Settings 引用不可用：${row.mount!.settingResourceId}`,
+      kind: 'entry' as const, meta: isCardSetting(row.id) && useCardSettings
+        ? '随角色默认采用' : row.mount ? row.resource ? '已采用' : '未解析' : '未采用',
+    },
+  })), settingQuery)
+  const toolsByNodeId = new Map(props.tools.map(tool => [`tool:${tool.id}`, tool]))
+  const toolEnabled = (nodeId: string) => {
+    const tool = toolsByNodeId.get(nodeId)
+    const mount = tool && mountedToolMap.get(tool.id)
+    return Boolean(mount && mount.defaultEnabled !== false)
+  }
+  const unavailableToolsByNodeId = new Map(props.unavailableMounts.map(mount => [`unavailable:${mount.id}`, mount]))
+  const unavailableToolSource = props.t('preset.tools.unavailableGroup')
+  const toolNodes = usageFolders([
+    ...toolGroups.flatMap(group => {
+      const source = group.namespace === 'official.codeact' ? 'CodeAct（Freeform / JSON）'
+        : group.namespace === 'official.fixed' ? '官方固定功能工具'
+          : group.namespace === 'native' || group.namespace === 'system' ? `原生工具 (${group.namespace})`
+            : group.namespace === 'image' || group.namespace === 'image-generation' ? `生图工具 (${group.namespace})`
+              : `${group.namespace} 工具集`
+      return group.tools.map(tool => ({
+        source,
+        node: { id: `tool:${tool.id}`, label: tool.name, kind: 'entry', meta: tool.id,
+          ...(tool.description ? { children: [] } : {}) },
+      }))
+    }),
+    ...props.unavailableMounts.map(mount => ({
+      source: unavailableToolSource,
+      node: { id: `unavailable:${mount.id}`, label: props.t('preset.tools.unavailable', { id: mount.toolId }), kind: 'entry', meta: mount.toolId },
+    })),
+  ], toolQuery).map(node => ({
+    ...node,
+    meta: node.label === unavailableToolSource ? node.meta : `${node.children!.filter(child => toolEnabled(child.id)).length} / ${node.children!.length} 已启用`,
+  }))
+  const expandedToolIds = [...toolNodes.filter(node => !collapsedToolSources.includes(node.id)).map(node => node.id), ...expandedToolDetails]
+
+  async function saveSettings(mounts: Array<{ id: string } | { settingResourceId: string }>) {
+    if (settingBusy) return
+    setSettingBusy(true)
+    setSettingError(undefined)
+    try {
+      await props.onReplaceSettingMounts({ kind: 'preset', id: props.preset.id }, mounts)
+    } catch (error) {
+      setSettingError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setSettingBusy(false)
+    }
+  }
+  const currentSettingMounts = () => usedSettings.map(mount => ({ id: mount.id }))
+
+  async function handleToggleTool(tool: AgentToolDefinition) {
+    if (pendingToolId) return
+    setPendingToolId(tool.id)
+    setToolError(undefined)
+    try {
+      await props.onReplaceMounts(props.preset.id, togglePresetToolMount(presetMounts, tool))
+    } catch (caught) {
+      setToolError(caught instanceof Error ? caught.message : String(caught))
+    } finally {
+      setPendingToolId(undefined)
+    }
+  }
+
+  async function handleRemoveUnavailable(toolId: string) {
+    const next = presetMounts.filter(m => m.toolId !== toolId).map(toPresetToolMountInput)
+    await props.onReplaceMounts(props.preset.id, next)
+  }
+
+  async function handleRemoveAllUnavailable() {
+    const unavailableSet = new Set(props.unavailableMounts.map(m => m.toolId))
+    const next = presetMounts.filter(m => !unavailableSet.has(m.toolId)).map(toPresetToolMountInput)
+    await props.onReplaceMounts(props.preset.id, next)
+  }
+
+  return (
+    <div className={styles.presetOverview}>
+      <header className={styles.presetOverviewHeader}>
+        <div className={styles.presetOverviewTitleGroup}>
+          <h1>{props.preset.rootNode.label}</h1>
+          <span className={styles.presetOverviewOrigin}>{originLabel}</span>
+        </div>
+        <div className={styles.presetOverviewActions}>
+          <IconButton aria-label="复制预设" size="small" onClick={props.onDuplicate}><Copy size={16} aria-hidden="true" /></IconButton>
+          <IconButton aria-label="导出编排" size="small" onClick={props.onExport}><Download size={16} aria-hidden="true" /></IconButton>
+          <IconButton aria-label="删除预设" size="small" variant="danger" onClick={props.onDelete}><Trash2 size={16} aria-hidden="true" /></IconButton>
+        </div>
+      </header>
+
+      {/* 1. 顶部：模型配置 */}
+      <section className={styles.presetConfigSection}>
+        <h2>
+          <span>{props.t('agent.profile.model')}</span>
+        </h2>
+        <AgentModelEditor
+          key={props.preset.id}
+          preset={props.preset}
+          modelProfiles={props.modelProfiles}
+          providerAccounts={props.providerAccounts}
+          onSave={props.onSaveModel}
+          t={props.t}
+        />
+      </section>
+
+      <PresetTextUses preset={props.preset} api={props.textTransformsApi}
+        onSave={props.onSaveModel} onOpen={props.onOpenTextUse}
+        settingsContent={useCardSettings => {
+          const nodes = settingNodes(useCardSettings)
+          const enabled = (nodeId: string) => Boolean(settingRowsById.get(nodeId)?.mount
+            || (isCardSetting(nodeId) && useCardSettings))
+          return <section className={styles.presetResourceList} aria-label="Settings 使用资源">
+        <SearchField aria-label="搜索 Settings" placeholder="搜索名称或来源"
+          clearLabel="清除搜索" value={settingQuery} onClear={() => setSettingQuery('')}
+          onChange={event => { setSettingQuery(event.target.value); setCollapsedSettingSources([]) }} />
+        {settingError ? <p role="alert">{settingError}</p> : null}
+        <FileTree ariaLabel="Settings 来源目录" nodes={nodes}
+          expandedIds={nodes.filter(node => !collapsedSettingSources.includes(node.id)).map(node => node.id)}
+          onExpandedIdsChange={ids => setCollapsedSettingSources(nodes.filter(node => !ids.includes(node.id)).map(node => node.id))}
+          getDisclosureLabel={(node, expanded) => `${expanded ? '收起' : '展开'}${node.label}`}
+          getDragLabel={node => node.label} moreActionsLabel="更多操作"
+          isMuted={node => {
+            const row = settingRowsById.get(node.id)
+            return Boolean(row && (!enabled(node.id) || !row.resource))
+          }}
+          onSelect={node => {
+            const resource = settingRowsById.get(node.id)?.resource
+            if (resource) props.onOpenSetting?.(resource.id, resource.rootNode.id)
+          }}
+          renderIcon={(node, expanded) => node.kind === 'folder'
+            ? expanded ? <FolderOpen size={15} /> : <Folder size={15} />
+            : isCardSetting(node.id)
+              ? <Star size={15} className={enabled(node.id) ? styles.usageEnabledIcon : undefined} />
+              : <BookOpen size={15} className={enabled(node.id) ? styles.usageEnabledIcon : undefined} />}
+          renderTrailing={node => {
+            const row = settingRowsById.get(node.id)
+            if (!row) return null
+            const { mount, resource } = row
+            const inherited = isCardSetting(node.id) && useCardSettings
+            return resource ? <button type="button" className={styles.declarationToggle}
+                aria-label={`${enabled(node.id) ? '停用' : '启用'} Settings：${resource.rootNode.label}`}
+                title={inherited ? '随角色默认采用，由“使用角色世界书”控制' : mount ? '停用条目' : '启用条目'}
+                aria-pressed={enabled(node.id)} disabled={settingBusy || inherited}
+                onClick={() => void saveSettings(mount
+                  ? currentSettingMounts().filter(item => item.id !== mount.id)
+                  : [...currentSettingMounts(), { settingResourceId: resource.id }])}>
+                {enabled(node.id) ? <ToggleRight aria-hidden="true" /> : <ToggleLeft aria-hidden="true" />}
+              </button> : <IconButton aria-label="移除 Settings" title="移除引用" size="small" disabled={settingBusy}
+                onClick={() => void saveSettings(currentSettingMounts().filter(item => item.id !== mount!.id))}>
+                <Trash2 size={14} aria-hidden="true" />
+              </IconButton>
+          }} />
+        {!nodes.length && <p className={styles.presetResourceEmpty}>没有匹配的 Settings</p>}
+      </section>}}
+      toolsContent={<section className={styles.presetResourceList} aria-label={props.t('preset.tools.mountTitle')}>
+        <SearchField aria-label="搜索工具" placeholder="搜索名称或来源"
+          clearLabel="清除搜索" value={toolQuery} onClear={() => setToolQuery('')}
+          onChange={event => { setToolQuery(event.target.value); setCollapsedToolSources([]) }} />
+        {toolError ? <p className={styles.toolError} role="alert">{toolError}</p> : null}
+        <FileTree ariaLabel="工具来源目录" nodes={toolNodes} expandedIds={expandedToolIds}
+          onExpandedIdsChange={ids => {
+            setCollapsedToolSources(toolNodes.filter(node => !ids.includes(node.id)).map(node => node.id))
+            setExpandedToolDetails(ids.filter(id => toolsByNodeId.has(id)))
+          }}
+          getDisclosureLabel={(node, expanded) => `${expanded ? '收起' : '展开'}${node.label}`}
+          getDragLabel={node => node.label} moreActionsLabel="更多操作"
+          onSelect={() => {}}
+          isMuted={node => node.kind !== 'folder' && !toolEnabled(node.id)}
+          renderIcon={(node, expanded) => node.kind === 'folder'
+            ? expanded ? <FolderOpen size={15} /> : <Folder size={15} />
+            : <Wrench size={15} className={toolEnabled(node.id) ? styles.usageEnabledIcon : undefined} />}
+          renderExpandedRow={node => expandedToolDetails.includes(node.id) && toolsByNodeId.get(node.id)?.description
+            ? <p className={styles.toolDescription}>{toolsByNodeId.get(node.id)!.description}</p> : null}
+          renderTrailing={node => {
+            if (node.kind === 'folder') return node.label === unavailableToolSource
+              ? <IconButton size="small" title={props.t('preset.tools.removeUnavailable')}
+                aria-label={props.t('preset.tools.removeUnavailable')} onClick={handleRemoveAllUnavailable}>
+                <Trash2 size={14} aria-hidden="true" />
+              </IconButton> : null
+            const unavailable = unavailableToolsByNodeId.get(node.id)
+            if (unavailable) return <IconButton size="small" title="移除不可用工具"
+              aria-label={`移除工具：${unavailable.toolId}`} onClick={() => void handleRemoveUnavailable(unavailable.toolId)}>
+              <Trash2 size={14} aria-hidden="true" />
+            </IconButton>
+            const tool = toolsByNodeId.get(node.id)!
+            const enabled = toolEnabled(node.id)
+            return <button type="button" className={styles.declarationToggle}
+              title={enabled ? '停用工具' : '启用工具'} aria-label={`${enabled ? '停用' : '启用'}工具：${tool.name}`}
+              aria-pressed={enabled} disabled={Boolean(pendingToolId)}
+              onClick={() => void handleToggleTool(tool)}>
+              {enabled ? <ToggleRight aria-hidden="true" /> : <ToggleLeft aria-hidden="true" />}
+            </button>
+          }} />
+        {!toolNodes.length && <p className={styles.presetResourceEmpty}>没有匹配的工具</p>}
+      </section>} />
+    </div>
+  )
+}
+
+export function PresetTextUses(props: {
+  preset: PromptResource
+  api: StudioApi['textTransforms']
+  onSave(input: Parameters<StudioApi['agentPresets']['update']>[0]): Promise<PromptResource>
+  onOpen?: (kind: 'rule' | 'extractor', id: string) => void
+  settingsContent?: ReactNode | ((useCardSettings: boolean) => ReactNode)
+  toolsContent?: ReactNode
+}) {
+  type TextUse = NonNullable<PromptResource['textUses']>[number]
+  const editableUses = (uses: PromptResource['textUses'] = []): TextUse[] => uses.map(use => ({
+    id: use.id, kind: use.kind, enabled: use.enabled,
+    ...(use.orderIndex !== undefined ? { orderIndex: use.orderIndex } : {}),
+  }))
+  const [rules, setRules] = useState<TextTransformRule[]>([])
+  const [extractors, setExtractors] = useState<TextExtractor[]>([])
+  const [draft, setDraft] = useState(() => ({
+    textUses: editableUses(props.preset.textUses),
+    useCardSettings: props.preset.useCardSettings ?? true,
+  }))
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string>()
+  const [activeTab, setActiveTab] = useState<'settings' | 'text' | 'tools'>('settings')
+  const [textQuery, setTextQuery] = useState('')
+  const [collapsedTextSources, setCollapsedTextSources] = useState<string[]>([])
+  const dirty = draft.useCardSettings !== (props.preset.useCardSettings ?? true)
+    || JSON.stringify(draft.textUses) !== JSON.stringify(editableUses(props.preset.textUses))
+
+  useEffect(() => {
+    let active = true
+    Promise.all([props.api.listRules(), props.api.listExtractors()])
+      .then(([ruleResult, extractorResult]) => {
+        if (active) {
+          setRules(ruleResult.rules)
+          setExtractors(extractorResult.extractors)
+        }
+      })
+      .catch(cause => { if (active) setError(cause instanceof Error ? cause.message : String(cause)) })
+    return () => { active = false }
+  }, [props.api])
+
+  function toggle(kind: TextUse['kind'], id: string, defaultEnabled: boolean) {
+    setDraft(current => {
+      const previous = current.textUses.find(use => use.kind === kind && use.id === id)
+      const enabled = !(previous?.enabled ?? defaultEnabled)
+      const textUses = current.textUses.filter(use => use.kind !== kind || use.id !== id)
+      if (enabled !== defaultEnabled) textUses.push({ ...previous, id, kind, enabled })
+      return { ...current, textUses }
+    })
+  }
+
+  async function save() {
+    if (busy || !dirty) return
+    setBusy(true)
+    setError(undefined)
+    try {
+      const saved = await props.onSave({
+        agentPresetId: props.preset.id,
+        expectedVersion: props.preset.version,
+        textUses: draft.textUses,
+        useCardSettings: draft.useCardSettings,
+      })
+      setDraft({ textUses: editableUses(saved.textUses), useCardSettings: saved.useCardSettings ?? true })
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function textSource(item: TextTransformRule | TextExtractor): string {
+    if (item.owner.kind === 'card') return `角色 · ${item.owner.cardId}`
+    if (item.owner.kind === 'preset') return `预设 · ${item.owner.presetId}`
+    if (item.owner.kind === 'extension') return `扩展 · ${item.owner.packageId}`
+    return usageSource(item.origin)
+  }
+  const candidates = [
+    ...rules.map(rule => ({ kind: 'rule' as const, id: rule.id, name: rule.name, enabled: rule.enabled, source: textSource(rule) })),
+    ...extractors.map(extractor => ({ kind: 'extractor' as const, id: extractor.id, name: extractor.name, enabled: extractor.enabled, source: textSource(extractor) })),
+  ]
+  const candidatesById = new Map(candidates.map(item => [`${item.kind}:${item.id}`, item]))
+  const textEnabled = (nodeId: string) => {
+    const item = candidatesById.get(nodeId)
+    return item ? draft.textUses.find(use => use.kind === item.kind && use.id === item.id)?.enabled ?? item.enabled : false
+  }
+  const missing = draft.textUses.filter(use => !candidates.some(item => item.kind === use.kind && item.id === use.id))
+  const textNodes = usageFolders([
+    ...candidates.map(item => ({
+      source: item.source,
+      node: {
+        id: `${item.kind}:${item.id}`, label: item.name, kind: 'entry' as const,
+        meta: `${item.kind === 'rule' ? '正则' : '提取器'} · ${draft.textUses.some(use => use.kind === item.kind && use.id === item.id) ? '预设配置' : '默认'}`,
+      },
+    })),
+    ...missing.map(use => ({
+      source: '不可用引用',
+      node: { id: `${use.kind}:${use.id}`, label: use.id, kind: 'entry' as const, meta: '未解析' },
+    })),
+  ], textQuery)
+
+  return <div className={styles.presetUsageConfig}>
+    <PanelTabs items={[
+      { id: 'settings', label: 'Settings' },
+      { id: 'text', label: '正则 / 提取器' },
+      { id: 'tools', label: '工具' },
+    ]} activeId={activeTab} onChange={setActiveTab} ariaLabel="预设使用配置" size="compact" />
+    <section role="tabpanel" aria-label="Settings" hidden={activeTab !== 'settings'} className={styles.presetUsagePanel}>
+      <div className={styles.presetUsageOption}>
+        <span className={styles.presetResourceName}>使用角色世界书</span>
+        <button type="button" className={styles.declarationToggle} aria-label="使用角色世界书"
+          title={draft.useCardSettings ? '停用角色世界书' : '启用角色世界书'}
+          aria-pressed={draft.useCardSettings} disabled={busy}
+          onClick={() => setDraft(current => ({ ...current, useCardSettings: !current.useCardSettings }))}>
+          {draft.useCardSettings ? <ToggleRight aria-hidden="true" /> : <ToggleLeft aria-hidden="true" />}
+        </button>
+      </div>
+      {typeof props.settingsContent === 'function' ? props.settingsContent(draft.useCardSettings) : props.settingsContent}
+    </section>
+    <section role="tabpanel" aria-label="正则 / 提取器" hidden={activeTab !== 'text'} className={styles.presetUsagePanel}>
+      <SearchField aria-label="搜索正则与提取器" placeholder="搜索名称或来源"
+        clearLabel="清除搜索" value={textQuery} onClear={() => setTextQuery('')}
+        onChange={event => { setTextQuery(event.target.value); setCollapsedTextSources([]) }} />
+      <FileTree ariaLabel="正则与提取器来源目录" nodes={textNodes}
+        expandedIds={textNodes.filter(node => !collapsedTextSources.includes(node.id)).map(node => node.id)}
+        onExpandedIdsChange={ids => setCollapsedTextSources(textNodes.filter(node => !ids.includes(node.id)).map(node => node.id))}
+        getDisclosureLabel={(node, expanded) => `${expanded ? '收起' : '展开'}${node.label}`}
+        getDragLabel={node => node.label} moreActionsLabel="更多操作"
+        isMuted={node => node.kind !== 'folder' && !textEnabled(node.id)}
+        onSelect={node => {
+          const item = candidatesById.get(node.id)
+          if (item) props.onOpen?.(item.kind, item.id)
+        }}
+        renderIcon={(node, expanded) => node.kind === 'folder'
+          ? expanded ? <FolderOpen size={15} /> : <Folder size={15} />
+          : node.id.startsWith('rule:')
+            ? <Regex size={15} className={textEnabled(node.id) ? styles.usageEnabledIcon : undefined} />
+            : <Braces size={15} className={textEnabled(node.id) ? styles.usageEnabledIcon : undefined} />}
+        renderTrailing={node => {
+          if (node.kind === 'folder') return null
+          const item = candidatesById.get(node.id)
+          if (!item) return <IconButton aria-label={`移除不可用引用：${node.label}`} title="移除引用" size="small" disabled={busy}
+            onClick={() => setDraft(current => ({ ...current, textUses: current.textUses.filter(use => `${use.kind}:${use.id}` !== node.id) }))}>
+            <Trash2 size={14} aria-hidden="true" />
+          </IconButton>
+          const enabled = textEnabled(node.id)
+          return <button type="button" className={styles.declarationToggle}
+              aria-label={`启用${item.kind === 'rule' ? '规则' : '提取器'}：${item.name}`}
+              title={enabled ? '停用条目' : '启用条目'} aria-pressed={enabled} disabled={busy}
+              onClick={() => toggle(item.kind, item.id, item.enabled)}>
+              {enabled ? <ToggleRight aria-hidden="true" /> : <ToggleLeft aria-hidden="true" />}
+            </button>
+        }} />
+      {!textNodes.length && <p className={styles.presetResourceEmpty}>没有匹配的正则或提取器</p>}
+    </section>
+    <section role="tabpanel" aria-label="工具" hidden={activeTab !== 'tools'} className={styles.presetUsagePanel}>
+      {props.toolsContent}
+    </section>
+    <div hidden={activeTab === 'tools'} className={styles.presetUsageSave}>
+      {error ? <p role="alert">{error}</p> : null}
+      <Button disabled={!dirty || busy} onClick={() => void save()}>保存使用配置</Button>
+    </div>
+  </div>
 }
 
 function PresetToolExplorer(props: {
@@ -457,9 +981,10 @@ function PresetToolExplorer(props: {
         .join(' ')
         .toLocaleLowerCase()
       if (normalizedQuery && !searchableText.includes(normalizedQuery)) continue
-      const tools = groups.get(tool.owner.namespace) ?? []
+      const group = toolDisplayGroup(tool)
+      const tools = groups.get(group) ?? []
       tools.push(tool)
-      groups.set(tool.owner.namespace, tools)
+      groups.set(group, tools)
     }
     return [...groups.entries()]
       .sort(([left], [right]) => left.localeCompare(right))
@@ -526,7 +1051,7 @@ function PresetToolExplorer(props: {
               >
                 {collapsed ? <ChevronRight aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
                 <Package aria-hidden="true" />
-                <strong>{group.namespace}</strong>
+                <strong>{group.namespace === 'official.codeact' ? 'CodeAct（Freeform / JSON）' : group.namespace === 'official.fixed' ? '官方固定功能工具' : group.namespace}</strong>
                 <span>{group.tools.length}</span>
               </button>
               {!collapsed ? (
@@ -825,107 +1350,6 @@ function createMountDraft(tool: AgentToolDefinition, mount?: PresetToolMount) {
     contentSlot: content.slot ?? '',
     contentRankKey: content.rankKey ?? '',
     contentOrder: content.orderHint?.toString() ?? '',
-  }
-}
-
-function createDefaultPresetToolMountInput(tool: AgentToolDefinition, orderIndex: number): PresetToolMountInput {
-  return {
-    toolId: tool.id,
-    orderIndex,
-    defaultEnabled: true,
-    ...(tool.prompt?.activation ? { activation: structuredClone(tool.prompt.activation) } : {}),
-    ...(tool.prompt?.provider ? { provider: { ...tool.prompt.provider } } : {}),
-    ...(tool.input.kind === 'structured' || !tool.prompt?.content ? {} : { content: { ...tool.prompt.content } }),
-  }
-}
-
-function injectContextNodesIntoPresetTree(
-  presetRoot: ContextAssetNode,
-  contextResources: PromptResource[],
-  toolNodes: ContextAssetNode[],
-): ContextAssetNode {
-  const slotNodesByAnchor = new Map<string, ContextAssetNode[]>()
-
-  for (const resource of contextResources) {
-    const root = readPromptResourceWorkbenchRoot(resource)
-    const entries = flattenContextAssetNodes(root.children ?? []).filter(e => e.kind === 'entry')
-    if (entries.length === 0) continue
-
-    const targetAnchor = entries[0]?.capabilities?.targetAnchorId ?? '@setting.stable'
-    const localDepth = entries[0]?.capabilities?.localDepth ?? 10
-
-    const slotNode: ContextAssetNode = {
-      id: `slot.${resource.id}`,
-      label: resource.rootNode.label,
-      kind: 'slot',
-      category: 'setting',
-      meta: `Slot • depth ${localDepth}`,
-      capabilities: {
-        targetAnchorId: targetAnchor,
-        localDepth,
-      },
-      children: entries.map(entry => ({
-        ...entry,
-        meta: entry.meta ?? 'setting',
-      })),
-    }
-
-    const list = slotNodesByAnchor.get(targetAnchor) ?? []
-    list.push(slotNode)
-    slotNodesByAnchor.set(targetAnchor, list)
-  }
-
-  if (toolNodes.length > 0) {
-    const toolsSlot: ContextAssetNode = {
-      id: 'slot.tools',
-      label: 'Agent Tools',
-      kind: 'slot',
-      category: 'runtime',
-      meta: `Slot • ${toolNodes.length} tools`,
-      capabilities: {
-        targetAnchorId: '@chat.tools',
-        localDepth: 10,
-      },
-      children: toolNodes,
-    }
-    const list = slotNodesByAnchor.get('@chat.tools') ?? []
-    list.push(toolsSlot)
-    slotNodesByAnchor.set('@chat.tools', list)
-  }
-
-  function transformNode(node: ContextAssetNode): ContextAssetNode {
-    if (node.kind === 'virtual') {
-      const anchorKey = node.label.startsWith('@') ? node.label : (node.capabilities?.targetAnchorId ?? node.label)
-      const matchingSlots = (slotNodesByAnchor.get(anchorKey) ?? slotNodesByAnchor.get(node.label) ?? slotNodesByAnchor.get(node.id) ?? [])
-        .sort((a, b) => (a.capabilities?.localDepth ?? 0) - (b.capabilities?.localDepth ?? 0))
-
-      return {
-        ...node,
-        children: matchingSlots.length > 0 ? matchingSlots : undefined,
-      }
-    }
-
-    if (node.children && node.children.length > 0) {
-      return {
-        ...node,
-        children: node.children.map(transformNode),
-      }
-    }
-
-    return node
-  }
-
-  return transformNode(presetRoot)
-}
-
-function toPresetToolMountInput(mount: PresetToolMount): PresetToolMountInput {
-  return {
-    toolId: mount.toolId,
-    orderIndex: mount.orderIndex,
-    defaultEnabled: mount.defaultEnabled,
-    ...(mount.activation ? { activation: structuredClone(mount.activation) } : {}),
-    ...(mount.provider ? { provider: { ...mount.provider } } : {}),
-    ...(mount.content ? { content: { ...mount.content } } : {}),
   }
 }
 

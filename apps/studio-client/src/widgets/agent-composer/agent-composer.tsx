@@ -48,11 +48,11 @@ export function AgentComposer(props: AgentComposerProps) {
   const hasContent = Boolean(props.narrativeInput?.trim())
   const recovery = props.runRecovery?.target === 'narrative' ? props.runRecovery : undefined
   const disconnected = props.runRecovery?.status === 'disconnected'
-  const isActive = Boolean(props.pinned || hovered || hasContent || props.agentPanelOpen || recovery)
+  const isActive = Boolean(props.pinned || hovered || hasContent || recovery)
 
   return (
     <>
-      {!props.pinned && !props.agentPanelOpen ? (
+      {!props.pinned ? (
         <div
           className={styles.triggerZone}
           onMouseEnter={handleMouseEnter}
@@ -66,7 +66,6 @@ export function AgentComposer(props: AgentComposerProps) {
         data-active={isActive ? 'true' : undefined}
         data-pinned={props.pinned ? 'true' : undefined}
         data-has-content={hasContent ? 'true' : undefined}
-        data-expanded={props.agentPanelOpen ? 'true' : undefined}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >

@@ -71,6 +71,7 @@ import { readString } from './rpc/rpc-params.js'
 import { resolveLoomStudioLocalPaths, type LoomStudioLocalPaths } from './platform/local-paths.js'
 
 const defaultPort = 4173
+const installationRoot = fileURLToPath(new URL('../../../', import.meta.url))
 
 export type StudioServer = {
   listen(port?: number): Promise<{ port: number }>
@@ -95,9 +96,12 @@ export type CreateStudioServerOptions = {
   officialContentDirectory?: string
   secretBackend?: SecretBackend
   applicationSessionOrigins?: string[]
+  runtimeMode?: 'development' | 'production'
+  clientDirectory?: string
 }
 
 export function createStudioServer(options: CreateStudioServerOptions = {}): StudioServer {
+  const officialContentDirectory = options.officialContentDirectory ?? join(installationRoot, 'official/starter')
   const localPaths = options.localPaths ?? resolveLoomStudioLocalPaths({ home: '.loomstudio-dev' })
   const logger = options.logger
   const diagnostics = createInMemoryDiagnosticsRegistry()
@@ -235,7 +239,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     diagnostics,
     logger: options.extensionLogger,
     queryLogs: (packageId, input, installationId) => queryExtensionLogs({ current: options.logs, history: options.logHistory }, packageId, input, 'server', installationId),
-    mode: 'development',
+    mode: options.runtimeMode ?? 'development',
     grantEventCapabilities: (manifest, moduleManifest, target) => extensionManager.getGrantedEventCapabilities(manifest.id, moduleManifest.id, target),
     grantAssetCapabilities: (manifest, moduleManifest, target) => extensionManager.getGrantedAssetCapabilities(manifest.id, moduleManifest.id, target),
     assetScratchRoot: localPaths.extensionCacheRoot,
@@ -324,6 +328,40 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     },
     aiCapabilities,
     aiGateway: profiledAiGateway,
+    invokeModel: async input => {
+      if (typeof input.model?.providerProfileId !== 'string' || !input.model.providerProfileId.trim()
+        || typeof input.model.modelId !== 'string' || !input.model.modelId.trim())
+        throw new Error('Explicit provider profile and model are required')
+      input.signal?.throwIfAborted()
+      const result = await gateway.invokeChat({
+        model: input.model,
+        request: {
+          messages: input.messages,
+          ...(input.providerOptions ? { providerOptions: input.providerOptions } : {}),
+        },
+        runId: createId('extension-model-run'),
+        sessionId: 'extension-direct',
+        branchId: 'extension-direct',
+        ...(input.signal ? { abortSignal: input.signal } : {}),
+        ...(input.delivery ? { delivery: input.delivery } : {}),
+        ...(input.onEvent ? { onEvent: input.onEvent } : {}),
+      })
+      input.signal?.throwIfAborted()
+      return {
+        message: result.message,
+        text: result.text,
+        provider: result.provider,
+        model: result.model,
+        ...(result.finishReason ? { finishReason: result.finishReason } : {}),
+        ...(result.rawStopReason ? { rawFinishReason: result.rawStopReason } : {}),
+        ...(result.usage ? { usage: result.usage } : {}),
+        ...(result.providerCallId ? { providerCallId: result.providerCallId } : {}),
+        ...(result.raw ? { raw: result.raw } : {}),
+      }
+    },
+    buildPrompt: async (input, target, packageId) => await applicationRuntime.buildExtensionPrompt(
+      input, target, packageId,
+    ),
     registerMacroProvider: (provider, owner) => macroProviders.register({
       ...provider,
       sourceLabel: `${owner.packageId}/${owner.moduleId}`,
@@ -432,7 +470,8 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
       { subscriber },
     ),
   })
-  const extensionRootDirectory = resolve(options.extensionRootDirectory ?? 'official/extensions')
+  const extensionRootDirectory = options.extensionRootDirectory
+    ?? (options.runtimeMode === 'production' ? undefined : join(installationRoot, 'official/extensions'))
   const extensionStateDirectory = resolve(options.extensionStateDirectory ?? localPaths.extensionRoot)
   const extensionManager = createServerExtensionManager({
     host: extensionHost,
@@ -514,7 +553,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
   const rpcRouter = createStudioRpcRouter({
     convertPromptResource: importConversions.promptResource,
     applicationRuntime,
-    officialContent: createOfficialContentService(applicationRuntime, resolve(options.officialContentDirectory ?? 'official/starter')),
+    officialContent: createOfficialContentService(applicationRuntime, resolve(officialContentDirectory)),
     resourceDirectories: {
       call: async (method, params, context) => {
         if (method === 'directories.import') {
@@ -581,8 +620,9 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
   }
   const server = createStudioHttpServer({
     auth: createApplicationSessionAuth({
-      allowedOrigins: options.applicationSessionOrigins ?? ['http://127.0.0.1:5173'],
+      allowedOrigins: options.applicationSessionOrigins ?? (options.runtimeMode === 'production' ? [] : ['http://127.0.0.1:5173']),
     }),
+    clientDirectory: options.clientDirectory,
     assets,
     canReadCardExtensionAsset: async input => {
       const target = { kind: 'card' as const, cardId: input.cardId }
@@ -658,7 +698,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
     extensionEvents: {
       subscribe: handler => {
         const eventBus = kernel.getEventBus()
-        const delivery = eventBus.subscribe(['extensions.changed', 'extensions.data.changed', 'entity.lifecycle.changed', 'directories.media.changed'], handler)
+        const delivery = eventBus.subscribe(['extensions.changed', 'extensions.data.changed', 'entity.lifecycle.changed', 'directories.media.changed', 'data.changed'], handler)
         const data = eventBus.subscribe(['data.changed'], event => {
           const changesetId = event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload)
             && typeof event.payload.changesetId === 'string'
@@ -698,7 +738,7 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
         for (const failure of recoveryErrors) console.error(`Card ${failure.cardId} directory recovery requires attention: ${failure.error}`)
         await directoryCatalog.scan()
         await applicationRuntime.initialize()
-        await installBuiltinStarterContent(applicationRuntime, resolve(options.officialContentDirectory ?? 'official/starter'))
+        await installBuiltinStarterContent(applicationRuntime, resolve(officialContentDirectory))
         await kernel.start()
         await extensionManager.initialize()
         mediaWatcher = await directoryMedia.watch(() => {
@@ -749,6 +789,12 @@ export function createStudioServer(options: CreateStudioServerOptions = {}): Stu
 }
 
 export async function main(): Promise<void> {
+  const development = process.env.NODE_ENV === 'development'
+    || (!process.env.NODE_ENV && import.meta.url.endsWith('.ts'))
+  const clientDirectory = join(installationRoot, 'apps/studio-client/dist')
+  if (!development && !existsSync(join(clientDirectory, 'index.html'))) {
+    throw new Error('Client build is missing. Run pnpm build:app before starting Loom Studio.')
+  }
   const localPaths = resolveLoomStudioLocalPaths()
   const instanceId = createId('server')
   const memoryLogs = createMemoryLogSink({ capacity: 5_000 })
@@ -767,6 +813,8 @@ export async function main(): Promise<void> {
   })
   const logger = rootLogger.child('system')
   const server = createStudioServer({
+    runtimeMode: development ? 'development' : 'production',
+    clientDirectory: development ? undefined : clientDirectory,
     localPaths,
     logger,
     logs: memoryLogs,
@@ -806,7 +854,8 @@ export async function main(): Promise<void> {
 
   try {
     const { port: actualPort } = await server.listen(port)
-    printStudioServerBanner(actualPort)
+    console.log(`Loom Studio: http://127.0.0.1:${actualPort}`)
+    printStudioServerBanner(actualPort, development)
   } catch (error) {
     process.off('SIGINT', handleSigint)
     process.off('SIGTERM', handleSigterm)
@@ -816,7 +865,7 @@ export async function main(): Promise<void> {
   }
 }
 
-function printStudioServerBanner(port: number): void {
+function printStudioServerBanner(port: number, development: boolean): void {
   try {
     const candidatePaths = [
       fileURLToPath(new URL('./banner.txt', import.meta.url)),
@@ -858,7 +907,7 @@ function printStudioServerBanner(port: number): void {
     const time = new Date().toLocaleTimeString('zh-CN', { hour12: false })
     const nodeVer = process.version
     const serverUrl = `http://127.0.0.1:${port}`
-    const clientUrl = 'http://127.0.0.1:5173'
+    const clientUrl = development ? 'http://127.0.0.1:5173' : serverUrl
 
     // OSC 8 原生终端可点击超链接 (VSCode/iTerm2/Ghostty 支持直接按住点击打开)
     const serverLink = `\x1b]8;;${serverUrl}\x1b\\${serverUrl}\x1b]8;;\x1b\\`

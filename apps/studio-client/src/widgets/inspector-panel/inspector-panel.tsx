@@ -13,6 +13,7 @@ import { AiCapabilityLab } from '../model-panel/ai-capability-lab.js'
 import styles from './inspector-panel.module.scss'
 
 type InspectorPanelProps = {
+  tokenEstimate?: import('@loom-studio/ai-gateway').RequestTokenEstimate
   agentTranscript: unknown
   cardSnapshot: unknown
   promptBuildSteps: PromptBuildStep[]
@@ -93,6 +94,12 @@ export function InspectorPanel(props: InspectorPanelProps) {
       </section>
       <section className={styles.section}>
         <h2>{props.t('inspector.prompt')}</h2>
+        {props.tokenEstimate ? <details>
+          <summary>{props.t('tokens.requestEstimate')} · {props.tokenEstimate.estimatedTokens.toLocaleString()} tokens</summary>
+          <p>{props.tokenEstimate.basis.encoding} × {props.tokenEstimate.basis.multiplier} · {props.tokenEstimate.scope}</p>
+          <p>消息: {props.tokenEstimate.messages.join(' / ')} · 工具: {props.tokenEstimate.tools.join(' / ') || '0'}</p>
+          <p>未计入: {props.tokenEstimate.uncounted.join(', ')}</p>
+        </details> : null}
         <JsonBlock value={props.promptMessages} />
       </section>
       <section className={styles.section}>

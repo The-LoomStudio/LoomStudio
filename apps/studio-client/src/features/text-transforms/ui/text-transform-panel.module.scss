@@ -101,6 +101,27 @@
   }
 }
 
+.treeToggle {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--loom-color-text-subtle);
+  cursor: pointer;
+}
+
+.treeToggle svg {
+  width: 18px;
+  height: 18px;
+}
+
+.treeToggle[aria-pressed='true'] {
+  color: var(--loom-color-accent);
+}
+
 .navItem {
   width: 100%;
   display: flex;

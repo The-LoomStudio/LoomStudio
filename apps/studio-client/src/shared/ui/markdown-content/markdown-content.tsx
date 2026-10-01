@@ -1,5 +1,6 @@
 import Markdown, { defaultUrlTransform, type Components } from 'react-markdown'
 import { createContext, useContext, useMemo } from 'react'
+import { Bot, BookOpen, Cpu, Database, FileCode2, FileText, Link2, Puzzle, UserRound } from 'lucide-react'
 import remarkGfm from 'remark-gfm'
 import { parseResourceLink } from '@loom-studio/shared'
 export { highlightCode } from './code-highlight.js'
@@ -15,8 +16,17 @@ const markdownComponents: Components = {
     if (href?.startsWith('loom-resource:')) {
       const reference = parseResourceLink(href)
       if (!reference) return <span title="无效的资源引用">{children}</span>
-      return <button type="button" className={`${styles.semanticToken} ${styles.assetToken}`}
+      const Icon = reference.kind === 'state' ? Database
+        : reference.kind === 'script' ? FileCode2
+        : reference.kind === 'prompt-resource' || reference.type === 'resource' ? FileText
+        : reference.type === 'timeline' ? BookOpen
+        : reference.type === 'card' ? UserRound
+        : reference.type === 'session' || reference.type === 'run' ? Bot
+        : reference.type === 'provider' ? Cpu
+        : reference.type === 'extension' ? Puzzle : Link2
+      return <button type="button" className={styles.resourceReference}
         title={href} onClick={() => window.dispatchEvent(new CustomEvent('loom:open-reference', { detail: { uri: href } }))}>
+        <Icon aria-hidden="true" />
         {children}
       </button>
     }

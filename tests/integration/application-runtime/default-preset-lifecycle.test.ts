@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createAgentStore, createNarrativeStore, createPromptResourceStore } from '@loom-studio/application-data'
 import type { AiGatewayRequest, AiGatewayResult } from '@loom-studio/ai-gateway'
+import { estimateRequestTokens } from '@loom-studio/ai-gateway'
 import { createAgentToolRegistry, createApplicationRuntime, createNarrativeContextRegistry, type NarrativeContextProjection, type ToolDefinition } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
@@ -246,6 +247,26 @@ async function simulateLifecycle() {
 describe('Default preset: simulated Agent lifecycle', () => {
   let scenario: Awaited<ReturnType<typeof simulateLifecycle>>
   beforeAll(async () => { scenario = await simulateLifecycle() }, 30_000)
+
+  it('persists each measured request, links observations, and keeps a failed request without fake usage', () => {
+    const { requests, completedTranscript, failedTranscript, preview } = scenario
+    const measurements = completedTranscript.entries.filter(entry => entry.entry.kind === 'request-measurement')
+    expect(measurements).toHaveLength(requests.length)
+    expect(new Set(measurements.map(entry => entry.entry.kind === 'request-measurement' && entry.entry.measurementId)).size).toBe(requests.length)
+    for (const [index, entry] of measurements.entries()) {
+      if (entry.entry.kind !== 'request-measurement') throw new Error('Unexpected entry')
+      const expected = estimateRequestTokens(requests[index]!)
+      expect(entry.entry.count).toEqual({ baseTokens: expected.baseTokens, estimatedTokens: expected.estimatedTokens, basis: expected.basis })
+    }
+    expect(preview.tokenEstimate).toEqual(estimateRequestTokens(requests[0]!))
+    const observations = completedTranscript.entries.filter(entry => entry.entry.kind === 'provider-observation')
+    expect(observations).toHaveLength(requests.length - 1)
+    for (const observation of observations) {
+      if (observation.entry.kind !== 'provider-observation') throw new Error('Unexpected entry')
+      expect(measurements.some(item => item.entry.kind === 'request-measurement' && item.entry.measurementId === observation.entry.measurementId)).toBe(true)
+    }
+    expect(failedTranscript.entries.at(-1)?.entry).toMatchObject({ kind: 'run-state', state: 'failed', measurementId: expect.any(String) })
+  })
 
   it('assembles the full initial request: multi-source wrapping, branch window, memory, tools, Session and current input', () => {
     const { requests, initialWindow, preview } = scenario

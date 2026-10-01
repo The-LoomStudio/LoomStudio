@@ -69,6 +69,8 @@ export function useClientExtensionRuntime(input: {
   const [serverDiagnostics, setServerDiagnostics] = useState<ClientJsonValue[]>([])
   const [refreshSequence, setRefreshSequence] = useState(0)
   const [configRevision, setConfigRevision] = useState(0)
+  const [, setBackgroundRevision] = useState(0)
+  useEffect(() => host.subscribe(() => setBackgroundRevision(revision => revision + 1)), [host])
   const lifecycle = useRef<{ host: typeof host; signal: AbortSignal } | null>(null)
   const globalPackages = useRef<ManagedExtensionPackage[]>([])
   const requestSequence = useRef(0)

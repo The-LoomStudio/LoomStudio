@@ -76,6 +76,7 @@ export type ManagedExtensionPackage = {
     promptResources?: ExtensionPromptResourceContribution[]
     agentTools?: ExtensionAgentToolContribution[]
     settings?: ExtensionSettingContribution[]
+    loomScripts?: Array<{ id: string; source: string }>
     [key: string]: ClientJsonValue | undefined
   }
   importedResources?: {

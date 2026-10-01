@@ -19,6 +19,16 @@ Studio Application 是 Loom Studio 第一方内建的 AIRP 领域层。它定义
 
 Application 的其他领域文档在稳定前继续保留于 [`../../workbench/discussion/`](../../workbench/discussion/)。
 
+## 资源包与 Agent Preset
+
+当前分发包只有 Card Package 与 Extension Package；Extension Package 可只含声明式资源而没有 Module。Agent Preset 是可直接调用的 Agent 执行定义，聚合有序 Prompt Resource 树、历史/交付策略、本地 Provider Model 绑定及 Preset Tool Mount，不存在独立 Agent Profile 层。Preset 可不绑定模型；绑定值仍引用 Provider Profile 与 model ID，Provider Profile 继续作为 Provider 配置实体存在。
+
+Extension 安装可分别以全局或 Card 为目标；资源 origin 关联安装身份，模块启用与 capability grant 也按安装目标记录。安装、资源导入/挂载、模块激活和本轮实际消费是不同事实：Manifest 的静态贡献声明不证明 Runtime 已注册或当前运行已激活。Card/Timeline 解析只允许全局安装及所属 Card 安装的资源；Card 私有包文件通过带 Card 与归档摘要的专用路径读取。
+
+显式资源/包更新提交后，后续资源解析使用当前资源；State、Session Transcript 与 Narrative History 不自动重置或重写。单个 Prompt Resource 导出只包含资源树与作者宏配置，不递归携带规则、脚本、模型绑定、工具实现或关联 Settings；组合分发使用 Card/Extension Package。Card Bundle 中的扩展归档与扩展 Portable Payload 私有数据分开。Loom Script 声明 `client-sandbox` 运行目标不等于任意代码的 OS 级强沙箱。
+
+源码入口：[Agent Runtime](../../../packages/application-runtime/src/runtime/agents-runtime.ts)、[资源导入导出](../../../packages/application-runtime/src/runtime/prompt-runtime.ts)、[Extension 安装管理](../../../apps/studio-server/src/extensions/extension-manager.ts)、[Card Bundle](../../../packages/application-runtime/src/cards/workspace.ts)。
+
 ## Application Runtime Context
 
 `packages/application-runtime` 当前使用内部 `ApplicationRuntimeContext` 统一承载稳定基础设施能力：

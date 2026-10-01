@@ -19,7 +19,7 @@
    - 记录每次状态变更的操作者（Actor）与因果提交事实。
 4. **Prompt Resource 存储 (`src/prompt-resource/`)**：
    - 持久化树形层级的提示词资源（Preset、Setting、Logic、Runtime 节点）；
-   - 管理独立的 Setting Mount Registry 与 Preset Tool Mount，以及资源 Header/Node 的版本修订；嵌套资源树是消费投影，不是整份 Document 权威存储。
+   - 管理独立的 Setting Mount Registry 与 Agent Preset Tool Mount，以及资源 Header/Node 的版本修订；嵌套资源树是消费投影，不是整份 Document 权威存储。Agent Preset 复用 `resourceKind: preset`，不是独立 Profile 存储实体。
 
 ---
 

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { QueryClient, QueryClientProvider, QueryObserver } from '@tanstack/react-query'
 import { createElement } from 'react'
 import { renderToString } from 'react-dom/server'
-import { useDisplayProjection, useOpeningDisplayProjection } from '../../../apps/studio-client/src/features/message-content/model/use-display-projection.js'
+import { displayText, isTransientAgentEntryId, useDisplayProjection, useOpeningDisplayProjection } from '../../../apps/studio-client/src/features/message-content/model/use-display-projection.js'
 import type { HistoryProjectionSnapshot } from '../../../apps/studio-client/src/entities/index.js'
 import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
 
@@ -32,6 +32,15 @@ function setup() {
 }
 
 describe('Display projection lifecycle', () => {
+  it('keeps optimistic and streaming Agent entries raw until persisted IDs replace them', () => {
+    expect(isTransientAgentEntryId('optimistic-agent-entry-1')).toBe(true)
+    expect(isTransientAgentEntryId('streaming-agent-entry-2')).toBe(true)
+    expect(isTransientAgentEntryId('persisted-entry')).toBe(false)
+    const projection = { entries: new Map(), pending: false, error: 'stale' }
+    expect(displayText(projection, 'optimistic-agent-entry-1', 'draft', true)).toBe('draft')
+    expect(displayText(projection, 'persisted-entry', 'saved')).toBeUndefined()
+  })
+
   it('isolates opening previews by endpoint, card, preset and text, and rejects stale baselines', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     clients.push(client)

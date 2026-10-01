@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight, Columns2, FilePenLine, Maximize2, Minimize2 } from 'lucide-react'
-import type { ReactNode, RefCallback } from 'react'
+import { useRef, type ReactNode, type RefCallback } from 'react'
 import type { Translator } from '../../shared/i18n/index.js'
 import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore, type AssetLayoutId, type StudioPanelId } from '../../shared/studio-shell/studio-layout-store.js'
 import { STUDIO_PANEL_PRESENTATION } from '../../shared/studio-shell/studio-panel-presentation.js'
@@ -21,6 +21,9 @@ export function StudioWindowHeader(props: {
   const activeAssetPane = useStudioLayoutStore(state => activeAssetLayoutId === null
     ? null
     : (state.assetPanes[activeAssetLayoutId][props.assetWorkspaceId] ?? 'explorer'))
+  const activeAssetSelectedId = useStudioLayoutStore(state => activeAssetLayoutId === null
+    ? undefined
+    : (state.assetLayouts[activeAssetLayoutId].views[props.assetWorkspaceId] ?? DEFAULT_ASSET_VIEW_STATE).selectedId)
   const panelWindowMode = useStudioLayoutStore(state => state.panelWindowMode)
   const setAssetPane = useStudioLayoutStore(state => state.setAssetPane)
   const setAssetViewMode = useStudioLayoutStore(state => state.setAssetViewMode)
@@ -28,6 +31,7 @@ export function StudioWindowHeader(props: {
   const definition = STUDIO_PANEL_PRESENTATION[props.activePanel]
   const ActivePanelIcon = definition.Icon
   const canGoBackAsset = activeAssetLayoutId !== null && activeAssetViewMode === 'drilldown' && activeAssetPane === 'detail'
+  const assetForwardRef = useRef<{ layoutId: AssetLayoutId; workspaceId: string; selectedId?: string } | undefined>(undefined)
   const isImmersive = panelWindowMode === 'immersive'
 
   return (
@@ -45,9 +49,15 @@ export function StudioWindowHeader(props: {
           type="button"
           onClick={() => {
             if (canGoBackAsset && activeAssetLayoutId) {
+              assetForwardRef.current = {
+                layoutId: activeAssetLayoutId,
+                workspaceId: props.assetWorkspaceId,
+                selectedId: activeAssetSelectedId,
+              }
               setAssetPane(activeAssetLayoutId, props.assetWorkspaceId, 'explorer')
               return
             }
+            assetForwardRef.current = undefined
             props.onPanelHistory('back')
           }}
         >
@@ -59,6 +69,14 @@ export function StudioWindowHeader(props: {
           title={props.t('navigation.forward')}
           type="button"
           onClick={() => {
+            const forward = assetForwardRef.current
+            if (activeAssetLayoutId && activeAssetViewMode === 'drilldown' && activeAssetPane === 'explorer'
+              && forward?.layoutId === activeAssetLayoutId && forward.workspaceId === props.assetWorkspaceId
+              && forward.selectedId === activeAssetSelectedId) {
+              assetForwardRef.current = undefined
+              setAssetPane(activeAssetLayoutId, props.assetWorkspaceId, 'detail')
+              return
+            }
             props.onPanelHistory('forward')
           }}
         >

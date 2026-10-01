@@ -11,6 +11,7 @@ import { timelineRuntimeContextId } from '../narrative/timeline-runtime-context.
 import { deleteTimelinePresetConfigs, listTimelinePresetConfigs, timelinePresetConfigId } from '../prompt/timeline-preset-config.js'
 import { normalizeMacroSelections } from '@loom-studio/shared'
 import type { NarrativePage } from '@loom-studio/application-data'
+import { createNarrativeSampler } from '../narrative/sampling.js'
 import { parseTimelineArchive, timelineArchivePendingId, type TimelineArchive, type TimelineArchiveIdMap, type TimelineArchivePendingContent } from '../archive/timeline-archive.js'
 import type {
   AppendNarrativeInput,
@@ -46,7 +47,7 @@ import {
 import { executeDocumentMutation } from '../foundation/mutation.js'
 
 type NarrativeRuntimeContext = Pick<ApplicationRuntimeContext,
-  'createId' | 'dataEngine' | 'documents' | 'narratives' | 'now' | 'stateContributions' | 'states' | 'timelineArchiveParticipants'
+  'agents' | 'createId' | 'dataEngine' | 'documents' | 'narratives' | 'narrativeContext' | 'now' | 'stateContributions' | 'states' | 'timelineArchiveParticipants'
 >
 
 export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
@@ -187,6 +188,36 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
     getNarrativePage: (input: GetNarrativePageInput): Promise<NarrativePage> =>
       requireNarratives(ctx).getPage(input),
 
+    getEffectiveNarrativePreview: async (input: { timelineId: string; branchId: string }) => {
+      const store = requireNarratives(ctx)
+      const page = await store.getPage({ ...input, limit: 1 })
+      if (page.branch.id !== input.branchId) throw new Error('Narrative branch does not match the requested branch')
+      const context = await ctx.narrativeContext.resolve({
+        ...input, cardId: page.timeline.createdFrom?.cardId,
+      })
+      const rawThroughNodeId = context ? context.rawThroughNodeId : page.branch.headNodeId ?? null
+      const coveredThroughNodeId = context?.memory?.coveredThroughNodeId
+      const sample = rawThroughNodeId === null ? undefined : await createNarrativeSampler(store).sample({
+        ...input,
+        selection: context
+          ? { kind: 'range', ...(coveredThroughNodeId ? { afterNodeId: coveredThroughNodeId } : {}), throughNodeId: rawThroughNodeId }
+          : { kind: 'tail', count: 100, throughNodeId: rawThroughNodeId },
+        maxNodes: 40,
+        maxCharacters: 100_000,
+      })
+      return {
+        timelineId: input.timelineId,
+        branchId: input.branchId,
+        sourceId: context?.sourceId ?? 'runtime.recent-100',
+        version: context?.version,
+        coveredThroughNodeId: coveredThroughNodeId ?? null,
+        rawThroughNodeId,
+        memory: context?.memory?.entries ?? [],
+        nodes: sample?.nodes.map(node => ({ id: node.id, text: node.text })) ?? [],
+        complete: sample?.complete ?? true,
+      }
+    },
+
     appendNarrativeInput: async (input: AppendNarrativeInput, requestContext?: RuntimeRequestContext): Promise<AppendNarrativeInputResult> => {
       if (!input.content.trim()) throw new Error('Narrative input content cannot be empty')
       const result = await requireNarratives(ctx).appendInput({
@@ -246,6 +277,21 @@ export function createNarrativeRuntimeMethods(ctx: NarrativeRuntimeContext) {
         narrativeWriteContext(requestContext, 'application.deleteNarrativeTimeline'),
         async dataTx => documentParticipant.participateTransaction(dataTx, async documents => {
           const timeline = narratives.transaction(dataTx).deleteTimeline(input)
+          if (ctx.agents) {
+            const agents = ctx.agents.transaction(dataTx)
+            let page
+            do {
+              // Deleted sessions invalidate cursors; read the first live page again.
+              page = agents.listSessions({ timelineId: input.timelineId, limit: 100 })
+              for (const session of page.sessions) {
+                agents.deleteSession({ agentSessionId: session.id })
+                await tombstoneExtensionStorageScope(documents, {
+                  kind: 'agent-session',
+                  agentSessionId: session.id,
+                })
+              }
+            } while (page.nextCursor)
+          }
           if (scope) ctx.states.transaction(dataTx).tombstoneScope({ scopeId: scope.id })
           const runtimeContext = await documents.get(timelineRuntimeContextId(input.timelineId))
           if (runtimeContext && !runtimeContext.meta.tombstone) {

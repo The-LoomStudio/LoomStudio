@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { isValidElement, type ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { formatResourceReference } from '@loom-studio/shared'
 import { MarkdownContent } from '../../../apps/studio-client/src/shared/ui/markdown-content/markdown-content.js'
 
 const memo = vi.hoisted(() => ({ deps: undefined as unknown[] | undefined, value: undefined as unknown }))
@@ -27,6 +28,20 @@ const labels = {
 }
 
 describe('Markdown renderer identity', () => {
+  it('renders resource references as icon links without an inline-code shell', () => {
+    const uri = formatResourceReference({
+      kind: 'prompt-resource', resourceId: 'resource', nodeId: 'entry',
+      version: 1, startLine: 1, endLine: 2,
+    })
+    const html = renderToStaticMarkup(MarkdownContent({
+      value: `[\`/resources/entry.md\`](${uri})`, codeBlockLabels: labels,
+    }))
+    expect(html).toContain('resourceReference')
+    expect(html).toContain('<svg')
+    expect(html).toContain('/resources/entry.md')
+    expect(html).not.toContain('assetToken')
+  })
+
   it('reuses unchanged Markdown while updating labels and reparses changed body text', () => {
     const value = '```js\nconst a = 1\n```'
     const first = MarkdownContent({ value, codeBlockLabels: labels })

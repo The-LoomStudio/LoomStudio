@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ContextAssetNode } from '../../../entities/index.js'
+import { ToggleLeft, ToggleRight } from 'lucide-react'
+import type { ContextAssetNode, PromptResource } from '../../../entities/index.js'
 import { useRestorableScroll } from '../../../shared/hooks/use-restorable-scroll.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import { FileTree } from '../../../shared/ui/file-tree/file-tree.js'
@@ -16,10 +17,16 @@ import {
   resolveVirtualDisplayName,
 } from './context-asset-tree.js'
 import styles from './context-asset-workbench.module.scss'
+import { ResourceTokenSummary, TextTokenSummary } from './resource-token-summary.js'
+import type { ResourceTokenSnapshot } from '../model/use-resource-token-snapshot.js'
 
 type MovePosition = 'before' | 'inside' | 'after'
 
 export function ContextAssetExplorer(props: {
+  tokenSnapshot?: ResourceTokenSnapshot
+  active?: boolean
+  highlightMessages?: boolean
+  formatMeta?: (node: ContextAssetNode) => string | undefined
   displayNodes: ContextAssetNode[]
   expandedIds?: string[]
   query: string
@@ -97,6 +104,8 @@ export function ContextAssetExplorer(props: {
       <div ref={scroll.ref} className={styles.explorerContent} onScroll={scroll.onScroll}>
         {error ? <p role="alert">{error}</p> : null}
         <FileTree
+          active={props.active}
+          highlightMessages={props.highlightMessages}
           editingId={editingId}
           onEditCommit={handleEditCommit}
           onEditCancel={handleEditCancel}
@@ -120,6 +129,14 @@ export function ContextAssetExplorer(props: {
           hasActions={item => !isReadOnlyContextAssetTreeNode(item as ContextAssetNode)}
           isMuted={item => (item as ContextAssetNode).kind === 'entry' && (item as ContextAssetNode).enabled === false}
           formatLabel={node => resolveVirtualDisplayName(node.label, (node as ContextAssetNode).kind)}
+          formatMeta={node => {
+            const meta = props.formatMeta?.(node as ContextAssetNode)
+            const count = props.tokenSnapshot?.summary?.nodes.get(node.id)
+            const countLabel = count && (node as ContextAssetNode).kind !== 'virtual'
+              ? `${count.enabled.toLocaleString()} tokens`
+              : undefined
+            return [meta, countLabel].filter(Boolean).join(' · ') || undefined
+          }}
           moreActionsLabel={props.t('context.actionMore')}
           nodes={props.displayNodes}
           onExpandedIdsChange={props.onExpandedIdsChange}
@@ -127,6 +144,19 @@ export function ContextAssetExplorer(props: {
           onSelect={item => selectNode(item as ContextAssetNode)}
           renderIcon={(item, expanded) => renderContextAssetTreeIcon(item as ContextAssetNode, expanded)}
           renderMetaLeading={item => renderContextAssetLifecycleIndicator(item as ContextAssetNode, props.t)}
+          renderTrailing={item => {
+            const node = item as ContextAssetNode
+            if (!canToggleContextAssetEnabled(node)) return null
+            const enabled = node.enabled !== false
+            const label = props.t(enabled ? 'context.actionDisable' : 'context.actionEnable')
+            return <button type="button" className={styles.treeToggle} aria-label={`${label} ${node.label}`}
+              aria-pressed={enabled} title={label} onClick={event => {
+                event.stopPropagation()
+                props.onToggleEnabled(node.id, !enabled)
+              }}>
+              {enabled ? <ToggleRight aria-hidden="true" /> : <ToggleLeft aria-hidden="true" />}
+            </button>
+          }}
           selectedId={props.selectedId}
           variant={props.variant}
           virtualized={props.virtualized}
@@ -138,11 +168,15 @@ export function ContextAssetExplorer(props: {
 
 
 export function ContextAssetEditor(props: {
+  tokenNode?: ContextAssetNode
+  tokenIncomplete?: boolean
   activationEditable: boolean
   allowTargetAnchor?: boolean
+  compactVirtualNotes?: boolean
   editorMode: LongTextEditorMode
   metadataOpen: boolean
   node?: ContextAssetNode
+  presets?: PromptResource[]
   pathNodes?: ContextAssetNode[]
   t: Translator
   onChangeNode(id: string, partial: Partial<ContextAssetNode>): void
@@ -153,6 +187,15 @@ export function ContextAssetEditor(props: {
 }) {
   const node = props.node
   const pathNodes = props.pathNodes ?? []
+  const sourceTokenNode = props.tokenNode ?? node
+  const tokenNode = sourceTokenNode?.kind === 'script' ? { ...sourceTokenNode, kind: 'entry' } : sourceTokenNode
+  const countRoot = tokenNode ? pathNodes.filter(parent => parent.id !== node?.id)
+    .reduceRight((child, parent) => ({ ...parent, children: [child] }), tokenNode) : undefined
+  const tokenScope = `${node?.id}:${pathNodes.map(item => item.id).join('/')}`
+  const tokenSummary = node?.kind === 'entry' || node?.kind === 'script'
+    ? <TextTokenSummary text={node.body ?? ''} scope={tokenScope} t={props.t} />
+    : countRoot ? <ResourceTokenSummary roots={[countRoot]}
+      scope={tokenScope} t={props.t} incomplete={props.tokenIncomplete} /> : undefined
 
   return (
     <div className={styles.detailColumn} data-loom-component="context-detail-editor">
@@ -180,11 +223,14 @@ export function ContextAssetEditor(props: {
       />
       {!node ? <div className={styles.emptyState}>{props.t('context.emptyBody')}</div> : (
         <ContextAssetDetail
+          headerExtra={tokenSummary}
           activationEditable={props.activationEditable}
           allowTargetAnchor={props.allowTargetAnchor}
+          compactVirtualNotes={props.compactVirtualNotes}
           metadataOpen={props.metadataOpen}
           editorMode={props.editorMode}
           node={node}
+          presets={props.presets}
           onChangeNode={partial => props.onChangeNode(node.id, partial)}
           onCommitNode={partial => props.onCommitNode(node.id, partial)}
           onMetadataOpenChange={props.onMetadataOpenChange}

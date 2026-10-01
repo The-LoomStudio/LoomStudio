@@ -2,6 +2,7 @@
   "files": [],
   "references": [
     { "path": "./packages/shared" },
+    { "path": "./packages/tokenizer" },
     { "path": "./packages/logging" },
     { "path": "./packages/diagnostics" },
     { "path": "./packages/transport" },

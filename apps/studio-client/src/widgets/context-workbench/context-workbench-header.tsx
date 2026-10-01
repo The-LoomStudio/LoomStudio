@@ -9,12 +9,10 @@ import { STUDIO_PANEL_PRESENTATION } from '../../shared/studio-shell/studio-pane
 import type { Translator } from '../../shared/i18n/index.js'
 
 export function ContextWorkbenchHeader(props: {
-  view: 'settings' | 'macros' | 'text'
   resources: PromptResource[]
   selectedResourceId?: string
   t: Translator
   workspaceId: string
-  onViewChange: (view: 'settings' | 'macros' | 'text') => void
   onSelectResource?: (resourceId: string) => void
 }) {
   const definition = STUDIO_PANEL_PRESENTATION.resource
@@ -30,29 +28,11 @@ export function ContextWorkbenchHeader(props: {
     setAssetPane('resources', props.workspaceId, 'detail')
     openAssetDetail('resources', props.workspaceId, id)
   }
-  const selectedPath = selectedResource && selectedId
+  const breadcrumbs = selectedResource && selectedId
     ? buildContextPathSegments(
       findContextAssetPath([readPromptResourceWorkbenchRoot(selectedResource)], selectedId),
       selectNode,
     )
-    : []
-  const tabOptions: Array<{ id: 'settings' | 'macros' | 'text'; label: string }> = [
-    { id: 'settings', label: props.t('context.authoring.settings') },
-    { id: 'macros', label: props.t('context.authoring.macros') },
-    { id: 'text', label: props.t('rail.textTransform') },
-  ]
-  const activeTab = tabOptions.find(tab => tab.id === props.view)
-  const breadcrumbs: ContextAssetPathSegment[] = activeTab
-    ? [{
-      id: activeTab.id,
-      label: activeTab.label,
-      options: tabOptions,
-      onSelect: id => {
-        if (id !== 'settings' && id !== 'macros' && id !== 'text') return
-        setAssetPane('resources', props.workspaceId, 'explorer')
-        props.onViewChange(id)
-      },
-    }, ...selectedPath]
     : []
 
   return (

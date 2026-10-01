@@ -9,6 +9,50 @@ import { createAgentStore, createPromptResourceStore } from '../../../packages/a
 import type { PromptResourceArtifact } from '../../../packages/application-runtime/src/index.js'
 
 describe('Agent preset resource', () => {
+  it('refreshes built-in source on upgrade while preserving enabled tool mounts', async () => {
+    const engine = createSqliteDataEngine({ filename: ':memory:', createId, now: nowIso })
+    try {
+      const promptResources = createPromptResourceStore({ engine })
+      const runtime = createApplicationRuntime({
+        dataEngine: engine, documents: createSqliteDocumentStore({ engine }), promptResources,
+        agentTools: createAgentToolRegistry([{
+          id: 'test/read', owner: { namespace: 'test' }, name: 'read',
+          description: 'Read', input: { kind: 'structured', schema: { type: 'object', properties: {} } },
+        }]),
+      })
+      const id = 'prompt-resource.official.loom-assistant'
+      const artifact: PromptResourceArtifact = {
+        format: 'loom.promptResource', schemaVersion: 2, resourceKind: 'preset',
+        rootNode: { id: 'root', kind: 'module', label: 'Original', children: [] },
+        macros: { tone: 'source' },
+      }
+      const install = (source: PromptResourceArtifact) => runtime.installOfficialContent({
+        packageId: 'official.starter', packageVersion: '0.1.0',
+        resources: [{ id, artifact: source }], settingMounts: [],
+      })
+      await install(artifact)
+      const { mounts } = await runtime.listPresetToolMounts({ presetId: id })
+      await runtime.replacePresetToolMounts({
+        presetId: id, mounts: [{ ...mounts[0]!, defaultEnabled: true }],
+      })
+      const before = (await runtime.getAgentPreset({ agentPresetId: id })).agentPreset
+      await runtime.updatePromptResourceMacros({
+        resourceId: id, expectedVersion: before.version, macros: { tone: 'edited' },
+      })
+      expect((await install(artifact)).mutation).toBeUndefined()
+      const upgrade = await install({
+        ...artifact, rootNode: { ...artifact.rootNode, label: 'Updated' },
+      })
+      expect(upgrade.mutation?.changesetId).toBeTruthy()
+      const after = (await runtime.getAgentPreset({ agentPresetId: id })).agentPreset
+      expect(after.rootNode.label).toBe('Updated')
+      expect(after.macros).toEqual({ tone: 'source' })
+      expect((await runtime.listPresetToolMounts({ presetId: id })).mounts[0]?.defaultEnabled).toBe(true)
+    } finally {
+      await engine.close()
+    }
+  })
+
   it('owns execution configuration and tool mounts without creating a Profile', async () => {
     const engine = createSqliteDataEngine({ filename: ':memory:', createId, now: nowIso })
     try {

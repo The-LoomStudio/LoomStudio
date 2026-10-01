@@ -8,6 +8,7 @@ export type {
 } from '@loom-studio/ai-gateway/contracts'
 
 type ProviderProfile = {
+  tokenMultipliers?: Record<string, number>
   id: string
   version: number
   providerExtensionId: string
@@ -50,6 +51,7 @@ export type CreateAiCapabilityProfileResult = {
 export type UpdateAiCapabilityProfileResult = CreateAiCapabilityProfileResult
 
 export type ModelProfile = {
+  tokenMultiplier?: number
   id: string
   version: number
   providerAccountId: string

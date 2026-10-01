@@ -89,6 +89,7 @@ type ToolExposure = {
 }
 
 export type PreviewAgentTurnResult = {
+  tokenEstimate?: import('@loom-studio/ai-gateway').RequestTokenEstimate
   promptBuildTrace?: ClientJsonValue
   macroInspection?: MacroInspection
   runId: string

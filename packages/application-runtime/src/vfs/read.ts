@@ -1,5 +1,4 @@
 import type { VfsEntry, VfsReadObservation } from './types.js'
-import { formatVfsReference } from './reference.js'
 
 const maxReadChars = 16 * 1024
 
@@ -115,13 +114,8 @@ export function searchVfs(entries: readonly VfsEntry[], args: unknown[]): string
       more = true
       break
     }
-    const reference = formatVfsReference({
-      path: entry.path, startLine: start + 1, endLine: end, totalLines: lines.length,
-      ...(entry.binding ? { binding: entry.binding } : {}),
-    })
     hits.push(`${entry.path}:${start + 1}-${end}\n${lines.slice(start, end).map((line, index) =>
       `${start + index + 1}: ${line.slice(0, 240)}${line.length > 240 ? ' [line truncated]' : ''}`).join('\n')}`)
-    if (reference) hits[hits.length - 1] += `\nReference: [打开引用](${reference})`
   }
   return [`Scope: ${path}`, ...(hits.length ? hits : ['No matches in the accessible view.']),
     ...(more ? ['More matching files; narrow path or terms.'] : [])].join('\n')

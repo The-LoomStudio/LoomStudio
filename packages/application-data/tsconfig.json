@@ -6,6 +6,7 @@
     "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
   "references": [
+    { "path": "../tokenizer" },
     { "path": "../data-engine" },
     { "path": "../shared" }
   ],

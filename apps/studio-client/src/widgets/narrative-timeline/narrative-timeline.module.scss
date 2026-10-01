@@ -166,6 +166,11 @@
 .message :global([data-conversation-message-footer]) {
   min-height: 22px;
   margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.message :global([data-conversation-message-timestamp]) {
+  white-space: normal;
 }
 
 .assistant :global([data-conversation-message-footer]) {

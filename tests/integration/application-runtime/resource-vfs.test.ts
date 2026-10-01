@@ -29,6 +29,7 @@ async function fixture(body = '作者源码 {{name}}\n第二行', approveMutatio
     nodeId === 'hidden' ? 'hidden' : nodeId === 'locked' ? 'locked' : 'read'
   const fs = createResourceVfs({
     projections: [],
+    resourceMode: 'author',
     ...(approveMutation ? { approveMutation } : {}),
     resources: {
       store, ids: [resource.id], access,
@@ -158,6 +159,41 @@ function findTreeNode<T extends { id: string; children?: T[] }>(root: T, id: str
 }
 
 describe('domain-backed resource VFS', () => {
+  it('hides disabled entries and metadata in play mode across listing, search and exact reads', async () => {
+    const f = await fixture()
+    try {
+      const fs = createResourceVfs({ projections: [], resources: { store: f.store, ids: [f.resource.id], access: f.access } })
+      const listing = await fs.ls(['/resources/爱丽丝'], signal)
+      expect(listing).not.toContain('未启用')
+      expect(listing).not.toContain('meta.yaml')
+      expect(await fs.search([{ path: '/resources', terms: ['disabled-content'] }], signal)).not.toContain('disabled-content')
+      for (const path of ['/resources/爱丽丝/未启用.md', '/resources/爱丽丝/人设.md.meta.yaml'])
+        await expect(fs.read([path], signal)).rejects.toThrow()
+      await fs.read(['/resources/爱丽丝/人设.md'], signal)
+      await expect(fs.write(['/resources/爱丽丝/人设.md', 'changed'], signal)).rejects.toMatchObject({ code: 'vfs.author_required' })
+      await expect(fs.setAuthorMode([true], signal)).rejects.toMatchObject({ code: 'vfs.author_denied' })
+    } finally { f.engine.close() }
+  })
+
+  it('requires explicit author approval and retains locks; disabling the mode hides author files again', async () => {
+    const f = await fixture()
+    try {
+      let allow = false
+      const fs = createResourceVfs({
+        projections: [], resources: { store: f.store, ids: [f.resource.id], access: f.access },
+        approveMutation: async () => allow ? { decision: 'allow' } : { decision: 'deny' },
+      })
+      await expect(fs.setAuthorMode([true], signal)).rejects.toThrow()
+      allow = true
+      await fs.setAuthorMode([true], signal)
+      expect(await fs.ls(['/resources/爱丽丝'], signal)).toContain('meta.yaml')
+      expect((await fs.read(['/resources/爱丽丝/未启用.md'], signal)).text).toBe('disabled-content')
+      await expect(fs.read(['/resources/爱丽丝/未来.md'], signal)).rejects.toMatchObject({ code: 'vfs.locked' })
+      await fs.setAuthorMode([false], signal)
+      await expect(fs.read(['/resources/爱丽丝/未启用.md'], signal)).rejects.toThrow()
+    } finally { f.engine.close() }
+  })
+
   it('reads raw source with stable identity and the actual database version, then refreshes after edits', async () => {
     const f = await fixture()
     try {
@@ -381,6 +417,7 @@ describe('domain-backed resource VFS', () => {
       })
       const fs = createResourceVfs({
         projections: [],
+        resourceMode: 'author',
         resources: {
           store: f.store,
           ids: [f.resource.id, other.resource.id],
@@ -404,6 +441,7 @@ describe('domain-backed resource VFS', () => {
     const previews: unknown[] = []
     const path = '/resources/爱丽丝/人设.md'
     const approved = createResourceVfs({
+      resourceMode: 'author',
       projections: [],
       resources: {
         store: f.store, ids: [f.resource.id], access: f.access,
@@ -422,6 +460,7 @@ describe('domain-backed resource VFS', () => {
       },
     })
     const denied = createResourceVfs({
+      resourceMode: 'author',
       projections: [],
       resources: {
         store: f.store, ids: [f.resource.id], access: f.access,

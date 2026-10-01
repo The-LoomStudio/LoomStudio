@@ -63,7 +63,7 @@ export function createServerExtensionManager(options: {
   host: ExtensionHost
   diagnostics: DiagnosticsRegistry
   stateStore: ExtensionStateStore
-  repositoryDirectory: string
+  repositoryDirectory?: string
   installedDirectory: string
   devLinksFile: string
   readCardPackage(input: { cardId: string; packageId: string; source?: 'installed' }): Promise<{ cardVersion: number; archive: { packageId: string; version: string; archiveBase64: string } }>

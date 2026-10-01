@@ -45,6 +45,8 @@ export async function handleProvidersRpc(
         displayName: readOptionalString(params, 'displayName'),
         config: readOptionalObject(params, 'config'),
         enabledModelIds: readOptionalStringArray(params, 'enabledModelIds'),
+        tokenMultipliers: readTokenMultipliers(params),
+        expectedVersion: readOptionalNumber(params, 'expectedVersion'),
       }, context) as unknown as JsonValue
 
     case 'application.replaceProviderCredential':
@@ -113,4 +115,15 @@ function readRequiredStringRecord(params: JsonValue | undefined, key: string): R
   const value = readOptionalStringRecord(params, key)
   if (!value) throw new Error(`Expected string record param: ${key}`)
   return value
+}
+
+function readTokenMultipliers(params: JsonValue | undefined): Record<string, number> | undefined {
+  const value = readOptionalObject(params, 'tokenMultipliers')
+  if (value === undefined) return undefined
+  for (const [key, multiplier] of Object.entries(value)) {
+    if (!key.trim() || typeof multiplier !== 'number' || !Number.isFinite(multiplier) || multiplier <= 0) {
+      throw new Error('Expected positive tokenMultipliers number record')
+    }
+  }
+  return value as Record<string, number>
 }

@@ -94,6 +94,10 @@ Preset 挂载与预览是构建表面的静态投影：
 
 ## 8. 明确不属于当前合同
 
+Extension Server Module 可在 `ai.invoke` capability 下调用 `ctx.ai.invokeModel({ model, messages, providerOptions?, delivery?, signal?, onEvent? })`。模型必须显式指定 Provider Profile 与已启用的 Model ID；平台从 Secret Store 在网关内部取凭据，不向扩展返回 API Key，也不回退 Agent Preset。`onEvent` 只转发普通网关的实际流事件；fake Provider 的整段结果不是 token delta。原有 `ctx.ai.invoke({ profileId, input })` 仍是独立的 capability-profile 合同。
+
+Agent Turn 的 `promptAddition` 仅对该次 Preview/Run 生效，附加 Setting ID 与 Anchor 内容由共用准备路径编译，不修改持久 Mount。扩展 `ctx.prompt.build` 可不带 Session/model 独立构建；传入的资源 ID 仅允许引用本扩展安装导入的 Preset/Setting，运行时创建结构化内容的来源身份。它不执行 Agent Loop、不自动挑选模型，也不授予读取其他安装或用户资源的能力。
+
 - Provider 内部如何排列 System Message 与 Tool Description；
 - OpenAI Responses Custom Tool 的正式 wire adapter；
 - 由 AI SDK 自动拥有多步 Agent Loop；

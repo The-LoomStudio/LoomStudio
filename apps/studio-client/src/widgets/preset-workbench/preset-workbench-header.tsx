@@ -16,7 +16,6 @@ export function PresetWorkbenchHeader(props: {
 }) {
   const definition = STUDIO_PANEL_PRESENTATION.agent
   const activePresetView = useStudioLayoutStore(state => state.presetView)
-  const setActivePresetView = useStudioLayoutStore(state => state.setPresetView)
   const presetResources = useMemo(() => props.resources.filter(r => r.resourceKind === 'preset'), [props.resources])
   const selectedResource = props.selectedResourceId
     ? presetResources.find(r => r.id === props.selectedResourceId)
@@ -24,8 +23,11 @@ export function PresetWorkbenchHeader(props: {
   const selectedId = useStudioLayoutStore(state => state.assetLayouts.preset.views[props.workspaceId]?.selectedId)
   const openAssetDetail = useStudioLayoutStore(state => state.openAssetDetail)
   const setAssetPane = useStudioLayoutStore(state => state.setAssetPane)
-  const selectedPath = selectedResource && selectedId
-    ? findContextAssetPath([readPromptResourceWorkbenchRoot(selectedResource)], selectedId)
+
+  // 工具视图下不显示资产路径面包屑
+  const selectedPath: ContextAssetPathSegment[] = activePresetView === 'tools' || !selectedResource || !selectedId
+    ? []
+    : findContextAssetPath([readPromptResourceWorkbenchRoot(selectedResource)], selectedId)
       .slice(1)
       .map((node, index, pathNodes) => {
         const parent = [readPromptResourceWorkbenchRoot(selectedResource), ...pathNodes][index]
@@ -38,30 +40,14 @@ export function PresetWorkbenchHeader(props: {
           })),
         }
       })
-    : []
-  const tabOptions: Array<{ id: 'assets' | 'text' | 'tools' | 'macros' | 'model'; label: string }> = [
-    { id: 'assets', label: props.t('preset.panel.assets') },
-    { id: 'model', label: props.t('agent.profile.model') },
-    { id: 'text', label: props.t('rail.textTransform') },
-    { id: 'tools', label: props.t('preset.panel.tools') },
-    { id: 'macros', label: props.t('context.authoring.macros') },
-  ]
-  const activeTab = tabOptions.find(tab => tab.id === activePresetView)
-  const breadcrumbs: ContextAssetPathSegment[] = activeTab
-    ? [{
-      id: activeTab.id,
-      label: activeTab.label,
-      options: tabOptions,
-      onSelect: id => {
-        if (id !== 'assets' && id !== 'text' && id !== 'tools' && id !== 'macros' && id !== 'model') return
-        setAssetPane('preset', props.workspaceId, 'explorer')
-        setActivePresetView(id)
-      },
-    }, ...selectedPath.map(segment => ({ ...segment, onSelect: (id: string) => {
+
+  const breadcrumbs: ContextAssetPathSegment[] = selectedPath.map(segment => ({
+    ...segment,
+    onSelect: (id: string) => {
       setAssetPane('preset', props.workspaceId, 'detail')
       openAssetDetail('preset', props.workspaceId, id)
-    } }))]
-    : []
+    },
+  }))
 
   return (
     <ContextAssetHeader

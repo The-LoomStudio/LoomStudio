@@ -8,6 +8,13 @@ export const settingMountSourceSchema = z.discriminatedUnion('kind', [
 export const settingMountSchema = z.object({
   id: z.string(),
   settingResourceId: z.string(),
+  resolvedSettingResourceId: z.string().nullable().optional(),
+  reference: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('package'), contributionId: z.string() }),
+    z.object({ kind: z.literal('external'), resourceId: z.string(), origin: z.object({
+      packageId: z.string(), contributionId: z.string(), target: z.enum(['global', 'card']),
+    }).optional() }),
+  ]).optional(),
   source: settingMountSourceSchema,
   orderIndex: z.number().int(),
   origin: z.record(z.string(), z.json()),
@@ -24,7 +31,13 @@ export const listSettingMountsResultSchema = z.object({
 
 export const replaceSettingMountsInputSchema = z.object({
   source: settingMountSourceSchema,
-  settingResourceIds: z.array(z.string()),
+  settingResourceIds: z.array(z.string()).optional(),
+  mounts: z.array(z.union([
+    z.object({ id: z.string() }),
+    z.object({ settingResourceId: z.string() }),
+  ])).optional(),
+}).refine(input => (input.settingResourceIds === undefined) !== (input.mounts === undefined), {
+  message: 'Specify exactly one Setting mount list',
 })
 
 export const replaceSettingMountsResultSchema = z.object({

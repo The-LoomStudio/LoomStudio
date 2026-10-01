@@ -8,6 +8,11 @@ const metadata = `### Prompt Resource Metadata
 parentId、orderIndex 和内部 ID 不属于这个文件；Metadata 修改、移动、创建、删除和复制都必须使用各自的方法。元数据修改同样会进行版本检查和变更审批。`
 
 const methods: Record<typeof codeActMethodNames[number], string> = {
+  setAuthorMode: `### ctx.setAuthorMode
+调用：await ctx.setAuthorMode(true) 申请作者视图；false 返回游玩视图。
+默认游玩视图只提供可读取的设定正文，不列出或读取 disabled 条目、停用子树与 Metadata，也不允许修改设定资源。
+true 必须经宿主用户审批；没有审批处理器则拒绝。授权仅限当前 Run 的已挂载资源，访问锁和隐藏权限仍生效，写入仍须单独审批。不用于普通续写剧情。
+关闭模式会清除读取基线，但不能抹去模型已经看过的内容。`,
   ls: `### ctx.ls
 用途：发现当前允许视图内的资源，默认列一层目录，只显示路径名称和状态。
 调用：await ctx.ls(path = "/", { offset = 0, limit = 50 } = {})
@@ -33,7 +38,8 @@ const methods: Record<typeof codeActMethodNames[number], string> = {
 /context 是本次提示词准备时的投影视图，不是作者源文件，不可据此写回。
 /state/current.yaml 是当前授权 State 的完整快照；/state/data 下逐层列属性，目录内的 @value.yaml 是该属性的 YAML，数组作为整体读取。
 /attachments 是当前预设拥有并挂载的脚本附件，读取不会执行脚本。
-列表中的 disabled 表示停用注入，不等于不可读；locked 可发现但不可读取。路径中的转义字符按列表原样使用。
+只有获批的作者视图才显示 disabled 和 Metadata；locked 可发现但不可读取。路径中的转义字符按列表原样使用。
+/narrative 下是当前授权剧情节点；路径由列表、采样 nodes[].path 或追加回执提供，不能自行构造楼层路径。修改后返回新节点路径，旧路径不会自动改指向。
 不能读取宿主文件、未挂载资源、历史 Narrative 或 Session；观察到的旧路径被另一对象占用时会报错，不自动改绑。`,
   readNarrative: `### Narrative sampling
 用途：读取当前授权 Timeline 的正文节点，使用固定分支和读取时的正文 Head。
@@ -44,12 +50,19 @@ complete=false 表示仅返回请求范围的尾段；把 nextBeforeNodeId 作�
 每次最多 1000 个节点、2000000 个原文字符；CodeAct 桥接和 print 的输出限制另行生效，大段正文应缩小范围，不把字符预算当成 Token 预算。
 示例：const story = await ctx["readNarrative"]({ selection: { kind: "tail", count: 3 } }); print(story.text);
 限制：只能读取当前授权 Timeline，不能传入其他 Timeline；读取不会推进 Memory 指针、默认有效 Head 或写入 Narrative。读取已总结的历史原文需要单次 Yes/No 授权；没有交互处理器时拒绝。批准只覆盖当前固定范围和预算，后续请求或续读需重新授权；等待用户期间暂停执行计时，取消后不返回旧正文。`,
+  appendNarrative: `### ctx.appendNarrative
+用途：将剧情正文追加到宿主当前绑定的 Timeline/Branch，新增一个 Narrative 节点。
+调用：await ctx.appendNarrative({ content })
+参数：content 为非空 Markdown 字符串；不能指定 Timeline、Branch、节点 ID 或 Head。
+返回：{ path }，可直接 await ctx.read(result.path)，完整读取后可用 ctx.write(result.path, newText) 修改。不要自行拼装内部 ID；即使随后脚本失败或取消，工具结果仍列出已提交路径，不要盲目重试。
+示例：print(await ctx.appendNarrative({ content: "她推开门，走进雨中。" }));
+限制：只有明确要求创作并写入剧情、且当前工具实际可用时才调用。/resources/.../@body.md 是设定资源正文，/state 是结构化状态，都不是剧情；不能用 ctx.write 改世界书代替剧情。无追加工具或无绑定时报告无法执行；成功回执才算入库，普通答复不产生新楼层。追加不会改变默认投影 Head，已提交节点不能通过脚本失败撤销。`,
   write: `### ctx.write
 用途：替换一个已读取且获准写入的 Prompt Resource 正文或 State 属性。
 调用：await ctx.write(path, value, { mode: "replace" })
 参数：必须先完整读取同一个 path；Prompt Resource 的 value 是字符串，State 属性的 value 是 JSON 值。
 返回：写入目标、最新版本或 Revision、Changeset 和 modified=true。
-限制：只支持 replace；不能写 /context、/state/current.yaml、附件、脚本或 Narrative。没有先读、资源版本变化、权限不足或路径重绑都会失败。
+限制：只支持 replace；还支持先完整读取 /narrative 节点后替换正文，返回新节点路径。设定资源编辑需要作者模式。不能写 /context、/state/current.yaml、附件或脚本。没有先读、资源版本变化、权限不足或路径重绑都会失败。
 写入立即生效，不需要 commit；失败不会自动撤回此前已成功的写入。`,
   patch: `### ctx.patch
 用途：在已读取的 Prompt Resource 正文中进行局部精确修改。
@@ -80,12 +93,13 @@ complete=false 表示仅返回请求范围的尾段；把 nextBeforeNodeId 作�
 export function renderCodeActTutorial(): string {
   return [
     '## CodeAct',
+    '传输不能混用：codeact 是 Freeform，在 assistant 正文中输出 <loom_tool name="codeact"><metadata>{}</metadata><content>原始 JavaScript</content></loom_tool>。禁止通过 native tool_calls 调用 codeact，禁止把 {"code":"..."} 放进 <content>。只有单独启用的 codeact_json 使用 native tool_calls 和 {"code":"..."}。',
     '在隔离 JavaScript 环境中调用 ctx。支持顶层 await、条件、循环和小批量 Promise.all。',
     '使用 print(value) 将结果返回给模型；每次调用创建新环境，变量不跨调用保留。',
     '当前版本提供受控 write、patch、move、delete、create 与 copy；没有 pin、commit、后台定时器或任意工具调用。',
     '执行有时间、内存、输出和并发限制；所有 ctx 调用都必须 await。错误包含原因，按提示缩小范围或重新读取，不盲目重试。',
     '没有 process、require、fetch 或模块导入；教程和挂载本身不授予额外资源权限。',
-    '读取结果中的 Reference 是可点击资源引用。回复用户时直接复制该 Markdown 链接，可改显示名称；不要编造 URI、内部 ID 或行号。/context 投影没有源正文引用，请读取 /resources 后引用。引用不等于写入授权。',
+    '引用读取内容时使用返回的 VFS 路径和必要的行范围，不拼装 loom-resource URI 或内部 ID。路径不是宿主文件，也不额外授予读写权限。',
     ...codeActMethodNames.map(method => methods[method]),
     metadata,
   ].join('\n\n')

@@ -1,0 +1,15 @@
+{
+  "name": "Character Status Artifact",
+  "enabled": false,
+  "orderIndex": 110,
+  "targets": ["narrative"],
+  "matcher": {
+    "kind": "regex",
+    "pattern": "<CharacterStatus>(?<body>[\\s\\S]*?)</CharacterStatus>",
+    "flags": "g",
+    "contentGroup": "body"
+  },
+  "strategy": "latest-valid",
+  "parser": "text",
+  "artifactType": "loom.character-status"
+}

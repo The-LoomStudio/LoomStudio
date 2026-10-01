@@ -19,8 +19,6 @@ export function useStudioDerivedValues(input: {
   promptProjection?: PromptProjection
   activationFacts: Parameters<typeof buildPromptBuildSteps>[0]['activationFacts']
   macroInspection?: MacroInspection
-  lastRunMacroInspection?: MacroInspection
-  promptPreviewMacroInspection?: MacroInspection
   sessionBusy: boolean
   agentSessionReady: boolean
   agentInput: string
@@ -30,10 +28,11 @@ export function useStudioDerivedValues(input: {
   macroKey: string
   macroContextCard?: Card
 }) {
+  const hasTimeline = Boolean(input.timeline)
   const macroContext = useMemo<MacroRenderContext>(() => ({
     snapshot: input.macroPreview.key === input.macroKey ? input.macroPreview.inspection?.snapshot : undefined,
-    card: input.timeline ? undefined : input.macroContextCard,
-  }), [input.macroKey, input.macroPreview, input.timeline, input.macroContextCard])
+    card: hasTimeline ? undefined : input.macroContextCard,
+  }), [input.macroKey, input.macroPreview, hasTimeline, input.macroContextCard])
 
   const cardOpeningEntry = input.selectedCardDetails?.opening?.entries?.[0]?.content?.trim()
   const rawOpeningContent = cardOpeningEntry && cardOpeningEntry.length > 0
@@ -69,10 +68,6 @@ export function useStudioDerivedValues(input: {
     promptBuildTrace: undefined,
   }, input.t)
 
-  const buildMacroInspection = [input.promptPreviewMacroInspection, input.lastRunMacroInspection]
-    .filter((inspection): inspection is MacroInspection => Boolean(inspection))
-    .sort((left, right) => right.capturedAt.localeCompare(left.capturedAt))[0]
-
   return {
     canSend,
     canSendAgent,
@@ -81,6 +76,5 @@ export function useStudioDerivedValues(input: {
     openingDraft,
     macroContext,
     promptBuildSteps,
-    buildMacroInspection,
   }
 }

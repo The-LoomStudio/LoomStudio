@@ -1,40 +1,69 @@
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { Bot, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 import type { Translator } from '../../shared/i18n/index.js'
-import type { AgentSession, CardSummary, NarrativeTimeline } from '../../entities/index.js'
+import type { AgentPreset, AgentSession, CardSummary, NarrativeTimeline } from '../../entities/index.js'
 import { cardMediaUrl, useCardMediaRevision } from '../../shared/lib/card-media.js'
 import styles from './play-panel.module.scss'
 import { PanelHeaderActions } from '../../shared/studio-shell/studio-window-header-context.js'
+import { useStudioLayoutStore } from '../../shared/studio-shell/studio-layout-store.js'
 import { PanelTabs } from '../../shared/ui/panel-tabs/index.js'
 
-type PlayTab = 'recent' | 'character' | 'sessions'
+type PlayTab = 'character' | 'sessions'
 
 type PlayPanelProps = {
   character: ReactNode
   sessions: ReactNode
   t: Translator
+}
+
+type RecentPlayPanelProps = {
+  t: Translator
   cards: CardSummary[]
   timelines: NarrativeTimeline[]
   agentSessions: AgentSession[]
+  agentPresets: AgentPreset[]
   onOpenCard(card: CardSummary): void
   onOpenTimeline(timeline: NarrativeTimeline): void
   onOpenAgentSession(session: AgentSession): void
 }
 
 export function PlayPanel(props: PlayPanelProps) {
-  const [tab, setTab] = useState<PlayTab>('recent')
-  const [calendarOpen, setCalendarOpen] = useState(false)
-  const [recentSessionsOpen, setRecentSessionsOpen] = useState(true)
-  const [selectedDate, setSelectedDate] = useState<string>()
-  const [monthCursor, setMonthCursor] = useState(() => new Date())
+  const tab = useStudioLayoutStore(state => state.playTab)
+  const setTab = useStudioLayoutStore(state => state.setPlayTab)
+  return (
+    <section className={styles.panel} aria-label={props.t('rail.play')}>
+      <div className={styles.header}>
+        <PanelTabs<PlayTab>
+          activeId={tab}
+          ariaLabel={props.t('rail.play')}
+          items={[
+            { id: 'character', label: props.t('rail.character') },
+            { id: 'sessions', label: props.t('rail.sessions') },
+          ]}
+          onChange={setTab}
+        />
+      </div>
+      <div className={styles.content}>
+        {tab === 'character' ? props.character : props.sessions}
+      </div>
+    </section>
+  )
+}
+
+export function RecentPlayPanel(props: RecentPlayPanelProps) {
+  const calendarOpen = useStudioLayoutStore(state => state.playCalendarOpen)
+  const setCalendarOpen = useStudioLayoutStore(state => state.setPlayCalendarOpen)
+  const selectedDate = useStudioLayoutStore(state => state.playSelectedDate)
+  const setSelectedDate = useStudioLayoutStore(state => state.setPlaySelectedDate)
+  const recentSessionsOpen = useStudioLayoutStore(state => state.playRecentSessionsOpen)
+  const setRecentSessionsOpen = useStudioLayoutStore(state => state.setPlayRecentSessionsOpen)
+  const [monthCursor, setMonthCursor] = useState(() => new Date(selectedDate || Date.now()))
   const mediaRevision = useCardMediaRevision()
-  const sessions = useMemo(() => [
-    ...props.timelines.map(item => {
+  const timelines = useMemo(() => props.timelines.map(item => {
       const card = item.createdFrom ? props.cards.find(candidate => candidate.id === item.createdFrom?.cardId) : undefined
       return {
-        kind: 'narrative' as const,
         id: item.id,
-        title: item.title || item.id,
+        title: item.title || card?.name || props.t('sessions.untitledTimeline'),
         preview: item.latestPreview
           ? truncatePreview(item.latestPreview)
           : item.openingPreview
@@ -48,13 +77,30 @@ export function PlayPanel(props: PlayPanelProps) {
         updatedAt: item.updatedAt,
         open: () => props.onOpenTimeline(item),
       }
-    }),
-    ...props.agentSessions.map(item => ({ kind: 'agent' as const, id: item.id, title: item.title || item.id, preview: undefined, avatarUrl: undefined, updatedAt: item.updatedAt, open: () => props.onOpenAgentSession(item) })),
-  ].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)), [mediaRevision, props.agentSessions, props.cards, props.timelines, props.onOpenAgentSession, props.onOpenTimeline])
+    }).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+  [mediaRevision, props.cards, props.timelines, props.onOpenTimeline, props.t])
+  const sessions = useMemo(() => props.agentSessions.map(item => {
+    const preset = props.agentPresets.find(candidate => candidate.id === item.agentPresetId)
+    const timeline = props.timelines.find(candidate => candidate.id === item.timelineId)
+    return {
+      id: item.id,
+      title: item.title || props.t('sessions.untitledAgentSession'),
+      summary: [
+        preset?.rootNode.label,
+        props.t('play.sessionEntries', { count: item.entryCount }),
+        timeline ? props.t('play.sessionTimeline', { title: timeline.title || props.t('sessions.untitledTimeline') }) : undefined,
+      ].filter(Boolean).join(' · '),
+      updatedAt: item.updatedAt,
+      open: () => props.onOpenAgentSession(item),
+    }
+  }).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+  [props.agentSessions, props.agentPresets, props.timelines, props.onOpenAgentSession, props.t])
   const visibleSessions = selectedDate ? sessions.filter(item => dayKey(item.updatedAt) === selectedDate) : sessions
+  const visibleTimelines = selectedDate ? timelines.filter(item => dayKey(item.updatedAt) === selectedDate) : timelines
   const groupedSessions = useMemo(() => groupByDay(visibleSessions), [visibleSessions])
+  const groupedTimelines = useMemo(() => groupByDay(visibleTimelines), [visibleTimelines])
   const calendarDays = useMemo(() => buildMonthDays(monthCursor), [monthCursor])
-  const dateMarkers = useMemo(() => new Set(sessions.map(item => dayKey(item.updatedAt))), [sessions])
+  const dateMarkers = useMemo(() => new Set([...sessions, ...timelines].map(item => dayKey(item.updatedAt))), [sessions, timelines])
   const recentCards = useMemo(() => {
     const lastPlayed = new Map<string, string>()
     for (const timeline of props.timelines) {
@@ -67,34 +113,23 @@ export function PlayPanel(props: PlayPanelProps) {
   }, [props.cards, props.timelines])
 
   return (
-    <section className={styles.panel} aria-label={props.t('rail.play')}>
+    <section className={styles.panel} aria-label={props.t('rail.recent')}>
       <div className={styles.header}>
-        <PanelTabs<PlayTab>
-          activeId={tab}
-          ariaLabel={props.t('rail.play')}
-          items={[
-            { id: 'recent', label: props.t('play.recent') },
-            { id: 'character', label: props.t('rail.character') },
-            { id: 'sessions', label: props.t('play.sessions') },
-          ]}
-          onChange={setTab}
-        />
+        <h2 className={styles.recentHeading}>{props.t('rail.recent')}</h2>
       </div>
-      {tab === 'recent' ? (
-        <PanelHeaderActions panel="play">
-          <button
-            aria-expanded={calendarOpen}
-            aria-label={props.t('play.filterDate')}
-            className={`${styles.calendarToggle} ${calendarOpen || selectedDate ? styles.calendarToggleActive : ''}`}
-            title={props.t('play.filterDate')}
-            type="button"
-            onClick={() => setCalendarOpen(value => !value)}
-          >
-            <CalendarDays size={15} aria-hidden="true" />
-          </button>
-        </PanelHeaderActions>
-      ) : null}
-      {calendarOpen && tab === 'recent' ? (
+      <PanelHeaderActions panel="recent">
+        <button
+          aria-expanded={calendarOpen}
+          aria-label={props.t('play.filterDate')}
+          className={`${styles.calendarToggle} ${calendarOpen || selectedDate ? styles.calendarToggleActive : ''}`}
+          title={props.t('play.filterDate')}
+          type="button"
+          onClick={() => setCalendarOpen(!calendarOpen)}
+        >
+          <CalendarDays size={15} aria-hidden="true" />
+        </button>
+      </PanelHeaderActions>
+      {calendarOpen ? (
         <div className={styles.calendarPopover} role="dialog" aria-label={props.t('play.filterDate')}>
           <div className={styles.calendarHeader}>
             <button type="button" aria-label={props.t('play.previousMonth')} onClick={() => setMonthCursor(date => new Date(date.getFullYear(), date.getMonth() - 1, 1))}><ChevronLeft size={15} /></button>
@@ -113,9 +148,7 @@ export function PlayPanel(props: PlayPanelProps) {
         </div>
       ) : null}
       <div className={styles.content}>
-        {tab === 'character' ? props.character : null}
-        {tab === 'sessions' ? props.sessions : null}
-        {tab === 'recent' ? <div className={styles.recent}>
+        <div className={styles.recent}>
           <section className={styles.characterStrip}>
             <h3>{props.t('play.recentCharacters')}</h3>
             <div className={styles.characterScroller}>
@@ -135,18 +168,13 @@ export function PlayPanel(props: PlayPanelProps) {
             </div>
           </section>
           <section className={styles.sessionList}>
-            <div className={styles.sectionTitleRow}>
-              <h3>{props.t('play.recentSessions')}</h3>
-              <button className={styles.sectionToggle} type="button" aria-expanded={recentSessionsOpen} aria-label={recentSessionsOpen ? '收起最近会话' : '展开最近会话'} onClick={() => setRecentSessionsOpen(value => !value)}>
-                {recentSessionsOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-              </button>
-            </div>
-            {recentSessionsOpen ? groupedSessions.map(group => <div className={styles.sessionGroup} key={group.key}>
+            <h3>{props.t('play.recentTimelines')}</h3>
+            {groupedTimelines.map(group => <div className={styles.sessionGroup} key={group.key}>
               {!selectedDate ? <span className={styles.sessionDate}>{formatDay(group.key)}</span> : null}
               {group.items.slice(0, 8).map(item => (
                 <button className={styles.sessionRow} key={item.id} type="button" onClick={item.open}>
                   <span className={styles.sessionAvatar}>
-                    {item.avatarUrl ? <img src={item.avatarUrl} alt="" /> : item.kind === 'narrative' ? item.title.slice(0, 1) : 'A'}
+                    {item.avatarUrl ? <img src={item.avatarUrl} alt="" /> : item.title.slice(0, 1)}
                   </span>
                   <span className={styles.sessionContent}>
                     <span className={styles.sessionInfo}>
@@ -157,9 +185,32 @@ export function PlayPanel(props: PlayPanelProps) {
                   </span>
                 </button>
               ))}
+            </div>)}
+          </section>
+          <section className={styles.sessionList}>
+            <div className={styles.sectionTitleRow}>
+              <h3>{props.t('play.recentSessions')}</h3>
+              <button className={styles.sectionToggle} type="button" aria-expanded={recentSessionsOpen} aria-label={recentSessionsOpen ? '收起最近会话' : '展开最近会话'} onClick={() => setRecentSessionsOpen(!recentSessionsOpen)}>
+                {recentSessionsOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+              </button>
+            </div>
+            {recentSessionsOpen ? groupedSessions.map(group => <div className={styles.sessionGroup} key={group.key}>
+              {!selectedDate ? <span className={styles.sessionDate}>{formatDay(group.key)}</span> : null}
+              {group.items.slice(0, 8).map(item => (
+                <button className={styles.sessionRow} key={item.id} type="button" onClick={item.open}>
+                  <Bot className={styles.sessionBot} aria-hidden="true" />
+                  <span className={styles.sessionContent}>
+                    <span className={styles.sessionInfo}>
+                      <span className={styles.sessionType}>{formatRecentDate(item.updatedAt)}</span>
+                      <strong>{item.title}</strong>
+                    </span>
+                    <span className={styles.sessionPreview}>{item.summary}</span>
+                  </span>
+                </button>
+              ))}
             </div>) : null}
           </section>
-        </div> : null}
+        </div>
       </div>
     </section>
   )

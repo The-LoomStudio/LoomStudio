@@ -22,7 +22,7 @@ export type ExtensionSourceFailure = {
 }
 
 export async function discoverExtensionSources(options: {
-  repositoryDirectory: string
+  repositoryDirectory?: string
   installedDirectory: string
   devLinksFile: string
 }): Promise<{
@@ -33,12 +33,15 @@ export async function discoverExtensionSources(options: {
   const discovered: DiscoveredExtensionSource[] = []
   const failures: ExtensionSourceFailure[] = []
 
-  await collectSources(
-    { kind: 'repository', directory: options.repositoryDirectory },
-    () => scanChildDirectories(options.repositoryDirectory, 'repository'),
-    sources,
-    failures,
-  )
+  if (options.repositoryDirectory) {
+    const repositoryDirectory = options.repositoryDirectory
+    await collectSources(
+      { kind: 'repository', directory: repositoryDirectory },
+      () => scanChildDirectories(repositoryDirectory, 'repository'),
+      sources,
+      failures,
+    )
+  }
   await collectSources(
     { kind: 'dev-link', directory: options.devLinksFile },
     () => readDevLinks(options.devLinksFile),

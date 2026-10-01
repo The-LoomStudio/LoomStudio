@@ -44,6 +44,164 @@ function fixture() {
 }
 
 describe('Extension prompt resource import', () => {
+  it('keeps missing external Setting mounts through edits and resource export without blocking Preview', async () => {
+    const f = fixture()
+    const { engine, runtime, input, promptResources } = f
+    try {
+      input.promptResources.push({
+        contribution: { id: 'local-setting', resourceKind: 'setting', source: 'setting.json' },
+        artifact: {
+          format: 'loom.promptResource', schemaVersion: 2, resourceKind: 'setting',
+          rootNode: { id: 'example.writer.local-setting-root', kind: 'module', label: 'Local' },
+        },
+      })
+      input.promptResources[0]!.contribution.settingMounts = [
+        { resourceId: 'local-setting' },
+        { reference: { kind: 'external', resourceId: 'missing-elsewhere' } },
+      ]
+      const installed = await runtime.importExtensionPackageResources(input)
+      const presetId = installed.promptResources[0]!.resourceId
+      const localId = installed.promptResources[1]!.resourceId
+      const source = { kind: 'preset' as const, id: presetId }
+      const mounts = (await runtime.listSettingMounts({ source })).mounts
+      expect(mounts).toMatchObject([
+        { settingResourceId: localId, resolvedSettingResourceId: localId, reference: { kind: 'package', contributionId: 'local-setting' } },
+        { settingResourceId: 'missing-elsewhere', resolvedSettingResourceId: null, reference: { kind: 'external', resourceId: 'missing-elsewhere' } },
+      ])
+      expect(await promptResources.getResource('missing-elsewhere')).toBeNull()
+      expect(await engine.read(database => database.prepare('PRAGMA foreign_key_check').all())).toEqual([])
+      const extra = await runtime.createPromptResource({ resourceKind: 'setting', name: 'Extra' })
+      await runtime.replaceSettingMounts({
+        source, mounts: [{ id: mounts[0]!.id }, { id: mounts[1]!.id }, { settingResourceId: extra.resource.id }],
+      })
+      expect((await runtime.listSettingMounts({ source })).mounts.map(mount => mount.resolvedSettingResourceId ?? mount.settingResourceId))
+        .toEqual([localId, 'missing-elsewhere', extra.resource.id])
+      const { providerProfile } = await runtime.createProviderProfile({
+        providerExtensionId: 'official.fake', displayName: 'Fake', config: {}, enabledModelIds: [officialFakeModelId],
+      })
+      const preset = (await runtime.getAgentPreset({ agentPresetId: presetId })).agentPreset
+      await runtime.updateAgentPreset({
+        agentPresetId: presetId, expectedVersion: preset.version,
+        model: { providerProfileId: providerProfile.id, modelId: officialFakeModelId },
+      })
+      const { session } = await runtime.createAgentSession({ agentPresetId: presetId })
+      const preview = await runtime.previewAgentTurn({ agentSessionId: session.id, input: 'Hi' })
+      expect(preview.promptBuildTrace.diagnostics).toContainEqual(expect.objectContaining({
+        code: 'prompt.setting_reference_unresolved', message: expect.stringContaining('missing-elsewhere'),
+      }))
+      const exported = await runtime.exportPromptResource({ resourceId: presetId })
+      expect(exported.artifact.settingMounts).toEqual([
+        { kind: 'package', contributionId: 'local-setting' },
+        { kind: 'external', resourceId: 'missing-elsewhere' },
+        { kind: 'external', resourceId: extra.resource.id },
+      ])
+      const copied = await runtime.importPromptResource({ artifact: exported.artifact })
+      expect((await runtime.listSettingMounts({ source: { kind: 'preset', id: copied.resource.id } })).mounts)
+        .toMatchObject([
+          { settingResourceId: 'local-setting', resolvedSettingResourceId: null },
+          { settingResourceId: 'missing-elsewhere', resolvedSettingResourceId: null },
+          { settingResourceId: extra.resource.id, resolvedSettingResourceId: null },
+        ])
+      await runtime.deletePromptResource({ resourceId: extra.resource.id })
+      const beforeEdit = (await runtime.listSettingMounts({ source })).mounts
+      await runtime.replaceSettingMounts({ source, mounts: beforeEdit.map(mount => ({ id: mount.id })) })
+      expect((await runtime.listSettingMounts({ source })).mounts[2]).toMatchObject({
+        settingResourceId: extra.resource.id, resolvedSettingResourceId: null,
+        reference: { kind: 'external', resourceId: extra.resource.id },
+      })
+    } finally { await engine.close() }
+  })
+
+  it('resolves an external Card contribution only within the current installation target', async () => {
+    const f = fixture()
+    const { engine, runtime, input } = f
+    try {
+      const { card: a } = await runtime.createCard({ name: 'A' })
+      const { card: b } = await runtime.createCard({ name: 'B' })
+      input.transformRules = [{
+        contribution: { id: 'same-name', source: 'same-name.json' },
+        artifact: {
+          name: 'Same name', enabled: false, orderIndex: 0, targets: ['agent-session'], phases: ['display'],
+          matcher: { kind: 'regex', pattern: 'old', flags: 'g' }, effect: { kind: 'replace', replacement: 'new' },
+        },
+      }]
+      const targetB = { kind: 'card' as const, cardId: b.id }
+      const installedB = await runtime.importExtensionPackageResources({ ...input, target: targetB })
+      input.promptResources[0]!.contribution.textUses = [{
+        kind: 'rule', enabled: true,
+        reference: {
+          kind: 'external', resourceId: installedB.transformRules[0]!.ruleId,
+          origin: { packageId: 'example.writer', contributionId: 'same-name', target: 'card' },
+        },
+      }]
+      const targetA = { kind: 'card' as const, cardId: a.id }
+      const installedA = await runtime.importExtensionPackageResources({ ...input, target: targetA })
+      const presetId = installedA.promptResources[0]!.resourceId
+      expect((await runtime.getAgentPreset({ agentPresetId: presetId })).agentPreset.textUses?.[0]?.id)
+        .toBe(installedA.transformRules[0]!.ruleId)
+      const { timeline } = await runtime.createNarrativeTimeline({ cardId: a.id })
+      const { session } = await runtime.createAgentSession({ agentPresetId: presetId, timelineId: timeline.id })
+      const pipeline = await resolveEffectiveTextPipeline({ ...f, now: nowIso }, { kind: 'agent-session', sessionId: session.id }, 'display')
+      expect(pipeline.rules.map(rule => rule.id)).toEqual([installedA.transformRules[0]!.ruleId])
+      expect(pipeline.rules.map(rule => rule.id)).not.toContain(installedB.transformRules[0]!.ruleId)
+      const preset = (await runtime.getAgentPreset({ agentPresetId: presetId })).agentPreset
+      await runtime.updateAgentPreset({
+        agentPresetId: presetId, expectedVersion: preset.version,
+        textUses: [{ kind: 'rule', id: installedB.transformRules[0]!.ruleId, enabled: true }],
+      })
+      const foreign = await resolveEffectiveTextPipeline({ ...f, now: nowIso }, { kind: 'agent-session', sessionId: session.id }, 'display')
+      expect(foreign.rules.map(rule => rule.id)).not.toContain(installedB.transformRules[0]!.ruleId)
+      expect(foreign.diagnostics).toContainEqual(expect.objectContaining({ code: 'text.use_unresolved', ruleId: installedB.transformRules[0]!.ruleId }))
+    } finally { await engine.close() }
+  })
+
+  it('maps package Text uses and preserves unresolved external references', async () => {
+    const f = fixture()
+    const { engine, runtime, input } = f
+    try {
+      input.transformRules = [{
+        contribution: { id: 'replace', source: 'replace.json' },
+        artifact: {
+          name: 'Replace', enabled: false, orderIndex: 0, targets: ['agent-session'], phases: ['display'],
+          matcher: { kind: 'regex', pattern: 'old', flags: 'g' }, effect: { kind: 'replace', replacement: 'new' },
+        },
+      }]
+      input.promptResources[0]!.contribution.textUses = [
+        { kind: 'rule', reference: { kind: 'package', contributionId: 'replace' }, enabled: false },
+        { kind: 'extractor', reference: { kind: 'external', resourceId: 'other-device-user-resource' }, enabled: true },
+      ]
+      const installed = await runtime.importExtensionPackageResources(input)
+      const presetId = installed.promptResources[0]!.resourceId
+      const preset = (await runtime.getAgentPreset({ agentPresetId: presetId })).agentPreset
+      expect(preset.textUses).toEqual([
+        { kind: 'rule', id: installed.transformRules[0]!.ruleId, reference: { kind: 'package', contributionId: 'replace' }, enabled: false },
+        { kind: 'extractor', id: 'other-device-user-resource', reference: { kind: 'external', resourceId: 'other-device-user-resource' }, enabled: true },
+      ])
+      const edited = (await runtime.updateAgentPreset({
+        agentPresetId: presetId, expectedVersion: preset.version,
+        textUses: preset.textUses!.map(({ kind, id, enabled, orderIndex }) => ({ kind, id, enabled: !enabled, ...(orderIndex === undefined ? {} : { orderIndex }) })),
+      })).agentPreset
+      expect(edited.textUses?.map(use => use.reference)).toEqual(preset.textUses?.map(use => use.reference))
+      await expect(runtime.updateAgentPreset({
+        agentPresetId: presetId, expectedVersion: edited.version,
+        textUses: [{ kind: 'extractor', id: 'other-device-user-resource', enabled: true,
+          reference: { kind: 'package', contributionId: 'replace' } } as never],
+      })).rejects.toThrow('Invalid Preset text use configuration')
+      const { session } = await runtime.createAgentSession({ agentPresetId: presetId })
+      const pipeline = await resolveEffectiveTextPipeline({ ...f, now: nowIso }, { kind: 'agent-session', sessionId: session.id }, 'display')
+      expect(pipeline.rules.map(rule => rule.id)).toEqual([installed.transformRules[0]!.ruleId])
+      expect(pipeline.diagnostics).toContainEqual(expect.objectContaining({ code: 'text.use_unresolved', message: expect.stringContaining('other-device-user-resource') }))
+      const exported = await runtime.exportPromptResource({ resourceId: presetId })
+      const copied = await runtime.importPromptResource({ artifact: exported.artifact })
+      expect(copied.resource.textUses).toEqual(edited.textUses)
+      const copiedSession = await runtime.createAgentSession({ agentPresetId: copied.resource.id })
+      const copiedPipeline = await resolveEffectiveTextPipeline({ ...f, now: nowIso }, { kind: 'agent-session', sessionId: copiedSession.session.id }, 'display')
+      expect(copiedPipeline.rules).toEqual([])
+      expect(copiedPipeline.diagnostics).toContainEqual(expect.objectContaining({ code: 'text.use_unresolved', message: expect.stringContaining(installed.transformRules[0]!.ruleId) }))
+      expect(copiedPipeline.diagnostics).toContainEqual(expect.objectContaining({ code: 'text.use_unresolved', message: expect.stringContaining('other-device-user-resource') }))
+    } finally { await engine.close() }
+  })
+
   it('updates one installation atomically while preserving resource identity and local model binding', async () => {
     const { engine, runtime, input, promptResources } = fixture()
     try {

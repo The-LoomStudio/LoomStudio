@@ -1,3 +1,4 @@
+import type { TokenUsage } from '@loom-studio/tokenizer/contracts'
 import type {
   AssistantChatMessage,
   ChatMessage,
@@ -43,7 +44,7 @@ export type AiGatewayResult = {
   provider: string
   finishReason?: 'stop' | 'length' | 'tool_call' | 'error'
   rawFinishReason?: string
-  usage?: { inputTokens?: number; outputTokens?: number }
+  usage?: TokenUsage
   providerCallId?: string
   requestId?: string
   raw?: JsonValue

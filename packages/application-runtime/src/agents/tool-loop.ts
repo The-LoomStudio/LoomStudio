@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+import { estimateRequestTokens } from '@loom-studio/ai-gateway'
 import type {
   AgentStore,
   AgentTranscriptEntry,
@@ -235,12 +237,21 @@ export function createContentToolPromptRuntimeInputs(
   return { sourceNodes, contributions }
 }
 
+export function createNativeToolSpecs(toolSet: CompiledAgentToolSet) {
+  return toolSet.tools.filter(tool => tool.transport === 'native-function').map(({ exposure }) => ({
+    name: exposure.name,
+    description: renderNativeToolDescription(exposure),
+    inputSchema: readNativeSchema(exposure),
+  }))
+}
+
 export async function runNativeToolLoop(input: {
   ctx: NativeToolLoopContext
   agents: AgentStore
   session: AgentSession
   runId: string
   model: ProviderModelSelection
+  tokenMultiplier?: number
   initialMessages: ChatMessage[]
   userInput: string
   compiledToolSet: CompiledAgentToolSet
@@ -268,20 +279,14 @@ export async function runNativeToolLoop(input: {
   let activeTool: { invocationId: string; toolId: string; toolName: string; startedAt: number } | undefined
   let session = input.session
   let lastChangesetId = ''
+  let measurementId: string | undefined
   const tools = input.compiledToolSet.tools
-  const nativeTools = tools.filter(
-    (tool) => tool.transport === 'native-function',
-  )
   const contentTools = tools.filter((tool) => tool.transport === 'content')
   const providerMessages = [...input.initialMessages]
   let freshContextMessages: ChatMessage[] = []
   let checkpointMessages = [...input.initialMessages]
   let continuationAssistantEntryId = input.resumeAssistantEntryId
-  const toolSpecs = nativeTools.map(({ exposure }) => ({
-    name: exposure.name,
-    description: renderNativeToolDescription(exposure),
-    inputSchema: readNativeSchema(exposure),
-  }))
+  const toolSpecs = createNativeToolSpecs(input.compiledToolSet)
   const byExposedName = new Map(
     tools.map((tool) => [tool.definition.name, tool] as const),
   )
@@ -310,6 +315,21 @@ export async function runNativeToolLoop(input: {
       const stepMessages = [...providerMessages, ...freshContextMessages]
       checkpointMessages = [...stepMessages]
       freshContextMessages = []
+      const estimate = estimateRequestTokens({ messages: stepMessages, tools: toolSpecs }, { multiplier: input.tokenMultiplier })
+      measurementId = input.ctx.createId('measurement')
+      await append([{
+        kind: 'request-measurement',
+        measurementId,
+        providerStep: step,
+        providerProfileId: input.model.providerProfileId,
+        modelId: input.model.modelId,
+        requestDigest: createHash('sha256').update(JSON.stringify({ messages: stepMessages, tools: toolSpecs })).digest('hex'),
+        scope: estimate.scope,
+        count: { baseTokens: estimate.baseTokens, estimatedTokens: estimate.estimatedTokens, basis: estimate.basis },
+        uncounted: estimate.uncounted,
+      }])
+      if (input.requestContext?.abortSignal?.aborted)
+        throw createAbortError(input.requestContext.abortSignal.reason)
       const providerResult = await input.ctx.gateway.invokeChat({
         request: {
           messages: stepMessages,
@@ -352,6 +372,7 @@ export async function runNativeToolLoop(input: {
       })
 
       progress.stage = 'response'
+      await append([{ ...providerObservation(providerResult), measurementId, providerStep: step }])
       const toolCalls = providerResult.message.tool_calls ?? []
       const nativeInvocationPairs = toolCalls.map((call) => {
         const resolved = byExposedName.get(call.function.name)
@@ -425,9 +446,7 @@ export async function runNativeToolLoop(input: {
       ]
       checkpointMessages = [...stepMessages, providerResult.message]
 
-      const stepEntries: AgentTranscriptEntryData[] = [
-        providerObservation(providerResult),
-      ]
+      const stepEntries: AgentTranscriptEntryData[] = []
       for (const reasoning of classified.reasoning) {
         stepEntries.push({
           kind: 'reasoning',
@@ -659,6 +678,7 @@ export async function runNativeToolLoop(input: {
           kind: 'run-state',
           state: suspended ? 'suspended' : aborted ? 'aborted' : 'failed',
           reason: errorMessage(error),
+          ...(measurementId ? { measurementId } : {}),
         },
       ])
     } catch {
@@ -690,6 +710,11 @@ export async function runNativeToolLoop(input: {
     })
     session = result.session
     lastChangesetId = result.commit.changesetId
+    input.requestContext?.agentRun?.onEvent({
+      type: 'transcript-appended',
+      runId: input.requestContext.agentRun.runId,
+      entries: result.entries,
+    })
     return { entries: result.entries, changesetId: lastChangesetId }
   }
 }
@@ -878,7 +903,9 @@ async function executeInvocation(
       invocation,
       'tool.transport_mismatch',
       expectedTransport === 'content'
-        ? `Tool ${invocation.toolId} is a Loom content tool. Do not call it through tool_calls; emit its <loom_tool> block in assistant content.`
+        ? codeActToolIds.has(invocation.toolId)
+          ? 'Nothing was executed. codeact is FREEFORM, not a native JSON tool. Retry in assistant content: <loom_tool name="codeact"><metadata>{}</metadata><content>print(await ctx.ls("/"));</content></loom_tool>. Put raw JavaScript inside <content>, not {"code":"..."}. Use native {"code":"..."} only with codeact_json if that separate tool is enabled.'
+          : `Tool ${invocation.toolId} is a Loom content tool. Do not call it through tool_calls; emit its <loom_tool> block in assistant content.`
         : `Tool ${invocation.toolId} must use ${expectedTransport}, not ${invocation.transport ?? 'an unspecified transport'}.`,
     )
   let approval
@@ -966,7 +993,7 @@ function parseToolArguments(value: string, toolName: string) {
 
 function providerObservation(
   result: GatewayChatResult,
-): AgentTranscriptEntryData {
+): Extract<AgentTranscriptEntryData, { kind: 'provider-observation' }> {
   return {
     kind: 'provider-observation',
     provider: result.provider,

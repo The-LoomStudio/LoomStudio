@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  Button,
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
+  Dialog,
   Toggle,
 } from '@loom-studio/ui'
 import {
@@ -23,6 +25,7 @@ import {
   History,
   MessageSquareText,
   Pencil,
+  Plus,
   Play,
   Trash2,
   Upload,
@@ -43,12 +46,13 @@ import { downloadBlob } from '../../shared/browser/download.js'
 import type { Translator } from '../../shared/i18n/index.js'
 import { MasterDetailWorkbench } from '../../shared/ui/master-detail-workbench/master-detail-workbench.js'
 import { PanelTabs } from '../../shared/ui/panel-tabs/index.js'
+import { AgentToolGroupBlock, buildRenderItems } from '../agent-chat-panel/agent-chat-panel.js'
 import {
   areAllExpandablesExpanded,
   areAllSelected,
   areAllSessionsSelected,
   areAllTimelinesSelected,
-  filterStandaloneSessions,
+  filterAgentSessions,
   filterTimelines,
   getExpandableTimelineIds,
   partitionSessions,
@@ -62,7 +66,7 @@ import {
 } from './sessions-panel-model.js'
 import styles from './sessions-panel.module.scss'
 
-type SessionFilter = 'all' | 'timelines' | 'standalone'
+type SessionFilter = 'all' | 'timelines' | 'sessions'
 type SelectedHistoryItem =
   | { kind: 'timeline'; id: string }
   | { kind: 'session'; id: string }
@@ -82,6 +86,8 @@ type SessionsPanelProps = {
   timelines: NarrativeTimeline[]
   onOpenTimeline(timeline: NarrativeTimeline): void
   onOpenAgentSessionInSidebar?(session: AgentSession): void
+  onCreateAgentSession?(presetId: string, makeMain: boolean): Promise<AgentSession>
+  onSetPrimaryAgentSession?(session: AgentSession): Promise<void>
   onDeleteTimeline?(timelineId: string): Promise<boolean> | void
   onRenameTimeline?(timelineId: string, title: string): Promise<unknown> | void
   onDeleteAgentSession?(sessionId: string): Promise<boolean> | void
@@ -98,6 +104,21 @@ export function SessionsPanel(props: SessionsPanelProps) {
   const [isSelectionMode, setIsSelectionMode] = useState(false)
   const [selectedTimelineIds, setSelectedTimelineIds] = useState<Set<string>>(new Set())
   const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(new Set())
+  const [pendingDelete, setPendingDelete] = useState<{
+    timelineIds: string[]
+    sessionIds: string[]
+    message: string
+    batch: boolean
+  }>()
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [createPresetId, setCreatePresetId] = useState('')
+  const [createAsMain, setCreateAsMain] = useState(false)
+  const [createBusy, setCreateBusy] = useState(false)
+  const [createError, setCreateError] = useState<string>()
+  const [primaryError, setPrimaryError] = useState<string>()
+
+  useEffect(() => { setPendingDelete(undefined) }, [props.api])
 
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc')
 
@@ -132,14 +153,15 @@ export function SessionsPanel(props: SessionsPanelProps) {
 
   // 搜索过滤
   const filteredTimelines = useMemo(() => {
-    if (filter === 'standalone') return []
+    if (filter === 'sessions') return []
     return filterTimelines(sortedTimelines, cardMap, searchQuery)
   }, [filter, searchQuery, sortedTimelines, cardMap])
 
-  const filteredStandaloneSessions = useMemo(() => {
+  const filteredSessions = useMemo(() => {
     if (filter === 'timelines') return []
-    return filterStandaloneSessions(standaloneSessions, props.agentPresets, searchQuery)
-  }, [filter, searchQuery, standaloneSessions, props.agentPresets])
+    const sessions = filter === 'sessions' ? sortSessions(props.allAgentSessions, sortOrder) : standaloneSessions
+    return filterAgentSessions(sessions, props.agentPresets, searchQuery)
+  }, [filter, searchQuery, standaloneSessions, props.allAgentSessions, props.agentPresets, sortOrder])
 
   const expandableTimelineIds = useMemo(() => {
     return getExpandableTimelineIds(filteredTimelines.map(t => t.id), sessionsByTimelineId)
@@ -158,7 +180,7 @@ export function SessionsPanel(props: SessionsPanelProps) {
 
   const visibleSessionIds = useMemo(() => {
     const ids: string[] = []
-    filteredStandaloneSessions.forEach(s => ids.push(s.id))
+    filteredSessions.forEach(s => ids.push(s.id))
     filteredTimelines.forEach(t => {
       if (expandedTimelines.has(t.id)) {
         const bound = sessionsByTimelineId.get(t.id) ?? []
@@ -166,7 +188,7 @@ export function SessionsPanel(props: SessionsPanelProps) {
       }
     })
     return ids
-  }, [filteredStandaloneSessions, filteredTimelines, expandedTimelines, sessionsByTimelineId])
+  }, [filteredSessions, filteredTimelines, expandedTimelines, sessionsByTimelineId])
 
   const totalSelectedCount = selectedTimelineIds.size + selectedSessionIds.size
 
@@ -217,11 +239,14 @@ export function SessionsPanel(props: SessionsPanelProps) {
     setSelectedSessionIds(new Set())
   }
 
-  const handleBatchDelete = async () => {
+  const handleBatchDelete = () => {
     if (totalSelectedCount === 0) return
 
     const timelineCount = selectedTimelineIds.size
-    const sessionCount = selectedSessionIds.size
+    const sessionCount = Array.from(selectedSessionIds).filter(id => {
+      const session = props.allAgentSessions.find(item => item.id === id)
+      return !session?.timelineId || !selectedTimelineIds.has(session.timelineId)
+    }).length
 
     const confirmMessage = timelineCount > 0 && sessionCount > 0
       ? props.t('sessions.confirmBatchDelete', {
@@ -236,44 +261,62 @@ export function SessionsPanel(props: SessionsPanelProps) {
         count: sessionCount,
       })
 
-    if (!window.confirm(confirmMessage)) return
-
-    const timelineIds = Array.from(selectedTimelineIds)
-    const sessionIds = Array.from(selectedSessionIds)
-    const results = await Promise.all([
-      Promise.allSettled(timelineIds.map(id => props.onDeleteTimeline?.(id))),
-      Promise.allSettled(sessionIds.map(id => props.onDeleteAgentSession?.(id))),
-    ])
-    const [timelineResults, sessionResults] = results
-    const deletedTimelineIds = new Set(
-      timelineIds.filter((_, index) => timelineResults[index]?.status === 'fulfilled' && timelineResults[index]?.value === true),
-    )
-    const deletedSessionIds = new Set(
-      sessionIds.filter((_, index) => sessionResults[index]?.status === 'fulfilled' && sessionResults[index]?.value === true),
-    )
-
-    setSelectedTimelineIds(prev => {
-      const next = new Set(prev)
-      deletedTimelineIds.forEach(id => next.delete(id))
-      return next
+    setPendingDelete({
+      timelineIds: Array.from(selectedTimelineIds),
+      sessionIds: Array.from(selectedSessionIds),
+      message: confirmMessage,
+      batch: true,
     })
-    setSelectedSessionIds(prev => {
-      const next = new Set(prev)
-      deletedSessionIds.forEach(id => next.delete(id))
-      return next
-    })
+  }
 
-    if (
-      selectedItem &&
-      ((selectedItem.kind === 'timeline' && deletedTimelineIds.has(selectedItem.id)) ||
-        (selectedItem.kind === 'session' && deletedSessionIds.has(selectedItem.id)))
-    ) {
-      setSelectedItem(undefined)
-    }
+  const confirmDelete = async () => {
+    if (!pendingDelete || deleteBusy) return
+    setDeleteBusy(true)
+    try {
+      const { timelineIds } = pendingDelete
+      const cascadedSessions = props.allAgentSessions.filter(session => session.timelineId && timelineIds.includes(session.timelineId))
+      const sessionIds = pendingDelete.sessionIds.filter(id => !cascadedSessions.some(session => session.id === id))
+      const results = await Promise.all([
+        Promise.allSettled(timelineIds.map(id => props.onDeleteTimeline?.(id))),
+        Promise.allSettled(sessionIds.map(id => props.onDeleteAgentSession?.(id))),
+      ])
+      const [timelineResults, sessionResults] = results
+      const deletedTimelineIds = new Set(
+        timelineIds.filter((_, index) => timelineResults[index]?.status === 'fulfilled' && timelineResults[index]?.value === true),
+      )
+      const deletedSessionIds = new Set(
+        sessionIds.filter((_, index) => sessionResults[index]?.status === 'fulfilled' && sessionResults[index]?.value === true),
+      )
+      for (const session of cascadedSessions) {
+        if (deletedTimelineIds.has(session.timelineId!)) deletedSessionIds.add(session.id)
+      }
 
-    // Remove only confirmed deletions so a partial batch failure leaves failed items visible for retry.
-    if (deletedTimelineIds.size === timelineIds.length && deletedSessionIds.size === sessionIds.length) {
-      setIsSelectionMode(false)
+      setSelectedTimelineIds(prev => {
+        const next = new Set(prev)
+        deletedTimelineIds.forEach(id => next.delete(id))
+        return next
+      })
+      setSelectedSessionIds(prev => {
+        const next = new Set(prev)
+        deletedSessionIds.forEach(id => next.delete(id))
+        return next
+      })
+
+      if (
+        selectedItem &&
+        ((selectedItem.kind === 'timeline' && deletedTimelineIds.has(selectedItem.id)) ||
+          (selectedItem.kind === 'session' && deletedSessionIds.has(selectedItem.id)))
+      ) {
+        setSelectedItem(undefined)
+      }
+
+      // Remove only confirmed deletions so a partial batch failure leaves failed items visible for retry.
+      if (pendingDelete.batch && deletedTimelineIds.size === timelineIds.length && sessionIds.every(id => deletedSessionIds.has(id))) {
+        setIsSelectionMode(false)
+      }
+    } finally {
+      setDeleteBusy(false)
+      setPendingDelete(undefined)
     }
   }
 
@@ -368,14 +411,12 @@ export function SessionsPanel(props: SessionsPanelProps) {
     }
   }
 
-  const handleDeleteTimeline = async (timeline: NarrativeTimeline) => {
+  const handleDeleteTimeline = (timeline: NarrativeTimeline) => {
     const title = timeline.title || props.t('sessions.untitledTimeline')
-    if (window.confirm(props.t('sessions.confirmDeleteTimeline', { title }))) {
-      const deleted = await props.onDeleteTimeline?.(timeline.id)
-      if (deleted === true && selectedItem?.id === timeline.id) {
-        setSelectedItem(undefined)
-      }
-    }
+    setPendingDelete({
+      timelineIds: [timeline.id], sessionIds: [],
+      message: props.t('sessions.confirmDeleteTimeline', { title }), batch: false,
+    })
   }
 
   const handleRenameSession = async (session: AgentSession) => {
@@ -386,15 +427,12 @@ export function SessionsPanel(props: SessionsPanelProps) {
     }
   }
 
-  const handleDeleteSession = async (session: AgentSession) => {
+  const handleDeleteSession = (session: AgentSession) => {
     const title = session.title || props.t('sessions.untitledAgentSession')
-    if (window.confirm(props.t('sessions.confirmDeleteSession', { title }))) {
-      const deleted = await props.onDeleteAgentSession?.(session.id)
-      if (deleted !== true) return
-      if (selectedItem?.id === session.id) {
-        setSelectedItem(undefined)
-      }
-    }
+    setPendingDelete({
+      timelineIds: [], sessionIds: [session.id],
+      message: props.t('sessions.confirmDeleteSession', { title }), batch: false,
+    })
   }
 
   const handleOpenSessionInSidebar = (session: AgentSession) => {
@@ -402,6 +440,33 @@ export function SessionsPanel(props: SessionsPanelProps) {
     window.dispatchEvent(
       new CustomEvent('loom:open-agent-chat', { detail: { sessionId: session.id } }),
     )
+  }
+
+  async function createSession() {
+    if (!props.onCreateAgentSession || !createPresetId || createBusy) return
+    setCreateBusy(true)
+    setCreateError(undefined)
+    try {
+      const session = await props.onCreateAgentSession(createPresetId, createAsMain)
+      setCreateOpen(false)
+      setCreatePresetId('')
+      setCreateAsMain(false)
+      setSelectedItem({ kind: 'session', id: session.id })
+      handleOpenSessionInSidebar(session)
+    } catch (error) {
+      setCreateError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setCreateBusy(false)
+    }
+  }
+
+  async function choosePrimary(session: AgentSession) {
+    setPrimaryError(undefined)
+    try {
+      await props.onSetPrimaryAgentSession?.(session)
+    } catch (error) {
+      setPrimaryError(error instanceof Error ? error.message : String(error))
+    }
   }
 
   return (
@@ -413,7 +478,7 @@ export function SessionsPanel(props: SessionsPanelProps) {
           items={[
             { id: 'all', label: props.t('sessions.filterAll') },
             { id: 'timelines', label: props.t('sessions.filterTimelines') },
-            { id: 'standalone', label: props.t('sessions.filterStandalone') },
+            { id: 'sessions', label: props.t('sessions.filterSessions') },
           ]}
           onChange={nextFilter => {
             setFilter(nextFilter)
@@ -504,6 +569,11 @@ export function SessionsPanel(props: SessionsPanelProps) {
                 </div>
 
                 <div className={styles.toolbarActions}>
+                  {props.onCreateAgentSession ? <button
+                    aria-label="新建 Agent 对话" title="新建 Agent 对话"
+                    className={styles.toolbarIconBtn} type="button"
+                    onClick={() => setCreateOpen(true)}
+                  ><Plus aria-hidden="true" size={14} /></button> : null}
                   <button
                     aria-label={props.t(sortOrder === 'desc' ? 'sessions.sortLatest' : 'sessions.sortEarliest')}
                     className={styles.toolbarIconBtn}
@@ -534,8 +604,9 @@ export function SessionsPanel(props: SessionsPanelProps) {
             )}
 
             <div className={styles.list}>
-              {filteredTimelines.length === 0 && filteredStandaloneSessions.length === 0 ? (
-                <EmptyState text={props.t('sessions.timelineEmpty')} />
+              {primaryError ? <p role="alert">{primaryError}</p> : null}
+              {filteredTimelines.length === 0 && filteredSessions.length === 0 ? (
+                <EmptyState text={props.t(filter === 'sessions' ? 'sessions.agentEmpty' : 'sessions.timelineEmpty')} />
               ) : null}
 
               {/* 时间线列表及分组全选 */}
@@ -651,7 +722,7 @@ export function SessionsPanel(props: SessionsPanelProps) {
 
                               {hasChildren ? (
                                 <span className={styles.badge} title={props.t('sessions.boundSessions', { count: boundSessions.length })}>
-                                  <MessageSquareText aria-hidden="true" size={11} />
+                                  <Bot aria-hidden="true" size={11} />
                                   <span>{boundSessions.length}</span>
                                 </span>
                               ) : null}
@@ -762,9 +833,11 @@ export function SessionsPanel(props: SessionsPanelProps) {
                                           />
                                         </div>
                                       ) : null}
-                                      <MessageSquareText aria-hidden="true" />
+                                      <Bot aria-hidden="true" />
                                       <span className={styles.childItemBody}>
-                                        <strong>{session.title || profile?.rootNode.label || props.t('sessions.untitledAgentSession')}</strong>
+                                        <strong>{session.title || profile?.rootNode.label || props.t('sessions.untitledAgentSession')}
+                                          {session.id === props.narrativeAgentSession?.id ? ' · 主写作' : ''}
+                                        </strong>
                                         <small>{formatDate(session.updatedAt)}</small>
                                       </span>
                                       <span className={styles.count}>{session.entryCount}</span>
@@ -836,12 +909,12 @@ export function SessionsPanel(props: SessionsPanelProps) {
                 </>
               ) : null}
 
-              {/* 独立会话分组及分组全选 */}
-              {filteredStandaloneSessions.length > 0 ? (
+              {/* 全部视图列出独立会话；会话视图列出所有 Agent 会话。 */}
+              {filteredSessions.length > 0 ? (
                 <>
                   <div className={styles.sectionHeaderRow}>
                     <span className={styles.sectionTitle}>
-                      {props.t('sessions.standaloneSection')} ({filteredStandaloneSessions.length})
+                      {props.t(filter === 'sessions' ? 'sessions.sessionsSection' : 'sessions.standaloneSection')} ({filteredSessions.length})
                     </span>
                     {isSelectionMode ? (
                       <div
@@ -868,7 +941,7 @@ export function SessionsPanel(props: SessionsPanelProps) {
                     ) : null}
                   </div>
 
-                  {filteredStandaloneSessions.map(session => {
+                  {filteredSessions.map(session => {
                     const isSessionSelected = selectedItem?.kind === 'session' && selectedItem.id === session.id
                     const isSessionChecked = selectedSessionIds.has(session.id)
                     const profile = props.agentPresets.find(p => p.id === session.agentPresetId)
@@ -911,7 +984,9 @@ export function SessionsPanel(props: SessionsPanelProps) {
                                 <Bot aria-hidden="true" />
                               </div>
                               <span className={styles.itemBody}>
-                                <strong>{session.title || profile?.rootNode.label || props.t('sessions.untitledAgentSession')}</strong>
+                                <strong>{session.title || profile?.rootNode.label || props.t('sessions.untitledAgentSession')}
+                                  {session.id === props.narrativeAgentSession?.id ? ' · 主写作' : ''}
+                                </strong>
                                 <small>{profile?.rootNode.label ?? session.agentPresetId} · {formatDate(session.updatedAt)}</small>
                               </span>
                             </button>
@@ -1006,10 +1081,13 @@ export function SessionsPanel(props: SessionsPanelProps) {
               entries={sessionTranscriptMap?.[selectedSession.id] ?? []}
               profiles={props.agentPresets}
               session={selectedSession}
+              isPrimary={props.narrativeAgentSession?.id === selectedSession.id}
               t={props.t}
               onDelete={() => void handleDeleteSession(selectedSession)}
               onOpenSidebar={() => handleOpenSessionInSidebar(selectedSession)}
               onRename={() => void handleRenameSession(selectedSession)}
+              onSetPrimary={selectedSession.timelineId === props.activeTimeline?.id
+                ? () => void choosePrimary(selectedSession) : undefined}
             />
           ) : (
             <div className={styles.empty}>
@@ -1019,6 +1097,50 @@ export function SessionsPanel(props: SessionsPanelProps) {
           )}
         </div>
       </MasterDetailWorkbench>
+      <Dialog
+        open={createOpen}
+        title="新建 Agent 对话"
+        dismissible={!createBusy}
+        onClose={() => { if (!createBusy) setCreateOpen(false) }}
+        actions={<>
+          <Button disabled={createBusy} onClick={() => setCreateOpen(false)}>取消</Button>
+          <Button disabled={!createPresetId || createBusy} onClick={() => void createSession()}>创建对话</Button>
+        </>}
+      >
+        <label>
+          Agent Preset
+          <select value={createPresetId} disabled={createBusy}
+            onChange={event => setCreatePresetId(event.target.value)}>
+            <option value="">选择预设</option>
+            {props.agentPresets.map(preset => <option key={preset.id} value={preset.id}>{preset.rootNode.label}</option>)}
+          </select>
+        </label>
+        <label>
+          <input type="checkbox" checked={createAsMain} disabled={createBusy}
+            onChange={event => setCreateAsMain(event.target.checked)} />
+          设为主写作对话
+        </label>
+        {createError ? <p role="alert">{createError}</p> : null}
+      </Dialog>
+      <Dialog
+        open={Boolean(pendingDelete)}
+        role="alertdialog"
+        title={props.t('sessions.confirmDeleteTitle')}
+        description={pendingDelete?.message}
+        closeOnBackdrop
+        dismissible={!deleteBusy}
+        onClose={() => { if (!deleteBusy) setPendingDelete(undefined) }}
+        actions={(
+          <>
+            <Button disabled={deleteBusy} onClick={() => setPendingDelete(undefined)}>
+              {props.t('character.cancel')}
+            </Button>
+            <Button disabled={deleteBusy} data-tone="danger" variant="danger" onClick={() => void confirmDelete()}>
+              <Trash2 aria-hidden="true" /> {props.t('sessions.delete')}
+            </Button>
+          </>
+        )}
+      />
     </div>
   )
 }
@@ -1205,7 +1327,7 @@ function TimelineDetail(props: {
       <section className={styles.boundSessionsSection}>
         <div className={styles.sectionHeaderRow}>
           <h4 className={styles.sectionTitle}>
-            <MessageSquareText aria-hidden="true" size={14} />
+            <Bot aria-hidden="true" size={14} />
             <span>{props.t('sessions.boundAgentSessions')} ({props.boundSessions.length})</span>
           </h4>
         </div>
@@ -1279,12 +1401,15 @@ function SessionDetail(props: {
   entries: AgentTranscriptEntry[]
   profiles: AgentPreset[]
   session: AgentSession
+  isPrimary?: boolean
   t: Translator
   onDelete?(): void
   onOpenSidebar(): void
   onRename?(): void
+  onSetPrimary?(): void
 }) {
   const profile = props.profiles.find(p => p.id === props.session.agentPresetId)
+  const renderItems = buildRenderItems(props.entries)
 
   return (
     <>
@@ -1296,10 +1421,13 @@ function SessionDetail(props: {
           <div className={styles.detailTitleMeta}>
             <h3>{props.session.title || profile?.rootNode.label || 'Agent Session'}</h3>
             <span>{profile?.rootNode.label ?? props.session.agentPresetId} · {props.session.id}</span>
+            {props.isPrimary ? <span>主写作对话</span> : null}
           </div>
         </div>
 
         <div className={styles.detailActions}>
+          {!props.isPrimary && props.onSetPrimary ? <Button size="small" variant="secondary"
+            onClick={props.onSetPrimary}>设为主写作对话</Button> : null}
           {props.onRename ? (
             <button
               aria-label={props.t('sessions.rename')}
@@ -1351,27 +1479,26 @@ function SessionDetail(props: {
       {/* 转录缩略预览 */}
       <section className={styles.timelineLogsSection}>
         <h4 className={styles.sectionTitle}>{props.t('sessions.transcriptPreview')}</h4>
-        {props.entries.length === 0 ? (
+        {renderItems.length === 0 ? (
           <div className={styles.empty}>
             <span>{props.t('sessions.noTranscript')}</span>
           </div>
         ) : (
           <div className={styles.transcriptList}>
-            {props.entries.map(entry => (
-              <div key={entry.id} className={styles.transcriptEntry}>
+            {renderItems.map(item => item.kind === 'tool-group' ? (
+              <AgentToolGroupBlock key={item.id} label={item.label} tools={item.tools} />
+            ) : item.kind === 'reasoning' ? (
+              <details className={styles.transcriptReasoning} key={item.id}>
+                <summary>{props.t('agent.reasoning')}</summary>
+                <p className={styles.transcriptEntryContent}>{item.content}</p>
+              </details>
+            ) : (
+              <div key={item.id} className={styles.transcriptEntry}>
                 <div className={styles.transcriptEntryHeader}>
-                  <span className={styles.badge}>{entry.entry.kind}</span>
-                  <small>{formatDate(entry.createdAt)}</small>
+                  <span>{props.t(item.role === 'assistant' ? 'sessions.messageAssistant' : 'sessions.messageUser')}</span>
+                  <small>{formatDate(item.message.createdAt)}</small>
                 </div>
-                <p className={styles.transcriptEntryContent}>
-                  {entry.entry.kind === 'message'
-                    ? `${entry.entry.role}: ${entry.entry.content}`
-                    : entry.entry.kind === 'reasoning'
-                      ? `[思考] ${entry.entry.content}`
-                      : entry.entry.kind === 'tool-invocation'
-                        ? `[工具调用] ${entry.entry.exposedName}`
-                        : JSON.stringify(entry.entry)}
-                </p>
+                <p className={styles.transcriptEntryContent}>{item.content}</p>
               </div>
             ))}
           </div>

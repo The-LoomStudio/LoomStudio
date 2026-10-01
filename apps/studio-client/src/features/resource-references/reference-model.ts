@@ -1,10 +1,11 @@
 import { parseResourceReference, type ResourceReference } from '@loom-studio/shared'
 import { stringify } from 'yaml'
 import type { StudioApi } from '../../shared/api/studio-api.js'
-import { findContextNode } from '../context-assets/model/projection-order.js'
+import type { ContextAssetNode } from '../../entities/context-asset.js'
 
 export type ReferenceView = {
   title: string
+  path?: string
   body: string
   exact: boolean
   range: { startLine: number; endLine: number } | undefined
@@ -16,11 +17,12 @@ export async function loadResourceReference(api: Pick<StudioApi, 'promptResource
   if (!reference) throw new Error('无效的资源引用。')
   if (reference.kind === 'prompt-resource') {
     const { resource } = await api.promptResources.get(reference.resourceId)
-    const node = findContextNode([resource.rootNode], reference.nodeId)
-    if (!node || typeof node.body !== 'string') throw new Error('引用的正文节点已不存在或无法读取。')
+    const nodes = findNodePath(resource.rootNode, reference.nodeId)
+    const node = nodes?.at(-1)
+    if (!nodes || !node || typeof node.body !== 'string') throw new Error('引用的正文节点已不存在或无法读取。')
     return view(reference, node.label, node.body, resource.version === reference.version, {
       resourceId: resource.id, nodeId: node.id, panel: resource.resourceKind === 'preset' ? 'preset' : 'resource',
-    })
+    }, `资源 / ${nodes.map(item => item.label).join(' / ')}`)
   }
   if (reference.kind === 'state') {
     const { snapshot } = await api.states.get(reference.target)
@@ -40,10 +42,19 @@ export async function loadResourceReference(api: Pick<StudioApi, 'promptResource
   return view(reference, after.name, artifact.source, after.version === reference.version)
 }
 
-function view(reference: ResourceReference, title: string, body: string, exact: boolean, editor?: ReferenceView['editor']): ReferenceView {
+function findNodePath(node: ContextAssetNode, id: string): ContextAssetNode[] | undefined {
+  if (node.id === id) return [node]
+  for (const child of node.children ?? []) {
+    const path = findNodePath(child, id)
+    if (path) return [node, ...path]
+  }
+  return undefined
+}
+
+function view(reference: ResourceReference, title: string, body: string, exact: boolean, editor?: ReferenceView['editor'], path?: string): ReferenceView {
   const lines = body.split('\n').length
   return {
-    title, body, exact,
+    title, body, exact, path,
     range: exact && reference.endLine <= lines ? { startLine: reference.startLine, endLine: reference.endLine } : undefined,
     ...(editor ? { editor } : {}),
   }

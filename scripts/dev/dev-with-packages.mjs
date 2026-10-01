@@ -11,7 +11,7 @@ if (target !== 'server' && target !== 'client') {
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 if (target === 'server') assertDevelopmentDataReady(repositoryRoot)
-const developmentEnvironment = developmentDataEnvironment(repositoryRoot)
+const developmentEnvironment = { ...developmentDataEnvironment(repositoryRoot), NODE_ENV: 'development' }
 const initialBuild = spawnSync('pnpm', ['run', 'build:packages'], {
   cwd: repositoryRoot,
   env: developmentEnvironment,

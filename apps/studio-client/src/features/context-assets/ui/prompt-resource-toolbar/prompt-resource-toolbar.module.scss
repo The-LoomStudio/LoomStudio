@@ -40,6 +40,11 @@
   gap: 4px;
 }
 
+.tokenResults {
+  flex-basis: 100%;
+  min-width: 0;
+}
+
 .actions button {
   align-items: center;
   background: transparent;

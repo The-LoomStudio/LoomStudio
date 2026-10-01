@@ -192,7 +192,7 @@ export function createCardDirectoryRuntimeMethods(ctx: CardDirectoryRuntimeConte
               if (equal(old.extensionPayloads?.find(item => item.id === id), desired)) continue
               const { id: artifactPayloadId, ...fields } = desired
               await writeDocument(documents, { id: payload.id, type: types.portableExtensionPayload, expectedVersion: payload.version,
-                content: { ...fields, ownerInstallationId: payload.content.ownerInstallationId, artifactPayloadId, createdAt: payload.content.createdAt, updatedAt: timestamp } })
+                content: { ...fields, ...(payload.content.ownerInstallationId !== undefined ? { ownerInstallationId: payload.content.ownerInstallationId } : {}), artifactPayloadId, createdAt: payload.content.createdAt, updatedAt: timestamp } })
             }
             for (const item of preparedScripts) {
               if (item.prepared) {

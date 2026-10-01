@@ -104,19 +104,19 @@ export async function inspectApplicationMacros(
       ...(preset ? { presetId: preset.id } : {}),
     }
     if (card && (card.macros || card.macroOptions)) {
-      staticSources.push({ sourceId: `card:${cardId}`, sourceKind: 'card', sourceLabel: `Card ${cardId}`, macros: card.macros ?? {}, macroOptions: card.macroOptions })
+      staticSources.push({ sourceId: `card:${cardId}`, sourceKind: 'card', sourceLabel: card.name, macros: card.macros ?? {}, macroOptions: card.macroOptions })
     }
   } else if (input.cardId) {
     const card = await readDocument<CardSourceContent>(ctx.documents, input.cardId, applicationDocumentTypes.cardSource)
     base = await readAgentTurnVariables(ctx, card.content.userName, undefined, card.content.name)
     context = { global: base.snapshot.global, cardId: card.id, ...(preset ? { presetId: preset.id } : {}) }
-    if (card.content.macros || card.content.macroOptions) staticSources.push({ sourceId: `card:${card.id}`, sourceKind: 'card', sourceLabel: `Card ${card.id}`, macros: card.content.macros ?? {}, macroOptions: card.content.macroOptions })
+    if (card.content.macros || card.content.macroOptions) staticSources.push({ sourceId: `card:${card.id}`, sourceKind: 'card', sourceLabel: card.content.name, macros: card.content.macros ?? {}, macroOptions: card.content.macroOptions })
   } else {
     base = await readAgentTurnVariables(ctx, undefined)
     context = { global: base.snapshot.global, ...(preset ? { presetId: preset.id } : {}) }
   }
 
-  if (preset && (preset.macros || preset.macroOptions)) staticSources.push({ sourceId: `preset:${preset.id}`, sourceKind: 'preset', sourceLabel: `Preset ${preset.id}`, macros: preset.macros ?? {}, macroOptions: preset.macroOptions })
+  if (preset && (preset.macros || preset.macroOptions)) staticSources.push({ sourceId: `preset:${preset.id}`, sourceKind: 'preset', sourceLabel: preset.rootNode.label, macros: preset.macros ?? {}, macroOptions: preset.macroOptions })
   const savedSelections = input.timelineTarget && input.presetId
     ? (await readTimelinePresetConfig(ctx.documents, input.timelineTarget.timelineId, input.presetId)).macroSelections
     : undefined
@@ -134,7 +134,9 @@ export async function inspectPreparedMacros(input: {
   ctx: Pick<ApplicationRuntimeContext, 'macroProviders' | 'now'>
   variables: VariableRenderContext
   cardId?: string
+  cardLabel?: string
   presetId?: string
+  presetLabel?: string
   timeline?: JsonObject
   cardMacros?: Record<string, string>
   presetMacros?: Record<string, string>
@@ -143,8 +145,8 @@ export async function inspectPreparedMacros(input: {
   macroSelections?: MacroSelectionMap
 }): Promise<MacroInspection> {
   const staticSources: MacroStaticSource[] = []
-  if (input.cardId && (input.cardMacros || input.cardMacroOptions)) staticSources.push({ sourceId: `card:${input.cardId}`, sourceKind: 'card', sourceLabel: `Card ${input.cardId}`, macros: input.cardMacros ?? {}, macroOptions: input.cardMacroOptions })
-  if (input.presetId && (input.presetMacros || input.presetMacroOptions)) staticSources.push({ sourceId: `preset:${input.presetId}`, sourceKind: 'preset', sourceLabel: `Preset ${input.presetId}`, macros: input.presetMacros ?? {}, macroOptions: input.presetMacroOptions })
+  if (input.cardId && (input.cardMacros || input.cardMacroOptions)) staticSources.push({ sourceId: `card:${input.cardId}`, sourceKind: 'card', sourceLabel: input.cardLabel ?? 'Card', macros: input.cardMacros ?? {}, macroOptions: input.cardMacroOptions })
+  if (input.presetId && (input.presetMacros || input.presetMacroOptions)) staticSources.push({ sourceId: `preset:${input.presetId}`, sourceKind: 'preset', sourceLabel: input.presetLabel ?? 'Preset', macros: input.presetMacros ?? {}, macroOptions: input.presetMacroOptions })
   return await input.ctx.macroProviders.inspect({
     snapshot: input.variables.snapshot,
     context: {

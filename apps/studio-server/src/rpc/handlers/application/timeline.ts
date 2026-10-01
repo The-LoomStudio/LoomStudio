@@ -67,6 +67,12 @@ export async function handleTimelineRpc(
         limit: readOptionalNumber(params, 'limit'),
       }) as unknown as JsonValue
 
+    case 'application.getEffectiveNarrativePreview':
+      return await runtime.getEffectiveNarrativePreview({
+        timelineId: readString(params, 'timelineId'),
+        branchId: readString(params, 'branchId'),
+      }) as unknown as JsonValue
+
     case 'application.forkNarrativeBranch':
       return await runtime.forkNarrativeBranch({
         timelineId: readString(params, 'timelineId'),

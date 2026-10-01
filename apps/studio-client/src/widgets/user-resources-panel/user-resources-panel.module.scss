@@ -1,0 +1,20 @@
+.panel {
+  height: 100%;
+  min-width: 0;
+  overflow: auto;
+  color: var(--loom-color-text);
+}
+
+.panel > header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--loom-color-border);
+}
+
+.panel h2 {
+  margin: 0;
+  font-size: var(--loom-font-size-4);
+}
+
+.panel [role="alert"] {
+  padding: 8px 20px;
+}

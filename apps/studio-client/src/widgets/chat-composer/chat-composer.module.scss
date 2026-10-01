@@ -102,6 +102,14 @@
   gap: 6px;
 }
 
+.composerActions {
+  min-width: 0;
+}
+
+.quickActions {
+  flex-shrink: 0;
+}
+
 .composerActions button {
   min-height: 30px;
 }

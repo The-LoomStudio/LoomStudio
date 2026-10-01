@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react'
 import styles from './conversation-message-chrome.module.scss'
 
-export function ConversationMessageChrome(props: { actions: ReactNode; createdAt: string; index: number }) {
+export function ConversationMessageChrome(props: { actions: ReactNode; createdAt: string; index: number; metadata?: ReactNode }) {
   return (
     <footer className={styles.footer} data-conversation-message-footer>
       <span className={styles.timestamp} data-conversation-message-timestamp title={formatFullTimestamp(props.createdAt)}>
         #{props.index + 1} · {formatConversationTimestamp(props.createdAt)}
+        {props.metadata}
       </span>
       <div className={styles.actions} data-conversation-message-actions>{props.actions}</div>
     </footer>

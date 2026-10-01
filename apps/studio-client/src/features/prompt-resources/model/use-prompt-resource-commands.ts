@@ -129,9 +129,17 @@ export function usePromptResourceCommands(input: UsePromptResourceCommandsInput)
     })
   }
 
-  async function replaceSettingMounts(source: SettingMountSource, settingResourceIds: string[]): Promise<void> {
+  async function replaceSettingMounts(
+    source: SettingMountSource,
+    selections: string[] | Array<{ id: string } | { settingResourceId: string }>,
+    mode: 'resourceIds' | 'mounts' = 'resourceIds',
+  ): Promise<void> {
     await runMutation(async () => {
-      const result = await api.promptResources.replaceSettingMounts({ source, settingResourceIds })
+      const result = await api.promptResources.replaceSettingMounts(
+        mode === 'mounts'
+          ? { source, mounts: selections as Array<{ id: string } | { settingResourceId: string }> }
+          : { source, settingResourceIds: selections as string[] },
+      )
       setSettingMounts(current => [
         ...current.filter(mount => mount.source.kind !== source.kind || (source.kind === 'preset' ? mount.source.id !== source.id : mount.source.id !== (source.id ?? 'global'))),
         ...result.mounts,

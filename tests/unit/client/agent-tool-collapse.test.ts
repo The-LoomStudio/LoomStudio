@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import { isValidElement, type ReactElement } from 'react'
-import { AgentChatPanel, type AgentChatPanelProps } from '../../../apps/studio-client/src/widgets/agent-chat-panel/agent-chat-panel.js'
+import { AgentChatPanel, buildRenderItems, type AgentChatPanelProps } from '../../../apps/studio-client/src/widgets/agent-chat-panel/agent-chat-panel.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 
 vi.mock('react', async importOriginal => ({
@@ -9,6 +9,7 @@ vi.mock('react', async importOriginal => ({
   useState: (initial: unknown) => [typeof initial === 'function' ? initial() : initial, vi.fn()],
   useRef: (current: unknown) => ({ current }),
   useEffect: () => undefined,
+  useLayoutEffect: () => undefined,
   useMemo: (factory: () => unknown) => factory(),
 }))
 type Element = ReactElement<Record<string, unknown>>
@@ -39,6 +40,45 @@ function panelElements(count: number, reply: boolean) {
 const panel = (count: number, reply: boolean) => panelElements(count, reply).find(element => Array.isArray(element.props.tools))!
 
 describe('Agent tool group identity and collapse', () => {
+  it('shows a pending invocation until its result arrives', () => {
+    const invocation = {
+      id: 'call', agentSessionId: 'session', sequence: 1, createdAt: '',
+      entry: { kind: 'tool-invocation' as const, toolId: 'read', invocationId: 'call-1', exposedName: 'read', transport: 'native-function' as const, status: 'proposed' as const },
+    }
+    const result = {
+      id: 'result', agentSessionId: 'session', sequence: 2, createdAt: '',
+      entry: { kind: 'tool-result' as const, invocationId: 'call-1', toolId: 'read', status: 'completed' as const, content: [{ type: 'text' as const, text: 'done' }] },
+    }
+    expect(buildRenderItems([invocation])).toMatchObject([{ kind: 'tool-group', tools: [{ status: 'running' }] }])
+    expect(buildRenderItems([invocation, result])).toMatchObject([{ kind: 'tool-group', tools: [{
+      status: 'success', inputs: [{ label: '调用', content: '未记录调用内容' }], resultContent: 'done',
+    }] }])
+  })
+
+  it('retains CodeAct source and structured arguments beside a result or error', () => {
+    const code = {
+      id: 'code', agentSessionId: 'session', sequence: 1, createdAt: '',
+      entry: { kind: 'tool-invocation', toolId: 'official/codeact', invocationId: 'code-1', exposedName: 'codeact', rawInput: 'print(1 + 1)' },
+    }
+    const failure = {
+      id: 'failure', agentSessionId: 'session', sequence: 2, createdAt: '',
+      entry: { kind: 'tool-result', invocationId: 'code-1', status: 'failed', content: [], error: { code: 'codeact.syntax', message: 'Unexpected token' } },
+    }
+    expect(buildRenderItems([code, failure])).toMatchObject([{ kind: 'tool-group', tools: [{
+      inputs: [{ label: '代码', content: 'print(1 + 1)' }],
+      errorContent: 'codeact.syntax: Unexpected token', status: 'error',
+    }] }])
+
+    const structured = {
+      id: 'json', agentSessionId: 'session', sequence: 3, createdAt: '',
+      entry: { kind: 'tool-invocation', toolId: 'official/search', invocationId: 'search-1', exposedName: 'search', arguments: { query: 'hello' } },
+    }
+    expect(buildRenderItems([structured])).toMatchObject([{ kind: 'tool-group', tools: [{
+      inputs: [{ label: '参数', content: '{\n  "query": "hello"\n}' }],
+      status: 'running',
+    }] }])
+  })
+
   it('renders text and JSON tool result parts without losing falsy or Unicode values', () => {
     const content: ClientJsonValue[] = [{ text: 'result😀' }, { text: '' }, { text: 0 }, null, false, 0, 'plain', ['nested'], { value: 1 }]
     const tree = elements(AgentChatPanel({
@@ -52,7 +92,7 @@ describe('Agent tool group identity and collapse', () => {
     }))
     const group = tree.find(element => Array.isArray(element.props.tools))!
     expect(group.props.tools).toMatchObject([{
-      detailContent: 'result😀\n{"text":""}\n{"text":0}\nnull\nfalse\n0\n"plain"\n["nested"]\n{"value":1}',
+      resultContent: 'result😀\n{"text":""}\n{"text":0}\nnull\nfalse\n0\n"plain"\n["nested"]\n{"value":1}',
     }])
   })
 

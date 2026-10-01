@@ -171,6 +171,18 @@ export function useCards(input: UseCardsInput) {
     }
   }
 
+  async function updateCardProfile(patch: { cardId: string; expectedVersion: number; name: string; userName: string; description: string }) {
+    await input.runAction(async () => {
+      const result = await input.api.cards.update(patch)
+      recordCardEdit({
+        label: input.t('history.card.update'),
+        changesetId: result.mutation.changesetId,
+        anchor: { documentId: result.card.id },
+      })
+      applyUpdatedCard(result.card)
+    })
+  }
+
   async function updateCard(event: FormEvent) {
     event.preventDefault()
     if (!selectedCardId) return
@@ -483,6 +495,7 @@ export function useCards(input: UseCardsInput) {
     selectCard,
     createCard,
     updateCard,
+    updateCardProfile,
     replaceCardPromptResources,
     attachExtensionPackage,
     detachExtensionPackage,

@@ -1,0 +1,79 @@
+{
+  "manifestVersion": 2,
+  "id": "official.loom-assistant",
+  "version": "1.0.0",
+  "displayName": "Loom Assistant",
+  "description": "Loom Studio 官方问答助手，包含辅助预设与脚本资源验证",
+  "author": "Loom Studio",
+  "engines": {
+    "studio": "^0.1.0"
+  },
+  "tags": [
+    "assistant",
+    "preset",
+    "example"
+  ],
+  "contributes": {
+    "loomScripts": [
+      {
+        "id": "assistant-script",
+        "source": "./resources/assistant.loom.js"
+      }
+    ],
+    "transformRules": [
+      {
+        "id": "assistant-note",
+        "source": "./resources/assistant-note.rule.json"
+      },
+      {
+        "id": "character-status",
+        "source": "./resources/character-status.rule.json"
+      }
+    ],
+    "textExtractors": [
+      {
+        "id": "loom.character-status",
+        "source": "./resources/character-status.extractor.json"
+      }
+    ],
+    "promptResources": [
+      {
+        "id": "official.loom-assistant.preset",
+        "resourceKind": "preset",
+        "source": "./resources/assistant-preset.json",
+        "scriptMounts": [
+          {
+            "scriptId": "assistant-script"
+          }
+        ],
+        "settingMounts": [
+          {
+            "resourceId": "official.loom-assistant.knowledge"
+          }
+        ],
+        "textUses": [
+          {
+            "kind": "rule",
+            "reference": { "kind": "package", "contributionId": "assistant-note" },
+            "enabled": true
+          },
+          {
+            "kind": "rule",
+            "reference": { "kind": "package", "contributionId": "character-status" },
+            "enabled": true
+          },
+          {
+            "kind": "extractor",
+            "reference": { "kind": "package", "contributionId": "loom.character-status" },
+            "enabled": true
+          }
+        ]
+      },
+      {
+        "id": "official.loom-assistant.knowledge",
+        "resourceKind": "setting",
+        "source": "./resources/knowledge-setting.json"
+      }
+    ]
+  }
+}

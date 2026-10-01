@@ -11,9 +11,11 @@ import { maxCardPngBytes } from '../codecs/card-png.js'
 import { createHash } from 'node:crypto'
 import { pipeline } from 'node:stream/promises'
 import { maxRpcRequestBodyBytes, readRpcRequestBody, RpcRequestBodyTooLargeError } from './rpc-request-body.js'
+import { serveClientFile } from './client-files.js'
 
 export function createStudioHttpServer(options: {
   auth: ApplicationSessionAuth
+  clientDirectory?: string
   assets?: AssetStore
   canReadCardExtensionAsset?(input: { packageId: string; moduleId: string; cardId: string; assetId: string }): Promise<boolean>
   cardMedia?: {
@@ -89,6 +91,8 @@ export function createStudioHttpServer(options: {
       }
       return
     }
+
+    if (options.clientDirectory && await serveClientFile(options.clientDirectory, request, response, signal)) return
 
     const session = options.auth.authenticate(request)
     if (!session) {

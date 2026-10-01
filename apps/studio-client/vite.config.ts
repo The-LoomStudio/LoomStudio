@@ -6,7 +6,7 @@ import { visualizer } from 'rollup-plugin-visualizer'
 import { defineConfig, type PluginOption } from 'vite'
 
 const resolvePath = (relative: string) => fileURLToPath(new URL(relative, import.meta.url))
-const packageVersion = JSON.parse(readFileSync(resolvePath('./package.json'), 'utf8')).version as string
+const packageVersion = JSON.parse(readFileSync(resolvePath('../../package.json'), 'utf8')).version as string
 const studioServerUrl = process.env.STUDIO_SERVER_URL ?? 'http://127.0.0.1:4173'
 const analyzeBundle = process.env.LOOM_ANALYZE_BUNDLE === '1'
 
@@ -47,6 +47,7 @@ export default defineConfig({
     },
   },
   build: {
+    assetsDir: 'app-assets',
     rolldownOptions: {
       output: {
         codeSplitting: {

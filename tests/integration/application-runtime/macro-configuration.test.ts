@@ -67,6 +67,10 @@ describe('Timeline + Preset macro configuration', () => {
       const selection = { tone: { sourceId: `preset:${s.preset.id}`, optionId: 'danger' } }
       const initial = await f.runtime.inspectMacros({ timelineTarget: { timelineId: s.target.timelineId }, presetId: s.preset.id })
       expect(initial.macroInspection.entries.find(entry => entry.name === 'tone')).toMatchObject({ value: 'PRESET_DEFAULT', status: 'resolved' })
+      expect(initial.macroInspection.entries.find(entry => entry.name === 'tone')?.candidates).toEqual(expect.arrayContaining([
+        expect.objectContaining({ sourceId: `card:${s.card.id}`, sourceLabel: 'Card' }),
+        expect.objectContaining({ sourceId: `preset:${s.preset.id}`, sourceLabel: 'Writer' }),
+      ]))
       const saved = await f.runtime.updateTimelinePresetConfig({ ...s.target, expectedVersion: 0, macroSelections: selection })
       expect(saved.config).toMatchObject({ ...s.target, version: 1, macroSelections: selection })
       expect(JSON.stringify(saved.config)).not.toContain('DANGER_TEXT')
@@ -80,6 +84,9 @@ describe('Timeline + Preset macro configuration', () => {
       f.engine.close()
       f = open(filename)
       const preview = await f.runtime.previewAgentTurn({ agentSessionId: s.session.id, input: 'Continue' })
+      expect(preview.macroInspection.entries.find(entry => entry.name === 'tone')?.candidates).toEqual(expect.arrayContaining([
+        expect.objectContaining({ sourceId: `preset:${s.preset.id}`, sourceLabel: 'Writer' }),
+      ]))
       await f.runtime.invokeAgentTurn({ agentSessionId: s.session.id, input: 'Continue' })
       expect(f.requests[0]).toEqual(preview.messages)
       expect(JSON.stringify(preview.messages)).toContain('TONE=DANGER_TEXT')

@@ -4,6 +4,8 @@
 
 Extension SDK 定义 Extension 作者侧的 TypeScript 合同。它描述 Manifest v2、Package/Module/Instance identity、Activation Context 与 Capability facade；它不负责加载、授权或运行 Extension。
 
+Package 可以没有 Module，仅携带声明式 Prompt Resource、工具定义或转换规则。静态贡献只有经 Studio 显式导入后才形成 Application 资源；声明本身不代表已安装、已授权或已激活。
+
 ## 公共入口
 
 唯一入口是 [`src/index.ts`](./src/index.ts)。除 `defineServerExtension(module)` identity helper 外，也提供 iframe 作者侧连接代理；其余导出以类型合同为主：

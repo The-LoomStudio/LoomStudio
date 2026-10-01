@@ -7,6 +7,7 @@
     "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
   "references": [
+    { "path": "../tokenizer" },
     { "path": "../application-data" },
     { "path": "../ai-gateway" },
     { "path": "../data-engine" },

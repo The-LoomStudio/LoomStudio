@@ -1,3 +1,4 @@
+import type { TextTokenCounter } from '@loom-studio/tokenizer/contracts'
 import type {
   AiGatewayInvokeInput,
   AiGatewayInvokeResult,
@@ -8,7 +9,7 @@ import type {
 import type { DiagnosticInput } from '@loom-studio/diagnostics'
 import type { DocumentRecord, ListDocumentsInput, WriteDocumentInput, WriteDocumentResult } from '@loom-studio/document-store'
 import type { ExtensionLogAccess, ExtensionLogWriter } from '@loom-studio/logging'
-import type { JsonObject, JsonValue, StateContribution } from '@loom-studio/shared'
+import type { ChatMessage, JsonObject, JsonValue, StateContribution } from '@loom-studio/shared'
 import type { StudioEvent } from '@loom-studio/transport'
 import { extensionInstallationId, type ExtensionInstallationTarget } from './installation.js'
 export { extensionInstallationId, installedExtensionContributionId, type ExtensionInstallationTarget } from './installation.js'
@@ -542,6 +543,7 @@ export type ClientExtensionActivationContext = {
     displayName: string
   }
   signal: AbortSignal
+  tokens: TextTokenCounter
   logger: ClientExtensionLogger
   logs: ExtensionLogAccess
   commands: {
@@ -621,7 +623,22 @@ export type ExtensionPromptResourceContribution = {
   source: string
   scriptMounts?: Array<{ scriptId: string; orderIndex?: number }>
   settingMounts?: Array<{
-    resourceId: string
+    resourceId?: string
+    reference?: { kind: 'package'; contributionId: string } | {
+      kind: 'external'
+      resourceId: string
+      origin?: { packageId: string; contributionId: string; target: 'global' | 'card' }
+    }
+    orderIndex?: number
+  }>
+  textUses?: Array<{
+    kind: 'rule' | 'extractor'
+    reference: { kind: 'package'; contributionId: string } | {
+      kind: 'external'
+      resourceId: string
+      origin?: { packageId: string; contributionId: string; target: 'global' | 'card' }
+    }
+    enabled: boolean
     orderIndex?: number
   }>
   toolMounts?: Array<{
@@ -638,6 +655,25 @@ export type ExtensionAgentToolContribution = {
   id: string
   source: string
 }
+
+export type ExtensionPromptAddition = {
+  settingResourceIds?: string[]
+  content?: Array<{
+    targetAnchorId: string
+    content: string
+    localDepth?: number
+    roleHint?: 'system' | 'developer' | 'user' | 'assistant'
+    activation?: JsonObject
+  }>
+}
+
+export type ExtensionPromptBuildInput = ExtensionPromptAddition & {
+  presetResourceId?: string
+  currentInput?: string
+  activationFacts?: JsonObject
+}
+
+export type ExtensionPromptBuildResult = { messages: ChatMessage[] }
 
 export type ExtensionTextTransformRuleContribution = {
   id: string
@@ -908,6 +944,7 @@ export type ExtensionActivationContext = {
     displayName: string
     directory: string
   }
+  tokens: TextTokenCounter
   logger: ExtensionLogWriter
   logs: ExtensionLogAccess
   permissions: {
@@ -929,6 +966,17 @@ export type ExtensionActivationContext = {
     registerProvider(registration: AiGatewayProviderRegistration): AiGatewayProviderRegistrationHandle
     listProviders(): RegisteredAiGatewayProvider[]
     invoke(input: Omit<AiGatewayInvokeInput, 'caller'>): Promise<AiGatewayInvokeResult>
+    invokeModel(input: {
+      model: { providerProfileId: string; modelId: string }
+      messages: ChatMessage[]
+      providerOptions?: JsonObject
+      delivery?: 'complete' | 'stream'
+      signal?: AbortSignal
+      onEvent?: (event: import('@loom-studio/ai-gateway').AiGatewayEvent) => void
+    }): Promise<import('@loom-studio/ai-gateway').AiGatewayResult>
+  }
+  prompt: {
+    build(input: ExtensionPromptBuildInput): Promise<ExtensionPromptBuildResult>
   }
   macros: {
     register(provider: ExtensionMacroProvider): ExtensionRegistrationHandle

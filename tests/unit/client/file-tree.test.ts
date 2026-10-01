@@ -1,4 +1,4 @@
-import { findNodeById, readDropPosition, readVisibleFileTreeNodes } from '../../../apps/studio-client/src/shared/ui/file-tree/file-tree-model.js'
+import { findNodeById, readDragTopScrollSpeed, readDropPosition, readVisibleFileTreeNodes } from '../../../apps/studio-client/src/shared/ui/file-tree/file-tree-model.js'
 import type { FileTreeNode } from '../../../apps/studio-client/src/shared/ui/file-tree/file-tree.js'
 import { describe, expect, it } from 'vitest'
 
@@ -20,6 +20,15 @@ describe('file tree model', () => {
 
     expect(readVisibleFileTreeNodes(tree, new Set())).toHaveLength(1)
     expect(readVisibleFileTreeNodes(tree, new Set(['root']))).toHaveLength(501)
+  })
+
+  it('scrolls toward the top while dragging over the search area, but not beyond the list width', () => {
+    const rect = { left: 100, right: 400, top: 160 }
+    expect(readDragTopScrollSpeed(200, 100, rect)).toBeGreaterThan(0)
+    expect(readDragTopScrollSpeed(200, 175, rect)).toBeGreaterThan(0)
+    expect(readDragTopScrollSpeed(90, 100, rect)).toBe(0)
+    expect(readDragTopScrollSpeed(200, 60, rect)).toBe(0)
+    expect(readDragTopScrollSpeed(200, 250, rect)).toBe(0)
   })
 })
 

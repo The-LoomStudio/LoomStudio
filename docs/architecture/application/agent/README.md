@@ -13,6 +13,8 @@ Agent Preset
   -> canonical Agent Transcript
 ```
 
+Agent Preset 是完整、可直接调用的执行身份；Agent Session 直接保存 `agentPresetId`。编排树、历史/交付策略、可选模型绑定和 Preset Tool Mount 共同构成执行定义，不经过 Profile 选择层。未绑定模型时可以保存和编辑 Preset，但需要模型的预览或执行明确失败；绑定模型仍引用独立 Provider Profile 与 model ID。取消的是 Agent Profile，不是 Provider Profile。
+
 ## 正式文档
 
 - [`runtime-and-session.md`](runtime-and-session.md) — Agent Session、Transcript、Loop 推进和当前恢复边界；
@@ -33,6 +35,12 @@ Agent Preset
 - 单层 Preset Tool Mount 开关和 Tool Activation；
 - Tool Prompt 宏、Provider Tool Order、Content Anchor / Slot；
 - Provider Observation、Run State、Tool Invocation 和 Tool Result 的会话检查。
+
+Extension Manifest 中的 Agent Preset 贡献属于静态声明。显式导入后才实例化为 Prompt Resource 与 Mount；声明、导入、安装授权和某轮实际激活不能互相替代。
+
+创建 Session 可直接绑定没有模型的 Agent Preset；预览/执行遇到缺失模型时明确失败。Preset 上的模型选择仍由 Provider Profile ID 与 Model ID 组成，并非移除 Provider Profile。
+
+切换预设默认开启新 Session，但不是强制隔离：选择菜单取消“切换时新建会话”后，通过 `updateAgentSession({ agentSessionId, agentPresetId })` 更新当前会话绑定，保留标题、Transcript 与工作记忆，下一次请求采用新预设。不改写历史 Run；持久化 Run 状态为 running 或 suspended 时拒绝变更绑定。更换预设可能导致旧上下文冲突和提示词前缀缓存失效。
 
 当前尚未完成：
 

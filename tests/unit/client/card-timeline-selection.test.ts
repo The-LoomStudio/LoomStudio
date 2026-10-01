@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useNarrativeRuntime } from '../../../apps/studio-client/src/features/narrative-runtime/model/use-narrative-runtime.js'
 import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
 import type { AgentSession, NarrativeBranch, NarrativeNode, NarrativeTimeline } from '../../../apps/studio-client/src/entities/index.js'
@@ -85,8 +85,50 @@ function fixture() {
   return { input, render, requests, list, get, getPage, create, listSessions, deleteSession, updateSession }
 }
 beforeEach(() => { hooks.cursor = 0; hooks.values = []; hooks.effects = [] })
+afterEach(() => vi.unstubAllGlobals())
 
 describe('Card timeline selection', () => {
+  it('refreshes Timeline session choices from commit events without resetting drafts or selecting a session', async () => {
+    const streams: Array<{ listeners: Map<string, (event: { data: string }) => void>; closed: boolean }> = []
+    vi.stubGlobal('EventSource', class {
+      listeners = new Map<string, (event: { data: string }) => void>()
+      closed = false
+      constructor() { streams.push(this) }
+      addEventListener(name: string, listener: (event: { data: string }) => void) { this.listeners.set(name, listener) }
+      close() { this.closed = true }
+    })
+    const f = fixture()
+    await f.render().activateTimeline('current')
+    f.render().setAgentInput('Keep my draft')
+    const emit = () => {
+      for (const stream of streams.filter(item => !item.closed))
+        stream.listeners.get('data.changed')?.({ data: JSON.stringify({ payload: { operations: [{ entityType: 'agent.session', entityId: 'external' }] } }) })
+    }
+    const external = { ...session('external'), timelineId: 'current' }
+    f.listSessions.mockResolvedValue({ sessions: [external] })
+    emit()
+    await vi.waitFor(() => expect(f.render().agentSessions).toEqual([external]))
+    expect(f.render().agentInput).toBe('Keep my draft')
+    expect(f.render().agentSession).toBeUndefined()
+    expect(f.listSessions).toHaveBeenLastCalledWith({ timelineId: 'current', cursor: undefined, limit: 100 })
+
+    const stale = deferred<{ sessions: AgentSession[] }>()
+    f.listSessions.mockReturnValueOnce(stale.promise)
+    emit()
+    f.listSessions.mockResolvedValue({ sessions: [] })
+    await f.render().activateTimeline('next')
+    f.render()
+    stale.resolve({ sessions: [external] })
+    await stale.promise
+    await Promise.resolve()
+    expect(f.render().agentSessions).toEqual([])
+
+    const next = { ...session('next-session'), timelineId: 'next' }
+    f.listSessions.mockResolvedValue({ sessions: [next] })
+    for (const stream of streams.filter(item => !item.closed)) stream.listeners.get('open')?.({ data: '' })
+    await vi.waitFor(() => expect(f.render().agentSessions).toEqual([next]))
+  })
+
   it.each(['delete', 'rename'] as const)('does not replace the current Timeline after a late %s', async operation => {
     const f = fixture()
     await f.render().activateTimeline('old')
@@ -290,6 +332,22 @@ describe('Card timeline selection', () => {
     f.list.mockRejectedValueOnce(new Error('Refresh unavailable'))
     await expect(state.deleteTimeline('deleted')).resolves.toBe(true)
     expect(f.render().allTimelines).toEqual([])
+  })
+
+  it('removes cascaded Sessions only after Timeline deletion commits, even when refresh fails', async () => {
+    const f = fixture()
+    await f.render().refreshAgentSessions()
+    const bound = { ...session('bound'), timelineId: 'deleted' }
+    const standalone = session('standalone')
+    f.listSessions.mockResolvedValue({ sessions: [bound, standalone] })
+    await f.render().refreshAllAgentSessions()
+    f.input.api.narratives.delete = vi.fn(async () => { throw new Error('Delete rejected') })
+    await expect(f.render().deleteTimeline('deleted')).resolves.toBe(false)
+    expect(f.render().allAgentSessions).toEqual([bound, standalone])
+    f.input.api.narratives.delete = vi.fn(async () => ({ deleted: true, mutation: { changesetId: 'deleted' } }))
+    f.list.mockRejectedValueOnce(new Error('Refresh unavailable'))
+    await expect(f.render().deleteTimeline('deleted')).resolves.toBe(true)
+    expect(f.render().allAgentSessions).toEqual([standalone])
   })
 
   it('returns the committed Timeline when its follow-up list refresh fails', async () => {

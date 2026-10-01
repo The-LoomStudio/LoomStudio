@@ -140,7 +140,8 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
         const created = resourceTx.createResource(toStoredResourceInput({ content: duplicateContent }))
         const mounts = sourceMounts.map(mount => resourceTx.addSettingMount({
           source: { kind: 'preset', id: created.id },
-          settingResourceId: mount.settingResourceId,
+          settingResourceId: mount.resolvedSettingResourceId === null ? null : mount.resolvedSettingResourceId ?? mount.settingResourceId,
+          ...(mount.reference ? { reference: mount.reference } : {}),
           orderIndex: mount.orderIndex,
           origin: mount.origin,
         }))
@@ -224,15 +225,20 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
         ...(artifact.resourceKind === 'preset' ? { historyPolicy: 'persistent' as const } : {}),
         ...(artifact.macros !== undefined ? { macros: normalizeMacros(artifact.macros, 'Preset') } : {}),
         ...(artifact.macroOptions !== undefined ? { macroOptions: normalizeMacroOptions(artifact.macroOptions) } : {}),
+        ...(artifact.useCardSettings !== undefined ? { useCardSettings: artifact.useCardSettings } : {}),
+        ...(artifact.textUses !== undefined ? { textUses: structuredClone(artifact.textUses) } : {}),
         createdAt: ctx.now(),
         updatedAt: ctx.now(),
       }
-      const result = await importPromptResourceContent(ctx, content, artifact.scriptAttachments ?? [], requestContext, artifact.textTransformRules)
+      const result = await importPromptResourceContent(ctx, content, artifact.scriptAttachments ?? [], requestContext, artifact.textTransformRules, artifact.settingMounts)
       return { resource: fromStoredResource(result.resource), mutation: { changesetId: result.commit.changesetId } }
     },
 
     exportPromptResource: async (input: ExportPromptResourceInput): Promise<ExportPromptResourceResult> => {
       const resource = await readMappedResource(ctx.promptResources, input.resourceId)
+      const mounts = resource.resourceKind === 'preset'
+        ? await ctx.promptResources.listSettingMounts({ source: { kind: 'preset', id: resource.id } })
+        : []
       return {
         artifact: {
           format: 'loom.promptResource' as const,
@@ -241,6 +247,13 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
           rootNode: resource.rootNode,
           ...(resource.macros !== undefined ? { macros: structuredClone(resource.macros) } : {}),
           ...(resource.macroOptions !== undefined ? { macroOptions: structuredClone(resource.macroOptions) } : {}),
+          ...(resource.useCardSettings !== undefined ? { useCardSettings: resource.useCardSettings } : {}),
+          ...(resource.textUses !== undefined ? { textUses: resource.textUses.map(use => ({
+            ...structuredClone(use),
+            reference: use.reference ?? { kind: 'external' as const, resourceId: use.id },
+          })) } : {}),
+          ...(mounts.length ? { settingMounts: mounts.map(mount =>
+            structuredClone(mount.reference ?? { kind: 'external' as const, resourceId: mount.settingResourceId })) } : {}),
         },
       }
     },
@@ -250,7 +263,22 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
     }),
 
     replaceSettingMounts: async (input: ReplaceSettingMountsInput, requestContext?: RuntimeRequestContext): Promise<ReplaceSettingMountsResult> => {
-      for (const settingId of input.settingResourceIds) {
+      if ((input.mounts === undefined) === (input.settingResourceIds === undefined)) throw new Error('Specify exactly one Setting mount list')
+      const existing = input.mounts ? await ctx.promptResources.listSettingMounts({ source: input.source }) : []
+      const mounts = await Promise.all((input.mounts ?? input.settingResourceIds?.map(settingResourceId => ({ settingResourceId })) ?? [])
+        .map(async (mount, orderIndex) => {
+          if ('id' in mount) {
+            const previous = existing.find(item => item.id === mount.id)
+            if (!previous) throw new Error(`Setting mount not found in this source: ${mount.id}`)
+            const resourceId = previous.resolvedSettingResourceId === null ? null : previous.resolvedSettingResourceId ?? previous.settingResourceId
+            const available = resourceId ? await ctx.promptResources.getResource(resourceId) : null
+            return { settingResourceId: available ? resourceId : null,
+              reference: previous.reference ?? { kind: 'external' as const, resourceId: previous.settingResourceId },
+              orderIndex, origin: previous.origin }
+          }
+          return { settingResourceId: mount.settingResourceId, orderIndex }
+        }))
+      for (const settingId of mounts.flatMap(mount => mount.settingResourceId ? [mount.settingResourceId] : [])) {
         const setting = await ctx.promptResources.getResource(settingId)
         if (!setting) throw new Error(`Prompt resource not found: ${settingId}`)
         if (setting.resourceKind !== 'setting') throw new Error(`Prompt resource ${settingId} can only link Setting resources`)
@@ -259,7 +287,7 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
         ...promptResourceWriteContext(requestContext),
         reason: 'application.replaceSettingMounts',
         source: input.source,
-        mounts: input.settingResourceIds.map((settingResourceId, orderIndex) => ({ settingResourceId, orderIndex })),
+        mounts,
       })
       return { mounts: result.mounts, mutation: { changesetId: result.commit.changesetId } }
     },
@@ -372,6 +400,7 @@ async function importPromptResourceContent(
   attachments: LoomScriptAttachmentArtifact[],
   requestContext?: RuntimeRequestContext,
   textTransformRules?: Array<Omit<TextTransformRuleDraft, 'owner'>>,
+  settingMounts?: NonNullable<import('../cards/workspace-types.js').PromptResourceArtifact['settingMounts']>,
 ): Promise<PromptResourceMutationResult> {
   if (attachments.length > 0 && !ctx.blobs) throw new Error('Blob Store is required to import Loom Script attachments')
   const preparedResults = await Promise.allSettled(attachments.map(async attachment => ({
@@ -397,6 +426,13 @@ async function importPromptResourceContent(
     }, async dataTx => {
     const resourceTx = ctx.promptResources.transaction(dataTx)
     const resource = resourceTx.createResource(toStoredResourceInput({ content }))
+    for (const [orderIndex, reference] of (settingMounts ?? []).entries()) {
+      resourceTx.addSettingMount({
+        source: { kind: 'preset', id: resource.id },
+        settingResourceId: null,
+        reference, orderIndex,
+      })
+    }
     if (content.resourceKind === 'preset' && (prepared.length > 0 || textTransformRules?.length)) await requireDocumentParticipant(ctx).participateTransaction(dataTx, async documentTx => {
       for (const [index, rule] of (textTransformRules ?? []).entries()) {
         validateTextTransformRuleDraft({ ...rule, owner: { kind: 'preset', presetId: resource.id } })

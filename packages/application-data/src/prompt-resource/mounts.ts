@@ -32,13 +32,34 @@ function mountFromRow(row: Record<string, unknown>): SettingMount {
   const sourceKind = row.source_kind
   const sourceId = row.source_id
   if ((sourceKind !== 'manual' && sourceKind !== 'preset') || typeof sourceId !== 'string') throw new PromptResourceStoreError('prompt_resource.mount_invalid', 'Invalid setting mount row')
+  const reference = row.reference_json === null ? undefined : parseObject(String(row.reference_json), 'Setting mount reference') as SettingMount['reference']
   return {
     id: String(row.id),
-    settingResourceId: String(row.setting_resource_id),
+    settingResourceId: row.setting_resource_id === null
+      ? reference?.kind === 'external' ? reference.resourceId : reference?.contributionId ?? ''
+      : String(row.setting_resource_id),
+    ...(reference ? { reference, resolvedSettingResourceId: row.setting_resource_id === null ? null : String(row.setting_resource_id) } : {}),
     source: sourceKind === 'manual' ? { kind: 'manual', id: 'global' } : { kind: 'preset', id: sourceId },
     orderIndex: Number(row.order_index),
     origin: parseObject(String(row.origin_json), 'origin'),
     createdAt: String(row.created_at),
+  }
+}
+
+function validateMountReference(reference: SettingMount['reference']): void {
+  if (reference?.kind === 'package') {
+    validateId(reference.contributionId, 'Setting contributionId')
+  } else if (reference?.kind === 'external') {
+    validateId(reference.resourceId, 'external Setting resourceId')
+    if (reference.origin) {
+      validateId(reference.origin.packageId, 'external Setting packageId')
+      validateId(reference.origin.contributionId, 'external Setting contributionId')
+      if (reference.origin.target !== 'global' && reference.origin.target !== 'card') {
+        throw new PromptResourceStoreError('prompt_resource.mount_reference_invalid', 'Invalid external Setting target')
+      }
+    }
+  } else if (reference !== undefined) {
+    throw new PromptResourceStoreError('prompt_resource.mount_reference_invalid', 'Invalid Setting mount reference')
   }
 }
 
@@ -119,13 +140,20 @@ export function applyAddSettingMount(
   now: () => string,
 ): SettingMount {
   validateMountSource(database, input.source)
-  validateId(input.settingResourceId, 'settingResourceId')
-  requireSetting(database, input.settingResourceId)
+  validateMountReference(input.reference)
+  if (input.settingResourceId === null) {
+    if (!input.reference) throw new PromptResourceStoreError('prompt_resource.mount_reference_invalid', 'Unresolved Setting mount requires a reference')
+  } else {
+    validateId(input.settingResourceId, 'settingResourceId')
+    requireSetting(database, input.settingResourceId)
+  }
   validateOrderIndex(input.orderIndex)
   if (input.origin !== undefined) validateJsonObject(input.origin, 'mount origin')
   const mount: SettingMount = {
     id: nextId('setting-mount'),
-    settingResourceId: input.settingResourceId,
+    settingResourceId: input.settingResourceId ?? (input.reference?.kind === 'external' ? input.reference.resourceId : input.reference?.contributionId ?? ''),
+    ...(input.reference ? { resolvedSettingResourceId: input.settingResourceId } : {}),
+    ...(input.reference ? { reference: input.reference } : {}),
     source: input.source.kind === 'manual' ? { kind: 'manual', id: 'global' } : { kind: 'preset', id: input.source.id },
     orderIndex: input.orderIndex,
     origin: input.origin ?? {},
@@ -134,11 +162,12 @@ export function applyAddSettingMount(
   try {
     database.prepare(`
       INSERT INTO global_setting_mounts (
-        id, setting_resource_id, source_kind, source_id, order_index, origin_json, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        id, setting_resource_id, reference_json, source_kind, source_id, order_index, origin_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       mount.id,
-      mount.settingResourceId,
+      input.settingResourceId,
+      mount.reference ? stringifyJson(mount.reference, 'Setting mount reference') : null,
       mount.source.kind,
       mount.source.id ?? 'global',
       mount.orderIndex,
@@ -168,12 +197,18 @@ export function applyReplaceSettingMounts(
   validateMountSource(database, input.source)
   const seen = new Set<string>()
   for (const mount of input.mounts) {
-    if (seen.has(mount.settingResourceId)) throw new PromptResourceStoreError('prompt_resource.mount_duplicate', `Setting mount is duplicated: ${mount.settingResourceId}`)
-    seen.add(mount.settingResourceId)
-    validateId(mount.settingResourceId, 'settingResourceId')
+    const identity = mount.settingResourceId ?? JSON.stringify(mount.reference)
+    if (seen.has(identity)) throw new PromptResourceStoreError('prompt_resource.mount_duplicate', `Setting mount is duplicated: ${identity}`)
+    seen.add(identity)
+    validateMountReference(mount.reference)
+    if (mount.settingResourceId !== null) {
+      validateId(mount.settingResourceId, 'settingResourceId')
+      requireSetting(database, mount.settingResourceId)
+    } else if (!mount.reference) {
+      throw new PromptResourceStoreError('prompt_resource.mount_reference_invalid', 'Unresolved Setting mount requires a reference')
+    }
     validateOrderIndex(mount.orderIndex)
     if (mount.origin !== undefined) validateJsonObject(mount.origin, 'mount origin')
-    requireSetting(database, mount.settingResourceId)
   }
   const sourceId = input.source.kind === 'manual' ? 'global' : input.source.id
   recordDeletedMountOperations(database, tx, 'source_kind = ? AND source_id = ?', input.source.kind, sourceId)
@@ -265,13 +300,18 @@ export function applyReplacePresetToolMounts(
 }
 
 export function listMounts(database: DatabaseSync, input: ListSettingMountsInput = {}): SettingMount[] {
-  if (input.source) validateMountSource(database, input.source, false)
+  if (input.source) {
+    if (input.source.kind === 'preset') validateId(input.source.id, 'presetId')
+    else if (input.source.id !== undefined && input.source.id !== 'global') {
+      throw new PromptResourceStoreError('prompt_resource.mount_source_invalid', 'Manual Setting mount source id must be global')
+    }
+  }
   const clauses: string[] = []
   const values: string[] = []
   if (input.source) { clauses.push('source_kind = ?', 'source_id = ?'); values.push(input.source.kind, input.source.id ?? 'global') }
   if (input.settingResourceId) { validateId(input.settingResourceId, 'settingResourceId'); clauses.push('setting_resource_id = ?'); values.push(input.settingResourceId) }
   const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : ''
-  return (database.prepare(`SELECT id, setting_resource_id, source_kind, source_id, order_index, origin_json, created_at FROM global_setting_mounts ${where} ORDER BY order_index ASC, id ASC`).all(...values) as Array<Record<string, unknown>>).map(mountFromRow)
+  return (database.prepare(`SELECT id, setting_resource_id, reference_json, source_kind, source_id, order_index, origin_json, created_at FROM global_setting_mounts ${where} ORDER BY order_index ASC, id ASC`).all(...values) as Array<Record<string, unknown>>).map(mountFromRow)
 }
 
 export function listPresetToolMounts(database: DatabaseSync, input: ListPresetToolMountsInput = {}): PresetToolMount[] {

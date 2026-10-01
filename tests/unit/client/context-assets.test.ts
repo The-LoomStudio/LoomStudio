@@ -1,4 +1,7 @@
 import {
+  addContextAssetAnchorNode,
+  addContextAssetFolderNode,
+  addContextAssetMessageBlockNode,
   addContextAssetNode,
   deleteContextAssetNode,
   duplicateContextAssetNode,
@@ -28,7 +31,7 @@ describe('studio client context asset helpers', () => {
     const added = findNode(result.nodes, 'new-entry')
 
     expect(result.selectedId).toBe('new-entry')
-    expect(folder?.children?.map(node => node.id)).toEqual(['setting-entry', 'new-entry'])
+    expect(folder?.children?.map(node => node.id)).toEqual(['new-entry', 'setting-entry'])
     expect(added?.projection).toMatchObject({
       zoneId: 'setting.stable',
       slotKey: 'setting-layer:city-layers-main@setting.stable',
@@ -41,6 +44,17 @@ describe('studio client context asset helpers', () => {
       entryOrderHint: 20,
       sourceKind: 'actual',
     })
+  })
+
+  it('inserts new folders and anchors at the start of their parent, including preset trees', () => {
+    const setting = addContextAssetFolderNode(baseNodes(), 'setting-folder', idSequence('new-folder'))
+    expect(findNode(setting.nodes, 'setting-folder')?.children?.map(node => node.id)).toEqual(['new-folder', 'setting-entry'])
+
+    const preset = addContextAssetAnchorNode(baseNodes(), 'preset-folder', idSequence('new-anchor'))
+    expect(findNode(preset.nodes, 'preset-folder')?.children?.map(node => node.id)).toEqual(['new-anchor', 'preset-entry'])
+
+    const block = addContextAssetMessageBlockNode(baseNodes(), 'preset-folder', 'system', idSequence('new-message'))
+    expect(findNode(block.nodes, 'preset-folder')?.children?.map(node => node.id)).toEqual(['new-message', 'preset-entry'])
   })
 
   it('duplicates an editable entry beside the source node', () => {

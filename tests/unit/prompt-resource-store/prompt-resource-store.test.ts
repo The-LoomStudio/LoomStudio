@@ -1,10 +1,50 @@
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createPromptResourceStore, type PromptResourceTreeNode } from '@loom-studio/application-data'
+import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
+import {
+  migrateVersionOne, migrateVersionTwo, migrateVersionThree, migrateVersionFour, migrateVersionFive,
+} from '../../../packages/application-data/src/prompt-resource/schema.js'
 
 const actor = { kind: 'system' as const, id: 'prompt-resource-test' }
 
 describe('PromptResourceStore', () => {
+  it('preserves a v4 Setting mount through the v5 migration with valid foreign keys', () => {
+    const database = new DatabaseSync(':memory:')
+    try {
+      database.exec('PRAGMA foreign_keys = ON')
+      for (const migrate of [migrateVersionOne, migrateVersionTwo, migrateVersionThree, migrateVersionFour]) {
+        migrate(database)
+      }
+      database.exec('BEGIN')
+      database.prepare(`
+        INSERT INTO prompt_resources (id, resource_kind, root_node_id, label, version, metadata_json, created_at, updated_at)
+        VALUES ('setting-1', 'setting', 'node-1', 'Setting', 1, '{}', '2026-01-01', '2026-01-01')
+      `).run()
+      database.prepare(`
+        INSERT INTO prompt_resource_nodes
+          (id, resource_id, parent_id, order_index, kind, label, extra_json, created_at, updated_at)
+        VALUES ('node-1', 'setting-1', NULL, 0, 'module', 'Setting', '{}', '2026-01-01', '2026-01-01')
+      `).run()
+      database.prepare(`
+        INSERT INTO global_setting_mounts
+          (id, setting_resource_id, source_kind, source_id, order_index, origin_json, created_at)
+        VALUES ('mount-1', 'setting-1', 'preset', 'preset-1', 7, '{"kind":"legacy"}', '2026-01-01')
+      `).run()
+      database.exec('COMMIT')
+      const before = database.prepare('SELECT * FROM global_setting_mounts').get()
+
+      migrateVersionFive(database)
+
+      expect(database.prepare('SELECT * FROM global_setting_mounts').get()).toEqual({
+        ...before, reference_json: null,
+      })
+      expect(database.prepare('PRAGMA foreign_key_check').all()).toEqual([])
+    } finally {
+      database.close()
+    }
+  })
+
   it('replaces an authored tree without changing resource identity and can revert its root change', async () => {
     const { engine, store } = createStore()
     try {

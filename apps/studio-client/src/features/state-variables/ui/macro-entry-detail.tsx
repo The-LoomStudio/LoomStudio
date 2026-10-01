@@ -1,4 +1,5 @@
 import { Copy, Save, Trash2 } from 'lucide-react'
+import { TextInput } from '@loom-studio/ui'
 import type { ReactNode } from 'react'
 import { toast } from 'sonner'
 import { tryWriteClipboardText } from '../../../shared/browser/clipboard.js'
@@ -40,7 +41,7 @@ export function MacroEntryDetail(props: {
     </header>
     {props.error ? <div className={styles.errorBanner} role="alert">{props.error}</div> : null}
     {props.name || props.editable ? <div className={styles.macroAuthoringFields}>
-      <label><span>{props.t('macroAuthoring.name')}</span>{props.editable ? <input aria-label={props.t('macroAuthoring.name')} disabled={props.busy} value={props.name} onChange={event => props.onNameChange?.(event.target.value)} /> : <code>{props.name}</code>}</label>
+      <label><span>{props.t('macroAuthoring.name')}</span>{props.editable && props.onNameChange ? <TextInput aria-label={props.t('macroAuthoring.name')} disabled={props.busy} value={props.name} onChange={event => props.onNameChange?.(event.target.value)} /> : <code>{props.name}</code>}</label>
       <label><span>{props.t('macroAuthoring.value')}</span>{props.editable ? <textarea aria-label={props.t('macroAuthoring.value')} disabled={props.busy} value={props.value ?? ''} onChange={event => props.onValueChange?.(event.target.value)} /> : <pre className={styles.macroReadOnlyValue}>{props.value ?? '—'}</pre>}</label>
     </div> : <div className={styles.emptyState}>{props.emptyLabel}</div>}
     {props.children}

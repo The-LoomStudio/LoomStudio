@@ -1,0 +1,13 @@
+{
+  "name": "Character Status Marker",
+  "enabled": false,
+  "orderIndex": 100,
+  "matcher": {
+    "kind": "regex",
+    "pattern": "<CharacterStatus>(?<body>[\\s\\S]*?)</CharacterStatus>",
+    "flags": "g"
+  },
+  "effect": { "kind": "mark", "markerType": "character-status" },
+  "targets": ["narrative"],
+  "phases": ["display"]
+}

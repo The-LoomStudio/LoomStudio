@@ -125,6 +125,14 @@ export function useContextAssets(input: UseContextAssetsInput) {
     return resourceId
   }
 
+  function firstChildPlacement(parentId: string) {
+    const firstChild = findContextAssetNode(scope.nodes, parentId)?.children?.[0]
+    return {
+      targetAssetId: firstChild?.id ?? parentId,
+      position: firstChild ? 'before' as const : 'inside' as const,
+    }
+  }
+
   function enqueueMutation(action: () => Promise<void>): Promise<void> {
     const pending = scope.queue.then(() => input.runAction(action))
     scope.queue = pending.catch(() => undefined)
@@ -214,8 +222,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
       const resourceId = readResourceId(parentId)
       const result = await input.api.promptResources.createAsset({
         resourceId,
-        targetAssetId: parentId,
-        position: 'inside',
+        ...firstChildPlacement(parentId),
         asset,
       })
       applyResource(result.resource)
@@ -238,8 +245,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
       const resourceId = readResourceId(parentId)
       const result = await input.api.promptResources.createAsset({
         resourceId,
-        targetAssetId: parentId,
-        position: 'inside',
+        ...firstChildPlacement(parentId),
         asset,
       })
       applyResource(result.resource)
@@ -262,8 +268,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
       const resourceId = readResourceId(parentId)
       const result = await input.api.promptResources.createAsset({
         resourceId,
-        targetAssetId: parentId,
-        position: 'inside',
+        ...firstChildPlacement(parentId),
         asset,
       })
       applyResource(result.resource)
@@ -290,8 +295,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
 
       const result = await input.api.promptResources.createAsset({
         resourceId,
-        targetAssetId: parentId,
-        position: isMessageOrLeaf ? 'after' : 'inside',
+        ...(isMessageOrLeaf ? { targetAssetId: parentId, position: 'after' as const } : firstChildPlacement(parentId)),
         asset,
       })
       applyResource(result.resource)
@@ -384,8 +388,7 @@ export function useContextAssets(input: UseContextAssetsInput) {
 
       const result = await input.api.promptResources.createAsset({
         resourceId: targetResourceId,
-        targetAssetId,
-        position: 'inside',
+        ...firstChildPlacement(targetAssetId),
         asset,
       })
       applyResource(result.resource)

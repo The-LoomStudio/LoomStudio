@@ -2,7 +2,7 @@
 
 本目录保存已经确定方向、但仍需跨模块依赖或分阶段施工的 UI 计划。当前实现事实仍以 [`../../../architecture/ui/`](../../../architecture/ui/) 为准。
 
-- [`resource-workbench-and-agent-presets-plan.md`](resource-workbench-and-agent-presets-plan.md) — 调研完成 / 待 Shell 草稿与底层契约：资源类型与包双入口、统一 Agent 预设、外部包预览、运行检查。
+- [`resource-workbench-and-agent-presets-plan.md`](../../../archive/plans/ui/resource-workbench-and-agent-presets-plan.md) — 已归档：主要资源视图已交付；后续交互、性能优化与未验证项保留，不代表全部历史 TODO 完成。
 
 - [`shell-motion-integration-2026-09-18.md`](shell-motion-integration-2026-09-18.md) — Shell 动画集成；保留未完成验收，不视为整体交付完成。
 

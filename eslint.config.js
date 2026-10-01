@@ -4,7 +4,7 @@ import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/*.d.ts', '**/*.d.ts.map', 'coverage/**', 'node_modules/**', '.loomstudio-dev/**', '**/*.config.*', 'tests/**', 'scripts/**', 'drafts/**'],
+    ignores: ['**/dist/**', '**/*.d.ts', '**/*.d.ts.map', 'coverage/**', 'node_modules/**', '.loomstudio-dev/**', '.artifacts/**', '**/*.config.*', 'tests/**', 'scripts/**', 'drafts/**'],
   },
   {
     files: ['official/extensions/*/src/client/**/*.{js,mjs}'],

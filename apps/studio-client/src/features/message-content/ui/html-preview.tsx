@@ -20,35 +20,46 @@ export function HtmlPreview(props: { value: string }) {
       return JSON.stringify([props.value, element.clientWidth, theme])
     }
     let height = htmlHeightCache.read(cacheKey()) ?? 240
+    element.style.height = `${height}px`
+    let instance: ReturnType<typeof mountIsolatedFrame> | undefined
     const applySize = () => {
+      if (!instance) return
       instance.frame.style.height = `${height}px`
       element.style.height = `${height}px`
     }
-    const token = crypto.randomUUID()
-    const instance = mountIsolatedFrame(element, {
-      title: 'HTML',
-      source: { html: buildHtmlDocument(props.value, token) },
-      onLoad: instance => { instance.markReady(); instance.frame.inert = false; setReady(true) },
-      onMessage: data => {
-        const measured = readHtmlHeight(data, token)
-        if (measured === undefined) return
-        height = measured
-        htmlHeightCache.write(cacheKey(), height)
-        instance.markReady()
-        instance.frame.inert = false
+    let mountFrame = 0
+    // Let the message shell paint at its reserved height before creating the iframe.
+    const layoutFrame = requestAnimationFrame(() => {
+      mountFrame = requestAnimationFrame(() => {
+        const token = crypto.randomUUID()
+        instance = mountIsolatedFrame(element, {
+          title: 'HTML',
+          source: { html: buildHtmlDocument(props.value, token) },
+          onLoad: frame => { frame.markReady(); frame.frame.inert = false; setReady(true) },
+          onMessage: data => {
+            const measured = readHtmlHeight(data, token)
+            if (measured === undefined) return
+            height = measured
+            htmlHeightCache.write(cacheKey(), height)
+            instance?.markReady()
+            if (instance) instance.frame.inert = false
+            applySize()
+            setReady(true)
+          },
+          onFailure: message => {
+            element.style.height = ''
+            setFailure({ value: props.value, message })
+          },
+        })
+        instance.frame.className = styles.preview
+        instance.frame.inert = true
         applySize()
-        setReady(true)
-      },
-      onFailure: message => {
-        element.style.height = ''
-        setFailure({ value: props.value, message })
-      },
+      })
     })
-    instance.frame.className = styles.preview
-    instance.frame.inert = true
-    applySize()
     return () => {
-      instance.dispose()
+      cancelAnimationFrame(layoutFrame)
+      cancelAnimationFrame(mountFrame)
+      instance?.dispose()
     }
   }, [props.value])
   return <div className={styles.previewShell} data-loom-html-preview="" data-ready={ready || undefined}>

@@ -121,6 +121,16 @@ export function createProvidersRuntimeMethods(ctx: ProvidersRuntimeContext) {
     },
 
     updateProviderProfile: async (input: UpdateProviderProfileInput, requestContext?: RuntimeRequestContext): Promise<UpdateProviderProfileResult> => {
+      if (input.tokenMultipliers !== undefined) {
+        if (!Number.isSafeInteger(input.expectedVersion) || input.expectedVersion! < 1) {
+          throw new Error('Token multiplier updates require expectedVersion')
+        }
+        for (const [modelId, multiplier] of Object.entries(input.tokenMultipliers)) {
+          if (!modelId.trim() || typeof multiplier !== 'number' || !Number.isFinite(multiplier) || multiplier <= 0) {
+            throw new Error('Token multipliers must be finite positive numbers keyed by model ID')
+          }
+        }
+      }
       const existing = await readDocument<ProviderProfileContent>(ctx.documents, input.providerProfileId, applicationDocumentTypes.providerProfile)
       if (input.displayName !== undefined) assertNonEmpty(input.displayName, 'displayName')
       const providerConfig = input.config === undefined
@@ -134,6 +144,7 @@ export function createProvidersRuntimeMethods(ctx: ProvidersRuntimeContext) {
         type: applicationDocumentTypes.providerProfile,
         content: {
           ...existing.content,
+          ...(input.tokenMultipliers !== undefined ? { tokenMultipliers: input.tokenMultipliers } : {}),
           ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
           config: providerConfig,
           ...(input.enabledModelIds !== undefined
@@ -141,7 +152,7 @@ export function createProvidersRuntimeMethods(ctx: ProvidersRuntimeContext) {
             : {}),
           updatedAt: timestamp,
         },
-        expectedVersion: existing.version,
+        expectedVersion: input.tokenMultipliers !== undefined ? input.expectedVersion! : existing.version,
       })
       return { providerProfile: await toProviderProfileView(ctx, updated) }
     },
@@ -379,6 +390,7 @@ async function toProviderProfileView(
     displayName: profile.content.displayName,
     config: profile.content.config,
     enabledModelIds: [...profile.content.enabledModelIds],
+    ...(profile.content.tokenMultipliers ? { tokenMultipliers: { ...profile.content.tokenMultipliers } } : {}),
     credential: {
       configured: metadata?.state === 'active',
       ...(metadata?.updatedAt ? { updatedAt: metadata.updatedAt } : {}),

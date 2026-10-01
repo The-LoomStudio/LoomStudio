@@ -1,18 +1,43 @@
-import type { VfsReadObservation } from '../../vfs/types.js'
+import type { VfsReadObservation, VfsApprovalControl } from '../../vfs/types.js'
 import { createResourceVfs } from '../../vfs/resource-filesystem.js'
 import type { ToolExecutionScope } from '../tool-registry.js'
 import type { CodeActHostMethod } from './sandbox.js'
 import type { NarrativeSampleSelection } from '../../narrative/sampling.js'
 
-export const codeActMethodNames = ['ls', 'search', 'read', 'readNarrative', 'write', 'patch', 'move', 'delete', 'create', 'copy'] as const
+export const codeActMethodNames = ['setAuthorMode', 'ls', 'search', 'read', 'readNarrative', 'appendNarrative', 'write', 'patch', 'move', 'delete', 'create', 'copy'] as const
 
 export function createCodeActContext(scope: ToolExecutionScope | undefined, operationPrefix = 'codeact') {
   const observations: VfsReadObservation[] = []
   const writes: Array<{ path: string; modified: boolean; changesetId?: string }> = []
+  const narrativeAppends: Array<{ nodeId: string; timelineId: string; branchId: string }> = []
   let operationSequence = 0
   const state = scope?.state
   const filesystem = scope?.resourceVfs ?? createResourceVfs({
     projections: scope?.vfs ?? [],
+    ...(scope?.narrative ? {
+      narrative: {
+        snapshot: async (path: string, signal: AbortSignal, control?: VfsApprovalControl) => {
+          const root = { path: '/narrative', kind: 'directory' as const }
+          if (path === '/') return [root]
+          const match = /^\/narrative\/([^/]+)\.md$/.exec(path)
+          if (path !== '/narrative' && !match) return [root]
+          const nodeId = match ? decodeURIComponent(match[1]!) : undefined
+          const sample = await scope.narrative!.sample({
+            selection: { kind: 'tail', count: nodeId ? 1 : 1000, ...(nodeId ? { throughNodeId: nodeId } : {}) },
+            view: 'raw',
+          }, signal, undefined, control)
+          if (!sample.complete) throw codeActError('vfs.narrative_range_too_large', 'Use ctx.readNarrative with a smaller range to discover node paths.')
+          return [root, ...sample.nodes.filter(node => !nodeId || node.id === nodeId).map(node => ({
+            path: narrativePath(node.id), kind: 'file' as const, content: node.body.raw,
+            binding: {
+              kind: 'narrative' as const, nodeId: node.id, timelineId: scope.narrative!.timelineId,
+              branchId: scope.narrative!.branchId, raw: node.body.raw,
+            },
+          }))]
+        },
+        write: (input: { nodeId: string; expectedRaw: string; content: string }) => scope.narrative!.editNode(input),
+      },
+    } : {}),
     ...(scope?.approveMutation ? { approveMutation: scope.approveMutation } : {}),
     ...(scope?.vfsAttachments ? { attachments: scope.vfsAttachments } : {}),
     ...(scope?.promptResources && scope.vfsResourceIds ? {
@@ -40,10 +65,11 @@ export function createCodeActContext(scope: ToolExecutionScope | undefined, oper
   })
   if (scope) scope.resourceVfs = filesystem
   const methods: Partial<Record<typeof codeActMethodNames[number], CodeActHostMethod>> = {
-    ls: (args, signal) => filesystem.ls(args, signal),
-    search: (args, signal) => filesystem.search(args, signal),
-    read: async (args, signal) => {
-      const result = await filesystem.read(args, signal)
+    setAuthorMode: (args, signal, control) => filesystem.setAuthorMode(args, signal, control),
+    ls: (args, signal, control) => filesystem.ls(args, signal, control),
+    search: (args, signal, control) => filesystem.search(args, signal, control),
+    read: async (args, signal, control) => {
+      const result = await filesystem.read(args, signal, control)
       observations.push(result.observation)
       return result.text
     },
@@ -107,9 +133,31 @@ export function createCodeActContext(scope: ToolExecutionScope | undefined, oper
       ...(request.maxCharacters === undefined ? {} : { maxCharacters: request.maxCharacters as number }),
       ...(request.view === undefined ? {} : { view: request.view }),
     }, signal, undefined, control)
-    return result
+    return { ...result, nodes: result.nodes.map(node => ({ ...node, path: narrativePath(node.id) })) }
   }
-  return { methods, observations, writes }
+  methods.appendNarrative = async (args, signal) => {
+    signal.throwIfAborted()
+    if (!scope?.narrative)
+      throw codeActError('codeact.narrative_unavailable', 'No Narrative Timeline is bound to this Agent scope.')
+    if (args.length !== 1 || !args[0] || typeof args[0] !== 'object' || Array.isArray(args[0]))
+      throw codeActError('codeact.invalid_arguments', 'Use ctx.appendNarrative({ content }).')
+    const request = args[0] as Record<string, unknown>
+    if (Object.keys(request).length !== 1 || typeof request.content !== 'string' || !request.content.trim())
+      throw codeActError('codeact.invalid_arguments', 'Narrative append requires only nonempty content; the host selects the target.')
+    const result = await scope.narrative.appendNode({ content: request.content.trim() })
+    const receipt = {
+      nodeId: result.nodeId,
+      timelineId: scope.narrative.timelineId,
+      branchId: scope.narrative.branchId,
+    }
+    narrativeAppends.push(receipt)
+    return { path: narrativePath(result.nodeId) }
+  }
+  return { methods, observations, writes, narrativeAppends }
+}
+
+export function narrativePath(nodeId: string): string {
+  return `/narrative/${encodeURIComponent(nodeId)}.md`
 }
 
 function codeActError(code: string, message: string): Error & { code: string } {

@@ -1,6 +1,6 @@
 import { createAgentStore } from '@loom-studio/application-data'
 import { officialFakeModelId } from '@loom-studio/ai-gateway'
-import { createAgentToolRegistry, createApplicationRuntime, type ToolDefinition, type ToolRuntimeRegistration } from '@loom-studio/application-runtime'
+import { createAgentToolRegistry, createApplicationRuntime, createDocumentBackedAiGateway, type ToolDefinition, type ToolRuntimeRegistration } from '@loom-studio/application-runtime'
 import { createSqliteDataEngine } from '@loom-studio/data-engine'
 import { createSqliteDocumentStore } from '@loom-studio/document-store'
 import { createNarrativeStore } from '@loom-studio/application-data'
@@ -55,6 +55,172 @@ async function createPreset(
 }
 
 describe('application agent session lifecycle', () => {
+  it('deletes all Timeline-bound sessions across pages and their storage, preserving other sessions', async () => {
+    const { engine, documents, runtime } = createTestRuntime()
+    try {
+      const { profile } = await createProfile(runtime)
+      const { card } = await runtime.createCard({ name: 'Cascade' })
+      const first = await runtime.createNarrativeTimeline({ cardId: card.id })
+      const other = await runtime.createNarrativeTimeline({ cardId: card.id })
+      const standalone = await runtime.createAgentSession({ agentPresetId: profile.id })
+      const otherSession = await runtime.createAgentSession({ agentPresetId: profile.id, timelineId: other.timeline.id })
+      const boundIds: string[] = []
+      for (let index = 0; index < 101; index++) {
+        boundIds.push((await runtime.createAgentSession({
+          agentPresetId: profile.id, timelineId: first.timeline.id,
+        })).session.id)
+      }
+      for (const [id, type, agentSessionId] of [
+        ['bound-config', 'airp.extensionConfig', boundIds[0]!],
+        ['bound-record', 'airp.extensionRecord', boundIds[100]!],
+        ['standalone-config', 'airp.extensionConfig', standalone.session.id],
+        ['other-record', 'airp.extensionRecord', otherSession.session.id],
+      ] as const) {
+        await documents.write({
+          id, type, content: { scope: { kind: 'agent-session', agentSessionId } },
+          expectedVersion: 'new', actor: { kind: 'extension', id: 'example.cascade' },
+        })
+      }
+      const removed = await runtime.deleteNarrativeTimeline({ timelineId: first.timeline.id })
+      expect((await runtime.listAgentSessions({ timelineId: first.timeline.id })).sessions).toEqual([])
+      expect((await runtime.listAgentSessions()).sessions.map(session => session.id).sort())
+        .toEqual([standalone.session.id, otherSession.session.id].sort())
+      await expect(runtime.getAgentSession({ agentSessionId: boundIds[0]! })).rejects.toThrow('Agent session not found')
+      await expect(runtime.getAgentTranscriptPage({ agentSessionId: boundIds[100]! })).rejects.toThrow('Agent session not found')
+      const changeset = await documents.getChangeset(removed.mutation.changesetId)
+      expect(changeset?.operations).toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: 'delete', documentId: 'bound-config' }),
+        expect.objectContaining({ kind: 'delete', documentId: 'bound-record' }),
+      ]))
+      expect(await documents.get('bound-config')).toBeNull()
+      expect(await documents.get('bound-record')).toBeNull()
+      expect(await documents.get('standalone-config')).not.toBeNull()
+      expect(await documents.get('other-record')).not.toBeNull()
+      expect((await runtime.getNarrativeTimeline({ timelineId: other.timeline.id })).timeline.id).toBe(other.timeline.id)
+    } finally { engine.close() }
+  })
+
+  it('rolls back Timeline and earlier Session deletions when one bound Session cannot be deleted', async () => {
+    const { engine, runtime } = createTestRuntime()
+    try {
+      const { profile } = await createProfile(runtime)
+      const { card } = await runtime.createCard({ name: 'Rollback' })
+      const { timeline } = await runtime.createNarrativeTimeline({ cardId: card.id })
+      const blocked = await runtime.createAgentSession({ agentPresetId: profile.id, timelineId: timeline.id, title: 'blocked' })
+      const earlierDeletion = await runtime.createAgentSession({ agentPresetId: profile.id, timelineId: timeline.id })
+      await engine.read(database => database.exec(`
+        CREATE TRIGGER reject_bound_session_deletion
+        BEFORE UPDATE OF tombstoned ON agent_sessions
+        WHEN OLD.title = 'blocked' AND NEW.tombstoned = 1
+        BEGIN SELECT RAISE(ABORT, 'session deletion refused'); END;
+      `))
+      await expect(runtime.deleteNarrativeTimeline({ timelineId: timeline.id })).rejects.toThrow('session deletion refused')
+      expect((await runtime.getNarrativeTimeline({ timelineId: timeline.id })).timeline.id).toBe(timeline.id)
+      for (const session of [blocked.session, earlierDeletion.session]) {
+        expect((await runtime.getAgentSession({ agentSessionId: session.id })).session.id).toBe(session.id)
+      }
+    } finally { engine.close() }
+  })
+
+  it('adds per-turn settings and anchored content without leaking to concurrent or later turns', async () => {
+    const { engine, runtime } = createTestRuntime()
+    try {
+      const { profile } = await createProfile(runtime)
+      const setting = await runtime.createPromptResource({ resourceKind: 'setting', name: 'Temporary' })
+      await runtime.createPromptResourceAsset({
+        resourceId: setting.resource.id, targetAssetId: setting.resource.rootNode.id, position: 'inside',
+        asset: { id: 'temporary-setting', label: 'Temporary', kind: 'entry', body: 'ONLY_THIS_SETTING' },
+      })
+      const { session } = await runtime.createAgentSession({ agentPresetId: profile.id })
+      const addition = {
+        settingResourceIds: [setting.resource.id],
+        content: [{ targetAnchorId: '@chat.input', content: 'ONLY_THIS_ANCHOR' }],
+      }
+      const [preview, other] = await Promise.all([
+        runtime.previewAgentTurn({ agentSessionId: session.id, input: 'hello', promptAddition: addition }),
+        runtime.previewAgentTurn({ agentSessionId: session.id, input: 'hello' }),
+      ])
+      expect(JSON.stringify(preview.messages)).toContain('ONLY_THIS_ANCHOR')
+      expect(JSON.stringify(preview.messages)).toContain('ONLY_THIS_SETTING')
+      expect(JSON.stringify(other.messages)).not.toContain('ONLY_THIS_ANCHOR')
+      expect(JSON.stringify(other.messages)).not.toContain('ONLY_THIS_SETTING')
+      const run = await runtime.invokeAgentTurn({ agentSessionId: session.id, input: 'hello', promptAddition: addition })
+      expect(run.projection.messages).toEqual(preview.projection.messages)
+      const next = await runtime.previewAgentTurn({ agentSessionId: session.id, input: 'next' })
+      expect(next.messages.at(-1)?.content).toBe('next')
+      expect(next.projection.messages.flatMap(message => message.fragmentIds))
+        .not.toContain('runtime.prompt-addition.content.0')
+      expect((await runtime.listSettingMounts({ source: { kind: 'preset', id: profile.id } })).mounts)
+        .toEqual([])
+    } finally { engine.close() }
+  })
+
+  it('builds independently without a Session/model and rejects unowned resources', async () => {
+    const { engine, runtime } = createTestRuntime()
+    try {
+      const built = await runtime.buildExtensionPrompt({
+        content: [{ targetAnchorId: '@custom', content: 'standalone' }],
+      }, { kind: 'global' }, 'example.ext')
+      expect(JSON.stringify(built.messages)).toContain('standalone')
+      const setting = await runtime.createPromptResource({ resourceKind: 'setting', name: 'Private' })
+      await expect(runtime.buildExtensionPrompt({
+        settingResourceIds: [setting.resource.id],
+      }, { kind: 'global' }, 'example.ext')).rejects.toThrow('not owned')
+    } finally { engine.close() }
+  })
+  it('does not turn a fake model completion into streamed token deltas', async () => {
+    const { engine, documents, runtime } = createTestRuntime()
+    try {
+      const provider = await runtime.createProviderProfile({
+        providerExtensionId: 'official.fake', displayName: 'Fake', config: {},
+        enabledModelIds: [officialFakeModelId],
+      })
+      const events: unknown[] = []
+      const result = await createDocumentBackedAiGateway({ documents }).invokeChat({
+        model: { providerProfileId: provider.providerProfile.id, modelId: officialFakeModelId },
+        request: { messages: [{ role: 'user', content: 'hello' }] },
+        runId: 'direct', sessionId: 'extension-direct', branchId: 'extension-direct',
+        delivery: 'stream', onEvent: event => events.push(event),
+      })
+      expect(result.text).toContain('hello')
+      expect(events).toEqual([])
+    } finally { engine.close() }
+  })
+  it('keeps the preset binding fixed while allowing title updates', async () => {
+    const { engine, runtime } = createTestRuntime()
+    try {
+      const first = await createProfile(runtime, 'FIRST_PRESET_MARKER')
+      const { session } = await runtime.createAgentSession({ agentPresetId: first.profile.id, title: 'Keep this title' })
+      await runtime.invokeAgentTurn({ agentSessionId: session.id, input: 'Remember this conversation.' })
+      const before = await runtime.getAgentTranscriptPage({ agentSessionId: session.id })
+      await expect(runtime.updateAgentSession({ agentSessionId: session.id, agentPresetId: first.profile.id } as any))
+        .rejects.toThrow('immutable')
+      const updated = await runtime.updateAgentSession({ agentSessionId: session.id, title: 'Renamed' })
+      expect(updated.session).toMatchObject({ id: session.id, title: 'Renamed', agentPresetId: first.profile.id, entryCount: before.session.entryCount })
+      expect((await runtime.getAgentTranscriptPage({ agentSessionId: session.id })).entries).toEqual(before.entries)
+      const preview = await runtime.previewAgentTurn({ agentSessionId: session.id, input: 'Continue.' })
+      const text = JSON.stringify(preview.messages)
+      expect(text).toContain('FIRST_PRESET_MARKER')
+      expect(text).toContain('Remember this conversation.')
+      expect((await runtime.getAgentTranscriptPage({ agentSessionId: session.id })).session.agentPresetId).toBe(first.profile.id)
+    } finally { engine.close() }
+  })
+
+  it.each(['running', 'suspended'] as const)('rejects binding changes while the session is %s', async state => {
+    const { engine, runtime } = createTestRuntime()
+    try {
+      const first = await createProfile(runtime)
+      const { session } = await runtime.createAgentSession({ agentPresetId: first.profile.id })
+      const store = createAgentStore({ engine })
+      await store.appendEntries({
+        agentSessionId: session.id, actor: { kind: 'system', id: 'test' },
+        expectedEntryCount: 0,
+        entries: [{ runId: 'active-run', entry: { kind: 'run-state', state } }],
+      })
+      await expect(runtime.updateAgentSession({ agentSessionId: session.id, timelineId: null } as any))
+        .rejects.toMatchObject({ code: 'agent.session_binding_active_run' })
+    } finally { engine.close() }
+  })
   it.each(['user-cancel', 'user-pause'])('logs %s as a non-error terminal state', async reason => {
     const { engine, runtime, logs } = createTestRuntime()
     try {
@@ -682,6 +848,61 @@ describe('application agent session lifecycle', () => {
     expect(JSON.stringify(secondPreview.projection.messages)).toContain('SECOND_MARKER')
     expect(JSON.stringify(secondPreview.projection.messages)).not.toContain('FIRST_MARKER')
     engine.close()
+  })
+
+  it('lets two presets independently override one shared rule without changing its definition', async () => {
+    const { engine, runtime } = createTestRuntime()
+    try {
+      const first = await createProfile(runtime)
+      const second = await createProfile(runtime)
+      const ruleId = 'shared-session-rule'
+      await runtime.upsertTextTransformRule({
+        ruleId,
+        rule: {
+          name: 'Shared rule', owner: { kind: 'workspace' }, enabled: false, orderIndex: 0,
+          matcher: { kind: 'regex', pattern: 'ORIGINAL', flags: 'g' },
+          effect: { kind: 'replace', replacement: 'CHANGED' },
+          targets: ['agent-session'], phases: ['display'],
+        },
+      })
+      await runtime.updateAgentPreset({
+        agentPresetId: first.preset.id, expectedVersion: (await runtime.getAgentPreset({ agentPresetId: first.preset.id })).agentPreset.version,
+        textUses: [{ kind: 'rule', id: ruleId, enabled: true }],
+      })
+      const firstSession = await runtime.createAgentSession({ agentPresetId: first.preset.id })
+      const secondSession = await runtime.createAgentSession({ agentPresetId: second.preset.id })
+      for (const session of [firstSession.session, secondSession.session]) {
+        await runtime.appendAgentTranscriptEntries({
+          agentSessionId: session.id, expectedEntryCount: 0,
+          entries: [{ entry: { kind: 'message', role: 'assistant', content: 'ORIGINAL' } }],
+        })
+      }
+      expect((await runtime.projectHistory({ source: { kind: 'agent-session', sessionId: firstSession.session.id }, phase: 'display' })).snapshot.entries[0]?.text).toBe('CHANGED')
+      expect((await runtime.projectHistory({ source: { kind: 'agent-session', sessionId: secondSession.session.id }, phase: 'display' })).snapshot.entries[0]?.text).toBe('ORIGINAL')
+      expect((await runtime.getTextTransformRule({ ruleId })).rule.enabled).toBe(false)
+    } finally { engine.close() }
+  })
+
+  it('collects a preset Setting identically for Preview and Run without leaking it to another preset', async () => {
+    const { engine, runtime } = createTestRuntime()
+    try {
+      const first = await createProfile(runtime, 'A instructions')
+      const second = await createProfile(runtime, 'B instructions')
+      const setting = await runtime.createPromptResource({ resourceKind: 'setting', name: 'A Setting' })
+      await runtime.createPromptResourceAsset({
+        resourceId: setting.resource.id, targetAssetId: setting.resource.rootNode.id, position: 'inside',
+        asset: { id: 'only-a-setting', kind: 'entry', label: 'Only A', body: 'ONLY_A_SETTING', capabilities: { targetAnchorId: '@chat.system' } },
+      })
+      await runtime.replaceSettingMounts({ source: { kind: 'preset', id: first.profile.id }, settingResourceIds: [setting.resource.id] })
+      const a = await runtime.createAgentSession({ agentPresetId: first.profile.id })
+      const b = await runtime.createAgentSession({ agentPresetId: second.profile.id })
+      const preview = await runtime.previewAgentTurn({ agentSessionId: a.session.id, input: 'hello' })
+      const other = await runtime.previewAgentTurn({ agentSessionId: b.session.id, input: 'hello' })
+      expect(JSON.stringify(preview.messages)).toContain('ONLY_A_SETTING')
+      expect(JSON.stringify(other.messages)).not.toContain('ONLY_A_SETTING')
+      const run = await runtime.invokeAgentTurn({ agentSessionId: a.session.id, input: 'hello' })
+      expect(run.projection.messages).toEqual(preview.projection.messages)
+    } finally { engine.close() }
   })
 
   it('applies persisted Text Pipeline order overrides and appends new rules by default order', async () => {

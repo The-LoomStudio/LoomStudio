@@ -10,6 +10,10 @@
   },
   "scripts": {
     "build": "pnpm run build:packages && tsc -b",
+    "build:app": "pnpm run build:packages && pnpm --filter @loom-studio/studio-server build && pnpm --filter @loom-studio/studio-client build",
+    "release:prepare": "node scripts/release/prepare-release.mjs",
+    "release:smoke": "node scripts/release/smoke-release.mjs",
+    "start": "node scripts/start.mjs",
     "build:packages": "pnpm --filter @loom/core build && tsc -b tsconfig.packages.json",
     "dev:packages": "tsc -b tsconfig.packages.json --watch --preserveWatchOutput",
     "check:docs": "node scripts/checks/check-docs.mjs",

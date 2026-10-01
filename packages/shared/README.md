@@ -1,5 +1,7 @@
 # `@loom-studio/shared`
 
+本包共享无业务所有权的结构化身份、引用和挂载合同；Card/Extension 安装身份及 Agent Preset 生命周期由 Application 与 Extension Host 各自负责，不在 `shared` 建立通用资源注册表。
+
 > **状态**：Active Package Guide / Current Source Is Authority
 
 `@loom-studio/shared` 是 Loom Studio 最底层的跨端通用工具库与共享数据契约层。它提供严格环境同构的 JSON 原语、唯一 ID 生成器、错误序列化工具、变量宏（Macro）渲染引擎与核心 Schema 契约。

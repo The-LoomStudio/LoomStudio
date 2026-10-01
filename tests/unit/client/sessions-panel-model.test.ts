@@ -5,7 +5,7 @@ import {
   areAllSelected,
   areAllSessionsSelected,
   areAllTimelinesSelected,
-  filterStandaloneSessions,
+  filterAgentSessions,
   filterTimelines,
   getExpandableTimelineIds,
   partitionSessions,
@@ -65,7 +65,7 @@ describe('sessions-panel-model', () => {
     expect(filterTimelines(timelines, cardMap, 'notfound')).toHaveLength(0)
   })
 
-  it('filters standalone sessions by title, profile name, or session ID', () => {
+  it('filters Agent sessions by title, profile name, or session ID', () => {
     const profiles: AgentPreset[] = [
       { id: 'prof-story', version: 1, resourceKind: 'preset', rootNode: { id: 'story-root', kind: 'module', label: 'Story Weaver' }, model: { providerProfileId: 'provider', modelId: 'model' }, delivery: 'stream', createdAt: '', updatedAt: '' },
       { id: 'prof-helper', version: 1, resourceKind: 'preset', rootNode: { id: 'helper-root', kind: 'module', label: 'Code Assistant' }, model: { providerProfileId: 'provider', modelId: 'model' }, delivery: 'stream', createdAt: '', updatedAt: '' },
@@ -76,10 +76,10 @@ describe('sessions-panel-model', () => {
       { id: 'session-beta', agentPresetId: 'prof-helper', title: 'Debug Session', entryCount: 3, createdAt: '', updatedAt: '' },
     ]
 
-    expect(filterStandaloneSessions(sessions, profiles, '')).toHaveLength(2)
-    expect(filterStandaloneSessions(sessions, profiles, 'weaver')).toEqual([sessions[0]])
-    expect(filterStandaloneSessions(sessions, profiles, 'DEBUG')).toEqual([sessions[1]])
-    expect(filterStandaloneSessions(sessions, profiles, 'alpha')).toEqual([sessions[0]])
+    expect(filterAgentSessions(sessions, profiles, '')).toHaveLength(2)
+    expect(filterAgentSessions(sessions, profiles, 'weaver')).toEqual([sessions[0]])
+    expect(filterAgentSessions(sessions, profiles, 'DEBUG')).toEqual([sessions[1]])
+    expect(filterAgentSessions(sessions, profiles, 'alpha')).toEqual([sessions[0]])
   })
 
   it('toggles item selection in a set', () => {
@@ -184,4 +184,3 @@ describe('sessions-panel-model', () => {
     expect(Array.from(collapsedAll)).toEqual([])
   })
 })
-

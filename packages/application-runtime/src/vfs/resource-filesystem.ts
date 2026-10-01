@@ -21,6 +21,11 @@ import type {
 
 export type ResourceVfsOptions = {
   projections: readonly VfsEntry[]
+  resourceMode?: 'play' | 'author'
+  narrative?: {
+    snapshot(path: string, signal: AbortSignal, control?: VfsApprovalControl): Promise<VfsEntry[]>
+    write(input: { nodeId: string; expectedRaw: string; content: string }): Promise<{ nodeId: string }>
+  }
   resources?: {
     store: Pick<PromptResourceStore, 'getResource'>
     ids: readonly string[]
@@ -103,6 +108,7 @@ export function createResourceVfs(options: ResourceVfsOptions) {
   // Retained only for this host scope, independently of individual JavaScript sandboxes.
   const pathOwners = new Map<string, string>()
   const observed = new Map<string, ObservedRead>()
+  let authorMode = options.resourceMode === 'author'
 
   function claim(path: string, identity: string) {
     const owner = pathOwners.get(path)
@@ -112,10 +118,14 @@ export function createResourceVfs(options: ResourceVfsOptions) {
     pathOwners.set(path, identity)
   }
 
-  async function snapshot(path: string, signal: AbortSignal, includeRootContent = false): Promise<File[]> {
+  async function snapshot(path: string, signal: AbortSignal, includeRootContent = false, control?: VfsApprovalControl): Promise<File[]> {
     // ponytail: Bound host-side traversal until domain stores expose subtree paging; never silently return an incomplete view.
     signal.throwIfAborted()
     const files: File[] = options.projections.map(entry => ({ ...entry, identity: `projection:${entry.path}` }))
+    if (options.narrative && (path === '/' || path === '/narrative' || path.startsWith('/narrative/'))) {
+      const entries = await options.narrative.snapshot(path, signal, control)
+      files.push(...entries.map(entry => ({ ...entry, identity: `narrative:${entry.path}` })))
+    }
     if (!files.some(entry => entry.path === '/')) files.unshift({ path: '/', kind: 'directory', identity: 'root' })
     if (options.resources) {
       files.push({ path: '/resources', kind: 'directory', identity: 'resources' })
@@ -124,7 +134,8 @@ export function createResourceVfs(options: ResourceVfsOptions) {
         for (const id of options.resources.ids) {
           signal.throwIfAborted()
           const resource = await options.resources.store.getResource(id)
-          if (resource && !resource.tombstoned && options.resources.access(id, resource.rootNodeId) !== 'hidden')
+            if (resource && !resource.tombstoned && (authorMode || resource.rootNode.enabled !== false)
+              && options.resources.access(id, resource.rootNodeId) !== 'hidden')
             resources.push(resource)
         }
         const roots = allocateNames(resources.map(resource => ({ id: resource.id, label: resource.label })))
@@ -144,7 +155,8 @@ export function createResourceVfs(options: ResourceVfsOptions) {
           if (path !== '/' && path !== '/resources' && path !== root && !path.startsWith(`${root}/`)) continue
           const visit = (nodes: PromptResourceTreeNode[], parent: string, disabled: boolean, depth = 0) => {
             if (depth > 128 || files.length > 20_000) throw vfsError('vfs.view_limit', 'Resource view exceeds the traversal budget. Narrow the mounted resources.')
-            const visible = nodes.filter(node => options.resources!.access(resource.id, node.id) !== 'hidden')
+            const visible = nodes.filter(node => options.resources!.access(resource.id, node.id) !== 'hidden'
+              && (authorMode || (!disabled && node.enabled !== false)))
             const names = allocateNames(visible.map(node => ({
               id: node.id, label: node.label,
               extension: typeof node.body === 'string' && !node.children?.length ? node.kind === 'script' ? '.js' : '.md' : undefined,
@@ -165,7 +177,7 @@ export function createResourceVfs(options: ResourceVfsOptions) {
                 ...(!isDirectory ? { content: access === 'read' ? node.body : undefined } : {}),
               })
               if (access !== 'read') continue
-              files.push({
+              if (authorMode) files.push({
                 path: metadataPath,
                 kind: 'file',
                 identity: `metadata:${resource.id}:${node.id}`,
@@ -186,7 +198,7 @@ export function createResourceVfs(options: ResourceVfsOptions) {
             content: resource.rootNode.body,
             binding: { kind: 'prompt-resource', resourceId: resource.id, nodeId: resource.rootNode.id, version: resource.version, field: 'body' },
           })
-          files.push({
+          if (authorMode) files.push({
             path: `${root}/@meta.yaml`,
             kind: 'file',
             identity: `metadata:${resource.id}:${resource.rootNode.id}`,
@@ -253,9 +265,26 @@ export function createResourceVfs(options: ResourceVfsOptions) {
   }
 
   return {
-    async ls(args: unknown[], signal: AbortSignal) {
+    async setAuthorMode(args: unknown[], signal: AbortSignal, control?: VfsApprovalControl) {
+      if (args.length !== 1 || typeof args[0] !== 'boolean')
+        throw vfsError('vfs.invalid_arguments', 'Use ctx.setAuthorMode(true | false).')
+      signal.throwIfAborted()
+      if (args[0] && !authorMode) {
+        if (!options.approveMutation) throw vfsError('vfs.author_denied', 'Author mode requires user approval in this host.')
+        await approveMutation({
+          action: 'author-mode', path: '/resources', kind: 'prompt-resource',
+          before: '游玩视图：正文，不包含停用条目与作者元数据。',
+          after: '本轮 Run 开放已挂载资源的作者视图：包括停用条目与 Metadata。访问锁仍生效；修改仍需单独批准。',
+        }, signal, control)
+      }
+      signal.throwIfAborted()
+      authorMode = args[0]
+      observed.clear()
+      return { mode: authorMode ? 'author' : 'play' }
+    },
+    async ls(args: unknown[], signal: AbortSignal, control?: VfsApprovalControl) {
       const path = vfsPath(args[0] ?? '/')
-      const files = await snapshot(path, signal)
+      const files = await snapshot(path, signal, false, control)
       const target = files.find(file => file.path === path)
       if (target?.state === 'locked') throw vfsError('vfs.locked', 'This directory is locked.')
       // Claim all visible children before emitting paths; a later rename must not silently retarget them.
@@ -264,10 +293,10 @@ export function createResourceVfs(options: ResourceVfsOptions) {
         claim(file.path, file.identity)
       return listVfs(files, args)
     },
-    async search(args: unknown[], signal: AbortSignal) {
+    async search(args: unknown[], signal: AbortSignal, control?: VfsApprovalControl) {
       const input = args[0] as { path?: unknown } | undefined
       const path = vfsPath(input?.path ?? '/')
-      const files = await snapshot(path, signal, true)
+      const files = await snapshot(path, signal, true, control)
       const prefix = path === '/' ? '/' : `${path}/`
       for (const file of files.filter(file => file.path === path || file.path.startsWith(prefix))) claim(file.path, file.identity)
       if (files.find(file => file.path === path)?.state === 'locked') throw vfsError('vfs.locked', 'This resource is locked.')
@@ -285,9 +314,9 @@ export function createResourceVfs(options: ResourceVfsOptions) {
       }
       return searchVfs(files, args)
     },
-    async read(args: unknown[], signal: AbortSignal) {
+    async read(args: unknown[], signal: AbortSignal, control?: VfsApprovalControl) {
       const path = vfsPath(args[0])
-      const files = await snapshot(path, signal)
+      const files = await snapshot(path, signal, false, control)
       const file = files.find(item => item.path === path)
       if (file) claim(path, file.identity)
       if (file?.load) file.content = await file.load(signal)
@@ -321,7 +350,7 @@ export function createResourceVfs(options: ResourceVfsOptions) {
       const observedValue = observed.get(path)
       if (!observedValue?.observation.binding)
         throw vfsError('vfs.read_required', 'Read this exact path first. The read result provides the write baseline.')
-      const files = await snapshot(path, signal)
+      const files = await snapshot(path, signal, false, approvalControl)
       const file = files.find(item => item.path === path)
       if (!file) throw vfsError('vfs.not_found', `Path unavailable: ${path}.`)
       claim(path, file.identity)
@@ -332,7 +361,15 @@ export function createResourceVfs(options: ResourceVfsOptions) {
         || observedValue.ranges[0]![1] !== observedValue.observation.totalLines)
         throw vfsError('vfs.full_read_required', 'A full resource read is required before replace. Use a narrower read only for inspection.')
       const binding = file.binding
+      if (binding?.kind === 'narrative') {
+        if (typeof args[1] !== 'string' || !args[1].trim())
+          throw vfsError('vfs.value_invalid', 'Narrative content must be nonempty text.')
+        await approveMutation({ action: 'replace', path, kind: 'narrative', before: file.content!, after: args[1] }, signal, approvalControl)
+        const result = await options.narrative!.write({ nodeId: binding.nodeId, expectedRaw: binding.raw, content: args[1] })
+        return { path: `/narrative/${encodeURIComponent(result.nodeId)}.md`, modified: true }
+      }
       if (binding?.kind === 'prompt-resource') {
+        requireAuthorMode()
         if (typeof args[1] !== 'string') throw vfsError('vfs.value_invalid', 'Prompt Resource bodies must be strings.')
         if (binding.field === 'metadata') {
           const patch = parseNodeMetadata(args[1])
@@ -414,6 +451,7 @@ export function createResourceVfs(options: ResourceVfsOptions) {
         throw vfsError('vfs.write_unavailable', 'Prompt Resource writing is unavailable in this scope.')
       if (typeof file.content !== 'string')
         throw vfsError('vfs.not_file', 'The target does not contain writable text.')
+      requireAuthorMode()
 
       let patches: ReturnType<typeof parsePatch>
       try {
@@ -627,11 +665,16 @@ export function createResourceVfs(options: ResourceVfsOptions) {
     },
   }
 
+  function requireAuthorMode() {
+    if (!authorMode) throw vfsError('vfs.author_required', 'Resource editing requires approved author mode. Use ctx.setAuthorMode(true).')
+  }
+
   async function resolveStructuralTarget(path: string, signal: AbortSignal): Promise<{
     identity: string
     binding?: VfsBinding
     metadata?: File
   }> {
+    requireAuthorMode()
     const files = await snapshot(path, signal, true)
     const target = files.find(file => file.path === path)
     if (!target) throw vfsError('vfs.not_found', `Path unavailable: ${path}.`)
@@ -818,6 +861,9 @@ function sameBindingVersion(
   current: VfsBinding | undefined,
 ): boolean {
   if (!observed || !current || observed.kind !== current.kind) return false
+  if (observed.kind === 'narrative' && current.kind === 'narrative')
+    return observed.nodeId === current.nodeId && observed.timelineId === current.timelineId
+      && observed.branchId === current.branchId && observed.raw === current.raw
   if (observed.kind === 'prompt-resource' && current.kind === 'prompt-resource')
     return observed.resourceId === current.resourceId
       && observed.nodeId === current.nodeId

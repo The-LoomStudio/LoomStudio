@@ -197,9 +197,6 @@ function readListSettingMountsInput(params: JsonValue | undefined) {
 function readReplaceSettingMountsInput(params: JsonValue | undefined) {
   const source = settingMountSourceSchema.safeParse(isRecord(params) ? params.source : undefined)
   if (!source.success) throw new Error('Expected Setting mount source param: source')
-  if (!isRecord(params) || !Array.isArray(params.settingResourceIds) || !params.settingResourceIds.every(item => typeof item === 'string')) {
-    throw new Error('Expected string array param: settingResourceIds')
-  }
   return replaceSettingMountsInputSchema.parse(params)
 }
 

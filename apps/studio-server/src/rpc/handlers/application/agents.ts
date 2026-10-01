@@ -30,6 +30,7 @@ type AgentRun = {
   request: InvokeAgentTurnInput
   sourceRunId?: string
   continuationRunId?: string
+  abandoned?: boolean
   checkpoint?: {
     sourceRunId: string
     messages: import('@loom-studio/shared').ChatMessage[]
@@ -77,6 +78,8 @@ export async function handleAgentsRpc(
         model: isRecord(params) && params.model === null ? null : readOptionalProviderModelSelection(params, 'model'),
         delivery: readOptionalDelivery(params),
         historyPolicy: readOptionalHistoryPolicy(params),
+        useCardSettings: readOptionalBoolean(params, 'useCardSettings'),
+        textUses: readPresetTextUses(params),
       }, context) as unknown as JsonValue
 
     case 'application.deleteAgentPreset':
@@ -146,6 +149,7 @@ export async function handleAgentsRpc(
       }, context) as unknown as JsonValue
 
     case 'application.updateAgentSession':
+      if (isRecord(params) && 'agentPresetId' in params) throw new Error('Agent Session preset binding is immutable')
       return await runtime.updateAgentSession({
         agentSessionId: readString(params, 'agentSessionId'),
         title: readOptionalString(params, 'title'),
@@ -161,6 +165,7 @@ export async function handleAgentsRpc(
         activationFacts: readOptionalObject(params, 'activationFacts'),
         narrativeTarget: readOptionalNarrativeTarget(params),
         macroSelections: readOptionalObject(params, 'macroSelections') as import('@loom-studio/shared').MacroSelectionMap | undefined,
+        promptAddition: readOptionalObject(params, 'promptAddition') as InvokeAgentTurnInput['promptAddition'],
       }, context) as unknown as JsonValue
 
     case 'application.agent.run.create': {
@@ -171,6 +176,7 @@ export async function handleAgentsRpc(
         activationFacts: readOptionalObject(params, 'activationFacts'),
         narrativeTarget: readOptionalNarrativeTarget(params),
         macroSelections: readOptionalObject(params, 'macroSelections') as import('@loom-studio/shared').MacroSelectionMap | undefined,
+        promptAddition: readOptionalObject(params, 'promptAddition') as InvokeAgentTurnInput['promptAddition'],
       } satisfies InvokeAgentTurnInput
       const run = startAgentRun(runtime, context, request)
       runs.set(run.id, run)
@@ -221,6 +227,23 @@ export async function handleAgentsRpc(
       return { runId: run.id, accepted: true, state: run.state }
     }
 
+    case 'application.agent.run.abandon': {
+      const run = requireAgentRun(getRunStore(runtime), params)
+      if (run.state === 'running') throw new Error('Cannot change the main receiver while an Agent run is generating')
+      if (run.state !== 'suspended' || run.abandoned || run.continuationRunId) {
+        return { runId: run.id, accepted: false, state: run.state }
+      }
+      const transcript = await runtime.getAgentTranscriptPage({ agentSessionId: run.request.agentSessionId, limit: 100 })
+      await runtime.appendAgentTranscriptEntries({
+        agentSessionId: run.request.agentSessionId,
+        expectedEntryCount: transcript.session.entryCount,
+        entries: [{ runId: run.id, entry: { kind: 'run-state', state: 'discarded' } }],
+      }, context)
+      run.checkpoint = undefined
+      run.abandoned = true
+      return { runId: run.id, accepted: true, state: run.state }
+    }
+
     case 'application.agent.run.resume': {
       const runs = getRunStore(runtime)
       let source: AgentRun | undefined
@@ -229,6 +252,7 @@ export async function handleAgentsRpc(
       }
       if (source) {
         if (source.state === 'running') return { runId: source.id, accepted: false, state: source.state }
+        if (source.abandoned) return { runId: source.id, accepted: false, state: source.state }
         if (source.continuationRunId) return { runId: source.continuationRunId, sourceRunId: source.id, accepted: true }
         if (source.checkpoint) {
           const run = startAgentRun(runtime, context, { ...source.request, input: '' }, source.id, source.checkpoint)
@@ -258,6 +282,9 @@ export async function handleAgentsRpc(
           const hasCompletedRun = laterEntries.some(
             e => e.entry.kind === 'run-state' && e.entry.state === 'completed'
           )
+          if (laterEntries.some(e => e.entry.kind === 'run-state' && e.entry.state === 'discarded')) {
+            return { runId: source?.id ?? '', accepted: false }
+          }
           if (!hasCompletedReply || !hasCompletedRun) {
             const partialAssistant = laterEntries.find(
               e => e.entry.kind === 'message' && e.entry.role === 'assistant' && e.entry.state === 'partial'
@@ -300,6 +327,7 @@ export async function handleAgentsRpc(
         activationFacts: readOptionalObject(params, 'activationFacts'),
         narrativeTarget: readOptionalNarrativeTarget(params),
         macroSelections: readOptionalObject(params, 'macroSelections') as import('@loom-studio/shared').MacroSelectionMap | undefined,
+        promptAddition: readOptionalObject(params, 'promptAddition') as InvokeAgentTurnInput['promptAddition'],
       }, context) as unknown as JsonValue
 
     case 'application.inspectMacros':
@@ -327,6 +355,20 @@ export async function handleAgentsRpc(
     default:
       return undefined
   }
+}
+
+function readPresetTextUses(params: JsonValue | undefined): Array<{ id: string; kind: 'rule' | 'extractor'; enabled: boolean; orderIndex?: number }> | undefined {
+  if (!isRecord(params) || params.textUses === undefined) return undefined
+  if (!Array.isArray(params.textUses)) throw new Error('Preset textUses must be an array')
+  return params.textUses.map(value => {
+    if (!isRecord(value) || (value.kind !== 'rule' && value.kind !== 'extractor')) throw new Error('Invalid Preset text use')
+    return {
+      id: readString(value, 'id'),
+      kind: value.kind,
+      enabled: readBoolean(value, 'enabled'),
+      orderIndex: readOptionalNumber(value, 'orderIndex'),
+    }
+  })
 }
 
 function startAgentRun(

@@ -1,0 +1,66 @@
+name: Beta Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: beta-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check Tag Version
+        run: node --input-type=module -e 'import {readFileSync} from "node:fs"; const version=JSON.parse(readFileSync("package.json")).version; if(process.env.GITHUB_REF_NAME !== `v${version}`) throw new Error("Tag must match root package.json version");'
+      - name: Set Up pnpm
+        uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          run_install: false
+      - name: Set Up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build Application
+        run: pnpm build:app
+      - name: Prepare Release Directory
+        run: pnpm release:prepare
+      - name: Smoke Test Publication Candidate
+        run: pnpm release:smoke
+      - name: Archive Runtime Files
+        run: |
+          version=$(node -p "require('./package.json').version")
+          cd .artifacts
+          tar -czf "loom-studio-${version}.tar.gz" "loom-studio-${version}"
+          zip -qr "loom-studio-${version}.zip" "loom-studio-${version}"
+          sha256sum "loom-studio-${version}.tar.gz" "loom-studio-${version}.zip" > SHA256SUMS
+      - name: Publish Beta Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          gh release create "$GITHUB_REF_NAME" \
+            ".artifacts/loom-studio-${version}.tar.gz" \
+            ".artifacts/loom-studio-${version}.zip" \
+            ".artifacts/SHA256SUMS" \
+            --verify-tag --prerelease --generate-notes \
+            --title "Loom Studio ${version} Beta"

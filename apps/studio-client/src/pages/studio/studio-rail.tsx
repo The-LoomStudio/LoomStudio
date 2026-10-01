@@ -42,15 +42,18 @@ export function StudioRail(props: StudioRailProps) {
 
         <div className={styles.railGroup}>
           <div className={styles.railGroupLabel}>{props.t('rail.groupEdit')}</div>
+          <RailTab activePanel={props.activePanel} panel="user" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
           <RailTab activePanel={props.activePanel} panel="resource" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
           <RailTab activePanel={props.activePanel} panel="state" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
+          <RailTab activePanel={props.activePanel} panel="macro" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
           <RailTab activePanel={props.activePanel} panel="text-transform" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
         </div>
 
         <div className={styles.railGroup}>
           <div className={styles.railGroupLabel}>{props.t('rail.groupPlay')}</div>
+          <RailTab activePanel={props.activePanel} panel="play" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
           <div className={styles.railPlayRow}>
-            <RailTab activePanel={props.activePanel} panel="play" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
+            <RailTab activePanel={props.activePanel} panel="recent" preloadPanel={props.preloadPanel} t={props.t} togglePanel={props.togglePanel} />
             {props.recentSessions && props.activePanel === null ? (
               <button className={styles.railPlayToggle} type="button" aria-expanded={recentOpen} aria-label={recentOpen ? '收起最近会话' : '展开最近会话'} onClick={() => setRecentOpen(value => !value)}>
                 {recentOpen ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}

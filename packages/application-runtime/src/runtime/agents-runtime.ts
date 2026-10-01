@@ -1,4 +1,5 @@
 import type { DocumentRecord, DocumentStore } from '@loom-studio/document-store'
+import { estimateRequestTokens } from '@loom-studio/ai-gateway'
 import { readLogFailure } from '@loom-studio/logging'
 import type {
   PromptResourceNodeDraft,
@@ -15,6 +16,7 @@ import {
   compileAgentToolSet,
   createContentToolPromptRuntimeInputs,
   runNativeToolLoop,
+  createNativeToolSpecs,
   type AgentRunProgress,
 } from '../agents/tool-loop.js'
 import { composeAgentTurnPrompt } from '../agents/agent-turn.js'
@@ -153,6 +155,24 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
       else if (input.model !== undefined) metadata.model = input.model
       if (input.delivery !== undefined) metadata.delivery = input.delivery
       if (input.historyPolicy !== undefined) metadata.historyPolicy = input.historyPolicy
+      if (input.useCardSettings !== undefined) metadata.useCardSettings = input.useCardSettings
+      if (input.textUses !== undefined) {
+        if (!Array.isArray(input.textUses) || input.textUses.some(use =>
+          typeof use.id !== 'string' || !use.id.trim()
+          || !['rule', 'extractor'].includes(use.kind) || typeof use.enabled !== 'boolean'
+          || 'reference' in use
+          || (use.orderIndex !== undefined && (!Number.isSafeInteger(use.orderIndex) || use.orderIndex < 0)))
+          || new Set(input.textUses.map(use => `${use.kind}:${use.id}`)).size !== input.textUses.length) {
+          throw new Error('Invalid Preset text use configuration')
+        }
+        const previous = Array.isArray(metadata.textUses)
+          ? metadata.textUses as NonNullable<PromptResourceContent['textUses']>
+          : []
+        metadata.textUses = input.textUses.map(use => {
+          const reference = previous.find(item => item.kind === use.kind && item.id === use.id)?.reference
+          return { ...structuredClone(use), ...(reference === undefined ? {} : { reference: structuredClone(reference) }) }
+        })
+      }
       const mutations: PromptResourceMutation[] = [{
         kind: 'resource.update',
         patch: { metadata, ...(input.name !== undefined ? { label: input.name.trim() } : {}) },
@@ -268,6 +288,7 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
     },
 
     updateAgentSession: async (input: UpdateAgentSessionInput, requestContext?: RuntimeRequestContext): Promise<UpdateAgentSessionResult> => {
+      if ('agentPresetId' in input) throw new Error('Agent Session preset binding is immutable')
       const result = await requireAgents(ctx).updateSession({
         ...narrativeWriteContext(requestContext, 'application.updateAgentSession'),
         ...input,
@@ -279,6 +300,10 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
       const prepared = await prepareAgentTurn(ctx, input, 'preview', requestContext)
       return {
         runId: prepared.runId,
+        tokenEstimate: estimateRequestTokens({
+          messages: prepared.agentStepMessages,
+          tools: createNativeToolSpecs(prepared.compiledToolSet),
+        }, { multiplier: prepared.tokenMultiplier }),
         messages: prepared.agentStepMessages,
         projection: prepared.prompt.projection,
         promptBuildTrace: prepared.prompt.promptBuildTrace,
@@ -334,6 +359,7 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
           runId,
           progress,
           model,
+          tokenMultiplier: prepared.tokenMultiplier,
           initialMessages: requestContext?.agentRun?.continuation?.messages ?? agentStepMessages,
           userInput: prepared.userInput,
           compiledToolSet,
@@ -568,6 +594,7 @@ async function prepareAgentTurn(
     activationFacts?: ActivationFacts
     narrativeTarget?: InvokeAgentTurnInput['narrativeTarget']
     macroSelections?: import('@loom-studio/shared').MacroSelectionMap
+    promptAddition?: InvokeAgentTurnInput['promptAddition']
   },
   mode: 'preview' | 'runtime',
   requestContext?: RuntimeRequestContext,
@@ -681,7 +708,9 @@ async function prepareAgentTurn(
     ctx,
     variables,
     cardId,
+    cardLabel: card?.name,
     presetId: preset.id,
+    presetLabel: preset.rootNode.label,
     timeline: timelineState?.value,
     cardMacros: card?.macros,
     presetMacros: preset.macros,
@@ -731,7 +760,7 @@ async function prepareAgentTurn(
         ? agentPage.entries
         : [],
       promptResources: ctx.promptResources,
-      contextResourceIds: card?.promptResourceIds ?? [],
+      contextResourceIds: preset.useCardSettings === false ? [] : card?.promptResourceIds ?? [],
       narrative: narrativePage ? {
         nodes: narrativeNodes,
         timeline: narrativePage.timeline,
@@ -748,8 +777,16 @@ async function prepareAgentTurn(
         narrative: narrativeTextPipeline?.rules ?? [],
       },
       externalRuntime: createContentToolPromptRuntimeInputs(compiledToolSet),
+      promptAddition: input.promptAddition,
     })
     prompt.promptBuildTrace.diagnostics.push(...(compiledToolSet.trace.diagnostics ?? []))
+    for (const diagnostic of [...sessionTextPipeline.diagnostics, ...(narrativeTextPipeline?.diagnostics ?? [])]) {
+      prompt.promptBuildTrace.diagnostics.push({
+        severity: 'warning',
+        code: diagnostic.code,
+        message: diagnostic.message,
+      })
+    }
     if (narrativePage && !narrativeContext) {
       prompt.promptBuildTrace.diagnostics.push({
         severity: 'warning',
@@ -1019,7 +1056,7 @@ async function prepareAgentTurn(
           })
           return { nodeId: result.node.id }
         },
-        editNode: async ({ nodeId, content }) => {
+        editNode: async ({ nodeId, content, expectedRaw }) => {
           const branch = await narratives.getBranch(narrativePage.branch.id)
           const target = await narratives.getNode(nodeId)
           if (!branch?.headNodeId || !target || target.timelineId !== narrativePage.timeline.id) {
@@ -1034,7 +1071,7 @@ async function prepareAgentTurn(
                 branchId: narrativePage.branch.id,
                 nodeId,
                 expectedHeadNodeId,
-                expectedBody: target.body,
+                expectedBody: expectedRaw === undefined ? target.body : { ...target.body, raw: expectedRaw },
                 body: { format: 'loom-markdown.v1', raw: content },
               })
               return { nodeId: edited.replacements[0]!.node.id }
@@ -1069,6 +1106,10 @@ async function prepareAgentTurn(
     userInput,
     preset,
     model: preset.model,
+    tokenMultiplier: preset.model
+      ? (await readDocument<ProviderProfileContent>(ctx.documents, preset.model.providerProfileId,
+          applicationDocumentTypes.providerProfile)).content.tokenMultipliers?.[preset.model.modelId] ?? 1
+      : 1,
     narrativePage,
     narratives,
     prompt,

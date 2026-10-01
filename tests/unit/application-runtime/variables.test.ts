@@ -73,7 +73,7 @@ describe('variable macro renderer', () => {
     expect(rendered).toBe('【开拓者】(沉默寡言的旅人，携带着神秘星核) 风格:轻小说细腻文风 语料:红着脸低下头，小声地回应着。 覆盖:世界线局部覆盖值')
     expect(variables.trace.reads).toEqual([
       { requestedPath: 'User', resolvedPath: 'global.user.name', source: 'global' },
-      { requestedPath: 'user.description', resolvedPath: 'global.user.description', source: 'global' },
+      { requestedPath: 'user.description', resolvedPath: 'user.description', source: 'global' },
       { requestedPath: 'WritingStyle', resolvedPath: 'WritingStyle', source: 'global' },
       { requestedPath: '爱丽丝好感第一阶段语料', resolvedPath: '爱丽丝好感第一阶段语料', source: 'timeline' },
       { requestedPath: '共同属性', resolvedPath: '共同属性', source: 'timeline' },
@@ -90,6 +90,13 @@ describe('variable macro renderer', () => {
     })
     const rendered = renderVariableMacros('你好 {{user}}，我是 {{char}} 也是 {{bot}}', variables)
     expect(rendered).toBe('你好 晴人，我是 柚木凛 也是 柚木凛')
+  })
+
+  it('keeps one case-insensitive user alias and leaves State paths as variable injection', () => {
+    const variables = createVariableRenderContext({ global: { user: { name: '晴人' } } })
+    expect(Object.keys(variables.snapshot.aliases).filter(name => name.toLowerCase().startsWith('user'))).toEqual(['user'])
+    expect(renderVariableMacros('{{user}} / {{User}} / {{global.user.name}} / {{user_name}}', variables))
+      .toBe('晴人 / 晴人 / 晴人 / {{user_name}}')
   })
 
   it('supports case-insensitive custom variables in prompt expansion', () => {

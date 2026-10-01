@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Anchor, ArrowDown, ArrowUp, ArrowUpRight, Blocks, BookOpen, Bot, Braces, Code, File, Folder, FolderOpen, Globe, Library, Link, LockKeyhole, PanelLeft, Regex, SlidersHorizontal, Unlink, Users, Wrench, X } from 'lucide-react'
-import { Button, IconButton, SearchField } from '@loom-studio/ui'
+import { ArrowLeft } from 'lucide-react'
+import { Anchor, ArrowDown, ArrowUp, ArrowUpRight, Blocks, BookOpen, Bot, Braces, Code, File, Folder, FolderOpen, Globe, Library, Link, LockKeyhole, MessageSquarePlus, PanelLeft, Play, Regex, SlidersHorizontal, Square, Star, Unlink, Users, Wrench, X } from 'lucide-react'
+import { Button, IconButton, SearchField, Toggle } from '@loom-studio/ui'
 import { MasterDetailWorkbench } from '../../../shared/ui/master-detail-workbench/master-detail-workbench.js'
 import { FileTree, type FileTreeNode } from '../../../shared/ui/file-tree/file-tree.js'
 import { PanelTabs } from '../../../shared/ui/panel-tabs/panel-tabs.js'
@@ -38,8 +39,8 @@ export function ResourceRegistryWorkbench(props: {
   previewPackages: Array<{ id: string; fileName: string; owner: string; resources: RegistryResourcePreview[] }>
   ownerKinds: Record<string, 'package' | 'extension' | 'workspace' | 'platform'>
   agentPresets: Record<string, RegistryAgentPreset>
+  presetResourceIds: Record<string, string[]>
   models: string[]
-  contextLabel: string
   currentOwner: string
   initialResourceId?: string
 }) {
@@ -52,6 +53,21 @@ export function ResourceRegistryWorkbench(props: {
   const [selectedId, setSelectedId] = useState(props.initialResourceId ?? '')
   const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [mainSessionId, setMainSessionId] = useState('session-1')
+  const [makeMainOnCreate, setMakeMainOnCreate] = useState(false)
+  const [temporaryOpen, setTemporaryOpen] = useState<{
+    resourceId: string
+    presetId: string
+    previous: { category: typeof categories[number]['id']; view: typeof view; scope: string; selectedId: string; query: string }
+  } | null>(null)
+  const [resourceEnabled, setResourceEnabled] = useState<Record<string, boolean>>({})
+  const [sessions, setSessions] = useState([
+    { id: 'session-1', presetId: 'narrative-agent' },
+    { id: 'session-2', presetId: 'image-agent' },
+  ])
+  const [activeSessionId, setActiveSessionId] = useState('session-1')
+  const [conversationPresetId, setConversationPresetId] = useState('director-agent')
+  const [runningPresets, setRunningPresets] = useState<string[]>(['image-agent'])
   const [expandedIds, setExpandedIds] = useState<string[]>(() => [
     ...new Set(props.resources.map(resource => `owner:${resource.owner}`)),
     ...props.resources.filter(resource => resource.entries?.length).map(resource => resource.id),
@@ -63,6 +79,21 @@ export function ResourceRegistryWorkbench(props: {
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [agentDrafts, setAgentDrafts] = useState<Record<string, RegistryAgentPreset>>({})
   const agentPresets = { ...props.agentPresets, ...agentDrafts }
+  const presetResources = props.resources.filter(resource => resource.category === 'agents')
+  const presetName = (id: string) => presetResources.find(resource => resource.id === id)?.name ?? id
+  const mainPresetId = sessions.find(session => session.id === mainSessionId)!.presetId
+  const inspectionLabel = `主写作 · ${presetName(mainPresetId)}`
+  const activeSession = sessions.find(session => session.id === activeSessionId)!
+  const usesResource = (presetId: string, resourceId: string) =>
+    props.presetResourceIds[presetId]?.includes(resourceId) ?? false
+  const resourceIsEnabled = (presetId: string, resourceId: string) =>
+    resourceEnabled[`${presetId}:${resourceId}`] !== false
+  function createConversation(presetId: string, makeMain = false) {
+    const id = `session-${sessions.length + 1}`
+    setSessions(previous => [...previous, { id, presetId }])
+    setActiveSessionId(id)
+    if (makeMain) setMainSessionId(id)
+  }
   const agentItems = Object.entries(agentPresets).flatMap(([agentId, preset]) => [
     { id: `${agentId}:prompt`, name: '提示词编排', agentId, section: 'prompt' as const },
     ...preset.prompts.map(prompt => ({ ...prompt, agentId, section: 'entry' as const })),
@@ -98,8 +129,14 @@ export function ResourceRegistryWorkbench(props: {
     return props.ownerKinds[resource.owner] === 'package' || props.ownerKinds[resource.owner] === 'workspace'
   })
   const search = query.toLowerCase()
-  const rows = categoryResources.filter(resource =>
-    (view !== 'type' || scope === 'all' || (scope === 'global' ? resource.globalDefault : resource.current))
+  function inContext(resource: RegistryResourcePreview) {
+    if (resource.category === 'agents') return resource.id === mainPresetId
+    if (usesResource(mainPresetId, resource.id)) return resourceIsEnabled(mainPresetId, resource.id)
+    if (Object.values(props.presetResourceIds).some(ids => ids.includes(resource.id))) return false
+    return resource.current
+  }
+  const rows = temporaryOpen ? resources.filter(resource => resource.id === temporaryOpen.resourceId) : categoryResources.filter(resource =>
+    (view !== 'type' || scope === 'all' || (scope === 'global' ? resource.globalDefault : inContext(resource)))
     && [resource.name, resource.owner, ...(resource.entries ?? []).map(entry => entry.name),
       ...agentItems.filter(item => item.agentId === resource.id).map(item => item.name)].join(' ').toLowerCase().includes(search),
   )
@@ -122,6 +159,7 @@ export function ResourceRegistryWorkbench(props: {
   const externalOwners = new Set(props.previewPackages.map(item => item.owner))
 
   function showOwner(owner: string, resourceId = '') {
+    setTemporaryOpen(null)
     setView(props.ownerKinds[owner] === 'extension' ? 'extensions' : 'packages')
     setQuery('')
     setSelectedId(resourceId)
@@ -165,6 +203,7 @@ export function ResourceRegistryWorkbench(props: {
     const preset = agentPresets[resource.id]
     if (preset) return {
       id: resource.id, label: resource.name, kind: 'folder',
+      meta: resource.id === mainPresetId ? '主写作' : runningPresets.includes(resource.id) ? '后台任务运行中' : '未运行',
       children: [
         { id: `${resource.id}:prompt`, label: '提示词编排', kind: 'folder',
           children: preset.prompts.map(prompt => ({ id: prompt.id, label: prompt.name, kind: 'entry' })) },
@@ -175,6 +214,7 @@ export function ResourceRegistryWorkbench(props: {
     return {
       id: resource.id,
       label: resource.name,
+      meta: usesResource(mainPresetId, resource.id) ? resourceIsEnabled(mainPresetId, resource.id) ? '主写作选入' : '主写作未选入' : undefined,
       kind: resource.entries ? 'folder' : 'entry',
       ...(resource.entries ? { children: ordered(resource.entries.map(entry => ({
         id: entry.id, label: entry.name, kind: 'entry',
@@ -225,6 +265,16 @@ export function ResourceRegistryWorkbench(props: {
   return (
     <main className={styles.root}>
       <header className={styles.header}>
+        {temporaryOpen && <IconButton aria-label="返回预设" title="返回预设" onClick={() => {
+          const previous = temporaryOpen.previous
+          setCategory(previous.category)
+          setView(previous.view)
+          setScope(previous.scope)
+          setSelectedId(previous.selectedId)
+          setQuery(previous.query)
+          setTemporaryOpen(null)
+          setMobilePane('detail')
+        }}><ArrowLeft size={16} /></IconButton>}
         <IconButton className={styles.sidebarToggle} aria-label="切换资源分类" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(!sidebarOpen)}>
           <PanelLeft size={16} />
         </IconButton>
@@ -233,8 +283,28 @@ export function ResourceRegistryWorkbench(props: {
         <small>UI 草稿</small>
       </header>
       <div className={styles.playContext} aria-label="当前游玩上下文">
-        <span>当前游玩</span><strong>{props.contextLabel}</strong>
-        <span>{resources.filter(resource => resource.current).length} 项当前可用</span>
+        <span>当前剧情</span><strong>{props.currentOwner} / 存档 01</strong>
+        <span className={styles.mainPreset}><Star size={14} aria-hidden="true" />主写作 · {presetName(mainPresetId)}</span>
+      </div>
+      <div className={styles.conversationBar} aria-label="对话入口模拟">
+        <label>对话
+          <select aria-label="打开已有对话" value={activeSessionId} onChange={event => setActiveSessionId(event.target.value)}>
+            {sessions.map((session, index) => <option key={session.id} value={session.id}>
+              对话 {index + 1} · {presetName(session.presetId)}{session.id === mainSessionId ? ' · 主写作' : ''}
+            </option>)}
+          </select>
+        </label>
+        <label>新对话预设
+          <select aria-label="新对话预设" value={conversationPresetId} onChange={event => setConversationPresetId(event.target.value)}>
+            {presetResources.map(resource => <option key={resource.id} value={resource.id}>{resource.name}</option>)}
+          </select>
+        </label>
+        <label><input type="checkbox" checked={makeMainOnCreate} onChange={event => setMakeMainOnCreate(event.target.checked)} />设为主写作对话</label>
+        <Button onClick={() => createConversation(conversationPresetId, makeMainOnCreate)}><MessageSquarePlus size={15} />新建对话</Button>
+        <Button disabled={activeSessionId === mainSessionId} onClick={() => setMainSessionId(activeSessionId)}>
+          <Star size={15} />{activeSessionId === mainSessionId ? '当前主写作对话' : '将此对话设为主写作'}
+        </Button>
+        <span role="status">当前对话绑定：{presetName(activeSession.presetId)}</span>
       </div>
       <div className={styles.workspace}>
         <nav className={styles.sidebar} data-open={sidebarOpen} aria-label="工作台导航">
@@ -246,10 +316,10 @@ export function ResourceRegistryWorkbench(props: {
             expandedIds={[]}
             onExpandedIdsChange={() => {}}
             onSelect={node => {
+              setTemporaryOpen(null)
               const next = categories.find(item => item.id === node.id)!
               setCategory(next.id)
               setView('type')
-              setScope('all')
               setQuery('')
               setSelectedId('')
               setMobilePane('master')
@@ -274,6 +344,7 @@ export function ResourceRegistryWorkbench(props: {
             expandedIds={[]}
             onExpandedIdsChange={() => {}}
             onSelect={node => {
+              setTemporaryOpen(null)
               setView(node.id === 'extensions' ? 'extensions' : 'packages')
               setQuery('')
               setSelectedId('')
@@ -319,7 +390,7 @@ export function ResourceRegistryWorkbench(props: {
             onMobilePaneChange={setMobilePane}
             master={
               <div className={styles.master}>
-                <div className={styles.filters}>
+                {!temporaryOpen && <div className={styles.filters}>
                   <SearchField aria-label="搜索资源" placeholder="搜索名称或归属" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} clearLabel="清除搜索" />
                   {view === 'type' && <PanelTabs
                     ariaLabel="资源使用范围"
@@ -336,8 +407,9 @@ export function ResourceRegistryWorkbench(props: {
                       { id: 'global', label: '全局默认' },
                     ]}
                   />}
-                </div>
-                {view === 'type' && scope === 'current' && <p className={styles.context}>{props.contextLabel}</p>}
+                </div>}
+                {temporaryOpen ? <p className={styles.context}>临时打开 · {presetName(temporaryOpen.presetId)}</p>
+                  : view === 'type' && scope === 'current' && <p className={styles.context}>{inspectionLabel} · 配置选入</p>}
                 <div className={styles.listHeading}>
                   <span>{title} · {rows.length} 项</span>
                 </div>
@@ -349,7 +421,7 @@ export function ResourceRegistryWorkbench(props: {
                     expandedIds={query ? [...expandedIds, ...groups.map(group => group.id)] : expandedIds}
                     onExpandedIdsChange={setExpandedIds}
                     onSelect={node => {
-                      if (node.id.startsWith('owner:') || node.id.startsWith('type:')) {
+                      if (node.id.startsWith('owner:') || node.id.startsWith('type:') || node.id.startsWith('preset:')) {
                         setExpandedIds(previous => previous.includes(node.id) ? previous.filter(id => id !== node.id) : [...previous, node.id])
                       } else {
                         setSelectedId(node.id)
@@ -357,6 +429,7 @@ export function ResourceRegistryWorkbench(props: {
                       }
                     }}
                     renderIcon={(node, expanded) => {
+                      if (node.id === mainPresetId) return <Star size={16} />
                       if (node.children) return expanded ? <FolderOpen size={16} /> : <Folder size={16} />
                       const item = agentItems.find(item => item.id === node.id)
                       if (item?.section === 'tools') return <Wrench size={16} />
@@ -371,7 +444,7 @@ export function ResourceRegistryWorkbench(props: {
                       const index = siblings.findIndex(child => child.id === node.id)
                       const agentItem = agentItems.find(item => item.id === node.id)
                       const readOnly = rows.some(resource => resource.readOnly && (node.id === resource.id || resource.id === agentItem?.agentId || resource.entries?.some(entry => entry.id === node.id)))
-                      const filtered = (view === 'type' && scope !== 'all') || Boolean(query) || readOnly
+                      const filtered = Boolean(temporaryOpen) || (view === 'type' && scope !== 'all') || Boolean(query) || readOnly
                       return [
                         { id: 'up', label: '上移', icon: <ArrowUp size={16} />, disabled: filtered || index <= 0, onSelect: () => moveSibling(node, -1) },
                         { id: 'down', label: '下移', icon: <ArrowDown size={16} />, disabled: filtered || index < 0 || index === siblings.length - 1, onSelect: () => moveSibling(node, 1) },
@@ -395,6 +468,7 @@ export function ResourceRegistryWorkbench(props: {
                   <FolderOpen size={15} aria-hidden="true" />查看所属包
                 </Button> : view !== 'type' && selected.category !== 'attachments' ? <Button size="small" onClick={() => {
                   setCategory(selected.category as typeof categories[number]['id'])
+                  setTemporaryOpen(null)
                   setView('type')
                   setScope('all')
                   setQuery('')
@@ -411,8 +485,40 @@ export function ResourceRegistryWorkbench(props: {
                 <dt>来源</dt><dd>{selected.provenance}</dd>
                 {selected.autoInject !== undefined && <><dt>自动注入</dt><dd>{selected.autoInject ? '开启' : '关闭'}</dd></>}
                 <dt>使用位置</dt><dd>{selected.usage.length ? selected.usage.join('、') : '尚未挂载'}</dd>
-                <dt>当前上下文</dt><dd>{selected.current ? '已纳入' : '未纳入'} · {props.contextLabel}</dd>
+                <dt>查看上下文</dt><dd>{inspectionLabel}</dd>
+                <dt>配置状态</dt><dd>{inContext(selectedRoot ?? selected) ? '已选入' : '未选入'} · 尚未进行本轮触发检查</dd>
               </dl>
+              {temporaryOpen && selectedRoot && <div className={styles.bindingActions}>
+                <Toggle label={`在${presetName(temporaryOpen.presetId)}中启用`}
+                  checked={resourceIsEnabled(temporaryOpen.presetId, selectedRoot.id)}
+                  onChange={enabled => setResourceEnabled(previous => ({ ...previous, [`${temporaryOpen.presetId}:${selectedRoot.id}`]: enabled }))} />
+              </div>}
+              {selectedPreset && selectedRoot && <section className={styles.presetActions} aria-label="预设使用配置">
+                <div className={styles.actionButtons}>
+                  <Button onClick={() => setConversationPresetId(selectedRoot.id)}><MessageSquarePlus size={15} />选择为新对话预设</Button>
+                  <Button onClick={() => setRunningPresets(previous => previous.includes(selectedRoot.id)
+                    ? previous.filter(id => id !== selectedRoot.id) : [...previous, selectedRoot.id])}>
+                    {runningPresets.includes(selectedRoot.id) ? <Square size={15} /> : <Play size={15} />}
+                    {runningPresets.includes(selectedRoot.id) ? '结束后台任务' : '模拟后台调用'}
+                  </Button>
+                </div>
+                <p role="status">后台实例：{runningPresets.includes(selectedRoot.id) ? '1 个运行中' : '无'} · 已有对话：{sessions.filter(session => session.presetId === selectedRoot.id).length}</p>
+                <h2>使用的资源</h2>
+                <div className={styles.resourceLinks}>
+                  {resources.filter(resource => usesResource(selectedRoot.id, resource.id)).map(resource => <Button key={resource.id} onClick={() => {
+                    setTemporaryOpen({
+                      resourceId: resource.id,
+                      presetId: selectedRoot.id,
+                      previous: { category, view, scope, selectedId: selected.id, query },
+                    })
+                    setView('type')
+                    setCategory(resource.category as typeof categories[number]['id'])
+                    setSelectedId(resource.id)
+                    setQuery('')
+                  }}><ArrowUpRight size={15} />{resource.name}<small>{resourceIsEnabled(selectedRoot.id, resource.id) ? '已启用' : '已停用'}</small></Button>)}
+                  {!resources.some(resource => usesResource(selectedRoot.id, resource.id)) && <span>尚未配置资源</span>}
+                </div>
+              </section>}
               {canReference && selectedRoot && <section className={styles.bindingActions} aria-label="资源使用操作">
                 <div className={styles.documentHeader}>
                   <strong>{selectedRoot.name}</strong>

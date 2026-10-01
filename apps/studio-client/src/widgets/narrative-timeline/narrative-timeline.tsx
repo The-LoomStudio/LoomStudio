@@ -19,6 +19,10 @@ import { renderTemplateMacros, type MacroRenderContext } from '../../features/st
 import { useNarrativeAnchorNavigation } from './use-narrative-anchor-navigation.js'
 import { useAppearanceStore } from '../../shared/studio-shell/appearance-store.js'
 import { displayText, type DisplayProjection, type OpeningDisplayProjection } from '../../features/message-content/model/use-display-projection.js'
+import { TextTokenSummary, TokenSummary } from '../../features/context-assets/ui/resource-token-summary.js'
+import { useTokenCounts } from '../../shared/tokenizer/use-token-counts.js'
+import { useTokenDisplaySettings } from '../../shared/tokenizer/settings.js'
+import { applyTokenMultiplier } from '@loom-studio/tokenizer/contracts'
 
 const ConversationMarkdown = lazy(async () => {
   const module = await import('../../features/message-content/ui/message-content.js')
@@ -54,6 +58,10 @@ type NarrativeTimelineProps = {
 }
 
 export function NarrativeTimeline(props: NarrativeTimelineProps) {
+  const tokenScope = props.timelineId ?? props.timeline[0]?.timelineId ?? ''
+  const tokenMultiplier = useTokenDisplaySettings(state => state.multiplier)
+  const nodeTokens = useTokenCounts(props.timeline.map(node => node.body.raw),
+    JSON.stringify([tokenScope, ...props.timeline.map(node => node.id)]))
   const storedOverscan = useAppearanceStore(state => state.narrativeOverscan)
   const [editingId, setEditingId] = useState<string>()
   const [draft, setDraft] = useState('')
@@ -394,6 +402,7 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                       copyFailedLabel={props.t('longTextEditor.copyFailed')}
                       copyLabel={props.t('longTextEditor.copy')}
                       label={props.t('timeline.editLocal')}
+                      headerExtra={<TextTokenSummary text={draft} scope={`${tokenScope}:${entry.id}`} t={props.t} />}
                       disabled={saving}
                       minHeight={editorMinHeight || undefined}
                       mode="source"
@@ -410,49 +419,24 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
                       onSubmit={saveValue}
                     />
                   ) : (
-                    props.rendererHost && props.timelineId ? (
-                      <RendererNodeMountHost
-                        host={props.rendererHost}
-                        nodeId={entry.id}
-                        rawText={entry.body.raw}
-                        displayText={displayText(props.displayProjection, entry.id, entry.body.raw) ?? ''}
-                        surface="narrative"
-                        timelineId={props.timelineId}
-                      >
-                        <ConversationMarkdown
-                          className={styles.messageBody}
-                          codeBlockLabels={{
-                            copied: props.t('longTextEditor.copied'),
-                            copy: props.t('longTextEditor.copy'),
-                            copyFailed: props.t('longTextEditor.copyFailed'),
-                            disableWrap: props.t('markdown.code.disableWrap'),
-                            enableWrap: props.t('markdown.code.enableWrap'),
-                          }}
-                          role={role}
-                          macroContext={props.macroContext}
-                          value={displayText(props.displayProjection, entry.id, entry.body.raw) ?? ''}
-                        />
-                      </RendererNodeMountHost>
-                    ) : (
-                      <ConversationMarkdown
-                        className={styles.messageBody}
-                        codeBlockLabels={{
-                          copied: props.t('longTextEditor.copied'),
-                          copy: props.t('longTextEditor.copy'),
-                          copyFailed: props.t('longTextEditor.copyFailed'),
-                          disableWrap: props.t('markdown.code.disableWrap'),
-                          enableWrap: props.t('markdown.code.enableWrap'),
-                        }}
-                        role={role}
-                        macroContext={props.macroContext}
-                        value={displayText(props.displayProjection, entry.id, entry.body.raw) ?? ''}
-                      />
-                    )
+                    <NarrativeMessageBody
+                      displayProjection={props.displayProjection}
+                      entry={entry}
+                      macroContext={props.macroContext}
+                      rendererHost={props.rendererHost}
+                      role={role}
+                      t={props.t}
+                      timelineId={props.timelineId}
+                    />
                   )}
                 </div>
                 <ConversationMessageChrome
                   createdAt={entry.createdAt}
                   index={index}
+                  metadata={editingId !== entry.id
+                    ? <span> · <TokenSummary t={props.t} multiplier={tokenMultiplier} pending={nodeTokens.pending}
+                        error={nodeTokens.error} textTokens={nodeTokens.counts
+                          ? applyTokenMultiplier(nodeTokens.counts[index]!, tokenMultiplier).estimatedTokens : undefined} /></span> : undefined}
                   actions={editingId === entry.id ? (
                     <>
                       {saveError ? <span role="alert">{saveError}</span> : null}
@@ -501,6 +485,50 @@ export function NarrativeTimeline(props: NarrativeTimelineProps) {
       />
     </section>
   )
+}
+
+function NarrativeMessageBody(props: {
+  displayProjection?: DisplayProjection
+  entry: NarrativeNodeView
+  macroContext?: MacroRenderContext
+  rendererHost?: ClientRendererHost
+  role: 'user' | 'assistant'
+  t: Translator
+  timelineId?: string
+}) {
+  const lastDisplay = useRef<{ raw: string; text: string } | undefined>(undefined)
+  const projected = displayText(props.displayProjection, props.entry.id, props.entry.body.raw)
+  if (projected !== undefined) lastDisplay.current = { raw: props.entry.body.raw, text: projected }
+  // Keep this mounted node intact while a new Session or Preset projection is pending.
+  const text = projected ?? (props.displayProjection?.pending && lastDisplay.current?.raw === props.entry.body.raw
+    ? lastDisplay.current.text : '')
+  const content = (
+    <ConversationMarkdown
+      className={styles.messageBody}
+      codeBlockLabels={{
+        copied: props.t('longTextEditor.copied'),
+        copy: props.t('longTextEditor.copy'),
+        copyFailed: props.t('longTextEditor.copyFailed'),
+        disableWrap: props.t('markdown.code.disableWrap'),
+        enableWrap: props.t('markdown.code.enableWrap'),
+      }}
+      role={props.role}
+      macroContext={props.macroContext}
+      value={text}
+    />
+  )
+  return props.rendererHost && props.timelineId ? (
+    <RendererNodeMountHost
+      host={props.rendererHost}
+      nodeId={props.entry.id}
+      rawText={props.entry.body.raw}
+      displayText={text}
+      surface="narrative"
+      timelineId={props.timelineId}
+    >
+      {content}
+    </RendererNodeMountHost>
+  ) : content
 }
 
 export function readNarrativeNodeRole(nodes: NarrativeNode[], index: number): 'user' | 'assistant' {

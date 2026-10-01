@@ -211,6 +211,11 @@ describe('studio layout store', () => {
 })
 
 describe('sanitizeStudioLayout', () => {
+  it('opens the character tab when the old recent tab is restored', () => {
+    expect(sanitizeStudioLayout({ playTab: 'recent' }).playTab).toBe('character')
+    expect(sanitizeStudioLayout({ playTab: 'sessions' }).playTab).toBe('sessions')
+  })
+
   it('keeps valid preferences and rejects malformed persisted values', () => {
     expect(sanitizeStudioLayout({
       assetMetadataOpen: true,

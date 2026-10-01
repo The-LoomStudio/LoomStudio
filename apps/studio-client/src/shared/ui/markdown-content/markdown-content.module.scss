@@ -93,6 +93,36 @@
 .assetToken { color: var(--loom-color-info); }
 .dialogueToken { color: var(--loom-color-dialogue); }
 
+.content .resourceReference {
+  display: inline;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--loom-color-accent-strong);
+  font: inherit;
+  text-align: inherit;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+
+  &:hover { text-decoration: underline; text-underline-offset: 3px; }
+  &:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+  svg {
+    width: 1em;
+    height: 1em;
+    margin-right: 0.25em;
+    vertical-align: -0.14em;
+  }
+
+  code {
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    font-size: inherit;
+  }
+}
+
 .codeBlock {
   position: relative;
   min-width: 0;

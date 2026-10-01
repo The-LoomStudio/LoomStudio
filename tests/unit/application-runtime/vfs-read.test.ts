@@ -12,6 +12,27 @@ const files: VfsEntry[] = [
 ]
 
 describe('CodeAct read-only VFS', () => {
+  it.each([
+    { kind: 'prompt-resource' as const, resourceId: 'resource', nodeId: 'node', version: 1, field: 'body' as const },
+    { kind: 'state' as const, target: { scope: 'global' as const }, revisionId: 'revision', pointer: '/gold' },
+    { kind: 'script' as const, documentId: 'document', version: 1, blobId: 'blob', mountId: 'mount' },
+  ])('returns only path, range and snippet for bound $kind search results', binding => {
+    const result = searchVfs([
+      files[0]!, files[1]!, { ...files[2]!, binding },
+    ], [{ path: '/alice', terms: ['key'] }])
+    expect(result).toBe('Scope: /alice\n/alice/setting.md:1-3\n1: Alice\n2: The key belongs to C.\n3: Keep the gate closed.')
+    expect(result).not.toContain('Reference:')
+    expect(result).not.toContain('loom-resource:')
+  })
+
+  it('preserves a URI that is part of the source text instead of stripping source content', () => {
+    const uri = 'loom-resource://entity?type=resource&id=author-example'
+    const result = searchVfs([
+      files[0]!, files[1]!, { ...files[2]!, content: `Original link: ${uri}` },
+    ], [{ path: '/alice', terms: ['Original link'] }])
+    expect(result).toContain(`1: Original link: ${uri}`)
+  })
+
   it('lists one level and returns pure text with a separate read observation', () => {
     expect(listVfs(files, ['/'])).toBe('/\n  alice/')
     expect(listVfs(files, ['/alice'])).toBe('/alice\n  setting.md [injected]')
@@ -89,7 +110,7 @@ describe('CodeAct read-only VFS', () => {
     await expect(ctx.methods.read!(['/state/current.yaml'], signal)).rejects.toThrow(/Path unavailable/)
     expect(reads).toBe(1)
     expect(Object.keys(ctx.methods)).toEqual([
-      'ls', 'search', 'read', 'write', 'patch', 'move', 'delete', 'create', 'copy', 'readNarrative',
+      'setAuthorMode', 'ls', 'search', 'read', 'write', 'patch', 'move', 'delete', 'create', 'copy', 'readNarrative', 'appendNarrative',
     ])
     allowed = true
     await expect(ctx.methods.write!(['/state/current.yaml', '{}'], signal))

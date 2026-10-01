@@ -5,14 +5,14 @@ import type { WindowSize } from './window-resize.js'
 import type { LongTextEditorMode } from '../ui/long-text-editor/long-text-editor-model.js'
 import { isRecord } from '@loom-studio/shared'
 
-export const STUDIO_PANEL_IDS = ['model', 'agent', 'play', 'sessions', 'character', 'preset', 'resource', 'state', 'text-transform', 'inspector', 'logs', 'extensions', 'settings'] as const
+export const STUDIO_PANEL_IDS = ['model', 'agent', 'user', 'play', 'recent', 'sessions', 'character', 'preset', 'resource', 'state', 'macro', 'text-transform', 'inspector', 'logs', 'extensions', 'settings'] as const
 
 export type StudioPanelId = (typeof STUDIO_PANEL_IDS)[number]
 export type AssetLayoutId = 'preset' | 'resources'
 type AssetViewMode = 'master-detail' | 'drilldown'
 type ContextCategory = 'setting' | 'logic' | 'runtime' | 'history'
 type PanelWindowMode = 'reference' | 'immersive'
-export type PresetView = 'assets' | 'order' | 'tools' | 'macros' | 'text' | 'model'
+export type PresetView = 'assets' | 'tools'
 
 export type AssetViewState = {
   expandedIds?: string[]
@@ -39,6 +39,10 @@ type StudioLayoutData = {
   panelWindowModes: Partial<Record<StudioPanelId, PanelWindowMode>>
   panelWindowSizes: Partial<Record<StudioPanelId, WindowSize>>
   presetView: PresetView
+  playTab: 'character' | 'sessions'
+  playCalendarOpen: boolean
+  playSelectedDate: string | undefined
+  playRecentSessionsOpen: boolean
   railWidth: number
   textEditorMode: LongTextEditorMode
   uiScale: number
@@ -63,6 +67,10 @@ type StudioLayoutStore = StudioLayoutData & {
   toggleDockPinned(): void
   toggleComposerPinned(): void
   togglePanelWindowMode(panel?: StudioPanelId): void
+  setPlayTab(tab: 'character' | 'sessions'): void
+  setPlayCalendarOpen(open: boolean): void
+  setPlaySelectedDate(date: string | undefined): void
+  setPlayRecentSessionsOpen(open: boolean): void
 }
 
 type StudioPanelStore = {
@@ -125,6 +133,10 @@ export function createDefaultStudioLayout(): StudioLayoutData {
     railWidth: DEFAULT_RAIL_WIDTH,
     textEditorMode: 'source',
     uiScale: UI_SCALE_DEFAULT,
+    playTab: 'character',
+    playCalendarOpen: false,
+    playSelectedDate: undefined,
+    playRecentSessionsOpen: true,
   }
 }
 
@@ -152,18 +164,14 @@ export function sanitizeStudioLayout(value: unknown): StudioLayoutData {
     panelWindowMode,
     panelWindowModes,
     panelWindowSizes: readPanelWindowSizes(value.panelWindowSizes),
-    presetView: value.presetView === 'model' ? 'model' : value.presetView === 'text'
-      ? 'text'
-      : value.presetView === 'tools'
-      ? 'tools'
-      : value.presetView === 'macros'
-        ? 'macros'
-        : value.presetView === 'order' || value.presetPanel === 'order'
-          ? 'order'
-          : defaults.presetView,
+    presetView: value.presetView === 'tools' ? 'tools' : defaults.presetView,
     railWidth: readRailWidth(value.railWidth),
     textEditorMode: value.textEditorMode === 'preview' ? 'preview' : defaults.textEditorMode,
     uiScale: readUiScale(value.uiScale),
+    playTab: value.playTab === 'sessions' ? 'sessions' : defaults.playTab,
+    playCalendarOpen: value.playCalendarOpen === true,
+    playSelectedDate: typeof value.playSelectedDate === 'string' ? value.playSelectedDate : undefined,
+    playRecentSessionsOpen: value.playRecentSessionsOpen !== false,
   }
 }
 
@@ -224,6 +232,10 @@ export const useStudioLayoutStore = create<StudioLayoutStore>()(
         panelWindowSizes: { ...state.panelWindowSizes, [panel]: size },
       })),
       setPresetView: presetView => set({ presetView }),
+      setPlayTab: playTab => set({ playTab }),
+      setPlayCalendarOpen: playCalendarOpen => set({ playCalendarOpen }),
+      setPlaySelectedDate: playSelectedDate => set({ playSelectedDate }),
+      setPlayRecentSessionsOpen: playRecentSessionsOpen => set({ playRecentSessionsOpen }),
       setRailWidth: railWidth => set({ railWidth: readRailWidth(railWidth) }),
       setTextEditorMode: textEditorMode => set({ textEditorMode }),
       setUiScale: uiScale => set({ uiScale: readUiScale(uiScale) }),

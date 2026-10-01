@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useState } from 'react'
 import type { ModelProfile, PromptResource, ProviderAccount, ProviderModelSelection } from '../../entities/index.js'
 import type { StudioApi } from '../../shared/api/studio-api.js'
 import type { Translator } from '../../shared/i18n/index.js'
@@ -11,34 +11,25 @@ export function AgentModelEditor(props: {
   t: Translator
   onSave(input: Parameters<StudioApi['agentPresets']['update']>[0]): Promise<PromptResource>
 }) {
-  const [draft, setDraft] = useState<{
-    version: number
-    model?: ProviderModelSelection
-    delivery: 'stream' | 'complete'
-  }>()
+  const [committed, setCommitted] = useState<PromptResource>()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string>()
-  const current = draft ?? {
-    version: props.preset.version,
-    model: props.preset.model,
-    delivery: props.preset.delivery ?? 'stream',
-  }
+  const current = committed && committed.version > props.preset.version ? committed : props.preset
   const selectedModel = props.modelProfiles.find(model =>
     model.providerAccountId === current.model?.providerProfileId && model.providerModelId === current.model?.modelId)
 
-  async function save(event: FormEvent) {
-    event.preventDefault()
-    if (!draft || pending) return
+  async function save(model: ProviderModelSelection | undefined, delivery: 'stream' | 'complete') {
+    if (pending) return
     setPending(true)
     setError(undefined)
     try {
-      await props.onSave({
+      const result = await props.onSave({
         agentPresetId: props.preset.id,
-        expectedVersion: draft.version,
-        model: draft.model ?? null,
-        delivery: draft.delivery,
+        expectedVersion: current.version,
+        model: model ?? null,
+        delivery,
       })
-      setDraft(undefined)
+      setCommitted(result)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught))
     } finally {
@@ -46,13 +37,11 @@ export function AgentModelEditor(props: {
     }
   }
 
-  return <form className={`${styles.toolForm} ${styles.zoneDetail} loom-underlined-fields`} onSubmit={save}>
-    <label>
-      <span>{props.t('agent.profile.model')}</span>
-      <select disabled={pending} value={selectedModel?.id ?? (current.model ? '__unavailable__' : '')}
+  return <div className={`${styles.toolForm} ${styles.presetModelForm} loom-underlined-fields`}>
+      <select aria-label={props.t('agent.profile.model')} disabled={pending} value={selectedModel?.id ?? (current.model ? '__unavailable__' : '')}
         onChange={event => {
           const model = props.modelProfiles.find(item => item.id === event.target.value)
-          setDraft({ ...current, model: model ? { providerProfileId: model.providerAccountId, modelId: model.providerModelId } : undefined })
+          void save(model ? { providerProfileId: model.providerAccountId, modelId: model.providerModelId } : undefined, current.delivery ?? 'stream')
         }}>
         <option value="">{props.t('agent.model.unbound')}</option>
         {current.model && !selectedModel ? <option disabled value="__unavailable__">
@@ -62,16 +51,11 @@ export function AgentModelEditor(props: {
           {props.providerAccounts.find(provider => provider.id === model.providerAccountId)?.displayName ?? model.providerAccountId} / {model.providerModelId}
         </option>)}
       </select>
-    </label>
     <label className={styles.toolCheckbox}>
-      <input type="checkbox" checked={current.delivery === 'stream'} disabled={pending}
-        onChange={event => setDraft({ ...current, delivery: event.target.checked ? 'stream' : 'complete' })} />
+      <input type="checkbox" checked={(current.delivery ?? 'stream') === 'stream'} disabled={pending}
+        onChange={event => void save(current.model, event.target.checked ? 'stream' : 'complete')} />
       <span>{props.t('agent.profile.deliveryStream')}</span>
     </label>
     {error ? <p role="alert" className={styles.toolError}>{error}</p> : null}
-    <button type="submit" disabled={pending || !draft}>{props.t('agent.profile.save')}</button>
-    {draft ? <button type="button" disabled={pending} onClick={() => { setDraft(undefined); setError(undefined) }}>
-      {props.t('context.discardDraft')}
-    </button> : null}
-  </form>
+  </div>
 }

@@ -20,6 +20,8 @@ export function createExtensionHostHarness(options: {
   assetScratchRoot?: string
   aiCapabilities?: AiGatewayCapabilityRegistry
   aiGateway?: ProfiledAiGateway
+  invokeModel?: ExtensionHostOptions['invokeModel']
+  buildPrompt?: ExtensionHostOptions['buildPrompt']
   registerMacroProvider?: ExtensionHostOptions['registerMacroProvider']
   registerNarrativeContextProvider?: ExtensionHostOptions['registerNarrativeContextProvider']
   registerStateContribution?: ExtensionHostOptions['registerStateContribution']
@@ -46,6 +48,8 @@ export function createExtensionHostHarness(options: {
     assetScratchRoot: options.assetScratchRoot,
     aiCapabilities: options.aiCapabilities,
     aiGateway: options.aiGateway,
+    invokeModel: options.invokeModel,
+    buildPrompt: options.buildPrompt,
     registerMacroProvider: options.registerMacroProvider,
     registerNarrativeContextProvider: options.registerNarrativeContextProvider,
     registerStateContribution: options.registerStateContribution,

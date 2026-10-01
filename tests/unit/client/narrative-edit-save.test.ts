@@ -4,6 +4,11 @@ import { NarrativeTimeline } from '../../../apps/studio-client/src/widgets/narra
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 
 const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as unknown[] }))
+const liveCounter = vi.hoisted(() => ({ useTokenCounts: vi.fn() }))
+vi.mock('../../../apps/studio-client/src/shared/tokenizer/use-token-counts.js', () => liveCounter)
+vi.mock('../../../apps/studio-client/src/shared/tokenizer/settings.js', () => ({
+  useTokenDisplaySettings: (selector: (state: { multiplier: number }) => unknown) => selector({ multiplier: 0.6 }),
+}))
 vi.mock('../../../apps/studio-client/src/shared/studio-shell/appearance-store.js', () => ({
   useAppearanceStore: (selector: (state: { narrativeOverscan: number }) => unknown) => selector({ narrativeOverscan: 5 }),
 }))
@@ -34,7 +39,11 @@ vi.mock('../../../apps/studio-client/node_modules/@tanstack/react-virtual/dist/e
     scrollToIndex: () => undefined,
   }),
 }))
-beforeEach(() => { hooks.cursor = 0; hooks.values = [] })
+beforeEach(() => {
+  hooks.cursor = 0
+  hooks.values = []
+  liveCounter.useTokenCounts.mockReset().mockReturnValue({ counts: [9, 3], pending: false })
+})
 type Element = ReactElement<Record<string, unknown>>
 function elements(value: unknown): Element[] {
   if (Array.isArray(value)) return value.flatMap(elements)
@@ -43,6 +52,37 @@ function elements(value: unknown): Element[] {
 }
 
 describe('Narrative正文保存', () => {
+  it('automatically supplies node raw text and updated drafts to live counting without a refresh button', () => {
+    const t = createTranslator('en-US')
+    const props: ComponentProps<typeof NarrativeTimeline> = {
+      busy: false, composerHeight: 0, emptyTimelineText: '', hasOlder: true,
+      getNodeLink: () => '', onEditNode: vi.fn(), onForkNode: vi.fn(), onLoadOlder: vi.fn(),
+      onNodeAnchorChange: vi.fn(), t, timelineId: 'timeline',
+      timeline: [{
+        id: 'node', timelineId: 'timeline',
+        body: { format: 'loom-markdown.v1', raw: '**Original** {{macro}}' }, createdAt: '2026-09-23T00:00:00Z',
+      }],
+    }
+    const render = () => { hooks.cursor = 0; return elements(NarrativeTimeline(props)) }
+    expect(render().some(element => element.props['aria-label'] === t('tokens.refresh'))).toBe(false)
+    expect(liveCounter.useTokenCounts).toHaveBeenLastCalledWith(['**Original** {{macro}}'], JSON.stringify(['timeline', 'node']))
+    expect(elements(render().find(element => element.props.createdAt)?.props.metadata).find(element => 'textTokens' in element.props)?.props.textTokens)
+      .toBe(6)
+    props.timeline = [{ ...props.timeline[0], body: { format: 'loom-markdown.v1', raw: 'Changed' } }, {
+      id: 'older', timelineId: 'timeline', body: { format: 'loom-markdown.v1', raw: 'Older' }, createdAt: '2026-09-22T00:00:00Z',
+    }]
+    render()
+    expect(liveCounter.useTokenCounts).toHaveBeenLastCalledWith(['Changed', 'Older'], JSON.stringify(['timeline', 'node', 'older']))
+    ;(render().find(element => element.props.label === t('timeline.editLocal') && element.props.onClick)!.props.onClick as () => void)()
+    const editor = render().find(element => element.props.sourceOnly)!
+    expect(elements(editor.props.headerExtra)[0]?.props.text).toBe('Changed')
+    ;(editor.props.onChange as (value: string) => void)('Draft')
+    expect(elements(render().find(element => element.props.sourceOnly)!.props.headerExtra)[0]?.props.text).toBe('Draft')
+    props.timelineId = 'other-timeline'
+    ;(render().find(element => element.props.label === t('timeline.cancelEdit') && element.props.onClick)!.props.onClick as () => void)()
+    render()
+    expect(liveCounter.useTokenCounts).toHaveBeenLastCalledWith(['Changed', 'Older'], JSON.stringify(['other-timeline', 'node', 'older']))
+  })
   it.each([true, false])('waits for persistence and retains failed text (success: %s)', async success => {
     let resolve!: () => void
     let reject!: (error: Error) => void

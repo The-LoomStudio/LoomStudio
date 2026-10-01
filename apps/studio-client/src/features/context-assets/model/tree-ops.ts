@@ -278,7 +278,7 @@ function isReadOnlyContextNode(node: ContextAssetNode, inheritedCategory?: Conte
 
 function insertContextAssetChild(nodes: ContextAssetNode[], parentId: string, child: ContextAssetNode): ContextAssetNode[] {
   return nodes.map(node => {
-    if (node.id === parentId) return { ...node, children: [...(node.children ?? []), child] }
+    if (node.id === parentId) return { ...node, children: [child, ...(node.children ?? [])] }
     if (!node.children) return node
     return { ...node, children: insertContextAssetChild(node.children, parentId, child) }
   })

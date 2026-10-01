@@ -46,6 +46,9 @@ const resolvePath = (relative: string) => fileURLToPath(new URL(relative, import
 export default defineConfig({
   resolve: {
     alias: {
+      '@loom-studio/tokenizer/contracts': resolvePath('./packages/tokenizer/src/contracts.ts'),
+      '@loom-studio/tokenizer/async': resolvePath('./packages/tokenizer/src/async-counter.ts'),
+      '@loom-studio/tokenizer': resolvePath('./packages/tokenizer/src/index.ts'),
       '@loom-studio/ai-gateway/contracts': resolvePath('./packages/ai-gateway/src/contracts.ts'),
       '@loom-studio/ai-gateway': resolvePath('./packages/ai-gateway/src/index.ts'),
       '@loom-studio/application-data': resolvePath('./packages/application-data/src/index.ts'),

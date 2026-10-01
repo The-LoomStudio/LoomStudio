@@ -21,7 +21,7 @@ type AppearanceState = {
 }
 
 export const useAppearanceStore = create<AppearanceState>()(persist((set) => ({
-  background: { id: 'harbor', image: '/images/banner.png' },
+  background: null,
   scopedBackground: null,
   canvasWidth: 720,
   narrativeOverscan: 5,

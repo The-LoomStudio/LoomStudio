@@ -726,8 +726,20 @@ async function importExtensionPackageResourcesInternal(
       desiredScriptMountIds.add(id)
     }
     for (const mount of item.contribution.settingMounts ?? []) {
-      const target = promptContributions.get(mount.resourceId)
-      if (!target || target.contribution.resourceKind !== 'setting') throw new Error(`Extension Preset Setting mount is unresolved: ${mount.resourceId}`)
+      if (item.contribution.resourceKind !== 'preset') throw new Error('Setting mounts require an Agent preset')
+      const reference = mount.reference ?? (mount.resourceId ? { kind: 'package' as const, contributionId: mount.resourceId } : undefined)
+      if (!reference || (mount.reference && mount.resourceId)) throw new Error('Invalid extension Setting mount reference')
+      if (reference.kind === 'package') {
+        const linked = promptContributions.get(reference.contributionId)
+        if (!linked || linked.contribution.resourceKind !== 'setting') throw new Error(`Extension Preset Setting mount is unresolved: ${reference.contributionId}`)
+      } else if (reference.kind === 'external') {
+        if (typeof reference.resourceId !== 'string' || !reference.resourceId.trim()) throw new Error('Invalid external Setting resource ID')
+        const source = reference.origin
+        if (source && (typeof source.packageId !== 'string' || !source.packageId.trim()
+          || typeof source.contributionId !== 'string' || !source.contributionId.trim()
+          || (source.target !== 'global' && source.target !== 'card')
+          || (source.target === 'card' && target.kind !== 'card'))) throw new Error('Invalid external Setting origin')
+      } else throw new Error('Invalid extension Setting mount reference')
     }
     for (const mount of item.contribution.toolMounts ?? []) {
       const definition = agentToolDefinitions.get(mount.toolId)
@@ -815,11 +827,66 @@ async function importExtensionPackageResourcesInternal(
   )
   const textExtractorIds = textExtractorIndex.ids
   const restorableTextExtractorVersions = textExtractorIndex.restorableVersions
-
-  const missingPromptResources = input.promptResources.filter(item => input.update || !promptResourceIds.has(item.contribution.id) || restorablePromptResourceVersions.has(item.contribution.id))
-  const missingAgentTools = input.agentTools.filter(item => input.update || !existingAgentTools.has(localId(item.contribution.id)))
   const missingTransformRules = input.transformRules.filter(item => input.update || !transformRuleIds.has(item.contribution.id) || restorableTransformRuleVersions.has(item.contribution.id))
   const missingTextExtractors = input.textExtractors.filter(item => input.update || !textExtractorIds.has(item.contribution.id) || restorableTextExtractorVersions.has(item.contribution.id))
+  for (const contributionId of transformRuleDrafts.keys()) {
+    if (!transformRuleIds.has(contributionId)) transformRuleIds.set(contributionId, ctx.createId('text-transform-rule'))
+  }
+  for (const contributionId of textExtractorDrafts.keys()) {
+    if (!textExtractorIds.has(contributionId)) textExtractorIds.set(contributionId, ctx.createId('text-extractor'))
+  }
+  const resolveTextUses = (item: typeof input.promptResources[number]) => {
+    if (item.contribution.textUses?.length && item.contribution.resourceKind !== 'preset') {
+      throw new Error('Text use configuration requires an Agent preset')
+    }
+    const seen = new Set<string>()
+    return item.contribution.textUses?.map(use => {
+      if (!use || (use.kind !== 'rule' && use.kind !== 'extractor')
+        || !use.reference || (use.reference.kind !== 'package' && use.reference.kind !== 'external')
+        || typeof use.enabled !== 'boolean'
+        || (use.orderIndex !== undefined && (!Number.isSafeInteger(use.orderIndex) || use.orderIndex < 0))) {
+        throw new Error('Invalid extension Text use')
+      }
+      const identity = `${use.kind}:${JSON.stringify(use.reference)}`
+      if (seen.has(identity)) throw new Error('Duplicate extension Text use')
+      seen.add(identity)
+      const local = use.kind === 'rule' ? transformRuleIds : textExtractorIds
+      const declared = use.kind === 'rule' ? transformRuleDrafts : textExtractorDrafts
+      if (use.reference.kind === 'package') {
+        if (typeof use.reference.contributionId !== 'string' || !declared.has(use.reference.contributionId)) {
+          throw new Error(`Unresolved package Text use: ${use.reference.contributionId}`)
+        }
+      } else {
+        if (typeof use.reference.resourceId !== 'string' || !use.reference.resourceId.trim()) throw new Error('Invalid external Text use resource ID')
+        const origin = use.reference.origin
+        if (origin && (typeof origin.packageId !== 'string' || !origin.packageId.trim()
+          || typeof origin.contributionId !== 'string' || !origin.contributionId.trim()
+          || (origin.target !== 'card' && origin.target !== 'global'))) throw new Error('Invalid external Text use origin')
+      }
+      const external = use.reference.kind === 'external' ? use.reference.origin : undefined
+      if (external && external.target === 'card' && target.kind !== 'card') {
+        throw new Error('External Text use requires a Card installation target')
+      }
+      const records = use.kind === 'rule' ? storedRules : storedExtractors
+      const sameInstallation = external?.packageId === input.packageId && external.target === target.kind
+        && external.contributionId && declared.has(external.contributionId)
+      const matching = external && records.find(record => !record.meta.tombstone
+        && record.content.origin?.packageId === external.packageId
+        && record.content.origin.contributionId === external.contributionId
+        && record.content.origin.installationId === extensionInstallationId(external.packageId,
+          external.target === 'global' ? { kind: 'global' } : target))
+      const id = use.reference.kind === 'package'
+        ? local.get(use.reference.contributionId)!
+        : sameInstallation ? local.get(external!.contributionId)! : matching?.id ?? use.reference.resourceId
+      return { id, kind: use.kind, enabled: use.enabled,
+        ...(use.orderIndex === undefined ? {} : { orderIndex: use.orderIndex }),
+        reference: structuredClone(use.reference) }
+    })
+  }
+
+  const missingPromptResources = input.promptResources.filter(item => input.update || !promptResourceIds.has(item.contribution.id) || restorablePromptResourceVersions.has(item.contribution.id))
+  const textUsesByContribution = new Map(input.promptResources.map(item => [item.contribution.id, resolveTextUses(item)]))
+  const missingAgentTools = input.agentTools.filter(item => input.update || !existingAgentTools.has(localId(item.contribution.id)))
   const missingScripts = scripts.filter(item => input.update || !storedScriptById.has(scriptDocumentId(item.contribution.id)) || storedScriptById.get(scriptDocumentId(item.contribution.id))!.meta.tombstone)
   const missingScriptMounts = [...desiredScriptMountIds].some(id => !storedScriptMountById.has(id) || storedScriptMountById.get(id)!.meta.tombstone)
   const scriptResult = scripts.length ? { loomScripts: scripts.map(item => ({ contributionId: item.contribution.id, scriptId: scriptDocumentId(item.contribution.id) })) } : {}
@@ -918,6 +985,7 @@ async function importExtensionPackageResourcesInternal(
               rootNode: structuredClone(artifact.rootNode),
               macros: structuredClone(artifact.macros ?? {}),
               macroOptions: structuredClone(artifact.macroOptions ?? {}),
+              ...(textUsesByContribution.get(item.contribution.id) ? { textUses: textUsesByContribution.get(item.contribution.id) } : {}),
               origin: origin(item.contribution.id),
               updatedAt: timestamp,
             },
@@ -938,6 +1006,7 @@ async function importExtensionPackageResourcesInternal(
               ...(artifact.resourceKind === 'preset' ? { historyPolicy: 'persistent' as const } : {}),
               ...(artifact.macros !== undefined ? { macros: structuredClone(artifact.macros) } : {}),
               ...(artifact.macroOptions !== undefined ? { macroOptions: structuredClone(artifact.macroOptions) } : {}),
+              ...(textUsesByContribution.get(item.contribution.id) ? { textUses: textUsesByContribution.get(item.contribution.id) } : {}),
               origin: origin(item.contribution.id),
               createdAt: timestamp,
               updatedAt: timestamp,
@@ -998,7 +1067,6 @@ async function importExtensionPackageResourcesInternal(
         const blob = ctx.blobs!.participateWrite(dataTx, item.blob).blob
         await writeDocument<LoomScriptContent>(documents, {
           id, type: applicationDocumentTypes.loomScript, expectedVersion: existing?.version ?? 'new',
-          meta: { ownerExtensionId: input.packageId, ownerInstallationId: installationId },
           content: {
             owner: { kind: 'extension', packageId: input.packageId, installationId },
             ...scriptMetadata.get(item.id)!,
@@ -1038,9 +1106,24 @@ async function importExtensionPackageResourcesInternal(
           resourceTx.replacePresetToolMounts({ presetResourceId, mounts: [] })
         }
         for (const [orderIndex, mount] of (item.contribution.settingMounts ?? []).entries()) {
+          const reference = mount.reference ?? { kind: 'package' as const, contributionId: mount.resourceId! }
+          const external = reference.kind === 'external' ? reference.origin : undefined
+          const sameInstallation = external?.packageId === input.packageId && external.target === target.kind
+            && promptContributions.get(external.contributionId)?.contribution.resourceKind === 'setting'
+          const resolved = reference.kind === 'package' ? promptResourceIds.get(reference.contributionId)!
+            : sameInstallation ? promptResourceIds.get(external!.contributionId)!
+              : external ? existingPromptResources.find(resource => !resource.tombstoned
+                && resource.resourceKind === 'setting'
+                && resource.origin?.kind === 'extension-package'
+                && resource.origin.packageId === external.packageId
+                && resource.origin.contributionId === external.contributionId
+                && resource.origin.installationId === extensionInstallationId(external.packageId,
+                  external.target === 'global' ? { kind: 'global' } : target))?.id
+                : undefined
           resourceTx.addSettingMount({
             source: { kind: 'preset', id: presetResourceId },
-            settingResourceId: promptResourceIds.get(mount.resourceId)!,
+            settingResourceId: resolved ?? null,
+            reference,
             orderIndex: mount.orderIndex ?? orderIndex,
             origin: origin(item.contribution.id),
           })

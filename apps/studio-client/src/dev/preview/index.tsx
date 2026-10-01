@@ -7,8 +7,9 @@ import { LongTextEditorPreview } from './long-text-editor-preview.js'
 import { MarkdownContentPreview } from './markdown-content-preview.js'
 import { FileTreePreview } from './file-tree-preview.js'
 import { ResourceRegistryPreview } from './resource-registry/resource-registry-preview.js'
+import { PackageResourceDrilldownPreview } from './package-resource-drilldown/package-resource-drilldown-preview.js'
 
-const previews: Record<string, () => ReactElement> = { 'agent-chat': AgentChatPreview, 'narrative-timeline': NarrativeTimelinePreview, 'long-text-editor': LongTextEditorPreview, 'markdown-content': MarkdownContentPreview, 'file-tree': FileTreePreview, 'resource-registry': ResourceRegistryPreview }
+const previews: Record<string, () => ReactElement> = { 'agent-chat': AgentChatPreview, 'narrative-timeline': NarrativeTimelinePreview, 'long-text-editor': LongTextEditorPreview, 'markdown-content': MarkdownContentPreview, 'file-tree': FileTreePreview, 'resource-registry': ResourceRegistryPreview, 'package-resource-drilldown': PackageResourceDrilldownPreview }
 
 export function renderComponentPreview(root: HTMLElement, previewId: string): void {
   const Preview = previews[previewId]

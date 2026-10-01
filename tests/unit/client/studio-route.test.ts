@@ -6,6 +6,7 @@ describe('studio routes', () => {
     expect(readStudioRoute('/studio/resources')).toEqual({ panel: 'resource' })
     expect(readStudioRoute('/studio/agents')).toEqual({ panel: 'agent' })
     expect(readStudioRoute('/studio/play')).toEqual({ panel: 'play' })
+    expect(readStudioRoute('/studio/recent')).toEqual({ panel: 'recent' })
     expect(readStudioRoute('/studio/history')).toEqual({ panel: 'sessions' })
     expect(readStudioRoute('/studio/extensions')).toEqual({ panel: 'extensions' })
     expect(readStudioRoute('/studio/chat/timeline-1/branch/main')).toEqual({ panel: null, timelineId: 'timeline-1', branchId: 'main' })

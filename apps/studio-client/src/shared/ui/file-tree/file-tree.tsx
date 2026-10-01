@@ -3,14 +3,17 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type ElementType } from 'react'
 import { ContextMenu, ContextMenuCheckboxItem, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger, DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, type MenuAction } from '@loom-studio/ui'
 import { useEffectiveMotion } from '../../hooks/use-motion-preference.js'
-import { readDropPosition, readFileTreeKeyboardTarget, readVisibleFileTreeNodes, type FileTreeNode } from './file-tree-model.js'
+import { readDragTopScrollSpeed, readDropPosition, readFileTreeKeyboardTarget, readVisibleFileTreeNodes, type FileTreeNode } from './file-tree-model.js'
 import styles from './file-tree.module.scss'
 
 export type { FileTreeNode } from './file-tree-model.js'
 
 type FileTreeProps = {
+  active?: boolean
+  highlightMessages?: boolean
   ariaLabel: string
   formatLabel?: (node: FileTreeNode) => string
+  formatMeta?: (node: FileTreeNode) => string | undefined
   getDisclosureLabel: (node: FileTreeNode, expanded: boolean) => string
   getDragLabel: (node: FileTreeNode) => string
   getVirtualScrollElement?: () => HTMLElement | null
@@ -21,6 +24,7 @@ type FileTreeProps = {
   isMuted?: (node: FileTreeNode) => boolean
   moreActionsLabel: string
   nodes: FileTreeNode[]
+  canDrag?: (node: FileTreeNode) => boolean
   onMoveNode?: (draggedId: string, targetId: string, position: 'before' | 'inside' | 'after') => void
   onEditCommit?: (id: string, newLabel: string) => void
   onEditCancel?: (id: string) => void
@@ -41,6 +45,7 @@ export function FileTree(props: FileTreeProps) {
   const draggedIdRef = useRef<string | undefined>(undefined)
   const draggedElementRef = useRef<HTMLElement | undefined>(undefined)
   const dragOverElementRef = useRef<HTMLElement | undefined>(undefined)
+  const stopDragScrollRef = useRef<(() => void) | undefined>(undefined)
   const treeRef = useRef<HTMLDivElement>(null)
   const treeItemRefs = useRef(new Map<string, HTMLDivElement>())
   const virtualRowRefs = useRef(new Map<string, HTMLDivElement>())
@@ -58,7 +63,7 @@ export function FileTree(props: FileTreeProps) {
       : visibleNodes[0]?.node.id
   const virtualizer = useVirtualizer({
     count: props.virtualized ? visibleNodes.length : 0,
-    enabled: Boolean(props.virtualized),
+    enabled: Boolean(props.virtualized && props.active !== false),
     estimateSize: () => 34,
     getItemKey: index => visibleNodes[index]?.node.id ?? index,
     getScrollElement: () => props.getVirtualScrollElement?.() ?? treeRef.current,
@@ -105,6 +110,7 @@ export function FileTree(props: FileTreeProps) {
 
   useEffect(() => () => {
     for (const animation of virtualAnimationsRef.current.values()) animation.cancel()
+    stopDragScrollRef.current?.()
   }, [])
 
   function toggleExpand(id: string) {
@@ -149,6 +155,57 @@ export function FileTree(props: FileTreeProps) {
     draggedIdRef.current = node.id
     draggedElementRef.current = event.currentTarget.closest<HTMLElement>('[data-file-tree-node-id]') ?? undefined
     draggedElementRef.current?.classList.add(styles.dragging)
+    startDragScroll()
+  }
+
+  function startDragScroll() {
+    stopDragScrollRef.current?.()
+    const scroll = props.getVirtualScrollElement?.() ?? treeRef.current
+    if (!scroll) return
+    let speed = 0
+    let frame = 0
+    const tick = () => {
+      scroll.scrollTop = Math.max(0, scroll.scrollTop - speed)
+      frame = speed && scroll.scrollTop > 0 ? requestAnimationFrame(tick) : 0
+    }
+    const stop = () => {
+      speed = 0
+      if (frame) cancelAnimationFrame(frame)
+      frame = 0
+    }
+    const onDragOver = (event: globalThis.DragEvent) => {
+      const rect = scroll.getBoundingClientRect()
+      speed = readDragTopScrollSpeed(event.clientX, event.clientY, rect)
+      if (speed && event.clientY < rect.top) {
+        event.preventDefault()
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+      }
+      if (!speed || scroll.scrollTop <= 0) {
+        stop()
+        return
+      }
+      if (!frame) frame = requestAnimationFrame(tick)
+    }
+    const onDrop = (event: globalThis.DragEvent) => {
+      const rect = scroll.getBoundingClientRect()
+      if (event.clientY < rect.top && readDragTopScrollSpeed(event.clientX, event.clientY, rect)) {
+        event.preventDefault()
+      }
+      if (!treeRef.current?.contains(event.target as Node)) clearDragState()
+      else stop()
+    }
+    const onWindowLeave = (event: globalThis.DragEvent) => {
+      if (!event.relatedTarget) stop()
+    }
+    document.addEventListener('dragover', onDragOver, true)
+    document.addEventListener('drop', onDrop, true)
+    window.addEventListener('dragleave', onWindowLeave)
+    stopDragScrollRef.current = () => {
+      stop()
+      document.removeEventListener('dragover', onDragOver, true)
+      document.removeEventListener('drop', onDrop, true)
+      window.removeEventListener('dragleave', onWindowLeave)
+    }
   }
 
   function isNodeContainer(node: FileTreeNode): boolean {
@@ -186,6 +243,8 @@ export function FileTree(props: FileTreeProps) {
   }
 
   function clearDragState() {
+    stopDragScrollRef.current?.()
+    stopDragScrollRef.current = undefined
     draggedElementRef.current?.classList.remove(styles.dragging)
     dragOverElementRef.current?.classList.remove(styles.dragOver)
     draggedIdRef.current = undefined
@@ -210,10 +269,13 @@ export function FileTree(props: FileTreeProps) {
     return (
       <FileTreeRow
         key={key}
+        highlightMessages={props.highlightMessages}
         editingId={props.editingId}
         expandedIds={expandedIds}
-        canDrag={Boolean(props.onMoveNode)}
+        canDrag={Boolean(props.onMoveNode) && (props.canDrag?.(node) ?? true)}
+        canDragNode={props.canDrag}
         formatLabel={props.formatLabel}
+        formatMeta={props.formatMeta}
         getDisclosureLabel={props.getDisclosureLabel}
         getDragLabel={props.getDragLabel}
         getActions={props.getActions}
@@ -303,10 +365,13 @@ export function FileTree(props: FileTreeProps) {
 }
 
 function FileTreeRow(props: {
+  highlightMessages?: boolean
   editingId?: string
   expandedIds: Set<string>
   canDrag: boolean
+  canDragNode?: (node: FileTreeNode) => boolean
   formatLabel?: (node: FileTreeNode) => string
+  formatMeta?: (node: FileTreeNode) => string | undefined
   getDisclosureLabel: (node: FileTreeNode, expanded: boolean) => string
   getDragLabel: (node: FileTreeNode) => string
   getActions?: (node: FileTreeNode) => MenuAction[]
@@ -373,12 +438,12 @@ function FileTreeRow(props: {
 
   const hasCount = props.level === 1 && Boolean(props.node.children && props.node.children.length > 0)
   const childCount = props.node.children?.length ?? 0
-  const isMessageBlock = props.node.kind === 'message'
-  const showMeta = !isMessageBlock && Boolean(props.node.meta || metaLeading)
+  const meta = props.formatMeta ? props.formatMeta(props.node) : props.node.meta
+  const showMeta = Boolean(meta || metaLeading)
 
   let rowClass = styles.row
-  if (isMessageBlock) rowClass += ` ${styles.messageBlockRow}`
   if (selected) rowClass += ` ${styles.selected}`
+  if (props.highlightMessages && props.node.kind === 'message') rowClass += ` ${styles.messageHighlight}`
   if (props.isMuted?.(props.node)) rowClass += ` ${styles.muted}`
   if (!props.canDrag) rowClass += ` ${styles.noDrag}`
 
@@ -391,6 +456,7 @@ function FileTreeRow(props: {
           }}
           className={rowClass}
           data-file-tree-node-id={props.node.id}
+          data-message-role={props.highlightMessages && props.node.kind === 'message' ? String(props.node.capabilities?.roleHint ?? '') : undefined}
           style={{ '--loom-tree-level': props.level } as CSSProperties}
           aria-expanded={hasChildren ? expanded : undefined}
           aria-haspopup={props.hasActions ? 'menu' : undefined}
@@ -486,7 +552,7 @@ function FileTreeRow(props: {
               {showMeta ? (
                 <span className={styles.metaRow}>
                   {metaLeading ? <span className={styles.metaLeading}>{metaLeading}</span> : null}
-                  {props.node.meta ? <span className={styles.meta}>{props.node.meta}</span> : null}
+                  {meta ? <span className={styles.meta}>{meta}</span> : null}
                 </span>
               ) : null}
             </span>
@@ -523,11 +589,14 @@ function FileTreeRow(props: {
   )
 
   const childrenElements = props.renderChildren && props.node.children?.length ? props.node.children.map(child => (
-    <FileTreeRow
-      editingId={props.editingId}
+      <FileTreeRow
+        highlightMessages={props.highlightMessages}
+        editingId={props.editingId}
       expandedIds={props.expandedIds}
-      canDrag={props.canDrag}
+      canDrag={props.canDragNode?.(child) ?? props.canDrag}
+      canDragNode={props.canDragNode}
       formatLabel={props.formatLabel}
+      formatMeta={props.formatMeta}
       getDisclosureLabel={props.getDisclosureLabel}
       getDragLabel={props.getDragLabel}
       getActions={props.getActions}
@@ -559,32 +628,6 @@ function FileTreeRow(props: {
       onTreeItemKeyDown={props.onTreeItemKeyDown}
     />
   )) : null
-
-  if (isMessageBlock) {
-    let containerClass = styles.messageBlockContainer
-    if (selected) containerClass += ` ${styles.messageBlockContainerSelected}`
-
-    return (
-      <div
-        className={containerClass}
-        data-message-block={props.node.id}
-      >
-        {rowElement}
-        {expandedRowElement ? (
-          <div className={styles.expandedRow} style={{ '--loom-tree-level': props.level } as CSSProperties}>
-            {expandedRowElement}
-          </div>
-        ) : null}
-        {childrenElements ? (
-          <div className={styles.treeChildren} data-expanded={expanded} inert={!expanded}>
-            <div className={styles.messageBlockChildren}>
-              {childrenElements}
-            </div>
-          </div>
-        ) : null}
-      </div>
-    )
-  }
 
   return (
     <>

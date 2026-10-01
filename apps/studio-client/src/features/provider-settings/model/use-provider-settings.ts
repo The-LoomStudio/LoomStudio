@@ -260,7 +260,7 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
     })
   }
 
-  async function updateModelProfile(modelProfileId: string, updates: { displayName?: string; providerModelId?: string; config?: Record<string, ClientJsonValue> }) {
+  async function updateModelProfile(modelProfileId: string, updates: { displayName?: string; providerModelId?: string; config?: Record<string, ClientJsonValue>; tokenMultiplier?: number }) {
     await input.runAction(async () => {
       const current = modelProfiles.find(model => model.id === modelProfileId)
       const account = current && providerAccounts.find(item => item.id === current.providerAccountId)
@@ -268,6 +268,10 @@ export function useProviderSettings(input: UseProviderSettingsInput) {
       const nextModelId = updates.providerModelId?.trim() || current.providerModelId
       const result = await input.api.providerAccounts.update({
         providerProfileId: account.id,
+        ...(updates.tokenMultiplier !== undefined ? {
+          expectedVersion: current.version,
+          tokenMultipliers: { ...account.tokenMultipliers, [current.providerModelId]: updates.tokenMultiplier },
+        } : {}),
         enabledModelIds: account.enabledModelIds.map(modelId => modelId === current.providerModelId ? nextModelId : modelId),
       })
       publishProviderAccount(result.providerProfile)
@@ -344,5 +348,6 @@ function projectModelProfiles(accounts: ProviderAccount[]): ModelProfile[] {
     providerAccountId: account.id,
     displayName: modelId,
     providerModelId: modelId,
+    tokenMultiplier: account.tokenMultipliers?.[modelId] ?? 1,
   })))
 }

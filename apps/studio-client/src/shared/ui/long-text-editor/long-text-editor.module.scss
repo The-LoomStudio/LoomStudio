@@ -102,6 +102,19 @@
   font-size: var(--loom-font-size-1);
 }
 
+.heading {
+  align-items: center;
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+
+  .label {
+    flex: 0 1 auto;
+  }
+}
+
 .editor:focus-within .label {
   color: var(--loom-color-text-muted);
 }

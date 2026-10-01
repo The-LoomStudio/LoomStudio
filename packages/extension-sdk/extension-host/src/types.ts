@@ -142,6 +142,10 @@ export type ExtensionHostOptions = {
   }
   aiCapabilities?: AiGatewayCapabilityRegistry
   aiGateway?: ProfiledAiGateway
+  invokeModel?: (input: Parameters<import('@loom-studio/extension-sdk').ExtensionActivationContext['ai']['invokeModel']>[0]) =>
+    ReturnType<import('@loom-studio/extension-sdk').ExtensionActivationContext['ai']['invokeModel']>
+  buildPrompt?: (input: import('@loom-studio/extension-sdk').ExtensionPromptBuildInput, target: ExtensionInstallationTarget, packageId: string) =>
+    Promise<import('@loom-studio/extension-sdk').ExtensionPromptBuildResult>
   registerMacroProvider?(provider: ExtensionMacroProvider, owner: {
     packageId: string
     moduleId: string

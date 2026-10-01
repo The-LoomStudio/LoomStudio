@@ -1,0 +1,109 @@
+.root {
+  height: 100dvh;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 44px minmax(0, 1fr);
+  background: var(--loom-color-surface);
+  color: var(--loom-color-text);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--loom-color-divider);
+}
+
+.brand, .topbar nav { display: flex; align-items: center; gap: 10px; }
+.topbar button, .breadcrumbs button, .openDomain, .order button {
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--loom-radius-control);
+  background: transparent;
+  color: var(--loom-color-text-muted);
+  cursor: pointer;
+  min-width: 30px;
+  min-height: 30px;
+}
+.topbar button:hover, .breadcrumbs button:hover, .openDomain:hover, .order button:hover,
+.topbar button.active { color: var(--loom-color-text); background: var(--loom-color-surface-subtle); }
+button:disabled { opacity: 0.4; cursor: default; }
+
+.sidebar { height: 100%; overflow: auto; padding: 16px 8px; }
+.sidebar h2 { margin: 0 8px 12px; font-size: var(--loom-font-size-2); color: var(--loom-color-text-subtle); }
+.sidebar > button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 0;
+  border-radius: var(--loom-radius-control);
+  padding: 10px;
+  background: transparent;
+  color: var(--loom-color-text);
+  text-align: left;
+  cursor: pointer;
+}
+.sidebar > button svg { flex: 0 0 auto; color: var(--loom-color-text-muted); }
+.sidebar > button span { min-width: 0; overflow-wrap: anywhere; }
+.sidebar > button:hover, .sidebar > button.selected { background: var(--loom-color-surface-subtle); }
+.sidebar .returnButton { margin-bottom: 14px; border-bottom: 1px solid var(--loom-color-divider); }
+
+.content { height: 100%; min-height: 0; overflow: auto; }
+.breadcrumbs {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--loom-color-divider);
+  background: var(--loom-color-surface);
+  color: var(--loom-color-text-muted);
+}
+.breadcrumbs button { padding: 4px 6px; white-space: normal; text-align: left; }
+.breadcrumbs span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.breadcrumbs button + button::before, .breadcrumbs span::before { content: '/'; margin-right: 9px; color: var(--loom-color-text-subtle); }
+
+.directory, .document { max-width: 900px; margin: 0 auto; padding: 28px 32px 60px; }
+.directory h1, .document h1 { margin: 0; font-size: var(--loom-font-size-5); overflow-wrap: anywhere; }
+.directory p { margin: 5px 0 24px; color: var(--loom-color-text-subtle); }
+.directory :global([data-loom-component='file-tree']) { margin-top: 16px; }
+.documentHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 28px; }
+.documentHeader small { display: block; margin-bottom: 5px; color: var(--loom-color-text-subtle); }
+.openDomain { flex: 0 0 32px; }
+.editor { display: grid; gap: 12px; }
+.editor > label:not(.check) { font-weight: 600; }
+.check { display: inline-flex; align-items: center; gap: 8px; width: fit-content; margin-bottom: 18px; }
+.check input { accent-color: var(--loom-color-accent); }
+.editor textarea, .message textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+  border: 1px solid var(--loom-color-border);
+  border-radius: var(--loom-radius-control);
+  padding: 12px;
+  background: var(--loom-color-surface-inset);
+  color: var(--loom-color-text);
+  font: inherit;
+  line-height: 1.55;
+}
+.messages { display: grid; gap: 14px; }
+.message { border: 1px solid var(--loom-color-border); border-radius: 6px; overflow: hidden; }
+.message header { display: flex; align-items: center; gap: 12px; min-height: 42px; padding: 0 12px; }
+.message header span { font-size: var(--loom-font-size-1); color: var(--loom-color-text-subtle); text-transform: uppercase; }
+.message header strong { font-size: var(--loom-font-size-2); }
+.order { display: flex; gap: 2px; margin-left: auto; }
+.message textarea { border: 0; border-top: 1px solid var(--loom-color-divider); border-radius: 0; display: block; }
+.fileBody { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+
+@media (max-width: 640px) {
+  .directory, .document { padding: 20px 16px 44px; }
+  .breadcrumbs { padding: 0 12px; }
+  .brand { font-size: var(--loom-font-size-2); }
+}

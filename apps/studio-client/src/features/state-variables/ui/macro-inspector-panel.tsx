@@ -1,6 +1,6 @@
-import { RefreshCw, Search, RotateCcw } from 'lucide-react'
+import { ChevronDown, ChevronRight, Folder, FolderOpen, RefreshCw, Search, RotateCcw } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { canonicalMacroName, macroSelectionMatches, type MacroInspection, type MacroSelection, type MacroSelectionMap } from '@loom-studio/shared'
+import { canonicalMacroName, macroSelectionMatches, type MacroCandidate, type MacroInspection, type MacroSelection, type MacroSelectionMap } from '@loom-studio/shared'
 import { MasterDetailWorkbench } from '../../../shared/ui/master-detail-workbench/master-detail-workbench.js'
 import { normalizeSearchText } from '../../../shared/lib/text.js'
 import type { Translator } from '../../../shared/i18n/index.js'
@@ -18,22 +18,32 @@ export type MacroInspectorPanelProps = {
   t: Translator
 }
 
+function isMacroSource(candidate: MacroCandidate): boolean {
+  return candidate.sourceKind === 'card' || candidate.sourceKind === 'preset'
+    || candidate.sourceKind === 'provider' || candidate.sourceId === 'builtin.aliases'
+}
+
 export function MacroInspectorPanel(props: MacroInspectorPanelProps) {
   const [selectedName, setSelectedName] = useState<string>()
   const [mobilePane, setMobilePane] = useState<'master' | 'detail'>('master')
   const [query, setQuery] = useState('')
-  const selectedEntry = props.inspection?.entries.find(entry => entry.name === selectedName)
+  const [collapsedGroups, setCollapsedGroups] = useState<Array<MacroInspection['entries'][number]['status']>>([])
+  const displayEntries = useMemo(() => (props.inspection?.entries ?? []).filter(entry =>
+    entry.candidates.some(isMacroSource)
+  ), [props.inspection])
+  const selectedEntry = displayEntries.find(entry => entry.name === selectedName)
   const groups = useMemo(() => {
     const normalized = normalizeSearchText(query)
-    const entries = (props.inspection?.entries ?? []).filter(entry => !normalized || [
+    const entries = displayEntries.filter(entry => !normalized || [
       entry.name,
       entry.value,
-      ...entry.candidates.flatMap(candidate => [candidate.sourceLabel, candidate.sourceKind, candidate.value]),
+      ...entry.candidates.filter(isMacroSource)
+        .flatMap(candidate => [candidate.sourceLabel, candidate.sourceKind, candidate.value]),
     ].some(value => value?.toLocaleLowerCase().includes(normalized)))
     return (['resolved', 'conflict', 'error'] as const)
       .map(status => ({ status, entries: entries.filter(entry => entry.status === status) }))
       .filter(group => group.entries.length > 0)
-  }, [props.inspection, query])
+  }, [displayEntries, query])
   const visibleEntries = useMemo(() => groups.flatMap(group => group.entries), [groups])
 
   useEffect(() => {
@@ -56,9 +66,10 @@ export function MacroInspectorPanel(props: MacroInspectorPanelProps) {
         </button> : null}
       </header>
       {props.error ? <div className={styles.errorBanner} role="alert">{props.error}</div> : null}
-      {props.loading ? <div className={styles.emptyState}>{props.t('macroInspector.loading')}</div> : null}
+      {props.loading && !props.inspection ? <div className={styles.emptyState}>{props.t('macroInspector.loading')}</div> : null}
       {!props.loading && !props.inspection ? <div className={styles.emptyState}>{props.t('macroInspector.empty')}</div> : null}
-      {props.inspection && props.inspection.entries.length > 0 ? (
+      {props.inspection && displayEntries.length === 0 ? <div className={styles.emptyState}>{props.t('macroInspector.empty')}</div> : null}
+      {props.inspection && displayEntries.length > 0 ? (
         <div className={styles.macroInspectorBody}>
           <MasterDetailWorkbench
             dataComponent="macro-inspector-workbench"
@@ -78,27 +89,39 @@ export function MacroInspectorPanel(props: MacroInspectorPanelProps) {
                     onChange={event => setQuery(event.target.value)}
                   />
                 </label>
-                {groups.map(group => (
-                  <section className={styles.macroInspectorGroup} key={group.status}>
-                    <header>
-                      <span>{statusLabel(group.status, props.t)}</span>
-                      <small>{group.entries.length}</small>
-                    </header>
-                    {group.entries.map(entry => (
-                      <button
-                        aria-current={entry.name === selectedName ? 'page' : undefined}
-                        className={styles.macroInspectorListItem}
-                        key={entry.name}
-                        type="button"
-                        onClick={() => { setSelectedName(entry.name); setMobilePane('detail') }}
-                      >
-                        <strong>{entry.name}</strong>
-                      <span>{entry.candidates.find(candidate => candidate.sourceId === entry.selectedSourceId && candidate.optionId === entry.selectedOptionId)?.sourceLabel ?? statusLabel(entry.status, props.t)}</span>
-                      </button>
-                    ))}
-                  </section>
-                ))}
-                {visibleEntries.length === 0 ? <div className={styles.emptyState}>{props.t('macroInspector.searchEmpty')}</div> : null}
+                <div className={styles.macroInspectorResults}>
+                  {groups.map(group => (
+                    <section className={styles.macroInspectorGroup} key={group.status}>
+                      <header>
+                        <button
+                          aria-expanded={query ? true : !collapsedGroups.includes(group.status)}
+                          type="button"
+                          onClick={() => setCollapsedGroups(current => current.includes(group.status)
+                            ? current.filter(status => status !== group.status)
+                            : [...current, group.status])}
+                        >
+                          {query || !collapsedGroups.includes(group.status) ? <ChevronDown aria-hidden="true" size={14} /> : <ChevronRight aria-hidden="true" size={14} />}
+                          {query || !collapsedGroups.includes(group.status) ? <FolderOpen aria-hidden="true" size={14} /> : <Folder aria-hidden="true" size={14} />}
+                          <span>{statusLabel(group.status, props.t)}</span>
+                          <small>{group.entries.length}</small>
+                        </button>
+                      </header>
+                      {(query || !collapsedGroups.includes(group.status)) && group.entries.map(entry => (
+                        <button
+                          aria-current={entry.name === selectedName ? 'page' : undefined}
+                          className={styles.macroInspectorListItem}
+                          key={entry.name}
+                          type="button"
+                          onClick={() => { setSelectedName(entry.name); setMobilePane('detail') }}
+                        >
+                          <strong>{entry.name}</strong>
+                          <span>{entry.candidates.find(candidate => candidate.sourceId === entry.selectedSourceId && candidate.optionId === entry.selectedOptionId && isMacroSource(candidate))?.sourceLabel ?? statusLabel(entry.status, props.t)}</span>
+                        </button>
+                      ))}
+                    </section>
+                  ))}
+                  {visibleEntries.length === 0 ? <div className={styles.emptyState}>{props.t('macroInspector.searchEmpty')}</div> : null}
+                </div>
               </nav>
             )}
           >
@@ -124,10 +147,10 @@ function MacroInspectionEntryDetail(props: { entry: MacroInspection['entries'][n
     title={entry.name}
     value={entry.value}
   >
-      {entry.candidates.length > 0 || selected !== undefined ? (
+      {entry.candidates.some(isMacroSource) || selected !== undefined ? (
         <fieldset className={styles.macroSourceList}>
           <legend>{panel.t('macroInspector.source')}</legend>
-          {entry.candidates.map(candidate => (
+          {entry.candidates.filter(isMacroSource).map(candidate => (
             <label key={JSON.stringify([candidate.sourceId, candidate.optionId])}>
               {canSelectSource ? <input
                 aria-label={panel.t('macroInspector.selectSource', { name: entry.name })}

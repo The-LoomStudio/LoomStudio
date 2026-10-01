@@ -1,4 +1,5 @@
 import { realpathSync } from 'node:fs'
+import { createTextTokenCounter } from '@loom-studio/tokenizer/async'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -125,6 +126,7 @@ export function createContext(
       displayName: packageManifest.displayName,
       directory: record.directory,
     },
+    tokens: createTextTokenCounter(instance.scope.signal),
     logger: createExtensionLogger(packageManifest.id, moduleManifest.id, instance.instanceId, options.logger,
       record.target.kind === 'card' ? extensionInstallationId(packageManifest.id, record.target) : undefined),
     logs: {
@@ -405,6 +407,25 @@ export function createContext(
             : instance.scope.signal,
           caller: { kind: 'extension', id: packageManifest.id },
         })
+      },
+      invokeModel: input => {
+        assertScopeActive(instance)
+        if (moduleManifest.capabilities?.['ai.invoke'] !== true)
+          throw new Error(`Extension module is not allowed to invoke AI capabilities: ${moduleKey(packageManifest.id, moduleManifest.id)}`)
+        if (!options.invokeModel) throw new Error('AI model invocation is not available in this host')
+        return instance.scope.run(() => options.invokeModel!({
+          ...input,
+          signal: input.signal
+            ? AbortSignal.any([input.signal, instance.scope.signal])
+            : instance.scope.signal,
+        }))
+      },
+    },
+    prompt: {
+      build: input => {
+        assertScopeActive(instance)
+        if (!options.buildPrompt) throw new Error('Prompt build is not available in this host')
+        return instance.scope.run(() => options.buildPrompt!(input, record.target, packageManifest.id))
       },
     },
     agentTools: {

@@ -3,10 +3,23 @@ import type { FormEvent } from 'react'
 import { useNarrativeRuntime } from '../../../apps/studio-client/src/features/narrative-runtime/model/use-narrative-runtime.js'
 import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
 
-const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as unknown[] }))
+const hooks = vi.hoisted(() => ({
+  cursor: 0,
+  values: [] as unknown[],
+  commitEffect: undefined as (() => void | (() => void)) | undefined,
+  onCommit: undefined as ((operations: Array<{ entityType: string; entityId: string }>) => void) | undefined,
+}))
+vi.mock('../../../apps/studio-client/src/shared/api/data-commit-events.js', () => ({
+  subscribeDataCommits: (onCommit: typeof hooks.onCommit) => {
+    hooks.onCommit = onCommit
+    return () => { hooks.onCommit = undefined }
+  },
+}))
 vi.mock('react', async importOriginal => ({
   ...await importOriginal<typeof import('react')>(),
-  useEffect: () => undefined,
+  useEffect: (effect: () => void, deps?: unknown[]) => {
+    if (deps?.[1] === 'timeline' && deps?.[2] === 'branch') hooks.commitEffect = effect
+  },
   useState: (initial: unknown) => {
     const index = hooks.cursor++
     if (!(index in hooks.values)) hooks.values[index] = typeof initial === 'function' ? initial() : initial
@@ -21,8 +34,8 @@ vi.mock('react', async importOriginal => ({
   },
 }))
 
-beforeEach(() => { hooks.cursor = 0; hooks.values = [] })
-afterEach(() => vi.useRealTimers())
+beforeEach(() => { hooks.cursor = 0; hooks.values = []; hooks.commitEffect = undefined; hooks.onCommit = undefined })
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
 
 function fixture() {
   const timeline = {
@@ -69,7 +82,7 @@ function fixture() {
         create: createSession, createRun, subscribeRun, getTranscript, resumeRun,
       },
     } as unknown as StudioApi,
-    initialInput: '  Draft\n', selectedCardId: 'card', selectedAgentPresetId: 'profile',
+    storageScope: 'test', initialInput: '  Draft\n', selectedCardId: 'card', selectedAgentPresetId: 'profile',
     onSelectCard: vi.fn(), onSelectAgentPreset: vi.fn(),
     runAgentAction: async action => { try { await action() } catch (error) { reportFailure(error) } },
     // Same boolean completion contract as useStudioState's runReported adapter.
@@ -84,6 +97,102 @@ function fixture() {
 }
 
 describe('Narrative first submission preparation', () => {
+  it('requires explicit primary creation before the first write, then binds it to the new Timeline', async () => {
+    const storage = new Map<string, string>()
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => { storage.set(key, value) },
+      removeItem: (key: string) => { storage.delete(key) },
+    })
+    const f = fixture()
+    await f.render().submitTurn(f.event)
+    expect(f.reportFailure).toHaveBeenCalledWith(expect.objectContaining({ message: '请先新建并设置主写作对话' }))
+    expect(f.createTimeline).not.toHaveBeenCalled()
+    expect(f.appendInput).not.toHaveBeenCalled()
+    expect(f.render().input).toBe('  Draft\n')
+
+    const primary = await f.render().createAgentSession('profile', true)
+    expect(f.createTimeline).toHaveBeenCalledExactlyOnceWith({ cardId: 'card' })
+    expect(f.createSession).toHaveBeenCalledExactlyOnceWith({ agentPresetId: 'profile', timelineId: 'timeline' })
+    expect(primary.timelineId).toBe('timeline')
+    expect(f.render().primarySession?.id).toBe(primary.id)
+    expect(storage.get('loom.studio.primarySession:test:timeline')).toBe(primary.id)
+    expect(f.render().input).toBe('  Draft\n')
+
+    await f.render().submitTurn(f.event)
+    expect(f.appendInput).toHaveBeenCalledOnce()
+    expect(f.createRun).toHaveBeenCalledWith(expect.objectContaining({
+      agentSessionId: primary.id,
+      narrativeTarget: expect.objectContaining({ timelineId: 'timeline' }),
+    }))
+  })
+
+  it('keeps the primary receiver when viewing a child Session and sends Narrative input to the primary', async () => {
+    vi.stubGlobal('localStorage', {
+      getItem: () => null, setItem: () => {}, removeItem: () => {},
+    })
+    const f = fixture()
+    const primary = await f.render().createAgentSession('profile', true)
+    const child = { ...primary, id: 'child', agentPresetId: 'child-profile' }
+    f.input.api.agentSessions.list = vi.fn(async () => ({ sessions: [primary, child] }))
+    f.getTranscript.mockImplementation(async ({ agentSessionId }) => ({
+      session: agentSessionId === child.id ? child : primary, entries: [],
+    }))
+    await f.render().activateAgentSession(child)
+    expect(f.render().agentSession?.id).toBe(child.id)
+    expect(f.render().primarySession?.id).toBe(primary.id)
+    expect(f.input.onSelectAgentPreset).not.toHaveBeenCalled()
+
+    await f.render().submitTurn(f.event)
+    expect(f.createRun).toHaveBeenCalledWith(expect.objectContaining({
+      agentSessionId: primary.id,
+      narrativeTarget: expect.objectContaining({ timelineId: 'timeline' }),
+    }))
+    expect(f.render().agentSession?.id).toBe(child.id)
+  })
+
+  it('returns to the deleted Timeline source card and requires explicit primary creation before sending', async () => {
+    const f = fixture()
+    f.result.narrative.timeline.createdFrom = { cardId: 'source-card', cardVersion: 1 }
+    f.input.selectedCardId = 'another-card'
+    f.input.onSelectCard = vi.fn(id => { f.input.selectedCardId = id })
+    f.input.api.narratives.get = vi.fn(async () => ({
+      timeline: f.result.narrative.timeline, branches: [f.result.narrative.branch],
+    }))
+    f.input.api.narratives.list = vi.fn(async () => ({ timelines: [] }))
+    f.input.api.narratives.delete = vi.fn(async () => ({ deleted: true, mutation: { changesetId: 'deleted' } }))
+    const listSessions = vi.fn(async () => ({ sessions: [] }))
+    f.input.api.agentSessions.list = listSessions
+    await f.render().activateTimeline('timeline')
+    listSessions.mockClear()
+
+    await expect(f.render().deleteTimeline('timeline')).resolves.toBe(true)
+    const preview = f.render()
+    expect(f.input.onSelectCard).toHaveBeenCalledWith('source-card')
+    expect(preview.timeline).toBeUndefined()
+    expect(preview.branch).toBeUndefined()
+    expect(preview.nodes).toEqual([])
+    expect(preview.agentSessionReady).toBe(true)
+    expect(preview.agentSession).toBeUndefined()
+    expect(listSessions).not.toHaveBeenCalled()
+    expect(f.input.api.narratives.list).toHaveBeenLastCalledWith({
+      createdFromCardId: 'source-card', cursor: undefined, limit: 100,
+    })
+
+    preview.setInput('Start again')
+    await expect(f.render().submitTurn(f.event)).resolves.toBeUndefined()
+    expect(f.createTimeline).not.toHaveBeenCalled()
+    expect(f.appendInput).not.toHaveBeenCalled()
+    await f.render().createAgentSession('profile', true)
+    expect(f.createTimeline).toHaveBeenCalledExactlyOnceWith({ cardId: 'source-card' })
+    expect(f.render().input).toBe('Start again')
+    expect(f.render().primarySession?.id).toBe('session')
+    await f.render().submitTurn(f.event)
+    expect(f.appendInput).toHaveBeenCalledWith(expect.objectContaining({ content: 'Start again' }))
+    expect(f.createRun).toHaveBeenCalledOnce()
+    expect(f.reportFailure).toHaveBeenCalledWith(expect.objectContaining({ message: '请先新建并设置主写作对话' }))
+  })
+
   it('waits for the persisted user node before creating a Session or Run', async () => {
     const f = fixture()
     const append = f.appendInput.getMockImplementation()!
@@ -190,6 +299,31 @@ describe('Narrative first submission preparation', () => {
     expect(f.render().runRecovery).toBeUndefined()
     expect(f.createRun).toHaveBeenCalledOnce()
     expect(f.appendInput).toHaveBeenCalledOnce()
+  })
+
+  it('refreshes Narrative Head on any committed branch change, independent of the writer', async () => {
+    vi.stubGlobal('EventSource', class {})
+    const f = fixture()
+    await f.render().submitTurn(f.event)
+    f.render()
+    const dispose = hooks.commitEffect?.()
+    const before = f.getPage.mock.calls.length
+    hooks.onCommit?.([{ entityType: 'narrative.branch', entityId: 'other-branch' }])
+    expect(f.getPage).toHaveBeenCalledTimes(before)
+    const node = { id: 'external-node', timelineId: 'timeline', stateRevisionId: 'state',
+      body: { format: 'loom-markdown.v1' as const, raw: 'External writer' }, createdAt: 'now' }
+    f.getPage.mockResolvedValueOnce({
+      ...f.result.narrative,
+      branch: { ...f.result.narrative.branch, headNodeId: node.id },
+      nodes: [...f.result.narrative.nodes, node],
+    })
+    hooks.onCommit?.([{ entityType: 'narrative.branch', entityId: 'branch' }])
+    await vi.waitFor(() => expect(f.render().branch?.headNodeId).toBe(node.id))
+    expect(f.render().nodes.map(item => item.body.raw)).toEqual(['Draft', 'External writer'])
+    f.render().setInput('Next input')
+    await f.render().submitTurn(f.event)
+    expect(f.appendInput.mock.calls[1]![0].expectedHeadNodeId).toBe(node.id)
+    dispose?.()
   })
 
   it('treats an explicit new submission with the same text as a new user node', async () => {

@@ -1,4 +1,4 @@
-import { Anchor, Book, Bot, Code2, Cog, Copy, FileText, Folder, FolderOpen, FolderPlus, MessageSquare, MessagesSquare, Pencil, Plus, Trash2, UserRound } from 'lucide-react'
+import { Anchor, Book, Bot, Code2, Cog, Copy, Cpu, FileText, Folder, FolderOpen, FolderPlus, MessageSquare, MessagesSquare, Pencil, Plus, Trash2, UserRound, Wrench } from 'lucide-react'
 import type { ContextAssetNode } from '../../../entities/index.js'
 import type { Translator } from '../../../shared/i18n/index.js'
 import type { MenuAction } from '@loom-studio/ui'
@@ -68,6 +68,9 @@ export function readContextAssetBadgeInfo(
 
 export function renderContextAssetTreeIcon(node: ContextAssetNode, expanded: boolean) {
   if (node.kind === 'slot') return null
+  if (node.id.endsWith(':tools')) return <Wrench aria-hidden="true" />
+  if (node.id.endsWith(':model')) return <Cpu aria-hidden="true" />
+  if (node.category === 'preset-root') return <Bot aria-hidden="true" />
   if (node.kind === 'module') return <Book />
   if (node.kind === 'folder') return expanded ? <FolderOpen /> : <Folder />
   if (node.kind === 'virtual') return <Anchor />

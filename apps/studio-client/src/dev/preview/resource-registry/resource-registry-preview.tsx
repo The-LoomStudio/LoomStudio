@@ -2,9 +2,34 @@ import { ResourceRegistryWorkbench, type RegistryResourcePreview } from './resou
 
 const resources: RegistryResourcePreview[] = [
   {
-    id: 'narrative-agent', category: 'agents', name: '叙事助手', owner: '工作区自有',
-    provenance: '用户创建的 Agent 预设', globalDefault: false, current: true,
+    id: 'narrative-agent', category: 'agents', name: '叙事助手', owner: '扩展 · 创作套件',
+    provenance: '创作套件 / Agent 预设', globalDefault: false, current: true,
     usage: ['当前叙事会话'], body: '推进故事、读取与更新人物状态。',
+  },
+  {
+    id: 'director-agent', category: 'agents', name: '剧情编排', owner: '扩展 · 创作套件',
+    provenance: '创作套件 / Agent 预设', globalDefault: false, current: false,
+    usage: ['独立创作对话', '后台编排任务'], body: '梳理人物动机与剧情走向，不直接续写正文。',
+  },
+  {
+    id: 'narrative-guide', category: 'settings', name: '正文写作约定', owner: '扩展 · 创作套件',
+    provenance: '创作套件 / Settings', globalDefault: false, current: false,
+    usage: ['Agent 预设 · 叙事助手'], body: '# 正文写作\n\n以角色行动推进故事，保留玩家的决策空间。',
+  },
+  {
+    id: 'director-guide', category: 'settings', name: '剧情节拍与伏笔手册', owner: '扩展 · 创作套件',
+    provenance: '创作套件 / Settings', globalDefault: false, current: false,
+    usage: ['Agent 预设 · 剧情编排'], body: '# 剧情编排\n\n先列出未回收的伏笔，再提出三种后续走向。\n\n不要把分析过程写入正文。',
+  },
+  {
+    id: 'director-regex', category: 'transforms', name: '编排标记清理', owner: '扩展 · 创作套件',
+    provenance: '创作套件 / 正则', globalDefault: false, current: false,
+    usage: ['Agent 预设 · 剧情编排'], body: '匹配：<planning>[\\s\\S]*?</planning>\n替换：空文本\n阶段：输出处理',
+  },
+  {
+    id: 'director-script', category: 'scripts', name: 'plot-outline.js', owner: '扩展 · 创作套件',
+    provenance: '创作套件 / 扩展模块', globalDefault: false, current: false,
+    usage: ['扩展 · 创作套件'], body: '// 扩展负责调用剧情编排预设并处理结果；没有独立预设进程。',
   },
   {
     id: 'image-agent', category: 'agents', name: '生图 Agent', owner: '扩展 · 生图套件',
@@ -131,16 +156,32 @@ const resources: RegistryResourcePreview[] = [
 export function ResourceRegistryPreview() {
   return <ResourceRegistryWorkbench
     resources={resources.filter(resource => resource.owner !== '角色 · 雾岛档案')}
+    presetResourceIds={{
+      'narrative-agent': ['narrative-guide', 'director-guide'],
+      'director-agent': ['director-guide', 'director-regex'],
+      'image-agent': ['image-guide'],
+    }}
     ownerKinds={{
       '角色 · 港城来信': 'package',
       '角色 · 雾岛档案': 'package',
       '扩展 · 天气系统': 'extension',
       '扩展 · 战斗系统': 'extension',
       '扩展 · 生图套件': 'extension',
+      '扩展 · 创作套件': 'extension',
       '工作区自有': 'workspace',
       '平台内置': 'platform',
     }}
     agentPresets={{
+      'director-agent': {
+        model: '轻量模型',
+        prompts: [
+          { id: 'director-system', name: '编排约定', kind: 'text', body: '分析剧情结构，输出候选走向，不直接续写正文。' },
+          { id: 'director-settings', name: '@settings', kind: 'anchor', body: '剧情编排专属 Settings。' },
+        ],
+        tools: [
+          { id: 'official/read_state', name: '读取状态', owner: '平台内置', description: '读取人物关系与剧情状态。', enabled: true },
+        ],
+      },
       'narrative-agent': {
         model: '叙事模型',
         prompts: [
@@ -177,8 +218,7 @@ export function ResourceRegistryPreview() {
       owner: '角色 · 雾岛档案',
       resources: resources.filter(resource => resource.owner === '角色 · 雾岛档案'),
     }]}
-    contextLabel="港城来信 / 存档 01 / 叙事助手"
     currentOwner="角色 · 港城来信"
-    initialResourceId="image-agent"
+    initialResourceId="narrative-guide"
   />
 }

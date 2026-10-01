@@ -72,7 +72,10 @@ describe('resource reference navigation model', () => {
     const ref = { kind: 'prompt-resource' as const, resourceId: 'r', nodeId: 'n', version: 2, startLine: 2, endLine: 3 }
     const view = await loadResourceReference(api, formatResourceReference(ref))
     expect(getResource).toHaveBeenCalledWith('r')
-    expect(view).toMatchObject({ exact: true, range: { startLine: 2, endLine: 3 }, editor: { nodeId: 'n', resourceId: 'r' } })
+    expect(view).toMatchObject({
+      exact: true, path: '资源 / Root / Name',
+      range: { startLine: 2, endLine: 3 }, editor: { nodeId: 'n', resourceId: 'r' },
+    })
     const changed = await loadResourceReference(api, formatResourceReference({ ...ref, version: 1 }))
     expect(changed.exact).toBe(false)
     expect(changed.range).toBeUndefined()

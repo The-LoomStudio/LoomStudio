@@ -79,6 +79,7 @@ export type TextTransformRuleContent = TextTransformRuleDraft & {
     packageId: string
     packageVersion: string
     contributionId: string
+    installationId?: string
   }
   createdAt: string
   updatedAt: string
@@ -528,6 +529,7 @@ export type TextExtractorContent = TextExtractorDraft & {
     packageId: string
     packageVersion: string
     contributionId: string
+    installationId?: string
   }
   createdAt: string
   updatedAt: string
