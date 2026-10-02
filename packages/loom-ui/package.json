@@ -9,7 +9,7 @@
   },
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsc -b && cp src/styles.css dist/styles.css"
+    "build": "tsc -b && node -e \"require('node:fs').copyFileSync('src/styles.css', 'dist/styles.css')\""
   },
   "dependencies": {
     "@radix-ui/react-context-menu": "2.3.7",
