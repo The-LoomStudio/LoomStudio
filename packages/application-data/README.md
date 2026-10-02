@@ -20,6 +20,7 @@
 4. **Prompt Resource 存储 (`src/prompt-resource/`)**：
    - 持久化树形层级的提示词资源（Preset、Setting、Logic、Runtime 节点）；
    - 管理独立的 Setting Mount Registry 与 Agent Preset Tool Mount，以及资源 Header/Node 的版本修订；嵌套资源树是消费投影，不是整份 Document 权威存储。Agent Preset 复用 `resourceKind: preset`，不是独立 Profile 存储实体。
+   - Setting Mount 同时支持全局来源与预设消费来源，保留失效引用身份及 nullable 解析结果；预设的 `useCardSettings` / `textUses` 存在 Resource metadata，不增加预设包所有权或独立运行作用域。
 
 ---
 
@@ -60,6 +61,7 @@ import {
 
 - [`NarrativeStore.appendInput()`](./src/narrative/store.ts) 以固定 `nodeId`、`expectedHeadNodeId` 和正文提交用户输入。同一输入重试返回原节点与原 Changeset；正文、原 parent 或归属不一致返回 `narrative.input_conflict`，不生成第二条正文。调用方在成功落库后另行投递 Agent Session；本 Store 不启动 Agent，也不把两次调用合成一个事务。
 - [`PromptResourceStore.mutateResource()`](./src/prompt-resource/mutations.ts) 必须携带资源级 `expectedVersion`；不匹配返回 `prompt_resource.conflict`，没有自动合并或改用最新版本重试。一次 mutations 列表在同一事务内提交，Header/Node 修订与提交事实一起生效。
+- Agent Session 创建时固定 `agentPresetId`，`updateSession()` 拒绝改绑；换预设须创建另一 Session。固定身份不冻结预设内容，也不代表 Store 管理客户端的主写作选择。
 - 四个 Store 仅执行各自注册的连续版本 migration；数据库 namespace 高于当前支持版本时由 Engine 拒绝，不尝试降级或兼容读取。版本注册以各 `store.ts` 为准。
 
 ### 统一游标分页与数据保真底线

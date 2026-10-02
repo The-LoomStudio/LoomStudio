@@ -10,7 +10,7 @@
 | 路线图 / 计划                                                                                | 当前状态     | 关注点                                                                  |
 | -------------------------------------------------------------------------------------------- | ------------ | ----------------------------------------------------------------------- |
 | [审查归档后续](../issues/audit-follow-ups.md) | Deferred / Backlog | 仅保留远端 CI 和旧计划接续去向，完整修复账目已移出活跃目录 |
-| [`node-release-and-player-installation-plan.md`](./node-release-and-player-installation-plan.md) | Beta 主程序已实施 / 标准应用构建通过 | 统一入口、启动脚本、Node 22/26 成品冒烟、CI/Release；远程扩展策略未决 |
+| [扩展模块补全](./extension-module-completion-plan.md) | 待调研 / 未实施 | 远程安装与独立官方扩展发行接续；来源、构建脚本与权限合同待决定 |
 | [`agent-preset-resources-and-usage-plan.md`](./agent-preset-resources-and-usage-plan.md) | 阶段实施完成 / 待人工验收 | 使用配置与空引用、固定 Session、主接收方与临时编辑；官方助手资源实验通过，未做真实模型或浏览器验收 |
 | [`extension-prompt-and-model-api-plan.md`](./extension-prompt-and-model-api-plan.md) | 已实施 / 聚焦验证完成 | 逐次 Prompt 附加、独立编译与扩展显式模型调用 |
 | [`ui/README.md`](./ui/README.md) | UI 计划子索引 | Shell 动画、资源 Diff 与 Provider 展示等实施及延期入口 |
@@ -35,6 +35,8 @@
 ## 历史已归档计划
 
 2026-10-02：[四份审查修复记录](../../archive/plans/audit-remediation-2026-10-02-plan.md)与[专题审查计划](../../archive/plans/specialized-audits-2026-10-02-plan.md)已完成并归档；OCT、API、内存预算及 17 个 UI 复用实例的本轮修复已收口，定向证据及未验收边界保留。
+
+2026-10-02：[单 Node.js 发布与玩家安装计划](../../archive/plans/node-release-and-player-installation-plan.md) 已归档。Beta 主程序切片已交付，远程扩展安装转入《扩展模块补全》；未验证的平台、凭据与远端发布边界保留。
 
 2026-09-29：[资源包与 Agent 预设底层计划](../../archive/plans/resource-packages-and-agent-presets-backend-plan.md)、[资源工作台与 Agent 预设 UI](../../archive/plans/ui/resource-workbench-and-agent-presets-plan.md) 已按用户确认归档。本轮主干已交付；历史兼容边界、后续 UI/性能优化及未执行验收保留在原记录，不继续列为整套重构的活跃任务。
 

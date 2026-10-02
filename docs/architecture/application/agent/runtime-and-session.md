@@ -9,10 +9,15 @@ AgentSession.agentPresetId
   -> PromptResource（resourceKind: preset）
      -> rootNode / macros / historyPolicy
      -> model / delivery
+     -> useCardSettings / textUses / Setting Mount
      -> Preset Tool Mount
 ```
 
 不存在独立 Profile 或 Profile → Preset 选择关系。Tool Mount 是唯一工具使用配置；模型绑定可空，但预览和执行需要模型时明确报错。
+
+`agentPresetId` 创建后不可更换；`updateAgentSession` 和 Store 均拒绝改绑。使用另一预设应创建另一 Session，而非复用旧 Transcript。Session 固定的是预设身份，不是内容快照：后续调用读取当前预设配置及其引用的资源。
+
+“主写作”是 Studio Client 选择的 Narrative 输入接收 Session，与当前查看的 Session 分离；选择按客户端存储范围和 Timeline 在本地持久化，不是后端全局主槽位或预设的新类型。生成期间不能切换主接收方；旧接收方有暂停 Run 时先显式 `abandon`，失败则不切换。被放弃的任务不能 Resume，需重新发消息；已提交 Transcript 和工具副作用仍保留。切换不会停用整个扩展，也不会启动预设独立脚本实例。
 
 Session Header 保存 Session ID、Agent Preset ID、可选 `timelineId`、title、active head Entry ID、Entry count 和生命周期时间。`timelineId` 不代表领域所有权或权限。Header 不保存完整 Loop KV，也不把 Provider message array 作为权威状态。
 

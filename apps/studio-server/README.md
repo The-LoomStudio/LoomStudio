@@ -93,6 +93,7 @@ Application 初始化本身不安装内容；当前只有本地来源，不包�
 
 Timeline 用户输入经 `application.appendNarrativeInput` 先写入 Narrative Store，再由 Client 投递 Session；`application.editNarrativeNode` 是带分支并发基线的正文编辑，不是运行结束后的自动追加。RPC 层只解析请求并传播可信调用上下文，不补造旧输入的最新版本，也不将整轮 Agent/工具执行包装成一个数据库事务。具体写入合同见[Agent Runtime](../../docs/architecture/application/agent/runtime-and-session.md#6-narrative-边界)。
 
+`application.replaceSettingMounts` 由共享 Schema 校验，接受 `settingResourceIds` 或 `mounts` 二选一；后者保留指定来源的 Mount ID，包括未解析引用，不再强制要求旧资源 ID 数组。`application.updateAgentSession` 不允许改绑 `agentPresetId`。Server 不根据 UI 临时打开或全局资源列表推断消费关系，资源采用与可用性仍由 Runtime 负责，见[Data Architecture](../../docs/architecture/data/README.md)。
 
 ## 文档入口
 

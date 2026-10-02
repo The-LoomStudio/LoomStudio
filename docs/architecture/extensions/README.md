@@ -140,12 +140,15 @@ Manifest declaration 是静态合同，Runtime registration 是当前事实。�
 
 - Prompt Resource 进入现有 Prompt Resource Store，保留 `packageId + version + contributionId` provenance；
 - Preset 声明的 Setting Mount 与 Tool Mount 进入现有 Mount 表；
+- Preset contribution 的 `textUses` 进入 Preset metadata；包内 Settings / Rule / Extractor contribution 引用映射为安装内本地 ID，外部引用保留身份与 provenance，不复制目标或按名称替代；
 - Agent Tool Definition 保存为可编辑的 `airp.agentTool` Document，并进入现有 Tool Prompt Build；
-- 重复导入同一 Package 版本保持幂等，不覆盖用户编辑；跨版本更新当前明确要求后续迁移合同；
+- 普通重复导入同一 Package 版本保持幂等，不覆盖用户编辑；显式更新通过当前 installation 版本校验，可替换包贡献及移除旧贡献，不是普通导入的静默覆盖；
 - Package 文件卸载不自动删除已实例化资源；`extensions.removePackageResources` 可按 provenance 显式移除该 Package 的 Prompt Resource、Tool Definition 与关联 Mount；
 - 资源移除保留外部 Card、Timeline、Session 与其他预设的引用，只清理被删资源自身拥有的挂载；缺失必要资源时执行明确失败。Agent Preset 直接承载配置，不再存在 Profile Tool Override 或阻止删除的 Profile 引用。
 
 Tool Definition 与执行器分离。Server Module 在 `modules[*].contributes.agentToolHandlers` 声明 Handler，并通过 `ctx.agentTools.register(toolId, handler)` 注册执行逻辑。Module disable/reload 会释放旧 Handler，但不会删除 Definition 或 Preset Mount；Handler 缺失时 Agent Tool Loop 返回明确的未注册执行器错误。
+
+预设是能力与消费配置，不是第三种包或独立代码实例。扩展可无 Module，仅分发资源；也可由同一模块编排多个预设。引用不改变归属，单独导出预设不递归携带资源内容，切换 Session 不停用扩展。Settings、正则默认参与与显式采用的差异见[资源归属与使用配置](../application/prompt-build/README.md#资源归属与使用配置)。
 
 Package 展示元数据保持为一组轻量可选字段：`description`、`icon`、`author`、`homepage`、`repository` 与 `tags`。`tags` 只用于搜索、分类和展示，不参与权限、加载顺序或 capability 判定；旧 `roles` 字段不再接受。`homepage` / `repository` 必须是 HTTP(S) 绝对 URL，`icon` 必须是 Package 内的 PNG、JPEG、WebP 或 GIF 相对路径。
 

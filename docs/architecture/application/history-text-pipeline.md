@@ -1,6 +1,6 @@
 # History Text Pipeline
 
-> 状态：已实现（2026-09-11）
+> 状态：已实现；资源使用配置更新于 2026-10-02
 
 LoomStudio 只对 `Narrative History` 与 `Agent Session History` 提供统一文本管线。Canonical Narrative Node 与 Agent Transcript 始终保留原文；Prompt、Display、Extractor 和扩展消费冻结后的 `HistoryProjectionSnapshot`。
 
@@ -15,9 +15,11 @@ Active lineage
 
 ## Rule 与来源
 
-Rule 使用 `airp.textTransformRule` Document 持久化，来源可以是 Workspace、Preset、Card、Extension 或 User Override。Runtime 按 Session 直接引用的 Agent Preset、Timeline 关联 Card 的当前规则，以及全局来源解析有效 RuleSet；不再把创建 Timeline 时的规则快照作为运行来源。排序只使用 `orderIndex` 与稳定 ID。Agent 已采用单一预设身份；包归属与安装范围改造仍由底层计划推进。
+Rule 使用 `airp.textTransformRule` Document 持久化，资源定义与预设使用配置分离。Runtime 按 Session 直接引用的 Agent Preset、Timeline 关联 Card 的当前规则、可用扩展安装及公共默认解析有效 RuleSet；不再把创建 Timeline 时的规则快照作为运行来源。Preset metadata 的 `textUses` 按 `kind + id` 显式覆盖启用与可选 `orderIndex`，未配置项保持定义默认值，排序最终以稳定 ID 打破同序。显式禁用不会修改全局规则定义，显式启用也不会绕过 Card 归属与扩展安装可用性校验。
 
-Owner 只表示声明来源与 provenance，不等于运行作用域。Workspace / User Override 是跨上下文默认来源；Preset 只对使用该 Preset 的 Agent 生效；Card 只对对应 Timeline 生效；Extension 表示 Package / Module 贡献来源。Runtime 通过唯一的 Effective Pipeline 解析路径组合 Rule 与 Extractor，PromptBuild、History Projection 与 Inspector 不分别维护来源筛选逻辑。
+Owner 表示声明来源与 provenance，不等于运行作用域。Workspace / User Override 是公共默认来源，Card 只对对应来源角色生效，Extension 贡献还需匹配当前可用安装。现存 `owner.kind: preset` 仍按匹配预设解析，但配置化不增加新的预设专属归属：扩展携带定义，预设以 `textUses` 引用和使用。Runtime 通过唯一的 Effective Pipeline 解析路径组合 Rule 与 Extractor，PromptBuild、History Projection 与 Inspector 不分别维护来源筛选逻辑。
+
+包内与外部引用同时校验 identity / provenance；缺失或安装不可用时保留 `textUses` 并返回 `text.use_unresolved`，不按名称找替代。公共正则默认参与符合上下文的消费，与公共 Settings 必须显式采用不同；`useCardSettings` 只控制默认角色 Settings，不控制角色正则继承。
 
 Narrative `display` 可以独立于 Agent 解析。Narrative `prompt` 使用明确的消费 Agent Session 或预设身份组合规则；因此不同 Agent Preset 可以对同一 Narrative 获得隔离的 Prompt 投影。Agent Session Source 直接使用自身 `agentPresetId`。
 
@@ -61,7 +63,7 @@ Runtime Override 以 Source、Phase 与 Consumer 为键保存 `disabledRuleIds` 
 - Loom Script：见 [`../extensions/loom-script-runtime.md`](../extensions/loom-script-runtime.md)
 - Client Extension Data：`listExtensionRecords`、`getExtensionRecord`
 
-Studio 将作者配置和运行检查分离：Card / Preset 在各自资源工作台的外层 Master–Detail 中只编辑本 Owner 的 Rule / Extractor；Workspace 与 User Override 从设置中的文本管线入口编辑；运行面板只按当前 Narrative 或 Agent Session 展示 Effective RuleSet、来源、Match、Diagnostic 与 Dry Run。来源用于标签和筛选，不作为 Workspace / Card / Preset / Extension 四套一级导航。Preview 与 Runtime Prompt Build 共用同一 Effective Pipeline 与 Projection 实现。
+Studio 将定义编辑、预设使用配置和运行检查分离：文本资源面板编辑 Rule / Extractor 定义；预设配置的“正则 / 提取器”子 Tab 按来源 FileTree 调整 `textUses`，点击资源行按原 ID 打开定义编辑，不复制资源或改变归属。运行面板按明确的 Narrative 或 Agent Session 展示 Effective RuleSet、来源、Match、Diagnostic 与 Dry Run。来源用于标签和筛选，不为每个 Owner 建一套定义编辑器。Preview 与 Runtime Prompt Build 共用同一 Effective Pipeline 与 Projection 实现。
 
 ## 当前限制
 

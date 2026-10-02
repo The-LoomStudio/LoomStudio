@@ -6,6 +6,10 @@ Extension SDK 定义 Extension 作者侧的 TypeScript 合同。它描述 Manife
 
 Package 可以没有 Module，仅携带声明式 Prompt Resource、工具定义或转换规则。静态贡献只有经 Studio 显式导入后才形成 Application 资源；声明本身不代表已安装、已授权或已激活。
 
+Preset contribution 的 `settingMounts` / `textUses` 表达资源使用关系，支持包内 contribution 引用或外部引用；`toolMounts` 配置工具使用。它们不创建预设专属资源 Owner，也不会将外部引用内容自动打包。一个扩展可携带多个预设并共享定义，模块生命周期仍由 Host 管理，不跟随 Session 选择自动启停。
+
+Server Module 可用授权的 `ctx.prompt.build` 构建本安装资源或逐次 Anchor 内容，也可用 `ctx.ai.invokeModel` 显式指定模型进行直接调用；两者不要求 Session，不选择默认预设或绕过安装资源/凭据边界。接口详情见[Provider 与 PromptBuild](../../docs/architecture/application/agent/provider-and-prompt-build.md#extension-直接构建与模型调用)。
+
 ## 公共入口
 
 唯一入口是 [`src/index.ts`](./src/index.ts)。除 `defineServerExtension(module)` identity helper 外，也提供 iframe 作者侧连接代理；其余导出以类型合同为主：

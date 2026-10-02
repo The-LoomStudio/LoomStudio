@@ -51,6 +51,10 @@ pnpm exec vitest run tests/unit/client
 
 资源浏览按归属进入角色或扩展面板；浏览角色不切换当前游玩角色。临时按原 ID 打开单项资源只改变查看/编辑目标，不改变归属、安装或挂载。复杂 Settings 由专用面板承载；当前不维护独立工作区包成员清单。目录或 Manifest 静态声明不等于某轮运行的实际激活结果。
 
+Agent Preset 配置使用 Settings、正则 / 提取器、工具三个子 Tab，复用来源 FileTree、搜索和图标开关；Settings / 规则行点击跳转定义编辑，工具说明按行展开。当前角色 Settings 置顶并用星号标记，显示随 `useCardSettings` 草稿变化，不为展示增加 Mount；默认采用由角色世界书总开关控制，关闭后仍可显式采用。目录不显示实际触发结果，不提供额外编辑按钮或 Settings 上下移控件。详见[资源浏览与消费配置](../../docs/architecture/ui/navigation-and-routing.md#资源浏览与消费配置)。
+
+Session 不能中途改绑预设。“主写作”是 Narrative 输入接收 Session，与正在查看的 Session 分离；选择按 endpoint 存储范围和 Timeline 在本机持久化，不是后端全局主槽位。生成时禁止换主；暂停任务须先成功放弃，不能借切换恢复旧任务。具体合同见[Agent Runtime 与 Session](../../docs/architecture/application/agent/runtime-and-session.md#1-身份与绑定)。
+
 ```text
 Route / UI
   -> Feature hook / useStudioState

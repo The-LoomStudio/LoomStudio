@@ -1,9 +1,150 @@
-import { describe, expect, it } from 'vitest'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { describe, expect, it, vi } from 'vitest'
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { defaultCardPng, encodeCardPng } from '../../../apps/studio-server/src/codecs/card-png.js'
 import { authenticatedFetch, callRpc, withStudioServer as withMainStudioServer } from '../../integration/studio-server/helpers.js'
+import { createExtensionHost } from '@loom-studio/extension-host'
+import { createInMemoryDocumentStore } from '@loom-studio/document-store'
+import { createInMemoryDiagnosticsRegistry } from '@loom-studio/diagnostics'
+import type { ExtensionInstallationTarget, ExtensionRpcHandler } from '@loom-studio/extension-sdk'
+import * as instanceLoader from '../../../packages/extension-sdk/extension-host/src/instance.js'
+import { activate } from '../../../official/extensions/st-data-compat/src/index.js'
+
+vi.mock('node:fs/promises', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return {
+    ...actual,
+    mkdtemp: vi.fn(actual.mkdtemp),
+    readFile: vi.fn(actual.readFile),
+    writeFile: vi.fn(actual.writeFile),
+  }
+})
+
+async function withMigrationHost(run: (fixture: {
+  host: ReturnType<typeof createExtensionHost>
+  activateTarget(target?: ExtensionInstallationTarget): Promise<string>
+  call(instanceId: string, action: string, params?: Parameters<ExtensionRpcHandler>[0]): ReturnType<ExtensionRpcHandler>
+  sourceDirectory: string
+  stagingDirectories(): Promise<string[]>
+}) => Promise<void>) {
+  const sourceDirectory = await mkdtemp(join(tmpdir(), 'loom-st-lifecycle-source-'))
+  await mkdir(join(sourceDirectory, 'characters'))
+  await writeFile(join(sourceDirectory, 'characters', 'Hero.json'), JSON.stringify({ name: 'Hero', description: 'Temporary fixture' }))
+  const handlers = new Map<string, ExtensionRpcHandler>()
+  const loader = vi.spyOn(instanceLoader, 'loadServerModule').mockResolvedValue({ activate })
+  const host = createExtensionHost({
+    documents: createInMemoryDocumentStore(), diagnostics: createInMemoryDiagnosticsRegistry(),
+    callRpc: async () => null,
+    registerRpc: (name, ownerPackageId, ownerModuleId, handler, ownerInstanceId) => {
+      const key = `${ownerInstanceId}/${name}`
+      handlers.set(key, handler)
+      return { name, ownerPackageId, ownerModuleId, ownerInstanceId, handler, dispose: () => { handlers.delete(key) } }
+    },
+  })
+  const firstTempCall = vi.mocked(mkdtemp).mock.calls.length
+  const stagingDirectories = async () => {
+    const results = vi.mocked(mkdtemp).mock.results
+    return Promise.all(vi.mocked(mkdtemp).mock.calls.flatMap(([prefix], index) =>
+      index >= firstTempCall && String(prefix).includes('loom-st-migration-')
+        ? [results[index]!.value as Promise<string>] : []))
+  }
+  try {
+    await run({
+      host, sourceDirectory, stagingDirectories,
+      activateTarget: async (target = { kind: 'global' }) => {
+        await host.discover(resolve('official/extensions/st-data-compat'), target)
+        const active = await host.activate('sillytavern.importer', 'server', target)
+        expect(active.state).toBe('active')
+        return active.instance!.instanceId
+      },
+      call: (instanceId, action, params = {}) => {
+        const handler = handlers.get(`${instanceId}/sillytavern.importer.migration.${action}`)
+        if (!handler) throw new Error('Migration RPC is not registered')
+        return handler(params, { packageId: 'sillytavern.importer', moduleId: 'server', instanceId })
+      },
+    })
+  } finally {
+    await host.disposeAll()
+    loader.mockRestore()
+    await Promise.all((await stagingDirectories()).map(directory => rm(directory, { recursive: true, force: true })))
+    await rm(sourceDirectory, { recursive: true, force: true })
+  }
+}
+
+describe('SillyTavern migration lifecycle', () => {
+  it.each(['dispose', 'cancel'] as const)('waits for an in-flight scan on %s and prevents late staging writes', async action => {
+    await withMigrationHost(async ({ host, activateTarget, call, sourceDirectory, stagingDirectories }) => {
+      const instanceId = await activateTarget()
+      let release!: () => void
+      let entered!: () => void
+      const gate = new Promise<void>(resolve => { release = resolve })
+      const reading = new Promise<void>(resolve => { entered = resolve })
+      const original = vi.mocked(readFile).getMockImplementation()!
+      vi.mocked(readFile).mockImplementationOnce(async (...args: Parameters<typeof readFile>) => {
+        const source = await original(...args)
+        entered()
+        await gate
+        return source
+      })
+      const firstWrite = vi.mocked(writeFile).mock.calls.length
+      const started = await call(instanceId, 'start', { directory: sourceDirectory }) as { sessionId: string }
+      await reading
+      const [stagingDirectory] = await stagingDirectories()
+      expect(await readdir(stagingDirectory!)).toEqual([])
+      let settled = false
+      const stopping = (action === 'dispose'
+        ? host.dispose('sillytavern.importer', 'server')
+        : Promise.resolve(call(instanceId, 'cancel', { sessionId: started.sessionId })))
+        .then(() => { settled = true })
+      try {
+        await new Promise(resolve => setImmediate(resolve))
+        expect(settled).toBe(false)
+      } finally {
+        release()
+        await stopping
+        await new Promise(resolve => setImmediate(resolve))
+        await Promise.all(vi.mocked(writeFile).mock.results.slice(firstWrite).map(result => result.value))
+      }
+      expect(vi.mocked(writeFile).mock.calls.slice(firstWrite).filter(([path]) => String(path).startsWith(stagingDirectory!))).toEqual([])
+      await expect(stat(stagingDirectory!)).rejects.toMatchObject({ code: 'ENOENT' })
+      if (action === 'cancel') await expect(call(instanceId, 'inspect', { sessionId: started.sessionId })).rejects.toThrow('not found')
+    })
+  })
+
+  it('cleans completed and upload sessions on dispose/reload without touching another Card activation', async () => {
+    await withMigrationHost(async ({ host, activateTarget, call, sourceDirectory, stagingDirectories }) => {
+      const a = { kind: 'card' as const, cardId: 'A' }
+      const b = { kind: 'card' as const, cardId: 'B' }
+      const aInstance = await activateTarget(a)
+      const bInstance = await activateTarget(b)
+      const scanned = await call(aInstance, 'start', { directory: sourceDirectory }) as { sessionId: string }
+      await expect.poll(async () => (await call(aInstance, 'inspect', { sessionId: scanned.sessionId }) as { scan: { status: string } }).scan.status).toBe('completed')
+      const upload = await call(aInstance, 'start') as { sessionId: string }
+      const retained = await call(bInstance, 'start') as { sessionId: string }
+      const [scannedDirectory, uploadDirectory, retainedDirectory] = await stagingDirectories()
+      await call(bInstance, 'appendBatch', { sessionId: retained.sessionId, files: [{ path: 'characters/Other.json', source: '{"name":"Other"}' }] })
+      await host.dispose('sillytavern.importer', 'server', a)
+      await expect(stat(scannedDirectory!)).rejects.toMatchObject({ code: 'ENOENT' })
+      await expect(stat(uploadDirectory!)).rejects.toMatchObject({ code: 'ENOENT' })
+      expect((await readdir(retainedDirectory!)).length).toBe(1)
+      const reloaded = await host.reload('sillytavern.importer', 'server', a)
+      const newInstance = reloaded.instance!.instanceId
+      expect(newInstance).not.toBe(aInstance)
+      for (const sessionId of [scanned.sessionId, upload.sessionId, retained.sessionId]) {
+        await expect(call(newInstance, 'inspect', { sessionId })).rejects.toThrow('not found')
+      }
+      await expect(call(bInstance, 'inspect', { sessionId: retained.sessionId })).resolves.toMatchObject({ files: 1 })
+      const completed = await call(newInstance, 'start', { directory: sourceDirectory }) as { sessionId: string }
+      await expect.poll(async () => (await call(newInstance, 'inspect', { sessionId: completed.sessionId }) as { scan: { status: string } }).scan.status).toBe('completed')
+      const completedDirectory = (await stagingDirectories()).at(-1)!
+      await host.reload('sillytavern.importer', 'server', a)
+      await expect(stat(completedDirectory)).rejects.toMatchObject({ code: 'ENOENT' })
+      await call(bInstance, 'cancel', { sessionId: retained.sessionId })
+      await expect(stat(retainedDirectory!)).rejects.toMatchObject({ code: 'ENOENT' })
+    })
+  })
+})
 
 const withStudioServer: typeof withMainStudioServer = run => withMainStudioServer(run, resolve('official/extensions'))
 

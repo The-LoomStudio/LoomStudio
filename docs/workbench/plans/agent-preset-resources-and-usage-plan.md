@@ -277,3 +277,5 @@ client 定向类型检查仍仅报既有 `preset.panel.views` 翻译键诊断；
 2026-10-02 当前角色 Settings 展示修正：预设配置接入当前角色绑定，角色资源分组置顶、资源使用星号，区分随角色默认采用与显式引用。
 显示状态跟随 `useCardSettings` 草稿，不为了展示添加 Mount；默认采用由角色世界书总开关控制，关闭后仍可显式采用，资源触发条件不因此跳过。
 两文件聚焦 4 例通过，新增覆盖角色分组排序、星号标记、继承状态及草稿联动；client 类型检查仍仅有既有翻译键错误，未做浏览器人工验收。
+2026-10-02 文档收尾：按当前源码同步 Agent、PromptBuild、Data、文本管线、Extension 和导航 Architecture，以及 Client / Server / application-data / application-runtime / shared / extension-sdk README。
+移除“允许 Session 改绑”“预设 Settings 仅兼容”等过时描述，补齐消费配置与归属分离、空引用、导出边界及正式 FileTree 交互；现存旧正则 Preset Owner 按实际支持记录，不宣称已删除。本轮只改文档，核对相对链接与标题锚点及 Diff，不重跑代码测试或模型调用。

@@ -3,8 +3,8 @@
 本目录保存正式官方内容的作者源文件。Official 是维护来源，不是权限或自动启用资格。
 
 - `starter/`：官方问答 Agent 预设与知识 Settings，不含模型凭据。
-- `extensions/st-data-compat/`：ST 数据兼容源码，保留 `@loom-studio/sillytavern-importer` 包名。
-- [`extensions/the-world/`](extensions/the-world/README.md)：The World 延期迁移骨架，含包内迁移讨论；当前无可执行模块或资源贡献。
+- `extensions/loom-assistant/`：同仓维护的助手预设与配套资源，不要求独立仓库。
+- ST 数据兼容、The World 等独立发行扩展不纳入主仓库跟踪；本地开发副本由 `.gitignore` 排除。
 - 接口测试扩展位于 `tests/fixtures/extensions/`，正式 Server 默认不扫描该目录。开发者通过已有 dev-link 或显式 `extensionRootDirectory` 加载。
 
 ## 当前可用流程
@@ -29,7 +29,7 @@ Server 启动时自动安装缺失的默认预设/Setting；这属于内置基�
 
 ## 发布边界
 
-基础内容版本由 `starter/catalog.json` 管理；ST 扩展保留自己的版本。当前同仓维护，但不要求与主应用同版本发布。
+基础内容版本由 `starter/catalog.json` 管理；独立官方扩展自行维护版本与发行，不要求与主应用同版本发布。
 
 尚未完成远程发布/安装：GitHub/NPM 发布主体、可信版本索引和首个来源仍待确定。内容摘要用于确认用户选中的包没有变化，不是独立签名或来源认证。
 

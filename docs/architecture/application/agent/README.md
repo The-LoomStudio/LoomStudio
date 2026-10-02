@@ -6,7 +6,7 @@ Studio Application 的 Agent 子系统负责组织模型调用、PromptBuild、T
 
 ```text
 Agent Preset
-  -> Prompt Resource 树 + 本地 Provider Model 绑定 + Tool Mount
+  -> Prompt Resource 树 + 模型绑定 + Settings / textUses / Tool Mount
   -> PromptBuild + Tool Prompt Build
   -> AI Gateway Provider Step
   -> Tool Invocation / Result Loop
@@ -40,15 +40,18 @@ Extension Manifest 中的 Agent Preset 贡献属于静态声明。显式导入�
 
 创建 Session 可直接绑定没有模型的 Agent Preset；预览/执行遇到缺失模型时明确失败。Preset 上的模型选择仍由 Provider Profile ID 与 Model ID 组成，并非移除 Provider Profile。
 
-切换预设默认开启新 Session，但不是强制隔离：选择菜单取消“切换时新建会话”后，通过 `updateAgentSession({ agentSessionId, agentPresetId })` 更新当前会话绑定，保留标题、Transcript 与工作记忆，下一次请求采用新预设。不改写历史 Run；持久化 Run 状态为 running 或 suspended 时拒绝变更绑定。更换预设可能导致旧上下文冲突和提示词前缀缓存失效。
+Session 创建后固定 `agentPresetId`，不能通过 `updateAgentSession` 改绑；使用另一预设应创建另一 Session。主写作指客户端为 Narrative 输入选择的接收 Session，与当前查看对象分离。生成中不允许换主，旧暂停任务须先成功放弃，不跨预设续跑。固定绑定不冻结预设资源版本，详细边界见[身份与绑定](runtime-and-session.md#1-身份与绑定)。
+
+预设资源使用配置与包归属分离：Settings 通过 Mount 显式采用，角色默认采用可关闭，正则/提取器以 `textUses` 覆盖公共默认。引用不自动将资源收入包，预设切换也不启动独立代码实例或停用整个扩展，见[PromptBuild](../prompt-build/README.md#资源归属与使用配置)。
 
 当前尚未完成：
 
 - OpenAI Responses Custom Tool 的正式 adapter 与 result replay；
 - 跨进程 Resume、Permission suspend UI 和 Agent Session 分支操作；
 - 动态 Extension Tool 注册；
-- 真实领域写入 Tool 与完整 Mutation / Changeset provenance；
-- 子智能体、CodeAct、通用 Bash、CLI 和 MCP。
+- 泛化子智能体调度、通用 Bash、CLI 和 MCP。
+
+CodeAct QuickJS/VFS、官方正文写入工具及其独立 Changeset 已接入；它们不代表完整子智能体调度或 Memory / Session 生命周期均已完成，详见[Runtime 与 Session](runtime-and-session.md)。
 
 这些未完成方向继续保留在 [`../../../workbench/plans/agent-runtime-session-and-workspace-plan.md`](../../../workbench/plans/agent-runtime-session-and-workspace-plan.md) 及相邻 Workbench 文档中，不属于当前 Architecture 合同。
 
