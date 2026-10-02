@@ -42,7 +42,14 @@ export function createInMemoryDocumentStore(): DocumentStore {
     return result
   }
 
-  const read: Pick<DocumentTransaction, 'get' | 'list'> = {
+  const read: Pick<DocumentTransaction, 'get' | 'list' | 'listCardBindings'> = {
+    listCardBindings: async input => [...current.values()]
+      .filter(document => {
+        const content = document.content as { promptResourceIds?: string[] }
+        return document.type === input.type && !document.meta.tombstone
+          && content.promptResourceIds?.includes(input.resourceId)
+      })
+      .map(document => ({ id: document.id, name: (document.content as { name: string }).name })),
     get: async (id, options) => {
       const document = options?.version
         ? revisions.get(id)?.find(revision => revision.version === options.version)
@@ -186,6 +193,7 @@ export function createInMemoryDocumentStore(): DocumentStore {
   const store: DocumentStore = {
     get: (id, options) => serialize(() => read.get(id, options)),
     list: input => serialize(() => read.list(input)),
+    listCardBindings: input => serialize(() => read.listCardBindings(input)),
 
     write: input => serialize(() => {
       const pending = createPendingChangeset(input)

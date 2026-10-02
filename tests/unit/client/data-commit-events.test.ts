@@ -30,13 +30,15 @@ describe('data commit subscription', () => {
     expect(stream.url).toBe('/extensions/events')
     stream.emit('open')
     stream.emit('data.changed', JSON.stringify({ payload: { operations: [
-      { entityType: 'narrative.branch', entityId: 'branch-1', store: 'narrative' },
+      { entityType: 'narrative.branch', entityId: 'branch-1', store: 'narrative', kind: 'update',
+        scope: { store: 'narrative', entityType: 'narrative.timeline', entityId: 'timeline-1' } },
       { entityType: 2, entityId: 'invalid' },
     ] } }))
     stream.emit('data.changed', '{')
     stream.emit('open')
     expect(onCommit).toHaveBeenCalledOnce()
-    expect(onCommit).toHaveBeenCalledWith([{ entityType: 'narrative.branch', entityId: 'branch-1' }])
+    expect(onCommit).toHaveBeenCalledWith([{ entityType: 'narrative.branch', entityId: 'branch-1', kind: 'update',
+      scope: { store: 'narrative', entityType: 'narrative.timeline', entityId: 'timeline-1' } }])
     expect(onConnected).toHaveBeenCalledTimes(2)
     unsubscribe()
     expect(stream.closed).toBe(true)

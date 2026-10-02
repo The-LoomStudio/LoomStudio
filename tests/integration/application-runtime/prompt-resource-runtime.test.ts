@@ -17,6 +17,47 @@ function createIds() {
 }
 
 describe('Prompt Resource Store application runtime', () => {
+  it('reads only live Card binding summaries and filtered Mounts without reading resource trees', async () => {
+    const createId = createIds()
+    const now = () => '2026-10-02T00:00:00.000Z'
+    const engine = createSqliteDataEngine({ filename: ':memory:', createId, now })
+    try {
+      const documents = createSqliteDocumentStore({ engine })
+      const promptResources = createPromptResourceStore({ engine, createId })
+      const runtime = createApplicationRuntime({ dataEngine: engine, documents, promptResources })
+      const { resource } = await runtime.createPromptResource({ resourceKind: 'setting', name: 'Target' })
+      const { resource: unrelated } = await runtime.createPromptResource({ resourceKind: 'setting', name: 'Unrelated' })
+      const { card } = await runtime.createCard({ name: 'Bound' })
+      await runtime.updateCardPromptResources({ cardId: card.id, promptResourceIds: [resource.id] })
+      const { card: deleted } = await runtime.createCard({ name: 'Deleted' })
+      await runtime.updateCardPromptResources({ cardId: deleted.id, promptResourceIds: [resource.id] })
+      await runtime.deleteCard({ cardId: deleted.id })
+      for (let index = 0; index < 110; index++) {
+        await runtime.createCard({ name: `Unrelated ${index}`, description: 'Unrelated body'.repeat(100) })
+      }
+      await runtime.replaceSettingMounts({ source: { kind: 'manual', id: 'global' }, settingResourceIds: [resource.id, unrelated.id] })
+      const mounts = vi.spyOn(promptResources, 'listSettingMounts')
+      const reads = [
+        vi.spyOn(promptResources, 'getResource').mockRejectedValue(new Error('Full resource read forbidden')),
+        vi.spyOn(documents, 'list').mockRejectedValue(new Error('Full document list forbidden')),
+      ]
+      try {
+        const bindings = await runtime.getPromptResourceBindings({ resourceId: resource.id })
+        expect(bindings.cards).toEqual([{ id: card.id, name: 'Bound' }])
+        expect(bindings.settingMounts).toHaveLength(1)
+        expect(bindings.settingMounts[0]?.settingResourceId).toBe(resource.id)
+        expect(mounts).toHaveBeenCalledWith({ settingResourceId: resource.id })
+        for (const read of reads) expect(read).not.toHaveBeenCalled()
+      } finally {
+        for (const read of reads) read.mockRestore()
+        mounts.mockRestore()
+      }
+      await runtime.deletePromptResource({ resourceId: resource.id })
+      await expect(runtime.getPromptResourceBindings({ resourceId: resource.id })).rejects.toThrow('Prompt resource not found')
+      await expect(runtime.getPromptResourceBindings({ resourceId: 'missing' })).rejects.toThrow('Prompt resource not found')
+    } finally { await engine.close() }
+  })
+
   it('persists newly created children before the first preset or setting sibling', async () => {
     const createId = createIds()
     const now = () => '2026-09-29T00:00:00.000Z'

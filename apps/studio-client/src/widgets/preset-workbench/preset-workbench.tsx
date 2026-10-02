@@ -1,5 +1,5 @@
 import type { ClientJsonValue } from '@loom-studio/client-bridge'
-import { BookOpen, Braces, ChevronDown, ChevronRight, Copy, Download, Folder, FolderOpen, Package, Regex, Search, Star, ToggleLeft, ToggleRight, Trash2, Wrench, X } from 'lucide-react'
+import { BookOpen, Braces, ChevronDown, ChevronRight, Copy, Download, Folder, FolderOpen, Package, Regex, Star, ToggleLeft, ToggleRight, Trash2, Wrench } from 'lucide-react'
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { Button, IconButton, SearchField } from '@loom-studio/ui'
 import { DEFAULT_ASSET_VIEW_STATE, useStudioLayoutStore } from '../../shared/studio-shell/studio-layout-store.js'
@@ -1005,24 +1005,18 @@ function PresetToolExplorer(props: {
 
   return (
     <div className={styles.toolExplorer}>
-      <div className={styles.toolSearch}>
-        <Search aria-hidden="true" />
-        <input
-          aria-label={props.t('preset.tools.searchLabel')}
-          placeholder={props.t('preset.tools.searchPlaceholder')}
-          type="search"
-          value={query}
-          onChange={event => {
-            setQuery(event.target.value)
-            setCollapsedNamespaces(new Set())
-          }}
-        />
-        {query ? (
-          <button aria-label={props.t('preset.tools.searchClear')} type="button" onClick={() => setQuery('')}>
-            <X aria-hidden="true" />
-          </button>
-        ) : null}
-      </div>
+      <SearchField
+        containerClassName={styles.toolSearch}
+        aria-label={props.t('preset.tools.searchLabel')}
+        placeholder={props.t('preset.tools.searchPlaceholder')}
+        clearLabel={props.t('preset.tools.searchClear')}
+        value={query}
+        onClear={() => setQuery('')}
+        onChange={event => {
+          setQuery(event.target.value)
+          setCollapsedNamespaces(new Set())
+        }}
+      />
       <div className={styles.toolGroups}>
         {unavailableMounts.length > 0 ? <section className={styles.toolGroup}>
           <h3>{props.t('preset.tools.unavailableGroup')}</h3>

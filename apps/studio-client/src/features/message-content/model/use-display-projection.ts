@@ -70,6 +70,7 @@ export function useDisplayProjection(input: {
       const { snapshot } = await input.api.project({
         source: input.source!,
         phase: 'display',
+        entryIds: input.entries.map(entry => entry.id),
         ...(input.consumerAgentSessionId ? { consumerAgentSessionId: input.consumerAgentSessionId } : {}),
       })
       const byId = new Map(snapshot.entries.map(entry => [entry.id, entry]))

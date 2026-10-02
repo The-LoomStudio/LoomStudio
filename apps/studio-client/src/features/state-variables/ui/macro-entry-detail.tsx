@@ -1,5 +1,5 @@
 import { Copy, Save, Trash2 } from 'lucide-react'
-import { TextInput } from '@loom-studio/ui'
+import { Button, TextInput } from '@loom-studio/ui'
 import type { ReactNode } from 'react'
 import { toast } from 'sonner'
 import { tryWriteClipboardText } from '../../../shared/browser/clipboard.js'
@@ -35,8 +35,8 @@ export function MacroEntryDetail(props: {
       <div className={styles.headerTitle}><h3>{props.title}</h3>{props.badge}</div>
       <div className={styles.headerActions}>
         <button aria-label={props.t('stateVariables.copyMacro')} className={styles.iconButton} title={props.t('stateVariables.copyMacro')} type="button" disabled={!props.name.trim()} onClick={() => void copyMacro()}><Copy aria-hidden="true" size={14} /></button>
-        {props.onDelete ? <button className={styles.dangerActionBtn} type="button" disabled={props.busy} onClick={props.onDelete}><Trash2 aria-hidden="true" size={14} /><span>{props.t('macroAuthoring.delete')}</span></button> : null}
-        {props.onSave ? <button className={styles.primaryActionBtn} type="button" disabled={props.busy || !props.dirty} onClick={props.onSave}><Save aria-hidden="true" size={14} /><span>{props.t('macroAuthoring.save')}</span></button> : null}
+        {props.onDelete ? <Button size="small" variant="danger" type="button" disabled={props.busy} onClick={props.onDelete}><Trash2 aria-hidden="true" size={14} /><span>{props.t('macroAuthoring.delete')}</span></Button> : null}
+        {props.onSave ? <Button size="small" variant="ghost" type="button" disabled={props.busy || !props.dirty} onClick={props.onSave}><Save aria-hidden="true" size={14} /><span>{props.t('macroAuthoring.save')}</span></Button> : null}
       </div>
     </header>
     {props.error ? <div className={styles.errorBanner} role="alert">{props.error}</div> : null}

@@ -10,6 +10,7 @@ import {
   readOptionalInstallationTarget,
   readOptionalNumber,
   readOptionalString,
+  readOptionalStringArray,
   readObject,
   readString,
   readStringArray,
@@ -23,7 +24,7 @@ export async function handleTextTransformsRpc(
 ): Promise<JsonValue | undefined> {
   switch (method) {
     case 'application.listTextTransformRules':
-      return await runtime.listTextTransformRules() as unknown as JsonValue
+      return await runtime.listTextTransformRules({ owner: readOptionalRuleOwner(params) }) as unknown as JsonValue
 
     case 'application.getTextTransformRule':
       return await runtime.getTextTransformRule({ ruleId: readString(params, 'ruleId') }) as unknown as JsonValue
@@ -87,6 +88,7 @@ export async function handleTextTransformsRpc(
 
     case 'application.projectHistory':
       return await runtime.projectHistory({
+        entryIds: readOptionalStringArray(params, 'entryIds'),
         extensionTarget: readOptionalInstallationTarget(params, 'extensionTarget'),
         source: readHistorySource(params),
         phase: readTextTransformPhase(params, 'phase'),
@@ -123,6 +125,18 @@ export async function handleTextTransformsRpc(
     default:
       return undefined
   }
+}
+
+function readOptionalRuleOwner(params: JsonValue | undefined): TextTransformRuleDraft['owner'] | undefined {
+  if (!isRecord(params) || params.owner === undefined) return undefined
+  const owner = readObject(params, 'owner')
+  if (owner.kind === 'workspace' || owner.kind === 'user-override') return { kind: owner.kind }
+  if (owner.kind === 'card') return { kind: 'card', cardId: readString(owner, 'cardId') }
+  if (owner.kind === 'preset') return { kind: 'preset', presetId: readString(owner, 'presetId') }
+  if (owner.kind === 'extension') return {
+    kind: 'extension', packageId: readString(owner, 'packageId'), moduleId: readOptionalString(owner, 'moduleId'),
+  }
+  throw new Error('Unsupported Text Transform Rule owner')
 }
 
 function readHistorySource(value: JsonValue | undefined) {

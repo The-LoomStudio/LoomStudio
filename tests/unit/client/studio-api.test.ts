@@ -5,6 +5,29 @@ import { withClientBridgeLogging } from '../../../apps/studio-client/src/shared/
 import { createStudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
 
 describe('studio client typed api', () => {
+  it('forwards directory and Display subsets while preserving omitted and empty IDs', async () => {
+    const calls: Array<{ method: string; params?: ClientJsonValue }> = []
+    const api = createStudioApi(fakeBridge(calls, {
+      'application.listTextTransformRules': { rules: [] },
+      'application.listStateDefinitions': { definitions: [] },
+      'application.projectHistory': { snapshot: {} },
+    }))
+    await api.textTransforms.listRules()
+    await api.textTransforms.listRules({ kind: 'card', cardId: 'a' })
+    await api.states.listDefinitions()
+    await api.states.listDefinitions('timeline-template', ['state-a'])
+    await api.states.listDefinitions(undefined, [])
+    const source = { kind: 'narrative' as const, timelineId: 'timeline', branchId: 'branch' }
+    await api.textTransforms.project({ source, phase: 'display', entryIds: ['node'] })
+    expect(calls).toEqual([
+      { method: 'application.listTextTransformRules', params: {} },
+      { method: 'application.listTextTransformRules', params: { owner: { kind: 'card', cardId: 'a' } } },
+      { method: 'application.listStateDefinitions', params: {} },
+      { method: 'application.listStateDefinitions', params: { kind: 'timeline-template', ids: ['state-a'] } },
+      { method: 'application.listStateDefinitions', params: { ids: [] } },
+      { method: 'application.projectHistory', params: { source, phase: 'display', entryIds: ['node'] } },
+    ])
+  })
   it('maps global network settings through the typed studio api surface', async () => {
     const calls: Array<{ method: string; params?: ClientJsonValue }> = []
     const api = createStudioApi(fakeBridge(calls, {
@@ -47,11 +70,12 @@ describe('studio client typed api', () => {
     expect(JSON.stringify(calls)).not.toContain('apiKey')
   })
 
-  it('maps Agent run pause and resume calls', async () => {
+  it('maps Agent run pause, resume and completion acknowledgement calls', async () => {
     const calls: Array<{ method: string; params?: ClientJsonValue }> = []
     const api = createStudioApi(fakeBridge(calls, {
       'application.agent.run.pause': { runId: 'run-1', accepted: true, state: 'suspended' },
       'application.agent.run.resume': { runId: 'run-2', sourceRunId: 'run-1', accepted: true, state: 'running' },
+      'application.agent.run.acknowledge-completion': { runId: 'run-2', accepted: true },
     }))
 
     await expect(api.agentSessions.pauseRun('run-1')).resolves.toEqual({
@@ -60,9 +84,13 @@ describe('studio client typed api', () => {
     await expect(api.agentSessions.resumeRun('run-1')).resolves.toEqual({
       runId: 'run-2', sourceRunId: 'run-1', accepted: true, state: 'running',
     })
+    await expect(api.agentSessions.acknowledgeRunCompletion('run-2')).resolves.toEqual({
+      runId: 'run-2', accepted: true,
+    })
     expect(calls).toEqual([
       { method: 'application.agent.run.pause', params: { runId: 'run-1' } },
       { method: 'application.agent.run.resume', params: { runId: 'run-1' } },
+      { method: 'application.agent.run.acknowledge-completion', params: { runId: 'run-2' } },
     ])
   })
 

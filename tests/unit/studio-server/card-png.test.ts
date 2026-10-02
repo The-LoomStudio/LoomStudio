@@ -50,7 +50,10 @@ describe('Loom Card PNG', () => {
   it('carries a complete file-backed ZIP in PNG metadata without a trailing polyglot payload', async () => {
     const artifact: CardBundleArtifact = {
       schemaVersion: 4, artifactId: 'png-bundle', displayName: 'PNG Bundle',
-      card: { name: 'PNG Bundle', description: '真实正文' }, contextAssets: [],
+      card: {
+        name: 'PNG Bundle', description: '真实正文',
+        preset: { macroOptions: { tone: [{ id: 'quiet', label: 'Quiet', value: 'soft' }, { id: 'loud', label: 'Loud', value: 'bold' }] } },
+      }, contextAssets: [],
     }
     const archive = encodeCardBundleZip({
       artifact,
@@ -67,6 +70,7 @@ describe('Loom Card PNG', () => {
     expect(Buffer.from(encodeCardBundlePng(png, archive)).equals(Buffer.from(png))).toBe(true)
     const decoded = await decodeCardBundleZip(readCardPngArchive(png)!)
     expect(decoded.artifact.card.description).toBe('真实正文')
+    expect(decoded.artifact.card.preset).toEqual(artifact.card.preset)
     expect(Buffer.from(decoded.background!.bytes).toString()).toBe('background')
   }, 30000)
 

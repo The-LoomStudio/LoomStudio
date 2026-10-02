@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Anchor, Check, Search } from 'lucide-react'
-import { Dialog } from '@loom-studio/ui'
+import { Anchor, Check } from 'lucide-react'
+import { Dialog, SearchField } from '@loom-studio/ui'
 import type { PromptResource } from '../../../../entities/index.js'
 import type { Translator } from '../../../../shared/i18n/index.js'
 import { normalizeSearchText } from '../../../../shared/lib/text.js'
@@ -43,17 +43,16 @@ export function PresetAnchorPicker(props: {
           ))}
         </nav>
         <div className={styles.anchorResults}>
-          <div className={styles.anchorSearch}>
-            <Search aria-hidden="true" />
-            <input
-              autoFocus
-              aria-label={props.t('context.anchorPicker.search')}
-              type="search"
-              placeholder={props.t('context.anchorPicker.search')}
-              value={query}
-              onChange={event => setQuery(event.target.value)}
-            />
-          </div>
+          <SearchField
+            containerClassName={styles.anchorSearch}
+            autoFocus
+            aria-label={props.t('context.anchorPicker.search')}
+            placeholder={props.t('context.anchorPicker.search')}
+            clearLabel={props.t('context.search.clear')}
+            value={query}
+            onChange={event => setQuery(event.target.value)}
+            onClear={() => setQuery('')}
+          />
           <div className={styles.anchorList}>
             {(['common', 'custom'] as const).map(group => {
               const options = anchors.filter(anchor => anchor.common === (group === 'common'))

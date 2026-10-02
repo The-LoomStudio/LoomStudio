@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ExternalLink, X } from 'lucide-react'
+import { Dialog, IconButton } from '@loom-studio/ui'
 import { parseResourceLink } from '@loom-studio/shared'
 import { loadEntityReference, type EntityReferenceView } from './entity-reference-model.js'
 import type { StudioApi } from '../../shared/api/studio-api.js'
@@ -14,14 +15,12 @@ export function ResourceReferenceDialog(props: {
   onNavigate(uri: string): void
 }) {
   const uri = props.uri
-  const dialog = useRef<HTMLDialogElement>(null)
   const selected = useRef<HTMLSpanElement>(null)
   const [result, setResult] = useState<{ uri: string; view?: ReferenceView; entity?: EntityReferenceView; error?: string }>()
 
   useEffect(() => {
     if (!uri) return
     let active = true
-    if (!dialog.current?.open) dialog.current?.showModal()
     const reference = parseResourceLink(uri)
     if (reference?.kind === 'entity') {
       void loadEntityReference(props.api, reference).then(
@@ -34,7 +33,7 @@ export function ResourceReferenceDialog(props: {
         error => { if (active) setResult({ uri, error: error instanceof Error ? error.message : '无法打开资源引用。' }) },
       )
     }
-    return () => { active = false; dialog.current?.close() }
+    return () => { active = false }
   }, [uri, props.api])
 
   const current = result?.uri === uri ? result : undefined
@@ -43,24 +42,17 @@ export function ResourceReferenceDialog(props: {
 
   if (!uri) return null
   return (
-    <dialog ref={dialog} className={styles.dialog} aria-label="资源引用" onCancel={event => { event.preventDefault(); props.onClose() }}>
-      <header className={styles.header}>
-        <div className={styles.heading}>
-          <h2>{current?.entity?.title ?? view?.title ?? '资源引用'}</h2>
+    <Dialog open onClose={props.onClose} className={styles.dialog} title={current?.entity?.title ?? view?.title ?? '资源引用'}
+      headerActions={<>
+        {view?.editor ? <IconButton title="打开编辑器" aria-label="打开编辑器" onClick={() => props.onOpenEditor(view.editor!)}><ExternalLink size={16} /></IconButton> : null}
+        <IconButton title="关闭" aria-label="关闭" onClick={props.onClose}><X size={18} /></IconButton>
+      </>}>
+      <div className={styles.content}>
           {view?.path ? <div className={styles.path} title={view.path}>{view.path}</div> : null}
           {view ? <div className={styles.status}>{!view.exact
             ? '资源版本已变化 · 显示当前内容'
             : view.range ? `第 ${view.range.startLine}–${view.range.endLine} 行 · 引用版本一致`
               : '引用行范围无效 · 未定位'}</div> : null}
-        </div>
-        <div className={styles.actions}>
-          {view?.editor ? <button type="button" title="打开编辑器" aria-label="打开编辑器" onClick={() => {
-            props.onOpenEditor(view.editor!)
-          }}><ExternalLink size={16} /></button> : null}
-          <button type="button" title="关闭" aria-label="关闭" onClick={props.onClose}><X size={18} /></button>
-        </div>
-      </header>
-      <div className={styles.content}>
         {!current ? <p role="status">正在读取…</p> : current.error ? <p role="alert">{current.error}</p> : null}
         {current?.entity && <div className={styles.entity}>
           {current.entity.avatarUrl && <img src={current.entity.avatarUrl} alt="" />}
@@ -75,6 +67,6 @@ export function ResourceReferenceDialog(props: {
           ><span className={styles.number} aria-hidden="true">{index + 1}</span><code>{line || '\u00a0'}</code></span>)}
         </div> : null}
       </div>
-    </dialog>
+    </Dialog>
   )
 }

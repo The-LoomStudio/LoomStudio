@@ -1,4 +1,5 @@
 import type { FormEvent } from 'react'
+import { TextInput } from '@loom-studio/ui'
 import type {
   ModelProfile,
   ProviderAccount,
@@ -50,7 +51,7 @@ export function ModelPanel(props: ModelPanelProps) {
           <form autoComplete="off" className={`${styles.createAccountForm} loom-underlined-fields`} onSubmit={event => void props.onCreateProviderAccount(event).catch(() => undefined)}>
             <label>
               <span>{props.t('provider.name')}</span>
-              <input
+              <TextInput
                 autoComplete="off"
                 name="loom-provider-display-name"
                 disabled={props.busy}
@@ -62,7 +63,7 @@ export function ModelPanel(props: ModelPanelProps) {
             </label>
             <label>
               <span>{props.t('provider.baseUrl')}</span>
-              <input
+              <TextInput
                 autoComplete="off"
                 name="loom-provider-base-url"
                 disabled={props.busy}

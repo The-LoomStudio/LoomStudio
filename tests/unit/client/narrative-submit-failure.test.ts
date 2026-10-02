@@ -2,23 +2,36 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FormEvent } from 'react'
 import { useNarrativeRuntime } from '../../../apps/studio-client/src/features/narrative-runtime/model/use-narrative-runtime.js'
 import type { StudioApi } from '../../../apps/studio-client/src/shared/api/studio-api.js'
+import type { DataOperation } from '../../../apps/studio-client/src/shared/api/data-commit-events.js'
 
 const hooks = vi.hoisted(() => ({
   cursor: 0,
   values: [] as unknown[],
   commitEffect: undefined as (() => void | (() => void)) | undefined,
   onCommit: undefined as ((operations: Array<{ entityType: string; entityId: string }>) => void) | undefined,
+  narrativeConnected: undefined as (() => void) | undefined,
+  sessionEffect: undefined as (() => void | (() => void)) | undefined,
+  sessionCommit: undefined as ((operations: DataOperation[]) => void) | undefined,
+  connected: undefined as (() => void) | undefined,
+  subscribingSessions: false,
 }))
 vi.mock('../../../apps/studio-client/src/shared/api/data-commit-events.js', () => ({
-  subscribeDataCommits: (onCommit: typeof hooks.onCommit) => {
+  subscribeDataCommits: (onCommit: typeof hooks.sessionCommit, connected: () => void) => {
+    if (hooks.subscribingSessions) {
+      hooks.sessionCommit = onCommit
+      hooks.connected = connected
+      return () => { hooks.sessionCommit = undefined }
+    }
     hooks.onCommit = onCommit
+    hooks.narrativeConnected = connected
     return () => { hooks.onCommit = undefined }
   },
 }))
 vi.mock('react', async importOriginal => ({
   ...await importOriginal<typeof import('react')>(),
   useEffect: (effect: () => void, deps?: unknown[]) => {
-    if (deps?.[1] === 'timeline' && deps?.[2] === 'branch') hooks.commitEffect = effect
+    if (deps?.length === 3 && typeof deps[1] === 'string' && typeof deps[2] === 'string') hooks.commitEffect = effect
+    if (deps?.length === 2 && deps[1] === 'timeline') hooks.sessionEffect = effect
   },
   useState: (initial: unknown) => {
     const index = hooks.cursor++
@@ -34,7 +47,9 @@ vi.mock('react', async importOriginal => ({
   },
 }))
 
-beforeEach(() => { hooks.cursor = 0; hooks.values = []; hooks.commitEffect = undefined; hooks.onCommit = undefined })
+beforeEach(() => { hooks.cursor = 0; hooks.values = []; hooks.commitEffect = undefined; hooks.onCommit = undefined
+  hooks.narrativeConnected = undefined
+  hooks.sessionEffect = undefined; hooks.sessionCommit = undefined; hooks.connected = undefined; hooks.subscribingSessions = false })
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
 
 function fixture() {
@@ -72,14 +87,15 @@ function fixture() {
     events: [{ type: 'completed', runId: 'run', result }], nextCursor: 1, done: true, state: 'completed',
   }))
   const getTranscript = vi.fn(async () => ({ session, entries: [result.entries.user, result.entries.assistant] }))
-  const getPage = vi.fn(async () => narrative)
+  const getPage = vi.fn<StudioApi['narratives']['getPage']>(async () => narrative)
   const resumeRun = vi.fn(async () => ({ runId: 'continued', accepted: true }))
+  const acknowledgeRunCompletion = vi.fn(async (runId: string) => ({ runId, accepted: true }))
   const reportFailure = vi.fn()
   const input: Parameters<typeof useNarrativeRuntime>[0] = {
     api: {
       narratives: { create: createTimeline, appendInput, getPage },
       agentSessions: {
-        create: createSession, createRun, subscribeRun, getTranscript, resumeRun,
+        create: createSession, createRun, subscribeRun, getTranscript, resumeRun, acknowledgeRunCompletion,
       },
     } as unknown as StudioApi,
     storageScope: 'test', initialInput: '  Draft\n', selectedCardId: 'card', selectedAgentPresetId: 'profile',
@@ -93,10 +109,377 @@ function fixture() {
   }
   const render = () => { hooks.cursor = 0; return useNarrativeRuntime(input) }
   const event = { preventDefault: vi.fn() } as unknown as FormEvent
-  return { render, event, input, result, appendInput, createTimeline, createSession, createRun, subscribeRun, getTranscript, getPage, resumeRun, reportFailure }
+  return { render, event, input, result, appendInput, createTimeline, createSession, createRun, subscribeRun, getTranscript, getPage, resumeRun, acknowledgeRunCompletion, reportFailure }
 }
 
+describe('C-OCT-002 real HTTP/SSE ordering', () => {
+  it.each([true, false])('keeps the edited body and Head when event delivery is delayed: %s', async delayEvent => {
+    const { withStudioServer, callRpc, authenticatedFetch } = await import('../../integration/studio-server/helpers.js')
+    await withStudioServer(async port => {
+      type Page = Awaited<ReturnType<StudioApi['narratives']['getPage']>>
+      type Edit = Awaited<ReturnType<StudioApi['narratives']['editNode']>>
+      const card = await callRpc<{ card: { id: string } }>(port, 'application.createCard', { name: 'Read/write ordering' })
+      const created = await callRpc<Page>(port, 'application.createNarrativeTimeline', {
+        cardId: card.card.id, openingNodes: [{ content: 'Original' }],
+      })
+      const stream = await authenticatedFetch(port, '/extensions/events')
+      const reader = stream.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffered = ''
+      let editEvent: { payload: { changesetId: string; operations: DataOperation[] } } | undefined
+      const readEditEvent = async () => {
+        while (!editEvent) {
+          const { value, done } = await reader.read()
+          if (done) throw new Error('SSE closed before the edit commit')
+          buffered += decoder.decode(value, { stream: true })
+          let boundary: number
+          while ((boundary = buffered.indexOf('\n\n')) >= 0) {
+            const frame = buffered.slice(0, boundary)
+            buffered = buffered.slice(boundary + 2)
+            if (!frame.startsWith('event: data.changed\n')) continue
+            const data = frame.split('\n').find(line => line.startsWith('data: '))!
+            editEvent = JSON.parse(data.slice(6))
+          }
+        }
+        return editEvent
+      }
+      const f = fixture()
+      f.createTimeline.mockResolvedValue(created)
+      f.createSession.mockResolvedValue({ session: { ...f.result.agentSession, timelineId: created.timeline.id } })
+      vi.stubGlobal('EventSource', class {})
+      await f.render().createAgentSession('profile', true)
+      f.render()
+      const dispose = hooks.commitEffect?.()
+      const oldReadReady = Promise.withResolvers<Page>()
+      const releaseOldRead = Promise.withResolvers<void>()
+      const reads: Promise<void>[] = []
+      let holdRead = true
+      let editResult: Edit | undefined
+      f.input.runAction = async action => {
+        const pending = action()
+        reads.push(pending)
+        await pending
+        return true
+      }
+      f.getPage.mockImplementation(async params => {
+        const page = await callRpc<Page>(port, 'application.getNarrativePage', params)
+        if (holdRead) {
+          holdRead = false
+          oldReadReady.resolve(page)
+          await releaseOldRead.promise
+        }
+        return page
+      })
+      f.input.api.narratives.editNode = async params => {
+        const result = await callRpc<Edit>(port, 'application.editNarrativeNode', params)
+        editResult = result
+        if (!delayEvent) hooks.onCommit?.((await readEditEvent()).payload.operations)
+        return result
+      }
+      try {
+        hooks.narrativeConnected?.()
+        const oldPage = await oldReadReady.promise
+        expect(oldPage.nodes[0]?.body.raw).toBe('Original')
+        await f.render().editNarrativeNode(created.nodes[0]!.id, 'Edited')
+        const editedHead = f.render().branch?.headNodeId
+        expect(editedHead).not.toBe(oldPage.branch.headNodeId)
+        expect(f.render().nodes[0]?.body.raw).toBe('Edited')
+        const actualEvent = await readEditEvent()
+        expect(actualEvent.payload.changesetId).toBe(editResult?.mutation.changesetId)
+        expect(actualEvent.payload.operations).toContainEqual(expect.objectContaining({
+          entityType: 'narrative.branch', entityId: created.branch.id, kind: 'update',
+        }))
+        releaseOldRead.resolve()
+        await Promise.all(reads)
+        expect(f.render().nodes[0]?.body.raw).toBe('Edited')
+        expect(f.render().branch?.headNodeId).toBe(editedHead)
+        if (delayEvent) hooks.onCommit?.(actualEvent.payload.operations)
+        await Promise.all(reads)
+        expect(f.render().nodes[0]?.body.raw).toBe('Edited')
+        expect(f.reportFailure).not.toHaveBeenCalled()
+      } finally {
+        releaseOldRead.resolve()
+        dispose?.()
+        await reader.cancel()
+      }
+    })
+  })
+
+  it.each(['older', 'terminal'] as const)('rejects a %s page crossing a successful local edit', async readKind => {
+    vi.stubGlobal('EventSource', class {})
+    const f = fixture()
+    const original = { id: 'original', timelineId: 'timeline', stateRevisionId: 'state',
+      body: { format: 'loom-markdown.v1' as const, raw: 'Original' }, createdAt: '' }
+    const page = { ...f.result.narrative, branch: { ...f.result.narrative.branch, headNodeId: original.id }, nodes: [original] }
+    f.createTimeline.mockResolvedValue(page)
+    await f.render().createAgentSession('profile', true)
+    if (readKind === 'older') {
+      f.getPage.mockResolvedValueOnce({ ...page, nextCursor: 'older' })
+      f.render()
+      hooks.commitEffect?.()
+      hooks.narrativeConnected?.()
+      await vi.waitFor(() => expect(f.render().olderCursor).toBe('older'))
+    }
+    const readStarted = Promise.withResolvers<void>()
+    const readResult = Promise.withResolvers<Awaited<ReturnType<StudioApi['narratives']['getPage']>>>()
+    f.getPage.mockImplementationOnce(() => { readStarted.resolve(); return readResult.promise })
+    const pending = readKind === 'older' ? f.render().loadOlderNodes() : f.render().submitTurn(f.event)
+    await readStarted.promise
+    const target = f.render().nodes.at(-1)!
+    const edited = { ...target, id: 'edited', body: { ...target.body, raw: 'Edited' } }
+    f.input.api.narratives.editNode = async () => ({
+      timeline: page.timeline, branch: { ...page.branch, headNodeId: edited.id },
+      replacements: [{ previousNodeId: target.id, node: edited }], mutation: { changesetId: 'edit' },
+    })
+    await f.render().editNarrativeNode(target.id, 'Edited')
+    readResult.resolve({ ...page, nodes: [{ ...original, id: 'stale' }] })
+    await pending
+    expect(f.render().nodes.at(-1)?.body.raw).toBe('Edited')
+    expect(f.render().branch?.headNodeId).toBe(edited.id)
+    expect(f.render().nodes.some(item => item.id === 'stale')).toBe(false)
+    if (readKind === 'older') expect(f.render().olderCursor).toBe('older')
+    expect(f.reportFailure).not.toHaveBeenCalled()
+  })
+
+  it('allows an authoritative pending read to publish after an edit conflict', async () => {
+    vi.stubGlobal('EventSource', class {})
+    const f = fixture()
+    const original = { id: 'original', timelineId: 'timeline', stateRevisionId: 'state',
+      body: { format: 'loom-markdown.v1' as const, raw: 'Original' }, createdAt: '' }
+    const page = { ...f.result.narrative, branch: { ...f.result.narrative.branch, headNodeId: original.id }, nodes: [original] }
+    f.createTimeline.mockResolvedValue(page)
+    await f.render().createAgentSession('profile', true)
+    const readResult = Promise.withResolvers<Awaited<ReturnType<StudioApi['narratives']['getPage']>>>()
+    f.getPage.mockReturnValueOnce(readResult.promise)
+    f.input.api.narratives.editNode = async () => { throw new Error('Head conflict') }
+    f.render()
+    const dispose = hooks.commitEffect?.()
+    hooks.narrativeConnected?.()
+    await expect(f.render().editNarrativeNode(original.id, 'Unsaved')).rejects.toThrow('Head conflict')
+    const external = { ...original, id: 'external', body: { ...original.body, raw: 'External' } }
+    readResult.resolve({ ...page, branch: { ...page.branch, headNodeId: external.id }, nodes: [external] })
+    await vi.waitFor(() => expect(f.render().nodes[0]?.body.raw).toBe('External'))
+    expect(f.render().branch?.headNodeId).toBe(external.id)
+    dispose?.()
+  })
+})
+
 describe('Narrative first submission preparation', () => {
+  it('publishes the Inspector result after expired replay and acknowledges only received completion', async () => {
+    const f = fixture()
+    await f.render().createAgentSession('profile', true)
+    const projection = { messages: [{ role: 'user', content: 'Large compiled prompt' }] }
+    const result = { ...f.result, projection, promptBuildTrace: { marker: 'original-trace' } }
+    f.subscribeRun.mockResolvedValueOnce({
+      events: [{ type: 'completed', runId: 'run', result }],
+      nextCursor: 100, done: true, state: 'completed',
+      replayExpired: true, partialText: '', pendingApprovals: [],
+    } as Awaited<ReturnType<StudioApi['agentSessions']['subscribeRun']>>)
+    f.render().setAgentInput('Draft')
+    await f.render().submitAgentTurn(f.event)
+    expect(f.render().lastRun).toBe(result)
+    expect(f.acknowledgeRunCompletion).toHaveBeenCalledExactlyOnceWith('run')
+    expect(f.reportFailure).not.toHaveBeenCalled()
+  })
+  it('resynchronizes expired replay before accepting new deltas and restores pending approval', async () => {
+    const f = fixture()
+    await f.render().createAgentSession('profile', true)
+    const user = { id: 'committed-user', agentSessionId: 'session', runId: 'run', sequence: 1,
+      entry: { kind: 'message' as const, role: 'user' as const, content: 'Draft' }, createdAt: '' }
+    const assistant = { ...user, id: 'committed-assistant', sequence: 2,
+      entry: { kind: 'message' as const, role: 'assistant' as const, content: 'Saved step' } }
+    f.getTranscript.mockResolvedValue({ session: f.result.agentSession, entries: [user, assistant] })
+    const expired = { events: [], nextCursor: 100, done: false, state: 'running' as const,
+      replayExpired: true, partialText: 'Recovered',
+      pendingApprovals: [{ type: 'mutation-approval-requested', requestId: 'approval', preview: { value: 1 } }] }
+    let resolve!: (value: Awaited<ReturnType<StudioApi['agentSessions']['subscribeRun']>>) => void
+    f.subscribeRun.mockResolvedValueOnce({
+      events: [
+        { type: 'transcript-appended', entries: [{ ...assistant, id: 'stale-step', entry: { ...assistant.entry, content: 'Stale' } }] },
+        { type: 'text-delta', delta: 'OLD' },
+      ], nextCursor: 2, done: false, state: 'running',
+    } as Awaited<ReturnType<StudioApi['agentSessions']['subscribeRun']>>)
+      .mockResolvedValueOnce(expired)
+      .mockResolvedValueOnce({ events: [], nextCursor: 100, done: false, state: 'running' })
+      .mockImplementationOnce(() => new Promise(accept => { resolve = accept }))
+    f.render().setAgentInput('Draft')
+    const pending = f.render().submitAgentTurn(f.event)
+    await vi.waitFor(() => expect(f.subscribeRun).toHaveBeenCalledTimes(4))
+    expect(f.getTranscript).toHaveBeenCalledOnce()
+    expect(f.subscribeRun.mock.calls[3]).toEqual(['run', 100, 'session'])
+    expect(f.render().agentMessages.map(item => item.entry.content)).toEqual(['Draft', 'Saved step', 'Recovered'])
+    expect(f.render().activeAgentRun?.approval?.requestId).toBe('approval')
+    resolve({ events: [{ type: 'text-delta', delta: ' tail' }], nextCursor: 101, done: false, state: 'running' })
+    let finish!: (value: Awaited<ReturnType<StudioApi['agentSessions']['subscribeRun']>>) => void
+    f.subscribeRun.mockImplementationOnce(() => new Promise(accept => { finish = accept }))
+    await vi.waitFor(() => expect(f.subscribeRun).toHaveBeenCalledTimes(5))
+    expect(f.render().agentMessages.at(-1)?.entry.content).toBe('Recovered tail')
+    finish({ events: [{ type: 'suspended', runId: 'run' }], nextCursor: 102, done: true, state: 'suspended' })
+    await pending
+  })
+
+  it('does not restore expired partial text already committed during the Transcript read', async () => {
+    const f = fixture()
+    f.render().setAgentInput('Draft')
+    const assistant = { id: 'saved', agentSessionId: 'session', runId: 'run', sequence: 2,
+      entry: { kind: 'message' as const, role: 'assistant' as const, content: 'Snapshot text' }, createdAt: '' }
+    let resolveRead!: (value: Awaited<ReturnType<StudioApi['agentSessions']['getTranscript']>>) => void
+    f.getTranscript.mockImplementationOnce(() => new Promise(accept => { resolveRead = accept }))
+    let finish!: (value: Awaited<ReturnType<StudioApi['agentSessions']['subscribeRun']>>) => void
+    f.subscribeRun.mockResolvedValueOnce({
+      events: [], nextCursor: 100, done: false, state: 'running', replayExpired: true,
+      partialText: 'Snapshot text', pendingApprovals: [],
+    } as Awaited<ReturnType<StudioApi['agentSessions']['subscribeRun']>>)
+      .mockResolvedValueOnce({
+        events: [{ type: 'transcript-appended', entries: [assistant] }, { type: 'text-delta', delta: 'Next step' }],
+        nextCursor: 102, done: false, state: 'running',
+      } as Awaited<ReturnType<StudioApi['agentSessions']['subscribeRun']>>)
+      .mockImplementationOnce(() => new Promise(accept => { finish = accept }))
+    const pending = f.render().submitAgentTurn(f.event)
+    await vi.waitFor(() => expect(f.getTranscript).toHaveBeenCalledOnce())
+    resolveRead({ session: f.result.agentSession, entries: [assistant] })
+    await vi.waitFor(() => expect(f.subscribeRun).toHaveBeenCalledTimes(3))
+    expect(f.subscribeRun.mock.calls[1]).toEqual(['run', 100, 'session'])
+    expect(f.render().agentMessages.filter(item => item.id === 'saved')).toHaveLength(1)
+    expect(f.render().agentMessages.at(-1)?.entry.content).toBe('Next step')
+    finish({ events: [{ type: 'suspended', runId: 'run' }], nextCursor: 103, done: true, state: 'suspended' })
+    await pending
+  })
+
+  it('finishes expired completed replay through authoritative refresh without a completed result', async () => {
+    const f = fixture()
+    await f.render().createAgentSession('profile', true)
+    f.subscribeRun.mockResolvedValueOnce({
+      events: [], nextCursor: 100, done: true, state: 'completed',
+      replayExpired: true, partialText: '', pendingApprovals: [],
+    } as Awaited<ReturnType<StudioApi['agentSessions']['subscribeRun']>>)
+    f.render().setAgentInput('Draft')
+    await f.render().submitAgentTurn(f.event)
+    expect(f.render().activeAgentRun?.status).toBe('completed')
+    expect(f.render().runRecovery).toBeUndefined()
+    expect(f.render().agentMessages).toEqual([f.result.entries.user, f.result.entries.assistant])
+    expect(f.getTranscript).toHaveBeenCalledTimes(2)
+    expect(f.reportFailure).not.toHaveBeenCalled()
+    expect(f.createRun).toHaveBeenCalledOnce()
+    expect(f.subscribeRun).toHaveBeenCalledWith('run', 0, 'session')
+    expect(f.acknowledgeRunCompletion).not.toHaveBeenCalled()
+  })
+
+  it.each(['selection', 'api'])('ignores expired Transcript reload after %s changes', async change => {
+    const f = fixture()
+    f.render().setAgentInput('Draft')
+    let resolveRead!: (value: Awaited<ReturnType<StudioApi['agentSessions']['getTranscript']>>) => void
+    f.getTranscript.mockImplementationOnce(() => new Promise(accept => { resolveRead = accept }))
+    f.subscribeRun.mockResolvedValueOnce({
+      events: [], nextCursor: 100, done: false, state: 'running', replayExpired: true,
+      partialText: 'OLD', pendingApprovals: [{ type: 'mutation-approval-requested', requestId: 'old', preview: {} }],
+    } as Awaited<ReturnType<StudioApi['agentSessions']['subscribeRun']>>)
+    const pending = f.render().submitAgentTurn(f.event)
+    await vi.waitFor(() => expect(f.getTranscript).toHaveBeenCalledOnce())
+    if (change === 'selection') f.render().newAgentSession()
+    else f.input.api = { ...f.input.api }
+    const before = f.render().agentMessages
+    resolveRead({ session: f.result.agentSession, entries: [] })
+    await pending
+    expect(f.render().agentMessages).toEqual(before)
+    expect(f.render().activeAgentRun).toBeUndefined()
+    expect(f.subscribeRun).toHaveBeenCalledOnce()
+  })
+
+  it.each(['timeline', 'card', 'api'])('does not publish or navigate a late Session after %s changes', async change => {
+    const f = fixture()
+    await f.render().createAgentSession('profile', true)
+    let resolve!: (value: Awaited<ReturnType<StudioApi['agentSessions']['create']>>) => void
+    f.createSession.mockImplementationOnce(() => new Promise(accept => { resolve = accept }))
+    const pending = f.render().createAgentSession('profile', true)
+    if (change === 'timeline') f.render().resetToDraftTimeline()
+    if (change === 'card') f.input.selectedCardId = 'other'
+    if (change === 'api') f.input.api = { ...f.input.api }
+    f.render()
+    resolve({ session: { ...f.result.agentSession, id: 'late' } })
+    expect(await pending).toBeUndefined()
+    expect(f.render().agentSessions.some(item => item.id === 'late')).toBe(false)
+    expect(f.render().primarySession?.id).not.toBe('late')
+    if (change !== 'api') expect(f.render().allAgentSessions.some(item => item.id === 'late')).toBe(true)
+  })
+
+  it('keeps a committed Session without publishing when Card changes during first Timeline creation', async () => {
+    const f = fixture()
+    let resolve!: (value: typeof f.result.narrative) => void
+    f.createTimeline.mockImplementationOnce(() => new Promise(accept => { resolve = accept }))
+    const pending = f.render().createAgentSession('profile', true)
+    f.input.selectedCardId = 'other'
+    f.render()
+    resolve(f.result.narrative)
+    expect(await pending).toBeUndefined()
+    expect(f.createSession).toHaveBeenCalledOnce()
+    expect(f.render().timeline).toBeUndefined()
+    expect(f.render().allAgentSessions.map(item => item.id)).toContain('session')
+  })
+
+  it('isolates Session events and uses targeted reads only for scoped updates', async () => {
+    vi.stubGlobal('EventSource', class {})
+    const f = fixture()
+    await f.render().createAgentSession('profile', true)
+    const list = vi.fn(async () => ({ sessions: [f.result.agentSession] }))
+    const get = vi.fn(async () => ({ session: { ...f.result.agentSession, title: 'updated' } }))
+    f.input.api.agentSessions.list = list
+    f.input.api.agentSessions.get = get
+    f.render()
+    hooks.subscribingSessions = true
+    const dispose = hooks.sessionEffect?.()
+    const operation = (kind: string, timelineId = 'timeline'): DataOperation => ({
+      entityType: 'agent.session', entityId: 'session', kind,
+      scope: { store: 'narrative', entityType: 'narrative.timeline', entityId: timelineId },
+    })
+    hooks.sessionCommit?.([operation('update', 'other')])
+    expect(list).not.toHaveBeenCalled()
+    expect(get).not.toHaveBeenCalled()
+    hooks.sessionCommit?.([operation('update')])
+    await vi.waitFor(() => expect(f.render().agentSessions[0]?.title).toBe('updated'))
+    expect(get).toHaveBeenCalledWith('session')
+    expect(list).not.toHaveBeenCalled()
+    for (const kind of ['create', 'delete']) {
+      hooks.sessionCommit?.([operation(kind)])
+      await Promise.resolve()
+      await Promise.resolve()
+    }
+    hooks.connected?.()
+    await vi.waitFor(() => expect(list).toHaveBeenCalledTimes(3))
+    hooks.sessionCommit?.([{ entityType: 'agent.session', entityId: 'session', kind: 'update' }])
+    await vi.waitFor(() => expect(list).toHaveBeenCalledTimes(4))
+    dispose?.()
+  })
+
+  it('retains the loaded older boundary across latest-page events and terminal refresh', async () => {
+    vi.stubGlobal('EventSource', class {})
+    const f = fixture()
+    await f.render().createAgentSession('profile', true)
+    const node = (id: string) => ({ id, timelineId: 'timeline', stateRevisionId: 'state',
+      body: { format: 'loom-markdown.v1' as const, raw: id }, createdAt: 'now' })
+    const n1 = node('n1'), n2 = node('n2'), n3 = node('n3')
+    f.getPage.mockResolvedValueOnce({ ...f.result.narrative, nodes: [n3], nextCursor: 'page2' })
+    f.render()
+    const dispose = hooks.commitEffect?.()
+    hooks.onCommit?.([{ entityType: 'narrative.branch', entityId: 'branch' }])
+    await vi.waitFor(() => expect(f.render().olderCursor).toBe('page2'))
+    f.getPage.mockResolvedValueOnce({ ...f.result.narrative, nodes: [n2], nextCursor: 'page1' })
+    await f.render().loadOlderNodes()
+    f.getPage.mockResolvedValueOnce({ ...f.result.narrative, nodes: [n3], nextCursor: 'page2' })
+    hooks.onCommit?.([{ entityType: 'narrative.branch', entityId: 'branch' }])
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(f.render().olderCursor).toBe('page1')
+    f.getPage.mockResolvedValueOnce({ ...f.result.narrative, nodes: [n3], nextCursor: 'page2' })
+    await f.render().submitTurn(f.event)
+    expect(f.render().olderCursor).toBe('page1')
+    f.getPage.mockResolvedValueOnce({ ...f.result.narrative, nodes: [n1] })
+    await f.render().loadOlderNodes()
+    expect(f.getPage.mock.calls.at(-1)?.[0].cursor).toBe('page1')
+    expect(f.render().nodes.map(item => item.id)).toEqual(['n1', 'n2', 'n3'])
+    dispose?.()
+  })
+
   it('requires explicit primary creation before the first write, then binds it to the new Timeline', async () => {
     const storage = new Map<string, string>()
     vi.stubGlobal('localStorage', {

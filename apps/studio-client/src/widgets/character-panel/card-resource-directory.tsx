@@ -42,9 +42,14 @@ export function CardResourceDirectory(props: {
   const queryClient = useQueryClient()
   const mediaRevision = useCardMediaRevision()
   const card = useQuery({ queryKey: ['card-resource-directory', endpoint, cardId, 'card'], queryFn: () => api.cards.get(cardId) })
-  const rules = useQuery({ queryKey: ['card-resource-directory', endpoint, cardId, 'rules'], queryFn: () => api.textTransforms.listRules() })
+  const rules = useQuery({ queryKey: ['card-resource-directory', endpoint, cardId, 'rules'], queryFn: () => api.textTransforms.listRules({ kind: 'card', cardId }) })
   const scripts = useQuery({ queryKey: ['card-resource-directory', endpoint, cardId, 'scripts'], queryFn: () => api.loomScripts.list({ kind: 'card', cardId }) })
-  const definitions = useQuery({ queryKey: ['card-resource-directory', endpoint, cardId, 'state'], queryFn: () => api.states.listDefinitions() })
+  const definitionIds = card.data?.card.stateDefinitionIds ?? []
+  const definitions = useQuery({
+    queryKey: ['card-resource-directory', endpoint, cardId, 'state', definitionIds],
+    queryFn: () => api.states.listDefinitions(undefined, definitionIds),
+    enabled: Boolean(card.data),
+  })
   const extensions = useQuery({ queryKey: ['card-resource-directory', endpoint, cardId, 'extensions'], queryFn: () => api.extensions.list({ kind: 'card', cardId }) })
   const catalog = useQuery({ queryKey: ['card-resource-directory', endpoint, cardId, 'catalog'], queryFn: () => props.directoryApi!.scan(), enabled: Boolean(props.directoryApi) })
   const [location, setLocation] = useState<Location>({})
@@ -68,9 +73,9 @@ export function CardResourceDirectory(props: {
     enabled: payloadIds.length > 0,
   })
   const { ownedSettings, ownedPresets, references, extensionResources } = classifyCardPromptResources(current, props.resources)
-  const ownRules = (rules.data?.rules ?? []).filter(rule => rule.owner.kind === 'card' && rule.owner.cardId === cardId)
+  const ownRules = rules.data?.rules ?? []
   const ownScripts = scripts.data?.scripts ?? []
-  const stateDefinitions = (definitions.data?.definitions ?? []).filter(item => current?.stateDefinitionIds?.includes(item.id))
+  const stateDefinitions = definitions.data?.definitions ?? []
   const installs = extensions.data?.items ?? []
   const groups: CardResourceGroup[] = [
     { key: 'settings', label: t('context.authoring.settings'), entries: [

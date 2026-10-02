@@ -17,6 +17,7 @@ import { createPromptResourceStore } from '@loom-studio/application-data'
 import { createNarrativeStore } from '@loom-studio/application-data'
 import { createMemoryLogSink, createRootLogger } from '@loom-studio/logging'
 import { describe, expect, it, vi } from 'vitest'
+import { handleAgentsRpc } from '../../../apps/studio-server/src/rpc/handlers/application/agents.js'
 
 const readContextTool: ToolDefinition = {
   id: 'official/read_context',
@@ -62,6 +63,45 @@ const testContentTool: ToolDefinition = {
 }
 
 describe('Native Function Tool Loop', () => {
+  it('delivers a completed prompt beyond the replay budget until the Client acknowledges it', async () => {
+    const fixture = await createFixture({
+      execute: async () => ({ output: 'Unused.' }),
+      invokeChat: async () => ({
+        provider: 'test', model: 'test-model', text: 'Done.',
+        finishReason: 'stop', message: { role: 'assistant', content: 'Done.' },
+      }),
+    })
+    try {
+      const invoke = vi.spyOn(fixture.runtime, 'invokeAgentTurn')
+      const input = 'context '.repeat(75 * 1024)
+      const { runId } = await handleAgentsRpc(fixture.runtime, 'application.agent.run.create', {
+        agentSessionId: fixture.sessionId, input,
+      }) as { runId: string }
+      await vi.waitFor(async () => {
+        expect(await handleAgentsRpc(fixture.runtime, 'application.agent.run.state', { runId }))
+          .toMatchObject({ state: 'completed' })
+      })
+      const result = await invoke.mock.results[0]!.value
+      expect(Buffer.byteLength(JSON.stringify(result))).toBeGreaterThan(1024 * 1024)
+      const batch = await handleAgentsRpc(fixture.runtime, 'application.agent.run.subscribe', { runId, cursor: 0 })
+      expect(batch).toMatchObject({
+        done: true, state: 'completed', replayExpired: true,
+        events: [{ type: 'completed', result }],
+      })
+      expect(await handleAgentsRpc(fixture.runtime, 'application.agent.run.subscribe', { runId, cursor: 0 }))
+        .toEqual(batch)
+      expect(await handleAgentsRpc(fixture.runtime, 'application.agent.run.acknowledge-completion', { runId }))
+        .toMatchObject({ accepted: true })
+      expect(await handleAgentsRpc(fixture.runtime, 'application.agent.run.acknowledge-completion', { runId }))
+        .toMatchObject({ accepted: false })
+      expect(await handleAgentsRpc(fixture.runtime, 'application.agent.run.subscribe', { runId, cursor: 0 }))
+        .toMatchObject({ done: true, state: 'completed', replayExpired: true, events: [] })
+      const transcript = await fixture.runtime.getAgentTranscriptPage({ agentSessionId: fixture.sessionId })
+      expect(transcript.entries).toEqual(expect.arrayContaining([
+        expect.objectContaining({ entry: expect.objectContaining({ kind: 'message', role: 'assistant', content: 'Done.' }) }),
+      ]))
+    } finally { fixture.close() }
+  })
   it.each(['success', 'conflict', 'storage'] as const)('persists the official append ToolResult and real Narrative outcome (%s)', async scenario => {
     let steps = 0
     const requests: unknown[][] = []
@@ -630,14 +670,16 @@ describe('Native Function Tool Loop', () => {
     fixture.close()
   })
 
-  it('writes an aborted synthetic ToolResult before terminating the Run', async () => {
+  it.each(['user-stop', 'user-pause'])('terminates every persisted call without executing queued tools (%s)', async reason => {
     const controller = new AbortController()
     let markStarted!: () => void
     const started = new Promise<void>((resolve) => {
       markStarted = resolve
     })
+    let executions = 0
     const fixture = await createFixture({
       execute: async ({ invocation, signal }) => {
+        executions += 1
         markStarted()
         return (await new Promise((resolve, reject) => {
           if (signal.aborted)
@@ -662,6 +704,11 @@ describe('Native Function Tool Loop', () => {
               type: 'function',
               function: { name: 'read_context', arguments: '{"query":"wait"}' },
             },
+            {
+              id: 'provider-call-queued',
+              type: 'function',
+              function: { name: 'read_context', arguments: '{"query":"queued"}' },
+            },
           ],
         },
       }),
@@ -672,7 +719,7 @@ describe('Native Function Tool Loop', () => {
       { abortSignal: controller.signal },
     )
     await started
-    controller.abort('user-stop')
+    controller.abort(reason)
     await expect(turn).rejects.toMatchObject({ name: 'AbortError' })
     const entries = (
       await fixture.runtime.getAgentTranscriptPage({
@@ -688,12 +735,106 @@ describe('Native Function Tool Loop', () => {
         }),
         expect.objectContaining({
           kind: 'run-state',
-          state: 'aborted',
-          reason: 'user-stop',
+          state: reason === 'user-pause' ? 'suspended' : 'aborted',
+          reason,
         }),
       ]),
     )
+    expect(executions).toBe(1)
+    const invocations = entries.filter(entry => entry.kind === 'tool-invocation')
+    const results = entries.filter(entry => entry.kind === 'tool-result')
+    expect(results).toHaveLength(2)
+    expect(results.map(entry => entry.invocationId).sort()).toEqual(invocations.map(entry => entry.invocationId).sort())
     fixture.close()
+  })
+
+  it('rejects an overlapping direct Run before invoking the Provider and releases the Session after completion', async () => {
+    let release!: () => void
+    let started!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const providerStarted = new Promise<void>(resolve => { started = resolve })
+    let calls = 0
+    const fixture = await createFixture({
+      execute: ({ invocation }) => ({ invocationId: invocation.id, toolId: invocation.toolId, status: 'completed', content: [] }),
+      invokeChat: async () => {
+        calls += 1
+        started()
+        await gate
+        return { provider: 'test', model: 'test-model', text: 'Done.', finishReason: 'stop', message: { role: 'assistant', content: 'Done.' } }
+      },
+    })
+    try {
+      const first = fixture.runtime.invokeAgentTurn({ agentSessionId: fixture.sessionId, input: 'First' })
+      await providerStarted
+      await expect(fixture.runtime.invokeAgentTurn({ agentSessionId: fixture.sessionId, input: 'Overlap' }))
+        .rejects.toMatchObject({ code: 'agent.session_busy' })
+      expect(calls).toBe(1)
+      release()
+      await first
+      await fixture.runtime.invokeAgentTurn({ agentSessionId: fixture.sessionId, input: 'Next' })
+      expect(calls).toBe(2)
+    } finally {
+      release()
+      fixture.close()
+    }
+  })
+
+  it('resumes a paused multi-tool step with paired terminated calls and permits work handoff', async () => {
+    let started!: () => void
+    let release!: () => void
+    const toolStarted = new Promise<void>(resolve => { started = resolve })
+    const toolGate = new Promise<void>(resolve => { release = resolve })
+    let executions = 0
+    const requests: unknown[][] = []
+    const fixture = await createFixture({
+      execute: async ({ invocation }) => {
+        executions += 1
+        started()
+        await toolGate
+        return { invocationId: invocation.id, toolId: invocation.toolId, status: 'completed', content: [] }
+      },
+      invokeChat: async ({ request }) => {
+        requests.push(request.messages)
+        return requests.length === 1
+          ? {
+              provider: 'test', model: 'test-model', text: '', finishReason: 'tool_call',
+              message: {
+                role: 'assistant',
+                tool_calls: ['waiting', 'queued'].map(id => ({
+                  id, type: 'function', function: { name: 'read_context', arguments: '{"query":"wait"}' },
+                })),
+              },
+            }
+          : { provider: 'test', model: 'test-model', text: 'Recovered.', finishReason: 'stop', message: { role: 'assistant', content: 'Recovered.' } }
+      },
+    })
+    try {
+      const paused = await handleAgentsRpc(fixture.runtime, 'application.agent.run.create', {
+        agentSessionId: fixture.sessionId, input: 'Wait.',
+      }) as { runId: string }
+      await toolStarted
+      await handleAgentsRpc(fixture.runtime, 'application.agent.run.pause', { runId: paused.runId })
+      await expect.poll(async () => (await handleAgentsRpc(fixture.runtime, 'application.agent.run.state', { runId: paused.runId }) as { state: string }).state)
+        .toBe('suspended')
+      const resumed = await handleAgentsRpc(fixture.runtime, 'application.agent.run.resume', { runId: paused.runId }) as { runId: string; accepted: boolean }
+      expect(resumed.accepted).toBe(true)
+      await expect.poll(async () => (await handleAgentsRpc(fixture.runtime, 'application.agent.run.state', { runId: resumed.runId }) as { state: string }).state)
+        .toBe('completed')
+      expect(executions).toBe(1)
+      expect(requests[1]).toEqual(expect.arrayContaining([
+        expect.objectContaining({ role: 'tool', tool_call_id: 'waiting' }),
+        expect.objectContaining({ role: 'tool', tool_call_id: 'queued' }),
+      ]))
+      const page = await fixture.runtime.getAgentTranscriptPage({ agentSessionId: fixture.sessionId })
+      expect(page.entries.filter(entry => entry.entry.kind === 'message' && entry.entry.role === 'user')).toHaveLength(1)
+      expect(page.entries.map(entry => entry.entry)).toContainEqual({
+        kind: 'run-state', state: 'running', sourceRunId: paused.runId,
+      })
+      await fixture.runtime.appendAgentTranscriptEntries({
+        agentSessionId: fixture.sessionId, expectedEntryCount: page.session.entryCount,
+        entries: [{ entry: { kind: 'work-summary', content: 'Recovered without replaying old tools.' } }],
+      })
+    } finally { release(); fixture.close() }
   })
 
   it('parses a Content Tool despite Provider stop and replays its result as runtime user content', async () => {

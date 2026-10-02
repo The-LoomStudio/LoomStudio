@@ -38,7 +38,10 @@ async function setup() {
   const bundle: CardBundleFilesInput = {
     artifact: {
       schemaVersion: 4, artifactId: 'source', displayName: 'Card',
-      card: { name: 'Card', description: 'Description', opening: 'Opening', macros: { user: 'Player' } },
+      card: {
+        name: 'Card', description: 'Description', opening: 'Opening', macros: { user: 'Player' },
+        preset: { macroOptions: { tone: [{ id: 'quiet', label: 'Quiet', value: 'soft' }, { id: 'loud', label: 'Loud', value: 'bold' }] } },
+      },
       contextAssets: [{
         id: 'book', kind: 'module', label: 'World', category: 'setting',
         children: [{ id: 'entry', kind: 'entry', label: 'Entry', body: 'World text' }],

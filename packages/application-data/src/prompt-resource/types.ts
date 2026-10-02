@@ -201,6 +201,7 @@ export type PromptResourceTransaction = {
 }
 
 export type PromptResourceStore = {
+  hasResource(id: string): Promise<boolean>
   getResource(id: string, options?: { includeTombstone?: boolean }): Promise<PromptResource | null>
   getResourceMetadataAtVersion(id: string, version: number): Promise<JsonObject | null>
   listResources(input?: ListPromptResourcesInput): Promise<PromptResourcePage>

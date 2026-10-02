@@ -87,6 +87,8 @@ import {
 import { readAgentTurnVariables } from './narrative-runtime.js'
 import { inspectApplicationMacros, inspectPreparedMacros, variableContextFromInspection } from './macros-runtime.js'
 
+const executingSessions = new WeakMap<object, Set<string>>()
+
 type AgentsRuntimeContext = Pick<ApplicationRuntimeContext,
   | 'agentTools'
   | 'agents'
@@ -321,6 +323,15 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
     },
 
     invokeAgentTurn: async (input: InvokeAgentTurnInput, requestContext?: RuntimeRequestContext): Promise<InvokeAgentTurnResult> => {
+      const agents = requireAgents(ctx)
+      let executing = executingSessions.get(agents)
+      if (!executing) {
+        executing = new Set()
+        executingSessions.set(agents, executing)
+      }
+      if (executing.has(input.agentSessionId))
+        throw Object.assign(new Error('Agent Session already has an executing Run'), { code: 'agent.session_busy' })
+      executing.add(input.agentSessionId)
       const runId = requestContext?.agentRun?.runId ?? ctx.createId('run')
       const startedAt = performance.now()
       const progress: AgentRunProgress = { stage: 'preparation', providerStep: 0, toolCount: 0, suspended: false }
@@ -336,7 +347,6 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
         data: { ...references, outcome: 'running', detail: 'Agent Session transcript' },
       })
       try {
-        const agents = requireAgents(ctx)
         const prepared = await prepareAgentTurn(ctx, input, 'runtime', requestContext, runId)
         const {
           model,
@@ -419,6 +429,8 @@ export function createAgentsRuntimeMethods(ctx: AgentsRuntimeContext) {
           },
         })
         throw error
+      } finally {
+        executing.delete(input.agentSessionId)
       }
     },
 
@@ -1027,6 +1039,7 @@ async function prepareAgentTurn(
       const narrativeReader = createNarrativeReader({
         store: narratives, context: ctx.narrativeContext,
         timelineId: narrativePage.timeline.id, branchId: narrativePage.branch.id,
+        cardId: narrativePage.timeline.createdFrom?.cardId,
       })
       prompt.toolExecutionScope.narrative = {
         timelineId: narrativePage.timeline.id,

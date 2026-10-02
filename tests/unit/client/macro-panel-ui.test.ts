@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { StudioMacroPanel } from '../../../apps/studio-client/src/app/studio-macro-panel.js'
 import { MacroAuthoringDetail, MacroAuthoringExplorer, type MacroAuthoringController } from '../../../apps/studio-client/src/features/state-variables/ui/macro-authoring-panel.js'
 import { MacroInspectorPanel } from '../../../apps/studio-client/src/features/state-variables/ui/macro-inspector-panel.js'
+import { MacroEntryDetail } from '../../../apps/studio-client/src/features/state-variables/ui/macro-entry-detail.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 
 const t = createTranslator('zh-CN')
@@ -41,6 +42,24 @@ const inspection = {
 }
 
 describe('macro panel UI', () => {
+  it('keeps macro save/delete non-submitting and disabled while busy, with danger deletion', () => {
+    const html = renderToStaticMarkup(createElement(MacroEntryDetail, {
+      title: 'Macro', name: 'name', t, busy: true, dirty: true,
+      onSave: () => undefined, onDelete: () => undefined,
+    }))
+    const commands = [...html.matchAll(/<button\b[^>]*data-loom-ui-button=""[^>]*>/g)].map(match => match[0])
+    expect(commands).toHaveLength(2)
+    for (const command of commands) {
+      expect(command).toContain('disabled=""')
+      expect(command).toContain('type="button"')
+    }
+    expect(commands[0]).toContain('data-variant="danger"')
+    const clean = renderToStaticMarkup(createElement(MacroEntryDetail, {
+      title: 'Macro', name: 'name', t, dirty: false, onSave: () => undefined,
+    }))
+    expect(clean.match(/<button\b[^>]*data-loom-ui-button=""[^>]*>/)?.[0]).toContain('disabled=""')
+  })
+
   it('shows search and preset icon in the authoring tree, with shared underlined candidate inputs', () => {
     const explorer = renderToStaticMarkup(createElement(MacroAuthoringExplorer, { controller }))
     const detail = renderToStaticMarkup(createElement(MacroAuthoringDetail, { controller }))

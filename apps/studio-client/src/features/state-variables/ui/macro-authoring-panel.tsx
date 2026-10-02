@@ -1,6 +1,6 @@
-import { Bot, Braces, Boxes, Component, Plus, Search, Trash2, BookOpen } from 'lucide-react'
+import { Bot, Braces, Boxes, Component, Plus, Trash2, BookOpen } from 'lucide-react'
 import type { MacroOption, MacroOptions } from '@loom-studio/shared'
-import { TextInput } from '@loom-studio/ui'
+import { SearchField, TextInput } from '@loom-studio/ui'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import type { Translator } from '../../../shared/i18n/index.js'
@@ -92,7 +92,9 @@ export function useMacroAuthoring(sources: MacroAuthoringSource[], t: Translator
       const next = { ...prev, sourceRows: { ...prev.sourceRows }, baselines: { ...prev.baselines }, draftVersions: { ...prev.draftVersions } }
       for (const source of sources) {
         const key = draftKey(toRows(source.macros, source.macroOptions))
-        if (!next.baselines[source.id] || (source.version > (next.draftVersions[source.id] ?? 0))) {
+        const dirty = next.baselines[source.id] !== undefined
+          && next.baselines[source.id] !== draftKey(next.sourceRows[source.id] ?? [])
+        if (!dirty && (next.baselines[source.id] === undefined || source.version > (next.draftVersions[source.id] ?? 0))) {
           next.sourceRows[source.id] = toRows(source.macros, source.macroOptions)
           next.baselines[source.id] = key
           next.draftVersions[source.id] = source.version
@@ -231,16 +233,15 @@ export function MacroAuthoringExplorer(props: { controller: MacroAuthoringContro
       <div className={styles.stateAuthoringSectionHeader}>
         <span>{t('macroAuthoring.title')}</span>
       </div>
-      <label className={styles.macroInspectorSearch}>
-        <Search aria-hidden="true" size={14} />
-        <input
-          aria-label={t('macroAuthoring.search')}
-          placeholder={t('macroAuthoring.searchPlaceholder')}
-          type="search"
-          value={query}
-          onChange={event => setQuery(event.target.value)}
-        />
-      </label>
+      <SearchField
+        containerClassName={styles.macroInspectorSearch}
+        aria-label={t('macroAuthoring.search')}
+        placeholder={t('macroAuthoring.searchPlaceholder')}
+        clearLabel={t('context.search.clear')}
+        value={query}
+        onChange={event => setQuery(event.target.value)}
+        onClear={() => setQuery('')}
+      />
       <div className={styles.macroInspectorResults}>
         {nodes.length === 0 ? (
           <span className={styles.emptyState}>{search ? t('macroInspector.searchEmpty') : t('macroAuthoring.empty')}</span>

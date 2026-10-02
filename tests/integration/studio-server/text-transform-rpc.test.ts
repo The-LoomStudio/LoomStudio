@@ -2,6 +2,53 @@ import { describe, expect, it } from 'vitest'
 import { callRpc, withStudioServer } from './helpers.js'
 
 describe('Studio Server text transform RPC', () => {
+  it('round-trips owner, definition IDs and projection IDs with empty subsets and validated parameters', async () => {
+    await withStudioServer(async port => {
+      const { card } = await callRpc<{ card: { id: string } }>(port, 'application.createCard', { name: 'Subset' })
+      await callRpc(port, 'application.upsertTextTransformRule', {
+        ruleId: 'subset-rule',
+        rule: {
+          name: 'Subset', owner: { kind: 'card', cardId: card.id }, enabled: true, orderIndex: 0,
+          matcher: { kind: 'regex', pattern: 'raw', flags: 'g' },
+          effect: { kind: 'replace', replacement: 'display' }, targets: ['narrative'], phases: ['display'],
+        },
+      })
+      await expect(callRpc(port, 'application.listTextTransformRules', { owner: { kind: 'card', cardId: card.id } }))
+        .resolves.toMatchObject({ rules: [{ id: 'subset-rule' }] })
+      await expect(callRpc(port, 'application.listTextTransformRules', { owner: { kind: 'card', cardId: 'other' } }))
+        .resolves.toEqual({ rules: [] })
+      await expect(callRpc(port, 'application.listTextTransformRules', { owner: { kind: 'unknown' } })).rejects.toThrow()
+      await expect(callRpc(port, 'application.listTextTransformRules', { owner: { kind: 'card' } })).rejects.toThrow()
+      await callRpc(port, 'application.upsertStateDefinition', {
+        definitionId: 'subset-state',
+        definition: { kind: 'timeline-template', templateVersion: 1, schema: { type: 'object' }, initial: {} },
+      })
+      await expect(callRpc(port, 'application.listStateDefinitions', { ids: ['subset-state', 'missing'], kind: 'timeline-template' }))
+        .resolves.toMatchObject({ definitions: [{ id: 'subset-state' }] })
+      await expect(callRpc(port, 'application.listStateDefinitions', { ids: [] })).resolves.toEqual({ definitions: [] })
+      await expect(callRpc(port, 'application.listStateDefinitions', { ids: [1] })).rejects.toThrow()
+      const created = await callRpc<{ timeline: { id: string }; branch: { id: string } }>(port, 'application.createNarrativeTimeline', {
+        cardId: card.id, openingNodes: [{ content: 'raw first' }, { content: 'raw second' }],
+      })
+      const input = {
+        source: { kind: 'narrative', timelineId: created.timeline.id, branchId: created.branch.id }, phase: 'display',
+      }
+      const full = await callRpc<{ snapshot: { entries: Array<{ id: string }>; matches: Array<{ entryId: string }> } }>(port, 'application.projectHistory', input)
+      expect(full.snapshot.entries).toHaveLength(2)
+      const entryIds = [full.snapshot.entries[0]!.id]
+      await expect(callRpc(port, 'application.projectHistory', { ...input, entryIds })).resolves.toEqual({
+        snapshot: {
+          ...full.snapshot, entries: full.snapshot.entries.slice(0, 1),
+          matches: full.snapshot.matches.filter(match => entryIds.includes(match.entryId)),
+        },
+      })
+      await expect(callRpc(port, 'application.projectHistory', { ...input, entryIds: [] })).resolves.toEqual({
+        snapshot: { ...full.snapshot, entries: [], matches: [] },
+      })
+      await expect(callRpc(port, 'application.projectHistory', { ...input, entryIds: [1] })).rejects.toThrow()
+    })
+  })
+
   it('previews card opening Display rules without creating history or modifying documents', async () => {
     await withStudioServer(async port => {
       const { card } = await callRpc<{ card: { id: string } }>(port, 'application.createCard', { name: 'Opening' })

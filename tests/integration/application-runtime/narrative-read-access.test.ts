@@ -33,7 +33,7 @@ async function fixture(count = 45) {
   const provider = context.register({ id: 'test.memory', resolve: async () => published })
   const reader = createNarrativeReader({ store, context, ...scope })
   return {
-    ...story, engine, store, scope, context, reader, provider,
+    ...story, card, engine, store, scope, context, reader, provider,
     publish: (value: NarrativeContextProjection) => { published = value },
     append: async (raw: string) => store.appendNode({
       actor, ...scope, expectedHeadNodeId: (await store.getBranch(scope.branchId))!.headNodeId!,
@@ -43,6 +43,21 @@ async function fixture(count = 45) {
 }
 
 describe('host-owned Narrative read ranges', () => {
+  it('resolves private context with the trusted Card while keeping other Cards isolated', async () => {
+    const f = await fixture()
+    try {
+      f.provider.dispose()
+      f.context.register({
+        id: 'private.memory',
+        resolve: async () => ({ version: 'private', rawThroughNodeId: f.nodes[39]!.id, memory: { coveredThroughNodeId: f.nodes[31]!.id, entries: [{ id: 'private-summary', content: 'Private summary' }] } }),
+      }, { kind: 'card', cardId: f.card.id })
+      const request = { selection: { kind: 'tail' as const, count: 100 } }
+      const reader = createNarrativeReader({ store: f.store, context: f.context, ...f.scope, cardId: f.card.id })
+      expect((await reader.sample(request)).nodes.map(node => node.id)).toEqual(f.nodes.slice(32).map(node => node.id))
+      const other = createNarrativeReader({ store: f.store, context: f.context, ...f.scope, cardId: 'other-card' })
+      await expect(other.sample(request)).rejects.toMatchObject({ code: 'narrative.context_unconfigured' })
+    } finally { f.engine.close() }
+  })
   it('bounds counts, node endpoints and every continuation to the authorized interval', async () => {
     const f = await fixture(245)
     try {
@@ -180,6 +195,9 @@ describe('host-owned Narrative read ranges', () => {
   it.each(['content', 'json'] as const)('enforces active and approved history reads in the real %s CodeAct tool loop', async mode => {
     const f = await fixture()
     try {
+      const projection = (await f.context.resolve(f.scope))!
+      f.provider.dispose()
+      f.context.register({ id: 'private.memory', resolve: async () => projection }, { kind: 'card', cardId: f.card.id })
       const tools = createOfficialAgentToolRegistry()
       const toolId = mode === 'content' ? 'official/codeact' : 'official/codeact_json'
       let permitHistory = false

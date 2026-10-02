@@ -55,13 +55,17 @@ async function createPreset(
 }
 
 describe('application agent session lifecycle', () => {
-  it('deletes all Timeline-bound sessions across pages and their storage, preserving other sessions', async () => {
+  it.each(['timeline', 'card', 'batch'] as const)('deletes all Timeline-bound sessions across pages via %s and their storage, preserving other sessions', async mode => {
     const { engine, documents, runtime } = createTestRuntime()
     try {
       const { profile } = await createProfile(runtime)
       const { card } = await runtime.createCard({ name: 'Cascade' })
       const first = await runtime.createNarrativeTimeline({ cardId: card.id })
-      const other = await runtime.createNarrativeTimeline({ cardId: card.id })
+      const otherCard = await runtime.createCard({ name: 'Retained' })
+      const other = await runtime.createNarrativeTimeline({ cardId: otherCard.card.id })
+      const secondCard = mode === 'batch' ? await runtime.createCard({ name: 'Second' }) : undefined
+      const secondTimeline = secondCard ? await runtime.createNarrativeTimeline({ cardId: secondCard.card.id }) : undefined
+      const secondSession = secondTimeline ? await runtime.createAgentSession({ agentPresetId: profile.id, timelineId: secondTimeline.timeline.id }) : undefined
       const standalone = await runtime.createAgentSession({ agentPresetId: profile.id })
       const otherSession = await runtime.createAgentSession({ agentPresetId: profile.id, timelineId: other.timeline.id })
       const boundIds: string[] = []
@@ -81,7 +85,12 @@ describe('application agent session lifecycle', () => {
           expectedVersion: 'new', actor: { kind: 'extension', id: 'example.cascade' },
         })
       }
-      const removed = await runtime.deleteNarrativeTimeline({ timelineId: first.timeline.id })
+      const removed = mode === 'timeline'
+        ? await runtime.deleteNarrativeTimeline({ timelineId: first.timeline.id })
+        : mode === 'card'
+          ? await runtime.deleteCard({ cardId: card.id, includePlayData: true })
+          : await runtime.deleteCards({ cardIds: [card.id, secondCard!.card.id], includePlayData: true })
+      if (secondSession) await expect(runtime.getAgentSession({ agentSessionId: secondSession.session.id })).rejects.toThrow('Agent session not found')
       expect((await runtime.listAgentSessions({ timelineId: first.timeline.id })).sessions).toEqual([])
       expect((await runtime.listAgentSessions()).sessions.map(session => session.id).sort())
         .toEqual([standalone.session.id, otherSession.session.id].sort())
@@ -100,21 +109,35 @@ describe('application agent session lifecycle', () => {
     } finally { engine.close() }
   })
 
-  it('rolls back Timeline and earlier Session deletions when one bound Session cannot be deleted', async () => {
-    const { engine, runtime } = createTestRuntime()
+  it.each(['timeline', 'card', 'batch'] as const)('rolls back Timeline and earlier Session deletions via %s when one bound Session cannot be deleted', async mode => {
+    const { engine, documents, runtime } = createTestRuntime()
     try {
       const { profile } = await createProfile(runtime)
       const { card } = await runtime.createCard({ name: 'Rollback' })
       const { timeline } = await runtime.createNarrativeTimeline({ cardId: card.id })
       const blocked = await runtime.createAgentSession({ agentPresetId: profile.id, timelineId: timeline.id, title: 'blocked' })
       const earlierDeletion = await runtime.createAgentSession({ agentPresetId: profile.id, timelineId: timeline.id })
+      const secondCard = mode === 'batch' ? await runtime.createCard({ name: 'Second' }) : undefined
+      await documents.write({
+        id: 'rollback-session-storage', type: 'airp.extensionRecord',
+        content: { scope: { kind: 'agent-session', agentSessionId: earlierDeletion.session.id } },
+        expectedVersion: 'new', actor: { kind: 'system', id: 'test' },
+      })
       await engine.read(database => database.exec(`
         CREATE TRIGGER reject_bound_session_deletion
         BEFORE UPDATE OF tombstoned ON agent_sessions
         WHEN OLD.title = 'blocked' AND NEW.tombstoned = 1
         BEGIN SELECT RAISE(ABORT, 'session deletion refused'); END;
       `))
-      await expect(runtime.deleteNarrativeTimeline({ timelineId: timeline.id })).rejects.toThrow('session deletion refused')
+      const deletion = mode === 'timeline'
+        ? runtime.deleteNarrativeTimeline({ timelineId: timeline.id })
+        : mode === 'card'
+          ? runtime.deleteCard({ cardId: card.id, includePlayData: true })
+          : runtime.deleteCards({ cardIds: [card.id, secondCard!.card.id], includePlayData: true })
+      await expect(deletion).rejects.toThrow('session deletion refused')
+      expect(await documents.get(card.id)).not.toBeNull()
+      if (secondCard) expect(await documents.get(secondCard.card.id)).not.toBeNull()
+      expect(await documents.get('rollback-session-storage')).not.toBeNull()
       expect((await runtime.getNarrativeTimeline({ timelineId: timeline.id })).timeline.id).toBe(timeline.id)
       for (const session of [blocked.session, earlierDeletion.session]) {
         expect((await runtime.getAgentSession({ agentSessionId: session.id })).session.id).toBe(session.id)

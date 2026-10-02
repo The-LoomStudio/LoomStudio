@@ -336,21 +336,39 @@ async function handleExtensionEventStream(
     connection: 'keep-alive',
     'x-content-type-options': 'nosniff',
   })
-  response.write(': connected\n\n')
-  const subscription = events.subscribe(event => {
+  // ponytail: Bound each subscriber's queued output; reconnect reloads authoritative data.
+  const maximumBufferedBytes = 256 * 1024
+  let blockedTimer: ReturnType<typeof setTimeout> | undefined
+  const drained = () => {
+    clearTimeout(blockedTimer)
+    blockedTimer = undefined
+  }
+  response.on('drain', drained)
+  const write = (frame: string) => {
     if (response.destroyed || response.writableEnded) return
-    response.write(`event: ${event.name}\n`)
-    response.write(`id: ${event.meta.eventId}\n`)
-    response.write(`data: ${JSON.stringify(event as unknown as JsonValue)}\n\n`)
+    if (response.writableLength + Buffer.byteLength(frame) > maximumBufferedBytes) {
+      response.destroy()
+      return
+    }
+    if (!response.write(frame) && !blockedTimer) {
+      blockedTimer = setTimeout(() => response.destroy(), 30_000)
+      blockedTimer.unref()
+    }
+  }
+  write(': connected\n\n')
+  const subscription = events.subscribe(event => {
+    write(`event: ${event.name}\nid: ${event.meta.eventId}\ndata: ${JSON.stringify(event as unknown as JsonValue)}\n\n`)
   })
   const heartbeat = setInterval(() => {
-    if (!response.destroyed && !response.writableEnded) response.write(': heartbeat\n\n')
+    write(': heartbeat\n\n')
   }, 15_000)
   heartbeat.unref()
 
   await new Promise<void>((resolve, reject) => {
     response.once('close', () => {
       clearInterval(heartbeat)
+      drained()
+      response.off('drain', drained)
       Promise.resolve().then(() => subscription.dispose()).then(resolve, reject)
     })
   })

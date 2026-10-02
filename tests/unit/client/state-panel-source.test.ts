@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { isValidElement, type ComponentProps, type ReactElement } from 'react'
+import { Button } from '@loom-studio/ui'
 import { StateVariablesPanel } from '../../../apps/studio-client/src/features/state-variables/ui/state-variables-panel.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 import type { StateTarget } from '../../../apps/studio-client/src/entities/index.js'
@@ -80,7 +81,7 @@ function fixture() {
     const node = (fileTree.props.nodes as { capabilities?: { path: string } }[]).find(item => item.capabilities?.path === '/count')!
     const trailing = (fileTree.props.renderTrailing as (node: unknown) => unknown)(node)
     const input = elements(trailing).find(item => item.type === 'input')!
-    const save = all.find(item => item.type === 'button' && elements(item.props.children).some(child =>
+    const save = all.find(item => item.type === Button && elements(item.props.children).some(child =>
       child.type === 'span' && Array.isArray(child.props.children) && child.props.children[0] === t('stateVariables.saveChanges')))!
     return {
       input, save,
@@ -143,6 +144,7 @@ describe('State panel source isolation', () => {
     const f = fixture()
     f.render()
     await f.settle()
+    expect(f.controls().save.props).toMatchObject({ type: 'button', disabled: true })
     f.controls().edit(5)
     f.apply.mockRejectedValueOnce(new Error('Revision conflict'))
     f.controls().submit()

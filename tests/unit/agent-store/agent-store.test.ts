@@ -19,6 +19,54 @@ function createTestContext() {
 }
 
 describe('agent store', () => {
+  it('reads current Session liveness inside a shared transaction and rolls it back atomically', async () => {
+    const { engine, store, actor } = createTestContext()
+    try {
+      const { session } = await store.createSession({ actor, agentPresetId: 'preset' })
+      await expect(engine.transact({ actor }, async dataTx => {
+        const tx = store.transaction(dataTx)
+        expect(tx.getSession('missing')).toBeNull()
+        expect(tx.getSession(session.id)).toEqual(session)
+        tx.updateSession({ agentSessionId: session.id, title: 'In transaction' })
+        expect(tx.getSession(session.id)?.title).toBe('In transaction')
+        tx.deleteSession({ agentSessionId: session.id })
+        expect(tx.getSession(session.id)).toBeNull()
+        throw new Error('rollback')
+      })).rejects.toThrow('rollback')
+      expect(await store.getSession(session.id)).toEqual(session)
+      await store.deleteSession({ actor, agentSessionId: session.id })
+      await engine.transact({ actor }, async dataTx => {
+        const tx = store.transaction(dataTx)
+        expect(tx.getSession(session.id)).toBeNull()
+        const created = tx.createSession({ agentPresetId: 'preset' })
+        expect(tx.getSession(created.id)).toEqual(created)
+      })
+    } finally { engine.close() }
+  })
+
+  it('atomically rejects another executing Run and allows execution after the first ends', async () => {
+    const { engine, store, actor } = createTestContext()
+    try {
+      const { session } = await store.createSession({ actor, agentPresetId: 'preset' })
+      await store.appendEntries({ actor, agentSessionId: session.id, expectedEntryCount: 0,
+        entries: [{ runId: 'first', entry: { kind: 'run-state', state: 'running' } }],
+      })
+      await expect(store.appendEntries({ actor, agentSessionId: session.id, expectedEntryCount: 1,
+        entries: [
+          { runId: 'second', entry: { kind: 'message', role: 'user', content: 'Must not persist' } },
+          { runId: 'second', entry: { kind: 'run-state', state: 'running' } },
+        ],
+      })).rejects.toMatchObject({ code: 'agent.session_busy' })
+      expect((await store.getSession(session.id))?.entryCount).toBe(1)
+      await store.appendEntries({ actor, agentSessionId: session.id, expectedEntryCount: 1,
+        entries: [{ runId: 'first', entry: { kind: 'run-state', state: 'completed' } }],
+      })
+      await store.appendEntries({ actor, agentSessionId: session.id, expectedEntryCount: 2,
+        entries: [{ runId: 'second', entry: { kind: 'run-state', state: 'running' } }],
+      })
+      expect((await store.getSession(session.id))?.entryCount).toBe(3)
+    } finally { engine.close() }
+  })
   it('renames the version 5 Agent reference column without rebinding or rewriting history', async () => {
     const { engine, store, actor } = createTestContext()
     try {

@@ -312,7 +312,10 @@ describe('Loom Card ZIP', () => {
         name: 'World', description: 'Original description',
         media: { avatarAssetId: 'original' },
         macros: { difficulty: 'hard for {{user}}' },
-        preset: { system: 'System prompt', macros: { user: 'Player' } },
+        preset: {
+          system: 'System prompt', macros: { user: 'Player' },
+          macroOptions: { tone: [{ id: 'quiet', label: 'Quiet', value: 'soft' }, { id: 'loud', label: 'Loud', value: 'bold' }] },
+        },
         opening: { entries: [{ role: 'assistant', content: 'Opening text' }] },
         settingLayer: { entries: [{ id: 'legacy', content: 'Legacy text', enabled: true }] },
       },

@@ -2,10 +2,6 @@
 
 本目录用于跟踪**当前开放或周期性滚动审查的质量发现**。
 
-- [`client-server-api-audit-2026-10-02.md`](./client-server-api-audit-2026-10-02.md) — **前后端 API/IPC 专题**（4 项读取/通知范围优化候选；完整历史投影、引用查询、Card 子集与 Session 通知）。
-- [`memory-retention-audit-2026-10-02.md`](./memory-retention-audit-2026-10-02.md) — **内存专题**（3 项预算候选；SSE 背压、Run 重放缓存、Tokenizer 批量输入；未测真实堆峰值）。
-- [`ui-component-reuse-audit-2026-10-02.md`](./ui-component-reuse-audit-2026-10-02.md) — **UI 组件与 SCSS 复用专题**（4 家族、17 个源码候选实例；区分现有 API 可承载与交互差异，不是原生标签问题总数）。
-- [`full-repo-code-review-2026-10-02.md`](./full-repo-code-review-2026-10-02.md) — **本轮全仓审查**（1 个 P1、9 个 P2 确认发现，2 个待验证候选；只读审查，未实施修复）。
 - [`audit-follow-ups.md`](./audit-follow-ups.md) — **审查归档后续**（延期的远端 CI 与旧计划接续去向；已完成的修复账目不再留在 Workbench）。
 - [`state-subscription-for-extensions.md`](./state-subscription-for-extensions.md) — **扩展 State 变更订阅**（正式写入、回滚、默认值的通知及订阅过滤/清理已修复；The World 接入独立安排）。
 - [`extension-dev-hot-reload-enhancement.md`](./extension-dev-hot-reload-enhancement.md) — **插件开发态热重载机制增强**（待排期的低优先级开发体验改进）。
@@ -14,6 +10,8 @@
 
 > [!NOTE]
 > 历史审计快照统一位于 [`docs/archive/issues/`](../../archive/issues/)。归档只表示原审计基线已经冻结；当前仍需推进的问题必须在本索引或活跃 Plan 中重新登记。
+
+2026-10-02：[全仓](../../archive/issues/full-repo-code-review-2026-10-02.md)、[API/IPC](../../archive/issues/client-server-api-audit-2026-10-02.md)、[内存](../../archive/issues/memory-retention-audit-2026-10-02.md)、[UI 复用](../../archive/issues/ui-component-reuse-audit-2026-10-02.md)四份审查及配套探针已归档，代码修复和定向验证见[修复记录](../../archive/plans/audit-remediation-2026-10-02-plan.md)。人工视觉、真实 Provider 与生产 heap 收益未验证；前端固定内存基线按用户决定不扩大追查，不因归档宣称这些验收已通过。
 
 2026-09-24 本轮审查报告已归档：[前端16项](../../archive/issues/frontend-rendering-and-state-retention-audit-2026-09-21.md)全部关闭；[全仓19项](../../archive/issues/full-repo-code-review-2026-08-27.md)中18项收口，FR-006远端CI按用户决定延期，验收去向见[后续计划](./audit-follow-ups.md#deferred-ci-acceptance)。FR-007为用户接受当前UI、细节与读屏验证后续安排，不宣称读屏通过。归档沿用仓库现有本地留存政策。
 

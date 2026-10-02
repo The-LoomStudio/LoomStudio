@@ -1,6 +1,7 @@
 import { Box, Boxes, Braces, Component, FileCode2, Folder, FolderOpen, Link2, Plus, Save, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
+import { Button } from '@loom-studio/ui'
 import type { Card, CardStateTemplate } from '../../../entities/card.js'
 import type { JsonObject } from '../../../entities/common.js'
 import type { Translator } from '../../../shared/i18n/index.js'
@@ -123,9 +124,9 @@ export function StateAuthoringPanel(props: StateAuthoringPanelProps) {
     <section className={styles.panel} data-loom-component="state-authoring-panel">
       <header className={styles.intro}>
         <div><h2>{props.t('stateAuthoring.title')}</h2><p>{props.card.name} · v{versionRef.current ?? props.card.version}</p></div>
-        <button className={styles.primaryActionBtn} type="button" disabled={!dirty || saving || Boolean(sourceError)} onClick={() => void save()}>
+        <Button size="small" variant="ghost" type="button" disabled={!dirty || saving || Boolean(sourceError)} onClick={() => void save()}>
           <Save aria-hidden="true" size={14} /><span>{props.t('stateAuthoring.saveCard')}</span>
-        </button>
+        </Button>
       </header>
       {error ? <div className={styles.errorBanner} role="alert">{error}</div> : null}
       <div className={styles.stateAuthoringBody}>
@@ -361,7 +362,7 @@ function AuthoringDetail(props: { config: DraftConfig; selection: Selection; com
     if (selection.kind === 'contribution') commit({ ...config, stateContributionIds: config.stateContributionIds.filter((_, index) => index !== selection.index) })
     if (selection.kind === 'binding') commit({ ...config, timelineStateBindings: config.timelineStateBindings.filter((_, index) => index !== selection.index) })
   }
-  return <div className={styles.stateAuthoringEditor}><header className={styles.detailHeader}><div className={styles.headerTitle}><DetailIcon kind={selection.kind} /><h3>{detailTitle(selection.kind, t)}</h3></div><button className={styles.dangerActionBtn} type="button" onClick={remove}><Trash2 aria-hidden="true" size={14} /><span>{t('stateAuthoring.delete')}</span></button></header><div className={styles.stateAuthoringFields}>{renderFields(config, selection, commit, t)}</div></div>
+  return <div className={styles.stateAuthoringEditor}><header className={styles.detailHeader}><div className={styles.headerTitle}><DetailIcon kind={selection.kind} /><h3>{detailTitle(selection.kind, t)}</h3></div><Button size="small" variant="danger" type="button" onClick={remove}><Trash2 aria-hidden="true" size={14} /><span>{t('stateAuthoring.delete')}</span></Button></header><div className={styles.stateAuthoringFields}>{renderFields(config, selection, commit, t)}</div></div>
 }
 
 function renderFields(config: DraftConfig, selection: Exclude<Selection, { kind: 'source' }>, commit: (config: DraftConfig) => void, t: Translator) {

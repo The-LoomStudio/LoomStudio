@@ -852,15 +852,17 @@
 
 .profileEditor input,
 .profileEditor textarea {
-  width: 100%;
   padding: 6px 2px;
   font-size: var(--loom-font-size-3);
 }
 
 .profileEditor textarea {
   min-height: 7rem;
-  resize: vertical;
   line-height: var(--loom-line-height-body);
+}
+
+.profileEditor textarea:focus {
+  outline: none;
 }
 
 .deleteButton {

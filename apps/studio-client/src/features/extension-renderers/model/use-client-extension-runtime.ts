@@ -9,7 +9,6 @@ import { createClientExtensionHost, type ClientExtensionDataApi } from './client
 import type { ClientRendererHost } from '../../../shared/extension-renderer-runtime/client-renderer-host.js'
 import { createRendererSessionHost } from './renderer-session.js'
 import { extensionInstallationId, type ClientNotification, type ExtensionInstallationTarget } from '@loom-studio/extension-sdk'
-import { clientModuleKey } from './client-actions.js'
 
 export function createClientExtensionDataApi(api: Pick<StudioApi, 'extensionRuntime' | 'states' | 'textTransforms'>): ClientExtensionDataApi {
   return {
@@ -125,18 +124,21 @@ export function useClientExtensionRuntime(input: {
       void refresh()
     })
     let events: EventSource | undefined
+    const connected = () => {
+      invalidateCardMedia()
+      void refresh().then(async () => {
+        if (controller.signal.aborted) return
+        input.rendererHost.invalidate()
+        setConfigRevision(revision => revision + 1)
+        await host.notifyConfigsChanged()
+      })
+    }
     void refresh().then(() => {
       if (controller.signal.aborted || typeof EventSource === 'undefined') return
       events = new EventSource('/extensions/events')
-      events.addEventListener('open', invalidateCardMedia)
+      events.addEventListener('open', connected)
       events.addEventListener('directories.media.changed', invalidateCardMedia)
-      events.addEventListener('extensions.changed', event => {
-        const change = readExtensionChange(event)
-        const reload = change?.action === 'reloaded' && change.packageId && change.moduleId
-          ? [clientModuleKey(change.packageId, change.moduleId, change.target)]
-          : []
-        void refresh(reload)
-      })
+      events.addEventListener('extensions.changed', () => { void refresh() })
       events.addEventListener('extensions.data.changed', () => {
         input.rendererHost.invalidate()
         setConfigRevision(revision => revision + 1)
@@ -147,7 +149,7 @@ export function useClientExtensionRuntime(input: {
     return () => {
       controller.abort()
       unsubscribeScope()
-      events?.removeEventListener('open', invalidateCardMedia)
+      events?.removeEventListener('open', connected)
       events?.removeEventListener('directories.media.changed', invalidateCardMedia)
       events?.close()
       void host.dispose()
@@ -175,7 +177,7 @@ export function useClientExtensionRuntime(input: {
     },
     reload: async (packageId: string, moduleId: string, target?: ExtensionInstallationTarget) => {
       await input.api.extensions.reload(packageId, moduleId, target)
-      return await refresh([clientModuleKey(packageId, moduleId, target)])
+      return await refresh()
     },
     uninstall: async (packageId: string, version?: string) => {
       await input.api.extensions.uninstall(packageId, version)
@@ -213,14 +215,4 @@ function toClientPackages(packages: readonly ManagedExtensionPackage[]): Managed
     ))
     return modules.length > 0 ? [{ ...extensionPackage, modules }] : []
   })
-}
-
-function readExtensionChange(event: Event): { packageId?: string; moduleId?: string; action?: string; target?: ExtensionInstallationTarget } | undefined {
-  if (!(event instanceof MessageEvent) || typeof event.data !== 'string') return undefined
-  try {
-    const value = JSON.parse(event.data) as { payload?: { packageId?: string; moduleId?: string; action?: string; target?: ExtensionInstallationTarget } }
-    return value.payload
-  } catch {
-    return undefined
-  }
 }

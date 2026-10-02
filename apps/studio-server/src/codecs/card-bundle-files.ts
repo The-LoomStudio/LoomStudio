@@ -11,7 +11,7 @@ type CardFile = {
   config: Omit<Card, 'description' | 'opening' | 'settingLayer' | 'preset' | 'macros' | 'media'>
   description?: string
   macros?: string
-  preset?: { system?: string; macros?: string }
+  preset?: { system?: string; macros?: string; macroOptions?: string }
   opening?: { text: string } | { entries?: Array<{ role?: 'user' | 'assistant'; content: string }> }
   settingLayer?: { entries?: Array<Record<string, unknown> & { content: string }> }
 }
@@ -66,6 +66,7 @@ export function projectCardFiles(artifact: CardBundleArtifact, files: Record<str
     card.preset = {
       ...(preset.system !== undefined ? { system: text('preset/system.md', preset.system) } : {}),
       ...(preset.macros !== undefined ? { macros: json('macros/preset.json', preset.macros) } : {}),
+      ...(preset.macroOptions !== undefined ? { macroOptions: json('macros/preset-options.json', preset.macroOptions) } : {}),
     }
   }
   if (opening !== undefined) {
@@ -157,6 +158,7 @@ export function restoreCardFiles(index: CardFilesIndex, files: Map<string, Uint8
     card.preset = {
       ...(stored.preset.system !== undefined ? { system: text(stored.preset.system) } : {}),
       ...(stored.preset.macros !== undefined ? { macros: json<Record<string, string>>(stored.preset.macros) } : {}),
+      ...(stored.preset.macroOptions !== undefined ? { macroOptions: json<NonNullable<Card['preset']>['macroOptions']>(stored.preset.macroOptions) } : {}),
     }
   }
   if (stored.opening !== undefined) {
@@ -228,6 +230,7 @@ export async function loadCardResourceFiles(index: CardFilesIndex, load: (path: 
   if (card.macros !== undefined) await load(card.macros)
   if (card.preset?.system !== undefined) await load(card.preset.system)
   if (card.preset?.macros !== undefined) await load(card.preset.macros)
+  if (card.preset?.macroOptions !== undefined) await load(card.preset.macroOptions)
   if (card.opening !== undefined) {
     if ('text' in card.opening) await load(card.opening.text)
     else for (const entry of card.opening.entries ?? []) await load(entry.content)

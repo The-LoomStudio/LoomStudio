@@ -83,64 +83,6 @@
   }
 }
 
-.primaryActionBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 6px;
-  border: 0;
-  background: transparent;
-  color: var(--loom-color-text);
-  font-size: 12.5px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: color 0.12s ease, opacity 0.12s ease;
-
-  svg {
-    color: var(--loom-color-accent);
-    transition: color 0.12s ease;
-  }
-
-  &:hover:not(:disabled) {
-    color: var(--loom-color-accent);
-
-    svg {
-      color: var(--loom-color-accent);
-    }
-  }
-
-  &:active {
-    opacity: 0.75;
-  }
-
-  &:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-  }
-}
-
-.dangerActionBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 6px;
-  border: 0;
-  background: transparent;
-  color: var(--loom-color-text-subtle);
-  font-size: 12px;
-  cursor: pointer;
-  transition: color 0.12s ease;
-
-  &:hover:not(:disabled) {
-    color: var(--loom-color-danger, #ef4444);
-  }
-
-  &:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-  }
-}
-
 .masterNav {
   min-height: 0;
   height: 100%;
@@ -149,24 +91,6 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-}
-
-.navGroup {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 4px 8px;
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--loom-color-text-subtle);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
 }
 
 .navAddBtn {
@@ -181,68 +105,6 @@
 
   &:hover {
     color: var(--loom-color-accent);
-  }
-}
-
-.navItem {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 9px;
-  border: 0;
-  border-radius: var(--loom-radius-control);
-  background: transparent;
-  color: var(--loom-color-text);
-  font-size: 12.5px;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
-
-  &:hover {
-    background: var(--loom-color-surface-subtle);
-  }
-
-  &[aria-current='page'] {
-    background: var(--loom-color-surface-subtle);
-    color: var(--loom-color-accent);
-    font-weight: 500;
-
-    svg {
-      color: var(--loom-color-accent);
-    }
-  }
-
-  svg {
-    width: 15px;
-    height: 15px;
-    flex-shrink: 0;
-    color: var(--loom-color-text-subtle);
-  }
-
-  .navItemBody {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-
-    strong {
-      display: block;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      font-size: 12.5px;
-    }
-
-    small {
-      display: block;
-      font-size: 11px;
-      color: var(--loom-color-text-subtle);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
   }
 }
 
@@ -410,30 +272,8 @@
 }
 
 .macroInspectorSearch {
-  display: flex;
-  align-items: center;
-  gap: 7px;
   min-width: 0;
   margin: 10px 13px 6px;
-  padding: 0 3px 7px;
-  border-bottom: 1px solid var(--loom-color-divider);
-  color: var(--loom-color-text-subtle);
-
-  &:focus-within {
-    border-color: var(--loom-color-accent);
-    color: var(--loom-color-accent);
-  }
-
-  input {
-    width: 100%;
-    min-width: 0;
-    padding: 0;
-    border: 0;
-    outline: 0;
-    color: var(--loom-color-text);
-    background: transparent;
-    font: inherit;
-  }
 }
 
 .macroInspectorResults {

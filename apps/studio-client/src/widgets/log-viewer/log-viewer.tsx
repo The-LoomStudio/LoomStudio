@@ -1,5 +1,5 @@
 import type { LogLevel, LogRecord, MemoryLogSink } from '@loom-studio/logging'
-import { Checkbox, IconButton, SearchField } from '@loom-studio/ui'
+import { Checkbox, Dialog, IconButton, SearchField } from '@loom-studio/ui'
 import { ArrowDown, Copy, Download, Filter, RefreshCw, Search, Square, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLogFeed, type LogSource } from '../../features/log-viewer/model/use-log-feed.js'
@@ -43,7 +43,6 @@ export function LogViewer(props: {
   const [report, setReport] = useState<{ context: string; filtered: string }>()
   const [reportMode, setReportMode] = useState<'context' | 'filtered'>('context')
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
-  const dialog = useRef<HTMLDialogElement>(null)
   const history = useLogHistory(props.api, props.active && historyMode)
   const [level, setLevel] = useState<LogLevel | 'all'>('all')
   const [query, setQuery] = useState('')
@@ -102,9 +101,6 @@ export function LogViewer(props: {
       .filter(record => (!packageId || record.extension?.packageId === packageId) && (historyMode || !moduleId || record.extension?.moduleId === moduleId) && (historyMode || !eventFilter || record.event === eventFilter)),
     [records, query, level, technical, runId, packageId, moduleId, eventFilter, historyMode],
   )
-  useEffect(() => {
-    if (report) dialog.current?.showModal()
-  }, [report])
   // Identity survives polling and filtering; eviction cannot transfer an open row to another event.
   const keyedRecords = useMemo(() => visibleRecords.map(record => {
     let key = recordKeys.current.get(record)
@@ -187,7 +183,6 @@ export function LogViewer(props: {
   }
 
   function closeReport() {
-    dialog.current?.close()
     setReport(undefined)
   }
 
@@ -250,16 +245,19 @@ export function LogViewer(props: {
       {!historyMode && !followingLatest && <button className={styles.latest} data-level={unread.level} type="button" onClick={scrollToLatest}><ArrowDown size={14} />{unread.count ? props.t('logs.newRecords', { count: unread.count }) : props.t('logs.returnLatest')}</button>}
     </div>
     <footer className={styles.footer}>{props.t('logs.count', { count: visibleRecords.length })} · {props.t(historyMode ? 'logs.historyAvailability' : 'logs.currentAvailability')}</footer>
-    {report && <dialog ref={dialog} className={styles.report} aria-label={props.t('logs.report')} onCancel={event => { event.preventDefault(); closeReport() }}>
-      <header><strong>{props.t('logs.report')}</strong><IconButton aria-label={props.t('logs.close')} onClick={closeReport}><X size={16} /></IconButton></header>
+    {report && <Dialog open onClose={closeReport} className={styles.report} title={props.t('logs.report')}
+      headerActions={<IconButton aria-label={props.t('logs.close')} onClick={closeReport}><X size={16} /></IconButton>}
+      actions={<>
+        <button type="button" onClick={() => void copyReport()}><Copy size={14} />{props.t(copyState === 'copied' ? 'logs.copied' : 'logs.reportCopy')}</button>
+        <IconButton aria-label={props.t('logs.download')} onClick={() => downloadBlob(new Blob([report[reportMode]], { type: 'text/plain;charset=utf-8' }), 'loom-diagnostic.txt')}><Download size={15} /></IconButton>
+      </>}>
       <p>{props.t('logs.reportPrivacy')}</p>
       <select aria-label={props.t('logs.reportScope')} value={reportMode} onChange={event => { setReportMode(event.target.value as 'context' | 'filtered'); setCopyState('idle') }}>
         <option value="context">{props.t('logs.context')}</option><option value="filtered">{props.t('logs.filtered')}</option>
       </select>
       <textarea readOnly value={report[reportMode]} aria-label={props.t('logs.reportPreview')} />
       {copyState === 'failed' && <p role="alert">{props.t('logs.copyError')}</p>}
-      <footer><button type="button" onClick={() => void copyReport()}><Copy size={14} />{props.t(copyState === 'copied' ? 'logs.copied' : 'logs.reportCopy')}</button><IconButton aria-label={props.t('logs.download')} onClick={() => downloadBlob(new Blob([report[reportMode]], { type: 'text/plain;charset=utf-8' }), 'loom-diagnostic.txt')}><Download size={15} /></IconButton></footer>
-    </dialog>}
+    </Dialog>}
   </section>
 }
 

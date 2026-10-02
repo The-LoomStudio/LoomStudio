@@ -81,6 +81,9 @@ export function createPromptResourceStore(options: PromptResourceStoreOptions): 
   }
 
   return {
+    hasResource: id => engine.read(database => Boolean(database.prepare(
+      'SELECT 1 FROM prompt_resources WHERE id = ? AND tombstoned = 0',
+    ).get(id))),
     getResource: (id, readOptions) => engine.read(database => readResource(database, id, readOptions?.includeTombstone ?? false)),
     getResourceMetadataAtVersion: (id, version) => engine.read(database => readResourceMetadataAtVersion(database, id, version)),
     listResources: input => engine.read(database => listResources(database, input)),

@@ -35,6 +35,7 @@ export type ManagedExtensionModule = {
   moduleId: string
   runtimeKind: 'server' | 'client'
   entryUrl?: string
+  reloadId?: string
   requestedCapabilities?: Record<string, ClientJsonValue>
   requestedEventCapabilities?: import('@loom-studio/extension-sdk').EventCapabilityCategory[]
   requestedAssetCapabilities?: Array<'assets.read' | 'assets.publish'>

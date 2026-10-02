@@ -109,6 +109,62 @@ afterEach(() => {
 })
 
 describe('Client Extension Runtime Effect lifecycle', () => {
+  it('resynchronizes catalog and configs on reconnect without reloading unchanged modules', async () => {
+    class TestEvents extends EventTarget {
+      static instance: TestEvents
+      onerror?: () => void
+      constructor() { super(); TestEvents.instance = this }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', TestEvents)
+    const { runtime, list, setup } = createHarness()
+    const changed = vi.spyOn(runtime.host, 'notifyConfigsChanged')
+    const cleanup = setup() as () => void
+    try {
+      await drainTasks()
+      expect(hooks.loadModule).toHaveBeenCalledOnce()
+      TestEvents.instance.dispatchEvent(new Event('open'))
+      await drainTasks()
+      expect(list).toHaveBeenCalledTimes(2)
+      expect(changed).toHaveBeenCalledOnce()
+      expect(hooks.loadModule).toHaveBeenCalledOnce()
+      list.mockResolvedValueOnce({ items: [] })
+      TestEvents.instance.dispatchEvent(new Event('open'))
+      await drainTasks()
+      expect(runtime.host.summaries()).toEqual([])
+      expect(changed).toHaveBeenCalledTimes(2)
+      expect(hooks.loadModule).toHaveBeenCalledOnce()
+    } finally { cleanup(); await runtime.host.dispose() }
+  })
+  it('recovers a missed same-version reload from the catalog and does not reload it twice', async () => {
+    class TestEvents extends EventTarget {
+      static instance: TestEvents
+      onerror?: () => void
+      constructor() { super(); TestEvents.instance = this }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', TestEvents)
+    const { runtime, rendererHost, list, setup } = createHarness()
+    const cleanup = setup() as () => void
+    try {
+      await drainTasks()
+      const first = runtime.host.summaries()[0]?.instanceId
+      const reloaded = { ...extensionPackage, modules: extensionPackage.modules.map(module => ({ ...module, reloadId: 'reload-1' })) }
+      list.mockResolvedValue({ items: [reloaded] })
+      TestEvents.instance.dispatchEvent(new Event('open'))
+      await drainTasks()
+      const second = runtime.host.summaries()[0]?.instanceId
+      expect(second).not.toBe(first)
+      expect(hooks.loadModule).toHaveBeenCalledTimes(2)
+      expect(rendererHost.list('narrative.timeline.tail')).toHaveLength(1)
+      TestEvents.instance.dispatchEvent(new Event('extensions.changed'))
+      await drainTasks()
+      TestEvents.instance.dispatchEvent(new Event('open'))
+      await drainTasks()
+      expect(runtime.host.summaries()[0]?.instanceId).toBe(second)
+      expect(hooks.loadModule).toHaveBeenCalledTimes(2)
+    } finally { cleanup(); await runtime.host.dispose() }
+  })
   it('loads only the current Card catalog and ignores late responses without restarting global modules', async () => {
     const { runtime, rendererHost, list, setup } = createHarness()
     const a = deferred<{ items: ManagedClientExtensionPackage[] }>()

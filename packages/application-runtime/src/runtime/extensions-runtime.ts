@@ -1,4 +1,5 @@
 import type { DocumentRecord, DocumentTransaction, SqliteDocumentStore } from '@loom-studio/document-store'
+import type { SqliteDataTransaction } from '@loom-studio/data-engine'
 import type { JsonValue } from '@loom-studio/shared'
 import { extensionConfigDocumentId, extensionStorageTokenPattern } from '@loom-studio/extension-sdk'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
@@ -254,43 +255,42 @@ export function createExtensionsRuntimeMethods(ctx: ExtensionsRuntimeContext) {
       requestContext?: RuntimeRequestContext,
     ): Promise<{ config: ExtensionConfigEntry; mutation: MutationReceipt }> => {
       if (!extensionStorageTokenPattern.test(input.key)) throw new Error(`Extension Config key must be a stable token: ${input.key}`)
-      await validateApplicationExtensionStorageScope(ctx, input.scope, input.target)
       const id = extensionConfigDocumentId(input.packageId, input.scope, input.key, input.target)
-      const mutation = await executeDocumentMutation(
-        ctx.documents,
-        requestContext,
-        'application.upsertExtensionConfig',
-        async documents => {
-          const existing = await documents.get(id, { includeTombstone: true })
-          if (existing) assertApplicationExtensionConfigOwner(input.packageId, existing, input.target)
-          if (existing && !existing.meta.tombstone && input.expectedVersion === undefined) {
-            throw new Error(`expectedVersion is required when updating Extension Config: ${input.key}`)
-          }
-          const timestamp = ctx.now()
-          const createdAt = existing && !existing.meta.tombstone
-            ? toApplicationExtensionConfig(input.packageId, existing, input.target).createdAt
-            : timestamp
-          const result = await documents.write({
-            id,
-            type: applicationDocumentTypes.extensionConfig,
-            content: {
-              scope: structuredClone(input.scope),
-              key: input.key,
-              value: structuredClone(input.value),
-              createdAt,
-              updatedAt: timestamp,
-            },
-            expectedVersion: existing
-              ? existing.meta.tombstone ? existing.version : input.expectedVersion!
-              : 'new',
-            meta: { ownerExtensionId: input.packageId, ownerInstallationId: applicationStorageOwnerId(input.packageId, input.target) },
-          })
-          const document = result.documents[0]
-          if (!document) throw new Error(`Extension Config write returned no document: ${input.key}`)
-          return toApplicationExtensionConfig(input.packageId, document, input.target)
-        },
-      )
-      return { config: mutation.value, mutation: mutation.mutation }
+      const participant = requireDocumentParticipant(ctx)
+      const mutation = await ctx.dataEngine.transact({
+        ...promptResourceWriteContext(requestContext),
+        reason: 'application.upsertExtensionConfig',
+      }, async dataTx => participant.participateTransaction(dataTx, async documents => {
+        await validateApplicationExtensionStorageScope(ctx, input.scope, input.target, dataTx, documents)
+        const existing = await documents.get(id, { includeTombstone: true })
+        if (existing) assertApplicationExtensionConfigOwner(input.packageId, existing, input.target)
+        if (existing && !existing.meta.tombstone && input.expectedVersion === undefined) {
+          throw new Error(`expectedVersion is required when updating Extension Config: ${input.key}`)
+        }
+        const timestamp = ctx.now()
+        const createdAt = existing && !existing.meta.tombstone
+          ? toApplicationExtensionConfig(input.packageId, existing, input.target).createdAt
+          : timestamp
+        const result = await documents.write({
+          id,
+          type: applicationDocumentTypes.extensionConfig,
+          content: {
+            scope: structuredClone(input.scope),
+            key: input.key,
+            value: structuredClone(input.value),
+            createdAt,
+            updatedAt: timestamp,
+          },
+          expectedVersion: existing
+            ? existing.meta.tombstone ? existing.version : input.expectedVersion!
+            : 'new',
+          meta: { ownerExtensionId: input.packageId, ownerInstallationId: applicationStorageOwnerId(input.packageId, input.target) },
+        })
+        const document = result.documents[0]
+        if (!document) throw new Error(`Extension Config write returned no document: ${input.key}`)
+        return toApplicationExtensionConfig(input.packageId, document, input.target)
+      }))
+      return { config: mutation.value.value, mutation: { changesetId: mutation.commit.changesetId } }
     },
 
     importExtensionPackageResources: (input: ImportExtensionPackageResourcesInput, requestContext?: RuntimeRequestContext): Promise<ImportExtensionPackageResourcesResult> =>
@@ -417,24 +417,38 @@ function assertApplicationExtensionConfigOwner(packageId: string, document: Docu
   }
 }
 
-async function validateApplicationExtensionStorageScope(ctx: ExtensionsRuntimeContext, scope: ExtensionStorageScope, target?: ExtensionInstallationTarget): Promise<void> {
+async function validateApplicationExtensionStorageScope(
+  ctx: ExtensionsRuntimeContext,
+  scope: ExtensionStorageScope,
+  target?: ExtensionInstallationTarget,
+  dataTx?: SqliteDataTransaction,
+  documents: Pick<DocumentTransaction, 'get'> = ctx.documents,
+): Promise<void> {
   if (target?.kind === 'card' && (scope.kind === 'global' || (scope.kind === 'card' && scope.cardId !== target.cardId))) throw new Error('Storage scope is outside this Card installation')
   if (scope.kind === 'global') return
   if (scope.kind === 'card') {
-    const card = await ctx.documents.get(scope.cardId)
+    const card = await documents.get(scope.cardId)
     if (!card || card.type !== applicationDocumentTypes.cardSource || card.meta.tombstone) throw new Error(`Card not found: ${scope.cardId}`)
     return
   }
   if (scope.kind === 'timeline') {
-    const timeline = await ctx.narratives?.getTimeline(scope.timelineId)
+    const timeline = dataTx
+      ? ctx.narratives?.transaction(dataTx).getTimeline(scope.timelineId)
+      : await ctx.narratives?.getTimeline(scope.timelineId)
     if (!timeline || timeline.deletedAt) throw new Error(`Narrative Timeline not found: ${scope.timelineId}`)
     if (target?.kind === 'card' && timeline.createdFrom?.cardId !== target.cardId) throw new Error('Timeline is outside this Card installation')
     return
   }
-  const session = await ctx.agents?.getSession(scope.agentSessionId)
+  const session = dataTx
+    ? ctx.agents?.transaction(dataTx).getSession(scope.agentSessionId)
+    : await ctx.agents?.getSession(scope.agentSessionId)
   if (!session || session.deletedAt) throw new Error(`Agent Session not found: ${scope.agentSessionId}`)
   if (target?.kind === 'card') {
-    const timeline = session.timelineId ? await ctx.narratives?.getTimeline(session.timelineId) : undefined
+    const timeline = session.timelineId
+      ? dataTx
+        ? ctx.narratives?.transaction(dataTx).getTimeline(session.timelineId)
+        : await ctx.narratives?.getTimeline(session.timelineId)
+      : undefined
     if (!timeline || timeline.deletedAt || timeline.createdFrom?.cardId !== target.cardId) throw new Error('Session is outside this Card installation')
   }
 }

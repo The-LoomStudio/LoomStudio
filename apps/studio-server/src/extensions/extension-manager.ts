@@ -22,7 +22,7 @@ import type { JsonValue } from '@loom-studio/shared'
 import { extensionInstallationId, type ExtensionInstallationTarget, type ListExtensionInstallationsResult } from '@loom-studio/application-runtime'
 import { parseExtensionManifest } from '@loom-studio/extension-host'
 import { serializeError } from '@loom-studio/shared'
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import { readFile, realpath, stat } from 'node:fs/promises'
 import { extname, isAbsolute, relative, resolve, sep } from 'node:path'
@@ -36,6 +36,7 @@ import {
 import type { ExtensionModuleDesiredState, ExtensionStateStore } from './extension-state-store.js'
 
 type PackageCatalogRecord = {
+  reloadIds?: Record<string, string>
   archiveDigest?: string
   manifest: ExtensionManifest
   sources: ExtensionSource[]
@@ -301,7 +302,7 @@ export function createServerExtensionManager(options: {
       await importResources(input.packageId, undefined, { ...input, record })
       const existing = cardCatalog.get(extensionInstallationId(input.packageId, target))
       if (!existing) await discoverCardPackage(input.cardId, input.packageId)
-      return toManagedPackage(input.packageId, record, options.stateStore, installedRuntimes(options.host, target), target)
+      return toManagedPackage(input.packageId, packageRecord(input.packageId, target), options.stateStore, installedRuntimes(options.host, target), target)
     }),
 
     updateCardPackage: input => serialize(async () => {
@@ -502,14 +503,19 @@ export function createServerExtensionManager(options: {
       let runtime: ExtensionModuleSummary | undefined
       if (moduleManifest.runtime === 'server') {
         const current = findRuntime(options.host, packageId, moduleId, target)
-        runtime = current?.instance && (current.instance.state === 'active' || current.instance.state === 'degraded')
-          ? sameCapabilities(previous.grantedEventCapabilities, eventGrants)
-            && sameCapabilities(previous.grantedAssetCapabilities, assetGrants)
-            ? current
-            : await options.host.reload(packageId, moduleId, target)
-          : await options.host.activate(packageId, moduleId, target)
+        if (current?.instance && (current.instance.state === 'active' || current.instance.state === 'degraded')) {
+          if (sameCapabilities(previous.grantedEventCapabilities, eventGrants)
+            && sameCapabilities(previous.grantedAssetCapabilities, assetGrants)) {
+            runtime = current
+          } else {
+            runtime = await options.host.reload(packageId, moduleId, target)
+            moduleReloadIds(record)[moduleId] = randomUUID()
+          }
+        } else {
+          runtime = await options.host.activate(packageId, moduleId, target)
+        }
       }
-        return toManagedModule(packageId, record.manifest.version, moduleManifest, desired, runtime, target, record.archiveDigest)
+      return toManagedModule(packageId, record, moduleManifest, desired, runtime, target)
     }),
 
     disableModule: (packageId, moduleId, target) => serialize(async () => {
@@ -524,7 +530,7 @@ export function createServerExtensionManager(options: {
         grantedUiCapabilities: previous.grantedUiCapabilities ?? [],
       }, target)
       if (moduleManifest.runtime === 'server') await options.host.dispose(packageId, moduleId, target)
-      return toManagedModule(packageId, record.manifest.version, moduleManifest, desired, findRuntime(options.host, packageId, moduleId, target), target, record.archiveDigest)
+      return toManagedModule(packageId, record, moduleManifest, desired, findRuntime(options.host, packageId, moduleId, target), target)
     }),
 
     reloadModule: (packageId, moduleId, target) => serialize(async () => {
@@ -536,7 +542,8 @@ export function createServerExtensionManager(options: {
       const desired = readDesiredState(options.stateStore, packageId, moduleId, target)
       if (!desired.enabled) throw new Error(`Extension module is not enabled: ${moduleKey(packageId, moduleId)}`)
       const runtime = moduleManifest.runtime === 'server' ? await options.host.reload(packageId, moduleId, target) : undefined
-      return toManagedModule(packageId, record.manifest.version, moduleManifest, desired, runtime, target, record.archiveDigest)
+      moduleReloadIds(record)[moduleId] = randomUUID()
+      return toManagedModule(packageId, record, moduleManifest, desired, runtime, target)
     }),
 
     importPackageResources: packageId => serialize(() => importResources(packageId)),
@@ -724,12 +731,11 @@ function toManagedPackage(
     sourceKinds: [...new Set(record.sources.map(source => source.kind))],
     modules: (record.manifest.modules ?? []).map(moduleManifest => toManagedModule(
       packageId,
-      record.manifest.version,
+      record,
       moduleManifest,
       readDesiredState(stateStore, packageId, moduleManifest.id, target),
       runtimeByKey.get(moduleKey(packageId, moduleManifest.id)),
       target,
-      record.archiveDigest,
     )),
     resources: {
       loomScripts: record.manifest.contributes?.loomScripts ?? [],
@@ -769,18 +775,22 @@ function iconMediaType(filename: string): string {
   }
 }
 
+function moduleReloadIds(record: PackageCatalogRecord): Record<string, string> {
+  return record.reloadIds ??= Object.fromEntries((record.manifest.modules ?? []).map(module => [module.id, randomUUID()]))
+}
+
 function toManagedModule(
   packageId: string,
-  version: string,
+  record: PackageCatalogRecord,
   moduleManifest: ExtensionModuleManifest,
   desired: ExtensionModuleDesiredState,
   runtime?: ExtensionModuleSummary,
   target?: ExtensionInstallationTarget,
-  archiveDigest?: string,
 ): ManagedExtensionModule {
   return {
     packageId,
     moduleId: moduleManifest.id,
+    reloadId: moduleReloadIds(record)[moduleManifest.id]!,
     ...(target?.kind === 'card' ? { target } : {}),
     runtimeKind: moduleManifest.runtime,
     requestedCapabilities: Object.fromEntries(Object.entries(moduleManifest.capabilities ?? {}).filter((entry): entry is [string, JsonValue] => entry[1] !== undefined)),
@@ -797,7 +807,7 @@ function toManagedModule(
       ...(desired.updatedAt ? { updatedAt: desired.updatedAt } : {}),
     },
     contributions: moduleManifest.contributes as unknown as JsonValue ?? {},
-    ...(moduleManifest.runtime === 'client' ? { entryUrl: packageFileUrl(packageId, version, moduleManifest.entry, target, archiveDigest) } : {}),
+    ...(moduleManifest.runtime === 'client' ? { entryUrl: packageFileUrl(packageId, record.manifest.version, moduleManifest.entry, target, record.archiveDigest) } : {}),
     ...(runtime ? { runtime: runtime as unknown as JsonValue } : {}),
   }
 }

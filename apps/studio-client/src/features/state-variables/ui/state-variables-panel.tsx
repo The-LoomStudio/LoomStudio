@@ -5,7 +5,7 @@ import type { ClientJsonValue } from '@loom-studio/client-bridge'
 import type { StateSnapshot, StateTarget } from '../../../entities/index.js'
 import type { StudioApi } from '../../../shared/api/studio-api.js'
 import type { Translator } from '../../../shared/i18n/index.js'
-import type { MenuAction } from '@loom-studio/ui'
+import { Button, type MenuAction } from '@loom-studio/ui'
 import { FileTree, type FileTreeNode } from '../../../shared/ui/file-tree/file-tree.js'
 import { MasterDetailWorkbench } from '../../../shared/ui/master-detail-workbench/master-detail-workbench.js'
 import styles from './state-variables-panel.module.scss'
@@ -415,10 +415,10 @@ export function StateVariablesPanel(props: Props) {
                   <span>{props.t('stateVariables.openSource')}</span>
                 </button>
               ) : null}
-              <button className={styles.primaryActionBtn} disabled={!currentSnapshot || draftContextKey !== editContextKey || dirtyCount === 0 || saving} type="button" onClick={() => void saveAllDirtyProperties()}>
+              <Button size="small" variant="ghost" disabled={!currentSnapshot || draftContextKey !== editContextKey || dirtyCount === 0 || saving} type="button" onClick={() => void saveAllDirtyProperties()}>
                 <Save aria-hidden="true" size={13} />
                 <span>{props.t('stateVariables.saveChanges')}{saving ? '…' : dirtyCount > 0 ? ` (${dirtyCount})` : ''}</span>
-              </button>
+              </Button>
             </div>
           </header>
           <div className={styles.treeContainer} inert={saving} aria-busy={saving}>

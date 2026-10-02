@@ -73,7 +73,7 @@ import {
 } from './context.js'
 
 type CardsRuntimeContext = Pick<ApplicationRuntimeContext,
-  | 'blobs' | 'createId' | 'dataEngine' | 'documents' | 'mediaAssets' | 'narratives'
+  | 'agents' | 'blobs' | 'createId' | 'dataEngine' | 'documents' | 'mediaAssets' | 'narratives'
   | 'now' | 'promptResources' | 'sourceArtifacts' | 'states' | 'withCardDeletion' | 'withCardDeletions'
 >
 
@@ -196,6 +196,20 @@ async function deleteCards(
             for (const timelines of timelinesByCard.values()) {
               for (const timeline of timelines) {
                 narrativeTx!.deleteTimeline({ timelineId: timeline.id })
+                if (ctx.agents) {
+                  const agents = ctx.agents.transaction(dataTx)
+                  let page
+                  do {
+                    // Deletion invalidates cursors; consume the first live page again.
+                    page = agents.listSessions({ timelineId: timeline.id, limit: 100 })
+                    for (const session of page.sessions) {
+                      agents.deleteSession({ agentSessionId: session.id })
+                      await tombstoneExtensionStorageScope(documents, {
+                        kind: 'agent-session', agentSessionId: session.id,
+                      })
+                    }
+                  } while (page.nextCursor)
+                }
                 const scopeId = scopes.get(timeline.id)
                 if (scopeId) stateTx!.tombstoneScope({ scopeId })
                 const runtimeContext = await documents.get(timelineRuntimeContextId(timeline.id))

@@ -15,7 +15,6 @@ import type { PromptResourceNode } from '../cards/workspace-types.js'
 import { validateTextTransformRuleDraft, type TextTransformRuleDraft } from '../transforms/history-text.js'
 import { revertApplicationStateChangeset } from '../state/state.js'
 import type {
-  CardSourceContent,
   GetPromptResourceBindingsResult,
   CreatePromptResourceAssetInput,
   CreatePromptResourceInput,
@@ -81,16 +80,15 @@ export function createPromptRuntimeMethods(ctx: PromptRuntimeContext) {
     }),
 
     getPromptResourceBindings: async (input: GetPromptResourceInput): Promise<GetPromptResourceBindingsResult> => {
-      await readMappedResource(ctx.promptResources, input.resourceId)
+      if (!await ctx.promptResources.hasResource(input.resourceId)) throw new Error(`Prompt resource not found: ${input.resourceId}`)
       const [cards, mounts] = await Promise.all([
-        listDocuments<CardSourceContent>(ctx.documents, applicationDocumentTypes.cardSource),
-        ctx.promptResources.listSettingMounts(),
+        ctx.documents.listCardBindings({ type: applicationDocumentTypes.cardSource, resourceId: input.resourceId }),
+        ctx.promptResources.listSettingMounts({ settingResourceId: input.resourceId }),
       ])
       return {
         resourceId: input.resourceId,
-        cards: cards.filter(card => card.content.promptResourceIds?.includes(input.resourceId))
-          .map(card => ({ id: card.id, name: card.content.name })),
-        settingMounts: mounts.filter(mount => mount.settingResourceId === input.resourceId),
+        cards,
+        settingMounts: mounts,
       }
     },
 

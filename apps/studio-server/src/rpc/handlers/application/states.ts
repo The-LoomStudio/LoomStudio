@@ -12,6 +12,7 @@ import {
   readOptionalNumber,
   readOptionalObject,
   readOptionalString,
+  readOptionalStringArray,
   readString,
 } from '../../rpc-params.js'
 
@@ -37,7 +38,10 @@ export async function handleStatesRpc(
       }, context) as unknown as JsonValue
 
     case 'application.listStateDefinitions':
-      return await runtime.listStateDefinitions({ kind: readOptionalStateDefinitionKind(params, 'kind') }) as unknown as JsonValue
+      return await runtime.listStateDefinitions({
+        kind: readOptionalStateDefinitionKind(params, 'kind'),
+        ids: readOptionalStringArray(params, 'ids'),
+      }) as unknown as JsonValue
 
     case 'application.getStateDefinition':
       return await runtime.getStateDefinition({ definitionId: readString(params, 'definitionId') }) as unknown as JsonValue

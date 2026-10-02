@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { listTextTransformRuleDocuments } from '@loom-studio/application-data'
 import type { DocumentRecord } from '@loom-studio/document-store'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import type { ExtensionInstallationTarget } from '../types.js'
@@ -83,12 +84,15 @@ export async function sampleRuntimeNarrative(
 
 type TransformsRuntimeContext = Pick<ApplicationRuntimeContext, 'agents' | 'documents' | 'narratives' | 'now' | 'promptResources'>
 
-export function createTransformsRuntimeMethods(ctx: TransformsRuntimeContext) {
+export function createTransformsRuntimeMethods(ctx: TransformsRuntimeContext & Pick<ApplicationRuntimeContext, 'dataEngine'>) {
   return {
     sampleNarrative: (input: SampleNarrativeInput, signal?: AbortSignal) => sampleRuntimeNarrative(ctx, input, signal),
-    listTextTransformRules: async (): Promise<{ rules: TextTransformRuleEntry[] }> => ({
-      rules: (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule))
-        .map(document => toVersioned(document)),
+    listTextTransformRules: async (input?: { owner?: TextTransformRuleDraft['owner'] }): Promise<{ rules: TextTransformRuleEntry[] }> => ({
+      rules: input?.owner !== undefined
+        ? (await listTextTransformRuleDocuments<TextTransformRuleContent>(ctx.dataEngine, input.owner))
+          .map(document => ({ ...document.content, id: document.id, version: document.version }))
+        : (await listDocuments<TextTransformRuleContent>(ctx.documents, applicationDocumentTypes.textTransformRule))
+          .map(document => toVersioned(document)),
     }),
 
     getTextTransformRule: async (input: { ruleId: string }): Promise<{ rule: TextTransformRuleEntry }> => ({
@@ -230,10 +234,17 @@ export function createTransformsRuntimeMethods(ctx: TransformsRuntimeContext) {
       return { deleted: mutation.value, mutation: mutation.mutation }
     },
 
-    projectHistory: async (input: { source: HistorySource; phase: TextTransformPhase; consumerAgentSessionId?: string; extensionTarget?: ExtensionInstallationTarget }): Promise<{ snapshot: HistoryProjectionSnapshot }> => {
+    projectHistory: async (input: { source: HistorySource; phase: TextTransformPhase; entryIds?: string[]; consumerAgentSessionId?: string; extensionTarget?: ExtensionInstallationTarget }): Promise<{ snapshot: HistoryProjectionSnapshot }> => {
       input = structuredClone(input)
       await assertHistoryInstallationAccess(ctx, input)
-      return { snapshot: await projectRuntimeHistory(ctx, input.source, input.phase, input.consumerAgentSessionId) }
+      const snapshot = await projectRuntimeHistory(ctx, input.source, input.phase, input.consumerAgentSessionId)
+      if (input.entryIds !== undefined) {
+        const ids = new Set(input.entryIds)
+        snapshot.entries = snapshot.entries.filter(entry => ids.has(entry.id))
+        snapshot.matches = snapshot.matches.filter(match => ids.has(match.entryId))
+        snapshot.diagnostics = snapshot.diagnostics.filter(item => item.entryId === undefined || ids.has(item.entryId))
+      }
+      return { snapshot }
     },
 
     previewCardOpeningDisplay: async (input: { cardId: string; presetId?: string; text: string }) => {

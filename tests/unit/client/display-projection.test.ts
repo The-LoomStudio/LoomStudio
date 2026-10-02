@@ -77,7 +77,7 @@ describe('Display projection lifecycle', () => {
     const { project, render } = setup()
     const first = render()
     await first.query.fetch()
-    expect(project).toHaveBeenCalledWith({ source, phase: 'display' })
+    expect(project).toHaveBeenCalledWith({ source, phase: 'display', entryIds: ['1'] })
     expect(render().state?.entries.get('1')?.text).toBe('<p>Display</p>')
     const changed = render({ entries: [{ id: '1', text: 'edited' }] })
     await expect(changed.query.fetch()).rejects.toThrow('current message')

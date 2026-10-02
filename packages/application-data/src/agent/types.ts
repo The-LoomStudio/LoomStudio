@@ -116,6 +116,7 @@ export type AgentTranscriptEntryData =
     }
   | {
       kind: 'run-state'
+      sourceRunId?: string
       state:
         | 'created'
         | 'running'
@@ -188,6 +189,7 @@ export type AgentSessionPage = {
 }
 
 export type AgentTransaction = {
+  getSession(id: string): AgentSession | null
   createSession(
     input: Omit<CreateAgentSessionInput, keyof AgentWriteContext>,
   ): AgentSession

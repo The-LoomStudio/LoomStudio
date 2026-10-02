@@ -5,6 +5,7 @@ import { createId, nowIso } from '@loom-studio/shared'
 import { once } from 'node:events'
 import { ReadStream } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
+import { get, type IncomingMessage, type ServerResponse } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
@@ -23,7 +24,177 @@ async function listen(options: Omit<Parameters<typeof createStudioHttpServer>[0]
   return { server, origin, cookie }
 }
 
+async function openEventSocket({ server, origin, cookie }: Awaited<ReturnType<typeof listen>>) {
+  const serverResponse = Promise.withResolvers<ServerResponse>()
+  const clientResponse = Promise.withResolvers<IncomingMessage>()
+  const capture = (request: IncomingMessage, response: ServerResponse) => {
+    if (request.url === '/extensions/events') serverResponse.resolve(response)
+  }
+  server.on('request', capture)
+  const request = get(`${origin}/extensions/events`, { headers: { cookie }, agent: false }, stream => {
+    stream.pause()
+    stream.on('error', () => {})
+    clientResponse.resolve(stream)
+  })
+  request.on('error', clientResponse.reject)
+  try {
+    const [response, stream] = await Promise.all([serverResponse.promise, clientResponse.promise])
+    const closed = new Promise<void>(resolve => stream.once('close', resolve))
+    return { request, response, stream, closed }
+  } catch (error) {
+    request.destroy()
+    throw error
+  } finally {
+    server.off('request', capture)
+  }
+}
+
 describe('HTTP request lifecycle', () => {
+  it('bounds multi-frame SSE output under socket backpressure and disposes the slow subscriber exactly once', async () => {
+    type Events = NonNullable<Parameters<typeof createStudioHttpServer>[0]['extensionEvents']>
+    let emit!: Parameters<Events['subscribe']>[0]
+    const dispose = vi.fn()
+    const endpoint = await listen({
+      rpcRouter: { call: async () => null },
+      extensionEvents: { subscribe: handler => { emit = handler; return { dispose } } },
+    })
+    const client = await openEventSocket(endpoint)
+    const socket = client.response.socket!
+    const serverClosed = once(client.response, 'close')
+    const socketClosed = once(socket, 'close')
+    try {
+      expect(client.stream.statusCode).toBe(200)
+      socket.cork()
+      const framePayloadBytes = 16 * 1024
+      const maximumBufferedBytes = 256 * 1024
+      let frames = 0
+      let peakBytes = 0
+      while (!client.response.destroyed && frames < 32) {
+        emit({ name: 'data.changed', meta: { eventId: `frame-${frames}` }, data: { payload: 'x'.repeat(framePayloadBytes) } } as never)
+        frames += 1
+        peakBytes = Math.max(peakBytes, client.response.writableLength)
+        expect(client.response.writableLength).toBeLessThanOrEqual(maximumBufferedBytes)
+      }
+      expect(frames).toBeGreaterThan(1)
+      expect(frames * framePayloadBytes).toBeGreaterThanOrEqual(maximumBufferedBytes)
+      expect(peakBytes).toBeGreaterThan(maximumBufferedBytes - 2 * framePayloadBytes)
+      expect(client.response.destroyed).toBe(true)
+      await Promise.all([serverClosed, socketClosed])
+      client.stream.resume()
+      await client.closed
+      expect(client.stream.aborted).toBe(true)
+      await expect.poll(() => dispose.mock.calls.length).toBe(1)
+      emit({ name: 'data.changed', meta: { eventId: 'after-close' }, data: {} } as never)
+      client.request.destroy()
+      await endpoint.server.shutdown()
+      expect(dispose).toHaveBeenCalledOnce()
+    } finally {
+      client.request.destroy()
+      await endpoint.server.shutdown()
+    }
+  })
+
+  it('resumes SSE after a real socket drain and cancels the backpressure deadline', async () => {
+    type Events = NonNullable<Parameters<typeof createStudioHttpServer>[0]['extensionEvents']>
+    let emit!: Parameters<Events['subscribe']>[0]
+    const dispose = vi.fn()
+    const endpoint = await listen({
+      rpcRouter: { call: async () => null },
+      extensionEvents: { subscribe: handler => { emit = handler; return { dispose } } },
+    })
+    const client = await openEventSocket(endpoint)
+    const socket = client.response.socket!
+    try {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      socket.cork()
+      emit({ name: 'data.changed', meta: { eventId: 'blocked' }, data: { payload: 'x'.repeat(128 * 1024) } } as never)
+      expect(client.response.writableNeedDrain).toBe(true)
+      expect(client.response.destroyed).toBe(false)
+      vi.advanceTimersByTime(29_999)
+      expect(client.response.destroyed).toBe(false)
+      const drained = once(client.response, 'drain')
+      const received = Promise.withResolvers<void>()
+      let text = ''
+      client.stream.on('data', chunk => {
+        text += chunk.toString()
+        if (text.includes('id: after-drain\n')) received.resolve()
+      })
+      socket.uncork()
+      client.stream.resume()
+      await drained
+      expect(client.response.writableLength).toBe(0)
+      vi.advanceTimersByTime(30_000)
+      expect(client.response.destroyed).toBe(false)
+      expect(dispose).not.toHaveBeenCalled()
+      emit({ name: 'data.changed', meta: { eventId: 'after-drain' }, data: {} } as never)
+      await received.promise
+      expect(client.response.destroyed).toBe(false)
+      vi.useRealTimers()
+      client.request.destroy()
+      await client.closed
+      await endpoint.server.shutdown()
+      expect(dispose).toHaveBeenCalledOnce()
+    } finally {
+      vi.useRealTimers()
+      socket.uncork()
+      client.request.destroy()
+      await endpoint.server.shutdown()
+    }
+  })
+
+  it('disconnects sustained SSE socket backpressure at 30 seconds without resetting the deadline for later frames', async () => {
+    type Events = NonNullable<Parameters<typeof createStudioHttpServer>[0]['extensionEvents']>
+    let emit!: Parameters<Events['subscribe']>[0]
+    const dispose = vi.fn()
+    const endpoint = await listen({
+      rpcRouter: { call: async () => null },
+      extensionEvents: { subscribe: handler => { emit = handler; return { dispose } } },
+    })
+    const client = await openEventSocket(endpoint)
+    const socket = client.response.socket!
+    const serverClosed = once(client.response, 'close')
+    try {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      socket.cork()
+      emit({ name: 'data.changed', meta: { eventId: 'first' }, data: { payload: 'x'.repeat(128 * 1024) } } as never)
+      expect(client.response.writableNeedDrain).toBe(true)
+      vi.advanceTimersByTime(29_000)
+      emit({ name: 'data.changed', meta: { eventId: 'later' }, data: { payload: 'x'.repeat(16 * 1024) } } as never)
+      expect(client.response.writableLength).toBeLessThan(256 * 1024)
+      vi.advanceTimersByTime(999)
+      expect(client.response.destroyed).toBe(false)
+      vi.advanceTimersByTime(1)
+      expect(client.response.destroyed).toBe(true)
+      vi.useRealTimers()
+      await serverClosed
+      client.stream.resume()
+      await client.closed
+      await expect.poll(() => dispose.mock.calls.length).toBe(1)
+      await endpoint.server.shutdown()
+      expect(dispose).toHaveBeenCalledOnce()
+    } finally {
+      vi.useRealTimers()
+      client.request.destroy()
+      await endpoint.server.shutdown()
+    }
+  })
+
+  it('disconnects an oversized SSE subscriber and releases its subscription', async () => {
+    type Events = NonNullable<Parameters<typeof createStudioHttpServer>[0]['extensionEvents']>
+    let emit!: Parameters<Events['subscribe']>[0]
+    const dispose = vi.fn()
+    const { server, origin, cookie } = await listen({
+      rpcRouter: { call: async () => null },
+      extensionEvents: { subscribe: handler => { emit = handler; return { dispose } } },
+    })
+    try {
+      const response = await fetch(`${origin}/extensions/events`, { headers: { cookie } })
+      const body = response.text().catch(error => error)
+      emit({ name: 'data.changed', meta: { eventId: 'large' }, data: { payload: 'x'.repeat(256 * 1024) } } as never)
+      await body
+      await expect.poll(() => dispose.mock.calls.length).toBe(1)
+    } finally { await server.shutdown() }
+  })
   it('cancels RPCs and waits for their business work even after the client disconnects', async () => {
     const started = Promise.withResolvers<AbortSignal>()
     const release = Promise.withResolvers<void>()

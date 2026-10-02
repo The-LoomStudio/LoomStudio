@@ -86,7 +86,7 @@ type SessionsPanelProps = {
   timelines: NarrativeTimeline[]
   onOpenTimeline(timeline: NarrativeTimeline): void
   onOpenAgentSessionInSidebar?(session: AgentSession): void
-  onCreateAgentSession?(presetId: string, makeMain: boolean): Promise<AgentSession>
+  onCreateAgentSession?(presetId: string, makeMain: boolean): Promise<AgentSession | undefined>
   onSetPrimaryAgentSession?(session: AgentSession): Promise<void>
   onDeleteTimeline?(timelineId: string): Promise<boolean> | void
   onRenameTimeline?(timelineId: string, title: string): Promise<unknown> | void
@@ -448,6 +448,7 @@ export function SessionsPanel(props: SessionsPanelProps) {
     setCreateError(undefined)
     try {
       const session = await props.onCreateAgentSession(createPresetId, createAsMain)
+      if (!session) return
       setCreateOpen(false)
       setCreatePresetId('')
       setCreateAsMain(false)

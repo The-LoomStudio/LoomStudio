@@ -13,6 +13,7 @@ export function withDocumentStoreLogging(documents: DocumentStore, logger: Logge
   return {
     get: (id, options) => documents.get(id, options),
     list: input => documents.list(input),
+    listCardBindings: input => documents.listCardBindings(input),
     getChangeset: id => documents.getChangeset(id),
     subscribeCommits: observer => documents.subscribeCommits(observer),
     write: input => observe(

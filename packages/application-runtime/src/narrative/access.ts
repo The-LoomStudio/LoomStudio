@@ -21,6 +21,7 @@ export function createNarrativeReader(input: {
   context: NarrativeContextRegistry
   timelineId: string
   branchId: string
+  cardId?: string
 }) {
   const scope = { timelineId: input.timelineId, branchId: input.branchId }
   return {
@@ -31,7 +32,7 @@ export function createNarrativeReader(input: {
     ): Promise<NarrativeSampleResult> {
       const selected = structuredClone(request)
       signal?.throwIfAborted()
-      const published = await input.context.resolve(scope)
+      const published = await input.context.resolve({ ...scope, cardId: input.cardId })
       if (!published) throw Object.assign(new Error('No default Narrative context source is configured'), { code: 'narrative.context_unconfigured' })
       const page = await input.store.getPage({ ...scope, limit: 1 })
       signal?.throwIfAborted()

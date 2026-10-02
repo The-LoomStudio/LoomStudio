@@ -1,8 +1,197 @@
 import type { ApplicationRuntime, RuntimeRequestContext } from '@loom-studio/application-runtime'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { handleAgentsRpc } from '../../../apps/studio-server/src/rpc/handlers/application/agents.js'
 
 describe('application Agent Run RPC', () => {
+  it('protects undelivered completion across byte and metadata pressure, but expires it', async () => {
+    vi.useFakeTimers()
+    const largeResult = { runId: 'large', projection: { text: 'context '.repeat(1200 * 1024) } }
+    const runtime = {
+      invokeAgentTurn: async (input: { agentSessionId: string }, context: RuntimeRequestContext) =>
+        input.agentSessionId === 'large'
+          ? { ...largeResult, runId: context.agentRun!.runId }
+          : { runId: context.agentRun!.runId, entries: {}, mutation: {} },
+    } as unknown as ApplicationRuntime
+    try {
+      const original = await handleAgentsRpc(runtime, 'application.agent.run.create', { agentSessionId: 'large', input: 'Write' }) as { runId: string }
+      await vi.advanceTimersByTimeAsync(0)
+      for (let index = 0; index < 130; index++) {
+        const done = await handleAgentsRpc(runtime, 'application.agent.run.create', { agentSessionId: `delivered-${index}`, input: 'Write' }) as { runId: string }
+        await vi.advanceTimersByTimeAsync(0)
+        await handleAgentsRpc(runtime, 'application.agent.run.acknowledge-completion', { runId: done.runId })
+      }
+      expect(await handleAgentsRpc(runtime, 'application.agent.run.subscribe', { runId: original.runId, cursor: 0 }))
+        .toMatchObject({
+          state: 'completed', replayExpired: true,
+          events: [{ type: 'completed', result: { projection: largeResult.projection } }],
+        })
+      await vi.advanceTimersByTimeAsync(120_000)
+      expect(await handleAgentsRpc(runtime, 'application.agent.run.subscribe', { runId: original.runId, cursor: 0 }))
+        .toMatchObject({ state: 'completed', replayExpired: true, events: [] })
+    } finally { vi.useRealTimers() }
+  })
+  it('keeps the original checkpoint when resume preparation fails and retries from the failed continuation', async () => {
+    let attempts = 0
+    let recovered = false
+    const runtime = {
+      invokeAgentTurn: async (input: { activationFacts?: unknown }, context: RuntimeRequestContext) => {
+        attempts += 1
+        if (attempts === 1) {
+          await new Promise<void>((_resolve, reject) => {
+            context.abortSignal!.addEventListener('abort', () => {
+              context.agentRun!.onSuspended!({
+                sourceRunId: context.agentRun!.runId,
+                messages: [{ role: 'user', content: 'Original checkpoint' }],
+                userEntry: { id: 'user', agentSessionId: 'resume', sequence: 1, entry: { kind: 'message', role: 'user', content: 'Original checkpoint' }, createdAt: '2026-10-02T00:00:00Z' },
+              })
+              reject(new Error('paused'))
+            }, { once: true })
+          })
+        }
+        if (attempts === 2) throw new Error('Temporary preparation failure')
+        recovered = context.agentRun!.continuation!.messages[0]?.content === 'Original checkpoint'
+          && JSON.stringify(input.activationFacts) === '{"original":true}'
+        return { runId: context.agentRun!.runId, entries: {}, mutation: {} }
+      },
+    } as unknown as ApplicationRuntime
+    const { runId } = await handleAgentsRpc(runtime, 'application.agent.run.create', {
+      agentSessionId: 'resume', input: 'Original checkpoint', activationFacts: { original: true },
+    }) as { runId: string }
+    await handleAgentsRpc(runtime, 'application.agent.run.pause', { runId })
+    await new Promise<void>(resolve => setImmediate(resolve))
+    const failed = await handleAgentsRpc(runtime, 'application.agent.run.resume', { runId }) as { runId: string }
+    await new Promise<void>(resolve => setImmediate(resolve))
+    expect(await handleAgentsRpc(runtime, 'application.agent.run.state', { runId: failed.runId })).toMatchObject({ state: 'failed' })
+    const retry = await handleAgentsRpc(runtime, 'application.agent.run.resume', { runId: failed.runId }) as { runId: string }
+    expect(retry.runId).not.toBe(failed.runId)
+    expect(recovered).toBe(true)
+    expect(attempts).toBe(3)
+  })
+  it('rejects overlapping RPC creation while allowing another Session to execute', async () => {
+    let release!: () => void
+    const pending = new Promise<void>(resolve => { release = resolve })
+    let invocations = 0
+    const runtime = {
+      invokeAgentTurn: async (_input: unknown, context: RuntimeRequestContext) => {
+        invocations += 1
+        await pending
+        return { runId: context.agentRun!.runId, entries: {}, mutation: {} }
+      },
+    } as unknown as ApplicationRuntime
+    try {
+      await handleAgentsRpc(runtime, 'application.agent.run.create', { agentSessionId: 'same', input: 'First' })
+      await expect(handleAgentsRpc(runtime, 'application.agent.run.create', { agentSessionId: 'same', input: 'Overlap' }))
+        .rejects.toMatchObject({ code: 'agent.session_busy' })
+      await handleAgentsRpc(runtime, 'application.agent.run.create', { agentSessionId: 'other', input: 'Concurrent' })
+      expect(invocations).toBe(2)
+    } finally { release() }
+  })
+
+  it('protects a paused checkpoint through replay expiry and completed-Run eviction', async () => {
+    vi.useFakeTimers()
+    let resumed = false
+    const runtime = {
+      invokeAgentTurn: async (input: { agentSessionId: string }, context: RuntimeRequestContext) => {
+        if (input.agentSessionId === 'paused' && !context.agentRun!.continuation) {
+          await new Promise<void>((_resolve, reject) => {
+            context.abortSignal!.addEventListener('abort', () => {
+              context.agentRun!.onSuspended!({
+                sourceRunId: context.agentRun!.runId, messages: [{ role: 'user', content: 'Keep checkpoint' }],
+                userEntry: { id: 'user', agentSessionId: 'paused', sequence: 1, entry: { kind: 'message', role: 'user', content: 'Keep checkpoint' }, createdAt: '2026-10-02T00:00:00Z' },
+              })
+              reject(new Error('paused'))
+            }, { once: true })
+          })
+        }
+        if (input.agentSessionId === 'paused') resumed = context.agentRun!.continuation!.messages[0]?.content === 'Keep checkpoint'
+        return { runId: context.agentRun!.runId, entries: {}, mutation: {} }
+      },
+    } as unknown as ApplicationRuntime
+    try {
+      const { runId } = await handleAgentsRpc(runtime, 'application.agent.run.create', { agentSessionId: 'paused', input: 'Keep checkpoint' }) as { runId: string }
+      await handleAgentsRpc(runtime, 'application.agent.run.pause', { runId })
+      await vi.advanceTimersByTimeAsync(120_000)
+      for (let index = 0; index < 130; index++) {
+        const done = await handleAgentsRpc(runtime, 'application.agent.run.create', { agentSessionId: `done-${index}`, input: 'Finish' }) as { runId: string }
+        await Promise.resolve()
+        await Promise.resolve()
+        await Promise.resolve()
+        await handleAgentsRpc(runtime, 'application.agent.run.acknowledge-completion', { runId: done.runId })
+      }
+      expect(await handleAgentsRpc(runtime, 'application.agent.run.resume', { runId })).toMatchObject({ accepted: true, sourceRunId: runId })
+      expect(resumed).toBe(true)
+    } finally { vi.useRealTimers() }
+  })
+  it('bounds long-run replay and returns an explicit live snapshot for an expired cursor', async () => {
+    let emit!: NonNullable<RuntimeRequestContext['agentRun']>['onEvent']
+    let release!: () => void
+    const runtime = {
+      invokeAgentTurn: async (_input: unknown, context: RuntimeRequestContext) => {
+        emit = context.agentRun!.onEvent
+        await new Promise<void>(resolve => { release = resolve })
+        return { runId: context.agentRun!.runId, entries: {}, mutation: {} } as never
+      },
+    } as unknown as ApplicationRuntime
+    const { runId } = await handleAgentsRpc(runtime, 'application.agent.run.create', { agentSessionId: 'large', input: 'Write' }) as { runId: string }
+    try {
+      const delta = 'x'.repeat(8_192)
+      for (let index = 0; index < 200; index++)
+        emit({ type: 'text-delta', runId, providerRunId: 'provider', providerStep: 1, delta })
+      const reset = await handleAgentsRpc(runtime, 'application.agent.run.subscribe', { runId, cursor: 0 }) as {
+        replayExpired: boolean; partialText: string; events: unknown[]; nextCursor: number
+      }
+      expect(reset).toMatchObject({ replayExpired: true, events: [], nextCursor: 201 })
+      expect(reset.partialText).toBe(delta.repeat(200))
+      expect(await handleAgentsRpc(runtime, 'application.agent.run.subscribe', { runId, cursor: reset.nextCursor }))
+        .toMatchObject({ events: [], nextCursor: 201, done: false })
+      emit({ type: 'text-delta', runId, providerRunId: 'provider', providerStep: 1, delta: 'tail' })
+      expect(await handleAgentsRpc(runtime, 'application.agent.run.subscribe', { runId, cursor: 201 }))
+        .toMatchObject({ events: [{ type: 'text-delta', delta: 'tail' }], nextCursor: 202 })
+    } finally { release() }
+  })
+
+  it('expires terminal replay without losing its authoritative completed state', async () => {
+    vi.useFakeTimers()
+    const runtime = {
+      invokeAgentTurn: async (_input: unknown, context: RuntimeRequestContext) =>
+        ({ runId: context.agentRun!.runId, entries: {}, mutation: {} }),
+    } as unknown as ApplicationRuntime
+    try {
+      const { runId } = await handleAgentsRpc(runtime, 'application.agent.run.create', { agentSessionId: 'terminal', input: 'Write' }) as { runId: string }
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(await handleAgentsRpc(runtime, 'application.agent.run.subscribe', { runId, cursor: 0 }))
+        .toMatchObject({ done: true, state: 'completed', events: expect.arrayContaining([expect.objectContaining({ type: 'completed' })]) })
+      await vi.advanceTimersByTimeAsync(120_000)
+      expect(await handleAgentsRpc(runtime, 'application.agent.run.subscribe', { runId, cursor: 0 }))
+        .toMatchObject({ done: true, state: 'completed', replayExpired: true, events: [], partialText: '' })
+      expect(await handleAgentsRpc(runtime, 'application.agent.run.state', { runId })).toMatchObject({ state: 'completed' })
+    } finally { vi.useRealTimers() }
+  })
+
+  it('reloads the persisted terminal state after the lightweight Run record was evicted', async () => {
+    let firstId = ''
+    const runtime = {
+      invokeAgentTurn: async (_input: unknown, context: RuntimeRequestContext) => {
+        firstId ||= context.agentRun!.runId
+        return { runId: context.agentRun!.runId, entries: {}, mutation: {} }
+      },
+      getAgentTranscriptPage: async (input: { agentSessionId: string }) => {
+        expect(input.agentSessionId).toBe('old-session')
+        return { entries: [{ runId: firstId, entry: { kind: 'run-state', state: 'completed' } }] }
+      },
+    } as unknown as ApplicationRuntime
+    for (let index = 0; index < 130; index++) {
+      const done = await handleAgentsRpc(runtime, 'application.agent.run.create', { agentSessionId: `session-${index}`, input: 'Write' }) as { runId: string }
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+      await handleAgentsRpc(runtime, 'application.agent.run.acknowledge-completion', { runId: done.runId })
+    }
+    expect(await handleAgentsRpc(runtime, 'application.agent.run.subscribe', { runId: firstId, cursor: 0, agentSessionId: 'old-session' }))
+      .toMatchObject({ state: 'completed', done: true, replayExpired: true, events: [] })
+  })
   it('discards a paused run so neither its checkpoint nor transcript can resume', async () => {
     const entries: Array<{ id: string; sequence: number; runId: string; entry: { kind: string; state?: string; role?: string; content?: string } }> = [
       { id: 'user', sequence: 1, runId: 'old', entry: { kind: 'message', role: 'user', content: 'Write' } },

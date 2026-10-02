@@ -92,7 +92,17 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
   }
   const database = engine.database
 
-  const transactionRead: Pick<DocumentTransaction, 'get' | 'list'> = {
+  const transactionRead: Pick<DocumentTransaction, 'get' | 'list' | 'listCardBindings'> = {
+    listCardBindings: async input => database.prepare(`
+      SELECT id, json_extract(content_json, '$.name') AS name
+      FROM documents
+      WHERE type = ? AND tombstoned = 0
+        AND EXISTS (
+          SELECT 1 FROM json_each(documents.content_json, '$.promptResourceIds')
+          WHERE json_each.type = 'text' AND json_each.value = ?
+        )
+      ORDER BY rowid
+    `).all(input.type, input.resourceId) as Array<{ id: string; name: string }>,
     get: async (id, options) => {
       const row = options?.version
         ? database.prepare('SELECT document_id AS id, type, version, content_json, meta_json FROM document_revisions WHERE document_id = ? AND version = ?').get(id, options.version)
@@ -300,6 +310,7 @@ export function createSqliteDocumentStore(options: SqliteDocumentStoreOptions): 
   const store: SqliteDocumentStore = {
     get: (id, options) => engine.read(() => transactionRead.get(id, options)),
     list: input => engine.read(() => transactionRead.list(input)),
+    listCardBindings: input => engine.read(() => transactionRead.listCardBindings(input)),
 
     write: async input => {
       const result = await runTransaction(transactionInputFromWrite(input), async pending => applyWrite(input, pending))

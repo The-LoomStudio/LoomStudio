@@ -56,6 +56,7 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
   function transaction(tx: SqliteDataTransaction): AgentTransaction {
     const { database } = tx
     return {
+      getSession: id => readSession(database, id),
       createSession: (input) => {
         validateId(input.agentPresetId, 'agentPresetId')
         validateOptionalText(input.title, 'title')
@@ -90,6 +91,23 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
       listSessions: (input) => readSessions(database, input),
       appendEntries: (input) => {
         const session = requireSession(database, input.agentSessionId)
+        for (const item of input.entries) {
+          if (item.entry.kind !== 'run-state' || item.entry.state !== 'running') continue
+          const active = database.prepare(`
+            SELECT 1 FROM agent_transcript_entries e
+            WHERE e.agent_session_id = ? AND e.run_id IS NOT ?
+              AND json_extract(e.entry_json, '$.kind') = 'run-state'
+              AND json_extract(e.entry_json, '$.state') IN ('created', 'running')
+              AND NOT EXISTS (
+                SELECT 1 FROM agent_transcript_entries later
+                WHERE later.agent_session_id = e.agent_session_id AND later.run_id IS e.run_id
+                  AND later.sequence > e.sequence AND json_extract(later.entry_json, '$.kind') = 'run-state'
+              )
+            LIMIT 1
+          `).get(session.id, item.runId ?? null)
+          if (active)
+            throw new AgentStoreError('agent.session_busy', 'Agent Session already has an executing Run')
+        }
         if (
           !Number.isInteger(input.expectedEntryCount) ||
           input.expectedEntryCount < 0
@@ -124,8 +142,13 @@ export function createAgentStore(options: CreateAgentStoreOptions): AgentStore {
                 AND json_extract(e.entry_json, '$.state') IN ('created', 'running', 'suspended')
                 AND NOT EXISTS (
                   SELECT 1 FROM agent_transcript_entries later
-                  WHERE later.agent_session_id = e.agent_session_id AND later.run_id IS e.run_id
+                  WHERE later.agent_session_id = e.agent_session_id
                     AND later.sequence > e.sequence AND json_extract(later.entry_json, '$.kind') = 'run-state'
+                    AND (later.run_id IS e.run_id OR (
+                      json_extract(e.entry_json, '$.state') = 'suspended'
+                      AND json_extract(later.entry_json, '$.state') = 'running'
+                      AND json_extract(later.entry_json, '$.sourceRunId') = e.run_id
+                    ))
                 )
               LIMIT 1
             `).get(session.id)
@@ -767,6 +790,7 @@ function validateTranscriptEntry(
     return
   }
   if (value.kind === 'run-state') {
+    if (value.sourceRunId !== undefined) validateId(value.sourceRunId, 'sourceRunId')
     if (
       ![
         'created',

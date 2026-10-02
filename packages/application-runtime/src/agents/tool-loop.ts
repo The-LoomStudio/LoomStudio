@@ -292,9 +292,13 @@ export async function runNativeToolLoop(input: {
   )
   let streamedText = ''
   const streamedToolInputs = new Map<string, { toolName?: string; input: string }>()
+  const pendingTools = new Map<string, { invocation: ToolInvocation; render: (result: ToolResult) => ChatMessage }>()
 
   const initial = input.resumeUserEntry
-    ? await append([{ kind: 'run-state', state: 'running' }])
+    ? await append([{
+        kind: 'run-state', state: 'running',
+        sourceRunId: input.requestContext?.agentRun?.continuation?.sourceRunId,
+      }])
     : await append([
         { kind: 'message', role: 'user', content: input.userInput },
         { kind: 'run-state', state: 'running' },
@@ -488,6 +492,22 @@ export async function runNativeToolLoop(input: {
         })
       }
       const persistedStep = await append(stepEntries)
+      for (const pair of invocationPairs) {
+        pendingTools.set(pair.invocation.id, {
+          invocation: pair.invocation,
+          render: result => pair.transport === 'native-function'
+            ? { role: 'tool', tool_call_id: pair.call.id, content: renderToolResult(result) }
+            : {
+                role: 'user',
+                content: renderLoomContentToolResult({
+                  invocationId: result.invocationId,
+                  name: pair.exposedName,
+                  status: result.status === 'completed' ? 'completed' : 'failed',
+                  content: renderToolResult(result),
+                }),
+              },
+        })
+      }
       streamedText = ''
       streamedToolInputs.clear()
 
@@ -573,6 +593,7 @@ export async function runNativeToolLoop(input: {
         await append([
           toTranscriptResult(result, input.requestContext?.abortSignal),
         ])
+        pendingTools.delete(pair.invocation.id)
         if (pair.transport === 'native-function') {
           checkpointMessages.push({
             role: 'tool',
@@ -636,6 +657,18 @@ export async function runNativeToolLoop(input: {
       })
     }
     try {
+      if (pendingTools.size) {
+        const results = [...pendingTools.values()].map(({ invocation }) => ({
+          invocationId: invocation.id,
+          toolId: invocation.toolId,
+          status: aborted ? 'aborted' as const : 'failed' as const,
+          content: [],
+          error: { code: aborted ? 'tool.aborted' : 'tool.interrupted', message: 'Invocation ended without a result. The Agent must issue a new invocation to retry.' },
+        }))
+        await append(results.map(result => toTranscriptResult(result, input.requestContext?.abortSignal)))
+        results.forEach(result => checkpointMessages.push(pendingTools.get(result.invocationId)!.render(result)))
+        pendingTools.clear()
+      }
       if (suspended || !aborted) {
         const checkpointEntries: AgentTranscriptEntryData[] = []
         if (streamedText) checkpointEntries.push({
@@ -653,6 +686,15 @@ export async function runNativeToolLoop(input: {
             transport: 'native-function',
             rawInput: tool.input,
             status: 'suspended',
+          })
+          checkpointEntries.push({
+            kind: 'tool-result',
+            invocationId,
+            toolId: byExposedName.get(tool.toolName ?? '')?.definition.id ?? `unresolved/${tool.toolName ?? 'unknown'}`,
+            status: 'aborted',
+            content: [],
+            error: { code: 'tool.aborted', message: 'Incomplete tool input was not executed. Issue a new invocation to retry.' },
+            syntheticReason: 'interrupt',
           })
         }
         const checkpointAppend = checkpointEntries.length ? await append(checkpointEntries) : undefined

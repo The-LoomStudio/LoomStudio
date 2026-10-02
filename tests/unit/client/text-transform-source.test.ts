@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { isValidElement, type ReactElement } from 'react'
+import { SearchField } from '@loom-studio/ui'
 import { useTextTransformController, type TextTransformProps } from '../../../apps/studio-client/src/features/text-transforms/ui/text-transform-panel.js'
 import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 import type { HistorySource, TextPipelineInspection, TextPipelineOverride, TextTransformRule } from '../../../apps/studio-client/src/entities/index.js'
+import { MacroAuthoringExplorer, useMacroAuthoring, type MacroAuthoringSource } from '../../../apps/studio-client/src/features/state-variables/ui/macro-authoring-panel.js'
+import { MacroInspectorPanel } from '../../../apps/studio-client/src/features/state-variables/ui/macro-inspector-panel.js'
+import { PresetAnchorPicker } from '../../../apps/studio-client/src/features/context-assets/ui/context-asset-detail/preset-anchor-picker.js'
+import type { PromptResource } from '../../../apps/studio-client/src/entities/index.js'
 
 const hooks = vi.hoisted(() => ({ cursor: 0, values: [] as unknown[], effects: [] as (() => void)[] }))
 vi.mock('react', async importOriginal => ({
@@ -91,6 +97,123 @@ function fixture() {
   return { props, render, settle, inspectTextPipeline, getOverride, upsertOverride, listRules }
 }
 beforeEach(() => { hooks.cursor = 0; hooks.values = []; hooks.effects = [] })
+
+describe('authoring search clear interactions', () => {
+  function elements(value: unknown): ReactElement<Record<string, unknown>>[] {
+    if (Array.isArray(value)) return value.flatMap(elements)
+    if (!isValidElement<Record<string, unknown>>(value)) return []
+    return [value, ...Object.values(value.props).flatMap(elements)]
+  }
+
+  it.each(['macro-author', 'macro-inspector', 'anchor'] as const)('clears %s filtering without selecting or saving business data', kind => {
+    const t = createTranslator('en-US')
+    const select = vi.fn()
+    const save = vi.fn()
+    const sources: MacroAuthoringSource[] = [{
+      id: 'card', kind: 'card', label: 'Card', version: 1, macros: { visible: 'value' }, onSave: save,
+    }]
+    const render = () => {
+      hooks.cursor = 0
+      const tree = kind === 'macro-author'
+        ? MacroAuthoringExplorer({ controller: useMacroAuthoring(sources, t) })
+        : kind === 'macro-inspector'
+          ? MacroInspectorPanel({
+            t, loading: false, selections: {}, onSelectSource: select, onRefresh: save,
+            inspection: { capturedAt: '', snapshot: { global: {}, computed: {}, aliases: {} }, entries: [{
+              name: 'visible', status: 'resolved', value: 'value', candidates: [
+                { sourceId: 'card', sourceKind: 'card', sourceLabel: 'Card', value: 'value' },
+              ],
+            }] },
+          })
+          : PresetAnchorPicker({
+            t, onSelect: select, onClose: save,
+            presets: [{ id: 'preset', rootNode: { id: 'visible', kind: 'virtual', label: 'Visible' } } as PromptResource],
+          })
+      for (const effect of hooks.effects.splice(0)) effect()
+      return elements(tree)
+    }
+    render()
+    const before = render()
+    const search = () => render().find(element => element.type === SearchField)!
+    expect(search().props.value).toBe('')
+    if (kind === 'anchor') expect(search().props.autoFocus).toBe(true)
+    ;(search().props.onChange as (event: { target: { value: string } }) => void)({ target: { value: 'NOT_FOUND' } })
+    expect(search().props.value).toBe('NOT_FOUND')
+    if (kind === 'macro-author') expect(render().some(element => element.props.nodes)).toBe(false)
+    else expect(render().filter(element => element.type === 'strong').length).toBeLessThan(before.filter(element => element.type === 'strong').length)
+    ;(search().props.onClear as () => void)()
+    expect(search().props.value).toBe('')
+    if (kind === 'macro-author') expect(render().some(element => element.props.nodes)).toBe(true)
+    else expect(render().filter(element => element.type === 'strong')).toHaveLength(before.filter(element => element.type === 'strong').length)
+    expect(select).not.toHaveBeenCalled()
+    expect(save).not.toHaveBeenCalled()
+  })
+})
+
+describe('authoring source ownership regressions', () => {
+  it.each([true, false])('binds script export and save to the latest selection (late A: %s)', async lateA => {
+    const f = fixture()
+    const aRead = deferred<any>()
+    const bRead = deferred<any>()
+    const update = vi.fn(async () => ({ script: { id: 'B', version: 2 } }))
+    f.props.owner = { kind: 'workspace' }
+    f.props.loomScriptsApi = {
+      list: async () => ({ scripts: ['A', 'B'].map(id => ({ id, version: 1 })) }),
+      listMounts: async () => ({ mounts: [] }),
+      export: (id: string) => id === 'A' ? aRead.promise : bRead.promise,
+      update,
+    } as unknown as NonNullable<TextTransformProps['loomScriptsApi']>
+    f.render()
+    await f.settle()
+    const first = f.render().selectScript('A')
+    const second = f.render().selectScript('B')
+    await f.render().saveScript()
+    expect(update).not.toHaveBeenCalled()
+    const finishA = async () => { aRead.resolve({ artifact: { source: 'source A', fileName: 'A.js' } }); await first }
+    const finishB = async () => { bRead.resolve({ artifact: { source: 'source B', fileName: 'B.js' } }); await second }
+    if (lateA) { await finishB(); await finishA() } else { await finishA(); await finishB() }
+    await f.render().saveScript()
+    expect(update).toHaveBeenCalledWith({ scriptDocumentId: 'B', expectedVersion: 1, source: 'source B', fileName: 'B.js' })
+    const pending = deferred<any>()
+    f.props.loomScriptsApi.export = () => pending.promise
+    const reading = f.render().selectScript('A')
+    f.props.owner = { kind: 'card', cardId: 'other' }
+    f.render()
+    pending.resolve({ artifact: { source: 'stale', fileName: 'stale.js' } })
+    await reading
+    await f.render().saveScript()
+    expect(update).toHaveBeenCalledTimes(1)
+  })
+
+  it('retains dirty macro rows and CAS version across external updates and failed save', async () => {
+    const onSave = vi.fn(async () => { throw new Error('Version conflict') })
+    let sources: MacroAuthoringSource[] = [{ id: 'card', kind: 'card', label: 'Card', version: 1, macros: { name: 'original' }, onSave }]
+    const render = () => {
+      hooks.cursor = 0
+      const result = useMacroAuthoring(sources, createTranslator('en-US'))
+      for (const effect of hooks.effects.splice(0)) effect()
+      return result
+    }
+    render()
+    const row = render().sourceRows.card![0]!
+    render().updateRow('card', row.id, { value: 'UNSAVED' })
+    sources = [{ ...sources[0]!, version: 2, label: 'renamed' }]
+    render()
+    sources = [{ ...sources[0]!, version: 3, macros: { name: 'external' } }]
+    render()
+    expect(render().sourceRows.card![0]!.value).toBe('UNSAVED')
+    expect(render().draftVersions.card).toBe(1)
+    await render().save('card')
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ expectedVersion: 1 }))
+    expect(render().dirtySources.card).toBe(true)
+    expect(render().sourceRows.card![0]!.value).toBe('UNSAVED')
+    render().updateRow('card', row.id, { value: 'original' })
+    sources = [{ ...sources[0]!, version: 4 }]
+    render()
+    expect(render().sourceRows.card![0]!.value).toBe('external')
+    expect(render().draftVersions.card).toBe(4)
+  })
+})
 
 describe('Text Transform rule saving', () => {
   const rule: TextTransformRule = {

@@ -2,7 +2,36 @@ import { applyTokenMultiplier, TOKEN_INPUT_LIMIT, TOKEN_QUEUE_LIMIT, type TokenC
 
 let worker: Worker | undefined
 let sequence = 0
-const pending = new Map<number, { resolve(counts: number[]): void; reject(error: Error): void; cleanup(): void }>()
+const TOKEN_BATCH_ITEM_LIMIT = 128
+type Task = {
+  texts: string[]
+  next: number
+  counts: number[]
+  cancelled: boolean
+  resolve(counts: number[]): void
+  reject(error: Error): void
+  cleanup(): void
+}
+const pending = new Map<number, Task>()
+
+function sendBatch(id: number, task: Task): void {
+  const texts: string[] = []
+  let characters = 0
+  while (task.next < task.texts.length && texts.length < TOKEN_BATCH_ITEM_LIMIT) {
+    const text = task.texts[task.next]!
+    if (characters + text.length > TOKEN_INPUT_LIMIT) break
+    texts.push(text)
+    characters += text.length
+    task.next++
+  }
+  try {
+    worker!.postMessage({ id, texts })
+  } catch (error) {
+    pending.delete(id)
+    task.cleanup()
+    task.reject(error instanceof Error ? error : new Error(String(error)))
+  }
+}
 
 export function countTexts(texts: string[], signal?: AbortSignal): Promise<number[]> {
   if (signal?.aborted) return Promise.reject(new DOMException('Token counting cancelled', 'AbortError'))
@@ -16,10 +45,18 @@ export function countTexts(texts: string[], signal?: AbortSignal): Promise<numbe
     worker.onmessage = (event: MessageEvent<{ id: number; counts?: number[]; error?: string }>) => {
       const task = pending.get(event.data.id)
       if (!task) return
+      if (!task.cancelled && event.data.error === undefined) {
+        task.counts.push(...event.data.counts!)
+        if (task.next < task.texts.length) {
+          sendBatch(event.data.id, task)
+          return
+        }
+      }
       pending.delete(event.data.id)
       task.cleanup()
+      if (task.cancelled) return
       if (event.data.error !== undefined) task.reject(new Error(event.data.error))
-      else task.resolve(event.data.counts!)
+      else task.resolve(task.counts)
     }
     worker.onerror = event => {
       for (const task of pending.values()) {
@@ -27,19 +64,29 @@ export function countTexts(texts: string[], signal?: AbortSignal): Promise<numbe
         task.reject(new Error(event.message))
       }
       pending.clear()
+      worker!.onmessage = null
+      worker!.onerror = null
       worker?.terminate()
       worker = undefined
     }
   }
   const id = ++sequence
   return new Promise((resolve, reject) => {
+    const task: Task = {
+      texts: [...texts], next: 0, counts: [], cancelled: false, resolve, reject,
+      cleanup: () => signal?.removeEventListener('abort', abort),
+    }
     const abort = () => {
       // Keep the slot until the Worker finishes; cancellation cannot interrupt BPE.
+      task.cancelled = true
+      task.texts = []
+      task.counts = []
+      task.cleanup()
       reject(new DOMException('Token counting cancelled', 'AbortError'))
     }
     signal?.addEventListener('abort', abort, { once: true })
-    pending.set(id, { resolve, reject, cleanup: () => signal?.removeEventListener('abort', abort) })
-    worker!.postMessage({ id, texts })
+    pending.set(id, task)
+    sendBatch(id, task)
   })
 }
 

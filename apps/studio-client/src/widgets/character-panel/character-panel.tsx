@@ -1,6 +1,6 @@
 import { ArrowDownUp, ArrowLeft, BookOpen, Check, Circle, ChevronRight, CloudDownload, Combine, Download, FileArchive, Folder, Grid2X2, ImageDown, List, Pencil, Play, Plus, RefreshCw, Trash2, Upload, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type DragEvent, type FormEvent } from 'react'
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger, Dialog, Toggle, type MenuAction } from '@loom-studio/ui'
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger, Dialog, TextInput, Textarea, Toggle, type MenuAction } from '@loom-studio/ui'
 import type { Translator } from '../../shared/i18n/index.js'
 import { useCharacterGalleryStore, type CharacterGroupFilter } from './character-gallery-store.js'
 import { useCharacterProfileNavigation } from './use-character-profile-navigation.js'
@@ -101,9 +101,9 @@ function CharacterProfileEditor(props: {
     }
   }
   return <form className={`${styles.profileEditor} loom-underlined-fields`} onSubmit={event => void save(event)}>
-    <label><span>{props.t('character.name')}</span><input disabled={props.busy || saving} value={draft.name} onChange={event => setDraft({ ...draft, name: event.target.value })} /></label>
-    <label><span>{props.t('character.author')}</span><input disabled={props.busy || saving} value={draft.userName} onChange={event => setDraft({ ...draft, userName: event.target.value })} /></label>
-    <label><span>{props.t('character.description')}</span><textarea disabled={props.busy || saving} value={draft.description} onChange={event => setDraft({ ...draft, description: event.target.value })} /></label>
+    <label><span>{props.t('character.name')}</span><TextInput disabled={props.busy || saving} value={draft.name} onChange={event => setDraft({ ...draft, name: event.target.value })} /></label>
+    <label><span>{props.t('character.author')}</span><TextInput disabled={props.busy || saving} value={draft.userName} onChange={event => setDraft({ ...draft, userName: event.target.value })} /></label>
+    <label><span>{props.t('character.description')}</span><Textarea disabled={props.busy || saving} value={draft.description} onChange={event => setDraft({ ...draft, description: event.target.value })} /></label>
     {error ? <p role="alert">{error}</p> : null}
     <div className={styles.editorActions}><button disabled={props.busy || saving || !draft.name.trim()} type="submit">{props.t('character.save')}</button></div>
   </form>

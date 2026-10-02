@@ -107,6 +107,8 @@ export function useTextTransformController(props: TextTransformProps) {
   const catalogScope = useMemo(() => ({ api: props.api, loomScriptsApi: props.loomScriptsApi, ownerKey, runtimeScriptContextKey }), [props.api, props.loomScriptsApi, ownerKey, runtimeScriptContextKey])
   const catalogScopeRef = useRef(catalogScope)
   catalogScopeRef.current = catalogScope
+  const scriptReadRef = useRef(0)
+  const [scriptDraft, setScriptDraft] = useState<{ scope: typeof catalogScope; id: string; version: number }>()
   const ruleWriteRef = useRef<{ scope: typeof catalogScope; id: string } | undefined>(undefined)
   const [ruleWrite, setRuleWrite] = useState<{ scope: typeof catalogScope; id: string }>()
   const [savedRule, setSavedRule] = useState<{ scope: typeof catalogScope; id: string; text: string }>()
@@ -251,12 +253,16 @@ export function useTextTransformController(props: TextTransformProps) {
   }
 
   async function selectScript(id: string) {
+    const request = ++scriptReadRef.current
+    setScriptDraft(undefined)
+    setScriptSource('')
     setSelectedTarget({ kind: 'script', id })
     setMobilePane('detail')
     const resolved = resolvedMounts.find(item => item.script.id === id)
     if (resolved) {
       setScriptSource(resolved.source)
       setScriptFileName(`${resolved.script.metadataId}.loom.js`)
+      setScriptDraft({ scope: catalogScope, id, version: resolved.script.version })
       return
     }
     const script = scripts.find(item => item.id === id)
@@ -264,9 +270,15 @@ export function useTextTransformController(props: TextTransformProps) {
     try {
       setBusy(true)
       const result = await props.loomScriptsApi.export(id)
+      if (!isCurrentCatalog() || request !== scriptReadRef.current) return
       setScriptSource(result.artifact.source)
       setScriptFileName(result.artifact.fileName)
-    } catch (cause) { setError(readError(cause)) } finally { setBusy(false) }
+      setScriptDraft({ scope: catalogScope, id, version: script.version })
+    } catch (cause) {
+      if (isCurrentCatalog() && request === scriptReadRef.current) setError(readError(cause))
+    } finally {
+      if (isCurrentCatalog() && request === scriptReadRef.current) setBusy(false)
+    }
   }
 
   async function importScript(file: File) {
@@ -285,10 +297,11 @@ export function useTextTransformController(props: TextTransformProps) {
   async function saveScript() {
     if (selectedTarget.kind !== 'script' || !props.loomScriptsApi) return
     const script = scripts.find(item => item.id === selectedTarget.id)
-    if (!script) return
+    if (!script || !scriptDraft || scriptDraft.scope !== catalogScope || scriptDraft.id !== script.id || !isCurrentCatalog()) return
     try {
       setBusy(true)
-      await props.loomScriptsApi.update({ scriptDocumentId: script.id, expectedVersion: script.version, fileName: scriptFileName, source: scriptSource })
+      const result = await props.loomScriptsApi.update({ scriptDocumentId: scriptDraft.id, expectedVersion: scriptDraft.version, fileName: scriptFileName, source: scriptSource })
+      setScriptDraft(current => current === scriptDraft ? { ...current, version: result.script.version } : current)
       await refresh()
       props.onRuntimeChanged?.()
     } catch (cause) { setError(readError(cause)) } finally { setBusy(false) }
@@ -569,7 +582,7 @@ export function TextTransformPanel(props: TextTransformProps) {
             }}
           />
         ) : null}
-        <button className={styles.refreshButton} disabled={controller.busy} type="button" onClick={() => void controller.refresh()}><RefreshCw aria-hidden="true" size={14} /><span>{props.t('textTransform.refresh')}</span></button>
+        <Button size="small" variant="secondary" disabled={controller.busy} type="button" onClick={() => void controller.refresh()}><RefreshCw aria-hidden="true" size={14} /><span>{props.t('textTransform.refresh')}</span></Button>
       </div>
     </header>
     <MasterDetailWorkbench

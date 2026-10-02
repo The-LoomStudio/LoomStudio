@@ -22,11 +22,9 @@
 .filters input, .filters select { min-width: 0; max-width: 100%; width: auto; font-size: var(--loom-font-size-1); }
 .filters > input { flex: 1; width: 140px; }
 .filters label { display: flex; align-items: center; gap: 6px; color: var(--loom-color-text-muted); font-size: var(--loom-font-size-1); }
-.filters button, .report footer button { display: inline-flex; align-items: center; gap: 6px; }
+.filters button, .report [data-loom-ui-dialog-actions] button { display: inline-flex; align-items: center; gap: 6px; }
 .loadMore { display: block; margin: 12px auto; }
-.report { width: min(760px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); box-sizing: border-box; padding: 16px; color: var(--loom-color-text); background: var(--loom-color-surface); border: 1px solid var(--loom-color-border); border-radius: 8px; }
-.report::backdrop { background: rgb(0 0 0 / 45%); }
-.report header, .report footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.report { width: min(760px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); box-sizing: border-box; }
 .report p { font-size: var(--loom-font-size-1); color: var(--loom-color-warning); }
 .report textarea { box-sizing: border-box; width: 100%; height: min(48dvh, 480px); resize: vertical; margin: 12px 0; font: 12px/1.6 var(--loom-font-family-mono); }
 @media (max-width: 640px) {

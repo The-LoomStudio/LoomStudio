@@ -18,6 +18,31 @@ const stores = [
 ]
 
 describe.each(stores)('$name document store contract', ({ create }) => {
+  it('projects live Card bindings without unrelated fields, preserving exact IDs and store order', async () => {
+    await withStore(create(), async store => {
+      const fixtures: Array<[string, string, { name: string; promptResourceIds?: string[]; description?: string }]> = [
+        ['bound', 'test.card', { name: 'Bound', promptResourceIds: ['resource'], description: 'private body' }],
+        ['prefix', 'test.card', { name: 'Prefix', promptResourceIds: ['resource-more'] }],
+        ['missing', 'test.card', { name: 'Missing' }],
+        ['other-type', 'test.other', { name: 'Other', promptResourceIds: ['resource'] }],
+        ['deleted', 'test.card', { name: 'Deleted', promptResourceIds: ['resource'] }],
+        ['second', 'test.card', { name: 'Second', promptResourceIds: ['resource', 'resource'] }],
+      ]
+      for (const [id, type, content] of fixtures) {
+        await store.write({ id, type, content, expectedVersion: 'new' })
+      }
+      await store.delete({ id: 'deleted', expectedVersion: 1 })
+      const input = { type: 'test.card', resourceId: 'resource' }
+      const expected = [{ id: 'bound', name: 'Bound' }, { id: 'second', name: 'Second' }]
+      expect(await store.listCardBindings(input)).toEqual(expected)
+      await store.transact({ actor }, async tx => {
+        expect(await tx.listCardBindings(input)).toEqual(expected)
+        await tx.write({ id: 'inside', type: 'test.card', content: { name: 'Inside', promptResourceIds: ['resource'] }, expectedVersion: 'new' })
+        expect(await tx.listCardBindings(input)).toEqual([...expected, { id: 'inside', name: 'Inside' }])
+      })
+    })
+  })
+
   it('persists installation ownership and binds pagination to the installation filter', async () => {
     await withStore(create(), async store => {
       for (const [id, ownerInstallationId] of [

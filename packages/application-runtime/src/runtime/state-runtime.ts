@@ -1,8 +1,9 @@
 import type { JsonObject, JsonValue } from '@loom-studio/shared'
+import { listStateDefinitionDocuments } from '@loom-studio/application-data'
 import { assertExtensionTimelineAccess } from './extension-resource-access.js'
 import type { ApplicationRuntimeContext } from '../foundation/application-context.js'
 import { applicationDocumentTypes } from '../foundation/document-types.js'
-import { listDocuments, readDocument, writeDocument } from '../foundation/document-store.js'
+import { readDocument, writeDocument } from '../foundation/document-store.js'
 import { executeDocumentMutation } from '../foundation/mutation.js'
 import {
   type ApplicationStateContext,
@@ -52,11 +53,10 @@ export function createStateRuntimeMethods(ctx: StateRuntimeContext) {
       applyApplicationStateMutation(ctx, input, requestContext),
 
     listStateDefinitions: async (input?: ListStateDefinitionsInput): Promise<ListStateDefinitionsResult> => {
-      const definitions = await listDocuments<StateDefinitionContent>(ctx.documents, applicationDocumentTypes.stateDefinition)
+      const definitions = await listStateDefinitionDocuments<StateDefinitionContent>(ctx.dataEngine, input ?? {})
       return {
         definitions: definitions
-          .map(toStateDefinitionEntry)
-          .filter(definition => input?.kind === undefined || definition.kind === input.kind),
+          .map(document => ({ ...document.content, id: document.id, version: document.version })),
       }
     },
 

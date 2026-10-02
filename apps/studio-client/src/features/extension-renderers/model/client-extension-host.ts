@@ -117,6 +117,7 @@ type ActiveClientModule = {
   key: string
   entryUrl: string
   packageVersion: string
+  reloadId?: string
   permissions: string
   abortController: AbortController
   handles: ExtensionRegistrationHandle[]
@@ -272,6 +273,7 @@ export function createClientExtensionHost(options: {
       key,
       entryUrl: module.entryUrl,
       packageVersion: extensionPackage.version,
+      reloadId: module.reloadId,
       permissions: permissionFingerprint(module),
       abortController: new AbortController(),
       handles: [],
@@ -413,6 +415,7 @@ export function createClientExtensionHost(options: {
       for (const [key, record] of active) {
         const next = desired.get(key)
         if (!next || reload.has(key) || next.module.entryUrl !== record.entryUrl || next.extensionPackage.version !== record.packageVersion
+          || next.module.reloadId !== record.reloadId
           || permissionFingerprint(next.module) !== record.permissions) {
           await stop(record)
         }

@@ -1,4 +1,5 @@
-import { ChevronDown, ChevronRight, Folder, FolderOpen, RefreshCw, Search, RotateCcw } from 'lucide-react'
+import { ChevronDown, ChevronRight, Folder, FolderOpen, RefreshCw, RotateCcw } from 'lucide-react'
+import { SearchField } from '@loom-studio/ui'
 import { useEffect, useMemo, useState } from 'react'
 import { canonicalMacroName, macroSelectionMatches, type MacroCandidate, type MacroInspection, type MacroSelection, type MacroSelectionMap } from '@loom-studio/shared'
 import { MasterDetailWorkbench } from '../../../shared/ui/master-detail-workbench/master-detail-workbench.js'
@@ -79,16 +80,15 @@ export function MacroInspectorPanel(props: MacroInspectorPanelProps) {
             onMobilePaneChange={setMobilePane}
             master={(
               <nav className={styles.macroInspectorMaster} aria-label={props.t('macroInspector.title')}>
-                <label className={styles.macroInspectorSearch}>
-                  <Search aria-hidden="true" size={14} />
-                  <input
-                    aria-label={props.t('macroInspector.search')}
-                    placeholder={props.t('macroInspector.searchPlaceholder')}
-                    type="search"
-                    value={query}
-                    onChange={event => setQuery(event.target.value)}
-                  />
-                </label>
+                <SearchField
+                  containerClassName={styles.macroInspectorSearch}
+                  aria-label={props.t('macroInspector.search')}
+                  placeholder={props.t('macroInspector.searchPlaceholder')}
+                  clearLabel={props.t('context.search.clear')}
+                  value={query}
+                  onChange={event => setQuery(event.target.value)}
+                  onClear={() => setQuery('')}
+                />
                 <div className={styles.macroInspectorResults}>
                   {groups.map(group => (
                     <section className={styles.macroInspectorGroup} key={group.status}>

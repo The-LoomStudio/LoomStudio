@@ -188,7 +188,7 @@ export type ApplicationRuntime = {
   getStateDefinition(input: GetStateDefinitionInput): Promise<GetStateDefinitionResult>
   upsertStateDefinition(input: UpsertStateDefinitionInput, context?: RuntimeRequestContext): Promise<UpsertStateDefinitionResult>
   deleteStateDefinition(input: DeleteStateDefinitionInput, context?: RuntimeRequestContext): Promise<DeleteStateDefinitionResult>
-  listTextTransformRules(): Promise<{ rules: TextTransformRuleEntry[] }>
+  listTextTransformRules(input?: { owner?: TextTransformRuleDraft['owner'] }): Promise<{ rules: TextTransformRuleEntry[] }>
   getTextTransformRule(input: { ruleId: string }): Promise<{ rule: TextTransformRuleEntry }>
   upsertTextTransformRule(input: { ruleId: string; expectedVersion?: number; rule: TextTransformRuleDraft }, context?: RuntimeRequestContext): Promise<{ rule: TextTransformRuleEntry; mutation: MutationReceipt }>
   deleteTextTransformRule(input: { ruleId: string; expectedVersion?: number }, context?: RuntimeRequestContext): Promise<{ deleted: true; mutation: MutationReceipt }>
@@ -199,7 +199,7 @@ export type ApplicationRuntime = {
   getTextPipelineOverride(input: InspectTextPipelineInput): Promise<{ override: TextPipelineOverrideEntry | null }>
   upsertTextPipelineOverride(input: InspectTextPipelineInput & { expectedVersion?: number; disabledRuleIds: string[]; orderedRuleIds: string[] }, context?: RuntimeRequestContext): Promise<{ override: TextPipelineOverrideEntry; mutation: MutationReceipt }>
   deleteTextPipelineOverride(input: InspectTextPipelineInput & { expectedVersion?: number }, context?: RuntimeRequestContext): Promise<{ deleted: true; mutation: MutationReceipt }>
-  projectHistory(input: { source: HistorySource; phase: TextTransformPhase; consumerAgentSessionId?: string; extensionTarget?: ExtensionInstallationTarget }): Promise<{ snapshot: HistoryProjectionSnapshot }>
+  projectHistory(input: { source: HistorySource; phase: TextTransformPhase; entryIds?: string[]; consumerAgentSessionId?: string; extensionTarget?: ExtensionInstallationTarget }): Promise<{ snapshot: HistoryProjectionSnapshot }>
   previewCardOpeningDisplay(input: { cardId: string; presetId?: string; text: string }): Promise<{ text: string; originalText: string; diagnostics: Array<{ code: string; message: string }> }>
   extractHistory(input: { source: HistorySource; phase?: TextTransformPhase; extractorId: string; consumerAgentSessionId?: string; extensionTarget?: ExtensionInstallationTarget }): Promise<{ extraction: TextExtractionResult; snapshot: HistoryProjectionSnapshot }>
   inspectTextPipeline(input: InspectTextPipelineInput): Promise<TextPipelineInspection>
@@ -481,6 +481,7 @@ export type TimelineRuntimeContextContent = {
 
 export type ListStateDefinitionsInput = {
   kind?: StateDefinitionDraft['kind']
+  ids?: string[]
 }
 
 export type ListStateDefinitionsResult = {

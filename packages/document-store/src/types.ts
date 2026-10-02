@@ -156,6 +156,7 @@ export type RevertChangesetInput = DocumentTransactionInput & {
 }
 
 export type DocumentTransaction = {
+  listCardBindings(input: { type: string; resourceId: string }): Promise<Array<{ id: string; name: string }>>
   get(id: string, options?: { includeTombstone?: boolean; version?: number }): Promise<DocumentRecord | null>
   list(input?: ListDocumentsInput): Promise<PageResult<DocumentRecord>>
   write(input: WriteDocumentInput): Promise<WriteDocumentResult>

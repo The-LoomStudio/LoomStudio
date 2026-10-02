@@ -426,14 +426,14 @@ export type StudioApi = {
   states: {
     get(target: StateTarget, extensionTarget?: ExtensionInstallationTarget): Promise<GetStateSnapshotResult>
     apply(input: ApplyStateMutationInput): Promise<ApplyStateMutationResult>
-    listDefinitions(kind?: StateDefinitionDraft['kind']): Promise<ListStateDefinitionsResult>
+    listDefinitions(kind?: StateDefinitionDraft['kind'], ids?: string[]): Promise<ListStateDefinitionsResult>
     getDefinition(definitionId: string): Promise<GetStateDefinitionResult>
     upsertDefinition(input: { definitionId: string; expectedVersion?: number; definition: StateDefinitionDraft }): Promise<UpsertStateDefinitionResult>
     deleteDefinition(input: { definitionId: string; expectedVersion?: number }): Promise<DeleteStateDefinitionResult>
   }
   textTransforms: {
     previewCardOpening(input: { cardId: string; presetId?: string; text: string }): Promise<{ text: string; originalText: string; diagnostics: Array<{ code: string; message: string }> }>
-    listRules(): Promise<{ rules: TextTransformRule[] }>
+    listRules(owner?: TextTransformRuleDraft['owner']): Promise<{ rules: TextTransformRule[] }>
     getRule(ruleId: string): Promise<{ rule: TextTransformRule }>
     upsertRule(input: { ruleId: string; expectedVersion?: number; rule: TextTransformRuleDraft }): Promise<{ rule: TextTransformRule; mutation: MutationReceipt }>
     deleteRule(input: { ruleId: string; expectedVersion?: number }): Promise<{ deleted: true; mutation: MutationReceipt }>
@@ -441,7 +441,7 @@ export type StudioApi = {
     getExtractor(extractorId: string): Promise<{ extractor: TextExtractor }>
     upsertExtractor(input: { extractorId: string; expectedVersion?: number; extractor: TextExtractorDraft }): Promise<{ extractor: TextExtractor; mutation: MutationReceipt }>
     deleteExtractor(input: { extractorId: string; expectedVersion?: number }): Promise<{ deleted: true; mutation: MutationReceipt }>
-    project(input: { source: HistorySource; phase: TextTransformPhase; consumerAgentSessionId?: string; extensionTarget?: ExtensionInstallationTarget }): Promise<{ snapshot: HistoryProjectionSnapshot }>
+    project(input: { source: HistorySource; phase: TextTransformPhase; entryIds?: string[]; consumerAgentSessionId?: string; extensionTarget?: ExtensionInstallationTarget }): Promise<{ snapshot: HistoryProjectionSnapshot }>
     getOverride(input: { source: HistorySource; phase: TextTransformPhase; consumerAgentSessionId?: string }): Promise<{ override: TextPipelineOverride | null }>
     upsertOverride(input: { source: HistorySource; phase: TextTransformPhase; consumerAgentSessionId?: string; expectedVersion?: number; disabledRuleIds: string[]; orderedRuleIds: string[] }): Promise<{ override: TextPipelineOverride; mutation: MutationReceipt }>
     deleteOverride(input: { source: HistorySource; phase: TextTransformPhase; consumerAgentSessionId?: string; expectedVersion?: number }): Promise<{ deleted: true; mutation: MutationReceipt }>
@@ -481,7 +481,8 @@ export type StudioApi = {
     getTranscript(input: { agentSessionId: string; cursor?: string; limit?: number }): Promise<AgentTranscriptPage>
     invoke(input: InvokeAgentTurnInput): Promise<InvokeAgentTurnResult>
     createRun(input: InvokeAgentTurnInput): Promise<{ runId: string }>
-    subscribeRun(runId: string, cursor?: number): Promise<{ events: AgentRunEvent[]; nextCursor: number; done: boolean; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' }>
+    subscribeRun(runId: string, cursor?: number, agentSessionId?: string): Promise<{ events: AgentRunEvent[]; nextCursor: number; done: boolean; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled'; replayExpired?: boolean; partialText?: string; pendingApprovals?: AgentRunEvent[] }>
+    acknowledgeRunCompletion(runId: string): Promise<{ runId: string; accepted: boolean }>
     cancelRun(runId: string, reason?: string): Promise<{ runId: string; accepted: boolean; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' }>
     abandonRun(runId: string): Promise<{ runId: string; accepted: boolean; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' }>
     pauseRun(runId: string): Promise<{ runId: string; accepted: boolean; state: 'running' | 'suspended' | 'completed' | 'failed' | 'cancelled' }>
@@ -666,7 +667,9 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
     states: {
       get: (target, extensionTarget) => rpc.call<GetStateSnapshotResult>('application.getStateSnapshot', { target, ...(extensionTarget ? { extensionTarget } : {}) }),
       apply: input => rpc.call<ApplyStateMutationResult>('application.applyStateMutation', input),
-      listDefinitions: kind => rpc.call<ListStateDefinitionsResult>('application.listStateDefinitions', kind ? { kind } : {}),
+      listDefinitions: (kind, ids) => rpc.call<ListStateDefinitionsResult>('application.listStateDefinitions', {
+        ...(kind !== undefined ? { kind } : {}), ...(ids !== undefined ? { ids } : {}),
+      }),
       getDefinition: definitionId => rpc.call<GetStateDefinitionResult>('application.getStateDefinition', { definitionId }),
       upsertDefinition: input => rpc.call<UpsertStateDefinitionResult>('application.upsertStateDefinition', input),
       deleteDefinition: input => rpc.call<DeleteStateDefinitionResult>('application.deleteStateDefinition', input),
@@ -689,7 +692,7 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
     },
     textTransforms: {
       previewCardOpening: input => rpc.call('application.previewCardOpeningDisplay', input),
-      listRules: () => rpc.call('application.listTextTransformRules', {}),
+      listRules: owner => rpc.call('application.listTextTransformRules', owner !== undefined ? { owner } : {}),
       getRule: ruleId => rpc.call('application.getTextTransformRule', { ruleId }),
       upsertRule: input => rpc.call('application.upsertTextTransformRule', input),
       deleteRule: input => rpc.call('application.deleteTextTransformRule', input),
@@ -745,7 +748,8 @@ export function createStudioApi(bridge: ClientBridge): StudioApi {
       getTranscript: input => rpc.call<AgentTranscriptPage>('application.getAgentTranscriptPage', input),
       invoke: input => rpc.call<InvokeAgentTurnResult>('application.invokeAgentTurn', input),
       createRun: input => rpc.call<{ runId: string }>('application.agent.run.create', input),
-      subscribeRun: (runId, cursor) => rpc.call('application.agent.run.subscribe', { runId, ...(cursor === undefined ? {} : { cursor }) }),
+      subscribeRun: (runId, cursor, agentSessionId) => rpc.call('application.agent.run.subscribe', { runId, ...(cursor === undefined ? {} : { cursor }), ...(agentSessionId === undefined ? {} : { agentSessionId }) }),
+      acknowledgeRunCompletion: runId => rpc.call('application.agent.run.acknowledge-completion', { runId }),
       cancelRun: (runId, reason) => rpc.call('application.agent.run.cancel', { runId, ...(reason ? { reason } : {}) }),
       abandonRun: runId => rpc.call('application.agent.run.abandon', { runId }),
       pauseRun: runId => rpc.call('application.agent.run.pause', { runId }),
