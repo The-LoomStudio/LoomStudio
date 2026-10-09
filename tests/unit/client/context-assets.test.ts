@@ -11,8 +11,10 @@ import { buildProjectionOrder } from '../../../apps/studio-client/src/features/c
 import { readPromptResourceWorkbenchRoot } from '../../../apps/studio-client/src/features/context-assets/model/prompt-resource-view.js'
 import { resolvePresetBuildContextResources } from '../../../apps/studio-client/src/features/context-assets/model/preset-build-context.js'
 import { resolveVirtualDisplayName, resolveVirtualExtension } from '../../../apps/studio-client/src/features/context-assets/model/context-asset-tree.js'
+import { readContextAssetTreeActions } from '../../../apps/studio-client/src/features/context-assets/ui/context-asset-tree.js'
+import { createTranslator } from '../../../apps/studio-client/src/shared/i18n/index.js'
 import type { ContextAssetNode, PromptResource, SettingMount } from '../../../apps/studio-client/src/entities/index.js'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 describe('studio client context asset helpers', () => {
   it('resolves virtual display names with correct file extensions for UI presentation', () => {
@@ -25,6 +27,48 @@ describe('studio client context asset helpers', () => {
     expect(resolveVirtualDisplayName('核心模块', 'module')).toBe('核心模块')
     expect(resolveVirtualDisplayName('对话块', 'message')).toBe('对话块')
   })
+  it('exposes resource-level actions for synthetic preset root rows', () => {
+    const onDelete = vi.fn()
+    const onDuplicate = vi.fn().mockResolvedValue('copy-id')
+    const onRename = vi.fn()
+    const actions = readContextAssetTreeActions(
+      { id: 'prompt-resource-1', label: 'New Preset', kind: 'folder', category: 'preset-root' },
+      {
+        onAdd: vi.fn(),
+        onDelete,
+        onDuplicate,
+        onRename,
+        onToggleEnabled: vi.fn(),
+        t: createTranslator('en-US'),
+      },
+    )
+
+    expect(actions.filter(action => action.type !== 'separator').map(action => action.id)).toEqual(['duplicate', 'rename', 'delete'])
+    const byId = new Map(actions.map(action => [action.id, action]))
+    byId.get('duplicate')!.onSelect()
+    byId.get('rename')!.onSelect()
+    byId.get('delete')!.onSelect()
+    expect(onDuplicate).toHaveBeenCalledWith('prompt-resource-1')
+    expect(onRename).toHaveBeenCalledWith('prompt-resource-1')
+    expect(onDelete).toHaveBeenCalledWith('prompt-resource-1')
+  })
+
+  it('keeps built-in synthetic preset roots read-only except for duplication', () => {
+    const actions = readContextAssetTreeActions(
+      { id: 'prompt-resource-1', label: 'Builtin', kind: 'folder', category: 'preset-root', readOnly: true },
+      {
+        onAdd: vi.fn(),
+        onDelete: vi.fn(),
+        onDuplicate: vi.fn(),
+        onRename: vi.fn(),
+        onToggleEnabled: vi.fn(),
+        t: createTranslator('en-US'),
+      },
+    )
+
+    expect(actions.filter(action => action.type !== 'separator').map(action => action.id)).toEqual(['duplicate'])
+  })
+
   it('adds a setting entry with a backend-shaped projection', () => {
     const result = addContextAssetNode(baseNodes(), 'setting-folder', idSequence('new-entry'))
     const folder = findNode(result.nodes, 'setting-folder')

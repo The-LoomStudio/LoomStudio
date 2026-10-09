@@ -132,6 +132,34 @@ export function readContextAssetTreeActions(
   const isSettingLayer = node.category === 'setting' && node.kind === 'module'
   const items: MenuAction[] = []
 
+  if (node.category === 'preset-root') {
+    items.push({
+      icon: <Copy aria-hidden="true" />,
+      id: 'duplicate',
+      label: input.t('promptResource.duplicate'),
+      onSelect: () => input.onDuplicate(node.id),
+    })
+    if (!node.readOnly && input.onRename) {
+      items.push({
+        icon: <Pencil aria-hidden="true" />,
+        id: 'rename',
+        label: input.t('context.actionRename'),
+        onSelect: () => input.onRename?.(node.id),
+      })
+    }
+    if (!node.readOnly) {
+      if (items.length > 0) items.push({ id: 'delete-separator', type: 'separator' })
+      items.push({
+        icon: <Trash2 aria-hidden="true" />,
+        id: 'delete',
+        label: input.t('promptResource.delete'),
+        onSelect: () => input.onDelete(node.id),
+        tone: 'danger',
+      })
+    }
+    return items
+  }
+
   if (canToggleContextAssetEnabled(node)) {
     items.push({
       checked: node.enabled !== false,

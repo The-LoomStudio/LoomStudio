@@ -126,7 +126,7 @@ export function ContextAssetExplorer(props: {
             onChangeRole: props.onChangeRole,
             t: props.t,
           })}
-          hasActions={item => !isReadOnlyContextAssetTreeNode(item as ContextAssetNode)}
+          hasActions={item => (item as ContextAssetNode).category === 'preset-root' || !isReadOnlyContextAssetTreeNode(item as ContextAssetNode)}
           isMuted={item => (item as ContextAssetNode).kind === 'entry' && (item as ContextAssetNode).enabled === false}
           formatLabel={node => resolveVirtualDisplayName(node.label, (node as ContextAssetNode).kind)}
           formatMeta={node => {

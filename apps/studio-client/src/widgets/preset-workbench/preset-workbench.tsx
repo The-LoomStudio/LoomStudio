@@ -263,10 +263,13 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
         kind: 'folder',
         category: 'preset-root',
         meta: `${originLabel} · ${modelLabel}`,
+        readOnly: isBuiltin,
         children: promptChildren,
       }
     })
   }, [presetResources, selectedResource?.id, mainOrderNodes, props.t, props.extensionInstallations])
+
+  const presetForNodeId = (id: string) => presetResources.find(preset => preset.id === id)
 
   function handleSelectNode(id?: string) {
     if (!id) return
@@ -375,9 +378,20 @@ export function PresetWorkbench(props: PresetWorkbenchProps) {
           onAddFolderNode={props.onAddFolderNode}
           onAddAnchorNode={props.onAddAnchorNode}
           onAddMessageBlockNode={props.onAddMessageBlockNode}
-          onDeleteNode={props.onDeleteNode}
-          onDuplicateNode={props.onDuplicateNode}
-          onRenameNode={props.onRenameNode}
+          onDeleteNode={(id, selectedId) => {
+            const preset = presetForNodeId(id)
+            return preset ? props.onDeleteResource(preset.id).then(() => undefined) : props.onDeleteNode(id, selectedId)
+          }}
+          onDuplicateNode={id => {
+            const preset = presetForNodeId(id)
+            return preset ? props.onDuplicateResource(preset.id) : props.onDuplicateNode(id)
+          }}
+          onRenameNode={(id, label) => {
+            const preset = presetForNodeId(id)
+            return preset
+              ? props.onSaveModel({ agentPresetId: preset.id, expectedVersion: preset.version, name: label }).then(() => undefined)
+              : props.onRenameNode(id, label)
+          }}
           onExpandedIdsChange={expandedIds => setAssetExpandedIds('preset', props.workspaceId, expandedIds)}
           onMoveNode={props.onMoveNode}
           onQueryChange={props.onSearchQueryChange}
